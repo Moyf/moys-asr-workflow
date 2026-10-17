@@ -28,13 +28,11 @@
   // 收集唯一表情包文件的合并显示区间（毫秒）。gapRemoved 提供时按收缩时间轴
   // 映射端点（与去空隙 ASS 同一 mapGapRemovedTime 契约：请求里的时间已是最终
   // 时间轴），完全落在已移除空隙内的区间丢弃。
-  function collectStickerPlans({ gapRemoved = null, resolution = null } = {}) {
-    if (!stickerBurnEnabled() || !Number.isInteger(resolution?.width)
-      || !Number.isInteger(resolution?.height) || resolution.width < 1 || resolution.height < 1) return [];
+  function collectStickerIntervals({ gapRemoved = null } = {}) {
     const overlay = global.MaweStickerOverlay;
     if (!overlay) return [];
     overlay.rebuildStickerIntervals();
-    const merged = new Map(); // rel -> { rel, intervals: [{ start, end }] }
+    const windows = [];
     overlay.stickerIntervals.forEach((interval) => {
       const rel = interval.source?.rel;
       if (typeof rel !== 'string' || !rel.trim()) return;
@@ -48,16 +46,48 @@
         end = mapTime(end, gapRemoved);
         if (end <= start) return;
       }
-      const key = rel.trim();
-      const entry = merged.get(key);
-      if (entry) entry.intervals.push({ start: Math.round(start), end: Math.round(end) });
-      else merged.set(key, { rel: key, intervals: [{ start: Math.round(start), end: Math.round(end) }] });
+      windows.push({ rel: rel.trim(), start: Math.round(start), end: Math.round(end) });
     });
-    if (!merged.size) return [];
-    const box = stickerLayerBox(global.MawePreviewGeometry.getStickerGeometry(), resolution);
-    if (box.width < 1 || box.height < 1) return []; // 预览层几何无效时不烧表情包
-    return [...merged.values()].map((entry) => ({ ...entry, ...box }));
+    return windows;
   }
 
-  global.MaweStickerBurnPlan = Object.freeze({ stickerBurnEnabled, collectStickerPlans, stickerLayerBox });
+  // 方案一（固定位置）：同一 rel 的窗口合并 enable 区间，一张图一个 placement。
+  function collectFixedPlacements({ windows, box }) {
+    const merged = new Map();
+    windows.forEach((window) => {
+      const entry = merged.get(window.rel);
+      const interval = { start: window.start, end: window.end };
+      if (entry) entry.intervals.push(interval);
+      else merged.set(window.rel, { rel: window.rel, x: box.x, y: box.y,
+        width: box.width, height: box.height, intervals: [interval] });
+    });
+    return [...merged.values()];
+  }
+
+  // 烧录表情包 placements。mode:
+  // - 'fixed'（默认）：所有表情包出现在 preview.sticker 几何对应位置；
+  // - 'cue-left'：显示窗口与主字幕句重叠的段贴在该句第一个字左侧（placement
+  //   模块按排版计划推导），句间空隙 / legacy 句 / 会出画时回退固定位置。
+  // plan 是 buildAss(onAssPlan) 的排版计划——与请求携带的 ASS 文本同一份
+  // （同一时间轴、同一折行结果），保证字幕与表情包位置同源。
+  function collectStickerPlans({ gapRemoved = null, resolution = null, mode = 'fixed', plan = null } = {}) {
+    if (!stickerBurnEnabled() || !Number.isInteger(resolution?.width)
+      || !Number.isInteger(resolution?.height) || resolution.width < 1 || resolution.height < 1) return [];
+    const windows = collectStickerIntervals({ gapRemoved });
+    if (!windows.length) return [];
+    const box = stickerLayerBox(global.MawePreviewGeometry.getStickerGeometry(), resolution);
+    if (box.width < 1 || box.height < 1) return []; // 预览层几何无效时不烧表情包
+    if (mode === 'cue-left') {
+      const placements = global.AsrEditorUtils?.computeStickerCuePlacements?.({
+        plan, windows, fixedBox: box,
+      });
+      if (Array.isArray(placements)) return placements;
+      return collectFixedPlacements({ windows, box });
+    }
+    return collectFixedPlacements({ windows, box });
+  }
+
+  global.MaweStickerBurnPlan = Object.freeze({
+    stickerBurnEnabled, collectStickerPlans, collectStickerIntervals, stickerLayerBox,
+  });
 })(typeof window !== 'undefined' ? window : globalThis);

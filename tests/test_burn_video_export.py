@@ -591,13 +591,31 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
                 self.source, [], ASS_TEXT, self.output,
                 ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"), stickers=stickers)
 
-    def test_parse_merges_intervals_by_rel_and_resolves_files(self) -> None:
+    def test_parse_keeps_one_entry_per_placement_and_merges_inputs(self) -> None:
         stickers = server_editor._parse_burn_sticker_inputs(
             [self._entry(), self._entry(intervals=[{"start": 5000, "end": 6000}])], self.stickers_dir)
+        # 方案二载荷：同一 rel 保留多个 placement（逐句贴放），FFmpeg 输入按图片去重。
+        self.assertEqual(len(stickers), 2)
+        self.assertEqual(stickers[0]["path"], self.sticker_a)
+        self.assertEqual(stickers[0]["intervals"], [(1000, 2500), (3000, 4500)])
+        self.assertEqual(stickers[1]["intervals"], [(5000, 6000)])
+        self.assertEqual(server_editor._burn_sticker_input_args(stickers),
+                         ["-loop", "1", "-i", str(self.sticker_a)])
+
+    def test_parse_accepts_object_payload_with_mode(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs(
+            {"mode": "cue-left", "placements": [self._entry()]}, self.stickers_dir)
         self.assertEqual(len(stickers), 1)
-        entry = stickers[0]
-        self.assertEqual(entry["path"], self.sticker_a)
-        self.assertEqual(entry["intervals"], [(1000, 2500), (3000, 4500), (5000, 6000)])
+        with self.assertRaises(ValueError) as caught:
+            server_editor._parse_burn_sticker_inputs(
+                {"mode": "diagonal", "placements": [self._entry()]}, self.stickers_dir)
+        self.assertIn("烧录模式无效", str(caught.exception))
+
+    def test_parse_rejects_too_many_placements(self) -> None:
+        payload = [self._entry() for _ in range(server_editor.MAX_BURN_STICKER_PLACEMENTS + 1)]
+        with self.assertRaises(ValueError) as caught:
+            server_editor._parse_burn_sticker_inputs(payload, self.stickers_dir)
+        self.assertIn("条目超过上限", str(caught.exception))
 
     def test_parse_keeps_infinite_inputs_per_format(self) -> None:
         args = server_editor._burn_sticker_input_args([
@@ -624,14 +642,16 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
     def test_parse_rejects_invalid_entries(self) -> None:
         root = self.stickers_dir
         cases = [
-            ({"rel": "a.png"}, "表情包烧录参数无效"),
+            ("bad scalar", "表情包烧录参数无效"),
             ([None], "表情包烧录参数无效"),
+            ({"mode": "diagonal", "placements": [self._entry()]}, "烧录模式无效"),
+            ([{"rel": "a.png"}], "几何参数无效"),
             ([self._entry(rel="")], "缺少相对路径"),
             ([self._entry(rel="../a.png")], "表情包相对路径不安全"),
             ([self._entry(rel="missing.png")], "表情包源文件不存在"),
             ([self._entry(x=-1)], "几何参数无效"),
             ([self._entry(width=0)], "几何尺寸无效"),
-            ([self._entry(intervals=[])], "显示区间为空"),
+            ([self._entry(intervals="bad")], "显示区间为空"),
             ([self._entry(intervals=[{"start": 100, "end": 50}])], "显示区间无效"),
             ([self._entry(intervals=[{"start": -1, "end": 50}])], "显示区间无效"),
         ]
@@ -642,9 +662,18 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
                 self.assertIn(message, str(caught.exception))
         with self.assertRaises(ValueError):
             server_editor._parse_burn_sticker_inputs([self._entry()], None)
-        with self.assertRaises(ValueError):
-            server_editor._parse_burn_sticker_inputs(
-                [self._entry() for _ in range(server_editor.MAX_BURN_STICKER_INPUTS + 1)], root)
+        # 全部区间退化为空的 placement 直接跳过（不算错误）。
+        stickers = server_editor._parse_burn_sticker_inputs(
+            [self._entry(intervals=[{"start": 100, "end": 100}])], root)
+        self.assertEqual(stickers, [])
+
+    def test_parse_rejects_too_many_unique_images(self) -> None:
+        for index in range(server_editor.MAX_BURN_STICKER_INPUTS + 1):
+            (self.stickers_dir / f"m{index}.png").write_bytes(b"png")
+        payload = [self._entry(rel=f"m{index}.png") for index in range(server_editor.MAX_BURN_STICKER_INPUTS + 1)]
+        with self.assertRaises(ValueError) as caught:
+            server_editor._parse_burn_sticker_inputs(payload, self.stickers_dir)
+        self.assertIn("图片数量超过上限", str(caught.exception))
 
     def test_parse_empty_and_none_pass_through(self) -> None:
         self.assertEqual(server_editor._parse_burn_sticker_inputs(None, None), [])
@@ -654,13 +683,38 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
         stickers = server_editor._parse_burn_sticker_inputs(
             [self._entry(), self._entry(rel="b.gif", intervals=[{"start": 0, "end": 800}])], self.stickers_dir)
         lines = server_editor._burn_sticker_chain_lines(stickers, "[0:v:0]")
-        # 假字节文件读不到尺寸，退化为整层矩形（仍是纯数字坐标）。
-        self.assertEqual(lines[0], "[1:v]scale=w=100:h=75[burn_stick0]")
-        self.assertIn("[0:v:0][burn_stick0]overlay=x=200:y=30:", lines[1])
-        self.assertIn("enable='between(t,1.000,2.500)+between(t,3.000,4.500)':shortest=1", lines[1])
+        # 假字节文件读不到尺寸，退化为整框矩形（仍是纯数字坐标）。
+        self.assertEqual(lines[0], "[1:v]null[burn_raw0_0]")
+        self.assertEqual(lines[1], "[2:v]null[burn_raw1_0]")
+        self.assertIn("[burn_raw0_0]scale=w=100:h=75[burn_stick0]", lines[2])
+        self.assertIn("[0:v:0][burn_stick0]overlay=x=200:y=30:", lines[3])
+        self.assertIn("enable='between(t,1.000,2.500)+between(t,3.000,4.500)':shortest=1", lines[3])
         self.assertEqual(lines[-1], "[burn_ovl1]ass=filename='burn.ass'[burn_video]")
         self.assertNotIn("force_original_aspect_ratio", "\n".join(lines))
         self.assertNotIn("(120-W)", "\n".join(lines))
+
+    def test_chain_lines_split_one_input_across_same_rel_placements(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs(
+            [self._entry(), self._entry(intervals=[{"start": 5000, "end": 6000}])], self.stickers_dir)
+        lines = server_editor._burn_sticker_chain_lines(stickers, "[0:v:0]")
+        self.assertEqual(lines[0], "[1:v]split=2[burn_raw0_0][burn_raw0_1]")
+        self.assertIn("[burn_raw0_0]scale=w=100:h=75[burn_stick0]", lines[1])
+        self.assertIn("[0:v:0][burn_stick0]overlay=x=200:y=30:", lines[2])
+        self.assertIn("[burn_raw0_1]scale=w=100:h=75[burn_stick1]", lines[3])
+        self.assertIn("[burn_ovl0][burn_stick1]overlay=x=200:y=30:", lines[4])
+        self.assertIn("enable='between(t,5.000,6.000)'", lines[4])
+
+    def test_cue_left_contain_aligns_right_edge(self) -> None:
+        ihdr = (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR"
+                + struct.pack(">II", 200, 100) + b"\x08\x06\x00\x00\x00")
+        wide = self.stickers_dir / "aligned.png"
+        wide.write_bytes(ihdr)
+        payload = {"mode": "cue-left", "placements": [self._entry(rel="aligned.png")]}
+        stickers = server_editor._parse_burn_sticker_inputs(payload, self.stickers_dir)
+        # 框 (200,30,100,75)：fit = 0.5 → 100x50；cue-left 右对齐 → x = 200，
+        # 垂直居中 y = 30 + (75-50)//2 = 42（fixed 居中也是 200，但语义不同）。
+        self.assertEqual((stickers[0]["x"], stickers[0]["y"],
+                          stickers[0]["width"], stickers[0]["height"]), (200, 42, 100, 50))
 
     def test_parse_computes_static_contain_box_from_image_size(self) -> None:
         ihdr = (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR"
@@ -678,9 +732,10 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
         lines = graph.strip().split(";\n")
         self.assertIn("[burn_base]", lines[0])
         self.assertNotIn("ass=", lines[0])
-        self.assertTrue(lines[1].startswith("[1:v]scale="))
-        self.assertTrue(lines[2].startswith("[burn_base][burn_stick0]overlay="))
-        self.assertEqual(lines[3], "[burn_ovl0]ass=filename='burn.ass'[burn_video]")
+        self.assertEqual(lines[1], "[1:v]null[burn_raw0_0]")
+        self.assertTrue(lines[2].startswith("[burn_raw0_0]scale="))
+        self.assertTrue(lines[3].startswith("[burn_base][burn_stick0]overlay="))
+        self.assertEqual(lines[4], "[burn_ovl0]ass=filename='burn.ass'[burn_video]")
         self.assertIn("[burn_audio_0]", graph)
         legacy = server_editor._burn_interval_filter([(0, 2000)], 0, None)
         self.assertIn("setpts=", legacy.split(";\n")[0])

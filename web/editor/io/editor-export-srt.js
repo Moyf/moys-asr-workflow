@@ -378,7 +378,7 @@
 
 
 
-  function buildGapRemovedAss() {
+  function buildGapRemovedAss({ onAssPlan = null } = {}) {
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
     MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
@@ -389,7 +389,8 @@
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
   // 去空隙 ASS 与常规 ASS 同一三轨契约：叠加轨与副字幕也随导出，
-  // 时间统一经 mapGapRemovedTime 压缩。
+  // 时间统一经 mapGapRemovedTime 压缩。onAssPlan 透传给表情包烧录：
+  // 排版计划与 ASS 文本同一份（收缩时间轴），字幕位置与表情包窗口天然一致。
   const { overlaySegments } = cleanupMergedExportSegments();
   const extensionSegments = activeExtensionSegments();
   return window.AsrEditorUtils.buildAssPayload(cleanupMainSegments(), {
@@ -399,6 +400,7 @@
     overlaySegments,
     extensionSegments,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+    onAssPlan,
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
   });
 }

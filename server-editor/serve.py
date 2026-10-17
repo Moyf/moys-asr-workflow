@@ -110,6 +110,9 @@ MAX_GAP_REMOVED_INTERVALS = 100_000
 # 烧录叠加的表情包输入数上限：每张唯一图片一个 FFmpeg 输入，防止误操作
 # 把滤镜图撑到不可用；正常工程用到的表情包远小于该值。
 MAX_BURN_STICKER_INPUTS = 32
+# 方案二按 (表情包, 字幕句) 产生 placement，每个 placement 一个 overlay 节点
+# （同一图片经 split 复用一个输入）；上限防误操作把滤镜图撑到不可用。
+MAX_BURN_STICKER_PLACEMENTS = 1000
 # 静态位图用 -loop 1 提供连续帧；GIF/动态 WebP 按自带循环播放，不做静态化处理。
 BURN_STICKER_LOOP_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".bmp"})
 # overlay 的 shortest=1 在「任一输入终止」时截断输出，因此每个表情包输入都必须
@@ -740,11 +743,13 @@ def _burn_seconds(ms: int) -> str:
     return format(Decimal(ms).scaleb(-3), "f")
 
 
-def _fit_contain_box(box: dict, image_size: tuple[int, int] | None) -> dict:
-    """Compute the final on-video rectangle for one sticker inside its layer.
+def _fit_contain_box(box: dict, image_size: tuple[int, int] | None, align: str = "center") -> dict:
+    """Compute the final on-video rectangle for one sticker inside its target box.
 
-    contain 语义与预览层 CSS 一致：按图片纵横比缩小适配层矩形（不放大），
-    层内居中。图片尺寸不可读时退化为整层拉伸（罕见损坏文件）。
+    contain 语义与预览层 CSS 一致：按图片纵横比缩小适配目标框（不放大）。
+    fixed（方案一）框内居中；cue-left（方案二）框内右对齐 + 垂直居中——
+    目标框右缘贴着字幕墨盒的间隙，图片宽窄都不能移动这个右缘。图片尺寸
+    不可读时退化为整框拉伸（罕见损坏文件）。
     """
     box_w, box_h = box["width"], box["height"]
     if image_size is None or image_size[0] < 1 or image_size[1] < 1:
@@ -752,31 +757,51 @@ def _fit_contain_box(box: dict, image_size: tuple[int, int] | None) -> dict:
     scale = min(box_w / image_size[0], box_h / image_size[1], 1.0)
     width = max(1, round(image_size[0] * scale))
     height = max(1, round(image_size[1] * scale))
-    return {"x": box["x"] + (box_w - width) // 2,
-            "y": box["y"] + (box_h - height) // 2,
+    x = box["x"] if align == "right" else box["x"] + (box_w - width) // 2
+    return {"x": x, "y": box["y"] + (box_h - height) // 2,
             "width": width, "height": height}
 
 
 def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[dict]:
     """Parse and validate sticker overlay entries of one burn-video request.
 
-    每项 ``{rel, x, y, width, height, intervals:[{start,end}]}``：几何是前端按
-    视频分辨率换算好的像素层矩形（与预览同一套归一化几何），服务端只做整数
-    校验；contain 缩放与层内居中交给 FFmpeg 表达式，不需要读取图片尺寸。同
-    一 ``rel`` 的多项合并 enable 区间，让一张图只占用一个 FFmpeg 输入。
+    接受两种载荷： placements 列表（老格式，等同 fixed 模式），或
+    ``{"mode": "fixed"|"cue-left", "placements": [...]}`` 对象。每项 placement
+    ``{rel, x, y, width, height, intervals:[{start,end}]}``：几何是前端按视频
+    分辨率与排版计划换算好的像素目标框，服务端读取图片尺寸做 contain 适配
+    （fixed 居中、cue-left 右对齐垂直居中）。方案二下同一 ``rel`` 会有多个
+    placement（每句一个），FFmpeg 输入按 ``rel`` 去重，overlay 节点经 split
+    复用同一输入。
     """
     if raw_stickers is None:
         return []
-    if not isinstance(raw_stickers, list):
-        raise ValueError("表情包烧录参数无效")
-    if not raw_stickers:
+    if isinstance(raw_stickers, dict):
+        mode = raw_stickers.get("mode")
+        if mode not in ("fixed", "cue-left"):
+            raise ValueError("表情包烧录模式无效")
+        raw_placements = raw_stickers.get("placements")
+        align = "right" if mode == "cue-left" else "center"
+    else:
+        raw_placements = raw_stickers
+        align = "center"
+    if raw_placements is None:
         return []
-    if len(raw_stickers) > MAX_BURN_STICKER_INPUTS:
-        raise ValueError(f"表情包烧录数量超过上限（{MAX_BURN_STICKER_INPUTS} 张）")
+    if not isinstance(raw_placements, list):
+        raise ValueError("表情包烧录参数无效")
+    if not raw_placements:
+        return []
+    if len(raw_placements) > MAX_BURN_STICKER_PLACEMENTS:
+        raise ValueError(f"表情包烧录条目超过上限（{MAX_BURN_STICKER_PLACEMENTS} 条）")
     if root is None:
         raise ValueError("当前工程没有激活的表情包目录，无法烧录表情包")
-    merged: dict[str, dict] = {}
-    for item in raw_stickers:
+    unique_rels = {str(item.get("rel", "")).strip() if isinstance(item, dict) else ""
+                   for item in raw_placements}
+    unique_rels.discard("")
+    if len(unique_rels) > MAX_BURN_STICKER_INPUTS:
+        raise ValueError(f"表情包烧录的图片数量超过上限（{MAX_BURN_STICKER_INPUTS} 张）")
+    placements: list[dict] = []
+    seen_rels: dict[str, Path] = {}
+    for item in raw_placements:
         if not isinstance(item, dict):
             raise ValueError("表情包烧录参数无效")
         rel = item.get("rel")
@@ -800,26 +825,27 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
                 raise ValueError("表情包显示区间无效")
             if end > start:
                 intervals.append((start, end))
-        path = _sticker_rel_path(rel.strip(), root)
-        if rel.strip().casefold().endswith(".webp") and _is_animated_webp(path):
-            raise ValueError(
-                f"表情包「{rel.strip()}」是动画 WebP，当前 FFmpeg 无法解码，暂不支持烧录；"
-                "请改用 GIF 格式（编辑器预览不受影响）。")
+        if not intervals:
+            continue
+        rel = rel.strip()
+        path = seen_rels.get(rel)
+        if path is None:
+            path = _sticker_rel_path(rel, root)
+            if rel.casefold().endswith(".webp") and _is_animated_webp(path):
+                raise ValueError(
+                    f"表情包「{rel}」是动画 WebP，当前 FFmpeg 无法解码，暂不支持烧录；"
+                    "请改用 GIF 格式（编辑器预览不受影响）。")
+            seen_rels[rel] = path
         try:
             image_size = edit.image_dimensions(path)
         except (OSError, ValueError):
             image_size = None
         placed = _fit_contain_box(
-            {"x": box[0], "y": box[1], "width": box[2], "height": box[3]}, image_size)
-        entry = merged.get(rel)
-        if entry is None:
-            merged[rel] = {"path": path, **placed, "intervals": intervals}
-        else:
-            entry["intervals"].extend(intervals)
-    stickers = [entry for entry in merged.values() if entry["intervals"]]
-    for entry in stickers:
-        entry["intervals"].sort()
-    return stickers
+            {"x": box[0], "y": box[1], "width": box[2], "height": box[3]}, image_size, align)
+        placements.append({"rel": rel, "path": path, **placed, "intervals": intervals})
+    for placement in placements:
+        placement["intervals"].sort()
+    return placements
 
 
 def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[str]:
@@ -827,14 +853,37 @@ def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[st
 
     坐标是解析阶段按图片尺寸静态算好的 contain 显示矩形（整数）——不用
     overlay 的 W/H 表达式：表达式坐标在 -stream_loop 输入下会被静默丢弃
-    （FFmpeg 实测行为），纯数字坐标可靠。enable 取该图合并后的全部显示区间。
+    （FFmpeg 实测行为），纯数字坐标可靠。同一图片的多个 placement（方案二
+    逐句贴放）经 split 复用一个输入，每个 placement 一个 scale + overlay
+    节点；enable 取各自的显示区间。
     """
+    input_index: dict[str, int] = {}
+    unique: list[str] = []
+    for sticker in stickers:
+        key = str(sticker["path"])
+        if key not in input_index:
+            input_index[key] = len(unique)
+            unique.append(key)
+    counts = [0] * len(unique)
+    for sticker in stickers:
+        counts[input_index[str(sticker["path"])]] += 1
     lines: list[str] = []
+    for index in range(len(unique)):
+        source = f"[{index + 1}:v]"
+        if counts[index] > 1:
+            branches = "".join(f"[burn_raw{index}_{part}]" for part in range(counts[index]))
+            lines.append(f"{source}split={counts[index]}{branches}")
+        else:
+            lines.append(f"{source}null[burn_raw{index}_0]")
     previous = entry_label
-    for index, sticker in enumerate(stickers):
-        image_label = f"[burn_stick{index}]"
-        output_label = f"[burn_ovl{index}]"
-        lines.append(f"[{index + 1}:v]scale=w={sticker['width']}:h={sticker['height']}{image_label}")
+    used = [0] * len(unique)
+    for placement_index, sticker in enumerate(stickers):
+        input_no = input_index[str(sticker["path"])]
+        raw_label = f"[burn_raw{input_no}_{used[input_no]}]"
+        used[input_no] += 1
+        image_label = f"[burn_stick{placement_index}]"
+        output_label = f"[burn_ovl{placement_index}]"
+        lines.append(f"{raw_label}scale=w={sticker['width']}:h={sticker['height']}{image_label}")
         enable = "+".join(f"between(t,{_burn_seconds(start)},{_burn_seconds(end)})"
                           for start, end in sticker["intervals"])
         # shortest=1：主视频 EOF 即终止输出；所有表情包输入都已被无限化，
@@ -857,10 +906,15 @@ def _is_animated_webp(path: Path) -> bool:
 
 
 def _burn_sticker_input_args(stickers: list[dict]) -> list[str]:
-    """Build FFmpeg input arguments: one infinitely-supplied input per sticker image."""
+    """Build FFmpeg input arguments: one infinitely-supplied input per unique sticker image."""
     args: list[str] = []
+    seen: set[str] = set()
     for sticker in stickers:
         path = sticker["path"]
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
         suffix = path.suffix.casefold()
         if suffix in BURN_STICKER_LOOP_EXTENSIONS:
             args.extend(("-loop", "1", "-i", str(path)))

@@ -370,12 +370,18 @@ document.getElementById('burn-video-export-btn')?.addEventListener('click', () =
     startHint: 'FFmpeg 将重新编码源视频并烧录当前 ASS 字幕；长视频可能需要较长时间。',
     successText: '烧录视频已保存',
     suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('subtitled') || 'subtitled'}.mp4`,
-    buildRequest: () => ({
-      ass: MaweExportSrt.buildAss(),
-      stickers: MaweStickerBurnPlan.collectStickerPlans({
-        resolution: MaweExportSrt.currentAssVideoResolution(),
-      }),
-    }),
+    buildRequest: () => {
+      let assPlan = null;
+      const ass = MaweExportSrt.buildAss({ onAssPlan: (plan) => { assPlan = plan; } });
+      return {
+        ass,
+        stickers: MaweStickerBurnPlan.collectStickerPlans({
+          resolution: MaweExportSrt.currentAssVideoResolution(),
+          mode: MaweSettings.EDITOR_SETTINGS.stickerBurnMode === 'cue-left' ? 'cue-left' : 'fixed',
+          plan: assPlan,
+        }),
+      };
+    },
   });
 });
 
@@ -390,7 +396,8 @@ document.getElementById('download-gap-removed-burn-video')?.addEventListener('cl
     buildRequest: () => {
       const context = MaweExportSrt.gapRemovedExportContext();
       if (!context) return null;
-      const ass = MaweExportSrt.buildGapRemovedAss();
+      let assPlan = null;
+      const ass = MaweExportSrt.buildGapRemovedAss({ onAssPlan: (plan) => { assPlan = plan; } });
       if (!ass) return null;
       return {
         ass,
@@ -398,6 +405,8 @@ document.getElementById('download-gap-removed-burn-video')?.addEventListener('cl
         stickers: MaweStickerBurnPlan.collectStickerPlans({
           gapRemoved: MaweGapRemoveData.getRemovedGapRanges(),
           resolution: MaweExportSrt.currentAssVideoResolution(),
+          mode: MaweSettings.EDITOR_SETTINGS.stickerBurnMode === 'cue-left' ? 'cue-left' : 'fixed',
+          plan: assPlan,
         }),
       };
     },

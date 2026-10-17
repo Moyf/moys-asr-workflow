@@ -1,12 +1,13 @@
-# 表情包烧录视频 · 基础管线
+# 表情包烧录视频 · 基础管线与二期（字幕左侧贴放）
 
 ## 目标
 
 编辑器「烧录视频」支持把表情包图片烧进视频：
 
 - 服务端在现有 `ass` 滤镜烧录管线上叠加 FFmpeg `overlay` 滤镜（静态 PNG），与字幕**一次性编码**完成，不引入第二次转码。
-- 基础管线对应「方案一：固定位置」——所有表情包图片出现在 `preview.sticker` 几何对应位置。
-- 「方案二：显示在字幕第一个字左侧」研究结论见 `STICKER_DISPLAY_MODES.md`，推荐二期实现。
+- 方案一（固定位置）：所有表情包图片出现在 `preview.sticker` 几何对应位置。✅ 已上线
+- 方案二（字幕第一个字左侧）：按排版计划逐句贴放。✅ 二期已实现（预览层接线除外，见下）
+- 方案研究报告：`STICKER_DISPLAY_MODES.md`。
 
 ## 状态
 
@@ -18,6 +19,11 @@
 | 4 | 服务端/前端单测 | 已修复 | `tests/test_burn_video_export.py::BurnStickerTests` 9 条；全文件 27 条通过 |
 | 5 | 真实 FFmpeg 冒烟验证 | 已修复 | `.artifacts/sticker-burn/`：testsrc 320x240 + PNG，像素级验证表情包位置（t=1.5/2.0/3.5 均在指定层内）与字幕同帧渲染；一次性编码完成 |
 | 6 | 方案一/方案二研究报告 | 已修复 | `STICKER_DISPLAY_MODES.md`（并行研究 agent 产出） |
+| 7 | **二期**：placement 纯函数模块 | 已修复 | `web/shared/utils/sticker-placement.js`（`computeStickerCuePlacements`）：窗口按主字幕句切段、逐句从 `assStackFrame` 推导墨盒左缘/垂直中心；legacy 句、句间空隙、出画、同屏多图第二张起回退固定位置；Node 测试 8 条（`tests/test_sticker_placement.mjs`） |
+| 8 | **二期**：烧录载荷 `mode + placements[]` | 已修复 | 请求 `stickers` 接受对象形式（老数组=fixed 兼容）；同 rel 多 placement 经 FFmpeg `split` 复用一个输入，每 placement 一个 scale+overlay 节点；上限 placements 1000 / 唯一图片 32 |
+| 9 | **二期**：模式设置与接线 | 已修复 | `EDITOR_SETTINGS.stickerBurnMode`（fixed/cue-left，默认 fixed）+ 设置页「烧录显示位置」下拉 + i18n；两个烧录入口经 `buildAss(onAssPlan)` 把与 ASS 同源的计划传入 placement 计算（去空隙 `buildGapRemovedAss` 补透传 onAssPlan，计划与 ASS 同一收缩时间轴） |
+| 10 | **二期**：真实 FFmpeg 验证 | 已修复 | cue-left 双窗口：句内显示在指定位置、句间空隙无残留、split 单输入（`.artifacts/sticker-burn/cue_left_verify.py`） |
+| 11 | 二期：预览层跟随字幕 | 待处理 | 预览层仍显示固定位置；设置页 hint 已注明「最终以烧录结果为准」。实现路径见研究报告 §4.5.3（同一 placements 计算驱动 DOM 层） |
 
 ## 关键设计
 
