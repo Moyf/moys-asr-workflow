@@ -160,10 +160,37 @@ test('merge join folds adjacent close+open pairs of the same marker', () => {
   // items 层同步折叠：前段末 item 裁掉尾闭、后段首 item 裁掉首开
   assert.deepEqual(plain(joined.items.map(item => item.text)), ['今天*的', '解说*']);
   assert.equal(joined.items.map(item => item.text).join(''), joined.text);
-  // 空格分隔不产生符号连跑，不折叠
+  // 空格分隔（单词型合并）同样在 junction 折叠：移除两侧符号后把空格插回，
+  // items 层空格归位到后段首 item，items 拼接仍 == 合并文本
   const spaced = h.joinSegmentTextsMassFold(segments, ' ', 'both');
-  assert.equal(spaced.text, '今天*的* *解说*');
-  assert.deepEqual(plain(spaced.items.map(item => item.text)), ['今天*的*', '*解说*']);
+  assert.equal(spaced.text, '今天*的 解说*');
+  assert.deepEqual(plain(spaced.items.map(item => item.text)), ['今天*的', ' 解说*']);
+  assert.equal(spaced.items.map(item => item.text).join(''), spaced.text);
+});
+
+test('merge join folds sentence-level shells across the word-mode space (maintainer case)', () => {
+  // 维护者实测：单词型两句整句壳合并应还原成一个完整外壳，而不是
+  // !!This is a!! !!short test video!! 这样成对重复
+  const segments = [
+    { text: '!!This is a!!', items: [
+      { text: '!!This', start: 0, end: 400 }, { text: ' is', start: 400, end: 600 }, { text: ' a!!', start: 600, end: 1000 },
+    ] },
+    { text: '!!short test video!!', items: [
+      { text: '!!short', start: 1000, end: 1400 }, { text: ' test', start: 1400, end: 1700 }, { text: ' video!!', start: 1700, end: 2000 },
+    ] },
+  ];
+  const joined = h.joinSegmentTextsMassFold(segments, ' ', 'both');
+  assert.equal(joined.text, '!!This is a short test video!!');
+  // items 层同步：前段尾 item 裁掉尾壳、后段首 item 裁掉首壳并把空格归位开头，
+  // 与拆分补齐互为逆操作（往返还原原句原 items）
+  assert.deepEqual(plain(joined.items.map(item => item.text)),
+    ['!!This', ' is', ' a', ' short', ' test', ' video!!']);
+  assert.equal(joined.items.map(item => item.text).join(''), joined.text);
+  // fade 整句壳走同一句级折叠（不对称符号同样支持空格 junction）
+  const fade = h.joinSegmentTextsMassFold([{ text: '>>A B<<' }, { text: '>>C D<<' }], ' ', 'both');
+  assert.equal(fade.text, '>>A B C D<<');
+  // `!!` 是整句壳：两侧不是完整外壳时不跨 junction 折叠（折出来也是句中死标记）
+  assert.equal(h.foldMassPairJunction('A!!B!!', '!!C!!', 'both'), null);
 });
 
 test('merge join folds double markers and rejoins sentence-level fade shells', () => {
