@@ -109,6 +109,12 @@ constructor(options) {
       this.multiFollowRowIndex = -1;
       this.multiFollowCheckPending = true;
       this.resizeFrame = 0;
+      // 滚轮平移基础波形的整行精绘定时器（账本 #22 批次 2）。
+      this.basicPanSettleTimer = 0;
+      // 列包络缓存与组序号徽章缓存（滚轮平移热路径去重复聚合/扫描）。
+      this._waveColumnCache = null;
+      this._groupBadgesCache = null;
+      this._groupBadgesEpoch = 0;
       // 字幕快捷键会在很短时间内连续请求定位；复用滚动事件已有的
       // rAF 合并，避免每个按键都强制重建可视行和 Canvas。
       this.multiVisibleFrame = 0;
@@ -276,6 +282,8 @@ window.AsrWaveform = {
       // waveform-markers 的纯函数单测入口：跨行挑选与行内时间换算。
       pickMarkerRow: markerDescriptors.pickMarkerRow.value,
       markerRowTimeMs: markerDescriptors.markerRowTimeMs.value,
+      // 字词气泡布局纯函数（不读 this）：候选全量 / 上限 / 叠行 / 优先级。
+      computeWordChipLayout: WaveformEditor.prototype.computeWordChipLayout,
     },
   };
   if (window.MAWE?.register) {

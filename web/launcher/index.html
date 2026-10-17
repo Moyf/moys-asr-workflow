@@ -49,7 +49,7 @@
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.9.0-beta.2</span></div>
+          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.9.0-beta.3</span></div>
           <p data-i18n="hero_desc">让字幕制作变得超级轻松！</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
@@ -339,6 +339,13 @@
                 </label>
                 <p class="hint" data-i18n="generate_spectral_hint">默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
               </div>
+              <div id="generateThumbnailsField" class="field">
+                <label class="check-field" for="generateThumbnails" data-i18n-title="generate_thumbnails_title">
+                  <input id="generateThumbnails" type="checkbox">
+                  <span data-i18n="generate_thumbnails">生成高精度画面预览图</span>
+                </label>
+                <p class="hint" data-i18n="generate_thumbnails_hint">转写时先生成秒级关键帧底图（总是开启），再额外解码精确网格画面供画面带铺满使用；未勾选时编辑器仍可按需补帧。</p>
+              </div>
               <div id="debugRawField" class="field">
                 <label class="check-field" for="debugRaw" data-i18n-title="debug_raw_title">
                   <input id="debugRaw" type="checkbox">
@@ -432,12 +439,19 @@
                 <option value="translation_first" data-i18n="bilingual_order_translation_first">译文在上</option>
                 <option value="original_first" data-i18n="bilingual_order_original_first">原文在上</option>
               </select>
-              <p id="autoTranslateMergeHint" class="hint auto-translate-merge hidden" data-i18n="merge_bilingual_hint">将双语字幕合并成一个字幕文件，上下换行显示。</p>
+              <p id="autoTranslateMergeHint" class="hint auto-translate-merge hidden" data-i18n="merge_bilingual_hint">SRT 将原文与译文上下合并；MOSP 始终保留可编辑的主副双轨。</p>
               <label id="autoTranslateBackfillField" class="check-field auto-translate-merge hidden" for="autoTranslateBackfill">
                 <input id="autoTranslateBackfill" type="checkbox">
                 <span data-i18n="auto_backfill_subtitles">只翻译外文语句</span>
               </label>
               <p id="autoTranslateBackfillHint" class="hint auto-translate-merge hidden" data-i18n="auto_backfill_subtitles_hint">只把少量外文语句翻译成目标语言。</p>
+              <div id="autoTranslateSkipTargetField" class="translation-skip-target hidden">
+                <label class="check-field" for="autoTranslateSkipTarget">
+                  <input id="autoTranslateSkipTarget" type="checkbox" checked>
+                  <span data-i18n="translation_skip_target">跳过已是目标语言的字幕</span>
+                </label>
+                <p class="hint" data-i18n="translation_skip_target_hint">关闭后将所有非空字幕交给模型翻译；遇到误判时可关闭。</p>
+              </div>
             </div>
             <label class="check-field" for="autoPostprocessRetain">
               <input id="autoPostprocessRetain" type="checkbox">
@@ -551,7 +565,7 @@
           <p id="toolboxInputPathError" class="field-error"></p>
         </div>
         <div id="toolboxChain" class="toolbox-chain hidden" aria-label="processing artifacts">
-          <p class="toolbox-chain-heading" data-i18n="toolbox_chain_heading">处理结果（点击可切换输入）</p>
+          <p class="toolbox-chain-heading" data-i18n="toolbox_chain_heading">处理结果（点击可切换输入，或查看报告）</p>
           <div id="toolboxChainList" class="toolbox-chain-list"></div>
         </div>
         <nav id="toolboxPostprocessTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxPostprocessPrimaryTab">
@@ -631,6 +645,15 @@
 
       <section id="toolboxAlignmentPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxAlignmentTab">
         <p class="hint toolbox-panel-hint" data-i18n="toolbox_alignment_hint">适合初版 ASR 中有口吃、重录、重复或顺序混乱的口播；需要 MAW 工程和校对文稿，人工选择 take 后导出新工程。</p>
+        <div class="field" style="margin-bottom:12px">
+          <label for="toolboxRecordingInputMode">输入方式 / Input</label>
+          <select id="toolboxRecordingInputMode">
+            <option value="project">使用已有原始 ASR 工程 / Existing ASR project</option>
+            <option value="recording">从录音开始：先 ASR 再审查 / Transcribe then review</option>
+          </select>
+          <p class="hint" style="margin-top:10px">从录音开始会使用主界面当前 ASR 提供者、模型、音轨和输出位置；不执行文稿替换或 AI 自动后处理。额外内容默认保留。</p>
+          <button id="cancelRecordingPreparation" class="ghost hidden" type="button" style="margin-top:10px">停止 ASR 准备 / Stop ASR</button>
+        </div>
         <div id="toolboxAlignmentInputs" class="toolbox-alignment-inputs">
           <div id="toolboxAlignmentProjectDropZone" class="field toolbox-input">
             <div class="toolbox-input-heading">
@@ -713,7 +736,10 @@
           <p id="toolboxBurnSubtitlePathError" class="field-error"></p>
         </div>
         <div class="toolbox-green-screen-option">
-          <label class="check-field" for="toolboxGreenScreen"><input id="toolboxGreenScreen" type="checkbox"><span data-i18n="toolbox_green_screen">生成绿幕视频</span></label>
+          <div class="toolbox-green-screen-checks">
+            <label class="check-field" for="toolboxGreenScreen"><input id="toolboxGreenScreen" type="checkbox"><span data-i18n="toolbox_green_screen">生成绿幕视频</span></label>
+            <label id="toolboxGreenScreenAudioField" class="check-field hidden" for="toolboxGreenScreenIncludeAudio"><input id="toolboxGreenScreenIncludeAudio" type="checkbox"><span data-i18n="toolbox_green_screen_include_audio">附带音轨</span></label>
+          </div>
           <div id="toolboxGreenScreenSizeField" class="field hidden">
             <label for="toolboxGreenScreenSize" data-i18n="toolbox_green_screen_size">视频尺寸</label>
             <select id="toolboxGreenScreenSize">
@@ -723,7 +749,7 @@
             </select>
             <p class="hint" data-i18n="toolbox_green_screen_size_hint">绿幕画布按所选尺寸生成；SRT 烧录样式按该尺寸换算，与编辑器预览一致。ASS 使用自身画布坐标，随尺寸等比缩放。</p>
           </div>
-          <p class="hint" data-i18n="toolbox_green_screen_hint">无需视频源；用字幕时长生成带字幕的绿色背景视频，30 fps，不含音轨。默认 4K。</p>
+          <p class="hint" data-i18n="toolbox_green_screen_hint">用字幕时长生成带字幕的绿色背景视频，30 fps。默认 4K。</p>
         </div>
         <div id="toolboxBurnVideoEncoderField" class="field">
           <label for="toolboxBurnVideoEncoder" data-i18n="toolbox_burn_video_encoder">视频编码器</label>
@@ -739,8 +765,8 @@
         <div class="toolbox-grid">
           <div class="field">
             <label for="toolboxBurnCrf" data-i18n="toolbox_burn_crf">画质 CRF</label>
-            <input id="toolboxBurnCrf" type="number" min="0" max="51" step="1" value="18" autocomplete="off">
-            <p class="hint" data-i18n="toolbox_burn_crf_hint">数值越小画质越高、文件越大；常用 16–23，默认 18。</p>
+            <input id="toolboxBurnCrf" type="number" min="0" max="51" step="1" value="21" autocomplete="off">
+            <p class="hint" data-i18n="toolbox_burn_crf_hint">数值越小画质越高、文件越大；常用 16–23，默认 21。</p>
             <p id="toolboxBurnCrfError" class="field-error"></p>
           </div>
           <div class="field">
@@ -1017,6 +1043,11 @@
           </div>
           <p id="postprocessCleanupScriptPathError" class="field-error"></p>
           <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_cleanup_task_hint">整理重录、真重复与句内磕巴，保留原始文字；删除写为空隙，存疑写为待核查区段。</p>
+          <label class="check-field" for="postprocessCleanupReviewEnabled" style="margin-top: 12px;">
+            <input id="postprocessCleanupReviewEnabled" type="checkbox">
+            <span data-i18n="toolbox_cleanup_review">追加 AI 复查</span>
+          </label>
+          <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_cleanup_review_hint">默认关闭。开启后追加漏清扫描与剪后安全审计，会增加请求次数；每个阶段均保存本地记录。</p>
         </div>
         <div id="postprocessResegmentOptions" class="hidden" style="margin-top: 16px;">
           <label for="postprocessResegmentMaxChars" data-i18n="toolbox_resegment_max_chars">每条字幕最大字数（可选）</label>
@@ -1040,12 +1071,19 @@
               <option value="original_first" data-i18n="bilingual_order_original_first">原文在上</option>
             </select>
           </div>
-          <p class="hint" data-i18n="merge_bilingual_hint">将双语字幕合并成一个字幕文件，上下换行显示。</p>
+          <p class="hint" data-i18n="merge_bilingual_hint">SRT 将原文与译文上下合并；MOSP 始终保留可编辑的主副双轨。</p>
           <label class="check-field" for="postprocessBackfill">
             <input id="postprocessBackfill" type="checkbox">
             <span data-i18n="toolbox_backfill_subtitles">只翻译外文语句</span>
           </label>
           <p class="hint" data-i18n="backfill_subtitles_hint">适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。</p>
+          <div class="translation-skip-target">
+            <label class="check-field" for="postprocessSkipTarget">
+              <input id="postprocessSkipTarget" type="checkbox" checked>
+              <span data-i18n="translation_skip_target">跳过已是目标语言的字幕</span>
+            </label>
+            <p class="hint" data-i18n="translation_skip_target_hint">关闭后将所有非空字幕交给模型翻译；遇到误判时可关闭。</p>
+          </div>
         </div>
         <p class="toolbox-settings-hint"><span id="postprocessProviderStatus" class="hint"></span> <button id="openLlmSettings" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 AI 处理用的模型</button></p>
       </div>

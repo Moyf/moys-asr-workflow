@@ -26,6 +26,47 @@ function fixture(mode = 'single') {
 }
 const plain = value => JSON.parse(JSON.stringify(value));
 
+function trackFixture() {
+  const packet = JSON.parse(fixture().snapshot);
+  packet.mode = 'tracks';
+  packet.translationTrackId = 'track';
+  packet.result.segments = structuredClone(packet.source.segments);
+  packet.result.segments[0].items = [{ text: '原文\n第二行', start: 0, end: 1000 }];
+  packet.result.multi_subtitle.tracks = [{ id: 'track', role: 'extension', language: 'zh', segments: [
+    { id: 'translated-a', start: 0, end: 1000, text: '译文', items: [{ text: '译文', start: 0, end: 1000 }] },
+  ] }];
+  packet.entries[0].targetId = 'translated-a';
+  packet.entries[1].targetId = null;
+  packet.entries[1].editable = false;
+  const snapshot = JSON.stringify(packet);
+  return { snapshot, sha256: createHash('sha256').update(snapshot).digest('hex') };
+}
+
+test('dual-track review edits only the translation and preserves editable source words and existing tracks', async () => {
+  const review = trackFixture(), original = JSON.parse(review.snapshot).result;
+  const { project, changed } = await adapter.applyEdits(review, [{ id: 'a', text: '新译文\n第二行' }]);
+  const expected = structuredClone(original), cue = expected.multi_subtitle.tracks.at(-1).segments[0];
+  cue.text = '新译文\n第二行';
+  delete cue.items;
+  cue._dirty = true;
+  assert.equal(changed, 1);
+  assert.equal(project.multi_subtitle.tracks.length, 1);
+  assert.deepEqual(plain(project), expected);
+  assert.deepEqual(plain((await adapter.applyEdits(review, [])).project), original);
+  await assert.rejects(adapter.applyEdits(review, [{ id: 'b', text: '不能改原文' }]));
+  for (const mutate of [
+    packet => { packet.entries[0].targetId = 'missing'; },
+    packet => { packet.result.multi_subtitle.tracks.at(-1).segments[0].start = 5; },
+    packet => { packet.result.multi_subtitle.tracks.at(-1).segments.push({ id: 'translated-a', start: 0, end: 1000, text: '重复' }); },
+    packet => { packet.result.segments[0].text = '源文被改动'; },
+  ]) {
+    const packet = JSON.parse(review.snapshot);
+    mutate(packet);
+    const snapshot = JSON.stringify(packet);
+    await assert.rejects(adapter.applyEdits({ snapshot, sha256: createHash('sha256').update(snapshot).digest('hex') }, []));
+  }
+});
+
 test('single, backfill and stacked translations edit only text, keep metadata and clear stale items', async () => {
   for (const mode of ['single', 'backfill', 'bilingual']) {
     const review = fixture(mode), original = JSON.parse(review.snapshot).result;

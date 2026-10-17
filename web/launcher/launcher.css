@@ -1114,6 +1114,16 @@ label {
   margin: -4px 0 0;
 }
 
+.translation-skip-target {
+  display: grid;
+  gap: 8px;
+  flex-basis: 100%;
+}
+
+.translation-skip-target .hint {
+  margin: 0;
+}
+
 /* 双语行序与「合并字幕」勾选项同行；勾选后才出现。 */
 .toolbox-merge-row {
   display: flex;
@@ -2243,7 +2253,8 @@ textarea::placeholder {
   overflow-y: auto;
 }
 
-.toolbox-chain-item {
+.toolbox-chain-item,
+.toolbox-chain-original {
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -2259,6 +2270,10 @@ textarea::placeholder {
   line-height: 1.35;
 }
 
+.toolbox-chain-original {
+  margin-bottom: 3px;
+}
+
 .toolbox-chain-files {
   display: flex;
   flex: 0 1 auto;
@@ -2268,7 +2283,8 @@ textarea::placeholder {
   min-width: 0;
 }
 
-.toolbox-chain-file {
+.toolbox-chain-file,
+.toolbox-chain-source {
   max-width: 190px;
   overflow: hidden;
   padding: 3px 6px;
@@ -2276,7 +2292,7 @@ textarea::placeholder {
   border-radius: var(--radius-sm);
   color: var(--accent);
   background: transparent;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 13px;
   line-height: 1.3;
   text-align: left;
@@ -2285,7 +2301,9 @@ textarea::placeholder {
 }
 
 .toolbox-chain-file:hover,
-.toolbox-chain-file.selected {
+.toolbox-chain-file.selected,
+.toolbox-chain-source:hover,
+.toolbox-chain-source.selected {
   border-color: var(--accent);
   color: var(--accent-hover);
   background: var(--accent-tint-strong);
@@ -2451,6 +2469,7 @@ textarea::placeholder {
 }
 
 .toolbox-green-screen-option { margin: 10px 0 12px; }
+.toolbox-green-screen-checks { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
 .toolbox-green-screen-option .hint { margin: 8px 0 0; }
 /* 尺寸下拉是块内第一个 div.field，会被 .field:first-of-type 归零上边距；显式恢复间隔。 */
 .toolbox-green-screen-option .field { margin-top: 8px; }

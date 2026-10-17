@@ -32,18 +32,20 @@ function handler(selector, event) {
   return source.slice(found.start, found.end);
 }
 const scopeSelector = "document.getElementById('export-json')";
-const sharedDeclarations = ['buildResult', 'buildResultMarkdown', 'downloadResult']
+const sharedDeclarations = ['storageWarning', 'recordNote', 'includeRecord', 'buildResult', 'buildResultMarkdown', 'downloadResult', 'flashCopyButton']
   .map(declaration).join('\n');
 function status() {
   return { textContent: '', classList: { add() {} } };
 }
-function exportFixture(scope = 'all', confirmed = [true, false], ignored = {}) {
+function exportFixture(scope = 'all', confirmed = [true, false], ignored = {}, noteValues) {
   const sections = ['alpha', 'beta', 'readonly'].map(id => ({ id, querySelector: () => ({ title: id }) }));
   const records = confirmed.map((checked, i) => ({
-    section: sections[i], box: { id: `check-${i}`, checked }, text: `操作 ${i} → 预期`,
+    section: sections[i], box: { id: `check-${i}`, checked },
+    text: `目的 ${i}\n（操作）操作步骤 ${i}\n（预期）预期`,
     textarea: i === 1 ? { value: '  第一行\n第二行 <script>原样记录</script>  ' } : null,
     note: i === 0 ? '' : '旧备注',
   }));
+  if (noteValues) records.forEach((r, i) => { r.textarea = null; r.note = noteValues[i]; });
   let payload;
   let download;
   const context = {
@@ -59,18 +61,21 @@ function exportFixture(scope = 'all', confirmed = [true, false], ignored = {}) {
     URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
     setTimeout(fn) { fn(); },
   };
-  vm.runInNewContext(`${sharedDeclarations}\n(${handler(scopeSelector, 'click')})()`, context);
+  vm.createContext(context);
+  vm.runInContext(`${sharedDeclarations}\n(${handler(scopeSelector, 'click')})()`, context);
   return { result: payload && JSON.parse(payload), download, context };
 }
 
 const mdScopeSelector = "document.getElementById('export-md')";
-function markdownFixture(scope = 'all', confirmed = [true, false], ignored = {}, mode = 'export') {
+function markdownFixture(scope = 'all', confirmed = [true, false], ignored = {}, mode = 'export', noteValues) {
   const sections = ['alpha', 'beta'].map(id => ({ id, querySelector: () => ({ title: id }) }));
   const records = confirmed.map((checked, i) => ({
-    section: sections[i], box: { id: `check-${i}`, checked }, text: `操作 ${i} → 预期`,
+    section: sections[i], box: { id: `check-${i}`, checked },
+    text: `目的 ${i}\n（操作）操作步骤 ${i}\n（预期）预期`,
     textarea: i === 1 ? { value: '  第一行\n第二行 <script>原样记录</script>  ' } : null,
     note: i === 0 ? '' : '旧备注',
   }));
+  if (noteValues) records.forEach((r, i) => { r.textarea = null; r.note = noteValues[i]; });
   let payload;
   let download;
   let copied;
@@ -79,9 +84,12 @@ function markdownFixture(scope = 'all', confirmed = [true, false], ignored = {},
     summaryTitle: summary => summary.title,
     document: {
       title: '验证:导出/测试',
-      getElementById: () => ({ value: scope }), querySelector: () => ({ textContent: ' 范围说明 ' }),
+      getElementById: id => id === 'copy-md'
+        ? { value: scope, textContent: '复制 Markdown', classList: { add() {}, remove() {} } }
+        : { value: scope },
+      querySelector: () => ({ textContent: ' 范围说明 ' }),
       createElement: () => ({
-        setAttribute() {}, style: {}, select() { return true; },
+        setAttribute() {}, style: {}, select() { copied = this.value; },
         click() { download = this.download; }, remove() {},
       }),
       body: { appendChild() {} },
@@ -92,9 +100,9 @@ function markdownFixture(scope = 'all', confirmed = [true, false], ignored = {},
     URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
     setTimeout(fn) { fn(); },
   };
-  const selector = mode === 'copy' ? "document.getElementById('copy-md')" : mdScopeSelector;
+  const selector = mode !== 'export' ? "document.getElementById('copy-md')" : mdScopeSelector;
   vm.runInNewContext(`${sharedDeclarations}\n(${handler(selector, 'click')})()`, context);
-  return { markdown: mode === 'copy' ? copied : payload, download, context };
+  return { markdown: mode !== 'export' ? copied : payload, download, context };
 }
 
 test('exports complete results with section identity, metadata and verbatim multiline notes', () => {
@@ -129,8 +137,21 @@ test('ignored group items count as handled and stay out of unconfirmed export', 
   assert.deepEqual(ignoredPending.sections, []);
 });
 
-test('all-confirmed filtered snapshot contains no sections', () => {
-  const { result } = exportFixture('unconfirmed', [true, true]);
+test('filtered export includes confirmed notes but ignores whitespace notes and ignored groups', () => {
+  const { result, download } = exportFixture('unconfirmed', [true, true]);
+  assert.equal(result.summary.exported, 1);
+  assert.deepEqual(result.sections.map(s => s.id), ['beta']);
+  assert.equal(result.sections[0].items[0].confirmed, true);
+  assert.match(download, /-未确认和备注-/);
+  const ignored = exportFixture('unconfirmed', [true, true], { beta: true }).result;
+  assert.equal(ignored.summary.unconfirmed, 0);
+  assert.equal(ignored.summary.exported, 0);
+  const blank = exportFixture('unconfirmed', [true, true], {}, ['', ' \n\t ']).result;
+  assert.equal(blank.summary.exported, 0);
+});
+
+test('all-confirmed filtered snapshot without notes contains no sections', () => {
+  const { result } = exportFixture('unconfirmed', [true, true], {}, ['', '']);
   assert.equal(result.summary.exported, 0);
   assert.deepEqual(result.sections, []);
 });
@@ -142,27 +163,36 @@ test('download failure leaves current results available and reports failure', ()
   assert.match(context.status.textContent, /导出失败/);
   assert.equal(context.boxes[0].checked, true);
   assert.match(context.records[1].textarea.value, /第二行/);
+  context.storageFailed = true;
+  vm.runInNewContext(`${sharedDeclarations}\n(${handler(scopeSelector, 'click')})()`, context);
+  assert.match(context.status.textContent, /本机存储不可用.*导出失败/);
 });
 
 test('markdown export mirrors the result snapshot with task list and verbatim notes', async () => {
   const { markdown, download } = markdownFixture();
   assert.match(markdown, /^# 验证:导出\/测试 · 核对结果\n\n> 范围说明\n/);
   assert.match(markdown, /> 导出范围：全部核对项 · 导出时间 \d{4}-\d\d-\d\dT[^\n]*总计 2 项：已确认 1 \/ 忽略 0 \/ 未确认 1（本次导出 2 项）/);
-  assert.match(markdown, /## alpha\n- \[x\] 操作 0 → 预期 <!-- id: check-0 -->\n/);
-  assert.match(markdown, /## beta\n- \[ \] 操作 1 → 预期 <!-- id: check-1 -->\n  >   第一行\n  > 第二行 <script>原样记录<\/script>/);
+  assert.match(markdown, /## alpha\n- \[x\] 目的 0\n  （操作）操作步骤 0\n  （预期）预期\n  <!-- id: check-0 -->\n/);
+  assert.match(markdown, /## beta\n- \[ \] 目的 1\n  （操作）操作步骤 1\n  （预期）预期\n  <!-- id: check-1 -->\n  >   第一行\n  > 第二行 <script>原样记录<\/script>/);
   assert.ok(markdown.endsWith('\n'));
   assert.ok(!/[<>:"*?]/.test(download.slice(0, download.length - '全部-2026-10-15.md'.length)));
   assert.ok(download.endsWith('.md'));
 
   const pending = markdownFixture('unconfirmed');
   assert.ok(!pending.markdown.includes('## alpha'));
-  assert.match(pending.markdown, /## beta\n- \[ \] 操作 1 → 预期 <!-- id: check-1 -->/);
+  assert.match(pending.markdown, /## beta\n- \[ \] 目的 1\n  （操作）操作步骤 1/);
+  const noted = markdownFixture('unconfirmed', [true, true]);
+  assert.match(noted.markdown, /导出范围：仅未确认和备注项/);
+  assert.match(noted.markdown, /## beta\n- \[x\] 目的 1/);
+  assert.ok(!noted.markdown.includes('## alpha'));
+  const ignored = markdownFixture('unconfirmed', [true, true], { beta: true });
+  assert.ok(!ignored.markdown.includes('## beta'));
 });
 
 test('markdown export marks ignored groups and copy uses the clipboard with fallback', async () => {
   const ignoredAll = markdownFixture('all', [true, false], { beta: true });
   assert.match(ignoredAll.markdown, /## beta（已忽略）\n/);
-  assert.match(ignoredAll.markdown, /- \[ \] 操作 1 → 预期 <!-- id: check-1 -->/);
+  assert.match(ignoredAll.markdown, /- \[ \] 目的 1/);
 
   const copied = markdownFixture('all', [true, false], {}, 'copy');
   await new Promise(resolve => setTimeout(resolve, 0));
@@ -170,9 +200,22 @@ test('markdown export marks ignored groups and copy uses the clipboard with fall
   assert.match(copied.context.status.textContent, /已复制 2 项/);
 
   // 无 clipboard API 的环境走 execCommand 回退，同样报告成功。
-  const fallbackSource = markdownFixture('all', [true, false], {}, 'copy');
+  const fallbackSource = markdownFixture('all', [true, false], {}, 'fallback');
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.match(fallbackSource.context.status.textContent, /已复制 2 项/);
+});
+
+test('Markdown download and copy preserve trailing note spaces and blank lines like JSON', () => {
+  const note = '首行  \n末行  \n\n';
+  const jsonNote = exportFixture('unconfirmed', [true, true], {}, ['', note])
+    .result.sections[0].items[0].note;
+  assert.equal(jsonNote, note);
+  for (const mode of ['export', 'copy', 'fallback']) {
+    const { markdown } = markdownFixture('unconfirmed', [true, true], {}, mode, ['', note]);
+    const quote = markdown.split('\n').filter(line => line.startsWith('  > '))
+      .map(line => line.slice(4)).join('\n');
+    assert.equal(quote, jsonNote, mode);
+  }
 });
 
 function storageContext(raw, blocked = false) {
@@ -211,6 +254,7 @@ test('checkbox reset preserves notes and unrelated persisted item state', () => 
   Object.assign(context, {
     KEY: 'legacy', IGNORE_KEY: 'legacy:ignored', state: {}, ignored: { 'sec-1': true },
     boxes: [{ id: 'check-0', checked: true }], notes: { 'check-0': '备注' }, refresh() {},
+    window: { confirm: () => true },
   });
   vm.runInContext(`(${handler("document.getElementById('reset')", 'click')})()`, context);
   assert.equal(context.boxes[0].checked, false);
@@ -219,6 +263,22 @@ test('checkbox reset preserves notes and unrelated persisted item state', () => 
   // 处理器在 VM realm 内重建对象，JSON 往返后再比较（跨 realm 原型不同）。
   assert.deepEqual(JSON.parse(JSON.stringify(context.ignored)), {});
   assert.deepEqual(saved.find(([key]) => key === 'legacy:ignored')[1], {});
+});
+
+test('cancelling reset does not read or write storage or change current state', () => {
+  const context = {
+    window: { confirm: () => false },
+    state: { 'check-0': true }, ignored: { alpha: true }, notes: { 'check-0': '备注' },
+    boxes: [{ checked: true }],
+    load() { throw new Error('reset must not load'); },
+    save() { throw new Error('reset must not save'); },
+    refresh() { throw new Error('reset must not refresh'); },
+  };
+  vm.runInNewContext(`(${handler("document.getElementById('reset')", 'click')})()`, context);
+  assert.equal(context.boxes[0].checked, true);
+  assert.deepEqual(context.state, { 'check-0': true });
+  assert.deepEqual(context.ignored, { alpha: true });
+  assert.deepEqual(context.notes, { 'check-0': '备注' });
 });
 
 test('ignore toggle persists per section, collapses on ignore and reopens on cancel', () => {
@@ -254,6 +314,7 @@ test('note input persists multiline text without affecting confirmation', () => 
     NOTES_KEY: 'notes', notes: {}, box: { id: 'check-0', checked: true },
     record: { note: '' }, textarea: { value: '  复现\n下一步  ' }, printNote: { textContent: '' },
     toggle: { classList: { toggle() {} } },
+    refreshExport() {},
   });
   vm.runInContext(`(${handler('textarea', 'input')})()`, context);
   assert.equal(saved[0][0], 'notes');

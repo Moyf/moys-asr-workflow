@@ -282,6 +282,59 @@ test('translation merge option follows manual and automatic translation controls
   await expect(page.locator('#autoTranslateMergeField')).toBeHidden();
 });
 
+test('translation language filter defaults on, persists, syncs and reaches requests', async ({ page }) => {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    Object.assign(window.MAWLauncher.config.postprocessProviders.find(p => p.id === 'deepseek'),
+      { verified: true, hasApiKey: true, hasBaseUrl: true, hasModel: true });
+    window.__filterPlans = [];
+    window.__filterRequests = [];
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'save_postprocess_plan') window.__filterPlans.push(payload.plan);
+      if (method === 'run_llm_postprocess') {
+        window.__filterRequests.push(payload);
+        return { ok: false, error: 'test stopped before sending to a model' };
+      }
+      return original(method, payload);
+    };
+  });
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#postprocessOperation').selectOption('translate_zh');
+  await expect(page.locator('#postprocessSkipTarget')).toBeChecked();
+  await page.locator('#postprocessSkipTarget').uncheck();
+  await expect(page.locator('#autoTranslateSkipTarget')).not.toBeChecked();
+  await expect.poll(() => page.evaluate(() => window.__filterPlans.at(-1)?.steps
+    .find(s => s.id === 'translate')?.skipTargetLanguage)).toBe(false);
+  await page.locator('#toolboxInputPath').fill('source.mosp');
+  await page.locator('#runLlmPostprocess').click();
+  await expect.poll(() => page.evaluate(() => window.__filterRequests.at(-1)?.skipTargetLanguage)).toBe(false);
+  const manualGap = await page.locator('#postprocessSkipTarget').evaluate(input => {
+    const label = input.closest('label');
+    return label.nextElementSibling.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
+  });
+  expect(manualGap).toBeGreaterThanOrEqual(8);
+  await page.locator('#postprocessSkipTarget').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '.artifacts/translation-filter-manual.png' });
+  await page.locator('#toolboxClose').click();
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#autoStepTranslate').check();
+  await expect(page.locator('#autoTranslateSkipTargetField')).toBeVisible();
+  await page.locator('#autoTranslateSkipTarget').check();
+  await expect(page.locator('#postprocessSkipTarget')).toBeChecked();
+  await expect.poll(() => page.evaluate(() => window.__filterPlans.at(-1)?.steps
+    .find(s => s.id === 'translate')?.skipTargetLanguage)).toBe(true);
+  const autoGap = await page.locator('#autoTranslateSkipTargetField').evaluate(group => {
+    const [label, hint] = group.children;
+    return hint.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
+  });
+  expect(autoGap).toBeGreaterThanOrEqual(8);
+  await page.locator('#autoTranslateSkipTargetField').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '.artifacts/translation-filter-auto.png' });
+  await page.locator('#autoStepTranslate').uncheck();
+  await expect(page.locator('#autoTranslateSkipTargetField')).toBeHidden();
+});
+
 test('automatic LLM setup highlights test connection until clicked', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
@@ -550,7 +603,7 @@ test('FFmpeg media log stays above the utility notice and renders the latest pro
   ))).toBeTruthy();
 });
 
-test('green-screen burn accepts subtitles without a video source', async ({ page }) => {
+test('green-screen burn accepts subtitles without a video source and optional source audio', async ({ page }, testInfo) => {
   await openLauncher(page);
   await page.locator('#toolboxUtilitiesPrimaryTab').click();
   await page.locator('#toolboxBurnSubtitleTab').click();
@@ -565,7 +618,10 @@ test('green-screen burn accepts subtitles without a video source', async ({ page
       return original(method, payload);
     };
   });
+  await expect(page.locator('#toolboxGreenScreenAudioField')).toBeHidden();
   await page.locator('#toolboxGreenScreen').check();
+  await expect(page.locator('#toolboxGreenScreenAudioField')).toBeVisible();
+  await expect(page.locator('#toolboxGreenScreenIncludeAudio')).not.toBeChecked();
   await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeVisible();
   await expect(page.locator('#toolboxUtilityMediaDropZone')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
@@ -582,14 +638,29 @@ test('green-screen burn accepts subtitles without a video source', async ({ page
   await page.locator('#runBurnSubtitle').click();
   await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(1);
   const call = await page.evaluate(() => window.__greenBurnCalls[0]);
-  expect(call).toMatchObject({ mediaPath: '', subtitlePath: 'D:\\Demo\\captions.ass', greenScreen: true });
+  expect(call).toMatchObject({ mediaPath: '', subtitlePath: 'D:\\Demo\\captions.ass', greenScreen: true,
+    greenScreenIncludeAudio: false });
   await expect(page.locator('#toolboxUtilityMediaPath')).toHaveValue('D:\\Demo\\captions.green-screen.mp4');
+  await page.locator('#toolboxGreenScreenIncludeAudio').check();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
+  await page.locator('#toolboxUtilityMediaPath').fill('D:\\Demo\\voice.wav');
+  const audioGap = await page.locator('#toolboxGreenScreenAudioField').evaluate(el =>
+    el.getBoundingClientRect().left - el.previousElementSibling.getBoundingClientRect().right);
+  expect(audioGap).toBeGreaterThanOrEqual(8);
+  console.log(`Launcher green screen spacing: ${JSON.stringify({ fieldGap, hintGap, audioGap })}`);
+  await page.screenshot({ path: testInfo.outputPath('green-screen-audio-option.png') });
+  await page.locator('#runBurnSubtitle').click();
+  await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(2);
+  expect(await page.evaluate(() => window.__greenBurnCalls[1])).toMatchObject({
+    mediaPath: 'D:\\Demo\\voice.wav', greenScreen: true, greenScreenIncludeAudio: true });
+  await page.locator('#toolboxGreenScreenIncludeAudio').uncheck();
   await page.locator('#toolboxWaveformTab').click();
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
   await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
   await page.locator('#toolboxBurnSubtitleTab').click();
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
   await page.locator('#toolboxGreenScreen').uncheck();
+  await expect(page.locator('#toolboxGreenScreenAudioField')).toBeHidden();
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
   await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
   await expect(page.locator('#runBurnSubtitle')).toHaveText('烧录字幕');

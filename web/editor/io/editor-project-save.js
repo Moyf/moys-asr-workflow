@@ -9,7 +9,7 @@
 
   function projectSaveFingerprint() {
     return JSON.stringify([MaweBoot.DATA.segments, MaweBoot.DATA.multi_subtitle, MaweBoot.DATA.overlay_track, MaweBoot.DATA.gap_remove,
-      MaweBoot.DATA.markers,
+      MaweBoot.DATA.markers, MaweBoot.DATA.timed_text_edit_view === 'single' ? 'single' : 'rows',
       MaweBoot.DATA.preview, MaweBoot.DATA.media_metadata, MaweHistory.gapRemoveDirty, MaweAppearance.previewGeometryDirty, MaweServerSave.projectImportDirty]);
   }
 
@@ -79,7 +79,23 @@ jsonEl.textContent = filename;
 jsonEl.title = `点击复制工程文件名：${filename}`;
 jsonEl.classList.remove('empty');
 }
+updateProjectDirtyIndicator();
 if (!silent) MaweHint.flashHint('保存成功！', 'success');
+}
+
+// 工程「未保存」指示：右上角文件名前加琥珀色圆点（CSS ::before，不进 textContent，
+// 不影响点击复制），title 提示有未保存的修改。#json-name 在 i18n 的属性跳过名单里，
+// title 需在此处按当前语言手动翻译；调用方为 markProjectDirty 事件回调（即时）、
+// 保存完成的直接刷新与 O(1) 轮询兜底（见文件底部），回调内部按当前工程状态整体重算。
+function updateProjectDirtyIndicator() {
+const jsonEl = document.getElementById('json-name');
+if (!jsonEl || jsonEl.classList.contains('empty')) return;
+const dirty = Boolean(MaweServerSave?.hasUnsavedProjectChanges?.());
+jsonEl.classList.toggle('dirty', dirty);
+const filename = String(jsonEl.textContent || '').trim();
+if (!filename) return;
+const text = dirty ? `有未保存的修改；点击复制工程文件名：${filename}` : `点击复制工程文件名：${filename}`;
+jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
 }
 
 
@@ -248,6 +264,28 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
     return window.MAWE_I18N?.translateText?.(text) || text;
   }
 
+  // 脏态指示：事件驱动 + O(1) 轮询兜底 + 语言切换重译标题。dirty 事件由
+  // editor-state 的 markProjectDirty() 触发（changes 标志与各编辑路径收口），
+  // 保存完成走 markProjectSaved 的直接刷新（清洁态即时）。轮询只比较
+  // projectDirtyEpoch（O(1) 自愈），绝不在此做 hasProjectChanges 的 O(N) 扫描；
+  // 指纹等重判定只允许出现在事件回调驱动的 updateProjectDirtyIndicator 里。
+  // 仅浏览器页面环境启动（vm 单测环境无定时器/document 事件全局，恢复/保存
+  // 流程测试不依赖；编辑器页面常驻，无需清除）。
+  if (typeof window !== 'undefined' && typeof MaweState?.onProjectDirtyChange === 'function') {
+    MaweState.onProjectDirtyChange(() => updateProjectDirtyIndicator());
+  }
+  if (typeof window !== 'undefined' && typeof window.setInterval === 'function'
+      && typeof MaweState?.getProjectDirtyEpoch === 'function') {
+    let lastSeenDirtyEpoch = MaweState.getProjectDirtyEpoch();
+    window.setInterval(() => {
+      const epoch = MaweState.getProjectDirtyEpoch();
+      if (epoch === lastSeenDirtyEpoch) return;
+      lastSeenDirtyEpoch = epoch;
+      updateProjectDirtyIndicator();
+    }, 1000);
+    document.addEventListener('mawe:languagechange', updateProjectDirtyIndicator);
+  }
+
 global.MaweProjectSave = Object.freeze({
 markProjectSaved,
 saveProjectToServer,
@@ -255,6 +293,7 @@ saveProjectToHandle,
 saveCurrentProject,
 saveProjectAsToFile,
 inlineEditHasUncommittedText,
+updateProjectDirtyIndicator,
 mediaNameEl,
 jsonNameEl,
 translatedEditorText

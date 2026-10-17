@@ -186,6 +186,7 @@
   otioExportIncludeStickers: true,
   otioExportIncludeMarkers: true,
   otioExportIncludeMarkerRegions: true,
+  greenScreenIncludeAudio: false,
   // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
@@ -267,7 +268,7 @@
   const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 
 
-  const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#eac953';
+  const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#f9ca1f';
 
 
   const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
@@ -308,6 +309,7 @@
       otioExportIncludeStickers: saved.otioExportIncludeStickers !== false,
       otioExportIncludeMarkers: saved.otioExportIncludeMarkers !== false,
       otioExportIncludeMarkerRegions: saved.otioExportIncludeMarkerRegions !== false,
+      greenScreenIncludeAudio: saved.greenScreenIncludeAudio === true,
     }, legacyAssStyleLibrary);
     if (saved?.assSpecialSymbolRule === undefined) saveEditorSettings(settings);
     return settings;

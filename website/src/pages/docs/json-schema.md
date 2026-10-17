@@ -63,11 +63,12 @@ source: "JSON_SCHEMA.md"
 |---|---|---|---|
 | `schema` | `string` | 否（写出时必填） | 当前值为 `moy.asr.project.v1`。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
 | `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
-| `media` | `string` | 否 | 媒体文件路径（绝对/相对均可）。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
+| `media` | `string` | 否 | 媒体文件路径（绝对/相对均可），相对路径以工程文件所在目录为基准。生成与服务器保存优先写相对路径（如 `_maw/clip.mosp` 引用 `../clip.mp4`），跨盘无法相对引用时写绝对路径。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
 | `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。仅用于显示与选择切句计量方式 |
 | `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知） |
 | `preserve_punctuation` | `boolean` | 否 | 为 `true` 时，MAWE 启动不执行历史中文逗号 / 句号清理，保留字幕与 items 的原文；保存和重新加载保留此策略。文稿驱动对齐写入 `true`。省略或为 `false` 时保持历史行为；不限制用户后续主动编辑 / 文本处理。此字段是 v1 的可选扩展，不改变整数毫秒契约 |
 | `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
+| `timed_text_edit_view` | `string` | 否 | 纯文本编辑视图：`rows`（逐条，默认）或 `single`（整体）。默认 `rows` 保存时省略；当前字幕含换行而不能整体编辑时，仅在界面暂用逐条视图，不覆盖工程偏好 |
 | `timestamp_granularity` | `string` | 否 | 时间码粒度：`char`、`word`、`segment` 或 `unknown`。只有整段 start/end 的模型使用 `segment`；这类工程的字幕段可以没有 `items`，超长段可能已按标点（连续语言）或单词数（单词型）二次拆分，段内时间是插值近似值（不携带 `items` 冒充词级精度） |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
 | `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、成对的正整数 `video_width` / `video_height`、非负整数 `selected_audio_track` 和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
@@ -414,6 +415,23 @@ source: "JSON_SCHEMA.md"
 
 候选的 `alternativeGroupId` 表示同一文稿行的局部录制组；相邻候选之间默认最多相隔 `10000ms`，且最多跨过 `8` 个源字幕段，限制值记录在对齐结果的 `settings.alternativeMaxGapMs` 与 `settings.alternativeMaxCues` 中。不同组的完整命中不会自动作为 `Alternative` 禁用，而会以 `kind: "extra"`、`reasonCode: "distant-match"` 进入可确认范围，默认保留。
 
+文稿字幕生成可在 `script_alignment.recording` 追加以下诊断字段：
+
+```json
+{
+  "version": 1,
+  "selectionDigest": "sha256-of-canonical-review",
+  "sourceEvidence": "asr-confirmed",
+  "generatedCueIds": ["script-recording-001"],
+  "replacedSourceIds": ["main-001"],
+  "warnings": ["自动推荐仍需听审"]
+}
+```
+
+这不是另一份字幕真源；生成文字与整数毫秒时间仍在 `segments/items`，静音决定仍在 `gap_remove`。`sourceEvidence` 只表示用户确认了原始ASR来源，不是模型念读正确率。`replacedSourceIds` 记录为避免主字幕重叠而从最终工程替换的源cue，完整来源保留在原始ASR文件；未替换的Extra继续保留。最终工程仍遵守主字幕不重叠契约，包括disabled段。此诊断对象随MAWE保存重开保留，不能用它把文稿工程重新当作原始ASR证据。
+
+结果目录中的 `report.json` 是审查快照：只保存必要选择、候选绑定确认、规则、输入签名及规范化gap状态，不保存请求token或未知客户端字段。它不替代MOSP、也不复制完整原ASR工程。源ASR补码报告另标 `operation: "source-items"`，保持原字幕文字，仅补items。
+
 ### 1.4 preview 预览呈现
 
 `preview.ass_mode` 为可选布尔值，记录当前工程是否启用 ASS 字幕模式；缺失时为 `false`，不会从另一工程或浏览器旧偏好继承。字幕样式与颜色呈现继续保存于工程，ASS 样式库与特殊文本规则仍是可复用的本机配置。
@@ -428,7 +446,7 @@ source: "JSON_SCHEMA.md"
     "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei", "color": "#ffffff",
     "speaker_labels": { "mapping_enabled": true, "enabled": true, "separator": "：", "names": { "yellow": "SP1", "green": "SP2", "red": "SP3", "purple": "SP4", "blue": "SP5" } }
   },
-  "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#eac953" },
+  "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#f9ca1f" },
   "sticker": { "x": 0.73, "y": 0.04, "width": 0.24, "height": 0.3 }
 }
 ```
@@ -443,7 +461,7 @@ source: "JSON_SCHEMA.md"
 | `font_family` | `string` | 否 | 字幕预览字体族：内置键 `default`、`yahei`、`hei`、`song`、`sans`，或本机字体族名称（最长 128 个字符） |
 | `background_color` | `string` | 否 | 字幕预览背景色，6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `background_alpha` | `number` | 否 | 字幕预览背景不透明度，范围 `[0, 1]`；缺失时使用 `0.65`，设为 `0` 时隐藏背景 |
-| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#eac953` |
+| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#f9ca1f` |
 | `color_underline` | `boolean` | 否 | 播放预览是否按字幕颜色快照应用颜色样式；缺失时视为 `true`（默认开启），设为 `false` 时关闭颜色预览。保留该字段以兼容旧工程 |
 | `color_style` | `string` | 否 | CSS 预览的颜色样式：`underline`（下划线，默认）、`text`（文字颜色）或 `stroke`（描边）；历史值 `shadow` 保留读取兼容 |
 | `ass_color_style` | `string` | 否 | ASS 导出与 ASS 预览中颜色字幕的应用方式：`text`（作为字幕颜色，默认）、`speaker`（仅作为说话人名称颜色）、`stroke`（作为描边颜色）或 `none`（无影响，颜色字幕使用统一样式） |
@@ -640,7 +658,7 @@ source: "JSON_SCHEMA.md"
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
 | `disabled` | `bool` | 否 | 禁用该字幕；预览、隐藏禁用项和默认导出会跳过它 |
-| `assOverride` | `object` | 否 | 主字幕逐句 ASS PlayRes 坐标（锚点由全局样式规定）；见下方可选定位契约 |
+| `assOverride` | `object` | 否 | 主字幕逐句 ASS 覆盖：可独立保存 PlayRes 坐标与整体缩放；见下方契约 |
 | `speaker` | `string` | 否 | 说话人标签（非空字符串）。保存供应商返回的 opaque ID（如 Soniox 的 `"1"`/`"2"`），不转换为整数或姓名。仅当该段所有带语音 items 都是同一 speaker 时才写入；缺少该字段的旧工程继续有效 |
 | `sticker` | `object\|null` | 否 | 表情包 head 信息。见第四节 |
 | `sticker_ref` | `object\|null` | 否 | 引用上方 head 的表情包（跨多句用） |
@@ -648,14 +666,15 @@ source: "JSON_SCHEMA.md"
 | `color_ref` | `object\|null` | 否 | 引用上方 head 的颜色 |
 | `_dirty` | `bool` | 否 | 是否被人工改过。**生成时不要写 `true`**，仅由编辑器内部维护 |
 
-### 逐句 ASS 定位（可选）
+### 逐句 ASS 定位与缩放（可选）
 
-主字幕 segment 可保存 `"assOverride": { "pos": { "x": 1720.5, "y": 180 } }`。
+主字幕 segment 可独立保存大小和位置，例如 `"assOverride": { "scale": 1.22, "pos": { "x": 1720, "y": 180 } }`。两个字段都可以单独省略。
 
-- 逐句只保存 X/Y，不支持逐句 `an`；文字块附着点由全局 ASS 样式 alignment 规定，拖动、预览与导出始终共用该锚点。未发布的逐句 `an` 不提供迁移。
-- `pos` 可省略；存在时必须同时包含有限数字 `x` 和 `y`。坐标单位是当前 ASS `PlayResX / PlayResY` 的像素，允许小数、负值与画布外位置，不按视频显示缩放保存，也不钳制到画面内。显式 `pos` 优先于方案 `move`，该主字幕不参与自动组平移、缩放或避碰；其它淡入淡出、变换和说话人颜色保留。
-- 未调整位置的字幕继续参与全局自动排布，不因选择或原地点选写入位置覆盖。实际拖动才保存 `pos`；震动叠加时保存基准坐标，不包含瞬时抖动偏移。
-- 不存在或空对象表示样式默认；规范化与保存不写空对象。非法类型、非有限坐标、缺少任一坐标或逐句 `an` 被拒绝。旧工程无此字段时行为与输出不变。普通预览和 SRT 不消费该字段。
+- `scale` 是整体缩放倍率，范围 `0.10–5.00`，归一化到两位小数；`1.00` 是默认值并省略。它统一缩放字体、句内相对字号、字距、描边、阴影和字号动画目标。只设置 `scale` 不创建 `pos`，字幕继续参与全局自动排布、避碰与整体适配。
+- `pos` 存储当前 ASS `PlayResX / PlayResY` 画布坐标，必须同时包含有限数字 `x` 和 `y`；允许历史工程中的小数、负值与画布外位置。编辑器显示坐标为整数，新输入、方向键微调和拖动保存时四舍五入到整数；读取旧小数或只改大小时不自动改写坐标。显式 `pos` 优先于方案 `move`，该主字幕不参与自动组平移或避碰。
+- 逐句不保存 `an`；文字块附着点由全局 ASS 样式 alignment 规定，拖动、缩放、预览与导出始终共用该锚点。震动叠加时保存基准坐标，不包含瞬时抖动偏移。
+- 重置大小只清除 `scale`，重置定位只清除 `pos`；未设置对应字段时，相应控件隐藏。选择或原地点选不写位置覆盖。
+- 不存在或空对象表示样式默认；规范化与保存不写空对象。非数字、非有限或超范围的倍率、非法坐标、缺少任一坐标或逐句 `an` 被拒绝。普通预览和 SRT 不消费该字段。
 - 拆分（包括复制/渐进拆分）两端各自深拷贝原覆盖；合并取时间顺序中最左句的完整覆盖，左句没有覆盖时合并结果也没有覆盖。复制/历史记录不得共享嵌套 `pos` 对象。主副换轨保留元数据，副/叠加轨不应用逐句定位；换回主轨后继续生效。
 
 ### 关键约束
@@ -665,7 +684,7 @@ source: "JSON_SCHEMA.md"
 - 进入帧模式后，编辑器以帧字段为操作真源，同时更新毫秒投影；切换 FPS 会保留实际媒体时间并重新计算帧编号
 - `segments` 建议按时间升序排列，且 `segments[i].end <= segments[i+1].start`
 - 代码不强校验时间重叠，但重叠会导致播放器跳转/高亮行为异常
-- `items` 首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`
+- 普通完整字词时间码中，首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`；编辑器「渐进拆分」的后半句会保留原后半区间的 items，因此允许仅覆盖文本后缀
 - 带 `speaker` 的工程遇到说话人变化时**必须切分字幕**，不能把两个 speaker 合入同一 segment
 
 ---
@@ -687,7 +706,7 @@ source: "JSON_SCHEMA.md"
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `text` | `string` | 是 | 单字或单词。**所有 item 的 `text` 拼接后应等于所属 segment 的 `text`**（标点也应包含在内，编辑器拆分时会按需剥掉） |
+| `text` | `string` | 是 | 单字或单词。通常所有 item 的 `text` 拼接后应等于所属 segment 的 `text`（标点也应包含在内，编辑器拆分时会按需剥掉）；渐进拆分后半句允许 items 只对应原文后缀，复制前缀没有时间码 |
 | `start` | `int` | 是 | 该字/词起始时间（毫秒） |
 | `end` | `int` | 是 | 该字/词结束时间（毫秒） |
 | `start_frame` | `int` | 否 | 独立帧起始编号，与 `end_frame` 成对出现 |
@@ -759,7 +778,7 @@ source: "JSON_SCHEMA.md"
 
 | name | value |
 |---|---|
-| `yellow` | `#c4a019` |
+| `yellow` | `#f9ca1f` |
 | `green` | `#66bb6a` |
 | `red` | `#f07f6f` |
 | `purple` | `#bf89e6` |
@@ -910,7 +929,7 @@ uv run python edit.py your_generated.mosp
 | `segments[i].items[k].start_frame` | int | ❌ | 帧编号，与 `end_frame` 成对 |
 | `segments[i].items[k].end_frame` | int | ❌ | 帧编号，与 `start_frame` 成对 |
 | `segments[i].items[k].speaker` | string | ❌ | 说话人 opaque ID |
-| `segments[i].assOverride` | object | ❌ | 可选主字幕 ASS 覆盖：仅有限 PlayRes pos.x/y，使用全局样式锚点；空对象归一化为省略 |
+| `segments[i].assOverride` | object | ❌ | 可选主字幕 ASS 覆盖：`scale` 为 0.10–5.00 的两位倍率，`pos` 为有限 PlayRes x/y 坐标，字段独立且使用全局样式锚点；空对象归一化为省略 |
 | `segments[i].speaker` | string | ❌ | 段内统一说话人才写入 |
 | `segments[i].sticker` | object\|null | ❌ | 表情包 head |
 | `segments[i].sticker_ref` | object\|null | ❌ | `{name, headIdx}` |
@@ -919,6 +938,7 @@ uv run python edit.py your_generated.mosp
 | `segments[i]._dirty` | bool | ❌ | 生成时不要写 |
 | `media` | string | ❌ | 媒体文件路径 |
 | `language` | string | ❌ | 语言代码 |
+| `timed_text_edit_view` | string | ❌ | 纯文本编辑视图 `rows` / `single`；缺失为 `rows`，默认值省略 |
 | `model` | string | ❌ | 模型名 |
 | `sticker_root` | string | ❌ | 工程表情包覆盖目录；缺失或为空时使用本机默认目录 |
 | `waveform` | object | ❌ | 可丢弃的 `moy.asr.waveform.v1` 峰值缓存 |
@@ -946,7 +966,7 @@ uv run python edit.py your_generated.mosp
 | `preview.extension_subtitle` | object | ❌ | 副字幕样式；沿用主字幕预览框 |
 | `preview.extension_subtitle.font_size` | number | ❌ | px，范围 `[12,96]`；缺失时默认比主字幕小 2px |
 | `preview.extension_subtitle.font_family` | string | ❌ | `default` / `yahei` / `hei` / `song` / `sans` |
-| `preview.extension_subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#eac953` |
+| `preview.extension_subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#f9ca1f` |
 | `preview.sticker.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |
 | `preview.sticker.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
 | `preview.sticker.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |

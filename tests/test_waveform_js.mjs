@@ -1210,3 +1210,88 @@ test('row height changes refit the active loudness auto-fit', () => {
   assert.equal(noStats.settings.waveformScale, 1);
   assert.equal(noStats.renders, 1);
 });
+
+// 字词气泡布局纯函数：候选全量 / 同屏上限 64 / 三行堆叠 / 优先级丢弃 / 底行间距。
+const computeWordChipLayout = helpers.computeWordChipLayout;
+const WORD_CHIP_OPTIONS = { rowWidth: 6200, rowHeight: 300, stripTopPx: 116, referenceX: 400 };
+
+test('word chip layout treats every visible block as a candidate', () => {
+  const blocks = [
+    // 账本 #29：候选不再按「文本截断」过滤——放得下的短词也出气泡。
+    { text: '短', textWidth: 10, leftPx: 0, widthPx: 200, isPlaying: false, order: 0 },
+    { text: '很长的字词文本内容', textWidth: 120, leftPx: 220, widthPx: 80, isPlaying: false, order: 1 },
+  ];
+  const layout = computeWordChipLayout(blocks, WORD_CHIP_OPTIONS);
+  assert.equal(layout.placed.length, 2);
+  assert.deepEqual(Array.from(layout.placed).map(chip => chip.text),
+    ['短', '很长的字词文本内容']);
+  // 长文本 chip 中心对准块中心 220+40=260，宽 132 → x=194；短词 chip 居中于 100。
+  const longChip = layout.placed.find(chip => chip.order === 1);
+  const shortChip = layout.placed.find(chip => chip.order === 0);
+  assert.equal(longChip.x, 194);
+  assert.equal(shortChip.x, Math.round(100 - (10 + 12) / 2));
+  assert.equal(layout.dropped, 0);
+});
+
+test('word chip layout caps chips per screen at 64', () => {
+  // 70 个互不重叠的字词块：密度上限 64 生效，距参考点最远的 6 个被丢弃。
+  const blocks = Array.from({ length: 70 }, (_, index) => ({
+    text: `词-${index}`, textWidth: 80, leftPx: index * 200, widthPx: 60,
+    isPlaying: false, order: index,
+  }));
+  const layout = computeWordChipLayout(blocks, { ...WORD_CHIP_OPTIONS, rowWidth: 15000 });
+  assert.equal(layout.placed.length, 64);
+  assert.equal(layout.dropped, 6);
+  assert.ok(layout.placed.every(chip => chip.row === 0), '互不重叠的气泡都应落在首行');
+  // 行 64~69 的块距参考点最远，被上限截掉；保留的是其余 64 个。
+  const orders = Array.from(layout.placed).map(chip => chip.order);
+  assert.equal(orders.length, new Set(orders).size);
+  assert.ok(orders.every(order => order < 64));
+  // placed 是绘制序（y,x,order）：同在第 0 行时按 x 递增，即行序 0..63。
+  assert.deepEqual(orders.slice(0, 3), [0, 1, 2]);
+});
+
+test('word chip layout stacks at most 3 rows and prefers the playing word', () => {
+  // 5 个同位置的截断块，只有最后一个在播放：播放字插队拿首行。
+  const blocks = Array.from({ length: 5 }, (_, index) => ({
+    text: `word-${index}`, textWidth: 120, leftPx: 100, widthPx: 60,
+    isPlaying: index === 4, order: index,
+  }));
+  const layout = computeWordChipLayout(blocks, { ...WORD_CHIP_OPTIONS, rowWidth: 800 });
+  assert.equal(layout.placed.length, 3, '最多向上叠 3 行，其余丢弃');
+  assert.equal(layout.dropped, 2);
+  const playing = layout.placed.find(chip => chip.order === 4);
+  assert.ok(playing, '当前播放字必须保留');
+  assert.equal(playing.row, 0, '播放字优先占据贴条带的首行');
+  assert.deepEqual(Array.from(layout.placed).map(chip => chip.row).sort(), [0, 1, 2]);
+  // y 越小越靠上：首行最贴近条带（画布 y 最大），向上逐行递减。
+  const rows = layout.placed.slice().sort((a, b) => a.row - b.row);
+  assert.ok(rows[0].y > rows[1].y && rows[1].y > rows[2].y);
+  // 播放字之外按距播放头/参考点近者优先拿更低的行：order 0 与 1 同距，行序决胜。
+  assert.deepEqual(Array.from(rows.slice(1)).map(chip => chip.order), [0, 1]);
+});
+
+test('word chip layout leaves a gap between the bottom chip row and the strip', () => {
+  // 账本 #29：最底层气泡行与字词条带之间要有 ~6px 间隙，不再紧贴。
+  // 默认 stripGap=6：row-0 顶边 y = rowHeight - stripTopPx - 6 - chipHeight = 162。
+  const single = computeWordChipLayout(
+    [{ text: '词', textWidth: 40, leftPx: 100, widthPx: 60, isPlaying: false, order: 0 }],
+    WORD_CHIP_OPTIONS,
+  );
+  assert.equal(single.placed.length, 1);
+  assert.equal(single.placed[0].row, 0);
+  assert.equal(single.placed[0].y, 162);
+  // 第二行按 chipHeight + rowGap = 18 的行距向上叠：y = 162 - 18 = 144。
+  const two = computeWordChipLayout(
+    [{ text: '甲乙丙', textWidth: 400, leftPx: 100, widthPx: 60, isPlaying: false, order: 0 },
+     { text: '丁戊己', textWidth: 400, leftPx: 100, widthPx: 60, isPlaying: false, order: 1 }],
+    WORD_CHIP_OPTIONS,
+  );
+  assert.deepEqual(Array.from(two.placed).map(chip => chip.y).sort((a, b) => b - a), [162, 144]);
+  // 显式传 stripGap 仍可覆盖默认值（y 增大 = 更贴近条带）。
+  const tight = computeWordChipLayout(
+    [{ text: '词', textWidth: 40, leftPx: 100, widthPx: 60, isPlaying: false, order: 0 }],
+    { ...WORD_CHIP_OPTIONS, stripGap: 2 },
+  );
+  assert.equal(tight.placed[0].y, 166);
+});

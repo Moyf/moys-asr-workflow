@@ -92,7 +92,11 @@ jobs:
         run: |
           uv run --no-sync python scripts/run_tests.py tests/test_editor_assets.py
           uv run --no-sync python scripts/run_tests.py tests/test_editor_manifest.py
+      - name: Install FFmpeg for synthetic editor fixtures
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
       - name: Real file and HTTP editor
         env:
           MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: pnpm exec playwright test --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs
+        run: pnpm exec playwright test --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs tests/e2e/editor-text-tools.spec.mjs tests/e2e/ass-cue-position.spec.mjs

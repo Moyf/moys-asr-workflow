@@ -65,6 +65,7 @@ overlayTrackToggle?.addEventListener('change', () => {
   if (!overlay) return;
   overlay.enabled = overlayTrackToggle.checked;
   overlay._dirty = true;
+  MaweState.markProjectDirty();
   MaweViewUpdates.invalidate({ save: true });
   MaweCuePanel.renderAll({ waveform: 'full' });
   if (overlayTrackToggle.checked) {
@@ -252,7 +253,8 @@ MaweDom.multiSubtitleExtensionRowHeight?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ multiSubtitleRowHeight: next });
   MaweDisplaySettings.applyWaveformModeRowHeight();
 });
-// 字词码预设：写入偏好；字词时间码已启用时立即应用到波形。
+// 字词码预设：写入偏好；字词时间码已启用时立即应用到波形，几何确实变化后
+// 把视口滚回播放头所在行（值未变时既不重渲染也不滚动）。
 MaweDom.wordTimingRowHeight?.addEventListener('change', () => {
   const next = MaweSettings.normalizeMultiSubtitleRowHeight(MaweDom.wordTimingRowHeight.value);
   MaweSettings.updateEditorSettings({ wordTimingRowHeight: next });
@@ -260,8 +262,9 @@ MaweDom.wordTimingRowHeight?.addEventListener('change', () => {
 });
 MaweDom.wordTimingSecondsPerRow?.addEventListener('change', () => {
   const next = Number(MaweDom.wordTimingSecondsPerRow.value);
+  const before = MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow;
   MaweSettings.updateEditorSettings({ wordTimingSecondsPerRow: next });
-  if (window.MaweWordTiming?.enabled === true) MaweCoreState.waveformEditor?.setSecondsPerRow(next);
+  if (window.MaweWordTiming?.enabled === true) MaweDisplaySettings.applyWordTimingSecondsPerRow();
 });
 // 波形工具栏的「双语 / 重叠」快捷开关：复用工程设置开关的 change 逻辑。
 document.getElementById('multi-subtitle-quick-toggle')?.addEventListener('click', () => {

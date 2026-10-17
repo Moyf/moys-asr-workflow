@@ -62,6 +62,7 @@ class TranscriptionRequest:
     base_url: str = ""
     speaker_colors: bool = False
     generate_spectral: bool = False
+    generate_thumbnails: bool = False
     ui_language: str = "zh"
     generate_html: bool = True
     srt_only: bool = False
@@ -504,6 +505,7 @@ def run_transcription(
         request.model_cache_root,
         request.engine,
         request.base_url,
+        generate_thumbnails=request.generate_thumbnails,
     )
     if request.provider == "local" and request.runtime_python:
         # 本地引擎子进程跑在托管 venv 的宿主解释器上（见 build_transcribe_command），
@@ -682,12 +684,17 @@ def _child_environment(
     model_cache_root: str = "",
     engine: str = "",
     base_url: str = "",
+    generate_thumbnails: bool = True,
 ) -> dict[str, str]:
     env = dict(parent)
     # The bundled local-runtime Python is not itself PyInstaller-frozen, so
     # pass the parent process's resolved configuration file explicitly.
     env["MAW_ENV_FILE"] = str(DEFAULT_ENV_PATH)
     env["PYTHONUNBUFFERED"] = "1"
+    if not generate_thumbnails:
+        # 「生成视频缩略图」开关经子进程环境传给 embed_media_caches，
+        # 免去在每个 provider CLI 的长参数签名里逐一透传。
+        env["MAW_MEDIA_THUMBNAILS"] = "0"
     configure_utf8_environment(env)
     configured_path = parent.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
     lookup_path = _ffmpeg_search_path(env.get("PATH", "")) or ""

@@ -6,6 +6,7 @@ import re
 from collections.abc import Mapping, Sequence
 
 from maw.postprocess_ai_cleanup_items import item_text_spans
+from maw.postprocess_draft import draft_lines
 
 
 def escape_source_text(text: str) -> str:
@@ -60,13 +61,19 @@ def draft_line(clip_id: str, text: str, deleted: Sequence[int] = (), items: Sequ
 
 def parse_timeline(text: str, rows: Sequence[Mapping[str, str]], items_by_id: Mapping[str, Sequence[Mapping[str, object]]]) -> dict[str, object]:
     """Every target appears once, in order. Missing lines never mean deletion."""
-    lines = text.strip().splitlines()
-    if lines and lines[0].startswith("```") and lines[-1] == "```":
-        lines = lines[1:-1]
+    lines = draft_lines(text)
     targets = [row for row in rows if row.get("contextOnly") != "true"]
-    lines = [line for line in lines if line.strip()]
     if len(lines) != len(targets):
-        raise ValueError("编辑稿必须完整输出每个目标行；不能省略行或添加说明")
+        expected = [row["id"] for row in targets]
+        actual = [match[1] for line in lines if (match := re.match(r"\[(c\d+)\]", line))]
+        missing = [clip_id for clip_id in expected if clip_id not in actual]
+        extra = [clip_id for clip_id in actual if clip_id not in expected]
+        detail = f"应输出 {len(targets)} 行，实际 {len(lines)} 行"
+        if missing:
+            detail += "；缺少 ID：" + "、".join(missing)
+        if extra:
+            detail += "；额外或只读 ID：" + "、".join(extra)
+        raise ValueError(f"编辑稿必须完整输出每个目标行；不能省略行或添加说明（{detail}）")
     decisions = []
     for line, row in zip(lines, targets):
         match = re.fullmatch(r"\[(c\d+)\] ?(.*)", line)

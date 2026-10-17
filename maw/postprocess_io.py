@@ -31,6 +31,10 @@ class SubtitleArtifact:
     # the toolbox bridge but never part of the written files themselves.
     stats: Mapping[str, int] | None = None
     comparison_path: Path | None = None
+    diagnostic_path: Path | None = None
+    # Validated translation before track composition; carried between pipeline
+    # steps in memory, never serialized as a second project source of truth.
+    translation_project: JsonDict | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +133,7 @@ def write_artifacts(
     comparison_rows: list[Mapping[str, object]] | None = None,
     comparison_translation: Mapping[str, object] | None = None,
     bilingual_line_order: str = "",
+    srt_project: JsonDict | None = None,
 ) -> SubtitleArtifact:
     normalized = normalize_project(project)
     raw_media = normalized.get("media")
@@ -155,7 +160,7 @@ def write_artifacts(
         portable = rebase_project_media(normalized, project_path, source_project_path=base)
         _atomic_write(project_path, json.dumps(portable, ensure_ascii=False, indent=2) + "\n")
     if srt_path is not None:
-        _atomic_write(srt_path, render_srt(normalized))
+        _atomic_write(srt_path, render_srt(normalize_project(srt_project) if srt_project is not None else normalized))
     if comparison_path is not None and comparison_html is not None:
         _atomic_write(comparison_path, comparison_html)
     return SubtitleArtifact(

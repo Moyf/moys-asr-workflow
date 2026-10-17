@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import { assertBuildInputsUnchanged, captureBuildInputs, compileSources,
-  dependencyHash, validateSources, writeArtifact } from './build-editor.mjs';
+  assertMetafileInputsCaptured, dependencyHash, validateSources, writeArtifact } from './build-editor.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 export const BUNDLE = 'launcher/boot/launcher-bundle.js';
@@ -46,7 +46,15 @@ export async function buildLauncher(root = ROOT) {
     snapshot['web/'+file] = source;
     inputHashes[file] = sha(source);
     return source;
-  }, { bridges: config.externalBridges ?? [], trace: true });
+  }, { bridges: config.externalBridges ?? [], trace: true, onDependency: (relative, source) => {
+    const key = 'web/' + relative;
+    if (Object.hasOwn(snapshot, key) && snapshot[key] !== source) {
+      throw new Error(`Build input changed during compilation: ${key}; retry the build`);
+    }
+    snapshot[key] = source;
+    inputHashes[relative] = sha(source);
+  } });
+  assertMetafileInputsCaptured(root,result,inputHashes);
   assertBuildInputsUnchanged(root, snapshot);
   const metadata = {
     format: 1,

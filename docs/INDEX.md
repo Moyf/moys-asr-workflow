@@ -138,6 +138,11 @@
 
 ## 共享计划
 
+<a name="plan-ass-cue-scale"></a>
+### 主字幕单句缩放开发方案
+
+[打开正文](plans/ASS_CUE_SCALE.md)
+
 这些阶段方案保留原始基线与状态；是否继续实施以本分支代码、后续记录和维护者确认为准。编辑器设置方案已有实施记录，旧前端方案不代表当前代码布局。
 
 <a name="plan-ai-processing-review"></a>
@@ -194,5 +199,7 @@
 ## 日志与历史
 
 [保留日志索引](logs/INDEX.md) · [当前相关参考与未决事项](logs/CURRENT.md) · [2026-08-11 README 原文](archived/README-2026-08-11.md)
+
+当前功能记录：[主字幕单句缩放进度账本](logs/release1.9.0-beta.2/ASS_CUE_SCALE.md) · [人工核对清单](logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)
 
 反馈账本中的“已修复”只对应其记录的版本和验证范围。发布变化见 [CHANGELOG](../CHANGELOG.md)。

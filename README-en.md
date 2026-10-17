@@ -17,7 +17,7 @@ Use a script to assist proofreading, try reversible pause removal, edit multiple
 
 *Editor example from 1.6.0: review text and video on the left, adjust timing against the waveform on the right. Workspace layouts are configurable.*
 
-Latest beta: [v1.9.0-beta.2](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.9.0-beta.2).
+Latest beta: [v1.9.0-beta.3](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.9.0-beta.3).
 
 ## Why MAW
 

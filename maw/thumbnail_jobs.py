@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import hashlib
+import os
 import secrets
 import sqlite3
 import tempfile
@@ -111,7 +112,7 @@ class ThumbnailCoordinator:
             db.execute("DELETE FROM flights WHERE owner=?", (owner,))
 
 
-def coordinated_extract(path, targets, *, stream_index=None, cancel=None, coordinator=None, background=False, ffmpeg_path=None):
+def coordinated_extract(path, targets, *, stream_index=None, cancel=None, coordinator=None, background=False, ffmpeg_path=None, threads: int = 2):
     """Publish frames before relinquishing claims; playback stops active FFmpeg too."""
     from maw import thumbnail_cache as cache, thumbnails
     coordinator = coordinator or ThumbnailCoordinator()
@@ -149,7 +150,7 @@ def coordinated_extract(path, targets, *, stream_index=None, cancel=None, coordi
     try:
         if selected and not (cancel is not None and cancel.is_set()) and not coordinator.paused(identity, background=background):
             try:
-                frames = thumbnails.extract_frames(path, selected, stream_index=stream_index, cancel=stop, ffmpeg_path=ffmpeg_path)
+                frames = thumbnails.extract_frames(path, selected, stream_index=stream_index, cancel=stop, ffmpeg_path=ffmpeg_path, threads=threads)
             except thumbnails.ThumbnailCancelled:
                 if cancel is not None and cancel.is_set():
                     raise
@@ -219,12 +220,18 @@ def coordinated_pack(path, jpegs, *, coordinator, before_batch, cancel=None, tim
         # The next iteration waits for the lease, then retries this unsealed block.
 
 
-def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinator=None, timeout_s=1200):
-    """Launcher-only full grid, with visible demand ahead of background batches."""
+def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinator=None, timeout_s=1200, exact: bool = True):
+    """Launcher-only base build: keyframe tier always, exact grid when enabled.
+
+    The keyframe stage decodes only keyframes (seconds for a whole film) and
+    covers the display grid as preview cells; the exact stage — bounded by the
+    same visible-demand priority as before — upgrades them when enabled.
+    """
     from maw import thumbnail_cache
     path = Path(path)
     coordinator = coordinator or ThumbnailCoordinator()
     identity = source_key(path)
+    threads = min(16, max(2, os.cpu_count() or 4))
     deadline = time.monotonic() + timeout_s
 
     def before_batch(_targets):
@@ -247,7 +254,7 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
         while True:
             before_batch(targets)
             result = coordinated_extract(media, targets, coordinator=coordinator, background=True,
-                                         ffmpeg_path=ffmpeg_path, **kwargs)
+                                         ffmpeg_path=ffmpeg_path, threads=threads, **kwargs)
             if len(result) == len(targets):
                 return result
             if cancel is not None and cancel.is_set():
@@ -261,9 +268,51 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
         return coordinated_pack(path, jpegs, coordinator=coordinator, before_batch=before_batch,
                                 ffmpeg_path=ffmpeg_path, **kwargs)
 
+    def keyframe_extract():
+        """Pause-aware keyframe pass; playback and visible demand win."""
+        from maw import thumbnails
+        while True:
+            before_batch([])
+            if cancel is not None and cancel.is_set():
+                raise thumbnails.ThumbnailCancelled("base thumbnail generation cancelled")
+            if source_key(path) != identity:
+                raise OSError("thumbnail source changed")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("thumbnail base generation timed out")
+            # Each attempt owns its cancellation signal and watcher. A pause
+            # must not leave the next attempt permanently cancelled.
+            kf_cancel = threading.Event()
+            done = threading.Event()
+
+            def watch():
+                while not done.wait(.05):
+                    try:
+                        obsolete = source_key(path) != identity
+                        paused = coordinator.paused(identity, background=True)
+                    except (OSError, sqlite3.Error):
+                        obsolete, paused = True, False
+                    if obsolete or paused or (cancel is not None and cancel.is_set()):
+                        kf_cancel.set()
+                        return
+
+            watcher = threading.Thread(target=watch, name="thumbnail-keyframe-cancel", daemon=True)
+            watcher.start()
+            try:
+                return thumbnails.extract_keyframes(path, cancel=kf_cancel, threads=threads,
+                    ffmpeg_path=ffmpeg_path, timeout_s=min(600, remaining))
+            except thumbnails.ThumbnailCancelled:
+                if cancel is not None and cancel.is_set():
+                    raise
+                # before_batch waits for playback before starting a fresh pass.
+            finally:
+                done.set()
+                watcher.join(.2)
+
     return thumbnail_cache.load_or_build_base(path, cancel=cancel, progress=progress,
         before_batch=before_batch, batch_extract=extract, batch_pack=pack,
-        ffmpeg_path=ffmpeg_path, timeout_s=timeout_s)
+        ffmpeg_path=ffmpeg_path, timeout_s=timeout_s, exact=exact, decode_threads=threads,
+        keyframe_extract=keyframe_extract)
 
 
 def plan_targets(ranges, interval, duration, representatives=(), playhead=None):
@@ -372,7 +421,8 @@ class ThumbnailJobManager:
         key = secrets.token_hex(16)
         self.leases[key] = {"client": client, "expires": now+LEASE_SECONDS, "view": -1,
             "playing": False, "visible": False, "ranges": [], "representatives": [],
-            "interval": 2000, "targets": [], "playhead": 0, "assets": set(), "pending": False}
+            "interval": 2000, "targets": [], "playhead": 0, "assets": set(), "pending": False,
+            "decode": True}
         return key
 
     def _pins(self, lease, assets):
@@ -409,7 +459,8 @@ class ThumbnailJobManager:
             self.leases.pop(lease, None)
         if self.coordinator:
             self.coordinator.release(lease)
-        wanted = {point for current in self.leases.values() for point in current["targets"]}
+        wanted = {point for current in self.leases.values() if current.get("decode", True)
+                  for point in current["targets"]}
         if self.active_targets and not self.active_targets.intersection(wanted):
             self.active_cancel.set()
 
@@ -468,7 +519,8 @@ class ThumbnailJobManager:
                 raise ValueError("invalid representative times")
             if any(type(value) is not int or not 0 <= value <= 2**53-1 for value in representatives):
                 raise ValueError("invalid representative times")
-            if any(type(body.get(field, default)) is not bool for field, default in (("playing", False), ("visible", True))):
+            if any(type(body.get(field, default)) is not bool for field, default in
+                   (("playing", False), ("visible", True), ("decode", True))):
                 raise ValueError("thumbnail controls must be booleans")
             playhead = body.get("playhead_ms", 0)
             if type(playhead) is not int or not 0 <= playhead <= 2**53-1:
@@ -479,9 +531,10 @@ class ThumbnailJobManager:
             item = self.leases[lease]
             if view >= item["view"]:
                 candidate = dict(item, view=view, playing=body.get("playing", False), visible=body.get("visible", True),
-                    ranges=ranges, representatives=representatives, interval=interval, playhead=playhead)
+                    ranges=ranges, representatives=representatives, interval=interval, playhead=playhead,
+                    decode=body.get("decode", True))
                 candidate["targets"] = self._targets(candidate)
-                candidate["pending"] = bool(candidate["targets"])
+                candidate["pending"] = bool(candidate["targets"] and candidate["decode"])
                 wanted = set(candidate["targets"])
                 for key, current in self.leases.items():
                     if key != lease:
@@ -491,7 +544,12 @@ class ThumbnailJobManager:
                 item.update(candidate)
                 if self.state == "error" and item["visible"]:
                     self.state, self.error, self.info = "queued", "", None
-                if item["playing"] or (self.active_targets and not self.active_targets.intersection(wanted)):
+                # Only decode-enabled leases keep an in-flight decode batch alive.
+                decoding = set(candidate["targets"]) if candidate["decode"] else set()
+                for key, current in self.leases.items():
+                    if key != lease and current.get("decode", True):
+                        decoding.update(current["targets"])
+                if item["playing"] or (self.active_targets and not self.active_targets.intersection(decoding)):
                     self.active_cancel.set()
                 if not item["visible"]:
                     self._pins(lease, set())
@@ -527,8 +585,10 @@ class ThumbnailJobManager:
         if missing is not None:
             item["pending"] = bool(missing)
         if self.coordinator and self.identity:
+            # Cache-only leases keep their display targets but never claim the
+            # visible-demand flag, so Launcher base generation keeps running.
             self.coordinator.lease(lease, self.identity, playing=item["playing"],
-                visible=bool(item["visible"] and item["pending"]))
+                visible=bool(item["visible"] and item["pending"] and item.get("decode", True)))
 
     def _snapshot(self, lease):
         from maw import thumbnail_cache
@@ -620,7 +680,10 @@ class ThumbnailJobManager:
                 if item["expires"] < now:
                     self._release(lease)
             priority = {}
+            decoding = set()
             for item in self.leases.values():
+                if item.get("decode", True):
+                    decoding.update(item["targets"])
                 for point in item["targets"]:
                     rank = (self._priority(point, item), abs(point-item["playhead"]), point)
                     priority[point] = min(priority.get(point, rank), rank)
@@ -628,9 +691,12 @@ class ThumbnailJobManager:
             if not cache.can_prefetch(path):
                 targets = [point for point in targets if priority[point][0] < 2]
             hits = cache.lookup_frames(path, targets, stream_index=self.info.stream_index)
-            missing = [point for point, hit in zip(targets, hits) if (hit is None or hit.status == "preview") and self.failures.get(point, 0) < 2]
+            # Cache-only views keep their display targets but never join a decode batch.
+            missing = [point for point, hit in zip(targets, hits) if point in decoding
+                and (hit is None or hit.status == "preview") and self.failures.get(point, 0) < 2]
             for lease, item in self.leases.items():
-                self._publish_lease(lease, item, missing=any(point in missing for point in item["targets"]))
+                self._publish_lease(lease, item,
+                    missing=item.get("decode", True) and any(point in missing for point in item["targets"]))
                 manifest = cache.sample_manifest(path, item["targets"], stream_index=self.info.stream_index)
                 self._pins(lease, {asset["id"] for asset in manifest["assets"]})
             if self.coordinator.paused(identity):

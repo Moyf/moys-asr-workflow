@@ -70,6 +70,7 @@ def review_decisions(
     *,
     notes: str = "",
     on_status: Callable[[str], None] | None = None,
+    on_protocol_error: Callable[[str], None] | None = None,
 ) -> dict[str, str]:
     """Return review flags only; failed validation writes no partial artifact."""
     reasons: dict[str, str] = {}
@@ -86,6 +87,8 @@ def review_decisions(
             if error is None:
                 reasons.update({item["id"]: item["reason"].strip() for item in response["reviews"]})
                 break
+            if on_protocol_error:
+                on_protocol_error(error)
         else:
             raise LlmClientError(f"AI 剪后复查在重试后仍未通过协议校验：{error}", category="protocol", operation="ai_cleanup")
     return reasons

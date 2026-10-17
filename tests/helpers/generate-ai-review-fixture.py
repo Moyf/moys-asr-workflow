@@ -18,10 +18,13 @@ def main():
         return
     directory = Path(sys.argv[1])
     directory.mkdir(parents=True, exist_ok=True)
-    source = {"schema": "moy.asr.project.v1", "segments": [
+    source = {"schema": "moy.asr.project.v1", "preserve_punctuation": True, "segments": [
         {"id": "main-001", "start": 0, "end": 1000, "text": "介绍 API。", "items": [{"start": 0, "end": 1000, "text": "介绍 API。"}]},
         {"id": "main-002", "start": 1200, "end": 2500, "text": "它可以处理字幕。"},
     ], "user_metadata": {"example": "保留元数据"},
+        "multi_subtitle": {"enabled": True, "tracks": [{"id": "fixed-secondary", "name": "既有译文", "segments": [
+            {"id": f"old-{i}", "start": i * 1200, "end": i * 1200 + 1000, "text": f"过期译文{i}"} for i in range(3)
+        ]}], "bindings": [{"id": "existing-binding", "track_id": "fixed-secondary", "main_segment_ids": ["main-001"], "extension_segment_ids": ["old-0"], "start_offset_ms": 0, "end_offset_ms": 0}]},
         "markers": {"schema": "moy.asr.markers.v1", "items": [{"id": "user-marker", "start": 100, "note": "用户备注", "name": "用户", "color": "#3e63dd"}]},
         "overlay_track": {"enabled": False, "segments": [{"id": "overlay", "start": 0, "end": 800, "text": "隐藏轨"}]}}
     cases = {}
@@ -29,13 +32,13 @@ def main():
         path = directory / f"fixture-{mode}-source.mosp"
         path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         def complete(_prompt, cues):
-            return {"groups": [{"id": row["id"], "text": "Introduce the API." if row["id"] == "c0001" else "It processes subtitles."} for row in cues],
+            return {"groups": [{"id": row["id"], "text": "Introduce the API." if row["id"] == "c0001" else row["text"] if mode == "backfill" else "It processes subtitles."} for row in cues],
                     "annotations": [
                         {"source_ids": ["c0001"], "kind": "note", "message": "API 指接口；<script>window.__bad=true</script>"},
                         {"source_ids": ["c0002"], "kind": "review", "message": "It 的指代需要结合上下文确认"}]}
         artifact = run_llm_postprocess(LlmPostprocessRequest(path, None, OutputMode.BOTH, "translate_en", "", generate_comparison=True,
                                       merge_bilingual=mode == "bilingual", embed_translations=mode == "backfill", bilingual_line_order="original_first"), complete=complete)
-        cases[mode] = {"html": str(artifact.comparison_path), "project": str(artifact.project_path)}
+        cases[mode] = {"html": str(artifact.comparison_path), "project": str(artifact.project_path), "source": str(path)}
     boundary_source = normalize_project({"segments": [
         {"id": "main-space", "start": 0, "end": 1000, "text": " API "},
         {"id": "main-token", "start": 1200, "end": 2500, "text": "{{REVIEW_SCRIPT}} {{DATA}} <script>window.__bad=true</script>"},

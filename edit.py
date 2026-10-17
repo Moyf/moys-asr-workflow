@@ -59,7 +59,7 @@ VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 # Keep this aligned with pyproject.toml; release workflows synchronize it.
-BUNDLED_EDITOR_VERSION = "1.9.0-beta.2"
+BUNDLED_EDITOR_VERSION = "1.9.0-beta.3"
 
 
 class Sticker(TypedDict):
@@ -292,6 +292,10 @@ def render_editor_page(**context: str) -> str:
     if unresolved:
         raise ValueError(f"Unresolved editor template tokens: {', '.join(unresolved)}")
     for token, value in replacements.items():
+        if token.endswith("_JSON__"):
+            # JSON is embedded inside script elements. Literal closing tags in
+            # subtitle text or AI notes must not terminate the HTML script.
+            value = value.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
         page = page.replace(token, value)
     return page
 

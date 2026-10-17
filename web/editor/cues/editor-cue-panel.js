@@ -336,6 +336,7 @@
     MaweMultiSubtitleCore.syncBindingOffsets();
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
   }
+  MaweState.markProjectDirty();
   MaweViewUpdates.invalidate({ save: true });
   MaweCuePanelState.resetCuePanelEditState();
   if (document.activeElement === MaweDom.cuePanelText) captureCuePanelTextEditSnapshot();
@@ -498,6 +499,8 @@
         });
       });
     }
+    // Esc 还原把脏标志拨回快照状态（可能变清洁）；事件让指示器按当前状态重算。
+    MaweState.markProjectDirty();
     return true;
   }
 

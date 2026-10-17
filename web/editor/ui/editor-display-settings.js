@@ -43,19 +43,76 @@
   const waveformModes = [];
 
 
-
-  function applyWaveformModeRowHeight({ render = true } = {}) {
-    const editor = MaweCoreState.waveformEditor;
-    if (!editor) return;
-    const mode = waveformModes.at(-1);
-    const height = mode === 'word'
-      ? MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight
-      : mode === 'multi' ? MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight : waveformRowHeightBeforeModes;
-    if (Number.isFinite(height)) editor.setRowHeight(height, { render });
+  // 字词码/双语字幕等开关联动会自动改行高或每行长度：多行模式按新几何
+  // 重建后，原有像素 scrollTop 不再对准原时间位置。锚点取「正在看的
+  // 位置」而不是播放头——播放头在屏外时把播放头 reveal 进画面等于把
+  // 视口整个带走（#20 复测结论）。几何写入前捕获视口中心时间，重渲染
+  // 完成后把该时间滚回画面内（revealTime 自带舒适区守卫：目标仍在可视
+  // 范围内就不滚动）；播放头恰好可见时视口中心≈播放头，效果与旧行为等价。
+  // 取时差异：basic 用可视窗口的水平中点（timeMsAtPoint 命中窗口中心的
+  // 等价算术，不受吸附与浮窗遮挡影响）；multi 用视口垂直中点命中的可视
+  // 行、取该行行内中点时间——还原（revealTime）按行粒度定位，行内精确
+  // 位置不影响结果，且不依赖 elementFromPoint（设置浮窗盖住波形中心、
+  // 中心点落在行间隙时仍能取到锚点）。
+  function captureWaveformViewportCenterTimeMs(editor) {
+    if (!editor?.scroll) return null;
+    if (!editor.isMultiMode?.()) {
+      const windowMs = Number(editor.settings?.visibleSeconds) * 1000;
+      if (!Number.isFinite(windowMs) || windowMs <= 0) return null;
+      const startMs = Number(editor.basicWindowStartMs);
+      return (Number.isFinite(startMs) ? Math.max(0, startMs) : 0) + windowMs / 2;
+    }
+    const scrollRect = editor.scroll.getBoundingClientRect();
+    if (!scrollRect.height) return null;
+    const centerY = scrollRect.top + scrollRect.height / 2;
+    let centerRowTimeMs = null;
+    let nearestDistance = Infinity;
+    (editor.content?.querySelectorAll?.('.waveform-row') || []).forEach((row) => {
+      const rect = row.getBoundingClientRect();
+      if (!rect.height) return;
+      const startMs = Number(row.dataset.startMs);
+      const endMs = Number(row.dataset.endMs);
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return;
+      // 中心点落在行间隙时取最近一行兜底；同行内水平位置不影响按行还原。
+      const distance = centerY < rect.top ? rect.top - centerY
+        : centerY > rect.bottom ? centerY - rect.bottom : 0;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        centerRowTimeMs = (startMs + endMs) / 2;
+      }
+    });
+    return centerRowTimeMs;
   }
 
-  // 共享基线，最近开启的模式优先。关闭非顶层模式不会改动当前行高；
-  // 关闭顶层时回到剩余模式的预设，全部关闭后才恢复原始行高。
+  function restoreWaveformViewportAfterGeometryChange(editor, anchorTimeMs) {
+    if (!editor || !Number.isFinite(anchorTimeMs) || typeof editor.revealTime !== 'function') return;
+    editor.revealTime(anchorTimeMs, true);
+  }
+
+
+  function applyWaveformModeRowHeight({ render = true, minimumHeight = null } = {}) {
+    const editor = MaweCoreState.waveformEditor;
+    if (!editor) return;
+    const heights = [waveformRowHeightBeforeModes, minimumHeight];
+    for (const mode of waveformModes) {
+      heights.push(mode === 'word' ? MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight
+        : MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);
+    }
+    const height = Math.max(...heights.filter(Number.isFinite));
+    const rowHeightBefore = editor.settings.rowHeight;
+    // 锚点在 setRowHeight 写入新几何之前捕获（render:false 的调用方由外层
+    // 在其统一 render 后自行还原，这里不捕获）。
+    const anchorTimeMs = render ? captureWaveformViewportCenterTimeMs(editor) : null;
+    if (Number.isFinite(height)) editor.setRowHeight(height, { render });
+    // render:false 的调用方（字词码开关联动）在其统一 render 之后再回滚视口；
+    // 高度只增不减（预设为下限），真变化才回滚，避免无谓跳动。
+    if (render && editor.settings.rowHeight !== rowHeightBefore) {
+      restoreWaveformViewportAfterGeometryChange(editor, anchorTimeMs);
+    }
+  }
+
+  // 预设仅作为高度下限：开启任一模式不缩小现有行高；关闭时重新计算
+  // 剩余模式需要的下限，全部关闭后恢复共享的原始行高。
   function syncWaveformModeRowHeight(mode, enabled, { render = true } = {}) {
     const editor = MaweCoreState.waveformEditor;
     if (!editor) return;
@@ -66,9 +123,8 @@
       waveformModes.push(mode);
     } else {
       waveformModes.splice(index, 1);
-      if (index < waveformModes.length) return;
     }
-    applyWaveformModeRowHeight({ render });
+    applyWaveformModeRowHeight({ render, minimumHeight: enabled ? editor.getRowHeight() : null });
     if (!waveformModes.length) waveformRowHeightBeforeModes = null;
   }
 
@@ -79,13 +135,21 @@
 
 
   // 每行长度仅受字词模式影响，与两个模式的行高恢复分开处理。
+  // 每行长度按「可见范围大小」排序：秒数越小，可见范围越大、波形越大。
+  // 字词码适配长度是上限：开启字词模式只放大可见范围（Math.min 收紧秒数），
+  // 绝不把秒数抬到用户当前值之上（那会缩小波形）；关闭后恢复原值。
   function syncWordTimingWaveformSettings(enabled) {
     const editor = MaweCoreState.waveformEditor;
     if (!editor) return;
     const wasEnabled = waveformModes.includes('word');
+    const secondsPerRowBefore = editor.settings.secondsPerRow;
+    const rowHeightBefore = editor.settings.rowHeight;
+    // 锚点在第一个几何写入（setSecondsPerRow/setRowHeight）之前捕获。
+    const anchorTimeMs = captureWaveformViewportCenterTimeMs(editor);
     if (enabled && !wasEnabled) {
       secondsPerRowBeforeWordTiming = editor.settings.secondsPerRow;
-      editor.setSecondsPerRow(MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow, { render: false });
+      editor.setSecondsPerRow(Math.min(secondsPerRowBeforeWordTiming,
+        MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow), { render: false });
     } else if (!enabled && wasEnabled) {
       editor.setSecondsPerRow(secondsPerRowBeforeWordTiming, { render: false });
       secondsPerRowBeforeWordTiming = null;
@@ -95,9 +159,35 @@
     // 切换字词只需调用方刷新字幕层，保留 Canvas 和当前水平视窗。
     if (enabled !== wasEnabled && editor.isMultiMode()) {
       editor.render();
+      // 行高或每行长度确实被预设改变时，重渲染后的像素 scrollTop 不再
+      // 对准原时间；把切换前正在看的位置滚回画面内，避免改完设置找不到
+      // 原位置（播放头恰好可见时效果与滚回播放头等价）。
+      if (editor.settings.secondsPerRow !== secondsPerRowBefore
+        || editor.settings.rowHeight !== rowHeightBefore) {
+        restoreWaveformViewportAfterGeometryChange(editor, anchorTimeMs);
+      }
       return true;
     }
     return false;
+  }
+
+  // 字词模式激活时按「基线与预设中较小的秒数」应用每行长度（预设是上限），
+  // 供设置面板在字词模式启用中变更适配长度时调用；未启用时不做任何事。
+  function applyWordTimingSecondsPerRow() {
+    const editor = MaweCoreState.waveformEditor;
+    if (!editor || !waveformModes.includes('word')) return false;
+    const before = editor.settings.secondsPerRow;
+    // 锚点在 setSecondsPerRow 写入新几何之前捕获。
+    const anchorTimeMs = captureWaveformViewportCenterTimeMs(editor);
+    editor.setSecondsPerRow(Math.min(secondsPerRowBeforeWordTiming,
+      MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow));
+    // 每行长度变化重建几何后，原像素 scrollTop 不再对准原时间，滚回切换
+    // 前正在看的位置；setSecondsPerRow 对同值 no-op，此处以实际变化为准
+    // 避免无谓滚动。
+    if (editor.settings.secondsPerRow !== before) {
+      restoreWaveformViewportAfterGeometryChange(editor, anchorTimeMs);
+    }
+    return true;
   }
 
 
@@ -118,6 +208,10 @@
   if (MaweDom.multiSubtitleEmptyHint) {
     MaweSettingsPanels.updateRegionalSettingsAvailability();
     MaweDom.multiSubtitleEmptyHint.hidden = !(enabled && !track.segments.length);
+    // 「显示」分组（字幕列表显示 / 自动适配高度 / 轨道徽标）仅在双语开启且副轨有内容时显示。
+    if (MaweDom.multiSubtitleDisplaySection) {
+      MaweDom.multiSubtitleDisplaySection.hidden = !(enabled && track.segments.length);
+    }
   }
   if (MaweDom.multiSubtitleToggle) {
     // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
@@ -316,8 +410,11 @@
     get previousMultiSubtitlePreviewEnabled() { return previousMultiSubtitlePreviewEnabled; },
     set previousMultiSubtitlePreviewEnabled(v) { previousMultiSubtitlePreviewEnabled = v; },
     applyWaveformModeRowHeight,
+    captureWaveformViewportCenterTimeMs,
+    restoreWaveformViewportAfterGeometryChange,
     syncMultiSubtitleWaveformRowHeight,
     syncWordTimingWaveformSettings,
+    applyWordTimingSecondsPerRow,
     updateMultiSubtitleUi,
     bindCueListDisplayToggle,
     applyCueEditorDisplaySettings,

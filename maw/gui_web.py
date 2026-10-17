@@ -503,6 +503,7 @@ class LauncherApi:
         self.ocr_runtime_worker: threading.Thread | None = None
         self.server_process: subprocess.Popen[str] | None = None
         self.server_log_file: BinaryIO | None = None
+        self._recording_preparation = None
         self.alignment_process: subprocess.Popen[str] | None = None
         self.alignment_log_file: BinaryIO | None = None
         self.alignment_server_port: int | None = None
@@ -1327,6 +1328,7 @@ class LauncherApi:
                     clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
                     notes=str(payload.get("notes") or "").strip(),
                     generate_comparison=bool(payload.get("generateComparison")),
+                    review_enabled=bool(payload.get("reviewEnabled", False)),
                 ),
                 complete=complete,
                 on_status=emit_status,
@@ -1438,18 +1440,25 @@ class LauncherApi:
         batch_number = 0
 
         def emit_status(key: str, details: Mapping[str, int] | None = None) -> None:
+            nonlocal batch_number, request_attempt
+            if operation == "resegment" and key == "toolbox_status_llm_batch" and details:
+                batch_number = int(details.get("current", 0))
+                request_attempt = int(details.get("attempt", 1))
             self._emit_postprocess_status(key, details, operation_id=operation_state.operation_id)
 
+        request_attempt = 1
         def emit_delta(kind: str, text: str, batch: int) -> None:
             if operation_state.cancel_event.is_set():
                 raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
-            self._emit_postprocess_stream(kind, text, batch, operation_id=operation_state.operation_id)
+            extra = {"attempt": request_attempt} if operation == "resegment" else {}
+            self._emit_postprocess_stream(kind, text, batch, operation_id=operation_state.operation_id, **extra)
 
         def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> dict[str, JsonValue]:
             nonlocal batch_number
             if operation_state.cancel_event.is_set():
                 raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
-            batch_number += 1
+            if operation != "resegment" or not batch_number:
+                batch_number += 1
             current_batch = batch_number
             completion = complete_boundaries if operation == "resegment" else complete_subtitle_groups
             return completion(
@@ -1475,6 +1484,7 @@ class LauncherApi:
                     merge_bilingual=bool(payload.get("mergeBilingual")),
                     embed_translations=bool(payload.get("embedTranslations")),
                     bilingual_line_order=str(payload.get("bilingualLineOrder") or ""),
+                    skip_target_language=payload.get("skipTargetLanguage") is not False,
                     generate_comparison=bool(payload.get("generateComparison")),
                     max_chars=max_chars,
                 ),
@@ -1571,6 +1581,7 @@ class LauncherApi:
                     subtitle_path=Path(str(payload.get("subtitlePath") or "")),
                     green_screen=payload.get("greenScreen") is True,
                     green_screen_size=str(payload.get("greenScreenSize") or ""),
+                    green_screen_include_audio=payload.get("greenScreenIncludeAudio") is True,
                     srt_style=srt_style,
                     video_encoder=str(payload.get("videoEncoder") or "auto"),
                     crf=_burn_crf_override(payload.get("crf")),
@@ -1595,7 +1606,7 @@ class LauncherApi:
             "subtitlePath": str(result.subtitle_path),
             "mediaPath": str(result.media_path),
             "videoEncoder": str(getattr(result, "video_encoder", "auto") or "auto"),
-            "srtStyleName": str(srt_style.get("name") or "SRT 默认"),
+            "srtStyleName": str(srt_style.get("name") or "SRT 渲染样式"),
         }
 
     def get_burn_subtitle_settings(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
@@ -2103,7 +2114,7 @@ class LauncherApi:
             probe_path=EDITOR_HEALTH_PROBE_PATH,
             probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
         ) and (not json_text or not owned_server_running):
-            if json_text and str(payload.get("mediaPath") or "").strip():
+            if json_text:
                 return _error_result("port", "server_media_busy", "")
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:
@@ -2474,6 +2485,40 @@ class LauncherApi:
             return {"ok": True, "stopped": True}
         return {"ok": True, "stopped": False}
 
+    def start_recording_review(self, payload: Mapping[str, object]) -> dict[str, object]:
+        from maw.recording_preparation import RecordingPreparation
+        from maw.script_timestamp_alignment import read_script_lines
+        if self.worker and self.worker.is_alive() or self.batch_worker and self.batch_worker.is_alive():
+            return {"ok": False, "error": "已有转写正在运行，请先完成或停止。"}
+        try:
+            script = Path(str(payload.get("scriptPath") or "")).expanduser().resolve()
+            read_script_lines(script)
+            config = payload.get("transcription")
+            if not isinstance(config, Mapping):
+                raise ValueError("缺少所选 ASR 配置。")
+            request = _request_from_payload({**dict(config), "testRun": False,
+                                            "autoPostprocess": None}, self.paths.env_path)
+            ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
+            if ffmpeg_error:
+                return ffmpeg_error
+            job = RecordingPreparation(request, script)
+        except (OSError, ValueError, PreflightError) as error:
+            return {"ok": False, "error": str(error)}
+        self._recording_preparation = job
+        self.worker = job.thread
+        job.thread.start()
+        return {"ok": True, **job.snapshot()}
+
+    def recording_review_status(self) -> dict[str, object]:
+        job = self._recording_preparation
+        return {"ok": True, **job.snapshot()} if job else {"ok": True, "status": "idle"}
+
+    def cancel_recording_review(self) -> dict[str, object]:
+        job = self._recording_preparation
+        if job:
+            job.cancel.set()
+        return {"ok": True}
+
     def start_transcription(self, payload: Mapping[str, object]) -> dict[str, object]:
         if self.batch_worker and self.batch_worker.is_alive():
             return {"ok": False, "error": "A batch transcription is already running."}
@@ -2704,6 +2749,7 @@ class LauncherApi:
                 media_path,
                 source_media_path=media_path,
                 generate_spectral=bool(payload.get("generateSpectral")),
+                generate_thumbnails=bool(payload.get("generateThumbnails")),
                 ffmpeg_bin=str(ffmpeg_path) if ffmpeg_path is not None else None,
                 audio_track=audio_track,
                 default_audio_track=default_audio_track,
@@ -3060,6 +3106,8 @@ class LauncherApi:
             value = self.postprocess_retry_context.get("runDirectory")
             if value:
                 directory = Path(str(value)).expanduser().resolve()
+        if (directory is None or not directory.is_dir()) and self.result is not None:
+            directory = self.result.srt_path.parent
         if directory is None:
             return {"ok": False, "error": "没有可打开的自动后处理中间产物。"}
         return _open_existing_path(directory)
@@ -3129,6 +3177,7 @@ class LauncherApi:
         return _open_existing_path(directory.resolve())
 
     def shutdown(self) -> None:
+        self.cancel_recording_review()
         self.cancel_transcription()
         self.cancel_batch_transcription()
         self.cancel_media_tool()
@@ -3317,7 +3366,9 @@ class LauncherApi:
                     "type": "log",
                     "message": f"[计时] 全程耗时为媒体时长的 {total_elapsed / media_duration:.2f} 倍",
                 })
-        self.postprocess_workspace_directory = auto_run_directory if auto_run_directory and auto_run_directory.is_dir() else None
+        self.postprocess_workspace_directory = (
+            auto_run_directory if auto_run_directory.is_dir() else self.result.srt_path.parent
+        ) if auto_run_directory is not None else None
         self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
@@ -3465,7 +3516,7 @@ class LauncherApi:
         self.postprocess_translation_srt_path = auto_result.translated_srt_path
         self.postprocess_media_path = auto_result.media_path
         self.postprocess_retry_context = None
-        self.postprocess_workspace_directory = auto_result.run_directory if auto_result.run_directory.is_dir() else None
+        self.postprocess_workspace_directory = auto_result.run_directory if auto_result.run_directory.is_dir() else auto_result.srt_path.parent
         self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
@@ -3487,7 +3538,7 @@ class LauncherApi:
         self._emit(event)
 
     def _emit_postprocess_stream(
-        self, kind: str, text: str, batch: int, *, operation_id: str = ""
+        self, kind: str, text: str, batch: int, *, operation_id: str = "", attempt: int = 1
     ) -> None:
         if kind != "reset" and not text:
             return
@@ -3500,6 +3551,8 @@ class LauncherApi:
         }
         if operation_id:
             event["operationId"] = operation_id
+        if attempt > 1:
+            event["attempt"] = attempt
         self._emit(event)
 
     def _handle_postprocess_pipeline_event(self, event: Mapping[str, object]) -> None:
@@ -3511,6 +3564,7 @@ class LauncherApi:
         stage = str(event.get("stage") or "")
         labels = {
             "match": "文稿匹配",
+            "cleanup": "AI 口播整理",
             "replace": "固定替换",
             "proofread": "LLM 校对",
             "resegment": "重新断句",
@@ -3525,6 +3579,8 @@ class LauncherApi:
             if str(event.get("step") or "") == "burn":
                 self._last_media_tool_log_at = 0.0
             self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：开始"})
+        elif stage == "step_skipped":
+            self._emit({"type": "log", "message": f"[后处理] {event.get('warning', '')}"})
         elif stage == "step_done":
             artifacts = " / ".join(
                 name
@@ -3533,13 +3589,21 @@ class LauncherApi:
             )
             suffix = f"（{artifacts}）" if artifacts else ""
             self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：完成{suffix}"})
+            for warning in event.get("warnings", ()):
+                self._emit({"type": "log", "message": f"[后处理] {warning}"})
         elif stage == "done":
             artifacts = " / ".join(
                 name
                 for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""), str(event.get("mediaName") or ""))
                 if name
             )
-            self._emit({"type": "log", "message": f"[后处理] 全部完成：{artifacts}"})
+            skipped = event.get("skippedSteps") or []
+            summary = f"处理完成，跳过 {len(skipped)} 个失败的 AI 步骤" if skipped else "全部完成"
+            self._emit({"type": "log", "message": f"[后处理] {summary}：{artifacts}"})
+            for warning in event.get("warnings") or []:
+                self._emit({"type": "log", "message": f"[后处理报告] {warning}"})
+            for comparison_path in event.get("comparisonPaths", ()):
+                self._emit({"type": "log", "message": f"[后处理] 处理前后对比：{comparison_path}"})
         elif stage == "cancelled":
             self._emit({"type": "log", "message": "[后处理] 已取消；原始转写产物仍然保留。"})
         elif stage == "failed":
@@ -4209,6 +4273,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         provider=provider.id,
         speaker_colors=bool(payload.get("speakerColors")) and model.supports_speaker,
         generate_spectral=bool(payload.get("generateSpectral")),
+        generate_thumbnails=bool(payload.get("generateThumbnails")),
         ui_language=_gui_lang(payload),
         generate_html=bool(payload.get("generateHtml")) and not bool(payload.get("batchSrtOnly")),
         srt_only=bool(payload.get("batchSrtOnly")),
@@ -4549,6 +4614,7 @@ def _subtitle_artifact_result(result: object) -> dict[str, object]:
         "srtPath": str(getattr(result, "srt_path", None) or ""),
         "translatedSrtPath": str(getattr(result, "translated_srt_path", None) or ""),
         "comparisonPath": str(getattr(result, "comparison_path", None) or ""),
+        "diagnosticPath": str(getattr(result, "diagnostic_path", None) or ""),
         "warnings": list(getattr(result, "warnings", ())),
         "stats": dict(stats) if isinstance(stats, Mapping) else None,
     }

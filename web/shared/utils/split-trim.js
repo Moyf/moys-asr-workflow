@@ -78,10 +78,72 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // 拆分边缘修剪穿透 MASS 符号壳（账本 #19③）：修剪边缘是成对符号时，符号
+  // 视为透明，继续修剪其内侧的空白，可叠多层壳（>>!! 文字!!<< → >>!!文字!!<<）。
+  // 保守约束：只剥空白、绝不动符号本身；壳内正文会被剥空时不剥（空壳保留）。
+  // 与拆分补齐的执行顺序维持既有安排：本修剪发生在 splitSubtitleText /
+  // cleanSplitTextParts 内部（补齐之前），修剪集本就不含 MASS 符号。
+  const MASS_SHELL_CHARACTERS = new Set(['*', '+', '-', '_', '~', '!', '/', '>', '<']);
+
+  const MASS_SHELL_MAX_RUN = 8;
+
+  function shellRunLengthAtEdge(text, edge) {
+    let length = 0;
+    while (length < text.length && length < MASS_SHELL_MAX_RUN) {
+      const character = edge === 'start' ? text[length] : text[text.length - 1 - length];
+      if (!MASS_SHELL_CHARACTERS.has(character)) break;
+      length += 1;
+    }
+    return length;
+  }
+
+  // 完整符号壳检测：两端是同符号对（!! ** ++ -- __ ~~ //）或句级 fade 对
+  // （>>…<< / >…<），且壳内有非空白正文。返回两侧符号串长度，否则 null。
+  function completeMassShellBounds(text) {
+    const openLength = shellRunLengthAtEdge(text, 'start');
+    const closeLength = shellRunLengthAtEdge(text, 'end');
+    if (!openLength || !closeLength || openLength + closeLength >= text.length) return null;
+    const open = text.slice(0, openLength);
+    const close = text.slice(text.length - closeLength);
+    const body = text.slice(openLength, text.length - closeLength);
+    if (!body.trim()) return null;
+    const sameSymbol = open[0] !== '>' && open[0] !== '<' && open[0] === close[close.length - 1];
+    const fadePair = (open === '>>' && close === '<<') || (open === '>' && close === '<');
+    return sameSymbol || fadePair ? { openLength, closeLength } : null;
+  }
+
+  function stripWhitespaceInsideMassShells(text, edge) {
+    let current = String(text || '');
+    // 1) 修剪边缘逐层穿透符号壳，剥掉符号内侧紧邻的空白。
+    for (let guard = 0; guard < MASS_SHELL_MAX_RUN; guard += 1) {
+      const runLength = shellRunLengthAtEdge(current, edge);
+      if (!runLength) break;
+      const stripped = edge === 'start'
+        ? current.slice(0, runLength) + current.slice(runLength).replace(/^\s+/u, '')
+        : current.slice(0, current.length - runLength).replace(/\s+$/u, '')
+          + current.slice(current.length - runLength);
+      if (stripped === current) break;
+      current = stripped;
+    }
+    // 2) 壳贴边时剥壳内两侧贴边空白，递归处理嵌套壳；正文被剥空则保守停止。
+    for (let guard = 0; guard < MASS_SHELL_MAX_RUN; guard += 1) {
+      const shell = completeMassShellBounds(current);
+      if (!shell) break;
+      const body = current.slice(shell.openLength, current.length - shell.closeLength);
+      const trimmedBody = stripWhitespaceInsideMassShells(body, edge);
+      if (!trimmedBody || trimmedBody === body) break;
+      current = current.slice(0, shell.openLength) + trimmedBody
+        + current.slice(current.length - shell.closeLength);
+    }
+    return current;
+  }
+
   function applySplitEdgeTrim(value, edge = 'end') {
     const text = String(value || '');
-    if (edge === 'start') return text.replace(activeStartTrimPattern, '');
-    return text.replace(activeEndTrimPattern, '');
+    const trimmed = edge === 'start'
+      ? text.replace(activeStartTrimPattern, '')
+      : text.replace(activeEndTrimPattern, '');
+    return stripWhitespaceInsideMassShells(trimmed, edge);
   }
 
 

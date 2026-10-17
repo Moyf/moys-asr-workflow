@@ -30,13 +30,20 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  // Strict optional cue positioning. Empty objects are canonical absence;
-  // invalid coordinates are rejected rather than silently coerced.
+  // Strict optional per-cue ASS overrides. Empty objects are canonical
+  // absence; imported coordinates remain untouched until the user edits them.
   function normalizeAssOverride(value) {
     if (value === undefined) return undefined;
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('assOverride must be an object');
     const result = {};
     if (Object.hasOwn(value, 'an')) throw new TypeError('assOverride.an is not supported; use global style alignment');
+    if (Object.hasOwn(value, 'scale')) {
+      if (typeof value.scale !== 'number' || !Number.isFinite(value.scale) || value.scale < 0.1 || value.scale > 5) {
+        throw new TypeError('assOverride.scale must be a finite number from 0.1 to 5');
+      }
+      const scale = Number(value.scale.toFixed(2));
+      if (scale !== 1) result.scale = scale;
+    }
     if (Object.hasOwn(value, 'pos')) {
       if (!value.pos || typeof value.pos !== 'object' || Array.isArray(value.pos)
         || typeof value.pos.x !== 'number' || typeof value.pos.y !== 'number'

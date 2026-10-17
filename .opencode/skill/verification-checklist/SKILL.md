@@ -9,13 +9,13 @@ description: 在 moys-asr-workflow（MAW）中编写「人工核对清单」并�
 
 先读这两个文件（本 skill 只做摘要，冲突时以它们为准）：
 
-- `tools/verification-checklist/README.md` — 完整契约：**Markdown 源格式（v1）**、JSON 兼容契约、front-matter、导出与刷新
+- `tools/verification-checklist/README.md` — 完整契约：**Markdown 源格式（v2）**、JSON 兼容契约、front-matter、导出与刷新
 - `tools/AGENTS.md` — HTML 工具页性能与测量约定
 - 根 `AGENTS.md`「批量改动的人工核查清单」— 何时生成清单、分区约定
 
 ## 标准工作流（agents 只写 Markdown）
 
-1. **写 `<主题>.checklist.md`**：YAML front-matter（`task` / `pr` / `date` / `status: pending`）+ `# 标题` + `> 副标题` + `## 分区`。完整语法见 README「Markdown 源格式（v1）」，要点：
+1. **写 `<主题>.checklist.md`**：YAML front-matter（`task` / `pr` / `date` / `status: pending`）+ `# 标题` + `> 副标题` + `## 分区`。完整语法见 README「Markdown 源格式（v2）」，要点：
 
 ```markdown
 ---
@@ -39,7 +39,11 @@ status: pending
 <!-- id: manual-topic -->
 <!-- badge: todo 待核查 -->
 
-- [ ] **入口**：操作；预期：预期行为 <!-- id: topic-01 -->
+- [ ] **核对项测试目的**
+  （操作）入口 → 具体操作步骤
+  （预期）可观察的预期行为
+  （说明）补充背景（可选，没有就省略）
+  <!-- id: topic-01 -->
 ```
 
 2. **自查**：`python tools/verification-checklist/build.py --check <文件>.md`（报错带行号，改到 OK）。
@@ -49,11 +53,11 @@ status: pending
 
 ## 语法红线（--check 会拦，但别先写错）
 
-- 分区标题下必须有 `<!-- id: 分区ID -->`；核对项行尾必须有 `<!-- id: 核对项ID -->`；ID 全页唯一稳定。
-- check 行格式固定：`- [ ] **入口**：操作；预期：预期 <!-- id: id -->`；`；预期：` 只能出现一次；字段内禁止 `**`、`<!--`、换行。
+- 分区标题下必须有 `<!-- id: 分区ID -->`；核对项的 `<!-- id: 核对项ID -->` 放在块尾，缩进两格并独占一行；ID 全页唯一稳定。
+- 核对项为 v2 块：`- [ ] **测试目的**` 加缩进两格的（操作）（预期）必填续行与可选（说明），`<!-- id: id -->` 注释放块尾；字段顺序固定；字段内禁止 `**`、`<!--`、换行。
 - note 是单行段落；行首是 `-` / `数字.` / `>` / `#` / ``` 时转义（`\-`、`1\.`、`\>`）。
 - front-matter：status 必填且为 pending/partial/passed；只允许 task/pr/date/status/updated。
-- MD v1 不支持：`text` 块、分区 `open: false`、多行 note、表格单元格换行（这些走 JSON）。
+- MD v2 不支持：`text` 块、分区 `open: false`、多行 note、表格单元格换行（这些走 JSON）。
 
 ## 核验完成后的状态回写（追踪载体）
 

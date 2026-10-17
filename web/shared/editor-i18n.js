@@ -10,19 +10,31 @@
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
     '主字幕 ASS 定位': 'Main ASS cue positioning',
-    '重置定位': 'Reset position',
+    '重置定位': 'Reset position', '重置大小': 'Reset size', '倍率': 'Scale',
+    'ASS 字幕缩放倍率': 'ASS subtitle scale multiplier',
     'ASS 锚点 X': 'ASS anchor X', 'ASS 锚点 Y': 'ASS anchor Y',
     '选择主字幕，选中后拖动 ASS 位置': 'Select the main cue, then drag its ASS position',
     '请输入有限坐标': 'Enter a finite coordinate',
     'PlayRes 坐标；方向键微调，Shift：10 像素；重置恢复全局排布': 'PlayRes coordinates; arrow keys adjust, Shift: 10 pixels; reset restores global layout',
+    '调整主字幕大小（左上角）': 'Resize main subtitle (top left corner)',
+    '调整主字幕大小（右上角）': 'Resize main subtitle (top right corner)',
+    '调整主字幕大小（左下角）': 'Resize main subtitle (bottom left corner)',
+    '调整主字幕大小（右下角）': 'Resize main subtitle (bottom right corner)',
 
     '导入 ▾': 'Import ▾',
-    '视频画面': 'Video pictures',
-    '在波形上方显示视频画面导航；本机 Server 绑定视频时可用': 'Show video picture navigation above the waveform when video is bound to the local Server',
-    '视频画面导航，点击或拖动定位': 'Video picture navigation; click or drag to seek',
+    '视频缩略图': 'Video thumbnails',
+    '在波形上方显示视频缩略图导航；本机 Server 绑定视频时可用': 'Show video thumbnail navigation above the waveform when video is bound to the local Server',
+    '视频缩略图导航，点击或拖动定位': 'Video thumbnail navigation; click or drag to seek',
+    '铺满画面带': 'Film strip',
+    '关键帧标记': 'Keyframe marks',
+    '隐藏画面带': 'Hidden',
+    '显示关键帧标记': 'Showing keyframe marks',
+    '实时生成补间': 'Generate in-between frames live',
+    '铺满模式下为当前视图实时解码缺失的画面格；关闭后只读取并显示已有缓存画面。关键帧标记模式不参与实时解码': 'Decode missing frames live for the current film strip view; when disabled, show cached frames only. Keyframe marks do not decode in-between frames.',
+    '打开全局设置的播放预览页': 'Open Playback & preview in Global settings',
     '字词码': 'Timed words',
-    '字词码波形高度': 'Timed word row height',
-    '字词码每行长度': 'Timed word row length',
+    '自动适配高度': 'Auto-fit height',
+    '自动适配每行长度': 'Auto-fit row length',
     '双语': 'Bilingual',
     '重叠': 'Overlap',
     '功能': 'Features',
@@ -30,7 +42,7 @@
     '标记': 'Markers',
     '启用字词时间码时使用的波形行高度': 'Waveform row height when timed words are enabled',
     '启用字词时间码时使用的波形每行长度': 'Waveform row length when timed words are enabled',
-    '启用字词时间码时自动切换到这些值；关闭后恢复原来的行高与每行长度。': 'Enabling timed words uses these presets; disabling restores the previous row height and length.',
+    '启用字词时间码时，仅在当前行高或每行长度小于预设值时增大；关闭后恢复原值。': 'Enabling timed words increases row height or length only when below these presets; disabling restores the previous values.',
     '双语字幕：显示副字幕轨；显示方式与行高在工程设置 → 双语字幕中配置': 'Bilingual subtitles: show the secondary track; configure display and row height in Project settings → Bilingual subtitles',
     '允许字幕重叠：开启后可在叠加轨创建与主字幕时间重叠的叠加字幕': 'Allow subtitle overlap: create overlay cues overlapping the main track',
     '切换 ASS 字幕模式': 'Toggle ASS subtitle mode',
@@ -188,7 +200,7 @@
     "字幕微调幅度用于编辑；播放跳转时长在": "Subtitle adjustments affect editing; the playback seek step is configured in",
     "中设置。": ".",
     "工具栏「跟随播放」可定位播放头并恢复跟随。": "Follow playback in the toolbar locates the playhead and resumes following.",
-    "双语开启时使用此行高；单轨行高在波形设置中配置。": "This row height applies in bilingual mode; configure single-track height in waveform settings.",
+    "双语开启时，仅在当前行高小于预设值时增大；关闭后恢复原值。单轨行高在波形设置中配置。": "Enabling bilingual subtitles increases row height only when below this preset; disabling restores the previous value. Configure single-track height in waveform settings.",
     "英文按词拆，中文按字拆。": "English splits by word; Chinese splits by character.",
     "单轨使用此行高；双语行高在双语字幕设置中配置。": "This row height applies to a single track; configure bilingual height in bilingual subtitle settings.",
     "区域设置": "Region settings",
@@ -236,8 +248,8 @@
     '字词拆成字幕…': 'Split words into subtitles…',
     '字词拆成字幕': 'Split words into subtitles',
     '确认转换': 'Confirm conversion',
-    '可通过撤销恢复；不提供反向转换工具。': 'You can undo this conversion; no reverse-conversion tool is provided.',
-    '此操作会使用字词时间码来生成拆碎后的字幕块，将完整的句子变成一个一个单词显示。': 'This uses word timings to split each complete sentence into individual word subtitles.',
+    '此操作会使用字词时间码来生成拆碎后的字幕块，将完整的句子变成一个一个单词逐个显示。': 'This uses word timings to split each complete sentence into individual word subtitles shown one at a time.',
+    '如果不满意可以撤销，或者多选字幕块后重新合并。': 'You can undo the result or select multiple subtitle blocks and merge them again.',
     '请确认你需要这个效果再使用。': 'Use this only if this is the result you need.',
     '调整字词起点': 'Adjust timed text start',
     '调整字词终点': 'Adjust timed text end',
@@ -441,7 +453,7 @@
     '工程或媒体绑定已变更，请重新打开工程后导出': 'The project or source media changed; reopen the project before exporting',
     '媒体重组需要可用的 FFmpeg 和 FFprobe': 'Media reconstruction requires working FFmpeg and FFprobe tools',
     '媒体重组失败，请检查临时目录是否可用后重试': 'Media reconstruction failed; check that the temporary folder is writable and retry',
-    '另一个媒体重组任务正在进行，请完成或停止后再试': 'Another media export is running; finish or stop it before retrying',
+    '另一个媒体导出任务正在进行，请完成或停止后再试': 'Another media export is running; finish or stop it before retrying',
     '当前工程没有可重组的音频或视频，请先绑定源文件': 'No source audio or video is available; open the project with its source media first',
     '媒体重组已停止': 'Media reconstruction stopped',
     '无法读取视频信息，请检查源文件及媒体工具': 'Could not read the video; check the source file and media tools',
@@ -479,6 +491,8 @@
 
     '按保留区域精确裁切音频，导出为 WAV。': 'Cut the kept audio intervals precisely and export as WAV.',
     '按保留区域重组视频；切点可能受关键帧影响。': 'Reconstruct the kept video intervals; cuts may be affected by keyframes.',
+    '用 FFmpeg (libass) 将当前工程的 ASS 字幕烧录进源视频；输出 MP4，需已绑定源媒体。': 'Burns the current ASS subtitles into the source video with FFmpeg (libass); outputs MP4, bound source media required.',
+    '按保留区域重新编码并烧录当前 ASS 字幕；重新编码使切点帧级精确，输出 MP4。': 'Re-encodes kept intervals and burns the current ASS subtitles; re-encoding makes cuts frame-accurate, outputs MP4.',
     '请从启动器打开关联源媒体的工程，再导出重组结果': 'Open a project with its source media from the launcher, then export the reconstructed media',
     '当前浏览器或媒体格式不支持重组后音频保存': 'This browser or media format does not support saving reconstructed audio',
     '无法打开音频保存位置选择器': 'Could not choose an audio save location',
@@ -531,7 +545,75 @@
     '服务器返回的视频长度超出预期': 'The server returned more video data than expected',
     '视频传输不完整，未保存部分文件': 'The video transfer was incomplete; the partial file was not saved',
     '去空隙视频已重组并保存': 'The gap-removed video was reconstructed and saved',
+    '计划删除': 'Planned removal',
+    '实际可删': 'Safely removable',
+    '仍保留': 'Still retained',
+    '未知': 'Unknown',
+    '计算中…': 'Calculating…',
+    '{seconds} 秒': '{seconds} seconds',
+    '未完全移除的空隙（{count} 段，内部 {internal} 段）': 'Partially or fully retained gaps ({count}; internal: {internal})',
+    '未完全移除的空隙（{count} 段）': 'Partially or fully retained gaps ({count})',
+    '空隙处理详情': 'Gap handling details',
+    '开头空隙': 'Leading gap',
+    '内部空隙': 'Internal gap',
+    '结尾空隙': 'Trailing gap',
+    '源区间：{start} — {end}': 'Source interval: {start} — {end}',
+    '仍保留：{duration}': 'Still retained: {duration}',
+    '此处为 CRA 切点，暂不用于安全切割': 'This CRA entry is not currently used as a safe cut point',
+    '此处为开放 GOP 或恢复入口，尚未确认可安全拼接': 'This is an open GOP or recovery entry; safe concatenation has not been confirmed',
+    '此处不是独立解码入口': 'This entry cannot be decoded independently',
+    '当前编码尚未支持安全切点分析': 'Safe cut-point analysis is not yet supported for this codec',
+    '当前封装尚未支持安全切点分析': 'Safe cut-point analysis is not yet supported for this container',
+    '媒体包信息不足，无法确认安全切点': 'Packet information is insufficient to confirm a safe cut point',
+    '读取媒体信息失败': 'Could not read media information',
+    '无法确认视频数据单元边界': 'The video data unit boundaries could not be confirmed',
+    '当前媒体包布局暂不支持安全切点分析': 'Safe cut-point analysis is not yet supported for this packet layout',
+    '无法确认视频数据位置': 'The video data position could not be confirmed',
+    '已达到分析预算，部分切点尚未确认': 'The analysis budget was reached; some cut points remain unconfirmed',
+    '切点数据超出分析范围，未确认安全入口': 'The cut-point data exceeded the analysis limit; a safe entry was not confirmed',
+    '显示与解码边界交叠，保留该区间': 'Display and decoding boundaries overlap; this interval was retained',
+    '对齐安全关键帧后仍保留部分空隙': 'Alignment to safe keyframes retained part of the gap',
+    '未找到可用的安全切点': 'No usable safe cut point was found',
+    '未提供具体原因': 'No specific reason was provided',
+    '暂未提供源区间详情': 'Source interval details are not available yet',
+    '仅展示部分明细，计数包含全部空隙。': 'Only some details are shown; the counts include all gaps.',
+    '未能安全移除空隙，未生成视频': 'No gaps could be removed safely; no video was generated',
+    '保存匹配字幕（SRT）': 'Save matching subtitles (SRT)',
+    '字幕保存失败，请重试': 'Could not save subtitles. Please try again.',
+    '累积偏移时长：计算中…': 'Cumulative expansion: calculating…',
+    '累积偏移时长：不可用': 'Cumulative expansion: unavailable',
+    '累积偏移时长：{seconds} 秒': 'Cumulative expansion: {seconds} seconds',
+    '安全关键帧扩展后未移除空隙，将保留完整媒体。': 'No gaps remain removable after expansion to safe keyframes. The complete media will be retained.',
+    '关键帧扩展增加的保留时长；按合并后区间计算，实际文件可能有帧或音频包级差异。': 'Extra retained duration after merging keyframe-expanded intervals. The file may differ by individual frames or audio packets.',
     '重组后视频导出失败': 'Reconstructed video export failed',
+    '烧录视频': 'Burn video',
+    '生成绿幕视频': 'Generate green screen video',
+    '绿幕视频导出': 'Green screen video export',
+    '附带音轨': 'Include audio track',
+    '正在生成绿幕字幕视频…': 'Generating green screen subtitle video…',
+    '绿幕视频已保存': 'Green screen video saved',
+    '默认导出静音绿幕视频；勾选后附带当前源媒体的音轨。输出 1080P，时长为最后字幕结束后半秒。': 'Exports a silent green screen video by default; enable to include the current source audio. Output is 1080P and ends half a second after the last subtitle.',
+    '绿幕视频和附带音轨选项必须是布尔值': 'Green screen and include audio options must be booleans',
+    '绿幕视频暂不支持去空隙区间': 'Green screen video does not support gap removal intervals',
+    '重组后烧录视频': 'Burn reconstructed video',
+    '请从启动器打开关联源媒体的工程，再烧录视频': 'Open a project with bound source media from the launcher before burning video',
+    '当前浏览器或环境不支持烧录视频保存': 'This browser or environment does not support saving a burned video',
+    '无法准备 ASS 字幕内容': 'Could not prepare ASS subtitle content',
+    '请检查字幕样式后重试': 'Check the subtitle styles and retry',
+    '工程或媒体绑定已变更，请重新发起视频烧录': 'The project or media binding changed; start the burn again',
+    '烧录视频请使用 .mp4 扩展名': 'Burned video output requires the .mp4 extension',
+    '视频烧录已停止': 'Video burn stopped',
+    '正在停止烧录…': 'Stopping the burn…',
+    '正在烧录字幕…': 'Burning subtitles…',
+    '停止视频烧录': 'Stop video burn',
+    '烧录视频已保存': 'The burned video was saved',
+    '重组后烧录视频已保存': 'The reconstructed burn video was saved',
+    '烧录视频导出失败': 'Burned video export failed',
+    'FFmpeg 将重新编码源视频并烧录当前 ASS 字幕；长视频可能需要较长时间。': 'FFmpeg re-encodes the source video and burns the current ASS subtitles; long videos may take a while.',
+    '按保留区域重新编码并烧录当前 ASS 字幕；切点帧级精确。': 'Re-encodes kept intervals and burns the current ASS subtitles; cuts are frame-accurate.',
+    '视频烧录需要可用的 FFmpeg 和 FFprobe': 'Video burn requires a working FFmpeg and FFprobe',
+    '当前工程绑定的是音频，烧录视频需要视频源': 'The project is bound to audio; burning video requires a video source',
+    '当前 FFmpeg 未编译 libass（ass 滤镜），无法烧录字幕；请安装完整版 FFmpeg（如 macOS 的 ffmpeg-full）或将 FFMPEG_PATH 指向带 libass 的构建。': 'The current FFmpeg build lacks libass (the ass filter) and cannot burn subtitles; install a full FFmpeg build (e.g. ffmpeg-full on macOS) or point FFMPEG_PATH at a libass-enabled build.',
       '更多导出 ▾': 'More exports ▾',
     '选择表情包 OTIO 引用原始素材，或由服务器复制素材并生成便携文件夹': 'Choose whether sticker OTIO references original media or the server copies media into a portable folder',
     '下载 Resolve JSON': 'Download Resolve JSON', 'Resolve JSON': 'Resolve JSON',
@@ -616,7 +698,7 @@
     '调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the secondary subtitle preview background opacity in the player; set it to 0 to hide the background',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
     'ASS 样式库': 'ASS style library',
-    '样式库正在加载…': 'Loading the style library…', 'SRT 默认': 'SRT default', '无逐句动画': 'No per-cue animations',
+    '样式库正在加载…': 'Loading the style library…', 'SRT 渲染样式': 'SRT render style', '无逐句动画': 'No per-cue animations',
     'ASS 字幕模式': 'ASS subtitle mode',
     '当前由': 'Preview styling is controlled by', '控制预览样式': 'for preview styling',
     '⬆️ 当前预览样式由 ASS 字幕模式控制': '⬆️ Current preview styling is controlled by ASS subtitle mode',
@@ -656,6 +738,9 @@
     'ASS 即时预览 · 实际渲染不可用': 'Instant ASS preview · actual rendering unavailable',
     '无损 PNG': 'Lossless PNG', '原尺寸查看': 'View at original size',
     '请先加载 Server 工程的视频并启用 ASS 字幕模式。': 'Load the Server project video and enable ASS subtitle mode first.',
+    '请启用 ASS 字幕模式；浏览器本地视频请通过 Server 工程打开。': 'Enable ASS subtitle mode; open browser-local videos through a Server project.',
+    '当前缺少视频画面，使用绿幕预览，可在「更多导出」中导出绿幕视频': 'No video frame is available. Using a green screen preview; export a green screen video from More exports.',
+    '绿幕预览选项必须是布尔值': 'The green screen preview option must be a boolean',
     '需要启用 ASS 字幕模式后再渲染实际画面。': 'Enable ASS subtitle mode before rendering the actual frame.',
     '编辑样式': 'Edit style', '打开样式库并定位到当前选中的样式': 'Open the style library at the selected style',
     '正在加载…': 'Loading…', '关闭（Esc）': 'Close (Esc)', '关闭 ASS 样式库': 'Close ASS style library',
@@ -678,7 +763,7 @@
     '阴影距离': 'Shadow distance', '边框样式': 'Border style', '不透明底框': 'Opaque box', '左下': 'Bottom left', '中下': 'Bottom center',
     '右下': 'Bottom right', '左中': 'Middle left', '中中': 'Middle center', '右中': 'Middle right', '左上': 'Top left',
     '中上': 'Top center', '右上': 'Top right', '左边距': 'Left margin', '右边距': 'Right margin', '垂直边距': 'Vertical margin',
-    'ASS 预览': 'ASS preview', 'Aa 字幕预览 / 字幕样例': 'Aa subtitle preview / sample', 'ASS 输出方案': 'ASS export profile',
+    'ASS 预览': 'ASS preview', 'ASS 字幕预览 OwO': 'ASS subtitle preview OwO', 'ASS 输出方案': 'ASS export profile',
     'ASS 实际画面预览': 'Actual ASS frame preview',
     '在这里配置的覆盖标签会应用到每一句字幕上，例如批量淡入淡出。': 'Override tags configured here are applied to every cue, for example batch fade in and fade out.',
     '需要启用 ASS 字幕模式来预览效果。': 'Enable ASS subtitle mode to preview this style.',
@@ -695,6 +780,7 @@
     '例如 \\fs36\\bord4；不要填写大括号': 'Example: \\fs36\\bord4; do not include braces',
     '支持任意 ASS 标签导出；浏览器预览会尽量模拟常见的字号、缩放、旋转、颜色和描边变换。': 'Any ASS tags can be exported; browser preview approximates common size, scale, rotation, color, and outline transforms.',
     '当前方案': 'Current profile', '未选择': 'Not selected', '删除当前': 'Delete current', '删除当前样式或方案': 'Delete current style or profile',
+    '重置': 'Reset', '恢复此内置条目的默认值': 'Restore this built-in entry to its defaults',
     '保存到本机用户级配置；Launcher 与 Editor 共享。': 'Saved to local user-level config; shared by Launcher and Editor.', '保存样式库': 'Save style library',
     '完成': 'Done', '内置条目不能删除': 'Built-in entries cannot be deleted', '删除当前条目': 'Delete current entry', '新样式': 'New style', '新 ASS 方案': 'New ASS profile',
     '样式数量已达到上限（64 个）': 'The style limit (64) has been reached', 'ASS 方案数量已达到上限（64 个）': 'The ASS profile limit (64) has been reached',
@@ -702,6 +788,7 @@
     '正在保存用户级样式库…': 'Saving the user-level style library…', '正在保存到当前浏览器…': 'Saving to this browser…',
     '已与用户级配置同步': 'Synced with user-level config', '仅保存在当前浏览器（便携模式）': 'Saved only in this browser (portable mode)',
     '使用本地副本，尚未同步': 'Using a local copy; not synced yet', '本地已保存，服务器同步失败：未知错误': 'Saved locally; server sync failed: unknown error',
+    '本地已保存，服务器同步失败：HTTP 403（页面已失效，请刷新网页后重试）': 'Saved locally; server sync failed: HTTP 403 (the page is stale; refresh it and try again)',
     '当前使用本地副本；服务器恢复后可再次点击保存同步。': 'Using a local copy; click Save again after the server is available.',
     '使用本地副本，服务器同步失败': 'Using a local copy; server sync failed',
     '已开启 ASS 字幕模式预览': 'ASS subtitle preview enabled', '已恢复原有字幕预览': 'Original subtitle preview restored',
@@ -729,24 +816,24 @@
     '。': '.',
     '符号规则': 'Symbol rule', '无': 'None', '双符号': 'Double symbols', '单双皆可': 'Single or double symbols', '单双符号': 'Single or double symbols',
     '符号规则已关闭，字幕中的符号将保留原文。': 'Symbol rules are off; symbols in subtitles keep their literal text.',
-    '特殊文本样式': 'Special text styles', '特殊文本': 'Special text',
+    '特殊文本样式（MASS）': 'Special text styles (MASS)', '特殊文本': 'Special text',
+    '什么是 MASS？': 'What is MASS?',
+    '基于 Markdown 语法灵感的进阶式 ASS，也可以理解为 MAW-ASS。': 'An advanced ASS layer inspired by Markdown syntax; also read as MAW-ASS.',
     '强调': 'Emphasis', '缩小': 'Smaller', '放大': 'Larger',
     '下划线文本': 'Underlined text', '删除线文本': 'Struck text', '缩小文本': 'Smaller text', '放大文本': 'Larger text',
     '强调文字比例': 'Emphasis text scale', '缩小文字比例': 'Small text scale', '放大文字比例': 'Large text scale',
     '用成对符号标记特殊文本；开启的语法统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。颜色与字号比例在 ASS 样式库中配置。': 'Mark special text with paired symbols. Enabled syntax applies to preview and export for all ASS caption tracks. Configure colors and size ratios in the ASS style library.',
-    // 符号示例与下方 translateText 的模式按规则动态拼接，这里只放完整句子。
-    '你可以使用 *强调*、~删除~、-缩小-、+放大+ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*, ~strike~, -smaller-, and +larger+ to apply special styles to individual words.',
-    '你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, and ++larger++ to apply special styles to individual words.',
-    '你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, and +larger+/++larger++ to apply special styles to individual words.',
-    '你可以使用 **强调**、~~删除~~、--缩小--、++放大++、//注释// 等符号来对特定字词添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, and //comment// to apply special styles to individual words.',
-    '你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++、//注释// 等符号来对特定字词添加特殊样式。': 'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, +larger+/++larger++, and //comment// to apply special styles to individual words.',
+    // 提示句子固定为双符号示例（双符号在任何非关闭规则下都生效），
+    // 与 syncAssSymbolRule 的动态重建共用整句键。
+    '你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, !!shake!!, and >>fade in/out<< to apply special styles.',
+    '详见字幕右键菜单「左右添加字符」部分。': 'See the "Wrap with characters" section in the subtitle right-click menu.',
     '注释': 'Comment', '注释色': 'Comment color', '注释样式': 'Comment style', '注释文字比例': 'Comment text scale',
     '//注释//': '//comment//',
     '强调文本': 'Emphasis text', '强调文本语法': 'Emphasis syntax', '文字放大比例': 'Text scale', '强调样式': 'Emphasis style',
     '左右添加字符预设': 'Character wrapping presets',
     '左右添加字符': 'Wrap with characters', '自定义左右字符': 'Custom wrap characters',
     '左侧字符': 'Left characters', '右侧字符': 'Right characters', '插入': 'Insert',
-    '音符': 'Music note', '淡出淡入': 'Fade in/out', '注释文本': 'Comment text',
+    '音符': 'Music note', '淡出淡入': 'Fade in/out', '弱化文本': 'Subdued text', '整句': 'Sentence',
     '原地震动': 'Shake in place',
     'ASS 特殊文本样式': 'ASS text styles', '普通字符': 'Regular characters',
     '♪音符♪': '♪Music note♪', '♬双音符♬': '♬Double music notes♬', '[中括号]': '[Square brackets]',
@@ -1057,7 +1144,9 @@
     '该空白区域不足 100ms，无法新增叠加字幕': 'The blank range is shorter than 100 ms; cannot create an overlay subtitle',
     '这里没有足够的空白区域': 'There is not enough blank space here',
     '该位置已有字幕，无法新增字幕': 'A subtitle already exists at this position; cannot create another one',
+    '该位置已有字幕，无法新增字幕。如果你需要重叠字幕，请先开启「重叠」功能。': 'A subtitle already exists at this position; cannot create another one. Enable Overlap first if you need overlapping subtitles.',
     '拖动范围包含已有字幕，无法新增字幕': 'The dragged range contains an existing subtitle; cannot create a new one',
+    '拖动范围包含已有字幕，无法新增字幕。如果你需要重叠字幕，请先开启「重叠」功能。': 'The dragged range contains an existing subtitle; cannot create a new one. Enable Overlap first if you need overlapping subtitles.',
     '拖动范围包含已有叠加字幕，无法新增叠加字幕': 'The dragged range contains an existing overlay subtitle; cannot create a new one',
     '当前位置已有叠加字幕': 'An overlay subtitle already exists at this position',
     '当前没有可用的叠加字幕轨': 'No overlay subtitle track is available',
@@ -1107,6 +1196,8 @@
     '结构调整（时间码已重新分配）': 'Structure change (word timings redistributed)',
     '原本没有字词码': 'No word timings originally', '字符变化': 'Character changes', '字幕行': 'Subtitle rows',
     '修改前：': 'Before: ', '修改后：': 'After: ', '前：': 'Before: ', '后：': 'After: ',
+    '时间范围：': 'Time range: ', '估算': 'Est.',
+    '修改后移除字幕前后空格': 'Trim leading and trailing spaces when applying',
     '还没有修改内容。': 'No changes yet.',
     '修改后会保持当前字幕段的开始、结束时间不变。': 'The subtitle segment start and end times stay unchanged after editing.',
     '部分字幕无法可靠映射原字词时间码；应用后只保留字幕段整体时间范围。': 'Some subtitles cannot reliably map their original word timings; applying the edit keeps only the overall subtitle segment range.',
@@ -1140,7 +1231,7 @@
     '文本处理…': 'Text processing…', '文本处理': 'Text processing', '仅处理选中的字幕': 'Process selected subtitles only', '需要先选中至少1条字幕才可启用': 'Select at least one subtitle first to enable this option',
     'Trim': 'Trim', '修剪前后空白': 'Trim surrounding whitespace', '去除字幕前方和后方的空格': 'Remove spaces before and after the subtitle text', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
     '添加前缀': 'Add prefix', '插入到字幕开头': 'Insert at the beginning', '附加内容': 'Add suffix', '插入到字幕结尾': 'Insert at the end',
-    '去除 md 格式符号': 'Remove Markdown formatting', '移除常见 Markdown 标记': 'Remove common Markdown markers',
+    '去除 md 格式符号': 'Remove Markdown formatting', '移除常见 Markdown 标记；含特殊文本样式（MASS）符号时会一并移除，建议先清理再加样式': 'Remove common Markdown markers; special text style (MASS) markers are also removed — clean first, then add styles',
     '文本处理操作': 'Text-processing operations', '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation', '当前文本处理对于选中的字幕没有任何影响，未作改动': 'The current text processing has no effect on the selected subtitles; no changes were made',
     '应用处理': 'Apply processing', '处理前：': 'Before: ', '处理后：': 'After: ',
     '选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。': 'Choose text operations; subtitle rows are not deleted, and empty results remain as empty rows. Word timings are retained when possible using the text-editing rules.',
@@ -1248,7 +1339,7 @@
     '选择本地媒体文件并加载到播放器': 'Choose a local media file and load it in the player',
     '单独打开工程；浏览器无法自动读取关联媒体时会提示选择': 'Open a project by itself; the browser will prompt when it cannot read related media automatically',
     '设置表情包根目录': 'Set sticker root folder',
-    '过滤字幕…': 'Filter subtitles…', '清空': 'Clear', '正在加载…': 'Loading…',
+    '过滤字幕': 'Filter subtitles', '清空': 'Clear', '正在加载…': 'Loading…',
     '只显示超过阈值的字幕（再次点击关闭）': 'Show only subtitles over the threshold (click again to turn off)',
     '查看鼠标操作与键盘快捷键': 'View mouse and keyboard shortcuts',
     '打开全局设置窗口': 'Open the global settings window', '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
@@ -1409,6 +1500,8 @@
     '黄字幕颜色十六进制值': 'Yellow subtitle color hex value', '绿字幕颜色十六进制值': 'Green subtitle color hex value',
     '红字幕颜色十六进制值': 'Red subtitle color hex value', '紫字幕颜色十六进制值': 'Purple subtitle color hex value',
     '蓝字幕颜色十六进制值': 'Blue subtitle color hex value',
+    '缺少可靠时间码，新时间范围基于字数估算。': 'No reliable timecodes available; the new time range is estimated from text length.',
+    '应用修改时去掉每条字幕文本首尾的空格': 'Remove leading and trailing spaces from every subtitle text when applying',
   };
 
   const textOriginals = new WeakMap();
@@ -1482,7 +1575,7 @@
   // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」；
   // 未标记颜色的默认组用「_默认」而非「_default」。
   const EXPORT_NAME_SEGMENTS = {
-    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '默认',
+    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '默认', 'subtitled': '烧录字幕', 'green-screen': '绿幕',
     'yellow': '黄色', 'green': '绿色', 'red': '红色', 'purple': '紫色', 'blue': '蓝色',
   };
 
@@ -1518,6 +1611,8 @@
     if (textChanges) return `Modified ${textChanges[1]} row(s)${textChanges[2] ? `; word-timing text synced in ${textChanges[2]} row(s)` : ''}`;
     const historyChange = /^已(撤销|重做)：(.+)（剩 (\d+) 步）$/.exec(text);
     if (historyChange) return `${historyChange[1] === '撤销' ? 'Undone' : 'Redone'}: ${translateText(historyChange[2], EN)} (${historyChange[3]} step(s) remaining)`;
+    const resetBuiltin = /^确定将「(.+)」恢复为默认值吗？$/.exec(text);
+    if (resetBuiltin) return `Reset “${translateText(resetBuiltin[1], EN)}” to its defaults?`;
     if (match) return `${match[1] === '过滤' ? 'Filtered' : 'Total'} ${match[2]}: markers ${match[3]} · regions ${match[4]}${match[5] ? `; pending review ${match[5]}` : ''}`;
     match = /^(标记|区段) (\d.*)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;
@@ -1573,11 +1668,6 @@
     if (match) return `Word-timing coverage: ${match[1]}/${match[2]}`;
     match = /^原始时间码复用率：\s*(\d+)\/(\d+)$/.exec(text);
     if (match) return `Original timing reuse: ${match[1]}/${match[2]}`;
-    if (text === '时间范围为自动估算（按原字幕范围/文字长度分配）') {
-      return 'Time range estimated from the original cue range and text length';
-    }
-    match = /^时间范围：(.+?)\s*[–-]\s*(.+?)\s*→\s*(.+?)\s*[–-]\s*(.+)$/.exec(text);
-    if (match) return `Time range: ${match[1]} - ${match[2]} -> ${match[3]} - ${match[4]}`;
     match = /^版本号\s+(.+)$/.exec(text);
     if (match) return `Version ${match[1]}`;
     // 动态 title / 徽标：带变量的属性文案
@@ -1594,6 +1684,8 @@
     if (match) return `Project path is no longer valid: ${match[1]}`;
     match = /^点击复制工程文件名：(.+)$/.exec(text);
     if (match) return `Click to copy the project file name: ${match[1]}`;
+    match = /^有未保存的修改；点击复制工程文件名：(.+)$/.exec(text);
+    if (match) return `Unsaved changes; click to copy the project file name: ${match[1]}`;
     match = /^点击复制媒体名：(.+)$/.exec(text);
     if (match) return `Click to copy the media name: ${match[1]}`;
     match = /^工程关联媒体：(.+)$/.exec(text);

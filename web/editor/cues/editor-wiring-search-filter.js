@@ -74,15 +74,8 @@ MaweExportMenus.bindToolbarExportDropdown(
 
 
 MaweDom.searchEl.addEventListener('input', () => {
-  MaweSearch.refreshSearchClearVisibility();
   clearTimeout(MaweSearch.searchDebounce);
   MaweSearch.searchDebounce = setTimeout(() => MaweSearch.applySearch(MaweDom.searchEl.value), 100);
-});
-document.getElementById('search-clear')?.addEventListener('click', () => {
-  MaweDom.searchEl.value = '';
-  MaweSearch.refreshSearchClearVisibility();
-  MaweSearch.applySearch('');
-  MaweDom.searchEl.focus({ preventScroll: true });
 });
 
 // === 编辑 ===

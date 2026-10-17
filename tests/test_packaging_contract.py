@@ -3,12 +3,20 @@ from __future__ import annotations
 from tests.compact_assertions import CompactContainerAssertions
 
 import ast
+import hashlib
+import json
+import os
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
 
 from tests.launcher_sources import launcher_sources_text
+from scripts.verify_web_bundle_payload import verify as verify_web_bundle_payload
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -391,6 +399,45 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         for relative_path in sorted(bundled_paths):
             self.assertIn(_local_runtime_spec_entry(relative_path), spec)
 
+    def test_spec_local_runtime_can_import_the_transcription_entrypoint(self) -> None:
+        """Run the real entrypoint using only source files copied by the spec."""
+        tree = ast.parse(read_text("MAW.spec"))
+        assignment = next(
+            node for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "datas" for target in node.targets)
+        )
+        # Evaluate only the literal datas declaration, without running the
+        # spec's build checks or PyInstaller. Keep the file selection identical
+        # to the package instead of masking omissions by copying all of maw/.
+        data_files = eval(
+            compile(ast.Expression(assignment.value), "MAW.spec datas", "eval"),
+            {"ROOT": ROOT, "str": str},
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for source, destination in data_files:
+                if destination == "local-runtime" or destination.startswith("local-runtime/"):
+                    target = root / destination / Path(source).name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, target)
+            environment = dict(os.environ)
+            environment.pop("PYTHONPATH", None)
+            result = subprocess.run(
+                [sys.executable, "-I", str(root / "local-runtime" / "generate_subtitle_local.py"), "--help"],
+                cwd=root,
+                env=environment,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("usage:", result.stdout.lower())
+
     def test_local_runtime_stays_out_of_the_editor_stack(self) -> None:
         """Given local ASR entrypoints, When the import graph is built, Then the editor generator is absent.
 
@@ -538,6 +585,41 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("Verify no bundled C++ runtime in AppImage", workflow)
         self.assertIn("_internal/libgbm.so.1", workflow)
         self.assertIn("_internal/libreadline.so.*", workflow)
+
+    def test_release_workflow_installs_ffmpeg_before_cross_platform_python_tests(self) -> None:
+        """Given macOS/Linux release jobs, When media tests run, Then the packaged FFmpeg 8.1 toolchain is verified and active."""
+        workflow = read_text(".github/workflows/release.yml")
+        matrix_at = workflow.index('  build-aux:')
+        tests_at = workflow.index('- name: Run Python tests', matrix_at)
+        macos_install = workflow.index('- name: Install FFmpeg for macOS media tests', matrix_at)
+        linux_install = workflow.index('- name: Install Linux system dependencies', matrix_at)
+        linux_media_ffmpeg = workflow.index('- name: Install verified FFmpeg 8.1 for Linux media tests', matrix_at)
+        self.assertLess(macos_install, tests_at)
+        self.assertLess(linux_install, tests_at)
+        self.assertLess(linux_media_ffmpeg, tests_at)
+        self.assertIn('"ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad"', workflow[macos_install:tests_at])
+        self.assertIn('"9a08d61f9328e8164ba560ee7a79958e357307fcfeea6fe626b7d66cdc287028"', workflow[macos_install:tests_at])
+        self.assertIn('--http1.1 --retry-all-errors --retry 5', workflow[macos_install:tests_at])
+        self.assertIn("if: matrix.platform == 'linux'", workflow[linux_install:tests_at])
+        self.assertIn("ffmpeg squashfs-tools", workflow[linux_install:tests_at])
+        self.assertIn('scripts/verify_sha256.sh', workflow[linux_media_ffmpeg:tests_at])
+        self.assertIn('FfmpegBranch="8.1"', workflow[linux_media_ffmpeg:tests_at])
+
+    def test_release_workflow_verifies_esm_payload_in_all_three_platform_packages(self) -> None:
+        """Given release packages for Windows/macOS/Linux, When CI completes, Then each package's ESM bundle and source hashes are checked."""
+        workflow = read_text(".github/workflows/release.yml")
+        self.assertIn(
+            "uv run python scripts/verify_web_bundle_payload.py dist/MAW/_internal/web",
+            workflow,
+        )
+        self.assertIn(
+            "uv run python scripts/verify_web_bundle_payload.py dist/MAW.app/Contents/Resources/web",
+            workflow,
+        )
+        linux_check = workflow.index("python3 ../scripts/verify_web_bundle_payload.py squashfs-root/_internal/web")
+        linux_cleanup = workflow.index("rm -r squashfs-root", linux_check)
+        self.assertLess(linux_check, linux_cleanup)
+        self.assertIn('name: Verify packaged ESM bundles and source hashes', workflow)
 
     def test_appimage_build_ships_ffmpeg_gpl_license_and_source_notice(self) -> None:
         """Given the AppImage build script, When the BtbN GPL ffmpeg build is bundled, Then the GPLv3 license text and a source notice are written into the bundle."""
@@ -693,6 +775,50 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("issues.updateComment", workflow)
         self.assertIn("issues.createComment", workflow)
         self.assertIn("run.html_url", workflow)
+
+
+class WebBundlePayloadVerifierTests(unittest.TestCase):
+    def test_verifies_bundles_and_every_packaged_source_against_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            web_root = Path(temporary)
+            for name in ("editor", "launcher"):
+                boot = web_root / name / "boot"
+                source = web_root / name / "sample.js"
+                boot.mkdir(parents=True)
+                bundle = boot / f"{name}-bundle.js"
+                source.write_bytes(f"export const {name} = true;".encode())
+                bundle.write_bytes(f"import './sample.js'; // {name}".encode())
+                metadata = {
+                    "bundleHash": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+                    "sourceFiles": [f"{name}/sample.js"],
+                    "inputs": {
+                        f"{name}/sample.js": hashlib.sha256(source.read_bytes()).hexdigest()
+                    },
+                }
+                helper = web_root / name / "imported-helper.js"
+                helper.write_text("export const value = 1;\n", encoding="utf-8")
+                metadata["inputs"][f"{name}/imported-helper.js"] = hashlib.sha256(
+                    helper.read_bytes()
+                ).hexdigest()
+                (boot / f"{name}-bundle.meta.json").write_text(
+                    json.dumps(metadata), encoding="utf-8"
+                )
+
+            results = verify_web_bundle_payload(web_root)
+            self.assertEqual(len(results), 2)
+
+            (web_root / "launcher" / "imported-helper.js").write_text(
+                "changed", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "source hash"):
+                verify_web_bundle_payload(web_root)
+            (web_root / "launcher" / "imported-helper.js").write_text(
+                "export const value = 1;\n", encoding="utf-8"
+            )
+
+            (web_root / "editor" / "sample.js").write_text("changed", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "source hash"):
+                verify_web_bundle_payload(web_root)
 
 
 if __name__ == "__main__":

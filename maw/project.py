@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Final, TypeGuard, final
 
 from maw.project_preview import JsonDict, JsonValue, clamped_preview, validate_preview
@@ -413,13 +414,15 @@ def _validate_transcription_metadata(
     errors: list[ProjectValidationError],
 ) -> None:
     """Validate optional ASR metadata without changing legacy project values."""
-    for field in ("language", "language_source", "split_mode", "timestamp_granularity"):
+    for field in ("language", "language_source", "split_mode", "timestamp_granularity", "timed_text_edit_view"):
         if field in project and not isinstance(project[field], str):
             errors.append(ProjectValidationError(f"$.{field}", "must be a string"))
     language_source = project.get("language_source")
     if isinstance(language_source, str) and language_source not in LANGUAGE_SOURCES:
         errors.append(ProjectValidationError("$.language_source", "must be detected, hint, inferred, or unknown"))
     split_mode = project.get("split_mode")
+    if "timed_text_edit_view" in project and project["timed_text_edit_view"] not in ("rows", "single"):
+        errors.append(ProjectValidationError("$.timed_text_edit_view", "must be rows or single"))
     if isinstance(split_mode, str) and split_mode not in SPLIT_MODES:
         errors.append(ProjectValidationError("$.split_mode", "must be continuous or word"))
     timestamp_granularity = project.get("timestamp_granularity")
@@ -750,6 +753,19 @@ def _validate_ass_override(segment: JsonDict, path: str, errors: list[ProjectVal
     normalized: JsonDict = {}
     if "an" in value:
         errors.append(ProjectValidationError(f"{field}.an", "not supported; use global style alignment"))
+    if "scale" in value:
+        scale = value["scale"]
+        try:
+            finite_scale = type(scale) in (int, float) and math.isfinite(scale)
+        except OverflowError:
+            finite_scale = False
+        if not finite_scale or not 0.1 <= scale <= 5:
+            errors.append(ProjectValidationError(f"{field}.scale", "must be a finite number from 0.1 to 5"))
+        else:
+            # Match JavaScript Number.toFixed(2), including exact binary ties.
+            normalized_scale = float(Decimal(scale).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+            if normalized_scale != 1:
+                normalized["scale"] = normalized_scale
     if "pos" in value:
         pos = value["pos"]
         if not isinstance(pos, dict):

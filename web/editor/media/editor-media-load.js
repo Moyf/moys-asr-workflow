@@ -122,6 +122,7 @@
     const stem = file.name.replace(/\.[^.]+$/, '');
     MaweBoot.FILENAME_BASE = stem;
     MaweBoot.DATA.media = file.name;
+    window.MaweBurnVideoExport?.invalidateBinding();
     window.MaweGapRemovedMediaExport?.updateButton();
     MaweBoot.DATA.media_time_reference = mediaTimeReference;
     // The media is now project truth; waveform generation is optional and may

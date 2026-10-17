@@ -20,7 +20,7 @@ export function createUtilsModule(dependencies) {
   ]);
 
   const DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE = Object.freeze({
-    yellow: '#c4a019',
+    yellow: '#f9ca1f',
     green: '#66bb6a',
     red: '#f07f6f',
     purple: '#bf89e6',
@@ -83,6 +83,7 @@ export function createUtilsModule(dependencies) {
     pauseOnMouseClick: false,
     otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
     otioExportIncludeMarkerRegions: true,
+    greenScreenIncludeAudio: false,
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
     mediaSeekStepFrames: 1, cueMoveStepMs: 50, cueMoveStepFrames: 1,
     timelineSnapToFrame: true, timelineTimecodeSeparator: DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
@@ -206,6 +207,7 @@ export function createUtilsModule(dependencies) {
       otioExportIncludeStickers: savedSettings.otioExportIncludeStickers !== false,
       otioExportIncludeMarkers: savedSettings.otioExportIncludeMarkers !== false,
       otioExportIncludeMarkerRegions: savedSettings.otioExportIncludeMarkerRegions !== false,
+      greenScreenIncludeAudio: savedSettings.greenScreenIncludeAudio === true,
       clickBehavior: isSettingChoice(['select-only', 'select-and-seek', 'select-and-play'], savedSettings.clickBehavior)
         ? savedSettings.clickBehavior : 'select-and-seek',
       clickTarget: isSettingChoice(['cue-start', 'pointer'], savedSettings.clickTarget) ? savedSettings.clickTarget : 'pointer',
