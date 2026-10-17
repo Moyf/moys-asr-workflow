@@ -174,11 +174,13 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
     mainDraftTexts[row.index] = row.after;
   });
   const nextMainSegments = mainDraftTexts
-    ? window.AsrEditorUtils.applyTimedTextEdit(MaweBoot.DATA.segments, mainDraftTexts)
+    ? window.AsrEditorUtils.applyTimedTextEdit(MaweBoot.DATA.segments, mainDraftTexts,
+      { rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule })
     : null;
   const nextExtensionSegments = [];
   for (const draft of extensionDrafts.values()) {
-    const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(draft.track.segments, draft.texts);
+    const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(draft.track.segments, draft.texts,
+      { rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule });
     if (!nextSegments) {
       MaweHint.flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
       return;

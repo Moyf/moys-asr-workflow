@@ -97,7 +97,8 @@
           const segment = overlay.segments?.[idx];
           if (segment) segment._dirty = true;
         });
-
+        // 叠加轨表情包分配不走命令；这里直接收口脏态事件。
+        MaweState.markProjectDirty();
       }
     }
     if (!hadStickers && !MaweSettings.EDITOR_SETTINGS.cueListShowSticker && !MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker

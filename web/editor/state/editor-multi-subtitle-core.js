@@ -228,6 +228,7 @@
     const multi = getMultiSubtitleState();
     if (!multi.enabled && !(multi.tracks || []).length) return null;
     multi._dirty = true;
+    MaweState.markProjectDirty();
     return multi;
   }
 
@@ -242,9 +243,12 @@
 
 
   function markMainSegmentsDirty(segments = MaweBoot.DATA.segments) {
+    let marked = false;
     (Array.isArray(segments) ? segments : []).forEach((segment) => {
-      if (segment) segment._dirty = true;
+      if (segment) { segment._dirty = true; marked = true; }
     });
+    // 批量写入在循环外收口一次；空列表不动 epoch。
+    if (marked) MaweState.markProjectDirty();
   }
 
 
@@ -335,6 +339,7 @@
       safe.end,
     );
     segment._dirty = true;
+    MaweState.markProjectDirty();
     return {
       ...safe,
       changed: oldStart !== safe.start || oldEnd !== safe.end,
@@ -400,6 +405,7 @@
     const snapshot = extensionTrackSelectionSnapshot(track);
     track.segments = entries.map((entry) => entry.segment);
     track._dirty = true;
+    MaweState.markProjectDirty();
     restoreExtensionTrackSelection(track, snapshot);
     return true;
   }
@@ -489,6 +495,7 @@
     if (sortSegments && sortExtensionTrackSegments(track)) result.changed = true;
     if (result.changed) {
       track._dirty = true;
+      MaweState.markProjectDirty();
       syncBindingOffsets();
     }
     return result;
@@ -625,6 +632,7 @@
     main.end = constrained.end;
     main._dirty = true;
     extension._dirty = true;
+    MaweState.markProjectDirty();
     return blocked;
   }
 

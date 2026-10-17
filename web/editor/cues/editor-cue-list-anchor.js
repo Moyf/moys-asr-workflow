@@ -212,32 +212,6 @@
   setCueListFollowing(cueListScroll.following);
 
 
-  // 「字幕」标签空间不足时直接隐藏（账本 #32）。标签只是装饰，跟随/搜索/
-  // 批量/设置等功能控件优先。CSS 侧已让标签不收缩不换行，因此 flex 缺口
-  // 全部由其它可收缩控件吸收；隐藏时机用「工具栏内容溢出」判定——此时
-  // 其余控件都已被压到最小仍放不下，才轮到标签让位。若按「标签被压缩」
-  // 判定，flex 按比例分摊收缩会让标签在轻微缺空间时就过早消失。
-  // 每次在标签可见时同步测量真实溢出，再决定是否隐藏；恢复不依赖隐藏后
-  // 至少等于容器宽的 scrollWidth，也不需要猜不同语言的标签预留宽度。
-  const cueListToolbar = document.querySelector('.cues-container > .cue-list-toolbar');
-  const cueListToolbarLabel = cueListToolbar?.querySelector(':scope > .layout-toolbar-label') || null;
-  function syncCueListToolbarLabel() {
-    if (!cueListToolbar || !cueListToolbarLabel) return;
-    // Measure the real layout with the label present. hidden would otherwise
-    // keep scrollWidth >= clientWidth and prevent restoration after widening.
-    cueListToolbarLabel.hidden = false;
-    cueListToolbarLabel.hidden = cueListToolbar.scrollWidth > cueListToolbar.clientWidth + 1;
-  }
-  syncCueListToolbarLabel();
-  if (cueListToolbar && typeof ResizeObserver === 'function') {
-    new ResizeObserver(syncCueListToolbarLabel).observe(cueListToolbar);
-  }
-  // 切语言会改标签宽度（字幕 ↔ Subtitles），工具栏盒子尺寸不变时
-  // ResizeObserver 不会触发，这里补一次判定。
-  document.addEventListener('mawe:languagechange', syncCueListToolbarLabel);
-
-
-
   function interruptCueListFollowing() {
     MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
     setCueListFollowing(false);

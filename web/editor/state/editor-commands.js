@@ -81,6 +81,9 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
       if (dirtyOnly) restoreDirtyFlags(projectSegments(), snapshot.record.segs);
       else MaweHistory.applyHistoryRecord({ ...snapshot.record, view: snapshot.selection });
       Object.assign(MaweState.changes, snapshot.record.projectChanges);
+      // 恢复（命令取消/无实效提交/面板撤销）会把脏标志拨回快照状态，可能变脏
+      // 也可能变清洁；事件只表示「脏态可能已变」，指示器回调按当前状态整体重算。
+      MaweState.markProjectDirty();
     },
     refresh: invalidation => MaweViewUpdates.invalidate({ save: true, ...invalidation }),
   });

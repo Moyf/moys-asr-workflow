@@ -966,10 +966,9 @@
   }
   /* 左侧操作单独滚动，右侧设置始终留在工具栏内；焦点导航也会滚动到对应按钮。 */
   .toolbar.waveform-toolbar > .layout-toolbar-label { flex: 0 0 auto; white-space: nowrap; }
-  /* 「字幕」标签同样不收缩不换行（挤成竖排很难看，账本 #32）；空间不足时由
-     editor-cue-list-anchor 的 ResizeObserver 直接隐藏整个标签让位给功能控件。 */
-  .toolbar.cue-list-toolbar > .layout-toolbar-label { flex: 0 0 auto; white-space: nowrap; }
-  .toolbar.cue-list-toolbar > .layout-toolbar-label[hidden] { display: none; }
+  /* 「字幕」标签不收缩不换行（挤成竖排很难看，账本 #32）；空间不足时横向
+     裁剪让位给功能控件（维护者拍板：纯 CSS 方案，不做隐藏/恢复）。 */
+  .toolbar.cue-list-toolbar > .layout-toolbar-label { flex: 0 0 auto; white-space: nowrap; overflow: hidden; }
   .toolbar.waveform-toolbar > .waveform-toolbar-controls {
     display: flex; align-items: center; gap: 6px;
     flex: 1 1 auto; min-width: 0;

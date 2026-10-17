@@ -320,3 +320,86 @@ test('assMarkedRanges nests three MASS pairs in one sentence (ledger #30)', () =
   assert.equal(fade.fadeIn, true);
   assert.equal(fade.fadeOut, true);
 });
+
+// === Greptile 第二轮（PR #251）===
+
+test('merge fold keeps spoken-only boundary items (Greptile P1: items trimming)', () => {
+  // 边界 item 只含 spoken（visible 形态）：折叠不裁 item，字词时间码不丢
+  const rows = [
+    { text: '**甲**', items: [{ text: '甲', start: 0, end: 500 }] },
+    { text: '**乙**', items: [{ text: '乙', start: 500, end: 1000 }] },
+  ];
+  const joined = h.joinSegmentTextsMassFold(rows, '', 'both');
+  assert.equal(joined.text, '**甲乙**');
+  assert.deepEqual(plain(joined.items.map(item => ({ text: item.text, start: item.start, end: item.end }))),
+    [{ text: '甲', start: 0, end: 500 }, { text: '乙', start: 500, end: 1000 }]);
+  // 守恒形态（item 含符号）回归：closure 裁剪仍正确落边界 item
+  const conserved = h.joinSegmentTextsMassFold([
+    { text: '今天*的*', items: [{ text: '今天*的*', start: 0, end: 500 }] },
+    { text: '*解说*', items: [{ text: '*解说*', start: 500, end: 1000 }] },
+  ], '', 'both');
+  assert.equal(conserved.text, '今天*的解说*');
+  assert.deepEqual(plain(conserved.items.map(item => item.text)), ['今天*的', '解说*']);
+  assert.equal(conserved.items.map(item => item.text).join(''), conserved.text);
+});
+
+test('merge folding retains every spoken-only item and later literal symbols', () => {
+  const cases = [
+    [
+      { text: '**甲乙**', items: [{ text: '甲', start: 0, end: 250 }, { text: '乙', start: 250, end: 500 }] },
+      { text: '**丙**', items: [{ text: '丙', start: 500, end: 1000 }] },
+    ],
+    [
+      { text: '**甲**', items: [{ text: '甲', start: 0, end: 500 }] },
+      { text: '**乙-丙**', items: [{ text: '乙', start: 500, end: 600 },
+        { text: '-', start: 600, end: 700 }, { text: '丙', start: 700, end: 1000 }] },
+    ],
+    [
+      { text: '**甲**', items: [{ text: '甲', start: 0, end: 500 }] },
+      { text: '**+乙**', items: [{ text: '+乙', start: 500, end: 1000 }] },
+    ],
+  ];
+  for (const rows of cases) {
+    const before = JSON.stringify(rows);
+    const joined = h.joinSegmentTextsMassFold(rows, '', 'both');
+    assert.deepEqual(plain(joined.items), plain(rows.flatMap(row => row.items)));
+    assert.equal(JSON.stringify(rows), before, 'merge must not mutate the source word timings');
+  }
+});
+
+test('conversion completion spans a style across 3+ output rows (Greptile P1)', () => {
+  const clock = { unit: 'milliseconds', getStart: s => s.start, getEnd: s => s.end,
+    getItemStart: s => s.start, getItemEnd: s => s.end, setItemStart: () => {}, setItemEnd: () => {} };
+  const segments = [
+    { id: 'a', start: 0, end: 1500, text: '__one two three__', items: [
+      { text: 'one', start: 100, end: 500 }, { text: 'two', start: 600, end: 900 },
+      { text: 'three', start: 1000, end: 1400 },
+    ] },
+    { id: 'b', start: 1500, end: 2500, text: '*甲', items: [{ text: '*甲', start: 1500, end: 2500 }] },
+    { id: 'c', start: 2500, end: 3500, text: '乙*', items: [{ text: '乙*', start: 2500, end: 3500 }] },
+  ];
+  const plan = utils.planWordTimingConversion(segments, [0], clock, { rule: 'both' });
+  const texts = plain(plan.segments.map(segment => segment.text));
+  // 跨 3 行的 __ 对：每个输出行都补齐为自包含的完整对（中间行不丢样式）
+  assert.deepEqual(texts.slice(0, 3), ['__one __', '__two __', '__three__']);
+  // 跨源不波及回归：未选中的 b/c 保持字面
+  assert.deepEqual(texts.slice(3), ['*甲', '乙*']);
+  // items 同步守恒（每行 items 拼接 == 其文本）
+  assert.deepEqual(plain(plan.segments[0].items.map(item => item.text)), ['__one __']);
+  assert.deepEqual(plain(plan.segments[2].items.map(item => item.text)), ['__three__']);
+});
+
+test('structural split completion wires through report/apply with the rule option (Greptile P1)', () => {
+  const segments = [{ id: 'a', start: 0, end: 2000, text: '**甲乙**',
+    items: [{ text: '**甲乙**', start: 0, end: 2000 }] }];
+  // 编辑器层调用形态：options.rule 携带「特殊文本规则」设置
+  const report = utils.buildTimedTextEditReport(segments, ['**甲', '乙**'],
+    { rule: 'both' });
+  assert.equal(report.structure?.valid, true);
+  assert.deepEqual(plain(report.previewSegments.map(segment => segment.text)), ['**甲**', '**乙**']);
+  const applied = utils.applyTimedTextEdit(segments, ['**甲', '乙**'], { rule: 'both' });
+  assert.deepEqual(plain((applied || []).map(segment => segment.text)), ['**甲**', '**乙**']);
+  // 未传 rule 的调用保持既有行为（补齐为 options 驱动，不隐式启用）
+  const legacy = utils.buildTimedTextEditReport(segments, ['**甲', '乙**']);
+  assert.deepEqual(plain(legacy.previewSegments.map(segment => segment.text)), ['**甲', '乙**']);
+});

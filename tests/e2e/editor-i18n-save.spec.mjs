@@ -61,10 +61,10 @@ test('English waveform and sticker names preserve project text', async ({ page }
   await expect(page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-label').first()).toHaveText('删除');
   const row = page.locator('.cue[data-idx="0"]');
   await expect(row.locator('.sname')).toHaveText('保存');
-  await expect(row.locator('.sticker-slot img')).toHaveAttribute('title', '保存');
+  await expect(row.locator('.sticker-slot img')).toHaveAttribute('data-title', '保存');
   const reference = page.locator('.cue[data-idx="1"] .sref');
   await expect(reference).toHaveText('↑ 保存');
-  await expect(reference).toHaveAttribute('title', 'Inherits the sticker of subtitle 1');
+  await expect(reference).toHaveAttribute('data-title', 'Inherits the sticker of subtitle 1');
   await row.locator('.sticker-slot img').click();
   await expect(page.locator('#sticker-preview-name')).toHaveText('保存');
   await page.evaluate(() => {

@@ -21,7 +21,7 @@ type WaveformMethods =
   DescriptorValues<ReturnType<typeof import('./playback.js').createWaveformModule>, 'updatePlayback' | 'getNavigationSnapshot' | 'restoreNavigation' | 'positionPlayheads'> &
   DescriptorValues<ReturnType<typeof import('./pointer.js').createWaveformModule>, 'pointerTimeMs' | 'refreshPointerLine' | 'showPointerLine' | 'hidePointerLine' | 'isCueBoundaryDrag' | 'findVisibleWaveformRowAtPoint' | 'findVisibleWaveformRowAtY' | 'findVisibleWaveformRowForTime' | 'cueBoundaryDragTimeMs' | 'showDragPointerLineAtTime' | 'refreshBoundaryDragPointerLine' | 'restorePointerLineAfterBoundaryDrag' | 'scheduleHoverSeekPreview' | 'cancelHoverSeekPreview' | 'flushHoverSeekPreview'> &
   DescriptorValues<ReturnType<typeof import('./render.js').createWaveformModule>, 'scheduleRender' | 'scheduleMultiVisible' | 'scheduleBasicRender' | 'scheduleRefreshCueBlocks' | 'invalidateGroupBadges' | 'computeGroupBadgesCached' | '_readWaveColors' | '_getWaveColors' | 'render' | 'stretchWaveformCanvases' | 'redrawWaveformCanvases' | 'renderSegments' | 'renderBasic' | 'panBasicByMs' | 'relayoutBasicOverlays' | 'rebuildMarkerTrackForPan' | 'renderMulti' | 'renderMultiVisible' | 'createMultiRow'> &
-  DescriptorValues<ReturnType<typeof import('./scale-controls.js').createWaveformModule>, 'focusWaveform' | 'changeWaveformScale' | 'applyWaveformScaleSteps' | 'renderWaveformScaleLabel' | 'setLoudnessStats' | 'fitWaveformScaleToLoudness' | 'scheduleWheelScaleChange' | 'scheduleRowHeightChange' | 'updateDisabledVisibility' | 'revealTime' | 'changeZoom' | 'setStatus' | 'setSpectralColorStatus' | 'scheduleSpectralColorRender'> &
+  DescriptorValues<ReturnType<typeof import('./scale-controls.js').createWaveformModule>, 'focusWaveform' | 'changeWaveformScale' | 'applyWaveformScaleSteps' | 'renderWaveformScaleLabel' | 'setLoudnessStats' | 'fitWaveformScaleToLoudness' | 'scheduleWheelScaleChange' | 'scheduleRowHeightChange' | 'applyRowGeometryWithViewportAnchor' | 'updateDisabledVisibility' | 'revealTime' | 'changeZoom' | 'setStatus' | 'setSpectralColorStatus' | 'scheduleSpectralColorRender'> &
   DescriptorValues<ReturnType<typeof import('./workspace.js').createWaveformModule>, 'bindDivider' | 'bindLayoutResizers' | 'applyLayoutVariables' | 'applyLayout' | 'updateAdvancedSettingsAvailability' | 'setMode' | 'setTool' | 'getTool' | 'setLayout' | 'toggleLayoutEditMode' | 'isMultiMode' | 'getRowHeight' | 'setSecondsPerRow' | 'getMaxRowHeight' | 'setRowHeight' | 'isCustomLayout' | 'isPresetResizableLayout' | 'bindDockHandles' | 'bindWorkspaceDockTarget' | 'applyLayoutDrop' | 'showLayoutDropPreview' | 'clearLayoutDropPreview' | 'ensureCustomLayoutRoot' | 'restoreDirectLayoutModules' | 'createCustomLayoutNode' | 'applyCustomSplitRatio' | 'bindCustomLayoutDivider' | 'applyCustomLayoutTree' | 'getLayoutData' | 'getLayoutHistorySnapshot' | 'recordLayoutUndo' | 'restoreLayoutHistorySnapshot' | 'resetLayout' | 'setLayoutData'>;
 
 export type Track = 'main' | 'extension' | 'overlay';
@@ -116,6 +116,7 @@ export interface NavigationSnapshot {
   cueListScrollTop?: number; waveformTopEdgeMs?: number;
 }
 export interface WaveformOptions {
+  markProjectDirty?: (() => void) | undefined;
   wordTiming?: {
     readonly enabled: boolean;
     getSelection(segment: Cue): ReadonlySet<number>;

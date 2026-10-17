@@ -52,12 +52,14 @@
 | 29 | 字词气泡微调（#23 验收反馈）：① 候选**不再按文本截断过滤**——显示就都显示（密度仍受同屏上限/3 行/优先级约束）；② 最底层气泡行与字词条带之间加间距（现在紧贴） | 进行中（排 #23 会话追加） | 改 word-blocks.js `drawWordChips`/`computeWordChipLayout`：候选=全部可见字词块、移除截断测量；底行与条带间留间距；上限/优先级/行堆叠逻辑保持；随 #24 同会话追加（#22/#24 落地后派）。**上限评估（维护者问 24 是否保守）**：canvas 同 pass 绘制下 24 个 chip <0.5ms/帧、64 个 ~1-2ms、100+ ~2-5ms——相对整行重绘+DOM 重建的主瓶颈是零头，24 明显保守；**建议 24→64 或去掉数字上限**（「3 行+水平不重叠」自限 ≈3×每行可容数，留 96 保险丝防病态）；布局的 measureText 加 (text,font)→宽 Map 缓存。密度控制交给 3 行规则 |
 | 30 | MASS 配对语义问询：成组应「一对单/一对双」；例 `>>** //The *editing* //process**<<` 解析为 ** ⊃ // ⊃ *editing* 三层、最内层优先；问现状分组与复杂度 | 仅说明（现状已符合） | 沙箱实测（assMarkedRanges 原函数，`.artifacts/1016大核验/mass-pairing-probe.mjs`）：例子当前即解析 **[2,30) ⊃ //[5,21) ⊃ *[11,19)；`**a *b* c**` 双对外/单对内；`*a**b*` 单对外/`**` 字面。现行机制=按（符号×宽度）分道扫描+宽度边界守卫（ass-style.js:66-93），事实即「一对单/一对双」；fade 非对称走句级外壳解析器。**不重写分词器**；增值=例子写成回归测试+规则入 ASS_STYLES 文档（随追加批） |
 | 31 | 右键菜单微调：「左右添加字符」与「高级操作」放一组，**不加分隔线**（现两行之间有 sep） | 进行中（排追加批） | editor-context-menus.js 顶层两行间去 sep（组前分隔线保留）；随 #26/#15 追加批 |
-| 32 | 「字幕列表」左上角「字幕」标签：空间不足时直接隐藏，避免竖排（截图：字/幕被挤成竖排） | 进行中（排追加批） | 定位标签元素（cue-list 工具栏头部）；方案=容器查询宽度不足隐藏（Chromium-only 可用 @container）或 nowrap+裁剪；editor.css 辖区，随 #29 同会话派发 |
+
+
+| 32 | 「字幕列表」左上角「字幕」标签：空间不足时直接隐藏，避免竖排（截图：字/幕被挤成竖排） | 进行中（方案降级：B 拍板） | **维护者拍板方案 B（2026-10-16）：纯 CSS**——`white-space: nowrap + overflow: hidden`（空间不足横向裁剪，不竖排也不做隐藏/恢复），**撤掉 ResizeObserver 实现**。收口批（session B 在途）报告回来后替换。旁证：容器查询路线被否（设置弹层在工具栏子树内，container-type 会劫持 fixed 定位）；本条为「小需求先问值不值」SOP 规则的触发案例（ResizeObserver+迟滞 vs 一行 nowrap） |
 | 33 | 纯文本编辑「整体编辑」加左侧行号（gutter）——维护者问好加吗 | 进行中（排 #23 会话追加） | **好加，基建现成**：整体编辑已有搜索镜像层（`#timed-text-edit-search-mirror` + 滚动同步 :1128-1130 + 逐行偏移计算），行号层=镜像基建的变体：绝对定位数字列 + scrollTop 同步，行号按**字幕行**编号（与逐条编辑「第 N 条」一致；软换行下对齐到每条首行，偏移计算复用搜索镜像的既有逻辑）。要点：textarea 左侧让位（或 gutter 落在现有内边距区）、字体度量严格一致、与搜索高亮共存。同文件 editor-timed-text-edit.js（现无辖区冲突）+ editor.css，随 #29/#32 同批派发 |
 | 34 | Greptile 对 PR #251 的 6 条评审（P1×3/P2×3），逐条验证后修复：P1-1 editor.css:3576 行搜索镜像遮挡文本？P1-2 foldMassPairJunction 双符号折叠残留 `**甲**乙**`？P1-3 completeConvertedOutputMassPairs 波及未选中字幕？P2-1 relayoutBasicOverlays 漏 extension 块与边界手柄？P2-2 连续平移期间画面带永不取新图？P2-3 整体编辑打开时滚动错挂隐藏元素？ | 进行中（两路验证+修复派发） | 分工：session A（ses_ebcc11217）= P1-2/P1-3/P2-3/P1-1（text-processing、word-timing、timed-text-edit 区）；session B（ses_ebc8ab1d）= P2-1/P2-2（waveform render/thumbnails）。纪律：**先验证再修**——Greptile 可能误读（P1-1 疑似误读：#10 设计为仅命中行挂镜像），验证不成立的在报告与账本注明「不成立+依据」；成立的修复+回归测试。**thread ID 映射（处理完须 resolve，GraphQL resolveReviewThread）**：P1-1=PRRT_kwDOTkFWNc6tImgJ、P1-2=ImgQ、P1-3=ImgY、P2-1=Imgc、P2-2=Imgk、P2-3=Imgt（均为 unresolved）。**B 组完成（session B，已回帖+resolve ✓✓）**：P2-1 成立——relayoutBasicOverlays 漏副字幕块与共享边界区，已修（extension 块原位重排 + appendExtensionHandle 提取 + refreshBoundaryZones 接入，探针 0.83px→0、renderBasicCalls=0）；P2-2 成立且**两层饥饿**——panBasicByMs 从不调 setView + applySetView 的 200ms 去抖与 150ms 节流叠用，已修（平移每档经节流 setView + 去抖删除，探针 8 档 demand POST 4 次持续推进）；e2e 53/53。**A 组完成（session A，已回帖+resolve ✓✓✓✓）**：4 条全部成立——P1-2 折叠残留属实但归因修正（非宽度问题，是 batch-1「保留前段闭」语义在双符号/往返下的孤儿缺陷），改为**整体折叠**（junction 两侧符号一并移除、复验重 union 成一个对；`**甲**`+`**乙**`→`**甲乙**`；`今天*的*`+`*解说*`→`今天*的解说*`，经宽度守卫验证 batch-1 示例目标 `今天*的*解说*` 实际会把解说渲染成字面+孤儿——**新语义更正确，行为变更待维护者复核**）；P1-3 属实（补齐扫描全量输出数组），已加 outputSources 同源守卫锁到转换源行；P2-3 属实（single 视图滚错容器），改 caret 预置+focus 滚动；P1-1 成立且根因更准（镜像每行无条件挂载+不透明底），改默认 visibility:hidden 仅命中行 visible。测试 380/0；items 层修复随本批交付（split-core styledClosures 链路） |
+| 35 | Greptile 第二轮 4 条（11:47，均在追加批新代码上，GitHub 侧已被标 resolved 但问题待修）：G-1 foldMassPairJunction 的 items 裁剪在边界 item 恰为纯文本时整项被删（丢失字词时间码）；G-2 编辑器从未向 buildTimedTextStructurePlan 传 options.rule——结构拆分补齐实际是死代码（C-2 出口失效）；G-3 completeConvertedOutputMassPairs 只查相邻两行，跨 3+ 行的样式（`__one two three__` 拆三段）永远补不上；G-4 「字幕」标签隐藏后重现条件数学上不可能成立（scrollWidth ≥ clientWidth 恒真）——隐藏后永不恢复 | 进行中（两路派发） | 分工：session A = G-1/G-2/G-3（其 MASS 代码，验证→修复→测试）；session B = G-4（#32 的重现逻辑）+ **#20 追加**（维护者拍板「要」：工具栏 select 与滚轮行高两个非 Q 入口挂钩视口锚定）。修完回帖附 commit，thread 已 resolved 则保持 |
 
 ## 阶段汇总
-
 - 建账（2026-10-16）：账本建立，等待第一批反馈。
 - 续 1（2026-10-16）：① #1 已修复——缩略图逐格 200ms 淡入（`thumbnails.js` 绘制层 + d.ts 类型），
   bundle 重建、check:editor、语法/顺序 node 测试、tsc typecheck 全部通过，观感待维护者实测；
@@ -138,6 +140,23 @@
   #19/#21/#25/#26/#15 + items 调试 → session A（ses_ebcc11217）；#22 批次 1+2 + #24 →
   session B（ses_ebc8ab1d，已完成）。⑥ #23 微调与 #30/#31/#32/#33 排队（气泡全显示+间距、
   菜单分组、字幕标签隐藏、整体编辑行号）。
+- 续 14（2026-10-16，收口完成）：① 末批（#20 锚定修正/#27 日志降噪/#28 hint 隐藏）落地，
+  全量 test:unit **802/802**。② markProjectDirty 事件化重构落地（事件层 + changes 访问器
+  收口 + 18 处接入 + O(1) 轮询自愈，22/22 专项测试；接入点清单见 session 报告）。
+  ③ Greptile 二轮 G-1/G-2/G-3 修复落地（G-1 取会话实现、G-3 取 main 体系的
+  completeMassTextRows——两套实现的取舍见 merge 提交）。④ main 再同步（#241 等 4 提交，
+  零冲突）。⑤ **后续 PR 创建：https://github.com/Moyf/moys-asr-workflow/pull/254**
+  （base main，含本账本全部条目实施；CHANGELOG 与核对清单 v2 已随批落地）。⑥ 账本
+  阶段汇总经脚本去重排序（1-13 顺序，LF 保持）。⑦ 事故两起：#28 漏入账（末批补齐）、
+  阶段汇总重复/乱序（脚本收口）。
+- 续 11（2026-10-16，Greptile 收线 + 检查点提交）：① **Greptile 6 条全部处置完毕并 resolve**
+  （每条回帖附修复证据）：B 组 2 条（P2-1 漂移/P2-2 取图饥饿）+ A 组 4 条（P1-1 镜像遮挡/
+  P1-2 折叠残留/P1-3 转换波及/P2-3 滚动错挂）**全部成立全部修复**。② ⚠️ **折叠语义行为变更
+  待维护者复核**：合并折叠从「保留前段闭」改为「整体折叠」——`今天*的**解说*` 类合并的产物
+  从 `今天*的*解说*`（宽度守卫下解说说会变字面+孤儿，batch-1 示例的隐性缺陷）变为
+  `今天*的解说*`（单一完整对，两侧均保留样式）。③ session A 交付 items 层修复（styledClosures
+  链路）、#26 清理菜单、#15 估切、静默同步；测试 380/0。④ 检查点提交 + 推送（PR #251 随之
+  更新，CI 的 setInterval 崩溃已另行 hotfix 054ff4c9）。
 - 续 12（2026-10-16，收口）：① CHANGELOG `[未发布]` 三处追加（提升 5 条/修复 1 条/变更 2 条，
   与 main 已有条目去重）。② **人工核对清单（v2）落地**：`1016大核验.checklist.md`（29 个核对项
   分 A 波形/MASS/纯文本编辑/杂项四区；`build.py --check` 通过、HTML 已生成不入库；
@@ -147,14 +166,17 @@
   5 例 split-style 断言→session A a9f383c6；1 例 lease/debounce→session B 8fa6d14f；
   Preview Python 单例 RUNNER~1 短路径→3a16d13b resolve() 规范化，并 PR 留言提一嘴）。
   ⑤ Issue #250 与 PR #251 正文均已回写终态（26 项全 ✅ + 追加批 + 待复核项）。
-- 续 11（2026-10-16，Greptile 收线 + 检查点提交）：① **Greptile 6 条全部处置完毕并 resolve**
-  （每条回帖附修复证据）：B 组 2 条（P2-1 漂移/P2-2 取图饥饿）+ A 组 4 条（P1-1 镜像遮挡/
-  P1-2 折叠残留/P1-3 转换波及/P2-3 滚动错挂）**全部成立全部修复**。② ⚠️ **折叠语义行为变更
-  待维护者复核**：合并折叠从「保留前段闭」改为「整体折叠」——`今天*的**解说*` 类合并的产物
-  从 `今天*的*解说*`（宽度守卫下解说说会变字面+孤儿，batch-1 示例的隐性缺陷）变为
-  `今天*的解说*`（单一完整对，两侧均保留样式）。③ session A 交付 items 层修复（styledClosures
-  链路）、#26 清理菜单、#15 估切、静默同步；测试 380/0。④ 检查点提交 + 推送（PR #251 随之
-  更新，CI 的 setInterval 崩溃已另行 hotfix 054ff4c9）。
+- 续 13（2026-10-16，性能自审——维护者要求按第一性原理审「不重要但额外开销」）：
+  **本批新增逐项核成本**：① 气泡/字词块重绘只发生在 render 事件（滚动/编辑/精绘），
+  播放帧零开销（已核实 renderBasic 仅在跟随回中时触发，playback.js:50-60）；字词拖动期
+  每帧 ~1-2ms（64 chip 上限 + measure 缓存）可接受。② 行搜索镜像：每行常驻一个隐藏
+  div（DOM 翻倍），空镜像 visibility:hidden 无绘制成本——可接受。③ 未保存圆点轮询：
+  维护者已确认（微秒级）。④ 平移期 demand 4-7 次/秒（P2-2 修复引入）：仅平移进行时、
+  有去重与合并——取新范围是需求本意，可接受。⑤ 行号 gutter：input 时 O(行数) 扫描 +
+  scroll 时一次 style 写——无浪费。**既有代码一处残余浪费，按新原则报告不修**：
+  marks 模式每次重绘 O(K) 全量扫描关键帧（editor-thumbnails.js keyframesInRange）——
+  可选模式、典型 K 数百 ≈ 0.1ms，收益低于改动风险。**原则固化**：热路径（render/scroll/
+  playback/pan）上的新功能默认报「每帧/每事件成本预估」，先分清层级再动手。
 
 ## 合并前复核补记（2026-10-16）
 

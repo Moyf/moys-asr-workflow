@@ -65,6 +65,7 @@ overlayTrackToggle?.addEventListener('change', () => {
   if (!overlay) return;
   overlay.enabled = overlayTrackToggle.checked;
   overlay._dirty = true;
+  MaweState.markProjectDirty();
   MaweViewUpdates.invalidate({ save: true });
   MaweCuePanel.renderAll({ waveform: 'full' });
   if (overlayTrackToggle.checked) {

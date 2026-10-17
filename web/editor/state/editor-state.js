@@ -74,8 +74,46 @@ window.MAWE.register('editor-state', function createEditorState(project) {
     cuePanelTextEditSnapshot: null, cuePanelCanceling: false,
   });
   const editing = Object.seal({ editingState: null, extensionEditingState: null });
-  const changes = Object.seal({ projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false, markersDirty: false,
-    timedTextEditViewDirty: false });
+
+  // 工程脏态事件层：散落的脏标记写入收口为 markProjectDirty()，以递增的
+  // projectDirtyEpoch 通知订阅者。消费者（未保存指示器）经 onProjectDirtyChange
+  // 即时刷新；轮询兜底只允许比较 epoch（O(1)），指纹等 O(N) 判定只能出现在
+  // 本事件路径驱动的回调里。
+  let projectDirtyEpoch = 0;
+  const projectDirtyListeners = new Set();
+  function markProjectDirty() {
+    projectDirtyEpoch += 1;
+    for (const listener of [...projectDirtyListeners]) {
+      try { listener(projectDirtyEpoch); } catch (error) { window.console?.error?.('editor-state: project dirty listener failed', error); }
+    }
+  }
+  function getProjectDirtyEpoch() { return projectDirtyEpoch; }
+  function onProjectDirtyChange(listener) {
+    if (typeof listener !== 'function') return () => {};
+    if (projectDirtyListeners.has(listener)) return () => projectDirtyListeners.delete(listener);
+    projectDirtyListeners.add(listener);
+    return () => projectDirtyListeners.delete(listener);
+  }
+
+  // changes 脏标志保持保存簿记语义不变，仅包装为访问器：写入 true 时触发
+  // markProjectDirty()（写入 false 不触发）。命令发布（projectImportDirty）、
+  // 外观/标记等代理 setter、撤销恢复的 Object.assign 因此都汇入同一事件。
+  const changesFlags = { projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false, markersDirty: false,
+    timedTextEditViewDirty: false };
+  // 显式访问器（defineProperties 的动态键 TS 推断不出）：写入 true 触发 markProjectDirty()。
+  const changes = {
+    get projectImportDirty() { return changesFlags.projectImportDirty; },
+    set projectImportDirty(value) { changesFlags.projectImportDirty = Boolean(value); if (changesFlags.projectImportDirty) markProjectDirty(); },
+    get gapRemoveDirty() { return changesFlags.gapRemoveDirty; },
+    set gapRemoveDirty(value) { changesFlags.gapRemoveDirty = Boolean(value); if (changesFlags.gapRemoveDirty) markProjectDirty(); },
+    get previewGeometryDirty() { return changesFlags.previewGeometryDirty; },
+    set previewGeometryDirty(value) { changesFlags.previewGeometryDirty = Boolean(value); if (changesFlags.previewGeometryDirty) markProjectDirty(); },
+    get markersDirty() { return changesFlags.markersDirty; },
+    set markersDirty(value) { changesFlags.markersDirty = Boolean(value); if (changesFlags.markersDirty) markProjectDirty(); },
+    get timedTextEditViewDirty() { return changesFlags.timedTextEditViewDirty; },
+    set timedTextEditViewDirty(value) { changesFlags.timedTextEditViewDirty = Boolean(value); if (changesFlags.timedTextEditViewDirty) markProjectDirty(); },
+  };
+  Object.freeze(changes);
 
   // Compare only subtitle truth, never DOM, playback or rebuildable waveform caches.
   function segmentsFingerprint() {
@@ -112,6 +150,7 @@ window.MAWE.register('editor-state', function createEditorState(project) {
   }
 
   return Object.freeze({ project, selection, preferences, runtime, panel, editing, changes, hasProjectChanges,
-    segmentsFingerprint, noteSavedSegments, markSaved, reconcileSegmentsDirty });
+    segmentsFingerprint, noteSavedSegments, markSaved, reconcileSegmentsDirty,
+    markProjectDirty, getProjectDirtyEpoch, onProjectDirtyChange });
 });
 window.MaweState = window.MAWE.resolve('editor-state', window.MaweBoot.DATA);
