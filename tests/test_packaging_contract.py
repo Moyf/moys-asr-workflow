@@ -795,12 +795,26 @@ class WebBundlePayloadVerifierTests(unittest.TestCase):
                         f"{name}/sample.js": hashlib.sha256(source.read_bytes()).hexdigest()
                     },
                 }
+                helper = web_root / name / "imported-helper.js"
+                helper.write_text("export const value = 1;\n", encoding="utf-8")
+                metadata["inputs"][f"{name}/imported-helper.js"] = hashlib.sha256(
+                    helper.read_bytes()
+                ).hexdigest()
                 (boot / f"{name}-bundle.meta.json").write_text(
                     json.dumps(metadata), encoding="utf-8"
                 )
 
             results = verify_web_bundle_payload(web_root)
             self.assertEqual(len(results), 2)
+
+            (web_root / "launcher" / "imported-helper.js").write_text(
+                "changed", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "source hash"):
+                verify_web_bundle_payload(web_root)
+            (web_root / "launcher" / "imported-helper.js").write_text(
+                "export const value = 1;\n", encoding="utf-8"
+            )
 
             (web_root / "editor" / "sample.js").write_text("changed", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "source hash"):

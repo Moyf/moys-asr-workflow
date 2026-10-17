@@ -25,8 +25,8 @@ def verify(web_root: Path) -> list[str]:
         if sha256(bundle_path) != metadata["bundleHash"]:
             raise ValueError(f"{bundle_path}: bundle hash does not match metadata")
         inputs = metadata["inputs"]
-        if set(inputs) != set(metadata["sourceFiles"]):
-            raise ValueError(f"{metadata_path}: sourceFiles and inputs differ")
+        if not set(metadata["sourceFiles"]) <= set(inputs):
+            raise ValueError(f"{metadata_path}: manifest sources are missing from inputs")
         for relative_path, expected_hash in inputs.items():
             source_path = Path(relative_path)
             if source_path.is_absolute() or ".." in source_path.parts:
