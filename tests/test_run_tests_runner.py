@@ -11,13 +11,19 @@ from tests.compact_assertions import CompactContainerAssertions
 import io
 import pathlib
 import sys
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.run_tests import CompactTextTestResult, _to_module_name, compact_text  # noqa: E402
+from scripts.run_tests import (  # noqa: E402
+    CompactTextTestResult,
+    _run_one_file_worker,
+    _to_module_name,
+    compact_text,
+)
 
 
 class CompactTextTests(unittest.TestCase):
@@ -45,6 +51,49 @@ class CompactTextTests(unittest.TestCase):
             _to_module_name("tests.test_gui_web.GuiWebBridgeTests"),
             "tests.test_gui_web.GuiWebBridgeTests",
         )
+
+
+class ParallelWorkerTests(unittest.TestCase):
+    def test_worker_runs_only_the_requested_nested_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / "__init__.py").write_text("", encoding="utf-8")
+            nested = root / "nested"
+            nested.mkdir()
+            (nested / "__init__.py").write_text("", encoding="utf-8")
+            (root / "test_same.py").write_text(
+                "\n".join([
+                    "import unittest",
+                    "class RootCase(unittest.TestCase):",
+                    "    def test_root(self): self.fail('wrong file ran')",
+                ]),
+                encoding="utf-8",
+            )
+            target = nested / "test_same.py"
+            target.write_text(
+                "\n".join([
+                    "import unittest",
+                    "class NestedCase(unittest.TestCase):",
+                    "    def test_nested(self): pass",
+                    "    @unittest.expectedFailure",
+                    "    def test_unexpected_success_is_failure(self): pass",
+                ]),
+                encoding="utf-8",
+            )
+            outcome = _run_one_file_worker(
+                {
+                    "file": "nested/test_same.py",
+                    "path": str(target),
+                    "start_dir": str(root),
+                    "top_level_dir": str(root),
+                    "max_chars": 4000,
+                    "max_line": 400,
+                }
+            )
+        self.assertEqual(outcome["tests"], 2)
+        self.assertFalse(outcome["success"], "unexpectedSuccess 必须使 worker 失败")
+        self.assertEqual(outcome["failures"], 0)
+        self.assertIn("unexpected success", outcome["full_text"].lower())
 
 
 class CompactResultTests(CompactContainerAssertions, unittest.TestCase):

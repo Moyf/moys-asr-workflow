@@ -149,7 +149,34 @@ def _run_one_file_worker(payload: dict) -> dict:
     _config.update(max_chars=payload["max_chars"], max_line=payload["max_line"])
 
     loader = unittest.TestLoader()
-    suite = loader.discover(payload["start_dir"], pattern=payload["pattern"])
+    target_path = Path(payload["path"]).resolve()
+    start_dir = str(target_path.parent)
+    module_name = target_path.stem
+    loaded = sys.modules.get(module_name)
+    if Path(getattr(loaded, "__file__", "")).resolve() != target_path:
+        sys.modules.pop(module_name, None)
+    if start_dir not in sys.path:
+        sys.path.insert(0, start_dir)
+    # Discover from the exact parent directory, then retain only cases whose
+    # module file is this target. This preserves unittest imports while
+    # preventing same-basename nested files from being run by this worker.
+    suite = loader.discover(start_dir, pattern=target_path.name, top_level_dir=start_dir)
+
+    def only_target(test_suite):
+        selected = unittest.TestSuite()
+        for test in test_suite:
+            if isinstance(test, unittest.TestSuite):
+                nested = only_target(test)
+                if nested.countTestCases():
+                    selected.addTests(nested)
+                continue
+            module = sys.modules.get(test.__class__.__module__)
+            module_path = Path(getattr(module, "__file__", "")).resolve()
+            if module_path == target_path:
+                selected.addTest(test)
+        return selected
+
+    suite = only_target(suite)
     buffer = _CapturedStream()
     runner = unittest.TextTestRunner(
         stream=buffer,
@@ -157,10 +184,24 @@ def _run_one_file_worker(payload: dict) -> dict:
         resultclass=CompactTextTestResult,
     )
     started = time.perf_counter()
-    # 测试与被测代码的 print / subprocess 直通 stderr 一律收进缓冲，
-    # 避免并行时 10 个 worker 的日志交叉污染主进程输出。
-    with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
-        result = cast(CompactTextTestResult, runner.run(suite))
+    fd_output = ""
+    # 测试与被测代码的 print / subprocess 直通 fd 1/2 一律重定向到临时
+    # 文件（redirect_* 只拦 Python 层流，拦不住子进程继承的 fd），避免
+    # 并行时多 worker 日志交叉污染主进程输出。
+    with tempfile.TemporaryFile() as fd_capture:
+        saved_stdout, saved_stderr = os.dup(1), os.dup(2)
+        try:
+            os.dup2(fd_capture.fileno(), 1)
+            os.dup2(fd_capture.fileno(), 2)
+            with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+                result = cast(CompactTextTestResult, runner.run(suite))
+        finally:
+            os.dup2(saved_stdout, 1)
+            os.dup2(saved_stderr, 2)
+            os.close(saved_stdout)
+            os.close(saved_stderr)
+            fd_capture.seek(0)
+            fd_output = fd_capture.read().decode("utf-8", errors="replace")
     elapsed = time.perf_counter() - started
     return {
         "file": payload["file"],
@@ -170,23 +211,31 @@ def _run_one_file_worker(payload: dict) -> dict:
         "skipped": len(result.skipped),
         "seconds": elapsed,
         "full_text": result.full_text,
+        "test_output": buffer.getvalue() + fd_output,
+        "success": result.wasSuccessful(),
     }
 
 
 def _run_parallel(args) -> int:
     from concurrent.futures import ProcessPoolExecutor, as_completed
 
-    start_dir = str(Path(args.start_dir))
-    files = sorted(path.name for path in Path(start_dir).glob(args.pattern))
+    # 相对路径在 worker 里 os.chdir(ROOT) 后语义会变：主进程先解析为绝对路径
+    start_dir = str(Path(args.start_dir).resolve())
+    # 与串行 discover 的递归语义一致：覆盖子目录中的测试文件
+    files = sorted(
+        str(path.relative_to(start_dir))
+        for path in Path(start_dir).rglob(args.pattern)
+        if "__pycache__" not in path.parts
+    )
     if not files:
         print(f"[run_tests] 在 {start_dir} 未发现 {args.pattern}。")
         return 1
 
     payloads = [
         {
+            # discover 的 pattern 匹配 basename；file 保留相对路径用于展示与聚合
             "file": name,
-            "start_dir": start_dir,
-            "pattern": name,
+            "path": str((Path(start_dir) / name).resolve()),
             "max_chars": args.max_chars,
             "max_line": args.max_line,
         }
@@ -200,10 +249,11 @@ def _run_parallel(args) -> int:
     ]
     if missing_bundles:
         print(
-            "[run_tests] 警告：bundle 产物缺失（"
+            "[run_tests] 提示：bundle 产物缺失（"
             + "、".join(missing_bundles)
-            + "）。多个 worker 会并发触发自动重建并相互冲突；"
-            "建议先运行 pnpm install --frozen-lockfile && pnpm run build 再并行。",
+            + "）。跨进程锁会保证只构建一次，但首个触发构建的 worker"
+            "会被同步拖慢；建议先运行 pnpm install --frozen-lockfile"
+            " && pnpm run build 让各 worker 立即命中产物。",
             flush=True,
         )
     print(
@@ -228,12 +278,17 @@ def _run_parallel(args) -> int:
                     "file": payload["file"], "tests": 0, "errors": 1, "failures": 0,
                     "skipped": 0, "seconds": 0.0,
                     "full_text": f"worker crashed: {error!r}",
+                    "test_output": "", "success": False,
                 }
             total_tests += outcome["tests"]
             total_skipped += outcome["skipped"]
             status = "OK"
-            if outcome["failures"] or outcome["errors"]:
-                status = f"FAIL(f={outcome['failures']} e={outcome['errors']})"
+            # 与串行 TextTestResult.wasSuccessful() 保持一致；包含 unexpectedSuccesses
+            if not outcome["success"]:
+                if outcome["failures"] or outcome["errors"]:
+                    status = f"FAIL(f={outcome['failures']} e={outcome['errors']})"
+                else:
+                    status = "FAIL(unexpected success)"
                 failures.append(outcome)
             print(
                 f"[{completed:>3}/{len(payloads)}] {outcome['file']:<44}"
@@ -250,6 +305,11 @@ def _run_parallel(args) -> int:
     if failures:
         combined = "\n\n".join(
             f"{'=' * 70}\nFAIL: {item['file']}\n{'-' * 70}\n{item['full_text']}"
+            + (
+                f"\n{'-' * 70}\n[测试自身输出]\n{item['test_output']}"
+                if item.get("test_output", "").strip()
+                else ""
+            )
             for item in failures
         )
         log_path = _write_full_log(combined, args.full_log)

@@ -22,6 +22,14 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _run_worker_catching(worker, errors: list) -> None:
+    """线程 worker 的异常收集器：threading 不会向测试传播异常。"""
+    try:
+        worker()
+    except BaseException as error:  # noqa: BLE001 - 测试需要把异常带回主线程
+        errors.append(error)
+
+
 class _FakeRepo:
     """合成一个最小仓库树：清单 + 源码 + 模块配置 + 构建器脚本。
 
@@ -362,7 +370,7 @@ class EnsureBundleRebuildTests(unittest.TestCase):
 
     def test_cross_process_lock_serializes_critical_sections(self) -> None:
         """Given 两个线程直接竞争文件锁, When 先后进入, Then 临界区不重叠。"""
-        state = {"active": 0, "overlap": False}
+        state = {"active": 0, "overlap": False, "entered": 0}
         guard = threading.Lock()
 
         def worker():
@@ -371,17 +379,27 @@ class EnsureBundleRebuildTests(unittest.TestCase):
                     if state["active"] > 0:
                         state["overlap"] = True
                     state["active"] += 1
+                    state["entered"] += 1
                 time.sleep(0.05)
                 with guard:
                     state["active"] -= 1
 
-        threads = [threading.Thread(target=worker) for _ in range(3)]
+        errors: list[BaseException] = []
+        threads = [
+            threading.Thread(target=lambda: _run_worker_catching(worker, errors))
+            for _ in range(3)
+        ]
         for thread in threads:
             thread.start()
         for thread in threads:
             thread.join(timeout=10)
         for thread in threads:
             self.assertFalse(thread.is_alive())
+        # 线程异常必须显式上抛：threading 不会让测试自动失败，
+        # 全体 worker 提前崩溃时锁的串行化断言会假绿
+        if errors:
+            raise errors[0]
+        self.assertEqual(state["entered"], 3)
         self.assertFalse(state["overlap"])
 
     def test_cross_process_lock_times_out_with_actionable_error(self) -> None:
