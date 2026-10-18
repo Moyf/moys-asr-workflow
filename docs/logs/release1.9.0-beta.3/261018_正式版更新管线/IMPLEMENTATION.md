@@ -9,10 +9,10 @@
 | 正式版归档与 beta 分流 | 已修复 | 仅 stable 新增文档，beta / rc notes 读取 CL；旧 beta 文件迁至 `docs/archived/release-notes/` 保留。正式版 CL / 归档严格校验。 |
 | 官网历史列表与详情 | 已修复 | 主导航增加更新记录，静态页面复用归档；实际附件下载、系列基础版本与前后版本导航，支持部署子路径。 |
 | 资源与 JSON 出口 | 已修复 | 固定 tag / commit 读取图片，按内容去重；生成页面、图片、索引和正文 JSON 不入库。候选预览不宣告更新。 |
-| 发布顺序与官网联动 | 已修复 | 草稿、白名单上传、大小 / 状态核验、公开；正式版显式调用串行 Pages workflow，部署后核对索引和页面。此状态仅指本地实现与模拟测试，外部 CI 尚未执行。 |
+| 发布顺序与官网联动 | 已修复 | 草稿、白名单上传、大小 / 状态核验、公开；正式版显式调用串行 Pages workflow，部署后核对索引和页面。2026-10-18 随 v1.9.0 完成真实发布验证：Windows 门禁 + Linux 一次通过，macOS 因 CI 时序脆弱测试（`test_thumbnail_jobs`，2s cancel 等待）首跑失败、重跑通过后由 publish 幂等补传 5 个附件；官网由 workflow_dispatch + expected_tag 手动恢复部署并通过 verify_release_site。发布中发现 refresh-website 会因传递依赖失败被默认跳过，已在 release.yml 显式判定 `needs.publish.result`。 |
 | 历史资料对齐 | 已修复 | 真实 API 返回 48 个发布记录，其中 13 个正式版。CL 缺少的 1.6.1 与 1.2.0 从各自 tag 的 CL 恢复；保留原有 1.0.1 / 1.2.1 记录，不将无对应公开 Release 的归档冒充已发布。 |
 | 软件内检测与安装 | 仅说明 | 本次提供稳定 JSON，客户端请求、渲染与更新安装不在此轮实现。 |
-| 真实 CI、发布与部署 | 阻塞 | 本次无推送 / 发布授权，没有触发外部写操作；需合入 main 后在下次正常发布或手动官网部署中验收。 |
+| 真实 CI、发布与部署 | 已修复 | 2026-10-18 随 v1.9.0 完成：tag 触发打包与发布（publish_release 草稿→核验→公开）、GitHub Release 5 附件齐全、官网 workflow_dispatch 部署成功且 verify_release_site 线上通过（latest_stable=1.9.0，14 个正式版）。遗留：macOS CI 的 `test_thumbnail_jobs` 时序脆弱首跑失败（重跑通过），待单独排查。 |
 
 ## 验证证据
 
