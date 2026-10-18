@@ -2,12 +2,6 @@
   "format": 1,
   "modules": [
     {
-      "file": "shared/editor-utils.js",
-      "kind": "init",
-      "name": "editor-utils-init",
-      "exportName": "initEditorUtils"
-    },
-    {
       "file": "shared/host/storage.js",
       "name": "host-storage",
       "exportName": "createStorage"
@@ -186,6 +180,12 @@
       "file": "shared/utils/ograf.js",
       "name": "utils-ograf",
       "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/editor-utils.js",
+      "kind": "init",
+      "name": "editor-utils-init",
+      "exportName": "initEditorUtils"
     },
     {
       "file": "editor/media/editor-thumbnails.js",

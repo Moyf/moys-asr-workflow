@@ -262,7 +262,12 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(metadata["sourceFiles"], list(edit.read_editor_script_manifest()))
         self.assertEqual(set(metadata["inputs"]), set(metadata["sourceFiles"]))
         modules = json.loads(edit.read_web_asset("editor-modules.json"))["modules"]
-        positions = [payload.index(f'MAWE.register({json.dumps(item["name"])},') for item in modules]
+        # 工厂条目的 MAWE.register 与 init 条目的调用都在运行时按清单
+        # 顺序执行；minify 会剥掉 init 注释、改写寄存器调用，所以统一用
+        # __mawEsmInitializationTrace.push 序列（构建器 trace:true 固定
+        # 存在）核对全部条目的执行顺序。
+        trace = re.findall(r'__mawEsmInitializationTrace\.push\("([^"]+)"\)', payload)
+        positions = [trace.index(item["file"]) for item in modules]
         self.assertEqual(positions, sorted(positions))
 
     def test_ass_frame_preview_wires_template_module_and_styles(self) -> None:
@@ -517,10 +522,19 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotRegex(page, r"生成时间\s*[:：]")
         # Bundle minification can rename local parameters and remove whitespace;
         # assert the public facade assignments and their order, not source spelling.
+        # G01 起 editor-utils 是 init 模块：esbuild 会把模块定义提升到
+        # bundle 顶部，静态扫描函数体里的 `window.AsrEditorUtils=` 不再
+        # 反映运行时顺序。运行时顺序以 __mawEsmInitializationTrace.push(...)
+        # 序列为准（构建器 trace:true 固定存在；minify 后 push 是内联逗号语句）。
+        pushed = re.findall(r'__mawEsmInitializationTrace\.push\("([^"]+)"\)', page)
+        self.assertIn("shared/gap-remove-core.js", pushed)
+        self.assertIn("shared/editor-utils.js", pushed)
+        self.assertLess(pushed.index("shared/gap-remove-core.js"),
+                        pushed.index("shared/editor-utils.js"))
+        # 静态标记顺序仍核对其余门面（i18n / waveform / 桥）——它们尚未 init 化。
         markers = (
             r'Object\.defineProperty\([^,]+,\s*["\']MAWE["\']',
             r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
-            r'\bwindow\.AsrEditorUtils\s*=',
             r'\b[A-Za-z_$][\w$]*\.MAWE_I18N\s*=',
             r'\bwindow\.AsrWaveform\s*=',
             r'\bwindow\.MAWE_EDITOR_BRIDGE\s*=',
