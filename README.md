@@ -8,17 +8,15 @@
 
 <img width="1247" height="815" alt="PixPin_2026-10-19_01-03-36" src="https://github.com/user-attachments/assets/d8eeda1c-8937-4393-a9ca-eb02e9b1dc85" />
 
-> 为口播、访谈和课程生成并精修字幕。
+> 为口播、访谈和游戏实况等各类视频生成并精修字幕。
 
-MAW 把语音转写、波形校对、文稿整理和字幕导出接成一条工作流。在启动器中选择媒体并生成字幕，再到浏览器编辑器 MAWE 中修文字、调时间，保存工程后可以继续修改。
+MAW 把语音转写、波形校对、文稿整理和字幕导出接成一条工作流。
 
-默认通过云端 API 转写，需要准备服务商的 **API Key**，费用由服务商收取；编辑与工程保存在本机完成。实验性本地模型入口见[本地 ASR](docs/INDEX.md#user-local-asr)。
+在启动器中选择媒体并生成字幕，再到浏览器编辑器 MAWE 中修文字、调时间，保存工程后可以继续修改。
+
+默认通过云端 API 转写，需要准备服务商的 **API Key**，费用由服务商收取；编辑与工程保存在本机完成。本地模型入口见[本地 ASR](docs/INDEX.md#user-local-asr)。
 
 [下载正式版](https://github.com/Moyf/moys-asr-workflow/releases/latest) · [官网](https://moyf.github.io/moys-asr-workflow/) · [在线编辑器](https://moyf.github.io/moys-asr-workflow/editor/) · [更新记录](https://moyf.github.io/moys-asr-workflow/releases/) · [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
-
-![MAWE 编辑器：左侧视频与字幕列表，右侧多行波形和叠加字幕](docs/assets/1.6.0/overlay-track.webp)
-
-*编辑器界面示例（1.6.0）：左侧校对文字与预览，右侧结合波形调整字幕时间。布局可按工作区修改。*
 
 ## 为什么用 MAW
 
@@ -28,6 +26,14 @@ MAW 把语音转写、波形校对、文稿整理和字幕导出接成一条工�
 - **让下一次修改接着做**：`.mosp` 工程保留时间码、轨道、标记和编辑状态；识别预设、批量转写与自动后处理帮助复用常用流程，阶段结果可以检查和重试。
 
 本文按当前 **1.9 测试版**介绍功能；正式版可用能力以[对应更新记录](https://moyf.github.io/moys-asr-workflow/releases/)为准。MAW 不替代完整剪辑软件，转写和 AI 整理的结果仍需人工检查。
+
+## 独占特性
+
+- 多行波形
+- 超好用编辑工具
+- 一条龙式烧录工作流
+- 支持 ASS 调整样式
+- 字词级别拆句与合并
 
 ## 开始使用
 
