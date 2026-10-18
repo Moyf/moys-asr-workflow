@@ -12,7 +12,7 @@
 | 发布顺序与官网联动 | 已修复 | 草稿、白名单上传、大小 / 状态核验、公开；正式版显式调用串行 Pages workflow，部署后核对索引和页面。2026-10-18 随 v1.9.0 完成真实发布验证：Windows 门禁 + Linux 一次通过，macOS 因 CI 时序脆弱测试（`test_thumbnail_jobs`，2s cancel 等待）首跑失败、重跑通过后由 publish 幂等补传 5 个附件；官网由 workflow_dispatch + expected_tag 手动恢复部署并通过 verify_release_site。发布中发现 refresh-website 会因传递依赖失败被默认跳过，已在 release.yml 显式判定 `needs.publish.result`。 |
 | 历史资料对齐 | 已修复 | 真实 API 返回 48 个发布记录，其中 13 个正式版。CL 缺少的 1.6.1 与 1.2.0 从各自 tag 的 CL 恢复；保留原有 1.0.1 / 1.2.1 记录，不将无对应公开 Release 的归档冒充已发布。 |
 | 软件内检测与安装 | 仅说明 | 本次提供稳定 JSON，客户端请求、渲染与更新安装不在此轮实现。 |
-| 真实 CI、发布与部署 | 已修复 | 2026-10-18 随 v1.9.0 完成：tag 触发打包与发布（publish_release 草稿→核验→公开）、GitHub Release 5 附件齐全、官网 workflow_dispatch 部署成功且 verify_release_site 线上通过（latest_stable=1.9.0，14 个正式版）。遗留：macOS CI 的 `test_thumbnail_jobs` 时序脆弱首跑失败（重跑通过），待单独排查。 |
+| 真实 CI、发布与部署 | 已修复 | 2026-10-18 随 v1.9.0 完成：tag 触发打包与发布（publish_release 草稿→核验→公开）、GitHub Release 5 附件齐全、官网 workflow_dispatch 部署成功且 verify_release_site 线上通过（latest_stable=1.9.0，14 个正式版）。macOS CI 首跑失败的 `test_thumbnail_jobs` 已排查：产品契约是「取消最终会发生」（watcher 50ms 轮询）而无秒级时限保证，测试却硬编码 `cancel.wait(2)`，慢 runner 上线程调度停顿即超时；属测试健壮性问题，非产品 bug（Windows/Linux/本地连跑全绿）。已加固为 10s 宽限 + 自解释失败信息。 |
 
 ## 验证证据
 

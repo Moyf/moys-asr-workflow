@@ -56,5 +56,5 @@ Python 针对性测试 35 项、官网 check / build、Ruff、归档与文档检
 - [x] **真实发布后官网与索引同步**
   （操作）按正常审批流程合入 main，在后续正式版发布中检查草稿、附件核验、公开、官网刷新各 job；也可先手动运行 Pages workflow。
   （预期）目标正式版出现在官网和 JSON，部署核验通过；失败时能只重跑官网任务，不要求重新打包。
-  （说明）2026-10-18 随 v1.9.0 完成：publish 成功（5 附件），官网经 workflow_dispatch + expected_tag 部署，verify_release_site 线上通过。发布中发现 refresh-website 因传递依赖失败被默认跳过（macOS 首跑失败），已修复为显式判定 needs.publish.result（f4926908）；macOS CI 的 test_thumbnail_jobs 时序脆弱待单独排查。
+  （说明）2026-10-18 随 v1.9.0 完成：publish 成功（5 附件），官网经 workflow_dispatch + expected_tag 部署，verify_release_site 线上通过。发布中发现 refresh-website 因传递依赖失败被默认跳过（macOS 首跑失败），已修复为显式判定 needs.publish.result（f4926908）；macOS 首跑失败的 test_thumbnail_jobs 已排查为测试时序脆弱（非产品 bug），加固为 10s 宽限。
   <!-- id: live-ci -->
