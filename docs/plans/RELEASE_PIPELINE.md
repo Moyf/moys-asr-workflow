@@ -1,6 +1,6 @@
 # 正式版本归档、官网与更新检测管线设计
 
-> 设计基线：2026-10-17，HEAD `3fa96ed4`。2026-10-18 已完成首版本地实现与针对性验证，真实 CI / 发布 / 部署尚未执行；现行契约见[发布说明](../releases/README.md)，证据与边界见[实施记录](../logs/release1.9.0-beta.2/261018_正式版更新管线/IMPLEMENTATION.md)。
+> 设计基线：2026-10-17，HEAD `3fa96ed4`。2026-10-18 已完成首版本地实现与针对性验证，真实 CI / 发布 / 部署尚未执行；现行契约见[发布说明](../releases/README.md)，证据与边界见[实施记录](../logs/release1.9.0-beta.3/261018_正式版更新管线/IMPLEMENTATION.md)。
 
 ## 已确认的方向
 
@@ -61,7 +61,7 @@ flowchart TD
 | beta / rc 等预发布版 | 保留开发变化 | 不要求、不新增 | 不收录 | 保留现有测试版能力，从 CL 生成临时发布正文 |
 | 未发布区 | 持续维护 | 不生成 | 不收录 | 不发布 |
 
-原有 `1.9.0-beta.1.md`、`1.9.0-beta.2.md` 已迁入 `docs/archived/release-notes/`，保留原文追溯。`docs/releases/` 只保存正式版本与管线 README。
+原有 `1.9.0-beta.1.md`、`1.9.0-beta.2.md`、`1.9.0-beta.3.md` 已迁入 `docs/archived/release-notes/`，保留原文追溯。`docs/releases/` 只保存正式版本与管线 README。
 
 ## 三、目录与归档格式
 
