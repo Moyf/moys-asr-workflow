@@ -2,6 +2,12 @@
   "format": 1,
   "modules": [
     {
+      "file": "shared/editor-utils.js",
+      "kind": "init",
+      "name": "editor-utils-init",
+      "exportName": "initEditorUtils"
+    },
+    {
       "file": "shared/host/storage.js",
       "name": "host-storage",
       "exportName": "createStorage"

@@ -181,8 +181,12 @@ export async function compileSources(root, files, modules, read, options = {}) {
     if (item?.kind === 'init') {
       const index = modules.indexOf(item);
       body.push(`// Init module: ${file}\nfactory${index}();`);
-    } else if (item) body.push(`window.MAWE.register(${JSON.stringify(item.name)}, factory${modules.indexOf(item)});`);
-    else {
+    } else if (item) {
+      body.push(`window.MAWE.register(${JSON.stringify(item.name)}, factory${modules.indexOf(item)});`);
+    } else {
+      // Not in the registry: still a classic file (like boot files that
+      // share scope by design). Must parse as a script — an ESM file
+      // without a registry entry is a migration gap.
       try { parse(sources.get(file),'script'); }
       catch (error) { throw new Error(`Legacy source must remain classic until explicitly migrated: ${file}: ${error.message}`); }
       body.push(`// Legacy scope: ${file}\n${sources.get(file)}\n`);
