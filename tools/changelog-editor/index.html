@@ -59,6 +59,22 @@
   #repo-chip.ok { color: var(--ok); border-style: solid; }
   #topbar .spacer { flex: 1; }
   #dirty-dot { color: var(--warn); font-size: 12px; display: none; }
+  #save-status { font-size: 12px; color: var(--muted); }
+  #save-status.fail { color: var(--err); }
+
+  /* ---------- 锁定横幅 ---------- */
+  #lock-banner {
+    display: none; gap: 10px; align-items: center; padding: 8px 16px;
+    background: rgba(210, 153, 34, 0.12); border-bottom: 1px solid var(--line); font-size: 13px;
+  }
+  #lock-banner.show { display: flex; }
+  #pane .locked { opacity: 0.55; pointer-events: none; user-select: none; }
+
+  /* ---------- 分屏 ---------- */
+  #split-wrap { display: none; gap: 14px; align-items: flex-start; }
+  #split-wrap.show { display: flex; }
+  #split-wrap > .split-edit { flex: 1.2; min-width: 0; }
+  #split-wrap > .split-preview { flex: 1; min-width: 0; border-left: 1px solid var(--line); padding-left: 14px; position: sticky; top: 0; max-height: calc(100vh - 140px); overflow-y: auto; }
 
   /* ---------- 布局 ---------- */
   #layout { flex: 1; display: flex; min-height: 0; }
@@ -84,6 +100,7 @@
   .badge.pre { background: rgba(210,153,34,.15); color: var(--warn); }
   .badge.unrel { background: rgba(130,144,162,.15); color: var(--muted); }
   .arch-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+  .pending-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
   .arch-dot.fresh { background: var(--ok); }
   .arch-dot.stale { background: var(--warn); }
   .arch-dot.missing { background: var(--err); }
@@ -199,6 +216,7 @@
     <h1>CHANGELOG <span>编辑器</span></h1>
     <span id="repo-chip">未连接仓库目录</span>
     <span id="dirty-dot">● 有未保存修改</span>
+    <span id="save-status"></span>
     <span class="spacer"></span>
     <button id="btn-open">打开仓库目录</button>
     <button id="btn-load-file" class="ghost" title="不写盘的降级模式：只加载单个文件">仅加载 CL 文件</button>
@@ -212,6 +230,8 @@
     <button id="btn-restore" class="primary">恢复</button>
     <button id="btn-discard" class="ghost">放弃</button>
   </div>
+
+  <div id="lock-banner"></div>
 
   <div id="layout">
     <aside id="sidebar">
@@ -239,6 +259,7 @@
         </label>
         <div id="tabs">
           <button data-tab="edit" class="active">编辑</button>
+          <button data-tab="split">分屏</button>
           <button data-tab="preview">预览</button>
           <button data-tab="reference">对照</button>
         </div>
@@ -271,6 +292,7 @@
     archiveStatus: new Map(), // version -> fresh|stale|missing|none
     tab: 'edit',
     readOnly: false,
+    unlocked: new Set(),     // 已确认可编辑的历史测试版
   };
   const LS_STATE = () => `cl-editor:state:${S.baseHash}`;
   const LS_REFS = () => `cl-editor:refs:${S.baseHash}`;
@@ -367,12 +389,14 @@
   function renderSidebar() {
     const list = $('#version-list');
     list.innerHTML = '';
+    const dirty = new Set(dirtyVersions().map((s) => s.name));
     for (const s of S.sections) {
       const div = document.createElement('div');
       div.className = 'version-item' + (s.name === S.selected ? ' active' : '');
       const dot = L.isStable(s.name)
         ? `<span class="arch-dot ${S.archiveStatus.get(s.name) || ''}" title="归档状态"></span>` : '<span class="arch-dot" style="visibility:hidden"></span>';
-      div.innerHTML = `${dot}<span>${escapeHtml(s.name)}</span>${sectionBadge(s)}<span class="date">${s.date || ''}</span>`;
+      const pending = dirty.has(s.name) ? '<span class="pending-dot" title="有未完成的修改"></span>' : '';
+      div.innerHTML = `${dot}<span>${escapeHtml(s.name)}</span>${pending}${sectionBadge(s)}<span class="date">${s.date || ''}</span>`;
       div.onclick = () => selectSection(s.name);
       list.appendChild(div);
     }
@@ -406,9 +430,31 @@
     dateInput.value = section?.date || '';
     dateInput.style.display = section?.date || L.isStable(name) ? '' : 'none';
     $('#auto-arch-label').style.display = section && L.isStable(name) ? '' : 'none';
+    renderLockBanner();
     document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === 'edit'));
     renderSidebar();
     renderPane();
+  }
+
+  function isHistorical(section) {
+    return section && section.name !== '未发布' && !L.isStable(section.name);
+  }
+
+  function renderLockBanner() {
+    const section = S.sections.find((s) => s.name === S.selected);
+    const banner = $('#lock-banner');
+    if (!isHistorical(section)) { banner.classList.remove('show'); return; }
+    const key = `${S.baseHash}:${section.name}`;
+    if (sessionStorage.getItem(`cl-editor:ack:${key}`)) { banner.classList.remove('show'); return; }
+    banner.classList.add('show');
+    banner.innerHTML = `<span>⚠ 「${escapeHtml(section.name)}」是已发布的测试版小节，按惯例不再改动。确认要编辑吗？</span>
+      <span style="flex:1"></span>
+      <button id="btn-unlock" class="primary">仍要编辑</button>`;
+    banner.querySelector('#btn-unlock').onclick = () => {
+      sessionStorage.setItem(`cl-editor:ack:${key}`, '1');
+      banner.classList.remove('show');
+      renderPane();
+    };
   }
 
   function renderPane() {
@@ -417,7 +463,41 @@
     if (!S.selected) { pane.innerHTML = '<p class="hint">先用「打开仓库目录」或「仅加载 CL 文件」载入 CHANGELOG。</p>'; return; }
     if (S.tab === 'edit') renderEditPane(pane);
     else if (S.tab === 'preview') renderPreviewPane(pane);
-    else renderReferencePane(pane);
+    else if (S.tab === 'reference') renderReferencePane(pane);
+    else if (S.tab === 'split') renderSplitPane(pane);
+  }
+
+  /** 历史测试版在确认前锁定编辑。 */
+  function editLocked() {
+    const section = S.sections.find((s) => s.name === S.selected);
+    if (!isHistorical(section)) return false;
+    return !sessionStorage.getItem(`cl-editor:ack:${S.baseHash}:${section.name}`);
+  }
+
+  function renderSplitPane(pane) {
+    const wrap = document.createElement('div');
+    wrap.id = 'split-wrap';
+    wrap.className = 'show';
+    const editSide = document.createElement('div');
+    editSide.className = 'split-edit';
+    const previewSide = document.createElement('div');
+    previewSide.className = 'split-preview';
+    wrap.appendChild(editSide);
+    wrap.appendChild(previewSide);
+    pane.appendChild(wrap);
+    renderEditPane(editSide);
+    renderPreviewInto(previewSide);
+    if (editLocked()) wrap.querySelector('.split-edit').classList.add('locked');
+  }
+
+  let splitRefreshTimer = null;
+  function scheduleSplitPreview() {
+    if (S.tab !== 'split') return;
+    clearTimeout(splitRefreshTimer);
+    splitRefreshTimer = setTimeout(() => {
+      const side = document.querySelector('#split-wrap > .split-preview');
+      if (side) { side.innerHTML = ''; renderPreviewInto(side); }
+    }, 400);
   }
 
   function cardControls(card, idx) {
@@ -448,10 +528,12 @@
       wrap.innerHTML = '<p class="hint">此版本暂无内容。用下方按钮添加第一个条目。</p>';
     }
     pane.appendChild(wrap);
+    if (editLocked()) wrap.classList.add('locked');
     const addRow = document.createElement('div');
     addRow.className = 'add-row';
-    addRow.innerHTML = '<button id="add-entry">＋ 添加条目</button>';
-    addRow.querySelector('#add-entry').onclick = () => addEntry(parsed.cards.length);
+    addRow.innerHTML = '<button id="add-entry">＋ 添加条目</button><button id="add-heading" class="ghost">＋ 添加小节标题</button>';
+    addRow.querySelector('#add-entry').onclick = () => addCard('entry', parsed.cards.length);
+    addRow.querySelector('#add-heading').onclick = () => addCard('heading', parsed.cards.length);
     pane.appendChild(addRow);
     pane.querySelectorAll('textarea').forEach(fitTextarea);
     pane.querySelectorAll('.card').forEach((el) => {
@@ -478,16 +560,17 @@
       fitTextarea(ta);
       markDirty();
       refreshCardTags(el, card);
+      scheduleSplitPreview();
     });
     ta.addEventListener('focus', () => selectCard(cardId));
     el.addEventListener('click', (e) => { if (e.target.closest('button, a, input, .img-item')) return; selectCard(cardId); });
     el.querySelectorAll('.card-head button').forEach((btn) => {
       btn.onclick = () => cardAction(btn.dataset.act, card, idx, el);
     });
-    // 图片条：已有图片引用 + 新粘贴图片
+    // 图片条：已有图片引用 + 新粘贴图片（统一列表，可拖拽排序）
     if (isEntry) {
       const strip = el.querySelector('[data-strip]');
-      renderStrip(card, idx, strip);
+      renderImages(card, idx, strip);
     }
     return el;
   }
@@ -556,9 +639,11 @@
     }
   }
 
-  function addEntry(atIdx) {
+  function addCard(kind, atIdx) {
     const parsed = S.parsed.get(S.selected);
-    const card = { kind: 'entry', lines: ['- **新条目标题** ： 具体改动说明。'], imageRefs: [], original: null };
+    const card = kind === 'heading'
+      ? { kind: 'heading', lines: ['### ✨ 提升'], original: null }
+      : { kind: 'entry', lines: ['- **新条目标题** ： 具体改动说明。'], images: [], original: null };
     parsed.cards.splice(atIdx, 0, card);
     markDirty();
     renderPane();
@@ -603,8 +688,8 @@
     const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const cardKey = `${S.selected}#${idx}`;
     S.images.set(id, { id, blob, size, alt: cardTitleOf(card), filename, cardKey });
-    card.newImages = card.newImages || [];
-    card.newImages.push(id);
+    card.images = card.images || [];
+    card.images.push({ kind: 'new', id });
     markDirty();
     toast(`已附加图片到「${truncate(cardTitleOf(card), 18)}」（完成后写入 docs/assets/${S.selected}/）`);
   }
@@ -616,39 +701,95 @@
 
   function truncate(text, n) { return text.length > n ? `${text.slice(0, n)}…` : text; }
 
-  function renderStrip(card, idx, strip) {
+  /** 统一图片条：已有引用与待写盘图片混排，可拖拽排序。 */
+  function renderImages(card, idx, strip) {
     strip.innerHTML = '';
-    for (const ref of card.imageRefs) {
-      const chip = document.createElement('span');
-      chip.className = 'img-ref-chip';
-      chip.innerHTML = `🖼 <a href="${escapeAttr(ref.path)}" target="_blank" rel="noreferrer">${escapeHtml(ref.path)}</a>`;
-      strip.appendChild(chip);
-    }
-    for (const id of card.newImages || []) {
-      const img = S.images.get(id);
-      if (!img) continue;
-      const url = URL.createObjectURL(img.blob);
+    strip.dataset.cardIdx = String(idx);
+    (card.images || []).forEach((img, pos) => {
       const item = document.createElement('div');
       item.className = 'img-item';
-      item.innerHTML = `
-        <img src="${url}" alt="" title="点击放大预览">
-        <div class="fields">
-          <input type="text" data-f="alt" placeholder="alt 描述（默认取条目标题）" value="${escapeAttr(img.alt)}">
-          <input type="text" data-f="filename" value="${escapeAttr(img.filename)}" title="写入 docs/assets/${escapeAttr(S.selected)}/ 的文件名">
-          <div class="meta"><span>${formatSize(img.size)}</span>
-            ${img.size > 300 * 1024 ? '<span class="big">超过 300 KiB 软上限</span>' : ''}
-            <button data-act="rm">移除</button></div>
-        </div>`;
-      item.querySelector('img').onclick = () => window.open(url, '_blank');
-      item.querySelector('[data-f="alt"]').addEventListener('input', (e) => { img.alt = e.target.value; markDirty(); });
-      item.querySelector('[data-f="filename"]').addEventListener('input', (e) => { img.filename = e.target.value; markDirty(); });
-      item.querySelector('[data-act="rm"]').onclick = () => {
-        card.newImages = card.newImages.filter((x) => x !== id);
-        S.images.delete(id);
+      item.draggable = true;
+      item.dataset.pos = String(pos);
+      let thumb = '';
+      if (img.kind === 'new') {
+        const meta = S.images.get(img.id);
+        if (!meta) return;
+        const url = URL.createObjectURL(meta.blob);
+        thumb = `<img src="${url}" alt="" title="点击放大预览">
+          <div class="fields">
+            <input type="text" data-f="alt" placeholder="alt 描述（默认取条目标题）" value="${escapeAttr(meta.alt)}">
+            <input type="text" data-f="filename" value="${escapeAttr(meta.filename)}" title="写入 docs/assets/${escapeAttr(S.selected)}/ 的文件名">
+            <div class="meta"><span>${formatSize(meta.size)}</span>
+              ${meta.size > 300 * 1024 ? '<span class="big">超过 300 KiB 软上限</span>' : ''}
+              <span class="pending">未写盘</span>
+              <button data-act="rm">移除</button></div>
+          </div>`;
+        item.innerHTML = thumb;
+        item.querySelector('img').onclick = () => window.open(url, '_blank');
+        item.querySelector('[data-f="alt"]').addEventListener('input', (e) => { meta.alt = e.target.value; markDirty(); });
+        item.querySelector('[data-f="filename"]').addEventListener('input', (e) => { meta.filename = e.target.value; markDirty(); });
+        item.querySelector('[data-act="rm"]').onclick = () => {
+          card.images = card.images.filter((x) => x !== img);
+          S.images.delete(img.id);
+          markDirty(); renderPane();
+        };
+      } else {
+        const absolute = /^https?:\/\//.test(img.path);
+        thumb = `<img ${absolute ? `src="${escapeAttr(img.path)}"` : 'data-repo="' + escapeAttr(img.path) + '"'} alt="" title="点击放大预览">
+          <div class="fields">
+            <input type="text" data-f="alt" value="${escapeAttr(img.alt)}" title="图片 alt 描述">
+            <input type="text" data-f="path" value="${escapeAttr(img.path)}" title="图片链接（写回 CL 的路径）">
+            <div class="meta"><span>已有</span><button data-act="rm" title="从条目移除该图片行（不删除文件）">移除</button></div>
+          </div>`;
+        item.innerHTML = thumb;
+        const imgEl = item.querySelector('img');
+        if (imgEl.dataset.repo) resolveRepoImage(imgEl, imgEl.dataset.repo);
+        else imgEl.onclick = () => window.open(img.path, '_blank');
+        item.querySelector('[data-f="alt"]').addEventListener('input', (e) => { img.alt = e.target.value; markDirty(); });
+        item.querySelector('[data-f="path"]').addEventListener('input', (e) => { img.path = e.target.value; markDirty(); });
+        item.querySelector('[data-act="rm"]').onclick = () => {
+          if (!confirm('从条目移除这个图片行？（不会删除磁盘上的图片文件）')) return;
+          card.images = card.images.filter((x) => x !== img);
+          markDirty(); renderPane();
+        };
+      }
+      item.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/cl-img-pos', String(pos));
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      item.addEventListener('dragover', (e) => {
+        if (e.dataTransfer.types.includes('text/cl-img-pos')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+      });
+      item.addEventListener('drop', (e) => {
+        if (!e.dataTransfer.types.includes('text/cl-img-pos')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const from = Number(e.dataTransfer.getData('text/cl-img-pos'));
+        const to = Number(item.dataset.pos);
+        if (Number.isNaN(from) || from === to) return;
+        const [moved] = card.images.splice(from, 1);
+        card.images.splice(to, 0, moved);
         markDirty(); renderPane();
-      };
+      });
       strip.appendChild(item);
+    });
+    if (!(card.images || []).length) strip.innerHTML = '<span class="hint">Ctrl+V 粘贴截图，或拖入图片文件 / 点卡片 📎 选择。</span>';
+  }
+
+  const repoImgCache = new Map();
+  async function resolveRepoImage(imgEl, repoPath) {
+    if (!S.repo || !repoPath.startsWith('docs/assets/')) { imgEl.outerHTML = `<span class="img-ref-chip">🖼 ${escapeHtml(repoPath)}</span>`; return; }
+    let blob = repoImgCache.get(repoPath);
+    if (blob === undefined) {
+      try {
+        const parts = repoPath.split('/');
+        const dir = await S.repo.getDirectoryHandle(parts[0]).then((d) => d.getDirectoryHandle(parts[1])).then((d) => d.getDirectoryHandle(parts[2]));
+        blob = await (await (await dir.getFileHandle(parts[3])).getFile()).blob();
+      } catch { blob = null; }
+      repoImgCache.set(repoPath, blob);
     }
+    if (blob) imgEl.src = URL.createObjectURL(blob);
+    else imgEl.outerHTML = `<span class="img-ref-chip">🖼 ${escapeHtml(repoPath)}</span>`;
   }
 
   function formatSize(bytes) {
@@ -734,14 +875,21 @@
   }
 
   function renderPreviewPane(pane) {
+    const div = document.createElement('div');
+    div.className = 'preview';
+    pane.appendChild(div);
+    renderPreviewInto(div);
+  }
+
+  function renderPreviewInto(container) {
     const parsed = S.parsed.get(S.selected);
     const section = S.sections.find((s) => s.name === S.selected);
+    container.innerHTML = '';
     const div = document.createElement('div');
     div.className = 'preview';
     const urlCache = new Map();
     const resolveImg = (alt, src) => {
-      const local = S.images.get(src);
-      if (local) return `<img src="${URL.createObjectURL(local.blob)}" alt="${escapeAttr(alt)}">`;
+      if (/^https?:\/\//.test(src)) return `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">`;
       return `<img data-src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">`;
     };
     let html = `<h2>${escapeHtml(section.name)}${section.date ? ` <small style="color:var(--muted)">${section.date}</small>` : ''}</h2>`;
@@ -756,7 +904,13 @@
       if (card.kind === 'entry') {
         if (!inList) { html += '<ul>'; inList = true; }
         html += `<li>${inlineMd(line.replace(/^-\s*/, ''), resolveImg)}`;
-        for (const ref of card.imageRefs) html += resolveImg(ref.alt, ref.path);
+        for (const img of card.images || []) {
+          if (img.kind === 'existing') html += resolveImg(img.alt, img.path);
+          else {
+            const meta = S.images.get(img.id);
+            if (meta) html += `<img src="${URL.createObjectURL(meta.blob)}" alt="${escapeAttr(meta.alt)}">`;
+          }
+        }
         html += '</li>';
         continue;
       }
@@ -765,7 +919,7 @@
     }
     if (inList) html += '</ul>';
     div.innerHTML = html;
-    pane.appendChild(div);
+    container.appendChild(div);
     // 用仓库句柄解析已有图片
     div.querySelectorAll('img[data-src]').forEach(async (img) => {
       const src = img.dataset.src;
@@ -787,18 +941,29 @@
   }
 
   // ---------- 对照 ----------
+  /** 正式版的对照来源：文档顺序中它与上一个正式版之间的全部测试版小节。 */
+  function referenceSources(version) {
+    const idx = S.sections.findIndex((s) => s.name === version);
+    const sources = [];
+    for (let i = idx + 1; i < S.sections.length; i += 1) {
+      const s = S.sections[i];
+      if (L.isStable(s.name)) break;
+      if (s.name !== '未发布') sources.push(s);
+    }
+    return sources;
+  }
+
   function renderReferencePane(pane) {
     const section = S.sections.find((s) => s.name === S.selected);
-    const prefix = `${section.name}-beta.`;
-    const sources = S.sections.filter((s) => s.name.startsWith(prefix));
+    const sources = L.isStable(section.name) ? referenceSources(section.name) : [];
     const wrap = document.createElement('div');
     wrap.className = 'preview';
     if (!sources.length) {
-      wrap.innerHTML = '<p class="hint">此版本没有同系列 beta 小节可对照。</p>';
+      wrap.innerHTML = '<p class="hint">此版本没有可对照的测试版小节（对照覆盖上一正式版之后的全部测试版）。</p>';
       pane.appendChild(wrap);
       return;
     }
-    wrap.innerHTML = `<p class="hint">逐条勾选已核对过的 beta 条目（按版本保存）。确认合并稿覆盖了全部内容后即可「完成编辑」。</p>`;
+    wrap.innerHTML = `<p class="hint">逐条勾选已核对过的测试版条目（按版本保存）。确认合并稿覆盖了全部内容后即可「完成编辑」。</p>`;
     const checked = new Set(JSON.parse(localStorage.getItem(LS_REFS()) || '[]'));
     for (const src of sources) {
       const parsed = S.parsed.get(src.name);
@@ -851,6 +1016,7 @@
     for (const [id, img] of S.images) {
       refs.push({ id, alt: img.alt, filename: img.filename, size: img.size, cardKey: img.cardKey });
     }
+    const status = $('#save-status');
     try {
       localStorage.setItem(LS_STATE(), JSON.stringify({
         savedAt: Date.now(),
@@ -860,9 +1026,16 @@
       }));
       localStorage.setItem(LS_IMGS(), JSON.stringify(refs));
       idbPutAll(refs);
+      status.className = '';
+      status.textContent = `已自动保存 ${new Date().toLocaleTimeString()}`;
       return true;
     } catch (e) {
       console.warn('autosave failed', e);
+      if (!status.classList.contains('fail')) {
+        toast('自动保存失败（可能是浏览器存储配额已满）：请尽快「完成编辑」把图片写盘，避免丢失', true);
+      }
+      status.className = 'fail';
+      status.textContent = '自动保存失败';
       return false;
     }
   }
@@ -904,10 +1077,6 @@
     reparse();
     const ids = [];
     // 依据持久化的 refs 找回新图片元数据（blobs 在 IDB）
-    for (const section of S.sections) {
-      const parsed = S.parsed.get(section.name);
-      parsed.cards.forEach((card, idx) => { card.newImages = []; });
-    }
     const refList = JSON.parse(localStorage.getItem(LS_IMGS()) || '[]');
     for (const ref of refList) {
       const [sectionName, idxStr] = ref.cardKey.split('#');
@@ -915,7 +1084,8 @@
       if (!parsed) continue;
       const card = parsed.cards[Number(idxStr)];
       if (!card || card.kind !== 'entry') continue;
-      card.newImages.push(ref.id);
+      card.images = card.images || [];
+      card.images.push({ kind: 'new', id: ref.id });
       S.images.set(ref.id, { ...ref });
       ids.push(ref.id);
     }
@@ -924,7 +1094,7 @@
     $('#restore-banner').style.display = 'none';
     selectSection(state.selected);
     markDirty();
-    toast('已恢复上次编辑（图片写入前请勿关闭页面太久，blob 由本页 IndexedDB 保存）');
+    toast('已恢复上次编辑（图片写入前请勿清除浏览器数据，blob 由本页 IndexedDB 保存）');
   }
 
   // ---------- 写盘辅助 ----------
@@ -969,22 +1139,37 @@
     }
   }
 
-  // ---------- 完成编辑 ----------
-  function validateForFinish() {
-    const parsed = S.parsed.get(S.selected);
-    const section = S.sections.find((s) => s.name === S.selected);
+  // ---------- 完成编辑（支持多版本批量） ----------
+  function newImagesOf(versionName) {
+    const parsed = S.parsed.get(versionName);
+    const out = [];
+    for (const card of parsed.cards) {
+      if (card.kind !== 'entry') continue;
+      for (const imgRef of card.images || []) {
+        if (imgRef.kind === 'new') out.push({ card, imgRef, meta: S.images.get(imgRef.id) });
+      }
+    }
+    return out;
+  }
+
+  function collectErrors(versionName) {
+    const parsed = S.parsed.get(versionName);
+    const section = S.sections.find((s) => s.name === versionName);
     const errors = [];
     if (section.name !== '未发布' && L.isStable(section.name) && !section.date) {
       errors.push('正式版需要设置日期（标题行 `## [版本] - YYYY-MM-DD`）');
     }
+    if (section.name === '未发布' && newImagesOf(versionName).length) {
+      errors.push('「未发布」区不支持配图（没有对应的 docs/assets 版本目录）');
+    }
     const names = new Map();
-    for (const [id, img] of S.images) {
-      const name = img.filename.trim();
+    for (const { meta } of newImagesOf(versionName)) {
+      const name = meta.filename.trim();
       if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) {
         errors.push(`文件名不合法：${name}（只允许字母数字 . _ -）`);
       }
       if (names.has(name)) errors.push(`文件名重复：${name}`);
-      names.set(name, id);
+      names.set(name, meta.id);
     }
     for (let i = parsed.cards.length - 1; i >= 0; i -= 1) {
       const card = parsed.cards[i];
@@ -996,24 +1181,85 @@
     return errors;
   }
 
+  function validateForFinish(versionName = S.selected) {
+    return collectErrors(versionName);
+  }
+
+  /** 有改动（文本或新图片）的版本。 */
+  function dirtyVersions() {
+    const out = [];
+    for (const section of S.sections) {
+      const parsed = S.parsed.get(section.name);
+      if (!parsed) continue;
+      const textChanged = L.serializeSection(section, parsed) !== section.rawText;
+      const hasNew = parsed.cards.some((c) => (c.images || []).some((im) => im.kind === 'new'));
+      if (textChanged || hasNew) out.push(section);
+    }
+    return out;
+  }
+
   async function finishEditing() {
-    if (!S.selected) return;
-    const section = S.sections.find((s) => s.name === S.selected);
-    const errors = validateForFinish();
-    if (errors.length) {
-      modal(`<h3>还不能完成编辑</h3>${errors.map((e) => `<p class="step">⚠ ${escapeHtml(e)}</p>`).join('')}
+    const dirty = dirtyVersions();
+    if (!dirty.length) { toast('没有需要完成的修改', true); return; }
+    const allErrors = [];
+    for (const section of dirty) {
+      allErrors.push(...collectErrors(section.name).map((e) => `[${section.name}] ${e}`));
+    }
+    if (allErrors.length) {
+      modal(`<h3>还不能完成编辑</h3>${allErrors.map((e) => `<p class="step">⚠ ${escapeHtml(e)}</p>`).join('')}
         <div style="margin-top:14px;text-align:right"><button onclick="document.querySelector('#mask').classList.remove('show')">知道了</button></div>`);
       return;
     }
-    if (section.name === '未发布') {
-      toast('「未发布」区不参与发布管线，请选择具体版本再完成编辑', true);
+    if (dirty.length === 1) {
+      const section = dirty[0];
+      const archive = section.name !== '未发布' && L.isStable(section.name) && $('#auto-archive').checked;
+      await applyFinish([section.name], new Set(archive ? [section.name] : []));
       return;
     }
-    const autoArchive = $('#auto-archive').checked && L.isStable(section.name);
-    const docText = serializeCurrentDoc();
+    renderBatchModal(dirty);
+  }
+
+  function renderBatchModal(dirty) {
+    const rows = dirty.map((section) => {
+      const imgCount = newImagesOf(section.name).length;
+      const stable = L.isStable(section.name);
+      return `<div class="step">
+        <input type="checkbox" data-batch="${escapeAttr(section.name)}" checked>
+        <span><strong>${escapeHtml(section.name)}</strong>
+        ${section.name === '未发布' ? '<span class="badge unrel">仅文本</span>' : ''}
+        ${imgCount ? `，${imgCount} 张新图片` : '，仅文本修改'}</span>
+        ${stable ? `<label class="hint" style="margin-left:auto"><input type="checkbox" data-batch-arch="${escapeAttr(section.name)}" checked>重生成归档</label>` : ''}
+      </div>`;
+    }).join('');
+    modal(`<h3>完成编辑 — ${dirty.length} 个版本有改动</h3>
+      ${rows}
+      <p class="hint" style="margin:12px 0 0">写入顺序：备份 → 各版本图片 → 一次性写回 CHANGELOG.md → 重生成勾选的归档。</p>
+      <div style="margin-top:16px;text-align:right">
+        <button onclick="document.querySelector('#mask').classList.remove('show')">取消</button>
+        <button id="btn-batch-go" class="primary">开始写入</button>
+      </div>`);
+    $('#btn-batch-go').onclick = () => {
+      const versions = [...document.querySelectorAll('[data-batch]')].filter((b) => b.checked).map((b) => b.dataset.batch);
+      if (!versions.length) { toast('未勾选任何版本', true); return; }
+      const archives = new Set([...document.querySelectorAll('[data-batch-arch]')]
+        .filter((b) => b.checked && versions.includes(b.dataset.batchArch)).map((b) => b.dataset.batchArch));
+      closeModal();
+      applyFinish(versions, archives);
+    };
+  }
+
+  async function blobSha256(blob) {
+    const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(await blob.arrayBuffer()));
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function applyFinish(versionNames, archiveSet) {
     const steps = [];
-    const log = (text, ok = true) => { steps.push({ text, ok }); };
+    const log = (text) => { steps.push(text); };
+    const written = [];
+    const processedIds = [];
     try {
+      const docText = serializeCurrentDoc();
       if (S.repo) {
         // 1) 冲突检查
         const onDisk = await readFileAt(['CHANGELOG.md']);
@@ -1021,84 +1267,84 @@
         // 2) 备份
         const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
         const backupDir = ['.artifacts', 'changelog-editor', 'backup', stamp];
-        log(`已备份原文件 → ${backupDir.join('/')}/`);
         await backupFile(['CHANGELOG.md'], backupDir);
-        if (autoArchive) await backupFile(['docs', 'releases', `${section.name}.md`], backupDir);
-        // 3) 写图片
-        const written = [];
-        const dedupe = new Map();
-        for (const [, img] of S.images) {
-          const name = img.filename.trim();
-          const buf = new Uint8Array(await img.blob.arrayBuffer());
-          const digest = await crypto.subtle.digest('SHA-256', buf);
-          const key = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-          if (dedupe.has(key)) { img.finalName = dedupe.get(key); continue; }
-          dedupe.set(key, name);
-          await writeFileAt(['docs', 'assets', section.name, name], img.blob);
-          img.finalName = name;
-          written.push(`docs/assets/${section.name}/${name}（${formatSize(img.size)}）`);
-        }
-        log(`已写入 ${written.length} 张图片 → docs/assets/${section.name}/`);
-        // 4) 更新 CL 中的图片行
-        const parsed = S.parsed.get(section.name);
-        for (const card of parsed.cards) {
-          if (card.kind !== 'entry' || !(card.newImages || []).length) continue;
-          for (const id of card.newImages) {
-            const img = S.images.get(id);
-            if (!img?.finalName) continue;
-            const alt = (img.alt || cardTitleOf(card) || section.name).trim();
-            card.imageRefs.push({ alt, path: `docs/assets/${section.name}/${img.finalName}` });
+        for (const name of archiveSet) await backupFile(['docs', 'releases', `${name}.md`], backupDir);
+        log(`已备份原文件 → ${backupDir.join('/')}/`);
+        // 3) 各版本写图片，并把新图片转为已有引用（保持条目内的顺序）
+        for (const name of versionNames) {
+          const dedupe = new Map();
+          let count = 0;
+          for (const { card, imgRef, meta } of newImagesOf(name)) {
+            if (!meta) continue;
+            const filename = meta.filename.trim();
+            const key = await blobSha256(meta.blob);
+            if (dedupe.has(key)) meta.finalName = dedupe.get(key);
+            else {
+              dedupe.set(key, filename);
+              await writeFileAt(['docs', 'assets', name, filename], meta.blob);
+              meta.finalName = filename;
+            }
+            imgRef.kind = 'existing';
+            imgRef.alt = (meta.alt || cardTitleOf(card) || name).trim();
+            imgRef.path = `docs/assets/${name}/${meta.finalName}`;
+            delete imgRef.id;
+            written.push(`docs/assets/${name}/${meta.finalName}（${formatSize(meta.size)}）`);
+            processedIds.push(meta.id);
+            count += 1;
           }
-          card.newImages = [];
+          if (count) log(`${name}：写入 ${count} 张图片 → docs/assets/${name}/`);
         }
+        // 4) 一次性写回 CL
         const newDoc = serializeCurrentDoc();
         await writeFileAt(['CHANGELOG.md'], new Blob([newDoc], { type: 'text/markdown' }));
         S.clText = newDoc; S.baseText = newDoc;
         log('已写回 CHANGELOG.md（图片链接已插入到对应条目后）');
         // 5) 归档
-        if (autoArchive) {
-          const archive = await L.buildArchive(S.clText, section.name);
-          await writeFileAt(['docs', 'releases', `${section.name}.md`], new Blob([archive], { type: 'text/markdown' }));
-          log(`已生成归档 docs/releases/${section.name}.md（与 prepare_release_notes.py 同契约）`);
+        for (const name of archiveSet) {
+          const archive = await L.buildArchive(S.clText, name);
+          await writeFileAt(['docs', 'releases', `${name}.md`], new Blob([archive], { type: 'text/markdown' }));
+          log(`已生成归档 docs/releases/${name}.md（与 prepare_release_notes.py 同契约）`);
         }
         await refreshArchiveStatus();
       } else {
         // 降级：下载
-        const { preamble, sections } = L.splitSections(S.clText);
-        const parsed = S.parsed.get(section.name);
-        for (const card of parsed.cards) {
-          if (card.kind !== 'entry' || !(card.newImages || []).length) continue;
-          for (const id of card.newImages) {
-            const img = S.images.get(id);
-            if (!img) continue;
-            img.finalName = img.filename.trim();
-            card.imageRefs.push({ alt: img.alt || cardTitleOf(card), path: `docs/assets/${section.name}/${img.finalName}` });
-            triggerDownload(img.blob, img.finalName);
+        for (const name of versionNames) {
+          for (const { card, imgRef, meta } of newImagesOf(name)) {
+            if (!meta) continue;
+            meta.finalName = meta.filename.trim();
+            imgRef.kind = 'existing';
+            imgRef.alt = meta.alt || cardTitleOf(card) || name;
+            imgRef.path = `docs/assets/${name}/${meta.finalName}`;
+            delete imgRef.id;
+            triggerDownload(meta.blob, meta.finalName);
+            written.push(`docs/assets/${name}/${meta.finalName}`);
+            processedIds.push(meta.id);
           }
-          card.newImages = [];
         }
         const newDoc = serializeCurrentDoc();
         triggerDownload(new Blob([newDoc], { type: 'text/markdown' }), 'CHANGELOG.md');
-        if (autoArchive) {
-          triggerDownload(new Blob([await L.buildArchive(newDoc, section.name)], { type: 'text/markdown' }), `${section.name}.md`);
+        for (const name of archiveSet) {
+          triggerDownload(new Blob([await L.buildArchive(newDoc, name)], { type: 'text/markdown' }), `${name}.md`);
         }
         log('只读模式：已通过下载交付 CHANGELOG / 归档 / 图片，请手动放回对应位置');
-        S.clText = newDoc; S.baseText = newDoc;
+        S.clText = serializeCurrentDoc(); S.baseText = S.clText;
       }
-      const imageList = [...S.images.values()].map((img) => `docs/assets/${section.name}/${img.finalName || img.filename}`).filter((p) => p.includes('/'));
-      S.images.clear();
+      for (const id of processedIds) S.images.delete(id);
       reparseFromText(S.clText);
       markClean();
       localStorage.removeItem(LS_STATE());
-      renderSidebar(); selectSection(S.selected);
-      const tag = `v${section.name}`;
+      localStorage.removeItem(LS_IMGS());
+      renderSidebar();
+      const selected = S.selected;
+      selectSection(S.sections.some((s) => s.name === selected) ? selected : S.sections[0].name);
+      const tags = [...archiveSet].map((name) => `v${name}`);
       modal(`
-        <h3>✅ 完成编辑 — ${escapeHtml(section.name)}</h3>
-        ${steps.map((s) => `<div class="step"><span class="s">✓</span><span>${escapeHtml(s.text)}</span></div>`).join('')}
-        ${imageList.length ? `<p class="hint" style="margin:10px 0 4px">写入的文件：</p><div class="paths">${imageList.map(escapeHtml).join('<br>')}</div>` : ''}
+        <h3>✅ 完成编辑 — ${escapeHtml(versionNames.join('、'))}</h3>
+        ${steps.map((s) => `<div class="step"><span class="s">✓</span><span>${escapeHtml(s)}</span></div>`).join('')}
+        ${written.length ? `<p class="hint" style="margin:10px 0 4px">写入的文件：</p><div class="paths">${written.map(escapeHtml).join('<br>')}</div>` : ''}
         <p class="hint" style="margin:12px 0 4px">建议接着在仓库根目录执行：</p>
-        <code>uv run --no-sync python scripts/prepare_release_notes.py --check-all</code><br>
-        <code>uv run --no-sync python scripts/prepare_release_notes.py --tag ${escapeHtml(tag)} --output .artifacts/release-preview.md</code>
+        <code>uv run --no-sync python scripts/prepare_release_notes.py --check-all</code>
+        ${tags.map((tag) => `<br><code>uv run --no-sync python scripts/prepare_release_notes.py --tag ${escapeHtml(tag)} --output .artifacts/release-preview.md</code>`).join('')}
         <div style="margin-top:16px;text-align:right"><button class="primary" onclick="document.querySelector('#mask').classList.remove('show')">好</button></div>`);
     } catch (error) {
       modal(`<h3>⚠ 完成编辑中断</h3><p>${escapeHtml(error.message)}</p>

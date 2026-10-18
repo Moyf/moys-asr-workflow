@@ -234,7 +234,8 @@
     return { preamble, sections };
   }
 
-  /** 把一个版本小节解析成卡片。卡片 lines 为正文行；blanksBefore 保留原有空行数。 */
+  /** 把一个版本小节解析成卡片。卡片 lines 为正文行；blanksBefore 保留原有空行数。
+   *  条目卡片的 images 为统一图片列表：{kind:'existing', alt, path}（已在 CL 中）或 {kind:'new', id}（粘贴待写盘）。 */
   function parseSection(section) {
     const content = section.rawText.split('\n').slice(1); // 去掉标题行
     if (content.length && content[content.length - 1] === '') content.pop(); // 去掉结尾换行产生的空尾巴
@@ -248,12 +249,14 @@
     for (const line of content) {
       if (line.trim() === '') { blanks += 1; continue; }
       if (line.startsWith('- ')) {
-        pushCard({ kind: 'entry', lines: [line], imageRefs: [], original: line });
+        pushCard({ kind: 'entry', lines: [line], images: [], original: line });
       } else if (/^!\[/.test(line) && blanks === 0 && cards.length && cards[cards.length - 1].kind === 'entry') {
         const altMatch = /^!\[([^\]]*)\]\(([^)\s]+)\)\s*$/.exec(line);
-        cards[cards.length - 1].imageRefs.push(altMatch
-          ? { alt: altMatch[1], path: altMatch[2] }
-          : { alt: '', path: line });
+        if (altMatch) {
+          cards[cards.length - 1].images.push({ kind: 'existing', alt: altMatch[1], path: altMatch[2] });
+        } else {
+          pushCard({ kind: 'text', lines: [line], original: line });
+        }
       } else if (/^#+ /.test(line)) {
         pushCard({ kind: 'heading', lines: [line], original: line });
       } else {
@@ -274,11 +277,11 @@
     return lines.join('\n') + '\n';
   }
 
-  /** 新条目插入后的行：条目行 + 新图片行。 */
+  /** 新条目插入后的行：条目行 + 已确认图片行（新图片在写盘前不进 CL）。 */
   function entryCardToLines(card) {
     const lines = [card.lines[0]];
-    for (const ref of card.imageRefs) {
-      lines.push(`![${ref.alt}](${ref.path})`);
+    for (const img of card.images || []) {
+      if (img.kind === 'existing') lines.push(`![${img.alt}](${img.path})`);
     }
     return lines;
   }
