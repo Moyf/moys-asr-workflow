@@ -80,26 +80,30 @@ const url = 'http://127.0.0.1:8791/tools/changelog-editor/index.html';
   });
   console.log('heading ops:', JSON.stringify(headingOps));
 
-  // 统一图片条：新图片(待写盘徽标/文件名) + 模拟已有图片(可改 alt) + 真实 HTML5 拖拽排序
+  // 统一图片条：新图片(默认取条目标题做文件名/待写盘徽标/扩展名分离) + 模拟已有图片 + 真实拖拽排序
   const images = await page.evaluate(async () => {
     selectSection('1.6.0');
     await new Promise((r) => setTimeout(r, 100));
     const parsed = S.parsed.get('1.6.0');
     const entry = parsed.cards.find((c) => c.kind === 'entry');
     const idx = parsed.cards.indexOf(entry);
+    const title = entry.lines[0].match(/^-\s*\*\*(.+?)\*\*/)?.[1] || 'entry';
     // 模拟一个已有图片引用（正常来自 CL 解析）
     entry.images = [{ kind: 'existing', alt: '旧图描述', path: 'docs/assets/1.6.0/example.webp' }];
-    // 附加一张新图
+    // 附加一张新图（默认文件名应取条目标题）
     const png = await fetch('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==').then((r) => r.blob());
     await attachImage(entry, idx, new File([png], 'shot.png', { type: 'image/png' }));
     renderPane();
     await new Promise((r) => setTimeout(r, 100));
     const strip = document.querySelector('.card .img-strip');
     const items = [...strip.querySelectorAll('.img-item')];
-    const altInputs = items.filter((el) => el.querySelector('input[data-f="alt"]')).length;
-    const pathInputOnExisting = Boolean(items[0].querySelector('input[data-f="path"]'));
-    const filenameOnNew = Boolean(items[1].querySelector('input[data-f="filename"]'));
-    const pendingBadge = Boolean(items[1].querySelector('.pending'));
+    const newMeta = [...S.images.values()][0];
+    const extBadge = items[1].querySelector('.ext-badge');
+    const filenameInputValue = items[1].querySelector('input[data-f="filename"]').value;
+    const filenameHasExt = filenameInputValue.includes('.');
+    // 扩展名分离后校验应通过（中文文件名合法）
+    const errs = collectErrors('1.6.0');
+    const validationClean = !errs.some((e) => e.includes('文件名'));
     // 真实拖拽：把第二个（新图）拖到第一位
     const dt = new DataTransfer();
     dt.setData('text/cl-img-pos', '1');
@@ -115,7 +119,11 @@ const url = 'http://127.0.0.1:8791/tools/changelog-editor/index.html';
     const notEmitted = !serialized.includes('docs/assets/1.6.0/shot');
     // 还原
     entry.images = [];
-    return { altInputs, pathInputOnExisting, filenameOnNew, pendingBadge, orderAfterDrag, emitted, notEmitted };
+    for (const [id] of [...S.images]) S.images.delete(id);
+    return {
+      title, defaultName: newMeta ? newMeta.filename : null, extBadge: extBadge ? extBadge.textContent : null,
+      filenameHasExt, validationClean, orderAfterDrag, emitted, notEmitted, errs,
+    };
   });
   console.log('images:', JSON.stringify(images));
 
@@ -164,6 +172,15 @@ const url = 'http://127.0.0.1:8791/tools/changelog-editor/index.html';
   await page.evaluate(() => selectSection('1.9.0'));
   await page.waitForTimeout(150);
   await page.screenshot({ path: path.join(repoRoot, '.artifacts', 'cl-editor-smoke2.png') });
+
+  // 侧栏拖宽手柄存在 + 文本选区拖动不再被拦截
+  const dragFix = await page.evaluate(() => {
+    return {
+      resizer: Boolean(document.querySelector('#sb-resizer')),
+      archiveBox: Boolean(document.querySelector('#archive-box')),
+    };
+  });
+  console.log('layout:', JSON.stringify(dragFix));
 
   console.log('page errors:', errors.length ? errors : 'none');
   await browser.close();

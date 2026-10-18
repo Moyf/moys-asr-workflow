@@ -79,10 +79,13 @@
   /* ---------- 布局 ---------- */
   #layout { flex: 1; display: flex; min-height: 0; }
   #sidebar {
-    width: 250px; flex-shrink: 0; border-right: 1px solid var(--line);
+    width: 280px; min-width: 200px; max-width: 560px; flex-shrink: 0; border-right: 1px solid var(--line);
     background: var(--surface); overflow-y: auto; padding: 12px;
     display: flex; flex-direction: column; gap: 14px;
   }
+  #sb-resizer { width: 5px; cursor: col-resize; flex-shrink: 0; background: transparent; }
+  #sb-resizer:hover, body.resizing #sb-resizer { background: var(--accent-soft); }
+  body.resizing { cursor: col-resize; user-select: none; }
   #main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
   /* ---------- 侧栏 ---------- */
@@ -91,10 +94,12 @@
   .version-item {
     display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px;
     cursor: pointer; border: 1px solid transparent; font-family: var(--mono); font-size: 13px;
+    white-space: nowrap;
   }
+  .version-item .name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .version-item .date { color: var(--muted); font-size: 11px; margin-left: auto; font-family: inherit; flex-shrink: 0; }
   .version-item:hover { background: var(--surface-raised); }
   .version-item.active { background: var(--accent-soft); border-color: var(--accent); }
-  .version-item .date { color: var(--muted); font-size: 11px; margin-left: auto; font-family: inherit; }
   .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-family: initial; }
   .badge.stable { background: rgba(63,185,80,.15); color: var(--ok); }
   .badge.pre { background: rgba(210,153,34,.15); color: var(--warn); }
@@ -161,6 +166,12 @@
   .img-item img { width: 92px; height: 56px; object-fit: cover; border-radius: 6px; background: #000; cursor: zoom-in; }
   .img-item .fields { display: flex; flex-direction: column; gap: 4px; }
   .img-item input { font-size: 12px; font-family: var(--mono); width: 190px; }
+  .ext-badge {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 7px; flex-shrink: 0; user-select: none;
+  }
+  .img-item .meta .pending { color: var(--warn); }
   .img-item .meta { font-size: 11px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
   .img-item .meta .big { color: var(--warn); }
   .img-item button { padding: 0 6px; font-size: 11px; }
@@ -249,6 +260,8 @@
         <p class="hint" style="margin:8px 0 0;">生成前会自动保存 CL 并先备份被覆盖的文件。</p>
       </div>
     </aside>
+
+    <div id="sb-resizer" title="拖动调整宽度"></div>
 
     <section id="main">
       <div id="version-head">
@@ -396,7 +409,7 @@
       const dot = L.isStable(s.name)
         ? `<span class="arch-dot ${S.archiveStatus.get(s.name) || ''}" title="归档状态"></span>` : '<span class="arch-dot" style="visibility:hidden"></span>';
       const pending = dirty.has(s.name) ? '<span class="pending-dot" title="有未完成的修改"></span>' : '';
-      div.innerHTML = `${dot}<span>${escapeHtml(s.name)}</span>${pending}${sectionBadge(s)}<span class="date">${s.date || ''}</span>`;
+      div.innerHTML = `${dot}<span class="name">${escapeHtml(s.name)}</span>${pending}${sectionBadge(s)}<span class="date">${s.date || ''}</span>`;
       div.onclick = () => selectSection(s.name);
       list.appendChild(div);
     }
@@ -683,11 +696,29 @@
     }
   }
 
+  /** 条目标题 → 文件名基底：去掉文件系统不友好字符，保留中文等 Unicode 字母。 */
+  function slugifyTitle(title) {
+    return String(title || '')
+      .replace(/[\\/:*?"<>|]/g, ' ')
+      .replace(/\s+/g, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^[.-]+|[.-]+$/g, '')
+      .slice(0, 60)
+      .replace(/[.-]+$/g, '');
+  }
+
   async function attachImage(card, idx, file) {
     const { blob, filename, size } = await toWebp(file);
     const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const cardKey = `${S.selected}#${idx}`;
-    S.images.set(id, { id, blob, size, alt: cardTitleOf(card), filename, cardKey });
+    const ext = (/(\.[a-z0-9]+)$/i.exec(filename) || ['.webp'])[1];
+    const base = slugifyTitle(cardTitleOf(card)) || 'image';
+    const siblings = (card.images || [])
+      .filter((im) => im.kind === 'new')
+      .map((im) => S.images.get(im.id))
+      .filter((m) => m && m.base === base).length;
+    const defaulted = siblings > 0 ? `${base}-${siblings + 1}${ext}` : `${base}${ext}`;
+    S.images.set(id, { id, blob, size, alt: cardTitleOf(card), filename: defaulted, base, cardKey });
     card.images = card.images || [];
     card.images.push({ kind: 'new', id });
     markDirty();
@@ -715,10 +746,16 @@
         const meta = S.images.get(img.id);
         if (!meta) return;
         const url = URL.createObjectURL(meta.blob);
+        const extMatch = /(\.[a-z0-9]+)$/i.exec(meta.filename);
+        const ext = extMatch ? extMatch[1] : '';
+        const baseName = ext ? meta.filename.slice(0, -ext.length) : meta.filename;
         thumb = `<img src="${url}" alt="" title="点击放大预览">
           <div class="fields">
             <input type="text" data-f="alt" placeholder="alt 描述（默认取条目标题）" value="${escapeAttr(meta.alt)}">
-            <input type="text" data-f="filename" value="${escapeAttr(meta.filename)}" title="写入 docs/assets/${escapeAttr(S.selected)}/ 的文件名">
+            <div style="display:flex; gap:4px; align-items:center;">
+              <input type="text" data-f="filename" value="${escapeAttr(baseName)}" title="写入 docs/assets/${escapeAttr(S.selected)}/ 的文件名（不含扩展名）" style="flex:1; min-width:0;">
+              <span class="ext-badge">${escapeHtml(ext)}</span>
+            </div>
             <div class="meta"><span>${formatSize(meta.size)}</span>
               ${meta.size > 300 * 1024 ? '<span class="big">超过 300 KiB 软上限</span>' : ''}
               <span class="pending">未写盘</span>
@@ -727,7 +764,10 @@
         item.innerHTML = thumb;
         item.querySelector('img').onclick = () => window.open(url, '_blank');
         item.querySelector('[data-f="alt"]').addEventListener('input', (e) => { meta.alt = e.target.value; markDirty(); });
-        item.querySelector('[data-f="filename"]').addEventListener('input', (e) => { meta.filename = e.target.value; markDirty(); });
+        item.querySelector('[data-f="filename"]').addEventListener('input', (e) => {
+          meta.filename = `${e.target.value.trim()}${ext}`;
+          markDirty();
+        });
         item.querySelector('[data-act="rm"]').onclick = () => {
           card.images = card.images.filter((x) => x !== img);
           S.images.delete(img.id);
@@ -778,16 +818,26 @@
 
   const repoImgCache = new Map();
   async function resolveRepoImage(imgEl, repoPath) {
-    if (!S.repo || !repoPath.startsWith('docs/assets/')) { imgEl.outerHTML = `<span class="img-ref-chip">🖼 ${escapeHtml(repoPath)}</span>`; return; }
-    let blob = repoImgCache.get(repoPath);
-    if (blob === undefined) {
-      try {
-        const parts = repoPath.split('/');
-        const dir = await S.repo.getDirectoryHandle(parts[0]).then((d) => d.getDirectoryHandle(parts[1])).then((d) => d.getDirectoryHandle(parts[2]));
-        blob = await (await (await dir.getFileHandle(parts[3])).getFile()).blob();
-      } catch { blob = null; }
-      repoImgCache.set(repoPath, blob);
+    // 缓存里有内容（含保存时登记的 blob）直接用；确认读不到（null）才退回链接 chip
+    if (repoImgCache.has(repoPath)) {
+      const cached = repoImgCache.get(repoPath);
+      if (cached) imgEl.src = URL.createObjectURL(cached);
+      else imgEl.outerHTML = `<span class="img-ref-chip">🖼 ${escapeHtml(repoPath)}</span>`;
+      return;
     }
+    if (!S.repo || !repoPath.startsWith('docs/assets/')) {
+      // 未连接仓库时只读一次失败即标记，避免闪跳；连接仓库时正常读取
+      repoImgCache.set(repoPath, null);
+      imgEl.outerHTML = `<span class="img-ref-chip">🖼 ${escapeHtml(repoPath)}</span>`;
+      return;
+    }
+    let blob;
+    try {
+      const parts = repoPath.split('/');
+      const dir = await S.repo.getDirectoryHandle(parts[0]).then((d) => d.getDirectoryHandle(parts[1])).then((d) => d.getDirectoryHandle(parts[2]));
+      blob = await (await (await dir.getFileHandle(parts[3])).getFile()).blob();
+    } catch { blob = null; }
+    repoImgCache.set(repoPath, blob);
     if (blob) imgEl.src = URL.createObjectURL(blob);
     else imgEl.outerHTML = `<span class="img-ref-chip">🖼 ${escapeHtml(repoPath)}</span>`;
   }
@@ -799,7 +849,7 @@
 
   // ---------- 粘贴 / 拖放 ----------
   document.addEventListener('paste', async (e) => {
-    if (S.tab !== 'edit' || !S.selected) return;
+    if ((S.tab !== 'edit' && S.tab !== 'split') || !S.selected) return;
     const files = [...(e.clipboardData?.items || [])]
       .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
       .map((item) => item.getAsFile()).filter(Boolean);
@@ -819,14 +869,18 @@
 
   document.addEventListener('dragover', (e) => {
     const card = e.target.closest?.('.card');
-    if (card && S.tab === 'edit') { e.preventDefault(); card.classList.add('drop-hint'); }
+    if (!card || (S.tab !== 'edit' && S.tab !== 'split')) return;
+    // 只拦截携带文件的拖拽；文本选区拖动走浏览器默认行为（不抢选区）
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;
+    e.preventDefault();
+    card.classList.add('drop-hint');
   });
   document.addEventListener('dragleave', (e) => {
     e.target.closest?.('.card')?.classList.remove('drop-hint');
   });
   document.addEventListener('drop', async (e) => {
     const cardEl = e.target.closest?.('.card');
-    if (!cardEl || S.tab !== 'edit') return;
+    if (!cardEl || (S.tab !== 'edit' && S.tab !== 'split')) return;
     const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith('image/'));
     if (!files.length) return;
     e.preventDefault();
@@ -1165,8 +1219,10 @@
     const names = new Map();
     for (const { meta } of newImagesOf(versionName)) {
       const name = meta.filename.trim();
-      if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) {
-        errors.push(`文件名不合法：${name}（只允许字母数字 . _ -）`);
+      const valid = /^[^\\/:*?"<>|\s][^\\/:*?"<>|]*\.(?:webp|png|jpe?g|gif|avif|svg)$/i.test(name)
+        && !name.includes('..') && name.length <= 100;
+      if (!valid) {
+        errors.push(`文件名不合法：${name}（不能包含 \\ / : * ? " < > | 或空格，需以图片扩展名结尾）`);
       }
       if (names.has(name)) errors.push(`文件名重复：${name}`);
       names.set(name, meta.id);
@@ -1253,24 +1309,59 @@
     return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
   }
 
+  /** 冲突处置：磁盘 CL 与载入基线不一致时，让用户选择覆盖 / 另存 / 取消。 */
+  function resolveConflictModal() {
+    return new Promise((resolve) => {
+      modal(`<h3>⚠ CHANGELOG.md 在磁盘上已被修改</h3>
+        <p class="hint">页面载入后，磁盘内容发生了变化（可能是 git 操作或外部编辑）。无论怎么选，磁盘当前版本都会先备份到 <code>.artifacts/changelog-editor/backup/</code>。</p>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px">
+          <button id="cf-cancel">取消</button>
+          <button id="cf-side">另存为单独文件</button>
+          <button id="cf-force" class="primary">强行覆盖</button>
+        </div>`);
+      $('#cf-cancel').onclick = () => { closeModal(); resolve('cancel'); };
+      $('#cf-side').onclick = () => { closeModal(); resolve('sidefile'); };
+      $('#cf-force').onclick = () => { closeModal(); resolve('force'); };
+    });
+  }
+
+  async function uniqueManualSavePath() {
+    const dir = ['.artifacts', 'changelog-editor', 'manual-save'];
+    for (let i = 0; i < 100; i += 1) {
+      const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+      const name = i ? `CHANGELOG-${stamp}-${i}.md` : `CHANGELOG-${stamp}.md`;
+      if (await readFileAt([...dir, name]) == null) return [...dir, name];
+    }
+    return [...dir, `CHANGELOG-${Date.now()}.md`];
+  }
+
   async function applyFinish(versionNames, archiveSet) {
     const steps = [];
     const log = (text) => { steps.push(text); };
     const written = [];
     const processedIds = [];
+    let sideFile = false;
     try {
-      const docText = serializeCurrentDoc();
       if (S.repo) {
-        // 1) 冲突检查
+        // 1) 冲突检查：覆盖 / 另存 / 取消
         const onDisk = await readFileAt(['CHANGELOG.md']);
-        if (onDisk !== S.baseText) throw new Error('磁盘上的 CHANGELOG.md 已被其他程序修改，请刷新页面重新载入（未完成的编辑会自动保存在本页）');
-        // 2) 备份
-        const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
-        const backupDir = ['.artifacts', 'changelog-editor', 'backup', stamp];
-        await backupFile(['CHANGELOG.md'], backupDir);
-        for (const name of archiveSet) await backupFile(['docs', 'releases', `${name}.md`], backupDir);
-        log(`已备份原文件 → ${backupDir.join('/')}/`);
-        // 3) 各版本写图片，并把新图片转为已有引用（保持条目内的顺序）
+        if (onDisk !== S.baseText) {
+          const action = await resolveConflictModal();
+          if (action === 'cancel') { toast('已取消：未写入任何文件'); return; }
+          const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+          const backupDir = ['.artifacts', 'changelog-editor', 'backup', stamp];
+          await backupFile(['CHANGELOG.md'], backupDir);
+          for (const name of archiveSet) await backupFile(['docs', 'releases', `${name}.md`], backupDir);
+          log(`磁盘版本已先备份 → ${backupDir.join('/')}/`);
+          sideFile = action === 'sidefile';
+        } else {
+          const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+          const backupDir = ['.artifacts', 'changelog-editor', 'backup', stamp];
+          await backupFile(['CHANGELOG.md'], backupDir);
+          for (const name of archiveSet) await backupFile(['docs', 'releases', `${name}.md`], backupDir);
+          log(`已备份原文件 → ${backupDir.join('/')}/`);
+        }
+        // 2) 各版本写图片，并把新图片转为已有引用（保持条目内的顺序）
         for (const name of versionNames) {
           const dedupe = new Map();
           let count = 0;
@@ -1288,24 +1379,32 @@
             imgRef.alt = (meta.alt || cardTitleOf(card) || name).trim();
             imgRef.path = `docs/assets/${name}/${meta.finalName}`;
             delete imgRef.id;
+            repoImgCache.set(imgRef.path, meta.blob); // 缩略图直接复用内存 blob
             written.push(`docs/assets/${name}/${meta.finalName}（${formatSize(meta.size)}）`);
             processedIds.push(meta.id);
             count += 1;
           }
           if (count) log(`${name}：写入 ${count} 张图片 → docs/assets/${name}/`);
         }
-        // 4) 一次性写回 CL
+        // 3) 写回 CL（冲突时可选另存为单独文件，不动磁盘 CL 与归档）
         const newDoc = serializeCurrentDoc();
-        await writeFileAt(['CHANGELOG.md'], new Blob([newDoc], { type: 'text/markdown' }));
-        S.clText = newDoc; S.baseText = newDoc;
-        log('已写回 CHANGELOG.md（图片链接已插入到对应条目后）');
-        // 5) 归档
-        for (const name of archiveSet) {
-          const archive = await L.buildArchive(S.clText, name);
-          await writeFileAt(['docs', 'releases', `${name}.md`], new Blob([archive], { type: 'text/markdown' }));
-          log(`已生成归档 docs/releases/${name}.md（与 prepare_release_notes.py 同契约）`);
+        if (sideFile) {
+          const target = await uniqueManualSavePath();
+          await writeFileAt(target, new Blob([newDoc], { type: 'text/markdown' }));
+          S.clText = newDoc;
+          log(`已另存为 ${target.join('/')}（git 忽略目录；磁盘 CHANGELOG.md 与归档未动，请手动合并后重新载入）`);
+        } else {
+          await writeFileAt(['CHANGELOG.md'], new Blob([newDoc], { type: 'text/markdown' }));
+          S.clText = newDoc; S.baseText = newDoc;
+          log('已写回 CHANGELOG.md（图片链接已插入到对应条目后）');
+          // 4) 归档
+          for (const name of archiveSet) {
+            const archive = await L.buildArchive(S.clText, name);
+            await writeFileAt(['docs', 'releases', `${name}.md`], new Blob([archive], { type: 'text/markdown' }));
+            log(`已生成归档 docs/releases/${name}.md（与 prepare_release_notes.py 同契约）`);
+          }
+          await refreshArchiveStatus();
         }
-        await refreshArchiveStatus();
       } else {
         // 降级：下载
         for (const name of versionNames) {
@@ -1331,20 +1430,28 @@
       }
       for (const id of processedIds) S.images.delete(id);
       reparseFromText(S.clText);
-      markClean();
-      localStorage.removeItem(LS_STATE());
-      localStorage.removeItem(LS_IMGS());
-      renderSidebar();
+      if (sideFile) {
+        // 另存模式：磁盘 CL 未更新，保持未保存状态与自动保存，方便之后手动合并
+        markDirty();
+        renderSidebar();
+      } else {
+        markClean();
+        localStorage.removeItem(LS_STATE());
+        localStorage.removeItem(LS_IMGS());
+        renderSidebar();
+      }
       const selected = S.selected;
       selectSection(S.sections.some((s) => s.name === selected) ? selected : S.sections[0].name);
       const tags = [...archiveSet].map((name) => `v${name}`);
       modal(`
-        <h3>✅ 完成编辑 — ${escapeHtml(versionNames.join('、'))}</h3>
+        <h3>${sideFile ? '📄 完成编辑（已另存，待手动合并）' : '✅ 完成编辑'} — ${escapeHtml(versionNames.join('、'))}</h3>
         ${steps.map((s) => `<div class="step"><span class="s">✓</span><span>${escapeHtml(s)}</span></div>`).join('')}
         ${written.length ? `<p class="hint" style="margin:10px 0 4px">写入的文件：</p><div class="paths">${written.map(escapeHtml).join('<br>')}</div>` : ''}
-        <p class="hint" style="margin:12px 0 4px">建议接着在仓库根目录执行：</p>
+        ${sideFile
+          ? '<p class="hint" style="margin:12px 0 4px">手动合并另存文件后，回到本页点击「打开仓库目录」重新载入即可继续。</p>'
+          : `<p class="hint" style="margin:12px 0 4px">建议接着在仓库根目录执行：</p>
         <code>uv run --no-sync python scripts/prepare_release_notes.py --check-all</code>
-        ${tags.map((tag) => `<br><code>uv run --no-sync python scripts/prepare_release_notes.py --tag ${escapeHtml(tag)} --output .artifacts/release-preview.md</code>`).join('')}
+        ${tags.map((tag) => `<br><code>uv run --no-sync python scripts/prepare_release_notes.py --tag ${escapeHtml(tag)} --output .artifacts/release-preview.md</code>`).join('')}`}
         <div style="margin-top:16px;text-align:right"><button class="primary" onclick="document.querySelector('#mask').classList.remove('show')">好</button></div>`);
     } catch (error) {
       modal(`<h3>⚠ 完成编辑中断</h3><p>${escapeHtml(error.message)}</p>
@@ -1380,9 +1487,11 @@
     if (!targets.length) { toast('先勾选要生成的正式版', true); return; }
     // 归档必须与 CL 文件一致：先把当前编辑保存回盘
     const docText = serializeCurrentDoc();
-    if (docText !== S.baseText) {
-      const onDisk = await readFileAt(['CHANGELOG.md']);
-      if (onDisk !== S.baseText) { toast('磁盘 CHANGELOG.md 已被外部修改，请刷新页面', true); return; }
+    if (docText !== S.baseText || (await readFileAt(['CHANGELOG.md'])) !== S.baseText) {
+      if ((await readFileAt(['CHANGELOG.md'])) !== S.baseText) {
+        const action = await resolveConflictModal();
+        if (action !== 'force') { toast('已取消：未写入任何文件'); return; }
+      }
       const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
       await backupFile(['CHANGELOG.md'], ['.artifacts', 'changelog-editor', 'backup', stamp]);
       await writeFileAt(['CHANGELOG.md'], new Blob([docText], { type: 'text/markdown' }));
@@ -1413,6 +1522,29 @@
   // ---------- 载入入口 ----------
   $('#btn-open').onclick = openRepo;
   $('#btn-load-file').onclick = loadFileFallback;
+
+  // 侧栏拖宽（记忆宽度）
+  const savedSidebarWidth = localStorage.getItem('cl-editor:sidebar-w');
+  if (savedSidebarWidth) $('#sidebar').style.width = savedSidebarWidth;
+  $('#sb-resizer').addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const sidebar = $('#sidebar');
+    const startX = e.clientX;
+    const startWidth = sidebar.getBoundingClientRect().width;
+    const onMove = (ev) => {
+      const width = Math.min(560, Math.max(200, startWidth + ev.clientX - startX));
+      sidebar.style.width = `${width}px`;
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.classList.remove('resizing');
+      localStorage.setItem('cl-editor:sidebar-w', sidebar.style.width);
+    };
+    document.body.classList.add('resizing');
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 
   window.addEventListener('beforeunload', (e) => {
     if (isDirty()) { e.preventDefault(); e.returnValue = ''; }
