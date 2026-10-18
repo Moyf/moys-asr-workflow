@@ -24,6 +24,7 @@
 | 9 | **二期**：模式设置与接线 | 已修复 | `EDITOR_SETTINGS.stickerBurnMode`（fixed/cue-left，默认 fixed）+ 设置页「烧录显示位置」下拉 + i18n；两个烧录入口经 `buildAss(onAssPlan)` 把与 ASS 同源的计划传入 placement 计算（去空隙 `buildGapRemovedAss` 补透传 onAssPlan，计划与 ASS 同一收缩时间轴） |
 | 10 | **二期**：真实 FFmpeg 验证 | 已修复 | cue-left 双窗口：句内显示在指定位置、句间空隙无残留、split 单输入（`.artifacts/sticker-burn/cue_left_verify.py`） |
 | 11 | 二期：预览层跟随字幕 | 待处理 | 预览层仍显示固定位置；设置页 hint 已注明「最终以烧录结果为准」。实现路径见研究报告 §4.5.3（同一 placements 计算驱动 DOM 层） |
+| 12 | Greptile PR 复审修复（PR 272） | 已修复 | 6 条评论全部处理：① 前端改发 `{mode, placements}` 载荷 + placement 自带 `align`（贴字幕段 right / 回退段 center），服务端 `_fit_contain_box` 右对齐修正为贴目标框右缘（窄图不再偏移）；② cue-left 目标框四边越界检查（越界回退 fixed，不再发出服务端会拒绝的负坐标）；③ 窗口切段加入 slice 起止边界（主句跨叠加字幕进出导致的布局切换不再被中点采样吞掉）；④ intervals 条目加 dict 类型检查（null 不再引发 500）；⑤ 动画 WebP 检测改为按 RIFF chunk 结构读 VP8X 动画标志（实测 flags 在 chunk data[0]，payload 含 ANMF 字节的静态文件不再误判）；⑥ 研究报告 §2.5/§3.5/§4.4/§6.1/§8 的「服务端减 seek_start」错误建议修正为「收缩时间轴原样使用」 |
 
 ## 关键设计
 

@@ -123,10 +123,10 @@ BURN_STICKER_LOOP_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".bmp"})
 #   兜底有限循环（loop=N）GIF 的文件 EOF，避免成为短输入；
 # - WebP demuxer 没有循环机制（静态单帧即 EOF），用 -stream_loop -1 无限重放。
 BURN_STICKER_GIF_EXTENSION = ".gif"
-BURN_STICKER_WEBP_EXTENSION = ".webp"
 # FFmpeg 的 webp demuxer 不支持动画：动画 WebP 解码 0 帧会让 overlay 拿不到
-# 次输入帧、输出空文件。解析 RIFF 头检测 ANMF chunk，命中即拒绝并提示改格式。
-STICKER_ANIMATED_WEBP_CHUNK = b"ANMF"
+# 次输入帧、输出空文件。_is_animated_webp 按 RIFF chunk 结构读 VP8X 动画标志，
+# 命中即拒绝并提示改格式。
+BURN_STICKER_WEBP_EXTENSION = ".webp"
 STICKER_WEBP_PROBE_BYTES = 64 * 1024
 MAX_SAFE_JSON_INTEGER = 9_007_199_254_740_991
 # libass 单帧渲染是交互动作，超时视为环境异常而不是让请求挂起。
@@ -748,8 +748,8 @@ def _fit_contain_box(box: dict, image_size: tuple[int, int] | None, align: str =
 
     contain 语义与预览层 CSS 一致：按图片纵横比缩小适配目标框（不放大）。
     fixed（方案一）框内居中；cue-left（方案二）框内右对齐 + 垂直居中——
-    目标框右缘贴着字幕墨盒的间隙，图片宽窄都不能移动这个右缘。图片尺寸
-    不可读时退化为整框拉伸（罕见损坏文件）。
+    目标框右缘贴着字幕墨盒的间隙，图片窄于目标框时也必须贴住右缘，宽窄
+    都不能移动这个右缘。图片尺寸不可读时退化为整框拉伸（罕见损坏文件）。
     """
     box_w, box_h = box["width"], box["height"]
     if image_size is None or image_size[0] < 1 or image_size[1] < 1:
@@ -757,7 +757,7 @@ def _fit_contain_box(box: dict, image_size: tuple[int, int] | None, align: str =
     scale = min(box_w / image_size[0], box_h / image_size[1], 1.0)
     width = max(1, round(image_size[0] * scale))
     height = max(1, round(image_size[1] * scale))
-    x = box["x"] if align == "right" else box["x"] + (box_w - width) // 2
+    x = box["x"] + (box_w - width) if align == "right" else box["x"] + (box_w - width) // 2
     return {"x": x, "y": box["y"] + (box_h - height) // 2,
             "width": width, "height": height}
 
@@ -767,9 +767,10 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
 
     接受两种载荷： placements 列表（老格式，等同 fixed 模式），或
     ``{"mode": "fixed"|"cue-left", "placements": [...]}`` 对象。每项 placement
-    ``{rel, x, y, width, height, intervals:[{start,end}]}``：几何是前端按视频
-    分辨率与排版计划换算好的像素目标框，服务端读取图片尺寸做 contain 适配
-    （fixed 居中、cue-left 右对齐垂直居中）。方案二下同一 ``rel`` 会有多个
+    ``{rel, x, y, width, height, intervals:[{start,end}], align?}``：几何是前端
+    按视频分辨率与排版计划换算好的像素目标框，服务端读取图片尺寸做 contain
+    适配——对齐取 placement 自己的 ``align``（cue-left 贴字幕段为 ``right``、
+    回退段为 ``center``），缺省按 mode 推断。方案二下同一 ``rel`` 会有多个
     placement（每句一个），FFmpeg 输入按 ``rel`` 去重，overlay 节点经 split
     复用同一输入。
     """
@@ -780,10 +781,10 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
         if mode not in ("fixed", "cue-left"):
             raise ValueError("表情包烧录模式无效")
         raw_placements = raw_stickers.get("placements")
-        align = "right" if mode == "cue-left" else "center"
+        default_align = "right" if mode == "cue-left" else "center"
     else:
         raw_placements = raw_stickers
-        align = "center"
+        default_align = "center"
     if raw_placements is None:
         return []
     if not isinstance(raw_placements, list):
@@ -820,6 +821,8 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
             raise ValueError("表情包显示区间为空")
         intervals = []
         for interval in raw_intervals:
+            if not isinstance(interval, dict):
+                raise ValueError("表情包显示区间无效")
             start, end = interval.get("start"), interval.get("end")
             if type(start) is not int or type(end) is not int or start < 0 or end < start:
                 raise ValueError("表情包显示区间无效")
@@ -827,6 +830,9 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
                 intervals.append((start, end))
         if not intervals:
             continue
+        item_align = item.get("align")
+        if item_align not in ("center", "right"):
+            item_align = default_align
         rel = rel.strip()
         path = seen_rels.get(rel)
         if path is None:
@@ -841,7 +847,7 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
         except (OSError, ValueError):
             image_size = None
         placed = _fit_contain_box(
-            {"x": box[0], "y": box[1], "width": box[2], "height": box[3]}, image_size, align)
+            {"x": box[0], "y": box[1], "width": box[2], "height": box[3]}, image_size, item_align)
         placements.append({"rel": rel, "path": path, **placed, "intervals": intervals})
     for placement in placements:
         placement["intervals"].sort()
@@ -897,12 +903,32 @@ def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[st
 
 
 def _is_animated_webp(path: Path) -> bool:
-    """Probe the RIFF header for ANMF chunks (animation frames)."""
+    """Walk the RIFF chunk list and read the VP8X animation flag.
+
+    不能在整个文件里搜 ANMF 字节：静态 WebP 的元数据或压缩数据可能恰好
+    含这四个字节而被误判。动画标志在 VP8X chunk 的 flags 字节（bit 1），
+    按规范动画 WebP 必有 VP8X；无 VP8X 的简单 lossy/lossless 文件非动画。
+    """
     try:
         with path.open("rb") as handle:
-            return STICKER_ANIMATED_WEBP_CHUNK in handle.read(STICKER_WEBP_PROBE_BYTES)
+            data = handle.read(STICKER_WEBP_PROBE_BYTES)
     except OSError:
         return False
+    if data[:4] != b"RIFF" or data[8:12] != b"WEBP":
+        return False
+    offset = 12
+    while offset + 8 <= len(data):
+        fourcc = data[offset:offset + 4]
+        size = int.from_bytes(data[offset + 4:offset + 8], "little")
+        if fourcc == b"VP8X":
+            # 实测布局（与 edit.py 的 canvas 读取一致）：chunk data 第 0 字节是
+            # flags（bit 1 = Animation），第 4-9 字节是画布宽高 -1（24-bit LE）。
+            flags = data[offset + 8] if offset + 9 <= len(data) else 0
+            return bool(flags & 0x02)
+        if size < 0:
+            return False
+        offset += 8 + size + (size & 1)  # chunk 按偶数对齐
+    return False
 
 
 def _burn_sticker_input_args(stickers: list[dict]) -> list[str]:

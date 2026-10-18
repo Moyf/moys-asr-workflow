@@ -51,7 +51,8 @@
     return windows;
   }
 
-  // 方案一（固定位置）：同一 rel 的窗口合并 enable 区间，一张图一个 placement。
+  // 方案一（固定位置）：同一 rel 的窗口合并 enable 区间，一张图一个 placement；
+  // 服务端 contain 在目标框内居中。
   function collectFixedPlacements({ windows, box }) {
     const merged = new Map();
     windows.forEach((window) => {
@@ -59,32 +60,35 @@
       const interval = { start: window.start, end: window.end };
       if (entry) entry.intervals.push(interval);
       else merged.set(window.rel, { rel: window.rel, x: box.x, y: box.y,
-        width: box.width, height: box.height, intervals: [interval] });
+        width: box.width, height: box.height, align: 'center', intervals: [interval] });
     });
     return [...merged.values()];
   }
 
-  // 烧录表情包 placements。mode:
+  // 烧录表情包载荷。mode:
   // - 'fixed'（默认）：所有表情包出现在 preview.sticker 几何对应位置；
   // - 'cue-left'：显示窗口与主字幕句重叠的段贴在该句第一个字左侧（placement
-  //   模块按排版计划推导），句间空隙 / legacy 句 / 会出画时回退固定位置。
+  //   模块按排版计划推导，placement 自带 align=right），句间空隙 / legacy 句 /
+  //   会出画等回退段 align=center（与方案一相同的服务端 contain 居中）。
   // plan 是 buildAss(onAssPlan) 的排版计划——与请求携带的 ASS 文本同一份
   // （同一时间轴、同一折行结果），保证字幕与表情包位置同源。
+  // 返回 {mode, placements} 对象（服务端按 placement 的 align 决定 contain
+  // 对齐：fixed 居中、cue-left 贴放段右对齐）；无可烧内容时返回 null。
   function collectStickerPlans({ gapRemoved = null, resolution = null, mode = 'fixed', plan = null } = {}) {
     if (!stickerBurnEnabled() || !Number.isInteger(resolution?.width)
-      || !Number.isInteger(resolution?.height) || resolution.width < 1 || resolution.height < 1) return [];
+      || !Number.isInteger(resolution?.height) || resolution.width < 1 || resolution.height < 1) return null;
     const windows = collectStickerIntervals({ gapRemoved });
-    if (!windows.length) return [];
+    if (!windows.length) return null;
     const box = stickerLayerBox(global.MawePreviewGeometry.getStickerGeometry(), resolution);
-    if (box.width < 1 || box.height < 1) return []; // 预览层几何无效时不烧表情包
-    if (mode === 'cue-left') {
+    if (box.width < 1 || box.height < 1) return null; // 预览层几何无效时不烧表情包
+    const resolvedMode = mode === 'cue-left' ? 'cue-left' : 'fixed';
+    if (resolvedMode === 'cue-left') {
       const placements = global.AsrEditorUtils?.computeStickerCuePlacements?.({
         plan, windows, fixedBox: box,
       });
-      if (Array.isArray(placements)) return placements;
-      return collectFixedPlacements({ windows, box });
+      if (Array.isArray(placements)) return { mode: resolvedMode, placements };
     }
-    return collectFixedPlacements({ windows, box });
+    return { mode: 'fixed', placements: collectFixedPlacements({ windows, box }) };
   }
 
   global.MaweStickerBurnPlan = Object.freeze({

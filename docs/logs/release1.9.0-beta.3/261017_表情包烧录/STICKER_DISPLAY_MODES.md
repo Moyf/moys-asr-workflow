@@ -111,9 +111,9 @@ legacy 长句自动折行两处。实现选项推荐「选项 A：每 (PNG, 句)
   - 完整烧录：`-vf ass=filename='burn.ass'`（:819），滤镜只带文件名、cwd 指向输出目录。
   - 去空隙烧录：`_burn_interval_filter()`（:720-754）生成 `select+setpts+ass` 图，**写入 `.filters` 文件、
     经 `-/filter_complex <path>` 传入**（:806-811；FFmpeg 9 无该选项语法时回退
-    `-filter_complex_script`，:866-869）→ filter 图长度不构成命令行风险；且注意
-    `relative_intervals = intervals - seek_start`（:805）：**去空隙路径的滤镜时钟从 seek 原点起算**，
-    enable 秒必须用 `mapGapRemovedTime(S) - seek_start`（§4.4）。
+    `-filter_complex_script`，:866-869）→ filter 图长度不构成命令行风险；`select/setpts` 把保留帧
+    重映射到收缩时间轴，**overlay 链必须挂在 `setpts` 之后**，enable 秒原样使用
+    `mapGapRemovedTime(S)`（§4.4；不要按 seek 原点再换算）。
 - 表情包文件与尺寸：`_sticker_rel_path()`（serve.py:2023-2042）防穿越解析（拒绝反斜杠/绝对/`..`，
   限 `STICKER_IMAGE_EXTENSIONS` :128）；`edit.scan_stickers`（edit.py:147-190）扫描时已带
   `width/height`（`image_dimensions`，:178；读不出尺寸的保留条目但无尺寸字段），工程
@@ -170,9 +170,9 @@ pxRect = { x: geo.x * PlayResX, y: geo.y * PlayResY,
 
 ### 3.5 去空隙
 
-前端把区间经 `mapGapRemovedTime` 收缩后随请求发送（最终时间轴毫秒）；服务端组装 enable 时减去
-`seek_start` 得到相对秒（`_burn_interval_filter` 同源，serve.py:802-805）。映射后 start==end 的
-窗口直接丢弃。链位置：`select,setpts → overlay×N → ass`。
+前端把区间经 `mapGapRemovedTime` 收缩后随请求发送（最终时间轴毫秒）；服务端在 `select/setpts`
+之后的收缩时间轴上组装 enable，**原样使用这些毫秒值**（不做 seek 原点换算，见 §4.4）。
+映射后 start==end 的窗口直接丢弃。链位置：`select,setpts → overlay×N → ass`。
 
 ---
 
@@ -249,9 +249,12 @@ P1 的遗留近似点：
 
 ### 4.4 去空隙下的收缩
 
-- 时间：与方案一同一条契约——前端 `mapGapRemovedTime` 收缩窗口；服务端 enable 秒减 `seek_start`
-  （`_burn_interval_filter` 的时钟原点，serve.py:802-805）。遗漏这一步是方案二最容易犯的错
-  （表情包会整体右移一个 seek 原点的时长）。
+- 时间：与方案一同一条契约——前端 `mapGapRemovedTime` 收缩窗口，服务端**原样使用**，**不得**
+  再减 `seek_start`：`mapGapRemovedTime` 的输出已经是「从收缩后视频 0 点起算」的时间轴，
+  而 overlay 链挂在 `select/setpts` 之后（serve.py `_burn_interval_filter`），enable 求值的 `t`
+  正是这条收缩轴——两端天然对齐。若误按早期报告版本的建议在服务端再减一次 `seek_start`
+  （输入 seeking 的时钟原点），表情包会整体提前一个「首个保留区间起点」的时长（时钟混淆；
+  Greptile 复审曾指出此文档自相矛盾，已修正表述）。
 - 坐标：收缩只影响时间，不影响几何；句子换行在收缩前后一致（文本未变），行盒坐标复用完整时间轴
   的计划即可。注意去空隙导出的 ASS 本身就是收缩时间轴上的计划（`buildGapRemovedAss` 内部
   `mapTime`），方案二应在**同一份** `buildAssPayload` 输出上做计划回调，天然一致。
@@ -311,8 +314,9 @@ P1 的遗留近似点：
 1. **本期：方案一**（即 TASK.md 条目 1-5），按 §3 实现。其中两个建议：
    - 图片输入用单帧 + overlay 默认 `repeatlast`，不必 `-loop 1`（少一条参数，解码一次）；
      冒烟验证若发现个别构建不重复末帧，再退 `-loop 1 -framerate 2`。
-   - enable 秒在服务端组装时统一减 `seek_start`（去空隙路径），把这个换算放进
-     `_burn_interval_filter` 的同一层，避免前后端各自换算。
+   - 去空隙 enable 时间：前端 `mapGapRemovedTime` 收缩后的值即最终时间轴（§4.4），
+     服务端原样使用，不要再做 seek 原点换算。（早期版本的「服务端统一减 `seek_start`」
+     建议有误，已废弃——实测验证 overlay 挂在 `setpts` 后与前端收缩轴天然对齐。）
 2. **下一期前置：placement 纯函数模块 + libass 宽度校准**。先做 §4.5 的共享模块（带假 measurer
    的 Node 测试）和 §8 实验 2 的宽度校准，用数据决定 gap 公式——这一步不依赖方案二上线，
    也能反哺方案一的多图堆叠收敛（同一尺寸数据）。
@@ -341,8 +345,8 @@ P1 的遗留近似点：
    （顺带验证 `repeatlast`：把 `-i s.png` 的图片输入窗口拉长到超过 enable 区间，确认图不消失。）
 3. **方案二几何回归（Node，无浏览器）**：假 measurer 下构造两条不同宽度句 + 1 表情包，
    断言 `placement.x + placement.w == line0Left - gap`、`placement.y+h/2 == line0 中心`。
-4. **去空隙时钟**：构造 1 个 removed gap，断言 `enable 秒 == mapGapRemovedTime(S) - seek_start`，
-   且跨 gap 窗口被丢弃。
+4. **去空隙时钟**：构造 1 个 removed gap，断言 enable 秒 == `mapGapRemovedTime(S)`（收缩时间轴，
+   服务端原样使用、不再减 seek_start，见 §4.4），且跨 gap 窗口被丢弃。
 
 ---
 

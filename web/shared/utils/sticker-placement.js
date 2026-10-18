@@ -19,13 +19,18 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
 
   const clampIndex = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
 
-  // 把一个窗口按主字幕 cue 的边界切成段：返回 [{start, end, cue}]，
-  // cue 为覆盖该段的主字幕（null = 句间空隙段）。
-  function splitWindowByCues(cues, win) {
+  // 把一个窗口按字幕排布边界切成段：主字幕 cue 起止 + slice 起止都要参与
+  // 切分——同一主句跨 slice（例如叠加字幕出现/消失）时布局可能切换
+  // （legacy ↔ 堆叠、位置与缩放变化），中点采样必须落在同一段内才准确。
+  // 返回 [{start, end, cue}]，cue 为覆盖该段的主字幕（null = 句间空隙段）。
+  function splitWindowByCues(cues, bounds, win) {
     const points = new Set([win.start, win.end]);
     for (const cue of cues) {
       if (cue.start > win.start && cue.start < win.end) points.add(cue.start);
       if (cue.end > win.start && cue.end < win.end) points.add(cue.end);
+    }
+    for (const bound of bounds) {
+      if (bound > win.start && bound < win.end) points.add(bound);
     }
     const ordered = [...points].sort((a, b) => a - b);
     const segments = [];
@@ -43,8 +48,8 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
   // 段内字幕左缘几何：从中点取排版帧（与 Canvas 预览同一 assStackFrame），
   // 找到承载 cue 的条目，按墨盒 rect（已含描边/阴影外扩）左缘推出表情包
   // 目标框：右缘 = 墨盒左缘 - gap，垂直中心 = 墨盒中心（多行句为块中心）。
-  // legacy 句的折行与 libass 不一致、目标框会出画左边界时返回 null（调用
-  // 方回退固定位置）。
+  // 目标框必须完整落在画面内（任何一边越界都会让服务端拒绝或裁切），加上
+  // legacy 句的折行与 libass 不一致，这些情况返回 null（调用方回退固定位置）。
   function cueLeftBox(plan, cue, segmentMiddle) {
     const frame = assStackFrame(plan, segmentMiddle);
     if (frame?.diagnostic) return null;
@@ -65,20 +70,25 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
     if (x < 0) return null;
     const centerY = anchor.y + ((rect.top + rect.bottom) / 2) * scale
       + clampIndex(item.shakeOffset?.y, 0);
-    return { x, y: Math.round(centerY - height / 2), width, height };
+    const y = Math.round(centerY - height / 2);
+    const width2 = Number(plan?.width) || 0;
+    const height2 = Number(plan?.height) || 0;
+    if (width2 > 0 && height2 > 0
+      && (x + width > width2 || y < 0 || y + height > height2)) return null;
+    return { x, y, width, height, align: 'right' };
   }
 
   function fixedBoxPlacement(rel, interval, fixedBox) {
     return { rel, x: fixedBox.x, y: fixedBox.y, width: fixedBox.width, height: fixedBox.height,
-      intervals: [interval] };
+      align: 'center', intervals: [interval] };
   }
 
   function mergePlacementIntervals(placements) {
-    // 同 rel 且坐标全等的 placement 合并区间，减少 FFmpeg overlay 节点数。
+    // 同 rel、同坐标且同对齐的 placement 合并区间，减少 FFmpeg overlay 节点数。
     const merged = [];
     for (const placement of placements) {
       const previous = merged[merged.length - 1];
-      if (previous && previous.rel === placement.rel
+      if (previous && previous.rel === placement.rel && previous.align === placement.align
         && previous.x === placement.x && previous.y === placement.y
         && previous.width === placement.width && previous.height === placement.height) {
         previous.intervals.push(...placement.intervals);
@@ -109,13 +119,19 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
     const cuePlacements = [];
     const fixedPlacements = [];
     const occupied = [];
+    // slice 起止也是布局变化边界（叠加/副字幕进出会改变主句的排布方式）。
+    const bounds = [];
+    for (const slice of plan?.slices || []) {
+      if (Number.isFinite(slice?.start)) bounds.push(slice.start);
+      if (Number.isFinite(slice?.end)) bounds.push(slice.end);
+    }
     for (const win of ordered) {
       const fallback = () => {
         if (box) fixedPlacements.push(fixedBoxPlacement(win.rel, { start: win.start, end: win.end }, box));
       };
       if (!cues.length || !box) { fallback(); continue; }
       if (occupied.some(other => win.start < other.end && other.start < win.end)) { fallback(); continue; }
-      const segments = splitWindowByCues(cues, win);
+      const segments = splitWindowByCues(cues, bounds, win);
       let placed = false;
       for (const segment of segments) {
         const placement = segment.cue ? cueLeftBox(plan, segment.cue, (segment.start + segment.end) / 2) : null;

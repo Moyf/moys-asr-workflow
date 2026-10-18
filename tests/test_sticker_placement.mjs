@@ -139,3 +139,65 @@ test('left placement that would exit the frame falls back', () => {
   assert.equal(placements.length, 1);
   assert.equal(placements[0].x, FIXED_BOX.x);
 });
+
+test('window splits at slice boundaries because layout changes there', () => {
+  // 同一主句 [0,4000] 被叠加字幕出现切成两个 slice：[0,2000] legacy、
+  // [2000,4000] 堆叠（同句 item 起止相同）。窗口 [1000,3000] 必须按 slice
+  // 边界切段：legacy 段回退固定位置，堆叠段贴字幕。
+  const legacySlice = {
+    start: 0, end: 2000, legacy: true, scale: 1, height: 1080, diagnostic: '',
+    pieces: [{ start: 0, end: 2000 }],
+    items: [{
+      role: 'main', start: 0, end: 4000, fontSize: 60, cueScale: 1,
+      alignment: 2, manual: false, absolute: false,
+      offset: { x: 20, y: -10 },
+      rect: { left: -30, top: -80, right: 500, bottom: 10 },
+    }],
+  };
+  const stackedSlice = {
+    start: 2000, end: 4000, legacy: false, scale: 1, height: 1080, diagnostic: '',
+    pieces: [{ start: 2000, end: 4000, instant: null, from: { x: 900, y: 900 }, to: { x: 900, y: 900 } }],
+    items: [{
+      role: 'main', start: 0, end: 4000, fontSize: 60, cueScale: 1,
+      alignment: 2, manual: false, absolute: false,
+      offset: { x: 20, y: -10 },
+      rect: { left: -30, top: -80, right: 500, bottom: 10 },
+    }],
+  };
+  const plan = { slices: [legacySlice, stackedSlice], width: 1920, height: 1080 };
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 1000, end: 3000 }],
+  });
+  const fallback = placements.filter(placement => placement.x === FIXED_BOX.x && placement.align === 'center');
+  const cueLeft = placements.filter(placement => placement.align === 'right');
+  assert.equal(fallback.length, 1, JSON.stringify(placements));
+  assert.deepEqual(JSON.parse(JSON.stringify(fallback[0].intervals)), [{ start: 1000, end: 2000 }]);
+  assert.equal(cueLeft.length, 1, JSON.stringify(placements));
+  assert.deepEqual(JSON.parse(JSON.stringify(cueLeft[0].intervals)), [{ start: 2000, end: 3000 }]);
+});
+
+test('sticker box taller than the space above a top cue falls back instead of negative y', () => {
+  // 顶行字幕（anchor.y=120）+ 90 高的表情包框 → y = 120 − 45 = 75 ≥ 0 仍可贴；
+  // 把框加高（fontSize 大）后 y < 0 必须回退而不是发出服务端会拒绝的负坐标。
+  const plan = makePlan({ fontSize: 60 });
+  plan.width = 1920;
+  plan.height = 1080;
+  plan.slices[0].items[0].anchorCandidates = undefined;
+  plan.slices[0].items[0].offset = { x: 20, y: -60 }; // centerY ≈ 840-… 先验证常规分支
+  const okPlacements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 500, end: 1500 }],
+  });
+  assert.equal(okPlacements.length, 1);
+  assert.ok(okPlacements[0].y >= 0);
+  // 顶部字幕：anchor.y = 60，墨盒中心 ≈ 60 − 35 = 25 → y = 25 − 45 = −20 < 0 → 回退。
+  const topPlan = makePlan({ fontSize: 60 });
+  topPlan.width = 1920;
+  topPlan.height = 1080;
+  topPlan.slices[0].pieces = [{ start: 0, end: 2000, instant: null, from: { x: 900, y: 60 }, to: { x: 900, y: 60 } }];
+  const topPlacements = computeStickerCuePlacements({
+    plan: topPlan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 500, end: 1500 }],
+  });
+  assert.equal(topPlacements.length, 1);
+  assert.equal(topPlacements[0].x, FIXED_BOX.x);
+  assert.equal(topPlacements[0].align, 'center');
+});

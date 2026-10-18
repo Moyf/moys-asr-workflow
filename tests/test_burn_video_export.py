@@ -628,16 +628,26 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_parse_rejects_animated_webp_but_accepts_static(self) -> None:
         riff_header = b"RIFF" + (4).to_bytes(4, "little") + b"WEBP"
+        # VP8X chunk data: flags 字节在 data[0]（bit 1 = Animation）。
         animated = self.stickers_dir / "animated.webp"
-        animated.write_bytes(riff_header + b"VP8X" + (16).to_bytes(4, "little") + b"\x00" * 10
+        animated.write_bytes(riff_header + b"VP8X" + (10).to_bytes(4, "little")
+                             + b"\x02" + b"\x00" * 3 + (119).to_bytes(3, "little") + (89).to_bytes(3, "little")
                              + b"ANMF" + (0).to_bytes(4, "little"))
         still = self.stickers_dir / "still.webp"
-        still.write_bytes(riff_header + b"VP8 " + (0).to_bytes(4, "little"))
+        still.write_bytes(riff_header + b"VP8 " + (86).to_bytes(4, "little") + b"\x00" * 86)
+        # 静态文件的压缩数据/元数据里恰好出现 ANMF 字节也不能误判（按 chunk 结构
+        # 只读 VP8X 标志，不全文搜索）。
+        static_with_anmf = self.stickers_dir / "still_with_anmf.webp"
+        static_with_anmf.write_bytes(riff_header + b"VP8 " + (90).to_bytes(4, "little")
+                                     + b"\x00" * 86 + b"ANMF" + (0).to_bytes(4, "little"))
         with self.assertRaises(ValueError) as caught:
             server_editor._parse_burn_sticker_inputs([self._entry(rel="animated.webp")], self.stickers_dir)
         self.assertIn("动画 WebP", str(caught.exception))
         stickers = server_editor._parse_burn_sticker_inputs([self._entry(rel="still.webp")], self.stickers_dir)
         self.assertEqual(stickers[0]["path"], still)
+        stickers = server_editor._parse_burn_sticker_inputs([self._entry(rel="still_with_anmf.webp")],
+            self.stickers_dir)
+        self.assertEqual(stickers[0]["path"], static_with_anmf)
 
     def test_parse_rejects_invalid_entries(self) -> None:
         root = self.stickers_dir
@@ -652,6 +662,7 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
             ([self._entry(x=-1)], "几何参数无效"),
             ([self._entry(width=0)], "几何尺寸无效"),
             ([self._entry(intervals="bad")], "显示区间为空"),
+            ([self._entry(intervals=[None])], "显示区间无效"),
             ([self._entry(intervals=[{"start": 100, "end": 50}])], "显示区间无效"),
             ([self._entry(intervals=[{"start": -1, "end": 50}])], "显示区间无效"),
         ]
@@ -705,16 +716,24 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("enable='between(t,5.000,6.000)'", lines[4])
 
     def test_cue_left_contain_aligns_right_edge(self) -> None:
+        # 窄图：60x100 在 100x75 框 → fit = 0.75 → 45x75；右对齐 x = 200 + 55 = 255，
+        # 居中则是 227——cue-left 必须贴住目标框右缘（字幕间隙），与图片宽窄无关。
         ihdr = (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR"
-                + struct.pack(">II", 200, 100) + b"\x08\x06\x00\x00\x00")
-        wide = self.stickers_dir / "aligned.png"
-        wide.write_bytes(ihdr)
-        payload = {"mode": "cue-left", "placements": [self._entry(rel="aligned.png")]}
+                + struct.pack(">II", 60, 100) + b"\x08\x06\x00\x00\x00")
+        narrow = self.stickers_dir / "narrow.png"
+        narrow.write_bytes(ihdr)
+        payload = {"mode": "cue-left", "placements": [self._entry(rel="narrow.png")]}
         stickers = server_editor._parse_burn_sticker_inputs(payload, self.stickers_dir)
-        # 框 (200,30,100,75)：fit = 0.5 → 100x50；cue-left 右对齐 → x = 200，
-        # 垂直居中 y = 30 + (75-50)//2 = 42（fixed 居中也是 200，但语义不同）。
         self.assertEqual((stickers[0]["x"], stickers[0]["y"],
-                          stickers[0]["width"], stickers[0]["height"]), (200, 42, 100, 50))
+                          stickers[0]["width"], stickers[0]["height"]), (255, 30, 45, 75))
+        # fixed 模式同一张窄图居中：x = 200 + (100-45)//2 = 227。
+        stickers = server_editor._parse_burn_sticker_inputs([self._entry(rel="narrow.png")], self.stickers_dir)
+        self.assertEqual(stickers[0]["x"], 227)
+        # placement 显式 align 覆盖模式默认值（cue-left 的回退段用 center）。
+        payload = {"mode": "cue-left", "placements": [
+            self._entry(rel="narrow.png", align="center")]}
+        stickers = server_editor._parse_burn_sticker_inputs(payload, self.stickers_dir)
+        self.assertEqual(stickers[0]["x"], 227)
 
     def test_parse_computes_static_contain_box_from_image_size(self) -> None:
         ihdr = (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR"
