@@ -193,6 +193,19 @@ def _run_parallel(args) -> int:
         for name in files
     ]
     workers = min(args.parallel, len(payloads))
+    missing_bundles = [
+        name
+        for name in ("web/editor/boot/editor-bundle.js", "web/launcher/boot/launcher-bundle.js")
+        if not (ROOT / name).is_file()
+    ]
+    if missing_bundles:
+        print(
+            "[run_tests] 警告：bundle 产物缺失（"
+            + "、".join(missing_bundles)
+            + "）。多个 worker 会并发触发自动重建并相互冲突；"
+            "建议先运行 pnpm install --frozen-lockfile && pnpm run build 再并行。",
+            flush=True,
+        )
     print(
         f"[run_tests] 并行模式：{len(payloads)} 个文件 × {workers} workers"
         f"（上限 {args.max_chars} 字符 / 单行 {args.max_line}）",
@@ -264,7 +277,11 @@ def main(argv=None) -> int:
         type=int,
         default=0,
         metavar="N",
-        help="按文件并行跑（N 个 worker 进程）；仅在无 targets 的全量发现模式下生效",
+        help=(
+            "按文件并行跑（N 个 worker 进程）；仅在无 targets 的全量发现模式下生效。"
+            "新建 worktree/clone 请先完成一次 bundle 构建（pnpm install && pnpm run build），"
+            "否则多个 worker 会并发触发自动重建而相互冲突"
+        ),
     )
     args = parser.parse_args(argv)
 
