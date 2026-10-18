@@ -7,8 +7,13 @@ export function createFiles(dependencies) {
     pickSaveFile: (options) => browser.showSaveFilePicker(options),
     async writeBlob(handle, buildBlob) {
       const writable = await handle.createWritable();
-      await writable.write(buildBlob());
-      await writable.close();
+      try {
+        await writable.write(buildBlob());
+        await writable.close();
+      } catch (error) {
+        try { await writable.abort?.(); } catch (_) {}
+        throw error;
+      }
     },
     downloadBlob(blob, filename) {
       const url = environment.URL.createObjectURL(blob);
