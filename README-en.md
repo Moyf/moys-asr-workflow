@@ -7,45 +7,43 @@
 [![GitHub Stars](https://img.shields.io/github/stars/Moyf/moys-asr-workflow)](https://github.com/Moyf/moys-asr-workflow/stargazers)
 [![License](https://img.shields.io/github/license/Moyf/moys-asr-workflow)](LICENSE)
 
-> Local media → ASR → SRT + `.mosp` project → MAWE editor → export.
+> Generate and refine subtitles for spoken videos, interviews, and courses.
 
-MAW connects subtitle generation with review, cleanup, and delivery. It provides a graphical Launcher, a public CLI, and the local MAWE browser editor, with cloud ASR as the main transcription path. It is suited to subtitle-heavy recordings such as presentations, interviews, and courses.
+MAW connects speech transcription, waveform editing, script-assisted cleanup, and subtitle export. Generate subtitles in the Launcher, review text and timing in the MAWE browser editor, and save a project to continue editing later.
 
-Use a script to assist proofreading, try reversible pause removal, edit multiple subtitle tracks, and hand the result to other tools. Keep the `.mosp` project so the next revision can continue from your existing work.
+The default transcription path uses cloud APIs: bring your own **API key** and pay the selected provider. Editing and project storage happen locally. [Local ASR models](docs/INDEX.md#user-local-asr) are experimental.
+
+[Download](https://github.com/Moyf/moys-asr-workflow/releases/latest) · [Website](https://moyf.github.io/moys-asr-workflow/) · [Online editor](https://moyf.github.io/moys-asr-workflow/editor/) · [Release history](https://moyf.github.io/moys-asr-workflow/releases/)
 
 ![MAWE editor with video and subtitle list on the left, waveform and overlapping subtitles on the right](docs/assets/1.6.0/overlay-track.webp)
 
 *Editor example from 1.6.0: review text and video on the left, adjust timing against the waveform on the right. Workspace layouts are configurable.*
 
-Latest beta: [v1.9.0-beta.3](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.9.0-beta.3).
-
 ## Why MAW
 
-- **Connect text with sound:** retain the word or character timing supplied by your ASR provider, then navigate, split, and adjust boundaries on a multi-row waveform. Segment-only timing still needs listening and is not word-level precision.
-- **Put your script to work:** local script matching corrects text without an LLM. Optional AI spoken-recording cleanup treats the transcript as the spoken content and the script as evidence; clear discarded takes can be removed reversibly, while uncertain decisions become review markers.
-- **Try the edit before committing to it:** gap removal records reversible decisions without rewriting the original media or subtitle times. Preview the compressed timeline and export matching subtitles, OTIO, or FFconcat for the next tool.
-- **Reuse a complete workflow:** ASR presets, sequential batch transcription, and automatic post-processing reduce repeated setup. Inspect stage outputs, retry a failed stage, save the project, and deliver subtitles or a burned-in video.
+- **Review against the waveform:** locate, split, and adjust subtitle boundaries while retaining the word or character timing supplied by your ASR provider. Segment-only timing still needs listening; it does not become word-level precision automatically.
+- **Reduce repetitive cleanup:** match an existing script locally, or use optional AI cleanup to identify repeated takes and filler with review markers and comparison results. Preview reversible gap removal before deciding what to keep.
+- **Deliver several subtitle formats from one project:** manage main, secondary, and overlapping subtitles, speakers, and ASS styles. Export SRT / ASS or burn subtitles into video; use OTIO and other exchange formats for further editing.
+- **Continue from your last edit:** a `.mosp` project preserves timing, tracks, markers, and editing state. Presets, batch transcription, and automatic processing help reuse common workflows with inspectable, retryable stage outputs.
 
-MAW does not replace a full video editor. ASR output and AI decisions still require human review.
+This overview describes the current **1.9 beta** workflow. Check the corresponding [release notes](https://moyf.github.io/moys-asr-workflow/releases/) for stable-version availability. MAW does not replace a full video editor; transcription and AI decisions still need human review.
 
 ## Quick start
 
-1. [Download a package](https://github.com/Moyf/moys-asr-workflow/releases/latest) for your system and architecture. The full MAW bundle includes FFmpeg/FFprobe; MAW-lite requires both tools installed separately. Keep the complete extracted directory.
-2. Launch `MAW.exe` on Windows or `MAW.app` on macOS.
-3. Choose an ASR provider, configure your own key, and transcribe a short sample before processing the full recording.
-4. Open MAWE, review the subtitles, save the `.mosp` project, and export SRT or ASS.
+Choose the [stable release](https://github.com/Moyf/moys-asr-workflow/releases/latest) for everyday use. To try current new features, choose [v1.9.0-beta.3](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.9.0-beta.3) and keep project backups.
+
+1. **Download a package:** choose your system and architecture from the selected release's attachments. The full MAW bundle includes FFmpeg/FFprobe; choose MAW-lite if both tools are already installed. Platform availability depends on that release's actual attachments.
+2. **Open the Launcher:** extract the complete directory and run `MAW.exe` on Windows, open `MAW.app` on macOS, or grant execution permission to the Linux `.AppImage` and launch it. See the [FAQ](docs/INDEX.md#user-faq) for startup issues.
+3. **Try a short recording:** choose a provider, configure your API key, and transcribe a one- or two-minute sample before processing a complete recording.
+4. **Review, save, and export:** open the editor, check text and timing, save the `.mosp` project, and export SRT or ASS. Reopen the project for future revisions.
 
 For source installation and a complete first run, see the [workflow guide](docs/INDEX.md#user-workflow). Detailed documentation is currently in Chinese.
 
-## Core capabilities
+## Versions and updates
 
-- Transcribe with Qwen, Fun-ASR, Soniox, Tencent Cloud, Volcengine Doubao, or an OpenAI-compatible ASR endpoint and generate SRT plus a `.mosp` project.
-- Edit in MAWE with multi-row waveform navigation, split/merge, linked boundaries, reversible gap removal, markers and regions, and main, secondary, and overlapping subtitles.
-- Review ASS styles, including actual rendered frames in the localhost editor; export main, secondary, or combined bilingual SRT, ASS, TXT, OTIO, and FFconcat as appropriate.
-- Match scripts locally or choose AI cleanup, LLM proofreading, translation, and sentence splitting. Automatic processing keeps original snapshots and stage results and can retry from a failed stage.
-- Burn subtitles into video, extract a selected audio track, generate green-screen subtitle video, or rebuild media from retained intervals.
-- Use the public CLI for batch jobs and AI automation: [CLI documentation](docs/INDEX.md#user-cli) (Chinese).
-- [Local ASR models](docs/INDEX.md#user-local-asr) and the key-free Bcut ASR path are experimental.
+- [Release history](https://moyf.github.io/moys-asr-workflow/releases/): illustrated notes for stable versions, version navigation, and available downloads. Notes are currently in Chinese.
+- [All GitHub Releases](https://github.com/Moyf/moys-asr-workflow/releases): stable and prerelease packages.
+- [CHANGELOG](CHANGELOG.md): unreleased changes, beta history, and the source for stable release notes, also saved in the [release archive](docs/releases/).
 
 ## Documentation
 
@@ -56,7 +54,7 @@ For source installation and a complete first run, see the [workflow guide](docs/
 - [CLI](docs/INDEX.md#user-cli) and [local ASR](docs/INDEX.md#user-local-asr): automate tasks and use experimental local models.
 - [FAQ](docs/INDEX.md#user-faq), [project schema](JSON_SCHEMA.md), [LLM protocol](docs/INDEX.md#engineering-llm), and [development](docs/INDEX.md#engineering-development).
 
-## Data and limitations
+## Data, costs, and privacy
 
 Keep the original media and `.mosp` project. Projects contain UTF-8 JSON; older `.json` projects remain supported. SRT and ASS are delivery formats and cannot restore all available word timing, tracks, markers, or editing state. Waveform data is a rebuildable cache, not project source data. The localhost Server supports versioned backups; see the [editor guide](docs/INDEX.md#user-editor) for recovery and media relocation.
 
