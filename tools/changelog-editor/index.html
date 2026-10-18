@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHANGELOG 编辑器 — MAW</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117;
+    --surface: #141a22;
+    --surface-raised: #1b232e;
+    --surface-high: #232d39;
+    --line: #2c3746;
+    --ink: #e7edf5;
+    --ink-soft: #b5c0ce;
+    --muted: #8290a2;
+    --accent: #f0883e;
+    --accent-soft: rgba(240, 136, 62, 0.16);
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --ins: rgba(63, 185, 80, 0.18);
+    --del: rgba(248, 81, 73, 0.16);
+    --radius: 10px;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  button {
+    font: inherit; color: var(--ink); background: var(--surface-high);
+    border: 1px solid var(--line); border-radius: 8px; padding: 5px 12px; cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1208; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  input[type="text"], input[type="date"], textarea {
+    font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px;
+  }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  ::placeholder { color: var(--muted); }
+
+  /* ---------- 顶栏 ---------- */
+  #topbar {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    border-bottom: 1px solid var(--line); background: var(--surface); flex-wrap: wrap;
+  }
+  #topbar h1 { font-size: 16px; margin: 0; letter-spacing: 0.5px; }
+  #topbar h1 span { color: var(--accent); }
+  #repo-chip { font-size: 12px; color: var(--muted); border: 1px dashed var(--line); border-radius: 999px; padding: 2px 10px; }
+  #repo-chip.ok { color: var(--ok); border-style: solid; }
+  #topbar .spacer { flex: 1; }
+  #dirty-dot { color: var(--warn); font-size: 12px; display: none; }
+
+  /* ---------- 布局 ---------- */
+  #layout { flex: 1; display: flex; min-height: 0; }
+  #sidebar {
+    width: 250px; flex-shrink: 0; border-right: 1px solid var(--line);
+    background: var(--surface); overflow-y: auto; padding: 12px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  #main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  /* ---------- 侧栏 ---------- */
+  .side-title { font-size: 12px; color: var(--muted); letter-spacing: 1px; margin: 0 0 6px; }
+  #version-list { display: flex; flex-direction: column; gap: 2px; }
+  .version-item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px;
+    cursor: pointer; border: 1px solid transparent; font-family: var(--mono); font-size: 13px;
+  }
+  .version-item:hover { background: var(--surface-raised); }
+  .version-item.active { background: var(--accent-soft); border-color: var(--accent); }
+  .version-item .date { color: var(--muted); font-size: 11px; margin-left: auto; font-family: inherit; }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-family: initial; }
+  .badge.stable { background: rgba(63,185,80,.15); color: var(--ok); }
+  .badge.pre { background: rgba(210,153,34,.15); color: var(--warn); }
+  .badge.unrel { background: rgba(130,144,162,.15); color: var(--muted); }
+  .arch-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+  .arch-dot.fresh { background: var(--ok); }
+  .arch-dot.stale { background: var(--warn); }
+  .arch-dot.missing { background: var(--err); }
+
+  #archive-box { border-top: 1px solid var(--line); padding-top: 12px; }
+  #archive-list { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
+  .arch-row { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; }
+  .arch-row .status { margin-left: auto; font-size: 11px; font-family: initial; }
+  .arch-row .status.fresh { color: var(--ok); } .arch-row .status.stale { color: var(--warn); } .arch-row .status.missing { color: var(--err); }
+  .hint { color: var(--muted); font-size: 12px; }
+
+  /* ---------- 主区 ---------- */
+  #version-head {
+    padding: 12px 18px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--surface);
+  }
+  #version-head h2 { margin: 0; font-size: 18px; font-family: var(--mono); }
+  #tabs { display: flex; gap: 4px; margin-left: auto; }
+  #tabs button { border-radius: 8px 8px 0 0; border-bottom: none; background: transparent; color: var(--muted); }
+  #tabs button.active { background: var(--bg); color: var(--ink); border-color: var(--line); }
+  #pane { flex: 1; overflow-y: auto; padding: 16px 18px 80px; }
+
+  /* ---------- 条目卡片 ---------- */
+  #cards { display: flex; flex-direction: column; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 8px 10px; margin-bottom: 6px;
+    content-visibility: auto; contain-intrinsic-size: auto 64px;
+  }
+  .card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+  .card.kind-heading { background: transparent; border-style: dashed; padding: 4px 10px; }
+  .card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .card-head .tag { font-size: 11px; color: var(--muted); }
+  .card-head .new-tag { color: var(--ok); font-size: 11px; }
+  .card-head .changed-tag { color: var(--warn); font-size: 11px; }
+  .card-head .spacer { flex: 1; }
+  .card-head button { padding: 1px 7px; font-size: 12px; border-radius: 6px; }
+  .card textarea, .card input.raw {
+    width: 100%; font-family: var(--mono); font-size: 13px; line-height: 1.55;
+    background: var(--surface-soft, #10161d); resize: none; overflow: hidden;
+  }
+  .card textarea { min-height: 38px; }
+  .diff-view {
+    font-family: var(--mono); font-size: 12.5px; background: #10161d; border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; margin-top: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+  }
+  .diff-view del { background: var(--del); color: #ffb3ad; text-decoration: line-through; }
+  .diff-view ins { background: var(--ins); color: #9ae6a4; text-decoration: none; }
+  .add-row { display: flex; gap: 8px; margin: 10px 0 18px; }
+  .add-row button { font-size: 12px; color: var(--muted); }
+
+  /* ---------- 图片条 ---------- */
+  .img-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .img-item {
+    display: flex; gap: 8px; align-items: flex-start; background: var(--surface-raised);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px;
+  }
+  .img-item img { width: 92px; height: 56px; object-fit: cover; border-radius: 6px; background: #000; cursor: zoom-in; }
+  .img-item .fields { display: flex; flex-direction: column; gap: 4px; }
+  .img-item input { font-size: 12px; font-family: var(--mono); width: 190px; }
+  .img-item .meta { font-size: 11px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .img-item .meta .big { color: var(--warn); }
+  .img-item button { padding: 0 6px; font-size: 11px; }
+  .img-ref-chip {
+    display: inline-flex; gap: 6px; align-items: center; font-family: var(--mono); font-size: 11.5px;
+    background: var(--surface-raised); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px;
+  }
+  .img-ref-chip a { color: var(--ink-soft); }
+
+  /* ---------- 预览 / 对照 ---------- */
+  .preview { max-width: 860px; }
+  .preview h3 { border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .preview ul { padding-left: 24px; }
+  .preview li { margin-bottom: 10px; }
+  .preview img { max-width: 100%; border-radius: 8px; border: 1px solid var(--line); }
+  .preview code { font-family: var(--mono); background: var(--surface-raised); padding: 1px 5px; border-radius: 5px; font-size: 12.5px; }
+  .preview .img-missing { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+  .ref-group { margin-bottom: 20px; }
+  .ref-group > h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 13px; color: var(--ink-soft); }
+  .ref-entry { display: flex; gap: 8px; align-items: flex-start; padding: 4px 6px; border-radius: 6px; font-size: 13px; }
+  .ref-entry:hover { background: var(--surface-raised); }
+  .ref-entry input { margin-top: 4px; }
+  .ref-entry.done .text { color: var(--muted); text-decoration: line-through; }
+
+  /* ---------- 状态条 / 弹层 ---------- */
+  #toast {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--surface-high); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 16px; font-size: 13px; display: none; z-index: 60; max-width: 80vw;
+  }
+  #toast.err { border-color: var(--err); color: #ffb3ad; }
+  #mask { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; z-index: 40; align-items: center; justify-content: center; }
+  #mask.show { display: flex; }
+  #modal {
+    background: var(--surface-raised); border: 1px solid var(--line); border-radius: 14px;
+    width: min(720px, 92vw); max-height: 84vh; overflow-y: auto; padding: 20px 22px;
+  }
+  #modal h3 { margin: 0 0 12px; }
+  #modal .step { display: flex; gap: 8px; margin: 4px 0; font-size: 13px; }
+  #modal .step .s { font-family: var(--mono); }
+  #modal code { font-family: var(--mono); font-size: 12px; background: var(--surface); padding: 2px 6px; border-radius: 5px; display: inline-block; margin: 2px 0; word-break: break-all; }
+  #modal .paths { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); margin: 6px 0; word-break: break-all; }
+  #restore-banner {
+    display: none; gap: 10px; align-items: center; padding: 8px 16px;
+    background: rgba(210,153,34,.12); border-bottom: 1px solid var(--warn); font-size: 13px;
+  }
+  .drop-hint { outline: 2px dashed var(--accent); outline-offset: 2px; }
+  @media print { .card { content-visibility: visible; } #sidebar, #topbar, #tabs { display: none; } }
+</style>
+</head>
+<body>
+  <div id="topbar">
+    <h1>CHANGELOG <span>编辑器</span></h1>
+    <span id="repo-chip">未连接仓库目录</span>
+    <span id="dirty-dot">● 有未保存修改</span>
+    <span class="spacer"></span>
+    <button id="btn-open">打开仓库目录</button>
+    <button id="btn-load-file" class="ghost" title="不写盘的降级模式：只加载单个文件">仅加载 CL 文件</button>
+    <button id="btn-finish" class="primary" disabled>完成编辑</button>
+    <input type="file" id="file-input" accept=".md,text/markdown" style="display:none">
+  </div>
+
+  <div id="restore-banner">
+    <span id="restore-text"></span>
+    <span class="spacer" style="flex:1"></span>
+    <button id="btn-restore" class="primary">恢复</button>
+    <button id="btn-discard" class="ghost">放弃</button>
+  </div>
+
+  <div id="layout">
+    <aside id="sidebar">
+      <div>
+        <p class="side-title">版本</p>
+        <div id="version-list"></div>
+      </div>
+      <div id="archive-box">
+        <p class="side-title">归档生成（仅正式版）</p>
+        <div id="archive-list"></div>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button id="btn-generate-archives" disabled style="flex:1">生成勾选归档</button>
+          <button id="btn-select-stale" class="ghost" title="勾选所有需要重新生成的版本">全选过期</button>
+        </div>
+        <p class="hint" style="margin:8px 0 0;">生成前会自动保存 CL 并先备份被覆盖的文件。</p>
+      </div>
+    </aside>
+
+    <section id="main">
+      <div id="version-head">
+        <h2 id="vh-name">未加载</h2>
+        <label class="hint">日期 <input type="date" id="vh-date" style="margin-left:6px"></label>
+        <label class="hint" id="auto-arch-label" style="display:none">
+          <input type="checkbox" id="auto-archive" checked style="margin-right:4px">完成时同步重新生成归档
+        </label>
+        <div id="tabs">
+          <button data-tab="edit" class="active">编辑</button>
+          <button data-tab="preview">预览</button>
+          <button data-tab="reference">对照</button>
+        </div>
+      </div>
+      <div id="pane"></div>
+    </section>
+  </div>
+
+  <div id="toast"></div>
+  <div id="mask"><div id="modal"></div></div>
+
+  <script src="cl-lib.js"></script>
+  <script>
+  'use strict';
+  const $ = (sel) => document.querySelector(sel);
+  const L = window.CLLib;
+
+  // ---------- 全局状态 ----------
+  const S = {
+    repo: null,            // 根目录句柄（降级模式为 null）
+    repoName: '',
+    clText: '',            // 当前编辑中的全文
+    baseText: '',          // 载入时的磁盘文本（冲突检测基线）
+    baseHash: '',
+    sections: [],          // splitSections 结果
+    parsed: new Map(),     // name -> { cards, trailingBlanks }
+    selected: null,        // 当前版本名
+    selectedCard: null,    // 粘贴目标卡片 id
+    images: new Map(),     // id -> {id, blob, mime, size, alt, filename, version, cardKey}
+    archiveStatus: new Map(), // version -> fresh|stale|missing|none
+    tab: 'edit',
+    readOnly: false,
+  };
+  const LS_STATE = () => `cl-editor:state:${S.baseHash}`;
+  const LS_REFS = () => `cl-editor:refs:${S.baseHash}`;
+  const LS_IMGS = () => `cl-editor:imgs:${S.baseHash}`;
+
+  // ---------- 基础 UI ----------
+  let toastTimer = null;
+  function toast(msg, isErr = false) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.className = isErr ? 'err' : '';
+    el.style.display = 'block';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.display = 'none'; }, isErr ? 6000 : 2600);
+  }
+  function modal(html) { $('#modal').innerHTML = html; $('#mask').classList.add('show'); }
+  function closeModal() { $('#mask').classList.remove('show'); }
+  $('#mask').addEventListener('click', (e) => { if (e.target === $('#mask')) closeModal(); });
+
+  function markDirty() {
+    $('#dirty-dot').style.display = 'inline';
+    scheduleAutosave();
+  }
+  function markClean() { $('#dirty-dot').style.display = 'none'; }
+
+  // ---------- 载入 ----------
+  async function loadClText(text, label) {
+    S.clText = text.replace(/\r\n/g, '\n');
+    S.baseText = S.clText;
+    S.baseHash = await L.sha256Hex(S.baseText);
+    S.repoName = label;
+    reparse();
+    $('#repo-chip').textContent = label;
+    $('#repo-chip').className = S.repo ? 'ok' : '';
+    $('#btn-finish').disabled = false;
+    const restore = localStorage.getItem(LS_STATE());
+    if (restore) {
+      const state = JSON.parse(restore);
+      $('#restore-text').textContent = `检测到 ${new Date(state.savedAt).toLocaleString()} 的未完成编辑（含 ${state.imageCount || 0} 张图片）`;
+      $('#restore-banner').style.display = 'flex';
+      $('#btn-restore').onclick = () => doRestore(state);
+      $('#btn-discard').onclick = () => { localStorage.removeItem(LS_STATE()); localStorage.removeItem(LS_REFS()); $('#restore-banner').style.display = 'none'; };
+    }
+    selectSection(S.selected || firstEditableSection());
+  }
+
+  function reparse() {
+    const { preamble, sections } = L.splitSections(S.clText);
+    S.sections = sections;
+    S.parsed.clear();
+    for (const s of sections) S.parsed.set(s.name, L.parseSection(s));
+  }
+
+  function firstEditableSection() {
+    const unrel = S.sections.find((s) => s.name === '未发布');
+    return (unrel || S.sections[0])?.name || null;
+  }
+
+  async function openRepo() {
+    let root;
+    try {
+      root = await window.showDirectoryPicker({ id: 'maw-cl-editor', mode: 'readwrite' });
+    } catch { return; }
+    let clFile;
+    try { clFile = await root.getFileHandle('CHANGELOG.md'); } catch {
+      toast('所选目录没有 CHANGELOG.md，请选择仓库根目录', true); return;
+    }
+    S.repo = root; S.readOnly = false;
+    const text = await (await clFile.getFile()).text();
+    await loadClText(text, `📦 ${root.name}（读写）`);
+    await refreshArchiveStatus();
+    renderSidebar();
+    toast('仓库目录已连接，可以读取与写回');
+  }
+
+  async function loadFileFallback() {
+    $('#file-input').onchange = async () => {
+      const file = $('#file-input').files[0];
+      if (!file) return;
+      S.repo = null; S.readOnly = true;
+      await loadClText(await file.text(), `📄 ${file.name}（只读降级）`);
+      renderSidebar();
+      toast('已按只读模式加载；完成编辑将改为下载文件', false);
+    };
+    $('#file-input').click();
+  }
+
+  // ---------- 侧栏 ----------
+  function sectionBadge(s) {
+    if (s.name === '未发布') return '';
+    return L.isStable(s.name) ? '<span class="badge stable">正式</span>' : '<span class="badge pre">测试</span>';
+  }
+
+  function renderSidebar() {
+    const list = $('#version-list');
+    list.innerHTML = '';
+    for (const s of S.sections) {
+      const div = document.createElement('div');
+      div.className = 'version-item' + (s.name === S.selected ? ' active' : '');
+      const dot = L.isStable(s.name)
+        ? `<span class="arch-dot ${S.archiveStatus.get(s.name) || ''}" title="归档状态"></span>` : '<span class="arch-dot" style="visibility:hidden"></span>';
+      div.innerHTML = `${dot}<span>${escapeHtml(s.name)}</span>${sectionBadge(s)}<span class="date">${s.date || ''}</span>`;
+      div.onclick = () => selectSection(s.name);
+      list.appendChild(div);
+    }
+    renderArchiveBox();
+  }
+
+  function renderArchiveBox() {
+    const box = $('#archive-list');
+    box.innerHTML = '';
+    const stable = S.sections.filter((s) => L.isStable(s.name));
+    for (const s of stable) {
+      const status = S.archiveStatus.get(s.name);
+      const row = document.createElement('label');
+      row.className = 'arch-row';
+      const statusText = { fresh: '一致', stale: '需重生成', missing: '缺失' }[status] || '—';
+      row.innerHTML = `<input type="checkbox" data-arch="${escapeAttr(s.name)}" ${status !== 'fresh' ? 'checked' : ''}>
+        <span>${escapeHtml(s.name)}</span><span class="status ${status || ''}">${statusText}</span>`;
+      box.appendChild(row);
+    }
+    if (!stable.length) box.innerHTML = '<p class="hint">没有正式版本。</p>';
+    $('#btn-generate-archives').disabled = !S.repo;
+  }
+
+  // ---------- 版本面板 ----------
+  function selectSection(name) {
+    S.selected = name;
+    S.tab = 'edit';
+    const section = S.sections.find((s) => s.name === name);
+    $('#vh-name').textContent = name;
+    const dateInput = $('#vh-date');
+    dateInput.value = section?.date || '';
+    dateInput.style.display = section?.date || L.isStable(name) ? '' : 'none';
+    $('#auto-arch-label').style.display = section && L.isStable(name) ? '' : 'none';
+    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === 'edit'));
+    renderSidebar();
+    renderPane();
+  }
+
+  function renderPane() {
+    const pane = $('#pane');
+    pane.innerHTML = '';
+    if (!S.selected) { pane.innerHTML = '<p class="hint">先用「打开仓库目录」或「仅加载 CL 文件」载入 CHANGELOG。</p>'; return; }
+    if (S.tab === 'edit') renderEditPane(pane);
+    else if (S.tab === 'preview') renderPreviewPane(pane);
+    else renderReferencePane(pane);
+  }
+
+  function cardControls(card, idx) {
+    const changed = card.original != null && card.original !== card.lines.join('\n');
+    const tags = [
+      `<span class="tag">${card.kind === 'entry' ? '条目' : card.kind === 'heading' ? '小节' : '文本'}</span>`,
+      card.original == null ? '<span class="new-tag">新增</span>' : '',
+      changed ? '<span class="changed-tag">已修改</span>' : '',
+    ].join('');
+    return `
+      <div class="card-head">
+        ${tags}<span class="spacer"></span>
+        <button data-act="diff" title="与原文对比">对比</button>
+        <button data-act="reset" title="恢复原文">还原</button>
+        <button data-act="up" title="上移">↑</button>
+        <button data-act="down" title="下移">↓</button>
+        ${card.kind === 'entry' ? '<button data-act="img" title="添加图片文件">📎</button>' : ''}
+        <button data-act="del" title="删除此条">✕</button>
+      </div>`;
+  }
+
+  function renderEditPane(pane) {
+    const parsed = S.parsed.get(S.selected);
+    const wrap = document.createElement('div');
+    wrap.id = 'cards';
+    parsed.cards.forEach((card, idx) => wrap.appendChild(renderCard(card, idx)));
+    if (!parsed.cards.length) {
+      wrap.innerHTML = '<p class="hint">此版本暂无内容。用下方按钮添加第一个条目。</p>';
+    }
+    pane.appendChild(wrap);
+    const addRow = document.createElement('div');
+    addRow.className = 'add-row';
+    addRow.innerHTML = '<button id="add-entry">＋ 添加条目</button>';
+    addRow.querySelector('#add-entry').onclick = () => addEntry(parsed.cards.length);
+    pane.appendChild(addRow);
+    pane.querySelectorAll('textarea').forEach(fitTextarea);
+    pane.querySelectorAll('.card').forEach((el) => {
+      if (el.dataset.cardId === String(S.selectedCard)) el.classList.add('selected');
+    });
+  }
+
+  function renderCard(card, idx) {
+    const el = document.createElement('div');
+    const cardId = idx;
+    el.className = `card kind-${card.kind}`;
+    el.dataset.cardId = String(cardId);
+    el.dataset.idx = String(idx);
+    const isEntry = card.kind === 'entry';
+    const body = isEntry
+      ? `<textarea data-field="line" rows="2">${escapeHtml(card.lines[0] || '')}</textarea>`
+      : `<textarea data-field="line" rows="1">${escapeHtml(card.lines[0] || '')}</textarea>`;
+    el.innerHTML = cardControls(card, idx) + body +
+      (isEntry ? `<div class="img-strip" data-strip></div>` : '') +
+      `<div class="diff-view" data-diff style="display:none"></div>`;
+    const ta = el.querySelector('textarea');
+    ta.addEventListener('input', () => {
+      card.lines[0] = ta.value;
+      fitTextarea(ta);
+      markDirty();
+      refreshCardTags(el, card);
+    });
+    ta.addEventListener('focus', () => selectCard(cardId));
+    el.addEventListener('click', (e) => { if (e.target.closest('button, a, input, .img-item')) return; selectCard(cardId); });
+    el.querySelectorAll('.card-head button').forEach((btn) => {
+      btn.onclick = () => cardAction(btn.dataset.act, card, idx, el);
+    });
+    // 图片条：已有图片引用 + 新粘贴图片
+    if (isEntry) {
+      const strip = el.querySelector('[data-strip]');
+      renderStrip(card, idx, strip);
+    }
+    return el;
+  }
+
+  function refreshCardTags(el, card) {
+    const changed = card.original != null && card.original !== card.lines.join('\n');
+    const tag = el.querySelector('.changed-tag');
+    if (changed && !tag) el.querySelector('.card-head').insertAdjacentHTML('beforeend', '<span class="changed-tag">已修改</span>');
+    if (!changed && tag) tag.remove();
+  }
+
+  function selectCard(cardId) {
+    S.selectedCard = cardId;
+    document.querySelectorAll('.card.selected').forEach((c) => c.classList.remove('selected'));
+    const el = document.querySelector(`.card[data-card-id="${cardId}"]`);
+    if (el) el.classList.add('selected');
+  }
+
+  function fitTextarea(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.max(38, ta.scrollHeight)}px`;
+  }
+
+  function cardAction(act, card, idx, el) {
+    const parsed = S.parsed.get(S.selected);
+    if (act === 'diff') {
+      const view = el.querySelector('[data-diff]');
+      if (view.style.display === 'none') {
+        view.style.display = 'block';
+        view.innerHTML = diffHtml(card.original ?? '', card.lines[0] ?? '');
+      } else view.style.display = 'none';
+      return;
+    }
+    if (act === 'reset') {
+      if (card.original == null) { toast('新条目没有原文可还原', true); return; }
+      card.lines[0] = card.original;
+      el.querySelector('textarea').value = card.original;
+      fitTextarea(el.querySelector('textarea'));
+      refreshCardTags(el, card);
+      markDirty(); return;
+    }
+    if (act === 'up' || act === 'down') {
+      const j = act === 'up' ? idx - 1 : idx + 1;
+      if (j < 0 || j >= parsed.cards.length) return;
+      [parsed.cards[idx], parsed.cards[j]] = [parsed.cards[j], parsed.cards[idx]];
+      markDirty(); renderPane(); return;
+    }
+    if (act === 'del') {
+      if (!confirm('删除这一条？')) return;
+      parsed.cards.splice(idx, 1);
+      for (const [id, img] of S.images) {
+        if (img.cardKey === `${S.selected}#${idx}`) S.images.delete(id);
+      }
+      markDirty(); renderPane(); return;
+    }
+    if (act === 'img') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = true;
+      input.onchange = async () => {
+        for (const file of input.files) await attachImage(card, idx, file);
+        renderPane();
+      };
+      input.click();
+    }
+  }
+
+  function addEntry(atIdx) {
+    const parsed = S.parsed.get(S.selected);
+    const card = { kind: 'entry', lines: ['- **新条目标题** ： 具体改动说明。'], imageRefs: [], original: null };
+    parsed.cards.splice(atIdx, 0, card);
+    markDirty();
+    renderPane();
+    const el = document.querySelector(`.card[data-idx="${atIdx}"] textarea`);
+    if (el) { el.focus(); el.select(); }
+  }
+
+  function diffHtml(oldText, newText) {
+    const ops = L.wordDiff(oldText, newText);
+    return ops.map((op) => {
+      const text = escapeHtml(op.text);
+      if (op.type === 'del') return `<del>${text}</del>`;
+      if (op.type === 'ins') return `<ins>${text}</ins>`;
+      return text;
+    }).join('');
+  }
+
+  // ---------- 图片 ----------
+  async function toWebp(file) {
+    const extOf = (name) => (/\.[a-z0-9]+$/i.exec(name) || ['.png'])[0].toLowerCase();
+    try {
+      const bitmap = await createImageBitmap(file);
+      const maxDim = 1600;
+      const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((res) => canvas.toBlob(res, 'image/webp', 0.9));
+      bitmap.close?.();
+      if (blob && blob.size > 0 && blob.size <= file.size * 1.2) {
+        return { blob, filename: `image.webp`, size: blob.size };
+      }
+      return { blob: file, filename: `image${extOf(file.name)}`, size: file.size };
+    } catch {
+      return { blob: file, filename: `image${extOf(file.name)}`, size: file.size };
+    }
+  }
+
+  async function attachImage(card, idx, file) {
+    const { blob, filename, size } = await toWebp(file);
+    const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const cardKey = `${S.selected}#${idx}`;
+    S.images.set(id, { id, blob, size, alt: cardTitleOf(card), filename, cardKey });
+    card.newImages = card.newImages || [];
+    card.newImages.push(id);
+    markDirty();
+    toast(`已附加图片到「${truncate(cardTitleOf(card), 18)}」（完成后写入 docs/assets/${S.selected}/）`);
+  }
+
+  function cardTitleOf(card) {
+    const m = /^-\s*\*\*(.+?)\*\*/.exec(card.lines[0] || '');
+    return m ? m[1] : '';
+  }
+
+  function truncate(text, n) { return text.length > n ? `${text.slice(0, n)}…` : text; }
+
+  function renderStrip(card, idx, strip) {
+    strip.innerHTML = '';
+    for (const ref of card.imageRefs) {
+      const chip = document.createElement('span');
+      chip.className = 'img-ref-chip';
+      chip.innerHTML = `🖼 <a href="${escapeAttr(ref.path)}" target="_blank" rel="noreferrer">${escapeHtml(ref.path)}</a>`;
+      strip.appendChild(chip);
+    }
+    for (const id of card.newImages || []) {
+      const img = S.images.get(id);
+      if (!img) continue;
+      const url = URL.createObjectURL(img.blob);
+      const item = document.createElement('div');
+      item.className = 'img-item';
+      item.innerHTML = `
+        <img src="${url}" alt="" title="点击放大预览">
+        <div class="fields">
+          <input type="text" data-f="alt" placeholder="alt 描述（默认取条目标题）" value="${escapeAttr(img.alt)}">
+          <input type="text" data-f="filename" value="${escapeAttr(img.filename)}" title="写入 docs/assets/${escapeAttr(S.selected)}/ 的文件名">
+          <div class="meta"><span>${formatSize(img.size)}</span>
+            ${img.size > 300 * 1024 ? '<span class="big">超过 300 KiB 软上限</span>' : ''}
+            <button data-act="rm">移除</button></div>
+        </div>`;
+      item.querySelector('img').onclick = () => window.open(url, '_blank');
+      item.querySelector('[data-f="alt"]').addEventListener('input', (e) => { img.alt = e.target.value; markDirty(); });
+      item.querySelector('[data-f="filename"]').addEventListener('input', (e) => { img.filename = e.target.value; markDirty(); });
+      item.querySelector('[data-act="rm"]').onclick = () => {
+        card.newImages = card.newImages.filter((x) => x !== id);
+        S.images.delete(id);
+        markDirty(); renderPane();
+      };
+      strip.appendChild(item);
+    }
+  }
+
+  function formatSize(bytes) {
+    if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  // ---------- 粘贴 / 拖放 ----------
+  document.addEventListener('paste', async (e) => {
+    if (S.tab !== 'edit' || !S.selected) return;
+    const files = [...(e.clipboardData?.items || [])]
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile()).filter(Boolean);
+    if (!files.length) return;
+    const parsed = S.parsed.get(S.selected);
+    let idx = S.selectedCard;
+    let card = parsed.cards[idx];
+    if (!card || card.kind !== 'entry') {
+      card = parsed.cards.find((c) => c.kind === 'entry');
+      idx = parsed.cards.indexOf(card);
+      if (!card) return;
+    }
+    e.preventDefault();
+    for (const file of files) await attachImage(card, idx, file);
+    renderPane();
+  });
+
+  document.addEventListener('dragover', (e) => {
+    const card = e.target.closest?.('.card');
+    if (card && S.tab === 'edit') { e.preventDefault(); card.classList.add('drop-hint'); }
+  });
+  document.addEventListener('dragleave', (e) => {
+    e.target.closest?.('.card')?.classList.remove('drop-hint');
+  });
+  document.addEventListener('drop', async (e) => {
+    const cardEl = e.target.closest?.('.card');
+    if (!cardEl || S.tab !== 'edit') return;
+    const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith('image/'));
+    if (!files.length) return;
+    e.preventDefault();
+    cardEl.classList.remove('drop-hint');
+    const parsed = S.parsed.get(S.selected);
+    const idx = Number(cardEl.dataset.idx);
+    const card = parsed.cards[idx];
+    if (!card || card.kind !== 'entry') { toast('图片只能附加到条目上', true); return; }
+    for (const file of files) await attachImage(card, idx, file);
+    renderPane();
+  });
+
+  // ---------- 日期 ----------
+  $('#vh-date').addEventListener('change', () => {
+    const section = S.sections.find((s) => s.name === S.selected);
+    if (!section) return;
+    const value = $('#vh-date').value;
+    section.date = value || null;
+    section.heading = value ? `## [${section.name}] - ${value}` : `## [${section.name}]`;
+    markDirty();
+    renderSidebar();
+  });
+
+  // ---------- 选项卡 ----------
+  document.querySelectorAll('#tabs button').forEach((btn) => {
+    btn.onclick = () => {
+      S.tab = btn.dataset.tab;
+      document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b === btn));
+      renderPane();
+    };
+  });
+
+  // ---------- 预览 ----------
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function escapeAttr(text) { return escapeHtml(text); }
+
+  function inlineMd(text, resolveImg) {
+    let html = escapeHtml(text);
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, src) => resolveImg(alt, src));
+    html = html.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    return html;
+  }
+
+  function renderPreviewPane(pane) {
+    const parsed = S.parsed.get(S.selected);
+    const section = S.sections.find((s) => s.name === S.selected);
+    const div = document.createElement('div');
+    div.className = 'preview';
+    const urlCache = new Map();
+    const resolveImg = (alt, src) => {
+      const local = S.images.get(src);
+      if (local) return `<img src="${URL.createObjectURL(local.blob)}" alt="${escapeAttr(alt)}">`;
+      return `<img data-src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">`;
+    };
+    let html = `<h2>${escapeHtml(section.name)}${section.date ? ` <small style="color:var(--muted)">${section.date}</small>` : ''}</h2>`;
+    let inList = false;
+    for (const card of parsed.cards) {
+      const line = card.lines[0] || '';
+      if (card.kind === 'heading') {
+        if (inList) { html += '</ul>'; inList = false; }
+        html += `<h3>${inlineMd(line.replace(/^#+\s*/, ''), resolveImg)}</h3>`;
+        continue;
+      }
+      if (card.kind === 'entry') {
+        if (!inList) { html += '<ul>'; inList = true; }
+        html += `<li>${inlineMd(line.replace(/^-\s*/, ''), resolveImg)}`;
+        for (const ref of card.imageRefs) html += resolveImg(ref.alt, ref.path);
+        html += '</li>';
+        continue;
+      }
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p>${inlineMd(line, resolveImg)}</p>`;
+    }
+    if (inList) html += '</ul>';
+    div.innerHTML = html;
+    pane.appendChild(div);
+    // 用仓库句柄解析已有图片
+    div.querySelectorAll('img[data-src]').forEach(async (img) => {
+      const src = img.dataset.src;
+      if (S.repo && src.startsWith('docs/assets/')) {
+        let blob = urlCache.get(src);
+        if (blob === undefined) {
+          try {
+            const parts = src.split('/');
+            const dir = await S.repo.getDirectoryHandle(parts[0]).then((d) => d.getDirectoryHandle(parts[1])).then((d) => d.getDirectoryHandle(parts[2]));
+            const fh = await dir.getFileHandle(parts[3]);
+            blob = await (await fh.getFile()).blob();
+          } catch { blob = null; }
+          urlCache.set(src, blob);
+        }
+        if (blob) { img.src = URL.createObjectURL(blob); return; }
+      }
+      img.outerHTML = `<span class="img-missing">[图片：${escapeHtml(src)}]</span>`;
+    });
+  }
+
+  // ---------- 对照 ----------
+  function renderReferencePane(pane) {
+    const section = S.sections.find((s) => s.name === S.selected);
+    const prefix = `${section.name}-beta.`;
+    const sources = S.sections.filter((s) => s.name.startsWith(prefix));
+    const wrap = document.createElement('div');
+    wrap.className = 'preview';
+    if (!sources.length) {
+      wrap.innerHTML = '<p class="hint">此版本没有同系列 beta 小节可对照。</p>';
+      pane.appendChild(wrap);
+      return;
+    }
+    wrap.innerHTML = `<p class="hint">逐条勾选已核对过的 beta 条目（按版本保存）。确认合并稿覆盖了全部内容后即可「完成编辑」。</p>`;
+    const checked = new Set(JSON.parse(localStorage.getItem(LS_REFS()) || '[]'));
+    for (const src of sources) {
+      const parsed = S.parsed.get(src.name);
+      const group = document.createElement('div');
+      group.className = 'ref-group';
+      group.innerHTML = `<h4>${escapeHtml(src.name)} <span class="hint">(${src.date || ''})</span></h4>`;
+      parsed.cards.forEach((card, i) => {
+        if (card.kind !== 'entry') return;
+        const key = `${src.name}#${i}`;
+        const row = document.createElement('label');
+        row.className = 'ref-entry' + (checked.has(key) ? ' done' : '');
+        row.innerHTML = `<input type="checkbox" ${checked.has(key) ? 'checked' : ''}><span class="text">${inlineMd(card.lines[0].replace(/^-\s*/, ''), (a, s) => `<span class="img-missing">[图]</span>`)}</span>`;
+        row.querySelector('input').addEventListener('change', (e) => {
+          if (e.target.checked) checked.add(key); else checked.delete(key);
+          row.classList.toggle('done', e.target.checked);
+          localStorage.setItem(LS_REFS(), JSON.stringify([...checked]));
+        });
+        group.appendChild(row);
+      });
+      wrap.appendChild(group);
+    }
+    pane.appendChild(wrap);
+  }
+
+  // ---------- 序列化 ----------
+  function serializeCurrentDoc() {
+    const { preamble, sections } = L.splitSections(S.clText);
+    const parts = [preamble];
+    for (const section of sections) {
+      const parsed = S.parsed.get(section.name);
+      parts.push(parsed ? L.serializeSection(section, parsed) : section.rawText);
+    }
+    return parts.join('');
+  }
+
+  function isDirty() {
+    if (serializeCurrentDoc() !== S.baseText) return true;
+    return S.images.size > 0;
+  }
+
+  // ---------- 自动保存 ----------
+  let autosaveTimer = null;
+  function scheduleAutosave() {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(saveSession, 900);
+  }
+  function saveSession() {
+    if (!S.baseHash) return;
+    const refs = [];
+    for (const [id, img] of S.images) {
+      refs.push({ id, alt: img.alt, filename: img.filename, size: img.size, cardKey: img.cardKey });
+    }
+    try {
+      localStorage.setItem(LS_STATE(), JSON.stringify({
+        savedAt: Date.now(),
+        docText: serializeCurrentDoc(),
+        selected: S.selected,
+        imageCount: S.images.size,
+      }));
+      localStorage.setItem(LS_IMGS(), JSON.stringify(refs));
+      idbPutAll(refs);
+      return true;
+    } catch (e) {
+      console.warn('autosave failed', e);
+      return false;
+    }
+  }
+
+  // ---------- IndexedDB（图片二进制） ----------
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('cl-editor', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('images');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbPutAll(refs) {
+    if (!S.images.size) return;
+    const db = await idbOpen();
+    const tx = db.transaction('images', 'readwrite');
+    const store = tx.objectStore('images');
+    for (const [id, img] of S.images) store.put(img.blob, id);
+    await new Promise((res) => { tx.oncomplete = res; tx.onerror = res; });
+    db.close();
+  }
+  async function idbGetAll(ids) {
+    const db = await idbOpen();
+    const tx = db.transaction('images', 'readonly');
+    const store = tx.objectStore('images');
+    const out = new Map();
+    await Promise.all(ids.map((id) => new Promise((res) => {
+      const req = store.get(id);
+      req.onsuccess = () => { out.set(id, req.result); res(); };
+      req.onerror = () => res();
+    })));
+    db.close();
+    return out;
+  }
+
+  async function doRestore(state) {
+    S.clText = state.docText;
+    reparse();
+    const ids = [];
+    // 依据持久化的 refs 找回新图片元数据（blobs 在 IDB）
+    for (const section of S.sections) {
+      const parsed = S.parsed.get(section.name);
+      parsed.cards.forEach((card, idx) => { card.newImages = []; });
+    }
+    const refList = JSON.parse(localStorage.getItem(LS_IMGS()) || '[]');
+    for (const ref of refList) {
+      const [sectionName, idxStr] = ref.cardKey.split('#');
+      const parsed = S.parsed.get(sectionName);
+      if (!parsed) continue;
+      const card = parsed.cards[Number(idxStr)];
+      if (!card || card.kind !== 'entry') continue;
+      card.newImages.push(ref.id);
+      S.images.set(ref.id, { ...ref });
+      ids.push(ref.id);
+    }
+    const blobs = await idbGetAll(ids);
+    for (const [id, blob] of blobs) if (blob && S.images.get(id)) S.images.get(id).blob = blob;
+    $('#restore-banner').style.display = 'none';
+    selectSection(state.selected);
+    markDirty();
+    toast('已恢复上次编辑（图片写入前请勿关闭页面太久，blob 由本页 IndexedDB 保存）');
+  }
+
+  // ---------- 写盘辅助 ----------
+  async function dirHandle(pathParts, create) {
+    let dir = S.repo;
+    for (const part of pathParts) dir = await dir.getDirectoryHandle(part, { create: Boolean(create) });
+    return dir;
+  }
+  async function writeFileAt(pathParts, blob) {
+    const dir = await dirHandle(pathParts.slice(0, -1), true);
+    const fh = await dir.getFileHandle(pathParts.at(-1), { create: true });
+    const writable = await fh.createWritable();
+    await writable.write(blob);
+    await writable.close();
+  }
+  async function readFileAt(pathParts) {
+    try {
+      const dir = await dirHandle(pathParts.slice(0, -1), false);
+      const fh = await dir.getFileHandle(pathParts.at(-1));
+      return await (await fh.getFile()).text();
+    } catch { return null; }
+  }
+  async function backupFile(pathParts, backupDir) {
+    const content = await readFileAt(pathParts);
+    if (content == null) return null;
+    const target = [...backupDir, ...pathParts];
+    await writeFileAt(target, new Blob([content], { type: 'text/markdown' }));
+    return target.join('/');
+  }
+
+  // ---------- 归档状态 ----------
+  async function refreshArchiveStatus() {
+    for (const section of S.sections) {
+      if (!L.isStable(section.name)) continue;
+      try {
+        const expected = await L.buildArchive(S.clText, section.name);
+        const existing = S.repo ? await readFileAt(['docs', 'releases', `${section.name}.md`]) : null;
+        S.archiveStatus.set(section.name, existing == null ? 'missing' : (existing === expected ? 'fresh' : 'stale'));
+      } catch {
+        S.archiveStatus.set(section.name, 'none');
+      }
+    }
+  }
+
+  // ---------- 完成编辑 ----------
+  function validateForFinish() {
+    const parsed = S.parsed.get(S.selected);
+    const section = S.sections.find((s) => s.name === S.selected);
+    const errors = [];
+    if (section.name !== '未发布' && L.isStable(section.name) && !section.date) {
+      errors.push('正式版需要设置日期（标题行 `## [版本] - YYYY-MM-DD`）');
+    }
+    const names = new Map();
+    for (const [id, img] of S.images) {
+      const name = img.filename.trim();
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name)) {
+        errors.push(`文件名不合法：${name}（只允许字母数字 . _ -）`);
+      }
+      if (names.has(name)) errors.push(`文件名重复：${name}`);
+      names.set(name, id);
+    }
+    for (let i = parsed.cards.length - 1; i >= 0; i -= 1) {
+      const card = parsed.cards[i];
+      if (card.kind === 'entry' && card.original == null && (card.lines[0] || '').trim() === '- **新条目标题** ： 具体改动说明。') {
+        errors.push(`第 ${i + 1} 张卡片仍是新条目模板，请填写或删除`);
+        break;
+      }
+    }
+    return errors;
+  }
+
+  async function finishEditing() {
+    if (!S.selected) return;
+    const section = S.sections.find((s) => s.name === S.selected);
+    const errors = validateForFinish();
+    if (errors.length) {
+      modal(`<h3>还不能完成编辑</h3>${errors.map((e) => `<p class="step">⚠ ${escapeHtml(e)}</p>`).join('')}
+        <div style="margin-top:14px;text-align:right"><button onclick="document.querySelector('#mask').classList.remove('show')">知道了</button></div>`);
+      return;
+    }
+    if (section.name === '未发布') {
+      toast('「未发布」区不参与发布管线，请选择具体版本再完成编辑', true);
+      return;
+    }
+    const autoArchive = $('#auto-archive').checked && L.isStable(section.name);
+    const docText = serializeCurrentDoc();
+    const steps = [];
+    const log = (text, ok = true) => { steps.push({ text, ok }); };
+    try {
+      if (S.repo) {
+        // 1) 冲突检查
+        const onDisk = await readFileAt(['CHANGELOG.md']);
+        if (onDisk !== S.baseText) throw new Error('磁盘上的 CHANGELOG.md 已被其他程序修改，请刷新页面重新载入（未完成的编辑会自动保存在本页）');
+        // 2) 备份
+        const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+        const backupDir = ['.artifacts', 'changelog-editor', 'backup', stamp];
+        log(`已备份原文件 → ${backupDir.join('/')}/`);
+        await backupFile(['CHANGELOG.md'], backupDir);
+        if (autoArchive) await backupFile(['docs', 'releases', `${section.name}.md`], backupDir);
+        // 3) 写图片
+        const written = [];
+        const dedupe = new Map();
+        for (const [, img] of S.images) {
+          const name = img.filename.trim();
+          const buf = new Uint8Array(await img.blob.arrayBuffer());
+          const digest = await crypto.subtle.digest('SHA-256', buf);
+          const key = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+          if (dedupe.has(key)) { img.finalName = dedupe.get(key); continue; }
+          dedupe.set(key, name);
+          await writeFileAt(['docs', 'assets', section.name, name], img.blob);
+          img.finalName = name;
+          written.push(`docs/assets/${section.name}/${name}（${formatSize(img.size)}）`);
+        }
+        log(`已写入 ${written.length} 张图片 → docs/assets/${section.name}/`);
+        // 4) 更新 CL 中的图片行
+        const parsed = S.parsed.get(section.name);
+        for (const card of parsed.cards) {
+          if (card.kind !== 'entry' || !(card.newImages || []).length) continue;
+          for (const id of card.newImages) {
+            const img = S.images.get(id);
+            if (!img?.finalName) continue;
+            const alt = (img.alt || cardTitleOf(card) || section.name).trim();
+            card.imageRefs.push({ alt, path: `docs/assets/${section.name}/${img.finalName}` });
+          }
+          card.newImages = [];
+        }
+        const newDoc = serializeCurrentDoc();
+        await writeFileAt(['CHANGELOG.md'], new Blob([newDoc], { type: 'text/markdown' }));
+        S.clText = newDoc; S.baseText = newDoc;
+        log('已写回 CHANGELOG.md（图片链接已插入到对应条目后）');
+        // 5) 归档
+        if (autoArchive) {
+          const archive = await L.buildArchive(S.clText, section.name);
+          await writeFileAt(['docs', 'releases', `${section.name}.md`], new Blob([archive], { type: 'text/markdown' }));
+          log(`已生成归档 docs/releases/${section.name}.md（与 prepare_release_notes.py 同契约）`);
+        }
+        await refreshArchiveStatus();
+      } else {
+        // 降级：下载
+        const { preamble, sections } = L.splitSections(S.clText);
+        const parsed = S.parsed.get(section.name);
+        for (const card of parsed.cards) {
+          if (card.kind !== 'entry' || !(card.newImages || []).length) continue;
+          for (const id of card.newImages) {
+            const img = S.images.get(id);
+            if (!img) continue;
+            img.finalName = img.filename.trim();
+            card.imageRefs.push({ alt: img.alt || cardTitleOf(card), path: `docs/assets/${section.name}/${img.finalName}` });
+            triggerDownload(img.blob, img.finalName);
+          }
+          card.newImages = [];
+        }
+        const newDoc = serializeCurrentDoc();
+        triggerDownload(new Blob([newDoc], { type: 'text/markdown' }), 'CHANGELOG.md');
+        if (autoArchive) {
+          triggerDownload(new Blob([await L.buildArchive(newDoc, section.name)], { type: 'text/markdown' }), `${section.name}.md`);
+        }
+        log('只读模式：已通过下载交付 CHANGELOG / 归档 / 图片，请手动放回对应位置');
+        S.clText = newDoc; S.baseText = newDoc;
+      }
+      const imageList = [...S.images.values()].map((img) => `docs/assets/${section.name}/${img.finalName || img.filename}`).filter((p) => p.includes('/'));
+      S.images.clear();
+      reparseFromText(S.clText);
+      markClean();
+      localStorage.removeItem(LS_STATE());
+      renderSidebar(); selectSection(S.selected);
+      const tag = `v${section.name}`;
+      modal(`
+        <h3>✅ 完成编辑 — ${escapeHtml(section.name)}</h3>
+        ${steps.map((s) => `<div class="step"><span class="s">✓</span><span>${escapeHtml(s.text)}</span></div>`).join('')}
+        ${imageList.length ? `<p class="hint" style="margin:10px 0 4px">写入的文件：</p><div class="paths">${imageList.map(escapeHtml).join('<br>')}</div>` : ''}
+        <p class="hint" style="margin:12px 0 4px">建议接着在仓库根目录执行：</p>
+        <code>uv run --no-sync python scripts/prepare_release_notes.py --check-all</code><br>
+        <code>uv run --no-sync python scripts/prepare_release_notes.py --tag ${escapeHtml(tag)} --output .artifacts/release-preview.md</code>
+        <div style="margin-top:16px;text-align:right"><button class="primary" onclick="document.querySelector('#mask').classList.remove('show')">好</button></div>`);
+    } catch (error) {
+      modal(`<h3>⚠ 完成编辑中断</h3><p>${escapeHtml(error.message)}</p>
+        <p class="hint">已执行的步骤不会回滚；被覆盖的文件在最近一次备份目录里。</p>
+        <div style="text-align:right"><button onclick="document.querySelector('#mask').classList.remove('show')">知道了</button></div>`);
+    }
+  }
+
+  function reparseFromText(text) {
+    S.clText = text;
+    reparse();
+  }
+
+  function triggerDownload(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+  }
+
+  $('#btn-finish').onclick = finishEditing;
+
+  // ---------- 批量归档 ----------
+  $('#btn-select-stale').onclick = () => {
+    document.querySelectorAll('[data-arch]').forEach((box) => {
+      box.checked = S.archiveStatus.get(box.dataset.arch) !== 'fresh';
+    });
+  };
+  $('#btn-generate-archives').onclick = async () => {
+    if (!S.repo) { toast('只读模式下不支持写归档', true); return; }
+    const targets = [...document.querySelectorAll('[data-arch]')]
+      .filter((box) => box.checked).map((box) => box.dataset.arch);
+    if (!targets.length) { toast('先勾选要生成的正式版', true); return; }
+    // 归档必须与 CL 文件一致：先把当前编辑保存回盘
+    const docText = serializeCurrentDoc();
+    if (docText !== S.baseText) {
+      const onDisk = await readFileAt(['CHANGELOG.md']);
+      if (onDisk !== S.baseText) { toast('磁盘 CHANGELOG.md 已被外部修改，请刷新页面', true); return; }
+      const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+      await backupFile(['CHANGELOG.md'], ['.artifacts', 'changelog-editor', 'backup', stamp]);
+      await writeFileAt(['CHANGELOG.md'], new Blob([docText], { type: 'text/markdown' }));
+      S.baseText = docText;
+      toast('已先把当前编辑保存到 CHANGELOG.md');
+    }
+    const results = [];
+    for (const name of targets) {
+      try {
+        const archive = await L.buildArchive(S.clText, name);
+        const existing = await readFileAt(['docs', 'releases', `${name}.md`]);
+        if (existing != null && existing !== archive) {
+          const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+          await backupFile(['docs', 'releases', `${name}.md`], ['.artifacts', 'changelog-editor', 'backup', stamp]);
+        }
+        await writeFileAt(['docs', 'releases', `${name}.md`], new Blob([archive], { type: 'text/markdown' }));
+        results.push(`✓ ${name}.md${existing == null ? '（新建）' : ''}`);
+      } catch (error) {
+        results.push(`✗ ${name}.md：${error.message}`);
+      }
+    }
+    await refreshArchiveStatus();
+    renderSidebar();
+    modal(`<h3>归档生成结果</h3>${results.map((r) => `<div class="step"><span class="s">${r.startsWith('✓') ? '✓' : '✗'}</span><span>${escapeHtml(r.slice(2))}</span></div>`).join('')}
+      <div style="margin-top:14px;text-align:right"><button class="primary" onclick="document.querySelector('#mask').classList.remove('show')">好</button></div>`);
+  };
+
+  // ---------- 载入入口 ----------
+  $('#btn-open').onclick = openRepo;
+  $('#btn-load-file').onclick = loadFileFallback;
+
+  window.addEventListener('beforeunload', (e) => {
+    if (isDirty()) { e.preventDefault(); e.returnValue = ''; }
+  });
+  </script>
+</body>
+</html>
