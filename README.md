@@ -6,6 +6,8 @@
 [![GitHub Stars](https://img.shields.io/github/stars/Moyf/moys-asr-workflow)](https://github.com/Moyf/moys-asr-workflow/stargazers)
 [![License](https://img.shields.io/github/license/Moyf/moys-asr-workflow)](LICENSE)
 
+<img width="1247" height="815" alt="PixPin_2026-10-19_01-03-36" src="https://github.com/user-attachments/assets/d8eeda1c-8937-4393-a9ca-eb02e9b1dc85" />
+
 > 为口播、访谈和课程生成并精修字幕。
 
 MAW 把语音转写、波形校对、文稿整理和字幕导出接成一条工作流。在启动器中选择媒体并生成字幕，再到浏览器编辑器 MAWE 中修文字、调时间，保存工程后可以继续修改。
