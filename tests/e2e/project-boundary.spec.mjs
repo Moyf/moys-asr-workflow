@@ -62,7 +62,7 @@ test('Server startup exposes real repairs and save clears the report after writi
     await page.goto(bound.url);
     await page.waitForFunction(() => typeof window.MaweProjectSave?.saveProjectToServer === 'function');
     const imported = await page.evaluate(() => ({ report: MaweJsonRepair.lastImportReport,
-      dirty: MaweServerSave.projectImportDirty, end: MaweBoot.DATA.segments[0].end }));
+      dirty: MaweServerSave.hasUnsavedProjectChanges(), end: MaweBoot.DATA.segments[0].end }));
     expect(imported.end).toBe(100);
     expect(imported.dirty).toBe(true);
     expect(imported.report).toContainEqual({ path: '$.segments[0].end', kind: 'replace', before: 0, after: 100 });

@@ -207,6 +207,6 @@ test('changes flag writes notify on dirty transitions only, and markSaved stays 
   assert.equal(events, 2, 'writing false must not fire the dirty event');
   state.markSaved();
   assert.equal(events, 2, 'clearing bookkeeping on save must not fire the dirty event');
-  Object.assign(state.changes, { markersDirty: true, timedTextEditViewDirty: true });
+  Object.assign(state.changes, { markersDirty: true, projectImportDirty: true });
   assert.equal(events, 4, 'bulk assignment must go through the same notify path');
 });

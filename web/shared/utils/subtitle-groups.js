@@ -182,10 +182,22 @@ export function createUtilsModule({ cloneJsonValue, stableId, ensureStableSegmen
       }
     }
   }
-  function assignSubtitleGroup(project, segments, indexes, kind, value, existingId = null) {
+  function assignSubtitleGroup(project, segments, indexes, kind, value, existingId = null, { replaceHead = false } = {}) {
     migrateSubtitleGroups(project);
     const groups = project.subtitle_groups[kind];
     let id = existingId;
+    // A picker action on the displayed head replaces the group's attributes.
+    // A member-only or explicit new assignment still creates a separate group.
+    const head = indexes.length === 1 ? segments[indexes[0]] : null;
+    if (!id && replaceHead && head?.[kind] && head[`${kind}_group_id`]) {
+      const group = groups.find(group => group.id === head[`${kind}_group_id`]);
+      if (group) {
+        const attributes = cloneJsonValue(value);
+        delete attributes.start; delete attributes.end;
+        group.value = attributes;
+        id = group.id;
+      }
+    }
     if (id && !groups.some(group => group.id === id)) throw new Error(`subtitle_groups.${kind}: missing group ${id}`);
     if (!id) {
       const used = new Set(groups.map(g => g.id));

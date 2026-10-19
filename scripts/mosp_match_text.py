@@ -758,10 +758,13 @@ def generate_matched_mosp(
             if target.get("id"):
                 continue
             base = f"match-{index + 1:03d}"
-            identifier = base; suffix = 2
+            identifier = base
+            suffix = 2
             while identifier in reserved:
-                identifier = f"{base}-{suffix}"; suffix += 1
-            target["id"] = identifier; reserved.add(identifier)
+                identifier = f"{base}-{suffix}"
+                suffix += 1
+            target["id"] = identifier
+            reserved.add(identifier)
     project["schema"] = project.get("schema", PROJECT_SCHEMA)
     project["segments"] = rebuilt
     content = json.dumps(project, ensure_ascii=False, indent=2) + "\n"

@@ -10,7 +10,7 @@
 
 ## GitHub Pages
 
-GitHub Actions 在 `website/` 中运行 `pnpm install --frozen-lockfile`、同步当前仓库 docs、`pnpm run build`，然后把 `website/dist/` 发布到 Pages；部署产物阶段会另外将 `blank-editor.html` 生成为 `website/dist/editor/index.html`。这属于部署时的显式产物构建，不改变本地日常开发默认不生成根目录空白 HTML 的规则。项目站点使用 `BASE_PATH=/moys-asr-workflow` 和对应的 `SITE_URL`，Astro 内部链接必须经过 `sitePath()`。
+GitHub Actions 在 `website/` 中运行 `pnpm install --frozen-lockfile`、同步当前仓库 docs、`pnpm run build`，然后通过 `scripts/prepare_editor_pages.py` 应用版本策略：仅 1.x 生成 `website/dist/editor/index.html`，2.0 起不生成 `/editor/`，若候选目录残留旧编辑器则拒绝部署。此过程不重生成仓库根目录的历史空白 HTML。项目站点使用 `BASE_PATH=/moys-asr-workflow` 和对应的 `SITE_URL`，Astro 内部链接必须经过 `sitePath()`。
 
 ## 镜像策略
 

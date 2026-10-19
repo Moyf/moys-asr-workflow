@@ -9,7 +9,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from maw.editor_entry_policy import RETIREMENT_MESSAGE, standalone_editor_supported
+from maw.editor_entry_policy import RETIREMENT_MESSAGE, standalone_editor_supported  # noqa: E402
 
 
 def prepare_editor_pages(output: Path) -> None:

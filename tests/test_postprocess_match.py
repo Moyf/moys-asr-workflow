@@ -243,7 +243,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(processed_script_text(
             "这个、那个，都不错;下一项", extra_split_punctuation=DEFAULT_EXTRA_SPLIT_PUNCTUATION,
             preserve_punctuation=DEFAULT_PRESERVE_PUNCTUATION,
-        ), "这个、那个\n都不错\n下一项")
+        ), "这个、那个，\n都不错;\n下一项")
         self.assertEqual(processed_script_text("这个、那个", extra_split_punctuation=("、",), preserve_punctuation=()),
                          "这个\n那个")
         self.assertEqual(processed_script_text("这个、那个", extra_split_punctuation=("、",), preserve_punctuation=("、",)),

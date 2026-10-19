@@ -62,7 +62,7 @@
   const hadStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)
     || (getOverlayTrack()?.segments || []).some((segment) => segment.sticker || segment.sticker_ref);
   return MaweCommands.run('分配表情包', () => {
-    window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, segments, stickerTargetIdxs, 'sticker', sticker);
+    window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, segments, stickerTargetIdxs, 'sticker', sticker, null, { replaceHead: true });
     MaweDom.stickerModal.classList.remove('show');
     // 叠加轨目标：同步脏标记与保存调度，否则分配只改内存、不落盘。
     if (stickerTargetTrack === 'overlay') {
@@ -180,7 +180,7 @@
     if (!def) return;
     return MaweCommands.run('标记颜色', () => {
       const sorted = [...idxs].sort((a, b) => a - b);
-      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, MaweBoot.DATA.segments, sorted, 'color', { name: colorName, value: def.value });
+      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, MaweBoot.DATA.segments, sorted, 'color', { name: colorName, value: def.value }, null, { replaceHead: true });
       // 单条修改 lead（其 color_ref 成员仍指向它）或多选统一分配时，视为整组联动修改
       const isUnifiedGroup = sorted.length > 1
         || MaweBoot.DATA.segments.some((s) => s.color_ref && s.color_ref.headIdx === sorted[0]);

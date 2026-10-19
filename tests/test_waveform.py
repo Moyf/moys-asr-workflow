@@ -855,6 +855,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', source)
         self.assertIn(
             'function buildJson({ forFileExport = false } = {}) {\n'
+            "  if (!window.AsrEditorUtils.supportsProjectSchema(MaweBoot.DATA)) throw new Error('Unsupported project schema');\n"
             '  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
             edit.read_web_asset("editor/io/editor-json-repair.js"),
         )

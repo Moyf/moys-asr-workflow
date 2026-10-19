@@ -182,9 +182,10 @@ test('secondary tracks ignore positioning metadata, but track swaps retain it fo
 });
 
 test('copy split makes independent overrides and merge preserves the leftmost value', () => {
-  const splitContext = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h, MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), splitContext);
   const original = { id: 'a', start: 0, end: 2000, text: 'AB', assOverride: { pos: { x: 100, y: 200 } } };
+  const splitContext = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h,
+    MaweBoot: { DATA: { segments: [original] } }, MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
+  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), splitContext);
   const parts = splitContext.window.MaweSplitCore.buildSplitPair(original, 1, 1000, 'a', false, 'continuous', { headIndex: 0, duplicateText: true });
   parts.left.assOverride.pos.x = 111;
   assert.equal(parts.right.assOverride.pos.x, 100);

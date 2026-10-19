@@ -25,12 +25,12 @@ pnpm run build
 - 主仓库是唯一的软件事实来源：<https://github.com/Moyf/moys-asr-workflow>
 - 下载按钮指向主仓库的最新 Release，不在此仓库复制版本包。
 - `/docs/` 是从当前仓库公开文档生成的静态阅读区；在 `website/` 中运行 `pnpm run sync:docs` 可刷新内容。
-- 单独运行 Astro 构建不包含 `/editor/`。GitHub Pages 工作流在构建后把编辑器生成到 `website/dist/editor/index.html`，不会重生成仓库根目录的 `blank-editor.html`。
+- 单独运行 Astro 构建不包含 `/editor/`。GitHub Pages 工作流仅在 1.x 构建后把编辑器生成到 `website/dist/editor/index.html`；2.0 起不生成该目录。两种版本均不会重生成仓库根目录的历史 `blank-editor.html`。
 - `editor-screenshot.jpg` 来自主仓库的编辑器截图，更新截图时应人工确认许可证和内容。
 
 ## 计划部署
 
-GitHub Pages 发布同一仓库的官网、文档和 `/editor/`；也可以在 Vercel 中把 `website/` 设为 Root Directory 单独部署。大陆访问不保证稳定；正式上线前应在不同运营商网络实测。
+GitHub Pages 发布同一仓库的官网和文档；1.x 另提供 `/editor/`。也可以在 Vercel 中把 `website/` 设为 Root Directory 单独部署。大陆访问不保证稳定；正式上线前应在不同运营商网络实测。
 
 部署细节和内容清单见 [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md) 与 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)。
 
