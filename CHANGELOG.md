@@ -280,7 +280,7 @@
 
 #### ASS 字幕模式（Beta）
 
-![](docs/assets/1.6.0/ass-style-library.webp)
+![ass-style-library](docs/assets/1.6.0/ass-style-library.webp)
 
 - 新增 ASS 字幕模式与独立的样式管理窗口，支持全局的渐入动画等效果。
 - 支持导出标准 `.ass` 格式字幕，沿用预览的字体、字号和文字颜色。
@@ -288,7 +288,7 @@
 
 #### 说话人与颜色映射
 
-![](docs/assets/1.6.0/speaker-preview.webp)
+![speaker-preview](docs/assets/1.6.0/speaker-preview.webp)
 
 - 新增「字幕颜色」设置页：开启「将颜色映射为说话人」后，可为每种颜色配置说话人名称，预览中显示说话人前缀，导出时也可选把说话人名称写入字幕文本（SRT 与 ASS 均支持）。
 - 颜色支持自定义色值。
@@ -296,7 +296,7 @@
 
 #### 叠加字幕轨
 
-![](docs/assets/1.6.0/overlay-track.webp)
+![overlay-track](docs/assets/1.6.0/overlay-track.webp)
 
 - 支持叠加同时出现的字幕（最多两层）
 - 导入时会把双层重叠的 SRT 作为独立的叠加轨编辑，主轨与叠加轨可互相转换。
@@ -312,35 +312,35 @@
 - 帧模式下，拖动、边界调整、方向键等操作都以帧为最小单位，字幕自动吸附到帧。
 - 波形新增支持 2 秒视窗，可以看到更大的范围，配有对应帧的网格，可精准到单帧操作。
 
-![](docs/assets/1.6.0/frame-grid.webp)
+![frame-grid](docs/assets/1.6.0/frame-grid.webp)
 
 #### 新的转写服务商
 
-![](docs/assets/1.6.0/openai-asr.webp)
+![openai-asr](docs/assets/1.6.0/openai-asr.webp)
 
 - **OpenAI（及兼容接口）** ： 支持 `whisper-1 `、` gpt-4o-transcribe` 等官方模型，也可填写任意兼容 `/audio/transcriptions` 的服务。
 - **OpenRouter** ： 提供可用的 OpenAI 转写模型列表与参考价格，API Key 入口直达 OpenRouter。
 - **豆包（火山引擎）** ： 支持字/词级毫秒时间戳、可选说话人分离与颜色映射、即时热词直传，可通过 `VOLC_ASR_RESOURCE_ID` 切换 2.0 / 1.0 / 闲时版模型。
 
-![](docs/assets/1.6.0/doubao-asr.webp)
+![doubao-asr](docs/assets/1.6.0/doubao-asr.webp)
 
 #### 其他新能力
 
 - **工程自动备份** ： 编辑器默认开启备份：自动按分钟定时备份，手动保存也会生成带时间戳的副本；可设置保留数量，最早的备份会移入回收站。
 
-![](docs/assets/1.6.0/backup-settings.webp)
+![backup-settings](docs/assets/1.6.0/backup-settings.webp)
 
 - **部分翻译回填** ： 翻译时可选「将译文回填到原字幕」——只翻译有语音的句子并直接替换原文，未翻译部分连同逐词时间码原样保留，适合只有少量外语的视频。
 
-![](docs/assets/1.6.0/partial-translate.webp)
+![partial-translate](docs/assets/1.6.0/partial-translate.webp)
 
 - **双语字幕合并** ： 可把原文与译文合并为单轨双语字幕，翻译成中文时中文自动在上；可自定义双语行序。
 
-![](docs/assets/1.6.0/bilingual-into-one.webp)
+![bilingual-into-one](docs/assets/1.6.0/bilingual-into-one.webp)
 
 - **视频多音轨选择** ： 多音轨视频会列出可读的音轨列表，所选音轨贯通转写、波形与导出；导出 OTIO 时每条音轨生成独立轨道，并写入达芬奇可识别的声道映射。
 
-![](docs/assets/1.6.0/soundtrack-selection.webp)
+![soundtrack-selection](docs/assets/1.6.0/soundtrack-selection.webp)
 
 - **本地模型扩充** ： 新增 FireRedASR2 CPU 识别模型；新增可独立下载的对齐模型（Qwen3 对齐器、FireRed CTC）与「补齐时间码」工具；Apple Silicon 上 Qwen3-ASR 自动使用 MPS 加速。
 - **媒体实用工具** ： 工具箱新增「压制字幕」（SRT / ASS / SSA 烧录进视频）与「提取音频」（选择音轨输出 AAC/M4A）；Premiere XML 导出基本可用。
@@ -350,7 +350,7 @@
 
 #### 界面大重构
 
-![](docs/assets/1.6.0/accent-color.webp)
+![accent-color](docs/assets/1.6.0/accent-color.webp)
 
 - **界面强调色** ： 全局设置可自定义主题色。
 - **全局设置窗口** ： 「⚙️ 全局设置」改为独立可拖动的窗口，分区改为左侧标签页并记忆位置；帮助面板与工具箱同步改版。
@@ -360,7 +360,7 @@
 
 - **字幕边界拖动改进** ： 两条字幕贴合时，中缝处可拖动边界让两侧联动调整；单独拖动左右手柄仍只调整当前字幕。旧的「自动吸附调整相邻字幕」移入「传统模式」开关。
 
-![](docs/assets/1.6.0/boundary-drag.webp)
+![boundary-drag](docs/assets/1.6.0/boundary-drag.webp)
 
 - **拆分并保留原文** ： 可把一条字幕按断点拆成两条但不切分文本，两边保留相同文本。
 - **填充区间空隙** ： 波形右键新增「填充区间空隙」，把鼠标位置与前后最近的已激活空隙填充合并成一个大空隙。
@@ -585,7 +585,7 @@
 
 #### 动“帧”格的来了：基于帧的时间格式
 
-![](docs/assets/1.6.0/frame-timebase.webp)
+![frame-timebase](docs/assets/1.6.0/frame-timebase.webp)
 *打开全局设置可以切换「时间基准」*
 
 - **毫秒 / 帧时间基准** ： 编辑器支持按工程设置 FPS 在毫秒与帧时间轴间切换。
@@ -593,7 +593,7 @@
 - 启用帧模式时，将字幕自动吸附到帧，各个操作（拖动、边界调整、方向键等）也都基于帧为最小单位。
 - **波形细网格** ： 波形支持 2 秒视窗，按当前时间基准绘制帧网格（FPS 24 即一行48帧，足够精准操作）。
 
-![](docs/assets/1.6.0/frame-grid.webp)
+![frame-grid](docs/assets/1.6.0/frame-grid.webp)
 
 ### ✨ 提升
 
@@ -602,18 +602,18 @@
 - **OpenAI 兼容 ASR** ： Launcher 与公开 CLI 可配置 OpenAI 官方或兼容的 `/audio/transcriptions` 服务，通过带时间戳的响应生成 SRT 与 `.mosp` 工程。
 - **OpenAI ASR 模型选择** ： Launcher 将识别方式更名为「OpenAI（及兼容接口）」，支持从模型下拉列表选择 `whisper-1 `、` gpt-4o-transcribe `、` gpt-4o-mini-transcribe`，或在「自定义（Custom）」下填写模型名；API Key 链接指向 OpenAI 官方。
 
-![](docs/assets/1.6.0/openai-asr.webp)
+![openai-asr](docs/assets/1.6.0/openai-asr.webp)
 
 - **ASS 字幕导出（Beta）** ： 编辑器支持导出标准 `.ass` 字幕，并沿用主字幕预览的字体、字号和文字颜色。
 - **媒体实用工具** ： Launcher 工具箱新增「压制字幕」和「提取音频」；前者使用 FFmpeg 将 SRT / ASS / SSA 烧录进新视频，后者可查看并选择视频的音轨后输出 AAC/M4A，均保留源文件。
 
 - **双语字幕合并** ： 工具箱和自动后处理中可选将原文与译文按行合并为单轨字幕；翻译成中文时自动将中文放在上方；自动处理不再额外发布独立译文副轨。
 
-![](docs/assets/1.6.0/bilingual-into-one.webp)
+![bilingual-into-one](docs/assets/1.6.0/bilingual-into-one.webp)
 
 - **视频多音轨选择** ： Launcher 在多音轨视频中显示可读名称的音轨列表，默认选择容器默认轨道；所选音轨贯通转写、波形、频谱和 `.ReaPeaks` 缓存，工具箱「提取音频」也按 `title `、` name `、` handler_name` 正确显示名称。
 
-![](docs/assets/1.6.0/soundtrack-selection.webp)
+![soundtrack-selection](docs/assets/1.6.0/soundtrack-selection.webp)
 
 - **多音轨 OTIO 导出** ： 读取源媒体的完整音轨清单，导出 OTIO 时为每条音轨建立独立的 `Audio` 轨道，并写入达芬奇可识别的源轨道/声道映射与按分段区分的 `Link Group ID`。
 - **Launcher 首屏防闪烁与启动优化** ： 正式页面只等待轻量配置和基础组件初始化，运行环境、模型缓存、OCR、FFmpeg 与已有服务检查改在页面显示后异步执行，减少 WebView2 首帧白底闪烁和大缓存扫描造成的启动等待。
