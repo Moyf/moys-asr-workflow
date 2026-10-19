@@ -141,6 +141,7 @@ def _run_one_file_worker(payload: dict) -> dict:
     避免跨进程传递 suite 对象。
     """
     import contextlib
+    import importlib
     import os
 
     os.chdir(ROOT)
@@ -175,36 +176,20 @@ def _run_one_file_worker(payload: dict) -> dict:
     loaded = sys.modules.get(module_name)
     if Path(getattr(loaded, "__file__", "")).resolve() != target_path:
         sys.modules.pop(module_name, None)
-    if str(top_level) not in sys.path:
-        sys.path.insert(0, str(top_level))
-    # Discover from the exact parent directory, then retain only cases whose
-    # module file is this target. This preserves unittest imports while
-    # preventing same-basename nested files from being run by this worker.
-    suite = loader.discover(start_dir, pattern=target_path.name, top_level_dir=str(top_level))
-
-    def only_target(test_suite):
-        selected = unittest.TestSuite()
-        for test in test_suite:
-            if isinstance(test, unittest.TestSuite):
-                nested = only_target(test)
-                if nested.countTestCases():
-                    selected.addTests(nested)
-                continue
-            if isinstance(test, unittest.loader._FailedTest):
-                # discover 对无法导入（语法/依赖损坏）的文件生成 _FailedTest
-                # 占位用例，其 module 指向 unittest.loader；若按文件路径过滤
-                # 会把损坏文件静默吞成 0 用例假绿。只保留与本目标模块同名的那
-                # 个（深层同名文件属于各自 worker 的 discover 顶层，id 不同）。
-                if test.id() == f"unittest.loader._FailedTest.{module_name}":
-                    selected.addTest(test)
-                continue
-            module = sys.modules.get(test.__class__.__module__)
-            module_path = Path(getattr(module, "__file__", "")).resolve()
-            if module_path == target_path:
-                selected.addTest(test)
-        return selected
-
-    suite = only_target(suite)
+    if str(top_level) in sys.path:
+        sys.path.remove(str(top_level))
+    sys.path.insert(0, str(top_level))
+    # Load this exact module without recursively discovering other files. Keep
+    # its complete suite: imported TestCases and load_tests-created tests (e.g.
+    # FunctionTestCase) need not have this module as their class's origin.
+    # Pass the discovery pattern through to load_tests just as discover does.
+    try:
+        module = importlib.import_module(module_name)
+        suite = loader.loadTestsFromModule(module, pattern=payload.get("pattern", target_path.name))
+    except unittest.SkipTest as error:
+        suite = unittest.loader._make_skipped_test(module_name, error, unittest.TestSuite)
+    except BaseException as error:  # import-time SystemExit(0) must not exit the parent successfully
+        suite = unittest.TestSuite([unittest.loader._FailedTest(module_name, error)])
     buffer = _CapturedStream()
     runner = unittest.TextTestRunner(
         stream=buffer,
@@ -249,11 +234,16 @@ def _run_parallel(args) -> int:
 
     # 相对路径在 worker 里 os.chdir(ROOT) 后语义会变：主进程先解析为绝对路径
     start_dir = str(Path(args.start_dir).resolve())
-    # 与串行 discover 的递归语义一致：覆盖子目录中的测试文件
+    # Package __init__ and load_tests hooks control standard discovery, including
+    # errors in packages without test_*.py files. File sharding cannot preserve
+    # those hooks, so use the unchanged serial path whenever subpackages exist.
+    if any(path.parent != Path(start_dir) for path in Path(start_dir).rglob("__init__.py")):
+        print("[run_tests] 发现测试子包，为保留包初始化与 load_tests 语义，本次回退串行。")
+        return _run_serial(args)
     files = sorted(
         str(path.relative_to(start_dir))
-        for path in Path(start_dir).rglob(args.pattern)
-        if "__pycache__" not in path.parts
+        for path in Path(start_dir).glob(args.pattern)
+        if path.is_file()
     )
     if not files:
         print(f"[run_tests] 在 {start_dir} 未发现 {args.pattern}。")
@@ -265,6 +255,7 @@ def _run_parallel(args) -> int:
             "file": name,
             "path": str((Path(start_dir) / name).resolve()),
             "root": start_dir,
+            "pattern": args.pattern,
             "max_chars": args.max_chars,
             "max_line": args.max_line,
         }
@@ -350,6 +341,25 @@ def _run_parallel(args) -> int:
     return 0
 
 
+def _run_serial(args) -> int:
+    suite = build_suite(args.targets, args.start_dir, args.pattern)
+    runner = unittest.TextTestRunner(
+        stream=sys.stdout,
+        verbosity=args.verbose,
+        resultclass=CompactTextTestResult,
+    )
+    result = cast(CompactTextTestResult, runner.run(suite))
+
+    if result.full_text.strip():
+        log_path = _write_full_log(result.full_text, args.full_log)
+        print(
+            f"[run_tests] 失败输出已压缩（上限 {args.max_chars} 字符 / 单行 {args.max_line}）；"
+            f"未截断文本：{log_path}"
+        )
+
+    return 0 if result.wasSuccessful() else 1
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="运行 unittest，并把失败输出压缩到可读规模（完整文本写入日志文件）。",
@@ -367,7 +377,8 @@ def main(argv=None) -> int:
         default=0,
         metavar="N",
         help=(
-            "按文件并行跑（N 个 worker 进程）；仅在无 targets 的全量发现模式下生效。"
+            "按文件并行跑（N 个 worker 进程）；仅在无 targets 的平铺发现模式下生效，"
+            "含测试子包时回退串行以保留包初始化与 load_tests。"
             "bundle 产物缺失时跨进程锁保证只自动构建一次，但首个触发构建的 worker"
             "会被同步拖慢；新建 worktree/clone 建议先 pnpm install --frozen-lockfile"
             " && pnpm run build"
@@ -385,22 +396,7 @@ def main(argv=None) -> int:
     if args.parallel > 1 and args.targets:
         print("[run_tests] --parallel 仅支持无 targets 的全量发现模式，本次回退串行。")
 
-    suite = build_suite(args.targets, args.start_dir, args.pattern)
-    runner = unittest.TextTestRunner(
-        stream=sys.stdout,
-        verbosity=args.verbose,
-        resultclass=CompactTextTestResult,
-    )
-    result = cast(CompactTextTestResult, runner.run(suite))
-
-    if result.full_text.strip():
-        log_path = _write_full_log(result.full_text, args.full_log)
-        print(
-            f"[run_tests] 失败输出已压缩（上限 {args.max_chars} 字符 / 单行 {args.max_line}）；"
-            f"未截断文本：{log_path}"
-        )
-
-    return 0 if result.wasSuccessful() else 1
+    return _run_serial(args)
 
 
 if __name__ == "__main__":

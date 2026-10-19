@@ -10,8 +10,10 @@ from tests.compact_assertions import CompactContainerAssertions
 
 import io
 import pathlib
+import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -142,6 +144,120 @@ class ParallelWorkerTests(unittest.TestCase):
         self.assertEqual(outcome["tests"], 1)
         self.assertEqual(outcome["errors"], 0)
         self.assertEqual(outcome["failures"], 0)
+
+
+class ParallelCommandTests(CompactContainerAssertions, unittest.TestCase):
+    def run_discovery(self, root, *, parallel):
+        return subprocess.run(
+            [
+                sys.executable, str(ROOT / "scripts/run_tests.py"),
+                "--start-dir", str(root), "--parallel", str(parallel),
+                "--full-log", str(root / "failures.log"),
+            ],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+
+    def write_source(self, root, name, source):
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(textwrap.dedent(source), encoding="utf-8", newline="\n")
+
+    def test_package_discovery_errors_are_not_skipped(self):
+        # These packages have no test_*.py; enumerating files alone misses them.
+        for source, message in (
+            ("raise RuntimeError('package import failed')", "package import failed"),
+            (
+                "def load_tests(loader, tests, pattern):\n"
+                "    raise RuntimeError('package hook failed')",
+                "package hook failed",
+            ),
+        ):
+            with self.subTest(message=message), tempfile.TemporaryDirectory() as temporary:
+                root = pathlib.Path(temporary)
+                self.write_source(root, "test_ok.py", """
+                    import unittest
+                    class Case(unittest.TestCase):
+                        def test_ok(self): pass
+                """)
+                self.write_source(root, "feature/__init__.py", source)
+                serial = self.run_discovery(root, parallel=0)
+                parallel = self.run_discovery(root, parallel=2)
+                self.assertEqual(serial.returncode, 1, serial.stdout)
+                self.assertEqual(parallel.returncode, 1, parallel.stdout)
+                self.assertIn(message, parallel.stdout)
+                self.assertIn("回退串行", parallel.stdout)
+                self.assertIn("Ran 2 tests", parallel.stdout)
+
+    def test_file_load_tests_keeps_function_case(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            self.write_source(root, "test_function.py", """
+                import unittest
+                def fails():
+                    raise AssertionError('function case failed')
+                def load_tests(loader, tests, pattern):
+                    assert pattern == 'test_*.py', repr(pattern)
+                    return unittest.TestSuite([unittest.FunctionTestCase(fails)])
+            """)
+            serial = self.run_discovery(root, parallel=0)
+            parallel = self.run_discovery(root, parallel=2)
+            self.assertEqual(serial.returncode, 1, serial.stdout)
+            self.assertEqual(parallel.returncode, 1, parallel.stdout)
+            self.assertIn("并行完成：1 tests", parallel.stdout)
+            self.assertIn("function case failed", (root / "failures.log").read_text(encoding="utf-8"))
+
+    def test_flat_discovery_really_runs_in_worker_processes(self):
+        # multiprocessing.parent_process() exists only inside pool workers. This
+        # catches unconditional fallback and imported-TestCase filtering alike.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            self.write_source(root, "helper.py", """
+                import multiprocessing
+                import unittest
+                class ImportedCase(unittest.TestCase):
+                    def test_imported(self):
+                        self.assertIsNotNone(multiprocessing.parent_process())
+            """)
+            self.write_source(root, "test_imported.py", "from helper import ImportedCase\n")
+            self.write_source(root, "test_local.py", """
+                import multiprocessing
+                import unittest
+                class LocalCase(unittest.TestCase):
+                    def test_local(self):
+                        self.assertIsNotNone(multiprocessing.parent_process())
+            """)
+            parallel = self.run_discovery(root, parallel=2)
+            self.assertEqual(parallel.returncode, 0, parallel.stdout)
+            self.assertIn("并行完成：2 tests", parallel.stdout)
+
+    def test_module_import_skip_stays_skipped(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            self.write_source(root, "test_skip.py", """
+                import unittest
+                raise unittest.SkipTest('optional dependency unavailable')
+            """)
+            serial = self.run_discovery(root, parallel=0)
+            parallel = self.run_discovery(root, parallel=2)
+            self.assertEqual(serial.returncode, 0, serial.stdout)
+            self.assertEqual(parallel.returncode, 0, parallel.stdout)
+            self.assertIn("并行完成：1 tests（skipped 1）", parallel.stdout)
+
+    def test_module_import_system_exit_cannot_report_success(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            self.write_source(root, "test_exit.py", "import sys\nsys.exit(0)\n")
+            serial = self.run_discovery(root, parallel=0)
+            parallel = self.run_discovery(root, parallel=2)
+            self.assertEqual(serial.returncode, 1, serial.stdout)
+            self.assertEqual(parallel.returncode, 1, parallel.stdout)
+            self.assertIn("FAIL(f=0 e=1)", parallel.stdout)
+            self.assertIn("SystemExit: 0", (root / "failures.log").read_text(encoding="utf-8"))
 
 
 class CompactResultTests(CompactContainerAssertions, unittest.TestCase):
