@@ -108,13 +108,14 @@ test('invalid view import is atomic and runtime fallback preserves the saved sin
     return !accepted && before === JSON.stringify(MaweBoot.DATA);
   });
   expect(rejected).toBe(true);
-  await page.evaluate(() => {
-    const project = JSON.parse(MaweJsonRepair.buildJson());
-    project.timed_text_edit_view = 'single';
-    project.segments[0].text = '甲\n乙';
-    project.segments[0].items = [];
-    MaweProjectLoad.applyCanonicalProject(project, 'multiline.mosp');
-  });
+  expect(await page.evaluate(async () => {
+    MaweBoot.DATA.timed_text_edit_view = 'single';
+    MaweBoot.DATA.segments[0].text = '甲\n乙';
+    MaweBoot.DATA.segments[0].items = [];
+    // Keep this fixture server-bound. Installing a different browser project
+    // now intentionally retires the old server destination before publication.
+    return MaweProjectSave.saveCurrentProject();
+  })).toBe(true);
   await openView(page);
   await expect(page.locator('#timed-text-edit-rows')).toBeVisible();
   await expect(page.locator('#timed-text-edit-view [data-view="single"]')).toBeDisabled();

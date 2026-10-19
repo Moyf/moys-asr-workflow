@@ -14,6 +14,7 @@ const plain = value => JSON.parse(JSON.stringify(value));
 // 注入最小全局桩后在独立 context 里加载真实源码。
 const splitContext = () => ({
   window: { AsrEditorUtils: h },
+  MaweBoot: { DATA: { segments: [] } },
   MULTI_SUBTITLE_UTILS: h,
   MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 },
   MaweSettings: { EDITOR_SETTINGS: { assMode: true, assSpecialSymbolRule: 'both', assEmphasisSyntax: 'both' } },
