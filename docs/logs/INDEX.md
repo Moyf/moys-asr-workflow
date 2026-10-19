@@ -125,3 +125,17 @@
 - [AI 整理人工核验清单](release1.9.0-beta.2/261016_AI整理诊断与复查/AI整理.checklist.md)：复查、留档、处理输入和真实听审。
 - [AI 处理核验矩阵](release1.9.0-beta.2/261016_AI整理诊断与复查/AI处理核验矩阵.md)：截图条目 06 / 07 的自动化与本地 Gemma 实测证据。
 - [重新断句诊断](release1.9.0-beta.2/261016_重新断句诊断/任务记录.md)、[流程初审](release1.9.0-beta.2/261016_重新断句诊断/AI处理流程审查.md)、[核查清单](release1.9.0-beta.2/261016_重新断句诊断/重新断句诊断.checklist.md)：断点定位、逐请求留档与重试批次。
+- [Agent e2e 像素验证体系与语义撤回踩坑记录](release1.8.0-beta.1/Agent-e2e验证踩坑.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-ass-fullscreen](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-ass-fullscreen.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-comparison-deletion](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-comparison-deletion.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-gap-export](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-gap-export.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-launcher-editor](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-launcher-editor.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-overlay-jitter](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-overlay-jitter.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-split-markers](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-split-markers.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-timedtext](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-timedtext.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-view-state](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-view-state.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-yellow-defaults](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-yellow-defaults.md)：日志留档，详见原文。
+- [1016 大核验人工核对清单](release1.9.0-beta.2/261016_大核验/1016大核验.checklist.md)：日志留档，详见原文。
+- [1016 大核验用户反馈与测试记录](release1.9.0-beta.2/261016_大核验/TEST_FEEDBACK_大核验.md)：日志留档，详见原文。
+- [PR 253 人工核验清单（渐进与复制拆分）](release1.9.0-beta.2/261017_PR复审/PR253.checklist.md)：日志留档，详见原文。
+- [PR 254 人工核验清单（后续批复审核验）](release1.9.0-beta.2/261017_PR复审/PR254.checklist.md)：日志留档，详见原文。

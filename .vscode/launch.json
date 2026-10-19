@@ -1,0 +1,22 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node-terminal",
+            "name": "Dev: MAW Launcher",
+            "request": "launch",
+            "command": "pnpm run dev:launcher",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "node-terminal",
+            "name": "Dev: MAW Editor",
+            "request": "launch",
+            "command": "pnpm run dev:editor",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
