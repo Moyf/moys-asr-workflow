@@ -18,13 +18,15 @@ MAW 即 Moy's ASR Workflow，也可以叫做「阿墨的字幕工作台」。
 
 <img width="1247" height="815" alt="PixPin_2026-10-19_01-03-36" src=" https://github.com/user-attachments/assets/d8eeda1c-8937-4393-a9ca-eb02e9b1dc85" />
 
+![overview](docs/assets/readme/overview.webp)
+
 你可以在启动器中选择媒体并生成字幕，再到编辑器 MAWE 中精修文本、调整时间、预览效果，最后烧录成字幕，或者导出剪辑软件可用的工程。
 
 > [⬇️ 下载](https://github.com/Moyf/moys-asr-workflow/releases/latest) · [🎬 在线编辑器](https://moyf.github.io/moys-asr-workflow/editor/) · [📺 3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
 
 ## 为什么用 MAW？
 因为！它！超好用！
-![](docs/assets/stickers/骄傲.png)
+![骄傲](docs/assets/stickers/骄傲.png)
 
 MAW 基于我自己的使用和朋友们的反馈，提供了非常完善的字幕生成与编辑体验。
 
@@ -32,45 +34,45 @@ MAW 基于我自己的使用和朋友们的反馈，提供了非常完善的字�
 
 ### 多行波形与字词时间码
 用**多行波形**来同时查看前后的波形与字幕，轻轻一滚即可快速定位。
-![](docs/assets/readme/feat-multiline.webp)
+![feat-multiline](docs/assets/readme/feat-multiline.webp)
 
 并且，MAW 生成的字幕附带**字幕时间码**，拆分时自动定位到对应的位置进行拆分。
 
 ### 精心打磨的编辑体验
 两条相连的字幕可以拖动中缝直接调整边界：
-![[docs/assets/readme/mid-drag.webp]]
+![mid-drag](docs/assets/readme/mid-drag.webp)
 
 双语字幕自动绑定关系，同时拖动和拆分：
-![[docs/assets/readme/binding-editing.webp]]
+![binding-editing](docs/assets/readme/binding-editing.webp)
 
 对于没有时间码的字幕，也提供一键拆分面板：
-![[docs/assets/readme/split-panel.webp]]
+![split-panel](docs/assets/readme/split-panel.webp)
 
 *基于字幕语言，英文类的会自动定位在空格处拆分*
 
 在字幕列表中查看字数，并一键筛选过长字幕：
-![[docs/assets/readme/words-count.webp]]
+![words-count](docs/assets/readme/words-count.webp)
 
 甚至——像记事本一样直接**纯文本编辑**，改字、拆句，轻轻松松：
 
-![[docs/assets/readme/pure-text-editing.webp]]
+![pure-text-editing](docs/assets/readme/pure-text-editing.webp)
 （别担心，所有的时间码都会自动处理好！）
 
 ### 静音空隙一键跳过
 编辑器内可以一键生成**静音空隙**，跳过空白片段：
 
-![[docs/assets/readme/feat-gaps.webp]]
+![feat-gaps](docs/assets/readme/feat-gaps.webp)
 
 你也可以手动编辑空隙，来跳过原片中无聊的片段。
 在字幕软件里剪辑？是的，了解一下！特别爽！
 
 ### 文稿匹配与 AI 校对
 在启动器中，可以选择写好的文稿匹配：
-![[docs/assets/readme/text-match.webp]]
+![text-match](docs/assets/readme/text-match.webp)
 
 也支持启用「AI 处理」，调用 LLM 模型对字幕进行校正或翻译：
 
-![[docs/assets/readme/ai-process.webp]]
+![ai-process](docs/assets/readme/ai-process.webp)
 
 ### 多种格式的支持
 不像*某些*封闭式的软件，MAW 完全开放！
@@ -79,16 +81,16 @@ MAW 基于我自己的使用和朋友们的反馈，提供了非常完善的字�
 
 并且也支持导出 PR 可用的 `fcpxml7` 格式。
 
-![[docs/assets/readme/export-formats.webp]]
+![export-formats](docs/assets/readme/export-formats.webp)
 
 ### (M)ASS 字幕直接烧录
 添加了独创性的 **MASS** 语法，你可以直接在编辑器内做这样花哨的字幕效果：
 
-![[docs/assets/1.9.0/特殊文本样式（MASS）.webp]]
+![特殊文本样式（MASS）](docs/assets/1.9.0/特殊文本样式（MASS）.webp)
 
 在启动器的「工具箱」和编辑器的右上角，都提供了**烧录视频**的功能：
 
-![[docs/assets/readme/burn-video.webp]]
+![burn-video](docs/assets/readme/burn-video.webp)
 
 小众独特的玩法：你可以生成一个绿幕背景的视频，然后再导入剪辑软件作为字幕层 😋
 
@@ -96,7 +98,7 @@ MAW 基于我自己的使用和朋友们的反馈，提供了非常完善的字�
 你可以配置多种不同的后处理步骤，包括但不限于：文稿匹配、AI 整理文稿、固定替换/简繁转换、生成翻译字幕……
 
 在转写之后，将自动依次执行，**一条龙流水线**！
-![[docs/assets/readme/postprocess-pipeline.webp]]
+![postprocess-pipeline](docs/assets/readme/postprocess-pipeline.webp)
 
 ## 要钱吗？
 ### 软件本体
@@ -109,7 +111,7 @@ MAW 用爱发电 ❤️
 以阿里云百炼的 QwenASR 举例，1 小时的音频转写需要约 0.8 元人民币。
 
 你可以直接看到转写费用预览：
-![[docs/assets/readme/price-info.webp]]
+![price-info](docs/assets/readme/price-info.webp)
 
 > API Key 在本机配置，费用和数据政策见 [服务商配置](docs/INDEX.md#user-providers)。
 
@@ -137,7 +139,7 @@ MAW 用爱发电 ❤️
 
 ## 支持开发
 如果你觉得它对你有帮助，想要支持 MAW 的开发，可以前往 [B站小店](https://mall.bilibili.com/neul-next/detailuniversal/detail.html?page=detailuniversal_detail&itemsId=41955597&loadingShow=1&noTitleBar=1&track_id=__BGMT__&from=&from_spmid=__SPMID__&msource=cps_comments_585578_cont-1-117125335227239#noReffer=true) 购买支持。
-![[docs/assets/readme/bili-support.webp]]
+![bili-support](docs/assets/readme/bili-support.webp)
 
 也支持使用 [Kofi]([ko-fi.com/moy](https://ko-fi.com/moy)) 进行赞助 ☕️
 
@@ -146,7 +148,7 @@ MAW 用爱发电 ❤️
 ## 反馈与交流
 问题和建议请提 [GitHub Issues](https://github.com/Moyf/moys-asr-workflow/issues)；交流可加入 [QQ 群 1079160201](https://qm.qq.com/q/4YtxZIpzxC)。
 
-![](docs/assets/stickers/敬礼.gif)
+![敬礼](docs/assets/stickers/敬礼.gif)
 
 *表情包来自 刘大狗*
 *感谢量子猫和荆轲在开发上的支持！*
