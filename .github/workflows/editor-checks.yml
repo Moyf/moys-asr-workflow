@@ -40,7 +40,7 @@ jobs:
       - name: Release documents
         run: python scripts/run_check.py --timeout 60 -- python scripts/prepare_release_notes.py --check-all
       - name: Release pipeline contracts
-        run: python scripts/run_check.py --timeout 60 -- python scripts/run_tests.py tests/test_release_notes.py
+        run: python scripts/run_check.py --timeout 90 -- python scripts/run_tests.py tests/test_release_notes.py tests/test_release_site.py tests/test_release_publication.py
       - name: Runner output, exit codes and timeout cleanup
         run: python scripts/run_check.py --timeout 60 -- python -m unittest tests.test_run_check tests.test_compact_assertions
       - name: Server diagnostics and process lifecycle

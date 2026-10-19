@@ -1,0 +1,1554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CHANGELOG 编辑器 — MAW</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117;
+    --surface: #141a22;
+    --surface-raised: #1b232e;
+    --surface-high: #232d39;
+    --line: #2c3746;
+    --ink: #e7edf5;
+    --ink-soft: #b5c0ce;
+    --muted: #8290a2;
+    --accent: #f0883e;
+    --accent-soft: rgba(240, 136, 62, 0.16);
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --ins: rgba(63, 185, 80, 0.18);
+    --del: rgba(248, 81, 73, 0.16);
+    --radius: 10px;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  button {
+    font: inherit; color: var(--ink); background: var(--surface-high);
+    border: 1px solid var(--line); border-radius: 8px; padding: 5px 12px; cursor: pointer;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a1208; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  input[type="text"], input[type="date"], textarea {
+    font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px;
+  }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  ::placeholder { color: var(--muted); }
+
+  /* ---------- 顶栏 ---------- */
+  #topbar {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    border-bottom: 1px solid var(--line); background: var(--surface); flex-wrap: wrap;
+  }
+  #topbar h1 { font-size: 16px; margin: 0; letter-spacing: 0.5px; }
+  #topbar h1 span { color: var(--accent); }
+  #repo-chip { font-size: 12px; color: var(--muted); border: 1px dashed var(--line); border-radius: 999px; padding: 2px 10px; }
+  #repo-chip.ok { color: var(--ok); border-style: solid; }
+  #topbar .spacer { flex: 1; }
+  #dirty-dot { color: var(--warn); font-size: 12px; display: none; }
+  #save-status { font-size: 12px; color: var(--muted); }
+  #save-status.fail { color: var(--err); }
+
+  /* ---------- 锁定横幅 ---------- */
+  #lock-banner {
+    display: none; gap: 10px; align-items: center; padding: 8px 16px;
+    background: rgba(210, 153, 34, 0.12); border-bottom: 1px solid var(--line); font-size: 13px;
+  }
+  #lock-banner.show { display: flex; }
+  #pane .locked { opacity: 0.55; pointer-events: none; user-select: none; }
+
+  /* ---------- 分屏 ---------- */
+  #split-wrap { display: none; gap: 14px; align-items: flex-start; }
+  #split-wrap.show { display: flex; }
+  #split-wrap > .split-edit { flex: 1.2; min-width: 0; }
+  #split-wrap > .split-preview { flex: 1; min-width: 0; border-left: 1px solid var(--line); padding-left: 14px; position: sticky; top: 0; max-height: calc(100vh - 140px); overflow-y: auto; }
+
+  /* ---------- 布局 ---------- */
+  #layout { flex: 1; display: flex; min-height: 0; }
+  #sidebar {
+    width: 280px; min-width: 200px; max-width: 560px; flex-shrink: 0; border-right: 1px solid var(--line);
+    background: var(--surface); overflow-y: auto; padding: 12px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  #sb-resizer { width: 5px; cursor: col-resize; flex-shrink: 0; background: transparent; }
+  #sb-resizer:hover, body.resizing #sb-resizer { background: var(--accent-soft); }
+  body.resizing { cursor: col-resize; user-select: none; }
+  #main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  /* ---------- 侧栏 ---------- */
+  .side-title { font-size: 12px; color: var(--muted); letter-spacing: 1px; margin: 0 0 6px; }
+  #version-list { display: flex; flex-direction: column; gap: 2px; }
+  .version-item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px;
+    cursor: pointer; border: 1px solid transparent; font-family: var(--mono); font-size: 13px;
+    white-space: nowrap;
+  }
+  .version-item .name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .version-item .date { color: var(--muted); font-size: 11px; margin-left: auto; font-family: inherit; flex-shrink: 0; }
+  .version-item:hover { background: var(--surface-raised); }
+  .version-item.active { background: var(--accent-soft); border-color: var(--accent); }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-family: initial; }
+  .badge.stable { background: rgba(63,185,80,.15); color: var(--ok); }
+  .badge.pre { background: rgba(210,153,34,.15); color: var(--warn); }
+  .badge.unrel { background: rgba(130,144,162,.15); color: var(--muted); }
+  .arch-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--muted); }
+  .pending-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
+  .arch-dot.fresh { background: var(--ok); }
+  .arch-dot.stale { background: var(--warn); }
+  .arch-dot.missing { background: var(--err); }
+
+  #archive-box { border-top: 1px solid var(--line); padding-top: 12px; }
+  #archive-list { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
+  .arch-row { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; }
+  .arch-row .status { margin-left: auto; font-size: 11px; font-family: initial; }
+  .arch-row .status.fresh { color: var(--ok); } .arch-row .status.stale { color: var(--warn); } .arch-row .status.missing { color: var(--err); }
+  .hint { color: var(--muted); font-size: 12px; }
+
+  /* ---------- 主区 ---------- */
+  #version-head {
+    padding: 12px 18px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--surface);
+  }
+  #version-head h2 { margin: 0; font-size: 18px; font-family: var(--mono); }
+  #tabs { display: flex; gap: 4px; margin-left: auto; }
+  #tabs button { border-radius: 8px 8px 0 0; border-bottom: none; background: transparent; color: var(--muted); }
+  #tabs button.active { background: var(--bg); color: var(--ink); border-color: var(--line); }
+  #pane { flex: 1; overflow-y: auto; padding: 16px 18px 80px; }
+
+  /* ---------- 条目卡片 ---------- */
+  #cards { display: flex; flex-direction: column; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 8px 10px; margin-bottom: 6px;
+    content-visibility: auto; contain-intrinsic-size: auto 64px;
+  }
+  .card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+  .card.kind-heading { background: transparent; border-style: dashed; padding: 4px 10px; }
+  .card-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .card-head .tag { font-size: 11px; color: var(--muted); }
+  .card-head .new-tag { color: var(--ok); font-size: 11px; }
+  .card-head .changed-tag { color: var(--warn); font-size: 11px; }
+  .card-head .spacer { flex: 1; }
+  .card-head button { padding: 1px 7px; font-size: 12px; border-radius: 6px; }
+  .card textarea, .card input.raw {
+    width: 100%; font-family: var(--mono); font-size: 13px; line-height: 1.55;
+    background: var(--surface-soft, #10161d); resize: none; overflow: hidden;
+  }
+  .card textarea { min-height: 38px; }
+  .diff-view {
+    font-family: var(--mono); font-size: 12.5px; background: #10161d; border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; margin-top: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;
+  }
+  .diff-view del { background: var(--del); color: #ffb3ad; text-decoration: line-through; }
+  .diff-view ins { background: var(--ins); color: #9ae6a4; text-decoration: none; }
+  .add-row { display: flex; gap: 8px; margin: 10px 0 18px; }
+  .add-row button { font-size: 12px; color: var(--muted); }
+
+  /* ---------- 图片条 ---------- */
+  .img-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .img-item {
+    display: flex; gap: 8px; align-items: flex-start; background: var(--surface-raised);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px;
+  }
+  .img-item img { width: 92px; height: 56px; object-fit: cover; border-radius: 6px; background: #000; cursor: zoom-in; }
+  .img-item .fields { display: flex; flex-direction: column; gap: 4px; }
+  .img-item input { font-size: 12px; font-family: var(--mono); width: 190px; }
+  .ext-badge {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+    padding: 4px 7px; flex-shrink: 0; user-select: none;
+  }
+  .img-item .meta .pending { color: var(--warn); }
+  .img-item .meta { font-size: 11px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .img-item .meta .big { color: var(--warn); }
+  .img-item button { padding: 0 6px; font-size: 11px; }
+  .img-ref-chip {
+    display: inline-flex; gap: 6px; align-items: center; font-family: var(--mono); font-size: 11.5px;
+    background: var(--surface-raised); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px;
+  }
+  .img-ref-chip a { color: var(--ink-soft); }
+
+  /* ---------- 预览 / 对照 ---------- */
+  .preview { max-width: 860px; }
+  .preview h3 { border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .preview ul { padding-left: 24px; }
+  .preview li { margin-bottom: 10px; }
+  .preview img { max-width: 100%; border-radius: 8px; border: 1px solid var(--line); }
+  .preview code { font-family: var(--mono); background: var(--surface-raised); padding: 1px 5px; border-radius: 5px; font-size: 12.5px; }
+  .preview .img-missing { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+  .ref-group { margin-bottom: 20px; }
+  .ref-group > h4 { margin: 0 0 6px; font-family: var(--mono); font-size: 13px; color: var(--ink-soft); }
+  .ref-entry { display: flex; gap: 8px; align-items: flex-start; padding: 4px 6px; border-radius: 6px; font-size: 13px; }
+  .ref-entry:hover { background: var(--surface-raised); }
+  .ref-entry input { margin-top: 4px; }
+  .ref-entry.done .text { color: var(--muted); text-decoration: line-through; }
+
+  /* ---------- 状态条 / 弹层 ---------- */
+  #toast {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--surface-high); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 16px; font-size: 13px; display: none; z-index: 60; max-width: 80vw;
+  }
+  #toast.err { border-color: var(--err); color: #ffb3ad; }
+  #mask { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; z-index: 40; align-items: center; justify-content: center; }
+  #mask.show { display: flex; }
+  #modal {
+    background: var(--surface-raised); border: 1px solid var(--line); border-radius: 14px;
+    width: min(720px, 92vw); max-height: 84vh; overflow-y: auto; padding: 20px 22px;
+  }
+  #modal h3 { margin: 0 0 12px; }
+  #modal .step { display: flex; gap: 8px; margin: 4px 0; font-size: 13px; }
+  #modal .step .s { font-family: var(--mono); }
+  #modal code { font-family: var(--mono); font-size: 12px; background: var(--surface); padding: 2px 6px; border-radius: 5px; display: inline-block; margin: 2px 0; word-break: break-all; }
+  #modal .paths { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); margin: 6px 0; word-break: break-all; }
+  #restore-banner {
+    display: none; gap: 10px; align-items: center; padding: 8px 16px;
+    background: rgba(210,153,34,.12); border-bottom: 1px solid var(--warn); font-size: 13px;
+  }
+  .drop-hint { outline: 2px dashed var(--accent); outline-offset: 2px; }
+  @media print { .card { content-visibility: visible; } #sidebar, #topbar, #tabs { display: none; } }
+</style>
+</head>
+<body>
+  <div id="topbar">
+    <h1>CHANGELOG <span>编辑器</span></h1>
+    <span id="repo-chip">未连接仓库目录</span>
+    <span id="dirty-dot">● 有未保存修改</span>
+    <span id="save-status"></span>
+    <span class="spacer"></span>
+    <button id="btn-open">打开仓库目录</button>
+    <button id="btn-load-file" class="ghost" title="不写盘的降级模式：只加载单个文件">仅加载 CL 文件</button>
+    <button id="btn-finish" class="primary" disabled>完成编辑</button>
+    <input type="file" id="file-input" accept=".md,text/markdown" style="display:none">
+  </div>
+
+  <div id="restore-banner">
+    <span id="restore-text"></span>
+    <span class="spacer" style="flex:1"></span>
+    <button id="btn-restore" class="primary">恢复</button>
+    <button id="btn-discard" class="ghost">放弃</button>
+  </div>
+
+  <div id="lock-banner"></div>
+
+  <div id="layout">
+    <aside id="sidebar">
+      <div>
+        <p class="side-title">版本</p>
+        <div id="version-list"></div>
+      </div>
+      <div id="archive-box">
+        <p class="side-title">归档生成（仅正式版）</p>
+        <div id="archive-list"></div>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button id="btn-generate-archives" disabled style="flex:1">生成勾选归档</button>
+          <button id="btn-select-stale" class="ghost" title="勾选所有需要重新生成的版本">全选过期</button>
+        </div>
+        <p class="hint" style="margin:8px 0 0;">生成前会自动保存 CL 并先备份被覆盖的文件。</p>
+      </div>
+    </aside>
+
+    <div id="sb-resizer" title="拖动调整宽度"></div>
+
+    <section id="main">
+      <div id="version-head">
+        <h2 id="vh-name">未加载</h2>
+        <label class="hint">日期 <input type="date" id="vh-date" style="margin-left:6px"></label>
+        <label class="hint" id="auto-arch-label" style="display:none">
+          <input type="checkbox" id="auto-archive" checked style="margin-right:4px">完成时同步重新生成归档
+        </label>
+        <div id="tabs">
+          <button data-tab="edit" class="active">编辑</button>
+          <button data-tab="split">分屏</button>
+          <button data-tab="preview">预览</button>
+          <button data-tab="reference">对照</button>
+        </div>
+      </div>
+      <div id="pane"></div>
+    </section>
+  </div>
+
+  <div id="toast"></div>
+  <div id="mask"><div id="modal"></div></div>
+
+  <script src="cl-lib.js"></script>
+  <script>
+  'use strict';
+  const $ = (sel) => document.querySelector(sel);
+  const L = window.CLLib;
+
+  // ---------- 全局状态 ----------
+  const S = {
+    repo: null,            // 根目录句柄（降级模式为 null）
+    repoName: '',
+    clText: '',            // 当前编辑中的全文
+    baseText: '',          // 载入时的磁盘文本（冲突检测基线）
+    baseHash: '',
+    sections: [],          // splitSections 结果
+    parsed: new Map(),     // name -> { cards, trailingBlanks }
+    selected: null,        // 当前版本名
+    selectedCard: null,    // 粘贴目标卡片 id
+    images: new Map(),     // id -> {id, blob, mime, size, alt, filename, version, cardKey}
+    archiveStatus: new Map(), // version -> fresh|stale|missing|none
+    tab: 'edit',
+    readOnly: false,
+    unlocked: new Set(),     // 已确认可编辑的历史测试版
+  };
+  const LS_STATE = () => `cl-editor:state:${S.baseHash}`;
+  const LS_REFS = () => `cl-editor:refs:${S.baseHash}`;
+  const LS_IMGS = () => `cl-editor:imgs:${S.baseHash}`;
+
+  // ---------- 基础 UI ----------
+  let toastTimer = null;
+  function toast(msg, isErr = false) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.className = isErr ? 'err' : '';
+    el.style.display = 'block';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.display = 'none'; }, isErr ? 6000 : 2600);
+  }
+  function modal(html) { $('#modal').innerHTML = html; $('#mask').classList.add('show'); }
+  function closeModal() { $('#mask').classList.remove('show'); }
+  $('#mask').addEventListener('click', (e) => { if (e.target === $('#mask')) closeModal(); });
+
+  function markDirty() {
+    $('#dirty-dot').style.display = 'inline';
+    scheduleAutosave();
+  }
+  function markClean() { $('#dirty-dot').style.display = 'none'; }
+
+  // ---------- 载入 ----------
+  async function loadClText(text, label) {
+    S.clText = text.replace(/\r\n/g, '\n');
+    S.baseText = S.clText;
+    S.baseHash = await L.sha256Hex(S.baseText);
+    S.repoName = label;
+    reparse();
+    $('#repo-chip').textContent = label;
+    $('#repo-chip').className = S.repo ? 'ok' : '';
+    $('#btn-finish').disabled = false;
+    const restore = localStorage.getItem(LS_STATE());
+    if (restore) {
+      const state = JSON.parse(restore);
+      $('#restore-text').textContent = `检测到 ${new Date(state.savedAt).toLocaleString()} 的未完成编辑（含 ${state.imageCount || 0} 张图片）`;
+      $('#restore-banner').style.display = 'flex';
+      $('#btn-restore').onclick = () => doRestore(state);
+      $('#btn-discard').onclick = () => { localStorage.removeItem(LS_STATE()); localStorage.removeItem(LS_REFS()); $('#restore-banner').style.display = 'none'; };
+    }
+    selectSection(S.selected || firstEditableSection());
+  }
+
+  function reparse() {
+    const { preamble, sections } = L.splitSections(S.clText);
+    S.sections = sections;
+    S.parsed.clear();
+    for (const s of sections) S.parsed.set(s.name, L.parseSection(s));
+  }
+
+  function firstEditableSection() {
+    const unrel = S.sections.find((s) => s.name === '未发布');
+    return (unrel || S.sections[0])?.name || null;
+  }
+
+  async function openRepo() {
+    let root;
+    try {
+      root = await window.showDirectoryPicker({ id: 'maw-cl-editor', mode: 'readwrite' });
+    } catch { return; }
+    let clFile;
+    try { clFile = await root.getFileHandle('CHANGELOG.md'); } catch {
+      toast('所选目录没有 CHANGELOG.md，请选择仓库根目录', true); return;
+    }
+    S.repo = root; S.readOnly = false;
+    const text = await (await clFile.getFile()).text();
+    await loadClText(text, `📦 ${root.name}（读写）`);
+    await refreshArchiveStatus();
+    renderSidebar();
+    toast('仓库目录已连接，可以读取与写回');
+  }
+
+  async function loadFileFallback() {
+    $('#file-input').onchange = async () => {
+      const file = $('#file-input').files[0];
+      if (!file) return;
+      S.repo = null; S.readOnly = true;
+      await loadClText(await file.text(), `📄 ${file.name}（只读降级）`);
+      renderSidebar();
+      toast('已按只读模式加载；完成编辑将改为下载文件', false);
+    };
+    $('#file-input').click();
+  }
+
+  // ---------- 侧栏 ----------
+  function sectionBadge(s) {
+    if (s.name === '未发布') return '';
+    return L.isStable(s.name) ? '<span class="badge stable">正式</span>' : '<span class="badge pre">测试</span>';
+  }
+
+  function renderSidebar() {
+    const list = $('#version-list');
+    list.innerHTML = '';
+    const dirty = new Set(dirtyVersions().map((s) => s.name));
+    for (const s of S.sections) {
+      const div = document.createElement('div');
+      div.className = 'version-item' + (s.name === S.selected ? ' active' : '');
+      const dot = L.isStable(s.name)
+        ? `<span class="arch-dot ${S.archiveStatus.get(s.name) || ''}" title="归档状态"></span>` : '<span class="arch-dot" style="visibility:hidden"></span>';
+      const pending = dirty.has(s.name) ? '<span class="pending-dot" title="有未完成的修改"></span>' : '';
+      div.innerHTML = `${dot}<span class="name">${escapeHtml(s.name)}</span>${pending}${sectionBadge(s)}<span class="date">${s.date || ''}</span>`;
+      div.onclick = () => selectSection(s.name);
+      list.appendChild(div);
+    }
+    renderArchiveBox();
+  }
+
+  function renderArchiveBox() {
+    const box = $('#archive-list');
+    box.innerHTML = '';
+    const stable = S.sections.filter((s) => L.isStable(s.name));
+    for (const s of stable) {
+      const status = S.archiveStatus.get(s.name);
+      const row = document.createElement('label');
+      row.className = 'arch-row';
+      const statusText = { fresh: '一致', stale: '需重生成', missing: '缺失' }[status] || '—';
+      row.innerHTML = `<input type="checkbox" data-arch="${escapeAttr(s.name)}" ${status !== 'fresh' ? 'checked' : ''}>
+        <span>${escapeHtml(s.name)}</span><span class="status ${status || ''}">${statusText}</span>`;
+      box.appendChild(row);
+    }
+    if (!stable.length) box.innerHTML = '<p class="hint">没有正式版本。</p>';
+    $('#btn-generate-archives').disabled = !S.repo;
+  }
+
+  // ---------- 版本面板 ----------
+  function selectSection(name) {
+    S.selected = name;
+    S.tab = 'edit';
+    const section = S.sections.find((s) => s.name === name);
+    $('#vh-name').textContent = name;
+    const dateInput = $('#vh-date');
+    dateInput.value = section?.date || '';
+    dateInput.style.display = section?.date || L.isStable(name) ? '' : 'none';
+    $('#auto-arch-label').style.display = section && L.isStable(name) ? '' : 'none';
+    renderLockBanner();
+    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === 'edit'));
+    renderSidebar();
+    renderPane();
+  }
+
+  function isHistorical(section) {
+    return section && section.name !== '未发布' && !L.isStable(section.name);
+  }
+
+  function renderLockBanner() {
+    const section = S.sections.find((s) => s.name === S.selected);
+    const banner = $('#lock-banner');
+    if (!isHistorical(section)) { banner.classList.remove('show'); return; }
+    const key = `${S.baseHash}:${section.name}`;
+    if (sessionStorage.getItem(`cl-editor:ack:${key}`)) { banner.classList.remove('show'); return; }
+    banner.classList.add('show');
+    banner.innerHTML = `<span>⚠ 「${escapeHtml(section.name)}」是已发布的测试版小节，按惯例不再改动。确认要编辑吗？</span>
+      <span style="flex:1"></span>
+      <button id="btn-unlock" class="primary">仍要编辑</button>`;
+    banner.querySelector('#btn-unlock').onclick = () => {
+      sessionStorage.setItem(`cl-editor:ack:${key}`, '1');
+      banner.classList.remove('show');
+      renderPane();
+    };
+  }
+
+  function renderPane() {
+    const pane = $('#pane');
+    pane.innerHTML = '';
+    if (!S.selected) { pane.innerHTML = '<p class="hint">先用「打开仓库目录」或「仅加载 CL 文件」载入 CHANGELOG。</p>'; return; }
+    if (S.tab === 'edit') renderEditPane(pane);
+    else if (S.tab === 'preview') renderPreviewPane(pane);
+    else if (S.tab === 'reference') renderReferencePane(pane);
+    else if (S.tab === 'split') renderSplitPane(pane);
+  }
+
+  /** 历史测试版在确认前锁定编辑。 */
+  function editLocked() {
+    const section = S.sections.find((s) => s.name === S.selected);
+    if (!isHistorical(section)) return false;
+    return !sessionStorage.getItem(`cl-editor:ack:${S.baseHash}:${section.name}`);
+  }
+
+  function renderSplitPane(pane) {
+    const wrap = document.createElement('div');
+    wrap.id = 'split-wrap';
+    wrap.className = 'show';
+    const editSide = document.createElement('div');
+    editSide.className = 'split-edit';
+    const previewSide = document.createElement('div');
+    previewSide.className = 'split-preview';
+    wrap.appendChild(editSide);
+    wrap.appendChild(previewSide);
+    pane.appendChild(wrap);
+    renderEditPane(editSide);
+    renderPreviewInto(previewSide);
+    if (editLocked()) wrap.querySelector('.split-edit').classList.add('locked');
+  }
+
+  let splitRefreshTimer = null;
+  function scheduleSplitPreview() {
+    if (S.tab !== 'split') return;
+    clearTimeout(splitRefreshTimer);
+    splitRefreshTimer = setTimeout(() => {
+      const side = document.querySelector('#split-wrap > .split-preview');
+      if (side) { side.innerHTML = ''; renderPreviewInto(side); }
+    }, 400);
+  }
+
+  function cardControls(card, idx) {
+    const changed = card.original != null && card.original !== card.lines.join('\n');
+    const tags = [
+      `<span class="tag">${card.kind === 'entry' ? '条目' : card.kind === 'heading' ? '小节' : '文本'}</span>`,
+      card.original == null ? '<span class="new-tag">新增</span>' : '',
+      changed ? '<span class="changed-tag">已修改</span>' : '',
+    ].join('');
+    return `
+      <div class="card-head">
+        ${tags}<span class="spacer"></span>
+        <button data-act="diff" title="与原文对比">对比</button>
+        <button data-act="reset" title="恢复原文">还原</button>
+        <button data-act="up" title="上移">↑</button>
+        <button data-act="down" title="下移">↓</button>
+        ${card.kind === 'entry' ? '<button data-act="img" title="添加图片文件">📎</button>' : ''}
+        <button data-act="del" title="删除此条">✕</button>
+      </div>`;
+  }
+
+  function renderEditPane(pane) {
+    const parsed = S.parsed.get(S.selected);
+    const wrap = document.createElement('div');
+    wrap.id = 'cards';
+    parsed.cards.forEach((card, idx) => wrap.appendChild(renderCard(card, idx)));
+    if (!parsed.cards.length) {
+      wrap.innerHTML = '<p class="hint">此版本暂无内容。用下方按钮添加第一个条目。</p>';
+    }
+    pane.appendChild(wrap);
+    if (editLocked()) wrap.classList.add('locked');
+    const addRow = document.createElement('div');
+    addRow.className = 'add-row';
+    addRow.innerHTML = '<button id="add-entry">＋ 添加条目</button><button id="add-heading" class="ghost">＋ 添加小节标题</button>';
+    addRow.querySelector('#add-entry').onclick = () => addCard('entry', parsed.cards.length);
+    addRow.querySelector('#add-heading').onclick = () => addCard('heading', parsed.cards.length);
+    pane.appendChild(addRow);
+    pane.querySelectorAll('textarea').forEach(fitTextarea);
+    pane.querySelectorAll('.card').forEach((el) => {
+      if (el.dataset.cardId === String(S.selectedCard)) el.classList.add('selected');
+    });
+  }
+
+  function renderCard(card, idx) {
+    const el = document.createElement('div');
+    const cardId = idx;
+    el.className = `card kind-${card.kind}`;
+    el.dataset.cardId = String(cardId);
+    el.dataset.idx = String(idx);
+    const isEntry = card.kind === 'entry';
+    const body = isEntry
+      ? `<textarea data-field="line" rows="2">${escapeHtml(card.lines[0] || '')}</textarea>`
+      : `<textarea data-field="line" rows="1">${escapeHtml(card.lines[0] || '')}</textarea>`;
+    el.innerHTML = cardControls(card, idx) + body +
+      (isEntry ? `<div class="img-strip" data-strip></div>` : '') +
+      `<div class="diff-view" data-diff style="display:none"></div>`;
+    const ta = el.querySelector('textarea');
+    ta.addEventListener('input', () => {
+      card.lines[0] = ta.value;
+      fitTextarea(ta);
+      markDirty();
+      refreshCardTags(el, card);
+      scheduleSplitPreview();
+    });
+    ta.addEventListener('focus', () => selectCard(cardId));
+    el.addEventListener('click', (e) => { if (e.target.closest('button, a, input, .img-item')) return; selectCard(cardId); });
+    el.querySelectorAll('.card-head button').forEach((btn) => {
+      btn.onclick = () => cardAction(btn.dataset.act, card, idx, el);
+    });
+    // 图片条：已有图片引用 + 新粘贴图片（统一列表，可拖拽排序）
+    if (isEntry) {
+      const strip = el.querySelector('[data-strip]');
+      renderImages(card, idx, strip);
+    }
+    return el;
+  }
+
+  function refreshCardTags(el, card) {
+    const changed = card.original != null && card.original !== card.lines.join('\n');
+    const tag = el.querySelector('.changed-tag');
+    if (changed && !tag) el.querySelector('.card-head').insertAdjacentHTML('beforeend', '<span class="changed-tag">已修改</span>');
+    if (!changed && tag) tag.remove();
+  }
+
+  function selectCard(cardId) {
+    S.selectedCard = cardId;
+    document.querySelectorAll('.card.selected').forEach((c) => c.classList.remove('selected'));
+    const el = document.querySelector(`.card[data-card-id="${cardId}"]`);
+    if (el) el.classList.add('selected');
+  }
+
+  function fitTextarea(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.max(38, ta.scrollHeight)}px`;
+  }
+
+  function cardAction(act, card, idx, el) {
+    const parsed = S.parsed.get(S.selected);
+    if (act === 'diff') {
+      const view = el.querySelector('[data-diff]');
+      if (view.style.display === 'none') {
+        view.style.display = 'block';
+        view.innerHTML = diffHtml(card.original ?? '', card.lines[0] ?? '');
+      } else view.style.display = 'none';
+      return;
+    }
+    if (act === 'reset') {
+      if (card.original == null) { toast('新条目没有原文可还原', true); return; }
+      card.lines[0] = card.original;
+      el.querySelector('textarea').value = card.original;
+      fitTextarea(el.querySelector('textarea'));
+      refreshCardTags(el, card);
+      markDirty(); return;
+    }
+    if (act === 'up' || act === 'down') {
+      const j = act === 'up' ? idx - 1 : idx + 1;
+      if (j < 0 || j >= parsed.cards.length) return;
+      [parsed.cards[idx], parsed.cards[j]] = [parsed.cards[j], parsed.cards[idx]];
+      markDirty(); renderPane(); return;
+    }
+    if (act === 'del') {
+      if (!confirm('删除这一条？')) return;
+      parsed.cards.splice(idx, 1);
+      for (const [id, img] of S.images) {
+        if (img.cardKey === `${S.selected}#${idx}`) S.images.delete(id);
+      }
+      markDirty(); renderPane(); return;
+    }
+    if (act === 'img') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = true;
+      input.onchange = async () => {
+        for (const file of input.files) await attachImage(card, idx, file);
+        renderPane();
+      };
+      input.click();
+    }
+  }
+
+  function addCard(kind, atIdx) {
+    const parsed = S.parsed.get(S.selected);
+    const card = kind === 'heading'
+      ? { kind: 'heading', lines: ['### ✨ 提升'], original: null }
+      : { kind: 'entry', lines: ['- **新条目标题** ： 具体改动说明。'], images: [], original: null };
+    parsed.cards.splice(atIdx, 0, card);
+    markDirty();
+    renderPane();
+    const el = document.querySelector(`.card[data-idx="${atIdx}"] textarea`);
+    if (el) { el.focus(); el.select(); }
+  }
+
+  function diffHtml(oldText, newText) {
+    const ops = L.wordDiff(oldText, newText);
+    return ops.map((op) => {
+      const text = escapeHtml(op.text);
+      if (op.type === 'del') return `<del>${text}</del>`;
+      if (op.type === 'ins') return `<ins>${text}</ins>`;
+      return text;
+    }).join('');
+  }
+
+  // ---------- 图片 ----------
+  async function toWebp(file) {
+    const extOf = (name) => (/\.[a-z0-9]+$/i.exec(name) || ['.png'])[0].toLowerCase();
+    try {
+      const bitmap = await createImageBitmap(file);
+      const maxDim = 1600;
+      const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((res) => canvas.toBlob(res, 'image/webp', 0.9));
+      bitmap.close?.();
+      if (blob && blob.size > 0 && blob.size <= file.size * 1.2) {
+        return { blob, filename: `image.webp`, size: blob.size };
+      }
+      return { blob: file, filename: `image${extOf(file.name)}`, size: file.size };
+    } catch {
+      return { blob: file, filename: `image${extOf(file.name)}`, size: file.size };
+    }
+  }
+
+  /** 条目标题 → 文件名基底：去掉文件系统不友好字符，保留中文等 Unicode 字母。 */
+  function slugifyTitle(title) {
+    return String(title || '')
+      .replace(/[\\/:*?"<>|]/g, ' ')
+      .replace(/\s+/g, '-')
+      .replace(/-{2,}/g, '-')
+      .replace(/^[.-]+|[.-]+$/g, '')
+      .slice(0, 60)
+      .replace(/[.-]+$/g, '');
+  }
+
+  async function attachImage(card, idx, file) {
+    const { blob, filename, size } = await toWebp(file);
+    const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const cardKey = `${S.selected}#${idx}`;
+    const ext = (/(\.[a-z0-9]+)$/i.exec(filename) || ['.webp'])[1];
+    const base = slugifyTitle(cardTitleOf(card)) || 'image';
+    const siblings = (card.images || [])
+      .filter((im) => im.kind === 'new')
+      .map((im) => S.images.get(im.id))
+      .filter((m) => m && m.base === base).length;
+    const defaulted = siblings > 0 ? `${base}-${siblings + 1}${ext}` : `${base}${ext}`;
+    S.images.set(id, { id, blob, size, alt: cardTitleOf(card), filename: defaulted, base, cardKey });
+    card.images = card.images || [];
+    card.images.push({ kind: 'new', id });
+    markDirty();
+    toast(`已附加图片到「${truncate(cardTitleOf(card), 18)}」（完成后写入 docs/assets/${S.selected}/）`);
+  }
+
+  function cardTitleOf(card) {
+    const m = /^-\s*\*\*(.+?)\*\*/.exec(card.lines[0] || '');
+    return m ? m[1] : '';
+  }
+
+  function truncate(text, n) { return text.length > n ? `${text.slice(0, n)}…` : text; }
+
+  /** 统一图片条：已有引用与待写盘图片混排，可拖拽排序。 */
+  function renderImages(card, idx, strip) {
+    strip.innerHTML = '';
+    strip.dataset.cardIdx = String(idx);
+    (card.images || []).forEach((img, pos) => {
+      const item = document.createElement('div');
+      item.className = 'img-item';
+      item.draggable = true;
+      item.dataset.pos = String(pos);
+      let thumb = '';
+      if (img.kind === 'new') {
+        const meta = S.images.get(img.id);
+        if (!meta) return;
+        const url = URL.createObjectURL(meta.blob);
+        const extMatch = /(\.[a-z0-9]+)$/i.exec(meta.filename);
+        const ext = extMatch ? extMatch[1] : '';
+        const baseName = ext ? meta.filename.slice(0, -ext.length) : meta.filename;
+        thumb = `<img src="${url}" alt="" title="点击放大预览">
+          <div class="fields">
+            <input type="text" data-f="alt" placeholder="alt 描述（默认取条目标题）" value="${escapeAttr(meta.alt)}">
+            <div style="display:flex; gap:4px; align-items:center;">
+              <input type="text" data-f="filename" value="${escapeAttr(baseName)}" title="写入 docs/assets/${escapeAttr(S.selected)}/ 的文件名（不含扩展名）" style="flex:1; min-width:0;">
+              <span class="ext-badge">${escapeHtml(ext)}</span>
+            </div>
+            <div class="meta"><span>${formatSize(meta.size)}</span>
+              ${meta.size > 300 * 1024 ? '<span class="big">超过 300 KiB 软上限</span>' : ''}
+              <span class="pending">未写盘</span>
+              <button data-act="rm">移除</button></div>
+          </div>`;
+        item.innerHTML = thumb;
+        item.querySelector('img').onclick = () => window.open(url, '_blank');
+        item.querySelector('[data-f="alt"]').addEventListener('input', (e) => { meta.alt = e.target.value; markDirty(); });
+        item.querySelector('[data-f="filename"]').addEventListener('input', (e) => {
+          meta.filename = `${e.target.value.trim()}${ext}`;
+          markDirty();
+        });
+        item.querySelector('[data-act="rm"]').onclick = () => {
+          card.images = card.images.filter((x) => x !== img);
+          S.images.delete(img.id);
+          markDirty(); renderPane();
+        };
+      } else {
+        const absolute = /^https?:\/\//.test(img.path);
+        thumb = `<img ${absolute ? `src="${escapeAttr(img.path)}"` : 'data-repo="' + escapeAttr(img.path) + '"'} alt="" title="点击放大预览">
+          <div class="fields">
+            <input type="text" data-f="alt" value="${escapeAttr(img.alt)}" title="图片 alt 描述">
+            <input type="text" data-f="path" value="${escapeAttr(img.path)}" title="图片链接（写回 CL 的路径）">
+            <div class="meta"><span>已有</span><button data-act="rm" title="从条目移除该图片行（不删除文件）">移除</button></div>
+          </div>`;
+        item.innerHTML = thumb;
+        const imgEl = item.querySelector('img');
+        if (imgEl.dataset.repo) resolveRepoImage(imgEl, imgEl.dataset.repo);
+        else imgEl.onclick = () => window.open(img.path, '_blank');
+        item.querySelector('[data-f="alt"]').addEventListener('input', (e) => { img.alt = e.target.value; markDirty(); });
+        item.querySelector('[data-f="path"]').addEventListener('input', (e) => { img.path = e.target.value; markDirty(); });
+        item.querySelector('[data-act="rm"]').onclick = () => {
+          if (!confirm('从条目移除这个图片行？（不会删除磁盘上的图片文件）')) return;
+          card.images = card.images.filter((x) => x !== img);
+          markDirty(); renderPane();
+        };
+      }
+      item.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/cl-img-pos', String(pos));
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      item.addEventListener('dragover', (e) => {
+        if (e.dataTransfer.types.includes('text/cl-img-pos')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+      });
+      item.addEventListener('drop', (e) => {
+        if (!e.dataTransfer.types.includes('text/cl-img-pos')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const from = Number(e.dataTransfer.getData('text/cl-img-pos'));
+        const to = Number(item.dataset.pos);
+        if (Number.isNaN(from) || from === to) return;
+        const [moved] = card.images.splice(from, 1);
+        card.images.splice(to, 0, moved);
+        markDirty(); renderPane();
+      });
+      strip.appendChild(item);
+    });
+    if (!(card.images || []).length) strip.innerHTML = '<span class="hint">Ctrl+V 粘贴截图，或拖入图片文件 / 点卡片 📎 选择。</span>';
+  }
+
+  const repoImgCache = new Map();
+  async function resolveRepoImage(imgEl, repoPath) {
+    // 缓存里有内容（含保存时登记的 blob）直接用；确认读不到（null）才退回链接 chip
+    if (repoImgCache.has(repoPath)) {
+      const cached = repoImgCache.get(repoPath);
+      if (cached) imgEl.src = URL.createObjectURL(cached);
+      else imgEl.outerHTML = `<span class="img-ref-chip">🖼 ${escapeHtml(repoPath)}</span>`;
+      return;
+    }
+    if (!S.repo || !repoPath.startsWith('docs/assets/')) {
+      // 未连接仓库时只读一次失败即标记，避免闪跳；连接仓库时正常读取
+      repoImgCache.set(repoPath, null);
+      imgEl.outerHTML = `<span class="img-ref-chip">🖼 ${escapeHtml(repoPath)}</span>`;
+      return;
+    }
+    let blob;
+    try {
+      const parts = repoPath.split('/');
+      const dir = await S.repo.getDirectoryHandle(parts[0]).then((d) => d.getDirectoryHandle(parts[1])).then((d) => d.getDirectoryHandle(parts[2]));
+      blob = await (await (await dir.getFileHandle(parts[3])).getFile()).blob();
+    } catch { blob = null; }
+    repoImgCache.set(repoPath, blob);
+    if (blob) imgEl.src = URL.createObjectURL(blob);
+    else imgEl.outerHTML = `<span class="img-ref-chip">🖼 ${escapeHtml(repoPath)}</span>`;
+  }
+
+  function formatSize(bytes) {
+    if (bytes > 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  // ---------- 粘贴 / 拖放 ----------
+  document.addEventListener('paste', async (e) => {
+    if ((S.tab !== 'edit' && S.tab !== 'split') || !S.selected) return;
+    const files = [...(e.clipboardData?.items || [])]
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile()).filter(Boolean);
+    if (!files.length) return;
+    const parsed = S.parsed.get(S.selected);
+    let idx = S.selectedCard;
+    let card = parsed.cards[idx];
+    if (!card || card.kind !== 'entry') {
+      card = parsed.cards.find((c) => c.kind === 'entry');
+      idx = parsed.cards.indexOf(card);
+      if (!card) return;
+    }
+    e.preventDefault();
+    for (const file of files) await attachImage(card, idx, file);
+    renderPane();
+  });
+
+  document.addEventListener('dragover', (e) => {
+    const card = e.target.closest?.('.card');
+    if (!card || (S.tab !== 'edit' && S.tab !== 'split')) return;
+    // 只拦截携带文件的拖拽；文本选区拖动走浏览器默认行为（不抢选区）
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;
+    e.preventDefault();
+    card.classList.add('drop-hint');
+  });
+  document.addEventListener('dragleave', (e) => {
+    e.target.closest?.('.card')?.classList.remove('drop-hint');
+  });
+  document.addEventListener('drop', async (e) => {
+    const cardEl = e.target.closest?.('.card');
+    if (!cardEl || (S.tab !== 'edit' && S.tab !== 'split')) return;
+    const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith('image/'));
+    if (!files.length) return;
+    e.preventDefault();
+    cardEl.classList.remove('drop-hint');
+    const parsed = S.parsed.get(S.selected);
+    const idx = Number(cardEl.dataset.idx);
+    const card = parsed.cards[idx];
+    if (!card || card.kind !== 'entry') { toast('图片只能附加到条目上', true); return; }
+    for (const file of files) await attachImage(card, idx, file);
+    renderPane();
+  });
+
+  // ---------- 日期 ----------
+  $('#vh-date').addEventListener('change', () => {
+    const section = S.sections.find((s) => s.name === S.selected);
+    if (!section) return;
+    const value = $('#vh-date').value;
+    section.date = value || null;
+    section.heading = value ? `## [${section.name}] - ${value}` : `## [${section.name}]`;
+    markDirty();
+    renderSidebar();
+  });
+
+  // ---------- 选项卡 ----------
+  document.querySelectorAll('#tabs button').forEach((btn) => {
+    btn.onclick = () => {
+      S.tab = btn.dataset.tab;
+      document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b === btn));
+      renderPane();
+    };
+  });
+
+  // ---------- 预览 ----------
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function escapeAttr(text) { return escapeHtml(text); }
+
+  function inlineMd(text, resolveImg) {
+    let html = escapeHtml(text);
+    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, src) => resolveImg(alt, src));
+    html = html.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    return html;
+  }
+
+  function renderPreviewPane(pane) {
+    const div = document.createElement('div');
+    div.className = 'preview';
+    pane.appendChild(div);
+    renderPreviewInto(div);
+  }
+
+  function renderPreviewInto(container) {
+    const parsed = S.parsed.get(S.selected);
+    const section = S.sections.find((s) => s.name === S.selected);
+    container.innerHTML = '';
+    const div = document.createElement('div');
+    div.className = 'preview';
+    const urlCache = new Map();
+    const resolveImg = (alt, src) => {
+      if (/^https?:\/\//.test(src)) return `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">`;
+      return `<img data-src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">`;
+    };
+    let html = `<h2>${escapeHtml(section.name)}${section.date ? ` <small style="color:var(--muted)">${section.date}</small>` : ''}</h2>`;
+    let inList = false;
+    for (const card of parsed.cards) {
+      const line = card.lines[0] || '';
+      if (card.kind === 'heading') {
+        if (inList) { html += '</ul>'; inList = false; }
+        html += `<h3>${inlineMd(line.replace(/^#+\s*/, ''), resolveImg)}</h3>`;
+        continue;
+      }
+      if (card.kind === 'entry') {
+        if (!inList) { html += '<ul>'; inList = true; }
+        html += `<li>${inlineMd(line.replace(/^-\s*/, ''), resolveImg)}`;
+        for (const img of card.images || []) {
+          if (img.kind === 'existing') html += resolveImg(img.alt, img.path);
+          else {
+            const meta = S.images.get(img.id);
+            if (meta) html += `<img src="${URL.createObjectURL(meta.blob)}" alt="${escapeAttr(meta.alt)}">`;
+          }
+        }
+        html += '</li>';
+        continue;
+      }
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<p>${inlineMd(line, resolveImg)}</p>`;
+    }
+    if (inList) html += '</ul>';
+    div.innerHTML = html;
+    container.appendChild(div);
+    // 用仓库句柄解析已有图片
+    div.querySelectorAll('img[data-src]').forEach(async (img) => {
+      const src = img.dataset.src;
+      if (S.repo && src.startsWith('docs/assets/')) {
+        let blob = urlCache.get(src);
+        if (blob === undefined) {
+          try {
+            const parts = src.split('/');
+            const dir = await S.repo.getDirectoryHandle(parts[0]).then((d) => d.getDirectoryHandle(parts[1])).then((d) => d.getDirectoryHandle(parts[2]));
+            const fh = await dir.getFileHandle(parts[3]);
+            blob = await (await fh.getFile()).blob();
+          } catch { blob = null; }
+          urlCache.set(src, blob);
+        }
+        if (blob) { img.src = URL.createObjectURL(blob); return; }
+      }
+      img.outerHTML = `<span class="img-missing">[图片：${escapeHtml(src)}]</span>`;
+    });
+  }
+
+  // ---------- 对照 ----------
+  /** 正式版的对照来源：文档顺序中它与上一个正式版之间的全部测试版小节。 */
+  function referenceSources(version) {
+    const idx = S.sections.findIndex((s) => s.name === version);
+    const sources = [];
+    for (let i = idx + 1; i < S.sections.length; i += 1) {
+      const s = S.sections[i];
+      if (L.isStable(s.name)) break;
+      if (s.name !== '未发布') sources.push(s);
+    }
+    return sources;
+  }
+
+  function renderReferencePane(pane) {
+    const section = S.sections.find((s) => s.name === S.selected);
+    const sources = L.isStable(section.name) ? referenceSources(section.name) : [];
+    const wrap = document.createElement('div');
+    wrap.className = 'preview';
+    if (!sources.length) {
+      wrap.innerHTML = '<p class="hint">此版本没有可对照的测试版小节（对照覆盖上一正式版之后的全部测试版）。</p>';
+      pane.appendChild(wrap);
+      return;
+    }
+    wrap.innerHTML = `<p class="hint">逐条勾选已核对过的测试版条目（按版本保存）。确认合并稿覆盖了全部内容后即可「完成编辑」。</p>`;
+    const checked = new Set(JSON.parse(localStorage.getItem(LS_REFS()) || '[]'));
+    for (const src of sources) {
+      const parsed = S.parsed.get(src.name);
+      const group = document.createElement('div');
+      group.className = 'ref-group';
+      group.innerHTML = `<h4>${escapeHtml(src.name)} <span class="hint">(${src.date || ''})</span></h4>`;
+      parsed.cards.forEach((card, i) => {
+        if (card.kind !== 'entry') return;
+        const key = `${src.name}#${i}`;
+        const row = document.createElement('label');
+        row.className = 'ref-entry' + (checked.has(key) ? ' done' : '');
+        row.innerHTML = `<input type="checkbox" ${checked.has(key) ? 'checked' : ''}><span class="text">${inlineMd(card.lines[0].replace(/^-\s*/, ''), (a, s) => `<span class="img-missing">[图]</span>`)}</span>`;
+        row.querySelector('input').addEventListener('change', (e) => {
+          if (e.target.checked) checked.add(key); else checked.delete(key);
+          row.classList.toggle('done', e.target.checked);
+          localStorage.setItem(LS_REFS(), JSON.stringify([...checked]));
+        });
+        group.appendChild(row);
+      });
+      wrap.appendChild(group);
+    }
+    pane.appendChild(wrap);
+  }
+
+  // ---------- 序列化 ----------
+  function serializeCurrentDoc() {
+    const { preamble, sections } = L.splitSections(S.clText);
+    const parts = [preamble];
+    for (const section of sections) {
+      const parsed = S.parsed.get(section.name);
+      parts.push(parsed ? L.serializeSection(section, parsed) : section.rawText);
+    }
+    return parts.join('');
+  }
+
+  function isDirty() {
+    if (serializeCurrentDoc() !== S.baseText) return true;
+    return S.images.size > 0;
+  }
+
+  // ---------- 自动保存 ----------
+  let autosaveTimer = null;
+  function scheduleAutosave() {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(saveSession, 900);
+  }
+  function saveSession() {
+    if (!S.baseHash) return;
+    const refs = [];
+    for (const [id, img] of S.images) {
+      refs.push({ id, alt: img.alt, filename: img.filename, size: img.size, cardKey: img.cardKey });
+    }
+    const status = $('#save-status');
+    try {
+      localStorage.setItem(LS_STATE(), JSON.stringify({
+        savedAt: Date.now(),
+        docText: serializeCurrentDoc(),
+        selected: S.selected,
+        imageCount: S.images.size,
+      }));
+      localStorage.setItem(LS_IMGS(), JSON.stringify(refs));
+      idbPutAll(refs);
+      status.className = '';
+      status.textContent = `已自动保存 ${new Date().toLocaleTimeString()}`;
+      return true;
+    } catch (e) {
+      console.warn('autosave failed', e);
+      if (!status.classList.contains('fail')) {
+        toast('自动保存失败（可能是浏览器存储配额已满）：请尽快「完成编辑」把图片写盘，避免丢失', true);
+      }
+      status.className = 'fail';
+      status.textContent = '自动保存失败';
+      return false;
+    }
+  }
+
+  // ---------- IndexedDB（图片二进制） ----------
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('cl-editor', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('images');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbPutAll(refs) {
+    if (!S.images.size) return;
+    const db = await idbOpen();
+    const tx = db.transaction('images', 'readwrite');
+    const store = tx.objectStore('images');
+    for (const [id, img] of S.images) store.put(img.blob, id);
+    await new Promise((res) => { tx.oncomplete = res; tx.onerror = res; });
+    db.close();
+  }
+  async function idbGetAll(ids) {
+    const db = await idbOpen();
+    const tx = db.transaction('images', 'readonly');
+    const store = tx.objectStore('images');
+    const out = new Map();
+    await Promise.all(ids.map((id) => new Promise((res) => {
+      const req = store.get(id);
+      req.onsuccess = () => { out.set(id, req.result); res(); };
+      req.onerror = () => res();
+    })));
+    db.close();
+    return out;
+  }
+
+  async function doRestore(state) {
+    S.clText = state.docText;
+    reparse();
+    const ids = [];
+    // 依据持久化的 refs 找回新图片元数据（blobs 在 IDB）
+    const refList = JSON.parse(localStorage.getItem(LS_IMGS()) || '[]');
+    for (const ref of refList) {
+      const [sectionName, idxStr] = ref.cardKey.split('#');
+      const parsed = S.parsed.get(sectionName);
+      if (!parsed) continue;
+      const card = parsed.cards[Number(idxStr)];
+      if (!card || card.kind !== 'entry') continue;
+      card.images = card.images || [];
+      card.images.push({ kind: 'new', id: ref.id });
+      S.images.set(ref.id, { ...ref });
+      ids.push(ref.id);
+    }
+    const blobs = await idbGetAll(ids);
+    for (const [id, blob] of blobs) if (blob && S.images.get(id)) S.images.get(id).blob = blob;
+    $('#restore-banner').style.display = 'none';
+    selectSection(state.selected);
+    markDirty();
+    toast('已恢复上次编辑（图片写入前请勿清除浏览器数据，blob 由本页 IndexedDB 保存）');
+  }
+
+  // ---------- 写盘辅助 ----------
+  async function dirHandle(pathParts, create) {
+    let dir = S.repo;
+    for (const part of pathParts) dir = await dir.getDirectoryHandle(part, { create: Boolean(create) });
+    return dir;
+  }
+  async function writeFileAt(pathParts, blob) {
+    const dir = await dirHandle(pathParts.slice(0, -1), true);
+    const fh = await dir.getFileHandle(pathParts.at(-1), { create: true });
+    const writable = await fh.createWritable();
+    await writable.write(blob);
+    await writable.close();
+  }
+  async function readFileAt(pathParts) {
+    try {
+      const dir = await dirHandle(pathParts.slice(0, -1), false);
+      const fh = await dir.getFileHandle(pathParts.at(-1));
+      return await (await fh.getFile()).text();
+    } catch { return null; }
+  }
+  async function backupFile(pathParts, backupDir) {
+    const content = await readFileAt(pathParts);
+    if (content == null) return null;
+    const target = [...backupDir, ...pathParts];
+    await writeFileAt(target, new Blob([content], { type: 'text/markdown' }));
+    return target.join('/');
+  }
+
+  // ---------- 归档状态 ----------
+  async function refreshArchiveStatus() {
+    for (const section of S.sections) {
+      if (!L.isStable(section.name)) continue;
+      try {
+        const expected = await L.buildArchive(S.clText, section.name);
+        const existing = S.repo ? await readFileAt(['docs', 'releases', `${section.name}.md`]) : null;
+        S.archiveStatus.set(section.name, existing == null ? 'missing' : (existing === expected ? 'fresh' : 'stale'));
+      } catch {
+        S.archiveStatus.set(section.name, 'none');
+      }
+    }
+  }
+
+  // ---------- 完成编辑（支持多版本批量） ----------
+  function newImagesOf(versionName) {
+    const parsed = S.parsed.get(versionName);
+    const out = [];
+    for (const card of parsed.cards) {
+      if (card.kind !== 'entry') continue;
+      for (const imgRef of card.images || []) {
+        if (imgRef.kind === 'new') out.push({ card, imgRef, meta: S.images.get(imgRef.id) });
+      }
+    }
+    return out;
+  }
+
+  function collectErrors(versionName) {
+    const parsed = S.parsed.get(versionName);
+    const section = S.sections.find((s) => s.name === versionName);
+    const errors = [];
+    if (section.name !== '未发布' && L.isStable(section.name) && !section.date) {
+      errors.push('正式版需要设置日期（标题行 `## [版本] - YYYY-MM-DD`）');
+    }
+    if (section.name === '未发布' && newImagesOf(versionName).length) {
+      errors.push('「未发布」区不支持配图（没有对应的 docs/assets 版本目录）');
+    }
+    const names = new Map();
+    for (const { meta } of newImagesOf(versionName)) {
+      const name = meta.filename.trim();
+      const valid = /^[^\\/:*?"<>|\s][^\\/:*?"<>|]*\.(?:webp|png|jpe?g|gif|avif|svg)$/i.test(name)
+        && !name.includes('..') && name.length <= 100;
+      if (!valid) {
+        errors.push(`文件名不合法：${name}（不能包含 \\ / : * ? " < > | 或空格，需以图片扩展名结尾）`);
+      }
+      if (names.has(name)) errors.push(`文件名重复：${name}`);
+      names.set(name, meta.id);
+    }
+    for (let i = parsed.cards.length - 1; i >= 0; i -= 1) {
+      const card = parsed.cards[i];
+      if (card.kind === 'entry' && card.original == null && (card.lines[0] || '').trim() === '- **新条目标题** ： 具体改动说明。') {
+        errors.push(`第 ${i + 1} 张卡片仍是新条目模板，请填写或删除`);
+        break;
+      }
+    }
+    return errors;
+  }
+
+  function validateForFinish(versionName = S.selected) {
+    return collectErrors(versionName);
+  }
+
+  /** 有改动（文本或新图片）的版本。 */
+  function dirtyVersions() {
+    const out = [];
+    for (const section of S.sections) {
+      const parsed = S.parsed.get(section.name);
+      if (!parsed) continue;
+      const textChanged = L.serializeSection(section, parsed) !== section.rawText;
+      const hasNew = parsed.cards.some((c) => (c.images || []).some((im) => im.kind === 'new'));
+      if (textChanged || hasNew) out.push(section);
+    }
+    return out;
+  }
+
+  async function finishEditing() {
+    const dirty = dirtyVersions();
+    if (!dirty.length) { toast('没有需要完成的修改', true); return; }
+    const allErrors = [];
+    for (const section of dirty) {
+      allErrors.push(...collectErrors(section.name).map((e) => `[${section.name}] ${e}`));
+    }
+    if (allErrors.length) {
+      modal(`<h3>还不能完成编辑</h3>${allErrors.map((e) => `<p class="step">⚠ ${escapeHtml(e)}</p>`).join('')}
+        <div style="margin-top:14px;text-align:right"><button onclick="document.querySelector('#mask').classList.remove('show')">知道了</button></div>`);
+      return;
+    }
+    if (dirty.length === 1) {
+      const section = dirty[0];
+      const archive = section.name !== '未发布' && L.isStable(section.name) && $('#auto-archive').checked;
+      await applyFinish([section.name], new Set(archive ? [section.name] : []));
+      return;
+    }
+    renderBatchModal(dirty);
+  }
+
+  function renderBatchModal(dirty) {
+    const rows = dirty.map((section) => {
+      const imgCount = newImagesOf(section.name).length;
+      const stable = L.isStable(section.name);
+      return `<div class="step">
+        <input type="checkbox" data-batch="${escapeAttr(section.name)}" checked>
+        <span><strong>${escapeHtml(section.name)}</strong>
+        ${section.name === '未发布' ? '<span class="badge unrel">仅文本</span>' : ''}
+        ${imgCount ? `，${imgCount} 张新图片` : '，仅文本修改'}</span>
+        ${stable ? `<label class="hint" style="margin-left:auto"><input type="checkbox" data-batch-arch="${escapeAttr(section.name)}" checked>重生成归档</label>` : ''}
+      </div>`;
+    }).join('');
+    modal(`<h3>完成编辑 — ${dirty.length} 个版本有改动</h3>
+      ${rows}
+      <p class="hint" style="margin:12px 0 0">写入顺序：备份 → 各版本图片 → 一次性写回 CHANGELOG.md → 重生成勾选的归档。</p>
+      <div style="margin-top:16px;text-align:right">
+        <button onclick="document.querySelector('#mask').classList.remove('show')">取消</button>
+        <button id="btn-batch-go" class="primary">开始写入</button>
+      </div>`);
+    $('#btn-batch-go').onclick = () => {
+      const versions = [...document.querySelectorAll('[data-batch]')].filter((b) => b.checked).map((b) => b.dataset.batch);
+      if (!versions.length) { toast('未勾选任何版本', true); return; }
+      const archives = new Set([...document.querySelectorAll('[data-batch-arch]')]
+        .filter((b) => b.checked && versions.includes(b.dataset.batchArch)).map((b) => b.dataset.batchArch));
+      closeModal();
+      applyFinish(versions, archives);
+    };
+  }
+
+  async function blobSha256(blob) {
+    const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(await blob.arrayBuffer()));
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  /** 冲突处置：磁盘 CL 与载入基线不一致时，让用户选择覆盖 / 另存 / 取消。 */
+  function resolveConflictModal() {
+    return new Promise((resolve) => {
+      modal(`<h3>⚠ CHANGELOG.md 在磁盘上已被修改</h3>
+        <p class="hint">页面载入后，磁盘内容发生了变化（可能是 git 操作或外部编辑）。无论怎么选，磁盘当前版本都会先备份到 <code>.artifacts/changelog-editor/backup/</code>。</p>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px">
+          <button id="cf-cancel">取消</button>
+          <button id="cf-side">另存为单独文件</button>
+          <button id="cf-force" class="primary">强行覆盖</button>
+        </div>`);
+      $('#cf-cancel').onclick = () => { closeModal(); resolve('cancel'); };
+      $('#cf-side').onclick = () => { closeModal(); resolve('sidefile'); };
+      $('#cf-force').onclick = () => { closeModal(); resolve('force'); };
+    });
+  }
+
+  async function uniqueManualSavePath() {
+    const dir = ['.artifacts', 'changelog-editor', 'manual-save'];
+    for (let i = 0; i < 100; i += 1) {
+      const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+      const name = i ? `CHANGELOG-${stamp}-${i}.md` : `CHANGELOG-${stamp}.md`;
+      if (await readFileAt([...dir, name]) == null) return [...dir, name];
+    }
+    return [...dir, `CHANGELOG-${Date.now()}.md`];
+  }
+
+  async function applyFinish(versionNames, archiveSet) {
+    const steps = [];
+    const log = (text) => { steps.push(text); };
+    const written = [];
+    const processedIds = [];
+    let sideFile = false;
+    try {
+      if (S.repo) {
+        // 1) 冲突检查：覆盖 / 另存 / 取消
+        const onDisk = await readFileAt(['CHANGELOG.md']);
+        if (onDisk !== S.baseText) {
+          const action = await resolveConflictModal();
+          if (action === 'cancel') { toast('已取消：未写入任何文件'); return; }
+          const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+          const backupDir = ['.artifacts', 'changelog-editor', 'backup', stamp];
+          await backupFile(['CHANGELOG.md'], backupDir);
+          for (const name of archiveSet) await backupFile(['docs', 'releases', `${name}.md`], backupDir);
+          log(`磁盘版本已先备份 → ${backupDir.join('/')}/`);
+          sideFile = action === 'sidefile';
+        } else {
+          const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+          const backupDir = ['.artifacts', 'changelog-editor', 'backup', stamp];
+          await backupFile(['CHANGELOG.md'], backupDir);
+          for (const name of archiveSet) await backupFile(['docs', 'releases', `${name}.md`], backupDir);
+          log(`已备份原文件 → ${backupDir.join('/')}/`);
+        }
+        // 2) 各版本写图片，并把新图片转为已有引用（保持条目内的顺序）
+        for (const name of versionNames) {
+          const dedupe = new Map();
+          let count = 0;
+          for (const { card, imgRef, meta } of newImagesOf(name)) {
+            if (!meta) continue;
+            const filename = meta.filename.trim();
+            const key = await blobSha256(meta.blob);
+            if (dedupe.has(key)) meta.finalName = dedupe.get(key);
+            else {
+              dedupe.set(key, filename);
+              await writeFileAt(['docs', 'assets', name, filename], meta.blob);
+              meta.finalName = filename;
+            }
+            imgRef.kind = 'existing';
+            imgRef.alt = (meta.alt || cardTitleOf(card) || name).trim();
+            imgRef.path = `docs/assets/${name}/${meta.finalName}`;
+            delete imgRef.id;
+            repoImgCache.set(imgRef.path, meta.blob); // 缩略图直接复用内存 blob
+            written.push(`docs/assets/${name}/${meta.finalName}（${formatSize(meta.size)}）`);
+            processedIds.push(meta.id);
+            count += 1;
+          }
+          if (count) log(`${name}：写入 ${count} 张图片 → docs/assets/${name}/`);
+        }
+        // 3) 写回 CL（冲突时可选另存为单独文件，不动磁盘 CL 与归档）
+        const newDoc = serializeCurrentDoc();
+        if (sideFile) {
+          const target = await uniqueManualSavePath();
+          await writeFileAt(target, new Blob([newDoc], { type: 'text/markdown' }));
+          S.clText = newDoc;
+          log(`已另存为 ${target.join('/')}（git 忽略目录；磁盘 CHANGELOG.md 与归档未动，请手动合并后重新载入）`);
+        } else {
+          await writeFileAt(['CHANGELOG.md'], new Blob([newDoc], { type: 'text/markdown' }));
+          S.clText = newDoc; S.baseText = newDoc;
+          log('已写回 CHANGELOG.md（图片链接已插入到对应条目后）');
+          // 4) 归档
+          for (const name of archiveSet) {
+            const archive = await L.buildArchive(S.clText, name);
+            await writeFileAt(['docs', 'releases', `${name}.md`], new Blob([archive], { type: 'text/markdown' }));
+            log(`已生成归档 docs/releases/${name}.md（与 prepare_release_notes.py 同契约）`);
+          }
+          await refreshArchiveStatus();
+        }
+      } else {
+        // 降级：下载
+        for (const name of versionNames) {
+          for (const { card, imgRef, meta } of newImagesOf(name)) {
+            if (!meta) continue;
+            meta.finalName = meta.filename.trim();
+            imgRef.kind = 'existing';
+            imgRef.alt = meta.alt || cardTitleOf(card) || name;
+            imgRef.path = `docs/assets/${name}/${meta.finalName}`;
+            delete imgRef.id;
+            triggerDownload(meta.blob, meta.finalName);
+            written.push(`docs/assets/${name}/${meta.finalName}`);
+            processedIds.push(meta.id);
+          }
+        }
+        const newDoc = serializeCurrentDoc();
+        triggerDownload(new Blob([newDoc], { type: 'text/markdown' }), 'CHANGELOG.md');
+        for (const name of archiveSet) {
+          triggerDownload(new Blob([await L.buildArchive(newDoc, name)], { type: 'text/markdown' }), `${name}.md`);
+        }
+        log('只读模式：已通过下载交付 CHANGELOG / 归档 / 图片，请手动放回对应位置');
+        S.clText = serializeCurrentDoc(); S.baseText = S.clText;
+      }
+      for (const id of processedIds) S.images.delete(id);
+      reparseFromText(S.clText);
+      if (sideFile) {
+        // 另存模式：磁盘 CL 未更新，保持未保存状态与自动保存，方便之后手动合并
+        markDirty();
+        renderSidebar();
+      } else {
+        markClean();
+        localStorage.removeItem(LS_STATE());
+        localStorage.removeItem(LS_IMGS());
+        renderSidebar();
+      }
+      const selected = S.selected;
+      selectSection(S.sections.some((s) => s.name === selected) ? selected : S.sections[0].name);
+      const tags = [...archiveSet].map((name) => `v${name}`);
+      modal(`
+        <h3>${sideFile ? '📄 完成编辑（已另存，待手动合并）' : '✅ 完成编辑'} — ${escapeHtml(versionNames.join('、'))}</h3>
+        ${steps.map((s) => `<div class="step"><span class="s">✓</span><span>${escapeHtml(s)}</span></div>`).join('')}
+        ${written.length ? `<p class="hint" style="margin:10px 0 4px">写入的文件：</p><div class="paths">${written.map(escapeHtml).join('<br>')}</div>` : ''}
+        ${sideFile
+          ? '<p class="hint" style="margin:12px 0 4px">手动合并另存文件后，回到本页点击「打开仓库目录」重新载入即可继续。</p>'
+          : `<p class="hint" style="margin:12px 0 4px">建议接着在仓库根目录执行：</p>
+        <code>uv run --no-sync python scripts/prepare_release_notes.py --check-all</code>
+        ${tags.map((tag) => `<br><code>uv run --no-sync python scripts/prepare_release_notes.py --tag ${escapeHtml(tag)} --output .artifacts/release-preview.md</code>`).join('')}`}
+        <div style="margin-top:16px;text-align:right"><button class="primary" onclick="document.querySelector('#mask').classList.remove('show')">好</button></div>`);
+    } catch (error) {
+      modal(`<h3>⚠ 完成编辑中断</h3><p>${escapeHtml(error.message)}</p>
+        <p class="hint">已执行的步骤不会回滚；被覆盖的文件在最近一次备份目录里。</p>
+        <div style="text-align:right"><button onclick="document.querySelector('#mask').classList.remove('show')">知道了</button></div>`);
+    }
+  }
+
+  function reparseFromText(text) {
+    S.clText = text;
+    reparse();
+  }
+
+  function triggerDownload(blob, filename) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+  }
+
+  $('#btn-finish').onclick = finishEditing;
+
+  // ---------- 批量归档 ----------
+  $('#btn-select-stale').onclick = () => {
+    document.querySelectorAll('[data-arch]').forEach((box) => {
+      box.checked = S.archiveStatus.get(box.dataset.arch) !== 'fresh';
+    });
+  };
+  $('#btn-generate-archives').onclick = async () => {
+    if (!S.repo) { toast('只读模式下不支持写归档', true); return; }
+    const targets = [...document.querySelectorAll('[data-arch]')]
+      .filter((box) => box.checked).map((box) => box.dataset.arch);
+    if (!targets.length) { toast('先勾选要生成的正式版', true); return; }
+    // 归档必须与 CL 文件一致：先把当前编辑保存回盘
+    const docText = serializeCurrentDoc();
+    if (docText !== S.baseText || (await readFileAt(['CHANGELOG.md'])) !== S.baseText) {
+      if ((await readFileAt(['CHANGELOG.md'])) !== S.baseText) {
+        const action = await resolveConflictModal();
+        if (action !== 'force') { toast('已取消：未写入任何文件'); return; }
+      }
+      const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+      await backupFile(['CHANGELOG.md'], ['.artifacts', 'changelog-editor', 'backup', stamp]);
+      await writeFileAt(['CHANGELOG.md'], new Blob([docText], { type: 'text/markdown' }));
+      S.baseText = docText;
+      toast('已先把当前编辑保存到 CHANGELOG.md');
+    }
+    const results = [];
+    for (const name of targets) {
+      try {
+        const archive = await L.buildArchive(S.clText, name);
+        const existing = await readFileAt(['docs', 'releases', `${name}.md`]);
+        if (existing != null && existing !== archive) {
+          const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+          await backupFile(['docs', 'releases', `${name}.md`], ['.artifacts', 'changelog-editor', 'backup', stamp]);
+        }
+        await writeFileAt(['docs', 'releases', `${name}.md`], new Blob([archive], { type: 'text/markdown' }));
+        results.push(`✓ ${name}.md${existing == null ? '（新建）' : ''}`);
+      } catch (error) {
+        results.push(`✗ ${name}.md：${error.message}`);
+      }
+    }
+    await refreshArchiveStatus();
+    renderSidebar();
+    modal(`<h3>归档生成结果</h3>${results.map((r) => `<div class="step"><span class="s">${r.startsWith('✓') ? '✓' : '✗'}</span><span>${escapeHtml(r.slice(2))}</span></div>`).join('')}
+      <div style="margin-top:14px;text-align:right"><button class="primary" onclick="document.querySelector('#mask').classList.remove('show')">好</button></div>`);
+  };
+
+  // ---------- 载入入口 ----------
+  $('#btn-open').onclick = openRepo;
+  $('#btn-load-file').onclick = loadFileFallback;
+
+  // 侧栏拖宽（记忆宽度）
+  const savedSidebarWidth = localStorage.getItem('cl-editor:sidebar-w');
+  if (savedSidebarWidth) $('#sidebar').style.width = savedSidebarWidth;
+  $('#sb-resizer').addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const sidebar = $('#sidebar');
+    const startX = e.clientX;
+    const startWidth = sidebar.getBoundingClientRect().width;
+    const onMove = (ev) => {
+      const width = Math.min(560, Math.max(200, startWidth + ev.clientX - startX));
+      sidebar.style.width = `${width}px`;
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.classList.remove('resizing');
+      localStorage.setItem('cl-editor:sidebar-w', sidebar.style.width);
+    };
+    document.body.classList.add('resizing');
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  window.addEventListener('beforeunload', (e) => {
+    if (isDirty()) { e.preventDefault(); e.returnValue = ''; }
+  });
+  </script>
+</body>
+</html>

@@ -541,13 +541,17 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("cargo check --manifest-path src-tauri/Cargo.toml", workflow)
 
     def test_tag_release_workflows_use_idempotent_release_uploads(self) -> None:
-        """Given the merged release workflow publishes one tag release, When it runs, Then it uses idempotent gh CLI uploads."""
+        """Given the merged release workflow publishes one tag release, When it runs, Then uploads go through the idempotent draft-publish script."""
         workflow = read_text(".github/workflows/release.yml")
-        self.assertIn("gh release upload", workflow)
-        self.assertIn("--clobber", workflow)
+        publisher = read_text("scripts/publish_release.py")
+        self.assertIn('scripts/publish_release.py --tag "$RELEASE_TAG" --notes release-notes.md --artifacts release-artifacts', workflow)
+        # 幂等发布契约在脚本内：已有草稿不重复创建、重跑已发布版本不撤回
+        self.assertIn("'--draft'", publisher)
+        self.assertIn("'--draft=false'", publisher)
+        self.assertIn("'--clobber'", publisher)
+        self.assertIn("'--verify-tag'", publisher)
+        self.assertIn("def find_release", publisher)
         self.assertIn("scripts/prepare_release_notes.py", workflow)
-        self.assertIn("gh release edit", workflow)
-        self.assertIn("--notes-file release-notes.md", workflow)
         # publish 必须同时满足 tag 触发 + Windows 构建成功，否则 dispatch 会误发 Release
         self.assertIn("startsWith(github.ref, 'refs/tags/v') && !cancelled() && needs.build-windows.result == 'success'", workflow)
         # 不完整构建警告：needs 上下文只提供单数 result（矩阵 job 的聚合结果），
@@ -733,8 +737,8 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("MAW-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
         self.assertIn("MAW-lite-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
         self.assertIn("actions/upload-artifact@v6", workflow)
-        self.assertIn("gh release upload", workflow)
-        self.assertIn("--target '${{ github.sha }}'", workflow)
+        self.assertIn("scripts/publish_release.py", workflow)
+        self.assertIn("--notes release-notes.md", workflow)
         self.assertIn("GITHUB_TOKEN: ${{ github.token }}", workflow)
         self.assertNotIn(".zip.sha256", workflow)
 

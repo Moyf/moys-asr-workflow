@@ -38,6 +38,11 @@ __pycache__/
 node_modules/
 .astro/
 website/dist/
+# Release pages, update feeds and deduplicated images are build-only outputs.
+website/src/generated/
+website/src/pages/releases/*.md
+website/public/releases/
+website/public/release-assets/
 playwright-report/
 test-results/
 
