@@ -202,12 +202,22 @@ function siteRoute(route, currentSource) {
   return `${relative || '.'}${route.endsWith('/') ? '/' : ''}`;
 }
 
-function sanitizeDocument(markdown, source) {
+export function sanitizeDocument(markdown, source) {
   if (source !== 'README.md') return markdown;
 
   // Compatibility guard for older README revisions containing demo credentials.
   // The current README has no shared credential section.
-  return markdown.replace(/\n?<details>[\s\S]*?<\/details>\s*/i, '\n\n> 官网不展示共享演示凭据，请使用你自己的 ASR API Key。\n\n');
+  return markdown.replace(/<details\b[^>]*>[\s\S]*?<\/details>/gi, (block) => {
+    const summary = (block.match(/<summary\b[^>]*>([\s\S]*?)<\/summary>/i)?.[1] || '')
+      .replace(/<[^>]*>/g, ' ');
+    const sharedPurpose = /演示|共享|临时|demo|shared|temporary/i.test(summary);
+    const credentialTitle = /凭据|密钥|令牌|credentials?|\b(?:api[\s_-]*)?keys?\b|token/i.test(summary);
+    const secretValue = /\bsk-[A-Za-z0-9_-]{12,}\b/.test(block);
+    if (sharedPurpose && credentialTitle || secretValue) {
+      return '\n\n> 官网不展示共享演示凭据，请使用你自己的 ASR API Key。\n\n';
+    }
+    return block;
+  });
 }
 async function readDocument(source) {
   const localPath = path.join(sourceRoot, ...source.split('/'));
@@ -277,7 +287,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

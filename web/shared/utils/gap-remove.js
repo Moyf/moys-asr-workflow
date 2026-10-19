@@ -62,6 +62,8 @@ export function createUtilsModule(dependencies) {
 
   const mapGapRemovedTime = GAP_REMOVE_CORE.mapGapRemovedTime;
 
+  const isRangeInsideRemovedGap = GAP_REMOVE_CORE.isRangeInsideRemovedGap;
+
   const buildGapRemovedIntervals = GAP_REMOVE_CORE.buildGapRemovedIntervals;
 
   // Export projection only: raw source cues remain recoverable in the editor.
@@ -170,5 +172,5 @@ export function createUtilsModule(dependencies) {
     return { start, end };
   }
 
-  return Object.freeze({ buildAiCleanupSegments, GAP_REMOVE_DISABLE_COVERAGE_DEFAULT, GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS, GAP_REMOVE_DISABLE_REMAINING_MAX_MS, appendGapRemoveManualOverrides, applyGapRemoveRange, buildGapRemovedDynamicSegments, buildGapRemovedIntervals, clampGapRemoveDisableCoverage, clampGapRemoveDisableRemaining, copyGapRemoveRange, decorateGapRemoveGaps, detectAudioGapRemoveGaps, findGapRemoveDisableMatches, gapRangesFromProvenance, getGapRemoveDisplayGaps, getGapRemoveDisplayType, getRemovedGapRanges, isGapRemoveDisplayProtected, mapGapRemovedTime, moveGapRemoveProvenance, moveGapRemoveRange, normalizeGapRemoveData, normalizeGapRemoveGaps, normalizeGapRemoveProvenance, removeGapRemoveProvenanceRange, replaceGapRemoveProvenanceSource, resizeGapRemoveBoundary, resolveGapFillRange, shrinkGapRemoveGaps });
+  return Object.freeze({ buildAiCleanupSegments, GAP_REMOVE_DISABLE_COVERAGE_DEFAULT, GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS, GAP_REMOVE_DISABLE_REMAINING_MAX_MS, appendGapRemoveManualOverrides, applyGapRemoveRange, buildGapRemovedDynamicSegments, buildGapRemovedIntervals, clampGapRemoveDisableCoverage, clampGapRemoveDisableRemaining, copyGapRemoveRange, decorateGapRemoveGaps, detectAudioGapRemoveGaps, findGapRemoveDisableMatches, gapRangesFromProvenance, getGapRemoveDisplayGaps, getGapRemoveDisplayType, getRemovedGapRanges, isGapRemoveDisplayProtected, isRangeInsideRemovedGap, mapGapRemovedTime, moveGapRemoveProvenance, moveGapRemoveRange, normalizeGapRemoveData, normalizeGapRemoveGaps, normalizeGapRemoveProvenance, removeGapRemoveProvenanceRange, replaceGapRemoveProvenanceSource, resizeGapRemoveBoundary, resolveGapFillRange, shrinkGapRemoveGaps });
 }

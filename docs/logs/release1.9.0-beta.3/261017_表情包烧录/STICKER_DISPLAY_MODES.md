@@ -98,7 +98,8 @@ legacy 长句自动折行两处。实现选项推荐「选项 A：每 (PNG, 句)
 - 预览 CSS 语义（web/editor.css:803-831）：层内 flex 纵向堆叠、`gap: 6px`；单图 `:only-child`
   `max-height:100%`（contain 不溢出）；多图每张 `max-height:50%`、不收缩原高向下延伸；
   叠加轨表情包激活时内容区临时加高到 200%（`.has-overlay-sticker`，:814-818）。
-- z-order：字幕 Canvas 层 `z-index: 20`（editor.css:700）> 表情包层 `z-index: 9`（:806）→
+- z-order：字幕 Canvas 层（`.subtitle-overlay`，`z-index: 10`，editor.css:716）> 表情包层
+  `z-index: 9`（:806）→
   烧录链 overlay 在 `ass` 之前，与预览一致（TASK.md 已确认）。
 
 ### 2.5 时间收缩与烧录管线

@@ -625,8 +625,11 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             + page.count('class="editor-settings-group subtitle-preview-style-group"')
             + page.count('class="editor-settings-group subtitle-color-settings-group"')
             + page.count('class="editor-settings-group subtitle-speaker-settings-group"'),
-            32,  # 界面页新增消息提示位置分组。
+            33,  # 「更多导出」新增绿幕视频导出分组。
         )
+        self.assertEqual(page.count('aria-labelledby="export-green-screen-title"'), 1)
+        self.assertIn('<span class="editor-settings-group-heading" id="export-green-screen-title">绿幕视频导出</span>', page)
+        self.assertIn('<input type="checkbox" id="green-screen-include-audio"> 附带音轨', page)
         self.assertEqual(page.count('class="editor-settings-group split-language-type-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-color-settings-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-speaker-settings-group"'), 1)

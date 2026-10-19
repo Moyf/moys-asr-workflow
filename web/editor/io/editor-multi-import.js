@@ -253,10 +253,13 @@
 
 
   async function openProjectFile(file, options = {}) {
+    const generation = MaweState.beginProjectLoad();
+    const current = () => generation === MaweState.projectLoadGeneration;
     const suppressMediaPrompt = options.suppressMediaPrompt === true;
     const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在读取工程 ${file.name}…`, 5);
     try {
-      const text = await MaweLoadingProgress.readFileTextWithProgress(file);
+      const text = await MaweState.waitForProjectLoad(MaweLoadingProgress.readFileTextWithProgress(file), generation);
+      if (!current()) return false;
       MaweLoadingProgress.updateEditorLoading(60, `正在解析工程 ${file.name}…`);
       const data = JSON.parse(text);
       if (data && typeof data === 'object' && !Array.isArray(data)
@@ -279,7 +282,7 @@
         MaweHint.flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
         return false;
       }
-MaweProjectLoad.applyCanonicalProject(data, file.name);
+MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation });
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();
 const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
@@ -288,7 +291,8 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
       // 接管失败（媒体已移动 / 同名工程缺失 / 内容不一致）再回退为手动选择媒体。
       if (expectedName && MaweBoot.SERVER_CONFIG?.attachUrl) {
         MaweLoadingProgress.updateEditorLoading(85, '正在连接本地编辑器服务器…');
-        if (await MaweServerSave.attachProjectToServer(file.name, data)) return true;
+        if (await MaweServerSave.attachProjectToServer(file.name, data, { isCurrent: current })) return true;
+        if (!current()) return false;
       }
       // 工程未被服务器接管（无媒体可定位 / 接管失败）：服务器仍绑定旧工程，
       // 当前内容不能再写回它；后续保存退化为「导出工程」，直到重新经服务器打开。
@@ -302,6 +306,7 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
         : `已加载工程：${file.name}（${MaweBoot.DATA.segments.length} 条字幕）`);
       return true;
     } catch (error) {
+      if (!current()) return false;
       MaweProjectMediaInputs.pendingProjectMediaSelection = null;
       MaweHint.flashHint(error instanceof SyntaxError
         ? '打开了错误的文件，请使用 MAW 生成的工程文件。'
@@ -309,6 +314,8 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
       console.error(error);
       return false;
     } finally {
+      MaweState.finishProjectLoad(generation);
+      if (current()) MaweServerSave.configureServerSaveControls();
       finishLoading();
     }
   }

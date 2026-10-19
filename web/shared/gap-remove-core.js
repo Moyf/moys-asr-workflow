@@ -1391,6 +1391,16 @@
     return Math.max(0, source - removedBefore);
   }
 
+  // 字幕完全落在某个已移除空隙内时，mapGapRemovedTime 会把它与同空隙的其他
+  // 字幕一起映射到空隙收缩后的同一边界时刻（开头空隙即输出第一帧堆叠）。
+  // 去空隙导出/烧录前应整体丢弃这类字幕；跨越切点的字幕维持原映射规则。
+  function isRangeInsideRemovedGap(startMs, endMs, gaps) {
+    const start = Math.max(0, Math.round(Number(startMs) || 0));
+    const end = Math.max(0, Math.round(Number(endMs) || 0));
+    if (end <= start) return false;
+    return getRemovedGapRanges(gaps).some((gap) => start >= gap.start && end <= gap.end);
+  }
+
   function buildGapRemovedIntervals(durationMs, gaps) {
     const duration = Math.max(0, Math.round(Number(durationMs) || 0));
     const intervals = [];
@@ -1512,6 +1522,7 @@
     isGapPreviewActive,
     getGapPlaybackSkip,
     mapGapRemovedTime,
+    isRangeInsideRemovedGap,
     buildGapRemovedIntervals,
   });
 })(typeof window !== 'undefined' ? window : globalThis);

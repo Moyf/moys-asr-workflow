@@ -152,6 +152,13 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// 403 = 页面内嵌的请求令牌与当前服务器实例不一致（典型：服务器重启后页面
+// 未刷新）。给用户可执行的动作，而不是裸状态码；整句进 i18n 翻译表。
+function describeAssStyleSyncError(error) {
+  const message = String(error?.message || '未知错误');
+  return message === 'HTTP 403' ? 'HTTP 403（页面已失效，请刷新网页后重试）' : message;
+}
+
 async function persistAssStyleLibrary() {
   clearTimeout(assStyleLibrarySaveTimer);
   assStyleLibrarySaveTimer = 0;
@@ -190,7 +197,7 @@ async function persistAssStyleLibrary() {
   } catch (error) {
     // 本地副本仍然可用；状态会在管理窗中明确显示为未同步。
     ASS_STYLE_LIBRARY_READY = false;
-    setAssStyleLibraryStatus(`本地已保存，服务器同步失败：${error?.message || '未知错误'}`, 'warning');
+    setAssStyleLibraryStatus(`本地已保存，服务器同步失败：${describeAssStyleSyncError(error)}`, 'warning');
     return normalized;
   } finally {
     assStyleLibrarySaveInFlight = false;

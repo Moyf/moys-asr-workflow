@@ -112,13 +112,14 @@
     return;
   }
   const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
+  const keptSegments = gapRemoved ? filterSegmentsInsideRemovedGaps(segments, removed) : segments;
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    segments,
+    keptSegments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
   const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
   const speakerSettings = MaweSpeakerLabels.getSpeakerLabelSettings();
-  const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(segments, {
+  const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(keptSegments, {
     colorName: color.name,
     timeOffset: 0,
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
@@ -353,6 +354,15 @@
 
 
 
+  // 完全位于已移除空隙内的字幕会被 mapGapRemovedTime 映射到同一时刻（开头
+  // 空隙即输出第一帧堆叠），去空隙导出/烧录前整体丢弃；跨越切点的字幕维持
+  // 原映射规则。
+  function filterSegmentsInsideRemovedGaps(segments, removed) {
+    return (Array.isArray(segments) ? segments : [])
+      .filter((segment) => segment
+        && !window.AsrEditorUtils.isRangeInsideRemovedGap(segment.start, segment.end, removed));
+  }
+
   function buildGapRemovedSrt() {
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
@@ -360,11 +370,12 @@
     return null;
   }
   const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
+  const keptSegments = filterSegmentsInsideRemovedGaps(segments, removed);
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    segments,
+    keptSegments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
-  return window.AsrEditorUtils.buildSrtPayload(segments, {
+  return window.AsrEditorUtils.buildSrtPayload(keptSegments, {
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
@@ -384,21 +395,23 @@
     MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
     return null;
   }
+  const mainSegments = filterSegmentsInsideRemovedGaps(cleanupMainSegments(), removed);
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    cleanupMainSegments(),
+    mainSegments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
   // 去空隙 ASS 与常规 ASS 同一三轨契约：叠加轨与副字幕也随导出，
-  // 时间统一经 mapGapRemovedTime 压缩。onAssPlan 透传给表情包烧录：
-  // 排版计划与 ASS 文本同一份（收缩时间轴），字幕位置与表情包窗口天然一致。
+  // 时间统一经 mapGapRemovedTime 压缩；完全在空隙内的字幕同样整体丢弃。
+  // onAssPlan 透传给表情包烧录：排版计划与 ASS 文本同一份（收缩时间轴），
+  // 字幕位置与表情包窗口天然一致。
   const { overlaySegments } = cleanupMergedExportSegments();
   const extensionSegments = activeExtensionSegments();
-  return window.AsrEditorUtils.buildAssPayload(cleanupMainSegments(), {
+  return window.AsrEditorUtils.buildAssPayload(mainSegments, {
     ...assExportOptions(),
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
-    overlaySegments,
-    extensionSegments,
+    overlaySegments: filterSegmentsInsideRemovedGaps(overlaySegments, removed),
+    extensionSegments: filterSegmentsInsideRemovedGaps(extensionSegments, removed),
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
     onAssPlan,
     ...MaweSpeakerLabels.speakerLabelExportOptions(),

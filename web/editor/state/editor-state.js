@@ -149,7 +149,34 @@ window.MAWE.register('editor-state', function createEditorState(project) {
       || (project.multi_subtitle?.tracks || []).some(dirty));
   }
 
+  let projectLoadGeneration = 0;
+  let projectLoadPending = false;
+  const projectLoadObservers = new Set();
+  function observeProjectLoad(callback) {
+    projectLoadObservers.add(callback);
+    return () => projectLoadObservers.delete(callback);
+  }
+  function beginProjectLoad() {
+    projectLoadPending = true;
+    projectLoadGeneration += 1;
+    for (const callback of [...projectLoadObservers]) callback();
+    return projectLoadGeneration;
+  }
+  function finishProjectLoad(generation) {
+    if (generation === projectLoadGeneration) projectLoadPending = false;
+  }
+  function waitForProjectLoad(promise, generation) {
+    return new Promise((resolve, reject) => {
+      const unobserve = observeProjectLoad(() => { unobserve(); resolve(null); });
+      Promise.resolve(promise).then(resolve, reject).finally(unobserve);
+      if (generation !== projectLoadGeneration) { unobserve(); resolve(null); }
+    });
+  }
+
   return Object.freeze({ project, selection, preferences, runtime, panel, editing, changes, hasProjectChanges,
+    beginProjectLoad, finishProjectLoad, observeProjectLoad, waitForProjectLoad,
+    get projectLoadGeneration() { return projectLoadGeneration; },
+    get projectLoadPending() { return projectLoadPending; },
     segmentsFingerprint, noteSavedSegments, markSaved, reconcileSegmentsDirty,
     markProjectDirty, getProjectDirtyEpoch, onProjectDirtyChange });
 });

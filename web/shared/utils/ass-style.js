@@ -158,9 +158,8 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  const ASS_DEFAULT_STYLE = Object.freeze({
-    id: 'default',
-    name: 'SRT 默认',
+  // 三个内置样式的共享基础字段值；各内置条目在此之上覆盖 id/名称与个别排版值。
+  const ASS_BUILTIN_STYLE_BASE = Object.freeze({
     builtin: true,
     fontName: ASS_DEFAULT_FONT_FAMILY,
     fontSize: 86,
@@ -196,20 +195,29 @@ export function createUtilsModule(dependencies) {
     encoding: 1,
   });
 
-  // 内置参数与维护者的当前配置一致；字体继续按系统选择。
+  // SRT 渲染样式（烧录字幕）的排版默认值：字号/阴影/垂直边距按维护者实际使用
+  // 配置，与 Python 侧 DEFAULT_SRT_STYLE 保持一致。
+  const ASS_DEFAULT_STYLE = Object.freeze({
+    ...ASS_BUILTIN_STYLE_BASE,
+    id: 'default', name: 'SRT 渲染样式',
+    fontSize: 80, shadow: 2, marginV: 124,
+  });
+
+  // 内置参数与维护者的当前配置一致；字号沿用基础值 86，垂直边距单独覆盖。
   const ASS_DEFAULT_ASS_STYLE = Object.freeze({
-    ...ASS_DEFAULT_STYLE,
+    ...ASS_BUILTIN_STYLE_BASE,
     id: 'ass', name: 'ASS 默认样式',
     emphasisColor: '#ffaa00', emphasisScale: 1.3,
     backColor: '#ff8647', backOpacity: 60,
+    marginV: 180,
   });
 
   // 副字幕位于主字幕下方，使用独立颜色、描边及边距。
   const ASS_DEFAULT_EXTENSION_STYLE = Object.freeze({
-    ...ASS_DEFAULT_STYLE,
+    ...ASS_BUILTIN_STYLE_BASE,
     id: 'ass-extension', name: 'ASS 副字幕样式',
     primaryColor: '#f9ca1f', emphasisColor: '#ffaa00',
-    fontSize: 64, outline: 2, marginV: 36,
+    fontSize: 64, outline: 4, marginV: 100,
   });
 
   const ASS_DEFAULT_ANIMATIONS = Object.freeze({
@@ -439,7 +447,7 @@ export function createUtilsModule(dependencies) {
       });
     }
     // 内置条目若仍使用旧默认名，迁移到当前默认名；用户自定义过的名字不动。
-    const legacyBuiltinStyleNames = { ass: 'ASS' };
+    const legacyBuiltinStyleNames = { default: 'SRT 默认', ass: 'ASS' };
     styles.forEach((style) => {
       const legacy = legacyBuiltinStyleNames[style.id];
       if (legacy && style.name === legacy) {

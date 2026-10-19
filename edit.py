@@ -59,7 +59,7 @@ VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 # Keep this aligned with pyproject.toml; release workflows synchronize it.
-BUNDLED_EDITOR_VERSION = "1.9.0-beta.3"
+BUNDLED_EDITOR_VERSION = "1.9.0"
 
 
 class Sticker(TypedDict):
@@ -105,6 +105,11 @@ def image_dimensions(path: Path) -> tuple[int, int]:
             marker = data.find(b"\x9d\x01\x2a", 20)
             if marker >= 0 and marker + 7 <= len(data):
                 return int.from_bytes(data[marker + 3:marker + 5], "little") & 0x3FFF, int.from_bytes(data[marker + 5:marker + 7], "little") & 0x3FFF
+        # VP8L（无损）是贴纸包常见的静态 WebP 变体：帧头签名 0x2f 后的 4 字节
+        # 小端里低 14 位为宽 -1、次 14 位为高 -1。
+        if data[12:16] == b"VP8L" and len(data) >= 25 and data[20] == 0x2F:
+            bits = int.from_bytes(data[21:25], "little")
+            return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
     raise ValueError(f"unsupported or invalid image: {path}")
 
 
@@ -292,6 +297,10 @@ def render_editor_page(**context: str) -> str:
     if unresolved:
         raise ValueError(f"Unresolved editor template tokens: {', '.join(unresolved)}")
     for token, value in replacements.items():
+        if token.endswith("_JSON__"):
+            # JSON is embedded inside script elements. Literal closing tags in
+            # subtitle text or AI notes must not terminate the HTML script.
+            value = value.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
         page = page.replace(token, value)
     return page
 

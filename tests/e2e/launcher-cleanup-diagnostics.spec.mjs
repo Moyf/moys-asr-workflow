@@ -59,7 +59,7 @@ test('cleanup review defaults off, persists and reaches requests; reports never 
   await expect.poll(() => page.evaluate(() => window.__cleanupRequests[0]?.reviewEnabled)).toBe(false);
   await expect(page.locator('#toolboxChainList > :first-child')).toHaveId('toolboxChainOriginal');
   await expect(page.locator('#toolboxChainOriginal')).toHaveText('原始输入MOSP 工程');
-  await expect(page.locator('.toolbox-chain-item .toolbox-chain-label').first()).toHaveText('[AI 口播整理]');
+  await expect(page.locator('.toolbox-chain-item .toolbox-chain-label').first()).toHaveText('[口播整理]');
   await page.locator('#postprocessCleanupReviewEnabled').check();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('test.cleanup.plan') || '{}').steps?.find(s => s.id === 'cleanup')?.reviewEnabled)).toBe(true);
   const spacing = await page.locator('label[for="postprocessCleanupReviewEnabled"]').evaluate(label => ({

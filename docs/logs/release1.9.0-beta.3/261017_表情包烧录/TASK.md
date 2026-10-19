@@ -19,34 +19,42 @@
 | 4 | 服务端/前端单测 | 已修复 | `tests/test_burn_video_export.py::BurnStickerTests` 9 条；全文件 27 条通过 |
 | 5 | 真实 FFmpeg 冒烟验证 | 已修复 | `.artifacts/sticker-burn/`：testsrc 320x240 + PNG，像素级验证表情包位置（t=1.5/2.0/3.5 均在指定层内）与字幕同帧渲染；一次性编码完成 |
 | 6 | 方案一/方案二研究报告 | 已修复 | `STICKER_DISPLAY_MODES.md`（并行研究 agent 产出） |
-| 7 | **二期**：placement 纯函数模块 | 已修复 | `web/shared/utils/sticker-placement.js`（`computeStickerCuePlacements`）：窗口按主字幕句切段、逐句从 `assStackFrame` 推导墨盒左缘/垂直中心；legacy 句、句间空隙、出画、同屏多图第二张起回退固定位置；Node 测试 8 条（`tests/test_sticker_placement.mjs`） |
+| 7 | **二期**：placement 纯函数模块 | 已修复 | `web/shared/utils/sticker-placement.js`（`computeStickerCuePlacements`）：窗口按主字幕句切段、逐句从 `assStackFrame` 推导墨盒左缘/垂直中心；legacy 句、句间空隙、出画、同屏多图第二张起回退固定位置；Node 测试 10 条（`tests/test_sticker_placement.mjs`） |
 | 8 | **二期**：烧录载荷 `mode + placements[]` | 已修复 | 请求 `stickers` 接受对象形式（老数组=fixed 兼容）；同 rel 多 placement 经 FFmpeg `split` 复用一个输入，每 placement 一个 scale+overlay 节点；上限 placements 1000 / 唯一图片 32 |
 | 9 | **二期**：模式设置与接线 | 已修复 | `EDITOR_SETTINGS.stickerBurnMode`（fixed/cue-left，默认 fixed）+ 设置页「烧录显示位置」下拉 + i18n；两个烧录入口经 `buildAss(onAssPlan)` 把与 ASS 同源的计划传入 placement 计算（去空隙 `buildGapRemovedAss` 补透传 onAssPlan，计划与 ASS 同一收缩时间轴） |
-| 10 | **二期**：真实 FFmpeg 验证 | 已修复 | cue-left 双窗口：句内显示在指定位置、句间空隙无残留、split 单输入（`.artifacts/sticker-burn/cue_left_verify.py`） |
-| 11 | 二期：预览层跟随字幕 | 待处理 | 预览层仍显示固定位置；设置页 hint 已注明「最终以烧录结果为准」。实现路径见研究报告 §4.5.3（同一 placements 计算驱动 DOM 层） |
+| 10 | **二期**：真实 FFmpeg 验证 | 已修复 | cue-left 双窗口：句内显示在指定位置、句间空隙无残留、split 单输入（当时本机 `.artifacts/sticker-burn/cue_left_verify.py`，不入库） |
+| 11 | 二期：预览层跟随字幕 | 待处理 | 预览层仍显示固定位置；设置页 hint 已注明「最终以烧录结果为准」。实现路径见研究报告 §4.5（同一 placements 计算驱动 DOM 层） |
 | 12 | Greptile PR 复审修复（PR 272） | 已修复 | 6 条评论全部处理：① 前端改发 `{mode, placements}` 载荷 + placement 自带 `align`（贴字幕段 right / 回退段 center），服务端 `_fit_contain_box` 右对齐修正为贴目标框右缘（窄图不再偏移）；② cue-left 目标框四边越界检查（越界回退 fixed，不再发出服务端会拒绝的负坐标）；③ 窗口切段加入 slice 起止边界（主句跨叠加字幕进出导致的布局切换不再被中点采样吞掉）；④ intervals 条目加 dict 类型检查（null 不再引发 500）；⑤ 动画 WebP 检测改为按 RIFF chunk 结构读 VP8X 动画标志（实测 flags 在 chunk data[0]，payload 含 ANMF 字节的静态文件不再误判）；⑥ 研究报告 §2.5/§3.5/§4.4/§6.1/§8 的「服务端减 seek_start」错误建议修正为「收缩时间轴原样使用」 |
 
 ## 关键设计
 
 - **一次性编码**：overlay 链与 `ass` 在同一张 filter_complex 图串联，单次解码单次编码；
   表情包只有每帧一次 alpha blend 开销。
-- **z-order 与预览一致**：overlay 在 `ass` 之前（预览中字幕层 z-index 20 > 表情包层 9）。
-- **几何契约**：前端把归一化 `preview.sticker` × 视频分辨率换算成像素层矩形；
-  服务端用 `scale=w=W:h=H:force_original_aspect_ratio=decrease`（contain 不放大）
-  + `overlay=x='X+(W-w)/2':y='Y+(H-h)/2'`（层内居中）完成 contain 缩放与居中，
-  前端/服务端都不需要读取图片尺寸。
+- **z-order 与预览一致**：overlay 在 `ass` 之前（预览中字幕层 `.subtitle-overlay`
+  z-index 10 > 表情包层 `#sticker-overlay-layer` 9，web/editor.css）。
+- **几何契约（静态坐标）**：前端把归一化 `preview.sticker`（方案一）或排版计划推导的
+  目标框（方案二）× 视频分辨率换算成像素目标框；服务端用 `edit.image_dimensions()`
+  读取图片尺寸静态计算 contain 显示矩形（整数），`scale=w=W:h=H` + `overlay=x=X:y=Y`
+  全部纯数字坐标。早期「FFmpeg 表达式 contain（`force_original_aspect_ratio=decrease`
+  + `overlay` 的 W/H 表达式）」方案已废弃——表达式坐标在 `-stream_loop` 输入下被
+  静默丢弃（见下「实测踩掉的坑」3）。对齐规则：placement 自带 `align`，fixed/回退段
+  框内居中，cue-left 贴字幕段框内右对齐垂直居中（贴字间隙不随图片宽窄移动）。
 - **时钟契约**：去空隙模式 overlay 链挂在 `select/setpts` 之后（`[burn_base]`），
   enable 用收缩时间轴——与前端 `mapGapRemovedTime` 收缩的区间、与 ASS 字幕同一时钟。
 - **素材契约**：服务端用 `_sticker_rel_path()`（防穿越）在激活的 `project.sticker_root`
-  下解析 rel，与 `/stickers/` 预览路由同一目录；rel 去重合并 enable 区间，一张图一个 FFmpeg 输入。
+  下解析 rel，与 `/stickers/` 预览路由同一目录；同一 rel 的多个 placement（方案二
+  逐句贴放）经 FFmpeg `split` 复用一个输入，每个 placement 一个 scale+overlay 节点。
 - **开关契约**：跟随编辑器「预览表情包」开关（`stickerOverlayToggle` + `stickersEnabled`），所见即所得。
-- **shortest=1 必须显式**：静态图 `-loop 1` 与循环 GIF 都是无限输入，overlay 缺省
-  `shortest=0`（输出持续到最长输入结束）会让 FFmpeg 永不退出（冒烟阶段实测踩坑）。
+- **shortest=1 必须显式**：所有表情包输入都被无限化（见下坑 2），主视频恒为最短
+  输入；overlay 缺省 `shortest=0`（输出持续到最长输入结束）会让 FFmpeg 永不退出。
+- **与绿幕互斥**：绿幕画布是固定尺寸档位而表情包 placements 按源视频分辨率换算，
+  直接烧会整体错位，handler 与 `burn_ass_video` 双层明确拒绝（与「绿幕 + 去空隙」
+  同一策略）；未来放开时表情包 overlay 仍应在 ass 之前、并需前端按绿幕档位重算几何。
 
 ## 已知边界（基础管线明确不做）
 
 - 同屏多张表情包时预览是垂直堆叠（各 contain 到层高 50%），烧录按「每张图独立
-  contain 到整层、居中叠放」近似；多图同屏为边缘场景，方案二报告 §3.4 有收敛思路。
+  contain 到整层、居中叠放」近似；多图同屏为边缘场景，方案二报告 §3.3 有收敛思路。
 - 单帧「实际画面预览」（`render_ass_frame`）暂不叠表情包，烧录与预览层后续可共享同一份计划。
 - 表情包 `rel` 缺失的老工程段落跳过（服务端契约需要 rel）。
 
@@ -57,8 +65,8 @@
 | PNG/JPEG/BMP | ✓ | ✓ | `-loop 1` 无限帧 |
 | 静态 GIF | ✓ | ✓ | `-stream_loop -1 -ignore_loop 0`；GIF demuxer 默认 `ignore_loop=1` 会播一遍就停，必须显式遵循文件循环次数 |
 | 动图 GIF | 浏览器循环播放 | ✓ 循环播放 | 同上；与预览一致 |
-| 静态 WebP | ✓ | ✓ | `-stream_loop -1`（webp demuxer 无循环机制） |
-| **动画 WebP** | 浏览器可播放 | **✗ 拒绝并提示** | FFmpeg webp demuxer 解码 0 帧，overlay 拿不到次输入帧、输出空文件；服务端检测 RIFF 头 ANMF chunk 后报错，提示改用 GIF |
+| 静态 WebP | ✓ | ✓ | `-stream_loop -1`（webp demuxer 无循环机制）；含 VP8L 无损变体（`edit.image_dimensions` 已解析其帧头尺寸） |
+| **动画 WebP** | 浏览器可播放 | **✗ 拒绝并提示** | FFmpeg webp demuxer 解码 0 帧，overlay 拿不到次输入帧、输出空文件；服务端按 RIFF chunk 结构读 VP8X 动画标志后报错，提示改用 GIF（不全文搜 ANMF 字节，避免静态文件元数据误判） |
 
 ### 实测踩掉的三个坑
 
@@ -74,7 +82,7 @@
 ## 验证记录
 
 - `python scripts/run_check.py -- uv run --no-sync python -m unittest tests.test_burn_video_export`
-  → 27/27 通过（含表情包解析/滤镜图/命令接线/HTTP 转发 9 条新测试）。
+  → 全文件通过（BurnStickerTests 16 条：表情包解析/滤镜图/命令接线/HTTP 转发；随迭代增至 37+ 条）。
 - `node --test tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs` → 通过。
 - `pnpm run check:editor` → bundle 新鲜。
 - 真实 FFmpeg 冒烟（本机完整版 FFmpeg）：
