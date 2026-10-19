@@ -27,6 +27,70 @@ function makePlan({ fontSize = 60, legacy = false, manual = false, move = false 
 
 const FIXED_BOX = { x: 1400, y: 80, width: 460, height: 324 };
 
+// 同一句跨多个布局 slice，保留整句 item 时间，用真实 assStackFrame 取几何。
+function makeSlicedPlan(layouts) {
+  const plan = makePlan();
+  const cueEnd = layouts[layouts.length - 1].end;
+  plan.slices = layouts.map(({ start, end, x = 900, toX = x }) => {
+    const slice = makePlan().slices[0];
+    slice.start = start;
+    slice.end = end;
+    slice.items[0].end = cueEnd;
+    slice.pieces = [{ start, end, instant: null,
+      from: { x, y: 900 }, to: { x: toX, y: 900 } }];
+    return slice;
+  });
+  return plan;
+}
+
+test('short layout slices retain their own geometry instead of shifting the earlier midpoint', () => {
+  const plan = makeSlicedPlan([
+    { start: 0, end: 100, x: 900 },
+    { start: 100, end: 140, x: 1100 },
+    { start: 140, end: 180, x: 1200 },
+    { start: 180, end: 220, x: 1300 },
+  ]);
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 220 }],
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(placements.map(({ x, align, intervals }) => ({ x, align, intervals })))), [
+    { x: 643, align: 'right', intervals: [{ start: 0, end: 100 }] },
+    { x: 843, align: 'right', intervals: [{ start: 100, end: 140 }] },
+    { x: 943, align: 'right', intervals: [{ start: 140, end: 180 }] },
+    { x: 1043, align: 'right', intervals: [{ start: 180, end: 220 }] },
+  ]);
+});
+
+test('consecutive short leading slices preserve the entire sticker window', () => {
+  const plan = makeSlicedPlan([
+    { start: 0, end: 40 }, { start: 40, end: 80 }, { start: 80, end: 200 },
+  ]);
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 200 }],
+  });
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].x, 643);
+  assert.deepEqual(JSON.parse(JSON.stringify(placements[0].intervals)), [
+    { start: 0, end: 40 }, { start: 40, end: 80 }, { start: 80, end: 200 },
+  ]);
+});
+
+test('a cue crossing static and moving slices uses the current slice for fallback', () => {
+  const plan = makeSlicedPlan([
+    { start: 0, end: 1000 }, { start: 1000, end: 2000, toX: 1100 },
+  ]);
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 2000 }],
+  });
+  assert.equal(placements.length, 2);
+  assert.equal(placements[0].x, 643);
+  assert.equal(placements[0].align, 'right');
+  assert.deepEqual(JSON.parse(JSON.stringify(placements[0].intervals)), [{ start: 0, end: 1000 }]);
+  assert.equal(placements[1].x, FIXED_BOX.x);
+  assert.equal(placements[1].align, 'center');
+  assert.deepEqual(JSON.parse(JSON.stringify(placements[1].intervals)), [{ start: 1000, end: 2000 }]);
+});
+
 test('cue-left places the target box right edge before the cue ink box', () => {
   const plan = makePlan();
   const placements = computeStickerCuePlacements({

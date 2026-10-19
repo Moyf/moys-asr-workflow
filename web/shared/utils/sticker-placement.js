@@ -7,9 +7,6 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
 
   const assStackFrame = dependencies.assStackFrame;
 
-  // 单个表情包窗口的最小显示段：字幕切换边界上切出的碎片短于该值时直接
-  // 丢弃，避免表情包在两句间闪现一帧的位置跳变。
-  const MIN_SEGMENT_MS = 60;
   // 目标框相对字号的比例：高约 1.5 倍字号（与行盒同量级）、宽 4 倍字号；
   // 图片在框内 contain 缩放（服务端按对齐模式放置），窄图宽图都不失真。
   const TARGET_RATIO = Object.freeze({ width: 4, height: 1.5 });
@@ -23,8 +20,8 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
   // 切分——同一主句跨 slice（例如叠加字幕出现/消失）时布局可能切换
   // （legacy ↔ 堆叠、位置与缩放变化），中点采样必须落在同一段内才准确。
   // 返回 [{start, end, cue}]，cue 为覆盖该段的主字幕（null = 句间空隙段）。
-  // 短于 MIN_SEGMENT_MS 的碎段并入相邻段（尾部并前段、窗口开头的并后段）：
-  // 直接丢弃会让表情包在成片里消失 1-2 帧，比它要避免的位置跳变更显眼。
+  // 短段也保留自己的布局边界，避免中点跨入另一布局或丢失窗口开头；
+  // 最终几何相同的段由 mergePlacementIntervals 合并。
   function splitWindowByCues(cues, bounds, win) {
     const points = new Set([win.start, win.end]);
     for (const cue of cues) {
@@ -35,26 +32,14 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
       if (bound > win.start && bound < win.end) points.add(bound);
     }
     const ordered = [...points].sort((a, b) => a - b);
-    const rawSegments = [];
+    const segments = [];
     for (let index = 0; index < ordered.length - 1; index += 1) {
       const start = ordered[index];
       const end = ordered[index + 1];
       const middle = (start + end) / 2;
-      rawSegments.push({ start, end, middle,
-        cue: cues.find(cue => middle >= cue.start && middle < cue.end) || null });
-    }
-    const segments = [];
-    let pendingHeadStart = null;
-    for (const segment of rawSegments) {
-      const previous = segments[segments.length - 1];
-      if (segment.end - segment.start < MIN_SEGMENT_MS) {
-        if (previous) previous.end = segment.end;
-        else pendingHeadStart = segment.start;
-        continue;
-      }
-      const start = pendingHeadStart ?? segment.start;
-      pendingHeadStart = null;
-      segments.push({ start, end: segment.end, cue: segment.cue });
+      segments.push({ start, end,
+        cue: cues.find(cue => middle >= cue.start && middle < cue.end
+          && middle >= cue.slice.start && middle < cue.slice.end) || null });
     }
     return segments;
   }
@@ -193,15 +178,11 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
         }
       }
       // 段循环已为空隙段与回退段写入 fixed placement；这里只在窗口确实有
-      // 段贴上字幕时占用（同屏去重）。segments 为空（窗口过短被全部滤除）
-      // 时整窗回退，避免表情包静默消失。
+      // 段贴上字幕时占用（同屏去重）。
       if (placed) occupied.push(win);
-      else if (!segments.length && box) {
-        fixedPlacements.push(fixedBoxPlacement(win.rel, { start: win.start, end: win.end }, box));
-      }
     }
     return mergePlacementIntervals([...cuePlacements, ...fixedPlacements]);
   }
 
-  return Object.freeze({ computeStickerCuePlacements, TARGET_RATIO, GAP_RATIO, MIN_SEGMENT_MS });
+  return Object.freeze({ computeStickerCuePlacements, TARGET_RATIO, GAP_RATIO });
 });
