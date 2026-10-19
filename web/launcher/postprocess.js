@@ -1835,6 +1835,54 @@
     return Boolean(item?.verified && (item?.apiKeyRequired === false || item?.hasApiKey !== false) && item?.hasBaseUrl !== false && item?.hasModel !== false);
   }
 
+  /** 后端是验证状态的权威来源：勾选被拦时先刷新缓存，避免过期标记误弹配置。 */
+  async function refreshPostprocessProviderStatus() {
+    const result = await bridge("get_config");
+    const fresh = new Map(
+      Array.isArray(result?.postprocessProviders)
+        ? result.postprocessProviders.map((item) => [String(item?.id || ""), item])
+        : []
+    );
+    if (!fresh.size) return;
+    (window.MAWLauncher.config?.postprocessProviders || []).forEach((item) => {
+      const next = fresh.get(String(item?.id || ""));
+      if (!next) return;
+      item.verified = Boolean(next.verified);
+      item.hasApiKey = Boolean(next.hasApiKey);
+      item.apiKeyRequired = next.apiKeyRequired !== false;
+      item.hasBaseUrl = Boolean(next.hasBaseUrl);
+      item.hasModel = Boolean(next.hasModel);
+      if (typeof next.maskedApiKey === "string") item.maskedApiKey = next.maskedApiKey;
+    });
+    renderProviderKeyStatus(provider());
+  }
+
+  /** 弹窗里验证/保存成功的供应商立即绑定到被拦截的步骤：门槛检查与弹窗验证不再是两个供应商。 */
+  function bindPendingStepProvider(providerId) {
+    const stepId = pendingAutoStep;
+    const id = knownProviderId(providerId);
+    if (!stepId || !id || !["cleanup", "proofread", "resegment", "translate"].includes(stepId)) return false;
+    rememberProviderForTask(autoLlmOperation(stepId), id);
+    const toolboxSelect = $("postprocessProvider");
+    if (Array.from(toolboxSelect.options).some((option) => option.value === id)) toolboxSelect.value = id;
+    renderProviderKeyStatus(provider(id));
+    return true;
+  }
+
+  /** 勾选被拦时先以后端权威状态刷新缓存：缓存过期就静默放行，确实未验证才弹配置。 */
+  async function confirmAutoStepCheck(stepId, checkbox) {
+    await refreshPostprocessProviderStatus();
+    if (!autoStepReady(stepId)) {
+      checkbox.checked = false;
+      renderAutoPostprocessState();
+      openAutoStep(stepId, "", { highlightConnection: true });
+      return;
+    }
+    // 后端确认已就绪：保留勾选，不重复弹配置弹窗。
+    renderAutoPostprocessState();
+    persistAutoPlanSoon();
+  }
+
   function autoStepReady(stepId) {
     if (stepId === "resegment" && !resegmentMaxCharsValid()) return false;
     if (stepId === "match") {
@@ -1986,7 +2034,10 @@
     pendingAutoStep = stepId;
     const llmStep = ["cleanup", "proofread", "resegment", "translate"].includes(stepId);
     if (llmStep && !autoLlmReady(stepProviderId(stepId))) {
-      const item = provider(stepProviderId(stepId));
+      // 弹窗展示并验证的就是门槛检查的供应商，避免「验证了 A、拦截的仍是 B」。
+      const checkedProviderId = stepProviderId(stepId);
+      if ($("llmProvider").value !== checkedProviderId) renderProvider(checkedProviderId, { syncToolbox: false });
+      const item = provider(checkedProviderId);
       const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
         ? invalidField
         : (item?.hasApiKey === false && item?.apiKeyRequired !== false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
@@ -2368,8 +2419,10 @@
     item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
     item.verified = Boolean(result.verified);
     fillProviderSelects(item.id);
+    if (result.verified) bindPendingStepProvider(item.id);
     renderProviderKeyStatus(item);
     renderAutoPostprocessState();
+    maybeEnablePendingAutoStep();
     setSettingsSaveStatus(t("toolbox_saved"), "success");
     return result;
   }
@@ -2403,6 +2456,7 @@
         item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
         item.hasApiKey = Boolean(result.maskedApiKey || $("llmApiKey").value.trim() || item.hasApiKey);
         fillProviderSelects(item.id);
+        bindPendingStepProvider(item.id);
         renderProviderKeyStatus(item);
         setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");
         renderAutoPostprocessState();
@@ -3061,9 +3115,7 @@
     const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
     checkbox.addEventListener("change", () => {
       if (checkbox.checked && !autoStepReady(stepId)) {
-        checkbox.checked = false;
-        renderAutoPostprocessState();
-        openAutoStep(stepId, "", { highlightConnection: true });
+        void confirmAutoStepCheck(stepId, checkbox);
         return;
       }
       renderAutoPostprocessState();

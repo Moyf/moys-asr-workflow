@@ -501,3 +501,135 @@ test("green-screen audio rejects missing or unsupported sources before starting"
     assert.equal(ui.errors.get("toolboxUtilityMediaPath"), "toolbox_green_screen_audio_required");
   }
 });
+
+// 回归：口播整理 / AI 校对勾选门槛（provider 绑定与验证状态）。
+function providerGateHarness({ providers, storedTaskMemory = {}, backendProviders = null } = {}) {
+  const fields = {
+    postprocessProvider: { value: "deepseek", options: [{ value: "deepseek" }, { value: "custom" }] },
+    postprocessOperation: { value: "ai_cleanup" },
+    postprocessCleanupScriptPath: { value: "" },
+    postprocessResegmentMaxChars: { value: "" },
+    llmProvider: { value: "deepseek" },
+    llmKeyStatus: { textContent: "" },
+    postprocessProviderStatus: { textContent: "" },
+  };
+  const storage = { "maw.launcher.llm.provider_by_task": JSON.stringify(storedTaskMemory) };
+  const localStorageStub = {
+    getItem: (key) => storage[key] ?? null,
+    setItem: (key, value) => { storage[key] = String(value); },
+  };
+  const openedSettings = [];
+  const context = vm.createContext({
+    console,
+    window: { MAWLauncher: { config: { postprocessProviders: providers }, openSettings: (section, focus) => openedSettings.push({ section, focus }) }, localStorage: localStorageStub },
+    document: { querySelector: () => null },
+    $: (id) => fields[id] || { value: "", textContent: "" },
+    localStorage: localStorageStub,
+    t: (key) => key,
+    SCRIPT_EXTS: new Set([".txt", ".md", ".markdown"]),
+    LLM_PROVIDER_TASK_GROUPS: { translate_zh: "translate", translate_en: "translate", proofread: "proofread", resegment: "resegment", custom: "custom", ai_cleanup: "cleanup" },
+    AUTO_LLM_OPERATIONS: { cleanup: "ai_cleanup", proofread: "proofread", resegment: "resegment" },
+    LLM_PROVIDER_BY_TASK_KEY: "maw.launcher.llm.provider_by_task",
+    extension: (path) => (String(path || "").match(/\.[^.\\/]+$/u)?.[0] || "").toLowerCase(),
+    resegmentMaxCharsValid: () => true,
+    parseReplacements: () => [],
+    bridge: async (method) => {
+      if (method === "get_config") return { postprocessProviders: (backendProviders ?? providers).map((item) => ({ ...item })) };
+      return { ok: true };
+    },
+    // openAutoStep 的完整 UI 链路不在本 harness 范围；记录调用参数即可。
+    openAutoStep: (stepId, invalidField, options) => openedSettings.push({ blockedStep: stepId, invalidField, options }),
+    renderProviderKeyStatus() {},
+    renderAutoPostprocessState() {},
+    persistAutoPlanSoon() {},
+  });
+  const names = [
+    "llmTaskGroup", "loadLlmProviderByTask", "saveLlmProviderByTask", "knownProviderId",
+    "providerIdForTask", "rememberProviderForTask", "stepProviderId",
+    "isCustomSlot", "customSlotVisibleInToolbox", "provider", "autoLlmOperation", "autoLlmReady",
+    "autoStepReady", "refreshPostprocessProviderStatus", "bindPendingStepProvider", "confirmAutoStepCheck",
+  ];
+  vm.runInContext(names.map((name) => launcherFunction(name)).join("\n"), context);
+  vm.runInContext(`
+    var pendingAutoStep = "";
+    var llmProviderByTask = {};
+    loadLlmProviderByTask();
+    var getPendingAutoStep = () => pendingAutoStep;
+    var setPendingAutoStep = (value) => { pendingAutoStep = value; };
+  `, context);
+  return {
+    context,
+    openedSettings,
+    ready: () => context.autoStepReady("cleanup"),
+    setPending: (value) => context.setPendingAutoStep(value),
+    getPending: () => context.getPendingAutoStep(),
+  };
+}
+
+function providerStub(overrides = {}) {
+  return {
+    id: "deepseek", label: "DeepSeek", defaultLabel: "DeepSeek", baseUrl: "https://api.deepseek.com",
+    model: "deepseek-chat", reasoningMode: "off", maskedApiKey: "", verified: false,
+    hasApiKey: false, apiKeyRequired: true, hasBaseUrl: true, hasModel: true, selected: true,
+    ...overrides,
+  };
+}
+
+test("verified local-model provider unblocks the cleanup checkbox after dialog test connection", async () => {
+  // 症状 1：任务记忆把口播整理钉在 deepseek，用户在设置弹窗验证的是本地模型（custom，回环地址允许空 Key）。
+  const providers = [
+    providerStub({ id: "deepseek" }),
+    providerStub({
+      id: "custom", label: "Gemma", baseUrl: "http://127.0.0.1:1234/v1", model: "google/gemma-4-e4b",
+      verified: true, apiKeyRequired: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false,
+    }),
+  ];
+  const gate = providerGateHarness({ providers, storedTaskMemory: { cleanup: "deepseek" } });
+  assert.equal(gate.ready(), false, "验证 custom 前门槛应拦截（记忆指向未验证的 deepseek）");
+  gate.setPending("cleanup");
+  // 设置弹窗里测试连接成功（testConnection 成功分支调用 bindPendingStepProvider(item.id)）。
+  assert.equal(gate.context.bindPendingStepProvider("custom"), true);
+  assert.equal(gate.ready(), true, "验证成功后应放行：步骤改用已验证的 custom，回环地址允许空 Key");
+  assert.equal(gate.context.stepProviderId("cleanup"), "custom");
+  assert.equal(JSON.parse(gate.context.localStorage.getItem("maw.launcher.llm.provider_by_task")).cleanup, "custom");
+});
+
+test("stale unverified cache no longer reopens the settings dialog when backend says verified", async () => {
+  // 症状 2：勾选→取消→再勾选不再重复弹配置。内存标记过期（false）但后端权威状态已验证 → 静默放行。
+  const providers = [providerStub({ id: "deepseek", verified: false, hasApiKey: true })];
+  const backend = [providerStub({ id: "deepseek", verified: true, hasApiKey: true })];
+  const gate = providerGateHarness({ providers, storedTaskMemory: { cleanup: "deepseek" }, backendProviders: backend });
+  assert.equal(gate.ready(), false, "过期缓存下同步门槛会拦截");
+  gate.setPending("cleanup");
+  const checkbox = { checked: true };
+  await gate.context.confirmAutoStepCheck("cleanup", checkbox);
+  assert.equal(checkbox.checked, true, "后端确认已验证：保留勾选");
+  assert.equal(gate.openedSettings.length, 0, "不应再弹配置弹窗");
+  assert.equal(gate.context.autoLlmReady("deepseek"), true, "缓存已按后端权威状态刷新");
+});
+
+test("genuinely unverified provider still blocks the checkbox and opens settings", async () => {
+  // 后端权威状态确实未验证：维持原有拦截行为（取消勾选 + 打开配置并高亮测试连接）。
+  const providers = [providerStub({ id: "deepseek" })];
+  const gate = providerGateHarness({ providers, storedTaskMemory: { cleanup: "deepseek" }, backendProviders: [providerStub({ id: "deepseek" })] });
+  gate.setPending("cleanup");
+  const checkbox = { checked: true };
+  await gate.context.confirmAutoStepCheck("cleanup", checkbox);
+  assert.equal(checkbox.checked, false, "确实未验证：取消勾选");
+  assert.equal(gate.openedSettings.length, 1);
+  assert.equal(gate.openedSettings[0].blockedStep, "cleanup");
+  assert.equal(gate.openedSettings[0].options.highlightConnection, true);
+  assert.equal(gate.getPending(), "cleanup", "保留待处理步骤，验证成功后自动补勾选");
+});
+
+test("dialog verification rebinds the pending auto step and refreshes stale state", () => {
+  // 契约：验证/保存成功后绑定供应商；勾选被拦先刷新权威状态；弹窗预选门槛检查的供应商。
+  const saveBlock = source.slice(source.indexOf("async function saveSettings()"), source.indexOf("async function testConnection()"));
+  const testBlock = source.slice(source.indexOf("async function testConnection()"), source.indexOf("async function getModels()"));
+  assert.match(saveBlock, /if \(result\.verified\) bindPendingStepProvider\(item\.id\);/);
+  assert.match(saveBlock, /maybeEnablePendingAutoStep\(\);/);
+  assert.match(testBlock, /bindPendingStepProvider\(item\.id\);/);
+  assert.match(source, /if \(\$\("llmProvider"\)\.value !== checkedProviderId\) renderProvider\(checkedProviderId, \{ syncToolbox: false \}\);/);
+  assert.match(source, /void confirmAutoStepCheck\(stepId, checkbox\);/);
+  assert.match(source, /await refreshPostprocessProviderStatus\(\);/);
+});
