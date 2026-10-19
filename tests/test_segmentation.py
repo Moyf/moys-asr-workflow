@@ -301,10 +301,10 @@ class CjkNaturalLimitTests(unittest.TestCase):
                 qwen.configure_extra_strong_punct(symbol)
                 self.assertEqual([len(g) for g in qwen._split_long_western(items, 4)], [2, 3])
 
-    def test_explicit_semicolon_default_splits_and_is_strippable(self) -> None:
+    def test_default_semicolon_splits_and_remains_preserved(self) -> None:
         qwen.configure_extra_strong_punct(qwen._DEFAULT_EXTRA_STRONG_PUNCT)
         self.assertEqual(self.split("第一句话;第二句话", 20), ["第一句话;", "第二句话"])
-        self.assertIn(";", qwen._DEFAULT_STRIP_TAIL_PUNCT)
+        self.assertEqual(qwen._DEFAULT_STRIP_TAIL_PUNCT, "")
 
 
 class WesternSplitTests(unittest.TestCase):
