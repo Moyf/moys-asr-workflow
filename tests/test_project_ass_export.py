@@ -119,6 +119,32 @@ class ProjectAssExportTests(unittest.TestCase):
         self.assertIn("GREEN", dialogues[0])
         self.assertIn("GREEN", dialogues[1])
 
+    def test_color_refs_keep_original_indices_when_empty_cues_are_filtered(self) -> None:
+        project = {
+            "segments": [
+                {"start": 0, "end": 100, "text": "", "items": []},
+                {"start": 100, "end": 200, "text": "头", "color": {"name": "green"}},
+                {"start": 200, "end": 300, "text": "另一组", "color": {"name": "red"}},
+                {"start": 300, "end": 400, "text": "引用", "color_ref": {"headIdx": 1}},
+            ],
+        }
+        before = json.dumps(project, ensure_ascii=False)
+        content = render_project_ass(project, title="t", play_resolution=(1920, 1080))
+        dialogues = _dialogues(content, "0")
+        self.assertEqual([line.split(",")[3] for line in dialogues], ["GREEN", "RED", "GREEN"])
+        self.assertEqual(json.dumps(project, ensure_ascii=False), before)
+
+    def test_color_ref_can_resolve_an_empty_filtered_head(self) -> None:
+        project = {
+            "segments": [
+                {"start": 0, "end": 100, "text": "", "items": [], "color": {"name": "green"}},
+                {"start": 100, "end": 200, "text": "引用", "color_ref": {"headIdx": 0}},
+            ],
+        }
+        dialogues = _dialogues(render_project_ass(project, title="t", play_resolution=(1920, 1080)), "0")
+        self.assertEqual(len(dialogues), 1)
+        self.assertEqual(dialogues[0].split(",")[3], "GREEN")
+
     def test_text_escaping_matches_editor_escape_ass_text(self) -> None:
         self.assertEqual(escape_ass_text("a\\b{c}d\r\ne\nf"), "a\\\\b\\{c\\}d\\Ne\\Nf")
         project: dict[str, object] = {"segments": [{"id": "a", "start": 0, "end": 500, "text": "a\\{b}\n下"}]}

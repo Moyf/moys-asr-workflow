@@ -249,12 +249,13 @@ def render_project_ass(
         project,
         project_cleanup_retained_segments(raw_segments, project.get("gap_remove")),
     )
+    # color_ref.headIdx addresses the original project array, even when cleanup drops empty cues.
     events = [
         event
         for segment in main_segments
         if isinstance(segment, Mapping) and segment.get("disabled") is not True
         and isinstance(segment.get("text"), str) and segment["text"].strip()
-        and (event := _main_event(segment, main_segments, color_style=color_style)) is not None
+        and (event := _main_event(segment, raw_segments, color_style=color_style)) is not None
     ]
 
     overlay_track = project.get("overlay_track")
