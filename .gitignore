@@ -86,3 +86,5 @@ build-appimage/
 /debug.log
 # Atomic bundle staging files left by an interrupted build.
 **/.maw-bundle-*.tmp
+# Cross-process bundle build lock (created on demand by maw/web_build.py).
+.bundle-build.lock
