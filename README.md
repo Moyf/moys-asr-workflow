@@ -6,70 +6,125 @@
 [![GitHub Stars](https://img.shields.io/github/stars/Moyf/moys-asr-workflow)](https://github.com/Moyf/moys-asr-workflow/stargazers)
 [![License](https://img.shields.io/github/license/Moyf/moys-asr-workflow)](LICENSE)
 
-> 本地媒体 → ASR 转写 → SRT + `.mosp` 工程 → MAWE 编辑 → 导出。
+> 为口播、访谈和游戏实况等各类视频生成并精修字幕。
 
-MAW 帮你把字幕生成后的校对、整理和交付接起来。它以云端 API 转写为主，提供图形 Launcher、命令行和本机浏览器编辑器 MAWE，适合口播、访谈、课程等字幕密集的内容。
+## 什么是 MAW？
+MAW 即 Moy's ASR Workflow，也可以叫做「阿墨的字幕工作台」。
+它是我为了解决「给视频添加字幕」这个需求而创造的一整套完整的工作流。
 
-除了修改文字和时间，你还可以用文稿辅助校对、可逆地移除停顿、管理主副字幕，再交付字幕或剪辑交换文件。保留 `.mosp` 工程，下一次修改就能从当前结果继续。
+它包含两个部分：
+- **启动器**：用于转写字幕，生成 srt 文件和工程
+- **编辑器**：用于编辑和导出字幕，以及更多支持的文件格式
 
-[官网](https://moyf.github.io/moys-asr-workflow/) · [在线编辑器](https://moyf.github.io/moys-asr-workflow/editor/) · [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
+![overview](docs/assets/readme/overview.webp)
 
-![MAWE 编辑器：左侧视频与字幕列表，右侧多行波形和叠加字幕](docs/assets/1.6.0/overlay-track.webp)
+你可以在启动器中选择媒体并生成字幕，再到编辑器 MAWE 中精修文本、调整时间、预览效果，最后烧录成字幕，或者导出剪辑软件可用的工程。
 
-*编辑器界面示例（1.6.0）：左侧校对文字与预览，右侧结合波形调整字幕时间。布局可按工作区修改。*
+> [⬇️ 下载](https://github.com/Moyf/moys-asr-workflow/releases/latest) · [🎬 在线编辑器](https://moyf.github.io/moys-asr-workflow/editor/) · [📺 3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
 
-## 为什么用 MAW
+## 为什么用 MAW？
+因为！它！超好用！
+![骄傲](docs/assets/stickers/骄傲.png)
 
-- **文字与声音对应起来**：保留服务商提供的字词时间码，在多行波形上定位、拆分和调整边界；只有句级时间码的结果仍需试听，不能当成逐词精度。
-- **已有文稿帮你减少重复校对**：普通文稿匹配在本地修正文字，无需 LLM；「AI 处理」里的口播整理以录音转写为准，参考文稿可选；整段与句内删减可恢复，疑点写入待核查区段，可同时生成 HTML 对比页。
-- **先试剪，再决定**：空隙移除保存可撤销的编辑决定，原媒体和原字幕时间不变。试听压缩后的节奏，再导出去空隙字幕、OTIO 或 FFconcat 交给后续工具。
-- **从一次任务到固定流程**：识别预设、顺序批量转写与自动后处理串起常用步骤；阶段产物可查，失败步骤可重试，最终保存工程并交付 SRT、ASS 或烧录视频。
+MAW 基于我自己的使用和朋友们的反馈，提供了非常完善的字幕生成与编辑体验。
 
-这些能力服务于同一条工作流。MAW 不替代完整剪辑软件，ASR 和 AI 整理的结果仍需人工检查。
+以下是一些它的特性介绍——
+
+### 多行波形与字词时间码
+用**多行波形**来同时查看前后的波形与字幕，轻轻一滚即可快速定位。
+![feat-multiline](docs/assets/readme/feat-multiline.webp)
+
+并且，MAW 生成的字幕附带**字幕时间码**，拆分时自动定位到对应的位置进行拆分。
+
+### 精心打磨的编辑体验
+两条相连的字幕可以拖动中缝直接调整边界：
+![mid-drag](docs/assets/readme/mid-drag.webp)
+
+双语字幕自动绑定关系，同时拖动和拆分：
+![binding-editing](docs/assets/readme/binding-editing.webp)
+
+对于没有时间码的字幕，也提供一键拆分面板：
+![split-panel](docs/assets/readme/split-panel.webp)
+
+*基于字幕语言，英文类的会自动定位在空格处拆分*
+
+在字幕列表中查看字数，并一键筛选过长字幕：
+![words-count](docs/assets/readme/words-count.webp)
+
+甚至——像记事本一样直接**纯文本编辑**，改字、拆句，轻轻松松：
+
+![pure-text-editing](docs/assets/readme/pure-text-editing.webp)
+（别担心，所有的时间码都会自动处理好！）
+
+### 静音空隙一键跳过
+编辑器内可以一键生成**静音空隙**，跳过空白片段：
+
+![feat-gaps](docs/assets/readme/feat-gaps.webp)
+
+你也可以手动编辑空隙，来跳过原片中无聊的片段。
+在字幕软件里剪辑？是的，了解一下！特别爽！
+
+### 文稿匹配与 AI 校对
+在启动器中，可以选择写好的文稿匹配：
+![text-match](docs/assets/readme/text-match.webp)
+
+也支持启用「AI 处理」，调用 LLM 模型对字幕进行校正或翻译：
+
+![ai-process](docs/assets/readme/ai-process.webp)
+
+### 多种格式的支持
+不像*某些*封闭式的软件，MAW 完全开放！
+
+除了最基本的 `srt` 和 `ass` 格式的字幕导出，你还可以导出 [OpenTimelineIO](https://github.com/AcademySoftwareFoundation/OpenTimelineIO) 开放时间线工程格式（达芬奇和 beta 版 Premiere 均支持）。
+
+并且也支持导出 PR 可用的 `fcpxml7` 格式。
+
+![export-formats](docs/assets/readme/export-formats.webp)
+
+### (M)ASS 字幕直接烧录
+添加了独创性的 **MASS** 语法，你可以直接在编辑器内做这样花哨的字幕效果：
+
+![特殊文本样式（MASS）](docs/assets/1.9.0/特殊文本样式（MASS）.webp)
+
+在启动器的「工具箱」和编辑器的右上角，都提供了**烧录视频**的功能：
+
+![burn-video](docs/assets/readme/burn-video.webp)
+
+小众独特的玩法：你可以生成一个绿幕背景的视频，然后再导入剪辑软件作为字幕层 😋
+
+### 后处理流水线
+你可以配置多种不同的后处理步骤，包括但不限于：文稿匹配、AI 整理文稿、固定替换/简繁转换、生成翻译字幕……
+
+在转写之后，将自动依次执行，**一条龙流水线**！
+![postprocess-pipeline](docs/assets/readme/postprocess-pipeline.webp)
+
+## 要钱吗？
+### 软件本体
+MAW 用爱发电 ❤️
+这是开源软件，你可以免费使用！当然，也欢迎 [支持开发](#支持开发)。
+
+### 转写服务
+使用本地模型转写时，不会产生任何额外费用——除了你的电费 :P
+使用服务商转写时，由服务商收取费用。
+以阿里云百炼的 QwenASR 举例，1 小时的音频转写需要约 0.8 元人民币。
+
+你可以直接看到转写费用预览：
+![price-info](docs/assets/readme/price-info.webp)
+
+> API Key 在本机配置，费用和数据政策见 [服务商配置](docs/INDEX.md#user-providers)。
 
 ## 开始使用
 
-最新测试版：[v1.9.0-beta.3](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.9.0-beta.3)。下方 Releases 入口提供稳定版。
+先从 [下载页面](https://github.com/Moyf/moys-asr-workflow/releases/latest) 下载，解压即可用。
 
-1. 从 [Releases](https://github.com/Moyf/moys-asr-workflow/releases/latest) 选择与你的系统和架构对应的包。完整版 `MAW` 包含 FFmpeg / FFprobe；`MAW-lite` 需要自行安装这两个工具。实际可下载平台以该版本附件为准。
-2. 解压完整目录，启动 Windows 的 `MAW.exe` 或 macOS 的 `MAW.app`。
-3. 在 Launcher 选择服务商、配置自己的 API Key，选择媒体并生成字幕。首次配置可先用 `2m` 做短片验证。
-4. 打开 MAWE 检查文字和时间，保存 `.mosp` 工程，再导出 SRT 或 ASS。
+1. **下载安装包**：在所选版本的附件中选择对应系统和架构。完整版 `MAW` 包含 FFmpeg / FFprobe （推荐）；已安装这两个工具时可选 `MAW-lite` 轻量版。
+2. **打开启动器**：Windows 解压完整目录后运行 `MAW.exe` （其他平台同理）。启动问题见 [常见问题](docs/INDEX.md#user-faq)。
+3. **先生成一小段字幕**：选择服务商、配置 API Key，导入一两分钟的短素材，确认转写成功后再处理完整录音。
+4. **校对、保存、导出**：转写完成后点击「打开编辑器」即可进行编辑；完成编辑后可以导出 srt 字幕使用，或直接烧录视频。
 
-源码安装、命令行起步和媒体迁移见 [从零完成一次字幕工程](docs/INDEX.md#user-workflow)；遇到启动或转写问题看 [常见问题](docs/INDEX.md#user-faq)。
+> 源码安装、命令行起步和媒体迁移见 [从零完成一次字幕工程](docs/INDEX.md#user-workflow)。
 
-## 可以做什么
-
-- 云端转写：Qwen-Audio / Qwen3-ASR / Fun-ASR、Soniox、豆包、腾讯云，以及返回时间戳的 OpenAI 兼容接口。
-- 图形任务：单文件与顺序批量转写、识别预设、转写后自动处理；后处理保留原始快照和阶段结果，可从失败步骤重试。
-- 文稿与整理：本地文稿匹配、固定替换、LLM 校对/断句/翻译，以及可选的 AI 口播整理与待复核标记。
-- 字幕编辑：多行波形定位、拆分合并与中缝联动、主/副/叠加字幕、说话人颜色、表情包、标记与区段、可撤销的空隙移除。
-- 呈现与导出：ASS 样式与本机实际渲染帧预览，主字幕/副字幕/双语整合 SRT、ASS、TXT，以及按用途提供的 OTIO、FFconcat 等交换文件。
-- 媒体工具：烧录字幕、提取指定音轨、生成绿幕字幕视频，以及按保留区间重组媒体。
-- 实验性入口：Launcher 与 CLI 的本地模型、免 Key 的必剪 ASR。范围和运行环境见 [本地 ASR](docs/INDEX.md#user-local-asr)。
-
-## 按任务查文档
-
-| 你要做的事 | 文档 |
-| --- | --- |
-| 第一次安装并完成字幕 | [完整工作流](docs/INDEX.md#user-workflow) |
-| 配置模型、热词、预设或批量任务 | [Launcher 指南](docs/INDEX.md#user-launcher) · [服务商配置](docs/INDEX.md#user-providers) |
-| 校对、匹配文稿、翻译或处理媒体 | [工具箱](docs/INDEX.md#user-toolbox) · [自动处理](docs/INDEX.md#user-postprocess) |
-| 编辑时间轴、保存和导出 | [编辑器指南](docs/INDEX.md#user-editor) · [ASS 样式](docs/INDEX.md#user-ass) |
-| 写批处理或接入自动化 | [CLI](docs/INDEX.md#user-cli) |
-| 已有准确文稿与录音，跳过 ASR 生成字幕 | [文稿驱动对齐（实验性）](docs/INDEX.md#user-script-alignment) |
-| 开发与数据集成 | [开发概览](docs/INDEX.md#engineering-development) · [工程格式](JSON_SCHEMA.md) · [ESM 迁移与上游交接](docs/logs/unversioned/undated/ESM_MIGRATION.md) |
-
-全部专题、技术契约与历史记录见 [文档索引](docs/INDEX.md)。
-
-## 文件与数据
-
-保留原始媒体和 `.mosp` 工程；工程内容是 UTF-8 JSON，旧 `.json` 工程继续支持。SRT / ASS 是交付格式，不能代替包含可用字词时间码、编辑状态、主副轨和标记等数据的工程。波形是可重建缓存，不是工程真源。本机 Server 支持多版本备份，恢复与媒体迁移见 [编辑器指南](docs/INDEX.md#user-editor)。
-
-云端转写会将音频发送给你选择的服务商；LLM 后处理会发送字幕文字，AI 整理还会发送文稿文字。MAW 没有自己的云端转写服务器，编辑和保存默认在本机完成。API Key 在本机配置，费用和数据政策见 [服务商配置](docs/INDEX.md#user-providers)。
-
-## Star History
-
+## 星星历史
 <a href="https://www.star-history.com/?repos=Moyf%2Fmoys-asr-workflow&type=date&legend=top-left">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Moyf/moys-asr-workflow&type=date&theme=dark&legend=top-left&sealed_token=_PToQhiZM0l9HWee443BsVO_Ent6c7W9XhetqS-GqzovCVxrR29_zMbiDuhZOZRQd-vsEaQhUvF262_K7KBgtzedaZ57WJ3lkgoDR9-QocuvQgw7_My_06JAPfChISW3AJh0fgpAJWVAi1XXRPs7I-5caimIiS5mNri_lJrB_9iBnvtf8_vvhtgAh-fL" />
@@ -78,8 +133,20 @@ MAW 帮你把字幕生成后的校对、整理和交付接起来。它以云端 
  </picture>
 </a>
 
-## 反馈与许可
+谢谢所有 Star 本项目的朋友们！ 🫡
 
-问题和建议请提 [GitHub Issues](https://github.com/Moyf/moys-asr-workflow/issues)；交流可加入 [QQ 群 1079160201](https://qm.qq.com/q/4YtxZIpzxC)。反馈前请移除密钥与私人素材。
+## 支持开发
+如果你觉得它对你有帮助，想要支持 MAW 的开发，可以前往 [B站小店](https://mall.bilibili.com/neul-next/detailuniversal/detail.html?page=detailuniversal_detail&itemsId=41955597&loadingShow=1&noTitleBar=1&track_id=__BGMT__&from=&from_spmid=__SPMID__&msource=cps_comments_585578_cont-1-117125335227239#noReffer=true) 购买支持。
+![bili-support](docs/assets/readme/bili-support.webp)
 
-本项目采用 [AGPL-3.0-only](LICENSE)。贡献要求见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+也支持使用 [Kofi](https://ko-fi.com/moy) 进行赞助 ☕️
+
+> 所有支持过的用户将在将来的版本中列入「支持者名单」！
+
+## 反馈与交流
+问题和建议请提 [GitHub Issues](https://github.com/Moyf/moys-asr-workflow/issues)；交流可加入 [QQ 群 1079160201](https://qm.qq.com/q/4YtxZIpzxC)。
+
+![敬礼](docs/assets/stickers/敬礼.gif)
+
+*表情包来自 刘大狗*
+*感谢量子猫和荆轲在开发上的支持！*

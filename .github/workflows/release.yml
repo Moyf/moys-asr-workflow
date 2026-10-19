@@ -783,17 +783,20 @@ jobs:
       - name: Create or update GitHub Release
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          set -euo pipefail
-          Tag="${{ github.ref_name }}"
-          case "$Tag" in *-*) Prerelease=true;; *) Prerelease=false;; esac
-          # 并发安全：已存在则跳过创建；create 撞 already_exists 时继续上传
-          if ! gh release view "$Tag" >/dev/null 2>&1; then
-            gh release create "$Tag" \
-              --title "$Tag" \
-              --notes-file release-notes.md \
-              --prerelease="$Prerelease" \
-              --target '${{ github.sha }}' || true
-          fi
-          gh release edit "$Tag" --title "$Tag" --notes-file release-notes.md
-          gh release upload "$Tag" release-artifacts/* --clobber
+          python3 scripts/publish_release.py --tag "$RELEASE_TAG" --notes release-notes.md --artifacts release-artifacts
+
+  refresh-website:
+    name: Refresh published version pages and update feed
+    needs: publish
+    # macOS 失败时 publish 仍会运行（部分平台政策）；传递依赖失败会默认跳过本任务，
+    # 因此必须显式判定 needs.publish.result，不能只依赖默认的“依赖失败即跳过”。
+    if: ${{ !cancelled() && needs.publish.result == 'success' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy-editor-pages.yml
+    with:
+      expected_tag: ${{ github.ref_name }}

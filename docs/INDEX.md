@@ -138,6 +138,11 @@
 
 ## 共享计划
 
+<a name="plan-release-pipeline"></a>
+### 正式版本归档、官网与更新检测管线
+
+[架构、内容来源、资源复用与实施阶段](plans/RELEASE_PIPELINE.md)
+
 <a name="plan-ass-cue-scale"></a>
 ### 主字幕单句缩放开发方案
 

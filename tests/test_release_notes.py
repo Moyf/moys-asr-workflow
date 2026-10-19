@@ -32,15 +32,15 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertNotIn("- older", section)
 
     def test_builds_per_platform_download_links_and_usage_guide(self) -> None:
-        notes = build_release_notes("## [1.0.0] - today\n\n### ✨ 新增\n\n- feature\n", "v1.0.0")
+        notes = build_release_notes("## [1.0.0-beta.1] - 2026-10-10\n\n### ✨ 新增\n\n- feature\n", "v1.0.0-beta.1")
 
         self.assertIn("## 下载哪个版本？", notes)
-        base = "https://github.com/Moyf/moys-asr-workflow/releases/download/v1.0.0"
-        self.assertIn("[MAW-Windows-x64-v1.0.0.zip](%s/MAW-Windows-x64-v1.0.0.zip)" % base, notes)
-        self.assertIn("[MAW-lite-Windows-x64-v1.0.0.zip](%s/MAW-lite-Windows-x64-v1.0.0.zip)" % base, notes)
-        self.assertIn("[MAW-macOS-arm64-v1.0.0.zip](%s/MAW-macOS-arm64-v1.0.0.zip)" % base, notes)
-        self.assertIn("[MAW-lite-macOS-arm64-v1.0.0.zip](%s/MAW-lite-macOS-arm64-v1.0.0.zip)" % base, notes)
-        self.assertIn("[MAW-Linux-x86_64-v1.0.0.AppImage](%s/MAW-Linux-x86_64-v1.0.0.AppImage)" % base, notes)
+        base = "https://github.com/Moyf/moys-asr-workflow/releases/download/v1.0.0-beta.1"
+        self.assertIn("[MAW-Windows-x64-v1.0.0-beta.1.zip](%s/MAW-Windows-x64-v1.0.0-beta.1.zip)" % base, notes)
+        self.assertIn("[MAW-lite-Windows-x64-v1.0.0-beta.1.zip](%s/MAW-lite-Windows-x64-v1.0.0-beta.1.zip)" % base, notes)
+        self.assertIn("[MAW-macOS-arm64-v1.0.0-beta.1.zip](%s/MAW-macOS-arm64-v1.0.0-beta.1.zip)" % base, notes)
+        self.assertIn("[MAW-lite-macOS-arm64-v1.0.0-beta.1.zip](%s/MAW-lite-macOS-arm64-v1.0.0-beta.1.zip)" % base, notes)
+        self.assertIn("[MAW-Linux-x86_64-v1.0.0-beta.1.AppImage](%s/MAW-Linux-x86_64-v1.0.0-beta.1.AppImage)" % base, notes)
         self.assertIn("- **Windows 🪟**", notes)
         self.assertIn("- **macOS 🍎**", notes)
         self.assertIn("- **Linux 🐧**", notes)
@@ -56,15 +56,15 @@ class ReleaseNotesTests(unittest.TestCase):
 
     def test_failed_platforms_render_failure_marks_without_links(self) -> None:
         notes = build_release_notes(
-            "## [1.0.0] - today\n\n### ✨ 新增\n\n- feature\n",
-            "v1.0.0",
+            "## [1.0.0-beta.1] - 2026-10-10\n\n### ✨ 新增\n\n- feature\n",
+            "v1.0.0-beta.1",
             failed_platforms=frozenset({"linux"}),
         )
 
         self.assertIn("- **Linux 🐧**\n    - 打包失败 😭", notes)
-        self.assertNotIn("MAW-Linux-x86_64-v1.0.0.AppImage", notes)
-        self.assertIn("[MAW-Windows-x64-v1.0.0.zip]", notes)
-        self.assertIn("[MAW-macOS-arm64-v1.0.0.zip]", notes)
+        self.assertNotIn("MAW-Linux-x86_64-v1.0.0-beta.1.AppImage", notes)
+        self.assertIn("[MAW-Windows-x64-v1.0.0-beta.1.zip]", notes)
+        self.assertIn("[MAW-macOS-arm64-v1.0.0-beta.1.zip]", notes)
 
     def test_rejects_non_tag_input(self) -> None:
         with self.assertRaisesRegex(ValueError, "must start with v"):
@@ -84,15 +84,14 @@ class ReleaseDocumentTests(CompactContainerAssertions, unittest.TestCase):
         path.write_bytes(build_release_document(source, tag).encode("utf-8"))
         return path
 
-    def test_beta_has_machine_metadata_and_only_its_own_updates(self) -> None:
+    def test_beta_cannot_be_archived_and_notes_use_only_its_changelog_section(self) -> None:
         source = "## [2.0.0-beta.2] - 2026-10-12\n\n- 改进\n\n## [2.0.0-beta.1] - 2026-10-11\n\n- older\n"
-        document = build_release_document(source.replace("\n", "\r\n"), "v2.0.0-beta.2")
-        metadata, body = document_parts(document)
-        self.assertEqual((metadata["version"], metadata["date"], metadata["channel"], metadata["base"]),
-                         ("2.0.0-beta.2", "2026-10-12", "beta", None))
-        self.assertEqual(body, "## [2.0.0-beta.2] - 2026-10-12\n\n- 改进")
-        self.assertNotIn("\r", document)
-        self.assertNotIn("下载哪个版本", document)
+        with self.assertRaisesRegex(ValueError, "only stable versions"):
+            build_release_document(source, "v2.0.0-beta.2")
+        notes = build_release_notes(source, "v2.0.0-beta.2", releases_dir=self.releases)
+        self.assertIn("- 改进", notes)
+        self.assertNotIn("- older", notes)
+        self.assertFalse(list(self.releases.glob("2.0.0-beta*.md")))
 
     def test_stable_summary_does_not_automatically_append_beta_history(self) -> None:
         source = "## [2.0.0] - 2026-10-12\n\n- Complete summary\n\n## [2.0.0-beta.1] - 2026-10-11\n\n- obsolete wording\n"
@@ -118,18 +117,18 @@ class ReleaseDocumentTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("打包失败 😭", notes)
         self.assertNotIn("MAW-Linux-x86_64-v2.0.2.AppImage", notes)
 
-    def test_missing_stale_tampered_and_crlf_documents_block_publication(self) -> None:
-        source = "## [2.0.0-beta.1] - 2026-10-12\n\n- Feature\n"
+    def test_missing_stale_tampered_and_crlf_stable_documents_block_publication(self) -> None:
+        source = "## [2.0.0] - 2026-10-12\n\n- Feature\n"
         with self.assertRaisesRegex(ValueError, "missing or stale"):
-            build_release_notes(source, "v2.0.0-beta.1", releases_dir=self.releases)
-        path = self.write_document(source, "v2.0.0-beta.1")
+            build_release_notes(source, "v2.0.0", releases_dir=self.releases)
+        path = self.write_document(source, "v2.0.0")
         with self.assertRaisesRegex(ValueError, "missing or stale"):
-            check_document(source.replace("Feature", "Changed"), "v2.0.0-beta.1", self.releases)
+            check_document(source.replace("Feature", "Changed"), "v2.0.0", self.releases)
         original = path.read_bytes()
         for changed in (original.replace(b"Feature", b"Edited archive"), original.replace(b"\n", b"\r\n")):
             path.write_bytes(changed)
             with self.assertRaisesRegex(ValueError, "missing or stale"):
-                check_document(source, "v2.0.0-beta.1", self.releases)
+                check_document(source, "v2.0.0", self.releases)
 
     def test_other_changelog_sections_do_not_invalidate_an_archive(self) -> None:
         source = "## [2.0.0] - 2026-10-12\n\n- Summary\n"
@@ -163,10 +162,14 @@ class ReleaseDocumentTests(CompactContainerAssertions, unittest.TestCase):
             with self.subTest(marker=marker), self.assertRaises(ValueError):
                 build_release_document(source + marker, "v2.0.1")
 
-    def test_check_all_requires_new_sections_and_checks_opt_in_legacy_archives(self) -> None:
-        source = "## [未发布]\n\n- WIP\n\n## [1.8.0-beta.1] - 2026-10-02\n\n- Older\n"
-        self.assertEqual(check_all_documents(source, self.releases), 0)
-        self.write_document(source, "v1.8.0-beta.1")
+    def test_check_all_requires_every_stable_section_and_ignores_beta_archives(self) -> None:
+        source = "## [未发布]\n\n- WIP\n\n## [1.8.0-beta.1] - 2026-10-02\n\n- Older\n\n## [1.8.0] - 2026-10-03\n\n- Stable\n"
+        with self.assertRaisesRegex(ValueError, "missing or stale"):
+            check_all_documents(source, self.releases)
+        (self.releases / "1.8.0-beta.1.md").write_text("old beta archive", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "missing or stale"):
+            check_all_documents(source, self.releases)
+        self.write_document(source, "v1.8.0")
         self.assertEqual(check_all_documents(source, self.releases), 1)
         source = "## [2.0.0] - 2026-10-12\n\n- New\n\n" + source
         with self.assertRaisesRegex(ValueError, "missing or stale"):
@@ -203,30 +206,51 @@ class ReleaseDocumentTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_cli_generate_check_publish_and_stale_check_preserve_output(self) -> None:
         source = self.root / "CHANGELOG.md"
-        source.write_text("## [2.0.0-beta.1] - 2026-10-12\n\n- Feature\n", encoding="utf-8")
+        source.write_text("## [2.0.0] - 2026-10-12\n\n- Feature\n\n## [2.0.0-beta.1] - 2026-10-11\n\n- Beta feature\n", encoding="utf-8")
         command = [sys.executable, str(ROOT / "scripts/prepare_release_notes.py"),
                    "--changelog", str(source), "--releases-dir", str(self.releases)]
 
         def run(*args):
             return subprocess.run(command + list(args), capture_output=True, text=True, encoding="utf-8", timeout=15)
 
-        for args in (("--tag", "v2.0.0-beta.1", "--write-doc"),
-                     ("--tag", "v2.0.0-beta.1", "--check-doc"), ("--check-all",)):
+        self.assertNotEqual(run("--tag", "v2.0.0-beta.1", "--write-doc").returncode, 0)
+        path = self.write_document(source.read_text(encoding="utf-8"), "v2.0.0")
+        for args in (("--tag", "v2.0.0", "--check-doc"), ("--check-all",)):
             result = run(*args)
             self.assertEqual(result.returncode, 0, result.stderr[:1000])
         output = self.root / "release-notes.md"
         result = run("--tag", "v2.0.0-beta.1", "--output", str(output))
         self.assertEqual(result.returncode, 0, result.stderr[:1000])
         original = output.read_bytes()
-        self.assertIn(b"Feature", original)
+        self.assertIn(b"Beta feature", original)
+        self.assertNotIn(b"Feature", original)
         source.write_text(source.read_text(encoding="utf-8").replace("Feature", "Changed"), encoding="utf-8")
         result = run("--tag", "v2.0.0-beta.1", "--output", str(output))
+        self.assertEqual(result.returncode, 0, result.stderr[:1000])
+        source.write_text(source.read_text(encoding="utf-8").replace("- Changed", "- Feature"), encoding="utf-8")
+        path.write_bytes(path.read_bytes().replace(b"Feature", b"Edited archive"))
+        result = run("--tag", "v2.0.0", "--output", str(output))
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing or stale", result.stderr)
         self.assertEqual(output.read_bytes(), original)
-        self.assertNotEqual(run("--check-doc").returncode, 0)
         self.assertNotEqual(run("--check-all", "--tag", "v2.0.0").returncode, 0)
         self.assertNotEqual(run("--tag", "v2.0.0", "--write-doc", "--failed", "linux").returncode, 0)
+
+    def test_write_all_stable_generates_base_before_patch_and_ignores_prereleases(self) -> None:
+        source = self.root / "CHANGELOG.md"
+        source.write_text(
+            "## [2.1.1] - 2026-10-12\n\n<!-- release-base: 2.1.0 -->\n\n- Patch\n\n"
+            "## [2.1.0] - 2026-10-10\n\n- Summary\n\n"
+            "## [2.1.1-rc.1] - 2026-10-11\n\n- Candidate\n",
+            encoding="utf-8",
+        )
+        command = [sys.executable, str(ROOT / "scripts/prepare_release_notes.py"),
+                   "--changelog", str(source), "--releases-dir", str(self.releases), "--write-all-stable"]
+        result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr[:1000])
+        self.assertTrue((self.releases / "2.1.0.md").is_file())
+        self.assertTrue((self.releases / "2.1.1.md").is_file())
+        self.assertFalse((self.releases / "2.1.1-rc.1.md").exists())
 
     def test_release_ci_checks_before_packaging_and_regular_ci_checks_archives(self) -> None:
         release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
