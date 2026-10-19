@@ -80,6 +80,7 @@ async function install(page, origin, mode) {
   await page.goto(origin);
   await page.evaluate(mode => {
     window.hints = []; window.saved = false;
+    window.subtitleBuildOptions = [];
     window.MaweInlineEdit = {};
     window.MaweCoreState = { player: { currentSrc: location.origin + '/media' } };
     window.MaweProjectLoad = { projectBindingEpoch: 1 };
@@ -89,8 +90,10 @@ async function install(page, origin, mode) {
       burnVideoSourceName: 'source.mp4', burnVideoJobsUrl: '/jobs',
       requestToken: 'fixture', bindingGeneration: 1, sourceMediaId: 'opaque-source' } };
     window.MaweExportSrt = {
-      buildAss: () => '[Script Info] full',
-      buildGapRemovedAss: () => '[Script Info] gap-removed',
+      buildAss: options => { subtitleBuildOptions.push(['ass', options]); return '[Script Info] full'; },
+      buildGapRemovedAss: options => { subtitleBuildOptions.push(['gap-ass', options]); return '[Script Info] gap-removed'; },
+      buildSrt: options => { subtitleBuildOptions.push(['srt', options]); return '1\n00:00:00,000 --> 00:00:01,000\nCURRENT SRT\n'; },
+      buildGapRemovedSrt: options => { subtitleBuildOptions.push(['gap-srt', options]); return '1\n00:00:00,000 --> 00:00:01,000\nSHORTENED SRT\n'; },
       gapRemovedExportContext: () => ({ intervals: [{ start: 0, end: 1000 }] }),
     };
     window.MaweHint = { flashHint: (text) => window.hints.push(text) };
@@ -124,6 +127,8 @@ for (const [buttonId, label, expected] of [
       await expect.poll(() => page.evaluate(() => window.hints.some(text => text.includes('已保存')))).toBe(true);
       const payload = state.payloads[0];
       expect(payload.ass).toBe(expected.ass);
+      expect(await page.evaluate(() => window.subtitleBuildOptions)).toEqual([[buttonId.includes('gap') ? 'gap-ass' : 'ass',
+        { alignFirstStart: false }]]);
       expect(payload.intervals).toEqual(expected.intervals ?? undefined);
       expect(payload.admissionToken).toMatch(/^[a-f0-9]{64}$/);
       expect(payload.requestToken).toBe('fixture');
@@ -225,10 +230,10 @@ test('gap-removed entry without removed gaps or ASS content stays silent and fai
   });
 });
 
-test('toolbar burn button shows only in ASS mode with a bound video project', async ({ page }) => {
+test('toolbar burn button supports ASS and SRT with a bound video project', async ({ page }) => {
   await fixture('ready', async (origin) => {
     await install(page, origin, 'ass-off');
-    await expect(page.locator('#burn-video-export-btn')).toBeHidden();
+    await expect(page.locator('#burn-video-export-btn')).toBeVisible();
     await page.evaluate(() => {
       MaweSettings.EDITOR_SETTINGS.assMode = true;
       MaweBurnVideoExport.syncButton();
@@ -241,6 +246,30 @@ test('toolbar burn button shows only in ASS mode with a bound video project', as
     await expect(page.locator('#burn-video-export-btn')).toBeHidden();
   });
 });
+
+for (const [buttonId, text] of [['#burn-video-export-btn', 'CURRENT SRT'],
+  ['#download-gap-removed-burn-video', 'SHORTENED SRT']]) {
+  test(`SRT mode uses current text through the same job API: ${buttonId}`, async ({ page }) => {
+    await fixture('ready', async (origin, state) => {
+      await install(page, origin, 'ass-off');
+      await page.evaluate(() => {
+        window.commits = [];
+        MaweInlineEdit.editingState = {};
+        MaweInlineEdit.extensionEditingState = {};
+        MaweInlineEdit.finishEdit = () => commits.push('main');
+        MaweInlineEdit.finishExtensionEdit = () => commits.push('extension');
+      });
+      await page.click(buttonId);
+      await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
+      expect(state.payloads[0].srt).toContain(text);
+      expect(await page.evaluate(() => window.subtitleBuildOptions)).toEqual([[buttonId.includes('gap') ? 'gap-srt' : 'srt',
+        { alignFirstStart: false }]]);
+      expect(state.payloads[0].ass).toBeUndefined();
+      expect(await page.evaluate(() => commits)).toEqual(['main', 'extension']);
+      if (buttonId.includes('gap')) expect(state.payloads[0].intervals).toEqual([{ startMs: 0, endMs: 1000 }]);
+    });
+  });
+}
 
 
 test('picker resume rejects revoked burn capability before creating a job', async ({ page }) => {

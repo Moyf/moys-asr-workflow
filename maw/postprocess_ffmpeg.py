@@ -529,7 +529,7 @@ def run_burn_subtitles(
     last_error: MediaToolError | None = None
     try:
         if subtitle.suffix.lower() == ".srt":
-            converted_subtitle = _convert_srt_to_ass(
+            converted_subtitle = convert_srt_to_ass(
                 subtitle,
                 ffmpeg_path=ffmpeg_path,
                 srt_style=request.srt_style,
@@ -837,16 +837,18 @@ def _probe_play_resolution(media: Path | None, *, ffprobe_path: Path | None) -> 
     return ASS_FALLBACK_PLAY_RESOLUTION
 
 
-def _convert_srt_to_ass(
+def convert_srt_to_ass(
     subtitle: Path,
     *,
     ffmpeg_path: Path,
     srt_style: Mapping[str, object] | None,
     play_resolution: tuple[int, int],
-    cancel_event: Event | None,
-    on_process: Callable[[subprocess.Popen[str]], None] | None,
-    on_progress: Callable[[Mapping[str, str]], None] | None,
+    cancel_event: Event | None = None,
+    on_process: Callable[[subprocess.Popen[str]], None] | None = None,
+    on_progress: Callable[[Mapping[str, str]], None] | None = None,
+    run_command: Callable[..., subprocess.CompletedProcess[str]] | None = None,
 ) -> Path:
+    """Convert SRT using the shared burn style; optionally own it in a media job."""
     try:
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=f".{subtitle.stem}.maw-burn-",
@@ -877,15 +879,17 @@ def _convert_srt_to_ass(
         str(converted),
     ]
     try:
-        _run_ffmpeg_process(
-            command,
-            cwd=subtitle.parent,
-            cancel_event=cancel_event,
-            on_process=on_process,
-            on_progress=on_progress,
-        )
+        if run_command is None:
+            _run_ffmpeg_process(
+                command, cwd=subtitle.parent, cancel_event=cancel_event,
+                on_process=on_process, on_progress=on_progress,
+            )
+        else:
+            completed = run_command(command, cwd=subtitle.parent)
+            if completed.returncode:
+                raise MediaToolError(completed.stderr or "SRT 转换为 ASS 失败")
         _rewrite_ass_default_style(converted, srt_style, play_resolution=play_resolution)
-    except (MediaToolError, OSError):
+    except (MediaToolError, OSError, subprocess.SubprocessError):
         converted.unlink(missing_ok=True)
         raise
     return converted
