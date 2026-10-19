@@ -426,7 +426,7 @@ document.getElementById('download-green-screen-video')?.addEventListener('click'
     button: document.getElementById('download-green-screen-video'),
     greenScreen: true,
     label: '生成绿幕视频',
-    startHint: '正在生成绿幕字幕视频…',
+    startHint: '正在生成绿幕字幕视频…（绿幕导出不含表情包）',
     successText: '绿幕视频已保存',
     suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('green-screen') || 'green-screen'}.mp4`,
     buildRequest: () => ({ ass: MaweExportSrt.buildAss(), greenScreen: true,

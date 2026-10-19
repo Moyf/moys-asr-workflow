@@ -796,11 +796,6 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
         raise ValueError(f"表情包烧录条目超过上限（{MAX_BURN_STICKER_PLACEMENTS} 条）")
     if root is None:
         raise ValueError("当前工程没有激活的表情包目录，无法烧录表情包")
-    unique_rels = {str(item.get("rel", "")).strip() if isinstance(item, dict) else ""
-                   for item in raw_placements}
-    unique_rels.discard("")
-    if len(unique_rels) > MAX_BURN_STICKER_INPUTS:
-        raise ValueError(f"表情包烧录的图片数量超过上限（{MAX_BURN_STICKER_INPUTS} 张）")
     placements: list[dict] = []
     seen_rels: dict[str, Path] = {}
     for item in raw_placements:
@@ -854,6 +849,10 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
         placements.append({"rel": rel, "path": path, **placed, "intervals": intervals})
     for placement in placements:
         placement["intervals"].sort()
+    # 唯一图片数上限按实际参与烧录的条目统计（区间全空被跳过的条目不计）。
+    unique_paths = {str(placement["path"]) for placement in placements}
+    if len(unique_paths) > MAX_BURN_STICKER_INPUTS:
+        raise ValueError(f"表情包烧录的图片数量超过上限（{MAX_BURN_STICKER_INPUTS} 张）")
     return placements
 
 
@@ -893,7 +892,11 @@ def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[st
         image_label = f"[burn_stick{placement_index}]"
         output_label = f"[burn_ovl{placement_index}]"
         lines.append(f"{raw_label}scale=w={sticker['width']}:h={sticker['height']}{image_label}")
-        enable = "+".join(f"between(t,{_burn_seconds(start)},{_burn_seconds(end)})"
+        # 半开区间 [S, E)：libass 字幕事件与视频 select 都是半开语义；用闭区间
+        # between 时相邻 placement 共享的句界毫秒一旦撞上输出帧 PTS（整数秒
+        # 边界在 25/30fps 下必然如此），同一帧里同一张表情包会同时命中两个
+        # 位置各渲染一次。
+        enable = "+".join(f"gte(t,{_burn_seconds(start)})*lt(t,{_burn_seconds(end)})"
                           for start, end in sticker["intervals"])
         # shortest=1：主视频 EOF 即终止输出；所有表情包输入都已被无限化，
         # 主视频恒为最短输入，缺省 shortest=0 会让 FFmpeg 永不退出。
@@ -928,8 +931,9 @@ def _is_animated_webp(path: Path) -> bool:
             # flags（bit 1 = Animation），第 4-9 字节是画布宽高 -1（24-bit LE）。
             flags = data[offset + 8] if offset + 9 <= len(data) else 0
             return bool(flags & 0x02)
-        if size < 0:
-            return False
+        # int.from_bytes 无符号，size 不会为负；chunk 声明超出文件长度（截断文件）
+        # 时自然跳出循环返回 False——截断文件随后也会在 FFmpeg 解码阶段失败，
+        # 无需在此伪造专门错误。
         offset += 8 + size + (size & 1)  # chunk 按偶数对齐
     return False
 

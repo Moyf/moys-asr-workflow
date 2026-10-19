@@ -88,14 +88,59 @@ test('legacy slices fall back to the fixed box', () => {
   assert.equal(placements[0].x, FIXED_BOX.x);
 });
 
-test('moving cues freeze the position at the segment midpoint', () => {
+test('moving cues fall back to the fixed box instead of a midpoint snapshot', () => {
+  // 线性移动段（from→to）内字幕位置连续变化，中点快照的固定贴放会在窗口
+  // 内漂移甚至压字——整段回退固定位置。
   const plan = makePlan({ move: true });
   const placements = computeStickerCuePlacements({
     plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 2000 }],
   });
-  // 中点 t=1000 → 移动进度 0.5 → root.x = 900 + (1100−900)×0.5 = 1000。
-  // inkLeft = 1020 − 30 = 990 → x = 990 − 7 − 240 = 743。
-  assert.equal(placements[0].x, 743);
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].x, FIXED_BOX.x);
+  assert.equal(placements[0].y, FIXED_BOX.y);
+  assert.equal(placements[0].align, 'center');
+  assert.deepEqual(JSON.parse(JSON.stringify(placements[0].intervals)),
+    [{ start: 0, end: 2000 }]);
+});
+
+test('instant piece boundaries split the window so each side is placed statically', () => {
+  // 方案瞬切（instant piece）：字幕在 t=1000 从 x=900 跳到 x=1100，瞬切点
+  // 作为切段边界，前后段各自贴放（段内位置恒定，快照准确）。
+  const plan = makePlan();
+  plan.slices[0].pieces = [
+    { start: 0, end: 1000, instant: 1000, from: { x: 900, y: 900 }, to: { x: 1100, y: 900 } },
+    { start: 1000, end: 2000, instant: null, from: { x: 1100, y: 900 }, to: { x: 1100, y: 900 } },
+  ];
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 200, end: 1800 }],
+  });
+  const right = placements.filter(placement => placement.align === 'right');
+  assert.equal(right.length, 2, JSON.stringify(placements));
+  // 前段（x=900 根）：inkLeft = 920 − 30 = 890 → x = 890 − 7 − 240 = 643。
+  assert.equal(right[0].x, 643);
+  // 后段（x=1100 根）：inkLeft = 1120 − 30 = 1090 → x = 1090 − 7 − 240 = 843。
+  assert.equal(right[1].x, 843);
+  assert.deepEqual(JSON.parse(JSON.stringify(right[0].intervals)), [{ start: 200, end: 1000 }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(right[1].intervals)), [{ start: 1000, end: 1800 }]);
+});
+
+test('extended sticker windows of one rel merge instead of double-burning', () => {
+  // 扩展表情包：head + sticker_ref 会为同一 rel 产出重复窗口（都是 head 的
+  // 区间）。合并后只贴一次，不再出现「第一张贴字幕、其余落固定位置」的双显。
+  const plan = makePlan();
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX,
+    windows: [
+      { rel: 'a.png', start: 0, end: 2000 },
+      { rel: 'a.png', start: 0, end: 2000 },
+      { rel: 'a.png', start: 0, end: 2000 },
+    ],
+  });
+  const right = placements.filter(placement => placement.align === 'right');
+  const fallback = placements.filter(placement => placement.align === 'center');
+  assert.equal(right.length, 1, JSON.stringify(placements));
+  assert.equal(fallback.length, 0, JSON.stringify(placements));
+  assert.deepEqual(JSON.parse(JSON.stringify(right[0].intervals)), [{ start: 0, end: 2000 }]);
 });
 
 test('overlapping windows keep only the first on the cue and fall back the rest', () => {

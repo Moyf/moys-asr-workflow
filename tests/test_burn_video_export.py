@@ -461,6 +461,60 @@ class BurnVideoPrecisionTests(CompactContainerAssertions, unittest.TestCase):
                     self.assertEqual(sum(s["codec_type"] == "audio" for s in probe["streams"]), int(include_audio))
                     self.assertLess(abs(float(probe["format"]["duration"]) - 1.5), .1)
 
+    def test_sticker_overlay_burns_in_window_and_keeps_full_duration(self):
+        """真实编码回归：表情包输入无限化 + shortest=1 不截断输出，overlay 只在
+        enable 窗口内出现且位置正确（CI 回归 TASK.md「实测踩坑」的 FFmpeg 行为：
+        短输入截断 / shortest 挂起 / 坐标错位在这些断言下都会复发）。"""
+        import zlib
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'colors.mp4'
+            command = [self.ffmpeg, '-y', '-hide_banner', '-loglevel', 'error']
+            for color in ('red', 'green', 'blue'):
+                command += ['-f', 'lavfi', '-i', f'color={color}:s=160x90:r=25:d=1']
+            self.run_tool(command + ['-filter_complex',
+                '[0:v][1:v][2:v]concat=n=3:v=1:a=0[out]', '-map', '[out]', str(source)])
+            # 最小不透明白色 PNG（40x30）：zlib 存储，无滤波。
+            sticker = root / 'dot.png'
+            raw = b''.join(b'\x00' + b'\xff\xff\xff' * 40 for _ in range(30))
+
+            def chunk(tag, payload):
+                return (struct.pack('>I', len(payload)) + tag + payload
+                        + struct.pack('>I', zlib.crc32(tag + payload)))
+            sticker.write_bytes(b'\x89PNG\r\n\x1a\n'
+                + chunk(b'IHDR', struct.pack('>IIBBBBB', 40, 30, 8, 2, 0, 0, 0))
+                + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
+            output = root / 'stickered.mp4'
+            server_editor.burn_ass_video(source, [], ASS_TEXT.replace('你好', 'OK'), output,
+                ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe),
+                stickers=[{'rel': 'dot.png', 'path': sticker, 'x': 10, 'y': 10,
+                           'width': 40, 'height': 30, 'intervals': [(400, 1200)]}])
+            probe = json.loads(self.run_tool([self.ffprobe, '-v', 'error', '-show_streams',
+                '-show_format', '-of', 'json', str(output)]).stdout)
+            # 无限化输入 + shortest=1：输出时长必须等于源时长（短输入截断 / 永不
+            # 退出两类历史症状在这里都会复发）。
+            self.assertLess(abs(float(probe['format']['duration']) - 3.0), .15)
+
+            def sample(frame_bytes, x0, y0, x1, y1):
+                total = [0, 0, 0]
+                count = 0
+                for y in range(y0, y1):
+                    for x in range(x0, x1):
+                        offset = (y * 160 + x) * 3
+                        for channel in range(3):
+                            total[channel] += frame_bytes[offset + channel]
+                        count += 1
+                return tuple(value // count for value in total)
+            for stamp, expect_sticker in ((0.8, True), (2.5, False)):
+                frame = root / f'sticker-{stamp}.raw'
+                self.run_tool([self.ffmpeg, '-y', '-v', 'error', '-ss', str(stamp),
+                    '-i', str(output), '-frames:v', '1', '-pix_fmt', 'rgb24',
+                    '-f', 'rawvideo', str(frame)])
+                color = sample(frame.read_bytes(), 15, 15, 45, 35)
+                is_light = color[0] > 180 and color[1] > 180 and color[2] > 180
+                self.assertEqual(is_light, expect_sticker,
+                    f't={stamp}: sticker box {color}, expected sticker={expect_sticker}')
+
     def test_long_gop_cuts_exclude_removed_frames_and_keep_audio_clock(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -767,7 +821,7 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(lines[1], "[2:v]null[burn_raw1_0]")
         self.assertIn("[burn_raw0_0]scale=w=100:h=75[burn_stick0]", lines[2])
         self.assertIn("[0:v:0][burn_stick0]overlay=x=200:y=30:", lines[3])
-        self.assertIn("enable='between(t,1.000,2.500)+between(t,3.000,4.500)':shortest=1", lines[3])
+        self.assertIn("enable='gte(t,1.000)*lt(t,2.500)+gte(t,3.000)*lt(t,4.500)':shortest=1", lines[3])
         self.assertEqual(lines[-1], "[burn_ovl1]ass=filename='burn.ass'[burn_video]")
         self.assertNotIn("force_original_aspect_ratio", "\n".join(lines))
         self.assertNotIn("(120-W)", "\n".join(lines))
@@ -781,7 +835,7 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("[0:v:0][burn_stick0]overlay=x=200:y=30:", lines[2])
         self.assertIn("[burn_raw0_1]scale=w=100:h=75[burn_stick1]", lines[3])
         self.assertIn("[burn_ovl0][burn_stick1]overlay=x=200:y=30:", lines[4])
-        self.assertIn("enable='between(t,5.000,6.000)'", lines[4])
+        self.assertIn("enable='gte(t,5.000)*lt(t,6.000)'", lines[4])
 
     def test_cue_left_contain_aligns_right_edge(self) -> None:
         # 窄图：60x100 在 100x75 框 → fit = 0.75 → 45x75；右对齐 x = 200 + 55 = 255，

@@ -23,6 +23,8 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
   // 切分——同一主句跨 slice（例如叠加字幕出现/消失）时布局可能切换
   // （legacy ↔ 堆叠、位置与缩放变化），中点采样必须落在同一段内才准确。
   // 返回 [{start, end, cue}]，cue 为覆盖该段的主字幕（null = 句间空隙段）。
+  // 短于 MIN_SEGMENT_MS 的碎段并入相邻段（尾部并前段、窗口开头的并后段）：
+  // 直接丢弃会让表情包在成片里消失 1-2 帧，比它要避免的位置跳变更显眼。
   function splitWindowByCues(cues, bounds, win) {
     const points = new Set([win.start, win.end]);
     for (const cue of cues) {
@@ -33,14 +35,26 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
       if (bound > win.start && bound < win.end) points.add(bound);
     }
     const ordered = [...points].sort((a, b) => a - b);
-    const segments = [];
+    const rawSegments = [];
     for (let index = 0; index < ordered.length - 1; index += 1) {
       const start = ordered[index];
       const end = ordered[index + 1];
-      if (end - start < MIN_SEGMENT_MS) continue;
       const middle = (start + end) / 2;
-      segments.push({ start, end,
+      rawSegments.push({ start, end, middle,
         cue: cues.find(cue => middle >= cue.start && middle < cue.end) || null });
+    }
+    const segments = [];
+    let pendingHeadStart = null;
+    for (const segment of rawSegments) {
+      const previous = segments[segments.length - 1];
+      if (segment.end - segment.start < MIN_SEGMENT_MS) {
+        if (previous) previous.end = segment.end;
+        else pendingHeadStart = segment.start;
+        continue;
+      }
+      const start = pendingHeadStart ?? segment.start;
+      pendingHeadStart = null;
+      segments.push({ start, end: segment.end, cue: segment.cue });
     }
     return segments;
   }
@@ -102,30 +116,59 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
   // 把表情包窗口集合编译成 placements。windows: [{rel, start, end}]（毫秒、
   // 最终时间轴）；fixedBox 为回退固定矩形（方案一几何，像素）；多图同屏时
   // 时间重叠的窗口只有第一张贴字幕左侧，其余回退固定位置。
+  /**
+   * @param {{ plan?: { slices?: Array<{ start?: number, end?: number, legacy?: boolean,
+   *   pieces?: Array<{ start?: number, end?: number, instant?: number | null,
+   *   from?: { x: number, y: number }, to?: { x: number, y: number } }>,
+   *   items?: Array<{ role?: string, start?: number, end?: number, legacy?: boolean,
+   *   manual?: boolean, absolute?: boolean, scale?: number, cueScale?: number,
+   *   fontSize?: number, shakeOffset?: { x?: number, y?: number },
+   *   offset?: { x: number, y: number },
+   *   rect?: { left: number, top: number, right: number, bottom: number } }> }>,
+   *   width?: number, height?: number },
+   *   windows?: Array<{ rel: string, start: number, end: number }>,
+   *   fixedBox?: { x: number, y: number, width: number, height: number }}} [options]
+   * @returns {Array<{ rel: string, x: number, y: number, width: number, height: number,
+   *   align: 'center' | 'right', intervals: Array<{ start: number, end: number }> }>}
+   */
   function computeStickerCuePlacements({ plan, windows, fixedBox } = {}) {
     const box = fixedBox && Number.isFinite(Number(fixedBox?.x)) ? fixedBox : null;
     const cues = [];
+    // slice 起止是布局变化边界（叠加/副字幕进出会改变主句的排布方式）；
+    // piece 的 instant（方案瞬切）也是位置跳变点，同样参与切段。
+    const bounds = [];
     for (const slice of plan?.slices || []) {
+      if (Number.isFinite(slice?.start)) bounds.push(slice.start);
+      if (Number.isFinite(slice?.end)) bounds.push(slice.end);
       if (slice?.legacy) continue;
+      for (const piece of slice.pieces || []) {
+        if (Number.isFinite(piece?.instant)) bounds.push(piece.instant);
+      }
       for (const item of slice.items || []) {
         if (item.role !== 'main') continue;
-        cues.push({ start: item.start, end: item.end });
+        // 带上所属 slice：线性移动段（from→to）内固定采样必然漂移，
+        // 承载句的 slice 需要被识别并回退固定位置。
+        cues.push({ start: item.start, end: item.end, slice });
       }
     }
     cues.sort((a, b) => a.start - b.start);
     const ordered = [...(windows || [])]
       .filter(win => Number.isFinite(win.start) && Number.isFinite(win.end) && win.end > win.start)
       .sort((a, b) => a.start - b.start || String(a.rel).localeCompare(String(b.rel)));
+    // 同 rel 的重叠窗口合并为并集：扩展表情包（head + 多个 sticker_ref）在
+    // 窗口收集阶段会产生同 rel 的重复窗口（预览层同一时刻同一张图只显示
+    // 一次），不合并的话第一张贴字幕、其余会错误地落到固定位置造成双显。
+    const deduped = [];
+    for (const win of ordered) {
+      const last = deduped[deduped.length - 1];
+      if (last && last.rel === win.rel && win.start <= last.end) {
+        last.end = Math.max(last.end, win.end);
+      } else deduped.push({ rel: win.rel, start: win.start, end: win.end });
+    }
     const cuePlacements = [];
     const fixedPlacements = [];
     const occupied = [];
-    // slice 起止也是布局变化边界（叠加/副字幕进出会改变主句的排布方式）。
-    const bounds = [];
-    for (const slice of plan?.slices || []) {
-      if (Number.isFinite(slice?.start)) bounds.push(slice.start);
-      if (Number.isFinite(slice?.end)) bounds.push(slice.end);
-    }
-    for (const win of ordered) {
+    for (const win of deduped) {
       const fallback = () => {
         if (box) fixedPlacements.push(fixedBoxPlacement(win.rel, { start: win.start, end: win.end }, box));
       };
@@ -134,7 +177,14 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
       const segments = splitWindowByCues(cues, bounds, win);
       let placed = false;
       for (const segment of segments) {
-        const placement = segment.cue ? cueLeftBox(plan, segment.cue, (segment.start + segment.end) / 2) : null;
+        // 线性移动段（piece from→to）内字幕位置连续变化，固定贴放必然漂移
+        // 甚至压字——回退固定位置；瞬切段已被 instant 边界切开，段内位置恒定。
+        const moving = segment.cue?.slice?.pieces?.some(piece => piece.instant == null
+          && (piece.from?.x !== piece.to?.x || piece.from?.y !== piece.to?.y)
+          && (segment.start ?? 0) < (Number(piece.end) || 0)
+          && (Number(piece.start) || 0) <= (segment.end ?? 0));
+        const placement = segment.cue && !moving
+          ? cueLeftBox(plan, segment.cue, (segment.start + segment.end) / 2) : null;
         if (placement) {
           placed = true;
           cuePlacements.push({ rel: win.rel, ...placement, intervals: [{ start: segment.start, end: segment.end }] });
