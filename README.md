@@ -16,8 +16,6 @@ MAW 即 Moy's ASR Workflow，也可以叫做「阿墨的字幕工作台」。
 - **启动器**：用于转写字幕，生成 srt 文件和工程
 - **编辑器**：用于编辑和导出字幕，以及更多支持的文件格式
 
-<img width="1247" height="815" alt="PixPin_2026-10-19_01-03-36" src=" https://github.com/user-attachments/assets/d8eeda1c-8937-4393-a9ca-eb02e9b1dc85" />
-
 ![overview](docs/assets/readme/overview.webp)
 
 你可以在启动器中选择媒体并生成字幕，再到编辑器 MAWE 中精修文本、调整时间、预览效果，最后烧录成字幕，或者导出剪辑软件可用的工程。
