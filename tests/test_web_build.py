@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +20,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _run_worker_catching(worker, errors: list) -> None:
+    """线程 worker 的异常收集器：threading 不会向测试传播异常。"""
+    try:
+        worker()
+    except BaseException as error:  # noqa: BLE001 - 测试需要把异常带回主线程
+        errors.append(error)
 
 
 class _FakeRepo:
@@ -323,6 +333,88 @@ class EnsureBundleRebuildTests(unittest.TestCase):
         self.repo.bundle.write_text("/* fake artifact */\n", encoding="utf-8")
 
         self.assertEqual(web_build.ensure_bundle(self.root, "editor", allow_build=False), "fresh")
+
+    def test_concurrent_builds_execute_builder_once(self) -> None:
+        """Given 多线程同时触发冷构建, When 并发 ensure, Then 构建器只执行一次。"""
+        self._patch_node("C:/node/node.exe")
+        build_calls: list[list[str]] = []
+        build_lock = threading.Lock()
+
+        def fake_run(command, **_kwargs):
+            with build_lock:
+                build_calls.append(list(command))
+            self.repo.materialize()
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        barrier = threading.Barrier(4)
+
+        def worker():
+            barrier.wait(timeout=10)
+            self.assertEqual(web_build.ensure_bundle(self.root, "editor"), "fresh")
+
+        with mock.patch.object(web_build.subprocess, "run", side_effect=fake_run):
+            threads = [threading.Thread(target=worker) for _ in range(4)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=30)
+        for thread in threads:
+            self.assertFalse(thread.is_alive())
+
+        # 进程内锁 + 拿锁后新鲜度复检共同保证：4 个并发调用只触发 1 次构建
+        self.assertEqual(len(build_calls), 1)
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "fresh")
+        # 锁文件落在仓库根且被 gitignore，不出现在 web/ 资产扫描范围
+        self.assertTrue((self.root / ".bundle-build.lock").exists())
+        self.assertFalse((self.root / "web" / ".bundle-build.lock").exists())
+
+    def test_cross_process_lock_serializes_critical_sections(self) -> None:
+        """Given 两个线程直接竞争文件锁, When 先后进入, Then 临界区不重叠。"""
+        state = {"active": 0, "overlap": False, "entered": 0}
+        guard = threading.Lock()
+
+        def worker():
+            with web_build._cross_process_build_lock(self.root, "editor"):
+                with guard:
+                    if state["active"] > 0:
+                        state["overlap"] = True
+                    state["active"] += 1
+                    state["entered"] += 1
+                time.sleep(0.05)
+                with guard:
+                    state["active"] -= 1
+
+        errors: list[BaseException] = []
+        threads = [
+            threading.Thread(target=lambda: _run_worker_catching(worker, errors))
+            for _ in range(3)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+        for thread in threads:
+            self.assertFalse(thread.is_alive())
+        # 线程异常必须显式上抛：threading 不会让测试自动失败，
+        # 全体 worker 提前崩溃时锁的串行化断言会假绿
+        if errors:
+            raise errors[0]
+        self.assertEqual(state["entered"], 3)
+        self.assertFalse(state["overlap"])
+
+    def test_cross_process_lock_times_out_with_actionable_error(self) -> None:
+        """Given 锁被外部长期持有, When 等待超时, Then 报错含 pnpm 脚本指引。"""
+        with (
+            mock.patch.object(web_build, "_try_lock", return_value=False),
+            mock.patch.object(web_build, "_CROSS_PROCESS_LOCK_WAIT_SECONDS", 0.5),
+            mock.patch.object(web_build.time, "sleep", lambda _s: None),
+        ):
+            with self.assertRaises(web_build.BundlePreflightError) as caught:
+                with web_build._cross_process_build_lock(self.root, "editor"):
+                    pass
+        message = str(caught.exception)
+        self.assertIn("构建超时", message)
+        self.assertIn("pnpm run build:editor", message)
 
 
 class BundlePackagingTests(unittest.TestCase):

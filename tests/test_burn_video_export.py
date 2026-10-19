@@ -256,6 +256,62 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
                     self.assertNotIn(str(source.resolve()), command)
 
 
+    def test_srt_conversion_uses_library_slot_and_source_resolution(self):
+        from maw.ass_styles import default_ass_style_library
+        library = default_ass_style_library()
+        library['styles'].append({**library['styles'][0], 'id': 'chosen-srt', 'fontSize': 80})
+        library['assignments']['srtBurnStyleId'] = 'chosen-srt'
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append((command, kwargs))
+            if command[0] == 'ffprobe':
+                return subprocess.CompletedProcess(command, 0, json.dumps({
+                    'streams': [{'codec_type': 'video', 'width': 1280, 'height': 720}],
+                    'format': {'duration': '4.5'},
+                }), '')
+            if '-c:s' in command:
+                Path(command[-1]).write_text('[Script Info]\nPlayResX: 384\nPlayResY: 288\n'
+                    '[V4+ Styles]\nStyle: Default,Arial,12\n', encoding='utf-8')
+            else:
+                Path(command[-1]).write_bytes(b'burned')
+            return subprocess.CompletedProcess(command, 0, '', '')
+
+        with mock.patch.object(server_editor.subprocess, 'run', side_effect=run), \
+             mock.patch('maw.postprocess_ffmpeg.load_ass_style_library', return_value=library):
+            server_editor.burn_ass_video(self.source, [], '1\n00:00:00,000 --> 00:00:01,000\nHELLO\n',
+                self.output, ffmpeg_path=Path('ffmpeg'), ffprobe_path=Path('ffprobe'), subtitle_format='srt')
+        text = self.output.with_name('burn.ass').read_text(encoding='utf-8')
+        self.assertIn('PlayResX: 1280', text)
+        self.assertIn('PlayResY: 720', text)
+        style = next(line for line in text.splitlines() if line.startswith('Style: Default,'))
+        self.assertEqual(style.split(',')[2], '53')
+        conversion = next((command, kwargs) for command, kwargs in calls if '-c:s' in command)
+        self.assertEqual(conversion[1]['cwd'], self.output.parent)
+        self.assertFalse(list(self.output.parent.glob('.*.maw-burn-*.ass')))
+        self.assertEqual(self.source.read_bytes(), b'source')
+
+    def test_srt_conversion_failure_never_encodes_video(self):
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            if command[0] == 'ffprobe':
+                return subprocess.CompletedProcess(command, 0, json.dumps({
+                    'streams': [{'codec_type': 'video', 'width': 640, 'height': 360}], 'format': {},
+                }), '')
+            Path(command[-1]).write_text('incomplete', encoding='utf-8')
+            return subprocess.CompletedProcess(command, 1, '', 'invalid subtitle')
+
+        with mock.patch.object(server_editor.subprocess, 'run', side_effect=run):
+            with self.assertRaises(server_editor.BurnVideoExportError):
+                server_editor.burn_ass_video(self.source, [], 'bad SRT', self.output,
+                    ffmpeg_path=Path('ffmpeg'), ffprobe_path=Path('ffprobe'), subtitle_format='srt')
+        self.assertFalse(self.output.exists())
+        self.assertFalse(any('-c:v' in command for command in calls))
+        self.assertFalse(list(self.output.parent.glob('.*.maw-burn-*.ass')))
+
+
 class BurnVideoJobHttpTests(unittest.TestCase):
     def setUp(self):
         from tests.test_local_editor_server import server_editor as loaded_server_editor
@@ -410,6 +466,70 @@ class BurnVideoJobHttpTests(unittest.TestCase):
             self.assertTrue(captured["include_audio"])
             self.assertEqual(captured["audio_track"], 1)
 
+    def test_http_srt_uses_the_same_bound_job_and_rejects_ambiguous_input(self):
+        captured = {}
+
+        def burn(source, intervals, text, output, **kwargs):
+            captured.update(source=source, intervals=intervals, text=text, subtitle_format=kwargs['subtitle_format'])
+            output.write_bytes(b'srt-burned')
+
+        request = self.payload()
+        request.pop('ass')
+        request['srt'] = '1\n00:00:00,000 --> 00:00:01,000\nHELLO\n'
+        request['intervals'] = [{'startMs': 0, 'endMs': 1000}]
+        with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, 'ensure_libass_supported', return_value=True), \
+             mock.patch.object(self.server_editor, 'burn_ass_video', side_effect=burn):
+            self.assertEqual(self.request(self.base, {**request, 'ass': ASS_TEXT})[0], 400)
+            self.assertEqual(self.request(self.base, {**request, 'srt': ''})[0], 400)
+            self.assertEqual(self.request(self.base, {**request, 'sourceMediaId': 'stale'})[0], 409)
+            self.assertEqual(self.request(self.base, {**request, 'requestToken': 'invalid'}, token=False)[0], 403)
+            status, job = self.request(self.base, request)
+            self.assertEqual(status, 202)
+            self.wait(job['jobId'], 'ready')
+            self.assertEqual(captured, {'source': self.source, 'intervals': [(0, 1000)],
+                                       'text': request['srt'], 'subtitle_format': 'srt'})
+            self.assertEqual(self.request(self.base + '/' + job['jobId'] + '/download'), (200, b'srt-burned'))
+
+    def test_http_srt_forwards_stickers_with_and_without_removed_intervals(self):
+        sticker_root = self.root / "stickers"
+        sticker_root.mkdir()
+        sticker = sticker_root / "a.png"
+        sticker.write_bytes(b"png")
+        self.server.project = self.server_editor.replace(self.server.project, sticker_root=sticker_root)
+        captured = {}
+
+        def burn(source, intervals, text, output, **kwargs):
+            captured.update(source=source, intervals=intervals, text=text, **kwargs)
+            output.write_bytes(b"srt-sticker-burned")
+
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True), \
+             mock.patch.object(self.server_editor, "burn_ass_video", side_effect=burn):
+            for intervals in ([], [{"startMs": 0, "endMs": 1000}, {"startMs": 2000, "endMs": 5000}]):
+                with self.subTest(intervals=intervals):
+                    request = self.payload()
+                    request.pop("ass")
+                    start, end = (2000, 3000) if intervals else (3000, 4000)
+                    request.update(srt=f"1\n00:00:0{start // 1000},000 --> 00:00:0{end // 1000},000\nHELLO\n",
+                        stickers={"mode": "cue-left", "placements": [{"rel": "a.png",
+                            "x": 10, "y": 20, "width": 30, "height": 40, "align": "center",
+                            "intervals": [{"start": start, "end": end}]}]})
+                    if intervals:
+                        request["intervals"] = intervals
+                    status, job = self.request(self.base, request)
+                    self.assertEqual(status, 202)
+                    self.wait(job["jobId"], "ready")
+                    self.assertEqual(captured["source"], self.source)
+                    self.assertEqual(captured["subtitle_format"], "srt")
+                    self.assertEqual(captured["text"], request["srt"])
+                    self.assertEqual(captured["intervals"], [(part["startMs"], part["endMs"]) for part in intervals])
+                    self.assertEqual(len(captured["stickers"]), 1)
+                    self.assertEqual(captured["stickers"][0]["path"], sticker)
+                    self.assertEqual(captured["stickers"][0]["intervals"], [(start, end)])
+                    self.assertEqual(self.request(self.base + "/" + job["jobId"] + "/download"),
+                        (200, b"srt-sticker-burned"))
+
     def test_http_cancel_admission_and_expired_deadline_are_conflicts(self) -> None:
         token = "b" * 64
         cancel = {"requestToken": self.server.request_token, "admissionToken": token}
@@ -423,6 +543,37 @@ class BurnVideoJobHttpTests(unittest.TestCase):
             self.assertEqual(self.request(self.base, {**payload, "admissionToken": "c" * 64,
                 "admissionDeadline": int(time.time() * 1000) - 1})[0], 409)
         self.assertIsNone(self.server.media_jobs.active)
+
+    def test_cancelling_srt_conversion_stops_its_child_and_cleans_the_job(self):
+        probe = mock.Mock(streams=[mock.Mock(codec_signature=('video', None, None, None, 320, 180), disposition=())])
+
+        def converting(subtitle, *, run_command, **kwargs):
+            run_command([sys.executable, '-c', 'import time; time.sleep(30)'], cwd=subtitle.parent)
+            self.fail('Cancelled conversion must never complete')
+
+        request = self.payload()
+        request.pop('ass')
+        request['srt'] = '1\n00:00:00,000 --> 00:00:01,000\nHELLO\n'
+        with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, 'ensure_libass_supported', return_value=True), \
+             mock.patch.object(self.server_editor, '_probe_gap_removed_video', return_value=probe), \
+             mock.patch.object(self.server_editor, 'convert_srt_to_ass', side_effect=converting):
+            status, snapshot = self.request(self.base, request)
+            self.assertEqual(status, 202)
+            job = self.server.media_jobs.jobs[snapshot['jobId']]
+            deadline = time.monotonic() + 5
+            while job.process is None and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertIsNotNone(job.process)
+            process = job.process
+            self.assertEqual(self.request(self.base + '/' + job.id + '/cancel', {
+                'requestToken': self.server.request_token,
+            })[0], 200)
+            cancelled = self.wait(job.id, 'cancelled')
+            self.assertTrue(cancelled['cleanupComplete'])
+            self.assertIsNotNone(process.poll())
+            self.assertFalse(job.output.exists())
+            self.assertEqual(self.source.read_bytes(), b'unchanged source')
 
 
 if __name__ == "__main__":
@@ -632,6 +783,96 @@ class BurnVideoPrecisionTests(CompactContainerAssertions, unittest.TestCase):
                 'stream=codec_type:format=duration', '-of', 'json', str(output)]).stdout)
             self.assertAlmostEqual(float(probe['format']['duration']), 1.0, delta=0.041)
             self.assertEqual([stream['codec_type'] for stream in probe['streams']], ['video'])
+
+
+    def test_srt_burn_renders_library_style_with_real_ffmpeg(self):
+        from maw.ass_styles import default_ass_style_library
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'source.mp4'
+            self.run_tool([self.ffmpeg, '-y', '-v', 'error', '-f', 'lavfi', '-i',
+                           'color=black:s=320x180:r=25:d=1', '-c:v', 'libx264', str(source)])
+            library = default_ass_style_library()
+            library['styles'].append({**library['styles'][0], 'id': 'srt-render', 'fontSize': 90,
+                                      'fontFamily': 'Arial', 'marginV': 12})
+            library['assignments']['srtBurnStyleId'] = 'srt-render'
+            output = root / 'export' / 'subtitled.mp4'
+            with mock.patch.object(server_editor, 'video_encoder_attempts', return_value=('cpu',)), \
+                 mock.patch('maw.postprocess_ffmpeg.load_ass_style_library', return_value=library):
+                server_editor.burn_ass_video(source, [], '1\n00:00:00,100 --> 00:00:00,800\nHELLO\n', output,
+                    ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe), subtitle_format='srt')
+            ass = output.with_name('burn.ass').read_text(encoding='utf-8')
+            self.assertIn('PlayResX: 320', ass)
+            self.assertIn('PlayResY: 180', ass)
+            style = next(line for line in ass.splitlines() if line.startswith('Style: Default,'))
+            self.assertEqual(style.split(',')[2], '15')
+            frame = self.run_tool([self.ffmpeg, '-v', 'error', '-ss', '0.4', '-i', str(output),
+                '-frames:v', '1', '-pix_fmt', 'gray', '-f', 'rawvideo', '-']).stdout
+            self.assertGreater(sum(value > 100 for value in frame), 30)
+            gap_output = root / 'gap-export' / 'subtitled.mp4'
+            with mock.patch.object(server_editor, 'video_encoder_attempts', return_value=('cpu',)), \
+                 mock.patch('maw.postprocess_ffmpeg.load_ass_style_library', return_value=library):
+                server_editor.burn_ass_video(source, [(200, 800)], '1\n00:00:00,200 --> 00:00:00,500\nHELLO\n', gap_output,
+                    ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe), subtitle_format='srt')
+            early = self.run_tool([self.ffmpeg, '-v', 'error', '-ss', '0.08', '-i', str(gap_output),
+                '-frames:v', '1', '-pix_fmt', 'gray', '-f', 'rawvideo', '-']).stdout
+            visible = self.run_tool([self.ffmpeg, '-v', 'error', '-ss', '0.3', '-i', str(gap_output),
+                '-frames:v', '1', '-pix_fmt', 'gray', '-f', 'rawvideo', '-']).stdout
+            self.assertEqual(sum(value > 100 for value in early), 0)
+            self.assertGreater(sum(value > 100 for value in visible), 30)
+
+
+    def test_srt_with_sticker_preserves_caption_clock_window_and_duration(self):
+        import zlib
+        from maw.ass_styles import default_ass_style_library
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "source.mp4"
+            self.run_tool([self.ffmpeg, "-y", "-v", "error", "-f", "lavfi", "-i",
+                "color=black:s=320x180:r=25:d=1", "-c:v", "libx264", str(source)])
+            sticker = root / "dot.png"
+            raw = b"".join(b"\x00" + b"\xff\xff\xff" * 40 for _ in range(30))
+
+            def chunk(tag, payload):
+                return (struct.pack(">I", len(payload)) + tag + payload
+                    + struct.pack(">I", zlib.crc32(tag + payload)))
+
+            sticker.write_bytes(b"\x89PNG\r\n\x1a\n"
+                + chunk(b"IHDR", struct.pack(">IIBBBBB", 40, 30, 8, 2, 0, 0, 0))
+                + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+            library = default_ass_style_library()
+            library["styles"].append({**library["styles"][0], "id": "srt-sticker-render",
+                "fontSize": 90, "fontFamily": "Arial", "marginV": 12})
+            library["assignments"]["srtBurnStyleId"] = "srt-sticker-render"
+
+            for intervals, duration in (([], 1.0), ([(200, 800)], 0.6)):
+                with self.subTest(intervals=intervals):
+                    output = root / ("gap" if intervals else "full") / "subtitled.mp4"
+                    with mock.patch.object(server_editor, "video_encoder_attempts", return_value=("cpu",)), \
+                         mock.patch("maw.postprocess_ffmpeg.load_ass_style_library", return_value=library):
+                        server_editor.burn_ass_video(source, intervals,
+                            "1\n00:00:00,200 --> 00:00:00,500\nHELLO\n", output,
+                            ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe), subtitle_format="srt",
+                            stickers=[{"rel": "dot.png", "path": sticker, "x": 10, "y": 10,
+                                "width": 40, "height": 30, "intervals": [(300, 400)]}])
+                    probe = json.loads(self.run_tool([self.ffprobe, "-v", "error", "-show_format",
+                        "-of", "json", str(output)]).stdout)
+                    self.assertAlmostEqual(float(probe["format"]["duration"]), duration, delta=0.041)
+                    for stamp, caption_visible, sticker_visible in (
+                            (0.08, False, False), (0.24, True, False),
+                            (0.36, True, True), (0.52, False, False)):
+                        frame = self.run_tool([self.ffmpeg, "-v", "error", "-ss", str(stamp),
+                            "-i", str(output), "-frames:v", "1", "-pix_fmt", "gray", "-f", "rawvideo", "-"]).stdout
+                        self.assertEqual(len(frame), 320 * 180, f"missing frame at {stamp}")
+                        caption_pixels = sum(value > 100 for value in frame[120 * 320:])
+                        if caption_visible:
+                            self.assertGreater(caption_pixels, 30, f"caption missing at {stamp}")
+                        else:
+                            self.assertEqual(caption_pixels, 0, f"caption appeared outside its window at {stamp}")
+                        patch = [frame[y * 320 + x] for y in range(15, 35) for x in range(15, 45)]
+                        self.assertEqual(sum(patch) / len(patch) > 180, sticker_visible,
+                            f"sticker appeared outside its window at {stamp}")
 
 
 class BurnVideoDiagnosticTests(unittest.TestCase):
