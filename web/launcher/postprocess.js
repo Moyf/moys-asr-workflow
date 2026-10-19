@@ -5,7 +5,7 @@
   const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", timestamps: "toolboxTimestampsPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel", alignment: "toolboxAlignmentPanel", burnSubtitle: "toolboxBurnSubtitlePanel", extractAudio: "toolboxExtractAudioPanel" };
   const TASK_PROMPT_KEYS = { ai_cleanup: "toolbox_task_cleanup", proofread: "toolbox_task_proofread", resegment: "toolbox_task_resegment", translate_en: "toolbox_task_translate_en", translate_zh: "toolbox_task_translate_zh" };
   const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
-  const SUBTITLE_BURN_EXTS = new Set([".srt", ".ass", ".ssa"]);
+  const SUBTITLE_BURN_EXTS = new Set([".srt", ".ass", ".ssa", ".mosp", ".json"]);
   const ALIGNMENT_PROJECT_EXTS = new Set([".mosp", ".json"]);
   const MEDIA_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"]);
   const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);

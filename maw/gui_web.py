@@ -1933,7 +1933,7 @@ class LauncherApi:
         elif kind == "subtitle":
             file_types = ("Subtitle files (*.mosp;*.json;*.srt)",)
         elif kind == "subtitle-burn":
-            file_types = ("Subtitle files (*.srt;*.ass;*.ssa)", "All files (*.*)")
+            file_types = ("Subtitle files (*.srt;*.ass;*.ssa;*.mosp;*.json)", "All files (*.*)")
         elif kind == "video":
             file_types = ("Video files (*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.flv;*.webm;*.ts;*.m4v)", "All files (*.*)")
         elif kind == "ffconcat":

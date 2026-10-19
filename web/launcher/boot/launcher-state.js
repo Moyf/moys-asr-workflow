@@ -6,7 +6,7 @@ const SHOW_LENGTH_LIMIT_FIELD = false;
 
 const MEDIA_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"]);
 const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
-const SUBTITLE_BURN_EXTS = new Set([".srt", ".ass", ".ssa"]);
+const SUBTITLE_BURN_EXTS = new Set([".srt", ".ass", ".ssa", ".mosp", ".json"]);
 const PROJECT_EXTS = new Set([".mosp", ".json"]);
 const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
 const ERROR_TEXT = {
