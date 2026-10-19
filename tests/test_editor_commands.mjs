@@ -76,6 +76,27 @@ test('failed mutations restore state and preserve existing history and redo', ()
   assert.deepEqual(redo, ['existing redo']);
 });
 
+test('before-begin listeners finish a merged gesture before capturing the next command', () => {
+  const { commands, data, history } = commandFixture();
+  const wheel = commands.begin('wheel');
+  data.value = 1;
+  let calls = 0;
+  const unsubscribe = commands.onBeforeBegin(() => {
+    calls += 1;
+    wheel.commit();
+  });
+  const color = commands.begin('color');
+  assert.equal(calls, 1);
+  assert.deepEqual(history.map(record => record.value), [0]);
+  data.value = 2;
+  color.cancel();
+  assert.equal(data.value, 1, 'cancelling the second command preserves the committed wheel result');
+  assert.equal(unsubscribe(), true);
+  assert.equal(unsubscribe(), false);
+  commands.begin('unsubscribed').cancel();
+  assert.equal(calls, 1);
+});
+
 test('a command may commit before reselecting its newly rendered result without publishing twice', () => {
   const { commands, data, history, updates } = commandFixture();
   const value = commands.run('split', command => {

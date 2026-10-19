@@ -122,8 +122,32 @@ export function createWaveformModule(dependencies) {
         this.pendingRowHeightDirection = 0;
         const current = ROW_HEIGHT_PRESETS.indexOf(this.settings.rowHeight);
         const next = clamp(current + steps, 0, ROW_HEIGHT_PRESETS.length - 1);
-        if (next !== current) this.setRowHeight(ROW_HEIGHT_PRESETS[next]);
+        if (next !== current) {
+          this.applyRowGeometryWithViewportAnchor(() => this.setRowHeight(ROW_HEIGHT_PRESETS[next]));
+        }
       }, WAVEFORM_ADJUST_DEBOUNCE_MS);
+    }
+
+
+    // 账本 #20 追加：工具栏「每行长度/每行高度」select 与滚轮行高这两个
+    // 非 Q 入口改几何时，同样保留「正在看的位置」。捕获/还原与
+    // editor-display-settings 已挂的三个入口共用同一门面方法
+    // （MaweDisplaySettings.captureWaveformViewportCenterTimeMs /
+    // restoreWaveformViewportAfterGeometryChange，basic 取窗口水平中点、
+    // multi 取视口垂直中点命中的行时间）；这两个入口不经 display-settings，
+    // 不存在双重捕获/还原。门面缺失（单测沙箱）时退化为无锚定的旧行为。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    applyRowGeometryWithViewportAnchor(apply) {
+      const displaySettings = globalThis.MaweDisplaySettings;
+      const capture = displaySettings?.captureWaveformViewportCenterTimeMs;
+      const restore = displaySettings?.restoreWaveformViewportAfterGeometryChange;
+      const anchorTimeMs = typeof capture === 'function' ? capture.call(displaySettings, this) : null;
+      const rowHeightBefore = this.settings.rowHeight;
+      const secondsPerRowBefore = this.settings.secondsPerRow;
+      apply();
+      const changed = this.settings.rowHeight !== rowHeightBefore
+        || this.settings.secondsPerRow !== secondsPerRowBefore;
+      if (changed && typeof restore === 'function') restore.call(displaySettings, this, anchorTimeMs);
     }
 
 

@@ -204,6 +204,8 @@
     syncBoundCueDrag: MaweBoundDrag.syncBoundCueDrag,
     prepareBoundCueDrag: MaweBoundDrag.prepareBoundCueDrag,
     onLayoutUndo: (label, snapshot) => MaweHistory.pushLayoutUndo(label, snapshot),
+    // 波形模块经依赖注入访问脏态事件；不直接引用 MaweState 全局。
+    markProjectDirty: () => MaweState.markProjectDirty(),
     onCommitEdit: (idxs, kind, track = 'main', independent = false, details = null) => {
       const editedTracks = details?.moveTracks || [{ track, indices: idxs }];
       let linkedChanged = false;
@@ -233,6 +235,7 @@
         if (overlay) {
           overlay._dirty = true;
           overlayIndices.forEach((idx) => { if (overlay.segments[idx]) overlay.segments[idx]._dirty = true; });
+          MaweState.markProjectDirty();
         }
       }
       if (linkedChanged || MaweMultiSubtitleCore.multiSubtitleVisible() || track === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();

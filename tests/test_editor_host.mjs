@@ -59,6 +59,16 @@ test('picker cancellation remains distinguishable from a failed write', async ()
   await assert.rejects(context.window.MaweHost.files.pickSaveFile({ suggestedName: 'demo.mosp' }), error => error === cancelled);
 });
 
+test('a cancelled snapshot aborts the writable stream and preserves the original error', async () => {
+  const context = loadHost();
+  const error = Object.assign(new Error('project changed'), {name: 'AbortError'});
+  const calls = [];
+  await assert.rejects(context.window.MaweHost.files.writeBlob({async createWritable() {
+    return {write() {calls.push('write');}, close() {calls.push('close');}, abort() {calls.push('abort');}};
+  }}, () => {throw error;}), found => found === error);
+  assert.deepEqual(calls, ['abort']);
+});
+
 test('download fallback dispatches once and keeps the object URL until deferred cleanup', () => {
   const calls = [], anchor = { click() { calls.push('click'); } };
   let cleanup;

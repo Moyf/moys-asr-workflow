@@ -27,6 +27,7 @@ function moveSegmentToOverlayTrack(index) {
   overlay.enabled = true;
   overlay._dirty = true;
   segment._dirty = true;
+  MaweState.markProjectDirty();
   return newIndex;
 }
 
@@ -38,6 +39,7 @@ function moveOverlaySegmentToMainTrack(index) {
   if (newIndex < 0) return -1;
   overlay._dirty = true;
   segment._dirty = true;
+  MaweState.markProjectDirty();
   return newIndex;
 }
 

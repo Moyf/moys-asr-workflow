@@ -159,7 +159,7 @@ front-matter 填 task/pr/date/status（status 先写 pending），正文按
 
 ## 编写核对项
 
-分区默认依次包含：实现 / 审查结论、修复记录、自动化验证结果、人工核验、后续操作。只读内容可用 `.plain`、`.note`、`.cmd`、`table`；打勾项写清「入口 → 操作 → 预期」，已知未验证和环境性失败须明确标注。
+分区默认依次包含：实现 / 审查结论、修复记录、自动化验证结果、人工核验、后续操作。只读内容可用 `.plain`、`.note`、`.cmd`、`table`；打勾项按 v2 块写清「测试目的 / 操作 / 预期」，补充背景放可选的「说明」；操作中包含具体入口，已知未验证和环境性失败须明确标注。
 
 ```html
 <details class="section" open id="feature-export">

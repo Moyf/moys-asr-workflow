@@ -138,6 +138,7 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
   const seg = target.segment;
   seg.text = MaweDom.cuePanelText.value.replace(/\r\n?/g, '\n');
   seg._dirty = true;
+  MaweState.markProjectDirty();
   if (target.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
   MaweViewUpdates.invalidate({ save: true });
   const splitMode = target.kind === 'extension'

@@ -34,7 +34,7 @@ interface ProjectSegmentItem {
   text?: string;
 }
 
-interface AssCueOverride { pos?: { x: number; y: number }; }
+interface AssCueOverride { pos?: { x: number; y: number }; scale?: number; }
 interface ProjectSegment {
   start: Milliseconds;
   end: Milliseconds;
@@ -224,6 +224,9 @@ interface MaweStateApi {
   noteSavedSegments(fingerprint?: string): void;
   markSaved(): void;
   reconcileSegmentsDirty(): void;
+  markProjectDirty(): void;
+  getProjectDirtyEpoch(): number;
+  onProjectDirtyChange(listener: (epoch: number) => void): () => void;
 }
 declare var MaweState: MaweStateApi;
 interface Window {
@@ -245,6 +248,7 @@ interface MaweCommandsApi {
   begin(label: string, options?: { captureView?: boolean }): EditorTransaction;
   run<T>(label: string, mutate: (command: EditorTransaction) => T,
     options?: { captureView?: boolean; invalidate?: ViewInvalidation }): T;
+  onBeforeBegin(listener: (label: string, options: { captureView?: boolean }) => void): () => boolean;
 }
 declare var MaweCommands: MaweCommandsApi;
 declare var MaweViewUpdates: { invalidate(options?: ViewInvalidation): void };

@@ -1,0 +1,73 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { sitePath } from '../../lib/site-path';
+import releaseData from '../../generated/releases.json';
+import '../../styles/releases.css';
+
+interface ReleaseEntry {
+  version: string;
+  date: string;
+  published_at: string | null;
+  summary: string;
+  notes_url: string;
+  notes_json_url: string;
+  github_url: string;
+  downloads: { platform: string; arch: string; variant: string; url: string; size_bytes: number }[];
+  base: string | null;
+}
+interface ReleaseIndex { mode: 'preview' | 'published'; latest_stable: string | null; releases: ReleaseEntry[] }
+
+const data = releaseData as ReleaseIndex;
+const releases = data.releases ?? [];
+const repoUrl = 'https://github.com/Moyf/moys-asr-workflow';
+const publishedDate = (release: ReleaseEntry) => (release.published_at || release.date).slice(0, 10);
+---
+
+<BaseLayout title="更新记录 — MAW" description="MAW 各版本更新说明与下载。">
+  <main class="releases-page shell">
+    <header class="release-masthead">
+      <a class="release-wordmark" href={sitePath()}>MAW <span>/ UPDATES</span></a>
+      <nav aria-label="更新记录导航">
+        <a href={sitePath()}>返回首页</a>
+        <a href={repoUrl}>GitHub ↗</a>
+      </nav>
+    </header>
+
+    <section class="release-index-intro">
+      <p class="release-kicker">MAW / RELEASE ARCHIVE</p>
+      <div class="release-index-title-row">
+        <h1>更新记录</h1>
+        {data.mode === 'preview' && <span class="release-preview-badge">预览数据</span>}
+      </div>
+      <p>查看各版本的更新内容、发布信息与可用安装包。</p>
+      {data.latest_stable && <p class="release-latest">最新正式版 <a href={sitePath(`releases/${data.latest_stable}/`)}>{data.latest_stable} ↗</a></p>}
+    </section>
+
+    {releases.length > 0 ? (
+      <ol class="release-list">
+        {releases.map((release, index) => (
+          <li class="release-list-item">
+            <span class="release-index-number mono">{String(index + 1).padStart(2, '0')}</span>
+            <article class="release-card">
+              <div class="release-card-topline">
+                <span class="release-date mono">{publishedDate(release)}</span>
+                {release.version === data.latest_stable && <span class="release-stable-badge">最新正式版</span>}
+                {data.mode === 'preview' && <span class="release-preview-badge">预览</span>}
+              </div>
+              <h2><a href={sitePath(`releases/${release.version}/`)}>MAW {release.version}<span aria-hidden="true"> ↗</span></a></h2>
+              <p>{release.summary}</p>
+              <div class="release-card-links">
+                <a href={sitePath(`releases/${release.version}/`)}>查看更新与下载</a>
+                {data.mode === 'published' && release.github_url && <a href={release.github_url}>GitHub Release ↗</a>}
+              </div>
+            </article>
+          </li>
+        ))}
+      </ol>
+    ) : (
+      <div class="release-empty"><p>暂无已整理的版本记录。</p></div>
+    )}
+
+    <footer class="release-index-footer"><a href={repoUrl}>MAW 开源项目 ↗</a><span>更新记录与安装包信息</span></footer>
+  </main>
+</BaseLayout>

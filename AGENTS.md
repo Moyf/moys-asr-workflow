@@ -243,7 +243,7 @@ git diff --name-status
 
 创建 GitHub Release 前必须核对 `CHANGELOG.md`：对应版本条目必须已经归档当前发布内容，并用 `scripts/prepare_release_notes.py` 生成、检查实际 Release notes；不能仅因 tag 已创建就视为发布完成。
 
-从 2.0 起，人工更新正文只维护在 CHANGELOG；归档版本后用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 生成并提交 `docs/releases/<版本>.md`，发布前运行 `--check-doc` 与 `--output PATH` 检查实际 notes。发布前改 CL 后必须重生成，不手改版本文档。正式版在 CL 中完整汇总 beta；小版本可通过 CL 的 `<!-- release-base: X.Y.0 -->` 引用同系列正式版内容。详见[发布管线](docs/INDEX.md#engineering-releases)。
+人工更新正文只维护在 CHANGELOG；正式版用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 生成并提交 `docs/releases/<版本>.md`，发布前运行 `--check-doc` 与 `--output PATH` 检查实际 notes。beta / rc 不新增归档，发布正文直接读取 CL；旧 beta 归档仅保留追溯，官网与更新索引不收录。发布前改 CL 后必须重生成，不手改版本文档。正式版在 CL 中完整汇总 beta；小版本可通过 CL 的 `<!-- release-base: X.Y.0 -->` 引用同系列正式版内容。官网读取归档、固定版本图片与实际发布附件，构建生成物不入库。详见[发布管线](docs/INDEX.md#engineering-releases)。
 
 Release Markdown 中，粗体闭合标记 `**` 与后续标点或正文之间必须留一个空格，标点后继续正文时也要留一个空格；禁止写成 `- **这个文字**：说明`，应写成 `- **这个文字** ： 说明`，避免 Markdown 渲染异常。
 

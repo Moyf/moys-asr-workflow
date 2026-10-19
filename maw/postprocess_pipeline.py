@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import os
@@ -36,6 +35,7 @@ from maw.postprocess import (
     run_llm_postprocess,
     translation_backfill_warning,
 )
+from maw.postprocess_translation import attach_translation_project
 from maw.postprocess_ai_cleanup import AiCleanupRequest, llm_complete, run_ai_cleanup
 from maw.postprocess_resegment import complete_boundaries, normalize_max_chars
 from maw.postprocess_io import _available_output, SubtitleArtifact, read_project, write_artifacts
@@ -105,7 +105,7 @@ def default_postprocess_plan() -> dict[str, object]:
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False},
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "maxChars": 0},
             {"id": "ocr", "enabled": False, "videoPath": "", "videoPathMode": "", "regionMode": "full", "regionX1": 0, "regionY1": 0, "regionX2": 100, "regionY2": 100, "threshold": 0.5, "report": False},
-            {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "embedTranslations": False, "bilingualLineOrder": "", "customPrompt": "", "generateComparison": False},
+            {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "embedTranslations": False, "bilingualLineOrder": "", "customPrompt": "", "generateComparison": False, "skipTargetLanguage": True},
             {"id": "burn", "enabled": False, "videoEncoder": "auto"},
         ],
     }
@@ -168,6 +168,8 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = bool(value)
             elif key == "embedTranslations":
                 step[key] = bool(value)
+            elif key == "skipTargetLanguage":
+                step[key] = value is not False
             elif key == "bilingualLineOrder":
                 step[key] = str(value or "") if str(value or "") in BILINGUAL_LINE_ORDERS else ""
             elif key in {"regionX1", "regionY1", "regionX2", "regionY2", "threshold"}:
@@ -1200,6 +1202,7 @@ def _run_step(
         output_directory=output_directory,
         media_path=media_path,
         bilingual_line_order=str(step.get("bilingualLineOrder") or ""),
+        skip_target_language=step.get("skipTargetLanguage") is not False,
         max_chars=normalize_max_chars(step.get("maxChars")) if step_id == "resegment" else 0,
         generate_comparison=bool(step.get("generateComparison")),
     ), complete=complete, on_status=on_status)
@@ -1301,118 +1304,10 @@ def _attach_translation_track(
     if translated_artifact.project_path is None or translated_artifact.srt_path is None:
         raise ValueError("翻译步骤没有生成完整的工程和 SRT 产物。")
     source_project = read_project(source_project_path)
-    translated_project = read_project(translated_artifact.project_path)
-    source_segments = source_project.get("segments")
-    translated_segments = translated_project.get("segments")
-    if not isinstance(source_segments, list) or not isinstance(translated_segments, list):
-        raise ValueError("翻译前后的工程缺少有效字幕段。")
-    if len(source_segments) != len(translated_segments):
-        raise ValueError("翻译结果未保持原字幕段数，无法生成主副字幕工程。")
-
-    for index, (source, translated) in enumerate(zip(source_segments, translated_segments, strict=True), 1):
-        if not isinstance(source, dict) or not isinstance(translated, dict):
-            raise ValueError(f"第 {index} 条翻译结果不是有效字幕段。")
-        if (
-            source.get("start") != translated.get("start")
-            or source.get("end") != translated.get("end")
-            or source.get("id") != translated.get("id")
-        ):
-            raise ValueError(f"第 {index} 条翻译结果未保持原字幕时间范围或稳定 ID。")
-        source_text = source.get("text")
-        translated_text = translated.get("text")
-        if not isinstance(source_text, str) or not isinstance(translated_text, str):
-            raise ValueError(f"第 {index} 条翻译结果为空。")
-        if not translated_text.strip() and source_text.strip():
-            raise ValueError(f"第 {index} 条翻译结果为空。")
-
-    combined = copy.deepcopy(source_project)
-    multi = combined.get("multi_subtitle")
-    if not isinstance(multi, dict):
-        multi = {}
-        combined["multi_subtitle"] = multi
-    multi["schema"] = str(multi.get("schema") or "moy.asr.multi_subtitle.v1")
-    multi["enabled"] = True
-    multi["display_mode"] = str(multi.get("display_mode") or "both")
-    tracks = multi.get("tracks")
-    if not isinstance(tracks, list):
-        tracks = []
-        multi["tracks"] = tracks
-    bindings = multi.get("bindings")
-    if not isinstance(bindings, list):
-        bindings = []
-        multi["bindings"] = bindings
-
-    used_track_ids = {str(track.get("id")) for track in tracks if isinstance(track, dict) and track.get("id")}
-    base_track_id = f"translation-{target if target in TRANSLATION_TARGETS else 'zh'}"
-    track_id = base_track_id
-    track_suffix = 2
-    while track_id in used_track_ids:
-        track_id = f"{base_track_id}-{track_suffix}"
-        track_suffix += 1
-
-    extension_segments: list[dict[str, object]] = []
-    extension_bindings: list[tuple[int, dict[str, object], dict[str, object]]] = []
-    for index, (source, translated) in enumerate(zip(source_segments, translated_segments, strict=True), 1):
-        assert isinstance(source, dict)
-        assert isinstance(translated, dict)
-        source_text = source.get("text")
-        translated_text = translated.get("text")
-        if (
-            isinstance(source_text, str)
-            and isinstance(translated_text, str)
-            and translated_text.strip()
-            and translated_text.strip() == source_text.strip()
-        ):
-            # 目标语言预过滤保留的句子：译文与主字幕相同，副轨再放一份只会
-            # 造成重复显示，跳过该句的副轨段与绑定（空↔空字幕保持原有占位行为）。
-            continue
-        extension_segment: dict[str, object] = {
-            "id": f"{track_id}-segment-{index:03d}",
-            "start": translated["start"],
-            "end": translated["end"],
-            "text": translated["text"],
-        }
-        if translated.get("disabled") is True:
-            extension_segment["disabled"] = True
-        extension_segments.append(extension_segment)
-        extension_bindings.append((index, source, extension_segment))
-
-    tracks.append({
-        "id": track_id,
-        "role": "extension",
-        "name": "中文翻译" if target == "zh" else "英文翻译",
-        "language": target,
-        "split_mode": "continuous" if target == "zh" else "word",
-        "source_name": f"translation-{target}.srt",
-        "segments": extension_segments,
-    })
-
-    used_main_ids = {
-        str(main_id)
-        for binding in bindings
-        if isinstance(binding, dict)
-        for main_id in (binding.get("main_segment_ids") or [])
-    }
-    used_binding_ids = {str(binding.get("id")) for binding in bindings if isinstance(binding, dict) and binding.get("id")}
-    for index, source, extension in extension_bindings:
-        main_id = str(source["id"])
-        if main_id in used_main_ids:
-            continue
-        binding_id = f"translation-binding-{index:03d}"
-        binding_suffix = 2
-        while binding_id in used_binding_ids:
-            binding_id = f"translation-binding-{index:03d}-{binding_suffix}"
-            binding_suffix += 1
-        used_binding_ids.add(binding_id)
-        bindings.append({
-            "id": binding_id,
-            "track_id": track_id,
-            "main_segment_ids": [main_id],
-            "extension_segment_ids": [extension["id"]],
-            "start_offset_ms": int(extension["start"]) - int(source["start"]),
-            "end_offset_ms": int(extension["end"]) - int(source["end"]),
-        })
-        used_main_ids.add(main_id)
+    translated_project = translated_artifact.translation_project or read_project(translated_artifact.project_path)
+    combined = attach_translation_project(source_project, translated_project, target=target)
+    source_segments = source_project["segments"]
+    extension_segments = combined["multi_subtitle"]["tracks"][0]["segments"]
 
     skipped_identical = len(source_segments) - len(extension_segments)
     warnings = (
@@ -1456,12 +1351,12 @@ def _merge_bilingual_subtitles(
     output_directory: Path,
     media_path: Path | None = None,
 ) -> SubtitleArtifact:
-    """Write a single-track bilingual artifact while keeping translation files intermediate."""
+    """Keep editable tracks in MOSP and compose only the delivery SRT."""
 
     if translated_artifact.project_path is None or translated_artifact.srt_path is None:
         raise ValueError("翻译步骤没有生成完整的工程和 SRT 产物。")
     source_project = read_project(source_project_path)
-    translated_project = read_project(translated_artifact.project_path)
+    translated_project = translated_artifact.translation_project or read_project(translated_artifact.project_path)
     merged = merge_bilingual_project(
         source_project,
         translated_project,
@@ -1470,10 +1365,11 @@ def _merge_bilingual_subtitles(
     )
     warnings = (
         *translated_artifact.warnings,
-        "翻译前后的独立字幕已保留为中间产物，最终输出为单条双语字幕。",
+        "工程保留原文主轨与译文副轨，SRT 输出为双语合一字幕。",
     )
     merged_artifact = write_artifacts(
-        merged,
+        attach_translation_project(source_project, translated_project, target=target),
+        srt_project=merged,
         source_project_path=source_project_path,
         source_srt_path=source_srt_path,
         operation=f"translate-{target}-bilingual",
@@ -1511,7 +1407,7 @@ def _embed_translated_subtitles(
     if translated_artifact.project_path is None or translated_artifact.srt_path is None:
         raise ValueError("翻译步骤没有生成完整的工程和 SRT 产物。")
     source_project = read_project(source_project_path)
-    translated_project = read_project(translated_artifact.project_path)
+    translated_project = translated_artifact.translation_project or read_project(translated_artifact.project_path)
     embedded = embed_translated_project(source_project, translated_project)
     backfill_warning = translation_backfill_warning(source_project, embedded)
     if backfill_warning:

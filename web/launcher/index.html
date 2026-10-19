@@ -92,13 +92,14 @@
           <button id="helpReportIssue" type="button" role="menuitem" disabled><svg class="i" aria-hidden="true"><use href="#i-bug"></use></svg><span data-i18n="help_report_issue">报告问题</span><span class="menu-soon" data-i18n="help_coming_soon">即将推出</span></button>
           <div class="menu-sep" role="separator"></div>
           <button id="homeLink" type="button" role="menuitem"><svg class="i" aria-hidden="true"><use href="#i-github"></use></svg><span data-i18n="help_github">GitHub</span></button>
+
         </div>
       </div>
       <button id="settingsButton" class="nav-item" type="button" data-nav-page="settings"><svg class="i" aria-hidden="true"><use href="#i-gear"></use></svg><span data-i18n="nav_settings">设置</span><span id="settingsDot" class="settings-dot hidden"></span></button>
     </nav>
     <div class="app-main">
     <header class="topbar">
-      <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.9.0-beta.2</span></div>
+      <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.9.0</span></div>
       <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
       <span class="topbar-spacer"></span>
       <button id="supportLink" class="topbar-link" type="button"><svg class="i" aria-hidden="true"><use href="#i-heart"></use></svg><span data-i18n="support_maw">支持 MAW</span></button>
@@ -452,9 +453,10 @@
               <div class="auto-step-row" data-auto-step-row="cleanup">
                 <span class="auto-step-num" aria-hidden="true"></span>
                 <div class="auto-step-copy">
-                  <label class="auto-step-name" for="autoStepCleanup"><span data-i18n="auto_step_cleanup">AI 口播整理</span></label>
+                  <label class="auto-step-name" for="autoStepCleanup"><span data-i18n="auto_step_cleanup">口播整理</span></label>
                   <span id="autoStepCleanupHint" class="auto-step-hint hint"></span>
                 </div>
+
                 <span id="autoStepCleanupStatus" class="auto-step-status hint"></span>
                 <button id="configureAutoCleanup" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
                 <input id="autoStepCleanup" type="checkbox" class="auto-step-switch">
@@ -537,12 +539,19 @@
                 <option value="translation_first" data-i18n="bilingual_order_translation_first">译文在上</option>
                 <option value="original_first" data-i18n="bilingual_order_original_first">原文在上</option>
               </select>
-              <p id="autoTranslateMergeHint" class="hint auto-translate-merge hidden" data-i18n="merge_bilingual_hint">将双语字幕合并成一个字幕文件，上下换行显示。</p>
+              <p id="autoTranslateMergeHint" class="hint auto-translate-merge hidden" data-i18n="merge_bilingual_hint">SRT 将原文与译文上下合并；MOSP 始终保留可编辑的主副双轨。</p>
               <label id="autoTranslateBackfillField" class="check-field auto-translate-merge hidden" for="autoTranslateBackfill">
                 <input id="autoTranslateBackfill" type="checkbox">
                 <span data-i18n="auto_backfill_subtitles">只翻译外文语句</span>
               </label>
               <p id="autoTranslateBackfillHint" class="hint auto-translate-merge hidden" data-i18n="auto_backfill_subtitles_hint">只把少量外文语句翻译成目标语言。</p>
+              <div id="autoTranslateSkipTargetField" class="translation-skip-target hidden">
+                <label class="check-field" for="autoTranslateSkipTarget">
+                  <input id="autoTranslateSkipTarget" type="checkbox" checked>
+                  <span data-i18n="translation_skip_target">跳过已是目标语言的字幕</span>
+                </label>
+                <p class="hint" data-i18n="translation_skip_target_hint">关闭后将所有非空字幕交给模型翻译；遇到误判时可关闭。</p>
+              </div>
             </div>
             <div class="auto-retain-row">
               <div class="auto-retain-copy">
@@ -856,7 +865,10 @@
           <p id="toolboxBurnSubtitlePathError" class="field-error"></p>
         </div>
         <div class="toolbox-green-screen-option">
-          <label class="check-field" for="toolboxGreenScreen"><input id="toolboxGreenScreen" type="checkbox"><span data-i18n="toolbox_green_screen">生成绿幕视频</span></label>
+          <div class="toolbox-green-screen-checks">
+            <label class="check-field" for="toolboxGreenScreen"><input id="toolboxGreenScreen" type="checkbox"><span data-i18n="toolbox_green_screen">生成绿幕视频</span></label>
+            <label id="toolboxGreenScreenAudioField" class="check-field hidden" for="toolboxGreenScreenIncludeAudio"><input id="toolboxGreenScreenIncludeAudio" type="checkbox"><span data-i18n="toolbox_green_screen_include_audio">附带音轨</span></label>
+          </div>
           <div id="toolboxGreenScreenSizeField" class="field hidden">
             <label for="toolboxGreenScreenSize" data-i18n="toolbox_green_screen_size">视频尺寸</label>
             <select id="toolboxGreenScreenSize">
@@ -866,7 +878,7 @@
             </select>
             <p class="hint" data-i18n="toolbox_green_screen_size_hint">绿幕画布按所选尺寸生成；SRT 烧录样式按该尺寸换算，与编辑器预览一致。ASS 使用自身画布坐标，随尺寸等比缩放。</p>
           </div>
-          <p class="hint" data-i18n="toolbox_green_screen_hint">无需视频源；用字幕时长生成带字幕的绿色背景视频，30 fps，不含音轨。默认 4K。</p>
+          <p class="hint" data-i18n="toolbox_green_screen_hint">用字幕时长生成带字幕的绿色背景视频，30 fps。默认 4K。</p>
         </div>
         <div id="toolboxBurnVideoEncoderField" class="field">
           <label for="toolboxBurnVideoEncoder" data-i18n="toolbox_burn_video_encoder">视频编码器</label>
@@ -1145,7 +1157,7 @@
             <select id="postprocessOperation">
                   <option value="translate_zh" data-i18n="toolbox_translate_zh">翻译成中文</option>
                   <option value="translate_en" data-i18n="toolbox_translate_en">翻译成英文</option>
-                  <option value="ai_cleanup" data-i18n="toolbox_ai_cleanup_task">AI 口播整理</option>
+                  <option value="ai_cleanup" data-i18n="toolbox_ai_cleanup_task">口播整理</option>
                   <option value="proofread" data-i18n="toolbox_proofread">校对文本</option>
                   <option value="resegment" data-i18n="toolbox_resegment">重新断句</option>
                   <option value="custom" data-i18n="toolbox_custom">自定义</option>
@@ -1188,12 +1200,19 @@
               <option value="original_first" data-i18n="bilingual_order_original_first">原文在上</option>
             </select>
           </div>
-          <p class="hint" data-i18n="merge_bilingual_hint">将双语字幕合并成一个字幕文件，上下换行显示。</p>
+          <p class="hint" data-i18n="merge_bilingual_hint">SRT 将原文与译文上下合并；MOSP 始终保留可编辑的主副双轨。</p>
           <label class="check-field" for="postprocessBackfill">
             <input id="postprocessBackfill" type="checkbox">
             <span data-i18n="toolbox_backfill_subtitles">只翻译外文语句</span>
           </label>
           <p class="hint" data-i18n="backfill_subtitles_hint">适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。</p>
+          <div class="translation-skip-target">
+            <label class="check-field" for="postprocessSkipTarget">
+              <input id="postprocessSkipTarget" type="checkbox" checked>
+              <span data-i18n="translation_skip_target">跳过已是目标语言的字幕</span>
+            </label>
+            <p class="hint" data-i18n="translation_skip_target_hint">关闭后将所有非空字幕交给模型翻译；遇到误判时可关闭。</p>
+          </div>
         </div>
         <p class="toolbox-settings-hint"><span id="postprocessProviderStatus" class="hint"></span> <button id="openLlmSettings" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 AI 处理用的模型</button></p>
       </div>

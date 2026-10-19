@@ -769,6 +769,40 @@ document.addEventListener('keydown', (e) => {
     );
     return;
   }
+  // 叠加字幕没有主副绑定联动（点击叠加行会先清空主/副选区），但 Ctrl 多选
+  // 可能让主轨选区与叠加选区并存，所以仍以「单选叠加 + 当前面板焦点在该条上」
+  // 为准。此分支必须先于下方主轨兜底查找命中，否则时间重叠的主字幕会按播放头/
+  // 指针位置抢走目标；叠加字幕没有列表悬停上下文（cueListPointer 不记录
+  // overlay），切点直接用键盘时间基准，定不了就交给弹窗默认。
+  const overlaySelection = MaweState.selection.indices('overlay');
+  const overlayIsActive = activeCuePanel?.kind === 'overlay'
+    && overlaySelection.size === 1
+    && overlaySelection.has(activeCuePanel.index);
+  if (overlayIsActive) {
+    const overlayIndex = activeCuePanel.index;
+    const overlay = activeCuePanel.segment;
+    if (!overlay) return;
+    let timeMs = null;
+    const pointerElement = MaweNavPreview.lastPointerPos
+      ? document.elementFromPoint(MaweNavPreview.lastPointerPos.x, MaweNavPreview.lastPointerPos.y)
+      : null;
+    if (MaweSettings.EDITOR_SETTINGS.keyboardOperationReference === 'pointer'
+        && MaweNavPreview.lastPointerPos && (pointerElement?.closest('#waveform-pane') || MaweNavPreview.lastEditRegion === 'waveform')) {
+      const pointerTimeMs = MaweCoreState.waveformEditor?.timeMsAtPoint?.(MaweNavPreview.lastPointerPos.x, MaweNavPreview.lastPointerPos.y);
+      if (Number.isFinite(pointerTimeMs) && pointerTimeMs > overlay.start && pointerTimeMs < overlay.end) {
+        timeMs = pointerTimeMs;
+      }
+    }
+    e.preventDefault();
+    // 同上：首次 B 只负责打开叠加字幕拆分弹窗。
+    e.stopImmediatePropagation();
+    openOverlaySplitModal(
+      overlayIndex,
+      MaweSettings.EDITOR_SETTINGS.keyboardOperationReference === 'playhead'
+        ? operationReference?.timeMs ?? null : timeMs,
+    );
+    return;
+  }
   // 1) 字幕列表：需要单选 + 悬停提供文字位置
   if (MaweSelection.selectedIdxs.size === 1) {
     const context = MaweNavPreview.hoveredSelectedCueContext();

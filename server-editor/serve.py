@@ -64,11 +64,15 @@ from maw.media_jobs import (  # noqa: E402
     MEDIA_JOB_ADMISSION_TTL, MediaJob, MediaJobBusy, MediaJobCancelled, MediaJobManager, MediaJobUnavailable,
 )
 from maw.media_export_audio import rebuild_gap_removed_audio  # noqa: E402
+from maw.media_export_video import (  # noqa: E402
+    VideoNoOutput, VideoTimelineError, packet_filter, prepare_video_copy, verify_video_packets,
+)
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.gui_platform import creationflags, restore_host_library_path, startupinfo  # noqa: E402
 from maw.postprocess_ffmpeg import (  # noqa: E402
     DEFAULT_BURN_AUDIO_BITRATE, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET, libass_missing_glyphs,
-    normalize_video_encoder, video_encoder_attempts, video_encoder_options,
+    normalize_video_encoder, video_encoder_attempts, video_encoder_options, _green_screen_input,
+    _green_screen_size_resolution,
 )
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
@@ -419,6 +423,15 @@ def gap_removed_export_error_payload(error: Exception) -> dict:
     return {"ok": False, "error": str(error), "errorDetails": getattr(error, "details", None)}
 
 
+def gap_removed_job_snapshot(job: MediaJob) -> dict:
+    with job.manager.lock:
+        snapshot = job.snapshot()
+        timeline = getattr(job, "video_timeline", None)
+        if timeline is not None:
+            snapshot["videoTimeline"] = timeline
+        return snapshot
+
+
 class GapRemovedVideoStream(NamedTuple):
     codec_signature: tuple[object, ...]
     disposition: tuple[str, ...]
@@ -430,6 +443,8 @@ class GapRemovedVideoStream(NamedTuple):
 class GapRemovedVideoProbe(NamedTuple):
     streams: tuple[GapRemovedVideoStream, ...]
     start_time: Decimal
+    stream_metadata: tuple[dict, ...] = ()
+    format_name: str = ""
 
 
 def normalize_gap_removed_intervals(value: object) -> list[tuple[int, int]]:
@@ -458,29 +473,11 @@ def normalize_gap_removed_intervals(value: object) -> list[tuple[int, int]]:
     return intervals
 
 
-def _gap_removed_ffconcat_text(
-    media_path: Path,
-    intervals: list[tuple[int, int]],
-    *,
-    start_time: Decimal = Decimal(0),
-) -> str:
-    source = str(media_path).replace("\\", "/")
-    quoted_source = "'" + source.replace("'", "'\\''") + "'"
-    lines = ["ffconcat version 1.0"]
-    for start_ms, end_ms in intervals:
-        # Project/PCM times start at zero; concat points use source-file
-        # timestamps. Use the file origin so inter-stream offsets stay intact.
-        start = format(start_time + Decimal(start_ms).scaleb(-3), "f")
-        end = format(start_time + Decimal(end_ms).scaleb(-3), "f")
-        lines.extend((f"file {quoted_source}", f"inpoint {start}", f"outpoint {end}"))
-    return "\n".join(lines) + "\n"
-
-
 def _probe_gap_removed_video(path: Path, ffprobe_path: Path, *, job: MediaJob | None = None) -> GapRemovedVideoProbe:
     command = [
         str(ffprobe_path), "-v", "error", "-show_entries",
-        "stream=codec_type,codec_name,profile,codec_tag_string,width,height,channels,sample_rate,channel_layout"
-        ":stream_disposition:stream_tags:format=start_time",
+        "stream=codec_type,codec_name,profile,codec_tag_string,width,height,channels,sample_rate,channel_layout,nal_length_size"
+        ":stream_disposition:stream_tags:format=start_time,format_name",
         "-of", "json", str(path),
     ]
     try:
@@ -544,7 +541,9 @@ def _probe_gap_removed_video(path: Path, ffprobe_path: Path, *, job: MediaJob | 
         # finite magnitudes before arithmetic/formatting can overflow.
         if not start_time.is_finite() or start_time.copy_abs() > Decimal("9223372036854.775807"):
             raise GapRemovedVideoExportError("视频包含无效的媒体起始时间，请检查源文件后重试")
-    return GapRemovedVideoProbe(tuple(signature), start_time)
+    stream_metadata = tuple({"codec_name": stream.get("codec_name"), "nal_length_size": stream.get("nal_length_size")}
+                            for stream in streams)
+    return GapRemovedVideoProbe(tuple(signature), start_time, stream_metadata, str(format_info.get("format_name") or ""))
 
 
 def _gap_removed_video_streams_match(
@@ -587,27 +586,59 @@ def rebuild_gap_removed_video(
     if job:
         job.update("preparing")
     input_probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
-    input_signature = input_probe.streams
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    concat_path = output_path.with_suffix(".ffconcat")
-    concat_path.write_text(
-        _gap_removed_ffconcat_text(source, intervals, start_time=input_probe.start_time),
-        encoding="utf-8",
-    )
-    command = [
-        str(ffmpeg_path), "-y", "-nostdin", "-hide_banner", "-loglevel", "error",
-        "-f", "concat", "-safe", "0", "-i", str(concat_path),
-        "-map", "0", "-c", "copy",
-    ]
-    # The concat demuxer drops dispositions and track titles. Restore them for
-    # every stream so the muxer cannot choose a different default audio track.
+    def run(command, *, timeout=120, duration_ms=None):
+        return job.run_command(command, timeout=timeout, duration_ms=duration_ms) if job else subprocess.run(
+            command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout, check=False, startupinfo=startupinfo(), creationflags=creationflags())
+
+    # File-backed packet indexes bound memory; private plans are disposed with
+    # the export, including cancellation and a failed verification.
+    with tempfile.TemporaryDirectory(prefix="video-plan-", dir=output_path.parent) as temporary:
+        try:
+            return _copy_gap_removed_video(source, intervals, output_path, input_probe,
+                ffmpeg_path, ffprobe_path, Path(temporary), run, job)
+        except VideoTimelineError as error:
+            output_path.unlink(missing_ok=True)
+            raise GapRemovedVideoExportError(str(error), details=error.details) from error
+
+
+def _copy_gap_removed_video(source, intervals, output_path, input_probe, ffmpeg_path,
+                            ffprobe_path, directory, run, job):
+    input_signature = input_probe.streams
+    kinds = ["attachment" if "attached_pic" in stream.disposition else stream.codec_signature[0]
+             for stream in input_signature]
+    check_cancelled = job.check_cancelled if job else lambda: None
+    plan = prepare_video_copy(source, intervals, kinds, input_probe.start_time,
+                              directory, ffprobe_path, run, check_cancelled,
+                              stream_metadata=input_probe.stream_metadata, container_name=input_probe.format_name)
+    if job:
+        with job.manager.lock:
+            job.video_timeline = plan.timeline
+    if plan.timeline.get("actualRemovedMs") == 0:
+        raise VideoNoOutput(plan.timeline)
+    command = [str(ffmpeg_path), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning",
+               "-copyts", "-i", str(source), "-map", "0", "-c", "copy", "-avoid_negative_ts", "disabled"]
+    # Restore track metadata explicitly so the muxer cannot choose a different
+    # default audio track or normalize away a source track title.
     for index, stream in enumerate(input_signature):
         # Rebuild HEVC parameter sets from Annex B before the muxer writes its
         # container header. Some source hvcC arrays are accepted for decoding
         # but cannot survive a direct MP4 stream copy. Target each output stream
         # separately so mixed codecs and multiple video streams remain intact.
+        filters = packet_filter(plan.windows[index], kinds[index] == "video", subtitle=kinds[index] == "subtitle") if kinds[index] != "attachment" else "null"
+        if plan.initial_dts[index] is not None:
+            filters = f"setts=pts=PTS:dts='if(eq(DTS,NOPTS),{plan.initial_dts[index]}/TB+N*DURATION,DTS)'," + filters
         if stream.codec_signature[:2] == ("video", "hevc"):
-            command.extend((f"-bsf:{index}", "hevc_mp4toannexb"))
+            filters = "hevc_mp4toannexb," + filters
+        # Short plans work with older FFmpeg command parsers. Large plans load
+        # options from files instead of overflowing Windows argv.
+        if len(filters) < 4000 and sum(len(part) + 3 for part in command) + len(filters) < 24000:
+            command.extend((f"-bsf:{index}", filters))
+        else:
+            filter_path = directory / f"stream-{index}.bsf"
+            filter_path.write_text(filters, encoding="utf-8")
+            command.extend((f"-/bsf:{index}", str(filter_path)))
         command.extend((f"-disposition:{index}", "+".join(stream.disposition) or "0"))
         for metadata_key in ("language", "title", "handler_name"):
             value = getattr(stream, metadata_key)
@@ -617,12 +648,11 @@ def rebuild_gap_removed_video(
         command.extend(("-progress", "pipe:1", "-nostats"))
         job.update("rebuilding")
     command.append(str(output_path))
+    if source.suffix.lower() == ".ts":
+        command[-1:-1] = ["-muxdelay", "0", "-muxpreload", "0"]
     try:
-        completed = job.run_command(command, timeout=86_400,
-            duration_ms=sum(end - start for start, end in intervals)) if job else subprocess.run(
-            command, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=86_400, check=False, startupinfo=startupinfo(), creationflags=creationflags(),
-        )
+        completed = run(command, timeout=86_400,
+            duration_ms=plan.timeline["intervals"][-1]["outputEndMs"])
     except subprocess.TimeoutExpired as error:
         output_path.unlink(missing_ok=True)
         raise GapRemovedVideoExportError("视频重组超时") from error
@@ -631,7 +661,12 @@ def rebuild_gap_removed_video(
         raise GapRemovedVideoExportError("无法启动视频重组，请检查媒体工具", details=error) from error
     if completed.returncode != 0:
         output_path.unlink(missing_ok=True)
+        if "Unrecognized option '/bsf" in completed.stderr:
+            raise GapRemovedVideoExportError("当前 FFmpeg 版本不支持较多切点的流复制，请更新 FFmpeg 后重试")
         raise GapRemovedVideoExportError("视频重组失败，请检查源文件或缩短保留区间后重试", details=completed.stderr)
+    if "Non-monoton" in completed.stderr:
+        output_path.unlink(missing_ok=True)
+        raise GapRemovedVideoExportError("导出结果出现解码时间冲突，未保存结果")
     if not output_path.is_file() or output_path.stat().st_size <= 0:
         output_path.unlink(missing_ok=True)
         raise GapRemovedVideoExportError("没有生成有效的视频文件，请检查源文件或保留区间后重试")
@@ -646,6 +681,7 @@ def rebuild_gap_removed_video(
     if not _gap_removed_video_streams_match(input_signature, output_signature):
         output_path.unlink(missing_ok=True)
         raise GapRemovedVideoExportError("导出结果的媒体流与源视频不一致，未保存结果；请避免过短的保留区间")
+    verify_video_packets(plan, output_path, kinds, directory, ffprobe_path, run, check_cancelled)
     return output_path
 
 
@@ -728,6 +764,9 @@ def burn_ass_video(
     ffmpeg_path: Path,
     ffprobe_path: Path,
     job: MediaJob | None = None,
+    green_screen: bool = False,
+    include_audio: bool = False,
+    audio_track: int = 0,
 ) -> Path:
     """Re-encode the source video with the given ASS subtitles burned in.
 
@@ -740,12 +779,14 @@ def burn_ass_video(
         source = source_path.expanduser().resolve(strict=True)
     except OSError as error:
         raise BurnVideoExportError("当前工程的源媒体文件不存在") from error
-    if not source.is_file() or source.suffix.lower() not in VIDEO_EXTENSIONS:
+    if not source.is_file() or source.suffix.lower() not in (MEDIA_EXTENSIONS if green_screen else VIDEO_EXTENSIONS):
         raise BurnVideoExportError("当前工程绑定的媒体不是受支持的视频文件")
     if not isinstance(ass_text, str) or not ass_text.strip():
         raise BurnVideoExportError("缺少 ASS 字幕内容")
     if intervals and any(end <= start for start, end in intervals):
         raise BurnVideoExportError("去空隙保留区间无效")
+    if green_screen and intervals:
+        raise BurnVideoExportError("绿幕视频暂不支持去空隙区间")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ass_path = output_path.with_name("burn.ass")
     with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
@@ -754,7 +795,17 @@ def burn_ass_video(
     if job:
         job.update("preparing")
     input_args = ["-i", str(source)]
-    if intervals:
+    if green_screen:
+        input_args, _ = _green_screen_input(ass_path, _green_screen_size_resolution("1080p"))
+        duration = input_args[-1].rsplit("d=", 1)[1]
+        duration_ms = round(float(duration) * 1000)
+        filter_args = ["-map", "0:v:0", "-vf", "ass=filename='burn.ass'", "-t", duration]
+        if include_audio:
+            input_args.extend(("-i", str(source)))
+            filter_args.extend(("-map", f"1:a:{audio_track}?"))
+        else:
+            filter_args.append("-an")
+    elif intervals:
         intervals = normalize_gap_removed_intervals([
             {"startMs": start, "endMs": end} for start, end in intervals
         ])
@@ -773,7 +824,7 @@ def burn_ass_video(
         duration_ms = sum(end - start for start, end in intervals)
         # A video frame can straddle the end of an interval. Independent audio
         # concatenation and explicit output duration keep it from moving joins.
-        filter_args = ["-filter_complex_script", str(graph_path), "-map", "[burn_video]"]
+        filter_args = ["-/filter_complex", str(graph_path), "-map", "[burn_video]"]
         for audio, stream in enumerate(audio_streams):
             filter_args.extend(("-map", f"[burn_audio_{audio}]",
                                 f"-map_metadata:s:a:{audio}", f"0:s:a:{audio}",
@@ -787,7 +838,7 @@ def burn_ass_video(
     attempts = video_encoder_attempts(ffmpeg_path, requested_encoder)
     common_command = [
         str(ffmpeg_path), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning",
-        *input_args, *filter_args, "-map_metadata", "0",
+        *input_args, *filter_args, "-map_metadata", "-1" if green_screen else "0",
         "-sws_flags", "spline+accurate_rnd+full_chroma_int",
     ]
     last_error: BurnVideoExportError | None = None
@@ -817,12 +868,21 @@ def burn_ass_video(
                     f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框；"
                     "请在字幕样式中更换可用字体。", details=glyph_tail)
         try:
-            completed = job.run_command(command, timeout=86_400, duration_ms=duration_ms,
-                                        cwd=output_path.parent, on_stderr=inspect_glyphs) if job else subprocess.run(
-                command, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=86_400, check=False, cwd=output_path.parent,
-                startupinfo=startupinfo(), creationflags=creationflags(),
-            )
+            def run_encode(args):
+                return job.run_command(args, timeout=86_400, duration_ms=duration_ms,
+                                       cwd=output_path.parent, on_stderr=inspect_glyphs) if job else subprocess.run(
+                    args, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                    timeout=86_400, check=False, cwd=output_path.parent,
+                    startupinfo=startupinfo(), creationflags=creationflags(),
+                )
+            completed = run_encode(command)
+            # FFmpeg 9 removed filter_complex_script. Older installations that
+            # predate option-file syntax may still use it; retry only a parser
+            # rejection, before any media was decoded or encoded.
+            if (completed.returncode != 0 and "-/filter_complex" in command
+                    and "Unrecognized option '/filter_complex'" in (completed.stderr or "")):
+                command[command.index("-/filter_complex")] = "-filter_complex_script"
+                completed = run_encode(command)
         except BurnVideoExportError:
             output_path.unlink(missing_ok=True)
             raise
@@ -890,12 +950,12 @@ def ffmpeg_supports_libass(ffmpeg: Path) -> bool:
 
 
 def render_ass_frame_png(
-    media_path: Path,
+    media_path: Path | None,
     ass_text: str,
     time_ms: int,
     ffmpeg: Path,
 ) -> tuple[bytes, list[str]]:
-    """Render one video frame with the given ASS subtitles burned in.
+    """Render ASS on one video frame, or a 1080P green canvas without media.
 
     与烧录管线共用同一套调用约定：ASS 写入临时目录、滤镜参数只带文件名、
     进程 cwd 指向该目录，规避盘符冒号等路径转义差异。返回 PNG 字节与
@@ -906,18 +966,23 @@ def render_ass_frame_png(
         ass_path = Path(tmp) / "frame.ass"
         with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
             handle.write(ass_text)
-        command = [
-            str(ffmpeg), "-hide_banner", "-nostdin", "-loglevel", "warning",
+        green_screen = media_path is None
+        input_args = ["-f", "lavfi", "-i", "color=c=0x00ff00:s=1920x1080:r=30"] if green_screen else [
             # 输入侧 -ss 是快速 seek；不加 -copyts 时 ffmpeg 会把时间戳重置为
             # 从 0 开始，libass 会按错误时间判断事件是否活动，导致字幕不渲染。
             "-ss", f"{seconds:.3f}", "-copyts",
             "-i", str(media_path),
+        ]
+        command = [
+            str(ffmpeg), "-hide_banner", "-nostdin", "-loglevel", "warning",
+            *input_args,
             # Pick the first real video stream, never a large embedded cover.
-            "-map", "0:V:0",
+            "-map", "0:v:0" if green_screen else "0:V:0",
             # Render coloured glyphs after conversion to full-resolution RGB;
             # drawing on YUV420 first subsamples their chroma before PNG encoding.
             "-sws_flags", "spline+accurate_rnd+full_chroma_int",
-            "-vf", "format=rgb24,ass=filename='frame.ass'",
+            # 绿幕直接把首帧 PTS 放到播放头位置，避免从 0 解码空白帧，也保持动画时钟。
+            "-vf", (f"settb=1/1000,setpts={max(0, int(time_ms))}," if green_screen else "") + "format=rgb24,ass=filename='frame.ass'",
             "-frames:v", "1",
             "-c:v", "png", "-pix_fmt", "rgb24", "-f", "image2pipe", "pipe:1",
         ]
@@ -1264,6 +1329,7 @@ def build_server_page(
         server_config_json=json.dumps({
             "saveUrl": "/api/project",
             "requestToken": request_token,
+            "projectSwitchPageId": secrets.token_urlsafe(24),
             "stickerRootUrl": "/api/stickers/root",
             "portableStickerExportUrl": "/api/exports/sticker-otio",
             "otiozStickerExportUrl": "/api/exports/sticker-otioz",
@@ -1283,6 +1349,7 @@ def build_server_page(
             and gap_video_source is not None
             and gap_media_kind == "video"
         ),
+        "canGreenScreenExport": bool(project.json_path is not None and can_gap_media_export),
         "burnVideoSourceName": gap_video_source.name if gap_video_source else None,
         "gapRemovedMediaKind": gap_media_kind if can_gap_media_export else None,
         "gapRemovedMediaSourceName": gap_video_source.name if gap_video_source else None,
@@ -1403,6 +1470,8 @@ class EditorServer(ThreadingHTTPServer):
         self.lottie_lock = threading.Lock()
         self.ograf_lock = threading.Lock()
         self.settings_lock = threading.Lock()
+        # Same-page intent ordering is independent of the published binding.
+        self.project_switch_generations: dict[str, int] = {}
         self.binding_generation = 1
         self.source_media_id = secrets.token_urlsafe(24)
         self.reapeaks_lock = threading.Lock()
@@ -1481,6 +1550,36 @@ class EditorServer(ThreadingHTTPServer):
     def project_binding_payload(self) -> dict[str, object]:
         with self.settings_lock:
             return self._project_binding_payload_locked()
+
+    def _check_project_binding_locked(self, binding: dict | None) -> None:
+        if binding is None:  # Internal callers already own a server instance.
+            return
+        if (type(binding.get("bindingGeneration")) is not int
+                or binding.get("bindingGeneration") != self.binding_generation
+                or not isinstance(binding.get("sourceMediaId"), str)
+                or binding.get("sourceMediaId") != self.source_media_id):
+            raise ProjectBindingChangedError("工程绑定已变更，请重新打开工程后操作")
+
+    def advance_project_switch(self, request: dict) -> None:
+        page_id = request.get("switchPageId")
+        generation = request.get("switchGeneration")
+        if (not isinstance(page_id, str) or not 1 <= len(page_id) <= 128
+                or type(generation) is not int or not 0 <= generation <= 9007199254740991):
+            raise ValueError("工程切换标识无效")
+        with self.settings_lock:
+            previous = self.project_switch_generations.get(page_id, -1)
+            if generation < previous:
+                raise ProjectBindingChangedError("工程切换已过期")
+            self.project_switch_generations[page_id] = generation
+
+    def _check_project_switch_locked(self, request: dict | None) -> None:
+        if request is None:  # Internal callers retain their existing contract.
+            return
+        page_id = request.get("switchPageId")
+        generation = request.get("switchGeneration")
+        if (not isinstance(page_id, str) or type(generation) is not int
+                or self.project_switch_generations.get(page_id) != generation):
+            raise ProjectBindingChangedError("工程切换已过期，请重新打开工程")
 
     def gap_removed_video_source_snapshot(self, request: dict) -> Path:
         """Compatibility wrapper for callers which only need the source path."""
@@ -1620,7 +1719,9 @@ class EditorServer(ThreadingHTTPServer):
         if not self.defer_reapeaks:
             return
         with self.reapeaks_lock:
-            project = self.project
+            with self.settings_lock:
+                project = self.project
+                binding_generation = self.binding_generation
             if self.reapeaks_project is project:
                 return
             self.reapeaks_generation += 1
@@ -1630,14 +1731,14 @@ class EditorServer(ThreadingHTTPServer):
             self.reapeaks_payload = {}
         thread = threading.Thread(
             target=self._load_deferred_reapeaks,
-            args=(project, generation),
+            args=(project, generation, binding_generation),
             daemon=True,
             name="maw-load-reapeaks",
         )
         self.reapeaks_thread = thread
         thread.start()
 
-    def _load_deferred_reapeaks(self, project: ServerProject, generation: int) -> None:
+    def _load_deferred_reapeaks(self, project: ServerProject, generation: int, binding_generation: int | None = None) -> None:
         spectral = None
         reapeaks_wave = None
         loudness = None
@@ -1680,6 +1781,8 @@ class EditorServer(ThreadingHTTPServer):
             # Serialize replacement with binding publication: cache updates must
             # not restore an old project's source after another tab rebinds.
             with self.settings_lock:
+                if binding_generation is not None and binding_generation != self.binding_generation:
+                    return
                 current_project = self.project
                 data = dict(current_project.data)
                 if spectral is None:
@@ -1823,9 +1926,11 @@ class EditorServer(ThreadingHTTPServer):
                 self.settings = replace(self.settings, preset_workspaces=workspaces)
             self.persist_settings()
 
-    def open_recent_project(self, project_path: str) -> ServerProject:
+    def open_recent_project(self, project_path: str, *, binding: dict | None = None, binding_result: dict | None = None, switch_intent: dict | None = None) -> ServerProject:
         candidate = Path(project_path).expanduser().resolve()
         with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
+            self._check_project_binding_locked(binding)
             known = next((item for item in self.settings.recent_projects if item.path == candidate), None)
             if not known:
                 raise RecentProjectError("该工程不在本机最近打开记录中")
@@ -1840,13 +1945,17 @@ class EditorServer(ThreadingHTTPServer):
         if self.defer_reapeaks:
             project = without_deferred_reapeaks(project)
         with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
+            self._check_project_binding_locked(binding)
             self._bind_project_locked(project)
+            if binding_result is not None:
+                binding_result.update(self._project_binding_payload_locked())
             self.settings = remember_project(self.settings, project.json_path)
             self.persist_settings()
         self.start_deferred_reapeaks_load()
         return project
 
-    def attach_project(self, file_name: str, browser_project: dict) -> ServerProject:
+    def attach_project(self, file_name: str, browser_project: dict, *, binding: dict | None = None, binding_result: dict | None = None, switch_intent: dict | None = None) -> ServerProject:
         """Bind a project opened through the browser to its on-disk file.
 
         Browser file pickers never reveal real paths, but a MAW project records
@@ -1854,6 +1963,9 @@ class EditorServer(ThreadingHTTPServer):
         to that media and its segments match the browser copy, the server takes
         over: media auto-loads and Ctrl+S saves back to the project file.
         """
+        with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
+            self._check_project_binding_locked(binding)
         candidate = Path(file_name)
         if (
             not file_name
@@ -1898,13 +2010,39 @@ class EditorServer(ThreadingHTTPServer):
         if not _attach_segments_match(project.data, normalized_browser):
             raise AttachProjectError("媒体同目录的同名工程与打开的副本内容不一致，未接管")
         with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
+            self._check_project_binding_locked(binding)
             self._bind_project_locked(project)
+            if binding_result is not None:
+                binding_result.update(self._project_binding_payload_locked())
             self.settings = remember_project(self.settings, project.json_path)
             self.persist_settings()
         self.start_deferred_reapeaks_load()
         return project
 
-    def save_project(self, project_data: dict, filename: str | None = None, *, backup_limit: int | None = None, backup_only: bool = False) -> tuple[Path, Path | None]:
+    def save_project(self, project_data: dict, filename: str | None = None, *, backup_limit: int | None = None, backup_only: bool = False, binding: dict | None = None, binding_result: dict | None = None) -> tuple[Path, Path | None]:
+        if not self.save_lock.acquire(blocking=False):
+            raise ProjectMutationInProgressError("另一个工程保存操作正在进行")
+        binding_changed = False
+        try:
+            # Keep destination validation and disk writes atomic with binding
+            # publication, so a stale page cannot write into a newly opened file.
+            with self.settings_lock:
+                self._check_project_binding_locked(binding)
+                generation = self.binding_generation
+                try:
+                    result = self._save_project_locked(project_data, filename, backup_limit=backup_limit, backup_only=backup_only)
+                    if binding_result is not None:
+                        binding_result.update(self._project_binding_payload_locked())
+                    return result
+                finally:
+                    binding_changed = generation != self.binding_generation
+        finally:
+            self.save_lock.release()
+            if binding_changed:
+                self.start_deferred_reapeaks_load()
+
+    def _save_project_locked(self, project_data: dict, filename: str | None, *, backup_limit: int | None, backup_only: bool) -> tuple[Path, Path | None]:
         if not self.project.json_path:
             raise SaveProjectError("当前服务器没有绑定工程文件；请先导出 .mosp 工程，再重新打开该文件")
         if backup_limit is not None and (type(backup_limit) is not int or not 1 <= backup_limit <= 1000):
@@ -1926,27 +2064,22 @@ class EditorServer(ThreadingHTTPServer):
         normalized_project = rebase_project_media(
             normalized_project, target, source_project_path=self.project.json_path,
         )
-        if not self.save_lock.acquire(blocking=False):
-            raise ProjectMutationInProgressError("另一个工程保存操作正在进行")
-        try:
-            if backup_only:
-                return target, write_backup(target, normalized_project, backup_limit)
-            backup = write_project_json(target, normalized_project)
-            if backup_limit is not None:
-                backup = write_backup(target, normalized_project, backup_limit)
-            # 磁盘副本已剥离；运行态不能跟着丢缓存，否则保存→刷新后原生
-            # 波形被清空、被 /api/waveform 的 REAPER 峰静默顶替。同一媒体、
-            # 同一音轨时把运行态缓存合并回新工程，媒体/音轨变化则失效。
-            _restore_runtime_inline_caches(self.project.data, normalized_project)
-            with self.settings_lock:
-                saved_project = replace(self.project, data=normalized_project, json_path=target)
-                if target != self.project.json_path:
-                    self._bind_project_locked(saved_project)
-                else:
-                    self.project = saved_project
-            self.remember_project(target)
-        finally:
-            self.save_lock.release()
+        if backup_only:
+            return target, write_backup(target, normalized_project, backup_limit)
+        backup = write_project_json(target, normalized_project)
+        if backup_limit is not None:
+            backup = write_backup(target, normalized_project, backup_limit)
+        # 磁盘副本已剥离；运行态不能跟着丢缓存，否则保存→刷新后原生
+        # 波形被清空、被 /api/waveform 的 REAPER 峰静默顶替。同一媒体、
+        # 同一音轨时把运行态缓存合并回新工程，媒体/音轨变化则失效。
+        _restore_runtime_inline_caches(self.project.data, normalized_project)
+        saved_project = replace(self.project, data=normalized_project, json_path=target)
+        if target != self.project.json_path:
+            self._bind_project_locked(saved_project)
+        else:
+            self.project = saved_project
+        self.settings = remember_project(self.settings, target)
+        self.persist_settings()
         return target, backup
 
 
@@ -2504,6 +2637,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.save_project()
         elif path == "/api/project/backups/open":
             self.open_backup_directory()
+        elif path == "/api/project/binding":
+            self.read_project_binding()
+        elif path == "/api/project/switch-intent":
+            self.advance_project_switch()
         elif path == "/api/project/attach":
             self.attach_project()
         elif path == "/api/recent-projects/open":
@@ -2619,12 +2756,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             filename = request.get("filename")
             if filename is not None and not isinstance(filename, str):
                 raise SaveProjectError("文件名格式不正确")
+            binding_result = {}
             target, backup = self.editor_server.save_project(
                 request.get("project"), filename,
                 backup_limit=request.get("backupLimit"),
                 backup_only=request.get("backupOnly") is True,
+                binding=request,
+                binding_result=binding_result,
             )
-        except ProjectMutationInProgressError as error:
+        except (ProjectMutationInProgressError, ProjectBindingChangedError) as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
             return
         except (UnicodeDecodeError, json.JSONDecodeError, SaveProjectError, ValueError) as error:
@@ -2637,12 +2777,41 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "ok": True,
             "filename": target.name,
             "backup": backup.name if backup else None,
+            **binding_result,
         })
 
     def _check_request_token(self, request: dict) -> None:
         token = request.get("requestToken")
         if not isinstance(token, str) or not compare_digest(token, self.editor_server.request_token):
             raise PermissionError("请求令牌无效")
+
+    def read_project_binding(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {"ok": True, **self.editor_server.project_binding_payload()})
+
+    def advance_project_switch(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            self.editor_server.advance_project_switch(request)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {"ok": True})
 
     def open_backup_directory(self) -> None:
         try:
@@ -2852,8 +3021,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                         ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job,
                         audio_track=source_snapshot.audio_track)
                 else:
-                    rebuild_gap_removed_video(job.source, list(job.intervals), job.output,
-                        ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job)
+                    try:
+                        rebuild_gap_removed_video(job.source, list(job.intervals), job.output,
+                            ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job)
+                    except VideoNoOutput:
+                        job.complete_without_output()
 
             # Admission and the snapshot use the same binding generation. A
             # rebind between snapshot and admission must not launch stale work.
@@ -2864,7 +3036,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     raise ProjectBindingChangedError("工程或媒体绑定已变更，请重新打开工程后导出")
                 job = self.editor_server.media_jobs.start(source, binding, intervals, rebuild,
                     output_extension=source_snapshot.output_extension, admission_token=admission_token)
-            self.send_json(HTTPStatus.ACCEPTED, job.snapshot())
+            self.send_json(HTTPStatus.ACCEPTED, gap_removed_job_snapshot(job))
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
         except (ProjectBindingChangedError, MediaJobBusy) as error:
@@ -2923,7 +3095,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 if not intervals:
                     raise ValueError("去空隙保留区间为空")
             source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
-            if source_snapshot.kind != "video":
+            green_screen = request.get("greenScreen", False)
+            include_audio = request.get("includeAudio", False)
+            if type(green_screen) is not bool or type(include_audio) is not bool:
+                raise ValueError("绿幕视频和附带音轨选项必须是布尔值")
+            if green_screen and intervals:
+                raise ValueError("绿幕视频暂不支持去空隙区间")
+            if source_snapshot.kind != "video" and not green_screen:
                 raise BurnVideoExportError("当前工程绑定的是音频，烧录视频需要视频源")
             source = source_snapshot.path
             tools = editor_ffmpeg_tools()
@@ -2942,8 +3120,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             binding = (request["bindingGeneration"], request["sourceMediaId"])
 
             def burn(job: MediaJob) -> None:
+                options = ({"green_screen": True, "include_audio": include_audio,
+                            "audio_track": source_snapshot.audio_track} if green_screen else {})
                 burn_ass_video(job.source, list(job.intervals), ass_text, job.output,
-                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job)
+                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job, **options)
 
             with self.editor_server.settings_lock:
                 if admission_token is not None and time.time() * 1000 >= deadline:
@@ -2999,7 +3179,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 manager.cancel(job.id)
                 raise
             if len(parts) == 1:
-                self.send_json(HTTPStatus.OK, job.snapshot())
+                self.send_json(HTTPStatus.OK, gap_removed_job_snapshot(job))
                 return
             if not include_body:
                 self.send_json(HTTPStatus.METHOD_NOT_ALLOWED, {"ok": False, "error": "媒体下载需要 GET 请求"})
@@ -3066,6 +3246,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     else:
                         rebuild_gap_removed_video(source, intervals, output_path,
                             ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe)
+                except VideoNoOutput as result:
+                    self.send_json(HTTPStatus.OK, {"ok": True, "noOutput": True,
+                        "stage": "no-output", "videoTimeline": result.timeline})
+                    return
                 except ValueError as error:
                     self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, gap_removed_export_error_payload(error))
                     return
@@ -3170,7 +3354,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             project_path = request.get("path")
             if not isinstance(project_path, str) or not project_path:
                 raise RecentProjectError("工程路径格式不正确")
-            project = self.editor_server.open_recent_project(project_path)
+            binding_result = {}
+            project = self.editor_server.open_recent_project(project_path, binding=request, binding_result=binding_result, switch_intent=request)
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
         except FileNotFoundError as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error), "missing": True})
             return
@@ -3184,6 +3372,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "ok": True,
             "name": project.json_path.name if project.json_path else "",
             "mediaName": (project.source_media_path or project.media_path).name if project.media_path else "",
+            **binding_result,
         })
 
     def attach_project(self) -> None:
@@ -3195,7 +3384,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             project_data = request.get("project")
             if not isinstance(project_data, dict):
                 raise AttachProjectError("工程内容必须是对象")
-            project = self.editor_server.attach_project(file_name, project_data)
+            binding_result = {}
+            project = self.editor_server.attach_project(file_name, project_data, binding=request, binding_result=binding_result, switch_intent=request)
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
         except (UnicodeDecodeError, json.JSONDecodeError, FileNotFoundError, ValueError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
@@ -3206,6 +3399,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "ok": True,
             "name": project.json_path.name if project.json_path else "",
             "mediaName": (project.source_media_path or project.media_path).name if project.media_path else "",
+            **binding_result,
         })
 
     def update_settings(self) -> None:
@@ -3263,8 +3457,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     or not 0 <= time_ms <= 9_007_199_254_740_991):
                 raise ValueError("时间格式不正确")
             media_path = self.editor_server.project.media_path
-            if media_path is None or not media_path.is_file():
-                raise ValueError("当前工程没有可用的媒体文件")
+            green_screen = request.get("greenScreen", False)
+            if type(green_screen) is not bool:
+                raise ValueError("绿幕预览选项必须是布尔值")
+            green_screen = (green_screen or media_path is None or not media_path.is_file()
+                            or media_path.suffix.lower() not in VIDEO_EXTENSIONS)
+            if green_screen:
+                media_path = None
             ffmpeg = editor_ffmpeg_binary()
             if ffmpeg is None:
                 raise AssFrameError("未找到 FFmpeg，无法渲染实际画面；请安装 FFmpeg 或配置 FFMPEG_PATH。",
@@ -3288,6 +3487,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "image": base64.b64encode(png_bytes).decode("ascii"),
             "timeMs": time_ms,
             "warnings": warnings,
+            "greenScreen": green_screen,
         })
 
     def _apply_settings_request(self, request: dict[str, object]) -> bool:
@@ -3574,8 +3774,28 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 # Browser media elements commonly cancel an old Range request while seeking.
                 return
 
+    # 轮询端点按心跳频率命中（startup-status 由前端就绪/自动保存轮询、
+    # thumbnails/demand 由画面带按需取帧轮询），200 响应刷屏无信息量；
+    # 命中路径且状态码恰为 200 时跳过打印，非 200 响应与其他端点日志
+    # 保持原样（含 send_error 经 log_error 进来的其他格式，解析不出
+    # request 日志形态就不静默）。
+    _QUIET_HTTP_LOG_PATHS = ("/api/startup-status", "/api/thumbnails/demand")
+
+    def _is_quiet_poll_response(self, message: str) -> bool:
+        if urlsplit(getattr(self, "path", "") or "").path not in self._QUIET_HTTP_LOG_PATHS:
+            return False
+        # log_request 的消息格式是 '"<requestline>" <code> <size>'：requestline
+        # 自身含空格，状态码只能从右侧取第二段；解析不出该形态就不静默。
+        parts = message.rsplit(" ", 2)
+        if len(parts) != 3:
+            return False
+        return parts[1] == "200"
+
     def log_message(self, format: str, *args: object) -> None:
-        print(f"[http] {self.address_string()} - {format % args}")
+        message = format % args
+        if self._is_quiet_poll_response(message):
+            return
+        print(f"[http] {self.address_string()} - {message}")
 
 
 def _port_is_free(host: str, port: int) -> bool:

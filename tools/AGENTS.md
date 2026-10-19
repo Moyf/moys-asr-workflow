@@ -43,8 +43,9 @@
 
 ## 模板维护的既有约定（延续根 AGENTS.md）
 
-- 生成核查清单时优先编写 JSON，再用 `verification-checklist/build.py --data <JSON> --output <HTML>`
-  自动套用模板；数据契约、完整示例和 AI 提示词见该工具 README.md，不要每次手写分区 HTML。
+- 生成核查清单时优先编写 Markdown v2 源文件，再用 `verification-checklist/build.py --check <清单>.md`
+  校验、`verification-checklist/build.py --data <清单>.md --output <HTML>` 自动套用模板；JSON 保留兼容入口。
+  数据契约、完整示例和 AI 提示词见该工具 README.md，不要每次手写分区 HTML。
 - 占位符原文只出现在真实替换点，注释与脚本里不得复现（全局替换会误伤）；
 - 模板位于 `verification-checklist/templates/verification-checklist.html`，用途、生成与
   更新命令见 `verification-checklist/README.md`；默认生成物放根 `.artifacts/<task-id>/`，不提交；维护者已指定仓库外目录时遵从指定。维护者明确要求

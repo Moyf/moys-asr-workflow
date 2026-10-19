@@ -61,10 +61,10 @@ test('English waveform and sticker names preserve project text', async ({ page }
   await expect(page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-label').first()).toHaveText('删除');
   const row = page.locator('.cue[data-idx="0"]');
   await expect(row.locator('.sname')).toHaveText('保存');
-  await expect(row.locator('.sticker-slot img')).toHaveAttribute('title', '保存');
+  await expect(row.locator('.sticker-slot img')).toHaveAttribute('data-title', '保存');
   const reference = page.locator('.cue[data-idx="1"] .sref');
   await expect(reference).toHaveText('↑ 保存');
-  await expect(reference).toHaveAttribute('title', 'Inherits the sticker of subtitle 1');
+  await expect(reference).toHaveAttribute('data-title', 'Inherits the sticker of subtitle 1');
   await row.locator('.sticker-slot img').click();
   await expect(page.locator('#sticker-preview-name')).toHaveText('保存');
   await page.evaluate(() => {
@@ -144,7 +144,7 @@ test('English locale covers the editor shell and recent-project setting stays fi
   await expect(page.locator('#open-project')).toHaveText('Open project');
   await expect(page.locator('#save-project')).toHaveText('Save project');
   await expect(page.locator('#recent-projects-toggle')).toHaveText('Recent projects');
-  await expect(page.locator('#search')).toHaveAttribute('placeholder', 'Filter subtitles…');
+  await expect(page.locator('#search')).toHaveAttribute('placeholder', 'Filter subtitles');
   await expect(page.locator('#cue-panel-text')).toHaveAttribute('placeholder', 'Select a subtitle to start editing…');
   await page.locator('#recent-projects-toggle').click();
   await expect(page.locator('#server-project-settings')).toContainText('Automatically open last project');
@@ -202,7 +202,7 @@ test('English locale covers the editor shell and recent-project setting stays fi
   await openSettingsPage(page, 'interface');
   await page.locator('#language-toggle').click();
   await expect(page.locator('#save-project')).toHaveText('保存工程');
-  await expect(page.locator('#search')).toHaveAttribute('placeholder', '过滤字幕…');
+  await expect(page.locator('#search')).toHaveAttribute('placeholder', '过滤字幕');
   await expect(page.locator('#cue-panel-text')).toHaveAttribute('placeholder', '选择一条字幕开始编辑…');
   expect(await page.evaluate(() => localStorage.getItem('mawe.language'))).toBe('zh');
 });

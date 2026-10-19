@@ -438,11 +438,67 @@ test("shared comparison option restores from every AI step and survives saving",
   assert.equal(ui.element("postprocessGenerateComparison").checked, false);
 });
 
-test("green-screen generation does not require or disable for missing media", () => {
+function greenScreenBurnHarness({ includeAudio = false, mediaPath = "" } = {}) {
+  const elements = new Map(Object.entries({
+    toolboxGreenScreen: { checked: true },
+    toolboxGreenScreenIncludeAudio: { checked: includeAudio },
+    toolboxUtilityMediaPath: { value: mediaPath },
+    toolboxBurnSubtitlePath: { value: "D:/Demo/captions.ass" },
+    toolboxGreenScreenSize: { value: "1080p" },
+    toolboxBurnVideoEncoder: { value: "cpu" },
+  }));
+  const runs = [], errors = new Map();
+  const context = vm.createContext({
+    $: id => elements.get(id), busy: false, mediaToolRunning: false, mediaToolCancelling: false,
+    utilityMediaManual: false,
+    t: key => key, setResult() {}, setFieldError: (id, message) => errors.set(id, message),
+    validateBurnEncoding: () => true, burnEncodingPayload: () => ({}),
+    beginMediaToolLog() {}, setBusy() {}, syncPaths() {}, refreshAudioTracks() {}, renderMediaToolAction() {},
+    bridge: async (method, payload) => {
+      runs.push({ method, payload });
+      return { ok: true, mediaPath: "D:/Demo/green-screen.mp4" };
+    },
+  });
+  const constants = ["SUBTITLE_BURN_EXTS", "MEDIA_EXTS", "VIDEO_EXTS"].map(name => {
+    const match = source.match(new RegExp(`^  const ${name} = .+;$`, "m"));
+    assert.ok(match, `missing ${name}`);
+    return match[0];
+  });
+  vm.runInContext([...constants, launcherFunction("extension"), launcherFunction("runBurnSubtitle")].join("\n"), context);
+  return { runs, errors, run: () => context.runBurnSubtitle() };
+}
+
+test("silent green-screen generation does not require or disable for missing media", async () => {
   const mediaAction = source.match(/function renderMediaToolAction\(\) \{([\s\S]*?)\n  \}/)?.[1] || "";
-  const burnAction = source.match(/async function runBurnSubtitle\(\) \{([\s\S]*?)\n  \}/)?.[1] || "";
   assert.match(mediaAction, /burn\.disabled = busy;/);
   assert.doesNotMatch(mediaAction, /utilityMediaPath|mediaPath/);
-  assert.match(burnAction, /if \(!greenScreen && !mediaPath\)/);
-  assert.match(burnAction, /mediaPath: greenScreen \? "" : mediaPath/);
+  for (const mediaPath of ["", "D:/Demo/unused.mp3"]) {
+    const ui = greenScreenBurnHarness({ mediaPath });
+    await ui.run();
+    assert.equal(ui.runs.length, 1);
+    assert.equal(ui.runs[0].method, "run_burn_subtitles");
+    assert.equal(ui.runs[0].payload.mediaPath, "");
+    assert.equal(ui.runs[0].payload.greenScreen, true);
+    assert.equal(ui.runs[0].payload.greenScreenIncludeAudio, false);
+    assert.equal(ui.errors.get("toolboxUtilityMediaPath"), "");
+  }
+});
+
+test("green-screen audio retains supported audio and video sources", async () => {
+  for (const mediaPath of ["D:/Demo/voice.mp3", "D:/Demo/video.mp4"]) {
+    const ui = greenScreenBurnHarness({ includeAudio: true, mediaPath });
+    await ui.run();
+    assert.equal(ui.runs.length, 1);
+    assert.equal(ui.runs[0].payload.mediaPath, mediaPath);
+    assert.equal(ui.runs[0].payload.greenScreenIncludeAudio, true);
+  }
+});
+
+test("green-screen audio rejects missing or unsupported sources before starting", async () => {
+  for (const mediaPath of ["", "D:/Demo/document.txt"]) {
+    const ui = greenScreenBurnHarness({ includeAudio: true, mediaPath });
+    await ui.run();
+    assert.equal(ui.runs.length, 0);
+    assert.equal(ui.errors.get("toolboxUtilityMediaPath"), "toolbox_green_screen_audio_required");
+  }
 });

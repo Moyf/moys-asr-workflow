@@ -277,6 +277,8 @@
   // 「左右添加字符」子菜单：数据驱动预设 + 自定义输入。插入一律双符号形式；
   // 「单双符号」设置只影响识别/解析，不影响这里插入的内容。
   // ASS 特殊文本格式预设仅在当前工程启用 ASS 字幕模式时展示。
+  // 分组：行内 MASS ／ 分隔线 ／ 句级效果（标签缀「整句」胶囊）／ 分隔线 ／ 常驻 +
+  // 自定义；组序与组内排序都跟随 WRAP_CHAR_PRESETS 数组序。
   function visibleWrapCharPresets() {
     const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
     return (window.AsrEditorUtils.WRAP_CHAR_PRESETS || []).filter(preset => !preset.ass || assMode);
@@ -284,13 +286,34 @@
   function addWrapCharsSubmenu(targets, container = MaweDom.ctxmenu) {
     const wrapPresets = visibleWrapCharPresets();
     const { wrapper: row, list } = createContextSubmenu('左右添加字符');
+    const addListSep = () => {
+      const sep = document.createElement('div');
+      sep.className = 'sep';
+      list.appendChild(sep);
+    };
+    const presetGroup = (preset) => (preset.sentenceLevel ? 'sentence' : (preset.ass ? 'ass' : 'common'));
+    let lastGroup = null;
     wrapPresets.forEach((preset) => {
+      const group = presetGroup(preset);
+      if (lastGroup !== null && group !== lastGroup) addListSep();
+      lastGroup = group;
       const entry = document.createElement('div');
       entry.className = 'item';
       entry.style.cssText = 'padding:5px 10px;border-radius:var(--radius-sm);';
+      // 标签与「整句」badge 组合在左侧一个 span 里：.item 是 space-between 布局，
+      // 直接铺三个子元素会把 badge 挤到行中央。
+      const nameGroup = document.createElement('span');
+      nameGroup.style.cssText = 'display:inline-flex;align-items:center;gap:6px;min-width:0;';
       const name = document.createElement('span');
       name.textContent = preset.label;
-      entry.appendChild(name);
+      nameGroup.appendChild(name);
+      if (preset.sentenceLevel) {
+        const badge = document.createElement('span');
+        badge.className = 'ctxmenu-sentence-badge';
+        badge.textContent = '整句';
+        nameGroup.appendChild(badge);
+      }
+      entry.appendChild(nameGroup);
       const sample = document.createElement('kbd');
       sample.textContent = `${preset.left}文${preset.right}`;
       entry.appendChild(sample);
@@ -378,8 +401,11 @@
         MaweBindingAlign.unbindSelectedSubtitlePair();
       });
     }
-    // 低频动作收进高级操作：左右添加字符（淡出淡入、音符等单条场景）与叠加轨迁移。
-    addWrapCharsSubmenu(targetIdxs, advancedList);
+    // 「左右添加字符」提为顶层菜单行，放「高级操作」上方：预设是高频动作；
+    // 叠加轨迁移与字词转换等低频动作仍留在高级操作内。两行同组（账本 #31），
+    // 行间不加分隔线，这里只画组前的分隔线。
+    addSep();
+    addWrapCharsSubmenu(targetIdxs);
     addAdvancedOverlayConvert([idx]);
   } else {
     // 组 1：合并与批量文本操作
@@ -407,12 +433,15 @@
       MaweSegmentOps.deleteSegments(targetIdxs);
     }, { danger: true });
     addItem('取消选择', `${MaweDisplaySettings.modKeyLabel()}+D`, () => MaweSelection.clearSelection());
-    addWrapCharsSubmenu(targetIdxs, advancedList);
+    // 多选分支同样把「左右添加字符」放顶层、「高级操作」上方。
+    addSep();
+    addWrapCharsSubmenu(targetIdxs);
     addAdvancedOverlayConvert(targetIdxs);
   }
 
   if (MaweWordTiming.enabled) advancedList.appendChild(convertWords);
-  addSep();
+  // 「左右添加字符」与「高级操作」同组不加分隔线（账本 #31）；组前的
+  // 分隔线已由上方各分支在 addWrapCharsSubmenu 之前画好。
   MaweDom.ctxmenu.appendChild(advanced);
   // 调整 ctxmenu 位置（避免溢出）
   MaweDom.ctxmenu.classList.add('show');
