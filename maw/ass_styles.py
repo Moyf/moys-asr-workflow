@@ -163,14 +163,24 @@ def _style_defaults(style_id: str, name: str) -> dict[str, object]:
     }
 
 
-DEFAULT_SRT_STYLE: Final[dict[str, object]] = _style_defaults("default", "SRT 默认")
+# SRT 渲染样式（烧录字幕）在共享基础值之上覆盖排版字段：字号/阴影/垂直边距按
+# 维护者实际使用配置；描边宽度等其余字段沿用 _style_defaults 的基础值，
+# 内置 ASS 样式（主/副）也继续直接使用基础值。
+DEFAULT_SRT_STYLE: Final[dict[str, object]] = {
+    **_style_defaults("default", "SRT 渲染样式"),
+    "fontSize": 80,
+    "shadow": 2,
+    "marginV": 124,
+}
 # 内置参数与维护者的当前配置一致；字体继续按系统选择。
+# 内置参数与维护者的当前配置一致；字号沿用基础值 86，垂直边距单独覆盖。
 DEFAULT_ASS_STYLE: Final[dict[str, object]] = {
     **_style_defaults("ass", "ASS 默认样式"),
     "emphasisColor": "#ffaa00",
     "emphasisScale": 1.3,
     "backColor": "#ff8647",
     "backOpacity": 60,
+    "marginV": 180,
 }
 # 副字幕位于主字幕下方，使用独立颜色、描边及边距。
 DEFAULT_ASS_EXTENSION_STYLE: Final[dict[str, object]] = {
@@ -178,8 +188,8 @@ DEFAULT_ASS_EXTENSION_STYLE: Final[dict[str, object]] = {
     "primaryColor": "#f9ca1f",
     "emphasisColor": "#ffaa00",
     "fontSize": 64,
-    "outline": 2,
-    "marginV": 36,
+    "outline": 4,
+    "marginV": 100,
 }
 
 
@@ -227,6 +237,7 @@ DEFAULT_ASS_PROFILE: Final[dict[str, object]] = {
 
 # 内置条目的旧默认名：归一化时改名到当前默认，用户自定义过的名字不动。
 _LEGACY_BUILTIN_NAMES: Final[dict[tuple[str, str], str]] = {
+    ("style", "default"): "SRT 默认",
     ("style", "ass"): "ASS",
     ("profile", "ass"): "ASS",
 }

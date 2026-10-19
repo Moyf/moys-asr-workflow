@@ -6,6 +6,7 @@ const repoUrl = 'https://github.com/Moyf/moys-asr-workflow';
 const releasesUrl = `${repoUrl}/releases/latest`;
 const docsUrl = sitePath('docs/');
 const editorUrl = sitePath('editor/');
+const updatesUrl = sitePath('releases/');
 ---
 
 <BaseLayout>
@@ -24,6 +25,7 @@ const editorUrl = sitePath('editor/');
         <a href="#tools">整理与交付</a>
         <a href="#privacy">本地优先</a>
         <a href={docsUrl}>文档</a>
+        <a href={updatesUrl}>更新记录</a>
         <a href={editorUrl}>在线编辑器</a>
         <a href={repoUrl}>GitHub ↗</a>
       </nav>

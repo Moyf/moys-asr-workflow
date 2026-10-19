@@ -468,6 +468,7 @@ export function createWaveformModule(dependencies) {
         indices.forEach((idx) => { if (segments[idx]) segments[idx]._dirty = true; });
         return { track: move.track, indices };
       });
+      this.options.markProjectDirty?.();
       this.options.onCommitEdit(commitIndices, drag.kind, drag.track || 'main', drag.independent === true,
         { trackChanged: drag.trackChanged === true, moveTracks: drag.moveTracks ? tracks : null });
       this.refreshCueOverlay();

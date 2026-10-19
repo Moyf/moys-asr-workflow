@@ -459,7 +459,7 @@
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "ocr", enabled: false, videoPath: "", videoPathMode: "", regionMode: "full", regionX1: 0, regionY1: 0, regionX2: 100, regionY2: 100, threshold: 0.5, report: false },
-        { id: "translate", enabled: false, providerId: "deepseek", target: "zh", mergeBilingual: false, embedTranslations: false, bilingualLineOrder: "", customPrompt: "" },
+        { id: "translate", enabled: false, providerId: "deepseek", target: "zh", mergeBilingual: false, embedTranslations: false, bilingualLineOrder: "", customPrompt: "", skipTargetLanguage: true },
         { id: "burn", enabled: false, videoEncoder: "auto" },
       ],
     };
@@ -884,7 +884,7 @@
 
   function syncUtilityMediaFieldState() {
     const disabled = busy || (!$("toolboxBurnSubtitlePanel").classList.contains("hidden")
-      && $("toolboxGreenScreen").checked);
+      && $("toolboxGreenScreen").checked && !$("toolboxGreenScreenIncludeAudio").checked);
     const field = $("toolboxUtilityMediaDropZone");
     field.classList.toggle("is-disabled", disabled);
     field.setAttribute("aria-disabled", String(disabled));
@@ -896,6 +896,7 @@
   // 绿幕尺寸下拉只在勾选「生成绿幕视频」时显示；默认 4K。
   function syncGreenScreenSizeFieldState() {
     $("toolboxGreenScreenSizeField").classList.toggle("hidden", !$("toolboxGreenScreen").checked);
+    $("toolboxGreenScreenAudioField").classList.toggle("hidden", !$("toolboxGreenScreen").checked);
   }
 
   function selectToolboxSection(section) {
@@ -1244,7 +1245,7 @@
     }
     $("toolboxProgress").classList.toggle("hidden", !busy);
     ["toolboxTimestampScriptPath", "pickToolboxTimestampScript", "toolboxTimestampLanguage", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath", "pickToolboxTimestampAnchors", "toolboxTimestampAudioTrack", "toolboxTimestampOutputDirectory", "pickToolboxTimestampOutput", "checkScriptAlignment"].forEach((id) => { $(id).disabled = busy; });
-    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "postprocessCleanupScriptPath", "pickPostprocessCleanupScript", "postprocessResegmentMaxChars", "postprocessGenerateComparison", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxGreenScreenIncludeAudio", "toolboxGreenScreenSize", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "postprocessCleanupScriptPath", "pickPostprocessCleanupScript", "postprocessResegmentMaxChars", "postprocessGenerateComparison", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
     syncUtilityMediaFieldState();
@@ -1823,7 +1824,7 @@
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId: stepProviderId("proofread"), customPrompt: getLlmPrompt("proofread"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
         { id: "resegment", maxChars: $("postprocessResegmentMaxChars").value.trim(), enabled: Boolean($("autoStepResegment")?.checked), providerId: stepProviderId("resegment"), customPrompt: getLlmPrompt("resegment"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
         { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: ocrVideoManual ? $("ocrVideoPath").value.trim() : "", videoPathMode: ocrVideoManual ? "manual" : "auto", ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
-        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId: stepProviderId("translate"), target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), embedTranslations: Boolean($("autoTranslateBackfill")?.checked), bilingualLineOrder: $("autoTranslateBilingualOrder")?.value || "", customPrompt: getLlmPrompt(autoLlmOperation("translate")), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
+        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId: stepProviderId("translate"), target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), embedTranslations: Boolean($("autoTranslateBackfill")?.checked), bilingualLineOrder: $("autoTranslateBilingualOrder")?.value || "", customPrompt: getLlmPrompt(autoLlmOperation("translate")), generateComparison: Boolean($("postprocessGenerateComparison")?.checked), skipTargetLanguage: $("autoTranslateSkipTarget").checked },
         { id: "burn", enabled: Boolean($("autoStepBurn")?.checked), videoEncoder: "auto" },
       ],
     };
@@ -1914,6 +1915,7 @@
     $("autoTranslateBilingualOrder")?.classList.toggle("hidden", !(translateEnabled && mergeBilingual));
     $("autoTranslateBackfillField")?.classList.toggle("hidden", !translateEnabled);
     $("autoTranslateBackfillHint")?.classList.toggle("hidden", !translateEnabled);
+    $("autoTranslateSkipTargetField")?.classList.toggle("hidden", !translateEnabled);
     const summary = $("autoPostprocessSummary");
     if (!summary) return;
     if (!enabled) {
@@ -2083,6 +2085,8 @@
       ? savedOrder
       : (String(translate.target || "zh") === "en" ? "original_first" : "translation_first");
     $("autoTranslateBackfill").checked = Boolean(translate.embedTranslations) && !Boolean(translate.mergeBilingual);
+    $("autoTranslateSkipTarget").checked = translate.skipTargetLanguage !== false;
+    $("postprocessSkipTarget").checked = translate.skipTargetLanguage !== false;
     const translatePrompt = byId.get("translate")?.customPrompt;
     if (typeof translatePrompt === "string") llmPrompts[autoLlmOperation("translate")] = translatePrompt;
     $("toolboxBurnVideoEncoder").value = "auto";
@@ -2495,6 +2499,7 @@
         mergeBilingual: Boolean($("postprocessMergeBilingual")?.checked),
         embedTranslations: Boolean($("postprocessBackfill")?.checked),
         bilingualLineOrder: $("postprocessBilingualOrder")?.value || "",
+        skipTargetLanguage: $("postprocessSkipTarget").checked,
       });
       cancelled = result.code === "postprocess_cancelled";
       if (result.ok) applySubtitleResult(result, { kind: "llm", operation });
@@ -2620,6 +2625,7 @@
   async function runBurnSubtitle() {
     if (busy) return;
     const greenScreen = $("toolboxGreenScreen").checked;
+    const includeAudio = greenScreen && $("toolboxGreenScreenIncludeAudio").checked;
     const mediaPath = $("toolboxUtilityMediaPath").value.trim();
     const subtitlePath = $("toolboxBurnSubtitlePath").value.trim();
     if (!greenScreen && !mediaPath) {
@@ -2628,6 +2634,12 @@
     }
     if (!greenScreen && !VIDEO_EXTS.has(extension(mediaPath))) {
       const message = t("toolbox_utility_video_required");
+      setFieldError("toolboxUtilityMediaPath", message);
+      setResult(message, "error");
+      return;
+    }
+    if (includeAudio && (!mediaPath || !MEDIA_EXTS.has(extension(mediaPath)))) {
+      const message = t("toolbox_green_screen_audio_required");
       setFieldError("toolboxUtilityMediaPath", message);
       setResult(message, "error");
       return;
@@ -2647,9 +2659,10 @@
     setBusy(true, "toolbox_status_burning");
     try {
       const result = await bridge("run_burn_subtitles", {
-        mediaPath: greenScreen ? "" : mediaPath,
+        mediaPath: greenScreen && !includeAudio ? "" : mediaPath,
         subtitlePath,
         greenScreen,
+        greenScreenIncludeAudio: includeAudio,
         greenScreenSize: $("toolboxGreenScreenSize")?.value || "4k",
         videoEncoder: $("toolboxBurnVideoEncoder")?.value || "auto",
         ...burnEncodingPayload(),
@@ -2839,6 +2852,7 @@
     setFieldError("toolboxUtilityMediaPath", "");
     renderMediaToolAction();
   });
+  $("toolboxGreenScreenIncludeAudio").addEventListener("change", syncUtilityMediaFieldState);
   $("saveBurnSubtitleSettings").addEventListener("click", saveBurnSubtitleSettings);
   $("runExtractAudio").addEventListener("click", runExtractAudio);
   $("stopToolboxMedia").addEventListener("click", () => { void stopMediaTool(); });
@@ -3034,6 +3048,14 @@
   $("postprocessBackfill").addEventListener("change", () => {
     if ($("postprocessBackfill").checked) $("postprocessMergeBilingual").checked = false;
     renderTaskPrompt();
+  });
+  ["autoTranslateSkipTarget", "postprocessSkipTarget"].forEach((id) => {
+    $(id).addEventListener("change", () => {
+      const checked = $(id).checked;
+      $("autoTranslateSkipTarget").checked = checked;
+      $("postprocessSkipTarget").checked = checked;
+      persistAutoPlanSoon();
+    });
   });
   AUTO_STEP_ORDER.forEach((stepId) => {
     const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);

@@ -185,6 +185,8 @@
       );
       target._dirty = true;
     });
+    // 绑定拖动在命令提交前逐帧写入；事件让指示器与拖动预览同步变脏。
+    MaweState.markProjectDirty();
     MaweMultiSubtitleCore.syncBindingOffsets();
   }
 

@@ -176,6 +176,9 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
   }
 
   function assStackWrappedRuns(item, width, measure) {
+    const scale = item.cueScale || 1;
+    if (scale !== 1) item = { ...item, fontSize: item.fontSize * scale,
+      style: { ...item.style, spacing: item.style.spacing * scale } };
     const result = [];
     let used = 0;
     const append = (run, text) => {
@@ -203,8 +206,11 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     const elapsed = (time) => Math.max(0, time - item.start);
     const styles = [start, Math.max(start, end - 0.001)].map(time => {
       const state = dependencies.assStackAnimationState(profile, elapsed(time), item.end - item.start);
-      return state.transformProgress === null ? { ...item.style, fontSize: item.fontSize }
+      const style = state.transformProgress === null ? { ...item.style, fontSize: item.fontSize }
         : dependencies.assPreviewStyleAt({ ...item.style, fontSize: item.fontSize }, profile.animations.t.tags, state.transformProgress, { nativeFontSize: true });
+      const scale = item.cueScale || 1;
+      return { ...style, fontSize: style.fontSize * scale, spacing: style.spacing * scale,
+        outline: style.outline * scale, shadow: style.shadow * scale };
     });
     const targets = dependencies.assTransformStyleTargets(profile?.animations?.t?.tags || '');
     const max = (key, fallback) => Math.max(...styles.map(style => Number(style[key] ?? fallback)));
@@ -316,7 +322,8 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     };
     for (const raw of items || []) {
       const override = raw.role === 'main' ? dependencies.normalizeAssOverride(raw.segment?.assOverride) : undefined;
-      const item = override ? { ...raw, assOverride: override, manual: Boolean(override.pos) } : raw;
+      const item = { ...raw, cueScale: override?.scale || 1,
+        ...(override ? { assOverride: override, manual: Boolean(override.pos) } : {}) };
       queue(item.start, item, true); queue(item.end, item, false);
     }
     const times = [...events.keys()].sort((a, b) => a - b);
@@ -367,7 +374,7 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
         // Legacy 震动句在导出中带 \q2 与预折行 runs：这里与手动定位句同
         // 规则预折行，让 Canvas 预览与导出使用同一份换行结果。
         if (ordered.length) slice.items.push({ ...root, alignment: root.style.alignment, offset: { x: 0, y: 0 },
-          ...(root.shake ? { runs: assStackWrappedRuns(root, Math.max(1, width - root.style.marginL - root.style.marginR), measure) } : {}) });
+          ...(root.shake || root.cueScale !== 1 ? { runs: assStackWrappedRuns(root, Math.max(1, width - root.style.marginL - root.style.marginR), measure) } : {}) });
         slice.pieces = [{ start, end }]; slices.push(slice); continue;
       }
       if (ordered.some(item => item.style.spacing < 0)
@@ -439,7 +446,7 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
           top: offset.y + rect.top, bottom: offset.y + rect.bottom };
         for (const key of ['left', 'top']) slice.box[key] = Math.min(slice.box[key], world[key]);
         for (const key of ['right', 'bottom']) slice.box[key] = Math.max(slice.box[key], world[key]);
-        previous = { ...world, fontSize: cue.fontSize };
+        previous = { ...world, fontSize: cue.fontSize * (cue.cueScale || 1) };
       }
       if (slice.diagnostic) {
         diagnostics.push({ start, end, message: slice.diagnostic }); slices.push(slice); continue;
@@ -449,9 +456,9 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
       const smallest = Math.min(...ordered.filter(item => item.role !== 'extension').flatMap(item => {
         const values = [start, end].map(time => {
           const state = dependencies.assStackAnimationState(profile, time - item.start, item.end - item.start);
-          return state.transformProgress === null ? item.fontSize
+          return state.transformProgress === null ? item.fontSize * (item.cueScale || 1)
             : dependencies.assPreviewStyleAt({ ...item.style, fontSize: item.fontSize }, profile.animations.t.tags,
-              state.transformProgress, { nativeFontSize: true }).fontSize;
+              state.transformProgress, { nativeFontSize: true }).fontSize * (item.cueScale || 1);
         });
         return item.runs.filter(run => run.text).map(run => Math.max(1, Math.round(Math.min(...values)
           * (run.size === 'small' ? item.style.smallTextScale : run.size === 'large' ? item.style.largeTextScale : 1)
@@ -466,7 +473,7 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     }
     const cueKey = item => item.segment || `${item.role}:${item.index}:${item.start}:${item.end}`;
     const groupedCues = new Set(slices.filter(slice => !slice.legacy).flatMap(slice => slice.items.map(cueKey)));
-    for (const slice of slices) for (const item of slice.items) item.sharedStackCue = item.manual || groupedCues.has(cueKey(item));
+    for (const slice of slices) for (const item of slice.items) item.sharedStackCue = item.manual || item.cueScale !== 1 || groupedCues.has(cueKey(item));
     return { slices, diagnostics, width, height };
   }
 
@@ -478,7 +485,7 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     if (!slice || timeMs >= slice.end) return { items: [], diagnostic: '' };
     if (slice.diagnostic) return { items: [], diagnostic: slice.diagnostic };
     const shakeOffset = item => item.shake
-      ? { shakeOffset: assShakeOffsetFor(timeMs - item.start, assShakeAmplitude(slice.height) * (item.absolute ? 1 : slice.scale)) } : {};
+      ? { shakeOffset: assShakeOffsetFor(timeMs - item.start, assShakeAmplitude(slice.height) * (item.absolute ? 1 : slice.scale) * item.cueScale) } : {};
     if (slice.legacy) return { items: slice.items.map(item => ({ ...item, scale: 1, legacy: true,
       ...(item.manual ? { anchor: { ...item.offset } } : {}), ...shakeOffset(item) })), diagnostic: '' };
     const piece = slice.pieces.find(piece => timeMs < piece.end) || slice.pieces[slice.pieces.length - 1];

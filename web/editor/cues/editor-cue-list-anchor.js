@@ -212,7 +212,6 @@
   setCueListFollowing(cueListScroll.following);
 
 
-
   function interruptCueListFollowing() {
     MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
     setCueListFollowing(false);

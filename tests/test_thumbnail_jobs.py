@@ -243,6 +243,9 @@ class ThumbnailDemandTests(unittest.TestCase):
         from maw import thumbnails
         from maw.thumbnail_jobs import coordinated_pack
         import threading
+        # 加固（v1.9.0 macOS CI 首跑超时）：产品契约是“取消最终会发生”（watcher 50ms 轮询），
+        # 没有任何秒级时限保证；负载重的 runner 上线程调度停顿可以超过 2s。
+        # 宽限放大到 10s；真实回归（lease 永远不取消）仍由下方 worker.join + is_alive 断言在 ~3s 内暴露。
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)/"media.mp4"
             path.write_bytes(b"source")
@@ -254,11 +257,12 @@ class ThumbnailDemandTests(unittest.TestCase):
                 attempts.append(jpegs)
                 if len(attempts) == 1:
                     started.set()
-                    self.assertTrue(kwargs["cancel"].wait(2))
+                    self.assertTrue(kwargs["cancel"].wait(10),
+                                    "playing lease did not cancel sprite decode within 10s")
                     raise thumbnails.ThumbnailCancelled("playing")
                 return b"sprite"
             def wait(_targets):
-                deadline = time.monotonic()+3
+                deadline = time.monotonic()+10
                 while coord.paused(source_key(path), background=True):
                     if time.monotonic() > deadline:
                         raise TimeoutError("lease did not release")
@@ -267,12 +271,12 @@ class ThumbnailDemandTests(unittest.TestCase):
                 worker = threading.Thread(target=lambda: result.append(coordinated_pack(path,[b"frame"],
                     coordinator=coord,before_batch=wait)))
                 worker.start()
-                self.assertTrue(started.wait(2))
+                self.assertTrue(started.wait(10), "worker did not reach sprite decode within 10s")
                 coord.lease("playing",source_key(path),playing=True)
                 time.sleep(.15)
                 self.assertTrue(worker.is_alive())
                 coord.release("playing")
-                worker.join(3)
+                worker.join(10)
                 self.assertFalse(worker.is_alive())
             self.assertEqual(result,[b"sprite"])
             self.assertEqual(attempts,[[b"frame"],[b"frame"]])

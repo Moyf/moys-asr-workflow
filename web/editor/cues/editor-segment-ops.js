@@ -48,17 +48,21 @@
       && segs.every((segment) => segment.speaker === segs[0].speaker)
       ? segs[0].speaker
       : null;
+    // 拼接后折叠相邻「闭符号+开符号」的同符号对（防止拼出 ** 被误解析为强调），
+    // items 层同步裁掉被折叠的符号，保持 items 拼接 == 合并文本。
+    const mainJoin = window.AsrEditorUtils.joinSegmentTextsMassFold(
+      segs,
+      MaweMultiSubtitleCore.mergeJoinSeparatorForMode(MaweMultiSubtitleCore.getMainSubtitleSplitMode({ text: segs.map((s) => s.text || '').join('\n') })),
+      MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+    );
     const merged = {
       id: window.AsrEditorUtils.uniqueStableSegmentId(
         MaweBoot.DATA.segments, `${segs[0].id || 'main'}-merged`, 'main',
       ),
       start: segs[0].start,
       end: segs[segs.length - 1].end,
-      text: window.AsrEditorUtils.joinSegmentTexts(
-        segs,
-        MaweMultiSubtitleCore.mergeJoinSeparatorForMode(MaweMultiSubtitleCore.getMainSubtitleSplitMode({ text: segs.map((s) => s.text || '').join('\n') })),
-      ),
-      items: segs.flatMap(s => s.items || []),
+      text: mainJoin.text,
+      items: mainJoin.items,
       sticker: stickerGroup.head,
       sticker_ref: stickerGroup.ref,
       color: colorGroup.head,
@@ -72,22 +76,24 @@
 
     let mergedExtension = null;
     if (extensionTrack && extensionMergeSegments.length) {
+      const extensionJoin = window.AsrEditorUtils.joinSegmentTextsMassFold(
+        extensionMergeSegments,
+        MaweMultiSubtitleCore.mergeJoinSeparatorForMode(MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(extensionTrack, {
+          text: extensionMergeSegments.map((s) => s.text || '').join('\n'),
+        })),
+        MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+      );
       mergedExtension = {
         id: window.AsrEditorUtils.uniqueStableSegmentId(
           extensionTrack.segments, `${extensionMergeSegments[0].id || extensionTrack.id}-merged`, `${extensionTrack.id}-segment`,
         ),
         start: Math.min(...extensionMergeSegments.map((segment) => segment.start)),
         end: Math.max(...extensionMergeSegments.map((segment) => segment.end)),
-        text: window.AsrEditorUtils.joinSegmentTexts(
-          extensionMergeSegments,
-          MaweMultiSubtitleCore.mergeJoinSeparatorForMode(MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(extensionTrack, {
-            text: extensionMergeSegments.map((s) => s.text || '').join('\n'),
-          })),
-        ),
+        text: extensionJoin.text,
         _dirty: true,
       };
       if (extensionMergeSegments.some((segment) => Array.isArray(segment.items))) {
-        mergedExtension.items = extensionMergeSegments.flatMap((segment) => segment.items || []);
+        mergedExtension.items = extensionJoin.items;
       }
     }
 
@@ -193,6 +199,13 @@
     const cueListAnchor = MaweCueListAnchor.captureVisibleCueListVisualAnchor(sourceEl);
 
     const oldIds = segments.map((segment) => segment.id).filter(Boolean);
+    const extensionJoin = window.AsrEditorUtils.joinSegmentTextsMassFold(
+      segments,
+      MaweMultiSubtitleCore.mergeJoinSeparatorForMode(MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, {
+        text: segments.map((s) => s.text || '').join('\n'),
+      })),
+      MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+    );
     const merged = {
       id: window.AsrEditorUtils.uniqueStableSegmentId(
         track.segments,
@@ -201,12 +214,7 @@
       ),
       start: segments[0].start,
       end: segments[segments.length - 1].end,
-      text: window.AsrEditorUtils.joinSegmentTexts(
-        segments,
-        MaweMultiSubtitleCore.mergeJoinSeparatorForMode(MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, {
-          text: segments.map((s) => s.text || '').join('\n'),
-        })),
-      ),
+      text: extensionJoin.text,
       _dirty: true,
     };
     const hadBindings = oldIds.some((id) => window.AsrEditorUtils.bindingForSegment(

@@ -114,7 +114,11 @@
 
   function subtitleExportText(segment, segments) {
     const options = speakerLabelExportOptions();
-    const text = String(segment?.text || '');
+    // 动态字幕 / Resolve JSON / OTIO 等 subtitleExportText 出口与 SRT/TXT 同
+    // 链路剥离：句级 fade/shake + 成对 MASS 符号（ASS 导出不经过这里）。
+    const text = window.AsrEditorUtils.srtSentenceText(
+      String(segment?.text || ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+    );
     return options.speakerLabelsEnabled
       ? window.AsrEditorUtils.formatSpeakerLabelledText(
         text, segment, segments, options.speakerLabels, options.speakerLabelSeparator,

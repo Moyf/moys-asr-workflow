@@ -34,6 +34,7 @@ export function createWaveformModule(dependencies) {
         operationOptions,
       );
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
+      this.options.markProjectDirty?.();
       this.options.onCommitEdit?.(result.indices, 'move', track);
       this.refreshCueOverlay();
       return true;
@@ -64,6 +65,7 @@ export function createWaveformModule(dependencies) {
         options,
       );
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
+      this.options.markProjectDirty?.();
       this.options.onCommitEdit?.(
         result.affectedIndices,
         result.linked ? 'resize-boundary' : 'resize-boundary-independent',
@@ -127,6 +129,7 @@ export function createWaveformModule(dependencies) {
         timing,
       );
       segment._dirty = true;
+      this.options.markProjectDirty?.();
       this.options.onCommitEdit?.(
         [index],
         'resize-boundary-pointer',
@@ -180,6 +183,7 @@ export function createWaveformModule(dependencies) {
       if (!result.changed) return true;
       this.options.onBeginEdit?.('贴近字幕边界');
       result.affectedIndices.forEach((idx) => { segments[idx]._dirty = true; });
+      this.options.markProjectDirty?.();
       this.options.onCommitEdit?.(result.affectedIndices, 'resize-boundary-independent', track);
       this.refreshCueOverlay();
       return true;

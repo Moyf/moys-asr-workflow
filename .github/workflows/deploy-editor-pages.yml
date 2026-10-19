@@ -6,21 +6,36 @@ on:
     paths:
       - "website/**"
       - "README.md"
+      - "CHANGELOG.md"
       - "JSON_SCHEMA.md"
       - "docs/**"
       - "edit.py"
       - "web/**"
       - "scripts/build-*.mjs"
+      - "scripts/build_release_site.py"
+      - "scripts/prepare_release_notes.py"
+      - "scripts/verify_release_site.py"
       - "package.json"
       - "pnpm-lock.yaml"
       - "maw/quapeaks.py"
       - "maw/**"
       - ".github/workflows/deploy-editor-pages.yml"
   workflow_dispatch:
+    inputs:
+      expected_tag:
+        description: Published stable tag to verify (optional)
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      expected_tag:
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: editor-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -34,10 +49,16 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    env:
+      SITE_URL: https://moyf.github.io
+      BASE_PATH: /moys-asr-workflow
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -76,12 +97,17 @@ jobs:
         working-directory: website
         run: pnpm run sync:docs
 
+      - name: Verify archives and build published releases
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_TAG: ${{ inputs.expected_tag || '' }}
+        run: |
+          python scripts/run_check.py --timeout 60 -- python scripts/prepare_release_notes.py --check-all
+          python scripts/run_check.py --timeout 180 -- python scripts/build_release_site.py --github --expected-tag "$EXPECTED_TAG"
+
       - name: Build website
         working-directory: website
-        env:
-          SITE_URL: https://moyf.github.io/moys-asr-workflow
-          BASE_PATH: /moys-asr-workflow
-        run: pnpm run build
+        run: python ../scripts/run_check.py --timeout 180 -- pnpm run build
 
       - name: Add portable editor page
         shell: bash
@@ -106,3 +132,8 @@ jobs:
       - name: Deploy Pages artifact
         id: deployment
         uses: actions/deploy-pages@v5
+
+      - name: Verify deployed release index and detail
+        env:
+          EXPECTED_TAG: ${{ inputs.expected_tag || '' }}
+        run: python scripts/run_check.py --timeout 120 -- python scripts/verify_release_site.py --base-url "${SITE_URL}${BASE_PATH}" --expected-tag "$EXPECTED_TAG"

@@ -13,6 +13,39 @@ import {
 
 const DURATION_MS = 4_000;
 
+test('English builtin reset confirmations translate names and preserve cancel and confirm behavior', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
+  await page.goto(server.url);
+  await openSettingsPage(page, 'subtitle-style');
+  await page.locator('#ass-style-manager-open').click();
+  for (const [id, name, size] of [
+    ['default', 'SRT render style', '80'], ['ass', 'ASS default style', '86'],
+    ['ass-extension', 'ASS extension subtitle style', '64'],
+  ]) {
+    await page.locator(`#ass-style-list [data-ass-selection-id="${id}"]`).click();
+    await page.locator('#ass-style-font-size').fill('123');
+    const messages = [];
+    page.once('dialog', async dialog => { messages.push(dialog.message()); await dialog.dismiss(); });
+    await page.locator('#ass-style-reset').click();
+    await expect(page.locator('#ass-style-font-size')).toHaveValue('123');
+    page.once('dialog', async dialog => { messages.push(dialog.message()); await dialog.accept(); });
+    await page.locator('#ass-style-reset').click();
+    await expect(page.locator('#ass-style-font-size')).toHaveValue(size);
+    expect(messages).toEqual([`Reset “${name}” to its defaults?`, `Reset “${name}” to its defaults?`]);
+  }
+  await page.locator('#ass-profile-list [data-ass-selection-id="ass"]').click();
+  await page.locator('#ass-animation-fad-in').fill('900');
+  const profileMessages = [];
+  page.once('dialog', async dialog => { profileMessages.push(dialog.message()); await dialog.dismiss(); });
+  await page.locator('#ass-style-reset').click();
+  await expect(page.locator('#ass-animation-fad-in')).toHaveValue('900');
+  page.once('dialog', async dialog => { profileMessages.push(dialog.message()); await dialog.accept(); });
+  await page.locator('#ass-style-reset').click();
+  await expect(page.locator('#ass-animation-fad-in')).toHaveValue('250');
+  expect(profileMessages).toEqual(Array(2).fill('Reset “ASS export profile” to its defaults?'));
+});
+
 test('sample Canvas contains scaled and rotated glyphs without edge clipping', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
@@ -395,7 +428,22 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
   await expect(page.locator('#ass-style-emphasis-syntax')).toHaveCount(0);
   await expect(page.locator('#ass-emphasis-syntax')).toBeChecked();
-  await expect(page.locator('#ass-style-emphasis-heading')).toHaveText('特殊文本样式');
+  await expect(page.locator('#ass-style-emphasis-heading')).toHaveText('特殊文本样式（MASS）');
+  await expect(page.locator('#ass-style-mass-help')).toBeVisible();
+  await expect(page.locator('#ass-style-mass-help'))
+    .toHaveAttribute('data-title', '基于 Markdown 语法灵感的进阶式 ASS，也可以理解为 MAW-ASS。');
+  await expect(page.locator('#ass-special-format-hint'))
+    .toHaveText('你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。');
+  await expect(page.locator('#ass-special-format-menu-hint')).toBeVisible();
+  await expect(page.locator('#ass-special-format-menu-hint'))
+    .toHaveText('详见字幕右键菜单「左右添加字符」部分。');
+  // 内置样式右上角是「重置」而不是禁用的「删除当前」；点按后恢复默认值。
+  await expect(page.locator('#ass-style-delete')).toBeHidden();
+  await expect(page.locator('#ass-style-reset')).toBeVisible();
+  await page.locator('#ass-style-font-size').fill('123');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('#ass-style-reset').click();
+  await expect(page.locator('#ass-style-font-size')).toHaveValue('86');
   await expect(page.locator('#ass-style-small-text-scale')).toHaveValue('0.8');
   await expect(page.locator('#ass-style-large-text-scale')).toHaveValue('1.5');
   await expect(page.locator('#ass-style-emphasis-scale')).toHaveValue('1.3');
@@ -667,6 +715,7 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
     MaweBoot.DATA.segments.push(
       { id: 'before-gap', start: 1000, end: 2000, text: 'before gap', items: [], color: { name: 'red', value: '#e74c3c', start: 1000, end: 2000 } },
       { id: 'after-gap', start: 4000, end: 5000, text: 'after gap', items: [] },
+      { id: 'in-gap', start: 2200, end: 2800, text: 'in gap', items: [] },
     );
     MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
@@ -702,6 +751,8 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   expect(save.content).toContain(
     'Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,{\\fad(250,250)}after gap',
   );
+  // 完全位于已移除空隙内的字幕不进去空隙导出（否则会堆叠在同一时刻）。
+  expect(save.content).not.toContain('in gap');
 });
 
 test('keeps ASS style actions and preview-mode hints attached to the active form', async ({ page }) => {
@@ -727,7 +778,9 @@ test('keeps ASS style actions and preview-mode hints attached to the active form
     .toHaveCSS('font-size', '12px');
 
   await page.locator('#ass-style-list [data-ass-selection-id="default"]').click();
-  await expect(page.locator('#ass-style-form-title')).toHaveText('SRT 默认');
+  await expect(page.locator('#ass-style-form-title')).toHaveText('SRT 渲染样式');
+  await expect(page.locator('#ass-style-delete')).toBeHidden();
+  await expect(page.locator('#ass-style-reset')).toBeVisible();
   await expect(page.locator('#ass-style-srt-hint'))
     .toHaveText('这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。');
   await expect(page.locator('#ass-style-srt-hint')).toBeVisible();
@@ -755,6 +808,28 @@ test('keeps ASS style actions and preview-mode hints attached to the active form
   await page.locator('#ass-profile-list [role="option"]').first().click();
   const deleteButtonParent = await page.locator('#ass-style-delete').evaluate((element) => element.parentElement?.id);
   expect(deleteButtonParent).toBe('ass-profile-delete-slot');
+  // 内置方案同样显示「重置」；删除按钮隐藏但仍挂在方案槽位里。
+  await expect(page.locator('#ass-style-delete')).toBeHidden();
+  await expect(page.locator('#ass-style-reset')).toBeVisible();
+});
+
+test('explains a stale page when the server rejects style sync with 403', async ({ page }) => {
+  await disableOnboarding(page);
+  // 拦截 POST 模拟「服务器重启后旧页面令牌失效」；GET 放行使加载保持正常。
+  await page.route('**/api/ass-styles', (route) => {
+    if (route.request().method() === 'POST') {
+      return route.fulfill({ status: 403, contentType: 'application/json', body: '{"ok":false,"error":"请求令牌无效"}' });
+    }
+    return route.continue();
+  });
+  await page.goto(server.url);
+
+  await openSettingsPage(page, 'subtitle-style');
+  await page.locator('#ass-style-manager-open').click();
+  await expect(page.locator('#ass-style-window')).toBeVisible();
+  await page.locator('#ass-style-font-size').fill('90');
+  await expect(page.locator('#ass-style-library-status'))
+    .toContainText('本地已保存，服务器同步失败：HTTP 403（页面已失效，请刷新网页后重试）');
 });
 
 test('refreshes inline font metrics and interpolates fs tags in native resolution', async ({ page }) => {

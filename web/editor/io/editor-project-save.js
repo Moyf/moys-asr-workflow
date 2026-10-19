@@ -79,12 +79,32 @@ jsonEl.textContent = filename;
 jsonEl.title = `点击复制工程文件名：${filename}`;
 jsonEl.classList.remove('empty');
 }
+updateProjectDirtyIndicator();
 if (!silent) MaweHint.flashHint('保存成功！', 'success');
+}
+
+// 工程「未保存」指示：右上角文件名前加琥珀色圆点（CSS ::before，不进 textContent，
+// 不影响点击复制），title 提示有未保存的修改。#json-name 在 i18n 的属性跳过名单里，
+// title 需在此处按当前语言手动翻译；调用方为 markProjectDirty 事件回调（即时）、
+// 保存完成的直接刷新与 O(1) 轮询兜底（见文件底部），回调内部按当前工程状态整体重算。
+function updateProjectDirtyIndicator() {
+const jsonEl = document.getElementById('json-name');
+if (!jsonEl || jsonEl.classList.contains('empty')) return;
+const dirty = Boolean(MaweServerSave?.hasUnsavedProjectChanges?.());
+jsonEl.classList.toggle('dirty', dirty);
+const filename = String(jsonEl.textContent || '').trim();
+if (!filename) return;
+const text = dirty ? `有未保存的修改；点击复制工程文件名：${filename}` : `点击复制工程文件名：${filename}`;
+jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
 }
 
 
 
   async function saveProjectToServer({ silent = false, backupOnly = false } = {}) {
+    const epoch = MaweProjectLoad.projectBindingEpoch;
+    const generation = MaweState.projectLoadGeneration;
+    const current = () => epoch === MaweProjectLoad.projectBindingEpoch && generation === MaweState.projectLoadGeneration;
+    if (MaweState.projectLoadPending) return false;
     if (backupOnly && (MaweServerSave.projectFileHandle || !MaweSettings.EDITOR_SETTINGS.projectBackupEnabled)) return false;
     if (!MaweServerSave.serverProjectSavingEnabled()) {
       if (!silent) MaweHint.flashHint('当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件', 'invalid');
@@ -103,6 +123,8 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           project: JSON.parse(projectJson), filename: null,
+          bindingGeneration: MaweBoot.SERVER_CONFIG.bindingGeneration,
+          sourceMediaId: MaweBoot.SERVER_CONFIG.sourceMediaId,
           backupOnly,
           backupLimit: MaweSettings.EDITOR_SETTINGS.projectBackupEnabled && (backupOnly || !silent)
             ? MaweSettings.EDITOR_SETTINGS.projectBackupLimit : null,
@@ -112,9 +134,11 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
       if (!response.ok || !result.ok) {
         throw new Error(result.error || `服务器返回 ${response.status}`);
       }
+      if (!current()) return false;
       if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent, fingerprint, contentFingerprint });
       return true;
     } catch (error) {
+      if (!current()) return false;
       const detail = error?.message || error;
       MaweServerSave.showProjectSaveError(detail);
       // A stale browser tab can outlive the localhost process (the browser reports
@@ -125,7 +149,7 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
         const saved = await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
           desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
         });
-        if (saved) MaweHint.flashHint('服务器未连接；工程已导出为 .mosp，请重新打开该文件后继续', 'success');
+        if (saved && current()) MaweHint.flashHint('服务器未连接；工程已导出为 .mosp，请重新打开该文件后继续', 'success');
       }
       return false;
     } finally {
@@ -137,6 +161,10 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
 
   // 把当前工程写回页面持有的浏览器文件句柄（新建工程 / 另存为选定的目标）。
   async function saveProjectToHandle({ silent = false } = {}) {
+    const epoch = MaweProjectLoad.projectBindingEpoch;
+    const generation = MaweState.projectLoadGeneration;
+    const current = () => epoch === MaweProjectLoad.projectBindingEpoch && generation === MaweState.projectLoadGeneration;
+    if (MaweState.projectLoadPending) return false;
     if (!MaweServerSave.projectFileHandle) return false;
 if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
 flushInlineEditsForSave();
@@ -145,10 +173,13 @@ const fingerprint = projectSaveFingerprint();
 const contentFingerprint = MaweState.segmentsFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
-await MaweHost.files.writeBlob(MaweServerSave.projectFileHandle, () => new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
-markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerprint, contentFingerprint });
+const handle = MaweServerSave.projectFileHandle;
+await MaweHost.files.writeBlob(handle, () => new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
+if (!current() || handle !== MaweServerSave.projectFileHandle) return false;
+markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint });
       return true;
     } catch (error) {
+      if (!current()) return false;
       MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
       return false;
     } finally {
@@ -160,6 +191,7 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
 
   // 统一保存入口：句柄目标优先（最近一次新建/另存为选定的文件），否则写回服务器绑定工程。
   async function saveCurrentProject({ silent = false } = {}) {
+    if (MaweState.projectLoadPending) return false;
     // A pointer preview is not committed subtitle truth. Timed autosave waits;
     // an explicit save first finishes this one history transaction.
     if (global.MaweAssCuePosition?.dragging) {
@@ -176,6 +208,10 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
   // 与「导出工程」的区别：保存成功后当前工程名跟随新文件（标题、导出默认名随之更新），
   // 且后续 Ctrl(Cmd)+S / 自动保存都写回这个新选定的文件。
   async function saveProjectAsToFile() {
+    const epoch = MaweProjectLoad.projectBindingEpoch;
+    const generation = MaweState.projectLoadGeneration;
+    const current = () => epoch === MaweProjectLoad.projectBindingEpoch && generation === MaweState.projectLoadGeneration;
+    if (MaweState.projectLoadPending) return false;
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
     MaweCuePanel.commitCuePanelEdit();
@@ -192,19 +228,23 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
         suggestedName: suggested,
         types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
       });
+      if (!current()) return false;
       let fingerprint, contentFingerprint;
       await MaweHost.files.writeBlob(handle, () => {
+        if (!current()) throw new DOMException('工程已切换', 'AbortError');
         flushInlineEditsForSave();
         const projectJson = MaweJsonRepair.buildJson({ forFileExport: true });
         fingerprint = projectSaveFingerprint();
         contentFingerprint = MaweState.segmentsFingerprint();
         return new Blob([projectJson], { type: 'application/json;charset=utf-8' });
       });
+      if (!current()) return false;
       MaweServerSave.projectFileHandle = handle;
       markProjectSaved(handle.name, null, { fingerprint, contentFingerprint });
       MaweServerSave.configureServerSaveControls();
       MaweServerSave.scheduleAutoSave();
     } catch (error) {
+      if (!current()) return false;
       if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
       MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
     }
@@ -224,6 +264,28 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
     return window.MAWE_I18N?.translateText?.(text) || text;
   }
 
+  // 脏态指示：事件驱动 + O(1) 轮询兜底 + 语言切换重译标题。dirty 事件由
+  // editor-state 的 markProjectDirty() 触发（changes 标志与各编辑路径收口），
+  // 保存完成走 markProjectSaved 的直接刷新（清洁态即时）。轮询只比较
+  // projectDirtyEpoch（O(1) 自愈），绝不在此做 hasProjectChanges 的 O(N) 扫描；
+  // 指纹等重判定只允许出现在事件回调驱动的 updateProjectDirtyIndicator 里。
+  // 仅浏览器页面环境启动（vm 单测环境无定时器/document 事件全局，恢复/保存
+  // 流程测试不依赖；编辑器页面常驻，无需清除）。
+  if (typeof window !== 'undefined' && typeof MaweState?.onProjectDirtyChange === 'function') {
+    MaweState.onProjectDirtyChange(() => updateProjectDirtyIndicator());
+  }
+  if (typeof window !== 'undefined' && typeof window.setInterval === 'function'
+      && typeof MaweState?.getProjectDirtyEpoch === 'function') {
+    let lastSeenDirtyEpoch = MaweState.getProjectDirtyEpoch();
+    window.setInterval(() => {
+      const epoch = MaweState.getProjectDirtyEpoch();
+      if (epoch === lastSeenDirtyEpoch) return;
+      lastSeenDirtyEpoch = epoch;
+      updateProjectDirtyIndicator();
+    }, 1000);
+    document.addEventListener('mawe:languagechange', updateProjectDirtyIndicator);
+  }
+
 global.MaweProjectSave = Object.freeze({
 markProjectSaved,
 saveProjectToServer,
@@ -231,6 +293,7 @@ saveProjectToHandle,
 saveCurrentProject,
 saveProjectAsToFile,
 inlineEditHasUncommittedText,
+updateProjectDirtyIndicator,
 mediaNameEl,
 jsonNameEl,
 translatedEditorText

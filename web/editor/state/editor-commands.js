@@ -2,7 +2,14 @@
 window.MAWE.register('editor-commands', function createEditorCommands(dependencies) {
   'use strict';
   const { capture, hasChanges, publish, restore, refresh } = dependencies;
+  const beforeBeginListeners = new Set();
+  function onBeforeBegin(listener) {
+    if (typeof listener !== 'function') throw new TypeError('Command before-begin listener must be a function');
+    beforeBeginListeners.add(listener);
+    return () => beforeBeginListeners.delete(listener);
+  }
   function begin(label, options = {}) {
+    for (const listener of beforeBeginListeners) listener(label, options);
     const snapshot = capture(label, options);
     let finished = false;
     return Object.freeze({
@@ -40,7 +47,7 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
       throw error;
     }
   }
-  return Object.freeze({ begin, run });
+  return Object.freeze({ begin, run, onBeforeBegin });
 });
 
 (function composeEditorCommands() {
@@ -74,6 +81,9 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
       if (dirtyOnly) restoreDirtyFlags(projectSegments(), snapshot.record.segs);
       else MaweHistory.applyHistoryRecord({ ...snapshot.record, view: snapshot.selection });
       Object.assign(MaweState.changes, snapshot.record.projectChanges);
+      // 恢复（命令取消/无实效提交/面板撤销）会把脏标志拨回快照状态，可能变脏
+      // 也可能变清洁；事件只表示「脏态可能已变」，指示器回调按当前状态整体重算。
+      MaweState.markProjectDirty();
     },
     refresh: invalidation => MaweViewUpdates.invalidate({ save: true, ...invalidation }),
   });

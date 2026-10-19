@@ -119,6 +119,8 @@ def pin_repo_links(markdown: str, tag: str) -> str:
 
 def build_release_document(changelog: str, tag: str) -> str:
     version = parse_tag(tag)
+    if version[4]:
+        raise ValueError(f"{tag}: only stable versions can be archived in docs/releases")
     section = extract_release_section(changelog, tag)
     heading = re.fullmatch(r"## \[[^]]+\] - (\d{4}-\d{2}-\d{2})", section.splitlines()[0])
     if not heading:
@@ -161,9 +163,9 @@ def check_document(changelog: str, tag: str, releases_dir: Path) -> tuple[dict, 
 
 
 def release_body(changelog: str, tag: str, releases_dir: Path) -> str:
-    """2.x requires an archived document; older tags retain legacy compatibility."""
+    """Stable releases use their archived CHANGELOG snapshot; prereleases use CHANGELOG directly."""
     version = parse_tag(tag)
-    if int(version[1]) < 2 and not (releases_dir / f"{tag[1:]}.md").exists():
+    if version[4]:
         return pin_repo_links(extract_release_section(changelog, tag), tag)
     metadata, body = check_document(changelog, tag, releases_dir)
     if metadata["base"]:
@@ -174,10 +176,18 @@ def release_body(changelog: str, tag: str, releases_dir: Path) -> str:
 
 
 def check_all_documents(changelog: str, releases_dir: Path) -> int:
-    tags = {"v" + path.stem for path in releases_dir.glob("*.md") if path.name != "README.md"}
+    tags = set()
+    for path in releases_dir.glob("*.md"):
+        if path.name == "README.md":
+            continue
+        tag = "v" + path.stem
+        if not parse_tag(tag)[4]:
+            tags.add(tag)
     for heading in re.findall(r"^## \[([^]]+)\]", changelog, re.M):
-        if heading != "未发布" and int(parse_tag("v" + heading)[1]) >= 2:
-            tags.add("v" + heading)
+        if heading != "未发布":
+            tag = "v" + heading
+            if not parse_tag(tag)[4]:
+                tags.add(tag)
     for tag in sorted(tags):
         check_document(changelog, tag, releases_dir)
         release_body(changelog, tag, releases_dir)
@@ -256,7 +266,8 @@ def main() -> int:
     mode.add_argument("--output", type=Path, help="compose the final GitHub Release body")
     mode.add_argument("--write-doc", action="store_true", help="generate docs/releases/<version>.md from CHANGELOG")
     mode.add_argument("--check-doc", action="store_true", help="check the document and its base without writing")
-    mode.add_argument("--check-all", action="store_true", help="check all archived documents and require documents for 2.x sections")
+    mode.add_argument("--check-all", action="store_true", help="check all stable archives and require one for every stable CHANGELOG section")
+    mode.add_argument("--write-all-stable", action="store_true", help="generate all stable release documents in base order")
     parser.add_argument("--changelog", type=Path, default=ROOT / "CHANGELOG.md", help="source CHANGELOG (default: repository root)")
     parser.add_argument("--releases-dir", type=Path, default=ROOT / "docs" / "releases", help="version documents directory")
     parser.add_argument(
@@ -266,9 +277,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if args.check_all and args.tag:
-        parser.error("--check-all does not take --tag")
-    if not args.check_all and not args.tag:
+    if (args.check_all or args.write_all_stable) and args.tag:
+        parser.error("--check-all and --write-all-stable do not take --tag")
+    if not (args.check_all or args.write_all_stable) and not args.tag:
         parser.error("--tag is required for this mode")
     if args.failed and not args.output:
         parser.error("--failed is only used with --output")
@@ -285,6 +296,26 @@ def main() -> int:
         if args.check_all:
             count = check_all_documents(changelog, args.releases_dir)
             print(f"Release documents checked: {count}")
+        elif args.write_all_stable:
+            tags = []
+            for heading in re.findall(r"^## \[([^]]+)\]", changelog, re.M):
+                if heading == "未发布":
+                    continue
+                tag = "v" + heading
+                if not parse_tag(tag)[4]:
+                    tags.append(tag)
+            tags = sorted(set(tags), key=lambda value: tuple(int(part) for part in value[1:].split(".")))
+            for tag in tags:
+                document = build_release_document(changelog, tag)
+                metadata, _ = document_parts(document)
+                if metadata["base"]:
+                    check_document(changelog, "v" + metadata["base"], args.releases_dir)
+                path = args.releases_dir / f"{tag[1:]}.md"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(document.encode("utf-8"))
+                print(f"Generated: {path}")
+            count = check_all_documents(changelog, args.releases_dir)
+            print(f"Release documents checked: {count}")
         elif args.write_doc:
             document = build_release_document(changelog, args.tag)
             metadata, _ = document_parts(document)
@@ -297,7 +328,7 @@ def main() -> int:
             print(f"Log-folder reminder: after publication update docs/logs/INDEX.md to release{args.tag[1:]}/")
         elif args.check_doc:
             release_body(changelog, args.tag, args.releases_dir)
-            # Legacy publication fallback must not make an explicit document check pass.
+            # An explicit archive check never accepts prerelease publication fallback.
             check_document(changelog, args.tag, args.releases_dir)
             print(f"Release document is fresh: {args.tag}")
         else:

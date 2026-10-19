@@ -1484,6 +1484,7 @@ class LauncherApi:
                     merge_bilingual=bool(payload.get("mergeBilingual")),
                     embed_translations=bool(payload.get("embedTranslations")),
                     bilingual_line_order=str(payload.get("bilingualLineOrder") or ""),
+                    skip_target_language=payload.get("skipTargetLanguage") is not False,
                     generate_comparison=bool(payload.get("generateComparison")),
                     max_chars=max_chars,
                 ),
@@ -1580,6 +1581,7 @@ class LauncherApi:
                     subtitle_path=Path(str(payload.get("subtitlePath") or "")),
                     green_screen=payload.get("greenScreen") is True,
                     green_screen_size=str(payload.get("greenScreenSize") or ""),
+                    green_screen_include_audio=payload.get("greenScreenIncludeAudio") is True,
                     srt_style=srt_style,
                     video_encoder=str(payload.get("videoEncoder") or "auto"),
                     crf=_burn_crf_override(payload.get("crf")),
@@ -1604,7 +1606,7 @@ class LauncherApi:
             "subtitlePath": str(result.subtitle_path),
             "mediaPath": str(result.media_path),
             "videoEncoder": str(getattr(result, "video_encoder", "auto") or "auto"),
-            "srtStyleName": str(srt_style.get("name") or "SRT 默认"),
+            "srtStyleName": str(srt_style.get("name") or "SRT 渲染样式"),
         }
 
     def get_burn_subtitle_settings(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
