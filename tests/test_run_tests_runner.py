@@ -84,8 +84,6 @@ class ParallelWorkerTests(unittest.TestCase):
                 {
                     "file": "nested/test_same.py",
                     "path": str(target),
-                    "start_dir": str(root),
-                    "top_level_dir": str(root),
                     "max_chars": 4000,
                     "max_line": 400,
                 }
@@ -94,6 +92,56 @@ class ParallelWorkerTests(unittest.TestCase):
         self.assertFalse(outcome["success"], "unexpectedSuccess 必须使 worker 失败")
         self.assertEqual(outcome["failures"], 0)
         self.assertIn("unexpected success", outcome["full_text"].lower())
+
+    def test_worker_reports_broken_file_as_error(self):
+        """语法损坏的文件必须报 error，而不是被文件过滤静默吞成 0 用例假绿。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            broken = root / "test_broken.py"
+            broken.write_text("import unittest\nclass Broken(:\n", encoding="utf-8")
+            outcome = _run_one_file_worker(
+                {
+                    "file": "test_broken.py",
+                    "path": str(broken),
+                    "max_chars": 4000,
+                    "max_line": 400,
+                }
+            )
+        self.assertEqual(outcome["tests"], 1, "_FailedTest 占位用例应保留并执行")
+        self.assertFalse(outcome["success"], "损坏文件必须使 worker 失败")
+        self.assertEqual(outcome["errors"], 1)
+
+    def test_worker_preserves_package_relative_imports(self):
+        """嵌套包内测试的相对导入必须可用：worker 以发现根为 top_level 导入。"""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / "__init__.py").write_text("", encoding="utf-8")
+            feature = root / "feature"
+            feature.mkdir()
+            (feature / "__init__.py").write_text("", encoding="utf-8")
+            (feature / "helper.py").write_text("VALUE = 41\n", encoding="utf-8")
+            (feature / "test_relative.py").write_text(
+                "\n".join([
+                    "import unittest",
+                    "from .helper import VALUE",
+                    "class RelativeCase(unittest.TestCase):",
+                    "    def test_value(self): self.assertEqual(VALUE + 1, 42)",
+                ]),
+                encoding="utf-8",
+            )
+            outcome = _run_one_file_worker(
+                {
+                    "file": "feature/test_relative.py",
+                    "path": str(feature / "test_relative.py"),
+                    "root": str(root),
+                    "max_chars": 4000,
+                    "max_line": 400,
+                }
+            )
+        self.assertTrue(outcome["success"], outcome["full_text"])
+        self.assertEqual(outcome["tests"], 1)
+        self.assertEqual(outcome["errors"], 0)
+        self.assertEqual(outcome["failures"], 0)
 
 
 class CompactResultTests(CompactContainerAssertions, unittest.TestCase):

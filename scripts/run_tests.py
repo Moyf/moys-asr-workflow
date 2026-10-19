@@ -151,16 +151,36 @@ def _run_one_file_worker(payload: dict) -> dict:
     loader = unittest.TestLoader()
     target_path = Path(payload["path"]).resolve()
     start_dir = str(target_path.parent)
-    module_name = target_path.stem
+    # 包模式：目标位于发现根的包链内（沿途都有 __init__.py）时，以发现根为
+    # top_level 导入，模块名保留包前缀（feature.test_example），嵌套测试里的
+    # 相对导入（from .helper import ...）才能正常工作；平铺目录维持原行为。
+    discovery_root = Path(payload.get("root") or start_dir).resolve()
+
+    def _inside_package_chain(child: Path, ancestor: Path) -> bool:
+        if ancestor not in child.parents:
+            return False
+        node = child.parent
+        while True:
+            if not (node / "__init__.py").is_file():
+                return False
+            if node == ancestor:
+                return True
+            node = node.parent
+
+    if _inside_package_chain(target_path, discovery_root):
+        top_level = discovery_root
+    else:
+        top_level = target_path.parent
+    module_name = ".".join(target_path.relative_to(top_level).with_suffix("").parts)
     loaded = sys.modules.get(module_name)
     if Path(getattr(loaded, "__file__", "")).resolve() != target_path:
         sys.modules.pop(module_name, None)
-    if start_dir not in sys.path:
-        sys.path.insert(0, start_dir)
+    if str(top_level) not in sys.path:
+        sys.path.insert(0, str(top_level))
     # Discover from the exact parent directory, then retain only cases whose
     # module file is this target. This preserves unittest imports while
     # preventing same-basename nested files from being run by this worker.
-    suite = loader.discover(start_dir, pattern=target_path.name, top_level_dir=start_dir)
+    suite = loader.discover(start_dir, pattern=target_path.name, top_level_dir=str(top_level))
 
     def only_target(test_suite):
         selected = unittest.TestSuite()
@@ -169,6 +189,14 @@ def _run_one_file_worker(payload: dict) -> dict:
                 nested = only_target(test)
                 if nested.countTestCases():
                     selected.addTests(nested)
+                continue
+            if isinstance(test, unittest.loader._FailedTest):
+                # discover 对无法导入（语法/依赖损坏）的文件生成 _FailedTest
+                # 占位用例，其 module 指向 unittest.loader；若按文件路径过滤
+                # 会把损坏文件静默吞成 0 用例假绿。只保留与本目标模块同名的那
+                # 个（深层同名文件属于各自 worker 的 discover 顶层，id 不同）。
+                if test.id() == f"unittest.loader._FailedTest.{module_name}":
+                    selected.addTest(test)
                 continue
             module = sys.modules.get(test.__class__.__module__)
             module_path = Path(getattr(module, "__file__", "")).resolve()
@@ -236,6 +264,7 @@ def _run_parallel(args) -> int:
             # discover 的 pattern 匹配 basename；file 保留相对路径用于展示与聚合
             "file": name,
             "path": str((Path(start_dir) / name).resolve()),
+            "root": start_dir,
             "max_chars": args.max_chars,
             "max_line": args.max_line,
         }
@@ -339,8 +368,9 @@ def main(argv=None) -> int:
         metavar="N",
         help=(
             "按文件并行跑（N 个 worker 进程）；仅在无 targets 的全量发现模式下生效。"
-            "新建 worktree/clone 请先完成一次 bundle 构建（pnpm install && pnpm run build），"
-            "否则多个 worker 会并发触发自动重建而相互冲突"
+            "bundle 产物缺失时跨进程锁保证只自动构建一次，但首个触发构建的 worker"
+            "会被同步拖慢；新建 worktree/clone 建议先 pnpm install --frozen-lockfile"
+            " && pnpm run build"
         ),
     )
     args = parser.parse_args(argv)
