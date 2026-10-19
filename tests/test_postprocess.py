@@ -3298,7 +3298,8 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(captured["title"], "demo")
         self.assertEqual(captured["play_resolution"], (3840, 2160))
         self.assertFalse(list(self.root.glob(".*.ass")))
-        self.assertEqual(result.subtitle_path, project)
+        # 匹配渲染端规范化路径（Windows TEMP 8.3 别名 / macOS /var 符号链接）。
+        self.assertEqual(result.subtitle_path, project.resolve())
         self.assertEqual(result.media_path.name, "clip.subtitled.mp4")
 
     def test_burn_subtitles_rejects_invalid_project_input(self) -> None:
@@ -3479,7 +3480,8 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
                 self.assertEqual(len(popen.call_args_list), 1)
                 self.assertIn("color=c=0x00ff00:s=2560x1440:r=30:d=2.500", command)
                 self.assertIn("ass=filename='.green-project.maw-burn-", command[command.index("-vf") + 1])
-                self.assertEqual(result.subtitle_path, project)
+                # 匹配渲染端规范化路径（Windows TEMP 8.3 别名 / macOS /var 符号链接）。
+                self.assertEqual(result.subtitle_path, project.resolve())
                 self.assertFalse(list(self.root.glob(".*.ass")))
 
     def test_green_screen_rejects_unknown_size_preset(self) -> None:
