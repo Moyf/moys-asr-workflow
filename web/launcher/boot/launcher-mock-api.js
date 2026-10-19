@@ -1,6 +1,9 @@
 // 无 pywebview 后端时的 mock API（浏览器直接打开页面用）。
 
 function mockApi() {
+  let recentHistory = { enabled: true, entries: [] };
+  try { const raw = JSON.parse(localStorage.getItem("maw.launcher.mock.recent_projects")); if (raw && Array.isArray(raw.entries)) recentHistory = raw; } catch (_) { /* 默认空记录。 */ }
+  const recentPayload = () => ({ ok: true, enabled: recentHistory.enabled !== false, entries: recentHistory.entries.map((entry) => ({ ...entry, exists: true })), limit: 30 });
   let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null, outputSubfolder: true, perVideoSubfolder: false, attachModelName: false, notifyOnComplete: false };
   const chainedPath = (path, operation, fallback) => path
     ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
@@ -12,6 +15,20 @@ function mockApi() {
     { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC", note: "已知稿对齐；中英及多方言；CPU 可运行；字词时间码", estimatedSize: "0.9G", deviceSupport: "cpu", resourceLevel: "low", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
   ];
   return {
+    get_recent_projects: async () => recentPayload(),
+    update_recent_projects: async (payload) => {
+      if (payload.action === "clear") recentHistory.entries = [];
+      if (payload.action === "enabled") recentHistory.enabled = payload.enabled;
+      if (["remember", "relocate", "remove"].includes(payload.action)) {
+        if (!/\.(?:mosp|json)$/iu.test(payload.path || "")) return { ok: false, code: "recent_projects_failed" };
+        const previous = payload.previousPath;
+        recentHistory.entries = recentHistory.entries.filter((entry) => entry.path !== payload.path && (!previous || entry.path !== previous));
+        if (payload.action === "relocate" || (payload.action !== "remove" && recentHistory.enabled)) recentHistory.entries.unshift({ path: payload.path, openedAt: new Date().toISOString() });
+        recentHistory.entries = recentHistory.entries.slice(0, 30);
+      }
+      try { localStorage.setItem("maw.launcher.mock.recent_projects", JSON.stringify(recentHistory)); } catch (_) { return { ok: false, code: "recent_projects_failed" }; }
+      return recentPayload();
+    },
     get_config: async () => {
       const config = {
       platform: /^Mac/u.test(navigator.platform) ? "darwin" : "win32",

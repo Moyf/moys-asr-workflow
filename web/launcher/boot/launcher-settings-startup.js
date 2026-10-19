@@ -39,7 +39,8 @@ function moveSettingsFocus(event) {
 }
 function openSettings(sectionId = "", focusId = "") {
   selectSettingsTab(settingsTabForSection(sectionId) || activeSettingsTab);
-  $("settingsModal").classList.remove("hidden");
+  if (activePage !== "settings") settingsReturnPage = activePage;
+  showPage("settings");
   refreshFfmpeg();
   void refreshOcrRuntime();
   renderStickerCurrent();
@@ -51,8 +52,8 @@ function openSettings(sectionId = "", focusId = "") {
   $("notifyOnComplete").checked = state.config.notifyOnComplete === true;
   if (sectionId) {
     requestAnimationFrame(() => {
-      // 只滚动 .settings-scroll 容器；scrollIntoView 会连带滚动 overflow:hidden 的
-      // .modal-card，把标题和标签页顶出视野，区块位于容器顶部时表现为下坠一小段。
+      // 只滚动 .settings-scroll 容器；scrollIntoView 会连带滚动外层页面容器，
+      // 把分区导航顶出视野，区块位于容器顶部时表现为下坠一小段。
       const section = $(sectionId);
       const scroll = section?.closest(".settings-scroll");
       if (section && scroll) scroll.scrollTo({ top: Math.max(0, section.offsetTop - scroll.offsetTop), behavior: "smooth" });
@@ -60,7 +61,8 @@ function openSettings(sectionId = "", focusId = "") {
     });
   }
 }
-function closeSettings() { $("settingsModal").classList.add("hidden"); }
+// 设置是独立页面：关闭即回到打开设置前的页面（错误提示里的「检查 API Key」等也依赖此行为）。
+function closeSettings() { if (activePage === "settings") navigateTo(settingsReturnPage); }
 async function openServerEditor() {
   clearErrors();
   $("htmlMenu").classList.add("hidden");
@@ -84,6 +86,7 @@ async function openServerEditor() {
     if (result.ok) {
       $("serverMediaPath").value = "";
       serverRestartProjectPath = null;
+      if (projectPath && !result.serverAlreadyRunning) launcherProjects?.remember(projectPath);
       state.serverRunning = !result.serverAlreadyRunning;
       state.serverProjectPath = state.serverRunning ? projectPath : "";
       state.detectedServerUrl = result.serverAlreadyRunning ? result.url || "" : "";
@@ -165,5 +168,7 @@ async function init() {
   setStatus(t("ready"));
   revealLauncher();
   window.dispatchEvent(new CustomEvent("mawlauncherready"));
+  initializeLauncherWorkflow();
+  initializeLauncherProjects();
   refreshStartupState();
 }

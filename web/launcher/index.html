@@ -37,35 +37,93 @@
   <!-- 段落标题序号用 SVG keycap 徽章：彩色 emoji 序号依赖系统 emoji 字体完整覆盖
        U+FE0F/U+20E3，部分 Linux 发行版会渲染成「3x」，改为 SVG 后全平台一致。 -->
   <svg class="keycap-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <symbol id="keycap-1" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">1</text></symbol>
+    <symbol id="keycap-1" viewBox="0 0 64 64"><circle class="keycap-bg media-keycap-bg" cx="32" cy="32" r="32"></circle><text class="keycap-num media-keycap-num" x="32" y="44" text-anchor="middle" font-size="38.4" font-weight="700">1</text></symbol>
     <symbol id="keycap-2" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">2</text></symbol>
     <symbol id="keycap-3" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">3</text></symbol>
     <symbol id="keycap-4" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">4</text></symbol>
     <symbol id="keycap-5" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">5</text></symbol>
   </svg>
+  <!-- 线性 SVG 图标（线宽 1.8，24 视口），样式见 launcher.css 的 svg.i。 -->
+  <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+    <symbol id="i-stack" viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5"/></symbol>
+    <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></symbol>
+    <symbol id="i-bug" viewBox="0 0 24 24"><path d="M8 2l1.9 1.9M16 2l-1.9 1.9M9 7.1V6a3 3 0 0 1 6 0v1.1M12 20a6 6 0 0 1-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3a6 6 0 0 1-6 6zM12 20v-9M6.5 13H3M21 13h-3.5M4 21a4 4 0 0 1 3-3.4M20 21a4 4 0 0 0-3-3.4M4 7a4 4 0 0 0 3 3.4M20 7a4 4 0 0 1-3 3.4"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-4 1.5-4-2-6-2.5M15 22v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V22"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V5a3 3 0 0 0-3-1zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-cut" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="m8 8 12 12M8 16 20 4"/></symbol>
+    <symbol id="i-language" viewBox="0 0 24 24"><path d="M3 5h12M9 3v2M5 5c0 6 7 10 7 10M13 5c0 6-7 10-10 10M14 21l4-10 4 10M15.5 17h5"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13M9 8l12-2"/><ellipse cx="6" cy="18" rx="3" ry="2"/><ellipse cx="18" cy="16" rx="3" ry="2"/></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 10v4M7 6v12M12 3v18M17 7v10M21 10v4"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V4h6l3 3h9v13H3z"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></symbol>
+  </svg>
   <main class="shell" inert aria-busy="true">
-    <div class="shell-scroll">
-    <header class="hero">
-      <div class="hero-brand">
-        <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
-        <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.9.0</span></div>
-          <p data-i18n="hero_desc">让字幕制作变得超级轻松！</p>
-          <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
+    <nav id="appNav" class="app-nav" aria-label="主导航" data-i18n-aria-label="nav_label">
+      <img class="nav-logo" src="../../assets/show.webp" alt="" aria-hidden="true">
+      <button id="navTranscribe" class="nav-item active" type="button" data-nav-page="transcribe" aria-current="page"><svg class="i" aria-hidden="true"><use href="#i-mic"></use></svg><span data-i18n="nav_transcribe">转写</span></button>
+      <button id="navBatch" class="nav-item" type="button" data-nav-page="batch"><svg class="i" aria-hidden="true"><use href="#i-stack"></use></svg><span data-i18n="nav_batch">批量</span><span id="navBatchCount" class="nav-badge hidden" aria-live="polite"></span></button>
+      <button id="navToolbox" class="nav-item" type="button" data-nav-page="toolbox"><svg class="i" aria-hidden="true"><use href="#i-tool"></use></svg><span data-i18n="nav_toolbox">工具箱</span></button>
+      <button id="navProjects" class="nav-item" type="button" data-nav-page="projects"><svg class="i" aria-hidden="true"><use href="#i-doc"></use></svg><span data-i18n="nav_projects">工程</span></button>
+      <div class="nav-spacer"></div>
+      <div class="help-wrap">
+        <button id="helpButton" class="nav-item" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="helpMenu"><svg class="i" aria-hidden="true"><use href="#i-help"></use></svg><span data-i18n="nav_help">帮助</span></button>
+        <div id="helpMenu" class="help-menu hidden" role="menu" aria-label="帮助与反馈" data-i18n-aria-label="help_menu_label">
+          <button id="helpWhatsNew" type="button" role="menuitem" disabled><svg class="i" aria-hidden="true"><use href="#i-spark"></use></svg><span data-i18n="help_whats_new">新功能</span><span class="menu-soon" data-i18n="help_coming_soon">即将推出</span></button>
+          <button id="helpGuide" type="button" role="menuitem"><svg class="i" aria-hidden="true"><use href="#i-book"></use></svg><span data-i18n="help_guide">使用指南</span></button>
+          <button id="tutorialVideoLink" type="button" role="menuitem"><svg class="i" aria-hidden="true"><use href="#i-play"></use></svg><span data-i18n="help_tutorial">教程视频</span></button>
+          <div class="menu-sep" role="separator"></div>
+          <button id="helpReportIssue" type="button" role="menuitem" disabled><svg class="i" aria-hidden="true"><use href="#i-bug"></use></svg><span data-i18n="help_report_issue">报告问题</span><span class="menu-soon" data-i18n="help_coming_soon">即将推出</span></button>
+          <div class="menu-sep" role="separator"></div>
+          <button id="homeLink" type="button" role="menuitem"><svg class="i" aria-hidden="true"><use href="#i-github"></use></svg><span data-i18n="help_github">GitHub</span></button>
+
         </div>
       </div>
-      <nav class="hero-links" aria-label="links">
-        <button id="settingsButton" class="ghost small" type="button" aria-label="settings" data-i18n-title="settings_title" title="设置">⚙️<span data-i18n="settings_button">设置</span><span id="settingsDot" class="settings-dot hidden"></span></button>
-      </nav>
-      <div class="hero-home-links">
-        <button id="homeLink" class="text-link" type="button" data-i18n="github_link">Github</button>
-        <button id="tutorialVideoLink" class="text-link" type="button" data-i18n="tutorial_video">教程视频</button>
-        <button id="supportLink" class="text-link" type="button" data-i18n="support_link">支持 ❤️</button>
-      </div>
+      <button id="settingsButton" class="nav-item" type="button" data-nav-page="settings"><svg class="i" aria-hidden="true"><use href="#i-gear"></use></svg><span data-i18n="nav_settings">设置</span><span id="settingsDot" class="settings-dot hidden"></span></button>
+    </nav>
+    <div class="app-main">
+    <header class="topbar">
+      <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.9.0</span></div>
+      <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
+      <span class="topbar-spacer"></span>
+      <button id="supportLink" class="topbar-link" type="button"><svg class="i" aria-hidden="true"><use href="#i-heart"></use></svg><span data-i18n="support_maw">支持 MAW</span></button>
+      <button id="themeToggle" class="topbar-icon" type="button" data-i18n-title="theme_toggle" data-i18n-aria-label="theme_toggle" title="切换主题" aria-label="切换主题"><svg class="i" aria-hidden="true"><use href="#i-sun"></use></svg></button>
     </header>
+    <section id="pageTranscribe" class="page" data-page="transcribe">
+    <div class="shell-scroll">
+
+    <section id="transcriptionResult" class="card transcription-result hidden" aria-labelledby="transcriptionResultTitle">
+      <h2 id="transcriptionResultTitle" data-i18n="redesign_result_title">字幕已准备好</h2>
+      <p id="transcriptionResultMeta" class="hint"></p>
+      <div id="transcriptionResultFiles" class="result-files"></div>
+      <div id="transcriptionResultChain" class="result-chain hidden"></div>
+      <button id="reviewTranscription" class="primary" type="button" data-i18n="redesign_review">在编辑器中校对</button>
+    </section>
 
     <section id="mediaCard" class="card drop-card" aria-labelledby="mediaTitle">
+      <div class="media-card-header">
       <h2 id="mediaTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-1"></use></svg><span data-i18n="media_output">选择媒体</span></h2>
+        <span class="media-batch-entry"><span data-i18n="media_multiple_files">多个文件？用</span> <button id="mediaOpenBatch" class="inline-link" type="button" data-i18n="nav_batch">批量</button></span>
+      </div>
+      <!-- 四个状态共用此槽位；维护者提供同尺寸插画后按 data-state 切换图片 src。 -->
+      <div id="transcriptionArtwork" class="transcription-artwork" data-state="empty" role="img" aria-label="等待选择媒体"><svg class="i" aria-hidden="true"><use href="#i-mic"></use></svg><span id="transcriptionArtworkLabel" data-i18n="redesign_state_empty">选择媒体，开始制作字幕</span></div>
+      <div id="selectedMediaSummary" class="selected-media-summary hidden"><svg class="i" aria-hidden="true"><use href="#i-doc"></use></svg><strong id="selectedMediaName"></strong><button id="replaceMedia" class="inline-link" type="button" data-i18n="redesign_replace_media">更换</button></div>
       <div class="mode-switch-row">
         <div class="segmented" role="group" aria-label="转写模式" data-i18n-aria-label="mode_label">
           <button type="button" class="segment active" id="singleMode" aria-pressed="true" data-i18n="mode_single">单文件</button>
@@ -73,8 +131,16 @@
         </div>
         <p id="modeHint" class="hint" data-i18n="mode_single_hint">一次转写一个文件。</p>
       </div>
-      <div id="dropZone" class="drop-zone" data-i18n="drop_hint">拖入视频或音频，也可点击选择。</div>
-      <div id="singleMediaFields">
+      <button id="dropZone" class="drop-zone media-drop-zone" type="button" aria-labelledby="mediaDropTitle" aria-describedby="mediaDropHint">
+        <!-- 插画占位：后续提供专用素材时，仅替换 .media-drop-art 内的图标。 -->
+        <span class="media-drop-art" aria-hidden="true"><svg class="i"><use href="#i-upload"></use></svg></span>
+        <span class="media-drop-copy">
+          <span id="mediaDropTitle" class="media-drop-title" data-i18n="media_drop_title">拖入视频或音频</span>
+          <span class="media-drop-sub"><span data-i18n="media_drop_or">或</span> <span class="media-drop-choose" data-i18n="media_drop_choose">点击选择文件</span></span>
+          <span id="mediaDropHint" class="media-drop-sub" data-i18n="media_drop_formats">支持 mp4 / mov / mkv / flv / wav / mp3 等；一次拖入多个文件会自动转到批量</span>
+        </span>
+      </button>
+      <div id="singleMediaFields" class="hidden">
       <div class="field">
         <label for="mediaPath" data-i18n="media">媒体文件</label>
         <div class="path-row">
@@ -125,6 +191,8 @@
 
     <section id="recognitionCard" class="card" aria-labelledby="settingsTitle">
       <h2 id="settingsTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-2"></use></svg><span data-i18n="recognition">识别设置</span></h2>
+      <div class="recognition-summary-row"><div id="recognitionSummary" class="summary-chips" aria-live="polite"></div><button id="recognitionExpand" class="inline-link" type="button" aria-expanded="false" aria-controls="recognitionSettingsBody" data-i18n="redesign_expand_settings">展开全部设置</button></div>
+      <div id="recognitionSettingsBody" class="hidden">
       <div class="provider-row">
         <div class="field provider-field">
           <label for="provider" data-i18n="provider">识别方式</label>
@@ -325,104 +393,136 @@
             </div>
             <div class="adv-group">
               <h3 data-i18n="advanced_misc">其他</h3>
-              <div id="speakerColorsField" class="field hidden">
-                <label class="check-field" for="speakerColors" data-i18n-title="speaker_colors_title">
-                  <input id="speakerColors" type="checkbox">
-                  <span data-i18n="speaker_colors">按说话人配色</span>
-                </label>
-                <p class="hint" data-i18n="speaker_colors_hint">最多 5 种颜色，超出将循环使用。</p>
-              </div>
-              <div id="generateSpectralField" class="field">
-                <label class="check-field" for="generateSpectral" data-i18n-title="generate_spectral_title">
-                  <input id="generateSpectral" type="checkbox">
-                  <span data-i18n="generate_spectral">生成频谱数据</span>
-                </label>
-                <p class="hint" data-i18n="generate_spectral_hint">默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
-              </div>
-              <div id="generateThumbnailsField" class="field">
-                <label class="check-field" for="generateThumbnails" data-i18n-title="generate_thumbnails_title">
-                  <input id="generateThumbnails" type="checkbox">
-                  <span data-i18n="generate_thumbnails">生成高精度画面预览图</span>
-                </label>
-                <p class="hint" data-i18n="generate_thumbnails_hint">转写时先生成秒级关键帧底图（总是开启），再额外解码精确网格画面供画面带铺满使用；未勾选时编辑器仍可按需补帧。</p>
-              </div>
-              <div id="debugRawField" class="field">
-                <label class="check-field" for="debugRaw" data-i18n-title="debug_raw_title">
-                  <input id="debugRaw" type="checkbox">
-                  <span data-i18n="debug_raw">调试模式</span>
-                </label>
+              <div class="misc-options-grid">
+                <div id="speakerColorsField" class="misc-option hidden">
+                  <div class="misc-option-copy">
+                    <label class="misc-option-label" for="speakerColors" data-i18n-title="speaker_colors_title"><span data-i18n="speaker_colors">按说话人配色</span></label>
+                    <p class="hint" data-i18n="speaker_colors_hint">最多 5 种颜色，超出将循环使用。</p>
+                  </div>
+                  <input id="speakerColors" type="checkbox" class="auto-head-switch">
+                </div>
+                <div id="generateSpectralField" class="misc-option">
+                  <div class="misc-option-copy">
+                    <label class="misc-option-label" for="generateSpectral" data-i18n-title="generate_spectral_title"><span data-i18n="generate_spectral">生成频谱数据</span></label>
+                    <p class="hint" data-i18n="generate_spectral_hint">默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
+                  </div>
+                  <input id="generateSpectral" type="checkbox" class="auto-head-switch">
+                </div>
+                <div id="generateThumbnailsField" class="misc-option">
+                  <div class="misc-option-copy">
+                    <label class="misc-option-label" for="generateThumbnails" data-i18n-title="generate_thumbnails_title"><span data-i18n="generate_thumbnails">生成高精度画面预览图</span></label>
+                    <p class="hint" data-i18n="generate_thumbnails_hint">转写时先生成秒级关键帧底图（总是开启），再额外解码精确网格画面供画面带铺满使用；未勾选时编辑器仍可按需补帧。</p>
+                  </div>
+                  <input id="generateThumbnails" type="checkbox" class="auto-head-switch">
+                </div>
+                <div id="debugRawField" class="misc-option">
+                  <div class="misc-option-copy">
+                    <label class="misc-option-label" for="debugRaw" data-i18n-title="debug_raw_title"><span data-i18n="debug_raw">调试模式</span></label>
+                    <p class="hint" data-i18n="debug_raw_hint">保留原始响应内容，方便排查问题</p>
+                  </div>
+                  <input id="debugRaw" type="checkbox" class="auto-head-switch">
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+      </div>
      </section>
 
     <section id="autoPostprocessCard" class="card" aria-labelledby="autoPostprocessTitle">
-      <h2 id="autoPostprocessTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-3"></use></svg><span data-i18n="auto_postprocess_title">转写后自动处理</span></h2>
-      <p class="hint" data-i18n="auto_postprocess_hint">转写完成后自动执行；需先在工具箱进行配置。</p>
-      <p id="batchManuscriptNotice" class="toolbox-notice hidden" role="note" data-i18n="batch_manuscript_disabled">批量模式不支持逐文件文稿映射。本次批量运行会跳过文稿匹配；单文件设置保持不变。</p>
-      <label class="check-field auto-postprocess-toggle" for="autoPostprocessEnabled">
-        <input id="autoPostprocessEnabled" type="checkbox">
-        <span data-i18n="auto_postprocess_enable">启用自动处理</span>
-      </label>
-      <p id="autoPostprocessSummary" class="hint auto-postprocess-summary" aria-live="polite"></p>
+      <div class="auto-card-head">
+        <h2 id="autoPostprocessTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-3"></use></svg><span data-i18n="auto_postprocess_title">自动后处理</span></h2>
+        <span id="autoPostprocessSummary" class="hint auto-postprocess-summary" aria-live="polite"></span>
+        <input id="autoPostprocessEnabled" type="checkbox" class="auto-head-switch" aria-label="启用自动处理" data-i18n-aria-label="auto_postprocess_enable">
+      </div>
       <div id="autoPostprocessOptions" class="auto-postprocess-options hidden">
-        <div id="autoPostprocessStepsCard" class="sub-accordion collapsed">
-          <button id="autoPostprocessStepsToggle" class="accordion-header" type="button" aria-expanded="false">
-            <span class="chevron">▸</span><span data-i18n="auto_postprocess_steps">处理步骤</span>
-          </button>
+        <div id="autoPostprocessStepsCard" class="sub-accordion">
           <div class="collapse-body">
             <div id="autoPostprocessSteps" class="auto-postprocess-steps">
               <div class="auto-step-row" data-auto-step-row="match">
-                <label class="check-field" for="autoStepMatch"><input id="autoStepMatch" type="checkbox" aria-describedby="autoStepMatchHint"><span data-i18n="auto_step_match">文稿匹配</span></label>
+                <span class="auto-step-num" aria-hidden="true"></span>
+                <div class="auto-step-copy">
+                  <label class="auto-step-name" for="autoStepMatch"><span data-i18n="auto_step_match">文稿匹配</span></label>
+                  <span id="autoStepMatchHint" class="auto-step-hint hint"></span>
+                </div>
                 <span id="autoStepMatchStatus" class="auto-step-status hint"></span>
-                <span id="autoStepMatchHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoMatch" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+                <input id="autoStepMatch" type="checkbox" class="auto-step-switch" aria-describedby="autoStepMatchHint">
               </div>
               <div class="auto-step-row" data-auto-step-row="cleanup">
-                <label class="check-field" for="autoStepCleanup"><input id="autoStepCleanup" type="checkbox"><span data-i18n="auto_step_cleanup">口播整理</span></label>
+                <span class="auto-step-num" aria-hidden="true"></span>
+                <div class="auto-step-copy">
+                  <label class="auto-step-name" for="autoStepCleanup"><span data-i18n="auto_step_cleanup">口播整理</span></label>
+                  <span id="autoStepCleanupHint" class="auto-step-hint hint"></span>
+                </div>
+
                 <span id="autoStepCleanupStatus" class="auto-step-status hint"></span>
-                <span id="autoStepCleanupHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoCleanup" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+                <input id="autoStepCleanup" type="checkbox" class="auto-step-switch">
               </div>
               <div class="auto-step-row" data-auto-step-row="replace">
-                <label class="check-field" for="autoStepReplace"><input id="autoStepReplace" type="checkbox"><span data-i18n="auto_step_replace">固定替换</span></label>
+                <span class="auto-step-num" aria-hidden="true"></span>
+                <div class="auto-step-copy">
+                  <label class="auto-step-name" for="autoStepReplace"><span data-i18n="auto_step_replace">固定替换</span></label>
+                  <span id="autoStepReplaceHint" class="auto-step-hint hint"></span>
+                </div>
                 <span id="autoStepReplaceStatus" class="auto-step-status hint"></span>
-                <span id="autoStepReplaceHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoReplace" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+                <input id="autoStepReplace" type="checkbox" class="auto-step-switch">
               </div>
               <div class="auto-step-row auto-step-caution" data-auto-step-row="proofread">
-                <label class="check-field" for="autoStepProofread" data-i18n-title="auto_step_proofread_title"><input id="autoStepProofread" type="checkbox"><span data-i18n="auto_step_proofread">AI 校对</span></label>
+                <span class="auto-step-num" aria-hidden="true"></span>
+                <div class="auto-step-copy">
+                  <label class="auto-step-name" for="autoStepProofread" data-i18n-title="auto_step_proofread_title"><span data-i18n="auto_step_proofread">AI 校对</span></label>
+                  <span id="autoStepProofreadHint" class="auto-step-hint hint"></span>
+                </div>
                 <span id="autoStepProofreadStatus" class="auto-step-status hint"></span>
-                <span id="autoStepProofreadHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoProofread" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+                <input id="autoStepProofread" type="checkbox" class="auto-step-switch">
               </div>
               <div class="auto-step-row auto-step-caution" data-auto-step-row="resegment">
-                <label class="check-field" for="autoStepResegment" data-i18n-title="auto_step_resegment_title"><input id="autoStepResegment" type="checkbox"><span data-i18n="auto_step_resegment">重新断句</span></label>
+                <span class="auto-step-num" aria-hidden="true"></span>
+                <div class="auto-step-copy">
+                  <label class="auto-step-name" for="autoStepResegment" data-i18n-title="auto_step_resegment_title"><span data-i18n="auto_step_resegment">重新断句</span></label>
+                  <span id="autoStepResegmentHint" class="auto-step-hint hint"></span>
+                </div>
                 <span id="autoStepResegmentStatus" class="auto-step-status hint"></span>
-                <span id="autoStepResegmentHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoResegment" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+                <input id="autoStepResegment" type="checkbox" class="auto-step-switch">
               </div>
               <div class="auto-step-row" data-auto-step-row="ocr">
-                <label class="check-field" for="autoStepOcr"><input id="autoStepOcr" type="checkbox"><span data-i18n="auto_step_ocr">OCR 去重</span></label>
+                <span class="auto-step-num" aria-hidden="true"></span>
+                <div class="auto-step-copy">
+                  <label class="auto-step-name" for="autoStepOcr"><span data-i18n="auto_step_ocr">OCR 去重</span></label>
+                  <span id="autoStepOcrHint" class="auto-step-hint hint"></span>
+                </div>
                 <span id="autoStepOcrStatus" class="auto-step-status hint"></span>
-                <span id="autoStepOcrHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoOcr" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+                <input id="autoStepOcr" type="checkbox" class="auto-step-switch">
               </div>
               <div class="auto-step-row" data-auto-step-row="translate">
-                <label class="check-field" for="autoStepTranslate"><input id="autoStepTranslate" type="checkbox"><span data-i18n="auto_step_translate">翻译</span></label>
+                <span class="auto-step-num" aria-hidden="true"></span>
+                <div class="auto-step-copy">
+                  <label class="auto-step-name" for="autoStepTranslate"><span data-i18n="auto_step_translate">翻译</span></label>
+                  <span id="autoStepTranslateHint" class="auto-step-hint hint"></span>
+                </div>
                 <span id="autoStepTranslateStatus" class="auto-step-status hint"></span>
-                <span id="autoStepTranslateHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoTranslate" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+                <input id="autoStepTranslate" type="checkbox" class="auto-step-switch">
               </div>
               <div class="auto-step-row" data-auto-step-row="burn">
-                <label class="check-field" for="autoStepBurn"><input id="autoStepBurn" type="checkbox" aria-describedby="autoStepBurnHint"><span data-i18n="auto_step_burn">烧录字幕</span></label>
+                <span class="auto-step-num" aria-hidden="true"></span>
+                <div class="auto-step-copy">
+                  <label class="auto-step-name" for="autoStepBurn"><span data-i18n="auto_step_burn">烧录字幕</span></label>
+                  <span id="autoStepBurnHint" class="auto-step-hint hint"></span>
+                </div>
                 <span id="autoStepBurnStatus" class="auto-step-status hint"></span>
-                <span id="autoStepBurnHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoBurn" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+                <input id="autoStepBurn" type="checkbox" class="auto-step-switch" aria-describedby="autoStepBurnHint">
               </div>
             </div>
+            <div class="auto-steps-manage"><span id="autoPostprocessHiddenCount" class="hint"></span><button id="autoPostprocessManage" class="inline-link" type="button" data-i18n="redesign_manage_steps">选择显示的步骤</button></div>
             <div class="auto-translate-options">
               <div id="autoTranslateTargetField" class="field auto-translate-target hidden">
                 <label for="autoTranslateTarget" data-i18n="auto_translate_target">翻译目标</label>
@@ -453,17 +553,19 @@
                 <p class="hint" data-i18n="translation_skip_target_hint">关闭后将所有非空字幕交给模型翻译；遇到误判时可关闭。</p>
               </div>
             </div>
-            <label class="check-field" for="autoPostprocessRetain">
-              <input id="autoPostprocessRetain" type="checkbox">
-              <span data-i18n="auto_retain_intermediate">保留中间文件</span>
-            </label>
-            <p class="hint hint-top-spaced" data-i18n="auto_retain_hint">保留每一步的结果文件；失败时自动保留。</p>
+            <div class="auto-retain-row">
+              <div class="auto-retain-copy">
+                <label class="auto-retain-label" for="autoPostprocessRetain" data-i18n="auto_retain_intermediate">保留中间文件</label>
+                <p class="hint" data-i18n="auto_retain_hint">保留每一步的结果文件；失败时总会保留</p>
+              </div>
+              <input id="autoPostprocessRetain" type="checkbox" class="auto-head-switch">
+            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="card" aria-labelledby="logTitle">
+    <section id="logCard" class="card hidden" aria-labelledby="logTitle">
       <h2 id="logTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-4"></use></svg><span data-i18n="logs">日志</span></h2>
       <div id="progress" class="progress hidden" aria-hidden="true"><span></span></div>
       <p id="logLatest" class="log-latest hidden" aria-live="polite"></p>
@@ -473,8 +575,69 @@
       </div>
     </section>
 
+    <div id="errorNotice" class="error-notice hidden" role="alert" aria-live="assertive">
+      <div class="error-notice-copy">
+        <strong id="errorNoticeTitle" data-i18n="error_notice_title">任务未完成</strong>
+        <p id="errorNoticeMessage"></p>
+        <p id="errorNoticeDiagnostics" class="error-notice-detail hidden"></p>
+      </div>
+      <div id="errorNoticeActions" class="error-notice-actions">
+        <button id="errorNoticeAction" class="ghost small hidden" type="button"></button>
+        <button id="errorNoticeFaq" class="ghost small" type="button" data-i18n="error_open_faq">查看常见问题</button>
+        <button id="errorNoticeCopy" class="ghost small" type="button" data-i18n="error_copy_report">复制错误报告</button>
+        <button id="errorNoticeIssue" class="ghost small hidden" type="button" data-i18n="error_open_issue">打开项目主页</button>
+      </div>
+      <p id="errorNoticeContext" class="error-notice-context"></p>
+      <button id="errorNoticeClose" class="error-notice-close" type="button" data-i18n-aria-label="error_notice_close" aria-label="关闭提示">×</button>
+    </div>
+    <div id="status" class="status">就绪</div>
+    </div>
+
+    <footer class="actions">
+      <div class="workflow-footer-status"><div id="workflowReadiness" class="hint" aria-live="polite"></div><div id="workflowStages" class="workflow-stages hidden" aria-live="polite"></div></div>
+      <button id="toggleTaskLog" class="inline-link" type="button" aria-expanded="false" aria-controls="logCard" data-i18n="redesign_toggle_log">日志</button>
+      <button id="start" class="primary" type="button" data-i18n="start">开始生成</button>
+      <button id="stop" class="ghost server-stop hidden" type="button" data-i18n="stop">停止</button>
+      <button id="startBatch" class="primary hidden" type="button" data-i18n="batch_start">开始批量生成</button>
+      <button id="stopBatch" class="ghost server-stop hidden" type="button" data-i18n="batch_stop">停止全部</button>
+      <div class="split-wrap">
+        <button id="openMawe" class="ghost split-main" type="button" data-i18n="start_server_editor">打开编辑器</button>
+        <button id="openMenu" class="ghost split-caret" type="button" aria-haspopup="true">▾</button>
+        <div id="htmlMenu" class="split-menu hidden">
+          <button id="openHtml" class="hidden" type="button" data-i18n="open_html">用便携编辑器打开</button>
+          <button id="openBlankHtml" type="button" data-i18n="open_blank_html">打开空白编辑器</button>
+        </div>
+      </div>
+      <button id="stopServer" class="ghost server-stop hidden" type="button" data-i18n="server_stop">停止服务器</button>
+      <button id="openFolder" class="ghost hidden" type="button" data-i18n="open_folder">打开输出文件夹</button>
+      <button id="retryPostprocess" class="ghost hidden" type="button" data-i18n="retry_postprocess">重新尝试自动处理</button>
+    </footer>
+    </section>
+    <section id="pageBatch" class="page hidden" data-page="batch" aria-labelledby="pageBatchTitle">
+      <div class="page-scroll">
+        <header class="page-header"><h2 id="pageBatchTitle" class="page-title" data-i18n="nav_batch">批量</h2><p class="page-sub" data-i18n="redesign_batch_desc">队列中的文件依次处理，共用转写设置。</p></header>
+        <section class="card batch-shared-settings"><div id="batchRecognitionSummary" class="summary-chips"></div><p id="batchPostprocessSummary" class="hint"></p>
+      <p id="batchManuscriptNotice" class="toolbox-notice hidden" role="note" data-i18n="batch_manuscript_disabled">批量模式不支持逐文件文稿映射。本次批量运行会跳过文稿匹配；单文件设置保持不变。</p><button id="batchEditSettings" class="inline-link" type="button" data-i18n="redesign_edit_shared_settings">到转写页调整设置</button></section>
+        <section id="batchQueueCard" class="card"><div id="batchDropZone" class="drop-zone" tabindex="0" role="button" data-i18n="batch_drop_zone">拖入视频或音频，添加到批量队列</div><div id="batchQueueMount"></div></section>
+        <div id="batchFeedbackMount"></div>
+      </div>
+    </section>
+    <section id="pageProjects" class="page hidden" data-page="projects" aria-labelledby="pageProjectsTitle">
+    <div class="page-scroll">
+    <header class="page-header">
+      <h2 id="pageProjectsTitle" class="page-title" data-i18n="page_projects_title">工程</h2>
+      <p class="page-sub" data-i18n="page_projects_desc">选择要交给本机编辑器的工程。</p>
+    </header>
+    <section class="card project-server-strip"><span id="projectServerState" class="hint" aria-live="polite"></span><button id="projectStopServer" class="ghost small hidden" type="button" data-i18n="server_stop">停止服务器</button><button id="projectOpenEditor" class="ghost" type="button" data-i18n="open_editor">打开编辑器</button></section>
+    <section class="card recent-projects-card" aria-labelledby="recentProjectsTitle">
+      <div class="recent-projects-heading"><h2 id="recentProjectsTitle" data-i18n="redesign_recent_projects">最近工程</h2><input id="recentProjectSearch" type="search" data-i18n-placeholder="redesign_search_projects" data-i18n-aria-label="redesign_search_projects" placeholder="搜索文件名" aria-label="搜索文件名"></div>
+      <p id="recentProjectStatus" class="hint" role="status" aria-live="polite"></p>
+      <div id="recentProjectList" class="recent-project-list"></div>
+      <p id="recentProjectEmpty" class="hint" data-i18n="redesign_no_recent_projects">还没有最近工程。</p>
+      <p class="hint recent-projects-note" data-i18n="redesign_recent_privacy">仅记录本机路径和时间，不上传内容；最多保留 30 个。可在设置 → 通用关闭或清除。</p>
+    </section>
     <section id="serverCard" class="card" aria-labelledby="serverTitle">
-      <h2 id="serverTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-5"></use></svg><span data-i18n="server">编辑器</span></h2>
+      <h2 id="serverTitle"><span data-i18n="server">编辑器</span></h2>
       <div id="serverBody">
         <div class="field">
           <label for="jsonPath" data-i18n="json_project">工程文件</label>
@@ -500,49 +663,14 @@
           <p id="serverMediaPathError" class="field-error"></p>
         </div>
         <div class="field"><label for="port" data-i18n="port">端口</label><div class="port-row"><input id="port" type="number" min="1" max="65535" value="8250"><button id="refreshServerStatus" class="ghost small" type="button" data-i18n="server_refresh" title="刷新当前端口的服务器状态">刷新</button></div><p id="portError" class="field-error"></p></div>
+        <div class="project-open-actions"><button id="projectOpenSelected" class="primary" type="button" data-i18n="redesign_open_selected">打开所选工程</button><button id="projectOpenBlank" class="ghost" type="button" data-i18n="open_blank_html">打开空白编辑器</button><button id="projectOpenPortable" class="inline-link" type="button" data-i18n="redesign_open_portable">便携编辑器</button></div>
       </div>
     </section>
-    <div id="errorNotice" class="error-notice hidden" role="alert" aria-live="assertive">
-      <div class="error-notice-copy">
-        <strong id="errorNoticeTitle" data-i18n="error_notice_title">任务未完成</strong>
-        <p id="errorNoticeMessage"></p>
-        <p id="errorNoticeDiagnostics" class="error-notice-detail hidden"></p>
-      </div>
-      <div id="errorNoticeActions" class="error-notice-actions">
-        <button id="errorNoticeAction" class="ghost small hidden" type="button"></button>
-        <button id="errorNoticeFaq" class="ghost small" type="button" data-i18n="error_open_faq">查看常见问题</button>
-        <button id="errorNoticeCopy" class="ghost small" type="button" data-i18n="error_copy_report">复制错误报告</button>
-        <button id="errorNoticeIssue" class="ghost small hidden" type="button" data-i18n="error_open_issue">打开项目主页</button>
-      </div>
-      <p id="errorNoticeContext" class="error-notice-context"></p>
-      <button id="errorNoticeClose" class="error-notice-close" type="button" data-i18n-aria-label="error_notice_close" aria-label="关闭提示">×</button>
     </div>
-    <div id="status" class="status">就绪</div>
-    </div>
-
-    <footer class="actions">
-      <button id="start" class="primary" type="button" data-i18n="start">开始生成</button>
-      <button id="stop" class="ghost server-stop hidden" type="button" data-i18n="stop">停止</button>
-      <button id="startBatch" class="primary hidden" type="button" data-i18n="batch_start">开始批量生成</button>
-      <button id="stopBatch" class="ghost server-stop hidden" type="button" data-i18n="batch_stop">停止全部</button>
-      <div class="split-wrap">
-        <button id="openMawe" class="ghost split-main" type="button" data-i18n="start_server_editor">打开编辑器</button>
-        <button id="openMenu" class="ghost split-caret" type="button" aria-haspopup="true">▾</button>
-        <div id="htmlMenu" class="split-menu hidden">
-          <button id="openHtml" class="hidden" type="button" data-i18n="open_html">用便携编辑器打开</button>
-          <button id="openBlankHtml" type="button" data-i18n="open_blank_html">打开空白编辑器</button>
-        </div>
-      </div>
-      <button id="stopServer" class="ghost server-stop hidden" type="button" data-i18n="server_stop">停止服务器</button>
-      <button id="openFolder" class="ghost hidden" type="button" data-i18n="open_folder">打开输出文件夹</button>
-      <button id="retryPostprocess" class="ghost hidden" type="button" data-i18n="retry_postprocess">重新尝试自动处理</button>
-    </footer>
-  </main>
-
-  <button id="toolboxFab" class="toolbox-fab" type="button" aria-controls="toolboxDrawer" aria-expanded="false" data-i18n-title="toolbox_open" title="打开工具箱">
-    <span aria-hidden="true">🧰</span>
-  </button>
-  <aside id="toolboxDrawer" class="toolbox-drawer hidden" role="dialog" aria-modal="false" aria-labelledby="toolboxTitle">
+    </section>
+    <section id="pageToolbox" class="page hidden" data-page="toolbox" aria-labelledby="toolboxTitle">
+  <div id="toolboxPanel" class="toolbox-page">
+    <nav id="toolboxToolNav" class="toolbox-tool-nav" role="tablist" aria-label="工具" data-i18n-aria-label="toolbox_title" aria-orientation="vertical"></nav>
     <div class="toolbox-sticky">
       <header class="toolbox-header">
         <h2 id="toolboxTitle" data-i18n="toolbox_title">工具箱</h2>
@@ -550,7 +678,7 @@
           <button id="toolboxPostprocessPrimaryTab" class="toolbox-primary-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="toolboxPostprocessView" data-toolbox-section="postprocess" data-i18n="toolbox_group_postprocess">字幕处理</button>
           <button id="toolboxUtilitiesPrimaryTab" class="toolbox-primary-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxUtilitiesView" data-toolbox-section="utilities" data-i18n="toolbox_group_utilities">媒体工具</button>
         </nav>
-        <button id="toolboxClose" class="ghost small" type="button" aria-label="close">×</button>
+        <button id="toolboxBackToTranscribe" class="ghost small toolbox-back hidden" type="button"><svg class="i" aria-hidden="true"><use href="#i-back"></use></svg><span data-i18n="toolbox_back_to_transcribe">返回转写</span></button>
       </header>
       <section id="toolboxPostprocessView" class="toolbox-primary-view" role="tabpanel" aria-labelledby="toolboxPostprocessPrimaryTab">
         <div id="toolboxInputDropZone" class="field toolbox-input">
@@ -602,6 +730,7 @@
       </section>
     </div>
     <div class="toolbox-content">
+      <div id="toolboxPanelSlot"></div>
       <div id="toolboxProgress" class="progress hidden" aria-hidden="true"><span></span></div>
       <div id="toolboxResult" class="toolbox-result hidden" aria-live="polite" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span id="toolboxResultText" style="flex:1 1 160px;min-width:0"></span>
@@ -1154,7 +1283,6 @@
       </div>
     </section>
 
-
     </div>
     <div class="toolbox-footer">
       <div id="toolboxOutputField" class="field toolbox-output-field">
@@ -1202,29 +1330,21 @@
         <button id="stopToolboxMedia" class="ghost hidden" type="button" data-i18n="toolbox_stop_media">停止媒体处理</button>
       </div>
     </div>
-    <div id="toolboxResizeY" class="toolbox-resize-y" role="separator" aria-orientation="horizontal" tabindex="0" data-i18n-title="toolbox_resize_height" title="调整工具箱高度"></div>
-    <div id="toolboxResizeX" class="toolbox-resize-x" role="separator" aria-orientation="vertical" tabindex="0" data-i18n-title="toolbox_resize_width" title="调整工具箱宽度"></div>
-  </aside>
-
-  <div id="artifactContextMenu" class="artifact-context-menu hidden" role="menu" aria-label="Artifact actions" data-i18n-aria-label="artifact_menu_label">
-    <button id="artifactSetTarget" type="button" role="menuitem" data-i18n="artifact_set_target">设为处理目标</button>
-    <button id="artifactOpenFolder" type="button" role="menuitem" data-i18n="artifact_open_folder">打开所在文件夹</button>
-    <button id="artifactOpenFile" type="button" role="menuitem" data-i18n="artifact_open_file">打开文件</button>
   </div>
-
-  <div id="settingsModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="launcherSettingsTitle">
-    <div id="settingsBackdrop" class="modal-backdrop"></div>
-    <section class="modal-card settings-modal-card">
-      <header class="modal-header">
-        <h2 id="launcherSettingsTitle" data-i18n="settings_title">设置</h2>
-        <button id="settingsClose" class="ghost small" type="button" aria-label="close">×</button>
-      </header>
-      <nav id="settingsTabList" class="settings-tabs" role="tablist" aria-labelledby="launcherSettingsTitle" data-i18n-aria-label="settings_tablist_label">
-        <button id="settingsGeneralTab" class="settings-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="settingsGeneralPanel" data-settings-tab="general" data-i18n="settings_tab_general">通用</button>
-        <button id="settingsProcessingTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsProcessingPanel" data-settings-tab="processing" data-i18n="settings_tab_processing">断句与标点</button>
-        <button id="settingsRuntimeTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsRuntimePanel" data-settings-tab="runtime" data-i18n="settings_tab_runtime">运行环境</button>
-        <button id="settingsLlmTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsLlmPanel" data-settings-tab="llm" data-i18n="settings_tab_llm">AI 模型</button>
-      </nav>
+    </section>
+    <section id="pageSettings" class="page hidden" data-page="settings" aria-labelledby="launcherSettingsTitle">
+    <div class="settings-page">
+      <div class="settings-nav">
+        <h2 id="launcherSettingsTitle" class="settings-nav-cap" data-i18n="settings_title">设置</h2>
+        <div id="settingsTabList" class="settings-tabs" role="tablist" aria-orientation="vertical" aria-labelledby="launcherSettingsTitle" data-i18n-aria-label="settings_tablist_label">
+          <button id="settingsGeneralTab" class="settings-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="settingsGeneralPanel" data-settings-tab="general"><svg class="i" aria-hidden="true"><use href="#i-sliders"></use></svg><span data-i18n="settings_tab_general">通用</span></button>
+          <button id="settingsProcessingTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsProcessingPanel" data-settings-tab="processing"><svg class="i" aria-hidden="true"><use href="#i-text"></use></svg><span data-i18n="settings_tab_processing">断句与标点</span></button>
+          <button id="settingsLlmTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsLlmPanel" data-settings-tab="llm"><svg class="i" aria-hidden="true"><use href="#i-brain"></use></svg><span data-i18n="settings_tab_llm">AI 模型</span></button>
+          <button id="settingsRuntimeTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsRuntimePanel" data-settings-tab="runtime"><svg class="i" aria-hidden="true"><use href="#i-cpu"></use></svg><span data-i18n="settings_tab_runtime">运行环境</span></button>
+          <span class="settings-nav-cap" role="presentation" data-i18n="settings_group_about">关于</span>
+          <button id="settingsAboutTab" class="settings-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="settingsAboutPanel" data-settings-tab="about"><svg class="i" aria-hidden="true"><use href="#i-heart"></use></svg><span data-i18n="settings_tab_about">关于与支持</span></button>
+        </div>
+      </div>
       <div class="settings-scroll">
       <section id="settingsGeneralPanel" class="settings-panel" role="tabpanel" aria-labelledby="settingsGeneralTab" data-settings-panel="general" aria-hidden="false">
       <div class="settings-section">
@@ -1299,6 +1419,7 @@
         <p class="hint preset-root-current"><span data-i18n="preset_current_folder">当前预设文件夹：</span><button id="asrPresetRootCurrent" class="inline-link runtime-path-link" type="button" data-i18n-title="open_folder_hint" title="点击打开所在文件夹"></button><button id="resetAsrPresetRoot" class="ghost small" type="button" data-i18n="preset_folder_reset">恢复默认</button></p>
         <p id="asrPresetRootStatus" class="hint" role="status" aria-live="polite"></p>
       </div>
+      <div class="settings-section" id="recentProjectsSettings"><h3 data-i18n="redesign_recent_projects">最近工程</h3><label class="check-field"><input id="recordRecentProjects" type="checkbox" checked><span data-i18n="redesign_record_recent">记录最近工程</span></label><p class="hint" data-i18n="redesign_recent_privacy">仅记录本机路径和时间，不上传内容；最多保留 30 个。可在设置 → 通用关闭或清除。</p><button id="clearRecentProjects" class="ghost small" type="button" data-i18n="redesign_clear_recent">清除记录</button></div>
       </section>
       <section id="settingsLlmPanel" class="settings-panel hidden" role="tabpanel" aria-labelledby="settingsLlmTab" data-settings-panel="llm" aria-hidden="true">
       <div class="settings-section" id="llmSettingsSection">
@@ -1558,8 +1679,40 @@
         </div>
       </div>
       </section>
+      <section id="settingsAboutPanel" class="settings-panel hidden" role="tabpanel" aria-labelledby="settingsAboutTab" data-settings-panel="about" aria-hidden="true">
+        <div class="settings-section about-launcher"><img src="../../assets/show.webp" alt="MAW" class="about-mascot"><h2>Moy's ASR Workflow</h2><p id="aboutAppVersion" class="hint"></p><p data-i18n="redesign_about_description">从本地媒体到字幕工程，再到浏览器校对。保持简单，专注字幕。</p><div class="project-open-actions"><button id="aboutSupport" class="primary" type="button" data-i18n="support_maw">支持 MAW</button><button id="aboutGithub" class="ghost" type="button" data-i18n="help_github">GitHub</button><button id="aboutGuide" class="inline-link" type="button" data-i18n="help_guide">使用指南</button></div></div>
+      </section>
       </div>
+    </div>
     </section>
+    </div>
+  </main>
+
+  <div id="postprocessScrim" class="postprocess-scrim"></div>
+  <aside id="postprocessSheet" class="postprocess-sheet" role="dialog" aria-modal="true" aria-labelledby="postprocessSheetHeading">
+    <header class="postprocess-sheet-head">
+      <div><p class="hint" data-i18n="redesign_sheet_hint">对本次转写结果按顺序执行</p><h2 id="postprocessSheetHeading" data-i18n="redesign_sheet_heading">配置处理步骤</h2></div>
+      <button id="postprocessSheetClose" class="ghost small" type="button" data-i18n-aria-label="close" aria-label="关闭">×</button>
+    </header>
+    <div class="postprocess-sheet-main">
+      <nav id="postprocessSheetSteps" class="postprocess-step-rail" aria-label="处理步骤" data-i18n-aria-label="auto_postprocess_steps"></nav>
+      <div class="postprocess-sheet-pane">
+        <div class="postprocess-pane-head"><div><p id="postprocessSheetIndex" class="hint"></p><h3 id="postprocessSheetTitle"></h3></div><label class="check-field"><input id="postprocessSheetEnabled" type="checkbox"><span data-i18n="redesign_step_enabled">启用</span></label></div>
+        <div id="postprocessSheetBody" class="postprocess-sheet-body"></div>
+      </div>
+    </div>
+    <footer class="postprocess-sheet-foot">
+      <button id="postprocessSheetPrev" class="ghost small" type="button" data-i18n="redesign_previous">上一步</button>
+      <button id="postprocessSheetNext" class="ghost small" type="button" data-i18n="redesign_next">下一步</button>
+      <button id="postprocessSheetToolbox" class="inline-link" type="button" data-i18n="redesign_run_in_toolbox">在工具箱中单独运行</button>
+      <button id="postprocessSheetDone" class="primary" type="button" data-i18n="redesign_done">完成</button>
+    </footer>
+  </aside>
+
+  <div id="artifactContextMenu" class="artifact-context-menu hidden" role="menu" aria-label="Artifact actions" data-i18n-aria-label="artifact_menu_label">
+    <button id="artifactSetTarget" type="button" role="menuitem" data-i18n="artifact_set_target">设为处理目标</button>
+    <button id="artifactOpenFolder" type="button" role="menuitem" data-i18n="artifact_open_folder">打开所在文件夹</button>
+    <button id="artifactOpenFile" type="button" role="menuitem" data-i18n="artifact_open_file">打开文件</button>
   </div>
 
   <div id="asrPresetModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="asrPresetTitle">

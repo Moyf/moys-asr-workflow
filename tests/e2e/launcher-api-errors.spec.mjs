@@ -7,11 +7,13 @@ const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 async function openLauncher(page, language) {
   await page.goto('file://' + launcherPath);
   await page.waitForFunction(() => window.MAWLauncher?.config?.providers?.length > 0);
+  await page.waitForFunction(() => document.body.dataset.workflowReady === 'true');
   if (language === 'en') {
     await page.evaluate(() => window.MAWLauncher.openSettings());
     await page.locator('#langEn').click();
-    await page.locator('#settingsClose').click();
+    await page.locator('#navTranscribe').click();
   }
+  await page.locator('#recognitionExpand').click();
 }
 
 for (const language of ['zh', 'en']) {
@@ -26,6 +28,8 @@ for (const language of ['zh', 'en']) {
       window.pywebview = { api: new Proxy({}, { get(_, method) {
         if (method === 'then') return undefined;
         if (method === 'get_config') return async () => ({ ...config, guiLang: language });
+        if (method === 'get_recent_projects') return async () => ({ ok: true, enabled: true, entries: [], limit: 30 });
+        if (method === 'default_output') return async ({ mediaPath }) => ({ ok: true, path: mediaPath.replace(/\.[^.]+$/u, '.srt') });
         if (method === 'get_audio_tracks') return async (payload) => {
           window.__probes.push(payload.mediaPath);
           if (window.__probeMode === 'pending') return new Promise(resolve => { window.__releaseProbe = resolve; });
@@ -46,17 +50,17 @@ for (const language of ['zh', 'en']) {
     }, { config, language });
     await page.reload();
     await page.waitForFunction(() => window.MAWLauncher?.config?.providers?.length > 0);
+    await page.waitForFunction(() => document.body.dataset.workflowReady === 'true');
+    await page.locator('#recognitionExpand').click();
     await page.locator('#apiKey').fill('sk-test');
-    await page.locator('#mediaPath').fill('C:/media/no-audio.mp4');
+    await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path: 'C:/media/no-audio.mp4' }));
     await expect.poll(() => page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBe(0);
-    await page.locator('#start').click();
-    await expect(page.locator('#errorNoticeMessage')).toContainText(language === 'zh' ? '没有检测到音轨' : 'No audio tracks');
+    await expect(page.locator('#start')).toBeDisabled();
+    await expect(page.locator('#workflowReadiness')).toContainText(language === 'zh' ? '没有检测到音轨' : 'No audio tracks');
     await expect(page.locator('#stop')).toBeHidden();
     expect(await page.evaluate(() => window.__starts.length)).toBe(0);
     expect(await page.evaluate(() => window.__probes.length)).toBe(1);
-    expect(await page.evaluate(() => document.querySelector('#errorNoticeAction').parentElement.getBoundingClientRect().top
-      - document.querySelector('#errorNoticeMessage').getBoundingClientRect().bottom)).toBeGreaterThanOrEqual(8);
-    await page.locator('#errorNotice').screenshot({ path: testInfo.outputPath('no-audio-' + language + '.png') });
+    await page.locator('.actions').screenshot({ path: testInfo.outputPath('no-audio-' + language + '.png') });
     for (const [index, mode] of ['failed', 'invalid'].entries()) {
       await page.evaluate(mode => { window.__probeMode = mode; }, mode);
       await page.locator('#mediaPath').fill('C:/media/' + mode + '.mp4');
@@ -68,7 +72,7 @@ for (const language of ['zh', 'en']) {
       expect(await page.evaluate(() => window.__probes.length)).toBe(index + 2);
     }
     await page.evaluate(() => { window.__probeMode = 'pending'; });
-    await page.locator('#mediaPath').fill('C:/media/pending.mp4');
+    await page.evaluate(path => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path }), 'C:/media/pending.mp4');
     await page.waitForFunction(() => typeof window.__releaseProbe === 'function');
     expect(await page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBeNull();
     await page.locator('#start').click();
@@ -79,7 +83,7 @@ for (const language of ['zh', 'en']) {
     expect(await page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBeNull();
     await page.locator('#errorNotice').screenshot({ path: testInfo.outputPath('audio-extraction-pending-' + language + '.png') });
     // An old probe finishing after a file change cannot block the new file.
-    await page.locator('#mediaPath').fill('C:/media/voice.mp3');
+    await page.evaluate(path => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path }), 'C:/media/voice.mp3');
     await page.evaluate(() => window.__releaseProbe({ ok: true, tracks: [] }));
     expect(await page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBeNull();
     expect(await page.evaluate(() => window.__probes.length)).toBe(4);
@@ -110,14 +114,14 @@ for (const language of ['zh', 'en']) {
     await page.locator('#errorNoticeAction').click();
     await expect(page.locator('#mediaPath')).toBeFocused();
     // The existing file-selection probe supplies three tracks in the demo bridge.
-    await page.locator('#mediaPath').fill('C:/media/recording.mkv');
+    await page.evaluate(path => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path }), 'C:/media/recording.mkv');
     await expect(page.locator('#audioTrack')).toBeEnabled();
     expect(await page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBe(3);
     await page.locator('#errorNoticeAction').click();
     await expect(page.locator('#audioTrack')).toBeFocused();
     await expect(page.locator('#audioTrack')).toHaveValue('0');
     // Changing files clears metadata immediately; do not reuse the previous count.
-    await page.locator('#mediaPath').fill('C:/media/voice.mp3');
+    await page.evaluate(path => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path }), 'C:/media/voice.mp3');
     expect(await page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBeNull();
   });
 
@@ -168,20 +172,20 @@ for (const language of ['zh', 'en']) {
     await openLauncher(page, language);
     const networkRequests = [];
     page.on('request', request => { if (/^https?:/u.test(request.url())) networkRequests.push(request.url()); });
-    await page.locator('#mediaPath').fill('C:/media/clip.mp3');
+    await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path: 'C:/media/clip.mp3' }));
     await page.locator('#srtPath').fill('C:/media/clip.srt');
     for (const [key, expected] of [
-      ['', language === 'zh' ? '请填写 API Key' : 'Enter an API Key'],
-      ['Bearer sk-test-only-private-1234', language === 'zh' ? 'API Key 格式不正确' : 'Invalid API key format'],
-      ['https://example.test/keys', language === 'zh' ? 'API Key 格式不正确' : 'Invalid API key format'],
+      ['', language === 'zh' ? 'API Key' : 'API key'],
+      ['Bearer sk-test-only-private-1234', language === 'zh' ? '检查 API Key 格式' : 'Check the API key format'],
+      ['https://example.test/keys', language === 'zh' ? '检查 API Key 格式' : 'Check the API key format'],
     ]) {
       await page.locator('#apiKey').fill(key);
-      await page.locator('#start').click();
-      await expect(page.locator('#apiKeyError')).toContainText(expected);
+      await expect(page.locator('#start')).toBeDisabled();
+      await expect(page.locator('#workflowReadiness')).toContainText(expected);
       await expect(page.locator('#stop')).toBeHidden();
       await expect(page.locator('#apiKeyError')).not.toContainText('sk-test-only-private-1234');
     }
-    await page.locator('#batchMode').click();
+    await page.locator('#navBatch').click();
     await page.evaluate(() => {
       window.__batchStarts = 0;
       const call = window.MAWLauncher.callBackend;
@@ -192,7 +196,9 @@ for (const language of ['zh', 'en']) {
       window.MAWLauncher.onBatchDrop('C:/media/batch.mp3');
     });
     for (const key of ['', 'Bearer sk-test-only-private-1234']) {
+      await page.locator('#navTranscribe').click();
       await page.locator('#apiKey').fill(key);
+      await page.locator('#navBatch').click();
       await page.locator('#startBatch').click();
       await expect(page.locator('#apiKeyError')).toContainText(language === 'zh' ? 'API Key' : 'API key');
     }

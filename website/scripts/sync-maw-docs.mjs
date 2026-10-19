@@ -41,7 +41,7 @@ const documents = [
   {
     source: 'docs/user/POSTPROCESS_PIPELINE.md',
     slug: 'postprocess-pipeline',
-    title: '转写后自动处理',
+    title: '自动后处理',
     description: '处理步骤、连接预检、中间产物与失败重试。',
   },
   {
