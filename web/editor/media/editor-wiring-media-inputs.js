@@ -188,7 +188,13 @@ document.addEventListener('keydown', (event) => {
 MaweProjectMediaInputs.loadMediaFileInput.addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  if (!MaweProjectMediaInputs.pendingProjectMediaSelection && !await MaweProjectLoad.ensureProjectCheckpointForImport(file)) return;
+  if (!MaweProjectMediaInputs.pendingProjectMediaSelection) {
+    const checkpoint = MaweProjectLoad.ensureProjectCheckpointForImport(file);
+    const generation = MaweState.projectLoadGeneration;
+    const mediaGeneration = MaweMediaLoad.mediaLoadGeneration;
+    if (!await checkpoint || generation !== MaweState.projectLoadGeneration
+        || mediaGeneration !== MaweMediaLoad.mediaLoadGeneration) return;
+  }
   MaweProjectMediaInputs.pendingProjectMediaSelection = null;
   const imported = await MaweMediaLoad.loadMediaFile(file);
   if (imported) {

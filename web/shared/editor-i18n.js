@@ -587,6 +587,14 @@
     '关键帧扩展增加的保留时长；按合并后区间计算，实际文件可能有帧或音频包级差异。': 'Extra retained duration after merging keyframe-expanded intervals. The file may differ by individual frames or audio packets.',
     '重组后视频导出失败': 'Reconstructed video export failed',
     '烧录视频': 'Burn video',
+    '生成绿幕视频': 'Generate green screen video',
+    '绿幕视频导出': 'Green screen video export',
+    '附带音轨': 'Include audio track',
+    '正在生成绿幕字幕视频…': 'Generating green screen subtitle video…',
+    '绿幕视频已保存': 'Green screen video saved',
+    '默认导出静音绿幕视频；勾选后附带当前源媒体的音轨。输出 1080P，时长为最后字幕结束后半秒。': 'Exports a silent green screen video by default; enable to include the current source audio. Output is 1080P and ends half a second after the last subtitle.',
+    '绿幕视频和附带音轨选项必须是布尔值': 'Green screen and include audio options must be booleans',
+    '绿幕视频暂不支持去空隙区间': 'Green screen video does not support gap removal intervals',
     '重组后烧录视频': 'Burn reconstructed video',
     '请从启动器打开关联源媒体的工程，再烧录视频': 'Open a project with bound source media from the launcher before burning video',
     '当前浏览器或环境不支持烧录视频保存': 'This browser or environment does not support saving a burned video',
@@ -690,7 +698,7 @@
     '调整播放器画面内副字幕预览背景的不透明度，设为 0 时隐藏背景': 'Adjust the secondary subtitle preview background opacity in the player; set it to 0 to hide the background',
     '样式会保存到工程的 preview.subtitle；旧工程默认使用原来的响应式字号。': 'Styles are saved in preview.subtitle; legacy projects keep the original responsive font size.',
     'ASS 样式库': 'ASS style library',
-    '样式库正在加载…': 'Loading the style library…', 'SRT 默认': 'SRT default', '无逐句动画': 'No per-cue animations',
+    '样式库正在加载…': 'Loading the style library…', 'SRT 渲染样式': 'SRT render style', '无逐句动画': 'No per-cue animations',
     'ASS 字幕模式': 'ASS subtitle mode',
     '当前由': 'Preview styling is controlled by', '控制预览样式': 'for preview styling',
     '⬆️ 当前预览样式由 ASS 字幕模式控制': '⬆️ Current preview styling is controlled by ASS subtitle mode',
@@ -730,6 +738,9 @@
     'ASS 即时预览 · 实际渲染不可用': 'Instant ASS preview · actual rendering unavailable',
     '无损 PNG': 'Lossless PNG', '原尺寸查看': 'View at original size',
     '请先加载 Server 工程的视频并启用 ASS 字幕模式。': 'Load the Server project video and enable ASS subtitle mode first.',
+    '请启用 ASS 字幕模式；浏览器本地视频请通过 Server 工程打开。': 'Enable ASS subtitle mode; open browser-local videos through a Server project.',
+    '当前缺少视频画面，使用绿幕预览，可在「更多导出」中导出绿幕视频': 'No video frame is available. Using a green screen preview; export a green screen video from More exports.',
+    '绿幕预览选项必须是布尔值': 'The green screen preview option must be a boolean',
     '需要启用 ASS 字幕模式后再渲染实际画面。': 'Enable ASS subtitle mode before rendering the actual frame.',
     '编辑样式': 'Edit style', '打开样式库并定位到当前选中的样式': 'Open the style library at the selected style',
     '正在加载…': 'Loading…', '关闭（Esc）': 'Close (Esc)', '关闭 ASS 样式库': 'Close ASS style library',
@@ -769,6 +780,7 @@
     '例如 \\fs36\\bord4；不要填写大括号': 'Example: \\fs36\\bord4; do not include braces',
     '支持任意 ASS 标签导出；浏览器预览会尽量模拟常见的字号、缩放、旋转、颜色和描边变换。': 'Any ASS tags can be exported; browser preview approximates common size, scale, rotation, color, and outline transforms.',
     '当前方案': 'Current profile', '未选择': 'Not selected', '删除当前': 'Delete current', '删除当前样式或方案': 'Delete current style or profile',
+    '重置': 'Reset', '恢复此内置条目的默认值': 'Restore this built-in entry to its defaults',
     '保存到本机用户级配置；Launcher 与 Editor 共享。': 'Saved to local user-level config; shared by Launcher and Editor.', '保存样式库': 'Save style library',
     '完成': 'Done', '内置条目不能删除': 'Built-in entries cannot be deleted', '删除当前条目': 'Delete current entry', '新样式': 'New style', '新 ASS 方案': 'New ASS profile',
     '样式数量已达到上限（64 个）': 'The style limit (64) has been reached', 'ASS 方案数量已达到上限（64 个）': 'The ASS profile limit (64) has been reached',
@@ -776,6 +788,7 @@
     '正在保存用户级样式库…': 'Saving the user-level style library…', '正在保存到当前浏览器…': 'Saving to this browser…',
     '已与用户级配置同步': 'Synced with user-level config', '仅保存在当前浏览器（便携模式）': 'Saved only in this browser (portable mode)',
     '使用本地副本，尚未同步': 'Using a local copy; not synced yet', '本地已保存，服务器同步失败：未知错误': 'Saved locally; server sync failed: unknown error',
+    '本地已保存，服务器同步失败：HTTP 403（页面已失效，请刷新网页后重试）': 'Saved locally; server sync failed: HTTP 403 (the page is stale; refresh it and try again)',
     '当前使用本地副本；服务器恢复后可再次点击保存同步。': 'Using a local copy; click Save again after the server is available.',
     '使用本地副本，服务器同步失败': 'Using a local copy; server sync failed',
     '已开启 ASS 字幕模式预览': 'ASS subtitle preview enabled', '已恢复原有字幕预览': 'Original subtitle preview restored',
@@ -803,17 +816,17 @@
     '。': '.',
     '符号规则': 'Symbol rule', '无': 'None', '双符号': 'Double symbols', '单双皆可': 'Single or double symbols', '单双符号': 'Single or double symbols',
     '符号规则已关闭，字幕中的符号将保留原文。': 'Symbol rules are off; symbols in subtitles keep their literal text.',
-    '特殊文本样式': 'Special text styles', '特殊文本': 'Special text',
+    '特殊文本样式（MASS）': 'Special text styles (MASS)', '特殊文本': 'Special text',
+    '什么是 MASS？': 'What is MASS?',
+    '基于 Markdown 语法灵感的进阶式 ASS，也可以理解为 MAW-ASS。': 'An advanced ASS layer inspired by Markdown syntax; also read as MAW-ASS.',
     '强调': 'Emphasis', '缩小': 'Smaller', '放大': 'Larger',
     '下划线文本': 'Underlined text', '删除线文本': 'Struck text', '缩小文本': 'Smaller text', '放大文本': 'Larger text',
     '强调文字比例': 'Emphasis text scale', '缩小文字比例': 'Small text scale', '放大文字比例': 'Large text scale',
     '用成对符号标记特殊文本；开启的语法统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。颜色与字号比例在 ASS 样式库中配置。': 'Mark special text with paired symbols. Enabled syntax applies to preview and export for all ASS caption tracks. Configure colors and size ratios in the ASS style library.',
-    // 符号示例与下方 translateText 的模式按规则动态拼接，这里只放完整句子。
-    '你可以使用 *强调*、~删除~、-缩小-、+放大+ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*, ~strike~, -smaller-, and +larger+ to apply special styles to individual words.',
-    '你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, and ++larger++ to apply special styles to individual words.',
-    '你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, and +larger+/++larger++ to apply special styles to individual words.',
-    '你可以使用 **强调**、~~删除~~、--缩小--、++放大++、//注释// 等符号来对特定字词添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, and //comment// to apply special styles to individual words.',
-    '你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++、//注释// 等符号来对特定字词添加特殊样式。': 'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, +larger+/++larger++, and //comment// to apply special styles to individual words.',
+    // 提示句子固定为双符号示例（双符号在任何非关闭规则下都生效），
+    // 与 syncAssSymbolRule 的动态重建共用整句键。
+    '你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, !!shake!!, and >>fade in/out<< to apply special styles.',
+    '详见字幕右键菜单「左右添加字符」部分。': 'See the "Wrap with characters" section in the subtitle right-click menu.',
     '注释': 'Comment', '注释色': 'Comment color', '注释样式': 'Comment style', '注释文字比例': 'Comment text scale',
     '//注释//': '//comment//',
     '强调文本': 'Emphasis text', '强调文本语法': 'Emphasis syntax', '文字放大比例': 'Text scale', '强调样式': 'Emphasis style',
@@ -1562,7 +1575,7 @@
   // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」；
   // 未标记颜色的默认组用「_默认」而非「_default」。
   const EXPORT_NAME_SEGMENTS = {
-    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '默认', 'subtitled': '烧录字幕',
+    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '默认', 'subtitled': '烧录字幕', 'green-screen': '绿幕',
     'yellow': '黄色', 'green': '绿色', 'red': '红色', 'purple': '紫色', 'blue': '蓝色',
   };
 
@@ -1598,6 +1611,8 @@
     if (textChanges) return `Modified ${textChanges[1]} row(s)${textChanges[2] ? `; word-timing text synced in ${textChanges[2]} row(s)` : ''}`;
     const historyChange = /^已(撤销|重做)：(.+)（剩 (\d+) 步）$/.exec(text);
     if (historyChange) return `${historyChange[1] === '撤销' ? 'Undone' : 'Redone'}: ${translateText(historyChange[2], EN)} (${historyChange[3]} step(s) remaining)`;
+    const resetBuiltin = /^确定将「(.+)」恢复为默认值吗？$/.exec(text);
+    if (resetBuiltin) return `Reset “${translateText(resetBuiltin[1], EN)}” to its defaults?`;
     if (match) return `${match[1] === '过滤' ? 'Filtered' : 'Total'} ${match[2]}: markers ${match[3]} · regions ${match[4]}${match[5] ? `; pending review ${match[5]}` : ''}`;
     match = /^(标记|区段) (\d.*)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;

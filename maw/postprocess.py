@@ -17,6 +17,7 @@ from maw.postprocess_io import SubtitleArtifact, read_project, read_srt, write_a
 from maw.postprocess_annotations import ANNOTATION_PROMPT, validate_annotations, write_annotations
 from maw.postprocess_llm import LlmClientError
 from maw.project import normalize_project
+from maw.postprocess_translation import attach_translation_project
 from maw.project_preview import JsonDict, JsonValue
 from maw.text_conversion import TextConversion, apply_text_conversion
 
@@ -315,7 +316,9 @@ def _run_llm_postprocess(
     if strict_translation:
         if request.merge_bilingual and request.embed_translations:
             raise ValueError("「将双语字幕合并为单个字幕」与「只翻译非中文（英文）的字幕」不能同时启用，请只选择一个输出方式。")
-        _reject_recursive_translation_input(source_project, source_srt, request.operation)
+        multi = project.get("multi_subtitle")
+        if source_project is None or not isinstance(multi, dict) or not multi.get("tracks"):
+            _reject_recursive_translation_input(source_project, source_srt, request.operation)
     item_aware_resegment = request.operation == "resegment" and _has_complete_items(project)
     system_prompt = _protocol_prompt(
         operation_prompt,
@@ -409,6 +412,8 @@ def _run_llm_postprocess(
         _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
     if degraded_batches and degraded_batches == len(batches):
         raise ValueError("所有批次的网络/服务请求都失败，字幕没有任何改动，未写出输出产物。")
+    if strict_translation and degraded_batches:
+        raise ValueError("翻译批次未全部成功，未替换原有副字幕，未写出输出产物。")
     source_ids = {str(cue["id"]) for cue in cues} - degraded_source_ids
     if source_ids and skipped_source_ids >= source_ids:
         report = _format_skip_report(skipped_source_ids, response_warnings)
@@ -505,13 +510,22 @@ def _run_llm_postprocess(
             warnings = ("已将翻译结果回填进原字幕，输出为单条字幕。", *warnings)
     if "markers" in (translation_snapshot or {}):
         processed["markers"] = copy.deepcopy(translation_snapshot["markers"])
+    srt_project = None
+    if translation_snapshot is not None and not output_operation.endswith(f"-{BACKFILL_ARTIFACT_MARKER}"):
+        # MOSP is the editable source; only SRT receives translated/stacked text.
+        srt_project = processed
+        processed = attach_translation_project(
+            project, translation_snapshot,
+            target="zh" if request.operation == "translate_zh" else "en",
+        )
+        warnings = (*warnings, "MOSP 保留原文主字幕、字词时间码和可编辑的译文副字幕。")
     _raise_if_cancelled(is_cancelled)
     _notify_status(on_status, "toolbox_status_writing")
     if begin_commit is not None and not begin_commit():
         raise LlmClientError(
             "操作已取消。", category="cancelled", operation="postprocess"
         )
-    return _write(
+    artifact = _write(
         processed,
         source_project,
         source_srt,
@@ -523,7 +537,9 @@ def _run_llm_postprocess(
         comparison_source=project if request.generate_comparison else None,
         comparison_translation=translation_snapshot if request.generate_comparison else None,
         bilingual_line_order=request.bilingual_line_order,
+        srt_project=srt_project,
     )
+    return replace(artifact, translation_project=translation_snapshot)
 
 
 def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
@@ -1917,6 +1933,7 @@ def _write(
     comparison_source: Mapping[str, object] | None = None,
     comparison_translation: Mapping[str, object] | None = None,
     bilingual_line_order: str = "",
+    srt_project: JsonDict | None = None,
 ) -> SubtitleArtifact:
     return write_artifacts(
         project,
@@ -1931,6 +1948,7 @@ def _write(
         comparison_source=comparison_source,
         comparison_translation=comparison_translation,
         bilingual_line_order=bilingual_line_order,
+        srt_project=srt_project,
     )
 
 

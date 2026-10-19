@@ -442,16 +442,28 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             {**payload, 'timeMs': True},
             {**payload, 'timeMs': 9_007_199_254_740_992},
             {**payload, 'timeMs': 10 ** 1000},
+            {**payload, 'greenScreen': 'true'},
         ):
             handler.read_json_request = mock.Mock(return_value=bad_request)
             handler.render_ass_frame()
             self.assertEqual(handler.send_json.call_args.args[0], 400)
 
-        handler.server.project.media_path = None
-        handler.read_json_request = mock.Mock(return_value=payload)
-        handler.render_ass_frame()
-        self.assertEqual(handler.send_json.call_args.args[0], 400)
-        self.assertIn('媒体', handler.send_json.call_args.args[1]['error'])
+    def test_ass_frame_endpoint_uses_green_screen_for_audio_missing_and_browser_media(self) -> None:
+        for media_path, requested_green in ((None, False), (self.media, False),
+                                             (self.root / 'missing.mp4', False), (self.media, True)):
+            handler = self._ass_frame_handler()
+            handler.server.project.media_path = media_path
+            handler.read_json_request = mock.Mock(return_value={
+                'requestToken': 'test-token', 'ass': '[Script Info]\n', 'timeMs': 1500,
+                'greenScreen': requested_green,
+            })
+            handler.server.ensure_libass_supported = mock.Mock(return_value=True)
+            with mock.patch.object(server_editor, 'editor_ffmpeg_binary', return_value=Path('ffmpeg')), \
+                 mock.patch.object(server_editor, 'render_ass_frame_png', return_value=(b'PNG', [])) as renderer:
+                handler.render_ass_frame()
+            self.assertEqual(handler.send_json.call_args.args[0], 200)
+            self.assertTrue(handler.send_json.call_args.args[1]['greenScreen'])
+            self.assertIsNone(renderer.call_args.args[0])
 
     def test_ass_frame_endpoint_requires_libass_filter(self) -> None:
         handler = self._ass_frame_handler()
@@ -496,6 +508,9 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_ass_frame_endpoint_returns_base64_png_and_warnings(self) -> None:
         handler = self._ass_frame_handler()
+        video = self.root / 'frame.mp4'
+        video.write_bytes(b'video')
+        handler.server.project.media_path = video
         handler.read_json_request = mock.Mock(return_value={'requestToken': 'test-token', 'ass': '[Script Info]\n', 'timeMs': 2500})
         handler.server.ensure_libass_supported = mock.Mock(return_value=True)
         warnings = ['字幕字体「Demo」缺少字形 U+4E2D，实际画面可能显示方框。']
@@ -508,8 +523,9 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(base64.b64decode(body['image']), b'\x89PNG-data')
         self.assertEqual(body['timeMs'], 2500)
         self.assertEqual(body['warnings'], warnings)
+        self.assertFalse(body['greenScreen'])
         media_path, ass_text, time_ms, ffmpeg = renderer.call_args.args
-        self.assertEqual(media_path, self.media)
+        self.assertEqual(media_path, video)
         self.assertEqual(ass_text, '[Script Info]\n')
         self.assertEqual(time_ms, 2500)
         self.assertEqual(ffmpeg, Path('ffmpeg'))
@@ -562,6 +578,32 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         ):
             with self.assertRaisesRegex(server_editor.AssFrameError, '没有视频画面'):
                 server_editor.render_ass_frame_png(self.media, '[Script Info]\n', 0, Path('ffmpeg'))
+
+    def test_green_screen_frame_uses_playhead_time_with_real_libass(self) -> None:
+        ffmpeg = server_editor.editor_ffmpeg_binary()
+        if ffmpeg is None or not server_editor.ffmpeg_supports_libass(ffmpeg):
+            self.skipTest('Requires FFmpeg with libass')
+        ass = (
+            '[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\n'
+            '[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, Alignment\n'
+            'Style: Default,Arial,86,&H00FFFFFF,2\n'
+            '[Events]\nFormat: Layer, Start, End, Style, Text\n'
+            'Dialogue: 0,0:00:01.25,0:00:02.00,Default,Green preview\n'
+        )
+        before, _ = server_editor.render_ass_frame_png(None, ass, 0, ffmpeg)
+        boundary_before, _ = server_editor.render_ass_frame_png(None, ass, 1249, ffmpeg)
+        active, _ = server_editor.render_ass_frame_png(None, ass, 1250, ffmpeg)
+        after, _ = server_editor.render_ass_frame_png(None, ass, 3000, ffmpeg)
+        self.assertEqual(struct.unpack('>II', active[16:24]), (1920, 1080))
+        self.assertEqual(before, after)
+        self.assertEqual(before, boundary_before)
+        self.assertNotEqual(before, active)
+        decoded = subprocess.run([str(ffmpeg), '-v', 'error', '-i', 'pipe:0', '-frames:v', '1',
+            '-pix_fmt', 'rgb24', '-f', 'rawvideo', 'pipe:1'], input=before, capture_output=True, timeout=30)
+        self.assertEqual(decoded.returncode, 0)
+        self.assertLess(decoded.stdout[0], 5)
+        self.assertGreater(decoded.stdout[1], 245)
+        self.assertLess(decoded.stdout[2], 5)
 
     def test_ass_frame_render_uses_real_libass_when_available(self) -> None:
         ffmpeg = server_editor.editor_ffmpeg_binary()
@@ -1201,7 +1243,9 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         for token in ('__STICKER_URL_PREFIX_JSON__', '__NINJA_SFX_BASE_URL_JSON__', '__SERVER_CONFIG_JSON__'):
             self.assertNotIn(token, page)
         self.assertNotIn('createUrl', page)
-        self.assertIn('"requestToken": "", "stickerRootUrl": "/api/stickers/root", ', page)
+        self.assertIn('"requestToken": ""', page)
+        self.assertIn('"stickerRootUrl": "/api/stickers/root", ', page)
+        self.assertIn('"projectSwitchPageId": "', page)
         self.assertIn('"portableStickerExportUrl": "/api/exports/sticker-otio", ', page)
         self.assertIn('"otiozStickerExportUrl": "/api/exports/sticker-otioz", ', page)
         self.assertIn('"gapRemovedVideoExportUrl": "/api/exports/gap-removed-video", "gapRemovedVideoSourceName": "clip.mp3", "canGapRemovedVideoExport": false, ', page)
@@ -2259,9 +2303,11 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
 
                 def post(endpoint: str, payload: dict) -> tuple[int, dict]:
+                    intent = {"switchPageId": "http-test-page", "switchGeneration": 0}
+                    server.advance_project_switch(intent)
                     request = urllib.request.Request(
                         f"{base_url}{endpoint}",
-                        data=json.dumps(payload).encode("utf-8"),
+                        data=json.dumps({**server.project_binding_payload(), **intent, **payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )
@@ -2713,17 +2759,20 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                client_binding = server.project_binding_payload()
 
                 def post(payload: dict) -> tuple[int, dict]:
                     request = urllib.request.Request(
                         f"{base_url}/api/project",
-                        data=json.dumps(payload).encode("utf-8"),
+                        data=json.dumps({**client_binding, **payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )
                     try:
                         with urllib.request.urlopen(request) as response:
-                            return response.status, json.loads(response.read())
+                            result = json.loads(response.read())
+                            client_binding.update({key: result[key] for key in ("bindingGeneration", "sourceMediaId")})
+                            return response.status, result
                     except urllib.error.HTTPError as error:
                         return error.code, json.loads(error.read())
 
@@ -2795,7 +2844,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 def post(payload: dict) -> tuple[int, dict]:
                     request = urllib.request.Request(
                         f"{base_url}/api/project",
-                        data=json.dumps(payload).encode("utf-8"),
+                        data=json.dumps({**server.project_binding_payload(), **payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )
@@ -2870,7 +2919,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 def post(payload: dict) -> tuple[int, dict]:
                     request = urllib.request.Request(
                         f"{base_url}/api/project",
-                        data=json.dumps({"project": payload}).encode("utf-8"),
+                        data=json.dumps({**server.project_binding_payload(), "project": payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )
@@ -2942,9 +2991,11 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
 
                 def post(endpoint: str, payload: dict) -> tuple[int, dict]:
+                    intent = {"switchPageId": "http-test-page", "switchGeneration": 0}
+                    server.advance_project_switch(intent)
                     request = urllib.request.Request(
                         f"{base_url}{endpoint}",
-                        data=json.dumps(payload).encode("utf-8"),
+                        data=json.dumps({**server.project_binding_payload(), **intent, **payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )

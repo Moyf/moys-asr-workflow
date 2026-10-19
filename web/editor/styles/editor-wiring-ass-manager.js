@@ -300,11 +300,19 @@ function syncAssStyleManager({ force = false } = {}) {
   const deleteSlot = isStyle ? assStyleDeleteSlot : assProfileDeleteSlot;
   if (deleteSlot && assStyleDeleteButton && assStyleDeleteButton.parentElement !== deleteSlot) {
     deleteSlot.append(assStyleDeleteButton);
+    if (assStyleResetButton) deleteSlot.append(assStyleResetButton);
   }
   if (assStyleDeleteButton) {
     const selected = selectedCollection.find((item) => item.id === assStyleManagerSelection.id);
-    assStyleDeleteButton.disabled = !selected || selected.builtin === true;
-    assStyleDeleteButton.title = selected?.builtin ? '内置条目不能删除' : '删除当前条目';
+    // 内置条目右上角显示「重置」（恢复默认值）；「删除当前」只对自定义条目生效。
+    const builtin = selected?.builtin === true;
+    assStyleDeleteButton.hidden = builtin;
+    assStyleDeleteButton.disabled = !selected;
+    assStyleDeleteButton.title = '删除当前条目';
+    if (assStyleResetButton) {
+      assStyleResetButton.hidden = !builtin;
+      assStyleResetButton.title = '恢复此内置条目的默认值';
+    }
   }
   if (isStyle) syncAssStyleForm(selectedAssStyle());
   else syncAssProfileForm(selectedAssProfile());
@@ -382,6 +390,30 @@ function createAssProfile() {
   syncAssStyleManager({ force: true });
 }
 
+function resetSelectedAssEntry() {
+  const { kind, id } = assStyleManagerSelection;
+  // 重置恢复出厂默认值：三个内置样式各用专属默认，内置 ASS 方案连同逐句动画。
+  const defaults = kind === 'style'
+    ? {
+        default: window.AsrEditorUtils.ASS_DEFAULT_STYLE,
+        ass: window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE,
+        'ass-extension': window.AsrEditorUtils.ASS_DEFAULT_EXTENSION_STYLE,
+      }[id]
+    : window.AsrEditorUtils.ASS_DEFAULT_PROFILE;
+  if (!defaults) return;
+  if (!confirm(`确定将「${defaults.name}」恢复为默认值吗？`)) return;
+  updateAssStyleManagerLibrary((library) => {
+    // assStyleManagerClone 是深拷贝，动画等嵌套对象一并还原。
+    const restored = assStyleManagerClone(defaults);
+    if (kind === 'profile') {
+      library.assProfiles = library.assProfiles.map((profile) => profile.id === id ? restored : profile);
+    } else {
+      library.styles = library.styles.map((style) => style.id === id ? restored : style);
+    }
+  });
+  syncAssStyleManager({ force: true });
+}
+
 function deleteSelectedAssEntry() {
   const { kind, id } = assStyleManagerSelection;
   const collection = kind === 'profile' ? ASS_STYLE_LIBRARY.assProfiles : ASS_STYLE_LIBRARY.styles;
@@ -432,6 +464,7 @@ assStyleNewButton?.addEventListener('click', createAssStyle);
 assStyleDuplicateButton?.addEventListener('click', duplicateAssStyle);
 assProfileNewButton?.addEventListener('click', createAssProfile);
 assStyleDeleteButton?.addEventListener('click', deleteSelectedAssEntry);
+assStyleResetButton?.addEventListener('click', resetSelectedAssEntry);
 assStyleSettingsLink?.addEventListener('click', (event) => {
   event.preventDefault();
   MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-style');
@@ -642,17 +675,15 @@ function syncAssSymbolRule() {
   const options = document.getElementById('ass-inline-text-options');
   if (options) options.hidden = rule === 'none';
   const formatHint = document.getElementById('ass-special-format-hint');
+  const menuHint = document.getElementById('ass-special-format-menu-hint');
   if (formatHint) {
-    const examples = [['*', '强调'], ['~', '删除'], ['-', '缩小'], ['+', '放大']].map(([marker, label]) => {
-      const sample = (width) => `${marker.repeat(width)}${label}${marker.repeat(width)}`;
-      return rule === 'both' ? `${sample(1)}/${sample(2)}` : sample(2);
-    });
-    // 注释是固定双符号 //，不随单双规则变化。
-    examples.push('//注释//');
+    // 双符号在「双符号 / 单双皆可」规则下都能识别，示例固定用双符号，并附上
+    // 固定双符号的句级效果（原地震动、淡出淡入）；「无」规则下整体关闭。
     const sentence = rule === 'none' ? '符号规则已关闭，字幕中的符号将保留原文。'
-      : `你可以使用 ${examples.join('、')} 等符号来对特定字词添加特殊样式。`;
-    // 拼接结果按整句查翻译表：英文界面下动态重建也能得到英文提示。
+      : '你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。';
+    // 整句查翻译表：英文界面下动态重建也能得到英文提示。
     formatHint.textContent = window.MAWE_I18N?.translateText?.(sentence) || sentence;
+    if (menuHint) menuHint.hidden = rule === 'none';
   }
   document.querySelectorAll('[data-ass-symbol]').forEach((hint) => {
     const { assSymbol: marker, assSymbolLabel: label } = hint.dataset;

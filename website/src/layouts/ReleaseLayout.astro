@@ -1,0 +1,129 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import { sitePath } from '../lib/site-path';
+import releaseData from '../generated/releases.json';
+import '../styles/docs.css';
+import '../styles/releases.css';
+
+interface Download { platform: string; arch: string; variant: string; url: string; size_bytes: number }
+interface ReleaseEntry {
+  version: string; date: string; published_at: string | null; summary: string;
+  notes_url: string; notes_json_url: string; github_url: string;
+  downloads: Download[]; base: string | null;
+}
+interface ReleaseIndex { mode: 'preview' | 'published'; latest_stable: string | null; releases: ReleaseEntry[] }
+
+const { frontmatter = {} } = Astro.props;
+const data = releaseData as ReleaseIndex;
+const releases = data.releases ?? [];
+const version = String(frontmatter.version ?? '');
+const index = releases.findIndex((entry) => entry.version === version);
+const release = index >= 0 ? releases[index] : undefined;
+const previous = index >= 0 ? releases[index + 1] : undefined;
+const next = index > 0 ? releases[index - 1] : undefined;
+const downloads = release?.downloads ?? [];
+const platformNames: Record<string, string> = { windows: 'Windows', win: 'Windows', linux: 'Linux', macos: 'macOS', mac: 'macOS' };
+const platformOrder = ['windows', 'linux', 'macos'];
+const platformGroups = platformOrder.map((platform) => ({
+  platform,
+  name: platformNames[platform],
+  items: downloads.filter((item) => item.platform.toLowerCase() === platform || (platform === 'windows' && item.platform.toLowerCase() === 'win') || (platform === 'macos' && item.platform.toLowerCase() === 'mac')),
+}));
+const otherGroups = [...new Set(downloads.map((item) => item.platform.toLowerCase()))]
+  .filter((platform) => !platformOrder.includes(platform) && platform !== 'win' && platform !== 'mac')
+  .map((platform) => ({ platform, name: platformNames[platform] ?? platform, items: downloads.filter((item) => item.platform.toLowerCase() === platform) }));
+const sizeLabel = (bytes: number) => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const tier = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / (1024 ** tier)).toFixed(tier === 0 ? 0 : 1)} ${units[tier]}`;
+};
+const repoUrl = 'https://github.com/Moyf/moys-asr-workflow';
+const date = (release?.published_at || release?.date || '').slice(0, 10);
+const variantName = (variant: string) => ({ full: '完整版', lite: '轻量版' }[variant] ?? '安装包');
+---
+
+<BaseLayout title={`${frontmatter.title ?? `MAW ${version} 更新`} — MAW`} description={release?.summary ?? 'MAW 版本更新说明。'}>
+  <main class="releases-page shell release-detail-page">
+    <header class="release-masthead">
+      <a class="release-wordmark" href={sitePath('releases/')}>MAW <span>/ UPDATES</span></a>
+      <nav aria-label="更新记录导航">
+        <a href={sitePath('releases/')}>全部版本</a>
+        <a href={sitePath()}>首页</a>
+        <a href={repoUrl}>GitHub ↗</a>
+      </nav>
+    </header>
+
+    <div class="release-detail-grid">
+      <aside class="release-rail">
+        <a class="release-back-link" href={sitePath('releases/')}>← 所有版本</a>
+        <div class="release-rail-meta">
+          <span class="release-kicker">MAW / RELEASE</span>
+          <span class="release-rail-version mono">{version}</span>
+          {date && <time class="release-date mono" datetime={date}>{date}</time>}
+          {data.mode === 'preview' && <span class="release-preview-badge">预览</span>}
+        </div>
+        <nav class="release-version-nav" aria-label="相邻版本">
+          {previous && <a href={sitePath(`releases/${previous.version}/`)}><small>较早版本</small><span>← {previous.version}</span></a>}
+          {next && <a href={sitePath(`releases/${next.version}/`)}><small>较新版本</small><span>{next.version} →</span></a>}
+        </nav>
+      </aside>
+
+      <article class="docs-content release-article">
+        {!release ? (
+          <div class="release-missing"><p>没有找到此版本的发布信息。</p><a href={sitePath('releases/')}>返回更新记录</a></div>
+        ) : (
+          <>
+            <p class="release-detail-kicker">版本 {release.version}{release.version === data.latest_stable ? ' · 最新正式版' : ''}</p>
+            <h1>{frontmatter.title ?? `MAW ${release.version} 更新`}</h1>
+            <p class="release-summary">{release.summary}</p>
+            <div class="release-source-links">
+              {data.mode === 'published' && release.github_url && <a href={release.github_url}>在 GitHub 查看此版本 ↗</a>}
+            </div>
+
+            <section class="release-downloads" aria-labelledby="download-heading">
+              <div class="release-section-heading">
+                <p class="release-kicker">DOWNLOADS</p>
+                <h2 id="download-heading">下载此版本</h2>
+              </div>
+              {downloads.length === 0 ? (
+                <p class="release-no-packages">此版本目前没有可下载的安装包。你可以查看 GitHub Release 页面了解发布状态。</p>
+              ) : (
+                <div class="release-platform-grid">
+                  {[...platformGroups, ...otherGroups].map((group) => (
+                    <section class="release-platform-card">
+                      <h3>{group.name}</h3>
+                      {group.items.length ? (
+                        <ul>
+                          {group.items.map((item) => (
+                            <li>
+                              <a class="release-download-link" href={item.url}>
+                                <span>{variantName(item.variant)}<small>{item.arch}</small></span>
+                                <span class="release-download-meta">{sizeLabel(item.size_bytes)} <b aria-hidden="true">↓</b></span>
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p class="release-platform-empty">此版本没有提供 {group.name} 安装包。</p>}
+                    </section>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {release.base && (
+              <details class="release-base-note">
+                <summary>查看完整版本范围</summary>
+                <p>本页记录本次更新。查看 <a href={sitePath(`releases/${release.base}/`)}>{release.base} 系列主要更新 ↗</a>，了解完整能力。</p>
+              </details>
+            )}
+
+            <section class="release-notes" aria-label="版本更新内容">
+              <slot />
+            </section>
+          </>
+        )}
+      </article>
+    </div>
+  </main>
+</BaseLayout>

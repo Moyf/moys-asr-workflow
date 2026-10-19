@@ -884,7 +884,7 @@
 
   function syncUtilityMediaFieldState() {
     const disabled = busy || (!$("toolboxBurnSubtitlePanel").classList.contains("hidden")
-      && $("toolboxGreenScreen").checked);
+      && $("toolboxGreenScreen").checked && !$("toolboxGreenScreenIncludeAudio").checked);
     const field = $("toolboxUtilityMediaDropZone");
     field.classList.toggle("is-disabled", disabled);
     field.setAttribute("aria-disabled", String(disabled));
@@ -896,6 +896,7 @@
   // 绿幕尺寸下拉只在勾选「生成绿幕视频」时显示；默认 4K。
   function syncGreenScreenSizeFieldState() {
     $("toolboxGreenScreenSizeField").classList.toggle("hidden", !$("toolboxGreenScreen").checked);
+    $("toolboxGreenScreenAudioField").classList.toggle("hidden", !$("toolboxGreenScreen").checked);
   }
 
   function selectToolboxSection(section) {
@@ -1244,7 +1245,7 @@
     }
     $("toolboxProgress").classList.toggle("hidden", !busy);
     ["toolboxTimestampScriptPath", "pickToolboxTimestampScript", "toolboxTimestampLanguage", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath", "pickToolboxTimestampAnchors", "toolboxTimestampAudioTrack", "toolboxTimestampOutputDirectory", "pickToolboxTimestampOutput", "checkScriptAlignment"].forEach((id) => { $(id).disabled = busy; });
-    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "postprocessCleanupScriptPath", "pickPostprocessCleanupScript", "postprocessResegmentMaxChars", "postprocessGenerateComparison", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxGreenScreenIncludeAudio", "toolboxGreenScreenSize", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "postprocessCleanupScriptPath", "pickPostprocessCleanupScript", "postprocessResegmentMaxChars", "postprocessGenerateComparison", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
     syncUtilityMediaFieldState();
@@ -2624,6 +2625,7 @@
   async function runBurnSubtitle() {
     if (busy) return;
     const greenScreen = $("toolboxGreenScreen").checked;
+    const includeAudio = greenScreen && $("toolboxGreenScreenIncludeAudio").checked;
     const mediaPath = $("toolboxUtilityMediaPath").value.trim();
     const subtitlePath = $("toolboxBurnSubtitlePath").value.trim();
     if (!greenScreen && !mediaPath) {
@@ -2632,6 +2634,12 @@
     }
     if (!greenScreen && !VIDEO_EXTS.has(extension(mediaPath))) {
       const message = t("toolbox_utility_video_required");
+      setFieldError("toolboxUtilityMediaPath", message);
+      setResult(message, "error");
+      return;
+    }
+    if (includeAudio && (!mediaPath || !MEDIA_EXTS.has(extension(mediaPath)))) {
+      const message = t("toolbox_green_screen_audio_required");
       setFieldError("toolboxUtilityMediaPath", message);
       setResult(message, "error");
       return;
@@ -2651,9 +2659,10 @@
     setBusy(true, "toolbox_status_burning");
     try {
       const result = await bridge("run_burn_subtitles", {
-        mediaPath: greenScreen ? "" : mediaPath,
+        mediaPath: greenScreen && !includeAudio ? "" : mediaPath,
         subtitlePath,
         greenScreen,
+        greenScreenIncludeAudio: includeAudio,
         greenScreenSize: $("toolboxGreenScreenSize")?.value || "4k",
         videoEncoder: $("toolboxBurnVideoEncoder")?.value || "auto",
         ...burnEncodingPayload(),
@@ -2843,6 +2852,7 @@
     setFieldError("toolboxUtilityMediaPath", "");
     renderMediaToolAction();
   });
+  $("toolboxGreenScreenIncludeAudio").addEventListener("change", syncUtilityMediaFieldState);
   $("saveBurnSubtitleSettings").addEventListener("click", saveBurnSubtitleSettings);
   $("runExtractAudio").addEventListener("click", runExtractAudio);
   $("stopToolboxMedia").addEventListener("click", () => { void stopMediaTool(); });

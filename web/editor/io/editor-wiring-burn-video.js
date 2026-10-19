@@ -1,9 +1,10 @@
 // === 编辑器「烧录视频」：调用服务端 FFmpeg (libass) 把当前工程 ASS 字幕烧录进视频 ===
 // 与「去空隙导出 → 重组后视频」同一套媒体任务生命周期（准入令牌 / 轮询 / 流式下载 /
 // 取消与临时文件确认），但只支持 jobs API：烧录总是重新编码并输出 MP4。
-// 两个入口共享本模块的 runBurnVideoJob：
-// - 「更多导出 → 烧录字幕视频」：完整源视频 + 原时间轴 ASS；
+// 三个入口共享本模块的 runBurnVideoJob：
+// - 工具栏「烧录视频」：完整源视频 + 原时间轴 ASS；
 // - 「去空隙导出 → 重组后烧录视频」：ffconcat 保留区间 + 收缩时间轴 ASS（帧级精确切点）。
+// - 「更多导出 → 生成绿幕视频」：音视频工程的字幕 + 可选源音轨。
 
 const BURN_VIDEO_MIME = 'video/mp4';
 // 烧录阶段文本：key 与服务端 MediaJob.stage 对齐。
@@ -16,8 +17,8 @@ function burnVideoText(text) {
   return window.MAWE_I18N?.translateText?.(text) || text;
 }
 
-function burnVideoMediaCurrent(config) {
-  if (config?.canBurnVideoExport !== true || !config.burnVideoJobsUrl) return false;
+function burnVideoMediaCurrent(config, greenScreen = false) {
+  if (config?.[greenScreen ? 'canGreenScreenExport' : 'canBurnVideoExport'] !== true || !config.burnVideoJobsUrl) return false;
   const player = window.MaweCoreState?.player;
   const source = player?.currentSrc || player?.querySelector?.('source')?.src || player?.src;
   if (!source) return false;
@@ -28,7 +29,7 @@ function burnVideoMediaCurrent(config) {
 }
 
 function burnVideoBindingCurrent(config, snapshot) {
-  return burnVideoMediaCurrent(config) && MaweBoot.SERVER_CONFIG === config
+  return burnVideoMediaCurrent(config, snapshot.greenScreen) && MaweBoot.SERVER_CONFIG === config
     && config.burnVideoJobsUrl === snapshot.jobsUrl
     && config.requestToken === snapshot.requestToken
     && config.bindingGeneration === snapshot.bindingGeneration
@@ -46,12 +47,12 @@ function burnVideoSafeError(error, fallback) {
   return burnVideoText(message);
 }
 
-async function runBurnVideoJob({ button, label, buildRequest, suggestedName, startHint, successText }) {
+async function runBurnVideoJob({ button, label, buildRequest, suggestedName, startHint, successText, greenScreen = false }) {
   const tr = burnVideoText;
   const config = MaweBoot.SERVER_CONFIG;
   if (window.__maweBurnVideoTask) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  if (!burnVideoMediaCurrent(config) || !Number.isSafeInteger(config.bindingGeneration) || config.bindingGeneration < 1
+  if (!burnVideoMediaCurrent(config, greenScreen) || !Number.isSafeInteger(config.bindingGeneration) || config.bindingGeneration < 1
       || typeof config.sourceMediaId !== 'string' || !config.sourceMediaId
       || typeof config.burnVideoSourceName !== 'string' || !config.burnVideoSourceName) {
     MaweHint.flashHint(tr('请从启动器打开关联源媒体的工程，再烧录视频'), 'warning');
@@ -67,7 +68,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   const sourceName = config.burnVideoSourceName;
   const jobsUrl = config.burnVideoJobsUrl;
   const bindingEpoch = window.MaweProjectLoad?.projectBindingEpoch;
-  const snapshot = { jobsUrl, requestToken, bindingGeneration, sourceMediaId, sourceName, bindingEpoch };
+  const snapshot = { jobsUrl, requestToken, bindingGeneration, sourceMediaId, sourceName, bindingEpoch, greenScreen };
   const isBindingCurrent = () => burnVideoBindingCurrent(config, snapshot);
 
   let request;
@@ -79,7 +80,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   }
   if (!request) return; // buildRequest 已经提示过原因（如没有可用的去空隙区间）。
 
-  MaweHint.flashHint(tr(startHint), 'warning');
+  MaweHint.flashHint(tr(startHint), 'info');
   let handle;
   try {
     handle = await MaweHost.files.pickSaveFile({
@@ -392,7 +393,27 @@ document.getElementById('download-gap-removed-burn-video')?.addEventListener('cl
   });
 });
 
-// 服务端视频工程 + ASS 字幕模式同时满足时才显示烧录按钮；去空隙入口随所在菜单显隐。
+const greenScreenAudioToggle = document.getElementById('green-screen-include-audio');
+if (greenScreenAudioToggle) {
+  greenScreenAudioToggle.checked = MaweSettings.EDITOR_SETTINGS.greenScreenIncludeAudio === true;
+  greenScreenAudioToggle.addEventListener('change', () => {
+    MaweSettings.updateEditorSettings({ greenScreenIncludeAudio: greenScreenAudioToggle.checked });
+  });
+}
+document.getElementById('download-green-screen-video')?.addEventListener('click', () => {
+  void runBurnVideoJob({
+    button: document.getElementById('download-green-screen-video'),
+    greenScreen: true,
+    label: '生成绿幕视频',
+    startHint: '正在生成绿幕字幕视频…',
+    successText: '绿幕视频已保存',
+    suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('green-screen') || 'green-screen'}.mp4`,
+    buildRequest: () => ({ ass: MaweExportSrt.buildAss(), greenScreen: true,
+      includeAudio: MaweSettings.EDITOR_SETTINGS.greenScreenIncludeAudio === true }),
+  });
+});
+
+// 绿幕适用于音视频工程，不要求打开 ASS 预览模式。
 // ASS 模式切换由 editor-wiring-ass-manager.js 的 syncAssModeControl 调用 syncButton 同步。
 function updateBurnVideoButton() {
   const config = MaweBoot.SERVER_CONFIG;
@@ -402,12 +423,22 @@ function updateBurnVideoButton() {
   if (button) button.hidden = !visible;
   const gapButton = document.getElementById('download-gap-removed-burn-video');
   if (gapButton) gapButton.hidden = !visible;
+  const greenVisible = burnVideoMediaCurrent(config, true);
+  const greenButton = document.getElementById('download-green-screen-video');
+  if (greenButton) {
+    greenButton.hidden = !greenVisible;
+    greenButton.setAttribute('aria-disabled', String(!greenVisible));
+  }
+  document.querySelectorAll('[data-settings-export="download-green-screen-video"]').forEach(button => {
+    button.disabled = !greenVisible;
+  });
 }
 
 function invalidateBurnVideoBinding() {
   const config = MaweBoot.SERVER_CONFIG;
   if (config) {
     config.canBurnVideoExport = false;
+    config.canGreenScreenExport = false;
     config.burnVideoSourceName = null;
     config.burnVideoJobsUrl = null;
   }
