@@ -16,7 +16,8 @@ class RecentProjectsTests(unittest.TestCase):
     def project(self, name="project.mosp"):
         path = self.root / name
         path.write_text('{"private": "must not be copied"}', encoding="utf-8")
-        return str(path)
+        # store 端会规范化路径（Windows TEMP 8.3 别名 / macOS /var 符号链接），期望值保持同一形式。
+        return str(path.resolve())
 
     def test_empty_history_defaults_to_enabled_without_creating_a_file(self):
         self.assertEqual(self.store.get(), {"ok": True, "enabled": True, "entries": [], "limit": 30})
@@ -56,7 +57,7 @@ class RecentProjectsTests(unittest.TestCase):
         Path(old).rename(new)
         self.assertFalse(self.store.get()["entries"][0]["exists"])
         updated = self.store.update({"action": "relocate", "path": str(new), "previousPath": old})
-        self.assertEqual(updated["entries"][0]["path"], str(new))
+        self.assertEqual(updated["entries"][0]["path"], str(new.resolve()))
         self.assertTrue(updated["entries"][0]["exists"])
         self.assertEqual(len(updated["entries"]), 1)
 
@@ -78,7 +79,7 @@ class RecentProjectsTests(unittest.TestCase):
         Path(old).rename(new)
         result = self.store.update({"action": "relocate", "path": str(new), "previousPath": old})
         self.assertFalse(result["enabled"])
-        self.assertEqual([entry["path"] for entry in result["entries"]], [str(new)])
+        self.assertEqual([entry["path"] for entry in result["entries"]], [str(new.resolve())])
 
     def test_invalid_paths_actions_and_booleans_are_rejected(self):
         for payload in [
