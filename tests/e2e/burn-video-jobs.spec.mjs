@@ -4,11 +4,27 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import http from 'node:http';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { compileSources, readSources, readModules } from '../../scripts/build-editor.mjs';
 import { makeTempDir, cleanupTempDir } from './helpers.mjs';
 
 const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-burn-video.js', import.meta.url), 'utf8');
 // 整个模块可安全注入：初始化只读取 SERVER_CONFIG 并绑定按钮，业务入口都是点击回调。
 const handler = source;
+
+// Compile the real DOM-free shared modules through the production translator,
+// as tests/helpers/editor-module-loader.mjs does for Node fixtures.
+const root = fileURLToPath(new URL('../../', import.meta.url));
+const utilityFiles = readSources(root).filter(name => name === 'editor/boot/editor-runtime.js'
+  || name === 'editor/boot/editor-host.js' || name.startsWith('shared/host/')
+  || name === 'shared/gap-remove-core.js' || name === 'shared/editor-utils.js'
+  || name.startsWith('shared/utils/'));
+const utilitySource = (await compileSources(root, utilityFiles,
+  readModules(root).filter(module => utilityFiles.includes(module.file)),
+  file => fs.readFileSync(join(root, 'web', file), 'utf8'),
+  { beforeEntry: 'shared/editor-utils.js' })).code;
+const stickerPlanSource = fs.readFileSync(new URL('../../web/editor/io/editor-sticker-burn-plan.js', import.meta.url), 'utf8');
+
 
 async function fixture(mode, run) {
   const jobs = new Map();
@@ -78,9 +94,13 @@ test.afterEach(() => cleanupTempDir(temp));
 
 async function install(page, origin, mode) {
   await page.goto(origin);
+  await page.addScriptTag({ content: utilitySource });
+  await page.addScriptTag({ content: stickerPlanSource });
+
   await page.evaluate(mode => {
     window.hints = []; window.saved = false;
     window.subtitleBuildOptions = [];
+    window.MaweGapRemoveData = { getRemovedGapRanges: () => [] };
     window.MaweInlineEdit = {};
     window.MaweCoreState = { player: { currentSrc: location.origin + '/media' } };
     window.MaweProjectLoad = { projectBindingEpoch: 1 };
@@ -90,11 +110,12 @@ async function install(page, origin, mode) {
       burnVideoSourceName: 'source.mp4', burnVideoJobsUrl: '/jobs',
       requestToken: 'fixture', bindingGeneration: 1, sourceMediaId: 'opaque-source' } };
     window.MaweExportSrt = {
-      buildAss: options => { subtitleBuildOptions.push(['ass', options]); return '[Script Info] full'; },
-      buildGapRemovedAss: options => { subtitleBuildOptions.push(['gap-ass', options]); return '[Script Info] gap-removed'; },
-      buildSrt: options => { subtitleBuildOptions.push(['srt', options]); return '1\n00:00:00,000 --> 00:00:01,000\nCURRENT SRT\n'; },
-      buildGapRemovedSrt: options => { subtitleBuildOptions.push(['gap-srt', options]); return '1\n00:00:00,000 --> 00:00:01,000\nSHORTENED SRT\n'; },
+      buildAss: options => { subtitleBuildOptions.push(['ass', options && { alignFirstStart: options.alignFirstStart }]); return '[Script Info] full'; },
+      buildGapRemovedAss: options => { subtitleBuildOptions.push(['gap-ass', options && { alignFirstStart: options.alignFirstStart }]); return '[Script Info] gap-removed'; },
+      buildSrt: options => { subtitleBuildOptions.push(['srt', options && { alignFirstStart: options.alignFirstStart }]); return '1\n00:00:00,000 --> 00:00:01,000\nCURRENT SRT\n'; },
+      buildGapRemovedSrt: options => { subtitleBuildOptions.push(['gap-srt', options && { alignFirstStart: options.alignFirstStart }]); return '1\n00:00:00,000 --> 00:00:01,000\nSHORTENED SRT\n'; },
       gapRemovedExportContext: () => ({ intervals: [{ start: 0, end: 1000 }] }),
+      currentAssVideoResolution: () => ({ width: 1920, height: 1080 }),
     };
     window.MaweHint = { flashHint: (text) => window.hints.push(text) };
     window.MaweHost = { server: { fetch: (...args) => fetch(...args) }, files: {
@@ -316,4 +337,74 @@ for (const phase of ['admission-body', 'write-pending']) {
       await expect(page.locator('#burn-video-export-btn')).toBeHidden();
     });
   });
+}
+
+
+for (const assMode of [true, false]) {
+  for (const gapRemoved of [false, true]) {
+    test(`${assMode ? 'ASS' : 'SRT'} ${gapRemoved ? 'gap-removed' : 'ordinary'} burn keeps media timing and sticker placement`, async ({ page }) => {
+      await fixture('ready', async (origin, state) => {
+        await install(page, origin, assMode ? 'ready' : 'ass-off');
+        await page.evaluate(({ assMode, gapRemoved }) => {
+          Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode, exportStartAtZero: true,
+            stickersEnabled: true, stickerBurnMode: 'cue-left' });
+          window.MaweDom = { stickerOverlayToggle: { checked: true } };
+          window.MawePreviewGeometry = { getStickerGeometry: () => ({
+            x: 1400 / 1920, y: 80 / 1080, width: 460 / 1920, height: 324 / 1080,
+          }) };
+          const removed = [{ start: 1000, end: 2000, removed: true }];
+          window.MaweGapRemoveData = { getRemovedGapRanges: () => removed };
+          window.MaweStickerOverlay = { rebuildStickerIntervals() {}, stickerIntervals: [
+            { start: 3000, end: 4000, source: { rel: 'a.png' } },
+            // A second window is wholly removed; it must not survive at a zero-length boundary.
+            ...(gapRemoved ? [{ start: 1300, end: 1500, source: { rel: 'removed.png' } }] : []),
+          ] };
+          const start = gapRemoved ? 2000 : 3000;
+          const end = gapRemoved ? 3000 : 4000;
+          const plan = { width: 1920, height: 1080, slices: [{ start, end,
+            legacy: false, scale: 1, height: 1080, diagnostic: '',
+            pieces: [{ start, end, instant: null, from: { x: 900, y: 900 }, to: { x: 900, y: 900 } }],
+            items: [{ role: 'main', start, end, fontSize: 60, cueScale: 1,
+              alignment: 2, manual: false, absolute: false, offset: { x: 20, y: -10 },
+              rect: { left: -30, top: -80, right: 500, bottom: 10 } }],
+          }] };
+          const build = (format, shortened) => options => {
+            subtitleBuildOptions.push([`${shortened ? 'gap-' : ''}${format}`,
+              { alignFirstStart: options?.alignFirstStart }]);
+            const begin = options?.alignFirstStart === false ? start : 0;
+            if (format === 'ass') {
+              options?.onAssPlan?.(plan);
+              return `[Events]\nDialogue: 0,0:00:0${begin / 1000}.00,0:00:0${end / 1000}.00,Default,,0,0,0,,CURRENT`;
+            }
+            return `1\n00:00:0${begin / 1000},000 --> 00:00:0${end / 1000},000\nCURRENT\n`;
+          };
+          Object.assign(MaweExportSrt, { buildAss: build('ass', false), buildGapRemovedAss: build('ass', true),
+            buildSrt: build('srt', false), buildGapRemovedSrt: build('srt', true),
+            gapRemovedExportContext: () => ({ intervals: [{ start: 0, end: 1000 }, { start: 2000, end: 5000 }] }),
+          });
+        }, { assMode, gapRemoved });
+        await page.click(gapRemoved ? '#download-gap-removed-burn-video' : '#burn-video-export-btn');
+        await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
+        expect(state.payloads).toHaveLength(1);
+        const payload = state.payloads[0];
+        const start = gapRemoved ? 2000 : 3000;
+        const end = gapRemoved ? 3000 : 4000;
+        const format = assMode ? 'ass' : 'srt';
+        expect(payload[format]).toContain(assMode ? `0:00:0${start / 1000}.00` : `00:00:0${start / 1000},000`);
+        expect(payload[assMode ? 'srt' : 'ass']).toBeUndefined();
+        expect(await page.evaluate(() => window.subtitleBuildOptions)).toEqual([
+          [`${gapRemoved ? 'gap-' : ''}${format}`, { alignFirstStart: false }],
+        ]);
+        expect(payload.intervals).toEqual(gapRemoved
+          ? [{ startMs: 0, endMs: 1000 }, { startMs: 2000, endMs: 5000 }] : undefined);
+        expect(payload.stickers.placements).toEqual([{
+          rel: 'a.png', x: assMode ? 643 : 1400, y: assMode ? 810 : 80,
+          width: assMode ? 240 : 460, height: assMode ? 90 : 324,
+          align: assMode ? 'right' : 'center', intervals: [{ start, end }],
+        }]);
+        // SRT cannot provide an ASS layout plan; the real planner must keep the
+        // sticker in its fixed box rather than drop it or fabricate cue geometry.
+      });
+    });
+  }
 }

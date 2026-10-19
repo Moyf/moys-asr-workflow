@@ -105,6 +105,11 @@ def image_dimensions(path: Path) -> tuple[int, int]:
             marker = data.find(b"\x9d\x01\x2a", 20)
             if marker >= 0 and marker + 7 <= len(data):
                 return int.from_bytes(data[marker + 3:marker + 5], "little") & 0x3FFF, int.from_bytes(data[marker + 5:marker + 7], "little") & 0x3FFF
+        # VP8L（无损）是贴纸包常见的静态 WebP 变体：帧头签名 0x2f 后的 4 字节
+        # 小端里低 14 位为宽 -1、次 14 位为高 -1。
+        if data[12:16] == b"VP8L" and len(data) >= 25 and data[20] == 0x2F:
+            bits = int.from_bytes(data[21:25], "little")
+            return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
     raise ValueError(f"unsupported or invalid image: {path}")
 
 

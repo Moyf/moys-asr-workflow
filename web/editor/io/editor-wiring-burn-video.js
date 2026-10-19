@@ -366,13 +366,23 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
 
 // 普通和去空隙烧录分别使用原时间轴和收缩后的字幕。
 function buildBurnVideoSubtitles(gapRemoved = false) {
-  // The output video keeps the media timeline. The file export preference that
-  // extends the first cue to zero must not make burned captions appear early.
-  const options = { alignFirstStart: false };
-  if (MaweSettings.EDITOR_SETTINGS.assMode === true) {
-    return { ass: gapRemoved ? MaweExportSrt.buildGapRemovedAss(options) : MaweExportSrt.buildAss(options) };
-  }
-  return { srt: gapRemoved ? MaweExportSrt.buildGapRemovedSrt(options) : MaweExportSrt.buildSrt(options) };
+  // Burned captions and sticker plans share the media timeline, independently
+  // of the subtitle-file preference that extends the first cue to zero.
+  let assPlan = null;
+  const options = { alignFirstStart: false, onAssPlan: (plan) => { assPlan = plan; } };
+  const subtitles = MaweSettings.EDITOR_SETTINGS.assMode === true
+    ? { ass: gapRemoved ? MaweExportSrt.buildGapRemovedAss(options) : MaweExportSrt.buildAss(options) }
+    : { srt: gapRemoved ? MaweExportSrt.buildGapRemovedSrt(options) : MaweExportSrt.buildSrt(options) };
+  return {
+    ...subtitles,
+    stickers: MaweStickerBurnPlan.collectStickerPlans({
+      gapRemoved: gapRemoved ? MaweGapRemoveData.getRemovedGapRanges() : null,
+      resolution: MaweExportSrt.currentAssVideoResolution(),
+      mode: MaweSettings.EDITOR_SETTINGS.stickerBurnMode === 'cue-left' ? 'cue-left' : 'fixed',
+      // SRT has no browser ASS plan and keeps the existing fixed-box fallback.
+      plan: assPlan,
+    }),
+  };
 }
 
 document.getElementById('burn-video-export-btn')?.addEventListener('click', () => {
@@ -416,7 +426,7 @@ document.getElementById('download-green-screen-video')?.addEventListener('click'
     button: document.getElementById('download-green-screen-video'),
     greenScreen: true,
     label: '生成绿幕视频',
-    startHint: '正在生成绿幕字幕视频…',
+    startHint: '正在生成绿幕字幕视频…（绿幕导出不含表情包）',
     successText: '绿幕视频已保存',
     suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('green-screen') || 'green-screen'}.mp4`,
     buildRequest: () => ({ ass: MaweExportSrt.buildAss(), greenScreen: true,

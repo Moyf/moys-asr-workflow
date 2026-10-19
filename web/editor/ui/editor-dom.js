@@ -352,6 +352,9 @@
   const clickBehaviorSelect = document.getElementById('click-behavior');
 
 
+  const stickerBurnModeSelect = document.getElementById('sticker-burn-mode');
+
+
   const clickTargetField = document.getElementById('click-target-field');
 
 
@@ -1139,6 +1142,7 @@
     contextualHelpButtons,
     helpMediaSeekStep,
     clickBehaviorSelect,
+    stickerBurnModeSelect,
     clickTargetField,
     clickTargetSelect,
     keyboardOperationReferenceSelect,
