@@ -34,6 +34,8 @@ python scripts/run_check.py --timeout 600 -- node node_modules/@playwright/test/
 
 `--` 后是可执行文件与参数，不是 shell 表达式；管道、重定向和环境变量赋值在外层处理。运行器关闭 stdin，stdout / stderr 合并直接写文件，避免等待继承管道的 EOF。
 
+`scripts/run_tests.py --parallel N` 仅在不指定 targets 的平铺测试发现中按文件并行。发现测试子包（子目录含 `__init__.py`）时会提示并回退标准串行发现，保留包初始化和 `load_tests` 的执行、筛选与错误；文件自身的 `load_tests` 仍接收原始 `--pattern`，返回的自定义用例和导入的测试类都会执行。指定 targets 时同样回退串行；默认不加 `--parallel` 的行为不变。
+
 每次创建 `.artifacts/checks/<UTC时间-随机ID>/`：
 
 | 文件/结果 | 意义 |
