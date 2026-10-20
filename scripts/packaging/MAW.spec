@@ -9,7 +9,7 @@ except ImportError:  # pragma: no cover - only reached outside a PyInstaller bui
     collect_data_files = lambda _package: []
     collect_submodules = lambda _package: []
 
-ROOT = Path(SPECPATH).resolve()
+ROOT = Path(SPECPATH).resolve().parents[1]
 
 # bundle 是构建产物（不入库）：打包前必须先构建（build-windows.ps1 /
 # build-appimage.sh / release 工作流都会显式构建）。在这里 fail fast，
@@ -79,13 +79,14 @@ datas = [
     (str(ROOT / "server-align"), "server-align"),
     (str(ROOT / "LICENSE"), "."),
     (str(ROOT / "THIRD_PARTY_NOTICES.md"), "."),
-    (str(ROOT / "FAQ-常见问题.txt"), "."),
+    (str(ROOT / "docs" / "user" / "FAQ-常见问题.txt"), "."),
     (str(ROOT / "blank-editor.html"), "."),
     (str(ROOT / "assets" / "maw.ico"), "assets"),
     (str(ROOT / "assets" / "show.webp"), "assets"),
-    (str(ROOT / "generate_subtitle_local.py"), "local-runtime"),
-    (str(ROOT / "generate_subtitle_qwen_api.py"), "local-runtime"),
-    (str(ROOT / "generate_subtitle_openai_api.py"), "local-runtime"),
+    (str(ROOT / "maw" / "asr" / "__init__.py"), "local-runtime/maw/asr"),
+    (str(ROOT / "maw" / "asr" / "common.py"), "local-runtime/maw/asr"),
+    (str(ROOT / "maw" / "asr" / "segmentation.py"), "local-runtime/maw/asr"),
+    (str(ROOT / "maw" / "asr" / "local.py"), "local-runtime/maw/asr"),
     (str(ROOT / "edit.py"), "local-runtime"),
     (str(ROOT / "maw" / "waveform.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "quapeaks.py"), "local-runtime/maw"),
@@ -243,13 +244,13 @@ a = Analysis(
         "maw.mopeaks",
         "maw.output_naming",
         "maw.project_backups",
-        "generate_subtitle_qwen_api",
-        "generate_subtitle_soniox_api",
-        "generate_subtitle_doubao_api",
-        "generate_subtitle_tencent_api",
-        "generate_subtitle_openai_api",
-        "generate_subtitle_local",
-        "generate_subtitle_bcut_api",
+        "maw.asr.qwen",
+        "maw.asr.soniox",
+        "maw.asr.doubao",
+        "maw.asr.tencent",
+        "maw.asr.openai",
+        "maw.asr.local",
+        "maw.asr.bcut",
         "serve",
         "maw.media_jobs",
         "maw.media_export_audio",

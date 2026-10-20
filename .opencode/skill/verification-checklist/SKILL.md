@@ -71,5 +71,5 @@ status: pending
 ## 改模板本身（而不是某次清单）
 
 - 不要为单次清单改动模板结构；确需改进直接改 `templates/verification-checklist.html`，并同步 README 与本 skill。
-- 模板改动后的验证：`node --test tests/test_verification_checklist.mjs`、`uv run --no-sync python scripts/run_tests.py tests/test_verification_checklist.py tests/test_verification_checklist_build.py`、e2e `pnpm exec playwright test tests/e2e/verification-checklist.spec.mjs --project=chromium`。
+- 模板改动后的验证：`node --test tests/test_verification_checklist.mjs`、`uv run --no-sync python scripts/run_tests.py tests/test_verification_checklist.py tests/test_verification_checklist_build.py`、e2e `pnpm exec playwright test --config=tests/config/playwright.config.mjs tests/e2e/verification-checklist.spec.mjs --project=chromium`。
 - 模板脚本用 `content-visibility: auto` 控制长页排版成本；改渲染路径后用压力实例实测连续 resize（单次重排 < 8ms）与滚动。后台 webview 的 rAF / longtask 测量不可靠，用同步强制重排计时。

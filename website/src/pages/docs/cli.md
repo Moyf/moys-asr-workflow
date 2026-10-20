@@ -23,7 +23,7 @@ source: "docs/user/CLI.md"
 | `--align-script SCRIPT -i MEDIA --alignment-check` | 无需模型，先检查输入 / 音轨与分块；输出 JSON，不生成字幕。 |
 | `--server` / `--stop-server` | 启动或停止本机编辑器。 |
 
-公开 CLI 只选择云端供应商和实验性必剪；本地 ASR 使用独立脚本，见 [LOCAL_ASR](../local-asr/)。`--transcribe*`、`--serve` 是内部兼容入口，不用于新脚本。
+公开 CLI 只选择云端供应商和实验性必剪；本地 ASR 使用独立模块命令，见 [LOCAL_ASR](../local-asr/)。`--transcribe*`、`--serve` 是内部兼容入口，不用于新自动化。
 
 ```powershell
 .\MAW.exe --help
@@ -55,7 +55,7 @@ source: "docs/user/CLI.md"
 | `--max-words N` / `--min-words N` | 单词型最大长度/短句阈值，默认 13 / 3。 |
 | `--gap-split MS` | 停顿切句阈值，默认 500 毫秒。 |
 | `--keep-punct` | 保留句尾标点；默认剥除 `，。；,.;`，问叹号保留。 |
-| `--strip-tail-punct CHARS` | 指定剥除的句尾标点；公开入口不转发空字符串，需禁用剥除时使用底层脚本。 |
+| `--strip-tail-punct CHARS` | 指定剥除的句尾标点；公开入口不转发空字符串，需禁用剥除时使用高级模块命令。 |
 | `--extra-strong-punct CHARS` | 额外强断句符号，仅向 Qwen 下发。 |
 | `--speaker` / `--speaker-colors` | 请求说话人分离；后者同时写颜色快照，无需重复前者。能力取决于模型。 |
 | `-ll` / `--length-limit VALUE` | 限制处理时长，支持 `90`、`20s`、`2m`、`1h`。 |
@@ -66,7 +66,7 @@ source: "docs/user/CLI.md"
 | `--debug` | 输出 API 调试信息。 |
 | `-s` / `--stickers PATH` | 表情包目录，也可用于 Server。 |
 
-Qwen3-ASR 不支持说话人开关；必剪不支持模型、语言或说话人参数。OpenAI 兼容接口的说话人模式需要 Launcher 或底层脚本专用入口，不通过公开 CLI 的 `--speaker` 请求。
+Qwen3-ASR 不支持说话人开关；必剪不支持模型、语言或说话人参数。OpenAI 兼容接口的说话人模式需要 Launcher 或高级模块命令的专用入口，不通过公开 CLI 的 `--speaker` 请求。
 
 ### 服务商专用参数
 
@@ -113,22 +113,22 @@ OpenAI 兼容服务与实验必剪：
 
 CLI 不为 OpenRouter 模型自动补前缀，必须填服务商实际模型 ID。兼容接口只返回纯文本时不能生成字幕。以上 URL 示例需替换为真实、可访问且允许提交的地址。
 
-## 底层转写脚本与公开 CLI 的区别
+## 高级模块命令与公开 CLI 的区别
 
-源码提供七个 `generate_subtitle_*.py` 脚本：Qwen、Soniox、豆包、腾讯云、OpenAI、必剪与本地。它们使用位置参数输入媒体，通常通过 `--json` 请求工程；HTML 默认值与公开 CLI 不完全相同，需要时明确加 `--no-html`。各脚本参数以自己的 `--help` 为准。
+源码高级 ASR 入口使用 Python 模块命令，旧根目录 `generate_subtitle_*.py` 脚本已移除；对应参数保持不变。模块入口为 `python -m maw.asr.qwen`、`python -m maw.asr.soniox`、`python -m maw.asr.doubao`、`python -m maw.asr.bcut`、`python -m maw.asr.tencent`、`python -m maw.asr.openai` 和 `python -m maw.asr.local`。各模块使用位置参数输入媒体，通常通过 `--json` 请求工程；HTML 默认值与公开 CLI 不完全相同，需要时明确加 `--no-html`。可在对应命令后加 `--help` 查看参数。
 
 ```sh
-uv run --no-sync python generate_subtitle_qwen_api.py "clip.mp4" -o "clip.srt" --json --no-html
+uv run --no-sync python -m maw.asr.qwen "clip.mp4" -o "clip.srt" --json --no-html
 ```
 
-| 参数 | 仅在对应底层脚本使用 |
+| 参数 | 仅在对应高级模块命令使用 |
 | --- | --- |
-| `--prompt`、`--keyword`、`--diarize` | `generate_subtitle_openai_api.py`；公开 CLI 未提供。说话人模式与 prompt/keyword 互斥。 |
-| `--engine`、`--device`、`--firered-punc` 等 | `generate_subtitle_local.py`，见 [本地 ASR](../local-asr/)。 |
-| `--audio-track` | 支持该参数的底层生成器；公开 CLI 未提供。 |
-| `--debug-raw`、`--no-model-tag` | 底层生成器调试与命名参数；公开 CLI 未提供。 |
+| `--prompt`、`--keyword`、`--diarize` | `maw.asr.openai`；公开 CLI 未提供。说话人模式与 prompt/keyword 互斥。 |
+| `--engine`、`--device`、`--firered-punc` 等 | `maw.asr.local`，见 [本地 ASR](../local-asr/)。 |
+| `--audio-track` | 支持该参数的模块入口；公开 CLI 未提供。 |
+| `--debug-raw`、`--no-model-tag` | 模块入口调试与命名参数；公开 CLI 未提供。 |
 
-底层脚本默认命名按供应商不同，不能统一假设带时间戳或模型名。在线 `--debug-raw` 保存原始响应，本地保存阶段文件与 `.local-debug.json` 清单，可能包含原始字幕，应按素材隐私要求处理。
+模块命令的默认输出命名因供应商而异，不能统一假设带时间戳或模型名。在线 `--debug-raw` 保存原始响应，本地保存阶段文件与 `.local-debug.json` 清单，可能包含原始字幕，应按素材隐私要求处理。
 
 成功日志包含耗时与实时率，`MAW_STAT rtf=0.123` 可供脚本解析。RTF 是耗时/媒体时长，越小越快；费用估算使用程序参考配置，不代替服务商账单。
 
@@ -177,7 +177,7 @@ if (-not (Test-Path -LiteralPath $srtPath) -or -not (Test-Path -LiteralPath $mos
 | --- | --- |
 | 帮助或转写成功 | `0`；转写还需检查产物。 |
 | 公开 CLI 参数错误 | 通常 `2`，修正命令再运行。 |
-| 媒体、配置、网络或模型失败 | 非零，保留具体 stderr；底层脚本可能用 `2` 表示空识别。 |
+| 媒体、配置、网络或模型失败 | 非零，保留具体 stderr；高级模块命令可能用 `2` 表示空识别。 |
 | 生成器返回成功但缺少文件 | `1`。 |
 | 没有可安全停止的 Server | `1`，确认端口与状态。 |
 

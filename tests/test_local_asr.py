@@ -10,8 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from generate_subtitle_qwen_api import extract_audio
-from generate_subtitle_local import build_parser, default_output_path, load_hotword_files
+from maw.asr.common import extract_audio
+from maw.asr.local import build_parser, default_output_path, load_hotword_files
 from maw.hub_download import HubSnapshot
 from maw.local_asr import (
     FIRERED_DEFAULT_MODEL,
@@ -458,7 +458,7 @@ class LocalSegmentationTuningTests(unittest.TestCase):
 
 class LocalAsrFlowTests(unittest.TestCase):
     def test_extract_audio_passes_duration_limit_to_ffmpeg(self) -> None:
-        with mock.patch("generate_subtitle_qwen_api.subprocess.run") as run:
+        with mock.patch("maw.asr.common.subprocess.run") as run:
             extract_audio("clip.mp4", "clip.wav", duration_limit=2.0, ffmpeg_path="ffmpeg")
 
         command = run.call_args.args[0]
@@ -1618,7 +1618,7 @@ class LocalCliNamingAndStatTests(unittest.TestCase):
     DURATION_MS = 100_000  # 100 秒 → elapsed 12.3s 得 rtf 0.123
 
     def _run(self, extra_args, *, explicit_output=None):
-        from generate_subtitle_local import main
+        from maw.asr.local import main
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -1642,16 +1642,16 @@ class LocalCliNamingAndStatTests(unittest.TestCase):
                 return SimpleNamespace(srt=kwargs["output_srt"], json=None, html=None)
 
             with mock.patch(
-                "generate_subtitle_local.resolve_ffmpeg_tools",
+                "maw.asr.local.resolve_ffmpeg_tools",
                 return_value=SimpleNamespace(ffmpeg="ffmpeg", ffprobe="ffprobe"),
-            ), mock.patch("generate_subtitle_local.create_local_engine", return_value=fake_engine), \
+            ), mock.patch("maw.asr.local.create_local_engine", return_value=fake_engine), \
                  mock.patch(
-                     "generate_subtitle_local.build_local_segments",
+                     "maw.asr.local.build_local_segments",
                      return_value=[{"start": 0, "end": 1000, "text": "你好"}],
                  ), \
-                 mock.patch("generate_subtitle_local.write_local_outputs", side_effect=fake_wlo), \
-                 mock.patch("generate_subtitle_local.prepared_audio") as prepared, \
-                 mock.patch("generate_subtitle_local.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.asr.local.write_local_outputs", side_effect=fake_wlo), \
+                 mock.patch("maw.asr.local.prepared_audio") as prepared, \
+                 mock.patch("maw.asr.local.time.perf_counter", side_effect=fake_perf), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
                 prepared.return_value.__enter__.return_value = (
                     str(root / "audio.wav"),

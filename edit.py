@@ -6,7 +6,7 @@
 示例:
     uv run python edit.py "subtitle-project.mosp" -m "video.mp4"
 
-工程文件由 generate_subtitle_qwen_api.py --json 生成，内容是 UTF-8 JSON，默认扩展名为 `.mosp`，包含每条字幕的字级 timestamps。
+工程文件由 python -m maw.asr.qwen --json 生成，内容是 UTF-8 JSON，默认扩展名为 `.mosp`，包含每条字幕的字级 timestamps。
 
 页面功能（HTML 单文件）:
 - 嵌入媒体播放器，单击字幕跳转
@@ -59,7 +59,7 @@ VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 # Keep this aligned with pyproject.toml; release workflows synchronize it.
-BUNDLED_EDITOR_VERSION = "1.9.0"
+BUNDLED_EDITOR_VERSION = "1.10.0-beta.1"
 
 
 class Sticker(TypedDict):
@@ -343,7 +343,7 @@ def main():
     parser = argparse.ArgumentParser(description="MAWE — Moy's ASR Workflow Editor（含表情包管理 + 多选）")
     parser.add_argument(
         "json_path", nargs="?",
-        help="工程文件路径（.mosp 或 .json，由 generate_subtitle_qwen_api.py --json 生成）；--blank 模式下可省略",
+        help="工程文件路径（.mosp 或 .json，由 python -m maw.asr.qwen --json 生成）；--blank 模式下可省略",
     )
     parser.add_argument(
         "-m", "--media",

@@ -3,7 +3,7 @@
 MOSS Transcribe-Diarize 依赖 Transformers 5.x，与本地 QwenASR / FunASR
 （funasr / Transformers 4.x 侧）不能共享同一个环境，因此独立安装到
 ``local-runtime-moss``（Python 3.11，与 local 共用同一个 embedded zip，
-避免 bundle 额外携带 3.12）。依赖声明于仓库根 ``moss-requirements.in``
+避免 bundle 额外携带 3.12）。依赖声明于 ``scripts/packaging/moss-requirements.in``
 （与 local/ocr 的 pyproject dependency-group 同一「单一真源」机制；因 Transformers
 与 qwen-asr 互斥无法共容于 uv.lock，故独立声明、独立冻结），构建期由
 ``uv pip compile`` 生成 ``requirements-moss.txt``。
@@ -48,7 +48,7 @@ MOSS_SPEC = RuntimeSpec(
     requirements_bundle_name="requirements-moss.txt",
     # 主清单独立声明于 moss-requirements.in（uv pip compile 冻结，须带
     # pytorch cu130 index）；CPU 变体由 freezer 从同一 in 文件剥离生成。
-    requirements_in="moss-requirements.in",
+    requirements_in="scripts/packaging/moss-requirements.in",
     requirements_in_args=("--extra-index-url", PYTORCH_INDEX),
     verify_command=_VERIFY_COMMAND,
     package_dirs=("moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"),
