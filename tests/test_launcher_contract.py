@@ -23,7 +23,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('web/launcher/boot/launcher-mock-api.js', 'utf8');
 vm.runInNewContext(source + '\nmockApi().get_config().then(value => console.log(JSON.stringify(value)))', {
-  console, navigator: {platform: 'Win32'}, localStorage: {getItem: () => null},
+  console, URL, navigator: {platform: 'Win32'}, localStorage: {getItem: () => null},
+  isCustomSlotId: id => ['custom', 'custom2', 'custom3'].includes(id),
   LAST_MODEL_KEY: 'model', LAST_LANGUAGE_KEY: 'language', ZOOM_PERCENT_KEY: 'zoom',
   ZOOM_DEFAULT: 100, OPENAI_ASR_CUSTOM_MODEL_ID: 'custom', state: {config: null},
 });

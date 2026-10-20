@@ -562,7 +562,7 @@ function providerGateHarness({ providers, storedTaskMemory = {}, backendProvider
     "providerIdForTask", "rememberProviderForTask", "stepProviderId",
     "isCustomSlot", "customSlotVisibleInToolbox", "provider", "autoLlmOperation", "autoLlmReady",
     "autoStepReady", "refreshPostprocessProviderStatus", "bindPendingStepProvider", "confirmAutoStepCheck",
-    "cancelPendingAutoStep", "maybeEnablePendingAutoStep", "llmSettingsState", "acceptLlmSettingsResponse", "saveSettings", "testConnection",
+    "cancelPendingAutoStep", "maybeEnablePendingAutoStep", "llmSettingsState", "cacheLlmSettings", "acceptLlmSettingsResponse", "saveSettings", "testConnection",
   ];
   vm.runInContext(names.map((name) => launcherFunction(name)).join("\n"), context);
   vm.runInContext(`
@@ -727,6 +727,22 @@ test("unchecked steps ignore a pending provider refresh", async () => {
   assert.equal(gate.getPending(), "");
 });
 
+test("canceling pending checks unchecks them and ignores their later provider replies", async () => {
+  const gate = providerGateHarness({ providers: [providerStub()] });
+  const replies = [];
+  gate.context.bridge = () => new Promise(resolve => replies.push(resolve));
+  gate.fields.autoStepCleanup.checked = true;
+  gate.fields.autoStepProofread.checked = true;
+  const cleanup = gate.context.confirmAutoStepCheck("cleanup", gate.fields.autoStepCleanup);
+  const proofread = gate.context.confirmAutoStepCheck("proofread", gate.fields.autoStepProofread);
+  gate.context.cancelPendingAutoStep();
+  assert.equal(gate.fields.autoStepCleanup.checked, false);
+  assert.equal(gate.fields.autoStepProofread.checked, false);
+  replies.forEach(resolve => resolve({ postprocessProviders: [providerStub()] }));
+  await Promise.all([cleanup, proofread]);
+  assert.equal(gate.openedSettings.length, 0);
+});
+
 test("a saved configuration still invalidates cached readiness when the user has edited the form again", async () => {
   const gate = providerGateHarness({ providers: [providerStub({ verified: true, hasApiKey: true })] });
   gate.fields.llmModel.value = "saved-model";
@@ -737,8 +753,30 @@ test("a saved configuration still invalidates cached readiness when the user has
   finish({ ok: true, verified: false, model: "saved-model" });
   await saving;
   assert.equal(gate.fields.llmModel.value, "next-edit");
+  assert.equal(gate.context.provider("deepseek").model, "saved-model");
   assert.equal(gate.ready(), false);
 });
+
+for (const method of ["saveSettings", "testConnection"]) {
+  test(`${method} retains the saved custom connection without overwriting newer form edits`, async () => {
+    const providers = [providerStub(), providerStub({ id: "custom", baseUrl: "", model: "", hasBaseUrl: false, hasModel: false })];
+    const gate = providerGateHarness({ providers });
+    gate.fields.llmProvider.value = "custom";
+    gate.fields.llmBaseUrl.value = "http://127.0.0.1:1234/v1";
+    gate.fields.llmModel.value = "submitted-model";
+    let finish;
+    gate.context.bridge = () => new Promise(resolve => { finish = resolve; });
+    const action = gate.context[method]();
+    gate.fields.llmModel.value = "next-edit";
+    finish({ ok: true, verified: true, apiKeyRequired: false, baseUrl: "http://localhost:1234/v1", model: "saved-model" });
+    await action;
+    assert.equal(gate.fields.llmModel.value, "next-edit");
+    assert.equal(gate.fields.llmBaseUrl.value, "http://127.0.0.1:1234/v1");
+    assert.equal(gate.context.provider("custom").baseUrl, "http://localhost:1234/v1");
+    assert.equal(gate.context.provider("custom").model, "saved-model");
+    assert.equal(gate.context.provider("custom").verified, false);
+  });
+}
 
 test("an older save cannot invalidate a later successful test of the same provider", async () => {
   const gate = providerGateHarness({ providers: [providerStub({ verified: true, hasApiKey: true })] });

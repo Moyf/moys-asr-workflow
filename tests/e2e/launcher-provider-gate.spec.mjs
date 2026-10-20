@@ -66,3 +66,23 @@ test('canceling a checkbox during the provider refresh does not open settings', 
   await expect(page.locator('#autoStepCleanup')).not.toBeChecked();
   await expect(page.locator('#settingsModal')).toBeHidden();
 });
+
+test('Escape cancels and unchecks a step before its provider refresh returns', async ({ page }) => {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    const callBackend = window.MAWLauncher.callBackend;
+    window.savedCancelPlans = [];
+    window.MAWLauncher.callBackend = (method, payload) => {
+      if (method === 'get_config') return new Promise(resolve => { window.finishProviderRefresh = resolve; });
+      if (method === 'save_postprocess_plan') window.savedCancelPlans.push(payload.plan);
+      return callBackend(method, payload);
+    };
+  });
+  await page.locator('#autoStepCleanup').check();
+  await page.waitForFunction(() => typeof window.finishProviderRefresh === 'function');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#autoStepCleanup')).not.toBeChecked();
+  await page.evaluate(() => window.finishProviderRefresh({ postprocessProviders: window.MAWLauncher.config.postprocessProviders }));
+  await expect(page.locator('#settingsModal')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.savedCancelPlans.at(-1)?.steps.find(step => step.id === 'cleanup')?.enabled)).toBe(false);
+});

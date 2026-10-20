@@ -1863,6 +1863,9 @@
     (window.MAWLauncher.config?.postprocessProviders || []).forEach((item) => {
       const next = fresh.get(String(item?.id || ""));
       if (!next) return;
+      for (const field of ["baseUrl", "model", "reasoningMode", "displayName", "label"]) {
+        if (typeof next[field] === "string") item[field] = next[field];
+      }
       item.verified = Boolean(next.verified);
       item.hasApiKey = Boolean(next.hasApiKey);
       item.apiKeyRequired = next.apiKeyRequired !== false;
@@ -1877,7 +1880,19 @@
   function cancelPendingAutoStep() {
     pendingAutoStep = "";
     pendingAutoStepRequest = null;
+    let changed = false;
+    for (const stepId of autoStepCheckRequests.keys()) {
+      const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
+      if (checkbox?.checked) {
+        checkbox.checked = false;
+        changed = true;
+      }
+    }
     autoStepCheckRequests.clear();
+    if (changed) {
+      renderAutoPostprocessState();
+      persistAutoPlanSoon();
+    }
   }
 
   function bindPendingStepProvider(providerId, request = pendingAutoStepRequest) {
@@ -2425,11 +2440,26 @@
       .map((id) => $(id).value));
   }
 
-  function acceptLlmSettingsResponse(item, request, settingsState, result) {
+  function cacheLlmSettings(item, result, submitted) {
+    item.baseUrl = String(result.baseUrl ?? submitted.baseUrl).trim();
+    item.model = String(result.model ?? submitted.model).trim();
+    item.hasApiKey = Boolean(result.maskedApiKey || item.maskedApiKey || submitted.apiKey || item.hasApiKey);
+    item.apiKeyRequired = result.apiKeyRequired !== false;
+    item.hasBaseUrl = Boolean(item.baseUrl);
+    item.hasModel = Boolean(item.model);
+    item.reasoningMode = result.reasoningMode || submitted.reasoningMode || "off";
+    item.displayName = isCustomSlot(item) ? submitted.displayName : "";
+    item.label = result.label || providerLabel(item);
+    item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
+    item.verified = Boolean(result.verified);
+  }
+
+  function acceptLlmSettingsResponse(item, request, settingsState, result, submitted) {
     if (request === llmSettingsRequest && settingsState === llmSettingsState()) return true;
     // 后端可能已写入新配置；失效该供应商缓存，下一次门槛检查重新读取权威状态。
     // 更晚的同供应商操作已接管时，旧回包不能使其重新失效。
     if (result.ok && providerSettingsRequests.get(item.id) === request) {
+      cacheLlmSettings(item, result, submitted);
       item.verified = false;
       providerStatusApplied = ++providerStatusRequest;
       renderProviderKeyStatus(provider());
@@ -2445,15 +2475,16 @@
     // 设置页操作以设置页下拉为准：工具箱与设置页解耦后两者可以不同（如补填未配置的 #2/#3）。
     const item = provider($("llmProvider").value);
     providerSettingsRequests.set(item.id, settingsRequest);
-    const result = await bridge("save_postprocess_settings", {
+    const submitted = {
       providerId: item.id,
       apiKey: $("llmApiKey").value.trim(),
       baseUrl: $("llmBaseUrl").value.trim(),
       model: $("llmModel").value.trim(),
       reasoningMode: $("llmReasoningMode").value,
       displayName: isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "",
-    });
-    if (!acceptLlmSettingsResponse(item, settingsRequest, settingsState, result)) return result;
+    };
+    const result = await bridge("save_postprocess_settings", submitted);
+    if (!acceptLlmSettingsResponse(item, settingsRequest, settingsState, result, submitted)) return result;
     if (!result.ok) {
       const message = renderSettingsError(result);
       setResult(message, "error");
@@ -2461,19 +2492,9 @@
     }
     clearSettingsErrors();
     providerStatusApplied = ++providerStatusRequest;
-    item.baseUrl = String(result.baseUrl ?? $("llmBaseUrl").value).trim();
-    item.model = String(result.model ?? $("llmModel").value).trim();
+    cacheLlmSettings(item, result, submitted);
     $("llmBaseUrl").value = item.baseUrl;
     $("llmModel").value = item.model;
-    item.hasApiKey = Boolean(result.maskedApiKey || item.maskedApiKey || $("llmApiKey").value.trim());
-    item.apiKeyRequired = result.apiKeyRequired !== false;
-    item.hasBaseUrl = Boolean(item.baseUrl);
-    item.hasModel = Boolean(item.model);
-    item.reasoningMode = result.reasoningMode || $("llmReasoningMode").value || "off";
-    item.displayName = isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "";
-    item.label = result.label || providerLabel(item);
-    item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
-    item.verified = Boolean(result.verified);
     fillProviderSelects(item.id);
     if (result.verified) bindPendingStepProvider(item.id, pendingRequest);
     renderProviderKeyStatus(item);
@@ -2494,7 +2515,7 @@
     try {
       const item = provider($("llmProvider").value);
       providerSettingsRequests.set(item.id, settingsRequest);
-      const result = await bridge("test_postprocess_connection", {
+      const submitted = {
         providerId: item.id,
         apiKey: $("llmApiKey").value.trim(),
         baseUrl: $("llmBaseUrl").value.trim(),
@@ -2502,21 +2523,15 @@
         reasoningMode: $("llmReasoningMode").value,
         displayName: isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "",
         save: true,
-      });
-      if (!acceptLlmSettingsResponse(item, settingsRequest, settingsState, result)) return result;
+      };
+      const result = await bridge("test_postprocess_connection", submitted);
+      if (!acceptLlmSettingsResponse(item, settingsRequest, settingsState, result, submitted)) return result;
       if (result.ok) {
         clearSettingsErrors();
         providerStatusApplied = ++providerStatusRequest;
-        item.verified = Boolean(result.verified);
-        item.apiKeyRequired = result.apiKeyRequired !== false;
-        item.baseUrl = String(result.baseUrl ?? $("llmBaseUrl").value).trim();
-        item.model = String(result.model ?? $("llmModel").value).trim();
+        cacheLlmSettings(item, result, submitted);
         $("llmBaseUrl").value = item.baseUrl;
         $("llmModel").value = item.model;
-        item.hasBaseUrl = Boolean(item.baseUrl);
-        item.hasModel = Boolean(item.model);
-        item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
-        item.hasApiKey = Boolean(result.maskedApiKey || $("llmApiKey").value.trim() || item.hasApiKey);
         fillProviderSelects(item.id);
         bindPendingStepProvider(item.id, pendingRequest);
         renderProviderKeyStatus(item);
