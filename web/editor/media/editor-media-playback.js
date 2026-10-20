@@ -35,6 +35,7 @@
       return;
     }
     if (MaweCoreState.player.paused) {
+      void window.MaweAudioProcessing?.applyPreview({ gesture: true });
       if (MaweJklPlayback.isJklDirectionMode()) MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(MaweJklPlayback.jklPlaybackRate));
       const promise = MaweCoreState.player.play();
       if (promise && promise.catch) promise.catch(() => {});
@@ -122,6 +123,7 @@
 
 
   function syncMediaControls() {
+  window.MaweAudioProcessing?.render();
   const fullscreenPreview = Boolean(MaweDom.playerWrap && document.fullscreenElement === MaweDom.playerWrap);
   const wasFullscreenPreview = MaweDom.playerWrap?.classList.contains('fullscreen-preview') === true;
   MaweDom.playerWrap?.classList.toggle('fullscreen-preview', fullscreenPreview);
@@ -199,6 +201,7 @@
 
   function bindPlayerEvents(mediaElement) {
     if (!mediaElement) return;
+    window.MaweAudioProcessing?.bindPlayer(mediaElement);
     observeAssSubtitlePreviewPlayer(mediaElement);
     mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
     mediaElement.addEventListener('timeupdate', () => watchAuditionBoundary(mediaElement));

@@ -2019,7 +2019,20 @@ __WAVEFORM_CSS__
       </button>
       <span class="media-clock"><span id="media-current-time">00:00</span> / <span id="media-duration">00:00</span></span>
       <input type="range" id="media-seek" min="0" max="0" step="0.01" value="0" aria-label="媒体进度">
-      <label class="media-volume-control" title="音量">🔊 <input type="range" id="media-volume" min="0" max="1" step="0.01" value="1" aria-label="音量"></label>
+      <button type="button" id="audio-processing-toggle" popovertarget="audio-processing-panel" aria-label="工程音量" title="工程音量">📣</button>
+      <div id="audio-processing-panel" class="audio-processing-panel" popover="auto" role="dialog" aria-labelledby="audio-processing-title">
+        <div class="audio-processing-heading"><strong id="audio-processing-title">工程音量</strong><button type="button" popovertarget="audio-processing-panel" popovertargetaction="hide" aria-label="关闭">×</button></div>
+        <label for="audio-gain">整体增益 <output id="audio-gain-value" for="audio-gain">0.0 dB</output></label>
+        <div class="audio-gain-row"><button id="audio-gain-down" type="button" aria-label="降低 1 dB">−</button><input type="range" id="audio-gain" min="-60" max="24" step="0.1" value="0" aria-label="整体增益（dB）"><button id="audio-gain-up" type="button" aria-label="提高 1 dB">+</button></div>
+        <label for="audio-target">参考响度 <select id="audio-target"><option value="-23">EBU R128 · -23 LUFS</option><option value="-16">常见参考 · -16 LUFS</option><option value="-14">常见参考 · -14 LUFS</option></select></label>
+        <p id="audio-measurement-status" role="status">尚未测量</p>
+        <dl><dt>原始整段响度</dt><dd id="audio-original-lufs">—</dd><dt>调后预计响度</dt><dd id="audio-adjusted-lufs">—</dd><dt>与参考差值</dt><dd id="audio-target-difference">—</dd><dt>预计真实峰值</dt><dd id="audio-true-peak">—</dd></dl>
+        <div class="audio-processing-actions"><button type="button" id="audio-normalize" disabled>按参考归一化</button><button type="button" id="audio-gain-reset">重置增益</button><button type="button" id="audio-measure">测量响度</button></div>
+        <p id="audio-gain-warning" class="audio-gain-warning" role="status" hidden></p>
+        <p class="audio-processing-note" id="audio-measurement-track">测量预览音轨；烧录所有输出音轨使用相同增益。</p>
+        <p class="audio-processing-note">仅调整固定增益，不压缩动态。调后响度为估计，去空隙成片需另行测量。</p>
+        <label class="audio-listening-volume" title="仅影响试听，不影响烧录">监听音量 <input type="range" id="media-volume" min="0" max="1" step="0.01" value="1" aria-label="监听音量"></label>
+      </div>
       <label class="media-rate-control" title="播放速度">速度
         <select id="media-playback-rate" aria-label="播放速度">
           <option value="0.5">0.5×</option>

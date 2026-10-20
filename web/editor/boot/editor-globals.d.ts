@@ -71,6 +71,7 @@ interface ProjectData {
   timestamp_granularity?: string;
   model?: string;
   media_metadata?: ProjectMediaMetadata;
+  audio_processing?: { gain_db: number; target_lufs: number; peak_ceiling_dbtp: number };
   timebase?: Record<string, unknown>;
   sticker_root?: string;
   waveform?: ProjectWaveformInfo;
@@ -218,7 +219,7 @@ interface MaweStateApi {
     currentCuePanelIdx: number; currentCuePanelKind: SelectionTrack; currentCuePanelTrackId: string | null;
     cuePanelUndoPushed: boolean; cuePanelUndoRecord: any; cuePanelTextEditSnapshot: any; cuePanelCanceling: boolean };
   readonly editing: { editingState: any; extensionEditingState: any };
-  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean };
+  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean };
   hasProjectChanges(pendingText?: boolean): boolean;
   segmentsFingerprint(): string;
   noteSavedSegments(fingerprint?: string): void;
