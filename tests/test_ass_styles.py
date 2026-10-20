@@ -69,10 +69,27 @@ class AssStyleLibraryTests(unittest.TestCase):
                          (64, 4, 100, "#f9ca1f"))
         self.assertEqual(library["assProfiles"][0]["animations"]["fad"],
                          {"enabled": True, "inMs": 250, "outMs": 250})
+        self.assertEqual(library["assProfiles"][0]["animations"]["pop"],
+                         {"enabled": False, "fromScale": 1.4, "inMs": 250, "accel": 1})
         main.update(fontName="Arial", fontSize=72, emphasisScale=1.1, backColor="#000000",
                     backOpacity=100, bold=False, outline=4, marginV=80)
         library["assProfiles"][0]["animations"]["fad"]["enabled"] = False
         self.assertEqual(normalize_ass_style_library(library), library)
+
+    def test_pop_animation_normalization_clamps_and_keeps_roundtrip(self) -> None:
+        # 旧库没有 pop 组：归一化补默认值；非法值按边界收敛。
+        legacy = normalize_ass_style_library({})
+        self.assertEqual(legacy["assProfiles"][0]["animations"]["pop"],
+                         {"enabled": False, "fromScale": 1.4, "inMs": 250, "accel": 1})
+        library = normalize_ass_style_library({"assProfiles": [{"id": "ass", "animations": {
+            "pop": {"enabled": True, "fromScale": 99, "inMs": -5, "accel": 0}},
+        }]})
+        self.assertEqual(library["assProfiles"][0]["animations"]["pop"],
+                         {"enabled": True, "fromScale": 10, "inMs": 0, "accel": 0.01})
+        saved = default_ass_style_library()
+        saved["assProfiles"][0]["animations"]["pop"] = {
+            "enabled": True, "fromScale": 1.6, "inMs": 300, "accel": 0.5}
+        self.assertEqual(normalize_ass_style_library(saved), saved)
 
     def test_legacy_builtin_names_migrate_to_current_defaults(self) -> None:
         # 旧库仍用旧默认名的内置条目迁移到当前默认名；自定义名字不动。

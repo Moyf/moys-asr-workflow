@@ -222,6 +222,8 @@ export function createUtilsModule(dependencies) {
 
   const ASS_DEFAULT_ANIMATIONS = Object.freeze({
     fad: Object.freeze({ enabled: true, inMs: 250, outMs: 250 }),
+    // 放大出现：句级 {{…}} 标记与全局自动应用共用；enabled 只控制全局自动应用。
+    pop: Object.freeze({ enabled: false, fromScale: 1.4, inMs: 250, accel: 1 }),
     fade: Object.freeze({
       enabled: false, alpha1: 0, alpha2: 255, alpha3: 0,
       t1: 0, t2: 250, t3: 750, t4: 1000,
@@ -339,6 +341,7 @@ export function createUtilsModule(dependencies) {
   function normalizeAssAnimations(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const fad = source.fad && typeof source.fad === 'object' ? source.fad : {};
+    const pop = source.pop && typeof source.pop === 'object' ? source.pop : {};
     const fade = source.fade && typeof source.fade === 'object' ? source.fade : {};
     const move = source.move && typeof source.move === 'object' ? source.move : {};
     const transform = source.t && typeof source.t === 'object' ? source.t : {};
@@ -347,6 +350,13 @@ export function createUtilsModule(dependencies) {
         enabled: normalizeAssLibraryBoolean(fad.enabled),
         inMs: normalizeAssLibraryNumber(fad.inMs, 250, 0, 60000),
         outMs: normalizeAssLibraryNumber(fad.outMs, 250, 0, 60000),
+      },
+      // 单句 {{…}} 标记在全局关闭时仍复用这组参数，enabled 只管全局自动应用。
+      pop: {
+        enabled: normalizeAssLibraryBoolean(pop.enabled),
+        fromScale: normalizeAssLibraryNumber(pop.fromScale, 1.4, 1, 10, false),
+        inMs: normalizeAssLibraryNumber(pop.inMs, 250, 0, 60000),
+        accel: normalizeAssLibraryNumber(pop.accel, 1, 0.01, 100, false),
       },
       fade: (() => {
         const t1 = normalizeAssLibraryNumber(fade.t1, 0, 0, 60000);
@@ -608,7 +618,7 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function assPreviewStyleAt(style, transformTags, progress = 1, { nativeFontSize = false } = {}) {
+  function assPreviewStyleAt(style, transformTags, progress = 1, { nativeFontSize = false, popScale = 1 } = {}) {
     const base = normalizeAssStyle(style);
     if (nativeFontSize && Number.isFinite(Number(style.fontSize))) base.fontSize = Number(style.fontSize);
     const target = assTransformStyleTargets(transformTags);
@@ -620,8 +630,11 @@ export function createUtilsModule(dependencies) {
     ];
     numericKeys.forEach((key) => {
       if (target[key] === undefined) return;
-      const start = Number(result[key]) || 0;
-      result[key] = start + (Number(target[key]) - start) * amount;
+      // libass applies the earlier pop transform before the custom transform.
+      // Canvas applies pop outside the glyph raster, so return its compensated scale.
+      const outerScale = key === 'scaleX' || key === 'scaleY' ? Math.max(1, Number(popScale) || 1) : 1;
+      const start = (Number(result[key]) || 0) * outerScale;
+      result[key] = (start + (Number(target[key]) - start) * amount) / outerScale;
     });
     ['primaryColor', 'outlineColor'].forEach((key) => {
       if (target[key]) result[key] = interpolateAssColor(result[key], target[key], amount);

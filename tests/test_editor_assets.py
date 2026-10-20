@@ -265,6 +265,28 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         positions = [payload.index(f'MAWE.register({json.dumps(item["name"])},') for item in modules]
         self.assertEqual(positions, sorted(positions))
 
+    def test_ass_pop_animation_binds_template_profile_fields_and_unlocks_params(self) -> None:
+        # 单句放大出现：模板 pop 卡片、解析/导出/预览接线与 fad/pop 参数解耦
+        # 必须同时存在；解耦逻辑按组名放行，fade/move/t 保持开关联动。
+        template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
+        self.assertIn('data-ass-animation="pop.enabled"', template)
+        self.assertIn('data-ass-animation="pop.fromScale"', template)
+        self.assertIn('data-ass-animation="pop.inMs"', template)
+        self.assertIn('data-ass-animation="pop.accel"', template)
+        manager = edit.read_web_asset("editor/styles/editor-wiring-ass-manager.js")
+        self.assertIn("group !== 'fad' && group !== 'pop'", manager)
+        self.assertIn("data-ass-animation", manager)
+        animation = edit.read_web_asset("shared/utils/ass-animation.js")
+        self.assertIn("assSentenceAnimationTags", animation)
+        self.assertIn("assPopTransformTag", animation)
+        preview = edit.read_web_asset("editor/styles/editor-wiring-ass-preview.js")
+        self.assertIn("stripSentencePopMarkers", preview)
+        self.assertIn("pop: item.pop || null", preview)
+        canvas = edit.read_web_asset("editor/styles/editor-wiring-ass-canvas.js")
+        self.assertIn("animation.popScale", canvas)
+        styles_py = (ROOT / "maw" / "ass_styles.py").read_text(encoding="utf-8")
+        self.assertIn('"pop": {"enabled": False, "fromScale": 1.4, "inMs": 250, "accel": 1}', styles_py)
+
     def test_ass_frame_preview_wires_template_module_and_styles(self) -> None:
         # 单帧实际画面预览：设置页入口按钮、浮层窗口、接线模块与样式必须同时存在。
         template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")

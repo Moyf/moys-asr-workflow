@@ -479,12 +479,15 @@
     const foreshortenX = rotationY ? Math.cos(rotationY * Math.PI / 180) : 1;
     const foreshortenY = rotationX ? Math.cos(rotationX * Math.PI / 180) : 1;
     const angle = Number(style.angle) || 0;
+    // 放大出现：围绕锚点的入场缩放（animation.popScale 由导出同一公式插值，
+    // 落定后恒为 1），等价 libass 在 origin 上施加 \fscx\fscy 的行为。
+    const popScale = Math.max(0, Number(animation.popScale) || 1);
     // libass rotates the already-scaled glyph coordinates, with counterclockwise
     // positive ASS angles. Matrix order matters for nonuniform scale factors.
     if (angle) ctx.rotate(-angle * Math.PI / 180);
     ctx.scale(
-      Math.max(0, Number(style.scaleX ?? 100)) / 100 * foreshortenX,
-      Math.max(0, Number(style.scaleY ?? 100)) / 100 * foreshortenY,
+      Math.max(0, Number(style.scaleX ?? 100)) / 100 * foreshortenX * popScale,
+      Math.max(0, Number(style.scaleY ?? 100)) / 100 * foreshortenY * popScale,
     );
     let lineTop = u.assCanvasBlockTopY(grid.row, layout.blockHeight);
     layout.lines.forEach((line) => {
@@ -499,8 +502,8 @@
     const pad = Math.ceil((Number(style.outline) || 0) + (Number(style.shadow) || 0) + 2);
     const left = u.assCanvasLineOffsetX(grid.column, layout.blockWidth) - pad;
     const top = u.assCanvasBlockTopY(grid.row, layout.blockHeight) - pad;
-    const sx = Math.max(0, Number(style.scaleX ?? 100)) / 100 * foreshortenX;
-    const sy = Math.max(0, Number(style.scaleY ?? 100)) / 100 * foreshortenY;
+    const sx = Math.max(0, Number(style.scaleX ?? 100)) / 100 * foreshortenX * popScale;
+    const sy = Math.max(0, Number(style.scaleY ?? 100)) / 100 * foreshortenY * popScale;
     const theta = -angle * Math.PI / 180;
     // Automatic stacking can attach an upper cue by its bottom edge even
     // when the global style uses a top/centre anchor. Re-express its base
