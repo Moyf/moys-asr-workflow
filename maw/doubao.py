@@ -46,7 +46,7 @@ import requests
 from requests.exceptions import RequestException
 
 from maw.app_paths import default_env_path
-from generate_subtitle_qwen_api import (
+from maw.asr.segmentation import (
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
 )
@@ -455,7 +455,7 @@ def build_segments(items: list[dict], *, max_len: int, min_len: int,
                    min_words: int = WESTERN_MIN_WORDS,
                    split_mode: str | None = None) -> list[dict]:
     """speaker run 内切句（split_segments_auto 按静音组自动选择 CJK/英文逻辑）。"""
-    from generate_subtitle_qwen_api import split_segments_auto
+    from maw.asr.segmentation import split_segments_auto
 
     segments: list[dict] = []
     for run in split_items_by_speaker(items):

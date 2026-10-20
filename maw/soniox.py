@@ -34,7 +34,7 @@ import requests
 from requests.exceptions import RequestException
 
 from maw.app_paths import default_env_path
-from generate_subtitle_qwen_api import (
+from maw.asr.segmentation import (
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
     is_cjk_char,

@@ -3860,6 +3860,17 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("blank-editor.html", result["error"])
 
+    def test_open_faq_uses_source_documentation_location(self) -> None:
+        faq = self.root / "docs" / "user" / "FAQ-常见问题.txt"
+        faq.parent.mkdir(parents=True)
+        faq.write_text("source help\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as open_path:
+            result = self.api.open_faq()
+
+        self.assertTrue(result["ok"])
+        open_path.assert_called_once_with(faq)
+
     def test_open_faq_uses_bundled_troubleshooting_file(self) -> None:
         faq = self.root / "FAQ-常见问题.txt"
         faq.write_text("help\n", encoding="utf-8")
@@ -5083,7 +5094,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "错误：找不到 FFmpeg / FFprobe。请下载不带 lite 的完整 MAW。",
         ]))
         self.assertTrue(_is_ffmpeg_missing_failure([
-            "File generate_subtitle_qwen_api.py, line 266, in get_duration_sec",
+            "File maw/asr/common.py, line 83, in get_duration_sec",
             "FileNotFoundError: [WinError 2] 系统找不到指定的文件。",
         ]))
         self.assertFalse(_is_ffmpeg_missing_failure([

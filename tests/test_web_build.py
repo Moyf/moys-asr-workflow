@@ -419,18 +419,18 @@ class EnsureBundleRebuildTests(unittest.TestCase):
 
 class BundlePackagingTests(unittest.TestCase):
     def test_packaging_rejects_present_but_corrupt_bundle(self) -> None:
-        guard = (ROOT / "MAW.spec").read_text(encoding="utf-8").split("binaries = []", 1)[0]
+        guard = (ROOT / "scripts" / "packaging" / "MAW.spec").read_text(encoding="utf-8").split("binaries = []", 1)[0]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             repos = [_FakeRepo(root, kind) for kind in ("editor", "launcher")]
             for repo in repos:
                 repo.materialize()
             with mock.patch.object(web_build, "bundle_status", wraps=web_build.bundle_status) as status:
-                exec(compile(guard, "MAW.spec", "exec"), {"SPECPATH": str(root)})
+                exec(compile(guard, "MAW.spec", "exec"), {"SPECPATH": str(root / "scripts" / "packaging")})
             self.assertEqual(status.call_count, 2)
             repos[0].bundle.write_bytes(b"truncated")
             with self.assertRaisesRegex(SystemExit, "bundle stale"):
-                exec(compile(guard, "MAW.spec", "exec"), {"SPECPATH": str(root)})
+                exec(compile(guard, "MAW.spec", "exec"), {"SPECPATH": str(root / "scripts" / "packaging")})
 
 
 if __name__ == "__main__":

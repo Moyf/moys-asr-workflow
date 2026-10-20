@@ -16,10 +16,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 API_PROVIDER_CLIS = (
-    "generate_subtitle_qwen_api.py",
-    "generate_subtitle_bcut_api.py",
-    "generate_subtitle_soniox_api.py",
-    "generate_subtitle_openai_api.py",
+    "maw/asr/qwen.py",
+    "maw/asr/bcut.py",
+    "maw/asr/soniox.py",
+    "maw/asr/openai.py",
 )
 
 
@@ -69,7 +69,7 @@ class CliCacheContractTests(unittest.TestCase):
                 )
 
     def test_local_cli_writes_outputs_inside_prepared_audio(self) -> None:
-        name = "generate_subtitle_local.py"
+        name = "maw/asr/local.py"
         tree = ast.parse((REPO_ROOT / name).read_text(encoding="utf-8"), filename=name)
         with_nodes = [
             node
@@ -100,7 +100,7 @@ class CliCacheContractTests(unittest.TestCase):
             _calls_named(project_io_tree, "probe_video_fps"),
             "共享工程写出层必须负责尝试读取媒体 FPS",
         )
-        for name in (*API_PROVIDER_CLIS, "generate_subtitle_tencent_api.py"):
+        for name in (*API_PROVIDER_CLIS, "maw/asr/tencent.py"):
             with self.subTest(cli=name):
                 tree = ast.parse(
                     (REPO_ROOT / name).read_text(encoding="utf-8"), filename=name
@@ -115,7 +115,7 @@ class CliCacheContractTests(unittest.TestCase):
                 )
 
     def test_project_generators_persist_selected_audio_track_at_write_time(self) -> None:
-        for name in (*API_PROVIDER_CLIS, "generate_subtitle_tencent_api.py"):
+        for name in (*API_PROVIDER_CLIS, "maw/asr/tencent.py"):
             with self.subTest(cli=name):
                 tree = ast.parse(
                     (REPO_ROOT / name).read_text(encoding="utf-8"), filename=name

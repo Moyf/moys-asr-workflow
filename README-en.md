@@ -52,7 +52,7 @@ For source installation and a complete first run, see the [workflow guide](docs/
 - [Toolbox](docs/INDEX.md#user-toolbox) and [automatic processing](docs/INDEX.md#user-postprocess): script matching, cleanup, translation, OCR, and media tools.
 - [Editor](docs/INDEX.md#user-editor), [keyboard timing](docs/INDEX.md#user-keyboard), [multiple subtitles](docs/INDEX.md#user-multi-subtitle), and [ASS styles](docs/INDEX.md#user-ass): edit, save, and export.
 - [CLI](docs/INDEX.md#user-cli) and [local ASR](docs/INDEX.md#user-local-asr): automate tasks and use experimental local models.
-- [FAQ](docs/INDEX.md#user-faq), [project schema](JSON_SCHEMA.md), [LLM protocol](docs/INDEX.md#engineering-llm), and [development](docs/INDEX.md#engineering-development).
+- [FAQ](docs/INDEX.md#user-faq), [project schema](docs/engineering/JSON_SCHEMA.md), [LLM protocol](docs/INDEX.md#engineering-llm), and [development](docs/INDEX.md#engineering-development).
 
 ## Data, costs, and privacy
 
