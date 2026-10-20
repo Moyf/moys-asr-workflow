@@ -48,6 +48,12 @@
   const AUTO_LLM_OPERATIONS = { cleanup: "ai_cleanup", proofread: "proofread", resegment: "resegment" };
   let autoPlanSaveTimer = 0;
   let pendingAutoStep = "";
+  let pendingAutoStepRequest = null;
+  const autoStepCheckRequests = new Map();
+  let llmSettingsRequest = 0;
+  const providerSettingsRequests = new Map();
+  let providerStatusRequest = 0;
+  let providerStatusApplied = 0;
   let toolboxOpenMode = "manual";
   let busy = false;
   let activePostprocessOperationId = "";
@@ -845,7 +851,10 @@
     const wasOpen = !$("toolboxDrawer").classList.contains("hidden");
     $("toolboxDrawer").classList.toggle("hidden", !open);
     $("toolboxFab").setAttribute("aria-expanded", String(open));
-    if (!open) toolboxOpenMode = "manual";
+    if (!open) {
+      toolboxOpenMode = "manual";
+      cancelPendingAutoStep();
+    }
     syncPaths();
     if (open) {
       const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)")
@@ -1839,6 +1848,84 @@
     return Boolean(item?.verified && (item?.apiKeyRequired === false || item?.hasApiKey !== false) && item?.hasBaseUrl !== false && item?.hasModel !== false);
   }
 
+  /** 后端是验证状态的权威来源：勾选被拦时先刷新缓存，避免过期标记误弹配置。 */
+  async function refreshPostprocessProviderStatus(isCurrent = () => true) {
+    const request = ++providerStatusRequest;
+    const result = await bridge("get_config");
+    if (!isCurrent() || request < providerStatusApplied) return;
+    const fresh = new Map(
+      Array.isArray(result?.postprocessProviders)
+        ? result.postprocessProviders.map((item) => [String(item?.id || ""), item])
+        : []
+    );
+    if (!fresh.size) return;
+    providerStatusApplied = request;
+    (window.MAWLauncher.config?.postprocessProviders || []).forEach((item) => {
+      const next = fresh.get(String(item?.id || ""));
+      if (!next) return;
+      for (const field of ["baseUrl", "model", "reasoningMode", "displayName", "label"]) {
+        if (typeof next[field] === "string") item[field] = next[field];
+      }
+      item.verified = Boolean(next.verified);
+      item.hasApiKey = Boolean(next.hasApiKey);
+      item.apiKeyRequired = next.apiKeyRequired !== false;
+      item.hasBaseUrl = Boolean(next.hasBaseUrl);
+      item.hasModel = Boolean(next.hasModel);
+      if (typeof next.maskedApiKey === "string") item.maskedApiKey = next.maskedApiKey;
+    });
+    renderProviderKeyStatus(provider());
+  }
+
+  /** 弹窗里验证/保存成功的供应商立即绑定到被拦截的步骤：门槛检查与弹窗验证不再是两个供应商。 */
+  function cancelPendingAutoStep() {
+    pendingAutoStep = "";
+    pendingAutoStepRequest = null;
+    let changed = false;
+    for (const stepId of autoStepCheckRequests.keys()) {
+      const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
+      if (checkbox?.checked) {
+        checkbox.checked = false;
+        changed = true;
+      }
+    }
+    autoStepCheckRequests.clear();
+    if (changed) {
+      renderAutoPostprocessState();
+      persistAutoPlanSoon();
+    }
+  }
+
+  function bindPendingStepProvider(providerId, request = pendingAutoStepRequest) {
+    const stepId = pendingAutoStep;
+    const id = knownProviderId(providerId);
+    if (!request || request !== pendingAutoStepRequest) return false;
+    if (!stepId || !id || !["cleanup", "proofread", "resegment", "translate"].includes(stepId)) return false;
+    rememberProviderForTask(autoLlmOperation(stepId), id);
+    const toolboxSelect = $("postprocessProvider");
+    if (Array.from(toolboxSelect.options).some((option) => option.value === id)) toolboxSelect.value = id;
+    renderProviderKeyStatus(provider(id));
+    return true;
+  }
+
+  /** 勾选被拦时先以后端权威状态刷新缓存：缓存过期就静默放行，确实未验证才弹配置。 */
+  async function confirmAutoStepCheck(stepId, checkbox) {
+    const request = {};
+    autoStepCheckRequests.set(stepId, request);
+    const isCurrent = () => checkbox.checked && autoStepCheckRequests.get(stepId) === request;
+    await refreshPostprocessProviderStatus(isCurrent);
+    if (!isCurrent()) return;
+    autoStepCheckRequests.delete(stepId);
+    if (!autoStepReady(stepId)) {
+      checkbox.checked = false;
+      renderAutoPostprocessState();
+      openAutoStep(stepId, "", { highlightConnection: true });
+      return;
+    }
+    // 后端确认已就绪：保留勾选，不重复弹配置弹窗。
+    renderAutoPostprocessState();
+    persistAutoPlanSoon();
+  }
+
   function autoStepReady(stepId) {
     if (stepId === "resegment" && !resegmentMaxCharsValid()) return false;
     if (stepId === "match") {
@@ -1988,9 +2075,13 @@
 
   function openAutoStep(stepId, invalidField = "", { highlightConnection = false } = {}) {
     pendingAutoStep = stepId;
+    pendingAutoStepRequest = {};
     const llmStep = ["cleanup", "proofread", "resegment", "translate"].includes(stepId);
     if (llmStep && !autoLlmReady(stepProviderId(stepId))) {
-      const item = provider(stepProviderId(stepId));
+      // 弹窗展示并验证的就是门槛检查的供应商，避免「验证了 A、拦截的仍是 B」。
+      const checkedProviderId = stepProviderId(stepId);
+      if ($("llmProvider").value !== checkedProviderId) renderProvider(checkedProviderId, { syncToolbox: false });
+      const item = provider(checkedProviderId);
       const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
         ? invalidField
         : (item?.hasApiKey === false && item?.apiKeyRequired !== false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
@@ -2012,13 +2103,15 @@
     focusAutoField(fieldId);
   }
 
-  function maybeEnablePendingAutoStep() {
+  function maybeEnablePendingAutoStep(request = pendingAutoStepRequest) {
+    if (request !== pendingAutoStepRequest) return false;
     const stepId = pendingAutoStep;
     if (!stepId || !autoStepReady(stepId)) return false;
     const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
     if (!checkbox) return false;
     checkbox.checked = true;
     pendingAutoStep = "";
+    pendingAutoStepRequest = null;
     renderAutoPostprocessState();
     persistAutoPlanSoon();
     return true;
@@ -2342,51 +2435,87 @@
     }
   }
 
+  function llmSettingsState() {
+    return JSON.stringify(["llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode", "llmCustomDisplayName"]
+      .map((id) => $(id).value));
+  }
+
+  function cacheLlmSettings(item, result, submitted) {
+    item.baseUrl = String(result.baseUrl ?? submitted.baseUrl).trim();
+    item.model = String(result.model ?? submitted.model).trim();
+    item.hasApiKey = Boolean(result.maskedApiKey || item.maskedApiKey || submitted.apiKey || item.hasApiKey);
+    item.apiKeyRequired = result.apiKeyRequired !== false;
+    item.hasBaseUrl = Boolean(item.baseUrl);
+    item.hasModel = Boolean(item.model);
+    item.reasoningMode = result.reasoningMode || submitted.reasoningMode || "off";
+    item.displayName = isCustomSlot(item) ? submitted.displayName : "";
+    item.label = result.label || providerLabel(item);
+    item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
+    item.verified = Boolean(result.verified);
+  }
+
+  function acceptLlmSettingsResponse(item, request, settingsState, result, submitted) {
+    if (request === llmSettingsRequest && settingsState === llmSettingsState()) return true;
+    // 后端可能已写入新配置；失效该供应商缓存，下一次门槛检查重新读取权威状态。
+    // 更晚的同供应商操作已接管时，旧回包不能使其重新失效。
+    if (result.ok && providerSettingsRequests.get(item.id) === request) {
+      cacheLlmSettings(item, result, submitted);
+      item.verified = false;
+      providerStatusApplied = ++providerStatusRequest;
+      renderProviderKeyStatus(provider());
+      renderAutoPostprocessState();
+    }
+    return false;
+  }
+
   async function saveSettings() {
+    const pendingRequest = pendingAutoStepRequest;
+    const settingsRequest = ++llmSettingsRequest;
+    const settingsState = llmSettingsState();
     // 设置页操作以设置页下拉为准：工具箱与设置页解耦后两者可以不同（如补填未配置的 #2/#3）。
     const item = provider($("llmProvider").value);
-    const result = await bridge("save_postprocess_settings", {
+    providerSettingsRequests.set(item.id, settingsRequest);
+    const submitted = {
       providerId: item.id,
       apiKey: $("llmApiKey").value.trim(),
       baseUrl: $("llmBaseUrl").value.trim(),
       model: $("llmModel").value.trim(),
       reasoningMode: $("llmReasoningMode").value,
       displayName: isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "",
-    });
+    };
+    const result = await bridge("save_postprocess_settings", submitted);
+    if (!acceptLlmSettingsResponse(item, settingsRequest, settingsState, result, submitted)) return result;
     if (!result.ok) {
       const message = renderSettingsError(result);
       setResult(message, "error");
       return result;
     }
     clearSettingsErrors();
-    item.baseUrl = String(result.baseUrl ?? $("llmBaseUrl").value).trim();
-    item.model = String(result.model ?? $("llmModel").value).trim();
+    providerStatusApplied = ++providerStatusRequest;
+    cacheLlmSettings(item, result, submitted);
     $("llmBaseUrl").value = item.baseUrl;
     $("llmModel").value = item.model;
-    item.hasApiKey = Boolean(result.maskedApiKey || item.maskedApiKey || $("llmApiKey").value.trim());
-    item.apiKeyRequired = result.apiKeyRequired !== false;
-    item.hasBaseUrl = Boolean(item.baseUrl);
-    item.hasModel = Boolean(item.model);
-    item.reasoningMode = result.reasoningMode || $("llmReasoningMode").value || "off";
-    item.displayName = isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "";
-    item.label = result.label || providerLabel(item);
-    item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
-    item.verified = Boolean(result.verified);
     fillProviderSelects(item.id);
+    if (result.verified) bindPendingStepProvider(item.id, pendingRequest);
     renderProviderKeyStatus(item);
     renderAutoPostprocessState();
+    maybeEnablePendingAutoStep(pendingRequest);
     setSettingsSaveStatus(t("toolbox_saved"), "success");
     return result;
   }
 
   async function testConnection() {
+    const pendingRequest = pendingAutoStepRequest;
+    const settingsRequest = ++llmSettingsRequest;
+    const settingsState = llmSettingsState();
     setTestConnectionAttention(false);
     setSettingsSaveStatus(t("llm_connection_testing"), "", 0);
     $("testLlmConnection").disabled = true;
     $("getLlmModels").disabled = true;
     try {
       const item = provider($("llmProvider").value);
-      const result = await bridge("test_postprocess_connection", {
+      providerSettingsRequests.set(item.id, settingsRequest);
+      const submitted = {
         providerId: item.id,
         apiKey: $("llmApiKey").value.trim(),
         baseUrl: $("llmBaseUrl").value.trim(),
@@ -2394,31 +2523,30 @@
         reasoningMode: $("llmReasoningMode").value,
         displayName: isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "",
         save: true,
-      });
+      };
+      const result = await bridge("test_postprocess_connection", submitted);
+      if (!acceptLlmSettingsResponse(item, settingsRequest, settingsState, result, submitted)) return result;
       if (result.ok) {
         clearSettingsErrors();
-        item.verified = Boolean(result.verified);
-        item.apiKeyRequired = result.apiKeyRequired !== false;
-        item.baseUrl = String(result.baseUrl ?? $("llmBaseUrl").value).trim();
-        item.model = String(result.model ?? $("llmModel").value).trim();
+        providerStatusApplied = ++providerStatusRequest;
+        cacheLlmSettings(item, result, submitted);
         $("llmBaseUrl").value = item.baseUrl;
         $("llmModel").value = item.model;
-        item.hasBaseUrl = Boolean(item.baseUrl);
-        item.hasModel = Boolean(item.model);
-        item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
-        item.hasApiKey = Boolean(result.maskedApiKey || $("llmApiKey").value.trim() || item.hasApiKey);
         fillProviderSelects(item.id);
+        bindPendingStepProvider(item.id, pendingRequest);
         renderProviderKeyStatus(item);
         setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");
         renderAutoPostprocessState();
-        maybeEnablePendingAutoStep();
+        maybeEnablePendingAutoStep(pendingRequest);
       }
       else {
         renderSettingsError(result);
       }
       return result;
     } catch (error) {
-      setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
+      if (settingsRequest === llmSettingsRequest && settingsState === llmSettingsState()) {
+        setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
+      }
     } finally {
       $("testLlmConnection").disabled = busy;
       $("getLlmModels").disabled = busy;
@@ -3065,10 +3193,10 @@
   AUTO_STEP_ORDER.forEach((stepId) => {
     const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
     checkbox.addEventListener("change", () => {
+      autoStepCheckRequests.delete(stepId);
+      if (!checkbox.checked && pendingAutoStep === stepId) cancelPendingAutoStep();
       if (checkbox.checked && !autoStepReady(stepId)) {
-        checkbox.checked = false;
-        renderAutoPostprocessState();
-        openAutoStep(stepId, "", { highlightConnection: true });
+        void confirmAutoStepCheck(stepId, checkbox);
         return;
       }
       renderAutoPostprocessState();
@@ -3198,6 +3326,7 @@
     renderAutoPostprocessState();
   };
   window.MAWLauncher.openAutoPostprocessStep = openAutoStep;
+  window.MAWLauncher.onSettingsClosed = cancelPendingAutoStep;
   window.MAWLauncher.onOcrRuntimeChanged = () => {
     renderOcrModel();
     renderAutoPostprocessState();

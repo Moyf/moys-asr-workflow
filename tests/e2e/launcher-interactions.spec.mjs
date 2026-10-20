@@ -502,7 +502,8 @@ test('translation language filter defaults on, persists, syncs and reaches reque
 test('automatic LLM setup highlights test connection until clicked', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
+    await window.MAWLauncher.callBackend('save_postprocess_settings', { providerId: 'deepseek', apiKey: 'demo-key' });
     const provider = window.MAWLauncher.config.postprocessProviders.find((item) => item.id === 'deepseek');
     Object.assign(provider, {
       verified: false,

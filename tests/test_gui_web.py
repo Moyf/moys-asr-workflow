@@ -5903,7 +5903,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");', script)
         self.assertNotIn("autoTest", script)
         self.assertIn('$("saveLlmSettings").addEventListener("click", () => { void saveSettings(); });', script)
-        pending_step = script[script.index("function maybeEnablePendingAutoStep()"):script.index("function applyAutoPostprocessPlan")]
+        pending_step = script[script.index("function maybeEnablePendingAutoStep("):script.index("function applyAutoPostprocessPlan")]
         self.assertNotIn("closeSettings", pending_step)
         self.assertNotIn("setOpen(true)", pending_step)
         self.assertIn("font-size: 14px;", stylesheet)
