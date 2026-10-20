@@ -7,14 +7,14 @@ from unittest import mock
 
 import requests
 
-from generate_subtitle_qwen_api import (
+from maw.asr.qwen import (
     _compute_base_url,
-    build_segments_preserving_speakers,
     is_funasr_model,
     parse_funasr_transcription_result,
     poll_task,
     submit_filetrans,
 )
+from maw.asr.segmentation import build_segments_preserving_speakers
 
 
 class FunAsrAdapterTests(unittest.TestCase):
@@ -34,7 +34,7 @@ class FunAsrAdapterTests(unittest.TestCase):
         self.assertTrue(is_funasr_model("fun-asr-mtl"))
         self.assertFalse(is_funasr_model("qwen3-asr-flash-filetrans"))
 
-    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    @mock.patch("maw.asr.qwen.requests.post")
     def test_submit_uses_funasr_file_urls_language_hints_and_diarization(
         self,
         post: mock.Mock,
@@ -71,7 +71,7 @@ class FunAsrAdapterTests(unittest.TestCase):
         )
         response.raise_for_status.assert_called_once_with()
 
-    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    @mock.patch("maw.asr.qwen.requests.post")
     def test_submit_preserves_dashscope_403_business_code_and_hint(
         self,
         post: mock.Mock,
@@ -103,7 +103,7 @@ class FunAsrAdapterTests(unittest.TestCase):
         self.assertIn("request_id=request-403", message)
         self.assertIn("仅使用免费额度", message)
 
-    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    @mock.patch("maw.asr.qwen.requests.post")
     def test_submit_explains_api_key_model_restrictions(
         self,
         post: mock.Mock,
@@ -135,7 +135,7 @@ class FunAsrAdapterTests(unittest.TestCase):
         self.assertIn("可访问模型中加入 fun-asr", message)
         self.assertIn("IP 白名单", message)
 
-    @mock.patch("generate_subtitle_qwen_api.requests.get")
+    @mock.patch("maw.asr.qwen.requests.get")
     def test_poll_reads_successful_funasr_subtask(self, get: mock.Mock) -> None:
         response = mock.Mock()
         response.json.return_value = {
@@ -164,7 +164,7 @@ class FunAsrAdapterTests(unittest.TestCase):
         self.assertEqual(result_url, "https://result.example/fun.json")
         self.assertEqual(usage, {"duration": 12})
 
-    @mock.patch("generate_subtitle_qwen_api.requests.get")
+    @mock.patch("maw.asr.qwen.requests.get")
     def test_poll_reports_funasr_subtask_failure(self, get: mock.Mock) -> None:
         response = mock.Mock()
         response.json.return_value = {

@@ -1,6 +1,6 @@
 # 双语字幕规范
 
-本文为当前主副字幕的详细行为与实现规范。快速操作见 [编辑器指南](EDITOR_GUIDE.md)，数据字段以 [JSON_SCHEMA](../../JSON_SCHEMA.md) 为准。
+本文为当前主副字幕的详细行为与实现规范。快速操作见 [编辑器指南](EDITOR_GUIDE.md)，数据字段以 [JSON_SCHEMA](../engineering/JSON_SCHEMA.md) 为准。
 
 ## 1. 目标
 

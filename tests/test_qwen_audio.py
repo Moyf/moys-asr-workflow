@@ -9,13 +9,12 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from generate_subtitle_qwen_api import (
+from maw.asr.qwen import (
     FILETRANS_MODEL,
     FUNASR_MODEL,
     QWEN3_ASR_FILETRANS_MODEL,
     QWEN_AUDIO_31_FILETRANS_MODEL,
     QWEN_AUDIO_FILETRANS_MODEL,
-    build_segments_from_api_sentences,
     build_qwen_audio_context,
     is_qwen_audio_31_model,
     is_qwen_audio_model,
@@ -27,6 +26,7 @@ from generate_subtitle_qwen_api import (
     submit_filetrans,
     supports_speaker_diarization,
 )
+from maw.asr.segmentation import build_segments_from_api_sentences
 from maw.qwen_audio import parse_qwen_audio_hotwords
 
 
@@ -133,7 +133,7 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["text"], "你好。")
         self.assertEqual(result["timestamp_granularity"], "word")
 
-    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    @mock.patch("maw.asr.qwen.requests.post")
     def test_submit_uses_qwen3_file_url_contract(self, post: mock.Mock) -> None:
         response = mock.Mock()
         response.json.return_value = {
@@ -160,8 +160,8 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
             {"channel_id": [0], "enable_words": True, "enable_itn": False},
         )
 
-    @mock.patch("generate_subtitle_qwen_api.time.sleep")
-    @mock.patch("generate_subtitle_qwen_api.requests.get")
+    @mock.patch("maw.asr.qwen.time.sleep")
+    @mock.patch("maw.asr.qwen.requests.get")
     def test_poll_completes_qwen3_after_pending_and_running(
         self,
         get: mock.Mock,
@@ -224,7 +224,7 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(content["type"], "input_text")
         self.assertEqual(len(content["text"]), 400)
 
-    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    @mock.patch("maw.asr.qwen.requests.post")
     def test_submit_sends_qwen_audio_file_urls_vocabulary_and_context(
         self,
         post: mock.Mock,
@@ -264,7 +264,7 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("enable_itn", payload["parameters"])
         response.raise_for_status.assert_called_once_with()
 
-    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    @mock.patch("maw.asr.qwen.requests.post")
     def test_submit_keeps_dialect_only_for_qwen_audio_31(self, post: mock.Mock) -> None:
         response = mock.Mock()
         response.json.return_value = {
@@ -304,7 +304,7 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
         payload = post.call_args.kwargs["json"]
         self.assertNotIn("keep_dialect", payload["parameters"])
 
-    @mock.patch("generate_subtitle_qwen_api.requests.post")
+    @mock.patch("maw.asr.qwen.requests.post")
     def test_submit_uses_individual_hotword_weights_and_ignores_invalid_entries(
         self,
         post: mock.Mock,
@@ -330,7 +330,7 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
         payload = post.call_args.kwargs["json"]
         self.assertEqual(payload["parameters"]["vocabulary"], {"厄尔尼诺": 4, "obsidian": 50})
 
-    @mock.patch("generate_subtitle_qwen_api.requests.get")
+    @mock.patch("maw.asr.qwen.requests.get")
     def test_poll_reads_qwen_audio_subtask_result(self, get: mock.Mock) -> None:
         response = mock.Mock()
         response.json.return_value = {
@@ -360,10 +360,10 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(usage, {"duration": 12})
 
     @mock.patch(
-        "generate_subtitle_qwen_api.time.monotonic",
+        "maw.asr.qwen.time.monotonic",
         side_effect=[0, 0, 0, 0, 16, 16, 16, 16],
     )
-    @mock.patch("generate_subtitle_qwen_api.requests.get")
+    @mock.patch("maw.asr.qwen.requests.get")
     def test_poll_reports_heartbeat_when_status_does_not_change(self, get: mock.Mock, _monotonic: mock.Mock) -> None:
         responses = []
         for status in ("RUNNING", "RUNNING"):
@@ -524,7 +524,7 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
             media_path.write_bytes(b"audio")
             with (
                 mock.patch("sys.argv", [
-                    "generate_subtitle_qwen_api.py",
+                    "maw.asr.qwen",
                     str(media_path),
                     "--model",
                     QWEN_AUDIO_FILETRANS_MODEL,
@@ -566,16 +566,16 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
             buffer = io.StringIO()
             with (
                 mock.patch("sys.argv", [
-                    "generate_subtitle_qwen_api.py",
+                    "maw.asr.qwen",
                     str(media_path),
                     "--model",
                     QWEN_AUDIO_31_FILETRANS_MODEL,
                     "-o",
                     str(output_path),
                 ]),
-                mock.patch("generate_subtitle_qwen_api.resolve_ffmpeg_tools"),
-                mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=2.0),
-                mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result),
+                mock.patch("maw.asr.qwen.resolve_ffmpeg_tools"),
+                mock.patch("maw.asr.qwen.get_duration_sec", return_value=2.0),
+                mock.patch("maw.asr.qwen.transcribe", return_value=result),
                 redirect_stdout(buffer),
             ):
                 main()
@@ -606,16 +606,16 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
             buffer = io.StringIO()
             with (
                 mock.patch("sys.argv", [
-                    "generate_subtitle_qwen_api.py",
+                    "maw.asr.qwen",
                     str(media_path),
                     "--model",
                     QWEN_AUDIO_31_FILETRANS_MODEL,
                     "-o",
                     str(output_path),
                 ]),
-                mock.patch("generate_subtitle_qwen_api.resolve_ffmpeg_tools"),
-                mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=2.0),
-                mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result),
+                mock.patch("maw.asr.qwen.resolve_ffmpeg_tools"),
+                mock.patch("maw.asr.qwen.get_duration_sec", return_value=2.0),
+                mock.patch("maw.asr.qwen.transcribe", return_value=result),
                 redirect_stdout(buffer),
             ):
                 main()
@@ -652,16 +652,16 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
             }
             with (
                 mock.patch("sys.argv", [
-                    "generate_subtitle_qwen_api.py",
+                    "maw.asr.qwen",
                     str(media_path),
                     "--model",
                     FUNASR_MODEL,
                     "-o",
                     str(output_path),
                 ]),
-                mock.patch("generate_subtitle_qwen_api.resolve_ffmpeg_tools"),
-                mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=2.0),
-                mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result),
+                mock.patch("maw.asr.qwen.resolve_ffmpeg_tools"),
+                mock.patch("maw.asr.qwen.get_duration_sec", return_value=2.0),
+                mock.patch("maw.asr.qwen.transcribe", return_value=result),
                 redirect_stdout(io.StringIO()),
             ):
                 main()

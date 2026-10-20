@@ -1,6 +1,8 @@
 // 本地模型/运行时/OCR/对齐模型的渲染与刷新。
 
 function isLocalProvider() { return provider()?.kind === "local" || provider()?.id === "local"; }
+// 云端识别下，对齐工具使用共享运行环境，不复用当前云端模型的 ID。
+function localRuntimeModelId() { return isLocalProvider() ? $("model").value : ""; }
 function isDeepSeekProvider() { return provider()?.id === "deepseek"; }
 function isFireRedModel(model = selectedModel()) { return isLocalProvider() && String(model?.engine || "").toLowerCase() === "firered"; }
 function syncLocalDeviceOptions(model = selectedModel()) {
@@ -236,10 +238,14 @@ function renderLocalRuntimeInventory() {
     checking: "local_runtime_checking",
     installing: "local_runtime_installing",
   })[runtimeStatus] || "local_runtime_unknown";
+  const upgrade = localRuntimeUpgradeInfo(state.config?.localRuntime, inventory);
   const versionValue = `${t("local_runtime_installed")}: ${inventory.runtimeVersionInstalled || t("local_runtime_unknown")} · ${t("local_runtime_expected")}: ${inventory.runtimeVersionExpected || t("local_runtime_unknown")}`;
   const pythonValue = `${t("local_runtime_installed")}: ${inventory.pythonVersionInstalled || t("local_runtime_unknown")} · ${t("local_runtime_expected")}: ${inventory.pythonVersionExpected || t("local_runtime_unknown")}`;
   const installedAt = Number(inventory.installedAt || 0);
-  appendMeta("local_runtime_inventory_status", t(statusKey));
+  const statusText = upgrade
+    ? `${t("local_runtime_upgrade_inventory")}${state.lang === "zh" ? "：" : ": "}${upgrade.installedVersion} → ${upgrade.expectedVersion}`
+    : t(statusKey);
+  appendMeta("local_runtime_inventory_status", statusText);
   appendMeta("local_runtime_inventory_version", versionValue);
   appendMeta("local_runtime_inventory_python", pythonValue);
   appendMeta("local_runtime_inventory_manifest", inventory.manifestStatus || "");
@@ -250,8 +256,9 @@ function renderLocalRuntimeInventory() {
   const componentGroup = document.createElement("section");
   componentGroup.className = "runtime-inventory-components";
   const heading = document.createElement("h4");
-  const installedCount = components.filter((item) => item && item.installed).length;
-  heading.textContent = `${t("local_runtime_inventory_components")} (${installedCount}/${components.length})`;
+  const requiredComponents = components.filter((item) => item && item.required !== false);
+  const installedCount = requiredComponents.filter((item) => item.installed).length;
+  heading.textContent = `${t("local_runtime_inventory_components")} (${installedCount}/${requiredComponents.length})`;
   componentGroup.append(heading);
   for (const component of components) {
     const row = document.createElement("div");
@@ -277,19 +284,63 @@ function renderLocalRuntimeInventory() {
   container.append(componentGroup);
 }
 
+function runtimeVersionParts(value) {
+  const match = String(value || "").trim().match(/^v?(\d+(?:\.\d+)*)/iu);
+  return match ? match[1].split(".").map((part) => Number(part)) : null;
+}
+
+function compareRuntimeVersions(left, right) {
+  const leftParts = runtimeVersionParts(left);
+  const rightParts = runtimeVersionParts(right);
+  if (!leftParts || !rightParts) return null;
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (difference !== 0) return Math.sign(difference);
+  }
+  return 0;
+}
+
+function localRuntimeUpgradeInfo(runtime = state.config?.localRuntime, inventory = state.localRuntimeInventory) {
+  if (!runtime || runtime.ready || runtime.status !== "broken" || !inventory) return null;
+  const installedVersion = String(inventory.runtimeVersionInstalled || runtime.runtimeVersion || "").trim();
+  const expectedVersion = String(inventory.runtimeVersionExpected || "").trim();
+  if (compareRuntimeVersions(installedVersion, expectedVersion) !== -1) return null;
+  const components = Array.isArray(inventory.components) ? inventory.components : [];
+  const required = components.filter((item) => item && item.required !== false);
+  return {
+    installedVersion,
+    expectedVersion,
+    installedCount: required.filter((item) => item.installed).length,
+    requiredCount: required.length,
+  };
+}
+
+function formatLocalRuntimeUpgradeHint(upgrade) {
+  if (!upgrade?.requiredCount) return t("local_runtime_upgrade_hint_unknown");
+  const complete = upgrade.installedCount === upgrade.requiredCount;
+  const key = complete ? "local_runtime_upgrade_hint_complete" : "local_runtime_upgrade_hint_incomplete";
+  return t(key)
+    .replaceAll("{installedCount}", String(upgrade.installedCount))
+    .replaceAll("{requiredCount}", String(upgrade.requiredCount));
+}
+
 async function refreshLocalRuntimeInventory() {
   const button = $("toggleLocalRuntimeInventory");
+  const requestId = (state.localRuntimeInventoryRequest || 0) + 1;
+  state.localRuntimeInventoryRequest = requestId;
   state.localRuntimeInventory = null;
   state.localRuntimeInventoryError = "";
   renderLocalRuntimeInventory();
   button.disabled = true;
   const result = await bridge("get_local_runtime_inventory");
-  if (state.localRuntimeInventoryOpen) {
-    if (!result.ok) state.localRuntimeInventoryError = result.detail || result.error || t("failed");
-    else state.localRuntimeInventory = result.inventory || null;
-    renderLocalRuntimeInventory();
-  }
+  if (requestId !== state.localRuntimeInventoryRequest) return result;
+  if (!result.ok) state.localRuntimeInventoryError = result.detail || result.error || t("failed");
+  else state.localRuntimeInventory = result.inventory || null;
+  if (state.localRuntimeInventoryOpen) renderLocalRuntimeInventory();
   button.disabled = false;
+  renderLocalRuntime();
+  if (Array.isArray(state.config?.alignmentModels)) renderLocalAlignmentModel();
   return result;
 }
 
@@ -344,6 +395,11 @@ function renderOcrRuntimeHint(runtime) {
 function renderLocalRuntimeHint(runtime) {
   const container = $("localRuntimeHint");
   container.replaceChildren();
+  const upgrade = localRuntimeUpgradeInfo(runtime);
+  if (upgrade) {
+    container.textContent = formatLocalRuntimeUpgradeHint(upgrade);
+    return;
+  }
   if (runtime.ready || runtime.status === "ready") {
     container.append(document.createTextNode(t("local_runtime_ready_prefix")));
     const link = document.createElement("button");
@@ -362,15 +418,23 @@ function renderLocalRuntimeHint(runtime) {
   if (detail) appendMessageText(container, detail);
 }
 function renderLocalRuntime() {
-  if (!isLocalProvider()) return;
   const runtime = state.config.localRuntime || {};
   const installing = state.localRuntimeInstalling || runtime.status === "installing";
+  const upgrade = localRuntimeUpgradeInfo(runtime);
   const key = installing ? "local_runtime_installing" : ({ ready: "local_runtime_ready", broken: "local_runtime_broken", missing: "local_runtime_missing", checking: "local_runtime_checking", installing: "local_runtime_installing" }[runtime.status] || "local_runtime_missing");
   renderLocalRuntimePaths(runtime);
   renderLocalModelCachePathLine(runtime);
   const target = $("localRuntimeStatus");
   // 实时流水只保留在进度条下方的 ProgressMessage 行，避免上下双显同一句。
-  target.textContent = t(key);
+  target.replaceChildren();
+  if (upgrade) {
+    target.append(document.createTextNode("⚠️ "));
+    const heading = document.createElement("strong");
+    heading.textContent = `${t("local_runtime_upgrade_required")}${state.lang === "zh" ? "：" : ": "}${upgrade.installedVersion} → ${upgrade.expectedVersion}`;
+    target.append(heading);
+  } else {
+    target.textContent = t(key);
+  }
   target.className = `local-status ${installing ? "warn" : (runtime.ready ? "ready" : "warn")}`;
   // 高级选项里的检测结果行与 Runtime 面板状态保持一致。
   const checkStatus = $("localRuntimeCheckStatus");
@@ -382,7 +446,7 @@ function renderLocalRuntime() {
   const button = $("installLocalRuntime");
   button.disabled = false;
   button.classList.toggle("hidden", !installing && runtime.status === "ready");
-  button.textContent = installing || runtime.status === "installing" ? t("local_runtime_cancel") : (runtime.status === "missing" ? t("local_runtime_install") : t("local_runtime_repair"));
+  button.textContent = installing || runtime.status === "installing" ? t("local_runtime_cancel") : (upgrade ? t("local_runtime_upgrade_action") : (runtime.status === "missing" ? t("local_runtime_install") : t("local_runtime_repair")));
   $("refreshLocalRuntime").disabled = installing;
   const progress = $("localRuntimeProgress");
   progress.classList.toggle("hidden", !installing);
@@ -449,7 +513,8 @@ async function saveLocalRuntimePath(path) {
   if (!result.ok) { applyErrorResult(result); return result; }
   state.config.localRuntime = result.runtime || state.config.localRuntime || {};
   renderLocalRuntime();
-  if (isLocalProvider()) { void refreshLocalModels(); void refreshAlignmentModels(); }
+  if (isLocalProvider()) void refreshLocalModels();
+  void refreshAlignmentModels();
   setError("localRuntimePath", "");
   setStatus(t("saved"));
   return result;
@@ -546,10 +611,42 @@ function alignmentModelStatus(model) {
   const runtimeReady = model.runtimeAvailable === undefined
     ? Boolean(state.config.localRuntime?.ready)
     : Boolean(model.runtimeAvailable);
+  const packages = Array.isArray(model.runtimePackages) ? model.runtimePackages : [];
+  const components = Array.isArray(state.localRuntimeInventory?.components) ? state.localRuntimeInventory.components : [];
+  const componentByName = new Map(components.map((component) => [component.name, component]));
+  const packageStates = packages.map((name) => componentByName.get(name));
+  const inventoryCoversPackages = packages.length > 0 && packageStates.every(Boolean);
+  const dependenciesMissing = inventoryCoversPackages
+    ? packageStates.some((component) => !component.installed)
+    : !runtimeReady;
   const statusKey = preparing
     ? "alignment_model_downloading"
-    : (model.status === "checking" ? "alignment_model_checking" : (!runtimeReady ? "alignment_model_runtime_missing" : (model.installed ? "alignment_model_ready" : "alignment_model_missing")));
-  return { preparing, runtimeReady, statusKey };
+    : (model.status === "checking" ? "alignment_model_checking" : (model.installed ? "alignment_model_ready" : "alignment_model_missing"));
+  return { preparing, runtimeReady, dependenciesMissing, statusKey };
+}
+
+function appendAlignmentModelDependencyStatus(target) {
+  target.append(document.createTextNode(` · ${t("alignment_model_dependencies_missing")} · `));
+  const configure = document.createElement("button");
+  configure.type = "button";
+  configure.className = "inline-link";
+  configure.textContent = t("local_runtime_configure");
+  configure.addEventListener("click", () => {
+    openSettings("localRuntimePanel");
+    void refreshLocalRuntime();
+  });
+  target.append(configure);
+}
+
+function renderAlignmentModelStatus(target, model, status) {
+  target.replaceChildren();
+  const statusText = status.preparing && state.alignmentProgressMessage
+    ? `${t(status.statusKey)} ${state.alignmentProgressMessage}`
+    : t(status.statusKey);
+  target.append(document.createTextNode(statusText));
+  if (!status.preparing && model.status !== "checking" && status.dependenciesMissing) {
+    appendAlignmentModelDependencyStatus(target);
+  }
 }
 
 function renderRecognitionAlignmentModel(models) {
@@ -575,14 +672,9 @@ function renderRecognitionAlignmentModel(models) {
     statusTarget.className = "hint";
     return;
   }
-  const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
-  if (!preparing && !runtimeReady && statusKey === "alignment_model_runtime_missing") {
-    renderLocalRuntimeMissingHint(statusTarget);
-  } else {
-    statusTarget.textContent = preparing && state.alignmentProgressMessage
-      ? `${t(statusKey)} ${state.alignmentProgressMessage}`
-      : t(statusKey);
-  }
+  const status = alignmentModelStatus(model);
+  const { preparing, runtimeReady } = status;
+  renderAlignmentModelStatus(statusTarget, model, status);
   statusTarget.className = `hint ${model.installed && runtimeReady && !preparing ? "success" : ""}`;
 }
 
@@ -590,10 +682,6 @@ function renderLocalAlignmentModelList(models) {
   const container = $("localAlignmentModelList");
   if (!container) return;
   container.replaceChildren();
-  if (!isLocalProvider()) {
-    container.classList.add("hidden");
-    return;
-  }
   container.classList.toggle("hidden", !models.length);
   const selectedId = state.alignmentModelManagementId;
   models.forEach((model) => {
@@ -603,7 +691,7 @@ function renderLocalAlignmentModelList(models) {
     button.type = "button";
     button.className = "local-model-list-item";
     button.classList.toggle("active", model.id === selectedId);
-    const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
+    const { preparing, runtimeReady, dependenciesMissing, statusKey } = alignmentModelStatus(model);
     const ready = Boolean(model.installed && runtimeReady && !preparing);
     button.classList.toggle("ready", ready);
     button.disabled = Boolean(state.alignmentPreparing);
@@ -627,10 +715,13 @@ function renderLocalAlignmentModelList(models) {
       main.append(noteElement);
     }
     const status = document.createElement("span");
-    status.className = `local-model-list-status ${ready ? "ready" : ""}`.trim();
-    status.textContent = ready ? "✓" : "";
-    status.setAttribute("aria-label", t(statusKey));
-    status.title = t(statusKey);
+    status.className = `local-model-list-status ${ready ? "ready" : (dependenciesMissing && !preparing ? "dependency-missing" : "")}`.trim();
+    status.textContent = t(statusKey);
+    if (!preparing && model.status !== "checking" && dependenciesMissing) {
+      status.append(document.createTextNode(` · ${t("alignment_model_dependencies_missing")}`));
+    }
+    status.setAttribute("aria-label", status.textContent);
+    status.title = status.textContent;
     button.append(main, status);
     item.append(button);
     container.append(item);
@@ -647,22 +738,13 @@ function renderLocalAlignmentModel() {
   const statusTarget = $("localAlignmentModelStatus");
   if (!button || !statusTarget) return;
   const section = $("alignmentModelSettingsSection");
-  const local = isLocalProvider();
   const models = Array.isArray(state.config?.alignmentModels) ? state.config.alignmentModels : [];
-  section?.classList.toggle("hidden", !local);
-  const selected = local && models.some((model) => model.id === state.alignmentModelManagementId)
+  section?.classList.remove("hidden");
+  const selected = models.some((model) => model.id === state.alignmentModelManagementId)
     ? state.alignmentModelManagementId
-    : (local ? models[0]?.id || "" : "");
+    : models[0]?.id || "";
   state.alignmentModelManagementId = selected;
   renderLocalAlignmentModelList(models);
-  if (!local) {
-    button.disabled = true;
-    button.classList.add("hidden");
-    statusTarget.textContent = "";
-    statusTarget.className = "local-status";
-    renderRecognitionAlignmentModel(models);
-    return;
-  }
   const model = models.find((item) => item.id === selected);
   if (!model) {
     statusTarget.textContent = "";
@@ -673,31 +755,27 @@ function renderLocalAlignmentModel() {
     return;
   }
   button.classList.remove("hidden");
-  const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
-  if (!preparing && !runtimeReady && statusKey === "alignment_model_runtime_missing") {
-    renderLocalRuntimeMissingHint(statusTarget);
-  } else {
-    statusTarget.textContent = preparing && state.alignmentProgressMessage
-      ? `${t(statusKey)} ${state.alignmentProgressMessage}`
-      : t(statusKey);
-  }
+  const status = alignmentModelStatus(model);
+  const { preparing, runtimeReady } = status;
+  renderAlignmentModelStatus(statusTarget, model, status);
   statusTarget.className = `local-status ${model.installed && runtimeReady && !preparing ? "ready" : "warn"}`;
   button.disabled = preparing ? false : (!runtimeReady || model.status === "checking");
   button.textContent = preparing ? t("alignment_model_cancel") : (model.installed ? t("alignment_model_download_again") : t("alignment_model_download"));
   renderRecognitionAlignmentModel(models);
 }
 async function refreshLocalRuntime() {
-  if (!isLocalProvider()) return;
   const requestId = ++localRuntimeRequest;
   const statusRequestId = ++localStatusRequest;
-  const modelId = $("model").value;
-  const result = await bridge("get_local_runtime", { modelId: $("model").value });
-  if (requestId !== localRuntimeRequest || statusRequestId !== localStatusRequest || !isLocalProvider() || $("model").value !== modelId) return result;
+  const modelId = localRuntimeModelId();
+  const result = await bridge("get_local_runtime", { modelId });
+  if (requestId !== localRuntimeRequest || statusRequestId !== localStatusRequest || localRuntimeModelId() !== modelId) return result;
   if (!result.ok) { applyErrorResult(result); return result; }
   state.config.localRuntime = result;
   state.config.modelCacheRoot = result.modelCachePath || state.config.modelCacheRoot || "";
   renderLocalRuntime();
-  if (state.localRuntimeInventoryOpen) void refreshLocalRuntimeInventory();
+  renderLocalAlignmentModel();
+  if (result.status === "broken") void refreshLocalRuntimeInventory();
+  else if (state.localRuntimeInventoryOpen) void refreshLocalRuntimeInventory();
   return result;
 }
 async function refreshLocalModels() {
@@ -717,6 +795,9 @@ async function refreshLocalModels() {
   models.forEach((item) => { const local = provider().models.find((model) => model.id === item.id); if (local && item.localStatus) local.localStatus = item.localStatus; });
   renderLocalModelStatus();
   renderLocalRuntime();
+  if (result.runtime && (result.runtime.status === "broken" || state.localRuntimeInventoryOpen)) {
+    void refreshLocalRuntimeInventory();
+  }
   return result;
 }
 async function refreshAlignmentModels() {

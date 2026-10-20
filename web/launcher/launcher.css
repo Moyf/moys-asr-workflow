@@ -824,7 +824,10 @@ label {
 
 .local-model-list-status {
   flex: 0 0 auto;
-  white-space: nowrap;
+  max-width: 132px;
+  text-align: end;
+  white-space: normal;
+  line-height: 1.35;
 }
 
 .local-model-list-status.ready {
@@ -837,6 +840,10 @@ label {
   background: color-mix(in srgb, #8ecf9b 18%, var(--bg-input));
   color: #8ecf9b;
   font-weight: 700;
+}
+
+.local-model-list-status.dependency-missing {
+  color: #d49a4a;
 }
 
 .local-runtime-panel {
@@ -2655,6 +2662,15 @@ textarea::placeholder {
   flex-wrap: wrap;
   gap: 4px;
   margin: 10px 0 0;
+}
+
+.toolbox-alignment-model-hint {
+  row-gap: 8px;
+}
+
+.toolbox-script-guidance {
+  gap: 8px;
+  margin: 0 0 12px;
 }
 
 .toolbox-preset-prompt {

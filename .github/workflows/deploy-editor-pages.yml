@@ -7,7 +7,6 @@ on:
       - "website/**"
       - "README.md"
       - "CHANGELOG.md"
-      - "JSON_SCHEMA.md"
       - "docs/**"
       - "edit.py"
       - "web/**"

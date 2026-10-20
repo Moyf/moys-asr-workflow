@@ -667,7 +667,7 @@ class BcutCliAudioPreparationTests(unittest.TestCase):
                 mock.patch(
                     "sys.argv",
                     [
-                        "generate_subtitle_bcut_api.py",
+                        "maw.asr.bcut",
                         str(input_path),
                         "-o", str(output_path),
                         "--json",
@@ -678,7 +678,7 @@ class BcutCliAudioPreparationTests(unittest.TestCase):
                     ],
                 ),
                 mock.patch(
-                    "generate_subtitle_bcut_api.load_config",
+                    "maw.asr.bcut.load_config",
                     return_value={
                         "poll_interval": 2,
                         "poll_timeout": 60,
@@ -686,18 +686,18 @@ class BcutCliAudioPreparationTests(unittest.TestCase):
                     },
                 ),
                 mock.patch(
-                    "generate_subtitle_bcut_api.get_duration_sec",
+                    "maw.asr.bcut.get_duration_sec",
                     side_effect=[60.0, 60.0],
                 ),
-                mock.patch("generate_subtitle_bcut_api.extract_audio") as extract_audio,
-                mock.patch("generate_subtitle_bcut_api.transcribe", return_value=result),
+                mock.patch("maw.asr.bcut.extract_audio") as extract_audio,
+                mock.patch("maw.asr.bcut.transcribe", return_value=result),
                 mock.patch(
-                    "generate_subtitle_bcut_api.embed_media_caches",
+                    "maw.asr.bcut.embed_media_caches",
                     return_value=cache_result,
                 ) as embed_media_caches,
-                mock.patch("generate_subtitle_bcut_api.write_mosp"),
+                mock.patch("maw.asr.bcut.write_mosp"),
             ):
-                from generate_subtitle_bcut_api import main
+                from maw.asr.bcut import main
 
                 main()
 
@@ -728,25 +728,25 @@ class BcutCliAudioPreparationTests(unittest.TestCase):
             with mock.patch(
                 "sys.argv",
                 [
-                    "generate_subtitle_bcut_api.py",
+                    "maw.asr.bcut",
                     str(input_path),
                     "-ll", "10m",
                     "-o", str(output_path),
                 ],
             ), mock.patch(
-                "generate_subtitle_bcut_api.load_config",
+                "maw.asr.bcut.load_config",
                 return_value={
                     "poll_interval": 2,
                     "poll_timeout": 60,
                     "max_audio_seconds": 7200,
                 },
             ), mock.patch(
-                "generate_subtitle_bcut_api.get_duration_sec",
+                "maw.asr.bcut.get_duration_sec",
                 side_effect=duration_for,
-            ), mock.patch("generate_subtitle_bcut_api.extract_audio") as extract_audio, \
-                 mock.patch("generate_subtitle_bcut_api.shutil.copy2") as copy2, \
-                 mock.patch("generate_subtitle_bcut_api.transcribe", return_value=result) as transcribe:
-                from generate_subtitle_bcut_api import main
+            ), mock.patch("maw.asr.bcut.extract_audio") as extract_audio, \
+                 mock.patch("maw.asr.bcut.shutil.copy2") as copy2, \
+                 mock.patch("maw.asr.bcut.transcribe", return_value=result) as transcribe:
+                from maw.asr.bcut import main
 
                 main()
 
@@ -763,10 +763,10 @@ class BcutCliAudioPreparationTests(unittest.TestCase):
 class BcutCliExitContractTests(unittest.TestCase):
     def test_missing_input_exits_nonzero(self) -> None:
         """缺失输入文件属于调用方错误，必须以非零退出码失败。"""
-        from generate_subtitle_bcut_api import main
+        from maw.asr.bcut import main
 
         with redirect_stderr(io.StringIO()), \
-             mock.patch("sys.argv", ["generate_subtitle_bcut_api.py", "does-not-exist.mp3"]):
+             mock.patch("sys.argv", ["maw.asr.bcut", "does-not-exist.mp3"]):
             with self.assertRaises(SystemExit) as raised:
                 main()
         self.assertEqual(raised.exception.code, 1)
@@ -839,7 +839,7 @@ class GuiWorkflowTests(unittest.TestCase):
             self._request(), executable="python", frozen=False
         )
 
-        self.assertIn("generate_subtitle_bcut_api.py", command[1])
+        self.assertEqual(command[:3], ["python", "-m", "maw.asr.bcut"])
         self.assertNotIn("--language", command)
         self.assertNotIn("--model", command)
         self.assertNotIn("--region", command)
@@ -926,7 +926,7 @@ class PublicCliWiringTests(unittest.TestCase):
     def test_invoke_generator_routes_bcut_module(self) -> None:
         from maw import cli
 
-        with mock.patch("generate_subtitle_bcut_api.main", return_value=None) as main:
+        with mock.patch("maw.asr.bcut.main", return_value=None) as main:
             result = cli._invoke_generator("bcut", ["clip.mp3"])
 
         self.assertEqual(result, 0)
@@ -972,7 +972,7 @@ class BcutCliOutputNamingTests(unittest.TestCase):
             result = {"text": "测试", "language": "zh", "items": []}
             if debug_raw:
                 result["raw_response"] = {"utterances": []}
-            argv = ["generate_subtitle_bcut_api.py", str(media)]
+            argv = ["maw.asr.bcut", str(media)]
             if explicit_output is not None:
                 argv += ["-o", str(explicit_output)]
             argv += extra_args
@@ -985,15 +985,15 @@ class BcutCliOutputNamingTests(unittest.TestCase):
 
             with mock.patch("sys.argv", argv), \
                  mock.patch(
-                     "generate_subtitle_bcut_api.load_config",
+                     "maw.asr.bcut.load_config",
                      return_value={"poll_interval": 2, "poll_timeout": 60, "max_audio_seconds": 7200},
                  ), \
-                 mock.patch("generate_subtitle_bcut_api.get_duration_sec", return_value=1000.0), \
-                 mock.patch("generate_subtitle_bcut_api.shutil.copy2"), \
-                 mock.patch("generate_subtitle_bcut_api.transcribe", return_value=result), \
-                 mock.patch("generate_subtitle_bcut_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.asr.bcut.get_duration_sec", return_value=1000.0), \
+                 mock.patch("maw.asr.bcut.shutil.copy2"), \
+                 mock.patch("maw.asr.bcut.transcribe", return_value=result), \
+                 mock.patch("maw.asr.bcut.time.perf_counter", side_effect=fake_perf), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
-                from generate_subtitle_bcut_api import main
+                from maw.asr.bcut import main
 
                 main()
                 names = sorted(path.name for path in root.glob("*.srt"))
@@ -1032,17 +1032,17 @@ class BcutCliOutputNamingTests(unittest.TestCase):
 
             with mock.patch(
                 "sys.argv",
-                ["generate_subtitle_bcut_api.py", str(media), "--debug-raw"],
+                ["maw.asr.bcut", str(media), "--debug-raw"],
             ), mock.patch(
-                "generate_subtitle_bcut_api.load_config",
+                "maw.asr.bcut.load_config",
                 return_value={"poll_interval": 2, "poll_timeout": 60, "max_audio_seconds": 7200},
-            ), mock.patch("generate_subtitle_bcut_api.get_duration_sec", return_value=1000.0), \
-                 mock.patch("generate_subtitle_bcut_api.shutil.copy2"), \
-                 mock.patch("generate_subtitle_bcut_api.transcribe", return_value=result), \
-                 mock.patch("generate_subtitle_bcut_api.time.perf_counter", side_effect=fake_perf), \
+            ), mock.patch("maw.asr.bcut.get_duration_sec", return_value=1000.0), \
+                 mock.patch("maw.asr.bcut.shutil.copy2"), \
+                 mock.patch("maw.asr.bcut.transcribe", return_value=result), \
+                 mock.patch("maw.asr.bcut.time.perf_counter", side_effect=fake_perf), \
                  mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
-                from generate_subtitle_bcut_api import main
+                from maw.asr.bcut import main
 
                 main()
 

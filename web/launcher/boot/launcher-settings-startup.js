@@ -60,7 +60,10 @@ function openSettings(sectionId = "", focusId = "") {
     });
   }
 }
-function closeSettings() { $("settingsModal").classList.add("hidden"); }
+function closeSettings() {
+  $("settingsModal").classList.add("hidden");
+  window.MAWLauncher?.onSettingsClosed?.();
+}
 async function openServerEditor() {
   clearErrors();
   $("htmlMenu").classList.add("hidden");

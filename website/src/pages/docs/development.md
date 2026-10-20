@@ -14,8 +14,9 @@ source: "docs/engineering/DEVELOPMENT.md"
 | 位置 | 职责 |
 | --- | --- |
 | `maw_gui.py`、`maw/cli.py` | Launcher 启动、公开转写 CLI 与 Server 管理。 |
-| `generate_subtitle_*_api.py` | 六个云端/接口生成器；Qwen 入口也处理 Fun-ASR。 |
-| `generate_subtitle_local.py`、`maw/local_asr.py` | 实验本地模型与统一字幕输出。 |
+| `maw/asr/{qwen,soniox,doubao,bcut,tencent,openai,local}.py` | 七个高级 ASR 模块入口；Qwen 入口也处理 Fun-ASR。 |
+| `maw/asr/common.py`、`maw/asr/segmentation.py` | 服务商共享的媒体、SRT、断句与时间码修复，不依赖云端入口。 |
+| `maw/local_asr.py` | 实验本地模型与统一字幕输出。 |
 | `maw/gui_web.py`、`maw/gui_workflow.py`、`web/launcher/` | 图形桥接、任务快照、单文件及批量任务。 |
 | `maw/runtimes/`、`maw/local_models.py` | 独立运行环境与模型准备；MOSS 依赖单独声明。 |
 | `edit.py`、`web/` | 唯一编辑器前端源码及便携 HTML 渲染。 |
@@ -120,7 +121,7 @@ Windows 使用 `scripts/run-e2e.ps1`，脚本检查 quapeaks，并在需要时�
 
 ## 文档与发布
 
-README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 JSON_SCHEMA。反馈和开发进度写任务账本。官网文档由 [同步脚本](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) 生成，不手改副本。
+README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 [JSON_SCHEMA](../json-schema/)。反馈和开发进度写任务账本。官网文档由 [同步脚本](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) 生成，不手改副本。
 
 日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。在 PR 描述注明“内联副本待发布前统一重生成”；发布前或维护者明确要求时才执行：
 

@@ -1845,13 +1845,14 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(alignment_close, ffconcat_panel)
         for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab", "toolboxTimestampsTab"):
             self.assertIn(f'id="{tab_id}"', postprocess_html)
-        for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
+        for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxScriptAlignmentTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
             self.assertIn(f'id="{tab_id}"', utilities_html)
+        self.assertLess(html.index('id="toolboxScriptAlignmentTab"'), html.index('id="toolboxBurnSubtitleTab"'))
         self.assertLess(html.index('id="toolboxBurnSubtitleTab"'), html.index('id="toolboxFfconcatTab"'))
         self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxAlignmentTab"'))
         self.assertLess(html.index('id="toolboxAlignmentTab"'), html.index('id="toolboxExtractAudioTab"'))
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
-        # 媒体工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
+        # 媒体工具记住上次选择的工具；从未选择时回退到第一项（文稿匹配）。
         self.assertIn(
             'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)") || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");',
             script,
@@ -1886,7 +1887,9 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('data-i18n="toolbox_group_timestamp_media">媒体来源</h3>', html)
         timestamp_panel = html[html.index('id="toolboxTimestampsPanel"'):]
         self.assertLess(timestamp_panel.index('data-i18n="toolbox_group_timestamp_media"'), timestamp_panel.index('data-i18n="toolbox_group_alignment_model"'))
-        self.assertIn('<p class="hint toolbox-settings-hint" data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
+        self.assertIn('id="toolboxAlignmentModelHint" class="hint toolbox-settings-hint toolbox-alignment-model-hint"', timestamp_panel)
+        self.assertIn('<span data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
+        self.assertIn('id="openAlignmentModelSettings" class="inline-link"', timestamp_panel)
         self.assertNotIn('<p class="hint" data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
         self.assertNotIn('工程有可用视频时自动使用；独立 SRT 会回退到当前 Launcher 视频；如果当前媒体是音频或无视频，必须选择视频。', html)
         self.assertNotIn('SRT 没有媒体路径；工程若已记录媒体可留空，否则请选择原始音频/视频。', html)
@@ -1956,7 +1959,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('target === "toolboxAlignmentProject"', launcher_script)
         self.assertIn('target === "toolboxAlignmentScript"', launcher_script)
         self.assertNotIn('target === "toolboxAlignmentMedia"', launcher_script)
-        self.assertIn('return ["alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool)', postprocess_script)
+        self.assertIn('return ["scriptAlignment", "alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool)', postprocess_script)
         self.assertIn('$("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities"', postprocess_script)
         self.assertIn('function syncUtilityMediaFieldState()', postprocess_script)
         self.assertIn('$("toolboxUtilityMediaPath").disabled = disabled', postprocess_script)
@@ -3857,6 +3860,17 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("blank-editor.html", result["error"])
 
+    def test_open_faq_uses_source_documentation_location(self) -> None:
+        faq = self.root / "docs" / "user" / "FAQ-常见问题.txt"
+        faq.parent.mkdir(parents=True)
+        faq.write_text("source help\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as open_path:
+            result = self.api.open_faq()
+
+        self.assertTrue(result["ok"])
+        open_path.assert_called_once_with(faq)
+
     def test_open_faq_uses_bundled_troubleshooting_file(self) -> None:
         faq = self.root / "FAQ-常见问题.txt"
         faq.write_text("help\n", encoding="utf-8")
@@ -3912,7 +3926,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         ffprobe.write_bytes(b"exe")
 
         def which(name: str, *, path: str | None = None) -> str:
-            return str(ffmpeg if name == "ffmpeg" else ffprobe)
+            return str(ffmpeg if Path(name).stem == "ffmpeg" else ffprobe)
 
         # which 只应在 mock 的搜索路径上找：真实 PATH / macOS Homebrew 候选目录
         # 在装了 FFmpeg 的机器（如 Homebrew 的 /opt/homebrew）上会泄漏真实路径。
@@ -3924,6 +3938,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertTrue(result["found"])
         self.assertEqual(result["directory"], str(ffmpeg.parent.resolve()))
+        self.assertEqual(result["ffmpeg"], str(ffmpeg.resolve()))
+        self.assertEqual(result["ffprobe"], str(ffprobe.resolve()))
 
     def test_check_ffmpeg_falls_back_to_bundled_tools(self) -> None:
         ffmpeg_dir = self.root / "ffmpeg" / "bin"
@@ -3950,7 +3966,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         def which(name: str, *, path: str | None = None) -> str:
             assert path is not None
             self.assertIn(str(ffmpeg_dir), path.split(os.pathsep))
-            return str(ffmpeg_dir / ("ffmpeg.exe" if name == "ffmpeg" else "ffprobe.exe"))
+            return str(ffmpeg_dir / ("ffmpeg.exe" if Path(name).stem == "ffmpeg" else "ffprobe.exe"))
 
         # 候选目录会先做真实文件系统探测，必须把真实 Homebrew 路径隔离掉，
         # 否则在装了 FFmpeg 的 macOS 机器上真实 /opt/homebrew 会抢先命中。
@@ -5078,7 +5094,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "错误：找不到 FFmpeg / FFprobe。请下载不带 lite 的完整 MAW。",
         ]))
         self.assertTrue(_is_ffmpeg_missing_failure([
-            "File generate_subtitle_qwen_api.py, line 266, in get_duration_sec",
+            "File maw/asr/common.py, line 83, in get_duration_sec",
             "FileNotFoundError: [WinError 2] 系统找不到指定的文件。",
         ]))
         self.assertFalse(_is_ffmpeg_missing_failure([
@@ -5552,6 +5568,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
             "toolboxChainList",
             "toolboxMatchPanel",
             "toolboxTimestampsPanel",
+            "toolboxScriptAlignmentPanel",
             "toolboxOcrPanel",
             "toolboxLlmPanel",
             "toolboxReplacePanel",
@@ -5897,7 +5914,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");', script)
         self.assertNotIn("autoTest", script)
         self.assertIn('$("saveLlmSettings").addEventListener("click", () => { void saveSettings(); });', script)
-        pending_step = script[script.index("function maybeEnablePendingAutoStep()"):script.index("function applyAutoPostprocessPlan")]
+        pending_step = script[script.index("function maybeEnablePendingAutoStep("):script.index("function applyAutoPostprocessPlan")]
         self.assertNotIn("closeSettings", pending_step)
         self.assertNotIn("setOpen(true)", pending_step)
         self.assertIn("font-size: 14px;", stylesheet)
@@ -6577,17 +6594,10 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         # 本地运行环境仍在 Runtime 页；AI 模型页先放云端 AI，再放本地识别模型与对齐模型。
         self.assertLess(runtime_tab_panel, runtime_panel)
         self.assertLess(runtime_panel, ocr_section)
-        # 未选择本地模型时，Runtime 顶部显示「本地模型」跳转提示。
-        hint_section = page.index('id="localModelRuntimeHintSection"')
-        self.assertLess(runtime_tab_panel, hint_section)
-        self.assertLess(hint_section, runtime_panel)
-        self.assertIn('data-i18n="local_model_runtime_hint_title"', page)
-        self.assertIn('data-i18n="local_model_runtime_hint_body"', page)
-        self.assertIn('local_model_runtime_hint_title: "本地模型"', script)
-        self.assertIn('local_model_runtime_hint_body: "如果要查看本地模型相关配置，请先将「识别设置」中的识别方式选为「本地模型」。"', script)
-        self.assertIn('local_model_runtime_hint_title: "Local models"', script)
-        self.assertIn('local_model_runtime_hint_body: "To view local model settings, first select \\"Local models\\" as the recognition method in recognition settings."', script)
-        self.assertIn('$("localModelRuntimeHintSection").classList.toggle("hidden", local);', script)
+        # 对齐工具与云端 ASR 共存，Runtime 面板不再受识别方式限制。
+        self.assertNotIn('id="localModelRuntimeHintSection"', page)
+        self.assertIn('$("localRuntimePanel").classList.remove("hidden");', script)
+        self.assertNotIn('$("localRuntimePanel").classList.toggle("hidden", !local);', script)
         self.assertLess(model_tab_panel, llm_section)
         self.assertLess(llm_section, local_model_section)
         self.assertLess(local_model_section, alignment_section)
@@ -6633,8 +6643,13 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('local_runtime_view_settings: "在 ⚙️ 设置中查看"', script)
         self.assertIn('local_runtime_view_settings: "View in ⚙️ Settings"', script)
         self.assertIn('function renderLocalRuntimeMissingHint(target)', script)
-        self.assertIn('alignment_model_runtime_missing: "本地运行环境未安装"', script)
-        self.assertIn('renderLocalRuntimeMissingHint(statusTarget);', script)
+        self.assertIn('function localRuntimeUpgradeInfo', script)
+        self.assertIn('local_runtime_upgrade_action: "升级并验证运行环境"', script)
+        self.assertIn('alignment_model_ready: "已下载"', script)
+        self.assertIn('alignment_model_missing: "未下载"', script)
+        self.assertIn('alignment_model_dependencies_missing: "缺少依赖"', script)
+        self.assertIn('function renderAlignmentModelStatus(target, model, status)', script)
+        self.assertIn('appendAlignmentModelDependencyStatus(target);', script)
         self.assertIn('openSettings("localRuntimePanel");', script)
         self.assertIn('$("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });', script)
         self.assertIn('$("openLocalModelSettings").addEventListener("click", () => { openSettings("localAsrModelSettingsSection"); void refreshLocalModels(); void refreshAlignmentModels(); });', script)
@@ -6685,7 +6700,9 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('state.alignmentModelSelection', script)
         self.assertIn('state.alignmentModelManagementId', script)
         self.assertIn('function renderLocalAlignmentModelList(models)', script)
-        self.assertIn('section?.classList.toggle("hidden", !local);', script)
+        alignment_management = script[script.index('function renderLocalAlignmentModel()'):script.index('async function refreshLocalRuntime()')]
+        self.assertIn('section?.classList.remove("hidden");', alignment_management)
+        self.assertNotIn('isLocalProvider()', alignment_management)
         self.assertIn('const needsAlignmentModel = isLocalProvider() && !modelProvidesWordTimestamps();', script)
         self.assertNotIn('section?.classList.toggle("hidden", !needsAlignmentModel);', script)
 

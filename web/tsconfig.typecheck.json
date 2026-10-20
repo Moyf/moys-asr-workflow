@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "es2022",
+    "strict": false
+  },
+  "include": [
+    "editor/boot/editor-globals.d.ts",
+    "shared/host/*.js",
+    "shared/utils/*.js",
+    "editor/media/waveform/*.js",
+    "editor/boot/editor-boot.js",
+    "editor/state/editor-state.js",
+    "editor/state/editor-view-updates.js",
+    "editor/state/editor-commands.js",
+    "editor/io/editor-export-srt.js"
+  ]
+}
