@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import sys
@@ -20,6 +21,16 @@ from maw.recent_projects import MAX_RECENT_PROJECTS, load_recent_projects, read_
 
 
 class RecentProjectsReaderTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        # Load the real editor reader only in tests: the Launcher must stay light.
+        server_path = Path(__file__).resolve().parents[1] / "server-editor" / "serve.py"
+        spec = importlib.util.spec_from_file_location("recent_projects_editor_contract", server_path)
+        assert spec and spec.loader
+        cls.server_editor = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = cls.server_editor
+        spec.loader.exec_module(cls.server_editor)
+
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
@@ -94,10 +105,59 @@ class RecentProjectsReaderTests(unittest.TestCase):
     def test_expanduser_resolves_home_relative_paths(self) -> None:
         settings = self.write_settings({"recent_projects": [{"path": "~/docs/clip.mosp"}]})
 
-        with mock.patch.dict(os.environ, {"HOME": str(self.root)}):
+        with mock.patch.dict(os.environ, {"HOME": str(self.root), "USERPROFILE": str(self.root)}):
             projects = read_recent_projects(settings)
 
         self.assertEqual(projects[0]["path"], str((self.root / "docs" / "clip.mosp").resolve()))
+
+    def test_reader_matches_editor_for_shared_settings_inputs(self) -> None:
+        existing = self.root / "现有工程.mosp"
+        existing.write_text("{}", encoding="utf-8")
+        directory = self.root / "folder.mosp"
+        directory.mkdir()
+        cases = {
+            "paths_and_existence": {"recent_projects": [
+                {"path": str(existing), "name": "显示名"},
+                {"path": str(directory)},
+                {"path": "~/docs/missing.mosp"},
+                {"path": "relative.mosp"},
+            ]},
+            "name_fallbacks": {"recent_projects": [
+                {"path": str(self.root / "empty.mosp"), "name": ""},
+                {"path": str(self.root / "numeric.mosp"), "name": 42},
+                {"path": str(self.root / "absent.mosp")},
+            ]},
+            "duplicates_and_limit": {"recent_projects": [
+                {"path": str(existing), "name": "first wins"},
+                {"path": str(self.root / "subdir" / ".." / existing.name), "name": "duplicate"},
+                *[{"path": str(self.root / f"p{i}.mosp")} for i in range(12)],
+            ]},
+            "invalid_entries": {"recent_projects": [
+                "junk", None, 12, {}, {"name": "no path"}, {"path": 42},
+                {"path": str(existing)},
+            ]},
+            "missing_list": {},
+            "invalid_list": {"recent_projects": "nope"},
+            "invalid_root": [],
+            "malformed_json": "{not json",
+        }
+        with mock.patch.dict(os.environ, {"HOME": str(self.root), "USERPROFILE": str(self.root)}):
+            for name, payload in cases.items():
+                with self.subTest(case=name):
+                    settings = self.write_settings(payload)
+                    editor_projects = [
+                        project.to_json()
+                        for project in self.server_editor.read_server_settings(settings).recent_projects
+                    ]
+                    self.assertEqual(read_recent_projects(settings), editor_projects)
+
+    def test_missing_settings_matches_editor(self) -> None:
+        settings = self.root / "absent.json"
+
+        self.assertEqual(
+            read_recent_projects(settings),
+            [project.to_json() for project in self.server_editor.read_server_settings(settings).recent_projects],
+        )
 
 
 class LoadRecentProjectsFallbackTests(unittest.TestCase):
