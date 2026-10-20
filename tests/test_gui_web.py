@@ -1847,12 +1847,12 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             self.assertIn(f'id="{tab_id}"', postprocess_html)
         for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxScriptAlignmentTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
             self.assertIn(f'id="{tab_id}"', utilities_html)
+        self.assertLess(html.index('id="toolboxScriptAlignmentTab"'), html.index('id="toolboxBurnSubtitleTab"'))
         self.assertLess(html.index('id="toolboxBurnSubtitleTab"'), html.index('id="toolboxFfconcatTab"'))
-        self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxScriptAlignmentTab"'))
-        self.assertLess(html.index('id="toolboxScriptAlignmentTab"'), html.index('id="toolboxAlignmentTab"'))
+        self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxAlignmentTab"'))
         self.assertLess(html.index('id="toolboxAlignmentTab"'), html.index('id="toolboxExtractAudioTab"'))
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
-        # 媒体工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
+        # 媒体工具记住上次选择的工具；从未选择时回退到第一项（文稿匹配）。
         self.assertIn(
             'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)") || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");',
             script,
@@ -6583,17 +6583,10 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         # 本地运行环境仍在 Runtime 页；AI 模型页先放云端 AI，再放本地识别模型与对齐模型。
         self.assertLess(runtime_tab_panel, runtime_panel)
         self.assertLess(runtime_panel, ocr_section)
-        # 未选择本地模型时，Runtime 顶部显示「本地模型」跳转提示。
-        hint_section = page.index('id="localModelRuntimeHintSection"')
-        self.assertLess(runtime_tab_panel, hint_section)
-        self.assertLess(hint_section, runtime_panel)
-        self.assertIn('data-i18n="local_model_runtime_hint_title"', page)
-        self.assertIn('data-i18n="local_model_runtime_hint_body"', page)
-        self.assertIn('local_model_runtime_hint_title: "本地模型"', script)
-        self.assertIn('local_model_runtime_hint_body: "如果要查看本地模型相关配置，请先将「识别设置」中的识别方式选为「本地模型」。"', script)
-        self.assertIn('local_model_runtime_hint_title: "Local models"', script)
-        self.assertIn('local_model_runtime_hint_body: "To view local model settings, first select \\"Local models\\" as the recognition method in recognition settings."', script)
-        self.assertIn('$("localModelRuntimeHintSection").classList.toggle("hidden", local);', script)
+        # 对齐工具与云端 ASR 共存，Runtime 面板不再受识别方式限制。
+        self.assertNotIn('id="localModelRuntimeHintSection"', page)
+        self.assertIn('$("localRuntimePanel").classList.remove("hidden");', script)
+        self.assertNotIn('$("localRuntimePanel").classList.toggle("hidden", !local);', script)
         self.assertLess(model_tab_panel, llm_section)
         self.assertLess(llm_section, local_model_section)
         self.assertLess(local_model_section, alignment_section)

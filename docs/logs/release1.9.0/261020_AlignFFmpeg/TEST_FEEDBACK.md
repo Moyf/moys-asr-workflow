@@ -12,6 +12,10 @@
 | 4. 文稿对齐移到媒体工具 | 已修复 | 媒体工具提供「文稿匹配」，放在烧录字幕前、口播对齐前；字幕处理原「文稿匹配」更名为「文稿修正」，仅保留已有字幕的时间码生成，并在文稿修正顶部增加跨页指引。两个入口独立保留模型选择，新入口使用共享媒体输入和独立文稿参数。 |
 | 5. 文稿修正与口播对齐是否重复 | 仅说明 | 文稿修正校正已有字幕；媒体工具的文稿匹配用于与准确文稿基本一致的录音；口播对齐处理重录和重复并支持人工选 take。本次不合并处理算法。 |
 | 6. 工具箱名称与顺序 | 已修复 | 字幕处理排序为 AI 处理、OCR 去重、固定替换、文稿修正、生成时间码；媒体工具排序为文稿匹配、烧录字幕、口播对齐、提取音频、生成波形。 |
+| 7. PR 281：工具箱顺序契约导致 CI 失败 | 已修复 | Python 断言按文稿匹配 → 烧录字幕 → 隐藏 FFconcat → 口播对齐检查；Node 契约定位实际的导航容器。Python 定向 1 项和 Node 27 项通过，结果为 `.artifacts/checks/20261020T070408Z-658dc5e8/result.json`、`.artifacts/checks/20261020T070539Z-6c4269fe/result.json`。 |
+| 8. PR 281：选中对齐模型不显示缺失依赖 | 已修复 | 两处状态渲染保留完整状态；管理面板与识别后对齐选择器均显示缺依赖原因和设置链接。浏览器定向通过，结果为 `.artifacts/checks/20261020T070939Z-d139d1b8/result.json`。 |
+| 9. PR 281：云端识别模式无法配置本地运行环境 | 已修复 | 面板、刷新、安装与识别方式解耦；云端模式使用共享运行环境 ID，安装并下载对齐模型后保留原识别方式及 ASR 模型。修复模型刷新抢先完成时未刷新升级清单的问题。浏览器相关 5 项通过，结果同条目 8。 |
+| 10. 子代理复审：云端模式安装失败后状态滞留 | 已修复 | 成功、取消和错误事件均刷新云端模式的运行环境，避免缓存仍为 installing；新增安装失败及取消错误码的浏览器回归通过，结果为 `.artifacts/checks/20261020T071347Z-7f720d2c/result.json`。 |
 
 涉及源码：`maw/ffmpeg.py`、Launcher HTML / CSS、`launcher-local-models.js`、`launcher-notify-backend.js` 与中英文文案；回归覆盖在 `test_ffmpeg.py`、`test_gui_web.py`、`launcher-interactions.spec.mjs`。CHANGELOG 已补充整体行为。
 
@@ -53,3 +57,15 @@
 - 当前提交前复核（HEAD `54d10fc7`，状态提示改动尚未提交）：Launcher `--check` 通过；Node 脚本语法与 bundle 契约 3 项通过，结果：`.artifacts/checks/20261020T064404Z-a4cc3bb5/result.json`。最终核验清单检查与 HTML 生成通过，结果分别为 `.artifacts/checks/20261020T064440Z-cb177880/result.json`、`.artifacts/checks/20261020T064440Z-2cdd3d84/result.json`；个人路径扫描与 `git diff --check` 通过。待提交范围为 CHANGELOG、Launcher 状态提示及 mock、对齐模型状态判定和测试、反馈账本与核验清单。
 - 核验清单 Markdown 检查通过，并生成 `.artifacts/align-ffmpeg-settings/verification.html`；浏览器未能打开该本地页面，故不以生成结果冒充人工检查。
 - 本次没有生成 `blank-editor.html` 内联副本，也未运行真实模型推理或打包检查。
+
+## PR 281 审查修复与最终本地验证
+
+修复基线为 `f5cba025`。PR 原有三条审查反馈均成立；另从两组失败 CI 中确认旧导航容器断言，独立子代理复审补充云端安装失败后的状态刷新。条目 7–10 已处理，没有待处理或阻塞的代码反馈。
+
+- Python：`scripts/run_tests.py tests.test_gui_web.LauncherAssetContractTests tests.test_gui_web.GuiWebBridgeTests.test_launcher_toolbox_uses_primary_tabs_for_postprocessing_and_utilities tests.test_alignment_models tests.test_ffmpeg tests.test_script_timestamp_alignment` 共 100 项通过；结果为 `.artifacts/checks/20261020T071250Z-30456e5d/result.json`。删除旧提示后发现的旧契约已改为验证运行环境常驻可用。
+- Node：`node --test tests/test_dev_session.mjs tests/test_web_build_artifact.mjs tests/test_launcher_script_syntax.mjs tests/test_launcher_bundle.mjs tests/test_launcher_feedback_ui.mjs` 共 77 项通过；结果为 `.artifacts/checks/20261020T071000Z-ef8c5650/result.json`。最终事件分支修复后，语法和 bundle 契约 3 项再次通过，结果为 `.artifacts/checks/20261020T071436Z-663ef46b/result.json`；两套 bundle 新鲜度检查通过。
+- 浏览器：外层 `scripts/run_check.py --timeout 180` 执行 `node node_modules/@playwright/test/cli.js test tests/e2e/script-timestamp-alignment.spec.mjs tests/e2e/launcher-interactions.spec.mjs --project=chromium --workers=1`，按文稿工具、模型入口和运行环境用例名称定向过滤，12 项通过；结果为 `.artifacts/checks/20261020T071433Z-ccb2bfd0/result.json`。覆盖云端模式安装后下载对齐模型、失败和取消后退出 installing、两个选中模型状态区、版本升级、标签键盘导航以及文稿输入失效和结果归属。
+- 截图已自查云端模式运行环境、版本升级清单、对齐模型缺依赖状态；间距实测：模型入口上方 10 px、换行 8 px，升级提示行 gap 为 10 px，文稿指引下方 12 px。截图保留在本地 `.artifacts/pr281/final-browser/`，不入库。
+- 独立子代理最终复审通过，未发现其他合并阻塞项。较早的浏览器权限阻塞由本节当前源码验证替代；初次升级状态测试暴露库存刷新竞态并已修复，后续测试夹具的模型前提与 Proxy thenable 问题也已纠正。
+
+本地自动化使用模型下载 mock 与注入后端，不代表真实模型下载、推理或打包验收；这些人工项仍保留在核验清单中。远端 CI 与合并结果以 PR 当前状态为准，内联副本待发布前统一重生成。

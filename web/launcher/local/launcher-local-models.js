@@ -1,6 +1,8 @@
 // 本地模型/运行时/OCR/对齐模型的渲染与刷新。
 
 function isLocalProvider() { return provider()?.kind === "local" || provider()?.id === "local"; }
+// 云端识别下，对齐工具使用共享运行环境，不复用当前云端模型的 ID。
+function localRuntimeModelId() { return isLocalProvider() ? $("model").value : ""; }
 function isDeepSeekProvider() { return provider()?.id === "deepseek"; }
 function isFireRedModel(model = selectedModel()) { return isLocalProvider() && String(model?.engine || "").toLowerCase() === "firered"; }
 function syncLocalDeviceOptions(model = selectedModel()) {
@@ -416,7 +418,6 @@ function renderLocalRuntimeHint(runtime) {
   if (detail) appendMessageText(container, detail);
 }
 function renderLocalRuntime() {
-  if (!isLocalProvider()) return;
   const runtime = state.config.localRuntime || {};
   const installing = state.localRuntimeInstalling || runtime.status === "installing";
   const upgrade = localRuntimeUpgradeInfo(runtime);
@@ -512,7 +513,8 @@ async function saveLocalRuntimePath(path) {
   if (!result.ok) { applyErrorResult(result); return result; }
   state.config.localRuntime = result.runtime || state.config.localRuntime || {};
   renderLocalRuntime();
-  if (isLocalProvider()) { void refreshLocalModels(); void refreshAlignmentModels(); }
+  if (isLocalProvider()) void refreshLocalModels();
+  void refreshAlignmentModels();
   setError("localRuntimePath", "");
   setStatus(t("saved"));
   return result;
@@ -670,8 +672,9 @@ function renderRecognitionAlignmentModel(models) {
     statusTarget.className = "hint";
     return;
   }
-  const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
-  renderAlignmentModelStatus(statusTarget, model, { preparing, runtimeReady, statusKey });
+  const status = alignmentModelStatus(model);
+  const { preparing, runtimeReady } = status;
+  renderAlignmentModelStatus(statusTarget, model, status);
   statusTarget.className = `hint ${model.installed && runtimeReady && !preparing ? "success" : ""}`;
 }
 
@@ -752,24 +755,25 @@ function renderLocalAlignmentModel() {
     return;
   }
   button.classList.remove("hidden");
-  const { preparing, runtimeReady, statusKey } = alignmentModelStatus(model);
-  renderAlignmentModelStatus(statusTarget, model, { preparing, runtimeReady, statusKey });
+  const status = alignmentModelStatus(model);
+  const { preparing, runtimeReady } = status;
+  renderAlignmentModelStatus(statusTarget, model, status);
   statusTarget.className = `local-status ${model.installed && runtimeReady && !preparing ? "ready" : "warn"}`;
   button.disabled = preparing ? false : (!runtimeReady || model.status === "checking");
   button.textContent = preparing ? t("alignment_model_cancel") : (model.installed ? t("alignment_model_download_again") : t("alignment_model_download"));
   renderRecognitionAlignmentModel(models);
 }
 async function refreshLocalRuntime() {
-  if (!isLocalProvider()) return;
   const requestId = ++localRuntimeRequest;
   const statusRequestId = ++localStatusRequest;
-  const modelId = $("model").value;
-  const result = await bridge("get_local_runtime", { modelId: $("model").value });
-  if (requestId !== localRuntimeRequest || statusRequestId !== localStatusRequest || !isLocalProvider() || $("model").value !== modelId) return result;
+  const modelId = localRuntimeModelId();
+  const result = await bridge("get_local_runtime", { modelId });
+  if (requestId !== localRuntimeRequest || statusRequestId !== localStatusRequest || localRuntimeModelId() !== modelId) return result;
   if (!result.ok) { applyErrorResult(result); return result; }
   state.config.localRuntime = result;
   state.config.modelCacheRoot = result.modelCachePath || state.config.modelCacheRoot || "";
   renderLocalRuntime();
+  renderLocalAlignmentModel();
   if (result.status === "broken") void refreshLocalRuntimeInventory();
   else if (state.localRuntimeInventoryOpen) void refreshLocalRuntimeInventory();
   return result;
@@ -791,6 +795,9 @@ async function refreshLocalModels() {
   models.forEach((item) => { const local = provider().models.find((model) => model.id === item.id); if (local && item.localStatus) local.localStatus = item.localStatus; });
   renderLocalModelStatus();
   renderLocalRuntime();
+  if (result.runtime && (result.runtime.status === "broken" || state.localRuntimeInventoryOpen)) {
+    void refreshLocalRuntimeInventory();
+  }
   return result;
 }
 async function refreshAlignmentModels() {

@@ -25,6 +25,7 @@ test('alignment model shortcut opens the selected model without changing the ASR
   await page.locator('#provider').selectOption('qwen');
   await page.locator('#toolboxTimestampsTab').click();
   const provider = await page.locator('#provider').inputValue();
+  const asrModel = await page.locator('#model').inputValue();
   const modelId = await page.evaluate(() => window.MAWLauncher.config.alignmentModels.at(-1).id);
   await page.locator('#toolboxTimestampModel').selectOption(modelId);
   const hint = page.locator('#toolboxAlignmentModelHint');
@@ -49,10 +50,20 @@ test('alignment model shortcut opens the selected model without changing the ASR
   await expect(page.locator('#provider')).toHaveValue(provider);
   await page.locator('#alignmentModelSettingsSection').screenshot({ path: testInfo.outputPath('alignment-model-settings.png') });
 
-  // Standalone alignment can prepare its model even while cloud ASR is selected.
-  await page.evaluate(() => {
-    window.MAWLauncher.config.localRuntime = { status: 'ready', ready: true };
-  });
+  // Complete setup through the real UI flow while retaining cloud ASR settings.
+  await expect(page.locator('#prepareAlignmentModel')).toBeDisabled();
+  await expect(page.locator('#localAlignmentModelStatus')).toContainText('Missing dependencies');
+  await page.locator('#localAlignmentModelStatus button').click();
+  await expect(page.locator('#localRuntimePanel')).toBeVisible();
+  await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'true');
+  await page.locator('#refreshLocalRuntime').click();
+  await expect(page.locator('#localRuntimeStatus')).toHaveText('Local runtime is not installed');
+  await page.locator('#localRuntimePanel').screenshot({ path: testInfo.outputPath('cloud-asr-runtime-setup.png') });
+  await page.locator('#installLocalRuntime').click();
+  await expect(page.locator('#localRuntimeStatus')).toHaveText('Local runtime is ready');
+  await expect(page.locator('#localRuntimeProgress')).toBeHidden();
+  await expect(page.locator('#provider')).toHaveValue(provider);
+  await expect(page.locator('#model')).toHaveValue(asrModel);
   await page.locator('#settingsClose').click();
   await shortcut.click();
   await expect(page.locator('#prepareAlignmentModel')).toBeEnabled();
@@ -61,6 +72,46 @@ test('alignment model shortcut opens the selected model without changing the ASR
   await page.locator('#prepareAlignmentModel').click();
   await expect(selectedModel).toHaveClass(/\bready\b/);
   await expect(page.locator('#provider')).toHaveValue(provider);
+  await expect(page.locator('#model')).toHaveValue(asrModel);
+});
+
+test('cloud ASR runtime installation errors leave the installing state', async ({ page }) => {
+  await openLauncher(page);
+  const config = await page.evaluate(() => window.MAWLauncher.config);
+  await page.addInitScript((initialConfig) => {
+    initialConfig.providerId = 'qwen';
+    window.__runtimeBackend = { status: 'installing', ready: false };
+    initialConfig.localRuntime = { ...window.__runtimeBackend };
+    window.__runtimeRequests = [];
+    window.pywebview = { api: new Proxy({}, { get: (_target, method) => method === 'then' ? undefined : async (payload) => {
+      if (method === 'get_config') return initialConfig;
+      if (method === 'get_local_runtime') {
+        window.__runtimeRequests.push(payload);
+        return { ok: true, ...window.__runtimeBackend };
+      }
+      if (method === 'get_alignment_models') return { ok: true, models: initialConfig.alignmentModels };
+      return { ok: true };
+    } }) };
+  }, config);
+  await page.reload();
+  await page.waitForFunction(() => document.body.classList.contains('launcher-ready'));
+  await page.evaluate(() => window.MAWLauncher.openSettings('localRuntimePanel'));
+  for (const code of ['local_runtime_install_failed', 'local_runtime_cancelled']) {
+    await page.evaluate((errorCode) => {
+      window.MAWLauncher.config.localRuntime = { status: 'installing', ready: false };
+      window.MAWLauncher.onBackendEvent({ type: 'localRuntimeProgress', percent: 30 });
+      window.__runtimeBackend = { status: 'broken', ready: false };
+      window.MAWLauncher.onBackendEvent({ type: 'error', code: errorCode, detail: 'test runtime failure' });
+    }, code);
+    await expect(page.locator('#localRuntimeStatus')).toHaveText('本地运行环境需要修复');
+    await expect(page.locator('#localRuntimeProgress')).toBeHidden();
+    await expect(page.locator('#installLocalRuntime')).toHaveText('修复运行环境');
+    await expect(page.locator('#installLocalRuntime')).toBeEnabled();
+    await expect(page.locator('#provider')).toHaveValue('qwen');
+  }
+  const requests = await page.evaluate(() => window.__runtimeRequests);
+  expect(requests.length).toBeGreaterThanOrEqual(2);
+  expect(requests.every((payload) => payload.modelId === '')).toBe(true);
 });
 
 test('runtime upgrade and alignment model states distinguish files, validation, and dependencies', async ({ page }, testInfo) => {
@@ -118,6 +169,18 @@ test('runtime upgrade and alignment model states distinguish files, validation, 
   const aligner = page.locator('#localAlignmentModelList [data-model-id="qwen3-forced-aligner-0.6b"]');
   await expect(aligner).toContainText('未下载 · 缺少依赖');
   await expect(page.locator('#localAlignmentModelStatus')).toContainText('未下载 · 缺少依赖');
+  const recognitionModel = await page.evaluate(() => window.MAWLauncher.config.providers
+    .find((item) => item.id === 'local').models.find((model) => !model.supportsWordTimestamps).id);
+  await page.locator('#settingsClose').click();
+  await page.locator('#model').selectOption(recognitionModel);
+  await page.evaluate(() => {
+    const select = document.getElementById('recognitionAlignmentModel');
+    select.value = 'qwen3-forced-aligner-0.6b';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect(page.locator('#recognitionAlignmentModelStatus')).toContainText('未下载 · 缺少依赖');
+  await expect(page.locator('#recognitionAlignmentModelStatus button')).toHaveText('本地运行环境');
+  await page.evaluate(() => window.MAWLauncher.openSettings('alignmentModelSettingsSection'));
   await page.locator('#alignmentModelSettingsSection').screenshot({ path: testInfo.outputPath('alignment-model-dependency-status.png') });
 });
 
