@@ -211,3 +211,28 @@ test('pop and custom transform bounds cover interior scale extrema', () => {
   // At t=.05445 the curve is 2.00264, above both slice endpoint scales 2 and 1.975.
   assert.ok((rect.right - rect.left) / (reference.right - reference.left) >= 2.00264);
 });
+
+test('overlay cue scale and positioning retain pop animation through shared export layout', () => {
+  for (const positioned of [false, true]) {
+    let plan;
+    const output = h.buildAssPayload([{ id: 'main', start: 0, end: 1000, text: 'MAIN' }], {
+      assProfile: popProfile({ ...POP, fromScale: 2 }), assStyle: { fontSize: 72 },
+      overlaySegments: [{ id: 'overlay', start: 0, end: 1000, text: '{{OVERLAY}}',
+        assOverride: { scale: 1.5, ...(positioned ? { pos: { x: 480, y: 320 } } : {}) } }],
+      onAssPlan: value => { plan = value; },
+    });
+    const item = plan.slices[0].items.find(cue => cue.role === 'overlay');
+    assert.equal(item.cueScale, 1.5);
+    assert.equal(Boolean(item.manual), positioned);
+    assert.equal(item.pop.fromScale, 2);
+    const line = dialogues(output).find(event => event.startsWith('Dialogue: 2,'));
+    assert.ok(line.includes(String.raw`\fs108`), 'overlay keeps per-cue font scaling');
+    assert.ok(line.includes(String.raw`\fscx200\fscy200\t(0,250,1,\fscx100\fscy100)`));
+    assert.ok(!line.includes('{{'), 'sentence marker becomes animation rather than visible text');
+    if (positioned) {
+      const frame = h.assStackFrame(plan, 125).items.find(cue => cue.role === 'overlay');
+      assert.deepEqual(plain(frame.anchor), { x: 480, y: 320 });
+      assert.ok(line.includes(String.raw`\pos(480,320)`));
+    }
+  }
+});
