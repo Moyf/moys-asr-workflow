@@ -140,3 +140,20 @@ class WordSpacingCleanupTest(unittest.TestCase):
                 actual = artifact.stats["removed"] + artifact.stats["removedItems"]
                 self.assertEqual(actual, removed)
                 self.assertEqual(artifact.stats["pendingReview"], int(not removed))
+
+    def test_hesitation_cuts_must_be_contiguous_source_words(self):
+        cases = [
+            (["u", " equals ", "h"], "~~u~~ equals ~~h~~", 0),
+            (["u", "h", " hello"], "~~uh~~ hello", 2),
+            ([" Uh", " hello", " Um"], "~~Uh~~ hello~~ Um~~", 2),
+            (["u", "h", "um"], "~~uh~~um", 0),
+            ([" uh", " hello"], "~~uh~~ hello", 1),
+            (["uh,", "hello"], "~~uh,~~hello", 1),
+        ]
+        for words, draft, count in cases:
+            with self.subTest(words=words), tempfile.TemporaryDirectory() as folder:
+                source = Path(folder) / "input.mosp"
+                source.write_text(json.dumps({"segments": [word_cue(words)]}), encoding="utf-8")
+                artifact = run_ai_cleanup(AiCleanupRequest(source, None, None, OutputMode.BOTH), complete=lambda p, r: {"timeline": "[c001] " + draft})
+                self.assertEqual(artifact.stats["removedItems"], count)
+                self.assertEqual(artifact.stats["pendingReview"], int(not count))

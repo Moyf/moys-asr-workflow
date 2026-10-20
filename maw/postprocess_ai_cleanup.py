@@ -24,7 +24,7 @@ from maw.postprocess_ai_cleanup_safety import english_hesitation_only, informati
 from maw.postprocess_ai_cleanup_timeline import parse_timeline, draft_line
 from maw.postprocess_ai_cleanup_diagnostics import CleanupTrace, record_raw_response
 from maw.postprocess_ai_cleanup_review import review_decisions
-from maw.postprocess_ai_cleanup_items import collapse_echo, scoped_item_ranges, remaining_text, item_text_spans, active_deleted_items
+from maw.postprocess_ai_cleanup_items import english_hesitation_removal, collapse_echo, scoped_item_ranges, remaining_text, item_text_spans, active_deleted_items
 from maw.postprocess_io import SubtitleArtifact, write_artifacts
 from maw.postprocess_llm import (
     MAX_RESPONSE_ATTEMPTS,
@@ -831,7 +831,7 @@ def _resolve_decisions(
             shortcut_safe = protected_information_loss_reason(collapse_echo(clip.text), collapse_echo(kept)) is None and (
                 collapse_echo(clip.text) == collapse_echo(kept)
                 or bool(re.fullmatch(r"[嗯啊呃哦唉、，。\s]+|想一下|我重说", removed))
-                or english_hesitation_only(removed)
+                or english_hesitation_removal(clip.text, clip.items, deleted)
             )
             safe = shortcut_safe or bool(replacement) and information_loss_reason(removed, replacement) is None
             if not evidence_ok or not safe:
