@@ -99,7 +99,7 @@ export function createUtilsModule(dependencies) {
     // MASS 成对符号最后剥离（只剥成对、孤儿保留字面）；句级 fade/shake/pop
     // 已由前三步处理，这里不会重复剥也不会破坏其 parse-once 语义。
     return stripMassMarkers(
-      stripSentencePopMarkers(stripSentenceShakeMarkers(stripSentenceFadeMarkers(text, rule))), rule);
+      stripSentencePopMarkers(stripSentenceShakeMarkers(stripSentenceFadeMarkers(text, rule)), rule), rule);
   }
 
   function srtEntry(index, start, end, text, formatTime) {

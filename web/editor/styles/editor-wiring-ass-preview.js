@@ -94,7 +94,7 @@ function assPreviewAnimatedStyle(style, profile, animationState, metrics) {
   // \fs targets are in native PlayRes pixels, whereas the library stores its
   // base size at 1080p. Interpolate both endpoints in native coordinates.
   const native = { ...style, fontSize: assPreviewExportFontSize(style, metrics) };
-  const result = window.AsrEditorUtils.assPreviewStyleAt(native, tags, animationState.transformProgress);
+  const result = window.AsrEditorUtils.assPreviewStyleAt(native, tags, animationState.transformProgress, { popScale: animationState.popScale });
   return { ...result, __assNativeFontSize: result.fontSize };
 }
 
@@ -210,7 +210,7 @@ function assPreviewTrackRuns(text) {
   const source = window.AsrEditorUtils.stripSentencePopMarkers(
     window.AsrEditorUtils.stripSentenceFadeMarkers(
       String(text ?? ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
-    ),
+    ), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
   );
   return window.AsrEditorUtils.assInlineStyleRuns(
     source, MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax, MaweSettings.EDITOR_SETTINGS,
@@ -298,7 +298,7 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
       Number(tMs) - item.start, item.end - item.start, { fad: item.fad, pop: item.pop || null });
     const native = { ...item.style, fontSize: item.fontSize };
     const animated = animation.transformProgress === null ? native
-      : window.AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true });
+      : window.AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true, popScale: animation.popScale });
     if ((!item.legacy || item.sharedStackCue) && profile.animations.t.enabled) {
       // libass applies discrete style tags inside t immediately, even before
       // the numeric transform window starts (real b/i frame-hash verification).

@@ -153,3 +153,61 @@ test('merge fold reunites a split pop shell across the junction', () => {
   // 后段没有完整 pop 壳时不折叠，维持原样。
   assert.equal(h.foldMassPairJunction('{{aa}}', 'bb}}', 'both'), null);
 });
+
+
+test('disabled special symbols retain pop literals through parsing, split, merge and exports', () => {
+  assert.deepEqual(plain(h.parseSentencePopMarkers('{{text}}', 'none')), { text: '{{text}}', pop: false });
+  assert.equal(h.srtSentenceText('{{text}}', 'none'), '{{text}}');
+  assert.equal(h.assSentenceAnimationTags('{{text}}', popProfile(POP), 'none').pop, null);
+  assert.deepEqual(plain(h.completeSplitMassPairs('{{aa ', 'bb}}', 'none')),
+    { left: '{{aa ', right: 'bb}}', leftAppend: '', rightPrepend: '' });
+  assert.equal(h.foldMassPairJunction('{{aa}}', '{{bb}}', 'none'), null);
+  const line = dialogues(h.buildAssPayload([{ start: 0, end: 1000, text: '{{text}}' }],
+    { assSpecialSymbolRule: 'none', assProfile: popProfile(POP) }))[0];
+  assert.ok(!line.includes('\\fscx140'));
+  assert.ok(line.includes('text'));
+});
+
+test('nested opening pop braces remain literal during split completion', () => {
+  assert.deepEqual(plain(h.completeSplitMassPairs('{{aa{{b', 'b}}', 'both')),
+    { left: '{{aa{{b', right: 'b}}', leftAppend: '', rightPrepend: '' });
+});
+
+test('pop export preserves zero axis scale', () => {
+  const tags = h.assAnimationOverrideTags({}, { pop: POP, style: { scaleX: 0, scaleY: 0 } });
+  assert.equal(tags, String.raw`\fscx0\fscy0\t(0,250,1,\fscx0\fscy0)`);
+});
+
+test('pop bounds scale complete cue geometry including cue and inline scale', () => {
+  const style = h.normalizeAssStyle({ fontSize: 40, spacing: 20, outline: 12, shadow: 10 });
+  const make = fromScale => h.assCreateStackPlan({ width: 1920, height: 1080,
+    profile: h.normalizeAssProfile(popProfile({ ...POP, fromScale })),
+    items: [{ role: 'main', index: 0, start: 0, end: 1000, text: '++Wide++',
+      style, fontSize: 40, runs: [{ text: 'Wide', fontSizeScale: 1.2 }], segment: { assOverride: { scale: 2 } }, pop: { ...POP, fromScale } },
+      { role: 'overlay', index: 0, start: 0, end: 1000, style, fontSize: 40, runs: [{ text: 'Reference' }] }] });
+  const base = make(1).slices[0].items[0].rect;
+  const popped = make(2).slices[0].items[0].rect;
+  for (const key of ['left', 'top', 'right', 'bottom']) assert.equal(popped[key], base[key] * 2);
+});
+
+
+test('custom scale transform interpolates after the current pop scale as libass does', () => {
+  const style = h.assPreviewStyleAt({ scaleX: 100, scaleY: 50 }, String.raw`\fscx200\fscy200`, 0.5, { popScale: 1.2 });
+  assert.equal(style.scaleX * 1.2, 160);
+  assert.equal(style.scaleY * 1.2, 130);
+});
+
+
+test('pop and custom transform bounds cover interior scale extrema', () => {
+  const profile = h.normalizeAssProfile(popProfile({ ...POP, enabled: true, fromScale: 2, inMs: 1000, accel: 2 },
+    { t: { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: String.raw`\fscx210` } }));
+  const style = h.normalizeAssStyle({ fontSize: 40 });
+  const cue = { role: 'main', index: 0, start: 0, end: 1000, style, fontSize: 40, runs: [{ text: 'Wide' }] };
+  const plan = h.assCreateStackPlan({ profile, items: [cue,
+    { ...cue, role: 'overlay', start: 0, end: 500 }] });
+  const rect = plan.slices[0].items[0].rect;
+  const reference = h.assCreateStackPlan({ profile: h.normalizeAssProfile({}), items: [cue,
+    { ...cue, role: 'overlay', start: 0, end: 500 }] }).slices[0].items[0].rect;
+  // At t=.05445 the curve is 2.00264, above both slice endpoint scales 2 and 1.975.
+  assert.ok((rect.right - rect.left) / (reference.right - reference.left) >= 2.00264);
+});

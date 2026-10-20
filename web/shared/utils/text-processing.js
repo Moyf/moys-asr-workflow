@@ -433,16 +433,17 @@ export function createUtilsModule(dependencies) {
   // 的入场动画出现（参数取自样式库 profile 的 pop 组，不管其全局开关；与
   // 单句 fade 复用 fad 参数同一模式）。仅识别双符号；至少要有一个字符的
   // 正文才视为标记。句级标记之间可按任意嵌套顺序组合。
-  function parseSentencePopMarkers(text) {
+  function parseSentencePopMarkers(text, rule) {
     const source = String(text == null ? '' : text);
-    const parsed = sentenceShells(source);
+    if (rule === 'none') return { text: source, pop: false };
+    const parsed = sentenceShells(source, rule);
     return { text: rebuildShells(parsed.body, parsed.shells.filter(shell => shell.kind !== 'pop')),
       pop: parsed.shells.some(shell => shell.kind === 'pop') };
   }
 
 
-  function stripSentencePopMarkers(text) {
-    return parseSentencePopMarkers(text).text;
+  function stripSentencePopMarkers(text, rule) {
+    return parseSentencePopMarkers(text, rule).text;
   }
 
 
@@ -684,7 +685,7 @@ export function createUtilsModule(dependencies) {
   function popShellPositionRange(text, rule) {
     const source = String(text ?? '');
     const range = popMarkedRange(source);
-    if (!range || rule === 'none') return null;
+    if (!range || rule === 'none' || source.slice(range.start + 2, range.end).includes('{{')) return null;
     const pairs = [['>>', '<<']];
     if (rule === 'both' || rule === 'single') pairs.push(['>', '<']);
     pairs.push(['!!', '!!'], ['{{', '}}']);
@@ -775,7 +776,7 @@ export function createUtilsModule(dependencies) {
     // 双重包裹。左已有闭（fadeOut）不补闭，右已有开（fadeIn）不补开。
     const leftFadeComplete = parseSentenceFadeMarkers(left, rule).fadeOut;
     // pop 同理：该侧已剥出完整 pop 壳就不重复补（pop 只认双符号，无单双规则）。
-    const leftPopComplete = parseSentencePopMarkers(left).pop;
+    const leftPopComplete = parseSentencePopMarkers(left, rule).pop;
     // 左侧补闭符号：按原文闭符号位置升序 = 嵌套逆序（内层先闭）。
     straddling.slice().sort((a, b) => a.end - b.end).forEach((range) => {
       if (range.start + range.width >= cut) return;
@@ -786,7 +787,7 @@ export function createUtilsModule(dependencies) {
     });
     let rightPrepend = '';
     const rightFadeStarted = parseSentenceFadeMarkers(right, rule).fadeIn;
-    const rightPopStarted = parseSentencePopMarkers(right).pop;
+    const rightPopStarted = parseSentencePopMarkers(right, rule).pop;
     // 右侧补开符号：按原文开符号位置升序（外层在前）。
     straddling.slice().sort((a, b) => a.start - b.start).forEach((range) => {
       if (range.end <= cut) return;
@@ -884,12 +885,12 @@ export function createUtilsModule(dependencies) {
         };
       }
     }
-    const leftPop = popShellPair(left);
+    const leftPop = rule === 'none' ? null : popShellPair(left);
     const rightPop = popShellPair(right);
     if (leftPop && rightPop) {
       const trimmedLeft = left.slice(0, left.length - leftPop.close.length);
       const trimmedRight = right.slice(rightPop.open.length);
-      const check = parseSentencePopMarkers(trimmedLeft + join + trimmedRight);
+      const check = parseSentencePopMarkers(trimmedLeft + join + trimmedRight, rule);
       if (check.pop) {
         return {
           left: trimmedLeft, right: trimmedRight,

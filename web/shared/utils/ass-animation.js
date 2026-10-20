@@ -9,7 +9,7 @@ export function createUtilsModule(dependencies) {
   // 参数，单句标记优先级高于全局动画开关）。
   function assSentenceAnimationTags(text, profile, rule) {
     const parsed = parseSentenceFadeMarkers(text, rule);
-    const pop = parseSentencePopMarkers(parsed.text);
+    const pop = parseSentencePopMarkers(parsed.text, rule);
     const animations = normalizeAssAnimations(profile?.animations);
     return {
       text: pop.text,
@@ -27,8 +27,8 @@ export function createUtilsModule(dependencies) {
   // 入场窗口时不再发射。百分比值不乘组缩放（\fscx 是已缩放字号的百分比）。
   function assPopTransformTag(pop, style, offsetMs = 0) {
     if (!pop || !(Number(pop.fromScale) > 1)) return '';
-    const baseX = Math.max(0, Number(style?.scaleX ?? 100)) || 100;
-    const baseY = Math.max(0, Number(style?.scaleY ?? 100)) || 100;
+    const baseX = Number.isFinite(Number(style?.scaleX ?? 100)) ? Math.max(0, Number(style?.scaleX ?? 100)) : 100;
+    const baseY = Number.isFinite(Number(style?.scaleY ?? 100)) ? Math.max(0, Number(style?.scaleY ?? 100)) : 100;
     const inMs = Math.max(0, Number(pop.inMs) || 0);
     if (offsetMs >= inMs) return '';
     const percent = value => Number(value.toFixed(2));

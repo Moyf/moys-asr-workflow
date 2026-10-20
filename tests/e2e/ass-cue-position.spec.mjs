@@ -795,3 +795,23 @@ test('dragging an automatically stacked upper cue uses the global top anchor', a
   expect(after.pos.y).toBe(roundPosition(before.record.positionAnchor.y));
   expect(after.record.bounds.top).toBeCloseTo(before.record.bounds.top + after.pos.y - before.record.positionAnchor.y, 2);
 });
+
+
+test('pop and custom scale preview follow libass transform order', async ({ page }, info) => {
+  const rendered = await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = '{{MMMM}}';
+    const animations = ASS_STYLE_LIBRARY.assProfiles[0].animations;
+    animations.pop = { enabled: false, fromScale: 1.4, inMs: 250, accel: 1 };
+    animations.t = { enabled: true, startMs: 0, endMs: 250, accel: 1, tags: String.raw`\fscx200\fscy200` };
+    const originalCanvas = window.MaweAssCanvas;
+    let payload;
+    window.MaweAssCanvas = { ...originalCanvas, render(value) { payload = value; originalCanvas.render(value); } };
+    MawePlaybackLoop.refreshSubtitlePreview(125, 0);
+    window.MaweAssCanvas = originalCanvas;
+    const record = payload.tracks.find(item => item.role === 'main');
+    return { scaleX: record.style.scaleX, scaleY: record.style.scaleY, animation: record.animation };
+  });
+  expect(rendered.scaleX * rendered.animation.popScale).toBeCloseTo(160, 6);
+  expect(rendered.scaleY * rendered.animation.popScale).toBeCloseTo(160, 6);
+  await page.locator('.player-stage').screenshot({ path: info.outputPath('pop-custom-scale.png') });
+});

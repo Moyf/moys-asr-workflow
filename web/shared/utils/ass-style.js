@@ -618,7 +618,7 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function assPreviewStyleAt(style, transformTags, progress = 1, { nativeFontSize = false } = {}) {
+  function assPreviewStyleAt(style, transformTags, progress = 1, { nativeFontSize = false, popScale = 1 } = {}) {
     const base = normalizeAssStyle(style);
     if (nativeFontSize && Number.isFinite(Number(style.fontSize))) base.fontSize = Number(style.fontSize);
     const target = assTransformStyleTargets(transformTags);
@@ -630,8 +630,11 @@ export function createUtilsModule(dependencies) {
     ];
     numericKeys.forEach((key) => {
       if (target[key] === undefined) return;
-      const start = Number(result[key]) || 0;
-      result[key] = start + (Number(target[key]) - start) * amount;
+      // libass applies the earlier pop transform before the custom transform.
+      // Canvas applies pop outside the glyph raster, so return its compensated scale.
+      const outerScale = key === 'scaleX' || key === 'scaleY' ? Math.max(1, Number(popScale) || 1) : 1;
+      const start = (Number(result[key]) || 0) * outerScale;
+      result[key] = (start + (Number(target[key]) - start) * amount) / outerScale;
     });
     ['primaryColor', 'outlineColor'].forEach((key) => {
       if (target[key]) result[key] = interpolateAssColor(result[key], target[key], amount);
