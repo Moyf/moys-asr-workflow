@@ -98,6 +98,9 @@
           text: segment.text || '',
         };
         if (Array.isArray(segment.items)) outSegment.items = segment.items;
+        // Untimed linked splits use null at runtime; the project contract only
+        // accepts an array or an omitted optional items field.
+        else if (segment.items == null) delete outSegment.items;
         if (segment.color != null) outSegment.color = segment.color;
         if (segment.color_ref != null) outSegment.color_ref = segment.color_ref;
         if (segment.disabled) outSegment.disabled = true;

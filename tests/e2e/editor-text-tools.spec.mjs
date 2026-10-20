@@ -141,6 +141,8 @@ for (const path of ['timed', 'untimed', 'linked']) {
     expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.speaker)))
       .toEqual(['opaque-speaker', 'opaque-speaker']);
     const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+    expect(await page.evaluate(project => MaweProjectValidation.validateProject(project).errors, saved))
+      .toEqual([]);
     expect(saved.segments.map(s => s.speaker)).toEqual(['opaque-speaker', 'opaque-speaker']);
     expect(saved.segments.map(s => s.text)).toEqual(['甲乙', '甲乙丙丁']);
     await page.locator('#undo-btn').click();
