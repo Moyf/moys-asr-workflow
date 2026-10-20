@@ -182,6 +182,12 @@
       "exportName": "createUtilsModule"
     },
     {
+      "file": "shared/editor-utils.js",
+      "kind": "init",
+      "name": "editor-utils-init",
+      "exportName": "initEditorUtils"
+    },
+    {
       "file": "editor/media/editor-thumbnails.js",
       "name": "editor-thumbnails",
       "exportName": "createThumbnailModule"
