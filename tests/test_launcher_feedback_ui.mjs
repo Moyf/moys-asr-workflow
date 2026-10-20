@@ -510,6 +510,13 @@ function providerGateHarness({ providers, storedTaskMemory = {}, backendProvider
     postprocessCleanupScriptPath: { value: "" },
     postprocessResegmentMaxChars: { value: "" },
     llmProvider: { value: "deepseek" },
+    llmApiKey: { value: "demo-key" },
+    llmBaseUrl: { value: "https://api.deepseek.com" },
+    llmModel: { value: "deepseek-chat" },
+    llmReasoningMode: { value: "off" },
+    testLlmConnection: {}, getLlmModels: {},
+    autoStepCleanup: { checked: false }, autoStepProofread: { checked: false },
+    settingsModal: { classList: { add() {} } },
     llmKeyStatus: { textContent: "" },
     postprocessProviderStatus: { textContent: "" },
   };
@@ -538,7 +545,14 @@ function providerGateHarness({ providers, storedTaskMemory = {}, backendProvider
       return { ok: true };
     },
     // openAutoStep 的完整 UI 链路不在本 harness 范围；记录调用参数即可。
-    openAutoStep: (stepId, invalidField, options) => openedSettings.push({ blockedStep: stepId, invalidField, options }),
+    openAutoStep: (stepId, invalidField, options) => {
+      context.setPendingAutoStep(stepId);
+      openedSettings.push({ blockedStep: stepId, invalidField, options });
+    },
+    busy: false,
+    AUTO_STEP_CHECKBOXES: { cleanup: "autoStepCleanup", proofread: "autoStepProofread" },
+    setTestConnectionAttention() {}, setSettingsSaveStatus() {}, clearSettingsErrors() {}, fillProviderSelects() {},
+    providerLabel: (item) => item.label,
     renderProviderKeyStatus() {},
     renderAutoPostprocessState() {},
     persistAutoPlanSoon() {},
@@ -548,17 +562,28 @@ function providerGateHarness({ providers, storedTaskMemory = {}, backendProvider
     "providerIdForTask", "rememberProviderForTask", "stepProviderId",
     "isCustomSlot", "customSlotVisibleInToolbox", "provider", "autoLlmOperation", "autoLlmReady",
     "autoStepReady", "refreshPostprocessProviderStatus", "bindPendingStepProvider", "confirmAutoStepCheck",
+    "cancelPendingAutoStep", "maybeEnablePendingAutoStep", "llmSettingsState", "acceptLlmSettingsResponse", "saveSettings", "testConnection",
   ];
   vm.runInContext(names.map((name) => launcherFunction(name)).join("\n"), context);
   vm.runInContext(`
     var pendingAutoStep = "";
+    var pendingAutoStepRequest = null;
+    var autoStepCheckRequests = new Map();
+    var llmSettingsRequest = 0;
+    var providerSettingsRequests = new Map();
+    var providerStatusRequest = 0;
+    var providerStatusApplied = 0;
     var llmProviderByTask = {};
     loadLlmProviderByTask();
     var getPendingAutoStep = () => pendingAutoStep;
-    var setPendingAutoStep = (value) => { pendingAutoStep = value; };
+    var setPendingAutoStep = (value) => { pendingAutoStep = value; pendingAutoStepRequest = {}; };
   `, context);
+  context.window.MAWLauncher.onSettingsClosed = context.cancelPendingAutoStep;
+  const settingsSource = readFileSync(new URL("boot/launcher-settings-startup.js", launcherDir), "utf8");
+  vm.runInContext(settingsSource.match(/function closeSettings\(\) \{[\s\S]*?\n\}/u)[0], context);
   return {
     context,
+    fields,
     openedSettings,
     ready: () => context.autoStepReady("cleanup"),
     setPending: (value) => context.setPendingAutoStep(value),
@@ -626,10 +651,176 @@ test("dialog verification rebinds the pending auto step and refreshes stale stat
   // 契约：验证/保存成功后绑定供应商；勾选被拦先刷新权威状态；弹窗预选门槛检查的供应商。
   const saveBlock = source.slice(source.indexOf("async function saveSettings()"), source.indexOf("async function testConnection()"));
   const testBlock = source.slice(source.indexOf("async function testConnection()"), source.indexOf("async function getModels()"));
-  assert.match(saveBlock, /if \(result\.verified\) bindPendingStepProvider\(item\.id\);/);
-  assert.match(saveBlock, /maybeEnablePendingAutoStep\(\);/);
-  assert.match(testBlock, /bindPendingStepProvider\(item\.id\);/);
+  assert.match(saveBlock, /if \(result\.verified\) bindPendingStepProvider\(item\.id, pendingRequest\);/);
+  assert.match(saveBlock, /maybeEnablePendingAutoStep\(pendingRequest\);/);
+  assert.match(testBlock, /bindPendingStepProvider\(item\.id, pendingRequest\);/);
   assert.match(source, /if \(\$\("llmProvider"\)\.value !== checkedProviderId\) renderProvider\(checkedProviderId, \{ syncToolbox: false \}\);/);
   assert.match(source, /void confirmAutoStepCheck\(stepId, checkbox\);/);
-  assert.match(source, /await refreshPostprocessProviderStatus\(\);/);
+  assert.match(source, /await refreshPostprocessProviderStatus\(isCurrent\);/);
+});
+
+test("dismissed setup cannot bind or enable a step during an unrelated provider test", async () => {
+  const gate = providerGateHarness({ providers: [providerStub()] });
+  gate.setPending("cleanup");
+  gate.context.closeSettings();
+  gate.context.bridge = async () => ({ ok: true, verified: true, saved: true });
+  await gate.context.testConnection();
+  assert.equal(gate.getPending(), "");
+  assert.equal(gate.fields.autoStepCleanup.checked, false);
+  assert.equal(gate.context.localStorage.getItem("maw.launcher.llm.provider_by_task"), "{}");
+});
+
+test("an active setup still binds and enables its step after successful verification", async () => {
+  const gate = providerGateHarness({ providers: [providerStub()] });
+  gate.setPending("cleanup");
+  gate.context.bridge = async () => ({ ok: true, verified: true, saved: true });
+  await gate.context.testConnection();
+  assert.equal(gate.fields.autoStepCleanup.checked, true);
+  assert.equal(gate.getPending(), "");
+});
+
+for (const method of ["testConnection", "saveSettings"]) {
+  for (const field of ["llmProvider", "llmBaseUrl", "llmModel", "llmApiKey", "llmReasoningMode"]) {
+    test(`${method} ignores a reply after the settings field ${field} changes`, async () => {
+      const gate = providerGateHarness({ providers: [providerStub(), providerStub({ id: "custom" })] });
+      gate.setPending("cleanup");
+      let finish;
+      gate.context.bridge = () => new Promise(resolve => { finish = resolve; });
+      const oldAction = gate.context[method]();
+      gate.fields[field].value = field === "llmProvider" ? "custom" : "changed";
+      finish({ ok: true, verified: true, saved: true, baseUrl: "https://api.deepseek.com" });
+      await oldAction;
+      assert.equal(gate.fields[field].value, field === "llmProvider" ? "custom" : "changed");
+      assert.equal(gate.fields.autoStepCleanup.checked, false);
+      assert.equal(gate.getPending(), "cleanup");
+      assert.equal(gate.context.localStorage.getItem("maw.launcher.llm.provider_by_task"), "{}");
+    });
+  }
+  test(`${method} ignores the previous setup request after close and reopen`, async () => {
+    const gate = providerGateHarness({ providers: [providerStub()] });
+    gate.setPending("cleanup");
+    let finish;
+    gate.context.bridge = () => new Promise((resolve) => { finish = resolve; });
+    const oldAction = gate.context[method]();
+    gate.context.closeSettings();
+    gate.setPending("proofread");
+    finish({ ok: true, verified: true, saved: true });
+    await oldAction;
+    assert.equal(gate.fields.autoStepCleanup.checked, false);
+    assert.equal(gate.fields.autoStepProofread.checked, false);
+    assert.equal(gate.getPending(), "proofread");
+    assert.equal(gate.context.localStorage.getItem("maw.launcher.llm.provider_by_task"), "{}");
+  });
+}
+
+test("unchecked steps ignore a pending provider refresh", async () => {
+  const gate = providerGateHarness({ providers: [providerStub()] });
+  let finish;
+  gate.context.bridge = () => new Promise((resolve) => { finish = resolve; });
+  const checkbox = { checked: true };
+  const checking = gate.context.confirmAutoStepCheck("cleanup", checkbox);
+  checkbox.checked = false;
+  finish({ postprocessProviders: [providerStub()] });
+  await checking;
+  assert.equal(checkbox.checked, false);
+  assert.equal(gate.openedSettings.length, 0);
+  assert.equal(gate.getPending(), "");
+});
+
+test("a saved configuration still invalidates cached readiness when the user has edited the form again", async () => {
+  const gate = providerGateHarness({ providers: [providerStub({ verified: true, hasApiKey: true })] });
+  gate.fields.llmModel.value = "saved-model";
+  let finish;
+  gate.context.bridge = () => new Promise(resolve => { finish = resolve; });
+  const saving = gate.context.saveSettings();
+  gate.fields.llmModel.value = "next-edit";
+  finish({ ok: true, verified: false, model: "saved-model" });
+  await saving;
+  assert.equal(gate.fields.llmModel.value, "next-edit");
+  assert.equal(gate.ready(), false);
+});
+
+test("an older save cannot invalidate a later successful test of the same provider", async () => {
+  const gate = providerGateHarness({ providers: [providerStub({ verified: true, hasApiKey: true })] });
+  const replies = [];
+  gate.context.bridge = () => new Promise(resolve => replies.push(resolve));
+  const saving = gate.context.saveSettings();
+  gate.fields.llmModel.value = "new-model";
+  const testing = gate.context.testConnection();
+  replies[1]({ ok: true, verified: true });
+  await testing;
+  replies[0]({ ok: true, verified: false });
+  await saving;
+  assert.equal(gate.fields.llmModel.value, "new-model");
+  assert.equal(gate.ready(), true);
+});
+
+test("out-of-order provider refreshes cannot undo the latest choice or readiness", async () => {
+  const gate = providerGateHarness({ providers: [providerStub()] });
+  const replies = [];
+  gate.context.bridge = () => new Promise((resolve) => replies.push(resolve));
+  const checkbox = { checked: true };
+  const oldCheck = gate.context.confirmAutoStepCheck("cleanup", checkbox);
+  checkbox.checked = false;
+  checkbox.checked = true;
+  const newCheck = gate.context.confirmAutoStepCheck("cleanup", checkbox);
+  replies[1]({ postprocessProviders: [providerStub({ verified: true, hasApiKey: true })] });
+  await newCheck;
+  replies[0]({ postprocessProviders: [providerStub()] });
+  await oldCheck;
+  assert.equal(checkbox.checked, true);
+  assert.equal(gate.openedSettings.length, 0);
+  assert.equal(gate.context.autoLlmReady("deepseek"), true);
+});
+
+test("out-of-order refreshes from different steps share the newest provider state", async () => {
+  const gate = providerGateHarness({ providers: [providerStub()] });
+  const replies = [];
+  gate.context.bridge = () => new Promise(resolve => replies.push(resolve));
+  const cleanup = { checked: true };
+  const proofread = { checked: true };
+  const oldCheck = gate.context.confirmAutoStepCheck("cleanup", cleanup);
+  const newCheck = gate.context.confirmAutoStepCheck("proofread", proofread);
+  replies[1]({ postprocessProviders: [providerStub({ verified: true, hasApiKey: true })] });
+  await newCheck;
+  replies[0]({ postprocessProviders: [providerStub()] });
+  await oldCheck;
+  assert.equal(cleanup.checked, true);
+  assert.equal(proofread.checked, true);
+  assert.equal(gate.openedSettings.length, 0);
+  assert.equal(gate.ready(), true);
+});
+
+test("mock providers preserve saved readiness and independently named custom slots after refresh", async () => {
+  const mockSource = readFileSync(new URL("boot/launcher-mock-api.js", launcherDir), "utf8");
+  const context = vm.createContext({
+    URL, navigator: { platform: "Win32" }, localStorage: { getItem: () => null },
+    LAST_MODEL_KEY: "model", LAST_LANGUAGE_KEY: "language", ZOOM_PERCENT_KEY: "zoom", ZOOM_DEFAULT: 100,
+    OPENAI_ASR_CUSTOM_MODEL_ID: "custom",
+    state: { config: {} }, isCustomSlotId: (id) => /^custom[23]?$/u.test(id),
+  });
+  vm.runInContext(mockSource, context);
+  const api = context.mockApi();
+  const local = { providerId: "custom", baseUrl: "http://127.0.0.1:1234/v1", model: "local-model", apiKey: "", displayName: "Local", save: true };
+  await api.test_postprocess_connection(local);
+  await api.test_postprocess_connection({ providerId: "deepseek", apiKey: "demo-key", baseUrl: "https://api.deepseek.com", model: "deepseek-chat", save: true });
+  await api.save_postprocess_settings({ providerId: "custom2", displayName: "Second", baseUrl: "https://example.test/v1", model: "second-model", apiKey: "second-key" });
+  const config = await api.get_config();
+  const providers = config.postprocessProviders;
+  const first = providers.find((item) => item.id === "custom");
+  assert.equal(first.label, "Local");
+  assert.equal(first.baseUrl, local.baseUrl);
+  assert.equal(first.model, local.model);
+  assert.equal(first.verified, true);
+  assert.equal(first.apiKeyRequired, false);
+  assert.equal(first.hasApiKey, false);
+  assert.equal(first.hasBaseUrl && first.hasModel, true);
+  assert.equal(providers.find((item) => item.id === "custom2").label, "Second");
+  assert.equal(providers.find((item) => item.id === "deepseek").hasApiKey, true);
+  const gate = providerGateHarness({ providers, storedTaskMemory: { cleanup: "custom" }, backendProviders: providers });
+  await gate.context.confirmAutoStepCheck("proofread", { checked: true });
+  assert.equal(gate.ready(), true, "refreshing another step must preserve the verified local provider");
+  assert.equal((await api.save_postprocess_settings(local)).verified, true);
+  assert.equal((await api.save_postprocess_settings({ ...local, displayName: "Renamed", reasoningMode: "on" })).verified, true);
+  assert.equal((await api.save_postprocess_settings({ ...local, model: "changed" })).verified, false);
 });

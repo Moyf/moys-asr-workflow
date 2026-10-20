@@ -5,6 +5,34 @@ function mockApi() {
   const chainedPath = (path, operation, fallback) => path
     ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
     : fallback;
+  const postprocessSettings = {};
+  const apiKeyRequired = (id, baseUrl) => {
+    if (!isCustomSlotId(id)) return true;
+    try {
+      const url = String(baseUrl || "");
+      return !["localhost", "127.0.0.1", "[::1]"].includes(new URL(url.includes("://") ? url : `http://${url}`).hostname);
+    } catch { return true; }
+  };
+  const savePostprocessSettings = ({ providerId, apiKey, ...values }) => {
+    const previous = postprocessSettings[providerId] || {};
+    const next = { ...previous };
+    for (const key of ["baseUrl", "model", "reasoningMode", "displayName"]) {
+      if (typeof values[key] === "string") next[key] = values[key].trim();
+    }
+    const previousKey = saved.postprocessApiKeys[providerId] || "";
+    if (apiKey) saved.postprocessApiKeys[providerId] = apiKey;
+    if (previous.baseUrl !== next.baseUrl || previous.model !== next.model || previousKey !== (saved.postprocessApiKeys[providerId] || "")) {
+      saved.postprocessVerified[providerId] = false;
+    }
+    postprocessSettings[providerId] = next;
+    return {
+      ok: true, providerId, ...next,
+      label: isCustomSlotId(providerId) ? (next.displayName || "Custom API (or local model)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")),
+      maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "",
+      apiKeyRequired: apiKeyRequired(providerId, next.baseUrl),
+      verified: Boolean(saved.postprocessVerified[providerId]),
+    };
+  };
   let modelPrepareTimer = 0;
   let alignmentPrepareTimer = 0;
   let alignmentModels = [
@@ -48,7 +76,19 @@ function mockApi() {
         { id: "custom", label: saved.customDisplayName || "Custom API (or local model)", defaultLabel: "Custom API (or local model)", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: verifiedProvider("custom"), hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
         { id: "custom2", label: "Custom API #2", defaultLabel: "Custom API #2", displayName: "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: verifiedProvider("custom2"), hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
         { id: "custom3", label: "Custom API #3", defaultLabel: "Custom API #3", displayName: "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: verifiedProvider("custom3"), hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
-      ],
+      ].map((item) => {
+        const values = postprocessSettings[item.id] || {};
+        const baseUrl = values.baseUrl ?? item.baseUrl;
+        const model = values.model ?? item.model;
+        return {
+          ...item, ...values, baseUrl, model,
+          label: values.displayName || item.defaultLabel || item.label,
+          maskedApiKey: saved.postprocessApiKeys[item.id] ? "sk-…mock" : "",
+          hasApiKey: Boolean(saved.postprocessApiKeys[item.id]),
+          apiKeyRequired: apiKeyRequired(item.id, baseUrl),
+          hasBaseUrl: Boolean(baseUrl), hasModel: Boolean(model),
+        };
+      }),
       postprocessAutoPlan: saved.postprocessAutoPlan || { version: 1, enabled: false, retainIntermediate: true, steps: [] },
       modelCacheRoot: saved.modelCacheRoot || "D:\\Models\\MAW",
       localRuntime: { status: "missing", ready: false, path: "", pythonPath: "", modelCachePath: saved.modelCacheRoot || "D:\\Models\\MAW", detail: "" },
@@ -239,8 +279,12 @@ save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { 
     save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
     open_sticker_folder: async () => { if (!saved.stickerDir) return { ok: false, code: "sticker_dir_invalid" }; window.__openedStickerFolder = saved.stickerDir; return { ok: true }; },
     get_postprocess_settings: async ({ providerId }) => { const apiKey = saved.postprocessApiKeys[providerId] || ""; return { ok: true, providerId, apiKey, maskedApiKey: apiKey ? "sk-…mock" : "" }; },
-    save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (isCustomSlotId(providerId)) saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: isCustomSlotId(providerId) ? (displayName || "Custom API (or local model)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: isCustomSlotId(providerId) ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
-    test_postprocess_connection: async ({ providerId, apiKey, save }) => { if (save && apiKey) saved.postprocessApiKeys[providerId] = apiKey; saved.postprocessVerified = saved.postprocessVerified || {}; saved.postprocessVerified[providerId] = true; return { ok: true, providerId, verified: true, saved: Boolean(save), maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "" }; },
+    save_postprocess_settings: async (payload) => savePostprocessSettings(payload),
+    test_postprocess_connection: async (payload) => {
+      const result = payload.save ? savePostprocessSettings(payload) : { ok: true, providerId: payload.providerId };
+      if (payload.save) saved.postprocessVerified[payload.providerId] = true;
+      return { ...result, verified: true, saved: Boolean(payload.save) };
+    },
     save_postprocess_plan: async ({ plan }) => { saved.postprocessAutoPlan = plan; return { ok: true, plan }; },
     validate_postprocess_plan: async ({ plan }) => ({ ok: true, plan, errors: [] }),
     get_postprocess_models: async ({ providerId }) => ({ ok: true, providerId, models: providerId === "qwen" ? ["qwen-plus", "qwen3-max"] : (providerId === "zhipu" ? ["glm-5.2", "glm-4.5"] : (providerId === "custom" ? ["local-model"] : ["deepseek-flash", "deepseek-v4-pro"])) }),
