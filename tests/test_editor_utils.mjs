@@ -2762,6 +2762,32 @@ test('keeps estimated timing when drifted items are too different from the text'
   assert.equal(report.previewSegments[0].items, undefined);
 });
 
+test('does not let a deleted word fragment lend its times to a surviving word', () => {
+  // Greptile P1 场景：文字删掉了 items 里的 bar，残骸 ba 只能拼凑匹配。
+  // 宽容布局应整组放弃（诚实估算），而不是让 baz 继承 bar 的时间。
+  const source = [{
+    id: 'cue-1', start: 0, end: 1100, text: 'foo baz',
+    items: [
+      { text: 'foo ', start: 0, end: 300 },
+      { text: 'bar ', start: 400, end: 700 },
+      { text: 'baz', start: 800, end: 1100 },
+    ],
+  }];
+  const report = helpers.buildTimedTextEditReport(source, ['foo', 'baz']);
+  assert.equal(report.valid, true);
+  assert.equal(report.stats.estimatedTimingCues, 2);
+  assert.equal(report.previewSegments[0].items, undefined);
+  assert.equal(report.previewSegments[1].items, undefined);
+  // 估算按字符比例插值：baz 从 4/7 处开始，而不是被删词 bar 的 400ms。
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(report.previewSegments.map((segment) => [segment.start, segment.end]))),
+    [[0, 471], [629, 1100]],
+  );
+  // 整段改写（非结构编辑）同样不伪造：无法可靠映射就清掉字词码。
+  const edited = helpers.buildTimedTextEditReport(source, ['foo baz!']);
+  assert.equal(edited.rows[0].mappingStatus, 'lost');
+});
+
 test('keeps real items for the anchored line when a rewritten line forces anchor mode', () => {
   const source = [{
     id: 'cue-1', start: 0, end: 1900, text: "it's  automatically",

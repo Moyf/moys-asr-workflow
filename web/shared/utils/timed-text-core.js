@@ -285,6 +285,20 @@ export function createUtilsModule(dependencies) {
       for (let index = spanEnd - 1; index >= spanStart; index -= 1) {
         if (map[index] >= 0) { end = map[index] + 1; break; }
       }
+      // 完整性守门（Greptile P1）：有实义文字的 item 至少 3/4 的非中性字符
+      // 要对齐上，否则对齐残骸会把别的词的时间拼凑进来——例如文字删掉了
+      // items 里的某个词时，相邻词可能只匹配到碎片却继承被删词的时间还
+      // 报告为已复用。此时整组回退估算比给错时间诚实。
+      if (start >= 0) {
+        let meaningful = 0;
+        let hit = 0;
+        for (let index = spanStart; index < spanEnd; index += 1) {
+          if (isTimedTextNeutralToken(sourceTokens[index], true)) continue;
+          meaningful += 1;
+          if (map[index] >= 0) hit += 1;
+        }
+        if (meaningful > 0 && hit / meaningful < 0.75) return null;
+      }
       spanStart = spanEnd;
       if (start < 0 || start >= end) continue;
       cores.push({ item, start, end });

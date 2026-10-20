@@ -21,12 +21,18 @@
 ## 验证记录
 
 - 真实数据回放（临时脚本，验证后已删除）：加载实测工程，对 103 条带 items 字幕的 299 个空格拆点逐一构建报告；修复前 #11 估算 2 条（预览边界 38,810 与截图一致），修复后 299 拆点全部复用真实字词码（0 估算），含首尾空格被删的草稿变体。
-- `node --test tests/test_editor_utils.mjs tests/test_waveform_js.mjs tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs`：413 通过。test_editor_utils 新增 6 个用例：前后空格漂移拆句（两种草稿）、词间缺空格、items 多尾逗号 / text 多插入词、低相似度仍估算、锚点模式等长改写与改写行估算。
-- e2e `tests/e2e/timed-text-edit.spec.mjs`：16/16 通过（连续两轮全文件）。新增「搜索导航聚焦命中 textarea + F3/Enter 续跳 + 方向键解除武装 + Esc 收尾」用例。
+- `node --test tests/test_editor_utils.mjs tests/test_waveform_js.mjs tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs`：414 通过。test_editor_utils 新增 7 个用例：前后空格漂移拆句（两种草稿）、词间缺空格、items 多尾逗号 / text 多插入词、低相似度仍估算、锚点模式等长改写与改写行估算、被删词残骸不拼凑时间（Greptile P1 回归）。
+- e2e `tests/e2e/timed-text-edit.spec.mjs`：16/16 通过。新增「搜索导航聚焦命中 textarea + F3/Enter 续跳 + 方向键解除武装 + 打字后撤销回原位不复活跳转（Greptile P2 回归）+ Esc 收尾」用例。
 - 既有用例 `search reveals filtered rows in the center…` 在本机出现过 3 次失败，失败点在 toBeHidden / toBeVisible / scrollTop 之间漂移；用还原 web/ 改动 + 保留新用例的方式复跑仍失败，且单独跑恒过——判定为既有的防抖时序脆弱，与本改动无确定关联。新用例收尾改为显式关闭弹窗（Esc + 接受确认）后，全文件连续两轮 16/16 稳定。
 - `pnpm run check:editor`：bundle 重建后校验通过（模板 CSS/HTML 不进 bundle，i18n 改动已随重建验证）。
 - Python 全量套件 `uv run --no-sync python scripts/run_tests.py`（run_check 包装）：2641 项，OK（skipped=17）。
 - e2e 组跑 `timed-text-edit.spec.mjs + editor-text-tools.spec.mjs`：首次与 Python 套件并行执行时出现「Server did not respond within 30s」环境性失败（server 探活被 CPU 竞争拖死，24 项未运行）；环境空闲后重跑 41/41 全过。教训与既有规则一致：e2e 不与全量套件并行跑。
+
+## Greptile 评审轮（PR #284）
+
+- P1「Words inherit deleted words' times」：有效。文字删掉 items 里的词时，残骸碎片可能把被删词的时间拼给相邻词（`foo baz` + 残留 `bar` → `baz` 被拆成 `ba`/`z` 继承错误时间还报告已复用）。修复：`recutLayoutItemsOntoTokens` 增加完整性守门——有实义文字的 item 至少 3/4 非中性字符对齐，否则整组放弃走估算；新增回归用例断言估算插值（baz 从 629ms 起，而非被删词的 400ms）。
+- P2「Enter unexpectedly resumes search」：有效。武装状态原本只靠选区比对被动失效，打字后撤销回原位置会复活跳转。修复：rows / 单视图 textarea 的 input 事件立即清空武装；e2e 补「打字替换命中 → 删掉 → 回到原位 → Enter 插入换行而非跳转」步骤。
+- 修复后：Node 414 通过、e2e 16/16、bundle 重建，作为第二个提交推送并 re-trigger Greptile。
 
 ## 边界与未验证项
 

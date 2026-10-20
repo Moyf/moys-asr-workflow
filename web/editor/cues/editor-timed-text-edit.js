@@ -1335,6 +1335,13 @@
     mirror.scrollLeft = textarea.scrollLeft;
   }, true);
   document.addEventListener('keydown', onTimedTextEditSearchKeydown, true);
+  // 输入即解除武装（Greptile P2）：武装状态不能只靠选区比对被动失效，
+  // 否则打字后又撤销回原位置，选区恰好回到命中坐标，Enter 会复活成跳转。
+  const disarmTimedTextEditArmedMatch = (event) => {
+    if (event.target instanceof HTMLTextAreaElement) timedTextEditArmedMatch = null;
+  };
+  MaweDom.timedTextEditRows?.addEventListener('input', disarmTimedTextEditArmedMatch, true);
+  MaweDom.timedTextEditSingleTextarea?.addEventListener('input', disarmTimedTextEditArmedMatch);
   // 记录用户对「查看修改内容」的手动开合：click 只由用户触发，
   // 程序里的 details.open = ... 赋值不会经过这里。
   MaweDom.timedTextEditChangeDetails?.querySelector('summary')?.addEventListener('click', () => {

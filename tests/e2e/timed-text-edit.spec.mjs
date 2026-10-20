@@ -313,6 +313,20 @@ test('search navigation focuses the hit textarea with a visible caret, F3/Enter 
   expect(disarmed).toEqual(['alpha bet', 'a']);
   await expect(page.locator('#timed-text-edit-search-count')).toHaveText('3/6');
 
+  // Greptile P2 场景：拆行触发防抖重渲染，等第三行出现后再继续。
+  await expect(page.locator('#timed-text-edit-rows .timed-text-edit-row[data-index="2"]')).toHaveCount(1);
+  // 打字编辑（替换命中的 a）后即使退格删掉、光标回到原位置，武装也已
+  // 解除——Enter 插入换行，而不是复活成跳转。
+  await page.keyboard.press('Shift+F3');
+  await expect(page.locator('#timed-text-edit-search-count')).toHaveText('2/6');
+  expect(await rowSelection()).toMatchObject({ value: 'alpha bet', selected: 'a', row: '0' });
+  await page.keyboard.type('X');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type('a');
+  await page.keyboard.press('Enter');
+  const typedAndDisarmed = await page.evaluate(() => MaweDom.timedTextEditDraft.texts.slice(0, 2));
+  expect(typedAndDisarmed).toEqual(['alpha', ' bet']);
+
   await page.keyboard.press('Control+f');
   await expect(find).toBeFocused();
 
