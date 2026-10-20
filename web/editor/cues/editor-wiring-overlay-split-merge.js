@@ -381,6 +381,10 @@ function mergeOverlaySegments(idxs) {
     disabled: !!segments[0].disabled,
     _dirty: true,
   };
+  // 逐句缩放/定位与主字幕合并同规则：取最左句的完整覆盖（独立副本）。
+  if (segments[0].assOverride) {
+    merged.assOverride = window.AsrEditorUtils.normalizeAssOverride(segments[0].assOverride);
+  }
   if (Array.isArray(merged.items) && merged.items.length === 0) merged.items = null;
   MaweSelection.clearSelection();
   return MaweCommands.run('合并叠加字幕', (command) => {
