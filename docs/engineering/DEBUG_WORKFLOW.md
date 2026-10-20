@@ -29,7 +29,7 @@ python scripts/run_check.py --timeout 60 -- python -m unittest tests.test_run_ch
 python scripts/run_check.py --timeout 60 -- node --test tests/test_e2e_output_tail.mjs tests/test_e2e_server_lifecycle.mjs
 python scripts/run_check.py --timeout 180 -- node scripts/build-editor.mjs --check
 python scripts/run_check.py --timeout 180 -- node node_modules/typescript/bin/tsc -p web/tsconfig.typecheck.json
-python scripts/run_check.py --timeout 600 -- node node_modules/@playwright/test/cli.js test --project=chromium tests/e2e/editor-bundle.spec.mjs
+python scripts/run_check.py --timeout 600 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/editor-bundle.spec.mjs
 ```
 
 `--` 后是可执行文件与参数，不是 shell 表达式；管道、重定向和环境变量赋值在外层处理。运行器关闭 stdin，stdout / stderr 合并直接写文件，避免等待继承管道的 EOF。

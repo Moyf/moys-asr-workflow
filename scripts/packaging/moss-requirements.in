@@ -9,7 +9,7 @@
 # （与 local/ocr dependency-group 的 uv export 冻结管线并行，产物同为 pip
 # 可安装的 txt）。
 # torch==2.13.0+cu130 只存在于 pytorch cu130 index，编译命令需带：
-#   uv pip compile moss-requirements.in -p 3.11 --extra-index-url
+#   uv pip compile scripts/packaging/moss-requirements.in -p 3.11 --extra-index-url
 #       https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match
 av>=14.0
 librosa>=0.11.0
