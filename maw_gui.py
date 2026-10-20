@@ -364,84 +364,84 @@ def _is_gui_debug_invocation(argv: Sequence[str]) -> bool:
 
 
 def _run_internal_transcribe(argv: Sequence[str]) -> int:
-    import generate_subtitle_qwen_api
+    import maw.asr.qwen
 
     old_argv = sys.argv[:]
     try:
-        sys.argv = ["generate_subtitle_qwen_api.py", *argv]
-        result = generate_subtitle_qwen_api.main()
+        sys.argv = ["maw.asr.qwen", *argv]
+        result = maw.asr.qwen.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)
 
 
 def _run_internal_transcribe_soniox(argv: Sequence[str]) -> int:
-    import generate_subtitle_soniox_api
+    import maw.asr.soniox
 
     old_argv = sys.argv[:]
     try:
-        sys.argv = ["generate_subtitle_soniox_api.py", *argv]
-        result = generate_subtitle_soniox_api.main()
+        sys.argv = ["maw.asr.soniox", *argv]
+        result = maw.asr.soniox.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)
 
 
 def _run_internal_transcribe_doubao(argv: Sequence[str]) -> int:
-    import generate_subtitle_doubao_api
+    import maw.asr.doubao
 
     old_argv = sys.argv[:]
     try:
-        sys.argv = ["generate_subtitle_doubao_api.py", *argv]
-        result = generate_subtitle_doubao_api.main()
+        sys.argv = ["maw.asr.doubao", *argv]
+        result = maw.asr.doubao.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)
 
 
 def _run_internal_transcribe_local(argv: Sequence[str]) -> int:
-    import generate_subtitle_local
+    import maw.asr.local
 
     old_argv = sys.argv[:]
     try:
-        sys.argv = ["generate_subtitle_local.py", *argv]
-        result = generate_subtitle_local.main()
+        sys.argv = ["maw.asr.local", *argv]
+        result = maw.asr.local.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)
 
 
 def _run_internal_transcribe_bcut(argv: Sequence[str]) -> int:
-    import generate_subtitle_bcut_api
+    import maw.asr.bcut
 
     old_argv = sys.argv[:]
     try:
-        sys.argv = ["generate_subtitle_bcut_api.py", *argv]
-        result = generate_subtitle_bcut_api.main()
+        sys.argv = ["maw.asr.bcut", *argv]
+        result = maw.asr.bcut.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)
 
 
 def _run_internal_transcribe_tencent(argv: Sequence[str]) -> int:
-    import generate_subtitle_tencent_api
+    import maw.asr.tencent
 
     old_argv = sys.argv[:]
     try:
-        sys.argv = ["generate_subtitle_tencent_api.py", *argv]
-        result = generate_subtitle_tencent_api.main()
+        sys.argv = ["maw.asr.tencent", *argv]
+        result = maw.asr.tencent.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)
 
 
 def _run_internal_transcribe_openai(argv: Sequence[str]) -> int:
-    import generate_subtitle_openai_api
+    import maw.asr.openai
 
     old_argv = sys.argv[:]
     try:
-        sys.argv = ["generate_subtitle_openai_api.py", *argv]
-        result = generate_subtitle_openai_api.main()
+        sys.argv = ["maw.asr.openai", *argv]
+        result = maw.asr.openai.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)

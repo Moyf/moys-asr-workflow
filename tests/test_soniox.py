@@ -637,10 +637,10 @@ class ApiClientTests(unittest.TestCase):
 class SonioxCliExitContractTests(unittest.TestCase):
     def test_missing_input_exits_nonzero(self) -> None:
         """缺失输入文件属于调用方错误，必须以非零退出码失败。"""
-        from generate_subtitle_soniox_api import main
+        from maw.asr.soniox import main
 
         with redirect_stderr(io.StringIO()), \
-             mock.patch("sys.argv", ["generate_subtitle_soniox_api.py", "does-not-exist.mp3"]):
+             mock.patch("sys.argv", ["maw.asr.soniox", "does-not-exist.mp3"]):
             with self.assertRaises(SystemExit) as raised:
                 main()
         self.assertEqual(raised.exception.code, 1)
@@ -663,16 +663,16 @@ class SonioxCliOutputNamingTests(unittest.TestCase):
                 return values.pop(0) if values else 0.0
 
             with mock.patch(
-                "sys.argv", ["generate_subtitle_soniox_api.py", str(media), *extra_args]
+                "sys.argv", ["maw.asr.soniox", str(media), *extra_args]
             ), mock.patch(
-                "generate_subtitle_soniox_api.load_config",
+                "maw.asr.soniox.load_config",
                 return_value={"model": "stt-async-v5"},
-            ), mock.patch("generate_subtitle_soniox_api.get_duration_sec", return_value=1000.0), \
-                 mock.patch("generate_subtitle_soniox_api.shutil.copy2"), \
-                 mock.patch("generate_subtitle_soniox_api.transcribe", return_value=result), \
-                 mock.patch("generate_subtitle_soniox_api.time.perf_counter", side_effect=fake_perf), \
+            ), mock.patch("maw.asr.soniox.get_duration_sec", return_value=1000.0), \
+                 mock.patch("maw.asr.soniox.shutil.copy2"), \
+                 mock.patch("maw.asr.soniox.transcribe", return_value=result), \
+                 mock.patch("maw.asr.soniox.time.perf_counter", side_effect=fake_perf), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
-                from generate_subtitle_soniox_api import main
+                from maw.asr.soniox import main
 
                 main()
                 names = sorted(path.name for path in root.glob("*.srt"))

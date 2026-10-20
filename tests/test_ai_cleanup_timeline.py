@@ -161,8 +161,10 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
     def test_word_boundary_and_source_punctuation(self):
         items = [{"text": "介绍", "start": 0, "end": 100}, {"text": "方法", "start": 100, "end": 200}]
         rows = [{"id": "c001", "asrText": "介绍，方法。", "scriptLine": ""}]
-        with self.assertRaisesRegex(ValueError, "切开"):
-            parse_timeline("[c001] ~~介~~绍，方法。", rows, {"c001": items})
+        unsafe = parse_timeline("[c001] ~~介~~绍，方法。", rows, {"c001": items})["decisions"][0]
+        self.assertEqual(unsafe["decision"], "review")
+        self.assertIn("没有词项内部时间码", unsafe["reason"])
+        self.assertNotIn("deleteItems", unsafe)
         parsed = parse_timeline("[c001] ~~介绍~~，方法。", rows, {"c001": items})
         self.assertEqual(parsed["decisions"][0]["deleteItems"], [0])
         self.assertEqual(remaining_text(rows[0]["asrText"], items, [0]), "，方法。")

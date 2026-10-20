@@ -15,7 +15,7 @@ release.yml 的 macOS 步骤）与源码模式自动补齐（``maw/runtimes/base
   分支、剥掉 ``!= 'darwin'`` 冗余条件），生成临时 in 文件到 ``build/`` 下，
   再 ``uv pip compile --generate-hashes`` 冻结。local 的声明源是 dependency
   group export 产物中的直接依赖行（版本已锁定，唯一真源仍是 pyproject/uv.lock）；
-  moss 的声明源是 ``moss-requirements.in`` 本身。
+  moss 的声明源是 ``scripts/packaging/moss-requirements.in`` 本身。
 """
 
 from __future__ import annotations

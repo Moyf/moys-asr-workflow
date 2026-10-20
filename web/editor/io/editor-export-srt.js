@@ -22,14 +22,14 @@
       .sort((left, right) => left.start - right.start) };
   }
 
-  function buildSrt() {
+  function buildSrt({ alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
   const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     segments,
-    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    alignFirstStart,
   );
   return window.AsrEditorUtils.buildSrtPayload(segments, {
-    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    alignFirstStart,
     firstEnabledIndex,
     keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
     colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
@@ -299,7 +299,8 @@
 
 
 
-  function buildAss({ preview = false, onAssPlan = null, allowAssPlanDiagnostics = false } = {}) {
+  function buildAss({ preview = false, onAssPlan = null, allowAssPlanDiagnostics = false,
+    alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
   const speakerOptions = MaweSpeakerLabels.speakerLabelExportOptions();
   if (preview) {
     const settings = MaweSpeakerLabels.getSpeakerLabelSettings();
@@ -311,7 +312,7 @@
     ? [] : activeExtensionSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     cleanupMainSegments(),
-    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    alignFirstStart,
   );
   return window.AsrEditorUtils.buildAssPayload(preview && !MaweDom.overlayToggle.checked
     ? [] : cleanupMainSegments(), {
@@ -320,7 +321,7 @@
     allowAssPlanDiagnostics,
     // Export-only lead-in extension must not make a cue appear before its
     // actual start when checking the playback timeline.
-    alignFirstStart: !preview && MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    alignFirstStart: !preview && alignFirstStart,
     firstEnabledIndex,
     appearance: MaweAppearance.getSubtitleAppearance(),
     overlaySegments,
@@ -363,7 +364,7 @@
         && !window.AsrEditorUtils.isRangeInsideRemovedGap(segment.start, segment.end, removed));
   }
 
-  function buildGapRemovedSrt() {
+  function buildGapRemovedSrt({ alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
     MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
@@ -373,10 +374,10 @@
   const keptSegments = filterSegmentsInsideRemovedGaps(segments, removed);
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     keptSegments,
-    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    alignFirstStart,
   );
   return window.AsrEditorUtils.buildSrtPayload(keptSegments, {
-    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    alignFirstStart,
     firstEnabledIndex,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
     ensurePositiveDuration: true,
@@ -389,7 +390,8 @@
 
 
 
-  function buildGapRemovedAss() {
+  function buildGapRemovedAss({ onAssPlan = null,
+    alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
     MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
@@ -398,19 +400,22 @@
   const mainSegments = filterSegmentsInsideRemovedGaps(cleanupMainSegments(), removed);
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     mainSegments,
-    MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    alignFirstStart,
   );
   // 去空隙 ASS 与常规 ASS 同一三轨契约：叠加轨与副字幕也随导出，
   // 时间统一经 mapGapRemovedTime 压缩；完全在空隙内的字幕同样整体丢弃。
+  // onAssPlan 透传给表情包烧录：排版计划与 ASS 文本同一份（收缩时间轴），
+  // 字幕位置与表情包窗口天然一致。
   const { overlaySegments } = cleanupMergedExportSegments();
   const extensionSegments = activeExtensionSegments();
   return window.AsrEditorUtils.buildAssPayload(mainSegments, {
     ...assExportOptions(),
-    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    alignFirstStart,
     firstEnabledIndex,
     overlaySegments: filterSegmentsInsideRemovedGaps(overlaySegments, removed),
     extensionSegments: filterSegmentsInsideRemovedGaps(extensionSegments, removed),
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
+    onAssPlan,
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
   });
 }

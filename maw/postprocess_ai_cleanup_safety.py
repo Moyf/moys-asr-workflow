@@ -25,6 +25,11 @@ _RESTART_STRIP_CHARS = PURE_INTERJECTIONS + _TONE_PARTICLES
 _NEGATIONS = re.compile(r"不|没|未|无|除非|\b(?:not|never|no|without|unless)\b", re.I)
 
 
+def english_hesitation_only(text: str) -> bool:
+    """Recognize only isolated hesitation sounds, never English content words."""
+    return re.fullmatch(r"(?:u+h+|u+m+|h+m+)(?:[\s,.!?;:…]+(?:u+h+|u+m+|h+m+))*[\s,.!?;:…]*", text.strip(), re.I) is not None
+
+
 def safe_echo_phrase(text: str) -> bool:
     """Literal repeated positive qualifiers can restart; numbers/negation cannot."""
     value = unicodedata.normalize("NFKC", text).lower()

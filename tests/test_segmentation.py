@@ -5,8 +5,8 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-import generate_subtitle_qwen_api as qwen
-from generate_subtitle_qwen_api import (
+from maw.asr import segmentation
+from maw.asr.segmentation import (
     _split_long_group,
     is_cjk_dominant,
     split_segments_auto,
@@ -98,11 +98,11 @@ class CjkWordBoundaryTests(unittest.TestCase):
 
 class CjkNaturalLimitTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.previous_punctuation = "".join(qwen._EXTRA_STRONG_PUNCT)
-        qwen.configure_extra_strong_punct("，。？！；,.")
+        self.previous_punctuation = "".join(segmentation._EXTRA_STRONG_PUNCT)
+        segmentation.configure_extra_strong_punct("，。？！；,.")
 
     def tearDown(self) -> None:
-        qwen.configure_extra_strong_punct(self.previous_punctuation)
+        segmentation.configure_extra_strong_punct(self.previous_punctuation)
 
     @staticmethod
     def items(text, widths=(1,)):
@@ -202,12 +202,12 @@ class CjkNaturalLimitTests(unittest.TestCase):
         self.assertEqual(self.split("速度是1.25倍。下一步！", 30), ["速度是1.25倍。", "下一步！"])
 
     def test_explicit_punctuation_and_newlines_remain_boundaries(self) -> None:
-        qwen.configure_extra_strong_punct("~")
+        segmentation.configure_extra_strong_punct("~")
         self.assertEqual(self.split("速度1.25倍~然后继续\n处理", 30), ["速度1.25倍~", "然后继续\n", "处理"])
         self.assertEqual(self.split("等待3\n分钟后继续", 30), ["等待3\n", "分钟后继续"])
 
     def test_weak_numeric_colon_is_not_a_split_point(self) -> None:
-        qwen.configure_extra_strong_punct("")
+        segmentation.configure_extra_strong_punct("")
         texts = self.split("我们把画面比例改成16:9然后继续处理", 12)
         self.assertTrue(any("16:9" in text for text in texts), texts)
         self.assertTrue(all(len(text) <= 12 for text in texts), texts)
@@ -280,31 +280,31 @@ class CjkNaturalLimitTests(unittest.TestCase):
                 self.assertTrue(any("这个、那个" in part for part in texts), texts)
 
     def test_weak_candidates_follow_shared_configuration_without_hidden_symbols(self) -> None:
-        qwen.configure_extra_strong_punct("")
-        self.assertEqual(qwen._weak_punct_set(), set())
+        segmentation.configure_extra_strong_punct("")
+        self.assertEqual(segmentation._weak_punct_set(), set())
         for symbol in ("、", "：", ":", ";", "—", "–", "~"):
             with self.subTest(symbol=symbol):
                 items = self.items("甲乙" + symbol + "丙丁戊己庚辛")
-                qwen.configure_extra_strong_punct(symbol)
-                self.assertEqual(qwen._weak_punct_set(), {symbol})
+                segmentation.configure_extra_strong_punct(symbol)
+                self.assertEqual(segmentation._weak_punct_set(), {symbol})
                 self.assertEqual([s["text"] for s in split_words_to_segments(items, 20, min_len=1, gap_split_ms=0)],
                                  ["甲乙" + symbol, "丙丁戊己庚辛"])
-        qwen.configure_extra_strong_punct("")
+        segmentation.configure_extra_strong_punct("")
         self.assertEqual(self.split("甲乙、丙丁：戊己", 20), ["甲乙、丙丁：戊己"])
 
     def test_western_overflow_has_no_separate_weak_punctuation_list(self) -> None:
         for symbol in ("、", "：", ":", ";", "—", "–", "~", ","):
             items = CjkWordBoundaryTests.items([" one", " two" + symbol, " three", " four", " five"])
             with self.subTest(symbol=symbol):
-                qwen.configure_extra_strong_punct("")
-                self.assertEqual([len(g) for g in qwen._split_long_western(items, 4)], [4, 1])
-                qwen.configure_extra_strong_punct(symbol)
-                self.assertEqual([len(g) for g in qwen._split_long_western(items, 4)], [2, 3])
+                segmentation.configure_extra_strong_punct("")
+                self.assertEqual([len(g) for g in segmentation._split_long_western(items, 4)], [4, 1])
+                segmentation.configure_extra_strong_punct(symbol)
+                self.assertEqual([len(g) for g in segmentation._split_long_western(items, 4)], [2, 3])
 
     def test_explicit_semicolon_default_splits_and_is_strippable(self) -> None:
-        qwen.configure_extra_strong_punct(qwen._DEFAULT_EXTRA_STRONG_PUNCT)
+        segmentation.configure_extra_strong_punct(segmentation._DEFAULT_EXTRA_STRONG_PUNCT)
         self.assertEqual(self.split("第一句话;第二句话", 20), ["第一句话;", "第二句话"])
-        self.assertIn(";", qwen._DEFAULT_STRIP_TAIL_PUNCT)
+        self.assertIn(";", segmentation._DEFAULT_STRIP_TAIL_PUNCT)
 
 
 class WesternSplitTests(unittest.TestCase):

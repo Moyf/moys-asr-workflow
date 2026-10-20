@@ -14,4 +14,4 @@
 
 三者共享 `.mosp` / 兼容 `.json` 工程契约。
 
-保留原始媒体与工程最利于后续迁移。SRT、Resolve JSON、保留区域 JSON 和 `.workspace.json` 分别是交付、交换或配置文件，不能代替字幕工程。契约见 [JSON_SCHEMA](../../JSON_SCHEMA.md)。
+保留原始媒体与工程最利于后续迁移。SRT、Resolve JSON、保留区域 JSON 和 `.workspace.json` 分别是交付、交换或配置文件，不能代替字幕工程。契约见 [JSON_SCHEMA](JSON_SCHEMA.md)。

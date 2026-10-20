@@ -1,22 +1,21 @@
 # pyright: reportAny=false, reportAttributeAccessIssue=false, reportMissingParameterType=false, reportMissingTypeArgument=false, reportMissingTypeStubs=false, reportReturnType=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedVariable=false, reportImplicitStringConcatenation=false, reportArgumentType=false, reportIndexIssue=false
 
-"""使用豆包（火山引擎）大模型录音文件识别 API 生成视频字幕（云端版）。
+"""使用 Soniox 异步 STT API 生成视频字幕（云端版，可选说话人分离）。
 
 特点：
-- 无需 GPU、模型权重，只调 API（VOLC_API_KEY，新版控制台单 Key 鉴权）
-- 异步 submit/query，字/词级毫秒时间戳，最长 120 分钟音频（base64 直传 ≤25MB）
-- --speaker 开启说话人分离（utterance 级 speaker 写入 segments/items）
+- 无需 GPU、模型权重，只调 API（SONIOX_API_KEY）
+- 官方 Files API 直接上传 + 异步轮询，token 级毫秒时间戳
+- --speaker 开启说话人分离（token 级 speaker 写入 segments/items）
 - --speaker-colors 在说话人基础上把不同 speaker 一次性映射成 5 种字幕颜色
-- --hotword 即时热词直传 corpus.context
-- 音频统一提取为 ogg + opus 24kbps 单声道 16kHz（约 10.8MB/小时，留足余量）
+- 单文件最长 5 小时；转写完成后自动清理云端文件与转写记录
 
-输出为通用的 UTF-8 JSON 工程格式（默认保存为 `.mosp`，包含 items/text/language，
-可选 speaker/color），可直接交给 edit.py 编辑。配置读取 .env 文件（VOLC_API_KEY 等）。
+输出为通用的 UTF-8 JSON 工程格式（默认保存为 `.mosp`，包含 items/text/language，可选 speaker/color），
+可直接交给 edit.py 编辑。配置读取 .env 文件（SONIOX_API_KEY 等）。
 """
 
 import argparse
 import json
-import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,100 +24,59 @@ from datetime import datetime
 from pathlib import Path
 
 from maw.stickers import get_default_sticker_dir
-from generate_subtitle_qwen_api import (
-    FFMPEG_MISSING_MESSAGE,
-    WESTERN_MAX_WORDS,
-    WESTERN_MIN_WORDS,
+from maw.asr.common import (
+    extract_audio,
     generate_srt,
     get_duration_sec,
     parse_duration,
 )
+from maw.asr.segmentation import (
+    WESTERN_MAX_WORDS,
+    WESTERN_MIN_WORDS,
+)
 from maw.console import configure_utf8_stdio
-from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.project_io import write_mosp
 from maw.project import repair_segment_durations, validate_project
-from maw.doubao import (
-    AUDIO_BITRATE,
-    AUDIO_CODEC,
-    AUDIO_FORMAT,
-    AUDIO_SAMPLE_RATE,
+from maw.soniox import (
     MAX_AUDIO_SECONDS,
+    SonioxContextError,
+    apply_speaker_colors,
     build_segments,
     load_config,
+    parse_soniox_context_json,
     transcribe,
 )
 from maw.media_cache import embed_media_caches, merge_media_caches
 from maw.media import resolve_default_audio_track
 from maw.output_naming import debug_artifact_path, format_elapsed, format_maw_stat
-from maw.speaker import apply_speaker_colors
 from maw.language import (
+    normalize_language_code,
     resolve_language,
     split_mode_for_text,
     timestamp_granularity_for_items,
 )
 
 
-def _run_media_tool(cmd: list[str], **kwargs):
-    try:
-        return subprocess.run(cmd, **kwargs)
-    except FileNotFoundError as exc:
-        executable = Path(str(cmd[0])).stem.lower() if cmd else ""
-        if executable in {"ffmpeg", "ffprobe"}:
-            raise RuntimeError(FFMPEG_MISSING_MESSAGE) from exc
-        raise
+def _language_hints(raw: str | None) -> list[str]:
+    """'zh,en' 或 'Chinese,English' 等 → Soniox language_hints ISO 码列表。"""
+    if not raw:
+        return []
+    hints: list[str] = []
+    for part in raw.split(","):
+        key = part.strip().lower()
+        if key:
+            canonical = normalize_language_code(key)
+            # Soniox calls Filipino ``tl``; keep the project-facing canonical
+            # code as ``fil`` while sending the provider's accepted hint.
+            hints.append("tl" if canonical == "fil" else canonical or key)
+    return hints
 
 
-def _resolve_media_tool(
-    tool: str,
-    configured_path: str | os.PathLike[str] | None = None,
-) -> str:
-    resolved = resolve_ffmpeg_tool(
-        tool,
-        configured_path,
-        allow_missing_explicit=bool(configured_path),
-    )
-    if resolved is None:
-        raise RuntimeError(FFMPEG_MISSING_MESSAGE)
-    return str(resolved)
-
-
-def extract_audio_ogg(
-    input_path: str,
-    output_path: str,
-    duration_limit: float | None = None,
-    *,
-    ffmpeg_path: str | os.PathLike[str] | None = None,
-    audio_track: int = 0,
-) -> None:
-    """把任意媒体的第一音轨提取为 ogg + opus 24kbps 单声道 16kHz。"""
-    if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
-        raise ValueError("audio_track must be a non-negative integer")
-    cmd = [
-        _resolve_media_tool("ffmpeg", ffmpeg_path),
-        "-i",
-        input_path,
-        "-map",
-        f"0:a:{audio_track}",
-    ]
-    if duration_limit is not None:
-        cmd.extend(["-t", str(duration_limit)])
-    cmd.extend([
-        "-vn",
-        "-acodec", "libopus",
-        "-b:a", AUDIO_BITRATE,
-        "-ar", str(AUDIO_SAMPLE_RATE),
-        "-ac", "1",
-        "-y", output_path,
-    ])
-    print("[ffmpeg] 正在提取音频（ogg / opus 24kbps 单声道）...")
-    _run_media_tool(cmd, check=True, capture_output=True)
-    print("[ffmpeg] 音频提取完成")
-
-
-def main() -> int:
+def main():
     configure_utf8_stdio()
     parser = argparse.ArgumentParser(
-        description="使用豆包（火山引擎）大模型录音文件识别生成视频字幕（云端版）",
+        description="使用 Soniox 异步 STT API 生成视频字幕（云端版，可选说话人分离）",
     )
     parser.add_argument("input", help="输入视频或音频文件路径")
     parser.add_argument("-o", "--output", help="输出 SRT 路径（默认与输入同目录）")
@@ -134,7 +92,7 @@ def main() -> int:
     parser.add_argument("--min-words", type=int, default=WESTERN_MIN_WORDS, help="英文短句合并阈值（单词数）")
     parser.add_argument(
         "--language", default=None,
-        help="语言提示（如 zh / en / ja；豆包不显式区分中文与粤语，默认自动识别）",
+        help="语言提示，逗号分隔（如 zh,en 或 Chinese；默认自动识别）",
     )
     parser.add_argument(
         "--keep-punct", action="store_true",
@@ -157,12 +115,8 @@ def main() -> int:
         help="在 --speaker 基础上，把不同说话人一次性映射成 5 种字幕颜色（可在编辑器修改）",
     )
     parser.add_argument(
-        "--hotword", action="append",
-        help="即时热词；可重复传入（写入豆包 corpus.context）",
-    )
-    parser.add_argument(
         "--json", dest="json_out", action="store_true",
-        help="同时输出含字级时间戳的工程文件（默认 .mosp，供 edit.py 加载）",
+        help="同时输出含 token 级时间戳的工程文件（默认 .mosp，供 edit.py 加载）",
     )
     parser.add_argument(
         "--with-waveform", action="store_true",
@@ -191,7 +145,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--model", default=None,
-        help="覆盖豆包资源 ID（默认读 .env 的 VOLC_ASR_RESOURCE_ID，兜底 volc.seedasr.auc）",
+        help="覆盖 Soniox 模型（默认读 .env 的 SONIOX_MODEL，兜底 stt-async-v5）",
+    )
+    parser.add_argument(
+        "--context-json", default=None,
+        help="Soniox context JSON；支持 general/text/terms/translation_terms，最多约 10000 字符",
     )
     parser.add_argument(
         "--debug", action="store_true",
@@ -199,11 +157,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--debug-raw", action="store_true",
-        help="保存豆包 query API 返回的完整原始 JSON，用于排查解析和时间码",
+        help="保存 Soniox transcript API 返回的完整原始 JSON，用于排查解析和时间码",
     )
     parser.add_argument(
         "--no-model-tag", action="store_true",
-        help="默认输出文件名不附加供应商标识段（默认附加 doubao）",
+        help="默认输出文件名不附加供应商标识段（默认附加 soniox）",
     )
     args = parser.parse_args()
     if args.audio_track < 0:
@@ -229,55 +187,88 @@ def main() -> int:
 
     enable_speaker = args.speaker or args.speaker_colors
     config = load_config()
-    resource_id = args.model or config["resource_id"]
-    ffmpeg_path = _resolve_media_tool("ffmpeg", config.get("ffmpeg_path"))
-    ffprobe_path = _resolve_media_tool("ffprobe", config.get("ffmpeg_path"))
+    ffmpeg_tools = resolve_ffmpeg_tools(configured_path=config.get("ffmpeg_path"))
+    ffmpeg_path = ffmpeg_tools.ffmpeg
+    ffprobe_path = ffmpeg_tools.ffprobe
     default_audio_track = resolve_default_audio_track(
         input_path,
         args.default_audio_track,
         ffprobe_path=ffprobe_path,
     )
-    print(f"[准备] 已载入豆包转写配置（资源: {resource_id}）")
+    print(f"[准备] 已载入 Soniox 转写配置（模型: {args.model or config['model']}）")
+
+    try:
+        context = parse_soniox_context_json(args.context_json)
+    except SonioxContextError as error:
+        parser.error(str(error))
 
     video_exts = {".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"}
     is_video = input_path.suffix.lower() in video_exts
 
     with tempfile.TemporaryDirectory() as tmpdir:
         print(f"[媒体] 正在准备输入媒体: {input_path.name}")
-        source_duration = get_duration_sec(str(input_path), ffprobe_path=ffprobe_path)
-        video_limit = args.length_limit if args.length_limit and args.length_limit < source_duration else None
-        audio_path = str(Path(tmpdir) / "audio.ogg")
-        extract_audio_ogg(
-            str(input_path),
-            audio_path,
-            duration_limit=video_limit if is_video else args.length_limit,
-            ffmpeg_path=ffmpeg_path,
-            audio_track=args.audio_track if is_video else 0,
-        )
-        if is_video and video_limit is not None:
-            lm, ls = divmod(int(video_limit), 60)
-            print(f"[info] 测试模式：从视频直接提取前 {lm}分{ls}秒，跳过其余内容")
-        duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
+        if is_video:
+            audio_path = str(Path(tmpdir) / "audio.wav")
+            print("[媒体] 正在读取原始视频时长...")
+            source_duration = get_duration_sec(
+                str(input_path),
+                ffprobe_path=ffprobe_path,
+            )
+            video_limit = args.length_limit if args.length_limit and args.length_limit < source_duration else None
+            extract_audio(
+                str(input_path),
+                audio_path,
+                duration_limit=video_limit,
+                ffmpeg_path=ffmpeg_path,
+                audio_track=args.audio_track,
+            )
+            print("[媒体] 正在读取提取后音频时长...")
+            duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
+            if video_limit is not None:
+                lm, ls = divmod(int(video_limit), 60)
+                print(f"[info] 测试模式：从视频直接提取前 {lm}分{ls}秒，跳过其余内容")
+        else:
+            # 复制到 tmpdir 统一处理（避免 length_limit 改原文件）
+            audio_path = str(Path(tmpdir) / input_path.name)
+            print("[媒体] 正在复制音频到临时工作目录...")
+            shutil.copy2(input_path, audio_path)
+
+        if not is_video:
+            print("[媒体] 正在读取音频时长...")
+            duration = get_duration_sec(audio_path, ffprobe_path=ffprobe_path)
         m, s = divmod(int(duration), 60)
         print(f"[info] 音频总时长: {m}分{s}秒")
 
         if duration > MAX_AUDIO_SECONDS:
             raise SystemExit(
-                f"[错误] 音频时长 {int(duration // 60)} 分钟超过豆包 base64 直传上限"
-                f"（120 分钟）。请用 -ll 截取部分时长，或先把音频分割成多个文件。"
+                f"[错误] 音频时长 {int(duration // 60)} 分钟超过 Soniox 单文件上限（300 分钟）。\n"
+                f"       请用 -ll 截取部分时长，或先把音频分割成多个文件。"
             )
 
-        print("[doubao] 本地媒体准备完成，开始连接火山引擎...")
+        if args.length_limit and args.length_limit < duration:
+            limit_sec = args.length_limit
+            limited_path = str(Path(tmpdir) / "audio_limited.wav")
+            extract_audio(
+                audio_path,
+                limited_path,
+                duration_limit=limit_sec,
+                ffmpeg_path=ffmpeg_path,
+                audio_track=0,
+            )
+            audio_path = limited_path
+            duration = limit_sec
+            lm, ls = divmod(int(limit_sec), 60)
+            print(f"[info] 已截取前 {lm}分{ls}秒用于测试")
+
+        print("[soniox] 本地媒体准备完成，开始连接 Soniox...")
         print(f"转写开始: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         t0 = time.perf_counter()
         result = transcribe(
             audio_path, config,
-            language=args.language,
+            language_hints=_language_hints(args.language),
             enable_speaker=enable_speaker,
-            hotwords=args.hotword,
-            audio_format=AUDIO_FORMAT,
-            audio_codec=AUDIO_CODEC,
-            resource_id=resource_id,
+            model=args.model,
+            context=context,
             capture_raw=args.debug_raw,
         )
         elapsed = time.perf_counter() - t0
@@ -289,6 +280,7 @@ def main() -> int:
             raise SystemExit(2)
 
         print(f"[解析] 云端结果已返回，包含 {len(result.get('items', []))} 个时间戳项。")
+        print(f"[info] 检测语言: {result.get('language', 'unknown')}")
 
         items = result["items"]
         if args.debug:
@@ -314,7 +306,7 @@ def main() -> int:
             )
             print(f"[解析] 字幕整理完成：{len(segments)} 条。")
 
-        # 兜底：缺时间戳/倒挂的字会形成 0 长 item，
+        # 兜底：缺时间戳/倒挂的 token 会形成 0 长 item，
         # 拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
         print("[解析] 正在校验和修复时间码...")
         repaired_count = repair_segment_durations(segments)
@@ -373,7 +365,7 @@ def main() -> int:
         ts_prefix = f"[{datetime.now().strftime('%y%m%d%H%M')}]"
         name_parts = []
         if not args.no_model_tag:
-            name_parts.append("doubao")
+            name_parts.append("soniox")
         suffix = f".{'.'.join(name_parts)}" if name_parts else ""
         output_path = output_path.with_name(
             f"{ts_prefix}{output_path.stem}{suffix}.srt"
@@ -384,7 +376,7 @@ def main() -> int:
     print(f"共 {len(segments)} 条字幕")
     if args.debug_raw:
         if raw_response is None:
-            raise RuntimeError("调试模式未获得豆包 query 原始返回数据")
+            raise RuntimeError("调试模式未获得 Soniox transcript 原始返回数据")
         raw_path = debug_artifact_path(
             input_path,
             output_path,
@@ -395,7 +387,7 @@ def main() -> int:
         with raw_path.open("w", encoding="utf-8", newline="\n") as raw_file:
             json.dump(raw_response, raw_file, ensure_ascii=False, indent=2)
             raw_file.write("\n")
-        print(f"[调试] 豆包 query 原始返回已保存到: {raw_path}")
+        print(f"[调试] Soniox transcript 原始返回已保存到: {raw_path}")
     print(f"转写耗时: {format_elapsed(elapsed)}")
     if duration > 0:
         print(f"媒体时长: {format_elapsed(duration)}")
@@ -418,7 +410,7 @@ def main() -> int:
             "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
                 result.get("items") or [], split_mode, has_segments=bool(segments)
             ),
-            "model": f"doubao-{resource_id}",
+            "model": f"soniox-{args.model or config['model']}",
             "segments": [
                 {
                     "start": seg["start"],
@@ -451,7 +443,7 @@ def main() -> int:
         print(f"工程文件已保存到: {json_path}")
 
         if not args.no_html:
-            edit_script = Path(__file__).parent / "edit.py"
+            edit_script = Path(__file__).resolve().parents[2] / "edit.py"
             if not edit_script.exists():
                 print("[警告] 找不到 edit.py，跳过 HTML 生成")
             else:
@@ -471,7 +463,6 @@ def main() -> int:
     maw_stat = format_maw_stat(rtf)
     if maw_stat:
         print(maw_stat)
-    return 0
 
 
 if __name__ == "__main__":

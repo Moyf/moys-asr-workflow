@@ -469,29 +469,29 @@ def _generator_args(args: argparse.Namespace, input_path: Path, srt_path: Path) 
 
 def _invoke_generator(provider: str, argv: Sequence[str]) -> int:
     if provider == "soniox":
-        import generate_subtitle_soniox_api as generator
+        import maw.asr.soniox as generator
 
-        script_name = "generate_subtitle_soniox_api.py"
+        script_name = "maw.asr.soniox"
     elif provider == "doubao":
-        import generate_subtitle_doubao_api as generator
+        import maw.asr.doubao as generator
 
-        script_name = "generate_subtitle_doubao_api.py"
+        script_name = "maw.asr.doubao"
     elif provider == "bcut":
-        import generate_subtitle_bcut_api as generator
+        import maw.asr.bcut as generator
 
-        script_name = "generate_subtitle_bcut_api.py"
+        script_name = "maw.asr.bcut"
     elif provider == "tencent":
-        import generate_subtitle_tencent_api as generator
+        import maw.asr.tencent as generator
 
-        script_name = "generate_subtitle_tencent_api.py"
+        script_name = "maw.asr.tencent"
     elif provider == "openai":
-        import generate_subtitle_openai_api as generator
+        import maw.asr.openai as generator
 
-        script_name = "generate_subtitle_openai_api.py"
+        script_name = "maw.asr.openai"
     else:
-        import generate_subtitle_qwen_api as generator
+        import maw.asr.qwen as generator
 
-        script_name = "generate_subtitle_qwen_api.py"
+        script_name = "maw.asr.qwen"
     old_argv = sys.argv[:]
     try:
         sys.argv = [script_name, *argv]

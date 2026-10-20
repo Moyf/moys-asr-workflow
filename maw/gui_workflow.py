@@ -300,21 +300,17 @@ def build_transcribe_command(
     is_openai = request.provider == "openai"
     is_doubao = request.provider == "doubao"
     is_local = request.provider == "local"
-    if is_local:
-        script_name = "generate_subtitle_local.py"
-    elif is_bcut:
-        script_name = "generate_subtitle_bcut_api.py"
-    elif is_tencent:
-        script_name = "generate_subtitle_tencent_api.py"
-    elif is_openai:
-        script_name = "generate_subtitle_openai_api.py"
-    elif is_doubao:
-        script_name = "generate_subtitle_doubao_api.py"
-    else:
-        script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
-    script = Path(__file__).resolve().parents[1] / script_name
+    provider = request.provider if request.provider in {
+        "local", "soniox", "doubao", "bcut", "tencent", "openai",
+    } else "qwen"
+    module_name = f"maw.asr.{provider}"
     if is_local and request.runtime_python:
-        script = asset_path("local-runtime/generate_subtitle_local.py") if is_frozen else script
+        # Embedded Python ignores cwd/PYTHONPATH; the local entrypoint bootstraps
+        # the copied package root before loading the optional model libraries.
+        script = (
+            asset_path("local-runtime/maw/asr/local.py") if is_frozen
+            else Path(__file__).resolve().parent / "asr" / "local.py"
+        )
         command = [request.runtime_python, str(script)]
     elif is_frozen:
         if is_local:
@@ -330,7 +326,7 @@ def build_transcribe_command(
         else:
             command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
     else:
-        command = [exe, str(script)]
+        command = [exe, "-m", module_name]
     command.append(str(request.media_path))
     command.extend(["--output", str(build_output_paths(request.srt_path).srt), "--json", "--no-html", "--with-waveform"])
     command.extend(["--audio-track", str(request.audio_track)])

@@ -596,6 +596,7 @@ class AutoFreezeRequirementsTests(CompactContainerAssertions, unittest.TestCase)
     def _temp_build_dir(self) -> Path:
         build = Path(tempfile.mkdtemp()) / "build"
         build.mkdir(parents=True)
+        (build.parent / "scripts" / "packaging").mkdir(parents=True)
         self.addCleanup(lambda: shutil.rmtree(build.parent, ignore_errors=True))
         return build
 
@@ -626,7 +627,7 @@ class AutoFreezeRequirementsTests(CompactContainerAssertions, unittest.TestCase)
         # moss：uv pip compile（in 文件 pin cu130，必须带 extra index）
         self.assertEqual(
             base_mod.freezer.main_freeze_command(uv, MOSS_SPEC, build),
-            [str(uv), "pip", "compile", "moss-requirements.in", "-p", "3.11",
+            [str(uv), "pip", "compile", "scripts/packaging/moss-requirements.in", "-p", "3.11",
              "--extra-index-url", MOSS_PYTORCH_INDEX,
              "--index-strategy", "unsafe-best-match",
              "-o", str(build / "requirements-moss.txt")],
@@ -714,7 +715,7 @@ class AutoFreezeRequirementsTests(CompactContainerAssertions, unittest.TestCase)
         # MOSS 无 GPU 首装走 moss-cpu 清单（from moss-requirements.in 剥离生成，
         # in 先落盘 build/ 再原生冻结，与 local-cpu 同构）。
         build = self._temp_build_dir()
-        (build.parent / "moss-requirements.in").write_text(
+        (build.parent / MOSS_SPEC.requirements_in).write_text(
             "torch==2.13.0+cu130; sys_platform != 'darwin'\n",
             encoding="utf-8",
         )

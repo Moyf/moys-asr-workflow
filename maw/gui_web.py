@@ -1933,7 +1933,7 @@ class LauncherApi:
         elif kind == "subtitle":
             file_types = ("Subtitle files (*.mosp;*.json;*.srt)",)
         elif kind == "subtitle-burn":
-            file_types = ("Subtitle files (*.srt;*.ass;*.ssa)", "All files (*.*)")
+            file_types = ("Subtitle files (*.srt;*.ass;*.ssa;*.mosp;*.json)", "All files (*.*)")
         elif kind == "video":
             file_types = ("Video files (*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.flv;*.webm;*.ts;*.m4v)", "All files (*.*)")
         elif kind == "ffconcat":
@@ -3136,6 +3136,8 @@ class LauncherApi:
 
     def open_faq(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         path = self.paths.root / "FAQ-常见问题.txt"
+        if not path.is_file():
+            path = self.paths.root / "docs" / "user" / "FAQ-常见问题.txt"
         if not path.is_file():
             path = Path(sys.executable).resolve().parent / "FAQ-常见问题.txt"
         if not path.is_file():

@@ -103,7 +103,7 @@ def _opacity(value: object, fallback: int | float = 100) -> int:
     return math.floor(numeric + 0.5)
 
 
-def _default_ass_font_name() -> str:
+def default_ass_font_name() -> str:
     """ASS 默认字体按操作系统选择：Arial 缺少合适的中文形，容易发虚。"""
 
     system = platform.system()
@@ -128,7 +128,7 @@ def _style_defaults(style_id: str, name: str) -> dict[str, object]:
         "id": style_id,
         "name": name,
         "builtin": True,
-        "fontName": _default_ass_font_name(),
+        "fontName": default_ass_font_name(),
         "fontSize": 86,
         "primaryColor": "#ffffff",
         "emphasisColor": "#ffd34d",

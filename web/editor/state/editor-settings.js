@@ -179,6 +179,9 @@
   markerEditingEnabled: false,
   // 表情包功能总开关：关闭时隐藏预览与右键分配入口；工程数据保留。
   stickersEnabled: true,
+  // 表情包烧录显示模式：fixed = 出现在预览层固定位置（方案一）；
+  // cue-left = 贴在当前字幕第一个字左侧（方案二，句间空隙/legacy 句回退 fixed）。
+  stickerBurnMode: 'fixed',
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
   stickerOtioExportMode: 'original',
   // 时间线 OTIO / OTIOZ 导出选项：同时导出 SRT、合并表情包轨、写入字幕标记（默认全开）。

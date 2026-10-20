@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 跨平台开发会话：先完整构建一次 bundle，再运行 Python 入口；dev 模式额外挂 esbuild watcher。
+// 跨平台开发会话：先完整构建所需 bundle，再运行 Python 入口；dev 模式额外挂对应 watcher。
 // 替代原 Windows-only 的 scripts/dev-editor.ps1，生命周期保持一致：
 // 构建失败立即退出；Python 入口退出后回收 watcher；Ctrl+C / SIGTERM 一并清理子进程。
 // 不用 shell 的 && 串联：pnpm 对复合脚本的 -- 参数转发不可靠，且 && 本身依赖脚本壳。
@@ -12,12 +12,13 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const TARGETS = {
   editor: {
-    buildScript: 'scripts/build-editor.mjs',
+    bundleTargets: ['editor'],
     pythonScript: 'server-editor/serve.py',
     defaultRunArgs: ['--blank'],
   },
   launcher: {
-    buildScript: 'scripts/build-launcher.mjs',
+    // Launcher 会启动编辑器：两套产物先就绪，避免首次打开时再现场构建。
+    bundleTargets: ['editor', 'launcher'],
     pythonScript: 'maw_gui.py',
     // 旧 Codex/Paseo 入口始终带 -dbg/--debug；Launcher 前端开发需要 pywebview 调试能力。
     defaultRunArgs: ['--debug'],
@@ -37,8 +38,11 @@ export function resolveSession(target, forwardedArgs = []) {
   }
   return {
     target,
-    buildArgs: [config.buildScript, '--write'],
-    watchArgs: [config.buildScript, '--watch'],
+    bundles: config.bundleTargets.map((kind) => ({
+      kind,
+      buildArgs: [`scripts/build-${kind}.mjs`, '--write'],
+      watchArgs: [`scripts/build-${kind}.mjs`, '--watch'],
+    })),
     runCommand: 'uv',
     runArgs,
   };
@@ -49,15 +53,16 @@ export function runSession(target, forwardedArgs = [], deps = {}) {
   const exitFn = deps.exit ?? ((code) => process.exit(code));
   const writeError = deps.writeError ?? ((line) => console.error(line));
 
-  const build = buildBundle(target, forwardedArgs, deps);
+  const build = buildBundles(target, forwardedArgs, deps);
   if (build.exitCode !== null) {
     exitFn(build.exitCode);
     return null;
   }
   const session = build.session;
 
-  const watcher = spawnFn(process.execPath, session.watchArgs, { cwd: ROOT, stdio: 'inherit' });
-  const alive = (child) => child.exitCode === null && !child.killed;
+  const watchers = [];
+  let runChild;
+  const alive = (child) => child && child.exitCode === null && !child.killed;
   const stopChild = (child) => {
     if (alive(child)) {
       try {
@@ -68,18 +73,36 @@ export function runSession(target, forwardedArgs = [], deps = {}) {
     }
   };
 
-  const runChild = spawnFn(session.runCommand, session.runArgs, { cwd: ROOT, stdio: 'inherit' });
   let shuttingDown = false;
   const shutdown = (exitCode) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    stopChild(watcher);
+    process.off('SIGINT', onSignal);
+    process.off('SIGTERM', onSignal);
+    for (const watcher of watchers) stopChild(watcher);
     stopChild(runChild);
     exitFn(exitCode);
   };
 
-  process.on('SIGINT', () => shutdown(0));
-  process.on('SIGTERM', () => shutdown(0));
+  const onSignal = () => shutdown(0);
+  process.on('SIGINT', onSignal);
+  process.on('SIGTERM', onSignal);
+
+  for (const bundle of session.bundles) {
+    const watcher = spawnFn(process.execPath, bundle.watchArgs, { cwd: ROOT, stdio: 'inherit' });
+    watchers.push(watcher);
+    watcher.on('error', (error) => {
+      writeError(`[dev-session] 无法启动 ${bundle.kind} watcher：${error.message}`);
+      shutdown(1);
+    });
+    watcher.on('close', (code) => {
+      if (shuttingDown) return;
+      writeError(`[dev-session] ${bundle.kind} watcher 已退出；停止开发会话。`);
+      shutdown(typeof code === 'number' && code !== 0 ? code : 1);
+    });
+  }
+
+  runChild = spawnFn(session.runCommand, session.runArgs, { cwd: ROOT, stdio: 'inherit' });
 
   runChild.on('error', (error) => {
     writeError(`[dev-session] 无法启动 "${session.runCommand}"：${error.message}`);
@@ -88,7 +111,7 @@ export function runSession(target, forwardedArgs = [], deps = {}) {
   runChild.on('close', (code) => {
     shutdown(typeof code === 'number' ? code : 1);
   });
-  return { watcher, runChild };
+  return { watchers, runChild };
 }
 
 export function parseSessionArgs(argv = []) {
@@ -109,7 +132,7 @@ export function runOnce(target, forwardedArgs = [], deps = {}) {
   const exitFn = deps.exit ?? ((code) => process.exit(code));
   const writeError = deps.writeError ?? ((line) => console.error(line));
 
-  const build = buildBundle(target, forwardedArgs, deps);
+  const build = buildBundles(target, forwardedArgs, deps);
   if (build.exitCode !== null) {
     exitFn(build.exitCode);
     return null;
@@ -127,7 +150,7 @@ export function runOnce(target, forwardedArgs = [], deps = {}) {
   return { runChild };
 }
 
-function buildBundle(target, forwardedArgs, deps) {
+function buildBundles(target, forwardedArgs, deps) {
   const spawnSyncFn = deps.spawnSync ?? spawnSync;
   const write = deps.write ?? ((line) => console.log(line));
   const writeError = deps.writeError ?? ((line) => console.error(line));
@@ -140,15 +163,17 @@ function buildBundle(target, forwardedArgs, deps) {
     return { exitCode: 2, session: null };
   }
 
-  write(`[dev-session] 正在构建 ${session.target} bundle...`);
-  const build = spawnSyncFn(process.execPath, session.buildArgs, { cwd: ROOT, stdio: 'inherit' });
-  if (build.error || build.status !== 0) {
-    if (build.error) {
-      writeError(`[dev-session] 构建进程未能启动：${build.error.message}`);
-    } else {
-      writeError(`[dev-session] 构建失败，退出码 ${build.status}；未启动 watcher 与 Python 入口。`);
+  for (const bundle of session.bundles) {
+    write(`[dev-session] 正在构建 ${bundle.kind} bundle...`);
+    const build = spawnSyncFn(process.execPath, bundle.buildArgs, { cwd: ROOT, stdio: 'inherit' });
+    if (build.error || build.status !== 0) {
+      if (build.error) {
+        writeError(`[dev-session] ${bundle.kind} 构建进程未能启动：${build.error.message}`);
+      } else {
+        writeError(`[dev-session] ${bundle.kind} bundle 构建失败，退出码 ${build.status}；未启动 watcher 与 Python 入口。`);
+      }
+      return { exitCode: build.error ? 1 : build.status ?? 1, session: null };
     }
-    return { exitCode: build.error ? 1 : build.status ?? 1, session: null };
   }
   return { exitCode: null, session };
 }

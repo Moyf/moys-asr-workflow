@@ -522,8 +522,12 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         for settings_section in ('interface', 'general', 'subtitle-preview', 'subtitle-style', 'subtitle-color', 'timebase', 'split-merge', 'export', 'save', 'sticker', 'easter-eggs', 'about'):
             self.assertIn(f'id="editor-settings-tab-{settings_section}"', page)
             self.assertIn(f'id="editor-settings-page-{settings_section}"', page)
-        # 全局设置 13 页、工程设置 6 页；帮助导航复用该类，另有 7 页。
-        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 26)
+        # 全局设置 13 页、工程设置 6 页；帮助导航复用该类，另有 11 页。
+        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 30)
+        for help_section in ('ass', 'multi', 'export', 'markers'):
+            self.assertEqual(page.count(f'id="help-tab-{help_section}"'), 1)
+            self.assertEqual(page.count(f'id="help-tab-panel-{help_section}"'), 1)
+            self.assertIn(f'data-help-tab-target="{help_section}"', page)
         self.assertEqual(page.count('class="editor-settings-page"'), 19)
         self.assertEqual(page.count('class="editor-settings-nav-group-label"'), 9)
         for group_label in ('基础', '播放预览', '编辑', '保存导出', '扩展功能', '关于'):
@@ -580,7 +584,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="keyboard-settings-help"', page)
         self.assertIn('id="gap-settings-help"', page)
         self.assertIn('id="gap-remove-help"', page)
-        self.assertEqual(page.count('data-help-tab-target='), 4)
+        self.assertEqual(page.count('data-help-tab-target='), 8)
         self.assertIn('具体用法详见帮助的「微调字幕」区', page)
         waveform_pane_start = page.index('<section class="waveform-pane"')
         editor_settings = page[page.index('id="editor-settings-panel"'):waveform_pane_start]
@@ -625,7 +629,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             + page.count('class="editor-settings-group subtitle-preview-style-group"')
             + page.count('class="editor-settings-group subtitle-color-settings-group"')
             + page.count('class="editor-settings-group subtitle-speaker-settings-group"'),
-            33,  # 「更多导出」新增绿幕视频导出分组。
+            34,  # 「更多导出」新增绿幕视频导出分组；表情包页新增烧录显示位置分组。
         )
         self.assertEqual(page.count('aria-labelledby="export-green-screen-title"'), 1)
         self.assertIn('<span class="editor-settings-group-heading" id="export-green-screen-title">绿幕视频导出</span>', page)
@@ -905,7 +909,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('data-help-open-media-settings', page)
         self.assertIn('data-help-open-editor-settings aria-controls="editor-settings-panel">全局设置</button>', page)
         self.assertNotIn('红色播放指针', page)
-        self.assertEqual(page.count('data-help-tab='), 7)
+        self.assertEqual(page.count('data-help-tab='), 11)
         self.assertIn('id="help-tab-panel-basic"', page)
         self.assertIn('id="help-tab-panel-shortcuts"', page)
         self.assertIn('id="help-tab-panel-waveform"', page)
@@ -991,7 +995,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="help-open-gap-remove-panel"', page)
         self.assertIn('在「', page)
         self.assertIn('」中点击「全部清理」 清除所有空隙', page)
-        self.assertEqual(page.count('<section class="help-subgroup">'), 21)
+        self.assertEqual(page.count('<section class="help-subgroup">'), 31)
         self.assertIn('id="word-timing-quick-toggle"', page)
         self.assertIn('id="markers-quick-toggle"', page)
         self.assertIn('id="word-conversion-dialog"', page)

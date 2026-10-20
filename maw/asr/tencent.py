@@ -11,13 +11,15 @@ from pathlib import Path
 
 from maw.stickers import get_default_sticker_dir
 from maw.output_naming import debug_artifact_path, format_elapsed, format_maw_stat
-from generate_subtitle_qwen_api import (
-    build_segments_from_api_sentences,
+from maw.asr.common import (
     configure_console_output,
     extract_audio,
     generate_srt,
     get_duration_sec,
     parse_duration,
+)
+from maw.asr.segmentation import (
+    build_segments_from_api_sentences,
     split_segments_auto,
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,

@@ -91,7 +91,7 @@ uv run --no-sync python server-editor/serve.py "example.mosp" -m "moved-video.mp
 uv run --no-sync python server-editor/serve.py --blank
 ```
 
-检查文字、起止时间和较长字幕。双击文本修改，拖动波形块或边缘调整时间；拆分、合并、多重字幕与空隙操作见 [编辑器指南](EDITOR_GUIDE.md)。保存时用 `Ctrl+S`，macOS 用 `Cmd+S`。
+检查文字、起止时间和较长字幕。双击文本修改，拖动波形块或边缘调整时间；拆分、合并、双语字幕与空隙操作见 [编辑器指南](EDITOR_GUIDE.md)。保存时用 `Ctrl+S`，macOS 用 `Cmd+S`。
 
 「工程设置」集中时间单位 / FPS、语言、双语与重叠、ASS 模式与字幕样式、说话人和工程表情包目录；这些属性随工程保存。「全局设置」管理本机操作偏好，功能区页可打开局部面板并保留全局窗口。跳过静音空隙位于「播放预览 → 播放与定位」，默认表情包目录可在全局表情包页直接配置，工程覆盖目录优先。
 

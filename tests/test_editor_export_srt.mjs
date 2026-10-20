@@ -26,7 +26,7 @@ function fixture(segments, overlaySegments = [], alignFirstStart = false) {
   const wiring = fs.readFileSync(new URL('../web/editor/io/editor-wiring-export-context.js', import.meta.url), 'utf8');
   vm.runInNewContext(wiring.split('const CANONICAL_PROJECT_FIELDS')[0], context);
   vm.runInNewContext(fs.readFileSync(new URL('../web/editor/io/editor-export-srt.js', import.meta.url), 'utf8'), context);
-  return { saves, api: context.window.MaweExportSrt };
+  return { saves, api: context.window.MaweExportSrt, context };
 }
 
 test('color gap-removed SRT filters the first removed cue before choosing the shared zero-start index', async () => {
@@ -66,4 +66,26 @@ test('color gap-removed SRT keeps cut-crossing cues and resolves filtered color 
     '1\n2000ms --> 2200ms\ncross exit\n\n2\n2400ms --> 2600ms\noverlay member\n');
   assert.equal(saves.some(save => save.content.includes('removed')), false);
   assert.equal(JSON.stringify({ segments, overlay }), snapshot);
+});
+
+test('gap-removed ASS keeps the burn clock and layout callback together despite zero-start file preference', () => {
+  const { api, context } = fixture([
+    { start: 2200, end: 2800, text: 'removed first' },
+    { start: 3500, end: 4000, text: 'kept first' },
+  ], [], true);
+  context.MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+  context.MaweAppearance = { getSubtitleAppearance: () => ({}) };
+  context.MaweTimeline = { normalizeMediaMetadata: value => value };
+  context.ASS_STYLE_LIBRARY = context.window.AsrEditorUtils.defaultAssStyleLibrary();
+  context.activeExtensionSegments = () => [];
+
+  let plan;
+  const ass = api.buildGapRemovedAss({ alignFirstStart: false, onAssPlan: value => { plan = value; } });
+  const events = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
+  assert.ok(events.length > 0);
+  assert.ok(events.every(line => line.includes(',0:00:02.50,0:00:03.00,')), events.join('\n'));
+  assert.equal(ass.includes('removed first'), false);
+  assert.ok(plan?.slices.length > 0, 'the real ASS exporter must return its mapped layout plan');
+  assert.equal(Math.min(...plan.slices.map(slice => slice.start)), 2500);
+  assert.equal(Math.max(...plan.slices.map(slice => slice.end)), 3000);
 });
