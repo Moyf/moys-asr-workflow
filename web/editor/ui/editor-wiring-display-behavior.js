@@ -45,6 +45,10 @@ MaweDom.clickBehaviorSelect?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ clickBehavior: MaweSettings.normalizeClickBehavior(MaweDom.clickBehaviorSelect.value) });
   MaweBehaviorHints.refreshClickBehaviorHint();
 });
+MaweDom.stickerBurnModeSelect?.addEventListener('change', () => {
+  const mode = MaweDom.stickerBurnModeSelect.value === 'cue-left' ? 'cue-left' : 'fixed';
+  MaweSettings.updateEditorSettings({ stickerBurnMode: mode });
+});
 MaweDom.clickTargetSelect?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ clickTarget: MaweSettings.normalizeClickTarget(MaweDom.clickTargetSelect.value) });
 });

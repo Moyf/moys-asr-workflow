@@ -78,6 +78,7 @@ export function createUtilsModule(dependencies) {
     autoSaveProject: true, autoSaveIntervalSeconds: 30, projectBackupEnabled: true,
     stickerOverlayEnabled: false,
     markerEditingEnabled: false, stickersEnabled: true,
+    stickerBurnMode: 'fixed',
     wordTimingRowHeight: 168, wordTimingSecondsPerRow: 5,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     pauseOnMouseClick: false,
@@ -201,6 +202,7 @@ export function createUtilsModule(dependencies) {
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
       markerEditingEnabled: savedSettings.markerEditingEnabled === true,
       stickersEnabled: savedSettings.stickersEnabled !== false,
+      stickerBurnMode: savedSettings.stickerBurnMode === 'cue-left' ? 'cue-left' : 'fixed',
       stickerOtioExportMode: savedSettings.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
       // 时间线 OTIO 导出选项：默认同时导出 SRT、合并表情包轨、写入字幕标记与标记区段。
       otioExportIncludeSrt: savedSettings.otioExportIncludeSrt !== false,

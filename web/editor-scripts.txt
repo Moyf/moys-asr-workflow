@@ -38,6 +38,7 @@ shared/utils/lrc.js
 shared/utils/ass-style.js
 shared/utils/ass-animation.js
 shared/utils/ass-canvas-layout.js
+shared/utils/sticker-placement.js
 shared/utils/ass-export.js
 shared/utils/export-plan.js
 shared/utils/fcp7.js
@@ -181,6 +182,7 @@ editor/styles/editor-wiring-ass-cue-position.js
 editor/media/editor-wiring-sticker-preview.js
 editor/io/editor-wiring-export-context.js
 editor/io/editor-wiring-export-actions.js
+editor/io/editor-sticker-burn-plan.js
 editor/io/editor-wiring-burn-video.js
 editor/ui/editor-wiring-toolbar-menus.js
 editor/io/editor-wiring-project-inputs.js

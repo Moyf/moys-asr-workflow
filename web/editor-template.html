@@ -97,7 +97,7 @@ __WAVEFORM_CSS__
       </div>
     </span>
     <button id="download-json">导出工程</button>
-    <button type="button" id="burn-video-export-btn" hidden title="用 FFmpeg (libass) 将当前工程的 ASS 字幕烧录进源视频；输出 MP4，需已绑定源媒体。">烧录视频</button>
+    <button type="button" id="burn-video-export-btn" hidden title="将当前字幕烧录进源视频；关闭 ASS 模式时使用样式库指定的 SRT 烧录样式，输出 MP4。">烧录视频</button>
     <span class="dropdown gap-removed-export-dropdown" id="gap-removed-export-dropdown" hidden>
       <button id="gap-removed-export-btn" title="导出应用当前空隙移除结果的字幕、时间线或保留区域计划" aria-expanded="false" aria-controls="gap-removed-export-menu" aria-haspopup="menu">去空隙导出 ▾</button>
       <div class="dropdown-menu" id="gap-removed-export-menu" role="menu">
@@ -335,6 +335,7 @@ __WAVEFORM_CSS__
     <div class="markers-actions">
       <div class="markers-actions-primary">
         <button type="button" id="markers-add-current" class="markers-inline-button">在播放头添加标记</button>
+        <button type="button" id="markers-help" class="markers-inline-button" data-help-tab-target="markers" aria-controls="help-tab-panel-markers">帮助</button>
         <button type="button" id="markers-batch-select" class="markers-inline-button" aria-pressed="false">批量选择</button>
       </div>
       <label class="markers-filter-item markers-show-notes">
@@ -507,6 +508,10 @@ __WAVEFORM_CSS__
       <div class="help-nav-group-label" aria-hidden="true">进阶</div>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-fine-tuning" role="tab" aria-selected="false" aria-controls="help-tab-panel-fine-tuning" data-help-tab="fine-tuning" tabindex="-1">微调字幕</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-gap" role="tab" aria-selected="false" aria-controls="help-tab-panel-gap" data-help-tab="gap" tabindex="-1">空隙操作</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-ass" role="tab" aria-selected="false" aria-controls="help-tab-panel-ass" data-help-tab="ass" tabindex="-1">ASS 字幕样式</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-multi" role="tab" aria-selected="false" aria-controls="help-tab-panel-multi" data-help-tab="multi" tabindex="-1">双语字幕</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-export" role="tab" aria-selected="false" aria-controls="help-tab-panel-export" data-help-tab="export" tabindex="-1">导出与烧录</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-markers" role="tab" aria-selected="false" aria-controls="help-tab-panel-markers" data-help-tab="markers" tabindex="-1">标记与区段</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-batch" role="tab" aria-selected="false" aria-controls="help-tab-panel-batch" data-help-tab="batch" tabindex="-1">批量操作</button>
     </nav>
     <div class="gap-remove-panel-body help-panel-body">
@@ -759,6 +764,104 @@ __WAVEFORM_CSS__
         </div>
       </section>
     </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-ass" role="tabpanel" aria-labelledby="help-tab-ass" data-help-tab-panel="ass" tabindex="0" hidden>
+      <h4 class="help-title">ASS 字幕样式</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">配置与使用</h5>
+        <div class="help-category">
+          <span>在「工程设置 → 字幕样式」开启 ASS 字幕模式，点击「管理 ASS 样式」。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>基础样式设置字体、颜色、描边和位置；输出方案关联样式并设置动画。选定「ASS 导出方案」，按需配置副字幕默认槽位，然后保存样式库。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>ASS 保留手动换行，超宽文字按画布边距折行。选中主字幕可拖动定位、缩放；用「实际画面预览」核对字体与动画。</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">特殊文本</h5>
+        <div class="help-category">
+          <span>在「特殊文本格式」选择符号规则：双个符号、单双皆可或无（保留原文）。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>**强调**　++放大++　--缩小--　__下划线__　~~删除线~~　//弱化//　!!震动!!</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>&gt;&gt;文字&lt;&lt; 为整句淡入淡出，也可只加一端。淡入淡出标记始终放在最外侧，例如 &gt;&gt;++文字++&lt;&lt;；其他格式可从右键「高级操作 → 左右添加字符」插入。</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">预览与交付</h5>
+        <div class="help-category">
+          <span>导出「ASS（带样式）」保留样式与动画；「烧录视频」把字幕固定到 MP4。关闭 ASS 模式时，按样式库指定的 SRT 烧录样式转换后烧录。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>工程设置随工程保存；样式库单独保存。本机编辑器与 Launcher 共用样式库，便携 HTML 使用浏览器副本。</span>
+        </div>
+      </section>
+    </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-multi" role="tabpanel" aria-labelledby="help-tab-multi" data-help-tab-panel="multi" tabindex="0" hidden>
+      <h4 class="help-title">双语字幕</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">启用与导入</h5>
+        <div class="help-category">
+          <span>在「工程设置 → 双语字幕」开启副轨，导入副字幕并检查匹配预览；也可在副轨空白处右键创建。重新导入会替换副轨。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>按语言选择单词型或字符型拆分，并选择主轨、副轨或双列显示。关闭双语字幕只隐藏副轨，保留内容与绑定。</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">绑定与导出</h5>
+        <div class="help-category">
+          <span>G 绑定，Shift+G 解绑，H 将副字幕时长对齐到绑定的主字幕。自动匹配依据时间，需人工检查；时间联动在工程设置中调整。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>SRT（双语合并）合并主副文本；ASS 可分别设置主副样式。导出前检查显隐、位置和同步，保留工程以便继续编辑。</span>
+        </div>
+      </section>
+    </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-export" role="tabpanel" aria-labelledby="help-tab-export" data-help-tab-panel="export" tabindex="0" hidden>
+      <h4 class="help-title">导出与烧录</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">选择格式</h5>
+        <div class="help-category">
+          <span>工程 .mosp：继续编辑；SRT：文字与时间码；ASS：样式与动画；OTIO / OTIOZ：交付时间线。烧录视频生成带字幕的 MP4。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>「保存 / 另存为」管理工程写回位置；「导出工程」下载副本。源媒体需另行保留。</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">烧录视频</h5>
+        <div class="help-category">
+          <span>通过 Launcher / 本机服务器打开工程并绑定媒体，点击「导出工程」右侧的「烧录视频」，选择新的 MP4 文件，等待生成后检查音画同步。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>开启 ASS 模式使用当前 ASS 方案；关闭时将当前 SRT 按样式库指定的 SRT 烧录样式转为 ASS。进度窗口可停止任务；更换工程或媒体后旧任务失效。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>需要已绑定的视频源、支持 libass 的 FFmpeg、FFprobe 和浏览器文件保存选择器；便携页面或仅上传到浏览器的媒体不可用。烧录会重新编码。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>纯音频可用「更多导出 → 生成绿幕视频」；在全局设置的「绿幕视频导出」中选择是否附带音轨。</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">去空隙导出</h5>
+        <div class="help-category">
+          <span>「重组后视频」按安全切点流复制，可能保留额外画面，可导出匹配结果视频的 SRT。「重组后烧录视频」解码后精确裁剪，使用去空隙字幕的收缩时间轴。</span>
+        </div>
+      </section>
+    </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-markers" role="tabpanel" aria-labelledby="help-tab-markers" data-help-tab-panel="markers" tabindex="0" hidden>
+      <h4 class="help-title">标记与区段</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">创建与编辑</h5>
+        <div class="help-category">
+          <span>按 M 或点击波形「标记编辑」，打开「标记与区段」。可创建单点标记或有起止时间的区段，填写名称、备注和颜色。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>点击列表，或双击 / 右键波形标记进行编辑，完成后点击「完成」。批量删除前检查筛选与选中范围；支持撤销。</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">AI 复核</h5>
+        <div class="help-category">
+          <span>根据 AI 标记试听并复核原媒体。待复核区段可启用或取消去空隙静音，作为独立来源保存。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>确认标记、删除标记和修改空隙是不同操作；确认复核状态不会实际剪切媒体。导出前检查保留区间。</span>
+        </div>
+      </section>
+    </section>
     </div>
   </div>
 </aside>
@@ -881,11 +984,14 @@ __WAVEFORM_CSS__
 <div class="editor-settings-page" id="editor-settings-page-multi-subtitle" role="tabpanel" aria-labelledby="editor-settings-tab-multi-subtitle" hidden><span class="editor-settings-group-heading" id="project-multi-settings-title">双语字幕</span>
 <div class="editor-settings-group" role="group" aria-labelledby="project-multi-settings-title">
 <div class="editor-settings-sub-group multi-subtitle-mode-controls">
+  <div class="editor-settings-help-row">
   <label class="toggle editor-settings-item multi-subtitle-main-toggle project-track-toggle" id="multi-subtitle-toggle-label"
          title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
     <input type="checkbox" id="multi-subtitle-toggle" title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
     双语字幕
   </label>
+    <button type="button" id="multi-subtitle-settings-help" class="settings-help-button" data-help-tab-target="multi" aria-controls="help-tab-panel-multi">帮助</button>
+  </div>
   <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden title="在波形副轨空白处右键创建副字幕，或从下方「字幕管理」导入 SRT。">副轨为空，可手动添加或导入</small>
 </div>
 <div class="settings-panel-section multi-subtitle-settings-section multi-subtitle-display-inline" role="group" aria-label="显示" id="multi-subtitle-display-section">
@@ -936,9 +1042,12 @@ __WAVEFORM_CSS__
   <span class="editor-settings-group-heading" id="ass-preview-mode-title">ASS 字幕模式</span>
   <div class="editor-settings-group ass-preview-mode-group" role="group" aria-labelledby="ass-preview-mode-title">
     <div class="editor-settings-sub-group">
+      <div class="editor-settings-help-row">
       <label class="toggle editor-settings-item" title="开启后，播放器预览尽量按当前 ASS 默认方案渲染，只保留字幕文本中的显式换行；关闭时保持原有预览效果">
         <input type="checkbox" id="ass-mode-toggle"> ASS 字幕模式
       </label>
+        <button type="button" id="ass-settings-help" class="settings-help-button" data-help-tab-target="ass" aria-controls="help-tab-panel-ass">帮助</button>
+      </div>
       <small class="editor-settings-hint">关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览，并只保留字幕文本中的显式换行，不自动折行。</small>
       <div class="ass-manager-open-row">
         <button type="button" id="ass-style-manager-open" title="打开 ASS 样式库">🎨 管理 ASS 样式</button>
@@ -1510,7 +1619,7 @@ __WAVEFORM_CSS__
   </div>
   <div class="editor-settings-page" id="editor-settings-page-export" role="tabpanel" aria-labelledby="editor-settings-tab-export" hidden>
 
-  <span class="editor-settings-group-heading" id="export-srt-title">SRT 导出</span>
+  <div class="editor-settings-help-row"><span class="editor-settings-group-heading" id="export-srt-title">SRT 导出</span><button type="button" id="export-settings-help" class="settings-help-button" data-help-tab-target="export" aria-controls="help-tab-panel-export">帮助</button></div>
   <div class="editor-settings-group" role="group" aria-labelledby="export-srt-title"><div class="editor-settings-sub-group">
 <label class="toggle editor-settings-item" title="只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴">
       <input type="checkbox" id="export-start-at-zero"> 首条字幕时间从 0 开始
@@ -1590,6 +1699,8 @@ __WAVEFORM_CSS__
   <div class="editor-settings-page" id="editor-settings-page-sticker" role="tabpanel" aria-labelledby="editor-settings-tab-sticker" hidden><span class="editor-settings-group-heading" id="sticker-feature-title">表情包功能</span>
 <div class="editor-settings-group" role="group" aria-labelledby="sticker-feature-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item" title="关闭后隐藏「预览表情包」开关，右键菜单不再提供分配表情包；工程内已有表情包数据保留"><input type="checkbox" id="sticker-feature-toggle" checked> 启用表情包</label>
 <small class="editor-settings-hint">关闭后不影响工程里已设置的表情包数据，重新开启即可恢复预览与分配。</small></div></div>
+<span class="editor-settings-group-heading" id="sticker-burn-mode-title">烧录显示位置</span>
+<div class="editor-settings-group" role="group" aria-labelledby="sticker-burn-mode-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-burn-mode">烧录视频时的表情包位置</label><select id="sticker-burn-mode" class="editor-settings-item"><option value="fixed">固定位置（预览层设定框）</option><option value="cue-left">字幕第一个字左侧</option></select><small class="editor-settings-hint">「字幕第一个字左侧」按 ASS 字幕的实际位置贴放；SRT 字幕、字幕重叠 / 句间空隙 / 特殊排版无法贴放时自动回退固定位置。同屏多张表情包时固定位置为居中叠放（预览是垂直堆叠）。预览层始终显示固定位置，最终以烧录结果为准。</small></div></div>
 <span class="editor-settings-group-heading" id="default-sticker-root-title">默认文件夹</span>
 <div class="editor-settings-group" role="group" aria-labelledby="default-sticker-root-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-root-input">默认目录</label><div class="sticker-root-controls"><input type="text" id="sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="sticker-root-status"><button type="button" id="sticker-root-read">应用</button></div><p class="editor-settings-hint" id="sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">工程设置中的覆盖目录优先；清空覆盖后恢复使用默认目录。</small></div></div>
 </div>

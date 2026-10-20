@@ -256,6 +256,62 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
                     self.assertNotIn(str(source.resolve()), command)
 
 
+    def test_srt_conversion_uses_library_slot_and_source_resolution(self):
+        from maw.ass_styles import default_ass_style_library
+        library = default_ass_style_library()
+        library['styles'].append({**library['styles'][0], 'id': 'chosen-srt', 'fontSize': 80})
+        library['assignments']['srtBurnStyleId'] = 'chosen-srt'
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append((command, kwargs))
+            if command[0] == 'ffprobe':
+                return subprocess.CompletedProcess(command, 0, json.dumps({
+                    'streams': [{'codec_type': 'video', 'width': 1280, 'height': 720}],
+                    'format': {'duration': '4.5'},
+                }), '')
+            if '-c:s' in command:
+                Path(command[-1]).write_text('[Script Info]\nPlayResX: 384\nPlayResY: 288\n'
+                    '[V4+ Styles]\nStyle: Default,Arial,12\n', encoding='utf-8')
+            else:
+                Path(command[-1]).write_bytes(b'burned')
+            return subprocess.CompletedProcess(command, 0, '', '')
+
+        with mock.patch.object(server_editor.subprocess, 'run', side_effect=run), \
+             mock.patch('maw.postprocess_ffmpeg.load_ass_style_library', return_value=library):
+            server_editor.burn_ass_video(self.source, [], '1\n00:00:00,000 --> 00:00:01,000\nHELLO\n',
+                self.output, ffmpeg_path=Path('ffmpeg'), ffprobe_path=Path('ffprobe'), subtitle_format='srt')
+        text = self.output.with_name('burn.ass').read_text(encoding='utf-8')
+        self.assertIn('PlayResX: 1280', text)
+        self.assertIn('PlayResY: 720', text)
+        style = next(line for line in text.splitlines() if line.startswith('Style: Default,'))
+        self.assertEqual(style.split(',')[2], '53')
+        conversion = next((command, kwargs) for command, kwargs in calls if '-c:s' in command)
+        self.assertEqual(conversion[1]['cwd'], self.output.parent)
+        self.assertFalse(list(self.output.parent.glob('.*.maw-burn-*.ass')))
+        self.assertEqual(self.source.read_bytes(), b'source')
+
+    def test_srt_conversion_failure_never_encodes_video(self):
+        calls = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            if command[0] == 'ffprobe':
+                return subprocess.CompletedProcess(command, 0, json.dumps({
+                    'streams': [{'codec_type': 'video', 'width': 640, 'height': 360}], 'format': {},
+                }), '')
+            Path(command[-1]).write_text('incomplete', encoding='utf-8')
+            return subprocess.CompletedProcess(command, 1, '', 'invalid subtitle')
+
+        with mock.patch.object(server_editor.subprocess, 'run', side_effect=run):
+            with self.assertRaises(server_editor.BurnVideoExportError):
+                server_editor.burn_ass_video(self.source, [], 'bad SRT', self.output,
+                    ffmpeg_path=Path('ffmpeg'), ffprobe_path=Path('ffprobe'), subtitle_format='srt')
+        self.assertFalse(self.output.exists())
+        self.assertFalse(any('-c:v' in command for command in calls))
+        self.assertFalse(list(self.output.parent.glob('.*.maw-burn-*.ass')))
+
+
 class BurnVideoJobHttpTests(unittest.TestCase):
     def setUp(self):
         from tests.test_local_editor_server import server_editor as loaded_server_editor
@@ -410,6 +466,70 @@ class BurnVideoJobHttpTests(unittest.TestCase):
             self.assertTrue(captured["include_audio"])
             self.assertEqual(captured["audio_track"], 1)
 
+    def test_http_srt_uses_the_same_bound_job_and_rejects_ambiguous_input(self):
+        captured = {}
+
+        def burn(source, intervals, text, output, **kwargs):
+            captured.update(source=source, intervals=intervals, text=text, subtitle_format=kwargs['subtitle_format'])
+            output.write_bytes(b'srt-burned')
+
+        request = self.payload()
+        request.pop('ass')
+        request['srt'] = '1\n00:00:00,000 --> 00:00:01,000\nHELLO\n'
+        request['intervals'] = [{'startMs': 0, 'endMs': 1000}]
+        with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, 'ensure_libass_supported', return_value=True), \
+             mock.patch.object(self.server_editor, 'burn_ass_video', side_effect=burn):
+            self.assertEqual(self.request(self.base, {**request, 'ass': ASS_TEXT})[0], 400)
+            self.assertEqual(self.request(self.base, {**request, 'srt': ''})[0], 400)
+            self.assertEqual(self.request(self.base, {**request, 'sourceMediaId': 'stale'})[0], 409)
+            self.assertEqual(self.request(self.base, {**request, 'requestToken': 'invalid'}, token=False)[0], 403)
+            status, job = self.request(self.base, request)
+            self.assertEqual(status, 202)
+            self.wait(job['jobId'], 'ready')
+            self.assertEqual(captured, {'source': self.source, 'intervals': [(0, 1000)],
+                                       'text': request['srt'], 'subtitle_format': 'srt'})
+            self.assertEqual(self.request(self.base + '/' + job['jobId'] + '/download'), (200, b'srt-burned'))
+
+    def test_http_srt_forwards_stickers_with_and_without_removed_intervals(self):
+        sticker_root = self.root / "stickers"
+        sticker_root.mkdir()
+        sticker = sticker_root / "a.png"
+        sticker.write_bytes(b"png")
+        self.server.project = self.server_editor.replace(self.server.project, sticker_root=sticker_root)
+        captured = {}
+
+        def burn(source, intervals, text, output, **kwargs):
+            captured.update(source=source, intervals=intervals, text=text, **kwargs)
+            output.write_bytes(b"srt-sticker-burned")
+
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True), \
+             mock.patch.object(self.server_editor, "burn_ass_video", side_effect=burn):
+            for intervals in ([], [{"startMs": 0, "endMs": 1000}, {"startMs": 2000, "endMs": 5000}]):
+                with self.subTest(intervals=intervals):
+                    request = self.payload()
+                    request.pop("ass")
+                    start, end = (2000, 3000) if intervals else (3000, 4000)
+                    request.update(srt=f"1\n00:00:0{start // 1000},000 --> 00:00:0{end // 1000},000\nHELLO\n",
+                        stickers={"mode": "cue-left", "placements": [{"rel": "a.png",
+                            "x": 10, "y": 20, "width": 30, "height": 40, "align": "center",
+                            "intervals": [{"start": start, "end": end}]}]})
+                    if intervals:
+                        request["intervals"] = intervals
+                    status, job = self.request(self.base, request)
+                    self.assertEqual(status, 202)
+                    self.wait(job["jobId"], "ready")
+                    self.assertEqual(captured["source"], self.source)
+                    self.assertEqual(captured["subtitle_format"], "srt")
+                    self.assertEqual(captured["text"], request["srt"])
+                    self.assertEqual(captured["intervals"], [(part["startMs"], part["endMs"]) for part in intervals])
+                    self.assertEqual(len(captured["stickers"]), 1)
+                    self.assertEqual(captured["stickers"][0]["path"], sticker)
+                    self.assertEqual(captured["stickers"][0]["intervals"], [(start, end)])
+                    self.assertEqual(self.request(self.base + "/" + job["jobId"] + "/download"),
+                        (200, b"srt-sticker-burned"))
+
     def test_http_cancel_admission_and_expired_deadline_are_conflicts(self) -> None:
         token = "b" * 64
         cancel = {"requestToken": self.server.request_token, "admissionToken": token}
@@ -423,6 +543,37 @@ class BurnVideoJobHttpTests(unittest.TestCase):
             self.assertEqual(self.request(self.base, {**payload, "admissionToken": "c" * 64,
                 "admissionDeadline": int(time.time() * 1000) - 1})[0], 409)
         self.assertIsNone(self.server.media_jobs.active)
+
+    def test_cancelling_srt_conversion_stops_its_child_and_cleans_the_job(self):
+        probe = mock.Mock(streams=[mock.Mock(codec_signature=('video', None, None, None, 320, 180), disposition=())])
+
+        def converting(subtitle, *, run_command, **kwargs):
+            run_command([sys.executable, '-c', 'import time; time.sleep(30)'], cwd=subtitle.parent)
+            self.fail('Cancelled conversion must never complete')
+
+        request = self.payload()
+        request.pop('ass')
+        request['srt'] = '1\n00:00:00,000 --> 00:00:01,000\nHELLO\n'
+        with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, 'ensure_libass_supported', return_value=True), \
+             mock.patch.object(self.server_editor, '_probe_gap_removed_video', return_value=probe), \
+             mock.patch.object(self.server_editor, 'convert_srt_to_ass', side_effect=converting):
+            status, snapshot = self.request(self.base, request)
+            self.assertEqual(status, 202)
+            job = self.server.media_jobs.jobs[snapshot['jobId']]
+            deadline = time.monotonic() + 5
+            while job.process is None and time.monotonic() < deadline:
+                time.sleep(.01)
+            self.assertIsNotNone(job.process)
+            process = job.process
+            self.assertEqual(self.request(self.base + '/' + job.id + '/cancel', {
+                'requestToken': self.server.request_token,
+            })[0], 200)
+            cancelled = self.wait(job.id, 'cancelled')
+            self.assertTrue(cancelled['cleanupComplete'])
+            self.assertIsNotNone(process.poll())
+            self.assertFalse(job.output.exists())
+            self.assertEqual(self.source.read_bytes(), b'unchanged source')
 
 
 if __name__ == "__main__":
@@ -460,6 +611,60 @@ class BurnVideoPrecisionTests(CompactContainerAssertions, unittest.TestCase):
                         "-show_format", "-of", "json", str(output)]).stdout)
                     self.assertEqual(sum(s["codec_type"] == "audio" for s in probe["streams"]), int(include_audio))
                     self.assertLess(abs(float(probe["format"]["duration"]) - 1.5), .1)
+
+    def test_sticker_overlay_burns_in_window_and_keeps_full_duration(self):
+        """真实编码回归：表情包输入无限化 + shortest=1 不截断输出，overlay 只在
+        enable 窗口内出现且位置正确（CI 回归 TASK.md「实测踩坑」的 FFmpeg 行为：
+        短输入截断 / shortest 挂起 / 坐标错位在这些断言下都会复发）。"""
+        import zlib
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'colors.mp4'
+            command = [self.ffmpeg, '-y', '-hide_banner', '-loglevel', 'error']
+            for color in ('red', 'green', 'blue'):
+                command += ['-f', 'lavfi', '-i', f'color={color}:s=160x90:r=25:d=1']
+            self.run_tool(command + ['-filter_complex',
+                '[0:v][1:v][2:v]concat=n=3:v=1:a=0[out]', '-map', '[out]', str(source)])
+            # 最小不透明白色 PNG（40x30）：zlib 存储，无滤波。
+            sticker = root / 'dot.png'
+            raw = b''.join(b'\x00' + b'\xff\xff\xff' * 40 for _ in range(30))
+
+            def chunk(tag, payload):
+                return (struct.pack('>I', len(payload)) + tag + payload
+                        + struct.pack('>I', zlib.crc32(tag + payload)))
+            sticker.write_bytes(b'\x89PNG\r\n\x1a\n'
+                + chunk(b'IHDR', struct.pack('>IIBBBBB', 40, 30, 8, 2, 0, 0, 0))
+                + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
+            output = root / 'stickered.mp4'
+            server_editor.burn_ass_video(source, [], ASS_TEXT.replace('你好', 'OK'), output,
+                ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe),
+                stickers=[{'rel': 'dot.png', 'path': sticker, 'x': 10, 'y': 10,
+                           'width': 40, 'height': 30, 'intervals': [(400, 1200)]}])
+            probe = json.loads(self.run_tool([self.ffprobe, '-v', 'error', '-show_streams',
+                '-show_format', '-of', 'json', str(output)]).stdout)
+            # 无限化输入 + shortest=1：输出时长必须等于源时长（短输入截断 / 永不
+            # 退出两类历史症状在这里都会复发）。
+            self.assertLess(abs(float(probe['format']['duration']) - 3.0), .15)
+
+            def sample(frame_bytes, x0, y0, x1, y1):
+                total = [0, 0, 0]
+                count = 0
+                for y in range(y0, y1):
+                    for x in range(x0, x1):
+                        offset = (y * 160 + x) * 3
+                        for channel in range(3):
+                            total[channel] += frame_bytes[offset + channel]
+                        count += 1
+                return tuple(value // count for value in total)
+            for stamp, expect_sticker in ((0.8, True), (2.5, False)):
+                frame = root / f'sticker-{stamp}.raw'
+                self.run_tool([self.ffmpeg, '-y', '-v', 'error', '-ss', str(stamp),
+                    '-i', str(output), '-frames:v', '1', '-pix_fmt', 'rgb24',
+                    '-f', 'rawvideo', str(frame)])
+                color = sample(frame.read_bytes(), 15, 15, 45, 35)
+                is_light = color[0] > 180 and color[1] > 180 and color[2] > 180
+                self.assertEqual(is_light, expect_sticker,
+                    f't={stamp}: sticker box {color}, expected sticker={expect_sticker}')
 
     def test_long_gop_cuts_exclude_removed_frames_and_keep_audio_clock(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -580,6 +785,96 @@ class BurnVideoPrecisionTests(CompactContainerAssertions, unittest.TestCase):
             self.assertEqual([stream['codec_type'] for stream in probe['streams']], ['video'])
 
 
+    def test_srt_burn_renders_library_style_with_real_ffmpeg(self):
+        from maw.ass_styles import default_ass_style_library
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'source.mp4'
+            self.run_tool([self.ffmpeg, '-y', '-v', 'error', '-f', 'lavfi', '-i',
+                           'color=black:s=320x180:r=25:d=1', '-c:v', 'libx264', str(source)])
+            library = default_ass_style_library()
+            library['styles'].append({**library['styles'][0], 'id': 'srt-render', 'fontSize': 90,
+                                      'fontFamily': 'Arial', 'marginV': 12})
+            library['assignments']['srtBurnStyleId'] = 'srt-render'
+            output = root / 'export' / 'subtitled.mp4'
+            with mock.patch.object(server_editor, 'video_encoder_attempts', return_value=('cpu',)), \
+                 mock.patch('maw.postprocess_ffmpeg.load_ass_style_library', return_value=library):
+                server_editor.burn_ass_video(source, [], '1\n00:00:00,100 --> 00:00:00,800\nHELLO\n', output,
+                    ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe), subtitle_format='srt')
+            ass = output.with_name('burn.ass').read_text(encoding='utf-8')
+            self.assertIn('PlayResX: 320', ass)
+            self.assertIn('PlayResY: 180', ass)
+            style = next(line for line in ass.splitlines() if line.startswith('Style: Default,'))
+            self.assertEqual(style.split(',')[2], '15')
+            frame = self.run_tool([self.ffmpeg, '-v', 'error', '-ss', '0.4', '-i', str(output),
+                '-frames:v', '1', '-pix_fmt', 'gray', '-f', 'rawvideo', '-']).stdout
+            self.assertGreater(sum(value > 100 for value in frame), 30)
+            gap_output = root / 'gap-export' / 'subtitled.mp4'
+            with mock.patch.object(server_editor, 'video_encoder_attempts', return_value=('cpu',)), \
+                 mock.patch('maw.postprocess_ffmpeg.load_ass_style_library', return_value=library):
+                server_editor.burn_ass_video(source, [(200, 800)], '1\n00:00:00,200 --> 00:00:00,500\nHELLO\n', gap_output,
+                    ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe), subtitle_format='srt')
+            early = self.run_tool([self.ffmpeg, '-v', 'error', '-ss', '0.08', '-i', str(gap_output),
+                '-frames:v', '1', '-pix_fmt', 'gray', '-f', 'rawvideo', '-']).stdout
+            visible = self.run_tool([self.ffmpeg, '-v', 'error', '-ss', '0.3', '-i', str(gap_output),
+                '-frames:v', '1', '-pix_fmt', 'gray', '-f', 'rawvideo', '-']).stdout
+            self.assertEqual(sum(value > 100 for value in early), 0)
+            self.assertGreater(sum(value > 100 for value in visible), 30)
+
+
+    def test_srt_with_sticker_preserves_caption_clock_window_and_duration(self):
+        import zlib
+        from maw.ass_styles import default_ass_style_library
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "source.mp4"
+            self.run_tool([self.ffmpeg, "-y", "-v", "error", "-f", "lavfi", "-i",
+                "color=black:s=320x180:r=25:d=1", "-c:v", "libx264", str(source)])
+            sticker = root / "dot.png"
+            raw = b"".join(b"\x00" + b"\xff\xff\xff" * 40 for _ in range(30))
+
+            def chunk(tag, payload):
+                return (struct.pack(">I", len(payload)) + tag + payload
+                    + struct.pack(">I", zlib.crc32(tag + payload)))
+
+            sticker.write_bytes(b"\x89PNG\r\n\x1a\n"
+                + chunk(b"IHDR", struct.pack(">IIBBBBB", 40, 30, 8, 2, 0, 0, 0))
+                + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+            library = default_ass_style_library()
+            library["styles"].append({**library["styles"][0], "id": "srt-sticker-render",
+                "fontSize": 90, "fontFamily": "Arial", "marginV": 12})
+            library["assignments"]["srtBurnStyleId"] = "srt-sticker-render"
+
+            for intervals, duration in (([], 1.0), ([(200, 800)], 0.6)):
+                with self.subTest(intervals=intervals):
+                    output = root / ("gap" if intervals else "full") / "subtitled.mp4"
+                    with mock.patch.object(server_editor, "video_encoder_attempts", return_value=("cpu",)), \
+                         mock.patch("maw.postprocess_ffmpeg.load_ass_style_library", return_value=library):
+                        server_editor.burn_ass_video(source, intervals,
+                            "1\n00:00:00,200 --> 00:00:00,500\nHELLO\n", output,
+                            ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe), subtitle_format="srt",
+                            stickers=[{"rel": "dot.png", "path": sticker, "x": 10, "y": 10,
+                                "width": 40, "height": 30, "intervals": [(300, 400)]}])
+                    probe = json.loads(self.run_tool([self.ffprobe, "-v", "error", "-show_format",
+                        "-of", "json", str(output)]).stdout)
+                    self.assertAlmostEqual(float(probe["format"]["duration"]), duration, delta=0.041)
+                    for stamp, caption_visible, sticker_visible in (
+                            (0.08, False, False), (0.24, True, False),
+                            (0.36, True, True), (0.52, False, False)):
+                        frame = self.run_tool([self.ffmpeg, "-v", "error", "-ss", str(stamp),
+                            "-i", str(output), "-frames:v", "1", "-pix_fmt", "gray", "-f", "rawvideo", "-"]).stdout
+                        self.assertEqual(len(frame), 320 * 180, f"missing frame at {stamp}")
+                        caption_pixels = sum(value > 100 for value in frame[120 * 320:])
+                        if caption_visible:
+                            self.assertGreater(caption_pixels, 30, f"caption missing at {stamp}")
+                        else:
+                            self.assertEqual(caption_pixels, 0, f"caption appeared outside its window at {stamp}")
+                        patch = [frame[y * 320 + x] for y in range(15, 35) for x in range(15, 45)]
+                        self.assertEqual(sum(patch) / len(patch) > 180, sticker_visible,
+                            f"sticker appeared outside its window at {stamp}")
+
+
 class BurnVideoDiagnosticTests(unittest.TestCase):
     def test_early_split_glyph_warning_survives_later_stderr_and_blocks_output(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -613,3 +908,326 @@ class BurnVideoDiagnosticTests(unittest.TestCase):
                 self.assertFalse(job.output.exists())
             finally:
                 manager.close()
+
+
+class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
+    """Sticker overlay burn: request parsing, filter graph, and command wiring."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name).resolve()
+        self.source = self.root / "clip.mp4"
+        self.source.write_bytes(b"source")
+        self.output = self.root / "private" / "restructured.mp4"
+        self.stickers_dir = self.root / "stickers"
+        self.stickers_dir.mkdir()
+        self.sticker_a = self.stickers_dir / "a.png"
+        self.sticker_a.write_bytes(b"png")
+        self.sticker_gif = self.stickers_dir / "b.gif"
+        self.sticker_gif.write_bytes(b"gif")
+        self.calls: list[list[str]] = []
+        attempts_patcher = mock.patch.object(server_editor, "video_encoder_attempts", return_value=("cpu",))
+        attempts_patcher.start()
+        self.addCleanup(attempts_patcher.stop)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _entry(self, rel: str = "a.png", intervals=None, **overrides) -> dict:
+        entry = {"rel": rel, "x": 200, "y": 30, "width": 100, "height": 75,
+                 "intervals": [{"start": 1000, "end": 2500}, {"start": 3000, "end": 4500}]
+                 if intervals is None else intervals}
+        entry.update(overrides)
+        return entry
+
+    def _run_full_video(self, stickers):
+        def run(command, **kwargs):
+            self.calls.append(command)
+            if command[0] == "ffprobe":
+                return subprocess.CompletedProcess(command, 0,
+                    stdout=json.dumps({"format": {"duration": "6.0"}}), stderr="")
+            Path(command[-1]).write_bytes(b"burned")
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with mock.patch.object(server_editor.subprocess, "run", side_effect=run):
+            return server_editor.burn_ass_video(
+                self.source, [], ASS_TEXT, self.output,
+                ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"), stickers=stickers)
+
+    def test_parse_keeps_one_entry_per_placement_and_merges_inputs(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs(
+            [self._entry(), self._entry(intervals=[{"start": 5000, "end": 6000}])], self.stickers_dir)
+        # 方案二载荷：同一 rel 保留多个 placement（逐句贴放），FFmpeg 输入按图片去重。
+        self.assertEqual(len(stickers), 2)
+        self.assertEqual(stickers[0]["path"], self.sticker_a)
+        self.assertEqual(stickers[0]["intervals"], [(1000, 2500), (3000, 4500)])
+        self.assertEqual(stickers[1]["intervals"], [(5000, 6000)])
+        self.assertEqual(server_editor._burn_sticker_input_args(stickers),
+                         ["-loop", "1", "-i", str(self.sticker_a)])
+
+    def test_parse_accepts_object_payload_with_mode(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs(
+            {"mode": "cue-left", "placements": [self._entry()]}, self.stickers_dir)
+        self.assertEqual(len(stickers), 1)
+        with self.assertRaises(ValueError) as caught:
+            server_editor._parse_burn_sticker_inputs(
+                {"mode": "diagonal", "placements": [self._entry()]}, self.stickers_dir)
+        self.assertIn("烧录模式无效", str(caught.exception))
+
+    def test_parse_rejects_too_many_placements(self) -> None:
+        payload = [self._entry() for _ in range(server_editor.MAX_BURN_STICKER_PLACEMENTS + 1)]
+        with self.assertRaises(ValueError) as caught:
+            server_editor._parse_burn_sticker_inputs(payload, self.stickers_dir)
+        self.assertIn("条目超过上限", str(caught.exception))
+
+    def test_parse_keeps_infinite_inputs_per_format(self) -> None:
+        args = server_editor._burn_sticker_input_args([
+            {"path": self.sticker_a}, {"path": self.sticker_gif},
+            {"path": self.stickers_dir / "still.webp"}])
+        self.assertEqual(args, [
+            "-loop", "1", "-i", str(self.sticker_a),
+            "-stream_loop", "-1", "-ignore_loop", "0", "-i", str(self.sticker_gif),
+            "-stream_loop", "-1", "-i", str(self.stickers_dir / "still.webp")])
+
+    def test_parse_rejects_animated_webp_but_accepts_static(self) -> None:
+        riff_header = b"RIFF" + (4).to_bytes(4, "little") + b"WEBP"
+        # VP8X chunk data: flags 字节在 data[0]（bit 1 = Animation）。
+        animated = self.stickers_dir / "animated.webp"
+        animated.write_bytes(riff_header + b"VP8X" + (10).to_bytes(4, "little")
+                             + b"\x02" + b"\x00" * 3 + (119).to_bytes(3, "little") + (89).to_bytes(3, "little")
+                             + b"ANMF" + (0).to_bytes(4, "little"))
+        still = self.stickers_dir / "still.webp"
+        still.write_bytes(riff_header + b"VP8 " + (86).to_bytes(4, "little") + b"\x00" * 86)
+        # 静态文件的压缩数据/元数据里恰好出现 ANMF 字节也不能误判（按 chunk 结构
+        # 只读 VP8X 标志，不全文搜索）。
+        static_with_anmf = self.stickers_dir / "still_with_anmf.webp"
+        static_with_anmf.write_bytes(riff_header + b"VP8 " + (90).to_bytes(4, "little")
+                                     + b"\x00" * 86 + b"ANMF" + (0).to_bytes(4, "little"))
+        with self.assertRaises(ValueError) as caught:
+            server_editor._parse_burn_sticker_inputs([self._entry(rel="animated.webp")], self.stickers_dir)
+        self.assertIn("动画 WebP", str(caught.exception))
+        stickers = server_editor._parse_burn_sticker_inputs([self._entry(rel="still.webp")], self.stickers_dir)
+        self.assertEqual(stickers[0]["path"], still)
+        stickers = server_editor._parse_burn_sticker_inputs([self._entry(rel="still_with_anmf.webp")],
+            self.stickers_dir)
+        self.assertEqual(stickers[0]["path"], static_with_anmf)
+
+    def test_parse_rejects_invalid_entries(self) -> None:
+        root = self.stickers_dir
+        cases = [
+            ("bad scalar", "表情包烧录参数无效"),
+            ([None], "表情包烧录参数无效"),
+            ({"mode": "diagonal", "placements": [self._entry()]}, "烧录模式无效"),
+            ([{"rel": "a.png"}], "几何参数无效"),
+            ([self._entry(rel="")], "缺少相对路径"),
+            ([self._entry(rel="../a.png")], "表情包相对路径不安全"),
+            ([self._entry(rel="missing.png")], "表情包源文件不存在"),
+            ([self._entry(x=-1)], "几何参数无效"),
+            ([self._entry(width=0)], "几何尺寸无效"),
+            ([self._entry(intervals="bad")], "显示区间为空"),
+            ([self._entry(intervals=[None])], "显示区间无效"),
+            ([self._entry(intervals=[{"start": 100, "end": 50}])], "显示区间无效"),
+            ([self._entry(intervals=[{"start": -1, "end": 50}])], "显示区间无效"),
+        ]
+        for payload, message in cases:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValueError) as caught:
+                    server_editor._parse_burn_sticker_inputs(payload, root)
+                self.assertIn(message, str(caught.exception))
+        with self.assertRaises(ValueError):
+            server_editor._parse_burn_sticker_inputs([self._entry()], None)
+        # 全部区间退化为空的 placement 直接跳过（不算错误）。
+        stickers = server_editor._parse_burn_sticker_inputs(
+            [self._entry(intervals=[{"start": 100, "end": 100}])], root)
+        self.assertEqual(stickers, [])
+
+    def test_parse_rejects_too_many_unique_images(self) -> None:
+        for index in range(server_editor.MAX_BURN_STICKER_INPUTS + 1):
+            (self.stickers_dir / f"m{index}.png").write_bytes(b"png")
+        payload = [self._entry(rel=f"m{index}.png") for index in range(server_editor.MAX_BURN_STICKER_INPUTS + 1)]
+        with self.assertRaises(ValueError) as caught:
+            server_editor._parse_burn_sticker_inputs(payload, self.stickers_dir)
+        self.assertIn("图片数量超过上限", str(caught.exception))
+
+    def test_parse_empty_and_none_pass_through(self) -> None:
+        self.assertEqual(server_editor._parse_burn_sticker_inputs(None, None), [])
+        self.assertEqual(server_editor._parse_burn_sticker_inputs([], None), [])
+
+    def test_chain_lines_use_static_contain_coordinates(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs(
+            [self._entry(), self._entry(rel="b.gif", intervals=[{"start": 0, "end": 800}])], self.stickers_dir)
+        lines = server_editor._burn_sticker_chain_lines(stickers, "[0:v:0]")
+        # 假字节文件读不到尺寸，退化为整框矩形（仍是纯数字坐标）。
+        self.assertEqual(lines[0], "[1:v]null[burn_raw0_0]")
+        self.assertEqual(lines[1], "[2:v]null[burn_raw1_0]")
+        self.assertIn("[burn_raw0_0]scale=w=100:h=75[burn_stick0]", lines[2])
+        self.assertIn("[0:v:0][burn_stick0]overlay=x=200:y=30:", lines[3])
+        self.assertIn("enable='gte(t,1.000)*lt(t,2.500)+gte(t,3.000)*lt(t,4.500)':shortest=1", lines[3])
+        self.assertEqual(lines[-1], "[burn_ovl1]ass=filename='burn.ass'[burn_video]")
+        self.assertNotIn("force_original_aspect_ratio", "\n".join(lines))
+        self.assertNotIn("(120-W)", "\n".join(lines))
+
+    def test_chain_lines_split_one_input_across_same_rel_placements(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs(
+            [self._entry(), self._entry(intervals=[{"start": 5000, "end": 6000}])], self.stickers_dir)
+        lines = server_editor._burn_sticker_chain_lines(stickers, "[0:v:0]")
+        self.assertEqual(lines[0], "[1:v]split=2[burn_raw0_0][burn_raw0_1]")
+        self.assertIn("[burn_raw0_0]scale=w=100:h=75[burn_stick0]", lines[1])
+        self.assertIn("[0:v:0][burn_stick0]overlay=x=200:y=30:", lines[2])
+        self.assertIn("[burn_raw0_1]scale=w=100:h=75[burn_stick1]", lines[3])
+        self.assertIn("[burn_ovl0][burn_stick1]overlay=x=200:y=30:", lines[4])
+        self.assertIn("enable='gte(t,5.000)*lt(t,6.000)'", lines[4])
+
+    def test_cue_left_contain_aligns_right_edge(self) -> None:
+        # 窄图：60x100 在 100x75 框 → fit = 0.75 → 45x75；右对齐 x = 200 + 55 = 255，
+        # 居中则是 227——cue-left 必须贴住目标框右缘（字幕间隙），与图片宽窄无关。
+        ihdr = (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR"
+                + struct.pack(">II", 60, 100) + b"\x08\x06\x00\x00\x00")
+        narrow = self.stickers_dir / "narrow.png"
+        narrow.write_bytes(ihdr)
+        payload = {"mode": "cue-left", "placements": [self._entry(rel="narrow.png")]}
+        stickers = server_editor._parse_burn_sticker_inputs(payload, self.stickers_dir)
+        self.assertEqual((stickers[0]["x"], stickers[0]["y"],
+                          stickers[0]["width"], stickers[0]["height"]), (255, 30, 45, 75))
+        # fixed 模式同一张窄图居中：x = 200 + (100-45)//2 = 227。
+        stickers = server_editor._parse_burn_sticker_inputs([self._entry(rel="narrow.png")], self.stickers_dir)
+        self.assertEqual(stickers[0]["x"], 227)
+        # placement 显式 align 覆盖模式默认值（cue-left 的回退段用 center）。
+        payload = {"mode": "cue-left", "placements": [
+            self._entry(rel="narrow.png", align="center")]}
+        stickers = server_editor._parse_burn_sticker_inputs(payload, self.stickers_dir)
+        self.assertEqual(stickers[0]["x"], 227)
+
+    def test_vp8l_sticker_keeps_contain_geometry(self) -> None:
+        # 无损（VP8L）静态 WebP 是贴纸包常见格式：尺寸解析失败会退化为整框
+        # 拉伸（静默纵横比畸变），必须能读出尺寸并按 contain 适配。
+        riff_header = b"RIFF" + (4).to_bytes(4, "little") + b"WEBP"
+        vp8l = self.stickers_dir / "lossless.webp"
+        vp8l.write_bytes(riff_header + b"VP8L" + (16).to_bytes(4, "little")
+                         + b"\x2f" + struct.pack("<I", (59) | ((79) << 14)) + b"\x00" * 11)
+        stickers = server_editor._parse_burn_sticker_inputs([self._entry(rel="lossless.webp")],
+            self.stickers_dir)
+        # 60x80 图在 (200,30,100,75) 框：fit = min(100/60, 75/80, 1) = 0.9375 → 56x75，
+        # 居中 x = 200 + (100-56)//2 = 222，y = 30 + 0 = 30。
+        self.assertEqual((stickers[0]["x"], stickers[0]["y"],
+                          stickers[0]["width"], stickers[0]["height"]), (222, 30, 56, 75))
+
+    def test_sticker_geometry_rejects_out_of_range_values(self) -> None:
+        with self.assertRaises(ValueError) as caught:
+            server_editor._parse_burn_sticker_inputs([self._entry(width=100_000)], self.stickers_dir)
+        self.assertIn("几何参数无效", str(caught.exception))
+        with self.assertRaises(ValueError):
+            server_editor._parse_burn_sticker_inputs([self._entry(x=2_000_000)], self.stickers_dir)
+
+    def test_parse_computes_static_contain_box_from_image_size(self) -> None:
+        ihdr = (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR"
+                + struct.pack(">II", 200, 100) + b"\x08\x06\x00\x00\x00")
+        wide = self.stickers_dir / "wide.png"
+        wide.write_bytes(ihdr)
+        stickers = server_editor._parse_burn_sticker_inputs([self._entry(rel="wide.png")], self.stickers_dir)
+        # fit = min(100/200, 75/100, 1) = 0.5 → 100x50，层内水平居中、垂直居中。
+        self.assertEqual((stickers[0]["x"], stickers[0]["y"],
+                          stickers[0]["width"], stickers[0]["height"]), (200, 42, 100, 50))
+
+    def test_interval_filter_wraps_chain_between_setpts_and_ass(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs([self._entry()], self.stickers_dir)
+        graph = server_editor._burn_interval_filter([(0, 2000), (3000, 5000)], 1, stickers)
+        lines = graph.strip().split(";\n")
+        self.assertIn("[burn_base]", lines[0])
+        self.assertNotIn("ass=", lines[0])
+        self.assertEqual(lines[1], "[1:v]null[burn_raw0_0]")
+        self.assertTrue(lines[2].startswith("[burn_raw0_0]scale="))
+        self.assertTrue(lines[3].startswith("[burn_base][burn_stick0]overlay="))
+        self.assertEqual(lines[4], "[burn_ovl0]ass=filename='burn.ass'[burn_video]")
+        self.assertIn("[burn_audio_0]", graph)
+        legacy = server_editor._burn_interval_filter([(0, 2000)], 0, None)
+        self.assertIn("setpts=", legacy.split(";\n")[0])
+        self.assertIn("ass=filename='burn.ass'[burn_video]", legacy)
+
+    def test_full_video_burn_wires_sticker_inputs_and_filter_complex(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs(
+            [self._entry(), self._entry(rel="b.gif", intervals=[{"start": 0, "end": 800}])], self.stickers_dir)
+        self._run_full_video(stickers)
+        command = next(command for command in self.calls if command[0] == "ffmpeg")
+        self.assertEqual(command[command.index("-loop") + 1], "1")
+        self.assertEqual(command[command.index("-i", command.index("-loop")) + 1], str(self.sticker_a))
+        self.assertEqual(command[command.index("-i", command.index(str(self.sticker_a))) + 1], str(self.sticker_gif))
+        self.assertIn("-/filter_complex", command)
+        self.assertEqual(command[command.index("-map") + 1], "[burn_video]")
+        self.assertEqual(command[command.index("-map", command.index("-map") + 1) + 1], "0:a?")
+        graph = Path(command[command.index("-/filter_complex") + 1]).read_text(encoding="utf-8")
+        self.assertIn("overlay=", graph)
+        self.assertIn("ass=filename='burn.ass'[burn_video]", graph)
+
+    def test_full_video_burn_without_stickers_keeps_vf_shortcut(self) -> None:
+        self._run_full_video([])
+        command = next(command for command in self.calls if command[0] == "ffmpeg")
+        self.assertEqual(command[command.index("-vf") + 1], "ass=filename='burn.ass'")
+        self.assertNotIn("-/filter_complex", command)
+
+    def test_http_burn_job_forwards_stickers_to_export(self) -> None:
+        from tests.test_local_editor_server import server_editor as loaded_server_editor
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name).resolve()
+        stickers_dir = root / "stickers"
+        stickers_dir.mkdir()
+        sticker = stickers_dir / "a.png"
+        sticker.write_bytes(b"png")
+        source = root / "source.mp4"
+        source.write_bytes(b"source")
+        project = loaded_server_editor.ServerProject(data={"segments": []}, json_path=root / "project.json",
+            media_path=source, source_media_path=source, sticker_root=stickers_dir, stickers=[])
+        server = loaded_server_editor.EditorServer(("127.0.0.1", 0), project, no_waveform=True)
+        server.media_jobs.temp_root = root
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        # addCleanup runs LIFO: shutdown → close → join keeps the socket valid while stopping.
+        self.addCleanup(thread.join, 2)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        base = "/api/exports/burned-video/jobs"
+        captured = {}
+
+        def burn(source_path, intervals, ass, output, **kwargs):
+            captured["stickers"] = kwargs.get("stickers")
+            output.write_bytes(b"burned-video")
+
+        def request(path, payload=None):
+            headers = {"Content-Type": "application/json", "X-MAW-Request-Token": server.request_token}
+            data = json.dumps(payload).encode() if payload is not None else None
+            req = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}{path}",
+                data=data, headers=headers)
+            try:
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    return response.status, json.loads(response.read())
+            except urllib.error.HTTPError as error:
+                return error.code, json.loads(error.read())
+
+        payload = {"requestToken": server.request_token, **server.project_binding_payload(),
+                   "ass": ASS_TEXT,
+                   "stickers": [{"rel": "a.png", "x": 10, "y": 20, "width": 30, "height": 40,
+                                 "intervals": [{"start": 0, "end": 900}]}]}
+        tools = mock.Mock(ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))
+        with mock.patch.object(loaded_server_editor, "editor_ffmpeg_tools", return_value=tools), \
+             mock.patch.object(loaded_server_editor.EditorServer, "ensure_libass_supported", return_value=True), \
+             mock.patch.object(loaded_server_editor, "burn_ass_video", side_effect=burn):
+            status, job = request(base, payload)
+            self.assertEqual(status, 202)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                _, state = request(f"{base}/{job['jobId']}")
+                if state["state"] == "ready":
+                    break
+                time.sleep(.01)
+            self.assertEqual(state["state"], "ready")
+        self.assertEqual(len(captured["stickers"]), 1)
+        self.assertEqual(captured["stickers"][0]["path"], sticker)
+        self.assertEqual(captured["stickers"][0]["intervals"], [(0, 900)])
+
+        # Inactive sticker root: stickers cannot be burned and the request is rejected.
+        server.project = server_editor.replace(server.project, sticker_root=None)
+        status, error = request(base, {**payload, "stickers": [{"rel": "a.png", "x": 1, "y": 1,
+            "width": 2, "height": 2, "intervals": [{"start": 0, "end": 1}]}]})
+        self.assertEqual(status, 400)
+        self.assertIn("表情包", error["error"])

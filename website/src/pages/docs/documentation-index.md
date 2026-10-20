@@ -52,7 +52,7 @@ source: "docs/INDEX.md"
 [打开正文](../local-asr/)
 
 <a name="user-multi-subtitle"></a>
-### 多重字幕（双语字幕）规范
+### 双语字幕规范
 
 [打开正文](../multi-subtitle/)
 
