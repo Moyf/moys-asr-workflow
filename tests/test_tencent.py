@@ -215,7 +215,7 @@ class TencentCliOutputNamingTests(unittest.TestCase):
             result = {"text": "测试", "language": "zh"}
             if debug_raw:
                 result["_raw_response"] = {"Result": []}
-            argv = ["generate_subtitle_tencent_api.py", str(media)]
+            argv = ["maw.asr.tencent", str(media)]
             if explicit_output is not None:
                 argv += ["-o", str(explicit_output)]
             argv += extra_args
@@ -228,17 +228,17 @@ class TencentCliOutputNamingTests(unittest.TestCase):
 
             config = {"secret_id": "id", "secret_key": "key", "engine": "16k_zh"}
             with mock.patch("sys.argv", argv), \
-                 mock.patch("generate_subtitle_tencent_api.load_config", return_value=config), \
+                 mock.patch("maw.asr.tencent.load_config", return_value=config), \
                  mock.patch(
-                     "generate_subtitle_tencent_api.resolve_ffmpeg_tools",
+                     "maw.asr.tencent.resolve_ffmpeg_tools",
                      return_value=SimpleNamespace(ffmpeg="ffmpeg", ffprobe="ffprobe"),
                  ), \
-                 mock.patch("generate_subtitle_tencent_api.get_duration_sec", return_value=1000.0), \
-                 mock.patch("generate_subtitle_tencent_api.shutil.copy2"), \
-                 mock.patch("generate_subtitle_tencent_api.transcribe", return_value=result), \
-                 mock.patch("generate_subtitle_tencent_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.asr.tencent.get_duration_sec", return_value=1000.0), \
+                 mock.patch("maw.asr.tencent.shutil.copy2"), \
+                 mock.patch("maw.asr.tencent.transcribe", return_value=result), \
+                 mock.patch("maw.asr.tencent.time.perf_counter", side_effect=fake_perf), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
-                from generate_subtitle_tencent_api import main
+                from maw.asr.tencent import main
 
                 code = main()
                 names = sorted(path.name for path in root.glob("*.srt"))
@@ -275,19 +275,19 @@ class TencentCliOutputNamingTests(unittest.TestCase):
 
             config = {"secret_id": "id", "secret_key": "key", "engine": "16k_zh"}
             with mock.patch(
-                "sys.argv", ["generate_subtitle_tencent_api.py", str(media), "--debug-raw"]
-            ), mock.patch("generate_subtitle_tencent_api.load_config", return_value=config), \
+                "sys.argv", ["maw.asr.tencent", str(media), "--debug-raw"]
+            ), mock.patch("maw.asr.tencent.load_config", return_value=config), \
                  mock.patch(
-                     "generate_subtitle_tencent_api.resolve_ffmpeg_tools",
+                     "maw.asr.tencent.resolve_ffmpeg_tools",
                      return_value=SimpleNamespace(ffmpeg="ffmpeg", ffprobe="ffprobe"),
                  ), \
-                 mock.patch("generate_subtitle_tencent_api.get_duration_sec", return_value=1000.0), \
-                 mock.patch("generate_subtitle_tencent_api.shutil.copy2"), \
-                 mock.patch("generate_subtitle_tencent_api.transcribe", return_value=result), \
-                 mock.patch("generate_subtitle_tencent_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.asr.tencent.get_duration_sec", return_value=1000.0), \
+                 mock.patch("maw.asr.tencent.shutil.copy2"), \
+                 mock.patch("maw.asr.tencent.transcribe", return_value=result), \
+                 mock.patch("maw.asr.tencent.time.perf_counter", side_effect=fake_perf), \
                  mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
-                from generate_subtitle_tencent_api import main
+                from maw.asr.tencent import main
 
                 self.assertEqual(main(), 0)
 

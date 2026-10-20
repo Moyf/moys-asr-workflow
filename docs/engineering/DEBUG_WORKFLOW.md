@@ -11,6 +11,13 @@
 
 Windows 沙箱的系统临时目录若不可写，可为**当前测试进程**设置 `TEMP` / `TMP` 为本 worktree 的 `.artifacts/checks/tmp`；不要修改全局环境。进程树清理若被沙箱拒绝，运行器会记录 `cleanup_error`，不能把它报告为完整清理成功。
 
+## 开发入口与 bundle
+
+- `pnpm run dev` / `pnpm run dev:editor`：先构建编辑器 bundle，再启动编辑器并监听源码变化。
+- `pnpm run dev:launcher` / `pnpm run devl`：先依次构建编辑器与 Launcher 两套 bundle，全部成功后启动 Launcher，并同时运行两个 watcher；在 Launcher 中打开编辑器时无需补做首次构建。
+- `pnpm run launcher`：同样预构建两套 bundle 后启动 Launcher，但不挂 watcher。任一构建失败都不会启动 Python 入口；开发模式下 watcher 异常退出会结束会话，避免继续使用未更新的产物。
+- 关闭 Python 入口或按 Ctrl+C 会回收会话的所有 watcher。两个 watcher 都忽略双方的 bundle、构建信息、原子发布临时文件和现存目录的变更事件，避免互相触发重建；源码文件修改与删除仍会触发构建。修改构建脚本后仍需重启开发会话。
+
 ## 默认查源码，生成物按需验证
 
 - `.rgignore` 排除普通搜索中的 bundle、便携 HTML、历史扫描 JSON、锁文件与日志；不会取消这些文件的 Git 跟踪，也不影响编译和测试。
@@ -28,8 +35,8 @@ Windows 沙箱的系统临时目录若不可写，可为**当前测试进程**�
 python scripts/run_check.py --timeout 60 -- python -m unittest tests.test_run_check tests.test_compact_assertions
 python scripts/run_check.py --timeout 60 -- node --test tests/test_e2e_output_tail.mjs tests/test_e2e_server_lifecycle.mjs
 python scripts/run_check.py --timeout 180 -- node scripts/build-editor.mjs --check
-python scripts/run_check.py --timeout 180 -- node node_modules/typescript/bin/tsc -p tsconfig.typecheck.json
-python scripts/run_check.py --timeout 600 -- node node_modules/@playwright/test/cli.js test --project=chromium tests/e2e/editor-bundle.spec.mjs
+python scripts/run_check.py --timeout 180 -- node node_modules/typescript/bin/tsc -p web/tsconfig.typecheck.json
+python scripts/run_check.py --timeout 600 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/editor-bundle.spec.mjs
 ```
 
 `--` 后是可执行文件与参数，不是 shell 表达式；管道、重定向和环境变量赋值在外层处理。运行器关闭 stdin，stdout / stderr 合并直接写文件，避免等待继承管道的 EOF。

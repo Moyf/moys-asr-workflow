@@ -14,8 +14,13 @@ except ImportError:  # pragma: no cover - 取决于安装的依赖组
     np = None
     sf = None
 
-from maw.energy_valley import FRAME_MS, rms_envelope, snap_boundaries_to_valleys, snap_cue_boundaries
-from generate_subtitle_qwen_api import split_coarse_segments
+from maw.energy_valley import (
+    FRAME_MS,
+    rms_envelope,
+    snap_boundaries_to_valleys,
+    snap_cue_boundaries,
+)
+from maw.asr.segmentation import split_coarse_segments
 from maw.local_asr import LocalTranscription, build_local_segments
 
 SAMPLE_RATE = 16_000

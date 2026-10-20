@@ -20,6 +20,170 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('alignment model shortcut opens the selected model without changing the ASR provider', async ({ page }, testInfo) => {
+  await openLauncher(page);
+  await page.locator('#provider').selectOption('qwen');
+  await page.locator('#toolboxTimestampsTab').click();
+  const provider = await page.locator('#provider').inputValue();
+  const asrModel = await page.locator('#model').inputValue();
+  const modelId = await page.evaluate(() => window.MAWLauncher.config.alignmentModels.at(-1).id);
+  await page.locator('#toolboxTimestampModel').selectOption(modelId);
+  const hint = page.locator('#toolboxAlignmentModelHint');
+  const gap = await hint.evaluate((element) => ({
+    above: element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom,
+    row: parseFloat(getComputedStyle(element).rowGap),
+  }));
+  expect(gap.above).toBeGreaterThanOrEqual(8);
+  expect(gap.row).toBeGreaterThanOrEqual(8);
+  console.log(`Alignment settings spacing: above=${gap.above}px, wrapped rows=${gap.row}px`);
+  await testInfo.attach('alignment-link-spacing', { body: JSON.stringify(gap), contentType: 'application/json' });
+  await hint.locator('..').screenshot({ path: testInfo.outputPath('alignment-model-shortcut.png') });
+
+  const shortcut = page.locator('#openAlignmentModelSettings');
+  await expect(shortcut).toHaveText('管理对齐模型');
+  await page.evaluate(() => document.getElementById('langEn').click());
+  await expect(shortcut).toHaveText('Manage alignment models');
+  await shortcut.click();
+  await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#alignmentModelSettingsSection')).toBeVisible();
+  await expect(page.locator(`#localAlignmentModelList [data-model-id="${modelId}"]`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#provider')).toHaveValue(provider);
+  await page.locator('#alignmentModelSettingsSection').screenshot({ path: testInfo.outputPath('alignment-model-settings.png') });
+
+  // Complete setup through the real UI flow while retaining cloud ASR settings.
+  await expect(page.locator('#prepareAlignmentModel')).toBeDisabled();
+  await expect(page.locator('#localAlignmentModelStatus')).toContainText('Missing dependencies');
+  await page.locator('#localAlignmentModelStatus button').click();
+  await expect(page.locator('#localRuntimePanel')).toBeVisible();
+  await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'true');
+  await page.locator('#refreshLocalRuntime').click();
+  await expect(page.locator('#localRuntimeStatus')).toHaveText('Local runtime is not installed');
+  await page.locator('#localRuntimePanel').screenshot({ path: testInfo.outputPath('cloud-asr-runtime-setup.png') });
+  await page.locator('#installLocalRuntime').click();
+  await expect(page.locator('#localRuntimeStatus')).toHaveText('Local runtime is ready');
+  await expect(page.locator('#localRuntimeProgress')).toBeHidden();
+  await expect(page.locator('#provider')).toHaveValue(provider);
+  await expect(page.locator('#model')).toHaveValue(asrModel);
+  await page.locator('#settingsClose').click();
+  await shortcut.click();
+  await expect(page.locator('#prepareAlignmentModel')).toBeEnabled();
+  const selectedModel = page.locator(`#localAlignmentModelList [data-model-id="${modelId}"]`);
+  await expect(selectedModel).not.toHaveClass(/\bready\b/);
+  await page.locator('#prepareAlignmentModel').click();
+  await expect(selectedModel).toHaveClass(/\bready\b/);
+  await expect(page.locator('#provider')).toHaveValue(provider);
+  await expect(page.locator('#model')).toHaveValue(asrModel);
+});
+
+test('cloud ASR runtime installation errors leave the installing state', async ({ page }) => {
+  await openLauncher(page);
+  const config = await page.evaluate(() => window.MAWLauncher.config);
+  await page.addInitScript((initialConfig) => {
+    initialConfig.providerId = 'qwen';
+    window.__runtimeBackend = { status: 'installing', ready: false };
+    initialConfig.localRuntime = { ...window.__runtimeBackend };
+    window.__runtimeRequests = [];
+    window.pywebview = { api: new Proxy({}, { get: (_target, method) => method === 'then' ? undefined : async (payload) => {
+      if (method === 'get_config') return initialConfig;
+      if (method === 'get_local_runtime') {
+        window.__runtimeRequests.push(payload);
+        return { ok: true, ...window.__runtimeBackend };
+      }
+      if (method === 'get_alignment_models') return { ok: true, models: initialConfig.alignmentModels };
+      return { ok: true };
+    } }) };
+  }, config);
+  await page.reload();
+  await page.waitForFunction(() => document.body.classList.contains('launcher-ready'));
+  await page.evaluate(() => window.MAWLauncher.openSettings('localRuntimePanel'));
+  for (const code of ['local_runtime_install_failed', 'local_runtime_cancelled']) {
+    await page.evaluate((errorCode) => {
+      window.MAWLauncher.config.localRuntime = { status: 'installing', ready: false };
+      window.MAWLauncher.onBackendEvent({ type: 'localRuntimeProgress', percent: 30 });
+      window.__runtimeBackend = { status: 'broken', ready: false };
+      window.MAWLauncher.onBackendEvent({ type: 'error', code: errorCode, detail: 'test runtime failure' });
+    }, code);
+    await expect(page.locator('#localRuntimeStatus')).toHaveText('本地运行环境需要修复');
+    await expect(page.locator('#localRuntimeProgress')).toBeHidden();
+    await expect(page.locator('#installLocalRuntime')).toHaveText('修复运行环境');
+    await expect(page.locator('#installLocalRuntime')).toBeEnabled();
+    await expect(page.locator('#provider')).toHaveValue('qwen');
+  }
+  const requests = await page.evaluate(() => window.__runtimeRequests);
+  expect(requests.length).toBeGreaterThanOrEqual(2);
+  expect(requests.every((payload) => payload.modelId === '')).toBe(true);
+});
+
+test('runtime upgrade and alignment model states distinguish files, validation, and dependencies', async ({ page }, testInfo) => {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    const names = ['faster_whisper', 'funasr', 'qwen_asr', 'jieba', 'torch', 'torchaudio', 'quapeaks', 'sherpa_onnx', 'soundfile'];
+    window.MAWLauncher.config.localRuntime = {
+      status: 'broken',
+      ready: false,
+      runtimeVersion: '6',
+      path: 'D:\\Demo\\local-runtime',
+      modelCachePath: 'D:\\Demo\\model-cache',
+      inventory: {
+        status: 'broken',
+        ready: false,
+        runtimeVersionExpected: '7',
+        runtimeVersionInstalled: '6',
+        pythonVersionExpected: '3.11',
+        pythonVersionInstalled: '3.11',
+        manifestStatus: 'ready',
+        installedAt: 0,
+        components: names.map((name) => ({ name, required: true, installed: true })),
+      },
+    };
+  });
+  await page.locator('#provider').selectOption('local');
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsRuntimeTab').click();
+
+  await expect(page.locator('#localRuntimeStatus')).toContainText('运行环境需要升级：6 → 7');
+  await expect(page.locator('#localRuntimeHint')).toHaveText('已检测到依赖文件：9/9，尚未完成新版环境验证。');
+  await expect(page.locator('#installLocalRuntime')).toHaveText('升级并验证运行环境');
+  await page.locator('#toggleLocalRuntimeInventory').click();
+  await expect(page.locator('#localRuntimeInventory')).toContainText('需要升级：6 → 7');
+  await expect(page.locator('#localRuntimeInventory')).toContainText('依赖组件 (9/9)');
+  const runtimeGap = await page.locator('.repair-row').evaluate((row) => {
+    const hint = row.querySelector('#localRuntimeHint').getBoundingClientRect();
+    const button = row.querySelector('#installLocalRuntime').getBoundingClientRect();
+    const style = getComputedStyle(row);
+    return { vertical: button.top >= hint.bottom ? button.top - hint.bottom : 0, rowGap: parseFloat(style.rowGap) };
+  });
+  expect(runtimeGap.rowGap).toBeGreaterThanOrEqual(8);
+  if (runtimeGap.vertical > 0) expect(runtimeGap.vertical).toBeGreaterThanOrEqual(8);
+  console.log(`Runtime upgrade layout spacing: vertical=${runtimeGap.vertical}px, wrapped row gap=${runtimeGap.rowGap}px`);
+  await testInfo.attach('runtime-upgrade-spacing', { body: JSON.stringify(runtimeGap), contentType: 'application/json' });
+  await page.locator('#localRuntimePanel').screenshot({ path: testInfo.outputPath('runtime-upgrade-status.png') });
+
+  await page.evaluate(() => {
+    const inventory = window.MAWLauncher.config.localRuntime.inventory;
+    inventory.components = inventory.components.map((component) => component.name === 'qwen_asr' ? { ...component, installed: false } : component);
+  });
+  await page.locator('#refreshLocalRuntime').click();
+  await expect(page.locator('#localRuntimeHint')).toHaveText('已检测到依赖文件：8/9，升级时会补齐缺失文件并验证新版环境。');
+  await page.evaluate(() => window.MAWLauncher.openSettings('alignmentModelSettingsSection'));
+  const aligner = page.locator('#localAlignmentModelList [data-model-id="qwen3-forced-aligner-0.6b"]');
+  await expect(aligner).toContainText('未下载 · 缺少依赖');
+  await expect(page.locator('#localAlignmentModelStatus')).toContainText('未下载 · 缺少依赖');
+  const recognitionModel = await page.evaluate(() => window.MAWLauncher.config.providers
+    .find((item) => item.id === 'local').models.find((model) => !model.supportsWordTimestamps).id);
+  await page.locator('#settingsClose').click();
+  await page.locator('#model').selectOption(recognitionModel);
+  await page.evaluate(() => {
+    const select = document.getElementById('recognitionAlignmentModel');
+    select.value = 'qwen3-forced-aligner-0.6b';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect(page.locator('#recognitionAlignmentModelStatus')).toContainText('未下载 · 缺少依赖');
+  await expect(page.locator('#recognitionAlignmentModelStatus button')).toHaveText('本地运行环境');
+  await page.evaluate(() => window.MAWLauncher.openSettings('alignmentModelSettingsSection'));
+  await page.locator('#alignmentModelSettingsSection').screenshot({ path: testInfo.outputPath('alignment-model-dependency-status.png') });
+});
+
 test('OpenAI ASR exposes official and OpenRouter models with a conditional Custom input', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#provider').selectOption('openai');
@@ -338,7 +502,8 @@ test('translation language filter defaults on, persists, syncs and reaches reque
 test('automatic LLM setup highlights test connection until clicked', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
+    await window.MAWLauncher.callBackend('save_postprocess_settings', { providerId: 'deepseek', apiKey: 'demo-key' });
     const provider = window.MAWLauncher.config.postprocessProviders.find((item) => item.id === 'deepseek');
     Object.assign(provider, {
       verified: false,
@@ -565,9 +730,9 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
     };
   });
   expect(layout.columns).toBe(1);
-  expect(layout.tabColumnCount).toBe(4);
+  expect(layout.tabColumnCount).toBe(5);
 
-  // beta.4 重构后工具顺序：烧录字幕、媒体重组、口播对齐、提取音频、生成波形。
+  // 媒体工具依次为文稿匹配、烧录、口播对齐、提取音频、生成波形；隐藏的媒体重组不参与键盘导航。
   await page.locator('#toolboxAlignmentTab').focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('#toolboxExtractAudioTab')).toBeFocused();
@@ -577,6 +742,12 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
   await page.keyboard.press('ArrowUp');
   await expect(page.locator('#toolboxAlignmentTab')).toBeFocused();
   await expect(page.locator('#toolboxAlignmentPanel')).toBeVisible();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#toolboxBurnSubtitleTab')).toBeFocused();
+  await expect(page.locator('#toolboxBurnSubtitlePanel')).toBeVisible();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#toolboxScriptAlignmentTab')).toBeFocused();
+  await expect(page.locator('#toolboxScriptAlignmentPanel')).toBeVisible();
 });
 
 test('FFmpeg media log stays above the utility notice and renders the latest progress', async ({ page }) => {

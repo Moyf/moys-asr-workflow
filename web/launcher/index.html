@@ -49,7 +49,7 @@
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.9.0</span></div>
+          <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.10.0-beta.1</span></div>
           <p data-i18n="hero_desc">让字幕制作变得超级轻松！</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
@@ -484,6 +484,10 @@
           </div>
           <p id="jsonPathError" class="field-error"></p>
         </div>
+        <div id="recentProjectsField" class="field recent-projects-field hidden">
+          <span class="recent-projects-label" data-i18n="recent_projects">最近工程</span>
+          <div id="recentProjectsList" class="recent-projects-list"></div>
+        </div>
         <div id="serverMediaField" class="field hidden">
           <label for="serverMediaPath" data-i18n="server_media">媒体文件（可选）</label>
           <div class="path-row">
@@ -570,10 +574,10 @@
         </div>
         <nav id="toolboxPostprocessTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxPostprocessPrimaryTab">
           <div class="toolbox-tab-list toolbox-tab-list-5">
-            <button id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="toolboxMatchPanel" data-tool="match" data-i18n="toolbox_match">文稿匹配</button>
-            <button id="toolboxOcrTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxOcrPanel" data-tool="ocr" data-i18n="toolbox_ocr_dedup">OCR 去重</button>
             <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">AI 处理</button>
+            <button id="toolboxOcrTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxOcrPanel" data-tool="ocr" data-i18n="toolbox_ocr_dedup">OCR 去重</button>
             <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
+            <button id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="toolboxMatchPanel" data-tool="match" data-i18n="toolbox_match">文稿修正</button>
             <button id="toolboxTimestampsTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxTimestampsPanel" data-tool="timestamps" data-i18n="toolbox_timestamps">生成时间码</button>
           </div>
         </nav>
@@ -591,7 +595,8 @@
           <p id="toolboxUtilityMediaPathError" class="field-error"></p>
         </div>
         <nav id="toolboxUtilitiesTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxUtilitiesPrimaryTab">
-          <div class="toolbox-tab-list">
+          <div class="toolbox-tab-list toolbox-tab-list-5">
+            <button id="toolboxScriptAlignmentTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxScriptAlignmentPanel" data-tool="scriptAlignment" tabindex="-1" data-i18n="toolbox_script_alignment">文稿匹配</button>
             <button id="toolboxBurnSubtitleTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxBurnSubtitlePanel" data-tool="burnSubtitle" tabindex="-1" data-i18n="toolbox_burn_subtitle">烧录字幕</button>
             <button id="toolboxFfconcatTab" class="toolbox-tab hidden" type="button" role="tab" tabindex="-1" aria-hidden="true" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" data-i18n="toolbox_ffconcat">媒体重组</button>
             <button id="toolboxAlignmentTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxAlignmentPanel" data-tool="alignment" tabindex="-1" data-i18n="toolbox_alignment">口播对齐</button>
@@ -641,6 +646,77 @@
           </label>
           <p class="hint" data-i18n="generate_spectral_hint">默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
         </div>
+      </section>
+
+      <section id="toolboxScriptAlignmentPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxScriptAlignmentTab">
+        <p class="hint toolbox-panel-hint" data-i18n="toolbox_timestamp_script_hint">以准确文稿为准，从录音定位时间并新建字幕；不需要已有工程，不识别实际说了什么。</p>
+        <div class="adv-group">
+          <h3 data-i18n="toolbox_group_alignment_model">对齐模型</h3>
+          <div class="field">
+            <label for="toolboxScriptAlignmentModel" data-i18n="toolbox_timestamp_model">对齐模型</label>
+            <select id="toolboxScriptAlignmentModel"></select>
+            <p id="toolboxScriptAlignmentModelStatus" class="hint" aria-live="polite"></p>
+          </div>
+          <p id="toolboxScriptAlignmentModelHint" class="hint toolbox-settings-hint toolbox-alignment-model-hint">
+            <span data-i18n="toolbox_script_alignment_model_hint">文稿生成字幕使用 Qwen3-ForcedAligner，可复用 Qwen Local 的模型缓存。</span>
+            <button id="openScriptAlignmentModelSettings" class="inline-link" type="button" data-i18n="toolbox_timestamp_model_settings">管理对齐模型</button>
+          </p>
+        </div>
+      <div id="toolboxTimestampScriptInputs" class="adv-group">
+        <h3 data-i18n="toolbox_script_alignment_heading">文稿驱动对齐</h3>
+        <div id="toolboxTimestampScriptDropZone" class="field toolbox-input">
+          <label for="toolboxTimestampScriptPath" data-i18n="toolbox_script_alignment_script">准确文稿（UTF-8）</label>
+          <div class="path-row">
+            <input id="toolboxTimestampScriptPath" type="text" autocomplete="off" placeholder=".txt / .md / .markdown">
+            <button id="pickToolboxTimestampScript" class="ghost" type="button" data-i18n="choose">选择</button>
+          </div>
+          <p id="toolboxTimestampScriptPathError" class="field-error"></p>
+        </div>
+        <div class="toolbox-grid">
+          <div class="field">
+            <label for="toolboxTimestampLanguage" data-i18n="toolbox_script_alignment_language">对齐语言</label>
+            <select id="toolboxTimestampLanguage">
+              <option value="zh">中文 / Chinese</option><option value="en">English</option>
+              <option value="yue">粤语 / Cantonese</option><option value="ja">日本語</option>
+              <option value="ko">한국어</option><option value="fr">Français</option>
+              <option value="de">Deutsch</option><option value="es">Español</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="toolboxTimestampAudioTrack" data-i18n="toolbox_script_alignment_track">音轨序号（可选，从 0 开始）</label>
+            <input id="toolboxTimestampAudioTrack" type="number" min="0" step="1" placeholder="默认音轨" data-i18n-placeholder="toolbox_script_alignment_track_default">
+          </div>
+        </div>
+        <div class="toolbox-grid">
+          <div class="field">
+            <label for="toolboxTimestampSilenceMs" data-i18n="toolbox_script_alignment_pause">最短停顿（ms）</label>
+            <input id="toolboxTimestampSilenceMs" type="number" min="80" max="10000" value="500">
+          </div>
+          <div class="field">
+            <label for="toolboxTimestampSilenceDb" data-i18n="toolbox_script_alignment_db">静音阈值（dB）</label>
+            <input id="toolboxTimestampSilenceDb" type="number" min="-100" max="-1" value="-35">
+          </div>
+        </div>
+        <div class="field">
+          <label for="toolboxTimestampAnchorsPath" data-i18n="toolbox_script_alignment_anchors">人工锚点 JSON（可选）</label>
+          <div class="path-row">
+            <input id="toolboxTimestampAnchorsPath" type="text" autocomplete="off" placeholder=".json">
+            <button id="pickToolboxTimestampAnchors" class="ghost" type="button" data-i18n="choose">选择</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="toolboxTimestampOutputDirectory" data-i18n="toolbox_script_alignment_output">输出目录（可选，默认文稿所在目录）</label>
+          <div class="path-row">
+            <input id="toolboxTimestampOutputDirectory" type="text" autocomplete="off">
+            <button id="pickToolboxTimestampOutput" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
+          </div>
+        </div>
+        <p class="hint toolbox-settings-hint" data-i18n="toolbox_script_alignment_hint">每个非空行生成一条字幕，保留标点，输出新 MOSP 和 SRT。≤5 分钟整段对齐；静音参数仅用于长录音自动分块，人工锚点不依赖静音检测。长录音须每行对应一个语音区间，否则需人工锚点。跳行、重读和口误可能被忽略，请听审。</p>
+        <div class="script-alignment-check-actions">
+          <button id="checkScriptAlignment" class="ghost" type="button" data-i18n="toolbox_script_alignment_check">检查输入与分块（无需模型）</button>
+        </div>
+        <p id="toolboxTimestampCheckResult" class="hint hidden" aria-live="polite"></p>
+      </div>
       </section>
 
       <section id="toolboxAlignmentPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxAlignmentTab">
@@ -817,6 +893,10 @@
       </div>
 
       <section id="toolboxMatchPanel" class="toolbox-panel" role="tabpanel" aria-labelledby="toolboxMatchTab">
+        <p id="toolboxScriptAlignmentGuidance" class="hint toolbox-settings-hint toolbox-script-guidance">
+          <span data-i18n="toolbox_script_alignment_guidance">如果不需要生成转录文本，可以直接使用</span>
+          <button id="openScriptAlignmentTool" class="inline-link" type="button" data-i18n="toolbox_script_alignment_link">媒体工具 / 文稿匹配</button>
+        </p>
         <p class="hint toolbox-panel-hint" data-i18n="toolbox_match_hint">匹配度过低时会停止，不写出可能错配的结果。</p>
         <div class="field">
         <label for="postprocessScriptPath" data-i18n="toolbox_script">文稿文件</label>
@@ -857,7 +937,7 @@
      </section>
 
     <section id="toolboxTimestampsPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxTimestampsTab">
-      <p id="toolboxTimestampModeHint" class="hint toolbox-panel-hint" data-i18n="toolbox_timestamps_hint">保留已有字幕文字并补充字词时间码；或从准确文稿与录音新建字幕。两种方式均需要原始媒体。</p>
+      <p id="toolboxTimestampModeHint" class="hint toolbox-panel-hint" data-i18n="toolbox_timestamps_hint">保留已有字幕文字，在原字幕范围内补充或重新生成字词时间码。</p>
       <div class="adv-group">
         <h3 data-i18n="toolbox_group_timestamp_media">媒体来源</h3>
         <div id="toolboxTimestampMediaDropZone" class="field toolbox-input">
@@ -881,67 +961,15 @@
             <select id="toolboxTimestampMode">
               <option value="fill" data-i18n="toolbox_timestamp_mode_fill">只补缺失时间码</option>
               <option value="generate" data-i18n="toolbox_timestamp_mode_generate">全部重新生成</option>
-              <option value="script" data-i18n="toolbox_timestamp_mode_script">仅使用文稿对齐</option>
             </select>
           </div>
         </div>
-        <p class="hint toolbox-settings-hint" data-i18n="toolbox_timestamp_model_hint">Qwen3-ForcedAligner 与 FireRedASR2-CTC 都可独立下载；Qwen 复用 Qwen Local 的 Hugging Face 缓存。</p>
+        <p id="toolboxAlignmentModelHint" class="hint toolbox-settings-hint toolbox-alignment-model-hint">
+          <span data-i18n="toolbox_timestamp_model_hint">Qwen3-ForcedAligner 与 FireRedASR2-CTC 都可独立下载；Qwen 复用 Qwen Local 的 Hugging Face 缓存。</span>
+          <button id="openAlignmentModelSettings" class="inline-link" type="button" data-i18n="toolbox_timestamp_model_settings">管理对齐模型</button>
+        </p>
       </div>
-      <div id="toolboxTimestampScriptInputs" class="adv-group hidden">
-        <h3 data-i18n="toolbox_script_alignment_heading">文稿驱动对齐</h3>
-        <div id="toolboxTimestampScriptDropZone" class="field toolbox-input">
-          <label for="toolboxTimestampScriptPath" data-i18n="toolbox_script_alignment_script">准确文稿（UTF-8）</label>
-          <div class="path-row">
-            <input id="toolboxTimestampScriptPath" type="text" autocomplete="off" placeholder=".txt / .md / .markdown">
-            <button id="pickToolboxTimestampScript" class="ghost" type="button" data-i18n="choose">选择</button>
-          </div>
-          <p id="toolboxTimestampScriptPathError" class="field-error"></p>
-        </div>
-        <div class="toolbox-grid">
-          <div class="field">
-            <label for="toolboxTimestampLanguage" data-i18n="toolbox_script_alignment_language">对齐语言</label>
-            <select id="toolboxTimestampLanguage">
-              <option value="zh">中文 / Chinese</option><option value="en">English</option>
-              <option value="yue">粤语 / Cantonese</option><option value="ja">日本語</option>
-              <option value="ko">한국어</option><option value="fr">Français</option>
-              <option value="de">Deutsch</option><option value="es">Español</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="toolboxTimestampAudioTrack" data-i18n="toolbox_script_alignment_track">音轨序号（可选，从 0 开始）</label>
-            <input id="toolboxTimestampAudioTrack" type="number" min="0" step="1" placeholder="默认音轨" data-i18n-placeholder="toolbox_script_alignment_track_default">
-          </div>
-        </div>
-        <div class="toolbox-grid">
-          <div class="field">
-            <label for="toolboxTimestampSilenceMs" data-i18n="toolbox_script_alignment_pause">最短停顿（ms）</label>
-            <input id="toolboxTimestampSilenceMs" type="number" min="80" max="10000" value="500">
-          </div>
-          <div class="field">
-            <label for="toolboxTimestampSilenceDb" data-i18n="toolbox_script_alignment_db">静音阈值（dB）</label>
-            <input id="toolboxTimestampSilenceDb" type="number" min="-100" max="-1" value="-35">
-          </div>
-        </div>
-        <div class="field">
-          <label for="toolboxTimestampAnchorsPath" data-i18n="toolbox_script_alignment_anchors">人工锚点 JSON（可选）</label>
-          <div class="path-row">
-            <input id="toolboxTimestampAnchorsPath" type="text" autocomplete="off" placeholder=".json">
-            <button id="pickToolboxTimestampAnchors" class="ghost" type="button" data-i18n="choose">选择</button>
-          </div>
-        </div>
-        <div class="field">
-          <label for="toolboxTimestampOutputDirectory" data-i18n="toolbox_script_alignment_output">输出目录（可选，默认文稿所在目录）</label>
-          <div class="path-row">
-            <input id="toolboxTimestampOutputDirectory" type="text" autocomplete="off">
-            <button id="pickToolboxTimestampOutput" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
-          </div>
-        </div>
-        <p class="hint toolbox-settings-hint" data-i18n="toolbox_script_alignment_hint">每个非空行生成一条字幕，保留标点，输出新 MOSP 和 SRT。≤5 分钟整段对齐；静音参数仅用于长录音自动分块，人工锚点不依赖静音检测。长录音须每行对应一个语音区间，否则需人工锚点。跳行、重读和口误可能被忽略，请听审。</p>
-        <div class="script-alignment-check-actions">
-          <button id="checkScriptAlignment" class="ghost" type="button" data-i18n="toolbox_script_alignment_check">检查输入与分块（无需模型）</button>
-        </div>
-        <p id="toolboxTimestampCheckResult" class="hint hidden" aria-live="polite"></p>
-      </div>
+
     </section>
 
       <section id="toolboxOcrPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxOcrTab">
@@ -1174,6 +1202,9 @@
         <div class="toolbox-action-slot hidden" data-tool-action="alignment">
           <button id="runToolboxAlignment" class="primary" type="button" data-i18n="toolbox_run_alignment">启动并打开口播对齐</button>
           <button id="stopToolboxAlignment" class="ghost hidden" type="button" data-i18n="toolbox_stop_alignment">停止服务</button>
+        </div>
+        <div class="toolbox-action-slot hidden" data-tool-action="scriptAlignment">
+          <button id="runScriptAlignment" class="primary" type="button" data-i18n="toolbox_run_script_alignment">生成字幕</button>
         </div>
         <div class="toolbox-action-slot hidden" data-tool-action="timestamps">
           <button id="runTimestampAlignment" class="primary" type="button" data-i18n="toolbox_run_timestamps">生成时间码</button>
@@ -1486,10 +1517,6 @@
       </div>
       </section>
       <section id="settingsRuntimePanel" class="settings-panel hidden" role="tabpanel" aria-labelledby="settingsRuntimeTab" data-settings-panel="runtime" aria-hidden="true">
-      <div id="localModelRuntimeHintSection" class="settings-section hidden">
-        <h3 data-i18n="local_model_runtime_hint_title">本地模型</h3>
-        <p class="hint" data-i18n="local_model_runtime_hint_body">如果要查看本地模型相关配置，请先将「识别设置」中的识别方式选为「本地模型」。</p>
-      </div>
       <div id="localRuntimePanel" class="local-runtime-panel settings-section hidden">
         <h3 data-i18n="settings_local_runtime">本地运行环境</h3>
         <p class="hint warn hint-callout" data-i18n="local_beta_note">当前为 beta 版本，未经过充分测试，不保证后续的维护和更新，请谨慎使用。</p>

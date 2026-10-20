@@ -6,21 +6,19 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from generate_subtitle_qwen_api import (
+from maw.asr.segmentation import (
     build_interpolated_items,
     build_interpolated_word_items,
     build_segments_from_api_sentences,
     configure_extra_strong_punct,
-    extract_audio,
-    get_duration_sec,
-    main,
-    parse_transcription_result,
     repair_nonpositive_duration_segments,
     split_coarse_segment,
     split_coarse_segments,
     split_words_to_segments,
     split_words_to_segments_western,
 )
+from maw.asr.common import extract_audio, get_duration_sec
+from maw.asr.qwen import main, parse_transcription_result
 from maw.project import normalize_project
 
 
@@ -28,7 +26,7 @@ class QwenCliExitContractTests(unittest.TestCase):
     def test_missing_input_exits_nonzero(self) -> None:
         """缺失输入文件属于调用方错误，必须以非零退出码失败。"""
         with redirect_stderr(io.StringIO()), \
-             mock.patch("sys.argv", ["generate_subtitle_qwen_api.py", "does-not-exist.mp3"]):
+             mock.patch("sys.argv", ["maw.asr.qwen", "does-not-exist.mp3"]):
             with self.assertRaises(SystemExit) as raised:
                 main()
         self.assertEqual(raised.exception.code, 1)
@@ -43,9 +41,9 @@ class QwenCliExitContractTests(unittest.TestCase):
             media.write_bytes(b"x")
             with redirect_stdout(io.StringIO()), \
                  redirect_stderr(io.StringIO()), \
-                 mock.patch("sys.argv", ["generate_subtitle_qwen_api.py", str(media)]):
-                with mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=1.0):
-                    with mock.patch("generate_subtitle_qwen_api.transcribe", return_value={}):
+                 mock.patch("sys.argv", ["maw.asr.qwen", str(media)]):
+                with mock.patch("maw.asr.qwen.get_duration_sec", return_value=1.0):
+                    with mock.patch("maw.asr.qwen.transcribe", return_value={}):
                         with self.assertRaises(SystemExit) as raised:
                             main()
         self.assertEqual(raised.exception.code, 2)
@@ -54,14 +52,14 @@ class QwenCliExitContractTests(unittest.TestCase):
 class QwenMediaExtractionTests(unittest.TestCase):
     def test_missing_ffmpeg_tools_report_the_full_package_hint(self) -> None:
         with mock.patch(
-            "generate_subtitle_qwen_api.subprocess.run",
+            "maw.asr.common.subprocess.run",
             side_effect=FileNotFoundError(2, "系统找不到指定的文件"),
         ):
             with self.assertRaisesRegex(RuntimeError, "找不到 FFmpeg，请下载完整版 MAW"):
                 get_duration_sec("input.mp4")
 
     def test_video_extraction_can_limit_duration_in_the_first_ffmpeg_pass(self) -> None:
-        with mock.patch("generate_subtitle_qwen_api.subprocess.run") as run:
+        with mock.patch("maw.asr.common.subprocess.run") as run:
             extract_audio("input.mp4", "output.wav", duration_limit=120, ffmpeg_path="ffmpeg")
 
         # FFmpeg 经统一解析器解析，可能是绝对路径；按可执行名断言。
@@ -178,10 +176,10 @@ class QwenCliOutputNamingTests(unittest.TestCase):
 
             stdout = io.StringIO()
             stderr = io.StringIO()
-            with mock.patch("sys.argv", ["generate_subtitle_qwen_api.py", *args]), \
-                 mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=duration), \
-                 mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result), \
-                 mock.patch("generate_subtitle_qwen_api.time.perf_counter", side_effect=fake_perf), \
+            with mock.patch("sys.argv", ["maw.asr.qwen", *args]), \
+                 mock.patch("maw.asr.qwen.get_duration_sec", return_value=duration), \
+                 mock.patch("maw.asr.qwen.transcribe", return_value=result), \
+                 mock.patch("maw.asr.qwen.time.perf_counter", side_effect=fake_perf), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
                 main()
                 names = sorted(path.name for path in root.glob("*.srt"))
@@ -235,10 +233,10 @@ class QwenCliOutputNamingTests(unittest.TestCase):
 
             with mock.patch(
                 "sys.argv",
-                ["generate_subtitle_qwen_api.py", str(media_dir / self.MEDIA_NAME), "--model", self.MODEL, "--debug-raw", "-o", str(output)],
-            ), mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=1000.0), \
-                 mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result), \
-                 mock.patch("generate_subtitle_qwen_api.time.perf_counter", side_effect=fake_perf), \
+                ["maw.asr.qwen", str(media_dir / self.MEDIA_NAME), "--model", self.MODEL, "--debug-raw", "-o", str(output)],
+            ), mock.patch("maw.asr.qwen.get_duration_sec", return_value=1000.0), \
+                 mock.patch("maw.asr.qwen.transcribe", return_value=result), \
+                 mock.patch("maw.asr.qwen.time.perf_counter", side_effect=fake_perf), \
                  mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
                 main()
@@ -265,10 +263,10 @@ class QwenCliOutputNamingTests(unittest.TestCase):
 
             with mock.patch(
                 "sys.argv",
-                ["generate_subtitle_qwen_api.py", str(media), "--model", self.MODEL, "--debug-raw"],
-            ), mock.patch("generate_subtitle_qwen_api.get_duration_sec", return_value=1000.0), \
-                 mock.patch("generate_subtitle_qwen_api.transcribe", return_value=result), \
-                 mock.patch("generate_subtitle_qwen_api.time.perf_counter", side_effect=fake_perf), \
+                ["maw.asr.qwen", str(media), "--model", self.MODEL, "--debug-raw"],
+            ), mock.patch("maw.asr.qwen.get_duration_sec", return_value=1000.0), \
+                 mock.patch("maw.asr.qwen.transcribe", return_value=result), \
+                 mock.patch("maw.asr.qwen.time.perf_counter", side_effect=fake_perf), \
                  mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
                 main()
