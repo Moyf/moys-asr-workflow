@@ -535,8 +535,10 @@
     }
     ctx.clearRect(0, 0, width, height);
     canvas.hidden = false;
-    const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
-    // 快照顺序与 payload 一致；播放预览只传当前活跃字幕，同轨可以有多句。
+    const layer = { main: 0, extension: 1, overlay: 2 };
+    const tracks = Array.isArray(payload?.tracks) ? [...payload.tracks]
+      .sort((a, b) => (layer[a?.role] ?? 0) - (layer[b?.role] ?? 0)) : [];
+    // 按 ASS 层序绘制，手动定位只改变布局，不改变叠放顺序；同轨保持稳定顺序。
     // 检查指定字幕时用 role + cueId 定位，不假定主/副/叠加轨固定下标。
     const records = [];
     tracks.forEach((track) => {

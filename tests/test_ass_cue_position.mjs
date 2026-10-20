@@ -308,3 +308,54 @@ test('overlay merge keeps the leftmost override and split copies it to both halv
   parts.left.assOverride.pos.x = 111;
   assert.equal(parts.right.assOverride.pos.x, 100);
 });
+
+
+test('real overlay merge retains only leftmost override as an independent copy', () => {
+  for (const override of [{ scale: 1.22, pos: { x: 100, y: 200 } }, undefined]) {
+    const left = { id: 'overlay-left', start: 0, end: 1000, text: 'A', ...(override ? { assOverride: override } : {}) };
+    const right = { id: 'overlay-right', start: 1000, end: 2000, text: 'B', assOverride: { scale: 2, pos: { x: 900, y: 800 } } };
+    const track = { id: 'overlay', segments: [left, right] };
+    const context = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h, getOverlayTrack: () => track,
+      MaweCoreState: { container: { querySelector: () => null } },
+      MaweCueListAnchor: { captureVisibleCueListVisualAnchor: () => null },
+      MaweMultiSubtitleCore: { getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '' },
+      MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } },
+      MaweSelection: { clearSelection() {} }, MaweCommands: { run: (label, fn) => fn({ commit() {} }) },
+      MaweState: { selection: { clear() {}, add() {} } }, MaweCuePanel: { setCuePanelTarget() {} },
+      MaweViewUpdates: { invalidate() {} }, MaweHint: { flashHint() {} } };
+    vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-wiring-overlay-split-merge.js', import.meta.url), 'utf8'), context);
+    assert.equal(context.mergeOverlaySegments([1, 0]), true);
+    assert.equal(track.segments.length, 1);
+    const merged = track.segments[0];
+    assert.equal(merged.text, 'AB');
+    assert.deepEqual(plain(merged.assOverride ?? null), plain(override ?? null));
+    if (override) {
+      merged.assOverride.pos.x = 333;
+      assert.equal(left.assOverride.pos.x, 100);
+      assert.equal(right.assOverride.pos.x, 900);
+    }
+  }
+});
+
+
+test('overlay scale field resets when selecting an unscaled cue or clearing scale', () => {
+  const source = fs.readFileSync(new URL('../web/editor/styles/editor-wiring-ass-cue-position.js', import.meta.url), 'utf8');
+  const start = source.indexOf('  function sync() {');
+  const end = source.indexOf('  for (const [input, axis]', start);
+  let current = { kind: 'overlay', segment: { assOverride: { scale: 1.5 } } };
+  const scaleInput = { value: '' }, element = { setAttribute() {} };
+  const context = { target: () => current, enabled: () => true, scaleWheel: null, drag: null, scaleDrag: null,
+    panel: element, positionControls: {}, scaleControls: {}, scaleInput, xInput: {}, yInput: {},
+    anchorFor: () => ({ x: 0, y: 0 }), currentScale: segment => segment.assOverride?.scale || 1,
+    translated: text => text, trackLabel: () => 'overlay', boxes: new Map(), handles: new Map(),
+    global: { MaweAssCanvas: {}, MaweDom: { overlayToggle: { checked: false } } },
+    document: { activeElement: null, getElementById: () => element } };
+  vm.runInNewContext(source.slice(start, end), context);
+  context.sync(); assert.equal(scaleInput.value, '1.50');
+  current = { kind: 'overlay', segment: {} };
+  context.sync(); assert.equal(scaleInput.value, '1.00');
+  current.segment.assOverride = { scale: 2 };
+  context.sync(); assert.equal(scaleInput.value, '2.00');
+  delete current.segment.assOverride;
+  context.sync(); assert.equal(scaleInput.value, '1.00');
+});

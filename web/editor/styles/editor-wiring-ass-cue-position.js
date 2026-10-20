@@ -272,7 +272,7 @@
         if (document.activeElement !== xInput) xInput.value = String(roundPosition(anchor.x));
         if (document.activeElement !== yInput) yInput.value = String(roundPosition(anchor.y));
       }
-      if (override?.scale && document.activeElement !== scaleInput) scaleInput.value = currentScale(current.segment).toFixed(2);
+      if (document.activeElement !== scaleInput) scaleInput.value = currentScale(current.segment).toFixed(2);
       document.getElementById('ass-cue-reset').disabled = !override?.pos;
       document.getElementById('ass-cue-scale-reset').disabled = !override?.scale;
     }

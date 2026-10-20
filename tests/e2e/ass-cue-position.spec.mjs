@@ -795,3 +795,23 @@ test('dragging an automatically stacked upper cue uses the global top anchor', a
   expect(after.pos.y).toBe(roundPosition(before.record.positionAnchor.y));
   expect(after.record.bounds.top).toBeCloseTo(before.record.bounds.top + after.pos.y - before.record.positionAnchor.y, 2);
 });
+
+
+test('overlay inspector defaults and Canvas layer order survive cue switches and reset', async ({ page }, info) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.overlay_track = { enabled: true, segments: [
+      { id: 'overlay-a', start: 0, end: 2000, text: 'OVERLAY', assOverride: { scale: 1.5, pos: { x: 320, y: 280 } } },
+      { id: 'overlay-b', start: 0, end: 2000, text: 'SECOND' } ] };
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    MaweCuePanel.setCuePanelTarget('overlay', 0);
+    MaweAssCuePosition.sync();
+  });
+  await expect(page.locator('#ass-cue-scale')).toHaveValue('1.50');
+  await page.evaluate(() => { MaweCuePanel.setCuePanelTarget('overlay', 1); MaweAssCuePosition.sync(); });
+  await expect(page.locator('#ass-cue-scale')).toHaveValue('1.00');
+  await page.evaluate(() => { MaweCuePanel.setCuePanelTarget('overlay', 0); MaweAssCuePosition.sync(); });
+  await page.locator('#ass-cue-scale-reset').click();
+  await expect(page.locator('#ass-cue-scale')).toHaveValue('1.00');
+  expect(await page.evaluate(() => MaweAssCanvas.lastRender.tracks.map(item => item.role))).toEqual(['main', 'overlay', 'overlay']);
+  await page.locator('#current-cue-panel').screenshot({ path: info.outputPath('overlay-inspector.png') });
+});
