@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import ClassVar
 
 from tests.compact_assertions import CompactContainerAssertions
 
@@ -41,9 +42,23 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(base64.b64decode(match.group(1)), (edit.WEB_DIR / 'assets/moi_dancing.gif').read_bytes())
 
+    # G06 后这些 composition 模块不再出现在清单里，
+    # 但仍是 waveform.js 的显式 import 与源码契约。
+    WAVEFORM_COMPOSITION_SOURCES: ClassVar[tuple[str, ...]] = (
+        "editor/media/editor-thumbnails.js",
+        "editor/media/waveform/thumbnails.js",
+        "editor/media/waveform/media.js",
+        "editor/media/waveform/render.js",
+        "editor/media/waveform/cue-blocks.js",
+        "editor/media/waveform/word-blocks.js",
+        "editor/media/waveform/canvas.js",
+        "editor/media/waveform/input.js",
+    )
+
     def source_contract_text(self) -> str:
         """Historical source-shape checks inspect sources, not esbuild printing."""
-        return "\n\n".join(edit.read_web_asset(name) for name in edit.read_editor_script_manifest())
+        names = list(edit.read_editor_script_manifest()) + list(self.WAVEFORM_COMPOSITION_SOURCES)
+        return "\n\n".join(edit.read_web_asset(name) for name in names)
 
     def test_editor_script_manifest_is_ordered_and_complete(self) -> None:
         self.assertEqual(
@@ -59,7 +74,6 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "shared/editor-utils.js",
                 "shared/editor-i18n.js",
                 "shared/tooltip.js",
-                "editor/media/editor-thumbnails.js",
                 "editor/media/waveform/constants.js",
                 "editor/media/waveform/labels.js",
                 "editor/media/waveform/scale.js",
@@ -73,19 +87,12 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/media/waveform/pointer.js",
                 "editor/media/waveform/workspace.js",
                 "editor/media/waveform/scale-controls.js",
-                "editor/media/waveform/media.js",
-                "editor/media/waveform/render.js",
-                "editor/media/waveform/cue-blocks.js",
-                "editor/media/waveform/word-blocks.js",
-                "editor/media/waveform/canvas.js",
-                "editor/media/waveform/input.js",
                 "editor/media/waveform/cue-drag.js",
                 "editor/media/waveform/cue-commands.js",
                 "editor/media/waveform/gap-drag.js",
                 "editor/media/waveform/markers.js",
                 "editor/media/waveform/cue-drag-update.js",
                 "editor/media/waveform/playback.js",
-                "editor/media/waveform/thumbnails.js",
                 "editor/media/waveform.js",
                 "editor/ui/editor-hint.js",
                 "editor/media/editor-jkl.js",

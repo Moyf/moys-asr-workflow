@@ -14,11 +14,6 @@
       "exportName": "initEditorUtils"
     },
     {
-      "file": "editor/media/editor-thumbnails.js",
-      "name": "editor-thumbnails",
-      "exportName": "createThumbnailModule"
-    },
-    {
       "file": "editor/media/waveform/constants.js",
       "name": "waveform-constants",
       "exportName": "createWaveformModule"
@@ -84,36 +79,6 @@
       "exportName": "createWaveformModule"
     },
     {
-      "file": "editor/media/waveform/media.js",
-      "name": "waveform-media",
-      "exportName": "createWaveformModule"
-    },
-    {
-      "file": "editor/media/waveform/render.js",
-      "name": "waveform-render",
-      "exportName": "createWaveformModule"
-    },
-    {
-      "file": "editor/media/waveform/cue-blocks.js",
-      "name": "waveform-cue-blocks",
-      "exportName": "createWaveformModule"
-    },
-    {
-      "file": "editor/media/waveform/word-blocks.js",
-      "name": "waveform-word-blocks",
-      "exportName": "createWordBlocks"
-    },
-    {
-      "file": "editor/media/waveform/canvas.js",
-      "name": "waveform-canvas",
-      "exportName": "createWaveformModule"
-    },
-    {
-      "file": "editor/media/waveform/input.js",
-      "name": "waveform-input",
-      "exportName": "createWaveformModule"
-    },
-    {
       "file": "editor/media/waveform/cue-drag.js",
       "name": "waveform-cue-drag",
       "exportName": "createWaveformModule"
@@ -141,11 +106,6 @@
     {
       "file": "editor/media/waveform/playback.js",
       "name": "waveform-playback",
-      "exportName": "createWaveformModule"
-    },
-    {
-      "file": "editor/media/waveform/thumbnails.js",
-      "name": "waveform-thumbnails",
       "exportName": "createWaveformModule"
     },
     {
