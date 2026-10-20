@@ -162,7 +162,10 @@
   function conversionPlan() {
     if (!conversionTarget || conversionTarget.project !== MaweBoot.DATA.segments) return null;
     const indices = MaweBoot.DATA.segments.map((segment, index) => conversionTarget.ids.includes(segment.id) ? index : -1).filter(i => i >= 0);
-    return global.AsrEditorUtils.planWordTimingConversion(MaweBoot.DATA.segments, indices, clock());
+    return global.AsrEditorUtils.planWordTimingConversion(MaweBoot.DATA.segments, indices, clock(), {
+      // 转换产物对跨行 MASS 对做两侧补齐（账本 #21），预览与确认同一计划。
+      rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+    });
   }
   function renderConversion() {
     const plan = conversionPlan();

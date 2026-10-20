@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import multiprocessing
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -75,6 +76,71 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.coordinator.lease('overflow', 'v')
         self.coordinator.lease('0', 'v', playing=True)
+
+    def test_keyframe_pass_resumes_with_fresh_cancellation_and_configured_tools(self):
+        from maw import thumbnail_cache, thumbnails
+        from maw.thumbnail_jobs import build_base
+        source = self.root / "resume.mp4"
+        source.write_bytes(b"source")
+        paused = threading.Event()
+        attempts = []
+        result = object()
+
+        def extract(path, **kwargs):
+            self.assertEqual(kwargs["ffmpeg_path"], "configured-tools")
+            self.assertGreater(kwargs["timeout_s"], 0)
+            self.assertLessEqual(kwargs["timeout_s"], 2)
+            attempts.append(kwargs["cancel"])
+            self.assertFalse(kwargs["cancel"].is_set())
+            if len(attempts) == 1:
+                paused.set()
+                self.assertTrue(kwargs["cancel"].wait(1), "playback interrupts the active pass")
+                paused.clear()
+                raise thumbnails.ThumbnailCancelled("playback")
+            self.assertIsNot(attempts[0], kwargs["cancel"])
+            return result
+
+        with mock.patch.object(self.coordinator, "paused", side_effect=lambda *_a, **_k: paused.is_set()), \
+             mock.patch.object(thumbnail_cache, "load_or_build_base", side_effect=lambda _p, **kw: kw["keyframe_extract"]()), \
+             mock.patch.object(thumbnails, "extract_keyframes", side_effect=extract):
+            self.assertIs(build_base(source, coordinator=self.coordinator, exact=False,
+                ffmpeg_path="configured-tools", timeout_s=2), result)
+        self.assertEqual(len(attempts), 2)
+
+    def test_keyframe_retry_stops_when_source_changes(self):
+        from maw import thumbnail_cache, thumbnails
+        from maw.thumbnail_jobs import build_base
+        source = self.root / "replace.mp4"
+        source.write_bytes(b"source")
+
+        def extract(path, **kwargs):
+            source.write_bytes(b"replacement source")
+            self.assertTrue(kwargs["cancel"].wait(1))
+            raise thumbnails.ThumbnailCancelled("source changed")
+
+        with mock.patch.object(thumbnail_cache, "load_or_build_base", side_effect=lambda _p, **kw: kw["keyframe_extract"]()), \
+             mock.patch.object(thumbnails, "extract_keyframes", side_effect=extract) as decode:
+            with self.assertRaisesRegex(OSError, "source changed"):
+                build_base(source, coordinator=self.coordinator, exact=False)
+        self.assertEqual(decode.call_count, 1)
+
+    def test_keyframe_retry_stops_at_original_deadline(self):
+        from maw import thumbnail_cache, thumbnails
+        from maw.thumbnail_jobs import build_base
+        source = self.root / "deadline.mp4"
+        source.write_bytes(b"source")
+
+        with mock.patch("maw.thumbnail_jobs.time.monotonic", return_value=100) as clock:
+            def extract(path, **kwargs):
+                clock.return_value = 102
+                raise thumbnails.ThumbnailCancelled("playback")
+
+            with mock.patch.object(self.coordinator, "paused", return_value=False), \
+                 mock.patch.object(thumbnail_cache, "load_or_build_base", side_effect=lambda _p, **kw: kw["keyframe_extract"]()), \
+                 mock.patch.object(thumbnails, "extract_keyframes", side_effect=extract) as decode:
+                with self.assertRaisesRegex(TimeoutError, "timed out"):
+                    build_base(source, coordinator=self.coordinator, exact=False, timeout_s=1)
+            self.assertEqual(decode.call_count, 1)
 
     def test_source_replacement_changes_identity(self):
         path = self.root / 'media.mp4'
@@ -177,6 +243,9 @@ class ThumbnailDemandTests(unittest.TestCase):
         from maw import thumbnails
         from maw.thumbnail_jobs import coordinated_pack
         import threading
+        # 加固（v1.9.0 macOS CI 首跑超时）：产品契约是“取消最终会发生”（watcher 50ms 轮询），
+        # 没有任何秒级时限保证；负载重的 runner 上线程调度停顿可以超过 2s。
+        # 宽限放大到 10s；真实回归（lease 永远不取消）仍由下方 worker.join + is_alive 断言在 ~3s 内暴露。
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)/"media.mp4"
             path.write_bytes(b"source")
@@ -188,11 +257,12 @@ class ThumbnailDemandTests(unittest.TestCase):
                 attempts.append(jpegs)
                 if len(attempts) == 1:
                     started.set()
-                    self.assertTrue(kwargs["cancel"].wait(2))
+                    self.assertTrue(kwargs["cancel"].wait(10),
+                                    "playing lease did not cancel sprite decode within 10s")
                     raise thumbnails.ThumbnailCancelled("playing")
                 return b"sprite"
             def wait(_targets):
-                deadline = time.monotonic()+3
+                deadline = time.monotonic()+10
                 while coord.paused(source_key(path), background=True):
                     if time.monotonic() > deadline:
                         raise TimeoutError("lease did not release")
@@ -201,12 +271,12 @@ class ThumbnailDemandTests(unittest.TestCase):
                 worker = threading.Thread(target=lambda: result.append(coordinated_pack(path,[b"frame"],
                     coordinator=coord,before_batch=wait)))
                 worker.start()
-                self.assertTrue(started.wait(2))
+                self.assertTrue(started.wait(10), "worker did not reach sprite decode within 10s")
                 coord.lease("playing",source_key(path),playing=True)
                 time.sleep(.15)
                 self.assertTrue(worker.is_alive())
                 coord.release("playing")
-                worker.join(3)
+                worker.join(10)
                 self.assertFalse(worker.is_alive())
             self.assertEqual(result,[b"sprite"])
             self.assertEqual(attempts,[[b"frame"],[b"frame"]])

@@ -20,6 +20,170 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('alignment model shortcut opens the selected model without changing the ASR provider', async ({ page }, testInfo) => {
+  await openLauncher(page);
+  await page.locator('#provider').selectOption('qwen');
+  await page.locator('#toolboxTimestampsTab').click();
+  const provider = await page.locator('#provider').inputValue();
+  const asrModel = await page.locator('#model').inputValue();
+  const modelId = await page.evaluate(() => window.MAWLauncher.config.alignmentModels.at(-1).id);
+  await page.locator('#toolboxTimestampModel').selectOption(modelId);
+  const hint = page.locator('#toolboxAlignmentModelHint');
+  const gap = await hint.evaluate((element) => ({
+    above: element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom,
+    row: parseFloat(getComputedStyle(element).rowGap),
+  }));
+  expect(gap.above).toBeGreaterThanOrEqual(8);
+  expect(gap.row).toBeGreaterThanOrEqual(8);
+  console.log(`Alignment settings spacing: above=${gap.above}px, wrapped rows=${gap.row}px`);
+  await testInfo.attach('alignment-link-spacing', { body: JSON.stringify(gap), contentType: 'application/json' });
+  await hint.locator('..').screenshot({ path: testInfo.outputPath('alignment-model-shortcut.png') });
+
+  const shortcut = page.locator('#openAlignmentModelSettings');
+  await expect(shortcut).toHaveText('管理对齐模型');
+  await page.evaluate(() => document.getElementById('langEn').click());
+  await expect(shortcut).toHaveText('Manage alignment models');
+  await shortcut.click();
+  await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#alignmentModelSettingsSection')).toBeVisible();
+  await expect(page.locator(`#localAlignmentModelList [data-model-id="${modelId}"]`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#provider')).toHaveValue(provider);
+  await page.locator('#alignmentModelSettingsSection').screenshot({ path: testInfo.outputPath('alignment-model-settings.png') });
+
+  // Complete setup through the real UI flow while retaining cloud ASR settings.
+  await expect(page.locator('#prepareAlignmentModel')).toBeDisabled();
+  await expect(page.locator('#localAlignmentModelStatus')).toContainText('Missing dependencies');
+  await page.locator('#localAlignmentModelStatus button').click();
+  await expect(page.locator('#localRuntimePanel')).toBeVisible();
+  await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'true');
+  await page.locator('#refreshLocalRuntime').click();
+  await expect(page.locator('#localRuntimeStatus')).toHaveText('Local runtime is not installed');
+  await page.locator('#localRuntimePanel').screenshot({ path: testInfo.outputPath('cloud-asr-runtime-setup.png') });
+  await page.locator('#installLocalRuntime').click();
+  await expect(page.locator('#localRuntimeStatus')).toHaveText('Local runtime is ready');
+  await expect(page.locator('#localRuntimeProgress')).toBeHidden();
+  await expect(page.locator('#provider')).toHaveValue(provider);
+  await expect(page.locator('#model')).toHaveValue(asrModel);
+  await page.locator('#settingsClose').click();
+  await shortcut.click();
+  await expect(page.locator('#prepareAlignmentModel')).toBeEnabled();
+  const selectedModel = page.locator(`#localAlignmentModelList [data-model-id="${modelId}"]`);
+  await expect(selectedModel).not.toHaveClass(/\bready\b/);
+  await page.locator('#prepareAlignmentModel').click();
+  await expect(selectedModel).toHaveClass(/\bready\b/);
+  await expect(page.locator('#provider')).toHaveValue(provider);
+  await expect(page.locator('#model')).toHaveValue(asrModel);
+});
+
+test('cloud ASR runtime installation errors leave the installing state', async ({ page }) => {
+  await openLauncher(page);
+  const config = await page.evaluate(() => window.MAWLauncher.config);
+  await page.addInitScript((initialConfig) => {
+    initialConfig.providerId = 'qwen';
+    window.__runtimeBackend = { status: 'installing', ready: false };
+    initialConfig.localRuntime = { ...window.__runtimeBackend };
+    window.__runtimeRequests = [];
+    window.pywebview = { api: new Proxy({}, { get: (_target, method) => method === 'then' ? undefined : async (payload) => {
+      if (method === 'get_config') return initialConfig;
+      if (method === 'get_local_runtime') {
+        window.__runtimeRequests.push(payload);
+        return { ok: true, ...window.__runtimeBackend };
+      }
+      if (method === 'get_alignment_models') return { ok: true, models: initialConfig.alignmentModels };
+      return { ok: true };
+    } }) };
+  }, config);
+  await page.reload();
+  await page.waitForFunction(() => document.body.classList.contains('launcher-ready'));
+  await page.evaluate(() => window.MAWLauncher.openSettings('localRuntimePanel'));
+  for (const code of ['local_runtime_install_failed', 'local_runtime_cancelled']) {
+    await page.evaluate((errorCode) => {
+      window.MAWLauncher.config.localRuntime = { status: 'installing', ready: false };
+      window.MAWLauncher.onBackendEvent({ type: 'localRuntimeProgress', percent: 30 });
+      window.__runtimeBackend = { status: 'broken', ready: false };
+      window.MAWLauncher.onBackendEvent({ type: 'error', code: errorCode, detail: 'test runtime failure' });
+    }, code);
+    await expect(page.locator('#localRuntimeStatus')).toHaveText('本地运行环境需要修复');
+    await expect(page.locator('#localRuntimeProgress')).toBeHidden();
+    await expect(page.locator('#installLocalRuntime')).toHaveText('修复运行环境');
+    await expect(page.locator('#installLocalRuntime')).toBeEnabled();
+    await expect(page.locator('#provider')).toHaveValue('qwen');
+  }
+  const requests = await page.evaluate(() => window.__runtimeRequests);
+  expect(requests.length).toBeGreaterThanOrEqual(2);
+  expect(requests.every((payload) => payload.modelId === '')).toBe(true);
+});
+
+test('runtime upgrade and alignment model states distinguish files, validation, and dependencies', async ({ page }, testInfo) => {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    const names = ['faster_whisper', 'funasr', 'qwen_asr', 'jieba', 'torch', 'torchaudio', 'quapeaks', 'sherpa_onnx', 'soundfile'];
+    window.MAWLauncher.config.localRuntime = {
+      status: 'broken',
+      ready: false,
+      runtimeVersion: '6',
+      path: 'D:\\Demo\\local-runtime',
+      modelCachePath: 'D:\\Demo\\model-cache',
+      inventory: {
+        status: 'broken',
+        ready: false,
+        runtimeVersionExpected: '7',
+        runtimeVersionInstalled: '6',
+        pythonVersionExpected: '3.11',
+        pythonVersionInstalled: '3.11',
+        manifestStatus: 'ready',
+        installedAt: 0,
+        components: names.map((name) => ({ name, required: true, installed: true })),
+      },
+    };
+  });
+  await page.locator('#provider').selectOption('local');
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsRuntimeTab').click();
+
+  await expect(page.locator('#localRuntimeStatus')).toContainText('运行环境需要升级：6 → 7');
+  await expect(page.locator('#localRuntimeHint')).toHaveText('已检测到依赖文件：9/9，尚未完成新版环境验证。');
+  await expect(page.locator('#installLocalRuntime')).toHaveText('升级并验证运行环境');
+  await page.locator('#toggleLocalRuntimeInventory').click();
+  await expect(page.locator('#localRuntimeInventory')).toContainText('需要升级：6 → 7');
+  await expect(page.locator('#localRuntimeInventory')).toContainText('依赖组件 (9/9)');
+  const runtimeGap = await page.locator('.repair-row').evaluate((row) => {
+    const hint = row.querySelector('#localRuntimeHint').getBoundingClientRect();
+    const button = row.querySelector('#installLocalRuntime').getBoundingClientRect();
+    const style = getComputedStyle(row);
+    return { vertical: button.top >= hint.bottom ? button.top - hint.bottom : 0, rowGap: parseFloat(style.rowGap) };
+  });
+  expect(runtimeGap.rowGap).toBeGreaterThanOrEqual(8);
+  if (runtimeGap.vertical > 0) expect(runtimeGap.vertical).toBeGreaterThanOrEqual(8);
+  console.log(`Runtime upgrade layout spacing: vertical=${runtimeGap.vertical}px, wrapped row gap=${runtimeGap.rowGap}px`);
+  await testInfo.attach('runtime-upgrade-spacing', { body: JSON.stringify(runtimeGap), contentType: 'application/json' });
+  await page.locator('#localRuntimePanel').screenshot({ path: testInfo.outputPath('runtime-upgrade-status.png') });
+
+  await page.evaluate(() => {
+    const inventory = window.MAWLauncher.config.localRuntime.inventory;
+    inventory.components = inventory.components.map((component) => component.name === 'qwen_asr' ? { ...component, installed: false } : component);
+  });
+  await page.locator('#refreshLocalRuntime').click();
+  await expect(page.locator('#localRuntimeHint')).toHaveText('已检测到依赖文件：8/9，升级时会补齐缺失文件并验证新版环境。');
+  await page.evaluate(() => window.MAWLauncher.openSettings('alignmentModelSettingsSection'));
+  const aligner = page.locator('#localAlignmentModelList [data-model-id="qwen3-forced-aligner-0.6b"]');
+  await expect(aligner).toContainText('未下载 · 缺少依赖');
+  await expect(page.locator('#localAlignmentModelStatus')).toContainText('未下载 · 缺少依赖');
+  const recognitionModel = await page.evaluate(() => window.MAWLauncher.config.providers
+    .find((item) => item.id === 'local').models.find((model) => !model.supportsWordTimestamps).id);
+  await page.locator('#settingsClose').click();
+  await page.locator('#model').selectOption(recognitionModel);
+  await page.evaluate(() => {
+    const select = document.getElementById('recognitionAlignmentModel');
+    select.value = 'qwen3-forced-aligner-0.6b';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect(page.locator('#recognitionAlignmentModelStatus')).toContainText('未下载 · 缺少依赖');
+  await expect(page.locator('#recognitionAlignmentModelStatus button')).toHaveText('本地运行环境');
+  await page.evaluate(() => window.MAWLauncher.openSettings('alignmentModelSettingsSection'));
+  await page.locator('#alignmentModelSettingsSection').screenshot({ path: testInfo.outputPath('alignment-model-dependency-status.png') });
+});
+
 test('OpenAI ASR exposes official and OpenRouter models with a conditional Custom input', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#provider').selectOption('openai');
@@ -282,10 +446,64 @@ test('translation merge option follows manual and automatic translation controls
   await expect(page.locator('#autoTranslateMergeField')).toBeHidden();
 });
 
+test('translation language filter defaults on, persists, syncs and reaches requests', async ({ page }) => {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    Object.assign(window.MAWLauncher.config.postprocessProviders.find(p => p.id === 'deepseek'),
+      { verified: true, hasApiKey: true, hasBaseUrl: true, hasModel: true });
+    window.__filterPlans = [];
+    window.__filterRequests = [];
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'save_postprocess_plan') window.__filterPlans.push(payload.plan);
+      if (method === 'run_llm_postprocess') {
+        window.__filterRequests.push(payload);
+        return { ok: false, error: 'test stopped before sending to a model' };
+      }
+      return original(method, payload);
+    };
+  });
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#postprocessOperation').selectOption('translate_zh');
+  await expect(page.locator('#postprocessSkipTarget')).toBeChecked();
+  await page.locator('#postprocessSkipTarget').uncheck();
+  await expect(page.locator('#autoTranslateSkipTarget')).not.toBeChecked();
+  await expect.poll(() => page.evaluate(() => window.__filterPlans.at(-1)?.steps
+    .find(s => s.id === 'translate')?.skipTargetLanguage)).toBe(false);
+  await page.locator('#toolboxInputPath').fill('source.mosp');
+  await page.locator('#runLlmPostprocess').click();
+  await expect.poll(() => page.evaluate(() => window.__filterRequests.at(-1)?.skipTargetLanguage)).toBe(false);
+  const manualGap = await page.locator('#postprocessSkipTarget').evaluate(input => {
+    const label = input.closest('label');
+    return label.nextElementSibling.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
+  });
+  expect(manualGap).toBeGreaterThanOrEqual(8);
+  await page.locator('#postprocessSkipTarget').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '.artifacts/translation-filter-manual.png' });
+  await page.locator('#toolboxClose').click();
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#autoStepTranslate').check();
+  await expect(page.locator('#autoTranslateSkipTargetField')).toBeVisible();
+  await page.locator('#autoTranslateSkipTarget').check();
+  await expect(page.locator('#postprocessSkipTarget')).toBeChecked();
+  await expect.poll(() => page.evaluate(() => window.__filterPlans.at(-1)?.steps
+    .find(s => s.id === 'translate')?.skipTargetLanguage)).toBe(true);
+  const autoGap = await page.locator('#autoTranslateSkipTargetField').evaluate(group => {
+    const [label, hint] = group.children;
+    return hint.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
+  });
+  expect(autoGap).toBeGreaterThanOrEqual(8);
+  await page.locator('#autoTranslateSkipTargetField').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '.artifacts/translation-filter-auto.png' });
+  await page.locator('#autoStepTranslate').uncheck();
+  await expect(page.locator('#autoTranslateSkipTargetField')).toBeHidden();
+});
+
 test('automatic LLM setup highlights test connection until clicked', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
+    await window.MAWLauncher.callBackend('save_postprocess_settings', { providerId: 'deepseek', apiKey: 'demo-key' });
     const provider = window.MAWLauncher.config.postprocessProviders.find((item) => item.id === 'deepseek');
     Object.assign(provider, {
       verified: false,
@@ -512,9 +730,9 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
     };
   });
   expect(layout.columns).toBe(1);
-  expect(layout.tabColumnCount).toBe(4);
+  expect(layout.tabColumnCount).toBe(5);
 
-  // beta.4 重构后工具顺序：烧录字幕、媒体重组、口播对齐、提取音频、生成波形。
+  // 媒体工具依次为文稿匹配、烧录、口播对齐、提取音频、生成波形；隐藏的媒体重组不参与键盘导航。
   await page.locator('#toolboxAlignmentTab').focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('#toolboxExtractAudioTab')).toBeFocused();
@@ -524,6 +742,12 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
   await page.keyboard.press('ArrowUp');
   await expect(page.locator('#toolboxAlignmentTab')).toBeFocused();
   await expect(page.locator('#toolboxAlignmentPanel')).toBeVisible();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#toolboxBurnSubtitleTab')).toBeFocused();
+  await expect(page.locator('#toolboxBurnSubtitlePanel')).toBeVisible();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#toolboxScriptAlignmentTab')).toBeFocused();
+  await expect(page.locator('#toolboxScriptAlignmentPanel')).toBeVisible();
 });
 
 test('FFmpeg media log stays above the utility notice and renders the latest progress', async ({ page }) => {
@@ -550,7 +774,7 @@ test('FFmpeg media log stays above the utility notice and renders the latest pro
   ))).toBeTruthy();
 });
 
-test('green-screen burn accepts subtitles without a video source', async ({ page }) => {
+test('green-screen burn accepts subtitles without a video source and optional source audio', async ({ page }, testInfo) => {
   await openLauncher(page);
   await page.locator('#toolboxUtilitiesPrimaryTab').click();
   await page.locator('#toolboxBurnSubtitleTab').click();
@@ -565,27 +789,49 @@ test('green-screen burn accepts subtitles without a video source', async ({ page
       return original(method, payload);
     };
   });
+  await expect(page.locator('#toolboxGreenScreenAudioField')).toBeHidden();
   await page.locator('#toolboxGreenScreen').check();
+  await expect(page.locator('#toolboxGreenScreenAudioField')).toBeVisible();
+  await expect(page.locator('#toolboxGreenScreenIncludeAudio')).not.toBeChecked();
   await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeVisible();
   await expect(page.locator('#toolboxUtilityMediaDropZone')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
   await expect(page.locator('#pickToolboxUtilityMedia')).toBeDisabled();
   await expect(page.locator('#runBurnSubtitle')).toHaveText('生成绿幕视频');
-  const gap = await page.locator('.toolbox-green-screen-option .hint').evaluate((element) =>
+  const option = page.locator('.toolbox-green-screen-option');
+  const fieldGap = await option.locator('#toolboxGreenScreenSizeField').evaluate((element) =>
     element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
-  expect(gap).toBeGreaterThanOrEqual(8);
+  expect(fieldGap).toBeGreaterThanOrEqual(8);
+  const hintGap = await option.locator('[data-i18n="toolbox_green_screen_hint"]').evaluate((element) =>
+    element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
+  expect(hintGap).toBeGreaterThanOrEqual(8);
   await page.locator('#toolboxBurnSubtitlePath').fill('D:\\Demo\\captions.ass');
   await page.locator('#runBurnSubtitle').click();
   await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(1);
   const call = await page.evaluate(() => window.__greenBurnCalls[0]);
-  expect(call).toMatchObject({ mediaPath: '', subtitlePath: 'D:\\Demo\\captions.ass', greenScreen: true });
+  expect(call).toMatchObject({ mediaPath: '', subtitlePath: 'D:\\Demo\\captions.ass', greenScreen: true,
+    greenScreenIncludeAudio: false });
   await expect(page.locator('#toolboxUtilityMediaPath')).toHaveValue('D:\\Demo\\captions.green-screen.mp4');
+  await page.locator('#toolboxGreenScreenIncludeAudio').check();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
+  await page.locator('#toolboxUtilityMediaPath').fill('D:\\Demo\\voice.wav');
+  const audioGap = await page.locator('#toolboxGreenScreenAudioField').evaluate(el =>
+    el.getBoundingClientRect().left - el.previousElementSibling.getBoundingClientRect().right);
+  expect(audioGap).toBeGreaterThanOrEqual(8);
+  console.log(`Launcher green screen spacing: ${JSON.stringify({ fieldGap, hintGap, audioGap })}`);
+  await page.screenshot({ path: testInfo.outputPath('green-screen-audio-option.png') });
+  await page.locator('#runBurnSubtitle').click();
+  await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(2);
+  expect(await page.evaluate(() => window.__greenBurnCalls[1])).toMatchObject({
+    mediaPath: 'D:\\Demo\\voice.wav', greenScreen: true, greenScreenIncludeAudio: true });
+  await page.locator('#toolboxGreenScreenIncludeAudio').uncheck();
   await page.locator('#toolboxWaveformTab').click();
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
   await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
   await page.locator('#toolboxBurnSubtitleTab').click();
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
   await page.locator('#toolboxGreenScreen').uncheck();
+  await expect(page.locator('#toolboxGreenScreenAudioField')).toBeHidden();
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
   await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
   await expect(page.locator('#runBurnSubtitle')).toHaveText('烧录字幕');
@@ -1238,7 +1484,7 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
 
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
   await expect(page.locator('#stopServer')).toBeHidden();
   expect(await page.evaluate(() => window.__serverStatusCalls)).toBeGreaterThanOrEqual(2);
 });
@@ -1302,19 +1548,19 @@ test('restarting after a server disconnect does not reopen the editor page', asy
 
   // 先让服务器上线，使监控启动并处于 connected 状态。
   await page.locator('#openMawe').click();
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器', { timeout: 10_000 });
   await page.waitForFunction(() => window.__openUrlCalls.length === 1);
 
   // 模拟断开。
   await page.evaluate(() => { window.__serverHealthy = false; });
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
 
   // 模拟重启成功：只更新提示，不再调用 open_url 打开新页面。
   await page.evaluate(() => { window.__serverHealthy = true; });
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('回到原编辑器页面', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
   await expect(page.locator('#stopServer')).toBeVisible();
   await page.waitForFunction(() => window.__openUrlCalls.length === 1, undefined, { timeout: 5_000 });
   expect(await page.evaluate(() => window.__openUrlCalls[0])).toBe('http://127.0.0.1:8250/');
@@ -1656,6 +1902,8 @@ test('batch start delegates output allocation and batchDone reconciles every ter
   await page.locator('#batchMode').click();
   await page.evaluate(() => {
     window.__batchCalls = [];
+    // mock 环境没有 API Key：#208 起 startBatch 会先做 Key 校验，桩掉它以免静默早退。
+    window.MAWLauncher.validateApiKey = () => true;
     window.MAWLauncher.callBackend = async (method, payload) => {
       window.__batchCalls.push({ method, payload });
       return { ok: true };
@@ -1708,6 +1956,8 @@ test('batchDone fails rows that never reported when the batch was not cancelled'
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#batchMode').click();
   await page.evaluate(() => {
+    // mock 环境没有 API Key：#208 起 startBatch 会先做 Key 校验，桩掉它以免静默早退。
+    window.MAWLauncher.validateApiKey = () => true;
     window.MAWLauncher.callBackend = async () => ({ ok: true });
     const drop = new Event('drop', { bubbles: true, cancelable: true });
     Object.defineProperty(drop, 'dataTransfer', {
@@ -1845,21 +2095,21 @@ test('AI cleanup notes persist in the automatic plan and reach the manual reques
       return original(method, payload);
     };
   });
-  await page.locator('#toolboxMatchTab').click();
-  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeHidden();
-  await page.locator('#postprocessAiCleanup').check();
-  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeVisible();
-  await page.locator('#postprocessAiCleanupNotes').fill('  保留所有数字\n去除试麦  ');
+  // #224 起 AI 口播整理的备注统一走 LLM 工具箱的按任务提示词：自动计划的
+  // cleanup 步骤记录 customPrompt，手动请求把它作为 notes 发给 run_ai_cleanup。
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#postprocessOperation').selectOption('ai_cleanup');
+  await page.locator('#postprocessPrompt').fill('  保留所有数字\n去除试麦  ');
+  // 计划按原文保存提示词（不裁剪）；trim 只发生在手动请求的 notes 上。
   await expect.poll(() => page.evaluate(() => window.__notesPlans.at(-1)?.steps
-    .find(s => s.id === 'match')?.aiCleanupNotes)).toBe('保留所有数字\n去除试麦');
+    .find(s => s.id === 'cleanup')?.customPrompt)).toBe('  保留所有数字\n去除试麦  ');
   await page.locator('#toolboxInputPath').fill('source.mosp');
-  await page.locator('#postprocessScriptPath').fill('script.txt');
-  await page.locator('#runScriptMatch').click();
+  await page.locator('#runLlmPostprocess').click();
   await expect.poll(() => page.evaluate(() => window.__cleanupPayload?.notes)).toBe('保留所有数字\n去除试麦');
-  await page.locator('#postprocessAiCleanup').uncheck();
-  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeHidden();
-  await page.locator('#postprocessAiCleanup').check();
-  await expect(page.locator('#postprocessAiCleanupNotes')).toHaveValue('  保留所有数字\n去除试麦  ');
+  await page.locator('#postprocessOperation').selectOption('proofread');
+  await expect(page.locator('#postprocessPrompt')).toHaveValue('');
+  await page.locator('#postprocessOperation').selectOption('ai_cleanup');
+  await expect(page.locator('#postprocessPrompt')).toHaveValue('  保留所有数字\n去除试麦  ');
 });
 
 async function prepareDeferredAiLauncher(page, entry) {
@@ -1885,13 +2135,11 @@ async function prepareDeferredAiLauncher(page, entry) {
       return original(method, payload);
     };
   });
-  await page.locator(entry === 'cleanup' ? '#toolboxMatchTab' : '#toolboxLlmTab').click();
+  // #224 起 AI 口播整理并入 LLM 工具箱的任务下拉；两个入口都经 #runLlmPostprocess 启动。
+  await page.locator('#toolboxLlmTab').click();
   await page.locator('#toolboxInputPath').fill('D:\\Demo\\source.mosp');
-  if (entry === 'cleanup') {
-    await page.locator('#postprocessAiCleanup').check();
-    await page.locator('#postprocessScriptPath').fill('D:\\Demo\\script.txt');
-  }
-  return page.locator(entry === 'cleanup' ? '#runScriptMatch' : '#runLlmPostprocess');
+  if (entry === 'cleanup') await page.locator('#postprocessOperation').selectOption('ai_cleanup');
+  return page.locator('#runLlmPostprocess');
 }
 
 async function sendAiLifecycleEvents(page, index, events) {

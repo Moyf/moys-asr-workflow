@@ -94,8 +94,14 @@ class AlignmentState:
 class AlignmentServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
+    def server_close(self) -> None:
+        self.recording_job.close()
+        super().server_close()
+
     def __init__(self, address: tuple[str, int], state: AlignmentState) -> None:
         self.state = state
+        from maw.recording_review_server import RecordingReviewJob
+        self.recording_job = RecordingReviewJob(state)
         self.request_token = secrets.token_urlsafe(32)
         super().__init__(address, AlignmentRequestHandler)
 
@@ -111,6 +117,9 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
         path = urlsplit(self.path).path
+        from maw.recording_review_server import handle_recording_post
+        if handle_recording_post(self, path):
+            return
         if path == "/api/preview":
             try:
                 request = self.read_json()
@@ -220,10 +229,14 @@ class AlignmentRequestHandler(BaseHTTPRequestHandler):
             if include_body:
                 self.wfile.write(body)
             return
+        if path == "/api/recording/status":
+            self.send_json(HTTPStatus.OK, {"ok": True, **self.server.recording_job.snapshot()})
+            return
         if path == "/api/state":
             self.send_json(HTTPStatus.OK, {
                 **self.server.state.payload(),
                 "requestToken": self.server.request_token,
+                "recordingInputSignature": self.server.recording_job.signature,
             })
             return
         if path == "/api/waveform":
@@ -460,6 +473,8 @@ def render_page() -> bytes:
     core = GAP_REMOVE_CORE_PATH.read_text(encoding="utf-8").rstrip()
     if page.count(PAGE_CORE_PLACEHOLDER) != 1:
         raise ValueError("对齐页面缺少唯一的 Gap Core 注入占位符")
+    extension = (ROOT / "web" / "alignment" / "recording-review.js").read_text(encoding="utf-8")
+    page = page.replace("/* __RECORDING_REVIEW_JS__ */", extension)
     return page.replace(PAGE_CORE_PLACEHOLDER, core).encode("utf-8")
 
 

@@ -113,14 +113,15 @@ class GapRemovedVideoCompatibilityTests(unittest.TestCase):
                              expected_hashes[index][:10] + expected_hashes[index][20:30])
         self.assertEqual(hashlib.sha256(source.read_bytes()).digest(), before)
 
-    def test_tiny_interval_that_loses_audio_is_rejected_not_silently_exported(self):
+    def test_tiny_interval_expands_to_safe_boundary_without_silently_dropping_audio(self):
         source = self.generate("tiny.mp4", audio_delay=True)
         mix_hevc_parameter_arrays(source)
         output = self.root / "rebuilt.mp4"
-        with self.assertRaises(self.server.GapRemovedVideoExportError):
-            self.server.rebuild_gap_removed_video(source, [(20, 21)], output,
-                ffmpeg_path=Path(FFMPEG), ffprobe_path=Path(FFPROBE))
-        self.assertFalse(output.exists())
+        self.server.rebuild_gap_removed_video(source, [(20, 21)], output,
+            ffmpeg_path=Path(FFMPEG), ffprobe_path=Path(FFPROBE))
+        self.assertTrue(self.server._gap_removed_video_streams_match(
+            self.server._probe_gap_removed_video(source, Path(FFPROBE)).streams,
+            self.server._probe_gap_removed_video(output, Path(FFPROBE)).streams))
 
 
 if __name__ == "__main__":

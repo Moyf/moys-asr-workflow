@@ -560,10 +560,35 @@
       .missing-line { grid-template-columns: 1fr; }
       .recording-entry .action-group { grid-column: 1 / -1; }
     }
+      .recording-panel { margin: 16px 0; padding: 14px; }
+    .recording-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+    .recording-options { display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; }
+    .recording-row { border-top:1px solid var(--line); padding:12px 0; }
+    .recording-row p, #recording-status { white-space:pre-wrap; overflow-wrap:anywhere; margin:12px 0; }
+    #recording-lines { margin-top:12px; }
+    [hidden] { display:none !important; }
   </style>
 </head>
 <body>
 <main>
+  <section class="panel recording-panel" id="recording-panel">
+    <label><input id="recording-enable" type="checkbox"> 文稿字幕生成：先审查 ASR 念读，再生成精确时间码</label>
+    <div id="recording-body" hidden>
+      <p class="muted" style="margin-top:12px">沿用下方候选和试听。原录音不改写，额外内容默认保留；匹配完整不代表声音读对。</p>
+      <div class="recording-options">
+        <label><input id="recording-source" type="checkbox"> 输入是原始 ASR 结果，未用文稿替换文字</label>
+        <label><input id="recording-latest" type="checkbox"> 局部重录组内优先最后完整念读</label>
+      </div>
+      <div class="recording-actions">
+        <button id="recording-recommend" type="button">应用保守推荐</button>
+        <button id="recording-fill" type="button">补充 ASR 字词码（新工程，重开审查）</button>
+        <button id="recording-generate" type="button" disabled>生成文稿 MOSP + SRT</button>
+        <button id="recording-cancel" type="button" disabled>停止文稿生成</button>
+      </div>
+      <p id="recording-status" role="status">请确认来源，检查候选并试听。</p>
+      <div id="recording-lines"></div>
+    </div>
+  </section>
   <h1>MAW 口播对齐</h1>
   <p id="meta" class="muted">正在读取 mosp……</p>
     <div class="notice">
@@ -866,6 +891,7 @@
     gapPreviewRange = null;
     render();
     if (message) $('#status').textContent = message;
+    void window.MAWRecordingReview.refresh();
     return true;
   }
 
@@ -886,6 +912,7 @@
     gapPreviewRange = null;
     render();
     if (message) $('#status').textContent = message;
+    void window.MAWRecordingReview.refresh();
     return true;
   }
 
@@ -1409,6 +1436,7 @@
       selectionPreview.extraActions = {...extraActions};
       render();
       updateStatus();
+      void window.MAWRecordingReview.refresh();
     } catch (error) {
       if (serial === previewSerial) {
         $('#status').textContent = `预览失败：${error.message}`;
@@ -3092,6 +3120,25 @@
     state = await (await fetch('/api/state')).json();
     alignment = state.alignment;
     selectedByLine = {...alignment.defaultSelection};
+    const recordingRestored = window.MAWRecordingReview.mount({
+      state:()=>state,
+      selection:()=>({selectedByLine:{...selectedByLine},candidateActions:{...candidateActions},extraActions:{...extraActions},
+        ...(gapRemoveDirty?{gapRemove:gapRemovePayload()}: {})}),
+      apply:value=>{
+        selectedByLine={...(value.selectedByLine||{})};
+        candidateActions={...(value.candidateActions||{})};extraActions={...(value.extraActions||{})};
+        if(value.gapRemove&&typeof value.gapRemove==='object') {
+          const provenance=normalizeGapProvenance(value.gapRemove.provenance,value.gapRemove.gaps||[]);
+          removedGaps=coalesceGapEntries(gapRangesFromProvenance(provenance));
+          gapRemoveConfig={...value.gapRemove,provenance,gaps:decorateGapEntries(removedGaps,provenance)};
+          gapOperationMode=normalizeGapOperationMode(gapRemoveConfig.operation_mode);
+          $('#skip-gap-playback').checked=gapRemoveConfig.skip_playback!==false;
+          $('#gap-operation-mode').value=gapOperationMode;
+          gapRemoveDirty=true;
+        }
+      },
+      preview:()=>refreshPreview(),
+    });
     $('#meta').textContent = `${state.projectName} · 文稿 ${state.scriptName}${state.media.available ? ` · 媒体 ${state.media.name}` : ''}`;
     if (state.media.available) {
       const player = document.createElement(state.media.kind === 'video' ? 'video' : 'audio');
@@ -3124,7 +3171,8 @@
       updateTimelinePlayhead();
     });
     renderPaths();
-    await refreshPreview({preserveActions: false});
+    await refreshPreview({preserveActions: recordingRestored});
+    await window.MAWRecordingReview.resume();
     await loadWaveform();
     render();
   }
@@ -3145,6 +3193,7 @@
     };
     if (!event.target.checked) gapPreviewRange = null;
     updateTimelinePlayhead();
+    void window.MAWRecordingReview.refresh();
   });
   $('#gap-operation-mode').addEventListener('change', (event) => {
     const next = normalizeGapOperationMode(event.target.value);
@@ -3156,6 +3205,7 @@
     };
     gapRemoveDirty = true;
     render();
+    void window.MAWRecordingReview.refresh();
   });
   $('#follow-playhead').addEventListener('change', updateTimelinePlayhead);
   document.addEventListener('pointerdown', (event) => {
@@ -3168,6 +3218,9 @@
   document.addEventListener('click', releasePlaybackFocus, true);
   document.addEventListener('keydown', handleSpacebar);
   init().catch((error) => { $('#meta').textContent = `加载失败：${error.message}`; });
+</script>
+<script>
+/* __RECORDING_REVIEW_JS__ */
 </script>
 </body>
 </html>

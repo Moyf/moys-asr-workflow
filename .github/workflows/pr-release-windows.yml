@@ -59,11 +59,72 @@ jobs:
         # 显式构建（pnpm install 的 postinstall 也会构建，这里保持显式不依赖钩子）。
         run: pnpm install --frozen-lockfile && pnpm run build
 
+      - name: Install FFmpeg for media integration tests
+        shell: pwsh
+        # Test dependency only: the lite preview must still contain no FFmpeg.
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Keep the version, sources and checksum aligned with release.yml.
+          $FfmpegVersion = '8.1.2'
+          $FfmpegRoot = Join-Path $env:RUNNER_TEMP 'maw-media-ffmpeg'
+          $FfmpegArchive = Join-Path $FfmpegRoot "ffmpeg-$FfmpegVersion-essentials_build.zip"
+          $FfmpegPackage = Join-Path $FfmpegRoot 'package'
+          $FfmpegUrls = @(
+            "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-$FfmpegVersion-essentials_build.zip"
+            "https://github.com/GyanD/codexffmpeg/releases/download/$FfmpegVersion/ffmpeg-$FfmpegVersion-essentials_build.zip"
+          )
+          $ExpectedHash = 'db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec'
+          New-Item -ItemType Directory -Path $FfmpegPackage -Force | Out-Null
+          $DownloadedUrl = $null
+          foreach ($FfmpegUrl in $FfmpegUrls) {
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Write-Host "Downloading FFmpeg from $FfmpegUrl (attempt $attempt/3)"
+                Invoke-WebRequest -Uri $FfmpegUrl -OutFile $FfmpegArchive -TimeoutSec 120
+                $ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $FfmpegArchive).Hash.ToLowerInvariant()
+                if ($ActualHash -ne $ExpectedHash) {
+                  throw "FFmpeg archive checksum mismatch: expected $ExpectedHash, got $ActualHash."
+                }
+                $DownloadedUrl = $FfmpegUrl
+                break
+              } catch {
+                Remove-Item -LiteralPath $FfmpegArchive -Force -ErrorAction SilentlyContinue
+                Write-Warning "FFmpeg download failed from $FfmpegUrl (attempt $attempt/3): $($_.Exception.Message)"
+                if ($attempt -lt 3) { Start-Sleep -Seconds 10 }
+              }
+            }
+            if ($DownloadedUrl) { break }
+          }
+          if (-not $DownloadedUrl) {
+            throw 'Unable to download a verified FFmpeg archive from any configured source.'
+          }
+          Expand-Archive -LiteralPath $FfmpegArchive -DestinationPath $FfmpegPackage -Force
+          # Launch the real binaries, avoiding shims that can orphan FFmpeg on cancellation.
+          $FfmpegBinary = Get-ChildItem -LiteralPath $FfmpegPackage -Filter ffmpeg.exe -Recurse -File | Select-Object -First 1
+          if (-not $FfmpegBinary) { throw 'The FFmpeg package contains no executable.' }
+          $FfmpegBin = $FfmpegBinary.Directory.FullName
+          $FfprobeBinary = Join-Path $FfmpegBin 'ffprobe.exe'
+          if (-not (Test-Path -LiteralPath $FfprobeBinary -PathType Leaf)) { throw 'FFprobe is unavailable.' }
+          & $FfmpegBinary.FullName -version
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg is unavailable.' }
+          & $FfprobeBinary -version
+          if ($LASTEXITCODE -ne 0) { throw 'FFprobe is unavailable.' }
+          $FfmpegBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Run packaging contract tests
-        run: uv run python scripts/run_tests.py tests/test_packaging_contract.py
+        run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_packaging_contract.py
 
       - name: Run Python tests
-        run: uv run python scripts/run_tests.py
+        run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py
+
+      - name: Preserve failed Python check evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-preview-python-checks
+          path: .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Download embedded Python bootstrap assets
         run: |

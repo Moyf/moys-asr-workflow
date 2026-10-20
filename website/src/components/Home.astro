@@ -1,27 +1,37 @@
 ---
-// 官网首页：中英两种语言共用此组件，文案来自 src/i18n/home.ts。
-// 独立于 BaseLayout：首页使用新令牌（home.css），文档页仍用 global.css / docs.css。
 import '../styles/home.css';
 import { sitePath } from '../lib/site-path';
 import { copy, links, type Lang } from '../i18n/home';
-
 interface Props { lang: Lang }
 const { lang } = Astro.props;
 const t = copy[lang];
-const isExternal = (href: string) => /^https?:/.test(href);
-const href = (h: string) => (isExternal(h) ? h : sitePath(h));
-const otherLangHref = sitePath(t.langSwitch.href);
-const demoGroups = [false, true];
+const href = (path: string) => /^https?:/.test(path) ? path : sitePath(path);
+const ui = lang === 'zh' ? {
+  skip: '跳到正文', menu: '打开导航', nav: '主导航', release: '更新',
+  eyebrow: 'MOY’S ASR WORKFLOW', identity: '阿墨的字幕工作台',
+  intro: '从一段声音，到一份好字幕。', workflow: '工作流程', editor: '在细节里，听见每一句',
+  control: '选择适合你的识别方式', toolkit: '编辑工具', choose: '选择功能查看',
+  desktop: '本地优先 · 开源字幕工作台', image: '真实软件界面',
+  format: '从声音出发，交付到你的工作流', next: '下一步', source: '查看源代码',
+  preview: 'MAWE 字幕编辑器', faq: '开始之前',
+} : {
+  skip: 'Skip to content', menu: 'Open navigation', nav: 'Main navigation', release: 'Releases',
+  eyebrow: 'MOY’S ASR WORKFLOW', identity: 'A workbench for your words',
+  intro: 'From the first sound to the final subtitle.', workflow: 'THE WORKFLOW', editor: 'Hear every detail',
+  control: 'Recognition, on your terms', toolkit: 'THE EDITING TOOLS', choose: 'Explore a feature',
+  desktop: 'Local-first · Open-source subtitle workbench', image: 'Actual application interface',
+  format: 'From your audio to your workflow', next: 'UP NEXT', source: 'Explore the source',
+  preview: 'MAWE subtitle editor', faq: 'BEFORE YOU START',
+};
+const demos = t.editor.demos.filter(d => d.img || d.video);
 ---
-
 <!doctype html>
 <html lang={t.htmlLang} class="home" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={t.description} />
-    <meta name="theme-color" content="#f4f4f5" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#1c1c20" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f5f4ee" />
     <link rel="icon" href={sitePath('favicon.ico')} />
     <link rel="alternate" hreflang="zh-CN" href={sitePath('')} />
     <link rel="alternate" hreflang="en" href={sitePath('en/')} />
@@ -30,213 +40,96 @@ const demoGroups = [false, true];
     <meta property="og:image" content={sitePath('home/editor-hero.webp')} />
     <title>{t.title}</title>
     <script is:inline>
-      (function () {
-        var q = new URLSearchParams(location.search);
-        var d = document.documentElement;
-        d.dataset.theme = q.get('theme') || localStorage.getItem('maw-site-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        // ?shot：截图模式，关闭入场动画与走马灯，便于无头整页截图
-        if (q.has('shot')) d.classList.add('is-shot');
+      (() => {
+        const root = document.documentElement;
+        const params = new URLSearchParams(location.search);
+        let stored;
+        try { stored = localStorage.getItem('maw-site-theme'); } catch {}
+        const preferred = params.get('theme') || stored;
+        root.dataset.theme = preferred === 'light' || preferred === 'dark' ? preferred : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        if (params.has('shot')) root.classList.add('is-shot');
       })();
     </script>
   </head>
   <body>
-    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-      <defs>
-        <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
-        <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
-        <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
-        <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></symbol>
-        <symbol id="i-gh" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.1-4.6-5a3.9 3.9 0 0 1 1-2.7c-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7a3.9 3.9 0 0 1 1 2.7c0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9V21c0 .3.2.6.7.5A10 10 0 0 0 12 2z"/></symbol>
-        <symbol id="i-star" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></symbol>
-        <symbol id="i-chip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
-        <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></symbol>
-      </defs>
-    </svg>
-
-    <div class="progress" aria-hidden="true"></div>
-
+    <a class="skip-link" href="#main">{ui.skip}</a>
+    <svg class="icon-defs" aria-hidden="true"><defs>
+      <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5 5 5 5-5M5 20h14"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1 1m12 12 1 1M5 19l1-1M18 6l1-1"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+      <symbol id="i-gh" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.3-3.4-1.3-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.1-4.6-5a3.9 3.9 0 0 1 1-2.7c-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7a3.9 3.9 0 0 1 1 2.7c0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9V21c0 .3.2.6.7.5A10 10 0 0 0 12 2z"/></symbol>
+    </defs></svg>
     <header class="site-header">
       <div class="shell header-inner">
-        <a class="brand" href="#top"><img src={sitePath('home/logo.webp')} alt="" width="38" height="38" /><span>MAW</span></a>
-        <nav class="nav" aria-label="Main">
-          <a href="#features">{t.nav.features}</a>
-          <a href="#editor">{t.nav.editor}</a>
-          <a href="#faq">{t.nav.faq}</a>
-          <a href={sitePath('docs/')}>{t.nav.docs}</a>
+        <a class="brand" href="#top" aria-label="MAW"><img src={sitePath('home/logo.webp')} alt="" width="34" height="34" /><span>MAW<span class="brand-caption">{ui.identity}</span></span></a>
+        <nav class="nav" id="main-nav" aria-label={ui.nav}>
+          <a href="#features">{t.nav.features}</a><a href="#editor">{t.nav.editor}</a><a href={sitePath('docs/')}>{t.nav.docs}</a><a href={sitePath('releases/')}>{ui.release}</a>
         </nav>
         <div class="header-actions">
-          <a class="lang-btn" href={otherLangHref} hreflang={lang === 'zh' ? 'en' : 'zh-CN'} aria-label={t.langSwitch.aria}>{t.langSwitch.label}</a>
-          <a class="icon-btn" href={links.repo} aria-label="GitHub"><svg><use href="#i-gh"/></svg></a>
-          <button class="icon-btn" type="button" data-theme-toggle aria-label={t.themeAria}>
-            <svg class="theme-moon"><use href="#i-moon"/></svg><svg class="theme-sun"><use href="#i-sun"/></svg>
-          </button>
+          <a class="lang-btn" href={sitePath(t.langSwitch.href)} hreflang={lang === 'zh' ? 'en' : 'zh-CN'} aria-label={t.langSwitch.aria}>{t.langSwitch.label}</a>
+          <button class="icon-btn" data-theme-toggle type="button" aria-label={t.themeAria}><svg class="theme-moon"><use href="#i-moon"/></svg><svg class="theme-sun"><use href="#i-sun"/></svg></button>
+          <a class="header-download" href="#download">{t.download.main.title}<svg><use href="#i-down"/></svg></a>
+          <button class="menu-toggle icon-btn" type="button" aria-label={ui.menu} aria-controls="main-nav" aria-expanded="false" data-menu-toggle><span></span><span></span></button>
         </div>
       </div>
     </header>
-
-    <main id="top">
-      <section class="hero">
-        <div class="shell">
+    <main id="main">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <img class="hero-texture" src={sitePath('home/sound-paper.webp')} alt="" aria-hidden="true" />
+        <div class="shell hero-inner">
           <div class="hero-copy">
-            <h1 class="reveal">{t.hero.line1}<br /><span class="accent">{t.hero.accent}</span>{lang === 'en' ? ' ' : ''}{t.hero.line2}</h1>
-            <p class="hero-lede reveal" data-delay="1">{t.hero.lede[0]}<br />{t.hero.lede[1]}</p>
-            <div class="hero-actions reveal" data-delay="2">
-              <a class="btn btn-primary" href="#download"><svg><use href="#i-down"/></svg>{t.hero.download}</a>
-              <a class="btn btn-gh" href={links.repo}><svg><use href="#i-gh"/></svg>{t.hero.github}<span class="star"><svg><use href="#i-star"/></svg><span data-stars>—</span></span></a>
-            </div>
+            <p class="eyebrow reveal">{ui.eyebrow}</p>
+            <h1 id="hero-title" class="reveal">{t.hero.line1}<br /><span class="hero-second"><span class="accent">{t.hero.accent}</span>{lang === 'en' ? ' ' : ''}{t.hero.line2}</span></h1>
+            <p class="hero-lede reveal">{t.hero.lede.map(line => <span>{line}</span>)}</p>
+            <div class="hero-actions reveal"><a class="btn btn-primary" href="#download">{t.hero.download}<svg><use href="#i-down"/></svg></a><a class="text-link" href={sitePath('docs/getting-started/')}>{t.nav.docs}<svg><use href="#i-arrow"/></svg></a></div>
+            <p class="hero-footnote reveal">{ui.desktop}</p>
           </div>
-
-          <div class="stage reveal" data-delay="2">
-            <div class="window stage-editor">
-              <div class="window-bar"><i></i><i></i><i></i><span>MAWE</span></div>
-              <img src={sitePath('home/editor-hero.webp')} alt={t.hero.editorAlt} width="1600" height="1199" fetchpriority="high" />
-            </div>
-            <div class="window stage-launcher">
-              <img src={sitePath('home/launcher-done.webp')} alt={t.hero.launcherAlt} width="884" height="774" />
-            </div>
-          </div>
+          <figure class="hero-stage reveal">
+            <div class="stage-label"><span><i></i> {ui.preview}</span><span>MAW / MAWE</span></div>
+            <div class="hero-screen"><img src={sitePath('home/editor-hero.webp')} alt={t.hero.editorAlt} width="1600" height="1199" fetchpriority="high" /></div>
+            <figcaption><span>{ui.intro}</span><a href="#editor">{t.nav.editor}<svg><use href="#i-arrow"/></svg></a></figcaption>
+          </figure>
         </div>
       </section>
-
-      <section class="section" id="features">
+      <section class="workflow section" id="features" aria-labelledby="workflow-title">
         <div class="shell">
-          <h2 class="section-title reveal">{t.featuresTitle[0]}<br />{t.featuresTitle[1]}</h2>
-          <div class="story">
-            <div class="story-visual">
-              <div class="story-frames">
-                {t.steps.map((s, i) => (
-                  <img class={i === 0 ? 'is-on' : ''} src={sitePath(s.img)} alt={s.alt} loading="lazy" />
-                ))}
-              </div>
-              <div class="story-dots" aria-hidden="true">{t.steps.map(() => <i></i>)}</div>
+          <div class="section-head reveal"><p class="eyebrow"><span class="section-number">01</span>{ui.workflow}</p><h2 id="workflow-title">{t.featuresTitle.map((line, i) => <>{i > 0 && <br />}{line}</>)}</h2></div>
+          <div class="workflow-grid" data-switcher="workflow">
+            <div class="workflow-steps" aria-label={ui.workflow}>
+              {t.steps.map((step, i) => <button class:list={['workflow-step', { 'is-active': i === 0 }]} type="button" data-switch={i} aria-pressed={i === 0 ? 'true' : 'false'} aria-controls={`workflow-panel-${i}`}><span class="step-tag">{step.tag}</span><span class="step-title">{step.title}<svg><use href="#i-arrow"/></svg></span><span class="step-body">{step.body}</span>{step.meta && <span class="step-meta">{step.meta}</span>}</button>)}
             </div>
-            <div class="steps">
-              {t.steps.map((s) => (
-                <article class="step">
-                  <span class="step-tag">{s.tag}</span>
-                  <h3>{s.title}</h3>
-                  <p>{s.body}</p>
-                  {s.meta && <p class="step-meta">{s.meta}</p>}
-                </article>
-              ))}
+            <div class="workflow-visual">
+              {t.steps.map((step, i) => <figure class="workflow-panel" data-panel={i} id={`workflow-panel-${i}`}><div class="workflow-image"><img src={sitePath(step.img)} alt={step.alt} loading="lazy" width="1100" height="900" /></div><figcaption><span>{step.tag}</span><span>{i === 0 ? (lang === 'zh' ? 'Launcher 界面设计预览' : 'Launcher design preview') : ui.image}</span></figcaption></figure>)}
             </div>
           </div>
+          <div class="output-line reveal"><p>{ui.format}</p><div><span>SRT</span><span>ASS</span><span>{lang === 'zh' ? '双语字幕' : 'Bilingual'}</span><span>{lang === 'zh' ? '视频烧录' : 'Burn-in video'}</span><span>{lang === 'zh' ? '剪辑时间线' : 'NLE timeline'}</span></div></div>
         </div>
       </section>
-
-      <section class="section facts-section">
-        <div class="shell facts">
-          <div class="fact reveal">
-            <svg><use href="#i-cpu"/></svg>
-            <h3>{t.facts.gpu.title}</h3>
-            <p>{t.facts.gpu.body}</p>
-          </div>
-          <div class="fact reveal" data-delay="1">
-            <svg><use href="#i-chip"/></svg>
-            <h3>{t.facts.local.title}<span class="tag">{t.facts.local.tag}</span></h3>
-            <p>{t.facts.local.body}</p>
-            <ul class="model-list">{t.facts.local.models.map((m) => <li>{m}</li>)}</ul>
-          </div>
-          <a class="fact fact-link reveal" data-delay="2" href="#editor">
-            <svg><use href="#i-edit"/></svg>
-            <h3>{t.facts.editor.title}</h3>
-            <p>{t.facts.editor.body}</p>
-            <span class="more">{t.facts.editor.more}</span>
-          </a>
-        </div>
-      </section>
-
-      <section class="section" id="editor">
+      <section class="editor-section section" id="editor" aria-labelledby="editor-title">
         <div class="shell">
-          <div class="editor-head reveal">
-            <h2>{t.editor.titleA}<span class="accent">{t.editor.accent}</span>{t.editor.titleB}</h2>
-            <p>{t.editor.lede}</p>
-          </div>
-          <div class="window editor-shot reveal">
-            <div class="window-bar"><i></i><i></i><i></i><span>MAWE</span></div>
-            <img src={sitePath('home/editor-main.webp')} alt={t.editor.mainAlt} width="1800" height="740" loading="lazy" />
-          </div>
-        </div>
-
-        <!-- 演示走马灯：两份相同卡片首尾相接，CSS 无限平移；悬停时暂停、放大当前卡并播放其中的视频。
-             在 i18n/home.ts 的 demos 中填 video（+ poster）即为视频卡，填 img 为图片卡，都不填显示「即将推出」。 -->
-        <div class="marquee reveal" aria-label={t.editor.carouselAria}>
-          <div class="marquee-track">
-            {demoGroups.map((hidden) => (
-              <div class="marquee-group" aria-hidden={hidden ? 'true' : undefined}>
-                {t.editor.demos.map((d) => (
-                  <figure class="demo">
-                    {d.video ? (
-                      <div class="demo-media has-video">
-                        <video data-src={sitePath(d.video)} poster={d.poster ? sitePath(d.poster) : undefined} muted loop playsinline preload="none" aria-label={d.alt}></video>
-                      </div>
-                    ) : d.img ? (
-                      <div class="demo-media"><img src={sitePath(d.img)} alt={hidden ? '' : d.alt} loading="lazy" /></div>
-                    ) : (
-                      <div class="demo-media demo-soon">{lang === 'zh' ? '演示即将推出' : 'Demo coming soon'}</div>
-                    )}
-                    <figcaption><b>{d.title}</b>{d.body}</figcaption>
-                  </figure>
-                ))}
-              </div>
-            ))}
+          <div class="editor-heading reveal"><div><p class="eyebrow"><span class="section-number">02</span>MAWE EDITOR</p><h2 id="editor-title">{t.editor.titleA}<span>{t.editor.accent}</span>{t.editor.titleB}</h2></div><p>{t.editor.lede}</p></div>
+          <figure class="editor-overview reveal"><img src={sitePath('home/editor-main.webp')} alt={t.editor.mainAlt} width="1800" height="740" loading="lazy" /><figcaption><span>MAWE</span><span>{ui.editor}</span><span>00:00 →</span></figcaption></figure>
+          <div class="demo-explorer" data-switcher="demos">
+            <div class="demo-sidebar"><p class="eyebrow">{ui.toolkit}</p><div class="demo-tabs" aria-label={ui.choose}>{demos.map((demo, i) => <button type="button" class:list={['demo-tab', { 'is-active': i === 0 }]} data-switch={i} aria-pressed={i === 0 ? 'true' : 'false'} aria-controls={`demo-panel-${i}`}><span class="demo-index">0{i + 1}</span>{demo.title}<svg><use href="#i-arrow"/></svg></button>)}</div></div>
+            <div class="demo-panels">{demos.map((demo, i) => <figure class="demo-panel" id={`demo-panel-${i}`} data-panel={i}><div class="demo-media">{demo.video ? <video controls playsinline preload="none" poster={demo.poster ? sitePath(demo.poster) : undefined} aria-label={demo.alt}><source src={sitePath(demo.video)} /></video> : <img src={sitePath(demo.img!)} alt={demo.alt} loading="lazy" />}</div><figcaption><h3>{demo.title}</h3><p>{demo.body}</p></figcaption></figure>)}</div>
           </div>
         </div>
       </section>
-
-      <section class="section" id="faq">
-        <div class="shell">
-          <h2 class="section-title reveal">{t.faqTitle}</h2>
-          <div class="faq reveal">
-            {t.faq.map((qa) => (
-              <div class="qa"><h3>{qa.q}</h3><p>{qa.a}</p></div>
-            ))}
-          </div>
+      <section class="recognition section" aria-labelledby="recognition-title"><div class="shell">
+        <div class="recognition-heading reveal"><p class="eyebrow"><span class="section-number">03</span>{lang === 'zh' ? '按你的方式工作' : 'YOUR WAY OF WORKING'}</p><h2 id="recognition-title">{ui.control}</h2></div>
+        <div class="recognition-grid">
+          <article class="recognition-primary reveal"><span class="recognition-label">CLOUD API</span><h3>{t.facts.gpu.title}</h3><p>{t.facts.gpu.body}</p><div class="provider-list" aria-label={lang === 'zh' ? '支持的服务商' : 'Supported providers'}><span>Soniox</span><span>{lang === 'zh' ? '阿里云百炼' : 'Alibaba Bailian'}</span><span>{lang === 'zh' ? '豆包' : 'Doubao'}</span><span>{lang === 'zh' ? '腾讯云' : 'Tencent Cloud'}</span><span>OpenAI Compatible</span></div></article>
+          <article class="recognition-local reveal"><span class="recognition-label">LOCAL MODELS <span class="tag">{t.facts.local.tag}</span></span><h3>{t.facts.local.title}</h3><p>{t.facts.local.body}</p><ul class="model-list">{t.facts.local.models.map(model => <li>{model}</li>)}</ul></article>
         </div>
-      </section>
-
-      <section class="section" id="download">
-        <div class="shell">
-          <div class="download-head reveal">
-            <img class="mascot" src={sitePath('home/mascot.webp')} alt={t.download.mascotAlt} width="132" height="132" loading="lazy" />
-            <h2 class="section-title">{t.download.title}</h2>
-          </div>
-          <div class="cta-grid">
-            <div class="cta cta-main reveal">
-              <svg class="cta-ico"><use href="#i-down"/></svg>
-              <h3>{t.download.main.title}</h3>
-              <p>{t.download.main.body}</p>
-              <a class="btn btn-primary" href={links.releases}><svg><use href="#i-down"/></svg>{t.download.main.button}</a>
-              <p class="cta-note">
-                {t.download.main.links.map((l, i) => (
-                  <>{i > 0 && ' · '}<a href={href(l.href)}>{l.label}</a></>
-                ))}
-              </p>
-            </div>
-            <a class="cta cta-gh reveal" data-delay="1" href={links.repo}>
-              <svg class="cta-ico"><use href="#i-gh"/></svg>
-              <h3>Moyf / moys-asr-workflow</h3>
-              <p>{t.download.gh.body}</p>
-              <span class="star-big"><svg><use href="#i-star"/></svg><span data-stars>—</span><small>{t.download.gh.stars}</small></span>
-            </a>
-          </div>
-        </div>
-      </section>
+      </div></section>
+      <section class="faq-section section" id="faq" aria-labelledby="faq-title"><div class="shell faq-layout"><div class="faq-heading reveal"><p class="eyebrow">{ui.faq}</p><h2 id="faq-title">{t.faqTitle}</h2><a class="text-link" href={sitePath('docs/')}>{t.nav.docs}<svg><use href="#i-arrow"/></svg></a></div><div class="faq-list">{t.faq.map(qa => <details class="qa reveal"><summary>{qa.q}<span aria-hidden="true"></span></summary><p>{qa.a}</p></details>)}</div></div></section>
+      <section class="download-section section" id="download" aria-labelledby="download-title"><div class="shell">
+        <div class="download-top reveal"><p class="eyebrow">{ui.next}</p><img src={sitePath('home/mascot.webp')} alt={t.download.mascotAlt} width="100" height="100" loading="lazy" /></div>
+        <div class="download-layout"><div class="download-copy reveal"><h2 id="download-title">{t.download.title}</h2><p>{t.download.main.body}</p><a class="btn btn-primary" href={links.releases}>{t.download.main.button}<svg><use href="#i-down"/></svg></a><div class="download-links">{t.download.main.links.map(link => <a href={href(link.href)}>{link.label}<span aria-hidden="true">↗</span></a>)}</div></div><a class="source-link reveal" href={links.repo}><svg><use href="#i-gh"/></svg><span>{ui.source}<small>Moyf / moys-asr-workflow</small><span class="source-body">{t.download.gh.body}</span></span><svg><use href="#i-arrow"/></svg></a></div>
+      </div></section>
     </main>
-
-    <footer class="site-footer">
-      <div class="shell footer-inner">
-        <a class="brand" href="#top"><img src={sitePath('home/logo.webp')} alt="" width="38" height="38" /><span>MAW<small>{t.footer.tagline}</small></span></a>
-        <nav class="footer-links" aria-label="Footer">
-          {t.footer.links.map((l) => <a href={href(l.href)}>{l.label}</a>)}
-          <a href={links.repo}>GitHub</a>
-        </nav>
-      </div>
-      <p class="shell footer-note">{t.footer.note}</p>
-    </footer>
-
-    <script>
-      import '../scripts/home';
-    </script>
+    <footer class="site-footer"><div class="shell"><div class="footer-inner"><a class="brand" href="#top"><img src={sitePath('home/logo.webp')} alt="" width="34" height="34" /><span>MAW</span></a><p>{t.footer.tagline}</p><nav aria-label="Footer">{t.footer.links.map(link => <a href={href(link.href)}>{link.label}</a>)}</nav></div><p class="footer-note">{t.footer.note}</p></div></footer>
+    <script>import '../scripts/home';</script>
   </body>
 </html>

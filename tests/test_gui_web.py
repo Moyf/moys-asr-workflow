@@ -57,6 +57,26 @@ class FakeWindow:
 
 @final
 class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
+    def test_open_postprocess_folder_falls_back_after_intermediate_cleanup(self) -> None:
+        self.api.postprocess_workspace_directory = self.root / "deleted-run"
+        self.api.result = SimpleNamespace(srt_path=self.root / "final.srt")
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opened:
+            self.assertEqual(self.api.open_postprocess_folder(), {"ok": True})
+        opened.assert_called_once_with(self.root)
+
+    def test_pipeline_done_logs_final_comparison_paths(self) -> None:
+        with mock.patch.object(self.api, "_emit") as emit:
+            self.api._handle_postprocess_pipeline_event({
+                "stage": "done", "skippedSteps": ["cleanup"],
+                "warnings": ["AI 整理失败并保留输入"],
+                "comparisonPaths": ["final/proofread.html", "final/translate.html"],
+            })
+        messages = [call.args[0].get("message", "") for call in emit.call_args_list]
+        self.assertTrue(any("跳过 1 个失败的 AI 步骤" in message for message in messages))
+        self.assertIn("[后处理报告] AI 整理失败并保留输入", messages)
+        self.assertIn("[后处理] 处理前后对比：final/proofread.html", messages)
+        self.assertIn("[后处理] 处理前后对比：final/translate.html", messages)
+
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
@@ -85,6 +105,10 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                                              "notes": "  保留所有数字  "})
         self.assertTrue(result["ok"])
         self.assertEqual(cleanup.call_args.args[0].notes, "保留所有数字")
+        self.assertFalse(cleanup.call_args.args[0].review_enabled)
+        with mock.patch("maw.gui_web.process_ai_cleanup", return_value=SimpleNamespace()) as cleanup:
+            self.api.run_ai_cleanup({"providerId": "deepseek", "apiKey": "fake", "reviewEnabled": True})
+        self.assertTrue(cleanup.call_args.args[0].review_enabled)
 
     def test_ai_cleanup_stream_cancel_closes_response_and_writes_no_artifact(self) -> None:
         project = self.root / "cancel-cleanup.mosp"
@@ -162,7 +186,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"operationId": "ai-cleanup-cancel-test"', scripts)
         self.assertEqual(
             sorted(path.name for path in self.root.iterdir()),
-            [".env.example", "cancel-cleanup.mosp", "cancel-cleanup.txt"],
+            [".env.example", "cancel-cleanup.ai-cleanup-record.md", "cancel-cleanup.mosp", "cancel-cleanup.txt"],
         )
 
     def test_ai_cleanup_streams_each_batch_and_review_with_retry_reset(self) -> None:
@@ -244,6 +268,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 "baseUrl": "https://api.deepseek.com",
                 "model": "deepseek-chat",
                 "operationId": "ai-cleanup-batches-test",
+                "reviewEnabled": True,
             })
 
         self.api.pump.shutdown()
@@ -430,8 +455,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                     )
                 self.assertEqual(
                     sorted(path.name for path in self.root.iterdir()),
-                    [".env.example", "cancel-loopback.mosp", "cancel-loopback.txt"],
-                    "cancelled streaming cleanup must not write artifacts",
+                    [".env.example", "cancel-loopback.ai-cleanup-record.md", "cancel-loopback.mosp", "cancel-loopback.txt"],
+                    "cancelled streaming cleanup keeps only its trace and source inputs",
                 )
         finally:
             release_stream.set()
@@ -1700,7 +1725,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(project_path.name, "clip.waveform.mosp")
         project = json.loads(project_path.read_text(encoding="utf-8"))
         self.assertEqual(project["segments"], [])
-        self.assertEqual(project["media"], str(media.resolve()))
+        self.assertEqual((project_path.parent / project["media"]).resolve(), media.resolve())
         # 工程去内联：波形缓存不再写进工程文件，只保留在 embed 结果的运行态里。
         self.assertNotIn("waveform", project)
         self.assertNotIn("spectral", project)
@@ -1710,6 +1735,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             media.resolve(),
             source_media_path=media.resolve(),
             generate_spectral=True,
+            generate_thumbnails=False,
             ffmpeg_bin=str(ffmpeg),
             audio_track=2,
             default_audio_track=1,
@@ -1819,13 +1845,14 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(alignment_close, ffconcat_panel)
         for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab", "toolboxTimestampsTab"):
             self.assertIn(f'id="{tab_id}"', postprocess_html)
-        for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
+        for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxScriptAlignmentTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
             self.assertIn(f'id="{tab_id}"', utilities_html)
+        self.assertLess(html.index('id="toolboxScriptAlignmentTab"'), html.index('id="toolboxBurnSubtitleTab"'))
         self.assertLess(html.index('id="toolboxBurnSubtitleTab"'), html.index('id="toolboxFfconcatTab"'))
         self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxAlignmentTab"'))
         self.assertLess(html.index('id="toolboxAlignmentTab"'), html.index('id="toolboxExtractAudioTab"'))
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
-        # 媒体工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
+        # 媒体工具记住上次选择的工具；从未选择时回退到第一项（文稿匹配）。
         self.assertIn(
             'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)") || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");',
             script,
@@ -1860,7 +1887,9 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('data-i18n="toolbox_group_timestamp_media">媒体来源</h3>', html)
         timestamp_panel = html[html.index('id="toolboxTimestampsPanel"'):]
         self.assertLess(timestamp_panel.index('data-i18n="toolbox_group_timestamp_media"'), timestamp_panel.index('data-i18n="toolbox_group_alignment_model"'))
-        self.assertIn('<p class="hint toolbox-settings-hint" data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
+        self.assertIn('id="toolboxAlignmentModelHint" class="hint toolbox-settings-hint toolbox-alignment-model-hint"', timestamp_panel)
+        self.assertIn('<span data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
+        self.assertIn('id="openAlignmentModelSettings" class="inline-link"', timestamp_panel)
         self.assertNotIn('<p class="hint" data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
         self.assertNotIn('工程有可用视频时自动使用；独立 SRT 会回退到当前 Launcher 视频；如果当前媒体是音频或无视频，必须选择视频。', html)
         self.assertNotIn('SRT 没有媒体路径；工程若已记录媒体可留空，否则请选择原始音频/视频。', html)
@@ -1930,7 +1959,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('target === "toolboxAlignmentProject"', launcher_script)
         self.assertIn('target === "toolboxAlignmentScript"', launcher_script)
         self.assertNotIn('target === "toolboxAlignmentMedia"', launcher_script)
-        self.assertIn('return ["alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool)', postprocess_script)
+        self.assertIn('return ["scriptAlignment", "alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool)', postprocess_script)
         self.assertIn('$("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities"', postprocess_script)
         self.assertIn('function syncUtilityMediaFieldState()', postprocess_script)
         self.assertIn('$("toolboxUtilityMediaPath").disabled = disabled', postprocess_script)
@@ -2369,7 +2398,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         scripts = "\n".join(self.window.scripts)
         self.assertTrue(result["ok"])
         output_project = Path(str(result["projectPath"]))
-        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["media"], str(media.resolve()))
+        self.assertEqual((output_project.parent / json.loads(output_project.read_text(encoding="utf-8"))["media"]).resolve(), media.resolve())
         self.assertIn('"type": "postprocess_stream"', scripts)
         self.assertIn('"kind": "reset"', scripts)
         self.assertIn('"kind": "reasoning"', scripts)
@@ -2411,7 +2440,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["code"], "postprocess_cancelled")
-        self.assertEqual(sorted(path.name for path in self.root.iterdir()), [".env.example", "cancel-me.mosp"])
+        self.assertEqual(sorted(path.name for path in self.root.iterdir() if path.suffix != ".md"), [".env.example", "cancel-me.mosp"])
 
     def test_llm_cancel_after_first_artifact_write_begins_is_rejected(self) -> None:
         import maw.postprocess as postprocess_core
@@ -2671,6 +2700,18 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(request.embed_translations)
         self.assertFalse(request.merge_bilingual)
 
+    def test_llm_bridge_forwards_target_language_prefilter_with_enabled_default(self) -> None:
+        artifact = SimpleNamespace(source_project_path=None, source_srt_path=None,
+                                   project_path=None, srt_path=None, translated_srt_path=None, warnings=())
+        for option, expected in (({}, True), ({"skipTargetLanguage": True}, True), ({"skipTargetLanguage": False}, False)):
+            with self.subTest(option=option), mock.patch("maw.gui_web.process_llm_postprocess", return_value=artifact) as process:
+                result = self.api.run_llm_postprocess({
+                    "operation": "translate_zh", "providerId": "deepseek", "apiKey": "sk-test",
+                    "baseUrl": "https://api.deepseek.com", "model": "deepseek-chat", **option,
+                })
+                self.assertTrue(result["ok"])
+                self.assertEqual(process.call_args.args[0].skip_target_language, expected)
+
     def test_llm_bridge_classifies_provider_http_error_without_exposing_secrets(self) -> None:
         provider_error = LlmClientError(
             "LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.",
@@ -2835,6 +2876,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(burn.call_args.kwargs["ffmpeg_path"], ffmpeg)
+        self.assertIsNone(burn.call_args.kwargs["ffprobe_path"])
         self.assertEqual(burn.call_args.args[0].srt_style["fontName"], "Microsoft YaHei")
         self.assertEqual(burn.call_args.args[0].video_encoder, "auto")
         self.assertIsNone(burn.call_args.args[0].crf)
@@ -2855,12 +2897,51 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
                 burn.return_value = SimpleNamespace(source_media_path=None, subtitle_path=subtitle,
                                                     media_path=output, video_encoder="cpu")
-                result = self.api.run_burn_subtitles({"subtitlePath": str(subtitle), "greenScreen": True})
+                result = self.api.run_burn_subtitles(
+                    {"subtitlePath": str(subtitle), "greenScreen": True, "greenScreenSize": "1080p"})
         self.assertTrue(result["ok"])
         self.assertIsNone(burn.call_args.args[0].media_path)
         self.assertTrue(burn.call_args.args[0].green_screen)
+        self.assertEqual(burn.call_args.args[0].green_screen_size, "1080p")
+        self.assertFalse(burn.call_args.args[0].green_screen_include_audio)
         self.assertEqual(result["sourceMediaPath"], "")
         self.assertEqual(result["mediaPath"], str(output))
+
+    def test_green_screen_burn_bridge_passes_size_selection_through(self) -> None:
+        subtitle = self.root / "green.srt"
+        subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+        ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        ffmpeg.write_bytes(b"exe")
+        output = self.root / "green.green-screen.mp4"
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                burn.return_value = SimpleNamespace(source_media_path=None, subtitle_path=subtitle,
+                                                    media_path=output, video_encoder="cpu")
+                result = self.api.run_burn_subtitles({"subtitlePath": str(subtitle), "greenScreen": True})
+        self.assertTrue(result["ok"])
+        # 未选择尺寸时桥接透传空串；默认档位（4K）由后端统一裁决。
+        self.assertEqual(burn.call_args.args[0].green_screen_size, "")
+
+    def test_green_screen_burn_bridge_forwards_selected_audio_media(self) -> None:
+        subtitle = self.root / "green.srt"
+        media = self.root / "voice.mp3"
+        subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+        media.write_bytes(b"audio")
+        ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        ffmpeg.write_bytes(b"exe")
+        output = self.root / "green.green-screen.mp4"
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                burn.return_value = SimpleNamespace(source_media_path=media, subtitle_path=subtitle,
+                                                    media_path=output, video_encoder="cpu")
+                result = self.api.run_burn_subtitles({
+                    "mediaPath": str(media), "subtitlePath": str(subtitle),
+                    "greenScreen": True, "greenScreenIncludeAudio": True,
+                })
+        self.assertTrue(result["ok"])
+        request = burn.call_args.args[0]
+        self.assertEqual(request.media_path, media)
+        self.assertTrue(request.green_screen_include_audio)
 
     def test_media_tool_progress_is_compact_and_latest_message_ready(self) -> None:
         self.assertEqual(
@@ -3054,12 +3135,14 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                     "mediaPath": str(media),
                     "port": "9876",
                     "guiLang": "en",
+                    "rememberMedia": True,
                 })
 
         command = popen.call_args.args[0]
         self.assertIn("serve.py", command[1])
         self.assertEqual(command[2], str(project))
         self.assertEqual(command[command.index("-m") + 1], str(media))
+        self.assertIn("--remember-media", command)
         self.assertEqual(command[command.index("--port") + 1], "9876")
         self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=en")
         self.assertEqual(
@@ -3609,6 +3692,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=zh")
         popen.assert_not_called()
 
+    def test_start_server_does_not_silently_ignore_manual_media_on_another_server(self) -> None:
+        with mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                mock.patch("maw.gui_web.subprocess.Popen") as popen:
+            result = self.api.start_server({
+                "jsonPath": str(self.root / "captions.mosp"),
+                "mediaPath": str(self.root / "clip.mp4"),
+                "rememberMedia": True,
+                "port": "9876",
+            })
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "server_media_busy")
+        popen.assert_not_called()
+
     def test_stop_owned_server_releases_completed_process_tree_handle(self) -> None:
         process = mock.Mock()
         process.poll.return_value = 0
@@ -3764,6 +3860,17 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("blank-editor.html", result["error"])
 
+    def test_open_faq_uses_source_documentation_location(self) -> None:
+        faq = self.root / "docs" / "user" / "FAQ-常见问题.txt"
+        faq.parent.mkdir(parents=True)
+        faq.write_text("source help\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as open_path:
+            result = self.api.open_faq()
+
+        self.assertTrue(result["ok"])
+        open_path.assert_called_once_with(faq)
+
     def test_open_faq_uses_bundled_troubleshooting_file(self) -> None:
         faq = self.root / "FAQ-常见问题.txt"
         faq.write_text("help\n", encoding="utf-8")
@@ -3819,7 +3926,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         ffprobe.write_bytes(b"exe")
 
         def which(name: str, *, path: str | None = None) -> str:
-            return str(ffmpeg if name == "ffmpeg" else ffprobe)
+            return str(ffmpeg if Path(name).stem == "ffmpeg" else ffprobe)
 
         # which 只应在 mock 的搜索路径上找：真实 PATH / macOS Homebrew 候选目录
         # 在装了 FFmpeg 的机器（如 Homebrew 的 /opt/homebrew）上会泄漏真实路径。
@@ -3831,6 +3938,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertTrue(result["found"])
         self.assertEqual(result["directory"], str(ffmpeg.parent.resolve()))
+        self.assertEqual(result["ffmpeg"], str(ffmpeg.resolve()))
+        self.assertEqual(result["ffprobe"], str(ffprobe.resolve()))
 
     def test_check_ffmpeg_falls_back_to_bundled_tools(self) -> None:
         ffmpeg_dir = self.root / "ffmpeg" / "bin"
@@ -3857,7 +3966,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         def which(name: str, *, path: str | None = None) -> str:
             assert path is not None
             self.assertIn(str(ffmpeg_dir), path.split(os.pathsep))
-            return str(ffmpeg_dir / ("ffmpeg.exe" if name == "ffmpeg" else "ffprobe.exe"))
+            return str(ffmpeg_dir / ("ffmpeg.exe" if Path(name).stem == "ffmpeg" else "ffprobe.exe"))
 
         # 候选目录会先做真实文件系统探测，必须把真实 Homebrew 路径隔离掉，
         # 否则在装了 FFmpeg 的 macOS 机器上真实 /opt/homebrew 会抢先命中。
@@ -4489,7 +4598,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "apiKey": "sk-test",
         }, self.env_path)
 
-        self.assertEqual(request.extra_strong_punct, "?!——，。？！；,.")
+        self.assertEqual(request.extra_strong_punct, "?!——，。？！；,.;")
         # 无 version 的旧计划会并入默认断句清单（与保留符号互不影响剥尾集合）。
         self.assertIn("，", request.strip_tail_punct)
 
@@ -4766,6 +4875,24 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             _request_from_payload({**payload, "generateSpectral": True}, self.env_path).generate_spectral
         )
 
+    def test_request_from_payload_controls_thumbnail_generation(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        payload = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }
+
+        self.assertFalse(_request_from_payload(payload, self.env_path).generate_thumbnails,
+            "旧载荷缺省该字段时按默认关闭处理")
+        self.assertTrue(
+            _request_from_payload({**payload, "generateThumbnails": True}, self.env_path).generate_thumbnails
+        )
+        self.assertFalse(
+            _request_from_payload({**payload, "generateThumbnails": False}, self.env_path).generate_thumbnails
+        )
+
     def test_request_from_payload_enables_speaker_colors_only_for_selected_model(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -4967,7 +5094,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "错误：找不到 FFmpeg / FFprobe。请下载不带 lite 的完整 MAW。",
         ]))
         self.assertTrue(_is_ffmpeg_missing_failure([
-            "File generate_subtitle_qwen_api.py, line 266, in get_duration_sec",
+            "File maw/asr/common.py, line 83, in get_duration_sec",
             "FileNotFoundError: [WinError 2] 系统找不到指定的文件。",
         ]))
         self.assertFalse(_is_ffmpeg_missing_failure([
@@ -5441,6 +5568,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
             "toolboxChainList",
             "toolboxMatchPanel",
             "toolboxTimestampsPanel",
+            "toolboxScriptAlignmentPanel",
             "toolboxOcrPanel",
             "toolboxLlmPanel",
             "toolboxReplacePanel",
@@ -5563,7 +5691,10 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertNotIn('id="launcherBoot"', page)
-        self.assertIn('background: #16181d;', page)
+        # 首屏底色与 launcher.css 暗色 --bg-base、maw/gui_web.py 窗口 background_color 一致。
+        self.assertIn('background: #1c1c20;', page)
+        self.assertIn('background_color="#1c1c20"', (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8"))
+        self.assertIn('--bg-base: #1c1c20;', stylesheet)
         self.assertIn('html[data-theme="light"]', page)
         self.assertIn('pointer-events: none;', page)
         self.assertIn('<main class="shell" inert aria-busy="true">', page)
@@ -5783,7 +5914,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");', script)
         self.assertNotIn("autoTest", script)
         self.assertIn('$("saveLlmSettings").addEventListener("click", () => { void saveSettings(); });', script)
-        pending_step = script[script.index("function maybeEnablePendingAutoStep()"):script.index("function applyAutoPostprocessPlan")]
+        pending_step = script[script.index("function maybeEnablePendingAutoStep("):script.index("function applyAutoPostprocessPlan")]
         self.assertNotIn("closeSettings", pending_step)
         self.assertNotIn("setOpen(true)", pending_step)
         self.assertIn("font-size: 14px;", stylesheet)
@@ -5814,7 +5945,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)
@@ -5897,6 +6028,10 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
             self.assertIn(f'id="{control}"', page)
         self.assertIn('id="generateSpectral" type="checkbox"', page)
         self.assertIn('id="generateSpectralField"', page)
+        self.assertIn('id="generateThumbnails" type="checkbox"', page)
+        self.assertIn('id="generateThumbnailsField"', page)
+        thumbnails_block = page[page.index('id="generateThumbnailsField"'):page.index('id="debugRawField"')]
+        self.assertNotIn("checked", thumbnails_block, "生成高精度画面预览图默认不勾选")
         self.assertIn('class="segmentation-row segmentation-character-row"', page)
         self.assertIn('class="segmentation-row segmentation-word-row"', page)
         self.assertIn('data-i18n="english_segmentation_hint"', page)
@@ -5916,6 +6051,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
+        self.assertIn('generateThumbnails: $("generateThumbnails").checked', script)
         self.assertIn('generate_spectral: "生成频谱数据"', script)
         self.assertIn('generate_spectral: "Generate spectral data"', script)
         self.assertIn('segmentation: "断句"', script)
@@ -6088,9 +6224,39 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("openMose", script)
         self.assertNotIn("open_mose", script)
         self.assertFalse(hasattr(LauncherApi, 'open_mose'))
-        self.assertFalse((ROOT / 'desktop' / 'src-tauri').exists())
         self.assertIn('function openServerEditor()', script)
         self.assertIn('bridge("start_server"', script)
+
+    def _assert_retired_tauri_entrypoints_absent(self, root: Path) -> None:
+        # Local target/binaries caches are not maintained source or build inputs.
+        # Do not require their parent directory to vanish to prove retirement.
+        tauri = root / "desktop" / "src-tauri"
+        for name in ("src", "Cargo.toml", "Cargo.lock", "build.rs", "tauri.conf.json", "tauri.conf.json5", "Tauri.toml"):
+            self.assertFalse((tauri / name).exists(), f"Retired Tauri entrypoint is still present: {name}")
+        if tauri.is_dir():
+            self.assertEqual(list(tauri.glob("tauri.*.conf.json")), [])
+        for package_path in (root / "package.json", root / "desktop" / "package.json"):
+            if not package_path.is_file():
+                continue
+            package = json.loads(package_path.read_text(encoding="utf-8"))
+            for command in package.get("scripts", {}).values():
+                self.assertNotIn("tauri", command.lower())
+            for group in ("dependencies", "devDependencies"):
+                self.assertFalse(any(name.startswith("@tauri-apps/") for name in package.get(group, {})))
+
+    def test_retired_tauri_source_and_build_entrypoints_are_absent(self) -> None:
+        self._assert_retired_tauri_entrypoints_absent(ROOT)
+
+    def test_tauri_retirement_check_allows_build_residue_but_rejects_active_entrypoints(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tauri = root / "desktop" / "src-tauri"
+            (tauri / "target").mkdir(parents=True)
+            (tauri / "binaries").mkdir()
+            self._assert_retired_tauri_entrypoints_absent(root)
+            (tauri / "Cargo.toml").write_text('[package]\nname = "retired"\n', encoding="utf-8")
+            with self.assertRaises(AssertionError):
+                self._assert_retired_tauri_entrypoints_absent(root)
 
     def test_project_change_marks_server_editor_action_for_rebinding(self) -> None:
         script = launcher_sources_text(ROOT)
@@ -6316,7 +6482,8 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
             self.assertIn(f'<use href="#keycap-{number}"></use>', page)
             self.assertIn(f">{expected}</span>", page)
         self.assertIn('id="keycap-1"', page)
-        self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-secondary);\n  font-size: 16px;", stylesheet)
+        # 改版令牌：卡片标题 15px、主文字色（docs/plans/LAUNCHER_REDESIGN.md 字号规则）。
+        self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-primary);\n  font-size: 15px;", stylesheet)
 
     def test_launcher_theme_round_trips_through_local_config(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -6427,17 +6594,10 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         # 本地运行环境仍在 Runtime 页；AI 模型页先放云端 AI，再放本地识别模型与对齐模型。
         self.assertLess(runtime_tab_panel, runtime_panel)
         self.assertLess(runtime_panel, ocr_section)
-        # 未选择本地模型时，Runtime 顶部显示「本地模型」跳转提示。
-        hint_section = page.index('id="localModelRuntimeHintSection"')
-        self.assertLess(runtime_tab_panel, hint_section)
-        self.assertLess(hint_section, runtime_panel)
-        self.assertIn('data-i18n="local_model_runtime_hint_title"', page)
-        self.assertIn('data-i18n="local_model_runtime_hint_body"', page)
-        self.assertIn('local_model_runtime_hint_title: "本地模型"', script)
-        self.assertIn('local_model_runtime_hint_body: "如果要查看本地模型相关配置，请先将「识别设置」中的识别方式选为「本地模型」。"', script)
-        self.assertIn('local_model_runtime_hint_title: "Local models"', script)
-        self.assertIn('local_model_runtime_hint_body: "To view local model settings, first select \\"Local models\\" as the recognition method in recognition settings."', script)
-        self.assertIn('$("localModelRuntimeHintSection").classList.toggle("hidden", local);', script)
+        # 对齐工具与云端 ASR 共存，Runtime 面板不再受识别方式限制。
+        self.assertNotIn('id="localModelRuntimeHintSection"', page)
+        self.assertIn('$("localRuntimePanel").classList.remove("hidden");', script)
+        self.assertNotIn('$("localRuntimePanel").classList.toggle("hidden", !local);', script)
         self.assertLess(model_tab_panel, llm_section)
         self.assertLess(llm_section, local_model_section)
         self.assertLess(local_model_section, alignment_section)
@@ -6483,8 +6643,13 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('local_runtime_view_settings: "在 ⚙️ 设置中查看"', script)
         self.assertIn('local_runtime_view_settings: "View in ⚙️ Settings"', script)
         self.assertIn('function renderLocalRuntimeMissingHint(target)', script)
-        self.assertIn('alignment_model_runtime_missing: "本地运行环境未安装"', script)
-        self.assertIn('renderLocalRuntimeMissingHint(statusTarget);', script)
+        self.assertIn('function localRuntimeUpgradeInfo', script)
+        self.assertIn('local_runtime_upgrade_action: "升级并验证运行环境"', script)
+        self.assertIn('alignment_model_ready: "已下载"', script)
+        self.assertIn('alignment_model_missing: "未下载"', script)
+        self.assertIn('alignment_model_dependencies_missing: "缺少依赖"', script)
+        self.assertIn('function renderAlignmentModelStatus(target, model, status)', script)
+        self.assertIn('appendAlignmentModelDependencyStatus(target);', script)
         self.assertIn('openSettings("localRuntimePanel");', script)
         self.assertIn('$("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });', script)
         self.assertIn('$("openLocalModelSettings").addEventListener("click", () => { openSettings("localAsrModelSettingsSection"); void refreshLocalModels(); void refreshAlignmentModels(); });', script)
@@ -6535,7 +6700,9 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('state.alignmentModelSelection', script)
         self.assertIn('state.alignmentModelManagementId', script)
         self.assertIn('function renderLocalAlignmentModelList(models)', script)
-        self.assertIn('section?.classList.toggle("hidden", !local);', script)
+        alignment_management = script[script.index('function renderLocalAlignmentModel()'):script.index('async function refreshLocalRuntime()')]
+        self.assertIn('section?.classList.remove("hidden");', alignment_management)
+        self.assertNotIn('isLocalProvider()', alignment_management)
         self.assertIn('const needsAlignmentModel = isLocalProvider() && !modelProvidesWordTimestamps();', script)
         self.assertNotIn('section?.classList.toggle("hidden", !needsAlignmentModel);', script)
 

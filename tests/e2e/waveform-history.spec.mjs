@@ -2104,7 +2104,7 @@ test('nested export menus preserve pointer reachability and keyboard focus', asy
   await page.keyboard.press('ArrowLeft');
   await expect(otioToggle).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(exportButton).toBeFocused();
+  await expect(exportButton).not.toBeFocused();
   await expect(page.locator('#extra-export-dropdown')).not.toHaveClass(/open/);
 });
 

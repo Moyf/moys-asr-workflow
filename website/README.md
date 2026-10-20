@@ -6,6 +6,7 @@ Astro 官网草稿，面向 `Moy's ASR Workflow`（MAW）项目的下载、定�
 
 ```powershell
 pnpm install --frozen-lockfile
+pnpm run sync:releases
 pnpm run dev
 ```
 
@@ -24,8 +25,9 @@ pnpm run build
 - 下载按钮指向主仓库的最新 Release，不在此仓库复制版本包。
 - `/docs/` 是从当前仓库公开文档生成的静态阅读区；在 `website/` 中运行 `pnpm run sync:docs` 可刷新内容。
 - 单独运行 Astro 构建不包含 `/editor/`。GitHub Pages 工作流在构建后把编辑器生成到 `website/dist/editor/index.html`，不会重生成仓库根目录的 `blank-editor.html`。
-- 首页（中文 `/`、英文 `/en/`）由 `src/components/Home.astro` 渲染，文案集中在 `src/i18n/home.ts`，样式为独立的 `src/styles/home.css`（令牌沿用 Launcher 改版），交互脚本在 `src/scripts/home.ts`。文档页仍使用 `global.css` / `docs.css`。
-- 首页配图在 `public/home/`，来自主仓库 `docs/assets/` 与 Launcher 改版原型截图；更新截图时应人工确认内容。演示走马灯在 `home.ts` 的 `demos` 里填 `video`（悬停播放）或 `img`，都不填显示「即将推出」。
+- 首页（中文 `/`、英文 `/en/`）由 `src/components/Home.astro` 渲染，文案集中在 `src/i18n/home.ts`，样式为独立的 `src/styles/home.css`（暖纸白与墨灰，明暗可切换），交互脚本在 `src/scripts/home.ts`。文档页仍使用 `global.css` / `docs.css`。
+- 首页配图在 `public/home/`；编辑器使用仓库截图，Launcher 原型明确标为设计预览。纸感素材由 imagegen 生成，来源与提示词见 [素材记录](docs/ASSETS.md)。功能展示通过按钮与键盘选择，文案在 `home.ts` 的 `demos` 中维护。
+- `/releases/` 采用月份索引和连续正文，保留 `/releases/<版本>/` 独立说明与实际下载；`UpdatesLayout.astro` 与 `releases.css` 共同呈现独立的更新页主题。
 
 ## 计划部署
 

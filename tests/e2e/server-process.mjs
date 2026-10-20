@@ -6,16 +6,44 @@ import { join } from 'node:path';
 const active = new Set();
 const records = new WeakMap();
 
-function terminate(record) {
+export function terminate(record) {
   if (record.closed) return;
   if (process.platform === 'win32') {
     // Only the supervisor is killed; the kernel closes its Job and kills all
     // members, including grandchildren whose immediate parent already exited.
     if (record.proc.exitCode === null && record.proc.signalCode === null) record.proc.kill('SIGKILL');
   } else {
+    if (record.groupKillDenied) return;
     try { process.kill(-record.proc.pid, 'SIGKILL'); }
-    catch (error) { if (error.code !== 'ESRCH') throw error; }
+    catch (error) {
+      if (error.code === 'ESRCH') return;
+      if (error.code !== 'EPERM') throw error;
+      record.groupKillDenied = true;
+      const pgid = record.proc.pid;
+      console.warn(`[e2e-server-process] process group kill EPERM (pgid=${pgid}), falling back to leader-only kill`);
+      if (record.proc.exitCode === null && record.proc.signalCode === null) record.proc.kill('SIGKILL');
+      return probeProcessGroup(pgid);
+    }
   }
+}
+
+async function probeProcessGroup(pgid) {
+  const results = [];
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (attempt > 1) await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      process.kill(-pgid, 0);
+      results.push(`attempt ${attempt}: alive`);
+    } catch (error) {
+      if (error.code === 'ESRCH') return;
+      if (error.code === 'EPERM') results.push(`attempt ${attempt}: alive (EPERM)`);
+      else {
+        results.push(`attempt ${attempt}: probe error (${error.code || error.message})`);
+        break;
+      }
+    }
+  }
+  console.warn(`[e2e-server-process] possible orphan process in group (pgid=${pgid}; ${results.join('; ')})`);
 }
 
 function cleanup() {

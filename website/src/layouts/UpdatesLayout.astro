@@ -1,0 +1,51 @@
+---
+import '../styles/releases.css';
+import { sitePath } from '../lib/site-path';
+interface Props { title?: string; description?: string }
+const { title = '更新记录 — MAW', description = 'MAW 的版本更新、改进与下载。' } = Astro.props;
+---
+<!doctype html>
+<html lang="zh-CN" class="updates" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#f6f5f1" />
+    <link rel="icon" href={sitePath('favicon.ico')} />
+    <title>{title}</title>
+    <script is:inline>
+      try {
+        const saved = localStorage.getItem('maw-site-theme');
+        document.documentElement.dataset.theme = saved === 'dark' || saved === 'light' ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <a class="updates-skip" href="#content">跳到更新内容</a>
+    <header class="updates-header">
+      <a class="updates-brand" href={sitePath()} aria-label="MAW 首页">MAW<span>Moy’s ASR Workflow</span></a>
+      <nav aria-label="官网导航">
+        <a href={sitePath()}>首页</a>
+        <a href={sitePath('docs/')}>文档</a>
+        <a href={sitePath('releases/')} aria-current="page">更新记录</a>
+      </nav>
+      <div class="updates-actions">
+        <button type="button" data-updates-theme aria-label="切换明暗主题" aria-pressed="false">◐</button>
+        <a class="updates-download" href="https://github.com/Moyf/moys-asr-workflow/releases/latest">下载 MAW <span aria-hidden="true">↗</span></a>
+      </div>
+    </header>
+    <slot />
+    <footer class="updates-footer"><a href={sitePath()}>MAW · 阿墨的字幕工作台</a><a href="https://github.com/Moyf/moys-asr-workflow">GitHub ↗</a><span>开源许可 AGPL-3.0</span></footer>
+    <script>
+      const button = document.querySelector<HTMLButtonElement>('[data-updates-theme]');
+      const sync = () => button?.setAttribute('aria-pressed', String(document.documentElement.dataset.theme === 'dark'));
+      sync();
+      button?.addEventListener('click', () => {
+        const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        document.documentElement.dataset.theme = theme;
+        try { localStorage.setItem('maw-site-theme', theme); } catch {}
+        sync();
+      });
+    </script>
+  </body>
+</html>

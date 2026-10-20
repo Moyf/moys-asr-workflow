@@ -10,7 +10,7 @@ export function createUtilsModule(dependencies) {
   const WORD_TIMING_SECONDS_PRESETS = [2, 5, 10, 20, 30];
 
 
-  const EDITOR_ACCENT_COLOR_VALUES = Object.freeze(['blue', 'red', 'orange', 'custom']);
+  const EDITOR_ACCENT_COLOR_VALUES = Object.freeze(['brand', 'blue', 'red', 'orange', 'custom']);
 
   const DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR = '#6ca5e8';
 
@@ -20,7 +20,7 @@ export function createUtilsModule(dependencies) {
   ]);
 
   const DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE = Object.freeze({
-    yellow: '#c4a019',
+    yellow: '#f9ca1f',
     green: '#66bb6a',
     red: '#f07f6f',
     purple: '#bf89e6',
@@ -47,7 +47,7 @@ export function createUtilsModule(dependencies) {
 
 
   function normalizeEditorAccentColor(value) {
-    return EDITOR_ACCENT_COLOR_VALUES.includes(value) ? value : 'blue';
+    return EDITOR_ACCENT_COLOR_VALUES.includes(value) ? value : 'brand';
   }
 
 
@@ -78,11 +78,13 @@ export function createUtilsModule(dependencies) {
     autoSaveProject: true, autoSaveIntervalSeconds: 30, projectBackupEnabled: true,
     stickerOverlayEnabled: false,
     markerEditingEnabled: false, stickersEnabled: true,
+    stickerBurnMode: 'fixed',
     wordTimingRowHeight: 168, wordTimingSecondsPerRow: 5,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     pauseOnMouseClick: false,
     otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
     otioExportIncludeMarkerRegions: true,
+    greenScreenIncludeAudio: false,
     keyboardOperationReference: 'pointer', jklPlaybackMode: 'direction', mediaSeekStepMs: 1000,
     mediaSeekStepFrames: 1, cueMoveStepMs: 50, cueMoveStepFrames: 1,
     timelineSnapToFrame: true, timelineTimecodeSeparator: DEFAULT_TIMELINE_TIMECODE_SEPARATOR,
@@ -90,7 +92,7 @@ export function createUtilsModule(dependencies) {
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
-    accentColor: 'blue', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    accentColor: 'brand', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
     toastPosition: 'top-center',
     subtitleColorPalette: { ...DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE },
     waveShapeSource: 'reapeaks',
@@ -200,12 +202,14 @@ export function createUtilsModule(dependencies) {
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
       markerEditingEnabled: savedSettings.markerEditingEnabled === true,
       stickersEnabled: savedSettings.stickersEnabled !== false,
+      stickerBurnMode: savedSettings.stickerBurnMode === 'cue-left' ? 'cue-left' : 'fixed',
       stickerOtioExportMode: savedSettings.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
       // 时间线 OTIO 导出选项：默认同时导出 SRT、合并表情包轨、写入字幕标记与标记区段。
       otioExportIncludeSrt: savedSettings.otioExportIncludeSrt !== false,
       otioExportIncludeStickers: savedSettings.otioExportIncludeStickers !== false,
       otioExportIncludeMarkers: savedSettings.otioExportIncludeMarkers !== false,
       otioExportIncludeMarkerRegions: savedSettings.otioExportIncludeMarkerRegions !== false,
+      greenScreenIncludeAudio: savedSettings.greenScreenIncludeAudio === true,
       clickBehavior: isSettingChoice(['select-only', 'select-and-seek', 'select-and-play'], savedSettings.clickBehavior)
         ? savedSettings.clickBehavior : 'select-and-seek',
       clickTarget: isSettingChoice(['cue-start', 'pointer'], savedSettings.clickTarget) ? savedSettings.clickTarget : 'pointer',

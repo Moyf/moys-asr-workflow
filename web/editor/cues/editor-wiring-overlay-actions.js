@@ -163,6 +163,7 @@ function clearOverlaySticker(index) {
   segment.sticker_ref = null;
   segment._dirty = true;
   overlay._dirty = true;
+  MaweState.markProjectDirty();
   MaweCuePanel.renderAll({ waveform: 'full' });
   MaweViewUpdates.invalidate({ save: true });
   MaweHint.flashHint('已删除', 'success');

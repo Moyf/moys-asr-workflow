@@ -352,6 +352,9 @@
   const clickBehaviorSelect = document.getElementById('click-behavior');
 
 
+  const stickerBurnModeSelect = document.getElementById('sticker-burn-mode');
+
+
   const clickTargetField = document.getElementById('click-target-field');
 
 
@@ -472,6 +475,9 @@
 
 
   const timedTextEditChangeDetails = document.getElementById('timed-text-edit-change-details');
+
+
+  const timedTextEditTrimToggle = document.getElementById('timed-text-edit-trim');
 
 
   const timedTextEditChangeList = document.getElementById('timed-text-edit-change-list');
@@ -681,6 +687,8 @@
 
 
   const multiSubtitleExtensionRowHeightSetting = document.getElementById('multi-subtitle-extension-row-height-setting');
+
+  const multiSubtitleDisplaySection = document.getElementById('multi-subtitle-display-section');
 
 
   const multiSubtitleExtensionRowHeight = document.getElementById('multi-subtitle-extension-row-height');
@@ -1134,6 +1142,7 @@
     contextualHelpButtons,
     helpMediaSeekStep,
     clickBehaviorSelect,
+    stickerBurnModeSelect,
     clickTargetField,
     clickTargetSelect,
     keyboardOperationReferenceSelect,
@@ -1177,6 +1186,7 @@
     timedTextEditShowAll,
     timedTextEditReportHint,
     timedTextEditChangeDetails,
+    timedTextEditTrimToggle,
     timedTextEditChangeList,
     TIMED_TEXT_EDIT_REPORT_DEBOUNCE_MS,
     get timedTextEditDraft() { return timedTextEditDraft; },
@@ -1250,6 +1260,7 @@
     multiSubtitleMainLanguageMode,
     multiSubtitleExtensionLanguageMode,
     multiSubtitleExtensionRowHeightSetting,
+    multiSubtitleDisplaySection,
     multiSubtitleExtensionRowHeight,
     wordTimingRowHeight,
     wordTimingSecondsPerRow,

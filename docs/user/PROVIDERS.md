@@ -60,7 +60,7 @@ Base URL 可填写根地址、`/v1` 地址或完整 `/audio/transcriptions` 地�
 
 Launcher 为 OpenRouter 的内置模型自动补完整 `openai/...` ID，公开 CLI 不猜测前缀。其他兼容服务请选自定义模型并填写其实际 ID。Launcher 的模型列表表示程序已有适配，不保证每个账户或中转站都提供对应服务。
 
-Prompt、Keywords 和 diarized JSON 按模型能力使用。Launcher 与底层 `generate_subtitle_openai_api.py` 提供这些增强入口，公开 `MAW.exe` CLI 当前仅提供基础兼容转写参数；不要把底层脚本参数直接传给它。说话人模式不能与 Prompt / Keywords 混用。
+Prompt、Keywords 和 diarized JSON 按模型能力使用。Launcher 与底层 `python -m maw.asr.openai` 模块命令提供这些增强入口，公开 `MAW.exe` CLI 当前仅提供基础兼容转写参数；不要把底层模块命令参数直接传给它。说话人模式不能与 Prompt / Keywords 混用。
 
 ## 费用与数据政策
 

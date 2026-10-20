@@ -1,8 +1,8 @@
 # 日志索引
 
-<!-- log-release-baseline: 1.9.0-beta.1 -->
+<!-- log-release-baseline: 1.10.0-beta.1 -->
 
-新共享日志放在 `docs/logs/release1.9.0-beta.1/`，表示 **1.9.0-beta.1 之后的开发**。文件名写清主题；不增加日期目录，提交时间与演进通过 Git 历史追溯。目录不是声明这些记录已随该版本发布。
+新共享日志放在 `docs/logs/release1.10.0-beta.1/<YYMMDD_<主题>/`，表示 **1.10.0-beta.1 之后的开发**。按根规则使用六位日期与可读主题组织同批记录；提交时间与演进通过 Git 历史追溯。目录不是声明这些记录已随该版本发布。
 
 此表是可选的查阅入口，漏登记只提示；关键指南、方案和工程文档仍必须登记[主索引](../INDEX.md)。当前仍有参考价值或未决事项的记录可精选进 [CURRENT](CURRENT.md)。
 
@@ -14,7 +14,37 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.1 之后 | 2026-10-21 | [官网改版人工核验](release1.10.0-beta.1/261021_官网改版/官网改版.checklist.md) | 中英文纸感首页、可控功能展示与连续更新页；审美、真机和跨浏览器待确认 |
+| 1.9.0 之后 | 2026-10-20 | [1.10.0-beta.1 发布人工核验](release1.9.0/261020_1.10.0-beta.1发布核验/1.10.0-beta.1发布核验.checklist.md) | 等待维护者安装 beta 并验证烧录、Launcher 与字幕工作流；正式版须等核验完成 |
+| 1.9.0 之后 | 2026-10-20 | [根目录整理](release1.9.0/261020_根目录整理/根目录整理.md)、[第二阶段](release1.9.0/261020_根目录整理/第二阶段.md) | 文档、打包与测试配置归位；转写入口模块化与独立 Runtime 适配 |
+| 1.9.0 之后 | 2026-10-20 | [后处理供应商验证门槛修复](release1.9.0/261020_后处理供应商验证门槛/修复记录.md) / [人工核验](release1.9.0/261020_后处理供应商验证门槛/后处理供应商验证.checklist.md) | 供应商绑定、取消生命周期、异步乱序与演示状态回归 |
+| 1.9.0 之后 | 2026-10-20 | [文稿对齐 FFmpeg 与设置入口](release1.9.0/261020_AlignFFmpeg/TEST_FEEDBACK.md) / [人工核验](release1.9.0/261020_AlignFFmpeg/AlignFFmpeg.checklist.md) | Windows 同名模块误选修复；快捷设置与真实模型推理边界 |
+| 1.9.0 之后 | 2026-10-19 | [PR267 工程烧录颜色引用](release1.9.0/261019_PR267颜色引用/修复记录.md) | 空字幕过滤后的原始颜色索引、导出与烧录目标回归 |
+| 1.9.0-beta.3 之后 | 2026-10-18 | [编辑器帮助与 SRT 烧录核验](release1.9.0-beta.3/261018_编辑器帮助与SRT烧录/编辑器帮助与SRT烧录.checklist.md) | 精简帮助、名称统一、SRT 样式烧录与包裹边界；自动化与人工验收分开记录 |
+| 1.9.0-beta.3 之后 | 2026-10-18 | [正式版本更新管线实施](release1.9.0-beta.3/261018_正式版更新管线/IMPLEMENTATION.md) / [核对清单](release1.9.0-beta.3/261018_正式版更新管线/RELEASE_PIPELINE.checklist.md) | 正式版归档、官网、资源共用、JSON 与发布联动；真实 CI / 部署待验收 |
+| 1.9.0-beta.3 之后 | 2026-10-18 | [PR246 主线整合](release1.9.0-beta.3/261018_PR246主线整合/整合记录.md) | 五处冲突的组合策略、独立复查与组合回归 |
+| 1.9.0-beta.2 之后 | 2026-10-18 | [PR246 同页切换失效](release1.9.0-beta.2/261018_PR246切换失效/修复记录.md) | 最小协议、模块范围与分层回归证据 |
+| 1.9.0-beta.3 之后 | 2026-10-18 | [PR 265 样式库与去空隙导出核验](release1.9.0-beta.3/261018_样式库与去空隙导出/样式库与去空隙导出.checklist.md) | 历史 ASS 字节基线、颜色去空隙过滤、英文重置确认与分层验证 |
+| 1.9.0-beta.3 之后 | 2026-10-17 | [表情包烧录基础管线](release1.9.0-beta.3/261017_表情包烧录/TASK.md) · [两种显示方案研究](release1.9.0-beta.3/261017_表情包烧录/STICKER_DISPLAY_MODES.md) | overlay 与 ass 同滤镜图一次性编码；固定位置与字幕首字左侧两方案均已实现（预览层跟随字幕留后续） |
+| 1.9.0-beta.3 之后 | 2026-10-17 | [绿幕视频导出核验](release1.9.0-beta.3/261017_绿幕视频导出/绿幕视频导出.checklist.md) | 编辑器音视频绿幕入口、全局偏好与 Launcher 可选音轨 |
+| 1.9.0-beta.3 之后 | 2026-10-17 | [MASS 拆分/合并符号修复](release1.9.0-beta.3/261017_MASS拆分合并符号/修复记录.md) / [人工核验](release1.9.0-beta.3/261017_MASS拆分合并符号/MASS拆分合并.checklist.md) | 单词型合并折叠符号对、渐进拆分左半句补全、整句壳与行内标记区分；含预览与提交一致性补验 |
+| 1.9.0-beta.3 之后 | 2026-10-17 | [翻译工程双轨修复](release1.9.0-beta.3/261017_翻译工程双轨/修复记录.md) / [人工清单](release1.9.0-beta.3/261017_翻译工程双轨/翻译工程双轨.checklist.md) | 中间与最终 MOSP 保留可编辑双轨，SRT 独立合并，核对下载兼容与完整套件异常边界 |
+| 1.9.0-beta.2 之后 | 2026-10-17 | [翻译语言判定与开关](release1.9.0-beta.2/261017_翻译语言判定/修复记录.md) / [人工核验](release1.9.0-beta.2/261017_翻译语言判定/翻译语言判定.checklist.md) | PR 260 已合并，beta.3 Windows 发布完成；Greptile 非阻塞测试建议与平台构建边界 |
+| 1.9.0-beta.2 之后 | 2026-10-16 | [PR 241 正确性复审与修复](release1.9.0-beta.2/261016_PR241正确性复审/修复与验证.md) / [人工清单](release1.9.0-beta.2/261016_PR241正确性复审/PR241正确性.checklist.md) | 三项阻塞、open PR 避让、真实媒体与绑定/诊断修复、主线组合边界 |
+| 1.9.0-beta.1 之后 | 2026-10-15 | [编辑器「烧录视频」功能实现](release1.9.0-beta.1/261015_编辑器烧录视频/EDITOR_BURN_VIDEO.md) / [人工核验](release1.9.0-beta.1/261015_编辑器烧录视频/EDITOR_BURN_VIDEO.checklist.md) | 完整源视频与去空隙两个烧录入口、服务端任务契约与验证 |
+| 1.9.0-beta.2 之后 | 2026-10-16 | [PR #243 合入顺序与兼容交接](release1.9.0-beta.2/261015_测试反馈修复/协调记录.md) | PR 243先合入；PR 239承接2.0保存模型适配，保留人工未确认边界 |
+| 1.9.0-beta.2 之后 | 2026-10-15 | [Issue #237 主修复人工核验](release1.9.0-beta.2/261015_测试反馈修复/ISSUE237_MAIN.checklist.md) | PR 243的29项人工核验源清单，自动化与人工验收分开记录 |
+| 1.9.0-beta.2 之后 | 2026-10-16 | [PR #242 视频预览复审](release1.9.0-beta.2/261016_PR242复审/PR242_视频预览复审.checklist.md) | 旧问题核验、暂停重试边界修复、独立环境与人工体验核对 |
+| 1.9.0-beta.2 之后 | 2026-10-16 | [主字幕单句缩放](release1.9.0-beta.2/ASS_CUE_SCALE.md) · [核对清单](release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md) | 单句缩放设计、实现、分层验证与 PR 跟进 |
+| 1.9.0-beta.2 之后 | 2026-10-15 | [去空隙视频安全边界与诊断成本](release1.9.0-beta.2/261015_去空隙视频/验证记录.md) · [人工核验](release1.9.0-beta.2/261015_去空隙视频/ISSUE237_MEDIA.checklist.md) | IDR 入口、实际删减结果、资源测量与未覆盖媒体边界 |
+| 1.9.0-beta.2 之后 | 2026-10-16 | [本地自然断句记录](release1.9.0-beta.2/261016_本地自然断句/任务记录.md) · [核查清单](release1.9.0-beta.2/261016_本地自然断句/本地自然断句.checklist.md) | 单句上限的数字单位保护、短尾重平衡与同批模拟语料对比 |
 | 1.9.0-beta.1 之后 | 2026-10-15 | [PR #231 定位与震动返工](release1.9.0-beta.1/ASS_POSITION_REWORK.md) | 反馈账本、分层验证及重写历史后的内容重放 |
+| 1.9.0-beta.1 之后 | 2026-10-15 | [工程媒体关联修复](release1.9.0-beta.1/261015_工程媒体关联/修复记录.md) | 路径设计、Greptile/打包修复、验证与黑屏调查边界 |
+| 1.9.0-beta.1 之后 | 2026-10-15 | [导出菜单、关闭焦点与测试增补](release1.9.0-beta.1/261015_导出菜单与关闭焦点/增补记录.md) | OTIO 留白、Esc/空格、测试隔离与 Tauri 退役 |
+| 1.9.0-beta.1 之后 | 2026-10-15 | [v1.9.0-beta.1 测试反馈与处理记录](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1.md) | 30 项实测反馈账本，含 9 份调查报告；已汇总为 Issue #237 |
+| 1.9.0-beta.2 之后 | 2026-10-15 | [视频缩略图相关反馈与处理记录](release1.9.0-beta.2/261015_视频缩略图相关/TEST_FEEDBACK_视频缩略图.md) | 画面带主题独立分账：显示性能问答、实时补间开关、生成速度优化与 Launcher 开关 |
+| 1.9.0-beta.2 之后 | 2026-10-16 | [PR #233 脏录音审查回归修复](release1.9.0-beta.2/261016_脏录音审查回归修复/修复记录.md) | 补码选轨、媒体路径、原始 ASR 预检与人工核查页 |
+| unversioned | 2026-10-14 | [Launcher 现代化改版实施记录](unversioned/2026-10-14/LAUNCHER_REDESIGN_IMPLEMENTATION.md) | 分阶段实施账本、测试约束与验证记录 |
 | unversioned | 2026-10-11 | [AI 口播整理编辑稿改造](unversioned/2026-10-11/AI_CLEANUP_RC.md) | 模型编辑稿、固定转换与删除恢复的实现和验证 |
 | unversioned | 2026-10-11 | [AI 重新断句改进记录](unversioned/2026-10-11/AI_RESEGMENT.md) | 字数上限、复杂用例复测及主分支整合证据 |
 | unversioned | 2026-10-11 | [Agent 长周期修复的踩坑记录：e2e 像素验证体系与语义撤回](unversioned/2026-10-11/agent-e2e-pitfalls.md) | PR #225 撤回 #205 语义后，e2e 像素断言体系的适配坑与规避方法 |
@@ -98,3 +128,21 @@
 | 1.8.0-beta.1 | 2026-10-09 | [maw-verification-v1.8.0b1-to-main.html](1.8.0-beta.1/2026-10-09/first-verification/maw-verification-v1.8.0b1-to-main.html) | 共享报告；源材料在同目录 |
 
 - [AI 备注与译文核对实现](unversioned/2026-10-12/AI_REVIEW_IMPLEMENTATION.md)：通用工程备注和离线译文编辑的进度、证据与边界。
+- [AI 整理诊断与可选复查](release1.9.0-beta.2/261016_AI整理诊断与复查/任务记录.md)：行数差异复现、阶段记录、原始输入与人工核验清单。
+- [AI 整理人工核验清单](release1.9.0-beta.2/261016_AI整理诊断与复查/AI整理.checklist.md)：复查、留档、处理输入和真实听审。
+- [AI 处理核验矩阵](release1.9.0-beta.2/261016_AI整理诊断与复查/AI处理核验矩阵.md)：截图条目 06 / 07 的自动化与本地 Gemma 实测证据。
+- [重新断句诊断](release1.9.0-beta.2/261016_重新断句诊断/任务记录.md)、[流程初审](release1.9.0-beta.2/261016_重新断句诊断/AI处理流程审查.md)、[核查清单](release1.9.0-beta.2/261016_重新断句诊断/重新断句诊断.checklist.md)：断点定位、逐请求留档与重试批次。
+- [Agent e2e 像素验证体系与语义撤回踩坑记录](release1.8.0-beta.1/Agent-e2e验证踩坑.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-ass-fullscreen](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-ass-fullscreen.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-comparison-deletion](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-comparison-deletion.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-gap-export](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-gap-export.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-launcher-editor](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-launcher-editor.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-overlay-jitter](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-overlay-jitter.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-split-markers](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-split-markers.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-timedtext](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-timedtext.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-view-state](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-view-state.md)：日志留档，详见原文。
+- [TEST_FEEDBACK_BETA1-investigation-yellow-defaults](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1-investigation-yellow-defaults.md)：日志留档，详见原文。
+- [1016 大核验人工核对清单](release1.9.0-beta.2/261016_大核验/1016大核验.checklist.md)：日志留档，详见原文。
+- [1016 大核验用户反馈与测试记录](release1.9.0-beta.2/261016_大核验/TEST_FEEDBACK_大核验.md)：日志留档，详见原文。
+- [PR 253 人工核验清单（渐进与复制拆分）](release1.9.0-beta.2/261017_PR复审/PR253.checklist.md)：日志留档，详见原文。
+- [PR 254 人工核验清单（后续批复审核验）](release1.9.0-beta.2/261017_PR复审/PR254.checklist.md)：日志留档，详见原文。

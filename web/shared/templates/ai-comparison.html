@@ -16,7 +16,7 @@ textarea{box-sizing:border-box;width:100%;min-height:110px;resize:vertical;paddi
 <script>
 const data=JSON.parse(document.getElementById('comparison-data').textContent);
 const byId=id=>document.getElementById(id);
-const operations={ai_cleanup:'AI 口播整理',proofread:'校对文本',resegment:'重新断句',translate_en:'翻译成英文',translate_zh:'翻译成中文',custom:'自定义处理'};
+const operations={ai_cleanup:'口播整理',proofread:'校对文本',resegment:'重新断句',translate_en:'翻译成英文',translate_zh:'翻译成中文',custom:'自定义处理'};
 byId('summary').textContent=`${operations[data.operation]||data.operation} · ${data.rows.length} 条原始字幕 · ${data.rows.filter(r=>r.before!==r.after).length} 条有修改 · ${data.rows.filter(r=>r.review).length} 条待核查`;
 byId('before').textContent=data.before;
 byId('after').textContent=data.after;

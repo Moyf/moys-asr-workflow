@@ -403,7 +403,8 @@ export function createUtilsModule(dependencies) {
         for (const piece of slice.pieces) for (const item of slice.items) {
           // Fixed extensions keep their own scale in every override, including
           // inline font-size resets and animation targets.
-          const scale = item.absolute ? 1 : slice.scale;
+          const groupScale = item.absolute ? 1 : slice.scale;
+          const scale = groupScale * item.cueScale;
           const scaledStyle = { ...item.style, spacing: item.style.spacing * scale,
             outline: item.style.outline * scale, shadow: item.style.shadow * scale };
           const transformTargets = profile.animations.t.enabled
@@ -434,7 +435,7 @@ export function createUtilsModule(dependencies) {
               accel: profile.animations.t.accel, target: Number((transformTarget * scale).toFixed(4)),
             };
             // Legacy 震动句带预折行 runs 与 \q2，必须走 runs 渲染而不是原文。
-            const content = slice.legacy && !item.manual && !item.shake && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
+            const content = slice.legacy && !item.manual && !item.shake && item.cueScale === 1 && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
               { ...inlineOptions, preparedRuns: item.runs, fontTransform });
             const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
             events.push(`Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
@@ -463,11 +464,11 @@ export function createUtilsModule(dependencies) {
                 shakeBase = { x: anchor.x, y: anchor.y };
               } else {
                 const root = dependencies.assStackPieceRootAt(piece, shakeStart);
-                shakeBase = { x: root.x + item.offset.x * scale, y: root.y + item.offset.y * scale };
+                shakeBase = { x: root.x + item.offset.x * groupScale, y: root.y + item.offset.y * groupScale };
               }
               let shakePosition = `\\an${item.alignment}\\q2\\pos(${number(shakeBase.x + offset.x)},${number(shakeBase.y + offset.y)})`;
               // 堆叠组内非固定层句沿用既有内联字号/描边/阴影重置。
-              if (!slice.legacy && !item.absolute) {
+              if ((!slice.legacy && !item.absolute) || (item.role === 'main' && item.cueScale !== 1)) {
                 shakePosition += `\\fs${size}\\fsp${number(scaledStyle.spacing)}\\bord${number(scaledStyle.outline)}\\shad${number(scaledStyle.shadow)}`;
               }
               emitEvent(shakeStart, shakeEnd, shakePosition, { includeMove: false });
@@ -486,8 +487,8 @@ export function createUtilsModule(dependencies) {
             position = `\\an${item.alignment}\\q2\\pos(${number(item.offset.x)},${number(item.offset.y)})`
               + `\\fs${fixedSize}\\fsp${number(fixedStyle.spacing)}\\bord${number(fixedStyle.outline)}\\shad${number(fixedStyle.shadow)}`;
           } else if (!slice.legacy) {
-            const from = { x: number(piece.from.x + item.offset.x * scale), y: number(piece.from.y + item.offset.y * scale) };
-            const to = { x: number(piece.to.x + item.offset.x * scale), y: number(piece.to.y + item.offset.y * scale) };
+            const from = { x: number(piece.from.x + item.offset.x * groupScale), y: number(piece.from.y + item.offset.y * groupScale) };
+            const to = { x: number(piece.to.x + item.offset.x * groupScale), y: number(piece.to.y + item.offset.y * groupScale) };
             const instant = piece.instant === null || piece.instant === undefined ? null : piece.instant - piece.start;
             const moveStart = instant === null ? 0 : instant;
             const moveEnd = instant === null ? piece.end - piece.start : instant === 0 ? 1 : instant;
@@ -495,6 +496,7 @@ export function createUtilsModule(dependencies) {
               : `\\move(${from.x},${from.y},${to.x},${to.y},${moveStart},${moveEnd})`;
             position = `\\an${item.alignment}\\q2${position}\\fs${size}\\fsp${number(scaledStyle.spacing)}\\bord${number(scaledStyle.outline)}\\shad${number(scaledStyle.shadow)}`;
           }
+          if (item.cueScale !== 1) position += `\\fs${size}\\fsp${number(scaledStyle.spacing)}\\bord${number(scaledStyle.outline)}\\shad${number(scaledStyle.shadow)}`;
           emitEvent(piece.start, piece.end, position);
         }
       }

@@ -164,6 +164,7 @@ function handleBackendEvent(event) {
     renderLocalRuntime();
     if (wasInstalling) {
       void refreshLocalModels();
+      if (!isLocalProvider()) void refreshLocalRuntime();
       void refreshAlignmentModels();
       void refreshLocalRuntimeInventory();
       setStatus(t("local_runtime_install_done"));
@@ -178,6 +179,7 @@ function handleBackendEvent(event) {
     renderLocalRuntime();
     if (wasInstalling) {
       void refreshLocalModels();
+      if (!isLocalProvider()) void refreshLocalRuntime();
       void refreshAlignmentModels();
       setStatus(t("local_runtime_cancelled"));
       appendLog(t("local_runtime_cancelled"));
@@ -235,6 +237,7 @@ function handleBackendEvent(event) {
       state.localRuntimeInstalling = false;
       state.localRuntimeProgressMessage = "";
       void refreshLocalModels();
+      if (!isLocalProvider()) void refreshLocalRuntime();
       renderLocalRuntime();
       if (event.code === "local_runtime_install_failed") $("logTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } else {
@@ -332,7 +335,7 @@ $("mediaPath").addEventListener("input", () => { setError("mediaPath", ""); setO
 $("pickMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (!result.ok) return; if (!MEDIA_EXTS.has(ext(result.path))) { setError("mediaPath", mediaDropError()); return; } setMedia(result.path); });
 $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });
 $("pickJson").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "json" }); if (result.ok) setJsonPath(result.path); });
-$("jsonPath").addEventListener("input", () => setError("jsonPath", "")); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) setServerMedia(result.path || ""); });
+$("jsonPath").addEventListener("input", () => { setError("jsonPath", ""); resetServerMediaSelection(); }); $("jsonPath").addEventListener("change", refreshServerMedia); $("pickServerMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (result.ok) setServerMedia(result.path || ""); });
 ["apiKey", "openaiBaseUrl", "openaiModel", "openaiPrompt", "openaiKeywords", "workspaceId", "qwenAudioContext", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextText", "sonioxContextTerms", "sonioxContextTranslationTerms", "serverMediaPath", "port", "ffmpegPath", "stickerDir"].forEach((field) => { const el = $(field); el?.addEventListener("input", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field === "qwenAudioContext") renderPromptCharacterCount(); if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwords") renderHotwordWarnings(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") { stopServerStatusMonitor(); serverRestartProjectPath = null; state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; renderServerButton(); } }); el?.addEventListener("change", () => { setError(field, ""); if (field === "openaiBaseUrl") { renderModelNote(); syncOpenAiAdvancedOptions(selectedModel()); } if (field.startsWith("sonioxContext")) renderSonioxContextCharacterCount(); if (field === "qwenAudioHotwordWeight") renderHotwordWarnings(); if (field === "serverMediaPath") syncFlvHints(); if (field === "port") void checkExistingServer(); }); });
 $("refreshServerStatus").addEventListener("click", async () => { $("refreshServerStatus").disabled = true; try { await checkExistingServer(); } finally { $("refreshServerStatus").disabled = false; } });
 $("openKeyUrl").addEventListener("click", () => bridge("open_url", { url: provider().keyUrl }));
@@ -354,15 +357,28 @@ $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocal
 $("toggleLocalRuntimeInventory").addEventListener("click", () => { void toggleLocalRuntimeInventory(); });
 $("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });
 $("openLocalModelSettings").addEventListener("click", () => { openSettings("localAsrModelSettingsSection"); void refreshLocalModels(); void refreshAlignmentModels(); });
+for (const [buttonId, modelId] of [
+  ["openAlignmentModelSettings", "toolboxTimestampModel"],
+  ["openScriptAlignmentModelSettings", "toolboxScriptAlignmentModel"],
+]) {
+  $(buttonId).addEventListener("click", () => {
+    const selectedId = $(modelId).value;
+    if (state.config.alignmentModels?.some((model) => model.id === selectedId)) {
+      state.alignmentModelManagementId = selectedId;
+    }
+    renderLocalAlignmentModel();
+    openSettings("alignmentModelSettingsSection", "prepareAlignmentModel");
+    void refreshAlignmentModels();
+  });
+}
 $("openDashscopeRegionSettings").addEventListener("click", () => openSettings("dashscopeRegionPanel"));
 $("openLanguageSettings").addEventListener("click", () => openSettings("settingsLanguageSection"));
 $("saveDashscopeRegionSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload); if (!result.ok) { applyErrorResult(result); return; } state.config.region = payload.region; state.config.workspaceId = payload.workspaceId; setStatus(t("saved")); });
-$("installLocalRuntime").addEventListener("click", async () => { if (!isLocalProvider()) return; const runtime = state.config?.localRuntime || {}; if (state.localRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: $("model").value, repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
+$("installLocalRuntime").addEventListener("click", async () => { const runtime = state.config?.localRuntime || {}; if (state.localRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_local_runtime"); return; } state.localRuntimeInstalling = true; state.localRuntimeProgress = 0; state.localRuntimeProgressMessage = t("local_runtime_installing"); renderLocalRuntime(); appendLog(t("local_runtime_installing")); const runtimeStatus = state.config.localRuntime?.status || ""; const result = await bridge("install_local_runtime", { modelId: localRuntimeModelId(), repair: Boolean(runtimeStatus && runtimeStatus !== "missing") }); if (!result.ok) { state.localRuntimeInstalling = false; state.localRuntimeProgressMessage = ""; applyErrorResult(result); renderLocalRuntime(); } });
  $("refreshLocalModels").addEventListener("click", async () => { $("refreshLocalModels").disabled = true; try { await refreshLocalModels(); } finally { $("refreshLocalModels").disabled = false; } });
  $("prepareLocalModel").addEventListener("click", async () => { if (!isLocalProvider()) return; if (state.localPreparing) { state.localProgressMessage = t("local_prepare_cancelling"); renderLocalModelStatus(); appendLog(t("local_prepare_cancelling")); const result = await bridge("cancel_local_model"); if (!result.ok) { state.localProgressMessage = t("local_prepare_running"); applyErrorResult(result); renderLocalModelStatus(); } return; } state.localPreparing = true; state.localProgressMessage = t("local_prepare_running"); state.localProgress = null; renderLocalModelStatus(); appendLog(t("local_prepare_running")); const result = await bridge("prepare_local_model", { modelId: $("model").value, modelPath: $("localModelPath").value.trim(), device: $("localDevice").value }); if (!result.ok) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; applyErrorResult(result); renderLocalModelStatus(); } else if (result.alreadyInstalled) { state.localPreparing = false; state.localProgressMessage = ""; state.localProgress = null; renderLocalModelStatus(); setStatus(t("local_installed")); } });
 $("recognitionAlignmentModel").addEventListener("change", () => { state.alignmentModelSelection = $("recognitionAlignmentModel").value; setError("recognitionAlignmentModel", ""); renderLocalAlignmentModel(); });
 $("prepareAlignmentModel").addEventListener("click", async () => {
-  if (!isLocalProvider()) return;
   const modelId = state.alignmentModelManagementId;
   if (!modelId) return;
   if (state.alignmentPreparing) {

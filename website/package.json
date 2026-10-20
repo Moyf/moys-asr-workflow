@@ -9,11 +9,13 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
-    "sync:docs": "node scripts/sync-maw-docs.mjs"
+    "sync:docs": "node scripts/sync-maw-docs.mjs",
+    "sync:releases": "python ../scripts/build_release_site.py --preview"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "astro": "latest",
+    "@types/node": "^22.20.5",
+    "astro": "7.3.7",
     "typescript": "^6.0.3"
   }
 }

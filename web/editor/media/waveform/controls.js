@@ -71,10 +71,11 @@ export function createWaveformModule(dependencies) {
         this.focusWaveform();
       });
       this.secondsPerRowSelect?.addEventListener('change', () => {
-        this.setSecondsPerRow(this.secondsPerRowSelect.value);
+        // 账本 #20 追加：工具栏 select 改行几何同样保留视口锚点。
+        this.applyRowGeometryWithViewportAnchor(() => this.setSecondsPerRow(this.secondsPerRowSelect.value));
       });
       this.rowHeightSelect?.addEventListener('change', () => {
-        this.setRowHeight(Number(this.rowHeightSelect.value));
+        this.applyRowGeometryWithViewportAnchor(() => this.setRowHeight(Number(this.rowHeightSelect.value)));
       });
       this.showGroupBadgesToggle?.addEventListener('change', () => {
         this.settings.showGroupBadges = this.showGroupBadgesToggle.checked;

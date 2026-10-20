@@ -97,18 +97,14 @@ export function createWaveformModule(dependencies) {
       element.className = `waveform-marker-item ${isRegion ? 'region' : 'point'}`;
       element.dataset.markerId = marker.id;
       element.style.setProperty('--marker-color', marker.color || '#3e63dd');
-      // 单点 Marker 用更宽的最小可见宽度，便于点中查看。
-      const minVisiblePercent = isRegion
-        ? window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT
-        : window.AsrEditorUtils.MARKER_POINT_MIN_VISIBLE_PERCENT;
       const duration = Math.max(1, endMs - startMs);
       const left = ((visible.start - startMs) / duration) * 100;
       const widthPercent = Math.max(
-        minVisiblePercent,
+        window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
         ((visible.end - visible.start) / duration) * 100,
       );
       element.style.left = `${left}%`;
-      element.style.width = `${widthPercent}%`;
+      element.style.width = isRegion ? `${widthPercent}%` : '8px';
       if (!isRegion) {
         const shape = document.createElement('span');
         shape.className = 'waveform-marker-point-shape';
@@ -626,10 +622,10 @@ export function createWaveformModule(dependencies) {
         preview.className = `waveform-marker-item drag-preview ${range.region ? 'region' : 'point'}`;
         preview.style.setProperty('--marker-color', drag.original?.color || drag.pending?.color || '#3e63dd');
         preview.style.left = `${((visibleStart - rowStart) / duration) * 100}%`;
-        preview.style.width = `${Math.max(
-          range.region ? window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT : window.AsrEditorUtils.MARKER_POINT_MIN_VISIBLE_PERCENT,
+        preview.style.width = range.region ? `${Math.max(
+          window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
           ((visibleEnd - visibleStart) / duration) * 100,
-        )}%`;
+        )}%` : '8px';
         if (!range.region) {
           const shape = document.createElement('span');
           shape.className = 'waveform-marker-point-shape';

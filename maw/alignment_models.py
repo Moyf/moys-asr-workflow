@@ -221,16 +221,27 @@ def inspect_alignment_model(
     explicit = _normalise_path(model_path)
     if explicit is not None and not explicit.is_dir():
         return _status(model, "path_invalid", runtime_available, False, explicit, "所选对齐模型目录不存在，或不是文件夹。", runtime_source, runtime_python)
-    if not runtime_available:
-        return _status(model, "runtime_missing", False, False, explicit, f"缺少对齐模型依赖：{', '.join(model.runtime_packages)}。请先安装本地模型支持。", runtime_source, runtime_python)
     if explicit is not None:
         if not _model_files_present(model, explicit):
-            return _status(model, "path_invalid", True, False, explicit, "对齐模型目录缺少有效模型文件。", runtime_source, runtime_python)
-        return _status(model, "installed", True, True, explicit, "已使用指定的对齐模型目录。", runtime_source, runtime_python)
-    found = find_alignment_model_path(model.id, model_cache_root=model_cache_root)
+            return _status(model, "path_invalid", runtime_available, False, explicit, "对齐模型目录缺少有效模型文件。", runtime_source, runtime_python)
+        found = explicit
+    else:
+        found = find_alignment_model_path(model.id, model_cache_root=model_cache_root)
+    if not runtime_available:
+        return _status(
+            model,
+            "runtime_missing",
+            False,
+            found is not None,
+            found,
+            f"缺少对齐模型依赖：{', '.join(model.runtime_packages)}。请先安装本地模型支持。",
+            runtime_source,
+            runtime_python,
+        )
     if found is None:
         return _status(model, "missing", True, False, None, "尚未检测到对齐模型；可点击下载。", runtime_source, runtime_python)
-    return _status(model, "installed", True, True, found, "已检测到对齐模型。", runtime_source, runtime_python)
+    detail = "已使用指定的对齐模型目录。" if explicit is not None else "已检测到对齐模型。"
+    return _status(model, "installed", True, True, found, detail, runtime_source, runtime_python)
 
 
 def find_alignment_model_path(

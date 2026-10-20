@@ -32,15 +32,21 @@ class LocalRuntimeTests(unittest.TestCase):
             temp_root = Path(temp_dir)
             bundle_root = temp_root / "local-runtime"
             package_root = bundle_root / "maw"
-            package_root.mkdir(parents=True)
+            asr_root = package_root / "asr"
+            asr_root.mkdir(parents=True)
+            (asr_root / "__init__.py").write_text("\n", encoding="utf-8")
             shutil.copyfile(
-                Path(__file__).resolve().parents[1] / "generate_subtitle_local.py",
-                bundle_root / "generate_subtitle_local.py",
+                Path(__file__).resolve().parents[1] / "maw" / "asr" / "local.py",
+                asr_root / "local.py",
             )
             (package_root / "__init__.py").write_text("\n", encoding="utf-8")
             shutil.copyfile(
                 Path(__file__).resolve().parents[1] / "maw" / "ffmpeg.py",
                 package_root / "ffmpeg.py",
+            )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "gui_platform.py",
+                package_root / "gui_platform.py",
             )
             shutil.copyfile(
                 Path(__file__).resolve().parents[1] / "maw" / "language.py",
@@ -81,7 +87,7 @@ class LocalRuntimeTests(unittest.TestCase):
                 "def write_local_outputs(*args, **kwargs): pass\n",
                 encoding="utf-8",
             )
-            script = bundle_root / "generate_subtitle_local.py"
+            script = asr_root / "local.py"
             work_dir = temp_root / "work"
             work_dir.mkdir()
             environment = dict(os.environ)
@@ -121,7 +127,7 @@ class LocalRuntimeTests(unittest.TestCase):
             # 改名后内核包叫 quapeaks；这里若还屏蔽 reapeaks，测试等于在验证
             # "缺一个已经不存在的包时仍可导入"，真正要保的场景没有覆盖到。
             "sys.modules['quapeaks'] = None\n"
-            "import generate_subtitle_local\n"
+            "import maw.asr.local\n"
             "print('MAW_LOCAL_ENTRY_IMPORT_OK')\n"
         )
         environment = dict(os.environ)

@@ -3,12 +3,20 @@ from __future__ import annotations
 from tests.compact_assertions import CompactContainerAssertions
 
 import ast
+import hashlib
+import json
+import os
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
 
 from tests.launcher_sources import launcher_sources_text
+from scripts.verify_web_bundle_payload import verify as verify_web_bundle_payload
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,7 +80,7 @@ def _local_import_graph(seed_modules: set[str]) -> set[str]:
 
 
 def _local_runtime_import_graph() -> set[str]:
-    return _local_import_graph({"maw.local_runtime_worker", "generate_subtitle_local"})
+    return _local_import_graph({"maw.local_runtime_worker", "maw.asr.local"})
 
 
 def _ocr_runtime_import_graph() -> set[str]:
@@ -90,6 +98,26 @@ def _local_runtime_spec_entry(relative_path: str) -> str:
 
 
 class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
+    def test_relocated_spec_resolves_repository_resources(self) -> None:
+        tree = ast.parse(read_text("scripts/packaging/MAW.spec"))
+        assignments = {
+            target.id: node.value
+            for node in tree.body if isinstance(node, ast.Assign)
+            for target in node.targets if isinstance(target, ast.Name)
+        }
+        resolved_root = eval(
+            compile(ast.Expression(assignments["ROOT"]), "MAW.spec ROOT", "eval"),
+            {"Path": Path, "SPECPATH": str(ROOT / "scripts" / "packaging")},
+        )
+        self.assertEqual(resolved_root, ROOT)
+        data_files = eval(
+            compile(ast.Expression(assignments["datas"]), "MAW.spec datas", "eval"),
+            {"ROOT": resolved_root, "str": str},
+        )
+        self.assertIn((str(ROOT / "docs" / "user" / "FAQ-常见问题.txt"), "."), data_files)
+        for source, _destination in data_files:
+            self.assertTrue(Path(source).exists(), f"Missing packaged source: {Path(source).relative_to(ROOT)}")
+
     def test_pages_builds_repository_bundles_before_portable_editor(self) -> None:
         workflow = read_text(".github/workflows/deploy-editor-pages.yml")
         build_step = workflow.index("- name: Build web bundles")
@@ -156,12 +184,12 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("/build/", ignored_paths)
         self.assertIn("*.spec.bak", ignored_paths)
         self.assertIn("*.exe", ignored_paths)
-        self.assertIn("!MAW.spec", ignored_paths)
+        self.assertIn("!/scripts/packaging/MAW.spec", ignored_paths)
         self.assertIn("/dist/MAW/MAW.exe", ignored_paths)
 
     def test_spec_packages_full_gui_resources_without_sensitive_or_heavy_outputs(self) -> None:
         """Given the Windows GUI bundle, When MAW.spec is read, Then it is onedir/windowed/noupx."""
-        spec = read_text("MAW.spec")
+        spec = read_text("scripts/packaging/MAW.spec")
 
         self.assertIn("maw_gui.py", spec)
         self.assertIn("name='MAW'", spec)
@@ -188,11 +216,11 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         ):
             self.assertIn(module, spec)
         self.assertNotIn("sv_ttk", spec)
-        self.assertIn("generate_subtitle_qwen_api", spec)
-        self.assertIn("generate_subtitle_soniox_api", spec)
-        self.assertIn("generate_subtitle_doubao_api", spec)
-        self.assertIn("generate_subtitle_bcut_api", spec)
-        self.assertIn("generate_subtitle_openai_api", spec)
+        self.assertIn("maw.asr.qwen", spec)
+        self.assertIn("maw.asr.soniox", spec)
+        self.assertIn("maw.asr.doubao", spec)
+        self.assertIn("maw.asr.bcut", spec)
+        self.assertIn("maw.asr.openai", spec)
         self.assertIn("maw.soniox", spec)
         self.assertIn("maw.doubao", spec)
         self.assertIn("local-runtime", spec)
@@ -211,7 +239,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("onefile=True", spec)
         for bundled_path in ("web", "server-editor", "server-align", "LICENSE", "THIRD_PARTY_NOTICES.md"):
             self.assertIn(bundled_path, spec)
-        faq_path = ROOT / "FAQ-常见问题.txt"
+        faq_path = ROOT / "docs" / "user" / "FAQ-常见问题.txt"
         self.assertTrue(faq_path.is_file())
         faq = faq_path.read_text(encoding="utf-8")
         self.assertIn("Python.Runtime.Loader.Initialize", faq)
@@ -229,7 +257,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_runtime_uses_frozen_requirements_txt_not_handwritten_constants(self) -> None:
         """Given the frozen txt runtime install design, When runtime specs and base are read, Then no hand-written requirement constants remain and install reads -r txt."""
-        spec = read_text("MAW.spec")
+        spec = read_text("scripts/packaging/MAW.spec")
         runtimes_base = read_text("maw/runtimes/base.py")
         local_spec = read_text("maw/runtimes/local_spec.py")
         ocr_spec = read_text("maw/runtimes/ocr_spec.py")
@@ -270,7 +298,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         from maw.runtimes import freezer as freezer_mod
 
         pyproject = read_text("pyproject.toml")
-        spec = read_text("MAW.spec")
+        spec = read_text("scripts/packaging/MAW.spec")
 
         # 手写 CPU 声明文件已退役：声明源单一（pyproject dependency group /
         # moss-requirements.in）。
@@ -314,7 +342,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
 
         import re as _re
 
-        gpu_in = read_text("moss-requirements.in")
+        gpu_in = read_text("scripts/packaging/moss-requirements.in")
         cpu_in = freezer_mod.cpu_input_text(gpu_in, header="# MOSS CPU 变体\n")
 
         # torch / torchaudio 的版本 pin 必须与 moss-requirements.in 一致
@@ -368,7 +396,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         lockfile = read_text("uv.lock")
         self.assertIn('ocr = [', lockfile)
         self.assertNotIn('marker = "extra == \'ocr\'"', lockfile)
-        spec = read_text("MAW.spec")
+        spec = read_text("scripts/packaging/MAW.spec")
         for relative in (
             "maw/ocr_runtime_worker.py",
             "maw/postprocess_ocr.py",
@@ -380,16 +408,56 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_local_runtime_bundles_every_local_import_dependency(self) -> None:
         """Given local ASR entrypoints, When packaging is read, Then their local imports are copied beside them."""
-        spec = read_text("MAW.spec")
+        spec = read_text("scripts/packaging/MAW.spec")
         bundled_paths = {
             str(_local_module_path(module).relative_to(ROOT)).replace("\\", "/")
             for module in _local_runtime_import_graph()
             if _local_module_path(module) is not None
         }
 
-        self.assertIn("maw/qwen_audio.py", bundled_paths)
+        self.assertIn("maw/asr/segmentation.py", bundled_paths)
+        self.assertNotIn("maw/asr/qwen.py", bundled_paths)
         for relative_path in sorted(bundled_paths):
             self.assertIn(_local_runtime_spec_entry(relative_path), spec)
+
+    def test_spec_local_runtime_can_import_the_transcription_entrypoint(self) -> None:
+        """Run the real entrypoint using only source files copied by the spec."""
+        tree = ast.parse(read_text("scripts/packaging/MAW.spec"))
+        assignment = next(
+            node for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "datas" for target in node.targets)
+        )
+        # Evaluate only the literal datas declaration, without running the
+        # spec's build checks or PyInstaller. Keep the file selection identical
+        # to the package instead of masking omissions by copying all of maw/.
+        data_files = eval(
+            compile(ast.Expression(assignment.value), "MAW.spec datas", "eval"),
+            {"ROOT": ROOT, "str": str},
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for source, destination in data_files:
+                if destination == "local-runtime" or destination.startswith("local-runtime/"):
+                    target = root / destination / Path(source).name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, target)
+            environment = dict(os.environ)
+            environment.pop("PYTHONPATH", None)
+            result = subprocess.run(
+                [sys.executable, "-I", str(root / "local-runtime" / "maw" / "asr" / "local.py"), "--help"],
+                cwd=root,
+                env=environment,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("usage:", result.stdout.lower())
 
     def test_local_runtime_stays_out_of_the_editor_stack(self) -> None:
         """Given local ASR entrypoints, When the import graph is built, Then the editor generator is absent.
@@ -401,14 +469,16 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         graph = _local_runtime_import_graph()
 
         self.assertNotIn("edit", graph)
-        self.assertIn("maw.stickers", graph)
+        self.assertNotIn("maw.asr.qwen", graph)
+        self.assertNotIn("maw.asr.openai", graph)
+        self.assertIn("maw.asr.common", graph)
 
     def test_rust_quapeaks_kernel_is_imported_only_at_the_call_site(self) -> None:
         """Given managed runtimes may lack the Rust kernel, When the parser module is read, Then its import is lazy."""
         # 打包缺模块属于"源码跑得好、产物一开就崩"：media_cache 在模块级导入
         # maw.mopeaks，spec 漏了它，本地 ASR worker 会在波形阶段 ImportError，
         # 而现有导入图检查只覆盖 OCR runtime 那条链，抓不到。
-        spec = read_text("MAW.spec")
+        spec = read_text("scripts/packaging/MAW.spec")
         self.assertIn(
             '(str(ROOT / "maw" / "mopeaks.py"), "local-runtime/maw")', spec
         )
@@ -427,7 +497,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_ocr_runtime_bundles_every_local_import_dependency(self) -> None:
         """Given the OCR worker entrypoint, When packaging is read, Then its local imports are copied beside it."""
-        spec = read_text("MAW.spec")
+        spec = read_text("scripts/packaging/MAW.spec")
         bundled_paths = {
             str(_local_module_path(module).relative_to(ROOT)).replace("\\", "/")
             for module in _ocr_runtime_import_graph()
@@ -441,7 +511,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_media_job_runtime_copies_include_local_import_dependencies(self) -> None:
         """Given copied media jobs, When either runtime imports them, Then local dependencies are present."""
-        spec = read_text("MAW.spec")
+        spec = read_text("scripts/packaging/MAW.spec")
         for module in sorted(_local_import_graph({"maw.media_jobs"})):
             path = _local_module_path(module)
             if path is None:
@@ -454,7 +524,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_audio_export_runtime_copies_include_local_import_dependencies(self) -> None:
         """Accurate audio exports remain importable from copied packaged runtimes."""
-        spec = read_text("MAW.spec")
+        spec = read_text("scripts/packaging/MAW.spec")
         self.assertIn('"maw.media_export_audio"', spec)
         for module in sorted(_local_import_graph({"maw.media_export_audio"})):
             path = _local_module_path(module)
@@ -468,7 +538,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_macos_bundle_uses_the_icns_app_icon(self) -> None:
         """Given a macOS app bundle, When PyInstaller builds it, Then the bundle has the branded ICNS icon."""
-        spec = read_text("MAW.spec")
+        spec = read_text("scripts/packaging/MAW.spec")
         workflow = read_text(".github/workflows/release.yml")
         icon = (ROOT / "assets" / "maw.icns").read_bytes()
 
@@ -494,13 +564,17 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("cargo check --manifest-path src-tauri/Cargo.toml", workflow)
 
     def test_tag_release_workflows_use_idempotent_release_uploads(self) -> None:
-        """Given the merged release workflow publishes one tag release, When it runs, Then it uses idempotent gh CLI uploads."""
+        """Given the merged release workflow publishes one tag release, When it runs, Then uploads go through the idempotent draft-publish script."""
         workflow = read_text(".github/workflows/release.yml")
-        self.assertIn("gh release upload", workflow)
-        self.assertIn("--clobber", workflow)
+        publisher = read_text("scripts/publish_release.py")
+        self.assertIn('scripts/publish_release.py --tag "$RELEASE_TAG" --notes release-notes.md --artifacts release-artifacts', workflow)
+        # 幂等发布契约在脚本内：已有草稿不重复创建、重跑已发布版本不撤回
+        self.assertIn("'--draft'", publisher)
+        self.assertIn("'--draft=false'", publisher)
+        self.assertIn("'--clobber'", publisher)
+        self.assertIn("'--verify-tag'", publisher)
+        self.assertIn("def find_release", publisher)
         self.assertIn("scripts/prepare_release_notes.py", workflow)
-        self.assertIn("gh release edit", workflow)
-        self.assertIn("--notes-file release-notes.md", workflow)
         # publish 必须同时满足 tag 触发 + Windows 构建成功，否则 dispatch 会误发 Release
         self.assertIn("startsWith(github.ref, 'refs/tags/v') && !cancelled() && needs.build-windows.result == 'success'", workflow)
         # 不完整构建警告：needs 上下文只提供单数 result（矩阵 job 的聚合结果），
@@ -539,11 +613,46 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("_internal/libgbm.so.1", workflow)
         self.assertIn("_internal/libreadline.so.*", workflow)
 
+    def test_release_workflow_installs_ffmpeg_before_cross_platform_python_tests(self) -> None:
+        """Given macOS/Linux release jobs, When media tests run, Then the packaged FFmpeg 8.1 toolchain is verified and active."""
+        workflow = read_text(".github/workflows/release.yml")
+        matrix_at = workflow.index('  build-aux:')
+        tests_at = workflow.index('- name: Run Python tests', matrix_at)
+        macos_install = workflow.index('- name: Install FFmpeg for macOS media tests', matrix_at)
+        linux_install = workflow.index('- name: Install Linux system dependencies', matrix_at)
+        linux_media_ffmpeg = workflow.index('- name: Install verified FFmpeg 8.1 for Linux media tests', matrix_at)
+        self.assertLess(macos_install, tests_at)
+        self.assertLess(linux_install, tests_at)
+        self.assertLess(linux_media_ffmpeg, tests_at)
+        self.assertIn('"ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad"', workflow[macos_install:tests_at])
+        self.assertIn('"9a08d61f9328e8164ba560ee7a79958e357307fcfeea6fe626b7d66cdc287028"', workflow[macos_install:tests_at])
+        self.assertIn('--http1.1 --retry-all-errors --retry 5', workflow[macos_install:tests_at])
+        self.assertIn("if: matrix.platform == 'linux'", workflow[linux_install:tests_at])
+        self.assertIn("ffmpeg squashfs-tools", workflow[linux_install:tests_at])
+        self.assertIn('scripts/verify_sha256.sh', workflow[linux_media_ffmpeg:tests_at])
+        self.assertIn('FfmpegBranch="8.1"', workflow[linux_media_ffmpeg:tests_at])
+
+    def test_release_workflow_verifies_esm_payload_in_all_three_platform_packages(self) -> None:
+        """Given release packages for Windows/macOS/Linux, When CI completes, Then each package's ESM bundle and source hashes are checked."""
+        workflow = read_text(".github/workflows/release.yml")
+        self.assertIn(
+            "uv run python scripts/verify_web_bundle_payload.py dist/MAW/_internal/web",
+            workflow,
+        )
+        self.assertIn(
+            "uv run python scripts/verify_web_bundle_payload.py dist/MAW.app/Contents/Resources/web",
+            workflow,
+        )
+        linux_check = workflow.index("python3 ../scripts/verify_web_bundle_payload.py squashfs-root/_internal/web")
+        linux_cleanup = workflow.index("rm -r squashfs-root", linux_check)
+        self.assertLess(linux_check, linux_cleanup)
+        self.assertIn('name: Verify packaged ESM bundles and source hashes', workflow)
+
     def test_appimage_build_ships_ffmpeg_gpl_license_and_source_notice(self) -> None:
         """Given the AppImage build script, When the BtbN GPL ffmpeg build is bundled, Then the GPLv3 license text and a source notice are written into the bundle."""
         script = read_text("scripts/build-appimage.sh")
 
-        self.assertIn('cp "FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"', script)
+        self.assertIn('cp "docs/user/FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"', script)
         self.assertIn('dist/MAW/ffmpeg/GPLv3.txt', script)
         self.assertIn('dist/MAW/ffmpeg/SOURCE.txt', script)
         self.assertIn('https://www.gnu.org/licenses/gpl-3.0.txt', script)
@@ -651,8 +760,8 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("MAW-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
         self.assertIn("MAW-lite-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
         self.assertIn("actions/upload-artifact@v6", workflow)
-        self.assertIn("gh release upload", workflow)
-        self.assertIn("--target '${{ github.sha }}'", workflow)
+        self.assertIn("scripts/publish_release.py", workflow)
+        self.assertIn("--notes release-notes.md", workflow)
         self.assertIn("GITHUB_TOKEN: ${{ github.token }}", workflow)
         self.assertNotIn(".zip.sha256", workflow)
 
@@ -693,6 +802,50 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("issues.updateComment", workflow)
         self.assertIn("issues.createComment", workflow)
         self.assertIn("run.html_url", workflow)
+
+
+class WebBundlePayloadVerifierTests(unittest.TestCase):
+    def test_verifies_bundles_and_every_packaged_source_against_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            web_root = Path(temporary)
+            for name in ("editor", "launcher"):
+                boot = web_root / name / "boot"
+                source = web_root / name / "sample.js"
+                boot.mkdir(parents=True)
+                bundle = boot / f"{name}-bundle.js"
+                source.write_bytes(f"export const {name} = true;".encode())
+                bundle.write_bytes(f"import './sample.js'; // {name}".encode())
+                metadata = {
+                    "bundleHash": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+                    "sourceFiles": [f"{name}/sample.js"],
+                    "inputs": {
+                        f"{name}/sample.js": hashlib.sha256(source.read_bytes()).hexdigest()
+                    },
+                }
+                helper = web_root / name / "imported-helper.js"
+                helper.write_text("export const value = 1;\n", encoding="utf-8")
+                metadata["inputs"][f"{name}/imported-helper.js"] = hashlib.sha256(
+                    helper.read_bytes()
+                ).hexdigest()
+                (boot / f"{name}-bundle.meta.json").write_text(
+                    json.dumps(metadata), encoding="utf-8"
+                )
+
+            results = verify_web_bundle_payload(web_root)
+            self.assertEqual(len(results), 2)
+
+            (web_root / "launcher" / "imported-helper.js").write_text(
+                "changed", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(ValueError, "source hash"):
+                verify_web_bundle_payload(web_root)
+            (web_root / "launcher" / "imported-helper.js").write_text(
+                "export const value = 1;\n", encoding="utf-8"
+            )
+
+            (web_root / "editor" / "sample.js").write_text("changed", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "source hash"):
+                verify_web_bundle_payload(web_root)
 
 
 if __name__ == "__main__":

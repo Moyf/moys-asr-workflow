@@ -60,14 +60,17 @@ function openSettings(sectionId = "", focusId = "") {
     });
   }
 }
-function closeSettings() { $("settingsModal").classList.add("hidden"); }
+function closeSettings() {
+  $("settingsModal").classList.add("hidden");
+  window.MAWLauncher?.onSettingsClosed?.();
+}
 async function openServerEditor() {
   clearErrors();
   $("htmlMenu").classList.add("hidden");
   if (state.serverStarting) return;
   const projectPath = $("jsonPath").value.trim();
   const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
-  if ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath)) { await bridge("open_url", { url: currentUrl }); return; }
+  if (!$("serverMediaPath").value.trim() && ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath))) { await bridge("open_url", { url: currentUrl }); return; }
   const restartProjectPath = serverRestartProjectPath;
   serverStatusRequest += 1;
   state.serverStarting = true;
@@ -82,6 +85,7 @@ async function openServerEditor() {
     }
     const result = await bridge("start_server", serverPayload());
     if (result.ok) {
+      $("serverMediaPath").value = "";
       serverRestartProjectPath = null;
       state.serverRunning = !result.serverAlreadyRunning;
       state.serverProjectPath = state.serverRunning ? projectPath : "";

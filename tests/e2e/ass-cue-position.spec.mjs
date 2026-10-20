@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 let tempDir, server, portraitServer;
 const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
+const roundPosition = value => Math.floor(value + 0.5);
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('ass-cue-position');
@@ -56,37 +57,255 @@ test('inspector, focus-scoped arrows, reset, undo and save/reopen retain positio
   await expect(page.locator('#ass-cue-position')).toBeVisible();
   await page.locator('#ass-cue-x').fill('321.25'); await page.locator('#ass-cue-x').press('Tab');
   await page.locator('#ass-cue-y').fill('160.5'); await page.locator('#ass-cue-y').press('Tab');
-  expect((await snapshot(page)).override).toEqual({ pos: { x: 321.25, y: 160.5 } });
+  expect((await snapshot(page)).override).toEqual({ pos: { x: 321, y: 161 } });
   const caret = page.locator('#cue-panel-text');
   await caret.focus(); await caret.press('ArrowLeft');
-  expect((await snapshot(page)).override.pos.x).toBe(321.25);
+  expect((await snapshot(page)).override.pos.x).toBe(321);
   await page.locator('#ass-cue-position').focus(); await page.keyboard.press('Shift+ArrowRight'); await page.keyboard.press('ArrowDown');
-  expect((await snapshot(page)).override.pos).toEqual({ x: 331.25, y: 161.5 });
+  expect((await snapshot(page)).override.pos).toEqual({ x: 331, y: 162 });
   await page.locator('#ass-cue-x').fill('331.25'); await page.locator('#ass-cue-x').press('ArrowRight');
-  expect((await snapshot(page)).override.pos.x).toBe(332.25);
-  await expect(page.locator('#ass-cue-x')).toHaveValue('332.25');
+  expect((await snapshot(page)).override.pos.x).toBe(332);
+  await expect(page.locator('#ass-cue-x')).toHaveValue('332');
   await page.locator('#ass-cue-x').press('ArrowLeft');
   await page.locator('#ass-cue-reset').click(); expect((await snapshot(page)).override).toBeNull();
-  await page.locator('#undo-btn').click(); expect((await snapshot(page)).override.pos).toEqual({ x: 331.25, y: 161.5 });
+  await page.locator('#undo-btn').click(); expect((await snapshot(page)).override.pos).toEqual({ x: 331, y: 162 });
   await page.locator('#redo-btn').click(); expect((await snapshot(page)).override).toBeNull();
   await page.locator('#undo-btn').click();
   const save = await page.evaluate(async () => { const json = JSON.parse(MaweJsonRepair.buildJson());
     await MaweProjectSave.saveProjectToServer({ silent: true }); return json.segments[0].assOverride; });
-  expect(save).toEqual({ pos: { x: 331.25, y: 161.5 } });
+  expect(save).toEqual({ pos: { x: 331, y: 162 } });
   expect((await snapshot(page)).dirty).toBe(false);
   await page.reload(); await page.waitForFunction(() => Boolean(MaweBoot.DATA.segments[0].assOverride));
   expect((await snapshot(page)).override).toEqual(save);
   await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.assMode = true; MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000,0); });
   const gaps = await page.locator('#ass-cue-position').evaluate(panel => ({
-    rows: parseFloat(getComputedStyle(panel).gap),
+    rows: parseFloat(getComputedStyle(document.getElementById('ass-cue-coordinate-controls')).gap),
+    columns: parseFloat(getComputedStyle(panel).gap),
     text: panel.getBoundingClientRect().left - document.getElementById('cue-panel-text').getBoundingClientRect().right,
     height: panel.getBoundingClientRect().height,
   }));
   expect(gaps.rows).toBeGreaterThanOrEqual(8);
+  expect(gaps.columns).toBeGreaterThanOrEqual(8);
   expect(gaps.text).toBeGreaterThanOrEqual(8);
   writeFileSync(info.outputPath('spacing.json'), JSON.stringify(gaps, null, 2));
   await page.locator('#current-cue-panel').screenshot({ path: info.outputPath('inspector.png') });
   expect(before.override).toBeNull();
+});
+
+test('scale handles and video wheel use one scale-only transaction and independent resets', async ({ page }, info) => {
+  const layout = () => page.evaluate(() => {
+    const box = element => {
+      if (!element || element.hidden) return null;
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, height: rect.height };
+    };
+    return {
+      panel: box(document.getElementById('current-cue-panel')),
+      stage: box(document.querySelector('.player-stage')),
+      text: box(document.getElementById('cue-panel-text')),
+      scale: box(document.getElementById('ass-cue-scale-controls')),
+      scaleLabel: box(document.querySelector('#ass-cue-scale-controls label')),
+      scaleInput: box(document.getElementById('ass-cue-scale')),
+      position: box(document.getElementById('ass-cue-coordinate-controls')),
+    };
+  });
+  const baselineLayout = await layout();
+  expect(await snapshot(page)).toMatchObject({ override: null });
+  await expect(page.locator('#ass-cue-position')).toBeHidden();
+  const handle = page.locator('.ass-cue-scale-handle--se:not([hidden])');
+  await expect(handle).toBeVisible();
+
+  const beforeClick = await snapshot(page);
+  await handle.click();
+  expect(await snapshot(page)).toEqual(beforeClick);
+
+  const handleBox = await handle.boundingBox();
+  const center = { x: handleBox.x + handleBox.width / 2, y: handleBox.y + handleBox.height / 2 };
+  await page.mouse.move(center.x, center.y); await page.mouse.down();
+  await page.mouse.move(center.x + 18, center.y + 18, { steps: 3 });
+  expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(true);
+  await page.keyboard.press('Escape'); await page.mouse.up();
+  expect(await snapshot(page)).toEqual(beforeClick);
+
+  const dragBefore = await snapshot(page);
+  await page.mouse.move(center.x, center.y); await page.mouse.down();
+  await page.mouse.move(center.x + 28, center.y + 28, { steps: 4 }); await page.mouse.up();
+  let state = await snapshot(page);
+  expect(state.undo).toBe(dragBefore.undo + 1);
+  expect(state.override.pos).toBeUndefined();
+  expect(state.override.scale).toBeGreaterThan(1);
+  await expect(page.locator('#ass-cue-scale-controls')).toBeVisible();
+  await expect(page.locator('#ass-cue-coordinate-controls')).toBeHidden();
+  await expect(page.locator('#ass-cue-scale')).toHaveValue(state.override.scale.toFixed(2));
+  await page.locator('.player-stage').screenshot({ path: info.outputPath('scale-handles.png') });
+  const scaleOnlyLayout = await layout();
+  expect(scaleOnlyLayout.panel.height).toBe(baselineLayout.panel.height);
+  expect(scaleOnlyLayout.stage.top).toBe(baselineLayout.stage.top);
+  expect(scaleOnlyLayout.text.height).toBe(baselineLayout.text.height);
+  expect(scaleOnlyLayout.scaleLabel.height).toBeLessThanOrEqual(scaleOnlyLayout.scaleInput.height + 0.5);
+
+  await page.locator('#ass-cue-scale').fill('1.225');
+  await page.locator('#ass-cue-scale').press('Tab');
+  state = await snapshot(page);
+  expect(state.override.scale).toBe(1.23);
+  await expect(page.locator('#ass-cue-scale')).toHaveValue('1.23');
+
+  const video = await page.locator('#overlay').boundingBox();
+  await page.mouse.move(video.x + video.width / 2, video.y + video.height / 2);
+  const wheelBefore = await snapshot(page);
+  await page.mouse.wheel(0, -100); await page.mouse.wheel(0, -100);
+  await page.waitForTimeout(320);
+  state = await snapshot(page);
+  expect(state.undo).toBe(wheelBefore.undo + 1);
+  expect(state.override.scale).toBeGreaterThan(wheelBefore.override.scale);
+  expect(state.override.pos).toBeUndefined();
+
+  const outsideBefore = await snapshot(page);
+  await page.mouse.move(0, 0); await page.mouse.wheel(0, -100);
+  expect(await snapshot(page)).toEqual(outsideBefore);
+
+  const box = page.locator('.ass-cue-drag-target.selected').first();
+  const boxRect = await box.boundingBox();
+  await page.mouse.move(boxRect.x + boxRect.width / 2, boxRect.y + boxRect.height / 2);
+  await page.mouse.down(); await page.mouse.move(boxRect.x + boxRect.width / 2 + 16, boxRect.y + boxRect.height / 2 - 8, { steps: 3 });
+  await page.mouse.up();
+  state = await snapshot(page);
+  expect(Number.isInteger(state.override.pos?.x)).toBe(true);
+  expect(Number.isInteger(state.override.pos?.y)).toBe(true);
+  expect(state.override.scale).toBeGreaterThan(1);
+  await expect(page.locator('#ass-cue-coordinate-controls')).toBeVisible();
+  await expect(page.locator('#ass-cue-scale-controls')).toBeVisible();
+  const bothLayout = await layout();
+  expect(bothLayout.position.left - bothLayout.scale.right).toBeGreaterThanOrEqual(8);
+  expect(bothLayout.scale.left - bothLayout.text.right).toBeGreaterThanOrEqual(8);
+  expect(bothLayout.panel.height).toBe(baselineLayout.panel.height);
+  expect(bothLayout.stage.top).toBe(baselineLayout.stage.top);
+  expect(bothLayout.scaleLabel.height).toBeLessThanOrEqual(bothLayout.scaleInput.height + 0.5);
+  writeFileSync(info.outputPath('scale-controls-spacing.json'), JSON.stringify({ baselineLayout, scaleOnlyLayout, bothLayout }, null, 2));
+  await page.locator('#current-cue-panel').screenshot({ path: info.outputPath('scale-controls.png') });
+
+  await page.locator('#ass-cue-scale-reset').click();
+  expect((await snapshot(page)).override).toEqual({ pos: state.override.pos });
+  await expect(page.locator('#ass-cue-scale-controls')).toBeHidden();
+  await expect(page.locator('#ass-cue-coordinate-controls')).toBeVisible();
+  expect((await layout()).panel.height).toBe(baselineLayout.panel.height);
+
+  await page.mouse.move(video.x + video.width / 2, video.y + video.height / 2);
+  await page.mouse.wheel(0, -100); await page.waitForTimeout(320);
+  state = await snapshot(page);
+  expect(state.override.scale).toBeGreaterThan(1);
+  await page.locator('#ass-cue-reset').click();
+  expect((await snapshot(page)).override).toEqual({ scale: state.override.scale });
+  await expect(page.locator('#ass-cue-coordinate-controls')).toBeHidden();
+  await expect(page.locator('#ass-cue-scale-controls')).toBeVisible();
+  expect((await layout()).panel.height).toBe(baselineLayout.panel.height);
+  await page.locator('#ass-cue-scale-reset').click();
+  expect((await snapshot(page)).override).toBeNull();
+  await expect(page.locator('#ass-cue-position')).toBeHidden();
+  await page.evaluate(() => {
+    MaweDom.playerStage.style.cssText = 'flex:0 0 auto;width:440px;height:300px;';
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await page.waitForFunction(() => {
+    const stage = MaweDom.playerStage.getBoundingClientRect(), video = MaweDom.overlayEl.getBoundingClientRect();
+    return stage.height - video.height > 20;
+  });
+  const letterbox = await page.evaluate(() => {
+    const stage = MaweDom.playerStage.getBoundingClientRect(), video = MaweDom.overlayEl.getBoundingClientRect();
+    return { x: stage.left + stage.width / 2, y: stage.top + 4, topBar: video.top - stage.top };
+  });
+  expect(letterbox.topBar).toBeGreaterThanOrEqual(10);
+  const beforeLetterboxWheel = await snapshot(page);
+  await page.mouse.move(letterbox.x, letterbox.y); await page.mouse.wheel(0, -100);
+  expect(await snapshot(page)).toEqual(beforeLetterboxWheel);
+});
+
+test('wheel resize requires a visible current main-cue preview', async ({ page }) => {
+  const video = await page.locator('#overlay').boundingBox();
+  const point = { x: video.x + video.width / 2, y: video.y + video.height / 2 };
+  const before = await snapshot(page);
+
+  await page.evaluate(() => {
+    MaweDom.overlayToggle.checked = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await page.mouse.move(point.x, point.y); await page.mouse.wheel(0, -100);
+  await page.waitForTimeout(280);
+  expect(await snapshot(page)).toEqual(before);
+
+  await page.evaluate(() => {
+    MaweDom.overlayToggle.checked = true;
+    MaweCoreState.player.currentTime = 3;
+    MaweCuePanelState.currentCuePanelKind = 'main';
+    MaweCuePanelState.currentCuePanelIdx = 0;
+    MaweSelection.selectOnly(0);
+    MawePlaybackLoop.refreshSubtitlePreview(3000, 0);
+  });
+  const preview = await page.evaluate(() => ({
+    target: MaweCuePanel.getCurrentCuePanelTarget()?.segment.id,
+    selectedRecordVisible: MaweAssCanvas.lastRender?.tracks.some(record =>
+      record.role === 'main' && record.cueId === 'main' && !record.skipped && record.opacity > 0),
+  }));
+  expect(preview).toEqual({ target: 'main', selectedRecordVisible: false });
+  await page.mouse.move(point.x, point.y); await page.mouse.wheel(0, -100);
+  await page.waitForTimeout(280);
+  expect(await snapshot(page)).toEqual(before);
+});
+
+test('wheel resize commits before other edits and stays out of pointer transactions', async ({ page }) => {
+  const historyState = () => page.evaluate(() => ({
+    project: MaweHistory.snapshotSegments(),
+    undo: MaweHistory.editorHistory.undoLength(),
+    redo: MaweHistory.editorHistory.redoLength(),
+    active: MaweAssCuePosition.dragging,
+  }));
+  const video = await page.locator('#overlay').boundingBox();
+  const center = { x: video.x + video.width / 2, y: video.y + video.height / 2 };
+  await page.locator('.ass-cue-drag-target.selected').focus();
+  const initial = await historyState();
+  await page.mouse.move(center.x, center.y); await page.mouse.wheel(0, -100);
+  const scalePreview = await historyState();
+  expect(scalePreview.project).not.toEqual(initial.project);
+  expect(scalePreview.undo).toBe(initial.undo);
+
+  await page.keyboard.press('2');
+  const colored = await historyState();
+  expect(colored.project).not.toEqual(scalePreview.project);
+  expect(colored.undo).toBe(initial.undo + 2);
+  await page.keyboard.press('Escape');
+  expect(await historyState()).toEqual(colored);
+  await page.keyboard.press('Control+z');
+  expect((await historyState()).project).toEqual(scalePreview.project);
+  await page.keyboard.press('Control+z');
+  const restored = await historyState();
+  expect(restored.project).toEqual(initial.project);
+  expect(restored.undo).toBe(initial.undo);
+  await page.evaluate(() => { MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000, 0); });
+  const baseline = await historyState();
+
+  const box = page.locator('.ass-cue-drag-target.selected').first();
+  let bounds = await box.boundingBox();
+  let pointer = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  await page.mouse.move(pointer.x, pointer.y); await page.mouse.down();
+  await page.mouse.move(pointer.x + 12, pointer.y + 8, { steps: 2 });
+  const positionPreview = await historyState();
+  expect(positionPreview.active).toBe(true);
+  await page.mouse.wheel(0, -100);
+  expect(await historyState()).toEqual(positionPreview);
+  await page.keyboard.press('Escape'); await page.mouse.up();
+  expect(await historyState()).toEqual(baseline);
+
+  const handle = page.locator('.ass-cue-scale-handle--se:not([hidden])');
+  bounds = await handle.boundingBox();
+  pointer = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  await page.mouse.move(pointer.x, pointer.y); await page.mouse.down();
+  await page.mouse.move(pointer.x + 14, pointer.y + 14, { steps: 2 });
+  const sizePreview = await historyState();
+  expect(sizePreview.active).toBe(true);
+  await page.mouse.wheel(0, -100);
+  expect(await historyState()).toEqual(sizePreview);
+  await page.keyboard.press('Escape'); await page.mouse.up();
+  expect(await historyState()).toEqual(baseline);
 });
 
 test('box drag maps letterbox and scaled portrait/landscape canvases into one undo, cancel and no-op', async ({ page }, info) => {
@@ -123,8 +342,8 @@ test('box drag maps letterbox and scaled portrait/landscape canvases into one un
     writeFileSync(info.outputPath(`drag-${width}-diagnostic.json`), JSON.stringify({frame,point,before,changed,events:await page.evaluate(()=>window.__dragEvidence)},null,2));
     await page.locator('.player-stage').screenshot({path:info.outputPath(`drag-${width}-diagnostic.png`)});
     expect(changed.undo).toBe(before.undo+1);
-    expect(changed.override.pos.x).toBeCloseTo(frame.track.anchor.x+25*width/frame.rect.width,2);
-    expect(changed.override.pos.y).toBeCloseTo(frame.track.anchor.y-18*height/frame.rect.height,2);
+    expect(changed.override.pos.x).toBe(roundPosition(frame.track.anchor.x+25*width/frame.rect.width));
+    expect(changed.override.pos.y).toBe(roundPosition(frame.track.anchor.y-18*height/frame.rect.height));
     await page.locator('#undo-btn').click(); expect((await snapshot(page)).override).toBeNull();
     await page.locator('#redo-btn').click(); expect((await snapshot(page)).override).toEqual(changed.override);
     // History restores its selection snapshot. Select again before asking for
@@ -390,6 +609,76 @@ test('shaken cue matches Canvas, Server libass and exported frame boxes at sampl
   expect(frame.ass.split('\n').filter(line => line.startsWith('Dialogue: 0,') && line.includes('MMMM')).length).toBe(Math.ceil(2000 / 60));
 });
 
+test('scaled main cue matches Canvas, Server libass and exported frame boxes', async ({ page }, info) => {
+  const frame = await page.evaluate(({ paintedBox }) => {
+    MaweBoot.DATA.segments[0].text = 'MMMM';
+    MaweBoot.DATA.segments[0].assOverride = { scale: 1.22 };
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const canvas = document.querySelector('.ass-preview-canvas');
+    return { box: (0, eval)(`(${paintedBox})`)(canvas), ass: MaweExportSrt.buildAss() };
+  }, { paintedBox: paintedBox.toString() });
+  expect(frame.ass).toContain(String.raw`\fs36.6`);
+  await page.evaluate(() => MaweAssFrame.renderAssFrame());
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  const serverBox = await page.evaluate(paintedBox => {
+    const image = document.getElementById('ass-frame-image'), canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+    canvas.getContext('2d').drawImage(image, 0, 0);
+    return (0, eval)(`(${paintedBox})`)(canvas);
+  }, paintedBox.toString());
+  const path = info.outputPath('scale.ass'); writeFileSync(path, frame.ass);
+  const result = JSON.parse(execFileSync(process.env.MAW_PIXEL_PYTHON || process.env.MAW_E2E_PYTHON || 'python',
+    [resolve('tests/helpers/ass-stacking-pixel-oracle.py'), path, '1000', info.outputPath('scale-export')],
+    { encoding: 'utf8', timeout: 40000, windowsHide: true }));
+  const exportBox = result.nativeTracks.main.box;
+  expect(frame.box).not.toBeNull(); expect(serverBox).not.toBeNull(); expect(exportBox).not.toBeNull();
+  for (let axis = 0; axis < 4; axis++) {
+    expect(Math.abs(frame.box[axis] - exportBox[axis])).toBeLessThanOrEqual(5);
+    expect(Math.abs(serverBox[axis] - exportBox[axis])).toBeLessThanOrEqual(1);
+  }
+});
+
+test('scaled automatic stack matches Canvas, Server libass and exported frame boxes', async ({ page }, info) => {
+  const frame = await page.evaluate(({ paintedBox }) => {
+    const [base, scaled] = MaweBoot.DATA.segments;
+    // The small synthetic video uses 640×360 PlayRes. A larger baseline font
+    // keeps the auto-fit path active there as it is in the 1080p unit fixture.
+    ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize = 150;
+    Object.assign(base, { start: 0, end: 2000, text: Array(10).fill('BASE').join('\n') });
+    delete base.assOverride;
+    Object.assign(scaled, { start: 0, end: 2000, text: Array(10).fill('SCALED').join('\n'), assOverride: { scale: 0.62 } });
+    MaweSelection.selectOnly(0);
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const canvas = document.querySelector('.ass-preview-canvas');
+    const slice = MaweAssPreview.stackPlan.slices.find(item => item.start <= 1000 && 1000 < item.end);
+    const automatic = slice.items.find(item => item.segment.id === 'next');
+    return { box: (0, eval)(`(${paintedBox})`)(canvas), ass: MaweExportSrt.buildAss(),
+      groupScale: slice.scale, automaticOffset: automatic.offset,
+      records: MaweAssCanvas.lastRender.tracks.filter(record => record.role === 'main' && !record.skipped).length };
+  }, { paintedBox: paintedBox.toString() });
+  expect(frame.groupScale).toBeLessThan(1);
+  expect(Math.abs(frame.automaticOffset.y)).toBeGreaterThan(1);
+  expect(frame.records).toBe(2);
+  await page.evaluate(() => MaweAssFrame.renderAssFrame());
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  const serverBox = await page.evaluate(paintedBox => {
+    const image = document.getElementById('ass-frame-image'), canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+    canvas.getContext('2d').drawImage(image, 0, 0);
+    return (0, eval)(`(${paintedBox})`)(canvas);
+  }, paintedBox.toString());
+  const path = info.outputPath('scaled-stack.ass'); writeFileSync(path, frame.ass);
+  const result = JSON.parse(execFileSync(process.env.MAW_PIXEL_PYTHON || process.env.MAW_E2E_PYTHON || 'python',
+    [resolve('tests/helpers/ass-stacking-pixel-oracle.py'), path, '1000', info.outputPath('scaled-stack-export')],
+    { encoding: 'utf8', timeout: 40000, windowsHide: true }));
+  const exportBox = result.nativeTracks.main.box;
+  expect(frame.box).not.toBeNull(); expect(serverBox).not.toBeNull(); expect(exportBox).not.toBeNull();
+  for (let axis = 0; axis < 4; axis++) {
+    expect(Math.abs(frame.box[axis] - exportBox[axis])).toBeLessThanOrEqual(5);
+    expect(Math.abs(serverBox[axis] - exportBox[axis])).toBeLessThanOrEqual(1);
+  }
+});
+
 test('unselected gesture only selects, no-op stays clean and coordinate visibility never changes panel or video height', async ({page}, info) => {
   await page.evaluate(() => { MaweSelection.clearSelection(); MawePlaybackLoop.refreshSubtitlePreview(1000,0); });
   const box = page.locator('.ass-cue-drag-target').first();
@@ -420,6 +709,53 @@ test('unselected gesture only selects, no-op stays clean and coordinate visibili
   await page.locator('#current-cue-panel').screenshot({path:info.outputPath('layout.png')});
 });
 
+test('shaken cue scale does not depend on pointermove event count', async ({ page }) => {
+  const scales = [];
+  for (const steps of [1, 8]) {
+    await page.evaluate(() => {
+      ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize = 12;
+      Object.assign(MaweBoot.DATA.segments[0], { text: '!!I!!', assOverride: { scale: 4 } });
+      MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    });
+    const handle = page.locator('.ass-cue-scale-handle[data-corner="nw"]').filter({ visible: true });
+    const box = await handle.boundingBox();
+    const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x - 3, y - 3, { steps }); await page.mouse.up();
+    scales.push((await snapshot(page)).override.scale);
+  }
+  expect(scales[1]).toBe(scales[0]);
+});
+
+test('shaken cue corner scaling projects movement around the stable center', async ({ page }, info) => {
+  await page.evaluate(() => {
+    ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize = 12;
+    MaweBoot.DATA.segments[0].text = '!!I!!';
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  const handle = page.locator('.ass-cue-scale-handle[data-corner="nw"]').filter({ visible: true });
+  const box = await handle.boundingBox();
+  const x = box.x + box.width / 2, y = box.y + box.height / 2;
+  const expected = await page.evaluate(({ x, y }) => {
+    const frame = MaweAssCanvas.lastRender;
+    const record = frame.tracks.find(item => item.cueId === 'main');
+    const rect = MaweDom.overlayEl.getBoundingClientRect();
+    const px = (x - rect.left) * frame.playResX / rect.width;
+    const py = (y - rect.top) * frame.playResY / rect.height;
+    const dx = px - (record.bounds.left + record.bounds.right) / 2;
+    const dy = py - (record.bounds.top + record.bounds.bottom) / 2;
+    const distance = Math.hypot(dx, dy);
+    const sensitivity = Math.max(24, Math.hypot(record.bounds.right - record.bounds.left,
+      record.bounds.bottom - record.bounds.top) / 2);
+    const delta = -3 * frame.playResY / rect.height * dy / distance;
+    return Math.round(Math.min(5, Math.max(0.1, 1 + delta / sensitivity)) * 100) / 100;
+  }, { x, y });
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x, y - 3); await page.mouse.up();
+  expect((await snapshot(page)).override.scale).toBe(expected);
+  await page.locator('.player-stage').screenshot({ path: info.outputPath('shake-scale.png') });
+});
+
 test('dragged shaken cue saves the base anchor and window blur cancels the next gesture', async ({page},info) => {
   await page.locator('#cue-panel-text').fill('++!!喂喂喂嗯!!++');
   await page.locator('#cue-panel-text').press('Tab');
@@ -430,8 +766,8 @@ test('dragged shaken cue saves the base anchor and window blur cancels the next 
     text:MaweBoot.DATA.segments[0].text,count:MaweBoot.DATA.segments.length}));
   await page.mouse.move(r.x+r.width/2,r.y+r.height/2);await page.mouse.down();await page.mouse.move(r.x+r.width/2+15,r.y+r.height/2);await page.mouse.up();
   const saved=await snapshot(page);
-  expect(saved.override.pos.x).toBeCloseTo(data.anchor.x+15*data.res/data.width,3);
-  expect(saved.override.pos.y).toBe(data.anchor.y);
+  expect(saved.override.pos.x).toBe(roundPosition(data.anchor.x+15*data.res/data.width));
+  expect(saved.override.pos.y).toBe(roundPosition(data.anchor.y));
   const next=await box.boundingBox();await page.mouse.move(next.x+next.width/2,next.y+next.height/2);
   await page.mouse.down();await page.mouse.move(next.x+next.width/2+12,next.y+next.height/2);
   await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.mouse.up();
@@ -455,7 +791,7 @@ test('dragging an automatically stacked upper cue uses the global top anchor', a
   const after=await page.evaluate(()=>({pos:MaweBoot.DATA.segments[1].assOverride.pos,
     record:MaweAssCanvas.lastRender.tracks.find(item=>item.cueId==='next')}));
   expect(after.record.alignment).toBe(8);
-  expect(after.pos.x).toBeCloseTo(before.record.positionAnchor.x+15*before.res/before.width,3);
-  expect(after.pos.y).toBeCloseTo(before.record.positionAnchor.y,3);
-  expect(after.record.bounds.top).toBeCloseTo(before.record.bounds.top,2);
+  expect(after.pos.x).toBe(roundPosition(before.record.positionAnchor.x+15*before.res/before.width));
+  expect(after.pos.y).toBe(roundPosition(before.record.positionAnchor.y));
+  expect(after.record.bounds.top).toBeCloseTo(before.record.bounds.top + after.pos.y - before.record.positionAnchor.y, 2);
 });

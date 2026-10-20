@@ -56,9 +56,10 @@ test('real editor saves/reopens trustworthy local scopes and keeps gap-only revi
   expect(initial.saved).toBe(true);
   expect(initial.source.disabled).not.toBe(true);
   expect(initial.source.text).toBe('啊  我这……我这个功能呢');
-  for (const output of [initial.ordinary, initial.compressed, initial.ass, initial.otio]) {
-    expect(output).toContain('我这个功能呢');
-    expect(output).not.toContain('我这……');
+  for (const [kind, output] of Object.entries({ ordinary: initial.ordinary, compressed: initial.compressed, ass: initial.ass, otio: initial.otio })) {
+    expect(output !== null, kind).toBe(true);
+    expect(output, kind).toContain('我这个功能呢');
+    expect(output, kind).not.toContain('我这……');
   }
   expect(initial.dynamic.segments[0].items.map((item) => item.text)).toEqual(['我这个功能呢']);
   const saved = JSON.parse(readFileSync(projectPath, 'utf-8'));
@@ -106,4 +107,17 @@ test('real editor saves/reopens trustworthy local scopes and keeps gap-only revi
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   });
   await page.locator('.player-stage').screenshot({ path: test.info().outputPath('local-restored-canvas.png') });
+});
+
+test('a newly imported project cannot reuse the previous server media for OTIO', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await expect(page.locator('.cue[data-idx="0"] .text')).toBeVisible();
+  expect(await page.evaluate(() => MaweExportTimeline.buildTimelineOtio())).not.toBeNull();
+  const result = await page.evaluate(() => {
+    MaweProjectLoad.applyCanonicalProject({ schema: 'moy.asr.project.v1', media: 'another.wav', segments: [{ id: 'new', start: 0, end: 1000, text: '新工程' }] }, 'other.mosp');
+    return { path: MaweBoot.SERVER_CONFIG.autoLoadedMediaPath, timeline: MaweExportTimeline.buildTimelineOtio() };
+  });
+  expect(result.path).toBeNull();
+  expect(result.timeline).toBeNull();
 });

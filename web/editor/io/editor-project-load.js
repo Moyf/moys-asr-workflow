@@ -68,8 +68,14 @@
 
 
 
-function applyCanonicalProject(data, filename) {
-  projectBindingEpoch += 1;
+function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
+  if (loadGeneration === null) {
+    const generation = MaweState.beginProjectLoad();
+    MaweState.finishProjectLoad(generation);
+  }
+  // Retire the previous file target before installing the new content.
+  MaweServerSave.projectFileHandle = null;
+  detachServerProjectSaving();
   if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.thumbnailBinding = '';
   MaweCoreState.waveformEditor?.setThumbnailBinding('');
   MaweWordTiming.reset();
@@ -86,10 +92,13 @@ function applyCanonicalProject(data, filename) {
   );
   MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
   MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
+  // A browser-imported project is not the server's native media binding.
+  if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.autoLoadedMediaPath = null;
   MaweBoot.DATA.language = data.language || '';
   MaweBoot.DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
   MaweBoot.DATA.preserve_punctuation = typeof data.preserve_punctuation === 'boolean' ? data.preserve_punctuation : undefined;
   MaweBoot.DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
+  MaweBoot.DATA.timed_text_edit_view = data.timed_text_edit_view === 'single' ? 'single' : 'rows';
   MaweBoot.DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
     ? data.timestamp_granularity : undefined;
   MaweBoot.DATA.model = data.model || '';
@@ -113,6 +122,7 @@ function applyCanonicalProject(data, filename) {
   MaweBoot.DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
   MaweHistory.gapRemoveDirty = false;
   MaweState.changes.markersDirty = false;
+  MaweState.changes.timedTextEditViewDirty = false;
   MaweAppearance.previewGeometryDirty = false;
   MaweServerSave.projectImportDirty = false;
   // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。
@@ -158,6 +168,7 @@ function applyCanonicalProject(data, filename) {
     jsonEl.classList.remove('empty');
     jsonEl.onclick = () => MaweExportTimeline.copyText(filename, `已复制：${filename}`);
   }
+  MaweProjectSave.updateProjectDirtyIndicator();
   MaweServerSave.projectCheckpointed = true;
   MaweServerSave.configureServerSaveControls();
   MaweServerSave.scheduleAutoSave();
@@ -172,12 +183,14 @@ function applyCanonicalProject(data, filename) {
       MaweHint.flashHint('工程正在保存，请稍候再试', 'warning');
       return false;
     }
+    const generation = MaweState.beginProjectLoad();
+    const current = () => generation === MaweState.projectLoadGeneration;
     MaweServerSave.projectCheckpointInFlight = true;
     try {
       if (!MaweHost.files.hasSavePicker() || !MaweHost.runtime.hasUserActivation()) {
         // 检查点只用于确认后续导入可以继续；无用户手势时不能弹出保存对话框，
         // 直接建立内存工程检查点，后续仍通过显式导出保存。
-        applyCanonicalProject(project, suggestedName);
+        applyCanonicalProject(project, suggestedName, { loadGeneration: generation });
         detachServerProjectSaving();
         return true;
       }
@@ -185,13 +198,19 @@ function applyCanonicalProject(data, filename) {
         suggestedName,
         types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
       });
-      await MaweHost.files.writeBlob(handle, () => new Blob([JSON.stringify(project, null, 2)], { type: 'application/json;charset=utf-8' }));
-      applyCanonicalProject(project, handle.name);
+      if (!current()) return false;
+      await MaweHost.files.writeBlob(handle, () => {
+        if (!current()) throw new DOMException('工程已切换', 'AbortError');
+        return new Blob([JSON.stringify(project, null, 2)], { type: 'application/json;charset=utf-8' });
+      });
+      if (!current()) return false;
+      applyCanonicalProject(project, handle.name, { loadGeneration: generation });
       MaweServerSave.projectFileHandle = handle;
       // detachServerProjectSaving 内部会刷新保存控件并重启自动保存。
       detachServerProjectSaving();
       return true;
     } catch (error) {
+      if (!current()) return false;
       if (error && error.name === 'AbortError') return false;  // 用户取消保存对话框
       if (error && (error.name === 'NotAllowedError' || error.name === 'SecurityError')) {
         try {
@@ -202,8 +221,8 @@ function applyCanonicalProject(data, filename) {
             { desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] } },
             { usePicker: false },
           );
-          if (saved) {
-            applyCanonicalProject(project, suggestedName);
+          if (saved && current()) {
+            applyCanonicalProject(project, suggestedName, { loadGeneration: generation });
             detachServerProjectSaving();
             return true;
           }
@@ -215,7 +234,12 @@ function applyCanonicalProject(data, filename) {
       MaweHint.flashHint(`创建工程失败：${error.message || error}`, 'warning');
       return false;
     } finally {
+      MaweState.finishProjectLoad(generation);
       MaweServerSave.projectCheckpointInFlight = false;
+      if (current()) {
+        MaweServerSave.configureServerSaveControls();
+        MaweServerSave.scheduleAutoSave();
+      }
     }
   }
 
@@ -242,6 +266,7 @@ function applyCanonicalProject(data, filename) {
       MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName = null;
       MaweBoot.SERVER_CONFIG.sourceMediaId = null;
     }
+    window.MaweBurnVideoExport?.invalidateBinding();
     window.MaweGapRemovedMediaExport?.updateButton();
     MaweServerSave.configureServerSaveControls();
     MaweDynamicExports.updateLottieExportButton();

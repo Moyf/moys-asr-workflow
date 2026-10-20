@@ -1,0 +1,90 @@
+---
+import type { MarkdownInstance } from 'astro';
+import { readFile } from 'node:fs/promises';
+import { imageMetadata } from 'astro/assets/utils';
+import UpdatesLayout from '../../layouts/UpdatesLayout.astro';
+import { sitePath } from '../../lib/site-path';
+import { releaseDate, releaseId, type ReleaseIndex } from '../../lib/releases';
+import releaseData from '../../generated/releases.json';
+
+const data = releaseData as ReleaseIndex;
+const releases = data.releases ?? [];
+const pages = import.meta.glob<MarkdownInstance<{ version: string }>>('./*.md', { eager: true });
+const content = new Map(await Promise.all(Object.values(pages).map(async (page) => [page.frontmatter.version, await page.compiledContent()] as const)));
+const bodyFor = (version: string) => (content.get(version) ?? '').replace(/<img\b[^>]*>/g, (tag) => images.get(tag) ?? tag).replace(/\bid="([^"]+)"/g, `id="${releaseId(version)}--$1"`).replace(/\bhref="#([^"]+)"/g, `href="#${releaseId(version)}--$1"`);
+// Reserve image space before lazy loading, so deep version links stay in place.
+const imageTags = [...content.values()].flatMap((html) => [...html.matchAll(/<img\b[^>]*>/g)].map((match) => match[0]));
+const images = new Map(await Promise.all([...new Set(imageTags)].map(async (tag) => {
+  const file = tag.match(/src="[^"]*\/release-assets\/([a-f0-9]+\.[a-z]+)"/)?.[1];
+  if (!file) return [tag, tag] as const;
+  const metadata = await imageMetadata(await readFile(new URL(`../../../public/release-assets/${file}`, import.meta.url)));
+  return [tag, tag.replace('<img ', `<img loading="lazy" decoding="async" width="${metadata.width}" height="${metadata.height}" `)] as const;
+})));
+const months = [...new Set(releases.map((release) => releaseDate(release).slice(0, 7)))];
+const monthLabel = (month: string) => `${month.slice(0, 4)} 年 ${Number(month.slice(5))} 月`;
+---
+<UpdatesLayout>
+  <main class="updates-main" id="content">
+    <aside class="updates-rail" aria-label="历史版本">
+      <a class="updates-rail-label" href="#content">版本索引</a>
+      <nav aria-label="按月份查看版本">
+        {months.map((month) => (
+          <section class="updates-month">
+            <h2>{monthLabel(month)}</h2>
+            <ol>
+              {releases.filter((release) => releaseDate(release).startsWith(month)).map((release) => (
+                <li><a data-release-link href={`#${releaseId(release.version)}`}><time datetime={releaseDate(release)}>{releaseDate(release).slice(8)}</time><span>v{release.version}</span></a></li>
+              ))}
+            </ol>
+          </section>
+        ))}
+      </nav>
+    </aside>
+    <div class="updates-feed">
+      <header class="updates-intro">
+        <p class="updates-eyebrow">MAW / CHANGELOG</p>
+        <h1>更新记录</h1>
+        <p>MAW 的新功能、改进与修复。</p>
+        {data.mode === 'preview' && <p class="updates-preview">本地归档预览 · 发布状态与安装包以 GitHub Release 为准</p>}
+      </header>
+      {releases.length ? releases.map((release) => {
+        const body = bodyFor(release.version);
+        return (
+          <article class="updates-entry" id={releaseId(release.version)} data-release-entry>
+            <header class="updates-entry-head">
+              <a class="updates-version" href={sitePath(`releases/${release.version}/`)}>v{release.version} <span aria-hidden="true">↗</span></a>
+              <time datetime={releaseDate(release)}>{releaseDate(release)}</time>
+              {release.version === data.latest_stable && <span class="updates-latest">最新正式版</span>}
+            </header>
+            <h2><a href={sitePath(`releases/${release.version}/`)}>MAW {release.version}</a></h2>
+            {body ? <div class="release-prose" set:html={body} /> : <div class="release-prose"><p>{release.summary}</p></div>}
+            <div class="updates-entry-links">
+              <a href={sitePath(`releases/${release.version}/`)}>版本详情与下载 <span aria-hidden="true">↗</span></a>
+              <a href={`#${releaseId(release.version)}`} aria-label={`MAW ${release.version} 的固定链接`}>固定链接</a>
+              {data.mode === 'published' && release.github_url && <a href={release.github_url}>GitHub Release ↗</a>}
+            </div>
+          </article>
+        );
+      }) : <p class="updates-empty">暂无已整理的版本记录。<a href="https://github.com/Moyf/moys-asr-workflow/releases">查看 GitHub Release ↗</a></p>}
+    </div>
+  </main>
+  <script>
+    const entries = [...document.querySelectorAll<HTMLElement>('[data-release-entry]')];
+    const links = [...document.querySelectorAll<HTMLAnchorElement>('[data-release-link]')];
+    const select = (id: string) => links.forEach((link) => {
+      if (link.hash === `#${id}`) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+    const update = () => {
+      const active = entries.filter((entry) => entry.getBoundingClientRect().top <= 160).at(-1) ?? entries[0];
+      if (active) select(active.id);
+    };
+    let pending = false;
+    addEventListener('scroll', () => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => { update(); pending = false; });
+    }, { passive: true });
+    update();
+  </script>
+</UpdatesLayout>

@@ -22,18 +22,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from generate_subtitle_qwen_api import (
-    extract_audio,
-    generate_srt,
-    get_duration_sec,
+from maw.asr.common import extract_audio, generate_srt, get_duration_sec, parse_duration
+from maw.asr.segmentation import (
     is_cjk_char,
-    parse_duration,
     repair_nonpositive_duration_segments,
     split_coarse_segments,
     split_segments_auto,
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.alignment_models import FIRERED_ASR2_CTC_MODEL_ID
+from maw.gui_platform import creationflags, startupinfo
 from maw.hub_download import prepare_hub_snapshot
 from maw.local_debug import debug_json_value
 from maw.punctuation import PunctuationError, punctuate_timed_tokens
@@ -905,7 +903,7 @@ class QwenAsrEngine:
             "-ac", "1",
             "-y", str(target_path),
         ]
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, startupinfo=startupinfo(), creationflags=creationflags())
 
     @staticmethod
     def _shift_chunk_result(
@@ -2096,7 +2094,7 @@ def create_local_engine(
     raise ValueError("engine must be one of: qwen-asr, funasr, moss, firered, whisper")
 
 
-_LOCAL_TAIL_PUNCT = "，。；,."
+_LOCAL_TAIL_PUNCT = "，。；,.;"
 
 
 def _char_weight_weights(text: str) -> list[float]:

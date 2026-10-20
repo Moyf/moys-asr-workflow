@@ -36,6 +36,8 @@ source: "docs/INDEX.md"
 
 [打开正文](../faq/)
 
+[随发布包附带的离线 FAQ](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/user/FAQ-常见问题.txt)
+
 <a name="user-keyboard"></a>
 ### MAWE 字幕按键调整
 
@@ -52,7 +54,7 @@ source: "docs/INDEX.md"
 [打开正文](../local-asr/)
 
 <a name="user-multi-subtitle"></a>
-### 多重字幕（双语字幕）规范
+### 双语字幕规范
 
 [打开正文](../multi-subtitle/)
 
@@ -128,6 +130,16 @@ source: "docs/INDEX.md"
 
 [打开正文](../mose/)
 
+<a name="engineering-design-system"></a>
+### MAWE 编辑器界面设计契约
+
+[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DESIGN.md)
+
+<a name="engineering-project-format"></a>
+### 工程文件格式
+
+[字段契约](../json-schema/)
+
 <a name="engineering-debug"></a>
 ### 有界输出与分层调试
 
@@ -145,6 +157,16 @@ source: "docs/INDEX.md"
 
 ## 共享计划
 
+<a name="plan-release-pipeline"></a>
+### 正式版本归档、官网与更新检测管线
+
+[架构、内容来源、资源复用与实施阶段](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/RELEASE_PIPELINE.md)
+
+<a name="plan-ass-cue-scale"></a>
+### 主字幕单句缩放开发方案
+
+[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/ASS_CUE_SCALE.md)
+
 这些阶段方案保留原始基线与状态；是否继续实施以本分支代码、后续记录和维护者确认为准。编辑器设置方案已有实施记录，旧前端方案不代表当前代码布局。
 
 <a name="plan-ai-processing-review"></a>
@@ -157,6 +179,16 @@ source: "docs/INDEX.md"
 
 [打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/EDITOR_SETTINGS_PLAN.md)
 
+<a name="plan-launcher-redesign"></a>
+### Launcher 现代化改版设计方案
+
+[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/LAUNCHER_REDESIGN.md)
+
+<a name="plan-launcher-redesign-prototype"></a>
+### Launcher 改版原型（静态参考）
+
+[打开说明](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/launcher-redesign/README.md)
+
 <a name="plan-editor-modules"></a>
 ### MAWE 前端渐进式重构企划案
 
@@ -167,11 +199,6 @@ source: "docs/INDEX.md"
 
 [打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/MAWE%20%E6%8E%A5%E7%BA%BF%E6%8B%86%E5%88%86%E4%B8%8E%E7%9B%AE%E5%BD%95%E5%88%86%E5%B1%82%E8%AE%A1%E5%88%92.md)
 
-<a name="engineering-project-format"></a>
-### 工程文件格式
-
-[字段契约](../json-schema/)
-
 <a name="engineering-server"></a>
 ### 源码服务与桌面开发
 
@@ -180,7 +207,7 @@ source: "docs/INDEX.md"
 <a name="engineering-website"></a>
 ### 官网源文档同步
 
-[同步与构建](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md)
+[同步与构建](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) · [官网需求与设计](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/PROJECT_BRIEF.md) · [素材来源](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/ASSETS.md) · [改版人工核验](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.1/261021_官网改版/官网改版.checklist.md)
 
 <a name="engineering-releases"></a>
 ### 版本更新文档与发布管线
@@ -191,5 +218,7 @@ source: "docs/INDEX.md"
 ## 日志与历史
 
 [保留日志索引](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/INDEX.md) · [当前相关参考与未决事项](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/CURRENT.md) · [2026-08-11 README 原文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/archived/README-2026-08-11.md)
+
+当前功能记录：[主字幕单句缩放进度账本](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.md) · [人工核对清单](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)
 
 反馈账本中的“已修复”只对应其记录的版本和验证范围。发布变化见 [CHANGELOG](https://github.com/Moyf/moys-asr-workflow/blob/main/CHANGELOG.md)。

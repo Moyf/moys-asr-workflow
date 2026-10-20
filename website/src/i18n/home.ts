@@ -11,7 +11,7 @@ export interface HomeCopy {
   htmlLang: string;
   title: string;
   description: string;
-  nav: { features: string; editor: string; faq: string; docs: string };
+  nav: { features: string; editor: string; faq: string; docs: string; releases: string };
   langSwitch: { label: string; href: string; aria: string };
   themeAria: string;
   hero: { line1: string; accent: string; line2: string; lede: string[]; download: string; github: string; editorAlt: string; launcherAlt: string };
@@ -38,7 +38,7 @@ const repo = 'https://github.com/Moyf/moys-asr-workflow';
 export const links = {
   repo,
   releases: `${repo}/releases/latest`,
-  changelog: `${repo}/blob/main/CHANGELOG.md`,
+  changelog: 'releases/',
   issues: `${repo}/issues`,
   // 教程视频地址待定，暂指向 README 中的速览视频
   video: 'https://www.bilibili.com/video/BV1hXum6yELT',
@@ -51,15 +51,15 @@ export const copy: Record<Lang, HomeCopy> = {
   zh: {
     htmlLang: 'zh-CN',
     title: "MAW - 阿墨的字幕工作台 | Moy's ASR Workflow",
-    description: '转写、对着波形校对、导出交付。开源免费的字幕工作台，在你自己的电脑上完成。',
-    nav: { features: '功能', editor: '编辑器', faq: '常见问题', docs: '文档' },
+    description: '从音视频转写，到波形校对与字幕交付。MAW 是开源、本地优先的字幕工作台，支持自选云端服务与实验性本地模型。',
+    nav: { features: '功能', editor: '编辑器', faq: '常见问题', docs: '文档', releases: '更新记录' },
     langSwitch: { label: 'EN', href: 'en/', aria: 'Switch to English' },
     themeAria: '切换明暗主题',
     hero: {
       line1: '把声音变成',
       accent: '可继续编辑',
       line2: '的字幕',
-      lede: ['转写、对着波形校对、导出交付。', '开源免费，在你自己的电脑上完成。'],
+      lede: ['从转写、波形校对，到字幕交付。', '开源、本地优先，保留工程继续修改。'],
       download: '免费下载',
       github: 'GitHub',
       editorAlt: 'MAWE 字幕编辑器：左侧视频与字幕列表，右侧多行波形与叠加字幕',
@@ -90,31 +90,31 @@ export const copy: Record<Lang, HomeCopy> = {
       editor: { title: '自带好用的字幕编辑器', body: '不用再导进别的软件慢慢对轴。转写完直接打开，改完直接导出。', more: '看看编辑器 ↓' },
     },
     editor: {
-      titleA: '可能是', accent: '最好用', titleB: '的字幕编辑器',
-      lede: '波形、文字、时间码放在一起，每个字都对得上声音。',
+      titleA: '听得见声音，', accent: '看得清细节', titleB: '',
+      lede: '把波形、字幕与时间放在一起。边听边改，让每一句落在合适的位置。',
       mainAlt: 'MAWE 编辑器：多行波形与频谱，字幕块按时间排布',
-      carouselAria: '功能演示，悬停查看',
+      carouselAria: '选择编辑器功能',
       demos: [
         { title: '多行波形', body: '长音频一屏看完，点哪播哪', img: 'home/demo-waveform.webp', alt: '多行波形与播放头' },
         { title: '双语与多轨', body: '主副字幕上下对照编辑', img: 'home/demo-bilingual.webp', alt: '双语字幕双列编辑' },
         { title: '说话人颜色', body: '谁在说话，一眼看清', img: 'home/demo-speaker.webp', alt: '按说话人着色的字幕预览' },
         { title: '按字拆分', body: '沿着字的边界，一刀切开', img: 'home/demo-split.webp', alt: '拆分位置预览' },
         { title: '像玩游戏一样编辑', body: 'WASD 切换字幕，键盘流到底', img: 'home/demo-keyboard.webp', alt: '快速上手：WASD 切换字幕' },
-        { title: '一键去掉停顿', body: '先听节奏再决定，随时恢复', alt: '空隙移除演示（待补）' },
+        { title: '可逆空隙移除', body: '先听节奏再决定，随时恢复', img: 'home/demo-gaps.webp', alt: '空隙移除：在波形上查看保留与移除的区间' },
       ],
     },
     faqTitle: '常见问题',
     faq: [
       { q: '要花钱吗？', a: 'MAW 免费开源。云端识别按服务商价格计费，本地模型不收费。' },
       { q: '需要显卡吗？', a: '云端识别不需要。本地模型建议有独立显卡。' },
-      { q: '是在线网站吗？', a: '不是。下载后在自己电脑上用，媒体不经过 MAW 的服务器。' },
+      { q: '是在线网站吗？', a: 'MAW 下载后在本机运行，编辑与保存留在本机。云端转写会把音频发送给你选择的服务商；使用 LLM 整理时，相应字幕与文稿也会发送给所选服务。' },
       { q: '能导出什么？', a: 'SRT、ASS、双语字幕、烧录视频，以及给剪辑软件（PR、达芬奇）用的时间线。' },
     ],
     download: {
       title: '开始做下一期字幕',
       main: {
         title: '下载 MAW',
-        body: 'Windows 与 macOS，解压即用。第一次可以只转前两分钟试试效果。',
+        body: '选择与你的系统和架构对应的安装包。第一次可以只转前两分钟，试试效果。',
         button: '下载最新版',
         links: [
           { label: '上手指南', href: 'docs/getting-started/' },
@@ -140,15 +140,15 @@ export const copy: Record<Lang, HomeCopy> = {
   en: {
     htmlLang: 'en',
     title: "MAW - Moy's ASR Workflow",
-    description: 'Transcribe, fix subtitles against the waveform, and export. A free, open-source subtitle workbench that runs on your own computer.',
-    nav: { features: 'Features', editor: 'Editor', faq: 'FAQ', docs: 'Docs' },
+    description: 'From transcription to waveform editing and subtitle delivery. An open-source, local-first workbench with your choice of cloud service and experimental local models.',
+    nav: { features: 'Features', editor: 'Editor', faq: 'FAQ', docs: 'Docs', releases: 'Updates' },
     langSwitch: { label: '中文', href: '', aria: '切换到中文' },
     themeAria: 'Toggle light / dark theme',
     hero: {
       line1: 'Turn speech into',
       accent: 'editable',
       line2: 'subtitles',
-      lede: ['Transcribe, fix against the waveform, export.', 'Free, open source, and it runs on your own computer.'],
+      lede: ['From transcription to waveform editing and subtitle delivery.', 'An open-source workbench. Keep your project, pick up where you left off.'],
       download: 'Download free',
       github: 'GitHub',
       editorAlt: 'MAWE subtitle editor: video and cue list on the left, multi-row waveform with overlay subtitles on the right',
@@ -179,31 +179,31 @@ export const copy: Record<Lang, HomeCopy> = {
       editor: { title: 'A subtitle editor that’s a joy to use', body: 'No more importing into another app to fix timing. Open it right after transcription, export when you’re done.', more: 'See the editor ↓' },
     },
     editor: {
-      titleA: 'Possibly the ', accent: 'nicest', titleB: ' subtitle editor around',
-      lede: 'Waveform, text and timing in one place. Every word lines up with the sound.',
+      titleA: 'Hear the sound. ', accent: 'See the detail.', titleB: '',
+      lede: 'Waveform, text and timing in one place. Listen, refine, and give each line room to land.',
       mainAlt: 'MAWE editor: multi-row waveform with spectrogram and subtitle blocks on the timeline',
-      carouselAria: 'Feature demos, hover to view',
+      carouselAria: 'Choose an editor feature',
       demos: [
         { title: 'Multi-row waveform', body: 'See a long take at a glance; click to play', img: 'home/demo-waveform.webp', alt: 'Multi-row waveform with playhead' },
         { title: 'Bilingual tracks', body: 'Edit primary and secondary side by side', img: 'home/demo-bilingual.webp', alt: 'Bilingual subtitles in two columns' },
         { title: 'Speaker colors', body: 'Know who is talking at a glance', img: 'home/demo-speaker.webp', alt: 'Subtitle preview colored by speaker' },
         { title: 'Split by word', body: 'Cut exactly on a word boundary', img: 'home/demo-split.webp', alt: 'Split position preview' },
         { title: 'Edit like a game', body: 'WASD to move between cues', img: 'home/demo-keyboard.webp', alt: 'Quick start: WASD navigation' },
-        { title: 'Remove pauses', body: 'Hear the new pace first; undo anytime', alt: 'Gap removal demo (coming soon)' },
+        { title: 'Reversible gap removal', body: 'Hear the new pace first; undo anytime', img: 'home/demo-gaps.webp', alt: 'Gap removal: retained and removed ranges on the waveform' },
       ],
     },
     faqTitle: 'FAQ',
     faq: [
       { q: 'Does it cost anything?', a: 'MAW is free and open source. Cloud recognition is billed by your provider; local models are free.' },
       { q: 'Do I need a GPU?', a: 'Not for cloud recognition. A dedicated GPU is recommended for local models.' },
-      { q: 'Is it a website?', a: 'No. You download it and run it on your computer. Your media never passes through a MAW server.' },
+      { q: 'Is it a website?', a: 'Download MAW and run it on your computer. Editing and saving stay local. Cloud transcription sends audio to your chosen provider; optional LLM processing sends the relevant subtitle and script text to that service.' },
       { q: 'What can I export?', a: 'SRT, ASS, bilingual subtitles, burned-in video, and timelines for Premiere Pro or DaVinci Resolve.' },
     ],
     download: {
       title: 'Start your next subtitles',
       main: {
         title: 'Download MAW',
-        body: 'Windows and macOS, just unzip and run. Try only the first two minutes on your first run.',
+        body: 'Choose a package for your system and architecture. Try the first two minutes on your first run.',
         button: 'Download latest',
         links: [
           { label: 'Getting started', href: 'docs/getting-started/' },

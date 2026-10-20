@@ -179,6 +179,9 @@
   markerEditingEnabled: false,
   // 表情包功能总开关：关闭时隐藏预览与右键分配入口；工程数据保留。
   stickersEnabled: true,
+  // 表情包烧录显示模式：fixed = 出现在预览层固定位置（方案一）；
+  // cue-left = 贴在当前字幕第一个字左侧（方案二，句间空隙/legacy 句回退 fixed）。
+  stickerBurnMode: 'fixed',
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
   stickerOtioExportMode: 'original',
   // 时间线 OTIO / OTIOZ 导出选项：同时导出 SRT、合并表情包轨、写入字幕标记（默认全开）。
@@ -186,6 +189,7 @@
   otioExportIncludeStickers: true,
   otioExportIncludeMarkers: true,
   otioExportIncludeMarkerRegions: true,
+  greenScreenIncludeAudio: false,
   // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
@@ -229,8 +233,8 @@
   // 界面主题：dark（默认）/ light / system。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
   toastPosition: 'top-center',
-  // 界面强调色：blue（默认）/ red / orange / custom；自定义颜色单独保存为六位十六进制值。
-  accentColor: 'blue',
+  // 界面强调色：brand（默认，暗色橙 / 亮色红，与 Launcher 一致）/ blue / red / orange / custom；自定义颜色单独保存为六位十六进制值。
+  accentColor: 'brand',
   accentColorCustom: '#6ca5e8',
   // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
   waveShapeSource: 'reapeaks',
@@ -267,7 +271,7 @@
   const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 
 
-  const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#eac953';
+  const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#f9ca1f';
 
 
   const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);
@@ -308,6 +312,7 @@
       otioExportIncludeStickers: saved.otioExportIncludeStickers !== false,
       otioExportIncludeMarkers: saved.otioExportIncludeMarkers !== false,
       otioExportIncludeMarkerRegions: saved.otioExportIncludeMarkerRegions !== false,
+      greenScreenIncludeAudio: saved.greenScreenIncludeAudio === true,
     }, legacyAssStyleLibrary);
     if (saved?.assSpecialSymbolRule === undefined) saveEditorSettings(settings);
     return settings;

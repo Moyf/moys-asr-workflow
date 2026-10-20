@@ -26,7 +26,8 @@ from maw.postprocess_ffmpeg import _subtitle_filter
 
 class AssStyleLibraryTests(unittest.TestCase):
     def test_legacy_extension_color_migration_matches_editor_and_preserves_custom_colors(self) -> None:
-        for color, expected in [("#ffd34d", "#eac953"), ("#ff0000", "#ff0000")]:
+        for color, expected in [("#ffd34d", "#f9ca1f"), ("#ff0000", "#ff0000"),
+                                ("#eac953", "#eac953")]:
             library = normalize_ass_style_library({"styles": [
                 {"id": "ass-extension", "primaryColor": color},
                 {"id": "custom-style", "primaryColor": "#ffd34d"},
@@ -56,19 +57,32 @@ class AssStyleLibraryTests(unittest.TestCase):
     def test_new_defaults_match_configured_parameters_and_keep_saved_library(self) -> None:
         library = default_ass_style_library()
         srt, main, extension = library["styles"]
-        for style in (srt, main):
-            self.assertEqual((style["fontSize"], style["outline"], style["marginV"], style["bold"]),
-                             (86, 6, 88, True))
+        # SRT 渲染样式的排版字段（字号/阴影/垂直边距）按烧录字幕场景单独配置；
+        # 内置 ASS 主样式的字号沿用共享基础值，垂直边距单独覆盖。
+        self.assertEqual((srt["fontSize"], srt["outline"], srt["shadow"], srt["marginV"], srt["bold"]),
+                         (80, 6, 2, 124, True))
+        self.assertEqual((main["fontSize"], main["outline"], main["shadow"], main["marginV"], main["bold"]),
+                         (86, 6, 0, 180, True))
         self.assertEqual((main["emphasisColor"], main["emphasisScale"], main["backColor"], main["backOpacity"]),
                          ("#ffaa00", 1.3, "#ff8647", 60))
         self.assertEqual((extension["fontSize"], extension["outline"], extension["marginV"], extension["primaryColor"]),
-                         (64, 2, 36, "#eac953"))
+                         (64, 4, 100, "#f9ca1f"))
         self.assertEqual(library["assProfiles"][0]["animations"]["fad"],
                          {"enabled": True, "inMs": 250, "outMs": 250})
         main.update(fontName="Arial", fontSize=72, emphasisScale=1.1, backColor="#000000",
                     backOpacity=100, bold=False, outline=4, marginV=80)
         library["assProfiles"][0]["animations"]["fad"]["enabled"] = False
         self.assertEqual(normalize_ass_style_library(library), library)
+
+    def test_legacy_builtin_names_migrate_to_current_defaults(self) -> None:
+        # 旧库仍用旧默认名的内置条目迁移到当前默认名；自定义名字不动。
+        legacy = normalize_ass_style_library({
+            "styles": [{"id": "default", "name": "SRT 默认"}, {"id": "ass", "name": "ASS"}],
+        })
+        self.assertEqual(find_ass_style(legacy, "default")["name"], "SRT 渲染样式")
+        self.assertEqual(find_ass_style(legacy, "ass")["name"], "ASS 默认样式")
+        custom = normalize_ass_style_library({"styles": [{"id": "default", "name": "我的烧录样式"}]})
+        self.assertEqual(find_ass_style(custom, "default")["name"], "我的烧录样式")
 
     def test_v1_emphasis_scale_default_migrates_for_builtin_styles_only(self) -> None:
         legacy = normalize_ass_style_library({
@@ -114,9 +128,9 @@ class AssStyleLibraryTests(unittest.TestCase):
             "ass-extension",
         )
         default_extension = find_ass_style(fallback, "ass-extension")
-        self.assertEqual(default_extension["primaryColor"], "#eac953")
+        self.assertEqual(default_extension["primaryColor"], "#f9ca1f")
         self.assertEqual(default_extension["fontSize"], 64)
-        self.assertEqual(default_extension["marginV"], 36)
+        self.assertEqual(default_extension["marginV"], 100)
 
     def test_emphasis_style_settings_survive_server_normalization(self) -> None:
         library = normalize_ass_style_library({

@@ -4,8 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { buildEditor, writeArtifact } from '../scripts/build-editor.mjs';
+import { buildEditor, isBundleArtifact, shouldRebuildBundle, writeArtifact } from '../scripts/build-editor.mjs';
 import { buildLauncher } from '../scripts/build-launcher.mjs';
 
 const bundle = 'editor/boot/editor-bundle.js';
@@ -16,6 +17,117 @@ const fixture = t => {
   t.after(() => fs.rmSync(root, {recursive:true, force:true}));
   return root;
 };
+const seamFixture = (t, kind, specifier = './helper.js', imports = {}) => {
+  const root = fixture(t);
+  fs.mkdirSync(path.join(root,'web'),{recursive:true});
+  fs.mkdirSync(path.join(root,'scripts'),{recursive:true});
+  fs.writeFileSync(path.join(root,`web/${kind}-scripts.txt`),'seam.js\n');
+  fs.writeFileSync(path.join(root,`web/${kind}-modules.json`),JSON.stringify({format:1,
+    modules:[{file:'seam.js',kind:'init',name:'seam',exportName:'runSeam'}],externalBridges:[]}));
+  fs.writeFileSync(path.join(root,'web/seam.js'),
+    `import { value } from ${JSON.stringify(specifier)};\nexport function runSeam() { window.result = value; }\n`);
+  fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'inside';\n");
+  fs.writeFileSync(path.join(root,'outside-helper.js'),"export const value = 'outside';\n");
+  for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','pnpm-lock.yaml']) {
+    fs.writeFileSync(path.join(root,name),'fixture input\n');
+  }
+  fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({imports})+'\n');
+  return root;
+};
+
+test('watchers ignore both bundles, metadata and atomic publication files on either path separator', () => {
+  for (const kind of ['editor', 'launcher']) {
+    for (const name of [`${kind}-bundle.js`, `${kind}-bundle.meta.json`, '.maw-bundle-test.tmp']) {
+      const file = `${kind}/boot/${name}`;
+      assert.equal(isBundleArtifact(file), true, file);
+      assert.equal(isBundleArtifact(file.replaceAll('/', '\\')), true, file);
+    }
+  }
+  for (const file of ['editor-scripts.txt', 'launcher-modules.json', 'editor/boot/editor.js',
+    'launcher/boot/launcher-state.js', 'shared/utils.js']) {
+    assert.equal(isBundleArtifact(file), false, file);
+  }
+});
+
+test('watchers ignore existing directory events but still rebuild for edited or deleted sources', t => {
+  const root = fixture(t);
+  fs.mkdirSync(path.join(root, 'web/editor/boot'), {recursive:true});
+  fs.writeFileSync(path.join(root, 'web/editor/boot/editor.js'), 'window.fixture = 1;\n');
+  assert.equal(shouldRebuildBundle(root, 'editor/boot'), false);
+  assert.equal(shouldRebuildBundle(root, 'editor\\boot'), false);
+  assert.equal(shouldRebuildBundle(root, 'editor/boot/editor.js'), true);
+  assert.equal(shouldRebuildBundle(root, 'editor/deleted-source.js'), true);
+  assert.equal(shouldRebuildBundle(root, 'launcher/boot/launcher-bundle.js'), false);
+});
+
+test('two real watchers rebuild edited sources and then stay idle together', {timeout:20000}, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'maw-dual-watch-'));
+  fs.mkdirSync(path.join(root, 'web'), {recursive:true});
+  fs.mkdirSync(path.join(root, 'scripts'), {recursive:true});
+  fs.writeFileSync(path.join(root, 'web/source.js'), 'window.fixture = 1;\n');
+  fs.writeFileSync(path.join(root, 'package.json'), '{}\n');
+  fs.writeFileSync(path.join(root, 'pnpm-lock.yaml'), 'fixture\n');
+  for (const kind of ['editor', 'launcher']) {
+    // 开发会话已先完成两套构建，watcher 启动时双方输出目录都已存在。
+    fs.mkdirSync(path.join(root, `web/${kind}/boot`), {recursive:true});
+    fs.writeFileSync(path.join(root, `web/${kind}-scripts.txt`), 'source.js\n');
+    fs.writeFileSync(path.join(root, `web/${kind}-modules.json`), '{"modules":[],"externalBridges":[]}\n');
+    fs.writeFileSync(path.join(root, `scripts/build-${kind}.mjs`), '// fixture build input\n');
+  }
+  const states = [];
+  t.after(async () => {
+    await Promise.all(states.map(({child}) => new Promise(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) return resolve();
+      child.once('close', resolve);
+      child.kill();
+    })));
+    fs.rmSync(root, {recursive:true, force:true});
+  });
+  for (const kind of ['editor', 'launcher']) {
+    const script = new URL(`../scripts/build-${kind}.mjs`, import.meta.url);
+    const child = spawn(process.execPath, [fileURLToPath(script), '--watch', root],
+      {stdio:['ignore', 'pipe', 'pipe']});
+    const state = {child, output:'', error:null};
+    child.on('error', error => { state.error = error; });
+    for (const stream of [child.stdout, child.stderr]) {
+      stream.setEncoding('utf8');
+      stream.on('data', data => { state.output = (state.output + data).slice(-4000); });
+    }
+    states.push(state);
+  }
+  const builds = state => (state.output.match(/^(Editor|Launcher):/gm) ?? []).length;
+  const waitFor = async predicate => {
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      for (const state of states) {
+        assert.equal(state.error, null, state.output);
+        assert.equal(state.child.exitCode, null, state.output);
+        assert.ok(builds(state) < 10, `watcher rebuild loop: ${state.output}`);
+      }
+      if (predicate()) return;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    assert.fail(`watchers did not settle: ${states.map(state => state.output).join('\n')}`);
+  };
+  const settle = async () => {
+    let previous = '', quietSince = Date.now();
+    await waitFor(() => {
+      const current = states.map(builds).join(',');
+      if (current !== previous) { previous = current; quietSince = Date.now(); }
+      return Date.now() - quietSince >= 800;
+    });
+  };
+  await waitFor(() => states.every(state => builds(state) >= 1));
+  await settle();
+  assert.deepEqual(states.map(builds), [1, 1]);
+  fs.writeFileSync(path.join(root, 'web/source.js'), 'window.fixture = 2;\n');
+  await waitFor(() => states.every(state => builds(state) >= 2));
+  await settle();
+  for (const kind of ['editor', 'launcher']) {
+    const code = fs.readFileSync(path.join(root, `web/${kind}/boot/${kind}-bundle.js`), 'utf8');
+    assert.match(code, /window\.fixture\s*=\s*2/);
+  }
+});
 
 test('failed staging preserves the last complete artifact', async t => {
   const root = fixture(t);
@@ -73,6 +185,60 @@ for (let i = 0; i < 100; i++) {
   });
   await Promise.all([run('A'), run('B'), run('read')]);
 });
+
+for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher]]) {
+  test(`${kind} records and hashes an imported module outside its source list`, async t => {
+    const root = fixture(t);
+    fs.mkdirSync(path.join(root,'web'),{recursive:true});
+    fs.mkdirSync(path.join(root,'scripts'),{recursive:true});
+    fs.writeFileSync(path.join(root,`web/${kind}-scripts.txt`),'seam.js\n');
+    fs.writeFileSync(path.join(root,`web/${kind}-modules.json`),JSON.stringify({format:1,
+      modules:[{file:'seam.js',kind:'init',name:'seam',exportName:'runSeam'}],externalBridges:[]}));
+    fs.writeFileSync(path.join(root,'web/seam.js'),
+      `import { value } from './helper.js';\nexport function runSeam() { window.result = value; }\n`);
+    fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'first';\n");
+    for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','pnpm-lock.yaml']) {
+      fs.writeFileSync(path.join(root,name),'fixture input\n');
+    }
+    fs.writeFileSync(path.join(root,'package.json'),'{}\n');
+
+    const first = await build(root);
+    assert.ok(first.metafile.inputs['web/helper.js']);
+    assert.ok(first.metadata.inputs['helper.js']);
+    fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'second';\n");
+    const second = await build(root);
+    assert.notEqual(first.metadata.inputs['helper.js'],second.metadata.inputs['helper.js']);
+    assert.notEqual(first.code,second.code);
+  });
+
+  test(`${kind} rejects a dependency changed after esbuild read its bytes`, async t => {
+    const root = seamFixture(t,kind);
+    const helper = path.resolve(root,'web/helper.js'), originalRead = fs.readFileSync;
+    let changed = false;
+    fs.readFileSync = (file,...args) => {
+      const source = originalRead(file,...args);
+      if (!changed && path.resolve(file) === helper) {
+        changed = true;
+        fs.writeFileSync(helper,"export const value = 'changed';\n");
+      }
+      return source;
+    };
+    try {
+      await assert.rejects(build(root), /Build input changed during compilation/);
+    } finally { fs.readFileSync = originalRead; }
+    assert.ok(changed, 'the dependency was read during compilation');
+  });
+
+  test(`${kind} captures in-web aliases and rejects aliases outside web`, async t => {
+    const root = seamFixture(t,kind,'#inside',
+      {'#inside':'./web/helper.js','#outside':'./outside-helper.js'});
+    const inside = await build(root);
+    assert.ok(inside.metadata.inputs['helper.js']);
+    fs.writeFileSync(path.join(root,'web/seam.js'),
+      `import { value } from '#outside';\nexport function runSeam() { window.result = value; }\n`);
+    await assert.rejects(build(root), /Static import escapes web/);
+  });
+}
 
 for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher]]) {
   for (const changed of [`web/${kind}-modules.json`, 'scripts/build-editor.mjs', 'pnpm-lock.yaml', 'web/source.js']) {

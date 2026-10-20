@@ -89,9 +89,23 @@ export function createUtilsModule(dependencies) {
   // 「傲」改写成「Alt(noir)」后，剩下的同字词必须让位、各自落到真实位置）。
   // 返回与 items 等长的数组，对齐成功的元素为
   // { item, itemText, textStart, textEnd }，空文本或找不到的词为 null。
-  function alignItemsToText(text, items) {
+  function alignItemsToText(text, items, { fromEnd = false } = {}) {
     const value = String(text || '');
     const list = Array.isArray(items) ? items : [];
+    if (fromEnd) {
+      const reversedText = Array.from(value).reverse().join('');
+      const reversedItems = [...list].reverse().map((item) => ({
+        ...item,
+        text: Array.from(String(item?.text || '')).reverse().join(''),
+      }));
+      const reversed = alignItemsToText(reversedText, reversedItems);
+      return reversed.reverse().map((record, index) => record ? {
+        item: list[index],
+        itemText: String(list[index]?.text || ''),
+        textStart: value.length - record.textEnd,
+        textEnd: value.length - record.textStart,
+      } : null);
+    }
     const occurrences = list.map((item) => {
       const itemText = String(item?.text || '');
       const found = [];

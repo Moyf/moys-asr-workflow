@@ -2,10 +2,10 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
-  const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", timestamps: "toolboxTimestampsPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel", alignment: "toolboxAlignmentPanel", burnSubtitle: "toolboxBurnSubtitlePanel", extractAudio: "toolboxExtractAudioPanel" };
+  const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", timestamps: "toolboxTimestampsPanel", scriptAlignment: "toolboxScriptAlignmentPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel", alignment: "toolboxAlignmentPanel", burnSubtitle: "toolboxBurnSubtitlePanel", extractAudio: "toolboxExtractAudioPanel" };
   const TASK_PROMPT_KEYS = { ai_cleanup: "toolbox_task_cleanup", proofread: "toolbox_task_proofread", resegment: "toolbox_task_resegment", translate_en: "toolbox_task_translate_en", translate_zh: "toolbox_task_translate_zh" };
   const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
-  const SUBTITLE_BURN_EXTS = new Set([".srt", ".ass", ".ssa"]);
+  const SUBTITLE_BURN_EXTS = new Set([".srt", ".ass", ".ssa", ".mosp", ".json"]);
   const ALIGNMENT_PROJECT_EXTS = new Set([".mosp", ".json"]);
   const MEDIA_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"]);
   const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
@@ -48,6 +48,12 @@
   const AUTO_LLM_OPERATIONS = { cleanup: "ai_cleanup", proofread: "proofread", resegment: "resegment" };
   let autoPlanSaveTimer = 0;
   let pendingAutoStep = "";
+  let pendingAutoStepRequest = null;
+  const autoStepCheckRequests = new Map();
+  let llmSettingsRequest = 0;
+  const providerSettingsRequests = new Map();
+  let providerStatusRequest = 0;
+  let providerStatusApplied = 0;
   let toolboxOpenMode = "manual";
   let busy = false;
   let activePostprocessOperationId = "";
@@ -449,17 +455,17 @@
 
   function defaultAutoPlan() {
     return {
-      version: 1,
+      version: 2,
       enabled: false,
       retainIntermediate: true,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
         { id: "cleanup", enabled: false, scriptPath: "", providerId: "deepseek", customPrompt: "", generateComparison: false },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "ocr", enabled: false, videoPath: "", videoPathMode: "", regionMode: "full", regionX1: 0, regionY1: 0, regionX2: 100, regionY2: 100, threshold: 0.5, report: false },
-        { id: "translate", enabled: false, providerId: "deepseek", target: "zh", mergeBilingual: false, embedTranslations: false, bilingualLineOrder: "", customPrompt: "" },
+        { id: "translate", enabled: false, providerId: "deepseek", target: "zh", mergeBilingual: false, embedTranslations: false, bilingualLineOrder: "", customPrompt: "", skipTargetLanguage: true },
         { id: "burn", enabled: false, videoEncoder: "auto" },
       ],
     };
@@ -655,7 +661,7 @@
   }
 
   function clearChainSelection() {
-    document.querySelectorAll(".toolbox-chain-file.selected").forEach((button) => button.classList.remove("selected"));
+    document.querySelectorAll(".toolbox-chain-file.selected, .toolbox-chain-source.selected").forEach((button) => button.classList.remove("selected"));
   }
 
   function syncInputName() {
@@ -670,6 +676,7 @@
   function syncUtilityMediaName() {
     const path = $("toolboxUtilityMediaPath").value.trim();
     const name = $("toolboxUtilityMediaName");
+    if (name.title !== path) clearScriptAlignmentCheck();
     const hasPath = Boolean(path);
     name.textContent = hasPath ? fileName(path) : t("toolbox_input_empty");
     name.title = path;
@@ -714,7 +721,6 @@
     if (!utilityMediaManual) $("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();
     if (!timestampMediaManual && $("toolboxTimestampMediaPath").value !== $("mediaPath").value.trim()) {
       $("toolboxTimestampMediaPath").value = $("mediaPath").value.trim();
-      clearScriptAlignmentCheck();
     }
     if (!subtitleBurnManual) {
       const source = $("srtPath").value.trim();
@@ -781,7 +787,7 @@
     return model?.label || model?.modelRef || id;
   }
 
-  function renderTimestampModel() {
+  function renderAlignmentModelControls(selectId, statusId, runId, { scriptMode = false } = {}) {
     const config = window.MAWLauncher.config || {};
     let models = Array.isArray(config.alignmentModels) && config.alignmentModels.length
       ? config.alignmentModels
@@ -789,9 +795,9 @@
         { id: "qwen3-forced-aligner-0.6b", label: "Qwen3-ForcedAligner 0.6B", installed: false, runtimeAvailable: false, status: "missing" },
         { id: "firered-asr2-ctc", label: "FireRedASR2-CTC（CPU）", installed: false, runtimeAvailable: false, status: "missing" },
       ];
-    if ($("toolboxTimestampMode").value === "script") models = models.filter((model) => model.id === "qwen3-forced-aligner-0.6b");
+    if (scriptMode) models = models.filter((model) => model.id === "qwen3-forced-aligner-0.6b");
     if (!models.length) models = [{ id: "qwen3-forced-aligner-0.6b", installed: false, runtimeAvailable: false }];
-    const select = $("toolboxTimestampModel");
+    const select = $(selectId);
     if (!select) return;
     const selected = select.value || config.alignmentModelId || models.find((model) => model.installed)?.id || models[0].id;
     select.textContent = "";
@@ -806,13 +812,17 @@
     if (model.status === "checking") statusKey = "alignment_model_checking";
     else if (model.status === "runtime_missing" || !runtimeReady) statusKey = "alignment_model_runtime_missing";
     else if (ready) statusKey = "alignment_model_ready";
-    $("toolboxTimestampModelStatus").textContent = t(statusKey);
-    $("toolboxTimestampModelStatus").classList.toggle("error", !ready);
-    $("runTimestampAlignment").disabled = busy || !ready;
+    $(statusId).textContent = t(statusKey);
+    $(statusId).classList.toggle("error", !ready);
+    $(runId).disabled = busy || !ready;
+  }
+
+  function renderTimestampModel() {
+    renderAlignmentModelControls("toolboxTimestampModel", "toolboxTimestampModelStatus", "runTimestampAlignment");
+    renderAlignmentModelControls("toolboxScriptAlignmentModel", "toolboxScriptAlignmentModelStatus", "runScriptAlignment", { scriptMode: true });
     $("checkScriptAlignment").disabled = busy;
-    const scriptMode = $("toolboxTimestampMode").value === "script";
     const hint = $("toolboxTimestampModeHint");
-    hint.dataset.i18n = scriptMode ? "toolbox_timestamp_script_hint" : "toolbox_timestamp_existing_hint";
+    hint.dataset.i18n = "toolbox_timestamp_existing_hint";
     hint.textContent = t(hint.dataset.i18n);
   }
 
@@ -841,7 +851,10 @@
     const wasOpen = !$("toolboxDrawer").classList.contains("hidden");
     $("toolboxDrawer").classList.toggle("hidden", !open);
     $("toolboxFab").setAttribute("aria-expanded", String(open));
-    if (!open) toolboxOpenMode = "manual";
+    if (!open) {
+      toolboxOpenMode = "manual";
+      cancelPendingAutoStep();
+    }
     syncPaths();
     if (open) {
       const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)")
@@ -857,7 +870,7 @@
   }
 
   function toolboxSectionForTool(tool) {
-    return ["alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool) ? "utilities" : "postprocess";
+    return ["scriptAlignment", "alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool) ? "utilities" : "postprocess";
   }
 
   function activeToolboxView() {
@@ -884,13 +897,19 @@
 
   function syncUtilityMediaFieldState() {
     const disabled = busy || (!$("toolboxBurnSubtitlePanel").classList.contains("hidden")
-      && $("toolboxGreenScreen").checked);
+      && $("toolboxGreenScreen").checked && !$("toolboxGreenScreenIncludeAudio").checked);
     const field = $("toolboxUtilityMediaDropZone");
     field.classList.toggle("is-disabled", disabled);
     field.setAttribute("aria-disabled", String(disabled));
     field.classList.remove("drag-over");
     $("toolboxUtilityMediaPath").disabled = disabled;
     $("pickToolboxUtilityMedia").disabled = disabled;
+  }
+
+  // 绿幕尺寸下拉只在勾选「生成绿幕视频」时显示；默认 4K。
+  function syncGreenScreenSizeFieldState() {
+    $("toolboxGreenScreenSizeField").classList.toggle("hidden", !$("toolboxGreenScreen").checked);
+    $("toolboxGreenScreenAudioField").classList.toggle("hidden", !$("toolboxGreenScreen").checked);
   }
 
   function selectToolboxSection(section) {
@@ -912,9 +931,9 @@
   function selectTool(tool) {
     const targetTab = [...document.querySelectorAll(".toolbox-tab")].find((tab) => tab.dataset.tool === tool);
     if (targetTab?.classList.contains("hidden")) return;
-    activeToolId = tool;
     const section = toolboxSectionForTool(tool);
     if (section !== activeToolboxSection) selectToolboxSection(section);
+    activeToolId = tool;
     document.querySelectorAll(".toolbox-tab").forEach((tab) => {
       const active = tab.dataset.tool === tool;
       tab.classList.toggle("active", active);
@@ -927,14 +946,12 @@
     document.querySelectorAll("[data-tool-action]").forEach((action) => {
       action.classList.toggle("hidden", action.dataset.toolAction !== tool || toolboxOpenMode === "auto-config");
     });
-    const scriptMode = tool === "timestamps" && $("toolboxTimestampMode").value === "script";
-    $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess" || scriptMode);
+    $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess");
     $("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities");
     $("toolboxAudioTrackField").classList.toggle("hidden", !(section === "utilities" && ["waveform", "extractAudio"].includes(tool)));
-    $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || scriptMode || !$("toolboxChainList").children.length);
+    $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || !$("toolboxChainList").children.length);
     const configOnly = toolboxOpenMode === "auto-config";
-    $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly || scriptMode);
-    $("toolboxTimestampScriptInputs").classList.toggle("hidden", !scriptMode);
+    $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly);
     $("toolboxConfigOnlyHint")?.classList.toggle("hidden", !configOnly);
     renderMediaToolAction();
   }
@@ -1197,6 +1214,9 @@
     const batch = Number(event.batch || 0);
     if (batch > 0) {
       $("toolboxStreamMeta").textContent = t("toolbox_stream_batch").replace("{batch}", String(batch));
+      if (Number(event.attempt || 1) > 1) {
+        $("toolboxStreamMeta").textContent += t("toolbox_stream_retry").replace("{retry}", String(Number(event.attempt) - 1));
+      }
     }
     if (event.kind === "reasoning") {
       $("toolboxThinkingPanel").classList.remove("hidden");
@@ -1235,8 +1255,9 @@
       runningToolId = "";
     }
     $("toolboxProgress").classList.toggle("hidden", !busy);
+    ["toolboxScriptAlignmentModel", "runScriptAlignment"].forEach((id) => { $(id).disabled = busy; });
     ["toolboxTimestampScriptPath", "pickToolboxTimestampScript", "toolboxTimestampLanguage", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath", "pickToolboxTimestampAnchors", "toolboxTimestampAudioTrack", "toolboxTimestampOutputDirectory", "pickToolboxTimestampOutput", "checkScriptAlignment"].forEach((id) => { $(id).disabled = busy; });
-    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "postprocessCleanupScriptPath", "pickPostprocessCleanupScript", "postprocessResegmentMaxChars", "postprocessGenerateComparison", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxGreenScreenIncludeAudio", "toolboxGreenScreenSize", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "postprocessCleanupScriptPath", "pickPostprocessCleanupScript", "postprocessResegmentMaxChars", "postprocessGenerateComparison", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
     syncUtilityMediaFieldState();
@@ -1349,7 +1370,7 @@
 
   function validateAlignmentInputs() {
     const paths = alignmentInputs();
-    if (!paths.projectPath || !ALIGNMENT_PROJECT_EXTS.has(extension(paths.projectPath))) {
+    if ($("toolboxRecordingInputMode").value !== "recording" && (!paths.projectPath || !ALIGNMENT_PROJECT_EXTS.has(extension(paths.projectPath)))) {
       const message = t("toolbox_alignment_project_invalid");
       setFieldError("toolboxAlignmentProjectPath", message);
       setResult(message, "error");
@@ -1380,7 +1401,30 @@
     const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });
     setBusy(true, "toolbox_status_alignment_starting");
     try {
-      const result = await bridge("start_alignment_server", { ...paths, gapRemove, guiLang: document.documentElement.lang === "en" ? "en" : "zh" });
+      let inputs = paths;
+      if ($("toolboxRecordingInputMode").value === "recording") {
+        const transcription = window.MAWLauncher.getTranscriptionPayload();
+        if (paths.mediaPath) {
+          transcription.mediaPath = paths.mediaPath;
+          transcription.audioTrack = window.MAWLauncher.getAudioTrackForMedia(paths.mediaPath);
+        }
+        const started = await bridge("start_recording_review", {scriptPath:paths.scriptPath, transcription});
+        if (!started.ok) { setResult(started.error || postprocessErrorText(started), "error"); return; }
+        $("cancelRecordingPreparation").classList.remove("hidden");
+        let prepared;
+        try {
+          do {
+            await new Promise(resolve => setTimeout(resolve, 400));
+            prepared = await bridge("recording_review_status");
+            setResult(prepared.message || "", "info");
+          } while (prepared.status === "running");
+        } finally { $("cancelRecordingPreparation").classList.add("hidden"); }
+        if (prepared.status !== "ready") { setResult(prepared.message || "ASR 准备失败", "error"); return; }
+        inputs = {projectPath:prepared.projectPath, scriptPath:prepared.scriptPath, mediaPath:prepared.mediaPath};
+        $("toolboxAlignmentProjectPath").value = prepared.projectPath;
+        window.MAWLauncher.setJsonPath(prepared.projectPath);
+      }
+      const result = await bridge("start_alignment_server", { ...inputs, gapRemove, guiLang: document.documentElement.lang === "en" ? "en" : "zh" });
       if (!result.ok) {
         if (result.code?.startsWith("alignment_server_")) {
           alignmentRunning = false;
@@ -1493,6 +1537,7 @@
     if (kind === "match") return t("toolbox_chain_match");
     if (kind === "ai_cleanup") return t("toolbox_chain_ai_cleanup");
     if (kind === "timestamps") return t("toolbox_chain_timestamps");
+    if (kind === "scriptAlignment") return t("toolbox_script_alignment");
     if (kind === "ocr") return t("toolbox_chain_ocr");
     if (kind === "fixed" || kind === "replace") return t("toolbox_chain_replace");
     const operationKeys = {
@@ -1505,6 +1550,7 @@
   }
 
   function selectChainPath(path, button) {
+    if (!SUBTITLE_EXTS.has(extension(path))) return;
     inputManual = true;
     $("toolboxInputPath").value = path;
     $("toolboxInputPath").dispatchEvent(new Event("input", { bubbles: true }));
@@ -1514,6 +1560,8 @@
   }
 
   function artifactLabel(kind) {
+    if (kind === "resegment-record") return t("artifact_type_resegment_record");
+    if (kind === "record") return t("artifact_type_cleanup_record");
     return t(kind === "comparison" ? "artifact_type_comparison" : kind === "project" ? "artifact_type_project" : "artifact_type_srt");
   }
 
@@ -1539,6 +1587,7 @@
     closeArtifactMenu();
     artifactMenuTarget = { path, button };
     const menu = $("artifactContextMenu");
+    $("artifactSetTarget").classList.toggle("hidden", !SUBTITLE_EXTS.has(extension(path)));
     menu.classList.remove("hidden");
     menu.style.left = "0";
     menu.style.top = "0";
@@ -1548,7 +1597,7 @@
     const top = Math.min(Math.max(event.clientY, inset), window.innerHeight - rect.height - inset);
     menu.style.left = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, left))}px`;
     menu.style.top = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, top))}px`;
-    menu.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });
+    menu.querySelector('[role="menuitem"]:not(.hidden)')?.focus({ preventScroll: true });
   }
 
   async function runArtifactAction(action) {
@@ -1568,6 +1617,7 @@
       { kind: "project", path: result.projectPath },
       { kind: "srt", path: result.srtPath },
       { kind: "comparison", path: result.comparisonPath },
+      { kind: chain?.operation === "resegment" ? "resegment-record" : "record", path: result.diagnosticPath },
     ].filter((artifact, index, all) => artifact.path && all.findIndex((candidate) => candidate.path === artifact.path) === index);
     if (!artifacts.length) return;
     const container = $("toolboxChain");
@@ -1590,7 +1640,7 @@
       button.dataset.artifactName = fileName(path);
       button.dataset.artifactPath = path;
       renderArtifactButton(button);
-      button.addEventListener("click", () => { if (kind === "comparison") void bridge("open_file", { path }); else selectChainPath(path, button); });
+      button.addEventListener("click", () => { if (SUBTITLE_EXTS.has(extension(path))) selectChainPath(path, button); else void bridge("open_file", { path }); });
       button.addEventListener("contextmenu", (event) => openArtifactMenu(event, path, button));
       button.addEventListener("dblclick", async (event) => {
         event.preventDefault();
@@ -1607,6 +1657,30 @@
   }
 
   function applySubtitleResult(result, chain) {
+    if (!$("toolboxChainOriginal")) {
+      const input = inputPaths();
+      const path = (input && (input.projectPath || input.srtPath)) || result.sourceProjectPath || result.sourceSrtPath;
+      if (path && SUBTITLE_EXTS.has(extension(path))) {
+        const original = document.createElement("div");
+        original.id = "toolboxChainOriginal";
+        original.className = "toolbox-chain-original";
+        const label = document.createElement("span");
+        label.className = "toolbox-chain-label";
+        label.dataset.i18n = "toolbox_chain_original";
+        label.textContent = t("toolbox_chain_original");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "toolbox-chain-source";
+        button.dataset.artifactKind = extension(path) === ".srt" ? "srt" : "project";
+        button.dataset.artifactName = fileName(path);
+        button.dataset.artifactPath = path;
+        renderArtifactButton(button);
+        button.addEventListener("click", () => selectChainPath(path, button));
+        button.addEventListener("contextmenu", event => openArtifactMenu(event, path, button));
+        original.append(label, button);
+        $("toolboxChainList").prepend(original);
+      }
+    }
     if (result.projectPath) {
       $("jsonPath").value = result.projectPath;
       $("jsonPath").dispatchEvent(new Event("change", { bubbles: true }));
@@ -1628,6 +1702,7 @@
     void refreshScriptPreview();
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
     if (result.comparisonPath) warnings.push(`${t("toolbox_comparison_path")} ${result.comparisonPath}`);
+    if (result.diagnosticPath) warnings.push(`${t(chain?.operation === "resegment" ? "toolbox_resegment_record_path" : "toolbox_cleanup_record_path")} ${result.diagnosticPath}`);
     if (result.reportPath) warnings.push(`${t("toolbox_ocr_report_path")} ${result.reportPath}`);
     setResult(`${t("toolbox_done")}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success", { revealWarning: warnings.length > 0 });
   }
@@ -1751,18 +1826,18 @@
     // 各 LLM 步骤用自己任务记住的供应商（见 stepProviderId）；没有记录时沿用当前选中项。
     const ocr = ocrRegionPayload();
     return {
-      version: 1,
+      version: 2,
       enabled: Boolean($("autoPostprocessEnabled")?.checked),
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
         { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
-        { id: "cleanup", enabled: Boolean($("autoStepCleanup")?.checked), scriptPath: $("postprocessCleanupScriptPath").value.trim(), providerId: stepProviderId("cleanup"), customPrompt: getLlmPrompt("ai_cleanup"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
+        { id: "cleanup", enabled: Boolean($("autoStepCleanup")?.checked), scriptPath: $("postprocessCleanupScriptPath").value.trim(), providerId: stepProviderId("cleanup"), customPrompt: getLlmPrompt("ai_cleanup"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked), reviewEnabled: Boolean($("postprocessCleanupReviewEnabled")?.checked) },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId: stepProviderId("proofread"), customPrompt: getLlmPrompt("proofread"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
         { id: "resegment", maxChars: $("postprocessResegmentMaxChars").value.trim(), enabled: Boolean($("autoStepResegment")?.checked), providerId: stepProviderId("resegment"), customPrompt: getLlmPrompt("resegment"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
         { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: ocrVideoManual ? $("ocrVideoPath").value.trim() : "", videoPathMode: ocrVideoManual ? "manual" : "auto", ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
-        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId: stepProviderId("translate"), target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), embedTranslations: Boolean($("autoTranslateBackfill")?.checked), bilingualLineOrder: $("autoTranslateBilingualOrder")?.value || "", customPrompt: getLlmPrompt(autoLlmOperation("translate")), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
+        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId: stepProviderId("translate"), target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), embedTranslations: Boolean($("autoTranslateBackfill")?.checked), bilingualLineOrder: $("autoTranslateBilingualOrder")?.value || "", customPrompt: getLlmPrompt(autoLlmOperation("translate")), generateComparison: Boolean($("postprocessGenerateComparison")?.checked), skipTargetLanguage: $("autoTranslateSkipTarget").checked },
         { id: "burn", enabled: Boolean($("autoStepBurn")?.checked), videoEncoder: "auto" },
       ],
     };
@@ -1771,6 +1846,84 @@
   function autoLlmReady(providerId) {
     const item = provider(providerId);
     return Boolean(item?.verified && (item?.apiKeyRequired === false || item?.hasApiKey !== false) && item?.hasBaseUrl !== false && item?.hasModel !== false);
+  }
+
+  /** 后端是验证状态的权威来源：勾选被拦时先刷新缓存，避免过期标记误弹配置。 */
+  async function refreshPostprocessProviderStatus(isCurrent = () => true) {
+    const request = ++providerStatusRequest;
+    const result = await bridge("get_config");
+    if (!isCurrent() || request < providerStatusApplied) return;
+    const fresh = new Map(
+      Array.isArray(result?.postprocessProviders)
+        ? result.postprocessProviders.map((item) => [String(item?.id || ""), item])
+        : []
+    );
+    if (!fresh.size) return;
+    providerStatusApplied = request;
+    (window.MAWLauncher.config?.postprocessProviders || []).forEach((item) => {
+      const next = fresh.get(String(item?.id || ""));
+      if (!next) return;
+      for (const field of ["baseUrl", "model", "reasoningMode", "displayName", "label"]) {
+        if (typeof next[field] === "string") item[field] = next[field];
+      }
+      item.verified = Boolean(next.verified);
+      item.hasApiKey = Boolean(next.hasApiKey);
+      item.apiKeyRequired = next.apiKeyRequired !== false;
+      item.hasBaseUrl = Boolean(next.hasBaseUrl);
+      item.hasModel = Boolean(next.hasModel);
+      if (typeof next.maskedApiKey === "string") item.maskedApiKey = next.maskedApiKey;
+    });
+    renderProviderKeyStatus(provider());
+  }
+
+  /** 弹窗里验证/保存成功的供应商立即绑定到被拦截的步骤：门槛检查与弹窗验证不再是两个供应商。 */
+  function cancelPendingAutoStep() {
+    pendingAutoStep = "";
+    pendingAutoStepRequest = null;
+    let changed = false;
+    for (const stepId of autoStepCheckRequests.keys()) {
+      const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
+      if (checkbox?.checked) {
+        checkbox.checked = false;
+        changed = true;
+      }
+    }
+    autoStepCheckRequests.clear();
+    if (changed) {
+      renderAutoPostprocessState();
+      persistAutoPlanSoon();
+    }
+  }
+
+  function bindPendingStepProvider(providerId, request = pendingAutoStepRequest) {
+    const stepId = pendingAutoStep;
+    const id = knownProviderId(providerId);
+    if (!request || request !== pendingAutoStepRequest) return false;
+    if (!stepId || !id || !["cleanup", "proofread", "resegment", "translate"].includes(stepId)) return false;
+    rememberProviderForTask(autoLlmOperation(stepId), id);
+    const toolboxSelect = $("postprocessProvider");
+    if (Array.from(toolboxSelect.options).some((option) => option.value === id)) toolboxSelect.value = id;
+    renderProviderKeyStatus(provider(id));
+    return true;
+  }
+
+  /** 勾选被拦时先以后端权威状态刷新缓存：缓存过期就静默放行，确实未验证才弹配置。 */
+  async function confirmAutoStepCheck(stepId, checkbox) {
+    const request = {};
+    autoStepCheckRequests.set(stepId, request);
+    const isCurrent = () => checkbox.checked && autoStepCheckRequests.get(stepId) === request;
+    await refreshPostprocessProviderStatus(isCurrent);
+    if (!isCurrent()) return;
+    autoStepCheckRequests.delete(stepId);
+    if (!autoStepReady(stepId)) {
+      checkbox.checked = false;
+      renderAutoPostprocessState();
+      openAutoStep(stepId, "", { highlightConnection: true });
+      return;
+    }
+    // 后端确认已就绪：保留勾选，不重复弹配置弹窗。
+    renderAutoPostprocessState();
+    persistAutoPlanSoon();
   }
 
   function autoStepReady(stepId) {
@@ -1853,6 +2006,7 @@
     $("autoTranslateBilingualOrder")?.classList.toggle("hidden", !(translateEnabled && mergeBilingual));
     $("autoTranslateBackfillField")?.classList.toggle("hidden", !translateEnabled);
     $("autoTranslateBackfillHint")?.classList.toggle("hidden", !translateEnabled);
+    $("autoTranslateSkipTargetField")?.classList.toggle("hidden", !translateEnabled);
     const summary = $("autoPostprocessSummary");
     if (!summary) return;
     if (!enabled) {
@@ -1921,9 +2075,13 @@
 
   function openAutoStep(stepId, invalidField = "", { highlightConnection = false } = {}) {
     pendingAutoStep = stepId;
+    pendingAutoStepRequest = {};
     const llmStep = ["cleanup", "proofread", "resegment", "translate"].includes(stepId);
     if (llmStep && !autoLlmReady(stepProviderId(stepId))) {
-      const item = provider(stepProviderId(stepId));
+      // 弹窗展示并验证的就是门槛检查的供应商，避免「验证了 A、拦截的仍是 B」。
+      const checkedProviderId = stepProviderId(stepId);
+      if ($("llmProvider").value !== checkedProviderId) renderProvider(checkedProviderId, { syncToolbox: false });
+      const item = provider(checkedProviderId);
       const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
         ? invalidField
         : (item?.hasApiKey === false && item?.apiKeyRequired !== false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
@@ -1945,13 +2103,15 @@
     focusAutoField(fieldId);
   }
 
-  function maybeEnablePendingAutoStep() {
+  function maybeEnablePendingAutoStep(request = pendingAutoStepRequest) {
+    if (request !== pendingAutoStepRequest) return false;
     const stepId = pendingAutoStep;
     if (!stepId || !autoStepReady(stepId)) return false;
     const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
     if (!checkbox) return false;
     checkbox.checked = true;
     pendingAutoStep = "";
+    pendingAutoStepRequest = null;
     renderAutoPostprocessState();
     persistAutoPlanSoon();
     return true;
@@ -1977,6 +2137,7 @@
     $("postprocessResegmentMaxChars").value = String(byId.get("resegment")?.maxChars || "");
     const cleanup = byId.get("cleanup") || {};
     $("postprocessCleanupScriptPath").value = String(cleanup.scriptPath || "");
+    $("postprocessCleanupReviewEnabled").checked = Boolean(cleanup.reviewEnabled);
     $("postprocessGenerateComparison").checked = ["cleanup", "proofread", "resegment", "translate"]
       .some((stepId) => Boolean(byId.get(stepId)?.generateComparison));
     if (cleanup.providerId && !llmProviderByTask[llmTaskGroup("ai_cleanup")]
@@ -2021,6 +2182,8 @@
       ? savedOrder
       : (String(translate.target || "zh") === "en" ? "original_first" : "translation_first");
     $("autoTranslateBackfill").checked = Boolean(translate.embedTranslations) && !Boolean(translate.mergeBilingual);
+    $("autoTranslateSkipTarget").checked = translate.skipTargetLanguage !== false;
+    $("postprocessSkipTarget").checked = translate.skipTargetLanguage !== false;
     const translatePrompt = byId.get("translate")?.customPrompt;
     if (typeof translatePrompt === "string") llmPrompts[autoLlmOperation("translate")] = translatePrompt;
     $("toolboxBurnVideoEncoder").value = "auto";
@@ -2104,6 +2267,7 @@
         cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
         notes: $("postprocessPrompt").value.trim(),
         generateComparison: Boolean($("postprocessGenerateComparison")?.checked),
+        reviewEnabled: Boolean($("postprocessCleanupReviewEnabled")?.checked),
       });
       cancelled = result.code === "postprocess_cancelled";
       if (result.ok) applySubtitleResult(result, { kind: "ai_cleanup" });
@@ -2117,7 +2281,7 @@
 
   function scriptAlignmentPayload() {
     return {
-      mediaPath: $("toolboxTimestampMediaPath").value.trim(),
+      mediaPath: $("toolboxUtilityMediaPath").value.trim(),
       scriptPath: $("toolboxTimestampScriptPath").value.trim(),
       language: $("toolboxTimestampLanguage").value,
       silenceDb: $("toolboxTimestampSilenceDb").value,
@@ -2168,14 +2332,15 @@
 
   async function runTimestampAlignment() {
     if (busy) return;
-    const scriptMode = $("toolboxTimestampMode").value === "script";
+    const scriptMode = activeToolId === "scriptAlignment";
     if (scriptMode) clearScriptAlignmentCheck();
     const paths = scriptMode ? {} : resolveInputPaths();
     if (!paths) return;
-    const mediaPath = $("toolboxTimestampMediaPath").value.trim();
+    const mediaFieldId = scriptMode ? "toolboxUtilityMediaPath" : "toolboxTimestampMediaPath";
+    const mediaPath = $(mediaFieldId).value.trim();
     if ((scriptMode && !mediaPath) || (mediaPath && !MEDIA_EXTS.has(extension(mediaPath)))) {
       const message = t("toolbox_timestamp_media_reject");
-      setFieldError("toolboxTimestampMediaPath", message);
+      setFieldError(mediaFieldId, message);
       setResult(message, "error");
       return;
     }
@@ -2187,7 +2352,7 @@
       return;
     }
     setFieldError("toolboxTimestampScriptPath", "");
-    const modelId = $("toolboxTimestampModel").value;
+    const modelId = $(scriptMode ? "toolboxScriptAlignmentModel" : "toolboxTimestampModel").value;
     const model = (window.MAWLauncher.config?.alignmentModels || []).find((item) => item.id === modelId);
     const runtimeReady = model?.runtimeAvailable === undefined
       ? Boolean(window.MAWLauncher.config?.localRuntime?.ready)
@@ -2197,19 +2362,19 @@
       setResult(message, "error");
       return;
     }
-    setFieldError("toolboxTimestampMediaPath", "");
+    setFieldError(mediaFieldId, "");
     setBusy(true, "toolbox_status_aligning");
     try {
       const result = await bridge("run_timestamp_alignment", {
         ...paths,
         mediaPath,
         modelId,
-        alignmentMode: $("toolboxTimestampMode").value,
+        alignmentMode: scriptMode ? "script" : $("toolboxTimestampMode").value,
         device: $("localDevice")?.value || "auto",
         ...(scriptMode ? scriptAlignmentPayload() : {}),
       });
       if (result.ok) {
-        applySubtitleResult(result, { kind: "timestamps" });
+        applySubtitleResult(result, { kind: scriptMode ? "scriptAlignment" : "timestamps" });
         if (scriptMode) setResult([t("toolbox_done"), scriptAlignmentSummary(result.report), ...(result.warnings || [])].filter(Boolean).join("\n"), "success", { revealWarning: Boolean(result.warnings?.length) });
       }
       else {
@@ -2270,51 +2435,87 @@
     }
   }
 
+  function llmSettingsState() {
+    return JSON.stringify(["llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmReasoningMode", "llmCustomDisplayName"]
+      .map((id) => $(id).value));
+  }
+
+  function cacheLlmSettings(item, result, submitted) {
+    item.baseUrl = String(result.baseUrl ?? submitted.baseUrl).trim();
+    item.model = String(result.model ?? submitted.model).trim();
+    item.hasApiKey = Boolean(result.maskedApiKey || item.maskedApiKey || submitted.apiKey || item.hasApiKey);
+    item.apiKeyRequired = result.apiKeyRequired !== false;
+    item.hasBaseUrl = Boolean(item.baseUrl);
+    item.hasModel = Boolean(item.model);
+    item.reasoningMode = result.reasoningMode || submitted.reasoningMode || "off";
+    item.displayName = isCustomSlot(item) ? submitted.displayName : "";
+    item.label = result.label || providerLabel(item);
+    item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
+    item.verified = Boolean(result.verified);
+  }
+
+  function acceptLlmSettingsResponse(item, request, settingsState, result, submitted) {
+    if (request === llmSettingsRequest && settingsState === llmSettingsState()) return true;
+    // 后端可能已写入新配置；失效该供应商缓存，下一次门槛检查重新读取权威状态。
+    // 更晚的同供应商操作已接管时，旧回包不能使其重新失效。
+    if (result.ok && providerSettingsRequests.get(item.id) === request) {
+      cacheLlmSettings(item, result, submitted);
+      item.verified = false;
+      providerStatusApplied = ++providerStatusRequest;
+      renderProviderKeyStatus(provider());
+      renderAutoPostprocessState();
+    }
+    return false;
+  }
+
   async function saveSettings() {
+    const pendingRequest = pendingAutoStepRequest;
+    const settingsRequest = ++llmSettingsRequest;
+    const settingsState = llmSettingsState();
     // 设置页操作以设置页下拉为准：工具箱与设置页解耦后两者可以不同（如补填未配置的 #2/#3）。
     const item = provider($("llmProvider").value);
-    const result = await bridge("save_postprocess_settings", {
+    providerSettingsRequests.set(item.id, settingsRequest);
+    const submitted = {
       providerId: item.id,
       apiKey: $("llmApiKey").value.trim(),
       baseUrl: $("llmBaseUrl").value.trim(),
       model: $("llmModel").value.trim(),
       reasoningMode: $("llmReasoningMode").value,
       displayName: isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "",
-    });
+    };
+    const result = await bridge("save_postprocess_settings", submitted);
+    if (!acceptLlmSettingsResponse(item, settingsRequest, settingsState, result, submitted)) return result;
     if (!result.ok) {
       const message = renderSettingsError(result);
       setResult(message, "error");
       return result;
     }
     clearSettingsErrors();
-    item.baseUrl = String(result.baseUrl ?? $("llmBaseUrl").value).trim();
-    item.model = String(result.model ?? $("llmModel").value).trim();
+    providerStatusApplied = ++providerStatusRequest;
+    cacheLlmSettings(item, result, submitted);
     $("llmBaseUrl").value = item.baseUrl;
     $("llmModel").value = item.model;
-    item.hasApiKey = Boolean(result.maskedApiKey || item.maskedApiKey || $("llmApiKey").value.trim());
-    item.apiKeyRequired = result.apiKeyRequired !== false;
-    item.hasBaseUrl = Boolean(item.baseUrl);
-    item.hasModel = Boolean(item.model);
-    item.reasoningMode = result.reasoningMode || $("llmReasoningMode").value || "off";
-    item.displayName = isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "";
-    item.label = result.label || providerLabel(item);
-    item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
-    item.verified = Boolean(result.verified);
     fillProviderSelects(item.id);
+    if (result.verified) bindPendingStepProvider(item.id, pendingRequest);
     renderProviderKeyStatus(item);
     renderAutoPostprocessState();
+    maybeEnablePendingAutoStep(pendingRequest);
     setSettingsSaveStatus(t("toolbox_saved"), "success");
     return result;
   }
 
   async function testConnection() {
+    const pendingRequest = pendingAutoStepRequest;
+    const settingsRequest = ++llmSettingsRequest;
+    const settingsState = llmSettingsState();
     setTestConnectionAttention(false);
     setSettingsSaveStatus(t("llm_connection_testing"), "", 0);
     $("testLlmConnection").disabled = true;
     $("getLlmModels").disabled = true;
     try {
       const item = provider($("llmProvider").value);
-      const result = await bridge("test_postprocess_connection", {
+      providerSettingsRequests.set(item.id, settingsRequest);
+      const submitted = {
         providerId: item.id,
         apiKey: $("llmApiKey").value.trim(),
         baseUrl: $("llmBaseUrl").value.trim(),
@@ -2322,31 +2523,30 @@
         reasoningMode: $("llmReasoningMode").value,
         displayName: isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "",
         save: true,
-      });
+      };
+      const result = await bridge("test_postprocess_connection", submitted);
+      if (!acceptLlmSettingsResponse(item, settingsRequest, settingsState, result, submitted)) return result;
       if (result.ok) {
         clearSettingsErrors();
-        item.verified = Boolean(result.verified);
-        item.apiKeyRequired = result.apiKeyRequired !== false;
-        item.baseUrl = String(result.baseUrl ?? $("llmBaseUrl").value).trim();
-        item.model = String(result.model ?? $("llmModel").value).trim();
+        providerStatusApplied = ++providerStatusRequest;
+        cacheLlmSettings(item, result, submitted);
         $("llmBaseUrl").value = item.baseUrl;
         $("llmModel").value = item.model;
-        item.hasBaseUrl = Boolean(item.baseUrl);
-        item.hasModel = Boolean(item.model);
-        item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
-        item.hasApiKey = Boolean(result.maskedApiKey || $("llmApiKey").value.trim() || item.hasApiKey);
         fillProviderSelects(item.id);
+        bindPendingStepProvider(item.id, pendingRequest);
         renderProviderKeyStatus(item);
         setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");
         renderAutoPostprocessState();
-        maybeEnablePendingAutoStep();
+        maybeEnablePendingAutoStep(pendingRequest);
       }
       else {
         renderSettingsError(result);
       }
       return result;
     } catch (error) {
-      setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
+      if (settingsRequest === llmSettingsRequest && settingsState === llmSettingsState()) {
+        setSettingsSaveStatus(String(error?.message || error || t("failed")), "error", 0);
+      }
     } finally {
       $("testLlmConnection").disabled = busy;
       $("getLlmModels").disabled = busy;
@@ -2432,6 +2632,7 @@
         mergeBilingual: Boolean($("postprocessMergeBilingual")?.checked),
         embedTranslations: Boolean($("postprocessBackfill")?.checked),
         bilingualLineOrder: $("postprocessBilingualOrder")?.value || "",
+        skipTargetLanguage: $("postprocessSkipTarget").checked,
       });
       cancelled = result.code === "postprocess_cancelled";
       if (result.ok) applySubtitleResult(result, { kind: "llm", operation });
@@ -2530,7 +2731,7 @@
       result = null;
     }
     if (!result?.ok) return;
-    // CRF 为空串时不能 Number("") 成 0，必须跳过、保留界面默认值 18。
+    // CRF 为空串时不能 Number("") 成 0，必须跳过、保留界面默认值 21。
     const crfText = String(result.crf ?? "").trim();
     if (crfText) {
       const crf = Number(crfText);
@@ -2557,6 +2758,7 @@
   async function runBurnSubtitle() {
     if (busy) return;
     const greenScreen = $("toolboxGreenScreen").checked;
+    const includeAudio = greenScreen && $("toolboxGreenScreenIncludeAudio").checked;
     const mediaPath = $("toolboxUtilityMediaPath").value.trim();
     const subtitlePath = $("toolboxBurnSubtitlePath").value.trim();
     if (!greenScreen && !mediaPath) {
@@ -2565,6 +2767,12 @@
     }
     if (!greenScreen && !VIDEO_EXTS.has(extension(mediaPath))) {
       const message = t("toolbox_utility_video_required");
+      setFieldError("toolboxUtilityMediaPath", message);
+      setResult(message, "error");
+      return;
+    }
+    if (includeAudio && (!mediaPath || !MEDIA_EXTS.has(extension(mediaPath)))) {
+      const message = t("toolbox_green_screen_audio_required");
       setFieldError("toolboxUtilityMediaPath", message);
       setResult(message, "error");
       return;
@@ -2584,9 +2792,11 @@
     setBusy(true, "toolbox_status_burning");
     try {
       const result = await bridge("run_burn_subtitles", {
-        mediaPath: greenScreen ? "" : mediaPath,
+        mediaPath: greenScreen && !includeAudio ? "" : mediaPath,
         subtitlePath,
         greenScreen,
+        greenScreenIncludeAudio: includeAudio,
+        greenScreenSize: $("toolboxGreenScreenSize")?.value || "4k",
         videoEncoder: $("toolboxBurnVideoEncoder")?.value || "auto",
         ...burnEncodingPayload(),
       });
@@ -2691,6 +2901,7 @@
     renderMediaToolAction();
     initializeAutoPostprocess();
     void restoreBurnSubtitleSettings();
+    syncGreenScreenSizeFieldState();
   }
 
   $("toolboxFab").addEventListener("click", () => {
@@ -2732,6 +2943,10 @@
   $("llmModelChoicesToggle").addEventListener("click", () => setModelChoicesOpen(!modelChoicesOpen));
   $("generateWaveform").addEventListener("click", () => { void generateWaveformProject(false); });
   $("runWaveform").addEventListener("click", () => { void generateWaveformProject(true); });
+  $("toolboxRecordingInputMode").addEventListener("change", () => {
+    $("toolboxAlignmentProjectDropZone").classList.toggle("hidden", $("toolboxRecordingInputMode").value === "recording");
+  });
+  $("cancelRecordingPreparation").addEventListener("click", () => { void bridge("cancel_recording_review"); });
   $("runToolboxAlignment").addEventListener("click", () => { void runToolboxAlignment(); });
   $("stopToolboxAlignment").addEventListener("click", () => { void stopToolboxAlignment(); });
   $("runTimestampAlignment").addEventListener("click", () => { void runTimestampAlignment(); });
@@ -2743,6 +2958,7 @@
   $("postprocessMatchMode").addEventListener("change", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessCleanupScriptPath").addEventListener("input", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessGenerateComparison").addEventListener("change", persistAutoPlanSoon);
+  $("postprocessCleanupReviewEnabled").addEventListener("change", persistAutoPlanSoon);
   $("postprocessResegmentMaxChars").addEventListener("input", () => { setFieldError("postprocessResegmentMaxChars", ""); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("pickPostprocessCleanupScript").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "script" });
@@ -2765,9 +2981,11 @@
   $("runBurnSubtitle").addEventListener("click", runBurnSubtitle);
   $("toolboxGreenScreen").addEventListener("change", () => {
     syncUtilityMediaFieldState();
+    syncGreenScreenSizeFieldState();
     setFieldError("toolboxUtilityMediaPath", "");
     renderMediaToolAction();
   });
+  $("toolboxGreenScreenIncludeAudio").addEventListener("change", syncUtilityMediaFieldState);
   $("saveBurnSubtitleSettings").addEventListener("click", saveBurnSubtitleSettings);
   $("runExtractAudio").addEventListener("click", runExtractAudio);
   $("stopToolboxMedia").addEventListener("click", () => { void stopMediaTool(); });
@@ -2964,13 +3182,21 @@
     if ($("postprocessBackfill").checked) $("postprocessMergeBilingual").checked = false;
     renderTaskPrompt();
   });
+  ["autoTranslateSkipTarget", "postprocessSkipTarget"].forEach((id) => {
+    $(id).addEventListener("change", () => {
+      const checked = $(id).checked;
+      $("autoTranslateSkipTarget").checked = checked;
+      $("postprocessSkipTarget").checked = checked;
+      persistAutoPlanSoon();
+    });
+  });
   AUTO_STEP_ORDER.forEach((stepId) => {
     const checkbox = $(AUTO_STEP_CHECKBOXES[stepId]);
     checkbox.addEventListener("change", () => {
+      autoStepCheckRequests.delete(stepId);
+      if (!checkbox.checked && pendingAutoStep === stepId) cancelPendingAutoStep();
       if (checkbox.checked && !autoStepReady(stepId)) {
-        checkbox.checked = false;
-        renderAutoPostprocessState();
-        openAutoStep(stepId, "", { highlightConnection: true });
+        void confirmAutoStepCheck(stepId, checkbox);
         return;
       }
       renderAutoPostprocessState();
@@ -2979,8 +3205,14 @@
     $(`configureAuto${stepId[0].toUpperCase()}${stepId.slice(1)}`)?.addEventListener("click", () => openAutoStep(stepId, "", { highlightConnection: true }));
   });
   $("toolboxTimestampModel").addEventListener("change", renderTimestampModel);
+  $("toolboxScriptAlignmentModel").addEventListener("change", renderTimestampModel);
+  $("runScriptAlignment").addEventListener("click", runTimestampAlignment);
+  $("openScriptAlignmentTool").addEventListener("click", () => {
+    selectTool("scriptAlignment");
+    $("toolboxScriptAlignmentTab").focus();
+    scrollToolboxContentToTop();
+  });
   $("toolboxTimestampMode").addEventListener("change", () => {
-    clearScriptAlignmentCheck();
     renderTimestampModel();
     selectTool("timestamps");
   });
@@ -2998,7 +3230,7 @@
     const result = await bridge("choose_folder", { kind: "output" });
     if (result.ok) $("toolboxTimestampOutputDirectory").value = result.path;
   });
-  ["toolboxTimestampScriptPath", "toolboxTimestampMediaPath", "toolboxTimestampLanguage", "toolboxTimestampAudioTrack", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath"].forEach((id) => {
+  ["toolboxTimestampScriptPath", "toolboxUtilityMediaPath", "toolboxTimestampLanguage", "toolboxTimestampAudioTrack", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath"].forEach((id) => {
     $(id).addEventListener("input", clearScriptAlignmentCheck);
     $(id).addEventListener("change", clearScriptAlignmentCheck);
   });
@@ -3038,6 +3270,7 @@
     if (postprocessCancelling) return;
     if (event.stage === "step_start") setResult(`${autoStepLabel(event.step)}：${t("toolbox_running")}`);
     if (event.stage === "step_done") setResult(`${autoStepLabel(event.step)}：${t("toolbox_done")}`, "success");
+    if (event.stage === "done" && event.warnings?.length) setResult(`${t("toolbox_done")}\n${event.warnings.join("\n")}`, "success", { revealWarning: true });
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
   window.MAWLauncher.openToolboxAiProcessing = () => {
@@ -3052,7 +3285,7 @@
     if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
     renderOcrModel();
     renderTimestampModel();
-    document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
+    document.querySelectorAll(".toolbox-chain-file, .toolbox-chain-source").forEach(renderArtifactButton);
     syncBurnSubtitleName();
     syncTimestampMediaName();
     renderAudioTracks();
@@ -3093,6 +3326,7 @@
     renderAutoPostprocessState();
   };
   window.MAWLauncher.openAutoPostprocessStep = openAutoStep;
+  window.MAWLauncher.onSettingsClosed = cancelPendingAutoStep;
   window.MAWLauncher.onOcrRuntimeChanged = () => {
     renderOcrModel();
     renderAutoPostprocessState();

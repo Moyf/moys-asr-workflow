@@ -6,16 +6,18 @@ import copy
 import difflib
 import re
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+from maw.language import normalize_language_code
 from maw.output_naming import TRANSLATION_TARGET_NAMES, translation_marker_name
 from maw.postprocess_io import SubtitleArtifact, read_project, read_srt, write_artifacts
 from maw.postprocess_annotations import ANNOTATION_PROMPT, validate_annotations, write_annotations
 from maw.postprocess_llm import LlmClientError
 from maw.project import normalize_project
+from maw.postprocess_translation import attach_translation_project
 from maw.project_preview import JsonDict, JsonValue
 from maw.text_conversion import TextConversion, apply_text_conversion
 
@@ -63,6 +65,7 @@ class LlmPostprocessRequest:
     bilingual_line_order: str = ""
     generate_comparison: bool = False
     max_chars: int = 0
+    skip_target_language: bool = True
 
 
 class PostprocessStepError(RuntimeError):
@@ -122,12 +125,16 @@ BILINGUAL_ARTIFACT_PATTERN: Final[re.Pattern[str]] = re.compile(
 )
 TIMING_FIELDS: Final = ("start", "end", "text", "items")
 ONE_TO_ONE_TRANSLATION_OPERATIONS: Final = frozenset({"translate_en", "translate_zh"})
-# 目标语言预过滤阈值：一条字幕的中文字符（不含假名/谚文等）占「中文 + 拉丁字母」
-# 的比例达到该值时，视为已是中文，翻译到中文时不再发送给模型。
+# 仅在有明确中文来源且全文无日/韩文字时使用占比；汉字本身不能区分中日文。
 CJK_TARGET_RATIO_THRESHOLD: Final[float] = 0.7
 _CJK_CHAR_PATTERN: Final[re.Pattern[str]] = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 _LATIN_CHAR_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z]")
 _ANY_LETTER_PATTERN: Final[re.Pattern[str]] = re.compile(r"[^\W\d_]", re.UNICODE)
+_JAPANESE_KOREAN_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"[\u3040-\u30ff\u31f0-\u31ff\uff66-\uff9f"
+    r"\U0001aff0-\U0001afff\U0001b000-\U0001b16f"
+    r"\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7af\ud7b0-\ud7ff\uffa0-\uffdc]"
+)
 
 
 @dataclass(slots=True)
@@ -269,6 +276,34 @@ def run_llm_postprocess(
     is_cancelled: Callable[[], bool] | None = None,
     begin_commit: Callable[[], bool] | None = None,
 ) -> SubtitleArtifact:
+    if request.operation == "resegment":
+        from maw.postprocess_resegment import run_resegment
+        return run_resegment(request, complete=complete, on_status=on_status, is_cancelled=is_cancelled, begin_commit=begin_commit)
+    from maw.postprocess_llm_diagnostics import LlmFailureTrace
+
+    trace = LlmFailureTrace(complete, request.project_path or request.srt_path, request.output_directory, request.operation)
+    try:
+        return _run_llm_postprocess(request, complete=trace, on_status=on_status, is_cancelled=is_cancelled, begin_commit=begin_commit)
+    except Exception as error:
+        hint = trace.failure(error)
+        if hint:
+            if isinstance(error, LlmClientError):
+                raise replace(error, message=f"{error}\n{hint}") from error
+            if isinstance(error, PostprocessStepError):
+                raise _postprocess_step_error(f"{error}\n{hint}", error) from error
+            if isinstance(error, ValueError):
+                raise ValueError(f"{error}\n{hint}") from error
+        raise
+
+
+def _run_llm_postprocess(
+    request: LlmPostprocessRequest,
+    *,
+    complete: LlmComplete,
+    on_status: LlmStatus | None,
+    is_cancelled: Callable[[], bool] | None,
+    begin_commit: Callable[[], bool] | None,
+) -> SubtitleArtifact:
     _raise_if_cancelled(is_cancelled)
     if request.operation == "resegment":
         from maw.postprocess_resegment import run_resegment
@@ -281,7 +316,9 @@ def run_llm_postprocess(
     if strict_translation:
         if request.merge_bilingual and request.embed_translations:
             raise ValueError("「将双语字幕合并为单个字幕」与「只翻译非中文（英文）的字幕」不能同时启用，请只选择一个输出方式。")
-        _reject_recursive_translation_input(source_project, source_srt, request.operation)
+        multi = project.get("multi_subtitle")
+        if source_project is None or not isinstance(multi, dict) or not multi.get("tracks"):
+            _reject_recursive_translation_input(source_project, source_srt, request.operation)
     item_aware_resegment = request.operation == "resegment" and _has_complete_items(project)
     system_prompt = _protocol_prompt(
         operation_prompt,
@@ -301,11 +338,14 @@ def run_llm_postprocess(
         }
         if preserved_blank_source_ids:
             cues = [cue for cue in cues if str(cue["id"]) not in preserved_blank_source_ids]
-        if cues:
+        if cues and request.skip_target_language:
+            source_is_chinese = _can_prefilter_chinese(project, cues)
             preserved_target_source_ids = {
                 str(cue["id"])
                 for cue in cues
-                if _is_already_target_language(str(cue.get("text") or ""), request.operation)
+                if _is_already_target_language(
+                    str(cue.get("text") or ""), request.operation, source_is_chinese=source_is_chinese,
+                )
             }
             if preserved_target_source_ids:
                 cues = [cue for cue in cues if str(cue["id"]) not in preserved_target_source_ids]
@@ -372,6 +412,8 @@ def run_llm_postprocess(
         _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
     if degraded_batches and degraded_batches == len(batches):
         raise ValueError("所有批次的网络/服务请求都失败，字幕没有任何改动，未写出输出产物。")
+    if strict_translation and degraded_batches:
+        raise ValueError("翻译批次未全部成功，未替换原有副字幕，未写出输出产物。")
     source_ids = {str(cue["id"]) for cue in cues} - degraded_source_ids
     if source_ids and skipped_source_ids >= source_ids:
         report = _format_skip_report(skipped_source_ids, response_warnings)
@@ -458,18 +500,32 @@ def run_llm_postprocess(
         output_operation = f"{request.operation}-{BILINGUAL_ARTIFACT_MARKER}"
         warnings = ("已将原始文本和翻译文本合并为单条双语字幕。", *warnings)
     elif request.embed_translations and strict_translation:
-        processed = embed_translated_project(project, processed)
-        output_operation = f"{request.operation}-{BACKFILL_ARTIFACT_MARKER}"
-        warnings = ("已将翻译结果回填进原字幕，输出为单条字幕。", *warnings)
+        embedded = embed_translated_project(project, processed)
+        backfill_warning = translation_backfill_warning(project, embedded)
+        if backfill_warning:
+            warnings = (backfill_warning, *warnings)
+        else:
+            processed = embedded
+            output_operation = f"{request.operation}-{BACKFILL_ARTIFACT_MARKER}"
+            warnings = ("已将翻译结果回填进原字幕，输出为单条字幕。", *warnings)
     if "markers" in (translation_snapshot or {}):
         processed["markers"] = copy.deepcopy(translation_snapshot["markers"])
+    srt_project = None
+    if translation_snapshot is not None and not output_operation.endswith(f"-{BACKFILL_ARTIFACT_MARKER}"):
+        # MOSP is the editable source; only SRT receives translated/stacked text.
+        srt_project = processed
+        processed = attach_translation_project(
+            project, translation_snapshot,
+            target="zh" if request.operation == "translate_zh" else "en",
+        )
+        warnings = (*warnings, "MOSP 保留原文主字幕、字词时间码和可编辑的译文副字幕。")
     _raise_if_cancelled(is_cancelled)
     _notify_status(on_status, "toolbox_status_writing")
     if begin_commit is not None and not begin_commit():
         raise LlmClientError(
             "操作已取消。", category="cancelled", operation="postprocess"
         )
-    return _write(
+    artifact = _write(
         processed,
         source_project,
         source_srt,
@@ -481,7 +537,9 @@ def run_llm_postprocess(
         comparison_source=project if request.generate_comparison else None,
         comparison_translation=translation_snapshot if request.generate_comparison else None,
         bilingual_line_order=request.bilingual_line_order,
+        srt_project=srt_project,
     )
+    return replace(artifact, translation_project=translation_snapshot)
 
 
 def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
@@ -561,6 +619,23 @@ def merge_bilingual_project(
     merged_project.pop("multi_subtitle", None)
     merged_project.pop("extensionSegments", None)
     return normalize_project(merged_project)
+
+
+def translation_backfill_warning(source_project: JsonDict, embedded_project: JsonDict) -> str | None:
+    """Guard majority replacement using the validated, actual backfill result."""
+    source_segments = _segments(source_project)
+    embedded_segments = _segments(embedded_project)
+    replaced = sum(
+        source.get("text") != embedded.get("text")
+        for source, embedded in zip(source_segments, embedded_segments, strict=True)
+    )
+    total = len(source_segments)
+    if replaced * 2 > total:
+        return (
+            f"已跳过回填：将替换 {replaced}/{total} 条字幕（超过 50%），疑似整篇翻译场景；"
+            "请关闭回填。独立翻译结果已正常保留。"
+        )
+    return None
 
 
 def embed_translated_project(source_project: JsonDict, translated_project: JsonDict) -> JsonDict:
@@ -782,12 +857,25 @@ def _merge_translation_response_parts(
     }
 
 
-def _is_already_target_language(text: str, operation: str) -> bool:
+def _can_prefilter_chinese(project: JsonDict, cues: Sequence[Mapping[str, JsonValue]]) -> bool:
+    """Only trust explicit Chinese metadata, with a whole-input script veto.
+
+    SRT and inferred/legacy language labels cannot distinguish all-Han Japanese
+    from Chinese. Even a Chinese hint must yield to kana/Hangul elsewhere in
+    the input so short Han-only cues in the same file are sent to the model.
+    """
+    return (
+        normalize_language_code(project.get("language")) == "zh"
+        and project.get("language_source") in ("detected", "hint")
+        and not any(_JAPANESE_KOREAN_PATTERN.search(str(cue.get("text") or "")) for cue in cues)
+    )
+
+
+def _is_already_target_language(text: str, operation: str, *, source_is_chinese: bool = False) -> bool:
     """判断一条字幕是否已是翻译目标语言（或不含可翻译文字），无需发送给模型。
 
-    纯字符脚本启发式只可靠地识别中文；没有可识别中文或出现其他文字（假名、
-    谚文、西里尔字母、拉丁文字等）时一律交给模型处理，避免把西语、法语等
-    拉丁文字误认为英文。
+    汉字占比只用于已有明确中文来源的输入；来源不明的汉字、其他文字脚本、
+    翻译成英文的拉丁文字均交给模型，避免把日文当中文或西语、法语当英文。
     """
     letters = len(_ANY_LETTER_PATTERN.findall(text))
     cjk = len(_CJK_CHAR_PATTERN.findall(text))
@@ -798,7 +886,7 @@ def _is_already_target_language(text: str, operation: str) -> bool:
         return cjk == 0 and latin == 0
     if cjk == 0:
         return latin == 0
-    return cjk / (cjk + latin) >= CJK_TARGET_RATIO_THRESHOLD
+    return source_is_chinese and cjk / (cjk + latin) >= CJK_TARGET_RATIO_THRESHOLD
 
 
 def _reject_recursive_translation_input(
@@ -1845,6 +1933,7 @@ def _write(
     comparison_source: Mapping[str, object] | None = None,
     comparison_translation: Mapping[str, object] | None = None,
     bilingual_line_order: str = "",
+    srt_project: JsonDict | None = None,
 ) -> SubtitleArtifact:
     return write_artifacts(
         project,
@@ -1859,6 +1948,7 @@ def _write(
         comparison_source=comparison_source,
         comparison_translation=comparison_translation,
         bilingual_line_order=bilingual_line_order,
+        srt_project=srt_project,
     )
 
 

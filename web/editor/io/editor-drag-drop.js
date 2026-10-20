@@ -29,6 +29,11 @@
 
   async function handleDroppedFiles(files) {
   if (!files.length) return;
+  let epoch = MaweProjectLoad.projectBindingEpoch;
+  let generation = MaweState.projectLoadGeneration;
+  let mediaGeneration = MaweMediaLoad.mediaLoadGeneration;
+  const current = () => epoch === MaweProjectLoad.projectBindingEpoch && generation === MaweState.projectLoadGeneration
+    && mediaGeneration === MaweMediaLoad.mediaLoadGeneration;
   const finishLoading = MaweLoadingProgress.beginEditorLoading('正在处理拖入文件…', 2);
   try {
   const mediaFile = files.find(MaweCoreState.isMediaFile);
@@ -46,6 +51,7 @@
           && !confirm('当前有未保存的改动，是否继续处理此工程文件？选择“打开工程”仍会替换当前工程。')) return;
       try {
         const segments = await MaweLoadingProgress.parseSubtitleImportFile(jsonFile);
+        if (!current()) return;
         await MaweMultiImport.showMultiSubtitleImportChoice(jsonFile, segments, {
           projectFile: jsonFile,
           projectMediaFile: mediaFile,
@@ -67,21 +73,38 @@
   if (subtitleFile && MaweBoot.DATA.segments.length === 0) {
     try {
       stagedSubtitleSegments = await parseDroppedSubtitleFile(subtitleFile);
+      if (!current()) return;
     } catch (error) {
       MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
       return;
     }
   }
-  if ((mediaFile || subtitleFile) && !await MaweProjectLoad.ensureProjectCheckpointForImport(mediaFile || subtitleFile, { usePicker: false })) return;
+  if (mediaFile || subtitleFile) {
+    if (!current()) return;
+    const checkpoint = MaweProjectLoad.ensureProjectCheckpointForImport(mediaFile || subtitleFile, { usePicker: false });
+    // The checkpoint may synchronously install a blank project.
+    epoch = MaweProjectLoad.projectBindingEpoch;
+    generation = MaweState.projectLoadGeneration;
+    if (!await checkpoint || generation !== MaweState.projectLoadGeneration || mediaGeneration !== MaweMediaLoad.mediaLoadGeneration) return;
+    epoch = MaweProjectLoad.projectBindingEpoch;
+  }
   if (mediaFile) {
-    const imported = await MaweMediaLoad.loadMediaFile(mediaFile);
+    const loading = MaweMediaLoad.loadMediaFile(mediaFile);
+    mediaGeneration = MaweMediaLoad.mediaLoadGeneration;
+    const imported = await loading;
+    if (!imported || !current()) return;
     if (imported) MaweServerSave.projectImportDirty = true;
   }
-  if (reapeaksFile) await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
+  if (reapeaksFile) {
+    const loading = MaweMediaLoad.loadReapeaksFile(reapeaksFile);
+    mediaGeneration = MaweMediaLoad.mediaLoadGeneration;
+    if (!await loading || !current()) return;
+  }
   if (subtitleFile) {
     if (MaweBoot.DATA.segments.length > 0) {
       try {
         const segments = await MaweLoadingProgress.parseSubtitleImportFile(subtitleFile);
+        if (!current()) return;
         await MaweMultiImport.showMultiSubtitleImportChoice(subtitleFile, segments);
       } catch (error) {
         MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');

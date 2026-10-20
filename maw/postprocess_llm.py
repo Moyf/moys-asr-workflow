@@ -287,6 +287,8 @@ def complete_subtitle_groups(
             on_response=on_response,
         )
         content = _response_content(body)
+        from maw.postprocess_llm_diagnostics import record_raw_response
+        record_raw_response(prompt, content)
         try:
             parsed = _loads_with_trailing_repair(_strip_json_fence(content))
         except json.JSONDecodeError as error:

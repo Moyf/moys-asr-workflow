@@ -40,6 +40,7 @@ function runtime() {
     MaweBoot: { DATA: { segments: main, gap_remove: localGap(), media: 'synthetic.mp4', waveform: { duration_ms: 2000 } } },
     MaweSettings: { EDITOR_SETTINGS: {} },
     MaweCoreState: { waveformEditor: { durationMs: 2000 }, player: { duration: 2, tagName: 'VIDEO' } },
+    MaweProjectMediaInputs: { currentMediaBlobUrl: null },
     MaweGapRemoveData: { getRemovedGapRanges: () => core.getRemovedGapRanges(core.normalizeGapRemoveData(context.MaweBoot.DATA.gap_remove).gaps) },
     MaweSpeakerLabels: { speakerLabelExportOptions: () => ({}), subtitleExportText: (segment) => segment.text, getSpeakerLabelSettings: () => ({}) },
     MaweCueElements: { fmtSrtTime: (ms) => new Date(ms).toISOString().slice(11, 23).replace('.', ',') },
@@ -260,6 +261,27 @@ test('production ordinary/gap SRT and ASS builders remove local words while inde
   assert.match(srt.buildSrt(), /我这……/);
 });
 
+test('burn subtitles can retain media cue timing while file export extends the first cue', () => {
+  const { context, srt, main } = runtime();
+  context.mergedExportSegments = () => ({ segments: main, overlaySet: new Set(), overlaySegments: [] });
+  context.activeExtensionSegments = () => [];
+  context.MaweSettings.EDITOR_SETTINGS.exportStartAtZero = true;
+  const ordinaryFile = srt.buildSrt();
+  const ordinaryBurn = srt.buildSrt({ alignFirstStart: false });
+  const gapFile = srt.buildGapRemovedSrt();
+  const gapBurn = srt.buildGapRemovedSrt({ alignFirstStart: false });
+  assert.match(ordinaryFile, /00:00:00,000 --> 00:00:02,000\n我这个功能呢/);
+  assert.match(ordinaryBurn, /00:00:00,900 --> 00:00:02,000\n我这个功能呢/);
+  assert.match(gapFile, /00:00:00,000 --> 00:00:01,230\n我这个功能呢/);
+  assert.match(gapBurn, /00:00:00,130 --> 00:00:01,230\n我这个功能呢/);
+  const dialogueStart = (ass) => ass.split('\n').find(line => line.startsWith('Dialogue:'))?.split(',').slice(1, 3);
+  assert.equal(dialogueStart(srt.buildAss())?.[0], '0:00:00.00');
+  assert.equal(dialogueStart(srt.buildAss({ alignFirstStart: false }))?.[0], '0:00:00.90');
+  assert.equal(dialogueStart(srt.buildGapRemovedAss())?.[0], '0:00:00.00');
+  assert.equal(dialogueStart(srt.buildGapRemovedAss({ alignFirstStart: false }))?.[0], '0:00:00.13');
+  assert.equal(context.MaweSettings.EDITOR_SETTINGS.exportStartAtZero, true);
+});
+
 test('dynamic caption plans use surviving items and geometry receives surviving text', () => {
   const { context, utils, srt, main, extension } = runtime();
   for (const compressed of [false, true]) {
@@ -276,6 +298,25 @@ test('dynamic caption plans use surviving items and geometry receives surviving 
   const projected = srt.cleanupMainSegments();
   assert.equal(utils.buildPlainTextPayload(projected), '我这个功能呢');
   assert.equal(context.MaweBoot.DATA.segments[0].items.length, 3);
+});
+
+test('OTIO media binding follows project media and rejects stale server paths after browser replacement', () => {
+  const { context, timeline } = runtime();
+  context.MaweBoot.SERVER_CONFIG = { autoLoadedMediaPath: '/media/original.mp4' };
+  assert.equal(timeline.mediaTargetUrl(), 'file:///media/original.mp4', 'relative project media uses the server binding');
+  context.MaweProjectMediaInputs.currentMediaBlobUrl = 'blob:replacement';
+  context.MaweCoreState.player.currentSrc = 'blob:replacement';
+  context.MaweBoot.DATA.media = 'replacement.mp4';
+  assert.equal(timeline.mediaTargetUrl(), '', 'browser replacement cannot export the old server recording');
+  context.MaweCoreState.player.currentSrc = 'file:///media/original.mp4';
+  assert.equal(timeline.mediaTargetUrl(), '', 'an outdated currentSrc cannot reintroduce the old recording');
+  context.MaweBoot.DATA.media = '/media/rebound.mp4';
+  context.MaweProjectMediaInputs.currentMediaBlobUrl = null;
+  assert.equal(timeline.mediaTargetUrl(), 'file:///media/rebound.mp4', 'explicit native media takes precedence');
+  context.MaweBoot.DATA.media = 'portable.mp4';
+  context.MaweBoot.SERVER_CONFIG.autoLoadedMediaPath = null;
+  context.MaweCoreState.player.currentSrc = 'file:///media/portable.mp4';
+  assert.equal(timeline.mediaTargetUrl(), 'file:///media/portable.mp4', 'file URL playback still provides a valid native source');
 });
 
 test('source/gap OTIO subtitle marker names and FCP/XML plans use exact retained main text', () => {

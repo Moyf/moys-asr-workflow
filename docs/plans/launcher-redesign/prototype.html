@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>MAW Launcher 改版原型 v2</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="components.css">
+<link rel="stylesheet" href="pages.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+  <symbol id="i-stack" viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></symbol>
+  <symbol id="i-bug" viewBox="0 0 24 24"><path d="M8 2l1.9 1.9M16 2l-1.9 1.9M9 7.1V6a3 3 0 0 1 6 0v1.1M12 20a6 6 0 0 1-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3a6 6 0 0 1-6 6zM12 20v-9M6.5 13H3M21 13h-3.5M4 21a4 4 0 0 1 3-3.4M20 21a4 4 0 0 0-3-3.4M4 7a4 4 0 0 0 3 3.4M20 7a4 4 0 0 1-3 3.4"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM8 9h8M8 13h5"/></symbol>
+  <symbol id="i-stetho" viewBox="0 0 24 24"><path d="M5 3v6a5 5 0 0 0 10 0V3M5 3H4M15 3h1M10 14v2a5 5 0 0 0 10 0v-2"/><circle cx="20" cy="12" r="2"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></symbol>
+  <symbol id="i-check2" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></symbol>
+  <symbol id="i-cut" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7M17 15l4 4M21 15l-4 4"/></symbol>
+  <symbol id="i-lang" viewBox="0 0 24 24"><path d="M5 8l6 6M4 14l6-6 2-3M2 5h12M7 2h1M22 22l-5-10-5 10M14 18h6"/></symbol>
+  <symbol id="i-wand" viewBox="0 0 24 24"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8 19 13M15 9h0M17.8 6.2 19 5M3 21l9-9M12.2 6.2 11 5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 9.2-9.2M17 6l3 3M15 8l2 2"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24"><path d="M9 19c-4 1.5-4-2-6-2.5M15 22v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12 12 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V22"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><path d="m4 17 6-5-6-5M12 19h8"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+  <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V5a3 3 0 0 0-3-1zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="8" cy="10" r="1"/><circle cx="12" cy="7" r="1"/><circle cx="16" cy="10" r="1"/><path d="M12 21a3 3 0 0 1 0-6h2"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+  <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 7v10M21 12h0"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-7c0-4-3-6-4-10-2 2-3 4-3 6-1-1-2-2-2-4-2 2-5 5-5 8a7 7 0 0 0 7 7z"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+  <symbol id="i-align" viewBox="0 0 24 24"><path d="M3 6h18M3 12h12M3 18h16"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4 10 14M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+  <symbol id="i-preset" viewBox="0 0 24 24"><path d="M19 21 12 16 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></symbol>
+</svg>
+
+<div class="proto-bar">
+  <b>原型控制</b>
+  <span>转写页状态：</span>
+  <button data-state="empty" class="on">未选文件</button>
+  <button data-state="ready">就绪</button>
+  <button data-state="running">转写中</button>
+  <button data-state="done">完成</button>
+  <button data-state="nokey">未配置 Key</button>
+  <span class="sep"></span>
+  <button id="demoDrawer">演示：配置抽屉</button>
+  <span class="sep"></span>
+  <span>服务商：</span>
+  <button data-prov-pick="dashscope" class="on">百炼</button>
+  <button data-prov-pick="soniox">Soniox</button>
+  <button data-prov-pick="openai">OpenAI</button>
+  <button data-prov-pick="doubao">豆包</button>
+  <button data-prov-pick="tencent">腾讯云</button>
+  <button data-prov-pick="local">本地模型</button>
+  <button data-prov-pick="firered">FireRed</button>
+  <button data-prov-pick="bcut">必剪</button>
+  <span class="sep"></span>
+  <button id="themeBtn">切换明/暗</button>
+</div>
+
+<div class="window">
+  <div class="titlebar">MAW Launcher</div>
+  <div class="app">
+    <nav class="nav">
+      <img class="logo" src="../../../assets/maw-icon-rounded.png" alt="MAW">
+      <button class="nav-item active" data-page="transcribe"><svg class="i"><use href="#i-mic"/></svg>转写</button>
+      <button class="nav-item" data-page="batch"><svg class="i"><use href="#i-stack"/></svg>批量<span class="badge">3</span></button>
+      <button class="nav-item" data-page="toolbox"><svg class="i"><use href="#i-tool"/></svg>工具箱</button>
+      <button class="nav-item" data-page="projects"><svg class="i"><use href="#i-doc"/></svg>工程</button>
+      <div class="nav-spacer"></div>
+      <div class="help-wrap">
+        <button class="nav-item" id="helpBtn" title="帮助与反馈"><svg class="i"><use href="#i-help"/></svg>帮助</button>
+        <div class="menu hidden" id="helpMenu" role="menu">
+          <button role="menuitem"><svg class="i"><use href="#i-spark"/></svg>新功能<span class="menu-badge">v1.8</span></button>
+          <button role="menuitem"><svg class="i"><use href="#i-book"/></svg>使用指南</button>
+          <button role="menuitem"><svg class="i"><use href="#i-play"/></svg>教程视频</button>
+          <div class="menu-sep"></div>
+          <button role="menuitem"><svg class="i"><use href="#i-bug"/></svg>报告问题</button>
+          <button role="menuitem"><svg class="i"><use href="#i-chat"/></svg>意见反馈</button>
+          <button role="menuitem"><svg class="i"><use href="#i-stetho"/></svg>系统诊断<span class="menu-soon">占位</span></button>
+          <div class="menu-sep"></div>
+          <button role="menuitem"><svg class="i"><use href="#i-github"/></svg>GitHub</button>
+        </div>
+      </div>
+      <button class="nav-item" data-page="settings"><svg class="i"><use href="#i-gear"/></svg>设置</button>
+    </nav>
+
+    <div class="main">
+      <header class="topbar">
+        <h1>Moy's ASR Workflow</h1>
+        <span class="ver">v1.8.0-beta.1</span>
+        <span class="grow"></span>
+        <a class="link" href="#"><svg class="i"><use href="#i-heart"/></svg>支持 MAW</a>
+        <button class="icon-btn theme-toggle" title="切换主题"><svg class="i"><use href="#i-sun"/></svg></button>
+      </header>
+
+      <!-- ============ 转写 ============ -->
+      <section class="page on" id="page-transcribe">
+      <div class="scroll">
+        <div class="stack">
+
+          <section class="card result" data-show="done">
+            <div class="row" style="gap:14px">
+              <div class="big-ok"><svg class="i"><use href="#i-check"/></svg></div>
+              <div style="flex:1">
+                <div style="font-weight:650;font-size:15px">字幕已生成，自动后处理 3/3 完成</div>
+                <div style="color:var(--text-2);font-size: 13px">412 条字幕 · 用时 1 分 38 秒</div>
+              </div>
+              <button class="btn"><svg class="i"><use href="#i-folder"/></svg>打开文件夹</button>
+              <button class="btn primary"><svg class="i"><use href="#i-edit"/></svg>在编辑器中校对</button>
+            </div>
+            <div class="files">
+              <div><svg class="i"><use href="#i-check"/></svg><code>访谈-第三期.mosp</code><span class="lbl2">最终工程</span></div>
+              <div><svg class="i"><use href="#i-check"/></svg><code>访谈-第三期.srt</code><span class="lbl2">最终字幕</span></div>
+              <div style="color:var(--text-3)"><svg class="i"><use href="#i-folder"/></svg>中间结果：原始转写 → 固定替换 → AI 校对 → 重新断句 <button class="text-btn" style="font-size: 13px">查看</button></div>
+            </div>
+          </section>
+
+          <!-- 1 媒体 -->
+          <section class="card">
+            <div class="card-head">
+              <span class="step" id="step1">1</span>
+              <h2>选择媒体</h2>
+              <span class="grow"></span>
+              <span class="meta-r">多个文件？用 <a href="#" data-goto="batch">批量</a></span>
+            </div>
+
+            <div class="drop mascot-drop" data-show="empty nokey">
+              <!-- 插画占位：维护者之后会提供专用素材，替换 .drop-art 内容即可 -->
+              <div class="drop-art" title="插画占位"><svg class="i"><use href="#i-upload"/></svg></div>
+              <div class="drop-tx">
+                <div class="t">拖入视频或音频</div>
+                <div class="s">或 <a href="#">点击选择文件</a></div>
+                <div class="s">支持 mp4 / mov / mkv / flv / wav / mp3 等；一次拖入多个文件会自动转到批量</div>
+              </div>
+            </div>
+
+            <div data-show="ready running done">
+              <div class="file">
+                <div class="thumb"><svg class="i"><use href="#i-film"/></svg></div>
+                <div class="meta">
+                  <div class="name">访谈-第三期-完整版.mp4</div>
+                  <div class="sub"><span>23:41</span><span>1920×1080</span><span>486 MB</span><span>2 条音轨</span></div>
+                </div>
+                <button class="btn ghost sm">更换</button>
+                <button class="icon-btn" title="移除"><svg class="i"><use href="#i-x"/></svg></button>
+              </div>
+              <div class="grid2" style="margin-top:12px">
+                <div class="field">
+                  <label>音轨</label>
+                  <div class="select">#1 中文 · AAC 48 kHz 立体声<svg class="i"><use href="#i-chev"/></svg></div>
+                </div>
+                <div class="field">
+                  <label>SRT 输出</label>
+                  <div class="input" style="justify-content:space-between"><code style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">D:\Videos\访谈\访谈-第三期-完整版.srt</code><svg class="i" style="color:var(--text-3)"><use href="#i-folder"/></svg></div>
+                </div>
+              </div>
+              <p class="hint">这个文件有多条音轨时才显示「音轨」；flv 会提示「无法预览，将自动转换为 mp4」。</p>
+            </div>
+          </section>
+
+          <!-- 2 识别设置 -->
+          <section class="card">
+            <div class="card-head" style="margin-bottom:12px">
+              <span class="step">2</span>
+              <h2>识别设置</h2>
+              <span class="grow"></span>
+              <div class="row" style="gap:4px">
+                <svg class="i" style="color:var(--text-3);width:14px"><use href="#i-preset"/></svg>
+                <div class="select" style="min-height:30px;height:30px;font-size: 13px;width:auto;gap:10px">口播默认 <span style="color:var(--warn)">●</span><svg class="i" style="width:14px"><use href="#i-chev"/></svg></div>
+                <button class="btn ghost sm">更新预设</button>
+                <button class="btn ghost sm">管理</button>
+              </div>
+            </div>
+
+            <div class="summary" id="asrSummary">
+              <span class="chip ok" data-keychip data-show="empty ready running done"><span class="dot"></span>API Key 已配置</span>
+              <span class="chip warn" data-keychip data-show="nokey"><svg class="i" style="width:13px;height:13px"><use href="#i-key"/></svg>未配置 API Key</span>
+              <span class="grow"></span>
+              <button class="text-btn" id="toggleAsr"><span>收起</span><svg class="i" style="width:14px;height:14px"><use href="#i-chev"/></svg></button>
+            </div>
+
+            <div data-show="nokey" style="margin-top:12px">
+              <div class="callout warn">
+                <svg class="i" style="color:var(--warn)"><use href="#i-key"/></svg>
+                <div style="flex:1">需要先配置阿里云百炼的 API Key 才能开始转写。</div>
+              </div>
+            </div>
+
+            <div class="expand open" id="asrExpand">
+              <div class="group-title">服务与模型</div>
+              <div class="grid2">
+                <div class="field">
+                  <label>识别方式</label>
+                  <div class="select prov-select" id="provSelect" title="原型：点击切换服务商"><span id="provName">阿里云百炼（推荐 / 千问）</span><svg class="i"><use href="#i-chev"/></svg></div>
+                </div>
+                <div class="field">
+                  <label>模型</label>
+                  <div class="select"><span id="provModel">qwen-audio-3.0-asr</span><svg class="i"><use href="#i-chev"/></svg></div>
+                  <p class="hint" id="provModelHint">支持即时热词、上下文与说话人分离</p>
+                </div>
+
+                <!-- 云端：API Key -->
+                <div class="field span2" data-prov="dashscope soniox openai doubao">
+                  <label>API Key</label>
+                  <div class="row">
+                    <div class="input" style="flex:1"><svg class="i" style="color:var(--text-3)"><use href="#i-key"/></svg><span style="color:var(--text-4)" id="keyMask">sk-••••••••••••••••3f9a</span></div>
+                    <button class="btn">保存</button>
+                  </div>
+                  <p class="hint" id="provKeyHint">在 <a href="#">千问 AI 平台 ↗</a> 获取 · 参考价约 ¥0.79 / 小时 · 海外用户请在 <a href="#" data-goto="settings" data-settab="runtime">设置 → 运行环境</a> 选择地域</p>
+                </div>
+                <!-- 腾讯云：两把密钥 -->
+                <div class="field" data-prov="tencent"><label>SecretId</label><div class="input" style="color:var(--text-4)">AKID••••••••••••7Qx</div></div>
+                <div class="field" data-prov="tencent"><label>SecretKey</label><div class="row"><div class="input" style="flex:1;color:var(--text-4)">••••••••••••••••</div><button class="btn">保存</button></div></div>
+                <p class="hint span2" data-prov="tencent" style="margin-top:-6px">超过 5 MB 的媒体需使用 COS URL · 参考价 ¥0.8 / 小时</p>
+                <!-- OpenAI 兼容：地址与自定义模型 -->
+                <div class="field" data-prov="openai"><label>ASR Base URL</label><div class="input">https://api.openai.com/v1</div><p class="hint">会请求 /audio/transcriptions</p></div>
+                <div class="field" data-prov="openai"><label>ASR 模型名（自定义模型时）</label><div class="input ph">中转站控制台提供的模型名</div></div>
+                <!-- 必剪：无需密钥 -->
+                <div class="span2" data-prov="bcut"><div class="callout plain"><svg class="i" style="color:var(--ok)"><use href="#i-check"/></svg><div>无需 API Key，仅支持中文；毫秒级逐字时间码。实验性入口。</div></div></div>
+                <!-- 本地模型 -->
+                <div class="span2" data-prov="local">
+                  <div class="callout plain" style="gap:12px">
+                    <svg class="i" style="color:var(--ok)"><use href="#i-cpu"/></svg>
+                    <div style="flex:1"><b style="color:var(--text)">本地运行环境已就绪</b> · Qwen3-ASR-1.7B 已下载 · 约 4.3 GB</div>
+                    <button class="btn sm" data-goto="settings" data-settab="runtime">管理模型</button>
+                  </div>
+                </div>
+              </div>
+              <div class="toggle-row" style="margin-top:6px">
+                <div class="tx"><b>快速测试</b><span>只转写前 2 分钟，适合首次验证配置</span></div>
+                <button class="sw"></button>
+              </div>
+
+              <!-- 本地模型专属 -->
+              <div data-prov="local">
+                <div class="group-title">本地运行</div>
+                <div class="grid2">
+                  <div class="field"><label>设备</label><div class="select">自动（CUDA 可用）<svg class="i"><use href="#i-chev"/></svg></div></div>
+                  <div class="field"><label>对齐模型</label><div class="select">Qwen3-ForcedAligner<svg class="i"><use href="#i-chev"/></svg></div><p class="hint">模型不带时间码时，用对齐模型补齐</p></div>
+                </div>
+              </div>
+              <div data-prov="firered">
+                <div class="group-title">本地运行</div>
+                <div class="grid2">
+                  <div class="field"><label>设备</label><div class="select">CPU<svg class="i"><use href="#i-chev"/></svg></div></div>
+                  <div class="field"><label>自动加标点</label><div class="select">使用 ct-punc<svg class="i"><use href="#i-chev"/></svg></div></div>
+                </div>
+              </div>
+
+              <div class="group-title">语言</div>
+              <div class="grid2">
+                <div class="field">
+                  <div class="select"><span id="provLang">自动识别</span><svg class="i"><use href="#i-chev"/></svg></div>
+                  <p class="hint" id="provLangHint">可多选；不选时自动识别。更多语种在 <a href="#" data-goto="settings">设置</a> 中开启。</p>
+                </div>
+                <div class="field" data-prov="dashscope">
+                  <div class="toggle-row" style="padding:4px 0">
+                    <div class="tx"><b>保留方言</b><span>仅 qwen-audio-3.1-asr 支持</span></div>
+                    <button class="sw"></button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 百炼：热词与提示 -->
+              <div data-prov="dashscope">
+                <div class="group-title">热词与提示</div>
+                <div class="field">
+                  <label>提示词</label>
+                  <div class="textarea">专业词汇或背景，例如：本期嘉宾是独立游戏开发者，聊到 Unity、Godot……</div>
+                  <div class="counter">0 / 400</div>
+                </div>
+                <div class="grid2" style="margin-top:6px">
+                  <div class="field">
+                    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+                      <span class="lbl" style="margin:0">热词</span>
+                      <div class="seg"><button class="on">直接输入</button><button>从文件读取</button></div>
+                    </div>
+                    <div class="textarea mono">Obsidian: 5
+Godot
+MAW</div>
+                    <p class="hint">每行一个；可写「热词: 权重」单独指定。可直接拖入 .txt。</p>
+                  </div>
+                  <div class="field">
+                    <label>默认权重</label>
+                    <div class="select">5（较强）<svg class="i"><use href="#i-chev"/></svg></div>
+                    <p class="hint">权重 50 = 必须命中，最多 50 个词。</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Soniox：上下文四栏 -->
+              <div data-prov="soniox">
+                <div class="group-title">上下文</div>
+                <p class="hint" style="margin:-4px 0 10px">都可留空；会直接发送到 Soniox 的 context 对象。<a href="#">查看文档 ↗</a></p>
+                <div class="grid2">
+                  <div class="field"><label>General · 键值信息</label><div class="textarea mono">domain=游戏
+speaker=Moy</div><p class="hint">每行一个 key=value</p></div>
+                  <div class="field"><label>Text · 背景文本</label><div class="textarea">会议摘要、脚本或参考文档</div></div>
+                  <div class="field"><label>Terms · 术语</label><div class="textarea mono">Obsidian
+Godot</div><p class="hint">每行一个，或逗号分隔</p></div>
+                  <div class="field"><label>Translation terms · 翻译术语</label><div class="textarea">source =&gt; target</div></div>
+                </div>
+                <div class="counter">32 / 10000</div>
+              </div>
+
+              <!-- OpenAI：Prompt / Keywords -->
+              <div data-prov="openai">
+                <div class="group-title">提示与关键词</div>
+                <div class="grid2">
+                  <div class="field"><label>Prompt</label><div class="textarea">补充领域背景、专有名词或前文</div><p class="hint">Whisper 最多 224 tokens</p></div>
+                  <div class="field"><label>Keywords</label><div class="textarea mono">Obsidian
+Godot</div><p class="hint">每行一个；仅对 gpt-transcribe 发送</p></div>
+                </div>
+              </div>
+
+              <div class="group-title">其他</div>
+              <div class="toggle-row" data-prov="dashscope openai soniox doubao tencent">
+                <div class="tx"><b>按说话人配色</b><span>最多 5 种颜色，超出循环使用</span></div>
+                <button class="sw on"></button>
+              </div>
+              <div class="toggle-row">
+                <div class="tx"><b>生成频谱数据</b><span>默认只生成波形；频谱会增加耗时和文件体积</span></div>
+                <button class="sw"></button>
+              </div>
+              <div class="toggle-row">
+                <div class="tx"><b>调试模式</b><span>保留原始响应，便于排查</span></div>
+                <button class="sw"></button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 3 自动处理 -->
+          <section class="card">
+            <div class="card-head" style="margin-bottom:6px">
+              <span class="step">3</span>
+              <h2>自动后处理</h2>
+              <span class="grow"></span>
+              <span class="meta-r" id="pipeMeta">按顺序执行 · 已启用 3 项</span>
+              <button class="sw on" title="启用自动后处理"></button>
+            </div>
+            <div class="pipe">
+              <div class="pstep" data-step="match"><span class="num">1</span><div class="tx"><b>文稿匹配</b><span>需要文稿文件</span></div><button class="cfg-btn need" data-cfg="match">去配置</button><button class="sw"></button></div>
+              <div class="pstep" data-step="cleanup"><span class="num">2</span><div class="tx"><b>AI 口播整理 <span class="tag llm">LLM</span></b><span>整理重录、重复与磕巴；存疑写为待核查区段</span></div><button class="cfg-btn" data-cfg="cleanup">配置</button><button class="sw"></button></div>
+              <div class="pstep on" data-step="replace"><span class="num">3</span><div class="tx"><b>固定替换</b><span>3 条规则 · 不转换简繁</span></div><button class="cfg-btn" data-cfg="replace">配置</button><button class="sw on"></button></div>
+              <div class="pstep on" data-step="proofread"><span class="num">4</span><div class="tx"><b>AI 校对 <span class="tag llm">LLM</span> <span class="tag">慎用</span></b><span>DeepSeek · deepseek-chat · 无追加要求</span></div><button class="cfg-btn" data-cfg="proofread">配置</button><button class="sw on"></button></div>
+              <div class="pstep on" data-step="resegment"><span class="num">5</span><div class="tx"><b>重新断句 <span class="tag llm">LLM</span> <span class="tag">慎用</span></b><span>每条最多 18 字</span></div><button class="cfg-btn" data-cfg="resegment">配置</button><button class="sw on"></button></div>
+              <div class="pstep" data-step="ocr"><span class="num">6</span><div class="tx"><b>OCR 去重</b><span>底部 30% · 阈值 0.5</span></div><button class="cfg-btn" data-cfg="ocr">配置</button><button class="sw"></button></div>
+              <div class="pstep" data-step="translate"><span class="num">7</span><div class="tx"><b>翻译 <span class="tag llm">LLM</span></b><span>→ 中文 · 合并双语（译文在上）</span></div><button class="cfg-btn" data-cfg="translate">配置</button><button class="sw"></button></div>
+              <div class="pstep" data-step="burn"><span class="num">8</span><div class="tx"><b>烧录字幕</b><span>自动（优先硬件）· CRF 18</span></div><button class="cfg-btn" data-cfg="burn">配置</button><button class="sw"></button></div>
+            </div>
+            <div class="pipe-more">
+              <span id="pipeHidden">另有 4 个步骤未显示</span>
+              <button class="text-btn" id="pipeManage"><svg class="i" style="width:14px"><use href="#i-pin"/></svg>选择显示的步骤</button>
+            </div>
+            <div class="toggle-row" style="border-top:1px solid var(--line);margin-top:4px">
+              <div class="tx"><b>保留中间文件</b><span>保留每一步的结果；失败时总会保留</span></div>
+              <button class="sw"></button>
+            </div>
+          </section>
+
+          <section class="card hidden" id="logCard">
+            <div class="card-head" style="margin-bottom:10px">
+              <svg class="i" style="color:var(--text-2)"><use href="#i-term"/></svg>
+              <h2>运行日志</h2>
+              <span class="grow"></span>
+              <button class="text-btn"><svg class="i" style="width:14px"><use href="#i-copy"/></svg>复制</button>
+              <button class="text-btn"><svg class="i" style="width:14px"><use href="#i-folder"/></svg>日志文件夹</button>
+            </div>
+            <div class="log">
+              <div><span class="ts">14:30:51</span> 读取媒体信息：23:41，48 kHz，2 声道</div>
+              <div><span class="ts">14:30:52</span> 提取音轨 #1 → 16 kHz mono <span class="ok">完成</span></div>
+              <div><span class="ts">14:30:58</span> 切分为 5 段并上传</div>
+              <div><span class="ts">14:31:12</span> 第 1/5 段识别 <span class="ok">完成</span></div>
+              <div><span class="ts">14:31:27</span> 第 2/5 段识别 <span class="ok">完成</span></div>
+              <div><span class="ts">14:31:40</span> 第 3/5 段识别中…</div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+      <footer class="actionbar">
+        <div class="status" data-show="empty nokey"><svg class="i"><use href="#i-spark"/></svg><span id="statusText">选择媒体文件后即可开始</span></div>
+        <div class="status" data-show="ready"><svg class="i" style="color:var(--ok)"><use href="#i-check"/></svg><span>准备就绪 · 转写 + 3 步自动后处理</span></div>
+        <div class="progress-wrap" data-show="running">
+          <div class="progress-top">
+            <span class="msg">识别中… 已处理 12:05 / 23:41</span>
+            <button class="text-btn" id="logBtn" style="font-size: 13px;padding:0 4px"><svg class="i" style="width:13px"><use href="#i-term"/></svg>日志</button>
+          </div>
+          <div class="bar"><i style="width:38%"></i></div>
+          <div class="stages"><span class="done">✓ 提取音频</span><span class="cur">识别</span><span>固定替换</span><span>AI 校对</span><span>重新断句</span></div>
+        </div>
+        <div class="status" data-show="done"><svg class="i" style="color:var(--ok)"><use href="#i-check"/></svg><span>上次任务 14:32 完成</span></div>
+        <button class="btn" data-show="running">停止</button>
+        <button class="btn" data-show="empty ready done nokey"><svg class="i"><use href="#i-edit"/></svg>打开编辑器</button>
+        <button class="btn primary lg" id="startBtn" data-show="empty ready done nokey"><svg class="i"><use href="#i-play"/></svg><span id="startText">开始生成</span></button>
+      </footer>
+      </section>
+      <!-- ============ 批量 ============ -->
+      <section class="page" id="page-batch">
+      <div class="scroll">
+        <div class="stack">
+          <div>
+            <h2 class="page-title">批量转写</h2>
+            <p class="page-sub">按顺序逐个处理；所有文件共用 <a href="#" data-goto="transcribe">转写页</a> 的识别设置和自动后处理。</p>
+          </div>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>文件队列</h2>
+              <span class="chip">3 个文件 · 共 1:12:08</span>
+              <span class="grow"></span>
+              <button class="btn sm"><svg class="i"><use href="#i-plus"/></svg>添加文件</button>
+              <button class="btn ghost sm">清空</button>
+            </div>
+            <div class="queue">
+              <div class="qrow">
+                <svg class="i handle"><use href="#i-grip"/></svg>
+                <div class="thumb sm"><svg class="i"><use href="#i-film"/></svg></div>
+                <div class="meta"><div class="name">访谈-第一期.mp4</div><div class="sub">23:41 · → 访谈-第一期.srt</div></div>
+                <span class="chip ok"><svg class="i" style="width:13px"><use href="#i-check"/></svg>完成</span>
+                <button class="icon-btn" title="打开文件夹"><svg class="i"><use href="#i-folder"/></svg></button>
+              </div>
+              <div class="qrow">
+                <svg class="i handle"><use href="#i-grip"/></svg>
+                <div class="thumb sm"><svg class="i"><use href="#i-film"/></svg></div>
+                <div class="meta"><div class="name">访谈-第二期.mp4</div><div class="sub">25:02 · 识别中 · 第 3/5 段</div></div>
+                <div class="mini"><div class="bar"><i style="width:56%"></i></div></div>
+                <button class="icon-btn" title="停止"><svg class="i"><use href="#i-x"/></svg></button>
+              </div>
+              <div class="qrow">
+                <svg class="i handle"><use href="#i-grip"/></svg>
+                <div class="thumb sm"><svg class="i"><use href="#i-music"/></svg></div>
+                <div class="meta"><div class="name">播客-番外.m4a</div><div class="sub">23:25 · 等待中</div></div>
+                <span class="chip">排队</span>
+                <button class="icon-btn" title="移除"><svg class="i"><use href="#i-x"/></svg></button>
+              </div>
+            </div>
+            <div class="drop sm" style="margin-top:12px">
+              <svg class="i" style="color:var(--accent)"><use href="#i-upload"/></svg>
+              <span class="s">继续拖入文件追加到队列</span>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head" style="margin-bottom:8px"><h2>本次批量设置</h2></div>
+            <div class="summary" style="margin-bottom:10px">
+              <span class="chip">预设：口播默认</span><span class="chip">阿里云百炼 · qwen-audio-3.0-asr</span><span class="chip accent">自动后处理 3 步</span>
+              <button class="text-btn" data-goto="transcribe">在转写页修改</button>
+            </div>
+            <div class="toggle-row">
+              <div class="tx"><b>只生成字幕</b><span>跳过工程和波形，适合只要 SRT 的场合</span></div>
+              <button class="sw"></button>
+            </div>
+            <div class="callout plain" style="margin-top:6px">
+              <svg class="i"><use href="#i-doc"/></svg>
+              <div>批量模式不支持逐文件文稿映射，本次会跳过「文稿匹配」；单文件设置不受影响。</div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <footer class="actionbar">
+        <div class="progress-wrap">
+          <div class="progress-top"><span class="msg">第 2 / 3 个 · 访谈-第二期.mp4</span><span style="color:var(--text-3)">已完成 1 · 失败 0</span></div>
+          <div class="bar"><i style="width:48%"></i></div>
+        </div>
+        <button class="btn">停止全部</button>
+        <button class="btn primary lg" disabled><svg class="i"><use href="#i-play"/></svg>开始批量生成</button>
+      </footer>
+      </section>
+
+      <!-- ============ 工程（原「编辑器」卡片） ============ -->
+      <section class="page" id="page-projects">
+      <div class="scroll">
+        <div class="stack">
+          <div>
+            <h2 class="page-title">工程</h2>
+            <p class="page-sub">打开 .mosp 工程到 MAWE 编辑器。编辑器由本机服务提供，只监听 127.0.0.1。</p>
+          </div>
+
+          <!-- 服务状态条：紧凑一行 -->
+          <section class="card" style="padding:12px 16px">
+            <div class="row" style="gap:12px">
+              <span class="pulse"></span>
+              <div style="flex:1;min-width:0;font-size:13.5px"><b>编辑器服务运行中</b> <span style="color:var(--text-2)">· <code>127.0.0.1:8250</code> · 当前：访谈-第三期.mosp</span></div>
+              <button class="btn ghost sm">停止</button>
+              <button class="btn sm"><svg class="i"><use href="#i-ext"/></svg>在浏览器打开</button>
+            </div>
+          </section>
+
+          <!-- 最近工程：最常用，放第一位 -->
+          <section class="card">
+            <div class="card-head">
+              <h2>最近工程</h2>
+              <span class="grow"></span>
+              <div class="input ph" style="width:200px;min-height:32px;height:32px;font-size:13px"><svg class="i" style="width:14px"><use href="#i-search"/></svg>搜索文件名</div>
+            </div>
+            <div class="recent">
+              <div class="r">
+                <div class="thumb sm"><svg class="i"><use href="#i-film"/></svg></div>
+                <div class="meta"><div class="name">访谈-第三期.mosp <span class="chip ok" style="font-size:12px;padding:0 7px;margin-left:4px">正在编辑</span></div><div class="sub">D:\Videos\访谈 · 今天 14:32 · 412 条字幕</div></div>
+                <button class="icon-btn" title="打开所在文件夹"><svg class="i"><use href="#i-folder"/></svg></button>
+                <button class="btn sm primary">打开</button>
+              </div>
+              <div class="r">
+                <div class="thumb sm"><svg class="i"><use href="#i-film"/></svg></div>
+                <div class="meta"><div class="name">访谈-第二期.mosp</div><div class="sub">D:\Videos\访谈 · 昨天 21:05</div></div>
+                <button class="icon-btn" title="打开所在文件夹"><svg class="i"><use href="#i-folder"/></svg></button>
+                <button class="btn sm">打开</button>
+              </div>
+              <div class="r">
+                <div class="thumb sm"><svg class="i"><use href="#i-music"/></svg></div>
+                <div class="meta"><div class="name">播客-番外.mosp</div><div class="sub">E:\Podcast · 10 月 9 日</div></div>
+                <button class="icon-btn" title="打开所在文件夹"><svg class="i"><use href="#i-folder"/></svg></button>
+                <button class="btn sm">打开</button>
+              </div>
+              <div class="r missing">
+                <div class="thumb sm"><svg class="i"><use href="#i-doc"/></svg></div>
+                <div class="meta"><div class="name">课程-第 5 讲.mosp</div><div class="sub" style="color:var(--warn)">文件已移动或删除 · 9 月 28 日</div></div>
+                <button class="btn ghost sm">重新定位</button>
+                <button class="icon-btn" title="从列表移除"><svg class="i"><use href="#i-x"/></svg></button>
+              </div>
+            </div>
+            <div class="row" style="margin-top:10px;justify-content:space-between">
+              <span class="hint" style="margin:0">只记录在本机；不会上传。数量上限与清除在 <a href="#" data-goto="settings">设置 → 通用</a>。</span>
+              <button class="text-btn">显示更多（12）</button>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head"><h2>打开其他工程</h2></div>
+            <div class="drop sm">
+              <svg class="i" style="color:var(--accent)"><use href="#i-upload"/></svg>
+              <span class="s">拖入 .mosp / .json 工程，或 <a href="#">选择文件</a></span>
+            </div>
+            <div class="field" style="margin-top:14px">
+              <label>媒体文件（可选）</label>
+              <div class="row"><div class="input ph" style="flex:1">工程找不到媒体时手动指定</div><button class="btn">选择</button></div>
+            </div>
+            <div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">
+              <button class="btn ghost sm"><svg class="i"><use href="#i-doc"/></svg>打开空白编辑器</button>
+              <button class="btn ghost sm"><svg class="i"><use href="#i-ext"/></svg>用便携编辑器打开</button>
+              <span class="grow"></span>
+              <span class="hint" style="margin:0">端口</span>
+              <div class="input" style="width:84px;min-height:30px;height:30px">8250</div>
+              <button class="btn ghost sm">刷新状态</button>
+            </div>
+          </section>
+        </div>
+      </div>
+      </section>
+
+      <!-- ============ 工具箱 ============ -->
+      <section class="page" id="page-toolbox">
+      <div class="scroll">
+        <div class="split">
+          <nav class="subnav" id="tbNav">
+            <div class="cap">字幕处理</div>
+            <button class="on" data-tool="match"><svg class="i"><use href="#i-doc"/></svg>文稿匹配<span class="pin-dot" data-pin-dot="match"></span></button>
+            <button data-tool="replace"><svg class="i"><use href="#i-swap"/></svg>固定替换<span class="pin-dot on" data-pin-dot="replace"></span></button>
+            <button data-tool="ocr"><svg class="i"><use href="#i-eye"/></svg>OCR 去重<span class="pin-dot" data-pin-dot="ocr"></span></button>
+            <button data-tool="timestamps"><svg class="i"><use href="#i-clock"/></svg>生成时间码</button>
+            <div class="cap">AI 处理</div>
+            <button data-tool="cleanup"><svg class="i"><use href="#i-wand"/></svg>口播整理<span class="pin-dot" data-pin-dot="cleanup"></span></button>
+            <button data-tool="proofread"><svg class="i"><use href="#i-check2"/></svg>AI 校对<span class="pin-dot on" data-pin-dot="proofread"></span></button>
+            <button data-tool="resegment"><svg class="i"><use href="#i-cut"/></svg>重新断句<span class="pin-dot on" data-pin-dot="resegment"></span></button>
+            <button data-tool="translate"><svg class="i"><use href="#i-lang"/></svg>翻译<span class="pin-dot on" data-pin-dot="translate"></span></button>
+            <button data-tool="custom"><svg class="i"><use href="#i-brain"/></svg>自定义提示词</button>
+            <div class="cap">媒体工具</div>
+            <button data-tool="burn"><svg class="i"><use href="#i-flame"/></svg>烧录字幕<span class="pin-dot" data-pin-dot="burn"></span></button>
+            <button data-tool="alignment"><svg class="i"><use href="#i-align"/></svg>口播对齐</button>
+            <button data-tool="extract"><svg class="i"><use href="#i-music"/></svg>提取音频</button>
+            <button data-tool="waveform"><svg class="i"><use href="#i-wave"/></svg>生成波形</button>
+            <div class="subnav-legend"><span class="pin-dot on"></span>可用于自动后处理</div>
+          </nav>
+
+          <div class="content">
+            <!-- 共享输入：字幕处理类 -->
+            <section class="card" id="tbInput" style="padding:14px 16px">
+              <div class="row">
+                <div class="thumb sm"><svg class="i"><use href="#i-doc"/></svg></div>
+                <div style="flex:1;min-width:0">
+                  <div class="lbl" style="margin:0">处理文件 · 跟随当前工程</div>
+                  <div style="font-weight:600;font-size:13.5px">访谈-第三期.mosp</div>
+                </div>
+                <button class="btn sm">更换</button>
+              </div>
+              <div class="row" style="margin-top:10px;font-size: 13px;color:var(--text-3);gap:6px;flex-wrap:wrap">
+                处理链：<span class="chip" style="font-size: 12.5px;padding:2px 8px">原始转写</span>›<span class="chip" style="font-size: 12.5px;padding:2px 8px">固定替换</span>›<span class="chip accent" style="font-size: 12.5px;padding:2px 8px">AI 校对（当前）</span>
+              </div>
+            </section>
+
+            <!-- 共享输入：媒体工具（烧录 / 提取音频 / 生成波形；对应 toolboxUtilityMediaPath） -->
+            <section class="card hidden" id="tbMedia" style="padding:14px 16px">
+              <div class="row">
+                <div class="thumb sm"><svg class="i"><use href="#i-film"/></svg></div>
+                <div style="flex:1;min-width:0">
+                  <div class="lbl" style="margin:0">媒体文件 · 跟随转写页</div>
+                  <div style="font-weight:600;font-size:13.5px">访谈-第三期-完整版.mp4</div>
+                </div>
+                <button class="btn sm">更换</button>
+              </div>
+            </section>
+
+            <!-- 各工具面板：同一份面板，也会被「配置抽屉」借用 -->
+            <div id="toolPanes">
+
+            <section class="card tool-pane on" data-pane="match">
+              <div class="card-head"><h2>文稿匹配</h2><span class="grow"></span><span class="meta-r">本地处理，不需要 LLM</span></div>
+              <div class="field">
+                <label>文稿文件</label>
+                <div class="row"><div class="input ph" style="flex:1">UTF-8 .txt / .md 文稿</div><button class="btn">选择</button></div>
+                <p class="hint">用文稿文字替换字幕，时间不变；匹配度过低时停止，不写出结果。</p>
+              </div>
+              <div class="grid2" style="margin-top:12px">
+                <div class="field">
+                  <label>换行来源</label>
+                  <div class="select">按文稿换行（默认）<svg class="i"><use href="#i-chev"/></svg></div>
+                </div>
+                <div class="field">
+                  <label>&nbsp;</label>
+                  <div class="toggle-row" style="padding:6px 0"><div class="tx"><b>清理 Markdown 符号</b></div><button class="sw on"></button></div>
+                </div>
+              </div>
+              <p class="hint">断句与保留符号在 <a href="#" data-goto="settings" data-settab="punct">设置 → 断句与标点</a> 配置。</p>
+            </section>
+
+            <!-- AI 处理拆成独立工具：与自动处理的步骤一一对应，不再藏在「任务」下拉里 -->
+            <section class="card tool-pane" data-pane="cleanup">
+              <div class="card-head"><h2>AI 口播整理</h2><span class="tag llm">LLM</span><span class="grow"></span><span class="chip ok"><span class="dot"></span>DeepSeek · deepseek-chat</span></div>
+              <p class="hint" style="margin:0 0 12px">整理重录、重复与磕巴，删除可恢复；存疑处标为待核查。</p>
+              <div class="field"><label>参考文稿（可选）</label><div class="row"><div class="input ph" style="flex:1">有文稿更准确</div><button class="btn">选择</button></div></div>
+              <div class="llm-common"></div>
+            </section>
+
+            <section class="card tool-pane" data-pane="proofread">
+              <div class="card-head"><h2>AI 校对</h2><span class="tag llm">LLM</span><span class="tag">慎用</span><span class="grow"></span><span class="chip ok"><span class="dot"></span>DeepSeek · deepseek-chat</span></div>
+              <p class="hint" style="margin:0 0 12px">只改明显的错字、同音误识和标点，不改句子结构。</p>
+              <div class="llm-common"></div>
+            </section>
+
+            <section class="card tool-pane" data-pane="resegment">
+              <div class="card-head"><h2>重新断句</h2><span class="tag llm">LLM</span><span class="tag">慎用</span><span class="grow"></span><span class="chip ok"><span class="dot"></span>DeepSeek · deepseek-chat</span></div>
+              <p class="hint" style="margin:0 0 12px">按语义重新切分，文字不变。</p>
+              <div class="field" style="max-width:220px"><label>每条最大字数（可选）</label><div class="input">18</div></div>
+              <p class="hint">留空按语义断句；标点计入字数，空白不计。</p>
+              <div class="llm-common"></div>
+            </section>
+
+            <section class="card tool-pane" data-pane="translate">
+              <div class="card-head"><h2>翻译</h2><span class="tag llm">LLM</span><span class="grow"></span><span class="chip ok"><span class="dot"></span>DeepSeek · deepseek-chat</span></div>
+              <div class="field"><label>目标语言</label><div class="seg"><button class="on">中文</button><button>英文</button></div></div>
+              <div class="toggle-row" style="margin-top:8px"><div class="tx"><b>合并双语字幕</b><span>原文与译文上下排在同一条字幕里</span></div><div class="select" style="width:120px;min-height:30px">译文在上<svg class="i"><use href="#i-chev"/></svg></div><button class="sw on"></button></div>
+              <div class="toggle-row"><div class="tx"><b>只翻译外文语句</b><span>已是目标语言的句子保持原样</span></div><button class="sw"></button></div>
+              <div class="llm-common"></div>
+            </section>
+
+            <section class="card tool-pane" data-pane="custom">
+              <div class="card-head"><h2>自定义提示词</h2><span class="tag llm">LLM</span><span class="grow"></span><span class="meta-r">只能在工具箱单独运行</span></div>
+              <div class="field"><label>提示词</label><div class="textarea" style="min-height:110px">写下你希望模型对字幕做的处理……</div></div>
+              <div class="llm-common"></div>
+            </section>
+
+            <template id="llmCommonTpl">
+              <div class="field" style="margin-top:12px">
+                <label>追加要求（可选）</label>
+                <div class="textarea" style="min-height:60px">例如：保留口语语气词</div>
+              </div>
+              <details class="peek"><summary>查看内置提示词</summary><div class="callout plain" style="margin-top:8px">你是一名字幕处理助手……（随任务固定，不可编辑）</div></details>
+              <div class="toggle-row" style="margin-top:4px">
+                <div class="tx"><b>生成处理前后对比</b><span>额外生成本地 HTML 对比页</span></div>
+                <button class="sw"></button>
+              </div>
+              <p class="hint">模型在 <a href="#" data-goto="settings" data-settab="llm">设置 → AI 模型</a> 统一配置。</p>
+            </template>
+
+            <section class="card tool-pane" data-pane="replace">
+              <div class="card-head"><h2>固定替换</h2><span class="grow"></span><span class="meta-r">分段起止时间不变</span></div>
+              <div class="field">
+                <label>替换规则 · 每行一条</label>
+                <div class="textarea mono" style="min-height:96px">莫依 => Moy
+欧伯西迪安 => Obsidian
+那个那个 =></div>
+              </div>
+              <div class="grid2" style="margin-top:12px">
+                <div class="field"><label>分隔符</label><div class="select">=&gt;<svg class="i"><use href="#i-chev"/></svg></div></div>
+                <div class="field"><label>简繁转换</label><div class="select">不转换<svg class="i"><use href="#i-chev"/></svg></div></div>
+              </div>
+              <div class="toggle-row" style="margin-top:6px"><div class="tx"><b>自动去除前后空白</b></div><button class="sw on"></button></div>
+              <p class="hint">先替换再转简繁，本地完成；改动过的句子会去掉逐词时间。</p>
+            </section>
+
+            <section class="card tool-pane" data-pane="ocr">
+              <div class="card-head"><h2>OCR 去重</h2><span class="grow"></span><span class="chip warn">需要安装 OCR 支持</span></div>
+              <div class="field">
+                <label>视频画面</label>
+                <div class="row"><div class="input ph" style="flex:1">优先使用工程视频</div><button class="btn">选择</button></div>
+              </div>
+              <div class="grid2" style="margin-top:12px">
+                <div class="field"><label>识别区域</label><div class="select">底部 30%<svg class="i"><use href="#i-chev"/></svg></div></div>
+                <div class="field"><label>OCR 模型</label><div class="select">PP-OCRv5 mobile<svg class="i"><use href="#i-chev"/></svg></div></div>
+                <div class="field"><label>相似度阈值</label><div class="input">0.5</div></div>
+                <div class="field"><label>&nbsp;</label><div class="toggle-row" style="padding:6px 0"><div class="tx"><b>生成判定报告（CSV）</b></div><button class="sw"></button></div></div>
+              </div>
+              <p class="hint">与画面文字高度相似的字幕会被禁用（SRT 中直接移除）。<a href="#" data-goto="settings" data-settab="runtime">在设置中安装 OCR 支持</a></p>
+            </section>
+
+            <section class="card tool-pane" data-pane="timestamps">
+              <div class="card-head"><h2>生成时间码</h2></div>
+              <div class="grid2">
+                <div class="field span2"><label>媒体来源</label><div class="row"><div class="input ph" style="flex:1">选择或拖入媒体文件</div><button class="btn">选择</button></div></div>
+                <div class="field"><label>对齐模型</label><div class="select">Qwen3-ForcedAligner<svg class="i"><use href="#i-chev"/></svg></div><p class="hint" style="color:var(--ok)">已下载</p></div>
+                <div class="field"><label>处理方式</label><div class="select">只补缺失时间码<svg class="i"><use href="#i-chev"/></svg></div></div>
+              </div>
+              <p class="hint">选「仅使用文稿对齐」时再填文稿、语言与静音参数。</p>
+            </section>
+
+            <section class="card tool-pane" data-pane="burn">
+              <div class="card-head"><h2>烧录字幕</h2><span class="grow"></span><span class="meta-r">重新编码，不覆盖源文件</span></div>
+              <div class="field">
+                <label>字幕文件</label>
+                <div class="row"><div class="input ph" style="flex:1">选择或拖入 .srt / .ass / .ssa</div><button class="btn">选择</button></div>
+                <p class="hint">SRT 使用 ASS 样式库里的「SRT 烧录样式」；ASS 使用自身样式。</p>
+              </div>
+              <div class="toggle-row" style="margin-top:6px"><div class="tx"><b>生成绿幕视频</b><span>无需视频源，1920×1080 / 30 fps，不含音轨</span></div><button class="sw"></button></div>
+              <div class="grid2" style="margin-top:8px">
+                <div class="field"><label>视频编码器</label><div class="select">自动（优先硬件）<svg class="i"><use href="#i-chev"/></svg></div></div>
+                <div class="field"><label>画质 CRF</label><div class="input">18</div></div>
+                <div class="field"><label>编码预设（仅 CPU）</label><div class="select">medium<svg class="i"><use href="#i-chev"/></svg></div></div>
+                <div class="field"><label>音频码率</label><div class="select">192 kbps<svg class="i"><use href="#i-chev"/></svg></div></div>
+              </div>
+              <div class="row" style="margin-top:12px"><button class="btn sm">保存为默认参数</button></div>
+            </section>
+
+            <section class="card tool-pane" data-pane="alignment">
+              <div class="card-head"><h2>口播对齐</h2></div>
+              <p class="hint" style="margin:0 0 12px">用于有重录、重复的口播：按文稿对齐后人工挑选 take，导出新工程。</p>
+              <div class="grid2">
+                <div class="field"><label>MAW 工程</label><div class="input">访谈-第三期.mosp</div></div>
+                <div class="field"><label>校对文稿</label><div class="input ph">.txt / .md</div></div>
+              </div>
+              <div class="group-title">自动标记静音</div>
+              <div class="grid4">
+                <div class="field"><label>最短静音 ms</label><div class="input">400</div></div>
+                <div class="field"><label>音量阈值 dB</label><div class="input">-28</div></div>
+                <div class="field"><label>句首保留 ms</label><div class="input">120</div></div>
+                <div class="field"><label>句尾保留 ms</label><div class="input">80</div></div>
+              </div>
+            </section>
+
+            <section class="card tool-pane" data-pane="extract">
+              <div class="card-head"><h2>提取音频</h2></div>
+              <div class="field" style="max-width:320px"><label>音轨</label><div class="select">#1 中文 · AAC<svg class="i"><use href="#i-chev"/></svg></div></div>
+              <p class="hint">输出新的 AAC / M4A 文件，不修改源文件。</p>
+            </section>
+
+            <section class="card tool-pane" data-pane="waveform">
+              <div class="card-head"><h2>生成波形</h2></div>
+              <div class="toggle-row"><div class="tx"><b>生成频谱数据</b><span>耗时与体积都会增加</span></div><button class="sw"></button></div>
+              <p class="hint">只用媒体生成带波形的工程，无需转写。</p>
+            </section>
+
+            </div>
+
+            <div class="row" id="tbRun" style="justify-content:flex-end;gap:10px">
+              <span class="grow"></span>
+              <span class="hint" id="tbOutLbl" style="margin:0">输出</span>
+              <div class="select" id="tbOut" style="width:150px;min-height:34px">工程 + SRT<svg class="i"><use href="#i-chev"/></svg></div>
+              <button class="btn primary"><svg class="i"><use href="#i-play"/></svg><span id="tbRunText">匹配文稿</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      </section>
+
+      <!-- ============ 设置 ============ -->
+      <section class="page" id="page-settings">
+      <div class="scroll">
+        <div class="split">
+          <nav class="subnav" id="setNav">
+            <div class="cap">设置</div>
+            <button class="on" data-set="general"><svg class="i"><use href="#i-sliders"/></svg>通用</button>
+            <button data-set="punct"><svg class="i"><use href="#i-text"/></svg>断句与标点</button>
+            <button data-set="llm"><svg class="i"><use href="#i-brain"/></svg>AI 模型</button>
+            <button data-set="runtime"><svg class="i"><use href="#i-cpu"/></svg>运行环境</button>
+            <div class="cap">关于</div>
+            <button data-set="about"><svg class="i"><use href="#i-heart"/></svg>关于与支持</button>
+          </nav>
+
+          <div class="content">
+            <!-- 通用 -->
+            <div class="tool-pane on" data-setpane="general">
+              <section class="card">
+                <div class="card-head"><svg class="i" style="color:var(--text-2)"><use href="#i-palette"/></svg><h2>外观</h2></div>
+                <div class="theme-pick">
+                  <button class="on" data-theme-pick="light"><div class="sw-prev"><i style="background:#fff"></i><i style="background:#faf7f7"></i><i style="background:#d93b3b;flex:.35"></i></div>浅色 · 红白</button>
+                  <button data-theme-pick="dark"><div class="sw-prev"><i style="background:#0d0d0f"></i><i style="background:#1c1c1f"></i><i style="background:#ff8a3d;flex:.35"></i></div>深色 · 黑橙</button>
+                  <button data-theme-pick="auto"><div class="sw-prev"><i style="background:#fff"></i><i style="background:#0d0d0f"></i><i style="background:linear-gradient(#d93b3b,#ff8a3d);flex:.35"></i></div>跟随系统</button>
+                </div>
+                <div class="grid2" style="margin-top:14px">
+                  <div class="field"><label>界面语言</label><div class="select">中文<svg class="i"><use href="#i-chev"/></svg></div></div>
+                  <div class="field"><label>界面缩放</label><div class="select">100%<svg class="i"><use href="#i-chev"/></svg></div></div>
+                </div>
+                <div class="toggle-row" style="margin-top:6px"><div class="tx"><b>显示更多识别语言</b><span>关闭时「语言」只显示 8 种常用语言</span></div><button class="sw"></button></div>
+              </section>
+
+              <section class="card">
+                <div class="card-head"><svg class="i" style="color:var(--text-2)"><use href="#i-folder"/></svg><h2>文件输出</h2></div>
+                <div class="toggle-row"><div class="tx"><b>将输出放入子文件夹</b></div><button class="sw on"></button></div>
+                <div class="toggle-row"><div class="tx"><b>每个视频单独建文件夹</b></div><button class="sw"></button></div>
+                <div class="toggle-row"><div class="tx"><b>文件名附带模型名称</b><span>例如 访谈.qwen-audio-3.0.srt</span></div><button class="sw"></button></div>
+              </section>
+
+              <section class="card">
+                <div class="card-head"><svg class="i" style="color:var(--text-2)"><use href="#i-bell"/></svg><h2>通知与资源</h2></div>
+                <div class="toggle-row"><div class="tx"><b>完成时通知我</b><span>任务完成或失败时发送系统通知</span></div><button class="sw"></button></div>
+                <div class="toggle-row"><div class="tx"><b>记录最近工程</b><span>在「工程」页列出最近打开或生成的工程，最多 30 个，只存本机</span></div><button class="btn ghost sm">清除记录</button><button class="sw on"></button></div>
+                <div class="grid2" style="margin-top:8px">
+                  <div class="field"><label>表情包根目录</label><div class="row"><div class="input ph" style="flex:1">未设置</div><button class="btn">选择</button></div><p class="hint">支持嵌套子目录，供编辑器使用。</p></div>
+                  <div class="field"><label>识别预设库</label><div class="row"><div class="input" style="flex:1;font-size: 13px">%APPDATA%\MAW\presets</div><button class="btn">选择</button></div></div>
+                </div>
+              </section>
+            </div>
+
+            <!-- 断句与标点 -->
+            <div class="tool-pane" data-setpane="punct">
+              <section class="card">
+                <div class="card-head"><h2>断句</h2><span class="grow"></span><button class="btn ghost sm">恢复默认</button></div>
+                <p class="hint" style="margin:0 0 12px">停顿多久算两句、少于多少字自动合并、单句最多多少字（超过强行断句）；按语言自动选规则。</p>
+                <div class="grid2">
+                  <div class="field"><label>停顿断句（ms）</label><div class="input">450</div></div>
+                  <div class="field"><label>短句合并（字数）</label><div class="input">6</div></div>
+                  <div class="field"><label>单句上限（字数）</label><div class="input">22</div></div>
+                  <div class="field"></div>
+                  <div class="field"><label>英文短句合并（单词）</label><div class="input">3</div></div>
+                  <div class="field"><label>英文单句上限（单词）</label><div class="input">14</div></div>
+                </div>
+              </section>
+              <section class="card">
+                <div class="card-head"><h2>标点</h2></div>
+                <p class="hint" style="margin:0 0 12px">文稿匹配与转写共用。每行一个符号，删掉某行即对该符号失效；换行始终断句。</p>
+                <div class="grid2">
+                  <div class="field"><label>断句符号</label><div class="textarea mono" style="min-height:120px">。
+！
+？
+；
+…</div></div>
+                  <div class="field"><label>句尾保留符号</label><div class="textarea mono" style="min-height:120px">！
+？
+…</div><p class="hint">未列出的断句符号会从句尾删除。</p></div>
+                </div>
+              </section>
+            </div>
+
+            <!-- AI 模型 -->
+            <div class="tool-pane" data-setpane="llm">
+              <section class="card">
+                <div class="card-head"><h2>AI 后处理模型</h2><span class="grow"></span><span class="chip ok"><span class="dot"></span>连接正常</span></div>
+                <p class="hint" style="margin:0 0 12px">AI 校对、断句、翻译与口播整理都用这里的配置。密钥只存本机环境文件。</p>
+                <div class="grid2">
+                  <div class="field"><label>供应商</label><div class="select">DeepSeek<svg class="i"><use href="#i-chev"/></svg></div></div>
+                  <div class="field"><label>模型</label><div class="row"><div class="select" style="flex:1">deepseek-chat<svg class="i"><use href="#i-chev"/></svg></div><button class="btn">获取列表</button></div></div>
+                  <div class="field span2"><label>API Key</label><div class="row"><div class="input" style="flex:1"><svg class="i" style="color:var(--text-3)"><use href="#i-key"/></svg><span style="color:var(--text-3)">sk-••••••••••••a1c2</span></div><button class="btn">保存</button><button class="btn">测试连接</button></div></div>
+                  <div class="field span2"><label>API URL</label><div class="input">https://api.deepseek.com/v1</div><p class="hint">远程服务须用 HTTPS；本机模型可填 http://127.0.0.1:1234/v1，API Key 可留空。</p></div>
+                  <div class="field"><label>思考强度</label><div class="select">关闭<svg class="i"><use href="#i-chev"/></svg></div></div>
+                  <div class="field"><label>显示名称（可选）</label><div class="input ph">例如：公司中转</div></div>
+                </div>
+              </section>
+            </div>
+
+            <!-- 运行环境 -->
+            <div class="tool-pane" data-setpane="runtime">
+              <section class="card">
+                <div class="card-head"><h2>依赖与组件</h2></div>
+                <div class="env-row"><div class="ic2"><svg class="i"><use href="#i-film"/></svg></div><div class="tx"><b>FFmpeg</b><span>已定位 · C:\MAW\ffmpeg\ffmpeg.exe</span></div><span class="chip ok"><span class="dot"></span>正常</span><button class="btn sm">更改路径</button></div>
+                <div class="env-row"><div class="ic2"><svg class="i"><use href="#i-eye"/></svg></div><div class="tx"><b>OCR 支持</b><span>用于去除与画面文字重复的字幕 · 约 380 MB</span></div><span class="chip">未安装</span><button class="btn sm primary">安装</button></div>
+                <div class="env-row"><div class="ic2"><svg class="i"><use href="#i-cpu"/></svg></div><div class="tx"><b>本地模型支持 <span class="tag">beta</span></b><span>Qwen3-ASR / FunASR 等本地识别</span></div><span class="chip">未安装</span><button class="btn sm">安装</button></div>
+                <div class="env-row"><div class="ic2"><svg class="i"><use href="#i-clock"/></svg></div><div class="tx"><b>对齐模型</b><span>Qwen3-ForcedAligner 已下载 · FireRedASR2-CTC 未下载</span></div><button class="btn sm">管理</button></div>
+              </section>
+              <section class="card">
+                <div class="card-head"><svg class="i" style="color:var(--text-2)"><use href="#i-globe"/></svg><h2>阿里云百炼地域</h2></div>
+                <div class="grid2">
+                  <div class="field"><label>地域</label><div class="select">中国大陆（北京）<svg class="i"><use href="#i-chev"/></svg></div></div>
+                  <div class="field"><label>工作空间 ID</label><div class="input ph">北京选填，新加坡必填</div></div>
+                </div>
+              </section>
+              <section class="card">
+                <div class="card-head"><h2>本地识别模型</h2><span class="grow"></span><button class="btn ghost sm">重新扫描</button></div>
+                <div class="callout plain">把「识别方式」切换为本地模型后，这里会显示模型文件夹、已有模型目录和下载列表。</div>
+              </section>
+            </div>
+
+            <!-- 关于 -->
+            <div class="tool-pane" data-setpane="about">
+              <section class="card">
+                <div class="server-hero">
+                  <img src="../../../assets/show.webp" alt="" style="width:72px;height:72px;border-radius:14px;flex:none">
+                  <div style="flex:1"><div style="font-weight:650;font-size:15px">Moy's ASR Workflow</div><div style="font-size: 13px;color:var(--text-2)">v1.8.0-beta.1 · 让字幕制作变得超级轻松！</div></div>
+                  <button class="btn">检查更新</button>
+                </div>
+                <div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">
+                  <button class="btn sm"><svg class="i"><use href="#i-github"/></svg>GitHub</button>
+                  <button class="btn sm"><svg class="i"><use href="#i-book"/></svg>文档</button>
+                  <button class="btn sm"><svg class="i"><use href="#i-play"/></svg>教程视频</button>
+                  <button class="btn sm primary"><svg class="i"><use href="#i-heart"/></svg>支持 MAW</button>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+      </section>
+
+    </div>
+  </div>
+  <div class="scrim" id="scrim"></div>
+  <aside class="sheet" id="sheet" aria-label="自动后处理配置">
+    <div class="sheet-head">
+      <div class="top">
+        <div style="flex:1">
+          <div class="crumb">自动后处理 · 对本次转写结果按顺序执行</div>
+          <h3>配置处理步骤</h3>
+        </div>
+        <button class="icon-btn" id="sheetClose" title="关闭（Esc）"><svg class="i"><use href="#i-x"/></svg></button>
+      </div>
+    </div>
+    <div class="sheet-main">
+      <nav class="step-rail" id="sheetTabs" aria-label="处理步骤">
+        <button data-cfg="match"><span class="n">1</span><span class="l">文稿匹配</span><span class="d off"></span></button>
+        <button data-cfg="cleanup"><span class="n">2</span><span class="l">口播整理</span><span class="d off"></span></button>
+        <button data-cfg="replace"><span class="n">3</span><span class="l">固定替换</span><span class="d"></span></button>
+        <button data-cfg="proofread"><span class="n">4</span><span class="l">AI 校对</span><span class="d"></span></button>
+        <button data-cfg="resegment"><span class="n">5</span><span class="l">重新断句</span><span class="d"></span></button>
+        <button data-cfg="ocr"><span class="n">6</span><span class="l">OCR 去重</span><span class="d off"></span></button>
+        <button data-cfg="translate"><span class="n">7</span><span class="l">翻译</span><span class="d off"></span></button>
+        <button data-cfg="burn"><span class="n">8</span><span class="l">烧录字幕</span><span class="d off"></span></button>
+        <div class="rail-legend"><span class="d"></span>已启用</div>
+      </nav>
+      <div class="sheet-pane">
+        <div class="pane-head">
+          <div style="flex:1;min-width:0">
+            <div class="crumb">第 <span id="sheetIdx">3</span> 步</div>
+            <h3 id="sheetTitle">固定替换</h3>
+          </div>
+          <div class="toggle-row" style="padding:0;gap:8px"><span style="font-size:13px;color:var(--text-2)">启用</span><button class="sw on" id="sheetEnable"></button></div>
+        </div>
+        <div class="sheet-body" id="sheetBody"></div>
+      </div>
+    </div>
+    <div class="sheet-foot">
+      <button class="btn ghost" id="sheetPrev"><svg class="i" style="transform:rotate(180deg)"><use href="#i-right"/></svg>上一步</button>
+      <button class="btn ghost" id="sheetNext">下一步<svg class="i"><use href="#i-right"/></svg></button>
+      <span class="grow"></span>
+      <button class="btn ghost" id="sheetOpenToolbox"><svg class="i"><use href="#i-ext"/></svg>在工具箱中单独运行</button>
+      <button class="btn primary" id="sheetDone">完成</button>
+    </div>
+  </aside>
+</div>
+
+<div class="note">
+  静态原型 v4，数据都是假的，不连后端。左侧导航五个页面都能点；上方可切换转写页状态和服务商；在「自动后处理」里点「配置」会从右侧滑出配置抽屉；工具箱里可自动执行的工具，卡片底部有「可用于自动后处理」开关；左下角「?」是帮助菜单。
+</div>
+<script src="prototype.js"></script>
+</body>
+</html>

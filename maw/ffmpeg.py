@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from maw.gui_platform import creationflags, startupinfo
+
 
 FFMPEG_PATH_ENV: Final = "FFMPEG_PATH"
 MACOS_FFMPEG_CANDIDATE_DIRECTORIES: Final[tuple[str, ...]] = (
@@ -234,10 +236,12 @@ def resolve_ffmpeg_tools(
     path_by_tool: dict[str, Path] = {}
     # An empty PATH must not make ``shutil.which`` search the current folder.
     if lookup_path:
+        # Windows PATHEXT may include .PY: looking up the bare name can pick
+        # maw/ffmpeg.py in a worker's cwd instead of the native executable.
         path_by_tool = {
             tool: Path(found).expanduser()
             for tool in FFMPEG_TOOL_NAMES
-            if (found := shutil.which(tool, path=lookup_path))
+            if (found := shutil.which(_tool_filename(tool), path=lookup_path))
         }
 
     resolved: dict[str, Path | None] = {tool: None for tool in FFMPEG_TOOL_NAMES}
@@ -311,6 +315,7 @@ def media_duration_seconds(
         ]
         result = subprocess.run(  # noqa: S603 - 固定参数的媒体探测
             cmd, check=True, capture_output=True, text=True, timeout=30,
+            startupinfo=startupinfo(), creationflags=creationflags(),
         )
         return float(result.stdout.strip())
     except (OSError, subprocess.SubprocessError, ValueError):

@@ -62,6 +62,7 @@ class TranscriptionRequest:
     base_url: str = ""
     speaker_colors: bool = False
     generate_spectral: bool = False
+    generate_thumbnails: bool = False
     ui_language: str = "zh"
     generate_html: bool = True
     srt_only: bool = False
@@ -299,21 +300,17 @@ def build_transcribe_command(
     is_openai = request.provider == "openai"
     is_doubao = request.provider == "doubao"
     is_local = request.provider == "local"
-    if is_local:
-        script_name = "generate_subtitle_local.py"
-    elif is_bcut:
-        script_name = "generate_subtitle_bcut_api.py"
-    elif is_tencent:
-        script_name = "generate_subtitle_tencent_api.py"
-    elif is_openai:
-        script_name = "generate_subtitle_openai_api.py"
-    elif is_doubao:
-        script_name = "generate_subtitle_doubao_api.py"
-    else:
-        script_name = "generate_subtitle_soniox_api.py" if is_soniox else "generate_subtitle_qwen_api.py"
-    script = Path(__file__).resolve().parents[1] / script_name
+    provider = request.provider if request.provider in {
+        "local", "soniox", "doubao", "bcut", "tencent", "openai",
+    } else "qwen"
+    module_name = f"maw.asr.{provider}"
     if is_local and request.runtime_python:
-        script = asset_path("local-runtime/generate_subtitle_local.py") if is_frozen else script
+        # Embedded Python ignores cwd/PYTHONPATH; the local entrypoint bootstraps
+        # the copied package root before loading the optional model libraries.
+        script = (
+            asset_path("local-runtime/maw/asr/local.py") if is_frozen
+            else Path(__file__).resolve().parent / "asr" / "local.py"
+        )
         command = [request.runtime_python, str(script)]
     elif is_frozen:
         if is_local:
@@ -329,7 +326,7 @@ def build_transcribe_command(
         else:
             command = [exe, "--transcribe-soniox" if is_soniox else "--transcribe"]
     else:
-        command = [exe, str(script)]
+        command = [exe, "-m", module_name]
     command.append(str(request.media_path))
     command.extend(["--output", str(build_output_paths(request.srt_path).srt), "--json", "--no-html", "--with-waveform"])
     command.extend(["--audio-track", str(request.audio_track)])
@@ -432,6 +429,7 @@ def build_serve_command(
     *,
     executable: Path | str | None = None,
     frozen: bool | None = None,
+    remember_media: bool = False,
 ) -> list[str]:
     exe = str(executable or sys.executable)
     is_frozen = bool(getattr(sys, "frozen", False) if frozen is None else frozen)
@@ -445,6 +443,8 @@ def build_serve_command(
         command.append(str(json_path))
         if media_path:
             command.extend(["-m", str(media_path)])
+            if remember_media:
+                command.append("--remember-media")
     command.extend(["--port", str(port)])
     return command
 
@@ -501,6 +501,7 @@ def run_transcription(
         request.model_cache_root,
         request.engine,
         request.base_url,
+        generate_thumbnails=request.generate_thumbnails,
     )
     if request.provider == "local" and request.runtime_python:
         # 本地引擎子进程跑在托管 venv 的宿主解释器上（见 build_transcribe_command），
@@ -679,12 +680,17 @@ def _child_environment(
     model_cache_root: str = "",
     engine: str = "",
     base_url: str = "",
+    generate_thumbnails: bool = True,
 ) -> dict[str, str]:
     env = dict(parent)
     # The bundled local-runtime Python is not itself PyInstaller-frozen, so
     # pass the parent process's resolved configuration file explicitly.
     env["MAW_ENV_FILE"] = str(DEFAULT_ENV_PATH)
     env["PYTHONUNBUFFERED"] = "1"
+    if not generate_thumbnails:
+        # 「生成视频缩略图」开关经子进程环境传给 embed_media_caches，
+        # 免去在每个 provider CLI 的长参数签名里逐一透传。
+        env["MAW_MEDIA_THUMBNAILS"] = "0"
     configure_utf8_environment(env)
     configured_path = parent.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
     lookup_path = _ffmpeg_search_path(env.get("PATH", "")) or ""
