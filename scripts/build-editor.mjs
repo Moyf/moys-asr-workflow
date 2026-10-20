@@ -237,17 +237,23 @@ export async function buildEditor(root = ROOT, options = {}) {
     inputHashes[file] = sha(source); return source;
   },{bridges:config.externalBridges,trace:true,onDependency:(relative,original) => {
     const key = 'web/'+relative;
-    if (Object.hasOwn(snapshot,key) && snapshot[key] !== original) {
-      throw new Error(`Build input changed during compilation: ${key}; retry the build`);
-    }
-    snapshot[key] = original;
-    inputHashes[relative] = sha(original);
+    // Transform hook covers imported inputs too (tests mutate non-manifest
+    // sources like shared/utils/data.js after G04 retire). Snapshot keeps
+    // the disk bytes for the unchanged check; the hash covers what esbuild
+    // consumed (the transformed text).
+    if (!Object.hasOwn(snapshot,key)) snapshot[key] = original;
+    const source = options.transform ? options.transform(relative,original) : original;
+    inputHashes[relative] = sha(source);
   }});
   // The bytes hashed above are the bytes given to esbuild, not a later read.
   assertMetafileInputsCaptured(root,result,inputHashes);
   assertBuildInputsUnchanged(root, snapshot);
+  // esbuild resolves imports with worker parallelism, so onDependency
+  // fires in nondeterministic order once the manifest no longer lists
+  // every module (G04 retire). Sort the ledger so metadata is stable.
+  const sortedInputHashes = Object.fromEntries(Object.entries(inputHashes).sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0));
   const metadata = {format:1,esbuild:esbuild.version,sourceFiles:files,esmFactories:modules.length,
-    inputs:inputHashes,configHash:sha(configText),builderHash:sha(snapshot['scripts/build-editor.mjs']),
+    inputs:sortedInputHashes,configHash:sha(configText),builderHash:sha(snapshot['scripts/build-editor.mjs']),
     dependencyHash:dependencyHash(snapshot),
     // esbuild sees remaining classic sources as a single transitional scope.
     // Explicit hashes above cover every source, including this virtual input.
