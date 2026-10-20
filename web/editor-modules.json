@@ -142,6 +142,16 @@
       "exportName": "createUtilsModule"
     },
     {
+      "file": "shared/utils/ass-canvas-layout.js",
+      "name": "utils-ass-canvas-layout",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/sticker-placement.js",
+      "name": "utils-sticker-placement",
+      "exportName": "createUtilsModule"
+    },
+    {
       "file": "shared/utils/ass-export.js",
       "name": "utils-ass-export",
       "exportName": "createUtilsModule"

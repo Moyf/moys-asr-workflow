@@ -1,7 +1,8 @@
 // ass-canvas-layout: ASS Canvas 预览的纯布局计算。
 // 只做数值计算，不触碰 DOM 与 Canvas：文本测量通过注入的 measurer 完成，
 // Node 测试可以用假测量器离线验证行切分、锚点与块偏移的正确性。
-window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
+
   'use strict';
 
   const ASS_DEFAULT_PLAY_RES_X = 1920;
@@ -513,4 +514,4 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     assShakeOffsetFor,
     assStackPieceRootAt,
   });
-});
+}

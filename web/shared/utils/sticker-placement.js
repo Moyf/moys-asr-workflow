@@ -2,7 +2,8 @@
 // 只做数值计算，不触碰 DOM/Canvas/FFmpeg：位置来自 onAssPlan 排版计划（与
 // Canvas 字幕预览同一份），Node 测试可用假 plan 离线验证。坐标全部是
 // PlayRes 像素、请求时间轴（去空隙时由调用方传入已收缩的计划与窗口）。
-window.MAWE.register('utils-sticker-placement', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
+
   'use strict';
 
   const assStackFrame = dependencies.assStackFrame;
@@ -185,4 +186,4 @@ window.MAWE.register('utils-sticker-placement', function createUtilsModule(depen
   }
 
   return Object.freeze({ computeStickerCuePlacements, TARGET_RATIO, GAP_RATIO });
-});
+}
