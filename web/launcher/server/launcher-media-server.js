@@ -115,7 +115,17 @@ function handleRoutedDrop(path) {
   }
   setError("mediaPath", mediaDropError());
 }
-async function refreshServerMedia() { const jsonPath = $("jsonPath").value.trim(); const result = await bridge("check_server_media", { jsonPath }); state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists); $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath); return result; }
+let serverMediaRequest = 0;
+async function refreshServerMedia() {
+  const requestId = ++serverMediaRequest;
+  const jsonPath = $("jsonPath").value.trim();
+  const result = await bridge("check_server_media", { jsonPath });
+  // 快速切换工程时，旧路径的慢响应不能覆盖当前工程的媒体提示。
+  if (requestId !== serverMediaRequest || jsonPath !== $("jsonPath").value.trim()) return result;
+  state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists);
+  $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath);
+  return result;
+}
 async function refreshFfmpeg() { const requestId = ++ffmpegRequest; const result = await bridge("check_ffmpeg"); if (requestId !== ffmpegRequest) return result; $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
 function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
 // 最近工程：读取编辑器持久化的 recent_projects，点击条目即填入工程文件输入框
