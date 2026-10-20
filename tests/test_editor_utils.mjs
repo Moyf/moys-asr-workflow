@@ -356,8 +356,8 @@ test('translates ASS special text format samples and rule hints for every symbol
   assert.equal(i18n.translateText('符号规则已关闭，字幕中的符号将保留原文。', 'en'),
     'Symbol rules are off; symbols in subtitles keep their literal text.');
   assert.equal(
-    i18n.translateText('你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。', 'en'),
-    'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, !!shake!!, and >>fade in/out<< to apply special styles.',
+    i18n.translateText('你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<<、{{放大出现}} 来添加特殊样式。', 'en'),
+    'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, !!shake!!, >>fade in/out<<, and {{pop in}} to apply special styles.',
   );
   assert.equal(
     i18n.translateText('详见字幕右键菜单「左右添加字符」部分。', 'en'),
@@ -6904,6 +6904,7 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
       { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
       { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true, sentenceLevel: true },
       { id: 'shake', label: '原地震动', left: '!!', right: '!!', ass: true, sentenceLevel: true },
+      { id: 'pop', label: '放大出现', left: '{{', right: '}}', ass: true, sentenceLevel: true },
       { id: 'note', label: '音符', left: '♪', right: '♪' },
       { id: 'music', label: '双音符', left: '♬', right: '♬' },
       { id: 'bracket', label: '中括号', left: '[', right: ']' },
@@ -7145,7 +7146,7 @@ test('sentence fade markers respect disabled and migrated symbol rules', () => {
 
 test('explicit zero-duration sentence fade suppresses global fades', () => {
   const profile = { animations: { fad: { enabled: true, inMs: 0, outMs: 500 } } };
-  const sentence = helpers.assSentenceFadeTags('>>原文', profile, 'both');
+  const sentence = helpers.assSentenceAnimationTags('>>原文', profile, 'both');
   assert.equal(helpers.assAnimationOverrideTags(profile, { fad: sentence.fad }), '\\fad(0,0)');
   assert.equal(helpers.assPreviewAnimationState(profile, 950, 1000, { fad: sentence.fad }).opacity, 1);
 });

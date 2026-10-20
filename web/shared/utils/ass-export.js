@@ -1,7 +1,7 @@
 // ass-export: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assInlineStyleRuns, assOverrideColorFromHex, assSentenceFadeTags, parseSentenceShakeMarkers, assStyleLine, effectiveColorName, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
+  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assInlineStyleRuns, assOverrideColorFromHex, assSentenceAnimationTags, parseSentenceShakeMarkers, assStyleLine, effectiveColorName, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
 
 
   function normalizeAssHeaderValue(value, fallback = 'MAW') {
@@ -199,7 +199,7 @@ export function createUtilsModule(dependencies) {
       const runs = assInlineStyleRuns(fade.text, emphasisSyntax, inlineOptions);
       if (speakerName) runs.unshift({ text: `${speakerName}${speakerLabelSeparator}`, speakerColor });
       stackItems.push({ role, segment, index, start: start * 10, end: end * 10,
-        style, fontSize: size, styleName, speakerName, runs, fad: fade.fad, originalText, shake });
+        style, fontSize: size, styleName, speakerName, runs, fad: fade.fad, pop: fade.pop, originalText, shake });
     };
     // 颜色样式只有在 ASS 能表达为整句样式（text / stroke）时才生成
     // 调色板样式；speaker 只给说话人前缀加局部颜色，none 回落 Default。
@@ -217,12 +217,13 @@ export function createUtilsModule(dependencies) {
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
       const speakerName = speakerLabels
         ? speakerLabelForSegment(segment, source, speakerLabels) : '';
-      // 单句 `>>`/`<<` 渐入渐出标记只在 ASS 模式解析：先剥离行首行尾标记，
-      // 再用剩余文本走强调/颜色管线，并用该句自身的 fad 覆盖全局动画。
-      const sentenceFade = assMode
-        ? assSentenceFadeTags(segment.text, profile, inlineOptions.assSpecialSymbolRule)
+      // 单句 `>>`/`<<` 渐入渐出与 `{{`/`}}` 放大出现标记只在 ASS 模式解析：
+      // 先剥除两端标记，再用剩余文本走强调/颜色管线；fad 时长与 pop 倍率取
+      // 该句自己的样式库参数（不管全局开关），单句标记覆盖全局动画。
+      const sentenceAnimation = assMode
+        ? assSentenceAnimationTags(segment.text, profile, inlineOptions.assSpecialSymbolRule)
         : null;
-      const segmentText = sentenceFade ? sentenceFade.text : String(segment.text ?? '');
+      const segmentText = sentenceAnimation ? sentenceAnimation.text : String(segment.text ?? '');
       // 单句 `!!` 原地震动标记同样只在 ASS 模式解析：整句导出时拆分为多条
       // \pos 抖动事件，预览按同一模式偏移；普通预览与 SRT 不消费定位结果。
       const sentenceShake = assMode ? parseSentenceShakeMarkers(segmentText) : null;
@@ -254,10 +255,10 @@ export function createUtilsModule(dependencies) {
         inlineOptions,
       });
       const animationTags = assMode
-        ? assAnimationOverrideTags(profile, { fad: sentenceFade?.fad || null }) : '';
-      // 计划条目的 runs/原文本都必须使用剥除 `!!` 后的文本；fad 时长保持
-      // 单句渐入渐出解析结果，两者合并成一个 fade 形参传入。
-      const stackFade = { text: shakeText, fad: sentenceFade?.fad || null };
+        ? assAnimationOverrideTags(profile, { fad: sentenceAnimation?.fad || null, pop: sentenceAnimation?.pop || null, style: styleForEvent }) : '';
+      // 计划条目的 runs/原文本都必须使用剥除 `!!` 后的文本；fad 时长与 pop
+      // 倍率保持单句解析结果，两者合并成一个 fade 形参传入。
+      const stackFade = { text: shakeText, fad: sentenceAnimation?.fad || null, pop: sentenceAnimation?.pop || null };
       if (assMode) addStackItem('main', segment, sourceIndex, source, startCentiseconds, endCentiseconds, styleForEvent, fontSize, styleName, speakerName, stackFade, eventText, sentenceShake?.shake === true);
       const decoratedText = animationTags ? `{${animationTags}}${eventText}` : eventText;
       events.push(
@@ -286,8 +287,8 @@ export function createUtilsModule(dependencies) {
         if (rawEnd <= rawStart) return;
         const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
         const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
-        const extensionFade = assSentenceFadeTags(segment.text, profile, inlineOptions.assSpecialSymbolRule);
-        const extensionAnimationTags = assAnimationOverrideTags(profile, { includeMove: false, fad: extensionFade.fad });
+        const extensionFade = assSentenceAnimationTags(segment.text, profile, inlineOptions.assSpecialSymbolRule);
+        const extensionAnimationTags = assAnimationOverrideTags(profile, { includeMove: false, fad: extensionFade.fad, pop: extensionFade.pop, style: extensionStyle });
         // 说话人前缀与主字幕同规则：开启「字幕显示说话人前缀」时副字幕
         // 也按自身轨的颜色映射追加前缀（上下文用副字幕轨自身数组）。
         const extensionSpeakerName = speakerLabels
@@ -359,9 +360,9 @@ export function createUtilsModule(dependencies) {
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
       const overlayColorName = effectiveColorName(segment, overlaySource);
       const overlayFade = assMode
-        ? assSentenceFadeTags(segment.text, profile, inlineOptions.assSpecialSymbolRule) : null;
+        ? assSentenceAnimationTags(segment.text, profile, inlineOptions.assSpecialSymbolRule) : null;
       const overlayAnimationTags = assMode
-        ? assAnimationOverrideTags(profile, { includeMove: false, fad: overlayFade.fad }) : '';
+        ? assAnimationOverrideTags(profile, { includeMove: false, fad: overlayFade.fad, pop: overlayFade.pop, style: overlayStyleFor(overlayColorName) }) : '';
       // 叠加字幕同样跟随「字幕显示说话人前缀」：映射按叠加轨自身数组解析。
       const overlaySpeakerName = speakerLabels
         ? speakerLabelForSegment(segment, overlaySource, speakerLabels) : '';
@@ -423,9 +424,9 @@ export function createUtilsModule(dependencies) {
           // 边界，输出与拆分前逐字节一致）；震动句按固定间隔多次发射。
           const emitEvent = (start, end, position, { includeMove = slice.legacy && item.role === 'main' && !item.manual } = {}) => {
             const animation = start === item.start && end === item.end && scale === 1
-              ? assAnimationOverrideTags(profile, { includeMove, fad: item.fad })
+              ? assAnimationOverrideTags(profile, { includeMove, fad: item.fad, pop: item.pop, style: item.style })
               : dependencies.assAnimationSliceTags(profile, { offsetMs: start - item.start,
-                durationMs: item.end - item.start, includeMove, fad: item.fad, scale });
+                durationMs: item.end - item.start, includeMove, fad: item.fad, pop: item.pop, style: item.style, scale });
             const transformTarget = transformTargets.fontSize;
             // 固定层不参与组缩放：其 	 字号动画目标保持样式原值。
             const fontTransform = transformTarget === undefined ? null : {

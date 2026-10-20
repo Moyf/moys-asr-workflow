@@ -241,7 +241,10 @@ function syncAssProfileForm(profile) {
       if (field.type === 'checkbox') field.checked = value === true;
       else field.value = String(value);
     }
-    field.disabled = key !== 'enabled' && safeProfile.animations?.[group]?.enabled !== true;
+    // fad / pop 的数值参数供单句标记（`>>…<<`、`{{…}}`）在全局开关关闭时
+    // 复用，不随 enabled 联动禁用；fade / move / t 保持开关联动。
+    field.disabled = key !== 'enabled' && group !== 'fad' && group !== 'pop'
+      && safeProfile.animations?.[group]?.enabled !== true;
   });
   if (assProfilePreviewSummary) {
     const tags = window.AsrEditorUtils.assAnimationOverrideTags(safeProfile);
@@ -678,9 +681,9 @@ function syncAssSymbolRule() {
   const menuHint = document.getElementById('ass-special-format-menu-hint');
   if (formatHint) {
     // 双符号在「双符号 / 单双皆可」规则下都能识别，示例固定用双符号，并附上
-    // 固定双符号的句级效果（原地震动、淡出淡入）；「无」规则下整体关闭。
+    // 固定双符号的句级效果（原地震动、淡出淡入、放大出现）；「无」规则下整体关闭。
     const sentence = rule === 'none' ? '符号规则已关闭，字幕中的符号将保留原文。'
-      : '你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。';
+      : '你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<<、{{放大出现}} 来添加特殊样式。';
     // 整句查翻译表：英文界面下动态重建也能得到英文提示。
     formatHint.textContent = window.MAWE_I18N?.translateText?.(sentence) || sentence;
     if (menuHint) menuHint.hidden = rule === 'none';

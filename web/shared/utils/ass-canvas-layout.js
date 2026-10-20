@@ -205,11 +205,14 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
   function assStackCueBounds(item, start, end, alignment, measure, profile) {
     const elapsed = (time) => Math.max(0, time - item.start);
     const styles = [start, Math.max(start, end - 0.001)].map(time => {
-      const state = dependencies.assStackAnimationState(profile, elapsed(time), item.end - item.start);
+      const state = dependencies.assStackAnimationState(profile, elapsed(time), item.end - item.start,
+        { pop: item.pop || null });
       const style = state.transformProgress === null ? { ...item.style, fontSize: item.fontSize }
         : dependencies.assPreviewStyleAt({ ...item.style, fontSize: item.fontSize }, profile.animations.t.tags, state.transformProgress, { nativeFontSize: true });
       const scale = item.cueScale || 1;
-      return { ...style, fontSize: style.fontSize * scale, spacing: style.spacing * scale,
+      // 入场放大的最大状态（片起点）计入包围盒，避免堆叠避碰按落定字号预留。
+      const fontSize = style.fontSize * (state.popScale || 1);
+      return { ...style, fontSize, spacing: style.spacing * scale,
         outline: style.outline * scale, shadow: style.shadow * scale };
     });
     const targets = dependencies.assTransformStyleTargets(profile?.animations?.t?.tags || '');
