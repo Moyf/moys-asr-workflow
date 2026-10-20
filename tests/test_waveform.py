@@ -7,6 +7,16 @@ from tests.compact_assertions import CompactContainerAssertions
 # G04 后这些叶子不再出现在清单里，但仍是 shared/editor-utils.js
 # 的显式 import 与源码契约；源码形态断言需要继续覆盖它们。
 WAVEFORM_RETIRED_UTILS = (
+    # G06 composition 模块
+    "editor/media/editor-thumbnails.js",
+    "editor/media/waveform/thumbnails.js",
+    "editor/media/waveform/media.js",
+    "editor/media/waveform/render.js",
+    "editor/media/waveform/cue-blocks.js",
+    "editor/media/waveform/word-blocks.js",
+    "editor/media/waveform/canvas.js",
+    "editor/media/waveform/input.js",
+
     "shared/utils/data.js",
     "shared/utils/fonts.js",
     "shared/utils/speakers.js",
