@@ -57,7 +57,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, 2)
 
     def test_openai_provider_dispatches_to_openai_generator(self) -> None:
-        with mock.patch("generate_subtitle_openai_api.main", return_value=0) as generator_main:
+        with mock.patch("maw.asr.openai.main", return_value=0) as generator_main:
             result = cli._invoke_generator("openai", ["clip.wav"])
 
         self.assertEqual(result, 0)

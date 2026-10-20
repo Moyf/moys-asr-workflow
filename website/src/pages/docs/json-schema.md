@@ -11,7 +11,7 @@ source: "docs/engineering/JSON_SCHEMA.md"
 
 用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
 
-适用版本：对应 `edit.py` / `generate_subtitle_qwen_api.py` 当前实现。
+适用版本：对应 `edit.py` 和 `maw.asr.qwen` 模块的当前实现。
 
 ---
 
@@ -980,7 +980,7 @@ uv run python edit.py your_generated.mosp
 - 当前客户端拒绝加载未知的顶层工程版本，且不会用旧结构覆盖原工程
 - v1 内允许新增可选字段及不改变既有语义的向后兼容调整；编辑器保存时保留不认识的顶层字段
 - 删除字段、改变既有字段的单位或语义、调整为不兼容结构，或要求强制迁移时才升级到 v2
-- 本规范与 `edit.py` / `generate_subtitle_qwen_api.py` 当前实现同步
+- 本规范与 `edit.py` / `maw.asr.qwen` 当前实现同步
 - 设计决策（字级时间戳为何重要、长音频切片策略等）见 `CHANGELOG.md`
 - 字段命名保持向后兼容：新增可选字段不会破坏旧 JSON 加载
 - 旧编辑器会忽略新增的 `waveform` 字段；新编辑器可加载完全不含该字段的旧工程

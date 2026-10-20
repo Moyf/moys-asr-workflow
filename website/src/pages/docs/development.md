@@ -14,8 +14,9 @@ source: "docs/engineering/DEVELOPMENT.md"
 | 位置 | 职责 |
 | --- | --- |
 | `maw_gui.py`、`maw/cli.py` | Launcher 启动、公开转写 CLI 与 Server 管理。 |
-| `generate_subtitle_*_api.py` | 六个云端/接口生成器；Qwen 入口也处理 Fun-ASR。 |
-| `generate_subtitle_local.py`、`maw/local_asr.py` | 实验本地模型与统一字幕输出。 |
+| `maw/asr/{qwen,soniox,doubao,bcut,tencent,openai,local}.py` | 七个高级 ASR 模块入口；Qwen 入口也处理 Fun-ASR。 |
+| `maw/asr/common.py`、`maw/asr/segmentation.py` | 服务商共享的媒体、SRT、断句与时间码修复，不依赖云端入口。 |
+| `maw/local_asr.py` | 实验本地模型与统一字幕输出。 |
 | `maw/gui_web.py`、`maw/gui_workflow.py`、`web/launcher/` | 图形桥接、任务快照、单文件及批量任务。 |
 | `maw/runtimes/`、`maw/local_models.py` | 独立运行环境与模型准备；MOSS 依赖单独声明。 |
 | `edit.py`、`web/` | 唯一编辑器前端源码及便携 HTML 渲染。 |

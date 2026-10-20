@@ -80,7 +80,7 @@ def _local_import_graph(seed_modules: set[str]) -> set[str]:
 
 
 def _local_runtime_import_graph() -> set[str]:
-    return _local_import_graph({"maw.local_runtime_worker", "generate_subtitle_local"})
+    return _local_import_graph({"maw.local_runtime_worker", "maw.asr.local"})
 
 
 def _ocr_runtime_import_graph() -> set[str]:
@@ -216,11 +216,11 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         ):
             self.assertIn(module, spec)
         self.assertNotIn("sv_ttk", spec)
-        self.assertIn("generate_subtitle_qwen_api", spec)
-        self.assertIn("generate_subtitle_soniox_api", spec)
-        self.assertIn("generate_subtitle_doubao_api", spec)
-        self.assertIn("generate_subtitle_bcut_api", spec)
-        self.assertIn("generate_subtitle_openai_api", spec)
+        self.assertIn("maw.asr.qwen", spec)
+        self.assertIn("maw.asr.soniox", spec)
+        self.assertIn("maw.asr.doubao", spec)
+        self.assertIn("maw.asr.bcut", spec)
+        self.assertIn("maw.asr.openai", spec)
         self.assertIn("maw.soniox", spec)
         self.assertIn("maw.doubao", spec)
         self.assertIn("local-runtime", spec)
@@ -415,7 +415,8 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
             if _local_module_path(module) is not None
         }
 
-        self.assertIn("maw/qwen_audio.py", bundled_paths)
+        self.assertIn("maw/asr/segmentation.py", bundled_paths)
+        self.assertNotIn("maw/asr/qwen.py", bundled_paths)
         for relative_path in sorted(bundled_paths):
             self.assertIn(_local_runtime_spec_entry(relative_path), spec)
 
@@ -444,7 +445,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
             environment = dict(os.environ)
             environment.pop("PYTHONPATH", None)
             result = subprocess.run(
-                [sys.executable, "-I", str(root / "local-runtime" / "generate_subtitle_local.py"), "--help"],
+                [sys.executable, "-I", str(root / "local-runtime" / "maw" / "asr" / "local.py"), "--help"],
                 cwd=root,
                 env=environment,
                 capture_output=True,
@@ -468,7 +469,9 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         graph = _local_runtime_import_graph()
 
         self.assertNotIn("edit", graph)
-        self.assertIn("maw.stickers", graph)
+        self.assertNotIn("maw.asr.qwen", graph)
+        self.assertNotIn("maw.asr.openai", graph)
+        self.assertIn("maw.asr.common", graph)
 
     def test_rust_quapeaks_kernel_is_imported_only_at_the_call_site(self) -> None:
         """Given managed runtimes may lack the Rust kernel, When the parser module is read, Then its import is lazy."""

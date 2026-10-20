@@ -31,7 +31,7 @@ README.md                     # 新用户的安装和最短路径
 docs/user/WORKFLOW.md              # 全流程、参数、排错
 docs/engineering/JSON_SCHEMA.md    # JSON 工程契约
 maw_gui.py + maw/cli.py        # 公开 CLI 与命令分派（指南见 docs/user/CLI.md）
-generate_subtitle_qwen_api.py # API 转写入口
+maw/asr/qwen.py # API 转写入口（高级命令：python -m maw.asr.qwen）
 edit.py + maw/waveform.py     # 单文件编辑器生成和波形缓存
 server-editor/serve.py        # 推荐的 localhost 编辑器
 web/editor-scripts.txt        # 编辑器源码装配顺序

@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 
-from generate_subtitle_openai_api import (
+from maw.asr.openai import (
     DEFAULT_BASE_URL,
     DEFAULT_MODEL,
     _segments_from_result,
@@ -26,7 +26,7 @@ from generate_subtitle_openai_api import (
 class OpenAiAsrTests(unittest.TestCase):
     def test_generator_accepts_shared_debug_flag(self) -> None:
         result = subprocess.run(
-            [sys.executable, str(Path(__file__).parents[1] / "generate_subtitle_openai_api.py"), "--help"],
+            [sys.executable, "-m", "maw.asr.openai", "--help"],
             capture_output=True,
             text=True,
             check=False,
@@ -290,7 +290,7 @@ class OpenAiAsrTests(unittest.TestCase):
             response = mock.Mock(ok=True)
             response.json.return_value = response_body
 
-            with mock.patch("generate_subtitle_openai_api.requests.post", return_value=response) as post:
+            with mock.patch("maw.asr.openai.requests.post", return_value=response) as post:
                 result = request_transcription(
                     audio_path,
                     base_url="https://relay.test",
@@ -319,7 +319,7 @@ class OpenAiAsrTests(unittest.TestCase):
                 "segments": [{"start": 0, "end": 1, "text": "hello"}],
             }
 
-            with mock.patch("generate_subtitle_openai_api.requests.post", return_value=response) as post:
+            with mock.patch("maw.asr.openai.requests.post", return_value=response) as post:
                 request_transcription(
                     audio_path,
                     base_url="https://api.openai.com/v1",
@@ -370,7 +370,7 @@ class OpenAiAsrTests(unittest.TestCase):
                 ],
             }
 
-            with mock.patch("generate_subtitle_openai_api.requests.post", return_value=response) as post:
+            with mock.patch("maw.asr.openai.requests.post", return_value=response) as post:
                 result = request_transcription(
                     audio_path,
                     base_url="https://api.openai.com/v1",
@@ -417,7 +417,7 @@ class OpenAiAsrTests(unittest.TestCase):
                 }
             }
 
-            with mock.patch("generate_subtitle_openai_api.requests.post", return_value=response):
+            with mock.patch("maw.asr.openai.requests.post", return_value=response):
                 with self.assertRaisesRegex(RuntimeError, "自定义（Custom）"):
                     request_transcription(
                         audio_path,
@@ -439,7 +439,7 @@ class OpenAiCliOutputNamingTests(unittest.TestCase):
             result = {"text": "你好", "language": "zh"}
             if debug_raw:
                 result["_raw_response"] = {"text": "你好"}
-            argv = ["generate_subtitle_openai_api.py", str(media)]
+            argv = ["maw.asr.openai", str(media)]
             if explicit_output is not None:
                 argv += ["-o", str(explicit_output)]
             argv += extra_args
@@ -453,14 +453,14 @@ class OpenAiCliOutputNamingTests(unittest.TestCase):
 
             with mock.patch("sys.argv", argv), \
                  mock.patch(
-                     "generate_subtitle_openai_api._prepare_audio",
+                     "maw.asr.openai._prepare_audio",
                      return_value=(str(root / "audio.wav"), 100.0),
                  ), \
-                 mock.patch("generate_subtitle_openai_api.request_transcription", return_value=result), \
-                 mock.patch("generate_subtitle_openai_api._segments_from_result", return_value=segments), \
-                 mock.patch("generate_subtitle_openai_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.asr.openai.request_transcription", return_value=result), \
+                 mock.patch("maw.asr.openai._segments_from_result", return_value=segments), \
+                 mock.patch("maw.asr.openai.time.perf_counter", side_effect=fake_perf), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
-                from generate_subtitle_openai_api import main
+                from maw.asr.openai import main
 
                 main()
                 names = sorted(path.name for path in root.glob("*.srt"))
@@ -496,16 +496,16 @@ class OpenAiCliOutputNamingTests(unittest.TestCase):
                 return values.pop(0) if values else 0.0
 
             with mock.patch(
-                "sys.argv", ["generate_subtitle_openai_api.py", str(media), "--debug-raw"]
+                "sys.argv", ["maw.asr.openai", str(media), "--debug-raw"]
             ), mock.patch(
-                "generate_subtitle_openai_api._prepare_audio",
+                "maw.asr.openai._prepare_audio",
                 return_value=(str(root / "audio.wav"), 100.0),
-            ), mock.patch("generate_subtitle_openai_api.request_transcription", return_value=result), \
-                 mock.patch("generate_subtitle_openai_api._segments_from_result", return_value=segments), \
-                 mock.patch("generate_subtitle_openai_api.time.perf_counter", side_effect=fake_perf), \
+            ), mock.patch("maw.asr.openai.request_transcription", return_value=result), \
+                 mock.patch("maw.asr.openai._segments_from_result", return_value=segments), \
+                 mock.patch("maw.asr.openai.time.perf_counter", side_effect=fake_perf), \
                  mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
-                from generate_subtitle_openai_api import main
+                from maw.asr.openai import main
 
                 main()
 

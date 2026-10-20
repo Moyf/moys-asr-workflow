@@ -5089,7 +5089,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "错误：找不到 FFmpeg / FFprobe。请下载不带 lite 的完整 MAW。",
         ]))
         self.assertTrue(_is_ffmpeg_missing_failure([
-            "File generate_subtitle_qwen_api.py, line 266, in get_duration_sec",
+            "File maw/asr/common.py, line 83, in get_duration_sec",
             "FileNotFoundError: [WinError 2] 系统找不到指定的文件。",
         ]))
         self.assertFalse(_is_ffmpeg_missing_failure([

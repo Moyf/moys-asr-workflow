@@ -461,7 +461,7 @@ class DoubaoCliOutputTests(unittest.TestCase):
                       "timestamp_granularity": "segment"}
             if debug_raw:
                 result["_raw_response"] = {"result": {}}
-            argv = ["generate_subtitle_doubao_api.py", str(media)]
+            argv = ["maw.asr.doubao", str(media)]
             argv += extra_args
             stdout = io.StringIO()
             stderr = io.StringIO()
@@ -472,17 +472,17 @@ class DoubaoCliOutputTests(unittest.TestCase):
 
             config = {"api_key": "key", "resource_id": "volc.seedasr.auc"}
             with mock.patch("sys.argv", argv), \
-                 mock.patch("generate_subtitle_doubao_api.load_config", return_value=config), \
+                 mock.patch("maw.asr.doubao.load_config", return_value=config), \
                  mock.patch(
-                     "generate_subtitle_doubao_api._resolve_media_tool",
+                     "maw.asr.doubao._resolve_media_tool",
                      side_effect=lambda tool, _path=None: tool,
                  ), \
-                 mock.patch("generate_subtitle_doubao_api.get_duration_sec", return_value=1000.0), \
-                 mock.patch("generate_subtitle_doubao_api.extract_audio_ogg"), \
-                 mock.patch("generate_subtitle_doubao_api.transcribe", return_value=result), \
-                 mock.patch("generate_subtitle_doubao_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.asr.doubao.get_duration_sec", return_value=1000.0), \
+                 mock.patch("maw.asr.doubao.extract_audio_ogg"), \
+                 mock.patch("maw.asr.doubao.transcribe", return_value=result), \
+                 mock.patch("maw.asr.doubao.time.perf_counter", side_effect=fake_perf), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
-                from generate_subtitle_doubao_api import main
+                from maw.asr.doubao import main
 
                 code = main()
                 names = sorted(path.name for path in root.glob("*.srt"))
@@ -521,19 +521,19 @@ class DoubaoCliOutputTests(unittest.TestCase):
                       "timestamp_granularity": "segment", "_raw_response": {"result": {}}}
             with mock.patch(
                 "sys.argv",
-                ["generate_subtitle_doubao_api.py", str(media), "-o", str(output), "--debug-raw"],
-            ), mock.patch("generate_subtitle_doubao_api.load_config", return_value=config), \
+                ["maw.asr.doubao", str(media), "-o", str(output), "--debug-raw"],
+            ), mock.patch("maw.asr.doubao.load_config", return_value=config), \
                  mock.patch(
-                     "generate_subtitle_doubao_api._resolve_media_tool",
+                     "maw.asr.doubao._resolve_media_tool",
                      side_effect=lambda tool, _path=None: tool,
                  ), \
-                 mock.patch("generate_subtitle_doubao_api.get_duration_sec", return_value=1000.0), \
-                 mock.patch("generate_subtitle_doubao_api.extract_audio_ogg"), \
-                 mock.patch("generate_subtitle_doubao_api.transcribe", return_value=result), \
-                 mock.patch("generate_subtitle_doubao_api.time.perf_counter", side_effect=fake_perf), \
+                 mock.patch("maw.asr.doubao.get_duration_sec", return_value=1000.0), \
+                 mock.patch("maw.asr.doubao.extract_audio_ogg"), \
+                 mock.patch("maw.asr.doubao.transcribe", return_value=result), \
+                 mock.patch("maw.asr.doubao.time.perf_counter", side_effect=fake_perf), \
                  mock.patch("maw.output_naming.subfolder_prefs", return_value=(False, False)), \
                  redirect_stdout(stdout), redirect_stderr(stderr):
-                from generate_subtitle_doubao_api import main
+                from maw.asr.doubao import main
 
                 self.assertEqual(main(), 0)
 
