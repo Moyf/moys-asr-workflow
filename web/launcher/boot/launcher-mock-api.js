@@ -8,8 +8,8 @@ function mockApi() {
   let modelPrepareTimer = 0;
   let alignmentPrepareTimer = 0;
   let alignmentModels = [
-    { id: "qwen3-forced-aligner-0.6b", modelId: "qwen3-forced-aligner-0.6b", engine: "qwen", modelRef: "Qwen/Qwen3-ForcedAligner-0.6B", label: "Qwen3-ForcedAligner 0.6B", note: "文本 + 音频输入，输出字词级时间码；复用 Qwen Local Hugging Face 缓存", estimatedSize: "1.7G+", deviceSupport: "gpu_preferred", resourceLevel: "medium", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
-    { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC", note: "已知稿对齐；中英及多方言；CPU 可运行；字词时间码", estimatedSize: "0.9G", deviceSupport: "cpu", resourceLevel: "low", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+    { id: "qwen3-forced-aligner-0.6b", modelId: "qwen3-forced-aligner-0.6b", engine: "qwen", modelRef: "Qwen/Qwen3-ForcedAligner-0.6B", label: "Qwen3-ForcedAligner 0.6B", note: "文本 + 音频输入，输出字词级时间码；复用 Qwen Local Hugging Face 缓存", runtimePackages: ["qwen_asr", "torch"], estimatedSize: "1.7G+", deviceSupport: "gpu_preferred", resourceLevel: "medium", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+    { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC", note: "已知稿对齐；中英及多方言；CPU 可运行；字词时间码", runtimePackages: ["sherpa_onnx", "soundfile"], estimatedSize: "0.9G", deviceSupport: "cpu", resourceLevel: "low", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
   ];
   return {
     get_config: async () => {
@@ -212,7 +212,8 @@ function mockApi() {
       const runtime = state.config?.localRuntime || { status: "missing", ready: false };
       const installed = Boolean(runtime.ready);
       const components = ["faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"].map((name) => ({ name, required: true, installed }));
-      return { ok: true, ...runtime, inventory: { status: runtime.status || "missing", ready: installed, runtimeVersionExpected: "7", runtimeVersionInstalled: installed ? (runtime.runtimeVersion || "7") : "", pythonVersionExpected: "3.11", pythonVersionInstalled: installed ? "3.11" : "", manifestStatus: installed ? "ready" : "", installedAt: installed ? Math.floor(Date.now() / 1000) : 0, components } };
+      const inventory = runtime.inventory || { status: runtime.status || "missing", ready: installed, runtimeVersionExpected: "7", runtimeVersionInstalled: installed ? (runtime.runtimeVersion || "7") : "", pythonVersionExpected: "3.11", pythonVersionInstalled: installed ? "3.11" : "", manifestStatus: installed ? "ready" : "", installedAt: installed ? Math.floor(Date.now() / 1000) : 0, components };
+      return { ok: true, ...runtime, inventory };
     },
     install_local_runtime: async () => { state.config.localRuntime = { status: "ready", ready: true, path: "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime", detail: "本地运行环境已就绪。" }; setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localRuntimeReady", runtime: state.config.localRuntime }), 400); return { ok: true, installing: true }; },
      cancel_local_runtime: async () => ({ ok: true }),

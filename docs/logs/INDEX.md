@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.9.0 之后 | 2026-10-20 | [文稿对齐 FFmpeg 与设置入口](release1.9.0/261020_AlignFFmpeg/TEST_FEEDBACK.md) / [人工核验](release1.9.0/261020_AlignFFmpeg/AlignFFmpeg.checklist.md) | Windows 同名模块误选修复；快捷设置与真实模型推理边界 |
 | 1.9.0-beta.3 之后 | 2026-10-18 | [编辑器帮助与 SRT 烧录核验](release1.9.0-beta.3/261018_编辑器帮助与SRT烧录/编辑器帮助与SRT烧录.checklist.md) | 精简帮助、名称统一、SRT 样式烧录与包裹边界；自动化与人工验收分开记录 |
 | 1.9.0 之后 | 2026-10-19 | [PR267 工程烧录颜色引用](release1.9.0/261019_PR267颜色引用/修复记录.md) | 空字幕过滤后的原始颜色索引、导出与烧录目标回归 |
 | 1.9.0-beta.3 之后 | 2026-10-18 | [正式版本更新管线实施](release1.9.0-beta.3/261018_正式版更新管线/IMPLEMENTATION.md) / [核对清单](release1.9.0-beta.3/261018_正式版更新管线/RELEASE_PIPELINE.checklist.md) | 正式版归档、官网、资源共用、JSON 与发布联动；真实 CI / 部署待验收 |
