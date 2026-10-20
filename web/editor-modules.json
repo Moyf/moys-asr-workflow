@@ -147,6 +147,12 @@
       "file": "editor/media/waveform/thumbnails.js",
       "name": "waveform-thumbnails",
       "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform.js",
+      "kind": "init",
+      "name": "waveform",
+      "exportName": "initWaveform"
     }
   ],
   "externalBridges": [
