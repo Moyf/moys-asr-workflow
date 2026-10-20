@@ -881,6 +881,7 @@ class ProcessTalkEvidenceTest(AiCleanupTestCase):
         for text, removed in [
             ("第三遍重新开始", True), ("这个动作做第三遍时要停下来", False),
             ("重新开始这个参数是²", False), ("重新开始这个参数是①", False),
+            ("重新开始这个参数是❶", False),
         ]:
             with self.subTest(text=text):
                 script = ["大家好欢迎回到我的频道"]
