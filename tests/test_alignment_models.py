@@ -81,6 +81,32 @@ class AlignmentModelRegistryTests(unittest.TestCase):
             self.assertEqual(found, snapshot.resolve())
             self.assertEqual(status, "installed")
 
+    def test_downloaded_aligner_remains_detected_when_runtime_dependencies_are_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            snapshot = (
+                root
+                / "huggingface"
+                / "hub"
+                / "models--Qwen--Qwen3-ForcedAligner-0.6B"
+                / "snapshots"
+                / "revision"
+            )
+            snapshot.mkdir(parents=True)
+            (snapshot / "model.safetensors").write_bytes(b"weights")
+            (snapshot / "config.json").write_text("{}", encoding="utf-8")
+
+            status = inspect_alignment_model(
+                QWEN_FORCED_ALIGNER_MODEL_ID,
+                model_cache_root=root,
+                runtime_available=False,
+            )
+
+            self.assertEqual(status.status, "runtime_missing")
+            self.assertFalse(status.runtime_available)
+            self.assertTrue(status.installed)
+            self.assertEqual(Path(status.path), snapshot.resolve())
+
     def test_firered_requires_both_onnx_model_and_tokens(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
