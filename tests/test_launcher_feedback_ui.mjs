@@ -250,7 +250,7 @@ test("missing AI provider offers settings and media rebuild tab alone stays hidd
   assert.match(html, /id="toolboxPostprocessSettings"[^>]*data-i18n="toolbox_open_ai_settings"/);
   assert.match(html, /id="toolboxFfconcatTab" class="toolbox-tab hidden"/);
   assert.match(html, /id="toolboxFfconcatPanel"/);
-  assert.match(html, /id="toolboxUtilitiesTabList"[^]*?<div class="toolbox-tab-list">/);
+  assert.match(html, /<nav id="toolboxUtilitiesTabList" class="toolbox-tabs" role="tablist"/);
 });
 
 test("provider key status prefers a loaded key, then local no-key, then missing", () => {
