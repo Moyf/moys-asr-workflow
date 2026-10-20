@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Final
 
 from maw.postprocess import OutputMode
-from maw.postprocess_ai_cleanup_safety import information_loss_reason, protected_information_loss_reason
+from maw.postprocess_ai_cleanup_safety import english_hesitation_only, information_loss_reason, protected_information_loss_reason
 from maw.postprocess_ai_cleanup_timeline import parse_timeline, draft_line
 from maw.postprocess_ai_cleanup_diagnostics import CleanupTrace, record_raw_response
 from maw.postprocess_ai_cleanup_review import review_decisions
@@ -447,7 +447,7 @@ def _readthrough_rows(
     for index, segment in enumerate(segments):
         if not isinstance(segment, dict) or segment.get("disabled") is True:
             continue
-        text = _CONTROL_CHARS.sub(" ", str(segment.get("text") or "")).strip()
+        text = str(segment.get("text") or "").strip()
         if not text:
             continue
         clip = by_index.get(index)
@@ -486,7 +486,7 @@ def _build_clips(segments: list[JsonValue], script_lines: list[str], *, project:
     for index, segment in enumerate(segments):
         if not isinstance(segment, dict) or segment.get("disabled") is True:
             continue
-        text = _CONTROL_CHARS.sub(" ", str(segment.get("text") or "")).strip()
+        text = str(segment.get("text") or "").strip()
         if not text or not _segment_has_item_timings(segment):
             # 没有文字或没有字词时间的段不参与自动移除；后者生成待复核标记。
             continue
@@ -831,6 +831,7 @@ def _resolve_decisions(
             shortcut_safe = protected_information_loss_reason(collapse_echo(clip.text), collapse_echo(kept)) is None and (
                 collapse_echo(clip.text) == collapse_echo(kept)
                 or bool(re.fullmatch(r"[嗯啊呃哦唉、，。\s]+|想一下|我重说", removed))
+                or english_hesitation_only(removed)
             )
             safe = shortcut_safe or bool(replacement) and information_loss_reason(removed, replacement) is None
             if not evidence_ok or not safe:
@@ -869,7 +870,7 @@ def _resolve_decisions(
 
         # 没有备用片段时，本地必须能佐证这是一次可机械确认的移除。
         evidence_ok = bool(evidence) and _contains_normalized(norms[clip.id], evidence)
-        pattern_ok = bool(_PROCESS_TALK_PATTERN.search(clip.text)) or _is_repeated_text(
+        pattern_ok = english_hesitation_only(clip.text) or bool(_PROCESS_TALK_PATTERN.search(clip.text)) or _is_repeated_text(
             clip, clips, resolved
         )
         has_digits = any(char.isdigit() for char in norms[clip.id])

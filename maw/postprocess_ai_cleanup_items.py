@@ -36,8 +36,15 @@ def item_text_spans(text: str, items: Sequence[Mapping[str, object]]) -> list[tu
     """Locate complete source items, preserving punctuation between items."""
     spans: list[tuple[int, int]] = []
     cursor = 0
-    for item in items:
+    for index, item in enumerate(items):
         value = str(item.get("text") or "")
+        # ASR word tokens can own the spaces at a cue's edges, while the
+        # editable source is stripped. Only remove whitespace absent at those
+        # edges; internal spaces and all spoken characters still match exactly.
+        if index == 0 and text and not text[0].isspace():
+            value = value.lstrip()
+        if index == len(items) - 1 and text and not text[-1].isspace():
+            value = value.rstrip()
         if not value:
             return None
         start = text.find(value, cursor)
