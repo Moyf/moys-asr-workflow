@@ -10,6 +10,23 @@ import * as esbuild from 'esbuild';
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 export const BUNDLE = 'editor/boot/editor-bundle.js';
 export const BUILD_INFO = 'editor/boot/editor-bundle.meta.json';
+// 两个开发 watcher 可同时运行：双方产物和原子发布临时文件都不能触发重建。
+export function isBundleArtifact(file) {
+  const relative = file.replaceAll('\\', '/');
+  return [BUNDLE, BUILD_INFO, 'launcher/boot/launcher-bundle.js',
+    'launcher/boot/launcher-bundle.meta.json'].includes(relative)
+    || /(?:^|\/)\.maw-bundle-[^/]+\.tmp$/.test(relative);
+}
+export function shouldRebuildBundle(root, file) {
+  if (!file || isBundleArtifact(file)) return false;
+  try {
+    // Windows 在原子发布文件时还会报告父目录 change，不能把它当作源码变更。
+    return !fs.statSync(path.join(root, 'web', file.replaceAll('\\', '/'))).isDirectory();
+  } catch {
+    // 删除源码或无法读取时仍尝试构建，让构建器报告错误而非静默保留旧产物。
+    return true;
+  }
+}
 const sha = value => createHash('sha256').update(value).digest('hex');
 const json = value => JSON.stringify(value, null, 2) + '\n';
 const parse = (source, sourceType) => acorn.parse(source, {ecmaVersion:'latest', sourceType});
@@ -279,8 +296,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       running = false;
     };
     fs.watch(path.join(root,'web'),{recursive:true},(_event,file) => {
-      if (file && ![BUNDLE,BUILD_INFO].includes(file.replaceAll('\\','/'))
-          && !/\.maw-bundle-[^/\\]+\.tmp$/.test(file)) void rebuild();
+      if (shouldRebuildBundle(root, file)) void rebuild();
     });
     fs.watch(fileURLToPath(import.meta.url), () => {
       console.error('Build script changed; restart pnpm run watch:editor');

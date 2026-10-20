@@ -251,4 +251,4 @@ provenance.sources.script_alignment
 6. 旧版客户端至少可以正常读取和使用最终 `gaps`；新客户端在旧客户端丢弃 provenance 后能再次完成相同迁移。
 7. `gaps`、来源层和人工覆盖都进入同一套撤销/恢复快照，避免撤销只恢复可视结果而丢失来源记录。
 
-本规范落地时，需要同步更新 `JSON_SCHEMA.md`、MAWE 的规范化/导出逻辑、对齐 Server 的输出逻辑，以及静音扫描和人工 Gap 操作的测试。
+本规范落地时，需要同步更新 `docs/engineering/JSON_SCHEMA.md`、MAWE 的规范化/导出逻辑、对齐 Server 的输出逻辑，以及静音扫描和人工 Gap 操作的测试。

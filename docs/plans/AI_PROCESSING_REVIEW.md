@@ -10,7 +10,7 @@ MAW 的 AI 处理负责输入工程、任务执行、结果校验、MOSP/SRT 和
 
 ## 先做通用备注
 
-任务适配器返回经校验的结果与可选 annotations，统一的工程写入器负责将备注转换为现有 `markers`，不让各任务分别拼工程格式。以下是已采用的内部协议；工程格式中的可选归属信息见 JSON_SCHEMA.md：
+任务适配器返回经校验的结果与可选 annotations，统一的工程写入器负责将备注转换为现有 `markers`，不让各任务分别拼工程格式。以下是已采用的内部协议；工程格式中的可选归属信息见 `docs/engineering/JSON_SCHEMA.md`：
 
 ```json
 {
@@ -63,7 +63,7 @@ MAW 的 AI 处理负责输入工程、任务执行、结果校验、MOSP/SRT 和
 
 已采用：离线页仅编辑译文并下载新工程；支持现有单语、回填、双语合一；空译文阻止导出；人工改过或确认过的备注在重跑时保留。术语表、逐条接受校对和播放功能仍是后续建议，未实施。
 
-相关现行规则：[AI 工具箱](../INDEX.md#user-toolbox)、[LLM 协议](../INDEX.md#engineering-llm)、[工程格式](../../JSON_SCHEMA.md)。
+相关现行规则：[AI 工具箱](../INDEX.md#user-toolbox)、[LLM 协议](../INDEX.md#engineering-llm)、[工程格式](../engineering/JSON_SCHEMA.md)。
 
 ## PR #227 修复验证预期（2026-10-12）
 

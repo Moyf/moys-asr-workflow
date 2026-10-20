@@ -2,16 +2,16 @@
 layout: "../../layouts/DocLayout.astro"
 title: "字幕工程文件规范"
 description: "定义 .mosp / .json 工程的字段、时间码、波形和工作区数据边界。"
-source: "JSON_SCHEMA.md"
+source: "docs/engineering/JSON_SCHEMA.md"
 ---
 
-<!-- Generated from JSON_SCHEMA.md. Run pnpm run sync:docs to refresh. -->
+<!-- Generated from docs/engineering/JSON_SCHEMA.md. Run pnpm run sync:docs to refresh. -->
 
 本文档定义 MAWE（Moy's ASR Workflow Editor）、`edit.py` 生成的 `.edit.html` 以及 `blank-editor.html` 共同接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。
 
 用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
 
-适用版本：对应 `edit.py` / `generate_subtitle_qwen_api.py` 当前实现。
+适用版本：对应 `edit.py` 和 `maw.asr.qwen` 模块的当前实现。
 
 ---
 
@@ -64,8 +64,8 @@ source: "JSON_SCHEMA.md"
 | `schema` | `string` | 否（写出时必填） | 当前值为 `moy.asr.project.v1`。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
 | `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可），相对路径以工程文件所在目录为基准。生成与服务器保存优先写相对路径（如 `_maw/clip.mosp` 引用 `../clip.mp4`），跨盘无法相对引用时写绝对路径。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
-| `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。仅用于显示与选择切句计量方式 |
-| `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知） |
+| `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。用于显示、选择切句计量方式，以及结合语言来源决定是否启用中文翻译预过滤 |
+| `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知）。中文翻译预过滤仅信任前两种来源，并在全文有假名或谚文时停用 |
 | `preserve_punctuation` | `boolean` | 否 | 为 `true` 时，MAWE 启动不执行历史中文逗号 / 句号清理，保留字幕与 items 的原文；保存和重新加载保留此策略。文稿驱动对齐写入 `true`。省略或为 `false` 时保持历史行为；不限制用户后续主动编辑 / 文本处理。此字段是 v1 的可选扩展，不改变整数毫秒契约 |
 | `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
 | `timed_text_edit_view` | `string` | 否 | 纯文本编辑视图：`rows`（逐条，默认）或 `single`（整体）。默认 `rows` 保存时省略；当前字幕含换行而不能整体编辑时，仅在界面暂用逐条视图，不覆盖工程偏好 |
@@ -980,7 +980,7 @@ uv run python edit.py your_generated.mosp
 - 当前客户端拒绝加载未知的顶层工程版本，且不会用旧结构覆盖原工程
 - v1 内允许新增可选字段及不改变既有语义的向后兼容调整；编辑器保存时保留不认识的顶层字段
 - 删除字段、改变既有字段的单位或语义、调整为不兼容结构，或要求强制迁移时才升级到 v2
-- 本规范与 `edit.py` / `generate_subtitle_qwen_api.py` 当前实现同步
+- 本规范与 `edit.py` / `maw.asr.qwen` 当前实现同步
 - 设计决策（字级时间戳为何重要、长音频切片策略等）见 `CHANGELOG.md`
 - 字段命名保持向后兼容：新增可选字段不会破坏旧 JSON 加载
 - 旧编辑器会忽略新增的 `waveform` 字段；新编辑器可加载完全不含该字段的旧工程
