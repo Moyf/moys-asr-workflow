@@ -20,6 +20,49 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
   await expect(page.locator('.toolbox-chain-item')).toHaveCount(previousCount + 1);
 }
 
+test('alignment model shortcut opens the selected model without changing the ASR provider', async ({ page }, testInfo) => {
+  await openLauncher(page);
+  await page.locator('#provider').selectOption('qwen');
+  await page.locator('#toolboxTimestampsTab').click();
+  const provider = await page.locator('#provider').inputValue();
+  const modelId = await page.evaluate(() => window.MAWLauncher.config.alignmentModels.at(-1).id);
+  await page.locator('#toolboxTimestampModel').selectOption(modelId);
+  const hint = page.locator('#toolboxAlignmentModelHint');
+  const gap = await hint.evaluate((element) => ({
+    above: element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom,
+    row: parseFloat(getComputedStyle(element).rowGap),
+  }));
+  expect(gap.above).toBeGreaterThanOrEqual(8);
+  expect(gap.row).toBeGreaterThanOrEqual(8);
+  console.log(`Alignment settings spacing: above=${gap.above}px, wrapped rows=${gap.row}px`);
+  await testInfo.attach('alignment-link-spacing', { body: JSON.stringify(gap), contentType: 'application/json' });
+  await hint.locator('..').screenshot({ path: testInfo.outputPath('alignment-model-shortcut.png') });
+
+  const shortcut = page.locator('#openAlignmentModelSettings');
+  await expect(shortcut).toHaveText('管理对齐模型');
+  await page.evaluate(() => document.getElementById('langEn').click());
+  await expect(shortcut).toHaveText('Manage alignment models');
+  await shortcut.click();
+  await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#alignmentModelSettingsSection')).toBeVisible();
+  await expect(page.locator(`#localAlignmentModelList [data-model-id="${modelId}"]`)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#provider')).toHaveValue(provider);
+  await page.locator('#alignmentModelSettingsSection').screenshot({ path: testInfo.outputPath('alignment-model-settings.png') });
+
+  // Standalone alignment can prepare its model even while cloud ASR is selected.
+  await page.evaluate(() => {
+    window.MAWLauncher.config.localRuntime = { status: 'ready', ready: true };
+  });
+  await page.locator('#settingsClose').click();
+  await shortcut.click();
+  await expect(page.locator('#prepareAlignmentModel')).toBeEnabled();
+  const selectedModel = page.locator(`#localAlignmentModelList [data-model-id="${modelId}"]`);
+  await expect(selectedModel).not.toHaveClass(/\bready\b/);
+  await page.locator('#prepareAlignmentModel').click();
+  await expect(selectedModel).toHaveClass(/\bready\b/);
+  await expect(page.locator('#provider')).toHaveValue(provider);
+});
+
 test('OpenAI ASR exposes official and OpenRouter models with a conditional Custom input', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#provider').selectOption('openai');
@@ -565,9 +608,9 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
     };
   });
   expect(layout.columns).toBe(1);
-  expect(layout.tabColumnCount).toBe(4);
+  expect(layout.tabColumnCount).toBe(5);
 
-  // beta.4 重构后工具顺序：烧录字幕、媒体重组、口播对齐、提取音频、生成波形。
+  // 媒体工具依次为文稿匹配、烧录、口播对齐、提取音频、生成波形；隐藏的媒体重组不参与键盘导航。
   await page.locator('#toolboxAlignmentTab').focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.locator('#toolboxExtractAudioTab')).toBeFocused();
@@ -577,6 +620,12 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
   await page.keyboard.press('ArrowUp');
   await expect(page.locator('#toolboxAlignmentTab')).toBeFocused();
   await expect(page.locator('#toolboxAlignmentPanel')).toBeVisible();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#toolboxBurnSubtitleTab')).toBeFocused();
+  await expect(page.locator('#toolboxBurnSubtitlePanel')).toBeVisible();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#toolboxScriptAlignmentTab')).toBeFocused();
+  await expect(page.locator('#toolboxScriptAlignmentPanel')).toBeVisible();
 });
 
 test('FFmpeg media log stays above the utility notice and renders the latest progress', async ({ page }) => {

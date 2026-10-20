@@ -590,10 +590,6 @@ function renderLocalAlignmentModelList(models) {
   const container = $("localAlignmentModelList");
   if (!container) return;
   container.replaceChildren();
-  if (!isLocalProvider()) {
-    container.classList.add("hidden");
-    return;
-  }
   container.classList.toggle("hidden", !models.length);
   const selectedId = state.alignmentModelManagementId;
   models.forEach((model) => {
@@ -647,22 +643,13 @@ function renderLocalAlignmentModel() {
   const statusTarget = $("localAlignmentModelStatus");
   if (!button || !statusTarget) return;
   const section = $("alignmentModelSettingsSection");
-  const local = isLocalProvider();
   const models = Array.isArray(state.config?.alignmentModels) ? state.config.alignmentModels : [];
-  section?.classList.toggle("hidden", !local);
-  const selected = local && models.some((model) => model.id === state.alignmentModelManagementId)
+  section?.classList.remove("hidden");
+  const selected = models.some((model) => model.id === state.alignmentModelManagementId)
     ? state.alignmentModelManagementId
-    : (local ? models[0]?.id || "" : "");
+    : models[0]?.id || "";
   state.alignmentModelManagementId = selected;
   renderLocalAlignmentModelList(models);
-  if (!local) {
-    button.disabled = true;
-    button.classList.add("hidden");
-    statusTarget.textContent = "";
-    statusTarget.className = "local-status";
-    renderRecognitionAlignmentModel(models);
-    return;
-  }
   const model = models.find((item) => item.id === selected);
   if (!model) {
     statusTarget.textContent = "";

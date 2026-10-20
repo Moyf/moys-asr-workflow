@@ -1845,10 +1845,11 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(alignment_close, ffconcat_panel)
         for tab_id in ("toolboxMatchTab", "toolboxOcrTab", "toolboxLlmTab", "toolboxReplaceTab", "toolboxTimestampsTab"):
             self.assertIn(f'id="{tab_id}"', postprocess_html)
-        for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
+        for tab_id in ("toolboxWaveformTab", "toolboxFfconcatTab", "toolboxScriptAlignmentTab", "toolboxAlignmentTab", "toolboxBurnSubtitleTab", "toolboxExtractAudioTab"):
             self.assertIn(f'id="{tab_id}"', utilities_html)
         self.assertLess(html.index('id="toolboxBurnSubtitleTab"'), html.index('id="toolboxFfconcatTab"'))
-        self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxAlignmentTab"'))
+        self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxScriptAlignmentTab"'))
+        self.assertLess(html.index('id="toolboxScriptAlignmentTab"'), html.index('id="toolboxAlignmentTab"'))
         self.assertLess(html.index('id="toolboxAlignmentTab"'), html.index('id="toolboxExtractAudioTab"'))
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
         # 媒体工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
@@ -1886,7 +1887,9 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('data-i18n="toolbox_group_timestamp_media">媒体来源</h3>', html)
         timestamp_panel = html[html.index('id="toolboxTimestampsPanel"'):]
         self.assertLess(timestamp_panel.index('data-i18n="toolbox_group_timestamp_media"'), timestamp_panel.index('data-i18n="toolbox_group_alignment_model"'))
-        self.assertIn('<p class="hint toolbox-settings-hint" data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
+        self.assertIn('id="toolboxAlignmentModelHint" class="hint toolbox-settings-hint toolbox-alignment-model-hint"', timestamp_panel)
+        self.assertIn('<span data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
+        self.assertIn('id="openAlignmentModelSettings" class="inline-link"', timestamp_panel)
         self.assertNotIn('<p class="hint" data-i18n="toolbox_timestamp_model_hint">', timestamp_panel)
         self.assertNotIn('工程有可用视频时自动使用；独立 SRT 会回退到当前 Launcher 视频；如果当前媒体是音频或无视频，必须选择视频。', html)
         self.assertNotIn('SRT 没有媒体路径；工程若已记录媒体可留空，否则请选择原始音频/视频。', html)
@@ -1956,7 +1959,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('target === "toolboxAlignmentProject"', launcher_script)
         self.assertIn('target === "toolboxAlignmentScript"', launcher_script)
         self.assertNotIn('target === "toolboxAlignmentMedia"', launcher_script)
-        self.assertIn('return ["alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool)', postprocess_script)
+        self.assertIn('return ["scriptAlignment", "alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool)', postprocess_script)
         self.assertIn('$("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities"', postprocess_script)
         self.assertIn('function syncUtilityMediaFieldState()', postprocess_script)
         self.assertIn('$("toolboxUtilityMediaPath").disabled = disabled', postprocess_script)
@@ -3912,7 +3915,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         ffprobe.write_bytes(b"exe")
 
         def which(name: str, *, path: str | None = None) -> str:
-            return str(ffmpeg if name == "ffmpeg" else ffprobe)
+            return str(ffmpeg if Path(name).stem == "ffmpeg" else ffprobe)
 
         # which 只应在 mock 的搜索路径上找：真实 PATH / macOS Homebrew 候选目录
         # 在装了 FFmpeg 的机器（如 Homebrew 的 /opt/homebrew）上会泄漏真实路径。
@@ -3924,6 +3927,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertTrue(result["found"])
         self.assertEqual(result["directory"], str(ffmpeg.parent.resolve()))
+        self.assertEqual(result["ffmpeg"], str(ffmpeg.resolve()))
+        self.assertEqual(result["ffprobe"], str(ffprobe.resolve()))
 
     def test_check_ffmpeg_falls_back_to_bundled_tools(self) -> None:
         ffmpeg_dir = self.root / "ffmpeg" / "bin"
@@ -3950,7 +3955,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         def which(name: str, *, path: str | None = None) -> str:
             assert path is not None
             self.assertIn(str(ffmpeg_dir), path.split(os.pathsep))
-            return str(ffmpeg_dir / ("ffmpeg.exe" if name == "ffmpeg" else "ffprobe.exe"))
+            return str(ffmpeg_dir / ("ffmpeg.exe" if Path(name).stem == "ffmpeg" else "ffprobe.exe"))
 
         # 候选目录会先做真实文件系统探测，必须把真实 Homebrew 路径隔离掉，
         # 否则在装了 FFmpeg 的 macOS 机器上真实 /opt/homebrew 会抢先命中。
@@ -5552,6 +5557,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
             "toolboxChainList",
             "toolboxMatchPanel",
             "toolboxTimestampsPanel",
+            "toolboxScriptAlignmentPanel",
             "toolboxOcrPanel",
             "toolboxLlmPanel",
             "toolboxReplacePanel",
@@ -6685,7 +6691,9 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('state.alignmentModelSelection', script)
         self.assertIn('state.alignmentModelManagementId', script)
         self.assertIn('function renderLocalAlignmentModelList(models)', script)
-        self.assertIn('section?.classList.toggle("hidden", !local);', script)
+        alignment_management = script[script.index('function renderLocalAlignmentModel()'):script.index('async function refreshLocalRuntime()')]
+        self.assertIn('section?.classList.remove("hidden");', alignment_management)
+        self.assertNotIn('isLocalProvider()', alignment_management)
         self.assertIn('const needsAlignmentModel = isLocalProvider() && !modelProvidesWordTimestamps();', script)
         self.assertNotIn('section?.classList.toggle("hidden", !needsAlignmentModel);', script)
 

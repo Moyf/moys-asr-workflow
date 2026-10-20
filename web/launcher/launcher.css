@@ -2600,6 +2600,15 @@ textarea::placeholder {
   margin: 10px 0 0;
 }
 
+.toolbox-alignment-model-hint {
+  row-gap: 8px;
+}
+
+.toolbox-script-guidance {
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
 .toolbox-preset-prompt {
   margin-top: 10px;
   padding: 9px 10px 8px;
