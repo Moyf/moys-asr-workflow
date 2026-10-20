@@ -92,8 +92,7 @@ async function openServerEditor() {
       state.detectedServerUrl = result.serverAlreadyRunning ? result.url || "" : "";
       $("openMawe").classList.remove("attention");
       renderServerButton();
-      // 启动成功会更新编辑器侧的最近工程持久化，这里刷新一次让新工程排到最前。
-      void loadRecentProjects();
+      // HTTP 可用时工程仍可能在后台加载；由状态监控在 ready 后刷新最近工程。
       if (result.url) {
         if (restartProjectPath !== null && projectPath === restartProjectPath) {
           // 断线重启：编辑器页面通常还开着且 URL 不变，不重复打开新页面，
@@ -140,6 +139,7 @@ async function init() {
   state.initializing = true;
   const realApi = await waitForBackend();
   api = realApi || mockApi();
+  window.addEventListener("focus", () => { void loadRecentProjects(); });
   window.MAWLauncher.backend = realApi ? "real" : "mock";
   const savedTheme = readStoredTheme();
   state.theme = savedTheme;

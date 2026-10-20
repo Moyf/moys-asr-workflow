@@ -152,8 +152,14 @@ function renderRecentProjects(projects) {
     list.append(item);
   });
 }
+let recentProjectsRequest = 0;
 async function loadRecentProjects() {
-  const result = await bridge("recent_projects");
-  if (result && result.ok && Array.isArray(result.projects)) renderRecentProjects(result.projects);
-  return result;
+  const requestId = ++recentProjectsRequest;
+  try {
+    const result = await bridge("recent_projects");
+    if (requestId === recentProjectsRequest && result?.ok && Array.isArray(result.projects)) renderRecentProjects(result.projects);
+    return result;
+  } catch (_error) {
+    return { ok: false };
+  }
 }

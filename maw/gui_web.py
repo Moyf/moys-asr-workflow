@@ -2333,7 +2333,10 @@ class LauncherApi:
         ):
             return {"ok": True, "running": False, "url": url}
         pid = _maw_server_process_id(port)
-        return {"ok": True, "running": pid is not None, "url": url, "pid": pid}
+        return {
+            "ok": True, "running": pid is not None, "url": url, "pid": pid,
+            "startupStatus": _server_startup_status(url) if pid is not None else "",
+        }
 
     def recent_projects(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         """Expose the editor's persisted recent projects for the Launcher card.
@@ -4701,6 +4704,17 @@ def _probe_server(
         reason = getattr(error, "reason", None)
         detail = str(reason or error).strip() or error.__class__.__name__
         return False, f"{error.__class__.__name__}: {detail}"
+
+
+def _server_startup_status(url: str) -> str:
+    """Read project readiness separately from HTTP liveness (including older servers)."""
+    try:
+        with urlopen(f"{url.rstrip('/')}/api/startup-status", timeout=0.25) as response:
+            payload = json.loads(response.read(4096))
+        status = payload.get("status") if isinstance(payload, dict) else None
+        return status if status in ("loading", "ready", "error") else ""
+    except (OSError, URLError, ValueError):
+        return ""
 
 
 def _wait_for_server(
