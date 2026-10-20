@@ -261,6 +261,27 @@ test('production ordinary/gap SRT and ASS builders remove local words while inde
   assert.match(srt.buildSrt(), /我这……/);
 });
 
+test('burn subtitles can retain media cue timing while file export extends the first cue', () => {
+  const { context, srt, main } = runtime();
+  context.mergedExportSegments = () => ({ segments: main, overlaySet: new Set(), overlaySegments: [] });
+  context.activeExtensionSegments = () => [];
+  context.MaweSettings.EDITOR_SETTINGS.exportStartAtZero = true;
+  const ordinaryFile = srt.buildSrt();
+  const ordinaryBurn = srt.buildSrt({ alignFirstStart: false });
+  const gapFile = srt.buildGapRemovedSrt();
+  const gapBurn = srt.buildGapRemovedSrt({ alignFirstStart: false });
+  assert.match(ordinaryFile, /00:00:00,000 --> 00:00:02,000\n我这个功能呢/);
+  assert.match(ordinaryBurn, /00:00:00,900 --> 00:00:02,000\n我这个功能呢/);
+  assert.match(gapFile, /00:00:00,000 --> 00:00:01,230\n我这个功能呢/);
+  assert.match(gapBurn, /00:00:00,130 --> 00:00:01,230\n我这个功能呢/);
+  const dialogueStart = (ass) => ass.split('\n').find(line => line.startsWith('Dialogue:'))?.split(',').slice(1, 3);
+  assert.equal(dialogueStart(srt.buildAss())?.[0], '0:00:00.00');
+  assert.equal(dialogueStart(srt.buildAss({ alignFirstStart: false }))?.[0], '0:00:00.90');
+  assert.equal(dialogueStart(srt.buildGapRemovedAss())?.[0], '0:00:00.00');
+  assert.equal(dialogueStart(srt.buildGapRemovedAss({ alignFirstStart: false }))?.[0], '0:00:00.13');
+  assert.equal(context.MaweSettings.EDITOR_SETTINGS.exportStartAtZero, true);
+});
+
 test('dynamic caption plans use surviving items and geometry receives surviving text', () => {
   const { context, utils, srt, main, extension } = runtime();
   for (const compressed of [false, true]) {

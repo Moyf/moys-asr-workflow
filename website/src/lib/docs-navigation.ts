@@ -25,7 +25,7 @@ export const docsNavigation: DocNavigationGroup[] = [
   {
     label: '进阶专题',
     docs: [
-      ['multi-subtitle', '多重字幕', '主副轨导入、绑定与联动。'],
+      ['multi-subtitle', '双语字幕', '主副轨导入、绑定与联动。'],
       ['ass-styles', 'ASS 样式', '样式库、实际帧预览与特殊文本格式。'],
       ['toolbox', '工具箱', '匹配、AI 整理、翻译与媒体处理。'],
       ['postprocess-pipeline', '自动处理', '转写后串接步骤、烧录与失败恢复。'],

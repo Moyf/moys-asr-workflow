@@ -16,7 +16,9 @@ editor / launcher 的 esbuild bundle 是构建产物，不进 Git。三个运行
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -28,8 +30,74 @@ from typing import Final
 
 _BUILD_TIMEOUT_SECONDS: Final = 120.0
 # ThreadingHTTPServer 的页面渲染与 GUI 启动可能并发触发重建；进程内串行
-# 预检避免重复构建，跨进程由构建器的原子发布与 bundleHash 保证安全。
+# 预检避免重复构建。跨进程（run_tests --parallel、多 worktree 共享、多个
+# CLI 并发）用文件锁互斥：构建器的原子发布与 bundleHash 只能保证产物
+# 完整性，挡不住 N 个进程同时冷启动重复构建（浪费 + 输出目录争用）。
 _BUILD_LOCK = threading.Lock()
+# 等待其他进程完成构建的上限：一次完整构建最长 _BUILD_TIMEOUT_SECONDS，
+# 留出裕量后超时报错，避免无限悬挂。
+_CROSS_PROCESS_LOCK_WAIT_SECONDS: Final = _BUILD_TIMEOUT_SECONDS + 90.0
+
+
+def _try_lock(file_handle) -> bool:
+    """对已打开的锁文件做一次非阻塞独占加锁；平台差异收敛在这里。"""
+    if os.name == "nt":
+        import msvcrt
+
+        file_handle.seek(0)
+        try:
+            msvcrt.locking(file_handle.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            return False
+        return True
+    import fcntl
+
+    try:
+        fcntl.flock(file_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
+def _unlock(file_handle) -> None:
+    if os.name == "nt":
+        import msvcrt
+
+        file_handle.seek(0)
+        with contextlib.suppress(OSError):
+            msvcrt.locking(file_handle.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+    import fcntl
+
+    with contextlib.suppress(OSError):
+        fcntl.flock(file_handle, fcntl.LOCK_UN)
+
+
+@contextlib.contextmanager
+def _cross_process_build_lock(root: Path, kind: str):
+    """跨进程串行化 bundle 构建；等待者拿到锁后由调用方复检新鲜度。
+
+    锁文件放仓库根 ``.bundle-build.lock``（运行时产物，gitignore；不放
+    ``web/`` 下是为了避开按目录扫描源码资产的测试与工具）。获取失败按
+    0.25s 间隔轮询直到超时——esbuild 冷构建通常数秒内完成，正常等待者
+    只需短暂退避。
+    """
+    lock_path = root / ".bundle-build.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+") as handle:
+        deadline = time.monotonic() + _CROSS_PROCESS_LOCK_WAIT_SECONDS
+        while not _try_lock(handle):
+            if time.monotonic() >= deadline:
+                raise BundlePreflightError(
+                    f"等待其他进程完成 {_kind_label(kind)} bundle 构建超时"
+                    f"（>{_CROSS_PROCESS_LOCK_WAIT_SECONDS:.0f}s）。"
+                    f"如反复出现，请手动执行 pnpm run {_SPECS[kind].pnpm_script} 后重试。"
+                )
+            time.sleep(0.25)
+        try:
+            yield
+        finally:
+            _unlock(handle)
 
 
 class BundlePreflightError(RuntimeError):
@@ -250,15 +318,23 @@ def ensure_bundle(root: Path, kind: str, *, allow_build: bool = True) -> str:
         if status == "fresh":
             return status
         started = time.monotonic()
-        _run_build(root, spec, status, reason)
+        # 跨进程互斥只包住真实构建路径：frozen 环境绝不构建，不需要锁，
+        # 也避免在只读安装目录上创建锁文件。
+        with _cross_process_build_lock(root, kind):
+            # 等锁期间产物可能已被其他进程构建完成：复检命中则跳过构建
+            status, reason = bundle_status(root, kind)
+            built = status != "fresh"
+            if built:
+                _run_build(root, spec, status, reason)
         final_status, final_reason = bundle_status(root, kind)
         if final_status != "fresh":
             raise BundlePreflightError(
                 f"自动重建后 {spec.bundle.as_posix()} 仍不一致（{final_reason}）。"
                 f"请手动执行 pnpm run {spec.pnpm_script} 查看具体错误。"
             )
-        print(
-            f"[web-build] {_kind_label(kind)} bundle 已自动重建（{reason}，"
-            f"耗时 {time.monotonic() - started:.1f}s）"
-        )
+        if built:
+            print(
+                f"[web-build] {_kind_label(kind)} bundle 已自动重建（{reason}，"
+                f"耗时 {time.monotonic() - started:.1f}s）"
+            )
         return final_status

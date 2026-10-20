@@ -142,6 +142,7 @@
       wrapLeft: wraps.map((preset) => preset.left).join(''),
       wrapRight: wraps.map((preset) => preset.right).reverse().join(''),
       skipWrapped: true,
+      assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     };
   }
 
@@ -277,7 +278,8 @@
     const { wrapCharsAroundText } = window.AsrEditorUtils;
     const previews = indexes.map((index) => ({
       index,
-      ...wrapCharsAroundText(MaweBoot.DATA.segments[index]?.text, left, right),
+      ...wrapCharsAroundText(MaweBoot.DATA.segments[index]?.text, left, right,
+        MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule),
     }));
     const skipped = previews.filter((row) => row.skipped).length;
     if (!previews.some((row) => row.changed)) {

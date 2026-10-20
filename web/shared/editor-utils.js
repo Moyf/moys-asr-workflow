@@ -33,6 +33,7 @@
   Object.assign(helpers, window.MAWE.resolve('utils-lrc', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-animation', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-canvas-layout', helpers));
+  Object.assign(helpers, window.MAWE.resolve('utils-sticker-placement', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-export', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-export-plan', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-fcp7', helpers));
@@ -123,6 +124,7 @@
     assCanvasLayoutLines,
     assCreateStackPlan,
     assStackFrame,
+    computeStickerCuePlacements,
     assShakeAmplitude,
     assShakeOffsetFor,
     assStackPieceRootAt,
@@ -595,6 +597,7 @@ window.AsrEditorUtils = {
     assCanvasLayoutLines,
     assCreateStackPlan,
     assStackFrame,
+    computeStickerCuePlacements,
     assShakeAmplitude,
     assShakeOffsetFor,
     assStackPieceRootAt,

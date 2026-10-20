@@ -70,9 +70,10 @@ from maw.media_export_video import (  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.gui_platform import creationflags, restore_host_library_path, startupinfo  # noqa: E402
 from maw.postprocess_ffmpeg import (  # noqa: E402
-    DEFAULT_BURN_AUDIO_BITRATE, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET, libass_missing_glyphs,
-    normalize_video_encoder, video_encoder_attempts, video_encoder_options, _green_screen_input,
-    _green_screen_size_resolution,
+    ASS_FALLBACK_PLAY_RESOLUTION, DEFAULT_BURN_AUDIO_BITRATE, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET,
+    MediaToolError, convert_srt_to_ass, libass_missing_glyphs,
+    normalize_video_encoder, video_encoder_attempts, video_encoder_options,
+    _green_screen_input, _green_screen_size_resolution,
 )
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
@@ -108,6 +109,27 @@ MAX_ASS_STYLE_LIBRARY_BYTES = 512 * 1024
 MAX_ASS_FRAME_TEXT_BYTES = 8 * 1024 * 1024
 # 间隔列表由浏览器传入，仅含毫秒边界；限制数量避免不必要的 JSON/FFmpeg 清单负载。
 MAX_GAP_REMOVED_INTERVALS = 100_000
+# 烧录叠加的表情包输入数上限：每张唯一图片一个 FFmpeg 输入，防止误操作
+# 把滤镜图撑到不可用；正常工程用到的表情包远小于该值。
+MAX_BURN_STICKER_INPUTS = 32
+# 方案二按 (表情包, 字幕句) 产生 placement，每个 placement 一个 overlay 节点
+# （同一图片经 split 复用一个输入）；上限防误操作把滤镜图撑到不可用。
+MAX_BURN_STICKER_PLACEMENTS = 1000
+# 静态位图用 -loop 1 提供连续帧；GIF/动态 WebP 按自带循环播放，不做静态化处理。
+BURN_STICKER_LOOP_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".bmp"})
+# overlay 的 shortest=1 在「任一输入终止」时截断输出，因此每个表情包输入都必须
+# 无限化，让主视频恒为最短输入：
+# - 静态位图用 -loop 1 提供无限帧；
+# - GIF demuxer 默认 ignore_loop=1（忽略文件循环元数据播一遍就停），动图表情包
+#   需要遵循自带循环次数（0 = 无限）与浏览器预览一致；再叠加 -stream_loop -1
+#   兜底有限循环（loop=N）GIF 的文件 EOF，避免成为短输入；
+# - WebP demuxer 没有循环机制（静态单帧即 EOF），用 -stream_loop -1 无限重放。
+BURN_STICKER_GIF_EXTENSION = ".gif"
+# FFmpeg 的 webp demuxer 不支持动画：动画 WebP 解码 0 帧会让 overlay 拿不到
+# 次输入帧、输出空文件。_is_animated_webp 按 RIFF chunk 结构读 VP8X 动画标志，
+# 命中即拒绝并提示改格式。
+BURN_STICKER_WEBP_EXTENSION = ".webp"
+STICKER_WEBP_PROBE_BYTES = 64 * 1024
 MAX_SAFE_JSON_INTEGER = 9_007_199_254_740_991
 # libass 单帧渲染是交互动作，超时视为环境异常而不是让请求挂起。
 ASS_FRAME_RENDER_TIMEOUT_SEC = 120
@@ -718,22 +740,249 @@ def _probe_media_duration_ms(path: Path, ffprobe_path: Path, *, job: MediaJob | 
     return min(int(seconds * 1000), 9_007_199_254_740_991)
 
 
-def _burn_interval_filter(intervals: list[tuple[int, int]], audio_count: int) -> str:
+def _burn_seconds(ms: int) -> str:
+    """Format milliseconds as fixed-point seconds for FFmpeg filter expressions."""
+    return format(Decimal(ms).scaleb(-3), "f")
+
+
+def _fit_contain_box(box: dict, image_size: tuple[int, int] | None, align: str = "center") -> dict:
+    """Compute the final on-video rectangle for one sticker inside its target box.
+
+    contain 语义与预览层 CSS 一致：按图片纵横比缩小适配目标框（不放大）。
+    fixed（方案一）框内居中；cue-left（方案二）框内右对齐 + 垂直居中——
+    目标框右缘贴着字幕墨盒的间隙，图片窄于目标框时也必须贴住右缘，宽窄
+    都不能移动这个右缘。图片尺寸不可读时退化为整框拉伸（罕见损坏文件）。
+    """
+    box_w, box_h = box["width"], box["height"]
+    if image_size is None or image_size[0] < 1 or image_size[1] < 1:
+        return {"x": box["x"], "y": box["y"], "width": box_w, "height": box_h}
+    scale = min(box_w / image_size[0], box_h / image_size[1], 1.0)
+    width = max(1, round(image_size[0] * scale))
+    height = max(1, round(image_size[1] * scale))
+    x = box["x"] + (box_w - width) if align == "right" else box["x"] + (box_w - width) // 2
+    return {"x": x, "y": box["y"] + (box_h - height) // 2,
+            "width": width, "height": height}
+
+
+def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[dict]:
+    """Parse and validate sticker overlay entries of one burn-video request.
+
+    接受两种载荷： placements 列表（老格式，等同 fixed 模式），或
+    ``{"mode": "fixed"|"cue-left", "placements": [...]}`` 对象。每项 placement
+    ``{rel, x, y, width, height, intervals:[{start,end}], align?}``：几何是前端
+    按视频分辨率与排版计划换算好的像素目标框，服务端读取图片尺寸做 contain
+    适配——对齐取 placement 自己的 ``align``（cue-left 贴字幕段为 ``right``、
+    回退段为 ``center``），缺省按 mode 推断。方案二下同一 ``rel`` 会有多个
+    placement（每句一个），FFmpeg 输入按 ``rel`` 去重，overlay 节点经 split
+    复用同一输入。
+    """
+    if raw_stickers is None:
+        return []
+    if isinstance(raw_stickers, dict):
+        mode = raw_stickers.get("mode")
+        if mode not in ("fixed", "cue-left"):
+            raise ValueError("表情包烧录模式无效")
+        raw_placements = raw_stickers.get("placements")
+        default_align = "right" if mode == "cue-left" else "center"
+    else:
+        raw_placements = raw_stickers
+        default_align = "center"
+    if raw_placements is None:
+        return []
+    if not isinstance(raw_placements, list):
+        raise ValueError("表情包烧录参数无效")
+    if not raw_placements:
+        return []
+    if len(raw_placements) > MAX_BURN_STICKER_PLACEMENTS:
+        raise ValueError(f"表情包烧录条目超过上限（{MAX_BURN_STICKER_PLACEMENTS} 条）")
+    if root is None:
+        raise ValueError("当前工程没有激活的表情包目录，无法烧录表情包")
+    placements: list[dict] = []
+    seen_rels: dict[str, Path] = {}
+    for item in raw_placements:
+        if not isinstance(item, dict):
+            raise ValueError("表情包烧录参数无效")
+        rel = item.get("rel")
+        if not isinstance(rel, str) or not rel.strip():
+            raise ValueError("表情包烧录缺少相对路径")
+        box: list[int] = []
+        for key in ("x", "y", "width", "height"):
+            value = item.get(key)
+            # 上界防误操作：客户端发超大几何会让 FFmpeg 申请巨帧白跑一轮编码尝试
+            # （65535 已覆盖全部现实分辨率，且是多数滤镜/编码器的安全上限）。
+            if type(value) is not int or not 0 <= value <= 65535:
+                raise ValueError(f"表情包几何参数无效：{key}")
+            box.append(value)
+        if box[2] < 1 or box[3] < 1:
+            raise ValueError("表情包几何尺寸无效")
+        raw_intervals = item.get("intervals")
+        if not isinstance(raw_intervals, list) or not raw_intervals:
+            raise ValueError("表情包显示区间为空")
+        intervals = []
+        for interval in raw_intervals:
+            if not isinstance(interval, dict):
+                raise ValueError("表情包显示区间无效")
+            start, end = interval.get("start"), interval.get("end")
+            if type(start) is not int or type(end) is not int or start < 0 or end < start:
+                raise ValueError("表情包显示区间无效")
+            if end > start:
+                intervals.append((start, end))
+        if not intervals:
+            continue
+        item_align = item.get("align")
+        if item_align not in ("center", "right"):
+            item_align = default_align
+        rel = rel.strip()
+        path = seen_rels.get(rel)
+        if path is None:
+            path = _sticker_rel_path(rel, root)
+            if rel.casefold().endswith(".webp") and _is_animated_webp(path):
+                raise ValueError(
+                    f"表情包「{rel}」是动画 WebP，当前 FFmpeg 无法解码，暂不支持烧录；"
+                    "请改用 GIF 格式（编辑器预览不受影响）。")
+            seen_rels[rel] = path
+        try:
+            image_size = edit.image_dimensions(path)
+        except (OSError, ValueError):
+            image_size = None
+        placed = _fit_contain_box(
+            {"x": box[0], "y": box[1], "width": box[2], "height": box[3]}, image_size, item_align)
+        placements.append({"rel": rel, "path": path, **placed, "intervals": intervals})
+    for placement in placements:
+        placement["intervals"].sort()
+    # 唯一图片数上限按实际参与烧录的条目统计（区间全空被跳过的条目不计）。
+    unique_paths = {str(placement["path"]) for placement in placements}
+    if len(unique_paths) > MAX_BURN_STICKER_INPUTS:
+        raise ValueError(f"表情包烧录的图片数量超过上限（{MAX_BURN_STICKER_INPUTS} 张）")
+    return placements
+
+
+def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[str]:
+    """Overlay sticker inputs between the video entry and the ass filter.
+
+    坐标是解析阶段按图片尺寸静态算好的 contain 显示矩形（整数）——不用
+    overlay 的 W/H 表达式：表达式坐标在 -stream_loop 输入下会被静默丢弃
+    （FFmpeg 实测行为），纯数字坐标可靠。同一图片的多个 placement（方案二
+    逐句贴放）经 split 复用一个输入，每个 placement 一个 scale + overlay
+    节点；enable 取各自的显示区间。
+    """
+    input_index: dict[str, int] = {}
+    unique: list[str] = []
+    for sticker in stickers:
+        key = str(sticker["path"])
+        if key not in input_index:
+            input_index[key] = len(unique)
+            unique.append(key)
+    counts = [0] * len(unique)
+    for sticker in stickers:
+        counts[input_index[str(sticker["path"])]] += 1
+    lines: list[str] = []
+    for index in range(len(unique)):
+        source = f"[{index + 1}:v]"
+        if counts[index] > 1:
+            branches = "".join(f"[burn_raw{index}_{part}]" for part in range(counts[index]))
+            lines.append(f"{source}split={counts[index]}{branches}")
+        else:
+            lines.append(f"{source}null[burn_raw{index}_0]")
+    previous = entry_label
+    used = [0] * len(unique)
+    for placement_index, sticker in enumerate(stickers):
+        input_no = input_index[str(sticker["path"])]
+        raw_label = f"[burn_raw{input_no}_{used[input_no]}]"
+        used[input_no] += 1
+        image_label = f"[burn_stick{placement_index}]"
+        output_label = f"[burn_ovl{placement_index}]"
+        lines.append(f"{raw_label}scale=w={sticker['width']}:h={sticker['height']}{image_label}")
+        # 半开区间 [S, E)：libass 字幕事件与视频 select 都是半开语义；用闭区间
+        # between 时相邻 placement 共享的句界毫秒一旦撞上输出帧 PTS（整数秒
+        # 边界在 25/30fps 下必然如此），同一帧里同一张表情包会同时命中两个
+        # 位置各渲染一次。
+        enable = "+".join(f"gte(t,{_burn_seconds(start)})*lt(t,{_burn_seconds(end)})"
+                          for start, end in sticker["intervals"])
+        # shortest=1：主视频 EOF 即终止输出；所有表情包输入都已被无限化，
+        # 主视频恒为最短输入，缺省 shortest=0 会让 FFmpeg 永不退出。
+        lines.append(f"{previous}{image_label}overlay="
+                     f"x={sticker['x']}:y={sticker['y']}"
+                     f":enable='{enable}':shortest=1{output_label}")
+        previous = output_label
+    lines.append(f"{previous}ass=filename='burn.ass'[burn_video]")
+    return lines
+
+
+def _is_animated_webp(path: Path) -> bool:
+    """Walk the RIFF chunk list and read the VP8X animation flag.
+
+    不能在整个文件里搜 ANMF 字节：静态 WebP 的元数据或压缩数据可能恰好
+    含这四个字节而被误判。动画标志在 VP8X chunk 的 flags 字节（bit 1），
+    按规范动画 WebP 必有 VP8X；无 VP8X 的简单 lossy/lossless 文件非动画。
+    """
+    try:
+        with path.open("rb") as handle:
+            data = handle.read(STICKER_WEBP_PROBE_BYTES)
+    except OSError:
+        return False
+    if data[:4] != b"RIFF" or data[8:12] != b"WEBP":
+        return False
+    offset = 12
+    while offset + 8 <= len(data):
+        fourcc = data[offset:offset + 4]
+        size = int.from_bytes(data[offset + 4:offset + 8], "little")
+        if fourcc == b"VP8X":
+            # 实测布局（与 edit.py 的 canvas 读取一致）：chunk data 第 0 字节是
+            # flags（bit 1 = Animation），第 4-9 字节是画布宽高 -1（24-bit LE）。
+            flags = data[offset + 8] if offset + 9 <= len(data) else 0
+            return bool(flags & 0x02)
+        # int.from_bytes 无符号，size 不会为负；chunk 声明超出文件长度（截断文件）
+        # 时自然跳出循环返回 False——截断文件随后也会在 FFmpeg 解码阶段失败，
+        # 无需在此伪造专门错误。
+        offset += 8 + size + (size & 1)  # chunk 按偶数对齐
+    return False
+
+
+def _burn_sticker_input_args(stickers: list[dict]) -> list[str]:
+    """Build FFmpeg input arguments: one infinitely-supplied input per unique sticker image."""
+    args: list[str] = []
+    seen: set[str] = set()
+    for sticker in stickers:
+        path = sticker["path"]
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        suffix = path.suffix.casefold()
+        if suffix in BURN_STICKER_LOOP_EXTENSIONS:
+            args.extend(("-loop", "1", "-i", str(path)))
+        elif suffix == BURN_STICKER_GIF_EXTENSION:
+            args.extend(("-stream_loop", "-1", "-ignore_loop", "0", "-i", str(path)))
+        elif suffix == BURN_STICKER_WEBP_EXTENSION:
+            args.extend(("-stream_loop", "-1", "-i", str(path)))
+        else:
+            args.extend(("-loop", "1", "-i", str(path)))
+    return args
+
+
+def _burn_interval_filter(
+    intervals: list[tuple[int, int]],
+    audio_count: int,
+    stickers: list[dict] | None = None,
+) -> str:
     """Decode once; keep only requested frames and map both clocks to kept time.
 
     Video selection avoids duplicating long decoded frame queues per interval.
     Audio is trimmed at sample boundaries and padded to each requested span;
     it is concatenated separately so a rounded video frame cannot extend a join.
+    表情包 overlay 挂在收缩时间轴之后、ass 之前：enable 与字幕共用同一收缩时钟，
+    z-order 与编辑器预览一致（字幕显示在表情包之上）。
     """
-    def seconds(ms):
-        return format(Decimal(ms).scaleb(-3), 'f')
-
-    selected = '+'.join(f'gte(t,{seconds(start)})*lt(t,{seconds(end)})' for start, end in intervals)
-    shifts = [seconds(intervals[0][0])]
+    selected = '+'.join(f'gte(t,{_burn_seconds(start)})*lt(t,{_burn_seconds(end)})' for start, end in intervals)
+    shifts = [_burn_seconds(intervals[0][0])]
     for (_, previous_end), (start, _) in zip(intervals, intervals[1:]):
-        shifts.append(f'if(gte(T,{seconds(start)}),{seconds(start - previous_end)},0)')
-    graph = [f"[0:v:0]select='{selected}',setpts='PTS-({'+'.join(shifts)})/TB',"
-             "ass=filename='burn.ass'[burn_video]"]
+        shifts.append(f'if(gte(T,{_burn_seconds(start)}),{_burn_seconds(start - previous_end)},0)')
+    head = f"[0:v:0]select='{selected}',setpts='PTS-({'+'.join(shifts)})/TB'"
+    if stickers:
+        graph = [head + '[burn_base]'] + _burn_sticker_chain_lines(stickers, '[burn_base]')
+    else:
+        graph = [head + ",ass=filename='burn.ass'[burn_video]"]
     for audio in range(audio_count):
         inputs = [f'cut_audio_{audio}_{index}' for index in range(len(intervals))]
         base = f'base_audio_{audio}'
@@ -749,8 +998,8 @@ def _burn_interval_filter(intervals: list[tuple[int, int]], audio_count: int) ->
         for index, ((start, end), name) in enumerate(zip(intervals, inputs)):
             output = f'kept_audio_{audio}_{index}'
             outputs.append(f'[{output}]')
-            graph.append(f'[{name}]atrim=start={seconds(start)}:end={seconds(end)},'
-                         f'asetpts=PTS-{seconds(start)}/TB[{output}]')
+            graph.append(f'[{name}]atrim=start={_burn_seconds(start)}:end={_burn_seconds(end)},'
+                         f'asetpts=PTS-{_burn_seconds(start)}/TB[{output}]')
         graph.append(''.join(outputs) + f'concat=n={len(intervals)}:v=0:a=1[burn_audio_{audio}]')
     return ';\n'.join(graph) + '\n'
 
@@ -764,16 +1013,20 @@ def burn_ass_video(
     ffmpeg_path: Path,
     ffprobe_path: Path,
     job: MediaJob | None = None,
+    stickers: list[dict] | None = None,
     green_screen: bool = False,
     include_audio: bool = False,
     audio_track: int = 0,
+    subtitle_format: str = "ass",
 ) -> Path:
-    """Re-encode the source video with the given ASS subtitles burned in.
+    """Burn ASS, or convert SRT using the library's burn style before encoding.
 
     与「实际画面预览」和 Launcher 烧录共用约定：ASS 写入输出目录、滤镜参数
     只带文件名、进程 cwd 指向该目录，规避盘符冒号等路径转义差异。给定时
     区间时在解码后选择视频帧、按采样裁剪音轨，再映射到同一收缩时间轴；
-    不把 ffconcat 的解码预滚帧当作用户保留内容。
+    不把 ffconcat 的解码预滚帧当作用户保留内容。表情包 overlay 与 ass 在同
+    一张滤镜图串联：单次解码单次编码，字幕渲染在表情包之上（与预览 z-order
+    一致），enable 区间使用与 ass 相同的时间轴。
     """
     try:
         source = source_path.expanduser().resolve(strict=True)
@@ -781,21 +1034,58 @@ def burn_ass_video(
         raise BurnVideoExportError("当前工程的源媒体文件不存在") from error
     if not source.is_file() or source.suffix.lower() not in (MEDIA_EXTENSIONS if green_screen else VIDEO_EXTENSIONS):
         raise BurnVideoExportError("当前工程绑定的媒体不是受支持的视频文件")
+    if subtitle_format not in {"ass", "srt"}:
+        raise BurnVideoExportError("不支持的字幕格式")
     if not isinstance(ass_text, str) or not ass_text.strip():
-        raise BurnVideoExportError("缺少 ASS 字幕内容")
+        raise BurnVideoExportError("缺少字幕内容")
     if intervals and any(end <= start for start, end in intervals):
         raise BurnVideoExportError("去空隙保留区间无效")
+    stickers = list(stickers or [])
     if green_screen and intervals:
         raise BurnVideoExportError("绿幕视频暂不支持去空隙区间")
+    if green_screen and stickers:
+        # 绿幕画布是固定尺寸档位，而表情包 placements 按源视频分辨率换算，
+        # 直接烧会整体错位；正确支持需要前端按绿幕档位重新生成几何，先明确拒绝
+        # （与「绿幕 + 去空隙」同一策略）。若未来放开：表情包 overlay 仍应在 ass
+        # 之前，保持字幕显示在表情包之上、与编辑器预览 z-order 一致。
+        raise BurnVideoExportError("绿幕视频暂不支持表情包烧录")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ass_path = output_path.with_name("burn.ass")
-    with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(ass_text)
-
     if job:
         job.update("preparing")
-    input_args = ["-i", str(source)]
+    probe = None
+    if subtitle_format == "srt":
+        probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
+        video = next((stream for stream in probe.streams
+                      if stream.codec_signature[0] == "video" and "attached_pic" not in stream.disposition), None)
+        if video is None:
+            raise BurnVideoExportError("当前工程没有可用的视频画面")
+        # Width/height are part of the existing stream signature, after codec/tag.
+        width, height = video.codec_signature[4:6]
+        resolution = (width, height) if all(type(value) is int and value > 0 for value in (width, height)) else ASS_FALLBACK_PLAY_RESOLUTION
+        srt_path = output_path.with_name("burn.srt")
+        srt_path.write_text(ass_text, encoding="utf-8", newline="\n")
+
+        def run_conversion(command, *, cwd):
+            return job.run_command(command, cwd=cwd) if job else subprocess.run(
+                command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=120, check=False, cwd=cwd, startupinfo=startupinfo(), creationflags=creationflags(),
+            )
+
+        try:
+            converted = convert_srt_to_ass(srt_path, ffmpeg_path=ffmpeg_path, srt_style=None,
+                                           play_resolution=resolution, run_command=run_conversion)
+            converted.replace(ass_path)
+        except (MediaToolError, OSError, subprocess.SubprocessError) as error:
+            raise BurnVideoExportError("SRT 字幕转换失败，请检查字幕和样式", details=error) from error
+    else:
+        ass_path.write_text(ass_text, encoding="utf-8", newline="\n")
+    sticker_input_args = _burn_sticker_input_args(stickers)
+    input_args = ["-i", str(source), *sticker_input_args]
     if green_screen:
+        # 绿幕：lavfi 绿色画布生成纯字幕视频，源媒体仅在 include_audio 时提供
+        # 音轨。互斥检查已拒绝表情包与去空隙组合，因此这里保持主线简单的
+        # -vf 形状；表情包若未来放开，再以 filter_complex 形式挂在 ass 之前。
         input_args, _ = _green_screen_input(ass_path, _green_screen_size_resolution("1080p"))
         duration = input_args[-1].rsplit("d=", 1)[1]
         duration_ms = round(float(duration) * 1000)
@@ -809,7 +1099,7 @@ def burn_ass_video(
         intervals = normalize_gap_removed_intervals([
             {"startMs": start, "endMs": end} for start, end in intervals
         ])
-        probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
+        probe = probe or _probe_gap_removed_video(source, ffprobe_path, job=job)
         audio_streams = [stream for stream in probe.streams if stream.codec_signature[0] == "audio"]
         audio_count = len(audio_streams)
         # Input-side accurate seeking bounds decoding to the requested hull;
@@ -817,10 +1107,12 @@ def burn_ass_video(
         # clocks below are relative to this seek origin, including audio delay.
         seek_start, seek_end = intervals[0][0], intervals[-1][1]
         input_args = ["-ss", format(Decimal(seek_start).scaleb(-3), "f"),
-                      "-t", format(Decimal(seek_end - seek_start).scaleb(-3), "f"), "-i", str(source)]
+                      "-t", format(Decimal(seek_end - seek_start).scaleb(-3), "f"),
+                      "-i", str(source), *sticker_input_args]
         relative_intervals = [(start - seek_start, end - seek_start) for start, end in intervals]
         graph_path = output_path.with_suffix(".filters")
-        graph_path.write_text(_burn_interval_filter(relative_intervals, audio_count), encoding="utf-8", newline="\n")
+        graph_path.write_text(_burn_interval_filter(relative_intervals, audio_count, stickers),
+                              encoding="utf-8", newline="\n")
         duration_ms = sum(end - start for start, end in intervals)
         # A video frame can straddle the end of an interval. Independent audio
         # concatenation and explicit output duration keep it from moving joins.
@@ -830,6 +1122,12 @@ def burn_ass_video(
                                 f"-map_metadata:s:a:{audio}", f"0:s:a:{audio}",
                                 f"-disposition:a:{audio}", "+".join(stream.disposition) or "0"))
         filter_args.extend(("-fps_mode", "vfr", "-t", format(Decimal(duration_ms).scaleb(-3), "f")))
+    elif stickers:
+        duration_ms = _probe_media_duration_ms(source, ffprobe_path, job=job)
+        graph_path = output_path.with_suffix(".filters")
+        graph_path.write_text(';\n'.join(_burn_sticker_chain_lines(stickers, "[0:v:0]")) + '\n',
+                              encoding="utf-8", newline="\n")
+        filter_args = ["-/filter_complex", str(graph_path), "-map", "[burn_video]", "-map", "0:a?"]
     else:
         duration_ms = _probe_media_duration_ms(source, ffprobe_path, job=job)
         filter_args = ["-map", "0:v:0", "-map", "0:a?", "-vf", "ass=filename='burn.ass'"]
@@ -3082,11 +3380,16 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 now = time.time() * 1000
                 if type(deadline) is not int or not now < deadline <= now + MEDIA_JOB_ADMISSION_TTL * 1000:
                     raise MediaJobCancelled("视频烧录已停止")
-            ass_text = request.get("ass")
+            if "ass" in request and "srt" in request:
+                raise ValueError("ASS 与 SRT 字幕内容不能同时提供")
+            subtitle_format = "srt" if "srt" in request else "ass"
+            ass_text = request.get(subtitle_format)
             if not isinstance(ass_text, str) or not ass_text.strip():
-                raise ValueError("缺少 ASS 字幕内容")
+                raise ValueError("缺少字幕内容")
             if len(ass_text.encode("utf-8")) > MAX_ASS_FRAME_TEXT_BYTES:
-                raise ValueError(f"ASS 字幕内容超过 {MAX_ASS_FRAME_TEXT_BYTES // (1024 * 1024)} MB")
+                raise ValueError(f"{subtitle_format.upper()} 字幕内容超过 {MAX_ASS_FRAME_TEXT_BYTES // (1024 * 1024)} MB")
+            stickers = _parse_burn_sticker_inputs(
+                request.get("stickers"), self.editor_server.project.sticker_root)
             raw_intervals = request.get("intervals")
             if raw_intervals is None:
                 intervals = []
@@ -3101,6 +3404,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 raise ValueError("绿幕视频和附带音轨选项必须是布尔值")
             if green_screen and intervals:
                 raise ValueError("绿幕视频暂不支持去空隙区间")
+            if green_screen and stickers:
+                raise ValueError("绿幕视频暂不支持表情包烧录")
             if source_snapshot.kind != "video" and not green_screen:
                 raise BurnVideoExportError("当前工程绑定的是音频，烧录视频需要视频源")
             source = source_snapshot.path
@@ -3123,7 +3428,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 options = ({"green_screen": True, "include_audio": include_audio,
                             "audio_track": source_snapshot.audio_track} if green_screen else {})
                 burn_ass_video(job.source, list(job.intervals), ass_text, job.output,
-                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job, **options)
+                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job,
+                    subtitle_format=subtitle_format, stickers=stickers, **options)
 
             with self.editor_server.settings_lock:
                 if admission_token is not None and time.time() * 1000 >= deadline:
