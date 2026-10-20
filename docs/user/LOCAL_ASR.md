@@ -46,7 +46,7 @@ uv sync --group local
 uv run --no-sync python generate_subtitle_local.py "clip.mp4" --engine qwen-asr --length-limit 30s --json --no-html
 ```
 
-`uv sync --group local` 不包含 MOSS；MOSS 的 Transformers 5.x 依赖与 QwenASR 的 Transformers 4.x 不兼容，必须使用独立环境，依赖真源为 `moss-requirements.in`。在 Launcher 完成 MOSS 环境安装后，通过它运行，不把 MOSS 依赖混装到普通 `.venv`。
+`uv sync --group local` 不包含 MOSS；MOSS 的 Transformers 5.x 依赖与 QwenASR 的 Transformers 4.x 不兼容，必须使用独立环境，依赖真源为 `scripts/packaging/moss-requirements.in`。在 Launcher 完成 MOSS 环境安装后，通过它运行，不把 MOSS 依赖混装到普通 `.venv`。
 
 以下是独立脚本示例，模型选择也可在 Launcher 完成：
 

@@ -3857,6 +3857,17 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("blank-editor.html", result["error"])
 
+    def test_open_faq_uses_source_documentation_location(self) -> None:
+        faq = self.root / "docs" / "user" / "FAQ-常见问题.txt"
+        faq.parent.mkdir(parents=True)
+        faq.write_text("source help\n", encoding="utf-8")
+
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as open_path:
+            result = self.api.open_faq()
+
+        self.assertTrue(result["ok"])
+        open_path.assert_called_once_with(faq)
+
     def test_open_faq_uses_bundled_troubleshooting_file(self) -> None:
         faq = self.root / "FAQ-常见问题.txt"
         faq.write_text("help\n", encoding="utf-8")

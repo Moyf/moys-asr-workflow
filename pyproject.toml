@@ -22,7 +22,7 @@ dependencies = [
 
 # maw：MOSS runtime 依赖（Transformers 5.x）与 local dependency group 的 qwen-asr
 # （Transformers==4.57.6）互斥，无法承载于同一个 uv.lock 的同一依赖组，
-# 故独立声明在 moss-requirements.in 并由
+# 故独立声明在 scripts/packaging/moss-requirements.in 并由
 # `uv pip compile` 冻结（与 local/ocr dependency-group 的 uv export 管线并行）。
 
 [[tool.uv.index]]

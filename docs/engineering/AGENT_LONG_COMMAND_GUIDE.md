@@ -33,7 +33,7 @@
 
 ```powershell
 # 启动（立即返回）
-$p = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm exec playwright test --project=chromium --reporter=json > `"$env:TEMP\e2e-run.log`" 2>&1" -PassThru -WindowStyle Hidden
+$p = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm exec playwright test --config=tests/config/playwright.config.mjs --project=chromium --reporter=json > `"$env:TEMP\e2e-run.log`" 2>&1" -PassThru -WindowStyle Hidden
 $p.Id | Set-Content "$env:TEMP\e2e-run.pid"
 
 # 轮询（每 2-4 分钟一次，每次都是秒级命令）

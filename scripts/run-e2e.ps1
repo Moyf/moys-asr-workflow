@@ -122,6 +122,12 @@ if (-not [string]::IsNullOrWhiteSpace($configuredPython)) {
 $env:MAW_E2E_PYTHON = $pythonPath
 
 $arguments = @($PlaywrightArguments)
+$hasConfigArgument = $arguments | Where-Object {
+    $_ -eq "--config" -or $_ -like "--config=*" -or $_ -like "-c*"
+}
+if ($null -eq $hasConfigArgument) {
+    $arguments = @("--config=tests/config/playwright.config.mjs") + $arguments
+}
 $hasOutputArgument = $arguments | Where-Object {
     $_ -eq "-o" -or $_ -eq "--output" -or $_ -like "--output=*"
 }

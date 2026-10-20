@@ -6,10 +6,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$SpecPath = Join-Path $RepoRoot 'MAW.spec'
+$SpecPath = Join-Path $RepoRoot 'scripts/packaging/MAW.spec'
 $EntryPoint = Join-Path $RepoRoot 'maw_gui.py'
 $ExePath = Join-Path $RepoRoot 'dist\MAW\MAW.exe'
-$FaqSource = Join-Path $RepoRoot 'FAQ-常见问题.txt'
+$FaqSource = Join-Path $RepoRoot 'docs/user/FAQ-常见问题.txt'
 $FaqBundlePath = Join-Path $RepoRoot 'dist\MAW\FAQ-常见问题.txt'
 
 if (-not (Test-Path -LiteralPath $EntryPoint -PathType Leaf)) {

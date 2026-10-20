@@ -35,7 +35,7 @@
 
 覆盖工程先保留 `.mosp.bak` / `.json.bak`；多版本备份使用 `.mosp-bak`。两者与 `.workspace.json`、交换 JSON 的用途不同，恢复操作见 [编辑器指南](../user/EDITOR_GUIDE.md)。
 
-正式字段与迁移契约集中在 [JSON_SCHEMA](../../JSON_SCHEMA.md)，不在本页维护另一份 JSON 示例。修改字段必须同步契约、测试和 changelog。
+正式字段与迁移契约集中在 [JSON_SCHEMA](JSON_SCHEMA.md)，不在本页维护另一份 JSON 示例。修改字段必须同步契约、测试和 changelog。
 
 ## 工作区维护
 
@@ -113,7 +113,7 @@ Windows 使用 `scripts/run-e2e.ps1`，脚本检查 quapeaks，并在需要时�
 
 ## 文档与发布
 
-README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 JSON_SCHEMA。反馈和开发进度写任务账本。官网文档由 [同步脚本](../../website/docs/CONTENT_SYNC.md) 生成，不手改副本。
+README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 [JSON_SCHEMA](JSON_SCHEMA.md)。反馈和开发进度写任务账本。官网文档由 [同步脚本](../../website/docs/CONTENT_SYNC.md) 生成，不手改副本。
 
 日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。在 PR 描述注明“内联副本待发布前统一重生成”；发布前或维护者明确要求时才执行：
 

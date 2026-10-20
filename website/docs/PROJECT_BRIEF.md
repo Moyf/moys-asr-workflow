@@ -19,7 +19,7 @@ MAW（Moy's ASR Workflow）是一条刻意收窄、可公开分发的 Qwen ASR A
 ## 内容来源
 
 - 产品事实：主仓库 README 和 `docs/user/WORKFLOW.md`
-- 数据契约：主仓库 `JSON_SCHEMA.md`
+- 数据契约：主仓库 `docs/engineering/JSON_SCHEMA.md`
 - 编辑器能力：主仓库 `docs/user/EDITOR_GUIDE.md` 与官网使用的编辑器截图
 - 未来方向：主仓库 `docs/engineering/MOSE.md`
 - 许可证：主仓库 `AGPL-3.0-only`

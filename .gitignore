@@ -61,7 +61,7 @@ web/launcher/boot/launcher-bundle.meta.json
 *.zip
 *.exe
 *.spec.bak
-!MAW.spec
+!/scripts/packaging/MAW.spec
 .playwright-mcp/
 
 # Local post-processing configuration (may contain personal paths and settings).

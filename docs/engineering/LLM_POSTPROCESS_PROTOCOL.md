@@ -1,6 +1,6 @@
 # LLM 字幕后处理协议
 
-这份协议定义 MAW Launcher 如何让 OpenAI-compatible LLM 修改字幕文字，同时保证模型不能写入字幕时间。它是工具箱实现契约，不是工程 schema 的替代品；工程结构仍以 [JSON_SCHEMA.md](../../JSON_SCHEMA.md) 为准。
+这份协议定义 MAW Launcher 如何让 OpenAI-compatible LLM 修改字幕文字，同时保证模型不能写入字幕时间。它是工具箱实现契约，不是工程 schema 的替代品；工程结构仍以 [JSON_SCHEMA.md](JSON_SCHEMA.md) 为准。
 
 ## 1. 信任边界
 
