@@ -2652,6 +2652,150 @@ test('keeps later cues aligned when whitespace at a split boundary is removed', 
   assert.equal(report.outputRows[3].mappingStatus, 'full');
 });
 
+// 真实工程里 Qwen 本地 ASR 的词标签自带前后空格，items 拼接会出现与
+// segment.text 不同的空白漂移（「 lucide 」+「 icon」拼出双空格）；
+// 严格布局失败会让拆句全部退化为估算。宽容布局应把 items 重新切齐到
+// 真实文字上，拆句后仍复用真实字词时间码。
+test('reuses word timings when splitting a cue whose item texts drift in whitespace', () => {
+  const source = [{
+    id: 'cue-1', start: 37560, end: 40060, text: ' lucide icon for example',
+    items: [
+      { text: ' lucide ', start: 37680, end: 38160 },
+      { text: ' icon', start: 38240, end: 38640 },
+      { text: ' for', start: 38960, end: 39040 },
+      { text: ' example', start: 39040, end: 40000 },
+    ],
+  }];
+  const expectations = [
+    { draft: [' lucide icon', ' for example'], ranges: [[37560, 38640], [38960, 40060]], itemStarts: [[37680, 38240], [38960, 39040]] },
+    { draft: ['lucide icon', 'for example'], ranges: [[37740, 38640], [38980, 40060]], itemStarts: [[37740, 38240], [38980, 39040]] },
+  ];
+  for (const { draft, ranges, itemStarts } of expectations) {
+    const report = helpers.buildTimedTextEditReport(source, draft);
+    assert.equal(report.valid, true);
+    assert.equal(report.stats.estimatedTimingCues, 0, JSON.stringify(draft));
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(report.previewSegments.map((segment) => [segment.start, segment.end]))),
+      ranges,
+    );
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(report.previewSegments.map((segment) => segment.items.map((item) => item.start)))),
+      itemStarts,
+    );
+    const applied = helpers.applyTimedTextEdit(source, draft);
+    assert.equal(applied.length, 2);
+    applied.forEach((segment) => {
+      assert.ok(Array.isArray(segment.items) && segment.items.length >= 2, segment.text);
+      assert.equal(segment.items.at(-1).end <= segment.end, true);
+      assert.equal(segment.items[0].start >= segment.start, true);
+    });
+  }
+});
+
+test('reuses word timings when item texts miss the space between words', () => {
+  const source = [{
+    id: 'cue-1', start: 60920, end: 62540, text: ' as the decoration you set',
+    items: [
+      { text: ' as', start: 61040, end: 61280 },
+      { text: ' the', start: 61280, end: 61440 },
+      { text: ' decoration', start: 61520, end: 62080 },
+      { text: ' you', start: 62080, end: 62160 },
+      { text: 'set', start: 62240, end: 62480 },
+    ],
+  }];
+  const report = helpers.buildTimedTextEditReport(source, [' as the decoration', ' you set']);
+  assert.equal(report.stats.estimatedTimingCues, 0);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(report.previewSegments.map((segment) => [segment.text, segment.start, segment.end]))),
+    [[' as the decoration', 60920, 62080], [' you set', 62080, 62540]],
+  );
+  // 逐条改写（非结构编辑）也不再因布局失败丢掉整组字词码。
+  const edited = helpers.buildTimedTextEditReport(source, [' as the decoration you set!']);
+  assert.equal(edited.rows[0].mappingStatus, 'partial');
+  assert.ok(edited.rows[0].items?.length >= 4);
+  assert.equal(edited.rows[0].items.at(-1).text, ' set!');
+});
+
+test('reuses word timings when item texts carry extra punctuation or the text has extra words', () => {
+  // items 拼接多一个尾逗号。
+  const comma = [{
+    id: 'cue-1', start: 0, end: 1000, text: ' source code mode',
+    items: [
+      { text: ' source', start: 0, end: 400 },
+      { text: ' code', start: 400, end: 700 },
+      { text: ' mode,', start: 700, end: 1000 },
+    ],
+  }];
+  const commaReport = helpers.buildTimedTextEditReport(comma, [' source code', ' mode']);
+  assert.equal(commaReport.stats.estimatedTimingCues, 0);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(commaReport.previewSegments.map((segment) => [segment.start, segment.end]))),
+    [[0, 700], [700, 1000]],
+  );
+  // 文字里多出 items 没有的插入词（AI 整理补写的括号注记）。
+  const extra = [{
+    id: 'cue-1', start: 0, end: 1000, text: ' will (be) rendered',
+    items: [
+      { text: ' will', start: 0, end: 300 },
+      { text: ' rendered', start: 400, end: 1000 },
+    ],
+  }];
+  const extraReport = helpers.buildTimedTextEditReport(extra, [' will', ' (be) rendered']);
+  assert.equal(extraReport.stats.estimatedTimingCues, 0);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(extraReport.previewSegments.map((segment) => [segment.start, segment.end]))),
+    [[0, 300], [400, 1000]],
+  );
+});
+
+test('keeps estimated timing when drifted items are too different from the text', () => {
+  const source = [{
+    id: 'cue-1', start: 0, end: 1000, text: '就是这颗',
+    items: [
+      { text: '甲乙丙', start: 0, end: 500 },
+      { text: '丁丁丁', start: 500, end: 1000 },
+    ],
+  }];
+  const report = helpers.buildTimedTextEditReport(source, ['就是', '这颗']);
+  assert.equal(report.valid, true);
+  assert.equal(report.stats.estimatedTimingCues, 2);
+  assert.equal(report.previewSegments[0].items, undefined);
+});
+
+test('keeps real items for the anchored line when a rewritten line forces anchor mode', () => {
+  const source = [{
+    id: 'cue-1', start: 0, end: 1900, text: "it's  automatically",
+    items: [
+      { text: " it's", start: 0, end: 800 },
+      { text: ' automatically', start: 900, end: 1900 },
+    ],
+  }];
+  // 等长改写走错别字修正路径，保留原 item 时间；未改行经锚点 + 漂移回退复用真实时间。
+  const typo = helpers.buildTimedTextEditReport(source, ["it'z", 'automatically']);
+  assert.equal(typo.structure.mode, 'anchor');
+  assert.equal(typo.stats.estimatedTimingCues, 0);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(typo.previewSegments.map((segment) => segment.items.map((item) => [item.text, item.start, item.end])))),
+    [[["it'z", 0, 800]], [['automatically', 900, 1900]]],
+  );
+  // 非等长改写拿不到可靠映射：改写行估算，未改行仍复用真实字词时间码。
+  const rewritten = helpers.buildTimedTextEditReport(source, ["it'zz", 'automatically']);
+  assert.equal(rewritten.structure.mode, 'anchor');
+  assert.equal(rewritten.stats.estimatedTimingCues, 1);
+  assert.equal(rewritten.previewSegments[0].items, undefined);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(rewritten.previewSegments[1].items.map((item) => [item.text, item.start, item.end]))),
+    [['automatically', 900, 1900]],
+  );
+  const exact = helpers.buildTimedTextEditReport(source, ["it's", 'automatically']);
+  assert.equal(exact.structure.mode, 'exact');
+  assert.equal(exact.stats.estimatedTimingCues, 0);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(exact.previewSegments.map((segment) => segment.items.map((item) => [item.text, item.end])))),
+    [[["it's", 800]], [['automatically', 1900]]],
+  );
+});
+
 test('merges and deletes complete subtitle lines while keeping remaining timings', () => {
   const source = [
     { id: 'cue-1', start: 0, end: 400, text: '就是', items: [{ start: 0, end: 400, text: '就是' }] },
