@@ -98,6 +98,7 @@ from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMo
 from maw.postprocess_io import PostprocessFileError, read_project, read_srt
 from maw.project_io import write_mosp
 from maw.project import ProjectValidationFailed, normalize_project
+from maw.recent_projects import load_recent_projects
 from maw.postprocess_ai_cleanup import AiCleanupError, AiCleanupRequest, llm_complete, run_ai_cleanup as process_ai_cleanup
 from maw.postprocess_ffmpeg import (
     AUDIO_BITRATES,
@@ -2333,6 +2334,15 @@ class LauncherApi:
             return {"ok": True, "running": False, "url": url}
         pid = _maw_server_process_id(port)
         return {"ok": True, "running": pid is not None, "url": url, "pid": pid}
+
+    def recent_projects(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Expose the editor's persisted recent projects for the Launcher card.
+
+        Read-only view of ``server-editor-settings.json`` (with the same
+        legacy fallback the editor uses); a missing or malformed file simply
+        yields an empty list so the card stays hidden.
+        """
+        return {"ok": True, "projects": load_recent_projects()}
 
     def check_server_media(self, payload: Mapping[str, object]) -> dict[str, object]:
         json_text = str(payload.get("jsonPath") or "").strip()

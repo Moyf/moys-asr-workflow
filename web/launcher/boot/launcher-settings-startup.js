@@ -89,6 +89,8 @@ async function openServerEditor() {
       state.detectedServerUrl = result.serverAlreadyRunning ? result.url || "" : "";
       $("openMawe").classList.remove("attention");
       renderServerButton();
+      // 启动成功会更新编辑器侧的最近工程持久化，这里刷新一次让新工程排到最前。
+      void loadRecentProjects();
       if (result.url) {
         if (restartProjectPath !== null && projectPath === restartProjectPath) {
           // 断线重启：编辑器页面通常还开着且 URL 不变，不重复打开新页面，
@@ -115,6 +117,7 @@ function refreshStartupState() {
     ["default output", syncDefaultOutput()],
     ["FFmpeg", refreshFfmpeg()],
     ["server", checkExistingServer()],
+    ["recent projects", loadRecentProjects()],
     ["OCR", refreshOcrRuntime()],
     ["alignment models", refreshAlignmentModels()],
   ];
