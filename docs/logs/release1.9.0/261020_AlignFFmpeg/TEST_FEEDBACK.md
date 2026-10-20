@@ -1,6 +1,6 @@
 # 文稿对齐 FFmpeg 与设置入口反馈
 
-基线：`main / 69bc534a`；相关修复已在本地提交，未推送。范围为 Windows FFmpeg 误选、对齐模型设置与文稿字幕入口，不改动开发启动脚本。
+基线：本地 `origin/main / 0b61b87c`；分支包含 `69bc534a` 的 Launcher 开发启动改进、`54d10fc7` 的文稿对齐和工具箱入口，以及本次运行状态提示优化。任务账本同时记录 Windows FFmpeg 误选、模型管理和文稿工具入口反馈。
 
 ## 反馈处理
 
@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 1. 文稿对齐报 WinError 193 | 已修复 | worker 在 `maw/` 目录运行，Windows 的 PATHEXT 包含 `.PY` 时，`shutil.which("ffmpeg")` 会误选同目录的 `ffmpeg.py`。Windows 改为明确查找 `ffmpeg.exe` / `ffprobe.exe`，其他平台保持原名查找。模块不重命名。 |
 | 2. Align 缺少设置入口 | 已修复 | 对齐模型说明下新增「管理对齐模型」，打开 AI 模型设置并选中工具箱当前模型；管理和下载不再依赖识别方式是否为本地模型。保留当前识别方式。 |
-| 3. 清单全绿仍提示修复 | 仅说明 | 原截图运行时已安装版本 6、要求版本 7，因此 9/9 依赖条目存在仍不能代表运行时版本合格。本次未调整清单诊断展示。 |
+| 3. 清单全绿仍提示修复 | 已修复 | 运行时卡片现在显示旧版与要求版本（如 6 → 7）、已检测依赖数和新版验证状态，操作按钮改为「升级并验证运行环境」；清单状态也显示具体升级版本。对齐模型单独呈现「已下载／未下载」，并仅在其运行依赖确实缺失时补充「缺少依赖」，不再用通用修复状态掩盖原因。 |
 | 4. 文稿对齐移到媒体工具 | 已修复 | 媒体工具提供「文稿匹配」，放在烧录字幕前、口播对齐前；字幕处理原「文稿匹配」更名为「文稿修正」，仅保留已有字幕的时间码生成，并在文稿修正顶部增加跨页指引。两个入口独立保留模型选择，新入口使用共享媒体输入和独立文稿参数。 |
 | 5. 文稿修正与口播对齐是否重复 | 仅说明 | 文稿修正校正已有字幕；媒体工具的文稿匹配用于与准确文稿基本一致的录音；口播对齐处理重录和重复并支持人工选 take。本次不合并处理算法。 |
 | 6. 工具箱名称与顺序 | 已修复 | 字幕处理排序为 AI 处理、OCR 去重、固定替换、文稿修正、生成时间码；媒体工具排序为文稿匹配、烧录字幕、口播对齐、提取音频、生成波形。 |
@@ -25,7 +25,7 @@
 
 ## 未验证边界
 
-真实样例仅验证 FFmpeg 音频预处理，未运行真实神经网络模型推理；模型下载使用浏览器 mock API。完整 Launcher 的真实模型输出仍需维护者重启后核验，见同目录清单。未验证打包产物或 CI，未生成便携 HTML。
+真实样例仅验证 FFmpeg 音频预处理，未运行真实神经网络模型推理；模型下载使用浏览器 mock API。完整 Launcher 的真实模型输出仍需维护者重启后核验，见同目录清单。未验证打包产物或 CI，未生成 `blank-editor.html` 内联副本。
 
 ## 入口移动时的追加验证（命名与排序调整前）
 
@@ -43,3 +43,13 @@
 - Launcher bundle 重建、`--check` 新鲜度与脚本语法检查通过；源码静态顺序与中文标签契约通过，结果：`.artifacts/checks/20261020T050008Z-b889a164/result.json`。
 - 浏览器定向 7 项本次重跑未能启动：Chromium `spawn EPERM`，结果：`.artifacts/checks/20261020T045830Z-8ad99a77/result.json`。这不是页面断言失败；上节的 7 项通过发生在本次名称与顺序改动之前。
 - Python GUI 源码契约本次未运行：项目虚拟环境被沙箱拒绝启动（`uv trampoline` 权限错误）；系统 Python 3.14 缺少 `send2trash`，结果：`.artifacts/checks/20261020T045811Z-6607a835/result.json` 与 `.artifacts/checks/20261020T050008Z-d0790505/result.json`。
+
+## 运行环境与对齐模型状态提示
+
+- Launcher bundle 重建与 `--check` 通过；`test_launcher_script_syntax.mjs`、`test_launcher_bundle.mjs` 3 项通过，覆盖 classic 脚本语法与 bundle 装配。结果：`.artifacts/checks/20261020T063444Z-79a25e5b/result.json`。
+- 新增浏览器用例覆盖旧运行时 6 → 7、依赖文件 9/9、缺少单项依赖以及对齐模型的分项状态。该用例未能启动 Chromium（`spawn EPERM`），浏览器断言、实际截图与布局实测未完成。结果：`.artifacts/checks/20261020T063526Z-afe4973d/result.json`。
+- Python `LauncherAssetContractTests` 未能启动：`uv` 拒绝访问解释器；直接调用项目虚拟环境也被 uv trampoline 权限错误阻止。源码级 Python 契约结果未验证。结果：`.artifacts/checks/20261020T063454Z-f7150ade/result.json`、`.artifacts/checks/20261020T063526Z-de6a0d15/result.json` 与 `.artifacts/checks/20261020T063636Z-40782d37/result.json`。
+- 后端对齐模型状态单测 5 项通过，新增用例确认模型已下载但运行依赖缺失时仍报告 `installed=true`，结果：`.artifacts/checks/20261020T064250Z-ba8364ee/result.json`。
+- 当前提交前复核（HEAD `54d10fc7`，状态提示改动尚未提交）：Launcher `--check` 通过；Node 脚本语法与 bundle 契约 3 项通过，结果：`.artifacts/checks/20261020T064404Z-a4cc3bb5/result.json`。最终核验清单检查与 HTML 生成通过，结果分别为 `.artifacts/checks/20261020T064440Z-cb177880/result.json`、`.artifacts/checks/20261020T064440Z-2cdd3d84/result.json`；个人路径扫描与 `git diff --check` 通过。待提交范围为 CHANGELOG、Launcher 状态提示及 mock、对齐模型状态判定和测试、反馈账本与核验清单。
+- 核验清单 Markdown 检查通过，并生成 `.artifacts/align-ffmpeg-settings/verification.html`；浏览器未能打开该本地页面，故不以生成结果冒充人工检查。
+- 本次没有生成 `blank-editor.html` 内联副本，也未运行真实模型推理或打包检查。

@@ -63,6 +63,64 @@ test('alignment model shortcut opens the selected model without changing the ASR
   await expect(page.locator('#provider')).toHaveValue(provider);
 });
 
+test('runtime upgrade and alignment model states distinguish files, validation, and dependencies', async ({ page }, testInfo) => {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    const names = ['faster_whisper', 'funasr', 'qwen_asr', 'jieba', 'torch', 'torchaudio', 'quapeaks', 'sherpa_onnx', 'soundfile'];
+    window.MAWLauncher.config.localRuntime = {
+      status: 'broken',
+      ready: false,
+      runtimeVersion: '6',
+      path: 'D:\\Demo\\local-runtime',
+      modelCachePath: 'D:\\Demo\\model-cache',
+      inventory: {
+        status: 'broken',
+        ready: false,
+        runtimeVersionExpected: '7',
+        runtimeVersionInstalled: '6',
+        pythonVersionExpected: '3.11',
+        pythonVersionInstalled: '3.11',
+        manifestStatus: 'ready',
+        installedAt: 0,
+        components: names.map((name) => ({ name, required: true, installed: true })),
+      },
+    };
+  });
+  await page.locator('#provider').selectOption('local');
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsRuntimeTab').click();
+
+  await expect(page.locator('#localRuntimeStatus')).toContainText('运行环境需要升级：6 → 7');
+  await expect(page.locator('#localRuntimeHint')).toHaveText('已检测到依赖文件：9/9，尚未完成新版环境验证。');
+  await expect(page.locator('#installLocalRuntime')).toHaveText('升级并验证运行环境');
+  await page.locator('#toggleLocalRuntimeInventory').click();
+  await expect(page.locator('#localRuntimeInventory')).toContainText('需要升级：6 → 7');
+  await expect(page.locator('#localRuntimeInventory')).toContainText('依赖组件 (9/9)');
+  const runtimeGap = await page.locator('.repair-row').evaluate((row) => {
+    const hint = row.querySelector('#localRuntimeHint').getBoundingClientRect();
+    const button = row.querySelector('#installLocalRuntime').getBoundingClientRect();
+    const style = getComputedStyle(row);
+    return { vertical: button.top >= hint.bottom ? button.top - hint.bottom : 0, rowGap: parseFloat(style.rowGap) };
+  });
+  expect(runtimeGap.rowGap).toBeGreaterThanOrEqual(8);
+  if (runtimeGap.vertical > 0) expect(runtimeGap.vertical).toBeGreaterThanOrEqual(8);
+  console.log(`Runtime upgrade layout spacing: vertical=${runtimeGap.vertical}px, wrapped row gap=${runtimeGap.rowGap}px`);
+  await testInfo.attach('runtime-upgrade-spacing', { body: JSON.stringify(runtimeGap), contentType: 'application/json' });
+  await page.locator('#localRuntimePanel').screenshot({ path: testInfo.outputPath('runtime-upgrade-status.png') });
+
+  await page.evaluate(() => {
+    const inventory = window.MAWLauncher.config.localRuntime.inventory;
+    inventory.components = inventory.components.map((component) => component.name === 'qwen_asr' ? { ...component, installed: false } : component);
+  });
+  await page.locator('#refreshLocalRuntime').click();
+  await expect(page.locator('#localRuntimeHint')).toHaveText('已检测到依赖文件：8/9，升级时会补齐缺失文件并验证新版环境。');
+  await page.evaluate(() => window.MAWLauncher.openSettings('alignmentModelSettingsSection'));
+  const aligner = page.locator('#localAlignmentModelList [data-model-id="qwen3-forced-aligner-0.6b"]');
+  await expect(aligner).toContainText('未下载 · 缺少依赖');
+  await expect(page.locator('#localAlignmentModelStatus')).toContainText('未下载 · 缺少依赖');
+  await page.locator('#alignmentModelSettingsSection').screenshot({ path: testInfo.outputPath('alignment-model-dependency-status.png') });
+});
+
 test('OpenAI ASR exposes official and OpenRouter models with a conditional Custom input', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#provider').selectOption('openai');
