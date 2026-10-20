@@ -17,6 +17,12 @@
       "exportName": "createServerApi"
     },
     {
+      "file": "editor/boot/editor-host.js",
+      "kind": "init",
+      "name": "editor-host-init",
+      "exportName": "initEditorHost"
+    },
+    {
       "file": "shared/utils/data.js",
       "name": "utils-data",
       "exportName": "createUtilsModule"
