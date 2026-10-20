@@ -877,6 +877,20 @@ class ProcessTalkEvidenceTest(AiCleanupTestCase):
         assert stats is not None
         self.assertEqual(stats["pendingReview"], 1)
 
+    def test_chinese_take_numbers_keep_process_and_instruction_distinct(self) -> None:
+        for text, removed in [("第三遍重新开始", True), ("这个动作做第三遍时要停下来", False)]:
+            with self.subTest(text=text):
+                script = ["大家好欢迎回到我的频道"]
+                project_path, script_path = self.request(_project([
+                    _segment(0, 2500, text), _segment(2500, 6000, script[0]),
+                ]), script)
+                artifact, output, _ = _run(self.directory, project_path, script_path, _decisions(
+                    c001={"decision": "discard", "scriptLine": "", "reason": "重录", "evidence": "第三遍"},
+                    c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
+                ))
+                self.assertEqual(bool(output["segments"][0].get("disabled")), removed)
+                self.assertEqual(artifact.stats["pendingReview"], int(not removed))
+
 
 class EditPathFillerShortcutTest(unittest.TestCase):
     """句内词项删除需比整段语气词删除更严格。"""

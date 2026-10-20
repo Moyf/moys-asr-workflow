@@ -887,7 +887,7 @@ def _resolve_decisions(
         pure_process_talk = not outside_process_talk or bool(
             _UTTERANCE_FILLER_PATTERN.fullmatch(outside_process_talk)
         )
-        has_digits = any(char.isdigit() for char in norms[clip.id]) and not pure_process_talk
+        has_digits = bool(re.search(r"\d|第[零〇一二两三四五六七八九十百千万亿]+遍", norms[clip.id])) and not pure_process_talk
         sole_script_line = clip.script_line_index >= 0 and not any(
             other.script_line_index == clip.script_line_index and other.id != clip.id
             for other in clips
