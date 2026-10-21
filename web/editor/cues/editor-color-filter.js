@@ -190,6 +190,7 @@
 
 
   function refreshCueColorRows() {
+    MaweMultiSubtitleCore.invalidateSegmentPresentation?.();
   const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   MaweCoreState.container.querySelectorAll(':scope > .cue').forEach((el) => {
     const colorBar = el.querySelector(':scope > .color-bar');
@@ -223,6 +224,7 @@
 
 
   function refreshCueStickerRows() {
+    MaweMultiSubtitleCore.invalidateSegmentPresentation?.();
   const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   MaweCoreState.container.querySelectorAll(':scope > .cue').forEach((el) => {
     const slotEl = el.querySelector(':scope > .sticker-slot');

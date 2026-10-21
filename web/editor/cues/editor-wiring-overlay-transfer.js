@@ -44,7 +44,7 @@ function moveOverlaySegmentToMainTrack(index) {
 
 function shiftMainGroupRefsAfterMove(movedIndexes) {
   // Moving keeps stable group membership and only detaches bilingual relations.
-  const movedIds = [...removeSet].map((index) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.id).filter(Boolean);
+  const movedIds = [...movedIndexes].map((index) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.id).filter(Boolean);
   if (movedIds.length) {
     MaweMultiSubtitleCore.removeBindingsForSegmentIds(movedIds, []);
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
@@ -217,6 +217,9 @@ function deleteOverlayCues(indices) {
   if (!sorted.length) return;
   detachCuePanelFromTrackEdits();
   return MaweCommands.run(`删除 ${sorted.length} 条叠加字幕`, (command) => {
+    const removed = new Set(sorted);
+    MaweSegmentOps.splitGroupsAtCutPoints(removed, 'color', 'color_ref', overlay.segments);
+    MaweSegmentOps.splitGroupsAtCutPoints(removed, 'sticker', 'sticker_ref', overlay.segments);
     for (let index = sorted.length - 1; index >= 0; index -= 1) {
       resetOverlayGroupRefs(sorted[index]);
       overlay.segments.splice(sorted[index], 1);

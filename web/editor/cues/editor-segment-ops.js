@@ -543,8 +543,39 @@
   //   - 删除场景：cutSet = 被物理删除的 idx；切完后由调用方负责 splice
   //   - 清除场景：cutSet = 被清除 group 字段的 idx；调用方不删除字幕本身
   function splitGroupsAtCutPoints(cutSet, headField, refField, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) {
-  window.AsrEditorUtils.clearSubtitleGroupMembers(MaweBoot.DATA, segments, cutSet, headField);
-}
+    const utils = window.AsrEditorUtils;
+    const membership = `${headField}_group_id`;
+    const groups = new Map();
+    segments.forEach((segment, index) => {
+      const id = segment[membership];
+      if (!id) return;
+      if (!groups.has(id)) groups.set(id, []);
+      groups.get(id).push(index);
+    });
+    for (const [id, members] of groups) {
+      if (!members.some(index => cutSet.has(index))) continue;
+      const source = MaweBoot.DATA.subtitle_groups[headField].find(group => group.id === id);
+      if (!source) continue;
+      const fragments = [];
+      let current = [];
+      for (const index of members) {
+        if (cutSet.has(index)) {
+          if (current.length) fragments.push(current);
+          current = [];
+        } else current.push(index);
+      }
+      if (current.length) fragments.push(current);
+      // The first surviving fragment and members in other tracks retain the
+      // original identity. Later fragments own copies of the same attributes.
+      for (const fragment of fragments.slice(1)) {
+        const nextId = utils.assignSubtitleGroup(MaweBoot.DATA, segments, [], headField, source.value);
+        const next = MaweBoot.DATA.subtitle_groups[headField].find(group => group.id === nextId);
+        Object.assign(next, utils.cloneJsonValue(source), { id: nextId });
+        for (const index of fragment) segments[index][membership] = nextId;
+      }
+    }
+    utils.clearSubtitleGroupMembers(MaweBoot.DATA, segments, cutSet, headField);
+  }
 
 
 
@@ -598,39 +629,17 @@
       splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
       splitGroupsAtCutPoints(removeSet, 'color',   'color_ref');
 
-      // ---- 兜底：清"指向被删 idx 但没被规划"的残余 ref（理论上 splitGroups 已处理）----
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((s, i) => {
-        if (removeSet.has(i)) return;
-        if (s.sticker_ref && removeSet.has(s.sticker_ref.headIdx)) {
-          s.sticker_ref = null;
-        }
-        if (s.color_ref && removeSet.has(s.color_ref.headIdx)) {
-          s.color_ref = null;
-        }
-      });
-
       // ---- 倒序 splice 实际删除 ----
       for (let i = sorted.length - 1; i >= 0; i--) {
         window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(sorted[i], 1);
       }
 
-      // ---- 修正剩余 *_ref.headIdx：减去"前面被删的数量"----
-      function shiftHeadIdx(ref) {
-        let shift = 0;
-        for (const r of sorted) { if (r < ref.headIdx) shift++; else break; }
-        if (shift) ref.headIdx -= shift;
-      }
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach(s => {
-        if (s.sticker_ref) shiftHeadIdx(s.sticker_ref);
-        if (s.color_ref)   shiftHeadIdx(s.color_ref);
-      });
       if (extensionTrack && pairedExtensionIndices.size) {
+        splitGroupsAtCutPoints(pairedExtensionIndices, 'color', 'color_ref', extensionTrack.segments);
+        splitGroupsAtCutPoints(pairedExtensionIndices, 'sticker', 'sticker_ref', extensionTrack.segments);
         [...pairedExtensionIndices].sort((a, b) => b - a).forEach((index) => extensionTrack.segments.splice(index, 1));
       }
       if (pairedExtensionIndices.size) MaweMultiSubtitleCore.markMultiSubtitleDirty();
-      // 同样修正"刚被晋升为新 head 的段中"指向它的 ref：
-      // splitGroups 写入的 refField.headIdx 是删除前的 idx，需要同样位移
-      // 上面 shiftHeadIdx 已经覆盖（它扫所有 segments 的所有 ref）
       MaweSelection.clearSelection({ silent: true });
       MawePlaybackLoop.lastActive = -1;
       command.commit({ cueList: true });
@@ -680,6 +689,9 @@
 
     return MaweCommands.run(`删除 ${sorted.length} 条副字幕`, (command) => {
       MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [...unboundIds]);
+      const removed = new Set(remainingIndices);
+      splitGroupsAtCutPoints(removed, 'color', 'color_ref', track.segments);
+      splitGroupsAtCutPoints(removed, 'sticker', 'sticker_ref', track.segments);
       remainingIndices.reverse().forEach((index) => track.segments.splice(index, 1));
       MaweMultiSubtitleCore.markMultiSubtitleDirty();
       MaweState.selection.clear('extension');

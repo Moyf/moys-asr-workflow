@@ -110,6 +110,7 @@
   let presentationTracks = null;
   let presentationGroups = null;
   let presentationCues = new WeakMap();
+  function invalidateSegmentPresentation() { presentationEpoch = -1; }
   function segmentPresentation(segment) {
     const epoch = MaweState.getProjectDirtyEpoch();
     if (presentationEpoch !== epoch || presentationTracks !== MaweBoot.DATA.tracks || presentationGroups !== MaweBoot.DATA.subtitle_groups) {
@@ -660,6 +661,7 @@
     multiSubtitleWaveformStructureKey,
     mainSegmentById,
     segmentPresentation,
+    invalidateSegmentPresentation,
     extensionSegmentById,
     bindingForMainIndex,
     bindingForExtensionIndex,
