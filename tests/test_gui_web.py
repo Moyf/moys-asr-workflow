@@ -3771,6 +3771,35 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["stopped"])
         stop_external.assert_called_once_with(9876)
 
+    def test_server_status_reports_project_loading_separately_from_liveness(self) -> None:
+        for status in ("loading", "ready", "error"):
+            with self.subTest(status=status), \
+                    mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                    mock.patch("maw.gui_web._maw_server_process_id", return_value=4321), \
+                    mock.patch("maw.gui_web.urlopen") as request:
+                response = request.return_value.__enter__.return_value
+                response.read.return_value = json.dumps({"ok": True, "status": status}).encode()
+                result = self.api.get_server_status({"port": "9876"})
+                self.assertTrue(result["running"])
+                self.assertEqual(result["startupStatus"], status)
+                request.assert_called_once_with("http://127.0.0.1:9876/api/startup-status", timeout=0.25)
+                response.read.assert_called_once_with(4096)
+
+    def test_missing_or_malformed_startup_status_does_not_mark_live_server_offline(self) -> None:
+        for payload in (b"not json", b"[]", b'{"status":"unexpected"}', b"\xff"):
+            with self.subTest(payload=payload), \
+                    mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                    mock.patch("maw.gui_web._maw_server_process_id", return_value=4321), \
+                    mock.patch("maw.gui_web.urlopen") as request:
+                request.return_value.__enter__.return_value.read.return_value = payload
+                result = self.api.get_server_status({"port": "9876"})
+                self.assertTrue(result["running"])
+                self.assertEqual(result["startupStatus"], "")
+        with mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                mock.patch("maw.gui_web._maw_server_process_id", return_value=4321), \
+                mock.patch("maw.gui_web.urlopen", side_effect=URLError("timed out")):
+            self.assertTrue(self.api.get_server_status({"port": "9876"})["running"])
+
     def test_stop_server_refuses_a_non_maw_external_listener(self) -> None:
         with mock.patch("maw.gui_web._wait_for_server", return_value=True):
             with mock.patch("maw.gui_web._stop_external_maw_server", return_value=False):

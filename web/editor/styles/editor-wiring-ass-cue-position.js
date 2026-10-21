@@ -15,8 +15,22 @@
   let scaleWheel = null;
   const target = () => {
     const current = global.MaweCuePanel.getCurrentCuePanelTarget();
-    return current?.kind === 'main' ? current : null;
+    return current?.kind === 'main' || current?.kind === 'overlay' ? current : null;
   };
+  const trackSegments = kind => kind === 'overlay'
+    ? (global.MaweBoot.DATA.overlay_track?.segments || [])
+    : global.MaweBoot.DATA.segments;
+  // 同一 id 命中两条轨在正常工程里不可能（main-/overlay- 前缀），仍按当前
+  // 面板目标轨优先，避免异常数据时拖错轨。
+  function locateSegment(id) {
+    for (const kind of (target()?.kind === 'overlay' ? ['overlay', 'main'] : ['main', 'overlay'])) {
+      const segments = trackSegments(kind);
+      const index = segments.findIndex(segment => segment?.id === id);
+      if (index >= 0) return { kind, index, segment: segments[index] };
+    }
+    return null;
+  }
+  const trackLabel = kind => kind === 'overlay' ? '叠加字幕' : '主字幕';
   const enabled = () => global.MaweSettings.EDITOR_SETTINGS.assMode === true;
   const roundPosition = value => Math.floor(Number(value) + 0.5);
   const roundScale = value => Number(Number(value).toFixed(2));
@@ -24,11 +38,12 @@
   const currentScale = segment => segment.assOverride?.scale || 1;
   const translated = value => global.MAWE_I18N?.translateText?.(value) || value;
   function singleSelected(id) {
-    const selected = global.MaweState.selection.indices('main');
-    return selected.size === 1 && target()?.segment.id === id;
+    const current = target();
+    const selected = global.MaweState.selection.indices(current?.kind === 'overlay' ? 'overlay' : 'main');
+    return selected.size === 1 && current?.segment.id === id;
   }
-  function recordFor(segment) {
-    return global.MaweAssCanvas.lastRender?.tracks.find(item => item.role === 'main' && item.cueId === segment.id && !item.skipped);
+  function recordFor(segment, kind = target()?.kind === 'overlay' ? 'overlay' : 'main') {
+    return global.MaweAssCanvas.lastRender?.tracks.find(item => item.role === kind && item.cueId === segment.id && !item.skipped);
   }
   function anchorFor(segment) {
     if (segment.assOverride?.pos) return { ...segment.assOverride.pos };
@@ -128,22 +143,23 @@
   function start(event, id, box) {
     if (!enabled() || event.button !== 0 || drag || scaleDrag) return;
     if (scaleWheel) finishScaleWheel();
-    const index = global.MaweBoot.DATA.segments.findIndex(segment => segment.id === id);
-    if (index < 0) return;
+    const located = locateSegment(id);
+    if (!located) return;
     global.MaweCuePanel.commitCuePanelEdit();
     global.MaweCoreState.player?.pause();
     // The first gesture only selects. A second gesture can move the cue.
     if (currentTargetId() !== id) {
-      global.MaweSelection.selectOnly(index);
+      if (located.kind === 'overlay') selectOverlayCueRow(located.index);
+      else global.MaweSelection.selectOnly(located.index);
       event.preventDefault(); event.stopPropagation();
       return;
     }
-    const segment = global.MaweBoot.DATA.segments[index];
-    const record = recordFor(segment);
+    const segment = located.segment;
+    const record = recordFor(segment, located.kind);
     if (!record) return;
     event.preventDefault(); event.stopPropagation();
     box.focus({ preventScroll: true });
-    drag = { segment, id, box, pointerId: event.pointerId, start: point(event), anchor: { ...(record.positionAnchor || record.anchor) },
+    drag = { segment, id, kind: located.kind, box, pointerId: event.pointerId, start: point(event), anchor: { ...(record.positionAnchor || record.anchor) },
       original: global.AsrEditorUtils.normalizeAssOverride(segment.assOverride),
       rect: global.MaweDom.overlayEl.getBoundingClientRect(), command: null };
     box.setPointerCapture(event.pointerId);
@@ -166,8 +182,9 @@
   function startScale(event, id, handle) {
     if (!enabled() || event.button !== 0 || drag || scaleDrag || !singleSelected(id)) return;
     if (scaleWheel) finishScaleWheel();
-    const segment = global.MaweBoot.DATA.segments.find(item => item.id === id);
-    const record = segment && recordFor(segment);
+    const located = locateSegment(id);
+    const segment = located?.segment;
+    const record = segment && recordFor(segment, located.kind);
     if (!segment || !record?.bounds) return;
     global.MaweCuePanel.commitCuePanelEdit();
     global.MaweCoreState.player?.pause();
@@ -184,7 +201,7 @@
       const corner = handle.dataset.corner;
       dx = corner.includes('w') ? -1 : 1; dy = corner.includes('n') ? -1 : 1; length = Math.SQRT2;
     }
-    scaleDrag = { segment, id, handle, pointerId: event.pointerId, rect: global.MaweDom.overlayEl.getBoundingClientRect(),
+    scaleDrag = { segment, id, kind: located.kind, handle, pointerId: event.pointerId, rect: global.MaweDom.overlayEl.getBoundingClientRect(),
       start: stableStart, direction: { x: dx / length, y: dy / length },
       sensitivity: Math.max(24, Math.hypot(bounds.right - bounds.left, bounds.bottom - bounds.top) / 2),
       initialScale: currentScale(segment), original: global.AsrEditorUtils.normalizeAssOverride(segment.assOverride), command: null };
@@ -237,52 +254,65 @@
   function sync() {
     const current = target();
     if (scaleWheel && (!enabled() || scaleWheel.segment !== current?.segment)) finishScaleWheel();
-    if (drag && (!enabled() || !global.MaweBoot.DATA.segments.includes(drag.segment))) finish(true);
-    if (scaleDrag && (!enabled() || !global.MaweBoot.DATA.segments.includes(scaleDrag.segment))) finishScaleDrag(true);
+    if (drag && (!enabled() || !trackSegments(drag.kind).includes(drag.segment))) finish(true);
+    if (scaleDrag && (!enabled() || !trackSegments(scaleDrag.kind).includes(scaleDrag.segment))) finishScaleDrag(true);
     const override = current?.segment.assOverride;
-    panel.hidden = !enabled() || !current || (!override?.pos && !override?.scale);
+    // 叠加字幕行常驻倍率入口：ASS 模式选中叠加 cue 即可输入缩放，无需先在
+    // 画布上改出覆盖；主字幕保持「有覆盖才显示」的既有行为，不增加编辑区高度。
+    const overlayTarget = current?.kind === 'overlay';
+    panel.hidden = !enabled() || !current || (!overlayTarget && !override?.pos && !override?.scale);
+    if (current) {
+      panel.setAttribute('aria-label', translated(`${trackLabel(current.kind)} ASS 定位`));
+    }
     positionControls.hidden = !override?.pos;
-    scaleControls.hidden = !override?.scale;
+    scaleControls.hidden = !override?.scale && !overlayTarget;
     if (!panel.hidden) {
       const anchor = anchorFor(current.segment);
       if (override?.pos) {
         if (document.activeElement !== xInput) xInput.value = String(roundPosition(anchor.x));
         if (document.activeElement !== yInput) yInput.value = String(roundPosition(anchor.y));
       }
-      if (override?.scale && document.activeElement !== scaleInput) scaleInput.value = currentScale(current.segment).toFixed(2);
+      if (document.activeElement !== scaleInput) scaleInput.value = currentScale(current.segment).toFixed(2);
       document.getElementById('ass-cue-reset').disabled = !override?.pos;
       document.getElementById('ass-cue-scale-reset').disabled = !override?.scale;
     }
     const frame = global.MaweAssCanvas.lastRender;
     const visible = new Set();
     if (enabled() && global.MaweDom.overlayToggle.checked) for (const record of frame?.tracks || []) {
-      if (record.role !== 'main' || record.skipped || !record.bounds) continue;
+      // 主字幕与叠加字幕都提供画布选择/拖动/缩放；扩展轨是固定层，不参与。
+      if ((record.role !== 'main' && record.role !== 'overlay') || record.skipped || !record.bounds) continue;
+      const kind = record.role;
       const id = record.cueId;
-      visible.add(id);
-      let box = boxes.get(id);
+      const key = `${kind}:${id}`;
+      visible.add(key);
+      let box = boxes.get(key);
       if (!box) {
         box = document.createElement('button'); box.type = 'button'; box.className = 'ass-cue-drag-target';
-        box.setAttribute('aria-label', translated('选择主字幕，选中后拖动 ASS 位置'));
+        box.dataset.cueId = String(id);
+        box.dataset.trackKind = kind;
+        box.setAttribute('aria-label', translated(`选择${trackLabel(kind)}，选中后拖动 ASS 位置`));
         box.addEventListener('pointerdown', event => start(event, id, box));
         box.addEventListener('pointermove', move);
         box.addEventListener('pointerup', event => { if (event.pointerId === drag?.pointerId) { move(event); finish(); } });
         box.addEventListener('pointercancel', () => finish(true));
         box.addEventListener('lostpointercapture', () => { if (drag?.box === box) finish(true); });
-        boxes.set(id, box); global.MaweDom.overlayEl.append(box);
+        boxes.set(key, box); global.MaweDom.overlayEl.append(box);
       }
       box.hidden = false;
-      const selected = current?.segment.id === id;
+      const selected = current?.segment.id === id && current?.kind === kind;
       box.classList.toggle('selected', selected);
       const bounds = record.bounds;
       Object.assign(box.style, { left: `${bounds.left / frame.playResX * 100}%`, top: `${bounds.top / frame.playResY * 100}%`,
         width: `${(bounds.right - bounds.left) / frame.playResX * 100}%`, height: `${(bounds.bottom - bounds.top) / frame.playResY * 100}%` });
-      let cueHandles = handles.get(id);
+      let cueHandles = handles.get(key);
       if (!cueHandles) {
         cueHandles = ['nw', 'ne', 'sw', 'se'].map(corner => {
           const handle = document.createElement('button');
           handle.type = 'button'; handle.className = `ass-cue-scale-handle ass-cue-scale-handle--${corner}`;
           handle.dataset.corner = corner;
-          handle.setAttribute('aria-label', translated(`调整主字幕大小（${{ nw: '左上', ne: '右上', sw: '左下', se: '右下' }[corner]}角）`));
+          handle.dataset.cueId = String(id);
+          handle.dataset.trackKind = kind;
+          handle.setAttribute('aria-label', translated(`调整${trackLabel(kind)}大小（${{ nw: '左上', ne: '右上', sw: '左下', se: '右下' }[corner]}角）`));
           handle.addEventListener('pointerdown', event => startScale(event, id, handle));
           handle.addEventListener('pointermove', moveScale);
           handle.addEventListener('pointerup', event => { if (event.pointerId === scaleDrag?.pointerId) { moveScale(event); finishScaleDrag(); } });
@@ -291,7 +321,7 @@
           global.MaweDom.overlayEl.append(handle);
           return handle;
         });
-        handles.set(id, cueHandles);
+        handles.set(key, cueHandles);
       }
       const canScale = singleSelected(id);
       for (const handle of cueHandles) {
@@ -304,10 +334,10 @@
         });
       }
     }
-    for (const [id, box] of boxes) if (!visible.has(id) && drag?.box !== box) {
-      box.remove(); boxes.delete(id);
-      for (const handle of handles.get(id) || []) handle.remove();
-      handles.delete(id);
+    for (const [key, box] of boxes) if (!visible.has(key) && drag?.box !== box) {
+      box.remove(); boxes.delete(key);
+      for (const handle of handles.get(key) || []) handle.remove();
+      handles.delete(key);
     }
   }
   for (const [input, axis] of [[xInput, 'x'], [yInput, 'y']]) input.addEventListener('change', () => {
@@ -363,9 +393,14 @@
     if (!delta) return;
     event.preventDefault(); event.stopImmediatePropagation();
     if (element.classList.contains('ass-cue-drag-target')) {
-      const id = [...boxes].find(([, box]) => box === element)?.[0];
-      const index = global.MaweBoot.DATA.segments.findIndex(segment => segment.id === id);
-      if (index >= 0 && currentTargetId() !== id) global.MaweSelection.selectOnly(index);
+      const box = [...boxes.values()].find(item => item === element);
+      const id = box?.dataset.cueId;
+      const kind = box?.dataset.trackKind;
+      const index = trackSegments(kind).findIndex(segment => segment?.id === id);
+      if (index >= 0 && currentTargetId() !== id) {
+        if (kind === 'overlay') selectOverlayCueRow(index);
+        else global.MaweSelection.selectOnly(index);
+      }
     }
     if (!target()?.segment.assOverride?.pos) return;
     const step = event.shiftKey ? 10 : 1;
