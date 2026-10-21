@@ -2,6 +2,7 @@
 // historical API. ESM init module: the assembler calls this at the
 // file's original manifest position.
 import { createUtilsModule as createDataModule } from './utils/data.js';
+import { createUtilsModule as createProjectTracksModule } from './utils/project-tracks.js';
 import { createUtilsModule as createMarkersModule } from './utils/markers.js';
 import { createUtilsModule as createSplitAlignmentModule } from './utils/split-alignment.js';
 import { createUtilsModule as createSplitTrimModule } from './utils/split-trim.js';
@@ -43,7 +44,10 @@ export function initEditorUtils() {
 const helpers = {
   gapRemoveCore: window.AsrGapRemoveCore,
   getNavigator: () => window.MaweHost.runtime.getNavigator(),
+  getProject: () => window.MaweBoot?.DATA,
 };
+const projectTracksHelpers = createProjectTracksModule(helpers);
+Object.assign(helpers, projectTracksHelpers);
 Object.assign(helpers, createDataModule(helpers));
 Object.assign(helpers, createFontsModule(helpers));
 Object.assign(helpers, createSpeakersModule(helpers));
@@ -64,7 +68,8 @@ Object.assign(helpers, createTimelineModule(helpers));
 Object.assign(helpers, createSettingsModule(helpers));
 Object.assign(helpers, createGapRemoveModule(helpers));
 Object.assign(helpers, createHistoryModule(helpers));
-Object.assign(helpers, createMultiSubtitleModule(helpers));
+const multiSubtitleHelpers = createMultiSubtitleModule(helpers);
+Object.assign(helpers, multiSubtitleHelpers);
 const wordTimingHelpers = createWordTimingModule(helpers);
 Object.assign(helpers, createWordSplitModule(helpers));
 Object.assign(helpers, createSrtModule(helpers));
@@ -390,6 +395,8 @@ const {
 } = helpers;
 
 window.AsrEditorUtils = {
+  ...projectTracksHelpers,
+  ...multiSubtitleHelpers,
 ...wordTimingHelpers,
   PROJECT_SCHEMA,
   supportsProjectSchema,

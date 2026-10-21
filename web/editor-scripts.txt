@@ -12,6 +12,7 @@ shared/host/files.js
 shared/host/server-api.js
 editor/boot/editor-host.js
 shared/gap-remove-core.js
+shared/utils/project-tracks.js
 shared/utils/data.js
 shared/utils/fonts.js
 shared/utils/speakers.js

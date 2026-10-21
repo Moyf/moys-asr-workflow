@@ -6,6 +6,28 @@
     if (!text.trim() || entry.source.trim() === text.trim()) return entry.source;
     return packet.translationFirst ? `${text}\n${entry.source}` : `${entry.source}\n${text}`;
   }
+  function projectTracks(project) {
+    if (project?.schema !== 'moy.asr.project.v3' || !Array.isArray(project.tracks)
+        || ['segments', 'multi_subtitle', 'overlay_track'].some(key => Object.hasOwn(project, key))) throw new Error('工程格式无效。');
+    const trackIds = new Set(), cueIds = new Set();
+    let mainCount = 0, overlayCount = 0;
+    for (const track of project.tracks) {
+      if (typeof track?.id !== 'string' || !track.id || trackIds.has(track.id)
+          || !['main', 'extension', 'overlay'].includes(track.role) || typeof track.enabled !== 'boolean'
+          || !Array.isArray(track.segments)) throw new Error('工程轨道无效。');
+      trackIds.add(track.id);
+      if (track.role === 'main') { mainCount += 1; if (!track.enabled) throw new Error('主轨不能关闭。'); }
+      if (track.role === 'overlay') overlayCount += 1;
+      for (const cue of track.segments) {
+        if (typeof cue?.id !== 'string' || !cue.id || cueIds.has(cue.id) || typeof cue.text !== 'string'
+            || !Number.isInteger(cue.start) || !Number.isInteger(cue.end) || cue.start < 0 || cue.end <= cue.start) throw new Error('工程字幕ID或时间无效。');
+        cueIds.add(cue.id);
+      }
+    }
+    if (mainCount !== 1 || overlayCount > 1) throw new Error('工程主轨或叠加轨无效。');
+    return project.tracks;
+  }
+  function mainTrack(project) { return project.tracks.find(track => track.role === 'main'); }
   async function readPacket(review) {
     if (typeof review?.snapshot !== 'string' || !/^[a-f0-9]{64}$/.test(review.sha256)) throw new Error('核对快照或指纹无效。');
     const digest = await root.crypto.subtle.digest('SHA-256', new TextEncoder().encode(review.snapshot));
@@ -16,21 +38,16 @@
         || !['single', 'backfill', 'bilingual', 'tracks'].includes(packet.mode)
         || typeof packet.translationFirst !== 'boolean') throw new Error('核对协议无效。');
     for (const project of [packet.source, packet.result]) {
-      if (project?.schema !== 'moy.asr.project.v1' || !Array.isArray(project.segments)) throw new Error('工程格式无效。');
-      const ids = new Set();
-      for (const cue of project.segments) {
-        if (typeof cue.id !== 'string' || !cue.id || ids.has(cue.id) || typeof cue.text !== 'string'
-            || !Number.isInteger(cue.start) || !Number.isInteger(cue.end) || cue.start < 0 || cue.end <= cue.start) throw new Error('工程字幕ID或时间无效。');
-        ids.add(cue.id);
-      }
+      projectTracks(project);
     }
-    const source = new Map(packet.source.segments.map(cue => [cue.id, cue]));
-    const target = new Map(packet.result.segments.map(cue => [cue.id, cue]));
+    const sourceSegments = mainTrack(packet.source).segments, resultSegments = mainTrack(packet.result).segments;
+    const source = new Map(sourceSegments.map(cue => [cue.id, cue]));
+    const target = new Map(resultSegments.map(cue => [cue.id, cue]));
     const track = packet.mode === 'tracks' ? translationTrack(packet.result, packet.translationTrackId) : null;
     const extensions = new Map((track?.segments || []).map(cue => [cue.id, cue]));
     const seenTargets = new Set();
     const seen = new Set();
-    const expected = packet.source.segments.filter(cue => target.has(cue.id)).map(cue => cue.id);
+    const expected = sourceSegments.filter(cue => target.has(cue.id)).map(cue => cue.id);
     if (target.size !== expected.length || packet.entries.length !== expected.length) throw new Error('源工程与结果映射不完整。');
     for (const [index, entry] of packet.entries.entries()) {
       const left = source.get(entry.id), right = target.get(entry.id);
@@ -49,12 +66,12 @@
       } else if (compose(entry, entry.translation, packet) !== right.text) throw new Error('字幕映射、原文或时间不一致。');
       seen.add(entry.id);
     }
-    if (packet.source.segments.some(cue => !target.has(cue.id) && cue.text.trim())) throw new Error('结果漏掉非空字幕。');
+    if (sourceSegments.some(cue => !target.has(cue.id) && cue.text.trim())) throw new Error('结果漏掉非空字幕。');
     if (track && seenTargets.size !== extensions.size) throw new Error('副字幕映射不完整。');
     return packet;
   }
   function translationTrack(project, id) {
-    const tracks = project.multi_subtitle?.tracks?.filter(track => track.id === id);
+    const tracks = project.tracks.filter(track => track.id === id && track.role === 'extension');
     if (typeof id !== 'string' || tracks?.length !== 1 || !Array.isArray(tracks[0].segments)) throw new Error('译文副轨无效。');
     const ids = new Set();
     for (const cue of tracks[0].segments) {
@@ -70,7 +87,7 @@
     const entries = new Map(packet.entries.map(entry => [entry.id, entry]));
     const seen = new Set(), result = JSON.parse(JSON.stringify(packet.result));
     const track = packet.mode === 'tracks' ? translationTrack(result, packet.translationTrackId) : null;
-    const targets = new Map((track ? track.segments : result.segments).map(cue => [cue.id, cue]));
+    const targets = new Map((track ? track.segments : mainTrack(result).segments).map(cue => [cue.id, cue]));
     let changed = 0;
     for (const edit of edits) {
       const entry = entries.get(edit?.id);
