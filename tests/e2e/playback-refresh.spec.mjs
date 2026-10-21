@@ -43,30 +43,41 @@ test('playback refreshes the subtitle preview and playhead without timeupdate', 
   });
 
   await page.evaluate(() => {
-    MaweBoot.DATA.segments.splice(
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(
       0,
-      MaweBoot.DATA.segments.length,
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
       { start: 0, end: 100, text: 'First', items: [] },
       { start: 100, end: 10000, text: 'Second', items: [] },
     );
-    MaweBoot.DATA.multi_subtitle = {
-      schema: 'moy.asr.multi_subtitle.v1',
-      enabled: true,
-      display_mode: 'both',
-      tracks: [{
-        id: 'extension-1',
-        role: 'extension',
-        name: 'Extension',
-        language: 'English',
-        split_mode: 'word',
-        source_name: 'extension.srt',
-        segments: [
-          { start: 0, end: 100, text: 'First extension' },
-          { start: 100, end: 10000, text: 'Second extension' },
-        ],
-      }],
-      bindings: [],
-    };
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: {
+          schema: 'moy.asr.multi_subtitle.v1',
+          enabled: true,
+          display_mode: 'both',
+          tracks: [{
+            id: 'extension-1',
+            role: 'extension',
+            name: 'Extension',
+            language: 'English',
+            split_mode: 'word',
+            source_name: 'extension.srt',
+            segments: [
+              { start: 0, end: 100, text: 'First extension' },
+              { start: 100, end: 10000, text: 'Second extension' },
+            ],
+          }],
+          bindings: [],
+        },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+    }
     const media = document.getElementById('player');
     media.currentTime = 0.02;
     MaweCuePanel.renderAll();

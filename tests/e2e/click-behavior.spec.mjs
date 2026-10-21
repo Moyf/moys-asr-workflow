@@ -184,8 +184,8 @@ test('list click auto-scroll can be disabled without disabling seek', async ({ p
   await autoScroll.uncheck();
 
   await page.evaluate(() => {
-    MaweBoot.DATA.segments.push(...Array.from({ length: 34 }, (_, offset) => {
-      const index = MaweBoot.DATA.segments.length + offset;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.push(...Array.from({ length: 34 }, (_, offset) => {
+      const index = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length + offset;
       const start = index * 5000;
       return { start, end: start + 1000, text: `Extra ${index}`, items: [] };
     }));
@@ -209,8 +209,8 @@ test('list click auto-scroll can be disabled without disabling seek', async ({ p
 test('default list click keeps a cue already in the middle in place', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments.push(...Array.from({ length: 34 }, (_, offset) => {
-      const index = MaweBoot.DATA.segments.length + offset;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.push(...Array.from({ length: 34 }, (_, offset) => {
+      const index = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length + offset;
       const start = index * 5000;
       return { start, end: start + 1000, text: `Extra ${index}`, items: [] };
     }));
@@ -251,7 +251,7 @@ test('default list click selects and seeks to cue start while keeping playback',
   await expect(page.locator('.cue[data-idx="4"]')).toHaveClass(/selected/, { timeout: 150 });
   await page.waitForFunction(() => {
     const player = document.getElementById('player');
-    const seg = MaweBoot.DATA.segments[4];
+    const seg = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[4];
     const delta = player.currentTime - seg.start / 1000;
     return delta > -0.1 && delta < 1;
   }, undefined, { timeout: 5000 });
@@ -282,7 +282,7 @@ test('mouse-click pause setting seeks and pauses active playback', async ({ page
 
   await page.waitForFunction(() => {
     const player = document.getElementById('player');
-    const seg = MaweBoot.DATA.segments[4];
+    const seg = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[4];
     return Math.abs(player.currentTime - seg.start / 1000) < 0.25 && player.paused;
   }, undefined, { timeout: 5000 });
 
@@ -367,7 +367,7 @@ test('the unconfigured Enter shortcut commits and exits cue-panel editing', asyn
   await panel.fill('Alpha committed by Ctrl Enter');
   await panel.press('Control+Enter');
   await expect(panel).not.toBeFocused();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text))
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text))
     .toBe('Alpha committed by Ctrl Enter');
 
   await splitKey.selectOption('ctrl-enter');
@@ -375,7 +375,7 @@ test('the unconfigured Enter shortcut commits and exits cue-panel editing', asyn
   await panel.fill('Alpha committed by Enter');
   await panel.press('Enter');
   await expect(panel).not.toBeFocused();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text))
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text))
     .toBe('Alpha committed by Enter');
 });
 
@@ -396,7 +396,7 @@ test('Escape keeps cue-panel text edits by default and cancels when the setting 
 
   await expect(panel).not.toBeFocused();
   await expect(panel).toHaveValue('This edit is kept');
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('This edit is kept');
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('This edit is kept');
 
   // 开启「操作 → Esc 放弃修改」后：Esc 恢复进入本次编辑前的文本。
   await page.evaluate(() => {
@@ -414,7 +414,7 @@ test('Escape keeps cue-panel text edits by default and cancels when the setting 
 
   await expect(panelAfterReload).not.toBeFocused();
   await expect(panelAfterReload).toHaveValue(original);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe(original);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe(original);
 });
 
 test('Escape exits inline cue editing without saving the text', async ({ page }) => {
@@ -430,7 +430,7 @@ test('Escape exits inline cue editing without saving the text', async ({ page })
 
   await expect(cue).not.toHaveClass(/editing/);
   await expect(text).toHaveText(original);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe(original);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe(original);
   await expect(cue).not.toHaveClass(/dirty/);
   await expect(page.locator('#undo-btn')).toBeDisabled();
 });
@@ -666,7 +666,7 @@ test('B split keeps the source cue visually anchored while lazy rows relayout', 
       '较长字幕用于模拟采访视频中的自然断句和不同的列表行高',
       '中等长度字幕内容',
     ];
-    MaweBoot.DATA.segments = Array.from({ length: 90 }, (_, index) => {
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = Array.from({ length: 90 }, (_, index) => {
       const start = index * 2000;
       return {
         start,
@@ -786,7 +786,7 @@ test('C merge keeps the source cue visually anchored while lazy rows relayout', 
       '较长字幕用于模拟采访视频中的自然断句和不同的列表行高',
       '中等长度字幕内容',
     ];
-    MaweBoot.DATA.segments = Array.from({ length: 90 }, (_, index) => {
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = Array.from({ length: 90 }, (_, index) => {
       const start = index * 2000;
       return {
         start,
@@ -842,30 +842,40 @@ test('C merge keeps the extension cue visually anchored while lazy rows relayout
       'A longer translated subtitle simulates interviews with uneven rows in the cue list',
       'Medium length extension subtitle',
     ];
-    MaweBoot.DATA.multi_subtitle = {
-      schema: 'moy.asr.multi_subtitle.v1',
-      enabled: true,
-      display_mode: 'extension',
-      tracks: [{
-        id: 'extension-1',
-        role: 'extension',
-        name: 'English',
-        language: 'en',
-        split_mode: 'word',
-        source_name: 'translation.srt',
-        segments: Array.from({ length: 90 }, (_, index) => {
-          const start = index * 2000;
-          return {
-            id: `extension-${index}`,
-            start,
-            end: start + 1800,
-            text: `${samples[index % samples.length]} ${index}`,
-          };
-        }),
-      }],
-      bindings: [],
-    };
-    MaweMultiSubtitleCore.normalizedMultiSubtitleReference = null;
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: {
+          schema: 'moy.asr.multi_subtitle.v1',
+          enabled: true,
+          display_mode: 'extension',
+          tracks: [{
+            id: 'extension-1',
+            role: 'extension',
+            name: 'English',
+            language: 'en',
+            split_mode: 'word',
+            source_name: 'translation.srt',
+            segments: Array.from({ length: 90 }, (_, index) => {
+              const start = index * 2000;
+              return {
+                id: `extension-${index}`,
+                start,
+                end: start + 1800,
+                text: `${samples[index % samples.length]} ${index}`,
+              };
+            }),
+          }],
+          bindings: [],
+        },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+    }
     MaweCuePanel.renderAll();
     MaweCueListAnchor.scrollCueToCenter(document.querySelector('.cue[data-ext-idx="56"]'));
   });
@@ -1037,7 +1047,7 @@ test('list click with select-and-seek seeks to cue start but stays paused', asyn
 
   await page.waitForFunction(() => {
     const player = document.getElementById('player');
-    const seg = MaweBoot.DATA.segments[4];
+    const seg = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[4];
     return Math.abs(player.currentTime - seg.start / 1000) < 0.25;
   }, undefined, { timeout: 5000 });
   const paused = await page.evaluate(() => document.getElementById('player').paused);
@@ -1061,7 +1071,7 @@ test('list click with select-and-play seeks to cue start and starts playback', a
 
   await page.waitForFunction(() => {
     const player = document.getElementById('player');
-    const seg = MaweBoot.DATA.segments[4];
+    const seg = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[4];
     return Math.abs(player.currentTime - seg.start / 1000) < 0.5 && !player.paused;
   }, undefined, { timeout: 5000 });
 });

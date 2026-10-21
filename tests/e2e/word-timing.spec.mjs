@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
+import { getMainTrack, cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 
 let tempDir, server;
 test.beforeAll(async () => {
@@ -98,7 +98,11 @@ test('bilingual compact words expose the sentence and low-height overlays stay i
   expect(geometry.exposed).toBeGreaterThanOrEqual(8);
   await setWordTiming(page, false);
   await page.evaluate(() => {
-    MaweBoot.DATA.overlay_track = { enabled: true, segments: [{ id: 'overlay-short', start: 1000, end: 2000, text: 'overlay' }] };
+    {
+      const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+      Object.assign(overlay, { enabled: true, segments: [{ id: 'overlay-short', start: 1000, end: 2000, text: 'overlay' }] });
+      AsrEditorUtils.ensureStableSegmentIds(overlay.segments, overlay.id);
+    }
     MaweCoreState.waveformEditor.setRowHeight(64);
   });
   const short = await row.evaluate(el => {
@@ -115,7 +119,7 @@ test('bilingual compact words expose the sentence and low-height overlays stay i
   expect(short.bottom).toBeCloseTo(short.mainBottom, 0);
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('compact-overlay.png') });
 });
-const source = page => page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments[0])));
+const source = page => page.evaluate(() => JSON.parse(JSON.stringify(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0])));
 for (const mode of ['basic', 'multi']) {
 test(`full word layout preserves sentence height, highlight and body dragging in ${mode}`, async ({ page }, testInfo) => {
   await page.locator(`[data-waveform-mode="${mode}"]`).click();
@@ -148,7 +152,11 @@ test(`full word layout preserves sentence height, highlight and body dragging in
 test('bilingual overlays keep their lane after creation, undo and redo at 192px', async ({ page }) => {
   await page.locator('#multi-subtitle-quick-toggle').click();
   await page.evaluate(() => {
-    MaweBoot.DATA.overlay_track = { enabled: true, segments: [] };
+    {
+      const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+      Object.assign(overlay, { enabled: true, segments: [] });
+      AsrEditorUtils.ensureStableSegmentIds(overlay.segments, overlay.id);
+    }
     MaweCoreState.waveformEditor.setRowHeight(192);
     MaweCoreState.waveformEditor.setSecondsPerRow(10);
   });
@@ -200,9 +208,20 @@ test('word timing separation stays within multi-row single-track waveforms', asy
       - row.querySelector('.waveform-word-block').getBoundingClientRect().bottom;
   });
   await page.evaluate(() => {
-    MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'timing-extension', segments: [
-      { start: 500, end: 7000, text: 'extension text' },
-    ] }] };
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: { enabled: true, tracks: [{ id: 'timing-extension', segments: [
+          { start: 500, end: 7000, text: 'extension text' },
+        ] }] },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+    }
     MaweCuePanel.renderAll();
   });
   await page.locator('[data-waveform-mode="multi"]').click();
@@ -296,7 +315,7 @@ test('temporary display handles partial and absent timings in both waveform mode
 });
 
 test('partially missing text displays matched word punctuation but stays unavailable for conversion', async ({ page }) => {
-  await page.evaluate(() => { MaweBoot.DATA.segments[0].text = '我，真的很喜欢！'; });
+  await page.evaluate(() => { AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '我，真的很喜欢！'; });
   await setWordTiming(page);
   await expect(word(page, 0).locator('.waveform-word-label')).toHaveText('我，');
   await expect(word(page, 1).locator('.waveform-word-label')).toHaveText('很喜欢！');
@@ -341,7 +360,7 @@ test('range selection merges items and unsupported shortcuts never edit the pare
   await page.keyboard.press('h');
   await page.keyboard.press('ArrowLeft');
   expect([...(await source(page)).items.map(item => [item.start, item.end])]).toEqual([[1000, 2500], [3000, 6000]]);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(3);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(3);
   await word(page, 1).click({ modifiers: ['Shift'] });
   await page.keyboard.press('c');
   expect((await source(page)).items).toEqual([expect.objectContaining({ text: '我很喜欢', start: 1000, end: 6000 })]);
@@ -377,7 +396,7 @@ test('Tab outside the waveform cannot redirect word shortcuts to their parent se
     await page.keyboard.press(key);
   }
   expect(await source(page)).toEqual(before);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(3);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(3);
   await page.keyboard.press('c');
   expect((await source(page)).items.length).toBe(1);
   expect((await source(page)).text).toBe(before.text);
@@ -385,10 +404,21 @@ test('Tab outside the waveform cannot redirect word shortcuts to their parent se
 
 test('conversion reviews skips and bindings, is atomic and preserves items on save', async ({ page }, testInfo) => {
   await page.evaluate(() => {
-    MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
-      tracks: [{ id: 'secondary', segments: [{ id: 'secondary-a', start: 500, end: 7000, text: 'I like it' }] }],
-      bindings: [{ id: 'binding-a', track_id: 'secondary', main_segment_ids: ['main-a'], extension_segment_ids: ['secondary-a'] }],
-    };
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+          tracks: [{ id: 'secondary', segments: [{ id: 'secondary-a', start: 500, end: 7000, text: 'I like it' }] }],
+          bindings: [{ id: 'binding-a', track_id: 'secondary', main_segment_ids: ['main-a'], extension_segment_ids: ['secondary-a'] }],
+        },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+    }
     MaweMultiSubtitleCore.normalizeMultiSubtitleState();
     MaweSelection.selectOnly(0);
     MaweSelection.addToSelection(1);
@@ -419,26 +449,27 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
   await page.locator('#word-conversion-confirm').click();
   await expect(page.locator('#word-conversion-dialog')).not.toBeVisible();
   const converted = await page.evaluate(() => ({
-    segments: MaweBoot.DATA.segments, multi: MaweBoot.DATA.multi_subtitle,
+    segments: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA), bindings: MaweBoot.DATA.bindings,
   }));
   expect(converted.segments.length).toBe(4);
   expect(converted.segments.slice(0, 2).map(s => s.text).join('')).toBe('我很喜欢！');
   expect(converted.segments[1].items[0].text).toBe('很喜欢！');
-  expect(converted.multi.bindings).toEqual([]);
-  expect(converted.multi.tracks[0].segments[0].text).toBe('I like it');
+  expect(converted.bindings).toEqual([]);
+  expect(converted.extension.segments[0].text).toBe('I like it');
   await page.keyboard.press('Control+z');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(3);
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.bindings.length)).toBe(1);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(3);
+  expect(await page.evaluate(() => MaweBoot.DATA.bindings.length)).toBe(1);
   await page.keyboard.press('Control+Shift+z');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(4);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(4);
   const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(saved.segments[1].items[0].text).toBe('很喜欢！');
+  expect(getMainTrack(saved).segments[1].items[0].text).toBe('很喜欢！');
   expect(JSON.stringify(saved)).not.toContain('wordTiming');
   await setWordTiming(page);
   await page.evaluate(data => MaweProjectLoad.applyCanonicalProject(data, 'reloaded.mosp'), saved);
   await expect(page.locator('#word-timing-quick-toggle')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('#markers-manage')).toBeHidden();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[1].items[0].text)).toBe('很喜欢！');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].items[0].text)).toBe('很喜欢！');
 });
 
 test('classic linked edges and Alt independence edit only in-sentence items', async ({ page }) => {
@@ -446,7 +477,7 @@ test('classic linked edges and Alt independence edit only in-sentence items', as
     MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
     MaweSettings.EDITOR_SETTINGS.autoSnapAdjacentCues = true;
     MaweSettings.EDITOR_SETTINGS.adjacentBoundaryMode = 'classic';
-    MaweBoot.DATA.segments[0].items = [{ text: '我', start: 1000, end: 3000 }, { text: '很喜欢', start: 3000, end: 6000 }];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items = [{ text: '我', start: 1000, end: 3000 }, { text: '很喜欢', start: 3000, end: 6000 }];
   });
   await setWordTiming(page);
   let handle = await word(page, 0).locator('.right').boundingBox();
@@ -474,8 +505,8 @@ test('classic linked edges and Alt independence edit only in-sentence items', as
 test('dual seam links both sides, cross-row fragments retain only their real edge handles', async ({ page }) => {
   await page.evaluate(() => {
     MaweSettings.EDITOR_SETTINGS.adjacentBoundaryMode = 'dual';
-    MaweBoot.DATA.segments[0].items[0].end = 3000;
-    MaweBoot.DATA.segments[0].items[0].end_frame = 90;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items[0].end = 3000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items[0].end_frame = 90;
     MaweCoreState.waveformEditor.settings.secondsPerRow = 5;
     MaweCoreState.waveformEditor.render();
   });
@@ -498,7 +529,7 @@ test('dual seam links both sides, cross-row fragments retain only their real edg
 test('frame editing and conversion preserve narrow one-frame words through save and reload', async ({ page }, testInfo) => {
   await page.evaluate(() => {
     MaweBoot.DATA.timebase = { unit: 'frames', fps: 30 };
-    const segment = MaweBoot.DATA.segments[0];
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
     segment.start_frame = 15;
     segment.end_frame = 210;
     segment.items = [
@@ -521,8 +552,8 @@ test('frame editing and conversion preserve narrow one-frame words through save 
   await page.evaluate(() => MaweWordTiming.openConversion([0]));
   await page.locator('#word-conversion-confirm').click();
   const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(saved.segments[0]).toMatchObject({ start: 1000, end: 1033, start_frame: 30, end_frame: 31 });
-  expect(saved.segments[0].items).toEqual([expect.objectContaining({ start: 1000, end: 1033, start_frame: 30, end_frame: 31 })]);
+  expect(getMainTrack(saved).segments[0]).toMatchObject({ start: 1000, end: 1033, start_frame: 30, end_frame: 31 });
+  expect(getMainTrack(saved).segments[0].items).toEqual([expect.objectContaining({ start: 1000, end: 1033, start_frame: 30, end_frame: 31 })]);
   await page.evaluate(data => MaweProjectLoad.applyCanonicalProject(data, 'frames.mosp'), saved);
   expect((await source(page)).items[0]).toMatchObject({ start: 1000, end: 1033, start_frame: 30, end_frame: 31 });
 });
@@ -530,7 +561,7 @@ test('frame editing and conversion preserve narrow one-frame words through save 
 test('narrow word centers move without stretching and both edge handles remain usable', async ({ page }) => {
   await page.evaluate(() => {
     MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
-    MaweBoot.DATA.segments[0].items[0] = { text: '我', start: 1000, end: 1033 };
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items[0] = { text: '我', start: 1000, end: 1033 };
   });
   await setWordTiming(page);
   const box = await word(page, 0).boundingBox();
@@ -611,21 +642,21 @@ test('conversion disables unavailable targets and requires review if data change
   await page.keyboard.press('Escape');
   await page.evaluate(() => MaweWordTiming.openConversion([0]));
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].items[0].start = 1100;
-    MaweBoot.DATA.segments[0].items[0].start_frame = 33;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items[0].start = 1100;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items[0].start_frame = 33;
   });
   await page.locator('#word-conversion-confirm').click();
   await expect(page.locator('#word-conversion-dialog')).toBeVisible();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(3);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(3);
   await page.locator('#word-conversion-confirm').click();
   await expect(page.locator('#word-conversion-dialog')).not.toBeVisible();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].start)).toBe(1100);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start)).toBe(1100);
 });
 
 test('English UI does not translate project words or their hover text', async ({ page }) => {
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].text = '字词时间码';
-    MaweBoot.DATA.segments[0].items = [{ text: '字词时间码', start: 1000, end: 6000 }];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '字词时间码';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items = [{ text: '字词时间码', start: 1000, end: 6000 }];
     MAWE_I18N.applyLanguage('en');
   });
   await setWordTiming(page);
@@ -693,7 +724,7 @@ for (const { timebase, startFrame } of [
         const start = timebase.unit === 'frames' ? MaweTimeline.millisecondsFromFrameNumber(startFrame, timebase.fps) : 1000;
         const end = timebase.unit === 'frames' ? MaweTimeline.millisecondsFromFrameNumber(startFrame + 1, timebase.fps) : 1060;
         MaweBoot.DATA.timebase = timebase;
-        MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length,
+        AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(0, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
           { id: 'narrow-before', start: 0, end: start, text: 'Before' },
           { id: 'narrow-text', start, end, text: 'a', items: [{ start, end, text: 'a' }] },
           { id: 'narrow-after', start: adjacent ? end : 4000, end: 5000, text: 'After' },
@@ -701,7 +732,7 @@ for (const { timebase, startFrame } of [
         MaweCuePanel.renderAll();
       }, { timebase, startFrame, adjacent });
       await page.locator('.cue[data-idx="1"]').click();
-      const read = () => page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments)));
+      const read = () => page.evaluate(() => JSON.parse(JSON.stringify(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)));
       const before = await read();
       const expected = structuredClone(before);
       expected[1].text = 'b';
@@ -720,7 +751,7 @@ for (const { timebase, startFrame } of [
       await panel.fill('c');
       await panel.press('Escape');
       expect(withoutDirty(await read())).toEqual(withoutDirty(expected));
-      const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).segments[1]);
+      const saved = await page.evaluate(() => AsrEditorUtils.getMainTrack(JSON.parse(MaweJsonRepair.buildJson())).segments[1]);
       expect(saved).toMatchObject({ start: expected[1].start, end: expected[1].end, text: 'b' });
       expect(saved.items[0]).toMatchObject({ start: expected[1].items[0].start, end: expected[1].items[0].end, text: 'b' });
     });
