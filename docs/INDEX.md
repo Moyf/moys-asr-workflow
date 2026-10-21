@@ -150,6 +150,11 @@
 
 ## 共享计划
 
+<a name="plans-unified-tracks"></a>
+### 统一字幕轨道实施方案
+
+[打开正文](plans/UNIFIED_TRACKS_PLAN.md)
+
 <a name="plan-release-pipeline"></a>
 ### 正式版本归档、官网与更新检测管线
 
