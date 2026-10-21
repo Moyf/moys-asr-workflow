@@ -1188,7 +1188,7 @@ test('marquee selection includes secondary waveform cues', async ({ page }) => {
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   const extensionBox = await waitForLayoutBox(extensionBlock, '副字幕波形块没有布局');
-  const row = extensionBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = extensionBlock.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const rowBox = await waitForLayoutBox(row, '多重字幕波形行没有布局');
   await page.keyboard.down('Shift');
   await page.mouse.move(Math.max(rowBox.x + 4, extensionBox.x - 32), extensionBox.y + extensionBox.height / 2);
@@ -2303,6 +2303,9 @@ test('normal extension clicks replace stale main selection with the clicked bind
   expect(await page.evaluate(() => [...window.MAWE_EDITOR_BRIDGE.selectedIdxs])).toEqual([]);
   await page.keyboard.press('g');
   await expect(page.locator('#hint-stack')).toContainText('请点击一条主字幕完成绑定');
+  const mainIds = await page.evaluate(() => Object.fromEntries(
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(segment => [segment.text, segment.id]),
+  ));
   const extensionIds = await page.evaluate(() => Object.fromEntries(
     AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.text, segment.id]),
   ));
@@ -2310,8 +2313,8 @@ test('normal extension clicks replace stale main selection with the clicked bind
     main: binding.source_segment_ids,
     extension: binding.target_segment_ids,
   })))).toEqual([
-    { main: ['main-001'], extension: [extensionIds['你好，世界。']] },
-    { main: ['main-002'], extension: [extensionIds['第二句。']] },
+    { main: [mainIds['Hello world.']], extension: [extensionIds['你好，世界。']] },
+    { main: [mainIds['Second line.']], extension: [extensionIds['第二句。']] },
   ]);
   await page.keyboard.press('Escape');
 });
@@ -2890,7 +2893,7 @@ test('keeps the main range fixed when its extension follower hits another extens
 
   const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
   const handle = mainBlock.locator('.waveform-cue-handle.right');
-  const row = mainBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = mainBlock.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const [handleBox, rowBox, rowStart, rowEnd] = await Promise.all([
     handle.boundingBox(),
     row.boundingBox(),
@@ -2953,7 +2956,7 @@ test('lets an extension drag move only the extension cue beyond the main-track b
   const block = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   const handle = block.locator('.waveform-cue-handle.right');
   await expect(handle).toBeVisible();
-  const row = block.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = block.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const [handleBox, rowBox, rowStart, rowEnd] = await Promise.all([
     handle.boundingBox(),
     row.boundingBox(),
@@ -3638,7 +3641,7 @@ test('restores squeezed bound extension subtitles when an Alt drag is pulled bac
   }]);
 
   const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
-  const row = mainBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = mainBlock.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const box = await waitForLayoutBox(mainBlock, '主字幕挤压恢复测试没有波形块');
   const rowGeometry = await row.evaluate((element) => ({
     width: element.getBoundingClientRect().width,
@@ -3795,7 +3798,7 @@ test('snaps an extension cue to main-track boundaries when cross-track snapping 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"]').first();
   await expect(extensionBlock).toBeVisible();
   await expect(page.locator('#multi-subtitle-cross-track-snap')).toBeChecked();
-  const row = extensionBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = extensionBlock.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const rowGeometry = await row.evaluate((element) => ({
     width: element.getBoundingClientRect().width,
     startMs: Number(element.dataset.startMs),
@@ -3907,7 +3910,7 @@ test('uses the split dialog for waveform main splitting when word timestamps are
   const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
   await expect(block).toBeVisible();
   const box = await waitForLayoutBox(block, '主字幕波形块没有布局');
-  const row = block.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = block.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const rowBox = await waitForLayoutBox(row, '主字幕波形行没有布局');
   const rowStart = Number(await row.getAttribute('data-start-ms'));
   const rowEnd = Number(await row.getAttribute('data-end-ms'));
@@ -4082,7 +4085,7 @@ test('keeps the waveform pointer as the absolute cut in a linked split dialog', 
   const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
   await expect(block).toBeVisible();
   const blockBox = await waitForLayoutBox(block, '联动拆分主字幕波形块没有布局');
-  const row = block.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = block.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const rowBox = await waitForLayoutBox(row, '联动拆分波形行没有布局');
   const rowStart = Number(await row.getAttribute('data-start-ms'));
   const rowEnd = Number(await row.getAttribute('data-end-ms'));

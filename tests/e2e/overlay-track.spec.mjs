@@ -172,10 +172,12 @@ test('edits an independent overlay track, restores it through history, and expor
   await expect.poll(() => page.evaluate(() => window.__overlayTrackExports.length)).toBe(1);
   const savedProject = await page.evaluate(() => window.__overlayTrackExports[0].content);
   const savedOverlay = getOverlayTrack(assertCanonical(JSON.parse(savedProject)));
+  expect(await page.evaluate(() => AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0]._dirty)).toBe(true);
+  expect(savedOverlay.segments[0]).not.toHaveProperty('_dirty');
   expect(savedOverlay.enabled).toBe(true);
   expect(savedOverlay.segments).toHaveLength(1);
   expect(savedOverlay.segments[0]).toMatchObject({
-    id: 'overlay-001', start: 500, end: 1500, text: 'overlay edited', _dirty: true,
+    id: 'overlay-001', start: 500, end: 1500, text: 'overlay edited',
   });
 
   await page.locator('#subtitle-export-btn').click();
@@ -414,7 +416,7 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
   const project = {
     segments: [
-      { id: 'head-1', start: 0, end: 900, text: 'red head', color: { name: 'red' } },
+      { id: 'head-1', start: 0, end: 900, text: 'red head', color: { name: 'red', vendor: { keep: false, zero: 0 } } },
       { id: 'member-1', start: 1000, end: 1900, text: 'red member', color_ref: { headIdx: 0 } },
       { id: 'plain-1', start: 2000, end: 2900, text: 'plain cue' },
     ],
@@ -423,9 +425,11 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   await page.goto(server.url);
   await dropProject(page, project);
   await expect(page.locator('.cue[data-idx="2"]')).toHaveCount(1);
+  const beforeMove = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+  const originalGroupIds = getMainTrack(beforeMove).segments.slice(0, 2).map(cue => cue.color_group_id);
+  expect(originalGroupIds[0]).toBe(originalGroupIds[1]);
 
-  // 右键把颜色 head 转为叠加字幕：颜色标记跟随（物化为自持 head），
-  // 主轨剩余组员按组拆分语义提升为新 head，不产生跨轨引用。
+  // 普通换轨保留稳定组归属；轨内渲染投影分别派生各轨自己的范围。
   await page.locator('.cue[data-idx="0"]').click({ button: 'right', force: true });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
   // 「转为叠加字幕」收纳在「高级操作」二级菜单内，先展开再点击。
@@ -435,6 +439,9 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveClass(/has-color/);
 
   const afterOut = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+  expect(getOverlayTrack(afterOut).segments[0].color_group_id).toBe(originalGroupIds[0]);
+  expect(getMainTrack(afterOut).segments[0].color_group_id).toBe(originalGroupIds[1]);
+  expect(afterOut.subtitle_groups).toEqual(beforeMove.subtitle_groups);
   expect(renderedSegments(afterOut, 'overlay')[0]).toMatchObject({ id: 'head-1', text: 'red head' });
   expect(renderedSegments(afterOut, 'overlay')[0].color).toMatchObject({ name: 'red', start: 0, end: 900 });
   expect(await page.evaluate(() => {
@@ -452,7 +459,9 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   const afterBack = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(renderedSegments(afterBack, 'overlay')).toHaveLength(0);
   expect(renderedSegments(afterBack, 'main').find((segment) => segment.id === 'head-1').color)
-    .toMatchObject({ name: 'red', start: 0, end: 900 });
+    .toMatchObject({ name: 'red', start: 0, end: 1900 });
+  expect(getMainTrack(afterBack).segments.slice(0, 2).map(cue => cue.color_group_id)).toEqual(originalGroupIds);
+  expect(afterBack.subtitle_groups).toEqual(beforeMove.subtitle_groups);
   const dangling = [
     ...renderedSegments(afterBack, 'main'),
     ...(renderedSegments(afterBack, 'overlay') || []),
@@ -462,6 +471,9 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
     return !head || !head.color;
   });
   expect(dangling).toEqual([]);
+  await page.keyboard.press('ControlOrMeta+z');
+  await page.keyboard.press('ControlOrMeta+z');
+  expect(await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()))).toEqual(beforeMove);
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
