@@ -20,11 +20,6 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function cloneJsonValue(value) {
-    return value == null ? null : JSON.parse(JSON.stringify(value));
-  }
-
-
   function clampInteger(value, fallback, minimum, maximum) {
     const rounded = Math.round(Number(value));
     return Math.min(maximum, Math.max(minimum, Number.isFinite(rounded) ? rounded : fallback));

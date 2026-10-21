@@ -400,6 +400,7 @@ const {
 } = helpers;
 
 window.AsrEditorUtils = {
+  cloneJsonValue: helpers.cloneJsonValue,
   ...projectTracksHelpers,
   ...multiSubtitleHelpers,
   ...subtitleGroupHelpers,
