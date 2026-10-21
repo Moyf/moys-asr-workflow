@@ -4,11 +4,83 @@
 
 用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
 
-适用版本：对应 `edit.py` 和 `maw.asr.qwen` 模块的当前实现。
+适用版本：`2.0dev` 的统一轨道草案。当前写出 `moy.asr.project.v3`；无 schema 的历史工程、v1 和 PR239 的 v2 在导入边界迁移为 v3，未知版本拒绝。旧客户端不能打开 v3，升级前请保留原文件和备份。
+
+## 当前结构：v3 统一字幕轨道
+
+三类字幕使用同一 `tracks[]`。编辑器运行态、历史与保存都只存这份数据，不再同时维护顶层 `segments`、`multi_subtitle` 或 `overlay_track`。
+
+```json
+{
+  "schema": "moy.asr.project.v3",
+  "media": "clip.mp4",
+  "timebase": { "unit": "milliseconds", "fps": 30 },
+  "tracks": [
+    {
+      "id": "main", "role": "main", "name": "主字幕", "enabled": true,
+      "language": "zh", "split_mode": "continuous",
+      "segments": [{ "id": "cue-1", "start": 5000, "end": 6000, "text": "你好", "color_group_id": "color-1" }]
+    },
+    {
+      "id": "english", "role": "extension", "name": "英语", "enabled": true,
+      "language": "en", "split_mode": "word",
+      "segments": [{ "id": "cue-2", "start": 5000, "end": 6000, "text": "Hello", "color_group_id": "color-1" }]
+    },
+    { "id": "overlay", "role": "overlay", "name": "叠加字幕", "enabled": false, "segments": [] }
+  ],
+  "bilingual": { "display_mode": "both", "active_track_id": "english" },
+  "bindings": [{
+    "id": "binding-1", "source_track_id": "main", "target_track_id": "english",
+    "source_segment_ids": ["cue-1"], "target_segment_ids": ["cue-2"],
+    "start_offset_ms": 0, "end_offset_ms": 0
+  }],
+  "subtitle_groups": { "next_id": 2, "color": [{ "id": "color-1", "value": { "name": "yellow" } }], "sticker": [] }
+}
+```
+
+| 字段 | v3 规则 |
+| --- | --- |
+| `tracks` | 必填数组；恰好一条 main、至多一条 overlay，可保留多条 extension。数组顺序不决定角色 |
+| `tracks[*].id` | 工程内唯一、非空字符串，最多 160 个 Unicode 码点；角色交换、改名、排序不改 ID |
+| `role` / `name` / `enabled` / `segments` | 所有轨道共同字段。role 仅 main、extension、overlay；main 必须启用。关闭轨道不删除内容或关系 |
+| 轨道来源元数据 | `language`、`language_source`、`split_mode`、`timestamp_granularity`、`model`、`preserve_punctuation`、`source_name` 跟随具体轨；`split_mode_override` 保留旧主轨手动覆盖 |
+| cue ID 与时间 | cue ID 跨所有轨全局唯一；start/end 和 items 均为源媒体整数毫秒。允许合法零时长标点 item，cue 本身仍须 start < end |
+| `bilingual` | 显示配置；active_track_id 指向实际 extension；主轨/副轨/双列模式沿用现有产品语义，副轨关闭后保留活动选择 |
+| `bindings` | 显式两端轨 ID 和 cue ID；目前 source 为 main、target 为 extension，两端各一个 cue。offset 与真实端点的整数毫秒差一致 |
+| `subtitle_groups` | v2 独立组表延续；cue 仅引用 color_group_id / sticker_group_id；组 value 的未知字段保留；区间由实际成员计算 |
+| 工程字段 | 媒体、媒体音轨清单、timebase、audio_processing、gap_remove、markers、workspace、preview 等仍属于工程，媒体音轨不转成字幕轨 |
+
+轨道内部维持现有时间顺序和非重叠约束，轨道之间可以重叠。逐句 disabled 与整轨 enabled 分别生效。导出按入口选择主轨、活动且开启的副轨和开启的叠加轨；保存保留全部轨道。表情烧录与 FCP 组计划只从实际参与的启用成员计算范围，同组输出一次。Resolve 保持外部 v1 协议，Resolve / OTIO 贴图仍按逐句区间展开，不填满句间空隙。
+
+主副轨交换先检查所有绑定能否重映射，无法完整重映射则原子拒绝，不静默删关系。交换保留每条字幕自身的组属性；撤销恢复完整内容。拆分保留首段 ID，其余生成全局唯一 ID；移动、合并和删除同步维护关系。
+
+普通主轨 / 叠加轨换轨保留全局组归属，来回移动后同组范围仍由全体成员派生；不再受旧轨内 headIdx 引用限制。显式移出组和删除中段则保留原操作的拆组语义，前后部分成为独立稳定组。
+
+v3 不接受混用新旧容器、重复 ID、悬空活动轨 / 绑定 / 组引用或未知 schema。导入在提交 DATA、绑定媒体和写盘前校验；失败不修改当前工程和磁盘。未识别的工程、轨道、cue、item、binding、组值字段保留，false / 0 / 空对象 / 空数组也不能丢失。打开工程不自动清理标点或改写原文。
+
+### 旧格式迁移
+
+| 旧字段 | v3 位置 |
+| --- | --- |
+| 顶层 `segments` | role 为 main 的 track.segments |
+| `overlay_track` | role 为 overlay 的 track，保留 enabled 和未知字段 |
+| `multi_subtitle.tracks` | role 为 extension 的 tracks，稳定保留活动选择 |
+| `multi_subtitle.enabled` | 各 extension.enabled |
+| `multi_subtitle` 的显示和未知容器字段 | `bilingual` |
+| `multi_subtitle.bindings` | 顶层 `bindings`，补齐显式两端与偏移 |
+| 顶层语言 / 分段 / 模型来源字段 | main track 上的同名字段 |
+| `multi_subtitle.main_split_mode` | main track.split_mode_override |
+| v1 color/sticker 与 headIdx 引用 | 在原轨原数组上解析，再转独立组表和稳定组 ID |
+
+v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步映射绑定（包括旧 normalizer 生成的隐式 ID）。v2 保留已有全局 cue ID 和独立组表，坏引用明确拒绝。legacy ASS scale 保留原来的两位舍入与默认值省略规则，未知属性仍保留；v3 严格读入不二次改写值。
+
+媒体时间不因迁移或 gap_remove 改写。烧录保持 `alignFirstStart: false`，首句在 5 秒仍位于源素材 5 秒；独立字幕导出可另行选择首句归零。迁移和保存细节见[统一轨道方案](../plans/UNIFIED_TRACKS_PLAN.md)。
 
 ---
 
-## 一、顶层结构
+## 一、v1 历史结构及共享字段参考
+
+以下旧容器示例描述迁移输入。v3 不再写出这些旧容器；通用 cue、媒体、波形、预览、空隙和工作区字段的详细规则继续适用，字幕路径按上方映射阅读。
 
 ```json
 {
