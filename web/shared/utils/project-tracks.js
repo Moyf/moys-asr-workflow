@@ -11,7 +11,7 @@ export function createUtilsModule() {
   const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
   const clone = value => JSON.parse(JSON.stringify(value));
-  const id = value => typeof value === 'string' && value.trim().length > 0 && value.length <= 160
+  const id = value => typeof value === 'string' && value.trim().length > 0 && Array.from(value).length <= 160
     ? value.trim() : null;
   const integer = value => Number.isSafeInteger(value);
 
@@ -25,7 +25,7 @@ export function createUtilsModule() {
 
   function fail(path, message) { throw new ProjectTracksError([{ path, message }]); }
   function unique(base, reserved, used = new Set()) {
-    base = base.slice(0, 150);
+    base = Array.from(base).slice(0, 150).join('');
     let candidate = base;
     let suffix = 2;
     while (reserved.has(candidate) || used.has(candidate)) candidate = `${base}-${suffix++}`;
@@ -417,7 +417,7 @@ export function createUtilsModule() {
       if (own(binding, 'id') && (!bindingId || usedBindings.has(bindingId))) fail(`${path}.id`, 'must be a unique binding ID');
       if (!bindingId) bindingId = unique(`binding-${index + 1}`, bindingIds, usedBindings);
       usedBindings.add(bindingId);
-      const targetId = binding.track_id ?? (extensionTracks.length === 1 ? extensionTracks[0].id : null);
+      const targetId = binding.track_id == null ? (extensionTracks.length === 1 ? extensionTracks[0].id : null) : id(binding.track_id);
       const target = extensionTracks.find(track => track.id === targetId);
       if (!target) fail(`${path}.track_id`, 'must reference an extension track');
       const endpoints = (plural, singular, trackId) => {

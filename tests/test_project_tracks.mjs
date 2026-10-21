@@ -154,9 +154,17 @@ for (const example of fixture('invalid')) test(`shared invalid case: ${example.n
 
 test('v2 whitespace identities normalize while canonical v3 identities remain strict', () => {
   const legacy = fixture('v2-cross-track.input'); legacy.segments[0].id = ' source ';
+  legacy.multi_subtitle.bindings[0].track_id = ' fr ';
   assert.equal(model.importProject(legacy).project.tracks[0].segments[0].id, 'source');
   const current = canonical(); current.tracks[0].segments[0].id = ' cue-main ';
   rejects(current, '$.tracks[0].segments[0].id');
+});
+
+test('opaque Unicode IDs count characters consistently across Python and JavaScript', () => {
+  const input = { segments: [], multi_subtitle: { tracks: [{ id: '😀'.repeat(160), segments: [{ start: 0, end: 10, text: 'A' }] }] } };
+  const project = model.importProject(input).project;
+  assert.equal(Array.from(project.tracks[1].id).length, 160);
+  assert.equal(Array.from(project.tracks[1].segments[0].id).length, 150);
 });
 
 test('opaque IDs with colons cannot collide in binding uniqueness keys', () => {
