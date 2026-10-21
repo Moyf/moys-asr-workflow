@@ -1,18 +1,47 @@
 // 无 pywebview 后端时的 mock API（浏览器直接打开页面用）。
 
 function mockApi() {
-  let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, theme: null, outputSubfolder: true, perVideoSubfolder: false, attachModelName: false, notifyOnComplete: false };
+  let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, postprocessVerified: {}, theme: null, outputSubfolder: true, perVideoSubfolder: false, attachModelName: false, notifyOnComplete: false };
   const chainedPath = (path, operation, fallback) => path
     ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
     : fallback;
+  const postprocessSettings = {};
+  const apiKeyRequired = (id, baseUrl) => {
+    if (!isCustomSlotId(id)) return true;
+    try {
+      const url = String(baseUrl || "");
+      return !["localhost", "127.0.0.1", "[::1]"].includes(new URL(url.includes("://") ? url : `http://${url}`).hostname);
+    } catch { return true; }
+  };
+  const savePostprocessSettings = ({ providerId, apiKey, ...values }) => {
+    const previous = postprocessSettings[providerId] || {};
+    const next = { ...previous };
+    for (const key of ["baseUrl", "model", "reasoningMode", "displayName"]) {
+      if (typeof values[key] === "string") next[key] = values[key].trim();
+    }
+    const previousKey = saved.postprocessApiKeys[providerId] || "";
+    if (apiKey) saved.postprocessApiKeys[providerId] = apiKey;
+    if (previous.baseUrl !== next.baseUrl || previous.model !== next.model || previousKey !== (saved.postprocessApiKeys[providerId] || "")) {
+      saved.postprocessVerified[providerId] = false;
+    }
+    postprocessSettings[providerId] = next;
+    return {
+      ok: true, providerId, ...next,
+      label: isCustomSlotId(providerId) ? (next.displayName || "Custom API (or local model)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")),
+      maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "",
+      apiKeyRequired: apiKeyRequired(providerId, next.baseUrl),
+      verified: Boolean(saved.postprocessVerified[providerId]),
+    };
+  };
   let modelPrepareTimer = 0;
   let alignmentPrepareTimer = 0;
   let alignmentModels = [
-    { id: "qwen3-forced-aligner-0.6b", modelId: "qwen3-forced-aligner-0.6b", engine: "qwen", modelRef: "Qwen/Qwen3-ForcedAligner-0.6B", label: "Qwen3-ForcedAligner 0.6B", note: "文本 + 音频输入，输出字词级时间码；复用 Qwen Local Hugging Face 缓存", estimatedSize: "1.7G+", deviceSupport: "gpu_preferred", resourceLevel: "medium", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
-    { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC", note: "已知稿对齐；中英及多方言；CPU 可运行；字词时间码", estimatedSize: "0.9G", deviceSupport: "cpu", resourceLevel: "low", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+    { id: "qwen3-forced-aligner-0.6b", modelId: "qwen3-forced-aligner-0.6b", engine: "qwen", modelRef: "Qwen/Qwen3-ForcedAligner-0.6B", label: "Qwen3-ForcedAligner 0.6B", note: "文本 + 音频输入，输出字词级时间码；复用 Qwen Local Hugging Face 缓存", runtimePackages: ["qwen_asr", "torch"], estimatedSize: "1.7G+", deviceSupport: "gpu_preferred", resourceLevel: "medium", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
+    { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC", note: "已知稿对齐；中英及多方言；CPU 可运行；字词时间码", runtimePackages: ["sherpa_onnx", "soundfile"], estimatedSize: "0.9G", deviceSupport: "cpu", resourceLevel: "low", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
   ];
   return {
     get_config: async () => {
+      const verifiedProvider = (id) => Boolean(saved.postprocessVerified?.[id]);
       const config = {
       platform: /^Mac/u.test(navigator.platform) ? "darwin" : "win32",
       apiKey: saved.apiKey,
@@ -35,19 +64,31 @@ function mockApi() {
       perVideoSubfolder: saved.perVideoSubfolder,
       attachModelName: saved.attachModelName,
       notifyOnComplete: saved.notifyOnComplete === true,
-      appVersion: "1.9.0",
+      appVersion: "1.10.0-beta.1",
       asrPresetRoot: saved.asrPresetRoot || "D:\\Models\\MAW\\asr-presets",
       asrPresetRootConfigured: Boolean(saved.asrPresetRoot),
       serverPort: null,
       stickerDir: saved.stickerDir || "",
       postprocessProviders: [
-        { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
-        { id: "zhipu", label: "智谱 Coding Plan", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", model: "glm-5.2", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
-        { id: "qwen", label: "阿里云 Qwen", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
-        { id: "custom", label: saved.customDisplayName || "Custom API (or local model)", defaultLabel: "Custom API (or local model)", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
-        { id: "custom2", label: "Custom API #2", defaultLabel: "Custom API #2", displayName: "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
-        { id: "custom3", label: "Custom API #3", defaultLabel: "Custom API #3", displayName: "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
-      ],
+        { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-flash", reasoningMode: "off", maskedApiKey: "", verified: verifiedProvider("deepseek"), hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
+        { id: "zhipu", label: "智谱 Coding Plan", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", model: "glm-5.2", reasoningMode: "off", maskedApiKey: "", verified: verifiedProvider("zhipu"), hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
+        { id: "qwen", label: "阿里云 Qwen", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", reasoningMode: "off", maskedApiKey: "", verified: verifiedProvider("qwen"), hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
+        { id: "custom", label: saved.customDisplayName || "Custom API (or local model)", defaultLabel: "Custom API (or local model)", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: verifiedProvider("custom"), hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
+        { id: "custom2", label: "Custom API #2", defaultLabel: "Custom API #2", displayName: "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: verifiedProvider("custom2"), hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
+        { id: "custom3", label: "Custom API #3", defaultLabel: "Custom API #3", displayName: "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: verifiedProvider("custom3"), hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
+      ].map((item) => {
+        const values = postprocessSettings[item.id] || {};
+        const baseUrl = values.baseUrl ?? item.baseUrl;
+        const model = values.model ?? item.model;
+        return {
+          ...item, ...values, baseUrl, model,
+          label: values.displayName || item.defaultLabel || item.label,
+          maskedApiKey: saved.postprocessApiKeys[item.id] ? "sk-…mock" : "",
+          hasApiKey: Boolean(saved.postprocessApiKeys[item.id]),
+          apiKeyRequired: apiKeyRequired(item.id, baseUrl),
+          hasBaseUrl: Boolean(baseUrl), hasModel: Boolean(model),
+        };
+      }),
       postprocessAutoPlan: saved.postprocessAutoPlan || { version: 1, enabled: false, retainIntermediate: true, steps: [] },
       modelCacheRoot: saved.modelCacheRoot || "D:\\Models\\MAW",
       localRuntime: { status: "missing", ready: false, path: "", pythonPath: "", modelCachePath: saved.modelCacheRoot || "D:\\Models\\MAW", detail: "" },
@@ -212,7 +253,8 @@ function mockApi() {
       const runtime = state.config?.localRuntime || { status: "missing", ready: false };
       const installed = Boolean(runtime.ready);
       const components = ["faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"].map((name) => ({ name, required: true, installed }));
-      return { ok: true, ...runtime, inventory: { status: runtime.status || "missing", ready: installed, runtimeVersionExpected: "7", runtimeVersionInstalled: installed ? (runtime.runtimeVersion || "7") : "", pythonVersionExpected: "3.11", pythonVersionInstalled: installed ? "3.11" : "", manifestStatus: installed ? "ready" : "", installedAt: installed ? Math.floor(Date.now() / 1000) : 0, components } };
+      const inventory = runtime.inventory || { status: runtime.status || "missing", ready: installed, runtimeVersionExpected: "7", runtimeVersionInstalled: installed ? (runtime.runtimeVersion || "7") : "", pythonVersionExpected: "3.11", pythonVersionInstalled: installed ? "3.11" : "", manifestStatus: installed ? "ready" : "", installedAt: installed ? Math.floor(Date.now() / 1000) : 0, components };
+      return { ok: true, ...runtime, inventory };
     },
     install_local_runtime: async () => { state.config.localRuntime = { status: "ready", ready: true, path: "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime", detail: "本地运行环境已就绪。" }; setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localRuntimeReady", runtime: state.config.localRuntime }), 400); return { ok: true, installing: true }; },
      cancel_local_runtime: async () => ({ ok: true }),
@@ -237,8 +279,12 @@ save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { 
     save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
     open_sticker_folder: async () => { if (!saved.stickerDir) return { ok: false, code: "sticker_dir_invalid" }; window.__openedStickerFolder = saved.stickerDir; return { ok: true }; },
     get_postprocess_settings: async ({ providerId }) => { const apiKey = saved.postprocessApiKeys[providerId] || ""; return { ok: true, providerId, apiKey, maskedApiKey: apiKey ? "sk-…mock" : "" }; },
-    save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (isCustomSlotId(providerId)) saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: isCustomSlotId(providerId) ? (displayName || "Custom API (or local model)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: isCustomSlotId(providerId) ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
-    test_postprocess_connection: async ({ providerId, apiKey, save }) => { if (save && apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, verified: true, saved: Boolean(save), maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "" }; },
+    save_postprocess_settings: async (payload) => savePostprocessSettings(payload),
+    test_postprocess_connection: async (payload) => {
+      const result = payload.save ? savePostprocessSettings(payload) : { ok: true, providerId: payload.providerId };
+      if (payload.save) saved.postprocessVerified[payload.providerId] = true;
+      return { ...result, verified: true, saved: Boolean(payload.save) };
+    },
     save_postprocess_plan: async ({ plan }) => { saved.postprocessAutoPlan = plan; return { ok: true, plan }; },
     validate_postprocess_plan: async ({ plan }) => ({ ok: true, plan, errors: [] }),
     get_postprocess_models: async ({ providerId }) => ({ ok: true, providerId, models: providerId === "qwen" ? ["qwen-plus", "qwen3-max"] : (providerId === "zhipu" ? ["glm-5.2", "glm-4.5"] : (providerId === "custom" ? ["local-model"] : ["deepseek-flash", "deepseek-v4-pro"])) }),
@@ -265,6 +311,10 @@ save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { 
      check_server_media: async ({ jsonPath }) => ({ ok: Boolean(jsonPath), hasMedia: Boolean(jsonPath), mediaPath: "D:\\Demo\\clip.mp4", mediaExists: Boolean(jsonPath) }),
     start_server: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] would open http://127.0.0.1:8250/ after server responds" }), 120); return { ok: true, url: "http://127.0.0.1:8250/" }; },
     get_server_status: async ({ port = "8250" }) => ({ ok: true, running: false, url: `http://127.0.0.1:${port}/` }),
+    recent_projects: async () => ({ ok: true, projects: [
+      { path: "D:\\Demo\\clip.json", name: "clip.json" },
+      { path: "D:\\Demo\\archived\\old-project.mosp", name: "old-project.mosp", exists: false },
+    ] }),
     stop_server: async () => ({ ok: true }),
      start_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] 上传完成" }), 250); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "done", result: { srtPath: "D:\\Demo\\clip.srt", jsonPath: "D:\\Demo\\clip.json", htmlPath: "D:\\Demo\\clip.edit.html" } }), 900); return { ok: true }; },
      cancel_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "error", code: "transcription_cancelled", detail: "Transcription cancelled" }), 120); return { ok: true }; },

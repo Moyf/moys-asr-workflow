@@ -429,6 +429,24 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // ASS 单句放大出现标记：整行两端各写 `{{` `}}` 表示该句以「从大缩小落定」
+  // 的入场动画出现（参数取自样式库 profile 的 pop 组，不管其全局开关；与
+  // 单句 fade 复用 fad 参数同一模式）。仅识别双符号；至少要有一个字符的
+  // 正文才视为标记。句级标记之间可按任意嵌套顺序组合。
+  function parseSentencePopMarkers(text, rule) {
+    const source = String(text == null ? '' : text);
+    if (rule === 'none') return { text: source, pop: false };
+    const parsed = sentenceShells(source, rule);
+    return { text: rebuildShells(parsed.body, parsed.shells.filter(shell => shell.kind !== 'pop')),
+      pop: parsed.shells.some(shell => shell.kind === 'pop') };
+  }
+
+
+  function stripSentencePopMarkers(text, rule) {
+    return parseSentencePopMarkers(text, rule).text;
+  }
+
+
   // ASS 单句原地震动标记：整行两端各写 `!!` 表示该句导出时按固定间隔拆分
   // 为多条 \pos 抖动事件（见 ass-canvas-layout 的震动参数）。仅识别双符号，
   // 没有单双规则；至少要有一个字符的正文才视为标记。整句字号、淡入淡出
@@ -447,6 +465,14 @@ export function createUtilsModule(dependencies) {
     const shells = [];
     const formats = ['++', '--', '**', '__', '~~', '//'];
     while (body) {
+      // `{{…}}` 是不对称句级壳：行首 `{{` 与行尾 `}}` 配对（同 fade 的行首/
+      // 行尾语义），其余 token 两侧同符号；内层再出现 `{{` 视为字面。
+      if (body.length > 4 && body.startsWith('{{') && body.endsWith('}}')
+        && !body.slice(2, -2).includes('{{')) {
+        shells.push({ kind: 'pop', left: '{{', right: '}}' });
+        body = body.slice(2, -2);
+        continue;
+      }
       const token = ['!!', ...formats].find(token => body.length > token.length * 2
         && body.startsWith(token) && body.endsWith(token)
         && (token === '!!' || !body.slice(token.length, -token.length).includes(token)));
@@ -472,12 +498,13 @@ export function createUtilsModule(dependencies) {
     return shells.reduceRight((text, shell) => `${shell.left}${text}${shell.right}`, body);
   }
 
-  // 句级效果符号对（淡出淡入 / 原地震动）：ASS 只在整句两端识别它们，
-  // 因此插入时必须包裹在现有全部符号最外层，否则样式失效。
+  // 句级效果符号对（淡出淡入 / 原地震动 / 放大出现）：ASS 只在整句两端识别
+  // 它们，因此插入时必须包裹在现有全部符号最外层，否则样式失效。
   // 成对才视为句级壳（见 sentenceShells 的剥离条件），孤儿字面保持不动。
   const SENTENCE_LEVEL_WRAP_PAIRS = Object.freeze([
     ['>>', '<<'],
     ['!!', '!!'],
+    ['{{', '}}'],
   ]);
 
   function isSentenceLevelWrapPair(left, right) {
@@ -625,6 +652,62 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // 行内 `{{…}}` pop 对区间（仅双符号、不对称：`{{` 开 `}}` 闭，下标约定与
+  // massMarkedRanges 一致——正文夹在 start+width 与 end 之间）。供拆分补齐
+  // 定位跨刀点 pop 对使用；位置不限（可嵌在 `!!` 等外层壳内），from 之后
+  // 找不到完整对时返回 null。
+  function popMarkedRange(text, from = 0) {
+    const source = String(text ?? '');
+    const start = source.indexOf('{{', from);
+    if (start < 0) return null;
+    const end = source.indexOf('}}', start + 2);
+    if (end < 0) return null;
+    return { start, end, width: 2 };
+  }
+
+
+  // 整行句级 pop 外壳（{{…}}，不对称——行首 `{{` 与行尾 `}}` 配对，内层
+  // 再出现 `{{` 视为字面，与 parseSentencePopMarkers 的识别范围一致）；
+  // 没有完整外壳时返回 null。
+  function popShellPair(text) {
+    const source = String(text ?? '');
+    return source.length > 4 && source.startsWith('{{') && source.endsWith('}}')
+      && !source.slice(2, -2).includes('{{')
+      ? { open: '{{', close: '}}' }
+      : null;
+  }
+
+
+  // 句级壳位置过滤：pop 对只有在「外层壳开符号序列 + pop + 逆序闭符号序列」
+  // 里才算真标记（与 sentenceShells 的整句壳识别一致——fade 双/单符号按
+  // rule，`!!` 与六个双符号格式只认双写）。行内其他位置的 `{{…}}` 是字面，
+  // 拆分补齐不能碰：补了会把字面括号复制成可见文本。不是壳位置返回 null。
+  function popShellPositionRange(text, rule) {
+    const source = String(text ?? '');
+    const range = popMarkedRange(source);
+    if (!range || rule === 'none' || source.slice(range.start + 2, range.end).includes('{{')) return null;
+    const pairs = [['>>', '<<']];
+    if (rule === 'both' || rule === 'single') pairs.push(['>', '<']);
+    pairs.push(['!!', '!!'], ['{{', '}}']);
+    ['++', '--', '**', '__', '~~', '//'].forEach(marker => pairs.push([marker, marker]));
+    let prefix = source.slice(0, range.start);
+    let suffix = source.slice(range.end + range.width);
+    const opens = [];
+    while (prefix) {
+      const pair = pairs.find(([open]) => prefix.startsWith(open));
+      if (!pair) return null;
+      opens.push(pair);
+      prefix = prefix.slice(pair[0].length);
+    }
+    while (opens.length) {
+      const close = opens.pop()[1];
+      if (!suffix.startsWith(close)) return null;
+      suffix = suffix.slice(close.length);
+    }
+    return suffix ? null : range;
+  }
+
+
   // 拆分补齐（维护者拍板方案 2）：拆开后若某个 MASS 符号对的开口/闭口分处
   // 两侧片段，两侧各补齐成对——文本层加符号，leftAppend / rightPrepend 返回
   // 需要同步补进边界 item 的符号串。fade >>…<< 句级外壳与行内同符号对一起
@@ -650,11 +733,27 @@ export function createUtilsModule(dependencies) {
         width: fade.open.length, marker: fade.open, closeMarker: fade.close,
       });
     }
+    // pop 对须处于句级壳位置（行首或嵌在外层壳开符号序列内，与
+    // parseSentencePopMarkers 的识别范围一致），且刀点落在正文内——恰在
+    // 符号端点时该侧维持孤儿字面（与 fade 的端点守卫同一约定）。
+    const pop = popShellPositionRange(combined, rule);
+    if (pop && pop.start + pop.width < cut && cut < pop.end) {
+      straddling.push({ kind: 'pop', ...pop, marker: '{{', closeMarker: '}}' });
+    }
     const verifyLeft = (candidate, range) => (range.kind === 'fade'
       ? (() => {
         const check = parseSentenceFadeMarkers(candidate, rule);
         return check.fadeIn && check.fadeOut;
       })()
+      : range.kind === 'pop'
+        ? (() => {
+          // `{{`/`}}` 是不对称对，assMarkedRanges（同符号配对）扫不到，
+          // 用 popMarkedRange 按位置复验：补上的 `}}` 须与原文 `{{` 恰好
+          // 收在候选片段末尾。
+          const paired = popMarkedRange(candidate);
+          return Boolean(paired) && paired.start === range.start
+            && paired.end + paired.width === candidate.length;
+        })()
       : assMarkedRanges(candidate, range.marker)
         .some((paired) => paired.start === range.start && paired.end + paired.width === candidate.length));
     const verifyRight = (candidate, range) => (range.kind === 'fade'
@@ -662,6 +761,12 @@ export function createUtilsModule(dependencies) {
         const check = parseSentenceFadeMarkers(candidate, rule);
         return check.fadeIn && check.fadeOut;
       })()
+      : range.kind === 'pop'
+        ? (() => {
+          const paired = popMarkedRange(candidate);
+          return Boolean(paired) && paired.start === range.prependAt
+            && paired.end === range.prependAt + range.width + range.end - cut;
+        })()
       : assMarkedRanges(candidate, range.marker)
         .some((paired) => paired.start === range.prependAt
           && paired.end === range.prependAt + range.width + range.end - cut));
@@ -670,19 +775,24 @@ export function createUtilsModule(dependencies) {
     // 组合文本仍会判出跨刀点 fade 对，但左/右其实各自已有完整外壳——再补就
     // 双重包裹。左已有闭（fadeOut）不补闭，右已有开（fadeIn）不补开。
     const leftFadeComplete = parseSentenceFadeMarkers(left, rule).fadeOut;
+    // pop 同理：该侧已剥出完整 pop 壳就不重复补（pop 只认双符号，无单双规则）。
+    const leftPopComplete = parseSentencePopMarkers(left, rule).pop;
     // 左侧补闭符号：按原文闭符号位置升序 = 嵌套逆序（内层先闭）。
     straddling.slice().sort((a, b) => a.end - b.end).forEach((range) => {
       if (range.start + range.width >= cut) return;
       if (range.kind === 'fade' && leftFadeComplete) return;
+      if (range.kind === 'pop' && leftPopComplete) return;
       const candidate = left + leftAppend + range.closeMarker;
       if (verifyLeft(candidate, range)) leftAppend += range.closeMarker;
     });
     let rightPrepend = '';
     const rightFadeStarted = parseSentenceFadeMarkers(right, rule).fadeIn;
+    const rightPopStarted = parseSentencePopMarkers(right, rule).pop;
     // 右侧补开符号：按原文开符号位置升序（外层在前）。
     straddling.slice().sort((a, b) => a.start - b.start).forEach((range) => {
       if (range.end <= cut) return;
       if (range.kind === 'fade' && rightFadeStarted) return;
+      if (range.kind === 'pop' && rightPopStarted) return;
       const prependAt = rightPrepend.length;
       const candidate = `${rightPrepend}${range.marker}${right}`;
       if (verifyRight(candidate, { ...range, prependAt })) rightPrepend += range.marker;
@@ -772,6 +882,19 @@ export function createUtilsModule(dependencies) {
         return {
           left: trimmedLeft, right: trimmedRight,
           removed: rightShake.open.length, leftTrimmed: leftShake.close.length,
+        };
+      }
+    }
+    const leftPop = rule === 'none' ? null : popShellPair(left);
+    const rightPop = popShellPair(right);
+    if (leftPop && rightPop) {
+      const trimmedLeft = left.slice(0, left.length - leftPop.close.length);
+      const trimmedRight = right.slice(rightPop.open.length);
+      const check = parseSentencePopMarkers(trimmedLeft + join + trimmedRight, rule);
+      if (check.pop) {
+        return {
+          left: trimmedLeft, right: trimmedRight,
+          removed: rightPop.open.length, leftTrimmed: leftPop.close.length,
         };
       }
     }
@@ -910,6 +1033,7 @@ export function createUtilsModule(dependencies) {
     { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
     { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true, sentenceLevel: true },
     { id: 'shake', label: '原地震动', left: '!!', right: '!!', ass: true, sentenceLevel: true },
+    { id: 'pop', label: '放大出现', left: '{{', right: '}}', ass: true, sentenceLevel: true },
     { id: 'note', label: '音符', left: '♪', right: '♪' },
     { id: 'music', label: '双音符', left: '♬', right: '♬' },
     { id: 'bracket', label: '中括号', left: '[', right: ']' },
@@ -951,6 +1075,8 @@ export function createUtilsModule(dependencies) {
     stripSentenceFadeMarkers,
     parseSentenceShakeMarkers,
     stripSentenceShakeMarkers,
+    parseSentencePopMarkers,
+    stripSentencePopMarkers,
     completeSplitMassPairs,
     completeMassTextRows,
     appendMassMarkersToLastItem,

@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import { assertBuildInputsUnchanged, captureBuildInputs, compileSources,
-  assertMetafileInputsCaptured, dependencyHash, validateSources, writeArtifact } from './build-editor.mjs';
+  assertMetafileInputsCaptured, dependencyHash, shouldRebuildBundle, validateSources, writeArtifact } from './build-editor.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 export const BUNDLE = 'launcher/boot/launcher-bundle.js';
@@ -112,8 +112,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       running = false;
     };
     fs.watch(path.join(root, 'web'), { recursive: true }, (_event, file) => {
-      if (file && ![BUNDLE, BUILD_INFO].includes(file.replaceAll('\\', '/'))
-          && !/\.maw-bundle-[^/\\]+\.tmp$/.test(file)) void rebuild();
+      if (shouldRebuildBundle(root, file)) void rebuild();
     });
     for (const builder of BUILDERS) fs.watch(path.join(root, builder), () => {
       console.error('Build script changed; restart pnpm run watch:launcher');

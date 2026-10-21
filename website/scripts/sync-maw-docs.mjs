@@ -87,7 +87,7 @@ const documents = [
     description: 'Release 包的转写参数、Server 管理、退出码和自动化调用模板。',
   },
   {
-    source: 'JSON_SCHEMA.md',
+    source: 'docs/engineering/JSON_SCHEMA.md',
     slug: 'json-schema',
     title: '字幕工程文件规范',
     description: '定义 .mosp / .json 工程的字段、时间码、波形和工作区数据边界。',

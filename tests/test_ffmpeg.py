@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from contextlib import chdir
 from pathlib import Path
 from unittest import mock
 
@@ -104,6 +105,40 @@ class FfmpegResolverTests(unittest.TestCase):
 
         self.assertEqual(result, FfmpegTools())
         which.assert_not_called()
+
+    @unittest.skipUnless(os.name == "nt", "Windows PATHEXT resolution")
+    def test_windows_python_module_does_not_shadow_path_executables(self) -> None:
+        current = self.root / "maw"
+        current.mkdir()
+        for tool in ("ffmpeg", "ffprobe"):
+            (current / f"{tool}.py").write_text("# Python module\n", encoding="utf-8")
+        from_path = self._write_tools(self.root / "bin", "ffmpeg", "ffprobe")
+
+        with chdir(current), mock.patch.dict(os.environ, {"PATHEXT": ".PY;.EXE;.CMD"}):
+            result = resolve_ffmpeg_tools(
+                environment={"PATH": str(self.root / "bin")},
+                include_bundled=False,
+                include_macos=False,
+            )
+
+        self.assertEqual(result, FfmpegTools(from_path["ffmpeg"].resolve(), from_path["ffprobe"].resolve()))
+
+    @unittest.skipUnless(os.name == "nt", "Windows PATHEXT resolution")
+    def test_windows_scripts_are_not_accepted_as_ffmpeg_executables(self) -> None:
+        scripts = self.root / "scripts"
+        scripts.mkdir()
+        for tool in ("ffmpeg", "ffprobe"):
+            for suffix in (".py", ".cmd"):
+                (scripts / f"{tool}{suffix}").write_text("# script\n", encoding="utf-8")
+
+        with chdir(scripts), mock.patch.dict(os.environ, {"PATHEXT": ".PY;.EXE;.CMD"}):
+            result = resolve_ffmpeg_tools(
+                environment={"PATH": str(scripts)},
+                include_bundled=False,
+                include_macos=False,
+            )
+
+        self.assertEqual(result, FfmpegTools())
 
     def test_macos_candidates_are_added_to_search_path_and_resolved(self) -> None:
         homebrew = self._write_tools(self.root / "homebrew", "ffmpeg", "ffprobe")

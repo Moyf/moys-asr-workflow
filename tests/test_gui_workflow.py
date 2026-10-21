@@ -241,7 +241,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         self.srt_path.with_name("out-1.mosp").write_text("{}", encoding="utf-8")
         self.assertEqual(unique_output_path(self.srt_path), self.root / "out-2.srt")
 
-    def test_build_transcribe_command_source_mode_uses_script_and_forces_json_no_html(self) -> None:
+    def test_build_transcribe_command_source_mode_uses_module_and_forces_json_no_html(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,
             srt_path=self.srt_path,
@@ -253,8 +253,8 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
 
         self.assertEqual(command[0], "python.exe")
-        self.assertIn("generate_subtitle_qwen_api.py", command[1])
-        self.assertEqual(command[2], str(self.media_path))
+        self.assertEqual(command[1:3], ["-m", "maw.asr.qwen"])
+        self.assertEqual(command[3], str(self.media_path))
         self.assertIn("--json", command)
         self.assertIn("--no-html", command)
         self.assertEqual(command[command.index("--output") + 1], str(self.srt_path))
@@ -524,7 +524,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
 
         command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
 
-        self.assertIn("generate_subtitle_openai_api.py", command[1])
+        self.assertEqual(command[1:3], ["-m", "maw.asr.openai"])
         self.assertEqual(command[command.index("--base-url") + 1], "https://relay.test/v1")
         self.assertEqual(command[command.index("--model") + 1], "qwen3-asr-flash-filetrans")
         self.assertEqual(command[command.index("--language") + 1], "zh")
@@ -598,7 +598,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_soniox_generator_help_declares_debug_raw(self) -> None:
         result = subprocess.run(
-            [sys.executable, str(ROOT / "generate_subtitle_soniox_api.py"), "--help"],
+            [sys.executable, "-m", "maw.asr.soniox", "--help"],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -649,7 +649,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertEqual(command[0], request.runtime_python)
         self.assertIn("local-runtime", command[1])
-        self.assertIn("generate_subtitle_local.py", command[1])
+        self.assertTrue(Path(command[1]).as_posix().endswith("/maw/asr/local.py"))
         self.assertNotIn("--transcribe-local", command)
         self.assertIn("--engine", command)
         self.assertIn("funasr", command)
@@ -1113,8 +1113,8 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
 
         self.assertEqual(command[0], "python.exe")
-        self.assertIn("generate_subtitle_soniox_api.py", command[1])
-        self.assertEqual(command[2], str(self.media_path))
+        self.assertEqual(command[1:3], ["-m", "maw.asr.soniox"])
+        self.assertEqual(command[3], str(self.media_path))
         self.assertIn("--json", command)
         self.assertIn("--no-html", command)
         self.assertIn("--speaker-colors", command)
@@ -1137,7 +1137,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
 
         command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
 
-        self.assertIn("generate_subtitle_local.py", command[1])
+        self.assertEqual(command[1:3], ["-m", "maw.asr.local"])
         self.assertIn("--engine", command)
         self.assertEqual(command[command.index("--model") + 1], "Qwen/Qwen3-ASR-0.6B")
         self.assertEqual(command[command.index("--model-path") + 1], "D:\\Models\\qwen")
@@ -1227,7 +1227,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
             frozen=False,
         )
 
-        self.assertIn("generate_subtitle_qwen_api.py", command[1])
+        self.assertEqual(command[1:3], ["-m", "maw.asr.qwen"])
         self.assertEqual(command[command.index("--model") + 1], "fun-asr")
         self.assertEqual(command[command.index("--language") + 1], "zh")
         self.assertEqual(command[command.index("--region") + 1], "beijing")

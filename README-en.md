@@ -26,11 +26,11 @@ The default transcription path uses cloud APIs: bring your own **API key** and p
 - **Deliver several subtitle formats from one project:** manage main, secondary, and overlapping subtitles, speakers, and ASS styles. Export SRT / ASS or burn subtitles into video; use OTIO and other exchange formats for further editing.
 - **Continue from your last edit:** a `.mosp` project preserves timing, tracks, markers, and editing state. Presets, batch transcription, and automatic processing help reuse common workflows with inspectable, retryable stage outputs.
 
-This overview describes the current **1.9 beta** workflow. Check the corresponding [release notes](https://moyf.github.io/moys-asr-workflow/releases/) for stable-version availability. MAW does not replace a full video editor; transcription and AI decisions still need human review.
+This overview describes the current **1.10.0 beta** workflow. Check the [release notes](https://moyf.github.io/moys-asr-workflow/releases/) for stable-version availability. MAW does not replace a full video editor; transcription and AI decisions still need human review.
 
 ## Quick start
 
-Choose the [stable release](https://github.com/Moyf/moys-asr-workflow/releases/latest) for everyday use. To try current new features, choose [v1.9.0-beta.3](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.9.0-beta.3) and keep project backups.
+Choose the [stable release](https://github.com/Moyf/moys-asr-workflow/releases/latest) for everyday use. To try current features, choose [v1.10.0-beta.1](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.10.0-beta.1) and keep project backups.
 
 1. **Download a package:** choose your system and architecture from the selected release's attachments. The full MAW bundle includes FFmpeg/FFprobe; choose MAW-lite if both tools are already installed. Platform availability depends on that release's actual attachments.
 2. **Open the Launcher:** extract the complete directory and run `MAW.exe` on Windows, open `MAW.app` on macOS, or grant execution permission to the Linux `.AppImage` and launch it. See the [FAQ](docs/INDEX.md#user-faq) for startup issues.
@@ -52,7 +52,7 @@ For source installation and a complete first run, see the [workflow guide](docs/
 - [Toolbox](docs/INDEX.md#user-toolbox) and [automatic processing](docs/INDEX.md#user-postprocess): script matching, cleanup, translation, OCR, and media tools.
 - [Editor](docs/INDEX.md#user-editor), [keyboard timing](docs/INDEX.md#user-keyboard), [multiple subtitles](docs/INDEX.md#user-multi-subtitle), and [ASS styles](docs/INDEX.md#user-ass): edit, save, and export.
 - [CLI](docs/INDEX.md#user-cli) and [local ASR](docs/INDEX.md#user-local-asr): automate tasks and use experimental local models.
-- [FAQ](docs/INDEX.md#user-faq), [project schema](JSON_SCHEMA.md), [LLM protocol](docs/INDEX.md#engineering-llm), and [development](docs/INDEX.md#engineering-development).
+- [FAQ](docs/INDEX.md#user-faq), [project schema](docs/engineering/JSON_SCHEMA.md), [LLM protocol](docs/INDEX.md#engineering-llm), and [development](docs/INDEX.md#engineering-development).
 
 ## Data, costs, and privacy
 

@@ -234,7 +234,7 @@ uv run --no-sync python scripts/run_tests.py tests/test_verification_checklist.p
 安装仓库 Node 开发依赖与 Playwright 浏览器后，运行生成页回归（只打开本地文件，不启动服务；可用 `MAW_E2E_PYTHON` 指定 Python）：
 
 ```powershell
-pnpm exec playwright test tests/e2e/verification-checklist.spec.mjs --project=chromium
+pnpm exec playwright test --config=tests/config/playwright.config.mjs tests/e2e/verification-checklist.spec.mjs --project=chromium
 ```
 
 维护模板后同步更新明确指定的旧页面；不改 MAW 的 `blank-editor.html`。保留 `content-visibility` 优化、打印覆盖与局部宽内容滚动，长清单压力检查和间距实测遵循上级 `tools/AGENTS.md`。

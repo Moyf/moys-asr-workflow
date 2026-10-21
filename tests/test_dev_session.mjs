@@ -23,19 +23,23 @@ function closeChild(child, code) {
   child.emit('close', code);
 }
 
-function createHarness({ buildStatus = 0, buildError = null } = {}) {
-  const calls = { build: [], watch: [], run: [] };
-  const watcher = new FakeChild();
+function createHarness({ buildStatus = 0, buildError = null, buildResults = [] } = {}) {
+  const calls = { build: [], watch: [], run: [], sequence: [] };
+  const watchers = [];
   const runChild = new FakeChild();
   const exitCodes = [];
   const logs = [];
   const spawnFn = (command, args) => {
     if (command === 'uv') {
       calls.run.push({ command, args });
+      calls.sequence.push('run:uv');
       return runChild;
     }
     if (args.includes('--watch')) {
       calls.watch.push({ command, args });
+      calls.sequence.push(`watch:${args[0]}`);
+      const watcher = new FakeChild();
+      watchers.push(watcher);
       return watcher;
     }
     calls.build.push({ command, args });
@@ -43,7 +47,8 @@ function createHarness({ buildStatus = 0, buildError = null } = {}) {
   };
   const spawnSyncFn = (command, args) => {
     calls.build.push({ command, args });
-    return { status: buildStatus, error: buildError };
+    calls.sequence.push(`build:${args[0]}`);
+    return buildResults[calls.build.length - 1] ?? { status: buildStatus, error: buildError };
   };
   const deps = {
     spawn: spawnFn,
@@ -52,13 +57,16 @@ function createHarness({ buildStatus = 0, buildError = null } = {}) {
     write: (line) => logs.push(line),
     writeError: (line) => logs.push(line),
   };
-  return { calls, watcher, runChild, exitCodes, logs, deps };
+  return { calls, watchers, get watcher() { return watchers[0]; }, runChild, exitCodes, logs, deps };
 }
 
 test('resolveSession 编辑器默认空白启动', () => {
   const session = resolveSession('editor');
-  assert.deepEqual(session.buildArgs, ['scripts/build-editor.mjs', '--write']);
-  assert.deepEqual(session.watchArgs, ['scripts/build-editor.mjs', '--watch']);
+  assert.deepEqual(session.bundles, [{
+    kind: 'editor',
+    buildArgs: ['scripts/build-editor.mjs', '--write'],
+    watchArgs: ['scripts/build-editor.mjs', '--watch'],
+  }]);
   assert.equal(session.runCommand, 'uv');
   assert.deepEqual(session.runArgs, ['run', '--no-sync', 'python', 'server-editor/serve.py', '--blank']);
 });
@@ -71,10 +79,14 @@ test('resolveSession 编辑器透传参数时不再追加 --blank', () => {
   ]);
 });
 
-test('resolveSession launcher 默认带 --debug 启动 GUI', () => {
+test('resolveSession launcher 同时准备编辑器与 Launcher，默认带 --debug 启动 GUI', () => {
   const session = resolveSession('launcher');
-  assert.deepEqual(session.buildArgs, ['scripts/build-launcher.mjs', '--write']);
-  assert.deepEqual(session.watchArgs, ['scripts/build-launcher.mjs', '--watch']);
+  assert.deepEqual(session.bundles, [
+    { kind: 'editor', buildArgs: ['scripts/build-editor.mjs', '--write'],
+      watchArgs: ['scripts/build-editor.mjs', '--watch'] },
+    { kind: 'launcher', buildArgs: ['scripts/build-launcher.mjs', '--write'],
+      watchArgs: ['scripts/build-launcher.mjs', '--watch'] },
+  ]);
   assert.deepEqual(session.runArgs, ['run', '--no-sync', 'python', 'maw_gui.py', '--debug']);
 });
 
@@ -109,6 +121,31 @@ test('runSession 构建失败立即退出，不启动 watcher 与 Python 入口'
   assert.ok(harness.logs.some((line) => line.includes('构建失败')));
 });
 
+test('runSession Launcher 的两套构建完成后才启动 watcher 和 Python，退出时回收两者', () => {
+  const harness = createHarness();
+  const session = runSession('launcher', [], harness.deps);
+  assert.deepEqual(harness.calls.sequence, [
+    'build:scripts/build-editor.mjs', 'build:scripts/build-launcher.mjs',
+    'watch:scripts/build-editor.mjs', 'watch:scripts/build-launcher.mjs', 'run:uv',
+  ]);
+  assert.equal(session.watchers.length, 2);
+  closeChild(harness.runChild, 0);
+  assert.deepEqual(harness.exitCodes, [0]);
+  assert.deepEqual(harness.watchers.map(child => child.killCalls), [1, 1]);
+});
+
+for (const [name, run] of [['runSession', runSession], ['runOnce', runOnce]]) {
+  test(`${name} 第二套 bundle 构建失败时也不会启动 watcher 或 Launcher`, () => {
+    const harness = createHarness({ buildResults: [{ status: 0 }, { status: 7 }] });
+    assert.equal(run('launcher', [], harness.deps), null);
+    assert.equal(harness.calls.build.length, 2);
+    assert.equal(harness.calls.watch.length, 0);
+    assert.equal(harness.calls.run.length, 0);
+    assert.deepEqual(harness.exitCodes, [7]);
+    assert.ok(harness.logs.some(line => line.includes('launcher bundle 构建失败')));
+  });
+}
+
 test('runSession 构建进程无法启动时按失败处理', () => {
   const harness = createHarness({ buildError: new Error('spawn ENOENT') });
   runSession('launcher', [], harness.deps);
@@ -130,8 +167,29 @@ test('runSession Python 入口无法启动时报错并回收 watcher', () => {
   runSession('launcher', [], harness.deps);
   harness.runChild.emit('error', new Error('uv not found'));
   assert.deepEqual(harness.exitCodes, [1]);
-  assert.equal(harness.watcher.killCalls, 1);
+  assert.deepEqual(harness.watchers.map(child => child.killCalls), [1, 1]);
 });
+
+for (const [index, kind] of ['editor', 'launcher'].entries()) {
+  test(`runSession ${kind} watcher 无法启动时清理全部子进程`, () => {
+    const harness = createHarness();
+    runSession('launcher', [], harness.deps);
+    harness.watchers[index].emit('error', new Error('spawn ENOENT'));
+    assert.deepEqual(harness.exitCodes, [1]);
+    assert.deepEqual(harness.watchers.map(child => child.killCalls), [1, 1]);
+    assert.equal(harness.runChild.killCalls, 1);
+    assert.ok(harness.logs.some(line => line.includes(`无法启动 ${kind} watcher`)));
+  });
+
+  test(`runSession ${kind} watcher 提前退出时停止会话`, () => {
+    const harness = createHarness();
+    runSession('launcher', [], harness.deps);
+    closeChild(harness.watchers[index], 7);
+    assert.deepEqual(harness.exitCodes, [7]);
+    assert.equal(harness.watchers[1 - index].killCalls, 1);
+    assert.equal(harness.runChild.killCalls, 1);
+  });
+}
 
 test('runSession 收到 SIGINT 时清理两个子进程', () => {
   const harness = createHarness();
@@ -140,6 +198,17 @@ test('runSession 收到 SIGINT 时清理两个子进程', () => {
   assert.deepEqual(harness.exitCodes, [0]);
   assert.equal(harness.watcher.killCalls, 1);
   assert.equal(harness.runChild.killCalls, 1);
+});
+
+test('runSession Launcher 收到 SIGTERM 时回收两个 watcher 与 Python，并移除信号监听', () => {
+  const harness = createHarness();
+  const before = ['SIGINT', 'SIGTERM'].map(signal => process.listenerCount(signal));
+  runSession('launcher', [], harness.deps);
+  process.emit('SIGTERM');
+  assert.deepEqual(harness.exitCodes, [0]);
+  assert.deepEqual(harness.watchers.map(child => child.killCalls), [1, 1]);
+  assert.equal(harness.runChild.killCalls, 1);
+  assert.deepEqual(['SIGINT', 'SIGTERM'].map(signal => process.listenerCount(signal)), before);
 });
 
 test('runSession 未知目标直接以退出码 2 结束', () => {
@@ -193,6 +262,17 @@ test('runOnce 构建失败立即退出，不运行 Python 入口', () => {
   runOnce('launcher', [], harness.deps);
   assert.deepEqual(harness.exitCodes, [5]);
   assert.equal(harness.calls.run.length, 0);
+});
+
+test('runOnce Launcher 同样预构建两套 bundle，但不启动 watcher', () => {
+  const harness = createHarness();
+  runOnce('launcher', [], harness.deps);
+  assert.deepEqual(harness.calls.sequence, [
+    'build:scripts/build-editor.mjs', 'build:scripts/build-launcher.mjs', 'run:uv',
+  ]);
+  assert.equal(harness.calls.watch.length, 0);
+  closeChild(harness.runChild, 0);
+  assert.deepEqual(harness.exitCodes, [0]);
 });
 
 test('runOnce Python 入口非零退出时透传退出码', () => {

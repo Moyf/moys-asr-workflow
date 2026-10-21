@@ -29,9 +29,9 @@
 ```text
 README.md                     # 新用户的安装和最短路径
 docs/user/WORKFLOW.md              # 全流程、参数、排错
-JSON_SCHEMA.md                # JSON 工程契约
+docs/engineering/JSON_SCHEMA.md    # JSON 工程契约
 maw_gui.py + maw/cli.py        # 公开 CLI 与命令分派（指南见 docs/user/CLI.md）
-generate_subtitle_qwen_api.py # API 转写入口
+maw/asr/qwen.py # API 转写入口（高级命令：python -m maw.asr.qwen）
 edit.py + maw/waveform.py     # 单文件编辑器生成和波形缓存
 server-editor/serve.py        # 推荐的 localhost 编辑器
 web/editor-scripts.txt        # 编辑器源码装配顺序
@@ -111,7 +111,7 @@ uv run python server-editor\serve.py --blank
 node scripts\build-editor.mjs --write   # 重建（--check 只校验新鲜度；watch:editor 可挂监视）
 ```
 
-重建出的 bundle 不进 Git：serve.py 渲染页面前、maw_gui.py 启动前、`edit.py --blank` 前都会校验新鲜度并自动重建；发布打包脚本（build-windows.ps1 / build-appimage.sh）与 release CI 在打包前显式构建，MAW.spec 对缺失产物 fail fast。本地 dev 可用 `pnpm run dev`（内置 watch）。esbuild 是 devDependencies（pnpm 安装；`scripts/esm-mechanical/` 是迁移实验工具，与日常构建无关）。
+重建出的 bundle 不进 Git：serve.py 渲染页面前、maw_gui.py 启动前、`edit.py --blank` 前都会校验新鲜度并自动重建；发布打包脚本（build-windows.ps1 / build-appimage.sh）与 release CI 在打包前显式构建，`scripts/packaging/MAW.spec` 对缺失产物 fail fast。本地 dev 可用 `pnpm run dev`（内置 watch）。esbuild 是 devDependencies（pnpm 安装；`scripts/esm-mechanical/` 是迁移实验工具，与日常构建无关）。
 
 ### Playwright e2e 运行纪律（防长命令挂起）
 
@@ -212,7 +212,7 @@ git diff --name-status
 - 记录验证 / 复现位置（worktree、复现环境）用分支名 + 短哈希或泛称（如「另一干净 HEAD 工作树」），不写本机绝对路径。
 - 提交前跑个人路径检查：开发机一次性 `git config core.hooksPath .githooks` 启用 pre-commit；也可手动 `python scripts/check_personal_paths.py`（`--all` 全仓、`--diff-ref main` 查分支新增）。命中先脱敏再提交；测试夹具假路径（test / demo / runner 等）默认放行，新的假名用 `--allow` 或扩充脚本白名单。
 - 本地服务器必须只监听 `127.0.0.1`；不可改成任意本地文件浏览或任意路径写入接口。
-- JSON 的 `segments[*].start/end/items[*].start/end` 都是整数毫秒。修改 schema 必须同步更新 `JSON_SCHEMA.md`、测试与 changelog。
+- JSON 的 `segments[*].start/end/items[*].start/end` 都是整数毫秒。修改 schema 必须同步更新 `docs/engineering/JSON_SCHEMA.md`、测试与 changelog。
 - `waveform` 是可重建缓存，不能变成工程唯一真源；`segments` 才是字幕真源。
 - 删除文件时移入回收站，绝不使用 `rm -rf`。
 

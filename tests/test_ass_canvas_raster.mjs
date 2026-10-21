@@ -26,7 +26,7 @@ function canvasFixture() {
   const style = context.window.AsrEditorUtils.normalizeAssStyle({ commentColor: '#111111', outline: 2, shadow: 0 });
   const track = { style, nativeFontSize: 72, runs: [{ text: 'comment', comment: true }] };
   const render = () => context.window.MaweAssCanvas.render({ playResX: 1920, playResY: 1080, tracks: [track] });
-  return { paint, track, render, canvas: context.window.MaweAssCanvas };
+  return { paint, track, render, context, canvas: context.window.MaweAssCanvas };
 }
 
 test('stacked fractional plain font sizes retain line advance and invalidate raster cache', () => {
@@ -65,4 +65,14 @@ test('changing comment text color to stroke color repaints both glyph layers', (
   render();
   assert.ok(paint.some(item => item.mode === 'stroke' && item.color === '#111111'));
   assert.ok(paint.some(item => item.mode === 'fill' && item.color === track.style.primaryColor));
+});
+
+
+test('Canvas paints manual overlays above automatic main in ASS layer order', () => {
+  const { context, track, canvas } = canvasFixture();
+  const tracks = ['overlay', 'main', 'extension', 'overlay'].map((role, index) => ({ ...track,
+    role, cueId: index, anchor: { x: 500, y: 500 }, runs: [{ text: role + index }] }));
+  canvas.render({ playResX: 1920, playResY: 1080, tracks });
+  assert.deepEqual(Array.from(canvas.lastRender.tracks, record => record.role), ['main', 'extension', 'overlay', 'overlay']);
+  assert.deepEqual(tracks.map(item => item.role), ['overlay', 'main', 'extension', 'overlay'], 'input plan remains unchanged');
 });

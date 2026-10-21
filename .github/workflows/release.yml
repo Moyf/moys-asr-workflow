@@ -448,7 +448,7 @@ jobs:
           # build-appimage.sh / 源码模式自动补齐完全同源）。
           mkdir -p build
           uv run python -m maw.runtimes.freezer freeze --force
-          uv run --group build pyinstaller --noconfirm --clean MAW.spec
+          uv run --group build pyinstaller --noconfirm --clean scripts/packaging/MAW.spec
 
       - name: Verify packaged ESM bundles and source hashes
         if: matrix.platform == 'macos'
@@ -576,8 +576,8 @@ jobs:
           mkdir -p "$StandardStage" "$LiteStage"
           ditto dist/MAW.app "$StandardStage/MAW.app"
           ditto dist/MAW-lite.app "$LiteStage/MAW-lite.app"
-          cp FAQ-常见问题.txt "$StandardStage/FAQ-常见问题.txt"
-          cp FAQ-常见问题.txt "$LiteStage/FAQ-常见问题.txt"
+          cp "docs/user/FAQ-常见问题.txt" "$StandardStage/FAQ-常见问题.txt"
+          cp "docs/user/FAQ-常见问题.txt" "$LiteStage/FAQ-常见问题.txt"
           (
             cd "$StandardStage"
             zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app FAQ-常见问题.txt
@@ -593,7 +593,7 @@ jobs:
           from pathlib import Path
           from zipfile import ZipFile
 
-          faq_bytes = Path("FAQ-常见问题.txt").read_bytes()
+          faq_bytes = Path("docs/user/FAQ-常见问题.txt").read_bytes()
           checks = (
               (sys.argv[1], "MAW.app/Contents/MacOS/MAW"),
               (sys.argv[2], "MAW-lite.app/Contents/MacOS/MAW"),

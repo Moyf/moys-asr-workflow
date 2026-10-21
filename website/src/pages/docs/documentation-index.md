@@ -36,6 +36,8 @@ source: "docs/INDEX.md"
 
 [打开正文](../faq/)
 
+[随发布包附带的离线 FAQ](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/user/FAQ-常见问题.txt)
+
 <a name="user-keyboard"></a>
 ### MAWE 字幕按键调整
 
@@ -128,6 +130,16 @@ source: "docs/INDEX.md"
 
 [打开正文](../mose/)
 
+<a name="engineering-design-system"></a>
+### MAWE 编辑器界面设计契约
+
+[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DESIGN.md)
+
+<a name="engineering-project-format"></a>
+### 工程文件格式
+
+[字段契约](../json-schema/)
+
 <a name="engineering-debug"></a>
 ### 有界输出与分层调试
 
@@ -186,11 +198,6 @@ source: "docs/INDEX.md"
 ### MAWE 接线拆分与目录分层计划
 
 [打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/MAWE%20%E6%8E%A5%E7%BA%BF%E6%8B%86%E5%88%86%E4%B8%8E%E7%9B%AE%E5%BD%95%E5%88%86%E5%B1%82%E8%AE%A1%E5%88%92.md)
-
-<a name="engineering-project-format"></a>
-### 工程文件格式
-
-[字段契约](../json-schema/)
 
 <a name="engineering-server"></a>
 ### 源码服务与桌面开发

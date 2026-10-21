@@ -197,6 +197,40 @@ test('stack rejects negative spacing and does not silently fit tiny formatted ru
   assert.match(h.assCreateStackPlan({ profile, items: [item('main'), { ...enormous, role: 'overlay' }] }).diagnostics[0].message, /可读/);
 });
 
+test('overlay cues honor per-cue scale and pos overrides like main cues', () => {
+  const style = h.normalizeAssStyle({ fontSize: 48, alignment: 2, marginV: 60 });
+  const profile = h.normalizeAssProfile({ animations: {} });
+  const overlay = (assOverride, text = 'OVER') => ({ role: 'overlay', index: 0, start: 0, end: 2000,
+    segment: { id: 'overlay-001', assOverride }, style, fontSize: 48, runs: [{ text }] });
+  // 只有缩放：句仍留在自动排布内，测量尺寸按倍率放大，不产生 manual。
+  const scaled = h.assCreateStackPlan({ profile, items: [overlay({ scale: 1.5 })] });
+  const scaledCue = scaled.slices[0].items[0];
+  assert.equal(scaledCue.manual, false);
+  assert.equal(scaledCue.cueScale, 1.5);
+  assert.equal(scaledCue.sharedStackCue, true);
+  // 只有定位：句成为独立绝对事件，不参与整组包围盒与适配。
+  const manual = h.assCreateStackPlan({ profile, items: [overlay({ pos: { x: 333, y: 444 } })] });
+  const manualCue = manual.slices[0].items[0];
+  assert.equal(manualCue.manual, true);
+  assert.equal(manualCue.absolute, true);
+  assert.deepEqual({ ...manualCue.offset }, { x: 333, y: 444 });
+  const frame = h.assStackFrame(manual, 500).items[0];
+  assert.deepEqual({ ...frame.anchor }, { x: 333, y: 444 });
+  assert.equal(frame.scale, 1);
+  // 两个字段相互独立，可同时设置。
+  const both = h.assCreateStackPlan({ profile, items: [overlay({ scale: 1.5, pos: { x: 120, y: 80 } })] });
+  const bothCue = both.slices[0].items[0];
+  assert.equal(bothCue.manual, true);
+  assert.equal(bothCue.cueScale, 1.5);
+  // 扩展轨闸门保持关闭：带 override 的扩展句不受影响。
+  const extension = { role: 'extension', index: 0, start: 0, end: 2000,
+    segment: { id: 'ext-001', assOverride: { scale: 1.5, pos: { x: 10, y: 20 } } }, style, fontSize: 48, runs: [{ text: 'EXT' }] };
+  const extensionPlan = h.assCreateStackPlan({ profile, items: [extension] });
+  const extensionCue = extensionPlan.slices[0].items[0];
+  assert.equal(extensionCue.cueScale, 1);
+  assert.equal(extensionCue.manual, undefined);
+});
+
 test('formatted font transforms retain the source clock and plain fractional fit never resets font animation', () => {
   let plan;
   const output = h.buildAssPayload([{ start: 0, end: 2000, text: 'Plain **E** //C// -S-' }], {

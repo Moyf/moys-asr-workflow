@@ -34,13 +34,15 @@ class CleanupDiagnosticsTest(CompactContainerAssertions, AiCleanupTestCase):
     def test_failed_scan_archives_first_pass_and_both_retries(self):
         request = self.request_for(review=True)
         original = request.project_path.read_bytes()
-        # All source rows are valid on the first pass; c001 becomes read-only
-        # after its locally verified deletion, so echoing it in the scan fails.
+        # Known read-only rows can be ignored, but an unknown source ID still
+        # fails the scan and archives both attempts without writing outputs.
         draft = "[c001] ~~试麦听得到吗~~ %删除：试麦%\n[c002] 正式内容"
+        def complete(prompt, rows):
+            return {"timeline": draft + ("\n[c999] 未知行" if "这是漏清扫描" in prompt else "")}
         with self.assertRaises(LlmClientError) as caught:
-            run_ai_cleanup(request, complete=lambda _p, _r: {"timeline": draft})
+            run_ai_cleanup(request, complete=complete)
         self.assertIn("应输出 1 行，实际 2 行", str(caught.exception))
-        self.assertIn("额外或只读 ID：c001", str(caught.exception))
+        self.assertIn("额外或只读 ID：c999", str(caught.exception))
         report = next(self.directory.glob("*.md")).read_text(encoding="utf-8")
         self.assertIn("首次整理本地校验", report)
         self.assertIn("请求 3：漏清扫描", report)
@@ -48,6 +50,17 @@ class CleanupDiagnosticsTest(CompactContainerAssertions, AiCleanupTestCase):
         self.assertEqual(request.project_path.read_bytes(), original)
         self.assertEqual(len(list(self.directory.glob("*.mosp"))), 1)
         self.assertFalse(list(self.directory.glob("*.srt")))
+
+    def test_echoed_readonly_scan_rows_do_not_restore_or_extend_their_deletion(self):
+        request = self.request_for(review=True)
+        def complete(prompt, rows):
+            if "proposed" in rows[0]:
+                return {"reviews": []}
+            return {"timeline": "[c001] ~~试麦听得到吗~~ %删除：试麦%\n[c002] 正式内容"}
+        artifact = run_ai_cleanup(request, complete=complete)
+        self.assertEqual(artifact.stats["removed"], 1)
+        self.assertEqual(artifact.stats["pendingReview"], 0)
+        self.assertFalse(list(self.directory.glob("*.md")))
 
     def test_successful_review_keeps_evidence_in_memory_only(self):
         request = self.request_for(review=True)

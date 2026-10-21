@@ -236,10 +236,12 @@ def resolve_ffmpeg_tools(
     path_by_tool: dict[str, Path] = {}
     # An empty PATH must not make ``shutil.which`` search the current folder.
     if lookup_path:
+        # Windows PATHEXT may include .PY: looking up the bare name can pick
+        # maw/ffmpeg.py in a worker's cwd instead of the native executable.
         path_by_tool = {
             tool: Path(found).expanduser()
             for tool in FFMPEG_TOOL_NAMES
-            if (found := shutil.which(tool, path=lookup_path))
+            if (found := shutil.which(_tool_filename(tool), path=lookup_path))
         }
 
     resolved: dict[str, Path | None] = {tool: None for tool in FFMPEG_TOOL_NAMES}

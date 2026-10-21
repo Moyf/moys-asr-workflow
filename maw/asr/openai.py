@@ -27,12 +27,14 @@ from typing import Any, Mapping
 
 import requests
 
-from edit import get_default_sticker_dir
-from generate_subtitle_qwen_api import (
+from maw.stickers import get_default_sticker_dir
+from maw.asr.common import (
     extract_audio,
     generate_srt,
     get_duration_sec,
     parse_duration,
+)
+from maw.asr.segmentation import (
     split_segments_auto,
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
@@ -840,7 +842,7 @@ def main() -> None:
         )
         print(f"工程文件已保存到: {json_path}")
         if not args.no_html:
-            edit_script = Path(__file__).parent / "edit.py"
+            edit_script = Path(__file__).resolve().parents[2] / "edit.py"
             if edit_script.exists():
                 command = [sys.executable, str(edit_script), str(json_path)]
                 if args.stickers and Path(args.stickers).exists():
