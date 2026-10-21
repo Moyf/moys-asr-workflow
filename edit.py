@@ -315,7 +315,8 @@ def build_blank_html(ninja_sfx_base_url_json: str | None = None) -> str:
     为保证仓库内发布的 blank-editor.html 可复现且不携带生成者的本机路径，
     空壳不预载 STICKER_DIR；用户可在页面里用 🦊 按钮选择表情包目录。
     """
-    blank_data = {"segments": [], "media": "", "language": "", "model": ""}
+    from maw.project_tracks import make_project
+    blank_data = make_project([], main_fields={"language": "", "model": ""}, project_fields={"media": ""})
     # 空占位播放器：无 source，用户通过「加载媒体」加载
     media_html = (
         '<audio id="player" preload="metadata" '
@@ -510,7 +511,8 @@ def main():
     # 保持输出与源码一致为 LF，避免 Windows 文本模式转换成 CRLF。
     output_path.write_bytes(page.encode("utf-8"))
     print(f"编辑页面已生成: {output_path}")
-    segments = data["segments"]
+    from maw.project_tracks import get_main_track
+    segments = get_main_track(data)["segments"]
     assert isinstance(segments, list)
     print(f"段落数: {len(segments)}")
     print(f"媒体: {media_path}")

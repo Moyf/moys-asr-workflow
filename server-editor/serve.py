@@ -80,8 +80,8 @@ from maw.postprocess_ffmpeg import (  # noqa: E402
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
     normalize_project,
-    repair_project_timing_ranges,
 )
+from maw.project_tracks import get_main_track, make_project  # noqa: E402
 from maw.project_io import (  # noqa: E402
     default_audio_track_from_metadata,
     enrich_project_media_metadata,
@@ -1355,11 +1355,6 @@ def load_project(
     if not json_path.exists():
         raise FileNotFoundError(f"JSON 文件不存在 - {json_path}")
     raw_data = json.loads(json_path.read_text(encoding="utf-8"))
-    # 兜底：上游（或旧版工具）可能写入 0 长/倒挂的段、词时间码，
-    # 加载时先拉齐到至少 100ms，避免编辑器里出现看不见的字幕块、保存被校验拒绝。
-    repaired_count = repair_project_timing_ranges(raw_data)
-    if repaired_count:
-        print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
     data = normalize_project(raw_data)
     payload_audio_track = audio_track_from_payloads(
         data.get("waveform"),
@@ -1532,7 +1527,7 @@ def load_blank_project(stickers_dir: str | None) -> ServerProject:
     sticker_root = Path(source).resolve() if source else None
     root_text, stickers = edit.scan_stickers(sticker_root) if sticker_root else ("", [])
     return ServerProject(
-        {"segments": [], "media": "", "language": "", "model": ""},
+        make_project([], main_fields={"language": "", "model": ""}, project_fields={"media": ""}),
         None,
         None,
         Path(root_text) if root_text else None,
@@ -1734,8 +1729,8 @@ def _attach_segments_match(server_project: dict, browser_project: dict) -> bool:
     Frame-mode projects keep their frame fields significant and are compared as
     supplied.
     """
-    server_segments = copy.deepcopy(server_project.get("segments"))
-    browser_segments = copy.deepcopy(browser_project.get("segments"))
+    server_segments = copy.deepcopy(get_main_track(server_project)["segments"])
+    browser_segments = copy.deepcopy(get_main_track(browser_project)["segments"])
     if not isinstance(server_segments, list) or not isinstance(browser_segments, list):
         return server_segments == browser_segments
 
@@ -2314,7 +2309,6 @@ class EditorServer(ThreadingHTTPServer):
 
         # 防止同目录同名旧文件掉包：段落内容与浏览器打开的副本一致才接管。
         browser_data = copy.deepcopy(browser_project)
-        repair_project_timing_ranges(browser_data)
         try:
             normalized_browser = normalize_project(browser_data)
         except ProjectValidationFailed as error:
@@ -2372,11 +2366,7 @@ class EditorServer(ThreadingHTTPServer):
         if backup_only and (backup_limit is None or filename is not None):
             raise SaveProjectError("备份必须使用当前绑定工程与有效的版本数")
         try:
-            repaired_project = copy.deepcopy(project_data)
-            # 保存时只自动修复字/词级取整冲突；真正的字幕段重叠仍交给严格校验，
-            # 避免把用户有意或误操作造成的段落重叠静默改写。
-            repair_project_timing_ranges(repaired_project, repair_segment_ranges=False)
-            normalized_project = normalize_project(repaired_project)
+            normalized_project = normalize_project(project_data)
         except ProjectValidationFailed as error:
             raise SaveProjectError(str(error)) from error
 
@@ -2876,6 +2866,8 @@ def write_project_json(target: Path, project_data: dict, *, strip_caches: bool =
     ``strip_inline_caches`` 返回副本，调用方持有的运行态工程不受影响，
     页面波形不消失。
     """
+    portable = rebase_project_media(normalize_project(project_data), target)
+    content = json.dumps(strip_inline_caches(portable) if strip_caches else portable, ensure_ascii=False, indent=2) + "\n"
     target.parent.mkdir(parents=True, exist_ok=True)
     backup = target.with_suffix(f"{target.suffix}.bak") if target.exists() else None
     if backup:
@@ -2883,9 +2875,7 @@ def write_project_json(target: Path, project_data: dict, *, strip_caches: bool =
     fd, temp_name = tempfile.mkstemp(prefix=f".{target.stem}.", suffix=".tmp", dir=target.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
-            portable = rebase_project_media(project_data, target)
-            json.dump(strip_inline_caches(portable) if strip_caches else portable, output, ensure_ascii=False, indent=2)
-            output.write("\n")
+            output.write(content)
         os.replace(temp_name, target)
     except Exception:
         # 保留未完成的临时文件以便排障；不要静默删除用户可恢复的文件。

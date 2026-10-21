@@ -10,6 +10,7 @@ from unittest import mock
 
 from maw.media import resolve_default_audio_track
 from maw.project import PROJECT_SCHEMA
+from maw.project_tracks import get_main_track
 from maw.project_io import (
     INLINE_CACHE_KEYS,
     default_audio_track_from_metadata,
@@ -58,11 +59,15 @@ class ProjectIoTests(CompactContainerAssertions, unittest.TestCase):
             self.assertNotIn(b"\r\n", raw)
             self.assertNotIn("media_metadata", project)
 
-    def test_write_mosp_replaces_missing_or_stale_schema_with_current_schema(self) -> None:
+    def test_write_mosp_migrates_missing_schema_and_rejects_unknown_schema(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output = Path(temp_dir) / "project.mosp"
 
-            write_mosp(output, {"schema": "moy.asr.project.draft", "segments": []})
+            write_mosp(output, {"segments": []})
+            before = output.read_bytes()
+            with self.assertRaises(ValueError):
+                write_mosp(output, {"schema": "moy.asr.project.draft", "segments": []})
+            self.assertEqual(output.read_bytes(), before)
 
             saved = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(saved["schema"], PROJECT_SCHEMA)
@@ -229,7 +234,7 @@ class InlineCacheStripTests(CompactContainerAssertions, unittest.TestCase):
         for key in INLINE_CACHE_KEYS:
             self.assertNotIn(key, saved, f"{key} 不得再写进工程文件")
             self.assertIn(key, project, "剥离必须发生在副本上，运行态工程不能被动到")
-        self.assertEqual(saved["segments"], [])
+        self.assertEqual(get_main_track(saved)["segments"], [])
         self.assertEqual(saved["schema"], PROJECT_SCHEMA)
 
     def test_strip_inline_caches_returns_copy_without_touching_runtime(self) -> None:
