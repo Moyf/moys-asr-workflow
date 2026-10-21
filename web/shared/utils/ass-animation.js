@@ -1,26 +1,49 @@
 // ass-animation: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, normalizeAssAnimations, parseSentenceFadeMarkers } = dependencies;
+  const { ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, normalizeAssAnimations, parseSentenceFadeMarkers, parseSentencePopMarkers } = dependencies;
 
 
-  // 单句渐入渐出：取整行两端标记，返回剥离后的文本与该句的 fad 时长。
-  // 时长统一取自样式库 profile 的 fad 设置（即使未启用也取其 inMs/outMs），
-  // 单句标记优先级高于全局动画开关。
-  function assSentenceFadeTags(text, profile, rule) {
+  // 单句渐入渐出 / 放大出现：取整行两端标记，返回剥离后的文本与该句自己的
+  // 动画参数。fad 时长与 pop 倍率统一取自样式库 profile（即使未启用也取其
+  // 参数，单句标记优先级高于全局动画开关）。
+  function assSentenceAnimationTags(text, profile, rule) {
     const parsed = parseSentenceFadeMarkers(text, rule);
-    if (!parsed.fadeIn && !parsed.fadeOut) return { text: parsed.text, fad: null };
-    const fad = normalizeAssAnimations(profile?.animations).fad;
+    const pop = parseSentencePopMarkers(parsed.text, rule);
+    const animations = normalizeAssAnimations(profile?.animations);
     return {
-      text: parsed.text,
-      fad: { inMs: parsed.fadeIn ? fad.inMs : 0, outMs: parsed.fadeOut ? fad.outMs : 0 },
+      text: pop.text,
+      fad: parsed.fadeIn || parsed.fadeOut
+        ? { inMs: parsed.fadeIn ? animations.fad.inMs : 0, outMs: parsed.fadeOut ? animations.fad.outMs : 0 } : null,
+      pop: pop.pop ? animations.pop : null,
     };
   }
 
 
-  function assAnimationOverrideTags(profile, { includeMove = true, fad = null } = {}) {
+  // 放大出现的标签片段：文字从 `fromScale × 样式缩放` 缩小落定到样式原值。
+  // ASS 的 \t 从当前值渐变到目标值，因此先写显式 \fscx\fscy 设定起点帧，
+  // 再由 \t 缓动落定；窗口结束后停在终点。offsetMs 是分片事件相对句首的
+  // 偏移（震动拆分 / 排布分片）：负相对时钟让动画跨片连续，片起点已越过
+  // 入场窗口时不再发射。百分比值不乘组缩放（\fscx 是已缩放字号的百分比）。
+  function assPopTransformTag(pop, style, offsetMs = 0) {
+    if (!pop || !(Number(pop.fromScale) > 1)) return '';
+    const baseX = Number.isFinite(Number(style?.scaleX ?? 100)) ? Math.max(0, Number(style?.scaleX ?? 100)) : 100;
+    const baseY = Number.isFinite(Number(style?.scaleY ?? 100)) ? Math.max(0, Number(style?.scaleY ?? 100)) : 100;
+    const inMs = Math.max(0, Number(pop.inMs) || 0);
+    if (offsetMs >= inMs) return '';
+    const percent = value => Number(value.toFixed(2));
+    const accel = Number(pop.accel) > 0 ? percent(Number(pop.accel)) : 1;
+    return `\\fscx${percent(baseX * pop.fromScale)}\\fscy${percent(baseY * pop.fromScale)}`
+      + `\\t(${Math.round(-offsetMs)},${Math.round(inMs - offsetMs)},${accel},`
+      + `\\fscx${percent(baseX)}\\fscy${percent(baseY)})`;
+  }
+
+
+  function assAnimationOverrideTags(profile, { includeMove = true, fad = null, pop = null, style = null } = {}) {
     const animations = normalizeAssAnimations(profile?.animations);
     const tags = [];
+    const popTag = assPopTransformTag(pop || (animations.pop.enabled ? animations.pop : null), style);
+    if (popTag) tags.push(popTag);
     // libass/playback behaviour is undefined when both fade forms are present.
     // The more expressive form wins, while the simple fad remains the normal
     // one-click path in the style manager.
@@ -53,6 +76,7 @@ export function createUtilsModule(dependencies) {
     stageWidth = 0,
     stageHeight = 0,
     fad = null,
+    pop = null,
   } = {}) {
     const animations = normalizeAssAnimations(profile?.animations);
     const elapsed = Math.max(0, Number(elapsedMs) || 0);
@@ -106,10 +130,21 @@ export function createUtilsModule(dependencies) {
         : Math.min(1, Math.max(0, (elapsed - start) / (end - start)));
       transformProgress = Math.pow(linear, Math.max(0.01, animations.t.accel));
     }
+    // 放大出现：与导出的 `\fscx…\t(…,\fscx终点)` 同一插值公式（线性进度取
+    // accel 次幂），入场窗口结束或 fromScale ≤ 1 时恒为 1。
+    const popAnimation = pop || (animations.pop.enabled ? animations.pop : null);
+    let popScale = 1;
+    if (popAnimation && Number(popAnimation.fromScale) > 1) {
+      const inMs = Math.max(0, Number(popAnimation.inMs) || 0);
+      const linear = inMs <= 0 ? 1 : Math.min(1, elapsed / inMs);
+      const progress = Math.pow(linear, Math.max(0.01, Number(popAnimation.accel) || 1));
+      popScale = popAnimation.fromScale + (1 - popAnimation.fromScale) * progress;
+    }
     const safePlayResX = Math.max(1, Number(playResX) || ASS_DEFAULT_PLAY_RES_X);
     const safePlayResY = Math.max(1, Number(playResY) || ASS_DEFAULT_PLAY_RES_Y);
     return {
       opacity,
+      popScale,
       moveX,
       moveY,
       moveOffsetX: animations.move.enabled
@@ -122,9 +157,11 @@ export function createUtilsModule(dependencies) {
 
   // A split Dialogue starts a new libass clock. Negative relative times retain
   // the source cue's fade/transform clock (verified against real libass frames).
-  function assAnimationSliceTags(profile, { offsetMs = 0, durationMs = 1, includeMove = true, fad = null, scale = 1 } = {}) {
+  function assAnimationSliceTags(profile, { offsetMs = 0, durationMs = 1, includeMove = true, fad = null, pop = null, scale = 1, style = null } = {}) {
     const animations = normalizeAssAnimations(profile?.animations);
     const tags = [];
+    const popTag = assPopTransformTag(pop || (animations.pop.enabled ? animations.pop : null), style, offsetMs);
+    if (popTag) tags.push(popTag);
     const simple = fad || (!animations.fade.enabled && animations.fad.enabled ? animations.fad : null);
     if (simple) {
       tags.push(`\\fade(255,0,255,${-offsetMs},${simple.inMs - offsetMs},${durationMs - simple.outMs - offsetMs},${durationMs - offsetMs})`);
@@ -155,8 +192,8 @@ export function createUtilsModule(dependencies) {
     return tags.join('');
   }
 
-  function assStackAnimationState(profile, elapsedMs, durationMs, { fad = null } = {}) {
-    const state = assPreviewAnimationState(profile, elapsedMs, durationMs, { fad });
+  function assStackAnimationState(profile, elapsedMs, durationMs, { fad = null, pop = null } = {}) {
+    const state = assPreviewAnimationState(profile, elapsedMs, durationMs, { fad, pop });
     const animations = normalizeAssAnimations(profile?.animations);
     const simple = fad || (!animations.fade.enabled && animations.fad.enabled ? animations.fad : null);
     const elapsed = Math.max(0, Number(elapsedMs) || 0);
@@ -180,5 +217,5 @@ export function createUtilsModule(dependencies) {
     return state;
   }
 
-  return Object.freeze({ assAnimationOverrideTags, assAnimationSliceTags, assStackAnimationState, assPreviewAnimationState, assSentenceFadeTags });
+  return Object.freeze({ assAnimationOverrideTags, assAnimationSliceTags, assStackAnimationState, assPreviewAnimationState, assSentenceAnimationTags });
 }
