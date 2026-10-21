@@ -1,0 +1,54 @@
+{
+  "schema": "moy.asr.project.v3",
+  "tracks": [
+    {
+      "id": "main",
+      "role": "main",
+      "name": "主字幕",
+      "enabled": true,
+      "segments": [
+        {
+          "id": "default",
+          "start": 0,
+          "end": 100,
+          "text": "default",
+          "assOverride": {
+            "vendor": {
+              "keep": false
+            }
+          }
+        },
+        {
+          "id": "rounded",
+          "start": 100,
+          "end": 200,
+          "text": "rounded",
+          "assOverride": {
+            "scale": 1.23,
+            "pos": {
+              "x": 2,
+              "y": 3,
+              "vendor": 0
+            },
+            "vendor": []
+          }
+        },
+        {
+          "id": "empty",
+          "start": 200,
+          "end": 300,
+          "text": "empty"
+        }
+      ]
+    }
+  ],
+  "bilingual": {
+    "display_mode": "both"
+  },
+  "bindings": [],
+  "subtitle_groups": {
+    "next_id": 1,
+    "color": [],
+    "sticker": []
+  }
+}

@@ -424,7 +424,27 @@ export function createUtilsModule() {
         if (!Array.isArray(values) || values.length !== 1) errors.push({ path: `${path}.${field}`, message: 'must contain exactly one stable ID' });
       }
     });
-    if (errors.length) throw new ProjectTracksError(errors);
+    if (errors.length) throw new ProjectTracksError(errors.map(error => {
+      // Legacy ASS diagnostics retain their public input paths. Canonical
+      // validation continues to identify tracks directly.
+      if (!error.path.includes('.assOverride')) return error;
+      const match = /^\$\.tracks\[(\d+)\]/u.exec(error.path);
+      if (!match) return error;
+      const trackIndex = Number(match[1]);
+      const track = tracks[trackIndex];
+      const inputPath = track.role === 'main' ? '$' : track.role === 'overlay' ? '$.overlay_track'
+        : `$.multi_subtitle.tracks[${trackIndex - tracks.filter(entry => entry.role !== 'extension').length}]`;
+      return { ...error, path: inputPath + error.path.slice(match[0].length) };
+    }));
+    for (const track of tracks) for (const segment of track.segments) {
+      const override = segment.assOverride;
+      if (!object(override)) continue;
+      if (own(override, 'scale')) {
+        override.scale = Number(override.scale.toFixed(2));
+        if (override.scale === 1) delete override.scale;
+      }
+      if (!Object.keys(override).length) delete segment.assOverride;
+    }
     const reservedCues = new Set(tracks.flatMap(track => track.segments.map(segment => id(segment.id))).filter(Boolean));
     const usedCues = new Set();
     const mappings = new Map();

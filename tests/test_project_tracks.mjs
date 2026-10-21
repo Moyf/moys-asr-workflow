@@ -198,6 +198,33 @@ test('legacy optional nulls retain original defaults without swallowing conflict
   rejects({ segments: [], multi_subtitle: { tracks: [{ name: null }] } }, '$.multi_subtitle.tracks[0].name');
 });
 
+test('legacy ASS normalization preserves unknown fields while canonical import stays read-only', () => {
+  const input = fixture('legacy-ass-normalization.input');
+  const before = json(input);
+  assert.deepEqual(model.importProject(input).project, fixture('legacy-ass-normalization.expected'));
+  assert.deepEqual(input, before);
+  const v2 = { ...input, schema: 'moy.asr.project.v2', subtitle_groups: { next_id: 1, color: [], sticker: [] } };
+  assert.deepEqual(model.importProject(v2).project, fixture('legacy-ass-normalization.expected'));
+  const v3 = fixture('legacy-ass-normalization.expected');
+  v3.tracks[0].segments[0].assOverride.scale = 1.004;
+  v3.tracks[0].segments[1].assOverride.scale = 1.234;
+  v3.tracks[0].segments[2].assOverride = {};
+  assert.deepEqual(model.importProject(v3), { project: v3, changes: [] });
+});
+
+test('only legacy ASS failures use the original input container paths', () => {
+  const invalid = { start: 0, end: 10, text: 'A', assOverride: { scale: 6 } };
+  for (const schema of ['moy.asr.project.v1', 'moy.asr.project.v2']) {
+    const root = { schema, segments: [{ id: 'bad', ...invalid }] };
+    if (schema.endsWith('v2')) root.subtitle_groups = { next_id: 1, color: [], sticker: [] };
+    rejects(root, '$.segments[0].assOverride.scale');
+    rejects({ ...root, segments: [], overlay_track: { segments: [{ id: 'bad', ...invalid }] } }, '$.overlay_track.segments[0].assOverride.scale');
+    rejects({ ...root, segments: [], multi_subtitle: { tracks: [{ segments: [{ id: 'bad', ...invalid }] }] } }, '$.multi_subtitle.tracks[0].segments[0].assOverride.scale');
+  }
+  const v3 = canonical(); v3.tracks[0].segments[0].assOverride = { scale: 6 };
+  rejects(v3, '$.tracks[0].segments[0].assOverride.scale');
+});
+
 test('legacy import reports independent metadata, cue, group and binding shape paths together', () => {
   const input = { timebase: { unit: 'seconds', fps: 0 }, segments: [
     { start: -1, end: 0, text: 42, color_ref: { headIdx: 5 } },
