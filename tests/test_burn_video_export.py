@@ -149,7 +149,7 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
                 self.assertNotIn("Microsoft YaHei", text)
                 self.assertIn(r"{\i1}你好{\i0}", text)
                 self.assertEqual(command.count("-af"), 1)
-                self.assertEqual(command[command.index("-af") + 1], "volume=6dB")
+                self.assertEqual(command[command.index("-af") + 1], "volume=6.000000dB")
                 Path(command[-1]).write_bytes(b"burned")
             return subprocess.CompletedProcess(command, 0, "", "")
 
