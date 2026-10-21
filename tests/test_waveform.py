@@ -4,6 +4,45 @@ from __future__ import annotations
 
 from tests.compact_assertions import CompactContainerAssertions
 
+# G04 后这些叶子不再出现在清单里，但仍是 shared/editor-utils.js
+# 的显式 import 与源码契约；源码形态断言需要继续覆盖它们。
+WAVEFORM_RETIRED_UTILS = (
+    "shared/utils/data.js",
+    "shared/utils/fonts.js",
+    "shared/utils/speakers.js",
+    "shared/utils/media-metadata.js",
+    "shared/utils/navigation.js",
+    "shared/utils/text-processing.js",
+    "shared/utils/timed-text-core.js",
+    "shared/utils/timed-text-plans.js",
+    "shared/utils/timed-text-edit.js",
+    "shared/utils/text-metrics.js",
+    "shared/utils/segment-timing.js",
+    "shared/utils/split-alignment.js",
+    "shared/utils/split-trim.js",
+    "shared/utils/timeline.js",
+    "shared/utils/settings.js",
+    "shared/utils/gap-remove.js",
+    "shared/utils/history.js",
+    "shared/utils/multi-subtitle.js",
+    "shared/utils/word-timing.js",
+    "shared/utils/word-split.js",
+    "shared/utils/srt.js",
+    "shared/utils/lrc.js",
+    "shared/utils/ass-style.js",
+    "shared/utils/ass-animation.js",
+    "shared/utils/ass-canvas-layout.js",
+    "shared/utils/sticker-placement.js",
+    "shared/utils/ass-export.js",
+    "shared/utils/export-plan.js",
+    "shared/utils/fcp7.js",
+    "shared/utils/export-workflow.js",
+    "shared/utils/platform.js",
+    "shared/utils/preview-geometry.js",
+    "shared/utils/lottie.js",
+    "shared/utils/ograf.js",
+)
+
 import base64
 import math
 import os
@@ -404,7 +443,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         settings = (ROOT / "web" / "editor/state/editor-settings.js").read_text(encoding="utf-8")
         waveform_init = (ROOT / "web" / "editor/media/editor-waveform-init.js").read_text(encoding="utf-8")
         template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
-        waveform = "\n\n".join(edit.read_web_asset(name) for name in edit.read_editor_script_manifest())
+        waveform = "\n\n".join(edit.read_web_asset(name) for name in list(edit.read_editor_script_manifest()) + [name for name in WAVEFORM_RETIRED_UTILS if name not in edit.read_editor_script_manifest()])
         self.assertIn("waveShapeSource: 'reapeaks'", settings)
         self.assertIn("getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource", waveform_init)
         self.assertIn("getWaveShapeSource?.() || 'reapeaks'", waveform)
@@ -435,7 +474,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
     def test_blank_editor_inlines_modular_assets(self) -> None:
         page = edit.build_blank_html()
         # Historical JavaScript source-shape checks stay at the source layer.
-        source = "\n\n".join(edit.read_web_asset(name) for name in edit.read_editor_script_manifest())
+        source = "\n\n".join(edit.read_web_asset(name) for name in list(edit.read_editor_script_manifest()) + [name for name in WAVEFORM_RETIRED_UTILS if name not in edit.read_editor_script_manifest()])
         self.assertIn(edit.build_editor_scripts().splitlines()[0], page)
         self.assertIn('class="waveform-mode-switch"', page)
         self.assertIn('id="current-cue-panel"', page)
@@ -1357,7 +1396,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             '.ninja-slash-params {\n    flex-direction: row; flex-wrap: wrap; align-items: center; gap: 3px 16px;\n    flex: 1 1 320px; min-width: min(100%, 320px);',
         ):
             self.assertIn(marker, page)
-        source = "\n\n".join(edit.read_web_asset(name) for name in edit.read_editor_script_manifest())
+        source = "\n\n".join(edit.read_web_asset(name) for name in list(edit.read_editor_script_manifest()) + [name for name in WAVEFORM_RETIRED_UTILS if name not in edit.read_editor_script_manifest()])
         self.assertIn('const NINJA_SFX_HISTORY = [];', source)
         self.assertIn('function triggerNinjaSplitFeedback(', source)
         # 仓库只内置 Opus 音效；OGG 备选格式已移除。
