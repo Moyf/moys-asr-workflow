@@ -581,7 +581,7 @@ class UnsafeDiscardDowngradeTest(AiCleanupTestCase):
         self.assertEqual(stats["removed"], 0)
 
     def test_discard_with_digits_becomes_review(self) -> None:
-        # 独有数字：即使命中流程模式（报遍数），含数字也必须人工确认。
+        # 独有数字：流程用语之外的数字（30500）仍须人工确认；报遍数本身的「第3遍」不再拦截。
         script = ["大家好欢迎回到我的频道"]
         segments = [
             _segment(0, 4000, script[0]),
@@ -698,6 +698,263 @@ class MissingScriptLineTest(AiCleanupTestCase):
         assert stats is not None
         self.assertEqual(stats["removed"], 1)
         self.assertEqual(stats["matchedLines"], 1)
+
+
+class SoleInterjectionDiscardTest(AiCleanupTestCase):
+    """整段只剩纯感叹词时，LLM 的删除决定不应被本地校验降级。"""
+
+    def test_sole_interjection_clips_are_removed(self) -> None:
+        # 无备用片段、无重复证据的单字/纯感叹词片段：AI 判删即可移除。
+        script = ["大家好欢迎回到我的频道"]
+        segments = [
+            _segment(0, 1500, "哎"),
+            _segment(1500, 2500, "哎哟嗯"),
+            _segment(2500, 6000, script[0]),
+        ]
+        project_path, script_path = self.request(_project(segments), script)
+        artifact, output, _ = _run(
+            self.directory,
+            project_path,
+            script_path,
+            _decisions(
+                c001={"decision": "discard", "scriptLine": "", "reason": "语气词", "evidence": "哎"},
+                c002={"decision": "discard", "scriptLine": "", "reason": "语气词", "evidence": "哎哟嗯"},
+                c003={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
+            ),
+        )
+        self.assertTrue(output["segments"][0].get("disabled"))
+        self.assertTrue(output["segments"][1].get("disabled"))
+        for marker in output["markers"]["items"]:
+            self.assertNotIn("review", marker)
+        stats = artifact.stats
+        assert stats is not None
+        self.assertEqual(stats["removed"], 2)
+        self.assertEqual(stats["pendingReview"], 0)
+
+    def test_answer_word_without_local_evidence_stays_review(self) -> None:
+        # 「对」可能是有效应答，不在纯感叹词白名单内，维持待复核。
+        script = ["大家好欢迎回到我的频道"]
+        segments = [
+            _segment(0, 800, "对"),
+            _segment(800, 5000, script[0]),
+        ]
+        project_path, script_path = self.request(_project(segments), script)
+        artifact, output, _ = _run(
+            self.directory,
+            project_path,
+            script_path,
+            _decisions(
+                c001={"decision": "discard", "scriptLine": "", "reason": "口头应答", "evidence": "对"},
+                c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
+            ),
+        )
+        self.assertFalse(output["segments"][0].get("disabled"))
+        marker = output["markers"]["items"][0]
+        self.assertEqual(marker["review"]["reason"], "缺少可本地验证的重复或流程用语证据")
+        stats = artifact.stats
+        assert stats is not None
+        self.assertEqual(stats["pendingReview"], 1)
+
+    def test_sole_ya_clip_can_still_be_removed(self) -> None:
+        script = ["大家好欢迎回到我的频道"]
+        segments = [_segment(0, 800, "呀"), _segment(800, 5000, script[0])]
+        project_path, script_path = self.request(_project(segments), script)
+        artifact, output, _ = _run(
+            self.directory,
+            project_path,
+            script_path,
+            _decisions(
+                c001={"decision": "discard", "scriptLine": "", "reason": "语气词", "evidence": "呀"},
+                c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
+            ),
+        )
+        self.assertTrue(output["segments"][0].get("disabled"))
+        stats = artifact.stats
+        assert stats is not None
+        self.assertEqual(stats["removed"], 1)
+        self.assertEqual(stats["pendingReview"], 0)
+
+    def test_interjection_covering_sole_script_line_stays_review(self) -> None:
+        # 白名单不越过文稿保护：唯一覆盖文稿行的语气词仍需人工确认。
+        script = ["哎"]
+        segments = [_segment(0, 1500, "哎")]
+        project_path, script_path = self.request(_project(segments), script)
+        artifact, output, _ = _run(
+            self.directory,
+            project_path,
+            script_path,
+            _decisions(
+                c001={"decision": "discard", "scriptLine": "哎", "reason": "语气词", "evidence": "哎"},
+            ),
+        )
+        self.assertFalse(output["segments"][0].get("disabled"))
+        marker = output["markers"]["items"][0]
+        self.assertEqual(marker["review"]["reason"], "移除后将丢失对应文稿内容，需要人工确认")
+
+
+class ProcessTalkEvidenceTest(AiCleanupTestCase):
+    def test_restart_talk_is_removed(self) -> None:
+        # 「重新开始」属于流程用语：整段重复起头 + 重新开始可本地佐证。
+        script = ["大家好欢迎回到我的频道"]
+        segments = [
+            _segment(0, 2500, "重新开始重新开始"),
+            _segment(2500, 6000, script[0]),
+        ]
+        project_path, script_path = self.request(_project(segments), script)
+        artifact, output, _ = _run(
+            self.directory,
+            project_path,
+            script_path,
+            _decisions(
+                c001={
+                    "decision": "discard",
+                    "scriptLine": "",
+                    "reason": "重录起头",
+                    "evidence": "重新开始重新开始",
+                },
+                c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
+            ),
+        )
+        self.assertTrue(output["segments"][0].get("disabled"))
+        for marker in output["markers"]["items"]:
+            self.assertNotIn("review", marker)
+        stats = artifact.stats
+        assert stats is not None
+        self.assertEqual(stats["removed"], 1)
+        self.assertEqual(stats["pendingReview"], 0)
+
+    def test_take_count_digit_is_removed(self) -> None:
+        # 报遍数本身的「第3遍」不算内容数字，不再触发人工确认。
+        script = ["大家好欢迎回到我的频道"]
+        segments = [
+            _segment(0, 2500, "第3遍重新开始"),
+            _segment(2500, 6000, script[0]),
+        ]
+        project_path, script_path = self.request(_project(segments), script)
+        artifact, output, _ = _run(
+            self.directory,
+            project_path,
+            script_path,
+            _decisions(
+                c001={
+                    "decision": "discard",
+                    "scriptLine": "",
+                    "reason": "报遍数",
+                    "evidence": "第3遍重新开始",
+                },
+                c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
+            ),
+        )
+        self.assertTrue(output["segments"][0].get("disabled"))
+        for marker in output["markers"]["items"]:
+            self.assertNotIn("review", marker)
+        stats = artifact.stats
+        assert stats is not None
+        self.assertEqual(stats["removed"], 1)
+        self.assertEqual(stats["pendingReview"], 0)
+
+    def test_take_count_inside_instruction_stays_review(self) -> None:
+        # 流程模式匹配到正文的一小部分，不足以证明整句都是录制流程用语。
+        script = ["大家好欢迎回到我的频道"]
+        segments = [
+            _segment(0, 2500, "这个动作做第3遍时要停下来"),
+            _segment(2500, 6000, script[0]),
+        ]
+        project_path, script_path = self.request(_project(segments), script)
+        artifact, output, _ = _run(
+            self.directory,
+            project_path,
+            script_path,
+            _decisions(
+                c001={"decision": "discard", "scriptLine": "", "reason": "重录", "evidence": "第3遍"},
+                c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
+            ),
+        )
+        self.assertFalse(output["segments"][0].get("disabled"))
+        marker = output["markers"]["items"][0]
+        self.assertEqual(marker["review"]["reason"], "片段包含数字，需要人工确认")
+        stats = artifact.stats
+        assert stats is not None
+        self.assertEqual(stats["pendingReview"], 1)
+
+    def test_chinese_take_numbers_keep_process_and_instruction_distinct(self) -> None:
+        for text, removed in [
+            ("第三遍重新开始", True), ("这个动作做第三遍时要停下来", False),
+            ("重新开始这个参数是²", False), ("重新开始这个参数是①", False),
+            ("重新开始这个参数是❶", False),
+        ]:
+            with self.subTest(text=text):
+                script = ["大家好欢迎回到我的频道"]
+                project_path, script_path = self.request(_project([
+                    _segment(0, 2500, text), _segment(2500, 6000, script[0]),
+                ]), script)
+                artifact, output, _ = _run(self.directory, project_path, script_path, _decisions(
+                    c001={"decision": "discard", "scriptLine": "", "reason": "重录", "evidence": text},
+                    c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
+                ))
+                self.assertEqual(bool(output["segments"][0].get("disabled")), removed)
+                self.assertEqual(artifact.stats["pendingReview"], int(not removed))
+
+
+class EditPathFillerShortcutTest(unittest.TestCase):
+    """句内词项删除需比整段语气词删除更严格。"""
+
+    @staticmethod
+    def _clip(clip_id: str, chars: list[str]):
+        from maw.postprocess_ai_cleanup import _Clip
+        from maw.postprocess_match import _normalize_text
+
+        text = "".join(chars)
+        items = [
+            {"text": char, "start": index * 100, "end": (index + 1) * 100}
+            for index, char in enumerate(chars)
+        ]
+        return _Clip(
+            id=clip_id,
+            segment_index=0,
+            text=text,
+            norm=_normalize_text(text),
+            items=items,
+            source_item_indices=list(range(len(items))),
+        )
+
+    def test_interjection_item_deletion_stays_edit(self) -> None:
+        from maw.postprocess_ai_cleanup import _resolve_decisions
+
+        clip = self._clip("c001", ["哎", "哎", "好", "我", "们", "开", "始"])
+        resolved, reasons = _resolve_decisions(
+            [clip],
+            {"c001": {"decision": "edit", "deleteItems": [0], "evidence": "哎"}},
+        )
+        self.assertEqual(resolved["c001"], "edit")
+        self.assertEqual(reasons["c001"], "")
+
+    def test_particle_item_deletion_stays_review(self) -> None:
+        # 「走吧」删「吧」会改变句义，语气助词不进句中删除白名单。
+        from maw.postprocess_ai_cleanup import _resolve_decisions
+
+        clip = self._clip("c001", ["好", "吧", "我", "们", "开", "始"])
+        resolved, reasons = _resolve_decisions(
+            [clip],
+            {"c001": {"decision": "edit", "deleteItems": [1], "evidence": "吧"}},
+        )
+        self.assertEqual(resolved["c001"], "review")
+        self.assertEqual(
+            reasons["c001"], "词项删除缺少可验证的重复、口水词或保留版本覆盖证据"
+        )
+
+    def test_ya_particle_item_deletion_stays_review(self) -> None:
+        from maw.postprocess_ai_cleanup import _resolve_decisions
+
+        clip = self._clip("c001", ["好", "呀", "我", "们", "开", "始"])
+        resolved, reasons = _resolve_decisions(
+            [clip],
+            {"c001": {"decision": "edit", "deleteItems": [1], "evidence": "呀"}},
+        )
+        self.assertEqual(resolved["c001"], "review")
+        self.assertEqual(
+            reasons["c001"], "词项删除缺少可验证的重复、口水词或保留版本覆盖证据"
+        )
 
 
 class NoItemsSegmentTest(AiCleanupTestCase):

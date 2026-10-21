@@ -17,7 +17,7 @@
     "ASS 保留手动换行，超宽文字按画布边距折行。选中主字幕可拖动定位、缩放；用「实际画面预览」核对字体与动画。": "ASS preserves manual line breaks and wraps oversized text within canvas margins. Select a main cue to position or scale it; use Actual frame preview to check fonts and animations.",
     "在「特殊文本格式」选择符号规则：双个符号、单双皆可或无（保留原文）。": "Choose a symbol rule in Special text formats: double symbols, single or double, or none (keep the original text).",
     "**强调**　++放大++　--缩小--　__下划线__　~~删除线~~　//弱化//　!!震动!!": "**emphasis**　++larger++　--smaller--　__underline__　~~strike~~　//muted//　!!shake!!",
-    ">>文字<< 为整句淡入淡出，也可只加一端。淡入淡出标记始终放在最外侧，例如 >>++文字++<<；其他格式可从右键「高级操作 → 左右添加字符」插入。": "Use >>text<< for sentence fade-in and fade-out, or add just one end. Keep fade markers outermost, for example >>++text++<<; insert other formats from right-click → Advanced operations → Wrap with characters.",
+    ">>文字<< 为整句淡入淡出，也可只加一端；!!文字!! 原地震动；{{文字}} 放大出现。句级标记始终放在最外侧，例如 >>++文字++<<；其他格式可从右键「高级操作 → 左右添加字符」插入。": "Use >>text<< for sentence fade-in and fade-out, or add just one end; !!text!! shakes in place; {{text}} pops in. Keep sentence-level markers outermost, for example >>++text++<<; insert other formats from right-click → Advanced operations → Wrap with characters.",
     "预览与交付": "Preview and delivery",
     "导出「ASS（带样式）」保留样式与动画；「烧录视频」把字幕固定到 MP4。关闭 ASS 模式时，按样式库指定的 SRT 烧录样式转换后烧录。": "Export ASS (styled) to retain styles and animations, or Burn video to embed subtitles in an MP4. With ASS mode off, burning converts the current SRT using the library’s assigned SRT burn style.",
     "工程设置随工程保存；样式库单独保存。本机编辑器与 Launcher 共用样式库，便携 HTML 使用浏览器副本。": "Project settings are saved with the project; save the style library separately. The local editor and Launcher share the library, while portable HTML uses a browser copy.",
@@ -866,7 +866,7 @@
     '用成对符号标记特殊文本；开启的语法统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。颜色与字号比例在 ASS 样式库中配置。': 'Mark special text with paired symbols. Enabled syntax applies to preview and export for all ASS caption tracks. Configure colors and size ratios in the ASS style library.',
     // 提示句子固定为双符号示例（双符号在任何非关闭规则下都生效），
     // 与 syncAssSymbolRule 的动态重建共用整句键。
-    '你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, !!shake!!, and >>fade in/out<< to apply special styles.',
+    '你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<<、{{放大出现}} 来添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, !!shake!!, >>fade in/out<<, and {{pop in}} to apply special styles.',
     '详见字幕右键菜单「左右添加字符」部分。': 'See the "Wrap with characters" section in the subtitle right-click menu.',
     '注释': 'Comment', '注释色': 'Comment color', '注释样式': 'Comment style', '注释文字比例': 'Comment text scale',
     '//注释//': '//comment//',
@@ -875,7 +875,7 @@
     '左右添加字符': 'Wrap with characters', '自定义左右字符': 'Custom wrap characters',
     '左侧字符': 'Left characters', '右侧字符': 'Right characters', '插入': 'Insert',
     '音符': 'Music note', '淡出淡入': 'Fade in/out', '弱化文本': 'Subdued text', '整句': 'Sentence',
-    '原地震动': 'Shake in place',
+    '原地震动': 'Shake in place', '放大出现': 'Pop in',
     'ASS 特殊文本样式': 'ASS text styles', '普通字符': 'Regular characters',
     '♪音符♪': '♪Music note♪', '♬双音符♬': '♬Double music notes♬', '[中括号]': '[Square brackets]',
     '左侧添加': 'Add on the left', '右侧添加': 'Add on the right',

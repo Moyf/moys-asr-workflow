@@ -783,7 +783,7 @@ __WAVEFORM_CSS__
           <span class="help-break" aria-hidden="true"></span>
           <span>**强调**　++放大++　--缩小--　__下划线__　~~删除线~~　//弱化//　!!震动!!</span>
           <span class="help-break" aria-hidden="true"></span>
-          <span>&gt;&gt;文字&lt;&lt; 为整句淡入淡出，也可只加一端。淡入淡出标记始终放在最外侧，例如 &gt;&gt;++文字++&lt;&lt;；其他格式可从右键「高级操作 → 左右添加字符」插入。</span>
+          <span>&gt;&gt;文字&lt;&lt; 为整句淡入淡出，也可只加一端；!!文字!! 原地震动；{{文字}} 放大出现。句级标记始终放在最外侧，例如 &gt;&gt;++文字++&lt;&lt;；其他格式可从右键「高级操作 → 左右添加字符」插入。</span>
         </div>
       </section>
       <section class="help-subgroup">
@@ -1900,7 +1900,7 @@ __WAVEFORM_CSS__
             <div class="ass-style-subheading" id="ass-style-emphasis-heading">特殊文本样式（MASS）</div>
             <button type="button" class="ass-style-mass-help" id="ass-style-mass-help" title="基于 Markdown 语法灵感的进阶式 ASS，也可以理解为 MAW-ASS。" aria-label="什么是 MASS？">?</button>
           </div>
-          <small class="editor-settings-hint" id="ass-special-format-hint">你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。</small>
+          <small class="editor-settings-hint" id="ass-special-format-hint">你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<<、{{放大出现}} 来添加特殊样式。</small>
           <small class="editor-settings-hint" id="ass-special-format-menu-hint" hidden>详见字幕右键菜单「左右添加字符」部分。</small>
           <div id="ass-style-emphasis-options" class="ass-style-fields ass-style-fields-special ass-style-emphasis-options">
             <label class="ass-style-color-field">强调色<input type="color" id="ass-style-emphasis-color" data-ass-style-field="emphasisColor"></label>
@@ -1937,6 +1937,11 @@ __WAVEFORM_CSS__
           <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-fad-enabled" data-ass-animation="fad.enabled"> <code>\fad</code> 淡入淡出</label>
           <div class="ass-animation-fields"><label>淡入<input type="number" id="ass-animation-fad-in" data-ass-animation="fad.inMs" min="0" max="60000" step="10"><span>ms</span></label><label>淡出<input type="number" id="ass-animation-fad-out" data-ass-animation="fad.outMs" min="0" max="60000" step="10"><span>ms</span></label></div>
           <small>最常用的整句淡入淡出，预览和导出均支持。</small>
+        </div>
+        <div class="ass-animation-card">
+          <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-pop-enabled" data-ass-animation="pop.enabled"> 放大出现</label>
+          <div class="ass-animation-fields"><label>起点倍率<input type="number" id="ass-animation-pop-from" data-ass-animation="pop.fromScale" min="1" max="10" step="0.1"><span>×</span></label><label>入场<input type="number" id="ass-animation-pop-in" data-ass-animation="pop.inMs" min="0" max="60000" step="10"><span>ms</span></label><label>加速度<input type="number" id="ass-animation-pop-accel" data-ass-animation="pop.accel" min="0.01" max="100" step="0.1"></label></div>
+          <small>文字从起点倍率缩小落定到正常字号。句级 <code>{{文字}}</code> 标记复用这组参数（不受上方开关影响）；开关只控制每句自动应用。</small>
         </div>
         <details class="ass-animation-advanced-group" id="ass-animation-advanced-group">
           <summary>进阶动画</summary>
@@ -2082,7 +2087,7 @@ __WAVEFORM_CSS__
         <div class="cue-panel-target" id="cue-panel-target">未选择</div>
         <div class="cue-panel-text-row">
           <textarea id="cue-panel-text" rows="3" placeholder="选择一条字幕开始编辑…"></textarea>
-          <div id="ass-cue-position" class="ass-cue-position" hidden aria-label="主字幕 ASS 定位" tabindex="0" title="PlayRes 坐标；方向键微调，Shift：10 像素；重置恢复全局排布">
+          <div id="ass-cue-position" class="ass-cue-position" hidden aria-label="逐句 ASS 定位" tabindex="0" title="PlayRes 坐标；方向键微调，Shift：10 像素；重置恢复全局排布">
             <div id="ass-cue-scale-controls" class="ass-cue-scale-controls" hidden>
               <label>倍率 <input id="ass-cue-scale" type="number" min="0.10" max="5.00" step="0.01" value="1.00" aria-label="ASS 字幕缩放倍率"></label>
               <button id="ass-cue-scale-reset" type="button">重置大小</button>

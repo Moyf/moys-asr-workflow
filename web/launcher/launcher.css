@@ -533,6 +533,63 @@ body:not(.launcher-ready) .shell {
   margin-top: 0;
 }
 
+/* 最近工程：serverCard 工程文件输入框下方的紧凑列表；空列表时整块隐藏。
+   顶部间距由 .field 的 margin-top 提供（.field 只有上边距，见 UI 间距约定）。 */
+.recent-projects-label {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.recent-projects-list {
+  display: grid;
+  gap: 4px;
+}
+
+.recent-project-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.recent-project-item:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.recent-project-item .recent-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-project-item.is-missing {
+  color: var(--text-faint);
+}
+
+.recent-project-item.is-missing .recent-project-name {
+  text-decoration: line-through;
+}
+
+.recent-project-badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  color: var(--amber-hover);
+  font-size: 12px;
+}
+
 label {
   color: var(--text-muted);
   font-size: 13px;
