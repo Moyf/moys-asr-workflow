@@ -12,15 +12,15 @@ test('track swaps retain speaker and disabled metadata and keep discarded cues o
     { id: `${prefix}-enabled`, start: 1200, end: 2200, text: `${prefix} enabled`, speaker: `${prefix}-other`, disabled: false },
     { id: `${prefix}-legacy`, start: 2400, end: 3400, text: `${prefix} legacy` },
   ];
-  const project = {
+  const project = utils.importProject({
     segments: makeSegments('main'),
     multi_subtitle: { enabled: true, tracks: [{ id: 'translation', segments: makeSegments('ext') }] },
-  };
-  const originalMetadata = new Map([...project.segments, ...project.multi_subtitle.tracks[0].segments]
+  }).project;
+  const originalMetadata = new Map([...utils.iterSegments(project)]
     .map(({ id, speaker, disabled }) => [id, { speaker, disabled }]));
   for (let round = 0; round < 2; round++) {
     assert.equal(utils.swapMainAndExtensionSubtitle(project).swapped, true);
-    for (const segments of [project.segments, project.multi_subtitle.tracks[0].segments]) {
+    for (const { segments } of project.tracks) {
       for (const { id, speaker, disabled } of segments) {
         assert.deepEqual({ speaker, disabled }, originalMetadata.get(id));
       }
