@@ -105,6 +105,10 @@ export function createUtilsModule(dependencies) {
         startTags += '\\u1';
         endTags += '\\u0';
       }
+      if (run.italic && !style.italic) {
+        startTags += '\\i1';
+        endTags += '\\i0';
+      }
       return startTags ? `{${startTags}}${content}{${endTags}}` : content;
     }).join('');
   }

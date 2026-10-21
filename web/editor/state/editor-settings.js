@@ -125,6 +125,7 @@
   assSmallTextEnabled: true,
   assLargeTextEnabled: true,
   assCommentEnabled: true,
+  assItalicEnabled: true,
   // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
   multiSubtitleRowHeight: 168,
   // 字词时间码开启时使用的波形行高度与每行长度；关闭后恢复原设置。

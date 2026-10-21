@@ -410,8 +410,9 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await page.locator('#ass-mode-toggle').check();
   await openSettingsPage(page, 'special-edit');
   await expect(page.locator('#ass-inline-text-settings')).toBeVisible();
-  await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(6);
-  await expect(page.locator('[data-ass-symbol="//"]')).toHaveText('//注释//');
+  await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(7);
+  await expect(page.locator('[data-ass-symbol="%%"]')).toHaveText('%%弱化%%');
+  await expect(page.locator('[data-ass-symbol="//"]')).toHaveText('//斜体//');
   await expect(page.locator('#ass-inline-text-title')).toHaveText('特殊文本');
   await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('both');
   await expect(page.locator('#ass-special-symbol-rule option:checked')).toHaveText('单双皆可');
@@ -433,7 +434,7 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await expect(page.locator('#ass-style-mass-help'))
     .toHaveAttribute('data-title', '基于 Markdown 语法灵感的进阶式 ASS，也可以理解为 MAW-ASS。');
   await expect(page.locator('#ass-special-format-hint'))
-    .toHaveText('你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。');
+    .toHaveText('你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<<、{{放大出现}} 来添加特殊样式。');
   await expect(page.locator('#ass-special-format-menu-hint')).toBeVisible();
   await expect(page.locator('#ass-special-format-menu-hint'))
     .toHaveText('详见字幕右键菜单「左右添加字符」部分。');
