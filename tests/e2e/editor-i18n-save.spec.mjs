@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  getMainTrack,
   cleanupTempDir,
   disableOnboarding,
   DURATION_MS,
@@ -54,8 +55,8 @@ test('English waveform and sticker names preserve project text', async ({ page }
     const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
     segment.text = '删除';
     segment.items = [];
-    segment.sticker = { name: '保存', path: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/%3E' };
-    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].sticker_ref = { headIdx: 0, name: '保存' };
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0, 1], 'sticker',
+      { name: '保存', path: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/%3E' });
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
   await expect(page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-label').first()).toHaveText('删除');
@@ -333,7 +334,7 @@ test('Ctrl+S saves and Ctrl+Shift+S invokes save as', async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.__saveAsCapture)).not.toBeNull();
   const saveAsCapture = await page.evaluate(() => window.__saveAsCapture);
   expect(saveAsCapture.suggestedName).toBe('project.mosp');
-  expect(JSON.parse(saveAsCapture.content).segments).toHaveLength(6);
+  expect(getMainTrack(JSON.parse(saveAsCapture.content)).segments).toHaveLength(6);
 });
 
 test('validation save error previews the item and jumps to its subtitle', async ({ page }) => {
@@ -455,7 +456,9 @@ test('auto-saves a text edit shortly after it loses focus', async ({ page }) => 
 
   expect((await saveResponse).ok()).toBe(true);
   const savedProject = JSON.parse(readFileSync(projectPath, 'utf8'));
-  expect(savedProject.segments[0].text).toBe('Alpha autosaved');
+  expect(savedProject.schema).toBe('moy.asr.project.v3');
+  for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(savedProject).not.toHaveProperty(field);
+  expect(getMainTrack(savedProject).segments[0].text).toBe('Alpha autosaved');
 });
 
 test('a disconnected save endpoint offers a JSON fallback download', async ({ page }) => {

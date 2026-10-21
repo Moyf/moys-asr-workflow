@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  getMainTrack, getExtensionTrack,
   cleanupTempDir,
   disableOnboarding,
   findFreePort,
@@ -183,12 +184,12 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
   await page.locator('#undo-btn').click();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
-  expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(0);
+  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'extension').length)).toBe(0);
   await page.locator('#redo-btn').click();
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
-  expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(1);
+  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'extension').length)).toBe(1);
   expect(dialogs).toEqual(Array(2).fill('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）'));
   await openMultiSubtitleSettings(page);
   const importGap = await page.locator('#multi-subtitle-import').evaluate((item) => {
@@ -269,16 +270,18 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   await page.locator('#download-json').click();
   await expect.poll(() => page.evaluate(() => Boolean(window.__savedEmptyTrackProject))).toBe(true);
   const empty = JSON.parse(await page.evaluate(() => window.__savedEmptyTrackProject));
-  expect(empty.multi_subtitle.enabled).toBe(true);
-  expect(empty.multi_subtitle.tracks).toHaveLength(1);
-  expect(empty.multi_subtitle.tracks[0].segments).toEqual([]);
+  expect(empty.schema).toBe('moy.asr.project.v3');
+  for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(empty).not.toHaveProperty(field);
+  expect(getExtensionTrack(empty).enabled).toBe(true);
+  expect(empty.tracks.filter(track => track.role === 'extension')).toHaveLength(1);
+  expect(getExtensionTrack(empty).segments).toEqual([]);
   await dropProject(empty);
-  await openSettingsPage(page, 'project-tracks');
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
   await closeSettingsPanels(page);
   await page.screenshot({ path: test.info().outputPath('empty-secondary-lane.png') });
   // 旧工程已开启双语但没有轨道，同样补齐可编辑空轨。
-  await dropProject({ ...empty, multi_subtitle: { ...empty.multi_subtitle, tracks: [] } });
+  await dropProject({ ...project, multi_subtitle: { enabled: true, tracks: [] } });
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
   const row = page.locator('.waveform-row.multi-subtitle-row').first();
   const box = await waitForLayoutBox(row, 'empty secondary lane has no layout');
@@ -302,12 +305,14 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await expect(page.locator('.waveform-row.multi-subtitle-row')).toHaveCount(0);
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
-  expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(1);
+  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'extension').length)).toBe(1);
   const previousSave = await page.evaluate(() => window.__savedEmptyTrackProject);
   await page.locator('#download-json').click();
   await expect.poll(() => page.evaluate(() => window.__savedEmptyTrackProject)).not.toBe(previousSave);
   const saved = JSON.parse(await page.evaluate(() => window.__savedEmptyTrackProject));
-  expect(saved.multi_subtitle.tracks[0].segments[0].text).toBe('手动副字幕');
+  expect(saved.schema).toBe('moy.asr.project.v3');
+  for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(saved).not.toHaveProperty(field);
+  expect(getExtensionTrack(saved).segments[0].text).toBe('手动副字幕');
   await dropProject(saved);
   await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(1);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].text)).toBe('手动副字幕');
@@ -1824,12 +1829,11 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
-  await page.evaluate(() => {
-    const [first, second] = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
-    first.color = { name: 'yellow', value: '#c4a019', start: first.start, end: second.end };
-    first.color_ref = null;
-    second.color = null;
-    second.color_ref = { name: 'yellow', headIdx: 0 };
+  const beforeSwap = await page.evaluate(() => {
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, main.segments, [0, 1], 'color',
+      { name: 'yellow', value: '#c4a019' });
+    return AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA);
   });
 
   await openMultiSubtitleSettings(page);
@@ -1840,26 +1844,18 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
     .toHaveText('你好，世界。');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension .text'))
     .toHaveText('Hello world.');
-  expect(await page.evaluate(() => JSON.parse(JSON.stringify({
-    main: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2).map(({ color, color_ref }) => ({ color, color_ref })),
-    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.slice(0, 2)
-      .map(({ color, color_ref }) => ({ color, color_ref })),
-  })))).toEqual({
-    main: [
-      { color: { name: 'yellow', value: '#c4a019', start: 50, end: 4950 }, color_ref: null },
-      { color: null, color_ref: { name: 'yellow', headIdx: 0 } },
-    ],
-    extension: [
-      { color: { name: 'yellow', value: '#c4a019', start: 0, end: 5000 } },
-      { color_ref: { name: 'yellow', headIdx: 0 } },
-    ],
-  });
+  const afterSwap = await page.evaluate(() => AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA));
+  // Track entities retain their own cue attributes when their roles change.
+  expect(getMainTrack(afterSwap)).toEqual({ ...getExtensionTrack(beforeSwap), role: 'main', enabled: true });
+  expect(getExtensionTrack(afterSwap)).toEqual({ ...getMainTrack(beforeSwap), role: 'extension', enabled: true });
+  expect(afterSwap.subtitle_groups).toEqual(beforeSwap.subtitle_groups);
 
   await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text'))
     .toHaveText('Hello world.');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension .text'))
     .toHaveText('你好，世界。');
+  expect(await page.evaluate(() => AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA).tracks)).toEqual(beforeSwap.tracks);
 });
 
 test('uses the maximum waveform row height while multiple subtitles are enabled and restores it', async ({ page }) => {
@@ -2311,8 +2307,8 @@ test('normal extension clicks replace stale main selection with the clicked bind
     AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.text, segment.id]),
   ));
   expect(await page.evaluate(() => MaweBoot.DATA.bindings.map((binding) => ({
-    main: binding.main_segment_ids,
-    extension: binding.extension_segment_ids,
+    main: binding.source_segment_ids,
+    extension: binding.target_segment_ids,
   })))).toEqual([
     { main: ['main-001'], extension: [extensionIds['你好，世界。']] },
     { main: ['main-002'], extension: [extensionIds['第二句。']] },
@@ -2440,7 +2436,9 @@ test('keeps extension selection, timing, disabled, and hide shortcuts in parity 
   await extensionColumn.click({ modifiers: ['Alt'] });
   await expect(extensionColumn).toHaveClass(/disabled/);
   const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(saved.multi_subtitle.tracks[0].segments[0].disabled).toBe(true);
+  expect(saved.schema).toBe('moy.asr.project.v3');
+  for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(saved).not.toHaveProperty(field);
+  expect(getExtensionTrack(saved).segments[0].disabled).toBe(true);
 
   await page.locator('#cue-list-settings-toggle').click();
   await page.locator('#hide-disabled-toggle').check();
@@ -2809,7 +2807,7 @@ test('keeps the main range fixed and removes a fully covered extension cue on H 
   expect(await page.evaluate(() => ({
     main: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end],
     extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]),
-    bindings: MaweBoot.DATA.bindings.map((binding) => binding.extension_segment_ids),
+    bindings: MaweBoot.DATA.bindings.map((binding) => binding.target_segment_ids),
   }))).toEqual({
     main: [1000, 4000],
     extension: [[1000, 4000]],
@@ -2851,7 +2849,7 @@ test('keeps the longer remaining side and restores extension time order after H 
   await expect(page.locator('#hint-stack')).toContainText('挤压 1 条副字幕');
   expect(await page.evaluate(() => ({
     extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.id, segment.start, segment.end]),
-    bindings: MaweBoot.DATA.bindings.map((binding) => binding.extension_segment_ids),
+    bindings: MaweBoot.DATA.bindings.map((binding) => binding.target_segment_ids),
   }))).toEqual({
     extension: [
       ['extension-002', 2000, 3000],
@@ -4579,7 +4577,7 @@ test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap
   // 开启多重字幕（不重载工程，直接翻转状态）：副字幕恢复导出，
   // 去空隙 ASS 与常规 ASS 同一三轨契约（3200-3700 → 2200-2700）。
   const enabled = await page.evaluate(() => {
-    MaweMultiSubtitleCore.getMultiSubtitleState().enabled = true;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = true;
     return { ass: MaweExportSrt.buildAss(), gapRemoved: MaweExportSrt.buildGapRemovedAss() };
   });
   const enabledLines = enabled.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));

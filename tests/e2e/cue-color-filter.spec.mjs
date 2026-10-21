@@ -46,10 +46,8 @@ async function waitEditorReady(page) {
 async function paintFirstSegmentRed(page) {
   await page.evaluate((segmentEndMs) => {
     const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
-    segment.color = {
-      name: 'red', value: '#e74c3c', start: segment.start,
-      end: Math.max(segment.end, segment.start) || segmentEndMs,
-    };
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0], 'color',
+      { name: 'red', value: '#e74c3c' });
     MaweCuePanel.renderAll({ waveform: 'none' });
   }, FIRST_SEGMENT_END_MS);
 }
@@ -62,20 +60,20 @@ test('recoloring part of an existing color group keeps the remaining head valid'
       0,
       AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
       {
-        start: 0, end: 1000, text: 'existing red', items: [],
-        color: { name: 'red', value: '#f07f6f', start: 0, end: 1000 },
+        id: 'red-existing', start: 0, end: 1000, text: 'existing red', items: [],
       },
       {
-        start: 1000, end: 2000, text: 'purple head', items: [],
-        color: { name: 'purple', value: '#bf89e6', start: 1000, end: 3000 },
+        id: 'purple-head', start: 1000, end: 2000, text: 'purple head', items: [],
       },
       {
-        start: 2000, end: 3000, text: 'purple tail', items: [],
-        color: null, color_ref: { name: 'purple', headIdx: 1 },
+        id: 'purple-tail', start: 2000, end: 3000, text: 'purple tail', items: [],
       },
     );
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, main.segments, [0], 'color', { name: 'red', value: '#f07f6f' });
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, main.segments, [1, 2], 'color', { name: 'purple', value: '#bf89e6' });
     MaweStickerPicker.assignColor([0, 1], 'red');
-    return AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => ({
+    return AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).id).map((segment) => ({
       text: segment.text,
       colorName: segment.color?.name || null,
       colorRef: segment.color_ref
@@ -98,12 +96,12 @@ test('detaches a cue from a color group while keeping its color and limiting the
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(
       0,
       AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
-      { start: 0, end: 1000, text: '黄色1', items: [] },
-      { start: 1000, end: 2000, text: '黄色2', items: [] },
-      { start: 2000, end: 3000, text: '黄色3', items: [] },
+      { id: 'yellow-1', start: 0, end: 1000, text: '黄色1', items: [] },
+      { id: 'yellow-2', start: 1000, end: 2000, text: '黄色2', items: [] },
+      { id: 'yellow-3', start: 2000, end: 3000, text: '黄色3', items: [] },
     );
     MaweStickerPicker.assignColor([0, 1, 2], 'yellow');
-    return AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(({ color, color_ref }) => ({
+    return AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).id).map(({ color, color_ref }) => ({
       color: color ? { ...color } : null,
       color_ref: color_ref ? { ...color_ref } : null,
     }));
@@ -116,7 +114,7 @@ test('detaches a cue from a color group while keeping its color and limiting the
   await page.locator('.cue[data-idx="1"]').click({ button: 'right' });
   await expect(detachItem).toBeVisible();
   await detachItem.click();
-  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(({ color, color_ref }) => ({
+  expect(await page.evaluate(() => AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).id).map(({ color, color_ref }) => ({
     color: color ? { name: color.name, start: color.start, end: color.end } : null,
     color_ref: color_ref ? { ...color_ref } : null,
   })))).toEqual([
@@ -133,7 +131,7 @@ test('detaches a cue from a color group while keeping its color and limiting the
   await page.locator('.cue[data-idx="0"]').click({ button: 'right' });
   await expect(detachItem).toBeVisible();
   await detachItem.click();
-  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(({ color, color_ref }) => ({
+  expect(await page.evaluate(() => AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).id).map(({ color, color_ref }) => ({
     color: color ? { name: color.name, start: color.start, end: color.end } : null,
     color_ref: color_ref ? { ...color_ref } : null,
   })))).toEqual([
@@ -202,7 +200,7 @@ test('assigning a color keeps the subtitle list at its current scroll position',
   await waitEditorReady(page);
   await page.evaluate(() => {
     const segments = Array.from({ length: 40 }, (_, index) => ({
-      start: index * 5000,
+      id: `filter-cue-${index + 1}`, start: index * 5000,
       end: index * 5000 + 3000,
       text: `Cue ${index + 1}`,
       items: [],
@@ -234,7 +232,7 @@ test('assigning a color keeps the subtitle list at its current scroll position',
     element.querySelector('.cue[data-idx="30"]')?.getBoundingClientRect().top
   ))).toBe(before.targetTop);
   await expect(target).toHaveClass(/has-color/);
-  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[30].color?.name)).toBe('red');
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[30], 'color')?.name)).toBe('red');
 
   await page.keyboard.press('0');
   await expect(target).toHaveAttribute('data-color-update-sentinel', 'preserve');
@@ -242,24 +240,21 @@ test('assigning a color keeps the subtitle list at its current scroll position',
     element.querySelector('.cue[data-idx="30"]')?.getBoundingClientRect().top
   ))).toBe(before.targetTop);
   await expect(target).not.toHaveClass(/has-color/);
-  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[30].color)).toBe(null);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[30], 'color'))).toBe(null);
 });
 
 test('assigning and clearing a sticker keeps the subtitle row in place', async ({ page }) => {
   await waitEditorReady(page);
   await page.evaluate(() => {
     const segments = Array.from({ length: 40 }, (_, index) => ({
-      start: index * 5000,
+      id: `filter-cue-${index + 1}`, start: index * 5000,
       end: index * 5000 + 3000,
       text: `Cue ${index + 1}`,
       items: [],
     }));
     MaweSettings.EDITOR_SETTINGS.cueListShowSticker = true;
     MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker = true;
-    segments[0].sticker = {
-      name: 'existing', filename: 'existing.png',
-      start: segments[0].start, end: segments[0].end,
-    };
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, segments, [0], 'sticker', { name: 'existing', filename: 'existing.png' });
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(0, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length, ...segments);
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
@@ -302,7 +297,7 @@ test('search filtering keeps the selected subtitle in the same visual position',
   await waitEditorReady(page);
   await page.evaluate(() => {
     const segments = Array.from({ length: 40 }, (_, index) => ({
-      start: index * 5000,
+      id: `filter-cue-${index + 1}`, start: index * 5000,
       end: index * 5000 + 3000,
       text: index % 2 === 0 ? `Keep ${index + 1}` : `Other ${index + 1}`,
       items: [],
@@ -336,7 +331,7 @@ test('search filtering does not jump to the top when the selected subtitle is hi
   await waitEditorReady(page);
   await page.evaluate(() => {
     const segments = Array.from({ length: 40 }, (_, index) => ({
-      start: index * 5000,
+      id: `filter-cue-${index + 1}`, start: index * 5000,
       end: index * 5000 + 3000,
       text: index % 2 === 0 ? `Keep ${index + 1}` : `Other ${index + 1}`,
       items: [],
