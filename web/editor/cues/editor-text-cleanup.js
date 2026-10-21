@@ -5,6 +5,38 @@
 (function initMaweTextCleanup(global) {
   'use strict';
 
+  // Explicit normalization remains available to callers; opening a project
+  // keeps the original text and does not invoke this operation.
+  function cleanPunctuation() {
+    const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    if (main.preserve_punctuation === true) return;
+    const PUNCT_REPL = '  ';
+    const REPLACE_INSIDE = /[，。]/g;
+    for (const seg of main.segments) {
+      if (!seg.text) continue;
+      const aiRanges = MaweBoot.DATA.gap_remove?.provenance?.sources?.ai_cleanup;
+      const validScopes = (Array.isArray(aiRanges) ? aiRanges : [])
+        .filter((range) => window.AsrGapRemoveCore.getCleanupScopeItems(seg, range).length);
+      let text = seg.text;
+      while (text.length && (text.endsWith('，') || text.endsWith('。'))) text = text.slice(0, -1);
+      seg.text = text.replace(REPLACE_INSIDE, PUNCT_REPL).replace(/[ \t]+$/, '');
+      if (seg.items) {
+        const total = seg.items.length;
+        for (let index = 0; index < total; index++) {
+          let itemText = seg.items[index].text;
+          if (index === total - 1) {
+            while (itemText.length && (itemText.endsWith('，') || itemText.endsWith('。'))) itemText = itemText.slice(0, -1);
+          }
+          seg.items[index].text = itemText.replace(REPLACE_INSIDE, PUNCT_REPL);
+        }
+      }
+      for (const range of validScopes) {
+        const scope = range.cleanup_scope;
+        scope.text = seg.items.slice(scope.item_start, scope.item_end).map((item) => item.text).join('');
+      }
+    }
+  }
+
 
 
   function syncTimelineGroupRanges() {
@@ -53,6 +85,7 @@
   }
 
   global.MaweTextCleanup = Object.freeze({
+    cleanPunctuation,
     syncTimelineGroupRanges,
     seekFromWaveform,
     notifyAutoLoadedMediaReady,
