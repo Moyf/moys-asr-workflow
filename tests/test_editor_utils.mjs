@@ -268,6 +268,87 @@ test('merges and filters font combobox dropdown options without duplicates', () 
   );
 });
 
+test('merges and filters alias-table entries whose aliases join the search', () => {
+  // 别名表条目：value=label=canonical，aliases 参与搜索并随 merge 透传。
+  const merged = helpers.mergeFontFamilyOptions([
+    { value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] },
+    // 无别名的普通条目保持原有形状（不含 aliases 键）。
+    { value: 'Arial', label: 'Arial' },
+    { value: '  ' },
+    { value: 'Broken', label: 'Broken', aliases: ['ok', null, 42] },
+  ]);
+  assert.deepEqual(Array.from(merged, (entry) => ({ ...entry })), [
+    { value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] },
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Broken', label: 'Broken', aliases: ['ok'] },
+  ]);
+
+  // label 前缀优先级不变；别名命中归入包含匹配组。
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(merged, '得意'), (entry) => ({ ...entry })),
+    [{ value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] }],
+  );
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(merged, 'smiley'), (entry) => ({ ...entry })),
+    [{ value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] }],
+  );
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(merged, '不存在'), (entry) => ({ ...entry })),
+    [],
+  );
+});
+
+test('builds the ASS preview font-family alias chain with dedupe and quoting', () => {
+  // 存储值 + canonical + 其余别名，大小写不敏感去重、逐个引号化、固定兜底。
+  assert.equal(
+    helpers.assFontFamilyAliasChainCss('Smiley Sans', [
+      '得意黑', 'smiley sans', 'Smiley Sans Oblique', 'SmileySans-Oblique',
+    ]),
+    '"Smiley Sans", "得意黑", "Smiley Sans Oblique", "SmileySans-Oblique", sans-serif',
+  );
+  // 无别名时退化为单名 + 兜底；引号内双引号/反斜杠转义。
+  assert.equal(helpers.assFontFamilyAliasChainCss('Arial'), '"Arial", sans-serif');
+  assert.equal(
+    helpers.assFontFamilyAliasChainCss('Weird "Name"', ['A\\B']),
+    '"Weird \\"Name\\"", "A\\\\B", sans-serif',
+  );
+  assert.equal(helpers.assFontFamilyAliasChainCss('  '), '');
+  assert.equal(helpers.assFontFamilyAliasChainCss('Arial', 'not-an-array'), '"Arial", sans-serif');
+});
+
+test('buildAssPayload rewrites Style Fontname through the alias table and leaves storage intact', () => {
+  const segments = [{ start: 0, end: 2000, text: '你好' }];
+  const fakeAliases = {
+    canonicalFor: (name) => ({ 'Smiley Sans': '得意黑' })[String(name ?? '').trim()] || null,
+  };
+  const previous = context.window.MaweAssFontAliases;
+  context.window.MaweAssFontAliases = fakeAliases;
+  try {
+    // 外观模式与 ASS 模式（库样式）都写出 canonical；扩展样式同样改写。
+    const legacy = helpers.buildAssPayload(segments, {
+      appearance: { font_family: 'Smiley Sans', font_size: 32, color: '#123456' },
+    });
+    assert.match(legacy, /Style: Default,得意黑,/);
+    const profiled = helpers.buildAssPayload(segments, {
+      assProfile: {},
+      assStyle: { fontName: 'Smiley Sans' },
+      assExtensionStyle: { fontName: 'Smiley Sans' },
+      extensionSegments: [{ start: 0, end: 1000, text: 'A' }],
+    });
+    assert.match(profiled, /Style: Default,得意黑,/);
+    assert.match(profiled, /Style: Extension,得意黑,/);
+  } finally {
+    // 恢复现场：字节 pin 等后续用例必须在无别名表环境下运行。
+    if (previous === undefined) delete context.window.MaweAssFontAliases;
+    else context.window.MaweAssFontAliases = previous;
+  }
+  // 表未加载时输出与现状一致（canonicalFor 缺失即原样返回）。
+  const plain = helpers.buildAssPayload(segments, {
+    appearance: { font_family: 'Smiley Sans', font_size: 32, color: '#123456' },
+  });
+  assert.match(plain, /Style: Default,Smiley Sans,/);
+});
+
 test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
   assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');
@@ -3861,11 +3942,11 @@ test('ASS underscore markers render as local underline alongside emphasis', () =
   const text = '前 _下划线_ 与 _**共同**_ 后';
   const runs = Array.from(helpers.assInlineStyleRuns(text, 'double'), (run) => ({ ...run }));
   assert.deepEqual(runs, [
-    { text: '前 ', emphasized: false, underlined: false, struck: false, size: null, comment: false },
-    { text: '下划线', emphasized: false, underlined: true, struck: false, size: null, comment: false },
-    { text: ' 与 ', emphasized: false, underlined: false, struck: false, size: null, comment: false },
-    { text: '共同', emphasized: true, underlined: true, struck: false, size: null, comment: false },
-    { text: ' 后', emphasized: false, underlined: false, struck: false, size: null, comment: false },
+    { text: '前 ', emphasized: false, underlined: false, struck: false, size: null, comment: false, italic: false },
+    { text: '下划线', emphasized: false, underlined: true, struck: false, size: null, comment: false, italic: false },
+    { text: ' 与 ', emphasized: false, underlined: false, struck: false, size: null, comment: false, italic: false },
+    { text: '共同', emphasized: true, underlined: true, struck: false, size: null, comment: false, italic: false },
+    { text: ' 后', emphasized: false, underlined: false, struck: false, size: null, comment: false, italic: false },
   ]);
   const options = {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },
@@ -3886,6 +3967,42 @@ test('ASS underscore markers render as local underline alongside emphasis', () =
   assert.match(helpers.buildAssPayload([{ start: 0, end: 1000, text: '_下划线_' }]), /_下划线_/);
   assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo_bar_baz _未闭合', 'double'), (run) => run.text),
     ['foo_bar_baz _未闭合']);
+});
+
+test('ASS %%…%% subdued and //…// italic markers parse and export independently', () => {
+  const text = '前 %%弱化%% 中 //斜体// 后';
+  const runs = Array.from(helpers.assInlineStyleRuns(text, 'double'), (run) => ({ ...run }));
+  assert.deepEqual(runs.map((run) => [run.text, run.comment, run.italic]), [
+    ['前 ', false, false], ['弱化', true, false], [' 中 ', false, false],
+    ['斜体', false, true], [' 后', false, false],
+  ]);
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 40, commentColor: '#888888' },
+    assExtensionStyle: { id: 'ass-extension', fontSize: 40, commentColor: '#888888' },
+    extensionSegments: [{ start: 0, end: 1000, text }],
+    overlaySegments: [{ start: 0, end: 1000, text }],
+  };
+  const cues = [{ start: 0, end: 1000, text }];
+  const events = helpers.buildAssPayload(cues, options).split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(events.length, 3);
+  // 弱化 run 换注释色，斜体 run 写 \i 标签；两者互不干扰。
+  events.forEach((line) => assert.match(line,
+    /前 \{\\1c&H00888888&\}弱化\{\\1c&H[0-9A-F]{8}&\} 中 \{\\i1\}斜体\{\\i0\} 后/));
+  // 样式级斜体已开启时不再写 \i 切换标签。
+  const styleItalic = helpers.buildAssPayload(cues, {
+    ...options, assStyle: { ...options.assStyle, italic: true },
+    assExtensionStyle: { ...options.assExtensionStyle, italic: true },
+  });
+  styleItalic.split('\n').filter((line) => line.startsWith('Dialogue:'))
+    .forEach((line) => assert.doesNotMatch(line, /\\i[01]/));
+  // 同一段文字同时弱化+斜体：两个标记可嵌套，标签叠加。
+  const mixedRuns = Array.from(helpers.assInlineStyleRuns('%%//又弱又斜//%%', 'double'),
+    (run) => [run.text, run.comment, run.italic]);
+  assert.deepEqual(mixedRuns, [['又弱又斜', true, true]]);
+  // 孤儿符号与单个 % 字面保留。
+  assert.equal(helpers.assInlineStyleRuns('//未配对 %50 100%%', 'double')
+    .map((run) => run.text).join(''), '//未配对 %50 100%%');
 });
 
 test('ASS accepts single and double stars and tildes together, including nested delimiter widths', () => {
@@ -3957,6 +4074,53 @@ test('ASS special text checkboxes independently disable marker parsing and prese
   assert.equal(helpers.assInlineStyleRuns(text, 'none', off).map((run) => run.text).join(''), text);
 });
 
+test('ASS subdued and italic toggles disable parsing and normalize to enabled by default', () => {
+  const text = '%%弱化%% //斜体//';
+  for (const [key, marker] of [['assCommentEnabled', '%%弱化%%'], ['assItalicEnabled', '//斜体//']]) {
+    const options = { [key]: false };
+    const runs = helpers.assInlineStyleRuns(text, 'both', options);
+    assert.ok(runs.map((run) => run.text).join('').includes(marker));
+    const cues = [{ start: 0, end: 1000, text }];
+    const ass = helpers.buildAssPayload(cues, {
+      ...options, assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+      assStyle: { id: 'ass' }, assExtensionStyle: { id: 'ass-extension' },
+      extensionSegments: cues, overlaySegments: cues,
+    });
+    ass.split('\n').filter((line) => line.startsWith('Dialogue:'))
+      .forEach((line) => assert.ok(line.includes(marker)));
+    assert.equal(helpers.normalizeEditorSettings(options)[key], false);
+    assert.equal(helpers.normalizeEditorSettings()[key], true);
+  }
+  const off = { assCommentEnabled: false, assItalicEnabled: false };
+  assert.equal(helpers.assInlineStyleRuns(text, 'both', off).map((run) => run.text).join(''), text);
+});
+
+test('the none symbol rule preserves fixed-double markers in preview runs and every ASS track', () => {
+  const text = '%%弱化%% //斜体//';
+  const cues = [{ start: 0, end: 1000, text }];
+  for (const rule of ['none', 'double', 'both']) {
+    const settings = helpers.normalizeEditorSettings({ assSpecialSymbolRule: rule });
+    const runs = Array.from(helpers.assInlineStyleRuns(text, settings.assEmphasisSyntax, settings));
+    assert.equal(runs.map(run => run.text).join(''), rule === 'none' ? text : '弱化 斜体');
+    assert.equal(runs.some(run => run.comment), rule !== 'none');
+    assert.equal(runs.some(run => run.italic), rule !== 'none');
+    const ass = helpers.buildAssPayload(cues, { ...settings,
+      assProfile: { animations: {} }, assStyle: { id: 'ass' },
+      assExtensionStyle: { id: 'ass-extension' }, extensionSegments: cues, overlaySegments: cues });
+    const events = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
+    assert.equal(events.length, 3);
+    events.forEach(line => {
+      if (rule === 'none') {
+        assert.ok(line.includes(text));
+        assert.doesNotMatch(line, /\\i[01]/);
+      } else {
+        assert.doesNotMatch(line, /%%|\/\//);
+        assert.match(line, /\\i1/);
+      }
+    });
+  }
+});
+
 test('ASS inline strike and size markers restore the base style and use each track style scale', () => {
   const text = '前 ~~删除~~ -小字- +大字+ 后';
   const options = {
@@ -3980,7 +4144,7 @@ test('ASS inline strike and size markers restore the base style and use each tra
   assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo-bar-baz C++ 1+2+3 -未闭合', 'none'), (run) => run.text),
     ['foo-bar-baz C++ 1+2+3 -未闭合']);
   const combined = Array.from(helpers.assInlineStyleRuns('~~-**组合**-~~', 'double'), (run) => ({ ...run }));
-  assert.deepEqual(combined, [{ text: '组合', emphasized: true, underlined: false, struck: true, size: 'small', comment: false }]);
+  assert.deepEqual(combined, [{ text: '组合', emphasized: true, underlined: false, struck: true, size: 'small', comment: false, italic: false }]);
   const style = helpers.normalizeAssStyle({ smallTextScale: 0.63, largeTextScale: 5 });
   assert.equal(style.smallTextScale, 0.65);
   assert.equal(style.largeTextScale, 3);
@@ -7070,8 +7234,9 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
     [
       { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
       { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
-      { id: 'comment', label: '弱化文本', left: '//', right: '//', ass: true },
+      { id: 'comment', label: '弱化文本', left: '%%', right: '%%', ass: true },
       { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
+      { id: 'italic', label: '斜体文本', left: '//', right: '//', ass: true },
       { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
       { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
       { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true, sentenceLevel: true },

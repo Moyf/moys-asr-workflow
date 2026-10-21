@@ -2805,7 +2805,13 @@
         $("toolboxUtilityMediaPath").value = result.mediaPath;
         syncPaths();
         void refreshAudioTracks();
-        setResult(`${t(greenScreen ? "toolbox_green_screen_done" : "toolbox_burn_done")}\n${result.mediaPath}`, "success");
+        // 字体名归一化告警（替换说明 + 未找到）随结果带回：非阻塞地追加在
+        // 完成消息之后，不改变成功状态。
+        const fontWarnings = Array.isArray(result.warnings)
+          ? result.warnings.map((item) => String(item || "").trim()).filter(Boolean)
+          : [];
+        const doneMessage = `${t(greenScreen ? "toolbox_green_screen_done" : "toolbox_burn_done")}\n${result.mediaPath}`;
+        setResult(fontWarnings.length ? `${doneMessage}\n${fontWarnings.join("\n")}` : doneMessage, "success");
       } else {
         const message = mediaToolErrorMessage(result);
         if (result.field) setFieldError(result.field, message);

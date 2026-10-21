@@ -105,7 +105,10 @@ function assPreviewFontScale(style) {
   // normal line box approximates that ratio without reading local font files.
   // This remains approximate (fallback fonts and OS/2 vs hhea metrics differ);
   // the paused Server preview uses libass itself for exact shaping/layout.
-  const family = MaweAppearance.subtitleFontFamilyCss(style.fontName);
+  // 预览优先用字体别名链：浏览器对样式存储名的匹配不可预测，把 canonical
+  // 与其余别名一并列入可让预览与 libass 尽量渲染同一字形。
+  const family = window.MaweAssFontAliases?.chainCssFor?.(style.fontName)
+    || MaweAppearance.subtitleFontFamilyCss(style.fontName);
   const key = JSON.stringify([family, style.bold, style.italic]);
   if (assPreviewFontMetrics.has(key)) return assPreviewFontMetrics.get(key);
   const probe = document.createElement('div');
@@ -133,6 +136,14 @@ document.fonts?.addEventListener('loadingdone', () => {
   assPreviewFontMetrics.clear();
   window.MaweAssCanvas?.clearCaches();
   window.MawePlaybackLoop?.refreshSubtitlePreview();
+});
+
+// 字体别名表异步就绪后同样失效度量缓存：别名链改变 font-family 输出，
+// 排版计划（含字体度量）必须按新链重建。
+document.addEventListener('mawe:ass-font-aliases-loaded', () => {
+  assPreviewFontMetrics.clear();
+  assStackFontRevision += 1;
+  cachedAssStackKey = '';
 });
 
 function clearAssPreviewSpeakerLabelStyle(element) {
@@ -299,12 +310,18 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
     const native = { ...item.style, fontSize: item.fontSize };
     const animated = animation.transformProgress === null ? native
       : window.AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true, popScale: animation.popScale });
-    if ((!item.legacy || item.sharedStackCue) && profile.animations.t.enabled) {
+    if (profile.animations.t.enabled) {
       // libass applies discrete style tags inside t immediately, even before
       // the numeric transform window starts (real b/i frame-hash verification).
       const targets = window.AsrEditorUtils.assTransformStyleTargets(profile.animations.t.tags);
+      const shared = !item.legacy || item.sharedStackCue;
+      const inlineItalic = item.runs.some(run => run.italic);
       for (const key of ['bold', 'italic', 'underline', 'strikeOut']) {
-        if (targets[key] !== undefined) animated[key] = Boolean(targets[key]);
+        // Only the new inline italic path needs an immediate solo baseline;
+        // keep other legacy decoration and numeric animation behavior intact.
+        if (targets[key] !== undefined && (shared || (key === 'italic' && inlineItalic))) {
+          animated[key] = Boolean(targets[key]);
+        }
       }
     }
     const scale = item.scale * (item.cueScale || 1);

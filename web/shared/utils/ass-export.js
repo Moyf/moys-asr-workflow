@@ -48,6 +48,17 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // ASS 样式里的 Fontname 写出前经服务端字体别名表归一化：libass（Windows
+  // directwrite/GDI）只按 nameID1 匹配，排版名（如 "Smiley Sans"）会被静默
+  // 回退。表未加载（便携模式/旧服务器）时原样返回；替换记录由别名模块在
+  // 导出入口的捕获窗口内收集。与 window.ASR_EDITOR_PALETTE 同一注入约定。
+  function canonicalizeAssFontName(name) {
+    const aliases = window.MaweAssFontAliases;
+    if (!aliases || typeof aliases.canonicalFor !== 'function') return name;
+    return aliases.canonicalFor(name) || name;
+  }
+
+
   function assStyleVariant(style, paletteValue, colorStyle) {
     const variant = { ...style };
     if (colorStyle === 'stroke') {
@@ -61,6 +72,10 @@ export function createUtilsModule(dependencies) {
 
   function assEmphasizedText(text, style, fontSize, emphasisSyntax, inlineOptions) {
     const runs = inlineOptions?.preparedRuns || assInlineStyleRuns(text, emphasisSyntax, inlineOptions);
+    // libass applies an enabled t:\i target immediately. Use that baseline
+    // when creating legacy originalText too, without rewriting its clocks.
+    const italic = inlineOptions?.italicTransformTarget === undefined
+      ? style.italic : Boolean(inlineOptions.italicTransformTarget);
     return runs.map((run) => {
       const content = escapeAssText(run.text);
       let startTags = '';
@@ -105,6 +120,10 @@ export function createUtilsModule(dependencies) {
         startTags += '\\u1';
         endTags += '\\u0';
       }
+      if (run.italic && !italic) {
+        startTags += '\\i1';
+        endTags += '\\i0';
+      }
       return startTags ? `{${startTags}}${content}{${endTags}}` : content;
     }).join('');
   }
@@ -138,9 +157,9 @@ export function createUtilsModule(dependencies) {
     const source = Array.isArray(segments) ? segments : [];
     const appearance = options.appearance && typeof options.appearance === 'object'
       ? options.appearance : {};
-    const fontFamily = normalizeAssFontFamily(
+    const fontFamily = canonicalizeAssFontName(normalizeAssFontFamily(
       appearance.font_family ?? options.fontFamily,
-    );
+    ));
     const mediaMetadata = options.mediaMetadata && typeof options.mediaMetadata === 'object'
       ? options.mediaMetadata : {};
     const resolution = normalizeAssPlayResolution(
@@ -157,6 +176,7 @@ export function createUtilsModule(dependencies) {
         font_size: appearance.font_size ?? options.fontSize,
         color: appearance.color ?? options.color,
       }, resolution);
+    baseStyle.fontName = canonicalizeAssFontName(baseStyle.fontName);
     // A library style stores its font size against the shared 1080p reference
     // (the ASS preview scales by the same reference).  Export must rescale it
     // to the target PlayResY, or a 4K project renders subtitles half size.
@@ -173,7 +193,9 @@ export function createUtilsModule(dependencies) {
     const colorStyle = normalizeAssColorStyle(appearance.ass_color_style) || 'text';
     const assMode = Boolean(profile);
     const emphasisSyntax = options.assEmphasisSyntax === 'none' ? 'none' : 'both';
-    const inlineOptions = options;
+    /** @type {Record<string, any>} */
+    const inlineOptions = { ...options, italicTransformTarget: profile?.animations.t.enabled
+      ? dependencies.assTransformStyleTargets(profile.animations.t.tags).italic : undefined };
     const numericTimeOffset = Number(options.timeOffset);
     const timeOffset = Number.isFinite(numericTimeOffset)
       ? Math.max(0, Math.round(numericTimeOffset)) : 0;
@@ -274,6 +296,7 @@ export function createUtilsModule(dependencies) {
     const extensionStyle = assMode && options.assExtensionStyle && typeof options.assExtensionStyle === 'object'
       ? normalizeAssStyle(options.assExtensionStyle, ASS_DEFAULT_EXTENSION_STYLE, options.assExtensionStyle.id || 'ass-extension')
       : null;
+    if (extensionStyle) extensionStyle.fontName = canonicalizeAssFontName(extensionStyle.fontName);
     const extensionScaledFontSize = extensionStyle
       ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
       : 0;
@@ -411,11 +434,12 @@ export function createUtilsModule(dependencies) {
           const transformTargets = profile.animations.t.enabled
             ? dependencies.assTransformStyleTargets(profile.animations.t.tags) : {};
           const sharedDecorations = (!slice.legacy || item.sharedStackCue)
-            && (transformTargets.underline !== undefined || transformTargets.strikeOut !== undefined);
+            && (transformTargets.underline !== undefined || transformTargets.strikeOut !== undefined
+              || transformTargets.italic !== undefined);
           if (sharedDecorations) {
             // libass applies these discrete t targets at cue start. Inline
             // marker resets must restore that effective value, including off.
-            for (const key of ['underline', 'strikeOut']) {
+            for (const key of ['underline', 'strikeOut', 'italic']) {
               if (transformTargets[key] !== undefined) scaledStyle[key] = Boolean(transformTargets[key]);
             }
           }

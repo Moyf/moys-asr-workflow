@@ -11,6 +11,7 @@
 
 
 
+window.MaweAudioProcessing?.init();
 MaweDom.mediaPlayToggle?.addEventListener('click', MaweMediaPlayback.togglePlayback);
 MaweDom.mediaStepBack?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(-MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));
 MaweDom.mediaStepForward?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));

@@ -36,7 +36,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("<", encoded)
 
     def test_portable_about_gif_is_self_contained(self) -> None:
-        page = edit.render_empty_editor_page()
+        page = edit.build_blank_html()
         match = re.search(r'src="data:image/gif;base64,([^"]+)"', page)
         self.assertIsNotNone(match)
         self.assertEqual(base64.b64decode(match.group(1)), (edit.WEB_DIR / 'assets/moi_dancing.gif').read_bytes())
@@ -54,48 +54,8 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/state/editor-state.js",
                 "editor/state/editor-view-updates.js",
                 "editor/state/editor-commands.js",
-                "shared/host/storage.js",
-                "shared/host/files.js",
-                "shared/host/server-api.js",
                 "editor/boot/editor-host.js",
                 "shared/gap-remove-core.js",
-                "shared/utils/data.js",
-                "shared/utils/project-validation.js",
-                "shared/utils/subtitle-groups.js",
-                "shared/utils/fonts.js",
-                "shared/utils/speakers.js",
-                "shared/utils/media-metadata.js",
-                "shared/utils/navigation.js",
-                "shared/utils/text-processing.js",
-                "shared/utils/timed-text-core.js",
-                "shared/utils/timed-text-plans.js",
-                "shared/utils/timed-text-edit.js",
-                "shared/utils/text-metrics.js",
-                "shared/utils/segment-timing.js",
-                "shared/utils/split-alignment.js",
-                "shared/utils/split-trim.js",
-                "shared/utils/timeline.js",
-                "shared/utils/settings.js",
-                "shared/utils/gap-remove.js",
-                "shared/utils/history.js",
-                "shared/utils/markers.js",
-                "shared/utils/multi-subtitle.js",
-                "shared/utils/word-timing.js",
-                "shared/utils/word-split.js",
-                "shared/utils/srt.js",
-                "shared/utils/lrc.js",
-                "shared/utils/ass-style.js",
-                "shared/utils/ass-animation.js",
-                "shared/utils/ass-canvas-layout.js",
-                "shared/utils/sticker-placement.js",
-                "shared/utils/ass-export.js",
-                "shared/utils/export-plan.js",
-                "shared/utils/fcp7.js",
-                "shared/utils/export-workflow.js",
-                "shared/utils/platform.js",
-                "shared/utils/preview-geometry.js",
-                "shared/utils/lottie.js",
-                "shared/utils/ograf.js",
                 "shared/editor-utils.js",
                 "shared/editor-i18n.js",
                 "shared/tooltip.js",
@@ -144,6 +104,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/ui/editor-floating-panel.js",
                 "editor/ui/editor-settings-panels.js",
                 "editor/ui/editor-ninja.js",
+                "editor/media/editor-audio-processing.js",
                 "editor/media/editor-media-playback.js",
                 "editor/cues/editor-keyboard-targets.js",
                 "editor/cues/editor-shortcuts.js",
@@ -204,6 +165,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/styles/editor-speaker-labels.js",
                 "editor/boot/editor.js",
                 "editor/cues/editor-wiring-overlay-transfer.js",
+                "editor/styles/editor-wiring-ass-font-aliases.js",
                 "editor/styles/editor-wiring-ass-storage.js",
                 "editor/boot/editor-wiring-initial-config.js",
                 "editor/ui/editor-wiring-dom-panels.js",
@@ -245,7 +207,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/io/editor-wiring-file-drop.js",
                 "editor/boot/editor-startup.js",
                 "editor/boot/editor-onboarding.js",
-        ),
+        )
         )
 
     # bundle 是构建产物（不入库）：本地未跑 pnpm install 时跳过，CI / 开发机在
@@ -257,12 +219,14 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_editor_script_payload_is_one_complete_artifact(self) -> None:
         with patch.object(edit, "read_editor_script_manifest", side_effect=AssertionError("runtime source assembly")):
             payload = edit.build_editor_scripts()
-            page = edit.render_empty_editor_page()
+            page = edit.build_blank_html()
         self.assertEqual(payload, edit.read_web_asset("editor/boot/editor-bundle.js").rstrip())
         self.assertIn(payload.splitlines()[0], page)
         metadata = json.loads(edit.read_web_asset("editor/boot/editor-bundle.meta.json"))
         self.assertEqual(metadata["sourceFiles"], list(edit.read_editor_script_manifest()))
-        self.assertEqual(set(metadata["inputs"]), set(metadata["sourceFiles"]))
+        # G04 后清单不再是全部输入：retired 工厂经 import graph
+        # 进入 bundle，inputs 是 sourceFiles 的超集。
+        self.assertTrue(set(metadata["sourceFiles"]) <= set(metadata["inputs"]))
         modules = json.loads(edit.read_web_asset("editor-modules.json"))["modules"]
         # init 条目没有 MAWE.register 字面量（minify 也剥掉构建器注释）；
         # 统一用 __mawEsmInitializationTrace.push 序列核对执行顺序，
@@ -531,7 +495,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("const portableStickerExportEnabled", script)
 
     def test_generated_page_contains_compatibility_facades_in_order(self) -> None:
-        page = edit.render_empty_editor_page()
+        page = edit.build_blank_html()
         tokens = set(re.findall(r"__[A-Z][A-Z0-9_]+__",
                                 edit.read_web_asset("editor-template.html") + self.source_contract_text()))
         for token in tokens:

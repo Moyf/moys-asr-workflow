@@ -215,8 +215,16 @@ export async function compileSources(root, files, modules, read, options = {}) {
         const relative = supplied ? lexical : path.relative(webRoot,canonical).replaceAll('\\','/');
         const loader = FILE_LOADERS[path.extname(args.path)];
         if (!loader) throw new Error(`Unsupported static import type: ${args.path}`);
-        const contents = supplied ? sources.get(relative) : fs.readFileSync(canonical,'utf8');
-        if (!supplied) options.onDependency?.(relative,contents);
+        let contents = supplied ? sources.get(relative) : fs.readFileSync(canonical,'utf8');
+        if (!supplied) {
+          options.onDependency?.(relative,contents);
+          // Imported deps compile the transformed text too:
+          // hash and bytes given to esbuild must stay
+          // identical (review of #288 — hash-only
+          // mutation passed tests while the compiled
+          // content stayed original).
+          contents = options.transform ? options.transform(relative,contents) : contents;
+        }
         loadedInputs.set(path.normalize(args.path),relative);
         return {contents,loader,resolveDir:path.dirname(args.path)};
       });
@@ -235,19 +243,25 @@ export async function buildEditor(root = ROOT, options = {}) {
     snapshot['web/'+file] = original;
     const source = options.transform ? options.transform(file,original) : original;
     inputHashes[file] = sha(source); return source;
-  },{bridges:config.externalBridges,trace:true,onDependency:(relative,original) => {
+  },{bridges:config.externalBridges,trace:true,transform:options.transform,onDependency:(relative,original) => {
     const key = 'web/'+relative;
-    if (Object.hasOwn(snapshot,key) && snapshot[key] !== original) {
-      throw new Error(`Build input changed during compilation: ${key}; retry the build`);
-    }
-    snapshot[key] = original;
-    inputHashes[relative] = sha(original);
+    // Transform hook covers imported inputs too (tests mutate non-manifest
+    // sources like shared/utils/data.js after G04 retire). Snapshot keeps
+    // the disk bytes for the unchanged check; the hash covers what esbuild
+    // consumed (the transformed text).
+    if (!Object.hasOwn(snapshot,key)) snapshot[key] = original;
+    const source = options.transform ? options.transform(relative,original) : original;
+    inputHashes[relative] = sha(source);
   }});
   // The bytes hashed above are the bytes given to esbuild, not a later read.
   assertMetafileInputsCaptured(root,result,inputHashes);
   assertBuildInputsUnchanged(root, snapshot);
+  // esbuild resolves imports with worker parallelism, so onDependency
+  // fires in nondeterministic order once the manifest no longer lists
+  // every module (G04 retire). Sort the ledger so metadata is stable.
+  const sortedInputHashes = Object.fromEntries(Object.entries(inputHashes).sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0));
   const metadata = {format:1,esbuild:esbuild.version,sourceFiles:files,esmFactories:modules.length,
-    inputs:inputHashes,configHash:sha(configText),builderHash:sha(snapshot['scripts/build-editor.mjs']),
+    inputs:sortedInputHashes,configHash:sha(configText),builderHash:sha(snapshot['scripts/build-editor.mjs']),
     dependencyHash:dependencyHash(snapshot),
     // esbuild sees remaining classic sources as a single transitional scope.
     // Explicit hashes above cover every source, including this virtual input.

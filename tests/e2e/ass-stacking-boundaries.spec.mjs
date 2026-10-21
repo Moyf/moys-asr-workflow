@@ -28,7 +28,7 @@ const cases = [
     width: 2560, height: 1440, times: [1000] },
   { name: 'main explicit multiline', main: 'Main one\nMain two\nMain three', times: [1000] },
   { name: 'secondary explicit multiline', extension: 'Secondary one\nSecondary two\nSecondary three', times: [1000] },
-  { name: 'largest emphasis and comment runs', main: 'Main **BIG**\n//COMMENT//',
+  { name: 'largest emphasis and comment runs', main: 'Main **BIG**\n%%COMMENT%%',
     emphasisScale: 2.4, commentScale: 2.2, times: [1000] },
   { name: 'top edge moves the complete group into view', alignment: 8, marginV: 0, times: [1000] },
   { name: 'rotated left-aligned paint', alignment: 7, extensionAlignment: 1,
@@ -51,11 +51,14 @@ const cases = [
     animations: { t: { enabled: true, startMs: 0, endMs: 1500, accel: 2, tags: '\\fs120\\frz25' } },
     times: [250, 750, 1250] },
   { name: 'emphasis and comment font-size clocks survive fractional group fit', marginV: 220,
-    main: 'Plain **BIG**\n//COMMENT//\nPlain **BIG**\n//COMMENT//',
-    extension: 'Secondary **BIG**\n//COMMENT//',
+    main: 'Plain **BIG**\n%%COMMENT%%\nPlain **BIG**\n%%COMMENT%%',
+    extension: 'Secondary **BIG**\n%%COMMENT%%',
     emphasisScale: 2.4, commentScale: 2.2,
     animations: { t: { enabled: true, startMs: 0, endMs: 1500, accel: 2, tags: '\\fs120\\frz10' } },
     times: [250, 750, 1250] },
+  { name: 'inline italic markers agree between canvas and libass', marginV: 220,
+    main: '//Italic words// and %%MUTED%% text',
+    extension: 'Secondary //slanted//', times: [1000] },
   { name: 'zero move times interpolate over the complete cue',
     animations: { move: { enabled: true, x1: 300, y1: 560, x2: 750, y2: 420, t1: 0, t2: 0 } },
     times: [250, 1000, 1750], verifyMove: true, verifyOriginalMove: true },
@@ -138,6 +141,7 @@ async function capture(page, timeMs) {
     const native = document.querySelector('.ass-preview-canvas');
     const draws = [];
     const texts = [];
+    const fontPaints = [];
     const originalDraw = CanvasRenderingContext2D.prototype.drawImage;
     const originalText = CanvasRenderingContext2D.prototype.fillText;
     CanvasRenderingContext2D.prototype.drawImage = function (source, ...args) {
@@ -152,6 +156,7 @@ async function capture(page, timeMs) {
     };
     CanvasRenderingContext2D.prototype.fillText = function (text, ...args) {
       texts.push(String(text));
+      fontPaints.push({ text: String(text), font: this.font });
       return originalText.call(this, text, ...args);
     };
     try {
@@ -222,7 +227,7 @@ async function capture(page, timeMs) {
         else result.bands[result.bands.length - 1][1] = Math.max(result.bands[result.bands.length - 1][1], y + 1);
       }
     }
-    return { width, height, tracks, nativeTracks, texts, captured: draws.length, assigned: cursor,
+    return { width, height, tracks, nativeTracks, texts, fontPaints, captured: draws.length, assigned: cursor,
       nativePng: native.toDataURL('image/png'), replayPng: combined.toDataURL('image/png'),
       ass: MaweExportSrt.buildAss(),
     };
@@ -378,6 +383,33 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
             .toBeCloseTo(rootDelta, 6);
         }
       }
+    }
+  }
+});
+
+test('solo inline italic and immediate targets agree before during and after the original transform clock', async ({ page }, testInfo) => {
+  test.setTimeout(180_000); // Six frames from exported ASS and an explicit per-run reference.
+  for (const target of [0, 1]) {
+    await configure(page, { main: 'MAIN //MMMM// TAIL', extensionSegments: [], overlaySegments: [],
+      animations: { t: { enabled: true, startMs: 100, endMs: 1100, tags: `\\i${target}` } } });
+    await page.evaluate(value => { ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').italic = !value; }, target);
+    for (const time of [50, 500, 1500]) {
+      const frame = await capture(page, time);
+      const label = `solo-italic-${target}-${time}`;
+      await evidence(frame, testInfo, label);
+      expect(await page.evaluate(() => window.MaweAssPreview.stackPlan.slices.every(slice => slice.legacy))).toBe(true);
+      for (const [text, italic] of [['MAIN ', Boolean(target)], ['MMMM', true], [' TAIL', Boolean(target)]]) {
+        const painted = frame.fontPaints.filter(item => item.text === text);
+        expect(painted.length, `real Canvas paints ${text}`).toBeGreaterThan(0);
+        for (const item of painted) expect(/^italic /u.test(item.font), `${text} italic at ${time}ms`).toBe(italic);
+      }
+      const event = frame.ass.split('\n').find(line => line.startsWith('Dialogue:'));
+      expect(event).toContain(`\\t(100,1100,1,\\i${target})`);
+      const expectedBody = target ? 'MAIN MMMM TAIL' : String.raw`MAIN {\i1}MMMM{\i0} TAIL`;
+      const expected = frame.ass.replace(event, event.slice(0, event.indexOf('MAIN ')) + expectedBody);
+      const actualPixels = libass(frame.ass, time, testInfo, label);
+      const expectedPixels = libass(expected, time, testInfo, `${label}-expected`);
+      expect(actualPixels.sha256, 'real libass matches the explicit per-run italic reference').toBe(expectedPixels.sha256);
     }
   }
 });

@@ -98,9 +98,12 @@ window.MAWE.register('editor-state', function createEditorState(project) {
   // changes 脏标志保持保存簿记语义不变，仅包装为访问器：写入 true 时触发
   // markProjectDirty()（写入 false 不触发）。命令发布（projectImportDirty）、
   // 外观/标记等代理 setter、撤销恢复的 Object.assign 因此都汇入同一事件。
-  const changesFlags = { projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false, markersDirty: false };
+  const changesFlags = { projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false, markersDirty: false,
+    timedTextEditViewDirty: false, audioProcessingDirty: false };
   // 显式访问器（defineProperties 的动态键 TS 推断不出）：写入 true 触发 markProjectDirty()。
   const changes = {
+    get audioProcessingDirty() { return changesFlags.audioProcessingDirty; },
+    set audioProcessingDirty(value) { changesFlags.audioProcessingDirty = Boolean(value); if (changesFlags.audioProcessingDirty) markProjectDirty(); },
     get projectImportDirty() { return changesFlags.projectImportDirty; },
     set projectImportDirty(value) { changesFlags.projectImportDirty = Boolean(value); if (changesFlags.projectImportDirty) markProjectDirty(); },
     get gapRemoveDirty() { return changesFlags.gapRemoveDirty; },

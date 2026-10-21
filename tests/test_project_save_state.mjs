@@ -32,6 +32,28 @@ function fixture() {
 }
 const ok = filename => ({ ok: true, json: async () => ({ ok: true, filename }) });
 
+test('audio settings participate in content checkpoints and in-flight save confirmation', async () => {
+  const c = fixture(), response = deferred();
+  c.MaweBoot.DATA.audio_processing = { gain_db: 0, target_lufs: -14, peak_ceiling_dbtp: -1 };
+  c.MaweState.establishProjectCheckpoint();
+  c.MaweBoot.DATA.audio_processing.gain_db = 6;
+  c.MaweState.changes.audioProcessingDirty = true;
+  assert.equal(c.MaweState.hasProjectChanges(), true);
+  c.MaweBoot.DATA.audio_processing.gain_db = 0;
+  assert.equal(c.MaweState.hasProjectChanges(), false);
+  c.MaweBoot.DATA.audio_processing.gain_db = 6;
+  let sent;
+  c.MaweHost.server.fetch = (_url, options) => { sent = JSON.parse(options.body).project; return response.promise; };
+  const saving = c.MaweProjectSave.saveCurrentProject();
+  c.MaweBoot.DATA.audio_processing.gain_db = 12;
+  response.resolve(ok('audio.mosp'));
+  assert.equal(await saving, true);
+  assert.equal(sent.audio_processing.gain_db, 6);
+  assert.equal(c.MaweState.hasProjectChanges(), true);
+  c.MaweBoot.DATA.audio_processing.gain_db = 6;
+  assert.equal(c.MaweState.hasProjectChanges(), false);
+});
+
 test('an in-flight server save cannot confirm after a new load or binding intent', async () => {
   for (const invalidate of [
     c => c.MaweState.beginProjectLoad(),

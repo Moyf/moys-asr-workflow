@@ -104,27 +104,34 @@ export function createUtilsModule(dependencies) {
       });
     });
     if (['single', 'double', 'both'].includes(syntax)) addMarkers('*', 'emphasized');
-    if (includeUnderline) {
+    if (includeUnderline && rule !== 'none') {
       if (options.assUnderlineEnabled !== false) addMarkers('_', 'underlined');
       if (options.assStrikeEnabled !== false) addMarkers('~', 'struck');
       if (options.assSmallTextEnabled !== false) addMarkers('-', 'small');
       if (options.assLargeTextEnabled !== false) addMarkers('+', 'large');
-      // 注释固定双符号 //：不随单双规则变化，也不接受单 /。
+      // 弱化（注释）固定双符号 %%、斜体固定双符号 //：都不随单双规则变化，
+      // 也不接受单个 % 或单个 /，避免与字面百分号、路径与网址里的 // 冲突。
       if (options.assCommentEnabled !== false) {
-        assMarkedRanges(source, '//').forEach(({ start, end }) => {
+        assMarkedRanges(source, '%%').forEach(({ start, end }) => {
           markers.set(start, { field: 'comment', active: true, width: 2 });
           markers.set(end, { field: 'comment', active: false, width: 2 });
+        });
+      }
+      if (options.assItalicEnabled !== false) {
+        assMarkedRanges(source, '//').forEach(({ start, end }) => {
+          markers.set(start, { field: 'italic', active: true, width: 2 });
+          markers.set(end, { field: 'italic', active: false, width: 2 });
         });
       }
     }
     const runs = [];
     let content = '';
-    const active = { emphasized: 0, underlined: 0, struck: 0, small: 0, large: 0, comment: 0 };
+    const active = { emphasized: 0, underlined: 0, struck: 0, small: 0, large: 0, comment: 0, italic: 0 };
     const flush = () => {
       if (content) runs.push({ text: content, emphasized: active.emphasized > 0,
         underlined: active.underlined > 0, struck: active.struck > 0,
         size: active.large > 0 ? 'large' : active.small > 0 ? 'small' : null,
-        comment: active.comment > 0 });
+        comment: active.comment > 0, italic: active.italic > 0 });
       content = '';
     };
     for (let cursor = 0; cursor < source.length;) {
@@ -139,7 +146,7 @@ export function createUtilsModule(dependencies) {
       }
     }
     flush();
-    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false, struck: false, size: null, comment: false });
+    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false, struck: false, size: null, comment: false, italic: false });
     return runs;
   }
 
@@ -662,6 +669,27 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // ASS 预览的 font-family 别名链：libass 与浏览器对同一字体的可用名字集合
+  // 不同（浏览器匹配规则不可预测），预览把存储值与其余别名（canonical 优先）
+  // 逐个列入 font-family，任一名字命中即按该字形渲染。名字大小写不敏感去重、
+  // 逐个 CSS 引号化，末尾固定追加 fallback；aliases 为空时退化为单名 + 兜底。
+  function assFontFamilyAliasChainCss(fontName, aliases, { fallback = 'sans-serif' } = {}) {
+    const primary = String(fontName ?? '').trim();
+    if (!primary) return '';
+    const chain = [primary];
+    const seen = new Set([primary.toLocaleLowerCase()]);
+    (Array.isArray(aliases) ? aliases : []).forEach((candidate) => {
+      const name = String(candidate ?? '').trim();
+      const key = name.toLocaleLowerCase();
+      if (!name || seen.has(key)) return;
+      seen.add(key);
+      chain.push(name);
+    });
+    const quoted = chain.map((name) => `"${name.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+    return [...quoted, fallback].join(', ');
+  }
+
+
   function assAlphaFromOpacity(opacity, fallbackOpacity = 100) {
     // ASS 的 AA 通道与直觉相反：00 = 不透明，FF = 全透明；这里用常见的
     // 「不透明度百分比」（100 = 不透明）换算成 ASS alpha 字节。
@@ -770,5 +798,5 @@ export function createUtilsModule(dependencies) {
 
   // assMarkedRanges 同时供 text-processing 的 MASS 成对检测复用（strip /
   // 拆分补齐 / 合并折叠 / 字词块归位同一套配对语义），故从这里导出。
-  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assInlineStyleRuns, assMarkedRanges, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
+  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assFontFamilyAliasChainCss, assInlineStyleRuns, assMarkedRanges, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
 }

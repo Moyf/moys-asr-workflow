@@ -463,7 +463,7 @@ export function createUtilsModule(dependencies) {
   function sentenceShells(text, rule) {
     let body = String(text ?? '');
     const shells = [];
-    const formats = ['++', '--', '**', '__', '~~', '//'];
+    const formats = ['++', '--', '**', '__', '~~', '//', '%%'];
     while (body) {
       // `{{…}}` 是不对称句级壳：行首 `{{` 与行尾 `}}` 配对（同 fade 的行首/
       // 行尾语义），其余 token 两侧同符号；内层再出现 `{{` 视为字面。
@@ -573,8 +573,8 @@ export function createUtilsModule(dependencies) {
 
 
   // === MASS（Markdown-ASS）成对标记 ===
-  // 权威清单 = WRAP_CHAR_PRESETS 中 ass:true 的 8 对（** ++ -- __ ~~ >>…<< !! //）。
-  // 行内同符号对（** ++ -- __ ~~ // !!）复用 assMarkedRanges 的配对语义，
+  // 权威清单 = WRAP_CHAR_PRESETS 中 ass:true 的 9 对（** ++ -- __ ~~ >>…<< !! // %%）。
+  // 行内同符号对（** ++ -- __ ~~ // %% !!）复用 assMarkedRanges 的配对语义，
   // 找不到成对的孤儿符号一律按字面保留；句级 fade >>…<< 是非对称标记，
   // 单独按 parseSentenceFadeMarkers 的行首/行尾语义处理，不进 assMarkedRanges。
   // rule 与「特殊文本规则」设置（assSpecialSymbolRule）同源：
@@ -599,7 +599,7 @@ export function createUtilsModule(dependencies) {
         });
       });
     });
-    ['//', '!!'].forEach((marker) => {
+    ['//', '%%', '!!'].forEach((marker) => {
       assMarkedRanges(text, marker).forEach((range) => {
         ranges.push({ ...range, marker });
       });
@@ -689,7 +689,7 @@ export function createUtilsModule(dependencies) {
     const pairs = [['>>', '<<']];
     if (rule === 'both' || rule === 'single') pairs.push(['>', '<']);
     pairs.push(['!!', '!!'], ['{{', '}}']);
-    ['++', '--', '**', '__', '~~', '//'].forEach(marker => pairs.push([marker, marker]));
+    ['++', '--', '**', '__', '~~', '//', '%%'].forEach(marker => pairs.push([marker, marker]));
     let prefix = source.slice(0, range.start);
     let suffix = source.slice(range.end + range.width);
     const opens = [];
@@ -904,7 +904,9 @@ export function createUtilsModule(dependencies) {
     });
     // `!!` 是整句壳（SENTENCE_LEVEL_WRAP_PAIRS），只走上面的句级折叠；
     // 行内形式的 `!!` 不跨 junction 折叠——折出来也是句中死标记。
+    // `//` 斜体与 `%%` 弱化是固定双符号行内对，同样参与 junction 折叠。
     markers.push('//');
+    markers.push('%%');
     // 双符号是「左右添加字符」预设的规范形式，优先判定。
     markers.sort((a, b) => b.length - a.length);
     for (const marker of markers) {
@@ -1027,8 +1029,9 @@ export function createUtilsModule(dependencies) {
     // ass: true 的预设是 ASS 特殊文本格式，仅在当前工程启用 ASS 字幕模式时展示。
     { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
     { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
-    { id: 'comment', label: '弱化文本', left: '//', right: '//', ass: true },
+    { id: 'comment', label: '弱化文本', left: '%%', right: '%%', ass: true },
     { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
+    { id: 'italic', label: '斜体文本', left: '//', right: '//', ass: true },
     { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
     { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
     { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true, sentenceLevel: true },
