@@ -268,7 +268,7 @@
     MaweDom.ctxmenu.appendChild(row);
     // 「清除颜色」项：仅当选中范围内有颜色时显示
     const hasColorInRange = targets.some(i =>
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].color || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].color_ref);
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].color_group_id);
     if (hasColorInRange) {
       addItem('清除颜色', '0', () => MaweStickerPicker.clearColorOnTargets(targets), { danger: true });
     }
@@ -374,7 +374,7 @@
     // 组 2：外观（表情包与颜色）；表情包功能关闭时隐藏分配入口
     const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
     if (stickersEnabled) addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker([idx], false));
-    if (stickersEnabled && (window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].sticker || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].sticker_ref)) {
+    if (stickersEnabled && (window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].sticker_group_id)) {
       addItem('删除表情包', '', () => {
         MaweStickerPicker.removeStickerCascade(idx);
         MaweCuePanel.renderAll();
@@ -415,7 +415,7 @@
     // 组 2：外观（表情包与颜色）；「延长表情包」仅在范围内已有表情包时显示
     const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
     const hasStickerInRange = stickersEnabled && targetIdxs.some(i =>
-      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].sticker || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].sticker_ref);
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].sticker_group_id);
     if (hasStickerInRange) {
       addItem('延长表情包', '', () => MaweStickerPicker.expandStickerTime(targetIdxs));
     }

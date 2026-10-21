@@ -24,8 +24,8 @@
   // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
   // 分配首个表情包时由本函数根据最新数据直接恢复。
   const overlaySegments = getOverlayTrack()?.segments || [];
-  const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some(segment => segment.sticker || segment.sticker_ref)
-    || overlaySegments.some(segment => segment.sticker || segment.sticker_ref);
+  const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some(segment => segment.sticker_group_id)
+    || overlaySegments.some(segment => segment.sticker_group_id);
   MaweCoreState.container.classList.toggle('hide-cue-sticker',
     !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
   );

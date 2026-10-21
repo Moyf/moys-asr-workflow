@@ -35,6 +35,10 @@
       ...(window.MaweAudioProcessing?.settings()
         || { gain_db: 0, target_lufs: -14, peak_ceiling_dbtp: -1 }),
     };
+    const markers = window.AsrEditorUtils.markersToProjectField(MaweBoot.DATA.markers);
+    if (markers) out.markers = markers;
+    else delete out.markers;
+    if (MaweBoot.DATA.gap_remove) out.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(MaweBoot.DATA.gap_remove);
     const workspace = MaweExportTimeline.buildCurrentWorkspaceData();
     if (workspace) out.workspace = workspace;
     const preview = {

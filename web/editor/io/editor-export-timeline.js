@@ -42,13 +42,14 @@
         const absPath = MaweSelection.stickerAbsPath(sticker);
         if (absPath) sticker.abs_path = absPath;
       }
-      const colorName = seg.color?.name || seg.color_ref?.name || null;
+      const groupColor = window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, seg, 'color');
+      const colorName = groupColor?.name || null;
       return {
         idx,
         start_ms: seg.start,
         end_ms: seg.end,
         text: MaweSpeakerLabels.subtitleExportText(seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments),
-        color: seg.color || null,
+        color: groupColor || null,
         color_ref: seg.color_ref || null,
         resolve_color: colorName,
         sticker: groupStickers ? null : sticker,

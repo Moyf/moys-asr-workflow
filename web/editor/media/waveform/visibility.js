@@ -45,9 +45,15 @@ export function createWaveformModule(dependencies) {
       // 再扫描整个字幕数组，长工程或多行缓存下可从 O(N²) 降到 O(N)。
       const membersByHead = new Map();
       segments.forEach((seg, headIdx) => {
-        if (seg[headField]) membersByHead.set(headIdx, [headIdx]);
+        const groupId = seg[`${type}_group_id`];
+        if (groupId) {
+          const key = `group:${groupId}`;
+          if (!membersByHead.has(key)) membersByHead.set(key, []);
+          membersByHead.get(key).push(headIdx);
+        } else if (seg[headField]) membersByHead.set(headIdx, [headIdx]);
       });
       segments.forEach((seg, idx) => {
+        if (seg[`${type}_group_id`]) return;
         const headIdx = seg[refField]?.headIdx;
         const members = membersByHead.get(headIdx);
         if (members && headIdx !== idx) members.push(idx);

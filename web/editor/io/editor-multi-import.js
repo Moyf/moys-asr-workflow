@@ -212,7 +212,9 @@
   return MaweCommands.run('交换主副字幕', (command) => {
     const result = MULTI_SUBTITLE_UTILS.swapMainAndExtensionSubtitle(MaweBoot.DATA, track.id);
     if (!result.swapped) {
-      MaweHint.flashHint('交换主副字幕失败', 'warning');
+      MaweHint.flashHint(result.reason === 'unmapped-bindings'
+        ? `另有 ${result.unmappedBindingCount} 条副轨绑定无法随主轨交换，请先解除相关绑定`
+        : '交换主副字幕失败', 'warning');
       return false;
     }
     MaweMultiSubtitleCore.markMainSegmentsDirty(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
@@ -220,7 +222,7 @@
     MaweSelection.clearSelection();
     command.commit({ cueList: true, waveform: 'full', preview: 'update' });
 
-    MaweHint.flashHint(`已交换主副字幕：主轨 ${result.mainCount} 条，副轨 ${result.extensionCount} 条${result.removedBindingCount ? `；解除 ${result.removedBindingCount} 条无法映射的绑定` : ''}`, 'success');
+    MaweHint.flashHint(`已交换主副字幕：主轨 ${result.mainCount} 条，副轨 ${result.extensionCount} 条`, 'success');
     return true;
   });
 }

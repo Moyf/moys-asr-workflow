@@ -18,7 +18,8 @@ export function createWaveformModule(dependencies) {
 
 
   function groupColor(segment) {
-    return dependencies.getSubtitleGroupValue?.(segment, 'color') || segment.color || null;
+    return dependencies.getSubtitleGroupValue?.(segment, 'color') || segment.color
+      || (segment.color_ref?.name ? { name: segment.color_ref.name } : null);
   }
   function colorForSegment(segment) {
     const color = groupColor(segment);

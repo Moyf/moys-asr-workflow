@@ -50,7 +50,7 @@ function showOverlayContextMenu(x, y, index) {
   // 表情包功能总开关关闭时隐藏分配入口，工程数据保留。
   const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
   if (stickersEnabled) addItem('分配表情包…', () => MaweStickerPicker.openStickerPicker([index], false, { overlay: true }));
-  if (stickersEnabled && (segment.sticker || segment.sticker_ref)) {
+  if (stickersEnabled && (segment.sticker_group_id)) {
     addItem('删除表情包', () => clearOverlaySticker(index));
   }
   const colorRow = document.createElement('div');
@@ -84,7 +84,7 @@ function showOverlayContextMenu(x, y, index) {
   });
   colorRow.appendChild(swatches);
   MaweDom.ctxmenu.appendChild(colorRow);
-  if (segment.color || segment.color_ref) {
+  if (segment.color_group_id) {
     addItem('清除颜色', () => clearOverlayColorOnTargets([index]), { danger: true });
   }
   addSep();

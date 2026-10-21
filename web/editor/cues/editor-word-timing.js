@@ -163,6 +163,7 @@
     if (!conversionTarget || conversionTarget.project !== window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) return null;
     const indices = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment, index) => conversionTarget.ids.includes(segment.id) ? index : -1).filter(i => i >= 0);
     return global.AsrEditorUtils.planWordTimingConversion(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, indices, clock(), {
+      reservedSegments: [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA)],
       // 转换产物对跨行 MASS 对做两侧补齐（账本 #21），预览与确认同一计划。
       rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     });

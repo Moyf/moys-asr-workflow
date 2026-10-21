@@ -393,16 +393,17 @@
   MaweDom.cuePanelTotalLength.textContent = String(metrics.totalLength);
   MaweDom.cuePanelCharsPerSecond.textContent = metrics.charsPerSecond.toFixed(2);
   MaweDom.cuePanelSticker.replaceChildren();
-  if (seg.sticker) {
+  const stickerView = MaweMultiSubtitleCore.segmentPresentation(seg);
+  if (stickerView.sticker) {
     const image = document.createElement('img');
-    image.src = MaweSelection.stickerUrl(seg.sticker);
-    image.alt = seg.sticker.name || '表情包';
+    image.src = MaweSelection.stickerUrl(stickerView.sticker);
+    image.alt = stickerView.sticker.name || '表情包';
     MaweDom.cuePanelSticker.title = '点击替换；右键删除';
     MaweDom.cuePanelSticker.appendChild(image);
-  } else if (seg.sticker_ref) {
+  } else if (stickerView.sticker_ref) {
     const ref = document.createElement('span');
     ref.className = 'ref';
-    ref.textContent = `↑ ${seg.sticker_ref.name || '表情包'}`;
+    ref.textContent = `↑ ${stickerView.sticker_ref.name || '表情包'}`;
     MaweDom.cuePanelSticker.title = '点击选择表情包；右键删除引用';
     MaweDom.cuePanelSticker.appendChild(ref);
   } else {

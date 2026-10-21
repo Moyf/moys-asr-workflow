@@ -255,8 +255,8 @@
   // 原地更新可以避免 renderAll() 替换列表节点后产生滚动闪烁。
   refreshCueStickerRows();
   const overlaySegments = getOverlayTrack()?.segments || [];
-  const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((segment) => segment.sticker || segment.sticker_ref)
-    || overlaySegments.some((segment) => segment.sticker || segment.sticker_ref);
+  const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((segment) => segment.sticker_group_id)
+    || overlaySegments.some((segment) => segment.sticker_group_id);
   MaweCoreState.container.classList.toggle('hide-cue-sticker',
     !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
   );
