@@ -17,12 +17,22 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
   await page.goto(server.url);
   await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
+  await page.evaluate(() => {
+    const wave = MaweCoreState.waveformEditor;
+    wave.settings.mode = 'multi'; wave.settings.secondsPerRow = 5; wave.render();
+    // Workspace settings are persisted content. Finish fixture setup before
+    // measuring whether the subsequent gesture changes the saved project.
+    MaweState.establishProjectCheckpoint();
+  });
 });
 
 async function snapshot(page) {
   return page.evaluate(() => ({
-    segments: MaweBoot.DATA.segments,
-    multi: MaweBoot.DATA.multi_subtitle,
+    segments: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+    tracks: MaweBoot.DATA.tracks,
+    bindings: MaweBoot.DATA.bindings,
+    bilingual: MaweBoot.DATA.bilingual,
+    content: MaweJsonRepair.projectSnapshot(),
     undo: MaweHistory.editorHistory.undoLength(),
     redo: MaweHistory.editorHistory.redoLength(),
     dirty: MaweServerSave.hasUnsavedProjectChanges(),
@@ -39,7 +49,7 @@ async function seedRedo(page) {
 async function beginDrag(page) {
   await page.evaluate(() => {
     const wave = MaweCoreState.waveformEditor;
-    wave.settings.mode = 'multi'; wave.settings.secondsPerRow = 5; wave.render();
+    wave.render();
   });
   const handle = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"] .waveform-cue-handle.right').first();
   await handle.scrollIntoViewIfNeeded();
@@ -130,10 +140,12 @@ test('undo after saving marks changed content dirty and redo back to the saved c
 test('saving clears overlay and extension track dirty flags', async ({ page }) => {
   await bindMemoryFile(page);
   await page.evaluate(() => {
-    MaweState.project.overlay_track._dirty = true;
-    MaweState.project.overlay_track.segments.push({ id: 'overlay-save', start: 0, end: 1000, text: 'Overlay', _dirty: true });
-    MaweState.project.multi_subtitle.tracks.push({ id: 'extension-save', name: 'Extension', _dirty: true,
+    const overlay = AsrEditorUtils.ensureOverlayTrack(MaweState.project);
+    overlay._dirty = true;
+    overlay.segments.push({ id: 'overlay-save', start: 0, end: 1000, text: 'Overlay', _dirty: true });
+    const extension = AsrEditorUtils.ensureExtensionTrack(MaweState.project, { id: 'extension-save', name: 'Extension',
       segments: [{ id: 'ext-save', start: 0, end: 1000, text: 'Extension', _dirty: true }] });
+    extension._dirty = true;
   });
   expect((await snapshot(page)).dirty).toBe(true);
   expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }))).toBe(true);
@@ -180,14 +192,15 @@ for (const saveAs of [false, true]) {
     await page.waitForFunction(() => window.__transactionWrite.ready);
     await page.evaluate(() => {
       MaweCommands.run('add overlay during save', () => {
-        MaweState.project.overlay_track.enabled = true;
-        MaweState.project.overlay_track.segments.push({ id: 'in-flight', start: 0, end: 1000, text: 'Later' });
+        const overlay = AsrEditorUtils.ensureOverlayTrack(MaweState.project, { enabled: true });
+        overlay.enabled = true;
+        overlay.segments.push({ id: 'in-flight', start: 0, end: 1000, text: 'Later' });
       }, { invalidate: { cueList: true } });
       window.__transactionWrite.release();
     });
     await page.evaluate(() => window.__transactionWrite.save);
     expect((await snapshot(page)).dirty).toBe(true);
-    expect(await page.evaluate(() => JSON.parse(window.__transactionWrite.content).overlay_track?.segments?.length || 0)).toBe(0);
+    expect(await page.evaluate(() => AsrEditorUtils.getOverlayTrack(JSON.parse(window.__transactionWrite.content))?.segments?.length || 0)).toBe(0);
     await page.locator('#undo-btn').click();
     expect((await snapshot(page)).dirty).toBe(false);
   });
@@ -199,7 +212,7 @@ test('a failed command rolls back data and leaves the history branches intact', 
   const message = await page.evaluate(() => {
     try {
       MaweCommands.run('test rollback', () => {
-        MaweState.project.segments[0].text = 'discard this mutation';
+        AsrEditorUtils.getMainTrack(MaweState.project).segments[0].text = 'discard this mutation';
         throw new Error('mutation failed');
       });
     } catch (error) { return error.message; }
