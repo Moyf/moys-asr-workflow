@@ -5143,7 +5143,7 @@ test('builds an immutable gap-removed export plan with cue and sticker projectio
   assert.equal(helpers.mapExportTime(serializedPlan.mapping, 5000), 3900);
   assert.equal(helpers.exportPolicyMsToFrames(serializedPlan.framePolicy, 1001), 30);
   assert.deepEqual(plan.cues.main.map((cue) => cue.id), ['a', 'b', 'e', 'f']);
-  assert.deepEqual(plan.cues.extension.map((cue) => cue.id), ['x']);
+  assert.deepEqual(Array.from(plan.cues.extension, (cue) => cue.id), ['x']);
   assert.deepEqual(JSON.parse(JSON.stringify(plan.cues.extension.map((cue) => [cue.startMs, cue.endMs]))), [[1500, 1700]]);
   const disabledExtension = helpers.buildProjectExportPlan({
     ...project, multi_subtitle: { ...project.multi_subtitle, enabled: false },
