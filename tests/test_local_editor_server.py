@@ -22,7 +22,8 @@ from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
-from maw.project import PROJECT_SCHEMA
+from maw.project import normalize_project
+from maw.project_tracks import get_main_track, make_project
 import edit
 
 
@@ -296,7 +297,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         outside = self.root / "outside.mp4"
         outside.write_bytes(b"untrusted")
         project = server_editor.ServerProject(
-            data={"media": str(source), "segments": []}, json_path=self.project_path,
+            data=make_project([], project_fields={"media": str(source)}), json_path=self.project_path,
             media_path=source, sticker_root=None, stickers=[], source_media_path=source,
         )
         captured: dict[str, object] = {}
@@ -347,7 +348,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         source = self.root / "bound.mp4"
         source.write_bytes(b"source")
         project = server_editor.ServerProject(
-            data={"media": str(source), "segments": []}, json_path=self.project_path,
+            data=make_project([], project_fields={"media": str(source)}), json_path=self.project_path,
             media_path=source, sticker_root=None, stickers=[], source_media_path=source,
         )
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
@@ -719,7 +720,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             self.assertEqual(target, self.project_path)
             self.assertEqual(self.project_path.read_bytes(), original)
             self.assertEqual(server.settings.recent_projects, ())
-            self.assertEqual(json.loads(backup.read_text(encoding='utf-8'))['language'], 'en')
+            self.assertEqual(get_main_track(json.loads(backup.read_text(encoding='utf-8')))['language'], 'en')
             server.save_project(data, backup_limit=2)
             self.assertEqual(len(list(backup.parent.glob('*.mosp-bak'))), 2)
             self.assertEqual([p.path for p in server.settings.recent_projects], [target])
@@ -1044,7 +1045,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_startup_page_shows_project_loading_overlay_before_javascript_runs(self) -> None:
         project = server_editor.ServerProject(
-            data={"segments": []},
+            data=make_project([]),
             json_path=self.root / "loading.mosp",
             media_path=None,
             sticker_root=None,
@@ -1069,12 +1070,11 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
     def test_build_server_page_defers_reapeaks_layers_to_waveform_endpoint(self) -> None:
         """延迟加载开启时页面不内联频谱 / reapeaks 层；关闭时（--no-waveform）仍保留内联。"""
         project = server_editor.ServerProject(
-            data={
-                "segments": [],
+            data=make_project([], project_fields={
                 "spectral": {"marker": "spectral-layer-payload"},
                 "waveform_reapeaks": {"marker": "reapeaks-wave-layer-payload"},
                 "loudness": {"marker": "loudness-layer-payload"},
-            },
+            }),
             json_path=self.root / "layered.mosp",
             media_path=None,
             sticker_root=None,
@@ -2833,11 +2833,10 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     "media": str(self.media),
                     "segments": [{"start": 0, "end": 1000, "text": "保存后的字幕"}],
                 }
-                normalized_saved_project = {
-                    "schema": PROJECT_SCHEMA,
-                    "media": self.media.name,
-                    "segments": [{"id": "main-001", "start": 0, "end": 1000, "text": "保存后的字幕"}],
-                }
+                normalized_saved_project = make_project(
+                    [{"id": "main-cue-1", "start": 0, "end": 1000, "text": "保存后的字幕"}],
+                    project_fields={"media": self.media.name},
+                )
                 status, result = post({"project": saved_project, "filename": None})
                 self.assertEqual(status, 200)
                 self.assertTrue(result["ok"])
@@ -3064,10 +3063,9 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 }
                 # The browser normalizes a legacy project before asking the
                 # server to take it over, while the on-disk copy still has no
-                # IDs. The server must apply the same deterministic repair to
+                # IDs. The server must apply the same deterministic migration to
                 # both copies before comparing their subtitle content.
-                browser_project = json.loads(json.dumps(legacy_project))
-                browser_project["segments"][0]["id"] = "main-001"
+                browser_project = normalize_project(legacy_project)
 
                 # 失败矩阵：任何一项不满足都不得绑定工程路径。
                 notes = self.root / "notes.txt"
@@ -3125,11 +3123,10 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 self.assertTrue(result["ok"])
                 self.assertEqual(
                     json.loads(self.project_path.read_text(encoding="utf-8")),
-                    {
-                        "schema": PROJECT_SCHEMA,
-                        "media": self.media.name,
-                        "segments": [{"id": "main-001", "start": 0, "end": 1000, "text": "接管后保存"}],
-                    },
+                    make_project(
+                        [{"id": "main-cue-1", "start": 0, "end": 1000, "text": "接管后保存"}],
+                        project_fields={"media": self.media.name},
+                    ),
                 )
             finally:
                 server.shutdown()
@@ -3139,7 +3136,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
 def _blank_project() -> "server_editor.ServerProject":
     """A minimal bind-only project; avoids scanning the developer sticker dir."""
     return server_editor.ServerProject(
-        {"segments": [], "media": "", "language": "", "model": ""}, None, None, None, [],
+        make_project([], project_fields={"media": ""}), None, None, None, [],
     )
 
 
