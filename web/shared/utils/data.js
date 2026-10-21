@@ -2,12 +2,13 @@
 export function createUtilsModule(dependencies) {
   'use strict';
 
-  const PROJECT_SCHEMA = 'moy.asr.project.v1';
+  const PROJECT_SCHEMA = dependencies.PROJECT_TRACKS_SCHEMA;
 
 
   function supportsProjectSchema(project) {
     if (!project || typeof project !== 'object' || Array.isArray(project)) return false;
-    return project.schema === undefined || project.schema === PROJECT_SCHEMA;
+    return project.schema === undefined
+      || ['moy.asr.project.v1', 'moy.asr.project.v2', PROJECT_SCHEMA].includes(project.schema);
   }
 
 
@@ -117,7 +118,9 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function effectiveColorName(segment, segments) {
+  function effectiveColorName(segment, segments, project = dependencies.getProject?.()) {
+    const group = project?.subtitle_groups?.color?.find((entry) => entry.id === segment?.color_group_id);
+    if (typeof group?.value?.name === 'string' && group.value.name) return group.value.name;
     const direct = segment?.color?.name;
     if (typeof direct === 'string' && direct) return direct;
     const reference = segment?.color_ref;
