@@ -268,6 +268,87 @@ test('merges and filters font combobox dropdown options without duplicates', () 
   );
 });
 
+test('merges and filters alias-table entries whose aliases join the search', () => {
+  // 别名表条目：value=label=canonical，aliases 参与搜索并随 merge 透传。
+  const merged = helpers.mergeFontFamilyOptions([
+    { value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] },
+    // 无别名的普通条目保持原有形状（不含 aliases 键）。
+    { value: 'Arial', label: 'Arial' },
+    { value: '  ' },
+    { value: 'Broken', label: 'Broken', aliases: ['ok', null, 42] },
+  ]);
+  assert.deepEqual(Array.from(merged, (entry) => ({ ...entry })), [
+    { value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] },
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Broken', label: 'Broken', aliases: ['ok'] },
+  ]);
+
+  // label 前缀优先级不变；别名命中归入包含匹配组。
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(merged, '得意'), (entry) => ({ ...entry })),
+    [{ value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] }],
+  );
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(merged, 'smiley'), (entry) => ({ ...entry })),
+    [{ value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] }],
+  );
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(merged, '不存在'), (entry) => ({ ...entry })),
+    [],
+  );
+});
+
+test('builds the ASS preview font-family alias chain with dedupe and quoting', () => {
+  // 存储值 + canonical + 其余别名，大小写不敏感去重、逐个引号化、固定兜底。
+  assert.equal(
+    helpers.assFontFamilyAliasChainCss('Smiley Sans', [
+      '得意黑', 'smiley sans', 'Smiley Sans Oblique', 'SmileySans-Oblique',
+    ]),
+    '"Smiley Sans", "得意黑", "Smiley Sans Oblique", "SmileySans-Oblique", sans-serif',
+  );
+  // 无别名时退化为单名 + 兜底；引号内双引号/反斜杠转义。
+  assert.equal(helpers.assFontFamilyAliasChainCss('Arial'), '"Arial", sans-serif');
+  assert.equal(
+    helpers.assFontFamilyAliasChainCss('Weird "Name"', ['A\\B']),
+    '"Weird \\"Name\\"", "A\\\\B", sans-serif',
+  );
+  assert.equal(helpers.assFontFamilyAliasChainCss('  '), '');
+  assert.equal(helpers.assFontFamilyAliasChainCss('Arial', 'not-an-array'), '"Arial", sans-serif');
+});
+
+test('buildAssPayload rewrites Style Fontname through the alias table and leaves storage intact', () => {
+  const segments = [{ start: 0, end: 2000, text: '你好' }];
+  const fakeAliases = {
+    canonicalFor: (name) => ({ 'Smiley Sans': '得意黑' })[String(name ?? '').trim()] || null,
+  };
+  const previous = context.window.MaweAssFontAliases;
+  context.window.MaweAssFontAliases = fakeAliases;
+  try {
+    // 外观模式与 ASS 模式（库样式）都写出 canonical；扩展样式同样改写。
+    const legacy = helpers.buildAssPayload(segments, {
+      appearance: { font_family: 'Smiley Sans', font_size: 32, color: '#123456' },
+    });
+    assert.match(legacy, /Style: Default,得意黑,/);
+    const profiled = helpers.buildAssPayload(segments, {
+      assProfile: {},
+      assStyle: { fontName: 'Smiley Sans' },
+      assExtensionStyle: { fontName: 'Smiley Sans' },
+      extensionSegments: [{ start: 0, end: 1000, text: 'A' }],
+    });
+    assert.match(profiled, /Style: Default,得意黑,/);
+    assert.match(profiled, /Style: Extension,得意黑,/);
+  } finally {
+    // 恢复现场：字节 pin 等后续用例必须在无别名表环境下运行。
+    if (previous === undefined) delete context.window.MaweAssFontAliases;
+    else context.window.MaweAssFontAliases = previous;
+  }
+  // 表未加载时输出与现状一致（canonicalFor 缺失即原样返回）。
+  const plain = helpers.buildAssPayload(segments, {
+    appearance: { font_family: 'Smiley Sans', font_size: 32, color: '#123456' },
+  });
+  assert.match(plain, /Style: Default,Smiley Sans,/);
+});
+
 test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
   assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');

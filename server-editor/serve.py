@@ -59,6 +59,7 @@ from maw.thumbnail_jobs import ThumbnailJobManager  # noqa: E402
 from maw.project_backups import backup_directory_candidates, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
+from maw.ass_fonts import font_alias_payload, normalize_ass_text_fontnames  # noqa: E402
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
@@ -1081,10 +1082,13 @@ def burn_ass_video(
             converted = convert_srt_to_ass(srt_path, ffmpeg_path=ffmpeg_path, srt_style=None,
                                            play_resolution=resolution, run_command=run_conversion)
             converted.replace(ass_path)
+            ass_text = ass_path.read_text(encoding="utf-8-sig")
         except (MediaToolError, OSError, subprocess.SubprocessError) as error:
             raise BurnVideoExportError("SRT 字幕转换失败，请检查字幕和样式", details=error) from error
-    else:
-        ass_path.write_text(ass_text, encoding="utf-8", newline="\n")
+    # 最终任务副本也统一归一化：旧客户端或异步字体表尚未就绪时，不能
+    # 依赖前端改写；SRT 转换产物同样经过这里，保留事件和内联样式原文。
+    ass_text, _ = normalize_ass_text_fontnames(ass_text)
+    ass_path.write_text(ass_text, encoding="utf-8", newline="\n")
     sticker_input_args = _burn_sticker_input_args(stickers)
     input_args = ["-i", str(source), *sticker_input_args]
     if green_screen:
@@ -1270,6 +1274,10 @@ def render_ass_frame_png(
     """
     seconds = max(0, int(time_ms)) / 1000
     with tempfile.TemporaryDirectory(prefix="maw-ass-frame-") as tmp:
+        # libass 只按 nameID1 匹配字体：写 frame.ass 前把 Style 行的 Fontname
+        # 归一化成本机 canonical 名，并带回替换/未找到两类告警。表不可用或
+        # 没有 Style 行时归一化原样返回，行为与旧版一致。
+        ass_text, font_notices = normalize_ass_text_fontnames(ass_text)
         ass_path = Path(tmp) / "frame.ass"
         with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
             handle.write(ass_text)
@@ -1322,6 +1330,8 @@ def render_ass_frame_png(
             warnings.append(
                 f"字幕字体「{family}」缺少字形{glyph}{character}，实际画面可能显示方框。"
             )
+        # 字体名归一化结果（替换说明 + 未找到告警）追加在缺字形告警之后。
+        warnings.extend(font_notices)
         return result.stdout, warnings
 
 
@@ -1693,6 +1703,7 @@ def build_server_page(
             "recentProjects": [item.to_json() for item in settings.recent_projects],
             "assStylesUrl": "/api/ass-styles",
             "assFrameUrl": "/api/ass-frame",
+            "assFontAliasesUrl": "/api/ass-font-aliases",
             "autoOpenLastProject": settings.auto_open_last_project,
             "savedWorkspaces": settings.saved_workspaces,
             "presetWorkspaces": settings.preset_workspaces,
@@ -3954,6 +3965,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/ass-styles":
             self.send_json(HTTPStatus.OK, load_ass_style_library())
+            return
+        if path == "/api/ass-font-aliases":
+            self.send_json(HTTPStatus.OK, font_alias_payload())
             return
         if path == "/":
             with self.editor_server.settings_lock:

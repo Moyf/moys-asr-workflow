@@ -662,6 +662,27 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // ASS 预览的 font-family 别名链：libass 与浏览器对同一字体的可用名字集合
+  // 不同（浏览器匹配规则不可预测），预览把存储值与其余别名（canonical 优先）
+  // 逐个列入 font-family，任一名字命中即按该字形渲染。名字大小写不敏感去重、
+  // 逐个 CSS 引号化，末尾固定追加 fallback；aliases 为空时退化为单名 + 兜底。
+  function assFontFamilyAliasChainCss(fontName, aliases, { fallback = 'sans-serif' } = {}) {
+    const primary = String(fontName ?? '').trim();
+    if (!primary) return '';
+    const chain = [primary];
+    const seen = new Set([primary.toLocaleLowerCase()]);
+    (Array.isArray(aliases) ? aliases : []).forEach((candidate) => {
+      const name = String(candidate ?? '').trim();
+      const key = name.toLocaleLowerCase();
+      if (!name || seen.has(key)) return;
+      seen.add(key);
+      chain.push(name);
+    });
+    const quoted = chain.map((name) => `"${name.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+    return [...quoted, fallback].join(', ');
+  }
+
+
   function assAlphaFromOpacity(opacity, fallbackOpacity = 100) {
     // ASS 的 AA 通道与直觉相反：00 = 不透明，FF = 全透明；这里用常见的
     // 「不透明度百分比」（100 = 不透明）换算成 ASS alpha 字节。
@@ -770,5 +791,5 @@ export function createUtilsModule(dependencies) {
 
   // assMarkedRanges 同时供 text-processing 的 MASS 成对检测复用（strip /
   // 拆分补齐 / 合并折叠 / 字词块归位同一套配对语义），故从这里导出。
-  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assInlineStyleRuns, assMarkedRanges, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
+  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assFontFamilyAliasChainCss, assInlineStyleRuns, assMarkedRanges, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
 }

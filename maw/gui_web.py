@@ -1608,6 +1608,7 @@ class LauncherApi:
             "mediaPath": str(result.media_path),
             "videoEncoder": str(getattr(result, "video_encoder", "auto") or "auto"),
             "srtStyleName": str(srt_style.get("name") or "SRT 渲染样式"),
+            "warnings": list(getattr(result, "warnings", ()) or ()),
         }
 
     def get_burn_subtitle_settings(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
