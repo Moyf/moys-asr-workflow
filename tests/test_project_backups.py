@@ -7,9 +7,10 @@ from datetime import datetime
 
 from maw.project_backups import backup_directory, backup_directory_candidates, write_backup
 from maw.project_tracks import get_main_track
+from tests.compact_assertions import CompactContainerAssertions
 
 
-class BackupTests(unittest.TestCase):
+class BackupTests(CompactContainerAssertions, unittest.TestCase):
     def test_locations(self):
         with patch('maw.project_backups.resolve_lang', return_value='zh'):
             self.assertEqual(backup_directory(Path('folder/a.mosp')), Path('folder/_maw/备份'))
