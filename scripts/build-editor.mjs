@@ -215,8 +215,16 @@ export async function compileSources(root, files, modules, read, options = {}) {
         const relative = supplied ? lexical : path.relative(webRoot,canonical).replaceAll('\\','/');
         const loader = FILE_LOADERS[path.extname(args.path)];
         if (!loader) throw new Error(`Unsupported static import type: ${args.path}`);
-        const contents = supplied ? sources.get(relative) : fs.readFileSync(canonical,'utf8');
-        if (!supplied) options.onDependency?.(relative,contents);
+        let contents = supplied ? sources.get(relative) : fs.readFileSync(canonical,'utf8');
+        if (!supplied) {
+          options.onDependency?.(relative,contents);
+          // Imported deps compile the transformed text too:
+          // hash and bytes given to esbuild must stay
+          // identical (review of #288 — hash-only
+          // mutation passed tests while the compiled
+          // content stayed original).
+          contents = options.transform ? options.transform(relative,contents) : contents;
+        }
         loadedInputs.set(path.normalize(args.path),relative);
         return {contents,loader,resolveDir:path.dirname(args.path)};
       });
@@ -235,7 +243,7 @@ export async function buildEditor(root = ROOT, options = {}) {
     snapshot['web/'+file] = original;
     const source = options.transform ? options.transform(file,original) : original;
     inputHashes[file] = sha(source); return source;
-  },{bridges:config.externalBridges,trace:true,onDependency:(relative,original) => {
+  },{bridges:config.externalBridges,trace:true,transform:options.transform,onDependency:(relative,original) => {
     const key = 'web/'+relative;
     // Transform hook covers imported inputs too (tests mutate non-manifest
     // sources like shared/utils/data.js after G04 retire). Snapshot keeps
