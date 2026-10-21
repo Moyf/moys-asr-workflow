@@ -31,7 +31,7 @@
 
   function effectiveCueColorKey(mainSeg) {
     if (!mainSeg) return COLOR_FILTER_DEFAULT_KEY;
-    return window.AsrEditorUtils.effectiveColorName(mainSeg, MaweBoot.DATA.segments) || COLOR_FILTER_DEFAULT_KEY;
+    return window.AsrEditorUtils.effectiveColorName(mainSeg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) || COLOR_FILTER_DEFAULT_KEY;
   }
 
 
@@ -40,14 +40,14 @@
   // 避免出现“看不到过滤开关但列表被过滤”的死角。只有单列主轨列表参与过滤。
   function colorFilterSuspended() {
     if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return false;
-    return MaweMultiSubtitleCore.getMultiSubtitleState().display_mode !== 'main';
+    return MaweBoot.DATA.bilingual.display_mode !== 'main';
   }
 
 
 
   function collectProjectColorUsage() {
     const counts = new Map();
-    MaweBoot.DATA.segments.forEach((seg) => {
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((seg) => {
       const key = effectiveCueColorKey(seg);
       counts.set(key, (counts.get(key) || 0) + 1);
     });
@@ -129,7 +129,7 @@
   }
   MaweCuePanel.commitCuePanelEdit();
   MaweSelection.clearSelection({ silent: true });
-  MaweBoot.DATA.segments.forEach((seg, idx) => {
+  window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((seg, idx) => {
     if (MaweSelection.isHiddenDisabled(idx)) return;
     if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
     MaweState.selection.add('main', idx);
@@ -214,7 +214,7 @@
       ? Number(el.dataset.idx)
       : (el.dataset.mainIdx != null ? Number(el.dataset.mainIdx) : -1);
     const segment = Number.isInteger(mainIndex) && mainIndex >= 0
-      ? MaweBoot.DATA.segments[mainIndex]
+      ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex]
       : null;
     if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
   });
@@ -239,7 +239,7 @@
     const index = Number(isExtension ? el.dataset.extIdx : (el.dataset.idx ?? el.dataset.mainIdx));
     const segment = isExtension
       ? (Number.isInteger(index) ? extensionTrack?.segments?.[index] : null)
-      : (Number.isInteger(index) && index >= 0 ? MaweBoot.DATA.segments[index] : null);
+      : (Number.isInteger(index) && index >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index] : null);
     if (segment) {
       MaweCueElements.updateCueStickerPresentation(el, slotEl, segment, index, {
         extensionTrack: isExtension ? extensionTrack : null,
@@ -255,7 +255,7 @@
   // 原地更新可以避免 renderAll() 替换列表节点后产生滚动闪烁。
   refreshCueStickerRows();
   const overlaySegments = getOverlayTrack()?.segments || [];
-  const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)
+  const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((segment) => segment.sticker || segment.sticker_ref)
     || overlaySegments.some((segment) => segment.sticker || segment.sticker_ref);
   MaweCoreState.container.classList.toggle('hide-cue-sticker',
     !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,

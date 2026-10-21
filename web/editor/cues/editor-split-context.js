@@ -24,7 +24,7 @@
     const listCaretInfo = Number.isFinite(waveformTimeMs)
       ? null : MaweInlineEdit.caretInfoFromPoint(el.querySelector('.text'), x, y);
     if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
-      MaweSplitCore.notifyMainSplitTimestampFallback(MaweBoot.DATA.segments[idx]);
+      MaweSplitCore.notifyMainSplitTimestampFallback(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]);
       const initial = Number.isFinite(waveformTimeMs)
         ? { timeMs: waveformTimeMs }
         : Number.isFinite(listCaretInfo?.offset)
@@ -42,12 +42,12 @@
       return false;
     }
     if (Number.isFinite(waveformTimeMs)) {
-      if (!MaweSplitCore.shouldUseMainSplitTimestamps(MaweBoot.DATA.segments[idx])) {
-        MaweSplitCore.notifyMainSplitTimestampFallback(MaweBoot.DATA.segments[idx]);
+      if (!MaweSplitCore.shouldUseMainSplitTimestamps(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx])) {
+        MaweSplitCore.notifyMainSplitTimestampFallback(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]);
         MaweSplitCore.openMainWaveformSplitModal(idx, waveformTimeMs, { splitTextMode });
         return false;
       }
-      const segment = MaweBoot.DATA.segments[idx];
+      const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
       const cursorOffset = MaweSplitCore.splitOffsetNearTime(
         segment,
         waveformTimeMs,

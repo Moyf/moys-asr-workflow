@@ -38,16 +38,15 @@
 
   function parseProjectValidationTarget(detail) {
     const value = String(detail || '');
-    const mainMatch = /^\$\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
-    const extensionMatch = /^\$\.multi_subtitle\.tracks\[(\d+)\]\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
-    if (!mainMatch && !extensionMatch) return null;
-    const kind = mainMatch ? 'main' : 'extension';
-    const trackIndex = extensionMatch ? Number(extensionMatch[1]) : null;
-    const segmentIndex = Number(mainMatch ? mainMatch[1] : extensionMatch[2]);
-    const itemValue = mainMatch ? mainMatch[2] : extensionMatch[3];
-    const itemIndex = itemValue === undefined ? null : Number(itemValue);
-    const track = extensionMatch ? MaweMultiSubtitleCore.getMultiSubtitleState().tracks?.[trackIndex] : null;
-    const segments = kind === 'main' ? MaweBoot.DATA.segments : (track?.segments || []);
+    const match = /^\$\.tracks\[(\d+)\]\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
+    if (!match) return null;
+    const trackIndex = Number(match[1]);
+    const track = MaweBoot.DATA.tracks[trackIndex];
+    const kind = track?.role;
+    if (!kind) return null;
+    const segmentIndex = Number(match[2]);
+    const itemIndex = match[3] === undefined ? null : Number(match[3]);
+    const segments = track.segments;
     const segment = segments[segmentIndex];
     if (!segment) return null;
     const item = itemIndex === null
@@ -149,7 +148,7 @@
 
   function focusProjectValidationTarget(target) {
     const { segmentIndex, segment } = target || {};
-    const segments = target?.segments || MaweBoot.DATA.segments;
+    const segments = target?.segments || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     if (!segment || !segments[segmentIndex]) return;
 
     // 校验错误不能因为用户当前的筛选状态而再次变得不可见。

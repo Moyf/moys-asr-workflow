@@ -74,8 +74,16 @@
       boundaries.add(end);
     });
   };
-  collect(MaweBoot.DATA.segments, 'main');
-  collect(getOverlayTrack()?.segments || [], 'overlay');
+  if (MaweBoot.DATA.subtitle_groups) {
+    for (const range of window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true })) {
+      if (!range.enabled) continue;
+      intervals.push({ ...range, key: range.id });
+      boundaries.add(range.start); boundaries.add(range.end);
+    }
+  } else {
+    collect(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, 'main');
+    collect(getOverlayTrack()?.segments || [], 'overlay');
+  }
   stickerIntervals = intervals;
   stickerIntervalBoundaries = [...boundaries].sort((a, b) => a - b);
   stickerIntervalCacheVersion = stickerOverlayDataVersion;
@@ -99,13 +107,13 @@
 
   const found = new Map();  // 同组 head/ref 去重，按文件名键
   stickerIntervals.forEach((interval) => {
-    if (time >= interval.start && time <= interval.end) found.set(interval.key, interval.source);
+    if (time >= interval.start && time < interval.end) found.set(interval.key, interval.source);
   });
   // 当前时刻是否有叠加轨表情包在显示（同名素材在主轨同时显示时也算——
   // 预览层展示的就是这张图，叠加归属用于决定预览内容区是否加高）。
   activeStickerHasOverlay = stickerIntervals.some((interval) => (
-    interval.track === 'overlay'
-    && time >= interval.start && time <= interval.end
+    (interval.hasOverlay || interval.track === 'overlay')
+    && time >= interval.start && time < interval.end
     && found.has(interval.key)
   ));
   // 播放时间单调前进时，缓存只需保留到下一个边界；二分定位避免每次
@@ -144,14 +152,14 @@
   }
   const stickers = activeStickersAt(tMs);
   // 签名带上叠加归属：同名素材的显示集合不变但叠加状态翻转时也要切换 class。
-  const signature = `${activeStickerHasOverlay ? 'O' : ''}\u0001${
-    stickers.map((sticker) => sticker.filename || sticker.name).join('\u0001')
-  }`;
+  const sources = stickers.map(sticker => ({ sticker, url: MaweSelection.stickerUrl(sticker) }));
+  const signature = JSON.stringify([activeStickerHasOverlay,
+    sources.map(({ sticker, url }) => [url, sticker.name])]);
   if (renderedStickerOverlayEnabled && renderedStickerSignature === signature) return;
   stickerOverlayContent.classList.toggle('has-overlay-sticker', activeStickerHasOverlay);
-  stickerOverlayContent.replaceChildren(...stickers.map((sticker) => {
+  stickerOverlayContent.replaceChildren(...sources.map(({ sticker, url }) => {
     const img = document.createElement('img');
-    img.src = MaweSelection.stickerUrl(sticker);
+    img.src = url;
     img.alt = sticker.name;
     img.title = sticker.name;
     return img;

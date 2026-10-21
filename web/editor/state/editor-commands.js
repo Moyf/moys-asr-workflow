@@ -54,9 +54,8 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
   'use strict';
   const fingerprint = value => JSON.stringify(value, (key, item) => key === '_dirty' ? undefined : item);
   const projectSegments = () => ({
-    segments: MaweState.project.segments,
-    multi_subtitle: MaweState.project.multi_subtitle,
-    overlay_track: MaweState.project.overlay_track,
+    tracks: MaweState.project.tracks, bindings: MaweState.project.bindings,
+    bilingual: MaweState.project.bilingual, subtitle_groups: MaweState.project.subtitle_groups,
   });
   function restoreDirtyFlags(current, previous) {
     if (!current || typeof current !== 'object') return;
@@ -74,6 +73,7 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
     },
     hasChanges: snapshot => fingerprint(projectSegments()) !== snapshot.fingerprint,
     publish(snapshot) {
+      window.AsrEditorUtils.refreshSubtitleGroupViews(MaweState.project);
       MaweHistory.commitRecord(snapshot.record);
       MaweState.changes.projectImportDirty = true;
     },

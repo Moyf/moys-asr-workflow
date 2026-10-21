@@ -390,8 +390,8 @@ function renderOnboarding() {
 }
 
 function findOnboardingSplitTarget() {
-  for (let i = 0; i < DATA.segments.length; i++) {
-    const segment = DATA.segments[i];
+  for (let i = 0; i < window.AsrEditorUtils.getMainTrack(DATA).segments.length; i++) {
+    const segment = window.AsrEditorUtils.getMainTrack(DATA).segments[i];
     if (segment && segment.end - segment.start >= 200 && String(segment.text || '').trim().length >= 2) return i;
   }
   return -1;
@@ -404,7 +404,7 @@ function onboardingFocusCard() {
 function openOnboarding({ force = false } = {}) {
   if (!onboardingLayer) return;
   if (!force && readOnboardingStatus()) return;
-  if (!DATA.segments.length) {
+  if (!window.AsrEditorUtils.getMainTrack(DATA).segments.length) {
     onboardingResetTransient();
     onboardingState.open = true;
     onboardingState.mode = 'empty';
@@ -421,7 +421,7 @@ function openOnboarding({ force = false } = {}) {
 
 function maybeStartOnboarding() {
   if (onboardingIsOpen()) {
-    if (onboardingState.mode === 'empty' && DATA.segments.length) openOnboarding({ force: true });
+    if (onboardingState.mode === 'empty' && window.AsrEditorUtils.getMainTrack(DATA).segments.length) openOnboarding({ force: true });
     return;
   }
   if (readOnboardingStatus()) return;
@@ -431,7 +431,7 @@ function maybeStartOnboarding() {
 
 function finishOnboarding(status = 'completed') {
   // 引导中如果停在真实合并之后，跳过时先恢复工程，避免留下半完成的教学改动。
-  if (onboardingState.phase === 'await-undo' && DATA.segments.length < onboardingState.mergeBeforeCount) {
+  if (onboardingState.phase === 'await-undo' && window.AsrEditorUtils.getMainTrack(DATA).segments.length < onboardingState.mergeBeforeCount) {
     performUndo();
   }
   saveOnboardingStatus(status);
@@ -462,7 +462,7 @@ function startOnboardingNavigation() {
   onboardingState.phase = 'navigation';
   onboardingState.moves = 0;
   const startIdx = editor.currentCuePanelIdx >= 0 ? editor.currentCuePanelIdx : 0;
-  selectOnly(Math.min(startIdx, DATA.segments.length - 1));
+  selectOnly(Math.min(startIdx, window.AsrEditorUtils.getMainTrack(DATA).segments.length - 1));
   onboardingState.lastCueIdx = editor.currentCuePanelIdx;
   renderOnboarding();
   onboardingFocusCard();
@@ -472,7 +472,7 @@ function startOnboardingMerge() {
   onboardingState.started = true;
   onboardingState.phase = 'merge-armed';
   onboardingState.shiftUsed = false;
-  onboardingState.mergeBeforeCount = DATA.segments.length;
+  onboardingState.mergeBeforeCount = window.AsrEditorUtils.getMainTrack(DATA).segments.length;
   onboardingState.mergeSelectedCount = 0;
   if (selectedIdxs.size !== 1) selectOnly(editor.currentCuePanelIdx >= 0 ? editor.currentCuePanelIdx : 0);
   renderOnboarding();
@@ -488,7 +488,7 @@ function prepareOnboardingSplit() {
   }
   onboardingState.phase = 'split-demo';
   onboardingState.started = true;
-  onboardingState.splitBeforeCount = DATA.segments.length;
+  onboardingState.splitBeforeCount = window.AsrEditorUtils.getMainTrack(DATA).segments.length;
   onboardingState.splitTargetIdx = targetIdx;
   selectOnly(targetIdx);
   const target = container.querySelector(`.cue[data-idx="${targetIdx}"]`);
@@ -514,7 +514,7 @@ function beginOnboardingRealSplit(idx) {
 function onboardingObserveRender() {
   if (!onboardingIsOpen() || onboardingState.mode !== 'tour') return;
   if (onboardingState.step === 1 && (onboardingState.phase === 'merge-armed' || onboardingState.phase === 'merge-ready')
-      && DATA.segments.length < onboardingState.mergeBeforeCount) {
+      && window.AsrEditorUtils.getMainTrack(DATA).segments.length < onboardingState.mergeBeforeCount) {
     onboardingState.phase = 'await-undo';
     onboardingState.started = true;
     onboardingState.mergeSelectedCount = Math.max(2, onboardingState.mergeSelectedCount || 2);
@@ -525,7 +525,7 @@ function onboardingObserveRender() {
     return;
   }
   if (onboardingState.step === 1 && onboardingState.phase === 'await-undo'
-      && DATA.segments.length === onboardingState.mergeBeforeCount) {
+      && window.AsrEditorUtils.getMainTrack(DATA).segments.length === onboardingState.mergeBeforeCount) {
     flashHint(onboardingText('已撤销这次体验，请点击下一步学习拆分'), 'success');
     onboardingState.phase = 'merge-complete';
     onboardingState.started = false;
@@ -534,7 +534,7 @@ function onboardingObserveRender() {
     return;
   }
   if (onboardingState.step === 2 && (onboardingState.phase === 'split-demo' || onboardingState.phase === 'split-live')
-      && DATA.segments.length > onboardingState.splitBeforeCount) {
+      && window.AsrEditorUtils.getMainTrack(DATA).segments.length > onboardingState.splitBeforeCount) {
     onboardingState.phase = 'complete';
     onboardingState.started = false;
     saveOnboardingStatus('completed');

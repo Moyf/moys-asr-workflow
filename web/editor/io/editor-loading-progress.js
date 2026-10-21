@@ -58,9 +58,8 @@
     try {
       if (MaweDragDrop.isSrtFile(file)) return MaweProjectLoad.parseSrtSegments(await readFileTextWithProgress(file));
       if (MaweDragDrop.isLrcFile(file)) return window.AsrEditorUtils.parseLrcSegments(await readFileTextWithProgress(file));
-      const data = JSON.parse(await readFileTextWithProgress(file));
-      if (!data || !Array.isArray(data.segments)) throw new Error('缺少有效 segments 数组');
-      const sourceSegments = data.segments.map((segment) => {
+      const data = window.AsrEditorUtils.importProject(JSON.parse(await readFileTextWithProgress(file))).project;
+      const sourceSegments = window.AsrEditorUtils.getMainTrack(data).segments.map((segment) => {
         const copy = {
           start: segment.start,
           end: segment.end,

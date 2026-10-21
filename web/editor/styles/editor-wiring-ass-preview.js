@@ -242,7 +242,7 @@ function assStackInputRevision(tracks, identityTracks = tracks) {
     for (let index = 0; index < source.length; index += 1) {
       const cue = source[index] || {}, previous = snapshot[index];
       const identity = identityTracks[track]?.[index] || cue;
-      const color = typeof cue.color === 'object' ? JSON.stringify(cue.color) : cue.color;
+      const color = JSON.stringify(window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, cue, 'color'));
       // Locally projected cues are temporary objects. Keep raw identity stable,
       // but include retained item boundaries so equal repeated text cannot hide
       // a different selection or a source restoration from the cached plan.
@@ -267,7 +267,7 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
   // Snapshot only project inputs: measurements and animation envelopes are
   // computed once per revision, never once per playback frame. Direct edits
   // to mutable imported cue/style records also invalidate this snapshot.
-  const rawTracks = [MaweBoot.DATA.segments, activeExtensionSegments(), overlaySegments];
+  const rawTracks = [window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, activeExtensionSegments(), overlaySegments];
   const revision = assStackInputRevision([MaweExportSrt.cleanupMainSegments(), rawTracks[1], rawTracks[2]], rawTracks);
   const key = JSON.stringify([revision, ASS_STYLE_LIBRARY, MaweSettings.EDITOR_SETTINGS,
     MaweAppearance.getSubtitleAppearance(), metrics.resolution, MaweColors.COLOR_PALETTE,

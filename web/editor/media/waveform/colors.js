@@ -17,20 +17,16 @@ export function createWaveformModule(dependencies) {
   }
 
 
-  function colorForSegment(segment) {
-    if (segment.color?.name && PALETTE[segment.color.name]) return PALETTE[segment.color.name];
-    if (segment.color_ref?.name && PALETTE[segment.color_ref.name]) return PALETTE[segment.color_ref.name];
-    if (segment.color?.value) return segment.color.value;
-    return '#66727d';
+  function groupColor(segment) {
+    return dependencies.getSubtitleGroupValue?.(segment, 'color') || segment.color || null;
   }
-
-
+  function colorForSegment(segment) {
+    const color = groupColor(segment);
+    return PALETTE[color?.name] || color?.value || '#66727d';
+  }
   function hasSubtitleColor(segment) {
-    return Boolean(
-      (segment.color?.name && PALETTE[segment.color.name])
-      || (segment.color_ref?.name && PALETTE[segment.color_ref.name])
-      || segment.color?.value,
-    );
+    const color = groupColor(segment);
+    return Boolean(PALETTE[color?.name] || color?.value);
   }
 
   return Object.freeze({ colorForSegment, hasSubtitleColor, setColorPalette });

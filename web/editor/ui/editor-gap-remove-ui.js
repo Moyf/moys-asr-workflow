@@ -161,14 +161,14 @@
   function updateGapRemoveDisableHint() {
     if (!MaweDom.gapRemoveDisableHint) return;
     const matches = window.AsrEditorUtils.findGapRemoveDisableMatches(
-      MaweBoot.DATA.segments,
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
       MaweGapRemoveData.getGapRemoveGaps(),
       {
         coveragePercent: MaweGapRemoveData.clampGapRemoveDisableCoverage(MaweDom.gapRemoveDisableCoverage?.value),
         remainingMs: MaweGapRemoveData.clampGapRemoveDisableRemaining(MaweDom.gapRemoveDisableRemaining?.value),
       },
     );
-    const count = matches.filter(({ index }) => !MaweBoot.DATA.segments[index]?.disabled).length;
+    const count = matches.filter(({ index }) => !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.disabled).length;
     MaweDom.gapRemoveDisableHint.textContent = `禁用位于空隙范围内的字幕（当前有 ${count} 条未禁用）`;
   }
 
@@ -347,13 +347,13 @@
   function disableSubtitlesInRemovedGaps() {
     const settings = commitGapRemoveDisableSettings();
     const matches = window.AsrEditorUtils.findGapRemoveDisableMatches(
-      MaweBoot.DATA.segments,
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
       MaweGapRemoveData.getGapRemoveGaps(),
       settings,
     );
     const targetIndexes = matches
       .map((match) => match.index)
-      .filter((index) => !MaweBoot.DATA.segments[index]?.disabled);
+      .filter((index) => !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.disabled);
     if (!targetIndexes.length) {
       const message = matches.length ? '符合条件的字幕已全部禁用' : '没有符合条件的字幕';
       MaweHint.flashHint(

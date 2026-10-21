@@ -11,13 +11,13 @@
   let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
   function cleanupMainSegments() {
-    return window.AsrEditorUtils.buildAiCleanupSegments(MaweBoot.DATA.segments, MaweBoot.DATA.gap_remove);
+    return window.AsrEditorUtils.buildAiCleanupSegments(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, MaweBoot.DATA.gap_remove);
   }
 
   function cleanupMergedExportSegments() {
     const merged = mergedExportSegments();
     const main = cleanupMainSegments();
-    const projection = new Map(MaweBoot.DATA.segments.map((segment, index) => [segment, main[index]]));
+    const projection = new Map(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment, index) => [segment, main[index]]));
     return { ...merged, segments: merged.segments.map((segment) => projection.get(segment) || segment)
       .sort((left, right) => left.start - right.start) };
   }
@@ -187,7 +187,7 @@
 
   function buildDynamicCaptionExportData(segments, gapRemoved) {
     const colorContext = Array.isArray(segments) ? segments : [];
-    const projected = segments === MaweBoot.DATA.segments ? cleanupMainSegments() : colorContext;
+    const projected = segments === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments ? cleanupMainSegments() : colorContext;
     const source = projected.map((segment) => ({
       ...segment,
       text: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
@@ -342,7 +342,7 @@
   }
 
   function buildBilingualSrt() {
-    if (MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return '';
+    if (MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled !== true) return '';
     const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
     return window.AsrEditorUtils.buildBilingualSrtPayload(segments,
       MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [], {
@@ -438,7 +438,7 @@
 
 
   function updateSubtitleExportUi() {
-    const bilingual = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+    const bilingual = MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled === true;
     const hasSecondary = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments
       ?.some((segment) => segment && segment.disabled !== true && String(segment.text || '').trim());
     const mainItem = document.getElementById('download-full-srt');

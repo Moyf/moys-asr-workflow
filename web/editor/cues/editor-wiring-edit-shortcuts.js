@@ -118,7 +118,7 @@ document.addEventListener('keydown', (e) => {
   const panelTarget = MaweCuePanel.getCurrentCuePanelTarget();
   const extensionTarget = panelTarget?.kind === 'extension';
   const extensionTrack = extensionTarget ? panelTarget.track : null;
-  const segments = extensionTarget ? extensionTrack.segments : MaweBoot.DATA.segments;
+  const segments = extensionTarget ? extensionTrack.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   const wasPlaying = !MaweCoreState.player.paused;
   const heldCueKey = (!e.shiftKey || key === 'a' || key === 'd')
     && MaweCoreState.waveformEditor?.handleHeldCueKey?.(
@@ -491,7 +491,7 @@ document.addEventListener('keydown', (e) => {
   const target = MaweCuePanel.getCurrentCuePanelTarget();
   const extensionTarget = target?.kind === 'extension';
   const selected = extensionTarget ? MaweSelection.selectedExtensionIdxs : MaweSelection.selectedIdxs;
-  const segments = extensionTarget ? target.track.segments : MaweBoot.DATA.segments;
+  const segments = extensionTarget ? target.track.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   if (!selected.size) return;
   const first = Math.min(...selected);
   const segment = segments[first];
@@ -709,7 +709,7 @@ document.addEventListener('keydown', (e) => {
   const activeCuePanel = MaweCuePanel.getCurrentCuePanelTarget();
   const operationReference = MaweNavPreview.keyboardOperationReference();
   const pointerMainIndex = operationReference
-    ? MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, MaweBoot.DATA.segments) : -1;
+    ? MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) : -1;
   const activeExtensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const pointerExtensionIndex = operationReference?.track === 'extension'
     ? MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, MaweMultiSubtitleCore.getExtensionTrack(operationReference.trackId)?.segments) : -1;
@@ -806,14 +806,14 @@ document.addEventListener('keydown', (e) => {
   // 1) 字幕列表：需要单选 + 悬停提供文字位置
   if (MaweSelection.selectedIdxs.size === 1) {
     const context = MaweNavPreview.hoveredSelectedCueContext();
-    if (context && MaweBoot.DATA.segments[context.idx]) {
+    if (context && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[context.idx]) {
       splitAt(context.idx, context.x, context.y, null);
       return;
     }
   }
   // 2) 波形：指针音频位置
   if (operationReference?.source === 'pointer' || operationReference?.track === 'extension') {
-    const idx = MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, MaweBoot.DATA.segments);
+    const idx = MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
     if (idx >= 0) {
       splitAt(idx, 0, 0, operationReference.timeMs);
       return;
@@ -832,7 +832,7 @@ document.addEventListener('keydown', (e) => {
   }
   // 3) 播放头位置
   const timeMs = operationReference?.timeMs ?? Math.round(MaweCoreState.player.currentTime * 1000);
-  const idx = MaweBoot.DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
+  const idx = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
   if (idx >= 0) {
     splitAt(idx, 0, 0, timeMs);
     return;

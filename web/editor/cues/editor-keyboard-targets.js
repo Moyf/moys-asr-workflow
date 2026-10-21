@@ -98,13 +98,13 @@
     let nextIndex = -1;
     if (wantMain) {
       const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(current.index, current.track);
-      nextIndex = boundSegmentIndex(binding, binding?.main_segment_ids, MaweBoot.DATA.segments);
-      if (nextIndex < 0) nextIndex = nearestSubtitleIndex(MaweBoot.DATA.segments, current.segment, 'main');
+      nextIndex = boundSegmentIndex(binding, binding?.source_segment_ids, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+      if (nextIndex < 0) nextIndex = nearestSubtitleIndex(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, current.segment, 'main');
     } else {
       const binding = MaweMultiSubtitleCore.bindingForMainIndex(current.index);
-      const bindingTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.track_id) : null;
+      const bindingTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.target_track_id) : null;
       if (bindingTrack?.id === extensionTrack?.id) {
-        nextIndex = boundSegmentIndex(binding, binding?.extension_segment_ids, extensionTrack.segments);
+        nextIndex = boundSegmentIndex(binding, binding?.target_segment_ids, extensionTrack.segments);
       }
       if (nextIndex < 0) {
         nextIndex = nearestSubtitleIndex(extensionTrack?.segments, current.segment, 'extension');

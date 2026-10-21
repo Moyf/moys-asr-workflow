@@ -187,7 +187,7 @@ function splitTimingIsValid(segment, cutMs) {
 function duplicateSplitTimingIsValid(state) {
   if (!state) return false;
   if (state.kind === 'main') {
-    return splitTimingIsValid(MaweBoot.DATA.segments[state.mainIndex], state.mainCutMs);
+    return splitTimingIsValid(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex], state.mainCutMs);
   }
   const track = splitStateTrack(state);
   if (state.kind === 'extension' || state.kind === 'overlay') {
@@ -196,7 +196,7 @@ function duplicateSplitTimingIsValid(state) {
       state.extensionCutMs,
     );
   }
-  const main = MaweBoot.DATA.segments[state.mainIndex];
+  const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex];
   const extension = MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track);
   return splitTimingIsValid(main, state.mainCutMs)
     && splitTimingIsValid(extension, state.extensionCutMs);
@@ -365,19 +365,14 @@ function mergeOverlaySegments(idxs) {
     MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
   );
   const merged = {
-    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
-      track.segments,
-      `${segments[0].id || track.id}-merged`,
-      'overlay',
-    ),
+    ...window.AsrEditorUtils.cloneJsonValue(segments[0]),
+    color_group_id: segments.every(s => s.color_group_id === segments[0].color_group_id) ? segments[0].color_group_id : undefined,
+    sticker_group_id: segments.every(s => s.sticker_group_id === segments[0].sticker_group_id) ? segments[0].sticker_group_id : undefined,
+    id: segments[0].id,
     start: segments[0].start,
     end: segments[segments.length - 1].end,
     text: overlayJoin.text,
     items: overlayJoin.items,
-    sticker: stickerGroup.head,
-    sticker_ref: stickerGroup.ref,
-    color: colorGroup.head,
-    color_ref: colorGroup.ref,
     disabled: !!segments[0].disabled,
     _dirty: true,
   };

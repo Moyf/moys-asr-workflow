@@ -26,13 +26,12 @@
     mainSplitModeOverride: {
       enumerable: true, configurable: true,
       get: () => {
-        const mode = MaweBoot.DATA.multi_subtitle?.main_split_mode;
+        const mode = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).split_mode_override;
         return mode === 'word' || mode === 'continuous' ? mode : null;
       },
       set: value => {
         if (value !== 'word' && value !== 'continuous') return;
-        MaweBoot.DATA.multi_subtitle ||= {};
-        MaweBoot.DATA.multi_subtitle.main_split_mode = value;
+        window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).split_mode_override = value;
       },
     },
   });

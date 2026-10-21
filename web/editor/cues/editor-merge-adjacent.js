@@ -14,7 +14,7 @@
   const track = extension ? target.track : null;
   const segments = extension
     ? track?.segments || []
-    : overlay ? (getOverlayTrack()?.segments || []) : MaweBoot.DATA.segments;
+    : overlay ? (getOverlayTrack()?.segments || []) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   let index = Number.isInteger(target?.index) ? target.index : -1;
   if (index < 0) {
     const selected = extension ? MaweSelection.selectedExtensionIdxs

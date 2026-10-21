@@ -13,7 +13,7 @@ function aiCleanupExportSegments(segments) {
 }
 
 function mergedExportSegments() {
-  const mainSegments = aiCleanupExportSegments(MaweBoot.DATA.segments);
+  const mainSegments = aiCleanupExportSegments(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
   const overlaySegments = overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [];
   if (!overlaySegments.length) {
     return { segments: mainSegments, overlaySet: new Set(), overlaySegments };
@@ -26,7 +26,7 @@ function mergedExportSegments() {
 }
 
 function exportColorContextResolver(overlaySet, overlaySegments) {
-  return (segment) => (overlaySet.has(segment) ? overlaySegments : MaweBoot.DATA.segments);
+  return (segment) => (overlaySet.has(segment) ? overlaySegments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
 }
 
 
@@ -59,15 +59,7 @@ function exportColorContextResolver(overlaySet, overlaySegments) {
 
 
 
-const CANONICAL_PROJECT_FIELDS = new Set([
-  'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity', 'preserve_punctuation',
-  'model', 'sticker_root', 'timebase', 'segments', 'multi_subtitle', 'overlay_track', 'waveform',
-  'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'loudness',
-  'gap_remove', 'script_alignment', 'markers', 'workspace', 'preview', 'timed_text_edit_view', 'audio_processing',
-]);
-let projectExtensionFields = Object.fromEntries(
-  Object.entries(MaweBoot.DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
-);
+
 
 
 

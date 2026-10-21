@@ -9,6 +9,7 @@
     thumbnailCore,
     storage: window.MaweHost.storage,
     gapRemoveCore: window.AsrGapRemoveCore,
+    getSubtitleGroupValue: (segment, kind) => window.AsrEditorUtils.getSubtitleGroupValue(window.MaweBoot.DATA, segment, kind),
     getLanguage: () => window.MAWE_I18N?.language,
   };
   Object.assign(helpers, window.MAWE.resolve('waveform-constants', helpers));

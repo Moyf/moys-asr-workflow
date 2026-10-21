@@ -54,8 +54,7 @@
 
 
 function projectSaveFingerprint() {
-  return JSON.stringify([MaweBoot.DATA.segments, MaweBoot.DATA.multi_subtitle, MaweBoot.DATA.gap_remove,
-    MaweBoot.DATA.preview, MaweBoot.DATA.media_metadata, MaweHistory.gapRemoveDirty, MaweAppearance.previewGeometryDirty, MaweServerSave.projectImportDirty]);
+  return MaweState.projectFingerprint();
 }
 
 
@@ -76,7 +75,7 @@ function flushInlineEditsForSave() {
   const extension = Boolean(MaweInlineEdit.extensionEditingState);
   const index = extension ? state.index : state.idx;
   const track = extension ? MaweMultiSubtitleCore.getExtensionTrack(state.trackId) : null;
-  const segment = extension ? track?.segments[index] : MaweBoot.DATA.segments[index];
+  const segment = extension ? track?.segments[index] : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
   const text = state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
   if (!segment || text === segment.text) return;
   return MaweCommands.run(extension ? '编辑副字幕' : '编辑文本', () => {
@@ -250,7 +249,7 @@ document.addEventListener('keydown', (event) => {
 
 MaweDom.downloadMultiSrtButton?.addEventListener('click', async () => {
   if (MaweDom.downloadMultiSrtButton.classList.contains('disabled')
-      || MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return;
+      || MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled !== true) return;
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   if (!track) return;
@@ -260,7 +259,7 @@ MaweDom.downloadMultiSrtButton?.addEventListener('click', async () => {
 });
 document.getElementById('download-bilingual-srt')?.addEventListener('click', async (event) => {
   if (event.currentTarget.classList.contains('disabled')
-      || MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return;
+      || MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled !== true) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   const payload = MaweExportSrt.buildBilingualSrt();

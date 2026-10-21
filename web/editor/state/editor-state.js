@@ -102,6 +102,8 @@ window.MAWE.register('editor-state', function createEditorState(project) {
     timedTextEditViewDirty: false, audioProcessingDirty: false };
   // 显式访问器（defineProperties 的动态键 TS 推断不出）：写入 true 触发 markProjectDirty()。
   const changes = {
+    get timedTextEditViewDirty() { return changesFlags.timedTextEditViewDirty; },
+    set timedTextEditViewDirty(value) { changesFlags.timedTextEditViewDirty = Boolean(value); if (changesFlags.timedTextEditViewDirty) markProjectDirty(); },
     get audioProcessingDirty() { return changesFlags.audioProcessingDirty; },
     set audioProcessingDirty(value) { changesFlags.audioProcessingDirty = Boolean(value); if (changesFlags.audioProcessingDirty) markProjectDirty(); },
     get projectImportDirty() { return changesFlags.projectImportDirty; },
@@ -112,43 +114,82 @@ window.MAWE.register('editor-state', function createEditorState(project) {
     set previewGeometryDirty(value) { changesFlags.previewGeometryDirty = Boolean(value); if (changesFlags.previewGeometryDirty) markProjectDirty(); },
     get markersDirty() { return changesFlags.markersDirty; },
     set markersDirty(value) { changesFlags.markersDirty = Boolean(value); if (changesFlags.markersDirty) markProjectDirty(); },
-    get timedTextEditViewDirty() { return changesFlags.timedTextEditViewDirty; },
-    set timedTextEditViewDirty(value) { changesFlags.timedTextEditViewDirty = Boolean(value); if (changesFlags.timedTextEditViewDirty) markProjectDirty(); },
   };
   Object.freeze(changes);
 
-  // Compare only subtitle truth, never DOM, playback or rebuildable waveform caches.
-  function segmentsFingerprint() {
-    return JSON.stringify({ segments: project.segments, multi_subtitle: project.multi_subtitle,
-      overlay_track: project.overlay_track }, (key, value) => key === '_dirty' ? undefined : value);
+  // The serializer owns persistence. Readers must not repair or mutate the project.
+  // The fallback also keeps this state owner usable before editor wiring is ready.
+  let snapshotReader = () => project;
+  let projectEpoch = 0;
+  let importNeedsSave = false;
+  function persistenceSnapshot(value) {
+    const fields = { ...value };
+    for (const key of ['waveform', 'spectral', 'waveform_reapeaks', 'loudness']) delete fields[key];
+    const out = JSON.parse(JSON.stringify(fields));
+    delete out._dirty;
+    const clear = track => {
+      if (!track) return;
+      delete track._dirty;
+      for (const segment of track.segments || []) delete segment._dirty;
+    };
+    for (const track of out.tracks || []) clear(track);
+    return out;
   }
-  let savedSegments = null;
-  function noteSavedSegments(fingerprint = segmentsFingerprint()) { savedSegments = fingerprint; }
+  function projectFingerprint(value = snapshotReader()) {
+    // Sort object keys, not arrays: reordered extension keys are not an edit.
+    return JSON.stringify(persistenceSnapshot(value), (_key, item) =>
+      item && typeof item === 'object' && !Array.isArray(item)
+        ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
+  }
+  function setSnapshotReader(reader) { snapshotReader = reader; }
+  let savedProject = projectFingerprint();
+  function noteSavedSegments(fingerprint = projectFingerprint()) { savedProject = fingerprint; }
+  function subtitleTracks() {
+    return (project.tracks || []).map(track => [track.id, track]);
+  }
   function clearSubtitleDirtyFlags() {
-    (project.segments || []).forEach(segment => { delete segment._dirty; });
-    for (const track of [project.multi_subtitle, project.overlay_track, ...(project.multi_subtitle?.tracks || [])]) {
+    delete project._dirty;
+    for (const [, track] of subtitleTracks()) {
       if (!track) continue;
       delete track._dirty;
-      (track.segments || []).forEach(segment => { delete segment._dirty; });
+      for (const segment of track.segments || []) delete segment._dirty;
+    }
+  }
+  const sessionHighlights = new Map();
+  function rememberSessionHighlights() {
+    for (const [kind, track] of subtitleTracks()) {
+      if (!sessionHighlights.has(kind)) sessionHighlights.set(kind, new Set());
+      for (const segment of track?.segments || []) {
+        if (segment._dirty && segment.id != null) sessionHighlights.get(kind).add(segment.id);
+      }
+    }
+  }
+  function restoreSessionHighlights() {
+    for (const [kind, track] of subtitleTracks()) {
+      for (const segment of track?.segments || []) {
+        if (sessionHighlights.get(kind)?.has(segment.id)) segment._dirty = true;
+      }
     }
   }
   function markSaved() {
-    clearSubtitleDirtyFlags();
+    importNeedsSave = false;
     for (const key of Object.keys(changes)) changes[key] = false;
   }
-  function reconcileSegmentsDirty() {
-    if (savedSegments === null) return;
-    changes.projectImportDirty = segmentsFingerprint() !== savedSegments;
-    if (!changes.projectImportDirty) clearSubtitleDirtyFlags();
+  function beginProjectSession() {
+    projectEpoch += 1;
+    sessionHighlights.clear();
+    clearSubtitleDirtyFlags();
+    markSaved();
   }
-
+  function establishProjectCheckpoint({ repaired = false } = {}) {
+    noteSavedSegments();
+    importNeedsSave = repaired;
+  }
+  function reconcileSegmentsDirty() {
+    changes.projectImportDirty = hasProjectChanges();
+  }
   function hasProjectChanges(pendingText = false) {
-    const dirty = track => Boolean(track?._dirty) || (track?.segments || []).some(segment => segment._dirty);
-    return Boolean(pendingText || changes.projectImportDirty || changes.gapRemoveDirty || changes.previewGeometryDirty
-      || changes.markersDirty || changes.timedTextEditViewDirty || changes.audioProcessingDirty
-      || (project.segments || []).some(segment => segment._dirty)
-      || dirty(project.overlay_track) || dirty(project.multi_subtitle)
-      || (project.multi_subtitle?.tracks || []).some(dirty));
+    return Boolean(pendingText || importNeedsSave || projectFingerprint() !== savedProject);
   }
 
   let projectLoadGeneration = 0;
@@ -176,10 +217,13 @@ window.MAWE.register('editor-state', function createEditorState(project) {
   }
 
   return Object.freeze({ project, selection, preferences, runtime, panel, editing, changes, hasProjectChanges,
+    projectFingerprint, persistenceSnapshot, setSnapshotReader, beginProjectSession, establishProjectCheckpoint,
+    rememberSessionHighlights, restoreSessionHighlights, get projectEpoch() { return projectEpoch; },
+    // Kept as narrow compatibility aliases for existing command/history callers.
+    segmentsFingerprint: projectFingerprint, noteSavedSegments, markSaved, reconcileSegmentsDirty,
     beginProjectLoad, finishProjectLoad, observeProjectLoad, waitForProjectLoad,
     get projectLoadGeneration() { return projectLoadGeneration; },
     get projectLoadPending() { return projectLoadPending; },
-    segmentsFingerprint, noteSavedSegments, markSaved, reconcileSegmentsDirty,
     markProjectDirty, getProjectDirtyEpoch, onProjectDirtyChange });
 });
 window.MaweState = window.MAWE.resolve('editor-state', window.MaweBoot.DATA);

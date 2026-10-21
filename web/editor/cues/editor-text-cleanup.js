@@ -7,66 +7,9 @@
 
 
 
-  // === cleanPunctuation ===
-  function cleanPunctuation() {
-    if (MaweBoot.DATA.preserve_punctuation === true) return;
-    const PUNCT_REPL = '  ';
-    const REPLACE_INSIDE = /[，。]/g;
-    for (const seg of MaweBoot.DATA.segments) {
-      if (!seg.text) continue;
-      // This built-in normalization changes source text/items together. Migrate
-      // only previously exact local scopes; ordinary user edits remain invalid.
-      const aiRanges = MaweBoot.DATA.gap_remove?.provenance?.sources?.ai_cleanup;
-      const validScopes = (Array.isArray(aiRanges) ? aiRanges : [])
-        .filter((range) => window.AsrGapRemoveCore.getCleanupScopeItems(seg, range).length);
-      let t = seg.text;
-      while (t.length && (t.endsWith('，') || t.endsWith('。'))) t = t.slice(0, -1);
-      seg.text = t.replace(REPLACE_INSIDE, PUNCT_REPL).replace(/[ \t]+$/, '');
-      if (seg.items) {
-        const total = seg.items.length;
-        for (let i = 0; i < total; i++) {
-          let it = seg.items[i].text;
-          if (i === total - 1) {
-            while (it.length && (it.endsWith('，') || it.endsWith('。'))) it = it.slice(0, -1);
-          }
-          it = it.replace(REPLACE_INSIDE, PUNCT_REPL);
-          seg.items[i].text = it;
-        }
-      }
-      for (const range of validScopes) {
-        const scope = range.cleanup_scope;
-        scope.text = seg.items.slice(scope.item_start, scope.item_end).map((item) => item.text).join('');
-      }
-    }
-  }
-
-
-
   function syncTimelineGroupRanges() {
-  function sync(segments, headField, refField) {
-    segments.forEach((segment, headIdx) => {
-      const head = segment[headField];
-      if (!head) return;
-      let end = segment.end;
-      segments.forEach((candidate) => {
-        if (candidate[refField]?.headIdx === headIdx) end = Math.max(end, candidate.end);
-      });
-      head.start = segment.start;
-      head.end = end;
-    });
+    window.AsrEditorUtils.refreshSubtitleGroupViews(MaweBoot.DATA);
   }
-  sync(MaweBoot.DATA.segments, 'sticker', 'sticker_ref');
-  sync(MaweBoot.DATA.segments, 'color', 'color_ref');
-  // 叠加轨自持 head 的范围随段拖动自动归位：换轨瞬间物化的颜色快照
-  // 记录的是当时的位置，以 onCommitEdit 的这次同步为准。
-  const overlay = getOverlayTrack();
-  if (overlay?.segments?.length) {
-    sync(overlay.segments, 'sticker', 'sticker_ref');
-    sync(overlay.segments, 'color', 'color_ref');
-  }
-}
-
-
 
   function seekFromWaveform(timeSec, { dragPreview = false, mouseClick = false } = {}) {
   const seekableEnd = MaweCoreState.player.seekable.length ? MaweCoreState.player.seekable.end(MaweCoreState.player.seekable.length - 1) : 0;
@@ -110,7 +53,6 @@
   }
 
   global.MaweTextCleanup = Object.freeze({
-    cleanPunctuation,
     syncTimelineGroupRanges,
     seekFromWaveform,
     notifyAutoLoadedMediaReady,

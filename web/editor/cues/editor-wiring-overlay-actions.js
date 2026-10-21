@@ -23,7 +23,7 @@ MaweDom.stickerModal?.addEventListener('click', (e) => { if (e.target === MaweDo
 
 let previewTrack = 'main';
 function stickerSegmentsForTrack(track) {
-  return track === 'overlay' ? (getOverlayTrack()?.segments || []) : MaweBoot.DATA.segments;
+  return track === 'overlay' ? (getOverlayTrack()?.segments || []) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
 }
 
 document.getElementById('sticker-preview-close')?.addEventListener('click', () => MaweDom.stickerPreviewModal.classList.remove('show'));
@@ -55,31 +55,17 @@ document.getElementById('sticker-preview-replace')?.addEventListener('click', ()
 // 数据结构与表情包同构：head 持完整 color，后续条持 color_ref（仅 name + headIdx）
 // 单选 → 设为 head；多选 → 第一条为 head，时间跨整个范围，后续为 ref
 function colorGroupHeadIndex(idx) {
-  const segment = MaweBoot.DATA.segments[idx];
-  if (!segment) return -1;
-
-  const refHeadIdx = Number(segment.color_ref?.headIdx);
-  if (segment.color_ref
-      && Number.isInteger(refHeadIdx)
-      && refHeadIdx >= 0
-      && refHeadIdx < MaweBoot.DATA.segments.length
-      && refHeadIdx !== idx
-      && MaweBoot.DATA.segments[refHeadIdx]?.color) {
-    return refHeadIdx;
-  }
-
-  if (!segment.color) return -1;
-  return MaweBoot.DATA.segments.some((candidate, candidateIdx) => (
-    candidateIdx !== idx
-    && candidate?.color_ref
-    && Number(candidate.color_ref.headIdx) === idx
-  )) ? idx : -1;
+  const segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+  const id = segments[idx]?.color_group_id;
+  if (!id) return -1;
+  const members = segments.map((cue, index) => cue.color_group_id === id ? index : -1).filter(index => index >= 0);
+  return members.length > 1 ? members[0] : -1;
 }
 
 function detachColorFromGroup(idx) {
-  const segment = MaweBoot.DATA.segments[idx];
+  const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
   const headIdx = colorGroupHeadIndex(idx);
-  const groupColor = headIdx >= 0 ? MaweBoot.DATA.segments[headIdx]?.color : null;
+  const groupColor = headIdx >= 0 ? window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, segment, 'color') : null;
   if (!segment || !groupColor) return false;
 
   // 先复制颜色；拆分组时原 head 的时间范围可能会被收缩。
@@ -90,8 +76,7 @@ function detachColorFromGroup(idx) {
   };
     return MaweCommands.run('移出颜色组', () => {
     MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
-    segment.color = detachedColor;
-    segment.color_ref = null;
+    window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [idx], 'color', detachedColor);
     MaweColorFilter.refreshColorAssignmentUi();
     MaweHint.flashHint('已移出颜色组', 'success');
     return true;
@@ -112,8 +97,7 @@ function assignOverlayColor(idxs, colorName) {
   return MaweCommands.run('标记颜色', () => {
     targets.forEach((index) => {
       const segment = overlay.segments[index];
-      segment.color = { name: colorName, value: def.value, start: segment.start, end: segment.end };
-      segment.color_ref = null;
+      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, overlay.segments, [index], 'color', { name: colorName, value: def.value });
       segment._dirty = true;
     });
     overlay._dirty = true;
@@ -144,8 +128,7 @@ function clearOverlayColorOnTargets(idxs) {
     targets.forEach((index) => {
       const segment = overlay.segments[index];
       if (!segment) return;
-      segment.color = null;
-      segment.color_ref = null;
+      window.AsrEditorUtils.clearSubtitleGroupMembers(MaweBoot.DATA, overlay.segments, [index], 'color');
       segment._dirty = true;
     });
     overlay._dirty = true;
@@ -158,9 +141,8 @@ function clearOverlayColorOnTargets(idxs) {
 function clearOverlaySticker(index) {
   const overlay = getOverlayTrack();
   const segment = overlay?.segments?.[index];
-  if (!segment || (!segment.sticker && !segment.sticker_ref)) return;
-  segment.sticker = null;
-  segment.sticker_ref = null;
+  if (!segment || !segment.sticker_group_id) return;
+  window.AsrEditorUtils.clearSubtitleGroupMembers(MaweBoot.DATA, overlay.segments, [index], 'sticker');
   segment._dirty = true;
   overlay._dirty = true;
   MaweState.markProjectDirty();
@@ -189,8 +171,8 @@ function clearOverlaySticker(index) {
 // 叠加轨创建入口：与主轨不同，允许与主字幕时间重叠（这正是叠加轨的用途）；
 // 只要求不与叠加轨自身已有段重叠，范围夹进相邻叠加段之间。
 function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
-  const overlay = getOverlayTrack();
-  if (!overlay || !Array.isArray(overlay.segments)) {
+  let overlay = getOverlayTrack() || { segments: [] };
+  if (!Array.isArray(overlay.segments)) {
     MaweHint.flashHint('当前没有可用的叠加字幕轨', 'invalid');
     return;
   }
@@ -217,8 +199,10 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
   }
   MaweCuePanel.commitCuePanelEdit();
   return MaweCommands.run('新增叠加字幕', (command) => {
+    overlay = window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
     overlay.segments.splice(index, 0, {
-      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(overlay.segments, `overlay-${index + 1}`, 'overlay'),
+      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+        window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `overlay-${index + 1}`, 'overlay'),
       start: safeStart,
       end: safeEnd,
       text: '',
@@ -239,8 +223,8 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
 // 右键菜单 / 后续菜单入口：在指针时间点创建一条默认时长的叠加字幕，
 // 范围夹进叠加轨相邻段之间（主轨是否占用不参与判断）。
 function addOverlayAtWaveformTime(timeMs, clickX, clickY) {
-  const overlay = getOverlayTrack();
-  if (!overlay || !Array.isArray(overlay.segments)) {
+  let overlay = getOverlayTrack() || { segments: [] };
+  if (!Array.isArray(overlay.segments)) {
     MaweHint.flashHint('当前没有可用的叠加字幕轨', 'invalid');
     return;
   }

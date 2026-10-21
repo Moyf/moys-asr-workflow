@@ -11,7 +11,7 @@ function showOverlayContextMenu(x, y, index) {
   if (!segment) return;
   // 主轨同时间段已有字幕时，转回去会产生主轨重叠，置灰禁用；
   // 只把该条叠加段的时间范围与主轨比对，相邻贴合（端点相接）不算占用。
-  const mainOccupied = MaweBoot.DATA.segments.some((main) =>
+  const mainOccupied = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((main) =>
     Number(main?.start) < Number(segment?.end) && Number(main?.end) > Number(segment?.start));
   MaweDom.ctxmenu.innerHTML = '';
   const addItem = (label, fn, opts = {}) => {

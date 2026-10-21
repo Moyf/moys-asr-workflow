@@ -114,7 +114,7 @@
     if (!pending) return;
     pending.choice = pending.existingTrackId ? 'replace-extension' : 'extension';
     const match = window.AsrEditorUtils.matchSubtitleSegments(
-      MaweBoot.DATA.segments,
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
       pending.segments,
       MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
     );
@@ -135,7 +135,7 @@
   const pending = pendingMultiImport;
   if (!pending) return false;
   const match = pending.match || MULTI_SUBTITLE_UTILS.matchSubtitleSegments(
-    MaweBoot.DATA.segments, pending.segments, MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, pending.segments, MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
   );
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const replacing = Boolean(pending.existingTrackId);
@@ -146,13 +146,14 @@
   const extensionSegments = pending.segments.map((segment, index) => ({
     ...segment,
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
-      pending.segments.slice(0, index), `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
+      [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA), ...pending.segments.slice(0, index)], `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
     ),
     _dirty: true,
   }));
   const track = {
     id: trackId,
     role: 'extension',
+    enabled: true,
     name: pending.file.name.replace(/\.[^.]+$/i, '') || '副字幕',
     language: '',
     source_name: pending.file.name,
@@ -165,7 +166,7 @@
     if (replacing) {
       const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
       multi.bindings = (multi.bindings || []).filter((binding) => (
-        binding.track_id !== trackId && !binding.extension_segment_ids?.some((id) => oldIds.has(id))
+        binding.target_track_id !== trackId && !binding.target_segment_ids?.some((id) => oldIds.has(id))
       ));
       const oldIndex = multi.tracks.findIndex((candidate) => candidate.id === trackId);
       if (oldIndex >= 0) multi.tracks.splice(oldIndex, 1, track);
@@ -174,15 +175,16 @@
       multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
     }
     match.matches.forEach((candidate) => {
-      const main = MaweBoot.DATA.segments[candidate.mainIndex];
+      const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[candidate.mainIndex];
       const extension = extensionSegments[candidate.extensionIndex];
       if (main && extension) multi.bindings.push(
-        MULTI_SUBTITLE_UTILS.buildSubtitleBinding(main, extension, trackId),
+        MULTI_SUBTITLE_UTILS.buildSubtitleBinding(main, extension, trackId, null, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).id),
       );
     });
-    multi.enabled = true;
-    multi.display_mode = multi.display_mode || 'both';
-    MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
+    track.enabled = true;
+    multi.bilingual ||= { display_mode: 'both' };
+    multi.bilingual.active_track_id = track.id;
+    MaweMultiSubtitleCore.markMainSegmentsDirty(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     closeMultiSubtitleImportModal();
     MaweSelection.clearSelection();
@@ -199,15 +201,11 @@
   function swapMainAndExtensionSubtitles() {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-  if (!multi.enabled) {
+  if (!track?.enabled) {
     MaweHint.flashHint('请先开启双语字幕', 'invalid');
     return false;
   }
-  if ((multi.tracks || []).length !== 1) {
-    MaweHint.flashHint('当前只支持交换唯一的副字幕轨', 'invalid');
-    return false;
-  }
-  if (!track?.segments?.length || !MaweBoot.DATA.segments.length) {
+  if (!track?.segments?.length || !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length) {
     MaweHint.flashHint('主字幕和副字幕都不能为空', 'invalid');
     return false;
   }
@@ -217,12 +215,12 @@
       MaweHint.flashHint('交换主副字幕失败', 'warning');
       return false;
     }
-    MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments);
+    MaweMultiSubtitleCore.markMainSegmentsDirty(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     MaweSelection.clearSelection();
     command.commit({ cueList: true, waveform: 'full', preview: 'update' });
 
-    MaweHint.flashHint(`已交换主副字幕：主轨 ${result.mainCount} 条，副轨 ${result.extensionCount} 条`, 'success');
+    MaweHint.flashHint(`已交换主副字幕：主轨 ${result.mainCount} 条，副轨 ${result.extensionCount} 条${result.removedBindingCount ? `；解除 ${result.removedBindingCount} 条无法映射的绑定` : ''}`, 'success');
     return true;
   });
 }
@@ -261,28 +259,9 @@
       const text = await MaweState.waitForProjectLoad(MaweLoadingProgress.readFileTextWithProgress(file), generation);
       if (!current()) return false;
       MaweLoadingProgress.updateEditorLoading(60, `正在解析工程 ${file.name}…`);
-      const data = JSON.parse(text);
-      if (data && typeof data === 'object' && !Array.isArray(data)
-          && Object.prototype.hasOwnProperty.call(data, 'schema')
-          && !window.AsrEditorUtils.supportsProjectSchema(data)) {
-        MaweHint.flashHint('不支持的工程格式版本，请使用新版 MAW 打开。', 'warning');
-        return false;
-      }
-      // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
-      if (data && Array.isArray(data.segments)) {
-        data.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
-        window.AsrEditorUtils.normalizeMultiSubtitleProject(data);
-        MaweTimeline.syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
-        window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
-        window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
-        MaweJsonRepair.normalizeProjectTimings(data);
-        MaweTimeline.syncProjectTimebaseAndBindingOffsets(data, { preferFrames: false });
-      }
-      if (!MaweProjectLoad.isMawProject(data)) {
-        MaweHint.flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
-        return false;
-      }
-MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation });
+      const imported = window.AsrEditorUtils.importProject(JSON.parse(text));
+      const data = imported.project;
+MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation, repaired: imported.changes.length > 0 });
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();
 const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
@@ -303,7 +282,7 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
       }
       MaweHint.flashHint(expectedName
         ? `已加载工程：${file.name}（${suppressMediaPrompt ? '正在加载关联媒体' : `等待选择关联媒体：${expectedName}`}）`
-        : `已加载工程：${file.name}（${MaweBoot.DATA.segments.length} 条字幕）`);
+        : `已加载工程：${file.name}（${window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length} 条字幕）`);
       return true;
     } catch (error) {
       if (!current()) return false;

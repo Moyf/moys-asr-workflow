@@ -1,9 +1,11 @@
 
 // === 启动 ===
+MaweState.beginProjectSession();
+MaweState.setSnapshotReader(MaweJsonRepair.projectSnapshot);
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
 MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
-const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(MaweBoot.DATA.segments);
+const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
 const repairedTimingCount = MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA);
 // 服务器注入的工程里 markers 是 MOSP 包装对象（{schema, items}）；编辑器内部
 // 统一用数组，写出文件时再经 markersToProjectField 包回。不在这里换掉的话，
@@ -14,11 +16,11 @@ window.MaweMarkerEditing?.enableForProjectMarkers?.(MaweBoot.DATA.markers);
 MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
 MaweBoot.maweDebug('boot:begin', {
   server: Boolean(MaweBoot.SERVER_CONFIG),
-  segments: Array.isArray(MaweBoot.DATA.segments) ? MaweBoot.DATA.segments.length : null,
+  segments: Array.isArray(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length : null,
   media: MaweBoot.DATA.media || '',
   recentProjects: MaweBoot.SERVER_CONFIG?.recentProjects?.length || 0,
 });
-MaweTextCleanup.cleanPunctuation();
+
 MaweServerSave.configureServerSaveControls();
 MaweServerSave.configureServerAutoSave();
 MaweServerSave.configureRecentProjects();
@@ -26,7 +28,7 @@ MaweServerSave.configureServerProjectSettings();
 MaweWaveformInit.initWaveformEditor();
 MaweWorkspaces.configureServerWorkspaceLibrary();
 MaweWorkspaces.configureWorkspaceTransfer();
-MaweDom.totalCountEl.textContent = MaweBoot.DATA.segments.length;
+MaweDom.totalCountEl.textContent = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length;
 // 新手引导通过这个窄桥接访问编辑器核心状态；引导本身在 editor-onboarding.js 中按需初始化。
 window.MAWE_EDITOR_BRIDGE = Object.freeze({
   get data() { return MaweBoot.DATA; },
@@ -47,7 +49,7 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
 });
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 MaweCuePanel.renderAll({ waveform: 'full' });
-MaweState.noteSavedSegments();
+MaweState.establishProjectCheckpoint({ repaired: repairedTimingCount > 0 });
 MaweBoot.maweDebug('boot:complete', {
   renderedSegments: MaweCoreState.container?.querySelectorAll?.('.cue-row')?.length || 0,
   recentProjectsVisible: MaweDom.recentProjectsEl ? !MaweDom.recentProjectsEl.hidden : false,
@@ -82,7 +84,7 @@ MaweDom.hideDisabledToggle?.addEventListener('change', () => {
   if (MaweDom.hideDisabled) {
     // 清理选中集中的禁用项（隐藏了但还留在选中集会造成状态不一致）
     [...MaweSelection.selectedIdxs].forEach(i => {
-      if (MaweBoot.DATA.segments[i]?.disabled) {
+      if (window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i]?.disabled) {
         MaweState.selection.remove('main', i);
         const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
         if (el) el.classList.remove('selected');

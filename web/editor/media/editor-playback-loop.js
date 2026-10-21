@@ -42,7 +42,7 @@
   function findActive(tMs) {
     // 相邻字幕共用边界时，右侧字幕的 start 优先；处于时间间隙时保留
     // 前一条字幕作为当前项，和原有列表高亮语义一致。
-    return findActiveSegmentIndex(MaweBoot.DATA.segments, tMs);
+    return findActiveSegmentIndex(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, tMs);
   }
 
 
@@ -139,7 +139,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
 
   function refreshSubtitlePreview(tMs = MaweCoreState.player.currentTime * 1000, idx = findActive(tMs)) {
   // 编辑字幕文本时只刷新播放器预览，避免每输入一个字都触发字幕列表的自动滚动。
-  const sourceSegment = idx >= 0 ? MaweBoot.DATA.segments[idx] : null;
+  const sourceSegment = idx >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] : null;
   const seg = sourceSegment
     ? window.AsrGapRemoveCore.projectCleanupRetainedSegments([sourceSegment], MaweBoot.DATA.gap_remove)[0]
     : null;
@@ -168,11 +168,11 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   const mainSubtitleColor = subtitleAppearance.color || MaweSettings.DEFAULT_SUBTITLE_COLOR;
   const speakerLabels = MaweSpeakerLabels.getSpeakerLabelSettings();
   const mainColorName = mainVisible && seg
-    ? MULTI_SUBTITLE_UTILS.effectiveColorName(seg, MaweBoot.DATA.segments)
+    ? MULTI_SUBTITLE_UTILS.effectiveColorName(seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)
     : null;
   const speakerLabel = mainVisible && speakerLabels.mapping_enabled && speakerLabels.enabled
     ? window.AsrEditorUtils.speakerLabelForSegment(
-      seg, MaweBoot.DATA.segments, speakerLabels.names,
+      seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, speakerLabels.names,
     )
     : '';
   const speakerLabelVisible = Boolean(speakerLabel && mainColorName && MaweColors.COLOR_BY_NAME[mainColorName]);
@@ -285,7 +285,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   // 播放刷新每帧都写内联样式。
   let previewSegmentColor = '';
   if (mainVisible && colorPreviewEnabled && seg) {
-    const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, MaweBoot.DATA.segments);
+    const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
     previewSegmentColor = colorName ? MaweColors.COLOR_BY_NAME[colorName]?.value || '' : '';
   }
   const colorUnderline = colorPreviewEnabled
