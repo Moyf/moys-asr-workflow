@@ -14,7 +14,9 @@ test('split helpers share live trim state while separately created factories rem
   const utils = context.window.AsrEditorUtils;
   utils.setSplitTrimSymbols(['#']);
   assert.deepEqual({ ...utils.splitSubtitleText('hello#world', 6, 'continuous') }, { left: 'hello', right: 'world', offset: 6 });
-  const isolated = context.window.MAWE.resolve('utils-split-trim');
+  const isolatedContext = { window: {} };
+  loadEditorModule(isolatedContext, 'shared/editor-utils.js');
+  const isolated = isolatedContext.window.AsrEditorUtils;
   isolated.setSplitTrimSymbols(['@']);
   assert.equal(isolated.applySplitEdgeTrim('@hello@'), '@hello');
   assert.equal(utils.applySplitEdgeTrim('@hello@'), '@hello@');

@@ -80,6 +80,11 @@ test('source-only changes invalidate the artifact and module evaluation has no e
   const changed = await buildEditor(root, { transform(file, source) {
     return file === 'shared/utils/data.js' ? source.replace('moy.asr.project.v1','deliberately.stale') : source;
   }});
+  // The mutated schema string must reach the compiled
+  // output — not only the metadata hash ledger
+  // (review of #288).
+  assert.ok(changed.code.includes('deliberately.stale'), 'mutated schema string must be compiled in');
+  assert.ok(!original.includes('deliberately.stale'));
   assert.notEqual(changed.code,original);
   assert.equal(fs.readFileSync(artifact,'utf8'),original);
   for (const item of readModules(root)) {
