@@ -45,6 +45,17 @@ test('missing legacy IDs reserve all explicit identities before generation', () 
   assert.equal(project.tracks[1].segments[0].id, 'main-cue-1-2');
 });
 
+test('legacy implicit binding identities resolve without overwriting reserved explicit IDs', () => {
+  const input = fixture('legacy-implicit-ids.input');
+  const before = json(input);
+  const project = model.importProject(input).project;
+  assert.deepEqual(project, fixture('legacy-implicit-ids.expected'));
+  assert.deepEqual(input, before);
+  assert.deepEqual(model.importProject(project), { project, changes: [] });
+  project.bindings[0].source_segment_ids = ['main-001-generated'];
+  rejects(project, '$.bindings[0].source_segment_ids');
+});
+
 test('legacy ID generation remains bounded for a maximum-length track ID', () => {
   const project = model.migrateProjectTracks({ segments: [], multi_subtitle: { tracks: [{ id: 'x'.repeat(160), segments: [{ start: 0, end: 10, text: 'new', color: { name: 'red' } }] }] } });
   assert.ok(project.tracks[1].segments[0].id.length <= 160);

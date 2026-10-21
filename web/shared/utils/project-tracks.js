@@ -298,6 +298,29 @@ export function createUtilsModule() {
     return JSON.stringify(before) === JSON.stringify(after) ? [] : [{ path, kind: 'replace', before, after }];
   }
 
+  // Legacy writers could omit IDs while referring to the old per-track
+  // normalizer's deterministic IDs. These aliases exist only during import.
+  function legacyNormalizedIds(values, prefix) {
+    const reserved = new Set(values.filter(value => own(value, 'id')).map(value => id(value.id)));
+    const used = new Set();
+    return values.map((value, index) => {
+      let identifier = id(value.id);
+      if (!own(value, 'id')) {
+        const base = `${prefix}-${String(index + 1).padStart(3, '0')}`;
+        identifier = base;
+        let suffix = 2;
+        while (used.has(identifier) || (identifier !== base && reserved.has(identifier))) identifier = `${base}-${suffix++}`;
+        if (reserved.has(identifier)) {
+          identifier = `${base}-generated`;
+          suffix = 2;
+          while (used.has(identifier) || reserved.has(identifier)) identifier = `${base}-generated-${suffix++}`;
+        }
+      }
+      used.add(identifier);
+      return identifier;
+    });
+  }
+
   function migrateLegacy(raw) {
     const project = clone(raw);
     for (const field of ['tracks', 'bindings', 'bilingual']) if (own(project, field)) fail(`$.${field}`, 'conflicts with legacy project structure');
@@ -322,6 +345,9 @@ export function createUtilsModule() {
         reservedTracks.add(trackId);
       }
     });
+    const oldExtensionIds = legacyNormalizedIds(extensions, 'extension');
+    const trackAliases = new Map();
+    const oldTrackIds = new Map();
     const usedTracks = new Set();
     const mainId = unique('main', reservedTracks, usedTracks); usedTracks.add(mainId);
     const main = { id: mainId, role: 'main', name: '主字幕', enabled: true, segments: project.segments };
@@ -338,6 +364,8 @@ export function createUtilsModule() {
     extensions.forEach((track, index) => {
       const trackId = id(track.id) || unique(`extension-${index + 1}`, reservedTracks, usedTracks);
       usedTracks.add(trackId);
+      trackAliases.set(oldExtensionIds[index], trackId);
+      oldTrackIds.set(trackId, oldExtensionIds[index]);
       tracks.push({ ...track, id: trackId, role: 'extension', name: own(track, 'name') ? track.name : '副字幕', enabled: multi.enabled ?? false, split_mode: track.split_mode ?? 'word', segments: track.segments ?? [] });
     });
     const errors = [];
@@ -358,10 +386,12 @@ export function createUtilsModule() {
     const mappings = new Map();
     for (const track of tracks) {
       const mapping = new Map(); mappings.set(track.id, mapping);
+      const prefix = track.role === 'extension' ? `${oldTrackIds.get(track.id)}-segment` : track.role;
+      const oldIds = legacyNormalizedIds(track.segments, prefix);
       track.segments.forEach((segment, index) => {
         const oldId = id(segment.id);
         const nextId = oldId && !usedCues.has(oldId) ? oldId : unique(`${track.id}-cue-${index + 1}`, reservedCues, usedCues);
-        if (oldId) mapping.set(oldId, nextId);
+        mapping.set(oldIds[index], nextId);
         segment.id = nextId; usedCues.add(nextId);
       });
     }
@@ -405,6 +435,7 @@ export function createUtilsModule() {
     bilingual.display_mode ??= 'both';
     const extensionTracks = tracks.filter(track => track.role === 'extension');
     if (!own(bilingual, 'active_track_id') && extensionTracks.length) bilingual.active_track_id = extensionTracks[0].id;
+    else if (typeof bilingual.active_track_id === 'string') bilingual.active_track_id = trackAliases.get(bilingual.active_track_id.trim()) ?? bilingual.active_track_id;
     const oldBindings = multi.bindings ?? [];
     if (!Array.isArray(oldBindings)) fail('$.multi_subtitle.bindings', 'must be an array');
     const bindingIds = new Set(oldBindings.map(binding => id(binding?.id)).filter(Boolean));
@@ -417,7 +448,8 @@ export function createUtilsModule() {
       if (own(binding, 'id') && (!bindingId || usedBindings.has(bindingId))) fail(`${path}.id`, 'must be a unique binding ID');
       if (!bindingId) bindingId = unique(`binding-${index + 1}`, bindingIds, usedBindings);
       usedBindings.add(bindingId);
-      const targetId = binding.track_id == null ? (extensionTracks.length === 1 ? extensionTracks[0].id : null) : id(binding.track_id);
+      const oldTargetId = id(binding.track_id);
+      const targetId = binding.track_id == null ? (extensionTracks.length === 1 ? extensionTracks[0].id : null) : (trackAliases.get(oldTargetId) ?? oldTargetId);
       const target = extensionTracks.find(track => track.id === targetId);
       if (!target) fail(`${path}.track_id`, 'must reference an extension track');
       const endpoints = (plural, singular, trackId) => {

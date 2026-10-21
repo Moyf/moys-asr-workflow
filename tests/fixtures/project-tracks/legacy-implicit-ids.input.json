@@ -1,0 +1,45 @@
+{
+  "segments": [
+    {
+      "start": 0,
+      "end": 100,
+      "text": "generated"
+    },
+    {
+      "id": "main-001",
+      "start": 100,
+      "end": 200,
+      "text": "reserved"
+    }
+  ],
+  "multi_subtitle": {
+    "enabled": true,
+    "active_track_id": "extension-001-generated",
+    "tracks": [
+      {
+        "segments": [
+          {
+            "start": 0,
+            "end": 100,
+            "text": "translation"
+          }
+        ]
+      },
+      {
+        "id": "extension-001",
+        "segments": []
+      }
+    ],
+    "bindings": [
+      {
+        "track_id": "extension-001-generated",
+        "main_segment_ids": [
+          "main-001-generated"
+        ],
+        "extension_segment_ids": [
+          "extension-001-generated-segment-001"
+        ]
+      }
+    ]
+  }
+}
