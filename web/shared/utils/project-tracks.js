@@ -212,6 +212,16 @@ export function createUtilsModule() {
     }
   }
 
+  function validateTrackMetadata(track, path, errors) {
+    const add = (field, message) => errors.push({ path: `${path}.${field}`, message });
+    for (const field of SOURCE_FIELDS.filter(field => field !== 'preserve_punctuation')) if (own(track, field) && typeof track[field] !== 'string') add(field, 'must be a string');
+    for (const field of ['split_mode', 'split_mode_override']) if (own(track, field) && !['continuous', 'word'].includes(track[field])) add(field, 'must be continuous or word');
+    if (own(track, 'language_source') && !['detected', 'hint', 'inferred', 'unknown'].includes(track.language_source)) add('language_source', 'unsupported language source');
+    if (own(track, 'timestamp_granularity') && !['char', 'word', 'segment', 'unknown'].includes(track.timestamp_granularity)) add('timestamp_granularity', 'unsupported timestamp granularity');
+    if (own(track, 'preserve_punctuation') && typeof track.preserve_punctuation !== 'boolean') add('preserve_punctuation', 'must be a boolean');
+    if (own(track, 'metadata') && !object(track.metadata)) add('metadata', 'must be an object');
+  }
+
   function validateTracksProject(project) {
     const errors = [];
     const add = (path, message) => errors.push({ path, message });
@@ -231,12 +241,7 @@ export function createUtilsModule() {
       if (!ROLES.has(track.role)) add(`${path}.role`, 'must be main, extension or overlay');
       if (typeof track.name !== 'string') add(`${path}.name`, 'must be a string');
       if (typeof track.enabled !== 'boolean' || (track.role === 'main' && track.enabled !== true)) add(`${path}.enabled`, track.role === 'main' ? 'main track must be enabled' : 'must be a boolean');
-      for (const field of SOURCE_FIELDS.filter(field => field !== 'preserve_punctuation')) if (own(track, field) && typeof track[field] !== 'string') add(`${path}.${field}`, 'must be a string');
-      for (const field of ['split_mode', 'split_mode_override']) if (own(track, field) && !['continuous', 'word'].includes(track[field])) add(`${path}.${field}`, 'must be continuous or word');
-      if (own(track, 'language_source') && !['detected', 'hint', 'inferred', 'unknown'].includes(track.language_source)) add(`${path}.language_source`, 'unsupported language source');
-      if (own(track, 'timestamp_granularity') && !['char', 'word', 'segment', 'unknown'].includes(track.timestamp_granularity)) add(`${path}.timestamp_granularity`, 'unsupported timestamp granularity');
-      if (own(track, 'preserve_punctuation') && typeof track.preserve_punctuation !== 'boolean') add(`${path}.preserve_punctuation`, 'must be a boolean');
-      if (own(track, 'metadata') && !object(track.metadata)) add(`${path}.metadata`, 'must be an object');
+      validateTrackMetadata(track, path, errors);
       validateSegments(track.segments, `${path}.segments`, errors, cueIds);
     });
     if (getTracksByRole(project, 'main').length !== 1) add('$.tracks', 'must contain exactly one main track');
@@ -321,6 +326,31 @@ export function createUtilsModule() {
     });
   }
 
+  function validateLegacyGroups(track, errors) {
+    if (!Array.isArray(track.segments)) return;
+    const add = (path, message) => errors.push({ path, message });
+    for (const kind of ['color', 'sticker']) track.segments.forEach((segment, index) => {
+      if (!object(segment)) return;
+      const path = `$.tracks.${track.id}.segments[${index}]`;
+      if (own(segment, `${kind}_group_id`)) add(`${path}.${kind}_group_id`, 'conflicts with legacy group fields');
+      const value = segment[kind];
+      if (value != null) {
+        if (!object(value) || typeof value.name !== 'string') add(`${path}.${kind}`, 'must contain a name');
+        else if (!value.name.trim()) add(`${path}.${kind}.name`, 'must be a non-empty string');
+        if (object(value)) {
+          for (const edge of ['start', 'end']) if (own(value, edge) && !integer(value[edge])) add(`${path}.${kind}.${edge}`, 'must be integer milliseconds');
+          if (integer(value.start) && integer(value.end) && value.end < value.start) add(`${path}.${kind}.end`, 'must be >= start');
+        }
+      }
+      const ref = segment[`${kind}_ref`];
+      if (ref == null) return;
+      const head = object(ref) && integer(ref.headIdx) && ref.headIdx >= 0 && ref.headIdx < index
+        ? track.segments[ref.headIdx]?.[kind] : null;
+      if (!object(ref) || value != null || !object(head)) add(`${path}.${kind}_ref`, 'must reference a preceding group head');
+      else if (typeof ref.name === 'string' && ref.name !== head.name) add(`${path}.${kind}_ref.name`, 'must match referenced head name');
+    });
+  }
+
   function migrateLegacy(raw) {
     const project = clone(raw);
     for (const field of ['tracks', 'bindings', 'bilingual']) if (own(project, field)) fail(`$.${field}`, 'conflicts with legacy project structure');
@@ -379,7 +409,21 @@ export function createUtilsModule() {
         ids.add(cueId); segment.id = cueId;
       }));
     }
-    tracks.forEach((track, index) => validateSegments(track.segments, `$.tracks[${index}].segments`, errors, globalIds, { legacy: true }));
+    validateProjectMetadata(project, errors);
+    tracks.forEach((track, index) => {
+      validateTrackMetadata(track, `$.tracks[${index}]`, errors);
+      validateSegments(track.segments, `$.tracks[${index}].segments`, errors, globalIds, { legacy: true });
+      if (raw.schema !== 'moy.asr.project.v2') validateLegacyGroups(track, errors);
+    });
+    if (multi.bindings != null && !Array.isArray(multi.bindings)) errors.push({ path: '$.multi_subtitle.bindings', message: 'must be an array' });
+    (Array.isArray(multi.bindings) ? multi.bindings : []).forEach((binding, index) => {
+      const path = `$.multi_subtitle.bindings[${index}]`;
+      if (!object(binding)) { errors.push({ path, message: 'must be an object' }); return; }
+      for (const field of ['main_segment_ids', 'extension_segment_ids']) {
+        const values = binding[field] ?? (own(binding, field.slice(0, -1)) ? [binding[field.slice(0, -1)]] : null);
+        if (!Array.isArray(values) || values.length !== 1) errors.push({ path: `${path}.${field}`, message: 'must contain exactly one stable ID' });
+      }
+    });
     if (errors.length) throw new ProjectTracksError(errors);
     const reservedCues = new Set(tracks.flatMap(track => track.segments.map(segment => id(segment.id))).filter(Boolean));
     const usedCues = new Set();

@@ -198,6 +198,21 @@ test('legacy optional nulls retain original defaults without swallowing conflict
   rejects({ segments: [], multi_subtitle: { tracks: [{ name: null }] } }, '$.multi_subtitle.tracks[0].name');
 });
 
+test('legacy import reports independent metadata, cue, group and binding shape paths together', () => {
+  const input = { timebase: { unit: 'seconds', fps: 0 }, segments: [
+    { start: -1, end: 0, text: 42, color_ref: { headIdx: 5 } },
+  ], multi_subtitle: { tracks: [{ language_source: 'bad', segments: [] }], bindings: [{ main_segment_ids: [], extension_segment_ids: [] }] } };
+  const before = json(input);
+  assert.throws(() => model.importProject(input), error => {
+    const paths = new Set(error.errors.map(entry => entry.path));
+    for (const path of ['$.timebase.unit', '$.timebase.fps', '$.tracks[0].segments[0].start', '$.tracks[0].segments[0].text',
+      '$.tracks.main.segments[0].color_ref', '$.tracks[1].language_source', '$.multi_subtitle.bindings[0].main_segment_ids',
+      '$.multi_subtitle.bindings[0].extension_segment_ids']) assert.ok(paths.has(path), path);
+    return true;
+  });
+  assert.deepEqual(input, before);
+});
+
 test('new producers construct canonical projects without a temporary legacy tree', () => {
   const input = [{ start: 0, end: 1000, text: 'generated', metadata: { keep: false } },
     { id: 'custom-cue-1', start: 1000, end: 2000, text: 'reserved' }];
