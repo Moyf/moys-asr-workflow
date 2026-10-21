@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanupTempDir, disableOnboarding, dragFloatingPanelAwayFrom, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
+import { getMainTrack, cleanupTempDir, disableOnboarding, dragFloatingPanelAwayFrom, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 
 let tempDir, server;
 test('waveform ASS shortcuts mirror project settings and open the style library and actual frame', async ({ page }, testInfo) => {
@@ -625,7 +625,7 @@ test('project ASS and speaker exports are undoable, reloadable and isolated from
   const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(saved.preview.ass_mode).toBe(true);
   expect(saved.preview.subtitle.speaker_labels.export_enabled).toBe(true);
-  expect(saved.multi_subtitle.main_split_mode).toBe('word');
+  expect(getMainTrack(saved).split_mode_override).toBe('word');
   const personal = await page.evaluate(() => JSON.parse(localStorage.getItem(MaweSettings.EDITOR_SETTINGS_KEY)));
   expect(personal.assMode).toBeUndefined();
   expect(personal.exportSpeakerLabels).toBeUndefined();
@@ -768,7 +768,7 @@ test('a new project invalidates an in-flight directory change and keeps the save
 
 test('project timing and language restore through history and save without changing ASR metadata', async ({ page }) => {
   page.on('dialog', dialog => dialog.accept());
-  await page.evaluate(() => { MaweBoot.DATA.split_mode = 'continuous'; });
+  await page.evaluate(() => { AsrEditorUtils.getMainTrack(MaweBoot.DATA).split_mode = 'continuous'; });
   await projectSettings(page, 'timebase');
   await expect(page.locator('#multi-subtitle-extension-language-mode')).not.toBeVisible();
   await page.locator('#multi-subtitle-main-language-mode').selectOption('word');
@@ -782,8 +782,8 @@ test('project timing and language restore through history and save without chang
   const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(saved.timebase).toMatchObject({ unit: 'frames', fps: 25 });
   expect(saved.split_mode).toBe('continuous');
-  expect(saved.multi_subtitle.main_split_mode).toBe('word');
-  for (const segment of saved.segments) expect(segment.start).toBe(Math.round(segment.start_frame * 1000 / 25));
+  expect(getMainTrack(saved).split_mode_override).toBe('word');
+  for (const segment of getMainTrack(saved).segments) expect(segment.start).toBe(Math.round(segment.start_frame * 1000 / 25));
   await page.evaluate(saved => MaweProjectLoad.applyCanonicalProject(saved, 'timing.mosp'), saved);
   await expect(page.locator('#timeline-timebase')).toHaveValue('frames');
   await expect(page.locator('#timeline-fps')).toHaveValue('25');

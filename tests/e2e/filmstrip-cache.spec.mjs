@@ -107,7 +107,7 @@ test('cached thumbnails and timed words fit the single-row viewport together',as
     await page.waitForFunction(()=>MaweCoreState.waveformEditor?.thumbnailController.bytes>0,null,{timeout:30000});
     await selectThumbnailMode(page,'strip');
     await page.evaluate(()=>{
-      MaweBoot.DATA.segments[0].items=[
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items=[
         {start:0,end:3500,text:'Synthetic'},
         {start:3500,end:7000,text:'cache'},
         {start:7000,end:11000,text:'navigation'},

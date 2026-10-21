@@ -91,7 +91,7 @@ test('disabling auto-enabled markers leaves imported and rebuilt waveforms free 
   await page.keyboard.up('ControlOrMeta');
   await expect(page.locator('.waveform-overlay-block')).toHaveCount(2);
   expect(await markerData(page)).toEqual(original);
-  expect(await page.evaluate(() => MaweBoot.DATA.overlay_track.segments[1])).toMatchObject({ start: 2600, end: 3800 });
+  expect(await page.evaluate(() => AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[1])).toMatchObject({ start: 2600, end: 3800 });
 });
 
 test('enabling marker editing creates markers and regions; disabling preserves them through redraw', async ({ page }) => {
