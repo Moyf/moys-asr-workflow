@@ -39,7 +39,7 @@
     ...projectExtensionFields,
     subtitle_groups: window.AsrEditorUtils.cloneJsonValue(MaweBoot.DATA.subtitle_groups),
     media: MaweBoot.DATA.media || '',
-    audio_processing: { ...cloneJsonValue(MaweBoot.DATA.audio_processing),
+    audio_processing: { ...window.AsrEditorUtils.cloneJsonValue(MaweBoot.DATA.audio_processing),
       ...(window.MaweAudioProcessing?.settings() || { gain_db: 0, target_lufs: -14, peak_ceiling_dbtp: -1 }) },
     language: MaweBoot.DATA.language || '',
     model: MaweBoot.DATA.model || '',
