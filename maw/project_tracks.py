@@ -237,7 +237,9 @@ def _validate_canonical(project: dict[str, Any]) -> None:
         if "split_mode_override" in track and track["split_mode_override"] not in ("continuous", "word"):
             _fail(f"{path}.split_mode_override", "must be continuous or word")
         track_errors: list[ProjectValidationError] = []
-        _validate_transcription_metadata(track, track_errors)
+        # Root-only settings with the same spelling can be vendor fields on a
+        # track. Validate only the source metadata defined by the track schema.
+        _validate_transcription_metadata({field: track[field] for field in TRACK_SOURCE_FIELDS if field in track}, track_errors)
         errors.extend(ProjectValidationError(path + error.path[1:], error.message) for error in track_errors)
         previous_end = None
         for si, raw_cue in enumerate(_array(track.get("segments"), f"{path}.segments")):

@@ -238,6 +238,29 @@ class ProjectTracksTests(unittest.TestCase):
         second = get_main_track(project)["segments"][0]["items"][1]
         self.assertEqual((second["start"], second["end"]), (1500, 1600))
 
+    def test_root_setting_names_are_opaque_unknown_fields_when_nested_on_track(self):
+        project = canonical()
+        project["tracks"][0]["timed_text_edit_view"] = "vendor-specific"
+        self.assertEqual(normalize_project(project), project)
+
+    def test_v2_trims_explicit_ids_before_project_wide_uniqueness_check(self):
+        raw = {"schema": "moy.asr.project.v2", "segments": [cue(" cue-1 ")],
+               "subtitle_groups": {"color": [], "sticker": []}}
+        self.assertEqual(get_main_track(normalize_project(raw))["segments"][0]["id"], "cue-1")
+        raw["overlay_track"] = {"segments": [cue("cue-1")]}
+        self.assertRejected(raw, "$.tracks[1].segments[0].id")
+
+    def test_opaque_ids_with_separators_do_not_collide_in_binding_pairs(self):
+        project = canonical()
+        project["tracks"][0]["segments"] = [cue("c", 0, 100), cue("b:c", 100, 200)]
+        project["tracks"].extend([track("a:b", "extension", [cue("target-1", 0, 100)]),
+                                  track("a", "extension", [cue("target-2", 100, 200)])])
+        project["bilingual"]["active_track_id"] = "a:b"
+        project["bindings"] = [{"id": f"binding-{index}", "source_track_id": "main", "target_track_id": target,
+            "source_segment_ids": [source], "target_segment_ids": [f"target-{index}"], "start_offset_ms": 0, "end_offset_ms": 0}
+            for index, (target, source) in enumerate((("a:b", "c"), ("a", "b:c")), 1)]
+        self.assertTrue(validate_tracks_project(project).ok)
+
 
 if __name__ == "__main__":
     unittest.main()
