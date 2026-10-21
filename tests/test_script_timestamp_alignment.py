@@ -17,6 +17,7 @@ from maw.script_timestamp_alignment import (
 )
 from maw.timestamp_alignment import TimedToken, TimestampAlignmentError
 from maw.media import resolve_project_media
+from tests.track_helpers import main_segments, main_track
 
 
 class ScriptTimestampTests(unittest.TestCase):
@@ -143,12 +144,13 @@ class ScriptTimestampTests(unittest.TestCase):
 
             project = read_project(artifact.project_path)
             srt = read_srt(artifact.srt_path)
-            self.assertEqual([cue["text"] for cue in srt["segments"]], ["你好！", "世界。"])
-            self.assertEqual(project["segments"][1]["items"][0]["start"], 1000)
+            self.assertEqual([cue["text"] for cue in main_segments(srt)], ["你好！", "世界。"])
+            self.assertEqual(main_segments(project)[1]["items"][0]["start"], 1000)
+            self.assertEqual(project["schema"], "moy.asr.project.v3")
             self.assertEqual(project["media"], media.name)
             self.assertEqual(resolve_project_media(artifact.project_path, project).resolved_path, media.resolve())
             self.assertEqual(project["media_metadata"]["selected_audio_track"], 0)
-            self.assertTrue(project["preserve_punctuation"])
+            self.assertTrue(main_track(project)["preserve_punctuation"])
             self.assertTrue(report.warnings)
             self.assertIsNone(artifact.source_srt_path)
             # Temp 目录在部分 runner 上会以 8.3 短名形式出现（RUNNER~1），
@@ -177,7 +179,7 @@ class ScriptTimestampTests(unittest.TestCase):
                 with self.subTest(manual=manual):
                     artifact, _ = run_script_alignment(ScriptAlignmentRequest(script, media, language="fr", anchors_path=manual), backend=backend)
                     self.assertEqual(backend.align.call_args.args[1], "café!")
-                    self.assertEqual(json.loads(artifact.project_path.read_text())["segments"][0]["text"], "cafe\u0301!")
+                    self.assertEqual(main_segments(json.loads(artifact.project_path.read_text()))[0]["text"], "cafe\u0301!")
             with wave.open(str(media), "wb") as wav:
                 wav.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
                 wav.writeframes(bytes(32000))
@@ -293,7 +295,7 @@ class ScriptTimestampTests(unittest.TestCase):
             self.assertEqual(report.strategy, "silence_anchors")
             self.assertEqual(plan.to_payload(), report.to_payload())
             self.assertEqual(backend.calls, 3)
-            self.assertEqual([cue["start"] for cue in project["segments"]], [index * 20000 + 100 for index in range(33)])
+            self.assertEqual([cue["start"] for cue in main_segments(project)], [index * 20000 + 100 for index in range(33)])
 
     def test_failure_does_not_write_partial_artifacts(self):
         with tempfile.TemporaryDirectory() as directory:
