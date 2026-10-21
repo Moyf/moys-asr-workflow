@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from maw.media import probe_audio_tracks, probe_video_fps, project_media_reference
-from maw.project import PROJECT_SCHEMA
+from maw.project import PROJECT_SCHEMA, ProjectValidationError, ProjectValidationFailed
+from maw.subtitle_groups import GROUP_PROJECT_SCHEMA
 
 # 工程级波形缓存键。生成端把它们合并进运行态工程供页面即时使用，落盘边界
 # （serialize_mosp / server 保存）统一剥掉：缓存真源是媒体旁的 .quapeaks /
@@ -44,14 +45,38 @@ def rebase_project_media(
 
 
 def strip_inline_caches(project: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a shallow copy without the inline waveform cache payloads.
+    """Return a persistence copy without caches or legacy session flags.
 
-    只移除顶层这几个键，绝不触碰入参对象：server 的运行态工程与落盘副本共用
-    同一个 dict，在这里原地删除会让页面波形当场消失。
+    Copy only containers whose session fields are removed. Nested third-party
+    extension fields, even those named _dirty, are outside this reserved scope.
+    The runtime project (including its highlights and caches) stays untouched.
     """
     stripped = dict(project)
     for key in INLINE_CACHE_KEYS:
         stripped.pop(key, None)
+    stripped.pop("_dirty", None)
+
+    def strip_track(value):
+        if not isinstance(value, Mapping):
+            return value
+        track = dict(value)
+        track.pop("_dirty", None)
+        if isinstance(track.get("segments"), list):
+            track["segments"] = [
+                {key: item for key, item in segment.items() if key != "_dirty"}
+                if isinstance(segment, Mapping) else segment
+                for segment in track["segments"]
+            ]
+        return track
+
+    stripped = strip_track(stripped)
+    if isinstance(stripped.get("multi_subtitle"), Mapping):
+        multi = strip_track(stripped["multi_subtitle"])
+        if isinstance(multi.get("tracks"), list):
+            multi["tracks"] = [strip_track(track) for track in multi["tracks"]]
+        stripped["multi_subtitle"] = multi
+    if "overlay_track" in stripped:
+        stripped["overlay_track"] = strip_track(stripped["overlay_track"])
     return stripped
 
 
@@ -144,6 +169,8 @@ def serialize_mosp(
     Validation and normalization remain the responsibility of the caller.
     """
 
+    if "schema" in project and project["schema"] not in (PROJECT_SCHEMA, GROUP_PROJECT_SCHEMA):
+        raise ProjectValidationFailed((ProjectValidationError("$.schema", f"must be {PROJECT_SCHEMA} or {GROUP_PROJECT_SCHEMA}"),))
     enriched = enrich_project_media_metadata(
         project,
         media_path,
@@ -154,11 +181,8 @@ def serialize_mosp(
         merged_metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
         merged_metadata["selected_audio_track"] = selected_audio_track
         enriched["media_metadata"] = merged_metadata
-    enriched.pop("schema", None)
-    canonical = {"schema": PROJECT_SCHEMA, **enriched}
-    # canonical 是本函数新建的顶层 dict，在这里剥离不影响调用方的运行态。
-    for key in INLINE_CACHE_KEYS:
-        canonical.pop(key, None)
+    schema = enriched.pop("schema", PROJECT_SCHEMA)
+    canonical = strip_inline_caches({"schema": schema, **enriched})
     return json.dumps(canonical, ensure_ascii=False, indent=2) + "\n"
 
 

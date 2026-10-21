@@ -365,8 +365,11 @@ function mergeOverlaySegments(idxs) {
     MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
   );
   const merged = {
+    ...window.AsrEditorUtils.cloneJsonValue(segments[0]),
+    color_group_id: segments.every(s => s.color_group_id === segments[0].color_group_id) ? segments[0].color_group_id : undefined,
+    sticker_group_id: segments.every(s => s.sticker_group_id === segments[0].sticker_group_id) ? segments[0].sticker_group_id : undefined,
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
-      track.segments,
+      window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments),
       `${segments[0].id || track.id}-merged`,
       'overlay',
     ),

@@ -10,6 +10,8 @@ except ImportError:  # pragma: no cover - only reached outside a PyInstaller bui
     collect_submodules = lambda _package: []
 
 ROOT = Path(SPECPATH).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from maw.editor_entry_policy import standalone_editor_supported
 
 # bundle 是构建产物（不入库）：打包前必须先构建（build-windows.ps1 /
 # build-appimage.sh / release 工作流都会显式构建）。在这里 fail fast，
@@ -39,6 +41,21 @@ for _kind in ("editor", "launcher"):
         raise SystemExit(f"MAW.spec: {_kind} bundle {_status}: {_reason}。请重新构建后再打包。")
 
 binaries = []
+# Metadata controls source builds; frozen programs use the bundled fallbacks.
+# Reject mixed versions before collecting a package, including manual builds.
+import subprocess
+
+_version_check = subprocess.run(
+    [sys.executable, str(ROOT / "scripts" / "sync_launcher_version.py"), "--check"],
+    cwd=ROOT, capture_output=True, text=True, check=False,
+)
+if _version_check.returncode:
+    raise SystemExit(
+        "MAW.spec: bundled version markers disagree with project metadata. "
+        "Run python scripts/sync_launcher_version.py --write, rebuild bundles, then package again.\n"
+        + (_version_check.stderr or _version_check.stdout).strip()
+    )
+
 if sys.platform == "linux":
     # Qt 6.5+ 的 xcb 平台插件需要 libxcb-cursor；部分环境（如 ubuntu-22.04
     # runner）PyInstaller 的 ldd 分析收集不到它，导致 AppImage 无法启动。
@@ -80,7 +97,6 @@ datas = [
     (str(ROOT / "LICENSE"), "."),
     (str(ROOT / "THIRD_PARTY_NOTICES.md"), "."),
     (str(ROOT / "docs" / "user" / "FAQ-常见问题.txt"), "."),
-    (str(ROOT / "blank-editor.html"), "."),
     (str(ROOT / "assets" / "maw.ico"), "assets"),
     (str(ROOT / "assets" / "show.webp"), "assets"),
     (str(ROOT / "maw" / "asr" / "__init__.py"), "local-runtime/maw/asr"),
@@ -102,6 +118,8 @@ datas = [
     (str(ROOT / "maw" / "__init__.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "app_paths.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "console.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "editor_entry_policy.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "diagnostics.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "gui_platform.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "local_models.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "local_runtime.py"), "local-runtime/maw"),
@@ -139,6 +157,8 @@ datas = [
     (str(ROOT / "maw" / "media_jobs.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "media_export_audio.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "project_boundary.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "subtitle_groups.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "language.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "subtitle_segmentation.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project_preview.py"), "local-runtime/maw"),
@@ -173,6 +193,8 @@ datas = [
     (str(ROOT / "maw" / "postprocess_ocr.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "text_conversion.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "project.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "project_boundary.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "subtitle_groups.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "language.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "project_preview.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "output_naming.py"), "ocr-runtime/maw"),
@@ -187,6 +209,9 @@ datas = [
     (str(ROOT / "maw" / "script_alignment.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "waveform.py"), "ocr-runtime/maw"),
 ]
+if standalone_editor_supported():
+    datas.append((str(ROOT / "blank-editor.html"), "."))
+
 opencc_datas = collect_data_files("opencc")
 datas.extend(opencc_datas)
 # 托管 Runtime 依赖清单（CI 构建时由 maw/runtimes/freezer.py 生成，frozen

@@ -5,7 +5,6 @@ import { sitePath } from '../lib/site-path';
 const repoUrl = 'https://github.com/Moyf/moys-asr-workflow';
 const releasesUrl = `${repoUrl}/releases/latest`;
 const docsUrl = sitePath('docs/');
-const editorUrl = sitePath('editor/');
 const updatesUrl = sitePath('releases/');
 ---
 
@@ -26,7 +25,7 @@ const updatesUrl = sitePath('releases/');
         <a href="#privacy">本地优先</a>
         <a href={docsUrl}>文档</a>
         <a href={updatesUrl}>更新记录</a>
-        <a href={editorUrl}>在线编辑器</a>
+        <a href={releasesUrl}>本地应用</a>
         <a href={repoUrl}>GitHub ↗</a>
       </nav>
       <a class="button button-small button-outline" href={releasesUrl}>下载</a>
@@ -42,8 +41,8 @@ const updatesUrl = sitePath('releases/');
           从音视频转写，到波形校对、文稿整理与字幕交付。MAW 把这些步骤接成一条可继续修改的工作流，适合口播、访谈和课程等字幕密集的内容。
         </p>
         <div class="hero-actions">
-          <a class="button button-primary" href={editorUrl}>在线编辑器 ↗</a>
-          <a class="button button-ghost" href={releasesUrl}>下载桌面版 ↗</a>
+          <a class="button button-primary" href={releasesUrl}>下载本地应用 ↗</a>
+          <a class="button button-ghost" href={docsUrl}>使用指南 ↗</a>
         </div>
         <p class="hero-meta mono">本地媒体 → ASR → .mosp 工程 → MAWE 编辑 → 字幕 / 剪辑交付</p>
       </div>
@@ -212,7 +211,7 @@ const updatesUrl = sitePath('releases/');
         </details>
         <details>
           <summary>MAW 是在线字幕网站吗？</summary>
-          <p>日常使用下载包和本机 localhost 编辑器，在线编辑器是另一种浏览器入口。MAW 不提供托管转写服务；云端 ASR 和 LLM 由你按需配置，在线页面的保存能力与本机 Server 有区别。</p>
+          <p>请使用本地应用和本机 localhost 编辑器。2.0 起停止生成和维护单文件 HTML / 在线编辑器；历史 HTML 副本仍可使用，但不承诺兼容新版工程。MAW 不提供托管转写服务；云端 ASR 和 LLM 由你按需配置。</p>
         </details>
         <details>
           <summary>为什么要保留 .mosp 工程？</summary>
@@ -231,7 +230,7 @@ const updatesUrl = sitePath('releases/');
       </span>
     </a>
     <div class="footer-links">
-      <a href={editorUrl}>在线编辑器</a>
+      <a href={releasesUrl}>本地应用</a>
       <a href={docsUrl}>文档</a>
       <a href={repoUrl}>GitHub</a>
       <a href={`${repoUrl}/blob/main/LICENSE`}>AGPL-3.0</a>

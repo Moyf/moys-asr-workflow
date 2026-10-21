@@ -77,6 +77,7 @@ from maw.postprocess_ffmpeg import (  # noqa: E402
     normalize_video_encoder, video_encoder_attempts, video_encoder_options,
     _green_screen_input, _green_screen_size_resolution,
 )
+from maw.project_boundary import import_project, prepare_project  # noqa: E402
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
     normalize_project,
@@ -168,6 +169,7 @@ class ServerProject:
     reapeaks_path: Path | None = None
     audio_track: int = 0
     default_audio_track: int = 0
+    import_changes: tuple[dict, ...] = ()
 
 
 ProjectLoadProgressCallback = Callable[[str, int], None]
@@ -1355,12 +1357,10 @@ def load_project(
     if not json_path.exists():
         raise FileNotFoundError(f"JSON 文件不存在 - {json_path}")
     raw_data = json.loads(json_path.read_text(encoding="utf-8"))
-    # 兜底：上游（或旧版工具）可能写入 0 长/倒挂的段、词时间码，
-    # 加载时先拉齐到至少 100ms，避免编辑器里出现看不见的字幕块、保存被校验拒绝。
-    repaired_count = repair_project_timing_ranges(raw_data)
-    if repaired_count:
-        print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
-    data = normalize_project(raw_data)
+    imported = prepare_project(raw_data)
+    if imported.validation.project is None:
+        raise ProjectValidationFailed(imported.validation.errors)
+    data = imported.validation.project
     payload_audio_track = audio_track_from_payloads(
         data.get("waveform"),
         data.get("spectral"),
@@ -1400,6 +1400,7 @@ def load_project(
             reapeaks_path=None,
             audio_track=audio_track,
             default_audio_track=default_audio_track,
+            import_changes=imported.changes,
         )
 
     resolution = resolve_project_media(json_path, data, explicit_media)
@@ -1524,6 +1525,7 @@ def load_project(
         reapeaks_path=reapeaks_base,
         audio_track=audio_track,
         default_audio_track=default_audio_track,
+        import_changes=imported.changes,
     )
 
 
@@ -1689,6 +1691,7 @@ def build_server_page(
             "startupProgress": startup_status.get("progress", 100),
             "startupError": startup_status.get("error", ""),
             "canSave": project.json_path is not None,
+            "projectImportChanges": list(project.import_changes),
             "canPortableStickerExport": project.json_path is not None,
             "canOtozStickerExport": project.json_path is not None,
             "canOtozTimelineExport": project.json_path is not None,
@@ -2314,9 +2317,8 @@ class EditorServer(ThreadingHTTPServer):
 
         # 防止同目录同名旧文件掉包：段落内容与浏览器打开的副本一致才接管。
         browser_data = copy.deepcopy(browser_project)
-        repair_project_timing_ranges(browser_data)
         try:
-            normalized_browser = normalize_project(browser_data)
+            normalized_browser = import_project(browser_data)
         except ProjectValidationFailed as error:
             raise AttachProjectError(f"打开的工程内容无效：{error}") from error
         project = load_project(
@@ -2395,7 +2397,7 @@ class EditorServer(ThreadingHTTPServer):
         # 波形被清空、被 /api/waveform 的 REAPER 峰静默顶替。同一媒体、
         # 同一音轨时把运行态缓存合并回新工程，媒体/音轨变化则失效。
         _restore_runtime_inline_caches(self.project.data, normalized_project)
-        saved_project = replace(self.project, data=normalized_project, json_path=target)
+        saved_project = replace(self.project, data=normalized_project, json_path=target, import_changes=())
         if target != self.project.json_path:
             self._bind_project_locked(saved_project)
         else:

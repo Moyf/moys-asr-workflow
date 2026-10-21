@@ -29,6 +29,7 @@ from maw.asr.segmentation import (
     split_coarse_segments,
     split_segments_auto,
 )
+from maw.editor_entry_policy import should_generate_standalone_editor
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.alignment_models import FIRERED_ASR2_CTC_MODEL_ID
 from maw.gui_platform import creationflags, startupinfo
@@ -2094,7 +2095,7 @@ def create_local_engine(
     raise ValueError("engine must be one of: qwen-asr, funasr, moss, firered, whisper")
 
 
-_LOCAL_TAIL_PUNCT = "，。；,.;"
+_LOCAL_TAIL_PUNCT = ""
 
 
 def _char_weight_weights(text: str) -> list[float]:
@@ -2420,7 +2421,7 @@ def write_local_outputs(
     )
 
     html_path: Path | None = None
-    if generate_html:
+    if should_generate_standalone_editor(generate_html):
         edit_script = Path(__file__).resolve().parents[1] / "edit.py"
         candidate = json_path.with_name(f"{json_path.stem}.edit.html")
         completed = subprocess.run(

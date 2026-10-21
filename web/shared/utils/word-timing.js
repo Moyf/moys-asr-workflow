@@ -281,7 +281,7 @@ export function createWordTiming(dependencies) {
   function planWordTimingConversion(segments, indices, timing, options = {}) {
     const clock = wordClock(timing);
     const conversions = [], skipped = [];
-    const usedIds = segments.map(s => ({ id: s.id }));
+    const usedIds = [...(options.reservedSegments || []), ...segments].map(s => ({ id: s.id }));
     [...new Set(indices)].sort((a, b) => a - b).forEach(index => {
       const source = segments[index];
       if (!source) return;

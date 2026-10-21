@@ -47,8 +47,8 @@ function shiftMainGroupRefsAfterMove(movedIndexes) {
   const removeSet = new Set(movedIndexes);
   // 迁移对主轨组关系的影响与删除一致：先按切点拆组（清掉被迁移段的 head/ref），
   // 再把剩余 ref 的 headIdx 前移，最后断开仍指向被迁移下标的残余 ref。
-  MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
-  MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
+  if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
+  if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
   // 被迁移段若曾绑定副字幕，绑定一并解除（叠加轨不参与主副绑定）。
   const movedIds = [...removeSet].map((index) => MaweBoot.DATA.segments[index]?.id).filter(Boolean);
   if (movedIds.length) {
@@ -84,6 +84,7 @@ function shiftMainGroupRefsAfterInsert(insertAt) {
 }
 
 function resetOverlayGroupRefs(index) {
+  if (MaweBoot.DATA.subtitle_groups) return;
   // 叠加轨的 ref 只引用叠加轨自身段；一条段离开后断开指向它的 ref 并前移 headIdx。
   const overlay = getOverlayTrack();
   (overlay?.segments || []).forEach((segment) => {
@@ -115,6 +116,7 @@ function captureCueColorSnapshot(segment) {
 }
 
 function applyCueColorSnapshot(segment, snapshot) {
+  if (segment?.color_group_id) return true;
   if (!segment || !snapshot?.name) return false;
   segment.color_ref = null;
   segment.color = {
@@ -138,6 +140,7 @@ function captureCueStickerSnapshot(segments, index) {
 }
 
 function applyCueStickerSnapshot(segment, snapshot) {
+  if (segment?.sticker_group_id) return true;
   if (!segment || !snapshot) return false;
   segment.sticker_ref = null;
   segment.sticker = { ...snapshot, start: segment.start, end: segment.end };
@@ -237,8 +240,8 @@ function convertOverlayCueToMainForDrag(index) {
   const stickerSnapshot = captureCueStickerSnapshot(overlay.segments, index);
   // 剩下的叠加轨组员按主轨同款「组拆分」语义提升新 head，然后迁移段
   // 物化自持颜色/表情回到主轨（split 依赖迁移前下标，必须在 splice 前调用）。
-  MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
-  MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'sticker', 'sticker_ref', overlay.segments);
+  if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
+  if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'sticker', 'sticker_ref', overlay.segments);
   resetOverlayGroupRefs(index);
   const newIndex = moveOverlaySegmentToMainTrack(index);
   if (newIndex < 0) return -1;
@@ -265,8 +268,8 @@ function convertOverlayCueToMain(index) {
     const colorSnapshot = captureCueColorSnapshot(segment);
     const stickerSnapshot = captureCueStickerSnapshot(overlay.segments, index);
     // 与拖动入口一致：剩余组员先提升新 head，迁移段物化自持颜色/表情。
-    MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
-    MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'sticker', 'sticker_ref', overlay.segments);
+    if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
+    if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'sticker', 'sticker_ref', overlay.segments);
     resetOverlayGroupRefs(index);
     const newIndex = moveOverlaySegmentToMainTrack(index);
     if (newIndex < 0) return false;

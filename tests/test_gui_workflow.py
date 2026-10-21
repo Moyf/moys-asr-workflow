@@ -676,6 +676,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
             api_key="secret-key",
             workspace_id="workspace-123",
             ui_language="en",
+            generate_html=False,
         )
         self.srt_path.write_text("1\n", encoding="utf-8")
         self.srt_path.with_suffix(".mosp").write_text('{"segments": [{"start": 0, "end": 1000, "text": "test"}]}\n', encoding="utf-8")
@@ -709,13 +710,8 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(events, ["started", "done"])
         self.assertEqual(result.srt_path, self.srt_path)
         self.assertEqual(result.json_path, self.srt_path.with_suffix(".mosp"))
-        self.assertEqual(result.html_path, self.root / "_maw" / "out.edit.html")
-        render_html.assert_called_once_with(
-            self.srt_path.with_suffix(".mosp"),
-            self.media_path,
-            self.root / "_maw" / "out.edit.html",
-            "en",
-        )
+        self.assertIsNone(result.html_path)
+        render_html.assert_not_called()
 
     def _run_local_transcription_and_capture_env(self) -> dict[str, str]:
         request = TranscriptionRequest(
@@ -838,6 +834,32 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         value = "上传失败：文件格式不支持\n".encode("cp936")
         self.assertEqual(_decode_process_output(value), "上传失败：文件格式不支持\n")
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
+    def test_legacy_html_pipeline_forwards_requested_gui_language(self) -> None:
+        """Keep the old positive interface check scoped to the supported 1.x entry."""
+        self.srt_path.write_text("1\n", encoding="utf-8")
+        project = self.srt_path.with_suffix(".mosp")
+        project.write_text('{"segments":[{"start":0,"end":1000,"text":"test"}]}', encoding="utf-8")
+
+        class FakeProcess:
+            returncode = 0
+            stdout = []
+
+            def poll(self):
+                return 0
+
+            def wait(self, timeout=None):
+                return 0
+
+        html = self.root / "_maw" / "out.edit.html"
+        with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()), \
+             mock.patch("maw.gui_workflow.render_editor_html", return_value=html) as render:
+            result = run_transcription(TranscriptionRequest(
+                media_path=self.media_path, srt_path=self.srt_path, ui_language="en", generate_html=True))
+        self.assertEqual(result.html_path, html)
+        render.assert_called_once_with(project, self.media_path, html, "en")
+
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_render_editor_html_embeds_requested_gui_language(self) -> None:
         json_path = self.srt_path.with_suffix(".mosp")
         html_path = self.srt_path.with_suffix(".edit.html")
@@ -850,6 +872,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         self.assertRegex(page, r'typeof\s*"en"')
         self.assertNotIn("__UI_LANGUAGE_JSON__", page)
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_render_editor_html_embeds_bwf_time_reference(self) -> None:
         json_path = self.srt_path.with_suffix('.mosp')
         html_path = self.srt_path.with_suffix('.edit.html')
@@ -943,7 +966,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         )
 
     def test_run_transcription_reports_child_pid_after_popen(self) -> None:
-        request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
+        request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path, generate_html=False)
         self.srt_path.write_text("1\n", encoding="utf-8")
         self.srt_path.with_suffix(".mosp").write_text('{"segments": [{"start": 0, "end": 1000, "text": "test"}]}\n', encoding="utf-8")
         started: list[int] = []
@@ -989,6 +1012,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("识别请求失败", str(raised.exception))
         self.assertTrue(any("提交任务" in event for event in events))
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_run_transcription_keeps_json_when_optional_html_render_fails(self) -> None:
         request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
         self.srt_path.write_text("1\n", encoding="utf-8")
@@ -1386,6 +1410,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse((self.root / "out.0.12x.mosp").exists())
         self.assertIn("MAW_STAT rtf=0.123", events)
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_run_transcription_html_stays_on_transcribed_stem_with_maw_stat_present(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,

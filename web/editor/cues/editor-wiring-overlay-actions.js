@@ -90,8 +90,7 @@ function detachColorFromGroup(idx) {
   };
     return MaweCommands.run('移出颜色组', () => {
     MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
-    segment.color = detachedColor;
-    segment.color_ref = null;
+    window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, MaweBoot.DATA.segments, [idx], 'color', detachedColor);
     MaweColorFilter.refreshColorAssignmentUi();
     MaweHint.flashHint('已移出颜色组', 'success');
     return true;
@@ -112,8 +111,7 @@ function assignOverlayColor(idxs, colorName) {
   return MaweCommands.run('标记颜色', () => {
     targets.forEach((index) => {
       const segment = overlay.segments[index];
-      segment.color = { name: colorName, value: def.value, start: segment.start, end: segment.end };
-      segment.color_ref = null;
+      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, overlay.segments, [index], 'color', { name: colorName, value: def.value });
       segment._dirty = true;
     });
     overlay._dirty = true;
@@ -144,8 +142,7 @@ function clearOverlayColorOnTargets(idxs) {
     targets.forEach((index) => {
       const segment = overlay.segments[index];
       if (!segment) return;
-      segment.color = null;
-      segment.color_ref = null;
+      window.AsrEditorUtils.clearSubtitleGroupMembers(MaweBoot.DATA, overlay.segments, [index], 'color');
       segment._dirty = true;
     });
     overlay._dirty = true;
@@ -159,8 +156,7 @@ function clearOverlaySticker(index) {
   const overlay = getOverlayTrack();
   const segment = overlay?.segments?.[index];
   if (!segment || (!segment.sticker && !segment.sticker_ref)) return;
-  segment.sticker = null;
-  segment.sticker_ref = null;
+  window.AsrEditorUtils.clearSubtitleGroupMembers(MaweBoot.DATA, overlay.segments, [index], 'sticker');
   segment._dirty = true;
   overlay._dirty = true;
   MaweState.markProjectDirty();
@@ -218,7 +214,8 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
   MaweCuePanel.commitCuePanelEdit();
   return MaweCommands.run('新增叠加字幕', (command) => {
     overlay.segments.splice(index, 0, {
-      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(overlay.segments, `overlay-${index + 1}`, 'overlay'),
+      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+        window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `overlay-${index + 1}`, 'overlay'),
       start: safeStart,
       end: safeEnd,
       text: '',

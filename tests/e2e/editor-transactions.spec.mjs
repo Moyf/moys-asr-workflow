@@ -14,9 +14,15 @@ test.beforeAll(async () => {
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 test.beforeEach(async ({ page }) => {
   await disableOnboarding(page);
-  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
+  await page.addInitScript(() => {
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false }));
+    // Workspace settings are persisted content. Prepare gesture geometry before
+    // the initial checkpoint instead of making an unrelated edit during a drag.
+    localStorage.setItem('moy.asr.waveform.settings.v1', JSON.stringify({ mode: 'multi', secondsPerRow: 5 }));
+  });
   await page.goto(server.url);
   await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
+  await page.waitForFunction(() => MaweCoreState.player?.readyState >= 1);
 });
 
 async function snapshot(page) {
@@ -26,6 +32,7 @@ async function snapshot(page) {
     undo: MaweHistory.editorHistory.undoLength(),
     redo: MaweHistory.editorHistory.redoLength(),
     dirty: MaweServerSave.hasUnsavedProjectChanges(),
+    persisted: JSON.parse(MaweState.projectFingerprint()),
   }));
 }
 async function seedRedo(page) {
@@ -37,12 +44,11 @@ async function seedRedo(page) {
   expect((await snapshot(page)).redo).toBe(1);
 }
 async function beginDrag(page) {
-  await page.evaluate(() => {
-    const wave = MaweCoreState.waveformEditor;
-    wave.settings.mode = 'multi'; wave.settings.secondsPerRow = 5; wave.render();
-  });
+  await page.evaluate(() => MaweCoreState.waveformEditor.render());
   const handle = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"] .waveform-cue-handle.right').first();
-  await handle.scrollIntoViewIfNeeded();
+  // Hover retries locator resolution while virtual rows settle after undo and
+  // scrolling; a detached row must not leave us dragging stale coordinates.
+  await handle.hover();
   const box = await handle.boundingBox();
   if (!box) throw new Error('No cue boundary geometry');
   const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -70,29 +76,45 @@ test('deleting a clean cue becomes dirty, and undo restores the previous clean s
   expect((await snapshot(page)).dirty).toBe(true);
 });
 
-test('cancelled waveform preview restores data and preserves redo without publishing an undo', async ({ page }) => {
+async function prepareGesture(page, unsavedLayout) {
   await seedRedo(page);
-  const before = await snapshot(page);
-  await beginDrag(page);
-  const preview = await snapshot(page);
-  expect(preview.undo).toBe(before.undo);
-  expect(preview.redo).toBe(before.redo);
-  await page.evaluate(() => {
-    const pointerId = MaweCoreState.waveformEditor.drag.pointerId;
-    window.dispatchEvent(new PointerEvent('pointercancel', { pointerId }));
-  });
-  await page.mouse.up();
-  expect(await snapshot(page)).toEqual(before);
-});
+  if (unsavedLayout) {
+    await page.evaluate(() => {
+      const wave = MaweCoreState.waveformEditor;
+      wave.settings.secondsPerRow = 10;
+      wave.render();
+    });
+  }
+  expect((await snapshot(page)).dirty).toBe(unsavedLayout);
+}
 
-test('waveform preview returning to its origin preserves history and the clean state', async ({ page }) => {
-  await seedRedo(page);
-  const before = await snapshot(page);
-  const point = await beginDrag(page);
-  await page.mouse.move(point.x, point.y, { steps: 5 });
-  await page.mouse.up();
-  expect(await snapshot(page)).toEqual(before);
-});
+for (const unsavedLayout of [false, true]) {
+  const initialState = unsavedLayout ? 'unsaved workspace' : 'clean project';
+
+  test(`cancelled waveform preview preserves data, redo and ${initialState}`, async ({ page }) => {
+    await prepareGesture(page, unsavedLayout);
+    const before = await snapshot(page);
+    await beginDrag(page);
+    const preview = await snapshot(page);
+    expect(preview.undo).toBe(before.undo);
+    expect(preview.redo).toBe(before.redo);
+    await page.evaluate(() => {
+      const pointerId = MaweCoreState.waveformEditor.drag.pointerId;
+      window.dispatchEvent(new PointerEvent('pointercancel', { pointerId }));
+    });
+    await page.mouse.up();
+    expect(await snapshot(page)).toEqual(before);
+  });
+
+  test(`waveform preview returning to its origin preserves history and ${initialState}`, async ({ page }) => {
+    await prepareGesture(page, unsavedLayout);
+    const before = await snapshot(page);
+    const point = await beginDrag(page);
+    await page.mouse.move(point.x, point.y, { steps: 5 });
+    await page.mouse.up();
+    expect(await snapshot(page)).toEqual(before);
+  });
+}
 
 test('cancelling cue-panel text restores the original without clearing redo', async ({ page }) => {
   await page.evaluate(() => MaweSettings.updateEditorSettings({ cueEditorCancelOnEscape: true }));

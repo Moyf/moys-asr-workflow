@@ -29,6 +29,7 @@ from maw.colors import COLOR_PALETTE
 from maw.postprocess_ai_cleanup_items import cleaned_srt_segments
 from maw.project import PROJECT_SCHEMA
 from maw.script_alignment import project_cleanup_retained_segments
+from maw.subtitle_groups import GROUP_PROJECT_SCHEMA, validate_subtitle_groups
 
 PROJECT_SUBTITLE_EXTENSIONS: frozenset[str] = frozenset({".mosp", ".json"})
 
@@ -85,7 +86,13 @@ def _ass_color_style(value: object) -> str:
     return text if text in {"text", "speaker", "stroke", "none"} else "text"
 
 
-def _effective_color_name(segment: Mapping[str, object], segments: list[object]) -> str | None:
+def _effective_color_name(
+    segment: Mapping[str, object], segments: list[object], color_groups: Mapping[str, object],
+) -> str | None:
+    group_id = segment.get("color_group_id")
+    if isinstance(group_id, str) and group_id in color_groups:
+        value = color_groups.get(group_id)
+        return value.get("name") if isinstance(value, Mapping) else None
     direct = segment.get("color")
     if isinstance(direct, Mapping):
         name = direct.get("name")
@@ -167,12 +174,12 @@ def _overlay_base_style(family: str, size: int, color: str, margin_v: int) -> di
     return style
 
 
-def _main_event(segment: Mapping[str, object], segments: list[object], *, color_style: str) -> str | None:
+def _main_event(segment: Mapping[str, object], segments: list[object], *, color_style: str, color_groups: Mapping[str, object]) -> str | None:
     times = _cue_times(segment)
     if times is None:
         return None
     start_cs, end_cs = times
-    color_name = _effective_color_name(segment, segments)
+    color_name = _effective_color_name(segment, segments, color_groups)
     style_name = (
         color_name.upper()
         if color_style in {"text", "stroke"} and color_name in ASS_COLOR_STYLE_NAMES
@@ -184,6 +191,7 @@ def _main_event(segment: Mapping[str, object], segments: list[object], *, color_
 
 def _overlay_events(
     segments: list[object], *, color_style: str, family: str, size: int, color: str,
+    color_groups: Mapping[str, object],
 ) -> tuple[list[str], list[str]]:
     events: list[str] = []
     enabled = [s for s in segments if isinstance(s, Mapping) and s.get("disabled") is not True]
@@ -196,7 +204,7 @@ def _overlay_events(
             continue
         start_cs = max(0, _round_half_up(start / 10))
         end_cs = max(start_cs + 1, _round_half_up(end / 10))
-        color_name = _effective_color_name(segment, segments)
+        color_name = _effective_color_name(segment, segments, color_groups)
         style_name = (
             f"Overlay {color_name.upper()}"
             if color_style in {"text", "stroke"} and color_name in ASS_COLOR_STYLE_NAMES
@@ -231,6 +239,11 @@ def render_project_ass(
 ) -> str:
     """把工程渲染为基础 ASS（编辑器非 ASS 模式导出分支的 Python 复刻）。"""
 
+    _validate_burn_project_schema(project)
+    groups = project.get("subtitle_groups")
+    color_groups = {
+        group["id"]: group["value"] for group in groups["color"]
+    } if project.get("schema") == GROUP_PROJECT_SCHEMA else {}
     play_res_x = max(1, int(play_resolution[0]))
     play_res_y = max(1, int(play_resolution[1]))
     preview = project.get("preview")
@@ -255,7 +268,7 @@ def render_project_ass(
         for segment in main_segments
         if isinstance(segment, Mapping) and segment.get("disabled") is not True
         and isinstance(segment.get("text"), str) and segment["text"].strip()
-        and (event := _main_event(segment, raw_segments, color_style=color_style)) is not None
+        and (event := _main_event(segment, raw_segments, color_style=color_style, color_groups=color_groups)) is not None
     ]
 
     overlay_track = project.get("overlay_track")
@@ -265,7 +278,7 @@ def render_project_ass(
         if isinstance(raw_overlay, list):
             overlay_segments = raw_overlay
     overlay_lines, overlay_events = _overlay_events(
-        overlay_segments, color_style=color_style, family=family, size=size, color=color,
+        overlay_segments, color_style=color_style, family=family, size=size, color=color, color_groups=color_groups,
     )
     events.extend(overlay_events)
     if not events:
@@ -302,6 +315,15 @@ def _header_value(value: object) -> str:
     return text or "MAW"
 
 
+def _validate_burn_project_schema(project: Mapping[str, object]) -> None:
+    if "schema" in project and project["schema"] not in (PROJECT_SCHEMA, GROUP_PROJECT_SCHEMA):
+        raise ProjectSubtitleError(f"不支持的工程版本；烧录支持 {PROJECT_SCHEMA} 与 {GROUP_PROJECT_SCHEMA}。")
+    if project.get("schema") == GROUP_PROJECT_SCHEMA:
+        errors = validate_subtitle_groups(project)
+        if errors:
+            raise ProjectSubtitleError("工程分组无效：" + "; ".join(f"{path}: {message}" for path, message in errors))
+
+
 def load_burn_project(path: Path) -> tuple[dict[str, object], str]:
     """读取工程 JSON，返回 (document, 用于标题的文件名主干)。"""
 
@@ -313,6 +335,5 @@ def load_burn_project(path: Path) -> tuple[dict[str, object], str]:
         raise ProjectSubtitleError(f"工程文件不是有效的 JSON：{error}") from error
     if not isinstance(payload, dict):
         raise ProjectSubtitleError("工程文件内容不是 JSON 对象。")
-    if "schema" in payload and payload["schema"] != PROJECT_SCHEMA:
-        raise ProjectSubtitleError(f"不支持的工程版本；烧录仅支持 {PROJECT_SCHEMA}。")
+    _validate_burn_project_schema(payload)
     return payload, path.stem

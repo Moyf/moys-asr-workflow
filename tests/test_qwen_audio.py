@@ -671,11 +671,11 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
                 [
                     "1",
                     "00:00:00,000 --> 00:00:00,500",
-                    "精确时间码",
+                    "精确时间码。",
                     "",
                     "2",
                     "00:00:00,800 --> 00:00:01,300",
-                    "句级回退",
+                    "句级回退。",
                 ],
             )
 

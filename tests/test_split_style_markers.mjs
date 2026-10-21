@@ -8,6 +8,7 @@ loadEditorModule(fixture, 'shared/editor-utils.js');
 const utils = fixture.window.AsrEditorUtils;
 const settings = { assMode: true, assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both' };
 const context = { window: { AsrEditorUtils: utils }, MULTI_SUBTITLE_UTILS: utils,
+  MaweBoot: { DATA: { segments: [] } },
   MaweSettings: { EDITOR_SETTINGS: { ...settings } }, MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
 vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), context);
 const core = context.window.MaweSplitCore;
@@ -86,9 +87,20 @@ test('fade gives both output sentences a complete pair including nested styles',
 });
 
 test('edge punctuation is trimmed before inserting the missing pair', () => {
+  utils.setSplitTrimSymbols(['，']);
+  try {
   const split = core.buildSplitPair({ id: 'a', text: '**甲，乙**', start: 0, end: 2000 },
     4, 1000, 'a', false, 'continuous');
   assert.equal(split.left.text, '**甲**');
+  assert.equal(split.right.text, '**乙**');
+  } finally { utils.setSplitTrimSymbols([]); }
+});
+
+test('default punctuation preservation also applies to paired-style splitting', () => {
+  utils.setSplitTrimSymbols([]);
+  const split = core.buildSplitPair({ id: 'a', text: '**甲，乙**', start: 0, end: 2000 },
+    4, 1000, 'a', false, 'continuous');
+  assert.equal(split.left.text, '**甲，**');
   assert.equal(split.right.text, '**乙**');
 });
 
@@ -249,6 +261,8 @@ test('long repeated speech recovery stays linear for complete coverage and budge
 
 
 test('normalizing redundant styles preserves the caller word-connector trimming contract', () => {
+  utils.setSplitTrimSymbols([',']);
+  try {
   const segment = { id: 'comma', start: 0, end: 4000, text: '**a*b,c*d**' };
   for (const mode of ['word', 'continuous']) {
     const split = core.buildSplitPair(segment, 6, 2000, 'comma', false, mode);
@@ -256,4 +270,5 @@ test('normalizing redundant styles preserves the caller word-connector trimming 
       .map(run => run.text).join('');
     assert.equal(visible, mode === 'word' ? 'ab,cd' : 'abcd');
   }
+  } finally { utils.setSplitTrimSymbols([]); }
 });

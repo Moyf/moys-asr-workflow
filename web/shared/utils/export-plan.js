@@ -363,9 +363,20 @@ export function createUtilsModule(dependencies) {
         });
       });
     };
-    collectStickers(projectSegments, 'main', stickers);
     const overlayStickers = [];
-    collectStickers(projectOverlaySegments, 'overlay', overlayStickers);
+    if (project.subtitle_groups) {
+      const ranges = dependencies.subtitleGroupRanges(project, 'sticker', { activeTracksOnly: true }).filter(range => range.enabled);
+      for (const track of ['main', 'overlay']) {
+        const synthetic = ranges.filter(range => range.track === track).map(range => ({
+          start: range.start, end: range.end,
+          sticker: { ...range.source, start: range.start, end: range.end },
+        }));
+        collectStickers(synthetic, track, track === 'main' ? stickers : overlayStickers);
+      }
+    } else {
+      collectStickers(projectSegments, 'main', stickers);
+      collectStickers(projectOverlaySegments, 'overlay', overlayStickers);
+    }
     if (cues.main.length === 0 && cues.extension.length === 0 && cues.overlay.length === 0) {
       warnings.push({ code: 'no_enabled_cues' });
     }

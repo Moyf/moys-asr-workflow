@@ -157,6 +157,7 @@ async function init() {
   applyTheme();
   state.config.zoomPercent = applyZoomPercent(state.config.zoomPercent);
   window.MAWLauncher.config = state.config;
+  syncHtmlMenu();
   state.lang = state.config.guiLang || systemLanguage();
   if (!state.config.guiLang) {
     const result = await bridge("save_prefs", { guiLang: state.lang });

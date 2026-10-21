@@ -29,6 +29,7 @@ from pathlib import Path
 
 import requests
 
+from maw.editor_entry_policy import should_generate_standalone_editor
 from maw.stickers import get_default_sticker_dir
 from maw.asr.common import (
     _run_media_tool,
@@ -1156,11 +1157,11 @@ def main():
     )
     parser.add_argument(
         "--keep-punct", action="store_true",
-        help="保留每条字幕末尾的逗号和句号（默认去除）",
+        help="保留全部句尾标点，覆盖 --strip-tail-punct 的显式删除设置",
     )
     parser.add_argument(
         "--strip-tail-punct", default=_DEFAULT_STRIP_TAIL_PUNCT,
-        help="句尾剥除的标点集合；传空串禁用剥除（默认 = 共享断句配置默认清单 − 默认保留符号）",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认保留全部标点）",
     )
     parser.add_argument(
         "--extra-strong-punct", default=_DEFAULT_EXTRA_STRONG_PUNCT,
@@ -1201,7 +1202,7 @@ def main():
     )
     parser.add_argument(
         "--no-html", action="store_true",
-        help="禁用自动生成 edit HTML（默认 --json 时会一并生成）",
+        help="禁用自动生成 edit HTML（仅 1.x 默认 --json 时会一并生成；2.0 起始终不生成）",
     )
     parser.add_argument(
         "-ll", "--length-limit", type=parse_duration, default=None,
@@ -1641,7 +1642,7 @@ def main():
         )
         print(f"工程文件已保存到: {json_path}")
 
-        if not args.no_html:
+        if should_generate_standalone_editor(not args.no_html):
             edit_script = Path(__file__).resolve().parents[2] / "edit.py"
             if not edit_script.exists():
                 print("[警告] 找不到 edit.py，跳过 HTML 生成")

@@ -71,7 +71,7 @@ class ProjectContractTests(unittest.TestCase):
 
     def test_validate_project_rejects_unknown_project_schema(self) -> None:
         result = validate_project({
-            "schema": "moy.asr.project.v2",
+            "schema": "moy.asr.project.v99",
             "segments": [{"start": 0, "end": 1000, "text": "future"}],
         })
 

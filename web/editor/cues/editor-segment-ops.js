@@ -56,8 +56,11 @@
       MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     );
     const merged = {
+      ...window.AsrEditorUtils.cloneJsonValue(segs[0]),
+      color_group_id: segs.every(s => s.color_group_id === segs[0].color_group_id) ? segs[0].color_group_id : undefined,
+      sticker_group_id: segs.every(s => s.sticker_group_id === segs[0].sticker_group_id) ? segs[0].sticker_group_id : undefined,
       id: window.AsrEditorUtils.uniqueStableSegmentId(
-        MaweBoot.DATA.segments, `${segs[0].id || 'main'}-merged`, 'main',
+        window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `${segs[0].id || 'main'}-merged`, 'main',
       ),
       start: segs[0].start,
       end: segs[segs.length - 1].end,
@@ -84,8 +87,11 @@
         MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
       );
       mergedExtension = {
+        ...window.AsrEditorUtils.cloneJsonValue(extensionMergeSegments[0]),
+        color_group_id: extensionMergeSegments.every(s => s.color_group_id === extensionMergeSegments[0].color_group_id) ? extensionMergeSegments[0].color_group_id : undefined,
+        sticker_group_id: extensionMergeSegments.every(s => s.sticker_group_id === extensionMergeSegments[0].sticker_group_id) ? extensionMergeSegments[0].sticker_group_id : undefined,
         id: window.AsrEditorUtils.uniqueStableSegmentId(
-          extensionTrack.segments, `${extensionMergeSegments[0].id || extensionTrack.id}-merged`, `${extensionTrack.id}-segment`,
+          window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `${extensionMergeSegments[0].id || extensionTrack.id}-merged`, `${extensionTrack.id}-segment`,
         ),
         start: Math.min(...extensionMergeSegments.map((segment) => segment.start)),
         end: Math.max(...extensionMergeSegments.map((segment) => segment.end)),
@@ -207,8 +213,11 @@
       MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     );
     const merged = {
+      ...window.AsrEditorUtils.cloneJsonValue(segments[0]),
+      color_group_id: segments.every(s => s.color_group_id === segments[0].color_group_id) ? segments[0].color_group_id : undefined,
+      sticker_group_id: segments.every(s => s.sticker_group_id === segments[0].sticker_group_id) ? segments[0].sticker_group_id : undefined,
       id: window.AsrEditorUtils.uniqueStableSegmentId(
-        track.segments,
+        window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments),
         `${segments[0].id || track.id}-merged`,
         `${track.id}-segment`,
       ),
@@ -546,6 +555,10 @@
   //   - 删除场景：cutSet = 被物理删除的 idx；切完后由调用方负责 splice
   //   - 清除场景：cutSet = 被清除 group 字段的 idx；调用方不删除字幕本身
   function splitGroupsAtCutPoints(cutSet, headField, refField, segments = MaweBoot.DATA.segments) {
+  if (MaweBoot.DATA.subtitle_groups) {
+    window.AsrEditorUtils.clearSubtitleGroupMembers(MaweBoot.DATA, segments, cutSet, headField);
+    return;
+  }
   function groupHeadOf(seg, idx) {
     if (seg[headField]) return idx;
     if (seg[refField]) return seg[refField].headIdx;
