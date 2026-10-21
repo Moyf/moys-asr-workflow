@@ -72,6 +72,10 @@ export function createUtilsModule(dependencies) {
 
   function assEmphasizedText(text, style, fontSize, emphasisSyntax, inlineOptions) {
     const runs = inlineOptions?.preparedRuns || assInlineStyleRuns(text, emphasisSyntax, inlineOptions);
+    // libass applies an enabled t:\i target immediately. Use that baseline
+    // when creating legacy originalText too, without rewriting its clocks.
+    const italic = inlineOptions?.italicTransformTarget === undefined
+      ? style.italic : Boolean(inlineOptions.italicTransformTarget);
     return runs.map((run) => {
       const content = escapeAssText(run.text);
       let startTags = '';
@@ -115,6 +119,10 @@ export function createUtilsModule(dependencies) {
       if (run.underlined && !style.underline) {
         startTags += '\\u1';
         endTags += '\\u0';
+      }
+      if (run.italic && !italic) {
+        startTags += '\\i1';
+        endTags += '\\i0';
       }
       return startTags ? `{${startTags}}${content}{${endTags}}` : content;
     }).join('');
@@ -185,7 +193,9 @@ export function createUtilsModule(dependencies) {
     const colorStyle = normalizeAssColorStyle(appearance.ass_color_style) || 'text';
     const assMode = Boolean(profile);
     const emphasisSyntax = options.assEmphasisSyntax === 'none' ? 'none' : 'both';
-    const inlineOptions = options;
+    /** @type {Record<string, any>} */
+    const inlineOptions = { ...options, italicTransformTarget: profile?.animations.t.enabled
+      ? dependencies.assTransformStyleTargets(profile.animations.t.tags).italic : undefined };
     const numericTimeOffset = Number(options.timeOffset);
     const timeOffset = Number.isFinite(numericTimeOffset)
       ? Math.max(0, Math.round(numericTimeOffset)) : 0;
@@ -424,11 +434,12 @@ export function createUtilsModule(dependencies) {
           const transformTargets = profile.animations.t.enabled
             ? dependencies.assTransformStyleTargets(profile.animations.t.tags) : {};
           const sharedDecorations = (!slice.legacy || item.sharedStackCue)
-            && (transformTargets.underline !== undefined || transformTargets.strikeOut !== undefined);
+            && (transformTargets.underline !== undefined || transformTargets.strikeOut !== undefined
+              || transformTargets.italic !== undefined);
           if (sharedDecorations) {
             // libass applies these discrete t targets at cue start. Inline
             // marker resets must restore that effective value, including off.
-            for (const key of ['underline', 'strikeOut']) {
+            for (const key of ['underline', 'strikeOut', 'italic']) {
               if (transformTargets[key] !== undefined) scaledStyle[key] = Boolean(transformTargets[key]);
             }
           }

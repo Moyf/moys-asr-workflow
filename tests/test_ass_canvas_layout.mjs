@@ -233,7 +233,7 @@ test('overlay cues honor per-cue scale and pos overrides like main cues', () => 
 
 test('formatted font transforms retain the source clock and plain fractional fit never resets font animation', () => {
   let plan;
-  const output = h.buildAssPayload([{ start: 0, end: 2000, text: 'Plain **E** //C// -S-' }], {
+  const output = h.buildAssPayload([{ start: 0, end: 2000, text: 'Plain **E** %%C%% -S-' }], {
     assProfile: { animations: { t: { enabled: true, startMs: 0, endMs: 1500, accel: 2, tags: String.raw`\fs120\frz25` } } },
     assStyle: { fontSize: 64, emphasisScale: 1.5, commentScale: 0.5 },
     assExtensionStyle: { fontSize: 48 },
@@ -282,7 +282,7 @@ test('zero transform timing uses the source duration and equal nonzero timing re
 });
 
 test('ever-stacked inline decorations restore immediate transform targets in both directions', () => {
-  for (const [tag, key, marker] of [['u', 'underline', '_'], ['s', 'strikeOut', '~']]) {
+  for (const [tag, key, marker] of [['u', 'underline', '_'], ['s', 'strikeOut', '~'], ['i', 'italic', '//']]) {
     for (const target of [0, 1]) {
       const output = h.buildAssPayload([{ start: 0, end: 2000, text: `MMMM ${marker}MMMM${marker} MMMM` }], {
         assProfile: { animations: { t: { enabled: true, startMs: 100, endMs: 1100, tags: `\\${tag}${target}` } } },
@@ -296,6 +296,22 @@ test('ever-stacked inline decorations restore immediate transform targets in bot
         else assert.ok(event.endsWith(`MMMM {\\${tag}1}MMMM{\\${tag}0} MMMM`), 'only the marker enables decoration and restores off');
       }
     }
+  }
+});
+
+test('solo italic runs use the transform baseline without changing the legacy animation clock', () => {
+  for (const target of [0, 1]) {
+    let plan;
+    const output = h.buildAssPayload([{ start: 0, end: 2000, text: 'MAIN //MMMM// TAIL' }], {
+      assProfile: { animations: { t: { enabled: true, startMs: 100, endMs: 1100, tags: `\\i${target}` } } },
+      assStyle: { fontSize: 72, italic: !target }, onAssPlan: value => { plan = value; },
+    });
+    assert.equal(plan.slices.length, 1);
+    assert.equal(plan.slices[0].legacy, true);
+    const events = output.split('\n').filter(line => line.startsWith('Dialogue:'));
+    assert.equal(events.length, 1);
+    assert.ok(events[0].includes(`\\t(100,1100,1,\\i${target})`));
+    assert.ok(events[0].endsWith(target ? 'MAIN MMMM TAIL' : String.raw`MAIN {\i1}MMMM{\i0} TAIL`));
   }
 });
 

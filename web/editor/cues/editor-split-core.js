@@ -17,7 +17,7 @@
   // Match the existing ASS parser's delimiter widths, boundaries and feature gates.
   // Positions always refer to the source text, never to newly inserted display markers.
   function splitStyleTokens(text, settings = {}) {
-    if (settings.assMode !== true) return [];
+    if (settings.assMode !== true || settings.assSpecialSymbolRule === 'none') return [];
     const rule = settings.assSpecialSymbolRule;
     const widths = rule === 'none' ? [] : rule === 'double' ? [2] : [1, 2];
     const kinds = [
@@ -26,13 +26,16 @@
       ['~', settings.assStrikeEnabled !== false],
       ['-', settings.assSmallTextEnabled !== false],
       ['+', settings.assLargeTextEnabled !== false],
-      ['//', settings.assCommentEnabled !== false],
+      ['//', settings.assItalicEnabled !== false],
+      ['%%', settings.assCommentEnabled !== false],
     ];
     const tokens = [];
     for (const [symbol, enabled] of kinds) {
       if (!enabled) continue;
-      for (const width of symbol === '//' ? [2] : widths) {
-        const marker = symbol === '//' ? symbol : symbol.repeat(width);
+      // 斜体 // 与弱化 %% 是固定双符号：不随单双规则变化，也不接受单符号。
+      const fixedDouble = symbol === '//' || symbol === '%%';
+      for (const width of fixedDouble ? [2] : widths) {
+        const marker = fixedDouble ? symbol : symbol.repeat(width);
         const wordMarker = ['_', '-', '+'].includes(marker[0]);
         let cursor = 0;
         while (cursor < text.length) {
@@ -63,7 +66,7 @@
     const faded = MULTI_SUBTITLE_UTILS.parseSentenceFadeMarkers(text, rule);
     if (faded.fadeIn || faded.fadeOut) {
       let start = 0, end = text.length;
-      const shells = ['!!', '++', '--', '**', '__', '~~', '//'];
+      const shells = ['!!', '++', '--', '**', '__', '~~', '//', '%%'];
       while (start < end) {
         const body = text.slice(start, end);
         const shell = shells.find((marker) => body.length > marker.length * 2

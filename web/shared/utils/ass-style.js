@@ -104,27 +104,34 @@ export function createUtilsModule(dependencies) {
       });
     });
     if (['single', 'double', 'both'].includes(syntax)) addMarkers('*', 'emphasized');
-    if (includeUnderline) {
+    if (includeUnderline && rule !== 'none') {
       if (options.assUnderlineEnabled !== false) addMarkers('_', 'underlined');
       if (options.assStrikeEnabled !== false) addMarkers('~', 'struck');
       if (options.assSmallTextEnabled !== false) addMarkers('-', 'small');
       if (options.assLargeTextEnabled !== false) addMarkers('+', 'large');
-      // 注释固定双符号 //：不随单双规则变化，也不接受单 /。
+      // 弱化（注释）固定双符号 %%、斜体固定双符号 //：都不随单双规则变化，
+      // 也不接受单个 % 或单个 /，避免与字面百分号、路径与网址里的 // 冲突。
       if (options.assCommentEnabled !== false) {
-        assMarkedRanges(source, '//').forEach(({ start, end }) => {
+        assMarkedRanges(source, '%%').forEach(({ start, end }) => {
           markers.set(start, { field: 'comment', active: true, width: 2 });
           markers.set(end, { field: 'comment', active: false, width: 2 });
+        });
+      }
+      if (options.assItalicEnabled !== false) {
+        assMarkedRanges(source, '//').forEach(({ start, end }) => {
+          markers.set(start, { field: 'italic', active: true, width: 2 });
+          markers.set(end, { field: 'italic', active: false, width: 2 });
         });
       }
     }
     const runs = [];
     let content = '';
-    const active = { emphasized: 0, underlined: 0, struck: 0, small: 0, large: 0, comment: 0 };
+    const active = { emphasized: 0, underlined: 0, struck: 0, small: 0, large: 0, comment: 0, italic: 0 };
     const flush = () => {
       if (content) runs.push({ text: content, emphasized: active.emphasized > 0,
         underlined: active.underlined > 0, struck: active.struck > 0,
         size: active.large > 0 ? 'large' : active.small > 0 ? 'small' : null,
-        comment: active.comment > 0 });
+        comment: active.comment > 0, italic: active.italic > 0 });
       content = '';
     };
     for (let cursor = 0; cursor < source.length;) {
@@ -139,7 +146,7 @@ export function createUtilsModule(dependencies) {
       }
     }
     flush();
-    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false, struck: false, size: null, comment: false });
+    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false, struck: false, size: null, comment: false, italic: false });
     return runs;
   }
 

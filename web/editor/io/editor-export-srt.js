@@ -294,6 +294,7 @@
     assSmallTextEnabled: MaweSettings.EDITOR_SETTINGS.assSmallTextEnabled,
     assLargeTextEnabled: MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled,
     assCommentEnabled: MaweSettings.EDITOR_SETTINGS.assCommentEnabled,
+    assItalicEnabled: MaweSettings.EDITOR_SETTINGS.assItalicEnabled,
   };
 }
 

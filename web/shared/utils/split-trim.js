@@ -83,7 +83,7 @@ export function createUtilsModule(dependencies) {
   // 保守约束：只剥空白、绝不动符号本身；壳内正文会被剥空时不剥（空壳保留）。
   // 与拆分补齐的执行顺序维持既有安排：本修剪发生在 splitSubtitleText /
   // cleanSplitTextParts 内部（补齐之前），修剪集本就不含 MASS 符号。
-  const MASS_SHELL_CHARACTERS = new Set(['*', '+', '-', '_', '~', '!', '/', '>', '<']);
+  const MASS_SHELL_CHARACTERS = new Set(['*', '+', '-', '_', '~', '!', '/', '%', '>', '<']);
 
   const MASS_SHELL_MAX_RUN = 8;
 

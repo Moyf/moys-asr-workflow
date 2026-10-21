@@ -819,7 +819,7 @@ __WAVEFORM_CSS__
         <div class="help-category">
           <span>在「特殊文本格式」选择符号规则：双个符号、单双皆可或无（保留原文）。</span>
           <span class="help-break" aria-hidden="true"></span>
-          <span>**强调**　++放大++　--缩小--　__下划线__　~~删除线~~　//弱化//　!!震动!!</span>
+          <span>**强调**　++放大++　--缩小--　__下划线__　~~删除线~~　%%弱化%%　//斜体//　!!震动!!</span>
           <span class="help-break" aria-hidden="true"></span>
           <span>&gt;&gt;文字&lt;&lt; 为整句淡入淡出，也可只加一端；!!文字!! 原地震动；{{文字}} 放大出现。句级标记始终放在最外侧，例如 &gt;&gt;++文字++&lt;&lt;；其他格式可从右键「高级操作 → 左右添加字符」插入。</span>
         </div>
@@ -1556,8 +1556,12 @@ __WAVEFORM_CSS__
             <small class="editor-settings-hint" data-ass-symbol="+" data-ass-symbol-label="放大">++放大++</small>
           </div>
           <div class="ass-inline-text-option">
-            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-comment-enabled" data-ass-inline-setting="assCommentEnabled"> 注释</label>
-            <small class="editor-settings-hint" data-ass-symbol="//" data-ass-symbol-label="注释" data-ass-symbol-fixed="true">//注释//</small>
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-comment-enabled" data-ass-inline-setting="assCommentEnabled"> 弱化</label>
+            <small class="editor-settings-hint" data-ass-symbol="%%" data-ass-symbol-label="弱化" data-ass-symbol-fixed="true">%%弱化%%</small>
+          </div>
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-italic-enabled" data-ass-inline-setting="assItalicEnabled"> 斜体</label>
+            <small class="editor-settings-hint" data-ass-symbol="//" data-ass-symbol-label="斜体" data-ass-symbol-fixed="true">//斜体//</small>
           </div>
         </div>
       </div>
