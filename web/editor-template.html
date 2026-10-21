@@ -322,6 +322,44 @@ __WAVEFORM_CSS__
   </div>
 </aside>
 
+<aside id="audio-processing-panel" class="gap-remove-panel audio-processing-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="audio-processing-title">
+  <header class="gap-remove-panel-header" id="audio-processing-drag-handle">
+    <div class="gap-remove-heading"><h3 id="audio-processing-title">工程音量</h3></div>
+    <button type="button" id="audio-processing-close" class="gap-remove-close" aria-label="关闭（Esc）">×</button>
+  </header>
+  <div class="gap-remove-panel-body audio-processing-body">
+    <div class="audio-gain-control">
+      <label class="audio-control-label" for="audio-gain">整体增益 <output id="audio-gain-value" for="audio-gain">0.0 dB</output></label>
+      <div class="audio-gain-row"><button id="audio-gain-down" type="button" aria-label="降低 1 dB">−</button><input type="range" id="audio-gain" min="-6" max="12" step="0.1" value="0" aria-label="整体增益（dB）"><button id="audio-gain-up" type="button" aria-label="提高 1 dB">+</button></div>
+    </div>
+    <div class="audio-reference-control">
+      <label class="audio-control-label" for="audio-target">参考响度</label>
+      <div class="audio-reference-inputs">
+        <select id="audio-target"><option value="-14">常见标准：-14 LUFS</option><option value="-16">播客：-16 LUFS</option><option value="-23">广播电视：-23 LUFS</option><option value="custom">自定义</option></select>
+        <label id="audio-target-custom-control" hidden><input id="audio-target-custom" type="number" min="-70" max="0" step="0.1" value="-14" aria-label="自定义参考响度（LUFS）"><span>LUFS</span></label>
+      </div>
+    </div>
+    <p id="audio-measurement-status" role="status">尚未测量</p>
+    <dl class="audio-metrics">
+      <div><dt>原始整段响度</dt><dd id="audio-original-lufs">—</dd></div>
+      <div><dt>调后预计响度</dt><dd id="audio-adjusted-lufs">—</dd></div>
+      <div><dt>与参考差值</dt><dd id="audio-target-difference">—</dd></div>
+      <div><dt>预计真实峰值</dt><dd id="audio-true-peak">—</dd></div>
+    </dl>
+    <div class="audio-processing-actions">
+      <div class="audio-processing-primary-actions"><button type="button" id="audio-measure">重新测量</button><button type="button" id="audio-normalize" disabled>匹配到参考响度</button></div>
+      <button type="button" id="audio-gain-reset">重置增益</button>
+    </div>
+    <p id="audio-gain-warning" class="audio-gain-warning" role="status" hidden></p>
+    <div class="audio-processing-notes"><p>响度匹配受峰值等参数影响，可能无法完全一致。</p><p>仅调整固定增益，不压缩动态。调后响度为估计值。</p></div>
+    <div class="audio-listening-volume">
+      <label class="audio-control-label" for="media-volume">监听音量 <output id="audio-listening-volume-value" for="media-volume">100%</output></label>
+      <input type="range" id="media-volume" min="0" max="1" step="0.01" value="1" aria-label="监听音量">
+    </div>
+    <div class="audio-gain-range-control"><label><input type="checkbox" id="audio-gain-expanded">扩大增益范围<span class="audio-gain-range">（-60 ～ +24 dB）</span></label><span id="audio-gain-range-note" hidden>当前增益超出常规范围</span></div>
+  </div>
+</aside>
+
 <!-- 可拖动的非模态「标记与区段」管理窗（通用 Marker / Region） -->
 <aside class="gap-remove-panel markers-panel" id="markers-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="markers-panel-title">
   <header class="gap-remove-panel-header" id="markers-drag-handle">
@@ -2024,7 +2062,7 @@ __WAVEFORM_CSS__
       </button>
       <span class="media-clock"><span id="media-current-time">00:00</span> / <span id="media-duration">00:00</span></span>
       <input type="range" id="media-seek" min="0" max="0" step="0.01" value="0" aria-label="媒体进度">
-      <label class="media-volume-control" title="音量">🔊 <input type="range" id="media-volume" min="0" max="1" step="0.01" value="1" aria-label="音量"></label>
+      <button type="button" id="audio-processing-toggle" aria-expanded="false" aria-controls="audio-processing-panel" aria-label="工程音量" title="工程音量">📣</button>
       <label class="media-rate-control" title="播放速度">速度
         <select id="media-playback-rate" aria-label="播放速度">
           <option value="0.5">0.5×</option>

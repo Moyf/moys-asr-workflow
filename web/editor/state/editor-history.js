@@ -146,6 +146,9 @@
 
   // 按记录 kind 拍下当前状态，作为对端栈的镜像（label 沿用原记录）
   function snapshotCurrentForKind(kind, label, sourceRecord = null) {
+    if (kind === 'audio_processing') {
+      return { kind, label, audioProcessing: window.MaweAudioProcessing.settings() };
+    }
     if (kind === 'layout') {
       return window.AsrEditorUtils.buildHistoryRecord(
         'layout', label, MaweCoreState.waveformEditor?.getLayoutHistorySnapshot?.() || null,
@@ -238,6 +241,10 @@
 
   function applyHistoryRecord(record) {
   MaweWordTiming.clearSelection();
+  if (record.kind === 'audio_processing') {
+    window.MaweAudioProcessing.change(record.audioProcessing, { recordHistory: false });
+    return true;
+  }
   if (record.kind === 'layout') {
     if (!MaweCoreState.waveformEditor?.restoreLayoutHistorySnapshot?.(record.layout)) {
       MaweHint.flashHint('工作区恢复失败：波形模块尚未加载', 'warning');

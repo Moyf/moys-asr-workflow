@@ -38,6 +38,7 @@
 
   function isPlaybackKeyboardTarget(event) {
     const target = event.target;
+    if (target instanceof Element && target.closest('#audio-processing-panel')) return false;
     return isPlayerKeyboardTarget(event)
       || (target instanceof Element && Boolean(target.closest('#media-controls, .player-stage')));
   }
