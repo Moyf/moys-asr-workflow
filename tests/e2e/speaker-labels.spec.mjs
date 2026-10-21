@@ -34,7 +34,7 @@ test.afterAll(async () => {
 
 async function revealSpeakerCue(page) {
   await page.evaluate(() => {
-    const segment = MaweBoot.DATA.segments[0];
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
     segment.color = { name: 'yellow' };
     const media = document.getElementById('player');
     media.currentTime = 1;
@@ -128,7 +128,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#overlay-main-speaker-label')).toHaveText('Host：');
   await expect(page.locator('#overlay-main-speaker-label')).toBeVisible();
   await expect(page.locator('#overlay-main-text')).toHaveText('Host：Alpha');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('Alpha');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('Alpha');
 
   await page.locator('#subtitle-color-style').selectOption('text');
   await expect(page.locator('#subtitle-color-style')).toHaveValue('text');
@@ -231,12 +231,12 @@ test('configures preview-only speaker labels and independently controls SRT expo
   const collectDownload = (download) => downloads.push(download.suggestedFilename());
   page.on('download', collectDownload);
   const { filenameBase } = await page.evaluate(async () => {
-    const previousColor = MaweBoot.DATA.segments[1].color;
-    MaweBoot.DATA.segments[1].color = { name: 'green' };
+    const previousColor = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].color;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].color = { name: 'green' };
     window.showSaveFilePicker = undefined;
     await MaweExportSrt.downloadColorSrts(false);
-    if (previousColor) MaweBoot.DATA.segments[1].color = previousColor;
-    else delete MaweBoot.DATA.segments[1].color;
+    if (previousColor) AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].color = previousColor;
+    else delete AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].color;
     return { filenameBase: MaweBoot.FILENAME_BASE };
   });
   await expect.poll(() => downloads.length).toBe(3);
@@ -508,11 +508,10 @@ test('overlay track speaker labels render through the canvas in ASS mode', async
         names: { yellow: 'Host', green: 'Guest', red: 'Narrator', purple: 'Stage', blue: 'Caption' },
       },
     };
-    MaweBoot.DATA.segments = [{ id: 'main-ov', start: 0, end: 4000, text: 'main cue' }];
-    MaweBoot.DATA.overlay_track = {
-      enabled: true,
-      segments: [{ id: 'ov-1', start: 0, end: 4000, text: 'overlay cue', color: { name: 'yellow' } }],
-    };
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'main-ov', start: 0, end: 4000, text: 'main cue' }];
+    const overlayTrack = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA, { enabled: true });
+    overlayTrack.segments = [{ id: 'ov-1', start: 0, end: 4000, text: 'overlay cue' }];
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, overlayTrack.segments, [0], 'color', { name: 'yellow' });
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);

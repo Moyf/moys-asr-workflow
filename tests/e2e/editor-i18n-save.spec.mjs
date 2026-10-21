@@ -51,11 +51,11 @@ test('English waveform and sticker names preserve project text', async ({ page }
   await disableOnboarding(page);
   await page.goto(`${server.url}?lang=en`);
   await page.evaluate(() => {
-    const segment = MaweBoot.DATA.segments[0];
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
     segment.text = '删除';
     segment.items = [];
     segment.sticker = { name: '保存', path: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/%3E' };
-    MaweBoot.DATA.segments[1].sticker_ref = { headIdx: 0, name: '保存' };
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].sticker_ref = { headIdx: 0, name: '保存' };
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
   await expect(page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-label').first()).toHaveText('删除');
@@ -80,9 +80,13 @@ test('English overlay subtitles and the editing panel preserve literal input', a
   await disableOnboarding(page);
   await page.goto(`${server.url}?lang=en`);
   await page.evaluate(() => {
-    MaweBoot.DATA.overlay_track = { enabled: true, segments: [
-      { id: 'literal-overlay', start: 1000, end: 3000, text: '删除', items: [] },
-    ] };
+    {
+      const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+      Object.assign(overlay, { enabled: true, segments: [
+          { id: 'literal-overlay', start: 1000, end: 3000, text: '删除', items: [] },
+        ] });
+      AsrEditorUtils.ensureStableSegmentIds(overlay.segments, overlay.id);
+    }
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
   const text = page.locator('.overlay-track-cue .text').first();
@@ -101,8 +105,8 @@ test('English timed-text differences preserve literal subtitle content', async (
   await disableOnboarding(page);
   await page.goto(`${server.url}?lang=en`);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].text = '删除';
-    MaweBoot.DATA.segments[0].items = [];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '删除';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items = [];
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
   await page.locator('#batch-operations-btn').click();
@@ -119,9 +123,9 @@ test('English split preview preserves both subtitle halves', async ({ page }) =>
   await disableOnboarding(page);
   await page.goto(`${server.url}?lang=en`);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].text = '删除保存';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '删除保存';
     MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride = 'continuous';
-    MaweBoot.DATA.segments[0].items = [];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items = [];
     MaweCuePanel.renderAll({ waveform: 'full' });
     MaweSplitCore.openMainWaveformSplitModal(0, 4000);
   });
@@ -130,7 +134,7 @@ test('English split preview preserves both subtitle halves', async ({ page }) =>
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await page.screenshot({ path: test.info().outputPath('literal-split-preview.png') });
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].text = '主副无';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '主副无';
     MaweSplitCore.openMainWaveformSplitModal(0, 4000);
   });
   await expect(page.locator('#multi-subtitle-split-main-text .multi-subtitle-split-char'))
@@ -387,8 +391,8 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
   await page.evaluate(() => {
     // 重叠修复 UX 针对毫秒时间基准；帧模式下 1ms 会被对齐到帧抹平。
     MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
-    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 1;
-    MaweBoot.DATA.segments[0]._dirty = true;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start + 1;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty = true;
     MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
   await page.keyboard.press('Control+s');
@@ -401,7 +405,7 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
   ));
   await hint.locator('.hint-project-repair-auto').click();
   expect((await retry).ok()).toBe(true);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[1].start)).toBe(50001);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start)).toBe(50001);
   await expect(page.locator('.hint-card').last()).toContainText('保存成功！');
   expect(saveAttempts).toBe(2);
 });
@@ -426,8 +430,8 @@ test('larger subtitle-segment overlap requires an explicit repair direction', as
   await page.evaluate(() => {
     // 同上：钉住毫秒时间基准，避免对齐到帧改写时间边界。
     MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
-    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 2000;
-    MaweBoot.DATA.segments[0]._dirty = true;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start + 2000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty = true;
     MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
 

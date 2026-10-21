@@ -851,7 +851,7 @@ test('keeps color group references valid through an overlay round trip', async (
   await page.keyboard.press('Escape');
   const reverted = await page.evaluate(() => {
     const ok = convertOverlayCueToMain(0);
-    return { ok, segs: MaweBoot.DATA.segments.map((s) => s.id) };
+    return { ok, segs: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((s) => s.id) };
   });
   expect(reverted.ok).toBe(true);
   expect(reverted.segs).toHaveLength(5);
@@ -924,9 +924,9 @@ test('overlay disabling stays independent of the main-secondary binding at the s
   });
   await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
   const disabledState = () => page.evaluate(() => [
-    MaweBoot.DATA.segments[0].disabled === true,
-    MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].disabled === true,
-    MaweBoot.DATA.overlay_track.segments[0].disabled === true,
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].disabled === true,
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].disabled === true,
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0].disabled === true,
   ]);
   await page.locator('.overlay-track-cue').click({ button: 'right', force: true });
   await page.getByText('禁用此条', { exact: true }).click();
@@ -966,7 +966,7 @@ test('assigns colors and disabled state to overlay cues with main-track parity',
   await page.locator('.overlay-track-cue').click();
   await page.keyboard.press('3');
   const afterKey = await page.evaluate(() => {
-    const segment = MaweBoot.DATA.overlay_track.segments[0];
+    const segment = AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0];
     return {
       color: segment.color?.name || null,
       ref: segment.color_ref,
@@ -993,27 +993,27 @@ test('assigns colors and disabled state to overlay cues with main-track parity',
   await page.locator('#ctxmenu .item', { hasText: '标记颜色' })
     .locator(':scope > div').nth(1).locator(':scope > span').first().click();
   const firstPalette = await page.evaluate(() => MaweColors.COLOR_PALETTE[0].name);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].color?.name)).toBe(firstPalette);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0].color?.name)).toBe(firstPalette);
   await page.locator('.overlay-track-cue').click();
   await page.keyboard.press('0');
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].color)).toBeNull();
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0].color)).toBeNull();
 
   // 右键禁用/启用
   await page.locator('.overlay-track-cue').click({ button: 'right', force: true });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
   await page.getByText('禁用此条', { exact: true }).click();
-  const afterDisable = await page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].disabled);
+  const afterDisable = await page.evaluate(() => AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0].disabled);
   expect(afterDisable).toBe(true);
   await page.locator('.overlay-track-cue').click({ button: 'right', force: true });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
   await page.getByText('启用此条', { exact: true }).click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].disabled)).toBe(false);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0].disabled)).toBe(false);
 
   // 波形上 Alt+点击叠加块：切换禁用（track 参数直传叠加轨）
   await page.locator('.waveform-cue-block.waveform-overlay-block').click({ modifiers: ['Alt'] });
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].disabled)).toBe(true);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0].disabled)).toBe(true);
   await page.locator('.waveform-cue-block.waveform-overlay-block').click({ modifiers: ['Alt'] });
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].disabled)).toBe(false);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0].disabled)).toBe(false);
 });
 
 test('falls back to covering the main block when the row is too short for the overlay lane', async ({ page }) => {
@@ -1094,7 +1094,7 @@ test('renders overlay group badges above the overlay lane at the row midpoint', 
 
   // 添加表情包后徽章自动刷新（清色 → 🎨 徽章消失，🦊 徽章不受影响）
   await page.evaluate(() => {
-    const segment = MaweBoot.DATA.overlay_track.segments[0];
+    const segment = AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0];
     segment.color = null;
     segment.color_ref = null;
     MaweColorFilter.refreshStickerAssignmentUi();
@@ -1226,29 +1226,6 @@ test('clears a stale overlay track when a plain SRT replaces the main track', as
     waveform: generateWaveformPayload(3000),
   };
   await page.goto(server.url);
-  await page.evaluate(() => {
-    window.__assignLog = [];
-    let track = MaweBoot.DATA.overlay_track ?? null;
-    Object.defineProperty(MaweBoot.DATA, 'overlay_track', {
-      configurable: true,
-      get() { return track; },
-      set(next) {
-        window.__assignLog.push({
-          kind: 'assign',
-          enabled: next?.enabled ?? null,
-          count: next?.segments?.length ?? null,
-          stack: new Error().stack?.split('\n').slice(2, 5).join(' | '),
-        });
-        track = next;
-      },
-    });
-    setInterval(() => {
-      if (track && track.enabled !== window.__lastEnabled) {
-        window.__assignLog.push({ kind: 'enabled-flip', enabled: track.enabled });
-        window.__lastEnabled = track.enabled;
-      }
-    }, 40);
-  });
   await dropProject(page, project);
   await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
 
