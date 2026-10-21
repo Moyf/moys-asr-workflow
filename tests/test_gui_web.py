@@ -666,7 +666,10 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         inventory = result["inventory"]
         self.assertEqual(inventory["runtimeVersionExpected"], LOCAL.spec.runtime_version)
         self.assertEqual(inventory["runtimeVersionInstalled"], LOCAL.spec.runtime_version)
-        self.assertEqual(inventory["pythonVersionInstalled"], LOCAL.spec.python_version)
+        self.assertEqual(
+            inventory["pythonVersionInstalled"],
+            "{}.{}.{}".format(*sys.version_info[:3]),
+        )
         components = {item["name"]: item for item in inventory["components"]}
         self.assertTrue(components[LOCAL.spec.package_dirs[0]]["installed"])
         self.assertFalse(components[LOCAL.spec.package_dirs[-1]]["installed"])

@@ -288,7 +288,9 @@ jobs:
             os: ubuntu-22.04
             arch: x64
             asset: MAW-Linux-x86_64
-            paths: build-appimage/MAW-Linux-x86_64*.AppImage
+            paths: |
+              build-appimage/MAW-Linux-x86_64*.AppImage
+              build-appimage/MAW-lite-Linux-x86_64*.AppImage
     runs-on: ${{ matrix.os }}
     env:
       PYTHONUTF8: '1'
@@ -627,10 +629,11 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           set -euo pipefail
-          AppImage="build-appimage/MAW-Linux-x86_64.AppImage"
-          test -f "$AppImage"
-          test -x "$AppImage"
-          file "$AppImage" | grep -q 'ELF 64-bit'
+          for AppImage in build-appimage/MAW-Linux-x86_64.AppImage build-appimage/MAW-lite-Linux-x86_64.AppImage; do
+            test -f "$AppImage"
+            test -x "$AppImage"
+            file "$AppImage" | grep -q 'ELF 64-bit'
+          done
 
       - name: Verify no bundled C++ runtime in AppImage
         if: matrix.platform == 'linux'
@@ -651,6 +654,22 @@ jobs:
           echo "OK: runtime requirements txt 随包分发"
           python3 ../scripts/verify_web_bundle_payload.py squashfs-root/_internal/web
           rm -r squashfs-root
+
+      - name: Verify lite AppImage omits FFmpeg
+        if: matrix.platform == 'linux'
+        run: |
+          set -euo pipefail
+          cd build-appimage
+          ./MAW-lite-Linux-x86_64.AppImage --appimage-extract >/dev/null 2>&1
+          if [ -e squashfs-root/ffmpeg ] || [ -e squashfs-root/_internal/ffmpeg ]; then
+            echo "FAIL: MAW-lite 不应内置 ffmpeg/ffprobe"
+            exit 1
+          fi
+          test -f squashfs-root/AppRun
+          test -f squashfs-root/FAQ-常见问题.txt
+          test -f squashfs-root/_internal/local-runtime/requirements-local.txt
+          rm -r squashfs-root
+          echo "OK: MAW-lite 不含 FFmpeg，其余内容与完整版一致"
 
       - name: Diagnose AppImage libraries
         if: ${{ always() && matrix.platform == 'linux' }}
@@ -689,25 +708,28 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           set -euo pipefail
-          AppImage="build-appimage/MAW-Linux-x86_64.AppImage"
-          # 无 FUSE 环境用解压运行模式；timeout 命中（124）说明 GUI 事件循环在正常存活。
-          # 20 秒足以确认 Launcher 正常起屏（正常启动只需数秒），到期被杀即视为通过。
-          set +e
-          timeout 20 xvfb-run -a env APPIMAGE_EXTRACT_AND_RUN=1 "$AppImage" > /tmp/maw-smoke.log 2>&1
-          status=$?
-          set -e
-          if [ "$status" -ne 124 ]; then
-            echo "AppImage did not stay running (status $status). See log:"
-            tail -50 /tmp/maw-smoke.log
-            exit 1
-          fi
+          for AppImage in build-appimage/MAW-Linux-x86_64.AppImage build-appimage/MAW-lite-Linux-x86_64.AppImage; do
+            # 无 FUSE 环境用解压运行模式；timeout 命中（124）说明 GUI 事件循环在正常存活。
+            # 20 秒足以确认 Launcher 正常起屏（正常启动只需数秒），到期被杀即视为通过。
+            set +e
+            timeout 20 xvfb-run -a env APPIMAGE_EXTRACT_AND_RUN=1 "$AppImage" > /tmp/maw-smoke.log 2>&1
+            status=$?
+            set -e
+            if [ "$status" -ne 124 ]; then
+              echo "$AppImage did not stay running (status $status). See log:"
+              tail -50 /tmp/maw-smoke.log
+              exit 1
+            fi
+          done
 
       - name: Rename AppImage with version
         if: ${{ matrix.platform == 'linux' && startsWith(github.ref, 'refs/tags/v') }}
         run: |
           set -euo pipefail
-          mv "build-appimage/MAW-Linux-x86_64.AppImage" "build-appimage/MAW-Linux-x86_64-${{ github.ref_name }}.AppImage"
-          test -f "build-appimage/MAW-Linux-x86_64-${{ github.ref_name }}.AppImage"
+          for Variant in MAW MAW-lite; do
+            mv "build-appimage/$Variant-Linux-x86_64.AppImage" "build-appimage/$Variant-Linux-x86_64-${{ github.ref_name }}.AppImage"
+            test -f "build-appimage/$Variant-Linux-x86_64-${{ github.ref_name }}.AppImage"
+          done
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -761,7 +783,7 @@ jobs:
             done
           }
           check_platform macos "MAW-macOS-arm64-$Tag.zip" "MAW-lite-macOS-arm64-$Tag.zip"
-          check_platform linux "MAW-Linux-x86_64-$Tag.AppImage"
+          check_platform linux "MAW-Linux-x86_64-$Tag.AppImage" "MAW-lite-Linux-x86_64-$Tag.AppImage"
           Args=(--tag "$Tag" --output release-notes.md)
           if [ "${#Failed[@]}" -gt 0 ]; then
             Args+=(--failed "$(IFS=,; echo "${Failed[*]}")")

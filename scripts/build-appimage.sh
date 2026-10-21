@@ -32,7 +32,7 @@ uv run --group build pyinstaller --noconfirm --clean scripts/packaging/MAW.spec
 # user-facing FAQ at the AppImage root as well, where users can find it easily.
 cp "docs/user/FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"
 
-echo "==> 2/6 准备静态 ffmpeg（BtbN FFmpeg-Builds，latest release 的稳定分支资产）"
+echo "==> 2/6 下载并校验静态 ffmpeg（BtbN FFmpeg-Builds，latest release 的稳定分支资产）"
 FFMPEG_BRANCH="8.1"
 FFMPEG_ASSET="ffmpeg-n${FFMPEG_BRANCH}-latest-linux64-gpl-${FFMPEG_BRANCH}.tar.xz"
 FFMPEG_TARBALL="$BUILD_DIR/$FFMPEG_ASSET"
@@ -83,44 +83,6 @@ if [ -f "$FFMPEG_TARBALL" ]; then
 else
     FFMPEG_TARBALL_SHA256="unavailable (reused cached ffmpeg-static; archive not kept)"
 fi
-# 放入 PyInstaller onedir 产物：frozen 时 _bundled_ffmpeg_directory() 查
-# sys.executable.parent / ffmpeg / bin（即 dist/MAW/ffmpeg/bin）。BtbN 包内
-# 二进制位于解压根目录的 bin/ 子目录（与 johnvansickle 的根目录布局不同）。
-mkdir -p "dist/MAW/ffmpeg/bin"
-cp "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe" "dist/MAW/ffmpeg/bin/"
-# GPL 合规：BtbN linux64-gpl 是 GPL 构建，分发须随附许可证文本与对应源码
-# 获取方式（GPLv3 §4 传递许可证副本、§6 提供源码书面要约）。GPLv3 全文
-# 优先从 gnu.org 拉取，失败时回退 GitHub 官方 SPDX 镜像（GitHub hosted
-# runner 上 gnu.org 偶发连接超时，curl (28) 会导致 AppImage 构建连带失败）；
-# SOURCE.txt 记录构建来源、归档地址与校验和。
-_GPL_TARGET="dist/MAW/ffmpeg/GPLv3.txt"
-_GPL_TMP="${_GPL_TARGET}.tmp"
-rm -f "$_GPL_TMP"
-if curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 \
-    -o "$_GPL_TMP" "https://www.gnu.org/licenses/gpl-3.0.txt" \
-    || curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 --retry 1 \
-        -o "$_GPL_TMP" \
-        "https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-3.0-only.txt"; then
-    :
-else
-    rm -f "$_GPL_TMP"
-    echo "GPL 许可证文本下载失败（gnu.org 与 SPDX 镜像均不可达）" >&2
-    exit 1
-fi
-grep -q "GNU GENERAL" "$_GPL_TMP" || { rm -f "$_GPL_TMP"; echo "GPL 许可证文本内容校验失败" >&2; exit 1; }
-mv -f "$_GPL_TMP" "$_GPL_TARGET"
-test -s "$_GPL_TARGET"
-cat > "dist/MAW/ffmpeg/SOURCE.txt" <<EOF
-FFmpeg n${FFMPEG_BRANCH}-latest (${FFMPEG_BRANCH} stable branch) — BtbN FFmpeg-Builds linux64-gpl static build
-Build provider: https://github.com/BtbN/FFmpeg-Builds
-Original archive: $FFMPEG_URL
-Archive SHA-256: $FFMPEG_TARBALL_SHA256
-License: GPL-3.0 (full text in GPLv3.txt)
-Upstream FFmpeg source: https://github.com/FFmpeg/FFmpeg
-This MAW package includes only ffmpeg and ffprobe from the original build.
-EOF
-echo "    静态 ffmpeg: $("$FFMPEG_DIR/bin/ffmpeg" -version 2>&1 | head -n 1)"
-
 echo "==> 3/6 组装 AppDir"
 if [ -d "$APP_DIR" ]; then
     rm -r "$APP_DIR"
@@ -187,14 +149,68 @@ if [ ! -x "$APPIMAGE_TOOL" ]; then
     fi
 fi
 
-echo "==> 5/6 打包 AppImage"
-"$APPIMAGE_TOOL" --appimage-extract-and-run "$APP_DIR" "$BUILD_DIR/MAW-Linux-x86_64.AppImage"
+echo "==> 5/6 打包 AppImage（先打包不含 FFmpeg 的 lite 版，再放入静态 ffmpeg 打完整版）"
+LITE_APPIMAGE="$BUILD_DIR/MAW-lite-Linux-x86_64.AppImage"
+APPIMAGE="$BUILD_DIR/MAW-Linux-x86_64.AppImage"
+rm -f "$LITE_APPIMAGE" "$APPIMAGE"
+# lite 与 Windows / macOS 的 MAW-lite 对齐：系统已有 ffmpeg/ffprobe 时体积更小。
+test ! -e "$APP_DIR/ffmpeg"
+"$APPIMAGE_TOOL" --appimage-extract-and-run "$APP_DIR" "$LITE_APPIMAGE"
+test -x "$LITE_APPIMAGE"
+
+# 放入 PyInstaller onedir 产物：frozen 时 _bundled_ffmpeg_directory() 查
+# sys.executable.parent / ffmpeg / bin（即 dist/MAW/ffmpeg/bin）。BtbN 包内
+# 二进制位于解压根目录的 bin/ 子目录（与 johnvansickle 的根目录布局不同）。
+mkdir -p "dist/MAW/ffmpeg/bin"
+cp "$FFMPEG_DIR/bin/ffmpeg" "$FFMPEG_DIR/bin/ffprobe" "dist/MAW/ffmpeg/bin/"
+# GPL 合规：BtbN linux64-gpl 是 GPL 构建，分发须随附许可证文本与对应源码
+# 获取方式（GPLv3 §4 传递许可证副本、§6 提供源码书面要约）。GPLv3 全文
+# 优先从 gnu.org 拉取，失败时回退 GitHub 官方 SPDX 镜像（GitHub hosted
+# runner 上 gnu.org 偶发连接超时，curl (28) 会导致 AppImage 构建连带失败）；
+# SOURCE.txt 记录构建来源、归档地址与校验和。
+_GPL_TARGET="dist/MAW/ffmpeg/GPLv3.txt"
+_GPL_TMP="${_GPL_TARGET}.tmp"
+rm -f "$_GPL_TMP"
+if curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 \
+    -o "$_GPL_TMP" "https://www.gnu.org/licenses/gpl-3.0.txt" \
+    || curl --fail --location --silent --show-error --connect-timeout 15 --max-time 90 --retry 1 \
+        -o "$_GPL_TMP" \
+        "https://raw.githubusercontent.com/spdx/license-list-data/main/text/GPL-3.0-only.txt"; then
+    :
+else
+    rm -f "$_GPL_TMP"
+    echo "GPL 许可证文本下载失败（gnu.org 与 SPDX 镜像均不可达）" >&2
+    exit 1
+fi
+grep -q "GNU GENERAL" "$_GPL_TMP" || { rm -f "$_GPL_TMP"; echo "GPL 许可证文本内容校验失败" >&2; exit 1; }
+mv -f "$_GPL_TMP" "$_GPL_TARGET"
+test -s "$_GPL_TARGET"
+cat > "dist/MAW/ffmpeg/SOURCE.txt" <<EOF
+FFmpeg n${FFMPEG_BRANCH}-latest (${FFMPEG_BRANCH} stable branch) — BtbN FFmpeg-Builds linux64-gpl static build
+Build provider: https://github.com/BtbN/FFmpeg-Builds
+Original archive: $FFMPEG_URL
+Archive SHA-256: $FFMPEG_TARBALL_SHA256
+License: GPL-3.0 (full text in GPLv3.txt)
+Upstream FFmpeg source: https://github.com/FFmpeg/FFmpeg
+This MAW package includes only ffmpeg and ffprobe from the original build.
+EOF
+echo "    静态 ffmpeg: $("$FFMPEG_DIR/bin/ffmpeg" -version 2>&1 | head -n 1)"
+
+
+# 静态 ffmpeg 只进完整版；lite 已在上一步打包完毕，不受影响。
+cp -a "dist/MAW/ffmpeg" "$APP_DIR/ffmpeg"
+test -x "$APP_DIR/ffmpeg/bin/ffmpeg"
+"$APPIMAGE_TOOL" --appimage-extract-and-run "$APP_DIR" "$APPIMAGE"
+test -x "$APPIMAGE"
 
 echo "==> 6/6 生成缩略图缓存（缺 libappimage 的系统上让文件管理器显示图标）"
-if uv run python "$REPO_ROOT/scripts/make-appimage-thumbnail.py" "$BUILD_DIR/MAW-Linux-x86_64.AppImage"; then
-    echo "    缩略图缓存已生成"
-else
-    echo "    警告：缩略图缓存生成失败（不影响 AppImage 本身）"
-fi
+for Image in "$LITE_APPIMAGE" "$APPIMAGE"; do
+    if uv run python "$REPO_ROOT/scripts/make-appimage-thumbnail.py" "$Image"; then
+        echo "    缩略图缓存已生成：$(basename "$Image")"
+    else
+        echo "    警告：缩略图缓存生成失败（不影响 AppImage 本身）：$(basename "$Image")"
+    fi
+done
 
-echo "==> 完成：$BUILD_DIR/MAW-Linux-x86_64.AppImage"
+echo "==> 完成：$LITE_APPIMAGE"
+echo "==> 完成：$APPIMAGE"

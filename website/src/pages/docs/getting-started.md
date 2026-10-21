@@ -124,7 +124,7 @@ MAW 用爱发电 ❤️
 
 先从 [下载页面](https://github.com/Moyf/moys-asr-workflow/releases/latest) 下载，解压即可用。
 
-1. **下载安装包**：在所选版本的附件中选择对应系统和架构。完整版 `MAW` 包含 FFmpeg / FFprobe （推荐）；已安装这两个工具时可选 `MAW-lite` 轻量版。
+1. **下载安装包**：在所选版本的附件中选择对应系统和架构。完整版 `MAW` / `MAW-Linux-x86_64.AppImage` 包含 FFmpeg / FFprobe （推荐）；已安装这两个工具时可选不含 FFmpeg 的 `MAW-lite` 轻量版（Windows / macOS 为 zip，Linux 为 `MAW-lite-Linux-x86_64.AppImage`）。
 2. **打开启动器**：Windows 解压完整目录后运行 `MAW.exe` （其他平台同理）。启动问题见 [常见问题](../documentation-index/#user-faq)。
 3. **先生成一小段字幕**：选择服务商、配置 API Key，导入一两分钟的短素材，确认转写成功后再处理完整录音。
 4. **校对、保存、导出**：转写完成后点击「打开编辑器」即可进行编辑；完成编辑后可以导出 srt 字幕使用，或直接烧录视频。

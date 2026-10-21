@@ -41,6 +41,7 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertIn("[MAW-macOS-arm64-v1.0.0-beta.1.zip](%s/MAW-macOS-arm64-v1.0.0-beta.1.zip)" % base, notes)
         self.assertIn("[MAW-lite-macOS-arm64-v1.0.0-beta.1.zip](%s/MAW-lite-macOS-arm64-v1.0.0-beta.1.zip)" % base, notes)
         self.assertIn("[MAW-Linux-x86_64-v1.0.0-beta.1.AppImage](%s/MAW-Linux-x86_64-v1.0.0-beta.1.AppImage)" % base, notes)
+        self.assertIn("[MAW-lite-Linux-x86_64-v1.0.0-beta.1.AppImage](%s/MAW-lite-Linux-x86_64-v1.0.0-beta.1.AppImage)" % base, notes)
         self.assertIn("- **Windows 🪟**", notes)
         self.assertIn("- **macOS 🍎**", notes)
         self.assertIn("- **Linux 🐧**", notes)
@@ -63,6 +64,7 @@ class ReleaseNotesTests(unittest.TestCase):
 
         self.assertIn("- **Linux 🐧**\n    - 打包失败 😭", notes)
         self.assertNotIn("MAW-Linux-x86_64-v1.0.0-beta.1.AppImage", notes)
+        self.assertNotIn("MAW-lite-Linux-x86_64-v1.0.0-beta.1.AppImage", notes)
         self.assertIn("[MAW-Windows-x64-v1.0.0-beta.1.zip]", notes)
         self.assertIn("[MAW-macOS-arm64-v1.0.0-beta.1.zip]", notes)
 

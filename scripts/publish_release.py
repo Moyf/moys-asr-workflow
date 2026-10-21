@@ -41,8 +41,9 @@ def publish(tag: str, notes: Path, directory: Path) -> None:
         name = f'MAW-{platform}-{tag}.{extension}'
         if (directory / name).is_file():
             names.append(name)
-            if platform.startswith('macOS'):
-                names.append(f'MAW-lite-{platform}-{tag}.{extension}')
+            lite = f'MAW-lite-{platform}-{tag}.{extension}'
+            if (directory / lite).is_file():
+                names.append(lite)
     for name in names:
         if not (directory / name).is_file() or (directory / name).stat().st_size == 0:
             raise ValueError(f'missing or empty package: {name}')

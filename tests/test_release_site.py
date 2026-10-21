@@ -69,6 +69,18 @@ class ReleaseSiteTests(CompactContainerAssertions, unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'invalid download'):
             downloads_for(fact, fact['tag_name'])
 
+    def test_linux_lite_appimage_is_recognized_as_lite_variant(self):
+        fact = self.fact('2.0.0', ('linux',))
+        lite = dict(fact['assets'][0])
+        lite['name'] = 'MAW-lite-Linux-x86_64-v2.0.0.AppImage'
+        lite['browser_download_url'] = lite['browser_download_url'].replace(
+            '/MAW-Linux-x86_64-', '/MAW-lite-Linux-x86_64-'
+        )
+        fact['assets'].append(lite)
+        downloads = {d['variant']: d for d in downloads_for(fact, 'v2.0.0')}
+        self.assertEqual(downloads['full']['url'].rsplit('/', 1)[-1], 'MAW-Linux-x86_64-v2.0.0.AppImage')
+        self.assertEqual(downloads['lite']['url'].rsplit('/', 1)[-1], 'MAW-lite-Linux-x86_64-v2.0.0.AppImage')
+
     def test_legacy_xff_is_full_and_old_maw_package_is_lite(self):
         fact = self.fact('1.4.0')
         legacy = dict(fact['assets'][0])
