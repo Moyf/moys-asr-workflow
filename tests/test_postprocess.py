@@ -3624,6 +3624,56 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
         command = popen.call_args.args[0]
         self.assertEqual(command[command.index("-vf") + 1], "ass=filename='clip.ass'")
 
+    def test_burn_subtitles_normalizes_user_ass_fontnames_into_temp_copy(self) -> None:
+        subtitle = self.root / "clip.ass"
+        original = "[Script Info]\nStyle: Default,Smiley Sans,86,&H00FFFFFF\n"
+        subtitle.write_text(original, encoding="utf-8")
+        normalized = "[Script Info]\nStyle: Default,得意黑,86,&H00FFFFFF\n"
+        notices = ["字体「Smiley Sans」已按本机字体匹配为「得意黑」"]
+        with mock.patch(
+            "maw.postprocess_ffmpeg.normalize_ass_text_fontnames",
+            return_value=(normalized, notices),
+        ) as normalize, mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process,
+        ) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=subtitle, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        normalize.assert_called_once_with(original)
+        command = popen.call_args.args[0]
+        # 滤镜指向归一化临时副本（同目录、隐藏 .maw-fontfix 前缀），不是原文件。
+        filter_arg = command[command.index("-vf") + 1]
+        self.assertTrue(filter_arg.startswith("ass=filename='.clip.maw-fontfix-"), filter_arg)
+        self.assertFalse(filter_arg.startswith("ass=filename='clip.ass'"))
+        # 用户原文件保持原样；归一化副本已随 finally 清理。
+        self.assertEqual(subtitle.read_text(encoding="utf-8"), original)
+        self.assertEqual(list(result.warnings), notices)
+        self.assertFalse(list(self.root.glob(".clip.maw-fontfix-*")))
+
+    def test_burn_subtitles_reports_missing_font_without_touching_user_file(self) -> None:
+        subtitle = self.root / "clip.ass"
+        original = "[Script Info]\n"
+        subtitle.write_text(original, encoding="utf-8")
+        notices = ["字体「Foo」未在本机找到，实际画面将回退为其他字体"]
+        with mock.patch(
+            "maw.postprocess_ffmpeg.normalize_ass_text_fontnames",
+            return_value=(original, notices),
+        ), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process,
+        ) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=subtitle, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        # 无改写时不产生临时副本，滤镜继续指向原文件；告警仍随结果带回。
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-vf") + 1], "ass=filename='clip.ass'")
+        self.assertEqual(subtitle.read_text(encoding="utf-8"), original)
+        self.assertEqual(list(result.warnings), notices)
+
     def test_burn_subtitles_skips_playres_probe_for_ass_subtitles(self) -> None:
         # ASS/SSA 沿用自身样式，PlayRes 重写不会发生，不应启动 ffprobe。
         subtitle = self.root / "clip.ass"

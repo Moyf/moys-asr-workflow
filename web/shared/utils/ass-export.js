@@ -48,6 +48,17 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // ASS 样式里的 Fontname 写出前经服务端字体别名表归一化：libass（Windows
+  // directwrite/GDI）只按 nameID1 匹配，排版名（如 "Smiley Sans"）会被静默
+  // 回退。表未加载（便携模式/旧服务器）时原样返回；替换记录由别名模块在
+  // 导出入口的捕获窗口内收集。与 window.ASR_EDITOR_PALETTE 同一注入约定。
+  function canonicalizeAssFontName(name) {
+    const aliases = window.MaweAssFontAliases;
+    if (!aliases || typeof aliases.canonicalFor !== 'function') return name;
+    return aliases.canonicalFor(name) || name;
+  }
+
+
   function assStyleVariant(style, paletteValue, colorStyle) {
     const variant = { ...style };
     if (colorStyle === 'stroke') {
@@ -142,9 +153,9 @@ export function createUtilsModule(dependencies) {
     const source = Array.isArray(segments) ? segments : [];
     const appearance = options.appearance && typeof options.appearance === 'object'
       ? options.appearance : {};
-    const fontFamily = normalizeAssFontFamily(
+    const fontFamily = canonicalizeAssFontName(normalizeAssFontFamily(
       appearance.font_family ?? options.fontFamily,
-    );
+    ));
     const mediaMetadata = options.mediaMetadata && typeof options.mediaMetadata === 'object'
       ? options.mediaMetadata : {};
     const resolution = normalizeAssPlayResolution(
@@ -161,6 +172,7 @@ export function createUtilsModule(dependencies) {
         font_size: appearance.font_size ?? options.fontSize,
         color: appearance.color ?? options.color,
       }, resolution);
+    baseStyle.fontName = canonicalizeAssFontName(baseStyle.fontName);
     // A library style stores its font size against the shared 1080p reference
     // (the ASS preview scales by the same reference).  Export must rescale it
     // to the target PlayResY, or a 4K project renders subtitles half size.
@@ -278,6 +290,7 @@ export function createUtilsModule(dependencies) {
     const extensionStyle = assMode && options.assExtensionStyle && typeof options.assExtensionStyle === 'object'
       ? normalizeAssStyle(options.assExtensionStyle, ASS_DEFAULT_EXTENSION_STYLE, options.assExtensionStyle.id || 'ass-extension')
       : null;
+    if (extensionStyle) extensionStyle.fontName = canonicalizeAssFontName(extensionStyle.fontName);
     const extensionScaledFontSize = extensionStyle
       ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
       : 0;

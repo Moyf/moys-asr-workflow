@@ -579,6 +579,59 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             with self.assertRaisesRegex(server_editor.AssFrameError, '没有视频画面'):
                 server_editor.render_ass_frame_png(self.media, '[Script Info]\n', 0, Path('ffmpeg'))
 
+    def test_render_ass_frame_png_writes_normalized_ass_and_appends_font_warnings(self) -> None:
+        normalized = '[Script Info]\nStyle: Default,得意黑,86,&H00FFFFFF\n'
+        font_notices = ['字体「Smiley Sans」已按本机字体匹配为「得意黑」']
+        written = {}
+
+        def fake_run(command, **kwargs):
+            written['ass'] = (Path(kwargs['cwd']) / 'frame.ass').read_text(encoding='utf-8')
+            stderr = (
+                "fontselect: failed to find any fallback with glyph 0x01F914 for font: (Demo, 400, 0)\n"
+            ).encode('utf-8')
+            return subprocess.CompletedProcess(command, 0, stdout=b'\x89PNG\r\n\x1a\n', stderr=stderr)
+
+        with mock.patch.object(
+            server_editor, 'normalize_ass_text_fontnames',
+            return_value=(normalized, font_notices),
+        ) as normalize, mock.patch.object(server_editor.subprocess, 'run', side_effect=fake_run):
+            png, warnings = server_editor.render_ass_frame_png(
+                self.media, 'Style: Default,Smiley Sans,86,&H00FFFFFF\n', 1500, Path('ffmpeg'),
+            )
+
+        self.assertTrue(png.startswith(b'\x89PNG'))
+        normalize.assert_called_once_with('Style: Default,Smiley Sans,86,&H00FFFFFF\n')
+        # 归一化后的文本才写进 frame.ass；告警顺序 = 缺字形在前、字体名归一化在后。
+        self.assertEqual(written['ass'], normalized)
+        self.assertEqual(len(warnings), 2)
+        self.assertIn('Demo', warnings[0])
+        self.assertIn('U+1F914（🤔）', warnings[0])
+        self.assertEqual(warnings[1], '字体「Smiley Sans」已按本机字体匹配为「得意黑」')
+
+    def test_ass_font_aliases_endpoint_serves_alias_payload(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        payload = {
+            'schema': 'moy.asr.font_aliases.v1',
+            'fonts': [{'canonical': '得意黑', 'names': ['得意黑', 'Smiley Sans']}],
+        }
+        with mock.patch.object(server_editor, 'font_alias_payload', return_value=payload), \
+             server_editor.EditorServer(
+                 ('127.0.0.1', 0), project, no_waveform=True, peaks_per_second=100,
+             ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                with urllib.request.urlopen(f"{base_url}/api/ass-font-aliases", timeout=10) as response:
+                    self.assertEqual(response.status, 200)
+                    body = json.loads(response.read())
+                self.assertEqual(body, payload)
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_green_screen_frame_uses_playhead_time_with_real_libass(self) -> None:
         ffmpeg = server_editor.editor_ffmpeg_binary()
         if ffmpeg is None or not server_editor.ffmpeg_supports_libass(ffmpeg):
@@ -1255,7 +1308,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"recentProjectsUrl": "/api/recent-projects/open"', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
-        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "assFrameUrl": "/api/ass-frame", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
+        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "assFrameUrl": "/api/ass-frame", "assFontAliasesUrl": "/api/ass-font-aliases", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
         self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""}', page)
         completed_page = server_editor.build_server_page(

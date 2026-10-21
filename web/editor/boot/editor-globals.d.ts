@@ -71,6 +71,7 @@ interface ProjectData {
   timestamp_granularity?: string;
   model?: string;
   media_metadata?: ProjectMediaMetadata;
+  audio_processing?: { gain_db: number; target_lufs: number; peak_ceiling_dbtp: number };
   timebase?: Record<string, unknown>;
   sticker_root?: string;
   waveform?: ProjectWaveformInfo;
@@ -170,6 +171,9 @@ interface Window {
     refreshAiCleanupReviewMuteButtons?: () => void;
   };
   ASR_EDITOR_PALETTE?: Array<{ name: string; value: string }>;
+  // 服务端 ASS 字体别名表门面（editor-wiring-ass-font-aliases.js 注入）；
+  // 便携模式/旧服务器下不存在，消费点按可选访问降级。
+  MaweAssFontAliases?: any;
   showSaveFilePicker?: any;
 }
 
@@ -218,7 +222,7 @@ interface MaweStateApi {
     currentCuePanelIdx: number; currentCuePanelKind: SelectionTrack; currentCuePanelTrackId: string | null;
     cuePanelUndoPushed: boolean; cuePanelUndoRecord: any; cuePanelTextEditSnapshot: any; cuePanelCanceling: boolean };
   readonly editing: { editingState: any; extensionEditingState: any };
-  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean };
+  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean };
   hasProjectChanges(pendingText?: boolean): boolean;
   segmentsFingerprint(): string;
   noteSavedSegments(fingerprint?: string): void;
