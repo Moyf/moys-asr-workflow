@@ -297,7 +297,10 @@ export function createWordTiming(dependencies) {
         const item = { ...entry.item, text: texts[ordinal] };
         clock.setItemStart(item, entry.start);
         clock.setItemEnd(item, entry.end);
-        const id = uniqueStableSegmentId(usedIds, `${source.id || 'main'}-item-${ordinal + 1}`, 'main');
+        const sourceIdIsStable = typeof source.id === 'string' && source.id === source.id.trim()
+          && source.id.length > 0 && Array.from(source.id).length <= 160;
+        const id = ordinal === 0 && sourceIdIsStable ? source.id
+          : uniqueStableSegmentId(usedIds, `${source.id || 'main'}-item-${ordinal + 1}`, 'main');
         usedIds.push({ id });
         const output = { ...cloneJsonValue(source), id, text: item.text, items: [item],
           start: item.start, end: item.end, _dirty: true };

@@ -162,12 +162,20 @@ test('word conversion avoids IDs on other tracks and retains canonical group mem
   const reserved = [{ id: 'source-item-1' }, { id: 'source-item-2' }];
   const before = json(source);
   const plan = planners.planWordTimingConversion([source], [0], undefined, { reservedSegments: reserved });
-  assert.deepEqual(plan.segments.map(cue => cue.id), ['source-item-1-2', 'source-item-2-2']);
+  assert.deepEqual(plan.segments.map(cue => cue.id), ['source', 'source-item-2-2']);
   for (const cue of plan.segments) {
     assert.equal(cue.color_group_id, 'group'); assert.equal(cue.sticker_group_id, 'sticker');
     assert.equal(Object.hasOwn(cue, 'color_ref'), false);
   }
   assert.deepEqual(source, before); assert.deepEqual(reserved, [{ id: 'source-item-1' }, { id: 'source-item-2' }]);
+});
+
+test('word conversion still generates first-piece IDs for sources without an identity', () => {
+  const source = { start: 0, end: 1000, text: '甲乙',
+    items: [{ start: 0, end: 500, text: '甲' }, { start: 500, end: 1000, text: '乙' }] };
+  const plan = planners.planWordTimingConversion([source], [0], undefined, { reservedSegments: [{ id: 'main-item-1' }] });
+  assert.deepEqual(plan.segments.map(cue => cue.id), ['main-item-1-2', 'main-item-2']);
+  assert.equal(Object.hasOwn(source, 'id'), false);
 });
 
 test('timed text splits reserve all project IDs and merged rows inherit only common memberships', () => {
