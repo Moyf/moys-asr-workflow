@@ -273,6 +273,13 @@ class ProjectTracksTests(unittest.TestCase):
         project["timebase"] = {"unit": [], "fps": 30}
         self.assertRejected(project, "$.timebase.unit")
 
+    def test_timebase_fps_source_preserves_v2_auto_user_contract(self):
+        for source in ("auto", "user"):
+            raw = {"segments": [], "timebase": {"unit": "frames", "fps": 25, "fps_source": source}}
+            self.assertEqual(normalize_project(raw)["timebase"], raw["timebase"])
+        raw["timebase"]["fps_source"] = "other"
+        self.assertRejected(raw, "$.timebase.fps_source")
+
     def test_legacy_explicit_repair_preserves_valid_zero_punctuation_by_default(self):
         raw = {"segments": [cue(items=[{"start": 2000, "end": 2000, "text": "."}])]}
         self.assertEqual(repair_project_timing_ranges(raw), 0)

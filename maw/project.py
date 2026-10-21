@@ -248,6 +248,8 @@ def _validate_timebase(project: JsonDict, errors: list[ProjectValidationError]) 
         errors.append(ProjectValidationError("$.timebase", "must be an object"))
         return
     unit = timebase.get("unit")
+    if "fps_source" in timebase and timebase["fps_source"] not in ("auto", "user"):
+        errors.append(ProjectValidationError("$.timebase.fps_source", "must be auto or user"))
     if not isinstance(unit, str) or unit not in TIMELINE_TIMEBASE_UNITS:
         errors.append(ProjectValidationError("$.timebase.unit", "must be milliseconds or frames"))
     fps = timebase.get("fps")
