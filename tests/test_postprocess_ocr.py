@@ -11,6 +11,7 @@ from pathlib import Path
 from maw.postprocess import OutputMode
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion, match, run_ocr_dedup
 from maw.postprocess_io import read_project
+from tests.track_helpers import main_segments
 
 
 class FakeImage:
@@ -97,7 +98,7 @@ class OcrPostprocessTests(CompactContainerAssertions, unittest.TestCase):
             if result.project_path is None or result.srt_path is None or result.report_path is None:
                 self.fail("OCR deduplication should create both subtitle artifacts and a report")
             processed = read_project(result.project_path)
-            segments = processed["segments"]
+            segments = main_segments(processed)
             self.assertIsInstance(segments, list)
             self.assertTrue(segments[0]["disabled"])
             self.assertNotIn("disabled", segments[1])
@@ -146,7 +147,7 @@ class OcrPostprocessTests(CompactContainerAssertions, unittest.TestCase):
             if result.project_path is None:
                 self.fail("OCR deduplication should create a project artifact")
             processed = read_project(result.project_path)
-            self.assertNotIn("disabled", processed["segments"][0])
+            self.assertNotIn("disabled", main_segments(processed)[0])
 
     def test_project_media_wins_over_automatic_srt_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

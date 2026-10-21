@@ -15,6 +15,7 @@ from pathlib import Path
 from maw.file_errors import file_write_operation
 from maw.output_naming import OPERATION_NAMES, is_translation_operation, operation_suffix
 from maw.project import normalize_project
+from maw.project_tracks import get_main_track, get_tracks_by_role, make_project
 from maw.project_preview import JsonDict, JsonValue
 
 
@@ -101,9 +102,17 @@ def read_srt(path: Path, *, strict: bool = False) -> JsonDict:
         else:
             raise PostprocessFileError(source, f"cue {cue_index} cannot fit into the main and overlay tracks")
         previous_start = start
-    project: JsonDict = {"segments": segments}
+    project: JsonDict = make_project(segments)
     if overlay_segments:
-        project["overlay_track"] = {"enabled": True, "segments": overlay_segments}
+        reserved = {segment["id"] for segment in get_main_track(project)["segments"]}
+        for index, segment in enumerate(overlay_segments, 1):
+            identifier = f"overlay-cue-{index}"
+            while identifier in reserved:
+                identifier += "-2"
+            segment["id"] = identifier
+            reserved.add(identifier)
+        project["tracks"].append({"id": "overlay", "role": "overlay", "name": "Overlay", "enabled": True,
+                                  "segments": overlay_segments})
     return normalize_project(project)
 
 
@@ -155,10 +164,10 @@ def write_artifacts(
         from maw.postprocess_comparison import comparison_data, render_comparison
         comparison_html = render_comparison(comparison_data(comparison_source, normalized, operation, comparison_rows or [], translation=comparison_translation, line_order=bilingual_line_order, download_name=f"{base.stem}.核对后.mosp"))
     if project_path is not None:
-        from maw.project_io import rebase_project_media
+        from maw.project_io import rebase_project_media, serialize_mosp
 
         portable = rebase_project_media(normalized, project_path, source_project_path=base)
-        _atomic_write(project_path, json.dumps(portable, ensure_ascii=False, indent=2) + "\n")
+        _atomic_write(project_path, serialize_mosp(portable))
     if srt_path is not None:
         _atomic_write(srt_path, render_srt(normalize_project(srt_project) if srt_project is not None else normalized))
     if comparison_path is not None and comparison_html is not None:
@@ -175,8 +184,9 @@ def write_artifacts(
 
 
 def render_srt(project: JsonDict) -> str:
+    project = normalize_project(project)
     from maw.postprocess_ai_cleanup_items import cleaned_srt_segments
-    main_segments = project.get("segments")
+    main_segments = get_main_track(project)["segments"]
     if not isinstance(main_segments, list):
         return ""
     # Source segments remain reversible. Only trustworthy, still-active local
@@ -201,11 +211,9 @@ def render_srt(project: JsonDict) -> str:
 def _srt_segments(project: JsonDict, main_segments: list[JsonValue]) -> list[JsonValue]:
     """Return enabled main and overlay cues ordered by start time and track."""
     overlay_segments: list[JsonValue] = []
-    overlay = project.get("overlay_track")
-    if isinstance(overlay, dict) and overlay.get("enabled") is True:
-        raw_overlay_segments = overlay.get("segments")
-        if isinstance(raw_overlay_segments, list):
-            overlay_segments = raw_overlay_segments
+    for overlay in get_tracks_by_role(project, "overlay"):
+        if overlay.get("enabled") is True:
+            overlay_segments.extend(overlay["segments"])
     cues = [
         (segment, track_index, segment_index)
         for track_index, track_segments in enumerate((main_segments, overlay_segments))

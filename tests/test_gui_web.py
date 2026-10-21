@@ -42,6 +42,7 @@ from maw.postprocess import PostprocessStepError  # noqa: E402
 from maw.postprocess_io import read_project  # noqa: E402
 from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.postprocess_pipeline import PostprocessPipelineError, save_postprocess_plan  # noqa: E402
+from maw.project_tracks import get_main_track, make_project  # noqa: E402
 from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest  # noqa: E402
 from maw.runtimes import LOCAL, OCR  # noqa: E402
 from maw.runtimes.base import RuntimeStatus  # noqa: E402
@@ -1724,14 +1725,15 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(project_path.is_file())
         self.assertEqual(project_path.name, "clip.waveform.mosp")
         project = json.loads(project_path.read_text(encoding="utf-8"))
-        self.assertEqual(project["segments"], [])
+        self.assertEqual(project["schema"], "moy.asr.project.v3")
+        self.assertEqual(get_main_track(project)["segments"], [])
         self.assertEqual((project_path.parent / project["media"]).resolve(), media.resolve())
         # 工程去内联：波形缓存不再写进工程文件，只保留在 embed 结果的运行态里。
         self.assertNotIn("waveform", project)
         self.assertNotIn("spectral", project)
         self.assertNotIn("waveform_reapeaks", project)
         embed.assert_called_once_with(
-            {"media": str(media.resolve()), "segments": []},
+            make_project([], project_fields={"media": str(media.resolve())}),
             media.resolve(),
             source_media_path=media.resolve(),
             generate_spectral=True,

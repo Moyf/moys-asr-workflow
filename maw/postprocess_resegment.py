@@ -1,6 +1,8 @@
 """Source-preserving subtitle boundaries and locally enforced length limits."""
 
 from __future__ import annotations
+from maw.project_mutations import replace_main_segments
+from maw.project_tracks import iter_segments
 
 import copy
 import json
@@ -488,9 +490,8 @@ def _run_resegment(
     )
     sources = _segments(project)
     by_source = {index: source_units(s, index) for index, s in enumerate(sources)}
-    multi = project.get("multi_subtitle")
-    bindings = multi.get("bindings", []) if isinstance(multi, dict) else []
-    bound_ids = {main_id for binding in bindings if isinstance(binding, dict) for main_id in binding.get("main_segment_ids", [])}
+    bindings = project.get("bindings", [])
+    bound_ids = {main_id for binding in bindings for main_id in binding["source_segment_ids"]}
     preserved_bound = []
     rows: list[dict[str, JsonValue]] = []
     blocks = []
@@ -614,27 +615,29 @@ def _run_resegment(
     covered = {u.source for group in output_groups for u in group}
     output_groups.extend(by_source[i] for i in range(len(sources)) if i not in covered)
     output_groups.sort(key=lambda group: (group[0].source, group[0].start))
-    used_ids = {str(s["id"]) for s in sources}
+    used_ids = {str(s["id"]) for s in iter_segments(project)}
     rebuilt = []
     part_number = 0
+    retained_source_ids = set()
     for group in output_groups:
         source_indexes = list(dict.fromkeys(u.source for u in group))
         original = sources[source_indexes[0]]
         if len(source_indexes) == 1 and group == by_source[source_indexes[0]]:
             rebuilt.append(copy.deepcopy(original))
+            retained_source_ids.add(original["id"])
             continue
         part_number += 1
         segment = _copy_common_metadata([sources[i] for i in source_indexes])
         segment.update(
             {
-                "id": _unique_derived_segment_id(
-                    original, f"c{source_indexes[0] + 1:04d}", part_number, used_ids
-                ),
+                "id": original["id"] if original["id"] not in retained_source_ids else _unique_derived_segment_id(
+                    original, f"c{source_indexes[0] + 1:04d}", part_number, used_ids),
                 "text": "".join(u.text for u in group),
                 "start": group[0].start,
                 "end": group[-1].end,
             }
         )
+        retained_source_ids.add(original["id"])
         for key in SAFE_SCALARS:
             if key in original and all(
                 sources[i].get(key) == original[key] for i in source_indexes
@@ -643,26 +646,8 @@ def _run_resegment(
         if all(u.item is not None for u in group):
             segment["items"] = [copy.deepcopy(u.item) for u in group]
         rebuilt.append(segment)
-    if len(rebuilt) != len(sources) or any(
-        s.get("id") != r.get("id") for s, r in zip(sources, rebuilt)
-    ):
-        # Positional references would point at another cue after insert/remove.
-        rebuilt_indices = {str(segment["id"]): index for index, segment in enumerate(rebuilt)}
-        for segment in rebuilt:
-            color_ref = segment.pop("color_ref", None)
-            segment.pop("sticker_ref", None)
-            if isinstance(color_ref, dict):
-                # Bound/disabled cues were copied unchanged. Keep their visible
-                # color even when an unrelated cue changes the array indices.
-                original_head = sources[color_ref["headIdx"]]
-                new_index = rebuilt_indices.get(str(original_head["id"]))
-                if new_index is not None and isinstance(rebuilt[new_index].get("color"), dict):
-                    color_ref["headIdx"] = new_index
-                    segment["color_ref"] = color_ref
-                elif isinstance(original_head.get("color"), dict):
-                    segment["color"] = copy.deepcopy(original_head["color"])
     processed = copy.deepcopy(project)
-    processed["segments"] = rebuilt
+    replace_main_segments(processed, rebuilt)
     trace.results["segments"] = copy.deepcopy(rebuilt)
     remap_cleanup_scopes(processed, sources, rebuilt, output_groups, by_source)
     from maw.postprocess_annotations import write_annotations

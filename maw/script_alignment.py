@@ -20,6 +20,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Final
 
+from maw.project_mutations import replace_main_segments
+from maw.project_tracks import get_main_track, iter_segments
+from maw.project import normalize_project
 from maw.waveform import waveform_peaks_per_second
 
 
@@ -186,6 +189,7 @@ def align_project_to_script(
     if len(script_lines) > MAX_SCRIPT_LINES:
         raise ValueError(f"script has too many non-empty lines (maximum {MAX_SCRIPT_LINES})")
 
+    project = normalize_project(dict(project))
     source_cues = _source_cues(project)
     if len(source_cues) > MAX_SOURCE_CUES:
         raise ValueError(f"project has too many enabled subtitle segments (maximum {MAX_SOURCE_CUES})")
@@ -947,8 +951,8 @@ def apply_alignment_to_project(
     optional waveform-detected silence, is written as ``gap_remove.gaps``.
     """
 
-    output = copy.deepcopy(dict(project))
-    raw_segments = output.get("segments")
+    output = normalize_project(dict(project))
+    raw_segments = get_main_track(output)["segments"]
     if not isinstance(raw_segments, list):
         raise ValueError("project segments must be an array")
     source_cues = _alignment_source_cues(alignment)
@@ -984,13 +988,13 @@ def apply_alignment_to_project(
             [*removed_ranges, *[(item["start"], item["end"]) for item in audio_gap_ranges]]
         )
 
-    output["segments"] = _apply_kept_intervals_to_segments(
+    replace_main_segments(output, _apply_kept_intervals_to_segments(
         raw_segments,
         source_cues,
         kept_intervals_by_cue,
         removed_ranges,
-    )
-    _refresh_main_binding_offsets(output)
+        reserved_ids={cue["id"] for cue in iter_segments(output)},
+    ))
 
     existing_gap = output.get("gap_remove")
     existing_gaps = existing_gap.get("gaps", []) if isinstance(existing_gap, Mapping) else []
@@ -1366,7 +1370,7 @@ def _script_lines(script_text: str) -> list[str]:
 
 
 def _source_cues(project: Mapping[str, object]) -> list[_SourceCue]:
-    raw_segments = project.get("segments")
+    raw_segments = get_main_track(project)["segments"]
     if not isinstance(raw_segments, list):
         raise ValueError("project segments must be an array")
     cues: list[_SourceCue] = []
@@ -3026,9 +3030,10 @@ def _apply_kept_intervals_to_segments(
     source_cues: Sequence[_SourceCue],
     kept_intervals_by_cue: Mapping[int, Sequence[tuple[int, int]]],
     removed_ranges: Sequence[tuple[int, int]],
+    *, reserved_ids: set[str] | None = None,
 ) -> list[object]:
     source_index_by_id = {cue.id: index for index, cue in enumerate(source_cues)}
-    used_ids = {
+    used_ids = set(reserved_ids or ()) | {
         str(segment.get("id"))
         for segment in raw_segments
         if isinstance(segment, Mapping) and isinstance(segment.get("id"), str)
@@ -3078,89 +3083,7 @@ def _apply_kept_intervals_to_segments(
             # legacy project does not provide enough item information.
             output.append(raw_segment)
             output_source_ordinals.append(ordinal)
-    _remap_split_visual_references(output, output_source_ordinals)
     return output
-
-
-def _remap_split_visual_references(
-    segments: Sequence[object],
-    source_ordinals: Sequence[int],
-) -> None:
-    first_output_by_source: dict[int, int] = {}
-    for output_index, source_ordinal in enumerate(source_ordinals):
-        first_output_by_source.setdefault(source_ordinal, output_index)
-
-    for output_index, (segment, source_ordinal) in enumerate(zip(segments, source_ordinals, strict=True)):
-        if not isinstance(segment, dict):
-            continue
-        first_output = first_output_by_source[source_ordinal]
-        for head_field, ref_field in (("sticker", "sticker_ref"), ("color", "color_ref")):
-            head = segment.get(head_field)
-            if output_index != first_output and isinstance(head, Mapping):
-                segment.pop(head_field, None)
-                segment[ref_field] = {
-                    "name": str(head.get("name") or ""),
-                    "headIdx": first_output,
-                }
-                continue
-            reference = segment.get(ref_field)
-            if not isinstance(reference, dict):
-                continue
-            old_head_index = _int_value(reference.get("headIdx"))
-            if old_head_index in first_output_by_source:
-                reference["headIdx"] = first_output_by_source[old_head_index]
-
-
-def _refresh_main_binding_offsets(project: Mapping[str, object]) -> None:
-    raw_segments = project.get("segments")
-    raw_multi = project.get("multi_subtitle")
-    if not isinstance(raw_segments, list) or not isinstance(raw_multi, Mapping):
-        return
-    main_by_id = {
-        str(segment.get("id")): segment
-        for segment in raw_segments
-        if isinstance(segment, Mapping) and isinstance(segment.get("id"), str)
-    }
-    raw_tracks = raw_multi.get("tracks")
-    raw_bindings = raw_multi.get("bindings")
-    if not isinstance(raw_tracks, list) or not isinstance(raw_bindings, list):
-        return
-    tracks_by_id = {
-        str(track.get("id")): track
-        for track in raw_tracks
-        if isinstance(track, Mapping) and isinstance(track.get("id"), str)
-    }
-    for binding in raw_bindings:
-        if not isinstance(binding, dict):
-            continue
-        main_ids = binding.get("main_segment_ids")
-        extension_ids = binding.get("extension_segment_ids")
-        track = tracks_by_id.get(str(binding.get("track_id") or ""))
-        if (
-            not isinstance(main_ids, list)
-            or len(main_ids) != 1
-            or not isinstance(extension_ids, list)
-            or len(extension_ids) != 1
-            or not isinstance(track, Mapping)
-        ):
-            continue
-        main = main_by_id.get(str(main_ids[0]))
-        extension_segments = track.get("segments")
-        if not isinstance(main, Mapping) or not isinstance(extension_segments, list):
-            continue
-        extension = next((
-            item for item in extension_segments
-            if isinstance(item, Mapping) and item.get("id") == extension_ids[0]
-        ), None)
-        if not isinstance(extension, Mapping):
-            continue
-        main_start = _int_value(main.get("start"))
-        main_end = _int_value(main.get("end"))
-        extension_start = _int_value(extension.get("start"))
-        extension_end = _int_value(extension.get("end"))
-        if None not in {main_start, main_end, extension_start, extension_end}:
-            binding["start_offset_ms"] = int(extension_start) - int(main_start)
-            binding["end_offset_ms"] = int(extension_end) - int(main_end)
 
 
 def _split_segment_by_item_intervals(
@@ -3274,7 +3197,7 @@ def _contains_range(ranges: Sequence[tuple[int, int]], start: int, end: int) -> 
 
 
 def _project_has_items(project: Mapping[str, object]) -> bool:
-    raw_segments = project.get("segments")
+    raw_segments = get_main_track(project)["segments"]
     if not isinstance(raw_segments, list):
         return False
     return any(

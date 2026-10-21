@@ -12,6 +12,7 @@ from maw.script_alignment import (
     detect_waveform_gaps,
     make_selection_manifest,
 )
+from tests.track_helpers import main_segments
 
 
 def segment(segment_id: str, start: int, end: int, text: str) -> dict[str, object]:
@@ -100,8 +101,8 @@ class ScriptAlignmentTests(unittest.TestCase):
             extra_actions={extras[0]["id"]: "discard"},
         )
         output = apply_alignment_to_project(project, alignment, discarded, detect_audio_gaps=False)
-        self.assertTrue(next(item for item in output["segments"] if item["id"] == "s2")["disabled"])
-        self.assertIsNone(next(item for item in output["segments"] if item["id"] == "s3").get("disabled"))
+        self.assertTrue(next(item for item in main_segments(output) if item["id"] == "s2")["disabled"])
+        self.assertIsNone(next(item for item in main_segments(output) if item["id"] == "s3").get("disabled"))
 
     def test_output_disables_unselected_take_and_keeps_extra_by_default(self) -> None:
         alignment = align_project_to_script(self.project, "hello world\ngood bye")
@@ -110,7 +111,7 @@ class ScriptAlignmentTests(unittest.TestCase):
 
         self.assertTrue(selection["readyForMediaTrim"])
         self.assertEqual(
-            [item["id"] for item in output["segments"] if item.get("disabled") is True],
+            [item["id"] for item in main_segments(output) if item.get("disabled") is True],
             ["s2", "s3"],
         )
         self.assertEqual(output["gap_remove"]["schema"], "moy.asr.gap_remove.v1")
@@ -401,7 +402,7 @@ class ScriptAlignmentTests(unittest.TestCase):
         )
         output = apply_alignment_to_project(self.project, alignment, selection, detect_audio_gaps=False)
 
-        self.assertIn("s6", [item["id"] for item in output["segments"] if item.get("disabled") is True])
+        self.assertIn("s6", [item["id"] for item in main_segments(output) if item.get("disabled") is True])
         self.assertIn(
             (2300, 3000, True),
             [gap_shape(gap) for gap in output["gap_remove"]["gaps"]],
@@ -416,7 +417,7 @@ class ScriptAlignmentTests(unittest.TestCase):
         self.assertEqual(selection["missingLineIds"], ["line-002"])
         self.assertFalse(selection["readyForMediaTrim"])
         output = apply_alignment_to_project(project, alignment, selection, detect_audio_gaps=False)
-        self.assertTrue(output["segments"][0]["disabled"])
+        self.assertTrue(main_segments(output)[0]["disabled"])
 
     def test_manual_enable_overrides_auto_disabled_incomplete_take(self) -> None:
         project = {"segments": [segment("s1", 0, 500, "hello")]}
@@ -435,7 +436,7 @@ class ScriptAlignmentTests(unittest.TestCase):
         self.assertTrue(selection["readyForMediaTrim"])
 
         output = apply_alignment_to_project(project, alignment, selection, detect_audio_gaps=False)
-        self.assertIsNone(output["segments"][0].get("disabled"))
+        self.assertIsNone(main_segments(output)[0].get("disabled"))
         self.assertEqual(
             output["script_alignment"]["manuallyEnabledCandidateIds"],
             [candidate["id"]],
@@ -464,7 +465,7 @@ class ScriptAlignmentTests(unittest.TestCase):
             selection,
             detect_audio_gaps=False,
         )
-        self.assertTrue(output["segments"][0]["disabled"])
+        self.assertTrue(main_segments(output)[0]["disabled"])
         self.assertIn((0, 500, True), [gap_shape(gap) for gap in output["gap_remove"]["gaps"]])
 
     def test_suffix_aligned_partial_take_is_retained_as_incomplete(self) -> None:
@@ -559,7 +560,7 @@ class ScriptAlignmentTests(unittest.TestCase):
         self.assertEqual(
             [
                 (segment["id"], segment["start"], segment["end"], segment["text"], segment.get("disabled"))
-                for segment in kept_output["segments"]
+                for segment in main_segments(kept_output)
             ],
             [
                 ("s1", 0, target_end, target, None),
@@ -582,8 +583,8 @@ class ScriptAlignmentTests(unittest.TestCase):
             discarded_selection,
             detect_audio_gaps=False,
         )
-        self.assertIsNone(discarded_output["segments"][0].get("disabled"))
-        self.assertTrue(discarded_output["segments"][1]["disabled"])
+        self.assertIsNone(main_segments(discarded_output)[0].get("disabled"))
+        self.assertTrue(main_segments(discarded_output)[1]["disabled"])
         self.assertIn(
             (target_end, cursor, True),
             [gap_shape(gap) for gap in discarded_output["gap_remove"]["gaps"]],
@@ -669,21 +670,21 @@ class ScriptAlignmentTests(unittest.TestCase):
 
         output = apply_alignment_to_project(project, alignment, selection, detect_audio_gaps=False)
 
-        self.assertEqual([item["id"] for item in output["segments"]], ["s1", "s1--align-002", "s2", "s3"])
-        self.assertNotIn("sticker", output["segments"][1])
-        self.assertNotIn("color", output["segments"][1])
-        self.assertEqual(output["segments"][1]["sticker_ref"], {"name": "intro", "headIdx": 0})
-        self.assertEqual(output["segments"][1]["color_ref"], {"name": "red", "headIdx": 0})
-        self.assertEqual(output["segments"][3]["sticker_ref"]["headIdx"], 2)
-        self.assertEqual(output["segments"][3]["color_ref"]["headIdx"], 2)
+        self.assertEqual([item["id"] for item in main_segments(output)], ["s1", "s1--align-002", "s2", "s3"])
+        self.assertNotIn("sticker", main_segments(output)[1])
+        self.assertNotIn("color", main_segments(output)[1])
+        self.assertEqual(main_segments(output)[1]["sticker_group_id"], main_segments(output)[0]["sticker_group_id"])
+        self.assertEqual(main_segments(output)[1]["color_group_id"], main_segments(output)[0]["color_group_id"])
+        self.assertEqual(main_segments(output)[3]["sticker_group_id"], main_segments(output)[2]["sticker_group_id"])
+        self.assertEqual(main_segments(output)[3]["color_group_id"], main_segments(output)[2]["color_group_id"])
         self.assertEqual(
-            output["multi_subtitle"]["bindings"][0]["main_segment_ids"],
+            output["bindings"][0]["source_segment_ids"],
             ["s1"],
         )
-        self.assertEqual(output["multi_subtitle"]["bindings"][0]["start_offset_ms"], 0)
+        self.assertEqual(output["bindings"][0]["start_offset_ms"], 0)
         self.assertEqual(
-            output["multi_subtitle"]["bindings"][0]["end_offset_ms"],
-            cursor - output["segments"][0]["end"],
+            output["bindings"][0]["end_offset_ms"],
+            cursor - main_segments(output)[0]["end"],
         )
         self.assertTrue(validate_project(output).ok)
 
@@ -728,8 +729,8 @@ class ScriptAlignmentTests(unittest.TestCase):
             selection,
             detect_audio_gaps=False,
         )
-        self.assertTrue(next(item for item in output["segments"] if item["id"] == "s2")["disabled"])
-        self.assertIsNone(next(item for item in output["segments"] if item["id"] == "s3").get("disabled"))
+        self.assertTrue(next(item for item in main_segments(output) if item["id"] == "s2")["disabled"])
+        self.assertIsNone(next(item for item in main_segments(output) if item["id"] == "s3").get("disabled"))
         self.assertIn(
             (1000, 2200, True),
             [gap_shape(gap) for gap in output["gap_remove"]["gaps"]],
@@ -962,7 +963,7 @@ class ScriptAlignmentTests(unittest.TestCase):
         self.assertEqual(
             [
                 (segment.get("start"), segment.get("end"), segment.get("text"), segment.get("disabled"))
-                for segment in output["segments"]
+                for segment in main_segments(output)
                 if isinstance(segment, dict) and 46000 <= int(segment.get("start") or 0) < 50000
             ],
             [

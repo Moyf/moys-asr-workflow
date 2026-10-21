@@ -12,6 +12,8 @@ from maw.postprocess_ai_cleanup import AiCleanupRequest, build_clips, run_ai_cle
 from maw.postprocess_ai_cleanup_items import scoped_item_ranges, verified_scope_indices
 from maw.postprocess_io import read_project, render_srt
 from maw.script_alignment import _gap_ranges_from_provenance, _normalize_gap_provenance
+from tests.track_helpers import main_segments
+from tests.track_helpers import extension_tracks
 
 
 def cue(rows, *, text=None):
@@ -50,7 +52,7 @@ class LocalCleanupTests(unittest.TestCase):
     def test_prefix_keeps_original_enabled_and_exports_retained_words(self):
         original = cue(PREFIX)
         output, stats, calls = self.run_case(original, {"removeItemIds": ["c001:i001", "c001:i002"], "evidence": "啊，我这……"}, "我这个功能呢", review=True)
-        self.assertEqual(output["segments"][0], original)
+        self.assertEqual(main_segments(output)[0], original)
         scope = output["gap_remove"]["provenance"]["sources"]["ai_cleanup"][0]
         self.assertEqual((scope["start"], scope["end"]), (0, 770))
         self.assertEqual(scope["cleanup_scope"], {"segment_id": "main-001", "item_start": 0, "item_end": 2, "text": "啊，我这……"})
@@ -81,7 +83,7 @@ class LocalCleanupTests(unittest.TestCase):
                     removed_text = "".join(segment["items"][index]["text"] for index in new_deleted)
                     decision = {wire_key: ids if wire_key == "removeItemIds" else [ids], "evidence": removed_text}
                     output, stats, calls = self.run_case(segment, decision, "介绍功能", extras={"gap_remove": gap})
-                    self.assertEqual(output["segments"][0], segment)
+                    self.assertEqual(main_segments(output)[0], segment)
                     self.assertEqual(stats["removed"], 1)
                     self.assertEqual(calls[0][1][0]["asrText"], removed_text + "介绍功能")
                     scopes = output["gap_remove"]["provenance"]["sources"]["ai_cleanup"]
@@ -119,7 +121,7 @@ class LocalCleanupTests(unittest.TestCase):
         restored, stats, _ = self.run_case(cue(MULTI), decision, "我这个功能很好呢", review=True, flags=[{"id": "c001", "reason": "承接不确定"}])
         self.assertNotIn("gap_remove", restored)
         self.assertEqual(stats["pendingReview"], 1)
-        self.assertEqual(restored["segments"][0]["text"], cue(MULTI)["text"])
+        self.assertEqual(main_segments(restored)[0]["text"], cue(MULTI)["text"])
 
     def test_invalid_references_and_one_invalid_group_downgrade_whole_clip(self):
         decisions = [
@@ -190,7 +192,7 @@ class LocalCleanupTests(unittest.TestCase):
         extension = {"id": "ext-001", "start": 0, "end": 2000, "text": "translated body"}
         extras = {"multi_subtitle": {"schema": "moy.asr.multi_subtitle.v1", "enabled": True, "tracks": [{"id": "ext", "segments": [extension]}], "bindings": [{"track_id": "ext", "main_segment_ids": ["main-001"], "extension_segment_ids": ["ext-001"], "start_offset_ms": 0, "end_offset_ms": 0}]}, "overlay_track": {"enabled": True, "segments": [{"start": 0, "end": 2000, "text": "overlay untouched"}]}}
         output, _, _ = self.run_case(cue(PREFIX), {"removeItemIds": ["c001:i001", "c001:i002"], "evidence": "啊，我这……"}, "我这个功能呢", extras=extras)
-        self.assertEqual(output["multi_subtitle"]["tracks"][0]["segments"][0], extension)
+        self.assertEqual(extension_tracks(output)[0]["segments"][0], extension)
         self.assertIn("overlay untouched", render_srt(output))
 
 

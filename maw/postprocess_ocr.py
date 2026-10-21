@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, TYPE_CHECKING
 
+from maw.project_tracks import get_main_track
 from maw.media import VIDEO_EXTENSIONS
 from maw.output_naming import operation_suffix
 from maw.postprocess import OutputMode
@@ -308,7 +309,7 @@ def _load_input(
 
 
 def _segments(project: JsonDict) -> list[dict[str, object]]:
-    raw_segments = project.get("segments")
+    raw_segments = get_main_track(project)["segments"]
     if not isinstance(raw_segments, list):
         raise ValueError("工程 segments 必须是数组")
     segments: list[dict[str, object]] = []

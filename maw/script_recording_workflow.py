@@ -16,6 +16,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from maw.project_mutations import replace_main_segments
+from maw.project_tracks import get_main_track, project_tracks, iter_segments
 from maw.postprocess_io import write_artifacts
 from maw.project import normalize_project
 from maw.project_io import strip_inline_caches
@@ -60,14 +62,15 @@ def validate_media_binding(project: Mapping[str, Any], project_path: Path, media
 
 
 def evidence_errors(project: Mapping[str, Any], source_confirmed: bool) -> list[str]:
+    project = normalize_project(dict(project))
     errors = []
     metadata = project.get("script_alignment")
     if metadata is not None and not isinstance(metadata, Mapping):
         errors.append("口播审查元数据格式无效；请使用原始 ASR 工程。")
     recording = metadata.get("recording") if isinstance(metadata, Mapping) else None
-    if recording or "aligner" in str(project.get("model", "")).lower():
+    if recording or "aligner" in str(get_main_track(project).get("model", "")).lower():
         errors.append("文稿时间码工程不能当作独立 ASR 证据；请选择原始 ASR 工程。")
-    if project.get("translation") or project.get("overlay_track") or project.get("subtitle_tracks"):
+    if any(track["role"] != "main" for track in project_tracks(project)):
         errors.append("此流程目前支持单主字幕轨原始 ASR 工程。")
     if not source_confirmed:
         errors.append("请确认输入是未被文稿替换的原始 ASR 结果。")
@@ -107,8 +110,9 @@ def _slice_text(slices: list[dict[str, Any]]) -> str:
 
 
 def _source_speakers(project: Mapping[str, Any], slices: list[dict[str, Any]]) -> set[str]:
+    project = normalize_project(dict(project))
     source = {str(c.get("id") or f"main-{i + 1:03d}"): c
-              for i, c in enumerate(project.get("segments", []))}
+              for i, c in enumerate(get_main_track(project)["segments"])}
     labels = set()
     for part in slices:
         cue = source.get(str(part.get("sourceCueId")), {})
@@ -296,7 +300,8 @@ def finalize_recording(project: Mapping[str, Any], alignment: dict[str, Any], re
         raise RecordingWorkflowError("; ".join(f'{b["lineId"]}: {b["reason"]}' for b in review["blockers"]))
     from maw.language import normalize_language_code
     from maw.alignment_models import QWEN_FORCED_ALIGNER_MODEL_ID, alignment_model_by_id
-    language = normalize_language_code(project.get("language") or language)
+    project = normalize_project(dict(project))
+    language = normalize_language_code(get_main_track(project).get("language") or language)
     if language not in alignment_model_by_id(QWEN_FORCED_ALIGNER_MODEL_ID).languages:
         raise RecordingWorkflowError("请在 ASR 工程中指定对齐器支持的语言。")
     aligner = backend or QwenForcedAlignerBackend(model_path=model_path or "", device=device)
@@ -336,11 +341,11 @@ def finalize_recording(project: Mapping[str, Any], alignment: dict[str, Any], re
             generated.append(cue)
     _check_cancel(cancel_event)
     # Replace overlapping source cues; preserve full ASR evidence in the original project and report.
-    output = copy.deepcopy(reviewed)
-    used_ids = {str(c.get("id", "")) for c in output["segments"]}
+    output = normalize_project(reviewed)
+    used_ids = {str(c["id"]) for c in iter_segments(output)}
     retained = []
     replaced_ids = []
-    for cue in output["segments"]:
+    for cue in get_main_track(output)["segments"]:
         overlaps = any(cue["start"] < g["end"] and g["start"] < cue["end"] for g in generated)
         selected_source = any(cue["start"] < b and a < cue["end"] for a, b in used_ranges)
         if overlaps:
@@ -349,18 +354,18 @@ def finalize_recording(project: Mapping[str, Any], alignment: dict[str, Any], re
             replaced_ids.append(cue.get("id"))
         else:
             retained.append(cue)
-    output["segments"] = retained
+    replace_main_segments(output, retained)
     for index, cue in enumerate(generated, 1):
         identifier = f"script-recording-{index:03d}"
         while identifier in used_ids:
             identifier += "-new"
         used_ids.add(identifier)
         cue["id"] = identifier
-    output["segments"].extend(generated)
-    output["segments"].sort(key=lambda cue: (cue["start"], cue["end"]))
+    get_main_track(output)["segments"].extend(generated)
+    get_main_track(output)["segments"].sort(key=lambda cue: (cue["start"], cue["end"]))
     from maw.timestamp_alignment import _project_granularity
-    output["timestamp_granularity"] = _project_granularity(output)
-    output["preserve_punctuation"] = True
+    get_main_track(output)["timestamp_granularity"] = _project_granularity(output)
+    get_main_track(output)["preserve_punctuation"] = True
     output["media"] = str(media.resolve())
     output["script_alignment"]["recording"] = {
         "version": 1, "selectionDigest": review["selectionDigest"],

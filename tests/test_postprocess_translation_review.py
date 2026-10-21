@@ -11,6 +11,7 @@ from maw.postprocess_comparison import render_comparison
 from maw.postprocess_io import read_project, write_artifacts
 from maw.postprocess_translation_review import translation_review
 from maw.project import normalize_project
+from tests.track_helpers import main_segments
 
 
 class TranslationReviewTest(CompactContainerAssertions, unittest.TestCase):
@@ -36,7 +37,7 @@ class TranslationReviewTest(CompactContainerAssertions, unittest.TestCase):
                                        source_srt_path=None, operation="translate_en-bilingual",
                                        write_project=True, write_srt=True,
                                        comparison_source=source, comparison_translation=translated)
-            self.assertEqual(read_project(artifact.project_path)["segments"][0]["text"], " API ")
+            self.assertEqual(main_segments(read_project(artifact.project_path))[0]["text"], " API ")
             self.assertTrue(artifact.srt_path.is_file())
             self.assertTrue(artifact.comparison_path.is_file())
 

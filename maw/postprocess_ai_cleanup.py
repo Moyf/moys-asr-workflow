@@ -19,6 +19,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
+from maw.project_tracks import get_main_track, get_tracks_by_role
 from maw.postprocess import OutputMode
 from maw.postprocess_ai_cleanup_safety import (
     PURE_INTERJECTIONS,
@@ -255,7 +256,7 @@ def run_ai_cleanup(
     if request.script_path is not None and not script_lines:
         raise AiCleanupError("文稿整理需要文稿中至少有一行文字。")
 
-    segments = project.get("segments")
+    segments = get_main_track(project)["segments"]
     if not isinstance(segments, list) or not segments:
         raise AiCleanupError("字幕工程中没有可整理的字幕段。")
 
@@ -1031,20 +1032,17 @@ def _ai_annotation(
 
 def _disable_bound_extensions(project: JsonDict, main_ids: set[str]) -> None:
     """Match the editor's main-driven disabling without touching independent tracks."""
-    multi = project.get("multi_subtitle")
-    if not isinstance(multi, Mapping):
-        return
     targets: dict[str, set[str]] = {}
-    for binding in multi.get("bindings", []):
+    for binding in project.get("bindings", []):
         if not isinstance(binding, Mapping):
             continue
-        if not main_ids.intersection(binding.get("main_segment_ids", [])):
+        if not main_ids.intersection(binding["source_segment_ids"]):
             continue
-        targets.setdefault(str(binding.get("track_id")), set()).update(
-            binding.get("extension_segment_ids", []),
+        targets.setdefault(binding["target_track_id"], set()).update(
+            binding["target_segment_ids"],
         )
     # Bindings remain meaningful when bilingual display is switched off.
-    for track in multi.get("tracks", []):
+    for track in get_tracks_by_role(project, "extension"):
         if not isinstance(track, Mapping):
             continue
         extension_ids = targets.get(str(track.get("id")), set())

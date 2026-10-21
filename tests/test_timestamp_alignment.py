@@ -18,6 +18,7 @@ from maw.timestamp_alignment import (
     _split_text_for_duration,
     _timed_tokens_from_raw,
 )
+from tests.track_helpers import main_segments, main_track
 
 
 class TimestampAlignmentTests(unittest.TestCase):
@@ -142,7 +143,7 @@ class TimestampAlignmentTests(unittest.TestCase):
             self.assertEqual(generate_report.skipped_segments, 0)
             self.assertEqual(generate_report.aligned_segments, 2)
             self.assertEqual(
-                [(item["text"], item["start"], item["end"]) for item in project["segments"][1]["items"]],
+                [(item["text"], item["start"], item["end"]) for item in main_segments(project)[1]["items"]],
                 [("世", 1000, 1500), ("界", 1500, 2000)],
             )
 
@@ -177,7 +178,7 @@ class TimestampAlignmentTests(unittest.TestCase):
             self.assertIsNotNone(artifact.project_path)
             self.assertIsNotNone(artifact.srt_path)
             project = json.loads(Path(artifact.project_path).read_text(encoding="utf-8"))
-            self.assertEqual([item["text"] for item in project["segments"][0]["items"]], ["你", "好"])
+            self.assertEqual([item["text"] for item in main_segments(project)[0]["items"]], ["你", "好"])
             self.assertIn("00:00:00,000 --> 00:00:01,000", Path(artifact.srt_path).read_text(encoding="utf-8-sig"))
 
     def test_fill_does_not_treat_invalid_items_as_complete(self) -> None:
@@ -222,7 +223,7 @@ class TimestampAlignmentTests(unittest.TestCase):
 
         self.assertEqual(report.aligned_segments, 1)
         self.assertEqual(report.failed_segments, 1)
-        self.assertEqual(project["timestamp_granularity"], "segment")
+        self.assertEqual(main_track(project)['timestamp_granularity'], "segment")
 
     def test_long_single_unit_keeps_the_whole_audio_span(self) -> None:
         chunks = _split_text_for_duration("hello", 150_000)
