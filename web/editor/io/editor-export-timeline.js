@@ -26,18 +26,12 @@
 
 
   function buildResolveJson() {
-    const groupStickers = MaweBoot.DATA.subtitle_groups
-      ? window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true }).filter(r => r.enabled).map(r => ({
-        ...window.AsrEditorUtils.cloneJsonValue(r.source),
-        group_id: r.id, start_ms: r.start, end_ms: r.end,
-        abs_path: MaweSelection.stickerAbsPath(r.source),
-      })) : null;
+    // Resolve v1 is an external exchange contract: expand group attributes per
+    // cue without exposing the project's group table or filling gaps between cues.
     const segments = MaweExportSrt.cleanupMainSegments().map((seg, idx) => {
-      const headIdx = seg.sticker_ref?.headIdx;
-      const head = Number.isInteger(headIdx) ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[headIdx] : null;
-      const validStickerRef = !seg.sticker_ref || (head && !head.disabled && headIdx < idx);
-      const headSticker = !seg.disabled && validStickerRef ? seg.sticker || head?.sticker : null;
-      const sticker = headSticker ? { ...headSticker, start: seg.start, end: seg.end } : null;
+      const groupSticker = !seg.disabled
+        ? window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, seg, 'sticker') : null;
+      const sticker = groupSticker ? { ...groupSticker, start: seg.start, end: seg.end } : null;
       if (sticker) {
         const absPath = MaweSelection.stickerAbsPath(sticker);
         if (absPath) sticker.abs_path = absPath;
@@ -50,23 +44,20 @@
         end_ms: seg.end,
         text: MaweSpeakerLabels.subtitleExportText(seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments),
         color: groupColor || null,
-        color_ref: seg.color_ref || null,
+        color_ref: null,
         resolve_color: colorName,
-        sticker: groupStickers ? null : sticker,
-        sticker_group_id: seg.sticker_group_id,
-        color_group_id: seg.color_group_id,
-        sticker_ref: !groupStickers && validStickerRef ? seg.sticker_ref || null : null,
+        sticker,
+        sticker_ref: null,
       };
     });
     const colorCount = segments.filter(s => s.resolve_color).length;
-    const stickerCount = groupStickers?.length || segments.filter(s => s.sticker).length;
+    const stickerCount = segments.filter(s => s.sticker).length;
     if (!colorCount && !stickerCount) {
       MaweHint.flashHint('没有颜色或表情包配置，无法导出 Resolve JSON', 'invalid');
       return null;
     }
     return JSON.stringify({
-      schema: groupStickers ? 'moy.asr_subtitle_editor.resolve.v2' : 'moy.asr_subtitle_editor.resolve.v1',
-      ...(groupStickers ? { stickers: groupStickers, subtitle_groups: MaweBoot.DATA.subtitle_groups } : {}),
+      schema: 'moy.asr_subtitle_editor.resolve.v1',
       source: 'moys-asr-workflow',
       filename_base: MaweBoot.FILENAME_BASE,
       media: MaweBoot.DATA.media || '',
@@ -539,7 +530,7 @@
   function buildStickerOtio() {
     // 传空数组而非 null：函数体内用 removed.length 判断是否走去空隙映射分支，
     // 空数组 .length===0（falsy）正确退化为原始时间线，且避免 null.length 崩溃。
-    const collected = collectStickerOtioEntries([], undefined, { allGroups: true });
+    const collected = collectStickerOtioEntries([]);
     if (collected.error) {
       MaweHint.flashHint(collected.error, 'warning');
       return null;
@@ -561,30 +552,21 @@
   // 收集表情包条目；当传入 removed gaps 时，把每条表情包的时间映射到去空隙后的时间线，
   // 并跳过完全落在空隙内、映射后时长归零的条目。removed 为空数组时退化为原始时间线。
   // 表情包必须有真实磁盘路径（服务器 OTIO/OTIOZ 均按 sticker_rel 读盘）。
-  function collectStickerOtioEntries(removed, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, { allGroups = false } = {}) {
-  if (MaweBoot.DATA.subtitle_groups) {
-    const track = segments === window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments ? 'overlay' : 'main';
-    segments = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true })
-      .filter(range => range.enabled && (allGroups || range.track === track))
-      .map(range => ({ start: range.start, end: range.end,
-        sticker: { ...range.source, start: range.start, end: range.end } }));
-  }
-
+  function collectStickerOtioEntries(removed, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) {
   const entries = [];
   for (let idx = 0; idx < segments.length; idx++) {
     const seg = segments[idx];
     if (seg.disabled) continue;
-    const headIdx = seg.sticker_ref?.headIdx;
-    const head = Number.isInteger(headIdx) ? segments[headIdx] : null;
-    if (seg.sticker_ref && (!head || head.disabled || headIdx >= idx)) continue;
-    const sticker = seg.sticker || head?.sticker;
+    const sticker = window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, seg, 'sticker');
     if (!sticker) continue;
     const absPath = MaweSelection.stickerAbsPath(sticker);
     if (!absPath) {
       return { error: '表情包缺少真实磁盘路径；请先设置实际表情包根目录后再导出 OTIO' };
     }
-    const origStart = seg.sticker?.start != null ? seg.sticker.start : seg.start;
-    const origEnd = seg.sticker?.end != null ? seg.sticker.end : seg.end;
+    // A group may span gaps, disabled cues and other tracks. OTIO keeps each
+    // selected subtitle's own interval, including when removed gaps are mapped.
+    const origStart = seg.start;
+    const origEnd = seg.end;
     if (origEnd <= origStart) continue;
     const startMs = removed.length
       ? window.AsrEditorUtils.mapGapRemovedTime(origStart, removed)
@@ -640,7 +622,7 @@
       MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
       return null;
     }
-    const collected = collectStickerOtioEntries(removed, undefined, { allGroups: true });
+    const collected = collectStickerOtioEntries(removed);
     if (collected.error) {
       MaweHint.flashHint(collected.error, 'warning');
       return null;
