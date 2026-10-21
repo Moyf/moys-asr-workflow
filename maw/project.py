@@ -129,6 +129,7 @@ def repair_project_timing_ranges(
     project: JsonValue,
     *,
     repair_segment_ranges: bool = True,
+    preserve_zero: bool = True,
 ) -> int:
     """Repair main and multi-subtitle track timings before strict validation.
 
@@ -144,17 +145,17 @@ def repair_project_timing_ranges(
         tracks = project.get("tracks")
         if not isinstance(tracks, list):
             return 0
-        return sum(repair(track["segments"], preserve_zero=True)
+        return sum(repair(track["segments"], preserve_zero=preserve_zero)
                    for track in tracks if isinstance(track, dict)
                    and isinstance(track.get("segments"), list))
     main_segments = project.get("segments")
     repair = repair_segment_durations if repair_segment_ranges else repair_item_timing_ranges
-    fixed = repair(main_segments) if isinstance(main_segments, list) else 0
+    fixed = repair(main_segments, preserve_zero=preserve_zero) if isinstance(main_segments, list) else 0
     overlay = project.get("overlay_track")
     if isinstance(overlay, dict):
         overlay_segments = overlay.get("segments")
         if isinstance(overlay_segments, list):
-            fixed += repair(overlay_segments)
+            fixed += repair(overlay_segments, preserve_zero=preserve_zero)
     multi = project.get("multi_subtitle")
     if not isinstance(multi, dict):
         return fixed
@@ -165,7 +166,7 @@ def repair_project_timing_ranges(
         if isinstance(track, dict):
             segments = track.get("segments")
             if isinstance(segments, list):
-                fixed += repair(segments)
+                fixed += repair(segments, preserve_zero=preserve_zero)
     return fixed
 
 
@@ -247,7 +248,7 @@ def _validate_timebase(project: JsonDict, errors: list[ProjectValidationError]) 
         errors.append(ProjectValidationError("$.timebase", "must be an object"))
         return
     unit = timebase.get("unit")
-    if unit not in TIMELINE_TIMEBASE_UNITS:
+    if not isinstance(unit, str) or unit not in TIMELINE_TIMEBASE_UNITS:
         errors.append(ProjectValidationError("$.timebase.unit", "must be milliseconds or frames"))
     fps = timebase.get("fps")
     if type(fps) not in (int, float) or not math.isfinite(float(fps)):
