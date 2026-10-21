@@ -1,0 +1,10 @@
+{
+  "schema": "moy.asr.project.v3",
+  "tracks": [
+    {"id": "main", "role": "main", "name": "主字幕", "enabled": true, "segments": [{"id": "source", "start": 0, "end": 1000, "text": "源", "sticker_group_id": "shared-sticker"}]},
+    {"id": "fr", "role": "extension", "name": "FR", "enabled": false, "split_mode": "word", "segments": [{"id": "target", "start": 50, "end": 1050, "text": "Bonjour", "sticker_group_id": "shared-sticker"}]}
+  ],
+  "bilingual": {"display_mode": "extension", "active_track_id": "fr", "vendor": 0},
+  "bindings": [{"id": "relation", "source_track_id": "main", "target_track_id": "fr", "source_segment_ids": ["source"], "target_segment_ids": ["target"], "start_offset_ms": 50, "end_offset_ms": 50}],
+  "subtitle_groups": {"next_id": 4, "color": [], "sticker": [{"id": "shared-sticker", "value": {"name": "smile", "vendor": {"keep": false}}}]}
+}

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const source = readFileSync(new URL('../web/shared/utils/project-tracks.js', import.meta.url), 'utf8');
-const model = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const model = (await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)).createUtilsModule();
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/project-tracks/${name}.json`, import.meta.url), 'utf8'));
 const canonical = () => fixture('canonical');
 const json = value => JSON.parse(JSON.stringify(value));
@@ -141,4 +141,40 @@ test('checkpoint snapshots include all persistent content and exclude known deri
   assert.deepEqual(snapshot.bindings, project.bindings);
   assert.deepEqual(snapshot.subtitle_groups, project.subtitle_groups);
   assert.equal(project.tracks[0].segments[0]._dirty, true);
+});
+
+for (const name of ['v2-cross-track', 'reserved-ids']) test(`shared ${name} migration is exact and idempotent`, () => {
+  const input = fixture(`${name}.input`); const before = json(input);
+  const { project } = model.importProject(input);
+  assert.deepEqual(project, fixture(`${name}.expected`));
+  assert.deepEqual(input, before);
+  assert.deepEqual(model.importProject(project), { project, changes: [] });
+});
+for (const example of fixture('invalid')) test(`shared invalid case: ${example.name}`, () => rejects(example.input, example.error_path));
+
+test('v2 whitespace identities normalize while canonical v3 identities remain strict', () => {
+  const legacy = fixture('v2-cross-track.input'); legacy.segments[0].id = ' source ';
+  assert.equal(model.importProject(legacy).project.tracks[0].segments[0].id, 'source');
+  const current = canonical(); current.tracks[0].segments[0].id = ' cue-main ';
+  rejects(current, '$.tracks[0].segments[0].id');
+});
+
+test('opaque IDs with colons cannot collide in binding uniqueness keys', () => {
+  const project = model.migrateProjectTracks({ segments: [{ id: 'c', start: 0, end: 10, text: 'A' }, { id: 'b:c', start: 10, end: 20, text: 'B' }] });
+  for (const [targetId, sourceId, cueId, start] of [['a:b', 'c', 'target-one', 0], ['a', 'b:c', 'target-two', 10]]) {
+    project.tracks.push({ id: targetId, role: 'extension', name: targetId, enabled: true, segments: [{ id: cueId, start, end: start + 10, text: targetId }] });
+    project.bindings.push({ id: `binding-${targetId}`, source_track_id: 'main', target_track_id: targetId,
+      source_segment_ids: [sourceId], target_segment_ids: [cueId], start_offset_ms: 0, end_offset_ms: 0 });
+  }
+  project.bilingual.active_track_id = 'a:b';
+  assert.equal(model.validateTracksProject(project).ok, true);
+});
+
+test('legacy optional nulls retain original defaults without swallowing conflicting metadata', () => {
+  const project = model.importProject({ segments: [], overlay_track: null,
+    multi_subtitle: { schema: null, enabled: null, display_mode: null, main_split_mode: null, bindings: null, tracks: [{ role: null, split_mode: null, segments: null }] } }).project;
+  assert.equal(project.tracks[1].split_mode, 'word');
+  assert.equal(Object.hasOwn(project.tracks[0], 'split_mode_override'), false);
+  assert.equal(project.bilingual.display_mode, 'both');
+  rejects({ segments: [], multi_subtitle: { tracks: [{ name: null }] } }, '$.multi_subtitle.tracks[0].name');
 });
