@@ -102,7 +102,7 @@ from types import SimpleNamespace
 def analysis(*a, **k):
     print("ANALYSIS_STARTED")
     return SimpleNamespace(pure=[],scripts=[],binaries=[],datas=[])
-runpy.run_path("MAW.spec", init_globals={"SPECPATH":".","Analysis":analysis,
+runpy.run_path("scripts/packaging/MAW.spec", init_globals={"SPECPATH":"scripts/packaging","Analysis":analysis,
     "PYZ":lambda *a,**k:None,"EXE":lambda *a,**k:None,"COLLECT":lambda *a,**k:None,"BUNDLE":lambda *a,**k:None})
 '''
             result = subprocess.run([sys.executable, "-c", code], cwd=root,
