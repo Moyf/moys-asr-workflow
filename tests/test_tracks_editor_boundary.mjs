@@ -45,8 +45,10 @@ test('the real editor projection preserves every track and extension field witho
     AsrEditorUtils: { ...utils.window.AsrEditorUtils, ...tracks }, MaweBoot: { DATA: data },
     MaweExportTimeline: { buildCurrentWorkspaceData: () => undefined },
     MaweSettings: { EDITOR_SETTINGS: { assMode: false } },
-    MawePreviewGeometry: { getStickerGeometry: () => ({ x: 0.5, y: 0.5, scale: 1 }) },
-    MaweAppearance: { getPreviewGeometry: () => ({}), getSubtitleAppearance: () => ({}), getStoredExtensionSubtitleAppearance: () => ({}) },
+    MawePreviewGeometry: { getStickerGeometry: () => utils.window.AsrEditorUtils.normalizePreviewGeometry(
+      undefined, utils.window.AsrEditorUtils.DEFAULT_STICKER_GEOMETRY) },
+    MaweAppearance: { getPreviewGeometry: () => utils.window.AsrEditorUtils.normalizePreviewGeometry(),
+      getSubtitleAppearance: () => ({}), getStoredExtensionSubtitleAppearance: () => ({}) },
     MaweSpeakerLabels: { getSpeakerLabelSettings: () => ({}) },
   };
   context.window = context;
@@ -71,7 +73,7 @@ test('the real editor projection preserves every track and extension field witho
   assert.equal(snapshot.tracks[2].custom_track, false);
   assert.deepEqual(snapshot.bindings, data.bindings);
   assert.deepEqual(snapshot.subtitle_groups, data.subtitle_groups);
-  assert.equal(tracks.validateTracksProject(snapshot).ok, true);
+  assert.deepEqual(tracks.validateTracksProject(snapshot).errors, []);
 });
 
 test('importing project subtitles keeps cue metadata and a detached source group table', async () => {

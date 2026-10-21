@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
-import { createUtilsModule } from '../web/shared/utils/history.js';
+import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+
+const utilsContext = { window: {}, TextDecoder };
+loadEditorModule(utilsContext, 'shared/editor-utils.js');
+const editorUtils = utilsContext.window.AsrEditorUtils;
 
 const source = readFileSync(new URL('../web/editor/media/editor-audio-processing.js', import.meta.url), 'utf8');
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
@@ -38,7 +42,7 @@ function fixture(transport = async () => response(result())) {
   const context = vm.createContext({ URL, AbortController, DOMException, setTimeout, clearTimeout, AudioContext,
     location: { href: 'http://localhost/', origin: 'http://localhost' },
     document: { getElementById(id) { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); }, addEventListener() {} },
-    MaweBoot: { DATA: { segments: [] }, SERVER_CONFIG: { requestToken: 'token', bindingGeneration: 1, sourceMediaId: 'source-a' } },
+    MaweBoot: { DATA: editorUtils.makeProject([]), SERVER_CONFIG: { requestToken: 'token', bindingGeneration: 1, sourceMediaId: 'source-a' } },
     MaweCoreState: { player }, MaweProjectLoad: { projectBindingEpoch: 0 },
     MaweFloatingPanel: { createFloatingPanel(options) {
       const panel = { open: () => options.onOpen(), close: () => options.onClose() };
@@ -51,13 +55,15 @@ function fixture(transport = async () => response(result())) {
   for (const path of ['boot/editor-runtime.js', 'state/editor-state.js']) {
     vm.runInContext(readFileSync(new URL('../web/editor/' + path, import.meta.url), 'utf8'), context);
   }
-  context.AsrEditorUtils = createUtilsModule({ cloneJsonValue: clone });
+  context.AsrEditorUtils = editorUtils;
   context.MaweWordTiming = { clearSelection() {} };
   context.MaweHint = { flashHint() {} };
   context.MaweInlineEdit = {};
   vm.runInContext(readFileSync(new URL('../web/editor/state/editor-history.js', import.meta.url), 'utf8'), context);
   vm.runInContext(source, context);
   context.MaweAudioProcessing.init();
+  context.MaweState.beginProjectSession();
+  context.MaweState.establishProjectCheckpoint();
   return { context, api: context.MaweAudioProcessing, state: context.MaweState, calls, routes, contexts, nodes, panels, player, node };
 }
 
@@ -170,12 +176,13 @@ test('a binding change during measurement re-enables measurement and a late resu
   assert.equal(f.api.measurement.integratedLufs, -18);
 });
 
-test('audio edits keep their own dirty flag, share undo history, and load/reset normalized project settings', () => {
+test('audio edits participate in content checkpoints, share undo history, and load/reset normalized project settings', () => {
   const f = fixture();
   f.api.change({ gain_db: -4 });
   assert.equal(f.state.hasProjectChanges(), true);
-  f.state.noteSavedSegments(); f.state.reconcileSegmentsDirty();
+  f.state.reconcileSegmentsDirty();
   assert.equal(f.state.hasProjectChanges(), true, 'subtitle reconciliation must not discard audio dirtiness');
+  f.state.noteSavedSegments();
   f.state.markSaved();
   assert.equal(f.state.hasProjectChanges(), false);
   f.context.MaweHistory.performUndo();
@@ -228,20 +235,15 @@ test('custom reference matching, dirty state and undo/redo keep the same target 
 function serializeProject(f) {
   const context = f.context;
   Object.assign(context, {
-    projectExtensionFields: {}, MULTI_SUBTITLE_UTILS: { MULTI_SUBTITLE_SCHEMA: 'moy.asr.multi.v1' },
     getOverlayTrack: () => null,
     MaweTimeline: { syncProjectTimebaseAndBindingOffsets() {}, projectTimebase: () => ({ unit: 'milliseconds' }),
       normalizeMediaMetadata: () => null },
-    MaweMultiSubtitleCore: { getMultiSubtitleState: () => ({ tracks: [], bindings: [] }),
-      getActiveExtensionTrack: () => null, isConfiguredSubtitleSplitMode: () => false,
-      getMainSubtitleSplitMode: () => 'word' },
     MaweSettings: { EDITOR_SETTINGS: {} }, MaweProjectMediaInputs: {},
-    MaweAppearance: { getPreviewGeometry: () => ({}), getSubtitleAppearance: () => ({}) },
+    MawePreviewGeometry: { getStickerGeometry: () => editorUtils.normalizePreviewGeometry(undefined, editorUtils.DEFAULT_STICKER_GEOMETRY) },
+    MaweAppearance: { getPreviewGeometry: () => editorUtils.normalizePreviewGeometry(), getSubtitleAppearance: () => ({}) },
     MaweSpeakerLabels: { getSpeakerLabelSettings: () => ({}) },
     MaweExportTimeline: { buildCurrentWorkspaceData: () => null },
   });
-  context.AsrEditorUtils = { ...context.AsrEditorUtils, PROJECT_SCHEMA: 'moy.asr.v1',
-    normalizeItemTimingRanges: () => 0, markersToProjectField: () => null };
   vm.runInContext(readFileSync(new URL('../web/editor/io/editor-json-repair.js', import.meta.url), 'utf8'), context);
   return JSON.parse(context.MaweJsonRepair.buildJson());
 }
@@ -296,6 +298,7 @@ test('normal gain controls stay in the friendly range while extended project val
   assert.equal(slider.min, '-6'); assert.equal(slider.max, '12');
   for (const gain of [18, -20]) {
     f.api.loadProject({ gain_db: gain });
+    f.state.establishProjectCheckpoint();
     assert.equal(slider.value, String(gain));
     assert.equal(expanded.checked, true); assert.equal(expanded.disabled, true);
     assert.equal(f.nodes.get('audio-gain-range-note').hidden, false);
