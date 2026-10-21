@@ -299,6 +299,22 @@ test('ever-stacked inline decorations restore immediate transform targets in bot
   }
 });
 
+test('solo italic runs use the transform baseline without changing the legacy animation clock', () => {
+  for (const target of [0, 1]) {
+    let plan;
+    const output = h.buildAssPayload([{ start: 0, end: 2000, text: 'MAIN //MMMM// TAIL' }], {
+      assProfile: { animations: { t: { enabled: true, startMs: 100, endMs: 1100, tags: `\\i${target}` } } },
+      assStyle: { fontSize: 72, italic: !target }, onAssPlan: value => { plan = value; },
+    });
+    assert.equal(plan.slices.length, 1);
+    assert.equal(plan.slices[0].legacy, true);
+    const events = output.split('\n').filter(line => line.startsWith('Dialogue:'));
+    assert.equal(events.length, 1);
+    assert.ok(events[0].includes(`\\t(100,1100,1,\\i${target})`));
+    assert.ok(events[0].endsWith(target ? 'MAIN MMMM TAIL' : String.raw`MAIN {\i1}MMMM{\i0} TAIL`));
+  }
+});
+
 test('alignment 网格映射到列/行（屏幕语义：1-3 底行，7-9 顶行）', () => {
   same(h.assCanvasAlignmentGrid(2), { column: 1, row: 2 });
   same(h.assCanvasAlignmentGrid(1), { column: 0, row: 2 });

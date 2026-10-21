@@ -310,12 +310,18 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
     const native = { ...item.style, fontSize: item.fontSize };
     const animated = animation.transformProgress === null ? native
       : window.AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true, popScale: animation.popScale });
-    if ((!item.legacy || item.sharedStackCue) && profile.animations.t.enabled) {
+    if (profile.animations.t.enabled) {
       // libass applies discrete style tags inside t immediately, even before
       // the numeric transform window starts (real b/i frame-hash verification).
       const targets = window.AsrEditorUtils.assTransformStyleTargets(profile.animations.t.tags);
+      const shared = !item.legacy || item.sharedStackCue;
+      const inlineItalic = item.runs.some(run => run.italic);
       for (const key of ['bold', 'italic', 'underline', 'strikeOut']) {
-        if (targets[key] !== undefined) animated[key] = Boolean(targets[key]);
+        // Only the new inline italic path needs an immediate solo baseline;
+        // keep other legacy decoration and numeric animation behavior intact.
+        if (targets[key] !== undefined && (shared || (key === 'italic' && inlineItalic))) {
+          animated[key] = Boolean(targets[key]);
+        }
       }
     }
     const scale = item.scale * (item.cueScale || 1);
