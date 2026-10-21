@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { runtimeProject } from './helpers/runtime-project.mjs';
 
 function waveformContext() {
+  const utilities = { window: {} };
+  loadEditorModule(utilities, 'shared/editor-utils.js');
   const context = { window: { ASR_EDITOR_PALETTE: [{ name: 'yellow', value: '#123456' }] } };
+  context.window.AsrEditorUtils = utilities.window.AsrEditorUtils;
+  context.window.MaweBoot = { DATA: runtimeProject([{ color_group_id: 'palette-yellow' }], {
+    subtitle_groups: { next_id: 1, color: [{ id: 'palette-yellow', value: { name: 'yellow' } }], sticker: [] },
+  }) };
   loadEditorModule(context, 'editor/media/waveform.js');
   return context;
 }
@@ -57,8 +64,11 @@ test('waveform composition preserves getter and non-enumerable class method desc
 
 test('palette consumers observe replacements through the same private module state', () => {
   const context = waveformContext();
-  const colors = context.window.MAWE.resolve('waveform-colors');
-  assert.equal(colors.colorForSegment({ color: { name: 'yellow' } }), '#123456');
+  const colors = context.window.MAWE.resolve('waveform-colors', {
+    getSubtitleGroupValue: (segment, kind) => context.window.AsrEditorUtils.getSubtitleGroupValue(context.window.MaweBoot.DATA, segment, kind),
+  });
+  const segment = context.window.AsrEditorUtils.getMainTrack(context.window.MaweBoot.DATA).segments[0];
+  assert.equal(colors.colorForSegment(segment), '#123456');
   colors.setColorPalette([{ name: 'yellow', value: '#abcdef' }]);
-  assert.equal(colors.colorForSegment({ color: { name: 'yellow' } }), '#abcdef');
+  assert.equal(colors.colorForSegment(segment), '#abcdef');
 });

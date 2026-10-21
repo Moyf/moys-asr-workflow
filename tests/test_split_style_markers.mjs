@@ -3,12 +3,15 @@ import test from 'node:test';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { runtimeProject } from './helpers/runtime-project.mjs';
 const fixture = { window: {} };
 loadEditorModule(fixture, 'shared/editor-utils.js');
 const utils = fixture.window.AsrEditorUtils;
 const settings = { assMode: true, assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both' };
 const context = { window: { AsrEditorUtils: utils }, MULTI_SUBTITLE_UTILS: utils,
+  MaweBoot: { DATA: runtimeProject([]) },
   MaweSettings: { EDITOR_SETTINGS: { ...settings } }, MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
+context.window.MaweBoot = context.MaweBoot;
 vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), context);
 const core = context.window.MaweSplitCore;
 const plain = value => JSON.parse(JSON.stringify(value));
