@@ -333,7 +333,37 @@ def _legacy_groups(project: dict[str, Any]) -> None:
     project["subtitle_groups"] = table
 
 
-def _legacy_track_ids(extensions: list[Any]) -> set[str]:
+def _legacy_normalized_ids(values: list[dict[str, Any]], prefix: str) -> list[str]:
+    """Reproduce old implicit IDs only to resolve references during import.
+
+    These aliases never become a second persisted identity. Legacy writers
+    could omit an ID while binding to the deterministic ID filled by v1.
+    """
+    reserved = {value["id"] for value in values if "id" in value}
+    used: set[str] = set()
+    identifiers = []
+    for index, value in enumerate(values):
+        if "id" in value:
+            identifier = value["id"]
+        else:
+            base = f"{prefix}-{index + 1:03d}"
+            identifier = base
+            suffix = 2
+            while identifier in used or (identifier != base and identifier in reserved):
+                identifier = f"{base}-{suffix}"
+                suffix += 1
+            if identifier in reserved:
+                identifier = f"{base}-generated"
+                suffix = 2
+                while identifier in used or identifier in reserved:
+                    identifier = f"{base}-generated-{suffix}"
+                    suffix += 1
+        identifiers.append(identifier)
+        used.add(identifier)
+    return identifiers
+
+
+def _legacy_track_ids(extensions: list[Any]) -> tuple[set[str], dict[str, str]]:
     reserved: set[str] = set()
     for index, raw in enumerate(extensions):
         track = _object(raw, f"$.multi_subtitle.tracks[{index}]")
@@ -343,10 +373,60 @@ def _legacy_track_ids(extensions: list[Any]) -> set[str]:
                 _fail(f"$.multi_subtitle.tracks[{index}].id", "must be a unique track ID")
             reserved.add(identifier)
             track["id"] = identifier
+    old_ids = _legacy_normalized_ids(extensions, "extension")
     for index, track in enumerate(extensions):
         if "id" not in track:
             track["id"] = _fresh_id(f"extension-{index + 1}", reserved)
-    return reserved
+    return reserved, {old_id: track["id"] for old_id, track in zip(old_ids, extensions)}
+
+
+def _validate_legacy_content(project: dict[str, Any], multi: dict[str, Any], *, has_legacy_groups: bool) -> None:
+    """Report independent field failures before any reference is migrated."""
+    errors: list[ProjectValidationError] = []
+    _validate_timebase(project, errors)
+    _validate_media_metadata(project, errors)
+    _validate_transcription_metadata(project, errors)
+    errors.extend(ProjectValidationError(path, message) for path, message in validate_preview(project))
+    for index, track in enumerate(project["tracks"]):
+        path = f"$.tracks[{index}]"
+        metadata_errors: list[ProjectValidationError] = []
+        _validate_transcription_metadata({field: track[field] for field in TRACK_SOURCE_FIELDS if field in track}, metadata_errors)
+        errors.extend(ProjectValidationError(path + error.path[1:], error.message) for error in metadata_errors)
+        if "split_mode_override" in track and track["split_mode_override"] not in ("word", "continuous"):
+            errors.append(ProjectValidationError(f"{path}.split_mode_override", "must be continuous or word"))
+        if "preserve_punctuation" in track and type(track["preserve_punctuation"]) is not bool:
+            errors.append(ProjectValidationError(f"{path}.preserve_punctuation", "must be a boolean"))
+        segments = track["segments"]
+        if not isinstance(segments, list):
+            errors.append(ProjectValidationError(f"{path}.segments", "must be an array"))
+            continue
+        previous_end = None
+        for segment_index, segment in enumerate(segments):
+            segment_path = f"{path}.segments[{segment_index}]"
+            if not isinstance(segment, dict):
+                errors.append(ProjectValidationError(segment_path, "must be an object"))
+                continue
+            _validate_segment(copy.deepcopy(segment), segment_path, previous_end, errors)
+            if type(segment.get("start")) is int and type(segment.get("end")) is int and segment["end"] > segment["start"]:
+                previous_end = segment["end"]
+        if has_legacy_groups:
+            _validate_head_refs(segments, errors, path_prefix=f"{path}.segments")
+    bindings = multi.get("bindings")
+    if bindings is not None and not isinstance(bindings, list):
+        errors.append(ProjectValidationError("$.multi_subtitle.bindings", "must be an array"))
+    for index, binding in enumerate(bindings if isinstance(bindings, list) else []):
+        path = f"$.multi_subtitle.bindings[{index}]"
+        if not isinstance(binding, dict):
+            errors.append(ProjectValidationError(path, "must be an object"))
+            continue
+        for field in ("main_segment_ids", "extension_segment_ids"):
+            ids = binding.get(field)
+            if ids is None and field[:-1] in binding:
+                ids = [binding[field[:-1]]]
+            if not isinstance(ids, list) or len(ids) != 1:
+                errors.append(ProjectValidationError(f"{path}.{field}", "must contain exactly one stable ID"))
+    if errors:
+        raise ProjectValidationFailed(tuple(errors))
 
 
 def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
@@ -363,7 +443,7 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
     if multi.get("schema") is not None and multi["schema"] != "moy.asr.multi_subtitle.v1":
         _fail("$.multi_subtitle.schema", "must be moy.asr.multi_subtitle.v1")
     extensions = _array(multi["tracks"] if multi.get("tracks") is not None else [], "$.multi_subtitle.tracks")
-    reserved_tracks = _legacy_track_ids(extensions)
+    reserved_tracks, track_aliases = _legacy_track_ids(extensions)
     main: dict[str, Any] = {
         "id": _fresh_id("main", reserved_tracks), "role": "main", "name": "主字幕",
         "enabled": True, "segments": main_segments,
@@ -409,7 +489,10 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
         bilingual["display_mode"] = "both"
     if extensions and "active_track_id" not in bilingual:
         bilingual["active_track_id"] = extensions[0]["id"]
+    elif isinstance(bilingual.get("active_track_id"), str):
+        bilingual["active_track_id"] = track_aliases.get(bilingual["active_track_id"].strip(), bilingual["active_track_id"])
     project["bilingual"] = bilingual
+    _validate_legacy_content(project, multi, has_legacy_groups=schema == LEGACY_PROJECT_SCHEMA)
 
     # v1 IDs were track-scoped. Reserve all explicit IDs before generating any.
     reserved_cues: set[str] = set()
@@ -428,15 +511,17 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
                 _fail(f"$.tracks[{ti}].segments[{si}].id", "v2 requires stable cue IDs")
     used_cues: set[str] = set()
     mappings: dict[str, dict[str, str]] = {}
+    old_track_ids = {current: old for old, current in track_aliases.items()}
     for track in tracks:
         mapping: dict[str, str] = {}
+        prefix = f"{old_track_ids[track['id']]}-segment" if track["role"] == "extension" else track["role"]
+        old_ids = _legacy_normalized_ids(track["segments"], prefix)
         for index, cue in enumerate(track["segments"]):
             original = cue.get("id")
             if original is None or original in used_cues:
                 cue["id"] = _fresh_id(f"{track['id']}-cue-{index + 1}", reserved_cues)
             used_cues.add(cue["id"])
-            if original is not None:
-                mapping[original] = cue["id"]
+            mapping[old_ids[index]] = cue["id"]
         mappings[track["id"]] = mapping
 
     bindings = _array(multi["bindings"] if multi.get("bindings") is not None else [], "$.multi_subtitle.bindings")
@@ -460,6 +545,7 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
         if target_id is None and len(extensions) == 1:
             target_id = extensions[0]["id"]
         target_id = _identifier(target_id, f"{path}.track_id", trim=True)
+        target_id = track_aliases.get(target_id, target_id)
         if not any(track["id"] == target_id for track in extensions):
             _fail(f"{path}.track_id", "must reference an existing extension track")
         binding["source_track_id"] = main["id"]

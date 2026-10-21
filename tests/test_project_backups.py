@@ -6,6 +6,7 @@ from unittest.mock import patch
 from datetime import datetime
 
 from maw.project_backups import backup_directory, backup_directory_candidates, write_backup
+from maw.project_tracks import get_main_track
 
 
 class BackupTests(unittest.TestCase):
@@ -33,7 +34,9 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(first.name, 'project-2026-06-26_165903.mosp-bak')
             self.assertTrue(second.exists())
             self.assertTrue(other.exists())
-            self.assertEqual(json.loads(third.read_text(encoding='utf-8'))['language'], 'zh')
+            saved = json.loads(third.read_text(encoding='utf-8'))
+            self.assertEqual(get_main_track(saved)['language'], 'zh')
+            self.assertNotIn('segments', saved)
             self.assertNotIn(b'\r', third.read_bytes())
             self.assertFalse(project.exists())
 

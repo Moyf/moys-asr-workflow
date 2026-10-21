@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+from maw.project_tracks import get_main_track, get_tracks_by_role, make_project
+
 from maw.project import (
     PROJECT_SCHEMA,
     ProjectValidationFailed,
@@ -27,13 +29,13 @@ class ProjectContractTests(unittest.TestCase):
 
     def test_punctuation_policy_is_optional_boolean_and_round_trips(self) -> None:
         project = {"preserve_punctuation": True, "segments": [{"start": 0, "end": 1000, "text": "你好，世界。"}]}
-        self.assertTrue(normalize_project(project)["preserve_punctuation"])
+        self.assertTrue(get_main_track(normalize_project(project))["preserve_punctuation"])
         self.assertEqual(project["segments"][0]["text"], "你好，世界。")
         for bad in ("true", 1, None):
             with self.subTest(bad=bad):
                 result = validate_project({**project, "preserve_punctuation": bad})
                 self.assertFalse(result.ok)
-                self.assertIn("$.preserve_punctuation", {error.path for error in result.errors})
+                self.assertIn("$.tracks[0].preserve_punctuation", {error.path for error in result.errors})
 
     def test_project_ass_mode_and_speaker_export_flags_round_trip_and_validate(self) -> None:
         project = {
@@ -62,16 +64,13 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(normalized["schema"], PROJECT_SCHEMA)
 
     def test_validate_project_accepts_current_schema(self) -> None:
-        result = validate_project({
-            "schema": PROJECT_SCHEMA,
-            "segments": [{"start": 0, "end": 1000, "text": "current"}],
-        })
+        result = validate_project(make_project([{ "start": 0, "end": 1000, "text": "current" }]))
 
         self.assertTrue(result.ok, msg=str([error.to_json() for error in result.errors]))
 
     def test_validate_project_rejects_unknown_project_schema(self) -> None:
         result = validate_project({
-            "schema": "moy.asr.project.v2",
+            "schema": "moy.asr.project.v4",
             "segments": [{"start": 0, "end": 1000, "text": "future"}],
         })
 
@@ -108,8 +107,8 @@ class ProjectContractTests(unittest.TestCase):
 
         paths = {error.path for error in result.errors}
         self.assertEqual(
-            paths & {"$.language_source", "$.split_mode", "$.timestamp_granularity"},
-            {"$.language_source", "$.split_mode", "$.timestamp_granularity"},
+            paths & {"$.tracks[0].language_source", "$.tracks[0].split_mode", "$.tracks[0].timestamp_granularity"},
+            {"$.tracks[0].language_source", "$.tracks[0].split_mode", "$.tracks[0].timestamp_granularity"},
         )
 
     def test_normalize_project_generates_stable_main_ids_for_legacy_projects(self) -> None:
@@ -117,15 +116,15 @@ class ProjectContractTests(unittest.TestCase):
 
         normalized = normalize_project(project)
 
-        self.assertNotIn("items", normalized["segments"][0])
-        self.assertEqual(normalized["segments"][0]["id"], "main-001")
+        self.assertNotIn("items", get_main_track(normalized)["segments"][0])
+        self.assertEqual(get_main_track(normalized)["segments"][0]["id"], "main-cue-1")
         self.assertNotIn("multi_subtitle", normalized)
 
     def test_generated_main_ids_reserve_later_explicit_ids(self) -> None:
         project = {
             "segments": [
                 {"start": 0, "end": 1000, "text": "generated"},
-                {"id": "main-001", "start": 1000, "end": 2000, "text": "explicit"},
+                {"id": "main-cue-1", "start": 1000, "end": 2000, "text": "explicit"},
                 {"start": 2000, "end": 3000, "text": "next"},
             ],
         }
@@ -133,8 +132,8 @@ class ProjectContractTests(unittest.TestCase):
         normalized = normalize_project(project)
 
         self.assertEqual(
-            [segment["id"] for segment in normalized["segments"]],
-            ["main-001-generated", "main-001", "main-003"],
+            [segment["id"] for segment in get_main_track(normalized)["segments"]],
+            ["main-cue-1-2", "main-cue-1", "main-cue-3"],
         )
 
     def test_validate_project_accepts_optional_multi_subtitle_items(self) -> None:
@@ -172,13 +171,13 @@ class ProjectContractTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertIsNotNone(result.project)
-        self.assertEqual(result.project["segments"][0]["id"], "main-001")
-        extension = result.project["multi_subtitle"]["tracks"][0]["segments"][0]
+        self.assertEqual(get_main_track(result.project)["segments"][0]["id"], "main-cue-1")
+        extension = get_tracks_by_role(result.project, "extension")[0]["segments"][0]
         self.assertEqual(
             extension["items"],
             [{"text": "wrong source", "start": 1100, "end": 2900}],
         )
-        binding = result.project["multi_subtitle"]["bindings"][0]
+        binding = result.project["bindings"][0]
         self.assertEqual(binding["start_offset_ms"], 100)
         self.assertEqual(binding["end_offset_ms"], -100)
 
@@ -205,8 +204,8 @@ class ProjectContractTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual(result.project["timebase"], {"unit": "frames", "fps": 29.97})
-        self.assertEqual(result.project["segments"][0]["start_frame"], 30)
-        self.assertEqual(result.project["segments"][0]["items"][0]["end_frame"], 90)
+        self.assertEqual(get_main_track(result.project)["segments"][0]["start_frame"], 30)
+        self.assertEqual(get_main_track(result.project)["segments"][0]["items"][0]["end_frame"], 90)
 
     def test_validate_project_reports_invalid_timebase_and_frame_pairs(self) -> None:
         project = {
@@ -231,8 +230,8 @@ class ProjectContractTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn("$.timebase.fps", paths)
-        self.assertIn("$.segments[0].end_frame", paths)
-        self.assertIn("$.segments[0].items[0]", paths)
+        self.assertIn("$.tracks[0].segments[0].end_frame", paths)
+        self.assertIn("$.tracks[0].segments[0].items[0]", paths)
 
     def test_validate_project_accepts_optional_source_video_fps_metadata(self) -> None:
         project = {
@@ -387,8 +386,8 @@ class ProjectContractTests(unittest.TestCase):
         paths = {error.path for error in result.errors}
 
         self.assertFalse(result.ok)
-        self.assertIn("$.multi_subtitle.tracks[0].split_mode", paths)
-        self.assertIn("$.multi_subtitle.main_split_mode", paths)
+        self.assertIn("$.tracks[1].split_mode", paths)
+        self.assertIn("$.tracks[0].split_mode_override", paths)
         self.assertIn("$.multi_subtitle.bindings[0].main_segment_ids", paths)
 
     def test_validate_project_accepts_head_refs_speakers_and_preview_clamps(self) -> None:
@@ -421,8 +420,8 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(result.errors, ())
         self.assertIsNotNone(result.project)
         self.assertIsNotNone(result.preview)
-        self.assertEqual(result.preview["segments"][1]["end"], 1500)
-        self.assertEqual(result.project["segments"][1]["end"], 2200)
+        self.assertEqual(get_main_track(result.preview)["segments"][1]["end"], 1500)
+        self.assertEqual(get_main_track(result.project)["segments"][1]["end"], 2200)
 
     def test_validate_project_accepts_optional_sticker_dimensions(self) -> None:
         project = {
@@ -458,13 +457,13 @@ class ProjectContractTests(unittest.TestCase):
         paths = {error.path for error in result.errors}
 
         self.assertFalse(result.ok)
-        self.assertIn("$.segments[1].start", paths)
-        self.assertIn("$.segments[1].items[0].start", paths)
-        self.assertIn("$.segments[1].items[0].end", paths)
-        self.assertIn("$.segments[1].speaker", paths)
-        self.assertIn("$.segments[1].sticker_ref.headIdx", paths)
-        self.assertIn("$.segments[2].start", paths)
-        self.assertIn("$.segments[2].text", paths)
+        self.assertIn("$.tracks[0].segments[1].start", paths)
+        self.assertIn("$.tracks[0].segments[1].items[0].start", paths)
+        self.assertIn("$.tracks[0].segments[1].items[0].end", paths)
+        self.assertIn("$.tracks[0].segments[1].speaker", paths)
+        self.assertIn("$.tracks[0].segments[1].sticker_ref.headIdx", paths)
+        self.assertIn("$.tracks[0].segments[2].start", paths)
+        self.assertIn("$.tracks[0].segments[2].text", paths)
 
     def test_normalize_project_raises_path_qualified_failure(self) -> None:
         project = {"segments": [{"start": 0, "end": 0, "text": "bad"}]}
@@ -472,7 +471,7 @@ class ProjectContractTests(unittest.TestCase):
         with self.assertRaises(ProjectValidationFailed) as raised:
             normalize_project(project)
 
-        self.assertIn("$.segments[0].end", str(raised.exception))
+        self.assertIn("$.tracks[0].segments[0].end", str(raised.exception))
 
     def test_repair_segment_durations_widens_zero_length_item_and_segment(self) -> None:
         """Given a zero-length trailing item, When repaired, Then it keeps at least 100ms."""
@@ -577,8 +576,8 @@ class ProjectContractTests(unittest.TestCase):
         result = validate_project(project)
         errors = {(error.path, error.message) for error in result.errors}
 
-        self.assertIn(("$.segments[0].sticker_ref.headIdx", "must point to an earlier head segment"), errors)
-        self.assertIn(("$.segments[2].sticker_ref.name", "must match referenced head name"), errors)
+        self.assertIn(("$.tracks[0].segments[0].sticker_ref.headIdx", "must point to an earlier head segment"), errors)
+        self.assertIn(("$.tracks[0].segments[2].sticker_ref.name", "must match referenced head name"), errors)
 
     def test_validate_project_accepts_absent_preview_as_legacy(self) -> None:
         project = {"segments": [{"start": 0, "end": 1000, "text": "hi"}]}
@@ -600,7 +599,7 @@ class ProjectContractTests(unittest.TestCase):
         result = validate_project(project)
 
         self.assertTrue(result.ok, msg=str([error.to_json() for error in result.errors]))
-        self.assertEqual(result.project["overlay_track"]["segments"][0]["id"], "overlay-001")
+        self.assertEqual(get_tracks_by_role(result.project, "overlay")[0]["segments"][0]["id"], "overlay-cue-1")
 
     def test_validate_project_rejects_overlay_track_internal_overlap(self) -> None:
         project = {
@@ -617,7 +616,7 @@ class ProjectContractTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertIn(
-            ("$.overlay_track.segments[1].start", "must be >= previous segment end"),
+            ("$.tracks[1].segments[1].start", "must be >= previous segment end"),
             {(error.path, error.message) for error in result.errors},
         )
 
@@ -733,10 +732,12 @@ class ProjectContractTests(unittest.TestCase):
         result = validate_project(project)
 
         self.assertTrue(result.ok)
-        self.assertEqual(
-            result.project["multi_subtitle"]["tracks"][0]["segments"][1]["color_ref"]["headIdx"],
-            0,
-        )
+        segments = get_tracks_by_role(result.project, "extension")[0]["segments"]
+        self.assertEqual(segments[1]["color_group_id"], segments[0]["color_group_id"])
+        group = next(group for group in result.project["subtitle_groups"]["color"]
+                     if group["id"] == segments[1]["color_group_id"])
+        self.assertEqual(group["value"], {"name": "yellow", "value": "#c4a019"})
+        self.assertNotIn("color_ref", segments[1])
 
     def test_validate_project_rejects_invalid_preview_speaker_label_settings(self) -> None:
         project = {

@@ -92,6 +92,27 @@ class ProjectTracksTests(unittest.TestCase):
         ids = [item["id"] for item in iter_segments(project)]
         self.assertEqual(ids, ["main-cue-1-2", "main-cue-1", "overlay-cue-1"])
 
+    def test_legacy_bindings_resolve_implicit_ids_without_overwriting_reserved_explicit_ids(self):
+        raw = {"segments": [{"start": 0, "end": 100, "text": "generated"}, cue("main-001", 100, 200)],
+               "multi_subtitle": {"enabled": True, "active_track_id": "extension-001-generated",
+                   "tracks": [{"segments": [{"start": 0, "end": 100, "text": "translation"}]},
+                              {"id": "extension-001", "segments": []}],
+                   "bindings": [{"track_id": "extension-001-generated", "main_segment_ids": ["main-001-generated"],
+                                 "extension_segment_ids": ["extension-001-generated-segment-001"]}]}}
+        original = copy.deepcopy(raw)
+        project = normalize_project(raw)
+        self.assertEqual(raw, original)
+        self.assertEqual(project["bilingual"]["active_track_id"], "extension-1")
+        binding = project["bindings"][0]
+        self.assertEqual(binding["source_segment_ids"], ["main-cue-1"])
+        self.assertEqual(binding["target_track_id"], "extension-1")
+        self.assertEqual(binding["target_segment_ids"], ["extension-1-cue-1"])
+        self.assertEqual(get_main_track(project)["segments"][1]["id"], "main-001")
+        self.assertEqual(get_tracks_by_role(project, "extension")[1]["id"], "extension-001")
+        self.assertEqual(normalize_project(project), project)
+        binding["source_segment_ids"] = ["main-001-generated"]
+        self.assertRejected(project, "$.bindings[0].source_segment_ids[0]")
+
     def test_track_ids_reserve_legacy_extension_ids(self):
         project = normalize_project({"segments": [], "overlay_track": {},
                                      "multi_subtitle": {"tracks": [{"id": "main", "segments": []}, {"id": "overlay", "segments": []}]}})
