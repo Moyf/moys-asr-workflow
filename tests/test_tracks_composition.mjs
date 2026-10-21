@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import { createUtilsModule } from '../web/shared/utils/project-tracks.js';
+import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 
-const tracks = createUtilsModule();
+const utilsContext = { window: {}, TextDecoder };
+loadEditorModule(utilsContext, 'shared/editor-utils.js');
+const tracks = utilsContext.window.AsrEditorUtils;
 const read = file => readFileSync(new URL(`../web/editor/${file}.js`, import.meta.url), 'utf8');
 
 function compositionFixture() {
