@@ -3,11 +3,14 @@ import test from 'node:test';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 
-function fixture(segments, overlaySegments = [], alignFirstStart = false) {
+function fixture(segments, overlaySegments = [], alignFirstStart = false, colorGroups = []) {
   const saves = [];
+  const project = runtimeProject(segments, { overlay: { segments: overlaySegments },
+    subtitle_groups: { next_id: 1, color: colorGroups, sticker: [] } });
   const context = { window: {},
-    MaweBoot: { DATA: { segments }, FILENAME_BASE: 'project' },
+    MaweBoot: { DATA: project, FILENAME_BASE: 'project' },
     MaweSettings: { EDITOR_SETTINGS: { exportStartAtZero: alignFirstStart,
       exportColorUnified: false, assSpecialSymbolRule: 'both' } },
     MaweGapRemoveData: { getRemovedGapRanges: () => [{ start: 2000, end: 3000, removed: true }] },
@@ -19,21 +22,25 @@ function fixture(segments, overlaySegments = [], alignFirstStart = false) {
     MaweHint: { flashHint() {} },
     MaweHost: { files: { hasSavePicker: () => false } },
     MaweExportTimeline: { async downloadFile(content, filename) { saves.push({ content, filename }); return true; } },
-    overlayTrackVisible: () => true, getOverlayTrack: () => ({ segments: overlaySegments }),
+    overlayTrackVisible: () => projectModel.getOverlayTrack(project).enabled,
+    getOverlayTrack: () => projectModel.getOverlayTrack(project),
   };
+  context.window.MaweBoot = context.MaweBoot;
   loadEditorModule(context, 'shared/editor-utils.js');
   context.MULTI_SUBTITLE_UTILS = context.window.AsrEditorUtils;
   const wiring = fs.readFileSync(new URL('../web/editor/io/editor-wiring-export-context.js', import.meta.url), 'utf8');
-  vm.runInNewContext(wiring.split('const CANONICAL_PROJECT_FIELDS')[0], context);
+  const helpersEnd = wiring.indexOf('function buildOverlaySubtitleOtioTrack');
+  assert.ok(helpersEnd > 0, 'export helper slice must stop before unrelated UI wiring');
+  vm.runInNewContext(wiring.slice(0, helpersEnd), context);
   vm.runInNewContext(fs.readFileSync(new URL('../web/editor/io/editor-export-srt.js', import.meta.url), 'utf8'), context);
   return { saves, api: context.window.MaweExportSrt, context };
 }
 
 test('color gap-removed SRT filters the first removed cue before choosing the shared zero-start index', async () => {
   const { saves, api } = fixture([
-    { start: 2200, end: 2800, text: 'removed first', color: { name: 'red' } },
-    { start: 3500, end: 4000, text: 'kept first', color: { name: 'blue' } },
-  ], [], true);
+    { start: 2200, end: 2800, text: 'removed first', color_group_id: 'red-main' },
+    { start: 3500, end: 4000, text: 'kept first', color_group_id: 'blue-main' },
+  ], [], true, [{ id: 'red-main', value: { name: 'red' } }, { id: 'blue-main', value: { name: 'blue' } }]);
   await api.downloadColorSrts(true);
   assert.equal(saves.find(save => save.filename.endsWith('_red.srt')).content, '');
   assert.equal(saves.find(save => save.filename.endsWith('_blue.srt')).content,
@@ -48,17 +55,20 @@ test('color gap-removed SRT filters the first removed cue before choosing the sh
 
 test('color gap-removed SRT keeps cut-crossing cues and resolves filtered color heads in each original track', async () => {
   const segments = [
-    { start: 1800, end: 2200, text: 'cross entry', color: { name: 'red' } },
-    { start: 2200, end: 2800, text: 'removed main head', color: { name: 'red' } },
-    { start: 2800, end: 3200, text: 'cross exit', color: { name: 'blue' } },
-    { start: 3100, end: 3500, text: 'main member', color_ref: { name: 'red', headIdx: 1 } },
+    { id: 'cross-entry', start: 1800, end: 2200, text: 'cross entry', color_group_id: 'red-entry' },
+    { id: 'main-head', start: 2200, end: 2800, text: 'removed main head', color_group_id: 'red-main' },
+    { id: 'cross-exit', start: 2800, end: 3200, text: 'cross exit', color_group_id: 'blue-exit' },
+    { id: 'main-member', start: 3100, end: 3500, text: 'main member', color_group_id: 'red-main' },
   ];
   const overlay = [
-    { start: 2400, end: 2600, text: 'removed overlay head', color: { name: 'blue' } },
-    { start: 3400, end: 3600, text: 'overlay member', color_ref: { name: 'blue', headIdx: 0 } },
+    { id: 'overlay-head', start: 2400, end: 2600, text: 'removed overlay head', color_group_id: 'blue-overlay' },
+    { id: 'overlay-member', start: 3400, end: 3600, text: 'overlay member', color_group_id: 'blue-overlay' },
   ];
   const snapshot = JSON.stringify({ segments, overlay });
-  const { saves, api } = fixture(segments, overlay);
+  const { saves, api } = fixture(segments, overlay, false, [
+    { id: 'red-entry', value: { name: 'red' } }, { id: 'red-main', value: { name: 'red' } },
+    { id: 'blue-exit', value: { name: 'blue' } }, { id: 'blue-overlay', value: { name: 'blue' } },
+  ]);
   await api.downloadColorSrts(true);
   assert.equal(saves.find(save => save.filename.endsWith('_red.srt')).content,
     '1\n1800ms --> 2000ms\ncross entry\n\n2\n2100ms --> 2500ms\nmain member\n');

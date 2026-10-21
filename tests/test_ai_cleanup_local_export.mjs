@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { runtimeProject } from './helpers/runtime-project.mjs';
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const source = () => ({ id: 'main-001', start: 0, end: 2000, text: '啊，我这……我这个功能呢',
@@ -14,7 +15,10 @@ test('ASS cache retains raw identity but invalidates equal-text selections with 
   const script = fs.readFileSync(new URL('../web/editor/styles/editor-wiring-ass-preview.js', import.meta.url), 'utf8');
   const start = script.indexOf('const assStackCueSnapshots =');
   const end = script.indexOf("document.fonts?.addEventListener('loadingdone'", start);
-  const context = {};
+  const context = { window: {} };
+  loadEditorModule(context, 'shared/editor-utils.js');
+  context.MaweBoot = { DATA: runtimeProject() };
+  context.window.MaweBoot = context.MaweBoot;
   vm.runInNewContext(`${script.slice(start, end)}; globalThis.revision = assStackInputRevision;`, context);
   const raw = { id: 'repeated', start: 0, end: 2000, text: '正文啊正文啊正文' };
   const first = { ...raw, text: '正文正文啊正文', items: [{ text: '正文', start: 0, end: 300 }, { text: '正文啊正文', start: 500, end: 2000 }] };
@@ -34,10 +38,12 @@ function runtime() {
   const utils = context.window.AsrEditorUtils;
   const main = [source()];
   const extension = [{ id: 'ext-001', start: 0, end: 2000, text: 'translated body' }];
-  const overlay = [{ id: 'main-001', start: 0, end: 2000, text: 'overlay untouched' }];
+  const overlay = [{ id: 'overlay-001', start: 0, end: 2000, text: 'overlay untouched' }];
+  const project = runtimeProject(main, { overlay: { segments: overlay }, extensions: [{ id: 'extension', segments: extension }],
+    gap_remove: localGap(), media: 'synthetic.mp4', waveform: { duration_ms: 2000 } });
   Object.assign(context, {
     ASS_STYLE_LIBRARY: {},
-    MaweBoot: { DATA: { segments: main, gap_remove: localGap(), media: 'synthetic.mp4', waveform: { duration_ms: 2000 } } },
+    MaweBoot: { DATA: project },
     MaweSettings: { EDITOR_SETTINGS: {} },
     MaweCoreState: { waveformEditor: { durationMs: 2000 }, player: { duration: 2, tagName: 'VIDEO' } },
     MaweProjectMediaInputs: { currentMediaBlobUrl: null },
@@ -46,7 +52,7 @@ function runtime() {
     MaweCueElements: { fmtSrtTime: (ms) => new Date(ms).toISOString().slice(11, 23).replace('.', ',') },
     MaweAppearance: { getSubtitleAppearance: () => ({}) },
     MaweColors: { COLOR_PALETTE: [], COLOR_BY_NAME: {} },
-    MaweMultiSubtitleCore: { getActiveExtensionTrack: () => ({ segments: extension }), getMultiSubtitleState: () => ({ enabled: true }) },
+    MaweMultiSubtitleCore: { getActiveExtensionTrack: () => utils.getExtensionTrack(project), getMultiSubtitleState: () => project },
     MaweDom: { overlayToggle: { checked: true }, extensionOverlayToggle: { checked: true } },
     MaweHint: { flashHint: () => {} },
     MaweTimeline: { normalizeMediaMetadata: utils.normalizeMediaMetadata },
@@ -54,6 +60,7 @@ function runtime() {
     mergedExportSegments: () => ({ segments: [...main, ...overlay], overlaySet: new Set(overlay), overlaySegments: overlay }),
     exportColorContextResolver: () => () => main,
   });
+  context.window.MaweBoot = context.MaweBoot;
   for (const file of ['editor-export-srt.js', 'editor-export-timeline.js']) {
     vm.runInNewContext(fs.readFileSync(new URL(`../web/editor/io/${file}`, import.meta.url), 'utf8'), context);
   }
@@ -62,11 +69,12 @@ function runtime() {
 }
 
 test('trusted scope projects exact words/items, saves/reopens and safely restores with gap history', () => {
-  const { core, main, context } = runtime();
+  const { core, main, context, utils } = runtime();
   const gap = core.normalizeGapRemoveData(context.MaweBoot.DATA.gap_remove);
   const before = JSON.stringify(main);
-  const reopened = plain({ segments: main, gap_remove: gap });
-  const project = () => core.projectCleanupRetainedSegments(reopened.segments, reopened.gap_remove)[0];
+  const reopened = utils.snapshotProjectContent(context.MaweBoot.DATA);
+  reopened.gap_remove = gap;
+  const project = () => core.projectCleanupRetainedSegments(utils.getMainTrack(reopened).segments, reopened.gap_remove)[0];
   assert.equal(project().text, '我这个功能呢');
   assert.deepEqual(plain(project().items), [{ text: '我这个功能呢', start: 900, end: 2000 }]);
   assert.equal(JSON.stringify(main), before);
@@ -239,7 +247,7 @@ test('failed first cue cannot replace the live ranges of a later successful cue'
   assert.equal(core.projectCleanupRetainedSegments(main, state.gap_remove)[2].text, '我这个，功能很好呢');
   const reopened = plain(state);
   context.window.MaweJsonRepair.normalizeProjectTimings(reopened);
-  assert.equal(core.projectCleanupRetainedSegments(reopened.segments, reopened.gap_remove)[2].text, '我这个，功能很好呢');
+  assert.equal(core.projectCleanupRetainedSegments(context.window.AsrEditorUtils.getMainTrack(reopened).segments, reopened.gap_remove)[2].text, '我这个，功能很好呢');
   assert.equal(reopened.gap_remove.provenance.sources.ai_cleanup.length, 2);
 });
 
@@ -297,7 +305,7 @@ test('dynamic caption plans use surviving items and geometry receives surviving 
   assert.doesNotMatch(ass, /我这……/);
   const projected = srt.cleanupMainSegments();
   assert.equal(utils.buildPlainTextPayload(projected), '我这个功能呢');
-  assert.equal(context.MaweBoot.DATA.segments[0].items.length, 3);
+  assert.equal(utils.getMainTrack(context.MaweBoot.DATA).segments[0].items.length, 3);
 });
 
 test('OTIO media binding follows project media and rejects stale server paths after browser replacement', () => {
@@ -328,8 +336,7 @@ test('source/gap OTIO subtitle marker names and FCP/XML plans use exact retained
     assert.equal(timeline.buildGapRemovedSubtitleMarkers(interval, 0, overlay, overlay)[0].name, 'overlay untouched');
   }
   for (const timelineMode of ['source', 'gap_removed']) {
-    const plan = utils.buildProjectExportPlan({ ...context.MaweBoot.DATA,
-      overlay_track: { enabled: true, segments: overlay }, multi_subtitle: { enabled: true, tracks: [{ segments: extension }] } }, { timelineMode });
+    const plan = utils.buildProjectExportPlan(context.MaweBoot.DATA, { timelineMode });
     assert.equal(plan.cues.main[0].text, '我这个功能呢');
     assert.equal(plan.cues.extension[0].text, 'translated body');
     const [artifact] = utils.buildFcp7ExportArtifacts(plan, { subtitleTracks: 'all', nativeTextObjects: true });
