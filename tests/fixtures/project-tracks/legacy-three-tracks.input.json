@@ -1,0 +1,14 @@
+{
+  "schema": "moy.asr.project.v1",
+  "media": "../clip.mp4",
+  "language": "zh",
+  "split_mode": "continuous",
+  "custom_project": {"empty": [], "zero": 0},
+  "segments": [{"id": "shared", "start": 1000, "end": 2000, "text": "甲", "color": {"name": "暖黄", "start": 1000, "end": 3000, "custom": false}}, {"id": "main-tail", "start": 2100, "end": 3000, "text": "乙", "color_ref": {"name": "暖黄", "headIdx": 0, "custom_ref": 0}, "disabled": true}],
+  "overlay_track": {"enabled": false, "custom_overlay": [], "segments": [{"id": "overlay-1", "start": 1200, "end": 1800, "text": "注", "items": [], "assOverride": {"pos": {"x": 0, "y": 1}}}]},
+  "multi_subtitle": {
+    "schema": "moy.asr.multi_subtitle.v1", "enabled": true, "display_mode": "both", "main_split_mode": "word", "custom_multi": {},
+    "tracks": [{"id": "translation-en", "role": "extension", "name": "英语", "language": "en", "split_mode": "word", "custom_track": false, "segments": [{"id": "shared", "start": 1050, "end": 2050, "text": "A", "speaker": "person", "items": [{"start": 1050, "end": 2050, "text": "A"}]}]}],
+    "bindings": [{"id": "bind", "track_id": "translation-en", "main_segment_ids": ["shared"], "extension_segment_ids": ["shared"], "start_offset_ms": 50, "end_offset_ms": 50, "custom_binding": []}]
+  }
+}
