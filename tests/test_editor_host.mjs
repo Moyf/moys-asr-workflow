@@ -124,3 +124,13 @@ test('a desktop host can replace every capability without initializing browser s
   const host = context.window.MAWE.resolve('editor-host', capabilities);
   for (const name of Object.keys(capabilities)) assert.equal(host[name], capabilities[name]);
 });
+
+test('resolve with an injected environment reads that environment for runtime', () => {
+  const context = loadHost({ navigator: { platform: 'MacIntel' } });
+  const capabilities = { environment: { navigator: { platform: 'Win32' } } };
+  const host = context.window.MAWE.resolve('editor-host', capabilities);
+  assert.equal(host.runtime.getNavigator().platform, 'Win32');
+  assert.equal(host.runtime.hasUserActivation(), false);
+  // 默认路径仍读当前页面环境。
+  assert.equal(context.window.MaweHost.runtime.getNavigator().platform, 'MacIntel');
+});
