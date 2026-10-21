@@ -21,7 +21,13 @@ test('unpositioned legacy and multi-track exports match original a34d502 bytes',
     extensionSegments: [{ start: 500, end: 1500, text: 'Translation' }], overlaySegments: [{ start: 1000, end: 3000, text: 'Overlay' }] }];
   const expected = ['a84bafdfbb8599b8b060c63b20b703bb70b9850d7af1a1749f12976f02d91341',
     '1488098ff538ae0dcfd7c16335f140b3fe2ee089343ace2a4b901fc151f625bf'];
-  fixtures.forEach((options, index) => assert.equal(createHash('sha256').update(h.buildAssPayload(main, options)).digest('hex'), expected[index]));
+  fixtures.forEach((options, index) => {
+    // MASS grammar changed, so keep the same subdued run in ASS mode while
+    // preserving the historical literal // text in the non-ASS fixture.
+    const segments = options.assProfile
+      ? main.map(segment => ({ ...segment, text: segment.text.replace('//comment//', '%%comment%%') })) : main;
+    assert.equal(createHash('sha256').update(h.buildAssPayload(segments, options)).digest('hex'), expected[index]);
+  });
 });
 
 test('new builtin layout defaults are independent of saved library values and historical fixtures', () => {

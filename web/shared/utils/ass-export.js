@@ -415,11 +415,12 @@ export function createUtilsModule(dependencies) {
           const transformTargets = profile.animations.t.enabled
             ? dependencies.assTransformStyleTargets(profile.animations.t.tags) : {};
           const sharedDecorations = (!slice.legacy || item.sharedStackCue)
-            && (transformTargets.underline !== undefined || transformTargets.strikeOut !== undefined);
+            && (transformTargets.underline !== undefined || transformTargets.strikeOut !== undefined
+              || transformTargets.italic !== undefined);
           if (sharedDecorations) {
             // libass applies these discrete t targets at cue start. Inline
             // marker resets must restore that effective value, including off.
-            for (const key of ['underline', 'strikeOut']) {
+            for (const key of ['underline', 'strikeOut', 'italic']) {
               if (transformTargets[key] !== undefined) scaledStyle[key] = Boolean(transformTargets[key]);
             }
           }

@@ -104,7 +104,7 @@ export function createUtilsModule(dependencies) {
       });
     });
     if (['single', 'double', 'both'].includes(syntax)) addMarkers('*', 'emphasized');
-    if (includeUnderline) {
+    if (includeUnderline && rule !== 'none') {
       if (options.assUnderlineEnabled !== false) addMarkers('_', 'underlined');
       if (options.assStrikeEnabled !== false) addMarkers('~', 'struck');
       if (options.assSmallTextEnabled !== false) addMarkers('-', 'small');

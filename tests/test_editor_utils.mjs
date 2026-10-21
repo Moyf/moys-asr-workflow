@@ -4008,6 +4008,32 @@ test('ASS subdued and italic toggles disable parsing and normalize to enabled by
   assert.equal(helpers.assInlineStyleRuns(text, 'both', off).map((run) => run.text).join(''), text);
 });
 
+test('the none symbol rule preserves fixed-double markers in preview runs and every ASS track', () => {
+  const text = '%%弱化%% //斜体//';
+  const cues = [{ start: 0, end: 1000, text }];
+  for (const rule of ['none', 'double', 'both']) {
+    const settings = helpers.normalizeEditorSettings({ assSpecialSymbolRule: rule });
+    const runs = Array.from(helpers.assInlineStyleRuns(text, settings.assEmphasisSyntax, settings));
+    assert.equal(runs.map(run => run.text).join(''), rule === 'none' ? text : '弱化 斜体');
+    assert.equal(runs.some(run => run.comment), rule !== 'none');
+    assert.equal(runs.some(run => run.italic), rule !== 'none');
+    const ass = helpers.buildAssPayload(cues, { ...settings,
+      assProfile: { animations: {} }, assStyle: { id: 'ass' },
+      assExtensionStyle: { id: 'ass-extension' }, extensionSegments: cues, overlaySegments: cues });
+    const events = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
+    assert.equal(events.length, 3);
+    events.forEach(line => {
+      if (rule === 'none') {
+        assert.ok(line.includes(text));
+        assert.doesNotMatch(line, /\\i[01]/);
+      } else {
+        assert.doesNotMatch(line, /%%|\/\//);
+        assert.match(line, /\\i1/);
+      }
+    });
+  }
+});
+
 test('ASS inline strike and size markers restore the base style and use each track style scale', () => {
   const text = '前 ~~删除~~ -小字- +大字+ 后';
   const options = {

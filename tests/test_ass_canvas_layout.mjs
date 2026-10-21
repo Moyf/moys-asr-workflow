@@ -233,7 +233,7 @@ test('overlay cues honor per-cue scale and pos overrides like main cues', () => 
 
 test('formatted font transforms retain the source clock and plain fractional fit never resets font animation', () => {
   let plan;
-  const output = h.buildAssPayload([{ start: 0, end: 2000, text: 'Plain **E** //C// -S-' }], {
+  const output = h.buildAssPayload([{ start: 0, end: 2000, text: 'Plain **E** %%C%% -S-' }], {
     assProfile: { animations: { t: { enabled: true, startMs: 0, endMs: 1500, accel: 2, tags: String.raw`\fs120\frz25` } } },
     assStyle: { fontSize: 64, emphasisScale: 1.5, commentScale: 0.5 },
     assExtensionStyle: { fontSize: 48 },
@@ -282,7 +282,7 @@ test('zero transform timing uses the source duration and equal nonzero timing re
 });
 
 test('ever-stacked inline decorations restore immediate transform targets in both directions', () => {
-  for (const [tag, key, marker] of [['u', 'underline', '_'], ['s', 'strikeOut', '~']]) {
+  for (const [tag, key, marker] of [['u', 'underline', '_'], ['s', 'strikeOut', '~'], ['i', 'italic', '//']]) {
     for (const target of [0, 1]) {
       const output = h.buildAssPayload([{ start: 0, end: 2000, text: `MMMM ${marker}MMMM${marker} MMMM` }], {
         assProfile: { animations: { t: { enabled: true, startMs: 100, endMs: 1100, tags: `\\${tag}${target}` } } },

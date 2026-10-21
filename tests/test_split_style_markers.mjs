@@ -16,7 +16,7 @@ const parts = (text, offset, opts = settings) => plain(core.splitStyledTextParts
   { left: text.slice(0, offset), right: text.slice(offset), offset }, opts));
 
 test('paired markers follow their body when cutting beside or inside the delimiters', () => {
-  for (const [left, right] of [['**', '**'], ['++', '++'], ['--', '--'], ['__', '__'], ['~~', '~~'], ['//', '//']]) {
+  for (const [left, right] of [['**', '**'], ['++', '++'], ['--', '--'], ['__', '__'], ['~~', '~~'], ['//', '//'], ['%%', '%%']]) {
     const text = `甲${left}乙丙${right}丁`;
     for (const offset of [1, 2, 3]) {
       // 刀点吸附到对之前：无跨刀对，端点闭符号串为空
@@ -58,6 +58,13 @@ test('literal, disabled and unpaired symbols remain unchanged', () => {
   }
   assert.deepEqual(parts('甲+乙丙+丁', 2, { ...settings, assSpecialSymbolRule: 'double' }),
     { left: '甲+', right: '乙丙+丁', offset: 2 });
+  for (const [marker, toggle] of [['//', 'assItalicEnabled'], ['%%', 'assCommentEnabled']]) {
+    const text = `甲${marker}乙丙${marker}丁`;
+    for (const opts of [{ assSpecialSymbolRule: 'none' }, { [toggle]: false }]) {
+      assert.deepEqual(parts(text, 2, { ...settings, ...opts }),
+        { left: text.slice(0, 2), right: text.slice(2), offset: 2 });
+    }
+  }
 });
 
 test('fade gives both output sentences a complete pair including nested styles', () => {

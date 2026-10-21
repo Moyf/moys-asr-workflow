@@ -17,7 +17,7 @@
   // Match the existing ASS parser's delimiter widths, boundaries and feature gates.
   // Positions always refer to the source text, never to newly inserted display markers.
   function splitStyleTokens(text, settings = {}) {
-    if (settings.assMode !== true) return [];
+    if (settings.assMode !== true || settings.assSpecialSymbolRule === 'none') return [];
     const rule = settings.assSpecialSymbolRule;
     const widths = rule === 'none' ? [] : rule === 'double' ? [2] : [1, 2];
     const kinds = [

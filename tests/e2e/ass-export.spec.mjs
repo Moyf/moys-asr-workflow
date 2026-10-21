@@ -419,6 +419,16 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('_下划线_/__下划线__');
   await page.locator('#ass-special-symbol-rule').selectOption('none');
   await expect(page.locator('#ass-inline-text-options')).toBeHidden();
+  const literal = await page.evaluate(() => {
+    const text = '%%弱化%% //斜体//';
+    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text }];
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const items = window.MaweAssCanvas.lastRender.tracks[0].lines.flatMap(line => line.items);
+    return { preview: items.map(item => item.text).join(''), ass: MaweExportSrt.buildAss() };
+  });
+  expect(literal.preview).toBe('%%弱化%% //斜体//');
+  expect(literal.ass).toContain('%%弱化%% //斜体//');
   await page.locator('#ass-special-symbol-rule').selectOption('double');
   await expect(page.locator('#ass-inline-text-options')).toBeVisible();
   await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('__下划线__');
