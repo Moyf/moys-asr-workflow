@@ -3,19 +3,20 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { createUtilsModule } from '../web/shared/utils/history.js';
+import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
 function fixture() {
   const utils = createUtilsModule({ cloneJsonValue: clone });
-  const data = { markers: [{ id: 'marker', start: 1000 }],
-    segments: [{ id: 'main', start: 1000, end: 2000 }],
-    overlay_track: { segments: [{ id: 'overlay', start: 1300, end: 2300 }] },
-    multi_subtitle: { tracks: [{ segments: [{ id: 'extension', start: 1100, end: 2100 }] }] },
-  };
+  const data = runtimeProject([{ id: 'main', start: 1000, end: 2000 }], {
+    markers: [{ id: 'marker', start: 1000 }],
+    overlay: { segments: [{ id: 'overlay', start: 1300, end: 2300 }] },
+    extensions: [{ segments: [{ id: 'extension', start: 1100, end: 2100 }] }],
+  });
   const buttons = { 'undo-btn': {}, 'redo-btn': {} };
   const context = vm.createContext({ window: { AsrEditorUtils: {
-    ...utils, normalizeMarkers: clone, cloneMarkerValue: clone,
+    ...projectModel, ...utils, normalizeMarkers: clone, cloneMarkerValue: clone,
   }, removeEventListener() {} }, document: { getElementById: id => buttons[id] },
   MaweBoot: { DATA: data }, MaweState: { changes: {}, markProjectDirty() {} },
   MaweCoreState: {}, MaweHint: { flashHint() {} },
@@ -45,7 +46,7 @@ function fixture() {
   context.MaweCoreState.waveformEditor = waveform;
   const history = context.window.MaweHistory;
   function beginCuePreview() {
-    const tracks = [data.segments, data.overlay_track.segments, data.multi_subtitle.tracks[0].segments];
+    const tracks = data.tracks.map(track => track.segments);
     waveform.drag = { pointerId: 1, moveTracks: tracks.map(segments => ({ segments, originals: clone(segments) })) };
     tracks.forEach(segments => segments.forEach(segment => { segment.start += 500; segment.end += 500; }));
   }
@@ -60,14 +61,14 @@ for (const action of ['performUndo', 'performRedo']) {
     if (action === 'performRedo') f.history.performUndo();
     const before = clone(f.data);
     const lengths = [f.history.editorHistory.undoLength(), f.history.editorHistory.redoLength()];
-    const identities = [f.data.segments[0], f.data.overlay_track.segments[0], f.data.multi_subtitle.tracks[0].segments[0]];
+    const identities = f.data.tracks.map(track => track.segments[0]);
     f.beginCuePreview();
     f.history[action]();
     assert.equal(f.waveform.drag, null);
     assert.equal(f.cancelled(), 1);
     assert.deepEqual(f.data, before);
     assert.deepEqual([f.history.editorHistory.undoLength(), f.history.editorHistory.redoLength()], lengths);
-    [f.data.segments[0], f.data.overlay_track.segments[0], f.data.multi_subtitle.tracks[0].segments[0]]
+    f.data.tracks.map(track => track.segments[0])
       .forEach((segment, index) => assert.equal(segment, identities[index]));
     // A second request traverses the original stack normally.
     f.history[action]();

@@ -3,6 +3,7 @@ import test from 'node:test';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { runtimeProject } from './helpers/runtime-project.mjs';
 
 const context = { window: {} };
 loadEditorModule(context, 'shared/editor-utils.js');
@@ -12,23 +13,27 @@ const plain = value => JSON.parse(JSON.stringify(value));
 
 // 拆分核心与合并路径是 classic 作用域脚本：按 test_ass_cue_position 的方式
 // 注入最小全局桩后在独立 context 里加载真实源码。
-const splitContext = () => ({
+const splitContext = (segments = []) => ({
   window: { AsrEditorUtils: h },
+  MaweBoot: { DATA: runtimeProject(segments) },
   MULTI_SUBTITLE_UTILS: h,
   MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 },
   MaweSettings: { EDITOR_SETTINGS: { assMode: true, assSpecialSymbolRule: 'both', assEmphasisSyntax: 'both' } },
 });
-const mergeContext = (segments) => ({
+const mergeContext = (segments) => {
+  const project = runtimeProject(segments);
+  return {
   window: { AsrEditorUtils: h },
-  MaweBoot: { DATA: { segments } },
+  MaweBoot: { DATA: project },
   MaweMultiSubtitleCore: {
-    getMultiSubtitleState: () => ({ tracks: [] }), multiSubtitleVisible: () => false,
+    getMultiSubtitleState: () => project, multiSubtitleVisible: () => false,
     getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '',
     removeBindingsForSegmentIds() {},
   },
   MaweTextCleanup: { syncTimelineGroupRanges() {} },
   MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } },
-});
+  };
+};
 
 // === 任务 4：stripMassMarkers（成对剥、孤儿留） ===
 
@@ -130,7 +135,7 @@ test('split pair wiring completes texts and items in buildSplitPair with conserv
 });
 
 function buildViaFreshContext(segment, offset) {
-  const context = splitContext();
+  const context = splitContext([segment]);
   vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), context);
   return context.window.MaweSplitCore.buildSplitPair(segment, offset, 1000, 'a', true, 'continuous', { headIndex: 0 });
 }

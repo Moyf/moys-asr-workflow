@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
+import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 
 const source = readFileSync(new URL('../web/editor/io/editor-project-save.js', import.meta.url), 'utf8');
 
 function fixture({accept = true, failure = new TypeError('Failed to fetch'), replacement = false} = {}) {
   const calls = {build: [], posted: [], downloaded: [], errors: [], saved: 0, confirmed: 0};
-  const data = {media: replacement ? 'replacement.mp4' : '../clip.mp4', segments: []};
+  const data = runtimeProject([], { media: replacement ? 'replacement.mp4' : '../clip.mp4' });
   const context = vm.createContext({
     Blob,
     TypeError,
@@ -18,7 +19,6 @@ function fixture({accept = true, failure = new TypeError('Failed to fetch'), rep
     MaweInlineEdit: {}, MaweDom: {}, MaweCuePanel: {commitCuePanelEdit() {}},
     MaweHistory: {}, MaweAppearance: {},
     MaweCoreState: {container: {querySelectorAll: () => []}},
-    MaweState: {segmentsFingerprint: () => 'segments', noteSavedSegments() {}, markSaved() {calls.saved += 1;}},
     MaweProjectLoad: {projectBindingEpoch: 0},
     MaweServerSave: {serverProjectSavingEnabled: () => true, showProjectSaveError(error) {calls.errors.push(error);}},
     MaweJsonRepair: {buildJson(options) {
@@ -37,6 +37,13 @@ function fixture({accept = true, failure = new TypeError('Failed to fetch'), rep
     }},
     MaweHint: {flashHint() {}},
   });
+  context.window = context;
+  context.AsrEditorUtils = projectModel;
+  for (const file of ['editor/boot/editor-runtime.js', 'editor/state/editor-state.js']) {
+    vm.runInContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
+  }
+  const state = context.MaweState;
+  context.MaweState = { ...state, markSaved() { calls.saved += 1; state.markSaved(); } };
   vm.runInContext(source, context);
   return {context, calls, save: options => context.MaweProjectSave.saveProjectToServer(options)};
 }
@@ -96,10 +103,10 @@ test('changing only the timed-text view during a save keeps the newer preference
   context.MaweBoot.DATA.timed_text_edit_view = 'rows';
   finish({ok: true, json: async () => ({ok: true, filename: 'captions.mosp'})});
   assert.equal(await pending, true);
-  assert.equal(calls.saved, 0);
+  assert.equal(context.MaweState.hasProjectChanges(), true, 'old ACK must leave the newer preference dirty');
   context.MaweHost.server.fetch = async () => ({ok: true, json: async () => ({ok: true, filename: 'captions.mosp'})});
   assert.equal(await save(), true);
-  assert.equal(calls.saved, 1);
+  assert.equal(context.MaweState.hasProjectChanges(), false);
 });
 
 test('non-connection errors do not trigger the recovery-download branch', async () => {
@@ -195,18 +202,20 @@ function indicatorFixture() {
     textContent: 'captions.mosp',
     title: '',
   };
+  const project = runtimeProject();
   const context = vm.createContext({
     window: {},
     document: {getElementById: () => jsonEl, addEventListener() {}},
     setInterval: (fn) => { tick = fn; return 7; },
     confirm: () => false,
-    MaweBoot: {DATA: {segments: []}, SERVER_CONFIG: {saveUrl: '/api/project'}, FILENAME_BASE: 'captions'},
+    MaweBoot: {DATA: project, SERVER_CONFIG: {saveUrl: '/api/project'}, FILENAME_BASE: 'captions'},
     MaweSettings: {EDITOR_SETTINGS: {projectBackupEnabled: false}},
     MaweInlineEdit: {}, MaweDom: {}, MaweCuePanel: {commitCuePanelEdit() {}},
     MaweHistory: {}, MaweAppearance: {},
     MaweCoreState: {container: {querySelectorAll: () => []}},
     MaweState: {
-      segmentsFingerprint: () => 'segments',
+      projectFingerprint: (value = project) => JSON.stringify(projectModel.snapshotProjectContent(value)),
+      projectEpoch: 0,
       noteSavedSegments() {},
       markSaved() {},
       onProjectDirtyChange(listener) {
@@ -216,7 +225,7 @@ function indicatorFixture() {
       getProjectDirtyEpoch: () => state.epoch,
     },
     MaweServerSave: {serverProjectSavingEnabled: () => true, showProjectSaveError() {}, hasUnsavedProjectChanges: () => state.unsaved},
-    MaweJsonRepair: {buildJson: () => JSON.stringify({segments: []})},
+    MaweJsonRepair: {buildJson: () => JSON.stringify(project)},
     MaweHost: {server: {fetch: async () => ({ok: true, json: async () => ({ok: true, filename: 'captions.mosp'})})}},
     MaweHint: {flashHint() {}},
   });
