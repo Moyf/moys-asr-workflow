@@ -9,6 +9,11 @@ import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { spawnServerProcess, stopServerProcess, serverHasExited, serverRequest } from './server-process.mjs';
 import { createOutputTail } from './output-tail.mjs';
+import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
+import { createUtilsModule as createSubtitleGroups } from '../../web/shared/utils/subtitle-groups.js';
+
+export const { getMainTrack, getExtensionTrack, getOverlayTrack } = createProjectTracks();
+export const { materializeTrackSegments } = createSubtitleGroups({ cloneJsonValue: structuredClone });
 
 // E2E tests exercise Python-backed editor servers and edit.py. Use the
 // repository's locked uv environment by default so the runner cannot silently
@@ -192,13 +197,14 @@ export function testSegments() {
 // opt into this two-word shape only in split-specific scenarios.
 export async function makeFirstCueWordSplittable(page) {
   await page.evaluate(() => {
-    const segment = MaweBoot.DATA.segments[0];
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const segment = main.segments[0];
     segment.text = 'Alpha Bravo';
     segment.items = [
       { start: segment.start, end: 4000, text: 'Alpha' },
       { start: 4000, end: segment.end, text: 'Bravo' },
     ];
-    MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride = 'word';
+    main.split_mode_override = 'word';
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
 }
