@@ -24,6 +24,7 @@ status: pending
 - 条目 2（名字归一化）：`serve.py render_ass_frame_png`、`postprocess_ffmpeg.py run_burn_subtitles`（原始 .ass 写归一化临时副本，不改用户文件）、编辑器 .ass 导出（`GET /api/ass-font-aliases` 别名表 + 导出捕获窗口 + flashHint）。
 - 条目 3（搜不到得意黑）：ASS 字体下拉并入别名表条目（value=label=canonical，aliases 参与搜索）；queryLocalFonts 扫描降级为兜底并按名字归并。
 - 条目 4（中文名优先）：不再依赖硬编码表——canonical 由字体名字表按系统语言生成，任何有中文名的本机字体都会以中文名入选下拉。
+- 协调审阅：修正桥接字体分组后的索引；按所属 face 保留 full/PS 别名的 nameID1 目标与既有可匹配字体名，避免不同字重合并成同一字体；补齐编辑器烧录最终 ASS 副本归一化、异步字体表先失效缓存后刷新和脚本装配契约。
 
 ## 自动化验证结果
 

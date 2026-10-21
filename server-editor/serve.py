@@ -1077,10 +1077,13 @@ def burn_ass_video(
             converted = convert_srt_to_ass(srt_path, ffmpeg_path=ffmpeg_path, srt_style=None,
                                            play_resolution=resolution, run_command=run_conversion)
             converted.replace(ass_path)
+            ass_text = ass_path.read_text(encoding="utf-8-sig")
         except (MediaToolError, OSError, subprocess.SubprocessError) as error:
             raise BurnVideoExportError("SRT 字幕转换失败，请检查字幕和样式", details=error) from error
-    else:
-        ass_path.write_text(ass_text, encoding="utf-8", newline="\n")
+    # 最终任务副本也统一归一化：旧客户端或异步字体表尚未就绪时，不能
+    # 依赖前端改写；SRT 转换产物同样经过这里，保留事件和内联样式原文。
+    ass_text, _ = normalize_ass_text_fontnames(ass_text)
+    ass_path.write_text(ass_text, encoding="utf-8", newline="\n")
     sticker_input_args = _burn_sticker_input_args(stickers)
     input_args = ["-i", str(source), *sticker_input_args]
     if green_screen:

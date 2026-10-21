@@ -13,6 +13,7 @@
   const config = global.MaweBoot?.SERVER_CONFIG;
   const entries = [];
   const canonicalByFold = new Map();
+  const renderableFamilies = new Set();
   let ready = false;
 
   // 导出替换捕获窗口：仅 .ass 下载入口在 buildAss 前后开启，预览等高频
@@ -28,6 +29,7 @@
     if (!payload || payload.schema !== SCHEMA || !Array.isArray(payload.fonts)) return false;
     entries.length = 0;
     canonicalByFold.clear();
+    renderableFamilies.clear();
     for (const entry of payload.fonts) {
       const canonical = typeof entry?.canonical === 'string' ? entry.canonical.trim() : '';
       if (!canonical) continue;
@@ -35,9 +37,15 @@
         .map((name) => String(name ?? '').trim())
         .filter(Boolean))];
       entries.push({ canonical, names });
+      for (const name of Array.isArray(entry.family) ? entry.family : []) {
+        const key = fold(name);
+        if (key) renderableFamilies.add(key);
+      }
       for (const name of names) {
         const key = fold(name);
-        if (!canonicalByFold.has(key)) canonicalByFold.set(key, canonical);
+        const faceCanonical = typeof entry.canonicalByName?.[key] === 'string'
+          ? entry.canonicalByName[key].trim() : '';
+        if (!canonicalByFold.has(key)) canonicalByFold.set(key, faceCanonical || canonical);
       }
     }
     ready = true;
@@ -47,7 +55,11 @@
   // 存储名 → 本机 canonical 名（大小写不敏感）；未加载或查不到返回 null。
   function canonicalFor(name) {
     if (!ready) return null;
-    const canonical = canonicalByFold.get(fold(name));
+    const key = fold(name);
+    // 与服务端一致：已可匹配的 nameID1 保留原值，避免 Semibold 等 face
+    // 因共享排版名被改写成 Regular；非 nameID1 的别名仍归一化。
+    if (renderableFamilies.has(key)) return String(name ?? '').trim();
+    const canonical = canonicalByFold.get(key);
     if (!canonical) return null;
     if (captureDepth > 0 && canonical !== String(name ?? '').trim()) {
       const record = { from: String(name).trim(), to: canonical };
@@ -65,7 +77,7 @@
     const key = fold(name);
     const canonical = canonicalByFold.get(key);
     if (!canonical) return null;
-    const entry = entries.find((item) => item.canonical === canonical);
+    const entry = entries.find((item) => item.names.some((name) => fold(name) === key));
     const names = entry ? entry.names : [canonical];
     const chain = [];
     const seen = new Set([key, fold(canonical)]);
@@ -73,6 +85,7 @@
     for (const name of names) {
       const nameKey = fold(name);
       if (!nameKey || seen.has(nameKey)) continue;
+      if (canonicalByFold.get(nameKey) !== canonical) continue;
       seen.add(nameKey);
       chain.push(name);
     }
@@ -112,8 +125,8 @@
       // 别名链改变预览字体匹配结果：清掉画布行/字体度量缓存并刷新预览与
       // 下拉；导出排版计划缓存经 mawe:ass-font-aliases-loaded 事件失效。
       global.MaweAssCanvas?.clearCaches?.();
-      global.MawePlaybackLoop?.refreshSubtitlePreview?.();
       document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-loaded'));
+      global.MawePlaybackLoop?.refreshSubtitlePreview?.();
     } catch (_) {
       // 端点不存在（旧服务器）或请求失败：保持未加载，全部消费点走现状。
     }

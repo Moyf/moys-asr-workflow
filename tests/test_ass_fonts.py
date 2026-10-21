@@ -185,6 +185,43 @@ class MergeFontEntriesTests(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["canonical"], "A")
 
+    def test_bridging_groups_preserves_later_group_aliases(self) -> None:
+        def face(family: str, *aliases: str) -> FontFileNames:
+            return FontFileNames(
+                family=(FontNameRecord(family, "en"),),
+                typographic=aliases, full=(), postscript=(),
+            )
+
+        files = [face("A"), face("B"), face("C"), face("A", "B"), face("C", "C alias")]
+        entries = _merge_font_entries(files, ())
+        self.assertEqual([entry["canonical"] for entry in entries], ["A", "C"])
+        self.assertEqual(entries[0]["names"], ["A", "B"])
+        self.assertEqual(entries[1]["names"], ["C", "C alias"])
+
+    def test_shared_typographic_family_keeps_each_faces_full_and_postscript_targets(self) -> None:
+        entries = _merge_font_entries([
+            FontFileNames(family=(FontNameRecord("Example Sans", "en"),),
+                          typographic=("Example Typographic",),
+                          full=("Example Sans Regular",), postscript=("ExampleSans-Regular",)),
+            FontFileNames(family=(FontNameRecord("Example Sans Semibold", "en"),),
+                          typographic=("Example Typographic",),
+                          full=("Example Sans Demi",), postscript=("ExampleSans-Semibold",)),
+        ], ("en",))
+        self.assertEqual(len(entries), 1)
+        text = "\n".join(f"Style: {index},{name},86" for index, name in enumerate((
+            "Example Sans Semibold", "Example Sans Demi", "examplesans-semibold", "Example Typographic",
+        )))
+        with mock.patch.object(ass_fonts, "font_alias_entries", return_value=tuple(entries)):
+            normalized, _ = normalize_ass_text_fontnames(text)
+            self.assertEqual(resolve_font_name("ExampleSans-Semibold"), "Example Sans Semibold")
+            payload = ass_fonts.font_alias_payload()
+        self.assertEqual(normalized, "\n".join((
+            "Style: 0,Example Sans Semibold,86", "Style: 1,Example Sans Semibold,86",
+            "Style: 2,Example Sans Semibold,86", "Style: 3,Example Sans,86",
+        )))
+        self.assertEqual(payload["fonts"][0]["canonicalByName"]["examplesans-semibold"],
+                         "Example Sans Semibold")
+
 
 class AliasLookupTests(unittest.TestCase):
     def _patched_entries(self) -> object:
@@ -292,12 +329,13 @@ class FontAliasPayloadTests(unittest.TestCase):
             {"canonical": "Arial", "names": ["Arial", "Arial MT"]},
         ])
 
-    def test_payload_strips_internal_family_field(self) -> None:
+    def test_payload_preserves_renderable_family_names_for_browser_export(self) -> None:
         with mock.patch.object(ass_fonts, "font_alias_entries", return_value=YAHEI_ENTRIES):
             payload = ass_fonts.font_alias_payload()
         self.assertEqual(payload["fonts"], [{
             "canonical": "微软雅黑",
             "names": ["微软雅黑", "Microsoft YaHei", "Microsoft YaHei UI"],
+            "family": ["微软雅黑", "Microsoft YaHei"],
         }])
 
     def test_merge_collects_nameid1_family_values(self) -> None:

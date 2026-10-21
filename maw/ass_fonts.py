@@ -336,6 +336,7 @@ class _AliasGroup:
     folds: set[str]
     records: list[FontNameRecord]
     family: list[str]
+    canonical_by_name: dict[str, str]
 
 
 def _merge_font_entries(
@@ -355,11 +356,14 @@ def _merge_font_entries(
         if not names:
             continue
         folds = {name.casefold() for name in names}
+        face_canonical = _canonical_family_name(data.family, system_langs) or names[0]
+        face_targets = {name.casefold(): face_canonical for name in names}
         hit_indices = {fold_to_group[fold] for fold in folds if fold in fold_to_group}
         if not hit_indices:
             groups.append(_AliasGroup(
                 names=list(names), folds=set(folds), records=list(data.family),
                 family=[record.value for record in dict.fromkeys(data.family)],
+                canonical_by_name=face_targets,
             ))
             target = len(groups) - 1
         else:
@@ -371,12 +375,23 @@ def _merge_font_entries(
                 merged.folds |= other.folds
                 merged.records.extend(other.records)
                 merged.family.extend(other.family)
-                for fold in other.folds:
-                    fold_to_group[fold] = target
+                for name, canonical in other.canonical_by_name.items():
+                    merged.canonical_by_name.setdefault(name, canonical)
+            if len(hit_indices) > 1:
+                # pop 会移动未参与合并的后续分组；所有别名索引都要随之重建。
+                fold_to_group = {
+                    fold: index
+                    for index, existing in enumerate(groups)
+                    for fold in existing.folds
+                }
             merged.names.extend(names)
             merged.folds |= folds
             merged.records.extend(data.family)
             merged.family.extend(record.value for record in data.family)
+            for name, canonical in face_targets.items():
+                # 共有排版名保持首次选择；full/PS 别名仍指向其所属 face，
+                # 避免 Semibold 与 Regular 共享 nameID16 后丢失字重。
+                merged.canonical_by_name.setdefault(name, canonical)
         group = groups[target]
         for fold in folds:
             fold_to_group[fold] = target
@@ -388,7 +403,8 @@ def _merge_font_entries(
             canonical = _canonical_family_name(group.records, system_langs) or family[0]
         else:
             canonical = names[0]
-        entries.append({"canonical": canonical, "names": names, "family": family})
+        entries.append({"canonical": canonical, "names": names, "family": family,
+                        "canonicalByName": group.canonical_by_name})
     return entries
 
 
@@ -450,7 +466,8 @@ def resolve_font_name(name: str) -> str | None:
     entry = _resolve_entry(entries, name)
     if entry is None:
         return None
-    canonical = str(entry.get("canonical") or "").strip()
+    canonical = str((entry.get("canonicalByName") or {}).get(str(name).strip().casefold())
+                    or entry.get("canonical") or "").strip()
     return canonical or None
 
 
@@ -501,7 +518,8 @@ def _normalize_style_line_fontname(
     entry = _resolve_entry(entries, name)
     if entry is None:
         return line, [f"字体「{name}」未在本机找到，实际画面将回退为其他字体"]
-    canonical = str(entry.get("canonical") or "").strip()
+    canonical = str((entry.get("canonicalByName") or {}).get(name.casefold())
+                    or entry.get("canonical") or "").strip()
     # 存储名已是 nameID1 之一（libass 的 GDI 兼容匹配可命中，任意语言变体）
     # 或等于 canonical 时保持原样：改写只服务于排版名/PS 名这类匹配不了的名字。
     if not canonical or canonical == name or name.casefold() in _entry_family_folds(entry):
@@ -522,9 +540,7 @@ def font_alias_payload() -> dict[str, Any]:
             "fonts": [],
             "error": "本机字体扫描不可用（fontTools 缺失或扫描失败）；字体名归一化已停用",
         }
-    fonts = [
-        {"canonical": entry["canonical"], "names": list(entry["names"])}
-        if "family" in entry else dict(entry)
-        for entry in entries
-    ]
+    # 前端与服务端都须保留 libass 已能匹配的 nameID1；不同字重 face
+    # 可能共享排版名，不能把它们全部改写成同一个 canonical。
+    fonts = [dict(entry) for entry in entries]
     return {"schema": FONT_ALIAS_SCHEMA, "fonts": fonts}
