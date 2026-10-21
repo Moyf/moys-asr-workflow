@@ -387,8 +387,13 @@ def _validate_legacy_content(project: dict[str, Any], multi: dict[str, Any], *, 
     _validate_media_metadata(project, errors)
     _validate_transcription_metadata(project, errors)
     errors.extend(ProjectValidationError(path, message) for path, message in validate_preview(project))
+    extension_index = 0
     for index, track in enumerate(project["tracks"]):
         path = f"$.tracks[{index}]"
+        source_path = "$.segments" if track["role"] == "main" else "$.overlay_track.segments"
+        if track["role"] == "extension":
+            source_path = f"$.multi_subtitle.tracks[{extension_index}].segments"
+            extension_index += 1
         metadata_errors: list[ProjectValidationError] = []
         _validate_transcription_metadata({field: track[field] for field in TRACK_SOURCE_FIELDS if field in track}, metadata_errors)
         errors.extend(ProjectValidationError(path + error.path[1:], error.message) for error in metadata_errors)
@@ -406,7 +411,26 @@ def _validate_legacy_content(project: dict[str, Any], multi: dict[str, Any], *, 
             if not isinstance(segment, dict):
                 errors.append(ProjectValidationError(segment_path, "must be an object"))
                 continue
-            _validate_segment(copy.deepcopy(segment), segment_path, previous_end, errors)
+            checked_segment = copy.deepcopy(segment)
+            segment_errors: list[ProjectValidationError] = []
+            _validate_segment(checked_segment, segment_path, previous_end, segment_errors)
+            for error in segment_errors:
+                error_path = error.path
+                if error_path.startswith(f"{segment_path}.assOverride"):
+                    error_path = f"{source_path}[{segment_index}]" + error_path[len(segment_path):]
+                errors.append(ProjectValidationError(error_path, error.message))
+            if not segment_errors and isinstance(segment.get("assOverride"), dict):
+                # Legacy import keeps its historical two-decimal scale/default
+                # normalization, while unknown fields survive the conversion.
+                original = segment["assOverride"]
+                override = {key: value for key, value in original.items() if key not in ("scale", "pos")}
+                override.update(checked_segment.get("assOverride", {}))
+                if "pos" in override:
+                    override["pos"] = {**original["pos"], **override["pos"]}
+                if override:
+                    segment["assOverride"] = override
+                else:
+                    segment.pop("assOverride", None)
             if type(segment.get("start")) is int and type(segment.get("end")) is int and segment["end"] > segment["start"]:
                 previous_end = segment["end"]
         if has_legacy_groups:
