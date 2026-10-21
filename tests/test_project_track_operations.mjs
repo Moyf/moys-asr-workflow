@@ -19,6 +19,9 @@ const dependencies = { ...model, cloneJsonValue: json, stableId: value => typeof
 const subtitle = (await utilsModule('multi-subtitle')).createUtilsModule(dependencies);
 const history = (await utilsModule('history')).createUtilsModule(dependencies);
 const groups = (await utilsModule('subtitle-groups')).createUtilsModule(dependencies);
+const planners = { getNavigator: () => ({ platform: 'Win32' }) };
+for (const name of ['data', 'ass-style', 'text-processing', 'timed-text-core', 'timed-text-plans']) Object.assign(planners, (await utilsModule(name)).createUtilsModule(planners));
+Object.assign(planners, (await utilsModule('word-timing')).createWordTiming(planners));
 test('canonical bindings use both actual track IDs and rebuild offsets without an alias tree', () => {
   const project = canonical();
   project.tracks[0].id = 'source-identity';
@@ -151,4 +154,32 @@ test('unmapped multilingual bindings reject a role swap atomically without losin
   assert.deepEqual(subtitle.swapMainAndExtensionSubtitle(project), { swapped: false, reason: 'unmapped-bindings', unmappedBindingCount: 1 });
   assert.deepEqual(project, before);
   assert.equal(project.bindings, bindings); assert.equal(project.tracks, tracks);
+});
+
+test('word conversion avoids IDs on other tracks and retains canonical group memberships', () => {
+  const source = { id: 'source', start: 0, end: 1000, text: '甲乙', color_group_id: 'group', sticker_group_id: 'sticker',
+    items: [{ start: 0, end: 500, text: '甲' }, { start: 500, end: 1000, text: '乙' }] };
+  const reserved = [{ id: 'source-item-1' }, { id: 'source-item-2' }];
+  const before = json(source);
+  const plan = planners.planWordTimingConversion([source], [0], undefined, { reservedSegments: reserved });
+  assert.deepEqual(plan.segments.map(cue => cue.id), ['source-item-1-2', 'source-item-2-2']);
+  for (const cue of plan.segments) {
+    assert.equal(cue.color_group_id, 'group'); assert.equal(cue.sticker_group_id, 'sticker');
+    assert.equal(Object.hasOwn(cue, 'color_ref'), false);
+  }
+  assert.deepEqual(source, before); assert.deepEqual(reserved, [{ id: 'source-item-1' }, { id: 'source-item-2' }]);
+});
+
+test('timed text splits reserve all project IDs and merged rows inherit only common memberships', () => {
+  const source = [{ id: 'source', start: 0, end: 1000, text: '甲乙', color_group_id: 'same',
+    items: [{ start: 0, end: 500, text: '甲' }, { start: 500, end: 1000, text: '乙' }] }];
+  const split = planners.buildTimedTextStructurePlan(source, ['甲', '乙'], { reservedSegments: [{ id: 'source-text-2' }] });
+  assert.equal(split.valid, true);
+  assert.deepEqual(split.segments.map(cue => cue.id), ['source', 'source-text-2-2']);
+  assert.deepEqual(split.segments.map(cue => cue.color_group_id), ['same', 'same']);
+  const mergedSource = [{ id: 'one', start: 0, end: 500, text: '甲', color_group_id: 'same', sticker_group_id: 'first' },
+    { id: 'two', start: 500, end: 1000, text: '乙', color_group_id: 'same', sticker_group_id: 'second' }];
+  const merge = planners.buildTimedTextStructurePlan(mergedSource, ['甲乙']);
+  assert.equal(merge.valid, true); assert.equal(merge.segments[0].color_group_id, 'same');
+  assert.equal(Object.hasOwn(merge.segments[0], 'sticker_group_id'), false);
 });
