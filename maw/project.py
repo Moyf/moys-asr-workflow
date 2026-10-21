@@ -59,10 +59,11 @@ def repair_segment_durations(
                 item_end = item.get("end")
                 item_start = item_start if type(item_start) is int else previous_item_end
                 item_end = item_end if type(item_end) is int else item_start
+                was_zero = preserve_zero and item_end == item_start
                 if item_start < previous_item_end:
                     item_start = previous_item_end
                     fixed += 1
-                if item_end < item_start or (item_end == item_start and not preserve_zero):
+                if item_end < item_start or (item_end == item_start and not was_zero):
                     item_end = item_start + floor
                     fixed += 1
                 item["start"] = item_start
@@ -111,10 +112,11 @@ def repair_item_timing_ranges(
             if type(item_end) is not int:
                 item_end = item_start
                 fixed += 1
+            was_zero = preserve_zero and item_end == item_start
             if item_start < previous_item_end:
                 item_start = previous_item_end
                 fixed += 1
-            if item_end < item_start or (item_end == item_start and not preserve_zero):
+            if item_end < item_start or (item_end == item_start and not was_zero):
                 item_end = item_start + floor
                 fixed += 1
             item["start"] = item_start

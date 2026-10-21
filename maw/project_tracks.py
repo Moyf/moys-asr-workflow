@@ -269,6 +269,8 @@ def _validate_canonical(project: dict[str, Any]) -> None:
     if errors:
         raise ProjectValidationFailed(tuple(errors))
     bilingual = _object(project.get("bilingual"), "$.bilingual")
+    if "enabled" in bilingual:
+        _fail("$.bilingual.enabled", "enabled belongs to each track")
     if bilingual.get("display_mode") not in ("main", "extension", "both"):
         _fail("$.bilingual.display_mode", "must be main, extension, or both")
     extensions = [track for track in tracks if track["role"] == "extension"]
@@ -356,9 +358,9 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
     main_segments = _array(project.pop("segments", None), "$.segments")
     multi_value = project.pop("multi_subtitle", None)
     multi = {} if multi_value is None else _object(multi_value, "$.multi_subtitle")
-    if "schema" in multi and multi["schema"] != "moy.asr.multi_subtitle.v1":
+    if multi.get("schema") is not None and multi["schema"] != "moy.asr.multi_subtitle.v1":
         _fail("$.multi_subtitle.schema", "must be moy.asr.multi_subtitle.v1")
-    extensions = _array(multi.get("tracks", []), "$.multi_subtitle.tracks")
+    extensions = _array(multi["tracks"] if multi.get("tracks") is not None else [], "$.multi_subtitle.tracks")
     reserved_tracks = _legacy_track_ids(extensions)
     main: dict[str, Any] = {
         "id": _fresh_id("main", reserved_tracks), "role": "main", "name": "主字幕",
@@ -367,7 +369,7 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
     for field in TRACK_SOURCE_FIELDS:
         if field in project:
             main[field] = project.pop(field)
-    if "main_split_mode" in multi:
+    if multi.get("main_split_mode") is not None:
         main["split_mode_override"] = multi["main_split_mode"]
     tracks = [main]
     overlay = project.pop("overlay_track", None)
@@ -378,25 +380,31 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
                 _fail(f"$.overlay_track.{field}", "migration metadata conflict")
         overlay.update(id=_fresh_id("overlay", reserved_tracks), role="overlay")
         overlay.setdefault("name", "叠加字幕")
-        overlay.setdefault("enabled", False)
-        overlay.setdefault("segments", [])
+        if overlay.get("enabled") is None:
+            overlay["enabled"] = False
+        if overlay.get("segments") is None:
+            overlay["segments"] = []
         tracks.append(overlay)
-    enabled = multi.get("enabled", False)
+    enabled = multi["enabled"] if multi.get("enabled") is not None else False
     if type(enabled) is not bool:
         _fail("$.multi_subtitle.enabled", "must be a boolean")
     for index, track in enumerate(extensions):
-        if "role" in track and track["role"] != "extension":
+        if track.get("role") is not None and track["role"] != "extension":
             _fail(f"$.multi_subtitle.tracks[{index}].role", "must be extension")
         if "enabled" in track and track["enabled"] != enabled:
             _fail(f"$.multi_subtitle.tracks[{index}].enabled", "migration metadata conflict")
         track.update(role="extension", enabled=enabled)
         track.setdefault("name", "副字幕")
-        track.setdefault("segments", [])
+        if track.get("segments") is None:
+            track["segments"] = []
+        if track.get("split_mode") is None:
+            track["split_mode"] = "word"
         tracks.append(track)
     project.update(schema=TRACKS_PROJECT_SCHEMA, tracks=tracks)
     bilingual = {key: value for key, value in multi.items()
                  if key not in ("schema", "tracks", "bindings", "enabled", "main_split_mode")}
-    bilingual.setdefault("display_mode", "both")
+    if bilingual.get("display_mode") is None:
+        bilingual["display_mode"] = "both"
     if extensions and "active_track_id" not in bilingual:
         bilingual["active_track_id"] = extensions[0]["id"]
     project["bilingual"] = bilingual
@@ -429,7 +437,7 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
                 mapping[original] = cue["id"]
         mappings[track["id"]] = mapping
 
-    bindings = _array(multi.get("bindings", []), "$.multi_subtitle.bindings")
+    bindings = _array(multi["bindings"] if multi.get("bindings") is not None else [], "$.multi_subtitle.bindings")
     reserved_bindings: set[str] = set()
     for index, raw_binding in enumerate(bindings):
         binding = _object(raw_binding, f"$.multi_subtitle.bindings[{index}]")
@@ -446,7 +454,9 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
                 _fail(f"{path}.{field}", "migration metadata conflict")
         if "id" not in binding:
             binding["id"] = _fresh_id(f"binding-{index + 1}", reserved_bindings)
-        target_id = binding.pop("track_id", extensions[0]["id"] if len(extensions) == 1 else None)
+        target_id = binding.pop("track_id", None)
+        if target_id is None and len(extensions) == 1:
+            target_id = extensions[0]["id"]
         target_id = _identifier(target_id, f"{path}.track_id", trim=True)
         if not any(track["id"] == target_id for track in extensions):
             _fail(f"{path}.track_id", "must reference an existing extension track")
@@ -457,10 +467,12 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
             ("extension_segment_ids", "target", target_id),
         ):
             singular = old_field[:-1]
-            if old_field in binding and singular in binding:
+            if binding.get(old_field) is not None and singular in binding:
                 if binding[old_field] != [binding[singular]]:
                     _fail(f"{path}.{old_field}", "conflicts with singular legacy endpoint")
-            ids = binding.pop(old_field, [binding[singular]] if singular in binding else None)
+            ids = binding.pop(old_field, None)
+            if ids is None and singular in binding:
+                ids = [binding[singular]]
             binding.pop(singular, None)
             ids = _array(ids, f"{path}.{old_field}")
             if len(ids) != 1:
@@ -474,7 +486,8 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
         target = next(cue for cue in target_track["segments"] if cue["id"] == binding["target_segment_ids"][0])
         for edge in ("start", "end"):
             if type(source.get(edge)) is int and type(target.get(edge)) is int:
-                binding.setdefault(f"{edge}_offset_ms", target[edge] - source[edge])
+                if binding.get(f"{edge}_offset_ms") is None:
+                    binding[f"{edge}_offset_ms"] = target[edge] - source[edge]
     project["bindings"] = bindings
     if schema == LEGACY_PROJECT_SCHEMA:
         _legacy_groups(project)

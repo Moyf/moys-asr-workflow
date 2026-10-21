@@ -207,6 +207,37 @@ class ProjectTracksTests(unittest.TestCase):
         get_main_track(project)["segments"][0]["end"] = 9007199254740992
         self.assertRejected(project, "$.tracks[0].segments[0].end")
 
+    def test_legacy_optional_nulls_keep_previous_import_defaults(self):
+        raw = {"segments": [cue()], "overlay_track": {"enabled": None, "segments": None},
+               "multi_subtitle": {"schema": None, "enabled": None, "display_mode": None,
+                                  "main_split_mode": None, "tracks": [{"id": "en", "role": None,
+                                     "split_mode": None, "segments": [cue("en", 1050, 2050)]}],
+                                  "bindings": [{"track_id": None, "main_segment_ids": None, "main_segment_id": "cue-1",
+                                      "extension_segment_ids": ["en"], "start_offset_ms": None, "end_offset_ms": None}]}}
+        project = normalize_project(raw)
+        self.assertFalse(get_tracks_by_role(project, "overlay")[0]["enabled"])
+        self.assertFalse(get_tracks_by_role(project, "extension")[0]["enabled"])
+        self.assertEqual(get_tracks_by_role(project, "extension")[0]["split_mode"], "word")
+        self.assertEqual(project["bindings"][0]["start_offset_ms"], 50)
+        self.assertEqual(project["bilingual"]["display_mode"], "both")
+        self.assertNotIn("split_mode_override", get_main_track(project))
+        self.assertEqual(normalize_project({"segments": [], "multi_subtitle": {"tracks": None, "bindings": None}})["bindings"], [])
+
+    def test_v3_rejects_duplicate_bilingual_enabled_flag(self):
+        project = canonical()
+        project["bilingual"]["enabled"] = True
+        self.assertRejected(project, "$.bilingual.enabled")
+
+    def test_timing_repair_does_not_turn_overlapping_positive_item_into_punctuation(self):
+        project = canonical()
+        get_main_track(project)["segments"][0]["items"] = [
+            {"start": 1000, "end": 1500, "text": "first"},
+            {"start": 1400, "end": 1500, "text": "second"},
+        ]
+        repair_project_timing_ranges(project)
+        second = get_main_track(project)["segments"][0]["items"][1]
+        self.assertEqual((second["start"], second["end"]), (1500, 1600))
+
 
 if __name__ == "__main__":
     unittest.main()

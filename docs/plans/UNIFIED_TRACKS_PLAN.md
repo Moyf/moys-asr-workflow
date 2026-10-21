@@ -139,7 +139,7 @@ Python 与 JS 共享 JSON fixtures 和下列行为接口；命名可按语言规
 | Python/导出消费者 | `maw/project_io.py`、`project_ass_export.py`、`postprocess_io.py`、`postprocess_translation.py` 及其它后处理生产/消费点；ASR 输出入口、`edit.py`、`server-editor`；JS `export-plan.js` 等纯导出消费者按接口联调 |
 | 集成 | 脚本/模块清单、类型声明、现行 JSON_SCHEMA 文档、主索引、验证清单；最终 build/typecheck 与 PR |
 
-先由核心与 JS 模型共同冻结最小示例及错误 fixtures，再并行实现。每一块只改自己拥有的路径，共享清单由集成人员统一更新。正式实施用最终 2.0dev 创建的独立 worktree；本设计阶段不基于未稳定的 main 编写生产改动。
+先由核心与 JS 模型共同冻结最小示例及错误 fixtures，再并行实现。每一块只改自己拥有的路径，共享清单由集成人员统一更新。核心与各消费链先在初始 main 的独立 worker worktree 实施并验证；最终由集成人员将这些可审查提交移植到最终 2.0dev 创建的独立分支与 worktree，复验最终基线后提交 Draft PR。worker 的初始验证不能代替移植后的集成验证。
 
 临时适配只可存在于独立的 legacy 导入模块；交付时 DATA 不得拥有 `segments`、`multi_subtitle` 或 `overlay_track`。不允许 getter/setter 长期伪造旧树，也不允许新增业务消费者读取旧容器。函数名称如 getMainSegments 可保留，但必须直接选择 main track.segments；一个统一 segment 数组允许有短期本地引用，不构成复制状态。
 
