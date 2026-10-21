@@ -55,7 +55,13 @@
 
 独立复核确认测试预期与 manifest 的 195 项完全同序；主线 ESM host 初始化仍先于浮窗和音量模块，`MaweHost.server.fetch` 接口不变。浮窗新增 `onClose` 为可选项，仅音量面板使用，不改变其他浮窗关闭行为。
 
-本文记录推送前本地验证。远端完整测试和实际 Windows 成包以 [PR 的当前提交检查](https://github.com/Moyf/moys-asr-workflow/pull/285/checks)为准，必须确认 HEAD 与验证提交一致。不会重新生成 `blank-editor.html`，内联副本待发布前统一重生成。
+## 远端验证与后续主线同步
+
+首次推送 `3ca240ed` 的三个工作流全部成功：Editor 的 Node 954/954、装配契约 25+6、Chromium 58/58；Windows 打包契约 34 项、Python 全量 2693 项（17 跳过）通过，实际构建、exe 冒烟及产物上传成功。预览产物约 57 MB，绑定该提交。
+
+CI 运行期间主线另合入 `43d9546a`（PR 284）。第二次同步只有日志索引冲突，保留双方条目；音量核心、序列化及增益契约无改动。重新验证：Node 音量、编辑工具、脚本顺序/语法与手势 377/377（`20261021T070544Z-345cd0ad`）；Python 装配、清单与工程保存 44 项、2 跳过（`20261021T070545Z-64c1d0b2`）；Chromium 音量、纯文本编辑与 file/HTTP 装配 23/23（`20261021T070548Z-15d467fe`）。TypeScript 和文档检查通过，后者 1316 文件、0 新断链、0 结构错误。前述远端成功仅属于 `3ca240ed`，不冒充新组合结果。
+
+远端完整测试和实际 Windows 成包以 [PR 的当前提交检查](https://github.com/Moyf/moys-asr-workflow/pull/285/checks)为准，必须确认 HEAD 与验证提交一致。不会重新生成 `blank-editor.html`，内联副本待发布前统一重生成。
 
 ## 未验证边界
 

@@ -20,6 +20,11 @@
   const timedTextEditSearchReplaceOne = document.getElementById('timed-text-edit-replace-one');
   const timedTextEditSearchReplaceAll = document.getElementById('timed-text-edit-replace-all');
   let timedTextEditSearchIndex = -1;
+  // 搜索导航把焦点移入命中所在 textarea 后记录的「待续导航」状态：
+  // 此时按 Enter 继续跳下一个/上一个命中，而不是往字幕里插入换行。
+  // 一旦选区不再精确等于当前命中（点击、方向键、输入），立即失效，
+  // Enter 恢复为普通换行，不影响「定位后拆句」的正常工作流。
+  let timedTextEditArmedMatch = null;
 
 
   // === 纯文本编辑（支持调整字幕行结构的 MVP） ===
@@ -566,7 +571,12 @@
   }
 
 
-  function revealTimedTextEditSearchMatch(match, matches) {
+  // 显式导航（Enter / 上一个 / 下一个 / F3）时把焦点移入目标 textarea：
+  // 选区随焦点落在命中文字上，caret 可见，用户可以直接继续编辑。
+  // 在查找框输入时的预览定位（focusEditor=false）保持焦点在查找框，
+  // 否则每敲一个字符焦点都会被抢走。
+  function revealTimedTextEditSearchMatch(match, matches, { focusEditor = false } = {}) {
+    timedTextEditArmedMatch = null;
     if (!match || !MaweDom.timedTextEditDraft) return;
     const draft = MaweDom.timedTextEditDraft;
     if (draft.view !== 'single') {
@@ -585,6 +595,10 @@
           + rowRect.height / 2 - MaweDom.timedTextEditRows.clientHeight / 2;
         const textarea = row.querySelector('textarea');
         textarea?.setSelectionRange(match.start, match.end);
+        if (focusEditor && textarea) {
+          textarea.focus({ preventScroll: true });
+          timedTextEditArmedMatch = { textarea, start: match.start, end: match.end };
+        }
       }
     } else {
       const textarea = MaweDom.timedTextEditSingleTextarea;
@@ -605,18 +619,23 @@
           timedTextEditSearchMirror.scrollLeft = textarea.scrollLeft;
         }
       }
+      if (focusEditor && textarea) {
+        textarea.focus({ preventScroll: true });
+        timedTextEditArmedMatch = { textarea, start: match.globalStart, end: match.globalEnd };
+      }
     }
-    timedTextEditFindInput?.focus({ preventScroll: true });
+    if (!focusEditor) timedTextEditFindInput?.focus({ preventScroll: true });
   }
 
 
   function moveTimedTextEditSearchMatch(direction) {
+    timedTextEditArmedMatch = null;
     const result = refreshTimedTextEditSearch({ preserveIndex: true });
     const matches = result.matches || [];
     if (result.error || !matches.length) return false;
     timedTextEditSearchIndex = ((timedTextEditSearchIndex + direction) % matches.length + matches.length) % matches.length;
     refreshTimedTextEditSearch({ preserveIndex: true });
-    revealTimedTextEditSearchMatch(matches[timedTextEditSearchIndex], matches);
+    revealTimedTextEditSearchMatch(matches[timedTextEditSearchIndex], matches, { focusEditor: true });
     return true;
   }
 
@@ -954,6 +973,7 @@
 
   function closeTimedTextEdit() {
     cancelTimedTextEditReport();
+    timedTextEditArmedMatch = null;
     MaweDom.timedTextEditModal.classList.remove('show');
     MaweDom.timedTextEditDraft = null;
     MaweDom.timedTextEditRows.replaceChildren();
@@ -1251,6 +1271,25 @@
       timedTextEditReplaceInput?.select();
       return;
     }
+    // F3 / Shift+F3：焦点在任意位置（含字幕 textarea）都可以继续跳命中。
+    if (event.key === 'F3') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!event.repeat) moveTimedTextEditSearchMatch(event.shiftKey ? -1 : 1);
+      return;
+    }
+    // 焦点在命中所在 textarea 且选区仍精确等于当前命中时，Enter 继续
+    // 跳下一个/上一个命中；选区一变（点击/方向键/输入）就失效，Enter
+    // 恢复为普通换行，不影响定位到命中后直接拆句的编辑流。
+    if (event.key === 'Enter' && timedTextEditArmedMatch && !event.isComposing && event.keyCode !== 229
+        && event.target === timedTextEditArmedMatch.textarea
+        && event.target.selectionStart === timedTextEditArmedMatch.start
+        && event.target.selectionEnd === timedTextEditArmedMatch.end) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!event.repeat) moveTimedTextEditSearchMatch(event.shiftKey ? -1 : 1);
+      return;
+    }
     if (event.target !== timedTextEditFindInput || event.key !== 'Enter'
         || event.isComposing || event.keyCode === 229) return;
     event.preventDefault();
@@ -1296,6 +1335,13 @@
     mirror.scrollLeft = textarea.scrollLeft;
   }, true);
   document.addEventListener('keydown', onTimedTextEditSearchKeydown, true);
+  // 输入即解除武装（Greptile P2）：武装状态不能只靠选区比对被动失效，
+  // 否则打字后又撤销回原位置，选区恰好回到命中坐标，Enter 会复活成跳转。
+  const disarmTimedTextEditArmedMatch = (event) => {
+    if (event.target instanceof HTMLTextAreaElement) timedTextEditArmedMatch = null;
+  };
+  MaweDom.timedTextEditRows?.addEventListener('input', disarmTimedTextEditArmedMatch, true);
+  MaweDom.timedTextEditSingleTextarea?.addEventListener('input', disarmTimedTextEditArmedMatch);
   // 记录用户对「查看修改内容」的手动开合：click 只由用户触发，
   // 程序里的 details.open = ... 赋值不会经过这里。
   MaweDom.timedTextEditChangeDetails?.querySelector('summary')?.addEventListener('click', () => {

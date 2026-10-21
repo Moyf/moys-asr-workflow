@@ -3621,7 +3621,7 @@
     .timed-text-edit-row-main { grid-template-columns: minmax(0, 1fr); }
   }
   .timed-text-edit-row textarea {
-    display: block; width: 100%; min-height: 34px; box-sizing: border-box; resize: vertical; margin: 0;
+    display: block; position: relative; z-index: 2; width: 100%; min-height: 34px; box-sizing: border-box; resize: vertical; margin: 0;
     padding: 6px 8px; color: var(--text-primary); background: var(--bg-input);
     border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; line-height: 1.45;
     /* 显式声明与镜像层一致的换行规则，保证高亮位置逐行对齐 */
