@@ -214,3 +214,148 @@ test('manual-only main does not make fixed extension the overlay placement root'
   assert.equal(frame.find(item => item.role === 'extension').anchor.y, 1020);
   assert.equal(frame.find(item => item.role === 'overlay').anchor.y, 1080 - 160 - Math.round(1.2 * 72));
 });
+
+const measure = (style, fontSize, run, text) => ({ width: [...text].length * fontSize / 2,
+  ascent: fontSize * 0.8, descent: fontSize * 0.2 });
+
+test('overlay cues consume per-cue pos as a fixed event without joining the automatic group', () => {
+  const options = { assProfile: {}, assStyle: { fontSize: 72 }, measureAssRun: measure };
+  let before, after;
+  const beforeOutput = h.buildAssPayload([{ id: 'main', start: 0, end: 2000, text: 'MAIN' }],
+    { ...options, onAssPlan: value => { before = value; } });
+  const output = h.buildAssPayload([{ id: 'main', start: 0, end: 2000, text: 'MAIN' }], { ...options,
+    overlaySegments: [{ id: 'overlay', start: 0, end: 2000, text: 'OVERLAY', assOverride: { pos: { x: -40.5, y: 1300.25 } } }],
+    onAssPlan: value => { after = value; } });
+  const positioned = after.slices[0].items.find(item => item.segment.id === 'overlay');
+  assert.equal(positioned.manual, true);
+  assert.equal(positioned.absolute, true);
+  assert.deepEqual(plain(positioned.offset), { x: -40.5, y: 1300.25 });
+  // 手动叠加句不改变主字幕：主字幕 Dialogue 行逐字节保持原样。
+  const mainLine = output.split('\n').find(line => line.startsWith('Dialogue: 0,'));
+  assert.equal(mainLine, beforeOutput.split('\n').find(line => line.startsWith('Dialogue: 0,')));
+  assert.ok(!mainLine.includes('\\pos('), 'solo main keeps its legacy no-pos semantics');
+  const overlayLine = output.split('\n').find(line => line.startsWith('Dialogue: 2,'));
+  assert.ok(overlayLine.includes(String.raw`\pos(-40.5,1300.25)`));
+  assert.ok(overlayLine.includes(String.raw`\q2`));
+  assert.ok(!overlayLine.includes('\\move('), 'overlay manual cues never emit move');
+});
+
+test('overlay scale-only stays in the automatic stack and scales the exported font', () => {
+  let plan;
+  const make = scale => {
+    let current;
+    const output = h.buildAssPayload([{ id: 'main', start: 0, end: 2000, text: 'MAIN' }], {
+      assProfile: {}, assStyle: { fontSize: 72 }, measureAssRun: measure,
+      overlaySegments: [{ id: 'overlay', start: 0, end: 2000, text: 'OVERLAY', ...(scale === 1 ? {} : { assOverride: { scale } }) }],
+      onAssPlan: value => { current = value; },
+    });
+    return { plan: current, output };
+  };
+  const base = make(1);
+  const scaled = make(1.22);
+  plan = scaled.plan;
+  const cue = plan.slices[0].items.find(item => item.segment.id === 'overlay');
+  const baseCue = base.plan.slices[0].items.find(item => item.segment.id === 'overlay');
+  assert.equal(cue.manual, false);
+  assert.equal(cue.cueScale, 1.22);
+  assert.ok(cue.rect.right - cue.rect.left > baseCue.rect.right - baseCue.rect.left,
+    'scaled overlay participates in layout with its measured size');
+  const frame = h.assStackFrame(plan, 500).items.find(item => item.segment.id === 'overlay');
+  const line = scaled.output.split('\n').find(entry => entry.startsWith('Dialogue: 2,'));
+  const position = line.match(/\\pos\(([-\d.]+),([-\d.]+)\)/);
+  assert.ok(position, 'stacked overlay exports an explicit position');
+  for (const [index, axis] of ['x', 'y'].entries()) {
+    assert.ok(Math.abs(Number(position[index + 1]) - frame.anchor[axis]) < 0.0001,
+      `${axis} export agrees with the shared preview layout`);
+  }
+  assert.ok(line.includes(String.raw`\fs87.84`));
+  assert.doesNotMatch(line, /\\move\(/);
+});
+
+test('overlay pos and scale compose into one fixed scaled event', () => {
+  const output = h.buildAssPayload([{ id: 'main', start: 0, end: 2000, text: 'MAIN' }], {
+    assProfile: {}, assStyle: { fontSize: 72 },
+    overlaySegments: [{ id: 'overlay', start: 0, end: 2000, text: 'BIG', assOverride: { scale: 1.5, pos: { x: 480, y: 320 } } }],
+    measureAssRun: measure,
+  });
+  const line = output.split('\n').find(entry => entry.startsWith('Dialogue: 2,'));
+  assert.ok(line.includes(String.raw`\pos(480,320)`));
+  assert.ok(line.includes(String.raw`\an2\q2`));
+  assert.ok(line.includes(String.raw`\fs108`), '72 × 1.5 with group scale 1');
+  assert.ok(line.includes(String.raw`\bord${Number((6 * 1.5).toFixed(4))}`), 'outline follows the cue scale');
+});
+
+test('overlay overrides normalize strictly and invalid values are rejected', () => {
+  assert.throws(() => h.buildAssPayload([], { assProfile: {},
+    overlaySegments: [{ start: 0, end: 1000, text: 'O', assOverride: { scale: 9 } }] }), /assOverride/);
+  assert.throws(() => h.buildAssPayload([], { assProfile: {},
+    overlaySegments: [{ start: 0, end: 1000, text: 'O', assOverride: { pos: { x: 1 } } }] }), /assOverride/);
+  const project = { overlay_track: { enabled: true, segments: [
+    { id: 'overlay-001', start: 0, end: 1000, text: 'O', assOverride: {} },
+    { id: 'overlay-002', start: 1000, end: 2000, text: 'O', assOverride: { scale: 1.22, pos: { x: 12.5, y: -3 } } }] } };
+  h.normalizeMultiSubtitleProject(project);
+  assert.ok(!Object.hasOwn(project.overlay_track.segments[0], 'assOverride'), 'empty override normalizes to absence');
+  assert.deepEqual(plain(project.overlay_track.segments[1].assOverride), { scale: 1.22, pos: { x: 12.5, y: -3 } });
+});
+
+test('overlay merge keeps the leftmost override and split copies it to both halves', () => {
+  const splitContext = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h, MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
+  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), splitContext);
+  const original = { id: 'o1', start: 0, end: 2000, text: 'AB', assOverride: { scale: 1.22, pos: { x: 100, y: 200 } } };
+  const parts = splitContext.window.MaweSplitCore.buildSplitPair(original, 1, 1000, 'o1', false, 'continuous', { headIndex: 0, duplicateText: true });
+  assert.deepEqual(plain(parts.left.assOverride), plain(original.assOverride));
+  assert.deepEqual(plain(parts.right.assOverride), plain(original.assOverride));
+  parts.left.assOverride.pos.x = 111;
+  assert.equal(parts.right.assOverride.pos.x, 100);
+});
+
+
+test('real overlay merge retains only leftmost override as an independent copy', () => {
+  for (const override of [{ scale: 1.22, pos: { x: 100, y: 200 } }, undefined]) {
+    const left = { id: 'overlay-left', start: 0, end: 1000, text: 'A', ...(override ? { assOverride: override } : {}) };
+    const right = { id: 'overlay-right', start: 1000, end: 2000, text: 'B', assOverride: { scale: 2, pos: { x: 900, y: 800 } } };
+    const track = { id: 'overlay', segments: [left, right] };
+    const context = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h, getOverlayTrack: () => track,
+      MaweCoreState: { container: { querySelector: () => null } },
+      MaweCueListAnchor: { captureVisibleCueListVisualAnchor: () => null },
+      MaweMultiSubtitleCore: { getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '' },
+      MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } },
+      MaweSelection: { clearSelection() {} }, MaweCommands: { run: (label, fn) => fn({ commit() {} }) },
+      MaweState: { selection: { clear() {}, add() {} } }, MaweCuePanel: { setCuePanelTarget() {} },
+      MaweViewUpdates: { invalidate() {} }, MaweHint: { flashHint() {} } };
+    vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-wiring-overlay-split-merge.js', import.meta.url), 'utf8'), context);
+    assert.equal(context.mergeOverlaySegments([1, 0]), true);
+    assert.equal(track.segments.length, 1);
+    const merged = track.segments[0];
+    assert.equal(merged.text, 'AB');
+    assert.deepEqual(plain(merged.assOverride ?? null), plain(override ?? null));
+    if (override) {
+      merged.assOverride.pos.x = 333;
+      assert.equal(left.assOverride.pos.x, 100);
+      assert.equal(right.assOverride.pos.x, 900);
+    }
+  }
+});
+
+
+test('overlay scale field resets when selecting an unscaled cue or clearing scale', () => {
+  const source = fs.readFileSync(new URL('../web/editor/styles/editor-wiring-ass-cue-position.js', import.meta.url), 'utf8');
+  const start = source.indexOf('  function sync() {');
+  const end = source.indexOf('  for (const [input, axis]', start);
+  let current = { kind: 'overlay', segment: { assOverride: { scale: 1.5 } } };
+  const scaleInput = { value: '' }, element = { setAttribute() {} };
+  const context = { target: () => current, enabled: () => true, scaleWheel: null, drag: null, scaleDrag: null,
+    panel: element, positionControls: {}, scaleControls: {}, scaleInput, xInput: {}, yInput: {},
+    anchorFor: () => ({ x: 0, y: 0 }), currentScale: segment => segment.assOverride?.scale || 1,
+    translated: text => text, trackLabel: () => 'overlay', boxes: new Map(), handles: new Map(),
+    global: { MaweAssCanvas: {}, MaweDom: { overlayToggle: { checked: false } } },
+    document: { activeElement: null, getElementById: () => element } };
+  vm.runInNewContext(source.slice(start, end), context);
+  context.sync(); assert.equal(scaleInput.value, '1.50');
+  current = { kind: 'overlay', segment: {} };
+  context.sync(); assert.equal(scaleInput.value, '1.00');
+  current.segment.assOverride = { scale: 2 };
+  context.sync(); assert.equal(scaleInput.value, '2.00');
+  delete current.segment.assOverride;
+  context.sync(); assert.equal(scaleInput.value, '1.00');
+});

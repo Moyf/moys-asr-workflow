@@ -94,7 +94,7 @@ function assPreviewAnimatedStyle(style, profile, animationState, metrics) {
   // \fs targets are in native PlayRes pixels, whereas the library stores its
   // base size at 1080p. Interpolate both endpoints in native coordinates.
   const native = { ...style, fontSize: assPreviewExportFontSize(style, metrics) };
-  const result = window.AsrEditorUtils.assPreviewStyleAt(native, tags, animationState.transformProgress);
+  const result = window.AsrEditorUtils.assPreviewStyleAt(native, tags, animationState.transformProgress, { popScale: animationState.popScale });
   return { ...result, __assNativeFontSize: result.fontSize };
 }
 
@@ -202,12 +202,15 @@ function clearAssEmphasisPreview(element) {
   if (element) delete element.dataset.assEmphasisKey;
 }
 
-// ASS 文本 run 构建：预览剥离单句渐入渐出标记（`>>`/`<<` 由 fad 动画表现，
-// 不显示为文字），再按编辑器标记语法切成强调/下划线/删除线/大小字号
-// run——与旧 DOM 预览同源，绘制交给 MaweAssCanvas。
+// ASS 文本 run 构建：预览剥离单句渐入渐出（`>>`/`<<` 由 fad 动画表现）与
+// 放大出现标记（`{{`/`}}` 由 pop 动画表现），不显示为文字，再按编辑器标记
+// 语法切成强调/下划线/删除线/大小字号 run——与旧 DOM 预览同源，绘制交给
+// MaweAssCanvas。
 function assPreviewTrackRuns(text) {
-  const source = window.AsrEditorUtils.stripSentenceFadeMarkers(
-    String(text ?? ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+  const source = window.AsrEditorUtils.stripSentencePopMarkers(
+    window.AsrEditorUtils.stripSentenceFadeMarkers(
+      String(text ?? ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+    ), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
   );
   return window.AsrEditorUtils.assInlineStyleRuns(
     source, MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax, MaweSettings.EDITOR_SETTINGS,
@@ -292,10 +295,10 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
   const profile = cachedAssStackPlan.profile;
   const tracks = frame.items.map(item => {
     const animation = (item.legacy && !item.sharedStackCue ? window.AsrEditorUtils.assPreviewAnimationState : window.AsrEditorUtils.assStackAnimationState)(profile,
-      Number(tMs) - item.start, item.end - item.start, { fad: item.fad });
+      Number(tMs) - item.start, item.end - item.start, { fad: item.fad, pop: item.pop || null });
     const native = { ...item.style, fontSize: item.fontSize };
     const animated = animation.transformProgress === null ? native
-      : window.AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true });
+      : window.AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true, popScale: animation.popScale });
     if ((!item.legacy || item.sharedStackCue) && profile.animations.t.enabled) {
       // libass applies discrete style tags inside t immediately, even before
       // the numeric transform window starts (real b/i frame-hash verification).
