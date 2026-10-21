@@ -11,10 +11,15 @@ const result = (extra = {}) => ({ ok: true, status: 'measured', integratedLufs: 
   audioTrack: 0, measurementSource: 'preview', bindingGeneration: 1, sourceMediaId: 'source-a', ...extra });
 const response = data => ({ ok: true, json: async () => data });
 function fixture(transport = async () => response(result())) {
-  const calls = [], routes = [], contexts = [], nodes = new Map(), observers = new Set();
+  const calls = [], routes = [], contexts = [], nodes = new Map(), panels = [];
   function node() {
-    const listeners = new Map();
-    return { textContent: '', hidden: false, value: '',
+    const listeners = new Map(), classes = new Set();
+    return { textContent: '', hidden: false, value: '', checked: false,
+      classList: { contains: name => classes.has(name), toggle(name, value) {
+        if (value) classes.add(name); else classes.delete(name);
+      } },
+      focus() { context.document.activeElement = this; }, select() {},
+      get valueAsNumber() { return this.value === '' ? NaN : Number(this.value); },
       addEventListener(name, fn) { listeners.set(name, [...(listeners.get(name) || []), fn]); },
       emit(name, options = {}) { for (const fn of listeners.get(name) || []) fn({ target: this, ...options }); } };
   }
@@ -35,6 +40,10 @@ function fixture(transport = async () => response(result())) {
     document: { getElementById(id) { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); }, addEventListener() {} },
     MaweBoot: { DATA: { segments: [] }, SERVER_CONFIG: { requestToken: 'token', bindingGeneration: 1, sourceMediaId: 'source-a' } },
     MaweCoreState: { player }, MaweProjectLoad: { projectBindingEpoch: 0 },
+    MaweFloatingPanel: { createFloatingPanel(options) {
+      const panel = { open: () => options.onOpen(), close: () => options.onClose() };
+      panels.push(panel); return panel;
+    } },
     MaweServerSave: { configureServerSaveControls() {}, scheduleAutoSave() {} },
     MaweHost: { server: { fetch(url, options) { const body = JSON.parse(options.body); calls.push({ url, body, signal: options.signal }); return transport(body); } } },
   });
@@ -49,7 +58,7 @@ function fixture(transport = async () => response(result())) {
   vm.runInContext(readFileSync(new URL('../web/editor/state/editor-history.js', import.meta.url), 'utf8'), context);
   vm.runInContext(source, context);
   context.MaweAudioProcessing.init();
-  return { context, api: context.MaweAudioProcessing, state: context.MaweState, calls, routes, contexts, nodes, player, node };
+  return { context, api: context.MaweAudioProcessing, state: context.MaweState, calls, routes, contexts, nodes, panels, player, node };
 }
 
 test('fixed gain preserves listening volume, captures each player only once, and disconnects old routes', async () => {
@@ -89,11 +98,10 @@ test('unsupported sources never create an irreversible silent media source', asy
 test('normalization applies fixed peak-limited gain; manual gain remains unclamped by peaks', async () => {
   const f = fixture();
   await f.api.measure();
-  assert.equal(f.api.normalizationGain(f.api.measurement), 2, 'peak headroom limits a requested +7 dB');
+  assert.equal(f.api.normalizationGain(f.api.measurement), 2, 'peak headroom limits a requested +16 dB');
   f.api.normalizeToTarget();
   assert.equal(f.api.settings().gain_db, 2);
   assert.equal(f.nodes.get('audio-adjusted-lufs').textContent, '-28.0 LUFS');
-  assert.match(f.nodes.get('audio-gain-warning').textContent, /无法达到参考响度/);
   f.api.change({ gain_db: 7 });
   assert.equal(f.api.settings().gain_db, 7);
   assert.match(f.nodes.get('audio-gain-warning').textContent, /可能削波/);
@@ -180,9 +188,149 @@ test('audio edits keep their own dirty flag, share undo history, and load/reset 
   assert.equal(f.api.settings().gain_db, -4);
   assert.equal(f.state.changes.audioProcessingDirty, false);
   f.api.loadProject(undefined);
-  assert.deepEqual(clone(f.api.settings()), { gain_db: 0, target_lufs: -23, peak_ceiling_dbtp: -1 });
+  assert.deepEqual(clone(f.api.settings()), { gain_db: 0, target_lufs: -14, peak_ceiling_dbtp: -1 });
   assert.deepEqual(clone(f.api.normalize({ gain_db: 100, target_lufs: Infinity, peak_ceiling_dbtp: 10 })),
-    { gain_db: 24, target_lufs: -23, peak_ceiling_dbtp: -1 });
+    { gain_db: 24, target_lufs: -14, peak_ceiling_dbtp: -1 });
+});
+
+test('custom and saved preset references survive normalization while invalid inputs use the new default', () => {
+  const f = fixture();
+  for (const target of [-70, -23, -18.5, -16, -14, 0]) {
+    f.api.loadProject({ gain_db: 18, target_lufs: target });
+    assert.deepEqual(clone(f.api.settings()), { gain_db: 18, target_lufs: target, peak_ceiling_dbtp: -1 });
+  }
+  for (const target of [undefined, null, NaN, Infinity, -Infinity, -70.1, 0.1, '-18', true]) {
+    assert.equal(f.api.normalize({ target_lufs: target }).target_lufs, -14);
+  }
+});
+
+test('custom reference matching, dirty state and undo/redo keep the same target and fixed gain', async () => {
+  const f = fixture(async () => response(result({ integratedLufs: -30, truePeakDbtp: -20 })));
+  f.api.loadProject({ target_lufs: -23 });
+  await f.api.measure();
+  f.api.change({ target_lufs: -18.5 });
+  assert.equal(f.state.hasProjectChanges(), true);
+  assert.equal(f.api.normalizationGain(f.api.measurement), 11.5);
+  assert.equal(f.nodes.get('audio-target-difference').textContent, '-11.5 LU');
+  f.api.normalizeToTarget();
+  assert.equal(f.api.settings().gain_db, 11.5);
+  assert.equal(f.nodes.get('audio-target-difference').textContent, '0.0 LU');
+  f.context.MaweHistory.performUndo();
+  assert.equal(f.api.settings().gain_db, 0);
+  assert.equal(f.api.settings().target_lufs, -18.5);
+  f.context.MaweHistory.performUndo();
+  assert.equal(f.api.settings().target_lufs, -23);
+  f.context.MaweHistory.performRedo();
+  f.context.MaweHistory.performRedo();
+  assert.deepEqual(clone(f.api.settings()), { gain_db: 11.5, target_lufs: -18.5, peak_ceiling_dbtp: -1 });
+});
+
+function serializeProject(f) {
+  const context = f.context;
+  Object.assign(context, {
+    projectExtensionFields: {}, MULTI_SUBTITLE_UTILS: { MULTI_SUBTITLE_SCHEMA: 'moy.asr.multi.v1' },
+    getOverlayTrack: () => null,
+    MaweTimeline: { syncProjectTimebaseAndBindingOffsets() {}, projectTimebase: () => ({ unit: 'milliseconds' }),
+      normalizeMediaMetadata: () => null },
+    MaweMultiSubtitleCore: { getMultiSubtitleState: () => ({ tracks: [], bindings: [] }),
+      getActiveExtensionTrack: () => null, isConfiguredSubtitleSplitMode: () => false,
+      getMainSubtitleSplitMode: () => 'word' },
+    MaweSettings: { EDITOR_SETTINGS: {} }, MaweProjectMediaInputs: {},
+    MaweAppearance: { getPreviewGeometry: () => ({}), getSubtitleAppearance: () => ({}) },
+    MaweSpeakerLabels: { getSpeakerLabelSettings: () => ({}) },
+    MaweExportTimeline: { buildCurrentWorkspaceData: () => null },
+  });
+  context.AsrEditorUtils = { ...context.AsrEditorUtils, PROJECT_SCHEMA: 'moy.asr.v1',
+    normalizeItemTimingRanges: () => 0, markersToProjectField: () => null };
+  vm.runInContext(readFileSync(new URL('../web/editor/io/editor-json-repair.js', import.meta.url), 'utf8'), context);
+  return JSON.parse(context.MaweJsonRepair.buildJson());
+}
+
+test('project serializer and reload preserve a custom reference and extended gain without persisting measurement', async () => {
+  const f = fixture();
+  await f.api.measure();
+  f.api.change({ gain_db: 18, target_lufs: -18.5 });
+  const saved = serializeProject(f);
+  assert.deepEqual(saved.audio_processing, { gain_db: 18, target_lufs: -18.5, peak_ceiling_dbtp: -1 });
+  assert.equal('integratedLufs' in saved.audio_processing, false);
+  f.api.loadProject(saved.audio_processing);
+  assert.deepEqual(clone(f.api.settings()), saved.audio_processing);
+  assert.equal(f.api.measurement, null);
+  assert.equal(f.state.changes.audioProcessingDirty, false);
+});
+
+test('project serializer fallback agrees with the missing-field -14 LUFS default', () => {
+  const f = fixture();
+  f.context.MaweAudioProcessing = undefined;
+  assert.deepEqual(serializeProject(f).audio_processing, { gain_db: 0, target_lufs: -14, peak_ceiling_dbtp: -1 });
+});
+
+test('custom controls commit valid values only and selecting a mode alone does not dirty the project', () => {
+  const f = fixture(), select = f.nodes.get('audio-target'), input = f.nodes.get('audio-target-custom');
+  select.value = 'custom'; select.emit('change');
+  assert.equal(f.nodes.get('audio-target-custom-control').hidden, false);
+  assert.equal(f.state.hasProjectChanges(), false);
+  input.value = '-18.5'; input.emit('change');
+  assert.equal(f.api.settings().target_lufs, -18.5);
+  assert.equal(f.context.MaweHistory.editorHistory.undoLength(), 1);
+  for (const invalid of ['', '-80', '2']) {
+    input.value = invalid; input.emit('change');
+    assert.equal(f.api.settings().target_lufs, -18.5);
+    assert.equal(input.value, '-18.5');
+  }
+  assert.equal(f.context.MaweHistory.editorHistory.undoLength(), 1);
+  f.context.MaweHistory.performUndo();
+  assert.equal(f.api.settings().target_lufs, -14);
+  select.value = '-23'; select.emit('change');
+  assert.equal(f.nodes.get('audio-target-custom-control').hidden, true);
+  assert.equal(f.api.settings().target_lufs, -23);
+});
+
+test('normal gain controls stay in the friendly range while extended project values are never silently clamped', () => {
+  const f = fixture(), slider = f.nodes.get('audio-gain'), expanded = f.nodes.get('audio-gain-expanded');
+  assert.equal(slider.min, '-6'); assert.equal(slider.max, '12');
+  expanded.checked = true; expanded.emit('change');
+  assert.equal(slider.min, '-60'); assert.equal(slider.max, '24');
+  assert.equal(f.state.hasProjectChanges(), false);
+  expanded.checked = false; expanded.emit('change');
+  assert.equal(slider.min, '-6'); assert.equal(slider.max, '12');
+  for (const gain of [18, -20]) {
+    f.api.loadProject({ gain_db: gain });
+    assert.equal(slider.value, String(gain));
+    assert.equal(expanded.checked, true); assert.equal(expanded.disabled, true);
+    assert.equal(f.nodes.get('audio-gain-range-note').hidden, false);
+    expanded.checked = false; expanded.emit('change');
+    assert.equal(f.api.settings().gain_db, gain);
+    assert.equal(expanded.checked, true);
+    assert.equal(f.state.hasProjectChanges(), false);
+  }
+  f.api.change({ gain_db: 12 });
+  assert.equal(expanded.disabled, false);
+  expanded.checked = false; expanded.emit('change');
+  f.nodes.get('audio-gain-up').emit('click');
+  assert.equal(f.api.settings().gain_db, 12);
+  f.api.change({ gain_db: -6 });
+  f.nodes.get('audio-gain-down').emit('click');
+  assert.equal(f.api.settings().gain_db, -6);
+});
+
+test('listening percentage follows player volume changes without changing project gain or dirty state', () => {
+  const f = fixture();
+  assert.equal(f.nodes.get('audio-listening-volume-value').textContent, '60%');
+  f.player.volume = .37; f.player.emit('volumechange');
+  assert.equal(f.nodes.get('audio-listening-volume-value').textContent, '37%');
+  assert.equal(f.api.settings().gain_db, 0);
+  assert.equal(f.state.hasProjectChanges(), false);
+});
+
+test('closing the floating panel commits a pending gain gesture once', () => {
+  const f = fixture(), slider = f.nodes.get('audio-gain');
+  slider.value = '-4'; slider.emit('input');
+  f.panels[0].close();
+  slider.emit('blur');
+  assert.equal(f.context.MaweHistory.editorHistory.undoLength(), 1);
+  f.context.MaweHistory.performUndo();
+  assert.equal(f.api.settings().gain_db, 0);
 });
 
 test('one slider gesture creates one history entry', () => {
