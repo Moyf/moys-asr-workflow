@@ -109,3 +109,42 @@ test('invalid canonical imports and an unmappable role swap leave the current pr
   expect(await install(page, { ...before, schema: 'moy.asr.project.v99' }, 'future.mosp')).toBe(false);
   expect(await projectContent(page)).toEqual(before);
 });
+
+test('project-as-extension import preserves metadata and allocates independent cue/group identities', async ({ page }) => {
+  const target = structuredClone(canonical);
+  target.tracks = target.tracks.filter(track => track.role !== 'extension');
+  target.bindings = []; target.bilingual = { display_mode: 'both' };
+  expect(await install(page, target)).toBe(true);
+  const source = structuredClone(canonical);
+  source.tracks[0].metadata = { source: 'imported', flag: false };
+  source.tracks[0].segments[0].speaker = 'source-speaker';
+  source.tracks[0].segments[0].vendor = { empty: [], zero: 0 };
+  source.tracks[0].segments[0].assOverride = { scale: 1.2, pos: { x: 0, y: 1 } };
+  let previousImport;
+  for (let repeat = 0; repeat < 2; repeat++) {
+    await page.evaluate(async source => {
+      const file = new File([JSON.stringify(source)], 'source.mosp', { type: 'application/json' });
+      const segments = await MaweLoadingProgress.parseSubtitleImportFile(file);
+      await MaweMultiImport.showMultiSubtitleImportChoice(file, segments, { projectFile: file });
+    }, source);
+    await page.locator('#multi-subtitle-import-extension').click();
+    await page.locator('#multi-subtitle-import-result-confirm').click();
+    const saved = await projectContent(page);
+    const main = saved.tracks.find(track => track.role === 'main');
+    const imported = saved.tracks.find(track => track.id === saved.bilingual.active_track_id);
+    expect(main.segments[0].color_group_id).toBe(target.tracks[0].segments[0].color_group_id);
+    expect(imported.metadata).toEqual(source.tracks[0].metadata);
+    expect(imported.language).toBe('zh');
+    expect(imported.segments[0]).toMatchObject({ speaker: 'source-speaker', vendor: { empty: [], zero: 0 }, assOverride: { scale: 1.2, pos: { x: 0, y: 1 } } });
+    expect(imported.segments[0].id).not.toBe(main.segments[0].id);
+    expect(imported.segments[0].color_group_id).not.toBe(main.segments[0].color_group_id);
+    const group = saved.subtitle_groups.color.find(group => group.id === imported.segments[0].color_group_id);
+    expect(group.value).toEqual(source.subtitle_groups.color[0].value);
+    if (previousImport) {
+      expect(imported.id).toBe(previousImport.id);
+      expect(imported.segments[0].id).not.toBe(previousImport.segments[0].id);
+      expect(imported.segments[0].color_group_id).not.toBe(previousImport.segments[0].color_group_id);
+    }
+    previousImport = imported;
+  }
+});

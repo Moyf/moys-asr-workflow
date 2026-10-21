@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
-import * as tracks from '../web/shared/utils/project-tracks.js';
+import { createUtilsModule as createProjectTracks } from '../web/shared/utils/project-tracks.js';
+const tracks = createProjectTracks();
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -38,7 +39,7 @@ test('the real editor projection preserves every track and extension field witho
   }
   data._dirty = true; data.waveform = { cache: true };
   const source = plain(data);
-  const utils = { window: {} };
+  const utils = { window: {}, TextDecoder };
   loadEditorModule(utils, 'shared/editor-utils.js');
   const context = {
     AsrEditorUtils: { ...utils.window.AsrEditorUtils, ...tracks }, MaweBoot: { DATA: data },
@@ -71,4 +72,37 @@ test('the real editor projection preserves every track and extension field witho
   assert.deepEqual(snapshot.bindings, data.bindings);
   assert.deepEqual(snapshot.subtitle_groups, data.subtitle_groups);
   assert.equal(tracks.validateTracksProject(snapshot).ok, true);
+});
+
+test('importing project subtitles keeps cue metadata and a detached source group table', async () => {
+  const source = canonical();
+  source.tracks[0].metadata = { vendor: 'track', empty: [] };
+  source.tracks[0].segments[0].speaker = 'speaker';
+  source.tracks[0].segments[0].assOverride = { scale: 1.2, pos: { x: 0, y: 1 } };
+  source.tracks[0].segments[0].vendor = { zero: 0, flag: false };
+  const utils = { window: {}, TextDecoder };
+  loadEditorModule(utils, 'shared/editor-utils.js');
+  const context = {
+    AsrEditorUtils: { ...utils.window.AsrEditorUtils, ...tracks, cloneJsonValue: plain },
+    document: { getElementById: () => null },
+    MaweDragDrop: { isSrtFile: () => false, isLrcFile: () => false },
+  };
+  context.window = context;
+  vm.createContext(context);
+  run(context, 'io/editor-loading-progress');
+  const input = plain(source);
+  const parsed = await context.MaweLoadingProgress.parseSubtitleImportFile(new File([JSON.stringify(source)], 'source.mosp'));
+  assert.deepEqual(plain(source), input);
+  assert.deepEqual(plain(parsed[0]), source.tracks[0].segments[0]);
+  assert.deepEqual(plain(parsed.sourceTrack.metadata), source.tracks[0].metadata);
+  assert.equal(parsed.sourceTrack.language, 'zh');
+  assert.equal(parsed.sourceTrack.segments, undefined);
+  assert.deepEqual(plain(parsed.subtitle_groups), source.subtitle_groups);
+  parsed[0].vendor.zero = 1;
+  parsed.subtitle_groups.color[0].value.custom = 'changed';
+  assert.deepEqual(source, input);
+  await assert.rejects(context.MaweLoadingProgress.parseSubtitleImportFile(new File([
+    JSON.stringify({ ...source, schema: 'moy.asr.project.v99' }),
+  ], 'future.mosp')), /schema/);
+  assert.equal(context.MaweLoadingProgress.editorLoadingDepth, 0);
 });

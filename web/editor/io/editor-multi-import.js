@@ -144,20 +144,22 @@
     multi.tracks || [], 'extension-1', 'extension',
   );
   const extensionSegments = pending.segments.map((segment, index) => ({
-    ...segment,
+    ...window.AsrEditorUtils.cloneJsonValue(segment),
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
       [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA), ...pending.segments.slice(0, index)], `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
     ),
     _dirty: true,
   }));
   const track = {
+    ...window.AsrEditorUtils.cloneJsonValue(oldTrack || {}),
+    ...window.AsrEditorUtils.cloneJsonValue(pending.segments.sourceTrack || {}),
     id: trackId,
     role: 'extension',
     enabled: true,
     name: pending.file.name.replace(/\.[^.]+$/i, '') || '副字幕',
-    language: '',
+    language: pending.segments.sourceTrack?.language || '',
     source_name: pending.file.name,
-    split_mode: MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(
+    split_mode: pending.segments.sourceTrack?.split_mode || MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(
       extensionSegments.map((segment) => segment.text).join('\n'),
     ),
     segments: extensionSegments,
@@ -173,6 +175,18 @@
       else multi.tracks.push(track);
     } else {
       multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
+    }
+    extensionSegments.forEach(segment => { delete segment.color_group_id; delete segment.sticker_group_id; });
+    for (const kind of ['color', 'sticker']) {
+      for (const group of pending.segments.subtitle_groups?.[kind] || []) {
+        const indexes = pending.segments.flatMap((segment, index) => segment[`${kind}_group_id`] === group.id ? [index] : []);
+        if (!indexes.length) continue;
+        window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, extensionSegments, indexes, kind, group.value);
+        for (const index of indexes) {
+          const metadata = pending.segments[index][`${kind}_group_metadata`];
+          if (metadata !== undefined) extensionSegments[index][`${kind}_group_metadata`] = window.AsrEditorUtils.cloneJsonValue(metadata);
+        }
+      }
     }
     match.matches.forEach((candidate) => {
       const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[candidate.mainIndex];

@@ -59,22 +59,16 @@
       if (MaweDragDrop.isSrtFile(file)) return MaweProjectLoad.parseSrtSegments(await readFileTextWithProgress(file));
       if (MaweDragDrop.isLrcFile(file)) return window.AsrEditorUtils.parseLrcSegments(await readFileTextWithProgress(file));
       const data = window.AsrEditorUtils.importProject(JSON.parse(await readFileTextWithProgress(file))).project;
-      const sourceSegments = window.AsrEditorUtils.getMainTrack(data).segments.map((segment) => {
-        const copy = {
-          start: segment.start,
-          end: segment.end,
-          text: typeof segment.text === 'string' ? segment.text : '',
-        };
-        if (Array.isArray(segment.items)) {
-          copy.items = segment.items.map((item) => ({ ...item }));
-        }
-        return copy;
-      });
-      window.AsrEditorUtils.normalizeSegmentTimings(sourceSegments);
+      const sourceTrack = window.AsrEditorUtils.getMainTrack(data);
+      const sourceSegments = window.AsrEditorUtils.cloneJsonValue(sourceTrack.segments);
       const validSegments = sourceSegments.filter((segment) => segment.text.trim());
       if (!validSegments.length) {
         throw new Error('副字幕没有可导入的有效文本或时间码');
       }
+      Object.defineProperties(validSegments, {
+        subtitle_groups: { value: window.AsrEditorUtils.cloneJsonValue(data.subtitle_groups) },
+        sourceTrack: { value: window.AsrEditorUtils.cloneJsonValue({ ...sourceTrack, segments: undefined }) },
+      });
       return validSegments;
     } finally {
       finishLoading();

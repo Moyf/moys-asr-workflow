@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
-import * as projectTracks from '../web/shared/utils/project-tracks.js';
+import { createUtilsModule as createProjectTracks } from '../web/shared/utils/project-tracks.js';
+const projectTracks = createProjectTracks();
 const mainSegments = data => projectTracks.getMainTrack(data).segments;
 import { readFileSync } from 'node:fs';
 
