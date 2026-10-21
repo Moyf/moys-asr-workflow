@@ -27,6 +27,11 @@ test('ASS export keeps distinct renderable family names while replacing typograp
   config.assFontAliasesUrl = '/api/ass-font-aliases';
   const aliases = context.window.MaweAssFontAliases;
   await aliases.reload();
+  const choices = aliases.entries().map((entry) => ({
+    value: entry.canonical, label: entry.canonical, aliases: entry.names,
+  }));
+  assert.deepEqual(Array.from(context.window.AsrEditorUtils.filterFontFamilyOptions(choices, 'Semibold'),
+    (entry) => entry.value), ['Example Sans Semibold']);
   aliases.beginReplacementCapture();
   try {
     const payload = context.window.AsrEditorUtils.buildAssPayload([

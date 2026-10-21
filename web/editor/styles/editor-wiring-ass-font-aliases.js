@@ -36,7 +36,7 @@
       const names = [...new Set([canonical, ...(Array.isArray(entry.names) ? entry.names : [])]
         .map((name) => String(name ?? '').trim())
         .filter(Boolean))];
-      entries.push({ canonical, names });
+      const faces = new Map();
       for (const name of Array.isArray(entry.family) ? entry.family : []) {
         const key = fold(name);
         if (key) renderableFamilies.add(key);
@@ -46,7 +46,12 @@
         const faceCanonical = typeof entry.canonicalByName?.[key] === 'string'
           ? entry.canonicalByName[key].trim() : '';
         if (!canonicalByFold.has(key)) canonicalByFold.set(key, faceCanonical || canonical);
+        const target = canonicalByFold.get(key);
+        if (!faces.has(target)) faces.set(target, { canonical: target, names: [] });
+        faces.get(target).names.push(name);
       }
+      // 下拉选择也保留 face 粒度，搜索 Semibold/PS 名不能选成 Regular。
+      entries.push(...faces.values());
     }
     ready = true;
     return true;
