@@ -122,8 +122,9 @@ class EditorEntryRetirementTests(unittest.TestCase):
                 return SimpleNamespace(pure=[], scripts=[], binaries=[], datas=[])
             with self.subTest(version=version), \
                  mock.patch.object(policy, "app_version", return_value=version):
-                runpy.run_path(str(ROOT / "MAW.spec"), init_globals={
-                    "SPECPATH": str(ROOT), "Analysis": analysis,
+                spec_directory = ROOT / "scripts" / "packaging"
+                runpy.run_path(str(spec_directory / "MAW.spec"), init_globals={
+                    "SPECPATH": str(spec_directory), "Analysis": analysis,
                     "PYZ": lambda *a, **k: None, "EXE": lambda *a, **k: None,
                     "COLLECT": lambda *a, **k: None, "BUNDLE": lambda *a, **k: None,
                 })
@@ -134,9 +135,9 @@ class EditorEntryRetirementTests(unittest.TestCase):
     def test_all_generating_consumers_gate_their_optional_artifact(self):
         # These generators invoke a separate process: catch omissions without
         # running paid ASR or installing model runtimes.
-        expected = {f"generate_subtitle_{provider}_api.py" for provider in ("bcut", "doubao", "openai", "qwen", "soniox")}
+        expected = {f"{provider}.py" for provider in ("bcut", "doubao", "openai", "qwen", "soniox")}
         found = set()
-        for path in ROOT.glob("generate_subtitle_*_api.py"):
+        for path in (ROOT / "maw" / "asr").glob("*.py"):
             source = path.read_text(encoding="utf-8")
             tree = ast.parse(source)
             html_scripts = [node for node in ast.walk(tree)

@@ -22,12 +22,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from generate_subtitle_qwen_api import (
-    extract_audio,
-    generate_srt,
-    get_duration_sec,
+from maw.asr.common import extract_audio, generate_srt, get_duration_sec, parse_duration
+from maw.asr.segmentation import (
     is_cjk_char,
-    parse_duration,
     repair_nonpositive_duration_segments,
     split_coarse_segments,
     split_segments_auto,

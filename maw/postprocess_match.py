@@ -36,7 +36,7 @@ MIN_MATCH_COVERAGE = 0.55
 # （「需要断句的符号」默认清单，见 DEFAULT_EXTRA_SPLIT_PUNCTUATION）。
 DEFAULT_SPLIT_PUNCTUATION = frozenset({"\n"})
 # 共享断句配置的默认值：文稿匹配与转写共用的唯一真源，没有隐式基础集。
-# 转写脚本（generate_subtitle_*）的 CLI 参数默认值与本清单保持一致。
+# 转写模块（maw.asr.*）的 CLI 参数默认值与本清单保持一致。
 DEFAULT_EXTRA_SPLIT_PUNCTUATION: Final[tuple[str, ...]] = (
     "，",
     "。",

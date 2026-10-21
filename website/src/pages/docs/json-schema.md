@@ -2,16 +2,16 @@
 layout: "../../layouts/DocLayout.astro"
 title: "字幕工程文件规范"
 description: "定义 .mosp / .json 工程的字段、时间码、波形和工作区数据边界。"
-source: "JSON_SCHEMA.md"
+source: "docs/engineering/JSON_SCHEMA.md"
 ---
 
-<!-- Generated from JSON_SCHEMA.md. Run pnpm run sync:docs to refresh. -->
+<!-- Generated from docs/engineering/JSON_SCHEMA.md. Run pnpm run sync:docs to refresh. -->
 
 本文档定义本地 MAWE（Moy's ASR Workflow Editor）当前接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。历史 `.edit.html` 和 `blank-editor.html` 仅按各自版本支持旧工程；2.0 起停止维护这些入口，不承诺旧副本兼容下述 v2 格式。
 
 用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
 
-适用版本：对应 `edit.py` / `generate_subtitle_qwen_api.py` 当前实现。
+适用版本：对应 `edit.py` 和 `maw.asr.qwen` 模块的当前实现。
 
 ---
 
@@ -49,9 +49,9 @@ v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有
 - 禁用成员保留关系并参与范围；全部成员禁用时不显示或导出表情。换轨不拆组；删除头或中间成员后剩余成员仍同组。清除属性只移除所选成员，空组在编辑器中删除。
 - 关闭整条叠加轨或副字幕轨时保留其组关系；预览与导出的表情范围仅由仍启用轨道的成员决定，重新开启后恢复。单条字幕的禁用状态仍按上一条规则处理。
 - 拆分两侧继承原组。同组合并继承；不同组或混有无组字幕时，合并结果不继承该种组关系，未参与合并的成员保留原组。不同组即使素材同名也不合并。重复导入为输入组分配新 ID，避免与当前工程误关联。
-- v1 迁移先在原轨内数组解析 `headIdx`，再规范 ID；跨轨重复字幕 ID 确定性重映射，并更新 bindings。旧ref的第三方附加字段保存在对应段的可选 `color_group_metadata` / `sticker_group_metadata` 对象中（不含旧name/headIdx）；现有同名字段冲突时拒绝迁移而不覆盖。重映射记录在可选 `subtitle_group_migration.remapped_ids`（track/index/from/to）。失效引用或歧义绑定报告错误，不按名称猜引用。
+- v1 迁移先在原轨内数组解析 `headIdx`，再规范 ID；跨轨重复字幕 ID 确定性重映射，并更新 bindings。旧单数绑定端点同样保留，缺省 `track_id` 仅在唯一副轨时补齐，多副轨歧义在变更 ID 前拒绝。旧ref的第三方附加字段保存在对应段的可选 `color_group_metadata` / `sticker_group_metadata` 对象中（不含旧name/headIdx）；现有同名字段冲突时拒绝迁移而不覆盖。重映射记录在可选 `subtitle_group_migration.remapped_ids`（track/index/from/to）。失效引用或歧义绑定报告错误，不按名称猜引用。
 - v2 落盘不写 `color` / `color_ref` / `sticker` / `sticker_ref`；编辑器内部可生成显示投影，投影的下标与范围不构成持久化关系。三轨共同保留 items、帧、speaker、disabled、assOverride.pos 和第三方扩展。
-- 表情预览、共享时间线导出和 OTIO 按组连续区间输出。重叠组按稳定表顺序显示；单轨 OTIO 遇重叠继续报错。Resolve JSON 使用 `moy.asr_subtitle_editor.resolve.v2`，在顶层 `stickers` 输出连续组区间（group_id/start_ms/end_ms/素材属性），段上保留组 ID；旧 Resolve v1 消费端需适配。
+- 表情预览、共享时间线导出和 OTIO 按组连续区间输出。独立表情 OTIO（含去空隙模式）包含启用轨道的所有组，每组仅输出一次；完整时间线仍按主/叠加归属分轨。重叠组按稳定表顺序显示；单轨 OTIO 遇重叠继续报错。Resolve JSON 使用 `moy.asr_subtitle_editor.resolve.v2`，在顶层 `stickers` 输出连续组区间（group_id/start_ms/end_ms/素材属性）；派生 ID 和范围优先于素材扩展中的同名字段，段上保留组 ID；旧 Resolve v1 消费端需适配。
 
 文稿匹配读取并保留 v2；沿既有等条数槽位继承非时间属性。对带独立组且会改变条数的文稿匹配，当前明确拒绝生成有损结果，原工程保留；可先在编辑器中拆合。该限制不影响编辑器正常拆分、合并或重新断句。
 
@@ -106,8 +106,8 @@ v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有
 | `schema` | `string` | 否（写出时必填） | 支持 `moy.asr.project.v1` 与带独立组表的 `moy.asr.project.v2`，详见上文。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
 | `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可），相对路径以工程文件所在目录为基准。生成与服务器保存优先写相对路径（如 `_maw/clip.mosp` 引用 `../clip.mp4`），跨盘无法相对引用时写绝对路径。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
-| `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。仅用于显示与选择切句计量方式 |
-| `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知） |
+| `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。用于显示、选择切句计量方式，以及结合语言来源决定是否启用中文翻译预过滤 |
+| `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知）。中文翻译预过滤仅信任前两种来源，并在全文有假名或谚文时停用 |
 | `preserve_punctuation` | `boolean` | 否 | 历史兼容字段，继续读取与保存；文稿驱动对齐仍写入 `true`。当前 MAWE 打开所有工程均保留标点，不论此字段为 `true`、`false` 或缺省，都不自动改写字幕与 items 原文；用户主动编辑 / 文本处理仍有效。此字段是 v1 的可选扩展，不改变整数毫秒契约 |
 | `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
 | `timed_text_edit_view` | `string` | 否 | 纯文本编辑视图：`rows`（逐条，默认）或 `single`（整体）。默认 `rows` 保存时省略；切换视图计入工程修改，切回保存值恢复干净；非法类型或枚举在导入边界拒绝。当前字幕含换行而不能整体编辑时，仅在界面暂用逐条视图，不覆盖工程偏好 |
@@ -704,7 +704,7 @@ v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
 | `disabled` | `bool` | 否 | 禁用该字幕；预览、隐藏禁用项和默认导出会跳过它 |
-| `assOverride` | `object` | 否 | 主字幕逐句 ASS 覆盖：可独立保存 PlayRes 坐标与整体缩放；见下方契约 |
+| `assOverride` | `object` | 否 | 主字幕/叠加字幕逐句 ASS 覆盖：可独立保存 PlayRes 坐标与整体缩放；见下方契约 |
 | `speaker` | `string` | 否 | 说话人标签（非空字符串）。保存供应商返回的 opaque ID（如 Soniox 的 `"1"`/`"2"`），不转换为整数或姓名。仅当该段所有带语音 items 都是同一 speaker 时才写入；缺少该字段的旧工程继续有效 |
 | `sticker` | `object\|null` | 否 | 表情包 head 信息。见第四节 |
 | `sticker_ref` | `object\|null` | 否 | 引用上方 head 的表情包（跨多句用） |
@@ -714,14 +714,14 @@ v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有
 
 ### 逐句 ASS 定位与缩放（可选）
 
-主字幕 segment 可独立保存大小和位置，例如 `"assOverride": { "scale": 1.22, "pos": { "x": 1720, "y": 180 } }`。两个字段都可以单独省略。
+主字幕与叠加字幕（`overlay_track.segments`）segment 可独立保存大小和位置，例如 `"assOverride": { "scale": 1.22, "pos": { "x": 1720, "y": 180 } }`。两个字段都可以单独省略。
 
 - `scale` 是整体缩放倍率，范围 `0.10–5.00`，归一化到两位小数；`1.00` 是默认值并省略。它统一缩放字体、句内相对字号、字距、描边、阴影和字号动画目标。只设置 `scale` 不创建 `pos`，字幕继续参与全局自动排布、避碰与整体适配。
-- `pos` 存储当前 ASS `PlayResX / PlayResY` 画布坐标，必须同时包含有限数字 `x` 和 `y`；允许历史工程中的小数、负值与画布外位置。编辑器显示坐标为整数，新输入、方向键微调和拖动保存时四舍五入到整数；读取旧小数或只改大小时不自动改写坐标。显式 `pos` 优先于方案 `move`，该主字幕不参与自动组平移或避碰。
+- `pos` 存储当前 ASS `PlayResX / PlayResY` 画布坐标，必须同时包含有限数字 `x` 和 `y`；允许历史工程中的小数、负值与画布外位置。编辑器显示坐标为整数，新输入、方向键微调和拖动保存时四舍五入到整数；读取旧小数或只改大小时不自动改写坐标。显式 `pos` 优先于方案 `move` 与自动排布，该句导出为固定 `\pos` 事件，不参与自动组平移或避碰。
 - 逐句不保存 `an`；文字块附着点由全局 ASS 样式 alignment 规定，拖动、缩放、预览与导出始终共用该锚点。震动叠加时保存基准坐标，不包含瞬时抖动偏移。
 - 重置大小只清除 `scale`，重置定位只清除 `pos`；未设置对应字段时，相应控件隐藏。选择或原地点选不写位置覆盖。
 - 不存在或空对象表示样式默认；规范化与保存不写空对象。非数字、非有限或超范围的倍率、非法坐标、缺少任一坐标或逐句 `an` 被拒绝。普通预览和 SRT 不消费该字段。
-- 拆分（包括复制/渐进拆分）两端各自深拷贝原覆盖；合并取时间顺序中最左句的完整覆盖，左句没有覆盖时合并结果也没有覆盖。复制/历史记录不得共享嵌套 `pos` 对象。主副换轨保留元数据，副/叠加轨不应用逐句定位；换回主轨后继续生效。
+- 拆分（包括复制/渐进拆分）两端各自深拷贝原覆盖；合并取时间顺序中最左句的完整覆盖，左句没有覆盖时合并结果也没有覆盖。复制/历史记录不得共享嵌套 `pos` 对象。主副/主叠换轨保留元数据：叠加字幕应用逐句定位与缩放，副字幕（extension）仍不应用；换回主轨后继续生效。
 
 ### 关键约束
 
@@ -976,7 +976,7 @@ uv run --no-sync python server-editor/serve.py your_generated.mosp
 | `segments[i].items[k].start_frame` | int | ❌ | 帧编号，与 `end_frame` 成对 |
 | `segments[i].items[k].end_frame` | int | ❌ | 帧编号，与 `start_frame` 成对 |
 | `segments[i].items[k].speaker` | string | ❌ | 说话人 opaque ID |
-| `segments[i].assOverride` | object | ❌ | 可选主字幕 ASS 覆盖：`scale` 为 0.10–5.00 的两位倍率，`pos` 为有限 PlayRes x/y 坐标，字段独立且使用全局样式锚点；空对象归一化为省略 |
+| `segments[i].assOverride` | object | ❌ | 可选主字幕/叠加字幕 ASS 覆盖：`scale` 为 0.10–5.00 的两位倍率，`pos` 为有限 PlayRes x/y 坐标，字段独立且使用全局样式锚点；空对象归一化为省略。副字幕（extension）不应用该字段 |
 | `segments[i].speaker` | string | ❌ | 段内统一说话人才写入 |
 | `segments[i].sticker` | object\|null | ❌ | 表情包 head |
 | `segments[i].sticker_ref` | object\|null | ❌ | `{name, headIdx}` |
@@ -1027,7 +1027,7 @@ uv run --no-sync python server-editor/serve.py your_generated.mosp
 - 当前客户端拒绝加载未知的顶层工程版本，且不会用旧结构覆盖原工程
 - v1 内允许新增可选字段及不改变既有语义的向后兼容调整；编辑器保存时保留不认识的顶层字段
 - 删除字段、改变既有字段的单位或语义、调整为不兼容结构，或要求强制迁移时才升级到 v2
-- 本规范与 `edit.py` / `generate_subtitle_qwen_api.py` 当前实现同步
+- 本规范与 `edit.py` / `maw.asr.qwen` 当前实现同步
 - 设计决策（字级时间戳为何重要、长音频切片策略等）见 `CHANGELOG.md`
 - 字段命名保持向后兼容：新增可选字段不会破坏旧 JSON 加载
 - 旧编辑器会忽略新增的 `waveform` 字段；新编辑器可加载完全不含该字段的旧工程

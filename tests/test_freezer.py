@@ -151,7 +151,7 @@ class FreezeCommandTests(unittest.TestCase):
     def test_moss_main_compiles_in_file_with_cu130_index(self) -> None:
         self.assertEqual(
             freezer_mod.main_freeze_command(UV, MOSS_SPEC, BUILD),
-            [str(UV), "pip", "compile", "moss-requirements.in", "-p", "3.11",
+            [str(UV), "pip", "compile", "scripts/packaging/moss-requirements.in", "-p", "3.11",
              "--extra-index-url", "https://download.pytorch.org/whl/cu130",
              "--index-strategy", "unsafe-best-match",
              "-o", str(BUILD / "requirements-moss.txt")],
@@ -176,6 +176,7 @@ class EnsureFrozenTests(CompactContainerAssertions, unittest.TestCase):
     def _temp_build_dir(self) -> Path:
         build = Path(tempfile.mkdtemp()) / "build"
         build.mkdir(parents=True)
+        (build.parent / "scripts" / "packaging").mkdir(parents=True)
         self.addCleanup(lambda: shutil.rmtree(build.parent, ignore_errors=True))
         return build
 
@@ -231,7 +232,7 @@ class EnsureFrozenTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_moss_cpu_derives_input_from_in_file(self) -> None:
         build = self._temp_build_dir()
-        in_path = build.parent / "moss-requirements.in"
+        in_path = build.parent / MOSS_SPEC.requirements_in
         in_path.write_text(MOSS_IN, encoding="utf-8")
         calls: list[list[str]] = []
 
@@ -271,7 +272,8 @@ class EnsureFrozenTests(CompactContainerAssertions, unittest.TestCase):
         parent = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: shutil.rmtree(parent, ignore_errors=True))
         build = parent / "build"
-        (parent / "moss-requirements.in").write_text(MOSS_IN, encoding="utf-8")
+        (parent / "scripts" / "packaging").mkdir(parents=True)
+        (parent / MOSS_SPEC.requirements_in).write_text(MOSS_IN, encoding="utf-8")
         calls: list[list[str]] = []
 
         freezer_mod.ensure_frozen(UV, MOSS_SPEC, cpu=True, build_dir=build, run=self._fake_run(calls))
@@ -284,7 +286,7 @@ class EnsureFrozenTests(CompactContainerAssertions, unittest.TestCase):
         build = self._temp_build_dir()
         (build / "requirements-moss.txt").write_text("old-main\n", encoding="utf-8")
         (build / "requirements-moss-cpu.txt").write_text("old-cpu\n", encoding="utf-8")
-        (build.parent / "moss-requirements.in").write_text(MOSS_IN, encoding="utf-8")
+        (build.parent / MOSS_SPEC.requirements_in).write_text(MOSS_IN, encoding="utf-8")
         calls: list[list[str]] = []
 
         freezer_mod.ensure_frozen(
@@ -307,6 +309,7 @@ class RequirementsStaleTests(unittest.TestCase):
     def _temp_build_dir(self) -> Path:
         build = Path(tempfile.mkdtemp()) / "build"
         build.mkdir(parents=True)
+        (build.parent / "scripts" / "packaging").mkdir(parents=True)
         self.addCleanup(lambda: shutil.rmtree(build.parent, ignore_errors=True))
         return build
 
@@ -322,7 +325,7 @@ class RequirementsStaleTests(unittest.TestCase):
             freezer_mod.declared_direct_names(LOCAL_SPEC, build),
             {"funasr", "quapeaks"},
         )
-        (build.parent / "moss-requirements.in").write_text(
+        (build.parent / MOSS_SPEC.requirements_in).write_text(
             "# comment\n-r base.in\ntorch==2.13.0+cu130; sys_platform != 'darwin'\nav>=14.0\n",
             encoding="utf-8",
         )

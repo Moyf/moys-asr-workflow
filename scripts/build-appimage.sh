@@ -27,10 +27,10 @@ echo "==> 1/6 PyInstaller 构建 dist/MAW"
 # release.yml / 源码模式自动补齐完全同源）。
 mkdir -p build
 uv run python -m maw.runtimes.freezer freeze --force
-uv run --group build pyinstaller --noconfirm --clean MAW.spec
+uv run --group build pyinstaller --noconfirm --clean scripts/packaging/MAW.spec
 # PyInstaller 6 places datas under _internal in an onedir bundle. Keep the
 # user-facing FAQ at the AppImage root as well, where users can find it easily.
-cp "FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"
+cp "docs/user/FAQ-常见问题.txt" "dist/MAW/FAQ-常见问题.txt"
 
 echo "==> 2/6 准备静态 ffmpeg（BtbN FFmpeg-Builds，latest release 的稳定分支资产）"
 FFMPEG_BRANCH="8.1"

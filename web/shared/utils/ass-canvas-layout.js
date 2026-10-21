@@ -1,7 +1,8 @@
 // ass-canvas-layout: ASS Canvas 预览的纯布局计算。
 // 只做数值计算，不触碰 DOM 与 Canvas：文本测量通过注入的 measurer 完成，
 // Node 测试可以用假测量器离线验证行切分、锚点与块偏移的正确性。
-window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
+
   'use strict';
 
   const ASS_DEFAULT_PLAY_RES_X = 1920;
@@ -205,11 +206,15 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
   function assStackCueBounds(item, start, end, alignment, measure, profile) {
     const elapsed = (time) => Math.max(0, time - item.start);
     const styles = [start, Math.max(start, end - 0.001)].map(time => {
-      const state = dependencies.assStackAnimationState(profile, elapsed(time), item.end - item.start);
+      const state = dependencies.assStackAnimationState(profile, elapsed(time), item.end - item.start,
+        { pop: item.pop || null });
       const style = state.transformProgress === null ? { ...item.style, fontSize: item.fontSize }
-        : dependencies.assPreviewStyleAt({ ...item.style, fontSize: item.fontSize }, profile.animations.t.tags, state.transformProgress, { nativeFontSize: true });
+        : dependencies.assPreviewStyleAt({ ...item.style, fontSize: item.fontSize }, profile.animations.t.tags, state.transformProgress, { nativeFontSize: true, popScale: state.popScale });
       const scale = item.cueScale || 1;
-      return { ...style, fontSize: style.fontSize * scale, spacing: style.spacing * scale,
+      // 入场放大的最大状态（片起点）计入包围盒，避免堆叠避碰按落定字号预留。
+      const fontSize = style.fontSize * scale;
+      return { ...style, fontSize, scaleX: style.scaleX * (state.popScale || 1),
+        scaleY: style.scaleY * (state.popScale || 1), spacing: style.spacing * scale,
         outline: style.outline * scale, shadow: style.shadow * scale };
     });
     const targets = dependencies.assTransformStyleTargets(profile?.animations?.t?.tags || '');
@@ -234,8 +239,15 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     const left = assCanvasLineOffsetX(grid.column, width) - padding;
     const top = assCanvasBlockTopY(grid.row, height) - padding;
     const rect = { left, top, right: left + width + padding * 2, bottom: top + height + padding * 2 };
-    const sx = max('scaleX', 100) / 100;
-    const sy = max('scaleY', 100) / 100;
+    // Pop followed by a custom axis transform can have an interior extremum.
+    // Its value is a convex combination of the current pop scale and target:
+    // bound both endpoints of that combination instead of sampling the curve.
+    const popAtStart = dependencies.assStackAnimationState(profile, elapsed(start), item.end - item.start,
+      { pop: item.pop || null }).popScale || 1;
+    const axisMax = key => popAtStart > 1 && profile?.animations?.t?.enabled && targets[key] !== undefined
+      ? Math.max(max(key, 100), item.style[key] * popAtStart, targets[key]) : max(key, 100);
+    const sx = axisMax('scaleX') / 100;
+    const sy = axisMax('scaleY') / 100;
     const angleA = Number(styles[0].angle) || 0;
     const angleB = Number(styles[1].angle) || 0;
     const from = Math.min(angleA, angleB) * Math.PI / 180;
@@ -321,7 +333,11 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
       events.get(time).push({ item, active });
     };
     for (const raw of items || []) {
-      const override = raw.role === 'main' ? dependencies.normalizeAssOverride(raw.segment?.assOverride) : undefined;
+      // 主字幕与叠加字幕共用逐句 assOverride（scale/pos）；扩展轨是固定层，
+      // 仍不消费逐句覆盖。手动定位句成为独立 ASS 事件：不参与整组适配、
+      // 避碰与方案移动；只有缩放的句继续留在自动排布内。
+      const override = raw.role === 'main' || raw.role === 'overlay'
+        ? dependencies.normalizeAssOverride(raw.segment?.assOverride) : undefined;
       const item = { ...raw, cueScale: override?.scale || 1,
         ...(override ? { assOverride: override, manual: Boolean(override.pos) } : {}) };
       queue(item.start, item, true); queue(item.end, item, false);
@@ -513,4 +529,4 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     assShakeOffsetFor,
     assStackPieceRootAt,
   });
-});
+}

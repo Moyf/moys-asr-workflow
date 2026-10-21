@@ -14,13 +14,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
-# Windows embedded Python uses ``python*._pth`` to control ``sys.path`` and
-# does not add the directory of a script executed by path.  The packaged copy
-# lives beside ``local-runtime/maw``; source mode has the same sibling layout
-# at the repository root.  Add that package root before importing MAW modules.
-_BUNDLE_ROOT = Path(__file__).resolve().parent
-if str(_BUNDLE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_BUNDLE_ROOT))
+# Windows embedded Python and isolated (-I) execution do not add the source
+# package root to sys.path. The same package layout is copied into local-runtime.
+_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+if str(_PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PACKAGE_ROOT))
 
 from maw.console import configure_utf8_stdio  # noqa: E402
 from maw.output_naming import format_elapsed, format_maw_stat  # noqa: E402

@@ -43,25 +43,25 @@ Qwen3-ASR、MOSS、Faster-Whisper 和 Qwen 对齐器先尝试 Hugging Face，连
 
 ```sh
 uv sync --group local
-uv run --no-sync python generate_subtitle_local.py "clip.mp4" --engine qwen-asr --length-limit 30s --json --no-html
+uv run --no-sync python -m maw.asr.local "clip.mp4" --engine qwen-asr --length-limit 30s --json --no-html
 ```
 
-`uv sync --group local` 不包含 MOSS；MOSS 的 Transformers 5.x 依赖与 QwenASR 的 Transformers 4.x 不兼容，必须使用独立环境，依赖真源为 `moss-requirements.in`。在 Launcher 完成 MOSS 环境安装后，通过它运行，不把 MOSS 依赖混装到普通 `.venv`。
+`uv sync --group local` 不包含 MOSS；MOSS 的 Transformers 5.x 依赖与 QwenASR 的 Transformers 4.x 不兼容，必须使用独立环境，依赖真源为 `scripts/packaging/moss-requirements.in`。在 Launcher 完成 MOSS 环境安装后，通过它运行，不把 MOSS 依赖混装到普通 `.venv`。
 
-以下是独立脚本示例，模型选择也可在 Launcher 完成：
+以下是独立模块命令示例，模型选择也可在 Launcher 完成：
 
 ```sh
 # 更大的 Qwen 模型
-uv run --no-sync python generate_subtitle_local.py "clip.mp4" --engine qwen-asr --model Qwen/Qwen3-ASR-1.7B --json --no-html
+uv run --no-sync python -m maw.asr.local "clip.mp4" --engine qwen-asr --model Qwen/Qwen3-ASR-1.7B --json --no-html
 
 # SenseVoice
-uv run --no-sync python generate_subtitle_local.py "clip.mp4" --engine funasr --model iic/SenseVoiceSmall --json --no-html
+uv run --no-sync python -m maw.asr.local "clip.mp4" --engine funasr --model iic/SenseVoiceSmall --json --no-html
 
 # FireRed，禁用可选标点模型
-uv run --no-sync python generate_subtitle_local.py "clip.mp4" --engine firered --firered-punc none --json --no-html
+uv run --no-sync python -m maw.asr.local "clip.mp4" --engine firered --firered-punc none --json --no-html
 
 # Faster-Whisper
-uv run --no-sync python generate_subtitle_local.py "clip.mp4" --engine whisper --model large-v3 --json --no-html
+uv run --no-sync python -m maw.asr.local "clip.mp4" --engine whisper --model large-v3 --json --no-html
 ```
 
 ### 参数速查
@@ -88,7 +88,7 @@ uv run --no-sync python generate_subtitle_local.py "clip.mp4" --engine whisper -
 | `--debug-raw` | 保存原始/中间产物与 `.local-debug.json` 清单。 |
 | `--no-model-tag` | 省略默认文件名的模型段；实时率仍在日志中显示。 |
 
-断句长度与停顿参数沿用统一字符型/单词型规则，详见 [CLI](CLI.md)。本页参数属于 `generate_subtitle_local.py`，不能直接传给公开 `MAW.exe` CLI。
+断句长度与停顿参数沿用统一字符型/单词型规则，详见 [CLI](CLI.md)。本页参数属于 `python -m maw.asr.local` 模块命令，不能直接传给公开 `MAW.exe` CLI。
 
 ## 设备与长音频
 

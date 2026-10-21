@@ -94,8 +94,8 @@ class PunctuationDefaultsContractTests(unittest.TestCase):
         self.assertEqual(DEFAULT_STRONG_PUNCT, EXPECTED_BREAK)
         self.assertEqual(DEFAULT_STRIP_TAIL_PUNCT, EXPECTED_STRIP)
 
-    def test_qwen_script_defaults_follow_shared_constants(self) -> None:
-        text = source_text("generate_subtitle_qwen_api.py")
+    def test_asr_segmentation_defaults_follow_shared_constants(self) -> None:
+        text = source_text("maw/asr/segmentation.py")
         self.assertIn(f'_DEFAULT_EXTRA_STRONG_PUNCT = "{EXPECTED_BREAK}"', text)
         self.assertIn(f'_DEFAULT_STRIP_TAIL_PUNCT = "{EXPECTED_STRIP}"', text)
 
@@ -114,12 +114,12 @@ class PunctuationDefaultsContractTests(unittest.TestCase):
 
     def test_transcribe_cli_strip_defaults_follow_shared_constants(self) -> None:
         scripts = (
-            "generate_subtitle_bcut_api.py",
-            "generate_subtitle_doubao_api.py",
-            "generate_subtitle_local.py",
-            "generate_subtitle_openai_api.py",
-            "generate_subtitle_soniox_api.py",
-            "generate_subtitle_tencent_api.py",
+            "maw/asr/bcut.py",
+            "maw/asr/doubao.py",
+            "maw/asr/local.py",
+            "maw/asr/openai.py",
+            "maw/asr/soniox.py",
+            "maw/asr/tencent.py",
         )
         for name in scripts:
             with self.subTest(script=name):

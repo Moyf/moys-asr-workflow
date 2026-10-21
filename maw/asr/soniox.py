@@ -25,11 +25,13 @@ from pathlib import Path
 
 from maw.editor_entry_policy import should_generate_standalone_editor
 from maw.stickers import get_default_sticker_dir
-from generate_subtitle_qwen_api import (
+from maw.asr.common import (
     extract_audio,
     generate_srt,
     get_duration_sec,
     parse_duration,
+)
+from maw.asr.segmentation import (
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
 )
@@ -442,7 +444,7 @@ def main():
         print(f"工程文件已保存到: {json_path}")
 
         if should_generate_standalone_editor(not args.no_html):
-            edit_script = Path(__file__).parent / "edit.py"
+            edit_script = Path(__file__).resolve().parents[2] / "edit.py"
             if not edit_script.exists():
                 print("[警告] 找不到 edit.py，跳过 HTML 生成")
             else:

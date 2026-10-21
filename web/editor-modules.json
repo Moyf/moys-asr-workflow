@@ -17,6 +17,12 @@
       "exportName": "createServerApi"
     },
     {
+      "file": "editor/boot/editor-host.js",
+      "kind": "init",
+      "name": "editor-host-init",
+      "exportName": "initEditorHost"
+    },
+    {
       "file": "shared/utils/data.js",
       "name": "utils-data",
       "exportName": "createUtilsModule"
@@ -147,6 +153,16 @@
       "exportName": "createUtilsModule"
     },
     {
+      "file": "shared/utils/ass-canvas-layout.js",
+      "name": "utils-ass-canvas-layout",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/sticker-placement.js",
+      "name": "utils-sticker-placement",
+      "exportName": "createUtilsModule"
+    },
+    {
       "file": "shared/utils/ass-export.js",
       "name": "utils-ass-export",
       "exportName": "createUtilsModule"
@@ -185,6 +201,12 @@
       "file": "shared/utils/ograf.js",
       "name": "utils-ograf",
       "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/editor-utils.js",
+      "kind": "init",
+      "name": "editor-utils-init",
+      "exportName": "initEditorUtils"
     },
     {
       "file": "editor/media/editor-thumbnails.js",

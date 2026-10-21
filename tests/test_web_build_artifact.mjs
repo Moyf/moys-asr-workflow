@@ -4,8 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { buildEditor, writeArtifact } from '../scripts/build-editor.mjs';
+import { buildEditor, isBundleArtifact, shouldRebuildBundle, writeArtifact } from '../scripts/build-editor.mjs';
 import { buildLauncher } from '../scripts/build-launcher.mjs';
 
 const bundle = 'editor/boot/editor-bundle.js';
@@ -33,6 +34,100 @@ const seamFixture = (t, kind, specifier = './helper.js', imports = {}) => {
   fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({imports})+'\n');
   return root;
 };
+
+test('watchers ignore both bundles, metadata and atomic publication files on either path separator', () => {
+  for (const kind of ['editor', 'launcher']) {
+    for (const name of [`${kind}-bundle.js`, `${kind}-bundle.meta.json`, '.maw-bundle-test.tmp']) {
+      const file = `${kind}/boot/${name}`;
+      assert.equal(isBundleArtifact(file), true, file);
+      assert.equal(isBundleArtifact(file.replaceAll('/', '\\')), true, file);
+    }
+  }
+  for (const file of ['editor-scripts.txt', 'launcher-modules.json', 'editor/boot/editor.js',
+    'launcher/boot/launcher-state.js', 'shared/utils.js']) {
+    assert.equal(isBundleArtifact(file), false, file);
+  }
+});
+
+test('watchers ignore existing directory events but still rebuild for edited or deleted sources', t => {
+  const root = fixture(t);
+  fs.mkdirSync(path.join(root, 'web/editor/boot'), {recursive:true});
+  fs.writeFileSync(path.join(root, 'web/editor/boot/editor.js'), 'window.fixture = 1;\n');
+  assert.equal(shouldRebuildBundle(root, 'editor/boot'), false);
+  assert.equal(shouldRebuildBundle(root, 'editor\\boot'), false);
+  assert.equal(shouldRebuildBundle(root, 'editor/boot/editor.js'), true);
+  assert.equal(shouldRebuildBundle(root, 'editor/deleted-source.js'), true);
+  assert.equal(shouldRebuildBundle(root, 'launcher/boot/launcher-bundle.js'), false);
+});
+
+test('two real watchers rebuild edited sources and then stay idle together', {timeout:20000}, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'maw-dual-watch-'));
+  fs.mkdirSync(path.join(root, 'web'), {recursive:true});
+  fs.mkdirSync(path.join(root, 'scripts'), {recursive:true});
+  fs.writeFileSync(path.join(root, 'web/source.js'), 'window.fixture = 1;\n');
+  fs.writeFileSync(path.join(root, 'package.json'), '{}\n');
+  fs.writeFileSync(path.join(root, 'pnpm-lock.yaml'), 'fixture\n');
+  for (const kind of ['editor', 'launcher']) {
+    // 开发会话已先完成两套构建，watcher 启动时双方输出目录都已存在。
+    fs.mkdirSync(path.join(root, `web/${kind}/boot`), {recursive:true});
+    fs.writeFileSync(path.join(root, `web/${kind}-scripts.txt`), 'source.js\n');
+    fs.writeFileSync(path.join(root, `web/${kind}-modules.json`), '{"modules":[],"externalBridges":[]}\n');
+    fs.writeFileSync(path.join(root, `scripts/build-${kind}.mjs`), '// fixture build input\n');
+  }
+  const states = [];
+  t.after(async () => {
+    await Promise.all(states.map(({child}) => new Promise(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) return resolve();
+      child.once('close', resolve);
+      child.kill();
+    })));
+    fs.rmSync(root, {recursive:true, force:true});
+  });
+  for (const kind of ['editor', 'launcher']) {
+    const script = new URL(`../scripts/build-${kind}.mjs`, import.meta.url);
+    const child = spawn(process.execPath, [fileURLToPath(script), '--watch', root],
+      {stdio:['ignore', 'pipe', 'pipe']});
+    const state = {child, output:'', error:null};
+    child.on('error', error => { state.error = error; });
+    for (const stream of [child.stdout, child.stderr]) {
+      stream.setEncoding('utf8');
+      stream.on('data', data => { state.output = (state.output + data).slice(-4000); });
+    }
+    states.push(state);
+  }
+  const builds = state => (state.output.match(/^(Editor|Launcher):/gm) ?? []).length;
+  const waitFor = async predicate => {
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      for (const state of states) {
+        assert.equal(state.error, null, state.output);
+        assert.equal(state.child.exitCode, null, state.output);
+        assert.ok(builds(state) < 10, `watcher rebuild loop: ${state.output}`);
+      }
+      if (predicate()) return;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    assert.fail(`watchers did not settle: ${states.map(state => state.output).join('\n')}`);
+  };
+  const settle = async () => {
+    let previous = '', quietSince = Date.now();
+    await waitFor(() => {
+      const current = states.map(builds).join(',');
+      if (current !== previous) { previous = current; quietSince = Date.now(); }
+      return Date.now() - quietSince >= 800;
+    });
+  };
+  await waitFor(() => states.every(state => builds(state) >= 1));
+  await settle();
+  assert.deepEqual(states.map(builds), [1, 1]);
+  fs.writeFileSync(path.join(root, 'web/source.js'), 'window.fixture = 2;\n');
+  await waitFor(() => states.every(state => builds(state) >= 2));
+  await settle();
+  for (const kind of ['editor', 'launcher']) {
+    const code = fs.readFileSync(path.join(root, `web/${kind}/boot/${kind}-bundle.js`), 'utf8');
+    assert.match(code, /window\.fixture\s*=\s*2/);
+  }
+});
 
 test('failed staging preserves the last complete artifact', async t => {
   const root = fixture(t);
