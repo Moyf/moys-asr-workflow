@@ -1668,7 +1668,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         output_srt = Path(str(result["srtPath"]))
         self.assertTrue(output_project.is_file())
         self.assertTrue(output_srt.is_file())
-        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "正字")
+        self.assertEqual(get_main_track(json.loads(output_project.read_text(encoding="utf-8")))["segments"][0]["text"], "正字")
 
     def test_fixed_process_bridge_supports_conversion_without_rules(self) -> None:
         project = self.root / "clip.mosp"
@@ -1686,7 +1686,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         })
 
         self.assertTrue(result["ok"])
-        self.assertEqual(json.loads(Path(str(result["projectPath"])).read_text(encoding="utf-8"))["segments"][0]["text"], "软件")
+        self.assertEqual(get_main_track(json.loads(Path(str(result["projectPath"])).read_text(encoding="utf-8")))["segments"][0]["text"], "软件")
 
     def test_generate_waveform_project_creates_media_only_embedded_project(self) -> None:
         """Given media, When generating waveform, Then a normalized project without inline caches is written."""
@@ -2127,7 +2127,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(output_project.is_file())
         self.assertTrue(output_srt.is_file())
         self.assertTrue(output_project.name.startswith("clip.文稿匹配"))
-        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["segments"][0]["text"], "旧句")
+        self.assertEqual(get_main_track(json.loads(output_project.read_text(encoding="utf-8")))["segments"][0]["text"], "旧句")
         self.assertNotIn("旧句。", output_srt.read_text(encoding="utf-8"))
 
     def test_script_preview_returns_bounded_utf8_text(self) -> None:
@@ -2195,7 +2195,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         })
 
         self.assertTrue(preserved["ok"])
-        self.assertIn("**这样**", read_project(Path(preserved["projectPath"]))["segments"][0]["text"])
+        self.assertIn("**这样**", get_main_track(read_project(Path(preserved["projectPath"])))["segments"][0]["text"])
 
     def test_script_match_preview_returns_split_text(self) -> None:
         project = self.root / "clip.mosp"
@@ -2331,7 +2331,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         with mock.patch("maw.postprocess_resegment.complete_boundaries", return_value={"draft": "[c0001a0002]"}) as complete:
             result = self.api.run_llm_postprocess({"projectPath": str(project), "outputMode": "both", "operation": "resegment", "providerId": "deepseek", "apiKey": "test-key", "baseUrl": "https://example.test/v1", "model": "test", "maxChars": "2"})
         self.assertTrue(result["ok"], result)
-        self.assertEqual([s["text"] for s in json.loads(Path(result["projectPath"]).read_text(encoding="utf-8"))["segments"]], ["介绍", "方法"])
+        self.assertEqual([s["text"] for s in get_main_track(json.loads(Path(result["projectPath"]).read_text(encoding="utf-8")))["segments"]], ["介绍", "方法"])
         self.assertIn("最多 2", complete.call_args.args[1])
         with mock.patch("maw.gui_web.process_llm_postprocess") as process:
             invalid = self.api.run_llm_postprocess({"operation": "resegment", "maxChars": "-1"})
