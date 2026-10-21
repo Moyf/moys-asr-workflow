@@ -138,6 +138,9 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweBoot.DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, MaweBoot.DATA.segments);
   MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(data.overlay_track);
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
+  // 载入即归一分组区间：旧版本多句绑定曾把 head.sticker 写成首句范围（拖动才
+  // 被同步修正），落盘工程重开后预览仍按首句区间显示；打开时就对齐组契约。
+  MaweTextCleanup.syncTimelineGroupRanges();
   MaweHistory.editorHistory.clear();
   MaweHistory.updateUndoRedoButtons();
   MaweSelection.clearSelection();
