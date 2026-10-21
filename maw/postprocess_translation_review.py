@@ -32,9 +32,8 @@ def translation_review(source: Mapping, translated: Mapping, result: Mapping, op
             track = candidate
             mode = "tracks"
     track_segments = {s["id"]: s for s in track["segments"]} if track else {}
-    # The writer reserves one stable ID per source position, including gaps
-    # where unchanged translations were omitted. The editor's first secondary
-    # track is the fixed translation destination.
+    # Bindings address the active extension explicitly; unchanged translations
+    # may be omitted without shifting the remaining cue IDs.
     target_ids = {binding["source_segment_ids"][0]: binding["target_segment_ids"][0]
                   for binding in result["bindings"] if track and binding["target_track_id"] == track["id"]}
     if len(targets) != len(get_main_track(result)["segments"]):

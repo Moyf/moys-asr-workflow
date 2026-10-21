@@ -112,6 +112,23 @@ class TracksConsumerTests(unittest.TestCase):
             replace_main_segments(source, [cue("a")])
         self.assertEqual(source, original)
 
+    def test_retranslation_preserves_target_cue_attributes_without_stale_items(self):
+        source = multi_project()
+        target = get_track(source, "second")["segments"][0]
+        target.update({"review_note": {"keep": False, "zero": 0}, "disabled": True,
+                       "items": [{"text": "旧译文", "start": 5000, "end": 6000}]})
+        original = copy.deepcopy(source)
+        translated = copy.deepcopy(source)
+        get_main_track(translated)["segments"][0]["text"] = "新译文"
+        result = attach_translation_project(source, translated, target="zh")
+        output = get_track(result, "second")["segments"][0]
+        self.assert_canonical(result)
+        self.assertEqual(output["text"], "新译文")
+        self.assertEqual(output["review_note"], {"keep": False, "zero": 0})
+        self.assertTrue(output["disabled"])
+        self.assertNotIn("items", output)
+        self.assertEqual(source, original)
+
     def test_mutation_reserves_other_tracks_and_refreshes_offsets(self):
         source = multi_project()
         replace_main_segments(source, [cue(start=5100, end=6100),
