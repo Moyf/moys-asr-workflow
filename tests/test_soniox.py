@@ -12,6 +12,7 @@ import requests
 
 from maw import soniox
 from maw.project import validate_project
+from tests.track_helpers import main_track
 
 BASE = "https://api.soniox.com"
 KEY = "test-key"
@@ -590,7 +591,7 @@ class ApiClientTests(unittest.TestCase):
 
         delete.assert_called_once_with(BASE, KEY, "t1", on_status=mock.ANY)
         self.assertEqual(result["text"], "大家好")
-        self.assertEqual(result["language"], "zh")
+        self.assertEqual(main_track(result)['language'], "zh")
         self.assertEqual(len(result["items"]), 3)
         self.assertEqual(result["items"][0]["speaker"], "1")
         self.assertEqual(result["_raw_response"], transcript)
@@ -616,7 +617,7 @@ class ApiClientTests(unittest.TestCase):
 
         self.assertEqual(result["text"], "hello broken world")
         self.assertEqual(result["items"], [])
-        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(main_track(result)['timestamp_granularity'], "segment")
 
     def test_delete_transcription_is_best_effort(self) -> None:
         with mock.patch("maw.soniox.requests") as req:

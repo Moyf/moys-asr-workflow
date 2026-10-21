@@ -3,6 +3,44 @@ from __future__ import annotations
 from maw.colors import COLOR_PALETTE
 
 
+def speaker_color_summary(segments: list[dict]) -> dict:
+    """Describe speaker coloring without writing any legacy cue fields."""
+    speakers = list(dict.fromkeys(segment["speaker"] for segment in segments if segment.get("speaker")))
+    return {"speakers": speakers, "colored_segments": sum(bool(segment.get("speaker")) for segment in segments),
+            "overflow": len(speakers) > len(COLOR_PALETTE)}
+
+
+def apply_project_speaker_colors(project: dict) -> dict:
+    """Assign speaker colors directly to the canonical project group table."""
+    from maw.project_tracks import get_main_track
+    segments = get_main_track(project)["segments"]
+    stats = speaker_color_summary(segments)
+    palette = {speaker: COLOR_PALETTE[index % len(COLOR_PALETTE)] for index, speaker in enumerate(stats["speakers"])}
+    table = project["subtitle_groups"]
+    groups = table["color"]
+    reserved = {group["id"] for group in groups}
+    previous_speaker = None
+    identifier = None
+    for segment in segments:
+        speaker = segment.get("speaker")
+        if not speaker:
+            previous_speaker = None
+            continue
+        if speaker != previous_speaker:
+            next_id = table.get("next_id", 1)
+            identifier = f"speaker-color-{next_id}"
+            while identifier in reserved:
+                next_id += 1
+                identifier = f"speaker-color-{next_id}"
+            table["next_id"] = next_id + 1
+            reserved.add(identifier)
+            name, value = palette[speaker]
+            groups.append({"id": identifier, "value": {"name": name, "value": value}})
+        segment["color_group_id"] = identifier
+        previous_speaker = speaker
+    return stats
+
+
 # speaker 只是调色板的取色者之一：色值权威定义见 maw/colors.py。
 def split_items_by_speaker(items: list[dict]) -> list[list[dict]]:
     """按 speaker 变化硬切分，避免两个说话人进入同一字幕段。

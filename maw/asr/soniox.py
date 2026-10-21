@@ -23,6 +23,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from maw.project_tracks import make_project
 from maw.stickers import get_default_sticker_dir
 from maw.asr.common import (
     extract_audio,
@@ -38,10 +39,10 @@ from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.project_io import write_mosp
 from maw.project import repair_segment_durations, validate_project
+from maw.speaker import speaker_color_summary, apply_project_speaker_colors
 from maw.soniox import (
     MAX_AUDIO_SECONDS,
     SonioxContextError,
-    apply_speaker_colors,
     build_segments,
     load_config,
     parse_soniox_context_json,
@@ -332,7 +333,7 @@ def main():
         speakers = sorted({str(seg["speaker"]) for seg in segments if seg.get("speaker")})
         print(f"[speaker] 识别到 {len(speakers)} 个说话人: {', '.join(speakers)}")
         if args.speaker_colors:
-            stats = apply_speaker_colors(segments)
+            stats = speaker_color_summary(segments)
             print(f"[speaker] 已为 {stats['colored_segments']} 条字幕写入颜色快照")
             if stats["overflow"]:
                 print(f"[警告] 说话人超过 {len(stats['speakers'])} 个（>5），颜色已循环复用，"
@@ -402,28 +403,30 @@ def main():
         )
         split_mode = split_mode_for_text(str(result.get("text") or ""), language)
         json_path = output_path.with_suffix(".mosp")
-        json_data = {
-            "media": str(input_path),
-            "language": language,
-            "language_source": language_source,
-            "split_mode": split_mode,
-            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
-                result.get("items") or [], split_mode, has_segments=bool(segments)
-            ),
-            "model": f"soniox-{args.model or config['model']}",
-            "segments": [
+        json_data = make_project(
+            [
                 {
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": seg["text"],
                     **({"items": seg["items"]} if "items" in seg else {}),
                     **({"speaker": seg["speaker"]} if seg.get("speaker") else {}),
-                    **({"color": seg["color"]} if seg.get("color") else {}),
-                    **({"color_ref": seg["color_ref"]} if seg.get("color_ref") else {}),
                 }
                 for seg in segments
             ],
-        }
+            main_fields={
+                'language': language,
+                'language_source': language_source,
+                'split_mode': split_mode,
+                'timestamp_granularity': result.get('timestamp_granularity') or timestamp_granularity_for_items(result.get('items') or [], split_mode, has_segments=bool(segments)),
+                'model': f"soniox-{args.model or config['model']}",
+            },
+            project_fields={
+                'media': str(input_path),
+            },
+        )
+        if args.speaker_colors:
+            apply_project_speaker_colors(json_data)
         if cache_result is not None:
             json_data = merge_media_caches(json_data, cache_result)
         print("[输出] 正在校验工程文件...")

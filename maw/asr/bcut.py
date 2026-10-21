@@ -26,6 +26,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from maw.project_tracks import make_project
 from maw.stickers import get_default_sticker_dir
 from maw.asr.common import (
     extract_audio,
@@ -334,16 +335,8 @@ def main():
         split_mode = split_mode_for_text(str(result.get("text") or ""), language)
         # 必剪接口不返回语种；result.language 是解析器根据完整文本脚本推断的，
         # 因此保留 inferred，而不是把它误标为 detected。
-        json_data = {
-            "media": str(input_path),
-            "language": language,
-            "language_source": result.get("language_source") or language_source,
-            "split_mode": split_mode,
-            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
-                result.get("items") or [], split_mode, has_segments=bool(segments)
-            ),
-            "model": "bcut-asr",
-            "segments": [
+        json_data = make_project(
+            [
                 {
                     "start": seg["start"],
                     "end": seg["end"],
@@ -352,7 +345,17 @@ def main():
                 }
                 for seg in segments
             ],
-        }
+            main_fields={
+                'language': language,
+                'language_source': result.get('language_source') or language_source,
+                'split_mode': split_mode,
+                'timestamp_granularity': result.get('timestamp_granularity') or timestamp_granularity_for_items(result.get('items') or [], split_mode, has_segments=bool(segments)),
+                'model': 'bcut-asr',
+            },
+            project_fields={
+                'media': str(input_path),
+            },
+        )
         if cache_result is not None:
             json_data = merge_media_caches(json_data, cache_result)
         check = validate_project(json_data)
