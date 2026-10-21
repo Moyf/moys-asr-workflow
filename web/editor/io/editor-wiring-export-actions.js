@@ -275,10 +275,29 @@ document.getElementById('download-full-srt')?.addEventListener('click', async ()
     desc: 'SRT 字幕文件', types: { 'text/plain': ['.srt'] }
   });
 });
+// ASS 导出里的 Fontname 可能被本机字体别名表改写（libass 只按 nameID1 匹配）：
+// 在捕获窗口内构建，导出后用 flashHint 提示一次替换结果。
+function buildAssWithFontAliasCapture(build) {
+  window.MaweAssFontAliases?.beginReplacementCapture?.();
+  try {
+    return build();
+  } finally {
+    window.MaweAssFontAliases?.endReplacementCapture?.();
+  }
+}
+function announceAssFontAliasReplacements() {
+  const replacements = window.MaweAssFontAliases?.takeReplacementNotice?.() || [];
+  if (replacements.length) {
+    MaweHint.flashHint(`字体名已按本机字体归一化：${
+      replacements.map(({ from, to }) => `${from} → ${to}`).join('、')
+    }`, 'info');
+  }
+}
 document.getElementById('download-full-ass')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   try {
-    const payload = MaweExportSrt.buildAss();
+    const payload = buildAssWithFontAliasCapture(() => MaweExportSrt.buildAss());
+    announceAssFontAliasReplacements();
     await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}.ass`, 'text/plain', {
       desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
     });
@@ -354,7 +373,8 @@ document.getElementById('download-gap-removed-color-srt')?.addEventListener('cli
 document.getElementById('download-gap-removed-ass')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   try {
-    const payload = MaweExportSrt.buildGapRemovedAss();
+    const payload = buildAssWithFontAliasCapture(() => MaweExportSrt.buildGapRemovedAss());
+    announceAssFontAliasReplacements();
     if (payload) {
       await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, 'text/plain', {
         desc: '去空隙带样式 ASS 字幕', types: { 'text/plain': ['.ass'] }

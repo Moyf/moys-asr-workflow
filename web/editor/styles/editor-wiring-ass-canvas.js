@@ -57,7 +57,12 @@
 
   // subtitleFontFamilyCss 可能返回 var(--font-sans) 兜底；ctx.font 不解析
   // CSS 变量，这里解析成具体字体族列表。
+  // 字体别名表就绪时优先用别名链（"<存储值>", "<canonical>", "<其余别名>",
+  // sans-serif）：浏览器按列表顺序回退匹配，任一名字命中即与 libass 渲染
+  // 同一字形；链已是具体族名列表，无需再解析 var(--font-sans)。
   function fontFamilyCss(fontName) {
+    const aliasChain = global.MaweAssFontAliases?.chainCssFor?.(fontName) || '';
+    if (aliasChain) return aliasChain;
     let family = global.MaweAppearance?.subtitleFontFamilyCss?.(fontName) || '';
     if (family.includes('var(--font-sans)')) {
       if (!resolvedSansFamily) {

@@ -73,6 +73,7 @@ export function createUtilsModule(dependencies) {
 
   // combobox 下拉选项：按显示名合并预设与本机字体并去重。
   // 预设与扫描结果经常重叠（如 Arial / Microsoft YaHei），去重时保留先出现的项。
+  // 别名表条目携带的 aliases 参与搜索，随条目原样透传。
   function mergeFontFamilyOptions(entries) {
     const seen = new Set();
     const result = [];
@@ -84,13 +85,16 @@ export function createUtilsModule(dependencies) {
       const key = label.toLocaleLowerCase();
       if (seen.has(key)) return;
       seen.add(key);
-      result.push({ value, label });
+      const aliases = Array.isArray(entry?.aliases)
+        ? entry.aliases.filter((alias) => typeof alias === 'string' && alias.trim()) : [];
+      result.push(aliases.length ? { value, label, aliases } : { value, label });
     });
     return result;
   }
 
 
   // 过滤字体下拉选项：开头匹配（前缀）排在包含匹配之前，两组各自保持原有相对顺序。
+  // 条目携带的 aliases 数组同样参与包含匹配（label 前缀优先级不变）。
   function filterFontFamilyOptions(entries, query) {
     const normalized = String(query || '').trim().toLocaleLowerCase();
     const source = Array.isArray(entries) ? entries : [];
@@ -101,6 +105,9 @@ export function createUtilsModule(dependencies) {
       const label = String(entry?.label || '').toLocaleLowerCase();
       if (label.startsWith(normalized)) startsWith.push(entry);
       else if (label.includes(normalized)) contains.push(entry);
+      else if ((Array.isArray(entry?.aliases) ? entry.aliases : []).some(
+        (alias) => String(alias || '').toLocaleLowerCase().includes(normalized),
+      )) contains.push(entry);
     });
     return startsWith.concat(contains);
   }
