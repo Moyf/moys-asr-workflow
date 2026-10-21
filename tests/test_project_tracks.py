@@ -52,6 +52,13 @@ class ProjectTracksTests(unittest.TestCase):
                 self.assertEqual(import_project(actual.project).project, expected)
                 self.assertEqual(import_project(actual.project).changes, ())
 
+    def test_shared_rejection_fixtures(self):
+        folder = Path(os.environ.get("MAW_TRACKS_FIXTURES", Path(__file__).parent / "fixtures" / "project-tracks"))
+        cases = json.loads((folder / "invalid.json").read_text(encoding="utf-8"))
+        for case in cases:
+            with self.subTest(fixture=case["name"]):
+                self.assertRejected(case["input"], case["error_path"])
+
     def test_v3_validation_preserves_all_fields_and_returns_detached_copy(self):
         project = canonical()
         project["tracks"][0]["metadata"] = {"zero": 0, "false": False, "empty": [], "object": {}}
