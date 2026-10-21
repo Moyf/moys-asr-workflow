@@ -75,6 +75,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   let request;
   try {
     request = buildRequest();
+    if (request) request.audioGainDb = window.MaweAudioProcessing?.settings().gain_db || 0;
   } catch (error) {
     MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning');
     return;

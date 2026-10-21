@@ -671,6 +671,49 @@
   .media-volume-control input { width: 78px; min-width: 0; accent-color: var(--accent); }
   .media-rate-control select { min-width: 0; padding: 3px 4px; }
   .media-controls #media-fullscreen { flex: 0 0 auto; }
+  .audio-processing-panel.gap-remove-panel { width: min(450px, calc(100vw - 24px)); font-size: 13px; line-height: 1.5; }
+  .audio-processing-body.gap-remove-panel-body { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+  .audio-processing-body p, .audio-processing-body dl { margin: 0; }
+  .audio-control-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .audio-control-label output { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .audio-gain-row, .audio-reference-inputs, .audio-processing-actions, .audio-processing-primary-actions { display: flex; align-items: center; gap: 8px; }
+  .audio-processing-body button, .audio-processing-body select, .audio-processing-body input[type="number"] {
+    min-height: 30px; padding: 4px 9px; color: var(--btn-text); background: var(--btn-bg);
+    border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font: inherit;
+  }
+  .audio-processing-body button, .audio-processing-body select { cursor: pointer; }
+  .audio-processing-body button:hover:not(:disabled), .audio-processing-body select:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .audio-processing-body :is(button, input, select):focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+  .audio-processing-body button:disabled { opacity: .42; cursor: not-allowed; }
+  .audio-gain-row button { width: 32px; flex: 0 0 auto; font-size: 17px; line-height: 1; }
+  .audio-gain-row input { flex: 1; min-width: 48px; }
+  .audio-processing-body input[type="range"] { accent-color: var(--accent); margin: 0; }
+  .audio-reference-inputs { flex-wrap: wrap; }
+  #audio-target { flex: 1 1 180px; min-width: 0; }
+  #audio-target-custom-control { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+  #audio-target-custom-control[hidden] { display: none; }
+  #audio-target-custom { width: 76px; }
+  #audio-measurement-status { color: var(--text-secondary); font-size: 12px; }
+  #audio-measurement-status.measuring { color: var(--amber-hover); }
+  .audio-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+  .audio-metrics > div { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+  .audio-metrics dt { color: var(--text-secondary); font-size: 12px; }
+  .audio-metrics dd { margin: 0; padding: 4px 10px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--bg-panel); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .audio-processing-actions { justify-content: space-between; flex-wrap: wrap; }
+  .audio-processing-primary-actions { flex-wrap: wrap; }
+  #audio-normalize { color: #fff; background: #b85c16; border-color: #b85c16; }
+  #audio-normalize:hover:not(:disabled) { background: #a34d0d; border-color: #a34d0d; }
+  #audio-gain-reset { color: var(--text-secondary); background: transparent; }
+  .audio-processing-notes { color: var(--text-secondary); font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .audio-gain-warning { color: var(--warning-text, #c77c17); font-size: 12px; }
+  .audio-listening-volume { border-top: 1px solid var(--border-subtle); padding-top: 14px; }
+  .audio-listening-volume input { display: block; width: 100%; }
+  .audio-gain-range-control { color: var(--text-secondary); font-size: 12px; }
+  .audio-gain-range-control label { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .audio-gain-range-control input { margin: 0; accent-color: var(--accent); }
+  .audio-gain-range { color: var(--text-muted); }
+  #audio-gain-range-note { display: block; margin-top: 8px; color: var(--warning-text, #c77c17); }
+  #audio-gain-range-note[hidden] { display: none; }
   @container media-controls (max-width: 680px) {
     .media-controls { gap: 4px; padding-inline: 5px; }
     .media-controls .media-step-button { display: none; }

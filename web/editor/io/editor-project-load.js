@@ -92,6 +92,7 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   );
   MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
   MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
+  window.MaweAudioProcessing?.loadProject(data.audio_processing);
   // A browser-imported project is not the server's native media binding.
   if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.autoLoadedMediaPath = null;
   MaweBoot.DATA.language = data.language || '';

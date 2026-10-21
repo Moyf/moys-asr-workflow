@@ -54,6 +54,7 @@ mimetypes.add_type("audio/ogg", ".opus")
 import edit  # noqa: E402
 from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import quapeaks  # noqa: E402
+from maw.audio_loudness import LoudnessAnalyzer, validate_gain_db, volume_filter  # noqa: E402
 from maw.thumbnail_jobs import ThumbnailJobManager  # noqa: E402
 from maw.project_backups import backup_directory_candidates, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
@@ -966,6 +967,7 @@ def _burn_interval_filter(
     intervals: list[tuple[int, int]],
     audio_count: int,
     stickers: list[dict] | None = None,
+    audio_gain_db: float = 0,
 ) -> str:
     """Decode once; keep only requested frames and map both clocks to kept time.
 
@@ -1001,7 +1003,8 @@ def _burn_interval_filter(
             outputs.append(f'[{output}]')
             graph.append(f'[{name}]atrim=start={_burn_seconds(start)}:end={_burn_seconds(end)},'
                          f'asetpts=PTS-{_burn_seconds(start)}/TB[{output}]')
-        graph.append(''.join(outputs) + f'concat=n={len(intervals)}:v=0:a=1[burn_audio_{audio}]')
+        gain = f',{volume_filter(audio_gain_db)}' if audio_gain_db else ''
+        graph.append(''.join(outputs) + f'concat=n={len(intervals)}:v=0:a=1{gain}[burn_audio_{audio}]')
     return ';\n'.join(graph) + '\n'
 
 
@@ -1019,6 +1022,7 @@ def burn_ass_video(
     include_audio: bool = False,
     audio_track: int = 0,
     subtitle_format: str = "ass",
+    audio_gain_db: float = 0,
 ) -> Path:
     """Burn ASS, or convert SRT using the library's burn style before encoding.
 
@@ -1029,6 +1033,7 @@ def burn_ass_video(
     一张滤镜图串联：单次解码单次编码，字幕渲染在表情包之上（与预览 z-order
     一致），enable 区间使用与 ass 相同的时间轴。
     """
+    audio_gain_db = validate_gain_db(audio_gain_db)
     try:
         source = source_path.expanduser().resolve(strict=True)
     except OSError as error:
@@ -1115,7 +1120,7 @@ def burn_ass_video(
                       "-i", str(source), *sticker_input_args]
         relative_intervals = [(start - seek_start, end - seek_start) for start, end in intervals]
         graph_path = output_path.with_suffix(".filters")
-        graph_path.write_text(_burn_interval_filter(relative_intervals, audio_count, stickers),
+        graph_path.write_text(_burn_interval_filter(relative_intervals, audio_count, stickers, audio_gain_db),
                               encoding="utf-8", newline="\n")
         duration_ms = sum(end - start for start, end in intervals)
         # A video frame can straddle the end of an interval. Independent audio
@@ -1136,6 +1141,10 @@ def burn_ass_video(
         duration_ms = _probe_media_duration_ms(source, ffprobe_path, job=job)
         filter_args = ["-map", "0:v:0", "-map", "0:a?", "-vf", "ass=filename='burn.ass'"]
 
+    # Complex interval outputs already contain gain after each audio concat.
+    # Simple audio filters also cover all mapped tracks with sticker-only video graphs.
+    if audio_gain_db and not intervals and (not green_screen or include_audio):
+        filter_args.extend(("-af", volume_filter(audio_gain_db)))
     requested_encoder = normalize_video_encoder(None)
     attempts = video_encoder_attempts(ffmpeg_path, requested_encoder)
     common_command = [
@@ -1788,6 +1797,7 @@ class EditorServer(ThreadingHTTPServer):
         self.gap_removed_video_lock = threading.Lock()
         self.media_jobs = MediaJobManager(self.gap_removed_video_lock)
         self.thumbnail_jobs = ThumbnailJobManager()
+        self.loudness_analyzer = LoudnessAnalyzer()
         self.thumbnail_jobs.bind(project.source_media_path or project.media_path,
                                  f"{self.binding_generation}:{self.source_media_id}")
         self.libass_supported: bool | None = None
@@ -1808,6 +1818,7 @@ class EditorServer(ThreadingHTTPServer):
 
     def shutdown(self) -> None:
         try:
+            self.loudness_analyzer.close()
             self.media_jobs.close()
             self.thumbnail_jobs.close()
         finally:
@@ -1815,6 +1826,7 @@ class EditorServer(ThreadingHTTPServer):
 
     def server_close(self) -> None:
         try:
+            self.loudness_analyzer.close()
             self.media_jobs.close()
             self.thumbnail_jobs.close()
         finally:
@@ -1826,6 +1838,7 @@ class EditorServer(ThreadingHTTPServer):
 
     def _bind_project_locked(self, project: ServerProject) -> None:
         """Publish a new binding while settings_lock is held, even on reopen."""
+        self.loudness_analyzer.invalidate()
         with self.media_jobs.lock:
             if self.media_jobs.active:
                 self.media_jobs.cancel(self.media_jobs.active.id)
@@ -2960,6 +2973,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.update_ass_styles()
         elif path == "/api/ass-frame":
             self.render_ass_frame()
+        elif path == "/api/audio/loudness":
+            self.measure_audio_loudness()
         elif path == "/api/prproj":
             self.send_json(HTTPStatus.NOT_IMPLEMENTED, PRPROJ_CAPABILITY)
         elif path == "/api/stickers/root":
@@ -3093,6 +3108,39 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         token = request.get("requestToken")
         if not isinstance(token, str) or not compare_digest(token, self.editor_server.request_token):
             raise PermissionError("请求令牌无效")
+
+    def measure_audio_loudness(self) -> None:
+        """Poll analysis of the current preview, never a client-supplied path."""
+        try:
+            request = self.read_json_request(max_bytes=8192)
+            self._check_request_token(request)
+            force = request.get("force", False)
+            if type(force) is not bool:
+                raise ValueError("重新测量选项必须是布尔值")
+            tools = editor_ffmpeg_tools()
+            if tools.ffmpeg is None or tools.ffprobe is None:
+                self.send_json(HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"ok": False, "error": "响度测量需要可用的 FFmpeg 和 FFprobe"})
+                return
+            server = self.editor_server
+            with server.settings_lock:
+                binding = (server.binding_generation, server.source_media_id)
+                if (type(request.get("bindingGeneration")) is not int
+                        or (request.get("bindingGeneration"), request.get("sourceMediaId")) != binding):
+                    raise ProjectBindingChangedError("工程或媒体绑定已变更，请重新测量")
+                media = server.project.media_path
+                if media is None:
+                    raise ValueError("当前工程没有可测量的预览媒体")
+                result = server.loudness_analyzer.request(media, binding, tools.ffmpeg, tools.ffprobe, force=force)
+            self.send_json(HTTPStatus.ACCEPTED if result["status"] == "measuring" else HTTPStatus.OK, result)
+        except PermissionError:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": "请求令牌无效或媒体不可读"})
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+        except (ValueError, UnicodeDecodeError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+        except OSError:
+            self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": "无法读取当前预览媒体"})
 
     def read_project_binding(self) -> None:
         try:
@@ -3384,6 +3432,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         try:
             request = self.read_json_request(max_bytes=MAX_ASS_FRAME_TEXT_BYTES * 2)
             self._check_request_token(request)
+            audio_gain_db = validate_gain_db(request.get("audioGainDb", 0))
             admission_token = request.get("admissionToken")
             if "admissionToken" in request:
                 self.editor_server.media_jobs.validate_admission_token(admission_token)
@@ -3440,7 +3489,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                             "audio_track": source_snapshot.audio_track} if green_screen else {})
                 burn_ass_video(job.source, list(job.intervals), ass_text, job.output,
                     ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job,
-                    subtitle_format=subtitle_format, stickers=stickers, **options)
+                    subtitle_format=subtitle_format, stickers=stickers, audio_gain_db=audio_gain_db, **options)
 
             with self.editor_server.settings_lock:
                 if admission_token is not None and time.time() * 1000 >= deadline:
