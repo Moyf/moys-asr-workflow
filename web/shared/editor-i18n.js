@@ -1218,6 +1218,7 @@
     '查找': 'Find', '查找字幕文本': 'Find subtitle text', '字幕文本查找与替换': 'Find and replace subtitle text',
     '替换为': 'Replace with', '批量替换': 'Batch replace', '单个替换': 'Replace current',
     '全量替换': 'Replace all matches', '上一条': 'Previous match', '下一条': 'Next match',
+    'Enter 跳下一条；Shift+Enter 上一条；定位后焦点进入命中文本框，按 F3 / Shift+F3 继续跳，直接编辑即可修改': 'Enter jumps to the next match; Shift+Enter to the previous one. After jumping, focus moves into the matching text box — press F3 / Shift+F3 to keep jumping, or just type to edit.',
     '显示替换': 'Show replace', '隐藏替换': 'Hide replace', '正则表达式无效': 'Invalid regular expression',
     '纯文本编辑…': 'Plain text edit…', '纯文本编辑': 'Plain text edit', '编辑轨道': 'Edit track',
     '编辑视图': 'Edit view', '逐条编辑': 'Edit row by row', '整体编辑': 'Whole text', '单文本框': 'Single text area',
