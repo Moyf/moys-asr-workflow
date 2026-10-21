@@ -56,7 +56,7 @@ export function createUtilsModule(dependencies) {
 
   function stableId(value) {
     const id = String(value == null ? '' : value).trim();
-    return id && id.length <= 160 ? id : '';
+    return id && Array.from(id).length <= 160 ? id : '';
   }
 
 
@@ -74,7 +74,7 @@ export function createUtilsModule(dependencies) {
       if (!segment || typeof segment !== 'object') return;
       let id = stableId(segment.id);
       if (!id || used.has(id)) {
-        const base = `${prefix}-${String(index + 1).padStart(3, '0')}`;
+        const base = `${Array.from(prefix).slice(0, 140).join('')}-${String(index + 1).padStart(3, '0')}`;
         id = base;
         let suffix = 2;
         while (used.has(id) || (id !== base && reserved.has(id))) {
@@ -102,11 +102,15 @@ export function createUtilsModule(dependencies) {
   function uniqueStableSegmentId(segments, baseId, fallbackPrefix = 'segment') {
     const used = new Set((Array.isArray(segments) ? segments : [])
       .map((segment) => stableId(segment?.id)).filter(Boolean));
-    const base = stableId(baseId) || `${fallbackPrefix}-new`;
+    const base = stableId(baseId) || `${Array.from(fallbackPrefix).slice(0, 140).join('')}-new`;
     if (!used.has(base)) return base;
     let suffix = 2;
-    let candidate = `${base}-${suffix}`;
-    while (used.has(candidate)) candidate = `${base}-${suffix++}`;
+    const withSuffix = number => {
+      const tail = `-${number}`;
+      return Array.from(base).slice(0, 160 - tail.length).join('') + tail;
+    };
+    let candidate = withSuffix(suffix);
+    while (used.has(candidate)) candidate = withSuffix(++suffix);
     return candidate;
   }
 

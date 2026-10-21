@@ -3,6 +3,7 @@
 // file's original manifest position.
 import { createUtilsModule as createDataModule } from './utils/data.js';
 import { createUtilsModule as createProjectTracksModule } from './utils/project-tracks.js';
+import { createUtilsModule as createSubtitleGroupsModule } from './utils/subtitle-groups.js';
 import { createUtilsModule as createMarkersModule } from './utils/markers.js';
 import { createUtilsModule as createSplitAlignmentModule } from './utils/split-alignment.js';
 import { createUtilsModule as createSplitTrimModule } from './utils/split-trim.js';
@@ -49,6 +50,8 @@ const helpers = {
 const projectTracksHelpers = createProjectTracksModule(helpers);
 Object.assign(helpers, projectTracksHelpers);
 Object.assign(helpers, createDataModule(helpers));
+const subtitleGroupHelpers = createSubtitleGroupsModule(helpers);
+Object.assign(helpers, subtitleGroupHelpers);
 Object.assign(helpers, createFontsModule(helpers));
 Object.assign(helpers, createSpeakersModule(helpers));
 Object.assign(helpers, createMediaMetadataModule(helpers));
@@ -67,7 +70,8 @@ Object.assign(helpers, createSplitTrimModule(helpers));
 Object.assign(helpers, createTimelineModule(helpers));
 Object.assign(helpers, createSettingsModule(helpers));
 Object.assign(helpers, createGapRemoveModule(helpers));
-Object.assign(helpers, createHistoryModule(helpers));
+const historyHelpers = createHistoryModule(helpers);
+Object.assign(helpers, historyHelpers);
 const multiSubtitleHelpers = createMultiSubtitleModule(helpers);
 Object.assign(helpers, multiSubtitleHelpers);
 const wordTimingHelpers = createWordTimingModule(helpers);
@@ -398,6 +402,8 @@ const {
 window.AsrEditorUtils = {
   ...projectTracksHelpers,
   ...multiSubtitleHelpers,
+  ...subtitleGroupHelpers,
+  ...historyHelpers,
 ...wordTimingHelpers,
   PROJECT_SCHEMA,
   supportsProjectSchema,
