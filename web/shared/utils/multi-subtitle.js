@@ -102,8 +102,8 @@ export function createUtilsModule(dependencies) {
       return ['main', 'source'].includes(side) ? source : ['extension', 'target'].includes(side) ? target : source || target;
     });
   }
-  // Exchange roles, keeping every cue entity and its group membership. Other
-  // languages retain only relations whose new source is proven by a binding.
+  // Exchange roles only when every relation to another language has a proven
+  // new source. Reject before any mutation if a binding cannot be retained.
   function swapMainAndExtensionSubtitle(project, trackId = project?.bilingual?.active_track_id) {
     const main = mainTrack(project); const promoted = extensionTrack(project, trackId);
     if (!main || !promoted || !Array.isArray(project.bindings)) return { swapped: false, reason: 'missing-track' };
@@ -111,7 +111,7 @@ export function createUtilsModule(dependencies) {
     const mapping = new Map();
     for (const binding of project.bindings) if (binding.source_track_id === main.id && binding.target_track_id === promoted.id
       && binding.source_segment_ids.length === 1 && binding.target_segment_ids.length === 1) mapping.set(binding.source_segment_ids[0], binding.target_segment_ids[0]);
-    let removedBindingCount = 0; let remappedBindingCount = 0;
+    let unmappedBindingCount = 0; let remappedBindingCount = 0;
     const bindings = project.bindings.flatMap(binding => {
       const copy = cloneJsonValue(binding);
       if (binding.target_track_id === promoted.id && binding.source_track_id === main.id) {
@@ -119,11 +119,12 @@ export function createUtilsModule(dependencies) {
         copy.source_segment_ids = [...binding.target_segment_ids]; copy.target_segment_ids = [...binding.source_segment_ids];
       } else if (binding.source_track_id === main.id) {
         const next = binding.source_segment_ids.map(cueId => mapping.get(cueId));
-        if (next.some(cueId => !cueId)) { removedBindingCount++; return []; }
+        if (next.some(cueId => !cueId)) { unmappedBindingCount++; return []; }
         copy.source_track_id = promoted.id; copy.source_segment_ids = next; remappedBindingCount++;
       }
       return [copy];
     });
+    if (unmappedBindingCount) return { swapped: false, reason: 'unmapped-bindings', unmappedBindingCount };
     const oldEnabled = promoted.enabled;
     main.role = 'extension'; main.enabled = oldEnabled;
     promoted.role = 'main'; promoted.enabled = true;
@@ -131,7 +132,7 @@ export function createUtilsModule(dependencies) {
     rebuildBindingOffsets(project);
     return { swapped: true, trackId: main.id, mainTrackId: promoted.id,
       mainCount: promoted.segments.length, extensionCount: main.segments.length,
-      bindingCount: bindings.length, removedBindingCount, remappedBindingCount, mappedColorCount: 0 };
+      bindingCount: bindings.length, removedBindingCount: 0, remappedBindingCount, mappedColorCount: 0 };
   }
   function matchSubtitleSegments(mainSegments, extensionSegments, toleranceMs = MULTI_SUBTITLE_TOLERANCE_MS) {
     const main = Array.isArray(mainSegments) ? mainSegments : [];

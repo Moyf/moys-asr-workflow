@@ -41,12 +41,11 @@ test('role swap preserves entities, group memberships and metadata while remappi
     segments: [{ id: 'fr-1', start: 1200, end: 2300, text: 'Bonjour' }, { id: 'fr-2', start: 2500, end: 3000, text: 'Autre' }] };
   project.tracks.push(french);
   project.bindings.push(subtitle.buildSubtitleBinding(oldMain.segments[0], french.segments[0], 'fr', 'fr-bind-1', oldMain.id));
-  project.bindings.push(subtitle.buildSubtitleBinding(oldMain.segments[1], french.segments[1], 'fr', 'fr-bind-2', oldMain.id));
   const oldSegments = oldMain.segments; const cueEntity = promoted.segments[0];
   const groupsBefore = json(project.subtitle_groups);
   const result = subtitle.swapMainAndExtensionSubtitle(project);
   assert.equal(result.swapped, true);
-  assert.equal(result.removedBindingCount, 1); assert.equal(result.remappedBindingCount, 1);
+  assert.equal(result.removedBindingCount, 0); assert.equal(result.remappedBindingCount, 1);
   assert.equal(model.getMainTrack(project), promoted);
   assert.equal(oldMain.segments, oldSegments);
   assert.equal(promoted.segments[0], cueEntity);
@@ -137,4 +136,19 @@ test('an impossible swap leaves every canonical field unchanged', () => {
   const before = json(project);
   assert.deepEqual(subtitle.swapMainAndExtensionSubtitle(project), { swapped: false, reason: 'empty-track' });
   assert.deepEqual(project, before);
+});
+
+test('unmapped multilingual bindings reject a role swap atomically without losing any relation', () => {
+  const project = canonical();
+  const main = project.tracks[0];
+  main.segments.push({ id: 'unmapped-source', start: 2500, end: 3000, text: 'not translated into active language' });
+  const french = { id: 'fr', role: 'extension', name: 'French', enabled: true,
+    segments: [{ id: 'fr-unmapped', start: 2500, end: 3000, text: 'Autre' }] };
+  project.tracks.push(french);
+  project.bindings.push(subtitle.buildSubtitleBinding(main.segments[1], french.segments[0], 'fr', 'fr-unmapped-binding', main.id));
+  assert.equal(model.validateTracksProject(project).ok, true);
+  const before = json(project); const bindings = project.bindings; const tracks = project.tracks;
+  assert.deepEqual(subtitle.swapMainAndExtensionSubtitle(project), { swapped: false, reason: 'unmapped-bindings', unmappedBindingCount: 1 });
+  assert.deepEqual(project, before);
+  assert.equal(project.bindings, bindings); assert.equal(project.tracks, tracks);
 });
