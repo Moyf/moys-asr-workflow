@@ -451,6 +451,36 @@ export function createUtilsModule() {
     return { project, changes: changesBetween(raw, project) };
   }
   function migrateProjectTracks(raw) { return importProject(raw).project; }
+  // Producers create v3 directly; only this constructor and legacy import may
+  // generate omitted cue identities. Strict reads/saves never generate them.
+  function makeProject(segments, { mainFields = {}, projectFields = {} } = {}) {
+    if (!object(mainFields)) fail('$.tracks[0]', 'main fields must be an object');
+    if (!object(projectFields)) fail('$', 'project fields must be an object');
+    if (!Array.isArray(segments)) fail('$.tracks[0].segments', 'must be an array');
+    for (const field of ['schema', 'tracks']) if (own(projectFields, field)) fail(`$.${field}`, 'is owned by the project factory');
+    if (own(mainFields, 'segments')) fail('$.tracks[0].segments', 'pass segments to the project factory directly');
+    const project = clone(projectFields); const main = clone(mainFields);
+    for (const [field, value] of Object.entries({ id: 'main', name: '主字幕', role: 'main', enabled: true })) if (!own(main, field)) main[field] = value;
+    main.segments = clone(segments);
+    const reserved = new Set();
+    main.segments.forEach((segment, index) => {
+      const path = `$.tracks[0].segments[${index}]`;
+      if (!object(segment)) fail(path, 'must be an object');
+      if (own(segment, 'id')) {
+        const cueId = id(segment.id);
+        if (!cueId || cueId !== segment.id || reserved.has(cueId)) fail(`${path}.id`, 'must be a unique canonical cue ID');
+        reserved.add(cueId);
+      }
+    });
+    main.segments.forEach((segment, index) => {
+      if (!own(segment, 'id')) { segment.id = unique(`${main.id}-cue-${index + 1}`, reserved); reserved.add(segment.id); }
+    });
+    Object.assign(project, { schema: PROJECT_TRACKS_SCHEMA, tracks: [main] });
+    for (const [field, value] of Object.entries({ bindings: [], bilingual: { display_mode: 'both' }, subtitle_groups: { next_id: 1, color: [], sticker: [] } })) if (!own(project, field)) project[field] = value;
+    const result = validateTracksProject(project);
+    if (!result.ok) throw new ProjectTracksError(result.errors);
+    return project;
+  }
   function snapshotProjectContent(project) {
     const snapshot = clone(project);
     for (const field of CACHE_FIELDS) delete snapshot[field];
@@ -473,7 +503,7 @@ export function createUtilsModule() {
     if (!own(selections, subtitleTracks)) throw new Error('Unknown subtitle track selection');
     return selections[subtitleTracks].filter(track => track?.enabled === true);
   }
-  return Object.freeze({ PROJECT_TRACKS_SCHEMA, ProjectTracksError, importProject, migrateProjectTracks,
-      validateTracksProject, getTrack, getTracksByRole, getMainTrack, getExtensionTrack, getOverlayTrack,
+  return Object.freeze({ PROJECT_TRACKS_SCHEMA, ProjectTracksError, importProject, migrateProjectTracks, makeProject,
+    validateTracksProject, getTrack, getTracksByRole, getMainTrack, getExtensionTrack, getOverlayTrack,
     projectTracks, iterSegments, snapshotProjectContent, selectSubtitleTracks });
 }

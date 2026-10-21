@@ -186,3 +186,18 @@ test('legacy optional nulls retain original defaults without swallowing conflict
   assert.equal(project.bilingual.display_mode, 'both');
   rejects({ segments: [], multi_subtitle: { tracks: [{ name: null }] } }, '$.multi_subtitle.tracks[0].name');
 });
+
+test('new producers construct canonical projects without a temporary legacy tree', () => {
+  const input = [{ start: 0, end: 1000, text: 'generated', metadata: { keep: false } },
+    { id: 'custom-cue-1', start: 1000, end: 2000, text: 'reserved' }];
+  const before = json(input);
+  const project = model.makeProject(input, { mainFields: { id: 'custom', language: 'en' }, projectFields: { media: 'clip.mp4', vendor: [] } });
+  assert.equal(project.schema, 'moy.asr.project.v3');
+  assert.deepEqual(project.tracks[0].segments.map(cue => cue.id), ['custom-cue-1-2', 'custom-cue-1']);
+  assert.deepEqual(input, before);
+  assert.equal(Object.hasOwn(project, 'segments'), false);
+  assert.equal(Object.hasOwn(project, 'language'), false);
+  assert.throws(() => model.makeProject([], { projectFields: { tracks: [] } }), model.ProjectTracksError);
+  const invalid = [{ id: 'bad', start: 0, end: 10, text: 'A' }, { id: 'bad', start: 10, end: 20, text: 'B' }];
+  assert.throws(() => model.makeProject(invalid), model.ProjectTracksError);
+});
