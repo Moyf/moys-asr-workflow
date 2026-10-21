@@ -184,10 +184,13 @@ class MossRuntimeInstallTests(unittest.TestCase):
                 encoding="utf-8",
             )
             calls: list[list[str]] = []
+            requirement_texts: list[str] = []
 
             def fake_run(command: list[str], **_kwargs: object) -> int:
                 calls.append(command)
                 if "install" in command:
+                    if "-r" in command:
+                        requirement_texts.append(Path(command[command.index("-r") + 1]).read_text(encoding="utf-8"))
                     site = root / "site-packages"
                     for name in MOSS_PACKAGE_DIRS:
                         (site / name).mkdir(parents=True, exist_ok=True)
@@ -202,15 +205,20 @@ class MossRuntimeInstallTests(unittest.TestCase):
                                     with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(root)}):
                                         status = install_local_runtime(engine="moss")
 
-            install_command = calls[1]
-            verify_command = calls[2]
+            # cu130 Torch 先单独安装，其余依赖再按清单（哈希校验）安装
+            preinstall, install_command, verify_command = calls[1], calls[2], calls[3]
             self.assertTrue(status.ready)
             self.assertTrue(status.path.endswith("local-runtime-moss"))
-            self.assertIn("-r", install_command)
-            self.assertTrue(any("requirements-moss.txt" in str(arg) for arg in install_command))
+            self.assertIn("--no-deps", preinstall)
+            self.assertIn("torch==2.13.0+cu130", requirement_texts[0])
+            self.assertNotIn("--hash", requirement_texts[0])
+            self.assertNotIn("torch==2.13.0+cu130", requirement_texts[1])
+            self.assertIn("transformers==5.16.1", requirement_texts[1])
             self.assertIn("--index-url", install_command)
             self.assertIn("--extra-index-url", install_command)
             self.assertIn(PYTORCH_INDEX, install_command)
+            # 原清单未被改写
+            self.assertIn("torch==2.13.0+cu130", requirements_txt.read_text(encoding="utf-8"))
             self.assertTrue(any(MOSS_VERIFY_IMPORT in str(arg) for arg in verify_command))
 
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)

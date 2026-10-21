@@ -75,6 +75,7 @@ def downloads_for(release: dict, tag: str) -> list[dict]:
         f'MAW-macOS-arm64-{tag}.zip': ('macos', 'arm64', 'full'),
         f'MAW-lite-macOS-arm64-{tag}.zip': ('macos', 'arm64', 'lite'),
         f'MAW-Linux-x86_64-{tag}.AppImage': ('linux', 'x64', 'full'),
+        f'MAW-lite-Linux-x86_64-{tag}.AppImage': ('linux', 'x64', 'lite'),
     }
     names = {asset.get('name') for asset in release.get('assets', [])}
     for platform, label, arch in (('windows', 'Windows-x64', 'x64'), ('macos', 'macOS-arm64', 'arm64')):

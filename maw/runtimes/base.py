@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import zipfile
 from collections.abc import Callable, Mapping
@@ -263,6 +264,23 @@ class ManagedRuntime:
             return candidates[0] if candidates else target / "lib" / "site-packages"
         return target / "site-packages"
 
+    def installed_python_version(self, root: str | Path | None = None) -> str:
+        """托管环境里**实际**解释器的版本（如 ``3.14.8``）；无法判定时返回空串。
+
+        ``spec.python_version`` 只是声明常量（清单按它冻结），不能当实际版本
+        展示：unix 打包版用宿主 python3 建 venv，宿主升级后真实解释器可能远新
+        于声明（3.14 宿主装 3.11 声明清单的案例），面板照抄常量会掩盖问题。
+        """
+        if not getattr(sys, "frozen", False):
+            # 源码模式复用 MAW 自己的解释器（依赖经 --target site-packages 注入）。
+            return _interpreter_version_string(
+                (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)
+            )
+        target = self.resolve_root(root) if root is None else Path(root)
+        if _uses_host_venv():
+            return _venv_python_version(target)
+        return _embedded_python_version(target)
+
     def package_dirs_ok(self, root: str | Path | None = None) -> bool:
         """site-packages 里关键包条目是否齐全（spec.package_dirs）。"""
         return not self.missing_package_dirs(root)
@@ -483,7 +501,9 @@ class ManagedRuntime:
             root,
             status=STATUS_INSTALLING,
             runtime_version=spec.runtime_version,
-            python_version=spec.python_version,
+            # 修复时环境已存在，直接记录实际解释器；全新安装此步还没有解释器，
+            # 由安装完成的写入与状态面板的实测值接管。
+            python_version=self.installed_python_version(root) or spec.python_version,
         )
 
         emit(f"正在准备{spec.feature_label}运行环境……", 5, "bootstrap")
@@ -557,36 +577,72 @@ class ManagedRuntime:
                 )
         # 安装方式三分支：unix 打包版 venv 直装（venv 自带 pip，无需 --target）；
         # Windows 打包版 pip --target 定向安装；源码模式 uv 接入开发解释器。
-        if frozen and host_venv:
-            install_command = _venv_pip_install_command(
-                python,
-                index_url=fastest_index,
-                extra_index_url=extra_index,
-                requirements_file=requirements_arg,
-            )
-        elif frozen:
-            install_command = _pip_install_command(
-                self.python_path(root),
-                site_packages,
-                requirements_arg,
-                index_url=fastest_index,
-                extra_index_url=extra_index,
-            )
-        else:
-            install_command = _uv_install_command(
+        def build_command(requirements_path: Path, *, no_deps: bool = False) -> list[str]:
+            if frozen and host_venv:
+                return _venv_pip_install_command(
+                    python,
+                    index_url=fastest_index,
+                    extra_index_url=extra_index,
+                    requirements_file=requirements_path,
+                    no_deps=no_deps,
+                )
+            if frozen:
+                return _pip_install_command(
+                    self.python_path(root),
+                    site_packages,
+                    requirements_path,
+                    index_url=fastest_index,
+                    extra_index_url=extra_index,
+                    no_deps=no_deps,
+                )
+            return _uv_install_command(
                 uv_executable,
                 python,
                 site_packages,
-                requirements_arg,
+                requirements_path,
                 index_url=fastest_index,
                 extra_index_url=extra_index,
+                no_deps=no_deps,
             )
-        self.run(
-            install_command,
-            env=self.environment(root, model_cache_root),
-            cancel=cancel,
-            on_line=_dependency_line(emit, requirements_arg),
-        )
+
+        # PyTorch 索引只为部分 wheel 提供哈希，较新的解释器拿到的 wheel 不在
+        # 清单哈希范围内，pip 的 --require-hashes 会把它判为校验失败。这些包
+        # 先按版本单独安装（--no-deps）并从后续清单剔除，其余依赖仍逐一校验。
+        # 临时清单写在系统临时目录，主流程结束即删。
+        unverifiable, verified_text = _split_local_version_requirements(requirements_arg)
+        temp_files: list[Path] = []
+        try:
+            if unverifiable:
+                # 百分比与主安装的 _dependency_line 起点一致（30），避免进度回退。
+                emit(
+                    "正在单独安装 Torch 运行库（PyTorch 索引的 wheel 不参与清单哈希校验）……",
+                    30,
+                    "dependencies",
+                )
+                preinstall_file = _write_temp_requirements("\n".join(unverifiable) + "\n")
+                temp_files.append(preinstall_file)
+                self.run(
+                    build_command(preinstall_file, no_deps=True),
+                    env=self.environment(root, model_cache_root),
+                    cancel=cancel,
+                    on_line=_dependency_line(emit, preinstall_file),
+                )
+                _may_cancel(cancel, spec)
+                install_file = _write_temp_requirements(verified_text)
+                temp_files.append(install_file)
+                install_paths = install_file
+            else:
+                install_paths = requirements_arg
+
+            self.run(
+                build_command(install_paths, no_deps=bool(unverifiable)),
+                env=self.environment(root, model_cache_root),
+                cancel=cancel,
+                on_line=_dependency_line(emit, install_paths),
+            )
+        finally:
+            for path in temp_files:
+                path.unlink(missing_ok=True)
         _may_cancel(cancel, spec)
 
         emit(f"正在验证{spec.feature_label}运行时……", 90, "verify")
@@ -612,7 +668,7 @@ class ManagedRuntime:
             root,
             status=STATUS_READY,
             runtime_version=spec.runtime_version,
-            python_version=spec.python_version,
+            python_version=self.installed_python_version(root) or spec.python_version,
             extra=extra,
         )
         if spec.has_model_cache:
@@ -832,6 +888,33 @@ def _site_package_entry_exists(site: Path, name: str) -> bool:
     )
 
 
+def _interpreter_version_string(version_info: tuple[int, int, int]) -> str:
+    """``(major, minor, micro)`` 转 ``3.11.9`` 文本。"""
+    return "{}.{}.{}".format(*version_info)
+
+
+def _venv_python_version(root: Path) -> str:
+    """从 venv 的 ``pyvenv.cfg``（或 lib 目录名）读真实解释器版本。"""
+    try:
+        for line in (root / "pyvenv.cfg").read_text(encoding="utf-8").splitlines():
+            key, _, value = line.partition("=")
+            if key.strip() == "version" and value.strip():
+                return value.strip()
+    except OSError:
+        pass
+    candidates = sorted(root.glob("lib/python3.*"))
+    return candidates[0].name[len("python"):] if candidates else ""
+
+
+def _embedded_python_version(root: Path) -> str:
+    """Windows 内嵌解释器没有 pyvenv.cfg，从 ``python3xx.dll`` 反推主次版本。"""
+    for dll in sorted((root / "python").glob("python3*.dll")):
+        match = re.match(r"python3(\d+)\.dll", dll.name, re.IGNORECASE)
+        if match:
+            return f"3.{match.group(1)}"
+    return ""
+
+
 def _uses_host_venv() -> bool:
     """打包形态的平台差异：unix 打包版用宿主 python3 创建的 venv。
 
@@ -880,6 +963,60 @@ def _get_pip_command(python_exe: Path, get_pip_path: Path) -> list[str]:
     return [str(python_exe), str(get_pip_path)]
 
 
+_REQUIREMENT_HEAD_RE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_.-]*)==([^;\s\\]+)")
+
+
+def _split_local_version_requirements(path: Path) -> tuple[list[str], str]:
+    """把带本地版本号（``+cuNNN``）的需求拆出来单独安装。
+
+    这些包只存在于 extra index（PyTorch），而该索引只为部分 wheel 提供哈希；
+    解释器较新时清单里的 ``--hash`` 覆盖不到实际下载的 wheel，pip 的
+    ``--require-hashes`` 会把这些合法 wheel 判为校验失败。先按版本单独安装
+    （不做哈希校验），再从主清单剔除，其余依赖仍逐一校验。
+
+    返回 ``(单独安装的需求, 剔除后的清单文本)``；没有本地版本包时原样返回。
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return [], ""
+    lines = text.splitlines()
+    keep: list[str] = []
+    blocks: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line or line[0].isspace() or line.startswith("#"):
+            keep.append(line)
+            index += 1
+            continue
+        block = [line]
+        index += 1
+        while index < len(lines) and lines[index][:1].isspace():
+            block.append(lines[index])
+            index += 1
+        match = _REQUIREMENT_HEAD_RE.match(block[0])
+        if match is None or "+" not in match.group(2):
+            keep.extend(block)
+            continue
+        blocks.append(block[0].rstrip().rstrip("\\").rstrip())
+    return blocks, "\n".join(keep).rstrip() + "\n"
+
+
+def _write_temp_requirements(text: str) -> Path:
+    """把需求文本写入系统临时文件（安装后删除）。
+
+    不能写在原清单旁边：打包版清单位于只读的 AppImage 挂载目录
+    （``/tmp/.mount_*``），写入会失败。
+    """
+    handle = tempfile.NamedTemporaryFile(
+        "w", prefix="maw-runtime-req-", suffix=".txt", delete=False, encoding="utf-8"
+    )
+    with handle:
+        handle.write(text)
+    return Path(handle.name)
+
+
 def _uv_install_command(
     uv_executable: Path | None,
     interpreter: Path,
@@ -888,6 +1025,7 @@ def _uv_install_command(
     *,
     index_url: str = "https://pypi.org/simple",
     extra_index_url: str | None = None,
+    no_deps: bool = False,
 ) -> list[str]:
     """Build the source-mode install command: reuse the dev interpreter, no downloads.
 
@@ -914,6 +1052,8 @@ def _uv_install_command(
     ]
     if extra_index_url:
         command.extend(["--extra-index-url", extra_index_url])
+    if no_deps:
+        command.append("--no-deps")
     if requirements_file is not None:
         command.extend(["-r", str(requirements_file)])
     return command
@@ -925,6 +1065,7 @@ def _venv_pip_install_command(
     index_url: str = "https://pypi.org/simple",
     extra_index_url: str | None = None,
     requirements_file: Path | None = None,
+    no_deps: bool = False,
 ) -> list[str]:
     """Build the pip install command inside a host venv（无 --target，直装 venv）。"""
     command = [
@@ -933,6 +1074,8 @@ def _venv_pip_install_command(
     ]
     if extra_index_url:
         command.extend(["--extra-index-url", extra_index_url])
+    if no_deps:
+        command.append("--no-deps")
     if requirements_file is not None:
         command.extend(["-r", str(requirements_file)])
     return command
@@ -946,6 +1089,7 @@ def _pip_install_command(
     index_url: str = "https://pypi.org/simple",
     extra_index_url: str | None = None,
     packages: list[str] | None = None,
+    no_deps: bool = False,
 ) -> list[str]:
     """Build a pip install --target command for the managed runtime."""
     command = [
@@ -955,6 +1099,8 @@ def _pip_install_command(
     ]
     if extra_index_url:
         command.extend(["--extra-index-url", extra_index_url])
+    if no_deps:
+        command.append("--no-deps")
     if requirements_file is not None:
         command.extend(["-r", str(requirements_file)])
     if packages:

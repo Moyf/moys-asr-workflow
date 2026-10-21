@@ -660,6 +660,22 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('Build provider: https://github.com/BtbN/FFmpeg-Builds', script)
         self.assertIn('Archive SHA-256: $FFMPEG_TARBALL_SHA256', script)
 
+    def test_appimage_build_also_ships_ffmpeg_free_lite_variant(self) -> None:
+        """Given the AppImage build, When packaging runs, Then a MAW-lite image without FFmpeg is produced alongside the full one."""
+        script = read_text("scripts/build-appimage.sh")
+        workflow = read_text(".github/workflows/release.yml")
+
+        # 先打包不含 ffmpeg 的 AppDir 出 lite，再把 ffmpeg 放进 AppDir 出完整版。
+        lite_at = script.index('LITE_APPIMAGE="$BUILD_DIR/MAW-lite-Linux-x86_64.AppImage"')
+        ffmpeg_at = script.index('cp -a "dist/MAW/ffmpeg" "$APP_DIR/ffmpeg"')
+        self.assertLess(lite_at, ffmpeg_at)
+        self.assertIn('APPIMAGE="$BUILD_DIR/MAW-Linux-x86_64.AppImage"', script)
+        self.assertIn('test ! -e "$APP_DIR/ffmpeg"', script)
+        self.assertIn("Verify lite AppImage omits FFmpeg", workflow)
+        self.assertIn("MAW-lite-Linux-x86_64.AppImage", workflow)
+        self.assertIn('"MAW-lite-Linux-x86_64-$Tag.AppImage"', workflow)
+        self.assertIn("build-appimage/MAW-lite-Linux-x86_64*.AppImage", workflow)
+
     def test_appimage_build_pins_btbn_rolling_latest_not_dated_autobuild(self) -> None:
         """Given the AppImage build script, When it downloads BtbN ffmpeg, Then it uses the permanent latest-release asset with upstream checksum verification instead of a dated pin that upstream prunes."""
         script = read_text("scripts/build-appimage.sh")

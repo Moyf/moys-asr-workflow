@@ -32,7 +32,7 @@ This overview describes the current **1.10.0 beta** workflow. Check the [release
 
 Choose the [stable release](https://github.com/Moyf/moys-asr-workflow/releases/latest) for everyday use. To try current features, choose [v1.10.0-beta.1](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.10.0-beta.1) and keep project backups.
 
-1. **Download a package:** choose your system and architecture from the selected release's attachments. The full MAW bundle includes FFmpeg/FFprobe; choose MAW-lite if both tools are already installed. Platform availability depends on that release's actual attachments.
+1. **Download a package:** choose your system and architecture from the selected release's attachments. The full MAW bundle includes FFmpeg/FFprobe; choose MAW-lite if both tools are already installed (`MAW-lite-Linux-x86_64.AppImage` on Linux). Platform availability depends on that release's actual attachments.
 2. **Open the Launcher:** extract the complete directory and run `MAW.exe` on Windows, open `MAW.app` on macOS, or grant execution permission to the Linux `.AppImage` and launch it. See the [FAQ](docs/INDEX.md#user-faq) for startup issues.
 3. **Try a short recording:** choose a provider, configure your API key, and transcribe a one- or two-minute sample before processing a complete recording.
 4. **Review, save, and export:** open the editor, check text and timing, save the `.mosp` project, and export SRT or ASS. Reopen the project for future revisions.

@@ -229,6 +229,7 @@ def build_download_section(tag: str, failed_platforms: frozenset[str]) -> str:
         ]),
         ("linux", "Linux 🐧", [
             ("默认下载", f"MAW-Linux-x86_64-{tag}.AppImage"),
+            ("装有 ffmpeg 时，可下载轻量版", f"MAW-lite-Linux-x86_64-{tag}.AppImage"),
         ]),
     ]
     lines = ["## 下载哪个版本？", ""]

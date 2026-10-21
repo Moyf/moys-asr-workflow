@@ -299,10 +299,13 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 encoding="utf-8",
             )
             calls: list[list[str]] = []
+            requirement_texts: list[str] = []
 
             def fake_run(command: list[str], **_kwargs: object) -> int:
                 calls.append(command)
                 if "install" in command:
+                    if "-r" in command:
+                        requirement_texts.append(Path(command[command.index("-r") + 1]).read_text(encoding="utf-8"))
                     site = root / "site-packages"
                     for name in ("moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"):
                         (site / name).mkdir(parents=True, exist_ok=True)
@@ -316,14 +319,19 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                                 with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                     status = MOSS.install(runtime_root=root)
 
-            install_command = calls[1]
-            verify_command = calls[2]
+            # cu130 Torch 先单独安装，其余依赖再按清单（哈希校验）安装
+            preinstall, install_command, verify_command = calls[1], calls[2], calls[3]
             self.assertTrue(status.ready)
-            self.assertIn("-r", install_command)
-            self.assertTrue(any("requirements-moss.txt" in str(arg) for arg in install_command))
+            self.assertIn("--no-deps", preinstall)
+            self.assertIn("torch==2.13.0+cu130", requirement_texts[0])
+            self.assertNotIn("--hash", requirement_texts[0])
+            self.assertNotIn("torch==2.13.0+cu130", requirement_texts[1])
+            self.assertIn("transformers==5.16.1", requirement_texts[1])
             self.assertIn("--index-url", install_command)
             self.assertIn("--extra-index-url", install_command)
             self.assertIn(PYTORCH_INDEX, install_command)
+            # 原清单未被改写
+            self.assertIn("torch==2.13.0+cu130", requirements_txt.read_text(encoding="utf-8"))
             # verify 命令是 python -c 自检（moss_transcribe_diarize 导入）
             self.assertTrue(any("moss_transcribe_diarize" in str(arg) for arg in verify_command))
 
@@ -502,6 +510,10 @@ class VenvRuntimeInstallTests(unittest.TestCase):
                     python = canonical_root / "bin" / "python"
                     python.parent.mkdir(parents=True, exist_ok=True)
                     python.write_bytes(b"python")
+                    # 真实 venv 会写 pyvenv.cfg（含完整版本号），供状态面板实测
+                    (canonical_root / "pyvenv.cfg").write_text(
+                        "home = /usr/bin\nversion = 3.14.8\n", encoding="utf-8"
+                    )
                 elif "install" in command:
                     for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (self._venv_site_packages(canonical_root) / name).mkdir(parents=True, exist_ok=True)
@@ -540,6 +552,61 @@ class VenvRuntimeInstallTests(unittest.TestCase):
             # verify 用 venv 内的 bin/python
             self.assertEqual(verify_command[0], bin_python)
             self.assertTrue(any("import jieba" in str(arg) for arg in verify_command))
+            # runtime.json 记录真实解释器版本，而不是 spec 常量
+            manifest = json.loads((canonical_root / "runtime.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["pythonVersion"], "3.14.8")
+
+    def test_unverifiable_torch_installs_before_the_hashed_manifest(self) -> None:
+        """索引未覆盖当前解释器时，torch 先以 --no-deps 单独安装，主清单保持哈希。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "local-runtime"
+            canonical_root = root.expanduser().resolve(strict=False)
+            requirements_txt = Path(temp_dir) / "requirements-local.txt"
+            requirements_txt.write_text(
+                "accelerate==1.12.0 \\\n"
+                "    --hash=sha256:abc\n"
+                "torch==2.13.0+cu130 ; sys_platform != 'darwin' \\\n"
+                "    --hash=sha256:eee\n"
+                "torchaudio==2.11.0+cu130 ; sys_platform != 'darwin' \\\n"
+                "    --hash=sha256:fff\n",
+                encoding="utf-8",
+            )
+            calls: list[list[str]] = []
+
+            def fake_run(command: list[str], **_kwargs: object) -> int:
+                calls.append(command)
+                if "-m" in command and "venv" in command[2:4]:
+                    python = canonical_root / "bin" / "python"
+                    python.parent.mkdir(parents=True, exist_ok=True)
+                    python.write_bytes(b"python")
+                elif "install" in command:
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
+                        (self._venv_site_packages(canonical_root) / name).mkdir(parents=True, exist_ok=True)
+                return 0
+
+            with mock.patch("maw.runtimes.base.shutil.which", return_value="python3"):
+                with mock.patch("maw.runtimes.base.subprocess.run", return_value=unittest.mock.MagicMock(returncode=0)):
+                    with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
+                        with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
+                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
+                                    status = LOCAL.install(runtime_root=root)
+
+            self.assertTrue(status.ready)
+            self.assertEqual(len(calls), 4)
+            preinstall, main_install, verify = calls[1], calls[2], calls[3]
+            # 预装：--no-deps + 临时清单（无哈希行），结束后删除
+            self.assertIn("--no-deps", preinstall)
+            preinstall_arg = preinstall[preinstall.index("-r") + 1]
+            self.assertIn("maw-runtime-req-", Path(preinstall_arg).name)
+            self.assertFalse(Path(preinstall_arg).exists())
+            # 主安装：--no-deps + 剔除无哈希包后的临时清单；原清单保持完整
+            self.assertIn("--no-deps", main_install)
+            main_arg = main_install[main_install.index("-r") + 1]
+            self.assertNotEqual(main_arg, str(requirements_txt))
+            self.assertFalse(Path(main_arg).exists())
+            self.assertIn("--hash=sha256:eee", requirements_txt.read_text(encoding="utf-8"))
+            self.assertEqual(verify[0], str(canonical_root / "bin" / "python"))
 
     def test_venv_install_without_host_python3_explains_requirement(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -588,6 +655,113 @@ class VenvRuntimeInstallTests(unittest.TestCase):
             # venv 下同样走 CPU 清单前置：-r requirements-local-cpu.txt、无 cu130 extra index
             self.assertTrue(any(str(cpu_txt) in str(arg) for arg in install_command))
             self.assertNotIn("extra-index-url", install_command)
+
+
+class LocalVersionRequirementSplitTests(unittest.TestCase):
+    """本地版本包（+cuNNN）先单独安装，其余依赖保持 --require-hashes。"""
+
+    MANIFEST = """\
+# This file was autogenerated by uv via the following command:
+#    uv export --frozen --only-group local
+accelerate==1.12.0 \\
+    --hash=sha256:abc
+    # via qwen-asr
+torch==2.13.0+cu130 ; sys_platform != 'darwin' \\
+    --hash=sha256:eee
+    # via accelerate
+torchaudio==2.11.0+cu130 ; sys_platform != 'darwin' \\
+    --hash=sha256:fff
+    # via accelerate
+"""
+
+    def _write(self, text: str) -> Path:
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        path = Path(temp.name) / "requirements-local.txt"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def test_local_version_blocks_are_split_out(self) -> None:
+        path = self._write(self.MANIFEST)
+        blocks, text = base_mod._split_local_version_requirements(path)
+        self.assertEqual(
+            blocks,
+            [
+                "torch==2.13.0+cu130 ; sys_platform != 'darwin'",
+                "torchaudio==2.11.0+cu130 ; sys_platform != 'darwin'",
+            ],
+        )
+        self.assertNotIn("torch==2.13.0+cu130", text)
+        self.assertNotIn("torchaudio==2.11.0+cu130", text)
+        # 其余依赖保持哈希校验
+        self.assertIn("accelerate==1.12.0", text)
+        self.assertIn("--hash=sha256:abc", text)
+
+    def test_manifest_without_local_versions_is_unchanged(self) -> None:
+        path = self._write("accelerate==1.12.0 \\\n    --hash=sha256:abc\n")
+        blocks, text = base_mod._split_local_version_requirements(path)
+        self.assertEqual(blocks, [])
+        self.assertEqual(text, path.read_text(encoding="utf-8"))
+
+    def test_unreadable_manifest_returns_empty(self) -> None:
+        missing = Path(tempfile.gettempdir()) / "maw-missing-requirements.txt"
+        self.assertEqual(base_mod._split_local_version_requirements(missing), ([], ""))
+
+    def test_temp_requirements_are_writable_outside_the_manifest_directory(self) -> None:
+        # 打包版清单位于只读的 AppImage 挂载目录，临时清单必须写到可写位置。
+        path = self._write(self.MANIFEST)
+        blocks, _ = base_mod._split_local_version_requirements(path)
+        target = base_mod._write_temp_requirements("\n".join(blocks) + "\n")
+        self.addCleanup(lambda: target.unlink(missing_ok=True))
+        self.assertNotEqual(target.parent, path.parent)
+        self.assertIn("torch==2.13.0+cu130", target.read_text(encoding="utf-8"))
+
+
+class InstalledPythonVersionTests(unittest.TestCase):
+    """状态面板读环境里的真实解释器版本，不再回显 spec 常量。"""
+
+    @staticmethod
+    def _expected_maw_version() -> str:
+        return "{}.{}.{}".format(*sys.version_info[:3])
+
+    def test_source_mode_reports_maw_interpreter(self) -> None:
+        self.assertEqual(
+            LOCAL.installed_python_version(Path(tempfile.gettempdir()) / "no-such-runtime"),
+            self._expected_maw_version(),
+        )
+
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "linux")
+    def test_frozen_host_venv_reads_pyvenv_cfg(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "pyvenv.cfg").write_text(
+                "home = /usr/bin\nversion = 3.14.8\n", encoding="utf-8"
+            )
+            self.assertEqual(LOCAL.installed_python_version(root), "3.14.8")
+
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "linux")
+    def test_frozen_host_venv_falls_back_to_site_packages_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "lib" / "python3.12" / "site-packages").mkdir(parents=True)
+            self.assertEqual(LOCAL.installed_python_version(root), "3.12")
+
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    def test_frozen_windows_embedded_reads_dll_name(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "python").mkdir()
+            (root / "python" / "python311.dll").write_bytes(b"dll")
+            self.assertEqual(LOCAL.installed_python_version(root), "3.11")
+
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "linux")
+    def test_absent_environment_reports_empty_string(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self.assertEqual(LOCAL.installed_python_version(Path(temp_dir)), "")
 
 
 class AutoFreezeRequirementsTests(CompactContainerAssertions, unittest.TestCase):

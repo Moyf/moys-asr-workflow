@@ -109,6 +109,9 @@ def local_runtime_inventory(model_cache_root: str | Path | None = None) -> dict[
     manifest = read_runtime_manifest(root)
     missing = set(LOCAL.missing_package_dirs(root))
     status = LOCAL.status(model_cache_root=model_cache_root, runtime_root=root)
+    # 面板必须显示环境里真实的解释器版本：清单里的 python_version 只是声明
+    # 常量（unix 打包版用宿主 python3 建 venv，真实版本可能不同于声明）。
+    installed_python = LOCAL.installed_python_version(root) or manifest.python_version
     components = [
         {
             "name": name,
@@ -124,7 +127,7 @@ def local_runtime_inventory(model_cache_root: str | Path | None = None) -> dict[
         "runtimeVersionExpected": LOCAL.spec.runtime_version,
         "runtimeVersionInstalled": manifest.runtime_version,
         "pythonVersionExpected": LOCAL.spec.python_version,
-        "pythonVersionInstalled": manifest.python_version,
+        "pythonVersionInstalled": installed_python,
         "manifestStatus": manifest.status,
         "installedAt": manifest.installed_at,
         "components": components,
