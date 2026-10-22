@@ -61,6 +61,9 @@ export async function buildLauncher(root = ROOT) {
     esbuild: esbuild.version,
     sourceFiles: files,
     esmFactories: modules.length,
+    // Per-module assembly kinds (classic / factory / init / transition);
+    // staleness is covered by configHash, this ledger is for reviewers.
+    moduleKinds: modules.map(item => ({ file: item.file, kind: item.kind ?? 'factory', binding: item.binding ?? null })),
     inputs: inputHashes,
     configHash: sha(configText),
     // compileSources 来自 build-editor.mjs，它的变更同样要求重建产物。
