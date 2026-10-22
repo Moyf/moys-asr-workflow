@@ -78,6 +78,13 @@ def _font_roots() -> tuple[Path, ...]:
             roots.append(Path(local_app_data) / "Microsoft" / "Windows" / "Fonts")
     elif sys.platform == "darwin":
         roots.extend((Path("/System/Library/Fonts"), Path("/Library/Fonts"), Path.home() / "Library" / "Fonts"))
+        # 与 ass_fonts 保持一致：macOS 27 起部分系统字体经 AssetsV2 的
+        # MobileAsset 目录投递，漏扫会把本机已有字体当作不存在。
+        assets_root = Path("/System/Library/AssetsV2")
+        roots.extend(sorted(
+            path for path in assets_root.glob("com_apple_MobileAsset_Font*")
+            if path.is_dir()
+        ))
     else:
         roots.extend((Path("/usr/share/fonts"), Path("/usr/local/share/fonts"), Path.home() / ".fonts"))
     return tuple(dict.fromkeys(root for root in roots if root.exists()))

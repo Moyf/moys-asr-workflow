@@ -43,15 +43,23 @@
   // Avoid serializing the project or spawning FFmpeg when neither view needs it.
   const previewNeeded = () => floatingPanel.isOpen() || stageOverlayEnabled();
 
-  function boundVideo() {
-    // A browser-only blob upload can differ from the server's bound project.
-    // Never replace it with a frame from an unrelated server media file.
-    if (player?.tagName !== 'VIDEO' || !player.videoWidth) return false;
+  function serverMediaSource() {
     const url = new URL(player.currentSrc || player.src || global.location.href, global.location.href);
     return url.origin === global.location.origin && url.pathname === '/media';
   }
 
-  const greenScreenPreview = () => player?.tagName !== 'VIDEO' || !player.videoWidth;
+  function boundVideo() {
+    // A browser-only blob upload can differ from the server's bound project.
+    // Never replace it with a frame from an unrelated server media file.
+    if (player?.tagName !== 'VIDEO' || !player.videoWidth) return false;
+    return serverMediaSource();
+  }
+
+  // 绿幕只服务「未加载媒体」或「服务器绑定媒体本身没有视频轨」（纯音频工程、
+  // 空白工程）。浏览器本地加载的媒体（blob: 等）与服务器工程无关，按上方
+  // boundVideo 的约定不能为它渲染实际画面，也不能退回绿幕。
+  const greenScreenPreview = () => player?.tagName !== 'VIDEO'
+    || (!player.videoWidth && (!(player.currentSrc || player.src) || serverMediaSource()));
   const frameAvailable = () => boundVideo() || greenScreenPreview();
 
   function setWindowStatus(text, state = '') {

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -375,6 +377,74 @@ class RegistryFontPathTests(unittest.TestCase):
             self.assertEqual(
                 _registry_font_path("missing.ttf", system, user), system / "missing.ttf",
             )
+
+
+class _SharedStream:
+    """模拟 TTC 多 face 共享的懒加载文件流；关闭后读取报错。"""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    def require_open(self) -> None:
+        if self.closed:
+            raise RuntimeError("shared font stream closed")
+
+
+class _LazyTtcFace:
+    """懒加载 face：name 表访问要求共享流处于打开状态。"""
+
+    def __init__(self, stream: _SharedStream, family: str) -> None:
+        self._stream = stream
+        self._family = family
+
+    def __contains__(self, key: str) -> bool:
+        self._stream.require_open()
+        return key == "name"
+
+    def __getitem__(self, key: str) -> _FakeNameTable:
+        self._stream.require_open()
+        if key != "name":
+            raise KeyError(key)
+        return _FakeNameTable([_FakeNameRecord(1, self._family)])
+
+    def close(self) -> None:
+        self._stream.closed = True
+
+
+class ReadFontFileNamesTests(unittest.TestCase):
+    def test_reads_every_ttc_face_before_closing_shared_stream(self) -> None:
+        # TTC 的多个 face 懒加载共享同一文件流；逐 face 提前 close 会让
+        # 后续 face 全部读取失败（PingFang.ttc 只剩第一个 face）。
+        stream = _SharedStream()
+        faces = [_LazyTtcFace(stream, "PingFang SC"), _LazyTtcFace(stream, "苹方-简")]
+        tt_lib = mock.MagicMock()
+        tt_lib.TTCollection.side_effect = lambda path, lazy=True: mock.MagicMock(fonts=faces)
+        fake_font_tools = types.ModuleType("fontTools")
+        fake_tt_lib = types.ModuleType("fontTools.ttLib")
+        fake_tt_lib.TTCollection = tt_lib.TTCollection
+        fake_tt_lib.TTFont = mock.MagicMock()
+        fake_font_tools.ttLib = fake_tt_lib
+        with mock.patch.dict(sys.modules, {"fontTools": fake_font_tools, "fontTools.ttLib": fake_tt_lib}):
+            names = ass_fonts._read_font_file_names(Path("fonts.ttc"))
+        self.assertEqual([record.value for record in names[0].family], ["PingFang SC"])
+        self.assertEqual([record.value for record in names[1].family], ["苹方-简"])
+        self.assertTrue(stream.closed)
+
+
+class FontRootsTests(unittest.TestCase):
+    def test_darwin_roots_include_mobile_asset_font_directories(self) -> None:
+        # macOS 27 起部分系统字体（PingFang 等）经 AssetsV2 的 MobileAsset
+        # 目录投递；漏扫会把本机已有字体误报为「未在本机找到」。
+        assets = sorted(
+            path for path in Path("/System/Library/AssetsV2").glob("com_apple_MobileAsset_Font*")
+            if path.is_dir()
+        )
+        if not assets:
+            self.skipTest("本机没有 MobileAsset 字体资产目录")
+        with mock.patch.object(sys, "platform", "darwin"):
+            roots = ass_fonts._font_roots()
+        for path in assets:
+            self.assertIn(path, roots)
 
 
 if __name__ == "__main__":
