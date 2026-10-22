@@ -1,0 +1,283 @@
+/* MAW Dev Dashboard 样式。
+ * 遵循 tools/AGENTS.md 约定：卡片加 content-visibility 控制排版成本；
+ * 不用全局 scroll-behavior: smooth；宽内容容器内自滚动，页面级不出现横向滚动。
+ */
+
+:root {
+  --bg: #14171c;
+  --panel: #1c2027;
+  --column: #191d24;
+  --card: #232833;
+  --card-border: #303748;
+  --text: #e6e9ef;
+  --muted: #8b93a5;
+  --accent: #5b9dd9;
+  --ok: #4caf7d;
+  --warn: #d9a441;
+  --bad: #d95b5b;
+  --hold: #9d7bd9;
+  --radius: 10px;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f2f4f8;
+    --panel: #ffffff;
+    --column: #e9edf3;
+    --card: #ffffff;
+    --card-border: #d5dbe6;
+    --text: #1c2530;
+    --muted: #66708a;
+    --accent: #2f6fab;
+    --ok: #2e8b5f;
+    --warn: #a8770f;
+    --bad: #c2453f;
+    --hold: #7452b3;
+    color-scheme: light;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+button, select, input {
+  font: inherit;
+  color: inherit;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  padding: 5px 10px;
+}
+
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--card-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+#topbar h1 {
+  font-size: 16px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.stats { color: var(--muted); font-size: 13px; }
+.spacer { flex: 1; }
+.auto-toggle { display: flex; align-items: center; gap: 5px; color: var(--muted); white-space: nowrap; }
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 0;
+}
+
+#search { min-width: 240px; }
+.muted { color: var(--muted); font-size: 13px; }
+
+#banner {
+  margin: 10px 16px 0;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bad) 15%, transparent);
+  border: 1px solid var(--bad);
+  white-space: pre-wrap;
+}
+
+.board {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px 20px;
+  overflow-x: auto; /* 看板列横向滚动限制在容器内 */
+  align-items: flex-start;
+  min-height: 60vh;
+}
+
+.column {
+  flex: 0 0 300px;
+  max-height: calc(100vh - 130px);
+  display: flex;
+  flex-direction: column;
+  background: var(--column);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+}
+
+.column.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -3px;
+}
+
+.column-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--card-border);
+  position: sticky;
+  top: 0;
+  background: var(--column);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.column-title { font-weight: 600; }
+.column-hint { color: var(--muted); font-size: 12px; }
+.column-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  background: var(--card);
+  border-radius: 10px;
+  padding: 1px 8px;
+}
+
+.column-body {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.column-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 14px 0; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  cursor: grab;
+  /* tools/AGENTS.md：离散卡片加 content-visibility，控制 resize/滚动排版成本 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 132px;
+}
+
+.card:active { cursor: grabbing; }
+.card.dragging { opacity: 0.5; }
+.card.no-milestone { border-left: 3px solid var(--warn); }
+.card.is-pass { border-left: 3px solid var(--ok); }
+
+.card-title {
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  display: block;
+  margin-bottom: 6px;
+}
+.card-title:hover { color: var(--accent); }
+
+.card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 7px;
+}
+
+.pill {
+  font-size: 11px;
+  border-radius: 9px;
+  padding: 1px 8px;
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.pill.ms { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
+.pill.ms-missing { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+.pill.draft { color: var(--hold); background: color-mix(in srgb, var(--hold) 15%, transparent); }
+.pill.due-soon { color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }
+.pill.due-over { color: var(--bad); background: color-mix(in srgb, var(--bad) 15%, transparent); }
+
+.ci-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+.ci-ok { background: var(--ok); }
+.ci-failing { background: var(--bad); }
+.ci-running { background: var(--warn); }
+.ci-none { background: var(--muted); opacity: 0.5; }
+
+.card-meta {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 7px;
+  overflow-wrap: anywhere;
+}
+
+.card-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.cl-pill {
+  font-size: 11px;
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+  padding: 1px 8px;
+  cursor: copy;
+  background: transparent;
+}
+.cl-pending { color: var(--warn); border-color: var(--warn); }
+.cl-partial { color: var(--accent); border-color: var(--accent); }
+.cl-passed { color: var(--ok); border-color: var(--ok); }
+
+.card-actions { display: flex; gap: 6px; margin-top: 7px; }
+.mini-btn {
+  font-size: 12px;
+  padding: 2px 9px;
+  border-radius: 8px;
+}
+
+.card select {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  margin-left: auto;
+}
+
+#toast {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 9px 18px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  z-index: 50;
+  max-width: 80vw;
+}
+
+/* tools/AGENTS.md：打印时屏外卡片要可见 */
+@media print {
+  .card { content-visibility: visible; }
+  #topbar, #toolbar, .card select, .card-actions { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
+
+.card, .column { transition: border-color 120ms ease; }
