@@ -130,6 +130,23 @@ function validateInitModule(source, item) {
   }
 }
 
+function validateTransitionModule(source, item) {
+  if (item.kind !== 'transition') return;
+  // Same shape as an init module: exactly one exported function
+  // declaration and imports only. The assembler binds the export
+  // lexically; evaluation must have no side effects.
+  const ast = parse(source,'module');
+  const imports = ast.body.filter(node => node.type === 'ImportDeclaration');
+  const exports = ast.body.filter(node => node.type === 'ExportNamedDeclaration');
+  const exported = exports[0]?.declaration;
+  if (imports.length + exports.length !== ast.body.length || exports.length !== 1
+      || exported?.type !== 'FunctionDeclaration'
+      || exported.id?.name !== item.exportName
+      || exported.async || exported.generator) {
+    throw new Error(`Transition module must export exactly one function: ${item.file}`);
+  }
+}
+
 export function assertMetafileInputsCaptured(root, result, inputHashes) {
   for (const input of Object.keys(result.metafile.inputs)) {
     const normalized = input.replace(/\\/g,'/');
@@ -157,10 +174,14 @@ export async function compileSources(root, files, modules, read, options = {}) {
     byFile.set(item.file,item); names.add(item.name);
   }
   const sources = new Map(files.map(file => [file,read(file)]));
+  // Caller-owned set so a second compile in the same process cannot
+  // reuse this call's registration state.
+  options.transitionBindings?.clear?.();
   const imports = modules.map((item,index) =>
     `import { ${item.exportName} as factory${index} } from ${JSON.stringify('maw-factory:'+item.file)};`);
   for (const item of modules) {
     if (item.kind === 'init') validateInitModule(sources.get(item.file),item);
+    else if (item.kind === 'transition') validateTransitionModule(sources.get(item.file),item);
     else validateModule(sources.get(item.file),item);
   }
   // Keep lexical declarations INSIDE this function: esbuild otherwise lowers
@@ -181,6 +202,21 @@ export async function compileSources(root, files, modules, read, options = {}) {
     if (item?.kind === 'init') {
       const index = modules.indexOf(item);
       body.push(`// Init module: ${file}\nfactory${index}();`);
+    } else if (item?.kind === 'transition') {
+      // Launcher transitional mechanism: the compiled module replaces the
+      // file's slot; its single export becomes a lexical binding the
+      // remaining classic scope reads by name at the original position.
+      if (!options.transitionBindings || !/^[A-Za-z_$][\w$]*$/.test(item.binding ?? '')) {
+        throw new Error(`Invalid transition binding: ${item.binding}`);
+      }
+      if (options.transitionBindings.has(item.binding)) {
+        throw new Error(`Duplicate transition binding: ${item.binding}`);
+      }
+      if (names.has(item.binding)) {
+        throw new Error(`Transition binding collides with a module name: ${item.binding}`);
+      }
+      options.transitionBindings.add(item.binding);
+      body.push(`// Transition module: ${file}\nconst ${item.binding} = factory${modules.indexOf(item)};`);
     } else if (item) body.push(`window.MAWE.register(${JSON.stringify(item.name)}, factory${modules.indexOf(item)});`);
     else {
       try { parse(sources.get(file),'script'); }
