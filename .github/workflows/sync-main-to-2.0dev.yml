@@ -1,0 +1,149 @@
+name: Sync main to 2.0dev
+
+# 2.0 开发期间，main（1.X 稳定线）上的修复自动单向合并进 2.0dev：
+# - 触发：push main / 每周一定时兜底 / 手动
+# - 干净合并且轻量检查通过 → 直接 push 2.0dev
+#   （GITHUB_TOKEN 的 push 不会触发其他 workflow，无 CI 风暴）
+# - 冲突或检查失败 → 清场后自动开 main→2.0dev 的 PR，人工处理
+# 方向永远 main → 2.0dev，绝不反向。
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 每周一 UTC 03:17（北京时间 11:17）
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-main-to-2.0dev
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Merge main into 2.0dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out 2.0dev
+        uses: actions/checkout@v5
+        with:
+          ref: 2.0dev
+          fetch-depth: 0
+
+      - name: Skip when main is already contained
+        id: check
+        run: |
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "need=false" >> "$GITHUB_OUTPUT"
+            echo "main 已包含于 2.0dev，无需同步"
+          else
+            echo "need=true" >> "$GITHUB_OUTPUT"
+            echo "待同步提交（HEAD..origin/main，最多显示 20 条）："
+            git log --oneline HEAD..origin/main | head -20
+          fi
+
+      - name: Merge main into 2.0dev
+        id: merge
+        if: steps.check.outputs.need == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge origin/main --no-edit
+
+      # 与 python-lint / editor-checks 同水位的轻量检查：
+      # 合并产物至少要过 ruff 和 web 装配，才允许直接落上 2.0dev。
+      - name: Set up Python
+        if: steps.merge.outcome == 'success'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Set up uv
+        if: steps.merge.outcome == 'success'
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Ruff check
+        id: ruff
+        if: steps.merge.outcome == 'success'
+        run: uv run --frozen ruff check
+
+      - name: Set up pnpm
+        if: steps.merge.outcome == 'success'
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.4
+          run_install: false
+
+      - name: Set up Node
+        if: steps.merge.outcome == 'success'
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Editor build and typecheck
+        id: editor
+        if: steps.merge.outcome == 'success'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+          pnpm run typecheck
+
+      - name: Push merge result
+        if: >-
+          steps.merge.outcome == 'success' &&
+          steps.ruff.outcome == 'success' &&
+          steps.editor.outcome == 'success'
+        run: git push origin 2.0dev
+
+      # 冲突（merge 失败）或检查失败：清场 + 开 PR 人工处理。
+      # 该 PR 会照常触发 python-lint / editor-checks / Windows 预览，
+      # 人工解决冲突后由完整 CI 把关，再手动合并。
+      - name: Open PR for manual resolution
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git merge --abort 2>/dev/null || git reset --hard HEAD~1 2>/dev/null || true
+          echo "--- 清场后状态 ---"
+          git status --short
+          existing=$(gh pr list --base 2.0dev --head main --state open --json number --jq 'length')
+          if [ "$existing" -gt 0 ]; then
+            echo "已存在待处理的 main→2.0dev PR，跳过重复创建"
+            exit 0
+          fi
+          gh pr create \
+            --base 2.0dev \
+            --head main \
+            --title "sync: main → 2.0dev（自动同步受阻，需人工处理）" \
+            --body "$(cat <<'EOF'
+          ## 发生了什么
+
+          自动同步（`Sync main to 2.0dev`）把 main 合并进 2.0dev 时受阻，
+          原因是以下二者之一：
+
+          - **合并冲突**：main 的修复与 2.0dev 的改动改到了相近位置
+          - **检查失败**：合并无文本冲突，但 ruff / editor build / typecheck 未通过
+
+          ## 怎么处理
+
+          1. 本地执行 `git merge main`（在 2.0dev 上）解决冲突或修复问题
+             （或直接在本 PR 上操作）
+          2. push 后本 PR 会触发完整 CI（python-lint / editor-checks / Windows 预览）
+          3. CI 全绿后手动合并本 PR
+
+          ## 边界说明
+
+          语义冲突（文本无冲突、逻辑互撞）自动检查无法覆盖，
+          合并后请在 2.0dev 上的日常开发与测试中留意。
+          EOF
+          )"
