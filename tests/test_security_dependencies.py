@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 import re
 import ssl
+import subprocess
+import sys
 import tomllib
 import unittest
 from unittest import mock
@@ -52,6 +54,22 @@ class SecurityDependencyTests(unittest.TestCase):
         self.assertEqual(parts.fragment, "sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70")
         command = _get_pip_command(Path("python"), Path("get-pip.py"))
         self.assertIn(PIP_BOOTSTRAP_REQUIREMENT, command)
+
+    def test_source_entrypoints_disable_xet_before_optional_hub_import(self) -> None:
+        code = (
+            "import importlib, os, sys; "
+            "importlib.import_module(sys.argv[1]); "
+            "assert os.environ.get('HF_HUB_DISABLE_XET') == '1'; "
+            "assert 'huggingface_hub' not in sys.modules"
+        )
+        for module in ("maw.asr.local", "maw.cli", "maw.local_runtime_worker", "maw.ocr_runtime_worker"):
+            with self.subTest(module=module):
+                completed = subprocess.run(
+                    [sys.executable, "-c", code, module], cwd=ROOT,
+                    env={**os.environ, "HF_HUB_DISABLE_XET": "0"},
+                    capture_output=True, text=True, timeout=20,
+                )
+                self.assertEqual(completed.returncode, 0, completed.stderr[-2000:])
 
     def test_model_workers_force_http_fallback_even_if_parent_enabled_xet(self) -> None:
         with mock.patch.dict(os.environ, {"HF_HUB_DISABLE_XET": "0"}):
