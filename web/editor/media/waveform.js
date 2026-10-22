@@ -1,8 +1,7 @@
 // Waveform compatibility facade: compose algorithms and class methods once.
 // ESM init module: the assembler calls this at the file's original manifest
-// position. Leaf algorithms (G05) come from explicit imports; G06 modules
-// (thumbnails / media / render / cue-blocks / word-blocks / canvas / input)
-// stay on the registry until their batch.
+// position. All leaf algorithms and composition modules (G05+G06) come
+// from explicit imports; the registry is no longer consulted.
 import { createWaveformModule as createWaveformConstants } from './waveform/constants.js';
 import { createWaveformModule as createWaveformLabels } from './waveform/labels.js';
 import { createWaveformModule as createWaveformScale } from './waveform/scale.js';
@@ -22,11 +21,19 @@ import { createWaveformModule as createWaveformGapDrag } from './waveform/gap-dr
 import { createWaveformModule as createWaveformMarkers } from './waveform/markers.js';
 import { createWaveformModule as createWaveformCueDragUpdate } from './waveform/cue-drag-update.js';
 import { createWaveformModule as createWaveformPlayback } from './waveform/playback.js';
+import { createThumbnailModule as createEditorThumbnails } from './editor-thumbnails.js';
+import { createWaveformModule as createWaveformThumbnails } from './waveform/thumbnails.js';
+import { createWaveformModule as createWaveformMedia } from './waveform/media.js';
+import { createWaveformModule as createWaveformRender } from './waveform/render.js';
+import { createWaveformModule as createWaveformCueBlocks } from './waveform/cue-blocks.js';
+import { createWordBlocks as createWaveformWordBlocks } from './waveform/word-blocks.js';
+import { createWaveformModule as createWaveformCanvas } from './waveform/canvas.js';
+import { createWaveformModule as createWaveformInput } from './waveform/input.js';
 
 export function initWaveform() {
   'use strict';
 
-  const thumbnailCore = window.MAWE.resolve('editor-thumbnails', {
+  const thumbnailCore = createEditorThumbnails({
     browser: window, getConfig: () => window.MaweBoot?.SERVER_CONFIG, storage: window.MaweHost.storage,
   });
   const helpers = {
@@ -222,17 +229,17 @@ constructor(options) {
       Object.defineProperty(prototype, key, descriptors[key]);
     }
   }
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-thumbnails', helpers));
+  installMethods(WaveformEditor.prototype, createWaveformThumbnails(helpers));
   installMethods(WaveformEditor.prototype, createWaveformControls(helpers));
   installMethods(WaveformEditor.prototype, createWaveformPointer(helpers));
   installMethods(WaveformEditor.prototype, createWaveformWorkspace(helpers));
   installMethods(WaveformEditor.prototype, createWaveformScaleControls(helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-media', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-render', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-cue-blocks', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-word-blocks', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-canvas', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-input', helpers));
+  installMethods(WaveformEditor.prototype, createWaveformMedia(helpers));
+  installMethods(WaveformEditor.prototype, createWaveformRender(helpers));
+  installMethods(WaveformEditor.prototype, createWaveformCueBlocks(helpers));
+  installMethods(WaveformEditor.prototype, createWaveformWordBlocks(helpers));
+  installMethods(WaveformEditor.prototype, createWaveformCanvas(helpers));
+  installMethods(WaveformEditor.prototype, createWaveformInput(helpers));
   installMethods(WaveformEditor.prototype, createWaveformCueDrag(helpers));
   installMethods(WaveformEditor.prototype, createWaveformCueCommands(helpers));
   installMethods(WaveformEditor.prototype, createWaveformGapDrag(helpers));
