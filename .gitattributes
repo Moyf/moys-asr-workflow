@@ -19,3 +19,6 @@
 *.mkv binary
 *.m4a binary
 *.flac binary
+
+# Unified patch context prefixes a space to the upstream tab indentation.
+website/patches/*.patch whitespace=-space-before-tab

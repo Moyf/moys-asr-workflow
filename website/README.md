@@ -41,3 +41,15 @@ GitHub Pages 发布同一仓库的官网、文档和 `/editor/`；也可以在 V
 部署细节和内容清单见 [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md) 与 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)。
 
 文档同步规则见 [docs/CONTENT_SYNC.md](docs/CONTENT_SYNC.md)。
+
+## 依赖安全补丁
+
+官网锁文件将 `fast-uri` 更新至 3.1.9，并将外部 `source-map-js` 统一至 1.2.2。
+`magicast@0.5.5` 最新发布包仍内嵌 `source-map-js@1.2.1`，因此通过
+`pnpm-workspace.yaml` 注册版本限定补丁，回移上游 [CVE-2026-93749 修复](https://github.com/7rulnik/source-map-js/commit/cf76580)：
+校验单层及累计 section offset、缓存嵌套 sources、避免逐行字符串累积和越过源代码末尾的填充。
+该副本是安全修复回移，包内版本标记仍为 1.2.1；不能仅凭外部依赖树判断补丁状态。
+待 magicast 上游发布包含这些修复的版本后，可升级父包并移除此补丁。
+
+安装后从仓库根目录运行 `node --test website/tests/security-dependencies.test.mjs`，
+检查实际安装的内嵌副本与配置修改能力；测试对同步放大路径设置执行期限。
