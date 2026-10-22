@@ -1,5 +1,29 @@
 // Waveform compatibility facade: compose algorithms and class methods once.
-(function () {
+// ESM init module: the assembler calls this at the file's original manifest
+// position. Leaf algorithms (G05) come from explicit imports; G06 modules
+// (thumbnails / media / render / cue-blocks / word-blocks / canvas / input)
+// stay on the registry until their batch.
+import { createWaveformModule as createWaveformConstants } from './waveform/constants.js';
+import { createWaveformModule as createWaveformLabels } from './waveform/labels.js';
+import { createWaveformModule as createWaveformScale } from './waveform/scale.js';
+import { createWaveformModule as createWaveformLayout } from './waveform/layout.js';
+import { createWaveformModule as createWaveformSettings } from './waveform/settings.js';
+import { createWaveformModule as createWaveformPayload } from './waveform/payload.js';
+import { createWaveformModule as createWaveformColors } from './waveform/colors.js';
+import { createWaveformModule as createWaveformTiming } from './waveform/timing.js';
+import { createWaveformModule as createWaveformVisibility } from './waveform/visibility.js';
+import { createWaveformModule as createWaveformControls } from './waveform/controls.js';
+import { createWaveformModule as createWaveformPointer } from './waveform/pointer.js';
+import { createWaveformModule as createWaveformWorkspace } from './waveform/workspace.js';
+import { createWaveformModule as createWaveformScaleControls } from './waveform/scale-controls.js';
+import { createWaveformModule as createWaveformCueDrag } from './waveform/cue-drag.js';
+import { createWaveformModule as createWaveformCueCommands } from './waveform/cue-commands.js';
+import { createWaveformModule as createWaveformGapDrag } from './waveform/gap-drag.js';
+import { createWaveformModule as createWaveformMarkers } from './waveform/markers.js';
+import { createWaveformModule as createWaveformCueDragUpdate } from './waveform/cue-drag-update.js';
+import { createWaveformModule as createWaveformPlayback } from './waveform/playback.js';
+
+export function initWaveform() {
   'use strict';
 
   const thumbnailCore = window.MAWE.resolve('editor-thumbnails', {
@@ -11,15 +35,15 @@
     gapRemoveCore: window.AsrGapRemoveCore,
     getLanguage: () => window.MAWE_I18N?.language,
   };
-  Object.assign(helpers, window.MAWE.resolve('waveform-constants', helpers));
-  Object.assign(helpers, window.MAWE.resolve('waveform-labels', helpers));
-  Object.assign(helpers, window.MAWE.resolve('waveform-scale', helpers));
-  Object.assign(helpers, window.MAWE.resolve('waveform-layout', helpers));
-  Object.assign(helpers, window.MAWE.resolve('waveform-settings', helpers));
-  Object.assign(helpers, window.MAWE.resolve('waveform-payload', helpers));
-  Object.assign(helpers, window.MAWE.resolve('waveform-colors', helpers));
-  Object.assign(helpers, window.MAWE.resolve('waveform-timing', helpers));
-  Object.assign(helpers, window.MAWE.resolve('waveform-visibility', helpers));
+  Object.assign(helpers, createWaveformConstants(helpers));
+  Object.assign(helpers, createWaveformLabels(helpers));
+  Object.assign(helpers, createWaveformScale(helpers));
+  Object.assign(helpers, createWaveformLayout(helpers));
+  Object.assign(helpers, createWaveformSettings(helpers));
+  Object.assign(helpers, createWaveformPayload(helpers));
+  Object.assign(helpers, createWaveformColors(helpers));
+  Object.assign(helpers, createWaveformTiming(helpers));
+  Object.assign(helpers, createWaveformVisibility(helpers));
   const {
     BUILTIN_WORKSPACES,
     BUILTIN_WORKSPACE_IDS,
@@ -199,23 +223,23 @@ constructor(options) {
     }
   }
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-thumbnails', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-controls', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-pointer', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-workspace', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-scale-controls', helpers));
+  installMethods(WaveformEditor.prototype, createWaveformControls(helpers));
+  installMethods(WaveformEditor.prototype, createWaveformPointer(helpers));
+  installMethods(WaveformEditor.prototype, createWaveformWorkspace(helpers));
+  installMethods(WaveformEditor.prototype, createWaveformScaleControls(helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-media', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-render', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-cue-blocks', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-word-blocks', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-canvas', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-input', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-cue-drag', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-cue-commands', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-gap-drag', helpers));
-  const markerDescriptors = window.MAWE.resolve('waveform-markers', helpers);
+  installMethods(WaveformEditor.prototype, createWaveformCueDrag(helpers));
+  installMethods(WaveformEditor.prototype, createWaveformCueCommands(helpers));
+  installMethods(WaveformEditor.prototype, createWaveformGapDrag(helpers));
+  const markerDescriptors = createWaveformMarkers(helpers);
   installMethods(WaveformEditor.prototype, markerDescriptors);
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-cue-drag-update', helpers));
-  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-playback', helpers));
+  installMethods(WaveformEditor.prototype, createWaveformCueDragUpdate(helpers));
+  installMethods(WaveformEditor.prototype, createWaveformPlayback(helpers));
 
 window.AsrWaveform = {
     create(options) {
@@ -289,4 +313,4 @@ window.AsrWaveform = {
   if (window.MAWE?.register) {
     window.MAWE.register('waveform', () => window.AsrWaveform);
   }
-})();
+}

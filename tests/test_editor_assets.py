@@ -518,16 +518,22 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("shared/editor-utils.js", pushed)
         self.assertLess(pushed.index("shared/gap-remove-core.js"),
                         pushed.index("shared/editor-utils.js"))
+        # AsrWaveform 已随 G05 init 化：定义被 esbuild 提升，
+        # 运行时顺序由 trace 序列核对（见
+        # test_editor_script_payload_is_one_complete_artifact）；
+        # 其余仍 classic 的门面继续按静态标记核对相对位置。
         markers = (
             r'Object\.defineProperty\([^,]+,\s*["\']MAWE["\']',
             r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
             r'\b[A-Za-z_$][\w$]*\.MAWE_I18N\s*=',
-            r'\bwindow\.AsrWaveform\s*=',
             r'\bwindow\.MAWE_EDITOR_BRIDGE\s*=',
             r'\bwindow\.MAWE_ONBOARDING\s*=',
         )
         indices = [re.search(marker, page).start() for marker in markers]
         self.assertEqual(indices, sorted(indices))
+        self.assertIn('window.AsrWaveform=', page)
+        self.assertLess(pushed.index('editor/media/waveform.js'),
+                        pushed.index('editor/io/editor-sticker-otio-export.js'))
 
 class StickerScanTests(unittest.TestCase):
     def test_scan_stickers_keeps_images_when_dimensions_are_unreadable(self) -> None:
