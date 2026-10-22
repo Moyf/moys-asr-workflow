@@ -7,6 +7,7 @@
 | 组件 | 在 MAW 中的使用 | 本次处理 |
 | --- | --- | --- |
 | certifi | 主程序 requests、local/OCR/MOSS 的 Python HTTPS | 声明安全下界 `>=2026.10.19`；`uv.lock` 从 `2026.7.22` 定向更新到 `2026.10.19`；MOSS 独立声明同步下界 |
+| urllib3 | 主程序 LLM 的 requests 流式响应，以及模型环境 HTTPS | 主程序/local/OCR/MOSS 声明 `>=2.8.0`，锁文件由 2.7.0 定向更新到 2.8.0，阻止异常 chunk-size 字段无界缓冲 |
 | pip 的内置 certifi | Windows embedded Python 引导、Linux/macOS 宿主 venv 引导 | 固定 Python 官方公告中的 `pip 26.2.2` wheel URL 和 SHA-256，防止旧 ensurepip 的 CA 留在新模型环境中 |
 | hf-xet 的 Rust TLS | Hugging Face 模型下载；Python certifi 更新不会更改其原生 TLS 根库 | worker 环境强制 `HF_HUB_DISABLE_XET=1`，通过 huggingface_hub 的 Python HTTPS 回退下载；不安装未修复的稳定版或预发行版 |
 | Node.js | 编辑器/Launcher/官网源码构建与测试 | 开发版本范围 `^22.23.4 || ^24.22.1 || >=26.12.1`；现有 Node 22 CI 固定到 `22.23.4`；不变更 npm 依赖 |
@@ -32,17 +33,25 @@ local/OCR/MOSS 的运行时版本分别由 7/3/2 提升到 8/4/3，使旧模型�
 在独立干净工作树中执行，未复用既有项目的 .venv 或 node_modules：
 
 - `uv sync --frozen --group build` 成功，主程序 certifi 为 2026.10.19；`pnpm install --frozen-lockfile` 成功，pnpm 锁文件没有变化。
-- `uv lock --check` 成功。按包名/版本映射比较，锁文件仅 certifi 发生版本变化。uv 0.13.4 将 lock revision 从 3 规范化为 5，并调整 marker 表达；对主程序/build/local/OCR 导出，在 Python 3.11–3.15 × Windows/Linux/macOS 共 60 组环境中比较，除 certifi 外的依赖选择与版本保持一致。
+- `uv lock --check` 成功。按包名/版本映射比较，锁文件仅 certifi 和 urllib3 发生版本变化。uv 0.13.4 将 lock revision 从 3 规范化为 5，并调整 marker 表达；对主程序/build/local/OCR 导出，在 Python 3.11–3.15 × Windows/Linux/macOS 共 60 组环境中比较，除 certifi/urllib3 外的依赖选择与版本保持一致。
 - 安全依赖、模型运行时、Hub 下载与打包契约 108 项，以及对齐相关 14 项定向测试通过；Ruff 与 TypeScript 类型检查通过。
 - `pwsh -NoProfile -File scripts/build-windows.ps1 -SkipTests` 实际完成 PyInstaller Windows onedir 构建；`dist/MAW/MAW.exe --smoke-import` 退出 0。测试已单独执行。Windows PowerShell 5.1 对现有 UTF-8 无 BOM 脚本产生解析错误，本次使用 PowerShell 7 验证。
-- 产物的 local/local-cpu/OCR/MOSS/MOSS-cpu 五份 frozen requirements 均包含 `certifi==2026.10.19`。产物 CA bundle 含 120 张证书，不含 emSign ECC Root CA - G3 的 DER SHA-256 `86A1ECBA089C4A8D3BBE2734C612BA341D813E043CF9E8A862CD5C57A36BBE6B`。
+- 产物的 local/local-cpu/OCR/MOSS/MOSS-cpu 五份 frozen requirements 均包含 `certifi==2026.10.19` 与 `urllib3==2.8.0`；从实际 EXE 的 PYZ 归档读取 urllib3 版本常量，确认为 2.8.0。产物 CA bundle 含 120 张证书，不含 emSign ECC Root CA - G3 的 DER SHA-256 `86A1ECBA089C4A8D3BBE2734C612BA341D813E043CF9E8A862CD5C57A36BBE6B`。
 - 使用产物实际 CA bundle 进行正常 TLS 握手：`www.python.org` 通过；`dv-g3b-emudhra.we-have-a-problem.com` 与 `dv-g3b-aaa-emudhra.we-have-a-problem.com` 均因证书验证失败被拒绝；没有绕过 TLS 验证。
 - 使用产物的 embedded Python ZIP、get-pip.py 与生产 `_get_pip_command` 完成一次干净引导：pip 26.2.2、内置 certifi 2026.10.19。
 - 安装锁定的 huggingface_hub 0.36.2 / hf-xet 1.6.0 及其最小依赖，启动前禁用 Xet；确认上游 `is_xet_available()` 为 false，并成功无凭据下载公开 gpt2 `.gitattributes`（445 字节）。该检查验证 HTTP 回退，不代表完成真实大模型/长媒体推理验收。
 
-全量 Python 回归运行了 2725 项：2697 通过、27 跳过、1 失败。唯一失败为未改动的 `test_real_progress_pipe_is_drained_during_process_execution`，其断言要求在 0.3 秒子进程存活窗口内观察进度；独立单项复跑通过，但模块整组复跑仍失败；在未改动基线 e6a2fa4b 的完整源码上，同模块 31 项同样仅此项失败，确认是基线可复现问题。整组结果仍记为失败，不以单项复跑替代全量通过；没有为本次安全修复改动该媒体任务测试或实现。
+补齐 urllib3 前的全量 Python 回归运行了 2725 项：2697 通过、27 跳过、1 失败。唯一失败为未改动的 `test_real_progress_pipe_is_drained_during_process_execution`，其断言要求在 0.3 秒子进程存活窗口内观察进度；独立单项复跑通过，但模块整组复跑仍失败；在未改动基线 e6a2fa4b 的完整源码上，同模块 31 项同样仅此项失败，确认是基线可复现问题。整组结果仍记为失败，不以单项复跑替代全量通过；没有为本次安全修复改动该媒体任务测试或实现。
 
 没有在本机完整安装三套大型 GPU/CPU 模型环境，没有验证 macOS/Linux 实际安装包，也没有执行真实模型推理；这些验收仍由对应平台/模型流程覆盖。Windows 本次产物为本地验证产物，不是签名 Release。embedded Python 仍沿用当前工程的 3.11.9（OpenSSL 3.0.13），本次修复其 pip/CA，不跨 Python 大版本改变模型兼容性；这也不代表完成该旧解释器所有历史 CVE 的审计。
+
+## urllib3 的体验影响与补充验证
+
+`maw/postprocess_llm.py` 通过 `requests.Session.post(stream=True)` 请求，并调用 `response.iter_lines()` 读取 SSE，属于 [GHSA-vxq7-64xx-v4gw / CVE-2026-97689](https://github.com/urllib3/urllib3/security/advisories/GHSA-vxq7-64xx-v4gw) 的实际受影响路径。恶意或遭入侵的服务端/代理可发送不含换行的超长 chunk-size 字段，使客户端耗尽内存等资源；该问题的安全影响是可用性，不能描述成必然泄露 API Key。CA 事件的机密性/完整性风险与此分别记录。
+
+升级对正常 HTTP/SSE 预期无可感知变化，不要求修改 API 配置、模型、字幕或翻译数据。限制作用于分块长度字段，并非响应正文或回答总长度；正常大块内容仍可读取。异常第三方服务/代理会更早报响应错误，不应通过关闭验证、取消流式或放宽解析限制兼容异常服务。
+
+补充验证：218 项安全、LLM 流式/中文/取消/异常诊断和打包契约测试通过；其中通过真实 requests → urllib3 → HTTPResponse 读取链验证 128 KiB 异常长度字段在有界读取后被拒绝，正常中文 SSE 正文约 90 KiB 仍完整读取。重新执行 frozen 安装与 Windows 正式打包，检查五份随包清单和 EXE 内实际 urllib3；未扩大其他依赖升级范围。后续 CI 结果应以包含此补充改动的新 head 为准。
 
 ## 上游与公告
 

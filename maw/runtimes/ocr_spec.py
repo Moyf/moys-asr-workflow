@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from maw.runtimes.base import ManagedRuntimeError, RuntimeCancelled, RuntimeSpec
 
-# 版本 4：更新 certifi 安全下界；旧运行环境需升级。
+# 版本 4：更新 certifi/urllib3 安全下界；旧运行环境需升级。
 OCR_RUNTIME_VERSION = "4"
 OCR_PYTHON_VERSION = "3.11"
 OCR_MODEL_ID = "pp-ocrv6-tiny"

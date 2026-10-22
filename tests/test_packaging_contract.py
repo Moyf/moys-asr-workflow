@@ -377,6 +377,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
             ocr_dependencies,
             {
                 "certifi>=2026.10.19",
+                "urllib3>=2.8.0",
                 "numpy>=2.2,<2.5",
                 "onnxruntime>=1.18",
                 "pillow>=10.0.0",

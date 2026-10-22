@@ -12,6 +12,7 @@
 #   uv pip compile scripts/packaging/moss-requirements.in -p 3.11 --extra-index-url
 #       https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match
 certifi>=2026.10.19
+urllib3>=2.8.0
 av>=14.0
 librosa>=0.11.0
 # MOSS 模型下载的 Hugging Face → ModelScope 回退需要 modelscope

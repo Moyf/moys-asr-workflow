@@ -31,7 +31,7 @@ class MossRuntimeCancelled(MossRuntimeError, RuntimeCancelled):
     """Raised when the user cancels MOSS runtime work."""
 
 
-# 版本 3：更新 certifi 安全下界；旧运行环境需升级。
+# 版本 3：更新 certifi/urllib3 安全下界；旧运行环境需升级。
 # 版本 2：新增 modelscope（MOSS 模型下载的 HF → ModelScope 回退需要），
 # 老安装需重装一次 MOSS 运行环境以补齐依赖。
 _VERIFY_COMMAND = (

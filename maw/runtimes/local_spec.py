@@ -9,7 +9,7 @@ PYTHON_VERSION = "3.11"
 PYTORCH_INDEX = "https://download.pytorch.org/whl/cu130"
 EMBED_PYTHON_ZIP = "python-3.11.9-embed-amd64.zip"
 
-# 版本 8：更新 certifi 安全下界；旧运行环境需升级。
+# 版本 8：更新 certifi/urllib3 安全下界；旧运行环境需升级。
 # 版本 7：local dependency group 新增 FireRedASR2-CTC 的 sherpa-onnx 与 soundfile，
 # 老安装需重装一次本地运行环境以补齐依赖。
 # 自检 import 覆盖 package_dirs 全部关键包（tests/test_runtimes.py 有对应断言）：
