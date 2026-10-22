@@ -171,6 +171,9 @@ export async function compileSources(root, files, modules, read, options = {}) {
         || !/^[A-Za-z_$][\w$]*$/.test(item.exportName) || typeof item.name !== 'string') {
       throw new Error(`Invalid/duplicate factory or omitted source in manifest: ${item.file}`);
     }
+    if (item.kind !== undefined && !['factory', 'init', 'transition'].includes(item.kind)) {
+      throw new Error(`Unknown module kind: ${item.kind}: ${item.file}`);
+    }
     byFile.set(item.file,item); names.add(item.name);
   }
   const sources = new Map(files.map(file => [file,read(file)]));
@@ -207,13 +210,18 @@ export async function compileSources(root, files, modules, read, options = {}) {
       // file's slot; its single export becomes a lexical binding the
       // remaining classic scope reads by name at the original position.
       if (!options.transitionBindings || !/^[A-Za-z_$][\w$]*$/.test(item.binding ?? '')) {
-        throw new Error(`Invalid transition binding: ${item.binding}`);
+        // transitionBindings 缺失说明装配方未启用过渡接入，而不是绑定名非法。
+        throw new Error(`Invalid transition binding${options.transitionBindings ? '' : ' (transition support not enabled by this builder)'}: ${item.binding}`);
       }
       if (options.transitionBindings.has(item.binding)) {
         throw new Error(`Duplicate transition binding: ${item.binding}`);
       }
       if (names.has(item.binding)) {
         throw new Error(`Transition binding collides with a module name: ${item.binding}`);
+      }
+      if (options.bridges?.some(bridge => bridge.name === item.binding)) {
+        // 不可变桥的 window getter 会静默捕获同名词法绑定，运行期才暴露。
+        throw new Error(`Transition binding collides with an external bridge: ${item.binding}`);
       }
       options.transitionBindings.add(item.binding);
       body.push(`// Transition module: ${file}\nconst ${item.binding} = factory${modules.indexOf(item)};`);
