@@ -15,7 +15,7 @@ mkdir -p "$BUILD_DIR"
 # bundle 是构建产物（不入库）：打包前显式构建；MAW.spec 会在缺失时 fail fast。
 echo "==> 0/6 构建 web bundle（esbuild 产物，不入库）"
 command -v pnpm >/dev/null 2>&1 || {
-    echo "错误：构建 web bundle 需要 pnpm（先安装 Node.js >=22.13 与 pnpm）。" >&2
+    echo "错误：构建 web bundle 需要 pnpm（先安装 Node.js 22.23.4+ (22.x), 24.22.1+ (24.x) or 26.12.1+ 与 pnpm）。" >&2
     exit 1
 }
 pnpm install --frozen-lockfile
