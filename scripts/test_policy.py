@@ -72,5 +72,5 @@ def allowed_platform_skip(test_id: str, reason: str) -> bool:
     return (identity in {name.removeprefix("tests.") for name in WINDOWS_FFMPEG_TESTS} and reason == "Windows PATHEXT resolution"
             or identity == "test_gui_web.GuiWebBridgeTests.test_open_output_folder_uses_startfile_on_windows"
             and reason == "os.startfile 仅 Windows 可用；os.name 补丁会让 pathlib 选择 WindowsPath"
-            or identity.startswith("test_local_log.DefaultLogDirectoryTests.")
+            or identity == "test_local_log.DefaultLogDirectoryTests.test_uses_localappdata_namespace"
             and reason == "LOCALAPPDATA 变量仅为 Windows 语义")
