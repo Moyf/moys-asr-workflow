@@ -116,6 +116,21 @@ jobs:
       - name: Run Python tests
         run: uv run python scripts/run_tests.py
 
+      - name: Required media failure compatibility
+        run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_media.py tests/test_ffmpeg.py tests/test_ffprobe_failure_integration.py --required --report .artifacts/media-required.json
+      - name: Preserve media required report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: media-required-${{ runner.os }}
+          path: |
+            .artifacts/media-required.json
+            .artifacts/media-required.log
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
+
+
       - name: Download embedded Python bootstrap assets
         run: |
           mkdir -p build

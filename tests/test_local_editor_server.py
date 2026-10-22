@@ -745,6 +745,12 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             json.dumps({"media": str(self.other_media), "segments": []}), encoding="utf-8",
         )
 
+        # Fake bytes are routing fixtures. Keep enrichment, binding, HTTP and
+        # disk real; test_ffprobe_failure_integration covers actual probe errors.
+        self.enterContext(mock.patch("maw.project_io.probe_video_fps", return_value=None))
+        self.enterContext(mock.patch("maw.project_io.probe_audio_tracks", return_value=None))
+        self.enterContext(mock.patch.object(server_editor.EditorServer, "_thumbnail_base_ready", return_value=False))
+
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 

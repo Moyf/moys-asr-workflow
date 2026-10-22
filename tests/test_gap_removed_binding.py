@@ -93,7 +93,7 @@ class GapRemovedBindingTests(unittest.TestCase):
     def test_stale_http_request_is_409_before_tools_and_does_not_claim_export_slot(self):
         old = self.server.project_binding_payload()
         self.rebind(replace(self.project, source_media_path=Path("new.mp4")))
-        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         thread.start()
         try:
             payload = {"requestToken": self.server.request_token, **old,
