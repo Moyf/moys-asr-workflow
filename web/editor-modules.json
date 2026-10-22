@@ -113,6 +113,12 @@
       "kind": "init",
       "name": "waveform",
       "exportName": "initWaveform"
+    },
+    {
+      "file": "editor/ui/editor-theme.js",
+      "kind": "init",
+      "name": "editor-theme-init",
+      "exportName": "initMaweTheme"
     }
   ],
   "externalBridges": [
