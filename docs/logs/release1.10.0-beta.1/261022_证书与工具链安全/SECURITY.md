@@ -1,0 +1,57 @@
+# eMudhra 证书事件与 2026-10 Node/Rust 安全修复
+
+核查日期：2026-10-22。代码基线：`upstream/main` 的 `e6a2fa4b`。
+
+## 影响与处理
+
+| 组件 | 在 MAW 中的使用 | 本次处理 |
+| --- | --- | --- |
+| certifi | 主程序 requests、local/OCR/MOSS 的 Python HTTPS | 声明安全下界 `>=2026.10.19`；`uv.lock` 从 `2026.7.22` 定向更新到 `2026.10.19`；MOSS 独立声明同步下界 |
+| pip 的内置 certifi | Windows embedded Python 引导、Linux/macOS 宿主 venv 引导 | 固定 Python 官方公告中的 `pip 26.2.2` wheel URL 和 SHA-256，防止旧 ensurepip 的 CA 留在新模型环境中 |
+| hf-xet 的 Rust TLS | Hugging Face 模型下载；Python certifi 更新不会更改其原生 TLS 根库 | worker 环境强制 `HF_HUB_DISABLE_XET=1`，通过 huggingface_hub 的 Python HTTPS 回退下载；不安装未修复的稳定版或预发行版 |
+| Node.js | 编辑器/Launcher/官网源码构建与测试 | 开发版本范围 `^22.23.4 || ^24.22.1 || >=26.12.1`；现有 Node 22 CI 固定到 `22.23.4`；不变更 npm 依赖 |
+| uv | 锁定、导出、模型环境安装工具；自身含 Rust TLS | CI 固定 `0.13.4`，源码指南要求此版本或更新的安全版 |
+| quapeaks 2026.0.0 | 本地波形/频谱计算的 Rust 扩展 | PyPI sdist 的 Cargo 声明/锁文件未包含 rustls/webpki/reqwest/native-tls；不升级 |
+| tokenizers 0.22.2 / safetensors 0.8.0 | Rust Python 原生包 | PyPI sdist：tokenizers Python bindings 未启用 Rust http/rustls 特性，下载委托 Python Hub；safetensors Cargo 声明未发现上述 TLS 依赖，不升级 |
+| Rust/rustup、PHP | 仓库没有 Cargo 工程、rustup 引导或 PHP 执行路径 | 不增加编译工具链或 PHP 依赖，不为本次漏洞进行无效升级 |
+
+主程序是 Python/PyInstaller/pywebview；本次 Windows 产物不包含 Node 可执行文件。Node 公告中的 DNS/TLS、Brotli、HTTP、快照随机数与权限模型问题属于开发/构建工具的风险面；更新系统 Node 不会修复已分发安装包里的 Python CA，故两条链分别处理。
+
+local/OCR/MOSS 的运行时版本分别由 7/3/2 提升到 8/4/3，使旧模型环境进入已有的升级/修复流程；不会自动下载模型权重。源码开发者也应同步分支后执行 `uv sync --frozen`，不能仅手工更新 `.venv` 而保留旧锁文件。
+
+## Rust 依赖证据与剩余边界
+
+锁定的 hf-xet 1.6.0 对应 xet-core tag `v1.6.0`（`de71453d952bd8b806edaa997c72313051a49050`）。其 Cargo.lock 包含 `rustls-webpki 0.103.13`、`webpki-root-certs 1.0.6`；xet_client 默认启用 rustls-tls，Python wheel 的 maturin 配置未选择 native-tls。当前稳定版 1.7.0 的锁文件仍为 WebPKI 0.103.15 / root-certs 1.0.6，也未达到修复版本，因此没有顺带升级 hf-xet。
+
+[RUSTSEC-2026-0382](https://rustsec.org/advisories/RUSTSEC-2026-0382.html) 的修复版本是 `rustls-webpki >=0.103.16`（或对应的 0.104 alpha 安全版本）；[RUSTSEC-2026-0383](https://rustsec.org/advisories/RUSTSEC-2026-0383.html) 要求 `webpki-root-certs >=1.0.10`。二者关联 CVE-2026-111943。
+
+本次缓解覆盖 MAW 托管模型 worker：在导入 huggingface_hub 前传入禁用 Xet 的环境，覆盖父进程显式设为 0 的情况。依赖内的受影响 native 库仍存在，**不能称为 Rust 库已经修复**。外部程序直接调用 hf_xet、或在导入 huggingface_hub 后才修改环境，不在该 worker 策略覆盖范围；源码集成者应在进程启动前设置 `HF_HUB_DISABLE_XET=1`。待上游发布修复后的稳定 wheel，再单独升级并验证是否恢复 Xet；当前回退可能降低模型下载吞吐，已有权重缓存继续使用。
+
+## 验证
+
+在独立干净工作树中执行，未复用既有项目的 .venv 或 node_modules：
+
+- `uv sync --frozen --group build` 成功，主程序 certifi 为 2026.10.19；`pnpm install --frozen-lockfile` 成功，pnpm 锁文件没有变化。
+- `uv lock --check` 成功。按包名/版本映射比较，锁文件仅 certifi 发生版本变化。uv 0.13.4 将 lock revision 从 3 规范化为 5，并调整 marker 表达；对主程序/build/local/OCR 导出，在 Python 3.11–3.15 × Windows/Linux/macOS 共 60 组环境中比较，除 certifi 外的依赖选择与版本保持一致。
+- 安全依赖、模型运行时、Hub 下载与打包契约 108 项，以及对齐相关 14 项定向测试通过；Ruff 与 TypeScript 类型检查通过。
+- `pwsh -NoProfile -File scripts/build-windows.ps1 -SkipTests` 实际完成 PyInstaller Windows onedir 构建；`dist/MAW/MAW.exe --smoke-import` 退出 0。测试已单独执行。Windows PowerShell 5.1 对现有 UTF-8 无 BOM 脚本产生解析错误，本次使用 PowerShell 7 验证。
+- 产物的 local/local-cpu/OCR/MOSS/MOSS-cpu 五份 frozen requirements 均包含 `certifi==2026.10.19`。产物 CA bundle 含 120 张证书，不含 emSign ECC Root CA - G3 的 DER SHA-256 `86A1ECBA089C4A8D3BBE2734C612BA341D813E043CF9E8A862CD5C57A36BBE6B`。
+- 使用产物实际 CA bundle 进行正常 TLS 握手：`www.python.org` 通过；`dv-g3b-emudhra.we-have-a-problem.com` 与 `dv-g3b-aaa-emudhra.we-have-a-problem.com` 均因证书验证失败被拒绝；没有绕过 TLS 验证。
+- 使用产物的 embedded Python ZIP、get-pip.py 与生产 `_get_pip_command` 完成一次干净引导：pip 26.2.2、内置 certifi 2026.10.19。
+- 安装锁定的 huggingface_hub 0.36.2 / hf-xet 1.6.0 及其最小依赖，启动前禁用 Xet；确认上游 `is_xet_available()` 为 false，并成功无凭据下载公开 gpt2 `.gitattributes`（445 字节）。该检查验证 HTTP 回退，不代表完成真实大模型/长媒体推理验收。
+
+全量 Python 回归运行了 2725 项：2697 通过、27 跳过、1 失败。唯一失败为未改动的 `test_real_progress_pipe_is_drained_during_process_execution`，其断言要求在 0.3 秒子进程存活窗口内观察进度；独立单项复跑通过，但模块整组复跑仍失败；在未改动基线 e6a2fa4b 的完整源码上，同模块 31 项同样仅此项失败，确认是基线可复现问题。整组结果仍记为失败，不以单项复跑替代全量通过；没有为本次安全修复改动该媒体任务测试或实现。
+
+没有在本机完整安装三套大型 GPU/CPU 模型环境，没有验证 macOS/Linux 实际安装包，也没有执行真实模型推理；这些验收仍由对应平台/模型流程覆盖。Windows 本次产物为本地验证产物，不是签名 Release。embedded Python 仍沿用当前工程的 3.11.9（OpenSSL 3.0.13），本次修复其 pip/CA，不跨 Python 大版本改变模型兼容性；这也不代表完成该旧解释器所有历史 CVE 的审计。
+
+## 上游与公告
+
+提交前列出全部开放 PR，并搜索 certifi/emudhra；未发现重复安全修复。开放 PR 286 处理 Python 兼容和 Linux 轻量包，与本次修复目的不同，运行时安装附近代码可能需要后续协调。
+
+- [Python 官方安全版本与带哈希 pip 引导](https://discuss.python.org/t/python-3-15-1-3-14-9-and-3-13-17-are-out/109595)
+- [certifi 2026.10.19](https://pypi.org/project/certifi/2026.10.19/)
+- [Node 2026-10-21 安全发布](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases)
+- [uv 0.13.4](https://github.com/astral-sh/uv/releases/tag/0.13.4)
+- [Hugging Face 的 HF_HUB_DISABLE_XET 及导入时机说明](https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfhubdisablexet)
+- [hf-xet 1.6.0 Cargo.lock](https://github.com/huggingface/xet-core/blob/v1.6.0/Cargo.lock) / [1.7.0 Cargo.lock](https://github.com/huggingface/xet-core/blob/v1.7.0/Cargo.lock)
+- [quapeaks 2026.0.0 官方发行文件](https://pypi.org/project/quapeaks/2026.0.0/#files)
