@@ -67,6 +67,12 @@ function applyStickerFeatureEnabled() {
 }
 document.getElementById('sticker-feature-toggle')?.addEventListener('change', (event) => {
   MaweSettings.updateEditorSettings({ stickersEnabled: event.target.checked });
+  // 启用功能时自动打开「预览表情包」，省一次到预览页翻开关；只在用户开启
+  // 的这一刻补默认值，启动时恢复已保存的「预览关闭」不被强行覆盖。
+  if (event.target.checked && MaweDom.stickerOverlayToggle && !MaweDom.stickerOverlayToggle.checked) {
+    MaweDom.stickerOverlayToggle.checked = true;
+    MaweSettings.updateEditorSettings({ stickerOverlayEnabled: true });
+  }
   applyStickerFeatureEnabled();
 });
 applyStickerFeatureEnabled();
