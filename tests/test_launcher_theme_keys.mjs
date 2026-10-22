@@ -41,6 +41,17 @@ test('theme keys leaf carries the exact string and predicate behavior', async ()
   assert.equal(keys.isThemePreference(undefined), false);
 });
 
+test('theme keys leaf stays import-free and side-effect-free', async () => {
+  // 装配测试把叶子按平铺布局复制进临时目录；叶子一旦引入相对
+  // import，fixture 与生产路径会静默分叉。当前契约是零 import、
+  // 顶层零副作用（与 validateTransitionModule 的白名单一致）。
+  const acorn = await import('acorn');
+  const ast = acorn.parse(leafSource(), { ecmaVersion: 'latest', sourceType: 'module' });
+  assert.equal(ast.body.filter(node => node.type === 'ImportDeclaration').length, 0, '叶子必须保持零 import');
+  const nonExport = ast.body.filter(node => node.type !== 'ExportNamedDeclaration');
+  assert.deepEqual(nonExport, [], '顶层只允许一个 export 声明');
+});
+
 test('assembled theme leaf serves classic consumers without window or registry', async t => {
   const root = themeProject(t);
   fs.writeFileSync(path.join(root, 'web/consumer.js'),
