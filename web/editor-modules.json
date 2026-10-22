@@ -115,6 +115,30 @@
       "exportName": "initWaveform"
     },
     {
+      "file": "editor/ui/editor-gap-remove-data.js",
+      "kind": "init",
+      "name": "editor-gap-remove-data-init",
+      "exportName": "initMaweGapRemoveData"
+    },
+    {
+      "file": "editor/ui/editor-ninja.js",
+      "kind": "init",
+      "name": "editor-ninja-init",
+      "exportName": "initMaweNinja"
+    },
+    {
+      "file": "editor/ui/editor-behavior-hints.js",
+      "kind": "init",
+      "name": "editor-behavior-hints-init",
+      "exportName": "initMaweBehaviorHints"
+    },
+    {
+      "file": "editor/ui/editor-help-panel.js",
+      "kind": "init",
+      "name": "editor-help-panel-init",
+      "exportName": "initMaweHelpPanel"
+    },
+    {
       "file": "editor/ui/editor-theme.js",
       "kind": "init",
       "name": "editor-theme-init",
