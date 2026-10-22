@@ -156,3 +156,8 @@ MaweDom.subtitleExtendPanel?.querySelectorAll('input[type="number"]').forEach((i
     }
   }, { passive: false });
 });
+// G07：init 化的 UI 模块经 window 延迟取用本文件的
+// 运行时入口；classic 调用方不受影响。
+window.MaweThemeSplitWiring = window.MaweThemeSplitWiring || Object.freeze({
+  toastPosition,
+});

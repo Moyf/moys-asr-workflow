@@ -408,3 +408,10 @@ MaweMultiSubtitleCore.normalizeMultiSubtitleState();
 // 原生 number 输入框以 min=10、step=100 计算大于 100 的向下步进时，
 // 会把 200 算成 110。把这个浏览器步进结果还原为用户看到的 100ms 档位，
 // 同时保留 100ms 向下 90ms、向上 200ms 的边界行为。
+// G07：init 化的 UI 模块经 window 延迟取用本文件的
+// 运行时入口；classic 调用方不受影响。
+window.MaweOverlayTransfer = window.MaweOverlayTransfer || Object.freeze({
+  getOverlayTrack,
+  addOverlayAtWaveformTime,
+  convertMainCuesToOverlay,
+});

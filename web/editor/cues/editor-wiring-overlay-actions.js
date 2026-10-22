@@ -293,3 +293,9 @@ function addOverlayAtWaveformTime(timeMs, clickX, clickY) {
 
 
 // 右键波形背景：添加空隙、创建字幕，或按右键对应的音频位置拆分命中的字幕。
+// G07：init 化的 UI 模块经 window 延迟取用本文件的
+// 运行时入口；classic 调用方不受影响。
+window.MaweOverlayActions = window.MaweOverlayActions || Object.freeze({
+  colorGroupHeadIndex,
+  detachColorFromGroup,
+});

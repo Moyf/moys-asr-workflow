@@ -68,12 +68,12 @@ export function initMaweContextMenus() {
     );
     // 叠加轨启用时提供「创建叠加字幕」：主字幕占用的时间点也能创建
     // （落叠加轨），与主字幕共存；同时间点已有叠加字幕时置灰。
-    if (getOverlayTrack()?.enabled === true) {
+    if (window.MaweOverlayTransfer.getOverlayTrack()?.enabled === true) {
       addItem(
         '创建叠加字幕',
         '',
-        () => addOverlayAtWaveformTime(timeMs, clickX, clickY),
-        findWaveformCueAtTime(timeMs, getOverlayTrack()?.segments) >= 0,
+        () => window.MaweOverlayTransfer.addOverlayAtWaveformTime(timeMs, clickX, clickY),
+        findWaveformCueAtTime(timeMs, window.MaweOverlayTransfer.getOverlayTrack()?.segments) >= 0,
       );
     }
   }
@@ -208,7 +208,7 @@ export function initMaweContextMenus() {
     convertOverlay.textContent = ids.length > 1 ? `转为叠加字幕 ${ids.length} 条` : '转为叠加字幕';
     convertOverlay.addEventListener('click', () => {
       MaweDom.ctxmenu.classList.remove('show');
-      convertMainCuesToOverlay(ids);
+      window.MaweOverlayTransfer.convertMainCuesToOverlay(ids);
     });
     advancedList.appendChild(convertOverlay);
   };
@@ -386,8 +386,8 @@ export function initMaweContextMenus() {
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
-    if (colorGroupHeadIndex(idx) >= 0) {
-      addItem('移出颜色组', '', () => detachColorFromGroup(idx));
+    if (window.MaweOverlayActions.colorGroupHeadIndex(idx) >= 0) {
+      addItem('移出颜色组', '', () => window.MaweOverlayActions.detachColorFromGroup(idx));
     }
     addSep();
     // 组 3：状态与删除
