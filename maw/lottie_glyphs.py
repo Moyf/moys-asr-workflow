@@ -197,6 +197,9 @@ def _open_font_faces(path_name: str) -> tuple[_FontFace, ...]:
 
 
 def _close_font_faces(faces: tuple[_FontFace, ...] | list[_FontFace]) -> None:
+    # TTC 的所有 face 共享同一个懒加载文件流：关闭任一 face 即关闭共享流。
+    # 这里安全的前提是 _open_font_faces 已在 close 之前把 glyph_set / cmap /
+    # metrics 物化；不得把表读取挪到 close 之后，否则会 seek of closed file。
     for face in faces:
         close = getattr(face.font, "close", None)
         if close:

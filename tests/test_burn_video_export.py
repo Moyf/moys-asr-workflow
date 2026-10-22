@@ -162,7 +162,8 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
             with self.subTest(subtitle_format=subtitle_format), \
                     mock.patch.object(ass_fonts, "font_alias_entries", return_value=entries), \
                     mock.patch.object(postprocess_ffmpeg, "load_ass_style_library",
-                                      return_value={"styles": [{"id": "default", "fontName": "Microsoft YaHei"}]}), \
+                                      return_value={"styles": [{"id": "default", "fontName": "Microsoft YaHei"}],
+                                                    "assignments": {"srtBurnStyleId": "default"}}), \
                     mock.patch.object(server_editor.subprocess, "run", side_effect=run):
                 server_editor.burn_ass_video(self.source, [],
                     ass if subtitle_format == "ass" else "1\n00:00:00,000 --> 00:00:01,000\n你好\n",

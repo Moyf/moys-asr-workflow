@@ -435,6 +435,8 @@ class FontRootsTests(unittest.TestCase):
     def test_darwin_roots_include_mobile_asset_font_directories(self) -> None:
         # macOS 27 起部分系统字体（PingFang 等）经 AssetsV2 的 MobileAsset
         # 目录投递；漏扫会把本机已有字体误报为「未在本机找到」。
+        # 注意：仓库 CI 只有 Windows Python runner，本用例仅会在 macOS
+        # 本机真实执行，其余机器稳定 skip，不能指望 CI 守住这条回归。
         assets = sorted(
             path for path in Path("/System/Library/AssetsV2").glob("com_apple_MobileAsset_Font*")
             if path.is_dir()
@@ -445,6 +447,23 @@ class FontRootsTests(unittest.TestCase):
             roots = ass_fonts._font_roots()
         for path in assets:
             self.assertIn(path, roots)
+
+    def test_darwin_roots_enumerate_mobile_asset_directories_from_module_constant(self) -> None:
+        # 仓库 CI 只有 Windows Python runner，跑不到真实 AssetsV2；这里用
+        # 临时目录合成资产结构并 patch 模块常量，让「按 com_apple_MobileAsset_Font*
+        # 前缀枚举目录、过滤非目录项」的逻辑在任何平台都有自动化覆盖。
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(ass_fonts, "MACOS_ASSETS_V2_ROOT", Path(tmp)), \
+                mock.patch.object(sys, "platform", "darwin"):
+            asset_dir = Path(tmp) / "com_apple_MobileAsset_Font8"
+            asset_dir.mkdir()
+            (asset_dir / "AssetData").mkdir()
+            (asset_dir / "AssetData" / "PingFang.ttc").write_bytes(b"")
+            stray_file = Path(tmp) / "com_apple_MobileAsset_Font9"
+            stray_file.write_bytes(b"")
+            roots = ass_fonts._font_roots()
+        self.assertIn(asset_dir, roots)
+        self.assertNotIn(stray_file, roots)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,9 @@
   const stageImage = document.getElementById('ass-stage-frame');
   const stageStatus = document.getElementById('ass-stage-status');
   const stage = global.MaweDom?.playerStage;
-  const player = global.MaweCoreState?.player;
+  // player 元素会被媒体加载整体替换（editor-media-load.js 的 replaceChild），
+  // 这里只保留可变引用；事件与帧回调的换绑见下方 bindPlayer()。
+  let player = global.MaweCoreState?.player;
   const renderButton = document.getElementById('ass-frame-render');
   const windowStatus = document.getElementById('ass-frame-window-status');
   const staleEl = document.getElementById('ass-frame-stale');
@@ -44,7 +46,7 @@
   const previewNeeded = () => floatingPanel.isOpen() || stageOverlayEnabled();
 
   function serverMediaSource() {
-    const url = new URL(player.currentSrc || player.src || global.location.href, global.location.href);
+    const url = new URL(player?.currentSrc || player?.src || global.location.href, global.location.href);
     return url.origin === global.location.origin && url.pathname === '/media';
   }
 
@@ -327,26 +329,8 @@
     syncPreview();
   }
 
-  player?.addEventListener('play', syncPreview);
-  player?.addEventListener('pause', () => {
-    // Playback's clock advances between frame callbacks. Once paused, its
-    // final cursor still represents the last presented frame; keep that PTS
-    // rather than falling back to the between-frame clock. A seek continues
-    // to invalidate it until the browser presents the destination frame.
-    if (!player.seeking) presentedCursor = player.currentTime;
-    syncPreview();
-  });
-  player?.addEventListener('seeking', () => {
-    seekGeneration += 1;
-    // Some browsers deliver the new frame callback before the queued seeking
-    // event. Keep that new PTS rather than clearing it with the old one.
-    if (presentedCursor !== player.currentTime) presentedTime = null;
-    syncPreview();
-  });
-  player?.addEventListener('seeked', syncPreview);
-  player?.addEventListener('loadedmetadata', syncPreview);
-  player?.addEventListener('emptied', () => {
-    mediaGeneration += 1;
+  // 媒体变化（emptied，或 player 元素被整体替换）后，旧渲染结果全部作废。
+  function resetRenderedFrames() {
     presentedTime = null;
     presentedCursor = null;
     cached = null;
@@ -362,19 +346,88 @@
     const placeholder = document.getElementById('ass-frame-placeholder');
     if (placeholder) placeholder.hidden = false;
     setWindowStatus('');
+  }
+
+  function onPlay() { syncPreview(); }
+
+  function onPause() {
+    // Playback's clock advances between frame callbacks. Once paused, its
+    // final cursor still represents the last presented frame; keep that PTS
+    // rather than falling back to the between-frame clock. A seek continues
+    // to invalidate it until the browser presents the destination frame.
+    if (!player.seeking) presentedCursor = player.currentTime;
     syncPreview();
-  });
-  if (typeof player?.requestVideoFrameCallback === 'function') {
+  }
+
+  function onSeeking() {
+    seekGeneration += 1;
+    // Some browsers deliver the new frame callback before the queued seeking
+    // event. Keep that new PTS rather than clearing it with the old one.
+    if (presentedCursor !== player.currentTime) presentedTime = null;
+    syncPreview();
+  }
+
+  function onSeeked() { syncPreview(); }
+
+  function onLoadedMetadata() { syncPreview(); }
+
+  function onEmptied() {
+    mediaGeneration += 1;
+    resetRenderedFrames();
+    syncPreview();
+  }
+
+  function attachPlayerEvents() {
+    if (!player) return;
+    player.addEventListener('play', onPlay);
+    player.addEventListener('pause', onPause);
+    player.addEventListener('seeking', onSeeking);
+    player.addEventListener('seeked', onSeeked);
+    player.addEventListener('loadedmetadata', onLoadedMetadata);
+    player.addEventListener('emptied', onEmptied);
+    startFrameClock();
+  }
+
+  function detachPlayerEvents() {
+    if (!player) return;
+    player.removeEventListener('play', onPlay);
+    player.removeEventListener('pause', onPause);
+    player.removeEventListener('seeking', onSeeking);
+    player.removeEventListener('seeked', onSeeked);
+    player.removeEventListener('loadedmetadata', onLoadedMetadata);
+    player.removeEventListener('emptied', onEmptied);
+  }
+
+  function startFrameClock() {
+    if (typeof player?.requestVideoFrameCallback !== 'function') return;
+    const element = player;
     const onFrame = (now, metadata) => {
+      // 元素被替换后旧回调不再触发；循环只跟随注册时的元素。
+      if (player !== element) return;
       if (Number.isFinite(metadata.mediaTime)) {
         presentedTime = metadata.mediaTime;
         presentedCursor = player.currentTime;
       }
       if (player.paused && !player.seeking) syncPreview();
-      player.requestVideoFrameCallback(onFrame);
+      element.requestVideoFrameCallback(onFrame);
     };
-    player.requestVideoFrameCallback(onFrame);
+    element.requestVideoFrameCallback(onFrame);
   }
+
+  // 媒体加载会 replaceChild 换掉 player 元素并更新 MaweCoreState.player，
+  // 再经 MaweMediaPlayback.bindPlayerEvents 通知本模块换绑；判定逻辑必须
+  // 跟随新元素，否则浏览器本地媒体会被误判回服务器工程媒体。
+  function bindPlayer(element) {
+    if (!element || element === player) return;
+    detachPlayerEvents();
+    player = element;
+    mediaGeneration += 1;
+    resetRenderedFrames();
+    attachPlayerEvents();
+    syncAssFrameControls();
+  }
+
+  attachPlayerEvents();
   renderButton?.addEventListener('click', () => void renderAssFrame());
   if (quickOpenButton) openButton.addEventListener('click', () => floatingPanel.toggle());
   styleOpenButton?.addEventListener('click', () => floatingPanel.open());
@@ -393,6 +446,6 @@
     event.currentTarget.setAttribute('aria-pressed', String(Boolean(native)));
   });
 
-  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview });
+  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview, bindPlayer });
   syncAssFrameControls();
 })(typeof window !== 'undefined' ? window : globalThis);
