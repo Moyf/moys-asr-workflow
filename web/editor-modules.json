@@ -115,16 +115,34 @@
       "exportName": "initWaveform"
     },
     {
+      "file": "editor/ui/editor-hint.js",
+      "kind": "init",
+      "name": "editor-hint-init",
+      "exportName": "initMaweHint"
+    },
+    {
       "file": "editor/ui/editor-gap-remove-data.js",
       "kind": "init",
       "name": "editor-gap-remove-data-init",
       "exportName": "initMaweGapRemoveData"
     },
     {
+      "file": "editor/ui/editor-floating-panel.js",
+      "kind": "init",
+      "name": "editor-floating-panel-init",
+      "exportName": "initMaweFloatingPanel"
+    },
+    {
       "file": "editor/ui/editor-ninja.js",
       "kind": "init",
       "name": "editor-ninja-init",
       "exportName": "initMaweNinja"
+    },
+    {
+      "file": "editor/ui/editor-export-menus.js",
+      "kind": "init",
+      "name": "editor-export-menus-init",
+      "exportName": "initMaweExportMenus"
     },
     {
       "file": "editor/ui/editor-behavior-hints.js",
