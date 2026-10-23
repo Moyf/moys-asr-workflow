@@ -93,3 +93,9 @@ MaweDom.overlayToggle.addEventListener('change', () => {
   if (!MaweDom.overlayToggle.checked) MaweDom.overlayEl.classList.add('hidden');
   else MawePlaybackLoop.update();
 });
+
+// G07：init 化模块经 window 延迟取用本文件的运行时状态；classic 调用方不受影响。
+window.MaweStickerPreviewWiring = window.MaweStickerPreviewWiring || Object.freeze({
+  get activeStickerHasOverlay() { return activeStickerHasOverlay; },
+  set activeStickerHasOverlay(value) { activeStickerHasOverlay = value; },
+});

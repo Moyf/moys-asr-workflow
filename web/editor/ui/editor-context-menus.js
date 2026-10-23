@@ -2,6 +2,14 @@
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweContextMenus 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+import {
+  getOverlayTrack,
+  addOverlayAtWaveformTime,
+  convertMainCuesToOverlay,
+  colorGroupHeadIndex,
+  detachColorFromGroup,
+} from '../cues/overlay-track.js';
+
 export function initMaweContextMenus() {
   'use strict';
 
@@ -68,12 +76,12 @@ export function initMaweContextMenus() {
     );
     // 叠加轨启用时提供「创建叠加字幕」：主字幕占用的时间点也能创建
     // （落叠加轨），与主字幕共存；同时间点已有叠加字幕时置灰。
-    if (window.MaweOverlayTransfer.getOverlayTrack()?.enabled === true) {
+    if (getOverlayTrack()?.enabled === true) {
       addItem(
         '创建叠加字幕',
         '',
-        () => window.MaweOverlayTransfer.addOverlayAtWaveformTime(timeMs, clickX, clickY),
-        findWaveformCueAtTime(timeMs, window.MaweOverlayTransfer.getOverlayTrack()?.segments) >= 0,
+        () => addOverlayAtWaveformTime(timeMs, clickX, clickY),
+        findWaveformCueAtTime(timeMs, getOverlayTrack()?.segments) >= 0,
       );
     }
   }
@@ -208,7 +216,7 @@ export function initMaweContextMenus() {
     convertOverlay.textContent = ids.length > 1 ? `转为叠加字幕 ${ids.length} 条` : '转为叠加字幕';
     convertOverlay.addEventListener('click', () => {
       MaweDom.ctxmenu.classList.remove('show');
-      window.MaweOverlayTransfer.convertMainCuesToOverlay(ids);
+      convertMainCuesToOverlay(ids);
     });
     advancedList.appendChild(convertOverlay);
   };
@@ -386,8 +394,8 @@ export function initMaweContextMenus() {
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
-    if (window.MaweOverlayActions.colorGroupHeadIndex(idx) >= 0) {
-      addItem('移出颜色组', '', () => window.MaweOverlayActions.detachColorFromGroup(idx));
+    if (colorGroupHeadIndex(idx) >= 0) {
+      addItem('移出颜色组', '', () => detachColorFromGroup(idx));
     }
     addSep();
     // 组 3：状态与删除

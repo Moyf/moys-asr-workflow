@@ -755,4 +755,7 @@ assInlineTextToggles.forEach((input) => {
 window.MaweAssManagerWiring = window.MaweAssManagerWiring || Object.freeze({
   syncAssModeDependentControls,
   syncAssStyleManager,
+  syncAssModeControl,
+  updateAssStyleLibraryStatus,
+  updateAssStylePreviewModeHints,
 });

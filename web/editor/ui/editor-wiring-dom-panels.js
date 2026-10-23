@@ -491,4 +491,15 @@ const assStyleLibraryPathHint = document.getElementById('ass-style-library-path-
 window.MaweDomPanelsWiring = window.MaweDomPanelsWiring || Object.freeze({
   overlayTrackSeparator,
   overlayTrackToggle,
+  pauseOnMouseClickToggle,
+  overlayTrackTextEl,
+  overlayTrackTextNode,
+  overlayTrackSpeakerLabelEl,
+  assStyleWindow,
+  lottieExportCustomSize,
+  lottieExportCustomWidth,
+  lottieExportCustomHeight,
+  ografExportCustomSize,
+  ografExportCustomWidth,
+  ografExportCustomHeight,
 });

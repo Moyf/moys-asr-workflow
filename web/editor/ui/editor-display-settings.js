@@ -2,6 +2,8 @@
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweDisplaySettings 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+import { getOverlayTrack } from '../cues/overlay-track.js';
+
 export function initMaweDisplaySettings() {
   'use strict';
 
@@ -27,7 +29,7 @@ export function initMaweDisplaySettings() {
   MaweCoreState.container.classList.toggle('hide-cue-time', !MaweSettings.EDITOR_SETTINGS.cueListShowTime);
   // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
   // 分配首个表情包时由本函数根据最新数据直接恢复。
-  const overlaySegments = window.MaweOverlayTransfer.getOverlayTrack()?.segments || [];
+  const overlaySegments = getOverlayTrack()?.segments || [];
   const projectHasStickers = MaweBoot.DATA.segments.some(segment => segment.sticker || segment.sticker_ref)
     || overlaySegments.some(segment => segment.sticker || segment.sticker_ref);
   MaweCoreState.container.classList.toggle('hide-cue-sticker',
@@ -200,7 +202,7 @@ export function initMaweDisplaySettings() {
   // 「允许字幕重叠」开关常驻工具栏；勾选状态跟随用户意图（overlay.enabled），
   // 不要求叠加轨已有字幕，否则空轨道时勾选会被立即弹回。
   if (window.MaweDomPanelsWiring.overlayTrackSeparator) window.MaweDomPanelsWiring.overlayTrackSeparator.hidden = MaweBoot.DATA.segments.length === 0;
-  if (window.MaweDomPanelsWiring.overlayTrackToggle) window.MaweDomPanelsWiring.overlayTrackToggle.checked = window.MaweOverlayTransfer.getOverlayTrack()?.enabled === true;
+  if (window.MaweDomPanelsWiring.overlayTrackToggle) window.MaweDomPanelsWiring.overlayTrackToggle.checked = getOverlayTrack()?.enabled === true;
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const hasTrack = Boolean(track && Array.isArray(track.segments));
   const enabled = hasTrack && MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
@@ -259,7 +261,7 @@ export function initMaweDisplaySettings() {
   }
   const overlayQuickToggle = document.getElementById('overlay-quick-toggle');
   if (overlayQuickToggle) {
-    const overlayEnabled = window.MaweOverlayTransfer.getOverlayTrack()?.enabled === true;
+    const overlayEnabled = getOverlayTrack()?.enabled === true;
     overlayQuickToggle.classList.toggle('active', overlayEnabled);
     overlayQuickToggle.setAttribute('aria-pressed', String(overlayEnabled));
   }

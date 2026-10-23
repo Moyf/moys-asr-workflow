@@ -149,7 +149,7 @@
     global.MaweCoreState.player?.pause();
     // The first gesture only selects. A second gesture can move the cue.
     if (currentTargetId() !== id) {
-      if (located.kind === 'overlay') selectOverlayCueRow(located.index);
+      if (located.kind === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(located.index);
       else global.MaweSelection.selectOnly(located.index);
       event.preventDefault(); event.stopPropagation();
       return;
@@ -398,7 +398,7 @@
       const kind = box?.dataset.trackKind;
       const index = trackSegments(kind).findIndex(segment => segment?.id === id);
       if (index >= 0 && currentTargetId() !== id) {
-        if (kind === 'overlay') selectOverlayCueRow(index);
+        if (kind === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(index);
         else global.MaweSelection.selectOnly(index);
       }
     }
