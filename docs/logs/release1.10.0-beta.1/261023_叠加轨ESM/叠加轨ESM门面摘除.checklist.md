@@ -1,5 +1,6 @@
 ---
 task: overlay-esm-facade-removal
+pr: 300
 date: 2026-10-23
 status: passed
 ---
