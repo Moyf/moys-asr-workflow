@@ -60,6 +60,9 @@ jobs:
         # 显式构建（pnpm install 的 postinstall 也会构建，这里保持显式不依赖钩子）。
         run: pnpm install --frozen-lockfile && pnpm run build
 
+      - name: Install Chromium for focused regression tests
+        run: pnpm exec playwright install chromium
+
       - name: Install FFmpeg for media integration tests
         shell: pwsh
         # Test dependency only: the lite preview must still contain no FFmpeg.
@@ -114,6 +117,53 @@ jobs:
 
       - name: Run packaging contract tests
         run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_packaging_contract.py
+
+      - name: Run editor display regression tests
+        env:
+          MAW_E2E_PYTHON: '${{ github.workspace }}/.venv/Scripts/python.exe'
+          PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/editor-display-results.json
+        run: uv run --no-sync python scripts/run_check.py --timeout 540 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium --workers=1 --retries=0 --forbid-only --reporter=line,json tests/e2e/ass-stacking-boundaries.spec.mjs tests/e2e/editor-i18n-save.spec.mjs tests/e2e/shared-tooltip.spec.mjs
+
+      - name: Require complete display regression results
+        shell: pwsh
+        run: |
+          uv run --no-sync python -c @'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('.artifacts/editor-display-results.json').read_text(encoding='utf-8'))
+          stats = report['stats']
+          assert stats['expected'] > 0, 'No display tests passed'
+          assert all(stats[key] == 0 for key in ('skipped', 'unexpected', 'flaky')), stats
+          assert not report.get('errors'), report.get('errors')
+
+          def test_results(suites):
+              for suite in suites:
+                  for spec in suite.get('specs', []):
+                      yield from spec['tests']
+                  yield from test_results(suite.get('suites', []))
+
+          tests = list(test_results(report['suites']))
+          assert tests and stats['expected'] == len(tests), 'Incomplete display report'
+          for test in tests:
+              assert test['expectedStatus'] == 'passed' and test['status'] == 'expected', test
+              results = test['results']
+              assert len(results) == 1 and results[0]['status'] == 'passed' and results[0]['retry'] == 0, test
+          print(f'Display regression report: {len(tests)} passed, zero skips or retries')
+          '@
+          if ($LASTEXITCODE -ne 0) { throw 'Display regression report is incomplete or contains unsupported outcomes.' }
+
+      - name: Preserve editor display regression evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-preview-editor-display
+          path: |
+            .artifacts/editor-display-results.json
+            test-results/
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Run Python tests
         run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py
