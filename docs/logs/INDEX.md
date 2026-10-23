@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.1 之后 | 2026-10-23 | [波形交互稳定修复](release1.10.0-beta.1/261023_波形交互稳定/修复记录.md) / [整合复核](release1.10.0-beta.1/261023_波形交互稳定/REVIEW_FINDINGS.md) | 同高度缩略图通知保留波形行、真实高度变化保滚动锚点；删除回归保留自动保存隔离 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [main e2e 回归修复提交前自审](release1.10.0-beta.1/261022_main_e2e回归修复/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261022_main_e2e回归修复/字体与本地媒体.checklist.md) | 双审查者 Greptile 式自审：绿幕修复的 player 快照缺陷真修、AssetsV2/TTC 测试补覆盖，含双向验证与遗留说明；实机核验待完成 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [证书与工具链安全修复](release1.10.0-beta.1/261022_证书与工具链安全/SECURITY.md) | certifi、pip 引导、Node/uv 与 hf-xet TLS 缓解及安装包验证 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [MASS 弱化与斜体复审](release1.10.0-beta.1/261022_MASS语法复审/MASS弱化与斜体.checklist.md) | 符号禁用、拆分、斜体动画组合修复与人工核验边界 |
