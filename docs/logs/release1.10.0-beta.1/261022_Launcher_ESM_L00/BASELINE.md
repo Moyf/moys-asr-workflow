@@ -49,9 +49,9 @@
 
 ## 与 Editor 计划的共享接口
 
-- Editor 侧 G 系列（G00–G07）已在主线完成工厂接入与退役；当前 Editor 模式：工厂 `window.MAWE.register` 分支已被 ESM 接线替代（G04 退役注册表、G07 init 模块）。
-- Launcher 构建器 `scripts/build-launcher.mjs` 与 Editor `scripts/build-editor.mjs` 各自独立；L01 的词法绑定适配只改 build-launcher.mjs，不改 build-editor.mjs 默认行为。
-- 共享文件仅 `web/shared/tooltip.js`；L12 时与 Editor 计划协调提取显式 start 的共享实现。
+- L00 基线 `22b8718e` 已包含 G02–G05；后续 G06 由 PR #297 合入，G07 由 PR #300 单独交付。Editor 的 factory 登记、init 模块与 classic 接线仍并存，登记退役按实际消费者逐批进行。
+- Launcher 构建器 `scripts/build-launcher.mjs` 与 Editor 构建器共用 `scripts/build-editor.mjs` 导出的 `compileSources`。L01 在共享核心增加 `transition` 分支，由 Launcher 显式启用词法绑定；Editor 沿用既有 factory/init 分支，共享核心的变化需要同时验证两种产物及其新鲜度。
+- 前端运行时共享 `web/shared/tooltip.js`，构建装配还共享上述核心；L12 时与 Editor 计划协调提取显式 start 的 tooltip 实现。
 
 ## L00 验证记录
 
