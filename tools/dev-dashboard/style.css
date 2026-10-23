@@ -61,6 +61,7 @@ button:hover { border-color: var(--accent); }
 
 #topbar {
   display: flex;
+  flex-wrap: wrap; /* 窄窗口换行，避免页面级横向滚动（tools/AGENTS.md） */
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
@@ -83,12 +84,17 @@ button:hover { border-color: var(--accent); }
 
 #toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 10px 16px 0;
 }
 
-#search { min-width: 240px; }
+#search {
+  flex: 1 1 200px; /* 可收缩，窄窗口不把工具栏撑出页面 */
+  max-width: 360px;
+  min-width: 160px;
+}
 .muted { color: var(--muted); font-size: 13px; }
 
 #banner {

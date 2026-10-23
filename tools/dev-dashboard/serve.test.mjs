@@ -79,6 +79,17 @@ test('summarizeChecks 汇总 CI 结论', () => {
   assert.equal(summarizeChecks([{ conclusion: 'TIMED_OUT' }]), 'failing');
 });
 
+test('summarizeChecks 兼容 StatusContext 的 state 字段（小写）', () => {
+  assert.equal(summarizeChecks([{ state: 'success' }]), 'ok');
+  assert.equal(summarizeChecks([{ state: 'failure' }]), 'failing');
+  assert.equal(summarizeChecks([{ state: 'error' }]), 'failing');
+  assert.equal(summarizeChecks([{ state: 'pending' }]), 'running');
+  assert.equal(summarizeChecks([{ state: 'expected' }]), 'ok');
+  assert.equal(summarizeChecks([{ state: 'success' }, { conclusion: 'FAILURE' }]), 'failing');
+  // 混合形态：conclusion 优先于 state
+  assert.equal(summarizeChecks([{ conclusion: 'SUCCESS', state: 'pending' }]), 'ok');
+});
+
 test('readStatusMap 对缺失文件返回空表，write/read 往返一致', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'maw-dashboard-test-'));
   try {
@@ -103,4 +114,145 @@ test('readStatusMap 对损坏 JSON 抛错而非静默清空', async () => {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+// ---- handleRequest HTTP 层（mock req/res）----
+
+import { handleRequest } from './serve.mjs';
+import { EventEmitter } from 'node:events';
+
+function mockReq({ method = 'GET', url = '/', headers = {}, body = '' }) {
+  const req = new EventEmitter();
+  req.method = method;
+  req.url = url;
+  req.headers = headers;
+  if (method === 'POST') {
+    queueMicrotask(() => {
+      if (body) req.emit('data', Buffer.from(body));
+      req.emit('end');
+    });
+  }
+  return req;
+}
+
+function mockRes() {
+  return {
+    statusCode: 0,
+    headers: {},
+    body: '',
+    writeHead(code, headers) {
+      this.statusCode = code;
+      this.headers = headers ?? {};
+    },
+    end(chunk) {
+      this.body = String(chunk ?? '');
+    },
+  };
+}
+
+const HOST = { host: '127.0.0.1:8262' };
+
+async function callApi(options, reqArgs) {
+  const res = mockRes();
+  await handleRequest(mockReq(reqArgs), res, { port: 8262, ...options });
+  return res;
+}
+
+test('POST /api/status 合法请求写入状态文件', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'maw-dashboard-test-'));
+  try {
+    const statusFile = path.join(dir, 'status.json');
+    const res = await callApi(
+      { statusFile },
+      {
+        method: 'POST',
+        url: '/api/status',
+        headers: { ...HOST, 'content-type': 'application/json' },
+        body: JSON.stringify({ pr: 42, status: 'review' }),
+      },
+    );
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(JSON.parse(res.body), { '42': 'review' });
+    assert.deepEqual(await readStatusMap(statusFile), { '42': 'review' });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('POST /api/status 拒绝跨源 Origin（CSRF）', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'maw-dashboard-test-'));
+  try {
+    const statusFile = path.join(dir, 'status.json');
+    for (const origin of ['https://evil.example', 'http://192.168.1.5:8262']) {
+      const res = await callApi(
+        { statusFile },
+        {
+          method: 'POST',
+          url: '/api/status',
+          headers: { ...HOST, 'content-type': 'application/json', origin },
+          body: '{"pr":1,"status":"pass"}',
+        },
+      );
+      assert.equal(res.statusCode, 403, `origin=${origin}`);
+    }
+    // 同源 Origin 与无 Origin（curl/同源 fetch）都放行
+    for (const origin of [undefined, 'http://127.0.0.1:8262', 'http://localhost:8262']) {
+      const headers = { ...HOST, 'content-type': 'application/json' };
+      if (origin) headers.origin = origin;
+      const res = await callApi(
+        { statusFile },
+        { method: 'POST', url: '/api/status', headers, body: '{"pr":1,"status":"pass"}' },
+      );
+      assert.equal(res.statusCode, 200, `origin=${origin}`);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('POST /api/status 拒绝非 application/json 内容类型（no-cors 伪造）', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'maw-dashboard-test-'));
+  try {
+    const res = await callApi(
+      { statusFile: path.join(dir, 'status.json') },
+      {
+        method: 'POST',
+        url: '/api/status',
+        headers: { ...HOST, 'content-type': 'text/plain' },
+        body: '{"pr":1,"status":"pass"}',
+      },
+    );
+    assert.equal(res.statusCode, 415);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('GET /api/status 走 HTTP 层返回状态表', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'maw-dashboard-test-'));
+  try {
+    const res = await callApi(
+      { statusFile: path.join(dir, 'status.json') },
+      { url: '/api/status', headers: { ...HOST } },
+    );
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(JSON.parse(res.body), {});
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('GET 请求 Host 校验不通过返回 403', async () => {
+  const res = await callApi({}, { url: '/api/status', headers: { host: 'evil.example:8262' } });
+  assert.equal(res.statusCode, 403);
+});
+
+test('changelog-editor 静态响应使用宽松 CSP，面板自身用严格 CSP', async () => {
+  const editor = await callApi({}, { url: '/changelog-editor/index.html', headers: { ...HOST } });
+  assert.equal(editor.statusCode, 200);
+  assert.match(editor.headers['Content-Security-Policy'], /'unsafe-inline'/);
+  const panel = await callApi({}, { url: '/', headers: { ...HOST } });
+  assert.equal(panel.statusCode, 200);
+  assert.doesNotMatch(panel.headers['Content-Security-Policy'], /unsafe-inline/);
+  assert.match(panel.headers['Content-Security-Policy'], /script-src 'self'/);
 });

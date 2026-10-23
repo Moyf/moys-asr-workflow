@@ -56,7 +56,7 @@ function duePill(milestone) {
   if (!milestone || !milestone.dueOn) return null;
   const days = Math.ceil((new Date(milestone.dueOn).getTime() - Date.now()) / 86_400_000);
   if (days < 0) return { text: `${milestone.title} · 逾期 ${-days} 天`, cls: 'due-over' };
-  if (days <= 7) return { text: `${milestone.title} · 剩 ${days} 天`, cls: 'due-soon' };
+  if (days <= 14) return { text: `${milestone.title} · 剩 ${days} 天`, cls: 'due-soon' };
   return null;
 }
 
@@ -127,7 +127,10 @@ async function assignStatus(pr, status) {
 // ---------------------------------------------------------------- 渲染
 
 function statusOf(pr) {
-  return state.statusMap[String(pr.number)] ?? UNASSIGNED;
+  const status = state.statusMap[String(pr.number)];
+  // 状态集被用户改过名/删项后，statusMap 里可能残留悬空值，回落到未分配，
+  // 让卡片仍然可见、可重新指派。
+  return COLUMNS.some((col) => col.id === status) ? status : UNASSIGNED;
 }
 
 function checklistsOf(pr) {
@@ -166,6 +169,9 @@ function renderMilestoneOptions() {
   }
   el.milestoneFilter.value = [...el.milestoneFilter.options].some((o) => o.value === current)
     ? current : 'all';
+  // select 回落时必须同步 state：否则已消失的 milestone 仍作为筛选条件，
+  // 把剩余 PR 全部过滤掉（刷新后看起来像空看板）。
+  state.milestoneFilter = el.milestoneFilter.value;
 }
 
 function renderStats() {
@@ -292,7 +298,8 @@ function buildCard(pr) {
   return card;
 }
 
-// 前端版 CI 汇总（与 serve.mjs 的 summarizeChecks 同规则，避免再发一次请求）。
+// 前端版 CI 汇总（与 serve.mjs 的 summarizeChecks 同规则，避免再发一次请求；
+// 两处需同步修改）。CheckRun 用 conclusion，StatusContext 用 state。
 function summarizeChecksClient(rollup) {
   if (!Array.isArray(rollup) || rollup.length === 0) return 'none';
   const GOOD = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED', 'EXPECTED']);
@@ -300,7 +307,7 @@ function summarizeChecksClient(rollup) {
   let bad = false;
   let running = false;
   for (const check of rollup) {
-    const conclusion = String(check?.conclusion ?? '').toUpperCase();
+    const conclusion = String(check?.conclusion ?? check?.state ?? '').toUpperCase();
     if (BAD.has(conclusion)) bad = true;
     else if (!GOOD.has(conclusion)) running = true;
   }

@@ -87,7 +87,8 @@ export function groupChecklistsByPr(checklists) {
 
 /**
  * CI 检查汇总：'ok' | 'failing' | 'running' | 'none'。
- * statusCheckRollup 混合 CheckRun / StatusContext 两种形态，按结论宽匹配。
+ * statusCheckRollup 混合 CheckRun（conclusion）与 StatusContext（state，
+ * 取值小写 success/failure/error/pending 等）两种形态，统一大写后宽匹配。
  */
 export function summarizeChecks(rollup) {
   if (!Array.isArray(rollup) || rollup.length === 0) return 'none';
@@ -96,7 +97,7 @@ export function summarizeChecks(rollup) {
   let bad = false;
   let running = false;
   for (const check of rollup) {
-    const conclusion = String(check?.conclusion ?? '').toUpperCase();
+    const conclusion = String(check?.conclusion ?? check?.state ?? '').toUpperCase();
     if (BAD.has(conclusion)) {
       bad = true;
     } else if (!GOOD.has(conclusion)) {
@@ -222,6 +223,13 @@ function sendError(res, status, message) {
   sendJson(res, { error: message }, status);
 }
 
+// 面板自身不加载外部资源，用最严策略。
+const STRICT_CSP =
+  "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'";
+// changelog-editor 是自包含工具页：主脚本与样式内联，粘贴图片预览用 blob:，
+// 归档图片引用 raw.githubusercontent.com，策略必须放行这三类资源。
+const EDITOR_CSP = "default-src 'self' 'unsafe-inline' data: blob: https:; connect-src 'self'";
+
 const STATIC_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -240,7 +248,7 @@ const PANEL_FILES = new Map([
 function serveStatic(pathname, res) {
   const panelFile = PANEL_FILES.get(pathname);
   if (panelFile) {
-    return sendStaticFile(path.join(TOOL_DIR, panelFile), res);
+    return sendStaticFile(path.join(TOOL_DIR, panelFile), res, STRICT_CSP);
   }
   if (pathname.startsWith('/changelog-editor/')) {
     const name = pathname.slice('/changelog-editor/'.length);
@@ -248,12 +256,12 @@ function serveStatic(pathname, res) {
     if (!name || name.includes('/') || name.includes('\\') || name.includes('..')) {
       return sendError(res, 404, 'Not Found');
     }
-    return sendStaticFile(path.join(CHANGELOG_EDITOR_DIR, name), res);
+    return sendStaticFile(path.join(CHANGELOG_EDITOR_DIR, name), res, EDITOR_CSP);
   }
   return sendError(res, 404, 'Not Found');
 }
 
-async function sendStaticFile(filePath, res) {
+async function sendStaticFile(filePath, res, csp) {
   const type = STATIC_TYPES[path.extname(filePath).toLowerCase()];
   if (!type) return sendError(res, 404, 'Not Found');
   let data;
@@ -265,8 +273,7 @@ async function sendStaticFile(filePath, res) {
   res.writeHead(200, {
     'Content-Type': type,
     'Cache-Control': 'no-store',
-    'Content-Security-Policy':
-      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'",
+    'Content-Security-Policy': csp,
     'X-Content-Type-Options': 'nosniff',
   });
   res.end(data);
@@ -323,6 +330,16 @@ export async function handleRequest(req, res, options = {}) {
     }
 
     if (req.method === 'POST' && pathname === '/api/status') {
+      // CSRF 防线：浏览器跨源请求的 Origin 不是本服务；no-cors 模式只能发
+      // text/plain 等简单类型，发不出 application/json。两者都卡住才放行写操作。
+      const origin = String(req.headers.origin ?? '');
+      if (origin && !isAllowedHost(origin.replace(/^https?:\/\//, ''), port)) {
+        return sendError(res, 403, 'Origin 不在允许列表');
+      }
+      const contentType = String(req.headers['content-type'] ?? '');
+      if (!contentType.toLowerCase().includes('application/json')) {
+        return sendError(res, 415, 'Content-Type 必须是 application/json');
+      }
       let body;
       try {
         body = await readJsonBody(req);
@@ -335,10 +352,15 @@ export async function handleRequest(req, res, options = {}) {
       if (status !== null && (typeof status !== 'string' || status.length === 0 || status.length > 32)) {
         return sendError(res, 400, 'status 必须是 1-32 字符的字符串或 null');
       }
-      const map = await readStatusMap(statusFile);
-      if (status === null) delete map[String(pr)];
-      else map[String(pr)] = status;
-      await enqueueStatusWrite(() => writeStatusMap(map, statusFile));
+      // 读-改-写必须整体入队：只把写入入队的话，两个并发请求会基于同一份
+      // 旧状态各自写回，后者静默覆盖前者的分配。
+      const map = await enqueueStatusWrite(async () => {
+        const current = await readStatusMap(statusFile);
+        if (status === null) delete current[String(pr)];
+        else current[String(pr)] = status;
+        await writeStatusMap(current, statusFile);
+        return current;
+      });
       return sendJson(res, map);
     }
 
