@@ -1,7 +1,9 @@
 // 编辑器设置：键名、默认值、localStorage 读写与 EDITOR_SETTINGS 中心可变对象。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweSettings 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweSettings 在原清单位次执行原 IIFE 体（组装
+// EDITOR_SETTINGS 并挂 window.MaweSettings 冻结门面——门面为尚未迁移
+// 消费者的出接口）；底部具名导出经门面在**调用时**转发，兄弟模块
+// 可静态 import 而不触碰求值期状态。
+export function initMaweSettings() {
 (function initMaweSettings(global) {
   'use strict';
 
@@ -451,3 +453,32 @@
     updateEditorSettings
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+// 兄弟模块 import 边（调用时经 window.MaweSettings 解析，G08/G16 逐步
+// 消费后门面随 G16 退役）。导出为纯函数声明，无求值期副作用。
+export function clampMediaSeekStepMs(...args) { return window.MaweSettings.clampMediaSeekStepMs(...args); }
+export function mediaSeekStepForValue(...args) { return window.MaweSettings.mediaSeekStepForValue(...args); }
+export function nextMediaSeekStepValue(...args) { return window.MaweSettings.nextMediaSeekStepValue(...args); }
+export function normalizeNativeMediaSeekStepValue(...args) { return window.MaweSettings.normalizeNativeMediaSeekStepValue(...args); }
+export function clampCueMoveStepMs(...args) { return window.MaweSettings.clampCueMoveStepMs(...args); }
+export function readEditorSettings(...args) { return window.MaweSettings.readEditorSettings(...args); }
+export function saveEditorSettings(...args) { return window.MaweSettings.saveEditorSettings(...args); }
+export function updateEditorSettings(...args) { return window.MaweSettings.updateEditorSettings(...args); }
+export function normalizeMultiSubtitleRowHeight(...args) { return window.MaweSettings.normalizeMultiSubtitleRowHeight(...args); }
+export function normalizeClickBehavior(...args) { return window.MaweSettings.normalizeClickBehavior(...args); }
+export function normalizeClickTarget(...args) { return window.MaweSettings.normalizeClickTarget(...args); }
+export function normalizeKeyboardOperationReferenceMode(...args) { return window.MaweSettings.normalizeKeyboardOperationReferenceMode(...args); }
+export function normalizeJklPlaybackMode(...args) { return window.MaweSettings.normalizeJklPlaybackMode(...args); }
+export function normalizeEditorAccentColor(...args) { return window.MaweSettings.normalizeEditorAccentColor(...args); }
+export function normalizeEditorAccentCustomColor(...args) { return window.MaweSettings.normalizeEditorAccentCustomColor(...args); }
+export function clampAutoSaveInterval(...args) { return window.MaweSettings.clampAutoSaveInterval(...args); }
+export function clampCharcountThreshold(...args) { return window.MaweSettings.clampCharcountThreshold(...args); }
+export function clampNinjaSlashLength(...args) { return window.MaweSettings.clampNinjaSlashLength(...args); }
+export function clampNinjaSlashRotateAmplitude(...args) { return window.MaweSettings.clampNinjaSlashRotateAmplitude(...args); }
+export function clampAutoMergeGapMs(...args) { return window.MaweSettings.clampAutoMergeGapMs(...args); }
+export function clampAutoMergeShortCount(...args) { return window.MaweSettings.clampAutoMergeShortCount(...args); }
+export function clampGapRemoveMinimum(...args) { return window.MaweSettings.clampGapRemoveMinimum(...args); }
+export function clampGapRemoveThreshold(...args) { return window.MaweSettings.clampGapRemoveThreshold(...args); }
+export function clampGapRemoveHysteresis(...args) { return window.MaweSettings.clampGapRemoveHysteresis(...args); }
+export function clampGapRemoveLeadMs(...args) { return window.MaweSettings.clampGapRemoveLeadMs(...args); }

@@ -424,3 +424,18 @@ export function initMaweHistory() {
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+// 兄弟模块 import 边（调用时经 window.MaweHistory 解析；门面保留为
+// classic 侧出接口，G16 退役）。导出为纯函数声明，无求值期副作用。
+export function captureSegmentsRecord(...args) { return window.MaweHistory.captureSegmentsRecord(...args); }
+export function commitRecord(...args) { return window.MaweHistory.commitRecord(...args); }
+export function applyHistoryRecord(...args) { return window.MaweHistory.applyHistoryRecord(...args); }
+export function snapshotEditorSelection(...args) { return window.MaweHistory.snapshotEditorSelection(...args); }
+export function snapshotPreviewState(...args) { return window.MaweHistory.snapshotPreviewState(...args); }
+export function pushPreviewUndo(...args) { return window.MaweHistory.pushPreviewUndo(...args); }
+export function pushGapRemoveUndo(...args) { return window.MaweHistory.pushGapRemoveUndo(...args); }
+export function pushLayoutUndo(...args) { return window.MaweHistory.pushLayoutUndo(...args); }
+export function pushMarkersUndo(...args) { return window.MaweHistory.pushMarkersUndo(...args); }
+export function performUndo(...args) { return window.MaweHistory.performUndo(...args); }
+export function performRedo(...args) { return window.MaweHistory.performRedo(...args); }
+export function updateUndoRedoButtons(...args) { return window.MaweHistory.updateUndoRedoButtons(...args); }
