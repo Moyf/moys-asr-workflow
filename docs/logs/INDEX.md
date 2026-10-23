@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.1 之后 | 2026-10-23 | [服务生命周期夹具复核](release1.10.0-beta.1/261023_服务生命周期夹具/REVIEW_FINDINGS.md) | Windows supervisor/application 环境隔离、合成期限与实际默认期限分开、进程树/端口/旁观进程断言保留 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [媒体分层与可信报告](release1.10.0-beta.1/261023_媒体分层与可信报告/验证记录.md) / [整合复核](release1.10.0-beta.1/261023_媒体分层与可信报告/REVIEW_FINDINGS.md) | Q1 required/JSON/完整日志及真实 FFprobe 保存备份边界；类级 skip 串并行一致性 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [波形交互稳定修复](release1.10.0-beta.1/261023_波形交互稳定/修复记录.md) / [整合复核](release1.10.0-beta.1/261023_波形交互稳定/REVIEW_FINDINGS.md) | 同高度缩略图通知保留波形行、真实高度变化保滚动锚点；删除回归保留自动保存隔离 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [main e2e 回归修复提交前自审](release1.10.0-beta.1/261022_main_e2e回归修复/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261022_main_e2e回归修复/字体与本地媒体.checklist.md) | 双审查者 Greptile 式自审：绿幕修复的 player 快照缺陷真修、AssetsV2/TTC 测试补覆盖，含双向验证与遗留说明；实机核验待完成 |
