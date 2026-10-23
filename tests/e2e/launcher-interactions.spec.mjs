@@ -1,12 +1,22 @@
+import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/launcher/index.html');
 
-async function openLauncher(page) {
-  await page.goto(`file://${launcherPath}`);
+async function gotoLauncher(page, { reload = false, realTimeStartup = false } = {}) {
+  if (reload) await page.reload();
+  else await page.goto(`file://${launcherPath}`);
+  if (!realTimeStartup) {
+    // Complete absent-host discovery through the real listener; keep native clocks.
+    await completeStaticLauncherDiscovery(page);
+  }
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+}
+
+async function openLauncher(page, options) {
+  await gotoLauncher(page, options);
   await page.locator('#toolboxFab').click();
 }
 
@@ -242,7 +252,23 @@ test('OpenAI ASR exposes official and OpenRouter models with a conditional Custo
 });
 
 test('cloud ASR models show provider-specific price hints', async ({ page }) => {
-  await openLauncher(page);
+  // Retain the native 1800ms fallback journey.
+  await openLauncher(page, { realTimeStartup: true });
+
+  // A host arriving after fallback must not replace the settled bridge.
+  const lateReady = await page.evaluate(async () => {
+    const config = window.MAWLauncher.config;
+    window.__lateHostCalls = 0;
+    window.pywebview = { api: { get_config: async () => {
+      window.__lateHostCalls += 1;
+      return { lateHost: true };
+    } } };
+    window.dispatchEvent(new Event('pywebviewready'));
+    const result = await window.MAWLauncher.callBackend('get_config');
+    return { calls: window.__lateHostCalls, sameConfig: config === window.MAWLauncher.config,
+      lateHost: Boolean(result.lateHost) };
+  });
+  expect(lateReady).toEqual({ calls: 0, sameConfig: true, lateHost: false });
 
   await page.locator('#provider').selectOption('qwen');
   await expect(page.locator('#modelNote')).toContainText('阿里云百炼参考价');
@@ -255,8 +281,7 @@ test('cloud ASR models show provider-specific price hints', async ({ page }) => 
 });
 
 test('project and tutorial hero links open their configured URLs', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => {
     window.__openedUrls = [];
     window.open = (url) => {
@@ -275,8 +300,7 @@ test('project and tutorial hero links open their configured URLs', async ({ page
 });
 
 test('support link opens the sponsor QR modal and closes on Escape or backdrop', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
 
   await page.locator('#supportLink').click();
   await expect(page.locator('#supportModal')).toBeVisible();
@@ -500,8 +524,7 @@ test('translation language filter defaults on, persists, syncs and reaches reque
 });
 
 test('automatic LLM setup highlights test connection until clicked', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(async () => {
     await window.MAWLauncher.callBackend('save_postprocess_settings', { providerId: 'deepseek', apiKey: 'demo-key' });
     const provider = window.MAWLauncher.config.postprocessProviders.find((item) => item.id === 'deepseek');
@@ -535,8 +558,7 @@ test('automatic LLM setup highlights test connection until clicked', async ({ pa
 });
 
 test('verified custom loopback without a key can enable an automatic LLM step', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => {
     const item = window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'custom2');
     Object.assign(item, { verified: false, hasApiKey: false, apiKeyRequired: true, hasBaseUrl: false, hasModel: false });
@@ -568,8 +590,7 @@ test('verified custom loopback without a key can enable an automatic LLM step', 
 });
 
 test('blank LLM form fields use the effective connection and save response', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => {
     const item = window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'deepseek');
     Object.assign(item, { verified: false, hasApiKey: true, hasBaseUrl: true, hasModel: true });
@@ -607,8 +628,7 @@ test('blank LLM form fields use the effective connection and save response', asy
 });
 
 test('system notifications are disabled by default and announce enabling', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => document.getElementById('langZh').click());
 
   await expect(page.locator('#notifyOnComplete')).not.toBeChecked();
@@ -624,8 +644,7 @@ test('system notifications are disabled by default and announce enabling', async
 });
 
 test('single transcription notifications report completion and failure', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => document.getElementById('langZh').click());
   await page.evaluate(() => {
     window.MAWLauncher.config.notifyOnComplete = true;
@@ -658,8 +677,7 @@ test('single transcription notifications report completion and failure', async (
 });
 
 test('batch failure notifications summarize outcomes', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => document.getElementById('langZh').click());
   await page.evaluate(() => {
     window.MAWLauncher.config.notifyOnComplete = true;
@@ -692,8 +710,7 @@ test('batch failure notifications summarize outcomes', async ({ page }) => {
 });
 
 test('cancelling a transcription stays quiet', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => document.getElementById('langZh').click());
   await page.evaluate(() => {
     window.MAWLauncher.config.notifyOnComplete = true;
@@ -838,8 +855,7 @@ test('green-screen burn accepts subtitles without a video source and optional so
 });
 
 test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => document.getElementById('langZh').click());
 
   await page.locator('#settingsButton').click();
@@ -886,8 +902,7 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
   await expect(page.locator('#ffmpegSettingsSection')).toBeVisible();
 
   await page.setViewportSize({ width: 520, height: 520 });
-  await page.reload();
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page, { reload: true });
   await page.locator('#settingsButton').click();
   const tabLayout = await page.locator('#settingsTabList').evaluate((element) => {
     const style = getComputedStyle(element);
@@ -898,8 +913,7 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
 });
 
 test('Qwen regional settings use a narrow advanced link and live at the bottom of LLM settings', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => document.getElementById('langZh').click());
 
   await page.locator('#provider').selectOption('qwen');
@@ -923,8 +937,7 @@ test('Qwen regional settings use a narrow advanced link and live at the bottom o
 });
 
 test('Launcher keeps the length limit backend-only', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
 
   await expect(page.locator('#lengthLimitField')).toHaveCount(0);
   await expect(page.locator('#lengthLimit')).toHaveCount(0);
@@ -933,8 +946,7 @@ test('Launcher keeps the length limit backend-only', async ({ page }) => {
 });
 
 test('segmentation settings live under Processing and validation opens that tab', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
 
   await page.locator('#settingsButton').click();
   await page.locator('#settingsProcessingTab').click();
@@ -955,8 +967,7 @@ test('segmentation settings live under Processing and validation opens that tab'
 });
 
 test('does not start local transcription while model status is still checking', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.locator('#provider').selectOption('local');
   await expect(page.locator('#localModelSettingsEntry')).toBeVisible();
   await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
@@ -977,8 +988,7 @@ test('does not start local transcription while model status is still checking', 
 });
 
 test('keeps local runtime events working after the page learns that installation is in progress', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.locator('#provider').selectOption('local');
   await page.locator('#settingsButton').click();
   await page.locator('#settingsRuntimeTab').click();
@@ -1002,8 +1012,7 @@ test('keeps local runtime events working after the page learns that installation
 });
 
 test('local runtime check sits above the local model settings entry and deep-links to the Runtime tab top', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.locator('#provider').selectOption('local');
   await expect(page.locator('#localRuntimeCheckField')).toBeVisible();
   const checkRow = await page.locator('#localRuntimeCheckField').boundingBox();
@@ -1021,8 +1030,7 @@ test('local runtime check sits above the local model settings entry and deep-lin
 });
 
 test('English mode localizes provider, model, and language labels from the backend config', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => document.getElementById('langEn').click());
   await page.locator('#provider').selectOption('local');
 
@@ -1033,8 +1041,7 @@ test('English mode localizes provider, model, and language labels from the backe
 });
 
 test('local runtime accepts a custom root directory in Settings', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.locator('#provider').selectOption('local');
   await page.locator('#settingsButton').click();
   await page.locator('#settingsRuntimeTab').click();
@@ -1213,8 +1220,7 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
 });
 
 test('runtime errors show an actionable notice outside the log', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await expect(page.locator('#status')).toBeVisible();
   await expect(page.locator('#status')).toHaveText('就绪');
 
@@ -1326,8 +1332,7 @@ test('error notice and status remain above the fixed footer at desktop and narro
   };
 
   await page.setViewportSize({ width: 1180, height: 520 });
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await showFailure();
   const desktopNormal = await measure();
   expect(desktopNormal.notice.bottom).toBeLessThanOrEqual(desktopNormal.footer.top + 1);
@@ -1348,8 +1353,7 @@ test('error notice and status remain above the fixed footer at desktop and narro
   expect(desktopDynamic.status.bottom).toBeLessThanOrEqual(desktopDynamic.footer.top + 1);
 
   await page.setViewportSize({ width: 520, height: 520 });
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await showFailure();
   const narrowNormal = await measure();
   expect(narrowNormal.notice.bottom).toBeLessThanOrEqual(narrowNormal.footer.top + 1);
@@ -1370,8 +1374,7 @@ test('error notice and status remain above the fixed footer at desktop and narro
 });
 
 test('error reports copy safe details and support file URL fallback', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.locator('#apiKey').fill('sk-secret-test-key');
   await page.evaluate(() => {
     window.MAWLauncher.appendLog('child output: duration probe failed');
@@ -1431,8 +1434,7 @@ test('error reports copy safe details and support file URL fallback', async ({ p
 });
 
 test('server timeout diagnostics are visible and copied with the error report', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => {
     window.__copiedReports = [];
     Object.defineProperty(navigator, 'clipboard', {
@@ -1465,8 +1467,7 @@ test('server timeout diagnostics are visible and copied with the error report', 
 });
 
 test('launcher reports a server disconnect without manual refresh', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.locator('#settingsButton').click();
   await page.locator('#langZh').click();
   await page.locator('#settingsClose').click();
@@ -1491,8 +1492,7 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
 
 test('launcher scrolls a new hidden warning into view once', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   const scroll = page.locator('.shell-scroll');
   const firstScroll = await page.evaluate(async () => {
     const shell = document.querySelector('.shell-scroll');
@@ -1527,8 +1527,7 @@ test('launcher scrolls a new hidden warning into view once', async ({ page }) =>
 });
 
 test('restarting after a server disconnect does not reopen the editor page', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.locator('#settingsButton').click();
   await page.locator('#langZh').click();
   await page.locator('#settingsClose').click();
@@ -1567,8 +1566,7 @@ test('restarting after a server disconnect does not reopen the editor page', asy
 });
 
 test('unknown errors stay generic and do not expose FFmpeg actions', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => window.MAWLauncher.onBackendEvent({
     type: 'error', code: 'unknown_backend_failure', detail: 'service exploded',
   }));
@@ -1595,8 +1593,7 @@ test('unknown errors stay generic and do not expose FFmpeg actions', async ({ pa
 });
 
 test('error reports keep one structured hint when detail matches the hint', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => {
     window.__copiedReports = [];
     Object.defineProperty(navigator, 'clipboard', {
@@ -1622,8 +1619,7 @@ test('error reports keep one structured hint when detail matches the hint', asyn
 });
 
 test('FAQ open failures remain visible without an unhandled rejection', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.evaluate(() => {
     window.MAWLauncher.callBackend = async (method) => method === 'open_faq' ? { ok: false, error: 'FAQ unavailable' } : { ok: true };
     window.MAWLauncher.onBackendEvent({ type: 'error', code: 'transcription_failed', detail: 'failed' });
@@ -1673,8 +1669,7 @@ test('artifact rows localize type labels while preserving MOSP-first and SRT-onl
 });
 
 test('server media accepts a dropped file even when batch mode is selected', async ({ page }) => {
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.locator('#jsonPath').fill('D:\\Demo\\missing-media.mosp');
   await page.locator('#serverMediaField').evaluate((element) => element.classList.remove('hidden'));
   await page.locator('#batchMode').click();
@@ -1845,8 +1840,7 @@ test('Escape closes an artifact context menu while postprocess is busy', async (
 
 test('batch mode disables manuscript matching without changing its saved single-file choice', async ({ page }) => {
   // Given: manuscript matching is configured and selected for single-file transcription.
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.locator('#autoPostprocessEnabled').check();
   await page.evaluate(() => {
     const field = document.getElementById('postprocessScriptPath');
@@ -1897,8 +1891,7 @@ test('batch mode disables manuscript matching without changing its saved single-
 
 test('batch start delegates output allocation and batchDone reconciles every terminal outcome', async ({ page }) => {
   // Given: three queued files and a bridge spy that leaves allocation to the batch backend.
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.locator('#batchMode').click();
   await page.evaluate(() => {
     window.__batchCalls = [];
@@ -1952,8 +1945,7 @@ test('batch start delegates output allocation and batchDone reconciles every ter
 
 test('batchDone fails rows that never reported when the batch was not cancelled', async ({ page }) => {
   // Given: two queued files started in batch mode.
-  await page.goto(`file://${launcherPath}`);
-  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await gotoLauncher(page);
   await page.locator('#batchMode').click();
   await page.evaluate(() => {
     // mock 环境没有 API Key：#208 起 startBatch 会先做 Key 校验，桩掉它以免静默早退。

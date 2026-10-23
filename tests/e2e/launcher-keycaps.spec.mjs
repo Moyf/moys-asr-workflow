@@ -1,3 +1,4 @@
+import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -11,6 +12,7 @@ const labels = {
 
 test('section badges survive language changes and follow light/dark themes with measured spacing', async ({ page }, testInfo) => {
   await page.goto(launcherUrl);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   const measurements = [];
   for (const theme of ['dark', 'light']) {

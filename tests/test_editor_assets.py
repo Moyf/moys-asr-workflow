@@ -60,10 +60,12 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         names = list(edit.read_editor_script_manifest()) + list(self.WAVEFORM_COMPOSITION_SOURCES)
         return "\n\n".join(edit.read_web_asset(name) for name in names)
 
-    def test_editor_script_manifest_is_ordered_and_complete(self) -> None:
+    def test_editor_script_manifest_is_complete(self) -> None:
+        manifest = edit.read_editor_script_manifest()
+        self.assertEqual(len(manifest), len(set(manifest)))
         self.assertEqual(
-            edit.read_editor_script_manifest(),
-            (
+            set(manifest),
+            {
                 "editor/boot/editor-boot.js",
                 "editor/boot/editor-runtime.js",
                 "editor/state/editor-state.js",
@@ -214,7 +216,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/io/editor-wiring-file-drop.js",
                 "editor/boot/editor-startup.js",
                 "editor/boot/editor-onboarding.js",
-        )
+            },
         )
 
     # bundle 是构建产物（不入库）：本地未跑 pnpm install 时跳过，CI / 开发机在

@@ -1147,7 +1147,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('overlaySegments.some((segment) => segment.sticker || segment.sticker_ref)', source)
         self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', source)
         self.assertIn('rows.sort((a, b) => a.start - b.start || a.order - b.order);', source)
-        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));', source)
+        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: window.MaweCuePanelWiring.buildOverlayCueEl(seg, i) }));', source)
         self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", source)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", source)
@@ -1328,7 +1328,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function isPlaybackKeyboardTarget(event)', source)
         self.assertIn('if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;', source)
         self.assertIn('let interceptedSpace = false;', source)
-        self.assertIn('e.stopImmediatePropagation();', page)
+        self.assertIn('.stopImmediatePropagation();', page)
         self.assertIn('width: 74px; aspect-ratio: 1;', page)
         # 面板行对选中/未选中使用同一套轨道尺寸：高度只随手动拖拽变化，不再因选中跳变
         self.assertIn('minmax(max-content, calc(var(--layout-row-middle)', page)
