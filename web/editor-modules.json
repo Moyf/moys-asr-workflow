@@ -341,6 +341,12 @@
       "kind": "init",
       "name": "context-menus-wiring-init",
       "exportName": "initMaweContextMenusWiring"
+    },
+    {
+      "file": "editor/state/editor-core-state.js",
+      "kind": "init",
+      "name": "core-state-init",
+      "exportName": "initMaweCoreState"
     }
   ],
   "externalBridges": [
