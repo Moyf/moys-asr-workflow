@@ -77,7 +77,7 @@ export function initMaweSplitCore() {
       }
     }
     // The fade parser also understands fades nested inside complete sentence shells.
-    const faded = MULTI_SUBTITLE_UTILS.parseSentenceFadeMarkers(text, rule);
+    const faded = window.AsrEditorUtils.parseSentenceFadeMarkers(text, rule);
     if (faded.fadeIn || faded.fadeOut) {
       let start = 0, end = text.length;
       const shells = ['!!', '++', '--', '**', '__', '~~', '//', '%%'];
@@ -123,7 +123,7 @@ export function initMaweSplitCore() {
       });
     // 渐进拆分的右段保留完整文本，却只保留后缀 items；绝对时间码仍在段内。
     // 这种可从保存后的段/词数据重建的结构必须从右对齐，避免重复词抢占前缀位置。
-    const aligned = MULTI_SUBTITLE_UTILS.alignItemsToText(text, items, { fromEnd: timedSuffix });
+    const aligned = window.AsrEditorUtils.alignItemsToText(text, items, { fromEnd: timedSuffix });
     if (!tokens.length || aligned.every((record, index) => record || !items[index]?.text)) return aligned;
     const positions = [];
     for (let index = 0; index < text.length; index++) {
@@ -145,7 +145,7 @@ export function initMaweSplitCore() {
       // Recovery is optional and runs on the input path. Keep its extra DP work below
       // the general aligner's budget; oversized/ambiguous inputs retain the old fallback.
       if (items.length * (visible.length + 2) > 50_000) return aligned;
-      recovered = MULTI_SUBTITLE_UTILS.alignItemsToText(visible, items);
+      recovered = window.AsrEditorUtils.alignItemsToText(visible, items);
     }
     const previous = [], next = [];
     let anchor = null;
@@ -256,14 +256,14 @@ export function initMaweSplitCore() {
     let right = !display.edits.size && sameOffset ? parts.right
       : displaySlice(sameOffset ? text.length - parts.right.length : offset, text.length);
     if (!sameOffset) {
-      left = MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(left, 'end');
-      right = MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(right, 'start');
+      left = window.AsrEditorUtils.applySplitEdgeTrim(left, 'end');
+      right = window.AsrEditorUtils.applySplitEdgeTrim(right, 'start');
     }
     const content = (start, end) => text.slice(start, end).split('').filter(
       (_, index) => splitVisibleLength(text, index + start, index + start + 1, tokens) > 0,
     ).join('');
-    if (!MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(content(0, offset), 'end')
-        || !MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(content(offset, text.length), 'start')) return null;
+    if (!window.AsrEditorUtils.applySplitEdgeTrim(content(0, offset), 'end')
+        || !window.AsrEditorUtils.applySplitEdgeTrim(content(offset, text.length), 'start')) return null;
     const leftClosures = [...crossing].reverse().map((token) => token.marker).join('');
     const rightClosures = crossing.map((token) => token.marker).join('');
     left += leftClosures;
@@ -612,7 +612,7 @@ export function initMaweSplitCore() {
       }
       return { ...item, start: range.start, end: range.end, side };
     });
-    const placed = MULTI_SUBTITLE_UTILS.placeUnalignedSplitItems(
+    const placed = window.AsrEditorUtils.placeUnalignedSplitItems(
       leftItems,
       rightItems,
       unalignedRanges,
@@ -660,7 +660,7 @@ export function initMaweSplitCore() {
   }) {
     const left = {
       ...segment,
-      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
+      id: window.AsrEditorUtils.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
       end: leftEnd,
       text: leftText,
       items: leftItems.length ? leftItems : null,
@@ -668,7 +668,7 @@ export function initMaweSplitCore() {
     };
     const right = {
       ...segment,
-      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
+      id: window.AsrEditorUtils.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
       start: rightStart,
       text: rightText,
       items: rightItems.length ? rightItems : null,
@@ -719,13 +719,13 @@ export function initMaweSplitCore() {
   { preserveCutMs = false, forceCut = false, duplicateText = false, splitTextMode = null, headIndex } = {},
 ) {
   const text = String(segment?.text || '');
-  const mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
-    ? splitMode : MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
+  const mode = window.AsrEditorUtils.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
+    ? splitMode : window.AsrEditorUtils.detectSubtitleSplitMode(text);
   const safeOffset = Math.max(0, Math.min(text.length, Math.round(Number(offset) || 0)));
   const duplicateOutputText = duplicateText || splitTextMode === 'duplicate';
   let parts = duplicateOutputText
     ? (text ? { left: text, right: text, offset: safeOffset } : null)
-    : MULTI_SUBTITLE_UTILS.splitSubtitleText(text, safeOffset, mode);
+    : window.AsrEditorUtils.splitSubtitleText(text, safeOffset, mode);
   let styledClosures = null;
   if (!duplicateOutputText) {
     parts = splitStyledTextParts(text, parts, currentSplitStyleSettings());
@@ -739,7 +739,7 @@ export function initMaweSplitCore() {
   // 渐进拆分同样按原始两段补齐：左段成为带完整符号对的独立句；右段的补齐
   // 结果不采用——它保留整句原文（自带开符号，含被拆走的前缀）。
   const massCompletion = !duplicateOutputText
-    ? MULTI_SUBTITLE_UTILS.completeSplitMassPairs(
+    ? window.AsrEditorUtils.completeSplitMassPairs(
       parts.left, parts.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     ) : null;
   if (massCompletion) {
@@ -772,9 +772,9 @@ export function initMaweSplitCore() {
   // 复制原文后，原有逐词时间码无法再与两侧文本一一对应；清空 items，
   // 避免把只属于一半文本的时间码带到重复文本上。
   const leftItems = duplicateOutputText
-    ? [] : MULTI_SUBTITLE_UTILS.appendMassMarkersToLastItem(cleanSplitItems(itemParts.leftItems, 'left'), leftAppend);
+    ? [] : window.AsrEditorUtils.appendMassMarkersToLastItem(cleanSplitItems(itemParts.leftItems, 'left'), leftAppend);
   const rightItems = duplicateOutputText
-    ? [] : MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemParts.rightItems, 'right'), rightPrepend);
+    ? [] : window.AsrEditorUtils.prependMassMarkersToFirstItem(cleanSplitItems(itemParts.rightItems, 'right'), rightPrepend);
   const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
   // 普通拆分保留词间静音；渐进/复制拆分用同一 splitMs 贴合边界，
   // 避免逐字跳出时闪空。right items 仍用原媒体绝对毫秒，不随段界移动。
@@ -802,7 +802,7 @@ export function initMaweSplitCore() {
     splitMs,
     alignment: {
       ...(itemParts.alignment || { total: 0, aligned: 0, broken: false }),
-      driftMs: MULTI_SUBTITLE_UTILS.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
+      driftMs: window.AsrEditorUtils.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
     },
   };
 }
@@ -826,7 +826,7 @@ export function initMaweSplitCore() {
   }
   const mainMode = MaweMultiSubtitleCore.getMainSubtitleSplitMode(main);
   const extensionMode = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, extension);
-  const hasMainWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
+  const hasMainWordTimestamps = window.AsrEditorUtils.hasUsableSplitTimestamps(main);
   const initialTime = Number.isFinite(initial.timeMs)
     ? initial.timeMs
     : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
@@ -845,7 +845,7 @@ export function initMaweSplitCore() {
   const initialMainCutMs = fixedCutMs ?? (hasMainWordTimestamps
     ? splitTimeForTextOffset(main, initialMainOffset)
     : splitCutTime(main, initialMainOffset, false));
-  const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+  const initialOffset = window.AsrEditorUtils.nearestSubtitleSplitOffset(
     extension.text, initialMainCutMs, extension.start, extension.end, extensionMode,
   ) ?? window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(extension, initialMainCutMs, extensionMode);
   return {
@@ -885,7 +885,7 @@ export function initMaweSplitCore() {
   const main = MaweBoot.DATA.segments[mainIndex];
   if (!main) return null;
   const mainMode = MaweMultiSubtitleCore.getMainSubtitleSplitMode(main);
-  const hasMainWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
+  const hasMainWordTimestamps = window.AsrEditorUtils.hasUsableSplitTimestamps(main);
   const initialTime = Number.isFinite(initial.timeMs)
     ? initial.timeMs
     : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
@@ -933,7 +933,7 @@ export function initMaweSplitCore() {
     ? null : Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
   const initialOffset = hasInitialTextPosition
     ? window.MaweOverlaySplitMerge.splitOffsetNearTextPositionForModal(extension.text, initial.extensionOffset, extensionMode)
-    : MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+    : window.AsrEditorUtils.nearestSubtitleSplitOffset(
       extension.text, initialTime, extension.start, extension.end, extensionMode,
     ) ?? window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(extension, initialTime, extensionMode);
   if (!Number.isInteger(initialOffset)) return null;
@@ -1525,7 +1525,7 @@ export function initMaweSplitCore() {
   function completeStyledSplitPreviewParts(text, parts) {
     const styled = splitStyledTextParts(text, parts, currentSplitStyleSettings());
     if (!styled) return null;
-    const completed = MULTI_SUBTITLE_UTILS.completeSplitMassPairs(
+    const completed = window.AsrEditorUtils.completeSplitMassPairs(
       styled.left, styled.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     );
     return { ...styled, left: completed.left, right: completed.right };
@@ -1544,14 +1544,14 @@ export function initMaweSplitCore() {
 
   if (lane === 'main' && main) {
     const requestedOffset = Math.max(0, Math.min(String(main.text || '').length, Math.round(Number(offset) || 0)));
-    const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(main.text, state.mainMode);
+    const legalOffsets = window.AsrEditorUtils.subtitleSplitOffsets(main.text, state.mainMode);
     state.mainOffset = legalOffsets.length
       ? legalOffsets.reduce((best, candidate) => (
         Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
       ), legalOffsets[0])
       : window.MaweOverlaySplitMerge.fallbackSplitOffset(main.text, requestedOffset);
     if (!Number.isInteger(state.mainOffset)) return false;
-    const mainHasWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
+    const mainHasWordTimestamps = window.AsrEditorUtils.hasUsableSplitTimestamps(main);
     state.mainCutMs = Number.isFinite(state.fixedCutMs)
       ? state.fixedCutMs
       : mainHasWordTimestamps
@@ -1562,7 +1562,7 @@ export function initMaweSplitCore() {
       0,
       Math.min(String(extension.text || '').length, Math.round(Number(offset) || 0)),
     );
-    const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(extension.text, state.extensionMode);
+    const legalOffsets = window.AsrEditorUtils.subtitleSplitOffsets(extension.text, state.extensionMode);
     state.offset = legalOffsets.length
       ? legalOffsets.reduce((best, candidate) => (
         Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
@@ -1577,7 +1577,7 @@ export function initMaweSplitCore() {
 
   const mainMode = state.mainMode || (main && MaweMultiSubtitleCore.getMainSubtitleSplitMode(main));
   let mainParts = main
-    ? MULTI_SUBTITLE_UTILS.splitSubtitleText(main.text, state.mainOffset, mainMode)
+    ? window.AsrEditorUtils.splitSubtitleText(main.text, state.mainOffset, mainMode)
     : null;
   if (mainParts && state.splitTextMode !== 'duplicate') {
     // 渐进拆分与普通拆分同样做刀点吸附与符号补齐：预览里的左半句就是
@@ -1586,7 +1586,7 @@ export function initMaweSplitCore() {
   }
   const extensionParts = extension
     ? completeStyledSplitPreviewParts(extension.text,
-      MULTI_SUBTITLE_UTILS.splitSubtitleText(extension.text, state.offset, state.extensionMode))
+      window.AsrEditorUtils.splitSubtitleText(extension.text, state.offset, state.extensionMode))
     : null;
   const mainTextValid = !main || Boolean(mainParts);
   const extensionTextValid = !extension || Boolean(extensionParts);
@@ -2009,8 +2009,8 @@ export function initMaweSplitCore() {
     if (track) replaceSegmentWithSplit(track.segments, extensionIndex, extensionPair);
     const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
     multi.bindings.push(
-      MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.left, extensionPair.left, track.id),
-      MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.right, extensionPair.right, track.id),
+      window.AsrEditorUtils.buildSubtitleBinding(mainPair.left, extensionPair.left, track.id),
+      window.AsrEditorUtils.buildSubtitleBinding(mainPair.right, extensionPair.right, track.id),
     );
     multi.enabled = true;
     MaweMultiSubtitleCore.markMainSegmentsDirty([mainPair.left, mainPair.right]);
@@ -2137,7 +2137,7 @@ export function initMaweSplitCore() {
       // styled 的返回值携带两端点闭符号串，供 items 层同步（同 buildSplitPair）。
       styledClosures = parts;
       if (parts) {
-        massCompletion = MULTI_SUBTITLE_UTILS.completeSplitMassPairs(
+        massCompletion = window.AsrEditorUtils.completeSplitMassPairs(
           parts.left, parts.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
         );
         parts.left = massCompletion.left;
@@ -2253,8 +2253,8 @@ export function initMaweSplitCore() {
     // 渐进拆分的右段是整句原文，边界 item 不再补任何符号（补齐只属于左段）。
     const rightPrepend = progressiveSplit ? ''
       : `${itemsFollowText ? (massCompletion?.rightPrepend || '') : ''}${styledRightPrepend}`;
-    const leftItemsClean = MULTI_SUBTITLE_UTILS.appendMassMarkersToLastItem(cleanSplitItems(itemSplit.leftItems, 'left'), leftAppend);
-    const rightItemsClean = MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemSplit.rightItems, 'right'), rightPrepend);
+    const leftItemsClean = window.AsrEditorUtils.appendMassMarkersToLastItem(cleanSplitItems(itemSplit.leftItems, 'left'), leftAppend);
+    const rightItemsClean = window.AsrEditorUtils.prependMassMarkersToFirstItem(cleanSplitItems(itemSplit.rightItems, 'right'), rightPrepend);
     // 复制拆分两侧都是全文，逐词时间码再也对不上文本，清空两侧 items；
     // 渐进拆分后半句虽然带上复制来的前缀，但后半区间的 items 仍有效，保留。
     const leftItemsFinal = duplicateSplit ? [] : leftItemsClean;

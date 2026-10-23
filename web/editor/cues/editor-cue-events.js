@@ -129,7 +129,7 @@ export function initMaweCueEvents() {
       scrollCueToCenter(el);
     }
     MaweCoreState.waveformEditor?.revealTime(MaweBoot.DATA.segments[idx].start, true);
-    const wasPlaying = isPlaybackActive();
+    const wasPlaying = window.MaweKeyboardGuards.isPlaybackActive();
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') {
       // 默认只跳转不改动播放状态；“选中并跳转（自动播放）”会在暂停时启动播放。
       const previousSuppress = MawePlaybackLoop.suppressCueListAutoScroll;
