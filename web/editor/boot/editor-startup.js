@@ -12,6 +12,9 @@ MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(MaweBoot.DATA.mar
 // 带 markers 的工程（如 AI 整理产物）默认启用标记轨道，方便直接复核待确认项。
 window.MaweMarkerEditing?.enableForProjectMarkers?.(MaweBoot.DATA.markers);
 MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+// Server/portable startup injects DATA directly instead of applyCanonicalProject.
+// Repair legacy group ranges before the first render and saved fingerprint.
+MaweTextCleanup.syncTimelineGroupRanges();
 MaweBoot.maweDebug('boot:begin', {
   server: Boolean(MaweBoot.SERVER_CONFIG),
   segments: Array.isArray(MaweBoot.DATA.segments) ? MaweBoot.DATA.segments.length : null,

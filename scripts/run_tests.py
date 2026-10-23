@@ -391,7 +391,7 @@ def _run_parallel(args) -> int:
         for item in ordered)
     log_path = _write_full_log(complete_log, args.full_log, args.report)
     report["full_log"] = str(log_path.resolve())
-    report["exit_code"] = int(bool(failures or not total_tests))
+    report["exit_code"] = int(bool(failures or not report["selected_ids"]))
     write_report(args, report)
     print(
         f"\n[run_tests] 并行完成：{total_tests} tests"

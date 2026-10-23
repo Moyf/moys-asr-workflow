@@ -181,6 +181,9 @@
     set activeStickerCacheUntil(v) { activeStickerCacheUntil = v; },
     get activeStickerCache() { return activeStickerCache; },
     set activeStickerCache(v) { activeStickerCache = v; },
+    // 最近一次 activeStickersAt 计算的叠加轨显示标记；实际画面窗口复用同一
+    // 判断决定内容区加高 class（与 renderStickerOverlay 相同的签名输入）。
+    get activeStickerHasOverlay() { return activeStickerHasOverlay; },
     get renderedStickerSignature() { return renderedStickerSignature; },
     set renderedStickerSignature(v) { renderedStickerSignature = v; },
     get renderedStickerOverlayEnabled() { return renderedStickerOverlayEnabled; },

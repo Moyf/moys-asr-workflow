@@ -273,6 +273,34 @@ class ParallelCommandTests(CompactContainerAssertions, unittest.TestCase):
             self.assertEqual(report['run'], len(report['selected_ids']))
             self.assertTrue(all(item['pid'] for item in report['files']))
 
+    def test_class_setup_skip_matches_serial_and_parallel(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            self.write_source(root, 'test_class_skip.py', """
+                import unittest
+                class Case(unittest.TestCase):
+                    @classmethod
+                    def setUpClass(cls):
+                        raise unittest.SkipTest('optional class capability unavailable')
+                    def test_never_runs(self):
+                        self.fail('class setup must skip this case')
+            """)
+            for required, expected_code in ((False, 0), (True, 1)):
+                with self.subTest(required=required):
+                    reports = []
+                    for workers in (0, 2):
+                        result = self.run_discovery(root, parallel=workers, required=required)
+                        self.assertEqual(result.returncode, expected_code, result.stdout)
+                        report = json.loads((root / f'report-{workers}.json').read_text(encoding='utf-8'))
+                        self.assertEqual(len(report['selected_ids']), 1)
+                        self.assertEqual(report['run'], 0)
+                        self.assertEqual(len(report['skips']), 1)
+                        self.assertFalse(report['skips'][0]['platform_not_applicable'])
+                        reports.append(report)
+                    for key in ('selected_ids', 'run', 'errors', 'failures', 'skips',
+                                'expected_failures', 'unexpected_successes', 'exit_code'):
+                        self.assertEqual(reports[0][key], reports[1][key], key)
+
     def test_module_import_skip_stays_skipped(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
