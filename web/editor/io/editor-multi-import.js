@@ -1,7 +1,8 @@
 // 多重字幕导入：导入选择弹窗、预览渲染与主副轨交换。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweMultiImport 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweMultiImport 在原清单位次执行原 IIFE 体（挂
+// window.MaweMultiImport 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweMultiImport() {
 (function initMaweMultiImport(global) {
   'use strict';
 
@@ -335,3 +336,12 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
     openProjectFile
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function showMultiSubtitleImportChoice(...args) { return window.MaweMultiImport.showMultiSubtitleImportChoice(...args); }
+export function closeMultiSubtitleImportModal(...args) { return window.MaweMultiImport.closeMultiSubtitleImportModal(...args); }
+export function prepareMultiSubtitleImport(...args) { return window.MaweMultiImport.prepareMultiSubtitleImport(...args); }
+export function renderProjectImportPreview(...args) { return window.MaweMultiImport.renderProjectImportPreview(...args); }
+export function renderMainImportPreview(...args) { return window.MaweMultiImport.renderMainImportPreview(...args); }
+export function swapMainAndExtensionSubtitles(...args) { return window.MaweMultiImport.swapMainAndExtensionSubtitles(...args); }
+export function openProjectFile(...args) { return window.MaweMultiImport.openProjectFile(...args); }

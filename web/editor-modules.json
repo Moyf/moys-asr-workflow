@@ -2,6 +2,24 @@
   "format": 1,
   "modules": [
     {
+      "file": "editor/state/editor-state.js",
+      "kind": "init",
+      "name": "state-init",
+      "exportName": "initMaweState"
+    },
+    {
+      "file": "editor/state/editor-view-updates.js",
+      "kind": "init",
+      "name": "view-updates-init",
+      "exportName": "initMaweViewUpdates"
+    },
+    {
+      "file": "editor/state/editor-commands.js",
+      "kind": "init",
+      "name": "commands-init",
+      "exportName": "initMaweCommands"
+    },
+    {
       "file": "editor/boot/editor-host.js",
       "kind": "init",
       "name": "editor-host-init",
@@ -121,6 +139,24 @@
       "exportName": "initMaweHint"
     },
     {
+      "file": "editor/state/editor-settings.js",
+      "kind": "init",
+      "name": "settings-init",
+      "exportName": "initMaweSettings"
+    },
+    {
+      "file": "editor/state/editor-project-settings.js",
+      "kind": "init",
+      "name": "project-settings-init",
+      "exportName": "initMaweProjectSettings"
+    },
+    {
+      "file": "editor/state/editor-multi-subtitle-core.js",
+      "kind": "init",
+      "name": "multi-subtitle-core-init",
+      "exportName": "initMaweMultiSubtitleCore"
+    },
+    {
       "file": "editor/ui/editor-gap-remove-data.js",
       "kind": "init",
       "name": "editor-gap-remove-data-init",
@@ -133,10 +169,22 @@
       "exportName": "initMaweDom"
     },
     {
+      "file": "editor/state/editor-cue-panel-state.js",
+      "kind": "init",
+      "name": "cue-panel-state-init",
+      "exportName": "initMaweCuePanelState"
+    },
+    {
       "file": "editor/state/editor-history.js",
       "kind": "init",
       "name": "history-init",
       "exportName": "initMaweHistory"
+    },
+    {
+      "file": "editor/state/editor-core-state.js",
+      "kind": "init",
+      "name": "core-state-init",
+      "exportName": "initMaweCoreState"
     },
     {
       "file": "editor/ui/editor-display-settings.js",
@@ -187,10 +235,22 @@
       "exportName": "initMaweExportSrt"
     },
     {
+      "file": "editor/io/editor-server-save.js",
+      "kind": "init",
+      "name": "server-save-init",
+      "exportName": "initMaweServerSave"
+    },
+    {
       "file": "editor/ui/editor-workspaces.js",
       "kind": "init",
       "name": "editor-workspaces-init",
       "exportName": "initMaweWorkspaces"
+    },
+    {
+      "file": "editor/io/editor-project-save.js",
+      "kind": "init",
+      "name": "project-save-init",
+      "exportName": "initMaweProjectSave"
     },
     {
       "file": "editor/io/editor-dynamic-exports.js",
@@ -203,6 +263,24 @@
       "kind": "init",
       "name": "editor-export-menus-init",
       "exportName": "initMaweExportMenus"
+    },
+    {
+      "file": "editor/io/editor-project-media-inputs.js",
+      "kind": "init",
+      "name": "project-media-inputs-init",
+      "exportName": "initMaweProjectMediaInputs"
+    },
+    {
+      "file": "editor/io/editor-project-load.js",
+      "kind": "init",
+      "name": "project-load-init",
+      "exportName": "initMaweProjectLoad"
+    },
+    {
+      "file": "editor/io/editor-multi-import.js",
+      "kind": "init",
+      "name": "multi-import-init",
+      "exportName": "initMaweMultiImport"
     },
     {
       "file": "editor/cues/editor-sticker-picker.js",
@@ -341,54 +419,6 @@
       "kind": "init",
       "name": "context-menus-wiring-init",
       "exportName": "initMaweContextMenusWiring"
-    },
-    {
-      "file": "editor/state/editor-core-state.js",
-      "kind": "init",
-      "name": "core-state-init",
-      "exportName": "initMaweCoreState"
-    },
-    {
-      "file": "editor/state/editor-cue-panel-state.js",
-      "kind": "init",
-      "name": "cue-panel-state-init",
-      "exportName": "initMaweCuePanelState"
-    },
-    {
-      "file": "editor/state/editor-project-settings.js",
-      "kind": "init",
-      "name": "project-settings-init",
-      "exportName": "initMaweProjectSettings"
-    },
-    {
-      "file": "editor/state/editor-commands.js",
-      "kind": "init",
-      "name": "commands-init",
-      "exportName": "initMaweCommands"
-    },
-    {
-      "file": "editor/state/editor-view-updates.js",
-      "kind": "init",
-      "name": "view-updates-init",
-      "exportName": "initMaweViewUpdates"
-    },
-    {
-      "file": "editor/state/editor-state.js",
-      "kind": "init",
-      "name": "state-init",
-      "exportName": "initMaweState"
-    },
-    {
-      "file": "editor/state/editor-settings.js",
-      "kind": "init",
-      "name": "settings-init",
-      "exportName": "initMaweSettings"
-    },
-    {
-      "file": "editor/state/editor-multi-subtitle-core.js",
-      "kind": "init",
-      "name": "multi-subtitle-core-init",
-      "exportName": "initMaweMultiSubtitleCore"
     }
   ],
   "externalBridges": [

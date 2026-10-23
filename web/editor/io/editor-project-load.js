@@ -1,7 +1,8 @@
 // 工程加载：规范化应用、检查点、SRT 解析与主轨替换。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweProjectLoad 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweProjectLoad 在原清单位次执行原 IIFE 体（挂
+// window.MaweProjectLoad 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweProjectLoad() {
 (function initMaweProjectLoad(global) {
   'use strict';
 
@@ -455,3 +456,12 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
     replaceMainTrack
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function replaceMainTrack(...args) { return window.MaweProjectLoad.replaceMainTrack(...args); }
+export function parseSrtSegments(...args) { return window.MaweProjectLoad.parseSrtSegments(...args); }
+export function ensureProjectCheckpointForImport(...args) { return window.MaweProjectLoad.ensureProjectCheckpointForImport(...args); }
+export function detachServerProjectSaving(...args) { return window.MaweProjectLoad.detachServerProjectSaving(...args); }
+export function suggestedProjectName(...args) { return window.MaweProjectLoad.suggestedProjectName(...args); }
+export function isMawProject(...args) { return window.MaweProjectLoad.isMawProject(...args); }
+export function createProjectCheckpoint(...args) { return window.MaweProjectLoad.createProjectCheckpoint(...args); }
