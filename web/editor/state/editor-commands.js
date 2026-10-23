@@ -1,5 +1,8 @@
-// Stage a snapshot; publish history only after a real, successful mutation.
-window.MAWE.register('editor-commands', function createEditorCommands(dependencies) {
+// 命令事务：暂存快照，只有真实成功变更后才发布历史。
+// ESM 模块：createEditorCommands 为纯工厂具名导出（测试直调），
+// initMaweCommands 在原清单位次组装依赖并挂 window.MaweCommands
+//（register/resolve 注册表随之退役，G16 后窗口出接口同样退役）。
+export function createEditorCommands(dependencies) {
   'use strict';
   const { capture, hasChanges, publish, restore, refresh } = dependencies;
   const beforeBeginListeners = new Set();
@@ -48,9 +51,9 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
     }
   }
   return Object.freeze({ begin, run, onBeforeBegin });
-});
+}
 
-(function composeEditorCommands() {
+export function initMaweCommands() {
   'use strict';
   const fingerprint = value => JSON.stringify(value, (key, item) => key === '_dirty' ? undefined : item);
   const projectSegments = () => ({
@@ -66,7 +69,7 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
       if (key !== '_dirty') restoreDirtyFlags(current[key], previous?.[key]);
     }
   }
-  window.MaweCommands = window.MAWE.resolve('editor-commands', {
+  window.MaweCommands = createEditorCommands({
     capture(label, options) {
       MaweCueListAnchor.rememberCueListMutation();
       const record = MaweHistory.captureSegmentsRecord(label, options);
@@ -87,4 +90,4 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
     },
     refresh: invalidation => MaweViewUpdates.invalidate({ save: true, ...invalidation }),
   });
-})();
+}

@@ -347,6 +347,48 @@
       "kind": "init",
       "name": "core-state-init",
       "exportName": "initMaweCoreState"
+    },
+    {
+      "file": "editor/state/editor-cue-panel-state.js",
+      "kind": "init",
+      "name": "cue-panel-state-init",
+      "exportName": "initMaweCuePanelState"
+    },
+    {
+      "file": "editor/state/editor-project-settings.js",
+      "kind": "init",
+      "name": "project-settings-init",
+      "exportName": "initMaweProjectSettings"
+    },
+    {
+      "file": "editor/state/editor-commands.js",
+      "kind": "init",
+      "name": "commands-init",
+      "exportName": "initMaweCommands"
+    },
+    {
+      "file": "editor/state/editor-view-updates.js",
+      "kind": "init",
+      "name": "view-updates-init",
+      "exportName": "initMaweViewUpdates"
+    },
+    {
+      "file": "editor/state/editor-state.js",
+      "kind": "init",
+      "name": "state-init",
+      "exportName": "initMaweState"
+    },
+    {
+      "file": "editor/state/editor-settings.js",
+      "kind": "init",
+      "name": "settings-init",
+      "exportName": "initMaweSettings"
+    },
+    {
+      "file": "editor/state/editor-multi-subtitle-core.js",
+      "kind": "init",
+      "name": "multi-subtitle-core-init",
+      "exportName": "initMaweMultiSubtitleCore"
     }
   ],
   "externalBridges": [

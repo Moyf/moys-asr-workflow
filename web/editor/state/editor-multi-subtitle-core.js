@@ -1,7 +1,8 @@
 // 多重字幕核心：副轨状态、绑定关系、范围钳制与双轨联动计算。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweMultiSubtitleCore 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweMultiSubtitleCore 在原清单位次执行原 IIFE 体
+// （挂 window.MaweMultiSubtitleCore 冻结门面——classic 侧出接口）；
+// 底部具名导出经门面在调用时转发，兄弟模块可静态 import。
+export function initMaweMultiSubtitleCore() {
 (function initMaweMultiSubtitleCore(global) {
   'use strict';
 
@@ -690,3 +691,47 @@
     constrainBoundExtensionPanelEdit
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+// 兄弟模块 import 边（调用时经 window.MaweMultiSubtitleCore 解析）。
+export function normalizeMultiSubtitleState(...args) { return window.MaweMultiSubtitleCore.normalizeMultiSubtitleState(...args); }
+export function getMultiSubtitleState(...args) { return window.MaweMultiSubtitleCore.getMultiSubtitleState(...args); }
+export function ensureEmptyExtensionTrack(...args) { return window.MaweMultiSubtitleCore.ensureEmptyExtensionTrack(...args); }
+export function getExtensionTrack(...args) { return window.MaweMultiSubtitleCore.getExtensionTrack(...args); }
+export function getActiveExtensionTrack(...args) { return window.MaweMultiSubtitleCore.getActiveExtensionTrack(...args); }
+export function multiSubtitleVisible(...args) { return window.MaweMultiSubtitleCore.multiSubtitleVisible(...args); }
+export function isConfiguredSubtitleSplitMode(...args) { return window.MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(...args); }
+export function getMainSubtitleSplitMode(...args) { return window.MaweMultiSubtitleCore.getMainSubtitleSplitMode(...args); }
+export function getExtensionSubtitleSplitMode(...args) { return window.MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(...args); }
+export function splitModeLabel(...args) { return window.MaweMultiSubtitleCore.splitModeLabel(...args); }
+export function splitModeExample(...args) { return window.MaweMultiSubtitleCore.splitModeExample(...args); }
+export function mergeJoinSeparatorForMode(...args) { return window.MaweMultiSubtitleCore.mergeJoinSeparatorForMode(...args); }
+export function multiSubtitleWaveformStructureKey(...args) { return window.MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey(...args); }
+export function mainSegmentById(...args) { return window.MaweMultiSubtitleCore.mainSegmentById(...args); }
+export function extensionSegmentById(...args) { return window.MaweMultiSubtitleCore.extensionSegmentById(...args); }
+export function bindingForMainIndex(...args) { return window.MaweMultiSubtitleCore.bindingForMainIndex(...args); }
+export function bindingForExtensionIndex(...args) { return window.MaweMultiSubtitleCore.bindingForExtensionIndex(...args); }
+export function getBindingMarkerTargets(...args) { return window.MaweMultiSubtitleCore.getBindingMarkerTargets(...args); }
+export function extensionForMainIndex(...args) { return window.MaweMultiSubtitleCore.extensionForMainIndex(...args); }
+export function mainIndexForExtensionIndex(...args) { return window.MaweMultiSubtitleCore.mainIndexForExtensionIndex(...args); }
+export function removeBindingsForSegmentIds(...args) { return window.MaweMultiSubtitleCore.removeBindingsForSegmentIds(...args); }
+export function addSubtitleBinding(...args) { return window.MaweMultiSubtitleCore.addSubtitleBinding(...args); }
+export function markMultiSubtitleStateDirty(...args) { return window.MaweMultiSubtitleCore.markMultiSubtitleStateDirty(...args); }
+export function markMultiSubtitleDirty(...args) { return window.MaweMultiSubtitleCore.markMultiSubtitleDirty(...args); }
+export function markMainSegmentsDirty(...args) { return window.MaweMultiSubtitleCore.markMainSegmentsDirty(...args); }
+export function syncBindingOffsets(...args) { return window.MaweMultiSubtitleCore.syncBindingOffsets(...args); }
+export function clampExtensionRange(...args) { return window.MaweMultiSubtitleCore.clampExtensionRange(...args); }
+export function clampNumber(...args) { return window.MaweMultiSubtitleCore.clampNumber(...args); }
+export function getSubtitleTimelineDuration(...args) { return window.MaweMultiSubtitleCore.getSubtitleTimelineDuration(...args); }
+export function getTrackNeighborBounds(...args) { return window.MaweMultiSubtitleCore.getTrackNeighborBounds(...args); }
+export function extensionRangeOverlapsNeighbors(...args) { return window.MaweMultiSubtitleCore.extensionRangeOverlapsNeighbors(...args); }
+export function setExtensionSegmentRange(...args) { return window.MaweMultiSubtitleCore.setExtensionSegmentRange(...args); }
+export function extensionTrackSelectionSnapshot(...args) { return window.MaweMultiSubtitleCore.extensionTrackSelectionSnapshot(...args); }
+export function restoreExtensionTrackSelection(...args) { return window.MaweMultiSubtitleCore.restoreExtensionTrackSelection(...args); }
+export function sortExtensionTrackSegments(...args) { return window.MaweMultiSubtitleCore.sortExtensionTrackSegments(...args); }
+export function reconcileExtensionTrack(...args) { return window.MaweMultiSubtitleCore.reconcileExtensionTrack(...args); }
+export function resolveExtensionFollowerRange(...args) { return window.MaweMultiSubtitleCore.resolveExtensionFollowerRange(...args); }
+export function constrainCueRangeToTrack(...args) { return window.MaweMultiSubtitleCore.constrainCueRangeToTrack(...args); }
+export function notifyBoundSyncWarning(...args) { return window.MaweMultiSubtitleCore.notifyBoundSyncWarning(...args); }
+export function syncBoundExtensionForMain(...args) { return window.MaweMultiSubtitleCore.syncBoundExtensionForMain(...args); }
+export function constrainBoundExtensionPanelEdit(...args) { return window.MaweMultiSubtitleCore.constrainBoundExtensionPanelEdit(...args); }
