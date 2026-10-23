@@ -164,7 +164,7 @@ export function initMaweBindingAlign() {
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   MaweSelection.selectedExtensionIdxs.forEach((index) => { if (track?.segments[index]?.id) ids.add(track.segments[index].id); });
   if (!ids.size) return;
-  const removed = MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => (
+  const removed = window.AsrEditorUtils.removeSubtitleBindings(multi, (binding) => (
     binding.main_segment_ids?.some((id) => ids.has(id))
       || binding.extension_segment_ids?.some((id) => ids.has(id))
   ));
@@ -176,7 +176,7 @@ export function initMaweBindingAlign() {
   // 这里把预览关系恢复后再记录，避免解绑动作无法撤销。
   multi.bindings.push(...removed);
   return MaweCommands.run('解绑双语字幕', (command) => {
-    MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
+    window.AsrEditorUtils.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     MaweMultiSubtitleCore.syncBindingOffsets();
     // 解绑会移除波形上的绑定标记，也需要刷新字幕块覆盖层。
