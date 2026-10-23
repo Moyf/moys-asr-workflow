@@ -187,6 +187,18 @@
       "exportName": "initMaweCoreState"
     },
     {
+      "file": "editor/cues/editor-split-trim.js",
+      "kind": "init",
+      "name": "split-trim-init",
+      "exportName": "initMaweSplitTrim"
+    },
+    {
+      "file": "editor/cues/editor-split-mode.js",
+      "kind": "init",
+      "name": "split-mode-init",
+      "exportName": "initMaweSplitMode"
+    },
+    {
       "file": "editor/ui/editor-display-settings.js",
       "kind": "init",
       "name": "editor-display-settings-init",
@@ -209,6 +221,18 @@
       "kind": "init",
       "name": "editor-ninja-init",
       "exportName": "initMaweNinja"
+    },
+    {
+      "file": "editor/cues/editor-keyboard-targets.js",
+      "kind": "init",
+      "name": "keyboard-targets-init",
+      "exportName": "initMaweKeyboardTargets"
+    },
+    {
+      "file": "editor/cues/editor-shortcuts.js",
+      "kind": "init",
+      "name": "shortcuts-init",
+      "exportName": "initMaweShortcuts"
     },
     {
       "file": "editor/cues/editor-merge-adjacent.js",
@@ -283,6 +307,12 @@
       "exportName": "initMaweMultiImport"
     },
     {
+      "file": "editor/cues/editor-find-replace.js",
+      "kind": "init",
+      "name": "find-replace-init",
+      "exportName": "initMaweFindReplace"
+    },
+    {
       "file": "editor/cues/editor-sticker-picker.js",
       "kind": "init",
       "name": "sticker-picker-init",
@@ -293,6 +323,12 @@
       "kind": "init",
       "name": "add-cue-init",
       "exportName": "initMaweAddCue"
+    },
+    {
+      "file": "editor/cues/editor-bound-drag.js",
+      "kind": "init",
+      "name": "bound-drag-init",
+      "exportName": "initMaweBoundDrag"
     },
     {
       "file": "editor/ui/editor-context-menus.js",

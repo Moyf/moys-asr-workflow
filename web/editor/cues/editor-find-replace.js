@@ -1,7 +1,8 @@
 // 查找替换：目标收集、正则构建、预览与范围控制。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweFindReplace 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweFindReplace 在原清单位次执行原 IIFE 体（挂
+// window.MaweFindReplace 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweFindReplace() {
 (function initMaweFindReplace(global) {
   'use strict';
 
@@ -168,3 +169,20 @@
     openReplaceModal
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function findInput(...args) { return window.MaweFindReplace.findInput(...args); }
+export function replaceInput(...args) { return window.MaweFindReplace.replaceInput(...args); }
+export function caseSensitiveCb(...args) { return window.MaweFindReplace.caseSensitiveCb(...args); }
+export function useRegexCb(...args) { return window.MaweFindReplace.useRegexCb(...args); }
+export function replacePreview(...args) { return window.MaweFindReplace.replacePreview(...args); }
+export function replaceScopeInfo(...args) { return window.MaweFindReplace.replaceScopeInfo(...args); }
+export function replaceModalTitle(...args) { return window.MaweFindReplace.replaceModalTitle(...args); }
+export function replaceSelectedOnlyCb(...args) { return window.MaweFindReplace.replaceSelectedOnlyCb(...args); }
+export function replaceSelectedOnlyHint(...args) { return window.MaweFindReplace.replaceSelectedOnlyHint(...args); }
+export function normalizeBatchSelection(...args) { return window.MaweFindReplace.normalizeBatchSelection(...args); }
+export function getReplaceTargetIndexes(...args) { return window.MaweFindReplace.getReplaceTargetIndexes(...args); }
+export function updatePreview(...args) { return window.MaweFindReplace.updatePreview(...args); }
+export function refreshScopeInfo(...args) { return window.MaweFindReplace.refreshScopeInfo(...args); }
+export function refreshReplaceSelectionControl(...args) { return window.MaweFindReplace.refreshReplaceSelectionControl(...args); }
+export function openReplaceModal(...args) { return window.MaweFindReplace.openReplaceModal(...args); }

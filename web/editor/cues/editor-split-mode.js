@@ -1,7 +1,8 @@
 // 拆分模式：快捷键提示、合并/接续模式 UI 与主字幕拆分类型绑定。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweSplitMode 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweSplitMode 在原清单位次执行原 IIFE 体（挂
+// window.MaweSplitMode 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweSplitMode() {
 (function initMaweSplitMode(global) {
   'use strict';
 
@@ -83,3 +84,12 @@
     setMainSubtitleSplitModeBinding
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function refreshSplitKeyHelp(...args) { return window.MaweSplitMode.refreshSplitKeyHelp(...args); }
+export function mergeJoinModeHint(...args) { return window.MaweSplitMode.mergeJoinModeHint(...args); }
+export function mergeJoinModeText(...args) { return window.MaweSplitMode.mergeJoinModeText(...args); }
+export function mergeJoinModeSwitch(...args) { return window.MaweSplitMode.mergeJoinModeSwitch(...args); }
+export function isConfiguredMainSplitModeOverride(...args) { return window.MaweSplitMode.isConfiguredMainSplitModeOverride(...args); }
+export function refreshMergeJoinModeHint(...args) { return window.MaweSplitMode.refreshMergeJoinModeHint(...args); }
+export function setMainSubtitleSplitModeBinding(...args) { return window.MaweSplitMode.setMainSubtitleSplitModeBinding(...args); }
