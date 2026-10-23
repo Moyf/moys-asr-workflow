@@ -11,6 +11,8 @@ from unittest import mock
 
 from PIL import Image
 
+from tests.compact_assertions import CompactContainerAssertions
+
 
 spec = importlib.util.spec_from_file_location(
     "ass_stacking_pixel_oracle",
@@ -20,7 +22,7 @@ oracle = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(oracle)
 
 
-class SeriesRendererTests(unittest.TestCase):
+class SeriesRendererTests(CompactContainerAssertions, unittest.TestCase):
     def test_automatic_dialogue_uses_independent_frames_and_preserves_artifact_names(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
