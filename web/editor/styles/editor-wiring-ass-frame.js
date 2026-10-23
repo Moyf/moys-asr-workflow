@@ -12,7 +12,9 @@
   const stageImage = document.getElementById('ass-stage-frame');
   const stageStatus = document.getElementById('ass-stage-status');
   const stage = global.MaweDom?.playerStage;
-  const player = global.MaweCoreState?.player;
+  // player 元素会被媒体加载整体替换（editor-media-load.js 的 replaceChild），
+  // 这里只保留可变引用；事件与帧回调的换绑见下方 bindPlayer()。
+  let player = global.MaweCoreState?.player;
   const renderButton = document.getElementById('ass-frame-render');
   const windowStatus = document.getElementById('ass-frame-window-status');
   const staleEl = document.getElementById('ass-frame-stale');
@@ -48,15 +50,23 @@
   // Avoid serializing the project or spawning FFmpeg when neither view needs it.
   const previewNeeded = () => floatingPanel.isOpen() || stageOverlayEnabled();
 
+  function serverMediaSource() {
+    const url = new URL(player?.currentSrc || player?.src || global.location.href, global.location.href);
+    return url.origin === global.location.origin && url.pathname === '/media';
+  }
+
   function boundVideo() {
     // A browser-only blob upload can differ from the server's bound project.
     // Never replace it with a frame from an unrelated server media file.
     if (player?.tagName !== 'VIDEO' || !player.videoWidth) return false;
-    const url = new URL(player.currentSrc || player.src || global.location.href, global.location.href);
-    return url.origin === global.location.origin && url.pathname === '/media';
+    return serverMediaSource();
   }
 
-  const greenScreenPreview = () => player?.tagName !== 'VIDEO' || !player.videoWidth;
+  // 绿幕只服务「未加载媒体」或「服务器绑定媒体本身没有视频轨」（纯音频工程、
+  // 空白工程）。浏览器本地加载的媒体（blob: 等）与服务器工程无关，按上方
+  // boundVideo 的约定不能为它渲染实际画面，也不能退回绿幕。
+  const greenScreenPreview = () => player?.tagName !== 'VIDEO'
+    || (!player.videoWidth && (!(player.currentSrc || player.src) || serverMediaSource()));
   const frameAvailable = () => boundVideo() || greenScreenPreview();
 
   function setWindowStatus(text, state = '') {
@@ -161,8 +171,9 @@
     const scale = Math.min(imageRect.width / imageEl.naturalWidth, imageRect.height / imageEl.naturalHeight);
     const width = imageEl.naturalWidth * scale;
     const height = imageEl.naturalHeight * scale;
-    stickerLayer.style.left = `${imageRect.left - wrapRect.left + (imageRect.width - width) / 2}px`;
-    stickerLayer.style.top = `${imageRect.top - wrapRect.top + (imageRect.height - height) / 2}px`;
+    // Absolute coordinates belong to the scrollable padding box, not its viewport.
+    stickerLayer.style.left = `${imageRect.left - wrapRect.left - wrap.clientLeft + wrap.scrollLeft + (imageRect.width - width) / 2}px`;
+    stickerLayer.style.top = `${imageRect.top - wrapRect.top - wrap.clientTop + wrap.scrollTop + (imageRect.height - height) / 2}px`;
     stickerLayer.style.width = `${width}px`;
     stickerLayer.style.height = `${height}px`;
     // 与舞台层同一几何换算（GEO_UTILS.previewGeometryToCss：钳制 + 百分比）。
@@ -192,10 +203,10 @@
       return;
     }
     positionWindowStickerLayer();
-    // 签名复用 renderStickerOverlay 的口径：显示集合或叠加归属变化才重建 DOM。
+    // Include the asset revision carried by stickerUrl when a directory changes.
     const overlayActive = Boolean(global.MaweStickerOverlay?.activeStickerHasOverlay);
     const signature = `${overlayActive ? 'O' : ''}\u0001${
-      stickers.map((sticker) => sticker.filename || sticker.name).join('\u0001')}`;
+      stickers.map((sticker) => global.MaweSelection.stickerUrl(sticker)).join('\u0001')}`;
     if (windowStickerSignature !== signature) {
       stickerContent.classList.toggle('has-overlay-sticker', overlayActive);
       stickerContent.replaceChildren(...stickers.map((sticker) => {
@@ -210,7 +221,9 @@
     stickerLayer.hidden = false;
   }
 
-  // 面板尺寸变化会改变 PNG 的绘制矩形；图片盒是 wrap（含 padding），观察它即可。
+  // The first PNG can finish loading after showWindowFrame measured its box.
+  imageEl?.addEventListener('load', positionWindowStickerLayer);
+  // 面板尺寸变化会改变 PNG 的绘制矩形，跟随 wrap 的尺寸变化。
   if (stickerLayer && typeof global.ResizeObserver === 'function') {
     new global.ResizeObserver(() => {
       if (!stickerLayer.hidden) positionWindowStickerLayer();
@@ -401,26 +414,8 @@
     syncPreview();
   }
 
-  player?.addEventListener('play', syncPreview);
-  player?.addEventListener('pause', () => {
-    // Playback's clock advances between frame callbacks. Once paused, its
-    // final cursor still represents the last presented frame; keep that PTS
-    // rather than falling back to the between-frame clock. A seek continues
-    // to invalidate it until the browser presents the destination frame.
-    if (!player.seeking) presentedCursor = player.currentTime;
-    syncPreview();
-  });
-  player?.addEventListener('seeking', () => {
-    seekGeneration += 1;
-    // Some browsers deliver the new frame callback before the queued seeking
-    // event. Keep that new PTS rather than clearing it with the old one.
-    if (presentedCursor !== player.currentTime) presentedTime = null;
-    syncPreview();
-  });
-  player?.addEventListener('seeked', syncPreview);
-  player?.addEventListener('loadedmetadata', syncPreview);
-  player?.addEventListener('emptied', () => {
-    mediaGeneration += 1;
+  // 媒体变化（emptied，或 player 元素被整体替换）后，旧渲染结果全部作废。
+  function resetRenderedFrames() {
     presentedTime = null;
     presentedCursor = null;
     cached = null;
@@ -437,19 +432,88 @@
     if (placeholder) placeholder.hidden = false;
     setWindowStatus('');
     syncWindowStickers();
+  }
+
+  function onPlay() { syncPreview(); }
+
+  function onPause() {
+    // Playback's clock advances between frame callbacks. Once paused, its
+    // final cursor still represents the last presented frame; keep that PTS
+    // rather than falling back to the between-frame clock. A seek continues
+    // to invalidate it until the browser presents the destination frame.
+    if (!player.seeking) presentedCursor = player.currentTime;
     syncPreview();
-  });
-  if (typeof player?.requestVideoFrameCallback === 'function') {
+  }
+
+  function onSeeking() {
+    seekGeneration += 1;
+    // Some browsers deliver the new frame callback before the queued seeking
+    // event. Keep that new PTS rather than clearing it with the old one.
+    if (presentedCursor !== player.currentTime) presentedTime = null;
+    syncPreview();
+  }
+
+  function onSeeked() { syncPreview(); }
+
+  function onLoadedMetadata() { syncPreview(); }
+
+  function onEmptied() {
+    mediaGeneration += 1;
+    resetRenderedFrames();
+    syncPreview();
+  }
+
+  function attachPlayerEvents() {
+    if (!player) return;
+    player.addEventListener('play', onPlay);
+    player.addEventListener('pause', onPause);
+    player.addEventListener('seeking', onSeeking);
+    player.addEventListener('seeked', onSeeked);
+    player.addEventListener('loadedmetadata', onLoadedMetadata);
+    player.addEventListener('emptied', onEmptied);
+    startFrameClock();
+  }
+
+  function detachPlayerEvents() {
+    if (!player) return;
+    player.removeEventListener('play', onPlay);
+    player.removeEventListener('pause', onPause);
+    player.removeEventListener('seeking', onSeeking);
+    player.removeEventListener('seeked', onSeeked);
+    player.removeEventListener('loadedmetadata', onLoadedMetadata);
+    player.removeEventListener('emptied', onEmptied);
+  }
+
+  function startFrameClock() {
+    if (typeof player?.requestVideoFrameCallback !== 'function') return;
+    const element = player;
     const onFrame = (now, metadata) => {
+      // 元素被替换后旧回调不再触发；循环只跟随注册时的元素。
+      if (player !== element) return;
       if (Number.isFinite(metadata.mediaTime)) {
         presentedTime = metadata.mediaTime;
         presentedCursor = player.currentTime;
       }
       if (player.paused && !player.seeking) syncPreview();
-      player.requestVideoFrameCallback(onFrame);
+      element.requestVideoFrameCallback(onFrame);
     };
-    player.requestVideoFrameCallback(onFrame);
+    element.requestVideoFrameCallback(onFrame);
   }
+
+  // 媒体加载会 replaceChild 换掉 player 元素并更新 MaweCoreState.player，
+  // 再经 MaweMediaPlayback.bindPlayerEvents 通知本模块换绑；判定逻辑必须
+  // 跟随新元素，否则浏览器本地媒体会被误判回服务器工程媒体。
+  function bindPlayer(element) {
+    if (!element || element === player) return;
+    detachPlayerEvents();
+    player = element;
+    mediaGeneration += 1;
+    resetRenderedFrames();
+    attachPlayerEvents();
+    syncAssFrameControls();
+  }
+
+  attachPlayerEvents();
   renderButton?.addEventListener('click', () => void renderAssFrame());
   if (quickOpenButton) openButton.addEventListener('click', () => floatingPanel.toggle());
   styleOpenButton?.addEventListener('click', () => floatingPanel.open());
@@ -466,8 +530,9 @@
   document.getElementById('ass-frame-size')?.addEventListener('click', (event) => {
     const native = document.querySelector('.ass-frame-image-wrap')?.classList.toggle('ass-frame-native');
     event.currentTarget.setAttribute('aria-pressed', String(Boolean(native)));
+    positionWindowStickerLayer();
   });
 
-  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview, syncWindowStickers });
+  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview, bindPlayer, syncWindowStickers });
   syncAssFrameControls();
 })(typeof window !== 'undefined' ? window : globalThis);

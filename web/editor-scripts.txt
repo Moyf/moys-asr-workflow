@@ -8,7 +8,6 @@ shared/gap-remove-core.js
 shared/editor-utils.js
 shared/editor-i18n.js
 shared/tooltip.js
-editor/media/editor-thumbnails.js
 editor/media/waveform/constants.js
 editor/media/waveform/labels.js
 editor/media/waveform/scale.js
@@ -22,19 +21,12 @@ editor/media/waveform/controls.js
 editor/media/waveform/pointer.js
 editor/media/waveform/workspace.js
 editor/media/waveform/scale-controls.js
-editor/media/waveform/media.js
-editor/media/waveform/render.js
-editor/media/waveform/cue-blocks.js
-editor/media/waveform/word-blocks.js
-editor/media/waveform/canvas.js
-editor/media/waveform/input.js
 editor/media/waveform/cue-drag.js
 editor/media/waveform/cue-commands.js
 editor/media/waveform/gap-drag.js
 editor/media/waveform/markers.js
 editor/media/waveform/cue-drag-update.js
 editor/media/waveform/playback.js
-editor/media/waveform/thumbnails.js
 editor/media/waveform.js
 editor/ui/editor-hint.js
 editor/media/editor-jkl.js

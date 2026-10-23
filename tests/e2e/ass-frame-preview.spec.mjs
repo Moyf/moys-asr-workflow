@@ -336,6 +336,26 @@ test('preview visibility and speaker labels remain independent from exports and 
   await expect(page.locator('#ass-stage-status')).toBeHidden();
 });
 
+test('browser-local media loaded through the editor keeps frames and green screen hidden', async ({ page }) => {
+  const requests = [];
+  await page.route('**/api/ass-frame', async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.continue();
+  });
+  await enableAss(page);
+  await enableStage(page);
+  await seek(page, 1.5);
+  await expect(page.locator('#ass-stage-frame')).toBeVisible();
+  // 媒体加载会 replaceChild 整体替换 player 元素；ass-frame 的判定必须跟随
+  // 新元素，浏览器本地媒体（blob:）才不会退回服务器工程媒体或绿幕（#166）。
+  await page.locator('#load-media-file').setInputFiles(join(tempDir, 'synthetic.mp4'));
+  await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.currentSrc.startsWith('blob:'))).toBe(true);
+  await expect(page.locator('#ass-stage-frame')).toBeHidden();
+  await expect(page.locator('#ass-stage-status')).toBeHidden();
+  await page.waitForTimeout(350);
+  expect(requests.every((request) => request.greenScreen !== true)).toBe(true);
+});
+
 test('auto-renders a new seek while preview refreshes keep arriving', async ({ page }) => {
   const times = [];
   await page.route('**/api/ass-frame', async (route) => { times.push(route.request().postDataJSON().timeMs); await route.continue(); });

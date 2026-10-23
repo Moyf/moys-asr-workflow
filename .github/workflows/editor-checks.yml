@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           package-manager-cache: false
       - uses: actions/setup-python@v6
         with:
@@ -66,7 +66,7 @@ jobs:
           run_install: false
       - uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
@@ -81,6 +81,7 @@ jobs:
           python-version: '3.11'
       - uses: astral-sh/setup-uv@v7
         with:
+          version: "0.13.4"
           enable-cache: true
       - run: uv sync --frozen
       # Node tests also launch Chromium and compare against Python exporters.
@@ -99,4 +100,4 @@ jobs:
       - name: Real file and HTTP editor
         env:
           MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: pnpm exec playwright test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs tests/e2e/editor-text-tools.spec.mjs tests/e2e/ass-cue-position.spec.mjs
+        run: pnpm exec playwright test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs tests/e2e/editor-text-tools.spec.mjs tests/e2e/ass-cue-position.spec.mjs tests/e2e/sticker-preview-lifecycle.spec.mjs
