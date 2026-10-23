@@ -1,3 +1,4 @@
+import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,7 @@ for (const [language, width] of [['zh', 900], ['en', 760]]) {
   test(`error context survives delayed copy (${language}, ${width})`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 880 });
     await page.goto(`file://${launcherPath}`);
+    await completeStaticLauncherDiscovery(page);
     await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
     if (language === 'en') {
       await page.evaluate(() => window.MAWLauncher.openSettings());
@@ -43,6 +45,7 @@ for (const [language, width] of [['zh', 900], ['en', 760]]) {
 
 test('synchronous and legacy errors both receive report context', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.evaluate((context) => window.MAWLauncher.onBatchError({ ok: false, code: 'transcription_failed', detail: 'Sync failure', errorContext: context }), errorContext);
   await expect(page.locator('#errorNoticeContext')).toContainText('2026-10-03 23:59:59+08:00');
@@ -52,6 +55,7 @@ test('synchronous and legacy errors both receive report context', async ({ page 
 
 test('switching language refreshes context labels without changing the error time or log', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.evaluate((context) => {
     window.__reports = [];
