@@ -96,7 +96,7 @@ MaweDom.hideDisabledToggle?.addEventListener('change', () => {
       if (extensionTrack?.segments[index]?.disabled) MaweState.selection.remove('extension', index);
     });
     MaweSelection.updateMultiSelectionClasses();
-    updateSelectionCountText();
+    window.MaweCuePanelWiring.updateSelectionCountText();
     if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   }
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateDisabledVisibility();

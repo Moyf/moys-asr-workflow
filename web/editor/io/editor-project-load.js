@@ -87,8 +87,8 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweCuePanelState.currentCuePanelTrackId = null;
   MaweCuePanelState.resetCuePanelEditState({ discard: true });
   resetLoadedMedia();
-  projectExtensionFields = Object.fromEntries(
-    Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+  window.MaweExportContext.projectExtensionFields = Object.fromEntries(
+    Object.entries(data).filter(([key]) => !window.MaweExportContext.CANONICAL_PROJECT_FIELDS.has(key)),
   );
   MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
   MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
