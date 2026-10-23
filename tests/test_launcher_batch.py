@@ -30,6 +30,8 @@ class BatchRunnerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
+        # Queue fixtures contain fake media bytes; their statistics duration is unknown.
+        self.enterContext(mock.patch("maw.launcher_batch.media_duration_seconds", return_value=None))
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -315,6 +317,29 @@ class BatchRunnerTests(unittest.TestCase):
         self.assertEqual(result["outcomes"][0]["code"], "batch_item_invalid")
         self.assertTrue(result["outcomes"][0]["error"])
 
+    def test_timing_keeps_output_when_media_duration_is_known_or_unknown(self) -> None:
+        for duration in (10.0, None):
+            with self.subTest(duration=duration):
+                item = self._items(1)[0]
+                item = replace(item, request=replace(item.request, srt_only=True))
+                events = []
+                subtitle = "1\n00:00:00,000 --> 00:00:01,000\n你好\n"
+
+                def transcribe(request, *, cancel_event):
+                    request.srt_path.write_text(subtitle, encoding="utf-8")
+                    return TranscriptionResult(request.srt_path, None, None)
+
+                manifest = self.root / "timing-manifest.json"
+                with mock.patch("maw.launcher_batch.media_duration_seconds", return_value=duration):
+                    result = run_batch((item,), settings={}, manifest_path=manifest,
+                        cancel_event=threading.Event(), on_event=events.append, transcribe=transcribe)
+                self.assertEqual(result["outcomes"][0]["status"], "done")
+                self.assertEqual(item.request.srt_path.read_text(encoding="utf-8"), subtitle)
+                self.assertEqual(json.loads(manifest.read_text(encoding="utf-8"))["outcomes"][0]["status"], "done")
+                messages = [event.get("message", "") for event in events if event.get("type") == "batch_item_log"]
+                self.assertTrue(any("耗时汇总" in message for message in messages))
+                self.assertEqual(any("全程耗时为媒体时长的" in message for message in messages), duration is not None)
+
     def test_batch_passes_ocr_runtime_root_and_routes_pipeline_logs(self) -> None:
         plan = {"enabled": True, "steps": [{"id": "ocr", "enabled": True}]}
         events: list[dict[str, object]] = []
@@ -342,6 +367,8 @@ class BatchApiTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
+        self.enterContext(mock.patch("maw.gui_web.probe_audio_tracks", return_value=None))
+        self.enterContext(mock.patch("maw.launcher_batch.media_duration_seconds", return_value=None))
         # 批量清单与输出路径用例隔离真实 .env 的输出目录开关
         config_patcher = mock.patch(
             "maw.gui_workflow.effective_config",
