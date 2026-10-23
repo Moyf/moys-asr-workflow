@@ -117,16 +117,36 @@ function validateModule(source, item) {
 function validateInitModule(source, item) {
   if (item.kind !== 'init') return;
   // The initializer body runs at this file's manifest position. Imported
-  // modules follow normal ESM evaluation and should keep top-level work declarative.
+  // modules follow normal ESM evaluation and should keep top-level work
+  // declarative. Sibling modules import each other's helpers directly, so
+  // additional named exports are allowed as long as they are plain hoisted
+  // function declarations (no module-evaluation side effects).
   const ast = parse(source,'module');
   const imports = ast.body.filter(node => node.type === 'ImportDeclaration');
   const exports = ast.body.filter(node => node.type === 'ExportNamedDeclaration');
-  const initializer = exports[0]?.declaration;
-  if (imports.length + exports.length !== ast.body.length || exports.length !== 1
+  const initializer = exports.map(node => node.declaration)
+    .find(node => node?.type === 'FunctionDeclaration' && node.id?.name === item.exportName);
+  const extraExports = exports.filter(node => node.declaration !== initializer);
+  const extraIsPure = extraExports.every(node => node.declaration?.type === 'FunctionDeclaration'
+      && !node.declaration.async && !node.declaration.generator);
+  // Top-level inert consts (regexes, literals) are allowed: they allocate
+  // without touching DOM, window or other modules' state.
+  const inert = (node) => {
+    if (node.type === 'Literal' || node.type === 'RegExpLiteral' || node.type === 'Identifier'
+        || node.type === 'TemplateLiteral' || node.type === 'UnaryExpression') return true;
+    if (node.type === 'ArrayExpression') return (node.elements ?? []).every(el => el && inert(el));
+    if (node.type === 'ObjectExpression') return node.properties.every(p => inert(p.value ?? p.argument));
+    if (node.type === 'BinaryExpression') return inert(node.left) && inert(node.right);
+    return false;
+  };
+  const constDecls = ast.body.filter(node => node.type === 'VariableDeclaration' && node.kind === 'const');
+  const constsInert = constDecls.every(node => node.declarations.every(d => d.init && inert(d.init)));
+  if (imports.length + exports.length + constDecls.length !== ast.body.length || exports.length === 0
+      || !constsInert
       || initializer?.type !== 'FunctionDeclaration'
       || initializer.id?.name !== item.exportName
-      || initializer.async || initializer.generator) {
-    throw new Error(`Init module must export exactly one function: ${item.file}`);
+      || initializer.async || initializer.generator || !extraIsPure) {
+    throw new Error(`Init module must export ${item.exportName} plus optional pure function exports: ${item.file}`);
   }
 }
 
