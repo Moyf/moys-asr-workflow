@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAW Dev Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%8B%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="topbar">
+  <h1>MAW Dev Dashboard</h1>
+  <span id="stats" class="stats"></span>
+  <span class="spacer"></span>
+  <label class="auto-toggle" title="每 60 秒自动刷新">
+    <input type="checkbox" id="auto-refresh">自动刷新
+  </label>
+  <button id="refresh-btn" type="button">刷新</button>
+  <button id="open-changelog" type="button">CHANGELOG 编辑器</button>
+</header>
+
+<div id="toolbar">
+  <select id="milestone-filter">
+    <option value="all">全部 milestone</option>
+  </select>
+  <input id="search" type="search" placeholder="搜索标题 / 分支 / 作者 / PR 号…" autocomplete="off">
+  <span id="filter-meta" class="muted"></span>
+</div>
+
+<div id="banner" hidden></div>
+
+<main id="board" class="board" aria-label="PR 看板"></main>
+
+<div id="toast" hidden></div>
+
+<script src="app.js" defer></script>
+</body>
+</html>
