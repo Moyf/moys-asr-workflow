@@ -811,6 +811,53 @@ test('raises the sticker overlay content while an overlay sticker is displayed',
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
+test('multi-sentence sticker binding covers every bound cue without a drag', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [
+      { id: 'main-001', start: 0, end: 1000, text: '第一句' },
+      { id: 'main-002', start: 1000, end: 2600, text: '第二句' },
+    ],
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveCount(1);
+
+  // 走真实分配入口：两条字幕多选 → 表情包选择器 → 点击素材。
+  // MaweBoot 门面冻结，但 STICKERS 数组本身可变，用 push 注入素材。
+  await page.evaluate(() => {
+    document.getElementById('sticker-overlay-toggle').checked = true;
+    MaweBoot.STICKERS.push({ name: 'bind', filename: 'bind.png', rel: 'bind.png' });
+    MaweState.selection.clear('main');
+    MaweState.selection.add('main', 0);
+    MaweState.selection.add('main', 1);
+    MaweStickerPicker.openStickerPicker([0, 1], true);
+  });
+  await page.locator('#sticker-grid .sticker-item').first().click();
+  await expect(page.locator('#sticker-modal')).not.toHaveClass(/show/);
+
+  // 数据契约：head.sticker 覆盖整个选区，第二句是 ref。
+  expect(await page.evaluate(() => {
+    const [head, member] = MaweBoot.DATA.segments;
+    return { start: head.sticker.start, end: head.sticker.end,
+      ref: member.sticker_ref && { name: member.sticker_ref.name, headIdx: member.sticker_ref.headIdx } };
+  })).toEqual({ start: 0, end: 2600, ref: { name: 'bind', headIdx: 0 } });
+
+  // 关键回归：不拖动任何字幕条，第二句时间内就要显示表情包
+  // （旧实现 head.sticker 只写到首句 end，必须拖动触发区间同步才恢复）。
+  const countAt = (ms) => page.evaluate((time) => {
+    MaweCoreState.player.currentTime = time / 1000;
+    MawePlaybackLoop.update();
+    return document.querySelectorAll('#sticker-overlay-layer .sticker-overlay-content img').length;
+  }, ms);
+  expect(await countAt(500)).toBe(1);
+  expect(await countAt(1500)).toBe(1);
+  expect(await countAt(2700)).toBe(0);
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
 test('keeps color group references valid through an overlay round trip', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));

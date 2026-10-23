@@ -87,6 +87,10 @@
       segments[idx].sticker = { ...sticker };
       segments[idx].sticker_ref = null;
     }
+    // 区间契约：head.sticker 必须覆盖整个组（head + 所有 ref 成员）的时间
+    // 范围，与 syncTimelineGroupRanges / 延长表情包 / 标记颜色一致。少了这一步
+    // 多句绑定会只落在第一句区间里，直到下次拖动提交触发同步才恢复。
+    MaweTextCleanup.syncTimelineGroupRanges();
     MaweDom.stickerModal.classList.remove('show');
     // 叠加轨目标：同步脏标记与保存调度，否则分配只改内存、不落盘。
     if (stickerTargetTrack === 'overlay') {

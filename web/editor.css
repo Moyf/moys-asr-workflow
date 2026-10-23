@@ -2137,6 +2137,28 @@
   }
   .ass-frame-image { display: block; width: 100%; height: 100%; object-fit: contain; min-height: 0; border-radius: var(--radius-sm); }
   .ass-frame-image[hidden] { display: none; }
+  /* 实际画面窗口的表情包图层：叠在实际帧 PNG 上方，几何与 contain 显示语义
+     与播放器舞台的 #sticker-overlay-layer 一致；层的 left/top/width/height 由
+     接线按 PNG 实际绘制矩形（object-fit: contain 的显示区域）写入，几何层按
+     preview.sticker 归一化几何取百分比。素材与字幕位置不相交，叠放次序与
+     舞台暂停视图（表情包层压在实际帧上方）保持一致。 */
+  .ass-frame-sticker-layer { position: absolute; z-index: 2; pointer-events: none; }
+  .ass-frame-sticker-layer .ass-frame-sticker-geometry { position: absolute; pointer-events: none; }
+  .ass-frame-sticker-layer .sticker-overlay-content {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column; gap: 6px;
+    align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  /* 与舞台层相同：叠加轨表情包显示时内容区加高到 200%，给垂直堆叠留空间。 */
+  .ass-frame-sticker-layer .sticker-overlay-content.has-overlay-sticker { height: 200%; }
+  .ass-frame-sticker-layer .sticker-overlay-content img {
+    flex: 0 0 auto; max-width: 100%;
+    object-fit: contain; border-radius: var(--radius-sm);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); background: rgba(0, 0, 0, 0.35);
+  }
+  .ass-frame-sticker-layer .sticker-overlay-content img:only-child { max-height: 100%; }
+  .ass-frame-sticker-layer .sticker-overlay-content img:not(:only-child) { max-height: 50%; }
   .ass-frame-image-wrap.ass-frame-native { display: block; overflow: auto; }
   .ass-frame-native .ass-frame-image { width: auto; height: auto; max-width: none; max-height: none; border-radius: 0; }
   .ass-frame-placeholder { margin: 0; color: var(--text-faint); font-size: 12px; text-align: center; }

@@ -12,12 +12,19 @@
   const stageImage = document.getElementById('ass-stage-frame');
   const stageStatus = document.getElementById('ass-stage-status');
   const stage = global.MaweDom?.playerStage;
-  const player = global.MaweCoreState?.player;
+  // player 元素会被媒体加载整体替换（editor-media-load.js 的 replaceChild），
+  // 这里只保留可变引用；事件与帧回调的换绑见下方 bindPlayer()。
+  let player = global.MaweCoreState?.player;
   const renderButton = document.getElementById('ass-frame-render');
   const windowStatus = document.getElementById('ass-frame-window-status');
   const staleEl = document.getElementById('ass-frame-stale');
   const stageToggle = document.getElementById('ass-frame-stage-toggle');
   const autoToggle = document.getElementById('ass-frame-auto-toggle');
+  // 实际画面窗口的表情包图层（模板默认存在；缺失时整组逻辑静默跳过）。
+  const stickerLayer = document.getElementById('ass-frame-sticker-layer');
+  const stickerGeometry = document.getElementById('ass-frame-sticker-geometry');
+  const stickerContent = stickerLayer ? stickerLayer.querySelector('.sticker-overlay-content') : null;
+  let windowStickerSignature = null;
   let timer = 0;
   let pending = false;
   let desired = null;
@@ -43,15 +50,23 @@
   // Avoid serializing the project or spawning FFmpeg when neither view needs it.
   const previewNeeded = () => floatingPanel.isOpen() || stageOverlayEnabled();
 
+  function serverMediaSource() {
+    const url = new URL(player?.currentSrc || player?.src || global.location.href, global.location.href);
+    return url.origin === global.location.origin && url.pathname === '/media';
+  }
+
   function boundVideo() {
     // A browser-only blob upload can differ from the server's bound project.
     // Never replace it with a frame from an unrelated server media file.
     if (player?.tagName !== 'VIDEO' || !player.videoWidth) return false;
-    const url = new URL(player.currentSrc || player.src || global.location.href, global.location.href);
-    return url.origin === global.location.origin && url.pathname === '/media';
+    return serverMediaSource();
   }
 
-  const greenScreenPreview = () => player?.tagName !== 'VIDEO' || !player.videoWidth;
+  // 绿幕只服务「未加载媒体」或「服务器绑定媒体本身没有视频轨」（纯音频工程、
+  // 空白工程）。浏览器本地加载的媒体（blob: 等）与服务器工程无关，按上方
+  // boundVideo 的约定不能为它渲染实际画面，也不能退回绿幕。
+  const greenScreenPreview = () => player?.tagName !== 'VIDEO'
+    || (!player.videoWidth && (!(player.currentSrc || player.src) || serverMediaSource()));
   const frameAvailable = () => boundVideo() || greenScreenPreview();
 
   function setWindowStatus(text, state = '') {
@@ -102,6 +117,7 @@
       if (imageEl.getAttribute('src') !== frame.url) imageEl.src = frame.url;
       imageEl.hidden = false;
     }
+    syncWindowStickers();
     const placeholder = document.getElementById('ass-frame-placeholder');
     if (placeholder) placeholder.hidden = true;
     const caption = document.getElementById('ass-frame-caption');
@@ -133,6 +149,85 @@
       && cached?.key === desired?.key);
     const label = staleEl.querySelector('span');
     if (label) label.textContent = translate(player?.paused === true ? '画面已过期' : '暂停后重新渲染');
+  }
+
+
+  // === 表情包图层（窗口内）===
+  // 让实际画面 = 完整成片效果：按帧时间显示表情包，几何与 contain 显示语义
+  // 与播放器舞台的 #sticker-overlay-layer 完全一致（同一 activeStickersAt 区间、
+  // 同一 preview.sticker 归一化几何），叠在实际帧 PNG 上方——与舞台暂停视图
+  // 的叠放次序相同（表情包层本来就是舞台里压在实际帧之上的独立图层；素材与
+  // 字幕位置不相交）。显隐跟随「预览表情包」开关（MaweStickerBurnPlan.
+  // stickerBurnEnabled，与烧录行为同源），素材 URL 失败时 <img> 自然空显示，
+  // 不阻塞出帧。
+  function positionWindowStickerLayer() {
+    if (!stickerLayer || !stickerGeometry || !imageEl.naturalWidth || !imageEl.naturalHeight) return;
+    // PNG 以 object-fit: contain 显示：层的定位框必须是实际绘制矩形，
+    // 归一化几何才能与舞台预览逐像素对应。原尺寸查看模式下图片盒就是
+    // 自然尺寸，结果不变。
+    const wrap = imageEl.parentElement;
+    const wrapRect = wrap.getBoundingClientRect();
+    const imageRect = imageEl.getBoundingClientRect();
+    const scale = Math.min(imageRect.width / imageEl.naturalWidth, imageRect.height / imageEl.naturalHeight);
+    const width = imageEl.naturalWidth * scale;
+    const height = imageEl.naturalHeight * scale;
+    // Absolute coordinates belong to the scrollable padding box, not its viewport.
+    stickerLayer.style.left = `${imageRect.left - wrapRect.left - wrap.clientLeft + wrap.scrollLeft + (imageRect.width - width) / 2}px`;
+    stickerLayer.style.top = `${imageRect.top - wrapRect.top - wrap.clientTop + wrap.scrollTop + (imageRect.height - height) / 2}px`;
+    stickerLayer.style.width = `${width}px`;
+    stickerLayer.style.height = `${height}px`;
+    // 与舞台层同一几何换算（GEO_UTILS.previewGeometryToCss：钳制 + 百分比）。
+    const css = global.MaweAppearance?.GEO_UTILS?.previewGeometryToCss
+      ? global.MaweAppearance.GEO_UTILS.previewGeometryToCss(global.MawePreviewGeometry.getStickerGeometry())
+      : null;
+    if (css) {
+      stickerGeometry.style.left = css.left;
+      stickerGeometry.style.top = css.top;
+      stickerGeometry.style.width = css.width;
+      stickerGeometry.style.height = css.height;
+    }
+  }
+
+  function syncWindowStickers() {
+    if (!stickerLayer || !stickerGeometry || !stickerContent) return;
+    const enabled = Boolean(global.MaweStickerBurnPlan?.stickerBurnEnabled?.());
+    const stickers = enabled && cached && !imageEl.hidden
+      ? (global.MaweStickerOverlay?.activeStickersAt(cached.timeMs) || []) : [];
+    if (!enabled || !stickers.length) {
+      windowStickerSignature = null;
+      if (!stickerLayer.hidden || stickerContent.childElementCount) {
+        stickerContent.classList.remove('has-overlay-sticker');
+        stickerContent.replaceChildren();
+        stickerLayer.hidden = true;
+      }
+      return;
+    }
+    positionWindowStickerLayer();
+    // Include the asset revision carried by stickerUrl when a directory changes.
+    const overlayActive = Boolean(global.MaweStickerOverlay?.activeStickerHasOverlay);
+    const signature = `${overlayActive ? 'O' : ''}\u0001${
+      stickers.map((sticker) => global.MaweSelection.stickerUrl(sticker)).join('\u0001')}`;
+    if (windowStickerSignature !== signature) {
+      stickerContent.classList.toggle('has-overlay-sticker', overlayActive);
+      stickerContent.replaceChildren(...stickers.map((sticker) => {
+        const img = document.createElement('img');
+        img.src = global.MaweSelection.stickerUrl(sticker);
+        img.alt = sticker.name;
+        img.title = sticker.name;
+        return img;
+      }));
+      windowStickerSignature = signature;
+    }
+    stickerLayer.hidden = false;
+  }
+
+  // The first PNG can finish loading after showWindowFrame measured its box.
+  imageEl?.addEventListener('load', positionWindowStickerLayer);
+  // 面板尺寸变化会改变 PNG 的绘制矩形，跟随 wrap 的尺寸变化。
+  if (stickerLayer && typeof global.ResizeObserver === 'function') {
+    new global.ResizeObserver(() => {
+      if (!stickerLayer.hidden) positionWindowStickerLayer();
+    }).observe(imageEl.parentElement);
   }
 
   function syncPreview() {
@@ -319,26 +414,8 @@
     syncPreview();
   }
 
-  player?.addEventListener('play', syncPreview);
-  player?.addEventListener('pause', () => {
-    // Playback's clock advances between frame callbacks. Once paused, its
-    // final cursor still represents the last presented frame; keep that PTS
-    // rather than falling back to the between-frame clock. A seek continues
-    // to invalidate it until the browser presents the destination frame.
-    if (!player.seeking) presentedCursor = player.currentTime;
-    syncPreview();
-  });
-  player?.addEventListener('seeking', () => {
-    seekGeneration += 1;
-    // Some browsers deliver the new frame callback before the queued seeking
-    // event. Keep that new PTS rather than clearing it with the old one.
-    if (presentedCursor !== player.currentTime) presentedTime = null;
-    syncPreview();
-  });
-  player?.addEventListener('seeked', syncPreview);
-  player?.addEventListener('loadedmetadata', syncPreview);
-  player?.addEventListener('emptied', () => {
-    mediaGeneration += 1;
+  // 媒体变化（emptied，或 player 元素被整体替换）后，旧渲染结果全部作废。
+  function resetRenderedFrames() {
     presentedTime = null;
     presentedCursor = null;
     cached = null;
@@ -354,19 +431,89 @@
     const placeholder = document.getElementById('ass-frame-placeholder');
     if (placeholder) placeholder.hidden = false;
     setWindowStatus('');
+    syncWindowStickers();
+  }
+
+  function onPlay() { syncPreview(); }
+
+  function onPause() {
+    // Playback's clock advances between frame callbacks. Once paused, its
+    // final cursor still represents the last presented frame; keep that PTS
+    // rather than falling back to the between-frame clock. A seek continues
+    // to invalidate it until the browser presents the destination frame.
+    if (!player.seeking) presentedCursor = player.currentTime;
     syncPreview();
-  });
-  if (typeof player?.requestVideoFrameCallback === 'function') {
+  }
+
+  function onSeeking() {
+    seekGeneration += 1;
+    // Some browsers deliver the new frame callback before the queued seeking
+    // event. Keep that new PTS rather than clearing it with the old one.
+    if (presentedCursor !== player.currentTime) presentedTime = null;
+    syncPreview();
+  }
+
+  function onSeeked() { syncPreview(); }
+
+  function onLoadedMetadata() { syncPreview(); }
+
+  function onEmptied() {
+    mediaGeneration += 1;
+    resetRenderedFrames();
+    syncPreview();
+  }
+
+  function attachPlayerEvents() {
+    if (!player) return;
+    player.addEventListener('play', onPlay);
+    player.addEventListener('pause', onPause);
+    player.addEventListener('seeking', onSeeking);
+    player.addEventListener('seeked', onSeeked);
+    player.addEventListener('loadedmetadata', onLoadedMetadata);
+    player.addEventListener('emptied', onEmptied);
+    startFrameClock();
+  }
+
+  function detachPlayerEvents() {
+    if (!player) return;
+    player.removeEventListener('play', onPlay);
+    player.removeEventListener('pause', onPause);
+    player.removeEventListener('seeking', onSeeking);
+    player.removeEventListener('seeked', onSeeked);
+    player.removeEventListener('loadedmetadata', onLoadedMetadata);
+    player.removeEventListener('emptied', onEmptied);
+  }
+
+  function startFrameClock() {
+    if (typeof player?.requestVideoFrameCallback !== 'function') return;
+    const element = player;
     const onFrame = (now, metadata) => {
+      // 元素被替换后旧回调不再触发；循环只跟随注册时的元素。
+      if (player !== element) return;
       if (Number.isFinite(metadata.mediaTime)) {
         presentedTime = metadata.mediaTime;
         presentedCursor = player.currentTime;
       }
       if (player.paused && !player.seeking) syncPreview();
-      player.requestVideoFrameCallback(onFrame);
+      element.requestVideoFrameCallback(onFrame);
     };
-    player.requestVideoFrameCallback(onFrame);
+    element.requestVideoFrameCallback(onFrame);
   }
+
+  // 媒体加载会 replaceChild 换掉 player 元素并更新 MaweCoreState.player，
+  // 再经 MaweMediaPlayback.bindPlayerEvents 通知本模块换绑；判定逻辑必须
+  // 跟随新元素，否则浏览器本地媒体会被误判回服务器工程媒体。
+  function bindPlayer(element) {
+    if (!element || element === player) return;
+    detachPlayerEvents();
+    player = element;
+    mediaGeneration += 1;
+    resetRenderedFrames();
+    attachPlayerEvents();
+    syncAssFrameControls();
+  }
+
+  attachPlayerEvents();
   renderButton?.addEventListener('click', () => void renderAssFrame());
   if (quickOpenButton) openButton.addEventListener('click', () => floatingPanel.toggle());
   styleOpenButton?.addEventListener('click', () => floatingPanel.open());
@@ -383,8 +530,9 @@
   document.getElementById('ass-frame-size')?.addEventListener('click', (event) => {
     const native = document.querySelector('.ass-frame-image-wrap')?.classList.toggle('ass-frame-native');
     event.currentTarget.setAttribute('aria-pressed', String(Boolean(native)));
+    positionWindowStickerLayer();
   });
 
-  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview });
+  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview, bindPlayer, syncWindowStickers });
   syncAssFrameControls();
 })(typeof window !== 'undefined' ? window : globalThis);
