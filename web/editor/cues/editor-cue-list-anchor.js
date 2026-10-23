@@ -1,7 +1,18 @@
+import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
+import { isHiddenDisabled, selectOnly, selectOnlyExtension } from './editor-selection.js';
+
 // 列表滚动锚点：可视区bounds、锚点捕获与恢复补偿。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweCueListAnchor 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 列表滚动锚点：可视区bounds、锚点捕获与恢复补偿。 ESM init 模块：initMaweCueListAnchor 在原清单位次执行原 IIFE 体（挂
+// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
+// window.MaweCueListAnchor 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
+// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+
+// window.MaweCueListAnchor 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
+// 兄弟模块可静态 import。
+export function initMaweCueListAnchor() {
 (function initMaweCueListAnchor(global) {
   'use strict';
 
@@ -294,7 +305,7 @@
         : cue.dataset.idx ?? cue.dataset.mainIdx))
       .filter((index, position, values) => (
         Number.isInteger(index)
-        && !MaweSelection.isHiddenDisabled(index, track)
+        && !isHiddenDisabled(index, track)
         && values.indexOf(index) === position
       ));
     const index = boundary === 'first' ? indexes[0] : indexes[indexes.length - 1];
@@ -310,16 +321,16 @@
 
 
   function navigateCueListBoundary(key) {
-    const target = MaweCuePanel.getCurrentCuePanelTarget();
+    const target = getCurrentCuePanelTarget();
     if (!target) return false;
     const boundary = renderedCueBoundaryTarget(target, key === 'Home' ? 'first' : 'last');
     if (!boundary) return false;
     interruptCueListFollowing();
     if (target.kind === 'extension') {
-      MaweSelection.selectOnlyExtension(boundary.index, target.track);
+      selectOnlyExtension(boundary.index, target.track);
       MaweSelection.lastClickedExtensionIdx = boundary.index;
     } else {
-      MaweSelection.selectOnly(boundary.index);
+      selectOnly(boundary.index);
       MaweSelection.lastClickedIdx = boundary.index;
     }
     MaweCueListAnchor.scrollCueToCenter(boundary.cue);
@@ -351,3 +362,27 @@
     scrollCueIntoViewIfNeeded
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function cueListScroll(...args) { return window.MaweCueListAnchor.cueListScroll(...args); }
+export function cueListFollowButton(...args) { return window.MaweCueListAnchor.cueListFollowButton(...args); }
+export function setCueListFollowing(...args) { return window.MaweCueListAnchor.setCueListFollowing(...args); }
+export function interruptCueListFollowing(...args) { return window.MaweCueListAnchor.interruptCueListFollowing(...args); }
+export function setCueListIdentity(...args) { return window.MaweCueListAnchor.setCueListIdentity(...args); }
+export function cueListIdentity(...args) { return window.MaweCueListAnchor.cueListIdentity(...args); }
+export function rememberCueListMutation(...args) { return window.MaweCueListAnchor.rememberCueListMutation(...args); }
+export function playbackCueListElement(...args) { return window.MaweCueListAnchor.playbackCueListElement(...args); }
+export function playbackCueListKey(...args) { return window.MaweCueListAnchor.playbackCueListKey(...args); }
+export function resumeCueListFollowing(...args) { return window.MaweCueListAnchor.resumeCueListFollowing(...args); }
+export function renderedCueBoundaryTarget(...args) { return window.MaweCueListAnchor.renderedCueBoundaryTarget(...args); }
+export function navigateCueListBoundary(...args) { return window.MaweCueListAnchor.navigateCueListBoundary(...args); }
+export function cueListVisibleBounds(...args) { return window.MaweCueListAnchor.cueListVisibleBounds(...args); }
+export function invalidateCueListVisualAnchorRestore(...args) { return window.MaweCueListAnchor.invalidateCueListVisualAnchorRestore(...args); }
+export function captureCueListVisualAnchor(...args) { return window.MaweCueListAnchor.captureCueListVisualAnchor(...args); }
+export function captureVisibleCueListVisualAnchor(...args) { return window.MaweCueListAnchor.captureVisibleCueListVisualAnchor(...args); }
+export function captureCueListRenderAnchor(...args) { return window.MaweCueListAnchor.captureCueListRenderAnchor(...args); }
+export function findCueListRenderAnchor(...args) { return window.MaweCueListAnchor.findCueListRenderAnchor(...args); }
+export function restoreCueListRenderAnchor(...args) { return window.MaweCueListAnchor.restoreCueListRenderAnchor(...args); }
+export function restoreCueListVisualAnchor(...args) { return window.MaweCueListAnchor.restoreCueListVisualAnchor(...args); }
+export function scrollCueToCenter(...args) { return window.MaweCueListAnchor.scrollCueToCenter(...args); }
+export function scrollCueIntoViewIfNeeded(...args) { return window.MaweCueListAnchor.scrollCueIntoViewIfNeeded(...args); }
