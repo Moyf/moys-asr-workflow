@@ -30,8 +30,8 @@ let stickerTargetTrack = 'main'; // 'main' | 'overlay'：分配目标所在轨
 let previewTrack = 'main';
 
 export const overlaySticker = Object.freeze({
-  get targetTrack() { return stickerTargetTrack; },
-  set targetTrack(value) { stickerTargetTrack = value; },
+  get stickerTargetTrack() { return stickerTargetTrack; },
+  set stickerTargetTrack(value) { stickerTargetTrack = value; },
   get previewTrack() { return previewTrack; },
   set previewTrack(value) { previewTrack = value; },
 });

@@ -32,6 +32,14 @@ MaweStickerOverlay.stickerOverlayLayer.addEventListener('keydown', (event) => Ma
 
 let activeStickerHasOverlay = false;
 
+// 门面必须挂在本文件任何顶层 update 调用之前：applyStickerFeatureEnabled()
+// 经 MawePlaybackLoop.update() → sticker-overlay（init 模块）写回这个访问器，
+// classic 时代写共享 let 与位置无关，迁移后写路径经门面，挂载晚于调用即炸。
+window.MaweStickerPreviewWiring = window.MaweStickerPreviewWiring || Object.freeze({
+  get activeStickerHasOverlay() { return activeStickerHasOverlay; },
+  set activeStickerHasOverlay(value) { activeStickerHasOverlay = value; },
+});
+
 
 
 
@@ -94,8 +102,4 @@ MaweDom.overlayToggle.addEventListener('change', () => {
   else MawePlaybackLoop.update();
 });
 
-// G07：init 化模块经 window 延迟取用本文件的运行时状态；classic 调用方不受影响。
-window.MaweStickerPreviewWiring = window.MaweStickerPreviewWiring || Object.freeze({
-  get activeStickerHasOverlay() { return activeStickerHasOverlay; },
-  set activeStickerHasOverlay(value) { activeStickerHasOverlay = value; },
-});
+// init 化模块经 window 延迟取用本文件的运行时状态（门面已在本文件前部挂载）。
