@@ -1,5 +1,13 @@
 {
   "format": 1,
   "externalBridges": [],
-  "modules": []
+  "modules": [
+    {
+      "file": "launcher/theme/launcher-theme-keys.js",
+      "kind": "transition",
+      "name": "theme_keys",
+      "exportName": "createThemeKeys",
+      "binding": "createThemeKeys"
+    }
+  ]
 }
