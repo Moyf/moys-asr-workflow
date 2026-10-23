@@ -54,3 +54,29 @@
 - 撞名处理：word-timing 顶层 import clearSelection 与本地 IIFE 内同名函数、导出段三方撞——
   删除未使用 import 绑定（本地函数语义不变）。
 - 注册表残留：cues 域 27 文件零 MAWE.register；唯一残留是 overlay-track 的 e2e 数据层注册（G06 约定）。
+
+### G08-b 缝合修复记录（e2e 驱动，两轮）
+
+| 轮 | 缺口 | 修复 |
+|---|---|---|
+| 1 | MULTI_SUBTITLE_UTILS（boot/editor.js const 别名）断链：split-core 32 + binding-align 2 | 改 window.AsrEditorUtils（AST 扫描器清零） |
+| 1 | isPlaybackActive（wiring-keyboard-guards 顶层函数）：cue-events 1 处 | 走 MaweKeyboardGuards 门面 |
+| 2 | multiSubtitleSplitDuplicate（dom-panels DOM 常量，不在 MaweDom）：split-core 1 处 | 函数体内 getElementById 直查 |
+
+教训：G07 的 legacy 自由引用扫描器只查了 window 门面与顶层函数，
+漏了 **const 别名绑定** 与 **classic DOM 常量** 两类；G08 补齐扫描维度
+（scan-aliases.mjs），全量清零后 e2e 16/16。
+
+### 缝合修复 3（overlay-track e2e 驱动）：io 域别名断链
+
+project-load(5) + multi-import(6) 对 MULTI_SUBTITLE_UTILS 的
+裸引用在 G10 转换时漏扫（扫描器当时只覆盖 cues 27 文件）。
+症状：导入工程后 overlay_track 归一化中断 → 叠加行不渲染
+（overlay-track 27 spec 全红）。改 window.AsrEditorUtils。
+
+**扫描范围教训**：legacy 自由引用扫描必须覆盖所有已转换域
+（cues + io + state），不是只扫当前批次。
+
+最终 e2e：overlay-track 27/27、split-style-markers 16/16、
+project-async-lifecycle + sticker-preview-lifecycle 17/17、
+editor-i18n-save 15/16（140:1 = main 既有 #290 文案缺口）。
