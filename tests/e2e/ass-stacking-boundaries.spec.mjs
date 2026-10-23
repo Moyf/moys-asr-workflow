@@ -23,6 +23,9 @@ test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 
 const cue = (id, text, start = 0, end = 4000) => ({ id, text, start, end });
 const cases = [
+  { name: 'large italic overhang keeps complete glyph ink visible',
+    main: '//ffff//', extension: '//ffff//', fontSize: 240, extensionFontSize: 180,
+    marginV: 220, times: [1000] },
   { name: 'static single-line control', times: [1000] },
   { name: '1440p preview and burn share the native frame coordinate system',
     width: 2560, height: 1440, times: [1000] },
