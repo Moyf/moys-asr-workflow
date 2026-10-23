@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, dragFloatingPanelAwayFrom, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 
@@ -47,7 +47,9 @@ test('waveform ASS shortcuts mirror project settings and open the style library 
   expect(Math.abs(rows[0] - rows[1])).toBeLessThanOrEqual(1);
 });
 test.beforeAll(async () => {
-  tempDir = makeTempDir('settings-structure');
+  // macOS 的 tmpdir 位于 /var（指向 /private/var 的符号链接）；服务器按
+  // realpath 回显表情包目录，断言用的路径必须预先解析成同一形式。
+  tempDir = realpathSync(makeTempDir('settings-structure'));
   const media = join(tempDir, 'synthetic.wav'), project = join(tempDir, 'settings.mosp');
   generateWav(media, 4);
   for (const folder of ['default-a', 'default-b', 'override']) {
