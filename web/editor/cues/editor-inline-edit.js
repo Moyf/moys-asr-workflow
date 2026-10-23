@@ -1,7 +1,24 @@
+import { applyCharCount, setTextHtml } from './editor-cue-elements.js';
+import { scrollCueToCenter } from './editor-cue-list-anchor.js';
+import { getCurrentCuePanelTarget, setCurrentCuePanelExtensionIndex } from './editor-cue-panel.js';
+import { hideCueSplitPreview, scheduleCueSplitPreview } from './editor-nav-preview.js';
+import { selectExtensionRange, selectOnlyExtension, toggleExtensionSelection } from './editor-selection.js';
+import { toggleDisabled } from './editor-sticker-picker.js';
+import { seekFromWaveform } from './editor-text-cleanup.js';
+import { syncTextChange } from './editor-word-timing.js';
+
 // 行内编辑：主/副字幕就地编辑状态机与光标定位。
 // 状态由 MaweState 持有；保留旧接口供尚未迁移的消费者使用，外部仅经
 // window.MaweInlineEdit 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 行内编辑：主/副字幕就地编辑状态机与光标定位。 ESM init 模块：initMaweInlineEdit 在原清单位次执行原 IIFE 体（挂
+// 状态由 MaweState 持有；保留旧接口供尚未迁移的消费者使用，外部仅经
+// window.MaweInlineEdit 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
+// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+
+// window.MaweInlineEdit 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
+// 兄弟模块可静态 import。
+export function initMaweInlineEdit() {
 (function initMaweInlineEdit(global) {
   'use strict';
 
@@ -38,10 +55,10 @@
     { deferCaret = false } = {},
   ) {
     if (!el || !track?.segments?.[index]) return;
-    MaweNavPreview.hideCueSplitPreview();
+    hideCueSplitPreview();
     if (MaweState.editing.editingState) finishEdit(true);
     if (MaweState.editing.extensionEditingState) finishExtensionEdit(true);
-    MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
+    setCurrentCuePanelExtensionIndex(index, track);
     const textEl = el.querySelector('.text') || el;
     const segment = track.segments[index];
     let caretCharOffset = null;
@@ -80,7 +97,7 @@
 
 
   function syncCuePanelAfterInlineEdit(kind, index, trackId = null) {
-    const target = MaweCuePanel.getCurrentCuePanelTarget();
+    const target = getCurrentCuePanelTarget();
     if (!target || target.kind !== kind || target.index !== index) return;
     if (kind === 'extension' && target.trackId !== trackId) return;
     if (MaweDom.cuePanelText && document.activeElement !== MaweDom.cuePanelText) {
@@ -109,8 +126,8 @@
       }
     }
     if (segment) {
-      MaweCueElements.setTextHtml(textEl, segment.text || '', MaweDom.searchEl.value);
-      MaweCueElements.applyCharCount(
+      setTextHtml(textEl, segment.text || '', MaweDom.searchEl.value);
+      applyCharCount(
         el.querySelector('.charcount'),
         segment.text || '',
         MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, segment),
@@ -132,14 +149,14 @@
     event.stopPropagation();
     if (event.altKey) {
       event.preventDefault();
-      MaweStickerPicker.toggleDisabled([index], track);
+      toggleDisabled([index], track);
       pointerDown = null;
       return;
     }
     pointerDown = { x: event.clientX, y: event.clientY };
-    if (event.shiftKey && MaweSelection.lastClickedExtensionIdx >= 0) MaweSelection.selectExtensionRange(MaweSelection.lastClickedExtensionIdx, index);
-    else if (event.ctrlKey || event.metaKey) MaweSelection.toggleExtensionSelection(index);
-    else MaweSelection.selectOnlyExtension(index);
+    if (event.shiftKey && MaweSelection.lastClickedExtensionIdx >= 0) selectExtensionRange(MaweSelection.lastClickedExtensionIdx, index);
+    else if (event.ctrlKey || event.metaKey) toggleExtensionSelection(index);
+    else selectOnlyExtension(index);
     MaweSelection.lastClickedExtensionIdx = index;
   });
   el.addEventListener('click', (event) => {
@@ -154,7 +171,7 @@
     try {
       MaweCoreState.waveformEditor?.revealTime(segment.start, true);
       if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') {
-        MaweTextCleanup.seekFromWaveform(segment.start / 1000, { mouseClick: true });
+        seekFromWaveform(segment.start / 1000, { mouseClick: true });
       }
     } finally {
       MawePlaybackLoop.suppressCueListAutoScroll = previousSuppress;
@@ -163,13 +180,13 @@
       const currentRow = MaweCoreState.container.querySelector(
         `.multi-dual-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
       );
-      MaweCueListAnchor.scrollCueToCenter(currentRow || dualRow || el);
+      scrollCueToCenter(currentRow || dualRow || el);
     }
   });
   el.addEventListener('pointermove', (event) => {
     event.stopPropagation();
     if (MaweState.editing.extensionEditingState?.el === el) {
-      MaweNavPreview.hideCueSplitPreview();
+      hideCueSplitPreview();
       return;
     }
     MaweNavPreview.cueListPointer = {
@@ -179,14 +196,14 @@
       x: event.clientX,
       y: event.clientY,
     };
-    MaweNavPreview.scheduleCueSplitPreview(index, event.clientX, event.clientY, 'extension', track.id);
+    scheduleCueSplitPreview(index, event.clientX, event.clientY, 'extension', track.id);
   });
   el.addEventListener('pointerleave', () => {
     if (MaweNavPreview.cueListPointer?.kind === 'extension'
         && MaweNavPreview.cueListPointer.idx === index
         && MaweNavPreview.cueListPointer.trackId === track.id) {
       MaweNavPreview.cueListPointer = null;
-      MaweNavPreview.hideCueSplitPreview();
+      hideCueSplitPreview();
     }
   });
   el.addEventListener('dblclick', (event) => {
@@ -205,7 +222,7 @@
 
   function startEdit(el, idx, clickX, clickY, { deferCaret = false } = {}) {
     if (MaweState.editing.editingState) finishEdit(true);
-    MaweNavPreview.hideCueSplitPreview();
+    hideCueSplitPreview();
     const textEl = el.querySelector('.text');
     if (!textEl) return;
     const seg = MaweBoot.DATA.segments[idx];
@@ -312,15 +329,15 @@
           const previousText = segment.text;
           segment.text = newText;
           segment._dirty = true;
-          MaweWordTiming.syncTextChange(segment, previousText);
+          syncTextChange(segment, previousText);
           el.classList.add('dirty');
 
         });
       }
     }
-    MaweCueElements.setTextHtml(textEl, MaweBoot.DATA.segments[idx].text, MaweDom.searchEl.value);
+    setTextHtml(textEl, MaweBoot.DATA.segments[idx].text, MaweDom.searchEl.value);
     const cntEl = el.querySelector('.charcount');
-    if (cntEl) MaweCueElements.applyCharCount(
+    if (cntEl) applyCharCount(
       cntEl, MaweBoot.DATA.segments[idx].text, MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[idx]),
     );
     MaweCoreState.waveformEditor?.refreshCueLabel(idx);
@@ -346,3 +363,15 @@
     finishEdit
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function startExtensionEdit(...args) { return window.MaweInlineEdit.startExtensionEdit(...args); }
+export function syncCuePanelAfterInlineEdit(...args) { return window.MaweInlineEdit.syncCuePanelAfterInlineEdit(...args); }
+export function finishExtensionEdit(...args) { return window.MaweInlineEdit.finishExtensionEdit(...args); }
+export function bindExtensionCueEvents(...args) { return window.MaweInlineEdit.bindExtensionCueEvents(...args); }
+export function startEdit(...args) { return window.MaweInlineEdit.startEdit(...args); }
+export function setEditingCaretOffset(...args) { return window.MaweInlineEdit.setEditingCaretOffset(...args); }
+export function caretOffsetInText(...args) { return window.MaweInlineEdit.caretOffsetInText(...args); }
+export function caretInfoFromPoint(...args) { return window.MaweInlineEdit.caretInfoFromPoint(...args); }
+export function caretCharFromPoint(...args) { return window.MaweInlineEdit.caretCharFromPoint(...args); }
+export function finishEdit(...args) { return window.MaweInlineEdit.finishEdit(...args); }

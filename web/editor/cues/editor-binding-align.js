@@ -1,7 +1,19 @@
+import { releaseTemporaryVisibleSplitCuesUnless } from './editor-cue-elements.js';
+import { commitCuePanelEdit, setCurrentCuePanelIndex } from './editor-cue-panel.js';
+import { clearSelection, selectOnly, selectOnlyExtension, syncBoundSelection } from './editor-selection.js';
+
 // 绑定对齐：主副字幕绑定、按点击选中与对齐批处理。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweBindingAlign 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 绑定对齐：主副字幕绑定、按点击选中与对齐批处理。 ESM init 模块：initMaweBindingAlign 在原清单位次执行原 IIFE 体（挂
+// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
+// window.MaweBindingAlign 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
+// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+
+// window.MaweBindingAlign 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
+// 兄弟模块可静态 import。
+export function initMaweBindingAlign() {
 (function initMaweBindingAlign(global) {
   'use strict';
 
@@ -31,7 +43,7 @@
 
   // 普通单击字幕时的选择逻辑：开启「同时选中分组内项目」且属于分组时选整组，否则只选本行。
   function selectCueByClick(idx) {
-    MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', idx);
+    releaseTemporaryVisibleSplitCuesUnless('main', idx);
     if (MaweSelection.pendingExtensionBinding) {
       const pending = MaweSelection.pendingExtensionBinding;
       MaweSelection.pendingExtensionBinding = null;
@@ -44,29 +56,29 @@
         return;
       }
       // selectOnly 会清空副轨选择，因此先完成主轨选择，再恢复待绑定的副轨选择。
-      MaweSelection.selectOnly(idx, false);
-      MaweSelection.selectOnlyExtension(extensionIndex, track, false, true);
+      selectOnly(idx, false);
+      selectOnlyExtension(extensionIndex, track, false, true);
       bindSelectedSubtitlePair();
       return;
     }
     if (MaweSettings.EDITOR_SETTINGS.selectGroupMembers) {
       const members = groupMemberIdxs(idx);
       if (members.length > 1) {
-        MaweCuePanel.commitCuePanelEdit();
-        MaweSelection.clearSelection({ silent: true });
+        commitCuePanelEdit();
+        clearSelection({ silent: true });
         members.forEach((i) => {
           MaweState.selection.add('main', i);
-          MaweSelection.syncBoundSelection('main', i);
+          syncBoundSelection('main', i);
           const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
           if (el) el.classList.add('selected');
         });
         MaweDom.selCountEl.textContent = String(MaweSelection.selectedIdxs.size);
         if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-        MaweCuePanel.setCurrentCuePanelIndex(idx);
+        setCurrentCuePanelIndex(idx);
         return;
       }
     }
-    MaweSelection.selectOnly(idx);
+    selectOnly(idx);
   }
 
 
@@ -92,8 +104,8 @@
       const mainIndex = unbound.slice().sort((left, right) => (
         Number(MaweBoot.DATA.segments[left]?.start) - Number(MaweBoot.DATA.segments[right]?.start) || left - right
       ))[0];
-      MaweSelection.selectOnly(mainIndex);
-      MaweSelection.selectOnlyExtension(index, track, true, true);
+      selectOnly(mainIndex);
+      selectOnlyExtension(index, track, true, true);
       bindSelectedSubtitlePair({
         successMessage: overlapping.length > 1
           ? `有多条主字幕与当前副字幕重叠，已自动绑定时间最早的未绑定主字幕（第 ${mainIndex + 1} 条）`
@@ -102,7 +114,7 @@
       return;
     }
     MaweSelection.pendingExtensionBinding = { trackId: track.id, extensionId: extension.id };
-    MaweSelection.selectOnlyExtension(index, track);
+    selectOnlyExtension(index, track);
     if (overlapping.length) {
       MaweHint.flashHint('重叠的主字幕已有绑定，请点击主字幕后替换绑定；按 Esc 取消', 'warning');
     } else {
@@ -283,3 +295,14 @@
     alignSelectedExtensionSubtitleRanges
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function groupMemberIdxs(...args) { return window.MaweBindingAlign.groupMemberIdxs(...args); }
+export function selectCueByClick(...args) { return window.MaweBindingAlign.selectCueByClick(...args); }
+export function overlappingMainIndexesForExtension(...args) { return window.MaweBindingAlign.overlappingMainIndexesForExtension(...args); }
+export function beginPendingExtensionBinding(...args) { return window.MaweBindingAlign.beginPendingExtensionBinding(...args); }
+export function bindSelectedSubtitlePair(...args) { return window.MaweBindingAlign.bindSelectedSubtitlePair(...args); }
+export function unbindSelectedSubtitlePair(...args) { return window.MaweBindingAlign.unbindSelectedSubtitlePair(...args); }
+export function alignExtensionToMainTimeRanges(...args) { return window.MaweBindingAlign.alignExtensionToMainTimeRanges(...args); }
+export function alignExtensionToMainTimeRange(...args) { return window.MaweBindingAlign.alignExtensionToMainTimeRange(...args); }
+export function alignSelectedExtensionSubtitleRanges(...args) { return window.MaweBindingAlign.alignSelectedExtensionSubtitleRanges(...args); }

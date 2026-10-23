@@ -1,10 +1,19 @@
+import { commitCuePanelEdit } from './editor-cue-panel.js';
+import { selectOnly } from './editor-selection.js';
+import { syncTimelineGroupRanges } from './editor-text-cleanup.js';
+import { timelineTimingAdapter } from './editor-timeline.js';
+
+// 字词时间码：字词对齐数据与行渲染。 ESM init 模块：initMaweWordTiming 在原清单位次执行原 IIFE 体（挂
+// window.MaweWordTiming 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
+// 兄弟模块可静态 import。
+export function initMaweWordTiming() {
 (function initWordTiming(global) {
   'use strict';
   let enabled = false, selection = null, conversionTarget = null;
   const ui = (zh, en) => global.MAWE_I18N?.language === 'en' ? en : zh;
   const dialog = () => document.getElementById('word-conversion-dialog');
   const refresh = () => MaweCoreState.waveformEditor?.refreshCueOverlay();
-  const clock = () => MaweTimeline.timelineTimingAdapter();
+  const clock = () => timelineTimingAdapter();
   const conversionFingerprint = plan => JSON.stringify([plan, MaweMultiSubtitleCore.getMultiSubtitleState()?.bindings]);
 
   function clearSelection() {
@@ -46,7 +55,7 @@
     if (dialog()?.open) dialog().close();
   }
   function select(index, itemIndex, event = {}) {
-    MaweCuePanel.commitCuePanelEdit();
+    commitCuePanelEdit();
     const segment = MaweBoot.DATA.segments[index];
     if (!segment) return;
     const entries = global.AsrEditorUtils.getWordTimingEntries(segment, clock());
@@ -66,7 +75,7 @@
       selection.indices = new Set([itemIndex]);
       selection.anchor = itemIndex;
     }
-    MaweSelection.selectOnly(index);
+    selectOnly(index);
     MaweSelection.lastClickedIdx = index;
     refresh();
   }
@@ -193,14 +202,14 @@
     return plan;
   }
   function openConversion(indices) {
-    MaweCuePanel.commitCuePanelEdit();
+    commitCuePanelEdit();
     MaweCoreState.waveformEditor?.cancelWordDrag();
     conversionTarget = { project: MaweBoot.DATA.segments, ids: indices.map(i => MaweBoot.DATA.segments[i]?.id).filter(Boolean) };
     conversionTarget.fingerprint = conversionFingerprint(renderConversion());
     dialog().showModal();
   }
   function confirmConversion() {
-    MaweCuePanel.commitCuePanelEdit();
+    commitCuePanelEdit();
     const plan = renderConversion();
     if (!plan?.conversions.length) return;
     // Review an updated preview rather than silently converting changed targets.
@@ -210,11 +219,11 @@
       return;
     }
     MaweCommands.run(ui('字词拆成字幕', 'Split words into subtitles'), () => {
-      MaweSelection.clearSelection({ commitCuePanel: false });
+      clearSelection({ commitCuePanel: false });
       clearSelection();
       MaweMultiSubtitleCore.removeBindingsForSegmentIds(plan.conversions.map(c => c.id), []);
       MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...plan.segments);
-      MaweTextCleanup.syncTimelineGroupRanges();
+      syncTimelineGroupRanges();
       MaweMultiSubtitleCore.markMainSegmentsDirty(plan.conversions.flatMap(c => c.segments));
       MaweMultiSubtitleCore.syncBindingOffsets();
       MaweCuePanelState.currentCuePanelIdx = -1;
@@ -292,3 +301,16 @@
   global.MaweWordTiming = Object.freeze({ get enabled() { return enabled; }, setEnabled, reset, bind,
     select, getSelection, clearSelection, previewItems, merge, showMenu, openConversion, syncTextChange });
 })(window);
+}
+
+export function setEnabled(...args) { return window.MaweWordTiming.setEnabled(...args); }
+export function reset(...args) { return window.MaweWordTiming.reset(...args); }
+export function bind(...args) { return window.MaweWordTiming.bind(...args); }
+export function select(...args) { return window.MaweWordTiming.select(...args); }
+export function getSelection(...args) { return window.MaweWordTiming.getSelection(...args); }
+export function clearSelection(...args) { return window.MaweWordTiming.clearSelection(...args); }
+export function previewItems(...args) { return window.MaweWordTiming.previewItems(...args); }
+export function merge(...args) { return window.MaweWordTiming.merge(...args); }
+export function showMenu(...args) { return window.MaweWordTiming.showMenu(...args); }
+export function openConversion(...args) { return window.MaweWordTiming.openConversion(...args); }
+export function syncTextChange(...args) { return window.MaweWordTiming.syncTextChange(...args); }

@@ -1,7 +1,24 @@
+import { selectCueByClick } from './editor-binding-align.js';
+import { restoreCueListVisualAnchor, scrollCueToCenter } from './editor-cue-list-anchor.js';
+import { setCurrentCuePanelIndex } from './editor-cue-panel.js';
+import { startEdit } from './editor-inline-edit.js';
+import { hideCueSplitPreview, scheduleCueSplitPreview } from './editor-nav-preview.js';
+import { selectOnly, selectRange, toggleSel } from './editor-selection.js';
+import { toggleDisabled } from './editor-sticker-picker.js';
+import { seekFromWaveform } from './editor-text-cleanup.js';
+
 // 字幕行事件：行级监听绑定与拆分键配置。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweCueEvents 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 字幕行事件：行级监听绑定与拆分键配置。 ESM init 模块：initMaweCueEvents 在原清单位次执行原 IIFE 体（挂
+// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
+// window.MaweCueEvents 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
+// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+
+// window.MaweCueEvents 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
+// 兄弟模块可静态 import。
+export function initMaweCueEvents() {
 (function initMaweCueEvents(global) {
   'use strict';
 
@@ -16,27 +33,27 @@
     // Alt+点击 = 快速切换禁用状态
     if (event.altKey) {
       event.preventDefault();
-      MaweStickerPicker.toggleDisabled([idx]);
+      toggleDisabled([idx]);
       return 'alt';
     }
 
     // Shift / Ctrl 多选
     if (event.shiftKey) {
       event.preventDefault();
-      if (MaweSelection.lastClickedIdx >= 0) MaweSelection.selectRange(MaweSelection.lastClickedIdx, idx);
-      else MaweSelection.selectOnly(idx);
+      if (MaweSelection.lastClickedIdx >= 0) selectRange(MaweSelection.lastClickedIdx, idx);
+      else selectOnly(idx);
       MaweSelection.lastClickedIdx = idx;
       return 'shift';
     }
     if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
-      MaweSelection.toggleSel(idx);
+      toggleSel(idx);
       MaweSelection.lastClickedIdx = idx;
       return 'toggle';
     }
 
     // 普通单击的选中阶段放在 pointerdown，点击时只做跳转。
-    MaweBindingAlign.selectCueByClick(idx);
+    selectCueByClick(idx);
     MaweSelection.lastClickedIdx = idx;
     return 'select';
   }
@@ -67,7 +84,7 @@
       // 第一次 pointerdown 已经完成选中；双击的第二次按下不要再次刷新波形布局。
       // 但仍要更新当前编辑焦点：主副字幕可以同时保持选中，且前一次主轨点击
       // 可能与副轨点击被隔开，此时不能因为本次字幕仍处于 selected 就停留在副字幕面板。
-      MaweCuePanel.setCurrentCuePanelIndex(idx);
+      setCurrentCuePanelIndex(idx);
       pointerDownState = { handled: true, suppressClick: true, time: now };
       return;
     }
@@ -83,16 +100,16 @@
   });
   el.addEventListener('pointermove', (e) => {
     if (MaweInlineEdit.editingState?.el === el) {
-      MaweNavPreview.hideCueSplitPreview();
+      hideCueSplitPreview();
       return;
     }
     MaweNavPreview.cueListPointer = { kind: 'main', idx, x: e.clientX, y: e.clientY };
-    MaweNavPreview.scheduleCueSplitPreview(idx, e.clientX, e.clientY, 'main');
+    scheduleCueSplitPreview(idx, e.clientX, e.clientY, 'main');
   });
   el.addEventListener('pointerleave', () => {
     if (MaweNavPreview.cueListPointer?.idx === idx) {
       MaweNavPreview.cueListPointer = null;
-      MaweNavPreview.hideCueSplitPreview();
+      hideCueSplitPreview();
     }
   });
 
@@ -109,7 +126,7 @@
 
     // 选择已经在 pointerdown 完成；这里仅处理列表滚动、波形定位和媒体 Seek。
     if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll) {
-      MaweCueListAnchor.scrollCueToCenter(el);
+      scrollCueToCenter(el);
     }
     MaweCoreState.waveformEditor?.revealTime(MaweBoot.DATA.segments[idx].start, true);
     const wasPlaying = isPlaybackActive();
@@ -119,13 +136,13 @@
       MawePlaybackLoop.suppressCueListAutoScroll = state?.preserveListScroll
         ? true : !MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick;
       try {
-        MaweTextCleanup.seekFromWaveform(MaweBoot.DATA.segments[idx].start / 1000, { mouseClick: true });
+        seekFromWaveform(MaweBoot.DATA.segments[idx].start / 1000, { mouseClick: true });
       } finally {
         MawePlaybackLoop.suppressCueListAutoScroll = state?.preserveListScroll
           ? true : previousSuppress;
       }
       if (state?.preserveListScroll) {
-        MaweCueListAnchor.restoreCueListVisualAnchor(null, { scrollTop: state.listScrollBeforeClick }, 'navigate');
+        restoreCueListVisualAnchor(null, { scrollTop: state.listScrollBeforeClick }, 'navigate');
       }
       if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-and-play' && MaweCoreState.player.paused && !wasPlaying) MaweMediaPlayback.togglePlayback();
     }
@@ -136,9 +153,9 @@
     if (sel) sel.removeAllRanges();
     // 普通双击的第一次 pointerdown 已选中该 cue；只有从特殊子控件触发、且尚未选中时
     // 才补一次选择，避免双击再次提交当前面板并重绘波形布局。
-    if (!MaweSelection.selectedIdxs.has(idx)) MaweSelection.selectOnly(idx);
+    if (!MaweSelection.selectedIdxs.has(idx)) selectOnly(idx);
     window.MAWE_ONBOARDING?.beginRealSplit(idx);
-    MaweInlineEdit.startEdit(el, idx, e.clientX, e.clientY, { deferCaret: true });
+    startEdit(el, idx, e.clientX, e.clientY, { deferCaret: true });
   });
   el.addEventListener('contextmenu', (e) => {
     e.preventDefault();
@@ -167,3 +184,8 @@
     getConfiguredEnterAction
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function bindCueEvents(...args) { return window.MaweCueEvents.bindCueEvents(...args); }
+export function getSplitKey(...args) { return window.MaweCueEvents.getSplitKey(...args); }
+export function getConfiguredEnterAction(...args) { return window.MaweCueEvents.getConfiguredEnterAction(...args); }

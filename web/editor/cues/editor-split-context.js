@@ -1,7 +1,20 @@
+import { captureCueListVisualAnchor } from './editor-cue-list-anchor.js';
+import { caretInfoFromPoint, finishEdit, setEditingCaretOffset, startEdit } from './editor-inline-edit.js';
+import { linkedSplitState, notifyMainSplitTimestampFallback, openMainWaveformSplitModal, renderLinkedSplitText, shouldUseMainSplitTimestamps, splitAtCursor, splitOffsetNearTime } from './editor-split-core.js';
+import { timelineFrameAlignedMilliseconds } from './editor-timeline.js';
+
 // 右键拆分入口：从右键菜单/波形位置安全拆分。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweSplitContext 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 右键拆分入口：从右键菜单/波形位置安全拆分。 ESM init 模块：initMaweSplitContext 在原清单位次执行原 IIFE 体（挂
+// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
+// window.MaweSplitContext 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
+// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+
+// window.MaweSplitContext 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
+// 兄弟模块可静态 import。
+export function initMaweSplitContext() {
 (function initMaweSplitContext(global) {
   'use strict';
 
@@ -26,20 +39,20 @@
     const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
     if (!el) return false;
     if (Number.isFinite(waveformTimeMs)) {
-      waveformTimeMs = MaweTimeline.timelineFrameAlignedMilliseconds(waveformTimeMs);
+      waveformTimeMs = timelineFrameAlignedMilliseconds(waveformTimeMs);
     }
     // 从非编辑态按 B / 右键拆分时，startEdit() 可能让当前行先发生一次布局
     // 变化；锚点必须取自用户按键前看到的位置，而不是临时编辑态的位置。
     const cueListAnchor = Number.isFinite(waveformTimeMs)
       ? null
-      : MaweCueListAnchor.captureCueListVisualAnchor(el);
+      : captureCueListVisualAnchor(el);
     const waveformFeedbackPoint = Number.isFinite(waveformTimeMs)
       ? MaweCoreState.waveformEditor?.getSplitPointAtTime?.(waveformTimeMs, 'main') || null
       : null;
     const listCaretInfo = Number.isFinite(waveformTimeMs)
-      ? null : MaweInlineEdit.caretInfoFromPoint(el.querySelector('.text'), x, y);
+      ? null : caretInfoFromPoint(el.querySelector('.text'), x, y);
     if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
-      MaweSplitCore.notifyMainSplitTimestampFallback(MaweBoot.DATA.segments[idx]);
+      notifyMainSplitTimestampFallback(MaweBoot.DATA.segments[idx]);
       const initial = Number.isFinite(waveformTimeMs)
         ? { timeMs: waveformTimeMs }
         : Number.isFinite(listCaretInfo?.offset)
@@ -50,20 +63,20 @@
           }
           : {};
       if (waveformFeedbackPoint) initial.feedbackPoint = waveformFeedbackPoint;
-      MaweSplitCore.pendingLinkedSplit = MaweSplitCore.linkedSplitState(idx, { ...initial, splitTextMode });
+      MaweSplitCore.pendingLinkedSplit = linkedSplitState(idx, { ...initial, splitTextMode });
       if (!MaweSplitCore.pendingLinkedSplit) return false;
       MaweDom.multiSubtitleSplitModal?.classList.add('show');
-      MaweSplitCore.renderLinkedSplitText(MaweSplitCore.pendingLinkedSplit);
+      renderLinkedSplitText(MaweSplitCore.pendingLinkedSplit);
       return false;
     }
     if (Number.isFinite(waveformTimeMs)) {
-      if (!MaweSplitCore.shouldUseMainSplitTimestamps(MaweBoot.DATA.segments[idx])) {
-        MaweSplitCore.notifyMainSplitTimestampFallback(MaweBoot.DATA.segments[idx]);
-        MaweSplitCore.openMainWaveformSplitModal(idx, waveformTimeMs, { splitTextMode });
+      if (!shouldUseMainSplitTimestamps(MaweBoot.DATA.segments[idx])) {
+        notifyMainSplitTimestampFallback(MaweBoot.DATA.segments[idx]);
+        openMainWaveformSplitModal(idx, waveformTimeMs, { splitTextMode });
         return false;
       }
       const segment = MaweBoot.DATA.segments[idx];
-      const cursorOffset = MaweSplitCore.splitOffsetNearTime(
+      const cursorOffset = splitOffsetNearTime(
         segment,
         waveformTimeMs,
         MaweMultiSubtitleCore.getMainSubtitleSplitMode(segment),
@@ -80,7 +93,7 @@
         && armed.idx === idx
         && armed.segment
         && MaweBoot.DATA.segments[idx] === armed.segment);
-      const didSplit = MaweSplitCore.splitAtCursor(waveformFeedbackPoint, {
+      const didSplit = splitAtCursor(waveformFeedbackPoint, {
         listFeedback: false,
         splitTextMode,
         explicit: {
@@ -96,13 +109,13 @@
       return didSplit;
     }
     // 字幕列表：在指定位置进入编辑，光标定位到 (x,y) 后立即拆分
-    const caretInfo = listCaretInfo || MaweInlineEdit.caretInfoFromPoint(el.querySelector('.text'), x, y);
+    const caretInfo = listCaretInfo || caretInfoFromPoint(el.querySelector('.text'), x, y);
     const markerX = Number.isFinite(caretInfo?.rect?.left) ? caretInfo.rect.left : x;
     // 先在非编辑态记录文字偏移；进入 contenteditable 后字体/边界可能变化，
     // 再次用同一坐标命中会把「就是｜这颗」漂移到下一个字符。
-    MaweInlineEdit.startEdit(el, idx);
-    if (Number.isFinite(caretInfo?.offset)) MaweInlineEdit.setEditingCaretOffset(caretInfo.offset);
-    return MaweSplitCore.splitAtCursor(
+    startEdit(el, idx);
+    if (Number.isFinite(caretInfo?.offset)) setEditingCaretOffset(caretInfo.offset);
+    return splitAtCursor(
       { clientX: markerX, clientY: caretInfo?.rect?.top ?? y },
       { listFeedback: true, cueListAnchor, splitTextMode },
     );
@@ -112,3 +125,6 @@
     splitFromContextMenu
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function splitFromContextMenu(...args) { return window.MaweSplitContext.splitFromContextMenu(...args); }
