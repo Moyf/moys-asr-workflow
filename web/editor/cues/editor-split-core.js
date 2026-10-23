@@ -1661,6 +1661,9 @@ export function initMaweSplitCore() {
   if (MaweDom.multiSubtitleSplitConfirm) {
     MaweDom.multiSubtitleSplitConfirm.disabled = !valid && !state.mainOnlyFallbackEligible;
   }
+  // classic 时代从 dom-panels 全局提升取元素；init 化后改为调用时
+  // 直查（该元素未列入 MaweDom 门面，属于可选增强控件）。
+  const multiSubtitleSplitDuplicate = document.getElementById('multi-subtitle-split-duplicate');
   if (multiSubtitleSplitDuplicate) {
     multiSubtitleSplitDuplicate.disabled = !state.duplicateTimingValid;
   }
