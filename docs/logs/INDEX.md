@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.1 之后 | 2026-10-23 | [叠加轨 ESM 门面摘除](release1.10.0-beta.1/261023_叠加轨ESM/叠加轨ESM门面摘除.checklist.md) | overlay-track 纯模块 + 24 调用者转 init，函数转发门面与 bridges 删除；自动化全绿，人工核验待完成 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [媒体分层与可信报告](release1.10.0-beta.1/261023_媒体分层与可信报告/验证记录.md) / [整合复核](release1.10.0-beta.1/261023_媒体分层与可信报告/REVIEW_FINDINGS.md) | Q1 required/JSON/完整日志及真实 FFprobe 保存备份边界；类级 skip 串并行一致性 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [波形交互稳定修复](release1.10.0-beta.1/261023_波形交互稳定/修复记录.md) / [整合复核](release1.10.0-beta.1/261023_波形交互稳定/REVIEW_FINDINGS.md) | 同高度缩略图通知保留波形行、真实高度变化保滚动锚点；删除回归保留自动保存隔离 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [main e2e 回归修复提交前自审](release1.10.0-beta.1/261022_main_e2e回归修复/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261022_main_e2e回归修复/字体与本地媒体.checklist.md) | 双审查者 Greptile 式自审：绿幕修复的 player 快照缺陷真修、AssetsV2/TTC 测试补覆盖，含双向验证与遗留说明；实机核验待完成 |
