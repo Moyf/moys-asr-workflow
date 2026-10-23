@@ -188,5 +188,8 @@ export function createEditorState(project) {
 
 export function initMaweState() {
   'use strict';
-  window.MaweState = createEditorState(window.MaweBoot.DATA);
+  // 注册表 resolve 时代的返回值即 any；与原装配语义一致，经局部
+  // 中转赋窗口单例，类型断言由 editor-globals.d.ts 的接口描述承担。
+  const state = /** @type {any} */ (createEditorState(window.MaweBoot.DATA));
+  window.MaweState = state;
 }
