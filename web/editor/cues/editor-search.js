@@ -1,3 +1,8 @@
+import { getOverlayTrack } from './overlay-track.js';
+
+export function initMaweSearch() {
+'use strict';
+
 // 搜索：过滤应用与防抖。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweSearch 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -81,3 +86,4 @@
     set searchDebounce(v) { searchDebounce = v; },
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

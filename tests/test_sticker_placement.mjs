@@ -1,9 +1,8 @@
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import { fileURLToPath } from 'node:url';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const context = { window: {}, Uint8Array };
 loadEditorModule(context, 'shared/editor-utils.js');
@@ -327,8 +326,7 @@ function stubElement() {
 }
 
 function loadEditorSource(context, relative) {
-  const file = fileURLToPath(new URL(`../web/${relative}`, import.meta.url));
-  vm.runInNewContext(fs.readFileSync(file, 'utf8'), context, { filename: relative });
+  vm.runInNewContext(initModuleSource(relative), context, { filename: relative });
 }
 
 function stickerBindingContext(segments) {
@@ -349,6 +347,9 @@ function stickerBindingContext(segments) {
     stickerTargetTrack: 'main',
     activeStickerHasOverlay: false,
     getOverlayTrack: () => null,
+    stickerSegmentsForTrack: () => segments,
+    overlaySticker: { stickerTargetTrack: 'main', previewTrack: 'main' },
+    MaweStickerPreviewWiring: { activeStickerHasOverlay: false },
     MaweBoot: { DATA: { segments }, STICKERS: [] },
     MaweCommands: { run: (label, mutate) => mutate({ commit() {} }) },
     MaweSelection: { stickerUrl: () => 'about:blank#sticker' },

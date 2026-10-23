@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import test from 'node:test';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.MAW_TEST_PLAYWRIGHT || 'playwright');
 
@@ -12,10 +13,11 @@ test('export capability changes preserve stored tooltips after title migration',
     await page.setContent(ids.map(id => `<button id="${id}" title="${id} help">Export</button>`).join(''));
     await page.addScriptTag({ path: 'web/shared/tooltip.js' });
     await page.addScriptTag({ path: 'web/editor/io/editor-export-timeline.js' });
-    await page.addScriptTag({ path: 'web/editor/io/editor-dynamic-exports.js' });
+    await page.addScriptTag({ content: initModuleSource('editor/io/editor-dynamic-exports.js') });
     await page.evaluate(() => {
       window.MaweBoot = { SERVER_CONFIG: {} };
       window.MaweProjectSave = { translatedEditorText: text => text };
+      window.overlayTrackVisible = () => false;
       window.updateExports = () => {
         MaweExportTimeline.updateTimelineOtiozExportButtons();
         MaweExportTimeline.updateStickerExportButtons();

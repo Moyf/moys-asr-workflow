@@ -297,7 +297,6 @@ const ZOOM_DEFAULT = 100;
 const ZOOM_STEP = 5;
 const ZOOM_MIN = 80;
 const ZOOM_MAX = 150;
-const THEME_KEY = "MAW_GUI_THEME";
 const $ = (id) => document.getElementById(id);
 const HOTWORD_WEIGHTS = new Set([1, 2, 3, 4, 5, 50]);
 const MAX_HOTWORDS = 2000;
