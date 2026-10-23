@@ -15,6 +15,25 @@ let tempDir;
 let server;
 let projectPath;
 
+const shellTest = test.extend({
+  shellServerUrl: async ({}, use) => {
+    // Earlier literal-content cases may legitimately autosave Chinese text.
+    // Scan a fresh real project and settings directory for untranslated UI.
+    const directory = makeTempDir('editor-i18n-shell');
+    let shellServer;
+    try {
+      const media = join(directory, 'synthetic.wav');
+      generateWav(media, DURATION_MS / 1000);
+      const project = generateProjectJson(join(directory, 'project.json'));
+      shellServer = await startServer(project, media, await findFreePort());
+      await use(shellServer.url);
+    } finally {
+      await shellServer?.stop();
+      cleanupTempDir(directory);
+    }
+  },
+});
+
 test.beforeAll(async () => {
   tempDir = makeTempDir('editor-i18n-save');
   const mediaPath = join(tempDir, 'synthetic.wav');
@@ -137,9 +156,9 @@ test('English split preview preserves both subtitle halves', async ({ page }) =>
     .toHaveText(['主', '副', '无']);
 });
 
-test('English locale covers the editor shell and recent-project setting stays first', async ({ page }) => {
+shellTest('English locale covers the editor shell and recent-project setting stays first', async ({ page, shellServerUrl }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
-  await page.goto(server.url);
+  await page.goto(shellServerUrl);
 
   await expect(page.locator('#open-project')).toHaveText('Open project');
   await expect(page.locator('#save-project')).toHaveText('Save project');

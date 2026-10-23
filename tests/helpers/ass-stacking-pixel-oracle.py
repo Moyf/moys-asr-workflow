@@ -181,8 +181,57 @@ def inspect(path: Path, time_ms: int, stem: Path, padding: int = 256) -> dict:
     return _measure(native, guard, width, height, padding, fonts, guard_fonts)
 
 
+def _can_render_series(source: str) -> bool:
+    # libass retains automatic collision positions between frames. Only
+    # explicitly positioned events avoid that state, as in MAW's layout slices.
+    number = r'[-+]?(?:\d+(?:\.\d*)?|\.\d+)'
+    position = re.compile(r'\\(pos|move)\(([^()]*)\)|[()]')
+    for line in source.splitlines():
+        if not line.startswith('Dialogue: '):
+            continue
+        positioned = False
+        for block in re.findall(r'\{([^}]*)\}', line.split(',', 9)[-1]):
+            depth = 0
+            for token in position.finditer(block):
+                if token[0] == '(':
+                    depth += 1
+                elif token[0] == ')':
+                    depth -= 1
+                elif depth == 0:
+                    values = token[2].split(',')
+                    valid_counts = (2,) if token[1] == 'pos' else (4, 6)
+                    positioned |= len(values) in valid_counts and all(
+                        re.fullmatch(number, value.strip()) for value in values)
+        if not positioned:
+            return False
+    return True
+
+
 def inspect_series(path: Path, times: list[int], stem: Path, padding: int = 256) -> list[dict]:
     width, height, padded_ass = _prepare(path, stem, padding)
+    if not _can_render_series(path.read_text(encoding='utf-8')):
+        # Preserve the original fresh-renderer oracle for automatic layout.
+        # Native and guard remain separate real libass renders at every clock.
+        rows = []
+        logs = {'': [], '-guard': []}
+        for index, time_ms in enumerate(times):
+            native_path = stem.with_name(f'{stem.name}-{index}.png')
+            guard_path = stem.with_name(f'{stem.name}-guard-{index}.png')
+            native, fonts = render(path, native_path, width, height, time_ms)
+            guard, guard_fonts = render(padded_ass, guard_path, width + 2 * padding,
+                                        height + 2 * padding, time_ms)
+            try:
+                rows.append(_measure(native, guard, width, height, padding, fonts, guard_fonts))
+            finally:
+                native.close()
+                guard.close()
+            for suffix, target in (('', native_path), ('-guard', guard_path)):
+                logs[suffix].append(f'=== sample {time_ms}ms ===\n' +
+                                    target.with_suffix('.ffmpeg.log').read_text(encoding='utf-8'))
+        for suffix, samples in logs.items():
+            stem.with_name(stem.name + suffix).with_suffix('.ffmpeg.log').write_text(
+                '\n'.join(samples), encoding='utf-8', newline='\n')
+        return rows
     # fontselect diagnostics belong to this real ASS sequence: libass caches
     # selected faces across frames. Pixel metrics remain per timestamp.
     fonts = render_series(path, stem, width, height, times)
