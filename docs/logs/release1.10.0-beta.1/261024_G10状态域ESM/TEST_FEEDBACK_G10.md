@@ -39,3 +39,18 @@
 
 - [ ] e2e 生命周期三 spec 结果确认
 - [ ] PR 描述 + 上游提交（等 #300 合入）
+
+## G08 两批（261024 续）
+
+| 批次 | 分支 | 内容 | 验证 |
+|---|---|---|---|
+| G08-a | esm/g08-cues-a | 6 个小 classic → init+导出；8 个已 init 文件补转发导出；9 对边换 import；helper 垫片升级 | node 182、Python 53、typecheck、split-style-markers 16 |
+| G08-b | esm/g08-cues-b（堆叠 a） | 13 个枢纽 classic → init+导出（260 具名导出）；27 文件兄弟边全量 import；word-timing 撞名 import 修剪 | node 182、Python 53、typecheck、e2e 14+ |
+
+关键实现细节：
+- vm 测试垫片：import 符号 → 调用时经 window 门面（门面名从兄弟转发行回读，prefix 正则需转义）；
+  overlay-track 纯模块不垫片（桩环境按 classic 语义直供同名全局，如 test_sticker_placement 的 getOverlayTrack mock）。
+- 属性型门面成员（getter/setter、DOM 句柄）不导出：MaweServerSave.projectFileHandle 等 6 个。
+- 撞名处理：word-timing 顶层 import clearSelection 与本地 IIFE 内同名函数、导出段三方撞——
+  删除未使用 import 绑定（本地函数语义不变）。
+- 注册表残留：cues 域 27 文件零 MAWE.register；唯一残留是 overlay-track 的 e2e 数据层注册（G06 约定）。
