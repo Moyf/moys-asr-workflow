@@ -628,3 +628,60 @@ test('stage overlay defaults to off while auto rendering defaults to on', async 
   await expect(page.locator('#ass-frame-stage-toggle')).toBeChecked();
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
 });
+
+test('overlays the sticker layer on the actual frame window following the preview toggle', async ({ page }) => {
+  await enableAss(page);
+  // 「预览表情包」默认关闭；与烧录同源的开关先打开。
+  await openSettingsPage(page, 'subtitle-preview');
+  await page.locator('#sticker-overlay-toggle').check();
+  await closeSettingsPanels(page);
+  await seek(page, 1.5);
+  await page.locator('#ass-frame-quick-open').click();
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+
+  const layer = page.locator('#ass-frame-sticker-layer');
+  // 尚未绑定表情包：图层保持隐藏。
+  await expect(layer).toBeHidden();
+
+  // 注入覆盖整句的表情包区间（等价分配后的 head.sticker 数据并推进区间版本）。
+  await page.evaluate(() => {
+    window.MaweBoot.DATA.segments[0].sticker = {
+      name: 'demo', filename: 'demo.png', rel: 'demo.png', start: 1000, end: 2800,
+    };
+    window.MaweStickerOverlay.stickerOverlayDataVersion += 1;
+    window.MaweAssFrame.syncWindowStickers();
+  });
+
+  await expect(layer).toBeVisible();
+  expect(await layer.evaluate((el) => el.querySelectorAll('img').length)).toBe(1);
+  // 层定位框必须是 PNG 的 contain 绘制矩形：宽高比等于源视频 640x360。
+  const ratio = await layer.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.width / rect.height;
+  });
+  expect(ratio).toBeCloseTo(640 / 360, 1);
+  // 几何层与舞台 #sticker-overlay-layer 使用同一份 preview.sticker 几何。
+  expect(await page.evaluate(() => {
+    const win = document.getElementById('ass-frame-sticker-geometry').style;
+    const stage = document.getElementById('sticker-overlay-layer').style;
+    return ['left', 'top', 'width', 'height'].every((key) => win[key] === stage[key]);
+  })).toBe(true);
+
+  // 关闭「预览表情包」→ 窗口图层立即隐藏（stickerBurnEnabled 同源）。
+  await openSettingsPage(page, 'subtitle-preview');
+  await page.locator('#sticker-overlay-toggle').uncheck();
+  await closeSettingsPanels(page);
+  await expect(layer).toBeHidden();
+
+  // 重新打开后 seek 出区间 → 随新帧隐藏；seek 回区间 → 随新帧恢复。
+  await openSettingsPage(page, 'subtitle-preview');
+  await page.locator('#sticker-overlay-toggle').check();
+  await closeSettingsPanels(page);
+  await expect(layer).toBeVisible();
+  await seek(page, 3.5);
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  await expect(layer).toBeHidden();
+  await seek(page, 1.5);
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  await expect(layer).toBeVisible();
+});

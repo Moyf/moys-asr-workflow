@@ -20,6 +20,11 @@
   const staleEl = document.getElementById('ass-frame-stale');
   const stageToggle = document.getElementById('ass-frame-stage-toggle');
   const autoToggle = document.getElementById('ass-frame-auto-toggle');
+  // 实际画面窗口的表情包图层（模板默认存在；缺失时整组逻辑静默跳过）。
+  const stickerLayer = document.getElementById('ass-frame-sticker-layer');
+  const stickerGeometry = document.getElementById('ass-frame-sticker-geometry');
+  const stickerContent = stickerLayer ? stickerLayer.querySelector('.sticker-overlay-content') : null;
+  let windowStickerSignature = null;
   let timer = 0;
   let pending = false;
   let desired = null;
@@ -112,6 +117,7 @@
       if (imageEl.getAttribute('src') !== frame.url) imageEl.src = frame.url;
       imageEl.hidden = false;
     }
+    syncWindowStickers();
     const placeholder = document.getElementById('ass-frame-placeholder');
     if (placeholder) placeholder.hidden = true;
     const caption = document.getElementById('ass-frame-caption');
@@ -143,6 +149,85 @@
       && cached?.key === desired?.key);
     const label = staleEl.querySelector('span');
     if (label) label.textContent = translate(player?.paused === true ? '画面已过期' : '暂停后重新渲染');
+  }
+
+
+  // === 表情包图层（窗口内）===
+  // 让实际画面 = 完整成片效果：按帧时间显示表情包，几何与 contain 显示语义
+  // 与播放器舞台的 #sticker-overlay-layer 完全一致（同一 activeStickersAt 区间、
+  // 同一 preview.sticker 归一化几何），叠在实际帧 PNG 上方——与舞台暂停视图
+  // 的叠放次序相同（表情包层本来就是舞台里压在实际帧之上的独立图层；素材与
+  // 字幕位置不相交）。显隐跟随「预览表情包」开关（MaweStickerBurnPlan.
+  // stickerBurnEnabled，与烧录行为同源），素材 URL 失败时 <img> 自然空显示，
+  // 不阻塞出帧。
+  function positionWindowStickerLayer() {
+    if (!stickerLayer || !stickerGeometry || !imageEl.naturalWidth || !imageEl.naturalHeight) return;
+    // PNG 以 object-fit: contain 显示：层的定位框必须是实际绘制矩形，
+    // 归一化几何才能与舞台预览逐像素对应。原尺寸查看模式下图片盒就是
+    // 自然尺寸，结果不变。
+    const wrap = imageEl.parentElement;
+    const wrapRect = wrap.getBoundingClientRect();
+    const imageRect = imageEl.getBoundingClientRect();
+    const scale = Math.min(imageRect.width / imageEl.naturalWidth, imageRect.height / imageEl.naturalHeight);
+    const width = imageEl.naturalWidth * scale;
+    const height = imageEl.naturalHeight * scale;
+    // Absolute coordinates belong to the scrollable padding box, not its viewport.
+    stickerLayer.style.left = `${imageRect.left - wrapRect.left - wrap.clientLeft + wrap.scrollLeft + (imageRect.width - width) / 2}px`;
+    stickerLayer.style.top = `${imageRect.top - wrapRect.top - wrap.clientTop + wrap.scrollTop + (imageRect.height - height) / 2}px`;
+    stickerLayer.style.width = `${width}px`;
+    stickerLayer.style.height = `${height}px`;
+    // 与舞台层同一几何换算（GEO_UTILS.previewGeometryToCss：钳制 + 百分比）。
+    const css = global.MaweAppearance?.GEO_UTILS?.previewGeometryToCss
+      ? global.MaweAppearance.GEO_UTILS.previewGeometryToCss(global.MawePreviewGeometry.getStickerGeometry())
+      : null;
+    if (css) {
+      stickerGeometry.style.left = css.left;
+      stickerGeometry.style.top = css.top;
+      stickerGeometry.style.width = css.width;
+      stickerGeometry.style.height = css.height;
+    }
+  }
+
+  function syncWindowStickers() {
+    if (!stickerLayer || !stickerGeometry || !stickerContent) return;
+    const enabled = Boolean(global.MaweStickerBurnPlan?.stickerBurnEnabled?.());
+    const stickers = enabled && cached && !imageEl.hidden
+      ? (global.MaweStickerOverlay?.activeStickersAt(cached.timeMs) || []) : [];
+    if (!enabled || !stickers.length) {
+      windowStickerSignature = null;
+      if (!stickerLayer.hidden || stickerContent.childElementCount) {
+        stickerContent.classList.remove('has-overlay-sticker');
+        stickerContent.replaceChildren();
+        stickerLayer.hidden = true;
+      }
+      return;
+    }
+    positionWindowStickerLayer();
+    // Include the asset revision carried by stickerUrl when a directory changes.
+    const overlayActive = Boolean(global.MaweStickerOverlay?.activeStickerHasOverlay);
+    const signature = `${overlayActive ? 'O' : ''}\u0001${
+      stickers.map((sticker) => global.MaweSelection.stickerUrl(sticker)).join('\u0001')}`;
+    if (windowStickerSignature !== signature) {
+      stickerContent.classList.toggle('has-overlay-sticker', overlayActive);
+      stickerContent.replaceChildren(...stickers.map((sticker) => {
+        const img = document.createElement('img');
+        img.src = global.MaweSelection.stickerUrl(sticker);
+        img.alt = sticker.name;
+        img.title = sticker.name;
+        return img;
+      }));
+      windowStickerSignature = signature;
+    }
+    stickerLayer.hidden = false;
+  }
+
+  // The first PNG can finish loading after showWindowFrame measured its box.
+  imageEl?.addEventListener('load', positionWindowStickerLayer);
+  // 面板尺寸变化会改变 PNG 的绘制矩形，跟随 wrap 的尺寸变化。
+  if (stickerLayer && typeof global.ResizeObserver === 'function') {
+    new global.ResizeObserver(() => {
+      if (!stickerLayer.hidden) positionWindowStickerLayer();
+    }).observe(imageEl.parentElement);
   }
 
   function syncPreview() {
@@ -346,6 +431,7 @@
     const placeholder = document.getElementById('ass-frame-placeholder');
     if (placeholder) placeholder.hidden = false;
     setWindowStatus('');
+    syncWindowStickers();
   }
 
   function onPlay() { syncPreview(); }
@@ -444,8 +530,9 @@
   document.getElementById('ass-frame-size')?.addEventListener('click', (event) => {
     const native = document.querySelector('.ass-frame-image-wrap')?.classList.toggle('ass-frame-native');
     event.currentTarget.setAttribute('aria-pressed', String(Boolean(native)));
+    positionWindowStickerLayer();
   });
 
-  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview, bindPlayer });
+  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview, bindPlayer, syncWindowStickers });
   syncAssFrameControls();
 })(typeof window !== 'undefined' ? window : globalThis);

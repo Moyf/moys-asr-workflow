@@ -1,6 +1,9 @@
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
 
 const context = { window: {}, Uint8Array };
 loadEditorModule(context, 'shared/editor-utils.js');
@@ -309,4 +312,108 @@ test('sticker box taller than the space above a top cue falls back instead of ne
   assert.equal(topPlacements.length, 1);
   assert.equal(topPlacements[0].x, FIXED_BOX.x);
   assert.equal(topPlacements[0].align, 'center');
+});
+
+// === 多句绑定表情包：写入路径与预览区间契约 ===
+// 真实模块源码装入最小桩环境：分配（editor-sticker-picker）→ 区间同步
+// （editor-text-cleanup）→ 预览区间读取（editor-sticker-overlay）。
+
+function stubElement() {
+  return {
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    style: {}, dataset: {},
+    appendChild() {}, addEventListener() {}, setAttribute() {},
+  };
+}
+
+function loadEditorSource(context, relative) {
+  const file = fileURLToPath(new URL(`../web/${relative}`, import.meta.url));
+  vm.runInNewContext(fs.readFileSync(file, 'utf8'), context, { filename: relative });
+}
+
+function stickerBindingContext(segments) {
+  // window 自引用：模块把 facade 注册到 window，浏览器里 window 属性同时是
+  // 裸全局；桩环境用同一个对象充当 context 全局与 window，两种查找都命中。
+  const context = {
+    window: null,
+    document: {
+      createElement: stubElement,
+      getElementById: stubElement,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    },
+    confirm: () => false,
+    setTimeout: () => 0,
+    // stickerTargetTrack 由 editor-wiring-overlay-actions.js 以顶层 let 声明（跨
+    // 文件全局词法绑定）；桩环境里用上下文属性等价替代。
+    stickerTargetTrack: 'main',
+    activeStickerHasOverlay: false,
+    getOverlayTrack: () => null,
+    MaweBoot: { DATA: { segments }, STICKERS: [] },
+    MaweCommands: { run: (label, mutate) => mutate({ commit() {} }) },
+    MaweSelection: { stickerUrl: () => 'about:blank#sticker' },
+    MaweSettings: { EDITOR_SETTINGS: { cueListShowSticker: true, cueEditorShowSticker: true } },
+    MaweColorFilter: { refreshStickerAssignmentUi() {} },
+    MaweHint: { flashHint() {} },
+    MaweState: { markProjectDirty() {} },
+    MaweDom: { stickerModal: stubElement(), stickerPreviewModal: stubElement() },
+  };
+  context.window = context;
+  return context;
+}
+
+test('multi-sentence sticker binding covers every bound cue without a drag', () => {
+  const segments = [
+    { id: 'main-001', start: 0, end: 1000, text: '第一句' },
+    { id: 'main-002', start: 1000, end: 2600, text: '第二句' },
+  ];
+  const sticker = { name: 'bind', filename: 'bind.png', rel: 'bind.png' };
+  const binding = stickerBindingContext(segments);
+  loadEditorSource(binding, 'editor/cues/editor-text-cleanup.js');
+  loadEditorSource(binding, 'editor/cues/editor-sticker-picker.js');
+  loadEditorSource(binding, 'editor/media/editor-sticker-overlay.js');
+
+  binding.MaweBoot.STICKERS = [sticker];
+  binding.window.MaweStickerPicker.openStickerPicker([0, 1], true);
+  binding.window.MaweStickerPicker.assignSticker(sticker);
+
+  // 写入契约：head.sticker 覆盖整个选区（与 syncTimelineGroupRanges、
+  // 延长表情包、标记颜色一致），ref 成员指向 head。
+  assert.deepEqual(
+    { start: segments[0].sticker.start, end: segments[0].sticker.end, name: segments[0].sticker.name },
+    { start: 0, end: 2600, name: 'bind' },
+  );
+  assert.equal(segments[1].sticker, null);
+  assert.deepEqual({ ...segments[1].sticker_ref }, { name: 'bind', headIdx: 0 });
+
+  // 预览读取契约：不做任何拖动，第二句时间点就命中表情包区间。
+  const overlay = binding.window.MaweStickerOverlay;
+  assert.equal(overlay.activeStickersAt(500).length, 1);
+  assert.equal(overlay.activeStickersAt(1500).length, 1);
+  assert.equal(overlay.activeStickersAt(2700).length, 0);
+});
+
+test('rebinding a single head that owns references re-syncs the group range', () => {
+  const segments = [
+    { id: 'main-001', start: 0, end: 1000, text: '第一句' },
+    { id: 'main-002', start: 1000, end: 2600, text: '第二句',
+      sticker_ref: { name: 'old', headIdx: 0 } },
+  ];
+  segments[0].sticker = { name: 'old', filename: 'old.png', rel: 'old.png', start: 0, end: 1000 };
+  const sticker = { name: 'next', filename: 'next.png', rel: 'next.png' };
+  const binding = stickerBindingContext(segments);
+  loadEditorSource(binding, 'editor/cues/editor-text-cleanup.js');
+  loadEditorSource(binding, 'editor/cues/editor-sticker-picker.js');
+
+  binding.MaweBoot.STICKERS = [sticker];
+  binding.window.MaweStickerPicker.openStickerPicker([0], false);
+  binding.window.MaweStickerPicker.assignSticker(sticker);
+
+  // 单选重分配 head：既有 ref 仍指向它，区间必须回到整组覆盖，而不是丢掉
+  // start/end 后回落到 head 自身句范围。
+  assert.deepEqual(
+    { start: segments[0].sticker.start, end: segments[0].sticker.end, name: segments[0].sticker.name },
+    { start: 0, end: 2600, name: 'next' },
+  );
+  assert.deepEqual({ ...segments[1].sticker_ref }, { name: 'next', headIdx: 0 });
 });
