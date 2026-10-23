@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.1 之后 | 2026-10-23 | [编辑器显示与像素组合验证](release1.10.0-beta.1/261023_编辑器显示与像素验证/验证记录.md) / [独立复核](release1.10.0-beta.1/261023_编辑器显示与像素验证/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261023_编辑器显示与像素验证/编辑器显示.checklist.md) | 斜体字形、真实像素准备复用与动态双语提示；最新 main 组合和旧红新绿 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [测试夹具组合验证](release1.10.0-beta.1/261023_测试夹具组合/验证记录.md) / [独立复核](release1.10.0-beta.1/261023_测试夹具组合/REVIEW_FINDINGS.md) / [核验清单](release1.10.0-beta.1/261023_测试夹具组合/测试基础设施.checklist.md) | H/L/C 组合、Windows 同一完整报告承接；真实符号链接与 Launcher 浏览器验收分别记录 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [服务生命周期夹具复核](release1.10.0-beta.1/261023_服务生命周期夹具/REVIEW_FINDINGS.md) | Windows supervisor/application 环境隔离、合成期限与实际默认期限分开、进程树/端口/旁观进程断言保留 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [媒体缓存夹具分层复核](release1.10.0-beta.1/261023_缓存夹具分层/REVIEW_FINDINGS.md) | 缩略图假源与真实持久化分层、取消回收、冻结 REAPER 解析与独立真实生成；Windows 符号链接权限验收待完成 |
@@ -22,6 +23,8 @@
 | 1.10.0-beta.1 之后 | 2026-10-23 | [波形交互稳定修复](release1.10.0-beta.1/261023_波形交互稳定/修复记录.md) / [整合复核](release1.10.0-beta.1/261023_波形交互稳定/REVIEW_FINDINGS.md) | 同高度缩略图通知保留波形行、真实高度变化保滚动锚点；删除回归保留自动保存隔离 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [Launcher ESM 迁移 L00 基线](release1.10.0-beta.1/261022_Launcher_ESM_L00/BASELINE.md) | 20 个 JS 台账、上游 PR 核对与页面加载契约 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [main e2e 回归修复提交前自审](release1.10.0-beta.1/261022_main_e2e回归修复/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261022_main_e2e回归修复/字体与本地媒体.checklist.md) | 双审查者 Greptile 式自审：绿幕修复的 player 快照缺陷真修、AssetsV2/TTC 测试补覆盖，含双向验证与遗留说明；实机核验待完成 |
+| 1.10.0-beta.1 之后 | 2026-10-23 | [ASS 像素核验准备复用](release1.10.0-beta.1/261023_ASS像素核验复用/验证记录.md) | 原两画布、原断言不变；真实七时点像素等价与 FFmpeg 启动减少 |
+| 1.10.0-beta.1 之后 | 2026-10-23 | [ASS 斜体字形边缘修复](release1.10.0-beta.1/261023_ASS斜体边缘/修复记录.md) | 大字号外伸笔画保留完整位图；原 libass oracle 与旧红新绿像素回归 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [证书与工具链安全修复](release1.10.0-beta.1/261022_证书与工具链安全/SECURITY.md) | certifi、pip 引导、Node/uv 与 hf-xet TLS 缓解及安装包验证 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [MASS 弱化与斜体复审](release1.10.0-beta.1/261022_MASS语法复审/MASS弱化与斜体.checklist.md) | 符号禁用、拆分、斜体动画组合修复与人工核验边界 |
 | 1.10.0-beta.1 之后 | 2026-10-21 | [ASS 字体名兼容审阅](release1.10.0-beta.1/261021_ASS字体中文名/TEST_FEEDBACK_ASS字体中文名.md) / [人工核验](release1.10.0-beta.1/261021_ASS字体中文名/ASS字体名归一化.checklist.md) | 字体别名归一化、字重保留与预览/烧录/导出一致性 |
