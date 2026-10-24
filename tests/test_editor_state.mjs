@@ -3,12 +3,19 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 
+// editor-state 已转 ESM 模块（register/resolve 注册表退役）：
+// 源码在 vm 里还原后直调 createEditorState 工厂。
+const STATE_SRC = readFileSync(new URL('../web/editor/state/editor-state.js', import.meta.url), 'utf8');
+const { createEditorState } = (() => {
+  const context = { window: {}, module_exports: fns => fns };
+  const stripped = STATE_SRC
+    .replace(/^import .*$/gm, '')
+    .replace(/^export function/gm, 'function');
+  return vm.runInNewContext(`(function () { ${stripped}\nreturn { createEditorState }; })()`, context);
+})();
+
 function loadState(project = { segments: [] }) {
-  const context = { window: { MaweBoot: { DATA: project } } };
-  for (const file of ['editor/boot/editor-runtime.js', 'editor/state/editor-state.js']) {
-    vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
-  }
-  return context.window.MaweState;
+  return createEditorState(project);
 }
 
 test('only the current project load can release saving, and replacement cancels registered media work', () => {

@@ -3,18 +3,26 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 
-function registry() {
-  const context = { window: {} };
-  for (const file of ['editor/boot/editor-runtime.js', 'editor/state/editor-view-updates.js', 'editor/state/editor-commands.js']) {
-    vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
-  }
-  return context.window.MAWE;
+// 命令与视图更新已转 ESM 模块（register/resolve 注册表退役）：
+// 源码在 vm 里还原为可执行文本后直调工厂。
+const COMMANDS_SRC = readFileSync(new URL('../web/editor/state/editor-commands.js', import.meta.url), 'utf8');
+const VIEWS_SRC = readFileSync(new URL('../web/editor/state/editor-view-updates.js', import.meta.url), 'utf8');
+
+function moduleExports(source, names) {
+  const context = { window: {}, module_exports: objs => objs };
+  const stripped = source
+    .replace(/^import .*$/gm, '')
+    .replace(/^export function/gm, 'function');
+  return vm.runInNewContext(`(function () { ${stripped}\nreturn { ${names} }; })()`, context);
 }
+
+const { createEditorCommands } = moduleExports(COMMANDS_SRC, 'createEditorCommands');
+const { createViewUpdates } = moduleExports(VIEWS_SRC, 'createViewUpdates');
 
 function commandFixture() {
   const data = { value: 0, dirty: false };
   const history = [], redo = ['existing redo'], updates = [];
-  const commands = registry().resolve('editor-commands', {
+  const commands = createEditorCommands({
     capture: label => ({ label, ...data }),
     hasChanges: before => data.value !== before.value,
     publish(before) { history.push(before); redo.length = 0; data.dirty = true; },
@@ -111,7 +119,7 @@ test('a command may commit before reselecting its newly rendered result without 
 
 test('view updates use explicit scopes and preserve render, preview, save order', () => {
   const calls = [];
-  const views = registry().resolve('editor-view-updates', {
+  const views = createViewUpdates({
     renderCues: options => calls.push(['cues', { ...options }]),
     updatePreview: () => calls.push(['update']),
     refreshPreview: () => calls.push(['refresh']),
