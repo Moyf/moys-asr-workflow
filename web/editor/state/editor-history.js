@@ -1,3 +1,8 @@
+import { getOverlayTrack } from '../cues/overlay-track.js';
+
+export function initMaweHistory() {
+'use strict';
+
 // 撤销/重做：历史栈、快照与各类型记录的入栈恢复。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweHistory 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -27,7 +32,7 @@
   function snapshotSegments() {
   // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记；多字幕数据与主轨
   // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
-  return EDITOR_SETTINGS_UTILS.buildSegmentsHistorySnapshot(
+  return window.AsrEditorUtils.buildSegmentsHistorySnapshot(
     MaweBoot.DATA.segments,
     MaweMultiSubtitleCore.getMultiSubtitleState(),
     getOverlayTrack(),
@@ -283,7 +288,7 @@
   MaweBoot.DATA.multi_subtitle = snapshot.multi_subtitle || {
     schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
   };
-  MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(snapshot.overlay_track);
+  MaweBoot.DATA.overlay_track = window.AsrEditorUtils.normalizeOverlayTrack(snapshot.overlay_track);
   if (record.projectChanges) Object.assign(MaweState.changes, record.projectChanges);
   MaweMultiSubtitleCore.normalizeMultiSubtitleState();
   MaweState.reconcileSegmentsDirty();
@@ -373,7 +378,7 @@
       || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show')
       || MaweDom.projectMediaModal.classList.contains('show')
-      || assStyleWindow?.classList.contains('show');
+      || window.MaweDomPanelsWiring.assStyleWindow?.classList.contains('show');
 }
 
 
@@ -414,3 +419,4 @@
     updateUndoRedoButtons
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

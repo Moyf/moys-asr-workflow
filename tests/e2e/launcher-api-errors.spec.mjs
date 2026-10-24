@@ -1,3 +1,4 @@
+import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +7,7 @@ const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 
 async function openLauncher(page, language) {
   await page.goto('file://' + launcherPath);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.providers?.length > 0);
   if (language === 'en') {
     await page.evaluate(() => window.MAWLauncher.openSettings());
@@ -45,6 +47,7 @@ for (const language of ['zh', 'en']) {
       } }) };
     }, { config, language });
     await page.reload();
+    await completeStaticLauncherDiscovery(page);
     await page.waitForFunction(() => window.MAWLauncher?.config?.providers?.length > 0);
     await page.locator('#apiKey').fill('sk-test');
     await page.locator('#mediaPath').fill('C:/media/no-audio.mp4');

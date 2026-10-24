@@ -3,6 +3,7 @@ import test from 'node:test';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 function fixture(segments, overlaySegments = [], alignFirstStart = false) {
   const saves = [];
@@ -23,9 +24,9 @@ function fixture(segments, overlaySegments = [], alignFirstStart = false) {
   };
   loadEditorModule(context, 'shared/editor-utils.js');
   context.MULTI_SUBTITLE_UTILS = context.window.AsrEditorUtils;
-  const wiring = fs.readFileSync(new URL('../web/editor/io/editor-wiring-export-context.js', import.meta.url), 'utf8');
-  vm.runInNewContext(wiring.split('const CANONICAL_PROJECT_FIELDS')[0], context);
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/io/editor-export-srt.js', import.meta.url), 'utf8'), context);
+  context.document = { getElementById: () => null };
+  vm.runInNewContext(initModuleSource('editor/io/editor-wiring-export-context.js'), context);
+  vm.runInNewContext(initModuleSource('editor/io/editor-export-srt.js'), context);
   return { saves, api: context.window.MaweExportSrt, context };
 }
 

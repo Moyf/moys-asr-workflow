@@ -1,3 +1,4 @@
+import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 
 const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).href;
@@ -20,6 +21,7 @@ test('startup migrates legacy cleanup memory, preserves newer choices and restor
     };
   });
   await page.goto(launcherUrl);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   await page.evaluate(() => window.MAWLauncher.openToolboxAiProcessing());
   await expect(page.locator('#postprocessProvider')).toHaveValue('deepseek');
@@ -39,6 +41,7 @@ test('AI cleanup independently remembers its provider for manual requests and sa
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.goto(launcherUrl);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   await page.evaluate(() => window.MAWLauncher.openToolboxAiProcessing());
   await page.locator('#postprocessOperation').selectOption('translate_zh');
@@ -47,6 +50,7 @@ test('AI cleanup independently remembers its provider for manual requests and sa
   await page.locator('#postprocessProvider').selectOption('deepseek');
   expect(await page.evaluate(() => window.MAWLauncher.getAutoPostprocessPayload().steps.find(s => s.id === 'cleanup').providerId)).toBe('deepseek');
   await page.reload();
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   await page.evaluate(() => window.MAWLauncher.openToolboxAiProcessing());
   await expect(page.locator('#postprocessProvider')).toHaveValue('qwen');
@@ -78,6 +82,7 @@ test('AI cleanup independently remembers its provider for manual requests and sa
 
 test('custom slot errors use localized labels and custom authentication guidance', async ({ page }) => {
   await page.goto(launcherUrl);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   for (const [providerId, label] of [['custom', '自定义接口（或本地模型）'], ['custom2', '自定义接口 #2'], ['custom3', '自定义接口 #3']]) {
     const message = await page.evaluate(id => window.MAWLauncher.errorText('postprocess_connection_failed', '', {
@@ -91,6 +96,7 @@ test('custom slot errors use localized labels and custom authentication guidance
 
 test('DeepSeek links to AI Processing and translation restores its own provider', async ({ page }) => {
   await page.goto(launcherUrl);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   await page.locator('#provider').selectOption('deepseek');
   await expect(page.locator('#start')).toBeDisabled();
@@ -110,6 +116,7 @@ test('DeepSeek links to AI Processing and translation restores its own provider'
 
 test('toolbox hides custom slots #2/#3 until a URL is saved', async ({ page }) => {
   await page.goto(launcherUrl);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   const optionValues = (selector) => page.evaluate(
     sel => Array.from(document.querySelectorAll(`${sel} option`)).map(option => option.value),
