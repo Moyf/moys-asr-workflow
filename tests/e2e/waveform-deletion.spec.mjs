@@ -41,6 +41,8 @@ async function configureMultiRowMode(page) {
       waveformScale: 1,
       disabledDisplay: 'dim',
     };
+    // Reloads reuse this fixture; autosave must not persist an earlier scenario's deletions.
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false }));
     localStorage.setItem('moy.asr.waveform.settings.v1', JSON.stringify(settings));
   });
 }

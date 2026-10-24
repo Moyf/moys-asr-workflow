@@ -5,6 +5,7 @@ import test from 'node:test';
 import { createUtilsModule as createHistoryUtils } from '../web/shared/utils/history.js';
 import { createUtilsModule as createDataUtils } from '../web/shared/utils/data.js';
 import { createUtilsModule as createGroupUtils } from '../web/shared/utils/subtitle-groups.js';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const source = readFileSync(new URL('../web/editor/media/editor-audio-processing.js', import.meta.url), 'utf8');
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
@@ -58,7 +59,7 @@ function fixture(transport = async () => response(result())) {
   context.MaweWordTiming = { clearSelection() {} };
   context.MaweHint = { flashHint() {} };
   context.MaweInlineEdit = {};
-  vm.runInContext(readFileSync(new URL('../web/editor/state/editor-history.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/state/editor-history.js'), context);
   vm.runInContext(source, context);
   context.MaweAudioProcessing.init();
   // Production media controls initialize audio before startup establishes the
@@ -238,7 +239,7 @@ test('custom reference matching, dirty state and undo/redo keep the same target 
 function serializeProject(f) {
   const context = f.context;
   Object.assign(context, {
-    projectExtensionFields: {}, MULTI_SUBTITLE_UTILS: { MULTI_SUBTITLE_SCHEMA: 'moy.asr.multi_subtitle.v1' },
+    MaweExportContext: { projectExtensionFields: {} }, MULTI_SUBTITLE_UTILS: { MULTI_SUBTITLE_SCHEMA: 'moy.asr.multi_subtitle.v1' },
     getOverlayTrack: () => null,
     MaweTimeline: { syncProjectTimebaseAndBindingOffsets() {}, projectTimebase: () => ({ unit: 'milliseconds', fps: 30 }),
       normalizeMediaMetadata: () => null },
@@ -254,7 +255,7 @@ function serializeProject(f) {
   context.AsrEditorUtils = { ...context.AsrEditorUtils,
     normalizeItemTimingRanges: () => 0, markersToProjectField: () => null };
   vm.runInContext(readFileSync(new URL('../web/shared/utils/project-validation.js', import.meta.url), 'utf8'), context);
-  vm.runInContext(readFileSync(new URL('../web/editor/io/editor-json-repair.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/io/editor-json-repair.js'), context);
   const saved = JSON.parse(context.MaweJsonRepair.buildJson());
   const validation = context.MaweProjectValidation.validateProject(saved);
   assert.equal(validation.ok, true, JSON.stringify(validation.errors));

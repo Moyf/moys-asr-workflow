@@ -1,3 +1,8 @@
+import { getOverlayTrack } from '../cues/overlay-track.js';
+
+export function initMaweJsonRepair() {
+'use strict';
+
 // 工程 JSON 构建、时间码修复与分组重建。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweJsonRepair 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -36,7 +41,7 @@
   function projectSnapshot() {
   const out = {
     schema: window.AsrEditorUtils.PROJECT_SCHEMA,
-    ...projectExtensionFields,
+    ...window.MaweExportContext.projectExtensionFields,
     subtitle_groups: window.AsrEditorUtils.cloneJsonValue(MaweBoot.DATA.subtitle_groups),
     media: MaweBoot.DATA.media || '',
     audio_processing: { ...window.AsrEditorUtils.cloneJsonValue(MaweBoot.DATA.audio_processing),
@@ -75,7 +80,7 @@
   }
   const multi = MaweBoot.DATA.multi_subtitle || {};
   out.multi_subtitle = {
-    schema: multi.schema || MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
+    schema: multi.schema || window.AsrEditorUtils.MULTI_SUBTITLE_SCHEMA,
     enabled: multi.enabled === true,
     display_mode: multi.display_mode || 'both',
     main_split_mode: MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(multi.main_split_mode)
@@ -148,7 +153,7 @@
   }
   // 波形缓存（含响度统计）不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
   // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
-  // 旧工程里的内联缓存经 CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
+  // 旧工程里的内联缓存经 window.MaweExportContext.CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
   const mediaMetadata = MaweTimeline.normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
   if (mediaMetadata) out.media_metadata = mediaMetadata;
   if (MaweBoot.DATA.gap_remove) out.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(MaweBoot.DATA.gap_remove);
@@ -426,3 +431,4 @@
     repairCurrentProjectTimings
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

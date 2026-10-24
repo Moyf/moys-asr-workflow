@@ -1,3 +1,8 @@
+import { getOverlayTrack } from './overlay-track.js';
+
+export function initMaweCuePanelWiring() {
+'use strict';
+
 
 
 
@@ -281,7 +286,7 @@ function buildOverlayCueEl(seg, index) {
     const previousSuppress = MawePlaybackLoop.suppressCueListAutoScroll;
     // 与副字幕一致：点击后的 seek 会同步刷新主字幕 active 状态；这次刷新不能把
     // 列表从刚点击的叠加字幕行再次滚到对应的主字幕行。
-    const wasPlaying = isPlaybackActive();
+    const wasPlaying = window.MaweKeyboardGuards.isPlaybackActive();
     MawePlaybackLoop.suppressCueListAutoScroll = true;
     try {
       MaweCoreState.waveformEditor?.revealTime(segment.start, true);
@@ -305,7 +310,7 @@ function buildOverlayCueEl(seg, index) {
   el.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    showOverlayContextMenu(event.clientX, event.clientY, index);
+    window.MaweContextMenusWiring.showOverlayContextMenu(event.clientX, event.clientY, index);
   });
   return el;
 }
@@ -323,3 +328,13 @@ function buildOverlayCueEl(seg, index) {
 
 
 // === 字数 ===
+
+window.MaweCuePanelWiring = Object.freeze({
+  updateSelectionCountText,
+  selectOverlayCueRow,
+  selectOverlayRange,
+  syncOverlaySelectionClasses,
+  toggleOverlaySelection,
+  buildOverlayCueEl,
+});
+}

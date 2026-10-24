@@ -89,8 +89,8 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweCuePanelState.currentCuePanelTrackId = null;
   MaweCuePanelState.resetCuePanelEditState({ discard: true });
   resetLoadedMedia();
-  projectExtensionFields = Object.fromEntries(
-    Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+  window.MaweExportContext.projectExtensionFields = Object.fromEntries(
+    Object.entries(data).filter(([key]) => !window.MaweExportContext.CANONICAL_PROJECT_FIELDS.has(key)),
   );
   MaweBoot.DATA.schema = data.schema || window.AsrEditorUtils.PROJECT_SCHEMA;
   MaweBoot.DATA.subtitle_groups = window.AsrEditorUtils.cloneJsonValue(data.subtitle_groups);
@@ -141,6 +141,9 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(data.overlay_track);
   MaweState.beginProjectSession();
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
+  // 载入即归一分组区间：旧版本多句绑定曾把 head.sticker 写成首句范围（拖动才
+  // 被同步修正），落盘工程重开后预览仍按首句区间显示；打开时就对齐组契约。
+  MaweTextCleanup.syncTimelineGroupRanges();
   MaweHistory.editorHistory.clear();
   MaweHistory.updateUndoRedoButtons();
   MaweSelection.clearSelection();

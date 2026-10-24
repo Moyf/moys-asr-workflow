@@ -25,6 +25,10 @@ FONT_ALIAS_SCHEMA: Final = "moy.asr.font_aliases.v1"
 
 _FONT_SUFFIXES: Final = frozenset({".otf", ".ttf", ".ttc", ".otc"})
 _TTC_SUFFIXES: Final = frozenset({".ttc", ".otc"})
+# macOS 27 起系统字体可经 MobileAsset 按需投递（AssetsV2）；字体资产目录
+# 前缀固定为 com_apple_MobileAsset_Font*，未来版本可能递增编号。
+# 注意 maw/lottie_glyphs.py 的 _font_roots 内联了同一路径，调整时必须同步。
+MACOS_ASSETS_V2_ROOT: Final = Path("/System/Library/AssetsV2")
 # ASS Style 行固定 23 字段，Fontname 是第 2 个逗号分隔字段；只匹配行首的
 # Style: 前缀，Format:/Dialogue: 与事件文本一概不动。
 _STYLE_LINE_RE: Final = re.compile(r"^(Style:[ \t]*)(.*)$")
@@ -204,6 +208,14 @@ def _font_roots() -> tuple[Path, ...]:
             Path("/Library/Fonts"),
             Path.home() / "Library" / "Fonts",
         ))
+        # macOS 27 起部分系统字体（PingFang、Kaiti 等 CJK 字体）改为 MobileAsset
+        # 按需投递，存放在 AssetsV2 的字体资产目录；CoreText 与 libass 的
+        # coretext provider 仍能解析它们，漏扫会把本机已有字体误报为「未找到」。
+        # 只枚举字体资产目录，避免遍历整个 AssetsV2。
+        roots.extend(sorted(
+            path for path in MACOS_ASSETS_V2_ROOT.glob("com_apple_MobileAsset_Font*")
+            if path.is_dir()
+        ))
     else:
         roots.extend((
             Path("/usr/share/fonts"),
@@ -306,6 +318,10 @@ def _read_font_file_names(path: Path) -> list[FontFileNames]:
         except Exception:  # noqa: BLE001 - 坏 name 表静默跳过
             continue
         results.append(names)
+    # TTC 的多个 face 懒加载共享同一个文件流：必须全部读完再统一关闭。
+    # 在循环里逐 face close 会让后续 face 读 name 表失败，整个集合只剩
+    # 第一个 face（如 PingFang.ttc 只剩 HK，丢掉 SC/TC/MO）。
+    for font in faces:
         close = getattr(font, "close", None)
         if close:
             close()

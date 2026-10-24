@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 test('ASS export keeps distinct renderable family names while replacing typographic aliases', async () => {
   const config = {};
@@ -73,9 +74,7 @@ test('loaded font aliases invalidate the paused preview plan before its first re
     }) }),
   };
   vm.createContext(context);
-  vm.runInContext(fs.readFileSync(new URL(
-    '../web/editor/styles/editor-wiring-ass-preview.js', import.meta.url,
-  ), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/styles/editor-wiring-ass-preview.js'), context);
   vm.runInContext("cachedAssStackKey = 'old'; assPreviewFontMetrics.set('old', 1)", context);
   let refreshed = false;
   context.window.MawePlaybackLoop = { refreshSubtitlePreview() {

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { createHash } from 'node:crypto';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { initModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
 const context = { window: {} };
 loadEditorModule(context, 'shared/editor-utils.js');
 const h = context.window.AsrEditorUtils;
@@ -324,16 +325,17 @@ test('real overlay merge retains only leftmost override as an independent copy',
     const left = { id: 'overlay-left', start: 0, end: 1000, text: 'A', ...(override ? { assOverride: override } : {}) };
     const right = { id: 'overlay-right', start: 1000, end: 2000, text: 'B', assOverride: { scale: 2, pos: { x: 900, y: 800 } } };
     const track = { id: 'overlay', segments: [left, right] };
-    const context = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h, getOverlayTrack: () => track,
+    const context = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h,
       MaweBoot: { DATA: { segments: [], overlay_track: track } },
       MaweCoreState: { container: { querySelector: () => null } },
       MaweCueListAnchor: { captureVisibleCueListVisualAnchor: () => null },
-      MaweMultiSubtitleCore: { getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '' },
+      MaweMultiSubtitleCore: { getMultiSubtitleState: () => ({}), getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '' },
       MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } },
       MaweSelection: { clearSelection() {} }, MaweCommands: { run: (label, fn) => fn({ commit() {} }) },
       MaweState: { selection: { clear() {}, add() {} } }, MaweCuePanel: { setCuePanelTarget() {} },
       MaweViewUpdates: { invalidate() {} }, MaweHint: { flashHint() {} } };
-    vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-wiring-overlay-split-merge.js', import.meta.url), 'utf8'), context);
+    vm.runInNewContext(plainModuleSource('editor/cues/overlay-track.js'), context);
+    vm.runInNewContext(initModuleSource('editor/cues/editor-wiring-overlay-split-merge.js'), context);
     assert.equal(context.mergeOverlaySegments([1, 0]), true);
     assert.equal(track.segments.length, 1);
     const merged = track.segments[0];

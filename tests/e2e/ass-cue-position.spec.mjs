@@ -75,7 +75,10 @@ test('inspector, focus-scoped arrows, reset, undo and save/reopen retain positio
     await MaweProjectSave.saveProjectToServer({ silent: true }); return json.segments[0].assOverride; });
   expect(save).toEqual({ pos: { x: 331, y: 162 } });
   expect((await snapshot(page)).dirty).toBe(false);
-  await page.reload(); await page.waitForFunction(() => Boolean(MaweBoot.DATA.segments[0].assOverride));
+  await page.reload();
+  await page.waitForFunction(() => Boolean(
+    window.MaweExportContext?.mergedExportSegments && MaweBoot.DATA.segments[0].assOverride,
+  ));
   expect((await snapshot(page)).override).toEqual(save);
   await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.assMode = true; MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000,0); });
   const gaps = await page.locator('#ass-cue-position').evaluate(panel => ({

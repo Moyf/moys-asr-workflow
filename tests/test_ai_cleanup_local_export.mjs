@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const source = () => ({ id: 'main-001', start: 0, end: 2000, text: '啊，我这……我这个功能呢',
@@ -11,7 +12,7 @@ const localGap = () => ({ detector: 'audio_gate', provenance: { sources: { ai_cl
   cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 2, text: '啊，我这……' } }] } } });
 
 test('ASS cache retains raw identity but invalidates equal-text selections with different item boundaries', () => {
-  const script = fs.readFileSync(new URL('../web/editor/styles/editor-wiring-ass-preview.js', import.meta.url), 'utf8');
+  const script = initModuleSource('editor/styles/editor-wiring-ass-preview.js');
   const start = script.indexOf('const assStackCueSnapshots =');
   const end = script.indexOf("document.fonts?.addEventListener('loadingdone'", start);
   const context = {};
@@ -51,11 +52,16 @@ function runtime() {
     MaweHint: { flashHint: () => {} },
     MaweTimeline: { normalizeMediaMetadata: utils.normalizeMediaMetadata },
     activeExtensionSegments: () => extension,
+  });
+  context.window.MaweExportContext = {
     mergedExportSegments: () => ({ segments: [...main, ...overlay], overlaySet: new Set(overlay), overlaySegments: overlay }),
     exportColorContextResolver: () => () => main,
-  });
+  };
   for (const file of ['editor-export-srt.js', 'editor-export-timeline.js']) {
-    vm.runInNewContext(fs.readFileSync(new URL(`../web/editor/io/${file}`, import.meta.url), 'utf8'), context);
+    const source = file === 'editor-export-srt.js'
+      ? initModuleSource(`editor/io/${file}`)
+      : fs.readFileSync(new URL(`../web/editor/io/${file}`, import.meta.url), 'utf8');
+    vm.runInNewContext(source, context);
   }
   context.MaweExportSrt = context.window.MaweExportSrt;
   return { context, core, utils, main, extension, overlay, srt: context.window.MaweExportSrt, timeline: context.window.MaweExportTimeline };
@@ -111,7 +117,7 @@ test('opening does not expose implicit punctuation cleanup or rewrite exact and 
   const stale = { start: 0, end: 770, cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 2, text: 'stale' } };
   context.MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup.push(stale);
   const before = JSON.stringify(context.MaweBoot.DATA);
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-text-cleanup.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-text-cleanup.js'), context);
   assert.equal(context.window.MaweTextCleanup.cleanPunctuation, undefined);
   assert.doesNotMatch(fs.readFileSync(new URL('../web/editor/boot/editor-startup.js', import.meta.url), 'utf8'), /cleanPunctuation/);
   assert.equal(JSON.stringify(context.MaweBoot.DATA), before);
@@ -129,7 +135,7 @@ function neutralNormalizationRuntime() {
     { start: 0, end: 110, cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 1, text: '我' } },
     { start: 810, end: 930, cleanup_scope: { segment_id: 'main-001', item_start: 4, item_end: 5, text: '嗯' } },
   ] } } };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/io/editor-json-repair.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/io/editor-json-repair.js'), context);
   return setup;
 }
 
@@ -259,7 +265,7 @@ test('production ordinary/gap SRT and ASS builders remove local words while inde
 
 test('burn subtitles can retain media cue timing while file export extends the first cue', () => {
   const { context, srt, main } = runtime();
-  context.mergedExportSegments = () => ({ segments: main, overlaySet: new Set(), overlaySegments: [] });
+  context.window.MaweExportContext.mergedExportSegments = () => ({ segments: main, overlaySet: new Set(), overlaySegments: [] });
   context.activeExtensionSegments = () => [];
   context.MaweSettings.EDITOR_SETTINGS.exportStartAtZero = true;
   const ordinaryFile = srt.buildSrt();

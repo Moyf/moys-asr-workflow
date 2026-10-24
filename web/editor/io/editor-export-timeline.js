@@ -448,7 +448,7 @@
     ? (MaweBoot.DATA.overlay_track?.segments || []) : [];
   if (overlaySegments.length) {
     if (includeSubtitleMarkers) {
-      const overlayMarkerTrack = buildOverlaySubtitleOtioTrack(overlaySegments, intervals, sourceStartFrame);
+      const overlayMarkerTrack = window.MaweExportContext.buildOverlaySubtitleOtioTrack(overlaySegments, intervals, sourceStartFrame);
       if (overlayMarkerTrack.children.length) tracks.push(overlayMarkerTrack);
     }
     if (includeStickers) {

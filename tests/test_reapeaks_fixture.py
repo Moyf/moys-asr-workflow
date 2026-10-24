@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from maw import quapeaks
 
@@ -20,7 +21,7 @@ try:
     gen_fixtures = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(gen_fixtures)
     # gen_fixtures 顶层 import numpy；numpy 已移入 ocr 可选依赖，
-    # 缺失时整个模块降级为 skip，不再让测试套件 ImportError。
+    # 缺失时仅生成回归降级为 skip，不影响冻结 cache 解析。
     HAS_NUMPY = True
 except ImportError:
     gen_fixtures = None
@@ -31,12 +32,14 @@ def _fixture_present(name: str) -> bool:
     return (TEST_DATA_DIR / name).is_file()
 
 
-def _waveform_amps(reapeaks_path: Path, media_path: Path) -> tuple[int, list[int]]:
+def _waveform_amps(reapeaks_path: Path) -> tuple[int, list[int]]:
     """从 .ReaPeaks 提取最细 wave 层，返回 (peaks_per_second, 每峰振幅)。
 
     振幅 = max(|min|, |max|)，量化到 int8（与编辑器 i8-minmax 负载一致）。
     """
-    payload = quapeaks.extract_waveform_payload(reapeaks_path, media_path)
+    # 此处只验证冻结 cache 的波形；source 仅需现存文件的 stat 元数据，
+    # 不验证源媒体指纹，也不需要合成/解码源 WAV。
+    payload = quapeaks.extract_waveform_payload(reapeaks_path, reapeaks_path)
     assert payload is not None
     raw = base64.b64decode(payload["data"])
     pps = payload["peaks_per_second"]
@@ -52,35 +55,12 @@ class FixtureReapeaksTests(unittest.TestCase):
     """用 REAPER 真机生成的 .ReaPeaks 验证解析器与 REAPER 格式兼容。
 
     fixture 流程：gen_fixtures.py 生成 wav → 用户在 REAPER 打开生成
-    .ReaPeaks → 放回 tests/test_data/。文件缺失时这些用例自动 skip，
-    不阻塞其余测试；放回后自动启用。内容设计见 FIXTURES.md。
+    .ReaPeaks → 放回 tests/test_data/。文件缺失时报告 skip，
+    内容设计见 FIXTURES.md。
 
-    如果 .ReaPeaks 存在但 wav 不存在（gitignore），测试前自动生成 wav，
-    测试后清理。
+    解析与形状检查只读取已提交 cache，不生成源 WAV，因此不依赖
+    NumPy、FFmpeg 或长媒体生成。
     """
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        # 生成 wav（如果 .ReaPeaks 存在但 wav 不存在）
-        cls._generated_wavs: list[Path] = []
-        for name in ("tone30", "tone_dual", "tone_48k"):
-            reapeaks_path = TEST_DATA_DIR / f"{name}.wav.ReaPeaks"
-            wav_path = TEST_DATA_DIR / f"{name}.wav"
-            if reapeaks_path.is_file() and not wav_path.is_file():
-                if gen_fixtures is None:
-                    raise unittest.SkipTest(
-                        "numpy 不可用（已移入 ocr 可选依赖），无法生成 fixture wav"
-                    )
-                gen_func = getattr(gen_fixtures, f"gen_{name}")
-                gen_func()
-                cls._generated_wavs.append(wav_path)
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        # 清理生成的 wav
-        for wav_path in cls._generated_wavs:
-            if wav_path.is_file():
-                wav_path.unlink()
 
     @unittest.skipUnless(_fixture_present("tone30.wav.ReaPeaks"), "REAPER fixture missing: tone30")
     def test_tone30_parses_real_reaper_cache(self) -> None:
@@ -94,6 +74,20 @@ class FixtureReapeaksTests(unittest.TestCase):
         self.assertTrue(wave_mips)
         # 30 分钟媒体，最细层应有足够多的峰值（远多于几百）
         self.assertGreater(wave_mips[0].peak_count, 1000)
+        # 固定长 cache 保留全部粗层级的解析保障；短媒体不会产出这些层。
+        self.assertEqual(
+            [(mip.kind, mip.division_factor, mip.peak_count) for mip in ra.mipmaps],
+            [
+                ("wave", 147, 540000),
+                ("wave", 2205, 36000),
+                ("wave", 44100, 1800),
+                ("spectral", -115, 539993),
+                ("spectral", -115, 35999),
+                ("spectral", -115, 1799),
+                ("loudness", -114, 72000),
+                ("loudness", -114, 3600),
+            ],
+        )
 
     @unittest.skipUnless(_fixture_present("tone_dual.wav.ReaPeaks"), "REAPER fixture missing: tone_dual")
     def test_tone_dual_parses_stereo_layout(self) -> None:
@@ -116,9 +110,7 @@ class FixtureReapeaksTests(unittest.TestCase):
         内容设计见 FIXTURES.md：0-10s 静音 / 10-600s 200Hz / 600-900s 粉噪声 /
         900-1350s 1kHz / 1350-1790s 3kHz / 1790-1800s 静音。
         """
-        pps, amps = _waveform_amps(
-            TEST_DATA_DIR / "tone30.wav.ReaPeaks", TEST_DATA_DIR / "tone30.wav"
-        )
+        pps, amps = _waveform_amps(TEST_DATA_DIR / "tone30.wav.ReaPeaks")
         self.assertGreater(pps, 0)
         for start, end in ((0, 10), (1790, 1800)):
             seg = amps[int(start * pps):int(end * pps)]
@@ -151,9 +143,7 @@ class FixtureReapeaksTests(unittest.TestCase):
     @unittest.skipUnless(_fixture_present("tone_48k.wav.ReaPeaks"), "REAPER fixture missing: tone_48k")
     def test_tone_48k_waveform_has_amplitude(self) -> None:
         """48kHz：前 5s 440Hz 纯音 + 后 5s 白噪声，整体应有非零振幅。"""
-        pps, amps = _waveform_amps(
-            TEST_DATA_DIR / "tone_48k.wav.ReaPeaks", TEST_DATA_DIR / "tone_48k.wav"
-        )
+        pps, amps = _waveform_amps(TEST_DATA_DIR / "tone_48k.wav.ReaPeaks")
         self.assertGreater(max(amps), 40)
 
 
@@ -167,19 +157,17 @@ class GeneratedFixtureTests(unittest.TestCase):
 
     def _compare_reapeaks(self, name: str) -> None:
         fixture_path = TEST_DATA_DIR / f"{name}.wav.ReaPeaks"
-        fixture_data = fixture_path.read_bytes()
-        debug_dir = tempfile.TemporaryDirectory(prefix="maw-reapeaks-")
-        try:
-            # 生成 wav
+        with tempfile.TemporaryDirectory(prefix="maw-reapeaks-") as directory:
+            # 每条生成回归只构造一次源 WAV；临时目录隔离生成器/sidecar，
+            # 不写入或恢复已提交的 REAPER cache 与用户本地源 WAV。
             gen_func = getattr(gen_fixtures, f"gen_{name}")
-            gen_func()
-            wav = TEST_DATA_DIR / f"{name}.wav"
+            with mock.patch.object(gen_fixtures, "OUT", Path(directory)):
+                gen_func()
+            wav = Path(directory) / f"{name}.wav"
             # MAW 生成 .quapeaks
             maw_reapeaks = quapeaks.generate_for_media(wav)
             self.assertIsNotNone(maw_reapeaks, f"MAW 生成 {name}.wav.quapeaks 失败")
             assert maw_reapeaks is not None
-            maw_data = maw_reapeaks.read_bytes()
-            (Path(debug_dir.name) / f"{name}.wav.quapeaks").write_bytes(maw_data)
             generated = quapeaks.ReapeaksFile(str(maw_reapeaks))
             fixture = quapeaks.ReapeaksFile(str(fixture_path))
             self.assertEqual(generated.magic, b"QPK1")
@@ -201,16 +189,6 @@ class GeneratedFixtureTests(unittest.TestCase):
                     0.1,
                     f"{name} mip{index} 峰数差异 {diff_ratio:.2%} > 10%",
                 )
-        finally:
-            # 清理
-            debug_dir.cleanup()
-            wav = TEST_DATA_DIR / f"{name}.wav"
-            if wav.exists():
-                wav.unlink()
-            generated_path = TEST_DATA_DIR / f"{name}.wav.quapeaks"
-            if generated_path.exists():
-                generated_path.unlink()
-            fixture_path.write_bytes(fixture_data)
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
     @unittest.skipUnless(HAS_NUMPY, "numpy is required")

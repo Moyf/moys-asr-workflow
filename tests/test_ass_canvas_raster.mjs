@@ -9,7 +9,8 @@ function canvasFixture() {
   const makeContext = () => new Proxy({
     letterSpacing: '0px',
     measureText(text) {
-      return { width: text.length * 20, fontBoundingBoxAscent: 80, fontBoundingBoxDescent: 20 };
+      const size = Number(/([\d.]+)px/u.exec(this.font || '')?.[1]) || 100;
+      return { width: text.length * size * 0.2, fontBoundingBoxAscent: size * 0.8, fontBoundingBoxDescent: size * 0.2 };
     },
     fillText(text) { paint.push({ mode: 'fill', text, color: this.fillStyle, font: this.font }); },
     strokeText(text) { paint.push({ mode: 'stroke', text, color: this.strokeStyle, font: this.font }); },
