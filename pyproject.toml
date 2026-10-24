@@ -54,6 +54,9 @@ select = ["E4", "E7", "E9", "F"]
 "maw/soniox.py" = ["F401"]
 
 [dependency-groups]
+test = [
+    "numpy>=2.2,<2.5",
+]
 build = [
     "pyinstaller==6.16.0",
     "pillow>=10.0.0",
