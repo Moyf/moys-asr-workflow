@@ -2026,34 +2026,56 @@
 
 
 
+  // explicit（显式光标模式）：波形来源的拆分不再激活行内编辑，由调用方直接
+  // 给定 idx 与文字切点 cursorOffset；拆分主体（parts、符号补齐、items、提交
+  // 命令流）与编辑态路径完全共用，仅跳过 editingState 与 DOM selection 的读写。
+  // <100ms 首次被拒时通过 onForcedSplitArmed 把强制拆分 armed 交还调用方外置，
+  // 而不是寄存在 editingState 上。
   function splitAtCursor(
     feedbackPoint = null,
-    { listFeedback = true, cueListAnchor: suppliedCueListAnchor = null, splitTextMode = null } = {},
+    { listFeedback = true, cueListAnchor: suppliedCueListAnchor = null, splitTextMode = null, explicit = null } = {},
   ) {
-    if (!MaweInlineEdit.editingState) return false;
-    const force = MaweInlineEdit.editingState.forceSplitArmed === true;
+    const explicitSplit = explicit && typeof explicit === 'object' ? explicit : null;
+    if (!explicitSplit && !MaweInlineEdit.editingState) return false;
+    const force = explicitSplit
+      ? explicitSplit.force === true
+      : MaweInlineEdit.editingState.forceSplitArmed === true;
     // 渐进拆分：前半句保留左半，后半句保留整句原文；复制拆分：两侧都是整句原文。
     const progressiveSplit = splitTextMode === 'progressive';
     const duplicateSplit = splitTextMode === 'duplicate';
-    const { el, idx, textEl } = MaweInlineEdit.editingState;
-    const sel = window.getSelection();
-    if (!sel.rangeCount) {
-      MaweInlineEdit.finishEdit(false);
-      return false;
+    const el = explicitSplit ? null : MaweInlineEdit.editingState.el;
+    const idx = explicitSplit ? explicitSplit.idx : MaweInlineEdit.editingState.idx;
+    const textEl = explicitSplit ? null : MaweInlineEdit.editingState.textEl;
+    let cursorOffset;
+    let fullText;
+    let ninjaFeedbackPoint;
+    if (explicitSplit) {
+      cursorOffset = explicitSplit.cursorOffset;
+      ninjaFeedbackPoint = feedbackPoint;
+    } else {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) {
+        MaweInlineEdit.finishEdit(false);
+        return false;
+      }
+      const range = sel.getRangeAt(0);
+      const preRange = range.cloneRange();
+      preRange.selectNodeContents(textEl);
+      preRange.setEnd(range.startContainer, range.startOffset);
+      cursorOffset = preRange.toString().length;
+      fullText = textEl.innerText.replace(/\r\n?/g, '\n');
+      ninjaFeedbackPoint = feedbackPoint || MaweNinja.ninjaSplitPointFromRange(
+        range, textEl, cursorOffset, fullText.length,
+      );
     }
-    const range = sel.getRangeAt(0);
-    const preRange = range.cloneRange();
-    preRange.selectNodeContents(textEl);
-    preRange.setEnd(range.startContainer, range.startOffset);
-    const cursorOffset = preRange.toString().length;
-    const fullText = textEl.innerText.replace(/\r\n?/g, '\n');
-    const ninjaFeedbackPoint = feedbackPoint || MaweNinja.ninjaSplitPointFromRange(
-      range, textEl, cursorOffset, fullText.length,
-    );
     const seg = MaweBoot.DATA.segments[idx];
+    if (explicitSplit) {
+      // 波形路径没有编辑 DOM，全文以工程数据为准（与刚进入编辑态时一致）。
+      fullText = String(seg?.text || '');
+    }
 
     if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
-      MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
       pendingLinkedSplit = linkedSplitState(idx, {
         mainOffset: cursorOffset,
         feedbackPoint: ninjaFeedbackPoint,
@@ -2067,7 +2089,7 @@
     }
 
     if (cursorOffset <= 0 || cursorOffset >= fullText.length) {
-      MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
       MaweHint.flashHint('光标必须在词与词之间才能拆分', 'invalid');
       return false;
     }
@@ -2106,7 +2128,7 @@
       rightText = fullText;
     }
     if (!leftText || !rightText) {
-      MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
       MaweHint.flashHint('拆分后任一段为空，已取消', 'warning');
       return false;
     }
@@ -2114,7 +2136,7 @@
     // 原字幕总时长不足 200ms 时，无法在原时间范围内让两侧都达到 100ms；
     // 这和“切点靠边、可通过再次按键强制钳制”的情况不同。
     if (seg.end - seg.start < 200) {
-      MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
       MaweHint.flashHint('字幕时长不足 200ms，无法拆分', 'warning');
       return false;
     }
@@ -2152,14 +2174,19 @@
       && leftEnd - seg.start >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
       && seg.end - rightStart >= MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
     if (!timingValid && !force) {
-      MaweInlineEdit.editingState.forceSplitArmed = true;
+      if (explicitSplit) {
+        // 显式模式没有 editingState 可寄存 armed，交由调用方外置记录。
+        explicitSplit.onForcedSplitArmed?.(Number.isFinite(splitMs) ? splitMs : null);
+      } else {
+        MaweInlineEdit.editingState.forceSplitArmed = true;
+      }
       MaweHint.flashHint(forcedSplitRetryHint(), 'warning');
       return false;
     }
     if (force) {
       const forcedCut = forceSplitCutForSegments([seg], splitMs);
       if (!Number.isFinite(forcedCut)) {
-        MaweInlineEdit.finishEdit(false);
+        if (!explicitSplit) MaweInlineEdit.finishEdit(false);
         MaweHint.flashHint('字幕时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
         return false;
       }
@@ -2219,9 +2246,13 @@
       ? suppliedCueListAnchor || MaweCueListAnchor.captureCueListVisualAnchor(el)
       : null;
 
-    textEl.removeAttribute('contenteditable');
-    el.classList.remove('editing');
-    MaweInlineEdit.editingState = null;
+    if (explicitSplit) {
+      // 波形来源没有行内编辑态需要收尾；列表/编辑区来源照旧摘除 contenteditable。
+    } else {
+      textEl.removeAttribute('contenteditable');
+      el.classList.remove('editing');
+      MaweInlineEdit.editingState = null;
+    }
 
     // 拆分会改变 idx；先在任何写入前保存完整快照，再静默清选中，等列表
     // 和波形块覆盖层一次性更新后再选中后半段。这样撤销会恢复原 item 时间。
