@@ -1,3 +1,8 @@
+import { getOverlayTrack, stickerSegmentsForTrack, overlaySticker } from './overlay-track.js';
+
+export function initMaweStickerPicker() {
+'use strict';
+
 // 表情包选择器：网格渲染、分配/清除与时长拓展。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweStickerPicker 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -22,7 +27,7 @@
   }
   stickerTargetMode = isMulti ? 'multi' : 'single';
   stickerTargetIdxs = idxs;
-  stickerTargetTrack = overlay ? 'overlay' : 'main';
+  overlaySticker.stickerTargetTrack = overlay ? 'overlay' : 'main';
   document.getElementById('sticker-modal-title').textContent =
     isMulti ? `分配表情包到 ${idxs.length} 条字幕（跨时间）` : `分配表情包到${overlay ? '叠加字幕' : '第'} ${idxs[0] + 1}${overlay ? '' : ' 条'}`;
   renderStickerGrid('');
@@ -56,7 +61,7 @@
 
 
   function assignSticker(sticker) {
-  const segments = stickerTargetTrack === 'overlay'
+  const segments = overlaySticker.stickerTargetTrack === 'overlay'
     ? (getOverlayTrack()?.segments || null) : MaweBoot.DATA.segments;
   if (!segments) return;
   const hadStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)
@@ -93,7 +98,7 @@
     MaweTextCleanup.syncTimelineGroupRanges();
     MaweDom.stickerModal.classList.remove('show');
     // 叠加轨目标：同步脏标记与保存调度，否则分配只改内存、不落盘。
-    if (stickerTargetTrack === 'overlay') {
+    if (overlaySticker.stickerTargetTrack === 'overlay') {
       const overlay = getOverlayTrack();
       if (overlay) {
         overlay._dirty = true;
@@ -139,7 +144,7 @@
   const seg = segments[idx];
   if (!seg?.sticker) return;
   previewIdx = idx;
-  previewTrack = overlay ? 'overlay' : 'main';
+  overlaySticker.previewTrack = overlay ? 'overlay' : 'main';
   document.getElementById('sticker-preview-img').src = MaweSelection.stickerUrl(seg.sticker);
   document.getElementById('sticker-preview-name').textContent = seg.sticker.name;
   MaweDom.stickerPreviewModal.classList.add('show');
@@ -347,7 +352,7 @@
           ).forEach((el) => el.classList.remove('selected'));
         }));
         MaweSelection.updateMultiSelectionClasses();
-        updateSelectionCountText();
+        window.MaweCuePanelWiring.updateSelectionCountText();
       }
     }
     const action = allDisabled ? '启用' : '禁用';
@@ -384,3 +389,4 @@
     toggleDisabled
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

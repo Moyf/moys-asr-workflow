@@ -822,14 +822,14 @@
   // 没有列表文字位置时（例如波形/播放头入口）才按时间寻找最近合法断点。
   const hasInitialTextPosition = Number.isFinite(initial.mainOffset);
   const initialMainOffset = hasInitialTextPosition
-    ? splitOffsetNearTextPositionForModal(main.text, initial.mainOffset, mainMode)
-    : splitOffsetNearTimeForModal(main, initialTime, mainMode);
+    ? window.MaweOverlaySplitMerge.splitOffsetNearTextPositionForModal(main.text, initial.mainOffset, mainMode)
+    : window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(main, initialTime, mainMode);
   const initialMainCutMs = fixedCutMs ?? (hasMainWordTimestamps
     ? splitTimeForTextOffset(main, initialMainOffset)
     : splitCutTime(main, initialMainOffset, false));
   const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
     extension.text, initialMainCutMs, extension.start, extension.end, extensionMode,
-  ) ?? splitOffsetNearTimeForModal(extension, initialMainCutMs, extensionMode);
+  ) ?? window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(extension, initialMainCutMs, extensionMode);
   return {
     kind: 'linked',
     splitTextMode: initial.splitTextMode || null,
@@ -872,7 +872,7 @@
     ? initial.timeMs
     : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
   const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
-  const initialOffset = splitOffsetNearTimeForModal(main, initialTime, mainMode);
+  const initialOffset = window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(main, initialTime, mainMode);
   if (initialOffset == null) return null;
   return {
     kind: 'main',
@@ -911,10 +911,10 @@
     : splitTimeForTextOffset(extension, initial.extensionOffset ?? Math.floor(String(extension.text || '').length / 2));
   const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
   const initialOffset = hasInitialTextPosition
-    ? splitOffsetNearTextPositionForModal(extension.text, initial.extensionOffset, extensionMode)
+    ? window.MaweOverlaySplitMerge.splitOffsetNearTextPositionForModal(extension.text, initial.extensionOffset, extensionMode)
     : MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
       extension.text, initialTime, extension.start, extension.end, extensionMode,
-    ) ?? splitOffsetNearTimeForModal(extension, initialTime, extensionMode);
+    ) ?? window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(extension, initialTime, extensionMode);
   if (!Number.isInteger(initialOffset)) return null;
   return {
     kind: 'extension',
@@ -1514,7 +1514,7 @@
   function updateLinkedSplitPreview(offset, lane = 'extension') {
   const state = pendingLinkedSplit;
   if (!state) return false;
-  const track = splitStateTrack(state);
+  const track = window.MaweOverlaySplitMerge.splitStateTrack(state);
   const main = state.mainIndex >= 0 ? MaweBoot.DATA.segments[state.mainIndex] : null;
   const extension = MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track);
   const mainOnly = state.kind === 'main';
@@ -1528,7 +1528,7 @@
       ? legalOffsets.reduce((best, candidate) => (
         Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
       ), legalOffsets[0])
-      : fallbackSplitOffset(main.text, requestedOffset);
+      : window.MaweOverlaySplitMerge.fallbackSplitOffset(main.text, requestedOffset);
     if (!Number.isInteger(state.mainOffset)) return false;
     const mainHasWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
     state.mainCutMs = Number.isFinite(state.fixedCutMs)
@@ -1546,7 +1546,7 @@
       ? legalOffsets.reduce((best, candidate) => (
         Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
       ), legalOffsets[0])
-      : fallbackSplitOffset(extension.text, requestedOffset);
+      : window.MaweOverlaySplitMerge.fallbackSplitOffset(extension.text, requestedOffset);
     if (!Number.isInteger(state.offset)) return false;
     state.extensionCutMs = Number.isFinite(state.fixedCutMs)
       ? state.fixedCutMs : splitCutTime(extension, state.offset, false);
@@ -1584,7 +1584,7 @@
   state.textValid = textValid;
   state.timingValid = mainTimingValid && extensionTimingValid;
   state.mainTimingValid = Boolean(mainTimingValid);
-  state.duplicateTimingValid = duplicateSplitTimingIsValid(state);
+  state.duplicateTimingValid = window.MaweOverlaySplitMerge.duplicateSplitTimingIsValid(state);
   state.forceCutMs = textValid
     ? forceSplitCutForSegments(forceSegments, state.cutMs)
     : null;
@@ -1737,14 +1737,14 @@
   );
   if (!pair) {
     if (!force && !duplicateText) {
-      flashSplitAlignmentHint(
-        assessSplitAlignment(main, state.mainOffset, splitMs, splitAlignmentOptions),
+      window.MaweOverlaySplitMerge.flashSplitAlignmentHint(
+        window.MaweOverlaySplitMerge.assessSplitAlignment(main, state.mainOffset, splitMs, splitAlignmentOptions),
         { committed: false },
       );
     }
     return false;
   }
-  if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
+  if (!force && !duplicateText) window.MaweOverlaySplitMerge.flashSplitAlignmentHint(pair.alignment, { committed: true });
   const oldMainId = main.id;
   return MaweCommands.run(duplicateText ? '拆分字幕并保留原文' : '拆分字幕', (command) => {
     MaweSelection.clearSelection({ commitCuePanel: false });
@@ -1833,14 +1833,14 @@
   );
   if (!pair) {
     if (!force && !duplicateText) {
-      flashSplitAlignmentHint(
-        assessSplitAlignment(extension, state.offset, splitMs, splitAlignmentOptions),
+      window.MaweOverlaySplitMerge.flashSplitAlignmentHint(
+        window.MaweOverlaySplitMerge.assessSplitAlignment(extension, state.offset, splitMs, splitAlignmentOptions),
         { committed: false },
       );
     }
     return false;
   }
-  if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
+  if (!force && !duplicateText) window.MaweOverlaySplitMerge.flashSplitAlignmentHint(pair.alignment, { committed: true });
 
   const oldExtensionId = extension.id;
   const wasBound = Boolean(MaweMultiSubtitleCore.bindingForExtensionIndex(extensionIndex, track));
@@ -1932,7 +1932,7 @@
     return;
   }
   if (state.kind === 'overlay') {
-    commitOverlaySplit(state, {
+    window.MaweOverlaySplitMerge.commitOverlaySplit(state, {
       force,
       duplicateText,
       successMessage: duplicateText ? '已拆分叠加字幕并保留两侧原文' : undefined,
@@ -1975,8 +1975,8 @@
     return;
   }
   if (!force && !duplicateText) {
-    flashSplitAlignmentHint(mainPair.alignment, { committed: true });
-    flashSplitAlignmentHint(extensionPair.alignment, { committed: true });
+    window.MaweOverlaySplitMerge.flashSplitAlignmentHint(mainPair.alignment, { committed: true });
+    window.MaweOverlaySplitMerge.flashSplitAlignmentHint(extensionPair.alignment, { committed: true });
   }
   const oldMainId = main.id;
   const oldExtensionId = extension.id;

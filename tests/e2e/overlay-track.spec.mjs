@@ -421,7 +421,7 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   expect(afterOut.segments[0].color_ref).toBeNull();
 
   // 转为主字幕：颜色同样跟随（数据层直调，菜单点击路径已有用例覆盖）。
-  const reverted = await page.evaluate(() => convertOverlayCueToMain(0));
+  const reverted = await page.evaluate(() => window.MAWE.resolve('overlay-track').convertOverlayCueToMain(0));
   expect(reverted).toBe(true);
   const afterBack = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(afterBack.overlay_track.segments).toHaveLength(0);
@@ -665,7 +665,7 @@ test('splits and merges overlay cues with group marks following', async ({ page 
   // 拆分：叠加轨复用副轨拆分弹窗（单 lane），提交后颜色组随拆分继承。
   const opened = await page.evaluate(() => {
     MaweCuePanel.setCuePanelTarget('overlay', 0);
-    return openOverlaySplitModal(0, 1000);
+    return window.MaweOverlaySplitMerge.openOverlaySplitModal(0, 1000);
   });
   expect(opened).toBe(true);
   await expect(page.locator('#multi-subtitle-split-modal.show')).toBeVisible();
@@ -897,7 +897,7 @@ test('keeps color group references valid through an overlay round trip', async (
   await expect(page.locator('#ctxmenu .item', { hasText: '转为主字幕' })).toBeVisible();
   await page.keyboard.press('Escape');
   const reverted = await page.evaluate(() => {
-    const ok = convertOverlayCueToMain(0);
+    const ok = window.MAWE.resolve('overlay-track').convertOverlayCueToMain(0);
     return { ok, segs: MaweBoot.DATA.segments.map((s) => s.id) };
   });
   expect(reverted.ok).toBe(true);

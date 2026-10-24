@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { createUtilsModule } from '../web/shared/utils/history.js';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const source = readFileSync(new URL('../web/editor/media/editor-audio-processing.js', import.meta.url), 'utf8');
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
@@ -55,7 +56,7 @@ function fixture(transport = async () => response(result())) {
   context.MaweWordTiming = { clearSelection() {} };
   context.MaweHint = { flashHint() {} };
   context.MaweInlineEdit = {};
-  vm.runInContext(readFileSync(new URL('../web/editor/state/editor-history.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/state/editor-history.js'), context);
   vm.runInContext(source, context);
   context.MaweAudioProcessing.init();
   return { context, api: context.MaweAudioProcessing, state: context.MaweState, calls, routes, contexts, nodes, panels, player, node };
@@ -228,7 +229,7 @@ test('custom reference matching, dirty state and undo/redo keep the same target 
 function serializeProject(f) {
   const context = f.context;
   Object.assign(context, {
-    projectExtensionFields: {}, MULTI_SUBTITLE_UTILS: { MULTI_SUBTITLE_SCHEMA: 'moy.asr.multi.v1' },
+    MaweExportContext: { projectExtensionFields: {} }, MULTI_SUBTITLE_UTILS: { MULTI_SUBTITLE_SCHEMA: 'moy.asr.multi.v1' },
     getOverlayTrack: () => null,
     MaweTimeline: { syncProjectTimebaseAndBindingOffsets() {}, projectTimebase: () => ({ unit: 'milliseconds' }),
       normalizeMediaMetadata: () => null },
@@ -242,7 +243,7 @@ function serializeProject(f) {
   });
   context.AsrEditorUtils = { ...context.AsrEditorUtils, PROJECT_SCHEMA: 'moy.asr.v1',
     normalizeItemTimingRanges: () => 0, markersToProjectField: () => null };
-  vm.runInContext(readFileSync(new URL('../web/editor/io/editor-json-repair.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/io/editor-json-repair.js'), context);
   return JSON.parse(context.MaweJsonRepair.buildJson());
 }
 

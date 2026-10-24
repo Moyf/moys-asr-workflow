@@ -85,7 +85,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 Agent 调试与测试使用[有界输出与分层调试](DEBUG_WORKFLOW.md)中的 `scripts/run_check.py`：完整日志落盘，只回显有限摘要并保留退出码。该文档也说明 worktree 环境复用、生成物搜索边界、超时清理限制与按变化选择验证范围。
 
-开发者手动维护环境：`uv sync --group dev`；前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
+开发者手动维护环境：`uv sync --group dev --group test`；`test` 组只为真实媒体夹具补充 NumPy，不需要为此安装 OCR 或本地模型组。前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
 
 ```sh
 uv run --no-sync ruff check
@@ -103,6 +103,8 @@ git diff --check
 ### 浏览器回归
 
 `tests/e2e/helpers.mjs` 默认以 `uv run --frozen python` 启动服务并清理继承的 PYTHONPATH；明确设置 `MAW_E2E_PYTHON` 时用指定解释器。Agent 已有环境时可设置该变量避免测试 helper 再同步依赖。
+
+独立的 cue-scroll 源码夹具复用已准备环境，默认入口使用 `uv run --no-sync python`；Windows supervisor 与应用环境分开传递，测试进程仍归属于同一 Job，保留退出、超时及旁观进程保护契约。
 
 Windows 使用 `scripts/run-e2e.ps1`，脚本检查 quapeaks，并在需要时按 lockfile 准备临时隔离环境。浏览器受限时可设置 `MAW_E2E_CHROMIUM_PATH` 指向已安装的 Chromium 系浏览器。
 
