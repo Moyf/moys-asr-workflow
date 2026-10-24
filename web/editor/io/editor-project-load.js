@@ -3,6 +3,8 @@
 // window.MaweProjectLoad 冻结门面——classic 侧出接口）；底部具名导出经门面
 // 在调用时转发，兄弟模块可静态 import。
 export function initMaweProjectLoad() {
+  // The classic editor.js binding is local to initializeLegacy, not visible to ESM modules.
+  const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 (function initMaweProjectLoad(global) {
   'use strict';
 

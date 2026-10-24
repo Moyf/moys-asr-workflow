@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
-
-const source = readFileSync(new URL('../web/editor/io/editor-project-save.js', import.meta.url), 'utf8');
+import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 function fixture({accept = true, failure = new TypeError('Failed to fetch'), replacement = false} = {}) {
   const calls = {build: [], posted: [], downloaded: [], errors: [], saved: 0, confirmed: 0};
@@ -37,7 +35,7 @@ function fixture({accept = true, failure = new TypeError('Failed to fetch'), rep
     }},
     MaweHint: {flashHint() {}},
   });
-  vm.runInContext(source, context);
+  vm.runInContext(invokedInitModuleSource('editor/io/editor-project-save.js', 'initMaweProjectSave'), context);
   return {context, calls, save: options => context.MaweProjectSave.saveProjectToServer(options)};
 }
 
@@ -221,7 +219,7 @@ function indicatorFixture() {
     MaweHint: {flashHint() {}},
   });
   context.window = context;
-  vm.runInContext(source, context);
+  vm.runInContext(invokedInitModuleSource('editor/io/editor-project-save.js', 'initMaweProjectSave'), context);
   return {
     listeners,
     jsonEl,
