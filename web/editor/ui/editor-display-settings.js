@@ -86,7 +86,10 @@
 
   function restoreWaveformViewportAfterGeometryChange(editor, anchorTimeMs) {
     if (!editor || !Number.isFinite(anchorTimeMs) || typeof editor.revealTime !== 'function') return;
-    editor.revealTime(anchorTimeMs, true);
+    // behavior:'auto' 瞬时定位：几何切换刚完成一次全量重建，smooth 滚动
+    // 动画会在随后数百毫秒内逐帧增量重建词密可视行，把卡顿再放大一轮；
+    // 锚点还原不需要动画，视口直接就位。其他 revealTime 调用方不受影响。
+    editor.revealTime(anchorTimeMs, true, { behavior: 'auto' });
   }
 
 
