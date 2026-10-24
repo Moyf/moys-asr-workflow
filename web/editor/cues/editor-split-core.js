@@ -369,8 +369,12 @@
 
 
 
-  function forcedSplitRetryHint() {
-    return '当前切点会产生不足 100ms 的一侧；请再次按 B 或 Enter 强制拆分，切点将调整为两侧各至少 100ms';
+  function forcedSplitRetryHint(explicitOnly = false) {
+    // 波形来源的拆分没有行内编辑态,Enter 不会触发强制拆分,提示只提 B;
+    // 列表来源停留在编辑态,B 与 Enter 都能确认强制拆分。
+    return explicitOnly
+      ? '当前切点会产生不足 100ms 的一侧；请再次按 B 强制拆分，切点将调整为两侧各至少 100ms'
+      : '当前切点会产生不足 100ms 的一侧；请再次按 B 或 Enter 强制拆分，切点将调整为两侧各至少 100ms';
   }
 
 
@@ -2180,7 +2184,7 @@
       } else {
         MaweInlineEdit.editingState.forceSplitArmed = true;
       }
-      MaweHint.flashHint(forcedSplitRetryHint(), 'warning');
+      MaweHint.flashHint(forcedSplitRetryHint(Boolean(explicitSplit)), 'warning');
       return false;
     }
     if (force) {
