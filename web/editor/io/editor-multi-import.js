@@ -3,6 +3,8 @@
 // window.MaweMultiImport 冻结门面——classic 侧出接口）；底部具名导出经门面
 // 在调用时转发，兄弟模块可静态 import。
 export function initMaweMultiImport() {
+  // Preserve the classic editor.js alias inside this module's own closure.
+  const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 (function initMaweMultiImport(global) {
   'use strict';
 
