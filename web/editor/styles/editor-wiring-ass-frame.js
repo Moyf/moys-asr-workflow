@@ -297,6 +297,16 @@
     if (desired && !pending) void capture(desired);
   }
 
+  // 项目字幕数据已变化（正向命令提交、撤销/重做恢复）：浮动窗口与舞台叠加都
+  // 未打开时不做任何事；否则沿用 syncPreview 的防抖调度一次比对——重算快照后
+  // key 未变继续用缓存帧；变化且自动渲染开启才发起渲染（与手动渲染同走
+  // capture：进行中不重复请求，期间的再次变化由 finally 合并补查）；
+  // 自动渲染关闭时只刷新「画面已过期」提示，不主动渲染。
+  function notifyProjectChanged() {
+    if (!previewNeeded()) return;
+    if (!timer) timer = global.setTimeout(() => { timer = 0; refreshDesired(); }, 200);
+  }
+
   async function capture(request, manual = false) {
     if (pending) return;
     pending = true;
@@ -533,6 +543,6 @@
     positionWindowStickerLayer();
   });
 
-  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview, bindPlayer, syncWindowStickers });
+  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview, notifyProjectChanged, bindPlayer, syncWindowStickers });
   syncAssFrameControls();
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -741,6 +741,7 @@
     '选中的副字幕已经与各自主字幕时间范围一致': 'The selected secondary subtitles already match their main-subtitle ranges',
     '拆分后两侧都必须至少保留 100ms，已取消': 'A split must leave at least 100 ms on both sides; cancelled',
     '当前切点会产生不足 100ms 的一侧；请再次按 B 或 Enter 强制拆分，切点将调整为两侧各至少 100ms': 'The current cut would leave one side shorter than 100 ms; press B or Enter again to force the split, moving the cut so both sides are at least 100 ms',
+    '当前切点会产生不足 100ms 的一侧；请再次按 B 强制拆分，切点将调整为两侧各至少 100ms': 'The current cut would leave one side shorter than 100 ms; press B again to force the split, moving the cut so both sides are at least 100 ms',
     '字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms': 'The subtitle is shorter than 200 ms, so both split sides cannot be at least 100 ms',
     '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件': 'The current server has no bound project; export a .mosp file and reopen it',
     '重叠的主字幕已有绑定，请点击主字幕后替换绑定；按 Esc 取消': 'The overlapping main subtitle is already bound; click a main subtitle to replace it, or press Esc to cancel',

@@ -113,6 +113,34 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
 
 
 
+  // 跳过空隙的 seek 守卫：跳过判定是 level-triggered，而媒体元素的 seek 异步，
+  // seek 未生效（seeking 期间 currentTime 报告的是目标位置）或落点经视频帧量化
+  // 回落到空隙内时，若每帧重复赋值 currentTime 会不断打断上一次 seek，播放头
+  // 僵持在空隙末端、播放停滞。这里记录已发起跳过的空隙，同一空隙只发起一次
+  // seek；位置离开空隙、暂停、进入预览或切换到其他空隙后守卫失效，之后
+  // （含用户手动 seek 回空隙内且正在播放）可正常再次触发。
+  let gapSkipGuard = null;
+
+  // 返回 true 表示本轮已由跳过逻辑处理（发起 seek 或等待进行中的 seek），
+  // 调用方直接返回，不再刷新时间码与预览。
+  function applyGapPlaybackSkip(skippedGap, player) {
+    if (!skippedGap) {
+      // 不在空隙内、暂停或预览时守卫应失效；seek 进行中报告的是目标位置，
+      // 等 seek 结束再清，避免落点量化回空隙内时守卫被提前清除。
+      if (player.paused || !player.seeking) gapSkipGuard = null;
+      return false;
+    }
+    // seek 进行中不重复赋值，等当前 seek 生效后再判定。
+    if (player.seeking) return true;
+    const guarded = gapSkipGuard
+      && Number(gapSkipGuard.start) === Number(skippedGap.start)
+      && Number(gapSkipGuard.end) === Number(skippedGap.end);
+    if (guarded) return true;
+    gapSkipGuard = { start: skippedGap.start, end: skippedGap.end };
+    player.currentTime = skippedGap.end / 1000;
+    return true;
+  }
+
   function updatePlaybackFrame() {
     const tMs = MaweCoreState.player.currentTime * 1000;
     if (MaweCuePanelState.gapPreviewRange && (tMs < MaweCuePanelState.gapPreviewRange.start || tMs >= MaweCuePanelState.gapPreviewRange.end)) {
@@ -128,10 +156,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
         previewRange: MaweCuePanelState.gapPreviewRange,
       },
     );
-    if (skippedGap) {
-      MaweCoreState.player.currentTime = skippedGap.end / 1000;
-      return;
-    }
+    if (applyGapPlaybackSkip(skippedGap, MaweCoreState.player)) return;
     const nowLabel = MaweCueElements.fmtShort(tMs);
     if (MaweDom.nowEl.textContent !== nowLabel) MaweDom.nowEl.textContent = nowLabel;
     const idx = findActive(tMs);
@@ -377,10 +402,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
         previewRange: MaweCuePanelState.gapPreviewRange,
       },
     );
-    if (skippedGap) {
-      MaweCoreState.player.currentTime = skippedGap.end / 1000;
-      return;
-    }
+    if (applyGapPlaybackSkip(skippedGap, MaweCoreState.player)) return;
     MaweDom.nowEl.textContent = MaweCueElements.fmtShort(tMs);
     const idx = findActive(tMs);
     updateActiveCue(idx);
