@@ -140,6 +140,9 @@ constructor(options) {
       this.multiFollowRowIndex = -1;
       this.multiFollowCheckPending = true;
       this.resizeFrame = 0;
+      // ResizeObserver 回声抑制基线：上一次完整 render 完成时的 pane 盒尺寸
+      // （render 各完成出口经 _snapshotRenderedPaneSize 刷新，见 render.js）。
+      this._renderedPaneSize = null;
       // 滚轮平移基础波形的整行精绘定时器（账本 #22 批次 2）。
       this.basicPanSettleTimer = 0;
       // 列包络缓存与组序号徽章缓存（滚轮平移热路径去重复聚合/扫描）。
@@ -205,7 +208,15 @@ constructor(options) {
         rowMiddle: document.getElementById('layout-resizer-h2'),
       };
       this._onPlayerTime = () => this.updatePlayback();
-      this._onResize = () => this.scheduleRender();
+      // 尺寸通知若与刚完成的 render 快照一致，说明变化完全由我们自己的渲染
+      // 引起（几何切换重设内容高度/滚动条出现/工具栏换行），跳过冗余的
+      // 第二次全量 render；外部真实尺寸变化必然偏离快照，照常触发重渲染。
+      this._onResize = () => {
+        const snapshot = this._renderedPaneSize;
+        if (snapshot && snapshot.width === this.pane.offsetWidth
+          && snapshot.height === this.pane.offsetHeight) return;
+        this.scheduleRender();
+      };
       this.initThumbnails();
       this.bindControls();
       this.bindDockHandles();
