@@ -115,19 +115,26 @@ async function configure(page, fixture) {
       MaweColors.COLOR_BY_NAME[name].value = value;
     }
     MaweBoot.DATA.media_metadata = { video_width: f.width ?? 1280, video_height: f.height ?? 720 };
-    MaweBoot.DATA.segments = f.mainSegments || [{ id: 'main', start: 0, end: 4000, text: f.main || 'Main' }];
-    MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'extension', segments:
-      f.extensionSegments || [{ id: 'extension', start: 0, end: 4000, text: f.extension || 'Secondary' }] }] };
-    MaweBoot.DATA.overlay_track = { enabled: true, segments:
-      (f.overlaySegments || [{ id: 'overlay', start: 0, end: 4000, text: 'Overlay' }])
-        .map(s => ({ ...s, color: { name: 'blue' } })) };
+    const project = {
+      segments: f.mainSegments || [{ id: 'main', start: 0, end: 4000, text: f.main || 'Main' }],
+      multi_subtitle: { enabled: true, tracks: [{ id: 'extension', segments:
+        f.extensionSegments || [{ id: 'extension', start: 0, end: 4000, text: f.extension || 'Secondary' }] }] },
+      overlay_track: { enabled: true, segments:
+        (f.overlaySegments || [{ id: 'overlay', start: 0, end: 4000, text: 'Overlay' }])
+          .map(s => ({ ...s, color: { name: 'blue' } })) },
+    };
     MaweBoot.DATA.preview = { subtitle: { ass_color_style: 'text' } };
     if (f.speaker) {
-      MaweBoot.DATA.segments.forEach(s => { s.color = { name: 'red' }; });
-      MaweBoot.DATA.multi_subtitle.tracks[0].segments.forEach(s => { s.color = { name: 'green' }; });
+      project.segments.forEach(s => { s.color = { name: 'red' }; });
+      project.multi_subtitle.tracks[0].segments.forEach(s => { s.color = { name: 'green' }; });
       MaweBoot.DATA.preview.subtitle.speaker_labels = { mapping_enabled: true, enabled: true,
         separator: ': ', names: { red: 'MainSpeakerWithLongPrefix', green: 'SecondarySpeaker', blue: 'OverlaySpeaker' } };
     }
+    // Install fixture colours through the same migration used when opening v1
+    // projects. Direct legacy fields are only views once the group table exists.
+    window.AsrEditorUtils.migrateSubtitleGroups(project);
+    window.AsrEditorUtils.refreshSubtitleGroupViews(project);
+    Object.assign(MaweBoot.DATA, project);
     Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assEmphasisSyntax: 'both',
       assSpecialSymbolRule: 'both', assCommentEnabled: true, assLargeTextEnabled: true,
       exportSpeakerLabels: Boolean(f.speaker) });
