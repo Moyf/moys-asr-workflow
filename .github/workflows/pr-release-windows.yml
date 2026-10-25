@@ -192,6 +192,25 @@ jobs:
           '@ | uv run --no-sync python -
           if ($LASTEXITCODE -ne 0) { throw 'Windows cache coverage was not verified.' }
 
+      - name: Require silence-boundary coverage from the same Python run
+        shell: pwsh
+        run: |
+          @'
+          # windows-energy-valley-report-check
+          import json
+          from pathlib import Path
+          import re
+          report = json.loads(Path('.artifacts/windows-python.json').read_text(encoding='utf-8'))
+          selected = [item.removeprefix('tests.') for item in report['selected_ids']]
+          assert selected and len(set(selected)) == len(selected) and 0 < report['run'] <= len(selected), 'Python discovery did not run a valid selected collection'
+          assert report['exit_code'] == 0 and all(report[key] == 0 for key in ('failures', 'errors', 'expected_failures', 'unexpected_successes')), 'Python results contain unverified outcomes'
+          classes = ('RmsEnvelopeTests', 'SnapBoundaryTests', 'AudioDependencyDegradationTests')
+          assert all(any(item.startswith('test_energy_valley.' + name + '.') for item in selected) for name in classes), 'A silence-boundary or dependency-degradation class was omitted'
+          assert not any(re.search(r'(?<!\w)test_energy_valley(?!\w)', skip['id']) for skip in report['skips']), 'A silence-boundary case was skipped on Windows'
+          print('Silence-boundary algorithms and optional-dependency degradation executed in the full Windows run without skips')
+          '@ | uv run --no-sync python -
+          if ($LASTEXITCODE -ne 0) { throw 'Windows silence-boundary coverage was not verified.' }
+
       - name: Preserve complete Python report
         if: always()
         uses: actions/upload-artifact@v6

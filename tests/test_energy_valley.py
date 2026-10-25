@@ -25,7 +25,8 @@ from maw.local_asr import LocalTranscription, build_local_segments
 
 SAMPLE_RATE = 16_000
 
-requires_numpy = unittest.skipUnless(np is not None, "numpy is required for energy valley snapping")
+requires_audio = unittest.skipUnless(np is not None and sf is not None,
+                                     "numpy and soundfile are required for energy valley snapping")
 
 
 def _write_wav(path: Path, samples: "np.ndarray") -> Path:
@@ -45,7 +46,7 @@ def _silence(seconds: float) -> "np.ndarray":
     return np.zeros(int(SAMPLE_RATE * seconds), dtype=np.float32)
 
 
-@requires_numpy
+@requires_audio
 class RmsEnvelopeTests(unittest.TestCase):
     def test_envelope_marks_silence_as_minimum(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -67,7 +68,7 @@ class RmsEnvelopeTests(unittest.TestCase):
                 rms_envelope(Path(root) / "missing.wav")
 
 
-@requires_numpy
+@requires_audio
 class SnapBoundaryTests(unittest.TestCase):
     def test_cloud_and_local_splitters_only_snap_internal_interpolated_edges(self) -> None:
         sources = [
