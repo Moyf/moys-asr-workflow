@@ -373,7 +373,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         server = QuietServer(("127.0.0.1", 0), Handler)
         server.daemon_threads = True
-        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         server_thread.start()
 
         original_post = requests.Session.post
@@ -6953,7 +6953,7 @@ class WaitForServerProbeTests(unittest.TestCase):
                 return
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         try:
             url = f"http://127.0.0.1:{server.server_address[1]}/"
             self.assertTrue(
@@ -6977,7 +6977,7 @@ class WaitForServerProbeTests(unittest.TestCase):
                 return
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         try:
             url = f"http://127.0.0.1:{server.server_address[1]}/"
             self.assertFalse(_wait_for_server(url, timeout=0.35, probe_timeout=0.2))

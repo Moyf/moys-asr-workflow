@@ -26,7 +26,7 @@ class RecordingServerTests(unittest.TestCase):
                                encoding="utf-8")
         self.script.write_text("你好，世界。", encoding="utf-8")
         self.server = SERVER.AlignmentServer(("127.0.0.1",0), SERVER.load_state(self.source,self.script,None))
-        self.thread = threading.Thread(target=self.server.serve_forever,daemon=True)
+        self.thread = threading.Thread(target=self.server.serve_forever,kwargs={"poll_interval":0.01},daemon=True)
         self.thread.start()
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
         self.state = self.get("/api/state")
