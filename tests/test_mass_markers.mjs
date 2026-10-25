@@ -245,6 +245,27 @@ test('mergeContiguousIndices folds the junction and keeps items conserved', () =
   assert.deepEqual([merged.start, merged.end], [0, 2000]);
 });
 
+test('main merge keeps a speaker only when every source cue agrees', () => {
+  for (const speakers of [['Alice', 'Alice'], ['Alice', 'Bob'], ['Alice', undefined],
+    [undefined, 'Bob'], [undefined, undefined]]) {
+    const segments = speakers.map((speaker, index) => ({
+      id: `cue-${index}`, start: index * 1000, end: (index + 1) * 1000,
+      text: index ? '乙' : '甲', ...(speaker === undefined ? {} : { speaker }),
+      vendor: { keep: true },
+      items: [{ start: index * 1000, end: (index + 1) * 1000,
+        text: index ? '乙' : '甲', ...(speaker === undefined ? {} : { speaker }) }],
+    }));
+    const context = mergeContext(segments);
+    vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), context);
+    const merged = context.window.MaweSegmentOps.mergeContiguousIndices([0, 1]);
+    assert.equal(merged.text, '甲乙');
+    assert.deepEqual(plain(merged.vendor), { keep: true });
+    assert.deepEqual(plain(merged.items.map(item => item.speaker ?? null)), speakers.map(s => s ?? null));
+    if (speakers[0] !== undefined && speakers[0] === speakers[1]) assert.equal(merged.speaker, speakers[0]);
+    else assert.equal(Object.hasOwn(merged, 'speaker'), false, `mixed or absent speakers: ${speakers}`);
+  }
+});
+
 test('merge keeps spoken-only and partially marked items with their exact timing', () => {
   for (const texts of [['甲', '乙'], ['**甲', '乙**'], ['**甲**', '乙']]) {
     const segments = texts.map((text, index) => ({

@@ -75,6 +75,7 @@
       disabled: !!segs[0].disabled,  // 合并后取 index=0 的禁用状态
       _dirty: true,
     };
+    if (commonSpeaker === null) delete merged.speaker;
     if (merged.items.length === 0) merged.items = null;
 
     let mergedExtension = null;
@@ -183,8 +184,8 @@
 
 
 
-  // 只合并副轨连续字幕。副字幕没有主轨的 group 引用和 items，
-  // 因此这里保留独立轨的文本/时间合并语义；如果被合并段存在一对一绑定，
+  // 只合并副轨连续字幕，保留共有分组、字幕属性与可选字词时间码。
+  // 如果被合并段存在一对一绑定，
   // 合并后无法同时指向多个主字幕，旧绑定会被移除并提示用户重新绑定。
   function mergeExtensionSegments(idxs, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
     if (!track || !idxs?.length) return false;
@@ -226,6 +227,7 @@
       text: extensionJoin.text,
       _dirty: true,
     };
+    if (segments.some(segment => Array.isArray(segment.items))) merged.items = extensionJoin.items;
     const hadBindings = oldIds.some((id) => window.AsrEditorUtils.bindingForSegment(
       MaweMultiSubtitleCore.getMultiSubtitleState(), id, 'extension', track.id,
     ));

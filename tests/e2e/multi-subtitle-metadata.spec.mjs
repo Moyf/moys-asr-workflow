@@ -37,6 +37,73 @@ async function saveAndReopen(page) {
   return project;
 }
 
+async function configureMergeFixture(page, { extension = false } = {}) {
+  return page.evaluate(extension => {
+    MaweSelection.clearSelection({ silent: true, commitCuePanel: false });
+    MaweCuePanelState.resetCuePanelEditState({ discard: true });
+    MaweCuePanelState.currentCuePanelIdx = -1;
+    delete MaweBoot.DATA.subtitle_groups;
+    MaweBoot.DATA.schema = 'moy.asr.project.v1';
+    const segments = prefix => ['甲', '乙'].map((text, index) => ({
+      id: `${prefix}-${index}`, start: 1000 + index * 2000, end: 2000 + index * 2000,
+      text: prefix === 'ext' ? `**${text}**` : text, speaker: index ? 'Bob' : 'Alice',
+      vendor: { keep: prefix },
+      items: [{ text: prefix === 'ext' ? `**${text}**` : text,
+        start: 1100 + index * 2000, end: 1800 + index * 2000, speaker: index ? 'Bob' : 'Alice' }],
+    }));
+    MaweBoot.DATA.segments = segments('main');
+    const ext = segments('ext');
+    ext[0].color = { name: 'blue', value: '#0000ff' };
+    ext[1].color_ref = { name: 'blue', headIdx: 0 };
+    MaweBoot.DATA.overlay_track = { enabled: false, segments: [] };
+    MaweBoot.DATA.multi_subtitle = { enabled: extension, display_mode: 'both', main_split_mode: 'continuous',
+      tracks: extension ? [{ id: 'ext', split_mode: 'continuous', segments: ext }] : [], bindings: [] };
+    window.AsrEditorUtils.normalizeMultiSubtitleProject(MaweBoot.DATA);
+    MaweSettings.updateEditorSettings({ mainSplitModeOverride: 'continuous', mergeJoinTextContinuous: '' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
+    MaweDisplaySettings.updateMultiSubtitleUi();
+    MaweState.selection.replace(extension ? 'extension' : 'main', [0, 1]);
+    document.activeElement?.blur();
+    return extension ? structuredClone(MaweBoot.DATA.multi_subtitle.tracks[0].segments)
+      : structuredClone(MaweBoot.DATA.segments);
+  }, extension);
+}
+
+test('main merge clears mixed speaker attribution through undo and save/reopen', async ({ page }) => {
+  const before = await configureMergeFixture(page);
+  await page.keyboard.press('c');
+  expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.text))).toEqual(['甲乙']);
+  expect(await page.evaluate(() => Object.hasOwn(MaweBoot.DATA.segments[0], 'speaker'))).toBe(false);
+  await page.locator('#undo-btn').click();
+  expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.speaker))).toEqual(['Alice', 'Bob']);
+  await page.locator('#redo-btn').click();
+  const saved = await saveAndReopen(page);
+  expect(saved.segments[0]).not.toHaveProperty('speaker');
+  expect(saved.segments[0].vendor).toEqual(before[0].vendor);
+  expect(saved.segments[0].items).toEqual(before.flatMap(s => s.items));
+  expect(await page.evaluate(() => Object.hasOwn(MaweBoot.DATA.segments[0], 'speaker'))).toBe(false);
+});
+
+test('extension merge preserves every timed item and MASS fold through undo and save/reopen', async ({ page }) => {
+  const before = await configureMergeFixture(page, { extension: true });
+  await page.keyboard.press('c');
+  const merged = await page.evaluate(() => structuredClone(MaweBoot.DATA.multi_subtitle.tracks[0].segments));
+  expect(merged).toHaveLength(1);
+  expect(merged[0].text).toBe('**甲乙**');
+  const items = [{ ...before[0].items[0], text: '**甲' }, { ...before[1].items[0], text: '乙**' }];
+  expect(merged[0].items).toEqual(items);
+  expect(merged[0].color_group_id).toBe(before[0].color_group_id);
+  await page.locator('#undo-btn').click();
+  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(s => s.items)))
+    .toEqual(before.map(s => s.items));
+  await page.locator('#redo-btn').click();
+  const saved = await saveAndReopen(page);
+  expect(saved.multi_subtitle.tracks[0].segments[0].items).toEqual(items);
+  expect(saved.multi_subtitle.tracks[0].segments[0].vendor).toEqual(before[0].vendor);
+  expect(saved.multi_subtitle.tracks[0].segments[0].color_group_id).toBe(before[0].color_group_id);
+  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].items)).toEqual(items);
+});
+
 test('swapping once and twice preserves speaker and discarded cues through save and reopen', async ({ page }) => {
   await page.evaluate(() => {
     const makeSegments = (prefix) => [
