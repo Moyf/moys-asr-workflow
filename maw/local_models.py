@@ -8,6 +8,7 @@ is unavailable without importing Torch, QwenASR, or FunASR.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import threading
 import time
@@ -178,6 +179,24 @@ def inspect_local_model(
             valid = True
         else:
             valid = _model_directory_has_file(explicit, require_weight=True)
+            if valid:
+                # 权重只是必要条件：runtime 根目录里也有嵌套权重，还要
+                # 认得出引擎标志文件，才算真正的模型目录。
+                structure_error = _explicit_directory_structure_error(model.engine, explicit)
+                if structure_error:
+                    return LocalModelStatus(
+                        model.id,
+                        model.engine,
+                        model.model_ref,
+                        "path_invalid",
+                        True,
+                        False,
+                        str(explicit),
+                        structure_error,
+                        model.required_model_refs,
+                        runtime_source,
+                        runtime_python,
+                    )
         if not valid:
             return LocalModelStatus(
                 model.id,
@@ -750,6 +769,113 @@ def _explicit_path_mismatch(model: ModelConfig, path: Path) -> str:
         if "faster-whisper" in value or "faster_whisper" in value:
             return "当前目录看起来属于 Faster-Whisper，不是 FunASR / Paraformer。"
     return ""
+
+
+_HF_EXPLICIT_ENGINES = frozenset({"qwen-asr", "qwen", "qwen3-asr", "moss", "whisper"})
+
+# HF 模型目录必须能从 config.json 指认出模型家族；关键词按引擎收窄，
+# 用于拒绝「选了 runtime / 缓存根目录」这类明显误选。匹配保持宽松：
+# config.json 缺少可判字段时放行，避免挡掉合法的自定义模型目录。
+_HF_ENGINE_CONFIG_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "qwen-asr": ("qwen",),
+    "qwen": ("qwen",),
+    "qwen3-asr": ("qwen",),
+    "moss": ("moss",),
+    "whisper": ("whisper",),
+}
+
+_RUNTIME_ROOT_HINT = "所选目录看起来不是该模型的模型目录（可能选了运行时/缓存根目录）"
+
+
+def _explicit_directory_structure_error(engine: str, path: Path) -> str:
+    """Return a detail string when a user-picked folder lacks the engine's model markers.
+
+    v1.9.0 反馈：把整个 runtime 根目录选进「已有模型目录」会被嵌套的
+    杂散权重文件误判为已安装。检查只认顶层（及 snapshots/<修订>/ 一层）
+    的引擎标志文件，不递归找权重，因此多模型共存的根目录过不了校验。
+    """
+    if engine == "firered":
+        return ""  # firered 分支已有自己的文件清单校验
+    if engine in {"funasr", "fun-asr"}:
+        return _funasr_explicit_structure_error(path)
+    if engine in _HF_EXPLICIT_ENGINES:
+        return _hf_explicit_structure_error(engine, path)
+    return ""
+
+
+def _config_marker_candidates(path: Path, name: str) -> list[Path]:
+    """Top-level marker first, then one snapshot revision deep (hub cache layout)."""
+    candidates = [path / name]
+    snapshots = path / "snapshots"
+    if snapshots.is_dir():
+        try:
+            revisions = sorted(
+                (item for item in snapshots.iterdir() if item.is_dir()),
+                key=lambda item: item.stat().st_mtime,
+                reverse=True,
+            )
+        except OSError:
+            revisions = []
+        candidates.extend(revision / name for revision in revisions)
+    return candidates
+
+
+def _hf_explicit_structure_error(engine: str, path: Path) -> str:
+    config_path = next(
+        (candidate for candidate in _config_marker_candidates(path, "config.json") if candidate.is_file()),
+        None,
+    )
+    if config_path is None:
+        return f"{_RUNTIME_ROOT_HINT}：未找到 Hugging Face 模型必需的 config.json。"
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError):
+        return f"{_RUNTIME_ROOT_HINT}：config.json 无法解析为 JSON。"
+    if not isinstance(config, dict):
+        return f"{_RUNTIME_ROOT_HINT}：config.json 不是有效的模型配置。"
+    keywords = _HF_ENGINE_CONFIG_KEYWORDS.get(engine, ())
+    model_type = str(config.get("model_type") or "")
+    architectures = config.get("architectures")
+    if isinstance(architectures, (list, tuple)):
+        architectures = " ".join(str(item) for item in architectures)
+    else:
+        architectures = str(architectures or "")
+    fingerprint = f"{model_type} {architectures}".casefold()
+    if not keywords or not fingerprint.strip():
+        # 无法判别家族时不拦，保守兼容 sharded / 非标准布局。
+        return ""
+    if not any(keyword in fingerprint for keyword in keywords):
+        found = model_type or architectures
+        return f"{_RUNTIME_ROOT_HINT}：config.json 的模型类型「{found}」与当前引擎不匹配。"
+    return ""
+
+
+def _funasr_explicit_structure_error(path: Path) -> str:
+    config_yaml = next(
+        (candidate for candidate in _config_marker_candidates(path, "config.yaml") if candidate.is_file()),
+        None,
+    )
+    if config_yaml is not None:
+        mapping = _read_yaml_mapping(config_yaml)
+        if mapping is not None and not str(mapping.get("model") or "").strip():
+            return f"{_RUNTIME_ROOT_HINT}：config.yaml 缺少 model 配置。"
+        return ""
+    if any(candidate.is_file() for candidate in _config_marker_candidates(path, "configuration.json")):
+        return ""
+    return f"{_RUNTIME_ROOT_HINT}：未找到 FunASR 模型必需的 config.yaml 或 configuration.json。"
+
+
+def _read_yaml_mapping(path: Path) -> dict | None:
+    """Best-effort YAML read; None means "cannot judge", never a rejection."""
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - yaml.YAMLError 等一律按「读不到」处理
+        return None
+    return loaded if isinstance(loaded, dict) else None
 
 
 def _find_model_paths(

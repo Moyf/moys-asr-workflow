@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -229,6 +230,7 @@ class LocalModelDiscoveryTests(unittest.TestCase):
     def test_explicit_folder_is_used(self) -> None:
         model = local_model("funasr-local")
         with tempfile.TemporaryDirectory() as temp_dir:
+            (Path(temp_dir) / "config.yaml").write_text("model: paraformer\n", encoding="utf-8")
             (Path(temp_dir) / "model.pt").write_bytes(b"weights")
             with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
                 status = inspect_local_model(model, temp_dir)
@@ -285,6 +287,172 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertIn("Qwen3-ASR 或 MOSS", with_qwen.detail)
         self.assertEqual(with_moss.status, "path_mismatch")
         self.assertIn("Qwen3-ASR 或 MOSS", with_moss.detail)
+
+class ExplicitDirectoryStructureTests(unittest.TestCase):
+    """显式目录要按引擎校验结构标志：runtime / 缓存根目录不能判「已安装」。
+
+    v1.9.0 反馈：模型未下载时把整个 local-runtime 根目录选进「已有模型
+    目录」，嵌套的杂散权重让它被误判为已安装（体积报整棵树），真跑时才
+    在加载阶段报错。校验失败返回 path_invalid（can_prepare 保持 False），
+    detail 写明「可能选了运行时/缓存根目录」。
+    """
+
+    def build_runtime_root(self, root: Path) -> None:
+        """模拟 local-runtime/：嵌套的真实模型缓存 + 根层杂散权重文件。"""
+        hf = root / "huggingface" / "hub" / "models--Qwen--Qwen3-ASR-0.6B" / "snapshots" / "main"
+        hf.mkdir(parents=True)
+        (hf / "config.json").write_text(json.dumps({"model_type": "qwen3_asr"}), encoding="utf-8")
+        (hf / "model.safetensors").write_bytes(b"weights")
+        funasr = root / "modelscope" / "models" / "iic" / "SenseVoiceSmall"
+        funasr.mkdir(parents=True)
+        (funasr / "config.yaml").write_text("model: SenseVoiceSmall\n", encoding="utf-8")
+        (funasr / "model.pt").write_bytes(b"pt")
+        logs = root / "logs"
+        logs.mkdir()
+        (logs / "stray.bin").write_bytes(b"stray weight")
+
+    def inspect(self, model_id: str, path: str | Path):
+        model = local_model(model_id)
+        with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+            return inspect_local_model(model, path)
+
+    def test_runtime_root_is_rejected_for_hf_engine(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self.build_runtime_root(Path(temp_dir))
+            status = self.inspect("qwen3-asr-local", temp_dir)
+            payload = local_model_payload(local_model("qwen3-asr-local"), temp_dir)
+
+        self.assertEqual(status.status, "path_invalid")
+        self.assertFalse(status.installed)
+        self.assertIn("运行时/缓存根目录", status.detail)
+        self.assertFalse(payload["installed"])
+        self.assertFalse(payload["canPrepare"])
+
+    def test_runtime_root_is_rejected_for_funasr_engine(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            self.build_runtime_root(Path(temp_dir))
+            status = self.inspect("sensevoice-small-local", temp_dir)
+
+        self.assertEqual(status.status, "path_invalid")
+        self.assertFalse(status.installed)
+        self.assertIn("运行时/缓存根目录", status.detail)
+
+    def test_runtime_root_without_weights_is_rejected_as_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            Path(temp_dir, "logs").mkdir()
+            status = self.inspect("qwen3-asr-local", temp_dir)
+
+        self.assertEqual(status.status, "path_invalid")
+        self.assertIn("为空", status.detail)
+
+    def test_explicit_hf_directory_with_matching_config_is_installed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            (Path(temp_dir) / "config.json").write_text(
+                json.dumps({"model_type": "qwen3_asr", "architectures": ["Qwen3ASRForConditionalGeneration"]}),
+                encoding="utf-8",
+            )
+            (Path(temp_dir) / "model.safetensors").write_bytes(b"weights")
+            status = self.inspect("qwen3-asr-local", temp_dir)
+
+        self.assertEqual(status.status, "installed")
+        self.assertTrue(status.installed)
+        self.assertEqual(status.detail, "已使用指定的模型目录。")
+
+    def test_explicit_hf_snapshot_parent_directory_is_installed(self) -> None:
+        """选中 models--* 仓库根目录（snapshot 的上一级）仍视为合法目录。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            snapshot = Path(temp_dir) / "snapshots" / "main"
+            snapshot.mkdir(parents=True)
+            (snapshot / "config.json").write_text(json.dumps({"model_type": "whisper"}), encoding="utf-8")
+            (snapshot / "model.bin").write_bytes(b"weights")
+            status = self.inspect("whisper-large-v3-local", temp_dir)
+
+        self.assertEqual(status.status, "installed")
+        self.assertTrue(status.installed)
+
+    def test_explicit_hf_directory_with_mismatched_model_type_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            (Path(temp_dir) / "config.json").write_text(json.dumps({"model_type": "qwen3_asr"}), encoding="utf-8")
+            (Path(temp_dir) / "model.safetensors").write_bytes(b"weights")
+            status = self.inspect("whisper-large-v3-local", temp_dir)
+
+        self.assertEqual(status.status, "path_invalid")
+        self.assertFalse(status.installed)
+        self.assertIn("运行时/缓存根目录", status.detail)
+        self.assertIn("不匹配", status.detail)
+
+    def test_explicit_hf_directory_without_judgeable_fields_is_accepted(self) -> None:
+        """config.json 缺少 model_type / architectures 时保守放行。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            (Path(temp_dir) / "config.json").write_text(json.dumps({"custom": "layout"}), encoding="utf-8")
+            (Path(temp_dir) / "model.safetensors").write_bytes(b"weights")
+            status = self.inspect("qwen3-asr-local", temp_dir)
+
+        self.assertEqual(status.status, "installed")
+        self.assertTrue(status.installed)
+
+    def test_explicit_hf_directory_with_broken_config_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            (Path(temp_dir) / "config.json").write_text("{not json", encoding="utf-8")
+            (Path(temp_dir) / "model.safetensors").write_bytes(b"weights")
+            status = self.inspect("qwen3-asr-local", temp_dir)
+
+        self.assertEqual(status.status, "path_invalid")
+        self.assertIn("config.json", status.detail)
+
+    def test_explicit_funasr_directory_with_config_yaml_is_installed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            (Path(temp_dir) / "config.yaml").write_text("model: paraformer\n", encoding="utf-8")
+            (Path(temp_dir) / "model.pt").write_bytes(b"weights")
+            status = self.inspect("funasr-local", temp_dir)
+
+        self.assertEqual(status.status, "installed")
+        self.assertTrue(status.installed)
+
+    def test_explicit_funasr_directory_with_configuration_json_is_installed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            (Path(temp_dir) / "configuration.json").write_text("{}", encoding="utf-8")
+            (Path(temp_dir) / "model.pt").write_bytes(b"weights")
+            status = self.inspect("sensevoice-small-local", temp_dir)
+
+        self.assertEqual(status.status, "installed")
+        self.assertTrue(status.installed)
+
+    def test_explicit_funasr_weight_only_directory_is_rejected(self) -> None:
+        """只有权重的目录不能被 FunASR 加载，也不该判「已安装」。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            (Path(temp_dir) / "model.pt").write_bytes(b"weights")
+            status = self.inspect("sensevoice-small-local", temp_dir)
+
+        self.assertEqual(status.status, "path_invalid")
+        self.assertIn("运行时/缓存根目录", status.detail)
+
+    def test_explicit_funasr_config_yaml_model_field_is_checked_when_yaml_is_readable(self) -> None:
+        """读得到 config.yaml 时校验 model 字段；读不到（无 yaml 库/解析失败）仅查存在性。"""
+        yaml_module = mock.Mock()
+        yaml_module.safe_load = mock.Mock(side_effect=[{"framework": "Pytorch"}, {"model": "SenseVoiceSmall"}])
+        with tempfile.TemporaryDirectory() as temp_dir:
+            (Path(temp_dir) / "config.yaml").write_text("framework: Pytorch\n", encoding="utf-8")
+            (Path(temp_dir) / "model.pt").write_bytes(b"weights")
+            with mock.patch.dict("sys.modules", {"yaml": yaml_module}):
+                rejected = self.inspect("sensevoice-small-local", temp_dir)
+                (Path(temp_dir) / "config.yaml").write_text("model: SenseVoiceSmall\n", encoding="utf-8")
+                accepted = self.inspect("sensevoice-small-local", temp_dir)
+
+        self.assertEqual(rejected.status, "path_invalid")
+        self.assertIn("config.yaml", rejected.detail)
+        self.assertEqual(accepted.status, "installed")
+
+    def test_firered_explicit_directory_keeps_its_own_checklist(self) -> None:
+        """firered 维持原有文件清单校验，不叠加 HF / FunASR 标志文件要求。"""
+        model = local_model("firered-asr2-ctc-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                status = inspect_local_model(model, temp_dir)
+
+        self.assertEqual(status.status, "path_invalid")
+        self.assertIn("FireRedASR2-CTC", status.detail)
+
 
     def test_funasr_hub_style_modelscope_cache_is_detected(self) -> None:
         model = local_model("funasr-local")
