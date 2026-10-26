@@ -212,6 +212,22 @@ def inspect_local_model(
                 runtime_python,
             )
         resolved = _explicit_model_dir_with_marker(model.engine, explicit)
+        if resolved is None:
+            # 权重探测（递归）通过了，但没有任何「配置 + 权重」同层的完整
+            # 目录可交给 loader：典型的中断下载残留。宁可报错不给死路径。
+            return LocalModelStatus(
+                model.id,
+                model.engine,
+                model.model_ref,
+                "path_invalid",
+                True,
+                False,
+                str(explicit),
+                "所选目录里没有同时包含模型配置与权重文件的完整目录（最近的下载可能未完成）。",
+                model.required_model_refs,
+                runtime_source,
+                runtime_python,
+            )
         detail = "已使用指定的模型目录。"
         if model.engine == "firered" and _find_ct_punc_model(model_cache_root) is None:
             detail = "已检测到 FireRed CTC；可选 FunASR ct-punc 尚未准备，选择“不使用”仍可运行。"
@@ -886,29 +902,24 @@ _EXPLICIT_ENGINE_MARKERS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _explicit_model_dir_with_marker(engine: str, path: Path) -> Path:
-    """Return the directory that actually carries the engine's marker file.
+def _explicit_model_dir_with_marker(engine: str, path: Path) -> Path | None:
+    """Return the directory that carries the engine marker AND usable weights.
 
     权重探测会递归，hub 缓存仓库根（snapshots 的上一级）能通过；但
     loader（resolve_engine_model_source）原样使用显式目录，需要的是
     snapshots/<修订>/ 那一层，状态行 path 指到仓库根会表现为「已安装
-    但加载失败」。解析与结构校验同一套候选顺序（顶层优先，其次最新
-    修订）；找不到标志文件时原样返回（结构校验会另行报错）。
+    但加载失败」。候选目录必须同时通过权重检查：中断下载常留下只有
+    config.json 的新修订，跳过它继续找次新的完整修订。所有候选都缺
+    权重时返回 None，由调用方报 path_invalid——宁可报错不给死路径。
     """
     markers = _EXPLICIT_ENGINE_MARKERS.get(engine, ())
     if not markers:
         return path
     for marker in markers:
-        if (path / marker).is_file():
-            return path
-    for marker in markers:
-        candidate = next(
-            (item for item in _config_marker_candidates(path, marker) if item.is_file()),
-            None,
-        )
-        if candidate is not None:
-            return candidate.parent
-    return path
+        for candidate in _config_marker_candidates(path, marker):
+            if candidate.is_file() and _model_directory_has_file(candidate.parent, require_weight=True):
+                return candidate.parent
+    return None
 
 
 def _find_model_paths(

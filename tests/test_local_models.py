@@ -403,6 +403,41 @@ class ExplicitDirectoryStructureTests(unittest.TestCase):
         self.assertEqual(status.status, "installed")
         self.assertEqual(Path(status.path).resolve(), newer.resolve())
 
+    def test_explicit_mixed_snapshots_skip_weightless_revision(self) -> None:
+        """最新的修订只有 config.json（中断下载残留）时跳过它，解析到
+        次新的完整修订：旁边有可用模型就不能给死路径。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            snapshots = Path(temp_dir) / "snapshots"
+            complete = snapshots / "aaaaaaaa"
+            incomplete = snapshots / "bbbbbbbb"
+            complete.mkdir(parents=True)
+            (complete / "config.json").write_text(json.dumps({"model_type": "whisper"}), encoding="utf-8")
+            (complete / "model.bin").write_bytes(b"weights")
+            incomplete.mkdir(parents=True)
+            (incomplete / "config.json").write_text(json.dumps({"model_type": "whisper"}), encoding="utf-8")
+            os.utime(complete, (1000, 1000))
+            os.utime(incomplete, (2000, 2000))
+            status = self.inspect("whisper-large-v3-local", temp_dir)
+
+        self.assertEqual(status.status, "installed")
+        self.assertTrue(status.installed)
+        self.assertEqual(Path(status.path).resolve(), complete.resolve())
+
+    def test_explicit_weightless_snapshots_are_rejected(self) -> None:
+        """所有候选修订都缺权重时不返回假 installed：仓库根的杂散权重
+        让权重探测通过，但没有任何「配置 + 权重」同层的目录可交给
+        loader，必须报 path_invalid 而不是指向加载必败的目录。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            snapshot = Path(temp_dir) / "snapshots" / "main"
+            snapshot.mkdir(parents=True)
+            (snapshot / "config.json").write_text(json.dumps({"model_type": "whisper"}), encoding="utf-8")
+            (Path(temp_dir) / "model.bin").write_bytes(b"stray weight")
+            status = self.inspect("whisper-large-v3-local", temp_dir)
+
+        self.assertEqual(status.status, "path_invalid")
+        self.assertFalse(status.installed)
+        self.assertIn("同时包含模型配置与权重文件", status.detail)
+
     def test_explicit_hf_directory_with_mismatched_model_type_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             (Path(temp_dir) / "config.json").write_text(json.dumps({"model_type": "qwen3_asr"}), encoding="utf-8")
