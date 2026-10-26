@@ -823,13 +823,8 @@ async function refreshAlignmentModels() {
 }
 function syncLocalModelPath(model) {
   if (!isLocalProvider()) return;
-  const previousId = state.localModelId;
-  if (previousId && previousId !== model.id && state.localModelPathDirty[previousId]) {
-    // 只回写本会话被用户实际改过的输入框值；程序性填充（扫描到的缓存
-    // 路径、状态回显）不能落成上一个模型的自定义目录，避免串写配置。
-    state.localModelPaths[previousId] = $("localModelPath").value.trim();
-  }
-  if (previousId) state.localModelPathDirty[previousId] = false;
+  // 条目只由输入与目录选择事件实时更新；切换时不回写输入框值——
+  // 程序性填充（扫描回显）若被写回，会撤销用户「删空回到自动发现」的选择。
   $("localModelPath").value = state.localModelPaths[model.id] || "";
   state.localModelId = model.id;
   setError("localModelPath", "");

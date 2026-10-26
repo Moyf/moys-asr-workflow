@@ -358,8 +358,10 @@ class ExplicitDirectoryStructureTests(unittest.TestCase):
         self.assertTrue(status.installed)
         self.assertEqual(status.detail, "已使用指定的模型目录。")
 
-    def test_explicit_hf_snapshot_parent_directory_is_installed(self) -> None:
-        """选中 models--* 仓库根目录（snapshot 的上一级）仍视为合法目录。"""
+    def test_explicit_hf_snapshot_parent_resolves_path_to_revision(self) -> None:
+        """选中 models--* 仓库根（snapshots 的上一级）合法，但 status.path
+        必须解析到实际存放模型的修订目录：loader 原样使用显式目录，
+        指到仓库根会「已安装」却在加载时失败。"""
         with tempfile.TemporaryDirectory() as temp_dir:
             snapshot = Path(temp_dir) / "snapshots" / "main"
             snapshot.mkdir(parents=True)
@@ -369,6 +371,37 @@ class ExplicitDirectoryStructureTests(unittest.TestCase):
 
         self.assertEqual(status.status, "installed")
         self.assertTrue(status.installed)
+        self.assertEqual(Path(status.path).resolve(), snapshot.resolve())
+
+    def test_explicit_funasr_snapshot_parent_resolves_path_to_revision(self) -> None:
+        """ModelScope hub 式仓库根（snapshots/master 的上一级）同理解析到修订层。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            snapshot = Path(temp_dir) / "snapshots" / "master"
+            snapshot.mkdir(parents=True)
+            (snapshot / "config.yaml").write_text("model: SenseVoiceSmall\n", encoding="utf-8")
+            (snapshot / "model.pt").write_bytes(b"weights")
+            status = self.inspect("sensevoice-small-local", temp_dir)
+
+        self.assertEqual(status.status, "installed")
+        self.assertTrue(status.installed)
+        self.assertEqual(Path(status.path).resolve(), snapshot.resolve())
+
+    def test_explicit_hf_snapshot_parent_prefers_newest_revision(self) -> None:
+        """仓库根里有多个修订时按修改时间取最新，与缓存发现行为一致。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            snapshots = Path(temp_dir) / "snapshots"
+            older = snapshots / "aaaaaaaa"
+            newer = snapshots / "bbbbbbbb"
+            for revision in (older, newer):
+                revision.mkdir(parents=True)
+                (revision / "config.json").write_text(json.dumps({"model_type": "whisper"}), encoding="utf-8")
+                (revision / "model.bin").write_bytes(b"weights")
+            os.utime(older, (1000, 1000))
+            os.utime(newer, (2000, 2000))
+            status = self.inspect("whisper-large-v3-local", temp_dir)
+
+        self.assertEqual(status.status, "installed")
+        self.assertEqual(Path(status.path).resolve(), newer.resolve())
 
     def test_explicit_hf_directory_with_mismatched_model_type_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

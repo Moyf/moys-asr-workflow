@@ -3,9 +3,10 @@ import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
 
-// 回归：切换本地模型时，输入框里程序性填充的路径（扫描回显、状态回填）
-// 不得写进上一个模型的 localModelPaths 条目；只有用户本会话实际改过的
-// 值才回写（per-model dirty 标记，见 web/launcher/boot/launcher-state.js）。
+// 回归：切换本地模型时不得回写输入框值。输入框可能被程序性填充
+// （扫描回显、状态回填），切换时写回会把自动发现的路径持久化成
+// 上一个模型的自定义目录，撤销用户「删空回到自动发现」的选择；
+// 输入与目录选择事件已经实时更新条目，切换时写回本无必要。
 
 const MODELS = [
   {id: 'qwen3-asr-local', engine: 'qwen-asr'},
@@ -21,7 +22,7 @@ function fixture() {
     });
     return controls.get(id);
   };
-  const state = {localModelId: '', localModelPaths: {}, localModelPathDirty: {}};
+  const state = {localModelId: '', localModelPaths: {}};
   const context = vm.createContext({
     $,
     state,
@@ -50,15 +51,22 @@ test('a programmatically filled path is not written into the previous model entr
   assert.equal($('localModelPath').value, '');
 });
 
-test('a user-edited path is written back to its own model on switch', () => {
+test('clearing an entry then a refresh backfill survives a model switch', () => {
+  // 用户删空输入框（input 已把条目存成 ""，想回到自动发现）→ 刷新把
+  // 自动发现路径程序性回填进输入框 → 切换不得把显示值写回条目。
   const {context, $, state} = fixture();
   vm.runInContext('syncLocalModelPath(selectedModel())', context);
-  // 模拟 input 事件处理：用户真的改过输入框（会同步落 dirty 标记）。
-  $('localModelPath').value = '/models/qwen3-asr';
-  state.localModelPaths['qwen3-asr-local'] = '/models/qwen3-asr';
-  state.localModelPathDirty['qwen3-asr-local'] = true;
+  state.localModelPaths['qwen3-asr-local'] = '/cache/discovered';
+  vm.runInContext('syncLocalModelPath(selectedModel())', context);
+  // 用户删空：input 事件处理同步条目为空并保存。
+  $('localModelPath').value = '';
+  state.localModelPaths['qwen3-asr-local'] = '';
+  // 刷新把自动发现的路径回填进输入框（切换写回已移除，无任何标记参与）。
+  $('localModelPath').value = '/cache/discovered';
   switchTo($, context, 'sensevoice-small-local');
-  assert.equal(state.localModelPaths['qwen3-asr-local'], '/models/qwen3-asr');
+  assert.equal(state.localModelPaths['qwen3-asr-local'], '', '切换不得把回填的显示值写回条目');
+  // 切回时按保存的空条目还原输入框，显示回填交给随后的刷新。
+  switchTo($, context, 'qwen3-asr-local');
   assert.equal($('localModelPath').value, '');
 });
 
@@ -72,7 +80,7 @@ test('switching back and forth does not leak entries between models', () => {
   switchTo($, context, 'qwen3-asr-local');
   assert.equal($('localModelPath').value, '/models/qwen3-asr');
   assert.equal(state.localModelPaths['sensevoice-small-local'], undefined);
-  // 清除动作把 dirty 一并复位后，残留输入框值也不再回写。
+  // 残留输入框值在切换时同样不回写：条目只由 input / 选择目录事件更新。
   $('localModelPath').value = '/should-not-persist';
   switchTo($, context, 'sensevoice-small-local');
   assert.equal(state.localModelPaths['qwen3-asr-local'], '/models/qwen3-asr');

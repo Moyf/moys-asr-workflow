@@ -211,6 +211,7 @@ def inspect_local_model(
                 runtime_source,
                 runtime_python,
             )
+        resolved = _explicit_model_dir_with_marker(model.engine, explicit)
         detail = "已使用指定的模型目录。"
         if model.engine == "firered" and _find_ct_punc_model(model_cache_root) is None:
             detail = "已检测到 FireRed CTC；可选 FunASR ct-punc 尚未准备，选择“不使用”仍可运行。"
@@ -221,12 +222,12 @@ def inspect_local_model(
             "installed",
             True,
             True,
-            str(explicit),
+            str(resolved),
             detail,
             model.required_model_refs,
             runtime_source,
             runtime_python,
-            _installed_model_size(explicit),
+            _installed_model_size(resolved),
         )
 
     paths = _find_model_paths(model, model_cache_root)
@@ -876,6 +877,38 @@ def _read_yaml_mapping(path: Path) -> dict | None:
     except Exception:  # noqa: BLE001 - yaml.YAMLError 等一律按「读不到」处理
         return None
     return loaded if isinstance(loaded, dict) else None
+
+
+_EXPLICIT_ENGINE_MARKERS: dict[str, tuple[str, ...]] = {
+    **{engine: ("config.json",) for engine in _HF_EXPLICIT_ENGINES},
+    "funasr": ("config.yaml", "configuration.json"),
+    "fun-asr": ("config.yaml", "configuration.json"),
+}
+
+
+def _explicit_model_dir_with_marker(engine: str, path: Path) -> Path:
+    """Return the directory that actually carries the engine's marker file.
+
+    权重探测会递归，hub 缓存仓库根（snapshots 的上一级）能通过；但
+    loader（resolve_engine_model_source）原样使用显式目录，需要的是
+    snapshots/<修订>/ 那一层，状态行 path 指到仓库根会表现为「已安装
+    但加载失败」。解析与结构校验同一套候选顺序（顶层优先，其次最新
+    修订）；找不到标志文件时原样返回（结构校验会另行报错）。
+    """
+    markers = _EXPLICIT_ENGINE_MARKERS.get(engine, ())
+    if not markers:
+        return path
+    for marker in markers:
+        if (path / marker).is_file():
+            return path
+    for marker in markers:
+        candidate = next(
+            (item for item in _config_marker_candidates(path, marker) if item.is_file()),
+            None,
+        )
+        if candidate is not None:
+            return candidate.parent
+    return path
 
 
 def _find_model_paths(
