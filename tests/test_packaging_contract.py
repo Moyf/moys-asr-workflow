@@ -285,8 +285,8 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("maw.runtimes.freezer", release)
         self.assertNotIn("uv export --frozen", release)
 
-        self.assertIn('RUNTIME_VERSION = "7"', local_spec)
-        self.assertIn('OCR_RUNTIME_VERSION = "3"', ocr_spec)
+        self.assertIn('RUNTIME_VERSION = "8"', local_spec)
+        self.assertIn('OCR_RUNTIME_VERSION = "4"', ocr_spec)
 
         self.assertIn("_has_cuda", runtimes_base)
         self.assertIn("requirements_in", runtimes_base)
@@ -376,6 +376,8 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(
             ocr_dependencies,
             {
+                "certifi>=2026.10.19",
+                "urllib3>=2.8.0",
                 "numpy>=2.2,<2.5",
                 "onnxruntime>=1.18",
                 "pillow>=10.0.0",

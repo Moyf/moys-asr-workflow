@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { createWaveformModule } from '../web/editor/media/waveform/workspace.js';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 test('row length updates controls, invalidates rows and persists only valid changes', () => {
   const saved = [];
@@ -32,7 +32,7 @@ function fixture(mode = 'basic', rowHeight = 64, secondsPerRow = 2) {
   };
   const settings = { multiSubtitleRowHeight: 168, wordTimingRowHeight: 144, wordTimingSecondsPerRow: 5 };
   const context = { window: {}, MaweCoreState: { waveformEditor: editor }, MaweSettings: { EDITOR_SETTINGS: settings } };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/ui/editor-display-settings.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/ui/editor-display-settings.js'), context);
   const display = context.window.MaweDisplaySettings;
   return { editor, settings, display,
     toggle(mode, enabled) { display[mode === 'word' ? 'syncWordTimingWaveformSettings' : 'syncMultiSubtitleWaveformRowHeight'](enabled); },

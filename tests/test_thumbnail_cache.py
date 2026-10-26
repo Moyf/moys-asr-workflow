@@ -23,21 +23,28 @@ def jpeg(width=160, height=90, suffix=b"a"):
 class ThumbnailCacheTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.media = self.root / "video.mkv"
         self.media.write_bytes(b"source")
         self.video = VideoInfo(1, 40000, 5000)
-        self.patches = [mock.patch.object(c, "cache_root", return_value=self.root / "app"), mock.patch.object(c, "waveform_dirs", return_value=[self.root, self.root / "_maw", self.root / "video_maw"]), mock.patch.object(c, "probe_video", return_value=self.video), mock.patch.object(c, "make_sprite", side_effect=lambda frames, **kw: jpeg(1280, ((len(frames)+7)//8)*90))]
+        self.patches = [
+            mock.patch.object(c, "cache_root", return_value=self.root / "app"),
+            mock.patch.object(c, "waveform_dirs", return_value=[self.root, self.root / "_maw", self.root / "video_maw"]),
+            mock.patch.object(c, "probe_video", return_value=self.video),
+            mock.patch.object(c, "make_sprite", side_effect=lambda frames, **kw: jpeg(1280, ((len(frames)+7)//8)*90)),
+            # This suite checks persistence with fake source/JPEG bytes. Real
+            # keyframe decoding belongs to ThumbnailIntegrationTests; trying
+            # to decode this fake video only pays for a swallowed media error.
+            mock.patch.object(c, "extract_keyframes", return_value=[]),
+            mock.patch("maw.thumbnails._run", side_effect=AssertionError("cache fixture must not start media tools")),
+        ]
         for patch in self.patches:
             patch.start()
+            self.addCleanup(patch.stop)
         for collection in (c._video_memo, c._base_memo, c._session, c._session_assets, c._write_disabled, c._session_bases, c._session_pins, c._base_touch):
             collection.clear()
         self.calls = []
-
-    def tearDown(self):
-        for patch in reversed(self.patches):
-            patch.stop()
-        self.temp.cleanup()
 
     def extract(self, path, targets, **kwargs):
         self.calls.append(list(targets))

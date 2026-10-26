@@ -162,3 +162,9 @@ function observeAssSubtitlePreviewPlayer(player) {
 if (MaweDom.playerStage) assPreviewStageObserver?.observe(MaweDom.playerStage);
 observeAssSubtitlePreviewPlayer(MaweCoreState.player);
 window.addEventListener('resize', scheduleAssSubtitlePreviewRefresh);
+
+// G07：init 化模块经 window 延迟取用本文件的运行时入口；classic 调用方不受影响。
+window.MaweKeyboardGuards = window.MaweKeyboardGuards || Object.freeze({
+  isPlaybackActive,
+  pausePlaybackAfterMouseClick,
+});

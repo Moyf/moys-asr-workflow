@@ -1010,6 +1010,12 @@
    — 手柄」三个命中区域都有约 7px 的稳定宽度。 */
 .waveform-cue-block.has-shared-boundary-right .waveform-cue-handle.right { width: 11px; }
 .waveform-cue-block.has-shared-boundary-left .waveform-cue-handle.left { width: 11px; }
+/* 字词紧凑叠加布局：贴缝词块手柄与中缝区同层，中缝区占中央 8px 后
+   内半段被覆盖；同款加宽到 11px（短词仍按 25% 封顶），保留约 7px
+   独立命中。等高分层（full）的中缝区在整句块层、与字词条带不同层，
+   不会加这些 class，词块手柄保持 min(7px, 25%) 原样。 */
+.waveform-word-block.has-shared-boundary-right .waveform-cue-handle.right,
+.waveform-word-block.has-shared-boundary-left .waveform-cue-handle.left { width: min(11px, 25%); }
 /* 中缝拖动区：8px 命中区覆盖精确接缝，可见线由伪元素单独绘制。 */
 .waveform-cue-boundary {
   position: absolute;
