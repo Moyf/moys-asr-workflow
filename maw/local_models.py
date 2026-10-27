@@ -828,7 +828,7 @@ def _config_marker_candidates(path: Path, name: str) -> list[Path]:
         try:
             revisions = sorted(
                 (item for item in snapshots.iterdir() if item.is_dir()),
-                key=lambda item: item.stat().st_mtime,
+                key=lambda item: (item.stat().st_mtime, item.name),
                 reverse=True,
             )
         except OSError:
