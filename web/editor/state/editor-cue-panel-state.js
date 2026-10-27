@@ -1,7 +1,6 @@
 // 当前字幕面板运行态：面板索引/轨道、撤销暂存与编辑状态复位。
-// 状态由 MaweState 持有；ESM init 模块：resetCuePanelEditState 为具名导出，
-// 兄弟模块静态 import；window.MaweCuePanelState 冻结对象保留为
-// 尚未迁移消费者的出接口（G16 退役）。
+// 状态由 MaweState 持有；resetCuePanelEditState 可供其他模块静态导入。
+// window.MaweCuePanelState 仍供尚未迁移的代码使用（计划在 G16 退役）。
 export function resetCuePanelEditState({ discard = false } = {}) {
   const command = MaweState.panel.cuePanelUndoRecord;
   MaweState.panel.cuePanelUndoPushed = false;

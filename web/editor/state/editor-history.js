@@ -425,8 +425,8 @@ export function initMaweHistory() {
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-// 兄弟模块 import 边（调用时经 window.MaweHistory 解析；门面保留为
-// classic 侧出接口，G16 退役）。导出为纯函数声明，无求值期副作用。
+// 以下函数可供其他模块导入；调用时通过 window.MaweHistory 找到原有实现。
+// 旧代码仍使用该对象，计划在 G16 退役。
 export function captureSegmentsRecord(...args) { return window.MaweHistory.captureSegmentsRecord(...args); }
 export function commitRecord(...args) { return window.MaweHistory.commitRecord(...args); }
 export function applyHistoryRecord(...args) { return window.MaweHistory.applyHistoryRecord(...args); }

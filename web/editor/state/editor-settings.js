@@ -455,8 +455,8 @@ export function initMaweSettings() {
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-// 兄弟模块 import 边（调用时经 window.MaweSettings 解析，G08/G16 逐步
-// 消费后门面随 G16 退役）。导出为纯函数声明，无求值期副作用。
+// 以下函数可供其他模块导入；调用时通过 window.MaweSettings 找到原有实现。
+// 后续逐步迁移调用方，计划在 G16 退役旧接口。
 export function clampMediaSeekStepMs(...args) { return window.MaweSettings.clampMediaSeekStepMs(...args); }
 export function mediaSeekStepForValue(...args) { return window.MaweSettings.mediaSeekStepForValue(...args); }
 export function nextMediaSeekStepValue(...args) { return window.MaweSettings.nextMediaSeekStepValue(...args); }

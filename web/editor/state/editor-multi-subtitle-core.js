@@ -693,7 +693,7 @@ export function initMaweMultiSubtitleCore() {
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-// 兄弟模块 import 边（调用时经 window.MaweMultiSubtitleCore 解析）。
+// 以下函数可供其他模块导入；调用时通过 window.MaweMultiSubtitleCore 找到原有实现。
 export function normalizeMultiSubtitleState(...args) { return window.MaweMultiSubtitleCore.normalizeMultiSubtitleState(...args); }
 export function getMultiSubtitleState(...args) { return window.MaweMultiSubtitleCore.getMultiSubtitleState(...args); }
 export function ensureEmptyExtensionTrack(...args) { return window.MaweMultiSubtitleCore.ensureEmptyExtensionTrack(...args); }

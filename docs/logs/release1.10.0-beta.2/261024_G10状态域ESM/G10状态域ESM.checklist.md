@@ -16,12 +16,12 @@ status: pending
 ## 修复与提交记录
 <!-- id: changes -->
 
-G10 的 6 个原提交已无冲突 rebase 到上游 `50314a03`。本轮修复尚未提交或推送；内联副本待发布前统一重生成。
+G10 的原提交已 rebase 到上游主线。补充修复及其验证见同目录的 `REVIEW_FINDINGS.md`；内联副本待发布前统一重生成。
 
 ## 自动化验证结果
 <!-- id: automated -->
 
-`pnpm run test:unit` 984/984；相关 Python 套件 55/55；编辑器与 Launcher 构建检查、类型检查通过。Chromium 的工程新建、打开、异步切换三组 25/25，多字幕导入与交换定向 2/2。全量 Python 尝试一次，240 秒超时且无测试输出；未运行全量 e2e，远端 CI 尚未触发。
+此前记录：`pnpm run test:unit` 984/984；相关 Python 套件 55/55；编辑器与 Launcher 构建检查、类型检查通过。Chromium 的工程新建、打开、异步切换三组 25/25，多字幕导入与交换定向 2/2。全量 Python 尝试一次，240 秒超时且无测试输出；未运行全量 e2e。补充修改后的定向验证见 `REVIEW_FINDINGS.md`，远端 CI 应以包含补充修改的提交为准。
 
 ## 人工核验
 <!-- id: manual -->

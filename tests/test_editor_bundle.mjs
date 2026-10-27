@@ -188,6 +188,31 @@ test('init module rejects extra statements and factories reject kind misuse', as
   assert.ok(compileResult.code.includes('mp4'), 'inert const body compiled into artifact');
 });
 
+test('init constants reject eager side effects in nested expressions', async t => {
+  const { compileSources } = await import(builder);
+  const module = [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}];
+  for (const [name, declaration] of [
+    ['template interpolation', 'const extra = `value ${window.touch()}`;'],
+    ['unary operand', 'const extra = !window.touch();'],
+    ['void operand', 'const extra = void window.touch();'],
+    ['computed object key', 'const extra = { [window.touch()]: 1 };'],
+    ['object spread', 'const extra = { ...externalState };'],
+    ['computed destructuring key', 'const { [window.touch()]: value } = {};'],
+    ['destructuring default', 'const { value = window.touch() } = {};'],
+  ]) {
+    await t.test(name, async () => {
+      await assert.rejects(
+        compileSources(root, ['seam.js'], module,
+          () => `${declaration}\nexport function runSeam() {}`),
+        /pure function exports/i,
+      );
+    });
+  }
+  const result = await compileSources(root, ['seam.js'], module,
+    () => 'const n = -2; const flag = !false; const text = `value ${1 + 2}`; const item = { ["a" + "b"]: 1 };\nexport function runSeam() {}');
+  assert.ok(result.code, 'literal-only expressions remain accepted');
+});
+
 test('transitive imports invalidate the artifact like manifest sources', async () => {
   const { buildEditor } = await import(builder);
   const project = fs.mkdtempSync(path.join(os.tmpdir(),'maw-esm-dependency-'));

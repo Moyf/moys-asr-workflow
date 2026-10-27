@@ -1,7 +1,7 @@
 // 核心运行态：容器/播放器/波形实例引用、播放帧句柄与媒体文件类型判定。
-// 状态由 MaweState 持有；ESM init 模块：initMaweCoreState 在原清单位次
-// 执行启动绑定；媒体类型判定为纯函数具名导出，兄弟模块静态 import；
-// window.MaweCoreState 冻结对象保留为尚未迁移消费者的出接口（G16 退役）。
+// 状态由 MaweState 持有；initMaweCoreState 在清单原来的位置执行。
+// 媒体类型判断函数可供其他模块静态导入。
+// window.MaweCoreState 仍供尚未迁移的代码使用（计划在 G16 退役）。
 
 const MEDIA_FILE_RE = /\.(mp4|mkv|avi|mov|wmv|flv|webm|ts|m4v|wav|mp3|m4a|aac|ogg|flac|opus)$/i;
 

@@ -118,7 +118,7 @@ function validateInitModule(source, item) {
   if (item.kind !== 'init') return;
   // The initializer body runs at this file's manifest position. Imported
   // modules follow normal ESM evaluation and should keep top-level work
-  // declarative. Sibling modules import each other's helpers directly, so
+  // declarative. Other modules may import the functions this module exports, so
   // additional named exports are allowed as long as they are plain hoisted
   // function declarations (no module-evaluation side effects).
   const ast = parse(source,'module');
@@ -129,18 +129,22 @@ function validateInitModule(source, item) {
   const extraExports = exports.filter(node => node.declaration !== initializer);
   const extraIsPure = extraExports.every(node => node.declaration?.type === 'FunctionDeclaration'
       && !node.declaration.async && !node.declaration.generator);
-  // Top-level inert consts (regexes, literals) are allowed: they allocate
-  // without touching DOM, window or other modules' state.
+  // Allow declarative top-level consts. This is a syntactic guard, not a proof
+  // of purity: identifiers, coercion and imported modules can still run code.
   const inert = (node) => {
-    if (node.type === 'Literal' || node.type === 'RegExpLiteral' || node.type === 'Identifier'
-        || node.type === 'TemplateLiteral' || node.type === 'UnaryExpression') return true;
+    if (node.type === 'Literal' || node.type === 'RegExpLiteral' || node.type === 'Identifier') return true;
+    if (node.type === 'TemplateLiteral') return node.expressions.every(inert);
+    if (node.type === 'UnaryExpression') return ['-', '+', '!', 'typeof'].includes(node.operator) && inert(node.argument);
     if (node.type === 'ArrayExpression') return (node.elements ?? []).every(el => el && inert(el));
-    if (node.type === 'ObjectExpression') return node.properties.every(p => inert(p.value ?? p.argument));
+    if (node.type === 'ObjectExpression') return node.properties.every(p => p.type === 'Property'
+        && (!p.computed || inert(p.key)) && inert(p.value));
     if (node.type === 'BinaryExpression') return inert(node.left) && inert(node.right);
     return false;
   };
   const constDecls = ast.body.filter(node => node.type === 'VariableDeclaration' && node.kind === 'const');
-  const constsInert = constDecls.every(node => node.declarations.every(d => d.init && inert(d.init)));
+  // Destructuring can evaluate computed keys and default expressions too.
+  const constsInert = constDecls.every(node => node.declarations.every(d =>
+    d.id.type === 'Identifier' && d.init && inert(d.init)));
   if (imports.length + exports.length + constDecls.length !== ast.body.length || exports.length === 0
       || !constsInert
       || initializer?.type !== 'FunctionDeclaration'

@@ -7,7 +7,7 @@ import test from 'node:test';
 // 源码在 vm 里还原后直调 createEditorState 工厂。
 const STATE_SRC = readFileSync(new URL('../web/editor/state/editor-state.js', import.meta.url), 'utf8');
 const { createEditorState } = (() => {
-  const context = { window: {}, module_exports: fns => fns };
+  const context = { window: {} };
   const stripped = STATE_SRC
     .replace(/^import .*$/gm, '')
     .replace(/^export function/gm, 'function');

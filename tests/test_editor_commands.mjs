@@ -9,7 +9,7 @@ const COMMANDS_SRC = readFileSync(new URL('../web/editor/state/editor-commands.j
 const VIEWS_SRC = readFileSync(new URL('../web/editor/state/editor-view-updates.js', import.meta.url), 'utf8');
 
 function moduleExports(source, names) {
-  const context = { window: {}, module_exports: objs => objs };
+  const context = { window: {} };
   const stripped = source
     .replace(/^import .*$/gm, '')
     .replace(/^export function/gm, 'function');
