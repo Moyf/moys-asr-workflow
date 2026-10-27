@@ -7,7 +7,7 @@
 
 function getOverlayTrack() {
   MaweMultiSubtitleCore.getMultiSubtitleState();
-  return MaweBoot.DATA.overlay_track;
+  return MaweMultiSubtitleCore.getTrackStore().getLegacyOverlayTrack();
 }
 
 function overlayTrackVisible() {

@@ -13,7 +13,7 @@
 
 每份 `.input.json` 对应 `.browser.json` 与 `.python.json`，记录 JSON round-trip 与完整 ASS/SRT 文本。浏览器额外记录副轨、双语、红色 SRT。两条出口是独立基线，不要求彼此相同：Python 基础 ASS 不输出副轨，也不实现浏览器完整排版/MASS/逐句定位。
 
-JS harness 调用当前装配器编译的 editor-utils，以及真实 multi core、timeline、overlay getter、JSON serializer、导出池扩展字段接线；仅 UI 外围（预览外观、工作区、提示）使用固定依赖。ASS 使用固定 Arial、1920×1080 与默认样式；不调用平台字体探测，不作为真实像素证据。JSON 比较忽略对象键顺序，ASS/SRT 则逐字节比较。Python 使用 normalize_project → serialize_mosp 与实际 render_project_ass / render_srt。
+JS harness 调用当前装配器编译的 editor-utils，以及真实 multi core、timeline、overlay getter、JSON serializer、导出池扩展字段接线；仅 UI 外围（预览外观、工作区、提示）使用固定依赖。浏览器 ASS 使用固定 Arial、1920×1080 与默认样式；Python 将默认字体函数固定为采集时的 PingFang SC，保留已冻结文本，避免跨平台默认字体造成假失败；不调用平台字体探测，不作为真实像素证据。JSON 比较忽略对象键顺序，ASS/SRT 则逐字节比较。Python 使用 normalize_project → serialize_mosp 与实际 render_project_ass / render_srt。
 
 旧实现的限制也被冻结：JS normalize/保存重建副轨/overlay 轨元数据，副 cue 的未知字段和 sticker 不经保存白名单，主/overlay 保存时补 items/null 等；Python normalize 对旧工程补 schema/ID。P1 的“保留全部字段”指读取 adapter 零写入、旧出口与 P0 完全一致，不能借机修复旧 serializer 或把旧规范化变化说成无损。适配器往返测试另外验证传入 v1 全部字段不变（包含未知嵌套字段）。
 

@@ -2,6 +2,7 @@
 import copy
 import json
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from maw.project import normalize_project
 from maw.project_io import serialize_mosp
@@ -12,9 +13,10 @@ FIXTURES = Path(__file__).parent / 'fixtures' / 'track-access'
 
 def python_outputs(project):
     normalized = normalize_project(project)
-    return dict(project=json.loads(serialize_mosp(normalized)),
-                ass=render_project_ass(normalized, title='track-golden', play_resolution=(1920,1080)),
-                srt=render_srt(normalized))
+    # Freeze the captured platform default, not the host's installed fonts.
+    with patch('maw.project_ass_export.default_ass_font_name', return_value='PingFang SC'):
+        ass = render_project_ass(normalized, title='track-golden', play_resolution=(1920,1080))
+    return dict(project=json.loads(serialize_mosp(normalized)), ass=ass, srt=render_srt(normalized))
 
 class TrackGoldenTests(unittest.TestCase):
     def test_v1_python_outputs_and_reopening(self):

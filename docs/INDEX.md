@@ -215,3 +215,7 @@
 当前功能记录：[单句放大出现设计账本](logs/release1.9.0-beta.3/261020_每句放大出现/SENTENCE_POP_IN.md) · [主字幕单句缩放进度账本](logs/release1.9.0-beta.2/ASS_CUE_SCALE.md) · [人工核对清单](logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)
 
 反馈账本中的“已修复”只对应其记录的版本和验证范围。发布变化见 [CHANGELOG](../CHANGELOG.md)。
+
+### v1 轨道只读访问协议
+
+[TrackStore 与 CueRef（P1）](engineering/TRACK_ACCESS.md)：旧容器引用、运行时身份与兼容 getter；不改变 v1 落盘。

@@ -23,6 +23,8 @@
   const MULTI_SUBTITLE_TOGGLE_TITLE = '开启后显示副字幕轨，可手动添加或导入第二条字幕。';
 
 
+  const projectTracks = new window.AsrEditorUtils.LegacyProjectAdapter(() => MaweBoot.DATA);
+
   let normalizedMultiSubtitleReference = null;
 
 
@@ -53,9 +55,14 @@
 
 
 
+  // Pure reads use the current tree. Legacy getters retain their load boundary.
+  function getTrackStore() {
+    return projectTracks;
+  }
+
   function getExtensionTrack(trackId = null) {
-    const multi = getMultiSubtitleState();
-    return (multi.tracks || []).find((track) => !trackId || track.id === trackId) || null;
+    getMultiSubtitleState();
+    return getTrackStore().getLegacyExtensionTrack(trackId);
   }
 
 
@@ -650,6 +657,7 @@
     normalizeMultiSubtitleState,
     getMultiSubtitleState,
     ensureEmptyExtensionTrack,
+    getTrackStore,
     getExtensionTrack,
     getActiveExtensionTrack,
     multiSubtitleVisible,
