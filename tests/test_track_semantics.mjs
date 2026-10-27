@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
-import { readFixture } from './helpers/track-golden.mjs';
+import { readFixture, createProjectHarness, initializeStickerOverlay } from './helpers/track-golden.mjs';
 const load = (context, file) => vm.runInNewContext(fs.readFileSync(new URL(`../web/${file}`, import.meta.url), 'utf8'), context);
 
 test('P0 Z/X target is main/secondary only; overlay pointer still falls back to main', () => {
@@ -28,15 +28,15 @@ function element() {
       toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); } } };
 }
 test('P0 overlay text switch does not gate stickers; preview and burn share both sticker switches', () => {
-  const data = readFixture('color-sticker-groups');
-  const context = { window: {}, activeStickerHasOverlay: false, document: { createElement: element }, MaweBoot: { DATA: data },
-    getOverlayTrack: () => data.overlay_track,
+  const { context } = createProjectHarness(readFixture('color-sticker-groups'));
+  Object.assign(context, {
+    document: { createElement: element },
+    MaweStickerPreviewWiring: { activeStickerHasOverlay: false },
     MaweDom: { stickerOverlayToggle: { checked: true } },
     MaweSettings: { EDITOR_SETTINGS: { stickersEnabled: true } },
     MaweSelection: { stickerUrl: sticker => sticker.rel },
-  };
-  Object.assign(context.window, context);
-  load(context, 'editor/media/editor-sticker-overlay.js');
+  });
+  initializeStickerOverlay(context);
   context.window.MaweStickerOverlay.renderStickerOverlay(500);
   const api = context.window.MaweStickerOverlay;
   assert.equal(api.stickerOverlayContent.childElementCount, 2, 'closed overlay text still supplies its sticker');

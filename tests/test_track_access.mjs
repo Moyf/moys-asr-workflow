@@ -103,14 +103,14 @@ test('production legacy getters proxy the same live project objects after load/r
   assert.deepEqual(plain(data), beforeReads, 'pure accessor never normalizes/creates legacy state');
   assert.equal(legacy.getActiveExtensionTrack(), data.multi_subtitle.tracks[0]);
   assert.equal(legacy.getExtensionTrack('translation'), store.getTrack('secondary:translation').source);
-  assert.equal(context.getOverlayTrack(), store.getTrack('overlay').source);
+  assert.equal(context.MAWE.resolve('overlay-track').getOverlayTrack(), store.getTrack('overlay').source);
   assert.equal(store.getSegments('main'), data.segments);
   context.MaweBoot.DATA = readFixture('unbound-secondary');
   const restored = legacy.getExtensionTrack('translation');
   assert.equal(legacy.getTrackStore(), store);
   assert.equal(restored, store.getTrack('secondary:translation').source);
   assert.equal(store.getSegments('main'), context.MaweBoot.DATA.segments);
-  assert.equal(context.getOverlayTrack(), context.MaweBoot.DATA.overlay_track);
+  assert.equal(context.MAWE.resolve('overlay-track').getOverlayTrack(), context.MaweBoot.DATA.overlay_track);
 });
 
 
@@ -123,4 +123,28 @@ test('JS and Python share the same explicit v1 track enumeration contract', () =
       legacy_id: track.legacyId, enabled: track.enabled, segment_ids: track.segments.map(s => s.id ?? null) }));
     assert.deepEqual(plain(actual), expected, name);
   }
+});
+
+test('ESM overlay getter and TrackStore follow lazy normalization and container replacement', () => {
+  const { data, context } = createProjectHarness(readFixture('three-tracks'));
+  const core = context.MaweMultiSubtitleCore;
+  const store = core.getTrackStore();
+  const overlay = context.MAWE.resolve('overlay-track');
+  const ref = { track_id: 'overlay', segment_id: 'replacement' };
+  data.multi_subtitle = structuredClone(data.multi_subtitle); // invalidate the legacy normalization guard
+  const incoming = { enabled: false, segments: [{ id: ref.segment_id, start: 0, end: 1000, text: 'replacement' }] };
+  data.overlay_track = incoming;
+  const beforeReads = plain(data);
+  assert.equal(store.getTrack('overlay').source, incoming);
+  assert.deepEqual(plain(data), beforeReads, 'adapter reads leave legacy normalization to the load/getter boundary');
+  const normalized = overlay.getOverlayTrack();
+  assert.notEqual(normalized, incoming, 'existing normalization replaces the overlay container');
+  assert.equal(normalized, data.overlay_track);
+  assert.equal(store.getTrack('overlay').source, normalized);
+  assert.equal(store.resolve(ref).segment, normalized.segments[0]);
+  assert.equal(store.resolve({ track_id: 'overlay', segment_id: 'shared' }), null);
+  data.overlay_track = incoming; // same project, already-normalized multi state
+  assert.equal(overlay.getOverlayTrack(), incoming);
+  assert.equal(store.getSegments('overlay'), incoming.segments);
+  assert.equal(store.resolve(ref).segment, incoming.segments[0]);
 });
