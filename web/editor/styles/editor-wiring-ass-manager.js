@@ -750,3 +750,12 @@ assInlineTextToggles.forEach((input) => {
     MawePlaybackLoop.refreshSubtitlePreview();
   });
 });
+// G07：init 化的 UI 模块经 window 延迟取用本文件的
+// 运行时入口；classic 调用方不受影响。
+window.MaweAssManagerWiring = window.MaweAssManagerWiring || Object.freeze({
+  syncAssModeDependentControls,
+  syncAssStyleManager,
+  syncAssModeControl,
+  updateAssStyleLibraryStatus,
+  updateAssStylePreviewModeHints,
+});

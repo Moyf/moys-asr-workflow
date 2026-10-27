@@ -304,7 +304,7 @@
       MaweDom.saveProjectAsButton.title = '另存为工程文件（Ctrl(Cmd)+Shift+S）';
     }
     MaweStickerOtioExport.syncStickerOtioExportMode();
-    syncProjectBackupControls();
+    window.MaweExportContext.syncProjectBackupControls();
   }
 
 

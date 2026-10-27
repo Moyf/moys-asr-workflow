@@ -741,6 +741,7 @@
     '选中的副字幕已经与各自主字幕时间范围一致': 'The selected secondary subtitles already match their main-subtitle ranges',
     '拆分后两侧都必须至少保留 100ms，已取消': 'A split must leave at least 100 ms on both sides; cancelled',
     '当前切点会产生不足 100ms 的一侧；请再次按 B 或 Enter 强制拆分，切点将调整为两侧各至少 100ms': 'The current cut would leave one side shorter than 100 ms; press B or Enter again to force the split, moving the cut so both sides are at least 100 ms',
+    '当前切点会产生不足 100ms 的一侧；请再次按 B 强制拆分，切点将调整为两侧各至少 100ms': 'The current cut would leave one side shorter than 100 ms; press B again to force the split, moving the cut so both sides are at least 100 ms',
     '字幕总时长不足 200ms，无法让拆分后的两侧都达到 100ms': 'The subtitle is shorter than 200 ms, so both split sides cannot be at least 100 ms',
     '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件': 'The current server has no bound project; export a .mosp file and reopen it',
     '重叠的主字幕已有绑定，请点击主字幕后替换绑定；按 Esc 取消': 'The overlapping main subtitle is already bound; click a main subtitle to replace it, or press Esc to cancel',
@@ -856,6 +857,10 @@
     '\\fad': '\\fad', '淡入淡出': 'Fade in/out', '淡入': 'Fade in', '淡出': 'Fade out', '最常用的整句淡入淡出，预览和导出均支持。': 'The common whole-cue fade; supported in preview and export.',
     '\\fade': '\\fade', '复杂淡入淡出': 'Complex fade', '启用': 'Enable', '\\move': '\\move', '位移': 'Movement', '\\t': '\\t', '变换': 'Transform',
     '开始': 'Start', '结束': 'End', '加速度': 'Acceleration', 'ASS 标签（不含大括号）': 'ASS tags (without braces)',
+    '起点倍率': 'Start scale', '入场': 'Entrance',
+    '文字从起点倍率缩小落定到正常字号。句级': 'Text shrinks from the start scale to its normal size. Sentence-level',
+    '{{文字}}': '{{text}}',
+    '标记复用这组参数（不受上方开关影响）；开关只控制每句自动应用。': 'markers reuse these settings regardless of the toggle above; the toggle only controls automatic application to every cue.',
     '自定义 ASS 标签（不含大括号）': 'Custom ASS tags (without braces)', '进阶动画': 'Advanced animations',
     '例如 \\fs36\\bord4；不要填写大括号': 'Example: \\fs36\\bord4; do not include braces',
     '支持任意 ASS 标签导出；浏览器预览会尽量模拟常见的字号、缩放、旋转、颜色和描边变换。': 'Any ASS tags can be exported; browser preview approximates common size, scale, rotation, color, and outline transforms.',
@@ -1379,6 +1384,8 @@
     '选择播放器画面内主字幕预览的颜色': 'Choose the color of the main subtitle preview in the player',
     '调整播放器画面内副字幕预览的背景色': 'Adjust the secondary subtitle preview background color in the player',
     '选择播放器画面内副字幕预览的颜色': 'Choose the color of the secondary subtitle preview in the player',
+    '打开工程设置的时间与语言页': 'Open Time & language in project settings',
+    '导入媒体 / 字幕 / 歌词': 'Import media / subtitles / lyrics',
     '打开导出设置并定位到说话人名称选项': 'Open Export settings and locate the speaker-name option',
     '开启字幕预览中的说话人名称后默认勾选；导出 SRT 时在字幕前附加对应名称及分隔符，可手动关闭': 'Checked by default when speaker names are enabled in the subtitle preview; add the matching name and separator before each subtitle in exported SRT, and turn it off manually when needed',
     '在播放器预览的字幕前显示颜色对应的说话人名称；只影响预览，不改变字幕文本': 'Show the speaker name for each color before the subtitle in the player preview; preview only, subtitle text is unchanged',
@@ -2046,7 +2053,7 @@
     });
     observer.observe(document.body, {
       childList: true, subtree: true, attributes: true,
-      attributeFilter: ['title', 'placeholder', 'aria-label'],
+      attributeFilter: ['title', 'placeholder', 'aria-label', 'data-title'],
     });
   }
 
