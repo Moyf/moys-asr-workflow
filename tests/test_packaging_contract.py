@@ -776,7 +776,10 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("permissions:\n  contents: read", workflow)
         self.assertNotIn("actions/setup-node@v4", workflow)
         self.assertNotIn("dtolnay/rust-toolchain@stable", workflow)
-        self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", workflow)
+        # PR checkout 恢复默认 merge ref（与 GitHub 选取的 workflow
+        # 文件版本一致，见 checkout 步骤注释）；断言不得再钉住
+        # 显式 ref 行。
+        self.assertNotIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", workflow)
         self.assertIn("uv sync --group build --frozen", workflow)
         self.assertIn("scripts\\build-windows.ps1 -SkipTests", workflow)
         self.assertIn("dist\\MAW\\MAW.exe", workflow)
