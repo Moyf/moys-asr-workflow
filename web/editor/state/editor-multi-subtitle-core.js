@@ -387,7 +387,7 @@
   }
   MaweSelection.lastClickedExtensionIdx = snapshot.lastClickedId
     ? track.segments.findIndex((segment) => segment?.id === snapshot.lastClickedId) : -1;
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
 }
 
 

@@ -56,9 +56,6 @@ const EDITOR_SETTINGS_UTILS = window.AsrEditorUtils;
 
 
 
-// 拆分时「下刀时间 vs 实际切分边界」允许的最大偏差：超过说明字幕文本与
-// 词时间戳已脱钩、切点落在了错误的词边界附近，此时提示而不是静默出错。
-const SPLIT_ALIGNMENT_DRIFT_WARN_MS = 500;
 
 
 

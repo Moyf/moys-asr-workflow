@@ -7,6 +7,16 @@ from tests.compact_assertions import CompactContainerAssertions
 # G04 后这些叶子不再出现在清单里，但仍是 shared/editor-utils.js
 # 的显式 import 与源码契约；源码形态断言需要继续覆盖它们。
 WAVEFORM_RETIRED_UTILS = (
+    # G06 composition 模块
+    "editor/media/editor-thumbnails.js",
+    "editor/media/waveform/thumbnails.js",
+    "editor/media/waveform/media.js",
+    "editor/media/waveform/render.js",
+    "editor/media/waveform/cue-blocks.js",
+    "editor/media/waveform/word-blocks.js",
+    "editor/media/waveform/canvas.js",
+    "editor/media/waveform/input.js",
+
     "shared/utils/data.js",
     "shared/utils/fonts.js",
     "shared/utils/speakers.js",
@@ -1137,7 +1147,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('overlaySegments.some((segment) => segment.sticker || segment.sticker_ref)', source)
         self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', source)
         self.assertIn('rows.sort((a, b) => a.start - b.start || a.order - b.order);', source)
-        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));', source)
+        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: window.MaweCuePanelWiring.buildOverlayCueEl(seg, i) }));', source)
         self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", source)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", source)
@@ -1318,7 +1328,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function isPlaybackKeyboardTarget(event)', source)
         self.assertIn('if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;', source)
         self.assertIn('let interceptedSpace = false;', source)
-        self.assertIn('e.stopImmediatePropagation();', page)
+        self.assertIn('.stopImmediatePropagation();', page)
         self.assertIn('width: 74px; aspect-ratio: 1;', page)
         # 面板行对选中/未选中使用同一套轨道尺寸：高度只随手动拖拽变化，不再因选中跳变
         self.assertIn('minmax(max-content, calc(var(--layout-row-middle)', page)

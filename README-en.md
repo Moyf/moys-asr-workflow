@@ -30,7 +30,7 @@ This overview describes the current **1.10.0 beta** workflow. Check the [release
 
 ## Quick start
 
-Choose the [stable release](https://github.com/Moyf/moys-asr-workflow/releases/latest) for everyday use. To try current features, choose [v1.10.0-beta.1](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.10.0-beta.1) and keep project backups.
+Choose the [stable release](https://github.com/Moyf/moys-asr-workflow/releases/latest) for everyday use. To try current features, choose [v1.10.0-beta.2](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.10.0-beta.2) and keep project backups.
 
 1. **Download a package:** choose your system and architecture from the selected release's attachments. The full MAW bundle includes FFmpeg/FFprobe; choose MAW-lite if both tools are already installed. Platform availability depends on that release's actual attachments.
 2. **Open the Launcher:** extract the complete directory and run `MAW.exe` on Windows, open `MAW.app` on macOS, or grant execution permission to the Linux `.AppImage` and launch it. See the [FAQ](docs/INDEX.md#user-faq) for startup issues.

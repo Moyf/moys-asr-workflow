@@ -21,9 +21,12 @@ jobs:
 
     steps:
       - name: Check out repository
+        # 默认 checkout pull_request 事件的 merge commit，与 GitHub 选取的
+        # workflow 文件版本（同样来自 merge ref）保持一致；checkout PR 头
+        # commit 会在 PR 落后 main 时出现「workflow 要求的依赖组在旧
+        # pyproject 里不存在」的错位（2026-10-24 Group `test` 事故）。
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Python
@@ -35,13 +38,14 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.13.4"
           enable-cache: true
 
       - name: Verify Launcher version
         run: python scripts/sync_launcher_version.py --check
 
       - name: Install locked dependencies
-        run: uv sync --group build --frozen
+        run: uv sync --group build --frozen --group test
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -51,13 +55,16 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Build web bundles
         # bundle 是构建产物（不入库）：Python 全量测试与打包都会读取，在测试前
         # 显式构建（pnpm install 的 postinstall 也会构建，这里保持显式不依赖钩子）。
         run: pnpm install --frozen-lockfile && pnpm run build
+
+      - name: Install Chromium for focused regression tests
+        run: pnpm exec playwright install chromium
 
       - name: Install FFmpeg for media integration tests
         shell: pwsh
@@ -114,8 +121,88 @@ jobs:
       - name: Run packaging contract tests
         run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_packaging_contract.py
 
+      - name: Run editor display regression tests
+        env:
+          MAW_E2E_PYTHON: '${{ github.workspace }}/.venv/Scripts/python.exe'
+          PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/editor-display-results.json
+        run: uv run --no-sync python scripts/run_check.py --timeout 540 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium --workers=1 --retries=0 --forbid-only --reporter=line,json tests/e2e/ass-stacking-boundaries.spec.mjs tests/e2e/editor-i18n-save.spec.mjs tests/e2e/shared-tooltip.spec.mjs
+
+      - name: Require complete display regression results
+        shell: pwsh
+        run: |
+          uv run --no-sync python -c @'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('.artifacts/editor-display-results.json').read_text(encoding='utf-8'))
+          stats = report['stats']
+          assert stats['expected'] > 0, 'No display tests passed'
+          assert all(stats[key] == 0 for key in ('skipped', 'unexpected', 'flaky')), stats
+          assert not report.get('errors'), report.get('errors')
+
+          def test_results(suites):
+              for suite in suites:
+                  for spec in suite.get('specs', []):
+                      yield from spec['tests']
+                  yield from test_results(suite.get('suites', []))
+
+          tests = list(test_results(report['suites']))
+          assert tests and stats['expected'] == len(tests), 'Incomplete display report'
+          for test in tests:
+              assert test['expectedStatus'] == 'passed' and test['status'] == 'expected', test
+              results = test['results']
+              assert len(results) == 1 and results[0]['status'] == 'passed' and results[0]['retry'] == 0, test
+          print(f'Display regression report: {len(tests)} passed, zero skips or retries')
+          '@
+          if ($LASTEXITCODE -ne 0) { throw 'Display regression report is incomplete or contains unsupported outcomes.' }
+
+      - name: Preserve editor display regression evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-preview-editor-display
+          path: |
+            .artifacts/editor-display-results.json
+            test-results/
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
+
       - name: Run Python tests
-        run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py
+        run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py --report .artifacts/windows-python.json
+
+      - name: Require cache coverage from the same Python run
+        shell: pwsh
+        run: |
+          @'
+          # windows-cache-report-check
+          import json
+          import re
+          from pathlib import Path
+          report = json.loads(Path('.artifacts/windows-python.json').read_text(encoding='utf-8'))
+          selected = [item.removeprefix('tests.') for item in report['selected_ids']]
+          modules = ('test_thumbnail_cache', 'test_thumbnail_jobs_integration', 'test_thumbnail_server', 'test_reapeaks_fixture')
+          assert selected and len(set(selected)) == len(selected) and 0 < report['run'] <= len(selected), 'Python discovery did not run a valid selected collection'
+          assert report['exit_code'] == 0 and all(report[key] == 0 for key in ('failures', 'errors', 'expected_failures', 'unexpected_successes')), 'Python results contain unverified outcomes'
+          assert all(any(item.startswith(module + '.') for item in selected) for module in modules), 'A cache test module was omitted'
+          assert 'test_thumbnail_cache.ThumbnailCacheTests.test_symlink_registration_matches_resolved_source_namespace' in selected, 'Resolved-source namespace case was omitted'
+          assert all('test_reapeaks_fixture.GeneratedFixtureTests.test_' + source + '_generated_matches_fixture' in selected for source in ('tone30', 'tone_dual', 'tone_48k')), 'A real REAPER generation case was omitted'
+          assert not any(re.search(r'(?<!\w)(?:' + '|'.join(map(re.escape, modules)) + r')(?!\w)', skip['id']) for skip in report['skips']), 'A cache case was skipped on Windows'
+          print('All four cache modules executed in the full Windows run without skips')
+          '@ | uv run --no-sync python -
+          if ($LASTEXITCODE -ne 0) { throw 'Windows cache coverage was not verified.' }
+
+      - name: Preserve complete Python report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-preview-python-report
+          path: |
+            .artifacts/windows-python.json
+            .artifacts/windows-python.log
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Preserve failed Python check evidence
         if: failure()
@@ -123,6 +210,65 @@ jobs:
         with:
           name: windows-preview-python-checks
           path: .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
+
+      - name: Required media failure compatibility
+        run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_media.py tests/test_ffmpeg.py tests/test_ffprobe_failure_integration.py --required --report .artifacts/media-required.json
+      - name: Preserve media required report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: media-required-${{ runner.os }}
+          path: |
+            .artifacts/media-required.json
+            .artifacts/media-required.log
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
+
+
+      - name: Launcher readiness and real cancellation
+        env:
+          MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/Scripts/python.exe
+          PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/launcher-readiness.json
+        shell: pwsh
+        run: |
+          $launcherTestArgs = @(
+            '--config=tests/config/playwright.config.mjs', '--project=chromium',
+            '--workers=1', '--retries=0', '--forbid-only', '--reporter=json',
+            'tests/e2e/launcher-interactions.spec.mjs',
+            'tests/e2e/launcher-zoom.spec.mjs',
+            'tests/e2e/launcher-script-match-cancel.spec.mjs',
+            '--grep', 'cloud ASR models show provider-specific price hints|Launcher theme choice remains selected after reload|ordinary (plain|timed) matching stops real computation without outputs and restarts'
+          )
+          uv run --no-sync python scripts/run_check.py --timeout 240 -- node node_modules/@playwright/test/cli.js test @launcherTestArgs
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher regression tests failed.' }
+          @'
+          # windows-launcher-report-check
+          import json
+          from pathlib import Path
+          report = json.loads(Path('.artifacts/launcher-readiness.json').read_text(encoding='utf-8'))
+          def cases(suite):
+              for spec in suite.get('specs', []):
+                  yield from spec['tests']
+              for child in suite.get('suites', []):
+                  yield from cases(child)
+          selected = list(cases(report))
+          assert report['stats']['expected'] == 4 and all(report['stats'][key] == 0 for key in ('skipped', 'unexpected', 'flaky')), 'Launcher regression summary is incomplete'
+          assert len(selected) == 4 and all(test['expectedStatus'] == 'passed' and test['status'] == 'expected' and len(test['results']) == 1 and test['results'][0]['status'] == 'passed' and test['results'][0]['retry'] == 0 for test in selected), 'A Launcher regression did not pass its first attempt'
+          print('All four Launcher regressions passed without skips, expected failures, or retries')
+          '@ | uv run --no-sync python -
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher regression coverage was not verified.' }
+      - name: Preserve Launcher readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-launcher-readiness
+          path: |
+            .artifacts/launcher-readiness.json
+            .artifacts/checks/
+            test-results/
           include-hidden-files: true
           retention-days: 7
 

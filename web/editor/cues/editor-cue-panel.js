@@ -1,3 +1,8 @@
+import { getOverlayTrack, overlayTrackVisible } from './overlay-track.js';
+
+export function initMaweCuePanel() {
+'use strict';
+
 // 当前字幕面板：renderAll 协调、目标切换与时间/items 重映射。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweCuePanel 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -10,9 +15,9 @@
   // === 渲染 ===
   function renderAll({ waveform = 'overlay', preserveCueListScroll = true, cueListAnchor } = {}) {
   // 旧工程或新增字幕也必须在生成 DOM 前拥有唯一身份；复用工程既有规范化规则。
-  MULTI_SUBTITLE_UTILS.ensureStableSegmentIds(MaweBoot.DATA.segments, 'main');
+  window.AsrEditorUtils.ensureStableSegmentIds(MaweBoot.DATA.segments, 'main');
   (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).forEach(track => {
-    MULTI_SUBTITLE_UTILS.ensureStableSegmentIds(track.segments, `${track.id}-segment`);
+    window.AsrEditorUtils.ensureStableSegmentIds(track.segments, `${track.id}-segment`);
   });
   // 其它编辑入口仍以毫秒修改工程对象；在重绘前把它们投影回当前时间基准，
   // 保证帧模式下保存的数据和下一次帧操作保持一致。
@@ -48,7 +53,7 @@
     track.segments.forEach((seg, i) => rows.push({ start: seg.start, order: 0, el: MaweCueElements.buildExtensionCueEl(seg, i, track) }));
   } else {
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    const displayRows = MULTI_SUBTITLE_UTILS.buildMultiDisplayRows(MaweBoot.DATA.segments, track.segments, MaweMultiSubtitleCore.getMultiSubtitleState().bindings);
+    const displayRows = window.AsrEditorUtils.buildMultiDisplayRows(MaweBoot.DATA.segments, track.segments, MaweMultiSubtitleCore.getMultiSubtitleState().bindings);
     displayRows.forEach((row) => {
       const mainSeg = row.mainIndex == null ? null : MaweBoot.DATA.segments[row.mainIndex];
       const extensionSeg = row.extensionIndex == null ? null : track.segments[row.extensionIndex];
@@ -59,7 +64,7 @@
       });
     });
   }
-  overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));
+  overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: window.MaweCuePanelWiring.buildOverlayCueEl(seg, i) }));
   rows.sort((a, b) => a.start - b.start || a.order - b.order);
   rows.forEach((row) => cueFragment.appendChild(row.el));
   MaweCoreState.container.appendChild(cueFragment);
@@ -578,7 +583,7 @@
     commitCuePanelEdit();
     const cursorOffset = MaweDom.cuePanelText.selectionStart;
     const splitTime = MaweSplitCore.splitTimeForTextOffset(target.segment, cursorOffset);
-    openOverlaySplitModal(target.index, splitTime);
+    window.MaweOverlaySplitMerge.openOverlaySplitModal(target.index, splitTime);
     return;
   }
   if (target.kind === 'extension') {
@@ -723,3 +728,4 @@
     splitCuePanelAtCursor
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

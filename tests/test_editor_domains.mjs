@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { createWaveformModule as createWaveformMedia } from '../web/editor/media/waveform/media.js';
 
 function waveformContext() {
   const context = { window: { ASR_EDITOR_PALETTE: [{ name: 'yellow', value: '#123456' }] } };
@@ -41,7 +42,9 @@ test('utility consumers preserve a custom runtime method receiver and observe it
 
 test('waveform composition preserves getter and non-enumerable class method descriptors', () => {
   const context = waveformContext();
-  const media = context.window.MAWE.resolve('waveform-media', {});
+  // G06 后注册表条目退役：media 描述符契约直接对
+  // 工厂实例核对；playback 仍走注册表（G05 叶子）。
+  const media = createWaveformMedia({});
   const playback = context.window.MAWE.resolve('waveform-playback', {});
   assert.equal(media.durationMs.enumerable, false);
   assert.equal(media.durationMs.configurable, true);

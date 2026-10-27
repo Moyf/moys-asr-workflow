@@ -35,14 +35,23 @@ interface ProjectSegmentItem {
 }
 
 interface AssCueOverride { pos?: { x: number; y: number }; scale?: number; }
+/** 运行时颜色标记：head 持完整 color，成员持 color_ref（仅 name + headIdx）。 */
+interface ProjectColorMark { name: string; value?: string | null; start?: number; end?: number; }
+interface ProjectGroupRef { name: string; headIdx: number; }
 interface ProjectSegment {
+  id?: string;
   start: Milliseconds;
   end: Milliseconds;
   text: string;
   disabled?: boolean;
   speaker?: string;
   assOverride?: AssCueOverride;
-  color?: string;
+  color?: string | ProjectColorMark;
+  color_ref?: ProjectGroupRef | null;
+  sticker?: unknown;
+  sticker_ref?: ProjectGroupRef | null;
+  /** 运行时脏标记：保存前清点修改过的段，不进工程 JSON。 */
+  _dirty?: boolean;
   items?: ProjectSegmentItem[];
 }
 
@@ -58,6 +67,15 @@ interface ProjectMediaMetadata {
 interface ProjectWaveformInfo {
   duration_ms?: number;
   [key: string]: unknown;
+}
+
+/** 叠加轨：与主轨同构的独立段列表（JSON_SCHEMA.md overlay_track）。 */
+interface ProjectOverlayTrack {
+  id?: string;
+  enabled?: boolean;
+  segments?: ProjectSegment[];
+  /** 运行时脏标记，不进工程 JSON。 */
+  _dirty?: boolean;
 }
 
 interface ProjectData {
@@ -79,7 +97,7 @@ interface ProjectData {
   script_alignment?: unknown;
   workspace?: unknown;
   preview?: Record<string, unknown>;
-  overlay_track?: unknown;
+  overlay_track?: ProjectOverlayTrack;
   multi_subtitle?: unknown;
 }
 
@@ -156,10 +174,34 @@ declare const MaweTimeline: any;
 declare const MaweColors: any;
 declare const MaweDom: any;
 declare const MaweMultiSubtitleCore: any;
+declare const MaweSegmentOps: any;
+declare const MaweSelection: any;
+declare const MaweContextMenus: any;
+declare const MaweColorFilter: any;
+declare const MaweCuePanelState: any;
 declare const ASS_STYLE_LIBRARY: any;
 declare const mergedExportSegments: any;
 declare const aiCleanupExportSegments: any;
 declare const activeExtensionSegments: any;
+
+// G07 领域门面（init 化接线文件挂载，window 与裸名同源）；契约仍以 any
+// 占位，升级方式同上。
+interface Window {
+  MaweExportContext: any;
+  MaweCuePanelWiring: any;
+  MaweOverlaySplitMerge: any;
+  MaweAssStorageWiring: any;
+  MaweAssManagerWiring: any;
+  MaweKeyboardGuards: any;
+  MaweStickerPreviewWiring: any;
+  MaweInitialConfigWiring: any;
+  MaweAssPreview: any;
+  MaweGapRemovedMediaExport: any;
+  MaweDomPanelsWiring: any;
+  MaweContextMenusWiring: any;
+  MaweDisplaySettings: any;
+  MaweContextMenus: any;
+}
 
 interface Window {
   AsrEditorUtils: any;
@@ -265,6 +307,7 @@ interface Window {
   MaweCommands: MaweCommandsApi;
   MaweViewUpdates: typeof MaweViewUpdates;
   MaweMarkerEditing?: { isEditingEnabled(): boolean };
+  MaweAssFrame?: { notifyProjectChanged?(): void };
   webkitAudioContext?: typeof AudioContext;
   AsrGapRemoveCore: {
     projectCleanupRetainedSegments(segments: ProjectSegment[], gapRemove: unknown): ProjectSegment[];
