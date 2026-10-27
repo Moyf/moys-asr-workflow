@@ -779,8 +779,12 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         # checkout 默认 merge ref（与 GitHub 选取的 workflow 文件版本一致）；
         # 显式 checkout PR 头 commit 会在 PR 落后 main 时错配 workflow 与
         # 被测代码（2026-10-24 Group `test` 事故，2026-10-26 改回默认）。
-        self.assertNotIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", workflow)
-        self.assertNotIn("ref: ${{ github.event.pull_request.head.sha }}", workflow)
+        checkout_steps = [
+            step for step in re.split(r"(?m)^      - ", workflow)
+            if re.search(r"(?m)^\s*uses:\s*actions/checkout@", step)
+        ]
+        self.assertTrue(checkout_steps, "PR preview workflow must check out the repository")
+        self.assertNotRegex(checkout_steps[0], r"(?m)^\s*ref\s*:")
         self.assertIn("uv sync --group build --frozen", workflow)
         self.assertIn("scripts\\build-windows.ps1 -SkipTests", workflow)
         self.assertIn("dist\\MAW\\MAW.exe", workflow)

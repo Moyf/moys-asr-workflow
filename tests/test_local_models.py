@@ -423,6 +423,58 @@ class ExplicitDirectoryStructureTests(unittest.TestCase):
         self.assertTrue(status.installed)
         self.assertEqual(Path(status.path).resolve(), complete.resolve())
 
+    def test_explicit_snapshot_validation_skips_broken_weightless_revision(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            complete = Path(temp_dir) / "snapshots" / "older"
+            incomplete = Path(temp_dir) / "snapshots" / "newer"
+            complete.mkdir(parents=True)
+            incomplete.mkdir(parents=True)
+            (complete / "config.json").write_text(json.dumps({"model_type": "whisper"}), encoding="utf-8")
+            (complete / "model.bin").write_bytes(b"weights")
+            (incomplete / "config.json").write_text("{incomplete", encoding="utf-8")
+            os.utime(complete, (1000, 1000))
+            os.utime(incomplete, (2000, 2000))
+            status = self.inspect("whisper-large-v3-local", temp_dir)
+
+        self.assertEqual(status.status, "installed")
+        self.assertEqual(Path(status.path).resolve(), complete.resolve())
+
+    def test_explicit_snapshot_validates_the_revision_with_weights(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            complete = Path(temp_dir) / "snapshots" / "older"
+            incomplete = Path(temp_dir) / "snapshots" / "newer"
+            complete.mkdir(parents=True)
+            incomplete.mkdir(parents=True)
+            (complete / "config.json").write_text(json.dumps({"model_type": "qwen3_asr"}), encoding="utf-8")
+            (complete / "model.bin").write_bytes(b"weights")
+            (incomplete / "config.json").write_text(json.dumps({"model_type": "whisper"}), encoding="utf-8")
+            os.utime(complete, (1000, 1000))
+            os.utime(incomplete, (2000, 2000))
+            status = self.inspect("whisper-large-v3-local", temp_dir)
+
+        self.assertEqual(status.status, "path_invalid")
+        self.assertFalse(status.installed)
+        self.assertIn("不匹配", status.detail)
+
+    def test_explicit_funasr_snapshot_validates_the_revision_with_weights(self) -> None:
+        yaml_module = mock.Mock()
+        yaml_module.safe_load.return_value = {"framework": "Pytorch"}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            complete = Path(temp_dir) / "snapshots" / "older"
+            incomplete = Path(temp_dir) / "snapshots" / "newer"
+            complete.mkdir(parents=True)
+            incomplete.mkdir(parents=True)
+            (complete / "configuration.json").write_text("{}", encoding="utf-8")
+            (complete / "model.pt").write_bytes(b"weights")
+            (incomplete / "config.yaml").write_text("framework: Pytorch\n", encoding="utf-8")
+            os.utime(complete, (1000, 1000))
+            os.utime(incomplete, (2000, 2000))
+            with mock.patch.dict("sys.modules", {"yaml": yaml_module}):
+                status = self.inspect("sensevoice-small-local", temp_dir)
+
+        self.assertEqual(status.status, "installed")
+        self.assertEqual(Path(status.path).resolve(), complete.resolve())
+
     def test_explicit_weightless_snapshots_are_rejected(self) -> None:
         """所有候选修订都缺权重时不返回假 installed：仓库根的杂散权重
         让权重探测通过，但没有任何「配置 + 权重」同层的目录可交给

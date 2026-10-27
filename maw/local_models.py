@@ -179,24 +179,6 @@ def inspect_local_model(
             valid = True
         else:
             valid = _model_directory_has_file(explicit, require_weight=True)
-            if valid:
-                # 权重只是必要条件：runtime 根目录里也有嵌套权重，还要
-                # 认得出引擎标志文件，才算真正的模型目录。
-                structure_error = _explicit_directory_structure_error(model.engine, explicit)
-                if structure_error:
-                    return LocalModelStatus(
-                        model.id,
-                        model.engine,
-                        model.model_ref,
-                        "path_invalid",
-                        True,
-                        False,
-                        str(explicit),
-                        structure_error,
-                        model.required_model_refs,
-                        runtime_source,
-                        runtime_python,
-                    )
         if not valid:
             return LocalModelStatus(
                 model.id,
@@ -212,6 +194,23 @@ def inspect_local_model(
                 runtime_python,
             )
         resolved = _explicit_model_dir_with_marker(model.engine, explicit)
+        # 校验实际会交给加载器的目录，而不是另一个无权重的修订。
+        # 尚无可用候选时仍检查原目录，以保留缺少配置文件的具体提示。
+        structure_error = _explicit_directory_structure_error(model.engine, resolved or explicit)
+        if structure_error:
+            return LocalModelStatus(
+                model.id,
+                model.engine,
+                model.model_ref,
+                "path_invalid",
+                True,
+                False,
+                str(explicit),
+                structure_error,
+                model.required_model_refs,
+                runtime_source,
+                runtime_python,
+            )
         if resolved is None:
             # 权重探测（递归）通过了，但没有任何「配置 + 权重」同层的完整
             # 目录可交给 loader：典型的中断下载残留。宁可报错不给死路径。

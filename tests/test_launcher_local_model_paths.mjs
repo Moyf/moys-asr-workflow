@@ -86,3 +86,64 @@ test('switching back and forth does not leak entries between models', () => {
   assert.equal(state.localModelPaths['qwen3-asr-local'], '/models/qwen3-asr');
   assert.equal(state.localModelPaths['sensevoice-small-local'], undefined);
 });
+
+function clearPathFixture() {
+  const source = readFileSync(new URL('../web/launcher/boot/launcher-notify-backend.js', import.meta.url), 'utf8');
+  const start = source.indexOf('$("clearLocalModelPath").addEventListener');
+  const end = source.indexOf('$("refreshLocalRuntime").addEventListener', start);
+  assert.ok(start >= 0 && end > start, 'clear path event handler must exist');
+  let handler;
+  let finishSave;
+  let selected = MODELS[0];
+  const path = {value: '/models/qwen'};
+  const state = {localModelPaths: {
+    'qwen3-asr-local': '/models/qwen',
+    'sensevoice-small-local': '/models/sensevoice',
+  }};
+  const context = vm.createContext({
+    state,
+    $: id => id === 'clearLocalModelPath' ? {addEventListener: (_event, fn) => { handler = fn; }} : path,
+    selectedModel: () => selected,
+    isLocalProvider: () => true,
+    setError() {}, setStatus() {}, t: key => key,
+    savePrefsNow: () => new Promise(resolve => { finishSave = resolve; }),
+    refreshLocalModels: async () => {},
+  });
+  vm.runInContext(source.slice(start, end), context);
+  return {
+    path, state,
+    clear: () => handler(),
+    failSave: () => finishSave({ok: false}),
+    switchTo(model) { selected = model; path.value = state.localModelPaths[model.id]; },
+  };
+}
+
+test('a failed clear restores the selected model path', async () => {
+  const ui = clearPathFixture();
+  const pending = ui.clear();
+  ui.failSave();
+  await pending;
+  assert.equal(ui.state.localModelPaths['qwen3-asr-local'], '/models/qwen');
+  assert.equal(ui.path.value, '/models/qwen');
+});
+
+test('a failed clear does not overwrite the path of a model selected during saving', async () => {
+  const ui = clearPathFixture();
+  const pending = ui.clear();
+  ui.switchTo(MODELS[1]);
+  ui.failSave();
+  await pending;
+  assert.equal(ui.state.localModelPaths['qwen3-asr-local'], '/models/qwen');
+  assert.equal(ui.path.value, '/models/sensevoice');
+});
+
+test('a failed clear does not overwrite a newer edit to the same model', async () => {
+  const ui = clearPathFixture();
+  const pending = ui.clear();
+  ui.state.localModelPaths['qwen3-asr-local'] = '/models/new-qwen';
+  ui.path.value = '/models/new-qwen';
+  ui.failSave();
+  await pending;
+  assert.equal(ui.state.localModelPaths['qwen3-asr-local'], '/models/new-qwen');
+  assert.equal(ui.path.value, '/models/new-qwen');
+});

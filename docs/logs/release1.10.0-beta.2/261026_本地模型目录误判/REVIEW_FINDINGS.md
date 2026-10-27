@@ -6,11 +6,13 @@
 | --- | --- | --- |
 | major | CHANGELOG 条目被 merge 带进已发布的 `## [1.10.0-beta.2]` 小节（该 tag 已存在、Release notes 不含本修复），下次归档 `[未发布]` 时条目会丢失 | **已修复**：整条移回 `[未发布]` 🐛 修复，并补上仓库根解析的用户可感知描述 |
 | nit | 日志目录与索引行写「1.10.0-beta.1 之后」，与 INDEX 头部 `log-release-baseline: 1.10.0-beta.2` 矛盾（分支早于基线切换开工，merge main 后未跟随） | **已修复**：目录移至 `release1.10.0-beta.2/261026_本地模型目录误判/`，索引行同步 |
-| nit | 「最新修订 config 损坏 + 次新修订完整」时，结构校验按首个含 config 的候选整体拒绝，不像修订解析那样跳过坏修订（maw/local_models.py `_hf_explicit_structure_error` vs `_explicit_model_dir_with_marker`）。后果是保守报错、不会假 installed，仅提示语略不精确，触发条件苛刻 | **接受的风险**：保留保守拒绝方向，不改 |
-| nit | resolved 路径只在「刷新回填输入框」一环到达引擎；refresh 响应落地前点开始，引擎仍拿原始输入值（formPayload 直接读输入框）。与 main 完全对等的旧行为，非本次引入，UI 下窗口期可忽略 | **接受的风险**：不改；如将来出现实际误触发再收口 |
+| 修订校验 | 最新修订缺权重时，结构校验与解析结果可能来自不同修订：既可能误拒绝完整的旧修订，也可能把配置损坏或不匹配的旧修订判为已安装 | **已修复**：先选出有权重的目录，再校验该目录；HF 和 FunASR 回归覆盖这一错位 |
+| 启动路径 | resolved 路径此前只靠刷新回填输入框到达引擎；刷新完成前开始转写仍会传仓库根目录 | **已修复**：后端预检将显式路径替换为已校验的修订目录，自动发现仍保留原有路径选择行为 |
+| 清除目录 | 保存失败期间若用户切换模型或输入新路径，回滚可能覆盖当前输入 | **已修复**：只回滚尚未被后续编辑改变的条目，并只在仍选中原模型时回填输入框 |
+| 预览契约 | 只排除两种完整字符串时，改变表达式空格仍可显式检出 PR head，测试却会通过 | **已修复**：检查 checkout 步骤是否显式设置 ref；改变空格的旧行为在变异验证中被拒绝 |
 
 复核确认无问题的方面：解析与候选顺序（与结构校验共用 `_config_marker_candidates`，顶层优先、修订 mtime 新→旧、候选须「标志 + 权重」同层，全缺权重返回 None 报 `path_invalid`）；symlink 跟随与 OSError 兜底；firered / 未知引擎回归面（不走标志校验）；`_installed_model_size` 改用 resolved 后统计更准；前端串写修复覆盖全部用户 mutation 路径（键入 / 选目录 / 拖放显式派发 input），程序性填充不更新条目，`save_prefs` 后端剥空条目使清除端到端可恢复；`path_invalid` 状态键与 detail 展示。
 
 双向验证均真实：新增 `ExplicitDirectoryStructureTests` 在 main 代码（导出 main 的 `maw/`+`scripts/` 换入分支测试）上 11 项真实失败；mjs 测试在旧 `launcher-local-models.js` 上 3/3 失败。审查者还用真实上游 config.json 核验关键词匹配（MOSS `moss_transcribe_diarize` ✓、Qwen3 `qwen3_asr` ✓、faster-whisper CT2 config 无 model_type/architectures → 保守放行不误拒）。约定检查：`git diff --check` 干净、无 AI 署名、UTF-8/LF、无个人路径、bundle 未入库、schema 无改动。
 
-CI 备注：PR 的「Preview Windows Release」check 失败为 main 既有问题（`350c3b02` 改 workflow 回默认 merge ref checkout，未同步 `tests/test_packaging_contract.py:779` 断言；在 `350c3b02` 干净 main 工作树上单跑同样失败），与本地模型改动无关，留待 main 侧修正契约测试。内联副本待发布前统一重生成。
+CI 备注：此前「Preview Windows Release」失败源于 `350c3b02` 改回默认 merge ref 后，打包契约测试仍要求旧的显式 ref。当前 PR 已同步该测试；本地修改仍需对应新提交的 CI 验证。内联副本待发布前统一重生成。
