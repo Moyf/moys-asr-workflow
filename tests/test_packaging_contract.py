@@ -776,7 +776,13 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("permissions:\n  contents: read", workflow)
         self.assertNotIn("actions/setup-node@v4", workflow)
         self.assertNotIn("dtolnay/rust-toolchain@stable", workflow)
-        self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", workflow)
+        # Default merge-ref checkout keeps tested code and workflow aligned.
+        checkout_steps = [
+            step for step in re.split(r"(?m)^      - ", workflow)
+            if re.search(r"(?m)^\s*uses:\s*actions/checkout@", step)
+        ]
+        self.assertTrue(checkout_steps, "PR preview workflow must check out the repository")
+        self.assertNotRegex(checkout_steps[0], r"(?m)^\s*ref\s*:")
         self.assertIn("uv sync --group build --frozen", workflow)
         self.assertIn("scripts\\build-windows.ps1 -SkipTests", workflow)
         self.assertIn("dist\\MAW\\MAW.exe", workflow)
@@ -787,7 +793,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("retention-days: 14", workflow)
         self.assertIn("MAW-lite-Windows-x64-pr-", workflow)
         self.assertNotIn(".zip.sha256", workflow)
-        self.assertIn("persist-credentials: false", workflow)
+        self.assertIn("persist-credentials: false", checkout_steps[0])
         self.assertNotIn("MAWxFF", workflow)
         self.assertNotIn("softprops/action-gh-release", workflow)
 
