@@ -776,7 +776,8 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("permissions:\n  contents: read", workflow)
         self.assertNotIn("actions/setup-node@v4", workflow)
         self.assertNotIn("dtolnay/rust-toolchain@stable", workflow)
-        self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", workflow)
+        # Default checkout uses the PR merge ref, matching the workflow version.
+        self.assertIn("uses: actions/checkout@v5\n        with:\n          persist-credentials: false", workflow)
         self.assertIn("uv sync --group build --frozen", workflow)
         self.assertIn("scripts\\build-windows.ps1 -SkipTests", workflow)
         self.assertIn("dist\\MAW\\MAW.exe", workflow)
