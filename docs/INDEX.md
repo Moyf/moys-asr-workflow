@@ -148,6 +148,11 @@
 
 [正式实现、缓存契约、验证与实验历史](engineering/FILMSTRIP_EXPLORATION.md)
 
+<a name="engineering-track-unification"></a>
+### 字幕轨道统一设计调研（2026-10-27）
+
+[当前三容器数据模型证据、统一 Track/Binding 契约提案与 v1→v1.5→v2 分期迁移边界](engineering/research/2026-10-27-track-unification.md)
+
 ## 共享计划
 
 <a name="plan-release-pipeline"></a>
