@@ -14,6 +14,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const manifest = readSources(root), modules = readModules(root);
 const sourceGroups = {
   project: new Set([
+    'editor/state/editor-state.js',
     'editor/state/editor-multi-subtitle-core.js',
     'editor/cues/editor-timeline.js',
     'editor/cues/editor-wiring-overlay-transfer.js',
@@ -42,8 +43,6 @@ export function createProjectHarness(input) {
   };
   context.window = context; // Browser window and globalThis share the same live facades.
   loadEditorModule(context, 'shared/editor-utils.js');
-  vm.runInNewContext(fs.readFileSync(path.join(root, 'web/editor/state/editor-state.js'), 'utf8'), context,
-    { filename: 'editor-state.js' });
   const h = context.window.AsrEditorUtils;
   h.normalizeMultiSubtitleProject(data);
   h.migrateSubtitleGroups(data);

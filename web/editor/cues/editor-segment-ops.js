@@ -8,6 +8,11 @@
 
 
   // === 合并 ===
+  function clearInconsistentSpeaker(merged, sources) {
+    const speaker = sources[0].speaker;
+    if (speaker == null || sources.some(segment => segment.speaker !== speaker)) delete merged.speaker;
+  }
+
   // 把 DATA.segments 中连续下标 sorted 合并为一条，并维护 group 引用与组时间范围。
   // 不做参数校验、撤销与渲染，由调用方负责（mergeSegments / autoMergeSegments 共用）。
   function mergeContiguousIndices(sorted) {
@@ -44,10 +49,6 @@
     const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
       MaweBoot.DATA.segments, sorted, 'color', 'color_ref',
     );
-    const commonSpeaker = segs[0].speaker != null
-      && segs.every((segment) => segment.speaker === segs[0].speaker)
-      ? segs[0].speaker
-      : null;
     // 拼接后折叠相邻「闭符号+开符号」的同符号对（防止拼出 ** 被误解析为强调），
     // items 层同步裁掉被折叠的符号，保持 items 拼接 == 合并文本。
     const mainJoin = window.AsrEditorUtils.joinSegmentTextsMassFold(
@@ -70,12 +71,11 @@
       sticker_ref: stickerGroup.ref,
       color: colorGroup.head,
       color_ref: colorGroup.ref,
-      ...(commonSpeaker !== null ? { speaker: commonSpeaker } : {}),
       ...(segs[0].assOverride ? { assOverride: window.AsrEditorUtils.normalizeAssOverride(segs[0].assOverride) } : {}),
       disabled: !!segs[0].disabled,  // 合并后取 index=0 的禁用状态
       _dirty: true,
     };
-    if (commonSpeaker === null) delete merged.speaker;
+    clearInconsistentSpeaker(merged, segs);
     if (merged.items.length === 0) merged.items = null;
 
     let mergedExtension = null;
@@ -99,6 +99,7 @@
         text: extensionJoin.text,
         _dirty: true,
       };
+      clearInconsistentSpeaker(mergedExtension, extensionMergeSegments);
       if (extensionMergeSegments.some((segment) => Array.isArray(segment.items))) {
         mergedExtension.items = extensionJoin.items;
       }
@@ -227,6 +228,7 @@
       text: extensionJoin.text,
       _dirty: true,
     };
+    clearInconsistentSpeaker(merged, segments);
     if (segments.some(segment => Array.isArray(segment.items))) merged.items = extensionJoin.items;
     const hadBindings = oldIds.some((id) => window.AsrEditorUtils.bindingForSegment(
       MaweMultiSubtitleCore.getMultiSubtitleState(), id, 'extension', track.id,

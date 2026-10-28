@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
@@ -91,9 +92,8 @@ test('changing only the timed-text view during a save keeps the newer preference
   // Use the content checkpoint owner; markSaved being called no longer means
   // the current bytes match the request's acknowledged snapshot.
   context.window = context;
-  for (const file of ['boot/editor-runtime', 'state/editor-state']) {
-    vm.runInContext(readFileSync(new URL(`../web/editor/${file}.js`, import.meta.url), 'utf8'), context);
-  }
+  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   context.MaweState.beginProjectSession();
   context.MaweState.establishProjectCheckpoint();
   let finish;

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
+import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 const deferred = () => {
   let resolve, reject;
@@ -22,9 +23,9 @@ function fixture() {
   };
   context.window = context;
   vm.createContext(context);
-  for (const file of ['boot/editor-runtime', 'state/editor-state', 'io/editor-project-save']) {
-    vm.runInContext(readFileSync(new URL(`../web/editor/${file}.js`, import.meta.url), 'utf8'), context);
-  }
+  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
+  vm.runInContext(invokedInitModuleSource('editor/io/editor-project-save.js', 'initMaweProjectSave'), context);
   context.MaweState.beginProjectSession();
   context.MaweState.establishProjectCheckpoint();
   context.MaweJsonRepair = { buildJson: () => JSON.stringify(context.MaweState.persistenceSnapshot(data)) };

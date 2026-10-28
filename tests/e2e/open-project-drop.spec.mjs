@@ -101,7 +101,7 @@ test('opening and serializing a project preserves script alignment metadata', as
   expect(serialized.script_alignment).toEqual(scriptAlignment);
 });
 
-test('opening and serializing a legacy project adds v1 and preserves transcription metadata', async ({ page }) => {
+test('opening and serializing a legacy project writes v1.5 and preserves transcription metadata', async ({ page }) => {
   const project = {
     media: '',
     language: 'en',
@@ -122,7 +122,7 @@ test('opening and serializing a legacy project adds v1 and preserves transcripti
   await expect(page.locator('#json-name')).toHaveText('metadata.mosp');
 
   const serialized = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(serialized.schema).toBe('moy.asr.project.v1');
+  expect(serialized.schema).toBe('moy.asr.project.v1.5');
   expect(serialized.language_source).toBe('detected');
   expect(serialized.split_mode).toBe('word');
   expect(serialized.timestamp_granularity).toBe('segment');
