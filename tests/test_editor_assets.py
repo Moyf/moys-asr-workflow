@@ -73,7 +73,6 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/state/editor-commands.js",
                 "editor/boot/editor-host.js",
                 "shared/gap-remove-core.js",
-                "shared/utils/tracks.js",
                 "shared/editor-utils.js",
                 "shared/editor-i18n.js",
                 "shared/tooltip.js",

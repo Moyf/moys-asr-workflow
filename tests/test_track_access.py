@@ -11,7 +11,7 @@ class TrackAccessTests(unittest.TestCase):
     def test_raw_round_trip_and_object_identity_for_all_fixtures(self):
         for path in sorted(FIXTURES.glob('*.input.json')):
             with self.subTest(fixture=path.name):
-                project = json.loads(path.read_text(encoding='utf-8'))
+                project = json.loads(path.read_text())
                 before = copy.deepcopy(project)
                 store = LegacyProjectAdapter(project)
                 self.assertIs(store.project, project)
@@ -33,7 +33,7 @@ class TrackAccessTests(unittest.TestCase):
                 self.assertEqual(python_outputs(store.project), python_outputs(before))
 
     def test_reserved_ids_disabled_tracks_and_live_metadata(self):
-        project = json.loads((FIXTURES / 'three-tracks.input.json').read_text(encoding='utf-8'))
+        project = json.loads((FIXTURES / 'three-tracks.input.json').read_text())
         project['multi_subtitle']['enabled'] = False
         project['overlay_track']['enabled'] = False
         project['multi_subtitle']['tracks'][0]['id'] = 'main'
@@ -53,7 +53,7 @@ class TrackAccessTests(unittest.TestCase):
         self.assertIsNone(store.get_legacy_extension_track('missing'))
 
     def test_resolve_after_reorder_delete_transfer_restore_and_project_switch(self):
-        project = json.loads((FIXTURES / 'three-tracks.input.json').read_text(encoding='utf-8'))
+        project = json.loads((FIXTURES / 'three-tracks.input.json').read_text())
         store = LegacyProjectAdapter(lambda: project)
         ref = dict(track_id='main', segment_id='shared')
         original = project['segments'][0]
@@ -67,14 +67,14 @@ class TrackAccessTests(unittest.TestCase):
         project['segments'] = [dict(original, text='restored object')]
         self.assertIs(store.resolve(ref).segment, project['segments'][0])
         self.assertIsNot(store.resolve(ref).segment, original)
-        project = json.loads((FIXTURES / 'unbound-secondary.input.json').read_text(encoding='utf-8'))
+        project = json.loads((FIXTURES / 'unbound-secondary.input.json').read_text())
         self.assertIsNone(store.resolve(ref))
         self.assertIs(store.get_segments('main'), project['segments'])
         self.assertIs(store.resolve(dict(track_id='secondary:translation', segment_id='unbound')).segment,
                       project['multi_subtitle']['tracks'][0]['segments'][1])
 
     def test_unknown_malformed_and_ambiguous_refs_fail_closed(self):
-        project = json.loads((FIXTURES / 'three-tracks.input.json').read_text(encoding='utf-8'))
+        project = json.loads((FIXTURES / 'three-tracks.input.json').read_text())
         store = LegacyProjectAdapter(project)
         for ref in (None, {}, dict(track_id=1, segment_id='shared'), dict(track_id='main', segment_id=''),
                     dict(track_id='missing', segment_id='shared'), dict(track_id='main', segment_id='missing')):
@@ -87,11 +87,11 @@ class TrackAccessTests(unittest.TestCase):
 
 
     def test_shared_js_python_enumeration_contract(self):
-        contract = json.loads((FIXTURES / 'read-contract.json').read_text(encoding='utf-8'))
+        contract = json.loads((FIXTURES / 'read-contract.json').read_text())
         self.assertEqual(sorted(contract), sorted(path.name.removesuffix('.input.json') for path in FIXTURES.glob('*.input.json')))
         for name, expected in contract.items():
             with self.subTest(fixture=name):
-                store = LegacyProjectAdapter(json.loads((FIXTURES / f'{name}.input.json').read_text(encoding='utf-8')))
+                store = LegacyProjectAdapter(json.loads((FIXTURES / f'{name}.input.json').read_text()))
                 actual = [dict(id=track.id, role=track.role, legacy_id=track.legacy_id,
                                enabled=track.enabled, segment_ids=[s.get('id') for s in track.segments])
                           for track in store.tracks()]

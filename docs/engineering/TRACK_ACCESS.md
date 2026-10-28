@@ -21,7 +21,7 @@ TrackView 是冻结的临时描述，字段为 `id`、`role`、`legacyId`（Pyth
 
 CueRef 用 `{track_id, segment_id}`；resolve 返回 `{track, index, segment}`，未知/缺失/重复轨 ID 或 cue ID 返回 null / None，不选择第一个碰巧匹配的对象、不补 ID。旧无 ID 工程仍由既有加载/normalize 边界补稳定 ID。原始未规范化旧工程可枚举，但没有 ID 的 cue 无法用 CueRef 解析。输入校验继续归 `normalize_project` / 原浏览器加载层，不将读取器当 validator。
 
-编辑器 `MaweMultiSubtitleCore.getTrackStore()` 返回绑定 `() => MaweBoot.DATA` 的同一个访问器，本身无规范化副作用。原 getExtensionTrack / getActiveExtensionTrack 保留懒规范化边界，再通过 adapter 返回原副轨对象；原 getOverlayTrack 在懒规范化后直接返回 DATA.overlay_track，与 adapter 读取的是同一对象。Python 尚无对应现存 getter 需要替换，不迁移任何生产者。
+编辑器 `MaweMultiSubtitleCore.getTrackStore()` 返回绑定 `() => MaweBoot.DATA` 的同一个访问器，本身无规范化副作用。原 getExtensionTrack / getActiveExtensionTrack / getOverlayTrack 保留原来的懒规范化边界，再代理原对象。Python 尚无对应现存 getter 需要替换，不迁移任何生产者。
 
 调用者在重排、删除、转轨、历史恢复或切工程后重新 resolve，不缓存旧 index 或 ResolvedCue。getProject 回调确保访问器不持有旧工程；TrackView 描述只代表当次源容器，保留旧 view 不会跨工程重定向。未采用 cue 索引缓存，避免给 P1 引入 revision/失效协议：枚举仅 O(轨数)，resolve 只扫描目标轨；不接入每帧渲染，不宣称已完成 TrackIndex 性能优化。
 
