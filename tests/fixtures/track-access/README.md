@@ -27,4 +27,6 @@ JS harness 使用当前生产装配器，按 manifest 顺序编译 editor-utils�
 - 表情总开关 stickersEnabled 和“预览表情包”开关共同控制预览与视频烧录；关闭任一个都不显示/烧录。ASS 单帧出口不带 sticker placements，不能据 ASS 单帧判断贴图烧录结果。
 - 主与 overlay 已消费逐句 ASS pos/scale，副轨仅保存元数据，换回主轨可恢复；不把调研旧基线“仅主轨应用”的描述当作本分支预期。
 
-上述关键边界由 `test_track_semantics.mjs` 和 golden 锁定；完整键盘联动、浏览器拖动、像素及视频烧录仍由现有 e2e/人工层验收。
+上述 P0 文字是采集当时的历史证据，不代表后续版本的所有行为。工程 v2 与稳定组整合后，原始 v1 输入、`.browser.json` 和 `.python.json` 均保留；当前浏览器测试对 ASS/SRT 继续比较原快照，并对 `.v2.browser.json` 全量比较保存结果及保存重开稳定性，而不再要求编辑器写出旧 v1 JSON。逐 fixture 的差异审阅见组合整合记录；预览几何仍由测试固定外围依赖，不是实际布局或像素基线。`test_track_v2_integration.mjs` 显式检查跨轨颜色和表情组、重开后的 CueRef、跨轨重名 ID 与绑定迁移。Python v1 输出继续对照原快照。
+
+编辑器现在排除已关闭叠加轨上的贴纸，重新启用后恢复；表情总开关与预览开关仍共同控制预览和烧录。`test_track_semantics.mjs` 检查新版行为，旧行为的描述和快照保留供审查。完整键盘联动、浏览器拖动、像素及视频烧录仍由现有 e2e/人工层验收。

@@ -27,7 +27,7 @@ function element() {
     classList: { contains: name => classes.has(name), remove: name => classes.delete(name),
       toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); } } };
 }
-test('P0 overlay text switch does not gate stickers; preview and burn share both sticker switches', () => {
+test('disabled overlay is excluded from stickers; preview and burn share both sticker switches', () => {
   const { context } = createProjectHarness(readFixture('color-sticker-groups'));
   Object.assign(context, {
     document: { createElement: element },
@@ -39,8 +39,12 @@ test('P0 overlay text switch does not gate stickers; preview and burn share both
   initializeStickerOverlay(context);
   context.window.MaweStickerOverlay.renderStickerOverlay(500);
   const api = context.window.MaweStickerOverlay;
-  assert.equal(api.stickerOverlayContent.childElementCount, 2, 'closed overlay text still supplies its sticker');
-  assert.equal(api.stickerIntervals.length, 4, 'group members retain original head context');
+  assert.equal(api.stickerOverlayContent.childElementCount, 1, 'disabled overlay sticker is excluded');
+  assert.ok(api.stickerIntervals.every(interval => !interval.hasOverlay), 'disabled overlay does not contribute intervals');
+  context.MaweBoot.DATA.overlay_track.enabled = true;
+  api.stickerOverlayDataVersion += 1;
+  api.renderStickerOverlay(500);
+  assert.equal(api.stickerOverlayContent.childElementCount, 2, 're-enabling overlay restores its sticker');
   load(context, 'editor/io/editor-sticker-burn-plan.js');
   const burn = context.window.MaweStickerBurnPlan;
   assert.equal(burn.stickerBurnEnabled(), true);

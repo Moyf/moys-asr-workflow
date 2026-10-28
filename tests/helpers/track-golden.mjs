@@ -34,15 +34,20 @@ export function createProjectHarness(input) {
   const data = structuredClone(input);
   const context = { document: { getElementById: () => null }, MaweBoot: { DATA: data },
     MaweHint: { flashHint() {} }, MaweSettings: { EDITOR_SETTINGS: { assMode: input.preview?.ass_mode === true } },
-    MaweProjectMediaInputs: {}, MaweState: { markProjectDirty() {} },
+    MaweProjectMediaInputs: {},
+    MawePreviewGeometry: { getStickerGeometry: () => input.preview?.sticker || {} },
     MaweAppearance: { getPreviewGeometry: () => ({}), getSubtitleAppearance: () => ({}), getStoredExtensionSubtitleAppearance: () => ({}) },
     MaweSpeakerLabels: { getSpeakerLabelSettings: () => ({}) },
     MaweExportTimeline: { buildCurrentWorkspaceData: () => null },
   };
   context.window = context; // Browser window and globalThis share the same live facades.
   loadEditorModule(context, 'shared/editor-utils.js');
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'web/editor/state/editor-state.js'), 'utf8'), context,
+    { filename: 'editor-state.js' });
   const h = context.window.AsrEditorUtils;
   h.normalizeMultiSubtitleProject(data);
+  h.migrateSubtitleGroups(data);
+  h.refreshSubtitleGroupViews(data);
   context.MULTI_SUBTITLE_UTILS = h;
   loadSources(context, 'project');
   return { data, h, context, save: () => JSON.parse(context.window.MaweJsonRepair.buildJson()) };
