@@ -45,7 +45,8 @@ export function initMaweAddCue() {
     MaweCuePanel.commitCuePanelEdit();
     return MaweCommands.run('新增副字幕', (command) => {
       track.segments.splice(index, 0, {
-        id: window.AsrEditorUtils.uniqueStableSegmentId(track.segments, `${track.id}-${index + 1}`, 'extension'),
+        id: window.AsrEditorUtils.uniqueStableSegmentId(
+          window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `${track.id}-${index + 1}`, 'extension'),
         start: safeStart,
         end: safeEnd,
         text: '',
@@ -110,7 +111,8 @@ export function initMaweAddCue() {
   MaweCuePanel.commitCuePanelEdit();
   return MaweCommands.run('新增字幕', (command) => {
     MaweBoot.DATA.segments.splice(index, 0, {
-      id: window.AsrEditorUtils.uniqueStableSegmentId(MaweBoot.DATA.segments, `main-${index + 1}`, 'main'),
+      id: window.AsrEditorUtils.uniqueStableSegmentId(
+        window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `main-${index + 1}`, 'main'),
       start: safeStart,
       end: safeEnd,
       text: '',
@@ -193,7 +195,7 @@ export function initMaweAddCue() {
     return MaweCommands.run('新增副字幕', (command) => {
       const segment = {
         id: window.AsrEditorUtils.uniqueStableSegmentId(
-          track.segments,
+          window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments),
           `${track.id}-segment-${index + 1}`,
           'extension',
         ),

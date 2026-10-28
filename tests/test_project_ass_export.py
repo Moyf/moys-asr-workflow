@@ -221,7 +221,7 @@ class ProjectAssExportTests(unittest.TestCase):
     def test_load_burn_project_rejects_unsupported_schema(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             path = Path(root) / "future.mosp"
-            for schema in ("moy.asr.project.v2", "moy.asr.project.v99", None):
+            for schema in ("moy.asr.project.v99", None):
                 with self.subTest(schema=schema):
                     project = _basic_project()
                     project["schema"] = schema

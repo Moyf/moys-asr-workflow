@@ -14,6 +14,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const manifest = readSources(root), modules = readModules(root);
 const sourceGroups = {
   project: new Set([
+    'editor/state/editor-state.js',
     'editor/state/editor-multi-subtitle-core.js',
     'editor/cues/editor-timeline.js',
     'editor/cues/editor-wiring-overlay-transfer.js',
@@ -34,7 +35,8 @@ export function createProjectHarness(input) {
   const data = structuredClone(input);
   const context = { document: { getElementById: () => null }, MaweBoot: { DATA: data },
     MaweHint: { flashHint() {} }, MaweSettings: { EDITOR_SETTINGS: { assMode: input.preview?.ass_mode === true } },
-    MaweProjectMediaInputs: {}, MaweState: { markProjectDirty() {} },
+    MaweProjectMediaInputs: {},
+    MawePreviewGeometry: { getStickerGeometry: () => input.preview?.sticker || {} },
     MaweAppearance: { getPreviewGeometry: () => ({}), getSubtitleAppearance: () => ({}), getStoredExtensionSubtitleAppearance: () => ({}) },
     MaweSpeakerLabels: { getSpeakerLabelSettings: () => ({}) },
     MaweExportTimeline: { buildCurrentWorkspaceData: () => null },
@@ -43,6 +45,8 @@ export function createProjectHarness(input) {
   loadEditorModule(context, 'shared/editor-utils.js');
   const h = context.window.AsrEditorUtils;
   h.normalizeMultiSubtitleProject(data);
+  h.migrateSubtitleGroups(data);
+  h.refreshSubtitleGroupViews(data);
   context.MULTI_SUBTITLE_UTILS = h;
   loadSources(context, 'project');
   return { data, h, context, save: () => JSON.parse(context.window.MaweJsonRepair.buildJson()) };

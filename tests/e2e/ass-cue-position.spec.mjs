@@ -257,7 +257,7 @@ test('wheel resize requires a visible current main-cue preview', async ({ page }
 
 test('wheel resize commits before other edits and stays out of pointer transactions', async ({ page }) => {
   const historyState = () => page.evaluate(() => ({
-    project: MaweHistory.snapshotSegments(),
+    project: MaweState.persistenceSnapshot(MaweHistory.snapshotSegments()),
     undo: MaweHistory.editorHistory.undoLength(),
     redo: MaweHistory.editorHistory.redoLength(),
     active: MaweAssCuePosition.dragging,
@@ -283,6 +283,7 @@ test('wheel resize commits before other edits and stays out of pointer transacti
   const restored = await historyState();
   expect(restored.project).toEqual(initial.project);
   expect(restored.undo).toBe(initial.undo);
+  expect(await page.evaluate(() => MaweBoot.DATA.segments[0]._dirty)).toBe(true);
   await page.evaluate(() => { MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000, 0); });
   const baseline = await historyState();
 
@@ -372,7 +373,7 @@ test('box drag maps letterbox and scaled portrait/landscape canvases into one un
 
 test('active ASS dragging isolates editing shortcuts and cancellation preserves real color history', async ({ page }) => {
   const state = () => page.evaluate(() => ({
-    project: MaweHistory.snapshotSegments(),
+    project: MaweState.persistenceSnapshot(MaweHistory.snapshotSegments()),
     selection: MaweHistory.snapshotEditorSelection(),
     undo: MaweHistory.editorHistory.undoLength(),
     redo: MaweHistory.editorHistory.redoLength(),
@@ -418,6 +419,8 @@ test('active ASS dragging isolates editing shortcuts and cancellation preserves 
   await page.mouse.up();
   expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
   expect(await state()).toEqual(colored);
+
+  expect(await page.evaluate(() => MaweBoot.DATA.segments[0]._dirty)).toBe(true);
 
   // Every history shortcut cancels only the in-flight gesture. Cover both an
   // existing undo entry and an existing redo entry without consuming either.

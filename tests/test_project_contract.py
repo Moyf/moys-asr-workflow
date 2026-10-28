@@ -70,13 +70,14 @@ class ProjectContractTests(unittest.TestCase):
         self.assertTrue(result.ok, msg=str([error.to_json() for error in result.errors]))
 
     def test_validate_project_rejects_unknown_project_schema(self) -> None:
-        result = validate_project({
-            "schema": "moy.asr.project.v2",
-            "segments": [{"start": 0, "end": 1000, "text": "future"}],
-        })
-
-        self.assertFalse(result.ok)
-        self.assertIn("$.schema", {error.path for error in result.errors})
+        for schema in ("moy.asr.project.v2", "moy.asr.project.v99"):
+            with self.subTest(schema=schema):
+                result = validate_project({
+                    "schema": schema,
+                    "segments": [{"start": 0, "end": 1000, "text": "future"}],
+                })
+                self.assertFalse(result.ok)
+                self.assertIn("$.schema", {error.path for error in result.errors})
 
     def test_validate_project_rejects_non_string_project_schema(self) -> None:
         result = validate_project({

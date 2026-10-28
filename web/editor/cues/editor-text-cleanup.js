@@ -3,7 +3,7 @@ import { getOverlayTrack } from './overlay-track.js';
 export function initMaweTextCleanup() {
 'use strict';
 
-// 文本清理与 seek：标点规整、分组时间同步、媒体 seek 助手。
+// 文本清理与 seek：分组时间同步、媒体 seek 助手。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweTextCleanup 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
@@ -12,42 +12,11 @@ export function initMaweTextCleanup() {
 
 
 
-  // === cleanPunctuation ===
-  function cleanPunctuation() {
-    if (MaweBoot.DATA.preserve_punctuation === true) return;
-    const PUNCT_REPL = '  ';
-    const REPLACE_INSIDE = /[，。]/g;
-    for (const seg of MaweBoot.DATA.segments) {
-      if (!seg.text) continue;
-      // This built-in normalization changes source text/items together. Migrate
-      // only previously exact local scopes; ordinary user edits remain invalid.
-      const aiRanges = MaweBoot.DATA.gap_remove?.provenance?.sources?.ai_cleanup;
-      const validScopes = (Array.isArray(aiRanges) ? aiRanges : [])
-        .filter((range) => window.AsrGapRemoveCore.getCleanupScopeItems(seg, range).length);
-      let t = seg.text;
-      while (t.length && (t.endsWith('，') || t.endsWith('。'))) t = t.slice(0, -1);
-      seg.text = t.replace(REPLACE_INSIDE, PUNCT_REPL).replace(/[ \t]+$/, '');
-      if (seg.items) {
-        const total = seg.items.length;
-        for (let i = 0; i < total; i++) {
-          let it = seg.items[i].text;
-          if (i === total - 1) {
-            while (it.length && (it.endsWith('，') || it.endsWith('。'))) it = it.slice(0, -1);
-          }
-          it = it.replace(REPLACE_INSIDE, PUNCT_REPL);
-          seg.items[i].text = it;
-        }
-      }
-      for (const range of validScopes) {
-        const scope = range.cleanup_scope;
-        scope.text = seg.items.slice(scope.item_start, scope.item_end).map((item) => item.text).join('');
-      }
-    }
-  }
-
-
-
   function syncTimelineGroupRanges() {
+  if (MaweBoot.DATA.subtitle_groups) {
+    window.AsrEditorUtils.refreshSubtitleGroupViews(MaweBoot.DATA);
+    return;
+  }
   function sync(segments, headField, refField) {
     segments.forEach((segment, headIdx) => {
       const head = segment[headField];
@@ -115,7 +84,6 @@ export function initMaweTextCleanup() {
   }
 
   global.MaweTextCleanup = Object.freeze({
-    cleanPunctuation,
     syncTimelineGroupRanges,
     seekFromWaveform,
     notifyAutoLoadedMediaReady,

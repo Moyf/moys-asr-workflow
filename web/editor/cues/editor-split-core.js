@@ -644,17 +644,18 @@
   function createSplitSegments(segment, {
     idBase, headIndex, leftText, rightText, leftEnd, rightStart, leftItems, rightItems,
   }) {
+    const usedSegments = window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(track => track.segments);
     const left = {
-      ...segment,
-      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
+      ...window.AsrEditorUtils.cloneJsonValue(segment),
+      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(usedSegments, `${idBase}-a`, 'segment'),
       end: leftEnd,
       text: leftText,
       items: leftItems.length ? leftItems : null,
       _dirty: true,
     };
     const right = {
-      ...segment,
-      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
+      ...window.AsrEditorUtils.cloneJsonValue(segment),
+      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([...usedSegments, left], `${idBase}-b`, 'segment'),
       start: rightStart,
       text: rightText,
       items: rightItems.length ? rightItems : null,

@@ -58,6 +58,11 @@ class MediaJobsTests(unittest.TestCase):
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             if job.snapshot()["state"] == state:
+                # Terminal state and cleanupComplete are separate API signals.
+                # The worker publishes failure before disposing private output.
+                if state in {"failed", "cancelled", "completed"}:
+                    self.assertTrue(job.disposed_event.wait(max(0, deadline - time.monotonic())),
+                                    "terminal media job did not finish output cleanup")
                 return
             if job.snapshot()["state"] == "failed":
                 break

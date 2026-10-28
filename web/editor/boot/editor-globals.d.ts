@@ -48,8 +48,10 @@ interface ProjectSegment {
   assOverride?: AssCueOverride;
   color?: string | ProjectColorMark;
   color_ref?: ProjectGroupRef | null;
+  color_group_id?: string;
   sticker?: unknown;
   sticker_ref?: ProjectGroupRef | null;
+  sticker_group_id?: string;
   /** 运行时脏标记：保存前清点修改过的段，不进工程 JSON。 */
   _dirty?: boolean;
   items?: ProjectSegmentItem[];
@@ -79,6 +81,7 @@ interface ProjectOverlayTrack {
 }
 
 interface ProjectData {
+  subtitle_groups?: unknown;
   schema?: string;
   segments: ProjectSegment[];
   media?: string;
@@ -266,6 +269,14 @@ interface MaweStateApi {
   readonly editing: { editingState: any; extensionEditingState: any };
   readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean };
   hasProjectChanges(pendingText?: boolean): boolean;
+  readonly projectEpoch: number;
+  projectFingerprint(value?: any): string;
+  persistenceSnapshot(value: any): any;
+  setSnapshotReader(reader: () => any): void;
+  beginProjectSession(): void;
+  establishProjectCheckpoint(options?: { repaired?: boolean }): void;
+  rememberSessionHighlights(): void;
+  restoreSessionHighlights(): void;
   segmentsFingerprint(): string;
   noteSavedSegments(fingerprint?: string): void;
   markSaved(): void;

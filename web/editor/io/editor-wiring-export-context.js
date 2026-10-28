@@ -65,7 +65,7 @@ function exportColorContextResolver(overlaySet, overlaySegments) {
 
 
 const CANONICAL_PROJECT_FIELDS = new Set([
-  'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity', 'preserve_punctuation',
+  'subtitle_groups', 'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity', 'preserve_punctuation',
   'model', 'sticker_root', 'timebase', 'segments', 'multi_subtitle', 'overlay_track', 'waveform',
   'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'loudness',
   'gap_remove', 'script_alignment', 'markers', 'workspace', 'preview', 'timed_text_edit_view', 'audio_processing',

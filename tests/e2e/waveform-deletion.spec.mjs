@@ -9,7 +9,7 @@ import {
   findFreePort,
   generateWav,
   generateProjectJson,
-  buildPortableBlankEditor,
+  buildBrowserEditorFixture,
   startServer,
   startStaticServer,
   DURATION_MS,
@@ -309,7 +309,7 @@ test.beforeAll(async () => {
   blankHtmlPath = join(portableDir, 'blank-editor.html');
   generateWav(portableWavPath, DURATION_MS / 1000);
   generateProjectJson(portableProjectPath);
-  buildPortableBlankEditor(blankHtmlPath);
+  buildBrowserEditorFixture(blankHtmlPath);
   portablePort = await findFreePort();
   portableStaticServer = await startStaticServer(blankHtmlPath, portablePort);
 });

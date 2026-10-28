@@ -8,6 +8,11 @@
 
 
   // === 合并 ===
+  function clearInconsistentSpeaker(merged, sources) {
+    const speaker = sources[0].speaker;
+    if (speaker == null || sources.some(segment => segment.speaker !== speaker)) delete merged.speaker;
+  }
+
   // 把 DATA.segments 中连续下标 sorted 合并为一条，并维护 group 引用与组时间范围。
   // 不做参数校验、撤销与渲染，由调用方负责（mergeSegments / autoMergeSegments 共用）。
   function mergeContiguousIndices(sorted) {
@@ -44,10 +49,6 @@
     const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
       MaweBoot.DATA.segments, sorted, 'color', 'color_ref',
     );
-    const commonSpeaker = segs[0].speaker != null
-      && segs.every((segment) => segment.speaker === segs[0].speaker)
-      ? segs[0].speaker
-      : null;
     // 拼接后折叠相邻「闭符号+开符号」的同符号对（防止拼出 ** 被误解析为强调），
     // items 层同步裁掉被折叠的符号，保持 items 拼接 == 合并文本。
     const mainJoin = window.AsrEditorUtils.joinSegmentTextsMassFold(
@@ -56,8 +57,11 @@
       MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     );
     const merged = {
+      ...window.AsrEditorUtils.cloneJsonValue(segs[0]),
+      color_group_id: segs.every(s => s.color_group_id === segs[0].color_group_id) ? segs[0].color_group_id : undefined,
+      sticker_group_id: segs.every(s => s.sticker_group_id === segs[0].sticker_group_id) ? segs[0].sticker_group_id : undefined,
       id: window.AsrEditorUtils.uniqueStableSegmentId(
-        MaweBoot.DATA.segments, `${segs[0].id || 'main'}-merged`, 'main',
+        window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `${segs[0].id || 'main'}-merged`, 'main',
       ),
       start: segs[0].start,
       end: segs[segs.length - 1].end,
@@ -67,11 +71,11 @@
       sticker_ref: stickerGroup.ref,
       color: colorGroup.head,
       color_ref: colorGroup.ref,
-      ...(commonSpeaker !== null ? { speaker: commonSpeaker } : {}),
       ...(segs[0].assOverride ? { assOverride: window.AsrEditorUtils.normalizeAssOverride(segs[0].assOverride) } : {}),
       disabled: !!segs[0].disabled,  // 合并后取 index=0 的禁用状态
       _dirty: true,
     };
+    clearInconsistentSpeaker(merged, segs);
     if (merged.items.length === 0) merged.items = null;
 
     let mergedExtension = null;
@@ -84,14 +88,18 @@
         MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
       );
       mergedExtension = {
+        ...window.AsrEditorUtils.cloneJsonValue(extensionMergeSegments[0]),
+        color_group_id: extensionMergeSegments.every(s => s.color_group_id === extensionMergeSegments[0].color_group_id) ? extensionMergeSegments[0].color_group_id : undefined,
+        sticker_group_id: extensionMergeSegments.every(s => s.sticker_group_id === extensionMergeSegments[0].sticker_group_id) ? extensionMergeSegments[0].sticker_group_id : undefined,
         id: window.AsrEditorUtils.uniqueStableSegmentId(
-          extensionTrack.segments, `${extensionMergeSegments[0].id || extensionTrack.id}-merged`, `${extensionTrack.id}-segment`,
+          window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `${extensionMergeSegments[0].id || extensionTrack.id}-merged`, `${extensionTrack.id}-segment`,
         ),
         start: Math.min(...extensionMergeSegments.map((segment) => segment.start)),
         end: Math.max(...extensionMergeSegments.map((segment) => segment.end)),
         text: extensionJoin.text,
         _dirty: true,
       };
+      clearInconsistentSpeaker(mergedExtension, extensionMergeSegments);
       if (extensionMergeSegments.some((segment) => Array.isArray(segment.items))) {
         mergedExtension.items = extensionJoin.items;
       }
@@ -177,8 +185,8 @@
 
 
 
-  // 只合并副轨连续字幕。副字幕没有主轨的 group 引用和 items，
-  // 因此这里保留独立轨的文本/时间合并语义；如果被合并段存在一对一绑定，
+  // 只合并副轨连续字幕，保留共有分组、字幕属性与可选字词时间码。
+  // 如果被合并段存在一对一绑定，
   // 合并后无法同时指向多个主字幕，旧绑定会被移除并提示用户重新绑定。
   function mergeExtensionSegments(idxs, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
     if (!track || !idxs?.length) return false;
@@ -207,8 +215,11 @@
       MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     );
     const merged = {
+      ...window.AsrEditorUtils.cloneJsonValue(segments[0]),
+      color_group_id: segments.every(s => s.color_group_id === segments[0].color_group_id) ? segments[0].color_group_id : undefined,
+      sticker_group_id: segments.every(s => s.sticker_group_id === segments[0].sticker_group_id) ? segments[0].sticker_group_id : undefined,
       id: window.AsrEditorUtils.uniqueStableSegmentId(
-        track.segments,
+        window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments),
         `${segments[0].id || track.id}-merged`,
         `${track.id}-segment`,
       ),
@@ -217,6 +228,8 @@
       text: extensionJoin.text,
       _dirty: true,
     };
+    clearInconsistentSpeaker(merged, segments);
+    if (segments.some(segment => Array.isArray(segment.items))) merged.items = extensionJoin.items;
     const hadBindings = oldIds.some((id) => window.AsrEditorUtils.bindingForSegment(
       MaweMultiSubtitleCore.getMultiSubtitleState(), id, 'extension', track.id,
     ));
@@ -546,6 +559,10 @@
   //   - 删除场景：cutSet = 被物理删除的 idx；切完后由调用方负责 splice
   //   - 清除场景：cutSet = 被清除 group 字段的 idx；调用方不删除字幕本身
   function splitGroupsAtCutPoints(cutSet, headField, refField, segments = MaweBoot.DATA.segments) {
+  if (MaweBoot.DATA.subtitle_groups) {
+    window.AsrEditorUtils.clearSubtitleGroupMembers(MaweBoot.DATA, segments, cutSet, headField);
+    return;
+  }
   function groupHeadOf(seg, idx) {
     if (seg[headField]) return idx;
     if (seg[refField]) return seg[refField].headIdx;

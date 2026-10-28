@@ -17,7 +17,7 @@ import { createOutputTail } from './output-tail.mjs';
 const configuredPython = String(process.env.MAW_E2E_PYTHON || '').trim();
 const PYTHON_RUNNER = configuredPython
   ? { command: configuredPython, prefixArgs: [] }
-  : { command: 'uv', prefixArgs: ['run', '--frozen', 'python'] };
+  : { command: 'uv', prefixArgs: ['run', '--no-sync', 'python'] };
 
 function pythonCommandArgs(args) {
   return [...PYTHON_RUNNER.prefixArgs, ...args];
@@ -502,16 +502,15 @@ export async function startStaticServer(filePath, port) {
 }
 
 // ---------------------------------------------------------------------------
-// Build a portable blank editor from the current web/ sources (edit.py --blank).
-// The committed blank-editor.html is refreshed only before a release, so specs
-// that exercise the portable page must build the current sources instead of
-// copying a possibly stale artifact.
+// Render a browser contract fixture through shared renderer code. This keeps
+// local-host file APIs and save fallbacks covered after standalone entry retirement;
+// it does not invoke edit.py --blank or produce an application release artifact.
 // ---------------------------------------------------------------------------
-export function buildPortableBlankEditor(outputPath) {
+export function buildBrowserEditorFixture(outputPath) {
   const { command, prefixArgs } = PYTHON_RUNNER;
   execFileSync(
     command,
-    [...prefixArgs, 'edit.py', '--blank', '--output', outputPath],
+    [...prefixArgs, 'tests/helpers/render-editor-fixture.py', outputPath],
     { cwd: process.cwd(), windowsHide: true, stdio: ['ignore', 'pipe', 'inherit'] },
   );
   if (!existsSync(outputPath)) {

@@ -67,35 +67,7 @@ export function initMaweStickerPicker() {
   const hadStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)
     || (getOverlayTrack()?.segments || []).some((segment) => segment.sticker || segment.sticker_ref);
   return MaweCommands.run('分配表情包', () => {
-    if (stickerTargetMode === 'multi' && stickerTargetIdxs.length > 1) {
-      const sorted = [...stickerTargetIdxs].sort((a, b) => a - b);
-      const headIdx = sorted[0];
-      // 每条字幕都是一个独立的时间实例；head 只负责保存素材，不能把多条字幕
-      // 的时间范围合并成一条，否则 XML/OTIO 会把中间的引用压成连续长片段。
-      segments[headIdx].sticker = {
-        ...sticker, start: segments[headIdx].start, end: segments[headIdx].end,
-      };
-      segments[headIdx].sticker_ref = null;
-      // 后续条：sticker_ref 标记，便于显示和导航
-      for (let i = 1; i < sorted.length; i++) {
-        segments[sorted[i]].sticker = null;
-        segments[sorted[i]].sticker_ref = { name: sticker.name, headIdx };
-      }
-    } else {
-      const idx = stickerTargetIdxs[0];
-      // 如果当前条已经是 head（被其他 ref 引用），同步更新所有引用 idx 的 ref.name
-      segments.forEach(s => {
-        if (s.sticker_ref && s.sticker_ref.headIdx === idx) {
-          s.sticker_ref.name = sticker.name;
-        }
-      });
-      segments[idx].sticker = { ...sticker };
-      segments[idx].sticker_ref = null;
-    }
-    // 区间契约：head.sticker 必须覆盖整个组（head + 所有 ref 成员）的时间
-    // 范围，与 syncTimelineGroupRanges / 延长表情包 / 标记颜色一致。少了这一步
-    // 多句绑定会只落在第一句区间里，直到下次拖动提交触发同步才恢复。
-    MaweTextCleanup.syncTimelineGroupRanges();
+    window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, segments, stickerTargetIdxs, 'sticker', sticker, null, { replaceHead: true });
     MaweDom.stickerModal.classList.remove('show');
     // 叠加轨目标：同步脏标记与保存调度，否则分配只改内存、不落盘。
     if (overlaySticker.stickerTargetTrack === 'overlay') {
@@ -126,7 +98,8 @@ export function initMaweStickerPicker() {
   function clearStickerOnTargets() {
     return MaweCommands.run('清除表情包', () => {
       // 一次性切除所有目标 idx，触发组拆分
-      MaweSegmentOps.splitGroupsAtCutPoints(new Set(stickerTargetIdxs), 'sticker', 'sticker_ref');
+      MaweSegmentOps.splitGroupsAtCutPoints(new Set(stickerTargetIdxs), 'sticker', 'sticker_ref',
+        overlaySticker.stickerTargetTrack === 'overlay' ? getOverlayTrack().segments : MaweBoot.DATA.segments);
       MaweDom.stickerModal.classList.remove('show');
       MaweColorFilter.refreshStickerAssignmentUi();
       MaweHint.flashHint('已清除', 'success');
@@ -172,8 +145,9 @@ export function initMaweStickerPicker() {
   function expandStickerTime(idxs) {
     const sorted = [...idxs].sort((a, b) => a - b);
     // 找选中范围内的 sticker：优先取 head；如果只有 ref，从 ref 回溯到原 head
-    let sourceSticker = null;
-    for (const i of sorted) {
+    const sourceGroupId = sorted.map(i => MaweBoot.DATA.segments[i].sticker_group_id).find(Boolean);
+    let sourceSticker = MaweBoot.DATA.subtitle_groups?.sticker.find(group => group.id === sourceGroupId)?.value || null;
+    if (!sourceSticker) for (const i of sorted) {
       if (MaweBoot.DATA.segments[i].sticker) {
         sourceSticker = MaweBoot.DATA.segments[i].sticker;
         break;
@@ -193,20 +167,8 @@ export function initMaweStickerPicker() {
       return;
     }
     return MaweCommands.run('延长表情包', (command) => {
-      const sticker = { ...sourceSticker };
-      sticker.start = MaweBoot.DATA.segments[sorted[0]].start;
-      sticker.end = MaweBoot.DATA.segments[sorted[sorted.length - 1]].end;
-      // 清除范围内所有 sticker / sticker_ref
-      sorted.forEach(i => {
-        MaweBoot.DATA.segments[i].sticker = null;
-        MaweBoot.DATA.segments[i].sticker_ref = null;
-      });
-      // head：放完整 sticker；后续：放 sticker_ref
-      const headIdx = sorted[0];
-      MaweBoot.DATA.segments[headIdx].sticker = sticker;
-      for (let k = 1; k < sorted.length; k++) {
-        MaweBoot.DATA.segments[sorted[k]].sticker_ref = { name: sticker.name, headIdx };
-      }
+      const existing = sorted.map(i => MaweBoot.DATA.segments[i].sticker_group_id).find(Boolean);
+      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, MaweBoot.DATA.segments, sorted, 'sticker', sourceSticker, existing);
       command.commit({ cueList: true });
       MaweHint.flashHint(`已拓展到 ${sorted.length} 条`, 'success');
     });
@@ -223,34 +185,7 @@ export function initMaweStickerPicker() {
     if (!def) return;
     return MaweCommands.run('标记颜色', () => {
       const sorted = [...idxs].sort((a, b) => a - b);
-      if (sorted.length === 1) {
-        const idx = sorted[0];
-        // 如果当前条已经是 head，同步更新所有引用 idx 的 ref.name
-        MaweBoot.DATA.segments.forEach(s => {
-          if (s.color_ref && s.color_ref.headIdx === idx) {
-            s.color_ref.name = colorName;
-          }
-        });
-        MaweBoot.DATA.segments[idx].color = {
-          name: colorName, value: def.value,
-          start: MaweBoot.DATA.segments[idx].start, end: MaweBoot.DATA.segments[idx].end,
-        };
-        MaweBoot.DATA.segments[idx].color_ref = null;
-      } else {
-        const headIdx = sorted[0];
-        // 选区可能只包含已有颜色组的一部分。先在选中项处切开旧组，
-        // 让未选中的成员保留原颜色，并避免旧 head 被降级后仍被外部 ref 指向。
-        // （main 218ee1e0 修复，合并时补录；splitGroupsAtCutPoints 为 editor.js 全局。）
-        MaweSegmentOps.splitGroupsAtCutPoints(new Set(sorted), 'color', 'color_ref');
-        const start = MaweBoot.DATA.segments[headIdx].start;
-        const end = MaweBoot.DATA.segments[sorted[sorted.length - 1]].end;
-        MaweBoot.DATA.segments[headIdx].color = { name: colorName, value: def.value, start, end };
-        MaweBoot.DATA.segments[headIdx].color_ref = null;
-        for (let k = 1; k < sorted.length; k++) {
-          MaweBoot.DATA.segments[sorted[k]].color = null;
-          MaweBoot.DATA.segments[sorted[k]].color_ref = { name: colorName, headIdx };
-        }
-      }
+      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, MaweBoot.DATA.segments, sorted, 'color', { name: colorName, value: def.value }, null, { replaceHead: true });
       // 单条修改 lead（其 color_ref 成员仍指向它）或多选统一分配时，视为整组联动修改
       const isUnifiedGroup = sorted.length > 1
         || MaweBoot.DATA.segments.some((s) => s.color_ref && s.color_ref.headIdx === sorted[0]);

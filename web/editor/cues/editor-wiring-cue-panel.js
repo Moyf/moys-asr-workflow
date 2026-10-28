@@ -156,6 +156,7 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
   MaweDom.cuePanelCharsPerSecond.textContent = metrics.charsPerSecond.toFixed(2);
   const textEl = MaweCuePanel.getCuePanelTextElement(target);
   if (textEl) {
+    textEl.closest('.multi-cue-column, .cue')?.classList.add('dirty');
     MaweCueElements.setTextHtml(textEl, seg.text, MaweDom.searchEl.value);
     MaweCueElements.applyCharCount(textEl.closest('.cue')?.querySelector('.charcount'), seg.text, splitMode);
   }

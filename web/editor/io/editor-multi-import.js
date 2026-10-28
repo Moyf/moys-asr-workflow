@@ -147,9 +147,9 @@ export function initMaweMultiImport() {
     multi.tracks || [], 'extension-1', 'extension',
   );
   const extensionSegments = pending.segments.map((segment, index) => ({
-    ...segment,
+    ...window.AsrEditorUtils.cloneJsonValue(segment),
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
-      pending.segments.slice(0, index), `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
+      [...window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), ...pending.segments.slice(0, index)], `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
     ),
     _dirty: true,
   }));
@@ -175,6 +175,15 @@ export function initMaweMultiImport() {
       else multi.tracks.push(track);
     } else {
       multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
+    }
+    extensionSegments.forEach(s => { delete s.color_group_id; delete s.sticker_group_id; });
+    for (const kind of ['color', 'sticker']) {
+      const sourceGroups = pending.segments.subtitle_groups?.[kind] || [];
+      const members = sourceGroups.map(group => ({ group,
+        indexes: pending.segments.map((s, i) => s[`${kind}_group_id`] === group.id ? i : -1).filter(i => i >= 0) }));
+      for (const { group, indexes } of members) {
+        if (indexes.length) window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, extensionSegments, indexes, kind, group.value);
+      }
     }
     match.matches.forEach((candidate) => {
       const main = MaweBoot.DATA.segments[candidate.mainIndex];
@@ -264,28 +273,18 @@ export function initMaweMultiImport() {
       const text = await MaweState.waitForProjectLoad(MaweLoadingProgress.readFileTextWithProgress(file), generation);
       if (!current()) return false;
       MaweLoadingProgress.updateEditorLoading(60, `正在解析工程 ${file.name}…`);
-      const data = JSON.parse(text);
-      if (data && typeof data === 'object' && !Array.isArray(data)
-          && Object.prototype.hasOwnProperty.call(data, 'schema')
-          && !window.AsrEditorUtils.supportsProjectSchema(data)) {
-        MaweHint.flashHint('不支持的工程格式版本，请使用新版 MAW 打开。', 'warning');
+      const imported = window.MaweProjectValidation.prepareProject(JSON.parse(text));
+      if (!imported.ok) {
+        MaweHint.flashHint(`工程校验失败：${imported.errors.map((error) => `${error.path}: ${error.message}`).join('; ')}`, 'warning');
         return false;
       }
-      // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
-      if (data && Array.isArray(data.segments)) {
-        data.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
-        window.AsrEditorUtils.normalizeMultiSubtitleProject(data);
-        MaweTimeline.syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
-        window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
-        window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
-        MaweJsonRepair.normalizeProjectTimings(data);
-        MaweTimeline.syncProjectTimebaseAndBindingOffsets(data, { preferFrames: false });
-      }
-      if (!MaweProjectLoad.isMawProject(data)) {
-        MaweHint.flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
-        return false;
-      }
-MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation });
+      const data = imported.project;
+      window.AsrEditorUtils.migrateSubtitleGroups(data, { fromFile: true });
+      MaweJsonRepair.noteImportReport(imported.changes);
+const contentRepaired = MaweJsonRepair.importRequiresSave(imported.changes);
+MaweProjectLoad.applyCanonicalProject(data, file.name, { repaired: contentRepaired, loadGeneration: generation });
+MaweServerSave.projectImportDirty = contentRepaired;
+if (MaweServerSave.projectImportDirty) MaweHint.flashHint(`导入修复了 ${imported.changes.length} 处工程字段；请检查后保存`, 'warning');
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();
 const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);

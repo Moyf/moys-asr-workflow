@@ -14,6 +14,7 @@ const plain = value => JSON.parse(JSON.stringify(value));
 // 注入最小全局桩后在独立 context 里加载真实源码。
 const splitContext = () => ({
   window: { AsrEditorUtils: h },
+  MaweBoot: { DATA: { segments: [] } },
   MULTI_SUBTITLE_UTILS: h,
   MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 },
   MaweSettings: { EDITOR_SETTINGS: { assMode: true, assSpecialSymbolRule: 'both', assEmphasisSyntax: 'both' } },
@@ -29,6 +30,27 @@ const mergeContext = (segments) => ({
   MaweTextCleanup: { syncTimelineGroupRanges() {} },
   MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } },
 });
+
+function extensionMergeContext(segments, linked) {
+  const track = { id: 'ext', segments };
+  const multi = { tracks: [track], bindings: [] };
+  const context = mergeContext(linked
+    ? segments.map(segment => ({ ...segment, id: `main-${segment.id}` })) : []);
+  context.MaweBoot.DATA.multi_subtitle = multi;
+  Object.assign(context.MaweMultiSubtitleCore, {
+    getMultiSubtitleState: () => multi, multiSubtitleVisible: () => true,
+    getActiveExtensionTrack: () => track, getExtensionSubtitleSplitMode: () => 'continuous',
+    MULTI_SUBTITLE_MERGE_OVERLAP_TOLERANCE_MS: 100, markMultiSubtitleDirty() {},
+  });
+  Object.assign(context, {
+    MaweCoreState: { container: { querySelector: () => null } },
+    MaweCueListAnchor: { captureVisibleCueListVisualAnchor: () => null },
+    MaweCommands: { run: (_name, mutate) => mutate({ commit() {} }) },
+    MaweSelection: { clearSelection() {}, selectOnlyExtension() {} },
+    MaweViewUpdates: { invalidate() {} }, MaweHint: { flashHint() {} },
+  });
+  return { context, track };
+}
 
 // === 任务 4：stripMassMarkers（成对剥、孤儿留） ===
 
@@ -243,6 +265,33 @@ test('mergeContiguousIndices folds the junction and keeps items conserved', () =
   assert.equal(merged.items.map(item => item.text).join(''), merged.text);
   assert.deepEqual([merged.start, merged.end], [0, 2000]);
 });
+
+for (const path of ['main', 'extension', 'linked']) {
+test(`${path} merge keeps a speaker only when every source cue agrees`, () => {
+  for (const speakers of [['Alice', 'Alice'], ['Alice', 'Bob'], ['Alice', undefined],
+    [undefined, 'Bob'], [undefined, undefined]]) {
+    const segments = speakers.map((speaker, index) => ({
+      id: `cue-${index}`, start: index * 1000, end: (index + 1) * 1000,
+      text: index ? '乙' : '甲', ...(speaker === undefined ? {} : { speaker }),
+      vendor: { keep: true },
+      items: [{ start: index * 1000, end: (index + 1) * 1000,
+        text: index ? '乙' : '甲', ...(speaker === undefined ? {} : { speaker }) }],
+    }));
+    const { context, track } = path === 'main'
+      ? { context: mergeContext(segments) }
+      : extensionMergeContext(segments, path === 'linked');
+    vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), context);
+    if (path === 'extension') context.window.MaweSegmentOps.mergeExtensionSegments([0, 1], track);
+    else context.window.MaweSegmentOps.mergeContiguousIndices([0, 1]);
+    const merged = track ? track.segments[0] : context.MaweBoot.DATA.segments[0];
+    assert.equal(merged.text, '甲乙');
+    assert.deepEqual(plain(merged.vendor), { keep: true });
+    assert.deepEqual(plain(merged.items.map(item => item.speaker ?? null)), speakers.map(s => s ?? null));
+    if (speakers[0] !== undefined && speakers[0] === speakers[1]) assert.equal(merged.speaker, speakers[0]);
+    else assert.equal(Object.hasOwn(merged, 'speaker'), false, `mixed or absent speakers: ${speakers}`);
+  }
+});
+}
 
 test('merge keeps spoken-only and partially marked items with their exact timing', () => {
   for (const texts of [['甲', '乙'], ['**甲', '乙**'], ['**甲**', '乙']]) {

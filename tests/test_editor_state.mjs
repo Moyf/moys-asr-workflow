@@ -101,58 +101,71 @@ test('track transfers remap selection and its anchor without exposing a mutable 
   assert.equal(selection.mainAnchor, 3);
 });
 
-test('dirty detection includes pending native text, all tracks and project-level flags', () => {
-  const project = { segments: [], multi_subtitle: { tracks: [{ segments: [{}] }] }, overlay_track: { segments: [{}] } };
+test('legacy flags and caches are not persistent changes, but every content domain is', () => {
+  const project = { segments: [{ id: 's', text: 'saved', _dirty: true }],
+    multi_subtitle: { _dirty: true, tracks: [{ id: 'e', segments: [{ id: 'e1', _dirty: true }] }] },
+    overlay_track: { _dirty: true, segments: [{ id: 'o', _dirty: true }] } };
   const state = loadState(project);
-  assert.equal(state.hasProjectChanges(), false);
-  assert.equal(state.hasProjectChanges(true), true);
-  project.multi_subtitle.tracks[0].segments[0]._dirty = true;
-  assert.equal(state.hasProjectChanges(), true);
-  delete project.multi_subtitle.tracks[0].segments[0]._dirty;
-  project.overlay_track._dirty = true;
-  assert.equal(state.hasProjectChanges(), true);
-  delete project.overlay_track._dirty;
-  for (const key of Object.keys(state.changes)) {
-    state.changes[key] = true;
-    assert.equal(state.hasProjectChanges(), true);
-    state.changes[key] = false;
-  }
-  assert.equal(state.hasProjectChanges(), false);
-});
-
-test('saved subtitle truth governs undo dirtiness without involving rebuildable caches or other edit domains', () => {
-  const project = { segments: [{ text: 'saved' }], overlay_track: { segments: [] } };
-  const state = loadState(project);
-  state.noteSavedSegments();
+  state.beginProjectSession();
+  state.establishProjectCheckpoint();
+  assert.equal(JSON.stringify(project).includes('_dirty'), false);
   project.segments[0]._dirty = true;
   project.waveform = { cache: 'new' };
-  state.changes.gapRemoveDirty = true;
-  state.reconcileSegmentsDirty();
-  assert.equal(state.changes.projectImportDirty, false);
-  assert.equal(project.segments[0]._dirty, undefined);
-  assert.equal(state.changes.gapRemoveDirty, true);
-  project.segments[0].text = 'undo';
-  state.reconcileSegmentsDirty();
-  assert.equal(state.changes.projectImportDirty, true);
-  project.segments[0].text = 'saved';
-  state.reconcileSegmentsDirty();
-  assert.equal(state.changes.projectImportDirty, false);
+  for (const key of Object.keys(state.changes)) state.changes[key] = true;
+  assert.equal(state.hasProjectChanges(), false);
+  assert.equal(state.hasProjectChanges(true), true);
+  for (const [key, value] of Object.entries({ timebase: { fps: 30, fps_source: 'user' },
+    groups: { g1: ['s'] }, workspace: { a: 1 }, gap_remove: { gaps: [[0, 20]] },
+    markers: [{ start: 12 }], preview: { x: 9 }, media: 'changed', vendor: { extra: true } })) {
+    project[key] = value;
+    assert.equal(state.hasProjectChanges(), true, key);
+    delete project[key];
+    assert.equal(state.hasProjectChanges(), false, key + ' restored');
+  }
+  assert.equal(project.segments[0]._dirty, true);
 });
 
-test('saving an earlier snapshot keeps subsequent edits dirty and clears every track only when saved', () => {
-  const project = { segments: [{ text: 'written', _dirty: true }],
-    multi_subtitle: { _dirty: true, tracks: [{ _dirty: true, segments: [{ _dirty: true }] }] },
-    overlay_track: { _dirty: true, segments: [{ _dirty: true }] } };
+test('snapshot provider follows actual serialized extensions and does not call a repair writer', () => {
+  const state = loadState();
+  const output = { segments: [], extension: { _dirty: 'vendor data', future: 1 } };
+  state.setSnapshotReader(() => output);
+  state.establishProjectCheckpoint();
+  output.extension.future = 2;
+  assert.equal(state.hasProjectChanges(), true);
+  assert.equal(JSON.parse(state.projectFingerprint()).extension._dirty, 'vendor data');
+  output.extension = { future: 1, _dirty: 'vendor data' };
+  assert.equal(state.hasProjectChanges(), false, 'object key order is immaterial');
+});
+
+test('saving a captured snapshot retains new edits and session highlights; undo can reach save point', () => {
+  const project = { segments: [{ id: 'one', text: 'written', _dirty: true }] };
   const state = loadState(project);
-  const written = state.segmentsFingerprint();
+  const written = state.projectFingerprint();
   project.segments[0].text = 'later';
   state.noteSavedSegments(written);
+  state.markSaved();
+  assert.equal(state.hasProjectChanges(), true);
+  state.rememberSessionHighlights();
+  project.segments = [{ id: 'one', text: 'written' }];
+  state.restoreSessionHighlights();
   state.reconcileSegmentsDirty();
+  assert.equal(state.hasProjectChanges(), false);
+  assert.equal(project.segments[0]._dirty, true);
+  const epoch = state.projectEpoch;
+  state.beginProjectSession();
+  state.establishProjectCheckpoint();
+  assert.equal(state.projectEpoch, epoch + 1);
+  assert.equal(project.segments[0]._dirty, undefined);
+});
+
+test('actual import repairs remain unsaved until successful save acknowledgement', () => {
+  const state = loadState();
+  state.beginProjectSession();
+  state.establishProjectCheckpoint({ repaired: true });
   assert.equal(state.hasProjectChanges(), true);
   state.noteSavedSegments();
   state.markSaved();
   assert.equal(state.hasProjectChanges(), false);
-  assert.equal(JSON.stringify(project).includes('_dirty'), false);
 });
 
 test('markProjectDirty increments the epoch and notifies registered listeners exactly once', () => {
@@ -201,6 +214,6 @@ test('changes flag writes notify on dirty transitions only, and markSaved stays 
   assert.equal(events, 2, 'writing false must not fire the dirty event');
   state.markSaved();
   assert.equal(events, 2, 'clearing bookkeeping on save must not fire the dirty event');
-  Object.assign(state.changes, { markersDirty: true, timedTextEditViewDirty: true });
+  Object.assign(state.changes, { markersDirty: true, projectImportDirty: true });
   assert.equal(events, 4, 'bulk assignment must go through the same notify path');
 });

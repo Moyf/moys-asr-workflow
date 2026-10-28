@@ -478,11 +478,11 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("请使用 MAW GUI 预生成波形", waveform)
         self.assertIn("use the MAW GUI to pre-generate the waveform", waveform)
         self.assertNotIn("请用 edit.py 预生成波形", waveform)
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         self.assertIn("请使用 MAW GUI 预生成波形", page)
 
     def test_blank_editor_inlines_modular_assets(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         # Historical JavaScript source-shape checks stay at the source layer.
         source = "\n\n".join(edit.read_web_asset(name) for name in list(edit.read_editor_script_manifest()) + [name for name in WAVEFORM_RETIRED_UTILS if name not in edit.read_editor_script_manifest()])
         self.assertIn(edit.build_editor_scripts().splitlines()[0], page)
@@ -904,6 +904,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', source)
         self.assertIn(
             'function buildJson({ forFileExport = false } = {}) {\n'
+            "  if (!window.AsrEditorUtils.supportsProjectSchema(MaweBoot.DATA)) throw new Error('Unsupported project schema');\n"
             '  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
             edit.read_web_asset("editor/io/editor-json-repair.js"),
         )
@@ -1344,7 +1345,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             self.assertNotIn(token, page, token)
 
     def test_media_controls_stay_on_one_line_and_preserve_fullscreen(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         controls_start = page.index("  .media-controls {\n")
         controls_end = page.index("  .player-wrap.empty-state", controls_start)
         controls_css = page[controls_start:controls_end]
@@ -1368,7 +1369,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             os.environ["STICKER_DIR"] = sticker_dir
             try:
                 with mock.patch.object(edit, 'render_editor_page', wraps=edit.render_editor_page) as render:
-                    page = edit.build_blank_html()
+                    page = edit.render_empty_editor_page()
             finally:
                 if previous_sticker_dir is None:
                     del os.environ["STICKER_DIR"]
@@ -1383,7 +1384,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn(Path(sticker_dir).resolve().as_posix(), page)
 
     def test_ninja_settings_and_split_feedback_are_rendered(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         for marker in (
             'id="ninja-mode"',
             'id="ninja-sound"',

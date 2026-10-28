@@ -1,0 +1,2480 @@
+[
+  {
+    "name": "missing-schema-id",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。"
+        }
+      ]
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema",
+      "$.segments[0].id"
+    ]
+  },
+  {
+    "name": "known-empty",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": []
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": []
+  },
+  {
+    "name": "reserved-id",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。"
+        },
+        {
+          "id": "main-001",
+          "start": 1000,
+          "end": 2000,
+          "text": "world"
+        }
+      ]
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema",
+      "$.segments[0].id"
+    ]
+  },
+  {
+    "name": "trim-id",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "id": " a "
+        }
+      ]
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema",
+      "$.segments[0].id"
+    ]
+  },
+  {
+    "name": "zero-width-punctuation",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "items": [
+            {
+              "start": 0,
+              "end": 500,
+              "text": "你好"
+            },
+            {
+              "start": 500,
+              "end": 500,
+              "text": "。"
+            }
+          ]
+        }
+      ]
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema",
+      "$.segments[0].id"
+    ]
+  },
+  {
+    "name": "zero-width-legacy-word",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "你好。"
+            }
+          ]
+        }
+      ]
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema",
+      "$.segments[0].id"
+    ]
+  },
+  {
+    "name": "unsynced-text-items",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "items": [
+            {
+              "start": 0,
+              "end": 1000,
+              "text": "旧文"
+            }
+          ]
+        }
+      ]
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema",
+      "$.segments[0].id"
+    ]
+  },
+  {
+    "name": "short-word",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "items": [
+            {
+              "start": 100,
+              "end": 160,
+              "text": "你好。"
+            }
+          ]
+        }
+      ]
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema",
+      "$.segments[0].id"
+    ]
+  },
+  {
+    "name": "gap-extensions-caches",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "id": "main",
+          "vendor": {
+            "item": 1
+          },
+          "_dirty": true
+        }
+      ],
+      "vendor": {
+        "nested": [
+          "preserve"
+        ]
+      },
+      "gap_remove": {
+        "gaps": [
+          {
+            "start": 20,
+            "end": 40
+          }
+        ],
+        "provenance": {
+          "schema": "moy.asr.gap_provenance.v1",
+          "sources": {
+            "manual": [
+              {
+                "start": 20,
+                "end": 40
+              }
+            ]
+          }
+        }
+      },
+      "waveform": {
+        "data": "legacy-cache"
+      },
+      "spectral": {
+        "data": "legacy-cache"
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema"
+    ]
+  },
+  {
+    "name": "multitrack-defaults",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。"
+        }
+      ],
+      "overlay_track": {},
+      "multi_subtitle": {
+        "tracks": [
+          {}
+        ]
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.multi_subtitle.bindings",
+      "$.multi_subtitle.display_mode",
+      "$.multi_subtitle.enabled",
+      "$.multi_subtitle.schema",
+      "$.multi_subtitle.tracks[0].id",
+      "$.multi_subtitle.tracks[0].role",
+      "$.multi_subtitle.tracks[0].segments",
+      "$.multi_subtitle.tracks[0].split_mode",
+      "$.overlay_track.enabled",
+      "$.overlay_track.segments",
+      "$.schema",
+      "$.segments[0].id"
+    ]
+  },
+  {
+    "name": "legacy-binding",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "id": "m"
+        }
+      ],
+      "multi_subtitle": {
+        "tracks": [
+          {
+            "id": "e",
+            "segments": [
+              {
+                "start": 20,
+                "end": 1020,
+                "text": "hello",
+                "id": "e1"
+              }
+            ]
+          }
+        ],
+        "bindings": [
+          {
+            "main_segment_id": "m",
+            "extension_segment_id": "e1"
+          }
+        ]
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "ass-position",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "assOverride": {
+            "pos": {
+              "x": -10,
+              "y": 120
+            }
+          }
+        }
+      ]
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "legacy-style",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。"
+        }
+      ],
+      "preview": {
+        "extension_subtitle": {
+          "color_style": "shadow",
+          "color_underline": true
+        }
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "frame-pairs",
+    "input": {
+      "timebase": {
+        "unit": "frames",
+        "fps": 29.97
+      },
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "start_frame": 0,
+          "end_frame": 30
+        }
+      ]
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "future-schema",
+    "input": {
+      "schema": "moy.asr.project.v99",
+      "segments": []
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.schema"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "null-schema",
+    "input": {
+      "schema": null,
+      "segments": []
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.schema"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "not-object",
+    "input": [],
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "missing-segments",
+    "input": {},
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-segment",
+    "input": [
+      0
+    ],
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "null-segment",
+    "input": {
+      "segments": [
+        null
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0]"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-id-numeric",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "id": 1
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-id-empty",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "id": ""
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-id-null",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "id": null
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "duplicate-id",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "id": "x"
+        },
+        {
+          "id": "x",
+          "start": 1000,
+          "end": 2000,
+          "text": "a"
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[1].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-time-string",
+    "input": {
+      "segments": [
+        {
+          "start": "0",
+          "end": 1000,
+          "text": "你好。"
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].start"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-time-float",
+    "input": {
+      "segments": [
+        {
+          "start": 0.5,
+          "end": 1000,
+          "text": "你好。"
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].start"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-time-bool",
+    "input": {
+      "segments": [
+        {
+          "start": true,
+          "end": 1000,
+          "text": "你好。"
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].start"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "zero-segment",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 0,
+          "text": "你好。"
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": true,
+    "error_paths": [
+      "$.segments[0].end"
+    ],
+    "change_paths": [
+      "$.schema",
+      "$.segments[0].end",
+      "$.segments[0].id"
+    ]
+  },
+  {
+    "name": "overlap-segments",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。"
+        },
+        {
+          "start": 900,
+          "end": 2000,
+          "text": "a"
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": true,
+    "error_paths": [
+      "$.segments[1].start"
+    ],
+    "change_paths": [
+      "$.schema",
+      "$.segments[0].id",
+      "$.segments[1].id",
+      "$.segments[1].start"
+    ]
+  },
+  {
+    "name": "overlap-items",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "items": [
+            {
+              "start": 0,
+              "end": 500,
+              "text": "你"
+            },
+            {
+              "start": 499,
+              "end": 900,
+              "text": "好。"
+            }
+          ]
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": true,
+    "error_paths": [
+      "$.segments[0].items[1].start"
+    ],
+    "change_paths": [
+      "$.schema",
+      "$.segments[0].id",
+      "$.segments[0].items[1].start"
+    ]
+  },
+  {
+    "name": "items-outside",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "items": [
+            {
+              "start": 0,
+              "end": 1200,
+              "text": "你好。"
+            }
+          ]
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": true,
+    "error_paths": [
+      "$.segments[0].items[0].end"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "mixed-errors-never-repair",
+    "input": {
+      "schema": "future",
+      "segments": [
+        {
+          "start": 0,
+          "end": 0,
+          "text": "a"
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.schema",
+      "$.segments[0].end"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-items",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "items": null
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].items"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-item-text",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "items": [
+            {
+              "start": 0,
+              "end": 500,
+              "text": 4
+            }
+          ]
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].items[0].text"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-head-ref",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "color_ref": {
+            "headIdx": 3
+          }
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].color_ref.headIdx"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-timebase",
+    "input": {
+      "timebase": {
+        "unit": "seconds",
+        "fps": 300
+      },
+      "segments": []
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.unit",
+      "$.timebase.fps"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-overlay",
+    "input": {
+      "segments": [],
+      "overlay_track": {
+        "segments": [
+          {
+            "start": 0,
+            "end": 1000,
+            "text": "你好。",
+            "id": 1
+          }
+        ]
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.overlay_track.segments[0].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "future-multi",
+    "input": {
+      "segments": [],
+      "multi_subtitle": {
+        "schema": "future"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.multi_subtitle.schema"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-binding",
+    "input": {
+      "segments": [],
+      "multi_subtitle": {
+        "bindings": [
+          {
+            "track_id": "missing"
+          }
+        ]
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.multi_subtitle.bindings[0].track_id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-metadata",
+    "input": {
+      "segments": [],
+      "media_metadata": {
+        "video_width": 0
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.media_metadata.video_height",
+      "$.media_metadata.video_width"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-preview",
+    "input": {
+      "segments": [],
+      "preview": {
+        "extension_subtitle": {
+          "font_size": 5
+        }
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.preview.extension_subtitle.font_size"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-position",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "assOverride": {
+            "pos": {
+              "x": "5",
+              "y": 0
+            }
+          }
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].assOverride.pos.x"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-frame-pair",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好。",
+          "start_frame": 0
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0]"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-language-source",
+    "input": {
+      "segments": [],
+      "language_source": "guess"
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.language_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-timebase-enum-array",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": [],
+        "fps": 30
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.unit"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-main-split-enum-object",
+    "input": {
+      "segments": [],
+      "multi_subtitle": {
+        "main_split_mode": {}
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.multi_subtitle.main_split_mode"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-track-split-enum-array",
+    "input": {
+      "segments": [],
+      "multi_subtitle": {
+        "tracks": [
+          {
+            "split_mode": []
+          }
+        ]
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.multi_subtitle.tracks[0].split_mode"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-multi-shape",
+    "input": {
+      "segments": [],
+      "multi_subtitle": []
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.multi_subtitle"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-overlay-shape",
+    "input": {
+      "segments": [],
+      "overlay_track": []
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.overlay_track"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-binding-array",
+    "input": {
+      "segments": [],
+      "multi_subtitle": {
+        "tracks": [
+          {
+            "id": "e"
+          }
+        ],
+        "bindings": [
+          {
+            "track_id": "e",
+            "main_segment_ids": [],
+            "extension_segment_ids": [
+              "bad"
+            ]
+          }
+        ]
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.multi_subtitle.bindings[0].main_segment_ids"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-items-array-entry",
+    "input": {
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "word",
+          "items": [
+            null
+          ]
+        }
+      ]
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].items[0]"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-preview-names",
+    "input": {
+      "segments": [],
+      "preview": {
+        "subtitle": {
+          "x": 0,
+          "y": 0,
+          "width": 1,
+          "height": 1,
+          "speaker_labels": {
+            "names": []
+          }
+        }
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.preview.subtitle.speaker_labels.names"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "fps-source-auto",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "auto"
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema"
+    ]
+  },
+  {
+    "name": "fps-source-user",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema"
+    ]
+  },
+  {
+    "name": "bad-fps-source-null",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": null
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-empty",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": ""
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-uppercase",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "AUTO"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-bool",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": false
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-number",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": 0
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-array",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-object",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": {}
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-fps-zero-item",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-empty",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-cross-track-members",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      },
+      "overlay_track": {
+        "enabled": true,
+        "segments": [
+          {
+            "id": "b",
+            "start": 5000,
+            "end": 7000,
+            "text": "overlay",
+            "sticker_group_id": "stick-1",
+            "assOverride": {
+              "pos": {
+                "x": -12,
+                "y": 80
+              }
+            },
+            "vendor": {
+              "_dirty": true
+            }
+          }
+        ]
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-missing-table",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.subtitle_groups"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-bad-table-array",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.subtitle_groups"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-bad-counter-bool",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ],
+        "next_id": true
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.subtitle_groups.next_id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-bad-counter-zero",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ],
+        "next_id": 0
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.subtitle_groups.next_id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-missing-color-array",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.subtitle_groups.color"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-bad-group",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          null
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.subtitle_groups.sticker[0]",
+      "$.segments[0].sticker_group_id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-bad-value",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": []
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.subtitle_groups.sticker[0].value"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-independent-range",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              },
+              "start": 0
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.subtitle_groups.sticker[0].value"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-dangling-member",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "missing",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].sticker_group_id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-null-member",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": null,
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].sticker_group_id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-legacy-projection",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ],
+          "sticker": {
+            "name": "cat"
+          }
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].sticker"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-legacy-null-projection",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ],
+          "color": null
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].color"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-duplicate-group-id",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          },
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.subtitle_groups.sticker[1].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-missing-cue-id",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.segments[0].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-invalid-fps-source",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-cross-track-duplicate-id",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [
+        {
+          "id": "a",
+          "start": 0,
+          "end": 1000,
+          "text": "你好，世界。",
+          "sticker_group_id": "stick-1",
+          "items": [
+            {
+              "start": 0,
+              "end": 0,
+              "text": "，"
+            }
+          ]
+        }
+      ],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": [
+          {
+            "id": "stick-1",
+            "value": {
+              "name": "cat",
+              "vendor": {
+                "asset": 1
+              }
+            }
+          }
+        ]
+      },
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      },
+      "overlay_track": {
+        "enabled": true,
+        "segments": [
+          {
+            "id": "a",
+            "start": 5000,
+            "end": 7000,
+            "text": "overlay",
+            "sticker_group_id": "stick-1",
+            "assOverride": {
+              "pos": {
+                "x": -12,
+                "y": 80
+              }
+            },
+            "vendor": {
+              "_dirty": true
+            }
+          }
+        ]
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.overlay_track.segments[0].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-normalized-overlay-id-collision",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      },
+      "segments": [
+        {
+          "id": " a ",
+          "start": 0,
+          "end": 1000,
+          "text": "text"
+        }
+      ],
+      "overlay_track": {
+        "segments": [
+          {
+            "id": "a",
+            "start": 0,
+            "end": 1000,
+            "text": "text"
+          }
+        ]
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.overlay_track.segments[0].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-normalized-extension-id-collision",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      },
+      "segments": [
+        {
+          "id": " a ",
+          "start": 0,
+          "end": 1000,
+          "text": "text"
+        }
+      ],
+      "multi_subtitle": {
+        "tracks": [
+          {
+            "id": "ext",
+            "segments": [
+              {
+                "id": "a",
+                "start": 0,
+                "end": 1000,
+                "text": "text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.multi_subtitle.tracks[0].segments[0].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-trimmed-unique-id-and-null-tracks",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      },
+      "segments": [
+        {
+          "id": " a ",
+          "start": 0,
+          "end": 1000,
+          "text": "text"
+        }
+      ],
+      "multi_subtitle": null,
+      "overlay_track": null
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.segments[0].id"
+    ]
+  },
+  {
+    "name": "v1-timed-text-view-rows",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": "rows"
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-single",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": "single"
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-invalid",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": "invalid"
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-null",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": null
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-number",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": 7
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-boolean",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": false
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-array",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": []
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-object",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": {}
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-timed-text-view-rows",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [],
+      "timed_text_edit_view": "rows",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-timed-text-view-single",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [],
+      "timed_text_edit_view": "single",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-timed-text-view-invalid",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [],
+      "timed_text_edit_view": "invalid",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-timed-text-view-null",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [],
+      "timed_text_edit_view": null,
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-timed-text-view-number",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [],
+      "timed_text_edit_view": 7,
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-timed-text-view-boolean",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [],
+      "timed_text_edit_view": false,
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-timed-text-view-array",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [],
+      "timed_text_edit_view": [],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1.5-timed-text-view-object",
+    "input": {
+      "schema": "moy.asr.project.v1.5",
+      "segments": [],
+      "timed_text_edit_view": {},
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "reserved-future-v2",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "segments": [],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.schema"
+    ]
+  }
+]

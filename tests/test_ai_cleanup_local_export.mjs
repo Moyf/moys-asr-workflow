@@ -112,20 +112,16 @@ test('legacy AI/manual gaps and stale scope never hide enabled subtitle words', 
   assert.equal(core.projectCleanupRetainedSegments(edited, localGap())[0].text, edited[0].text);
 });
 
-test('default built-in punctuation cleanup migrates only already-exact local scopes', () => {
+test('opening does not expose implicit punctuation cleanup or rewrite exact and stale AI scopes', () => {
   const { context, core, main } = runtime();
   const stale = { start: 0, end: 770, cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 2, text: 'stale' } };
   context.MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup.push(stale);
+  const before = JSON.stringify(context.MaweBoot.DATA);
   vm.runInNewContext(initModuleSource('editor/cues/editor-text-cleanup.js'), context);
-  context.window.MaweTextCleanup.cleanPunctuation();
-  const ranges = context.MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup;
-  assert.equal(ranges[0].cleanup_scope.text, '啊  我这……');
-  assert.equal(ranges[1].cleanup_scope.text, 'stale');
+  assert.equal(context.window.MaweTextCleanup.cleanPunctuation, undefined);
+  assert.doesNotMatch(fs.readFileSync(new URL('../web/editor/boot/editor-startup.js', import.meta.url), 'utf8'), /cleanPunctuation/);
+  assert.equal(JSON.stringify(context.MaweBoot.DATA), before);
   assert.equal(core.projectCleanupRetainedSegments(main, context.MaweBoot.DATA.gap_remove)[0].text, '我这个功能呢');
-  ranges[0].cleanup_scope.text = 'edit mismatch';
-  context.window.MaweTextCleanup.cleanPunctuation();
-  assert.equal(ranges[0].cleanup_scope.text, 'edit mismatch');
-  assert.equal(core.projectCleanupRetainedSegments(main, context.MaweBoot.DATA.gap_remove)[0].text, main[0].text);
 });
 
 function neutralNormalizationRuntime() {

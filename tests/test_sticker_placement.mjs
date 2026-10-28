@@ -1,5 +1,6 @@
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { initModuleSource } from './helpers/init-module-source.mjs';
@@ -342,10 +343,6 @@ function stickerBindingContext(segments) {
     },
     confirm: () => false,
     setTimeout: () => 0,
-    // stickerTargetTrack 由 editor-wiring-overlay-actions.js 以顶层 let 声明（跨
-    // 文件全局词法绑定）；桩环境里用上下文属性等价替代。
-    stickerTargetTrack: 'main',
-    activeStickerHasOverlay: false,
     getOverlayTrack: () => null,
     stickerSegmentsForTrack: () => segments,
     overlaySticker: { stickerTargetTrack: 'main', previewTrack: 'main' },
@@ -360,8 +357,43 @@ function stickerBindingContext(segments) {
     MaweDom: { stickerModal: stubElement(), stickerPreviewModal: stubElement() },
   };
   context.window = context;
+  loadEditorModule(context, 'shared/editor-utils.js');
   return context;
 }
+
+for (const target of ['main', 'overlay']) test(`clearing sticker targets uses the ${target} track without legacy globals`, () => {
+  const main = [
+    { id: 'main-a', start: 0, end: 1000, text: '主一' },
+    { id: 'main-b', start: 1000, end: 2600, text: '主二' },
+  ];
+  const overlay = { enabled: true, segments: [
+    { id: 'overlay-a', start: 0, end: 1000, text: '叠一' },
+    { id: 'overlay-b', start: 1000, end: 2600, text: '叠二' },
+  ] };
+  const binding = stickerBindingContext(main);
+  const project = binding.MaweBoot.DATA;
+  project.overlay_track = overlay;
+  binding.getOverlayTrack = () => overlay;
+  binding.stickerSegmentsForTrack = track => track === 'overlay' ? overlay.segments : main;
+  const u = binding.AsrEditorUtils;
+  const sticker = { name: 'bind', filename: 'bind.png', rel: 'bind.png' };
+  u.assignSubtitleGroup(project, main, [0, 1], 'sticker', sticker);
+  u.assignSubtitleGroup(project, overlay.segments, [0, 1], 'sticker', sticker);
+  const selected = target === 'overlay' ? overlay.segments : main;
+  const other = target === 'overlay' ? main : overlay.segments;
+  const selectedGroup = selected[0].sticker_group_id;
+  const otherGroup = other[0].sticker_group_id;
+  vm.runInNewContext(readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), binding);
+  loadEditorSource(binding, 'editor/cues/editor-sticker-picker.js');
+  project.segments = main;
+  binding.MaweBoot.STICKERS = [sticker];
+  binding.MaweStickerPicker.openStickerPicker([0], false, { overlay: target === 'overlay' });
+  binding.MaweStickerPicker.clearStickerOnTargets();
+  assert.equal(selected[0].sticker_group_id, undefined);
+  assert.equal(selected[1].sticker_group_id, selectedGroup);
+  assert.equal(selected[1].sticker.name, 'bind');
+  assert.deepEqual(other.map(cue => cue.sticker_group_id), [otherGroup, otherGroup]);
+});
 
 test('multi-sentence sticker binding covers every bound cue without a drag', () => {
   const segments = [
@@ -378,13 +410,14 @@ test('multi-sentence sticker binding covers every bound cue without a drag', () 
   binding.window.MaweStickerPicker.openStickerPicker([0, 1], true);
   binding.window.MaweStickerPicker.assignSticker(sticker);
 
-  // 写入契约：head.sticker 覆盖整个选区（与 syncTimelineGroupRanges、
-  // 延长表情包、标记颜色一致），ref 成员指向 head。
+  // 稳定组保存成员关系，兼容视图中的 head.sticker 覆盖整个选区。
   assert.deepEqual(
     { start: segments[0].sticker.start, end: segments[0].sticker.end, name: segments[0].sticker.name },
     { start: 0, end: 2600, name: 'bind' },
   );
-  assert.equal(segments[1].sticker, null);
+  assert.equal(Object.hasOwn(segments[1], 'sticker'), false);
+  assert.equal(segments[1].sticker_group_id, segments[0].sticker_group_id);
+  assert.equal(binding.MaweBoot.DATA.subtitle_groups.sticker[0].id, segments[0].sticker_group_id);
   assert.deepEqual({ ...segments[1].sticker_ref }, { name: 'bind', headIdx: 0 });
 
   // 预览读取契约：不做任何拖动，第二句时间点就命中表情包区间。

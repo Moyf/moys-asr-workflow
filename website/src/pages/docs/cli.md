@@ -34,7 +34,7 @@ source: "docs/user/CLI.md"
 - `--mosp PATH` 可单独指定工程位置，与 `-o` 的第二个路径互斥。
 - 未给 `-o` 时按媒体、供应商与模型命名；自动化应显式指定路径。
 - 输出父目录会创建。不要假设所有入口都有 Launcher 的防覆盖规则，应使用新的输出路径。
-- 默认不生成 HTML，`--html` 额外生成 `.edit.html`；`--json` 是历史兼容参数，公开 CLI 已默认生成工程。
+- 默认不生成 HTML；1.x 的 `--html` 可额外生成 `.edit.html`，2.0（含预发布版）起该参数在转写前报退役错误，改用 `--server`；`--json` 是历史兼容参数，公开 CLI 已默认生成工程。
 
 `-ll 2m` 只处理前两分钟；完整转写时移除该参数。不要默默截断用户要求的完整媒体。
 
@@ -54,15 +54,15 @@ source: "docs/user/CLI.md"
 | `--max-len N` / `--min-len N` | 字符型最大长度/短句合并阈值，生成器默认 18 / 5。完整词与 item 边界间局部重平衡，减少孤立短尾；保护常见数字单位、小数、比例和版本号。不可拆 item 或保护表达自身超限时完整保留并打印提示。 |
 | `--max-words N` / `--min-words N` | 单词型最大长度/短句阈值，默认 13 / 3。 |
 | `--gap-split MS` | 停顿切句阈值，默认 500 毫秒。 |
-| `--keep-punct` | 保留句尾标点；默认剥除 `，。；,.;`，问叹号保留。 |
-| `--strip-tail-punct CHARS` | 指定剥除的句尾标点；公开入口不转发空字符串，需禁用剥除时使用高级模块命令。 |
+| `--keep-punct` | 保留全部句尾标点；默认已保留，此开关还可覆盖显式 `--strip-tail-punct`。 |
+| `--strip-tail-punct CHARS` | 显式指定要删除的句尾标点；默认不剥除。`--keep-punct` 可覆盖显式删除；高级模块命令也接受空字符串禁用剥除。 |
 | `--extra-strong-punct CHARS` | 额外强断句符号，仅向 Qwen 下发。 |
 | `--speaker` / `--speaker-colors` | 请求说话人分离；后者同时写颜色快照，无需重复前者。能力取决于模型。 |
 | `-ll` / `--length-limit VALUE` | 限制处理时长，支持 `90`、`20s`、`2m`、`1h`。 |
 | `--json` | 兼容旧调用；输出仍为 `.mosp`。 |
 | `--with-waveform` | 提前生成外置波形缓存，工程落盘不内嵌缓存。 |
 | `--with-spectral` | 额外生成频谱层，要求 `--with-waveform`。 |
-| `--html` / `--no-html` | 生成/关闭便携 HTML，二者互斥，默认关闭。 |
+| `--html` / `--no-html` | 1.x 可选便携 HTML；2.0 起 `--html` 提示退役，`--no-html` 保留为兼容参数。 |
 | `--debug` | 输出 API 调试信息。 |
 | `-s` / `--stickers PATH` | 表情包目录，也可用于 Server。 |
 

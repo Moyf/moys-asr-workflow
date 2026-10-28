@@ -71,7 +71,9 @@ export function initMaweProjectLoad() {
 
 
 
-function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
+function applyCanonicalProject(data, filename, { repaired = false, loadGeneration = null } = {}) {
+  const timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
+  window.AsrEditorUtils.migrateSubtitleGroups(data);
   if (loadGeneration === null) {
     const generation = MaweState.beginProjectLoad();
     MaweState.finishProjectLoad(generation);
@@ -93,7 +95,8 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   window.MaweExportContext.projectExtensionFields = Object.fromEntries(
     Object.entries(data).filter(([key]) => !window.MaweExportContext.CANONICAL_PROJECT_FIELDS.has(key)),
   );
-  MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
+  MaweBoot.DATA.schema = data.schema || window.AsrEditorUtils.PROJECT_SCHEMA;
+  MaweBoot.DATA.subtitle_groups = window.AsrEditorUtils.cloneJsonValue(data.subtitle_groups);
   MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
   window.MaweAudioProcessing?.loadProject(data.audio_processing);
   // A browser-imported project is not the server's native media binding.
@@ -106,7 +109,7 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweBoot.DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
     ? data.timestamp_granularity : undefined;
   MaweBoot.DATA.model = data.model || '';
-  MaweBoot.DATA.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
+  MaweBoot.DATA.timebase = timebase;
   MaweTimeline.timelineFpsManuallySet = MaweTimeline.hasExplicitTimelineFps(data.timebase);
   MaweBoot.DATA.media_metadata = MaweTimeline.normalizeMediaMetadata(data.media_metadata);
   MaweBoot.DATA.media_time_reference = data.media_time_reference || null;
@@ -126,7 +129,6 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweBoot.DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
   MaweHistory.gapRemoveDirty = false;
   MaweState.changes.markersDirty = false;
-  MaweState.changes.timedTextEditViewDirty = false;
   MaweAppearance.previewGeometryDirty = false;
   MaweServerSave.projectImportDirty = false;
   // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。
@@ -140,6 +142,7 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   data.segments.forEach((segment) => MaweBoot.DATA.segments.push(segment));
   MaweBoot.DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, MaweBoot.DATA.segments);
   MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(data.overlay_track);
+  MaweState.beginProjectSession();
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
   // 载入即归一分组区间：旧版本多句绑定曾把 head.sticker 写成首句范围（拖动才
   // 被同步修正），落盘工程重开后预览仍按首句区间显示；打开时就对齐组契约。
@@ -162,7 +165,7 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
   MaweProjectSettings.syncControls();
   MaweStickerRoot.activateProjectRoot();
-  MaweState.noteSavedSegments();
+  MaweState.establishProjectCheckpoint({ repaired });
   MawePlaybackLoop.refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(MaweBoot.DATA.media);
   window.MaweGapRemovedMediaExport?.updateButton();
@@ -298,41 +301,7 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
 
 
   function isMawProject(data) {
-    if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
-    if (data.preserve_punctuation !== undefined && typeof data.preserve_punctuation !== 'boolean') return false;
-    if (data.media_metadata !== undefined && data.media_metadata !== null
-        && !MaweTimeline.normalizeMediaMetadata(data.media_metadata)) return false;
-    if (data.timebase !== undefined) {
-      const timebase = data.timebase;
-      if (!timebase || typeof timebase !== 'object' || Array.isArray(timebase)
-          || (timebase.unit !== 'milliseconds' && timebase.unit !== 'frames')
-          || typeof timebase.fps !== 'number' || !Number.isFinite(timebase.fps)
-          || timebase.fps < MaweTimeline.MIN_TIMELINE_FPS || timebase.fps > MaweTimeline.MAX_TIMELINE_FPS) return false;
-    }
-    const hasOptionalFramePair = (value) => {
-      const hasStart = Object.prototype.hasOwnProperty.call(value || {}, 'start_frame');
-      const hasEnd = Object.prototype.hasOwnProperty.call(value || {}, 'end_frame');
-      return (!hasStart && !hasEnd) || MaweTimeline.hasValidFramePair(value);
-    };
-    let previousEnd = 0;
-    return data.segments.every((segment) => {
-      if (!segment || typeof segment !== 'object'
-          || !Number.isInteger(segment.start) || !Number.isInteger(segment.end)
-          || segment.start < 0 || segment.end <= segment.start || segment.start < previousEnd
-          || typeof segment.text !== 'string' || !hasOptionalFramePair(segment)) return false;
-      previousEnd = segment.end;
-      if (!Array.isArray(segment.items)) return segment.items === undefined;
-      let itemEnd = segment.start;
-      return segment.items.every((item) => {
-        if (!item || typeof item !== 'object'
-            || !Number.isInteger(item.start) || !Number.isInteger(item.end)
-            || item.start < segment.start || item.end > segment.end || item.end <= item.start
-            || item.start < itemEnd || typeof item.text !== 'string'
-            || !hasOptionalFramePair(item)) return false;
-        itemEnd = item.end;
-        return true;
-      });
-    });
+    return window.MaweProjectValidation.validateProject(data).ok;
   }
 
 
@@ -397,6 +366,8 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweCuePanelState.currentCuePanelTrackId = null;
   MaweCuePanelState.resetCuePanelEditState();
   return MaweCommands.run('替换字幕', (command) => {
+    delete MaweBoot.DATA.subtitle_groups;
+    MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
     MaweBoot.DATA.segments.length = 0;
     (segments || []).forEach((segment) => MaweBoot.DATA.segments.push({ ...segment }));
     // 替换语义同时接管叠加轨：导入双层 SRT 时第二层落到叠加轨；

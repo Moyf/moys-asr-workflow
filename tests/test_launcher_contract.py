@@ -38,9 +38,10 @@ vm.runInNewContext(source + '\nmockApi().get_config().then(value => console.log(
             with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(root / "app")}, clear=True):
                 real = LauncherApi(paths=paths, window_getter=lambda: None).get_config()
         self.assertEqual(set(real), set(browser))
-        for key in ("asrPresetRoot", "asrPresetRootConfigured", "serverPort", "models", "regions", "languages"):
+        for key in ("asrPresetRoot", "asrPresetRootConfigured", "serverPort", "models", "regions", "languages", "standaloneEditorSupported"):
             with self.subTest(key=key):
                 self.assertIs(type(browser[key]), type(real[key]))
+        self.assertEqual(browser["standaloneEditorSupported"], real["standaloneEditorSupported"])
         provider = next(item for item in browser["providers"] if item["id"] == browser["providerId"])
         for key in ("models", "regions", "languages"):
             self.assertEqual(browser[key], provider[key])

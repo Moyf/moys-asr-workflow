@@ -8,12 +8,6 @@ export function initMaweProjectSave() {
 
 
 
-  function projectSaveFingerprint() {
-    return JSON.stringify([MaweBoot.DATA.segments, MaweBoot.DATA.multi_subtitle, MaweBoot.DATA.overlay_track, MaweBoot.DATA.gap_remove,
-      MaweBoot.DATA.markers, MaweBoot.DATA.timed_text_edit_view === 'single' ? 'single' : 'rows',
-      MaweBoot.DATA.preview, MaweBoot.DATA.media_metadata, MaweBoot.DATA.audio_processing, MaweHistory.gapRemoveDirty, MaweAppearance.previewGeometryDirty, MaweServerSave.projectImportDirty]);
-  }
-
 function inlineEditHasUncommittedText() {
 const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
 if (!state) return false;
@@ -63,15 +57,11 @@ return MaweCommands.run(extension ? '编辑副字幕' : '编辑文本', () => {
 });
 }
 
-function markProjectSaved(filename, backupName, { silent = false, fingerprint = null, contentFingerprint } = {}) {
-// 请求在途时的新编辑继续保持脏状态，失败请求从不进入这里。
-const unchanged = !inlineEditHasUncommittedText()
-&& (fingerprint === null || fingerprint === projectSaveFingerprint());
+function markProjectSaved(filename, backupName, { silent = false, contentFingerprint, epoch = MaweState.projectEpoch } = {}) {
+// A success acknowledges exactly the bytes sent, never later edits or another project.
+if (epoch !== MaweState.projectEpoch) return false;
 MaweState.noteSavedSegments(contentFingerprint);
-if (unchanged) {
 MaweState.markSaved();
-MaweCoreState.container.querySelectorAll('.dirty').forEach(element => element.classList.remove('dirty'));
-}
 MaweBoot.PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
 MaweBoot.FILENAME_BASE = MaweBoot.PROJECT_NAME;
 const jsonEl = document.getElementById('json-name');
@@ -82,6 +72,7 @@ jsonEl.classList.remove('empty');
 }
 updateProjectDirtyIndicator();
 if (!silent) MaweHint.flashHint('保存成功！', 'success');
+return true;
 }
 
 // 工程「未保存」指示：右上角文件名前加琥珀色圆点（CSS ::before，不进 textContent，
@@ -102,9 +93,10 @@ jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
 
 
   async function saveProjectToServer({ silent = false, backupOnly = false } = {}) {
-    const epoch = MaweProjectLoad.projectBindingEpoch;
+    const bindingEpoch = MaweProjectLoad.projectBindingEpoch;
     const generation = MaweState.projectLoadGeneration;
-    const current = () => epoch === MaweProjectLoad.projectBindingEpoch && generation === MaweState.projectLoadGeneration;
+    const current = () => bindingEpoch === MaweProjectLoad.projectBindingEpoch
+      && contentEpoch === MaweState.projectEpoch && generation === MaweState.projectLoadGeneration;
     if (MaweState.projectLoadPending) return false;
     if (backupOnly && (MaweServerSave.projectFileHandle || !MaweSettings.EDITOR_SETTINGS.projectBackupEnabled)) return false;
     if (!MaweServerSave.serverProjectSavingEnabled()) {
@@ -114,8 +106,8 @@ jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
 if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
 flushInlineEditsForSave();
 const projectJson = MaweJsonRepair.buildJson();
-const fingerprint = projectSaveFingerprint();
-const contentFingerprint = MaweState.segmentsFingerprint();
+const contentEpoch = MaweState.projectEpoch;
+const contentFingerprint = MaweState.projectFingerprint(JSON.parse(projectJson));
 MaweServerSave.projectSaveInFlight = true;
 try {
 const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
@@ -136,7 +128,7 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
         throw new Error(result.error || `服务器返回 ${response.status}`);
       }
       if (!current()) return false;
-      if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent, fingerprint, contentFingerprint });
+      if (!backupOnly) markProjectSaved(result.filename, result.backup, { silent, contentFingerprint, epoch: contentEpoch });
       return true;
     } catch (error) {
       if (!current()) return false;
@@ -162,23 +154,25 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
 
   // 把当前工程写回页面持有的浏览器文件句柄（新建工程 / 另存为选定的目标）。
   async function saveProjectToHandle({ silent = false } = {}) {
-    const epoch = MaweProjectLoad.projectBindingEpoch;
+    const bindingEpoch = MaweProjectLoad.projectBindingEpoch;
     const generation = MaweState.projectLoadGeneration;
-    const current = () => epoch === MaweProjectLoad.projectBindingEpoch && generation === MaweState.projectLoadGeneration;
+    const current = () => bindingEpoch === MaweProjectLoad.projectBindingEpoch
+      && contentEpoch === MaweState.projectEpoch && generation === MaweState.projectLoadGeneration;
     if (MaweState.projectLoadPending) return false;
     if (!MaweServerSave.projectFileHandle) return false;
 if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
 flushInlineEditsForSave();
 const projectJson = MaweJsonRepair.buildJson({ forFileExport: true });
-const fingerprint = projectSaveFingerprint();
-const contentFingerprint = MaweState.segmentsFingerprint();
+const contentEpoch = MaweState.projectEpoch;
+// The export copy may use an absolute media reference for its new directory.
+// Acknowledge the equivalent runtime snapshot, captured before the async write.
+const contentFingerprint = MaweState.projectFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
 const handle = MaweServerSave.projectFileHandle;
 await MaweHost.files.writeBlob(handle, () => new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
 if (!current() || handle !== MaweServerSave.projectFileHandle) return false;
-markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint });
-      return true;
+return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: contentEpoch });
     } catch (error) {
       if (!current()) return false;
       MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
@@ -209,9 +203,12 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
   // 与「导出工程」的区别：保存成功后当前工程名跟随新文件（标题、导出默认名随之更新），
   // 且后续 Ctrl(Cmd)+S / 自动保存都写回这个新选定的文件。
   async function saveProjectAsToFile() {
-    const epoch = MaweProjectLoad.projectBindingEpoch;
+    if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
+    const bindingEpoch = MaweProjectLoad.projectBindingEpoch;
+    const contentEpoch = MaweState.projectEpoch;
     const generation = MaweState.projectLoadGeneration;
-    const current = () => epoch === MaweProjectLoad.projectBindingEpoch && generation === MaweState.projectLoadGeneration;
+    const current = () => bindingEpoch === MaweProjectLoad.projectBindingEpoch
+      && contentEpoch === MaweState.projectEpoch && generation === MaweState.projectLoadGeneration;
     if (MaweState.projectLoadPending) return false;
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
@@ -224,30 +221,32 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
       });
       return;
     }
+    MaweServerSave.projectSaveInFlight = true;
     try {
       const handle = await MaweHost.files.pickSaveFile({
         suggestedName: suggested,
         types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
       });
       if (!current()) return false;
-      let fingerprint, contentFingerprint;
+      let contentFingerprint;
       await MaweHost.files.writeBlob(handle, () => {
         if (!current()) throw new DOMException('工程已切换', 'AbortError');
         flushInlineEditsForSave();
         const projectJson = MaweJsonRepair.buildJson({ forFileExport: true });
-        fingerprint = projectSaveFingerprint();
-        contentFingerprint = MaweState.segmentsFingerprint();
+        contentFingerprint = MaweState.projectFingerprint();
         return new Blob([projectJson], { type: 'application/json;charset=utf-8' });
       });
       if (!current()) return false;
       MaweServerSave.projectFileHandle = handle;
-      markProjectSaved(handle.name, null, { fingerprint, contentFingerprint });
+      markProjectSaved(handle.name, null, { contentFingerprint, epoch: contentEpoch });
       MaweServerSave.configureServerSaveControls();
       MaweServerSave.scheduleAutoSave();
     } catch (error) {
       if (!current()) return false;
       if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
       MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
+    } finally {
+      MaweServerSave.projectSaveInFlight = false;
     }
   }
 

@@ -2,6 +2,7 @@
 // historical API. ESM init module: the assembler calls this at the
 // file's original manifest position.
 import { createUtilsModule as createDataModule } from './utils/data.js';
+import { createUtilsModule as createSubtitleGroupsModule } from './utils/subtitle-groups.js';
 import { createUtilsModule as createMarkersModule } from './utils/markers.js';
 import { createUtilsModule as createSplitAlignmentModule } from './utils/split-alignment.js';
 import { createUtilsModule as createSplitTrimModule } from './utils/split-trim.js';
@@ -46,6 +47,8 @@ const helpers = {
   getNavigator: () => window.MaweHost.runtime.getNavigator(),
 };
 Object.assign(helpers, createDataModule(helpers));
+const subtitleGroupHelpers = createSubtitleGroupsModule(helpers);
+Object.assign(helpers, subtitleGroupHelpers);
 Object.assign(helpers, createFontsModule(helpers));
 Object.assign(helpers, createSpeakersModule(helpers));
 Object.assign(helpers, createMediaMetadataModule(helpers));
@@ -392,6 +395,8 @@ const {
 } = helpers;
 
 window.AsrEditorUtils = {
+  cloneJsonValue: helpers.cloneJsonValue,
+  ...subtitleGroupHelpers,
 ...trackHelpers,
 ...wordTimingHelpers,
   PROJECT_SCHEMA,

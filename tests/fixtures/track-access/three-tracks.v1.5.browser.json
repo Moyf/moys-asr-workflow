@@ -1,0 +1,122 @@
+{
+  "schema": "moy.asr.project.v1.5",
+  "metadata": {
+    "fixture": true
+  },
+  "subtitle_group_migration": {
+    "remapped_ids": [
+      {
+        "track": "overlay",
+        "index": 0,
+        "from": "shared",
+        "to": "overlay-cue-1"
+      },
+      {
+        "track": "extension-1",
+        "index": 0,
+        "from": "shared",
+        "to": "extension-1-cue-1"
+      }
+    ]
+  },
+  "subtitle_groups": {
+    "color": [],
+    "sticker": []
+  },
+  "media": "",
+  "audio_processing": {
+    "gain_db": 0,
+    "target_lufs": -14,
+    "peak_ceiling_dbtp": -1
+  },
+  "language": "zh",
+  "model": "fixture",
+  "sticker_root": "",
+  "timebase": {
+    "unit": "milliseconds",
+    "fps": 30
+  },
+  "segments": [
+    {
+      "id": "shared",
+      "start": 1000,
+      "end": 3000,
+      "text": "主字幕\n第二行",
+      "items": [
+        {
+          "start": 1000,
+          "end": 3000,
+          "text": "主字幕\n第二行",
+          "start_frame": 30,
+          "end_frame": 90
+        }
+      ],
+      "speaker": "示例",
+      "start_frame": 30,
+      "end_frame": 90
+    }
+  ],
+  "preserve_punctuation": true,
+  "multi_subtitle": {
+    "schema": "moy.asr.multi_subtitle.v1",
+    "enabled": true,
+    "display_mode": "both",
+    "main_split_mode": "continuous",
+    "tracks": [
+      {
+        "id": "translation",
+        "role": "extension",
+        "name": "English",
+        "language": "en",
+        "split_mode": "word",
+        "source_name": "translation.srt",
+        "segments": [
+          {
+            "id": "extension-1-cue-1",
+            "start": 1100,
+            "end": 2900,
+            "text": "Translation",
+            "start_frame": 33,
+            "end_frame": 87
+          }
+        ]
+      }
+    ],
+    "bindings": [
+      {
+        "id": "binding-001",
+        "track_id": "translation",
+        "main_segment_ids": [
+          "shared"
+        ],
+        "extension_segment_ids": [
+          "extension-1-cue-1"
+        ],
+        "start_offset_ms": 100,
+        "end_offset_ms": -100
+      }
+    ]
+  },
+  "overlay_track": {
+    "enabled": true,
+    "segments": [
+      {
+        "id": "overlay-cue-1",
+        "start": 1500,
+        "end": 2500,
+        "text": "叠加",
+        "start_frame": 45,
+        "end_frame": 75,
+        "items": []
+      }
+    ]
+  },
+  "preview": {
+    "ass_mode": false,
+    "sticker": {},
+    "subtitle": {
+      "speaker_labels": {}
+    },
+    "extension_subtitle": {}
+  }
+}

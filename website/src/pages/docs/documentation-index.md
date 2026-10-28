@@ -219,6 +219,6 @@ source: "docs/INDEX.md"
 
 [保留日志索引](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/INDEX.md) · [当前相关参考与未决事项](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/CURRENT.md) · [2026-08-11 README 原文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/archived/README-2026-08-11.md)
 
-当前功能记录：[主字幕单句缩放进度账本](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.md) · [人工核对清单](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)
+当前功能记录：[单句放大出现设计账本](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.3/261020_每句放大出现/SENTENCE_POP_IN.md) · [主字幕单句缩放进度账本](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.md) · [人工核对清单](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)
 
 反馈账本中的“已修复”只对应其记录的版本和验证范围。发布变化见 [CHANGELOG](https://github.com/Moyf/moys-asr-workflow/blob/main/CHANGELOG.md)。

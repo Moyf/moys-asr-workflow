@@ -20,6 +20,17 @@
 
 当前日常编辑以 Server 为主。底层生成器与公开 CLI 的参数、默认输出不同，不应据某个生成器的帮助推断所有入口；区别见 [CLI](../user/CLI.md)。
 
+## 独立编辑入口的版本边界
+
+`maw/editor_entry_policy.py` 以 `pyproject.toml` 的应用主版本为准，打包环境缺少元数据时使用随发行同步的 `maw/diagnostics.py` 版本。1.x 保留过渡生成能力；从 2.0 的首个预发布版本开始，`.edit.html` / `blank-editor.html` 和在线编辑器停止生成、打包与维护。不能仅升级 UI 的版本文字；发布前运行版本同步检查。无法识别的版本按不支持独立入口处理。
+
+- `edit.py` 命令和 `build_blank_html()`、`render_editor_html()` 拒绝生成；公开 CLI 的显式 `--html` 在调用 ASR 前退出。生成器隐式生成及旧 Launcher 配置跳过 HTML，保留正常 SRT / 工程输出；`--no-html` 和 `--json` 继续接受。
+- `MAW.spec` 在 2.0+ 不收录仓库的 `blank-editor.html`；Windows、macOS、AppImage 共用这一清单。收集前校验元数据与全部 bundled 版本标记，防止源码已切换、安装包却按旧 fallback 启用入口；不一致时先运行 `python scripts/sync_launcher_version.py --write`，再重建 bundle 和打包。仓库旧文件留作历史，不自动删改，不再要求 2.0 发布重生成。
+- Pages 在网站构建后执行 `scripts/prepare_editor_pages.py`：1.x 可生成在线页面，2.0+ 不生成 `/editor/`，发现残留目录时失败，避免上传混合版本。此脚本不删除历史文件；重新构建网站后再执行。网站推荐入口集中到本地应用。
+- `render_editor_page()`、模板、bundle、文件导入、下载式保存降级、Server 保存、备份恢复和媒体导出供本地应用共用，继续保留。HTML 对比报告、人工核验页也不属于此次退役范围。
+
+切换实现不代表发布验收完成。发布 2.0 前仍需在最终集成版本验证：本地应用打开旧工程及媒体、新建/保存/取消/失败保护、备份恢复、字幕与媒体导出，以及三个平台安装包和 Pages 实际产物。历史 HTML 不承诺兼容新版工程；历史发行附件与用户副本保持原样。
+
 ## 数据与持久化
 
 | 数据 | 真源 / 位置 | 边界 |
@@ -131,10 +142,12 @@ Greptile 复审是提交后的既定环节；把同一标准提前到提交前�
 
 README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 [JSON_SCHEMA](JSON_SCHEMA.md)。反馈和开发进度写任务账本。官网文档由 [同步脚本](../../website/docs/CONTENT_SYNC.md) 生成，不手改副本。
 
-日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。在 PR 描述注明“内联副本待发布前统一重生成”；发布前或维护者明确要求时才执行：
+日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。仅 1.x 过渡版本在发布前或维护者明确要求时生成内联副本，并在相应 PR 描述注明“内联副本待发布前统一重生成”：
 
 ```sh
 uv run --no-sync python edit.py --blank
 ```
+
+2.0（含预发布版）起不执行此命令，不要求重生成内联副本；只构建和验证本地应用共用资源。
 
 发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。2.0 起先用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 从 CL 生成并提交版本文档，再用 `--check-doc` 检查新鲜度、`--output PATH` 检查最终 Release notes；beta 汇总、正式版精简和小版本基础内容引用见[发布管线](../INDEX.md#engineering-releases)。发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。

@@ -140,6 +140,12 @@ MaweDom.timelineTimebaseSelect?.addEventListener('change', () => {
 MaweDom.timelineFpsInput?.addEventListener('change', () => {
   MaweTimeline.setTimelineTimebase({ fps: MaweDom.timelineFpsInput.value });
 });
+// Native change does not fire when the user submits the existing value.
+MaweDom.timelineFpsInput?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.isComposing) return;
+  event.preventDefault();
+  MaweTimeline.setTimelineTimebase({ fps: MaweDom.timelineFpsInput.value });
+});
 MaweDom.timelineSnapToFrameToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ timelineSnapToFrame: MaweDom.timelineSnapToFrameToggle.checked });
   MaweCoreState.waveformEditor?.refreshPointerLine?.();

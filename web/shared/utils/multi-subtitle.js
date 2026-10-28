@@ -1,7 +1,7 @@
 // multi-subtitle: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { cloneJsonValue, detectSubtitleSplitMode, ensureStableSegmentIds, stableId } = dependencies;
+  const { cloneJsonValue, detectSubtitleSplitMode, ensureStableSegmentIds, stableId, migrateSubtitleGroups, refreshSubtitleGroupViews } = dependencies;
 
 
   // === 多重字幕（双语字幕）===
@@ -22,7 +22,7 @@ export function createUtilsModule(dependencies) {
     const segments = rawSegments
       .filter((segment) => segment && typeof segment === 'object')
       .map((segment) => {
-        const copy = { ...segment };
+        const copy = cloneJsonValue(segment);
         const override = dependencies.normalizeAssOverride(segment.assOverride);
         if (override) copy.assOverride = override;
         else delete copy.assOverride;
@@ -89,7 +89,7 @@ export function createUtilsModule(dependencies) {
       const segments = rawSegments
         .filter((segment) => segment && typeof segment === 'object')
         .map((segment) => {
-          const copy = { ...segment };
+          const copy = cloneJsonValue(segment);
           const override = dependencies.normalizeAssOverride(segment.assOverride);
           if (override) copy.assOverride = override;
           else delete copy.assOverride;
@@ -174,6 +174,7 @@ export function createUtilsModule(dependencies) {
 
   function normalizeMultiSubtitleProject(project) {
     if (!project || typeof project !== 'object') return project;
+    migrateSubtitleGroups(project);
     ensureStableSegmentIds(project.segments, 'main');
     for (const segment of project.segments || []) {
       const override = dependencies.normalizeAssOverride(segment.assOverride);
@@ -182,6 +183,7 @@ export function createUtilsModule(dependencies) {
     }
     project.overlay_track = normalizeOverlayTrack(project.overlay_track);
     project.multi_subtitle = normalizeMultiSubtitle(project.multi_subtitle, project.segments);
+    refreshSubtitleGroupViews(project);
     return project;
   }
 
@@ -229,67 +231,6 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function copySubtitleColorFields(source, target) {
-    if (!source || !target) return;
-    if (source.color != null) target.color = cloneJsonValue(source.color);
-    if (source.color_ref != null) target.color_ref = cloneJsonValue(source.color_ref);
-  }
-
-
-  // 把 sourceSegments 中按绑定关系找到的颜色组写入 targetSegments。
-  // target 的 headIdx 不能直接复用 source 下标：交换后两条字幕的数组长度和顺序
-  // 可能不同，因此每个目标颜色组都在目标数组中重新选择最早的一条作为 head。
-  function mapBoundSubtitleColors(sourceSegments, targetSegments, sourceToTarget) {
-    if (!Array.isArray(sourceSegments) || !Array.isArray(targetSegments)
-        || !(sourceToTarget instanceof Map)) return 0;
-    const groups = new Map();
-    sourceSegments.forEach((segment, sourceIndex) => {
-      const sourceHeadIndex = segment?.color
-        ? sourceIndex
-        : Number.isInteger(segment?.color_ref?.headIdx) ? segment.color_ref.headIdx : null;
-      const sourceHead = Number.isInteger(sourceHeadIndex)
-        ? sourceSegments[sourceHeadIndex]?.color
-        : null;
-      const targetIndex = sourceToTarget.get(sourceIndex);
-      if (!sourceHead || typeof sourceHead !== 'object'
-          || !Number.isInteger(targetIndex) || !targetSegments[targetIndex]) return;
-      const group = groups.get(sourceHeadIndex) || {
-        sourceHead,
-        targetIndexes: [],
-      };
-      group.targetIndexes.push(targetIndex);
-      groups.set(sourceHeadIndex, group);
-    });
-
-    let mappedCount = 0;
-    groups.forEach(({ sourceHead, targetIndexes }) => {
-      const uniqueTargetIndexes = [...new Set(targetIndexes)].sort((left, right) => left - right);
-      if (!uniqueTargetIndexes.length) return;
-      const targetHeadIndex = uniqueTargetIndexes[0];
-      const targetLastIndex = uniqueTargetIndexes[uniqueTargetIndexes.length - 1];
-      const mappedHead = cloneJsonValue(sourceHead) || {};
-      if (Number.isFinite(Number(targetSegments[targetHeadIndex]?.start))) {
-        mappedHead.start = targetSegments[targetHeadIndex].start;
-      }
-      if (Number.isFinite(Number(targetSegments[targetLastIndex]?.end))) {
-        mappedHead.end = targetSegments[targetLastIndex].end;
-      }
-      uniqueTargetIndexes.forEach((targetIndex, memberIndex) => {
-        const target = targetSegments[targetIndex];
-        target.color = null;
-        target.color_ref = null;
-        if (memberIndex === 0) {
-          target.color = mappedHead;
-        } else {
-          target.color_ref = { name: mappedHead.name, headIdx: targetHeadIndex };
-        }
-        mappedCount++;
-      });
-    });
-    return mappedCount;
-  }
-
-
   // 交换主轨与当前唯一副轨。副轨保留可选的 items 和颜色信息，
   // 绑定关系按端点整体交换，并在新主轨写入后重新计算 offset。
   function swapMainAndExtensionSubtitle(project, trackId = null) {
@@ -310,49 +251,9 @@ export function createUtilsModule(dependencies) {
     const oldMainSplitMode = multi.main_split_mode;
     const oldExtensionSplitMode = track.split_mode;
     const nextMain = oldExtension.map((segment) => ({ ...segment }));
-    const oldMainIndexById = new Map(oldMain.map((segment, index) => [stableId(segment?.id), index]));
-    const oldExtensionIndexById = new Map(
-      oldExtension.map((segment, index) => [stableId(segment?.id), index]),
-    );
-    const mainToExtensionIndex = new Map();
-    (multi.bindings || []).forEach((binding) => {
-      if (binding.track_id !== track.id) return;
-      const sourceIds = Array.isArray(binding.main_segment_ids)
-        ? binding.main_segment_ids : [];
-      const targetIds = Array.isArray(binding.extension_segment_ids)
-        ? binding.extension_segment_ids : [];
-      const pairCount = Math.min(sourceIds.length, targetIds.length);
-      for (let pairIndex = 0; pairIndex < pairCount; pairIndex++) {
-        const sourceIndex = oldMainIndexById.get(stableId(sourceIds[pairIndex]));
-        const targetIndex = oldExtensionIndexById.get(stableId(targetIds[pairIndex]));
-        if (Number.isInteger(sourceIndex) && Number.isInteger(targetIndex)
-            && !mainToExtensionIndex.has(sourceIndex)) {
-          mainToExtensionIndex.set(sourceIndex, targetIndex);
-        }
-      }
-    });
-    const mappedColorCount = mapBoundSubtitleColors(
-      oldMain,
-      nextMain,
-      mainToExtensionIndex,
-    );
-    const nextExtension = oldMain.map((segment) => {
-      const copy = {
-        id: stableId(segment.id),
-        start: segment.start,
-        end: segment.end,
-        text: typeof segment.text === 'string' ? segment.text : '',
-      };
-      if (Array.isArray(segment.items)) {
-        copy.items = segment.items.map((item) => ({ ...item }));
-      }
-      copySubtitleColorFields(segment, copy);
-      if (segment.assOverride !== undefined) copy.assOverride = dependencies.normalizeAssOverride(segment.assOverride);
-      if (segment.speaker != null) copy.speaker = segment.speaker;
-      if (typeof segment.disabled === 'boolean') copy.disabled = segment.disabled;
-      if (segment._dirty) copy._dirty = true;
-      return copy;
-    });
+    // Track roles change; cue properties and group relationships stay with cues.
+    const mappedColorCount = 0;
+    const nextExtension = cloneJsonValue(oldMain);
 
     project.segments.length = 0;
     nextMain.forEach((segment) => project.segments.push(segment));

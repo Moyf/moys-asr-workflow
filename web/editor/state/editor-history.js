@@ -30,12 +30,13 @@ export function initMaweHistory() {
 
 
   function snapshotSegments() {
-  // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记；多字幕数据与主轨
+  // 会话高亮可随快照保留，但不参与保存检查点；多字幕数据与主轨
   // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
   return window.AsrEditorUtils.buildSegmentsHistorySnapshot(
     MaweBoot.DATA.segments,
     MaweMultiSubtitleCore.getMultiSubtitleState(),
     getOverlayTrack(),
+    MaweBoot.DATA.subtitle_groups,
   );
 }
 
@@ -283,6 +284,8 @@ export function initMaweHistory() {
   // 视口属于本次撤销动作，不随历史快照恢复。
   const cueListAnchor = MaweCueListAnchor.captureCueListRenderAnchor();
   const previousWaveformStructure = MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
+  MaweState.rememberSessionHighlights();
+  MaweBoot.DATA.subtitle_groups = snapshot.subtitle_groups || null;
   MaweBoot.DATA.segments.length = 0;
   (snapshot.segments || []).forEach(s => MaweBoot.DATA.segments.push(s));
   MaweBoot.DATA.multi_subtitle = snapshot.multi_subtitle || {
@@ -291,6 +294,7 @@ export function initMaweHistory() {
   MaweBoot.DATA.overlay_track = window.AsrEditorUtils.normalizeOverlayTrack(snapshot.overlay_track);
   if (record.projectChanges) Object.assign(MaweState.changes, record.projectChanges);
   MaweMultiSubtitleCore.normalizeMultiSubtitleState();
+  MaweState.restoreSessionHighlights();
   MaweState.reconcileSegmentsDirty();
   // 历史恢复会改变下标身份；丢弃旧面板绑定，避免 clearSelection() 把旧面板
   // 内容提交到恢复后占据同一下标的另一条字幕，并因此生成新历史、清空 redo。

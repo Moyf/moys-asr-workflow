@@ -2179,6 +2179,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["preview"], "第一句\n第二句？\n第三句")
 
+    def test_script_preview_and_match_default_to_preserving_punctuation(self) -> None:
+        project = self.root / "default-punctuation.mosp"
+        script = self.root / "default-punctuation.txt"
+        project.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "你好世界"}]}), encoding="utf-8")
+        script.write_text("你好，世界。", encoding="utf-8")
+        preview = self.api.read_script_preview({"path": str(script)})
+        self.assertEqual(preview["preview"], "你好，\n世界。")
+        match_preview = self.api.preview_script_match({"projectPath": str(project), "scriptPath": str(script)})
+        self.assertEqual(match_preview["preview"], "1. 你好，\n2. 世界。")
+        result = self.api.run_script_match({"projectPath": str(project), "scriptPath": str(script), "outputMode": "project"})
+        self.assertTrue(result["ok"])
+        self.assertEqual("".join(segment["text"] for segment in read_project(Path(result["projectPath"]))["segments"]), "你好，世界。")
+
     def test_script_match_bridge_forwards_markdown_cleanup_setting(self) -> None:
         project = self.root / "clip.mosp"
         script = self.root / "inline-match.md"
@@ -3870,6 +3883,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["field"], "serverMediaPath")
         self.assertEqual(result["code"], "server_media_missing")
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_open_blank_html_opens_repo_template_when_present(self) -> None:
         """Given blank editor exists, When opened, Then browser receives its file URL."""
         blank = self.root / "blank-editor.html"
@@ -3881,6 +3895,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["ok"])
         open_path.assert_called_once_with(blank)
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_open_blank_html_reports_missing_template_without_raising(self) -> None:
         """Given blank editor is missing, When opened, Then JS receives structured failure."""
         with mock.patch("maw.gui_web.asset_path", return_value=self.root / "missing-blank-editor.html"):
@@ -5994,7 +6009,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: true },',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
-  buildPortableBlankEditor,
+  buildBrowserEditorFixture,
   findFreePort,
   generateWaveformPayload,
   makeTempDir,
@@ -14,9 +14,42 @@ import {
 let tempDir;
 let server;
 
+function savedColorGroup(project, segment) {
+  return project.subtitle_groups.color.find(group => group.id === segment.color_group_id);
+}
+
+for (const target of ['main', 'overlay']) test(`clears ${target} stickers through the picker without affecting the other track`, async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(String(error)));
+  const sticker = { name: 'bind', filename: 'bind.png', rel: 'bind.png' };
+  await page.goto(server.url);
+  await dropProject(page, {
+    segments: [{ id: 'main-001', start: 0, end: 1000, text: 'main cue', sticker }],
+    overlay_track: { enabled: true, segments: [
+      { id: 'overlay-001', start: 0, end: 1000, text: 'overlay cue', sticker },
+    ] },
+    waveform: generateWaveformPayload(2000),
+  });
+  await page.evaluate(({ target, sticker }) => {
+    MaweBoot.STICKERS.push(sticker);
+    MaweStickerPicker.openStickerPicker([0], false, { overlay: target === 'overlay' });
+  }, { target, sticker });
+  await expect(page.locator('#sticker-modal')).toHaveClass(/show/);
+  await page.locator('#sticker-clear').click();
+  await expect(page.locator('#sticker-modal')).not.toHaveClass(/show/);
+  const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+  const selected = target === 'overlay' ? saved.overlay_track.segments[0] : saved.segments[0];
+  const other = target === 'overlay' ? saved.segments[0] : saved.overlay_track.segments[0];
+  expect(selected).not.toHaveProperty('sticker_group_id');
+  expect(typeof other.sticker_group_id).toBe('string');
+  expect(saved.subtitle_groups.sticker).toHaveLength(1);
+  expect(saved.subtitle_groups.sticker[0].id).toBe(other.sticker_group_id);
+  expect(pageErrors).toEqual([]);
+});
+
 test.beforeAll(async () => {
   tempDir = makeTempDir('overlay-track');
-  const blankPath = buildPortableBlankEditor(join(tempDir, 'blank-editor.html'));
+  const blankPath = buildBrowserEditorFixture(join(tempDir, 'blank-editor.html'));
   server = await startStaticServer(blankPath, await findFreePort());
 });
 
@@ -153,8 +186,10 @@ test('edits an independent overlay track, restores it through history, and expor
   expect(savedOverlay.enabled).toBe(true);
   expect(savedOverlay.segments).toHaveLength(1);
   expect(savedOverlay.segments[0]).toMatchObject({
-    id: 'overlay-001', start: 500, end: 1500, text: 'overlay edited', _dirty: true,
+    id: 'overlay-001', start: 500, end: 1500, text: 'overlay edited',
   });
+  expect(savedOverlay.segments[0]).not.toHaveProperty('_dirty');
+  expect(await page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0]._dirty)).toBe(true);
 
   await page.locator('#subtitle-export-btn').click();
   await page.locator('#download-full-srt').click();
@@ -402,8 +437,8 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   await dropProject(page, project);
   await expect(page.locator('.cue[data-idx="2"]')).toHaveCount(1);
 
-  // 右键把颜色 head 转为叠加字幕：颜色标记跟随（物化为自持 head），
-  // 主轨剩余组员按组拆分语义提升为新 head，不产生跨轨引用。
+  // 右键换轨保留稳定颜色组 ID 与剩余成员关联；
+  // head/ref 只是按当前轨道重建的显示投影。
   await page.locator('.cue[data-idx="0"]').click({ button: 'right', force: true });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
   // 「转为叠加字幕」收纳在「高级操作」二级菜单内，先展开再点击。
@@ -414,26 +449,27 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
 
   const afterOut = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(afterOut.overlay_track.segments[0]).toMatchObject({ id: 'head-1', text: 'red head' });
-  expect(afterOut.overlay_track.segments[0].color).toMatchObject({ name: 'red', start: 0, end: 900 });
-  expect(afterOut.overlay_track.segments[0].color.value).toMatch(/^#[0-9a-f]{6}$/i);
+  const sharedColor = savedColorGroup(afterOut, afterOut.overlay_track.segments[0]);
+  expect(sharedColor.value).toMatchObject({ name: 'red' });
   expect(afterOut.segments[0]).toMatchObject({ id: 'member-1' });
-  expect(afterOut.segments[0].color).toMatchObject({ name: 'red', start: 1000, end: 1900 });
-  expect(afterOut.segments[0].color_ref).toBeNull();
+  expect(afterOut.segments[0].color_group_id).toBe(sharedColor.id);
+  expect(afterOut.segments[0]).not.toHaveProperty('color_ref');
+  expect(await page.evaluate(() => AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'color')
+    .map(({ start, end }) => ({ start, end })))).toEqual([{ start: 0, end: 1900 }]);
 
   // 转为主字幕：颜色同样跟随（数据层直调，菜单点击路径已有用例覆盖）。
   const reverted = await page.evaluate(() => window.MAWE.resolve('overlay-track').convertOverlayCueToMain(0));
   expect(reverted).toBe(true);
   const afterBack = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(afterBack.overlay_track.segments).toHaveLength(0);
-  expect(afterBack.segments.find((segment) => segment.id === 'head-1').color)
-    .toMatchObject({ name: 'red', start: 0, end: 900 });
+  expect(afterBack.segments.find((segment) => segment.id === 'head-1').color_group_id).toBe(sharedColor.id);
+  expect(savedColorGroup(afterBack, afterBack.segments[0]).value).toMatchObject({ name: 'red' });
+  const groupIds = new Set(afterBack.subtitle_groups.color.map(group => group.id));
   const dangling = [
     ...afterBack.segments,
     ...(afterBack.overlay_track?.segments || []),
   ].filter((segment) => {
-    if (!segment.color_ref) return false;
-    const head = afterBack.segments[segment.color_ref.headIdx];
-    return !head || !head.color;
+    return segment.color_group_id && !groupIds.has(segment.color_group_id);
   });
   expect(dangling).toEqual([]);
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
@@ -482,13 +518,14 @@ test('keeps the cue color on a Shift+drag conversion and colors the overlay prev
   const afterDrag = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(afterDrag.overlay_track.segments.map((segment) => segment.id))
     .toEqual(['main-002']);
-  expect(afterDrag.overlay_track.segments[0].color).toMatchObject({ name: 'green' });
-  const convertedColor = afterDrag.overlay_track.segments[0].color;
+  expect(savedColorGroup(afterDrag, afterDrag.overlay_track.segments[0]).value).toMatchObject({ name: 'green' });
+  const convertedColor = await page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].color);
+  expect(convertedColor).toMatchObject({ name: 'green' });
   expect(convertedColor.end - convertedColor.start).toBe(2000);
   expect(convertedColor.start).toBeGreaterThanOrEqual(450);
   expect(convertedColor.start).toBeLessThanOrEqual(550);
   // 主轨字幕的颜色不受影响。
-  expect(afterDrag.segments[0].color).toMatchObject({ name: 'red' });
+  expect(savedColorGroup(afterDrag, afterDrag.segments[0]).value).toMatchObject({ name: 'red' });
 
   // 预览：播放头落在主字幕与叠加字幕重叠区时，两条预览文本各自应用
   // 自己的颜色快照（默认下划线样式：叠加轨绿色、主字幕红色）。
@@ -676,8 +713,8 @@ test('splits and merges overlay cues with group marks following', async ({ page 
   expect(afterSplit.overlay_track.segments).toHaveLength(2);
   expect(afterSplit.overlay_track.segments[0].text).toContain('hello');
   expect(afterSplit.overlay_track.segments[1].text).toContain('world');
-  expect(afterSplit.overlay_track.segments[0].color).toMatchObject({ name: 'red' });
-  expect(afterSplit.overlay_track.segments[1].color_ref).toMatchObject({ name: 'red', headIdx: 0 });
+  expect(savedColorGroup(afterSplit, afterSplit.overlay_track.segments[0]).value).toMatchObject({ name: 'red' });
+  expect(afterSplit.overlay_track.segments[1].color_group_id).toBe(afterSplit.overlay_track.segments[0].color_group_id);
 
   // 合并：同组的两条叠加字幕合并后继承该组。
   await page.evaluate(() => MaweCuePanel.setCuePanelTarget('overlay', 0));
@@ -686,8 +723,9 @@ test('splits and merges overlay cues with group marks following', async ({ page 
   expect(afterMerge.overlay_track.segments).toHaveLength(1);
   expect(afterMerge.overlay_track.segments[0].text).toContain('hello');
   expect(afterMerge.overlay_track.segments[0].text).toContain('world');
-  expect(afterMerge.overlay_track.segments[0].color).toMatchObject({ name: 'red' });
-  expect(afterMerge.overlay_track.segments[0].color_ref).toBeNull();
+  expect(savedColorGroup(afterMerge, afterMerge.overlay_track.segments[0]).value).toMatchObject({ name: 'red' });
+  expect(afterMerge.overlay_track.segments[0].color_group_id).toBe(afterSplit.overlay_track.segments[0].color_group_id);
+  expect(afterMerge.overlay_track.segments[0]).not.toHaveProperty('color_ref');
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
@@ -695,13 +733,15 @@ test('batch merge via C key inherits color groups and rejects skipped middle cue
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
   const project = {
+    schema: 'moy.asr.project.v1.5',
+    subtitle_groups: { color: [{ id: 'red-group', value: { name: 'red' } }], sticker: [] },
     segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
     overlay_track: {
       enabled: true,
       segments: [
-        { id: 'overlay-001', start: 0, end: 800, text: '甲', color_ref: { name: 'red', headIdx: 1 } },
-        { id: 'overlay-002', start: 900, end: 1600, text: '乙', color: { name: 'red' } },
-        { id: 'overlay-003', start: 1700, end: 2400, text: '丙', color_ref: { name: 'red', headIdx: 1 } },
+        { id: 'overlay-001', start: 0, end: 800, text: '甲', color_group_id: 'red-group' },
+        { id: 'overlay-002', start: 900, end: 1600, text: '乙', color_group_id: 'red-group' },
+        { id: 'overlay-003', start: 1700, end: 2400, text: '丙', color_group_id: 'red-group' },
       ],
     },
     waveform: generateWaveformPayload(3000),
@@ -726,7 +766,7 @@ test('batch merge via C key inherits color groups and rejects skipped middle cue
     expect(unchanged[i].start).toBeGreaterThanOrEqual(unchanged[i - 1].end);
   }
 
-  // 全选三段（全员指向乙段红组）按 C：与 Ctrl/Cmd+Shift+A / D 同语义，
+  // 全选三段（全员属于同一稳定红组）按 C：与 Ctrl/Cmd+Shift+A / D 同语义，
   // 合并结果继承红色 head，不再像旧实现那样把组标记整个丢掉。
   await page.evaluate(() => {
     MaweCuePanel.setCuePanelTarget('overlay', 0);
@@ -736,15 +776,17 @@ test('batch merge via C key inherits color groups and rejects skipped middle cue
     MaweState.selection.add('overlay', 2);
   });
   await page.keyboard.press('c');
-  const merged = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).overlay_track.segments);
+  const mergedProject = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+  const merged = mergedProject.overlay_track.segments;
   expect(merged).toHaveLength(1);
   expect(merged[0].start).toBe(0);
   expect(merged[0].end).toBe(2400);
   expect(merged[0].text).toContain('甲');
   expect(merged[0].text).toContain('乙');
   expect(merged[0].text).toContain('丙');
-  expect(merged[0].color).toMatchObject({ name: 'red' });
-  expect(merged[0].color_ref).toBeNull();
+  expect(merged[0].color_group_id).toBe('red-group');
+  expect(savedColorGroup(mergedProject, merged[0]).value).toMatchObject({ name: 'red' });
+  expect(merged[0]).not.toHaveProperty('color_ref');
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
@@ -1017,6 +1059,7 @@ test('assigns colors and disabled state to overlay cues with main-track parity',
     return {
       color: segment.color?.name || null,
       ref: segment.color_ref,
+      group: segment.color_group_id,
       colorStart: segment.color?.start,
       colorEnd: segment.color?.end,
       segStart: segment.start,
@@ -1024,7 +1067,8 @@ test('assigns colors and disabled state to overlay cues with main-track parity',
     };
   });
   expect(afterKey.color).toBe(paletteName);
-  expect(afterKey.ref).toBeNull();
+  expect(afterKey.ref).toBeUndefined();
+  expect(typeof afterKey.group).toBe('string');
   // 颜色范围取叠加段自身（自持 head，不跨轨引用）
   expect(afterKey.colorStart).toBe(afterKey.segStart);
   expect(afterKey.colorEnd).toBe(afterKey.segEnd);
@@ -1043,7 +1087,8 @@ test('assigns colors and disabled state to overlay cues with main-track parity',
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].color?.name)).toBe(firstPalette);
   await page.locator('.overlay-track-cue').click();
   await page.keyboard.press('0');
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].color)).toBeNull();
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].color_group_id)).toBeUndefined();
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].color)).toBeUndefined();
 
   // 右键禁用/启用
   await page.locator('.overlay-track-cue').click({ button: 'right', force: true });

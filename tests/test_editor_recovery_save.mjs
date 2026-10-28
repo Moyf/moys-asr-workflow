@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
@@ -16,7 +17,8 @@ function fixture({accept = true, failure = new TypeError('Failed to fetch'), rep
     MaweInlineEdit: {}, MaweDom: {}, MaweCuePanel: {commitCuePanelEdit() {}},
     MaweHistory: {}, MaweAppearance: {},
     MaweCoreState: {container: {querySelectorAll: () => []}},
-    MaweState: {segmentsFingerprint: () => 'segments', noteSavedSegments() {}, markSaved() {calls.saved += 1;}},
+    MaweState: {projectEpoch: 1, projectFingerprint: () => JSON.stringify(data),
+      noteSavedSegments() {}, markSaved() {calls.saved += 1;}},
     MaweProjectLoad: {projectBindingEpoch: 0},
     MaweServerSave: {serverProjectSavingEnabled: () => true, showProjectSaveError(error) {calls.errors.push(error);}},
     MaweJsonRepair: {buildJson(options) {
@@ -86,7 +88,14 @@ test('successful server saves keep their project-relative reference', async () =
 });
 
 test('changing only the timed-text view during a save keeps the newer preference dirty', async () => {
-  const {context, calls, save} = fixture({failure: null});
+  const {context, save} = fixture({failure: null});
+  // Use the content checkpoint owner; markSaved being called no longer means
+  // the current bytes match the request's acknowledged snapshot.
+  context.window = context;
+  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
+  context.MaweState.beginProjectSession();
+  context.MaweState.establishProjectCheckpoint();
   let finish;
   context.MaweHost.server.fetch = async () => new Promise(resolve => { finish = resolve; });
   context.MaweBoot.DATA.timed_text_edit_view = 'single';
@@ -94,10 +103,13 @@ test('changing only the timed-text view during a save keeps the newer preference
   context.MaweBoot.DATA.timed_text_edit_view = 'rows';
   finish({ok: true, json: async () => ({ok: true, filename: 'captions.mosp'})});
   assert.equal(await pending, true);
-  assert.equal(calls.saved, 0);
+  assert.equal(context.MaweState.hasProjectChanges(), true);
+  context.MaweBoot.DATA.timed_text_edit_view = 'single';
+  assert.equal(context.MaweState.hasProjectChanges(), false);
+  context.MaweBoot.DATA.timed_text_edit_view = 'rows';
   context.MaweHost.server.fetch = async () => ({ok: true, json: async () => ({ok: true, filename: 'captions.mosp'})});
   assert.equal(await save(), true);
-  assert.equal(calls.saved, 1);
+  assert.equal(context.MaweState.hasProjectChanges(), false);
 });
 
 test('non-connection errors do not trigger the recovery-download branch', async () => {
