@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
+import {initModuleSource} from './helpers/init-module-source.mjs';
 
 function fixture() {
   const context = vm.createContext({document: {activeElement: null}});
-  vm.runInContext(readFileSync(new URL('../web/editor/cues/editor-keyboard-targets.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/cues/editor-keyboard-targets.js'), context);
   let blurred = 0;
   const control = {blur() {blurred += 1;}};
   const surface = {contains: element => element === control};
