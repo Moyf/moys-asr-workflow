@@ -5,19 +5,21 @@
 - 调研日期：2026-10-27。
 - 代码基线：本目录当前分支 `feat/website-redesign`，HEAD `fbd4b73f`。这不是对其他开发分支或远端最新状态的判断。
 - 方法：静态阅读当前源码、工程规范和既有测试断言；没有运行构建、测试、服务、浏览器或 FFmpeg，没有生成便携 HTML。本文不能作为运行结果或视觉一致性验收。
-- 操作边界：仓库只读。开始时仅有未跟踪文件 `docs/logs/release1.10.0-beta.1/release-1.9.0-to-main.checklist.md`，没有已跟踪文件的 diff；不接触该文件。不 commit、不 push。
-- 证据记法：`仓库相对路径:起始行–结束行`，均针对上述工作树；“提案”“估算”“待决”不是现有实现。指定输出目录在本环境原先不存在，交付时只创建该输出目录及本报告。
+- 证据记法：`仓库相对路径:起始行–结束行`，除特别注明外均针对上述调研基线；“提案”“估算”“待决”不是现有实现。
+- 2026-10-28 校订：PR #311 目标 `2.0dev` 已包含后续改动，逐句 ASS 覆盖的现状以下以 `350c3b02` 为准；其余历史基线的结论和行号在实施前须重新核对。PR #239 的 v2 格式草案保留三容器并增加 `subtitle_groups`，尚待决定；本文的统一 `tracks` 格式是后续候选，暂称 v3，并未决定版本号、写出时机或迁移路线。PR #312 的 P0/P1 只读访问层基于旧容器，不决定最终格式。
+
+**与 PR #239 的设计冲突：** #239 的 `18882840` 实现和草案要求 cue ID 工程内唯一，并以跨轨 `subtitle_groups` 和 cue 的 `color_group_id` / `sticker_group_id` 保存稳定关系；本报告最初提出轨内唯一 cue ID 和轨内 `head_id`，两者不能直接兼容。如果 #239 的方案获采用，后续 tracks 设计必须保留其工程级身份、跨轨组成员及组属性，或另行明确迁移契约并证明无损；不能只将组拆成轨内引用或根据名称重建。#239 尚为 Draft，上述事实不构成对其格式的最终批准。下文的旧模型与设想需在此约束和最终决定下重新评估。
 
 ## 1. 结论与设计边界
 
 建议把当前三种字幕统一为 `SubtitleTrack`：同样持有稳定 ID、元数据、segments、启用状态、样式引用和呈现策略。主/副/叠加的区别由受约束的 role 与策略描述，绑定独立成为跨轨关系。未来“注释字幕”等拓展能力使用 `role=overlay, variant=annotation`；只增加一个可枚举的内置描述，不再增加第四套容器和全局选择集合。
 
-**统一数据模型不等于统一所有行为。** 当前主字幕带动副字幕，副字幕自行调整不反向带动主字幕；叠加轨独立；ASS 副字幕是固定位置层，叠加轨参加主轨的自动堆叠；逐句位置/缩放只在主字幕上生效。这些已有语义应先显式表达、原样迁移，再由 Moy 决定是否修改。证据：`web/editor/cues/editor-bound-drag.js:112–153`、`web/shared/utils/ass-canvas-layout.js:323–326,353–366,399–442`。
+**统一数据模型不等于统一所有行为。** 当前主字幕带动副字幕，副字幕自行调整不反向带动主字幕；叠加轨独立；ASS 副字幕是固定位置层，自动定位的叠加字幕参加主轨的自动堆叠。目标基线的主轨和叠加轨都消费逐句位置/缩放，副轨保留但不消费；手动定位句独立于自动排布。这些语义应先显式表达、原样迁移，再决定是否修改。证据：`web/editor/cues/editor-bound-drag.js`、`web/shared/utils/ass-canvas-layout.js:335–342,369–382`、`tests/test_ass_cue_position.mjs:177–188,229–293`（后两项为 `350c3b02`）。
 
 建议分两层落地：
 
 1. **近期：v1 文件格式不动，运行时统一 TrackStore/TrackView。** 三套旧容器经同一适配层枚举；字幕对象仍只保留一份，避免编辑出现双真源。
-2. **后续：确认语义并覆盖生产者后，发布 project.v2。** 顶层 `tracks` 成为字幕真源；v1 导入/导出只在边界适配。不要在仍标成 v1 的工程里同时保存两个可编辑的字幕真源。
+2. **后续候选：确认语义、格式版本和生产者覆盖后，采用 tracks 真源。** 暂称 project.v3，需兼容既有 v1 与 #239 提议的 v2；一次性迁移或运行时适配及旧格式写出策略均待决定。不要在旧格式中同时保存两个可编辑的字幕真源。
 
 理由很具体：当前顶层 `segments` 必填，未知 schema 被拒绝；JS 保存按三类字段白名单重建数据，Python 序列化还会强制写当前 schema。单独加个顶层 tracks 字段并不能完成安全迁移。证据：`maw/project.py:225–258`、`web/editor/io/editor-project-load.js:293–328`、`web/editor/io/editor-json-repair.js:17–44,61–128`、`maw/project_io.py:135–162`。
 
@@ -44,7 +46,7 @@
 
 注意两处不能从“字段相同”推导出的能力：
 
-- 副轨和叠加轨可以保存 assOverride，**当前布局器只消费 role=main 的 assOverride**。副轨留存此字段主要支持主副交换后恢复定位；已有专门测试。证据：`web/shared/utils/multi-subtitle.js:19–34,89–105,175–184`、`web/shared/utils/ass-canvas-layout.js:323–326`、`tests/test_ass_cue_position.mjs:170–181`。
+- 副轨和叠加轨可以保存 assOverride。目标基线的布局器消费 main 和 overlay 的覆盖，但不消费副轨；副轨留存此字段可供主副交换后恢复定位。证据：`web/shared/utils/ass-canvas-layout.js:335–342`、`tests/test_ass_cue_position.mjs:177–188,229–293`（`350c3b02`）。
 - JS normalize 对 cue 做 spread，但最终 buildJson 对 cue/track 白名单重新构建；“内存暂时保留未知字段”不等于“保存无损”。未知顶层字段有单独保留机制，嵌套轨道未知字段没有同等保证。证据：`web/editor/io/editor-project-load.js:90–92`、`web/shared/utils/multi-subtitle.js:85–116`、`web/editor/io/editor-json-repair.js:17–44,68–93,105–126`。
 
 ### 2.2 主字幕加载与保存
@@ -61,7 +63,7 @@ Server 读取工程先 normalize，edit.py 生成页面也 normalize；浏览器
   → 原子写出工程与备份
 ```
 
-入口证据：`web/editor/io/editor-json-repair.js:10–16,25–128`、`web/editor/io/editor-project-save.js:103–108,163–193`、`server-editor/serve.py:2355,2847–2865,3048–3064`。当前 schema 常量还影响 `maw/project_io.py:157–162`；v2 不能只改前端 JSON。
+入口证据：`web/editor/io/editor-json-repair.js:10–16,25–128`、`web/editor/io/editor-project-save.js:103–108,163–193`、`server-editor/serve.py:2355,2847–2865,3048–3064`。schema 常量还影响 `maw/project_io.py:157–162`；新格式不能只改前端 JSON。
 
 时间基准为项目级。无论帧模式还是毫秒模式，持久化 start/end 仍为整数毫秒；帧模式有成对帧字段。同步函数分别遍历主、副、叠加轨并重建 binding offsets。证据：`docs/engineering/JSON_SCHEMA.md:80–84`、`web/editor/cues/editor-timeline.js:66–107,207–228`。轨道统一不能借机把时间改成秒或浮点帧，也不能从显示文字重新猜测字词时间。
 
@@ -132,7 +134,7 @@ MaweState 已是共享状态所有者，但选择集合写死为 main/extension/
 | 主驱动副轨碰撞 | 主范围优先；副轨可能被裁剪、删除并解绑 | 作为 follower 被处理 | 不应继承该副作用 |
 | 拆分 | 可使用可靠 items；有绑定时走双语处理 | 语言模式辅助近似拆分/弹窗；items 留存不代表完全对等主轨能力 | 独立 overlay 拆分/合并入口 |
 | 跨轨移动 | 可移入 overlay | 当前主要是主副交换 | 可移回主轨可用区间 |
-| 逐句 ASS pos/scale | 应用 | 保留但不应用 | 保留但不应用 |
+| 逐句 ASS pos/scale（目标基线） | 应用 | 保留但不应用 | 应用 |
 | 禁用 | 可影响绑定副字幕 | 独立编辑入口 | 必须不误用同下标的主副绑定 |
 
 联动与碰撞证据：`web/editor/cues/editor-selection.js:174–193`、`web/editor/cues/editor-bound-drag.js:112–153`、`web/editor/state/editor-multi-subtitle-core.js:450–538,574–603`。禁用独立性现有回归：`tests/e2e/overlay-track.spec.mjs:910`。
@@ -238,7 +240,7 @@ interface SubtitleTrack {
 }
 ```
 
-共同 SubtitleSegment 继续使用 id/start/end/text、可选 items 与成对帧字段、disabled、speaker、assOverride、颜色和表情字段。role 不决定“有没有 items”，是否允许字词编辑由真实时间码和受约束能力决定。初期保留“只有主轨启用逐句定位”的兼容策略，不因同结构就自动扩大能力。
+共同 SubtitleSegment 继续使用 id/start/end/text、可选 items 与成对帧字段、disabled、speaker、assOverride、颜色和表情字段。role 不决定“有没有 items”，是否允许字词编辑由真实时间码和受约束能力决定。初期保留主轨和叠加轨消费逐句定位、副轨不消费的目标基线语义，不因同结构就自动扩大能力。
 
 类型职责：
 
@@ -294,9 +296,9 @@ TrackStore + TrackIndex
 
 多语言多副轨必须单独决定“一主可对应每条副轨一个 cue”是否成立。若批准，唯一约束改为 `(source CueRef, target trackId)`，target 仍只被一个 source 绑定；同时查绑定 API 从 find 返回单条改为 list。此处是语义扩展，不能藏在容器重构里。
 
-ID 采用轨内唯一 cueId + 全局唯一 trackId，所有跨轨引用都用完整 CueRef。这样旧文件同 ID 出现在不同数组时不需无故重编号；转轨若目标已有同 cueId，在同一事务中分配新 ID 并重写关联引用。
+原调研建议轨内唯一 cueId + 全局唯一 trackId，跨轨引用使用完整 CueRef。这与 #239 的工程级 cue ID 唯一约束冲突；如果采用 #239 的格式，应保留工程级唯一 ID，让 CueRef 在换轨、保存和撤销后仍指向正确对象。#239 的导入边界拒绝显式坏 ID、同轨重复 ID 和 v2 的跨轨重复 ID；其独立组迁移针对可接受的旧 v1 跨轨重名执行确定性重映射、更新绑定并记录映射，歧义绑定则拒绝。不能把迁移能力泛化为接受所有重复 ID。证据：#239 的 `docs/engineering/JSON_SCHEMA.md`、`web/shared/utils/subtitle-groups.js` 和 `tests/fixtures/project-boundary.json`（`18882840`）。最终身份契约待决定。
 
-color_ref/sticker_ref 的 headIdx 初期由 adapter 按所属轨解释；后续独立步骤换成轨内 head_id，再由 v1 serializer 转回 headIdx。重排序、过滤、删段、主副交换都不应再依赖原下标。避免一次迁移同时重写所有附件模型。
+旧 v1 的 color_ref/sticker_ref 的 headIdx 按所属轨解释。原设想将其换成轨内 head_id；该设想不能表达 #239 的跨轨组，不能作为 #239 之后的迁移方案。若采用 #239，应保留 group ID、跨轨成员、完整组属性及旧引用附加元数据；降级为 v1 时必须检查是否能表达，不能静默拆组或按名称猜测。重排序、过滤、删段、主副交换仍需保持正确关系。
 
 ### 4.4 层叠、布局、样式继承分别表达
 
@@ -319,21 +321,21 @@ color_ref/sticker_ref 的 headIdx 初期由 adapter 按所属轨解释；后续�
  → 自动布局产生的位置与 fit 变换
 ```
 
-这里是合并规则描述，不是把位置算出来后永久写回 cue：手动 pos 必须绕开自动定位，按既有主轨语义处理。overlay 默认只继承主轨字体、颜色策略等明确白名单，不继承 enabled、绑定、语言；位置由 stack-above 决定。secondary 默认使用独立样式，不自动继承主轨位置。
+这里是合并规则描述，不是把位置算出来后永久写回 cue：主轨和 overlay 的手动 pos 必须绕开自动定位；仅设置 scale 的句子仍参与自动排布。overlay 默认只继承主轨字体、颜色策略等明确白名单，不继承 enabled、绑定、语言；自动位置由 stack-above 决定。secondary 默认使用独立样式，不自动继承主轨位置。
 
-样式继承应无环，且 anchor/继承目标删除有确定回退（默认回到主轨并给诊断）。CSS 的归一化预览盒和 ASS PlayRes 样式坐标分开保存。当前 ASS 主、副库选择是本机配置；建议 v2 携带所用样式/方案快照，导入时不被同名本地库覆盖。本机库继续是“应用预设”入口。**这会改变跨工程样式联动，需 Moy 决定。**
+样式继承应无环，且 anchor/继承目标删除有确定回退（默认回到主轨并给诊断）。CSS 的归一化预览盒和 ASS PlayRes 样式坐标分开保存。当前 ASS 主、副库选择是本机配置；建议未来 tracks 格式携带所用样式/方案快照，导入时不被同名本地库覆盖。本机库继续是“应用预设”入口。**这会改变跨工程样式联动，需 Moy 决定。**
 
 ### 4.5 JSON 与 ASS 兼容策略
 
 **v1 阶段**：旧磁盘形状继续唯一；TrackView 只是运行时门面。只允许旧格式可表达的 1 主+1 活动副+1 overlay。可以隐藏开发验证的新 registry，但不能对用户开放保存不了的 N 轨。
 
-**v2 阶段**：顶层 `schema="moy.asr.project.v2"`，字幕真源为 tracks，main_track_id 指向唯一 main，bindings 使用 CueRef。media/timebase/gap_remove/markers/workspace 等沿用原语义。
+**后续 tracks 格式候选**：以下暂以 `schema="moy.asr.project.v3"` 表示字幕真源为 tracks，main_track_id 指向唯一 main，bindings 使用 CueRef。这个版本号只是为区分 #239 的 v2 草案而暂用，并非已批准的契约；media/timebase/gap_remove/markers/workspace 等应沿用原语义。
 
-简化有效示例（样式与绑定可选）：
+简化设计示例（尚非已实现或经验证的有效工程；样式与绑定可选）：
 
 ```json
 {
-  "schema": "moy.asr.project.v2",
+  "schema": "moy.asr.project.v3",
   "main_track_id": "main",
   "timebase": {"unit": "milliseconds", "fps": 30},
   "tracks": [
@@ -359,9 +361,9 @@ color_ref/sticker_ref 的 headIdx 初期由 adapter 按所属轨解释；后续�
 }
 ```
 
-v1→v2 适配主、副、overlay 三种来源；保留 disabled、可选 items、帧字段、speaker、assOverride、颜色/表情、扩展 metadata，保留原文与换行。不能把 main.items 当作译文字词时间，不能推断翻译的对应时间点。
+迁移方案必须覆盖 v1 和 #239 可能引入的 v2 三容器及其 `subtitle_groups`，并保留 disabled、可选 items、帧字段、speaker、assOverride、颜色/表情、扩展 metadata、原文与换行。不能把 main.items 当作译文字词时间，不能推断翻译的对应时间点；无损性需用实际工程验证，不能预先保证。
 
-旧程序已拒绝未知顶层 schema，v2 能避免旧编辑器悄悄写坏。新版另存 v1 只在轨道数/策略/样式可表达时允许；不能表达时拒绝，或由用户显式选择有损合并/只导出某轨。**默认不生成“tracks 与 segments 两边都可编辑”的混合工程。**
+旧程序拒绝未知顶层 schema；未来新版本号有助于旧编辑器拒绝不理解的格式，仍需逐版本验证。导入时不覆盖原文件；向旧格式另存仅在轨道数、策略、样式及分组均可表达时允许，无法表达时拒绝或由用户明确选择有损输出。一次性迁移、长期适配层和旧格式写出支持期限均待决定。**不生成“tracks 与 segments 两边都可编辑”的混合工程。**
 
 ASS 保持输出格式：轨道被编译为样式与事件，不把轨道内部结构硬塞到 Dialogue。轨道/样式名做稳定、无冲突映射；Layer 只负责绘制次序。ASS 不是 MOSP 的无损备份；绑定、原词时间、附件不会因输出 ASS 自动保存。若未来加入 ASS 导入，原始 Layer/Style 只作为来源信息，不能据此可靠推断“这是翻译轨”。
 
@@ -428,10 +430,10 @@ Python 基础 ASS 近期只统一“枚举/选轨、格式能力诊断、基础 
 | P3 统一时间/结构命令 | move/resize/split/merge/disable/transfer 统一目标协议；保留原主→副策略；Z/X 同一路派发 | 迁移行为与新增修复分开；受影响键盘/拖动/撤销用例过 | 4–6 人日 |
 | P4 波形/列表泛化 | TrackProvider 与 LaneLayout；双语成对行仍是显式 list projection | 保留共享波形 canvas、虚拟行与缓存；84px/双语阈值与实测几何验收 | 3–5 人日 |
 | P5 样式/渲染/输出统一 | 三路 ASS 输入改成 RenderInput[]；CSS/Canvas/ASS/附件枚举同源；输出格式声明能力 | 保留 legacy ASS 样式/层号和动画时钟；Python 基础出口单列能力；每个格式选轨测试 | 4–6 人日 |
-| P6 v2 读写与端到端生产者 | v2 canonical tracks/bindings、v1 adapter、明确降级检查；CLI/Launcher/后处理/Server 同步 | 全部写出入口不能强制盖回 v1；未知 schema 安全拒绝；旧文件不在打开时自动覆写 | 3–5 人日 |
-| P7 拓展轨开放与清理 | 开放 N overlay + annotation；按需将 headIdx 换为 head_id；移除不再使用的旧分支 | 增一种变体零改核心的验收；v1 不可表达时阻止无提示降级 | 2–4 人日 |
+| P6 候选格式读写与端到端生产者 | tracks/bindings 与旧格式迁移或适配；CLI/Launcher/后处理/Server 同步 | 格式版本和迁移策略拍板后实施；旧文件不在打开时自动覆写；未知 schema 安全拒绝 | 3–5 人日 |
+| P7 拓展轨开放与清理 | 开放 N overlay + annotation；按最终分组契约迁移引用；移除不再使用的旧分支 | 增一种变体零改核心的验收；旧格式不可表达时阻止无提示降级 | 2–4 人日 |
 
-**总量约 22–36 人日**，是全链路迁移的粗估，不能与“新增一个变体 0.5–1.5 日”混淆。P1–P3 可先取得统一访问和编辑协议收益；P7 中 head_id 也可单独拆 PR，不必与开放变体同次完成。
+**总量约 22–36 人日**，是原调研全链路迁移的粗估，未计入与 #239 分组方案的协调，不能与“新增一个变体 0.5–1.5 日”混淆。P1–P3 可先取得统一访问和编辑协议收益；分组迁移应按最终契约单独评估。
 
 每阶段保持同一组 golden fixtures 的行为证据；只重跑源码受影响的验证层。前端变化按仓库规则构建 editor bundle、check:editor、typecheck 和对应 Node/e2e；源码日常迁移不生成 blank-editor.html，发布前统一生成。不要为了迁移复用工程而改变媒体、gap_remove 或缓存的真源归属。
 
@@ -447,7 +449,7 @@ Python 基础 ASS 近期只统一“枚举/选轨、格式能力诊断、基础 
 | SRT | tests/test_editor_utils.mjs:6861–6878；tests/test_editor_export_srt.mjs:32–71；tests/test_postprocess.py:1050,1078 | 双语按真实边界合成；原轨颜色上下文；去空隙与零起点 |
 | ASS 样式与层 | tests/test_editor_utils.mjs:5394–5432,5622–5694；tests/test_project_ass_export.py:40–59,154–177 | legacy 0/1/2、主样式继承、基本 Python 出口 |
 | 布局与动画 | tests/test_ass_canvas_layout.mjs:22–250 | fixed 副轨不跟组缩放/移动；超范围诊断；切片保留原时钟 |
-| 人工 pos/scale | tests/test_ass_cue_position.mjs:14–27,65–181 | 未定位旧输出字节兼容；非主轨暂不应用 override；换回主轨恢复 |
+| 人工 pos/scale | tests/test_ass_cue_position.mjs:177–188,229–293（目标基线） | 主轨和 overlay 应用 override；副轨不应用且换回主轨恢复 |
 | 叠加交互 | tests/e2e/overlay-track.spec.mjs:117,220,390,650,694,751,871,910,1019,1181,1202,1275,1385 | 编辑撤销、转轨标记、表情层、窄 lane、第三层拒绝、拖动性能 |
 | 双语绑定/元数据 | tests/e2e/multi-subtitle.spec.mjs:1266,1365,1713,1822,2481,2864,2926,4197,4518；multi-subtitle-metadata.spec.mjs:40,87 | 主副方向性、失败拆分解绑、禁用/颜色保留、三轨去空隙 ASS |
 | 像素证据 | tests/e2e/ass-stacking-boundaries.spec.mjs:385,433,445,464,700,717 | 所有活动字幕真有像素、固定副轨稳定、溢出不静默、动画时钟 |
@@ -456,9 +458,9 @@ Python 基础 ASS 近期只统一“枚举/选轨、格式能力诊断、基础 
 
 建议新增的有价值验收：
 
-- 一份含主轨、2 个 overlay 变体的工程：选择一个轨道同 ID 的 cue，不误编辑另一个；重排/删除/转轨后 selection 和 ref 仍正确。
+- 一份含主轨、2 个 overlay 变体的工程：按最终身份契约验证选择与引用；重排、删除、转轨后 selection、binding 和跨轨组仍正确。若采用 #239 的约束，分别验证旧 v1 可迁移的跨轨重名，以及显式坏 ID、同轨重复、v2 跨轨重复和歧义绑定的拒绝边界；目标 v2 工程不能含跨轨重复 ID。
 - 一次跨轨拖动或边界操作产生一个 undo；取消/undo 恢复全部 cue、binding、附件、样式/dirty 和焦点。
-- v1→运行时→v1 语义等价；v1→v2→读取保留所有支持字段；不可表达的 v2→v1 明确失败。
+- 旧格式→运行时→旧格式语义等价；v1 和获批准的 v2 草案到候选 tracks 格式均保留支持字段与分组；不可表达的降级明确失败。
 - registry 枚举全部变体，逐一覆盖默认样式、serialize、预览/ASS 选轨、禁用与未知类型；新增 annotation 不改核心。
 - 29.97/59.94 等非整数 FPS、刚好相邻/1ms 圆整边界、去空隙切片、manual main + fixed secondary + 多 overlay 同时存在。
 - 新样式继承环、缺失 anchor/style、重复 track ID、悬空 CueRef、转轨目标 ID 碰撞必须可诊断。
@@ -476,11 +478,11 @@ Python 基础 ASS 近期只统一“枚举/选轨、格式能力诊断、基础 
 | 多副轨绑定 | 全 multi 的 used_main 当前只允许绑定一次 | 本轮维持一主一副绑定；多 overlay 先行 | 是否开放“一主对多个不同语言轨”；是否另开需求 |
 | follower 碰撞 | 当前可裁剪/删除其他副 cue；并非普通无损移动 | 保留具名 legacy 策略；新 overlay 默认拒绝/钳制本轨冲突 | 是否继续该行为；是否增加用户可见提示 |
 | 叠加 Z/X | 当前 HEAD 上层没有 overlay 分派 | 单独记录缺口；统一命令阶段补齐须有回归 | 目标落“当前选中轨”还是“指针最上层命中轨” |
-| 样式可携带性 | ASS 库与 assignments 主要是本机配置 | v2 嵌入所用样式快照；库作为显式应用预设 | 要跨工程自动同步，还是工程保存所见即所得 |
-| 副/overlay 逐句定位 | 保存字段但布局只消费 main | 初期保留原行为，避免位置突变 | 是否让所有文本轨支持 manual pos/scale，如何碰撞 |
+| 样式可携带性 | ASS 库与 assignments 主要是本机配置 | 候选格式嵌入所用样式快照；库作为显式应用预设 | 要跨工程自动同步，还是工程保存所见即所得 |
+| 副/overlay 逐句定位 | 目标基线 main 和 overlay 消费覆盖，副轨保留但不消费 | 初期保留原行为，避免位置突变 | 是否让副轨也支持 manual pos/scale，如何碰撞 |
 | 开关与附件 | overlay 文字受 enabled 控制，sticker 收集处未过滤该开关 | 明确 enabled、preview_visible、export.enabled 与附件策略 | 关文字轨是否也关表情；预览开关是否影响烧录 |
 | 默认导出集合 | 普通 SRT 合主+overlay，副要另选；其他格式能力不同 | 用命名预设保留旧语义，显式 track IDs | 新 annotation 默认是否进入主 SRT、是否单独导出 |
-| 兼容旧版 | 旧客户端拒绝 v2；v1 无法表达任意 N overlay | 新版读旧版；受限显式导出 v1；不自动丢轨 | v2 默认写出时机，支持旧版的期限 |
+| 兼容旧版 | v1 无法表达任意 N overlay；#239 的 v2 草案与本文 tracks 候选结构不同 | 读入并保全旧工程；受限显式降级，不自动丢轨 | 格式版本、迁移方式、默认写出时机及旧版支持期限 |
 | SRT 第三层 | 当前拒绝；统一后技术上可分配更多 overlay | 先保留拒绝；开放多轨时再改导入策略 | 自动开轨还是询问；是否限制最大轨道数 |
 | ASS 导入/后端渲染 | 没有通用轨道反解析，Python renderer 能力较窄 | 本轮不做 ASS 无损导入/完整 Python 排版 | 是否另立项目；工具箱是否消费前端导出计划 |
 
@@ -489,7 +491,7 @@ Python 基础 ASS 近期只统一“枚举/选轨、格式能力诊断、基础 
 - 当前分支名指向网站重构，不能据此判断最新 overlay 迭代是否全已合入；本报告不会将用户给出的迭代线索当作当前代码已经实现的事实。
 - 既有 schema 文档对副轨保存 sticker 等能力与实际 serializer 并非完全对称；迁移需以 round-trip 夹具确立应保留的字段，不能只复制文档表格。
 - 当前布局单测可构造同一副轨多个重叠 cue，而服务端工程契约不允许轨内重叠；这表示 renderer 的输入能力强于 project 合法性，不能用 renderer 测试推导编辑器已支持任意叠层。
-- 本报告未评估所有第三方消费者、历史外部工程或远端 CI；无法证明升级 v2 的生态兼容成本。
+- 本报告未评估所有第三方消费者或历史外部工程；无法证明升级候选格式的生态兼容成本。
 - 人日与文件数为粗估；P0 语义冻结、P1 适配器原型后应再评估 P3–P6。
 
 ## 9. 建议实施顺序与完成定义
@@ -502,6 +504,6 @@ Python 基础 ASS 近期只统一“枚举/选轨、格式能力诊断、基础 
 2. JS 与 Python 对轨道字段、整数毫秒、帧字段、引用与绑定使用同一契约夹具，保存与重新加载无支持字段损失。
 3. CSS、ASS Canvas、浏览器 ASS 导出共用输入与样式解析，真实 libass/视频烧录的能力边界有明确证据；不能用单测替代人工像素/交互层。
 4. 新增 annotation 只动登记、默认样式/文案与参数化验收，核心编辑与输出链零修改。
-5. v1/v2 边界清晰，旧版本无法静默覆盖新工程，不可表达的降级有明确反馈。
+5. 旧格式与候选格式边界清晰，旧版本无法静默覆盖新工程，不可表达的降级有明确反馈。
 
 这份调研没有实现上述方案，也没有修复静态发现；它给出当前代码证据、建议契约、迁移边界与待决事项，供后续独立任务使用。
