@@ -133,11 +133,6 @@
 
 [字段契约](engineering/JSON_SCHEMA.md)
 
-<a name="engineering-track-unification-research"></a>
-### 字幕轨道统一设计调研
-
-[打开正文](engineering/research/2026-10-27-track-unification.md)
-
 <a name="engineering-debug"></a>
 ### 有界输出与分层调试
 
