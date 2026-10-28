@@ -4273,6 +4273,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(request.model, "Qwen/Qwen3-ASR-0.6B")
         self.assertEqual(request.device, "cpu")
         self.assertEqual(request.api_key, "")
+        self.assertEqual(request.model_path, "")
         self.assertEqual(request.runtime_python, str(self.root / "runtime" / "Scripts" / "python.exe"))
 
     def test_local_request_allows_mps_only_for_qwen_on_mac(self) -> None:
@@ -4297,6 +4298,25 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             with mock.patch("maw.gui_web.sys.platform", "win32"):
                 with self.assertRaises(PreflightError):
                     _request_from_payload(payload, self.env_path)
+
+    def test_local_request_uses_resolved_snapshot_for_explicit_cache_root(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        repository = self.root / "models--Qwen--Qwen3-ASR-0.6B"
+        snapshot = repository / "snapshots" / "revision"
+        snapshot.mkdir(parents=True)
+        (snapshot / "config.json").write_text(json.dumps({"model_type": "qwen3_asr"}), encoding="utf-8")
+        (snapshot / "model.safetensors").write_bytes(b"weights")
+        with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+            request = _request_from_payload({
+                "providerId": "local",
+                "modelId": "qwen3-asr-local",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "localModelPath": str(repository),
+            }, self.env_path)
+
+        self.assertEqual(Path(request.model_path).resolve(), snapshot.resolve())
 
     def test_firered_request_can_skip_optional_ct_punc(self) -> None:
         media = self.root / "clip.mp3"

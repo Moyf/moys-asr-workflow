@@ -4141,6 +4141,10 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             raise PreflightError("model", "local_model_missing", local_status.detail)
         if local_status.status == "partial":
             raise PreflightError("model", "local_model_incomplete", local_status.detail)
+        if local_model_path and local_status.status == "installed" and local_status.path:
+            # Explicit cache roots may resolve to a snapshot; pass the checked
+            # directory to the engine even if the UI refresh has not finished.
+            local_model_path = local_status.path
         if model.engine == "firered" and firered_punc == "ct-punc":
             _ctc_ready, punc_ready = firered_components_ready(
                 model,

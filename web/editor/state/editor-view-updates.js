@@ -1,5 +1,8 @@
-// Explicit project view effects, shared by commands and history adapters.
-window.MAWE.register('editor-view-updates', function createViewUpdates(dependencies) {
+// 显式工程视图副作用：命令与历史适配器共享的统一失效入口。
+// ESM 模块：createViewUpdates 为纯工厂具名导出（测试直调），
+// initMaweViewUpdates 在原清单位次组装领域依赖并挂
+// window.MaweViewUpdates（register/resolve 注册表随之退役）。
+export function createViewUpdates(dependencies) {
   'use strict';
   const { renderCues, updatePreview, refreshPreview, scheduleSave } = dependencies;
   /** @param {ViewInvalidation} [options] */
@@ -15,10 +18,14 @@ window.MAWE.register('editor-view-updates', function createViewUpdates(dependenc
     window.MaweAssFrame?.notifyProjectChanged?.();
   }
   return Object.freeze({ invalidate });
-});
-window.MaweViewUpdates = window.MAWE.resolve('editor-view-updates', {
-  renderCues: options => MaweCuePanel.renderAll(options),
-  updatePreview: () => MawePlaybackLoop.updateWithoutCueListAutoScroll(),
-  refreshPreview: () => MawePlaybackLoop.refreshSubtitlePreview(),
-  scheduleSave: () => MaweServerSave.scheduleAutoSaveFlush(),
-});
+}
+
+export function initMaweViewUpdates() {
+  'use strict';
+  window.MaweViewUpdates = createViewUpdates({
+    renderCues: options => MaweCuePanel.renderAll(options),
+    updatePreview: () => MawePlaybackLoop.updateWithoutCueListAutoScroll(),
+    refreshPreview: () => MawePlaybackLoop.refreshSubtitlePreview(),
+    scheduleSave: () => MaweServerSave.scheduleAutoSaveFlush(),
+  });
+}
