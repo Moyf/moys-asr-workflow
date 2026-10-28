@@ -21,9 +21,12 @@ jobs:
 
     steps:
       - name: Check out repository
+        # 默认 checkout pull_request 事件的 merge commit，与 GitHub 选取的
+        # workflow 文件版本（同样来自 merge ref）保持一致；checkout PR 头
+        # commit 会在 PR 落后 main 时出现「workflow 要求的依赖组在旧
+        # pyproject 里不存在」的错位（2026-10-24 Group `test` 事故）。
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Set up Python
