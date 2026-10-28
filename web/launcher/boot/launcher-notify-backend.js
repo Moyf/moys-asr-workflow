@@ -353,6 +353,26 @@ $("localRuntimePath").addEventListener("change", async () => { await saveLocalRu
 $("refreshOcrRuntime").addEventListener("click", async () => { $("refreshOcrRuntime").disabled = true; try { await refreshOcrRuntime(); } finally { $("refreshOcrRuntime").disabled = false; } });
 $("installOcrRuntime").addEventListener("click", async () => { const runtime = state.config?.ocrRuntime || {}; if (state.ocrRuntimeInstalling || runtime.status === "installing") { await bridge("cancel_ocr_runtime"); return; } state.ocrRuntimeInstalling = true; state.ocrRuntimeProgress = 0; state.ocrRuntimeProgressMessage = t("ocr_runtime_installing"); renderOcrRuntime(); appendLog(t("ocr_runtime_installing")); const result = await bridge("install_ocr_runtime", { repair: state.config.ocrRuntime?.status === "broken" }); if (!result.ok) { state.ocrRuntimeInstalling = false; state.ocrRuntimeProgressMessage = ""; applyErrorResult(result); renderOcrRuntime(); } });
 $("localModelPath").addEventListener("input", () => { setError("localModelPath", ""); if (isLocalProvider()) { state.localModelPaths[selectedModel().id] = $("localModelPath").value.trim(); savePrefsDebounced({ localModelPaths: { ...state.localModelPaths } }); void refreshLocalModels(); } });
+$("clearLocalModelPath").addEventListener("click", async () => {
+  const model = selectedModel();
+  if (!isLocalProvider() || !model) return;
+  const previous = String((state.localModelPaths || {})[model.id] || "");
+  state.localModelPaths[model.id] = "";
+  $("localModelPath").value = "";
+  setError("localModelPath", "");
+  const result = await savePrefsNow({ localModelPaths: { ...state.localModelPaths } });
+  if (!result.ok) {
+    // 保存期间用户可能已切换模型或输入新路径；不要覆盖新操作。
+    if (state.localModelPaths[model.id] === "") {
+      state.localModelPaths[model.id] = previous;
+      if (isLocalProvider() && selectedModel()?.id === model.id) $("localModelPath").value = previous;
+    }
+    await refreshLocalModels();
+    return;
+  }
+  await refreshLocalModels();
+  setStatus(t("saved"));
+});
 $("refreshLocalRuntime").addEventListener("click", async () => { $("refreshLocalRuntime").disabled = true; try { await refreshLocalRuntime(); await refreshLocalModels(); } finally { $("refreshLocalRuntime").disabled = false; } });
 $("toggleLocalRuntimeInventory").addEventListener("click", () => { void toggleLocalRuntimeInventory(); });
 $("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });

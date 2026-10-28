@@ -5,7 +5,7 @@ import test from 'node:test';
 import { createUtilsModule as createHistoryUtils } from '../web/shared/utils/history.js';
 import { createUtilsModule as createDataUtils } from '../web/shared/utils/data.js';
 import { createUtilsModule as createGroupUtils } from '../web/shared/utils/subtitle-groups.js';
-import { initModuleSource } from './helpers/init-module-source.mjs';
+import { initModuleSource, invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 const source = readFileSync(new URL('../web/editor/media/editor-audio-processing.js', import.meta.url), 'utf8');
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
@@ -51,15 +51,14 @@ function fixture(transport = async () => response(result())) {
     MaweHost: { server: { fetch(url, options) { const body = JSON.parse(options.body); calls.push({ url, body, signal: options.signal }); return transport(body); } } },
   });
   context.window = context;
-  for (const path of ['boot/editor-runtime.js', 'state/editor-state.js']) {
-    vm.runInContext(readFileSync(new URL('../web/editor/' + path, import.meta.url), 'utf8'), context);
-  }
+  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   const dataUtils = createDataUtils({});
   context.AsrEditorUtils = { ...dataUtils, ...createHistoryUtils(dataUtils), ...createGroupUtils(dataUtils) };
   context.MaweWordTiming = { clearSelection() {} };
   context.MaweHint = { flashHint() {} };
   context.MaweInlineEdit = {};
-  vm.runInContext(initModuleSource('editor/state/editor-history.js'), context);
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-history.js', 'initMaweHistory'), context);
   vm.runInContext(source, context);
   context.MaweAudioProcessing.init();
   // Production media controls initialize audio before startup establishes the
