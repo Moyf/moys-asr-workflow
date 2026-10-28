@@ -26,6 +26,11 @@
       "exportName": "initEditorHost"
     },
     {
+      "file": "shared/utils/tracks.js",
+      "name": "project-tracks",
+      "exportName": "createTrackModule"
+    },
+    {
       "file": "shared/editor-utils.js",
       "kind": "init",
       "name": "editor-utils-init",

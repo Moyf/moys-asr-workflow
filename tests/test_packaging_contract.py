@@ -795,7 +795,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("retention-days: 14", workflow)
         self.assertIn("MAW-lite-Windows-x64-pr-", workflow)
         self.assertNotIn(".zip.sha256", workflow)
-        self.assertIn("persist-credentials: false", workflow)
+        self.assertIn("persist-credentials: false", checkout_steps[0])
         self.assertNotIn("MAWxFF", workflow)
         self.assertNotIn("softprops/action-gh-release", workflow)
 

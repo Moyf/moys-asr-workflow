@@ -148,6 +148,11 @@
 
 [正式实现、缓存契约、验证与实验历史](engineering/FILMSTRIP_EXPLORATION.md)
 
+<a name="engineering-track-unification"></a>
+### 字幕轨道统一设计调研（2026-10-27）
+
+[当前三容器数据模型证据、统一 Track/Binding 契约提案与 v1→v1.5→v2 分期迁移边界](engineering/research/2026-10-27-track-unification.md)
+
 ## 共享计划
 
 <a name="plan-release-pipeline"></a>
@@ -218,6 +223,9 @@
 
 反馈账本中的“已修复”只对应其记录的版本和验证范围。发布变化见 [CHANGELOG](../CHANGELOG.md)。
 
+### v1 轨道只读访问协议
+
+[TrackStore 与 CueRef（P1）](engineering/TRACK_ACCESS.md)：旧容器引用、运行时身份与兼容 getter；不改变 v1 落盘。
 <a name="log-media-required-reports"></a>
 ### 媒体分层与可信报告
 
