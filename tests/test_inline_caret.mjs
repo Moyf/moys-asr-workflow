@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import {initModuleSource} from './helpers/init-module-source.mjs';
 import test from 'node:test';
 
 // Exercise the real inline-edit entry points with a controlled DOM/scheduler.
@@ -23,7 +24,7 @@ function fixture(kind) {
     setTimeout: callback => timers.push(callback), MaweState: state,
     MaweNavPreview: { hideCueSplitPreview() {} }, MaweBoot: { DATA: { segments: [{ text: 'Original' }] } },
     MaweCuePanel: { setCurrentCuePanelExtensionIndex() {} } };
-  vm.runInNewContext(readFileSync(new URL('../web/editor/cues/editor-inline-edit.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-inline-edit.js'), context);
   const api = context.window.MaweInlineEdit;
   if (kind === 'main') api.startEdit(el, 0, undefined, undefined, { deferCaret: true });
   else api.startExtensionEdit(el, 0, { id: 'extension', segments: [{ text: 'Original' }] }, undefined, undefined, { deferCaret: true });
