@@ -22,9 +22,9 @@ class TrackGoldenTests(unittest.TestCase):
     def test_v1_python_outputs_and_reopening(self):
         for path in sorted(FIXTURES.glob('*.input.json')):
             with self.subTest(fixture=path.name):
-                source = json.loads(path.read_text())
+                source = json.loads(path.read_text(encoding='utf-8'))
                 before = copy.deepcopy(source)
-                expected = json.loads(path.with_name(path.name.replace('.input.', '.python.')).read_text())
+                expected = json.loads(path.with_name(path.name.replace('.input.', '.python.')).read_text(encoding='utf-8'))
                 actual = python_outputs(source)
                 self.assertEqual(actual, expected)
                 self.assertEqual(source, before)
