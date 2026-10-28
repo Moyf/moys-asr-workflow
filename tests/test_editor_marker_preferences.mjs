@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 const utilsContext = { window: {}, TextDecoder, TextEncoder, Uint8Array };
 loadEditorModule(utilsContext, 'shared/editor-utils.js');
@@ -25,7 +26,7 @@ function fixture(storage = new Map([[key, JSON.stringify({ markerEditingEnabled:
   document: { getElementById: id => elements[id], addEventListener() {} },
   };
   const evaluate = file => vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
-  evaluate('editor/state/editor-settings.js');
+  vm.runInNewContext(invokedInitModuleSource('editor/state/editor-settings.js', 'initMaweSettings'), context);
   context.MaweSettings = context.window.MaweSettings;
   evaluate('editor/markers/editor-marker-editing.js');
   context.MaweMarkerEditing = context.window.MaweMarkerEditing;

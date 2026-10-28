@@ -776,7 +776,9 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("permissions:\n  contents: read", workflow)
         self.assertNotIn("actions/setup-node@v4", workflow)
         self.assertNotIn("dtolnay/rust-toolchain@stable", workflow)
-        # Default merge-ref checkout keeps tested code and workflow aligned.
+        # checkout 默认 merge ref（与 GitHub 选取的 workflow 文件版本一致）；
+        # 显式 checkout PR 头 commit 会在 PR 落后 main 时错配 workflow 与
+        # 被测代码（2026-10-24 Group `test` 事故，2026-10-26 改回默认）。
         checkout_steps = [
             step for step in re.split(r"(?m)^      - ", workflow)
             if re.search(r"(?m)^\s*uses:\s*actions/checkout@", step)
