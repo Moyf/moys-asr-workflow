@@ -1,7 +1,23 @@
 {
-  "schema": "moy.asr.project.v2",
+  "schema": "moy.asr.project.v1.5",
   "metadata": {
     "fixture": true
+  },
+  "subtitle_group_migration": {
+    "remapped_ids": [
+      {
+        "track": "overlay",
+        "index": 0,
+        "from": "shared",
+        "to": "overlay-cue-1"
+      },
+      {
+        "track": "extension-1",
+        "index": 0,
+        "from": "shared",
+        "to": "extension-1-cue-1"
+      }
+    ]
   },
   "subtitle_groups": {
     "color": [],
@@ -22,13 +38,22 @@
   },
   "segments": [
     {
-      "id": "main",
+      "id": "shared",
       "start": 1000,
-      "end": 2000,
-      "text": "原文",
+      "end": 3000,
+      "text": "主字幕\n第二行",
+      "items": [
+        {
+          "start": 1000,
+          "end": 3000,
+          "text": "主字幕\n第二行",
+          "start_frame": 30,
+          "end_frame": 90
+        }
+      ],
+      "speaker": "示例",
       "start_frame": 30,
-      "end_frame": 60,
-      "items": []
+      "end_frame": 90
     }
   ],
   "preserve_punctuation": true,
@@ -47,22 +72,12 @@
         "source_name": "translation.srt",
         "segments": [
           {
-            "id": "bound",
+            "id": "extension-1-cue-1",
             "start": 1100,
-            "end": 1900,
-            "text": "Bound",
-            "items": [],
+            "end": 2900,
+            "text": "Translation",
             "start_frame": 33,
-            "end_frame": 57
-          },
-          {
-            "id": "unbound",
-            "start": 3000,
-            "end": 4000,
-            "text": "Unbound",
-            "disabled": true,
-            "start_frame": 90,
-            "end_frame": 120
+            "end_frame": 87
           }
         ]
       }
@@ -72,13 +87,27 @@
         "id": "binding-001",
         "track_id": "translation",
         "main_segment_ids": [
-          "main"
+          "shared"
         ],
         "extension_segment_ids": [
-          "bound"
+          "extension-1-cue-1"
         ],
         "start_offset_ms": 100,
         "end_offset_ms": -100
+      }
+    ]
+  },
+  "overlay_track": {
+    "enabled": true,
+    "segments": [
+      {
+        "id": "overlay-cue-1",
+        "start": 1500,
+        "end": 2500,
+        "text": "叠加",
+        "start_frame": 45,
+        "end_frame": 75,
+        "items": []
       }
     ]
   },

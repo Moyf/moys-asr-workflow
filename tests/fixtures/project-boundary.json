@@ -1241,9 +1241,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-fps-zero-item",
+    "name": "v1.5-fps-zero-item",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1286,9 +1286,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-empty",
+    "name": "v1.5-empty",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [],
       "subtitle_groups": {
         "color": [],
@@ -1301,9 +1301,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-cross-track-members",
+    "name": "v1.5-cross-track-members",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1367,9 +1367,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-missing-table",
+    "name": "v1.5-missing-table",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1400,9 +1400,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-bad-table-array",
+    "name": "v1.5-bad-table-array",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1434,9 +1434,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-bad-counter-bool",
+    "name": "v1.5-bad-counter-bool",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1482,9 +1482,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-bad-counter-zero",
+    "name": "v1.5-bad-counter-zero",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1530,9 +1530,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-missing-color-array",
+    "name": "v1.5-missing-color-array",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1576,9 +1576,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-bad-group",
+    "name": "v1.5-bad-group",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1616,9 +1616,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-bad-value",
+    "name": "v1.5-bad-value",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1658,9 +1658,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-independent-range",
+    "name": "v1.5-independent-range",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1706,9 +1706,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-dangling-member",
+    "name": "v1.5-dangling-member",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1753,9 +1753,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-null-member",
+    "name": "v1.5-null-member",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1800,9 +1800,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-legacy-projection",
+    "name": "v1.5-legacy-projection",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1850,9 +1850,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-legacy-null-projection",
+    "name": "v1.5-legacy-null-projection",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1898,9 +1898,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-duplicate-group-id",
+    "name": "v1.5-duplicate-group-id",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -1954,9 +1954,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-missing-cue-id",
+    "name": "v1.5-missing-cue-id",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "start": 0,
@@ -2000,9 +2000,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-invalid-fps-source",
+    "name": "v1.5-invalid-fps-source",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -2047,9 +2047,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-cross-track-duplicate-id",
+    "name": "v1.5-cross-track-duplicate-id",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [
         {
           "id": "a",
@@ -2115,9 +2115,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-normalized-overlay-id-collision",
+    "name": "v1.5-normalized-overlay-id-collision",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "subtitle_groups": {
         "color": [],
         "sticker": []
@@ -2149,9 +2149,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-normalized-extension-id-collision",
+    "name": "v1.5-normalized-extension-id-collision",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "subtitle_groups": {
         "color": [],
         "sticker": []
@@ -2188,9 +2188,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-trimmed-unique-id-and-null-tracks",
+    "name": "v1.5-trimmed-unique-id-and-null-tracks",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "subtitle_groups": {
         "color": [],
         "sticker": []
@@ -2322,9 +2322,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-timed-text-view-rows",
+    "name": "v1.5-timed-text-view-rows",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [],
       "timed_text_edit_view": "rows",
       "subtitle_groups": {
@@ -2338,9 +2338,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-timed-text-view-single",
+    "name": "v1.5-timed-text-view-single",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [],
       "timed_text_edit_view": "single",
       "subtitle_groups": {
@@ -2354,9 +2354,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-timed-text-view-invalid",
+    "name": "v1.5-timed-text-view-invalid",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [],
       "timed_text_edit_view": "invalid",
       "subtitle_groups": {
@@ -2372,9 +2372,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-timed-text-view-null",
+    "name": "v1.5-timed-text-view-null",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [],
       "timed_text_edit_view": null,
       "subtitle_groups": {
@@ -2390,9 +2390,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-timed-text-view-number",
+    "name": "v1.5-timed-text-view-number",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [],
       "timed_text_edit_view": 7,
       "subtitle_groups": {
@@ -2408,9 +2408,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-timed-text-view-boolean",
+    "name": "v1.5-timed-text-view-boolean",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [],
       "timed_text_edit_view": false,
       "subtitle_groups": {
@@ -2426,9 +2426,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-timed-text-view-array",
+    "name": "v1.5-timed-text-view-array",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [],
       "timed_text_edit_view": [],
       "subtitle_groups": {
@@ -2444,9 +2444,9 @@
     "change_paths": null
   },
   {
-    "name": "v2-timed-text-view-object",
+    "name": "v1.5-timed-text-view-object",
     "input": {
-      "schema": "moy.asr.project.v2",
+      "schema": "moy.asr.project.v1.5",
       "segments": [],
       "timed_text_edit_view": {},
       "subtitle_groups": {
@@ -2460,5 +2460,21 @@
       "$.timed_text_edit_view"
     ],
     "change_paths": null
+  },
+  {
+    "name": "reserved-future-v2",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "segments": [],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.schema"
+    ]
   }
 ]

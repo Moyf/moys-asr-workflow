@@ -31,7 +31,7 @@ async function openView(page) {
   await expect(page.locator('#timed-text-edit-modal')).toHaveClass(/show/);
 }
 
-test('view-only edits return to the saved default and persist with v2 groups and FPS through real Server reopen', async ({ page }) => {
+test('view-only edits return to the saved default and persist with v1.5 groups and FPS through real Server reopen', async ({ page }) => {
   expect(await dirty(page)).toBe(false);
   await openView(page);
   await selectView(page, 'single');
@@ -44,7 +44,7 @@ test('view-only edits return to the saved default and persist with v2 groups and
   expect(await dirty(page)).toBe(false);
   const saved = JSON.parse(readFileSync(projectPath, 'utf8'));
   expect(saved.timed_text_edit_view).toBe('single');
-  expect(saved.schema).toBe('moy.asr.project.v2');
+  expect(saved.schema).toBe('moy.asr.project.v1.5');
   expect(saved.subtitle_groups.sticker).toHaveLength(1);
   expect(saved.segments[0].sticker_group_id).toBe(saved.subtitle_groups.sticker[0].id);
   expect(saved.timebase.fps_source).toBe('user');

@@ -1,5 +1,5 @@
 {
-  "schema": "moy.asr.project.v2",
+  "schema": "moy.asr.project.v1.5",
   "metadata": {
     "fixture": true
   },
@@ -17,26 +17,18 @@
   "model": "fixture",
   "sticker_root": "",
   "timebase": {
-    "unit": "frames",
-    "fps": 29.97
+    "unit": "milliseconds",
+    "fps": 30
   },
   "segments": [
     {
-      "id": "frame-main",
-      "start": 1001,
-      "end": 2002,
-      "text": "帧模式",
+      "id": "main",
+      "start": 1000,
+      "end": 2000,
+      "text": "原文",
       "start_frame": 30,
       "end_frame": 60,
-      "items": [
-        {
-          "start": 1001,
-          "end": 2002,
-          "text": "帧模式",
-          "start_frame": 30,
-          "end_frame": 60
-        }
-      ]
+      "items": []
     }
   ],
   "preserve_punctuation": true,
@@ -55,29 +47,38 @@
         "source_name": "translation.srt",
         "segments": [
           {
-            "id": "frame-secondary",
-            "start": 1001,
-            "end": 2002,
-            "text": "Frames",
-            "start_frame": 30,
-            "end_frame": 60
+            "id": "bound",
+            "start": 1100,
+            "end": 1900,
+            "text": "Bound",
+            "items": [],
+            "start_frame": 33,
+            "end_frame": 57
+          },
+          {
+            "id": "unbound",
+            "start": 3000,
+            "end": 4000,
+            "text": "Unbound",
+            "disabled": true,
+            "start_frame": 90,
+            "end_frame": 120
           }
         ]
       }
     ],
-    "bindings": []
-  },
-  "overlay_track": {
-    "enabled": true,
-    "segments": [
+    "bindings": [
       {
-        "id": "frame-overlay",
-        "start": 1001,
-        "end": 2002,
-        "text": "帧叠加",
-        "start_frame": 30,
-        "end_frame": 60,
-        "items": []
+        "id": "binding-001",
+        "track_id": "translation",
+        "main_segment_ids": [
+          "main"
+        ],
+        "extension_segment_ids": [
+          "bound"
+        ],
+        "start_offset_ms": 100,
+        "end_offset_ms": -100
       }
     ]
   },

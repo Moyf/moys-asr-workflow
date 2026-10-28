@@ -206,7 +206,7 @@ def parse_mosp(text: str, *, is_cancelled: Callable[[], bool] | None = None) -> 
         raise AlignmentError(f"MOSP JSON 无效：第 {exc.lineno} 行第 {exc.colno} 列") from exc
     if not isinstance(project, dict):
         raise AlignmentError("MOSP 顶层必须是 JSON 对象")
-    if "schema" in project and project.get("schema") not in (PROJECT_SCHEMA, "moy.asr.project.v2"):
+    if "schema" in project and project.get("schema") not in (PROJECT_SCHEMA, "moy.asr.project.v1.5"):
         raise AlignmentError(f"不支持的 MOSP 工程版本：{project.get('schema')}")
     segments = project.get("segments")
     if not isinstance(segments, list) or not segments:
@@ -749,7 +749,7 @@ def generate_matched_mosp(
         if main and extension:
             for edge in ("start", "end"):
                 binding[f"{edge}_offset_ms"] = extension[edge] - main[edge]
-    if project.get("schema") == "moy.asr.project.v2":
+    if project.get("schema") == "moy.asr.project.v1.5":
         reserved = {s.get("id") for track in multi.get("tracks") or [] for s in track.get("segments") or []}
         reserved.update(s.get("id") for s in overlay.get("segments") or [])
         reserved.update(s.get("id") for s in source_segments)

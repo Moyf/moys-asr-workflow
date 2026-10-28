@@ -1,6 +1,6 @@
 // Canonical groups own attributes; cues own membership. Legacy fields are views only.
 export function createUtilsModule({ cloneJsonValue, stableId, ensureStableSegmentIds }) {
-  const GROUP_PROJECT_SCHEMA = 'moy.asr.project.v2';
+  const GROUP_PROJECT_SCHEMA = 'moy.asr.project.v1.5';
   const kinds = ['color', 'sticker'];
   function subtitleGroupTracks(project) {
     return [{ key: 'main', enabled: true, segments: project.segments || [] },
@@ -22,12 +22,12 @@ export function createUtilsModule({ cloneJsonValue, stableId, ensureStableSegmen
     // Validate before changing cue identities or choosing a default binding track.
     for (const binding of project.multi_subtitle?.bindings || []) bindingTrackId(binding);
     if (project.schema === GROUP_PROJECT_SCHEMA && !project.subtitle_groups) {
-      throw new Error('subtitle_groups: v2 projects require a group table');
+      throw new Error('subtitle_groups: v1.5 projects require a group table');
     }
     if (fromFile && project.schema === GROUP_PROJECT_SCHEMA) {
       for (const track of subtitleGroupTracks(project)) for (const [index, cue] of track.segments.entries()) {
         for (const kind of kinds) if (Object.hasOwn(cue, kind) || Object.hasOwn(cue, `${kind}_ref`)) {
-          throw new Error(`${track.key}[${index}].${kind}: legacy group fields are not allowed in v2`);
+          throw new Error(`${track.key}[${index}].${kind}: legacy group fields are not allowed in v1.5`);
         }
       }
     }

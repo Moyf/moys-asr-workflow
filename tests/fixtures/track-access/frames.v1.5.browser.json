@@ -1,5 +1,5 @@
 {
-  "schema": "moy.asr.project.v2",
+  "schema": "moy.asr.project.v1.5",
   "metadata": {
     "fixture": true
   },
@@ -17,25 +17,26 @@
   "model": "fixture",
   "sticker_root": "",
   "timebase": {
-    "unit": "milliseconds",
-    "fps": 30
+    "unit": "frames",
+    "fps": 29.97
   },
   "segments": [
     {
-      "id": "main",
-      "start": 0,
-      "end": 2000,
-      "text": "主定位",
-      "assOverride": {
-        "scale": 1.25,
-        "pos": {
-          "x": 400.25,
-          "y": 850.5
-        }
-      },
-      "start_frame": 0,
+      "id": "frame-main",
+      "start": 1001,
+      "end": 2002,
+      "text": "帧模式",
+      "start_frame": 30,
       "end_frame": 60,
-      "items": []
+      "items": [
+        {
+          "start": 1001,
+          "end": 2002,
+          "text": "帧模式",
+          "start_frame": 30,
+          "end_frame": 60
+        }
+      ]
     }
   ],
   "preserve_punctuation": true,
@@ -54,18 +55,11 @@
         "source_name": "translation.srt",
         "segments": [
           {
-            "id": "secondary",
-            "start": 0,
-            "end": 2000,
-            "text": "Secondary",
-            "assOverride": {
-              "scale": 1.5,
-              "pos": {
-                "x": 20,
-                "y": 30
-              }
-            },
-            "start_frame": 0,
+            "id": "frame-secondary",
+            "start": 1001,
+            "end": 2002,
+            "text": "Frames",
+            "start_frame": 30,
             "end_frame": 60
           }
         ]
@@ -77,25 +71,18 @@
     "enabled": true,
     "segments": [
       {
-        "id": "overlay",
-        "start": 0,
-        "end": 2000,
-        "text": "叠加定位",
-        "assOverride": {
-          "scale": 1.1,
-          "pos": {
-            "x": 900,
-            "y": 400
-          }
-        },
-        "start_frame": 0,
+        "id": "frame-overlay",
+        "start": 1001,
+        "end": 2002,
+        "text": "帧叠加",
+        "start_frame": 30,
         "end_frame": 60,
         "items": []
       }
     ]
   },
   "preview": {
-    "ass_mode": true,
+    "ass_mode": false,
     "sticker": {},
     "subtitle": {
       "speaker_labels": {}

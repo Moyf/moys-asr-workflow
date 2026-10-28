@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.2 之后 | 2026-10-28 | [PR239 格式标识改名与复核](release1.10.0-beta.2/261028_PR239格式标识/REVIEW_FINDINGS.md) | 独立组标识 v1.5、v2 保留边界与验证证据 |
 | 1.10.0-beta.2 之后 | 2026-10-28 | [PR239 与 PR312 组合](release1.10.0-beta.2/261028_PR239轨道读取组合/整合记录.md) / [人工核验](release1.10.0-beta.2/261028_PR239轨道读取组合/轨道读取组合.checklist.md) | 保留 v1 基线，审阅 v2 保存、跨轨组与读取层组合 |
 | 1.10.0-beta.2 之后 | 2026-10-25 | [PR239 同步 main](release1.10.0-beta.2/261025_PR239同步main/整合记录.md) / [独立审阅](release1.10.0-beta.2/261025_PR239同步main/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261025_PR239同步main/PR239同步.checklist.md) | ESM 领域迁移与稳定组、完整保存检查点组合；保持 Draft 与 2.0dev |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [PR239 对齐 2.0dev](release1.10.0-beta.1/261022_PR239开发分支/整合记录.md) / [人工核验](release1.10.0-beta.1/261022_PR239开发分支/PR239开发分支.checklist.md) | 最新 main 合成、完整保存检查点与包装路径，保持 Draft |

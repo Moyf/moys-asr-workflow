@@ -733,7 +733,7 @@ test('batch merge via C key inherits color groups and rejects skipped middle cue
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
   const project = {
-    schema: 'moy.asr.project.v2',
+    schema: 'moy.asr.project.v1.5',
     subtitle_groups: { color: [{ id: 'red-group', value: { name: 'red' } }], sticker: [] },
     segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
     overlay_track: {

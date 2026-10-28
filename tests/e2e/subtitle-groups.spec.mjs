@@ -84,7 +84,7 @@ test('groups stay continuous across track moves, split, delete-head, undo, save/
   await page.keyboard.press('Control+s');
   expect((await response).ok()).toBe(true);
   const saved = JSON.parse(readFileSync(projectPath, 'utf8'));
-  expect(saved.schema).toBe('moy.asr.project.v2');
+  expect(saved.schema).toBe('moy.asr.project.v1.5');
   expect(JSON.stringify(saved)).not.toContain('headIdx');
   await page.reload();
   await expect(page.locator('#cues-container')).toBeVisible();
@@ -145,7 +145,7 @@ test('imported project cues get independent groups and IDs; failed loading and S
   const rejected = await page.evaluate(() => {
     const before = JSON.stringify(MaweBoot.DATA);
     try {
-      MaweProjectLoad.applyCanonicalProject({ schema: 'moy.asr.project.v2',
+      MaweProjectLoad.applyCanonicalProject({ schema: 'moy.asr.project.v1.5',
         subtitle_groups: { color: [], sticker: [] },
         segments: [{ id: 'bad', start: 0, end: 1000, text: 'bad', sticker_group_id: 'missing' }] }, 'bad.mosp');
     } catch (_) { return JSON.stringify(MaweBoot.DATA) === before; }

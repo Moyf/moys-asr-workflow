@@ -7,7 +7,7 @@ source: "docs/engineering/JSON_SCHEMA.md"
 
 <!-- Generated from docs/engineering/JSON_SCHEMA.md. Run pnpm run sync:docs to refresh. -->
 
-本文档定义本地 MAWE（Moy's ASR Workflow Editor）当前接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。历史 `.edit.html` 和 `blank-editor.html` 仅按各自版本支持旧工程；2.0 起停止维护这些入口，不承诺旧副本兼容下述 v2 格式。
+本文档定义本地 MAWE（Moy's ASR Workflow Editor）当前接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。历史 `.edit.html` 和 `blank-editor.html` 仅按各自版本支持旧工程；2.0 起停止维护这些入口，不承诺旧副本兼容下述 v1.5 格式。
 
 用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
 
@@ -23,17 +23,19 @@ Python `maw.project_boundary.prepare_project` 与浏览器 `MaweProjectValidatio
 
 可只读检查工程：`python -m maw.project_boundary project.mosp`；加 `--strict` 禁止时间修复。输出 JSON 报告，拒绝时退出码 2，不写源文件。共享语料见 `tests/fixtures/project-boundary.json`，严格校验与导入修复分别验证；CLI、Server、浏览器导入采用同一保守边界。
 
-Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读取；缓存仍在写出时剥离。校验边界本身保留输入 schema；独立组迁移及编辑器保存按下节写 v2，不替换原子写入和备份。
+Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读取；缓存仍在写出时剥离。校验边界本身保留输入 schema；独立组迁移及编辑器保存按下节写 v1.5，不替换原子写入和备份。
 
-## v2 独立颜色 / 表情包组
+## v1.5 独立颜色 / 表情包组
 
-本地编辑器继续读取缺 schema 和 `moy.asr.project.v1` 工程，保存时写 `moy.asr.project.v2`。Python 生成器可继续生成 v1；读写 v2 时必须保留版本，禁止降为 v1。未知版本拒绝写入。旧客户端不能编辑 v2；请保留原始旧工程或备份，不向旧客户端承诺兼容。
+本地编辑器继续读取缺 schema 和 `moy.asr.project.v1` 工程，保存时写 `moy.asr.project.v1.5`。Python 生成器可继续生成 v1；读写 v1.5 时必须保留版本，禁止降为 v1。未知版本拒绝写入。旧客户端不能编辑 v1.5；请保留原始旧工程或备份，不向旧客户端承诺兼容。
 
-v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有 bindings 容器。新增必填 `subtitle_groups`：
+`moy.asr.project.v2` 预留给未来顶层 `tracks` 真源格式，当前不接受；它与其他未知未来版本一样在导入、规范化和写入边界被拒绝。本次仅更改独立组格式标识，不改变工程数据结构。
+
+v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有 bindings 容器。新增必填 `subtitle_groups`：
 
 ```json
 {
-  "schema": "moy.asr.project.v2",
+  "schema": "moy.asr.project.v1.5",
   "subtitle_groups": {
     "next_id": 2,
     "color": [{"id": "color-1", "value": {"name": "blue", "value": "#3388ff"}}],
@@ -50,12 +52,12 @@ v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有
 - 关闭整条叠加轨或副字幕轨时保留其组关系；预览与导出的表情范围仅由仍启用轨道的成员决定，重新开启后恢复。单条字幕的禁用状态仍按上一条规则处理。
 - 拆分两侧继承原组。同组合并继承；不同组或混有无组字幕时，合并结果不继承该种组关系，未参与合并的成员保留原组。不同组即使素材同名也不合并。重复导入为输入组分配新 ID，避免与当前工程误关联。
 - v1 迁移先在原轨内数组解析 `headIdx`，再规范 ID；跨轨重复字幕 ID 确定性重映射，并更新 bindings。旧单数绑定端点同样保留，缺省 `track_id` 仅在唯一副轨时补齐，多副轨歧义在变更 ID 前拒绝。旧ref的第三方附加字段保存在对应段的可选 `color_group_metadata` / `sticker_group_metadata` 对象中（不含旧name/headIdx）；现有同名字段冲突时拒绝迁移而不覆盖。重映射记录在可选 `subtitle_group_migration.remapped_ids`（track/index/from/to）。失效引用或歧义绑定报告错误，不按名称猜引用。
-- v2 落盘不写 `color` / `color_ref` / `sticker` / `sticker_ref`；编辑器内部可生成显示投影，投影的下标与范围不构成持久化关系。三轨共同保留 items、帧、speaker、disabled、assOverride.pos 和第三方扩展。
+- v1.5 落盘不写 `color` / `color_ref` / `sticker` / `sticker_ref`；编辑器内部可生成显示投影，投影的下标与范围不构成持久化关系。三轨共同保留 items、帧、speaker、disabled、assOverride.pos 和第三方扩展。
 - 表情预览、共享时间线导出和 OTIO 按组连续区间输出。独立表情 OTIO（含去空隙模式）包含启用轨道的所有组，每组仅输出一次；完整时间线仍按主/叠加归属分轨。重叠组按稳定表顺序显示；单轨 OTIO 遇重叠继续报错。Resolve JSON 使用 `moy.asr_subtitle_editor.resolve.v2`，在顶层 `stickers` 输出连续组区间（group_id/start_ms/end_ms/素材属性）；派生 ID 和范围优先于素材扩展中的同名字段，段上保留组 ID；旧 Resolve v1 消费端需适配。
 
-文稿匹配读取并保留 v2；沿既有等条数槽位继承非时间属性。对带独立组且会改变条数的文稿匹配，当前明确拒绝生成有损结果，原工程保留；可先在编辑器中拆合。该限制不影响编辑器正常拆分、合并或重新断句。
+文稿匹配读取并保留 v1.5；沿既有等条数槽位继承非时间属性。对带独立组且会改变条数的文稿匹配，当前明确拒绝生成有损结果，原工程保留；可先在编辑器中拆合。该限制不影响编辑器正常拆分、合并或重新断句。
 
-以下 v1 字段示例与 headIdx 约束用于历史输入兼容；v2 颜色 / 表情关系以本节为准。整数毫秒、字词、Gap、样式和时间基准的其余契约继续适用。
+以下 v1 字段示例与 headIdx 约束用于历史输入兼容；v1.5 颜色 / 表情关系以本节为准。整数毫秒、字词、Gap、样式和时间基准的其余契约继续适用。
 
 ## 一、顶层结构
 
@@ -89,6 +91,7 @@ v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有
     ]
   },
   "timebase": { "unit": "milliseconds", "fps": 30 },
+  "audio_processing": { "gain_db": 0, "target_lufs": -14, "peak_ceiling_dbtp": -1 },
   "sticker_root": "...",
   "waveform": { ... },
   "gap_remove": { ... },
@@ -103,9 +106,10 @@ v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `schema` | `string` | 否（写出时必填） | 支持 `moy.asr.project.v1` 与带独立组表的 `moy.asr.project.v2`，详见上文。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
+| `schema` | `string` | 否（写出时必填） | 支持 `moy.asr.project.v1` 与带独立组表的 `moy.asr.project.v1.5`，详见上文。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
 | `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可），相对路径以工程文件所在目录为基准。生成与服务器保存优先写相对路径（如 `_maw/clip.mosp` 引用 `../clip.mp4`），跨盘无法相对引用时写绝对路径。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
+| `audio_processing` | `object` | 否 | 工程固定音量增益及响度参考。`gain_db` 为 −60 到 +24 的有限数值，缺省 0；界面默认显示 −6 到 +12，扩大范围只改变控件显示，不改变已保存的增益。`target_lufs` 为 −70 到 0 的有限数值，预设 −14（常见标准）、−16（播客）、−23（广播电视 / EBU R128），支持自定义，缺省 −14。已保存的有效参考值保持原样；缺字段或非法参考回到 −14。`peak_ceiling_dbtp` 当前固定 −1，仅用于匹配增益计算。无效增益回到 0，越界有限值限制到工程范围。只保存参数，LUFS/真峰值测量属于运行态缓存。工程增益用于编辑器预览与视频烧录，监听音量不写入该字段 |
 | `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。用于显示、选择切句计量方式，以及结合语言来源决定是否启用中文翻译预过滤 |
 | `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知）。中文翻译预过滤仅信任前两种来源，并在全文有假名或谚文时停用 |
 | `preserve_punctuation` | `boolean` | 否 | 历史兼容字段，继续读取与保存；文稿驱动对齐仍写入 `true`。当前 MAWE 打开所有工程均保留标点，不论此字段为 `true`、`false` 或缺省，都不自动改写字幕与 items 原文；用户主动编辑 / 文本处理仍有效。此字段是 v1 的可选扩展，不改变整数毫秒契约 |
@@ -1022,8 +1026,8 @@ uv run --no-sync python server-editor/serve.py your_generated.mosp
 
 ## 九、版本与兼容
 
-- 当前支持 `moy.asr.project.v1` 与带独立组表的 `moy.asr.project.v2`；编辑器保存为 v2，Python 生成器可继续生成 v1，详见上文
-- 没有顶层 `schema` 的历史工程按 v1 兼容读取；规范化补写 v1，编辑器保存时迁移为 v2
+- 当前支持 `moy.asr.project.v1` 与带独立组表的 `moy.asr.project.v1.5`；编辑器保存为 v1.5，Python 生成器可继续生成 v1，详见上文
+- 没有顶层 `schema` 的历史工程按 v1 兼容读取；规范化补写 v1，编辑器保存时迁移为 v1.5
 - 当前客户端拒绝加载未知的顶层工程版本，且不会用旧结构覆盖原工程
 - v1 内允许新增可选字段及不改变既有语义的向后兼容调整；编辑器保存时保留不认识的顶层字段
 - 删除字段、改变既有字段的单位或语义、调整为不兼容结构，或要求强制迁移时需要升级 schema

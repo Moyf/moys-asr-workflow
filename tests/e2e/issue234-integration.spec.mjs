@@ -121,13 +121,13 @@ test('Server startup: defaults stay clean; actual repair is reported and needs s
   }
 });
 
-test('D/E follow-on: FPS intent and v2 group membership share the persistence checkpoint', async ({ page }) => {
+test('D/E follow-on: FPS intent and v1.5 group membership share the persistence checkpoint', async ({ page }) => {
   await page.goto(blank.url);
   await page.waitForFunction(() => typeof window.MaweMultiImport?.openProjectFile === 'function');
-  const supportsV2 = await page.evaluate(() => window.AsrEditorUtils.supportsProjectSchema({ schema: 'moy.asr.project.v2' }));
-  expect(supportsV2).toBe(true);
+  const supportsV15 = await page.evaluate(() => window.AsrEditorUtils.supportsProjectSchema({ schema: 'moy.asr.project.v1.5' }));
+  expect(supportsV15).toBe(true);
   const input = {
-    schema: 'moy.asr.project.v2',
+    schema: 'moy.asr.project.v1.5',
     timebase: { unit: 'milliseconds', fps: 30, fps_source: 'auto' },
     subtitle_groups: { color: [{ id: 'color-1', value: { name: 'blue' } }], sticker: [] },
     segments: [{ id: 'main-1', start: 100, end: 200, text: 'Grouped', items: [], color_group_id: 'color-1' }],
@@ -135,7 +135,7 @@ test('D/E follow-on: FPS intent and v2 group membership share the persistence ch
   expect(await openBrowserFile(page, input, 'grouped.mosp')).toBe(true);
   expect(await dirty(page)).toBe(false);
   let saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(saved.schema).toBe('moy.asr.project.v2');
+  expect(saved.schema).toBe('moy.asr.project.v1.5');
   expect(saved.timebase.fps_source).toBe('auto');
   expect(saved.subtitle_groups.color[0].id).toBe('color-1');
   expect(saved.segments[0].color_group_id).toBe('color-1');
@@ -151,11 +151,11 @@ test('D/E follow-on: FPS intent and v2 group membership share the persistence ch
 });
 
 
-test('project subtitle import uses the same v2 validation and preserves zero-width items', async ({ page }) => {
+test('project subtitle import uses the same v1.5 validation and preserves zero-width items', async ({ page }) => {
   await page.goto(blank.url);
   await page.waitForFunction(() => typeof window.MaweLoadingProgress?.parseSubtitleImportFile === 'function');
   const result = await page.evaluate(async () => {
-    const value = { schema: 'moy.asr.project.v2', subtitle_groups: { color: [], sticker: [] },
+    const value = { schema: 'moy.asr.project.v1.5', subtitle_groups: { color: [], sticker: [] },
       timebase: { unit: 'milliseconds', fps: 30, fps_source: 'user' },
       segments: [{ id: 'cue', start: 0, end: 1000, text: 'punctuation，', items: [{ start: 500, end: 500, text: '，' }] }] };
     const parse = value => MaweLoadingProgress.parseSubtitleImportFile(new File([JSON.stringify(value)], 'subtitle.mosp'));
@@ -176,7 +176,7 @@ test('project subtitle import uses the same v2 validation and preserves zero-wid
 test('picker replaces an existing group head without splitting its members', async ({ page }) => {
   await page.goto(blank.url);
   await page.waitForFunction(() => typeof window.MaweMultiImport?.openProjectFile === 'function');
-  const input = { schema: 'moy.asr.project.v2', subtitle_groups: {
+  const input = { schema: 'moy.asr.project.v1.5', subtitle_groups: {
     color: [{ id: 'color-1', value: { name: 'blue', value: '#0000ff' } }],
     sticker: [{ id: 'sticker-1', value: { name: 'first', filename: 'first.png' } }],
   }, segments: [

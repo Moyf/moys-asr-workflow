@@ -1,5 +1,5 @@
 {
-  "schema": "moy.asr.project.v2",
+  "schema": "moy.asr.project.v1.5",
   "custom": {
     "keep": [
       "原文",

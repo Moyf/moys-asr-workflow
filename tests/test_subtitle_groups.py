@@ -10,7 +10,7 @@ from maw.project_io import serialize_mosp
 
 class SubtitleGroupContractTests(unittest.TestCase):
     def fixture(self):
-        return {"schema": "moy.asr.project.v2", "subtitle_groups": {
+        return {"schema": "moy.asr.project.v1.5", "subtitle_groups": {
             "color": [], "sticker": [{"id": "s1", "value": {"name": "cat", "rel": "cat.png"}}]},
             "segments": [{"id": "a", "start": 1000, "end": 3000, "text": "one", "sticker_group_id": "s1"}],
             "overlay_track": {"enabled": True, "segments": [
@@ -22,7 +22,7 @@ class SubtitleGroupContractTests(unittest.TestCase):
         original = copy.deepcopy(source)
         saved = json.loads(serialize_mosp(normalize_project(source)))
         self.assertEqual(source, original)
-        self.assertEqual(saved["schema"], "moy.asr.project.v2")
+        self.assertEqual(saved["schema"], "moy.asr.project.v1.5")
         self.assertEqual(saved["subtitle_groups"], source["subtitle_groups"])
         self.assertEqual(saved["overlay_track"]["segments"][0]["sticker_group_id"], "s1")
         self.assertEqual(saved["segments"][0]["vendor"], {"x": [1]})
@@ -54,12 +54,20 @@ class SubtitleGroupContractTests(unittest.TestCase):
                 self.assertIn(path, {error.path for error in result.errors})
 
     def test_writer_rejects_future_schema_instead_of_downgrading(self):
-        source = self.fixture()
-        source["schema"] = "moy.asr.project.v99"
-        with self.assertRaises(ValueError):
-            serialize_mosp(source)
+        from scripts.mosp_match_text import AlignmentError, generate_matched_mosp
+        for schema in ("moy.asr.project.v2", "moy.asr.project.v99"):
+            source = self.fixture()
+            source["schema"] = schema
+            before = copy.deepcopy(source)
+            with self.subTest(schema=schema):
+                self.assertFalse(validate_project(source).ok)
+                with self.assertRaises(ValueError):
+                    serialize_mosp(source)
+                with self.assertRaises(AlignmentError):
+                    generate_matched_mosp(json.dumps(source), "one")
+                self.assertEqual(source, before)
 
-    def test_character_match_preserves_v2_groups_and_rejects_lossy_count_change(self):
+    def test_character_match_preserves_v1_5_groups_and_rejects_lossy_count_change(self):
         from scripts.mosp_match_text import AlignmentError, generate_matched_mosp
         source = self.fixture()
         source["segments"][0]["items"] = [{"text": "one", "start": 1000, "end": 3000}]
@@ -85,7 +93,7 @@ class SubtitleGroupContractTests(unittest.TestCase):
             for overlay in (None, {"segments": None}):
                 with self.subTest(multi=multi, overlay=overlay):
                     source = {
-                        "schema": "moy.asr.project.v2",
+                        "schema": "moy.asr.project.v1.5",
                         "subtitle_groups": {"color": [], "sticker": []},
                         "segments": [
                             {
@@ -117,7 +125,7 @@ class SubtitleGroupContractTests(unittest.TestCase):
         from scripts.mosp_match_text import AlignmentError, generate_matched_mosp
 
         source = {
-            "schema": "moy.asr.project.v2",
+            "schema": "moy.asr.project.v1.5",
             "subtitle_groups": {"color": [], "sticker": []},
             "segments": [
                 {
@@ -188,7 +196,7 @@ class SubtitleGroupContractTests(unittest.TestCase):
     def test_match_reserves_normalized_other_track_ids(self):
         from scripts.mosp_match_text import generate_matched_mosp
 
-        source = {"schema": "moy.asr.project.v2", "subtitle_groups": {"color": [], "sticker": []},
+        source = {"schema": "moy.asr.project.v1.5", "subtitle_groups": {"color": [], "sticker": []},
                   "segments": [{"id": "main", "start": 0, "end": 1000, "text": "甲乙",
                                 "items": [{"text": "甲", "start": 0, "end": 500},
                                           {"text": "乙", "start": 500, "end": 1000}]}],
@@ -204,7 +212,7 @@ class SubtitleGroupContractTests(unittest.TestCase):
         from maw.postprocess import OutputMode
         from maw.postprocess_match import ScriptMatchRequest, run_script_match
 
-        source = {"schema": "moy.asr.project.v2", "subtitle_groups": {"color": [], "sticker": [
+        source = {"schema": "moy.asr.project.v1.5", "subtitle_groups": {"color": [], "sticker": [
             {"id": "s1", "value": {"name": "cat"}}, {"id": "s2", "value": {"name": "dog"}}]},
             "segments": [{"id": text, "text": text, "start": index * 1000, "end": (index + 1) * 1000,
                           "sticker_group_id": "s1" if index == 0 else "s2"}

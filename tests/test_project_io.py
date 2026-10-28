@@ -62,7 +62,7 @@ class ProjectIoTests(CompactContainerAssertions, unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             output = Path(temp_dir) / "project.mosp"
             output.write_text("original", encoding="utf-8")
-            for schema in ("moy.asr.project.v99", "moy.asr.project.draft", None):
+            for schema in ("moy.asr.project.v2", "moy.asr.project.v99", "moy.asr.project.draft", None):
                 with self.subTest(schema=schema), self.assertRaises(ProjectValidationFailed):
                     write_mosp(output, {"schema": schema, "segments": []})
                 self.assertEqual(output.read_text(encoding="utf-8"), "original")

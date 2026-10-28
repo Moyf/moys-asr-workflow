@@ -92,7 +92,7 @@ test('canonical serialization, Python normalization and writing preserve members
   u.moveSegmentBetweenTracks(p.segments, p.overlay_track.segments, 1);
   u.refreshSubtitleGroupViews(p);
   const saved = u.serializeSubtitleGroups(plain(p));
-  assert.equal(saved.schema, 'moy.asr.project.v2');
+  assert.equal(saved.schema, 'moy.asr.project.v1.5');
   assert.doesNotMatch(JSON.stringify(saved), /headIdx/);
   assert.equal(saved.subtitle_groups.sticker[0].value.start, undefined);
   const result = spawnSync(process.env.MAW_TEST_PYTHON || 'python', ['-c',
@@ -100,7 +100,7 @@ test('canonical serialization, Python normalization and writing preserve members
     { input: JSON.stringify(saved), encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
   assert.equal(result.status, 0, result.stderr.slice(0, 1500));
   const reopened = JSON.parse(result.stdout); u.normalizeMultiSubtitleProject(reopened);
-  assert.equal(reopened.schema, 'moy.asr.project.v2');
+  assert.equal(reopened.schema, 'moy.asr.project.v1.5');
   assert.deepEqual(plain(u.subtitleGroupRanges(reopened).map(r => [r.id, r.start, r.end])),
     plain(u.subtitleGroupRanges(p).map(r => [r.id, r.start, r.end])));
 });
@@ -130,7 +130,7 @@ test('canonical groups reject ambiguous identity, dangling membership, independe
   assert.throws(() => u.migrateSubtitleGroups(p), /ambiguous binding/);
 });
 
-test('v2 file boundary rejects legacy fields while runtime may rebuild display views', () => {
+test('v1.5 file boundary rejects legacy fields while runtime may rebuild display views', () => {
   const p = fixture(); u.normalizeMultiSubtitleProject(p);
   const saved = u.serializeSubtitleGroups(plain(p));
   assert.doesNotThrow(() => u.migrateSubtitleGroups(saved, { fromFile: true }));
@@ -258,4 +258,13 @@ test('ambiguous or invalid binding tracks reject migration without changing the 
   base.multi_subtitle.bindings[0].track_id = 'two';
   u.normalizeMultiSubtitleProject(base);
   assert.deepEqual(plain(base.multi_subtitle.bindings[0].extension_segment_ids), [base.multi_subtitle.tracks[1].segments[0].id]);
+});
+
+test('schema support accepts v1 and v1.5 and rejects reserved v2 without changing input', () => {
+  for (const schema of [undefined, 'moy.asr.project.v1', 'moy.asr.project.v1.5', 'moy.asr.project.v2', 'moy.asr.project.v99', null]) {
+    const project = { ...(schema === undefined ? {} : { schema }), segments: [] };
+    const before = plain(project);
+    assert.equal(u.supportsProjectSchema(project), schema === undefined || schema === 'moy.asr.project.v1' || schema === 'moy.asr.project.v1.5', String(schema));
+    assert.deepEqual(project, before);
+  }
 });

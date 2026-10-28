@@ -1,6 +1,6 @@
-"""Validate the independent cue groups used by v2 projects without rewriting data."""
+"""Validate the independent cue groups used by v1.5 projects without rewriting data."""
 
-GROUP_PROJECT_SCHEMA = "moy.asr.project.v2"
+GROUP_PROJECT_SCHEMA = "moy.asr.project.v1.5"
 
 
 def validate_subtitle_groups(project):
@@ -61,5 +61,5 @@ def validate_subtitle_groups(project):
                 if field in segment and (not isinstance(segment[field], str) or segment[field] not in group_ids):
                     errors.append((f"{path}[{i}].{field}", "must reference an existing group"))
                 if kind in segment or f"{kind}_ref" in segment:
-                    errors.append((f"{path}[{i}].{kind}", "legacy group fields are not allowed in v2"))
+                    errors.append((f"{path}[{i}].{kind}", "legacy group fields are not allowed in v1.5"))
     return errors

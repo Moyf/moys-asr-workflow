@@ -127,7 +127,7 @@ test('video filmstrip respects tail width, cross-row seek, frame snapping and ex
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-real-interactions.png'});
 });
 
-test('video preview preferences stay outside project checkpoints while v2 groups and FPS survive save and reopen',async({page})=>{
+test('video preview preferences stay outside project checkpoints while v1.5 groups and FPS survive save and reopen',async({page})=>{
   const {requests}=await opened(page);
   const dirty=()=>page.evaluate(()=>MaweState.hasProjectChanges());
   expect(await dirty()).toBe(false);
@@ -159,7 +159,7 @@ test('video preview preferences stay outside project checkpoints while v2 groups
   expect(await page.evaluate(()=>MaweProjectSave.saveCurrentProject())).toBe(true);
   expect(await dirty()).toBe(false);
   const saved=JSON.parse(readFileSync(project,'utf8'));
-  expect(saved.schema).toBe('moy.asr.project.v2');
+  expect(saved.schema).toBe('moy.asr.project.v1.5');
   expect(saved.timebase.fps_source).toBe('user');
   expect(saved.subtitle_groups.color[0].id).toBe('preview-color');
   expect(saved.segments[0].color_group_id).toBe('preview-color');

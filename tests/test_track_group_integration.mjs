@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createProjectHarness, readFixture } from './helpers/track-golden.mjs';
 
-test('v1 groups migrate and cross-track groups survive v2 save, reopen and TrackStore lookup', () => {
+test('v1 groups migrate and cross-track groups survive v1.5 save, reopen and TrackStore lookup', () => {
   const fixture = createProjectHarness(readFixture('color-sticker-groups'));
   const { data, h } = fixture;
   const [main, mainRef] = data.segments;
@@ -17,7 +17,7 @@ test('v1 groups migrate and cross-track groups survive v2 save, reopen and Track
   h.assignSubtitleGroup(data, data.overlay_track.segments, [0], 'sticker', null, stickerId);
   h.assignSubtitleGroup(data, data.multi_subtitle.tracks[0].segments, [0], 'color', null, colorId);
   const saved = fixture.save();
-  assert.equal(saved.schema, 'moy.asr.project.v2');
+  assert.equal(saved.schema, 'moy.asr.project.v1.5');
   assert.equal(saved.multi_subtitle.tracks[0].segments[0].sticker_group_id, stickerId);
   assert.equal(saved.multi_subtitle.tracks[0].segments[0].color_group_id, colorId);
   assert.deepEqual(saved.multi_subtitle.tracks[0].segments[0].custom, { nested: [1, 2] });

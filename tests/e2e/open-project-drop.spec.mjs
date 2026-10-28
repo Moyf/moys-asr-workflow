@@ -132,8 +132,9 @@ test('opening and serializing a legacy project adds v1 and preserves transcripti
 test('opening an unknown project schema is rejected without replacing the current project', async ({ page }) => {
   const futureProject = {
     schema: 'moy.asr.project.v2',
+    subtitle_groups: { color: [], sticker: [] },
     media: '',
-    segments: [{ start: 100, end: 1900, text: 'future' }],
+    segments: [{ id: 'future-cue', start: 100, end: 1900, text: 'future' }],
   };
   const spec = {
     name: 'future.mosp',
@@ -145,7 +146,7 @@ test('opening an unknown project schema is rejected without replacing the curren
   const before = await page.evaluate(() => JSON.stringify(MaweBoot.DATA));
   await dropFiles(page, [spec]);
 
-  await expect(page.locator('#hint-stack .hint-warning')).toContainText('不支持的工程格式版本');
+  await expect(page.locator('#hint-stack .hint-warning')).toContainText('$.schema: must be moy.asr.project.v1 or moy.asr.project.v1.5');
   expect(await page.evaluate(() => JSON.stringify(MaweBoot.DATA))).toBe(before);
 });
 

@@ -3,7 +3,7 @@
 (function (global) {
   'use strict';
   const SCHEMA = 'moy.asr.project.v1';
-  const GROUP_SCHEMA = 'moy.asr.project.v2';
+  const GROUP_SCHEMA = 'moy.asr.project.v1.5';
   const MULTI = 'moy.asr.multi_subtitle.v1';
   const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
   const integer = Number.isInteger;
@@ -23,7 +23,7 @@
     return JSON.stringify(before) === JSON.stringify(after) ? [] : [{ path, kind: 'replace', before, after }];
   }
 
-function validateV2SubtitleGroups(project, report = (_path, _message) => {}) {
+function validateSubtitleGroups(project, report = (_path, _message) => {}) {
   const errors = [];
   const error = (path, message) => {
     errors.push({ path, message });
@@ -103,7 +103,7 @@ function validateV2SubtitleGroups(project, report = (_path, _message) => {}) {
           error(`${path}[${index}].${field}`, 'must reference an existing group');
         }
         if (Object.hasOwn(segment, kind) || Object.hasOwn(segment, `${kind}_ref`)) {
-          error(`${path}[${index}].${kind}`, 'legacy group fields are not allowed in v2');
+          error(`${path}[${index}].${kind}`, 'legacy group fields are not allowed in v1.5');
         }
       });
     }
@@ -371,7 +371,7 @@ function validateV2SubtitleGroups(project, report = (_path, _message) => {}) {
     if (Object.hasOwn(project, 'media_metadata')) metadata(project.media_metadata);
     if (!Array.isArray(project.segments)) error('$.segments', 'must be an array');
     else {
-      if (schema === GROUP_SCHEMA) validateV2SubtitleGroups(project, error);
+      if (schema === GROUP_SCHEMA) validateSubtitleGroups(project, error);
       segments(project.segments, 'main', '$.segments');
       for (const field of ['language', 'language_source', 'split_mode', 'timestamp_granularity', 'timed_text_edit_view']) optional(project, '$', field, string, 'must be a string');
       /** @type {[string, string[], string][]} */
