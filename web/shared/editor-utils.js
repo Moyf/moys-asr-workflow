@@ -41,6 +41,7 @@ import { createUtilsModule as createOgrafModule } from './utils/ograf.js';
 export function initEditorUtils() {
   'use strict';
 
+const trackHelpers = window.MAWE.resolve('project-tracks');
 const helpers = {
   gapRemoveCore: window.AsrGapRemoveCore,
   getNavigator: () => window.MaweHost.runtime.getNavigator(),
@@ -396,6 +397,7 @@ const {
 window.AsrEditorUtils = {
   cloneJsonValue: helpers.cloneJsonValue,
   ...subtitleGroupHelpers,
+...trackHelpers,
 ...wordTimingHelpers,
   PROJECT_SCHEMA,
   supportsProjectSchema,

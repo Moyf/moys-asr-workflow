@@ -16,6 +16,8 @@
 | --- | --- | --- | --- |
 | 1.10.0-beta.2 之后 | 2026-10-25 | [PR239 同步 main](release1.10.0-beta.2/261025_PR239同步main/整合记录.md) / [独立审阅](release1.10.0-beta.2/261025_PR239同步main/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261025_PR239同步main/PR239同步.checklist.md) | ESM 领域迁移与稳定组、完整保存检查点组合；保持 Draft 与 2.0dev |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [PR239 对齐 2.0dev](release1.10.0-beta.1/261022_PR239开发分支/整合记录.md) / [人工核验](release1.10.0-beta.1/261022_PR239开发分支/PR239开发分支.checklist.md) | 最新 main 合成、完整保存检查点与包装路径，保持 Draft |
+| 1.10.0-beta.2 之后 | 2026-10-27 | [轨道读取 ESM 适配](release1.10.0-beta.2/261027_轨道读取ESM适配/修复记录.md) / [独立自审](release1.10.0-beta.2/261027_轨道读取ESM适配/REVIEW_FINDINGS.md) | 合并新 2.0dev 后的测试装配修复，golden 保持原值 |
+| 1.10.0-beta.1 之后 | 2026-10-27 | [轨道统一读取 P0/P1](release1.10.0-beta.1/261027_轨道统一读取/交付报告.md) / [核验清单](release1.10.0-beta.1/261027_轨道统一读取/轨道统一读取.checklist.md) | v1 golden、只读 adapter、差异与验证边界 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [编辑器显示与像素组合验证](release1.10.0-beta.1/261023_编辑器显示与像素验证/验证记录.md) / [独立复核](release1.10.0-beta.1/261023_编辑器显示与像素验证/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261023_编辑器显示与像素验证/编辑器显示.checklist.md) | 斜体字形、真实像素准备复用与动态双语提示；最新 main 组合和旧红新绿 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [测试夹具组合验证](release1.10.0-beta.1/261023_测试夹具组合/验证记录.md) / [独立复核](release1.10.0-beta.1/261023_测试夹具组合/REVIEW_FINDINGS.md) / [核验清单](release1.10.0-beta.1/261023_测试夹具组合/测试基础设施.checklist.md) | H/L/C 组合、Windows 同一完整报告承接；真实符号链接与 Launcher 浏览器验收分别记录 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [服务生命周期夹具复核](release1.10.0-beta.1/261023_服务生命周期夹具/REVIEW_FINDINGS.md) | Windows supervisor/application 环境隔离、合成期限与实际默认期限分开、进程树/端口/旁观进程断言保留 |

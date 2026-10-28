@@ -218,6 +218,9 @@
 
 反馈账本中的“已修复”只对应其记录的版本和验证范围。发布变化见 [CHANGELOG](../CHANGELOG.md)。
 
+### v1 轨道只读访问协议
+
+[TrackStore 与 CueRef（P1）](engineering/TRACK_ACCESS.md)：旧容器引用、运行时身份与兼容 getter；不改变 v1 落盘。
 <a name="log-media-required-reports"></a>
 ### 媒体分层与可信报告
 

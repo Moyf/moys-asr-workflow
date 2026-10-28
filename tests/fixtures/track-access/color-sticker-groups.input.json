@@ -1,0 +1,115 @@
+{
+  "schema": "moy.asr.project.v1",
+  "language": "zh",
+  "model": "fixture",
+  "preserve_punctuation": true,
+  "metadata": {
+    "fixture": true
+  },
+  "segments": [
+    {
+      "id": "main-head",
+      "start": 0,
+      "end": 1000,
+      "text": "头",
+      "color": {
+        "name": "red",
+        "start": 0,
+        "end": 2000
+      },
+      "sticker": {
+        "name": "main",
+        "filename": "main.png",
+        "rel": "main.png",
+        "start": 0,
+        "end": 2000
+      }
+    },
+    {
+      "id": "main-ref",
+      "start": 1000,
+      "end": 2000,
+      "text": "组员",
+      "color_ref": {
+        "headIdx": 0,
+        "name": "red"
+      },
+      "sticker_ref": {
+        "headIdx": 0,
+        "name": "main"
+      }
+    }
+  ],
+  "overlay_track": {
+    "enabled": false,
+    "segments": [
+      {
+        "id": "overlay-head",
+        "start": 0,
+        "end": 1000,
+        "text": "头",
+        "color": {
+          "name": "blue",
+          "start": 0,
+          "end": 2000
+        },
+        "sticker": {
+          "name": "overlay",
+          "filename": "overlay.png",
+          "rel": "overlay.png",
+          "start": 0,
+          "end": 2000
+        }
+      },
+      {
+        "id": "overlay-ref",
+        "start": 1000,
+        "end": 2000,
+        "text": "组员",
+        "color_ref": {
+          "headIdx": 0,
+          "name": "blue"
+        },
+        "sticker_ref": {
+          "headIdx": 0,
+          "name": "overlay"
+        }
+      }
+    ]
+  },
+  "multi_subtitle": {
+    "schema": "moy.asr.multi_subtitle.v1",
+    "enabled": true,
+    "display_mode": "both",
+    "main_split_mode": "continuous",
+    "tracks": [
+      {
+        "id": "translation",
+        "role": "extension",
+        "name": "English",
+        "language": "en",
+        "split_mode": "word",
+        "source_name": "translation.srt",
+        "segments": [
+          {
+            "id": "secondary",
+            "start": 2000,
+            "end": 3000,
+            "text": "副轨附件保留探针",
+            "sticker": {
+              "name": "secondary",
+              "rel": "secondary.png"
+            },
+            "custom": {
+              "nested": [
+                1,
+                2
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "bindings": []
+  }
+}
