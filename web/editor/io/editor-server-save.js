@@ -1,7 +1,8 @@
 // 服务器保存：保存目标、校验预览、自动保存调度。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweServerSave 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweServerSave 在原清单位次执行原 IIFE 体（挂
+// window.MaweServerSave 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweServerSave() {
 (function initMaweServerSave(global) {
   'use strict';
 
@@ -675,3 +676,10 @@
     configureServerProjectSettings
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function configureServerSaveControls(...args) { return window.MaweServerSave.configureServerSaveControls(...args); }
+export function scheduleAutoSave(...args) { return window.MaweServerSave.scheduleAutoSave(...args); }
+export function projectSaveInFlight(...args) { return window.MaweServerSave.projectSaveInFlight(...args); }
+export function hasUnsavedProjectChanges(...args) { return window.MaweServerSave.hasUnsavedProjectChanges(...args); }
+export function scheduleAutoSaveFlush(...args) { return window.MaweServerSave.scheduleAutoSaveFlush(...args); }
