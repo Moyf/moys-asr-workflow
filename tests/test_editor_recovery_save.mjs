@@ -62,6 +62,34 @@ test('connection-loss recovery downloads use a file-export reference without cha
   assert.equal(context.MaweServerSave.projectSaveInFlight, false);
 });
 
+for (const target of ['server', 'handle', 'download']) {
+  test(`local v2 validation failure preserves dirty state and avoids ${target} writes`, async () => {
+    const { context, calls } = fixture({ failure: null });
+    const detail = '$.tracks[0].segments[1].start: must be >= previous segment end';
+    context.MaweState.beginProjectSession();
+    context.MaweState.establishProjectCheckpoint();
+    context.MaweBoot.DATA.media = 'edited.mp4';
+    context.MaweState.markProjectDirty();
+    context.MaweJsonRepair.buildJson = () => { throw new Error(detail); };
+    context.MaweHost.files = {
+      hasSavePicker: () => false,
+      writeBlob: async () => { assert.fail('invalid project must never be written'); },
+    };
+    if (target === 'handle') context.MaweServerSave.projectFileHandle = { name: 'captions.mosp' };
+    const result = target === 'download'
+      ? await context.MaweProjectSave.saveProjectAsToFile()
+      : await context.MaweProjectSave.saveCurrentProject();
+    assert.equal(result, false);
+    assert.deepEqual(calls.errors, [detail]);
+    assert.equal(calls.posted.length, 0);
+    assert.equal(calls.downloaded.length, 0);
+    assert.equal(calls.confirmed, 0);
+    assert.equal(calls.saved, 0);
+    assert.equal(context.MaweState.hasProjectChanges(), true);
+    assert.equal(Boolean(context.MaweServerSave.projectSaveInFlight), false);
+  });
+}
+
 test('recovery respects browser-local replacement media rather than the old native source', async () => {
   const {calls, save} = fixture({replacement: true});
   await save();

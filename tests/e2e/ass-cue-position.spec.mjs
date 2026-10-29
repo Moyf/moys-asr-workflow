@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 let tempDir, server, portraitServer;
 const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
@@ -13,8 +14,10 @@ test.beforeAll(async () => {
   // Phase regression samples at 220/340ms must be actual video frame PTS.
   execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=black:s=640x360:r=50:d=5', '-c:v', 'libx264', '-y', media]);
   const project = join(tempDir, 'project.mosp');
-  writeFileSync(project, JSON.stringify({ media: 'synthetic.mp4', preserve_punctuation: true,
-    segments: [{ id: 'main', start: 0, end: 2000, text: 'MMMM' }, { id: 'next', start: 2000, end: 4000, text: 'NEXT' }], waveform: generateWaveformPayload(5000) }));
+  // This suite exercises ordinary save/reopen; legacy Save As protection has
+  // its own real-file coverage in v2-migration-save.spec.mjs.
+  writeFileSync(project, JSON.stringify(createProjectTracks().importProject({ media: 'synthetic.mp4', preserve_punctuation: true,
+    segments: [{ id: 'main', start: 0, end: 2000, text: 'MMMM' }, { id: 'next', start: 2000, end: 4000, text: 'NEXT' }], waveform: generateWaveformPayload(5000) }).project));
   server = await startServer(project, media, await findFreePort());
   const portraitMedia=join(tempDir,'portrait.mp4'),portraitProject=join(tempDir,'portrait.mosp');
   execFileSync(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=black:s=360x640:r=25:d=5','-c:v','libx264','-y',portraitMedia]);
@@ -283,7 +286,7 @@ test('wheel resize commits before other edits and stays out of pointer transacti
   const restored = await historyState();
   expect(restored.project).toEqual(initial.project);
   expect(restored.undo).toBe(initial.undo);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0]._dirty)).toBe(true);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty)).toBe(true);
   await page.evaluate(() => { MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000, 0); });
   const baseline = await historyState();
 
@@ -420,7 +423,7 @@ test('active ASS dragging isolates editing shortcuts and cancellation preserves 
   expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
   expect(await state()).toEqual(colored);
 
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0]._dirty)).toBe(true);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty)).toBe(true);
 
   // Every history shortcut cancels only the in-flight gesture. Cover both an
   // existing undo entry and an existing redo entry without consuming either.

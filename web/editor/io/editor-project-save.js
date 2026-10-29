@@ -92,6 +92,17 @@ jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
 
 
 
+  // v2 validation runs before any I/O. Surface its cue/word repair actions
+  // without writing invalid bytes or acknowledging the dirty checkpoint.
+  function buildProjectJsonForSave(options) {
+    try {
+      return MaweJsonRepair.buildJson(options);
+    } catch (error) {
+      MaweServerSave.showProjectSaveError(error?.message || error);
+      return null;
+    }
+  }
+
   async function saveProjectToServer({ silent = false, backupOnly = false } = {}) {
     if (MaweServerSave.requiresMigrationSaveAs) {
       if (silent || backupOnly) return false;
@@ -109,7 +120,8 @@ jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
     }
 if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
 flushInlineEditsForSave();
-const projectJson = MaweJsonRepair.buildJson();
+const projectJson = buildProjectJsonForSave();
+if (projectJson === null) return false;
 const contentEpoch = MaweState.projectEpoch;
 const contentFingerprint = MaweState.projectFingerprint(JSON.parse(projectJson));
 MaweServerSave.projectSaveInFlight = true;
@@ -166,7 +178,8 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
     if (!MaweServerSave.projectFileHandle) return false;
 if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
 flushInlineEditsForSave();
-const projectJson = MaweJsonRepair.buildJson({ forFileExport: true });
+const projectJson = buildProjectJsonForSave({ forFileExport: true });
+if (projectJson === null) return false;
 const contentEpoch = MaweState.projectEpoch;
 // The export copy may use an absolute media reference for its new directory.
 // Acknowledge the equivalent runtime snapshot, captured before the async write.
@@ -224,7 +237,9 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     const suggested = `${MaweBoot.FILENAME_BASE}${MaweServerSave.requiresMigrationSaveAs ? '_v2' : ''}.mosp`;
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
     if (!MaweHost.files.hasSavePicker()) {
-      await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), suggested, 'application/json', {
+      const projectJson = buildProjectJsonForSave({ forFileExport: true });
+      if (projectJson === null) return false;
+      await MaweExportTimeline.downloadFile(projectJson, suggested, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
       });
       return;
@@ -261,7 +276,7 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     } catch (error) {
       if (!current()) return false;
       if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
-      MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
+      MaweServerSave.showProjectSaveError(error?.message || error);
     } finally {
       MaweServerSave.projectSaveInFlight = false;
     }

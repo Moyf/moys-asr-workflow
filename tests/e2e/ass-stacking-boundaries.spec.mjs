@@ -119,11 +119,15 @@ async function configure(page, fixture) {
     {
       const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
       AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      // Exercise renderer collision handling with in-memory overlaps, without
+      // passing those deliberately invalid save timings through import validation.
       const fixture = AsrEditorUtils.importProject({
-        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
-        multi_subtitle: { enabled: true, tracks: [{ id: 'extension', segments:
-          f.extensionSegments || [{ id: 'extension', start: 0, end: 4000, text: f.extension || 'Secondary' }] }] },
+        segments: [],
+        multi_subtitle: { enabled: true, tracks: [{ id: 'extension', segments: [] }] },
       }).project;
+      const secondary = AsrEditorUtils.getExtensionTrack(fixture);
+      secondary.segments = f.extensionSegments || [{ id: 'extension', start: 0, end: 4000, text: f.extension || 'Secondary' }];
+      AsrEditorUtils.ensureStableSegmentIds(secondary.segments, secondary.id);
       MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
         .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
       MaweBoot.DATA.bilingual = fixture.bilingual;
@@ -143,11 +147,9 @@ async function configure(page, fixture) {
       MaweBoot.DATA.preview.subtitle.speaker_labels = { mapping_enabled: true, enabled: true,
         separator: ': ', names: { red: 'MainSpeakerWithLongPrefix', green: 'SecondarySpeaker', blue: 'OverlaySpeaker' } };
     }
-    // Install fixture colours through the same migration used when opening v1
-    // projects. Direct legacy fields are only views once the group table exists.
-    window.AsrEditorUtils.migrateSubtitleGroups(project);
-    window.AsrEditorUtils.refreshSubtitleGroupViews(project);
-    Object.assign(MaweBoot.DATA, project);
+    // Groups above are assigned directly to the canonical v2 project. Refresh
+    // their materialized views before the real preview/export consumers run.
+    window.AsrEditorUtils.refreshSubtitleGroupViews(MaweBoot.DATA);
     Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assEmphasisSyntax: 'both',
       assSpecialSymbolRule: 'both', assCommentEnabled: true, assLargeTextEnabled: true,
       exportSpeakerLabels: Boolean(f.speaker) });
