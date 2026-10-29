@@ -167,6 +167,7 @@ for (const fps of [30, 29.97]) {
 test('accepts legacy and current project schemas but rejects unknown versions', () => {
   assert.equal(helpers.supportsProjectSchema({ segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v1', segments: [] }), true);
+  assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v1.5', segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v2', segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema(helpers.makeProject([])), true);
   assert.equal(helpers.PROJECT_SCHEMA, 'moy.asr.project.v3');

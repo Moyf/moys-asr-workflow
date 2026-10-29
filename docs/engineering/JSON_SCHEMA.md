@@ -4,7 +4,7 @@
 
 用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
 
-适用版本：`2.0dev` 的统一轨道草案。当前写出 `moy.asr.project.v3`；无 schema 的历史工程、v1 和 PR239 的 v2 在导入边界迁移为 v3，未知版本拒绝。旧客户端不能打开 v3，升级前请保留原文件和备份。
+适用版本：`2.0dev` 的统一轨道草案。当前写出 `moy.asr.project.v3`；无 schema 的历史工程、v1、上游 v1.5 和早期分组草案 v2 在导入边界迁移为 v3，未知版本拒绝。版本名称与轨道角色仍待按最终方案调整；旧客户端不能打开 v3，升级前请保留原文件和备份。
 
 ## 当前结构：v3 统一字幕轨道
 
@@ -47,7 +47,7 @@
 | cue ID 与时间 | cue ID 跨所有轨全局唯一；start/end 和 items 均为源媒体整数毫秒。允许合法零时长标点 item，cue 本身仍须 start < end |
 | `bilingual` | 显示配置；active_track_id 指向实际 extension；主轨/副轨/双列模式沿用现有产品语义，副轨关闭后保留活动选择 |
 | `bindings` | 显式两端轨 ID 和 cue ID；目前 source 为 main、target 为 extension，两端各一个 cue。offset 与真实端点的整数毫秒差一致 |
-| `subtitle_groups` | v2 独立组表延续；cue 仅引用 color_group_id / sticker_group_id；组 value 的未知字段保留；区间由实际成员计算 |
+| `subtitle_groups` | v1.5 独立组表延续；cue 仅引用 color_group_id / sticker_group_id；组 value 的未知字段保留；区间由实际成员计算 |
 | 工程字段 | 媒体、媒体音轨清单、timebase、audio_processing、gap_remove、markers、workspace、preview 等仍属于工程，媒体音轨不转成字幕轨 |
 
 轨道内部维持现有时间顺序和非重叠约束，轨道之间可以重叠。逐句 disabled 与整轨 enabled 分别生效。导出按入口选择主轨、活动且开启的副轨和开启的叠加轨；保存保留全部轨道。表情烧录与 FCP 组计划只从实际参与的启用成员计算范围，同组输出一次。Resolve 保持外部 v1 协议，Resolve / OTIO 贴图仍按逐句区间展开，不填满句间空隙。
@@ -72,7 +72,7 @@ v3 不接受混用新旧容器、重复 ID、悬空活动轨 / 绑定 / 组引�
 | `multi_subtitle.main_split_mode` | main track.split_mode_override |
 | v1 color/sticker 与 headIdx 引用 | 在原轨原数组上解析，再转独立组表和稳定组 ID |
 
-v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步映射绑定（包括旧 normalizer 生成的隐式 ID）。v2 保留已有全局 cue ID 和独立组表，坏引用明确拒绝。legacy ASS scale 保留原来的两位舍入与默认值省略规则，未知属性仍保留；v3 严格读入不二次改写值。
+v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步映射绑定（包括旧 normalizer 生成的隐式 ID）。v1.5 和早期分组草案 v2 保留已有全局 cue ID 和独立组表，坏引用明确拒绝。legacy ASS scale 保留原来的两位舍入与默认值省略规则，未知属性仍保留；v3 严格读入不二次改写值。
 
 媒体时间不因迁移或 gap_remove 改写。烧录保持 `alignFirstStart: false`，首句在 5 秒仍位于源素材 5 秒；独立字幕导出可另行选择首句归零。迁移和保存细节见[统一轨道方案](../plans/UNIFIED_TRACKS_PLAN.md)。
 

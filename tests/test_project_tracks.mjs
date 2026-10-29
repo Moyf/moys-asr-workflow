@@ -76,6 +76,21 @@ test('v2 groups and IDs survive migration including cross-track membership', () 
   assert.deepEqual(raw, before);
 });
 
+test('upstream v1.5 groups and binding migrate without data loss', () => {
+  const raw = fixture('v2-cross-track.input');
+  raw.schema = 'moy.asr.project.v1.5';
+  const before = json(raw);
+  assert.deepEqual(model.importProject(raw).project, fixture('v2-cross-track.expected'));
+  assert.deepEqual(raw, before);
+});
+
+test('upstream v1.5 rejects duplicate cue identities across tracks', () => {
+  const raw = { schema: 'moy.asr.project.v1.5', segments: [{ id: 'same', start: 0, end: 100, text: 'a' }],
+    overlay_track: { segments: [{ id: 'same', start: 0, end: 100, text: 'b' }] },
+    subtitle_groups: { color: [], sticker: [] } };
+  rejects(raw, '$.tracks[1].segments[0].id');
+});
+
 test('unknown/future schemas and mixed containers fail before any migration', () => {
   rejects({ schema: 'moy.asr.project.v4', segments: [] }, '$.schema');
   rejects({ schema: null, segments: [] }, '$.schema');

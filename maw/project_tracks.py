@@ -20,6 +20,7 @@ from maw.project_preview import JsonDict, JsonValue, validate_preview
 TRACKS_PROJECT_SCHEMA = "moy.asr.project.v3"
 LEGACY_PROJECT_SCHEMA = "moy.asr.project.v1"
 GROUP_PROJECT_SCHEMA = "moy.asr.project.v2"
+GROUP_PROJECT_SCHEMAS = frozenset({GROUP_PROJECT_SCHEMA, "moy.asr.project.v1.5"})
 TRACK_ROLES = frozenset({"main", "extension", "overlay"})
 TRACK_SOURCE_FIELDS = (
     "language", "language_source", "split_mode", "timestamp_granularity",
@@ -526,13 +527,13 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
             cue = _object(raw_cue, f"$.tracks[{ti}].segments[{si}]")
             if "id" in cue:
                 identifier = _identifier(cue["id"], f"$.tracks[{ti}].segments[{si}].id", trim=True)
-                if identifier in local or (schema == GROUP_PROJECT_SCHEMA and identifier in reserved_cues):
+                if identifier in local or (schema in GROUP_PROJECT_SCHEMAS and identifier in reserved_cues):
                     _fail(f"$.tracks[{ti}].segments[{si}].id", "must be a unique cue ID")
                 local.add(identifier)
                 reserved_cues.add(identifier)
                 cue["id"] = identifier
-            elif schema == GROUP_PROJECT_SCHEMA:
-                _fail(f"$.tracks[{ti}].segments[{si}].id", "v2 requires stable cue IDs")
+            elif schema in GROUP_PROJECT_SCHEMAS:
+                _fail(f"$.tracks[{ti}].segments[{si}].id", "group projects require stable cue IDs")
     used_cues: set[str] = set()
     mappings: dict[str, dict[str, str]] = {}
     old_track_ids = {current: old for old, current in track_aliases.items()}
@@ -636,7 +637,7 @@ def import_project(raw: JsonValue) -> ProjectTracksImport:
     """Migrate once at an input boundary; never change the supplied object."""
     source = _object(raw, "$")
     schema = source.get("schema", LEGACY_PROJECT_SCHEMA)
-    if schema not in (LEGACY_PROJECT_SCHEMA, GROUP_PROJECT_SCHEMA, TRACKS_PROJECT_SCHEMA):
+    if schema not in {LEGACY_PROJECT_SCHEMA, TRACKS_PROJECT_SCHEMA, *GROUP_PROJECT_SCHEMAS}:
         _fail("$.schema", "unsupported project schema")
     candidate = copy.deepcopy(source) if schema == TRACKS_PROJECT_SCHEMA else _migrate_legacy(source)
     _validate_canonical(candidate)

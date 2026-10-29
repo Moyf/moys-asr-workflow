@@ -125,6 +125,20 @@ class ProjectTracksTests(unittest.TestCase):
         self.assertEqual(project["subtitle_groups"]["color"][0]["value"]["vendor"], 0)
         self.assertFalse(project["subtitle_groups"]["vendor"])
 
+    def test_v15_upstream_groups_and_binding_migrate_without_data_loss(self):
+        folder = Path(__file__).parent / "fixtures" / "project-tracks"
+        source = json.loads((folder / "v2-cross-track.input.json").read_text(encoding="utf-8"))
+        source["schema"] = "moy.asr.project.v1.5"
+        original = copy.deepcopy(source)
+        expected = json.loads((folder / "v2-cross-track.expected.json").read_text(encoding="utf-8"))
+        self.assertEqual(import_project(source).project, expected)
+        self.assertEqual(source, original)
+
+    def test_v15_duplicate_cross_track_ids_are_rejected(self):
+        raw = {"schema": "moy.asr.project.v1.5", "segments": [cue()],
+               "overlay_track": {"segments": [cue()]}, "subtitle_groups": {"color": [], "sticker": []}}
+        self.assertRejected(raw, "$.tracks[1].segments[0].id")
+
     def test_v2_requires_global_ids_and_never_repairs_group_references(self):
         raw = {"schema": "moy.asr.project.v2", "segments": [cue()], "overlay_track": {"segments": [cue()]},
                "subtitle_groups": {"color": [], "sticker": []}}

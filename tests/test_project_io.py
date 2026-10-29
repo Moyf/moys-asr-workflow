@@ -72,6 +72,21 @@ class ProjectIoTests(CompactContainerAssertions, unittest.TestCase):
             saved = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(saved["schema"], PROJECT_SCHEMA)
 
+    def test_write_mosp_migrates_v15_group_membership(self) -> None:
+        source = {"schema": "moy.asr.project.v1.5",
+                  "segments": [{"id": "source", "start": 0, "end": 1000, "text": "你好",
+                                "color_group_id": "color-1"}],
+                  "subtitle_groups": {"next_id": 2, "color": [{"id": "color-1", "value": {"name": "red"}}],
+                                      "sticker": []}}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "project.mosp"
+            write_mosp(output, source)
+            saved = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(saved["schema"], PROJECT_SCHEMA)
+            self.assertEqual(get_main_track(saved)["segments"][0]["color_group_id"], "color-1")
+            self.assertEqual(saved["subtitle_groups"], source["subtitle_groups"])
+            self.assertEqual(source["schema"], "moy.asr.project.v1.5")
+
     def test_write_mosp_persists_selected_audio_track_without_caches(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output = Path(temp_dir) / "project.mosp"

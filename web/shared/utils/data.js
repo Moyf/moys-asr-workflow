@@ -8,7 +8,7 @@ export function createUtilsModule(dependencies) {
   function supportsProjectSchema(project) {
     if (!project || typeof project !== 'object' || Array.isArray(project)) return false;
     return project.schema === undefined
-      || ['moy.asr.project.v1', 'moy.asr.project.v2', PROJECT_SCHEMA].includes(project.schema);
+      || ['moy.asr.project.v1', 'moy.asr.project.v1.5', 'moy.asr.project.v2', PROJECT_SCHEMA].includes(project.schema);
   }
 
 

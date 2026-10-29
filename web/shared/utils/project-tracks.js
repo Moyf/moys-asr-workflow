@@ -2,7 +2,8 @@
 // by importProject; consumers receive track entities from one canonical tree.
 export function createUtilsModule() {
   const PROJECT_TRACKS_SCHEMA = 'moy.asr.project.v3';
-  const LEGACY_SCHEMAS = new Set(['moy.asr.project.v1', 'moy.asr.project.v2']);
+  const GROUP_SCHEMAS = new Set(['moy.asr.project.v1.5', 'moy.asr.project.v2']);
+  const LEGACY_SCHEMAS = new Set(['moy.asr.project.v1', ...GROUP_SCHEMAS]);
   const ROLES = new Set(['main', 'extension', 'overlay']);
   const SOURCE_FIELDS = ['language', 'language_source', 'split_mode', 'timestamp_granularity',
     'model', 'preserve_punctuation', 'source_name'];
@@ -400,7 +401,7 @@ export function createUtilsModule() {
     });
     const errors = [];
     const globalIds = new Set();
-    if (raw.schema === 'moy.asr.project.v2') {
+    if (GROUP_SCHEMAS.has(raw.schema)) {
       const ids = new Set();
       tracks.forEach((track, index) => (Array.isArray(track.segments) ? track.segments : []).forEach((segment, cueIndex) => {
         if (!object(segment)) return;
@@ -413,7 +414,7 @@ export function createUtilsModule() {
     tracks.forEach((track, index) => {
       validateTrackMetadata(track, `$.tracks[${index}]`, errors);
       validateSegments(track.segments, `$.tracks[${index}].segments`, errors, globalIds, { legacy: true });
-      if (raw.schema !== 'moy.asr.project.v2') validateLegacyGroups(track, errors);
+      if (!GROUP_SCHEMAS.has(raw.schema)) validateLegacyGroups(track, errors);
     });
     if (multi.bindings != null && !Array.isArray(multi.bindings)) errors.push({ path: '$.multi_subtitle.bindings', message: 'must be an array' });
     (Array.isArray(multi.bindings) ? multi.bindings : []).forEach((binding, index) => {
@@ -459,7 +460,7 @@ export function createUtilsModule() {
         segment.id = nextId; usedCues.add(nextId);
       });
     }
-    if (raw.schema !== 'moy.asr.project.v2') {
+    if (!GROUP_SCHEMAS.has(raw.schema)) {
       if (own(project, 'subtitle_groups')) fail('$.subtitle_groups', 'conflicts with legacy group fields');
       project.subtitle_groups = { next_id: 1, color: [], sticker: [] };
       for (const track of tracks) for (const kind of ['color', 'sticker']) {
