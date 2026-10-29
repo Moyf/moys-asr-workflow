@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { createHash } from 'node:crypto';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
+import { createProjectHarness } from './helpers/track-golden.mjs';
 import { initModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
 const context = { window: {} };
 loadEditorModule(context, 'shared/editor-utils.js');
@@ -351,6 +352,74 @@ test('real overlay merge retains only leftmost override as an independent copy',
       assert.equal(right.assOverride.pos.x, 900);
     }
   }
+});
+
+function mergeOverlayForSpeakerTest(segments, colors = []) {
+  const project = runtimeProject([], { overlay: { enabled: true, segments } });
+  const track = h.getOverlayTrack(project);
+  for (const color of new Set(colors)) {
+    h.assignSubtitleGroup(project, segments, colors.flatMap((value, index) => value === color ? [index] : []), 'color', { name: color });
+  }
+  const context = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: project },
+    MaweCoreState: { container: { querySelector: () => null } },
+    MaweCueListAnchor: { captureVisibleCueListVisualAnchor: () => null },
+    MaweMultiSubtitleCore: { getMultiSubtitleState: () => project, getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '' },
+    MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } },
+    MaweSelection: { clearSelection() {} }, MaweCommands: { run: (_label, fn) => fn({ commit() {} }) },
+    MaweState: { selection: { clear() {}, add() {} }, markProjectDirty() {} }, MaweCuePanel: { setCuePanelTarget() {} },
+    MaweViewUpdates: { invalidate() {} }, MaweHint: { flashHint() {} } };
+  vm.runInNewContext(plainModuleSource('editor/cues/overlay-track.js'), context);
+  assert.equal(context.mergeOverlaySegments([1, 0]), true);
+  assert.equal(track.segments.length, 1);
+  return { context, project, merged: track.segments[0] };
+}
+
+for (const { name, speakers, colors, expected } of [
+  { name: 'same speaker, different colors', speakers: ['Alice', 'Alice'], colors: ['red', 'blue'], expected: 'Alice' },
+  { name: 'different speakers, same color', speakers: ['Alice', 'Bob'], colors: ['red', 'red'] },
+  { name: 'second speaker missing', speakers: ['Alice', undefined], colors: ['red', 'red'] },
+  { name: 'first speaker missing', speakers: [undefined, 'Bob'], colors: ['red', 'red'] },
+  { name: 'both speakers missing', speakers: [undefined, undefined], colors: ['red', 'red'] },
+  { name: 'both speakers null', speakers: [null, null], colors: ['red', 'red'] },
+  { name: 'second speaker null', speakers: ['Alice', null], colors: ['red', 'red'] },
+]) {
+  test(`overlay merge speaker: ${name}`, () => {
+    const items = [
+      { text: 'A', start: 0, end: 1000, speaker: 'Alice' },
+      { text: 'B', start: 1000, end: 2000, speaker: 'Bob' },
+    ];
+    const segments = items.map((item, index) => ({ id: `overlay-${index}`, start: item.start, end: item.end,
+      text: item.text, items: [{ ...item }], ...(speakers[index] === undefined ? {} : { speaker: speakers[index] }) }));
+    const { merged } = mergeOverlayForSpeakerTest(segments, colors);
+    assert.equal(merged.speaker, expected);
+    assert.equal(Object.hasOwn(merged, 'speaker'), expected !== undefined);
+    assert.deepEqual(plain(merged.items), items);
+  });
+}
+
+test('mixed overlay speaker does not reappear after save, reopen, and transfer to main', () => {
+  const segments = [
+    { id: 'overlay-0', start: 0, end: 1000, text: 'A', speaker: 'Alice',
+      items: [{ text: 'A', start: 0, end: 1000, speaker: 'Alice' }] },
+    { id: 'overlay-1', start: 1000, end: 2000, text: 'B', speaker: 'Bob',
+      items: [{ text: 'B', start: 1000, end: 2000 }] },
+  ];
+  const { context, project, merged } = mergeOverlayForSpeakerTest(segments, ['red', 'red']);
+  assert.equal(Object.hasOwn(merged, 'speaker'), false);
+  const saved = createProjectHarness(project).save();
+  assert.equal(Object.hasOwn(h.getOverlayTrack(saved).segments[0], 'speaker'), false);
+  const reopened = h.importProject(plain(saved)).project;
+  const reopenedCue = h.getOverlayTrack(reopened).segments[0];
+  assert.equal(Object.hasOwn(reopenedCue, 'speaker'), false);
+  assert.equal(Object.hasOwn(reopenedCue.items[1], 'speaker'), false);
+  context.MaweBoot.DATA = reopened;
+  assert.equal(context.moveOverlaySegmentToMainTrack(0), 0);
+  const main = h.getMainTrack(reopened).segments[0];
+  assert.equal(Object.hasOwn(main, 'speaker'), false);
+  assert.equal(h.mergeWordTimingItems(main, [0, 1]), null);
+  const outputs = h.planWordTimingConversion([main], [0]).conversions[0].segments;
+  assert.equal(outputs[0].speaker, 'Alice');
+  assert.equal(outputs[1].speaker, undefined);
 });
 
 

@@ -411,6 +411,9 @@ function mergeOverlaySegments(idxs) {
     disabled: !!segments[0].disabled,
     _dirty: true,
   };
+  // 说话人身份独立于颜色；只有来源段的身份全部一致且非 null/undefined 时才继承。
+  const speaker = segments[0].speaker;
+  if (speaker == null || segments.some(segment => segment.speaker !== speaker)) delete merged.speaker;
   // 逐句缩放/定位与主字幕合并同规则：取最左句的完整覆盖（独立副本）。
   if (segments[0].assOverride) {
     merged.assOverride = window.AsrEditorUtils.normalizeAssOverride(segments[0].assOverride);
