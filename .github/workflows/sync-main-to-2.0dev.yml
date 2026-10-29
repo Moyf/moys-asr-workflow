@@ -1,0 +1,214 @@
+name: Sync main to 2.0dev
+
+# 2.0 开发期间，main（1.X 稳定线）上的修复自动单向合并进 2.0dev：
+# - 触发：push main / 每周一定时兜底 / 手动
+# - main 已包含于 2.0dev → 跳过
+# - 干净合并且轻量检查通过 → 直推 2.0dev
+#   （GITHUB_TOKEN 的 push 不触发其他 workflow，无 CI 风暴）
+# - 冲突或检查失败 → 强推一次性分支 sync/main-to-2.0dev 并开 PR 人工处理。
+#   PR head 永远不是 main：页面上所有按钮（Resolve conflicts / Update branch）
+#   的写入目标都是 sync 分支，不会反向污染稳定线。
+# - SYNC_PAT（可选 secret）：配置后 PR 由 PAT 创建，pull_request 事件可触发完整 CI
+#   （python-lint / editor-checks / Windows 预览）。GitHub 规则：GITHUB_TOKEN 触发的
+#   事件（workflow_dispatch / repository_dispatch 除外）不会创建 CI run，所以 bot
+#   用 GITHUB_TOKEN 开的 PR 不带检查。未配置 SYNC_PAT 时降级为 GITHUB_TOKEN，
+#   PR 照常创建但不触发 CI，请按 PR 内指引手动验证。
+# - checkout 设 persist-credentials: false，push 用一次性 http.extraheader，
+#   避免合并树上跑 pnpm install（postinstall 可执行任意代码）时 token 留在
+#   git config 里可被读取。
+# 方向永远 main → 2.0dev，绝不反向。
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 每周一 UTC 03:17（北京时间 11:17）
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-main-to-2.0dev
+  cancel-in-progress: false
+
+env:
+  SYNC_BRANCH: sync/main-to-2.0dev
+
+jobs:
+  sync:
+    name: Merge main into 2.0dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out 2.0dev
+        uses: actions/checkout@v5
+        with:
+          ref: 2.0dev
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Skip when main is already contained
+        id: check
+        run: |
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "need=false" >> "$GITHUB_OUTPUT"
+            echo "main 已包含于 2.0dev，无需同步"
+          else
+            echo "need=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Sync main → 2.0dev"
+              echo ""
+              echo "待同步提交（HEAD..origin/main，最多显示 20 条）："
+              echo '```'
+              git log --oneline HEAD..origin/main | head -20
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Merge main into 2.0dev
+        id: merge
+        if: steps.check.outputs.need == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge origin/main --no-edit
+
+      # 与 python-lint / editor-checks 同水位的轻量检查：
+      # 合并产物至少要过 ruff 和 web 装配，才允许直接落上 2.0dev。
+      - name: Set up Python
+        if: steps.merge.outcome == 'success'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Set up uv
+        if: steps.merge.outcome == 'success'
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Ruff check
+        id: ruff
+        if: steps.merge.outcome == 'success'
+        run: uv run --frozen ruff check
+
+      - name: Set up pnpm
+        if: steps.merge.outcome == 'success'
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.4
+          run_install: false
+
+      - name: Set up Node
+        if: steps.merge.outcome == 'success'
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Editor build and typecheck
+        id: editor
+        if: steps.merge.outcome == 'success'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+          pnpm run typecheck
+
+      - name: Push merge result
+        if: >-
+          steps.merge.outcome == 'success' &&
+          steps.ruff.outcome == 'success' &&
+          steps.editor.outcome == 'success'
+        env:
+          PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TOKEN_B64=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64)
+          git -c "http.extraheader=AUTHORIZATION: basic $TOKEN_B64" push origin 2.0dev
+          {
+            echo "### Sync main → 2.0dev"
+            echo ""
+            echo "✅ 干净合并且检查通过，已直推 2.0dev。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 冲突或检查失败：强推一次性 sync 分支 + 开 PR 人工处理。
+      # - 冲突：sync 分支指向 origin/main，PR 会显示冲突状态，人工解决
+      # - 检查失败：sync 分支指向未通过检查的 merge commit，人工修复
+      # 已有 open PR 时 force push 自动更新之（不重复建 PR）。
+      # 注意：bot 用 GITHUB_TOKEN 更新分支不触发 synchronize CI；
+      # 配置了 SYNC_PAT 时创建的 PR 自带完整 CI。
+      - name: "Open sync PR for manual resolution"
+        if: "failure() && steps.merge.outcome != 'skipped'"
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_PAT || secrets.GITHUB_TOKEN }}
+          PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYNC_PAT_SET: ${{ secrets.SYNC_PAT != '' }}
+        run: |
+          if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+            MODE=conflict
+            git merge --abort >/dev/null 2>&1 || true
+            PUSH_REF="origin/main"
+            TITLE="sync: main → 2.0dev（冲突待解）"
+          else
+            MODE=check-failure
+            PUSH_REF="HEAD"
+            TITLE="sync: main → 2.0dev（合并产物检查失败待修）"
+          fi
+          echo "失败模式: $MODE，推送 $PUSH_REF → $SYNC_BRANCH"
+
+          TOKEN_B64=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64)
+          git -c "http.extraheader=AUTHORIZATION: basic $TOKEN_B64" \
+            push --force origin "$PUSH_REF:refs/heads/$SYNC_BRANCH"
+
+          existing=$(gh pr list --head "$SYNC_BRANCH" --base 2.0dev --state open --json number --jq 'length')
+          if [ "$existing" -gt 0 ]; then
+            echo "已存在 sync PR，分支已强制更新（bot 更新分支不触发 CI，请留意手动验证）"
+            exit 0
+          fi
+
+          if [ "$MODE" = "conflict" ]; then
+            BODY=$(cat <<'EOF'
+          ## 发生了什么
+
+          自动同步（Sync main to 2.0dev）把 main 合并进 2.0dev 时遇到冲突。
+          本分支（`sync/main-to-2.0dev`）当前指向 main 最新提交，本 PR 展示它与 2.0dev 的差异。
+
+          ## 怎么处理
+
+          - 本地处理：`git fetch origin && git checkout sync/main-to-2.0dev && git merge origin/main`，解冲突后 push
+          - 或直接在本 PR 页面点 **Resolve conflicts**——写入的是本 sync 分支，不会影响 main，放心操作
+
+          push 后 CI 自动重跑；CI 全绿后合并本 PR 即完成本次同步。
+
+          ## CI 说明
+
+          本 PR 由 bot 创建：配置了 `SYNC_PAT` secret 时会触发完整 CI（python-lint / editor-checks / Windows 预览）；未配置时不会自动触发，请手动验证：本地跑 `pnpm install --frozen-lockfile && pnpm run build && pnpm run typecheck` 与 `uv run --frozen ruff check`，或在 Actions 页面手动运行 Sync workflow 验证合并结果。
+          EOF
+          )
+          else
+            BODY=$(cat <<'EOF'
+          ## 发生了什么
+
+          main 合并进 2.0dev 无文本冲突，但合并产物的轻量检查未通过（ruff / editor build / typecheck 之一）。
+          本分支（`sync/main-to-2.0dev`）指向那个未通过检查的 merge commit。
+
+          ## 怎么处理
+
+          1. `git fetch origin && git checkout sync/main-to-2.0dev`
+          2. 修复问题后 commit + push 到本分支
+          3. push 后 CI 自动重跑；全绿后合并本 PR 即完成同步
+
+          具体失败原因见触发本次运行的 Actions 日志。
+
+          ## CI 说明
+
+          本 PR 由 bot 创建：配置了 `SYNC_PAT` secret 时会触发完整 CI（python-lint / editor-checks / Windows 预览）；未配置时不会自动触发，请手动验证：本地跑 `pnpm install --frozen-lockfile && pnpm run build && pnpm run typecheck` 与 `uv run --frozen ruff check`，或在 Actions 页面手动运行 Sync workflow 验证合并结果。
+          EOF
+          )
+          fi
+
+          gh pr create --base 2.0dev --head "$SYNC_BRANCH" --title "$TITLE" --body "$BODY"
