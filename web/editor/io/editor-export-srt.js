@@ -10,8 +10,12 @@
   // 程序内开关（不暴露 GUI）：导出 SRT 时保留禁用项的时间轴序号但内容替换为空白
   let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
+  function cleanupSegments(segments) {
+    return window.AsrEditorUtils.buildAiCleanupSegments(segments, MaweBoot.DATA.gap_remove);
+  }
+
   function cleanupMainSegments() {
-    return window.AsrEditorUtils.buildAiCleanupSegments(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, MaweBoot.DATA.gap_remove);
+    return cleanupSegments(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
   }
 
   function cleanupMergedExportSegments() {
@@ -187,7 +191,7 @@
 
   function buildDynamicCaptionExportData(segments, gapRemoved) {
     const colorContext = Array.isArray(segments) ? segments : [];
-    const projected = segments === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments ? cleanupMainSegments() : colorContext;
+    const projected = cleanupSegments(colorContext);
     const source = projected.map((segment) => ({
       ...segment,
       text: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
@@ -310,7 +314,7 @@
   const { overlaySegments } = cleanupMergedExportSegments();
   // 副字幕轨随 ASS 导出（多重字幕开启时才存在）；叠加轨与副字幕分层输出。
   const extensionSegments = preview && !MaweDom.extensionOverlayToggle?.checked
-    ? [] : activeExtensionSegments();
+    ? [] : cleanupSegments(activeExtensionSegments());
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     cleanupMainSegments(),
     alignFirstStart,
@@ -334,7 +338,7 @@
 
 
   function buildExtensionSrt(track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
-    return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+    return window.AsrEditorUtils.buildSrtPayload(cleanupSegments(track?.segments || []), {
       ...MaweSpeakerLabels.speakerLabelExportOptions(),
       assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
       formatTime: MaweCueElements.fmtSrtTime,
@@ -345,7 +349,7 @@
     if (MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled !== true) return '';
     const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
     return window.AsrEditorUtils.buildBilingualSrtPayload(segments,
-      MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [], {
+      cleanupSegments(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []), {
         alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
         colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
         ...MaweSpeakerLabels.speakerLabelExportOptions(),
@@ -408,7 +412,7 @@
   // onAssPlan 透传给表情包烧录：排版计划与 ASS 文本同一份（收缩时间轴），
   // 字幕位置与表情包窗口天然一致。
   const { overlaySegments } = cleanupMergedExportSegments();
-  const extensionSegments = activeExtensionSegments();
+  const extensionSegments = cleanupSegments(activeExtensionSegments());
   return window.AsrEditorUtils.buildAssPayload(mainSegments, {
     ...assExportOptions(),
     alignFirstStart,

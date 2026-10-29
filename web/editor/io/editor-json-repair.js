@@ -66,9 +66,10 @@
     if (!Array.isArray(segments) || !Array.isArray(ranges) || typeof verify !== 'function') return [];
     // A stale index may accidentally become valid after a neutral item merges.
     // Remove that authority before changing any items; keep the audio range.
+    const allSegments = (project.tracks || []).flatMap((track) => track.segments || []);
     for (const range of ranges) {
       if (!range?.cleanup_scope) continue;
-      const segment = segments.find((item) => item?.id === range.cleanup_scope.segment_id);
+      const segment = allSegments.find((item) => item?.id === range.cleanup_scope.segment_id);
       if (!segment || !verify(segment, range).length) delete range.cleanup_scope;
     }
     return segments.flatMap((segment) => {
@@ -201,7 +202,7 @@
   const normalize = repairSegmentRanges
     ? window.AsrEditorUtils.normalizeSegmentTimings
     : window.AsrEditorUtils.normalizeItemTimingRanges;
-  const cleanup = captureCleanupNormalization(window.AsrEditorUtils.getMainTrack(project).segments, project);
+  const cleanup = captureCleanupNormalization((project.tracks || []).flatMap((track) => track.segments || []), project);
   let fixed = 0;
   for (const track of project.tracks || []) fixed += normalize(track.segments);
   fixed = Math.max(0, fixed - migrateCleanupNormalization(cleanup));
@@ -225,7 +226,9 @@
   function repairTimingGroup(segments) {
     const source = Array.isArray(segments) ? segments : [];
     const before = source.map((segment) => timingRepairSignature(segment));
-    const cleanup = captureCleanupNormalization(source, source === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments ? MaweBoot.DATA : null);
+    const project = MaweBoot.DATA;
+    const cleanup = captureCleanupNormalization(source,
+      project.tracks.some((track) => track.segments === source) ? project : null);
     const fixed = Math.max(0, window.AsrEditorUtils.normalizeItemTimingRanges(source)
       - migrateCleanupNormalization(cleanup));
     const changed = source.filter((segment, index) => (

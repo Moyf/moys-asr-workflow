@@ -145,6 +145,45 @@ function neutralNormalizationRuntime() {
   return setup;
 }
 
+test('swapping tracks preserves exact AI cleanup scope during timing repair and reopening', () => {
+  const { context, core, utils, main } = neutralNormalizationRuntime();
+  const project = context.MaweBoot.DATA;
+  main[0] = { id: 'main-001', start: 0, end: 1000, text: '嗯出发', items: [
+    { text: '嗯', start: 0, end: 200 }, { text: '出发', start: 200, end: 1000 },
+  ] };
+  project.gap_remove = { provenance: { sources: { ai_cleanup: [
+    { start: 0, end: 200, cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 1, text: '嗯' } },
+  ] } } };
+  const originalScope = plain(project.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope);
+  assert.equal(utils.swapMainAndExtensionSubtitle(project).swapped, true);
+  context.getOverlayTrack = () => utils.getOverlayTrack(project);
+  context.MaweMultiSubtitleCore = { markMainSegmentsDirty() {}, markMultiSubtitleStateDirty() {}, syncBindingOffsets() {} };
+  context.MaweState = { markProjectDirty() {} };
+
+  context.window.MaweJsonRepair.repairCurrentProjectTimings();
+  assert.deepEqual(plain(project.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope), originalScope);
+  const reopened = plain(project);
+  context.window.MaweJsonRepair.normalizeProjectTimings(reopened);
+  assert.deepEqual(plain(reopened.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope), originalScope);
+  const previousMain = utils.getExtensionTrack(reopened).segments;
+  assert.equal(core.projectCleanupRetainedSegments(previousMain, reopened.gap_remove)[0].text, '出发');
+});
+
+test('a swapped source track keeps its own cleanup in secondary and bilingual exports', () => {
+  const { context, utils, srt, main } = runtime();
+  const project = context.MaweBoot.DATA;
+  const original = JSON.stringify(main);
+  assert.equal(utils.swapMainAndExtensionSubtitle(project).swapped, true);
+  context.activeExtensionSegments = () => utils.getExtensionTrack(project)?.segments || [];
+  context.mergedExportSegments = () => ({ segments: utils.getMainTrack(project).segments,
+    overlaySet: new Set(), overlaySegments: [] });
+  for (const output of [srt.buildExtensionSrt(), srt.buildBilingualSrt(), srt.buildAss()]) {
+    assert.match(output, /我这个功能呢/);
+    assert.doesNotMatch(output, /啊，|我这……/);
+  }
+  assert.equal(JSON.stringify(main), original, 'export is a projection and does not modify the original track');
+});
+
 test('timing repair migrates exact scopes collectively through neutral roots and retains real selected endpoints', () => {
   const { context, core, main } = neutralNormalizationRuntime();
   context.window.MaweJsonRepair.normalizeProjectTimings(context.MaweBoot.DATA);
