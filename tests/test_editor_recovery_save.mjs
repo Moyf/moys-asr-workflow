@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import { readFileSync } from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 
 const source = readFileSync(new URL('../web/editor/io/editor-project-save.js', import.meta.url), 'utf8');
+import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 function fixture({accept = true, failure = new TypeError('Failed to fetch'), replacement = false} = {}) {
   const calls = {build: [], posted: [], downloaded: [], errors: [], saved: 0, confirmed: 0};
@@ -40,11 +41,11 @@ function fixture({accept = true, failure = new TypeError('Failed to fetch'), rep
   context.window = context;
   context.AsrEditorUtils = projectModel;
   for (const file of ['editor/boot/editor-runtime.js', 'editor/state/editor-state.js']) {
-    vm.runInContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
+    vm.runInContext(file.includes('editor-state') ? invokedInitModuleSource(file, 'initMaweState') : readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
   }
   const state = context.MaweState;
   context.MaweState = { ...state, markSaved() { calls.saved += 1; state.markSaved(); } };
-  vm.runInContext(source, context);
+  vm.runInContext(invokedInitModuleSource('editor/io/editor-project-save.js', 'initMaweProjectSave'), context);
   return {context, calls, save: options => context.MaweProjectSave.saveProjectToServer(options)};
 }
 
@@ -95,7 +96,14 @@ test('successful server saves keep their project-relative reference', async () =
 });
 
 test('changing only the timed-text view during a save keeps the newer preference dirty', async () => {
-  const {context, calls, save} = fixture({failure: null});
+  const {context, save} = fixture({failure: null});
+  // Use the content checkpoint owner; markSaved being called no longer means
+  // the current bytes match the request's acknowledged snapshot.
+  context.window = context;
+  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
+  context.MaweState.beginProjectSession();
+  context.MaweState.establishProjectCheckpoint();
   let finish;
   context.MaweHost.server.fetch = async () => new Promise(resolve => { finish = resolve; });
   context.MaweBoot.DATA.timed_text_edit_view = 'single';
@@ -103,7 +111,10 @@ test('changing only the timed-text view during a save keeps the newer preference
   context.MaweBoot.DATA.timed_text_edit_view = 'rows';
   finish({ok: true, json: async () => ({ok: true, filename: 'captions.mosp'})});
   assert.equal(await pending, true);
-  assert.equal(context.MaweState.hasProjectChanges(), true, 'old ACK must leave the newer preference dirty');
+  assert.equal(context.MaweState.hasProjectChanges(), true);
+  context.MaweBoot.DATA.timed_text_edit_view = 'single';
+  assert.equal(context.MaweState.hasProjectChanges(), false);
+  context.MaweBoot.DATA.timed_text_edit_view = 'rows';
   context.MaweHost.server.fetch = async () => ({ok: true, json: async () => ({ok: true, filename: 'captions.mosp'})});
   assert.equal(await save(), true);
   assert.equal(context.MaweState.hasProjectChanges(), false);
@@ -230,7 +241,7 @@ function indicatorFixture() {
     MaweHint: {flashHint() {}},
   });
   context.window = context;
-  vm.runInContext(source, context);
+  vm.runInContext(invokedInitModuleSource('editor/io/editor-project-save.js', 'initMaweProjectSave'), context);
   return {
     listeners,
     jsonEl,

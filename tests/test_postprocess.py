@@ -90,8 +90,8 @@ def translation_segments(project: JsonDict) -> list[JsonDict]:
     track = next(track for track in project["tracks"] if track["id"] == project["bilingual"]["active_track_id"])
     extensions = {s["id"]: s for s in track["segments"]}
     result = []
-    targets = {binding["source_segment_ids"][0]: binding["target_segment_ids"][0]
-               for binding in project["bindings"] if binding["target_track_id"] == track["id"]}
+    targets = {binding["source"]["segment_id"]: binding["target"]["segment_id"]
+               for binding in project["bindings"] if binding["target"]["track_id"] == track["id"]}
     for index, source in enumerate(main, 1):
         extension = extensions.get(targets.get(source["id"]))
         translated = dict(source)
@@ -2174,7 +2174,7 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_translation_can_merge_source_and_translation_into_one_subtitle(self) -> None:
         source = read_project(self.project_path)
-        source["tracks"].append({"id": "old-extension", "role": "extension", "name": "Old", "enabled": True, "segments": []})
+        source["tracks"].append({"id": "old-extension", "role": "secondary", "name": "Old", "enabled": True, "segments": []})
         source["bilingual"]["active_track_id"] = "old-extension"
         source["extensionSegments"] = [{"start": 100, "end": 900, "text": "旧版副轨"}]
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")

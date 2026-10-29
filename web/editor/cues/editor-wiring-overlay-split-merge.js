@@ -1,3 +1,12 @@
+import { getOverlayTrack, mergeOverlaySegments } from './overlay-track.js';
+
+export function initOverlaySplitMergeWiring() {
+  'use strict';
+
+  // 拆分对齐漂移警告阈值（原 classic editor.js 顶层常量，随本模块 init 化迁入；
+  // 仅本文件消费）。
+  const SPLIT_ALIGNMENT_DRIFT_WARN_MS = 500;
+
 
 
 
@@ -51,7 +60,7 @@ function splitOffsetNearTimeForModal(segment, timeMs, splitMode) {
 }
 
 function splitOffsetNearTextPositionForModal(text, offset, splitMode) {
-  const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(text || '', splitMode);
+  const legalOffsets = window.AsrEditorUtils.subtitleSplitOffsets(text || '', splitMode);
   const requested = Math.max(0, Math.min(String(text || '').length, Math.round(Number(offset) || 0)));
   if (legalOffsets.length) {
     return legalOffsets.reduce((best, candidate) => (
@@ -95,7 +104,7 @@ function assessSplitAlignment(segment, offset, cutMs, options = {}) {
   const itemParts = MaweSplitCore.splitItemsAtChar(segment, offset, cutMs, options);
   return {
     ...(itemParts.alignment || { total: 0, aligned: 0, broken: false }),
-    driftMs: MULTI_SUBTITLE_UTILS.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
+    driftMs: window.AsrEditorUtils.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
   };
 }
 
@@ -332,71 +341,7 @@ function commitOverlaySplit(
 // 合并后无法同时指向多个主字幕，旧绑定会被移除并提示用户重新绑定。
 
 
-// 只合并叠加轨连续字幕。叠加轨的分组（颜色/表情包）引用叠加轨自身段，
-// 合并语义与主轨一致：全部成员同组时继承，混合组不继承。
-function mergeOverlaySegments(idxs) {
-  const track = getOverlayTrack();
-  if (!track || !idxs?.length) return false;
-  const sorted = [...new Set(idxs)].sort((a, b) => a - b);
-  if (sorted.length < 2) {
-    MaweHint.flashHint('请选择至少两个叠加字幕块！', 'invalid');
-    return false;
-  }
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] !== sorted[i - 1] + 1) {
-      MaweHint.flashHint('选中的叠加字幕必须连续', 'invalid');
-      return false;
-    }
-  }
-  const segments = sorted.map((index) => track.segments[index]).filter(Boolean);
-  if (segments.length !== sorted.length) return false;
-  const sourceEl = MaweCoreState.container.querySelector(`.overlay-track-cue[data-overlay-idx="${sorted[0]}"]`);
-  const cueListAnchor = MaweCueListAnchor.captureVisibleCueListVisualAnchor(sourceEl);
-  const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
-    track.segments, sorted, 'sticker', 'sticker_ref',
-  );
-  const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
-    track.segments, sorted, 'color', 'color_ref',
-  );
-  // 拼接后折叠相邻「闭符号+开符号」的同符号对，items 层同步守恒（与主/副合并同规则）。
-  const overlayJoin = window.AsrEditorUtils.joinSegmentTextsMassFold(
-    segments,
-    MaweMultiSubtitleCore.mergeJoinSeparatorForMode(MaweMultiSubtitleCore.getMainSubtitleSplitMode({ text: segments.map((s) => s.text || '').join('\n') })),
-    MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
-  );
-  const merged = {
-    ...window.AsrEditorUtils.cloneJsonValue(segments[0]),
-    color_group_id: segments.every(s => s.color_group_id === segments[0].color_group_id) ? segments[0].color_group_id : undefined,
-    sticker_group_id: segments.every(s => s.sticker_group_id === segments[0].sticker_group_id) ? segments[0].sticker_group_id : undefined,
-    id: segments[0].id,
-    start: segments[0].start,
-    end: segments[segments.length - 1].end,
-    text: overlayJoin.text,
-    items: overlayJoin.items,
-    disabled: !!segments[0].disabled,
-    _dirty: true,
-  };
-  // 逐句缩放/定位与主字幕合并同规则：取最左句的完整覆盖（独立副本）。
-  if (segments[0].assOverride) {
-    merged.assOverride = window.AsrEditorUtils.normalizeAssOverride(segments[0].assOverride);
-  }
-  if (Array.isArray(merged.items) && merged.items.length === 0) merged.items = null;
-  MaweSelection.clearSelection();
-  return MaweCommands.run('合并叠加字幕', (command) => {
-    track.segments.splice(sorted[0], sorted.length, merged);
-    track._dirty = true;
-    command.commit({ cueList: true });
-    MaweState.selection.clear('overlay');
-    MaweState.selection.add('overlay', sorted[0]);
-    MaweState.selection.overlayAnchor = sorted[0];
-    MaweCuePanel.setCuePanelTarget('overlay', sorted[0]);
-    MaweViewUpdates.invalidate({ preview: 'update' });
-    const el = MaweCoreState.container.querySelector(`.overlay-track-cue[data-overlay-idx="${sorted[0]}"]`);
-    if (cueListAnchor) MaweCueListAnchor.restoreCueListVisualAnchor(el, cueListAnchor);
-    MaweHint.flashHint(`已合并 ${sorted.length} 条叠加字幕`, 'success');
-    return true;
-  });
-}
+
 
 
 
@@ -435,3 +380,20 @@ function mergeOverlaySegments(idxs) {
 //   当被删的是 head：前段为空，整段后段重组（与之前的"head 晋升"语义吻合）
 //   当被删的是 ref：head 仍是 head，但 group 被切成两块——这是用户原话
 //     "删除中间的 3 → 4 变 head，5 改 ref→4"
+
+// G07：init 化的 UI/领域模块经 window 延迟取用本文件的运行时入口；
+// classic 调用方（editor-split-core.js）同样经门面访问。mergeOverlaySegments
+// 已收入 overlay-track.js，这里经门面转发保持单一入口。
+window.MaweOverlaySplitMerge = Object.freeze({
+  openOverlaySplitModal,
+  mergeOverlaySegments,
+  assessSplitAlignment,
+  commitOverlaySplit,
+  duplicateSplitTimingIsValid,
+  fallbackSplitOffset,
+  flashSplitAlignmentHint,
+  splitOffsetNearTextPositionForModal,
+  splitOffsetNearTimeForModal,
+  splitStateTrack,
+});
+}

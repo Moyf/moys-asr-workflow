@@ -85,7 +85,7 @@ for (const role of ['main', 'extension', 'overlay', 'linked']) {
     await seed(page, role);
     const opened = await page.evaluate((role) => {
       if (role === 'extension') return MaweSplitCore.openExtensionSplitModal(0, 3000);
-      if (role === 'overlay') return openOverlaySplitModal(0, 3000);
+      if (role === 'overlay') return window.MaweOverlaySplitMerge.openOverlaySplitModal(0, 3000);
       if (role === 'linked') {
         MaweSplitContext.splitFromContextMenu(0, 10, 10, 3000);
         return MaweSplitCore.pendingLinkedSplit?.kind === 'linked';

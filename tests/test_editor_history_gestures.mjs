@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { createUtilsModule } from '../web/shared/utils/history.js';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
+import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
@@ -24,7 +25,7 @@ function fixture() {
   MaweWordTiming: { clearSelection() {} },
   MaweMarkerEditing: { afterExternalMarkersChange() {} },
   });
-  vm.runInContext(readFileSync(new URL('../web/editor/state/editor-history.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-history.js', 'initMaweHistory'), context);
   // Exercise the production cancellation path, including releasing the drag
   // and its transaction, rather than replacing cancelCueDrag with a spy.
   vm.runInContext(readFileSync(new URL('../web/editor/media/waveform/cue-commands.js', import.meta.url), 'utf8')

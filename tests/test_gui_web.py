@@ -1725,7 +1725,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(project_path.is_file())
         self.assertEqual(project_path.name, "clip.waveform.mosp")
         project = json.loads(project_path.read_text(encoding="utf-8"))
-        self.assertEqual(project["schema"], "moy.asr.project.v3")
+        self.assertEqual(project["schema"], "moy.asr.project.v2")
         self.assertEqual(get_main_track(project)["segments"], [])
         self.assertEqual((project_path.parent / project["media"]).resolve(), media.resolve())
         # 工程去内联：波形缓存不再写进工程文件，只保留在 embed 结果的运行态里。
@@ -2180,6 +2180,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["preview"], "第一句\n第二句？\n第三句")
+
+    def test_script_preview_and_match_default_to_preserving_punctuation(self) -> None:
+        project = self.root / "default-punctuation.mosp"
+        script = self.root / "default-punctuation.txt"
+        project.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "你好世界"}]}), encoding="utf-8")
+        script.write_text("你好，世界。", encoding="utf-8")
+        preview = self.api.read_script_preview({"path": str(script)})
+        self.assertEqual(preview["preview"], "你好，\n世界。")
+        match_preview = self.api.preview_script_match({"projectPath": str(project), "scriptPath": str(script)})
+        self.assertEqual(match_preview["preview"], "1. 你好，\n2. 世界。")
+        result = self.api.run_script_match({"projectPath": str(project), "scriptPath": str(script), "outputMode": "project"})
+        self.assertTrue(result["ok"])
+        self.assertEqual("".join(segment["text"] for segment in get_main_track(read_project(Path(result["projectPath"])))["segments"]), "你好，世界。")
 
     def test_script_match_bridge_forwards_markdown_cleanup_setting(self) -> None:
         project = self.root / "clip.mosp"
@@ -3872,6 +3885,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["field"], "serverMediaPath")
         self.assertEqual(result["code"], "server_media_missing")
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_open_blank_html_opens_repo_template_when_present(self) -> None:
         """Given blank editor exists, When opened, Then browser receives its file URL."""
         blank = self.root / "blank-editor.html"
@@ -3883,6 +3897,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["ok"])
         open_path.assert_called_once_with(blank)
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_open_blank_html_reports_missing_template_without_raising(self) -> None:
         """Given blank editor is missing, When opened, Then JS receives structured failure."""
         with mock.patch("maw.gui_web.asset_path", return_value=self.root / "missing-blank-editor.html"):
@@ -4275,6 +4290,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(request.model, "Qwen/Qwen3-ASR-0.6B")
         self.assertEqual(request.device, "cpu")
         self.assertEqual(request.api_key, "")
+        self.assertEqual(request.model_path, "")
         self.assertEqual(request.runtime_python, str(self.root / "runtime" / "Scripts" / "python.exe"))
 
     def test_local_request_allows_mps_only_for_qwen_on_mac(self) -> None:
@@ -4299,6 +4315,25 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             with mock.patch("maw.gui_web.sys.platform", "win32"):
                 with self.assertRaises(PreflightError):
                     _request_from_payload(payload, self.env_path)
+
+    def test_local_request_uses_resolved_snapshot_for_explicit_cache_root(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        repository = self.root / "models--Qwen--Qwen3-ASR-0.6B"
+        snapshot = repository / "snapshots" / "revision"
+        snapshot.mkdir(parents=True)
+        (snapshot / "config.json").write_text(json.dumps({"model_type": "qwen3_asr"}), encoding="utf-8")
+        (snapshot / "model.safetensors").write_bytes(b"weights")
+        with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+            request = _request_from_payload({
+                "providerId": "local",
+                "modelId": "qwen3-asr-local",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "localModelPath": str(repository),
+            }, self.env_path)
+
+        self.assertEqual(Path(request.model_path).resolve(), snapshot.resolve())
 
     def test_firered_request_can_skip_optional_ct_punc(self) -> None:
         media = self.root / "clip.mp3"

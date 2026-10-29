@@ -16,6 +16,25 @@ let tempDir;
 let server;
 let projectPath;
 
+const shellTest = test.extend({
+  shellServerUrl: async ({}, use) => {
+    // Earlier literal-content cases may legitimately autosave Chinese text.
+    // Scan a fresh real project and settings directory for untranslated UI.
+    const directory = makeTempDir('editor-i18n-shell');
+    let shellServer;
+    try {
+      const media = join(directory, 'synthetic.wav');
+      generateWav(media, DURATION_MS / 1000);
+      const project = generateProjectJson(join(directory, 'project.json'));
+      shellServer = await startServer(project, media, await findFreePort());
+      await use(shellServer.url);
+    } finally {
+      await shellServer?.stop();
+      cleanupTempDir(directory);
+    }
+  },
+});
+
 test.beforeAll(async () => {
   tempDir = makeTempDir('editor-i18n-save');
   const mediaPath = join(tempDir, 'synthetic.wav');
@@ -142,9 +161,9 @@ test('English split preview preserves both subtitle halves', async ({ page }) =>
     .toHaveText(['主', '副', '无']);
 });
 
-test('English locale covers the editor shell and recent-project setting stays first', async ({ page }) => {
+shellTest('English locale covers the editor shell and recent-project setting stays first', async ({ page, shellServerUrl }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
-  await page.goto(server.url);
+  await page.goto(shellServerUrl);
 
   await expect(page.locator('#open-project')).toHaveText('Open project');
   await expect(page.locator('#save-project')).toHaveText('Save project');
@@ -186,9 +205,9 @@ test('English locale covers the editor shell and recent-project setting stays fi
       const value = node.nodeValue.trim();
       if (/[\u3400-\u9fff]/u.test(value)) found.add(value);
     }
-    document.querySelectorAll('[title], [placeholder], [aria-label]').forEach((element) => {
+    document.querySelectorAll('[title], [placeholder], [aria-label], [data-title]').forEach((element) => {
       if (element.closest(skip)) return;
-      ['title', 'placeholder', 'aria-label'].forEach((name) => {
+      ['title', 'placeholder', 'aria-label', 'data-title'].forEach((name) => {
         const value = element.getAttribute(name) || '';
         if (/[\u3400-\u9fff]/u.test(value)) found.add(value);
       });
@@ -210,6 +229,32 @@ test('English locale covers the editor shell and recent-project setting stays fi
   await expect(page.locator('#search')).toHaveAttribute('placeholder', '过滤字幕');
   await expect(page.locator('#cue-panel-text')).toHaveAttribute('placeholder', '选择一条字幕开始编辑…');
   expect(await page.evaluate(() => localStorage.getItem('mawe.language'))).toBe('zh');
+});
+
+test('English dynamic stored tooltips translate updates and restore Chinese without translating project names', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(`${server.url}?lang=en`);
+  const button = page.locator('#import-btn');
+  await expect(button).toHaveAttribute('data-title', 'Import media / subtitles / lyrics');
+  // Change an existing tooltip store, without adding a node or a title mutation.
+  await button.evaluate(element => element.dataset.title = '打开工程设置的时间与语言页');
+  await expect(button).toHaveAttribute('data-title', 'Open Time & language in project settings');
+  await button.hover();
+  await expect(page.locator('.mawe-tooltip[aria-hidden="false"]')).toHaveText('Open Time & language in project settings');
+  await page.mouse.move(0, 0);
+  await expect(page.locator('.mawe-tooltip')).toHaveAttribute('aria-hidden', 'true');
+  await page.evaluate(() => window.MAWE_I18N.applyLanguage('zh'));
+  await expect(button).toHaveAttribute('data-title', '打开工程设置的时间与语言页');
+  await button.hover();
+  await expect(page.locator('.mawe-tooltip[aria-hidden="false"]')).toHaveText('打开工程设置的时间与语言页');
+  await page.mouse.move(0, 0);
+  await expect(page.locator('.mawe-tooltip')).toHaveAttribute('aria-hidden', 'true');
+  await page.evaluate(() => window.MAWE_I18N.applyLanguage('en'));
+  await button.evaluate(element => element.title = '导入媒体 / 字幕 / 歌词');
+  await expect(button).not.toHaveAttribute('title');
+  await expect(button).toHaveAttribute('data-title', 'Import media / subtitles / lyrics');
+  await page.locator('#json-name').evaluate(element => element.setAttribute('data-title', '保存'));
+  await expect(page.locator('#json-name')).toHaveAttribute('data-title', '保存');
 });
 
 test('Interface settings supports light, dark, and system themes', async ({ page }) => {
@@ -456,7 +501,7 @@ test('auto-saves a text edit shortly after it loses focus', async ({ page }) => 
 
   expect((await saveResponse).ok()).toBe(true);
   const savedProject = JSON.parse(readFileSync(projectPath, 'utf8'));
-  expect(savedProject.schema).toBe('moy.asr.project.v3');
+  expect(savedProject.schema).toBe('moy.asr.project.v2');
   for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(savedProject).not.toHaveProperty(field);
   expect(getMainTrack(savedProject).segments[0].text).toBe('Alpha autosaved');
 });

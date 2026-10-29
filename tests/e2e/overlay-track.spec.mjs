@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import {
   getMainTrack, getOverlayTrack, materializeTrackSegments,
   cleanupTempDir,
-  buildPortableBlankEditor,
+  buildBrowserEditorFixture,
   findFreePort,
   generateWaveformPayload,
   makeTempDir,
@@ -14,7 +14,7 @@ import {
 
 
 function assertCanonical(project) {
-  expect(project.schema).toBe('moy.asr.project.v3');
+  expect(project.schema).toBe('moy.asr.project.v2');
   for (const field of ['segments', 'overlay_track', 'multi_subtitle']) expect(project).not.toHaveProperty(field);
   for (const track of project.tracks) for (const cue of track.segments) {
     for (const field of ['color', 'color_ref', 'sticker', 'sticker_ref']) expect(cue).not.toHaveProperty(field);
@@ -36,9 +36,42 @@ function renderedSegments(project, role) {
 let tempDir;
 let server;
 
+function savedColorGroup(project, segment) {
+  return project.subtitle_groups.color.find(group => group.id === segment.color_group_id);
+}
+
+for (const target of ['main', 'overlay']) test(`clears ${target} stickers through the picker without affecting the other track`, async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(String(error)));
+  const sticker = { name: 'bind', filename: 'bind.png', rel: 'bind.png' };
+  await page.goto(server.url);
+  await dropProject(page, {
+    segments: [{ id: 'main-001', start: 0, end: 1000, text: 'main cue', sticker }],
+    overlay_track: { enabled: true, segments: [
+      { id: 'overlay-001', start: 0, end: 1000, text: 'overlay cue', sticker },
+    ] },
+    waveform: generateWaveformPayload(2000),
+  });
+  await page.evaluate(({ target, sticker }) => {
+    MaweBoot.STICKERS.push(sticker);
+    MaweStickerPicker.openStickerPicker([0], false, { overlay: target === 'overlay' });
+  }, { target, sticker });
+  await expect(page.locator('#sticker-modal')).toHaveClass(/show/);
+  await page.locator('#sticker-clear').click();
+  await expect(page.locator('#sticker-modal')).not.toHaveClass(/show/);
+  const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+  const selected = target === 'overlay' ? saved.overlay_track.segments[0] : saved.segments[0];
+  const other = target === 'overlay' ? saved.segments[0] : saved.overlay_track.segments[0];
+  expect(selected).not.toHaveProperty('sticker_group_id');
+  expect(typeof other.sticker_group_id).toBe('string');
+  expect(saved.subtitle_groups.sticker).toHaveLength(1);
+  expect(saved.subtitle_groups.sticker[0].id).toBe(other.sticker_group_id);
+  expect(pageErrors).toEqual([]);
+});
+
 test.beforeAll(async () => {
   tempDir = makeTempDir('overlay-track');
-  const blankPath = buildPortableBlankEditor(join(tempDir, 'blank-editor.html'));
+  const blankPath = buildBrowserEditorFixture(join(tempDir, 'blank-editor.html'));
   server = await startStaticServer(blankPath, await findFreePort());
 });
 
@@ -179,6 +212,8 @@ test('edits an independent overlay track, restores it through history, and expor
   expect(savedOverlay.segments[0]).toMatchObject({
     id: 'overlay-001', start: 500, end: 1500, text: 'overlay edited',
   });
+  expect(savedOverlay.segments[0]).not.toHaveProperty('_dirty');
+  expect(await page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0]._dirty)).toBe(true);
 
   await page.locator('#subtitle-export-btn').click();
   await page.locator('#download-full-srt').click();
@@ -454,7 +489,7 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   expect(renderedSegments(afterOut, 'main')[0].color_ref).toBeNull();
 
   // 转为主字幕：颜色同样跟随（数据层直调，菜单点击路径已有用例覆盖）。
-  const reverted = await page.evaluate(() => convertOverlayCueToMain(0));
+  const reverted = await page.evaluate(() => window.MAWE.resolve('overlay-track').convertOverlayCueToMain(0));
   expect(reverted).toBe(true);
   const afterBack = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(renderedSegments(afterBack, 'overlay')).toHaveLength(0);
@@ -703,7 +738,7 @@ test('splits and merges overlay cues with group marks following', async ({ page 
   // 拆分：叠加轨复用副轨拆分弹窗（单 lane），提交后颜色组随拆分继承。
   const opened = await page.evaluate(() => {
     MaweCuePanel.setCuePanelTarget('overlay', 0);
-    return openOverlaySplitModal(0, 1000);
+    return window.MaweOverlaySplitMerge.openOverlaySplitModal(0, 1000);
   });
   expect(opened).toBe(true);
   await expect(page.locator('#multi-subtitle-split-modal.show')).toBeVisible();
@@ -733,7 +768,7 @@ test('batch merge via C key inherits color groups and rejects skipped middle cue
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
   const project = {
-    schema: 'moy.asr.project.v3',
+    schema: 'moy.asr.project.v2',
     tracks: [
       { id: 'main', role: 'main', name: '主字幕', enabled: true,
         segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }] },
@@ -852,6 +887,53 @@ test('raises the sticker overlay content while an overlay sticker is displayed',
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
+test('multi-sentence sticker binding covers every bound cue without a drag', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [
+      { id: 'main-001', start: 0, end: 1000, text: '第一句' },
+      { id: 'main-002', start: 1000, end: 2600, text: '第二句' },
+    ],
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveCount(1);
+
+  // 走真实分配入口：两条字幕多选 → 表情包选择器 → 点击素材。
+  // MaweBoot 门面冻结，但 STICKERS 数组本身可变，用 push 注入素材。
+  await page.evaluate(() => {
+    document.getElementById('sticker-overlay-toggle').checked = true;
+    MaweBoot.STICKERS.push({ name: 'bind', filename: 'bind.png', rel: 'bind.png' });
+    MaweState.selection.clear('main');
+    MaweState.selection.add('main', 0);
+    MaweState.selection.add('main', 1);
+    MaweStickerPicker.openStickerPicker([0, 1], true);
+  });
+  await page.locator('#sticker-grid .sticker-item').first().click();
+  await expect(page.locator('#sticker-modal')).not.toHaveClass(/show/);
+
+  // 数据契约：head.sticker 覆盖整个选区，第二句是 ref。
+  expect(await page.evaluate(() => {
+    const [head, member] = MaweBoot.DATA.segments;
+    return { start: head.sticker.start, end: head.sticker.end,
+      ref: member.sticker_ref && { name: member.sticker_ref.name, headIdx: member.sticker_ref.headIdx } };
+  })).toEqual({ start: 0, end: 2600, ref: { name: 'bind', headIdx: 0 } });
+
+  // 关键回归：不拖动任何字幕条，第二句时间内就要显示表情包
+  // （旧实现 head.sticker 只写到首句 end，必须拖动触发区间同步才恢复）。
+  const countAt = (ms) => page.evaluate((time) => {
+    MaweCoreState.player.currentTime = time / 1000;
+    MawePlaybackLoop.update();
+    return document.querySelectorAll('#sticker-overlay-layer .sticker-overlay-content img').length;
+  }, ms);
+  expect(await countAt(500)).toBe(1);
+  expect(await countAt(1500)).toBe(1);
+  expect(await countAt(2700)).toBe(0);
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
 test('keeps color group references valid through an overlay round trip', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
@@ -891,7 +973,7 @@ test('keeps color group references valid through an overlay round trip', async (
   await expect(page.locator('#ctxmenu .item', { hasText: '转为主字幕' })).toBeVisible();
   await page.keyboard.press('Escape');
   const reverted = await page.evaluate(() => {
-    const ok = convertOverlayCueToMain(0);
+    const ok = window.MAWE.resolve('overlay-track').convertOverlayCueToMain(0);
     return { ok, segs: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((s) => s.id) };
   });
   expect(reverted.ok).toBe(true);
@@ -1019,7 +1101,8 @@ test('assigns colors and disabled state to overlay cues with main-track parity',
     };
   });
   expect(afterKey.color).toBe(paletteName);
-  expect(afterKey.ref).toBeNull();
+  expect(afterKey.ref).toBeUndefined();
+  expect(typeof afterKey.group).toBe('string');
   // 颜色范围取叠加段自身（自持 head，不跨轨引用）
   expect(afterKey.colorStart).toBe(afterKey.segStart);
   expect(afterKey.colorEnd).toBe(afterKey.segEnd);

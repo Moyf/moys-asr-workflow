@@ -16,6 +16,7 @@ from maw.file_errors import file_write_operation
 from maw.output_naming import OPERATION_NAMES, is_translation_operation, operation_suffix
 from maw.project import normalize_project
 from maw.project_tracks import get_main_track, get_tracks_by_role, make_project
+from maw.project_boundary import import_project
 from maw.project_preview import JsonDict, JsonValue
 
 
@@ -55,7 +56,7 @@ def read_project(path: Path) -> JsonDict:
         raw: JsonValue = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise PostprocessFileError(source, f"cannot read project: {error}") from error
-    return normalize_project(raw)
+    return import_project(raw)
 
 
 def read_srt(path: Path, *, strict: bool = False) -> JsonDict:

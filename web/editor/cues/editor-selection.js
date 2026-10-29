@@ -1,3 +1,8 @@
+import { getOverlayTrack } from './overlay-track.js';
+
+export function initMaweSelection() {
+'use strict';
+
 // 选择状态：主/副选中集、点击锚点与多选类刷新。
 // 状态由 MaweState 持有；保留旧接口供尚未迁移的消费者使用，外部仅经
 // window.MaweSelection 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -177,9 +182,9 @@
     if (kind === 'main') {
       const binding = MaweMultiSubtitleCore.bindingForMainIndex(index);
       const activeTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
-      const bindingTrack = binding ? (MaweMultiSubtitleCore.getExtensionTrack(binding.target_track_id) || activeTrack) : null;
+      const bindingTrack = binding ? (MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id) || activeTrack) : null;
       if (!binding || !activeTrack || bindingTrack?.id !== activeTrack.id) return;
-      (binding.target_segment_ids || []).forEach((id) => {
+      (binding.target?.segment_id ? [binding.target.segment_id] : []).forEach((id) => {
         const extensionIndex = activeTrack.segments.findIndex((segment) => segment?.id === id);
         if (extensionIndex >= 0) addExtensionIndexToSelection(extensionIndex, activeTrack);
       });
@@ -187,7 +192,7 @@
     }
     const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(index, track);
     if (!binding) return;
-    (binding.source_segment_ids || []).forEach((id) => {
+    (binding.source?.segment_id ? [binding.source.segment_id] : []).forEach((id) => {
       const mainIndex = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === id);
       if (mainIndex >= 0) addMainIndexToSelection(mainIndex);
     });
@@ -221,7 +226,7 @@
   MaweState.selection.add('extension', index);
   if (syncPair) syncBoundSelection('extension', index, track);
   updateMultiSelectionClasses();
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   MaweState.selection.extensionAnchor = index;
   MaweCoreState.waveformEditor?.updateSelection();
   MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
@@ -238,7 +243,7 @@
     syncBoundSelection('extension', index, track);
   }
   updateMultiSelectionClasses();
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   MaweState.selection.extensionAnchor = index;
   MaweCoreState.waveformEditor?.updateSelection();
   MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
@@ -261,7 +266,7 @@
     lastSelected = index;
   }
   updateMultiSelectionClasses();
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   if (lastSelected < 0) return;
   MaweState.selection.extensionAnchor = lastSelected;
   MaweCoreState.waveformEditor?.updateSelection();
@@ -282,7 +287,7 @@
     if (el) el.classList.add('selected');
     syncBoundSelection('main', idx);
   }
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   updateMultiSelectionClasses();
   MaweCuePanel.setCurrentCuePanelIndex(selectedIdxs.has(idx) ? idx : (selectedIdxs.values().next().value ?? -1));
@@ -301,7 +306,7 @@
     syncBoundSelection('main', i);
   }
   applyMainSelectionClasses((el) => el.classList.add('selected'));
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   updateMultiSelectionClasses();
   MaweCuePanel.setCurrentCuePanelIndex(selectedIdxs.has(b) ? b : (selectedIdxs.values().next().value ?? -1));
@@ -322,7 +327,7 @@
   if (syncPair) syncBoundSelection('main', idx);
   const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
   if (el) el.classList.add('selected');
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   updateMultiSelectionClasses();
   MaweCuePanel.setCurrentCuePanelIndex(idx);
@@ -337,7 +342,7 @@
   syncBoundSelection('main', idx);
   const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
   if (el) el.classList.add('selected');
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   MaweCuePanel.setCurrentCuePanelIndex(idx);
 }
@@ -349,7 +354,7 @@
   MaweState.selection.add('extension', index);
   syncBoundSelection('extension', index, track);
   updateMultiSelectionClasses();
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   MaweCoreState.waveformEditor?.updateSelection();
   MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
 }
@@ -368,7 +373,7 @@
   MaweNavPreview.hideCueSplitPreview();
   added.forEach((idx) => syncBoundSelection('main', idx));
   applyMainSelectionClasses((el) => el.classList.add('selected'));
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   MaweCuePanel.setCurrentCuePanelIndex(added[added.length - 1]);
 }
@@ -384,7 +389,7 @@
   MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', added[added.length - 1], track);
   added.forEach((index) => syncBoundSelection('extension', index, track));
   updateMultiSelectionClasses();
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   MaweCoreState.waveformEditor?.updateSelection();
   MaweCuePanel.setCurrentCuePanelExtensionIndex(added[added.length - 1], track);
 }
@@ -410,9 +415,9 @@
     if (isHiddenDisabled(idx, getOverlayTrack())) return;
     MaweState.selection.add('overlay', idx);
   });
-  syncOverlaySelectionClasses();
+  window.MaweCuePanelWiring.syncOverlaySelectionClasses();
   updateMultiSelectionClasses();
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   const last = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length - 1;
   if (last >= 0 && selectedIdxs.has(last)) {
@@ -469,3 +474,4 @@
     selectAll
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

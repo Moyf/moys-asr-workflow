@@ -170,7 +170,7 @@ test('accepts legacy and current project schemas but rejects unknown versions', 
   assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v1.5', segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v2', segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema(helpers.makeProject([])), true);
-  assert.equal(helpers.PROJECT_SCHEMA, 'moy.asr.project.v3');
+  assert.equal(helpers.PROJECT_SCHEMA, 'moy.asr.project.v2');
   assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v4', tracks: [] }), false);
 });
 
@@ -814,8 +814,10 @@ test('normalizes the persisted selected audio track', () => {
 
 test('falls back to default split trim symbols and keeps single characters from free input', () => {
   const defaults = JSON.parse(JSON.stringify(helpers.DEFAULT_SPLIT_TRIM_SYMBOLS));
-  // 默认集合 = 前 5 个 chip（全角）+ 文本框预填的半角逗号句点。
-  assert.deepEqual(defaults, ['，', '。', '、', '！', '？', ',', '.']);
+  // 无已存设置时保留全部标点；旧默认列表也是显式配置，不能猜测用户意图。
+  assert.deepEqual(defaults, []);
+  const oldDefault = ['，', '。', '、', '！', '？', ',', '.'];
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeEditorSettings({ splitTrimSymbols: oldDefault }).splitTrimSymbols)), oldDefault);
   // undefined → 默认；多字符片段与重复项被丢弃，任意单字符保留（自由文本框）。
   assert.deepEqual(
     JSON.parse(JSON.stringify(helpers.normalizeSplitTrimSymbols(undefined))),
@@ -858,10 +860,14 @@ test('splits merge join separator settings per subtitle type with legacy fallbac
 test('applies configured split trim symbols at split edges across the shared helpers', () => {
   const restore = () => helpers.setSplitTrimSymbols([...helpers.DEFAULT_SPLIT_TRIM_SYMBOLS]);
   try {
-    // 默认行为保持：拆分边缘移除逗号/句号；省略号需在文本框中额外配置。
+    // 默认拆分保留标点，空白仍修剪。
     assert.deepEqual(JSON.parse(JSON.stringify(
       helpers.splitSubtitleText('你好，世界', 2, 'continuous'),
-    )), { left: '你好', right: '世界', offset: 2 });
+    )), { left: '你好', right: '，世界', offset: 2 });
+    assert.equal(helpers.applySplitEdgeTrim('真的？'), '真的？');
+    assert.equal(helpers.applySplitEdgeTrim('、、是的', 'start'), '、、是的');
+    assert.equal(helpers.applySplitEdgeTrim('真的？  '), '真的？');
+    helpers.setSplitTrimSymbols(['，', '。', '、', '！', '？', ',', '.']);
     assert.equal(helpers.applySplitEdgeTrim('真的？'), '真的');
     assert.equal(helpers.applySplitEdgeTrim('、、是的', 'start'), '是的');
 
@@ -6731,7 +6737,7 @@ test('imports an enabled overlay track with stable IDs without creating a biling
 
   assert.equal(helpers.getOverlayTrack(project).enabled, true);
   assert.equal(helpers.getOverlayTrack(project).segments[0].id, 'overlay-cue-1');
-  assert.deepEqual(JSON.parse(JSON.stringify(helpers.getTracksByRole(project, 'extension'))), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.getTracksByRole(project, 'secondary'))), []);
 });
 
 test('invalid imported subtitle items fail without changing the source project', () => {
@@ -6924,8 +6930,8 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
   assert.deepEqual(JSON.parse(JSON.stringify(project.subtitle_groups)), before.subtitle_groups);
   assert.equal(helpers.getMainTrack(project).split_mode, 'continuous');
   assert.equal(helpers.getExtensionTrack(project).split_mode_override, 'word');
-  assert.deepEqual([...project.bindings[0].source_segment_ids], ['translation-001']);
-  assert.deepEqual([...project.bindings[0].target_segment_ids], ['main-001']);
+  assert.deepEqual(JSON.parse(JSON.stringify(project.bindings[0].source)), { track_id: 'translation', segment_id: 'translation-001' });
+  assert.deepEqual(JSON.parse(JSON.stringify(project.bindings[0].target)), { track_id: 'main', segment_id: 'main-001' });
   assert.equal(project.bindings[0].start_offset_ms, -40);
   assert.equal(project.bindings[0].end_offset_ms, 40);
 
@@ -6964,8 +6970,8 @@ test('uses character boundaries for continuous text and protects words for word 
   assert.equal(helpers.splitSubtitleText('split a word', 9, 'word'), null);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A B', 'continuous'))), [2]);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A  B', 'continuous'))), [3]);
-  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('你好，世界。', 'continuous'))), [1, 2, 3, 4]);
-  assert.equal(helpers.splitSubtitleText('你好，世界。', 5, 'continuous'), null);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('你好，世界。', 'continuous'))), [1, 2, 3, 4, 5]);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.splitSubtitleText('你好，世界。', 5, 'continuous'))), { left: '你好，世界', right: '。', offset: 5 });
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('A B', 'word'))), [2]);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('split a, sentence', 'word'))), [6, 9]);
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.subtitleSplitOffsets('the story—you', 'word'))), [4, 9, 10]);
@@ -6990,10 +6996,10 @@ test('uses character boundaries for continuous text and protects words for word 
 });
 
 
-test('cleans punctuation and whitespace at a linked split point', () => {
+test('preserves punctuation at a linked split point by default', () => {
   const parts = helpers.cleanSplitTextParts('这是一句。它是这样', 4);
   assert.deepEqual(JSON.parse(JSON.stringify(parts)), {
-    left: '这是一句', right: '它是这样', offset: 4,
+    left: '这是一句', right: '。它是这样', offset: 4,
   });
 });
 

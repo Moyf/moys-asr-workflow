@@ -7,7 +7,7 @@ import {
   cleanupTempDir,
   disableOnboarding,
   findFreePort,
-  buildPortableBlankEditor,
+  buildBrowserEditorFixture,
   generateWaveformPayload,
   makeTempDir,
   startStaticServer, closeSettingsPanels, dragFloatingPanelAwayFrom, openSettingsPage, setProjectTrackEnabled, toggleGlobalSettings } from './helpers.mjs';
@@ -17,7 +17,7 @@ let server;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('multi-subtitle');
-  const blankPath = buildPortableBlankEditor(join(tempDir, 'blank-editor.html'));
+  const blankPath = buildBrowserEditorFixture(join(tempDir, 'blank-editor.html'));
   server = await startStaticServer(blankPath, await findFreePort());
 });
 
@@ -184,12 +184,12 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
   await page.locator('#undo-btn').click();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
-  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'extension').length)).toBe(0);
+  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').length)).toBe(0);
   await page.locator('#redo-btn').click();
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
-  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'extension').length)).toBe(1);
+  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').length)).toBe(1);
   expect(dialogs).toEqual(Array(2).fill('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）'));
   await openMultiSubtitleSettings(page);
   const importGap = await page.locator('#multi-subtitle-import').evaluate((item) => {
@@ -270,10 +270,10 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   await page.locator('#download-json').click();
   await expect.poll(() => page.evaluate(() => Boolean(window.__savedEmptyTrackProject))).toBe(true);
   const empty = JSON.parse(await page.evaluate(() => window.__savedEmptyTrackProject));
-  expect(empty.schema).toBe('moy.asr.project.v3');
+  expect(empty.schema).toBe('moy.asr.project.v2');
   for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(empty).not.toHaveProperty(field);
   expect(getExtensionTrack(empty).enabled).toBe(true);
-  expect(empty.tracks.filter(track => track.role === 'extension')).toHaveLength(1);
+  expect(empty.tracks.filter(track => track.role === 'secondary')).toHaveLength(1);
   expect(getExtensionTrack(empty).segments).toEqual([]);
   await dropProject(empty);
   await openMultiSubtitleSettings(page);
@@ -305,12 +305,12 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await expect(page.locator('.waveform-row.multi-subtitle-row')).toHaveCount(0);
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
-  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'extension').length)).toBe(1);
+  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').length)).toBe(1);
   const previousSave = await page.evaluate(() => window.__savedEmptyTrackProject);
   await page.locator('#download-json').click();
   await expect.poll(() => page.evaluate(() => window.__savedEmptyTrackProject)).not.toBe(previousSave);
   const saved = JSON.parse(await page.evaluate(() => window.__savedEmptyTrackProject));
-  expect(saved.schema).toBe('moy.asr.project.v3');
+  expect(saved.schema).toBe('moy.asr.project.v2');
   for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(saved).not.toHaveProperty(field);
   expect(getExtensionTrack(saved).segments[0].text).toBe('手动副字幕');
   await dropProject(saved);
@@ -2310,8 +2310,8 @@ test('normal extension clicks replace stale main selection with the clicked bind
     AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.text, segment.id]),
   ));
   expect(await page.evaluate(() => MaweBoot.DATA.bindings.map((binding) => ({
-    main: binding.source_segment_ids,
-    extension: binding.target_segment_ids,
+    main: [binding.source.segment_id],
+    extension: [binding.target.segment_id],
   })))).toEqual([
     { main: [mainIds['Hello world.']], extension: [extensionIds['你好，世界。']] },
     { main: [mainIds['Second line.']], extension: [extensionIds['第二句。']] },
@@ -2439,7 +2439,7 @@ test('keeps extension selection, timing, disabled, and hide shortcuts in parity 
   await extensionColumn.click({ modifiers: ['Alt'] });
   await expect(extensionColumn).toHaveClass(/disabled/);
   const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(saved.schema).toBe('moy.asr.project.v3');
+  expect(saved.schema).toBe('moy.asr.project.v2');
   for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(saved).not.toHaveProperty(field);
   expect(getExtensionTrack(saved).segments[0].disabled).toBe(true);
 
@@ -2810,7 +2810,7 @@ test('keeps the main range fixed and removes a fully covered extension cue on H 
   expect(await page.evaluate(() => ({
     main: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end],
     extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]),
-    bindings: MaweBoot.DATA.bindings.map((binding) => binding.target_segment_ids),
+    bindings: MaweBoot.DATA.bindings.map((binding) => [binding.target.segment_id]),
   }))).toEqual({
     main: [1000, 4000],
     extension: [[1000, 4000]],
@@ -2852,7 +2852,7 @@ test('keeps the longer remaining side and restores extension time order after H 
   await expect(page.locator('#hint-stack')).toContainText('挤压 1 条副字幕');
   expect(await page.evaluate(() => ({
     extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.id, segment.start, segment.end]),
-    bindings: MaweBoot.DATA.bindings.map((binding) => binding.target_segment_ids),
+    bindings: MaweBoot.DATA.bindings.map((binding) => [binding.target.segment_id]),
   }))).toEqual({
     extension: [
       ['extension-002', 2000, 3000],

@@ -202,6 +202,7 @@
   function bindPlayerEvents(mediaElement) {
     if (!mediaElement) return;
     window.MaweAudioProcessing?.bindPlayer(mediaElement);
+    window.MaweAssFrame?.bindPlayer(mediaElement);
     observeAssSubtitlePreviewPlayer(mediaElement);
     mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
     mediaElement.addEventListener('timeupdate', () => watchAuditionBoundary(mediaElement));

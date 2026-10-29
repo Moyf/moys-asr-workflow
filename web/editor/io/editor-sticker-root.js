@@ -49,6 +49,7 @@
       MaweBoot.SERVER_CONFIG.initialStickerCount = result.count;
     }
     MaweStickerOverlay.stickerAssetRevision += 1;
+    global.MaweAssFrame?.syncWindowStickers?.();
     MaweExportTimeline.updateStickerExportButtons(); MaweCuePanel.renderAll();
   }
   function enqueue(action) { pending = pending.catch(() => {}).then(action); return pending; }

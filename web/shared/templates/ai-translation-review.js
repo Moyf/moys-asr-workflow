@@ -7,24 +7,25 @@
     return packet.translationFirst ? `${text}\n${entry.source}` : `${entry.source}\n${text}`;
   }
   function projectTracks(project) {
-    if (project?.schema !== 'moy.asr.project.v3' || !Array.isArray(project.tracks)
+    if (project?.schema !== 'moy.asr.project.v2' || !Array.isArray(project.tracks)
         || ['segments', 'multi_subtitle', 'overlay_track'].some(key => Object.hasOwn(project, key))) throw new Error('工程格式无效。');
     const trackIds = new Set(), cueIds = new Set();
-    let mainCount = 0, overlayCount = 0;
+    let mainCount = 0, overlayCount = 0, secondaryCount = 0;
     for (const track of project.tracks) {
       if (typeof track?.id !== 'string' || !track.id || trackIds.has(track.id)
-          || !['main', 'extension', 'overlay'].includes(track.role) || typeof track.enabled !== 'boolean'
+          || !['main', 'secondary', 'overlay'].includes(track.role) || typeof track.enabled !== 'boolean'
           || !Array.isArray(track.segments)) throw new Error('工程轨道无效。');
       trackIds.add(track.id);
       if (track.role === 'main') { mainCount += 1; if (!track.enabled) throw new Error('主轨不能关闭。'); }
       if (track.role === 'overlay') overlayCount += 1;
+      if (track.role === 'secondary') secondaryCount += 1;
       for (const cue of track.segments) {
         if (typeof cue?.id !== 'string' || !cue.id || cueIds.has(cue.id) || typeof cue.text !== 'string'
             || !Number.isInteger(cue.start) || !Number.isInteger(cue.end) || cue.start < 0 || cue.end <= cue.start) throw new Error('工程字幕ID或时间无效。');
         cueIds.add(cue.id);
       }
     }
-    if (mainCount !== 1 || overlayCount > 1) throw new Error('工程主轨或叠加轨无效。');
+    if (mainCount !== 1 || overlayCount > 1 || secondaryCount > 1) throw new Error('工程轨道数量无效。');
     return project.tracks;
   }
   function mainTrack(project) { return project.tracks.find(track => track.role === 'main'); }
@@ -71,7 +72,7 @@
     return packet;
   }
   function translationTrack(project, id) {
-    const tracks = project.tracks.filter(track => track.id === id && track.role === 'extension');
+    const tracks = project.tracks.filter(track => track.id === id && track.role === 'secondary');
     if (typeof id !== 'string' || tracks?.length !== 1 || !Array.isArray(tracks[0].segments)) throw new Error('译文副轨无效。');
     const ids = new Set();
     for (const cue of tracks[0].segments) {

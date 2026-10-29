@@ -1,4 +1,9 @@
-// 文本清理与 seek：标点规整、分组时间同步、媒体 seek 助手。
+import { getOverlayTrack } from './overlay-track.js';
+
+export function initMaweTextCleanup() {
+'use strict';
+
+// 文本清理与 seek：分组时间同步、媒体 seek 助手。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweTextCleanup 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
@@ -55,7 +60,7 @@
   }
   try {
     MaweCoreState.player.currentTime = Math.max(0, timeSec);
-    if (mouseClick) pausePlaybackAfterMouseClick();
+    if (mouseClick) window.MaweKeyboardGuards.pausePlaybackAfterMouseClick();
     if (!dragPreview) {
       MawePlaybackLoop.update();
       // currentTime 的 seeked/timeupdate 事件是异步触发的；先同步刷新波形，
@@ -85,10 +90,10 @@
   }
 
   global.MaweTextCleanup = Object.freeze({
-    cleanPunctuation,
     syncTimelineGroupRanges,
     seekFromWaveform,
     notifyAutoLoadedMediaReady,
     flushPendingMediaSeek
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

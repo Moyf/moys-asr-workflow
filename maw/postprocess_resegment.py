@@ -491,7 +491,7 @@ def _run_resegment(
     sources = _segments(project)
     by_source = {index: source_units(s, index) for index, s in enumerate(sources)}
     bindings = project.get("bindings", [])
-    bound_ids = {main_id for binding in bindings for main_id in binding["source_segment_ids"]}
+    bound_ids = {main_id for binding in bindings for main_id in [binding["source"]["segment_id"]]}
     preserved_bound = []
     rows: list[dict[str, JsonValue]] = []
     blocks = []

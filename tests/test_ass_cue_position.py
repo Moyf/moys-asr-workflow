@@ -92,7 +92,7 @@ class AssCuePositionTests(unittest.TestCase):
         self.assertIn("$.multi_subtitle.tracks[0].segments[0].assOverride.scale", {error.path for error in result.errors})
         legacy["multi_subtitle"]["tracks"][0]["segments"][0]["assOverride"] = {"scale": 1.5}
         project = normalize_project(legacy)
-        get_tracks_by_role(project, "extension")[0]["segments"][0]["assOverride"]["scale"] = 0.09
+        get_tracks_by_role(project, "secondary")[0]["segments"][0]["assOverride"]["scale"] = 0.09
         result = validate_project(project)
         self.assertFalse(result.ok)
         self.assertIn("$.tracks[1].segments[0].assOverride.scale", {error.path for error in result.errors})

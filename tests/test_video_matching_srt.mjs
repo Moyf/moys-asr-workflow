@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 function runtime() {
   const context = { window: {} };
@@ -20,11 +21,13 @@ function runtime() {
     MaweSettings: { EDITOR_SETTINGS: { exportStartAtZero: true } },
     MaweSpeakerLabels: { speakerLabelExportOptions: () => ({}) },
     MaweCueElements: { fmtSrtTime: ms => new Date(ms).toISOString().slice(11, 23).replace('.', ',') },
+  });
+  context.window.MaweExportContext = {
     mergedExportSegments: () => ({ segments, overlaySet: new Set(), overlaySegments: [] }),
     exportColorContextResolver: () => () => segments,
-  });
+  };
   context.window.MaweBoot = context.MaweBoot;
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/io/editor-export-srt.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/io/editor-export-srt.js'), context);
   return { segments, capture: () => context.window.MaweExportSrt.captureVideoSrt() };
 }
 

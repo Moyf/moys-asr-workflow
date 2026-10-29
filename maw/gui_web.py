@@ -24,6 +24,7 @@ from typing import BinaryIO, Final, final
 from send2trash import send2trash
 
 from maw.project_tracks import get_main_track, make_project
+from maw.editor_entry_policy import RETIREMENT_MESSAGE, standalone_editor_supported
 from maw.app_paths import application_directory, default_app_data_root
 from maw.web_build import BundlePreflightError, ensure_bundle
 from maw.asr_presets import (
@@ -116,7 +117,7 @@ from maw.postprocess_ffmpeg import (
     run_extract_audio as process_extract_audio,
     run_ffconcat_rebuild as process_ffconcat_rebuild,
 )
-from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
+from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESERVE_PUNCTUATION, DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, is_custom_slot, list_llm_models, loopback_base_url, normalize_reasoning_mode, postprocess_api_key_required as _postprocess_api_key_required, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
@@ -711,6 +712,7 @@ class LauncherApi:
             "language": config.language,
             "guiLang": config.gui_lang,
             "appVersion": _app_version(self.paths),
+            "standaloneEditorSupported": standalone_editor_supported(),
             "asrPresetRoot": str(asr_preset_root),
             "asrPresetRootConfigured": asr_preset_root_configured,
             "stickerDir": config.sticker_dir,
@@ -1228,8 +1230,8 @@ class LauncherApi:
                     script_path=script_path,
                     output_mode=_output_mode(payload.get("outputMode")),
                     media_path=_optional_path(payload.get("mediaPath")),
-                    extra_split_punctuation=tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value)),
-                    preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
+                    extra_split_punctuation=tuple(str(value) for value in payload.get("extraSplitPunctuation", DEFAULT_EXTRA_SPLIT_PUNCTUATION) if str(value)),
+                    preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", DEFAULT_PRESERVE_PUNCTUATION) if str(value)),
                     match_mode=str(payload.get("matchMode") or "script"),
                     clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
                 ),
@@ -1972,8 +1974,8 @@ class LauncherApi:
         try:
             _script_path, script_text = _read_script(path)
             match_mode = str(payload.get("matchMode") or "script")
-            extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
-            preserve = tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value))
+            extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", DEFAULT_EXTRA_SPLIT_PUNCTUATION) if str(value))
+            preserve = tuple(str(value) for value in payload.get("preservePunctuation", DEFAULT_PRESERVE_PUNCTUATION) if str(value))
             text = processed_script_text(
                 script_text,
                 match_mode=match_mode,
@@ -2005,8 +2007,8 @@ class LauncherApi:
             except PostprocessFileError as error:
                 return {"ok": False, "preview": "", "errorCode": "script_invalid", "code": "script_invalid", "detail": str(error)}
             match_mode = str(payload.get("matchMode") or "script")
-            extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
-            preserve = tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value))
+            extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", DEFAULT_EXTRA_SPLIT_PUNCTUATION) if str(value))
+            preserve = tuple(str(value) for value in payload.get("preservePunctuation", DEFAULT_PRESERVE_PUNCTUATION) if str(value))
             clean_markdown_symbols = payload.get("cleanMarkdownSymbols", True) is not False
             prepared, _warning = prepare_script_text(
                 script_text,
@@ -3136,11 +3138,15 @@ class LauncherApi:
         return _open_existing_path(directory)
 
     def open_html(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        if not standalone_editor_supported():
+            return {"ok": False, "error": RETIREMENT_MESSAGE}
         if self.result and self.result.html_path and self.result.html_path.exists():
             return _open_existing_path(self.result.html_path)
         return {"ok": False, "error": "No editor HTML yet."}
 
     def open_blank_html(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        if not standalone_editor_supported():
+            return {"ok": False, "error": RETIREMENT_MESSAGE}
         path = self.paths.root / "blank-editor.html"
         if not path.exists():
             frozen_path = asset_path("blank-editor.html")
@@ -4142,6 +4148,10 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             raise PreflightError("model", "local_model_missing", local_status.detail)
         if local_status.status == "partial":
             raise PreflightError("model", "local_model_incomplete", local_status.detail)
+        if local_model_path and local_status.status == "installed" and local_status.path:
+            # Explicit cache roots may resolve to a snapshot; pass the checked
+            # directory to the engine even if the UI refresh has not finished.
+            local_model_path = local_status.path
         if model.engine == "firered" and firered_punc == "ct-punc":
             _ctc_ready, punc_ready = firered_components_ready(
                 model,

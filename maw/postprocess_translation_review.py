@@ -28,14 +28,14 @@ def translation_review(source: Mapping, translated: Mapping, result: Mapping, op
     if mode != "backfill" and result.get("bilingual", {}).get("active_track_id"):
         candidate = get_track(result, result["bilingual"]["active_track_id"])
         language = "zh" if operation.startswith("translate_zh") else "en"
-        if candidate.get("language") == language and candidate.get("role") == "extension":
+        if candidate.get("language") == language and candidate.get("role") == "secondary":
             track = candidate
             mode = "tracks"
     track_segments = {s["id"]: s for s in track["segments"]} if track else {}
     # Bindings address the active extension explicitly; unchanged translations
     # may be omitted without shifting the remaining cue IDs.
-    target_ids = {binding["source_segment_ids"][0]: binding["target_segment_ids"][0]
-                  for binding in result["bindings"] if track and binding["target_track_id"] == track["id"]}
+    target_ids = {binding["source"]["segment_id"]: binding["target"]["segment_id"]
+                  for binding in result["bindings"] if track and binding["target"]["track_id"] == track["id"]}
     if len(targets) != len(get_main_track(result)["segments"]):
         raise ValueError("译文核对要求唯一的目标字幕ID。")
     entries = []

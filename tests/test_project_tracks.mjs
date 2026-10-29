@@ -14,6 +14,27 @@ function rejects(raw, path) {
   assert.deepEqual(raw, before);
 }
 
+test('legacy binding migrates to named CueRefs, preserves extension fields and rejects old canonical fields', () => {
+  const input = { segments: [{ id: 'a', start: 0, end: 100, text: 'A' }],
+    multi_subtitle: { enabled: true, tracks: [{ id: 'en', role: 'extension', segments: [{ id: 'b', start: 10, end: 110, text: 'B' }] }],
+      bindings: [{ id: 'pair', track_id: 'en', main_segment_ids: ['a'], extension_segment_ids: ['b'], vendor: { keep: 0 } }] } };
+  const before = json(input);
+  const { project } = model.importProject(input);
+  assert.deepEqual(input, before);
+  assert.equal(project.tracks[1].role, 'secondary');
+  assert.deepEqual(project.bindings[0], { id: 'pair', vendor: { keep: 0 }, source: { track_id: 'main', segment_id: 'a' },
+    target: { track_id: 'en', segment_id: 'b' }, start_offset_ms: 10, end_offset_ms: 10 });
+  assert.deepEqual(model.importProject(project).project, project);
+  for (const field of ['source_track_id', 'target_track_id', 'source_segment_ids', 'target_segment_ids']) {
+    const invalid = json(project); invalid.bindings[0][field] = 'legacy';
+    rejects(invalid, `$.bindings[0].${field}`);
+  }
+  const badRef = json(project); badRef.bindings[0].source = null;
+  rejects(badRef, '$.bindings[0].source');
+  const badRole = json(project); badRole.tracks[1].role = 'extension';
+  rejects(badRole, '$.tracks[1].role');
+});
+
 test('canonical import is an independent, lossless and idempotent snapshot', () => {
   const input = canonical();
   const before = json(input);
@@ -48,12 +69,21 @@ test('missing legacy IDs reserve all explicit identities before generation', () 
 test('legacy implicit binding identities resolve without overwriting reserved explicit IDs', () => {
   const input = fixture('legacy-implicit-ids.input');
   const before = json(input);
+  assert.throws(() => model.importProject(input), model.ProjectTracksError);
+  assert.deepEqual(input, before, 'multiple legacy secondary tracks remain untouched');
+  input.multi_subtitle.tracks.pop();
+  input.multi_subtitle.active_track_id = 'extension-001';
+  input.multi_subtitle.bindings[0].track_id = 'extension-001';
+  input.multi_subtitle.bindings[0].extension_segment_ids = ['extension-001-segment-001'];
+  const oneTrackBefore = json(input);
   const project = model.importProject(input).project;
-  assert.deepEqual(project, fixture('legacy-implicit-ids.expected'));
-  assert.deepEqual(input, before);
+  assert.deepEqual(input, oneTrackBefore);
+  assert.equal(project.tracks[0].segments[0].id, 'main-cue-1');
+  assert.equal(project.bindings[0].source.segment_id, 'main-cue-1');
+  assert.equal(project.bindings[0].target.segment_id, project.tracks[1].segments[0].id);
   assert.deepEqual(model.importProject(project), { project, changes: [] });
-  project.bindings[0].source_segment_ids = ['main-001-generated'];
-  rejects(project, '$.bindings[0].source_segment_ids');
+  project.bindings[0].source.segment_id = 'main-001-generated';
+  rejects(project, '$.bindings[0].source.segment_id');
 });
 
 test('legacy ID generation remains bounded for a maximum-length track ID', () => {
@@ -65,9 +95,9 @@ test('legacy ID generation remains bounded for a maximum-length track ID', () =>
 test('v2 groups and IDs survive migration including cross-track membership', () => {
   const current = canonical();
   const main = current.tracks[0]; const extension = current.tracks[1];
-  const raw = { schema: 'moy.asr.project.v2', media: current.media, language: main.language,
+  const raw = { schema: 'moy.asr.project.v1.5', media: current.media, language: main.language,
     segments: main.segments, subtitle_groups: current.subtitle_groups,
-    multi_subtitle: { enabled: true, tracks: [extension], bindings: [{ id: 'binding-1', track_id: extension.id,
+    multi_subtitle: { enabled: true, tracks: [{ ...extension, role: 'extension' }], bindings: [{ id: 'binding-1', track_id: extension.id,
       main_segment_ids: ['cue-main'], extension_segment_ids: ['cue-en'], start_offset_ms: 50, end_offset_ms: 50 }] } };
   const before = json(raw);
   const migrated = model.importProject(raw).project;
@@ -93,6 +123,7 @@ test('upstream v1.5 rejects duplicate cue identities across tracks', () => {
 
 test('unknown/future schemas and mixed containers fail before any migration', () => {
   rejects({ schema: 'moy.asr.project.v4', segments: [] }, '$.schema');
+  rejects({ schema: 'moy.asr.project.v3', segments: [] }, '$.schema');
   rejects({ schema: null, segments: [] }, '$.schema');
   rejects({ ...canonical(), segments: [] }, '$.segments');
   rejects({ segments: [], tracks: [] }, '$.tracks');
@@ -119,26 +150,33 @@ test('duplicate cue IDs are repaired only for valid cross-track v1 identities', 
 test('dangling active track, binding endpoint, group and explicit wrong offsets fail', () => {
   const active = canonical(); active.bilingual.active_track_id = 'overlay';
   rejects(active, '$.bilingual.active_track_id');
-  const binding = canonical(); binding.bindings[0].target_segment_ids = ['absent'];
-  rejects(binding, '$.bindings[0].target_segment_ids');
+  const binding = canonical(); binding.bindings[0].target.segment_id = 'absent';
+  rejects(binding, '$.bindings[0].target.segment_id');
   const group = canonical(); group.tracks[0].segments[0].color_group_id = 'absent';
   rejects(group, '$.tracks[0].segments[0].color_group_id');
   const offset = canonical(); offset.bindings[0].start_offset_ms = 0;
   rejects(offset, '$.bindings[0].start_offset_ms');
 });
 
-test('a main cue may bind independently to multiple translation tracks', () => {
+test('multiple secondary tracks are rejected without modifying their bindings', () => {
   const project = canonical();
   project.tracks.push({ ...json(project.tracks[1]), id: 'translation-fr', segments: [{ id: 'cue-fr', start: 1300, end: 2400, text: 'Bonjour' }] });
-  project.bindings.push({ ...json(project.bindings[0]), id: 'binding-fr', target_track_id: 'translation-fr', target_segment_ids: ['cue-fr'], start_offset_ms: 100, end_offset_ms: 100 });
-  assert.equal(model.validateTracksProject(project).ok, true);
+  project.bindings.push({ ...json(project.bindings[0]), id: 'binding-fr', target: { track_id: 'translation-fr', segment_id: 'cue-fr' }, start_offset_ms: 100, end_offset_ms: 100 });
+  const before = json(project);
+  assert.equal(model.validateTracksProject(project).ok, false);
+  assert.throws(() => model.importProject(project), model.ProjectTracksError);
+  assert.deepEqual(project, before);
+});
+
+test('duplicate cue bindings are rejected without modifying the project', () => {
+  const project = canonical();
   project.bindings.push({ ...json(project.bindings[0]), id: 'duplicate-binding' });
-  rejects(project, '$.bindings[2].source_segment_ids');
+  rejects(project, '$.bindings[1].source.segment_id');
 });
 
 test('bad legacy head references are rejected rather than degraded to default groups', () => {
   const raw = fixture('legacy-three-tracks.input'); raw.segments[1].color_ref.headIdx = 10;
-  rejects(raw, '$.tracks.main.segments[1].color_ref');
+  rejects(raw, '$.tracks[0].segments[1].color_ref.headIdx');
 });
 
 test('integer cue and item timing validation retains zero-duration punctuation', () => {
@@ -193,12 +231,12 @@ test('opaque Unicode IDs count characters consistently across Python and JavaScr
   assert.equal(Array.from(project.tracks[1].segments[0].id).length, 150);
 });
 
-test('opaque IDs with colons cannot collide in binding uniqueness keys', () => {
+test('opaque IDs with colons remain valid in binding references', () => {
   const project = model.migrateProjectTracks({ segments: [{ id: 'c', start: 0, end: 10, text: 'A' }, { id: 'b:c', start: 10, end: 20, text: 'B' }] });
-  for (const [targetId, sourceId, cueId, start] of [['a:b', 'c', 'target-one', 0], ['a', 'b:c', 'target-two', 10]]) {
-    project.tracks.push({ id: targetId, role: 'extension', name: targetId, enabled: true, segments: [{ id: cueId, start, end: start + 10, text: targetId }] });
-    project.bindings.push({ id: `binding-${targetId}`, source_track_id: 'main', target_track_id: targetId,
-      source_segment_ids: [sourceId], target_segment_ids: [cueId], start_offset_ms: 0, end_offset_ms: 0 });
+  for (const [targetId, sourceId, cueId, start] of [['a:b', 'c', 'target-one', 0]]) {
+    project.tracks.push({ id: targetId, role: 'secondary', name: targetId, enabled: true, segments: [{ id: cueId, start, end: start + 10, text: targetId }] });
+    project.bindings.push({ id: `binding-${targetId}`, source: { track_id: 'main', segment_id: sourceId },
+      target: { track_id: targetId, segment_id: cueId }, start_offset_ms: 0, end_offset_ms: 0 });
   }
   project.bilingual.active_track_id = 'a:b';
   assert.equal(model.validateTracksProject(project).ok, true);
@@ -218,7 +256,7 @@ test('legacy ASS normalization preserves unknown fields while canonical import s
   const before = json(input);
   assert.deepEqual(model.importProject(input).project, fixture('legacy-ass-normalization.expected'));
   assert.deepEqual(input, before);
-  const v2 = { ...input, schema: 'moy.asr.project.v2', subtitle_groups: { next_id: 1, color: [], sticker: [] } };
+  const v2 = { ...input, schema: 'moy.asr.project.v1.5', subtitle_groups: { next_id: 1, color: [], sticker: [] } };
   assert.deepEqual(model.importProject(v2).project, fixture('legacy-ass-normalization.expected'));
   const v3 = fixture('legacy-ass-normalization.expected');
   v3.tracks[0].segments[0].assOverride.scale = 1.004;
@@ -229,7 +267,7 @@ test('legacy ASS normalization preserves unknown fields while canonical import s
 
 test('only legacy ASS failures use the original input container paths', () => {
   const invalid = { start: 0, end: 10, text: 'A', assOverride: { scale: 6 } };
-  for (const schema of ['moy.asr.project.v1', 'moy.asr.project.v2']) {
+  for (const schema of ['moy.asr.project.v1', 'moy.asr.project.v1.5']) {
     const root = { schema, segments: [{ id: 'bad', ...invalid }] };
     if (schema.endsWith('v2')) root.subtitle_groups = { next_id: 1, color: [], sticker: [] };
     rejects(root, '$.segments[0].assOverride.scale');
@@ -248,7 +286,7 @@ test('legacy import reports independent metadata, cue, group and binding shape p
   assert.throws(() => model.importProject(input), error => {
     const paths = new Set(error.errors.map(entry => entry.path));
     for (const path of ['$.timebase.unit', '$.timebase.fps', '$.tracks[0].segments[0].start', '$.tracks[0].segments[0].text',
-      '$.tracks.main.segments[0].color_ref', '$.tracks[1].language_source', '$.multi_subtitle.bindings[0].main_segment_ids',
+      '$.tracks[0].segments[0].color_ref.headIdx', '$.tracks[1].language_source', '$.multi_subtitle.bindings[0].main_segment_ids',
       '$.multi_subtitle.bindings[0].extension_segment_ids']) assert.ok(paths.has(path), path);
     return true;
   });
@@ -260,7 +298,7 @@ test('new producers construct canonical projects without a temporary legacy tree
     { id: 'custom-cue-1', start: 1000, end: 2000, text: 'reserved' }];
   const before = json(input);
   const project = model.makeProject(input, { mainFields: { id: 'custom', language: 'en' }, projectFields: { media: 'clip.mp4', vendor: [] } });
-  assert.equal(project.schema, 'moy.asr.project.v3');
+  assert.equal(project.schema, 'moy.asr.project.v2');
   assert.deepEqual(project.tracks[0].segments.map(cue => cue.id), ['custom-cue-1-2', 'custom-cue-1']);
   assert.deepEqual(input, before);
   assert.equal(Object.hasOwn(project, 'segments'), false);

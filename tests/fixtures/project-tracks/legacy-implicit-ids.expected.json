@@ -1,5 +1,5 @@
 {
-  "schema": "moy.asr.project.v3",
+  "schema": "moy.asr.project.v2",
   "tracks": [
     {
       "id": "main",
@@ -23,7 +23,7 @@
     },
     {
       "id": "extension-1",
-      "role": "extension",
+      "role": "secondary",
       "name": "副字幕",
       "enabled": true,
       "split_mode": "word",
@@ -38,7 +38,7 @@
     },
     {
       "id": "extension-001",
-      "role": "extension",
+      "role": "secondary",
       "name": "副字幕",
       "enabled": true,
       "split_mode": "word",
@@ -52,16 +52,16 @@
   "bindings": [
     {
       "id": "binding-1",
-      "source_track_id": "main",
-      "target_track_id": "extension-1",
-      "source_segment_ids": [
-        "main-cue-1"
-      ],
-      "target_segment_ids": [
-        "extension-1-cue-1"
-      ],
       "start_offset_ms": 0,
-      "end_offset_ms": 0
+      "end_offset_ms": 0,
+      "source": {
+        "track_id": "main",
+        "segment_id": "main-cue-1"
+      },
+      "target": {
+        "track_id": "extension-1",
+        "segment_id": "extension-1-cue-1"
+      }
     }
   ],
   "subtitle_groups": {

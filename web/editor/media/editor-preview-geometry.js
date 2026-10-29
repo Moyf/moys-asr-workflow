@@ -14,6 +14,7 @@
       : { ...MaweAppearance.getSubtitleAppearance(), ...MaweAppearance.normalizeSubtitleAppearance(geo) };
     if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
     MaweBoot.DATA.preview.subtitle = {
+      ...MaweAppearance.subtitleAppearanceExtensionFields(),
       ...clamped,
       ...appearance,
       speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
@@ -54,7 +55,7 @@
       MaweAppearance.GEO_UTILS.normalizePreviewGeometry(geo, MaweAppearance.GEO_UTILS.DEFAULT_STICKER_GEOMETRY),
     );
     if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
-    MaweBoot.DATA.preview.sticker = clamped;
+    MaweBoot.DATA.preview.sticker = { ...MaweBoot.DATA.preview.sticker, ...clamped };
     if (markDirty) MaweAppearance.previewGeometryDirty = true;
     applyStickerGeometryToDom(clamped);
     return clamped;
@@ -69,6 +70,8 @@
     MaweStickerOverlay.stickerOverlayLayer.style.height = css.height;
     MaweStickerOverlay.stickerOverlayLayer.style.right = 'auto';
     MaweStickerOverlay.stickerOverlayLayer.style.bottom = 'auto';
+    // 实际画面窗口的图层用同一份几何（拖动中实时跟随；无帧时是空操作）。
+    window.MaweAssFrame?.syncWindowStickers?.();
   }
 
 

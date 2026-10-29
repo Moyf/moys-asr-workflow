@@ -52,10 +52,33 @@ def strip_inline_caches(project: Mapping[str, Any]) -> dict[str, Any]:
     for key in INLINE_CACHE_KEYS:
         stripped.pop(key, None)
     stripped.pop("_dirty", None)
-    for track in stripped.get("tracks", []):
+
+    def strip_track(track: object) -> None:
+        if not isinstance(track, dict):
+            return
         track.pop("_dirty", None)
-        for segment in track["segments"]:
-            segment.pop("_dirty", None)
+        segments = track.get("segments")
+        if isinstance(segments, list):
+            for segment in segments:
+                if isinstance(segment, dict):
+                    segment.pop("_dirty", None)
+
+    strip_track(stripped)
+    tracks = stripped.get("tracks")
+    if isinstance(tracks, list):
+        for track in tracks:
+            strip_track(track)
+    strip_track(stripped.get("overlay_track"))
+    multi = stripped.get("multi_subtitle")
+    if isinstance(multi, dict):
+        multi.pop("_dirty", None)
+        tracks = multi.get("tracks")
+        if isinstance(tracks, list):
+            for track in tracks:
+                strip_track(track)
+    bilingual = stripped.get("bilingual")
+    if isinstance(bilingual, dict):
+        bilingual.pop("_dirty", None)
     return stripped
 
 

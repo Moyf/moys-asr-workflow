@@ -1,10 +1,10 @@
 // The only project-level subtitle model. Legacy containers are accepted solely
 // by importProject; consumers receive track entities from one canonical tree.
 export function createUtilsModule() {
-  const PROJECT_TRACKS_SCHEMA = 'moy.asr.project.v3';
-  const GROUP_SCHEMAS = new Set(['moy.asr.project.v1.5', 'moy.asr.project.v2']);
+  const PROJECT_TRACKS_SCHEMA = 'moy.asr.project.v2';
+  const GROUP_SCHEMAS = new Set(['moy.asr.project.v1.5']);
   const LEGACY_SCHEMAS = new Set(['moy.asr.project.v1', ...GROUP_SCHEMAS]);
-  const ROLES = new Set(['main', 'extension', 'overlay']);
+  const ROLES = new Set(['main', 'secondary', 'overlay']);
   const SOURCE_FIELDS = ['language', 'language_source', 'split_mode', 'timestamp_granularity',
     'model', 'preserve_punctuation', 'source_name'];
   const OLD_FIELDS = ['segments', 'overlay_track', 'multi_subtitle', ...SOURCE_FIELDS];
@@ -40,8 +40,8 @@ export function createUtilsModule() {
   }
   function getMainTrack(project) { return getTracksByRole(project, 'main')[0] || null; }
   function getExtensionTrack(project, trackId = project?.bilingual?.active_track_id) {
-    return trackId ? getTracksByRole(project, 'extension').find(track => track.id === trackId) || null
-      : getTracksByRole(project, 'extension')[0] || null;
+    return trackId ? getTracksByRole(project, 'secondary').find(track => track.id === trackId) || null
+      : getTracksByRole(project, 'secondary')[0] || null;
   }
   function getOverlayTrack(project) { return getTracksByRole(project, 'overlay')[0] || null; }
   function projectTracks(project) { return Array.isArray(project?.tracks) ? project.tracks : []; }
@@ -59,72 +59,86 @@ export function createUtilsModule() {
       if (!object(segment)) { add(field, 'must be an object'); return; }
       if (!legacy || own(segment, 'id')) {
         const cueId = id(segment.id);
-        if (!cueId || (!legacy && segment.id !== cueId)) add(`${field}.id`, 'must be a valid canonical cue ID');
-        else if (localIds.has(cueId) || (!legacy && globalIds.has(cueId))) add(`${field}.id`, 'must be unique');
+        if (!cueId) add(`${field}.id`, 'must be a non-empty string of at most 160 characters');
+        else if (!legacy && segment.id !== cueId) add(`${field}.id`, 'must not have surrounding whitespace');
+        else if (localIds.has(cueId)) add(`${field}.id`, legacy ? 'must be a unique cue ID' : 'must be a unique project-wide cue ID');
+        else if (!legacy && globalIds.has(cueId)) add(`${field}.id`, 'must be a unique project-wide cue ID');
         else { localIds.add(cueId); globalIds.add(cueId); }
       }
-      if (!integer(segment.start) || segment.start < 0) add(`${field}.start`, 'must be non-negative integer milliseconds');
-      if (!integer(segment.end) || segment.end <= segment.start) add(`${field}.end`, 'must be greater than start in integer milliseconds');
-      if (integer(segment.start) && previousEnd !== null && segment.start < previousEnd) add(`${field}.start`, 'must be >= previous segment end');
-      if (integer(segment.end)) previousEnd = segment.end;
+      if (!integer(segment.start)) add(`${field}.start`, 'must be integer milliseconds');
+      if (!integer(segment.end)) add(`${field}.end`, 'must be integer milliseconds');
+      if (integer(segment.start) && segment.start < 0) add(`${field}.start`, 'must be non-negative');
+      if (integer(segment.start) && integer(segment.end) && segment.end <= segment.start) add(`${field}.end`, 'must be greater than start');
+      if (integer(segment.start) && integer(segment.end) && previousEnd !== null && segment.start < previousEnd) add(`${field}.start`, 'must be >= previous segment end');
+      if (integer(segment.end) && (!legacy || (integer(segment.start) && segment.end > segment.start))) previousEnd = segment.end;
       if (typeof segment.text !== 'string') add(`${field}.text`, 'must be a string');
       if (own(segment, 'disabled') && typeof segment.disabled !== 'boolean') add(`${field}.disabled`, 'must be a boolean');
       if (own(segment, 'speaker') && (typeof segment.speaker !== 'string' || !segment.speaker.trim())) add(`${field}.speaker`, 'must be a non-empty string');
-      if (own(segment, 'start_frame') !== own(segment, 'end_frame')) add(`${field}.start_frame`, 'start_frame and end_frame must appear together');
+      if (own(segment, 'start_frame') !== own(segment, 'end_frame')) add(field, 'start_frame and end_frame must be provided together');
       for (const frame of ['start_frame', 'end_frame']) if (own(segment, frame) && (!integer(segment[frame]) || segment[frame] < 0)) add(`${field}.${frame}`, 'must be a non-negative integer');
       if (own(segment, 'start_frame') && own(segment, 'end_frame') && segment.end_frame <= segment.start_frame) add(`${field}.end_frame`, 'must be greater than start_frame');
       if (own(segment, 'assOverride')) {
         const override = segment.assOverride;
         if (!object(override)) add(`${field}.assOverride`, 'must be an object');
         else {
-          if (own(override, 'an')) add(`${field}.assOverride.an`, 'unsupported ASS alignment override');
+          if (own(override, 'an')) add(`${field}.assOverride.an`, 'not supported; use global style alignment');
           if (own(override, 'scale') && (typeof override.scale !== 'number' || !Number.isFinite(override.scale) || override.scale < 0.1 || override.scale > 5)) add(`${field}.assOverride.scale`, 'must be a finite number from 0.1 to 5');
-          if (own(override, 'pos') && (!object(override.pos) || typeof override.pos.x !== 'number' || typeof override.pos.y !== 'number' || !Number.isFinite(override.pos.x) || !Number.isFinite(override.pos.y))) add(`${field}.assOverride.pos`, 'must contain finite numeric x/y');
+          if (own(override, 'pos')) {
+            if (!object(override.pos)) add(`${field}.assOverride.pos`, 'must be an object with finite numeric x/y');
+            else for (const axis of ['x', 'y']) if (typeof override.pos[axis] !== 'number' || !Number.isFinite(override.pos[axis])) add(`${field}.assOverride.pos.${axis}`, 'must be a finite number');
+          }
         }
       }
       if (own(segment, 'items')) {
         if (!Array.isArray(segment.items)) { add(`${field}.items`, 'must be an array'); return; }
-        let itemEnd = segment.start;
+        let itemEnd = null;
         segment.items.forEach((item, itemIndex) => {
           const itemPath = `${field}.items[${itemIndex}]`;
           if (!object(item)) { add(itemPath, 'must be an object'); return; }
-          if (!integer(item.start) || item.start < segment.start || item.start < itemEnd) add(`${itemPath}.start`, 'must be within segment bounds and >= previous item end');
-          // Zero-duration punctuation is valid; enclosing cues always have duration.
-          if (!integer(item.end) || item.end < item.start || item.end > segment.end) add(`${itemPath}.end`, 'must be within segment bounds and >= start');
+          if (!integer(item.start)) add(`${itemPath}.start`, 'must be integer milliseconds');
+          if (!integer(item.end)) add(`${itemPath}.end`, 'must be integer milliseconds');
+          if (integer(item.start) && integer(item.end) && integer(segment.start) && integer(segment.end)) {
+            if (item.start < segment.start || item.start > segment.end) add(`${itemPath}.start`, 'must be within segment bounds');
+            if (item.end < item.start || item.end > segment.end) add(`${itemPath}.end`, 'must be within segment bounds and >= start');
+            if (itemEnd !== null && item.start < itemEnd) add(`${itemPath}.start`, 'must be >= previous item end');
+          }
           if (typeof item.text !== 'string') add(`${itemPath}.text`, 'must be a string');
-          if (own(item, 'start_frame') !== own(item, 'end_frame')) add(`${itemPath}.start_frame`, 'start_frame and end_frame must appear together');
+          if (own(item, 'start_frame') !== own(item, 'end_frame')) add(itemPath, 'start_frame and end_frame must be provided together');
           for (const frame of ['start_frame', 'end_frame']) if (own(item, frame) && (!integer(item[frame]) || item[frame] < 0)) add(`${itemPath}.${frame}`, 'must be a non-negative integer');
           if (own(item, 'start_frame') && own(item, 'end_frame') && item.end_frame <= item.start_frame) add(`${itemPath}.end_frame`, 'must be greater than start_frame');
-          if (integer(item.end)) itemEnd = item.end;
+          if (integer(item.start) && integer(item.end) && item.end >= item.start) itemEnd = item.end;
         });
       }
     });
   }
 
   function validateGroups(project, errors) {
+    const add = (path, message) => errors.push({ path, message });
     const table = project.subtitle_groups;
-    if (!object(table)) { errors.push({ path: '$.subtitle_groups', message: 'must be an object' }); return; }
-    if (own(table, 'next_id') && (!integer(table.next_id) || table.next_id < 1)) errors.push({ path: '$.subtitle_groups.next_id', message: 'must be a positive safe integer' });
+    if (!object(table)) { add('$.subtitle_groups', 'must be an object'); return; }
+    if (own(table, 'next_id') && (!integer(table.next_id) || table.next_id < 1)) { add('$.subtitle_groups.next_id', 'must be a positive safe integer'); return; }
     for (const kind of ['color', 'sticker']) {
       const groups = table[kind];
+      if (!Array.isArray(groups)) { add(`$.subtitle_groups.${kind}`, 'must be an array'); return; }
       const ids = new Set();
-      if (!Array.isArray(groups)) { errors.push({ path: `$.subtitle_groups.${kind}`, message: 'must be an array' }); continue; }
-      groups.forEach((group, index) => {
+      for (const [index, group] of groups.entries()) {
         const path = `$.subtitle_groups.${kind}[${index}]`;
-        if (!object(group)) { errors.push({ path, message: 'must be an object' }); return; }
-        if (!id(group.id) || group.id !== id(group.id) || ids.has(id(group.id))) errors.push({ path: `${path}.id`, message: 'must be a unique canonical group ID' });
-        else ids.add(id(group.id));
-        if (!object(group.value) || typeof group.value.name !== 'string') errors.push({ path: `${path}.value`, message: 'must contain a name' });
-        else if (own(group.value, 'start') || own(group.value, 'end')) errors.push({ path: `${path}.value`, message: 'group range is derived from members' });
-      });
-      projectTracks(project).forEach((track, trackIndex) => {
-        (Array.isArray(track?.segments) ? track.segments : []).forEach((segment, index) => {
-          if (!object(segment)) return;
+        if (!object(group)) { add(path, 'must be an object'); return; }
+        if (!id(group.id)) { add(`${path}.id`, 'must be a non-empty string of at most 160 characters'); return; }
+        if (group.id !== id(group.id)) { add(`${path}.id`, 'must not have surrounding whitespace'); return; }
+        if (ids.has(group.id)) { add(`${path}.id`, 'must be unique within its collection'); return; }
+        ids.add(group.id);
+        if (!object(group.value)) { add(`${path}.value`, 'must be an object'); return; }
+        if (typeof group.value.name !== 'string') { add(`${path}.value.name`, 'must be a string'); return; }
+        if (own(group.value, 'start') || own(group.value, 'end')) { add(`${path}.value`, 'group range is derived from members'); return; }
+      }
+      for (const [trackIndex, track] of projectTracks(project).entries()) {
+        for (const [index, segment] of track.segments.entries()) {
           const path = `$.tracks[${trackIndex}].segments[${index}]`;
-          if (own(segment, `${kind}_group_id`) && !ids.has(segment[`${kind}_group_id`])) errors.push({ path: `${path}.${kind}_group_id`, message: 'must reference an existing group' });
-          if (own(segment, kind) || own(segment, `${kind}_ref`)) errors.push({ path: `${path}.${kind}`, message: 'legacy group fields are not allowed' });
-        });
-      });
+          if (own(segment, `${kind}_group_id`) && !ids.has(segment[`${kind}_group_id`])) { add(`${path}.${kind}_group_id`, 'must reference an existing group'); return; }
+          if (own(segment, kind) || own(segment, `${kind}_ref`)) { add(`${path}.${kind}`, 'legacy group fields are not allowed in v2'); return; }
+        }
+      }
     }
   }
 
@@ -142,7 +156,10 @@ export function createUtilsModule() {
       if (!number(value)) add(path, 'must be a finite number');
       else if (value < 1 || value > 240) add(path, 'must be between 1 and 240');
     };
-    if (own(project, 'timed_text_edit_view') && !['rows', 'single'].includes(project.timed_text_edit_view)) add('$.timed_text_edit_view', 'must be rows or single');
+    if (own(project, 'timed_text_edit_view')) {
+      if (typeof project.timed_text_edit_view !== 'string') add('$.timed_text_edit_view', 'must be a string');
+      if (!['rows', 'single'].includes(project.timed_text_edit_view)) add('$.timed_text_edit_view', 'must be rows or single');
+    }
     if (own(project, 'timebase')) {
       const value = project.timebase;
       if (!object(value)) add('$.timebase', 'must be an object');
@@ -156,7 +173,7 @@ export function createUtilsModule() {
       const value = project.media_metadata; const path = '$.media_metadata';
       if (!object(value)) add(path, 'must be an object');
       else {
-        if (own(value, 'video_width') !== own(value, 'video_height')) add(`${path}.${own(value, 'video_width') ? 'video_height' : 'video_width'}`, 'video dimensions must be provided together');
+        if (own(value, 'video_width') !== own(value, 'video_height')) add(`${path}.${own(value, 'video_width') ? 'video_height' : 'video_width'}`, 'must be provided together with the other video dimension');
         for (const field of ['video_width', 'video_height']) optional(value, path, field, item => Number.isInteger(item) && item > 0, 'must be a positive integer');
         if (own(value, 'video_fps')) fps(value.video_fps, `${path}.video_fps`);
         optional(value, path, 'video_fps_ratio', item => string(item) && !!item.trim(), 'must be a non-empty string');
@@ -216,8 +233,8 @@ export function createUtilsModule() {
   function validateTrackMetadata(track, path, errors) {
     const add = (field, message) => errors.push({ path: `${path}.${field}`, message });
     for (const field of SOURCE_FIELDS.filter(field => field !== 'preserve_punctuation')) if (own(track, field) && typeof track[field] !== 'string') add(field, 'must be a string');
-    for (const field of ['split_mode', 'split_mode_override']) if (own(track, field) && !['continuous', 'word'].includes(track[field])) add(field, 'must be continuous or word');
-    if (own(track, 'language_source') && !['detected', 'hint', 'inferred', 'unknown'].includes(track.language_source)) add('language_source', 'unsupported language source');
+    for (const field of ['split_mode', 'split_mode_override']) if (own(track, field) && (field === 'split_mode_override' || typeof track[field] === 'string') && !['continuous', 'word'].includes(track[field])) add(field, 'must be continuous or word');
+    if (own(track, 'language_source') && typeof track.language_source === 'string' && !['detected', 'hint', 'inferred', 'unknown'].includes(track.language_source)) add('language_source', 'must be detected, hint, inferred, or unknown');
     if (own(track, 'timestamp_granularity') && !['char', 'word', 'segment', 'unknown'].includes(track.timestamp_granularity)) add('timestamp_granularity', 'unsupported timestamp granularity');
     if (own(track, 'preserve_punctuation') && typeof track.preserve_punctuation !== 'boolean') add('preserve_punctuation', 'must be a boolean');
     if (own(track, 'metadata') && !object(track.metadata)) add('metadata', 'must be an object');
@@ -229,7 +246,7 @@ export function createUtilsModule() {
     if (!object(project)) return { ok: false, errors: [{ path: '$', message: 'must be an object' }], project: null };
     if (project.schema !== PROJECT_TRACKS_SCHEMA) add('$.schema', `must be ${PROJECT_TRACKS_SCHEMA}`);
     validateProjectMetadata(project, errors);
-    for (const field of OLD_FIELDS) if (own(project, field)) add(`$.${field}`, 'legacy project field is not allowed');
+    for (const field of OLD_FIELDS) if (own(project, field)) return { ok: false, errors: [{ path: `$.${field}`, message: 'legacy field is not allowed in v2' }], project: null };
     const tracks = project.tracks;
     const trackIds = new Set();
     const cueIds = new Set();
@@ -239,21 +256,23 @@ export function createUtilsModule() {
       if (!object(track)) { add(path, 'must be an object'); return; }
       if (!id(track.id) || track.id !== id(track.id) || trackIds.has(track.id)) add(`${path}.id`, 'must be a unique canonical track ID');
       else trackIds.add(track.id);
-      if (!ROLES.has(track.role)) add(`${path}.role`, 'must be main, extension or overlay');
+      if (!ROLES.has(track.role)) add(`${path}.role`, 'must be main, secondary or overlay');
       if (typeof track.name !== 'string') add(`${path}.name`, 'must be a string');
       if (typeof track.enabled !== 'boolean' || (track.role === 'main' && track.enabled !== true)) add(`${path}.enabled`, track.role === 'main' ? 'main track must be enabled' : 'must be a boolean');
       validateTrackMetadata(track, path, errors);
       validateSegments(track.segments, `${path}.segments`, errors, cueIds);
     });
     if (getTracksByRole(project, 'main').length !== 1) add('$.tracks', 'must contain exactly one main track');
+    if (getTracksByRole(project, 'secondary').length > 1) add('$.tracks', 'supports at most one secondary track');
     if (getTracksByRole(project, 'overlay').length > 1) add('$.tracks', 'must contain at most one overlay track');
+    if (errors.length) return { ok: false, errors, project: null };
     const bilingual = project.bilingual;
     if (!object(bilingual)) add('$.bilingual', 'must be an object');
     else {
       if (!['main', 'extension', 'both'].includes(bilingual.display_mode)) add('$.bilingual.display_mode', 'must be main, extension or both');
       if (own(bilingual, 'enabled')) add('$.bilingual.enabled', 'enabled belongs to each track');
-      if (own(bilingual, 'active_track_id') && !getTracksByRole(project, 'extension').some(track => track.id === bilingual.active_track_id)) add('$.bilingual.active_track_id', 'must reference an extension track');
-      if (getTracksByRole(project, 'extension').length && !own(bilingual, 'active_track_id')) add('$.bilingual.active_track_id', 'must reference an extension track');
+      if (own(bilingual, 'active_track_id') && !getTracksByRole(project, 'secondary').some(track => track.id === bilingual.active_track_id)) add('$.bilingual.active_track_id', 'must reference a secondary track');
+      if (getTracksByRole(project, 'secondary').length && !own(bilingual, 'active_track_id')) add('$.bilingual.active_track_id', 'must reference a secondary track');
     }
     const bindings = project.bindings;
     const bindingIds = new Set();
@@ -265,29 +284,32 @@ export function createUtilsModule() {
       if (!object(binding)) { add(path, 'must be an object'); return; }
       if (!id(binding.id) || binding.id !== id(binding.id) || bindingIds.has(binding.id)) add(`${path}.id`, 'must be a unique canonical binding ID');
       else bindingIds.add(binding.id);
-      const source = getTrack(project, binding.source_track_id);
-      const target = getTrack(project, binding.target_track_id);
-      if (!source || source.role !== 'main') add(`${path}.source_track_id`, 'must reference the main track');
-      if (!target || target.role !== 'extension') add(`${path}.target_track_id`, 'must reference an extension track');
+      for (const field of ['source_track_id', 'target_track_id', 'source_segment_ids', 'target_segment_ids']) {
+        if (own(binding, field)) add(`${path}.${field}`, 'legacy binding field is not allowed');
+      }
+      const source = getTrack(project, binding.source?.track_id);
+      const target = getTrack(project, binding.target?.track_id);
+      if (!source || source.role !== 'main') add(`${path}.source.track_id`, 'must reference the main track');
+      if (!target || target.role !== 'secondary') add(`${path}.target.track_id`, 'must reference a secondary track');
       const endpoints = [];
       for (const [side, track] of [['source', source], ['target', target]]) {
-        const ids = binding[`${side}_segment_ids`];
-        if (!Array.isArray(ids) || ids.length !== 1) { add(`${path}.${side}_segment_ids`, 'must contain exactly one cue ID'); endpoints.push(null); continue; }
-        const segment = Array.isArray(track?.segments) ? track.segments.find(cue => cue?.id === ids[0]) : null;
-        if (!segment) add(`${path}.${side}_segment_ids`, 'must reference an existing cue in the endpoint track');
+        const ref = binding[side];
+        if (!object(ref)) { add(`${path}.${side}`, 'must be a cue reference'); endpoints.push(null); continue; }
+        const segment = Array.isArray(track?.segments) ? track.segments.find(cue => cue?.id === ref.segment_id) : null;
+        if (!segment) add(`${path}.${side}.segment_id`, 'must reference an existing cue in the endpoint track');
         endpoints.push(segment);
       }
-      const sourceKey = JSON.stringify([binding.target_track_id, binding.source_segment_ids?.[0]]);
-      const targetKey = JSON.stringify([binding.target_track_id, binding.target_segment_ids?.[0]]);
-      if (sources.has(sourceKey)) add(`${path}.source_segment_ids`, 'source cue is already bound to this target track');
-      if (targets.has(targetKey)) add(`${path}.target_segment_ids`, 'target cue is already bound');
+      const sourceKey = JSON.stringify([binding.target?.track_id, binding.source?.segment_id]);
+      const targetKey = JSON.stringify([binding.target?.track_id, binding.target?.segment_id]);
+      if (sources.has(sourceKey)) add(`${path}.source.segment_id`, 'source cue is already bound to this target track');
+      if (targets.has(targetKey)) add(`${path}.target.segment_id`, 'target cue is already bound');
       sources.add(sourceKey); targets.add(targetKey);
       for (const [field, endpoint] of [['start_offset_ms', 'start'], ['end_offset_ms', 'end']]) {
         if (!integer(binding[field])) add(`${path}.${field}`, 'must be integer milliseconds');
         else if (endpoints[0] && endpoints[1] && binding[field] !== endpoints[1][endpoint] - endpoints[0][endpoint]) add(`${path}.${field}`, 'must equal endpoint timing difference');
       }
     });
-    validateGroups(project, errors);
+    if (!errors.length) validateGroups(project, errors);
     return { ok: !errors.length, errors, project: errors.length ? null : project };
   }
 
@@ -327,12 +349,12 @@ export function createUtilsModule() {
     });
   }
 
-  function validateLegacyGroups(track, errors) {
+  function validateLegacyGroups(track, trackIndex, errors) {
     if (!Array.isArray(track.segments)) return;
     const add = (path, message) => errors.push({ path, message });
-    for (const kind of ['color', 'sticker']) track.segments.forEach((segment, index) => {
+    track.segments.forEach((segment, index) => { for (const kind of ['sticker', 'color']) {
       if (!object(segment)) return;
-      const path = `$.tracks.${track.id}.segments[${index}]`;
+      const path = `$.tracks[${trackIndex}].segments[${index}]`;
       if (own(segment, `${kind}_group_id`)) add(`${path}.${kind}_group_id`, 'conflicts with legacy group fields');
       const value = segment[kind];
       if (value != null) {
@@ -344,12 +366,18 @@ export function createUtilsModule() {
         }
       }
       const ref = segment[`${kind}_ref`];
-      if (ref == null) return;
+      if (ref == null) continue;
       const head = object(ref) && integer(ref.headIdx) && ref.headIdx >= 0 && ref.headIdx < index
         ? track.segments[ref.headIdx]?.[kind] : null;
-      if (!object(ref) || value != null || !object(head)) add(`${path}.${kind}_ref`, 'must reference a preceding group head');
-      else if (typeof ref.name === 'string' && ref.name !== head.name) add(`${path}.${kind}_ref.name`, 'must match referenced head name');
-    });
+      if (!object(ref)) add(`${path}.${kind}_ref`, 'must be an object or null');
+      else {
+        if (value != null) add(`${path}.${kind}_ref`, 'cannot be set on a head segment');
+        if (!integer(ref.headIdx)) add(`${path}.${kind}_ref.headIdx`, 'must be an integer segment index');
+        else if (ref.headIdx < 0 || ref.headIdx >= track.segments.length || ref.headIdx >= index) add(`${path}.${kind}_ref.headIdx`, 'must point to an earlier head segment');
+        else if (!object(head)) add(`${path}.${kind}_ref.headIdx`, `must point to a ${kind} head`);
+        else if (typeof ref.name === 'string' && ref.name !== head.name) add(`${path}.${kind}_ref.name`, 'must match referenced head name');
+      }
+    } });
   }
 
   function migrateLegacy(raw) {
@@ -358,12 +386,12 @@ export function createUtilsModule() {
     if (!Array.isArray(project.segments)) fail('$.segments', 'must be an array');
     const multi = project.multi_subtitle ?? {};
     if (!object(multi)) fail('$.multi_subtitle', 'must be an object');
-    if (multi.schema != null && multi.schema !== 'moy.asr.multi_subtitle.v1') fail('$.multi_subtitle.schema', 'unsupported multi-subtitle schema');
+    if (multi.schema != null && multi.schema !== 'moy.asr.multi_subtitle.v1') fail('$.multi_subtitle.schema', 'must be moy.asr.multi_subtitle.v1');
     if (multi.enabled != null && typeof multi.enabled !== 'boolean') fail('$.multi_subtitle.enabled', 'must be a boolean');
     if (multi.display_mode != null && !['main', 'extension', 'both'].includes(multi.display_mode)) fail('$.multi_subtitle.display_mode', 'must be main, extension or both');
-    if (multi.main_split_mode != null && !['continuous', 'word'].includes(multi.main_split_mode)) fail('$.multi_subtitle.main_split_mode', 'must be continuous or word');
     const extensions = multi.tracks ?? [];
     if (!Array.isArray(extensions)) fail('$.multi_subtitle.tracks', 'must be an array');
+    if (extensions.length > 1) fail('$.tracks', 'supports at most one secondary track');
     const reservedTracks = new Set();
     extensions.forEach((track, index) => {
       if (!object(track)) fail(`$.multi_subtitle.tracks[${index}]`, 'must be an object');
@@ -397,7 +425,7 @@ export function createUtilsModule() {
       usedTracks.add(trackId);
       trackAliases.set(oldExtensionIds[index], trackId);
       oldTrackIds.set(trackId, oldExtensionIds[index]);
-      tracks.push({ ...track, id: trackId, role: 'extension', name: own(track, 'name') ? track.name : '副字幕', enabled: multi.enabled ?? false, split_mode: track.split_mode ?? 'word', segments: track.segments ?? [] });
+      tracks.push({ ...track, id: trackId, role: 'secondary', name: own(track, 'name') ? track.name : '副字幕', enabled: multi.enabled ?? false, split_mode: track.split_mode ?? 'word', segments: track.segments ?? [] });
     });
     const errors = [];
     const globalIds = new Set();
@@ -406,7 +434,9 @@ export function createUtilsModule() {
       tracks.forEach((track, index) => (Array.isArray(track.segments) ? track.segments : []).forEach((segment, cueIndex) => {
         if (!object(segment)) return;
         const cueId = id(segment.id);
-        if (!cueId || ids.has(cueId)) fail(`$.tracks[${index}].segments[${cueIndex}].id`, 'v2 requires unique project-wide cue IDs');
+        if (!own(segment, 'id')) fail(`$.tracks[${index}].segments[${cueIndex}].id`, 'group projects require stable cue IDs');
+        if (!cueId) fail(`$.tracks[${index}].segments[${cueIndex}].id`, 'must be a non-empty string of at most 160 characters');
+        if (ids.has(cueId)) fail(`$.tracks[${index}].segments[${cueIndex}].id`, 'must be a unique cue ID');
         ids.add(cueId); segment.id = cueId;
       }));
     }
@@ -414,7 +444,7 @@ export function createUtilsModule() {
     tracks.forEach((track, index) => {
       validateTrackMetadata(track, `$.tracks[${index}]`, errors);
       validateSegments(track.segments, `$.tracks[${index}].segments`, errors, globalIds, { legacy: true });
-      if (!GROUP_SCHEMAS.has(raw.schema)) validateLegacyGroups(track, errors);
+      if (!GROUP_SCHEMAS.has(raw.schema)) validateLegacyGroups(track, index, errors);
     });
     if (multi.bindings != null && !Array.isArray(multi.bindings)) errors.push({ path: '$.multi_subtitle.bindings', message: 'must be an array' });
     (Array.isArray(multi.bindings) ? multi.bindings : []).forEach((binding, index) => {
@@ -434,7 +464,7 @@ export function createUtilsModule() {
       const trackIndex = Number(match[1]);
       const track = tracks[trackIndex];
       const inputPath = track.role === 'main' ? '$' : track.role === 'overlay' ? '$.overlay_track'
-        : `$.multi_subtitle.tracks[${trackIndex - tracks.filter(entry => entry.role !== 'extension').length}]`;
+        : `$.multi_subtitle.tracks[${trackIndex - tracks.filter(entry => entry.role !== 'secondary').length}]`;
       return { ...error, path: inputPath + error.path.slice(match[0].length) };
     }));
     for (const track of tracks) for (const segment of track.segments) {
@@ -451,7 +481,7 @@ export function createUtilsModule() {
     const mappings = new Map();
     for (const track of tracks) {
       const mapping = new Map(); mappings.set(track.id, mapping);
-      const prefix = track.role === 'extension' ? `${oldTrackIds.get(track.id)}-segment` : track.role;
+      const prefix = track.role === 'secondary' ? `${oldTrackIds.get(track.id)}-segment` : track.role;
       const oldIds = legacyNormalizedIds(track.segments, prefix);
       track.segments.forEach((segment, index) => {
         const oldId = id(segment.id);
@@ -498,7 +528,7 @@ export function createUtilsModule() {
     }
     const bilingual = Object.fromEntries(Object.entries(multi).filter(([key]) => !['schema', 'enabled', 'tracks', 'bindings', 'main_split_mode'].includes(key)));
     bilingual.display_mode ??= 'both';
-    const extensionTracks = tracks.filter(track => track.role === 'extension');
+    const extensionTracks = tracks.filter(track => track.role === 'secondary');
     if (!own(bilingual, 'active_track_id') && extensionTracks.length) bilingual.active_track_id = extensionTracks[0].id;
     else if (typeof bilingual.active_track_id === 'string') bilingual.active_track_id = trackAliases.get(bilingual.active_track_id.trim()) ?? bilingual.active_track_id;
     const oldBindings = multi.bindings ?? [];
@@ -508,7 +538,7 @@ export function createUtilsModule() {
     const bindings = oldBindings.map((binding, index) => {
       const path = `$.multi_subtitle.bindings[${index}]`;
       if (!object(binding)) fail(path, 'must be an object');
-      for (const field of ['source_track_id', 'target_track_id', 'source_segment_ids', 'target_segment_ids']) if (own(binding, field)) fail(`${path}.${field}`, 'conflicts with canonical binding field');
+      for (const field of ['source', 'target', 'source_track_id', 'target_track_id', 'source_segment_ids', 'target_segment_ids']) if (own(binding, field)) fail(`${path}.${field}`, 'conflicts with canonical binding field');
       let bindingId = id(binding.id);
       if (own(binding, 'id') && (!bindingId || usedBindings.has(bindingId))) fail(`${path}.id`, 'must be a unique binding ID');
       if (!bindingId) bindingId = unique(`binding-${index + 1}`, bindingIds, usedBindings);
@@ -527,8 +557,8 @@ export function createUtilsModule() {
       const targetIds = endpoints('extension_segment_ids', 'extension_segment_id', target.id);
       const sourceCue = main.segments.find(segment => segment.id === sourceIds[0]);
       const targetCue = target.segments.find(segment => segment.id === targetIds[0]);
-      const out = { ...binding, id: bindingId, source_track_id: main.id, target_track_id: target.id,
-        source_segment_ids: sourceIds, target_segment_ids: targetIds,
+      const out = { ...binding, id: bindingId, source: { track_id: main.id, segment_id: sourceIds[0] },
+        target: { track_id: target.id, segment_id: targetIds[0] },
         start_offset_ms: binding.start_offset_ms ?? (targetCue?.start - sourceCue?.start),
         end_offset_ms: binding.end_offset_ms ?? (targetCue?.end - sourceCue?.end) };
       for (const key of ['track_id', 'main_segment_ids', 'main_segment_id', 'extension_segment_ids', 'extension_segment_id']) delete out[key];

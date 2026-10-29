@@ -1,3 +1,8 @@
+import { getOverlayTrack, overlayTrackVisible, convertMainCueToOverlayForDrag, convertOverlayCueToMainForDrag } from '../cues/overlay-track.js';
+
+export function initMaweWaveformInit() {
+'use strict';
+
 // 波形初始化：WaveformEditor 装配与 reapeaks 懒加载。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweWaveformInit 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -71,26 +76,26 @@
       MaweCuePanel.focusCuePanelText(idx, 'extension');
     },
     selectOverlayCue: (idx) => {
-      selectOverlayCueRow(idx);
+      window.MaweCuePanelWiring.selectOverlayCueRow(idx);
       MaweState.selection.overlayAnchor = idx;
     },
-    toggleOverlaySelection: (idx) => toggleOverlaySelection(idx),
+    toggleOverlaySelection: (idx) => window.MaweCuePanelWiring.toggleOverlaySelection(idx),
     selectOverlayRange: (idx) => {
-      if (MaweState.selection.overlayAnchor >= 0) selectOverlayRange(MaweState.selection.overlayAnchor, idx);
-      else selectOverlayCueRow(idx);
+      if (MaweState.selection.overlayAnchor >= 0) window.MaweCuePanelWiring.selectOverlayRange(MaweState.selection.overlayAnchor, idx);
+      else window.MaweCuePanelWiring.selectOverlayCueRow(idx);
       MaweState.selection.overlayAnchor = idx;
     },
     activateOverlayCue: (idx) => {
       MaweCuePanel.setCuePanelTarget('overlay', idx);
     },
     enterOverlayCueEditor: (idx) => {
-      selectOverlayCueRow(idx, { focusEditor: true });
+      window.MaweCuePanelWiring.selectOverlayCueRow(idx, { focusEditor: true });
     },
     // Shift+拖动逃逸：主轨邻居挡路时把被拖字幕迁入叠加轨，返回新下标。
     convertCueToOverlay: (idx) => convertMainCueToOverlayForDrag(idx),
     // Shift+拖动往返：叠加轨字幕拖回主轨空隙时移回主轨，返回新下标。
     convertOverlayCueToMainDrag: (idx) => convertOverlayCueToMainForDrag(idx),
-    showOverlayContextMenu: (x, y, idx) => showOverlayContextMenu(x, y, idx),
+    showOverlayContextMenu: (x, y, idx) => window.MaweContextMenusWiring.showOverlayContextMenu(x, y, idx),
     selectCue: (idx) => {
       MaweBindingAlign.selectCueByClick(idx);
       MaweSelection.lastClickedIdx = idx;
@@ -133,7 +138,7 @@
       MaweTextCleanup.seekFromWaveform(timeSec, options);
       if (!options.dragPreview) MaweCueListAnchor.resumeCueListFollowing();
     },
-    isPlaybackActive: () => isPlaybackActive(),
+    isPlaybackActive: () => window.MaweKeyboardGuards.isPlaybackActive(),
     onPlayheadDragStateChange: (active) => {
       MawePlaybackLoop.waveformPlayheadDragging = active === true;
       if (!active) MaweCueListAnchor.resumeCueListFollowing();
@@ -180,7 +185,7 @@
     // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径；
     // 有可靠主轨字词时间码时沿用字词锚点，否则在弹窗中保留指针的绝对切点。
     splitCueAtTime: (idx, timeMs) => MaweSplitContext.splitFromContextMenu(idx, 0, 0, timeMs),
-    splitOverlayCueAtTime: (idx, timeMs) => openOverlaySplitModal(
+    splitOverlayCueAtTime: (idx, timeMs) => window.MaweOverlaySplitMerge.openOverlaySplitModal(
       idx, Number.isFinite(timeMs) ? MaweTimeline.timelineFrameAlignedMilliseconds(timeMs) : timeMs,
     ),
     getClickBehavior: () => MaweSettings.EDITOR_SETTINGS.clickBehavior,
@@ -338,3 +343,4 @@
     set deferredReapeaksEpoch(v) { deferredReapeaksEpoch = v; }
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

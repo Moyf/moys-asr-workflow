@@ -1,3 +1,8 @@
+import { getOverlayTrack, overlayTrackVisible } from '../cues/overlay-track.js';
+
+export function initMaweExportContextWiring() {
+'use strict';
+
 
 // === 下载 ===
 // 程序内开关（不暴露 GUI）：导出 SRT 时保留禁用项的时间轴序号但内容替换为空白
@@ -19,7 +24,7 @@ function mergedExportSegments() {
     return { segments: mainSegments, overlaySet: new Set(), overlaySegments };
   }
   return {
-    segments: MULTI_SUBTITLE_UTILS.mergeMainAndOverlaySegments(mainSegments, overlaySegments),
+    segments: window.AsrEditorUtils.mergeMainAndOverlaySegments(mainSegments, overlaySegments),
     overlaySet: new Set(overlaySegments),
     overlaySegments,
   };
@@ -286,3 +291,11 @@ document.getElementById('project-backup-open')?.addEventListener('click', async 
 // 把工程名与内容交给服务器，由它定位同目录同名工程并接管：
 // 成功后整页刷新，由服务器渲染出自动加载媒体且可直接保存的状态。
 // 任何失败都静默回退为「手动选择媒体」的便携流程。
+
+window.MaweExportContext = Object.freeze({
+  exportColorContextResolver,
+  mergedExportSegments,
+  buildOverlaySubtitleOtioTrack,
+  syncProjectBackupControls,
+});
+}

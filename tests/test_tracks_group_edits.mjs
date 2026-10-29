@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { plainModuleSource } from './helpers/init-module-source.mjs';
 
 const fixtureUtils = { window: {}, TextDecoder };
 loadEditorModule(fixtureUtils, 'shared/editor-utils.js');
@@ -32,13 +33,12 @@ function grouped(f, kind) {
 }
 
 for (const kind of ['color', 'sticker']) {
-  test(`explicit ${kind} cuts fork retained fragments and preserve other tracks, attributes and undo`, () => {
+  test(`explicit ${kind} clearing preserves retained members, other tracks, attributes and undo`, () => {
     const f = fixture(), id = grouped(f, kind), before = plain(f.data);
     const history = utils.buildSegmentsHistorySnapshot(f.data);
     f.api.splitGroupsAtCutPoints(new Set([1, 3]), kind, `${kind}_ref`);
     const memberships = [0, 2, 4].map(index => f.main.segments[index][`${kind}_group_id`]);
-    assert.equal(new Set(memberships).size, 3);
-    assert.equal(memberships[0], id);
+    assert.deepEqual(memberships, [id, id, id]);
     assert.equal(f.main.segments[1][`${kind}_group_id`], undefined);
     assert.equal(f.main.segments[3][`${kind}_group_id`], undefined);
     assert.equal(f.overlay.segments[0][`${kind}_group_id`], id);
@@ -49,7 +49,7 @@ for (const kind of ['color', 'sticker']) {
       assert.deepEqual(plain(group.vendor), { extension: 0 });
     }
     assert.deepEqual(plain(utils.subtitleGroupRanges(f.data, kind, { trackIds: [f.main.id] })
-      .map(range => [range.start, range.end])), [[0, 1000], [2000, 3000], [4000, 5000]]);
+      .map(range => [range.start, range.end])), [[0, 5000]]);
     assert.deepEqual(plain(utils.validateTracksProject(f.data).errors), []);
     utils.restoreSegmentsHistorySnapshot(f.data, history);
     assert.deepEqual(plain(f.data), before);
@@ -69,7 +69,7 @@ test('deleting a middle cue uses stable groups and restores the complete project
   f.api.deleteSegments([1]);
   assert.deepEqual(plain(f.main.segments.map(cue => cue.id)), ['cue-0', 'cue-2']);
   assert.equal(f.main.segments[0].color_group_id, id);
-  assert.notEqual(f.main.segments[1].color_group_id, id);
+  assert.equal(f.main.segments[1].color_group_id, id);
   assert.deepEqual(plain(f.overlay), before.tracks.find(track => track.role === 'overlay'));
   assert.deepEqual(plain(utils.validateTracksProject(f.data).errors), []);
   for (const cue of utils.iterSegments(f.data)) for (const key of ['color', 'color_ref', 'sticker', 'sticker_ref']) {
@@ -86,7 +86,7 @@ test('preparing a main-to-overlay move removes only the moved cue bindings and k
     removeBindingsForSegmentIds: (...args) => calls.push(plain(args)),
     markMultiSubtitleDirty() {}, normalizeMultiSubtitleState() {},
   };
-  vm.runInContext(readFileSync(new URL('../web/editor/cues/editor-wiring-overlay-transfer.js', import.meta.url), 'utf8'), f.context);
+  vm.runInContext(plainModuleSource('editor/cues/overlay-track.js'), f.context);
   f.context.shiftMainGroupRefsAfterMove([1]);
   assert.deepEqual(calls, [[['cue-1'], []]]);
   assert.deepEqual(plain(f.data), before);

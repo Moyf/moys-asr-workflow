@@ -1,9 +1,11 @@
+import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 
 const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).href;
 
 test('boundary retry shows logical batch with retry number and keeps actionable failure detail', async ({ page }, testInfo) => {
   await page.goto(launcherUrl);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   await page.evaluate(() => window.MAWLauncher.openToolboxAiProcessing());
   await page.locator('#postprocessOperation').selectOption('resegment');

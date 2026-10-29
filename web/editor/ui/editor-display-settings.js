@@ -2,8 +2,14 @@
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweDisplaySettings 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweDisplaySettings(global) {
+import { getOverlayTrack } from '../cues/overlay-track.js';
+
+export function initMaweDisplaySettings() {
   'use strict';
+
+  // 装配器无参调用；宿主对象固定为当前页面 window。
+  // 顶层 DOM 查询/监听随函数体在装配器调用位次执行，时机不变（G07 gate）。
+  const global = window;
 
 
 
@@ -86,7 +92,10 @@
 
   function restoreWaveformViewportAfterGeometryChange(editor, anchorTimeMs) {
     if (!editor || !Number.isFinite(anchorTimeMs) || typeof editor.revealTime !== 'function') return;
-    editor.revealTime(anchorTimeMs, true);
+    // behavior:'auto' 瞬时定位：几何切换刚完成一次全量重建，smooth 滚动
+    // 动画会在随后数百毫秒内逐帧增量重建词密可视行，把卡顿再放大一轮；
+    // 锚点还原不需要动画，视口直接就位。其他 revealTime 调用方不受影响。
+    editor.revealTime(anchorTimeMs, true, { behavior: 'auto' });
   }
 
 
@@ -195,8 +204,8 @@
   function updateMultiSubtitleUi() {
   // 「允许字幕重叠」开关常驻工具栏；勾选状态跟随用户意图（overlay.enabled），
   // 不要求叠加轨已有字幕，否则空轨道时勾选会被立即弹回。
-  if (overlayTrackSeparator) overlayTrackSeparator.hidden = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 0;
-  if (overlayTrackToggle) overlayTrackToggle.checked = getOverlayTrack()?.enabled === true;
+  if (window.MaweDomPanelsWiring.overlayTrackSeparator) window.MaweDomPanelsWiring.overlayTrackSeparator.hidden = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 0;
+  if (window.MaweDomPanelsWiring.overlayTrackToggle) window.MaweDomPanelsWiring.overlayTrackToggle.checked = getOverlayTrack()?.enabled === true;
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const hasTrack = Boolean(track && Array.isArray(track.segments));
   const enabled = hasTrack && MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled === true;
@@ -312,8 +321,8 @@
   MaweCoreState.container.dataset.multiDisplayMode = enabled ? (MaweBoot.DATA.bilingual.display_mode || 'both') : 'main';
   // 多重字幕开合影响副字幕相关的 ASS 样式入口（设置页副字幕组、样式库
   // 副字幕槽位），同步刷新它们的可见性与选项。
-  syncAssModeDependentControls();
-  syncAssStyleManager();
+  window.MaweAssManagerWiring.syncAssModeDependentControls();
+  window.MaweAssManagerWiring.syncAssStyleManager();
 }
 
 
@@ -427,4 +436,4 @@
     confirmKeyLabel,
     applyPlatformKeyLabels
   });
-})(typeof window !== 'undefined' ? window : globalThis);
+}

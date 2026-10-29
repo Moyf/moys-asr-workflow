@@ -39,7 +39,7 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
     track = get_track(combined, str(bilingual.get("active_track_id") or ""))
     if track is None:
         track_ids = {item["id"] for item in project_tracks(combined)}
-        track = {"id": _unique_id(f"translation-{target}", track_ids), "role": "extension",
+        track = {"id": _unique_id(f"translation-{target}", track_ids), "role": "secondary",
                  "name": "", "enabled": True, "segments": []}
         combined["tracks"].append(track)
     track_id = track["id"]
@@ -51,10 +51,10 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
         track["name"] = "中文翻译" if target == "zh" else "英文翻译"
 
     bindings = combined.setdefault("bindings", [])
-    previous = {binding["source_segment_ids"][0]: binding for binding in bindings
-                if binding["source_track_id"] == main["id"] and binding["target_track_id"] == track_id}
+    previous = {binding["source"]["segment_id"]: binding for binding in bindings
+                if binding["source"]["track_id"] == main["id"] and binding["target"]["track_id"] == track_id}
     previous_cues = {segment["id"]: segment for segment in track["segments"]}
-    bindings[:] = [binding for binding in bindings if binding["target_track_id"] != track_id]
+    bindings[:] = [binding for binding in bindings if binding["target"]["track_id"] != track_id]
     cue_ids = {segment["id"] for other in project_tracks(combined) if other is not track
                for segment in other["segments"]}
     binding_ids = {binding["id"] for binding in bindings}
@@ -63,7 +63,7 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
         if translated["text"].strip() and translated["text"].strip() == source["text"].strip():
             continue
         old_binding = previous.get(source["id"])
-        old_target = old_binding["target_segment_ids"][0] if old_binding is not None else None
+        old_target = old_binding["target"]["segment_id"] if old_binding is not None else None
         extension = copy.deepcopy(previous_cues.get(old_target, {}))
         extension.update(copy.deepcopy(translated))
         if "items" not in translated:
@@ -72,8 +72,8 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
         extension_segments.append(extension)
         binding = copy.deepcopy(old_binding) if old_binding is not None else {}
         binding.update({"id": _unique_id(str(binding.get("id") or f"translation-binding-{index:03d}"), binding_ids),
-                        "source_track_id": main["id"], "target_track_id": track_id,
-                        "source_segment_ids": [source["id"]], "target_segment_ids": [extension["id"]],
+                        "source": {**binding.get("source", {}), "track_id": main["id"], "segment_id": source["id"]},
+                        "target": {**binding.get("target", {}), "track_id": track_id, "segment_id": extension["id"]},
                         "start_offset_ms": extension["start"] - source["start"],
                         "end_offset_ms": extension["end"] - source["end"]})
         bindings.append(binding)

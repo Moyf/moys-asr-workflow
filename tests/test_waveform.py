@@ -7,6 +7,16 @@ from tests.compact_assertions import CompactContainerAssertions
 # G04 后这些叶子不再出现在清单里，但仍是 shared/editor-utils.js
 # 的显式 import 与源码契约；源码形态断言需要继续覆盖它们。
 WAVEFORM_RETIRED_UTILS = (
+    # G06 composition 模块
+    "editor/media/editor-thumbnails.js",
+    "editor/media/waveform/thumbnails.js",
+    "editor/media/waveform/media.js",
+    "editor/media/waveform/render.js",
+    "editor/media/waveform/cue-blocks.js",
+    "editor/media/waveform/word-blocks.js",
+    "editor/media/waveform/canvas.js",
+    "editor/media/waveform/input.js",
+
     "shared/utils/data.js",
     "shared/utils/fonts.js",
     "shared/utils/speakers.js",
@@ -469,11 +479,11 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("请使用 MAW GUI 预生成波形", waveform)
         self.assertIn("use the MAW GUI to pre-generate the waveform", waveform)
         self.assertNotIn("请用 edit.py 预生成波形", waveform)
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         self.assertIn("请使用 MAW GUI 预生成波形", page)
 
     def test_blank_editor_inlines_modular_assets(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         # Historical JavaScript source-shape checks stay at the source layer.
         source = "\n\n".join(edit.read_web_asset(name) for name in list(edit.read_editor_script_manifest()) + [name for name in WAVEFORM_RETIRED_UTILS if name not in edit.read_editor_script_manifest()])
         self.assertIn(edit.build_editor_scripts().splitlines()[0], page)
@@ -551,7 +561,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('flex-direction: column;', page)
         self.assertIn("class WaveformEditor", source)
         blank = json.JSONDecoder().raw_decode(page[page.index('{"media": ""'):])[0]
-        self.assertEqual(blank["schema"], "moy.asr.project.v3")
+        self.assertEqual(blank["schema"], "moy.asr.project.v2")
         self.assertNotIn("segments", blank)
         self.assertNotIn("multi_subtitle", blank)
         self.assertNotIn("overlay_track", blank)
@@ -1147,7 +1157,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('overlaySegments.some((segment) => segment.sticker_group_id)', source)
         self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', source)
         self.assertIn('rows.sort((a, b) => a.start - b.start || a.order - b.order);', source)
-        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));', source)
+        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: window.MaweCuePanelWiring.buildOverlayCueEl(seg, i) }));', source)
         self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", source)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", source)
@@ -1328,7 +1338,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function isPlaybackKeyboardTarget(event)', source)
         self.assertIn('if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;', source)
         self.assertIn('let interceptedSpace = false;', source)
-        self.assertIn('e.stopImmediatePropagation();', page)
+        self.assertIn('.stopImmediatePropagation();', page)
         self.assertIn('width: 74px; aspect-ratio: 1;', page)
         # 面板行对选中/未选中使用同一套轨道尺寸：高度只随手动拖拽变化，不再因选中跳变
         self.assertIn('minmax(max-content, calc(var(--layout-row-middle)', page)
@@ -1344,7 +1354,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             self.assertNotIn(token, page, token)
 
     def test_media_controls_stay_on_one_line_and_preserve_fullscreen(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         controls_start = page.index("  .media-controls {\n")
         controls_end = page.index("  .player-wrap.empty-state", controls_start)
         controls_css = page[controls_start:controls_end]
@@ -1368,7 +1378,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             os.environ["STICKER_DIR"] = sticker_dir
             try:
                 with mock.patch.object(edit, 'render_editor_page', wraps=edit.render_editor_page) as render:
-                    page = edit.build_blank_html()
+                    page = edit.render_empty_editor_page()
             finally:
                 if previous_sticker_dir is None:
                     del os.environ["STICKER_DIR"]
@@ -1383,7 +1393,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn(Path(sticker_dir).resolve().as_posix(), page)
 
     def test_ninja_settings_and_split_feedback_are_rendered(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         for marker in (
             'id="ninja-mode"',
             'id="ninja-sound"',

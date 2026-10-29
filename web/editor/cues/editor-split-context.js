@@ -7,6 +7,21 @@
 
 
 
+  // 波形来源拆分的外置强制拆分 armed：<100ms 切点首次被拒时记录
+  // { idx, segment, cutMs }，同一字幕再次按 B 直接强制拆分。segment 引用
+  // 用于惰性失效：撤销、合并、再次拆分都会替换该对象，armed 随之作废。
+  let waveformForcedSplit = null;
+
+  // 取消时机对照编辑态 armed：编辑态下点击外部（pointerdown 收尾）或按
+  // Escape 都会结束编辑并连带销毁 editingState.forceSplitArmed；波形来源
+  // 没有编辑态，这里等价地在任何 pointerdown 与 Escape 时清除外置 armed。
+  if (typeof document !== 'undefined') {
+    document.addEventListener('pointerdown', () => { waveformForcedSplit = null; }, true);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') waveformForcedSplit = null;
+    }, true);
+  }
+
   function splitFromContextMenu(idx, x, y, waveformTimeMs = null, { splitTextMode = null } = {}) {
     const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
     if (!el) return false;
@@ -57,13 +72,27 @@
         MaweHint.flashHint('这条字幕没有可拆分的文字边界', 'invalid');
         return false;
       }
-      MaweInlineEdit.startEdit(el, idx);
-      if (!MaweInlineEdit.setEditingCaretOffset(cursorOffset)) {
-        MaweInlineEdit.finishEdit(false);
-        MaweHint.flashHint('无法定位波形中的拆分位置', 'warning');
-        return false;
-      }
-      const didSplit = MaweSplitCore.splitAtCursor(waveformFeedbackPoint, { listFeedback: false, splitTextMode });
+      // 波形来源不再激活行内编辑：把切点显式交给拆分核心执行（刀光反馈仍按
+      // 波形位置触发）。<100ms 首次被拒时 armed 外置在本模块，同一字幕再次
+      // 按 B 直接强制拆分。
+      const armed = waveformForcedSplit;
+      const forcedArmed = Boolean(armed
+        && armed.idx === idx
+        && armed.segment
+        && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] === armed.segment);
+      const didSplit = MaweSplitCore.splitAtCursor(waveformFeedbackPoint, {
+        listFeedback: false,
+        splitTextMode,
+        explicit: {
+          idx,
+          cursorOffset,
+          force: forcedArmed,
+          onForcedSplitArmed: (cutMs) => {
+            waveformForcedSplit = { idx, segment, cutMs };
+          },
+        },
+      });
+      if (didSplit) waveformForcedSplit = null;
       return didSplit;
     }
     // 字幕列表：在指定位置进入编辑，光标定位到 (x,y) 后立即拆分

@@ -318,7 +318,7 @@ def _run_llm_postprocess(
     if strict_translation:
         if request.merge_bilingual and request.embed_translations:
             raise ValueError("「将双语字幕合并为单个字幕」与「只翻译非中文（英文）的字幕」不能同时启用，请只选择一个输出方式。")
-        if source_project is None or not get_tracks_by_role(project, "extension"):
+        if source_project is None or not get_tracks_by_role(project, "secondary"):
             _reject_recursive_translation_input(source_project, source_srt, request.operation)
     item_aware_resegment = request.operation == "resegment" and _has_complete_items(project)
     system_prompt = _protocol_prompt(
@@ -618,7 +618,7 @@ def merge_bilingual_project(
     # A bilingual merge is intentionally a single-track result.  Do not carry
     # an older extension track into the final project if the input was already
     # a multi-subtitle project.
-    merged_project["tracks"] = [track for track in merged_project["tracks"] if track["role"] != "extension"]
+    merged_project["tracks"] = [track for track in merged_project["tracks"] if track["role"] != "secondary"]
     merged_project["bindings"] = []
     merged_project["bilingual"].pop("active_track_id", None)
     merged_project["bilingual"]["display_mode"] = "main"
@@ -677,7 +677,7 @@ def embed_translated_project(source_project: JsonDict, translated_project: JsonD
 
     embedded_project = copy.deepcopy(source_project)
     replace_main_segments(embedded_project, embedded_segments)
-    embedded_project["tracks"] = [track for track in embedded_project["tracks"] if track["role"] != "extension"]
+    embedded_project["tracks"] = [track for track in embedded_project["tracks"] if track["role"] != "secondary"]
     embedded_project["bindings"] = []
     embedded_project["bilingual"].pop("active_track_id", None)
     embedded_project["bilingual"]["display_mode"] = "main"

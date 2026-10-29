@@ -8,6 +8,11 @@
 
 
   // === 合并 ===
+  function clearInconsistentSpeaker(merged, sources) {
+    const speaker = sources[0].speaker;
+    if (speaker == null || sources.some(segment => segment.speaker !== speaker)) delete merged.speaker;
+  }
+
   // 把 DATA.segments 中连续下标 sorted 合并为一条，并维护 group 引用与组时间范围。
   // 不做参数校验、撤销与渲染，由调用方负责（mergeSegments / autoMergeSegments 共用）。
   function mergeContiguousIndices(sorted) {
@@ -21,7 +26,7 @@
     if (extensionTrack) {
       oldMainIds.forEach((mainId) => {
         const binding = window.AsrEditorUtils.bindingForSegment(multi, mainId, 'main', extensionTrack.id);
-        (binding?.target_segment_ids || []).forEach((extensionId) => boundExtensionIds.add(extensionId));
+        (binding?.target?.segment_id ? [binding.target.segment_id] : []).forEach((extensionId) => boundExtensionIds.add(extensionId));
       });
     }
     const hasMeaningfulExtensionOverlap = (segment) => {
@@ -44,10 +49,6 @@
     const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
       window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, sorted, 'color', 'color_ref',
     );
-    const commonSpeaker = segs[0].speaker != null
-      && segs.every((segment) => segment.speaker === segs[0].speaker)
-      ? segs[0].speaker
-      : null;
     // 拼接后折叠相邻「闭符号+开符号」的同符号对（防止拼出 ** 被误解析为强调），
     // items 层同步裁掉被折叠的符号，保持 items 拼接 == 合并文本。
     const mainJoin = window.AsrEditorUtils.joinSegmentTextsMassFold(
@@ -64,11 +65,11 @@
       end: segs[segs.length - 1].end,
       text: mainJoin.text,
       items: mainJoin.items,
-      ...(commonSpeaker !== null ? { speaker: commonSpeaker } : {}),
       ...(segs[0].assOverride ? { assOverride: window.AsrEditorUtils.normalizeAssOverride(segs[0].assOverride) } : {}),
       disabled: !!segs[0].disabled,  // 合并后取 index=0 的禁用状态
       _dirty: true,
     };
+    clearInconsistentSpeaker(merged, segs);
     if (merged.items.length === 0) merged.items = null;
 
     let mergedExtension = null;
@@ -90,6 +91,7 @@
         text: extensionJoin.text,
         _dirty: true,
       };
+      clearInconsistentSpeaker(mergedExtension, extensionMergeSegments);
       if (extensionMergeSegments.some((segment) => Array.isArray(segment.items))) {
         mergedExtension.items = extensionJoin.items;
       }
@@ -114,7 +116,7 @@
       }
       if (mergedExtension) extensionTrack.segments.splice(extensionMergeIndices[0], 0, mergedExtension);
       if (mergedExtension) {
-        multi.bindings.push(window.AsrEditorUtils.buildSubtitleBinding(merged, mergedExtension, extensionTrack.id, null, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).id));
+        multi.bindings.push(window.AsrEditorUtils.buildSubtitleBinding(merged, mergedExtension, extensionTrack.id, null, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).id, multi.bindings));
         if (MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration) {
           // C 合并会重新创建一对绑定字幕；与手动绑定保持一致，按开关
           // 将新副字幕的时间范围同步到合并后的主字幕，并整理副轨冲突。
@@ -175,8 +177,8 @@
 
 
 
-  // 只合并副轨连续字幕。副字幕没有主轨的 group 引用和 items，
-  // 因此这里保留独立轨的文本/时间合并语义；如果被合并段存在一对一绑定，
+  // 只合并副轨连续字幕，保留共有分组、字幕属性与可选字词时间码。
+  // 如果被合并段存在一对一绑定，
   // 合并后无法同时指向多个主字幕，旧绑定会被移除并提示用户重新绑定。
   function mergeExtensionSegments(idxs, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
     if (!track || !idxs?.length) return false;
@@ -214,6 +216,8 @@
       text: extensionJoin.text,
       _dirty: true,
     };
+    clearInconsistentSpeaker(merged, segments);
+    if (segments.some(segment => Array.isArray(segment.items))) merged.items = extensionJoin.items;
     const hadBindings = oldIds.some((id) => window.AsrEditorUtils.bindingForSegment(
       MaweMultiSubtitleCore.getMultiSubtitleState(), id, 'extension', track.id,
     ));
@@ -344,7 +348,7 @@
         if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return;
         const binding = MaweMultiSubtitleCore.bindingForMainIndex(change.index);
         const extension = MaweMultiSubtitleCore.extensionForMainIndex(change.index);
-        const track = binding && MaweMultiSubtitleCore.getExtensionTrack(binding.target_track_id);
+        const track = binding && MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id);
         if (!binding || !extension || !track) return;
         if (!followerMoves.has(track)) followerMoves.set(track, new Set());
         followerMoves.get(track).add(track.segments.indexOf(extension));
@@ -543,38 +547,9 @@
   //   - 删除场景：cutSet = 被物理删除的 idx；切完后由调用方负责 splice
   //   - 清除场景：cutSet = 被清除 group 字段的 idx；调用方不删除字幕本身
   function splitGroupsAtCutPoints(cutSet, headField, refField, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) {
-    const utils = window.AsrEditorUtils;
-    const membership = `${headField}_group_id`;
-    const groups = new Map();
-    segments.forEach((segment, index) => {
-      const id = segment[membership];
-      if (!id) return;
-      if (!groups.has(id)) groups.set(id, []);
-      groups.get(id).push(index);
-    });
-    for (const [id, members] of groups) {
-      if (!members.some(index => cutSet.has(index))) continue;
-      const source = MaweBoot.DATA.subtitle_groups[headField].find(group => group.id === id);
-      if (!source) continue;
-      const fragments = [];
-      let current = [];
-      for (const index of members) {
-        if (cutSet.has(index)) {
-          if (current.length) fragments.push(current);
-          current = [];
-        } else current.push(index);
-      }
-      if (current.length) fragments.push(current);
-      // The first surviving fragment and members in other tracks retain the
-      // original identity. Later fragments own copies of the same attributes.
-      for (const fragment of fragments.slice(1)) {
-        const nextId = utils.assignSubtitleGroup(MaweBoot.DATA, segments, [], headField, source.value);
-        const next = MaweBoot.DATA.subtitle_groups[headField].find(group => group.id === nextId);
-        Object.assign(next, utils.cloneJsonValue(source), { id: nextId });
-        for (const index of fragment) segments[index][membership] = nextId;
-      }
-    }
-    utils.clearSubtitleGroupMembers(MaweBoot.DATA, segments, cutSet, headField);
+    // Stable group membership survives deletion of other members. Explicit
+    // clearing only removes selected members and then collects empty groups.
+    window.AsrEditorUtils.clearSubtitleGroupMembers(MaweBoot.DATA, segments, cutSet, headField);
   }
 
 
@@ -611,8 +586,8 @@
       const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
       const extensionTrack = MaweMultiSubtitleCore.multiSubtitleVisible() ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
       (multi.bindings || []).forEach((binding) => {
-        if (!binding.source_segment_ids?.some((id) => pairedMainIds.includes(id))) return;
-        const extensionId = binding.target_segment_ids?.[0];
+        if (!pairedMainIds.includes(binding.source?.segment_id)) return;
+        const extensionId = binding.target?.segment_id;
         const extensionIndex = extensionTrack?.segments?.findIndex((segment) => segment.id === extensionId);
         if (extensionIndex >= 0) pairedExtensionIndices.add(extensionIndex);
       });
@@ -673,7 +648,7 @@
         MaweMultiSubtitleCore.getMultiSubtitleState(), id, 'extension', track.id,
       );
       if (!binding) return;
-      const mainId = binding.source_segment_ids?.[0];
+      const mainId = binding.source?.segment_id;
       const mainIndex = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment.id === mainId);
       if (mainIndex >= 0) pairedMainIndices.add(mainIndex);
       unboundIds.delete(id);

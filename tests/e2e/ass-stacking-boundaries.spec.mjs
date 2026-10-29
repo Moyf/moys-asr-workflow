@@ -2,7 +2,7 @@
 // No production positioning helper or predicted anchor formula is an oracle.
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { copyFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWav,
   generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
@@ -23,6 +23,9 @@ test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 
 const cue = (id, text, start = 0, end = 4000) => ({ id, text, start, end });
 const cases = [
+  { name: 'large italic overhang keeps complete glyph ink visible',
+    main: '//ffff//', extension: '//ffff//', fontSize: 240, extensionFontSize: 180,
+    marginV: 220, times: [1000] },
   { name: 'static single-line control', times: [1000] },
   { name: '1440p preview and burn share the native frame coordinate system',
     width: 2560, height: 1440, times: [1000] },
@@ -121,10 +124,10 @@ async function configure(page, fixture) {
         multi_subtitle: { enabled: true, tracks: [{ id: 'extension', segments:
           f.extensionSegments || [{ id: 'extension', start: 0, end: 4000, text: f.extension || 'Secondary' }] }] },
       }).project;
-      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
-        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
       MaweBoot.DATA.bilingual = fixture.bilingual;
-      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
     }
     const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA, { enabled: true });
     overlay.segments = f.overlaySegments || [{ id: 'overlay', start: 0, end: 4000, text: 'Overlay' }];
@@ -140,6 +143,11 @@ async function configure(page, fixture) {
       MaweBoot.DATA.preview.subtitle.speaker_labels = { mapping_enabled: true, enabled: true,
         separator: ': ', names: { red: 'MainSpeakerWithLongPrefix', green: 'SecondarySpeaker', blue: 'OverlaySpeaker' } };
     }
+    // Install fixture colours through the same migration used when opening v1
+    // projects. Direct legacy fields are only views once the group table exists.
+    window.AsrEditorUtils.migrateSubtitleGroups(project);
+    window.AsrEditorUtils.refreshSubtitleGroupViews(project);
+    Object.assign(MaweBoot.DATA, project);
     Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assEmphasisSyntax: 'both',
       assSpecialSymbolRule: 'both', assCommentEnabled: true, assLargeTextEnabled: true,
       exportSpeakerLabels: Boolean(f.speaker) });
@@ -249,9 +257,36 @@ async function capture(page, timeMs) {
   }, timeMs);
 }
 
-function libass(ass, timeMs, testInfo, label) {
+// Per-test, source-content keyed reuse: a changed browser export cannot hit an
+// earlier sequence. Raw files are still materialized under each original label.
+const oracleSeries = new WeakMap();
+function libass(ass, timeMs, testInfo, label, times = [timeMs]) {
   const path = testInfo.outputPath(`${label}.ass`);
   writeFileSync(path, ass);
+  if (times.length > 1) {
+    let cache = oracleSeries.get(testInfo);
+    if (!cache) oracleSeries.set(testInfo, cache = new Map());
+    const key = JSON.stringify([ass, times]);
+    let series = cache.get(key);
+    if (!series) {
+      const stem = join(tempDir, `oracle-series-${testInfo.testId}-${cache.size}`);
+      writeFileSync(`${stem}.ass`, ass);
+      const metrics = JSON.parse(execFileSync(process.env.MAW_E2E_PYTHON || 'python', [
+        resolve('tests/helpers/ass-stacking-pixel-oracle.py'), `${stem}.ass`, String(timeMs),
+        stem, '--times', ...times.map(String),
+      ], { encoding: 'utf8', timeout: 40_000, windowsHide: true }));
+      cache.set(key, series = { stem, metrics });
+    }
+    const index = times.indexOf(timeMs);
+    if (index < 0) throw new Error(`Missing libass sample time: ${timeMs}`);
+    const output = testInfo.outputPath(`${label}-libass`);
+    for (const kind of ['', '-guard']) {
+      copyFileSync(`${series.stem}${kind}-${index}.png`, `${output}${kind}.png`);
+      copyFileSync(`${series.stem}${kind}.ffmpeg.log`, `${output}${kind}.ffmpeg.log`);
+      if (kind) copyFileSync(`${series.stem}${kind}.ass`, `${output}${kind}.ass`);
+    }
+    return structuredClone(series.metrics[index]);
+  }
   return JSON.parse(execFileSync(process.env.MAW_E2E_PYTHON || 'python', [
     resolve('tests/helpers/ass-stacking-pixel-oracle.py'), path, String(timeMs),
     testInfo.outputPath(`${label}-libass`),
@@ -304,11 +339,11 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
   for (const time of fixture.times) {
     const frame = await capture(page, time);
     const metrics = await evidence(frame, testInfo, `t${time}`);
-    const pixels = libass(frame.ass, time, testInfo, `t${time}`);
+    const pixels = libass(frame.ass, time, testInfo, `t${time}`, fixture.times);
     if (originalClock) {
       // The legacy single-cue raw libass animation is the independent timing oracle.
       // Matching two consumers of the group planner would be circular.
-      const original = libass(originalClock, time, testInfo, `original-clock-${time}`);
+      const original = libass(originalClock, time, testInfo, `original-clock-${time}`, fixture.times);
       writeFileSync(testInfo.outputPath(`original-clock-${time}.json`), JSON.stringify(original, null, 2));
       for (const engine of ['canvas', 'libass']) {
         const box = engine === 'canvas' ? frame.tracks[0].box : pixels.tracks.main.box;
@@ -493,10 +528,11 @@ test('secondary preset paint remains fixed before during and after the main cue'
   await configure(page, { mainSegments: [cue('short-main', 'Main', 500, 1500)],
     extensionSegments: [cue('long-secondary', 'Secondary', 0, 2000)], overlaySegments: [] });
   let previous;
-  for (const time of [250, 1000, 1750]) {
+  const times = [250, 1000, 1750];
+  for (const time of times) {
     const frame = await capture(page, time);
     await evidence(frame, testInfo, `secondary-alone-${time}`);
-    const pixels = libass(frame.ass, time, testInfo, `secondary-alone-${time}`);
+    const pixels = libass(frame.ass, time, testInfo, `secondary-alone-${time}`, times);
     writeFileSync(testInfo.outputPath(`secondary-alone-${time}-libass.json`), JSON.stringify(pixels, null, 2));
     const actual = frame.nativeTracks.extension.box;
     expect(actual, 'Canvas paints the fixed extension').not.toBeNull();
@@ -626,11 +662,12 @@ for (const [name, t1, t2] of [['instant', 500, 500], ['linear', 0, 1000]]) {
       return source;
     });
     const results = [];
-    for (const time of [490, 500, 501, 1490, 1500, 1501, 1750]) {
+    const times = [490, 500, 501, 1490, 1500, 1501, 1750];
+    for (const time of times) {
       const frame = await capture(page, time);
       await evidence(frame, testInfo, `slice-move-${time}`);
-      const pixels = libass(frame.ass, time, testInfo, `slice-move-${time}`);
-      const reference = libass(original, time, testInfo, `unsplit-move-${time}`);
+      const pixels = libass(frame.ass, time, testInfo, `slice-move-${time}`, times);
+      const reference = libass(original, time, testInfo, `unsplit-move-${time}`, times);
       results.push({ time, canvas: frame.nativeTracks.main, grouped: pixels.tracks.main, original: reference.tracks.main });
       expect.soft(frame.captured, 'slice move records all actual paint').toBe(frame.assigned);
       expect.soft(pixels.sha256, `slice move guard preserves native pixels at ${time}`).toBe(pixels.guardCropSha256);
@@ -666,11 +703,12 @@ test('overlapping fad intervals retain libass fade-in priority in actual pixels'
     return source;
   });
   const results = [];
-  for (const time of [250, 500, 750]) {
+  const times = [250, 500, 750];
+  for (const time of times) {
     const frame = await capture(page, time);
     await evidence(frame, testInfo, `overlap-fad-${time}`);
-    const pixels = libass(frame.ass, time, testInfo, `overlap-fad-${time}`);
-    const original = libass(standalone, time, testInfo, `original-fad-${time}`);
+    const pixels = libass(frame.ass, time, testInfo, `overlap-fad-${time}`, times);
+    const original = libass(standalone, time, testInfo, `original-fad-${time}`, times);
     results.push({ time, canvas: frame.nativeTracks, grouped: pixels, original });
     expect.soft(pixels.sha256, 'fad guard render preserves native pixels').toBe(pixels.guardCropSha256);
     expect.soft(pixels.outside, 'fad group loses no actual pixels').toBe(0);
@@ -750,10 +788,11 @@ test('libass keeps nonlinear transform and fade clocks when a cue is sliced', as
   const shifted = header + 'Dialogue: 0,0:00:00.50,0:00:02.00,Default,,0,0,0,,{\\t(-500,500,2,\\fs144)\\fade(255,0,255,-500,500,1000,1500)}Clock\n';
   const reset = header + 'Dialogue: 0,0:00:00.50,0:00:02.00,Default,,0,0,0,,{\\t(0,1000,2,\\fs144)\\fade(255,0,255,0,1000,1500,2000)}Clock\n';
   const results = [];
-  for (const time of [750, 1750]) {
-    const original = libass(reference, time, testInfo, `clock-reference-${time}`);
-    const preserved = libass(shifted, time, testInfo, `clock-shifted-${time}`);
-    const restarted = libass(reset, time, testInfo, `clock-reset-${time}`);
+  const times = [750, 1750];
+  for (const time of times) {
+    const original = libass(reference, time, testInfo, `clock-reference-${time}`, times);
+    const preserved = libass(shifted, time, testInfo, `clock-shifted-${time}`, times);
+    const restarted = libass(reset, time, testInfo, `clock-reset-${time}`, times);
     results.push({ time, original: original.sha256, preserved: preserved.sha256, restarted: restarted.sha256 });
     expect(preserved.sha256, `sliced nonlinear/fade clock at ${time}ms`).toBe(original.sha256);
     expect(restarted.sha256, `reset clock is observably different at ${time}ms`).not.toBe(original.sha256);

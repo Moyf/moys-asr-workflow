@@ -1,3 +1,8 @@
+import { getOverlayTrack } from './overlay-track.js';
+
+export function initMaweColorFilter() {
+'use strict';
+
 // 颜色筛选：配色下拉、用量缓存与行色刷新。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweColorFilter 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -138,7 +143,7 @@
   });
   MaweSelection.updateMultiSelectionClasses();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   MaweHint.flashHint(`已选中 ${MaweSelection.selectedIdxs.size} 条过滤字幕`, MaweSelection.selectedIdxs.size ? 'success' : 'invalid');
 }
 
@@ -338,3 +343,4 @@
     positionColorFilterMenu
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

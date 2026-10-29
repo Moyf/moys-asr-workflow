@@ -45,6 +45,9 @@ class ProjectTracksTests(unittest.TestCase):
             with self.subTest(fixture=path.name):
                 raw = json.loads(path.read_text(encoding="utf-8"))
                 original = copy.deepcopy(raw)
+                if len((raw.get("multi_subtitle") or {}).get("tracks") or []) > 1:
+                    self.assertRejected(raw, "$.tracks")
+                    continue
                 expected = json.loads(path.with_name(path.name.replace(".input.", ".expected.")).read_text(encoding="utf-8"))
                 actual = import_project(raw)
                 self.assertEqual(actual.project, expected)
@@ -59,7 +62,7 @@ class ProjectTracksTests(unittest.TestCase):
             with self.subTest(fixture=case["name"]):
                 self.assertRejected(case["input"], case["error_path"])
 
-    def test_v3_validation_preserves_all_fields_and_returns_detached_copy(self):
+    def test_v2_validation_preserves_all_fields_and_returns_detached_copy(self):
         project = canonical()
         project["tracks"][0]["metadata"] = {"zero": 0, "false": False, "empty": [], "object": {}}
         project["tracks"][0]["segments"][0].update(
@@ -92,34 +95,35 @@ class ProjectTracksTests(unittest.TestCase):
         ids = [item["id"] for item in iter_segments(project)]
         self.assertEqual(ids, ["main-cue-1-2", "main-cue-1", "overlay-cue-1"])
 
-    def test_legacy_bindings_resolve_implicit_ids_without_overwriting_reserved_explicit_ids(self):
+    def test_legacy_bindings_resolve_implicit_ids_without_overwriting_explicit_cue_ids(self):
         raw = {"segments": [{"start": 0, "end": 100, "text": "generated"}, cue("main-001", 100, 200)],
-               "multi_subtitle": {"enabled": True, "active_track_id": "extension-001-generated",
-                   "tracks": [{"segments": [{"start": 0, "end": 100, "text": "translation"}]},
-                              {"id": "extension-001", "segments": []}],
-                   "bindings": [{"track_id": "extension-001-generated", "main_segment_ids": ["main-001-generated"],
-                                 "extension_segment_ids": ["extension-001-generated-segment-001"]}]}}
+               "multi_subtitle": {"enabled": True, "active_track_id": "extension-001",
+                   "tracks": [{"segments": [{"start": 0, "end": 100, "text": "translation"}]}],
+                   "bindings": [{"track_id": "extension-001", "main_segment_ids": ["main-001-generated"],
+                                 "extension_segment_ids": ["extension-001-segment-001"]}]}}
         original = copy.deepcopy(raw)
         project = normalize_project(raw)
         self.assertEqual(raw, original)
         self.assertEqual(project["bilingual"]["active_track_id"], "extension-1")
         binding = project["bindings"][0]
-        self.assertEqual(binding["source_segment_ids"], ["main-cue-1"])
-        self.assertEqual(binding["target_track_id"], "extension-1")
-        self.assertEqual(binding["target_segment_ids"], ["extension-1-cue-1"])
+        self.assertEqual(binding["source"], {"track_id": "main", "segment_id": "main-cue-1"})
+        self.assertEqual(binding["target"], {"track_id": "extension-1", "segment_id": "extension-1-cue-1"})
         self.assertEqual(get_main_track(project)["segments"][1]["id"], "main-001")
-        self.assertEqual(get_tracks_by_role(project, "extension")[1]["id"], "extension-001")
+        self.assertEqual(get_tracks_by_role(project, "secondary")[0]["id"], "extension-1")
         self.assertEqual(normalize_project(project), project)
-        binding["source_segment_ids"] = ["main-001-generated"]
-        self.assertRejected(project, "$.bindings[0].source_segment_ids[0]")
+        binding["source"]["segment_id"] = "main-001-generated"
+        self.assertRejected(project, "$.bindings[0].source.segment_id")
 
     def test_track_ids_reserve_legacy_extension_ids(self):
-        project = normalize_project({"segments": [], "overlay_track": {},
-                                     "multi_subtitle": {"tracks": [{"id": "main", "segments": []}, {"id": "overlay", "segments": []}]}})
-        self.assertEqual([item["id"] for item in project["tracks"]], ["main-2", "overlay-2", "main", "overlay"])
+        for secondary_id, expected in (("main", ["main-2", "overlay", "main"]),
+                                       ("overlay", ["main", "overlay-2", "overlay"])):
+            with self.subTest(secondary_id=secondary_id):
+                project = normalize_project({"segments": [], "overlay_track": {},
+                                            "multi_subtitle": {"tracks": [{"id": secondary_id, "segments": []}]}})
+                self.assertEqual([item["id"] for item in project["tracks"]], expected)
 
-    def test_v2_group_membership_keeps_id_and_value_metadata(self):
-        project = normalize_project({"schema": "moy.asr.project.v2", "segments": [cue(color_group_id="g")],
+    def test_v15_group_membership_keeps_id_and_value_metadata(self):
+        project = normalize_project({"schema": "moy.asr.project.v1.5", "segments": [cue(color_group_id="g")],
                                      "subtitle_groups": {"color": [{"id": "g", "value": {"name": "red", "vendor": 0}}], "sticker": [], "vendor": False}})
         self.assertEqual(get_main_track(project)["segments"][0]["color_group_id"], "g")
         self.assertEqual(project["subtitle_groups"]["color"][0]["value"]["vendor"], 0)
@@ -139,16 +143,16 @@ class ProjectTracksTests(unittest.TestCase):
                "overlay_track": {"segments": [cue()]}, "subtitle_groups": {"color": [], "sticker": []}}
         self.assertRejected(raw, "$.tracks[1].segments[0].id")
 
-    def test_v2_requires_global_ids_and_never_repairs_group_references(self):
-        raw = {"schema": "moy.asr.project.v2", "segments": [cue()], "overlay_track": {"segments": [cue()]},
+    def test_v15_requires_global_ids_and_never_repairs_group_references(self):
+        raw = {"schema": "moy.asr.project.v1.5", "segments": [cue()], "overlay_track": {"segments": [cue()]},
                "subtitle_groups": {"color": [], "sticker": []}}
         self.assertRejected(raw, "$.tracks[1].segments[0].id")
         raw["overlay_track"]["segments"] = []
         raw["segments"][0]["color_group_id"] = "missing"
         self.assertRejected(raw, "$.tracks[0].segments[0].color_group_id")
 
-    def test_v2_rejects_legacy_group_fields_even_null(self):
-        raw = {"schema": "moy.asr.project.v2", "segments": [cue(color=None)],
+    def test_v15_rejects_legacy_group_fields_even_null(self):
+        raw = {"schema": "moy.asr.project.v1.5", "segments": [cue(color=None)],
                "subtitle_groups": {"color": [], "sticker": []}}
         self.assertRejected(raw, "$.tracks[0].segments[0].color")
 
@@ -171,7 +175,7 @@ class ProjectTracksTests(unittest.TestCase):
         self.assertRejected({"schema": PROJECT_SCHEMA, "segments": []}, "$.segments")
         self.assertRejected({"segments": [], "tracks": []}, "$.tracks")
 
-    def test_v3_track_invariants(self):
+    def test_v2_track_invariants(self):
         for modify, path in (
             (lambda p: p["tracks"].clear(), "$.tracks"),
             (lambda p: p["tracks"].append(track("second", segments=[])), "$.tracks"),
@@ -186,30 +190,30 @@ class ProjectTracksTests(unittest.TestCase):
                 modify(project)
                 self.assertRejected(project, path)
 
-    def test_one_source_can_bind_to_each_language_but_not_twice_per_track(self):
+    def test_one_source_cannot_bind_twice_to_secondary(self):
         project = canonical()
-        for language in ("en", "fr"):
-            project["tracks"].append(track(language, "extension", [cue(language)]))
-            project["bindings"].append({"id": f"bind-{language}", "source_track_id": "main", "target_track_id": language,
-                                        "source_segment_ids": ["cue-1"], "target_segment_ids": [language],
+        for language in ("en",):
+            project["tracks"].append(track(language, "secondary", [cue(language)]))
+            project["bindings"].append({"id": f"bind-{language}", "source": {"track_id": "main", "segment_id": "cue-1"},
+                                        "target": {"track_id": language, "segment_id": language},
                                         "start_offset_ms": 0, "end_offset_ms": 0})
         project["bilingual"]["active_track_id"] = "en"
         self.assertTrue(validate_tracks_project(project).ok)
         duplicate = {**project["bindings"][0], "id": "duplicate"}
         project["bindings"].append(duplicate)
-        self.assertRejected(project, "$.bindings[2]")
+        self.assertRejected(project, "$.bindings[1]")
 
-    def test_binding_offset_and_membership_validate_on_v3(self):
+    def test_binding_offset_and_membership_validate_on_v2(self):
         project = canonical()
-        project["tracks"].append(track("en", "extension", [cue("en", 1050, 2050)]))
+        project["tracks"].append(track("en", "secondary", [cue("en", 1050, 2050)]))
         project["bilingual"]["active_track_id"] = "en"
-        binding = {"id": "b", "source_track_id": "main", "target_track_id": "en", "source_segment_ids": ["cue-1"],
-                   "target_segment_ids": ["en"], "start_offset_ms": 0, "end_offset_ms": 50}
+        binding = {"id": "b", "source": {"track_id": "main", "segment_id": "cue-1"},
+                   "target": {"track_id": "en", "segment_id": "en"}, "start_offset_ms": 0, "end_offset_ms": 50}
         project["bindings"] = [binding]
         self.assertRejected(project, "$.bindings[0].start_offset_ms")
         binding["start_offset_ms"] = 50
-        binding["target_segment_ids"] = ["cue-1"]
-        self.assertRejected(project, "$.bindings[0].target_segment_ids[0]")
+        binding["target"]["segment_id"] = "cue-1"
+        self.assertRejected(project, "$.bindings[0].target.segment_id")
 
     def test_failure_never_mutates_source_or_returns_partial_project(self):
         raw = {"segments": [cue()], "multi_subtitle": {"tracks": [{"id": "en", "segments": [cue("en")]}],
@@ -223,10 +227,10 @@ class ProjectTracksTests(unittest.TestCase):
         project = canonical()
         self.assertIs(get_main_track(project), project["tracks"][0])
         self.assertIs(get_track(project, "main"), project["tracks"][0])
-        self.assertEqual(get_tracks_by_role(project, "extension"), [])
+        self.assertEqual(get_tracks_by_role(project, "secondary"), [])
         self.assertEqual(list(iter_segments(project)), project["tracks"][0]["segments"])
 
-    def test_factory_creates_native_v3_and_preserves_input_payloads(self):
+    def test_factory_creates_native_v2_and_preserves_input_payloads(self):
         segments = [{"start": 0, "end": 100, "text": "hi", "vendor": {"x": False}}, cue("main-cue-1", 100, 200)]
         original = copy.deepcopy(segments)
         project = make_project(segments, main_fields={"language": "en"}, project_fields={"media": "clip.wav"})
@@ -238,7 +242,7 @@ class ProjectTracksTests(unittest.TestCase):
         with self.assertRaises(ProjectValidationFailed):
             make_project([], project_fields={"schema": "future"})
 
-    def test_explicit_timing_repair_preserves_zero_length_punctuation_in_v3(self):
+    def test_explicit_timing_repair_preserves_zero_length_punctuation_in_v2(self):
         project = canonical()
         get_main_track(project)["segments"][0]["items"] = [{"text": "!", "start": 2000, "end": 2000}]
         self.assertEqual(repair_project_timing_ranges(project), 0)
@@ -258,14 +262,14 @@ class ProjectTracksTests(unittest.TestCase):
                                       "extension_segment_ids": ["en"], "start_offset_ms": None, "end_offset_ms": None}]}}
         project = normalize_project(raw)
         self.assertFalse(get_tracks_by_role(project, "overlay")[0]["enabled"])
-        self.assertFalse(get_tracks_by_role(project, "extension")[0]["enabled"])
-        self.assertEqual(get_tracks_by_role(project, "extension")[0]["split_mode"], "word")
+        self.assertFalse(get_tracks_by_role(project, "secondary")[0]["enabled"])
+        self.assertEqual(get_tracks_by_role(project, "secondary")[0]["split_mode"], "word")
         self.assertEqual(project["bindings"][0]["start_offset_ms"], 50)
         self.assertEqual(project["bilingual"]["display_mode"], "both")
         self.assertNotIn("split_mode_override", get_main_track(project))
         self.assertEqual(normalize_project({"segments": [], "multi_subtitle": {"tracks": None, "bindings": None}})["bindings"], [])
 
-    def test_v3_rejects_duplicate_bilingual_enabled_flag(self):
+    def test_v2_rejects_duplicate_bilingual_enabled_flag(self):
         project = canonical()
         project["bilingual"]["enabled"] = True
         self.assertRejected(project, "$.bilingual.enabled")
@@ -285,22 +289,32 @@ class ProjectTracksTests(unittest.TestCase):
         project["tracks"][0]["timed_text_edit_view"] = "vendor-specific"
         self.assertEqual(normalize_project(project), project)
 
-    def test_v2_trims_explicit_ids_before_project_wide_uniqueness_check(self):
-        raw = {"schema": "moy.asr.project.v2", "segments": [cue(" cue-1 ")],
+    def test_v15_trims_explicit_ids_before_project_wide_uniqueness_check(self):
+        raw = {"schema": "moy.asr.project.v1.5", "segments": [cue(" cue-1 ")],
                "subtitle_groups": {"color": [], "sticker": []}}
         self.assertEqual(get_main_track(normalize_project(raw))["segments"][0]["id"], "cue-1")
         raw["overlay_track"] = {"segments": [cue("cue-1")]}
         self.assertRejected(raw, "$.tracks[1].segments[0].id")
 
-    def test_opaque_ids_with_separators_do_not_collide_in_binding_pairs(self):
+    def test_multiple_secondary_tracks_are_rejected_without_mutating_input(self):
         project = canonical()
         project["tracks"][0]["segments"] = [cue("c", 0, 100), cue("b:c", 100, 200)]
-        project["tracks"].extend([track("a:b", "extension", [cue("target-1", 0, 100)]),
-                                  track("a", "extension", [cue("target-2", 100, 200)])])
+        project["tracks"].extend([track("a:b", "secondary", [cue("target-1", 0, 100)]),
+                                  track("a", "secondary", [cue("target-2", 100, 200)])])
         project["bilingual"]["active_track_id"] = "a:b"
-        project["bindings"] = [{"id": f"binding-{index}", "source_track_id": "main", "target_track_id": target,
-            "source_segment_ids": [source], "target_segment_ids": [f"target-{index}"], "start_offset_ms": 0, "end_offset_ms": 0}
+        project["bindings"] = [{"id": f"binding-{index}", "source": {"track_id": "main", "segment_id": source},
+            "target": {"track_id": target, "segment_id": f"target-{index}"}, "start_offset_ms": 0, "end_offset_ms": 0}
             for index, (target, source) in enumerate((("a:b", "c"), ("a", "b:c")), 1)]
+        self.assertRejected(project, "$.tracks")
+
+    def test_opaque_ids_with_separators_remain_distinct_with_one_secondary(self):
+        project = canonical()
+        project["tracks"][0]["segments"] = [cue("c", 0, 100), cue("b:c", 100, 200)]
+        project["tracks"].append(track("a:b", "secondary", [cue("target-1", 0, 100), cue("target-2", 100, 200)]))
+        project["bilingual"]["active_track_id"] = "a:b"
+        project["bindings"] = [{"id": f"binding-{index}", "source": {"track_id": "main", "segment_id": source},
+            "target": {"track_id": "a:b", "segment_id": f"target-{index}"}, "start_offset_ms": 0, "end_offset_ms": 0}
+            for index, source in enumerate(("c", "b:c"), 1)]
         self.assertTrue(validate_tracks_project(project).ok)
 
     def test_invalid_timebase_enum_type_returns_validation_error(self):

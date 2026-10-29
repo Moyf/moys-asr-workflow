@@ -10,7 +10,6 @@ from urllib.parse import quote, unquote, urljoin, urlsplit
 
 from maw.media import MediaStatus, project_media_reference, resolve_project_media
 from maw.project_io import rebase_project_media, write_mosp
-from maw.project import normalize_project
 from tests.test_local_editor_server import server_editor
 from tests.compact_assertions import CompactContainerAssertions
 
@@ -106,13 +105,13 @@ class ProjectMediaReferenceTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(self.output.read_bytes(), original)
         self.assertFalse(self.output.with_suffix(".mosp.bak").exists())
 
-    def test_remember_migrates_legacy_storage_and_preserves_backup_and_caches(self) -> None:
+    def test_remember_preserves_legacy_storage_and_backup_and_caches(self) -> None:
         self.raw["waveform"] = {"legacy": "must stay during relink"}
         self.output.write_text(json.dumps(self.raw), encoding="utf-8")
         original = self.output.read_bytes()
         self.load(remember=True)
         saved = json.loads(self.output.read_text(encoding="utf-8"))
-        self.assertEqual(saved, normalize_project({**self.raw, "media": "../" + self.media.name}))
+        self.assertEqual(saved, {**self.raw, "media": "../" + self.media.name})
         self.assertEqual(saved["waveform"], self.raw["waveform"])
         self.assertEqual(saved["extra"], self.raw["extra"])
         self.assertEqual(self.output.with_suffix(".mosp.bak").read_bytes(), original)

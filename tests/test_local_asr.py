@@ -342,7 +342,7 @@ class LocalSegmentationTuningTests(unittest.TestCase):
         segments = build_local_segments(result, duration_ms=12_000, max_len=15, min_len=5, gap_split_ms=300)
 
         self.assertEqual([seg["text"] for seg in segments], [
-            # 全角逗号仍切句，默认保留所有句尾符号。
+            # 共享断句配置下全角逗号仍切句，默认保留所有句尾符号。
             "本地模型，",
             "AI校准和翻译，",
             "双语字幕，",

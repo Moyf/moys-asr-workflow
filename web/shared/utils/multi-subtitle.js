@@ -8,12 +8,12 @@ export function createUtilsModule(dependencies) {
   const tracks = project => Array.isArray(project?.tracks) ? project.tracks : [];
   const mainTrack = project => tracks(project).find(track => track.role === 'main') || null;
   const extensionTrack = (project, trackId = project?.bilingual?.active_track_id) => tracks(project)
-    .find(track => track.role === 'extension' && (!trackId || track.id === trackId)) || null;
+    .find(track => track.role === 'secondary' && (!trackId || track.id === trackId)) || null;
   const cue = (project, trackId, cueId) => tracks(project).find(track => track.id === trackId)
     ?.segments.find(segment => segment.id === cueId) || null;
 
   function normalizeMultiSubtitleProject(project) {
-    if (project?.schema !== 'moy.asr.project.v3' || !Array.isArray(project.tracks)
+    if (project?.schema !== 'moy.asr.project.v2' || !Array.isArray(project.tracks)
         || !Array.isArray(project.bindings) || !project.bilingual) {
       throw new TypeError('Bilingual editing requires a canonical tracks project');
     }
@@ -31,10 +31,10 @@ export function createUtilsModule(dependencies) {
       name: options.name ?? (role === 'overlay' ? '叠加字幕' : '副字幕'),
       enabled: options.enabled ?? false, segments: cloneJsonValue(options.segments || []) };
     project.tracks.push(track);
-    if (role === 'extension' && !project.bilingual.active_track_id) project.bilingual.active_track_id = trackId;
+    if (role === 'secondary' && !project.bilingual.active_track_id) project.bilingual.active_track_id = trackId;
     return track;
   }
-  function ensureExtensionTrack(project, options = {}) { return ensureRoleTrack(project, 'extension', options); }
+  function ensureExtensionTrack(project, options = {}) { return ensureRoleTrack(project, 'secondary', options); }
   function ensureOverlayTrack(project, options = {}) { return ensureRoleTrack(project, 'overlay', options); }
   function mergeMainAndOverlaySegments(mainSegments, overlaySegments) {
     return [
@@ -58,26 +58,32 @@ export function createUtilsModule(dependencies) {
     const cueId = stableId(segmentId);
     if (!cueId) return null;
     return (project?.bindings || []).find(binding => {
-      if (trackId && binding.target_track_id !== trackId) return false;
-      const source = binding.source_segment_ids?.includes(cueId);
-      const target = binding.target_segment_ids?.includes(cueId);
+      if (trackId && binding.target?.track_id !== trackId) return false;
+      const source = binding.source?.segment_id === cueId;
+      const target = binding.target?.segment_id === cueId;
       return ['main', 'source'].includes(side) ? source : ['extension', 'target'].includes(side) ? target : source || target;
     }) || null;
   }
-  function buildSubtitleBinding(mainSegment, extensionSegment, targetTrackId, bindingId = null, sourceTrackId) {
+  function buildSubtitleBinding(mainSegment, extensionSegment, targetTrackId, bindingId = null, sourceTrackId, existingBindings = []) {
     if (!stableId(sourceTrackId) || !stableId(targetTrackId)) throw new TypeError('Binding requires explicit source and target track IDs');
+    const used = new Set(existingBindings.map(binding => binding.id));
+    const explicitId = stableId(bindingId);
+    if (explicitId && used.has(explicitId)) throw new TypeError('Binding ID already exists');
+    const base = explicitId || Array.from(`binding-${stableId(mainSegment.id)}-${stableId(extensionSegment.id)}`).slice(0, 150).join('');
+    let identifier = base;
+    for (let suffix = 2; used.has(identifier); suffix++) identifier = `${base}-${suffix}`;
     return {
-      id: stableId(bindingId) || Array.from(`binding-${stableId(mainSegment.id)}-${stableId(extensionSegment.id)}`).slice(0, 150).join(''),
-      source_track_id: sourceTrackId, target_track_id: targetTrackId,
-      source_segment_ids: [mainSegment.id], target_segment_ids: [extensionSegment.id],
+      id: identifier,
+      source: { track_id: sourceTrackId, segment_id: mainSegment.id },
+      target: { track_id: targetTrackId, segment_id: extensionSegment.id },
       start_offset_ms: Math.round(Number(extensionSegment.start) - Number(mainSegment.start)),
       end_offset_ms: Math.round(Number(extensionSegment.end) - Number(mainSegment.end)),
     };
   }
   function rebuildBindingOffsets(project) {
     for (const binding of project?.bindings || []) {
-      const source = cue(project, binding.source_track_id, binding.source_segment_ids?.[0]);
-      const target = cue(project, binding.target_track_id, binding.target_segment_ids?.[0]);
+      const source = cue(project, binding.source?.track_id, binding.source?.segment_id);
+      const target = cue(project, binding.target?.track_id, binding.target?.segment_id);
       if (!source || !target) continue;
       binding.start_offset_ms = target.start - source.start;
       binding.end_offset_ms = target.end - source.end;
@@ -96,9 +102,9 @@ export function createUtilsModule(dependencies) {
   function removeBindingsForSegments(project, segmentIds, side = 'either', trackId = null) {
     const ids = new Set(segmentIds);
     return removeSubtitleBindings(project, binding => {
-      if (trackId && binding.target_track_id !== trackId) return false;
-      const source = binding.source_segment_ids?.some(cueId => ids.has(cueId));
-      const target = binding.target_segment_ids?.some(cueId => ids.has(cueId));
+      if (trackId && binding.target?.track_id !== trackId) return false;
+      const source = ids.has(binding.source?.segment_id);
+      const target = ids.has(binding.target?.segment_id);
       return ['main', 'source'].includes(side) ? source : ['extension', 'target'].includes(side) ? target : source || target;
     });
   }
@@ -109,24 +115,23 @@ export function createUtilsModule(dependencies) {
     if (!main || !promoted || !Array.isArray(project.bindings)) return { swapped: false, reason: 'missing-track' };
     if (!main.segments.length || !promoted.segments.length) return { swapped: false, reason: 'empty-track' };
     const mapping = new Map();
-    for (const binding of project.bindings) if (binding.source_track_id === main.id && binding.target_track_id === promoted.id
-      && binding.source_segment_ids.length === 1 && binding.target_segment_ids.length === 1) mapping.set(binding.source_segment_ids[0], binding.target_segment_ids[0]);
+    for (const binding of project.bindings) if (binding.source?.track_id === main.id && binding.target?.track_id === promoted.id)
+      mapping.set(binding.source.segment_id, binding.target.segment_id);
     let unmappedBindingCount = 0; let remappedBindingCount = 0;
     const bindings = project.bindings.flatMap(binding => {
       const copy = cloneJsonValue(binding);
-      if (binding.target_track_id === promoted.id && binding.source_track_id === main.id) {
-        copy.source_track_id = promoted.id; copy.target_track_id = main.id;
-        copy.source_segment_ids = [...binding.target_segment_ids]; copy.target_segment_ids = [...binding.source_segment_ids];
-      } else if (binding.source_track_id === main.id) {
-        const next = binding.source_segment_ids.map(cueId => mapping.get(cueId));
-        if (next.some(cueId => !cueId)) { unmappedBindingCount++; return []; }
-        copy.source_track_id = promoted.id; copy.source_segment_ids = next; remappedBindingCount++;
+      if (binding.target?.track_id === promoted.id && binding.source?.track_id === main.id) {
+        copy.source = cloneJsonValue(binding.target); copy.target = cloneJsonValue(binding.source);
+      } else if (binding.source?.track_id === main.id) {
+        const next = mapping.get(binding.source.segment_id);
+        if (!next) { unmappedBindingCount++; return []; }
+        copy.source.track_id = promoted.id; copy.source.segment_id = next; remappedBindingCount++;
       }
       return [copy];
     });
     if (unmappedBindingCount) return { swapped: false, reason: 'unmapped-bindings', unmappedBindingCount };
     const oldEnabled = promoted.enabled;
-    main.role = 'extension'; main.enabled = oldEnabled;
+    main.role = 'secondary'; main.enabled = oldEnabled;
     promoted.role = 'main'; promoted.enabled = true;
     project.bindings = bindings; project.bilingual.active_track_id = main.id;
     rebuildBindingOffsets(project);
@@ -161,7 +166,7 @@ export function createUtilsModule(dependencies) {
     const extensionById = new Map(extensionSegments.map((segment, index) => [segment.id, index]));
     const mapping = new Map(); const bound = new Set();
     for (const binding of bindings) {
-      const sourceId = binding.source_segment_ids?.[0]; const index = extensionById.get(binding.target_segment_ids?.[0]);
+      const sourceId = binding.source?.segment_id; const index = extensionById.get(binding.target?.segment_id);
       if (!Number.isInteger(index) || mapping.has(sourceId)) continue;
       mapping.set(sourceId, index); bound.add(index);
     }

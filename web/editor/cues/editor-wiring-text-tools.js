@@ -424,7 +424,6 @@ MaweDom.timedTextEditView?.addEventListener('click', (event) => {
   MaweDom.timedTextEditDraft.view = nextView;
   if ((MaweBoot.DATA.timed_text_edit_view === 'single' ? 'single' : 'rows') !== nextView) {
     MaweBoot.DATA.timed_text_edit_view = nextView;
-    MaweState.changes.timedTextEditViewDirty = true;
     MaweViewUpdates.invalidate({ save: true });
   }
   if (nextView === 'single') MaweDom.timedTextEditDraft.singleText = MaweDom.timedTextEditDraft.texts.join('\n');

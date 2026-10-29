@@ -217,10 +217,10 @@ test('word timing separation stays within multi-row single-track waveforms', asy
           { start: 500, end: 7000, text: 'extension text' },
         ] }] },
       }).project;
-      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
-        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
       MaweBoot.DATA.bilingual = fixture.bilingual;
-      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
     }
     MaweCuePanel.renderAll();
   });
@@ -414,10 +414,10 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
           bindings: [{ id: 'binding-a', track_id: 'secondary', main_segment_ids: ['main-a'], extension_segment_ids: ['secondary-a'] }],
         },
       }).project;
-      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
-        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
       MaweBoot.DATA.bilingual = fixture.bilingual;
-      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
     }
     MaweMultiSubtitleCore.normalizeMultiSubtitleState();
     MaweSelection.selectOnly(0);

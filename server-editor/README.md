@@ -57,6 +57,6 @@ Server 绑定的工程可以原子保存，覆盖前保留 `<文件名>.mosp.bak
 
 ## 前端维护
 
-修改编辑器 JavaScript、清单或构建配置后，先运行 `pnpm run build:editor` 再刷新页面；持续调试可另开 `pnpm run watch:editor`。提交前运行 `pnpm run check:editor`，并提交对应 bundle 与 `.meta.json`。CSS 和模板修改仍只需刷新。`web/editor-scripts.txt` 是装配顺序真源；Server 与便携页面读取同一份构建产物，最终用户不需要 Node。
+修改编辑器 JavaScript、清单或构建配置后，先运行 `pnpm run build:editor` 再刷新页面；持续调试可另开 `pnpm run watch:editor`。提交前运行 `pnpm run check:editor`；bundle 与 `.meta.json` 是构建产物，不提交。CSS 和模板修改仍只需刷新。`web/editor-scripts.txt` 是装配顺序真源；Server 读取构建产物，发行包内置，最终用户不需要 Node。
 
-日常不要重生成 `blank-editor.html`；只有发布检查或维护者明确要求更新便携产物时，才运行 `uv run --no-sync python edit.py --blank`。服务不提供任意本地文件浏览或任意路径写入接口。
+日常不要重生成 `blank-editor.html`；仅在 1.x 发布检查或维护者明确要求更新该版本便携产物时运行 `uv run --no-sync python edit.py --blank`。2.0 起停止生成、打包与部署独立 HTML / 在线编辑器，历史文件保留；本地 Server 继续维护。服务不提供任意本地文件浏览或任意路径写入接口。

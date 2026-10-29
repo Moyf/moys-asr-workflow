@@ -1016,6 +1016,8 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
 });
 // Refresh both initial server media and browser-local project/media changes.
 window.MaweGapRemovedMediaExport = Object.freeze({
+  applyMediaSizeToResolutionModal,
+  dynamicExportCanvasSize,
   updateButton() {
     const button = document.getElementById('download-gap-removed-video');
     if (!button) return;

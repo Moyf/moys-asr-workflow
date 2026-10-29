@@ -1,7 +1,7 @@
 """Canonical subtitle tracks and lossless v1/v2 import boundary.
 
 The v2 group contract follows PR #239 at 740953e2093c8a54fe17cabbe1b2d07d44ccd607.
-Legacy containers are read only in this module; all returned projects use v3.
+Legacy containers are read only in this module; all returned projects use v2.
 """
 
 from __future__ import annotations
@@ -17,11 +17,11 @@ from maw.project import (
 )
 from maw.project_preview import JsonDict, JsonValue, validate_preview
 
-TRACKS_PROJECT_SCHEMA = "moy.asr.project.v3"
+TRACKS_PROJECT_SCHEMA = "moy.asr.project.v2"
 LEGACY_PROJECT_SCHEMA = "moy.asr.project.v1"
-GROUP_PROJECT_SCHEMA = "moy.asr.project.v2"
-GROUP_PROJECT_SCHEMAS = frozenset({GROUP_PROJECT_SCHEMA, "moy.asr.project.v1.5"})
-TRACK_ROLES = frozenset({"main", "extension", "overlay"})
+GROUP_PROJECT_SCHEMA = "moy.asr.project.v1.5"
+GROUP_PROJECT_SCHEMAS = frozenset({GROUP_PROJECT_SCHEMA})
+TRACK_ROLES = frozenset({"main", "secondary", "overlay"})
 TRACK_SOURCE_FIELDS = (
     "language", "language_source", "split_mode", "timestamp_granularity",
     "model", "preserve_punctuation", "source_name",
@@ -95,10 +95,10 @@ def make_project(
     main_fields: dict[str, Any] | None = None,
     project_fields: dict[str, Any] | None = None,
 ) -> JsonDict:
-    """Create a new v3 project for ASR/SRT producers, preserving cue payloads.
+    """Create a new v2 project for ASR/SRT producers, preserving cue payloads.
 
     Missing cue IDs are generated only here (and in legacy import), never in
-    strict v3 validation. Explicit invalid or duplicate IDs remain errors.
+    strict v2 validation. Explicit invalid or duplicate IDs remain errors.
     """
     project = copy.deepcopy(project_fields if project_fields is not None else {})
     for key in ("schema", "tracks"):
@@ -157,7 +157,7 @@ def _validate_groups(project: dict[str, Any]) -> None:
                 if field in cue and (not isinstance(cue[field], str) or cue[field] not in group_ids):
                     _fail(f"{path}.{field}", "must reference an existing group")
                 if kind in cue or f"{kind}_ref" in cue:
-                    _fail(f"{path}.{kind}", "legacy group fields are not allowed in v3")
+                    _fail(f"{path}.{kind}", "legacy group fields are not allowed in v2")
 
 
 def _validate_bindings(project: dict[str, Any]) -> None:
@@ -173,20 +173,22 @@ def _validate_bindings(project: dict[str, Any]) -> None:
         if identifier in binding_ids:
             _fail(f"{path}.id", "must be unique within its collection")
         binding_ids.add(identifier)
+        for field in ("source_track_id", "target_track_id", "source_segment_ids", "target_segment_ids"):
+            if field in binding:
+                _fail(f"{path}.{field}", "legacy binding field is not allowed")
         endpoints = []
-        for side, role in (("source", "main"), ("target", "extension")):
-            track_id = binding.get(f"{side}_track_id")
+        for side, role in (("source", "main"), ("target", "secondary")):
+            ref = _object(binding.get(side), f"{path}.{side}")
+            track_id = ref.get("track_id")
             if not isinstance(track_id, str) or track_id not in tracks or tracks[track_id]["role"] != role:
-                _fail(f"{path}.{side}_track_id", f"must reference an existing {role} track")
-            ids = _array(binding.get(f"{side}_segment_ids"), f"{path}.{side}_segment_ids")
-            if len(ids) != 1 or not isinstance(ids[0], str):
-                _fail(f"{path}.{side}_segment_ids", "must contain exactly one stable ID")
-            cue = next((cue for cue in tracks[track_id]["segments"] if cue["id"] == ids[0]), None)
+                _fail(f"{path}.{side}.track_id", f"must reference an existing {role} track")
+            cue_id = _identifier(ref.get("segment_id"), f"{path}.{side}.segment_id")
+            cue = next((cue for cue in tracks[track_id]["segments"] if cue["id"] == cue_id), None)
             if cue is None:
-                _fail(f"{path}.{side}_segment_ids[0]", "must reference a cue on the specified track")
+                _fail(f"{path}.{side}.segment_id", "must reference a cue on the specified track")
             endpoints.append(cue)
         source, target = endpoints
-        pair = (binding["target_track_id"], source["id"])
+        pair = (binding["target"]["track_id"], source["id"])
         if pair in used_source or target["id"] in used_target:
             _fail(path, "must be one-to-one within the source/target track pair")
         used_source.add(pair)
@@ -202,7 +204,7 @@ def _validate_canonical(project: dict[str, Any]) -> None:
         _fail("$.schema", f"must be {TRACKS_PROJECT_SCHEMA}")
     for field in (*LEGACY_CONTAINERS, *TRACK_SOURCE_FIELDS):
         if field in project:
-            _fail(f"$.{field}", "legacy field is not allowed in v3")
+            _fail(f"$.{field}", "legacy field is not allowed in v2")
     tracks = _array(project.get("tracks"), "$.tracks")
     seen_tracks: set[str] = set()
     seen_cues: set[str] = set()
@@ -221,7 +223,7 @@ def _validate_canonical(project: dict[str, Any]) -> None:
         seen_tracks.add(identifier)
         role = track.get("role")
         if not isinstance(role, str) or role not in TRACK_ROLES:
-            _fail(f"{path}.role", "must be main, extension, or overlay")
+            _fail(f"{path}.role", "must be main, secondary, or overlay")
         main_count += role == "main"
         overlay_count += role == "overlay"
         if type(track.get("enabled")) is not bool:
@@ -251,7 +253,7 @@ def _validate_canonical(project: dict[str, Any]) -> None:
                 _fail(f"{cue_path}.id", "must be a unique project-wide cue ID")
             seen_cues.add(cue_id)
             # Existing ASS validation normalizes its argument; validate a copy so
-            # v3 validation and unknown ASS metadata round trips are non-mutating.
+            # v2 validation and unknown ASS metadata round trips are non-mutating.
             _validate_segment(copy.deepcopy(cue), cue_path, previous_end, errors)
             timed_values = [(cue, cue_path)]
             if isinstance(cue.get("items"), list):
@@ -267,6 +269,8 @@ def _validate_canonical(project: dict[str, Any]) -> None:
                 previous_end = cue["end"]
     if main_count != 1:
         _fail("$.tracks", "must contain exactly one main track")
+    if sum(track["role"] == "secondary" for track in tracks) > 1:
+        _fail("$.tracks", "supports at most one secondary track")
     if overlay_count > 1:
         _fail("$.tracks", "supports at most one overlay track")
     if errors:
@@ -276,7 +280,7 @@ def _validate_canonical(project: dict[str, Any]) -> None:
         _fail("$.bilingual.enabled", "enabled belongs to each track")
     if bilingual.get("display_mode") not in ("main", "extension", "both"):
         _fail("$.bilingual.display_mode", "must be main, extension, or both")
-    extensions = [track for track in tracks if track["role"] == "extension"]
+    extensions = [track for track in tracks if track["role"] == "secondary"]
     active = bilingual.get("active_track_id")
     if extensions or "active_track_id" in bilingual:
         if not isinstance(active, str) or not any(track["id"] == active for track in extensions):
@@ -286,7 +290,7 @@ def _validate_canonical(project: dict[str, Any]) -> None:
 
 
 def validate_tracks_project(raw: JsonValue) -> ProjectValidationResult:
-    """Strict v3 validation, returning a detached project only on success."""
+    """Strict v2 validation, returning a detached project only on success."""
     try:
         project = copy.deepcopy(_object(raw, "$"))
         _validate_canonical(project)
@@ -392,7 +396,7 @@ def _validate_legacy_content(project: dict[str, Any], multi: dict[str, Any], *, 
     for index, track in enumerate(project["tracks"]):
         path = f"$.tracks[{index}]"
         source_path = "$.segments" if track["role"] == "main" else "$.overlay_track.segments"
-        if track["role"] == "extension":
+        if track["role"] == "secondary":
             source_path = f"$.multi_subtitle.tracks[{extension_index}].segments"
             extension_index += 1
         metadata_errors: list[ProjectValidationError] = []
@@ -461,13 +465,15 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
         if field in project:
             _fail(f"$.{field}", "canonical field conflicts with legacy project")
     if schema == LEGACY_PROJECT_SCHEMA and "subtitle_groups" in project:
-        _fail("$.subtitle_groups", "group table requires project v2 or v3")
+        _fail("$.subtitle_groups", "group table requires project v2 or v2")
     main_segments = _array(project.pop("segments", None), "$.segments")
     multi_value = project.pop("multi_subtitle", None)
     multi = {} if multi_value is None else _object(multi_value, "$.multi_subtitle")
     if multi.get("schema") is not None and multi["schema"] != "moy.asr.multi_subtitle.v1":
         _fail("$.multi_subtitle.schema", "must be moy.asr.multi_subtitle.v1")
     extensions = _array(multi["tracks"] if multi.get("tracks") is not None else [], "$.multi_subtitle.tracks")
+    if len(extensions) > 1:
+        _fail("$.tracks", "supports at most one secondary track")
     reserved_tracks, track_aliases = _legacy_track_ids(extensions)
     main: dict[str, Any] = {
         "id": _fresh_id("main", reserved_tracks), "role": "main", "name": "主字幕",
@@ -500,7 +506,7 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
             _fail(f"$.multi_subtitle.tracks[{index}].role", "must be extension")
         if "enabled" in track and track["enabled"] != enabled:
             _fail(f"$.multi_subtitle.tracks[{index}].enabled", "migration metadata conflict")
-        track.update(role="extension", enabled=enabled)
+        track.update(role="secondary", enabled=enabled)
         track.setdefault("name", "副字幕")
         if track.get("segments") is None:
             track["segments"] = []
@@ -539,7 +545,7 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
     old_track_ids = {current: old for old, current in track_aliases.items()}
     for track in tracks:
         mapping: dict[str, str] = {}
-        prefix = f"{old_track_ids[track['id']]}-segment" if track["role"] == "extension" else track["role"]
+        prefix = f"{old_track_ids[track['id']]}-segment" if track["role"] == "secondary" else track["role"]
         old_ids = _legacy_normalized_ids(track["segments"], prefix)
         for index, cue in enumerate(track["segments"]):
             original = cue.get("id")
@@ -561,7 +567,7 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
             reserved_bindings.add(identifier)
     for index, binding in enumerate(bindings):
         path = f"$.multi_subtitle.bindings[{index}]"
-        for field in ("source_track_id", "target_track_id", "source_segment_ids", "target_segment_ids"):
+        for field in ("source", "target", "source_track_id", "target_track_id", "source_segment_ids", "target_segment_ids"):
             if field in binding:
                 _fail(f"{path}.{field}", "migration metadata conflict")
         if "id" not in binding:
@@ -573,8 +579,6 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
         target_id = track_aliases.get(target_id, target_id)
         if not any(track["id"] == target_id for track in extensions):
             _fail(f"{path}.track_id", "must reference an existing extension track")
-        binding["source_track_id"] = main["id"]
-        binding["target_track_id"] = target_id
         for old_field, side, track_id in (
             ("main_segment_ids", "source", main["id"]),
             ("extension_segment_ids", "target", target_id),
@@ -593,10 +597,10 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
             old_id = _identifier(ids[0], f"{path}.{old_field}[0]", trim=True)
             if old_id not in mappings[track_id]:
                 _fail(f"{path}.{old_field}[0]", "must reference an existing cue")
-            binding[f"{side}_segment_ids"] = [mappings[track_id][old_id]]
-        source = next(cue for cue in main["segments"] if cue["id"] == binding["source_segment_ids"][0])
+            binding[side] = {"track_id": track_id, "segment_id": mappings[track_id][old_id]}
+        source = next(cue for cue in main["segments"] if cue["id"] == binding["source"]["segment_id"])
         target_track = next(track for track in extensions if track["id"] == target_id)
-        target = next(cue for cue in target_track["segments"] if cue["id"] == binding["target_segment_ids"][0])
+        target = next(cue for cue in target_track["segments"] if cue["id"] == binding["target"]["segment_id"])
         for edge in ("start", "end"):
             if type(source.get(edge)) is int and type(target.get(edge)) is int:
                 if binding.get(f"{edge}_offset_ms") is None:

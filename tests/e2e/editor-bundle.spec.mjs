@@ -3,7 +3,7 @@ import {readFileSync, realpathSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {buildPortableBlankEditor, cleanupTempDir, disableOnboarding,
+import {buildBrowserEditorFixture, cleanupTempDir, disableOnboarding,
   findFreePort, makeTempDir, startBlankServer} from './helpers.mjs';
 import {readSources} from '../../scripts/build-editor.mjs';
 
@@ -12,7 +12,7 @@ const sources = readSources();
 const identity = readFileSync('web/editor/boot/editor-bundle.js', 'utf8').split('\n')[0];
 test.beforeAll(async () => {
   directory = makeTempDir('editor-bundle');
-  portable = buildPortableBlankEditor(join(directory, 'current.edit.html'));
+  portable = buildBrowserEditorFixture(join(directory, 'current.edit.html'));
   injected = join(directory, 'injected.edit.html');
   const python = process.env.MAW_E2E_PYTHON || 'uv';
   const prefix = process.env.MAW_E2E_PYTHON ? [] : ['run', '--no-sync', 'python'];
@@ -26,7 +26,7 @@ def render(**context):
                    ninja_sfx_base_url_json='"fixture-sfx/"', ui_language_json='"en"')
     return original(**context)
 edit.render_editor_page = render
-pathlib.Path(sys.argv[1]).write_text(edit.build_blank_html(), encoding='utf-8', newline='\\n')
+pathlib.Path(sys.argv[1]).write_text(edit.render_empty_editor_page(), encoding='utf-8', newline='\\n')
 `, injected], {windowsHide:true});
   server = await startBlankServer(await findFreePort(), join(directory, 'settings'));
 });

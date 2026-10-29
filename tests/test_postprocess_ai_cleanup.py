@@ -21,6 +21,7 @@ from maw.postprocess_ai_cleanup import (
     run_ai_cleanup,
 )
 from maw.postprocess_llm import LlmClientError
+from maw.project_tracks import get_tracks_by_role
 from tests.track_helpers import main_segments
 from tests.track_helpers import extension_tracks
 
@@ -355,20 +356,6 @@ class MicTestRemovalTest(AiCleanupTestCase):
                             "split_mode": "word",
                             "segments": translations,
                         },
-                        {
-                            "id": "independent",
-                            "role": "extension",
-                            "name": "独立副轨",
-                            "split_mode": "word",
-                            "segments": [
-                                {
-                                    "id": "overlapping",
-                                    "start": 0,
-                                    "end": 2000,
-                                    "text": "Independent",
-                                }
-                            ],
-                        },
                     ],
                     "bindings": [
                         {
@@ -384,7 +371,9 @@ class MicTestRemovalTest(AiCleanupTestCase):
                         )
                     ],
                 }
-                source = _project(segments, multi_subtitle=multi)
+                overlay = {"enabled": True, "segments": [
+                    {"id": "overlapping", "start": 0, "end": 2000, "text": "Independent"}]}
+                source = _project(segments, multi_subtitle=multi, overlay_track=overlay)
                 project_path, script_path = self.request(source, [segments[1]["text"]])
                 artifact, output, _ = _run(
                     self.directory,
@@ -414,8 +403,8 @@ class MicTestRemovalTest(AiCleanupTestCase):
                 self.assertEqual(result[0], {**translations[0], "disabled": True})
                 self.assertEqual(result[1:], translations[1:])
                 self.assertEqual(
-                    extension_tracks(output)[1]["segments"],
-                    multi["tracks"][1]["segments"],
+                    get_tracks_by_role(output, "overlay")[0]["segments"],
+                    overlay["segments"],
                 )
                 self.assertTrue(all(track["enabled"] == enabled for track in extension_tracks(output)))
                 self.assertEqual(len(output["bindings"]), 3)

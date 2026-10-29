@@ -1,7 +1,8 @@
 // 工程保存：服务器、文件句柄、另存为路径与脏标记清理。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweProjectSave 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweProjectSave 在原清单位次执行原 IIFE 体（挂
+// window.MaweProjectSave 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweProjectSave() {
 (function initMaweProjectSave(global) {
   'use strict';
 
@@ -92,6 +93,10 @@ jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
 
 
   async function saveProjectToServer({ silent = false, backupOnly = false } = {}) {
+    if (MaweServerSave.requiresMigrationSaveAs) {
+      if (silent || backupOnly) return false;
+      return saveProjectAsToFile();
+    }
     const bindingEpoch = MaweProjectLoad.projectBindingEpoch;
     const generation = MaweState.projectLoadGeneration;
     const current = () => bindingEpoch === MaweProjectLoad.projectBindingEpoch
@@ -186,6 +191,10 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
   // 统一保存入口：句柄目标优先（最近一次新建/另存为选定的文件），否则写回服务器绑定工程。
   async function saveCurrentProject({ silent = false } = {}) {
     if (MaweState.projectLoadPending) return false;
+    if (MaweServerSave.requiresMigrationSaveAs) {
+      if (silent) return false;
+      return saveProjectAsToFile();
+    }
     // A pointer preview is not committed subtitle truth. Timed autosave waits;
     // an explicit save first finishes this one history transaction.
     if (global.MaweAssCuePosition?.dragging) {
@@ -212,7 +221,7 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
     MaweCuePanel.commitCuePanelEdit();
-    const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
+    const suggested = `${MaweBoot.FILENAME_BASE}${MaweServerSave.requiresMigrationSaveAs ? '_v2' : ''}.mosp`;
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
     if (!MaweHost.files.hasSavePicker()) {
       await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), suggested, 'application/json', {
@@ -227,6 +236,14 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
         types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
       });
       if (!current()) return false;
+      if (MaweServerSave.requiresMigrationSaveAs) {
+        const existing = await handle.getFile();
+        if (!current()) return false;
+        if (existing.size > 0) {
+          MaweHint.flashHint('格式升级需要保存到新文件，请选择一个尚不存在的文件名；原工程未修改。', 'warning');
+          return false;
+        }
+      }
       let contentFingerprint;
       await MaweHost.files.writeBlob(handle, () => {
         if (!current()) throw new DOMException('工程已切换', 'AbortError');
@@ -237,6 +254,7 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
       });
       if (!current()) return false;
       MaweServerSave.projectFileHandle = handle;
+      MaweServerSave.requiresMigrationSaveAs = false;
       markProjectSaved(handle.name, null, { contentFingerprint, epoch: contentEpoch });
       MaweServerSave.configureServerSaveControls();
       MaweServerSave.scheduleAutoSave();
@@ -298,3 +316,11 @@ jsonNameEl,
 translatedEditorText
 });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function translatedEditorText(...args) { return window.MaweProjectSave.translatedEditorText(...args); }
+export function saveCurrentProject(...args) { return window.MaweProjectSave.saveCurrentProject(...args); }
+export function saveProjectAsToFile(...args) { return window.MaweProjectSave.saveProjectAsToFile(...args); }
+export function updateProjectDirtyIndicator(...args) { return window.MaweProjectSave.updateProjectDirtyIndicator(...args); }
+export function saveProjectToServer(...args) { return window.MaweProjectSave.saveProjectToServer(...args); }
+export function inlineEditHasUncommittedText(...args) { return window.MaweProjectSave.inlineEditHasUncommittedText(...args); }

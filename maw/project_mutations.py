@@ -58,8 +58,8 @@ def replace_main_segments(project: dict[str, Any], segments: Sequence[Mapping[st
                 for track in project_tracks(project)}
     bindings = []
     for relation in project.get("bindings", []):
-        source = by_track[relation["source_track_id"]].get(relation["source_segment_ids"][0])
-        target = by_track[relation["target_track_id"]].get(relation["target_segment_ids"][0])
+        source = by_track[relation["source"]["track_id"]].get(relation["source"]["segment_id"])
+        target = by_track[relation["target"]["track_id"]].get(relation["target"]["segment_id"])
         if source is None or target is None:
             continue
         binding = copy.deepcopy(relation)

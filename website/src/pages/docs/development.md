@@ -27,6 +27,17 @@ source: "docs/engineering/DEVELOPMENT.md"
 
 当前日常编辑以 Server 为主。底层生成器与公开 CLI 的参数、默认输出不同，不应据某个生成器的帮助推断所有入口；区别见 [CLI](../cli/)。
 
+## 独立编辑入口的版本边界
+
+`maw/editor_entry_policy.py` 以 `pyproject.toml` 的应用主版本为准，打包环境缺少元数据时使用随发行同步的 `maw/diagnostics.py` 版本。1.x 保留过渡生成能力；从 2.0 的首个预发布版本开始，`.edit.html` / `blank-editor.html` 和在线编辑器停止生成、打包与维护。不能仅升级 UI 的版本文字；发布前运行版本同步检查。无法识别的版本按不支持独立入口处理。
+
+- `edit.py` 命令和 `build_blank_html()`、`render_editor_html()` 拒绝生成；公开 CLI 的显式 `--html` 在调用 ASR 前退出。生成器隐式生成及旧 Launcher 配置跳过 HTML，保留正常 SRT / 工程输出；`--no-html` 和 `--json` 继续接受。
+- `MAW.spec` 在 2.0+ 不收录仓库的 `blank-editor.html`；Windows、macOS、AppImage 共用这一清单。收集前校验元数据与全部 bundled 版本标记，防止源码已切换、安装包却按旧 fallback 启用入口；不一致时先运行 `python scripts/sync_launcher_version.py --write`，再重建 bundle 和打包。仓库旧文件留作历史，不自动删改，不再要求 2.0 发布重生成。
+- Pages 在网站构建后执行 `scripts/prepare_editor_pages.py`：1.x 可生成在线页面，2.0+ 不生成 `/editor/`，发现残留目录时失败，避免上传混合版本。此脚本不删除历史文件；重新构建网站后再执行。网站推荐入口集中到本地应用。
+- `render_editor_page()`、模板、bundle、文件导入、下载式保存降级、Server 保存、备份恢复和媒体导出供本地应用共用，继续保留。HTML 对比报告、人工核验页也不属于此次退役范围。
+
+切换实现不代表发布验收完成。发布 2.0 前仍需在最终集成版本验证：本地应用打开旧工程及媒体、新建/保存/取消/失败保护、备份恢复、字幕与媒体导出，以及三个平台安装包和 Pages 实际产物。历史 HTML 不承诺兼容新版工程；历史发行附件与用户副本保持原样。
+
 ## 数据与持久化
 
 | 数据 | 真源 / 位置 | 边界 |
@@ -53,9 +64,9 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前构建含 188 个输入，`web/editor-modules.json` 标出 61 个真正的 ESM 工厂与外部桥，其余 127 个输入保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.13+ 与 `pnpm install`）。
+`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前构建含 188 个输入，`web/editor-modules.json` 标出 61 个真正的 ESM 工厂与外部桥，其余 127 个输入保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+ 与 `pnpm install`）。
 
-编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`（产物不入库；Server 渲染前也会自动重建）；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.13+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md)。
+编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`（产物不入库；Server 渲染前也会自动重建）；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md)。
 
 | 位置 | 职责 |
 | --- | --- |
@@ -92,7 +103,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 Agent 调试与测试使用[有界输出与分层调试](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md)中的 `scripts/run_check.py`：完整日志落盘，只回显有限摘要并保留退出码。该文档也说明 worktree 环境复用、生成物搜索边界、超时清理限制与按变化选择验证范围。
 
-开发者手动维护环境：`uv sync --group dev`；前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
+开发者手动维护环境：`uv sync --group dev --group test`；`test` 组只为真实媒体夹具补充 NumPy，不需要为此安装 OCR 或本地模型组。前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
 
 ```sh
 uv run --no-sync ruff check
@@ -111,6 +122,8 @@ git diff --check
 
 `tests/e2e/helpers.mjs` 默认以 `uv run --frozen python` 启动服务并清理继承的 PYTHONPATH；明确设置 `MAW_E2E_PYTHON` 时用指定解释器。Agent 已有环境时可设置该变量避免测试 helper 再同步依赖。
 
+独立的 cue-scroll 源码夹具复用已准备环境，默认入口使用 `uv run --no-sync python`；Windows supervisor 与应用环境分开传递，测试进程仍归属于同一 Job，保留退出、超时及旁观进程保护契约。
+
 Windows 使用 `scripts/run-e2e.ps1`，脚本检查 quapeaks，并在需要时按 lockfile 准备临时隔离环境。浏览器受限时可设置 `MAW_E2E_CHROMIUM_PATH` 指向已安装的 Chromium 系浏览器。
 
 ```powershell
@@ -119,14 +132,29 @@ Windows 使用 `scripts/run-e2e.ps1`，脚本检查 quapeaks，并在需要时�
 
 语法/单元、Server 契约、浏览器、打包与 CI 是不同验证层，报告时分别说明。
 
+### 提交前自审
+
+Greptile 复审是提交后的既定环节；把同一标准提前到提交前执行，在 PR 提交前消灭问题，减少被打回后来回修的循环。批量改动、功能开发与反馈修复在自检通过之后、提交 / 提 PR 之前执行一轮独立自审；一两行笔误修复与纯文档措辞由开发者自行判断是否省略。
+
+流程（agent 用后台 subagent 承担审查者；人类开发者换一个视角通读）：
+
+1. **独立视角通读全部 diff**（`git diff <基线>...HEAD`）。审查者未参与实现；实现者不为自己辩护，只回答提问。大 diff 按产品代码 / 测试与规范拆成多个审查者并行，各自给出编号 findings。
+2. **标准对标 Greptile**：正确性 bug、边界条件、异常与降级路径、回归风险、跨平台差异（Windows / macOS / Linux）、性能影响、测试有效性（测试是否真的守住修复）、仓库约定（AGENTS.md、CHANGELOG 小节归属、文档同步、个人路径与 CRLF）。每条 finding 必须给出证据——文件:行加实际执行过的命令或验证输出；禁止臆测式风格点评。
+3. **双向验证**：新增测试在「修复缺失」的代码上必须真实失败（暂存修复只留测试，或用基线 worktree 对照），证明它能守住回归；行为修复用既有 e2e 用例做旧逻辑回退对照。验证后恢复原状并重建受影响产物。
+4. **分诊**：真实缺陷立即修复并复验；nit 与「接受的风险」逐条记录，不静默丢弃，也不为表格好看伪装成已修复。
+5. **记录在案**：审查发现与处置写入 `docs/logs/release<基线>/<YYMMDD>_<主题>/REVIEW_FINDINGS.md`，按[文档约定](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/README.md#doc-policy)登记日志索引，供后续 Greptile 复审对照与下次开发参考。
+6. **放行门槛**：没有未处置的 blocker / major 才提交；PR 描述如实写自审发现、处置与未测边界。审查过程中的临时修改全部恢复，不残留进程与脏文件。
+
 ## 文档与发布
 
 README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 [JSON_SCHEMA](../json-schema/)。反馈和开发进度写任务账本。官网文档由 [同步脚本](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) 生成，不手改副本。
 
-日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。在 PR 描述注明“内联副本待发布前统一重生成”；发布前或维护者明确要求时才执行：
+日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。仅 1.x 过渡版本在发布前或维护者明确要求时生成内联副本，并在相应 PR 描述注明“内联副本待发布前统一重生成”：
 
 ```sh
 uv run --no-sync python edit.py --blank
 ```
+
+2.0（含预发布版）起不执行此命令，不要求重生成内联副本；只构建和验证本地应用共用资源。
 
 发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。2.0 起先用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 从 CL 生成并提交版本文档，再用 `--check-doc` 检查新鲜度、`--output PATH` 检查最终 Release notes；beta 汇总、正式版精简和小版本基础内容引用见[发布管线](../documentation-index/#engineering-releases)。发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。

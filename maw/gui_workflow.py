@@ -17,6 +17,7 @@ from threading import Event
 from typing import BinaryIO, Final, TextIO, final
 
 from maw.project_tracks import get_main_track
+from maw.editor_entry_policy import require_standalone_editor, should_generate_standalone_editor
 from maw.console import configure_utf8_environment
 from maw.audio_diagnostics import empty_transcription_error, is_empty_transcription_error
 from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, bundled_ffmpeg_directory, ffmpeg_search_path, resolve_ffmpeg_tools
@@ -572,7 +573,7 @@ def run_transcription(
     if raw_path is not None:
         _require_output(raw_path, "debug response/artifact manifest")
     html_path = None
-    if request.generate_html:
+    if should_generate_standalone_editor(request.generate_html):
         try:
             # HTML 落 media 对应的 _maw 根；该目录可能尚未创建（srt 仍在媒体旁时）。
             paths.html.parent.mkdir(parents=True, exist_ok=True)
@@ -588,6 +589,7 @@ def run_transcription(
 
 
 def render_editor_html(json_path: Path, media_path: Path, html_path: Path, ui_language: str = "zh") -> Path | None:
+    require_standalone_editor()
     try:
         from edit import get_app_version, media_tag, render_editor_page
         from maw.project import normalize_project

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 const utilsContext = { window: {}, TextDecoder };
 loadEditorModule(utilsContext, 'shared/editor-utils.js');
@@ -40,7 +41,10 @@ function compositionFixture() {
   context.window = context;
   vm.createContext(context);
   for (const file of ['boot/editor-runtime', 'state/editor-state', 'media/editor-audio-processing',
-    'io/editor-json-repair', 'io/editor-project-save']) vm.runInContext(read(file), context, { filename: file });
+    'io/editor-json-repair', 'io/editor-project-save']) {
+    const initializers = { 'state/editor-state': 'initMaweState', 'io/editor-json-repair': 'initMaweJsonRepair', 'io/editor-project-save': 'initMaweProjectSave' };
+    vm.runInContext(initializers[file] ? invokedInitModuleSource(`editor/${file}.js`, initializers[file]) : read(file), context, { filename: file });
+  }
   context.MaweAudioProcessing.loadProject({ gain_db: 1, target_lufs: -16, peak_ceiling_dbtp: -1 });
   context.MaweState.setSnapshotReader(context.MaweJsonRepair.projectSnapshot);
   context.MaweState.beginProjectSession();
@@ -68,7 +72,7 @@ test('canonical content checkpoints include audio processing and never acknowled
     return response;
   };
   const saving = c.MaweProjectSave.saveCurrentProject();
-  assert.equal(sent.schema, 'moy.asr.project.v3');
+  assert.equal(sent.schema, 'moy.asr.project.v2');
   assert.equal(sent.tracks[0].segments[0].id, 'cue-1');
   assert.equal(sent.audio_processing.gain_db, 3);
   assert.equal(sent.audio_processing.target_lufs, -16);

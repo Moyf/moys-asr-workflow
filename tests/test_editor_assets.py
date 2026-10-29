@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import ClassVar
 
 from tests.compact_assertions import CompactContainerAssertions
 
@@ -41,14 +42,30 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertEqual(base64.b64decode(match.group(1)), (edit.WEB_DIR / 'assets/moi_dancing.gif').read_bytes())
 
+    # G06 后这些 composition 模块不再出现在清单里，
+    # 但仍是 waveform.js 的显式 import 与源码契约。
+    WAVEFORM_COMPOSITION_SOURCES: ClassVar[tuple[str, ...]] = (
+        "editor/media/editor-thumbnails.js",
+        "editor/media/waveform/thumbnails.js",
+        "editor/media/waveform/media.js",
+        "editor/media/waveform/render.js",
+        "editor/media/waveform/cue-blocks.js",
+        "editor/media/waveform/word-blocks.js",
+        "editor/media/waveform/canvas.js",
+        "editor/media/waveform/input.js",
+    )
+
     def source_contract_text(self) -> str:
         """Historical source-shape checks inspect sources, not esbuild printing."""
-        return "\n\n".join(edit.read_web_asset(name) for name in edit.read_editor_script_manifest())
+        names = list(edit.read_editor_script_manifest()) + list(self.WAVEFORM_COMPOSITION_SOURCES)
+        return "\n\n".join(edit.read_web_asset(name) for name in names)
 
-    def test_editor_script_manifest_is_ordered_and_complete(self) -> None:
+    def test_editor_script_manifest_is_complete(self) -> None:
+        manifest = edit.read_editor_script_manifest()
+        self.assertEqual(len(manifest), len(set(manifest)))
         self.assertEqual(
-            edit.read_editor_script_manifest(),
-            (
+            set(manifest),
+            {
                 "editor/boot/editor-boot.js",
                 "editor/boot/editor-runtime.js",
                 "editor/state/editor-state.js",
@@ -56,10 +73,11 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/state/editor-commands.js",
                 "editor/boot/editor-host.js",
                 "shared/gap-remove-core.js",
+                "shared/utils/tracks.js",
                 "shared/editor-utils.js",
+                "shared/utils/project-validation.js",
                 "shared/editor-i18n.js",
                 "shared/tooltip.js",
-                "editor/media/editor-thumbnails.js",
                 "editor/media/waveform/constants.js",
                 "editor/media/waveform/labels.js",
                 "editor/media/waveform/scale.js",
@@ -73,19 +91,12 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/media/waveform/pointer.js",
                 "editor/media/waveform/workspace.js",
                 "editor/media/waveform/scale-controls.js",
-                "editor/media/waveform/media.js",
-                "editor/media/waveform/render.js",
-                "editor/media/waveform/cue-blocks.js",
-                "editor/media/waveform/word-blocks.js",
-                "editor/media/waveform/canvas.js",
-                "editor/media/waveform/input.js",
                 "editor/media/waveform/cue-drag.js",
                 "editor/media/waveform/cue-commands.js",
                 "editor/media/waveform/gap-drag.js",
                 "editor/media/waveform/markers.js",
                 "editor/media/waveform/cue-drag-update.js",
                 "editor/media/waveform/playback.js",
-                "editor/media/waveform/thumbnails.js",
                 "editor/media/waveform.js",
                 "editor/ui/editor-hint.js",
                 "editor/media/editor-jkl.js",
@@ -207,7 +218,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/io/editor-wiring-file-drop.js",
                 "editor/boot/editor-startup.js",
                 "editor/boot/editor-onboarding.js",
-        )
+            },
         )
 
     # bundle 是构建产物（不入库）：本地未跑 pnpm install 时跳过，CI / 开发机在
@@ -518,16 +529,22 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("shared/editor-utils.js", pushed)
         self.assertLess(pushed.index("shared/gap-remove-core.js"),
                         pushed.index("shared/editor-utils.js"))
+        # AsrWaveform 已随 G05 init 化：定义被 esbuild 提升，
+        # 运行时顺序由 trace 序列核对（见
+        # test_editor_script_payload_is_one_complete_artifact）；
+        # 其余仍 classic 的门面继续按静态标记核对相对位置。
         markers = (
             r'Object\.defineProperty\([^,]+,\s*["\']MAWE["\']',
             r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
             r'\b[A-Za-z_$][\w$]*\.MAWE_I18N\s*=',
-            r'\bwindow\.AsrWaveform\s*=',
             r'\bwindow\.MAWE_EDITOR_BRIDGE\s*=',
             r'\bwindow\.MAWE_ONBOARDING\s*=',
         )
         indices = [re.search(marker, page).start() for marker in markers]
         self.assertEqual(indices, sorted(indices))
+        self.assertIn('window.AsrWaveform=', page)
+        self.assertLess(pushed.index('editor/media/waveform.js'),
+                        pushed.index('editor/io/editor-sticker-otio-export.js'))
 
 class StickerScanTests(unittest.TestCase):
     def test_scan_stickers_keeps_images_when_dimensions_are_unreadable(self) -> None:

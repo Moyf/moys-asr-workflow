@@ -172,7 +172,7 @@ class ProjectContractTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertIsNotNone(result.project)
         self.assertEqual(get_main_track(result.project)["segments"][0]["id"], "main-cue-1")
-        extension = get_tracks_by_role(result.project, "extension")[0]["segments"][0]
+        extension = get_tracks_by_role(result.project, "secondary")[0]["segments"][0]
         self.assertEqual(
             extension["items"],
             [{"text": "wrong source", "start": 1100, "end": 2900}],
@@ -732,7 +732,7 @@ class ProjectContractTests(unittest.TestCase):
         result = validate_project(project)
 
         self.assertTrue(result.ok)
-        segments = get_tracks_by_role(result.project, "extension")[0]["segments"]
+        segments = get_tracks_by_role(result.project, "secondary")[0]["segments"]
         self.assertEqual(segments[1]["color_group_id"], segments[0]["color_group_id"])
         group = next(group for group in result.project["subtitle_groups"]["color"]
                      if group["id"] == segments[1]["color_group_id"])

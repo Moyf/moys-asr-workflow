@@ -44,14 +44,9 @@ docs/user/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 
 Launcher 前端走同一套装配模式：源码按 `web/launcher-scripts.txt` 清单原序列为 classic 模块（由 `scripts/refactor-tools/split-launcher.mjs` 自旧单文件 launcher.js 机械切割而来，等价审计内建于该工具），`pnpm run build:launcher` 装配 `web/launcher/boot/launcher-bundle.js`；修改 Launcher JS 或清单后必须重建（bundle 与 `.meta.json` 不进 Git，maw_gui.py 启动时会自动重建过期产物），运行 `pnpm run check:launcher`。`batch.js` / `postprocess.js` 仍是 bundle 外的独立脚本，经 `window.MAWLauncher` 桥访问主脚本。
 
-**但现行约定是：除非维护者主动要求，不要生成 `blank-editor.html`。**
-它是生成产物、体积大，且每次重生成都会带来上百行噪声 diff，review 时淹没真实改动。
-改了 `web/` 就提交源码（esbuild 产物不进 Git，无需提交），并在 PR 描述里注明「内联副本待发布前统一重生成」；
-发布检查时再一次性重生成，并核对 `git diff --stat blank-editor.html` 符合预期。
-
-```powershell
-uv run python edit.py --blank
-```
+**独立 HTML / 在线编辑器从 2.0（含预发布版）起停止维护与生成。**
+支持范围由 `maw/editor_entry_policy.py` 统一按应用版本判断。1.x 过渡期间，除发布检查或维护者明确要求外，不生成 `blank-editor.html`；需要发布 1.x 内联副本时才运行 `uv run --no-sync python edit.py --blank` 并核对生成 diff。2.0+ 不执行该命令，不再要求「内联副本待发布前统一重生成」，也不将历史 `blank-editor.html` 打入包或生成 Pages 在线编辑器。
+仓库历史产物、已发布附件和用户副本保留，不自动删除；不承诺旧 HTML 兼容新版工程。本地应用共用的模板、bundle、Server、打开/保存/备份恢复和导出能力必须保留。支持边界与发布验收见 [开发概览](docs/engineering/DEVELOPMENT.md#独立编辑入口的版本边界)。
 
 不要手改 `blank-editor.html` 内联副本。所有文本文件必须保持 UTF-8 与 LF（`\n`）换行，包括 Windows 上编辑的 `.py`、`.js`、`.html`、`.md`、`.yml`、`.ps1` 等文件；禁止提交 CRLF（`\r\n`）。不要依赖开发者机器的 `core.autocrlf`，以仓库 `.gitattributes` 的 `eol=lf` 规则为准。
 
@@ -147,7 +142,7 @@ node scripts\build-editor.mjs --write   # 重建（--check 只校验新鲜度；
 - 测试失败、环境缺依赖、浏览器未启动或无法复现时，记录为真实的 `阻塞` 或未验证项，不得为了让表格好看而标记为 `已修复`。
 - 截图只用于提取原始反馈和视觉证据。把反馈落实到任务记录后，后续以文档和代码为主；除非需要重新确认未记录的视觉细节，否则不要反复读取同一批图片。
 - 验证要分层记录：语法/单元测试、服务器或契约测试、浏览器交互、打包/产物检查、CI 或外部服务证据分别说明，不能用其中一层冒充其他层。
-- 修改 `web/` 或相关模板后，日常只检查 Server 页面、源码和相关测试；不要默认重新生成 `blank-editor.html`。在版本发布前或明确指定更新便携产物时，再运行 `uv run python edit.py --blank`，并检查源码、生成产物和测试是否一致。
+- 修改 `web/` 或相关模板后，日常只检查 Server 页面、源码和相关测试；不要默认重新生成 `blank-editor.html`。仅在 1.x 发布前或明确指定更新该版本便携产物时运行 `uv run --no-sync python edit.py --blank`；2.0+ 不生成便携产物，只验证本地应用。
 
 ### 中断或上下文压缩后的恢复顺序
 
@@ -167,6 +162,18 @@ git diff --name-status
 - 最终汇总必须明确列出：已修复项、仅说明项、阻塞/未验证项、验证命令及结果。
 - 检查任务表是否仍有 `进行中`、`待处理` 或 `阻塞`，并对每一项给出下一步或原因；不能只说“基本完成”。
 - 在共享工作区中保留用户和其他任务的 WIP：操作前后都检查状态，只修改本任务文件/代码，不使用 `git reset`、`git clean` 或覆盖无关 diff。
+
+## 提交前自审
+
+批量改动、功能开发与反馈修复在自检通过之后、提交 / 提 PR 之前，做一轮独立自审（标准对标 Greptile）。目标是把问题在提交前消灭，减少提交后被审查工具或维护者打回后来回修：早发现、早治疗。一两行笔误修复与纯文档措辞可由开发者自行判断跳过。
+
+- 独立视角：由未参与实现的审查者（agent 用后台 subagent）通读全部 diff；实现者只回答提问，不为自己辩护。
+- 每条 finding 必须有证据（文件:行、实际执行过的命令输出），禁止臆测式点评；标准覆盖正确性、边界、异常与降级路径、回归风险、跨平台、性能、测试有效性与仓库约定。
+- 双向验证：新增测试必须在「修复缺失」的代码上真实失败，证明能守住回归；行为修复用既有用例做旧逻辑回退对照。验证后恢复原状并重建产物。
+- 分诊与记录：真实缺陷修复并复验；nit 与接受的风险逐条写入 `docs/logs/release<基线>/<YYMMDD>_<主题>/REVIEW_FINDINGS.md` 并登记日志索引，不静默丢弃。
+- 放行门槛：没有未处置的 blocker / major 才提交；PR 描述如实写自审结论与未测边界。
+
+详细流程见[开发概览](docs/engineering/DEVELOPMENT.md)。
 
 ## 批量改动的人工核查清单
 
@@ -238,7 +245,7 @@ git diff --name-status
 
 有明显用户感知的改动必须添加到 CHANGELOG。CHANGELOG 条目按 PR 或 branch 的整体结果汇总，不要把内部 commit 拆成多条。一个新特性开发期间为完成该特性而产生的内部修复、调整和细枝末节，通常整合进该新特性条目，不要再单列到【🐛 修复】；只有对当前版本明确、独立且用户可感知的修复才单独记录。大部分时候只写用户能感知的行为、体验和能力，不需要展开程序逻辑或内部实现变化。合并 branch 或整理 PR 时，删除或整合过于零碎的 commit 说明，只保留用户可感知的整体变更。小节归属：体验优化进【✨ 提升】，问题修复进【🐛 修复】，行为与默认值变化进【🔄 变更】，特别重磅的全新能力（通常是 PR 引入的完整能力）才考虑进【🚀 全新特性】；但具体按实际影响判断，不以 commit 数量或内部工作量代替分类，不确定是否"重磅"时宁可放提升小节，由维护者上调。
 
-发布前确认：版本号、`CHANGELOG.md`、README 命令和 `blank-editor.html` 相互一致；如果本版本包含 `web/` 或模板变更，此时才运行 `uv run python edit.py --blank` 更新并检查空白 HTML；运行上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE`、`THIRD_PARTY_NOTICES.md` 仍正确。不要创建远端、推送、打 tag 或 GitHub Release，除非维护者明确要求。
+发布前确认：版本号、`CHANGELOG.md`、README 命令与支持范围一致；仅 1.x 发布包含 `web/` 或模板变更时重生成并检查空白 HTML；2.0+ 确认包内没有 `blank-editor.html` 且 Pages 不生成 `/editor/`；运行上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE`、`THIRD_PARTY_NOTICES.md` 仍正确。不要创建远端、推送、打 tag 或 GitHub Release，除非维护者明确要求。
 
 创建 GitHub Release 前必须核对 `CHANGELOG.md`：对应版本条目必须已经归档当前发布内容，并用 `scripts/prepare_release_notes.py` 生成、检查实际 Release notes；不能仅因 tag 已创建就视为发布完成。
 

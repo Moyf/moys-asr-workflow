@@ -13,5 +13,5 @@ test('editor ID helpers preserve canonical Unicode IDs and keep generated collis
   assert.notEqual(next, original);
   assert.equal(helpers.stableId(next), next);
   assert.equal(Array.from(next).length, 160);
-  assert.equal(helpers.PROJECT_SCHEMA, 'moy.asr.project.v3');
+  assert.equal(helpers.PROJECT_SCHEMA, 'moy.asr.project.v2');
 });

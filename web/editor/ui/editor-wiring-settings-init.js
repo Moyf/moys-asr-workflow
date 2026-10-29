@@ -1,3 +1,8 @@
+import { getOverlayTrack } from '../cues/overlay-track.js';
+
+export function initMaweSettingsInitWiring() {
+'use strict';
+
 
 
 
@@ -60,15 +65,15 @@ if (MaweDom.editorSettingsPanel) {
 
 
 
-overlayTrackToggle?.addEventListener('change', () => {
+window.MaweDomPanelsWiring.overlayTrackToggle?.addEventListener('change', () => {
   const overlay = getOverlayTrack();
   if (!overlay) return;
-  overlay.enabled = overlayTrackToggle.checked;
+  overlay.enabled = window.MaweDomPanelsWiring.overlayTrackToggle.checked;
   overlay._dirty = true;
   MaweState.markProjectDirty();
   MaweViewUpdates.invalidate({ save: true });
   MaweCuePanel.renderAll({ waveform: 'full' });
-  if (overlayTrackToggle.checked) {
+  if (window.MaweDomPanelsWiring.overlayTrackToggle.checked) {
     MaweHint.flashHint('已允许字幕重叠；Ctrl+拖拽波形空白或用右键菜单可创建叠加字幕', 'success');
   }
 });
@@ -104,9 +109,9 @@ document.addEventListener('mawe:languagechange', () => {
   MaweTimeline.refreshTimelineSettingsUi();
   MaweMediaPlayback.refreshMediaSeekStepHelp();
   MaweMediaPlayback.refreshMediaSeekControlLabels();
-  updateAssStyleLibrarySummary();
-  updateAssStyleLibraryStatus();
-  updateAssStylePreviewModeHints();
+  window.MaweAssStorageWiring.updateAssStyleLibrarySummary();
+  window.MaweAssManagerWiring.updateAssStyleLibraryStatus();
+  window.MaweAssManagerWiring.updateAssStylePreviewModeHints();
 });
 
 MaweDom.splitKeySel.value = MaweSettings.EDITOR_SETTINGS.splitKey;
@@ -145,7 +150,7 @@ if (MaweDom.stickerOverlayToggle) MaweDom.stickerOverlayToggle.checked = MaweSet
 if (MaweDom.clickBehaviorSelect) MaweDom.clickBehaviorSelect.value = MaweSettings.EDITOR_SETTINGS.clickBehavior;
 if (MaweDom.stickerBurnModeSelect) MaweDom.stickerBurnModeSelect.value = MaweSettings.EDITOR_SETTINGS.stickerBurnMode === 'cue-left' ? 'cue-left' : 'fixed';
 if (MaweDom.clickTargetSelect) MaweDom.clickTargetSelect.value = MaweSettings.EDITOR_SETTINGS.clickTarget;
-if (pauseOnMouseClickToggle) pauseOnMouseClickToggle.checked = MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick;
+if (window.MaweDomPanelsWiring.pauseOnMouseClickToggle) window.MaweDomPanelsWiring.pauseOnMouseClickToggle.checked = MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick;
 if (MaweDom.keyboardOperationReferenceSelect) {
   MaweDom.keyboardOperationReferenceSelect.value = MaweSettings.EDITOR_SETTINGS.keyboardOperationReference;
 }
@@ -214,7 +219,7 @@ MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   const previous = multi.bilingual.display_mode;
   multi.bilingual.display_mode = previous;
   return MaweCommands.run('切换双语字幕列表', (command) => {
-    multi.bilingual.display_mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
+    multi.bilingual.display_mode = window.AsrEditorUtils.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
     multi._dirty = true;
     // 三种显示模式的行 DOM 结构互不相同，列表只能全量重建（长工程会明显卡顿）。
     // 这里不同步重建：先提交变更并让下拉框状态上屏，下一帧再重建列表，
@@ -272,7 +277,7 @@ document.getElementById('multi-subtitle-quick-toggle')?.addEventListener('click'
   MaweDom.multiSubtitleToggle?.click();
 });
 document.getElementById('overlay-quick-toggle')?.addEventListener('click', () => {
-  overlayTrackToggle?.click();
+  window.MaweDomPanelsWiring.overlayTrackToggle?.click();
 });
 MaweDom.multiSubtitleCrossTrackSnapToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ crossTrackSnap: MaweDom.multiSubtitleCrossTrackSnapToggle.checked });
@@ -295,7 +300,8 @@ MaweDom.multiSubtitleAlignButton?.addEventListener('click', () => {
 });
 MaweAppearance.applySubtitleAppearance();
 MaweAppearance.applyExtensionSubtitleAppearance();
-syncAssModeControl();
-syncAssStyleManager();
+window.MaweAssManagerWiring.syncAssModeControl();
+window.MaweAssManagerWiring.syncAssStyleManager();
 void loadAssStyleLibrary();
 // 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
+}

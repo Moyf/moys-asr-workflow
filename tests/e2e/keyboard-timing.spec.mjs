@@ -162,10 +162,10 @@ test('F seeks and plays a selected extension cue', async ({ page }) => {
           bindings: [],
         },
       }).project;
-      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
-        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
       MaweBoot.DATA.bilingual = fixture.bilingual;
-      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
     }
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
@@ -310,10 +310,10 @@ async function seedBoundSubtitleForOffset(page, extensionConflict = false) {
           }],
         },
       }).project;
-      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
-        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
       MaweBoot.DATA.bilingual = fixture.bilingual;
-      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
     }
     MaweCuePanel.renderAll({ waveform: 'full' });
   }, extensionConflict);
@@ -356,10 +356,10 @@ for (const timebase of ['milliseconds', 'frames']) {
               schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
             },
         }).project;
-        MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
-          .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+        MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+          .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
         MaweBoot.DATA.bilingual = fixture.bilingual;
-        MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+        MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
       }
       // The fixture starts without overlaps; only the attempted offset would
       // create one, through the production command and renderAll path.
@@ -513,10 +513,10 @@ async function seedFrameOffsetRanges(page, { fps, mainFrames, target = 0, extens
             main_segment_ids: [`frame-main-${target}`], extension_segment_ids: [`frame-extension-${follower}`] }] : [],
         },
       }).project;
-      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
-        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
       MaweBoot.DATA.bilingual = fixture.bilingual;
-      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
     }
     MaweCuePanel.renderAll();
   }, { fps, mainFrames, target, extensionFrames, follower });
@@ -524,7 +524,7 @@ async function seedFrameOffsetRanges(page, { fps, mainFrames, target = 0, extens
 
 function readOffsetProject(page) {
   return page.evaluate(() => JSON.parse(JSON.stringify({ segments: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
-    multi: { tracks: AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'extension'),
+    multi: { tracks: AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary'),
       bindings: MaweBoot.DATA.bindings, bilingual: MaweBoot.DATA.bilingual },
     undo: MaweHistory.editorHistory.undoLength() })));
 }
@@ -747,10 +747,10 @@ test('shared seams align exactly, stay hidden across an 80ms gap, and use accent
           bindings: [],
         },
       }).project;
-      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
-        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
       MaweBoot.DATA.bilingual = fixture.bilingual;
-      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
     }
     {
       const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
@@ -1173,10 +1173,10 @@ test('dual-mode extension seam replaces the existing selection with both adjacen
           bindings: [],
         },
       }).project;
-      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension')
-        .concat(AsrEditorUtils.getTracksByRole(fixture, 'extension'));
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
       MaweBoot.DATA.bilingual = fixture.bilingual;
-      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source_track_id: main.id }));
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
     }
     MaweCuePanel.renderAll({ waveform: 'full' });
   });

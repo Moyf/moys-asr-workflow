@@ -1,6 +1,9 @@
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const context = { window: {}, Uint8Array };
 loadEditorModule(context, 'shared/editor-utils.js');
@@ -309,4 +312,149 @@ test('sticker box taller than the space above a top cue falls back instead of ne
   assert.equal(topPlacements.length, 1);
   assert.equal(topPlacements[0].x, FIXED_BOX.x);
   assert.equal(topPlacements[0].align, 'center');
+});
+
+// === 多句绑定表情包：写入路径与预览区间契约 ===
+// 真实模块源码装入最小桩环境：分配（editor-sticker-picker）→ 区间同步
+// （editor-text-cleanup）→ 预览区间读取（editor-sticker-overlay）。
+
+function stubElement() {
+  return {
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    style: {}, dataset: {},
+    appendChild() {}, addEventListener() {}, setAttribute() {},
+  };
+}
+
+function loadEditorSource(context, relative) {
+  vm.runInNewContext(initModuleSource(relative), context, { filename: relative });
+}
+
+function stickerBindingContext(segments) {
+  // window 自引用：模块把 facade 注册到 window，浏览器里 window 属性同时是
+  // 裸全局；桩环境用同一个对象充当 context 全局与 window，两种查找都命中。
+  const context = {
+    window: null,
+    document: {
+      createElement: stubElement,
+      getElementById: stubElement,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    },
+    confirm: () => false,
+    setTimeout: () => 0,
+    getOverlayTrack: () => null,
+    stickerSegmentsForTrack: () => segments,
+    overlaySticker: { stickerTargetTrack: 'main', previewTrack: 'main' },
+    MaweStickerPreviewWiring: { activeStickerHasOverlay: false },
+    MaweBoot: { DATA: { segments }, STICKERS: [] },
+    MaweCommands: { run: (label, mutate) => mutate({ commit() {} }) },
+    MaweSelection: { stickerUrl: () => 'about:blank#sticker' },
+    MaweSettings: { EDITOR_SETTINGS: { cueListShowSticker: true, cueEditorShowSticker: true } },
+    MaweColorFilter: { refreshStickerAssignmentUi() {} },
+    MaweHint: { flashHint() {} },
+    MaweState: { markProjectDirty() {} },
+    MaweDom: { stickerModal: stubElement(), stickerPreviewModal: stubElement() },
+  };
+  context.window = context;
+  loadEditorModule(context, 'shared/editor-utils.js');
+  const project = context.AsrEditorUtils.importProject({ segments }).project;
+  segments.splice(0, segments.length, ...context.AsrEditorUtils.getMainTrack(project).segments);
+  context.AsrEditorUtils.getMainTrack(project).segments = segments;
+  context.MaweBoot.DATA = project;
+  return context;
+}
+
+for (const target of ['main', 'overlay']) test(`clearing sticker targets uses the ${target} track without legacy globals`, () => {
+  const main = [
+    { id: 'main-a', start: 0, end: 1000, text: '主一' },
+    { id: 'main-b', start: 1000, end: 2600, text: '主二' },
+  ];
+  const overlayInput = { enabled: true, segments: [
+    { id: 'overlay-a', start: 0, end: 1000, text: '叠一' },
+    { id: 'overlay-b', start: 1000, end: 2600, text: '叠二' },
+  ] };
+  const binding = stickerBindingContext(main);
+  const project = binding.MaweBoot.DATA;
+  const overlay = binding.AsrEditorUtils.ensureOverlayTrack(project, overlayInput);
+  binding.getOverlayTrack = () => overlay;
+  binding.stickerSegmentsForTrack = track => track === 'overlay' ? overlay.segments : main;
+  const u = binding.AsrEditorUtils;
+  const sticker = { name: 'bind', filename: 'bind.png', rel: 'bind.png' };
+  u.assignSubtitleGroup(project, main, [0, 1], 'sticker', sticker);
+  u.assignSubtitleGroup(project, overlay.segments, [0, 1], 'sticker', sticker);
+  const selected = target === 'overlay' ? overlay.segments : main;
+  const other = target === 'overlay' ? main : overlay.segments;
+  const selectedGroup = selected[0].sticker_group_id;
+  const otherGroup = other[0].sticker_group_id;
+  vm.runInNewContext(readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), binding);
+  loadEditorSource(binding, 'editor/cues/editor-sticker-picker.js');
+  binding.MaweBoot.STICKERS = [sticker];
+  binding.MaweStickerPicker.openStickerPicker([0], false, { overlay: target === 'overlay' });
+  binding.MaweStickerPicker.clearStickerOnTargets();
+  assert.equal(selected[0].sticker_group_id, undefined);
+  assert.equal(selected[1].sticker_group_id, selectedGroup);
+  assert.equal(u.getSubtitleGroupValue(project, selected[1], 'sticker').name, 'bind');
+  assert.deepEqual(Array.from(other, cue => cue.sticker_group_id), [otherGroup, otherGroup]);
+});
+
+test('multi-sentence sticker binding covers every bound cue without a drag', () => {
+  const segments = [
+    { id: 'main-001', start: 0, end: 1000, text: '第一句' },
+    { id: 'main-002', start: 1000, end: 2600, text: '第二句' },
+  ];
+  const sticker = { name: 'bind', filename: 'bind.png', rel: 'bind.png' };
+  const binding = stickerBindingContext(segments);
+  loadEditorSource(binding, 'editor/cues/editor-text-cleanup.js');
+  loadEditorSource(binding, 'editor/cues/editor-sticker-picker.js');
+  loadEditorSource(binding, 'editor/media/editor-sticker-overlay.js');
+
+  binding.MaweBoot.STICKERS = [sticker];
+  binding.window.MaweStickerPicker.openStickerPicker([0, 1], true);
+  binding.window.MaweStickerPicker.assignSticker(sticker);
+
+  // 稳定组保存成员关系，渲染投影中的 head.sticker 覆盖整个选区。
+  const projection = binding.AsrEditorUtils.materializeTrackSegments(binding.MaweBoot.DATA, 'main');
+  assert.deepEqual(
+    { start: projection[0].sticker.start, end: projection[0].sticker.end, name: projection[0].sticker.name },
+    { start: 0, end: 2600, name: 'bind' },
+  );
+  assert.equal(Object.hasOwn(segments[1], 'sticker'), false);
+  assert.equal(segments[1].sticker_group_id, segments[0].sticker_group_id);
+  assert.equal(binding.MaweBoot.DATA.subtitle_groups.sticker[0].id, segments[0].sticker_group_id);
+  assert.deepEqual({ ...projection[1].sticker_ref }, { name: 'bind', headIdx: 0 });
+  assert.equal(Object.hasOwn(segments[0], 'sticker'), false);
+  assert.equal(Object.hasOwn(segments[1], 'sticker_ref'), false);
+
+  // 预览读取契约：不做任何拖动，第二句时间点就命中表情包区间。
+  const overlay = binding.window.MaweStickerOverlay;
+  assert.equal(overlay.activeStickersAt(500).length, 1);
+  assert.equal(overlay.activeStickersAt(1500).length, 1);
+  assert.equal(overlay.activeStickersAt(2700).length, 0);
+});
+
+test('rebinding a single head that owns references re-syncs the group range', () => {
+  const segments = [
+    { id: 'main-001', start: 0, end: 1000, text: '第一句' },
+    { id: 'main-002', start: 1000, end: 2600, text: '第二句',
+      sticker_ref: { name: 'old', headIdx: 0 } },
+  ];
+  segments[0].sticker = { name: 'old', filename: 'old.png', rel: 'old.png', start: 0, end: 1000 };
+  const sticker = { name: 'next', filename: 'next.png', rel: 'next.png' };
+  const binding = stickerBindingContext(segments);
+  loadEditorSource(binding, 'editor/cues/editor-text-cleanup.js');
+  loadEditorSource(binding, 'editor/cues/editor-sticker-picker.js');
+
+  binding.MaweBoot.STICKERS = [sticker];
+  binding.window.MaweStickerPicker.openStickerPicker([0], false);
+  binding.window.MaweStickerPicker.assignSticker(sticker);
+
+  // 单选重分配 head：既有 ref 仍指向它，区间必须回到整组覆盖，而不是丢掉
+  // start/end 后回落到 head 自身句范围。
+  const projection = binding.AsrEditorUtils.materializeTrackSegments(binding.MaweBoot.DATA, 'main');
+  assert.deepEqual(
+    { start: projection[0].sticker.start, end: projection[0].sticker.end, name: projection[0].sticker.name },
+    { start: 0, end: 2600, name: 'next' },
+  );
+  assert.deepEqual({ ...projection[1].sticker_ref }, { name: 'next', headIdx: 0 });
 });

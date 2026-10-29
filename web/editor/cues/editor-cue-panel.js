@@ -1,3 +1,8 @@
+import { getOverlayTrack, overlayTrackVisible } from './overlay-track.js';
+
+export function initMaweCuePanel() {
+'use strict';
+
 // 当前字幕面板：renderAll 协调、目标切换与时间/items 重映射。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweCuePanel 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -44,7 +49,7 @@
     track.segments.forEach((seg, i) => rows.push({ start: seg.start, order: 0, el: MaweCueElements.buildExtensionCueEl(seg, i, track) }));
   } else {
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    const displayRows = MULTI_SUBTITLE_UTILS.buildMultiDisplayRows(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, track.segments, MaweMultiSubtitleCore.getMultiSubtitleState().bindings);
+    const displayRows = window.AsrEditorUtils.buildMultiDisplayRows(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, track.segments, MaweMultiSubtitleCore.getMultiSubtitleState().bindings);
     displayRows.forEach((row) => {
       const mainSeg = row.mainIndex == null ? null : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[row.mainIndex];
       const extensionSeg = row.extensionIndex == null ? null : track.segments[row.extensionIndex];
@@ -55,7 +60,7 @@
       });
     });
   }
-  overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));
+  overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: window.MaweCuePanelWiring.buildOverlayCueEl(seg, i) }));
   rows.sort((a, b) => a.start - b.start || a.order - b.order);
   rows.forEach((row) => cueFragment.appendChild(row.el));
   MaweCoreState.container.appendChild(cueFragment);
@@ -575,7 +580,7 @@
     commitCuePanelEdit();
     const cursorOffset = MaweDom.cuePanelText.selectionStart;
     const splitTime = MaweSplitCore.splitTimeForTextOffset(target.segment, cursorOffset);
-    openOverlaySplitModal(target.index, splitTime);
+    window.MaweOverlaySplitMerge.openOverlaySplitModal(target.index, splitTime);
     return;
   }
   if (target.kind === 'extension') {
@@ -720,3 +725,4 @@
     splitCuePanelAtCursor
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

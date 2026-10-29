@@ -1,3 +1,8 @@
+import { getOverlayTrack } from '../cues/overlay-track.js';
+
+export function initMaweJsonRepair() {
+'use strict';
+
 // 工程 JSON 构建、时间码修复与分组重建。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweJsonRepair 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -6,6 +11,19 @@
   'use strict';
 
 
+
+  let lastImportReport = [];
+  let markerContainer = null;
+  function setMarkerContainer(value) {
+    markerContainer = value && typeof value === 'object' && !Array.isArray(value) && Array.isArray(value.items)
+      ? window.AsrEditorUtils.cloneMarkerValue(Object.fromEntries(
+        Object.entries(value).filter(([key]) => key !== 'schema' && key !== 'items'),
+      )) : null;
+  }
+  function noteImportReport(changes) { lastImportReport = JSON.parse(JSON.stringify(changes)); }
+  function importRequiresSave(changes) {
+    return changes.some((change) => change.kind !== 'add' || /\.(start|end)$/.test(change.path));
+  }
 
   function buildJson({ forFileExport = false } = {}) {
     MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
@@ -35,7 +53,7 @@
       ...(window.MaweAudioProcessing?.settings()
         || { gain_db: 0, target_lufs: -14, peak_ceiling_dbtp: -1 }),
     };
-    const markers = window.AsrEditorUtils.markersToProjectField(MaweBoot.DATA.markers);
+    const markers = window.AsrEditorUtils.markersToProjectField(MaweBoot.DATA.markers, markerContainer);
     if (markers) out.markers = markers;
     else delete out.markers;
     if (MaweBoot.DATA.gap_remove) out.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(MaweBoot.DATA.gap_remove);
@@ -44,16 +62,16 @@
     const preview = {
       ...out.preview,
       ass_mode: MaweSettings.EDITOR_SETTINGS.assMode === true,
-      sticker: { ...MawePreviewGeometry.getStickerGeometry() },
+      sticker: { ...out.preview?.sticker, ...MawePreviewGeometry.getStickerGeometry() },
       subtitle: {
         ...out.preview?.subtitle,
         ...MaweAppearance.getPreviewGeometry(), ...MaweAppearance.getSubtitleAppearance(),
         speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
       },
     };
-    if (window.AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'extension').length
+    if (window.AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').length
         || out.preview?.extension_subtitle) {
-      preview.extension_subtitle = { ...MaweAppearance.getStoredExtensionSubtitleAppearance() };
+      preview.extension_subtitle = { ...out.preview?.extension_subtitle, ...MaweAppearance.getStoredExtensionSubtitleAppearance() };
     }
     out.preview = preview;
     return MaweState.persistenceSnapshot(out);
@@ -197,12 +215,29 @@
   // 保存/导出前的最后一道时间码兜底。波形拖动会把词时间码按像素取整，
   // 极短词可能因此出现 1ms 的前后重叠；打开工程时的修复不足以覆盖这种
   // “打开后编辑、随后保存”的路径。主轨和所有副字幕轨统一使用同一规则。
-  function normalizeProjectTimings(project, { repairSegmentRanges = true } = {}) {
+  function hasValidTimingRanges(segments) {
+    let previous = 0;
+    return !Array.isArray(segments) || segments.every((segment) => {
+      if (!segment || !Number.isInteger(segment.start) || !Number.isInteger(segment.end)
+          || segment.start < previous || segment.end <= segment.start) return false;
+      previous = segment.end;
+      let itemEnd = segment.start;
+      return segment.items === undefined || (Array.isArray(segment.items) && segment.items.every((item) => {
+        if (!item || !Number.isInteger(item.start) || !Number.isInteger(item.end)
+            || item.start < itemEnd || item.end < item.start || item.end > segment.end) return false;
+        itemEnd = item.end;
+        return true;
+      }));
+    });
+  }
+
+  function normalizeProjectTimings(project, { repairSegmentRanges = true, preserveValid = false } = {}) {
   if (!project || typeof project !== 'object') return 0;
-  const normalize = repairSegmentRanges
+  if (preserveValid && (project.tracks || []).every(track => hasValidTimingRanges(track.segments))) return 0;
+  const normalize = (segments) => (repairSegmentRanges
     ? window.AsrEditorUtils.normalizeSegmentTimings
-    : window.AsrEditorUtils.normalizeItemTimingRanges;
-  const cleanup = captureCleanupNormalization((project.tracks || []).flatMap((track) => track.segments || []), project);
+    : window.AsrEditorUtils.normalizeItemTimingRanges)(segments, 100, { preserveZero: preserveValid });
+  const cleanup = captureCleanupNormalization((project.tracks || []).flatMap(track => track.segments || []), project);
   let fixed = 0;
   for (const track of project.tracks || []) fixed += normalize(track.segments);
   fixed = Math.max(0, fixed - migrateCleanupNormalization(cleanup));
@@ -210,6 +245,13 @@
 }
 
 
+
+  // Observe the existing normalization pipeline, including earlier timebase
+  // synchronization whose edits are not represented in repair counters.
+  function projectTimingSignature(project) {
+    const signatures = segments => (segments || []).map(timingRepairSignature);
+    return JSON.stringify((project?.tracks || []).map(track => [track.id, signatures(track.segments)]));
+  }
 
   function timingRepairSignature(segment) {
     return JSON.stringify({
@@ -223,13 +265,14 @@
 
 
 
-  function repairTimingGroup(segments) {
+  function repairTimingGroup(segments, { preserveValid = false } = {}) {
     const source = Array.isArray(segments) ? segments : [];
+    if (preserveValid && hasValidTimingRanges(source)) return { fixed: 0, changed: [] };
     const before = source.map((segment) => timingRepairSignature(segment));
     const project = MaweBoot.DATA;
     const cleanup = captureCleanupNormalization(source,
       project.tracks.some((track) => track.segments === source) ? project : null);
-    const fixed = Math.max(0, window.AsrEditorUtils.normalizeItemTimingRanges(source)
+    const fixed = Math.max(0, window.AsrEditorUtils.normalizeItemTimingRanges(source, 100, { preserveZero: preserveValid })
       - migrateCleanupNormalization(cleanup));
     const changed = source.filter((segment, index) => (
       timingRepairSignature(segment) !== before[index]
@@ -240,14 +283,14 @@
 
 
   function repairCurrentProjectTimings() {
-  const main = repairTimingGroup(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
-  const extension = window.AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'extension').reduce((result, track) => {
-    const repaired = repairTimingGroup(track?.segments);
+  const main = repairTimingGroup(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, { preserveValid: true });
+  const extension = window.AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').reduce((result, track) => {
+    const repaired = repairTimingGroup(track?.segments, { preserveValid: true });
     result.fixed += repaired.fixed;
     result.changed.push(...repaired.changed);
     return result;
   }, { fixed: 0, changed: [] });
-  const overlay = repairTimingGroup(getOverlayTrack()?.segments);
+  const overlay = repairTimingGroup(getOverlayTrack()?.segments, { preserveValid: true });
   const fixed = main.fixed + extension.fixed + overlay.fixed;
   if (fixed > 0) {
     MaweMultiSubtitleCore.markMainSegmentsDirty(main.changed);
@@ -265,10 +308,16 @@
 
   global.MaweJsonRepair = Object.freeze({
     buildJson,
+    noteImportReport,
+    importRequiresSave,
+    setMarkerContainer,
+    get lastImportReport() { return JSON.parse(JSON.stringify(lastImportReport)); },
     projectSnapshot,
     normalizeProjectTimings,
     timingRepairSignature,
+    projectTimingSignature,
     repairTimingGroup,
     repairCurrentProjectTimings
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

@@ -7,6 +7,10 @@ import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 const utilsContext = { window: {}, TextDecoder };
 loadEditorModule(utilsContext, 'shared/editor-utils.js');
 const editorUtils = utilsContext.window.AsrEditorUtils;
+import { createUtilsModule as createHistoryUtils } from '../web/shared/utils/history.js';
+import { createUtilsModule as createDataUtils } from '../web/shared/utils/data.js';
+import { createUtilsModule as createGroupUtils } from '../web/shared/utils/subtitle-groups.js';
+import { initModuleSource, invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 const source = readFileSync(new URL('../web/editor/media/editor-audio-processing.js', import.meta.url), 'utf8');
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
@@ -52,16 +56,17 @@ function fixture(transport = async () => response(result())) {
     MaweHost: { server: { fetch(url, options) { const body = JSON.parse(options.body); calls.push({ url, body, signal: options.signal }); return transport(body); } } },
   });
   context.window = context;
-  for (const path of ['boot/editor-runtime.js', 'state/editor-state.js']) {
-    vm.runInContext(readFileSync(new URL('../web/editor/' + path, import.meta.url), 'utf8'), context);
-  }
+  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
   context.AsrEditorUtils = editorUtils;
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   context.MaweWordTiming = { clearSelection() {} };
   context.MaweHint = { flashHint() {} };
   context.MaweInlineEdit = {};
-  vm.runInContext(readFileSync(new URL('../web/editor/state/editor-history.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-history.js', 'initMaweHistory'), context);
   vm.runInContext(source, context);
   context.MaweAudioProcessing.init();
+  // Production media controls initialize audio before startup establishes the
+  // content checkpoint. The defaults added by init are not a user edit.
   context.MaweState.beginProjectSession();
   context.MaweState.establishProjectCheckpoint();
   return { context, api: context.MaweAudioProcessing, state: context.MaweState, calls, routes, contexts, nodes, panels, player, node };
@@ -182,7 +187,8 @@ test('audio edits participate in content checkpoints, share undo history, and lo
   assert.equal(f.state.hasProjectChanges(), true);
   f.state.reconcileSegmentsDirty();
   assert.equal(f.state.hasProjectChanges(), true, 'subtitle reconciliation must not discard audio dirtiness');
-  f.state.noteSavedSegments();
+  // noteSavedSegments now acknowledges all persisted content, including audio.
+  f.state.noteSavedSegments(f.state.projectFingerprint());
   f.state.markSaved();
   assert.equal(f.state.hasProjectChanges(), false);
   f.context.MaweHistory.performUndo();
@@ -190,6 +196,7 @@ test('audio edits participate in content checkpoints, share undo history, and lo
   assert.equal(f.state.hasProjectChanges(), true, 'undo after save changes persisted audio');
   f.context.MaweHistory.performRedo();
   assert.equal(f.api.settings().gain_db, -4);
+  assert.equal(f.state.hasProjectChanges(), false, 'redo returns to the saved audio content');
   const saved = JSON.parse(JSON.stringify({ audio_processing: f.api.settings() }));
   f.api.loadProject(saved.audio_processing);
   assert.equal(f.api.settings().gain_db, -4);
@@ -236,7 +243,7 @@ function serializeProject(f) {
   const context = f.context;
   Object.assign(context, {
     getOverlayTrack: () => null,
-    MaweTimeline: { syncProjectTimebaseAndBindingOffsets() {}, projectTimebase: () => ({ unit: 'milliseconds' }),
+    MaweTimeline: { syncProjectTimebaseAndBindingOffsets() {}, projectTimebase: () => ({ unit: 'milliseconds', fps: 30 }),
       normalizeMediaMetadata: () => null },
     MaweSettings: { EDITOR_SETTINGS: {} }, MaweProjectMediaInputs: {},
     MawePreviewGeometry: { getStickerGeometry: () => editorUtils.normalizePreviewGeometry(undefined, editorUtils.DEFAULT_STICKER_GEOMETRY) },
@@ -244,7 +251,7 @@ function serializeProject(f) {
     MaweSpeakerLabels: { getSpeakerLabelSettings: () => ({}) },
     MaweExportTimeline: { buildCurrentWorkspaceData: () => null },
   });
-  vm.runInContext(readFileSync(new URL('../web/editor/io/editor-json-repair.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/io/editor-json-repair.js'), context);
   return JSON.parse(context.MaweJsonRepair.buildJson());
 }
 
@@ -265,6 +272,23 @@ test('project serializer fallback agrees with the missing-field -14 LUFS default
   const f = fixture();
   f.context.MaweAudioProcessing = undefined;
   assert.deepEqual(serializeProject(f).audio_processing, { gain_db: 0, target_lufs: -14, peak_ceiling_dbtp: -1 });
+});
+
+test('pure audio snapshots retain extension fields and ignore display-only target mode changes', () => {
+  const f = fixture();
+  serializeProject(f); // Install the production serializer and its real helpers.
+  f.context.MaweBoot.DATA.audio_processing.vendor = { enabled: false, channels: [] };
+  f.state.setSnapshotReader(f.context.MaweJsonRepair.projectSnapshot);
+  f.state.establishProjectCheckpoint();
+  const before = JSON.stringify(f.context.MaweBoot.DATA);
+  const saved = f.context.MaweJsonRepair.projectSnapshot();
+  assert.deepEqual(clone(saved.audio_processing.vendor), { enabled: false, channels: [] });
+  assert.equal(JSON.stringify(f.context.MaweBoot.DATA), before, 'snapshot must not rewrite runtime audio settings');
+  const select = f.nodes.get('audio-target');
+  select.value = 'custom'; select.emit('change');
+  assert.equal(f.state.hasProjectChanges(), false);
+  f.context.MaweBoot.DATA.audio_processing.vendor.enabled = true;
+  assert.equal(f.state.hasProjectChanges(), true, 'retained extension fields participate in content checkpoints');
 });
 
 test('custom controls commit valid values only and selecting a mode alone does not dirty the project', () => {
@@ -298,6 +322,8 @@ test('normal gain controls stay in the friendly range while extended project val
   assert.equal(slider.min, '-6'); assert.equal(slider.max, '12');
   for (const gain of [18, -20]) {
     f.api.loadProject({ gain_db: gain });
+    // This scenario opens a saved project, rather than editing the old project.
+    f.state.beginProjectSession();
     f.state.establishProjectCheckpoint();
     assert.equal(slider.value, String(gain));
     assert.equal(expanded.checked, true); assert.equal(expanded.disabled, true);

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
-import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
+import { buildBrowserEditorFixture, cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
   generateWav, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
 
 let server;
@@ -13,7 +13,7 @@ test.beforeAll(async () => {
   const media = join(dir, 'synthetic.wav');
   generateProjectJson(project);
   generateWav(media, 300);
-  portable = buildPortableBlankEditor(join(dir, 'portable.html'));
+  portable = buildBrowserEditorFixture(join(dir, 'portable.html'));
   server = await startServer(project, media, await findFreePort());
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
@@ -30,7 +30,7 @@ async function seed(page, { text = '甲乙丙丁', timed = true, linked = false 
       items: timed ? Array.from(text, (text, i) => ({ text,
         start: i === 2 ? 3500 : 1000 + i * 1000,
         end: i === 2 ? 4000 : 2000 + i * 1000 })) : null }];
-    MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'extension');
+    MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary');
     MaweBoot.DATA.bindings = [];
     MaweBoot.DATA.bilingual = { display_mode: 'both' };
     if (linked) {
@@ -145,6 +145,7 @@ for (const path of ['timed', 'untimed', 'linked']) {
     expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.speaker)))
       .toEqual(['opaque-speaker', 'opaque-speaker']);
     const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+    expect(await page.evaluate(project => AsrEditorUtils.validateTracksProject(project).errors, saved)).toEqual([]);
     const savedMain = saved.tracks.find(track => track.role === 'main');
     expect(savedMain.segments.map(s => s.speaker)).toEqual(['opaque-speaker', 'opaque-speaker']);
     expect(savedMain.segments.map(s => s.text)).toEqual(['甲乙', '甲乙丙丁']);

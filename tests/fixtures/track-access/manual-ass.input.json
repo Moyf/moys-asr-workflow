@@ -1,0 +1,77 @@
+{
+  "schema": "moy.asr.project.v1",
+  "language": "zh",
+  "model": "fixture",
+  "preserve_punctuation": true,
+  "metadata": {
+    "fixture": true
+  },
+  "preview": {
+    "ass_mode": true
+  },
+  "segments": [
+    {
+      "id": "main",
+      "start": 0,
+      "end": 2000,
+      "text": "主定位",
+      "assOverride": {
+        "pos": {
+          "x": 400.25,
+          "y": 850.5
+        },
+        "scale": 1.25
+      }
+    }
+  ],
+  "multi_subtitle": {
+    "schema": "moy.asr.multi_subtitle.v1",
+    "enabled": true,
+    "display_mode": "both",
+    "main_split_mode": "continuous",
+    "tracks": [
+      {
+        "id": "translation",
+        "role": "extension",
+        "name": "English",
+        "language": "en",
+        "split_mode": "word",
+        "source_name": "translation.srt",
+        "segments": [
+          {
+            "id": "secondary",
+            "start": 0,
+            "end": 2000,
+            "text": "Secondary",
+            "assOverride": {
+              "pos": {
+                "x": 20,
+                "y": 30
+              },
+              "scale": 1.5
+            }
+          }
+        ]
+      }
+    ],
+    "bindings": []
+  },
+  "overlay_track": {
+    "enabled": true,
+    "segments": [
+      {
+        "id": "overlay",
+        "start": 0,
+        "end": 2000,
+        "text": "叠加定位",
+        "assOverride": {
+          "pos": {
+            "x": 900,
+            "y": 400
+          },
+          "scale": 1.1
+        }
+      }
+    ]
+  }
+}

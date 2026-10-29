@@ -153,6 +153,13 @@ def run_script_match(
             request.match_mode,
             is_cancelled=is_cancelled,
         )
+    # Both character-timed and sentence-level matching must keep the same v2
+    # group contract. The fallback must not silently reassign grouped content.
+    if len(get_main_track(matched)["segments"]) != len(get_main_track(project)["segments"]) and any(
+        segment.get("color_group_id") or segment.get("sticker_group_id")
+        for segment in get_main_track(project)["segments"]
+    ):
+        raise ValueError("带独立分组的字幕暂不支持文稿匹配改变条数；请先在编辑器中拆合，避免丢失组关系。")
     check_match_cancelled(is_cancelled)
     if begin_commit is not None and not begin_commit():
         raise MatchCancelledError("文稿匹配已取消。")
@@ -289,7 +296,7 @@ def _match_project_with_character_timings(
     # The filtered project is only a temporary matcher input. Keep disabled
     # cues and their relations in the original until the final transaction.
     matcher_project["bindings"] = [binding for binding in matcher_project["bindings"]
-                                   if all(identifier in active_ids for identifier in binding["source_segment_ids"])]
+                                   if all(identifier in active_ids for identifier in [binding["source"]["segment_id"]])]
     mosp_text = json.dumps(matcher_project, ensure_ascii=False)
     try:
         _cues, report, matched_text = generate_matched_mosp(

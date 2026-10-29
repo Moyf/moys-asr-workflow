@@ -30,23 +30,21 @@ def multi_project():
                            main_fields={"language": "ja", "model": "fixture"},
                            project_fields={"custom_project": {"keep": []}})
     project["tracks"].extend([
-        {"id": "first", "role": "extension", "enabled": False, "name": "Other",
-         "segments": [cue("first-cue", "其他译文")], "language": "fr"},
-        {"id": "second", "role": "extension", "enabled": True, "name": "Active", "metadata": {"keep": False},
+        {"id": "second", "role": "secondary", "enabled": True, "name": "Active", "metadata": {"keep": False},
          "segments": [cue("second-cue", "旧译文", speaker="speaker-2")], "language": "zh"},
         {"id": "overlay", "role": "overlay", "enabled": True, "name": "Overlay",
          "segments": [cue("overlay-cue", "叠加", start=5500, end=6500, disabled=True)]},
     ])
     project["bilingual"] = {"display_mode": "both", "active_track_id": "second"}
-    project["bindings"] = [{"id": "existing-binding", "source_track_id": "main", "target_track_id": "second",
-                            "source_segment_ids": ["a"], "target_segment_ids": ["second-cue"],
+    project["bindings"] = [{"id": "existing-binding", "source": {"track_id": "main", "segment_id": "a"},
+                            "target": {"track_id": "second", "segment_id": "second-cue"},
                             "start_offset_ms": 0, "end_offset_ms": 0, "custom": {"keep": True}}]
     return normalize_project(project)
 
 
 class TracksConsumerTests(unittest.TestCase):
     def assert_canonical(self, project):
-        self.assertEqual(project["schema"], "moy.asr.project.v3")
+        self.assertEqual(project["schema"], "moy.asr.project.v2")
         self.assertFalse({"segments", "multi_subtitle", "overlay_track"}.intersection(project))
         self.assertEqual(normalize_project(project), project)
 
@@ -57,10 +55,32 @@ class TracksConsumerTests(unittest.TestCase):
         original = copy.deepcopy(source)
         saved = json.loads(serialize_mosp(source))
         self.assert_canonical(saved)
-        self.assertEqual(len(saved["tracks"]), 4)
+        self.assertEqual(len(saved["tracks"]), 3)
         self.assertEqual(get_main_track(saved)["segments"][0]["custom"], {"false": False, "zero": 0})
+        self.assertEqual(get_track(saved, "second")["metadata"], {"keep": False})
+        self.assertEqual(get_track(saved, "overlay"), get_track(source, "overlay"))
         self.assertNotIn("_dirty", get_main_track(saved)["segments"][0])
         self.assertNotIn("waveform", saved)
+        self.assertEqual(source, original)
+
+    def test_disabled_secondary_survives_save_without_exporting(self):
+        source = multi_project()
+        get_track(source, "second")["enabled"] = False
+        original = copy.deepcopy(source)
+        saved = json.loads(serialize_mosp(source))
+        self.assertFalse(get_track(saved, "second")["enabled"])
+        self.assertEqual(get_track(saved, "second"), get_track(source, "second"))
+        self.assertEqual(saved["bindings"], source["bindings"])
+        self.assertNotIn("旧译文", render_srt(saved))
+        self.assertEqual(source, original)
+
+    def test_multiple_secondary_tracks_are_rejected_without_mutation(self):
+        source = multi_project()
+        source["tracks"].append({"id": "other", "role": "secondary", "enabled": False, "name": "Other",
+                                 "segments": [cue("other-cue", "其他译文")], "language": "fr"})
+        original = copy.deepcopy(source)
+        with self.assertRaisesRegex(ValueError, "at most one secondary"):
+            serialize_mosp(source)
         self.assertEqual(source, original)
 
     def test_invalid_future_save_does_not_touch_existing_file(self):
@@ -90,7 +110,7 @@ class TracksConsumerTests(unittest.TestCase):
         get_main_track(translated)["segments"][0]["text"] = "新译文"
         result = attach_translation_project(source, translated, target="zh")
         self.assert_canonical(result)
-        self.assertEqual(get_track(result, "first"), get_track(source, "first"))
+        self.assertEqual(get_track(result, "overlay"), get_track(source, "overlay"))
         self.assertEqual(get_track(result, "second")["metadata"], {"keep": False})
         self.assertEqual(get_track(result, "second")["segments"][0]["id"], "second-cue")
         self.assertEqual(get_track(result, "second")["segments"][0]["custom"], {"false": False, "zero": 0})
@@ -151,8 +171,8 @@ class TracksConsumerTests(unittest.TestCase):
         self.assert_canonical(preview)
         self.assertEqual(get_main_track(source)["segments"][0]["end"], 6000)
 
-    def test_ass_migrates_v2_groups_and_keeps_source_media_time(self):
-        source = {"schema": "moy.asr.project.v2", "segments": [cue(color_group_id="green")],
+    def test_ass_migrates_v15_groups_and_keeps_source_media_time(self):
+        source = {"schema": "moy.asr.project.v1.5", "segments": [cue(color_group_id="green")],
                   "overlay_track": {"enabled": True, "segments": [cue("overlay", "Overlay", 5500, 6500, color_group_id="green")]},
                   "subtitle_groups": {"next_id": 2, "color": [{"id": "green", "value": {"name": "green"}}], "sticker": []}}
         original = copy.deepcopy(source)
@@ -170,7 +190,7 @@ class TracksConsumerTests(unittest.TestCase):
                             for segment in get_main_track(source)["segments"]))
         self.assert_canonical(source)
 
-    def test_asr_writer_creates_v3_tracks_with_speaker_groups(self):
+    def test_asr_writer_creates_v2_tracks_with_speaker_groups(self):
         with tempfile.TemporaryDirectory() as directory:
             media = Path(directory) / "input.wav"
             media.write_bytes(b"unchanged source")
@@ -199,8 +219,8 @@ class TracksConsumerTests(unittest.TestCase):
             with patch("maw.timestamp_alignment.create_alignment_backend", return_value=object()), \
                     patch("maw.timestamp_alignment._align_span", side_effect=align):
                 report = align_project(project, media_path=media, model_id="qwen3-forced-aligner-0.6b", mode="generate")
-        self.assertEqual(report.aligned_segments, 4)
-        self.assertEqual(visited, [("原文", "ja"), ("其他译文", "fr"), ("旧译文", "zh"), ("叠加", "ja")])
+        self.assertEqual(report.aligned_segments, 3)
+        self.assertEqual(visited, [("原文", "ja"), ("旧译文", "zh"), ("叠加", "ja")])
         self.assertTrue(all(track["timestamp_granularity"] == "char" for track in project["tracks"]))
         self.assert_canonical(project)
 
@@ -226,7 +246,7 @@ class TracksConsumerTests(unittest.TestCase):
                             for segment in segments))
         self.assert_canonical(result)
 
-    def test_translation_writer_reopens_only_v3_and_preserves_source(self):
+    def test_translation_writer_reopens_only_v2_and_preserves_source(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "source.mosp"
             source = make_project([cue(text="今日はいい天気ですね。")])

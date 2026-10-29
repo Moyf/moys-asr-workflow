@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import tempfile
 import unittest
 from contextlib import chdir
@@ -18,6 +19,21 @@ class FfmpegResolverTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def test_statistics_duration_uses_probe_value_or_unknown_on_failure(self) -> None:
+        media = self.root / "recording.wav"
+        media.write_bytes(b"fixture")
+        for stdout, error, expected in (
+            ("12.5\n", None, 12.5),
+            ("N/A\n", None, None),
+            ("", subprocess.CalledProcessError(1, ["ffprobe"]), None),
+        ):
+            with self.subTest(stdout=stdout, error=type(error).__name__):
+                completed = subprocess.CompletedProcess(["ffprobe"], 0, stdout=stdout)
+                with mock.patch.object(ffmpeg_module, "resolve_ffmpeg_tool", return_value=Path("ffprobe")), \
+                        mock.patch.object(ffmpeg_module.subprocess, "run", return_value=completed, side_effect=error) as process:
+                    self.assertEqual(ffmpeg_module.media_duration_seconds(media), expected)
+                process.assert_called_once()
 
     @staticmethod
     def _tool_path(directory: Path, tool: str) -> Path:

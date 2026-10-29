@@ -208,14 +208,14 @@ class ProjectAssExportTests(unittest.TestCase):
 
     def test_load_burn_project_reads_mosp_and_json(self) -> None:
         for suffix in (".mosp", ".json"):
-            for schema in (None, "moy.asr.project.v1", "moy.asr.project.v2", "moy.asr.project.v3"):
+            for schema in (None, "moy.asr.project.v1", "moy.asr.project.v1.5", "moy.asr.project.v2"):
                 with self.subTest(suffix=suffix, schema=schema):
                     with tempfile.TemporaryDirectory() as root:
                         path = Path(root) / f"demo{suffix}"
                         project = _basic_project()
-                        if schema == "moy.asr.project.v3":
+                        if schema == "moy.asr.project.v2":
                             project = normalize_project(project)
-                        elif schema == "moy.asr.project.v2":
+                        elif schema == "moy.asr.project.v1.5":
                             migrated = normalize_project(project)
                             project.update(schema=schema, segments=get_main_track(migrated)["segments"],
                                            subtitle_groups=migrated["subtitle_groups"])
@@ -224,7 +224,7 @@ class ProjectAssExportTests(unittest.TestCase):
                         path.write_text(json.dumps(project), encoding="utf-8")
                         document, stem = load_burn_project(path)
                         self.assertEqual(stem, "demo")
-                        self.assertEqual(document["schema"], "moy.asr.project.v3")
+                        self.assertEqual(document["schema"], "moy.asr.project.v2")
                         self.assertEqual(len(get_main_track(document)["segments"]), 3)
                         self.assertNotIn("segments", document)
 
@@ -239,10 +239,10 @@ class ProjectAssExportTests(unittest.TestCase):
                     with self.assertRaises(ProjectSubtitleError):
                         load_burn_project(path)
 
-    def test_load_burn_project_rejects_v2_without_its_required_group_table(self) -> None:
+    def test_load_burn_project_rejects_v15_without_its_required_group_table(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            path = Path(root) / "invalid-v2.mosp"
-            path.write_text(json.dumps({"schema": "moy.asr.project.v2", "segments": []}), encoding="utf-8")
+            path = Path(root) / "invalid-v15.mosp"
+            path.write_text(json.dumps({"schema": "moy.asr.project.v1.5", "segments": []}), encoding="utf-8")
             with self.assertRaisesRegex(ProjectSubtitleError, "subtitle_groups"):
                 load_burn_project(path)
 

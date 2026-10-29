@@ -1036,13 +1036,13 @@ def _disable_bound_extensions(project: JsonDict, main_ids: set[str]) -> None:
     for binding in project.get("bindings", []):
         if not isinstance(binding, Mapping):
             continue
-        if not main_ids.intersection(binding["source_segment_ids"]):
+        if not main_ids.intersection([binding["source"]["segment_id"]]):
             continue
-        targets.setdefault(binding["target_track_id"], set()).update(
-            binding["target_segment_ids"],
+        targets.setdefault(binding["target"]["track_id"], set()).update(
+            [binding["target"]["segment_id"]],
         )
     # Bindings remain meaningful when bilingual display is switched off.
-    for track in get_tracks_by_role(project, "extension"):
+    for track in get_tracks_by_role(project, "secondary"):
         if not isinstance(track, Mapping):
             continue
         extension_ids = targets.get(str(track.get("id")), set())

@@ -11,6 +11,12 @@
   function groupMemberIdxs(idx) {
     const seg = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
     if (!seg) return [idx];
+    if (MaweBoot.DATA.subtitle_groups) {
+      return window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.flatMap((candidate, index) => (
+        index === idx || ['color_group_id', 'sticker_group_id'].some(field => seg[field] && candidate[field] === seg[field])
+          ? [index] : []
+      ));
+    }
     const heads = new Set();
     if (seg.sticker) heads.add(idx);
     else if (seg.sticker_ref) heads.add(seg.sticker_ref.headIdx);
@@ -152,9 +158,9 @@
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   MaweSelection.selectedExtensionIdxs.forEach((index) => { if (track?.segments[index]?.id) ids.add(track.segments[index].id); });
   if (!ids.size) return;
-  const removed = MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => (
-    binding.source_segment_ids?.some((id) => ids.has(id))
-      || binding.target_segment_ids?.some((id) => ids.has(id))
+  const removed = window.AsrEditorUtils.removeSubtitleBindings(multi, (binding) => (
+    ids.has(binding.source?.segment_id)
+      || ids.has(binding.target?.segment_id)
   ));
   if (!removed.length) {
     MaweHint.flashHint('当前选中字幕没有绑定关系', 'invalid');
@@ -164,7 +170,7 @@
   // 这里把预览关系恢复后再记录，避免解绑动作无法撤销。
   multi.bindings.push(...removed);
   return MaweCommands.run('解绑双语字幕', (command) => {
-    MULTI_SUBTITLE_UTILS.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
+    window.AsrEditorUtils.removeSubtitleBindings(multi, (binding) => removed.includes(binding));
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     MaweMultiSubtitleCore.syncBindingOffsets();
     // 解绑会移除波形上的绑定标记，也需要刷新字幕块覆盖层。
@@ -189,7 +195,7 @@
     uniqueIndices.forEach((index) => {
       const extension = track?.segments?.[index];
       const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(index, track);
-      const main = binding ? MaweMultiSubtitleCore.mainSegmentById(binding.source_segment_ids?.[0]) : null;
+      const main = binding ? MaweMultiSubtitleCore.mainSegmentById(binding.source?.segment_id) : null;
       if (!extension || !binding || !main) {
         skippedUnbound += 1;
         return;

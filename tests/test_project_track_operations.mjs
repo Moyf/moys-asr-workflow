@@ -19,9 +19,53 @@ const dependencies = { ...model, cloneJsonValue: json, stableId: value => typeof
 const subtitle = (await utilsModule('multi-subtitle')).createUtilsModule(dependencies);
 const history = (await utilsModule('history')).createUtilsModule(dependencies);
 const groups = (await utilsModule('subtitle-groups')).createUtilsModule(dependencies);
+
+test('binding allocation avoids concatenation and truncation collisions in a project', () => {
+  for (const pairs of [
+    [['a-b', 'c'], ['a', 'b-c']],
+    [['a'.repeat(145) + 'x', 'one'], ['a'.repeat(145) + 'y', 'two']],
+  ]) {
+    const project = model.makeProject(pairs.map(([id], index) => ({ id, start: index * 1000, end: index * 1000 + 900, text: id })));
+    const main = model.getMainTrack(project);
+    const secondary = subtitle.ensureExtensionTrack(project, { id: 'translation', enabled: true,
+      segments: pairs.map(([, id], index) => ({ id, start: index * 1000, end: index * 1000 + 900, text: id })) });
+    pairs.forEach((_, index) => project.bindings.push(subtitle.buildSubtitleBinding(main.segments[index], secondary.segments[index],
+      secondary.id, null, main.id, project.bindings)));
+    assert.equal(new Set(project.bindings.map(binding => binding.id)).size, 2);
+    assert.ok(project.bindings.every(binding => Array.from(binding.id).length <= 160));
+    assert.equal(model.validateTracksProject(project).ok, true);
+    assert.deepEqual(json(model.importProject(project).project), project);
+  }
+});
 const planners = { getNavigator: () => ({ platform: 'Win32' }) };
 for (const name of ['data', 'ass-style', 'text-processing', 'timed-text-core', 'timed-text-plans']) Object.assign(planners, (await utilsModule(name)).createUtilsModule(planners));
 Object.assign(planners, (await utilsModule('word-timing')).createWordTiming(planners));
+
+test('canonical CueRef bindings retain extension fields through selection, offsets and role swap', () => {
+  const project = model.makeProject([{ id: 'source', start: 100, end: 900, text: 'main' }]);
+  const main = model.getMainTrack(project);
+  const secondary = subtitle.ensureExtensionTrack(project, { id: 'translation', enabled: true,
+    segments: [{ id: 'translated', start: 120, end: 950, text: 'translation' }] });
+  const binding = subtitle.buildSubtitleBinding(main.segments[0], secondary.segments[0], secondary.id, 'pair', main.id);
+  Object.assign(binding, { vendor: { retained: true } });
+  binding.source.vendor = 'source-metadata'; binding.target.vendor = 'target-metadata';
+  project.bindings.push(binding);
+  assert.deepEqual(binding.source, { track_id: main.id, segment_id: 'source', vendor: 'source-metadata' });
+  assert.deepEqual(binding.target, { track_id: secondary.id, segment_id: 'translated', vendor: 'target-metadata' });
+  for (const key of ['source_track_id', 'target_track_id', 'source_segment_ids', 'target_segment_ids']) assert.equal(Object.hasOwn(binding, key), false);
+  assert.equal(model.validateTracksProject(project).ok, true);
+  assert.equal(subtitle.bindingForSegment(project, 'translated', 'extension', secondary.id), binding);
+  assert.deepEqual(subtitle.buildMultiDisplayRows(main.segments, secondary.segments, project.bindings), [{ mainIndex: 0, extensionIndex: 0 }]);
+  secondary.segments[0].end = 970; subtitle.rebuildBindingOffsets(project);
+  assert.equal(binding.end_offset_ms, 70);
+  assert.equal(subtitle.swapMainAndExtensionSubtitle(project).swapped, true);
+  assert.deepEqual(project.bindings[0].source, { track_id: 'translation', segment_id: 'translated', vendor: 'target-metadata' });
+  assert.deepEqual(project.bindings[0].target, { track_id: 'main', segment_id: 'source', vendor: 'source-metadata' });
+  assert.deepEqual(project.bindings[0].vendor, { retained: true });
+  assert.equal(project.bindings[0].end_offset_ms, -70);
+  assert.equal(model.validateTracksProject(project).ok, true);
+  assert.equal(subtitle.removeBindingsForSegments(project, ['source'], 'target', 'main').length, 1);
+});
 test('canonical bindings use both actual track IDs and rebuild offsets without an alias tree', () => {
   const project = canonical();
   project.tracks[0].id = 'source-identity';
@@ -36,27 +80,31 @@ test('canonical bindings use both actual track IDs and rebuild offsets without a
   assert.equal(project.bindings.length, 0);
 });
 
-test('role swap preserves entities, group memberships and metadata while remapping other languages', () => {
+test('role swap preserves entities, group memberships, bindings and metadata in both directions', () => {
   const project = canonical();
   const oldMain = project.tracks[0]; const promoted = project.tracks[1];
   oldMain.segments.push({ id: 'untranslated', start: 2500, end: 3000, text: 'extra', metadata: { keep: false } });
-  const french = { id: 'fr', role: 'extension', name: 'French', enabled: true,
-    segments: [{ id: 'fr-1', start: 1200, end: 2300, text: 'Bonjour' }, { id: 'fr-2', start: 2500, end: 3000, text: 'Autre' }] };
-  project.tracks.push(french);
-  project.bindings.push(subtitle.buildSubtitleBinding(oldMain.segments[0], french.segments[0], 'fr', 'fr-bind-1', oldMain.id));
+  project.bindings[0].vendor = { keep: true };
+  project.bindings[0].source.vendor = 'main'; project.bindings[0].target.vendor = 'secondary';
+  const before = json(project);
   const oldSegments = oldMain.segments; const cueEntity = promoted.segments[0];
   const groupsBefore = json(project.subtitle_groups);
   const result = subtitle.swapMainAndExtensionSubtitle(project);
   assert.equal(result.swapped, true);
-  assert.equal(result.removedBindingCount, 0); assert.equal(result.remappedBindingCount, 1);
+  assert.equal(result.removedBindingCount, 0); assert.equal(result.remappedBindingCount, 0);
   assert.equal(model.getMainTrack(project), promoted);
   assert.equal(oldMain.segments, oldSegments);
   assert.equal(promoted.segments[0], cueEntity);
   assert.equal(project.bilingual.active_track_id, oldMain.id);
   assert.equal(project.bindings[0].start_offset_ms, -50);
-  assert.equal(project.bindings[1].source_segment_ids[0], 'cue-en');
+  assert.equal(project.bindings[0].source.segment_id, 'cue-en');
+  assert.equal(project.bindings[0].source.vendor, 'secondary');
+  assert.equal(project.bindings[0].target.vendor, 'main');
+  assert.deepEqual(project.bindings[0].vendor, { keep: true });
   assert.deepEqual(project.subtitle_groups, groupsBefore);
   assert.equal(model.validateTracksProject(project).ok, true);
+  assert.equal(subtitle.swapMainAndExtensionSubtitle(project).swapped, true);
+  assert.deepEqual(project, before);
 });
 
 test('track snapshots restore roles, metadata, relations and groups while retaining existing track arrays', () => {
@@ -81,7 +129,7 @@ test('group assignment and clearing modify only memberships and preserve cross-t
   assert.equal(model.validateTracksProject(project).ok, true);
   groups.clearSubtitleGroupMembers(project, segments, [0], 'sticker');
   assert.equal(Object.hasOwn(segments[0], 'sticker_group_id'), false);
-  assert.equal(project.subtitle_groups.sticker[0].id, groupId);
+  assert.equal(project.subtitle_groups.sticker.some(group => group.id === groupId), false);
 });
 
 test('detached group materialization preserves a disabled first head without polluting DATA or snapshots', () => {
@@ -116,7 +164,7 @@ test('track metadata and ASS extension values obey shared strict and lossless co
   const speaker = canonical(); speaker.tracks[0].segments[0].speaker = '';
   rejects(speaker, '$.tracks[0].segments[0].speaker');
   const frame = canonical(); frame.tracks[0].segments[0].items[0].start_frame = 0;
-  rejects(frame, '$.tracks[0].segments[0].items[0].start_frame');
+  rejects(frame, '$.tracks[0].segments[0].items[0]');
 });
 
 test('export group ranges use selected, enabled cues without hidden tracks extending stickers', () => {
@@ -141,17 +189,17 @@ test('an impossible swap leaves every canonical field unchanged', () => {
   assert.deepEqual(project, before);
 });
 
-test('unmapped multilingual bindings reject a role swap atomically without losing any relation', () => {
+test('multiple secondary tracks are rejected without changing their bindings or metadata', () => {
   const project = canonical();
   const main = project.tracks[0];
   main.segments.push({ id: 'unmapped-source', start: 2500, end: 3000, text: 'not translated into active language' });
-  const french = { id: 'fr', role: 'extension', name: 'French', enabled: true,
+  const french = { id: 'fr', role: 'secondary', name: 'French', enabled: true,
     segments: [{ id: 'fr-unmapped', start: 2500, end: 3000, text: 'Autre' }] };
   project.tracks.push(french);
   project.bindings.push(subtitle.buildSubtitleBinding(main.segments[1], french.segments[0], 'fr', 'fr-unmapped-binding', main.id));
-  assert.equal(model.validateTracksProject(project).ok, true);
   const before = json(project); const bindings = project.bindings; const tracks = project.tracks;
-  assert.deepEqual(subtitle.swapMainAndExtensionSubtitle(project), { swapped: false, reason: 'unmapped-bindings', unmappedBindingCount: 1 });
+  assert.equal(model.validateTracksProject(project).ok, false);
+  assert.throws(() => model.importProject(project), model.ProjectTracksError);
   assert.deepEqual(project, before);
   assert.equal(project.bindings, bindings); assert.equal(project.tracks, tracks);
 });

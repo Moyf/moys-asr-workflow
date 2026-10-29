@@ -64,7 +64,7 @@ function mockApi() {
       perVideoSubfolder: saved.perVideoSubfolder,
       attachModelName: saved.attachModelName,
       notifyOnComplete: saved.notifyOnComplete === true,
-      appVersion: "1.10.0-beta.1",
+      appVersion: "1.10.0-beta.2",
       asrPresetRoot: saved.asrPresetRoot || "D:\\Models\\MAW\\asr-presets",
       asrPresetRootConfigured: Boolean(saved.asrPresetRoot),
       serverPort: null,
@@ -219,8 +219,10 @@ function mockApi() {
         }
       ]
       };
+      const version = /^v?(\d+)\.\d+\.\d+(?:[-+.]?[0-9A-Za-z.-]+)?$/u.exec(config.appVersion);
+      const standaloneEditorSupported = version !== null && Number(version[1]) < 2;
       const provider = config.providers.find(item => item.id === config.providerId);
-      return { ...config, models: provider.models, regions: provider.regions, languages: provider.languages };
+      return { ...config, standaloneEditorSupported, models: provider.models, regions: provider.regions, languages: provider.languages };
     },
     default_output: async ({ mediaPath, providerId, modelId, testRun }) => {
       let path = "";

@@ -5,6 +5,7 @@ import { createUtilsModule as createProjectTracks } from '../web/shared/utils/pr
 const projectTracks = createProjectTracks();
 const mainSegments = data => projectTracks.getMainTrack(data).segments;
 import { readFileSync } from 'node:fs';
+import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 const deferred = () => {
   let resolve, reject;
@@ -12,7 +13,7 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 function fixture() {
-  const data = { schema: 'moy.asr.project.v3', tracks: [{ id: 'primary', role: 'main', name: 'Main', enabled: true, segments: [{ id: 'one', start: 0, end: 1000, text: 'saved', items: [] }] }], bilingual: { display_mode: 'both' }, bindings: [], subtitle_groups: { next_id: 1, color: [], sticker: [] } };
+  const data = { schema: 'moy.asr.project.v2', tracks: [{ id: 'primary', role: 'main', name: 'Main', enabled: true, segments: [{ id: 'one', start: 0, end: 1000, text: 'saved', items: [] }] }], bilingual: { display_mode: 'both' }, bindings: [], subtitle_groups: { next_id: 1, color: [], sticker: [] } };
   const context = {
     Blob, AsrEditorUtils: projectTracks, document: { getElementById: () => null },
     MaweBoot: { DATA: data, SERVER_CONFIG: { saveUrl: '/api/project' }, PROJECT_NAME: 'old', FILENAME_BASE: 'old' },
@@ -26,7 +27,9 @@ function fixture() {
   context.window = context;
   vm.createContext(context);
   for (const file of ['boot/editor-runtime', 'state/editor-state', 'io/editor-project-save']) {
-    vm.runInContext(readFileSync(new URL(`../web/editor/${file}.js`, import.meta.url), 'utf8'), context);
+    const initializers = { 'state/editor-state': 'initMaweState', 'io/editor-project-save': 'initMaweProjectSave' };
+    const source = initializers[file] ? invokedInitModuleSource(`editor/${file}.js`, initializers[file]) : readFileSync(new URL(`../web/editor/${file}.js`, import.meta.url), 'utf8');
+    vm.runInContext(source, context);
   }
   context.MaweState.beginProjectSession();
   context.MaweState.establishProjectCheckpoint();

@@ -146,7 +146,7 @@ class ScriptTimestampTests(unittest.TestCase):
             srt = read_srt(artifact.srt_path)
             self.assertEqual([cue["text"] for cue in main_segments(srt)], ["你好！", "世界。"])
             self.assertEqual(main_segments(project)[1]["items"][0]["start"], 1000)
-            self.assertEqual(project["schema"], "moy.asr.project.v3")
+            self.assertEqual(project["schema"], "moy.asr.project.v2")
             self.assertEqual(project["media"], media.name)
             self.assertEqual(resolve_project_media(artifact.project_path, project).resolved_path, media.resolve())
             self.assertEqual(project["media_metadata"]["selected_audio_track"], 0)

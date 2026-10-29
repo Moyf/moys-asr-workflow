@@ -678,8 +678,8 @@ class ScriptAlignmentTests(unittest.TestCase):
         self.assertEqual(main_segments(output)[3]["sticker_group_id"], main_segments(output)[2]["sticker_group_id"])
         self.assertEqual(main_segments(output)[3]["color_group_id"], main_segments(output)[2]["color_group_id"])
         self.assertEqual(
-            output["bindings"][0]["source_segment_ids"],
-            ["s1"],
+            output["bindings"][0]["source"]["segment_id"],
+            "s1",
         )
         self.assertEqual(output["bindings"][0]["start_offset_ms"], 0)
         self.assertEqual(

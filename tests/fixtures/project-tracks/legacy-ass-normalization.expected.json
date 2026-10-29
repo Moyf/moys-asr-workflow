@@ -1,5 +1,5 @@
 {
-  "schema": "moy.asr.project.v3",
+  "schema": "moy.asr.project.v2",
   "tracks": [
     {
       "id": "main",

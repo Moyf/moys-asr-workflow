@@ -1,7 +1,10 @@
 // 多重字幕导入：导入选择弹窗、预览渲染与主副轨交换。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweMultiImport 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweMultiImport 在原清单位次执行原 IIFE 体（挂
+// window.MaweMultiImport 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweMultiImport() {
+  // Preserve the classic editor.js alias inside this module's own closure.
+  const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 (function initMaweMultiImport(global) {
   'use strict';
 
@@ -134,18 +137,18 @@
   function commitMultiSubtitleImport() {
   const pending = pendingMultiImport;
   if (!pending) return false;
-  const match = pending.match || MULTI_SUBTITLE_UTILS.matchSubtitleSegments(
+  const match = pending.match || window.AsrEditorUtils.matchSubtitleSegments(
     window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, pending.segments, MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
   );
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const replacing = Boolean(pending.existingTrackId);
   const oldTrack = replacing ? MaweMultiSubtitleCore.getExtensionTrack(pending.existingTrackId) : null;
-  const trackId = oldTrack?.id || MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+  const trackId = oldTrack?.id || window.AsrEditorUtils.uniqueStableSegmentId(
     multi.tracks || [], 'extension-1', 'extension',
   );
   const extensionSegments = pending.segments.map((segment, index) => ({
     ...window.AsrEditorUtils.cloneJsonValue(segment),
-    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+    id: window.AsrEditorUtils.uniqueStableSegmentId(
       [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA), ...pending.segments.slice(0, index)], `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
     ),
     _dirty: true,
@@ -154,12 +157,12 @@
     ...window.AsrEditorUtils.cloneJsonValue(oldTrack || {}),
     ...window.AsrEditorUtils.cloneJsonValue(pending.segments.sourceTrack || {}),
     id: trackId,
-    role: 'extension',
+    role: 'secondary',
     enabled: true,
     name: pending.file.name.replace(/\.[^.]+$/i, '') || '副字幕',
     language: pending.segments.sourceTrack?.language || '',
     source_name: pending.file.name,
-    split_mode: pending.segments.sourceTrack?.split_mode || MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(
+    split_mode: pending.segments.sourceTrack?.split_mode || window.AsrEditorUtils.detectSubtitleSplitMode(
       extensionSegments.map((segment) => segment.text).join('\n'),
     ),
     segments: extensionSegments,
@@ -168,7 +171,7 @@
     if (replacing) {
       const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
       multi.bindings = (multi.bindings || []).filter((binding) => (
-        binding.target_track_id !== trackId && !binding.target_segment_ids?.some((id) => oldIds.has(id))
+        binding.target?.track_id !== trackId && !oldIds.has(binding.target?.segment_id)
       ));
       const oldIndex = multi.tracks.findIndex((candidate) => candidate.id === trackId);
       if (oldIndex >= 0) multi.tracks.splice(oldIndex, 1, track);
@@ -192,7 +195,7 @@
       const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[candidate.mainIndex];
       const extension = extensionSegments[candidate.extensionIndex];
       if (main && extension) multi.bindings.push(
-        MULTI_SUBTITLE_UTILS.buildSubtitleBinding(main, extension, trackId, null, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).id),
+        window.AsrEditorUtils.buildSubtitleBinding(main, extension, trackId, null, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).id, multi.bindings),
       );
     });
     track.enabled = true;
@@ -224,7 +227,7 @@
     return false;
   }
   return MaweCommands.run('交换主副字幕', (command) => {
-    const result = MULTI_SUBTITLE_UTILS.swapMainAndExtensionSubtitle(MaweBoot.DATA, track.id);
+    const result = window.AsrEditorUtils.swapMainAndExtensionSubtitle(MaweBoot.DATA, track.id);
     if (!result.swapped) {
       MaweHint.flashHint(result.reason === 'unmapped-bindings'
         ? `另有 ${result.unmappedBindingCount} 条副轨绑定无法随主轨交换，请先解除相关绑定`
@@ -275,9 +278,12 @@
       const text = await MaweState.waitForProjectLoad(MaweLoadingProgress.readFileTextWithProgress(file), generation);
       if (!current()) return false;
       MaweLoadingProgress.updateEditorLoading(60, `正在解析工程 ${file.name}…`);
-      const imported = window.AsrEditorUtils.importProject(JSON.parse(text));
+      const rawProject = JSON.parse(text);
+      const imported = window.AsrEditorUtils.importProject(rawProject);
       const data = imported.project;
-MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation, repaired: imported.changes.length > 0 });
+      MaweJsonRepair.noteImportReport(imported.changes);
+MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation, repaired: imported.changes.length > 0,
+  requiresMigrationSaveAs: rawProject.schema !== window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA });
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();
 const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
@@ -330,3 +336,12 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
     openProjectFile
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function showMultiSubtitleImportChoice(...args) { return window.MaweMultiImport.showMultiSubtitleImportChoice(...args); }
+export function closeMultiSubtitleImportModal(...args) { return window.MaweMultiImport.closeMultiSubtitleImportModal(...args); }
+export function prepareMultiSubtitleImport(...args) { return window.MaweMultiImport.prepareMultiSubtitleImport(...args); }
+export function renderProjectImportPreview(...args) { return window.MaweMultiImport.renderProjectImportPreview(...args); }
+export function renderMainImportPreview(...args) { return window.MaweMultiImport.renderMainImportPreview(...args); }
+export function swapMainAndExtensionSubtitles(...args) { return window.MaweMultiImport.swapMainAndExtensionSubtitles(...args); }
+export function openProjectFile(...args) { return window.MaweMultiImport.openProjectFile(...args); }

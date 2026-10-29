@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 function fixture(segments, overlaySegments = [], alignFirstStart = false, colorGroups = []) {
   const saves = [];
@@ -28,11 +29,9 @@ function fixture(segments, overlaySegments = [], alignFirstStart = false, colorG
   context.window.MaweBoot = context.MaweBoot;
   loadEditorModule(context, 'shared/editor-utils.js');
   context.MULTI_SUBTITLE_UTILS = context.window.AsrEditorUtils;
-  const wiring = fs.readFileSync(new URL('../web/editor/io/editor-wiring-export-context.js', import.meta.url), 'utf8');
-  const helpersEnd = wiring.indexOf('function buildOverlaySubtitleOtioTrack');
-  assert.ok(helpersEnd > 0, 'export helper slice must stop before unrelated UI wiring');
-  vm.runInNewContext(wiring.slice(0, helpersEnd), context);
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/io/editor-export-srt.js', import.meta.url), 'utf8'), context);
+  context.document = { getElementById: () => null };
+  vm.runInNewContext(initModuleSource('editor/io/editor-wiring-export-context.js'), context);
+  vm.runInNewContext(initModuleSource('editor/io/editor-export-srt.js'), context);
   return { saves, api: context.window.MaweExportSrt, context };
 }
 

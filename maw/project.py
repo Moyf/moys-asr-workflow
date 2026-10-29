@@ -15,7 +15,7 @@ from maw.language import LANGUAGE_SOURCES, SPLIT_MODES, TIMESTAMP_GRANULARITIES
 # pyright: reportImplicitOverride=false
 
 MIN_SEGMENT_DURATION_MS = 100
-PROJECT_SCHEMA: Final = "moy.asr.project.v3"
+PROJECT_SCHEMA: Final = "moy.asr.project.v2"
 TIMELINE_TIMEBASE_UNITS = frozenset({"milliseconds", "frames"})
 MIN_TIMELINE_FPS = 1.0
 MAX_TIMELINE_FPS = 240.0

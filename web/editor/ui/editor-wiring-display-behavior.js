@@ -129,7 +129,7 @@ MaweDom.mediaSeekStepInput?.addEventListener('change', () => {
 MaweDom.cueMoveStepInput?.addEventListener('change', () => {
   const frameMode = MaweTimeline.timelineIsFrameMode();
   const value = frameMode
-    ? EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(MaweDom.cueMoveStepInput.value, 1)
+    ? window.AsrEditorUtils.clampTimelineFrameStep(MaweDom.cueMoveStepInput.value, 1)
     : MaweSettings.clampCueMoveStepMs(MaweDom.cueMoveStepInput.value);
   MaweDom.cueMoveStepInput.value = String(value);
   MaweSettings.updateEditorSettings(frameMode ? { cueMoveStepFrames: value } : { cueMoveStepMs: value });
@@ -138,6 +138,12 @@ MaweDom.timelineTimebaseSelect?.addEventListener('change', () => {
   MaweTimeline.setTimelineTimebase({ unit: MaweDom.timelineTimebaseSelect.value });
 });
 MaweDom.timelineFpsInput?.addEventListener('change', () => {
+  MaweTimeline.setTimelineTimebase({ fps: MaweDom.timelineFpsInput.value });
+});
+// Native change does not fire when the user submits the existing value.
+MaweDom.timelineFpsInput?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.isComposing) return;
+  event.preventDefault();
   MaweTimeline.setTimelineTimebase({ fps: MaweDom.timelineFpsInput.value });
 });
 MaweDom.timelineSnapToFrameToggle?.addEventListener('change', () => {

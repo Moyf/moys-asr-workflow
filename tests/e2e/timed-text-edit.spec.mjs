@@ -646,12 +646,15 @@ test('unavailable single view falls back only at runtime and loading another pro
   await expect(page.locator('#timed-text-edit-rows')).toBeVisible();
   await expect(page.locator('#timed-text-edit-view [data-view="single"]')).toBeDisabled();
   expect(await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).timed_text_edit_view)).toBe('single');
-  expect(await page.evaluate(() => MaweState.changes.timedTextEditViewDirty)).toBe(false);
+  expect(await page.evaluate(() => MaweState.hasProjectChanges())).toBe(false);
   await page.evaluate(() => {
-    MaweState.changes.timedTextEditViewDirty = true;
+    MaweBoot.DATA.timed_text_edit_view = 'rows';
+  });
+  expect(await page.evaluate(() => MaweState.hasProjectChanges())).toBe(true);
+  await page.evaluate(() => {
     MaweProjectLoad.applyCanonicalProject(MaweProjectLoad.buildBlankProject(), 'blank.mosp');
   });
   expect(await page.evaluate(() => MaweBoot.DATA.timed_text_edit_view)).toBe('rows');
-  expect(await page.evaluate(() => MaweState.changes.timedTextEditViewDirty)).toBe(false);
+  expect(await page.evaluate(() => MaweState.hasProjectChanges())).toBe(false);
   expect(await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).timed_text_edit_view)).toBeUndefined();
 });

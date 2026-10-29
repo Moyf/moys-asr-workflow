@@ -1,18 +1,14 @@
 # 字幕工程文件规范（`.mosp` / `.json`）
 
-本文档定义 MAWE（Moy's ASR Workflow Editor）、`edit.py` 生成的 `.edit.html` 以及 `blank-editor.html` 共同接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。
+工程文件是 UTF-8 JSON。`.mosp` 是默认扩展名，`.json` 仍可用于兼容输入和输出。本规范描述 `2.0dev` 的统一轨道格式；实现与整合仍在进行。旧 `.edit.html` 和 `blank-editor.html` 按各自版本支持旧格式，2.0 不再维护这些入口。
 
-用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
+## 当前目标：v2 统一字幕轨道
 
-适用版本：`2.0dev` 的统一轨道草案。当前写出 `moy.asr.project.v3`；无 schema 的历史工程、v1、上游 v1.5 和早期分组草案 v2 在导入边界迁移为 v3，未知版本拒绝。版本名称与轨道角色仍待按最终方案调整；旧客户端不能打开 v3，升级前请保留原文件和备份。
-
-## 当前结构：v3 统一字幕轨道
-
-三类字幕使用同一 `tracks[]`。编辑器运行态、历史与保存都只存这份数据，不再同时维护顶层 `segments`、`multi_subtitle` 或 `overlay_track`。
+当前写出 `moy.asr.project.v2`。无 schema 或显式 v1 的旧工程，以及独立组格式 v1.5，可在导入边界转换为 v2。未知格式拒绝。旧工程打开和内存迁移不覆盖源文件；首次保存 v2 应显式另存为新文件，取消或失败保留原文件。
 
 ```json
 {
-  "schema": "moy.asr.project.v3",
+  "schema": "moy.asr.project.v2",
   "media": "clip.mp4",
   "timebase": { "unit": "milliseconds", "fps": 30 },
   "tracks": [
@@ -22,7 +18,7 @@
       "segments": [{ "id": "cue-1", "start": 5000, "end": 6000, "text": "你好", "color_group_id": "color-1" }]
     },
     {
-      "id": "english", "role": "extension", "name": "英语", "enabled": true,
+      "id": "english", "role": "secondary", "name": "英语", "enabled": true,
       "language": "en", "split_mode": "word",
       "segments": [{ "id": "cue-2", "start": 5000, "end": 6000, "text": "Hello", "color_group_id": "color-1" }]
     },
@@ -30,57 +26,74 @@
   ],
   "bilingual": { "display_mode": "both", "active_track_id": "english" },
   "bindings": [{
-    "id": "binding-1", "source_track_id": "main", "target_track_id": "english",
-    "source_segment_ids": ["cue-1"], "target_segment_ids": ["cue-2"],
+    "id": "binding-1",
+    "source": { "track_id": "main", "segment_id": "cue-1" },
+    "target": { "track_id": "english", "segment_id": "cue-2" },
     "start_offset_ms": 0, "end_offset_ms": 0
   }],
   "subtitle_groups": { "next_id": 2, "color": [{ "id": "color-1", "value": { "name": "yellow" } }], "sticker": [] }
 }
 ```
 
-| 字段 | v3 规则 |
+| 字段 | v2 规则 |
 | --- | --- |
-| `tracks` | 必填数组；恰好一条 main、至多一条 overlay，可保留多条 extension。数组顺序不决定角色 |
-| `tracks[*].id` | 工程内唯一、非空字符串，最多 160 个 Unicode 码点；角色交换、改名、排序不改 ID |
-| `role` / `name` / `enabled` / `segments` | 所有轨道共同字段。role 仅 main、extension、overlay；main 必须启用。关闭轨道不删除内容或关系 |
+| `tracks` | 必填数组；恰好一条 main，至多一条 secondary 和一条 overlay；数组顺序不决定角色。旧工程有多条副轨时拒绝迁移，不丢弃数据 |
+| `tracks[*].id` | 工程内唯一的非空字符串，最多 160 个 Unicode 码点；角色交换不更改轨道 ID |
+| `role` / `name` / `enabled` / `segments` | 所有轨道共同字段。role 为 `main`、`secondary` 或 `overlay`；main 必须启用。关闭轨道不删除内容或关系 |
 | 轨道来源元数据 | `language`、`language_source`、`split_mode`、`timestamp_granularity`、`model`、`preserve_punctuation`、`source_name` 跟随具体轨；`split_mode_override` 保留旧主轨手动覆盖 |
-| cue ID 与时间 | cue ID 跨所有轨全局唯一；start/end 和 items 均为源媒体整数毫秒。允许合法零时长标点 item，cue 本身仍须 start < end |
-| `bilingual` | 显示配置；active_track_id 指向实际 extension；主轨/副轨/双列模式沿用现有产品语义，副轨关闭后保留活动选择 |
-| `bindings` | 显式两端轨 ID 和 cue ID；目前 source 为 main、target 为 extension，两端各一个 cue。offset 与真实端点的整数毫秒差一致 |
-| `subtitle_groups` | v1.5 独立组表延续；cue 仅引用 color_group_id / sticker_group_id；组 value 的未知字段保留；区间由实际成员计算 |
-| 工程字段 | 媒体、媒体音轨清单、timebase、audio_processing、gap_remove、markers、workspace、preview 等仍属于工程，媒体音轨不转成字幕轨 |
+| cue ID 与时间 | cue ID 跨轨唯一；start/end 和 items 使用源媒体整数毫秒。允许合法零时长标点 item，cue 本身须 start < end |
+| `bilingual` | 双语显示配置；`active_track_id` 指向副轨。`display_mode` 的 `extension` 是显示选项，不是轨道角色 |
+| `bindings` | `source` 和 `target` 为 `{track_id, segment_id}` CueRef，分别指向主轨与副轨字幕；offset 与端点时间差一致 |
+| `subtitle_groups` | 沿用 v1.5 独立组表；cue 使用 `color_group_id` / `sticker_group_id` 引用组，组区间从成员计算 |
+| 工程字段 | 媒体、媒体音轨、timebase、audio_processing、gap_remove、markers、workspace、preview 等属于工程；媒体音轨不是字幕轨 |
 
-轨道内部维持现有时间顺序和非重叠约束，轨道之间可以重叠。逐句 disabled 与整轨 enabled 分别生效。导出按入口选择主轨、活动且开启的副轨和开启的叠加轨；保存保留全部轨道。表情烧录与 FCP 组计划只从实际参与的启用成员计算范围，同组输出一次。Resolve 保持外部 v1 协议，Resolve / OTIO 贴图仍按逐句区间展开，不填满句间空隙。
+轨内保持时间顺序和非重叠，轨道之间可以重叠。保存只写 `tracks`，不再写顶层 `segments`、`overlay_track` 或 `multi_subtitle`。v2 拒绝新旧容器混用、重复 ID 和悬空引用；未知扩展字段应保留。主副交换保留字幕、稳定身份、组和轨道来源元数据，并同步反转绑定。
 
-主副轨交换先检查所有绑定能否重映射，无法完整重映射则原子拒绝，不静默删关系。交换保留每条字幕自身的组属性；撤销恢复完整内容。拆分保留首段 ID，其余生成全局唯一 ID；移动、合并和删除同步维护关系。
-
-普通主轨 / 叠加轨换轨保留全局组归属，来回移动后同组范围仍由全体成员派生；不再受旧轨内 headIdx 引用限制。显式移出组和删除中段则保留原操作的拆组语义，前后部分成为独立稳定组。
-
-v3 不接受混用新旧容器、重复 ID、悬空活动轨 / 绑定 / 组引用或未知 schema。导入在提交 DATA、绑定媒体和写盘前校验；失败不修改当前工程和磁盘。未识别的工程、轨道、cue、item、binding、组值字段保留，false / 0 / 空对象 / 空数组也不能丢失。打开工程不自动清理标点或改写原文。
+组表不存范围副本。删除或转轨保留剩余字幕的组成员关系；清除最后一个成员后删除空组。Resolve 使用 `moy.asr_subtitle_editor.resolve.v2` 按组区间输出；OTIO 按组的连续区间输出。普通 SRT 包含主轨和启用的叠加轨，新增 overlay 变体默认不进入主 SRT。
 
 ### 旧格式迁移
 
-| 旧字段 | v3 位置 |
+| 旧字段 | v2 位置 |
 | --- | --- |
-| 顶层 `segments` | role 为 main 的 track.segments |
-| `overlay_track` | role 为 overlay 的 track，保留 enabled 和未知字段 |
-| `multi_subtitle.tracks` | role 为 extension 的 tracks，稳定保留活动选择 |
-| `multi_subtitle.enabled` | 各 extension.enabled |
-| `multi_subtitle` 的显示和未知容器字段 | `bilingual` |
-| `multi_subtitle.bindings` | 顶层 `bindings`，补齐显式两端与偏移 |
-| 顶层语言 / 分段 / 模型来源字段 | main track 上的同名字段 |
-| `multi_subtitle.main_split_mode` | main track.split_mode_override |
-| v1 color/sticker 与 headIdx 引用 | 在原轨原数组上解析，再转独立组表和稳定组 ID |
+| 顶层 `segments` | main 轨 `segments` |
+| `overlay_track` | overlay 轨，保留启用状态及未知字段 |
+| `multi_subtitle.tracks` / `enabled` | secondary 轨及其 `enabled` |
+| `multi_subtitle` 显示与未知容器字段 | `bilingual` |
+| `multi_subtitle.bindings` | 顶层 `bindings`，转换为具名 source / target CueRef |
+| 顶层语言、分段与模型字段 | main 轨同名字段 |
+| `multi_subtitle.main_split_mode` | main 轨 `split_mode_override` |
+| v1 `color` / `sticker` 与 `headIdx` | 在原轨原数组解析，再转换为独立组表和组 ID |
 
-v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步映射绑定（包括旧 normalizer 生成的隐式 ID）。v1.5 和早期分组草案 v2 保留已有全局 cue ID 和独立组表，坏引用明确拒绝。legacy ASS scale 保留原来的两位舍入与默认值省略规则，未知属性仍保留；v3 严格读入不二次改写值。
+v1 的轨内合法 ID 保留；跨轨重名和缺失 ID 确定性分配并更新绑定。v1.5 保留已有全局 cue ID 和独立组表；坏引用拒绝。旧 ASS scale 保持历史舍入规则。媒体、字幕和字词时间不因迁移或去空隙改写。
 
-媒体时间不因迁移或 gap_remove 改写。烧录保持 `alignFirstStart: false`，首句在 5 秒仍位于源素材 5 秒；独立字幕导出可另行选择首句归零。迁移和保存细节见[统一轨道方案](../plans/UNIFIED_TRACKS_PLAN.md)。
+### 导入边界与修复报告
 
----
+Python `maw.project_boundary.prepare_project` 与浏览器 `MaweProjectValidation.prepareProject` 返回 `ok/errors/project/changes`。错误含 JSON 路径；失败时 `project` 为 null，`changes` 为空。成功时 changes 记录实际差异，再次导入规范化结果不产生新差异。可用 `python -m maw.project_boundary project.mosp` 只读检查；加 `--strict` 禁止时间修复。该命令不写源文件。共享语料见 `tests/fixtures/project-boundary.json`。
+
+## v1.5 独立颜色 / 表情包组
+
+v1.5 是历史输入，使用顶层 `segments`、`overlay_track`、`multi_subtitle` 和必填的 `subtitle_groups`。各轨 cue ID 在工程内唯一；组 ID 在所属类型内唯一，组 `value` 必须有字符串 `name`，不保存 `start/end`。示例：
+
+```json
+{
+  "schema": "moy.asr.project.v1.5",
+  "subtitle_groups": {
+    "next_id": 2,
+    "color": [{"id": "color-1", "value": {"name": "blue", "value": "#3388ff"}}],
+    "sticker": [{"id": "sticker-1", "value": {"name": "cat", "rel": "cat.png"}}]
+  },
+  "segments": [{"id": "cue-a", "start": 1000, "end": 3000, "text": "甲", "sticker_group_id": "sticker-1"}],
+  "overlay_track": {"enabled": true, "segments": [{"id": "cue-b", "start": 5000, "end": 10000, "text": "乙", "sticker_group_id": "sticker-1"}]}
+}
+```
+
+组 `value` 保留完整颜色或素材属性及扩展字段，范围由成员的最早开始和最晚结束时间推导。禁用成员保留组关系；全部成员禁用时不显示或导出表情。关闭轨道保留其组关系，预览和导出的表情范围只计算启用轨道的成员。
+
+拆分后的两侧继承原组；同组合并继承，不同组或混有无组字幕时，合并结果不继承该种组关系。未参与合并的成员保留原组，同名素材也不会自动合并为同一组。
 
 ## 一、v1 历史结构及共享字段参考
 
-以下旧容器示例描述迁移输入。v3 不再写出这些旧容器；通用 cue、媒体、波形、预览、空隙和工作区字段的详细规则继续适用，字幕路径按上方映射阅读。
+以下旧容器示例仅描述 v1 迁移输入，不是 v2 保存结构。通用 cue、媒体、波形、预览、空隙和工作区字段的详细规则继续适用；字幕路径按上方映射阅读。
 
 ```json
 {
@@ -127,15 +140,15 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `schema` | `string` | 否（写出时必填） | 当前值为 `moy.asr.project.v1`。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
-| `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
+| `schema` | `string` | 否 | 历史输入可省略或使用 `moy.asr.project.v1`；当前保存格式为 v2，详见上文 |
+| `segments` | `array<object>` | **必填** | v1 输入的主字幕段数组；缺失或不是数组时拒绝加载 |
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可），相对路径以工程文件所在目录为基准。生成与服务器保存优先写相对路径（如 `_maw/clip.mosp` 引用 `../clip.mp4`），跨盘无法相对引用时写绝对路径。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
 | `audio_processing` | `object` | 否 | 工程固定音量增益及响度参考。`gain_db` 为 −60 到 +24 的有限数值，缺省 0；界面默认显示 −6 到 +12，扩大范围只改变控件显示，不改变已保存的增益。`target_lufs` 为 −70 到 0 的有限数值，预设 −14（常见标准）、−16（播客）、−23（广播电视 / EBU R128），支持自定义，缺省 −14。已保存的有效参考值保持原样；缺字段或非法参考回到 −14。`peak_ceiling_dbtp` 当前固定 −1，仅用于匹配增益计算。无效增益回到 0，越界有限值限制到工程范围。只保存参数，LUFS/真峰值测量属于运行态缓存。工程增益用于编辑器预览与视频烧录，监听音量不写入该字段 |
 | `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。用于显示、选择切句计量方式，以及结合语言来源决定是否启用中文翻译预过滤 |
 | `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知）。中文翻译预过滤仅信任前两种来源，并在全文有假名或谚文时停用 |
-| `preserve_punctuation` | `boolean` | 否 | 为 `true` 时，MAWE 启动不执行历史中文逗号 / 句号清理，保留字幕与 items 的原文；保存和重新加载保留此策略。文稿驱动对齐写入 `true`。省略或为 `false` 时保持历史行为；不限制用户后续主动编辑 / 文本处理。此字段是 v1 的可选扩展，不改变整数毫秒契约 |
+| `preserve_punctuation` | `boolean` | 否 | 历史兼容字段，继续读取与保存；文稿驱动对齐仍写入 `true`。当前 MAWE 打开所有工程均保留标点，不论此字段为 `true`、`false` 或缺省，都不自动改写字幕与 items 原文；用户主动编辑 / 文本处理仍有效。此字段是 v1 的可选扩展，不改变整数毫秒契约 |
 | `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
-| `timed_text_edit_view` | `string` | 否 | 纯文本编辑视图：`rows`（逐条，默认）或 `single`（整体）。默认 `rows` 保存时省略；当前字幕含换行而不能整体编辑时，仅在界面暂用逐条视图，不覆盖工程偏好 |
+| `timed_text_edit_view` | `string` | 否 | 纯文本编辑视图：`rows`（逐条，默认）或 `single`（整体）。默认 `rows` 保存时省略；切换视图计入工程修改，切回保存值恢复干净；非法类型或枚举在导入边界拒绝。当前字幕含换行而不能整体编辑时，仅在界面暂用逐条视图，不覆盖工程偏好 |
 | `timestamp_granularity` | `string` | 否 | 时间码粒度：`char`、`word`、`segment` 或 `unknown`。只有整段 start/end 的模型使用 `segment`；这类工程的字幕段可以没有 `items`，超长段可能已按标点（连续语言）或单词数（单词型）二次拆分，段内时间是插值近似值（不携带 `items` 冒充词级精度） |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
 | `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、成对的正整数 `video_width` / `video_height`、非负整数 `selected_audio_track` 和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
@@ -157,11 +170,16 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 
 `timebase` 是字幕编辑器的时间基准，不改变媒体本身的时间单位。`unit: "milliseconds"` 保持旧行为；`unit: "frames"` 时，拖动、边界调整、方向键和 A/D 微调使用独立的帧字段，`fps` 决定帧与实际媒体时间的换算。为兼容旧工具，`start` / `end` 及字词时间码仍始终保存为整数毫秒；帧模式额外保存成对的 `start_frame` / `end_frame` 字段。帧时间码显示采用较通行的非丢帧格式 `HH:MM:SS:FF`，其中 `FF` 是当前秒内的帧号。
 
+`timebase.fps_source` 可选，合法值仅为 `auto`（自动采用媒体 FPS）或 `user`（用户明确提交 FPS，包含默认值 30）。来源随工程保存；`user` 优先于数值推断，`auto` 不因非 30 或帧模式变成用户指定。自动取值仍只在从毫秒模式切入帧模式时进行，换媒体或加载工程本身不新增重映射；用户改 FPS 和切换时间单位沿用现有确认与同步规则。FPS 输入框按 Enter 可提交与当前相同的值。
+
+旧工程缺少 `fps_source` 时保留缺失：帧模式或非 30 FPS 沿用旧的显式选择推断，毫秒模式 30 可在切入帧模式时采用媒体值；不凭旧值补写用户意图。仅记录来源不得改写 segments、items、帧字段或绑定 offset，不升级工程 schema。非法来源（含 null、空串或其他类型）拒绝读取，不静默降为自动。
+
+
 ### 1.0 工程文件扩展名
 
 - 转写器和 Launcher 默认生成 `.mosp`；命令行的 `--json` 参数名称为历史兼容名称，含义是“同时生成工程文件”。
 - `.mosp` 文件不是新的二进制容器，而是普通 UTF-8 JSON，方便脚本、版本控制和其他工具读取。
-- 编辑器、服务器和桌面入口都继续接受 `.json`。打开旧 `.json` 工程时可以原扩展名保存，也可以通过“另存为”改成 `.mosp`。
+- 编辑器、服务器和桌面入口都继续接受 `.json`。旧工程首次迁移须另存为新 `.json` 或 `.mosp` 文件。
 - 服务器覆盖保存会保留当前扩展名，并先创建同目录备份：`project.mosp.bak` 或 `project.json.bak`。
 - `.workspace.json` 是可选的独立工作区迁移文件，不是字幕工程文件；Resolve JSON、保留区域 JSON 等导出文件也不应重新作为工程打开。
 
@@ -548,9 +566,9 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 - `preview.sticker` 缺失时同样按旧工程处理，使用默认几何 `{ x: 0.73, y: 0.04, width: 0.24, height: 0.3 }`（右上角）。两个几何共用同一套归一化与钳制规则。
 - 该几何只移动/缩放预览框容器；内部文字 `<span>` 仍保持居中与药丸样式，`segments[*].start/end/items[*].start/end` 永不被此几何改动。
 
-### 1.5 overlay_track 叠加字幕轨
+### 1.5 overlay_track 叠加字幕轨（v1 历史输入）
 
-`overlay_track` 是可选的单条独立字幕轨，用于保存同一份 SRT 中与主轨重叠的字幕。顶层 `segments` 始终是主轨真源；叠加轨只含自身的 `segments`，不建立主副绑定关系，也不替代 §1.6 的双语 `multi_subtitle`。
+v1 输入的 `overlay_track` 是可选叠加字幕轨；v2 将它转换为 `role: overlay` 的轨道。
 
 ```json
 {
@@ -578,9 +596,9 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 - 后处理与 Server 导出的单个 SRT 会合并启用的主轨和叠加轨：先按 `start` 升序，开始时间相同则主轨在前；禁用或空文本段不导出。
 - 从 SRT 导入时优先放入主轨；与主轨冲突的 cue 放入叠加轨；若同一时刻需要第三层则导入失败，不会静默丢失字幕。
 
-### 1.6 multi_subtitle 双语字幕
+### 1.6 multi_subtitle 双语字幕（v1 历史输入）
 
-`multi_subtitle` 是可选的双语字幕结构。旧工程缺失该字段时，编辑器按关闭状态加载；保存时会补写关闭的空结构。顶层 `segments` 始终是主轨真源，副字幕只放在 `tracks[*].segments` 中。
+v1 输入的 `multi_subtitle` 是可选双语结构；v2 将副轨迁移为 `secondary`，不保存该容器。
 
 ```json
 {
@@ -646,12 +664,12 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 
 约束：
 
-- 主轨和扩展轨段均使用不重复的稳定字符串 ID；当前规范化会为缺失 ID 的输入补齐，并在导出/保存时写入。主轨按 `main-001`、扩展轨按 `<track-id>-segment-001` 的顺序生成；如果生成值与后续显式 ID 冲突，会使用确定性的 `-generated` 后缀。浏览器与 Python 服务端使用同一规则。
+- v1 旧规范化器曾按 `main-001`、`<track-id>-segment-001` 生成轨内 ID，冲突时使用 `-generated` 后缀。导入会识别这些隐式绑定端点，再生成 v2 ID 并更新引用。
 - 当前 MVP 强制每个绑定一对一；数组形式保留给未来一对多关系，但当前校验要求数组长度均为 1，且一个端点不能重复绑定。
 - 自动导入按段级时间码匹配：时间区间有交集，且开始/结束时间差均不超过 `300ms`；冲突选择总差值最小的候选。未匹配段保留，可手动绑定。
-- 副字幕段也可以保存 `color` / `color_ref`；其中 `color_ref.headIdx` 是当前副字幕数组中的 0-based 整数下标，并且必须指向更早的颜色 head。交换主副字幕时，编辑器按绑定关系将主轨颜色映射到新的主轨，同时保留移到副轨的原主轨颜色信息。
+- 副字幕段也可以保存 `color` / `color_ref`；其中 `color_ref.headIdx` 是当前副字幕数组中的 0-based 整数下标，并且必须指向更早的颜色 head。交换主副字幕时，各字幕属性跟随原字幕，不自动映射颜色。
 - SRT 导入没有字词时间码，因此扩展段通常不带 `items`；mosp/json 导入和主副交换可以带上可选 `items`，保存、加载和再次交换时保留它们。
-- `continuous`（字符型）允许字符边界，`word`（单词型）只允许空格或安全标点附近的边界，禁止拆碎单词。切分时会清理断点两侧相邻的中英文逗号、句号及空白；两种模式也分别决定字数统计规则。
+- `continuous`（字符型）允许字符边界，`word`（单词型）只允许空格或安全标点附近的边界，禁止拆碎单词。切分默认只清理断点两侧的空白并保留标点；已有自定义拆分删除符号设置继续生效。两种模式也分别决定字数统计规则。
 - `enabled: false` 时工程仍保留轨道、绑定、语言类型和 ID；主轨 SRT 导出语义不变，扩展轨使用独立 SRT 导出。
 
 ### 1.7 markers 标记与区段（可选）
@@ -710,8 +728,7 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
   "sticker": null,
   "sticker_ref": null,
   "color": null,
-  "color_ref": null,
-  "_dirty": false
+  "color_ref": null
 }
 ```
 
@@ -731,7 +748,7 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 | `sticker_ref` | `object\|null` | 否 | 引用上方 head 的表情包（跨多句用） |
 | `color` | `object\|null` | 否 | 颜色标记 head。见第四节 |
 | `color_ref` | `object\|null` | 否 | 引用上方 head 的颜色 |
-| `_dirty` | `bool` | 否 | 是否被人工改过。**生成时不要写 `true`**，仅由编辑器内部维护 |
+| `_dirty` | `bool` | 否 | 旧会话高亮字段；加载时忽略，所有保存入口剥除。新工程不写入 |
 
 ### 逐句 ASS 定位与缩放（可选）
 
@@ -749,8 +766,8 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 - `start` / `end` / `items[*].start` / `items[*].end` 全部是**整数毫秒**（不是秒、不是字符串、不是浮点）；它们是兼容时间字段
 - `start_frame` / `end_frame` 与 `items[*].start_frame` / `items[*].end_frame` 是可选的独立帧字段，必须成对出现并为非负整数，结束帧大于起始帧
 - 进入帧模式后，编辑器以帧字段为操作真源，同时更新毫秒投影；切换 FPS 会保留实际媒体时间并重新计算帧编号
-- `segments` 建议按时间升序排列，且 `segments[i].end <= segments[i+1].start`
-- 代码不强校验时间重叠，但重叠会导致播放器跳转/高亮行为异常
+- 同一轨道的 `segments` 必须按时间升序且不重叠：`segments[i].end <= segments[i+1].start`；独立轨道之间可以重叠
+- 严格校验拒绝段/词重叠。旧工程导入只对整数时间范围异常在副本上修复并报告，不把字符串、布尔值或小数时间强制转换为整数；保存仍保留词级修复兜底，段重叠拒绝写入
 - 普通完整字词时间码中，首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`；编辑器「渐进拆分」的后半句会保留原后半区间的 items，因此允许仅覆盖文本后缀
 - 带 `speaker` 的工程遇到说话人变化时**必须切分字幕**，不能把两个 speaker 合入同一 segment
 
@@ -783,9 +800,10 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 ### 生成建议
 
 - 中文逐字给时间戳，英文按词给
-- 标点符号可作为零宽 item（`start == end`），或并入前一个字的 item，代码都能容忍
+- 标点符号可作为零宽 item（`start == end`），或在生成时并入前一个字的 item。旧格式允许零宽 item，合法零宽项在毫秒模式导入与保存时原样保留，不自动合并文字或扩成 100ms
 - 若生成模型拿不到字级时间，**填 `[]` 也可接受**，编辑器会按字符比例自动插值（拆分时间精度会下降）
 - 如果 `items` 字段整个缺失，编辑器视同 `[]`
+- items 必须位于所属段范围内，按顺序不重叠；`text/items` 不一致可能来自尚未同步的文字编辑，导入保留两份已知内容，不据此伪造字词时间。依赖精确映射的拆分、AI 局部删除等操作必须另行核验映射。
 
 ---
 
@@ -796,11 +814,11 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 
 「字词转为独立字幕」仅转换选中的、文字完整覆盖且时间合法的主字幕；每个有效 item 生成一条 segment，并保留为该 segment 唯一的 item。原文中的标点和空白保留，未覆盖的有声文字使整句跳过。转换解除相关副字幕绑定，但保留副字幕文字与时间；转换可撤销，不提供反向转换工具。
 
-## 四、表情包 / 颜色（head + ref 系统）
+## 四、表情包 / 颜色（v1 历史 head + ref 输入）
 
 这套机制服务于「跨多句字幕覆盖同一个表情包或颜色」的需求。
 
-**生成 JSON 时直接全部填 `null` 即可**，让用户在编辑器里手动分配。本节仅供深度二次开发参考。
+本节用于读取 v1 历史数据；v2 使用上文独立组表，不写 head / ref。
 
 ### 4.1 sticker head（首条持完整信息）
 
@@ -833,7 +851,7 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 }
 ```
 
-`headIdx` 是当前字幕数组里的整数下标（0-based），指向同属一个表情包的 head 段：主轨使用顶层 `segments`，副字幕使用对应的 `tracks[i].segments`。拆分/合并/删除时编辑器会自动维护这个索引。
+v1 的 `headIdx` 是所属字幕数组里的整数下标（0-based），指向同属一个表情包的 head 段。迁移时先按原轨数组解析，再转换为组 ID。
 
 ### 4.3 color head
 
@@ -857,11 +875,11 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 { "name": "red", "headIdx": 5 }
 ```
 
-`headIdx` 使用当前字幕数组的 0-based 下标；主轨颜色引用查找顶层 `segments`，副字幕颜色引用查找所属的 `tracks[i].segments`。交换主副字幕时，编辑器会按绑定关系重建新主轨的颜色组索引，并保留移到副字幕的原主轨颜色字段。
+v1 的 `headIdx` 使用所属字幕数组的 0-based 下标；迁移时在原轨解析。v2 使用稳定组 ID，交换主副字幕时保留各句组关系。
 
 ---
 
-## 五、最小可用示例
+## 五、v1 历史输入示例
 
 下面这份 JSON 可被编辑器直接接受：
 
@@ -921,7 +939,9 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 
 ---
 
-## 六、给 LLM 生成 JSON 的 Prompt 模板
+## 六、v1 历史输入 Prompt 模板
+
+本节保留旧输入示例供兼容参考，不用于生成新的 v2 工程。
 
 把下面这段直接粘给任意模型当生成约束：
 
@@ -936,7 +956,7 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 6. items 首项 start = segment.start，末项 end = segment.end
 7. 标点作为零宽 item（start=end）或并入前一个字
 8. sticker / sticker_ref / color / color_ref 全部填 null
-9. 不要输出 _dirty 字段
+9. 不要输出 _dirty 字段。工程未保存检查点和字幕变动高亮仅存在于当前会话；保存成功更新检查点但保留高亮，重开或切换工程清除高亮。
 10. 不要输出任何 JSON 之外的解释文字、Markdown 代码块标记
 11. 中文逐字给时间戳，英文按词给
 12. media / language / model 字段按需填写，允许省略
@@ -949,18 +969,18 @@ v1 轨内合法 ID 保留；跨轨重名与缺失 ID 确定性分配，并同步
 
 生成后任选其一验证：
 
-### 方式 1：用 edit.py 直接生成 HTML
+### 方式 1：用本地 Server 打开工程
 
 ```bash
 cd <MAW 仓库目录>
-uv run python edit.py your_generated.mosp
+uv run --no-sync python server-editor/serve.py your_generated.mosp
 ```
 
-成功会生成 `your_generated.edit.html`。
+检查启动结果与字幕列表；需要媒体播放时，保留工程引用的媒体或用 `-m` 指定。2.0 起不再生成独立 `.edit.html`，旧 HTML 不承诺兼容新版工程。
 
 ### 方式 2：用空壳编辑器加载
 
-1. `file://` 双击打开本仓库根目录的 `blank-editor.html`
+1. 在本地应用打开空白编辑器，或运行 `uv run --no-sync python server-editor/serve.py --blank`
 2. 点「打开工程」选 `.mosp` 或 `.json` 工程文件
 3. 若弹出「文件格式不对，缺少 segments 字段」红色提示，说明顶层结构错误
 4. 若正常显示字幕列表，则格式合格
@@ -977,7 +997,7 @@ uv run python edit.py your_generated.mosp
 
 ---
 
-## 八、字段速查表
+## 八、v1 历史字段及共享字段速查表
 
 | 字段路径 | 类型 | 必填 | 单位/取值 |
 |---|---|---|---|
@@ -1002,7 +1022,7 @@ uv run python edit.py your_generated.mosp
 | `segments[i].sticker_ref` | object\|null | ❌ | `{name, headIdx}` |
 | `segments[i].color` | object\|null | ❌ | `{name, value, start, end}` |
 | `segments[i].color_ref` | object\|null | ❌ | `{name, headIdx}` |
-| `segments[i]._dirty` | bool | ❌ | 生成时不要写 |
+| `segments[i]._dirty` | bool | ❌ | 旧输入忽略，保存剥除 |
 | `media` | string | ❌ | 媒体文件路径 |
 | `language` | string | ❌ | 语言代码 |
 | `timed_text_edit_view` | string | ❌ | 纯文本编辑视图 `rows` / `single`；缺失为 `rows`，默认值省略 |
@@ -1042,17 +1062,9 @@ uv run python edit.py your_generated.mosp
 
 ## 九、版本与兼容
 
-- 顶层 `schema` 当前为 `moy.asr.project.v1`；所有生成器、编辑器和服务器写出的工程都会带上该值
-- 没有顶层 `schema` 的历史工程按 v1 兼容读取，并在规范化或保存时补写当前值
-- 当前客户端拒绝加载未知的顶层工程版本，且不会用旧结构覆盖原工程
-- v1 内允许新增可选字段及不改变既有语义的向后兼容调整；编辑器保存时保留不认识的顶层字段
-- 删除字段、改变既有字段的单位或语义、调整为不兼容结构，或要求强制迁移时才升级到 v2
-- 本规范与 `edit.py` / `maw.asr.qwen` 当前实现同步
-- 设计决策（字级时间戳为何重要、长音频切片策略等）见 `CHANGELOG.md`
-- 字段命名保持向后兼容：新增可选字段不会破坏旧 JSON 加载
-- 旧编辑器会忽略新增的 `waveform` 字段；新编辑器可加载完全不含该字段的旧工程
-- 不兼容变更必须升级顶层 schema，并记录到 `CHANGELOG.md`
-
+- 无 schema 或 v1、v1.5 可作为历史输入；v2 为统一轨道格式，未知版本拒绝。
+- 打开旧工程不覆盖原文件；首次写 v2 必须显式另存为新文件。v2 保存保留未知扩展字段并剥离运行缓存。
+- 不兼容变更需要升级顶层 schema，并记录在 `CHANGELOG.md`。
 
 ### AI 口播整理的文字编辑稿
 

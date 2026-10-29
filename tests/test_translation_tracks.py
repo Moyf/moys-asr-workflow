@@ -18,11 +18,11 @@ from tests.compact_assertions import CompactContainerAssertions
 
 
 def main_segments(project):
-    return get_main_track(project)["segments"] if project.get("schema") == "moy.asr.project.v3" else project["segments"]
+    return get_main_track(project)["segments"] if project.get("schema") == "moy.asr.project.v2" else project["segments"]
 
 
 def secondary_state(project):
-    return (get_tracks_by_role(project, "extension"), project["bindings"], project["bilingual"])
+    return (get_tracks_by_role(project, "secondary"), project["bindings"], project["bilingual"])
 
 
 class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
@@ -72,8 +72,8 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                         self.assertEqual(saved["user_metadata"], source["user_metadata"])
                         multi = saved
                         self.assertEqual(multi["bilingual"]["display_mode"], "both")
-                        self.assertEqual([s["text"] for s in get_tracks_by_role(multi, "extension")[-1]["segments"]], [translation])
-                        self.assertEqual(multi["bindings"][0]["source_segment_ids"], ["source"])
+                        self.assertEqual([s["text"] for s in get_tracks_by_role(multi, "secondary")[-1]["segments"]], [translation])
+                        self.assertEqual(multi["bindings"][0]["source"], {"track_id": "main", "segment_id": "source"})
                     text = result.srt_path.read_text(encoding="utf-8-sig")
                     expected = (f"{translation}\n{original}" if order == "translation_first" else f"{original}\n{translation}") if merge else original
                     self.assertIn(expected, text)
@@ -99,11 +99,11 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
             ), complete=lambda _prompt, cues: {"groups": [{"id": cue["id"], "text": "今天天气很好。"} for cue in cues]})
             saved = read_project(artifact.project_path)
             self.assertEqual(main_segments(saved), main_segments(original))
-            self.assertEqual(len(get_tracks_by_role(saved, "extension")), 1)
-            self.assertEqual(get_tracks_by_role(saved, "extension")[0]["id"], "translation-zh")
-            self.assertEqual(get_tracks_by_role(saved, "extension")[0]["segments"][0]["text"], "今天天气很好。")
+            self.assertEqual(len(get_tracks_by_role(saved, "secondary")), 1)
+            self.assertEqual(get_tracks_by_role(saved, "secondary")[0]["id"], "translation-zh")
+            self.assertEqual(get_tracks_by_role(saved, "secondary")[0]["segments"][0]["text"], "今天天气很好。")
             self.assertEqual(saved["bindings"][0]["id"], "old-binding")
-            self.assertEqual(saved["bindings"][0]["source_segment_ids"], ["source"])
+            self.assertEqual(saved["bindings"][0]["source"], {"track_id": "main", "segment_id": "source"})
             html = artifact.comparison_path.read_text(encoding="utf-8")
             data = json.loads(html.split('<script id="comparison-data" type="application/json">', 1)[1].split('</script>', 1)[0])
             packet = json.loads(data["translationReview"]["snapshot"])
@@ -145,8 +145,8 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                     self.assertEqual(requested, [s["text"] for s in main_segments(source)])
                     self.assertEqual(main_segments(saved), main_segments(source))
                     multi = saved
-                    self.assertEqual(len(get_tracks_by_role(multi, "extension")), 1)
-                    track = get_tracks_by_role(multi, "extension")[0]
+                    self.assertEqual(len(get_tracks_by_role(multi, "secondary")), 1)
+                    track = get_tracks_by_role(multi, "secondary")[0]
                     self.assertEqual(track["id"], "fixed-secondary")
                     self.assertEqual(track["presentation"], {"color": "#abcdef"})
                     self.assertEqual(len(track["segments"]), len(main_segments(source)))

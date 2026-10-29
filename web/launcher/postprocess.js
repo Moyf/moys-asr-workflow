@@ -717,7 +717,13 @@
   }
 
   function syncPaths() {
-    if (!inputManual) $("toolboxInputPath").value = autoSourcePath();
+    if (!inputManual) {
+      const next = autoSourcePath();
+      if ($("toolboxInputPath").value !== next) {
+        $("toolboxInputPath").value = next;
+        setFieldError("toolboxInputPath", "");
+      }
+    }
     if (!utilityMediaManual) $("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();
     if (!timestampMediaManual && $("toolboxTimestampMediaPath").value !== $("mediaPath").value.trim()) {
       $("toolboxTimestampMediaPath").value = $("mediaPath").value.trim();

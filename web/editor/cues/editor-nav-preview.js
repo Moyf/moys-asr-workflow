@@ -179,8 +179,8 @@
     if (panelTarget.kind === 'main') {
       if (mainIndices.length !== 1 || mainIndices[0] !== panelTarget.index) return null;
       const binding = MaweMultiSubtitleCore.bindingForMainIndex(panelTarget.index);
-      const bindingTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.target_track_id) : null;
-      const boundExtensionIndices = (binding?.target_segment_ids || [])
+      const bindingTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id) : null;
+      const boundExtensionIndices = (binding?.target?.segment_id ? [binding.target.segment_id] : [])
         .map((id) => bindingTrack?.segments?.findIndex((segment) => segment?.id === id) ?? -1)
         .filter((index) => index >= 0);
       const extensionMatchesBinding = extensionIndices.length === 0
@@ -193,7 +193,7 @@
 
     if (extensionIndices.length !== 1 || extensionIndices[0] !== panelTarget.index) return null;
     const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(panelTarget.index, panelTarget.track);
-    const boundMainIndices = (binding?.source_segment_ids || [])
+    const boundMainIndices = (binding?.source?.segment_id ? [binding.source.segment_id] : [])
       .map((id) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === id))
       .filter((index) => index >= 0);
     const mainMatchesBinding = mainIndices.length === 0

@@ -22,7 +22,7 @@ export const { materializeTrackSegments } = createSubtitleGroups({ cloneJsonValu
 const configuredPython = String(process.env.MAW_E2E_PYTHON || '').trim();
 const PYTHON_RUNNER = configuredPython
   ? { command: configuredPython, prefixArgs: [] }
-  : { command: 'uv', prefixArgs: ['run', '--frozen', 'python'] };
+  : { command: 'uv', prefixArgs: ['run', '--no-sync', 'python'] };
 
 function pythonCommandArgs(args) {
   return [...PYTHON_RUNNER.prefixArgs, ...args];
@@ -316,11 +316,11 @@ export async function setProjectTrackEnabled(page, id, enabled) {
 }
 
 export function generateProjectJson(filePath) {
-  const project = {
+  const project = createProjectTracks().importProject({
     media: 'synthetic.wav',
     segments: testSegments(),
     waveform: generateWaveformPayload(DURATION_MS),
-  };
+  }).project;
   writeFileSync(filePath, JSON.stringify(project, null, 2), 'utf-8');
   return filePath;
 }
@@ -330,7 +330,8 @@ export function generateProjectJson(filePath) {
 // Returns { url, proc, stop } where stop() returns a Promise that resolves
 // when the process has fully exited.
 // ---------------------------------------------------------------------------
-async function launchServerProcess(pythonArgs, port, env, { waitForStartup = false } = {}) {
+async function launchServerProcess(pythonArgs, port, env, { waitForStartup = false, readinessTimeoutMs = 30_000 } = {}) {
+  if (!Number.isFinite(readinessTimeoutMs) || readinessTimeoutMs <= 0) throw new RangeError('readinessTimeoutMs must be finite and positive');
   const proc = spawnServerProcess(PYTHON_RUNNER.command, pythonCommandArgs(pythonArgs), {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -353,8 +354,8 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
         callback();
       };
       const timeout = setTimeout(() => {
-        finish(() => reject(new Error(`Server did not respond within 30s. Output tail: ${output.text()}`)));
-      }, 30000);
+        finish(() => reject(new Error(`Server did not respond within ${readinessTimeoutMs}ms. Output tail: ${output.text()}`)));
+      }, readinessTimeoutMs);
       proc.stdout.on('data', (chunk) => output.append(chunk));
       proc.stderr.on('data', (chunk) => output.append(chunk, 'stderr'));
       proc.on('error', (err) => finish(() => reject(err)));
@@ -382,7 +383,7 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
   }
 
   if (waitForStartup) {
-    const deadline = Date.now() + 30000;
+    const deadline = Date.now() + readinessTimeoutMs;
     while (true) {
       if (serverHasExited(proc)) {
         await stopServerProcess(proc);
@@ -403,7 +404,7 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
       }
       if (Date.now() >= deadline) {
         await stopServerProcess(proc);
-        throw new Error('Server project startup did not become ready within 30s');
+        throw new Error(`Server project startup did not become ready within ${readinessTimeoutMs}ms`);
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
@@ -418,7 +419,7 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
   };
 }
 
-export async function startServer(projectJsonPath, mediaPath, port) {
+export async function startServer(projectJsonPath, mediaPath, port, { readinessTimeoutMs = 30_000 } = {}) {
   const settingsRoot = join(dirname(projectJsonPath), '.settings');
   mkdirSync(settingsRoot, { recursive: true });
   const pythonArgs = [
@@ -437,7 +438,7 @@ export async function startServer(projectJsonPath, mediaPath, port) {
     // MAW user-data root on every platform so local saved styles never
     // leak into assertions.
     MAW_APP_DATA_ROOT: settingsRoot,
-  }), { waitForStartup: true });
+  }), { waitForStartup: true, readinessTimeoutMs });
 }
 
 // 空白服务器（--blank）：用于「浏览器打开工程后由服务器接管」的回归测试。
@@ -507,16 +508,15 @@ export async function startStaticServer(filePath, port) {
 }
 
 // ---------------------------------------------------------------------------
-// Build a portable blank editor from the current web/ sources (edit.py --blank).
-// The committed blank-editor.html is refreshed only before a release, so specs
-// that exercise the portable page must build the current sources instead of
-// copying a possibly stale artifact.
+// Render a browser contract fixture through shared renderer code. This keeps
+// local-host file APIs and save fallbacks covered after standalone entry retirement;
+// it does not invoke edit.py --blank or produce an application release artifact.
 // ---------------------------------------------------------------------------
-export function buildPortableBlankEditor(outputPath) {
+export function buildBrowserEditorFixture(outputPath) {
   const { command, prefixArgs } = PYTHON_RUNNER;
   execFileSync(
     command,
-    [...prefixArgs, 'edit.py', '--blank', '--output', outputPath],
+    [...prefixArgs, 'tests/helpers/render-editor-fixture.py', outputPath],
     { cwd: process.cwd(), windowsHide: true, stdio: ['ignore', 'pipe', 'inherit'] },
   );
   if (!existsSync(outputPath)) {

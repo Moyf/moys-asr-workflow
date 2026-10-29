@@ -155,18 +155,62 @@ test('init module replaces its manifest slot in place with unchanged order', asy
 
 test('init module rejects extra statements and factories reject kind misuse', async () => {
   const { compileSources } = await import(builder);
+  // Non-inert top-level statements remain rejected.
   await assert.rejects(compileSources(root,['seam.js'],
     [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
-    () => 'const extra=1; export function runSeam() {}'), /exactly one function/i);
+    () => 'let extra=1; export function runSeam() {}'), /pure function exports/i);
   await assert.rejects(compileSources(root,['seam.js'],
     [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
-    () => 'const extra=1;\nexport function runSeam() {}\nfunction second() {}'), /exactly one function/i);
+    () => 'const extra = window.self;\nexport function runSeam() {}'), /pure function exports/i);
+  // Extra exports must be pure function declarations.
   await assert.rejects(compileSources(root,['seam.js'],
     [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
-    () => 'import { value } from "./helper.js";\nexport function wrongName() {}'), /exactly one function/i);
+    () => 'const extra=1;\nexport function runSeam() {}\nfunction second() {}'), /pure function exports/i);
+  await assert.rejects(compileSources(root,['seam.js'],
+    [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
+    () => 'export const second = 1;\nexport function runSeam() {}'), /pure function exports/i);
+  await assert.rejects(compileSources(root,['seam.js'],
+    [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
+    () => 'import { value } from "./helper.js";\nexport function wrongName() {}'), /pure function exports/i);
   await assert.rejects(compileSources(root,['seam.js'],
     [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
     () => 'import { value } from "../outside.js";\nexport function runSeam() {}'), /escapes web/i);
+  // Inert consts and pure helper exports are accepted; helper stays importable.
+  const { compileResult } = await (async () => {
+    try {
+      const result = await compileSources(root,['seam.js'],
+        [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
+        () => 'const MEDIA_RE=/\\.mp4$/;\nexport function helper(){return MEDIA_RE.test("x");}\nexport function runSeam() {window.__x = helper();}');
+      return { compileResult: result };
+    } catch (error) { return { compileResult: null }; }
+  })();
+  assert.ok(compileResult, 'inert const + pure export must compile');
+  assert.ok(compileResult.code.includes('mp4'), 'inert const body compiled into artifact');
+});
+
+test('init constants reject eager side effects in nested expressions', async t => {
+  const { compileSources } = await import(builder);
+  const module = [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}];
+  for (const [name, declaration] of [
+    ['template interpolation', 'const extra = `value ${window.touch()}`;'],
+    ['unary operand', 'const extra = !window.touch();'],
+    ['void operand', 'const extra = void window.touch();'],
+    ['computed object key', 'const extra = { [window.touch()]: 1 };'],
+    ['object spread', 'const extra = { ...externalState };'],
+    ['computed destructuring key', 'const { [window.touch()]: value } = {};'],
+    ['destructuring default', 'const { value = window.touch() } = {};'],
+  ]) {
+    await t.test(name, async () => {
+      await assert.rejects(
+        compileSources(root, ['seam.js'], module,
+          () => `${declaration}\nexport function runSeam() {}`),
+        /pure function exports/i,
+      );
+    });
+  }
+  const result = await compileSources(root, ['seam.js'], module,
+    () => 'const n = -2; const flag = !false; const text = `value ${1 + 2}`; const item = { ["a" + "b"]: 1 };\nexport function runSeam() {}');
+  assert.ok(result.code, 'literal-only expressions remain accepted');
 });
 
 test('transitive imports invalidate the artifact like manifest sources', async () => {

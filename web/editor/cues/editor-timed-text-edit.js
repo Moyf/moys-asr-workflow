@@ -389,9 +389,16 @@
 
 
   function timedTextEditCanUseSingleView() {
-    return Boolean(MaweDom.timedTextEditDraft?.sourceSegments.every((segment, index) => {
-      return !String(segment?.text || '').includes('\n');
-    }));
+    const draft = MaweDom.timedTextEditDraft;
+    if (!draft) return false;
+    // sourceSegments 只在 loadTimedTextEditTrack 重建 draft 时替换，与会话内的
+    // 文本草稿无关；结果恒定，读缓存避免每次击键全量扫描所有字幕行。
+    if (typeof draft.canUseSingleView !== 'boolean') {
+      draft.canUseSingleView = draft.sourceSegments.every(
+        (segment) => !String(segment?.text || '').includes('\n'),
+      );
+    }
+    return draft.canUseSingleView;
   }
 
 
@@ -791,10 +798,12 @@
   function updateTimedTextEditReport() {
     if (!MaweDom.timedTextEditDraft) return;
     const draftTexts = timedTextEditEffectiveTexts();
+    // 传入上一轮报告供逐行复用：draft.report 每轮整体替换，此刻仍是上一轮结果。
     const report = window.AsrEditorUtils.buildTimedTextEditReport(
       MaweDom.timedTextEditDraft.sourceSegments,
       draftTexts,
       { reservedSegments: window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(track => track.segments), rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule },
+      MaweDom.timedTextEditDraft.report,
     );
     MaweDom.timedTextEditDraft.report = report;
     const { stats } = report;
@@ -864,8 +873,12 @@
     }
 
     const draftRowReports = timedTextEditDraftRowReports(report, draftTexts);
+    // renderTimedTextEditRows 按 index 顺序 append，行数与草稿不一致时整体重建
+    // （上方守卫），children 顺序即 data-index 顺序；逐行 querySelector 是
+    // O(N²)，数千行时每键卡顿的第二来源。
+    const rowElements = MaweDom.timedTextEditRows.children;
     draftRowReports.forEach((rowReport, index) => {
-      const rowElement = MaweDom.timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${index}"]`);
+      const rowElement = rowElements[index];
       if (!rowElement) return;
       rowElement.classList.toggle('changed', Boolean(rowReport?.changed));
       rowElement.classList.toggle('deleted', Boolean(rowReport?.deleted));
@@ -874,7 +887,7 @@
       if (rowReport) renderTimedTextEditRowDiff(rowElement, rowReport);
     });
     MaweDom.timedTextEditDraft.texts.forEach((_text, index) => {
-      const rowElement = MaweDom.timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${index}"]`);
+      const rowElement = rowElements[index];
       const coverage = rowElement?.querySelector('.timed-text-edit-coverage');
       const reuse = rowElement?.querySelector('.timed-text-edit-reuse');
       const rowReport = draftRowReports[index];
@@ -950,6 +963,10 @@
       trimWhitespace: false,
       singleText: (sourceSegments || []).map((segment) => String(segment?.text || '')).join('\n'),
       singleLineError: '',
+      // sourceSegments 在面板会话内不变，单视图可用性只取决于它，这里算一次。
+      canUseSingleView: (sourceSegments || []).every(
+        (segment) => !String(segment?.text || '').includes('\n'),
+      ),
       report: null,
     };
     if (MaweDom.timedTextEditShowDisabledToggle) MaweDom.timedTextEditShowDisabledToggle.checked = Boolean(showDisabled);
@@ -1117,8 +1134,8 @@
       extensionTrack = MaweMultiSubtitleCore.multiSubtitleVisible() && removedIds.length ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
       if (extensionTrack) {
         (multi.bindings || []).forEach((binding) => {
-          if (!binding.source_segment_ids?.some((id) => removedIds.includes(id))) return;
-          (binding.target_segment_ids || []).forEach((id) => {
+          if (!removedIds.includes(binding.source?.segment_id)) return;
+          (binding.target?.segment_id ? [binding.target.segment_id] : []).forEach((id) => {
             const index = extensionTrack.segments.findIndex((segment) => segment?.id === id);
             if (index >= 0) pairedExtensionIndices.add(index);
           });

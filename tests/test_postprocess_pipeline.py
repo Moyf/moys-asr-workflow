@@ -642,8 +642,8 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual([segment["text"] for segment in track["segments"]][0::2], ["译文 c0001", "译文 c0003"])
         self.assertFalse(str(track["segments"][1]["text"]).strip())
         self.assertEqual(
-            [binding["source_segment_ids"] for binding in combined["bindings"]],
-            [["main-001"], ["main-002"], ["main-003"]],
+            [binding["source"]["segment_id"] for binding in combined["bindings"]],
+            ["main-001", "main-002", "main-003"],
         )
 
     def test_failed_translation_is_skipped_without_fake_bilingual_output(self):
@@ -957,7 +957,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         combined = json.loads(result.project_path.read_text(encoding="utf-8"))
         track = extension_tracks(combined)[0]
         self.assertEqual([segment["text"] for segment in track["segments"]], ["Translation one"])
-        self.assertEqual([binding["source_segment_ids"] for binding in combined["bindings"]], [[source_ids[0]]])
+        self.assertEqual([binding["source"]["segment_id"] for binding in combined["bindings"]], [source_ids[0]])
         self.assertIn("未重复添加", "\n".join(result.warnings))
 
     def test_validation_rejects_bilingual_and_embed_together(self) -> None:

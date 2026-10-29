@@ -4,12 +4,19 @@ import vm from 'node:vm';
 import test from 'node:test';
 import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 
+// editor-state 已转 ESM 模块（register/resolve 注册表退役）：
+// 源码在 vm 里还原后直调 createEditorState 工厂。
+const STATE_SRC = readFileSync(new URL('../web/editor/state/editor-state.js', import.meta.url), 'utf8');
+const { createEditorState } = (() => {
+  const context = { window: {} };
+  const stripped = STATE_SRC
+    .replace(/^import .*$/gm, '')
+    .replace(/^export function/gm, 'function');
+  return vm.runInNewContext(`(function () { ${stripped}\nreturn { createEditorState }; })()`, context);
+})();
+
 function loadState(project = runtimeProject()) {
-  const context = { window: { AsrEditorUtils: projectModel, MaweBoot: { DATA: project } } };
-  for (const file of ['editor/boot/editor-runtime.js', 'editor/state/editor-state.js']) {
-    vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
-  }
-  return context.window.MaweState;
+  return createEditorState(project);
 }
 
 test('only the current project load can release saving, and replacement cancels registered media work', () => {
@@ -139,20 +146,38 @@ test('saved content governs undo dirtiness while session highlights and rebuilda
 });
 
 test('saving an earlier snapshot keeps later edits dirty and excludes highlights from every saved track', () => {
-  const project = runtimeProject([{ text: 'written', _dirty: true }], {
+  const project = runtimeProject([{ id: 'one', text: 'written', _dirty: true }], {
     extensions: [{ _dirty: true, segments: [{ _dirty: true }] }],
     overlay: { _dirty: true, segments: [{ _dirty: true }] } });
   const state = loadState(project);
   const written = state.segmentsFingerprint();
   projectModel.getMainTrack(project).segments[0].text = 'later';
   state.noteSavedSegments(written);
+  state.markSaved();
+  assert.equal(state.hasProjectChanges(), true);
+  state.rememberSessionHighlights();
+  projectModel.getMainTrack(project).segments[0] = { id: 'one', start: 0, end: 1000, text: 'written' };
+  state.restoreSessionHighlights();
   state.reconcileSegmentsDirty();
+  assert.equal(state.hasProjectChanges(), false);
+  assert.equal(projectModel.getMainTrack(project).segments[0]._dirty, true);
+  assert.equal(JSON.stringify(state.persistenceSnapshot(project)).includes('_dirty'), false);
+  assert.equal(JSON.stringify(project).includes('_dirty'), true, 'saving keeps current-session highlights');
+  const epoch = state.projectEpoch;
+  state.beginProjectSession();
+  state.establishProjectCheckpoint();
+  assert.equal(state.projectEpoch, epoch + 1);
+  assert.equal(projectModel.getMainTrack(project).segments[0]._dirty, undefined);
+});
+
+test('actual import repairs remain unsaved until successful save acknowledgement', () => {
+  const state = loadState();
+  state.beginProjectSession();
+  state.establishProjectCheckpoint({ repaired: true });
   assert.equal(state.hasProjectChanges(), true);
   state.noteSavedSegments();
   state.markSaved();
   assert.equal(state.hasProjectChanges(), false);
-  assert.equal(JSON.stringify(state.persistenceSnapshot(project)).includes('_dirty'), false);
-  assert.equal(JSON.stringify(project).includes('_dirty'), true, 'saving keeps current-session highlights');
 });
 
 test('markProjectDirty increments the epoch and notifies registered listeners exactly once', () => {
@@ -201,6 +226,6 @@ test('changes flag writes notify on dirty transitions only, and markSaved stays 
   assert.equal(events, 2, 'writing false must not fire the dirty event');
   state.markSaved();
   assert.equal(events, 2, 'clearing bookkeeping on save must not fire the dirty event');
-  Object.assign(state.changes, { markersDirty: true, timedTextEditViewDirty: true });
+  Object.assign(state.changes, { markersDirty: true, projectImportDirty: true });
   assert.equal(events, 4, 'bulk assignment must go through the same notify path');
 });

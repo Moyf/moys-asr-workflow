@@ -101,7 +101,7 @@
       if (!head) return;
       MaweCueListAnchor.scrollCueToCenter(head);
       if (isExtension) MaweSelection.selectOnlyExtension(headIndex, extensionTrack);
-      else if (overlayTrack) selectOverlayCueRow(headIndex);
+      else if (overlayTrack) window.MaweCuePanelWiring.selectOverlayCueRow(headIndex);
       else MaweSelection.selectOnly(headIndex);
     });
     slotEl.appendChild(refEl);

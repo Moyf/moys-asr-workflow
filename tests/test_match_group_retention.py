@@ -28,7 +28,7 @@ class ScriptMatchGroupRetentionTests(unittest.TestCase):
         self.assertEqual(main["extra"], {"value": 1})
         self.assertEqual(result["subtitle_groups"], original["subtitle_groups"])
         self.assertEqual(result["bindings"][0]["id"], "binding-1")
-        self.assertEqual(result["bindings"][0]["source_segment_ids"], ["cue-main"])
+        self.assertEqual(result["bindings"][0]["source"], {"track_id": "main", "segment_id": "cue-main"})
         secondary = result["tracks"][1]["segments"][0]
         self.assertEqual(result["bindings"][0]["start_offset_ms"], secondary["start"] - main["start"])
         self.assertEqual(result["bindings"][0]["end_offset_ms"], secondary["end"] - main["end"])
@@ -51,7 +51,7 @@ class ScriptMatchGroupRetentionTests(unittest.TestCase):
             result = read_project(artifact.project_path)
             self.assertEqual(source.read_bytes(), before)
             self.assertEqual(get_main_track(result)["segments"][0]["id"], "cue-main")
-            self.assertEqual(result["bindings"][0]["source_segment_ids"], ["cue-main"])
+            self.assertEqual(result["bindings"][0]["source"], {"track_id": "main", "segment_id": "cue-main"})
             self.assertEqual(get_main_track(result)["segments"][0]["color_group_id"], "color-1")
 
     def test_disabled_bound_cue_survives_toolbox_matching(self):
@@ -60,9 +60,8 @@ class ScriptMatchGroupRetentionTests(unittest.TestCase):
             "text": "保", "disabled": True, "color_group_id": "color-1",
             "items": [{"text": "保", "start": 1000, "end": 1100}]})
         original["tracks"][1]["segments"].insert(0, {"id": "disabled-en", "start": 1000, "end": 1100, "text": "Keep"})
-        original["bindings"].append({"id": "disabled-binding", "source_track_id": "main",
-            "target_track_id": "translation-en", "source_segment_ids": ["disabled-main"],
-            "target_segment_ids": ["disabled-en"], "start_offset_ms": 0, "end_offset_ms": 0})
+        original["bindings"].append({"id": "disabled-binding", "source": {"track_id": "main", "segment_id": "disabled-main"},
+            "target": {"track_id": "translation-en", "segment_id": "disabled-en"}, "start_offset_ms": 0, "end_offset_ms": 0})
         with TemporaryDirectory() as directory:
             source, script = Path(directory) / "input.mosp", Path(directory) / "script.txt"
             source.write_text(json.dumps(original, ensure_ascii=False), encoding="utf-8")
@@ -111,7 +110,7 @@ class ScriptMatchGroupRetentionTests(unittest.TestCase):
             result = read_project(artifact.project_path)
             self.assertEqual([cue["id"] for cue in get_main_track(result)["segments"]],
                              ["cue-main", "extra-main", "last-main"])
-            self.assertEqual(result["bindings"][0]["source_segment_ids"], ["cue-main"])
+            self.assertEqual(result["bindings"][0]["source"], {"track_id": "main", "segment_id": "cue-main"})
             self.assertEqual(get_main_track(result)["segments"][0]["color_group_id"], "color-1")
 
 

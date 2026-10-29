@@ -1,0 +1,105 @@
+{
+  "schema": "moy.asr.project.v1.5",
+  "metadata": {
+    "fixture": true
+  },
+  "subtitle_groups": {
+    "color": [],
+    "sticker": []
+  },
+  "media": "",
+  "audio_processing": {
+    "gain_db": 0,
+    "target_lufs": -14,
+    "peak_ceiling_dbtp": -1
+  },
+  "language": "zh",
+  "model": "fixture",
+  "sticker_root": "",
+  "timebase": {
+    "unit": "milliseconds",
+    "fps": 30
+  },
+  "segments": [
+    {
+      "id": "main",
+      "start": 0,
+      "end": 2000,
+      "text": "主定位",
+      "assOverride": {
+        "scale": 1.25,
+        "pos": {
+          "x": 400.25,
+          "y": 850.5
+        }
+      },
+      "start_frame": 0,
+      "end_frame": 60,
+      "items": []
+    }
+  ],
+  "preserve_punctuation": true,
+  "multi_subtitle": {
+    "schema": "moy.asr.multi_subtitle.v1",
+    "enabled": true,
+    "display_mode": "both",
+    "main_split_mode": "continuous",
+    "tracks": [
+      {
+        "id": "translation",
+        "role": "extension",
+        "name": "English",
+        "language": "en",
+        "split_mode": "word",
+        "source_name": "translation.srt",
+        "segments": [
+          {
+            "id": "secondary",
+            "start": 0,
+            "end": 2000,
+            "text": "Secondary",
+            "assOverride": {
+              "scale": 1.5,
+              "pos": {
+                "x": 20,
+                "y": 30
+              }
+            },
+            "start_frame": 0,
+            "end_frame": 60
+          }
+        ]
+      }
+    ],
+    "bindings": []
+  },
+  "overlay_track": {
+    "enabled": true,
+    "segments": [
+      {
+        "id": "overlay",
+        "start": 0,
+        "end": 2000,
+        "text": "叠加定位",
+        "assOverride": {
+          "scale": 1.1,
+          "pos": {
+            "x": 900,
+            "y": 400
+          }
+        },
+        "start_frame": 0,
+        "end_frame": 60,
+        "items": []
+      }
+    ]
+  },
+  "preview": {
+    "ass_mode": true,
+    "sticker": {},
+    "subtitle": {
+      "speaker_labels": {}
+    },
+    "extension_subtitle": {}
+  }
+}

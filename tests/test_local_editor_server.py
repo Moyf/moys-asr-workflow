@@ -710,6 +710,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotEqual(png, plain.stdout)
 
     def test_version_backup_does_not_save_or_remember_snapshot(self) -> None:
+        self.project_path.write_text(json.dumps(normalize_project(json.loads(self.project_path.read_text(encoding='utf-8')))), encoding='utf-8')
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
         )
@@ -745,6 +746,12 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.other_project_path.write_text(
             json.dumps({"media": str(self.other_media), "segments": []}), encoding="utf-8",
         )
+
+        # Fake bytes are routing fixtures. Keep enrichment, binding, HTTP and
+        # disk real; test_ffprobe_failure_integration covers actual probe errors.
+        self.enterContext(mock.patch("maw.project_io.probe_video_fps", return_value=None))
+        self.enterContext(mock.patch("maw.project_io.probe_audio_tracks", return_value=None))
+        self.enterContext(mock.patch.object(server_editor.EditorServer, "_thumbnail_base_ready", return_value=False))
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -2803,6 +2810,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     thread.join(timeout=2)
 
     def test_server_saves_project_with_backup_and_rejects_unsafe_save_as(self) -> None:
+        self.project_path.write_text(json.dumps(normalize_project(json.loads(self.project_path.read_text(encoding='utf-8')))), encoding='utf-8')
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
         )
@@ -2870,6 +2878,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         回归：save_project 曾把浏览器回传的 normalized_project 直接替换进
         运行态，保存→刷新后原生波形丢失、被 /api/waveform 的 REAPER 峰顶替。
         """
+        self.project_path.write_text(json.dumps(normalize_project(json.loads(self.project_path.read_text(encoding='utf-8')))), encoding='utf-8')
         waveform_payload = {
             "schema": "moy.asr.waveform.v1",
             "encoding": "i8-minmax-base64",
@@ -2959,6 +2968,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 thread.join(timeout=2)
 
     def test_server_accepts_reconciled_extension_ranges_but_rejects_overlap(self) -> None:
+        self.project_path.write_text(json.dumps(normalize_project(json.loads(self.project_path.read_text(encoding='utf-8')))), encoding='utf-8')
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
         )
@@ -3116,13 +3126,17 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     self.project_path.resolve(),
                 )
 
-                # 接管后保存直接写回绑定的工程文件。
+                # 接管旧工程后须显式另存，不能覆盖原文件。
+                original = self.project_path.read_bytes()
                 edited = {"media": str(self.media), "segments": [{"start": 0, "end": 1000, "text": "接管后保存"}]}
                 status, result = post("/api/project", {"project": edited, "filename": None})
+                self.assertEqual(status, 400)
+                self.assertEqual(self.project_path.read_bytes(), original)
+                status, result = post("/api/project", {"project": edited, "filename": "converted.json"})
                 self.assertEqual(status, 200)
                 self.assertTrue(result["ok"])
                 self.assertEqual(
-                    json.loads(self.project_path.read_text(encoding="utf-8")),
+                    json.loads((self.root / "converted.json").read_text(encoding="utf-8")),
                     make_project(
                         [{"id": "main-cue-1", "start": 0, "end": 1000, "text": "接管后保存"}],
                         project_fields={"media": self.media.name},

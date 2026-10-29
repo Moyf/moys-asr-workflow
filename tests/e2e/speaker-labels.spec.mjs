@@ -284,7 +284,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
     },
   });
   expect(onDisk.preview.subtitle.color_style).toBe('stroke');
-  expect(onDisk.schema).toBe('moy.asr.project.v3');
+  expect(onDisk.schema).toBe('moy.asr.project.v2');
   for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(onDisk).not.toHaveProperty(field);
   expect(getMainTrack(onDisk).segments[0].text).toBe('Alpha');
 

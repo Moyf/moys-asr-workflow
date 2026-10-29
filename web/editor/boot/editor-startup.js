@@ -2,25 +2,29 @@
 // === 启动 ===
 MaweState.beginProjectSession();
 MaweState.setSnapshotReader(MaweJsonRepair.projectSnapshot);
+const timingBeforeStartup = MaweJsonRepair.projectTimingSignature(MaweBoot.DATA);
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
 MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
 const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
-const repairedTimingCount = MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA);
+const repairedTimingCount = MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA, { preserveValid: true });
 // 服务器注入的工程里 markers 是 MOSP 包装对象（{schema, items}）；编辑器内部
 // 统一用数组，写出文件时再经 markersToProjectField 包回。不在这里换掉的话，
 // 轨道不渲染，且首次 markerList() 会把包装对象整个清掉。
+MaweJsonRepair.setMarkerContainer(MaweBoot.DATA.markers);
 MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(MaweBoot.DATA.markers);
 // 带 markers 的工程（如 AI 整理产物）默认启用标记轨道，方便直接复核待确认项。
 window.MaweMarkerEditing?.enableForProjectMarkers?.(MaweBoot.DATA.markers);
 MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+// Server/portable startup injects DATA directly instead of applyCanonicalProject.
+// Repair legacy group ranges before the first render and saved fingerprint.
+MaweTextCleanup.syncTimelineGroupRanges();
 MaweBoot.maweDebug('boot:begin', {
   server: Boolean(MaweBoot.SERVER_CONFIG),
   segments: Array.isArray(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length : null,
   media: MaweBoot.DATA.media || '',
   recentProjects: MaweBoot.SERVER_CONFIG?.recentProjects?.length || 0,
 });
-
 MaweServerSave.configureServerSaveControls();
 MaweServerSave.configureServerAutoSave();
 MaweServerSave.configureRecentProjects();
@@ -49,7 +53,16 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
 });
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 MaweCuePanel.renderAll({ waveform: 'full' });
-MaweState.establishProjectCheckpoint({ repaired: repairedTimingCount > 0 });
+const importedProjectChanges = MaweBoot.SERVER_CONFIG?.projectImportChanges || [];
+MaweJsonRepair.noteImportReport(importedProjectChanges);
+const startupContentRepaired = repairedTimingCount > 0 || repairedGroupReferenceCount > 0
+  || timingBeforeStartup !== MaweJsonRepair.projectTimingSignature(MaweBoot.DATA)
+  || MaweJsonRepair.importRequiresSave(importedProjectChanges);
+MaweState.establishProjectCheckpoint({ repaired: startupContentRepaired });
+if (MaweJsonRepair.importRequiresSave(importedProjectChanges)) {
+  MaweServerSave.projectImportDirty = true;
+  MaweHint.flashHint(`导入修复了 ${importedProjectChanges.length} 处工程字段；请检查后保存`, 'warning');
+}
 MaweBoot.maweDebug('boot:complete', {
   renderedSegments: MaweCoreState.container?.querySelectorAll?.('.cue-row')?.length || 0,
   recentProjectsVisible: MaweDom.recentProjectsEl ? !MaweDom.recentProjectsEl.hidden : false,
@@ -59,6 +72,8 @@ MaweBoot.maweDebug('boot:complete', {
 MaweGapRemoveUi.updateGapRemoveUi();
 if (repairedTimingCount > 0) {
   MaweHint.flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
+} else if (startupContentRepaired && repairedGroupReferenceCount === 0) {
+  MaweHint.flashHint('已修复工程数据，请保存修复结果', 'warning');
 } else if (repairedGroupReferenceCount > 0) {
   MaweHint.flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`, 'warning');
 }
@@ -95,7 +110,7 @@ MaweDom.hideDisabledToggle?.addEventListener('change', () => {
       if (extensionTrack?.segments[index]?.disabled) MaweState.selection.remove('extension', index);
     });
     MaweSelection.updateMultiSelectionClasses();
-    updateSelectionCountText();
+    window.MaweCuePanelWiring.updateSelectionCountText();
     if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   }
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateDisabledVisibility();

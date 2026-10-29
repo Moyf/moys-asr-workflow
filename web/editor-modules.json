@@ -2,21 +2,39 @@
   "format": 1,
   "modules": [
     {
+      "file": "editor/state/editor-state.js",
+      "kind": "init",
+      "name": "state-init",
+      "exportName": "initMaweState"
+    },
+    {
+      "file": "editor/state/editor-view-updates.js",
+      "kind": "init",
+      "name": "view-updates-init",
+      "exportName": "initMaweViewUpdates"
+    },
+    {
+      "file": "editor/state/editor-commands.js",
+      "kind": "init",
+      "name": "commands-init",
+      "exportName": "initMaweCommands"
+    },
+    {
       "file": "editor/boot/editor-host.js",
       "kind": "init",
       "name": "editor-host-init",
       "exportName": "initEditorHost"
     },
     {
+      "file": "shared/utils/tracks.js",
+      "name": "project-tracks",
+      "exportName": "createTrackModule"
+    },
+    {
       "file": "shared/editor-utils.js",
       "kind": "init",
       "name": "editor-utils-init",
       "exportName": "initEditorUtils"
-    },
-    {
-      "file": "editor/media/editor-thumbnails.js",
-      "name": "editor-thumbnails",
-      "exportName": "createThumbnailModule"
     },
     {
       "file": "editor/media/waveform/constants.js",
@@ -84,36 +102,6 @@
       "exportName": "createWaveformModule"
     },
     {
-      "file": "editor/media/waveform/media.js",
-      "name": "waveform-media",
-      "exportName": "createWaveformModule"
-    },
-    {
-      "file": "editor/media/waveform/render.js",
-      "name": "waveform-render",
-      "exportName": "createWaveformModule"
-    },
-    {
-      "file": "editor/media/waveform/cue-blocks.js",
-      "name": "waveform-cue-blocks",
-      "exportName": "createWaveformModule"
-    },
-    {
-      "file": "editor/media/waveform/word-blocks.js",
-      "name": "waveform-word-blocks",
-      "exportName": "createWordBlocks"
-    },
-    {
-      "file": "editor/media/waveform/canvas.js",
-      "name": "waveform-canvas",
-      "exportName": "createWaveformModule"
-    },
-    {
-      "file": "editor/media/waveform/input.js",
-      "name": "waveform-input",
-      "exportName": "createWaveformModule"
-    },
-    {
       "file": "editor/media/waveform/cue-drag.js",
       "name": "waveform-cue-drag",
       "exportName": "createWaveformModule"
@@ -144,9 +132,298 @@
       "exportName": "createWaveformModule"
     },
     {
-      "file": "editor/media/waveform/thumbnails.js",
-      "name": "waveform-thumbnails",
-      "exportName": "createWaveformModule"
+      "file": "editor/media/waveform.js",
+      "kind": "init",
+      "name": "waveform",
+      "exportName": "initWaveform"
+    },
+    {
+      "file": "editor/ui/editor-hint.js",
+      "kind": "init",
+      "name": "editor-hint-init",
+      "exportName": "initMaweHint"
+    },
+    {
+      "file": "editor/state/editor-settings.js",
+      "kind": "init",
+      "name": "settings-init",
+      "exportName": "initMaweSettings"
+    },
+    {
+      "file": "editor/state/editor-project-settings.js",
+      "kind": "init",
+      "name": "project-settings-init",
+      "exportName": "initMaweProjectSettings"
+    },
+    {
+      "file": "editor/state/editor-multi-subtitle-core.js",
+      "kind": "init",
+      "name": "multi-subtitle-core-init",
+      "exportName": "initMaweMultiSubtitleCore"
+    },
+    {
+      "file": "editor/ui/editor-gap-remove-data.js",
+      "kind": "init",
+      "name": "editor-gap-remove-data-init",
+      "exportName": "initMaweGapRemoveData"
+    },
+    {
+      "file": "editor/ui/editor-dom.js",
+      "kind": "init",
+      "name": "editor-dom-init",
+      "exportName": "initMaweDom"
+    },
+    {
+      "file": "editor/state/editor-cue-panel-state.js",
+      "kind": "init",
+      "name": "cue-panel-state-init",
+      "exportName": "initMaweCuePanelState"
+    },
+    {
+      "file": "editor/state/editor-history.js",
+      "kind": "init",
+      "name": "history-init",
+      "exportName": "initMaweHistory"
+    },
+    {
+      "file": "editor/state/editor-core-state.js",
+      "kind": "init",
+      "name": "core-state-init",
+      "exportName": "initMaweCoreState"
+    },
+    {
+      "file": "editor/ui/editor-display-settings.js",
+      "kind": "init",
+      "name": "editor-display-settings-init",
+      "exportName": "initMaweDisplaySettings"
+    },
+    {
+      "file": "editor/ui/editor-floating-panel.js",
+      "kind": "init",
+      "name": "editor-floating-panel-init",
+      "exportName": "initMaweFloatingPanel"
+    },
+    {
+      "file": "editor/ui/editor-settings-panels.js",
+      "kind": "init",
+      "name": "editor-settings-panels-init",
+      "exportName": "initMaweSettingsPanels"
+    },
+    {
+      "file": "editor/ui/editor-ninja.js",
+      "kind": "init",
+      "name": "editor-ninja-init",
+      "exportName": "initMaweNinja"
+    },
+    {
+      "file": "editor/cues/editor-merge-adjacent.js",
+      "kind": "init",
+      "name": "merge-adjacent-init",
+      "exportName": "initMaweMergeAdjacent"
+    },
+    {
+      "file": "editor/media/editor-playback-loop.js",
+      "kind": "init",
+      "name": "playback-loop-init",
+      "exportName": "initMawePlaybackLoop"
+    },
+    {
+      "file": "editor/media/editor-sticker-overlay.js",
+      "kind": "init",
+      "name": "sticker-overlay-init",
+      "exportName": "initMaweStickerOverlay"
+    },
+    {
+      "file": "editor/io/editor-export-srt.js",
+      "kind": "init",
+      "name": "export-srt-init",
+      "exportName": "initMaweExportSrt"
+    },
+    {
+      "file": "editor/io/editor-server-save.js",
+      "kind": "init",
+      "name": "server-save-init",
+      "exportName": "initMaweServerSave"
+    },
+    {
+      "file": "editor/ui/editor-workspaces.js",
+      "kind": "init",
+      "name": "editor-workspaces-init",
+      "exportName": "initMaweWorkspaces"
+    },
+    {
+      "file": "editor/io/editor-project-save.js",
+      "kind": "init",
+      "name": "project-save-init",
+      "exportName": "initMaweProjectSave"
+    },
+    {
+      "file": "editor/io/editor-dynamic-exports.js",
+      "kind": "init",
+      "name": "dynamic-exports-init",
+      "exportName": "initMaweDynamicExports"
+    },
+    {
+      "file": "editor/ui/editor-export-menus.js",
+      "kind": "init",
+      "name": "editor-export-menus-init",
+      "exportName": "initMaweExportMenus"
+    },
+    {
+      "file": "editor/io/editor-project-media-inputs.js",
+      "kind": "init",
+      "name": "project-media-inputs-init",
+      "exportName": "initMaweProjectMediaInputs"
+    },
+    {
+      "file": "editor/io/editor-project-load.js",
+      "kind": "init",
+      "name": "project-load-init",
+      "exportName": "initMaweProjectLoad"
+    },
+    {
+      "file": "editor/io/editor-multi-import.js",
+      "kind": "init",
+      "name": "multi-import-init",
+      "exportName": "initMaweMultiImport"
+    },
+    {
+      "file": "editor/cues/editor-sticker-picker.js",
+      "kind": "init",
+      "name": "sticker-picker-init",
+      "exportName": "initMaweStickerPicker"
+    },
+    {
+      "file": "editor/cues/editor-add-cue.js",
+      "kind": "init",
+      "name": "add-cue-init",
+      "exportName": "initMaweAddCue"
+    },
+    {
+      "file": "editor/ui/editor-context-menus.js",
+      "kind": "init",
+      "name": "editor-context-menus-init",
+      "exportName": "initMaweContextMenus"
+    },
+    {
+      "file": "editor/cues/editor-text-cleanup.js",
+      "kind": "init",
+      "name": "text-cleanup-init",
+      "exportName": "initMaweTextCleanup"
+    },
+    {
+      "file": "editor/media/editor-waveform-init.js",
+      "kind": "init",
+      "name": "waveform-init-module",
+      "exportName": "initMaweWaveformInit"
+    },
+    {
+      "file": "editor/ui/editor-behavior-hints.js",
+      "kind": "init",
+      "name": "editor-behavior-hints-init",
+      "exportName": "initMaweBehaviorHints"
+    },
+    {
+      "file": "editor/io/editor-json-repair.js",
+      "kind": "init",
+      "name": "json-repair-init",
+      "exportName": "initMaweJsonRepair"
+    },
+    {
+      "file": "editor/ui/editor-help-panel.js",
+      "kind": "init",
+      "name": "editor-help-panel-init",
+      "exportName": "initMaweHelpPanel"
+    },
+    {
+      "file": "editor/ui/editor-theme.js",
+      "kind": "init",
+      "name": "editor-theme-init",
+      "exportName": "initMaweTheme"
+    },
+    {
+      "file": "editor/ui/editor-gap-remove-ui.js",
+      "kind": "init",
+      "name": "editor-gap-remove-ui-init",
+      "exportName": "initMaweGapRemoveUi"
+    },
+    {
+      "file": "editor/cues/editor-selection.js",
+      "kind": "init",
+      "name": "selection-init",
+      "exportName": "initMaweSelection"
+    },
+    {
+      "file": "editor/cues/editor-cue-panel.js",
+      "kind": "init",
+      "name": "cue-panel-init",
+      "exportName": "initMaweCuePanel"
+    },
+    {
+      "file": "editor/cues/editor-color-filter.js",
+      "kind": "init",
+      "name": "color-filter-init",
+      "exportName": "initMaweColorFilter"
+    },
+    {
+      "file": "editor/cues/editor-search.js",
+      "kind": "init",
+      "name": "search-init",
+      "exportName": "initMaweSearch"
+    },
+    {
+      "file": "editor/cues/editor-wiring-overlay-transfer.js",
+      "kind": "init",
+      "name": "overlay-transfer-wiring-init",
+      "exportName": "initOverlayTransferWiring"
+    },
+    {
+      "file": "editor/ui/editor-wiring-settings-init.js",
+      "kind": "init",
+      "name": "settings-init-wiring-init",
+      "exportName": "initMaweSettingsInitWiring"
+    },
+    {
+      "file": "editor/cues/editor-wiring-cue-panel.js",
+      "kind": "init",
+      "name": "cue-panel-wiring-init",
+      "exportName": "initMaweCuePanelWiring"
+    },
+    {
+      "file": "editor/cues/editor-wiring-overlay-split-merge.js",
+      "kind": "init",
+      "name": "overlay-split-merge-wiring-init",
+      "exportName": "initOverlaySplitMergeWiring"
+    },
+    {
+      "file": "editor/cues/editor-wiring-edit-shortcuts.js",
+      "kind": "init",
+      "name": "edit-shortcuts-wiring-init",
+      "exportName": "initMaweEditShortcutsWiring"
+    },
+    {
+      "file": "editor/styles/editor-wiring-ass-preview.js",
+      "kind": "init",
+      "name": "ass-preview-wiring-init",
+      "exportName": "initMaweAssPreviewWiring"
+    },
+    {
+      "file": "editor/io/editor-wiring-export-context.js",
+      "kind": "init",
+      "name": "export-context-wiring-init",
+      "exportName": "initMaweExportContextWiring"
+    },
+    {
+      "file": "editor/cues/editor-wiring-overlay-actions.js",
+      "kind": "init",
+      "name": "overlay-actions-wiring-init",
+      "exportName": "initOverlayActionsWiring"
+    },
+    {
+      "file": "editor/ui/editor-wiring-context-menus.js",
+      "kind": "init",
+      "name": "context-menus-wiring-init",
+      "exportName": "initMaweContextMenusWiring"
     }
   ],
   "externalBridges": [
@@ -178,16 +455,6 @@
     {
       "file": "editor/styles/editor-wiring-ass-manager.js",
       "name": "syncAssStyleForm",
-      "mutable": true
-    },
-    {
-      "file": "editor/cues/editor-wiring-overlay-transfer.js",
-      "name": "convertOverlayCueToMain",
-      "mutable": true
-    },
-    {
-      "file": "editor/cues/editor-wiring-overlay-split-merge.js",
-      "name": "openOverlaySplitModal",
       "mutable": true
     }
   ]

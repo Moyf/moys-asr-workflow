@@ -59,7 +59,7 @@ def comparison_data(before: Mapping[str, object], after: Mapping[str, object], o
         # requires the validated intermediate translation, never split by newline.
         # Persisted dual-track input needs the validated translation snapshot;
         # without it, keep the generic comparison rather than infer a track.
-        if translation is not None or (not operation.endswith("-bilingual") and not get_tracks_by_role(after, "extension")):
+        if translation is not None or (not operation.endswith("-bilingual") and not get_tracks_by_role(after, "secondary")):
             result["translationReview"] = translation_review(before, translation or after, after, operation, line_order, download_name)
     all_markers = markers.get("items", []) if isinstance(markers, Mapping) else []
     for row in rows:

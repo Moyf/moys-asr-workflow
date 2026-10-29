@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import {
   cleanupTempDir,
   findFreePort,
-  buildPortableBlankEditor,
+  buildBrowserEditorFixture,
   generateProjectJson,
   generateWav,
   makeTempDir,
@@ -26,7 +26,7 @@ test.beforeAll(async () => {
   // 短媒体即可：只验证加载链路，不校验波形时长一致性。
   generateWav(mediaPath, 5);
   generateProjectJson(projectPath);
-  server = await startStaticServer(buildPortableBlankEditor(join(tempDir, 'blank.html')), await findFreePort());
+  server = await startStaticServer(buildBrowserEditorFixture(join(tempDir, 'blank.html')), await findFreePort());
 });
 
 test.afterAll(async () => {
@@ -101,7 +101,7 @@ test('opening and serializing a project preserves script alignment metadata', as
   expect(serialized.script_alignment).toEqual(scriptAlignment);
 });
 
-test('opening and serializing a legacy project adds v1 and preserves transcription metadata', async ({ page }) => {
+test('opening and serializing a legacy project writes v1.5 and preserves transcription metadata', async ({ page }) => {
   const project = {
     media: '',
     language: 'en',
@@ -122,7 +122,7 @@ test('opening and serializing a legacy project adds v1 and preserves transcripti
   await expect(page.locator('#json-name')).toHaveText('metadata.mosp');
 
   const serialized = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(serialized.schema).toBe('moy.asr.project.v1');
+  expect(serialized.schema).toBe('moy.asr.project.v1.5');
   expect(serialized.language_source).toBe('detected');
   expect(serialized.split_mode).toBe('word');
   expect(serialized.timestamp_granularity).toBe('segment');
@@ -148,9 +148,10 @@ test('opening a v1.5 project keeps group membership when saved', async ({ page }
 
 test('opening an unknown project schema is rejected without replacing the current project', async ({ page }) => {
   const futureProject = {
-    schema: 'moy.asr.project.v2',
+    schema: 'moy.asr.project.v1.5',
+    subtitle_groups: { color: [], sticker: [] },
     media: '',
-    segments: [{ start: 100, end: 1900, text: 'future' }],
+    segments: [{ id: 'future-cue', start: 100, end: 1900, text: 'future' }],
   };
   const spec = {
     name: 'future.mosp',
@@ -162,7 +163,7 @@ test('opening an unknown project schema is rejected without replacing the curren
   const before = await page.evaluate(() => JSON.stringify(MaweBoot.DATA));
   await dropFiles(page, [spec]);
 
-  await expect(page.locator('#hint-stack .hint-warning')).toContainText('不支持的工程格式版本');
+  await expect(page.locator('#hint-stack .hint-warning')).toContainText('$.schema: must be moy.asr.project.v1 or moy.asr.project.v1.5');
   expect(await page.evaluate(() => JSON.stringify(MaweBoot.DATA))).toBe(before);
 });
 
@@ -229,9 +230,8 @@ test('can use a dropped project subtitle as an extension and preserve optional i
     { text: '带字词时间码的副字幕', start: 100, end: 1900 },
   ]);
 
-  // 双语字幕设置已并入工程设置 → 字幕轨道页；交换按钮就在该页内。
-  await openSettingsPage(page, 'project-tracks');
-  await page.locator('#project-multi-subtitle-settings').waitFor({ state: 'visible' });
+  // 双语字幕设置自 #218 起是工程设置里独立的「双语字幕」页；交换按钮在该页的「字幕管理」区。
+  await openSettingsPage(page, 'multi-subtitle');
   await page.locator('#multi-subtitle-swap').click();
   await page.locator('#multi-subtitle-swap').click();
 

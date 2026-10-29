@@ -75,7 +75,10 @@ test('inspector, focus-scoped arrows, reset, undo and save/reopen retain positio
     await MaweProjectSave.saveProjectToServer({ silent: true }); return AsrEditorUtils.getMainTrack(json).segments[0].assOverride; });
   expect(save).toEqual({ pos: { x: 331, y: 162 } });
   expect((await snapshot(page)).dirty).toBe(false);
-  await page.reload(); await page.waitForFunction(() => Boolean(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride));
+  await page.reload();
+  await page.waitForFunction(() => Boolean(
+    window.MaweExportContext?.mergedExportSegments && AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride,
+  ));
   expect((await snapshot(page)).override).toEqual(save);
   await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.assMode = true; MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000,0); });
   const gaps = await page.locator('#ass-cue-position').evaluate(panel => ({
@@ -280,6 +283,7 @@ test('wheel resize commits before other edits and stays out of pointer transacti
   const restored = await historyState();
   expect(restored.project).toEqual(initial.project);
   expect(restored.undo).toBe(initial.undo);
+  expect(await page.evaluate(() => MaweBoot.DATA.segments[0]._dirty)).toBe(true);
   await page.evaluate(() => { MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000, 0); });
   const baseline = await historyState();
 
@@ -415,6 +419,8 @@ test('active ASS dragging isolates editing shortcuts and cancellation preserves 
   await page.mouse.up();
   expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
   expect(await state()).toEqual(colored);
+
+  expect(await page.evaluate(() => MaweBoot.DATA.segments[0]._dirty)).toBe(true);
 
   // Every history shortcut cancels only the in-flight gesture. Cover both an
   // existing undo entry and an existing redo entry without consuming either.

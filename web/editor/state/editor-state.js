@@ -1,6 +1,9 @@
-// One owner for project identity, selection, preferences and transient UI state.
-// The project is the original template object; no second subtitle source exists.
-window.MAWE.register('editor-state', function createEditorState(project) {
+// 工程身份、选择集、偏好与瞬态运行态的唯一持有者。
+// project 是原始模板对象，不存在第二份字幕源。
+// ESM 模块：createEditorState 为纯工厂具名导出（测试直调、按项目实例化），
+// initMaweState 在原清单位次以 window.MaweBoot.DATA 组装单例并挂
+// window.MaweState（register/resolve 注册表随之退役）。
+export function createEditorState(project) {
   'use strict';
 
   const sets = { main: new Set(), extension: new Set(), overlay: new Set() };
@@ -225,5 +228,12 @@ window.MAWE.register('editor-state', function createEditorState(project) {
     get projectLoadGeneration() { return projectLoadGeneration; },
     get projectLoadPending() { return projectLoadPending; },
     markProjectDirty, getProjectDirtyEpoch, onProjectDirtyChange });
-});
-window.MaweState = window.MAWE.resolve('editor-state', window.MaweBoot.DATA);
+}
+
+export function initMaweState() {
+  'use strict';
+  // 注册表 resolve 时代的返回值即 any；与原装配语义一致，经局部
+  // 中转赋窗口单例，类型断言由 editor-globals.d.ts 的接口描述承担。
+  const state = /** @type {any} */ (createEditorState(window.MaweBoot.DATA));
+  window.MaweState = state;
+}

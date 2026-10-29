@@ -15,9 +15,7 @@ function project() {
     subtitle_groups: { next_id: 2, color: [{ id: 'color-1', value: { name: 'yellow' } }],
       sticker: [{ id: 'sticker-1', value: { name: 'cat', path: 'cat.png', width: 720, height: 480 } }] } } });
   result.tracks.push(
-    { id: 'inactive', role: 'extension', name: 'inactive', enabled: true,
-      segments: [{ id: 'inactive-1', start: 0, end: 8000, text: 'unused', sticker_group_id: 'sticker-1' }] },
-    { id: 'active', role: 'extension', name: 'active', enabled: true,
+    { id: 'active', role: 'secondary', name: 'active', enabled: true,
       segments: [{ id: 'active-1', start: 6000, end: 6500, text: 'translation', color_group_id: 'color-1', sticker_group_id: 'sticker-1' }] },
     { id: 'overlay', role: 'overlay', name: 'overlay', enabled: true, segments: [
       { id: 'hidden-overlay', start: 0, end: 4000, text: 'hidden overlay', disabled: true, sticker_group_id: 'sticker-1' },
@@ -28,7 +26,7 @@ function project() {
   return result;
 }
 
-test('canonical export selects the active language and emits a cross-track sticker group once', () => {
+test('canonical export selects the secondary track and emits a cross-track sticker group once', () => {
   const input = project(); const before = plain(input);
   const plan = utils.buildProjectExportPlan(input, { timelineMode: 'source' });
   assert.deepEqual(Array.from(plan.cues.main, cue => cue.text), ['source']);
@@ -36,7 +34,7 @@ test('canonical export selects the active language and emits a cross-track stick
   assert.deepEqual(Array.from(plan.cues.overlay, cue => cue.text), ['overlap']);
   assert.equal(plan.stickers.length, 1);
   assert.equal(plan.overlayStickers.length, 0);
-  assert.deepEqual([plan.stickers[0].sourceStartMs, plan.stickers[0].sourceEndMs], [5000, 6700]);
+  assert.deepEqual([plan.stickers[0].sourceStartMs, plan.stickers[0].sourceEndMs], [0, 6700]);
   assert.equal(plan.cues.main[0].startMs, 5000);
   assert.deepEqual(plain(input), before);
 });
@@ -47,7 +45,7 @@ test('canonical export maps gaps without changing source tracks or including dis
   const plan = utils.buildProjectExportPlan(input, { timelineMode: 'gap_removed' });
   assert.equal(plan.cues.extension.length, 0);
   assert.equal(plan.cues.main[0].startMs, 4000);
-  assert.deepEqual([plan.stickers[0].startMs, plan.stickers[0].endMs], [4000, 5700]);
+  assert.deepEqual([plan.stickers[0].startMs, plan.stickers[0].endMs], [0, 5700]);
   assert.equal(input.tracks[0].segments[1].start, 5000);
   assert.deepEqual(plain(input), before);
 });

@@ -262,6 +262,20 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
             text,
         )
 
+    def test_default_preservation_keeps_repeated_marks_quotes_decimals_and_abbreviations(self) -> None:
+        text = '你好，世界。真的吗？！\n“3.14，U.S.！”'
+        processed = processed_script_text(
+            text,
+            extra_split_punctuation=DEFAULT_EXTRA_SPLIT_PUNCTUATION,
+            preserve_punctuation=DEFAULT_PRESERVE_PUNCTUATION,
+        )
+        self.assertEqual(processed.replace("\n", ""), text.replace("\n", ""))
+        self.assertGreater(processed.count("\n"), text.count("\n"))
+
+    def test_multichar_script_separator_has_explicit_keep_and_delete_semantics(self) -> None:
+        self.assertEqual(processed_script_text("甲<cut>乙\n丙", extra_split_punctuation=("<cut>",), preserve_punctuation=("<cut>",)), "甲<cut>\n乙\n丙")
+        self.assertEqual(processed_script_text("甲<cut>乙\n丙", extra_split_punctuation=("<cut>",), preserve_punctuation=()), "甲\n乙\n丙")
+
     def test_processed_script_text_keeps_common_closing_marks(self) -> None:
         text = "\n".join((
             "「甲？」",

@@ -84,13 +84,13 @@ if (MaweDom.mergeJoinTextWordInput) MaweDom.mergeJoinTextWordInput.addEventListe
 MaweSplitTrim.renderSplitTrimSymbolGrid();
 MaweSplitTrim.refreshSplitTrimExtraInput();
 MaweSplitTrim.splitTrimExtraInput?.addEventListener('change', () => {
-  const extras = MULTI_SUBTITLE_UTILS.parseSplitTrimSymbolInput(MaweSplitTrim.splitTrimExtraInput.value);
+  const extras = window.AsrEditorUtils.parseSplitTrimSymbolInput(MaweSplitTrim.splitTrimExtraInput.value);
   MaweSplitTrim.persistSplitTrimSymbols([...MaweSplitTrim.splitTrimPrimaryCheckedSet(), ...extras]);
   MaweSplitTrim.refreshSplitTrimExtraInput();
 });
 MaweSplitTrim.splitTrimSymbolsReset?.addEventListener('click', () => {
-  const defaults = MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(
-    [...MULTI_SUBTITLE_UTILS.DEFAULT_SPLIT_TRIM_SYMBOLS],
+  const defaults = window.AsrEditorUtils.setSplitTrimSymbols(
+    [...window.AsrEditorUtils.DEFAULT_SPLIT_TRIM_SYMBOLS],
   );
   MaweSettings.updateEditorSettings({ splitTrimSymbols: defaults });
   MaweSplitTrim.renderSplitTrimSymbolGrid();
@@ -155,4 +155,9 @@ MaweDom.subtitleExtendPanel?.querySelectorAll('input[type="number"]').forEach((i
       return;
     }
   }, { passive: false });
+});
+// G07：init 化的 UI 模块经 window 延迟取用本文件的
+// 运行时入口；classic 调用方不受影响。
+window.MaweThemeSplitWiring = window.MaweThemeSplitWiring || Object.freeze({
+  toastPosition,
 });

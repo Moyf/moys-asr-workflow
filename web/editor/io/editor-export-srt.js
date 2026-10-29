@@ -1,3 +1,8 @@
+import { activeExtensionSegments } from '../cues/overlay-track.js';
+
+export function initMaweExportSrt() {
+'use strict';
+
 // SRT 导出：主/副/去空隙 SRT、配色分拆与动态字幕数据。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweExportSrt 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -19,7 +24,7 @@
   }
 
   function cleanupMergedExportSegments() {
-    const merged = mergedExportSegments();
+    const merged = window.MaweExportContext.mergedExportSegments();
     const main = cleanupMainSegments();
     const projection = new Map(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment, index) => [segment, main[index]]));
     return { ...merged, segments: merged.segments.map((segment) => projection.get(segment) || segment)
@@ -36,7 +41,7 @@
     alignFirstStart,
     firstEnabledIndex,
     keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
-    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+    colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
     assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     formatTime: MaweCueElements.fmtSrtTime,
@@ -49,7 +54,7 @@
   function captureVideoSrt() {
     const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
     const options = {
-      colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+      colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
       ...MaweSpeakerLabels.speakerLabelExportOptions(),
       assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
       formatTime: MaweCueElements.fmtSrtTime,
@@ -128,7 +133,7 @@
     timeOffset: 0,
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
-    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+    colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
     mapTime: gapRemoved
       ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
       : undefined,
@@ -351,7 +356,7 @@
     return window.AsrEditorUtils.buildBilingualSrtPayload(segments,
       cleanupSegments(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []), {
         alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-        colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+        colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
         ...MaweSpeakerLabels.speakerLabelExportOptions(),
         assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
         formatTime: MaweCueElements.fmtSrtTime,
@@ -386,7 +391,7 @@
     firstEnabledIndex,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
     ensurePositiveDuration: true,
-    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+    colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
     assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     formatTime: MaweCueElements.fmtSrtTime,
@@ -429,7 +434,7 @@
 
   function usedSubtitleColors() {
   const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
-  const resolveColor = exportColorContextResolver(overlaySet, overlaySegments);
+  const resolveColor = window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments);
   const names = new Set(segments.filter((segment) => !segment.disabled).map((segment) => (
     window.AsrEditorUtils.effectiveColorName(segment, resolveColor(segment)) || 'default'
   )).filter((name) => name === 'default' || MaweColors.COLOR_BY_NAME[name]));
@@ -510,3 +515,4 @@
     buildGapRemovedRegionsJson
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

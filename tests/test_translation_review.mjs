@@ -8,9 +8,9 @@ const context = vm.createContext({ crypto: webcrypto, TextEncoder });
 vm.runInContext(readFileSync(new URL('../web/shared/templates/ai-translation-review.js', import.meta.url), 'utf8'), context);
 const adapter = context.MAWTranslationReview;
 const main = project => project.tracks.find(track => track.role === 'main');
-const extension = project => project.tracks.find(track => track.role === 'extension');
+const extension = project => project.tracks.find(track => track.role === 'secondary');
 const makeProject = (segments, extra = {}) => ({
-  schema: 'moy.asr.project.v3',
+  schema: 'moy.asr.project.v2',
   tracks: [{ id: 'main', role: 'main', name: '主字幕', enabled: true, segments }],
   bilingual: { display_mode: 'both' }, bindings: [], ...extra,
 });
@@ -25,7 +25,7 @@ function fixture(mode = 'single') {
   ], { markers: { items: [{ id: 'user', start: 0, note: '用户注' }] }, user_metadata: { arbitrary: '保持' } });
   result.tracks.push(
     { id: 'overlay', role: 'overlay', name: '叠加字幕', enabled: false, segments: [{ id: 'overlay-cue', start: 0, end: 300, text: '隐藏' }] },
-    { id: 'track', role: 'extension', name: '副字幕', enabled: false, segments: [] },
+    { id: 'track', role: 'secondary', name: '副字幕', enabled: false, segments: [] },
   );
   const packet = { schema: 'maw.translation-review.v1', source, result, mode, translationFirst: true,
     entries: main(source).segments.map((cue, i) => ({ id: cue.id, start: cue.start, end: cue.end, source: cue.text, translation: i ? '原文二' : '译文', editable: true })) };
@@ -59,7 +59,7 @@ test('dual-track review edits only the translation and preserves editable source
   delete cue.items;
   cue._dirty = true;
   assert.equal(changed, 1);
-  assert.equal(project.tracks.filter(track => track.role === 'extension').length, 1);
+  assert.equal(project.tracks.filter(track => track.role === 'secondary').length, 1);
   assert.deepEqual(plain(project), expected);
   assert.deepEqual(plain((await adapter.applyEdits(review, [])).project), original);
   await assert.rejects(adapter.applyEdits(review, [{ id: 'b', text: '不能改原文' }]));

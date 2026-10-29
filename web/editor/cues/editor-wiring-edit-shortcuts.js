@@ -1,3 +1,8 @@
+import { deleteOverlayCues, assignOverlayColor, clearOverlayColorOnTargets, mergeOverlayCues } from './overlay-track.js';
+
+export function initMaweEditShortcutsWiring() {
+'use strict';
+
 document.addEventListener('click', (event) => {
   if (event.detail === 0) return;
   const target = event.target instanceof Element ? event.target : null;
@@ -796,7 +801,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     // 同上：首次 B 只负责打开叠加字幕拆分弹窗。
     e.stopImmediatePropagation();
-    openOverlaySplitModal(
+    window.MaweOverlaySplitMerge.openOverlaySplitModal(
       overlayIndex,
       MaweSettings.EDITOR_SETTINGS.keyboardOperationReference === 'playhead'
         ? operationReference?.timeMs ?? null : timeMs,
@@ -859,3 +864,4 @@ document.addEventListener('pointerdown', (e) => {
     !target || !MaweInlineEdit.extensionEditingState.textEl.contains(target)
   )) MaweInlineEdit.finishExtensionEdit(true);
 }, true);
+}

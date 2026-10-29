@@ -223,11 +223,11 @@ export function createUtilsModule(dependencies) {
       segments: Array.isArray(project.overlay_track.segments) ? project.overlay_track.segments : [] });
     if (project.multi_subtitle?.enabled === true) {
       for (const [index, track] of (project.multi_subtitle.tracks || []).entries()) {
-        tracks.push({ id: track.id || `extension-${index}`, role: 'extension', enabled: true,
+        tracks.push({ id: track.id || `extension-${index}`, role: 'secondary', enabled: true,
           segments: Array.isArray(track.segments) ? track.segments : [] });
       }
     } else if (project.multi_subtitle == null && Array.isArray(project.extensionSegments)) {
-      tracks.push({ id: 'extension', role: 'extension', enabled: true, segments: project.extensionSegments });
+      tracks.push({ id: 'extension', role: 'secondary', enabled: true, segments: project.extensionSegments });
     }
     return { canonical: null, tracks };
   }
@@ -287,7 +287,7 @@ export function createUtilsModule(dependencies) {
         { trackIds: selectedIds, includeDisabled: false }) : track.segments }));
     const main = renderTracks.find(track => track.role === 'main');
     const overlay = renderTracks.find(track => track.role === 'overlay');
-    const extensions = renderTracks.filter(track => track.role === 'extension');
+    const extensions = renderTracks.filter(track => track.role === 'secondary');
     const projectSegments = gapRemoveCore.projectCleanupRetainedSegments(main?.segments || [], project.gap_remove);
     const projectOverlaySegments = overlay?.segments || [];
     const extensionColorContexts = new Map();
@@ -388,7 +388,7 @@ export function createUtilsModule(dependencies) {
     };
     const overlayStickers = [];
     if (input.canonical) {
-      dependencies.subtitleGroupRanges(input.canonical, 'sticker', { trackIds: selectedIds, includeDisabled: false })
+      dependencies.subtitleGroupRanges(input.canonical, 'sticker', { trackIds: selectedIds }).filter(range => range.enabled)
         .forEach((range, index) => {
           const track = range.members.every(member => member.track === 'overlay') ? 'overlay' : 'main';
           appendSticker(range.source, range.start, range.end, track, index, track === 'overlay' ? overlayStickers : stickers);

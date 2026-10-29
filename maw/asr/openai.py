@@ -40,6 +40,7 @@ from maw.asr.segmentation import (
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
 )
+from maw.editor_entry_policy import should_generate_standalone_editor
 from maw.app_paths import default_env_path
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
@@ -844,7 +845,7 @@ def main() -> None:
             ),
         )
         print(f"工程文件已保存到: {json_path}")
-        if not args.no_html:
+        if should_generate_standalone_editor(not args.no_html):
             edit_script = Path(__file__).resolve().parents[2] / "edit.py"
             if edit_script.exists():
                 command = [sys.executable, str(edit_script), str(json_path)]

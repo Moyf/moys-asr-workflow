@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
@@ -35,7 +36,7 @@ function fixture(markerShape) {
     }, manual_overrides: [{ id: 'manual-late', start: 1500, end: 1600, removed: true }] } },
   });
   context.MaweBoot = { DATA: project };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/io/editor-json-repair.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/io/editor-json-repair.js'), context);
   return { context, core, project };
 }
 

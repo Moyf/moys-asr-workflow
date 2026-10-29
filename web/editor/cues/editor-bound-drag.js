@@ -12,7 +12,7 @@
     if (!source) return null;
     const binding = MaweMultiSubtitleCore.bindingForMainIndex(index);
     if (!binding) return null;
-    const target = MaweMultiSubtitleCore.extensionSegmentById(binding.target_segment_ids?.[0], MaweMultiSubtitleCore.getExtensionTrack(binding.target_track_id));
+    const target = MaweMultiSubtitleCore.extensionSegmentById(binding.target?.segment_id, MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id));
     return target ? { target, binding } : null;
   }
 
@@ -154,7 +154,7 @@
       }
       if (nextEnd <= nextStart) nextEnd = nextStart + MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
 
-      const targetTrack = MaweMultiSubtitleCore.getExtensionTrack(binding.target_track_id);
+      const targetTrack = MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id);
       const dragEdge = getBoundDragEdge(drag, index);
       const resolved = MaweMultiSubtitleCore.resolveExtensionFollowerRange(
         target,

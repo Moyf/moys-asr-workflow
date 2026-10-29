@@ -7,7 +7,7 @@ export function createUtilsModule({ cloneJsonValue }) {
     return (project.tracks || []).map(track => ({ ...track, key: track.role, trackId: track.id }));
   }
   function migrateSubtitleGroups(project) {
-    if (project?.schema !== 'moy.asr.project.v3' || !project.subtitle_groups) throw new TypeError('Import project before using subtitle groups');
+    if (project?.schema !== 'moy.asr.project.v2' || !project.subtitle_groups) throw new TypeError('Import project before using subtitle groups');
     return project.subtitle_groups;
   }
   function getSubtitleGroupValue(project, segment, kind = 'color') {
@@ -18,7 +18,7 @@ export function createUtilsModule({ cloneJsonValue }) {
     requireKind(kind);
     const selectedIds = trackIds === null ? null : new Set(trackIds);
     const tracks = (project.tracks || []).filter(track => (!selectedIds || selectedIds.has(track.id))
-      && (!activeTracksOnly || (track.enabled && (track.role !== 'extension' || track.id === project.bilingual?.active_track_id))));
+      && (!activeTracksOnly || (track.enabled && (track.role !== 'secondary' || track.id === project.bilingual?.active_track_id))));
     return (project.subtitle_groups?.[kind] || []).flatMap(group => {
       const members = tracks.flatMap(track => track.segments.filter(segment => segment[`${kind}_group_id`] === group.id
         && (includeDisabled || segment.disabled !== true))
@@ -65,6 +65,8 @@ export function createUtilsModule({ cloneJsonValue }) {
     for (const index of indexes) if (segments[index]) {
       delete segments[index][`${kind}_group_id`]; delete segments[index][`${kind}_group_metadata`];
     }
+    const used = new Set((project.tracks || []).flatMap(track => track.segments.map(segment => segment[`${kind}_group_id`])));
+    project.subtitle_groups[kind] = project.subtitle_groups[kind].filter(group => used.has(group.id));
     return project;
   }
   function materializeTrackSegments(project, trackId, options = {}) {

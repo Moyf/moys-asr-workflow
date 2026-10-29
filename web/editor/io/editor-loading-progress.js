@@ -58,7 +58,9 @@
     try {
       if (MaweDragDrop.isSrtFile(file)) return MaweProjectLoad.parseSrtSegments(await readFileTextWithProgress(file));
       if (MaweDragDrop.isLrcFile(file)) return window.AsrEditorUtils.parseLrcSegments(await readFileTextWithProgress(file));
-      const data = window.AsrEditorUtils.importProject(JSON.parse(await readFileTextWithProgress(file))).project;
+      const imported = window.AsrEditorUtils.importProject(JSON.parse(await readFileTextWithProgress(file)));
+      const data = imported.project;
+      MaweJsonRepair.noteImportReport(imported.changes);
       const sourceTrack = window.AsrEditorUtils.getMainTrack(data);
       const sourceSegments = window.AsrEditorUtils.cloneJsonValue(sourceTrack.segments);
       const validSegments = sourceSegments.filter((segment) => segment.text.trim());

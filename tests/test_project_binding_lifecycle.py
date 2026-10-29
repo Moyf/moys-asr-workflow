@@ -11,12 +11,13 @@ from pathlib import Path
 from unittest import mock
 
 from tests.test_local_editor_server import server_editor
+from maw.project import normalize_project
 from maw.project_tracks import get_main_track
 
 
 class ProjectBindingLifecycleTests(unittest.TestCase):
     def start_http(self):
-        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         thread.start()
         self.addCleanup(thread.join, 5)
         self.addCleanup(self.server.shutdown)
@@ -37,6 +38,13 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
+        # The fixture is a known mono PCM WAV. Keep metadata merging real;
+        # real probe compatibility is checked by test_ffprobe_failure_integration.
+        tracks = [{"audio_index": 0, "stream_index": 0, "codec": "pcm_s16le",
+                   "channels": 1, "sample_rate": 8000, "language": "", "title": "", "default": False}]
+        self.enterContext(mock.patch("maw.project_io.probe_audio_tracks",
+            side_effect=lambda *args, **kwargs: [dict(track) for track in tracks]))
+        self.enterContext(mock.patch.object(server_editor.EditorServer, "_thumbnail_base_ready", return_value=False))
         self.paths = {}
         for name in ("a", "b"):
             media = self.root / f"{name}.wav"
@@ -44,8 +52,9 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
                 stream.setparams((1, 2, 8000, 0, "NONE", "not compressed"))
                 stream.writeframes(b"\0\0" * 800)
             path = self.root / f"{name}.mosp"
-            path.write_text(json.dumps({"media": str(media), "segments": [
-                {"id": name, "start": 0, "end": 100, "text": name}]}), encoding="utf8")
+            project = normalize_project({"media": str(media), "segments": [
+                {"id": name, "start": 0, "end": 100, "text": name}]})
+            path.write_text(json.dumps(project), encoding="utf8")
             self.paths[name] = path
         self.server = server_editor.EditorServer(("127.0.0.1", 0), self.load("a"), no_waveform=True)
         self.addCleanup(self.server.server_close)
@@ -60,7 +69,7 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
         with self.server.settings_lock:
             self.server._bind_project_locked(self.load("b"))
         before = {name: path.read_bytes() for name, path in self.paths.items()}
-        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         thread.start()
         try:
             for token in ({}, binding):
@@ -318,7 +327,7 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
         get_main_track(data)['segments'][0]['text'] = 'followup'
         self.assertEqual(self.post('/api/project', {**saved, 'project': data})[0], 200)
         self.assertEqual(get_main_track(json.loads((self.root / 'copy.mosp').read_text(encoding='utf8')))['segments'][0]['text'], 'followup')
-        self.assertEqual(self.load_data('a')['segments'][0]['text'], 'a')  # Original legacy file remains untouched.
+        self.assertEqual(get_main_track(self.load_data('a'))['segments'][0]['text'], 'a')
 
     def test_save_as_restarts_deferred_loader_after_changing_its_binding(self):
         entered, release = threading.Event(), threading.Event()
