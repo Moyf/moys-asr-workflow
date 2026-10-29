@@ -49,9 +49,9 @@ DEFAULT_EXTRA_SPLIT_PUNCTUATION: Final[tuple[str, ...]] = (
     ".",
     ";",
 )
-DEFAULT_PRESERVE_PUNCTUATION: Final[tuple[str, ...]] = ("？", "！")
+DEFAULT_PRESERVE_PUNCTUATION: Final[tuple[str, ...]] = DEFAULT_EXTRA_SPLIT_PUNCTUATION
 # CLI 参数默认值（strip = 默认断句 − 默认保留；strong = 完整默认断句）。
-DEFAULT_STRIP_TAIL_PUNCT: Final[str] = "，。；,.;"
+DEFAULT_STRIP_TAIL_PUNCT: Final[str] = ""
 DEFAULT_STRONG_PUNCT: Final[str] = "，。？！；,.;"
 
 
@@ -279,11 +279,17 @@ def _match_project_with_character_timings(
     if not isinstance(source_segments, list):
         raise ValueError("project segments must be an array")
     matcher_project = copy.deepcopy(project)
-    replace_main_segments(matcher_project, [
+    matcher_main = get_main_track(matcher_project)
+    matcher_main["segments"] = [
         segment
-        for segment in source_segments
+        for segment in matcher_main["segments"]
         if isinstance(segment, dict) and segment.get("disabled") is not True
-    ])
+    ]
+    active_ids = {segment["id"] for segment in matcher_main["segments"]}
+    # The filtered project is only a temporary matcher input. Keep disabled
+    # cues and their relations in the original until the final transaction.
+    matcher_project["bindings"] = [binding for binding in matcher_project["bindings"]
+                                   if all(identifier in active_ids for identifier in binding["source_segment_ids"])]
     mosp_text = json.dumps(matcher_project, ensure_ascii=False)
     try:
         _cues, report, matched_text = generate_matched_mosp(
@@ -314,8 +320,13 @@ def _match_project_with_character_timings(
         report,
         is_cancelled=is_cancelled,
     )
-    replace_main_segments(raw_matched, _merge_disabled_segments(source_segments, raw_matched))
-    matched = normalize_project(raw_matched)
+    final_segments = _merge_disabled_segments(source_segments, raw_matched)
+    grouped = any(segment.get("color_group_id") or segment.get("sticker_group_id") for segment in source_segments)
+    if len(final_segments) != len(source_segments) and (grouped or project["bindings"]):
+        raise SubtitleMatchError("带独立分组或双语绑定的工程暂不支持文稿匹配改变字幕条数。")
+    restored = copy.deepcopy(project)
+    replace_main_segments(restored, final_segments)
+    matched = normalize_project(restored)
     warnings: list[str] = [
         f"文稿匹配度：{coverage:.0%}；已按字词时间码重新生成字幕段。",
     ]
@@ -424,7 +435,9 @@ def _preserve_equal_count_segment_metadata(
         check_match_cancelled(is_cancelled)
         if not isinstance(source_segment, dict) or not isinstance(matched_segment, dict):
             continue
-        for key in ("id", "speaker", "disabled", "sticker_group_id", "color_group_id"):
+        for key in source_segment:
+            if key in {"start", "end", "text", "items", "start_frame", "end_frame"}:
+                continue
             check_match_cancelled(is_cancelled)
             if key in source_segment:
                 matched_segment[key] = copy.deepcopy(source_segment[key])
@@ -752,7 +765,20 @@ def _resegment_project(
         for start, end, segment in extra_segments
     ]
     entries.sort(key=lambda item: (item[0], item[1], item[2]))
-    replace_main_segments(result, [segment for _start, _end, _kind, segment in entries])
+    replacement = [segment for _start, _end, _kind, segment in entries]
+    grouped = any(segment.get("color_group_id") or segment.get("sticker_group_id")
+                  for segment in original_segments)
+    if grouped or project["bindings"]:
+        if len(replacement) != len(original_segments):
+            raise SubtitleMatchError("带独立分组或双语绑定的工程暂不支持文稿匹配改变字幕条数。")
+        timing_fields = {"start", "end", "text", "items", "start_frame", "end_frame"}
+        for original, target in zip(original_segments, replacement, strict=True):
+            for key in set(target) - timing_fields:
+                del target[key]
+            for key, value in original.items():
+                if key not in timing_fields:
+                    target[key] = copy.deepcopy(value)
+    replace_main_segments(result, replacement)
     return normalize_project(result)
 
 

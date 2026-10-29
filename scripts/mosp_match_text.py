@@ -9,6 +9,7 @@ each item, then difflib anchors those characters to the corrected manuscript.
 from __future__ import annotations
 
 import argparse
+import copy
 import difflib
 import json
 import math
@@ -725,13 +726,20 @@ def generate_matched_mosp(
     except json.JSONDecodeError as exc:  # parse_mosp normally reports this first.
         raise AlignmentError("MOSP JSON 无效") from exc
     project = normalize_project(project)
-    if project["bindings"] or any("color_group_id" in cue or "sticker_group_id" in cue
-                                  for cue in get_main_track(project)["segments"]):
-        raise AlignmentError("文稿匹配无法安全保留既有分组或双语绑定，请先解除相关关系。")
+    source_segments = get_main_track(project)["segments"]
     generated = build_mosp_segments(segments, timings, output, is_cancelled=is_cancelled)
-    reserved = {cue["id"] for cue in iter_segments(project)} | set(reserved_cue_ids)
-    for index, cue in enumerate(generated, 1):
-        cue["id"] = fresh_segment_id(f"matched-cue-{index}", reserved)
+    grouped = any(cue.get("color_group_id") or cue.get("sticker_group_id") for cue in source_segments)
+    if len(generated) != len(source_segments) and (grouped or project["bindings"]):
+        raise AlignmentError("带独立分组或双语绑定的工程暂不支持文稿匹配改变字幕条数。")
+    if len(generated) == len(source_segments):
+        for original, cue in zip(source_segments, generated, strict=True):
+            for key, value in original.items():
+                if key not in {"start", "end", "text", "items", "start_frame", "end_frame"}:
+                    cue[key] = copy.deepcopy(value)
+    else:
+        reserved = {cue["id"] for cue in iter_segments(project)} | set(reserved_cue_ids)
+        for index, cue in enumerate(generated, 1):
+            cue["id"] = fresh_segment_id(f"matched-cue-{index}", reserved)
     replace_main_segments(project, generated)
     content = json.dumps(project, ensure_ascii=False, indent=2) + "\n"
     return output, report, content

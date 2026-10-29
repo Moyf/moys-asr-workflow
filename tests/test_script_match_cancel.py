@@ -169,7 +169,7 @@ class ScriptMatchCancellationTests(unittest.TestCase):
     def test_core_default_call_preserves_cli_pipeline_compatibility(self) -> None:
         self.input(True)
         artifact = run_script_match(ScriptMatchRequest(self.project, None, self.script, OutputMode.JSON))
-        self.assertEqual(get_main_track(read_project(artifact.project_path))["segments"][0]["text"], "今天开始测试")
+        self.assertEqual(get_main_track(read_project(artifact.project_path))["segments"][0]["text"], "今天开始测试。")
 
     def test_status_events_carry_operation_identity_in_stage_order(self) -> None:
         result = self.api.run_script_match(self.input(False))
