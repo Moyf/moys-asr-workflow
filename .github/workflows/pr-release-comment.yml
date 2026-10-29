@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   pull-requests: write
 
 jobs:
@@ -37,12 +38,26 @@ jobs:
               return;
             }
 
-            const succeeded = run.conclusion === 'success';
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+              filter: 'latest',
+              per_page: 100,
+            });
+            const build = jobs.find((job) => job.name === 'Build Windows x64 MAW-lite preview');
+            const bundle = build?.steps?.find((step) => step.name === 'Build MAW bundle');
+            const upload = build?.steps?.find((step) => step.name === 'Upload MAW-lite release preview');
+            const intentionallySkipped = run.conclusion === 'success' && build?.conclusion === 'success'
+              && bundle?.conclusion === 'skipped';
+            const succeeded = run.conclusion === 'success' && build?.conclusion === 'success'
+              && bundle?.conclusion === 'success' && upload?.conclusion === 'success';
             const shortSha = (run.head_sha || '').slice(0, 7);
             const updatedAt = new Date(run.updated_at || run.created_at || Date.now());
-            const statusTitle = succeeded ? '🔧 Windows PR 打包完成' : '❌ Windows PR 打包失败';
-            const statusText = succeeded
-               ? 'Windows MAW-lite 测试包已经生成。'
+            const statusTitle = intentionallySkipped ? 'ℹ️ 本次未构建 Windows 预览包' : succeeded ? '🔧 Windows PR 打包完成' : '❌ Windows PR 打包失败';
+            const statusText = intentionallySkipped
+               ? '文档或网站变更使用轻量验证，本次没有生成 Windows 测试包。'
+               : succeeded ? 'Windows MAW-lite 测试包已经生成。'
                : 'Windows MAW-lite 测试包没有生成，请查看 Actions 日志。';
             const linkText = succeeded
                ? `[下载 Windows MAW-lite 构建产物](${run.html_url})`
@@ -62,7 +77,7 @@ jobs:
             **下载链接：**
             ${linkText}
 
-            成功后请进入上方 Actions 运行页面，在 **Artifacts** 区域下载 ZIP。该构建仅用于预览和测试。`;
+            ${succeeded ? '请进入上方 Actions 运行页面，在 **Artifacts** 区域下载 ZIP。该构建仅用于预览和测试。' : ''}`;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner: context.repo.owner,
