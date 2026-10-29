@@ -30,7 +30,7 @@ class MediaExportBackendTests(unittest.TestCase):
         )
         self.server = server_editor.EditorServer(("127.0.0.1", 0), self.project, no_waveform=True)
         self.server.media_jobs.temp_root = self.root
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
         self.addCleanup(self.stop_server)
         self.base = "/api/exports/gap-removed-video"
