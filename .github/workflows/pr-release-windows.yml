@@ -13,13 +13,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  selection:
+    runs-on: ubuntu-latest
+    outputs:
+      light: ${{ steps.scope.outputs.light }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Select change scope
+        id: scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python scripts/ci_impact.py
+
   build-windows:
+    needs: selection
+    if: ${{ always() }}
     name: Build Windows x64 MAW-lite preview
     runs-on: windows-2022
     env:
       PYTHONUTF8: '1'
 
     steps:
+      - name: Require valid selection
+        if: ${{ needs.selection.result != 'success' || (needs.selection.outputs.light != 'true' && needs.selection.outputs.light != 'false') }}
+        run: exit 1
       - name: Check out repository
         # 默认 checkout pull_request 事件的 merge commit，与 GitHub 选取的
         # workflow 文件版本（同样来自 merge ref）保持一致；checkout PR 头
@@ -30,43 +52,52 @@ jobs:
           persist-credentials: false
 
       - name: Set up Python
+        if: ${{ needs.selection.outputs.light != 'true' }}
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           architecture: x64
 
       - name: Set up uv
+        if: ${{ needs.selection.outputs.light != 'true' }}
         uses: astral-sh/setup-uv@v7
         with:
           version: "0.13.4"
           enable-cache: true
 
       - name: Verify Launcher version
+        if: ${{ needs.selection.outputs.light != 'true' }}
         run: python scripts/sync_launcher_version.py --check
 
       - name: Install locked dependencies
+        if: ${{ needs.selection.outputs.light != 'true' }}
         run: uv sync --group build --frozen --group test
 
       - name: Set up pnpm
+        if: ${{ needs.selection.outputs.light != 'true' }}
         uses: pnpm/action-setup@v6
         with:
           version: 11.28.4
           run_install: false
       - name: Set up Node
+        if: ${{ needs.selection.outputs.light != 'true' }}
         uses: actions/setup-node@v5
         with:
           node-version: '22.23.4'
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Build web bundles
+        if: ${{ needs.selection.outputs.light != 'true' }}
         # bundle 是构建产物（不入库）：Python 全量测试与打包都会读取，在测试前
         # 安装阶段跳过脚本，随后显式构建，避免 postinstall 重复编译。
         run: pnpm install --frozen-lockfile --ignore-scripts && pnpm run build
 
       - name: Install Chromium for focused regression tests
+        if: ${{ needs.selection.outputs.light != 'true' }}
         run: pnpm exec playwright install chromium
 
       - name: Install FFmpeg for media integration tests
+        if: ${{ needs.selection.outputs.light != 'true' }}
         shell: pwsh
         # Test dependency only: the lite preview must still contain no FFmpeg.
         run: |
@@ -119,15 +150,18 @@ jobs:
           $FfmpegBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Run packaging contract tests
+        if: ${{ needs.selection.outputs.light != 'true' }}
         run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_packaging_contract.py
 
       - name: Run editor display regression tests
+        if: ${{ needs.selection.outputs.light != 'true' }}
         env:
           MAW_E2E_PYTHON: '${{ github.workspace }}/.venv/Scripts/python.exe'
           PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/editor-display-results.json
         run: uv run --no-sync python scripts/run_check.py --timeout 540 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium --workers=1 --retries=0 --forbid-only --reporter=line,json tests/e2e/ass-stacking-boundaries.spec.mjs tests/e2e/editor-i18n-save.spec.mjs tests/e2e/shared-tooltip.spec.mjs
 
       - name: Require complete display regression results
+        if: ${{ needs.selection.outputs.light != 'true' }}
         shell: pwsh
         run: |
           uv run --no-sync python -c @'
@@ -157,7 +191,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Display regression report is incomplete or contains unsupported outcomes.' }
 
       - name: Preserve editor display regression evidence
-        if: always()
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: windows-preview-editor-display
@@ -169,9 +203,11 @@ jobs:
           retention-days: 7
 
       - name: Run Python tests
+        if: ${{ needs.selection.outputs.light != 'true' }}
         run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py --report .artifacts/windows-python.json
 
       - name: Require cache coverage from the same Python run
+        if: ${{ needs.selection.outputs.light != 'true' }}
         shell: pwsh
         run: |
           @'
@@ -193,7 +229,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows cache coverage was not verified.' }
 
       - name: Preserve complete Python report
-        if: always()
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: windows-preview-python-report
@@ -205,7 +241,7 @@ jobs:
           retention-days: 7
 
       - name: Preserve failed Python check evidence
-        if: failure()
+        if: ${{ failure() && needs.selection.outputs.light != 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: windows-preview-python-checks
@@ -214,9 +250,10 @@ jobs:
           retention-days: 7
 
       - name: Required media failure compatibility
+        if: ${{ needs.selection.outputs.light != 'true' }}
         run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_media.py tests/test_ffmpeg.py tests/test_ffprobe_failure_integration.py --required --report .artifacts/media-required.json
       - name: Preserve media required report
-        if: always()
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: media-required-${{ runner.os }}
@@ -229,6 +266,7 @@ jobs:
 
 
       - name: Launcher readiness and real cancellation
+        if: ${{ needs.selection.outputs.light != 'true' }}
         env:
           MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/Scripts/python.exe
           PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/launcher-readiness.json
@@ -261,7 +299,7 @@ jobs:
           '@ | uv run --no-sync python -
           if ($LASTEXITCODE -ne 0) { throw 'Launcher regression coverage was not verified.' }
       - name: Preserve Launcher readiness evidence
-        if: always()
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: windows-launcher-readiness
@@ -273,16 +311,19 @@ jobs:
           retention-days: 7
 
       - name: Download embedded Python bootstrap assets
+        if: ${{ needs.selection.outputs.light != 'true' }}
         run: |
           mkdir -p build
           curl -L --retry 3 --connect-timeout 20 --max-time 300 -o build/python-3.11.9-embed-amd64.zip https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip
           curl -L --retry 3 --connect-timeout 20 --max-time 120 -o build/get-pip.py https://bootstrap.pypa.io/get-pip.py
 
       - name: Build MAW bundle
+        if: ${{ needs.selection.outputs.light != 'true' }}
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
 
       - name: Verify bundled FAQ
+        if: ${{ needs.selection.outputs.light != 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -291,6 +332,7 @@ jobs:
           }
 
       - name: Verify runtime requirements bundled
+        if: ${{ needs.selection.outputs.light != 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -307,6 +349,7 @@ jobs:
           }
 
       - name: Smoke MAW executable
+        if: ${{ needs.selection.outputs.light != 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -324,6 +367,7 @@ jobs:
           }
 
       - name: Verify no FFmpeg is bundled
+        if: ${{ needs.selection.outputs.light != 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -334,6 +378,7 @@ jobs:
           }
 
       - name: Create MAW-lite release preview archive
+        if: ${{ needs.selection.outputs.light != 'true' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -343,6 +388,7 @@ jobs:
           Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath $Archive -Force
 
       - name: Upload MAW-lite release preview
+        if: ${{ needs.selection.outputs.light != 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: MAW-lite-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}
