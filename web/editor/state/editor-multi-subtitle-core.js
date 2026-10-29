@@ -26,59 +26,37 @@ export function initMaweMultiSubtitleCore() {
 
   const projectTracks = new window.AsrEditorUtils.LegacyProjectAdapter(() => MaweBoot.DATA);
 
-  let normalizedMultiSubtitleReference = null;
-
 
   let pendingSrtImportAsExtension = false;
 
 
 
   function normalizeMultiSubtitleState() {
-    if (normalizedMultiSubtitleReference === MaweBoot.DATA.multi_subtitle) return MaweBoot.DATA.multi_subtitle;
     window.AsrEditorUtils.normalizeMultiSubtitleProject(MaweBoot.DATA);
-    if (MaweBoot.DATA.multi_subtitle.enabled === true) ensureEmptyExtensionTrack(MaweBoot.DATA.multi_subtitle);
-    normalizedMultiSubtitleReference = MaweBoot.DATA.multi_subtitle;
-    return MaweBoot.DATA.multi_subtitle;
+    return MaweBoot.DATA;
   }
-
-
 
   function getMultiSubtitleState() {
-    return normalizeMultiSubtitleState();
+    return MaweBoot.DATA;
   }
 
-  function ensureEmptyExtensionTrack(multi) {
-    if (multi.tracks.length) return multi.tracks[0];
-    const track = window.AsrEditorUtils.normalizeMultiSubtitle({ tracks: [{ segments: [] }] }).tracks[0];
-    multi.tracks.push(track);
-    return track;
+  function ensureEmptyExtensionTrack(project = MaweBoot.DATA) {
+    return window.AsrEditorUtils.ensureExtensionTrack(project);
   }
 
-
-
-  // Pure reads use the current tree. Legacy getters retain their load boundary.
-  function getTrackStore() {
-    return projectTracks;
-  }
-
+  function getTrackStore() { return projectTracks; }
   function getExtensionTrack(trackId = null) {
-    getMultiSubtitleState();
-    return getTrackStore().getLegacyExtensionTrack(trackId);
+    return window.AsrEditorUtils.getExtensionTrack(MaweBoot.DATA,
+      trackId || MaweBoot.DATA.bilingual?.active_track_id);
   }
-
-
 
   function getActiveExtensionTrack() {
     return getExtensionTrack();
   }
 
-
-
   function multiSubtitleVisible() {
-    return getMultiSubtitleState().enabled === true && Boolean(getActiveExtensionTrack());
+    return getActiveExtensionTrack()?.enabled === true;
   }
-
-
 
   function isConfiguredSubtitleSplitMode(value) {
     return window.AsrEditorUtils.MULTI_SUBTITLE_SPLIT_MODES.has(value);
@@ -87,14 +65,12 @@ export function initMaweMultiSubtitleCore() {
 
 
   function getMainSubtitleSplitMode(segment = null) {
-    // 工程 main_split_mode 在单轨与双语模式下都生效；未指定时检测字幕文字。
+    // 主轨类型覆盖值在单轨与双语模式下都生效。
     const override = MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride;
     if (override === 'word' || override === 'continuous') return override;
-    const multi = getMultiSubtitleState();
-    if (multi.enabled === true && isConfiguredSubtitleSplitMode(multi.main_split_mode)) {
-      return multi.main_split_mode;
-    }
-    const text = segment?.text ?? MaweBoot.DATA.segments.map((item) => item?.text || '').join('\n');
+    const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    if (isConfiguredSubtitleSplitMode(main.split_mode_override)) return main.split_mode_override;
+    const text = segment?.text ?? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((item) => item?.text || '').join('\n');
     return window.AsrEditorUtils.detectSubtitleSplitMode(text);
   }
 
@@ -128,18 +104,34 @@ export function initMaweMultiSubtitleCore() {
 
 
 
-  function multiSubtitleWaveformStructureKey(state = getMultiSubtitleState()) {
-    const trackIds = Array.isArray(state?.tracks)
-      ? state.tracks.map((track) => String(track?.id || '')).join('|')
-      : '';
-    return `${state?.enabled === true ? '1' : '0'}:${trackIds}`;
+  function multiSubtitleWaveformStructureKey(project = MaweBoot.DATA) {
+    return JSON.stringify([project.bilingual?.active_track_id,
+      project.tracks.map(track => [track.id, track.role, track.enabled])]);
   }
 
-
+  let presentationEpoch = -1;
+  let presentationTracks = null;
+  let presentationGroups = null;
+  let presentationCues = new WeakMap();
+  function invalidateSegmentPresentation() { presentationEpoch = -1; }
+  function segmentPresentation(segment) {
+    const epoch = MaweState.getProjectDirtyEpoch();
+    if (presentationEpoch !== epoch || presentationTracks !== MaweBoot.DATA.tracks || presentationGroups !== MaweBoot.DATA.subtitle_groups) {
+      presentationCues = new WeakMap();
+      for (const track of MaweBoot.DATA.tracks) {
+        const views = window.AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, track.id);
+        track.segments.forEach((cue, index) => presentationCues.set(cue, views[index]));
+      }
+      presentationEpoch = epoch;
+      presentationTracks = MaweBoot.DATA.tracks;
+      presentationGroups = MaweBoot.DATA.subtitle_groups;
+    }
+    return presentationCues.get(segment) || segment;
+  }
 
   function mainSegmentById(id) {
     const target = String(id || '');
-    return MaweBoot.DATA.segments.find((segment) => segment?.id === target) || null;
+    return window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.find((segment) => segment?.id === target) || null;
   }
 
 
@@ -152,8 +144,8 @@ export function initMaweMultiSubtitleCore() {
 
 
   function bindingForMainIndex(index) {
-    const segment = MaweBoot.DATA.segments[index];
-    return segment ? window.AsrEditorUtils.bindingForSegment(getMultiSubtitleState(), segment.id, 'main') : null;
+    const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
+    return segment ? window.AsrEditorUtils.bindingForSegment(getMultiSubtitleState(), segment.id, 'main', getActiveExtensionTrack()?.id) : null;
   }
 
 
@@ -172,12 +164,12 @@ export function initMaweMultiSubtitleCore() {
     const track = getActiveExtensionTrack();
     const addBindingTargets = (binding) => {
       if (!binding) return;
-      (binding.main_segment_ids || []).forEach((id) => {
-        const index = MaweBoot.DATA.segments.findIndex((segment) => segment?.id === id);
+      (binding.source?.segment_id ? [binding.source.segment_id] : []).forEach((id) => {
+        const index = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === id);
         if (index >= 0) main.add(index);
       });
-      const bindingTrack = getExtensionTrack(binding.track_id) || track;
-      (binding.extension_segment_ids || []).forEach((id) => {
+      const bindingTrack = getExtensionTrack(binding.target?.track_id) || track;
+      (binding.target?.segment_id ? [binding.target.segment_id] : []).forEach((id) => {
         const index = bindingTrack?.segments?.findIndex((segment) => segment?.id === id) ?? -1;
         if (index >= 0 && bindingTrack === track) extension.add(index);
       });
@@ -191,7 +183,7 @@ export function initMaweMultiSubtitleCore() {
 
   function extensionForMainIndex(index) {
     const binding = bindingForMainIndex(index);
-    return binding ? extensionSegmentById(binding.extension_segment_ids?.[0], getExtensionTrack(binding.track_id)) : null;
+    return binding ? extensionSegmentById(binding.target?.segment_id, getExtensionTrack(binding.target?.track_id)) : null;
   }
 
 
@@ -200,8 +192,8 @@ export function initMaweMultiSubtitleCore() {
     const segment = track?.segments?.[index];
     if (!segment) return -1;
     const binding = window.AsrEditorUtils.bindingForSegment(getMultiSubtitleState(), segment.id, 'extension', track.id);
-    const mainId = binding?.main_segment_ids?.[0];
-    return MaweBoot.DATA.segments.findIndex((candidate) => candidate.id === mainId);
+    const mainId = binding?.source?.segment_id;
+    return window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((candidate) => candidate.id === mainId);
   }
 
 
@@ -211,10 +203,10 @@ export function initMaweMultiSubtitleCore() {
     const extensionSet = new Set(extensionIds.filter(Boolean));
     const multi = getMultiSubtitleState();
     window.AsrEditorUtils.removeSubtitleBindings(multi, (binding) => (
-      binding.main_segment_ids?.some((id) => mainSet.has(id))
-        || binding.extension_segment_ids?.some((id) => extensionSet.has(id))
+      mainSet.has(binding.source?.segment_id)
+        || extensionSet.has(binding.target?.segment_id)
     ));
-    window.AsrEditorUtils.rebuildBindingOffsets(multi, MaweBoot.DATA.segments);
+    window.AsrEditorUtils.rebuildBindingOffsets(multi, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
   }
 
 
@@ -222,11 +214,13 @@ export function initMaweMultiSubtitleCore() {
   function addSubtitleBinding(mainSegment, extensionSegment, track = getActiveExtensionTrack()) {
     if (!mainSegment || !extensionSegment || !track) return null;
     const multi = getMultiSubtitleState();
-    removeBindingsForSegmentIds([mainSegment.id], [extensionSegment.id]);
-    const binding = window.AsrEditorUtils.buildSubtitleBinding(mainSegment, extensionSegment, track.id);
+    window.AsrEditorUtils.removeSubtitleBindings(multi, binding =>
+      (binding.target?.track_id === track.id && binding.source?.segment_id === mainSegment.id)
+      || binding.target?.segment_id === extensionSegment.id);
+    const binding = window.AsrEditorUtils.buildSubtitleBinding(mainSegment, extensionSegment, track.id, null, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).id, multi.bindings);
     multi.bindings.push(binding);
-    multi.enabled = true;
-    window.AsrEditorUtils.rebuildBindingOffsets(multi, MaweBoot.DATA.segments);
+    track.enabled = true;
+    window.AsrEditorUtils.rebuildBindingOffsets(multi, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
     return binding;
   }
 
@@ -234,7 +228,7 @@ export function initMaweMultiSubtitleCore() {
 
   function markMultiSubtitleStateDirty() {
     const multi = getMultiSubtitleState();
-    if (!multi.enabled && !(multi.tracks || []).length) return null;
+    if (!window.AsrEditorUtils.getTracksByRole(multi, 'secondary').length) return null;
     multi._dirty = true;
     MaweState.markProjectDirty();
     return multi;
@@ -245,12 +239,12 @@ export function initMaweMultiSubtitleCore() {
   function markMultiSubtitleDirty() {
     const multi = markMultiSubtitleStateDirty();
     if (!multi) return;
-    (multi.tracks || []).forEach((track) => track.segments.forEach((segment) => { segment._dirty = true; }));
+    window.AsrEditorUtils.getTracksByRole(multi, 'secondary').forEach((track) => track.segments.forEach((segment) => { segment._dirty = true; }));
   }
 
 
 
-  function markMainSegmentsDirty(segments = MaweBoot.DATA.segments) {
+  function markMainSegmentsDirty(segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) {
     let marked = false;
     (Array.isArray(segments) ? segments : []).forEach((segment) => {
       if (segment) { segment._dirty = true; marked = true; }
@@ -262,7 +256,7 @@ export function initMaweMultiSubtitleCore() {
 
 
   function syncBindingOffsets() {
-    window.AsrEditorUtils.rebuildBindingOffsets(getMultiSubtitleState(), MaweBoot.DATA.segments);
+    window.AsrEditorUtils.rebuildBindingOffsets(getMultiSubtitleState(), window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
   }
 
 
@@ -492,7 +486,7 @@ export function initMaweMultiSubtitleCore() {
       const removedIds = new Set([...removed].map((segment) => segment.id).filter(Boolean));
       const multi = getMultiSubtitleState();
       const removedBindings = window.AsrEditorUtils.removeSubtitleBindings(multi, (binding) => (
-        binding.extension_segment_ids?.some((id) => removedIds.has(id))
+        removedIds.has(binding.target?.segment_id)
       ));
       track.segments = track.segments.filter((segment) => !removed.has(segment));
       result.removedCount = removed.size;
@@ -583,7 +577,7 @@ export function initMaweMultiSubtitleCore() {
     if (!mainSegment || patch.independent || !multiSubtitleVisible()) return false;
     const binding = window.AsrEditorUtils.bindingForSegment(getMultiSubtitleState(), mainSegment.id, 'main');
     const extension = binding
-      ? extensionSegmentById(binding.extension_segment_ids?.[0], getExtensionTrack(binding.track_id))
+      ? extensionSegmentById(binding.target?.segment_id, getExtensionTrack(binding.target?.track_id))
       : null;
     if (!extension) return false;
     const oldStart = Number(patch.oldStart ?? mainSegment.start);
@@ -602,7 +596,7 @@ export function initMaweMultiSubtitleCore() {
       nextStart = patch.edge === 'end' ? extension.start : extension.start + deltaStart;
       nextEnd = patch.edge === 'start' ? extension.end : extension.end + deltaEnd;
     }
-    const resolved = resolveExtensionFollowerRange(extension, nextStart, nextEnd, mode, getExtensionTrack(binding.track_id));
+    const resolved = resolveExtensionFollowerRange(extension, nextStart, nextEnd, mode, getExtensionTrack(binding.target?.track_id));
     patch.syncConflict = resolved.adjusted || resolved.conflict
       || resolved.squeezedCount > 0 || resolved.removedCount > 0;
     patch.syncSqueezedCount = (patch.syncSqueezedCount || 0) + (resolved.squeezedCount || 0);
@@ -618,7 +612,7 @@ export function initMaweMultiSubtitleCore() {
     const binding = window.AsrEditorUtils.bindingForSegment(
       getMultiSubtitleState(), extension.id, 'extension', track.id,
     );
-    const main = binding ? mainSegmentById(binding.main_segment_ids?.[0]) : null;
+    const main = binding ? mainSegmentById(binding.source?.segment_id) : null;
     if (!main) return false;
     const desiredMainStart = main.start + (extension.start - oldStart);
     const desiredMainEnd = main.end + (extension.end - oldEnd);
@@ -626,7 +620,7 @@ export function initMaweMultiSubtitleCore() {
       main,
       desiredMainStart,
       desiredMainEnd,
-      MaweBoot.DATA.segments,
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
     );
     const blocked = constrained.blocked
       || constrained.start !== desiredMainStart
@@ -670,6 +664,8 @@ export function initMaweMultiSubtitleCore() {
     mergeJoinSeparatorForMode,
     multiSubtitleWaveformStructureKey,
     mainSegmentById,
+    segmentPresentation,
+    invalidateSegmentPresentation,
     extensionSegmentById,
     bindingForMainIndex,
     bindingForExtensionIndex,

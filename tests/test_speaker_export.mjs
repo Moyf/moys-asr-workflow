@@ -18,10 +18,10 @@ test('TXT and XML exports honour speaker names without mutating source text or t
     gap_remove: { gaps: [{ start: 2100, end: 2500, removed: true }] },
     overlay_track: { enabled: true, segments: [{ start: 0, end: 1000, text: 'Overlay', color: { name: 'green' } }] },
     multi_subtitle: { enabled: true, tracks: [
-      { segments: [{ start: 0, end: 1000, text: 'First', color: { name: 'yellow' } }] },
       { segments: [
-        { start: 0, end: 1000, text: 'Second', color: { name: 'green' } },
-        { start: 1000, end: 2000, text: 'Reference', color_ref: { headIdx: 0 } },
+        { start: 0, end: 500, text: 'First', color: { name: 'yellow' } },
+        { start: 500, end: 1000, text: 'Second', color: { name: 'green' } },
+        { start: 1000, end: 2000, text: 'Reference', color_ref: { headIdx: 1 } },
       ] },
     ] },
   };

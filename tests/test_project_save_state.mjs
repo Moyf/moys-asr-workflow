@@ -3,6 +3,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 
 const deferred = () => {
   let resolve, reject;
@@ -10,9 +11,9 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 function fixture() {
-  const data = { segments: [{ id: 'one', text: 'saved', items: [] }] };
+  const data = runtimeProject([{ id: 'one', text: 'saved', items: [] }]);
   const context = {
-    Blob, document: { getElementById: () => null },
+    Blob, AsrEditorUtils: projectModel, document: { getElementById: () => null },
     MaweBoot: { DATA: data, SERVER_CONFIG: { saveUrl: '/api/project' }, PROJECT_NAME: 'old', FILENAME_BASE: 'old' },
     MaweInlineEdit: {}, MaweDom: {}, MaweCuePanel: { commitCuePanelEdit() {} },
     MaweCoreState: {}, MaweHint: { flashHint() {} },
@@ -61,7 +62,7 @@ test('an in-flight server save cannot confirm after a new load or binding intent
     c => { c.MaweProjectLoad.projectBindingEpoch += 1; },
   ]) {
     const c = fixture(), response = deferred();
-    c.MaweBoot.DATA.segments[0].text = 'sent';
+    projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text = 'sent';
     c.MaweHost.server.fetch = () => response.promise;
     const saving = c.MaweProjectSave.saveCurrentProject();
     invalidate(c);
@@ -87,7 +88,7 @@ test('pending project loading blocks all three save destinations', async () => {
 
 test('server failure and backup do not advance the saved checkpoint', async () => {
   const c = fixture();
-  c.MaweBoot.DATA.segments[0].text = 'changed';
+  projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text = 'changed';
   c.MaweHost.server.fetch = async () => ({ ok: false, status: 500, json: async () => ({ error: 'write failure' }) });
   assert.equal(await c.MaweProjectSave.saveCurrentProject(), false);
   assert.equal(c.MaweState.hasProjectChanges(), true);
@@ -99,20 +100,20 @@ test('server failure and backup do not advance the saved checkpoint', async () =
 
 test('successful request confirms sent content and keeps in-flight edits plus highlights', async () => {
   const c = fixture(), response = deferred();
-  c.MaweBoot.DATA.segments[0].text = 'sent';
-  c.MaweBoot.DATA.segments[0]._dirty = true;
+  projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text = 'sent';
+  projectModel.getMainTrack(c.MaweBoot.DATA).segments[0]._dirty = true;
   let sent;
   c.MaweHost.server.fetch = (_url, options) => { sent = JSON.parse(options.body).project; return response.promise; };
   const saving = c.MaweProjectSave.saveCurrentProject();
-  c.MaweBoot.DATA.segments[0].text = 'later';
+  projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text = 'later';
   response.resolve(ok('saved.mosp'));
   assert.equal(await saving, true);
-  assert.equal(sent.segments[0].text, 'sent');
-  assert.equal(sent.segments[0]._dirty, undefined);
+  assert.equal(projectModel.getMainTrack(sent).segments[0].text, 'sent');
+  assert.equal(projectModel.getMainTrack(sent).segments[0]._dirty, undefined);
   assert.equal(c.MaweState.hasProjectChanges(), true);
-  c.MaweBoot.DATA.segments[0].text = 'sent';
+  projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text = 'sent';
   assert.equal(c.MaweState.hasProjectChanges(), false);
-  assert.equal(c.MaweBoot.DATA.segments[0]._dirty, true);
+  assert.equal(projectModel.getMainTrack(c.MaweBoot.DATA).segments[0]._dirty, true);
 });
 
 test('pending inline text after a save remains unsaved even with identical project bytes', async () => {
@@ -132,9 +133,9 @@ test('late handle completion cannot rename or acknowledge a different project', 
   c.MaweHost.files.writeBlob = () => write.promise;
   const saving = c.MaweProjectSave.saveCurrentProject();
   c.MaweState.beginProjectSession();
-  c.MaweBoot.DATA.segments[0].text = 'new project';
+  projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text = 'new project';
   c.MaweState.establishProjectCheckpoint();
-  c.MaweBoot.DATA.segments[0].text = 'new edit';
+  projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text = 'new edit';
   c.MaweBoot.PROJECT_NAME = 'new';
   write.resolve();
   assert.equal(await saving, false);
@@ -163,15 +164,15 @@ test('save-as acknowledges its snapshot after close, without clearing highlights
   const handle = { name: 'picked.mosp' };
   c.MaweHost.files.pickSaveFile = async () => handle;
   c.MaweHost.files.writeBlob = async (_handle, build) => { written.resolve(JSON.parse(await build().text())); await close.promise; };
-  c.MaweBoot.DATA.segments[0].text = 'sent';
-  c.MaweBoot.DATA.segments[0]._dirty = true;
+  projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text = 'sent';
+  projectModel.getMainTrack(c.MaweBoot.DATA).segments[0]._dirty = true;
   const saving = c.MaweProjectSave.saveProjectAsToFile();
-  assert.equal((await written.promise).segments[0].text, 'sent');
-  c.MaweBoot.DATA.segments[0].text = 'later';
+  assert.equal(projectModel.getMainTrack(await written.promise).segments[0].text, 'sent');
+  projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text = 'later';
   close.resolve(); await saving;
   assert.equal(c.MaweServerSave.projectFileHandle, handle);
   assert.equal(c.MaweState.hasProjectChanges(), true);
-  assert.equal(c.MaweBoot.DATA.segments[0]._dirty, true);
+  assert.equal(projectModel.getMainTrack(c.MaweBoot.DATA).segments[0]._dirty, true);
 });
 
 

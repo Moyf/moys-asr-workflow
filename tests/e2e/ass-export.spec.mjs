@@ -217,8 +217,8 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
   await page.goto(server.url);
 
   const preview = await page.evaluate(() => {
-    MaweBoot.DATA.segments = [{
-      start: 0,
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{
+      id: 'ass-preview-cue', start: 0,
       end: 4000,
       text: '第一行\nAnd **Jev can solve these two problems**',
     }];
@@ -264,14 +264,17 @@ test('speaker prefixes use each track colour in actual Canvas paint, ASS and CSS
     await loadAssStyleLibrary({ force: true });
     ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
     ASS_STYLE_LIBRARY.styles.find(entry => entry.id === 'ass-extension').primaryColor = '#123456';
-    MaweBoot.DATA.segments = [{ start: 1000, end: 2500, text: 'main text', color: { name: 'red' } }];
-    MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'ext-speakers', segments: [
-      { start: 1000, end: 2500, text: 'disabled colour head', color: { name: 'green' }, disabled: true },
+    const fixture = AsrEditorUtils.importProject({
+      segments: [{ start: 1000, end: 2500, text: 'main text', color: { name: 'red' } }],
+      multi_subtitle: { enabled: true, tracks: [{ id: 'ext-speakers', segments: [
+      { start: 0, end: 1000, text: 'disabled colour head', color: { name: 'green' }, disabled: true },
       { start: 1000, end: 2500, text: 'extension text', color_ref: { name: 'green', headIdx: 0 } },
-    ] }] };
-    MaweBoot.DATA.overlay_track = { enabled: true, segments: [
+      ] }] },
+      overlay_track: { enabled: true, segments: [
       { start: 1000, end: 2500, text: 'overlay text', color: { name: 'purple' } },
-    ] };
+      ] },
+    }).project;
+    for (const field of ['tracks', 'bilingual', 'bindings', 'subtitle_groups']) MaweBoot.DATA[field] = fixture[field];
     MaweBoot.DATA.preview = { subtitle: { ass_color_style: 'speaker', color_style: 'text',
       speaker_labels: { mapping_enabled: true, enabled: true, separator: '：', names: {
         red: 'MainSpeaker', green: 'SecondarySpeaker', purple: 'OverlaySpeaker',
@@ -346,8 +349,19 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
     // Avoid the legacy built-in default colour that the style migration upgrades.
     Object.assign(extension, { primaryColor: '#f1d24c', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
     const text = '普通 **强调** __下划线__ ~~删除线~~ --缩小-- ++放大++';
-    MaweBoot.DATA.segments = [{ id: 'main-colour', start: 1000, end: 3000, text }];
-    MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'extension-colour', segments: [{ id: 'ext-colour', start: 1000, end: 3000, text }] }] };
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'main-colour', start: 1000, end: 3000, text }];
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: { enabled: true, tracks: [{ id: 'extension-colour', segments: [{ id: 'ext-colour', start: 1000, end: 3000, text }] }] },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
+    }
     Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both',
       assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true });
     MaweDom.overlayToggle.checked = true;
@@ -421,7 +435,7 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await expect(page.locator('#ass-inline-text-options')).toBeHidden();
   const literal = await page.evaluate(() => {
     const text = '%%弱化%% //斜体//';
-    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text }];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'ass-preview-cue', start: 0, end: 4000, text }];
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const items = window.MaweAssCanvas.lastRender.tracks[0].lines.flatMap(line => line.items);
@@ -478,7 +492,7 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await closeSettingsPanels(page);
 
   const preview = await page.evaluate(() => {
-    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '前 **重点** 后' }];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'ass-preview-cue', start: 0, end: 4000, text: '前 **重点** 后' }];
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
@@ -511,7 +525,7 @@ test('ASS underscore markers underline only the marked preview and export text',
   await stubSavePicker(page);
   await page.goto(server.url);
   const preview = await page.evaluate(() => {
-    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '前 _下划线_ 与 _**共同**_ 后' }];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'ass-preview-cue', start: 0, end: 4000, text: '前 _下划线_ 与 _**共同**_ 后' }];
     // 单符号和双符号样例在「单双皆可」规则下均参与解析。
     MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule = 'both';
     MaweSettings.EDITOR_SETTINGS.assMode = true;
@@ -548,10 +562,11 @@ test('writes the project title, source resolution, palette styles and speaker na
   await page.goto(server.url);
   await page.evaluate(() => {
     MaweBoot.DATA.media_metadata = { video_width: 3840, video_height: 2160 };
-    MaweBoot.DATA.segments = [
-      { start: 0, end: 1000, text: 'red line', items: [], color: { name: 'red', value: '#f07f6f' } },
-      { start: 1200, end: 2200, text: 'plain line', items: [] },
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [
+      { id: 'ass-red', start: 0, end: 1000, text: 'red line', items: [] },
+      { id: 'ass-plain', start: 1200, end: 2200, text: 'plain line', items: [] },
     ];
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0], 'color', { name: 'red', value: '#f07f6f' });
     MaweBoot.DATA.preview.subtitle = {
       ...MaweBoot.DATA.preview.subtitle,
       font_size: 32,
@@ -595,9 +610,10 @@ test('exports speaker-only ASS label colour without a palette style variant', as
   await page.goto(server.url);
   await page.evaluate(() => {
     MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
-    MaweBoot.DATA.segments = [
-      { start: 0, end: 1000, text: 'red line', items: [], color: { name: 'red', value: '#f07f6f' } },
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [
+      { id: 'ass-red', start: 0, end: 1000, text: 'red line', items: [] },
     ];
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0], 'color', { name: 'red', value: '#f07f6f' });
     MaweBoot.DATA.preview.subtitle = {
       ...MaweBoot.DATA.preview.subtitle,
       ass_color_style: 'speaker',
@@ -632,7 +648,7 @@ test('groups SRT, color-split SRT and styled ASS exports in order', async ({ pag
   await disableOnboarding(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 1000, end: 2500 };
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0], 'color', { name: 'red', value: '#e74c3c' });
     MaweCuePanel.renderAll();
   });
 
@@ -647,14 +663,25 @@ test('exports main, secondary and combined bilingual SRT from one menu', async (
   await stubSavePicker(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].text = 'Main line';
-    MaweBoot.DATA.multi_subtitle = {
-      schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both', bindings: [],
-      tracks: [{ id: 'extension-1', role: 'extension', name: 'English', language: 'English',
-        segments: [{ id: 'ext-1', start: 1000, end: 2500, text: 'Secondary line' },
-          { id: 'ext-2', start: 3000, end: 4000, text: 'Unmatched secondary' },
-          { id: 'ext-3', start: 4500, end: 5000, text: 'Disabled secondary', disabled: true }] }],
-    };
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = 'Main line';
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: {
+          schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both', bindings: [],
+          tracks: [{ id: 'extension-1', role: 'extension', name: 'English', language: 'English',
+            segments: [{ id: 'ext-1', start: 1000, end: 2500, text: 'Secondary line' },
+              { id: 'ext-2', start: 3000, end: 4000, text: 'Unmatched secondary' },
+              { id: 'ext-3', start: 4500, end: 5000, text: 'Disabled secondary', disabled: true }] }],
+        },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
+    }
     MaweCuePanel.renderAll();
   });
   await page.locator('#subtitle-export-btn').click();
@@ -722,12 +749,13 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   await stubSavePicker(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments.length = 0;
-    MaweBoot.DATA.segments.push(
-      { id: 'before-gap', start: 1000, end: 2000, text: 'before gap', items: [], color: { name: 'red', value: '#e74c3c', start: 1000, end: 2000 } },
-      { id: 'after-gap', start: 4000, end: 5000, text: 'after gap', items: [] },
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length = 0;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.push(
+      { id: 'before-gap', start: 1000, end: 2000, text: 'before gap', items: [] },
       { id: 'in-gap', start: 2200, end: 2800, text: 'in gap', items: [] },
+      { id: 'after-gap', start: 4000, end: 5000, text: 'after gap', items: [] },
     );
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0], 'color', { name: 'red', value: '#e74c3c' });
     MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
@@ -849,7 +877,7 @@ test('refreshes inline font metrics and interpolates fs tags in native resolutio
   await page.evaluate(async () => { await document.fonts.load('20px "ASS Metric Test"'); });
   const ratios = await page.evaluate(() => {
     MaweBoot.DATA.media_metadata = { video_width: 640, video_height: 360 };
-    MaweBoot.DATA.segments[0].text = '字幕**强调**';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '字幕**强调**';
     const library = window.AsrEditorUtils.defaultAssStyleLibrary();
     const style = library.styles.find((entry) => entry.id === 'ass');
     style.fontName = 'Arial'; style.fontSize = 72; style.emphasisScale = 1.1;
@@ -870,7 +898,7 @@ test('refreshes inline font metrics and interpolates fs tags in native resolutio
     // A 72@1080p style exports 24px at 360p. Halfway towards \fs48 is 36,
     // so the ordinary text must be 1.5x its unanimated size, not interpolated
     // between the unrelated library value 72 and the native target 48.
-    MaweBoot.DATA.segments[0].text = '普通字幕';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '普通字幕';
     library.assProfiles[0].animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\fs48' };
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
     return { before: before.base, after: after.base, ratio, animated: baseSize().base };
@@ -919,7 +947,7 @@ test('uses outline colour for sample boxes and preserves zero scaling', async ({
   await sample.scrollIntoViewIfNeeded();
   await sample.locator('..').screenshot({ path: test.info().outputPath('ass-style-sample.png') });
   await page.evaluate(() => {
-    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '字幕**强调**' }];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'ass-preview-cue', start: 0, end: 4000, text: '字幕**强调**' }];
     const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
     style.emphasisStyle = 'stroke';
     style.emphasisColor = '#00ff00';
@@ -1008,7 +1036,7 @@ test('offsets the opaque shadow and keeps the border box shadow unclipped', asyn
 
   // BorderStyle 1：影子剪影相对文字整体偏移 (shad, shad)，右下露边。
   await page.evaluate(() => {
-    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '影子' }];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'ass-preview-cue', start: 0, end: 4000, text: '影子' }];
     const library = window.AsrEditorUtils.defaultAssStyleLibrary();
     const style = library.styles.find((entry) => entry.id === 'ass');
     Object.assign(style, { fontName: 'Arial', fontSize: 60, outline: 0, shadow: 20,
@@ -1040,7 +1068,7 @@ test('collapses frx rotation through the foreshortening approximation', async ({
   await disableOnboarding(page);
   await page.goto(server.url);
   const stats = await page.evaluate(() => {
-    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '旋转' }];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'ass-preview-cue', start: 0, end: 4000, text: '旋转' }];
     const library = window.AsrEditorUtils.defaultAssStyleLibrary();
     library.assProfiles[0].animations.t = {
       enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\frx90',

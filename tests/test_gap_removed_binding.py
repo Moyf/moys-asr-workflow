@@ -9,6 +9,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from unittest import mock
+from maw.project_tracks import make_project
 
 from tests.test_local_editor_server import server_editor
 
@@ -16,7 +17,7 @@ from tests.test_local_editor_server import server_editor
 class GapRemovedBindingTests(unittest.TestCase):
     def setUp(self):
         self.project = server_editor.ServerProject(
-            data={"segments": []}, json_path=Path("bound.mosp"),
+            data=make_project([]), json_path=Path("bound.mosp"),
             media_path=Path("browser-cache.mp4"), source_media_path=Path("source.mp4"),
             sticker_root=None, stickers=[],
         )
@@ -67,11 +68,10 @@ class GapRemovedBindingTests(unittest.TestCase):
 
     def test_autosave_keeps_binding_but_save_as_rotates_it(self):
         old = self.server.project_binding_payload()
-        with mock.patch.object(server_editor, "normalize_project", side_effect=lambda value: value), \
-                mock.patch.object(server_editor, "write_project_json", return_value=None):
-            self.server.save_project({"segments": []})
+        with mock.patch.object(server_editor, "write_project_json", return_value=None):
+            self.server.save_project(make_project([]))
             self.assertEqual(self.server.project_binding_payload(), old)
-            self.server.save_project({"segments": []}, filename="renamed.mosp")
+            self.server.save_project(make_project([]), filename="renamed.mosp")
         self.assertGreater(self.server.binding_generation, old["bindingGeneration"])
 
     def test_browser_attach_rotates_binding_even_for_same_source(self):

@@ -21,6 +21,9 @@ from maw.postprocess_ai_cleanup import (
     run_ai_cleanup,
 )
 from maw.postprocess_llm import LlmClientError
+from maw.project_tracks import get_tracks_by_role
+from tests.track_helpers import main_segments
+from tests.track_helpers import extension_tracks
 
 
 def _segment(
@@ -211,7 +214,7 @@ class RetakeRemovalTest(AiCleanupTestCase):
                         },
                     ),
                 )
-                self.assertFalse(output["segments"][0].get("disabled"))
+                self.assertFalse(main_segments(output)[0].get("disabled"))
                 self.assertEqual(artifact.stats["pendingReview"], 1)
                 self.assertTrue(
                     output["markers"]["items"][0]["note"].startswith("[AI] 替代项：")
@@ -242,7 +245,7 @@ class RetakeRemovalTest(AiCleanupTestCase):
                 c002={"decision": "keep", "scriptLine": "", "reason": "保留"},
             ),
         )
-        self.assertTrue(output["segments"][0].get("disabled"))
+        self.assertTrue(main_segments(output)[0].get("disabled"))
         self.assertEqual(artifact.stats["removed"], 1)
 
     def test_discard_with_similar_alt_take_removes_segment(self) -> None:
@@ -280,7 +283,7 @@ class RetakeRemovalTest(AiCleanupTestCase):
                 },
             ),
         )
-        out_segments = output["segments"]
+        out_segments = main_segments(output)
         self.assertFalse(out_segments[0].get("disabled"))
         self.assertTrue(out_segments[1].get("disabled"))
         self.assertFalse(out_segments[2].get("disabled"))
@@ -353,20 +356,6 @@ class MicTestRemovalTest(AiCleanupTestCase):
                             "split_mode": "word",
                             "segments": translations,
                         },
-                        {
-                            "id": "independent",
-                            "role": "extension",
-                            "name": "独立副轨",
-                            "split_mode": "word",
-                            "segments": [
-                                {
-                                    "id": "overlapping",
-                                    "start": 0,
-                                    "end": 2000,
-                                    "text": "Independent",
-                                }
-                            ],
-                        },
                     ],
                     "bindings": [
                         {
@@ -382,7 +371,9 @@ class MicTestRemovalTest(AiCleanupTestCase):
                         )
                     ],
                 }
-                source = _project(segments, multi_subtitle=multi)
+                overlay = {"enabled": True, "segments": [
+                    {"id": "overlapping", "start": 0, "end": 2000, "text": "Independent"}]}
+                source = _project(segments, multi_subtitle=multi, overlay_track=overlay)
                 project_path, script_path = self.request(source, [segments[1]["text"]])
                 artifact, output, _ = _run(
                     self.directory,
@@ -407,16 +398,16 @@ class MicTestRemovalTest(AiCleanupTestCase):
                         },
                     ),
                 )
-                self.assertTrue(output["segments"][0]["disabled"])
-                result = output["multi_subtitle"]["tracks"][0]["segments"]
+                self.assertTrue(main_segments(output)[0]["disabled"])
+                result = extension_tracks(output)[0]["segments"]
                 self.assertEqual(result[0], {**translations[0], "disabled": True})
                 self.assertEqual(result[1:], translations[1:])
                 self.assertEqual(
-                    output["multi_subtitle"]["tracks"][1]["segments"],
-                    multi["tracks"][1]["segments"],
+                    get_tracks_by_role(output, "overlay")[0]["segments"],
+                    overlay["segments"],
                 )
-                self.assertEqual(output["multi_subtitle"]["enabled"], enabled)
-                self.assertEqual(len(output["multi_subtitle"]["bindings"]), 3)
+                self.assertTrue(all(track["enabled"] == enabled for track in extension_tracks(output)))
+                self.assertEqual(len(output["bindings"]), 3)
                 self.assertEqual(
                     json.loads(project_path.read_text(encoding="utf-8")), source
                 )
@@ -447,8 +438,8 @@ class MicTestRemovalTest(AiCleanupTestCase):
                 },
             ),
         )
-        self.assertTrue(output["segments"][0].get("disabled"))
-        self.assertFalse(output["segments"][1].get("disabled"))
+        self.assertTrue(main_segments(output)[0].get("disabled"))
+        self.assertFalse(main_segments(output)[1].get("disabled"))
         stats = artifact.stats
         assert stats is not None
         self.assertEqual(stats["removed"], 1)
@@ -472,7 +463,7 @@ class RephraseKeptTest(AiCleanupTestCase):
                 c001={"decision": "keep", "scriptLine": script[0], "reason": "改说"},
             ),
         )
-        self.assertFalse(output["segments"][0].get("disabled"))
+        self.assertFalse(main_segments(output)[0].get("disabled"))
         stats = artifact.stats
         assert stats is not None
         self.assertEqual(stats["rephrased"], 1)
@@ -497,7 +488,7 @@ class LocalSlipKeptTest(AiCleanupTestCase):
                 },
             ),
         )
-        self.assertFalse(output["segments"][0].get("disabled"))
+        self.assertFalse(main_segments(output)[0].get("disabled"))
         stats = artifact.stats
         assert stats is not None
         self.assertEqual(stats["matchedLines"], 1)
@@ -535,7 +526,7 @@ class UnsafeDiscardDowngradeTest(AiCleanupTestCase):
             ),
         )
         self.assertTrue(
-            any(not segment.get("disabled") for segment in output["segments"])
+            any(not segment.get("disabled") for segment in main_segments(output))
         )
         self.assertGreaterEqual(artifact.stats["pendingReview"], 1)
 
@@ -565,7 +556,7 @@ class UnsafeDiscardDowngradeTest(AiCleanupTestCase):
                 },
             ),
         )
-        self.assertFalse(output["segments"][1].get("disabled"))
+        self.assertFalse(main_segments(output)[1].get("disabled"))
         self.assertNotIn("gap_remove", output)
         markers = output["markers"]
         self.assertEqual(markers["schema"], "moy.asr.markers.v1")
@@ -606,7 +597,7 @@ class UnsafeDiscardDowngradeTest(AiCleanupTestCase):
                 },
             ),
         )
-        self.assertFalse(output["segments"][1].get("disabled"))
+        self.assertFalse(main_segments(output)[1].get("disabled"))
         marker = output["markers"]["items"][0]
         self.assertEqual(marker["review"]["reason"], "片段包含数字，需要人工确认")
         stats = artifact.stats
@@ -634,7 +625,7 @@ class UnsafeDiscardDowngradeTest(AiCleanupTestCase):
                 c002={"decision": "keep", "scriptLine": "", "reason": "题外话"},
             ),
         )
-        self.assertFalse(output["segments"][0].get("disabled"))
+        self.assertFalse(main_segments(output)[0].get("disabled"))
         marker = output["markers"]["items"][0]
         self.assertEqual(marker["review"]["reason"], "备用片段与当前片段相似度过低")
         stats = artifact.stats
@@ -658,7 +649,7 @@ class UnsafeDiscardDowngradeTest(AiCleanupTestCase):
                 },
             ),
         )
-        self.assertFalse(output["segments"][0].get("disabled"))
+        self.assertFalse(main_segments(output)[0].get("disabled"))
         marker = output["markers"]["items"][0]
         self.assertEqual(marker["review"]["reason"], "证据引用未在原文中找到")
         stats = artifact.stats
@@ -693,7 +684,7 @@ class MissingScriptLineTest(AiCleanupTestCase):
                 },
             ),
         )
-        self.assertTrue(output["segments"][0].get("disabled"))
+        self.assertTrue(main_segments(output)[0].get("disabled"))
         stats = artifact.stats
         assert stats is not None
         self.assertEqual(stats["removed"], 1)
@@ -722,8 +713,8 @@ class SoleInterjectionDiscardTest(AiCleanupTestCase):
                 c003={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
             ),
         )
-        self.assertTrue(output["segments"][0].get("disabled"))
-        self.assertTrue(output["segments"][1].get("disabled"))
+        self.assertTrue(main_segments(output)[0].get("disabled"))
+        self.assertTrue(main_segments(output)[1].get("disabled"))
         for marker in output["markers"]["items"]:
             self.assertNotIn("review", marker)
         stats = artifact.stats
@@ -748,7 +739,7 @@ class SoleInterjectionDiscardTest(AiCleanupTestCase):
                 c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
             ),
         )
-        self.assertFalse(output["segments"][0].get("disabled"))
+        self.assertFalse(main_segments(output)[0].get("disabled"))
         marker = output["markers"]["items"][0]
         self.assertEqual(marker["review"]["reason"], "缺少可本地验证的重复或流程用语证据")
         stats = artifact.stats
@@ -768,7 +759,7 @@ class SoleInterjectionDiscardTest(AiCleanupTestCase):
                 c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
             ),
         )
-        self.assertTrue(output["segments"][0].get("disabled"))
+        self.assertTrue(main_segments(output)[0].get("disabled"))
         stats = artifact.stats
         assert stats is not None
         self.assertEqual(stats["removed"], 1)
@@ -787,7 +778,7 @@ class SoleInterjectionDiscardTest(AiCleanupTestCase):
                 c001={"decision": "discard", "scriptLine": "哎", "reason": "语气词", "evidence": "哎"},
             ),
         )
-        self.assertFalse(output["segments"][0].get("disabled"))
+        self.assertFalse(main_segments(output)[0].get("disabled"))
         marker = output["markers"]["items"][0]
         self.assertEqual(marker["review"]["reason"], "移除后将丢失对应文稿内容，需要人工确认")
 
@@ -815,7 +806,7 @@ class ProcessTalkEvidenceTest(AiCleanupTestCase):
                 c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
             ),
         )
-        self.assertTrue(output["segments"][0].get("disabled"))
+        self.assertTrue(main_segments(output)[0].get("disabled"))
         for marker in output["markers"]["items"]:
             self.assertNotIn("review", marker)
         stats = artifact.stats
@@ -845,7 +836,7 @@ class ProcessTalkEvidenceTest(AiCleanupTestCase):
                 c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
             ),
         )
-        self.assertTrue(output["segments"][0].get("disabled"))
+        self.assertTrue(main_segments(output)[0].get("disabled"))
         for marker in output["markers"]["items"]:
             self.assertNotIn("review", marker)
         stats = artifact.stats
@@ -870,7 +861,7 @@ class ProcessTalkEvidenceTest(AiCleanupTestCase):
                 c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
             ),
         )
-        self.assertFalse(output["segments"][0].get("disabled"))
+        self.assertFalse(main_segments(output)[0].get("disabled"))
         marker = output["markers"]["items"][0]
         self.assertEqual(marker["review"]["reason"], "片段包含数字，需要人工确认")
         stats = artifact.stats
@@ -892,7 +883,7 @@ class ProcessTalkEvidenceTest(AiCleanupTestCase):
                     c001={"decision": "discard", "scriptLine": "", "reason": "重录", "evidence": text},
                     c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
                 ))
-                self.assertEqual(bool(output["segments"][0].get("disabled")), removed)
+                self.assertEqual(bool(main_segments(output)[0].get("disabled")), removed)
                 self.assertEqual(artifact.stats["pendingReview"], int(not removed))
 
 
@@ -979,7 +970,7 @@ class NoItemsSegmentTest(AiCleanupTestCase):
         )
         self.assertEqual(len(calls[0]), 1)
         self.assertEqual(calls[0][0]["id"], "c001")
-        self.assertFalse(output["segments"][0].get("disabled"))
+        self.assertFalse(main_segments(output)[0].get("disabled"))
         marker = output["markers"]["items"][0]
         self.assertEqual(marker["start"], 0)
         self.assertEqual(marker["review"]["reason"], "缺少字词时间，无法安全移除")
@@ -1085,7 +1076,7 @@ class BatchContextTest(AiCleanupTestCase):
             ["c002", "c003", "c004"],
         )
         self.assertTrue(
-            json.loads(artifact.project_path.read_text(encoding="utf-8"))["segments"][
+            main_segments(json.loads(artifact.project_path.read_text(encoding="utf-8")))[
                 1
             ]["disabled"]
         )
@@ -1401,7 +1392,7 @@ class CleanupNotesTest(AiCleanupTestCase):
             self.assertIn("保留所有数字\n去除试麦", prompt)
             self.assertIn("不能改写、翻译、补写、重排", prompt)
         output = json.loads(artifact.project_path.read_text(encoding="utf-8"))
-        for before, after in zip(original, output["segments"], strict=True):
+        for before, after in zip(original, main_segments(output), strict=True):
             for key in ("text", "start", "end", "items"):
                 self.assertEqual(before[key], after[key])
 

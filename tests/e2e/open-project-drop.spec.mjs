@@ -129,9 +129,26 @@ test('opening and serializing a legacy project writes v1.5 and preserves transcr
   expect(serialized.future_optional_metadata).toEqual({ producer: 'research-build' });
 });
 
+test('opening a v1.5 project keeps group membership when saved', async ({ page }) => {
+  const project = {
+    schema: 'moy.asr.project.v1.5', media: '',
+    segments: [{ id: 'source', start: 100, end: 1900, text: '你好', color_group_id: 'color-1' }],
+    subtitle_groups: { next_id: 2, color: [{ id: 'color-1', value: { name: 'red' } }], sticker: [] },
+  };
+  const spec = { name: 'v15.mosp', type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64') };
+  await page.goto(server.url);
+  await dropFiles(page, [spec]);
+  await expect(page.locator('#json-name')).toHaveText('v15.mosp');
+  const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+  const main = saved.tracks.find(track => track.role === 'main');
+  expect(main.segments[0].color_group_id).toBe('color-1');
+  expect(saved.subtitle_groups.color[0].value.name).toBe('red');
+});
+
 test('opening an unknown project schema is rejected without replacing the current project', async ({ page }) => {
   const futureProject = {
-    schema: 'moy.asr.project.v2',
+    schema: 'moy.asr.project.v1.5',
     subtitle_groups: { color: [], sticker: [] },
     media: '',
     segments: [{ id: 'future-cue', start: 100, end: 1900, text: 'future' }],

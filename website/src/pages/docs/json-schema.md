@@ -7,31 +7,79 @@ source: "docs/engineering/JSON_SCHEMA.md"
 
 <!-- Generated from docs/engineering/JSON_SCHEMA.md. Run pnpm run sync:docs to refresh. -->
 
-本文档定义本地 MAWE（Moy's ASR Workflow Editor）当前接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。历史 `.edit.html` 和 `blank-editor.html` 仅按各自版本支持旧工程；2.0 起停止维护这些入口，不承诺旧副本兼容下述 v1.5 格式。
+工程文件是 UTF-8 JSON。`.mosp` 是默认扩展名，`.json` 仍可用于兼容输入和输出。本规范描述 `2.0dev` 的统一轨道格式；实现与整合仍在进行。旧 `.edit.html` 和 `blank-editor.html` 按各自版本支持旧格式，2.0 不再维护这些入口。
 
-用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
+## 当前目标：v2 统一字幕轨道
 
-适用版本：对应 `edit.py` 和 `maw.asr.qwen` 模块的当前实现。
+当前写出 `moy.asr.project.v2`。无 schema 或显式 v1 的旧工程，以及独立组格式 v1.5，可在导入边界转换为 v2。未知格式拒绝。旧工程打开和内存迁移不覆盖源文件；首次保存 v2 应显式另存为新文件，取消或失败保留原文件。
 
----
+```json
+{
+  "schema": "moy.asr.project.v2",
+  "media": "clip.mp4",
+  "timebase": { "unit": "milliseconds", "fps": 30 },
+  "tracks": [
+    {
+      "id": "main", "role": "main", "name": "主字幕", "enabled": true,
+      "language": "zh", "split_mode": "continuous",
+      "segments": [{ "id": "cue-1", "start": 5000, "end": 6000, "text": "你好", "color_group_id": "color-1" }]
+    },
+    {
+      "id": "english", "role": "secondary", "name": "英语", "enabled": true,
+      "language": "en", "split_mode": "word",
+      "segments": [{ "id": "cue-2", "start": 5000, "end": 6000, "text": "Hello", "color_group_id": "color-1" }]
+    },
+    { "id": "overlay", "role": "overlay", "name": "叠加字幕", "enabled": false, "segments": [] }
+  ],
+  "bilingual": { "display_mode": "both", "active_track_id": "english" },
+  "bindings": [{
+    "id": "binding-1",
+    "source": { "track_id": "main", "segment_id": "cue-1" },
+    "target": { "track_id": "english", "segment_id": "cue-2" },
+    "start_offset_ms": 0, "end_offset_ms": 0
+  }],
+  "subtitle_groups": { "next_id": 2, "color": [{ "id": "color-1", "value": { "name": "yellow" } }], "sticker": [] }
+}
+```
+
+| 字段 | v2 规则 |
+| --- | --- |
+| `tracks` | 必填数组；恰好一条 main，至多一条 secondary 和一条 overlay；数组顺序不决定角色。旧工程有多条副轨时拒绝迁移，不丢弃数据 |
+| `tracks[*].id` | 工程内唯一的非空字符串，最多 160 个 Unicode 码点；角色交换不更改轨道 ID |
+| `role` / `name` / `enabled` / `segments` | 所有轨道共同字段。role 为 `main`、`secondary` 或 `overlay`；main 必须启用。关闭轨道不删除内容或关系 |
+| 轨道来源元数据 | `language`、`language_source`、`split_mode`、`timestamp_granularity`、`model`、`preserve_punctuation`、`source_name` 跟随具体轨；`split_mode_override` 保留旧主轨手动覆盖 |
+| cue ID 与时间 | cue ID 跨轨唯一；start/end 和 items 使用源媒体整数毫秒。允许合法零时长标点 item，cue 本身须 start < end |
+| `bilingual` | 双语显示配置；`active_track_id` 指向副轨。`display_mode` 的 `extension` 是显示选项，不是轨道角色 |
+| `bindings` | `source` 和 `target` 为 `{track_id, segment_id}` CueRef，分别指向主轨与副轨字幕；offset 与端点时间差一致 |
+| `subtitle_groups` | 沿用 v1.5 独立组表；cue 使用 `color_group_id` / `sticker_group_id` 引用组，组区间从成员计算 |
+| 工程字段 | 媒体、媒体音轨、timebase、audio_processing、gap_remove、markers、workspace、preview 等属于工程；媒体音轨不是字幕轨 |
+
+轨内保持时间顺序和非重叠，轨道之间可以重叠。保存只写 `tracks`，不再写顶层 `segments`、`overlay_track` 或 `multi_subtitle`。v2 拒绝新旧容器混用、重复 ID 和悬空引用；未知扩展字段应保留。主副交换保留字幕、稳定身份、组和轨道来源元数据，并同步反转绑定。
+
+组表不存范围副本。删除或转轨保留剩余字幕的组成员关系；清除最后一个成员后删除空组。Resolve 使用 `moy.asr_subtitle_editor.resolve.v2` 按组区间输出；OTIO 按组的连续区间输出。普通 SRT 包含主轨和启用的叠加轨，新增 overlay 变体默认不进入主 SRT。
+
+### 旧格式迁移
+
+| 旧字段 | v2 位置 |
+| --- | --- |
+| 顶层 `segments` | main 轨 `segments` |
+| `overlay_track` | overlay 轨，保留启用状态及未知字段 |
+| `multi_subtitle.tracks` / `enabled` | secondary 轨及其 `enabled` |
+| `multi_subtitle` 显示与未知容器字段 | `bilingual` |
+| `multi_subtitle.bindings` | 顶层 `bindings`，转换为具名 source / target CueRef |
+| 顶层语言、分段与模型字段 | main 轨同名字段 |
+| `multi_subtitle.main_split_mode` | main 轨 `split_mode_override` |
+| v1 `color` / `sticker` 与 `headIdx` | 在原轨原数组解析，再转换为独立组表和组 ID |
+
+v1 的轨内合法 ID 保留；跨轨重名和缺失 ID 确定性分配并更新绑定。v1.5 保留已有全局 cue ID 和独立组表；坏引用拒绝。旧 ASS scale 保持历史舍入规则。媒体、字幕和字词时间不因迁移或去空隙改写。
 
 ### 导入边界与修复报告
 
-缺省 schema 的旧 `.json` / `.mosp` 继续接受，补当前 schema 和缺失稳定 ID；显式坏 ID、重复 ID、失效引用和未知 schema 拒绝，不按颜色/表情名称猜引用，不覆盖源文件。写出函数也拒绝未知 schema，不能先降为当前版本再保存。
-
-Python `maw.project_boundary.prepare_project` 与浏览器 `MaweProjectValidation.prepareProject` 返回 `ok/errors/project/changes`。错误含 JSON 路径；失败时 `project` 为 null、`changes` 为空。成功时 changes 为实际差异（path、kind、before/after），区分缺省补齐与实质修复；再次导入规范化结果不产生新差异。浏览器运行态 `MaweJsonRepair.lastImportReport` 保留报告，Server 修复通过启动配置传入；报告不作为工程字段写回。
-
-可只读检查工程：`python -m maw.project_boundary project.mosp`；加 `--strict` 禁止时间修复。输出 JSON 报告，拒绝时退出码 2，不写源文件。共享语料见 `tests/fixtures/project-boundary.json`，严格校验与导入修复分别验证；CLI、Server、浏览器导入采用同一保守边界。
-
-Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读取；缓存仍在写出时剥离。校验边界本身保留输入 schema；独立组迁移及编辑器保存按下节写 v1.5，不替换原子写入和备份。
+Python `maw.project_boundary.prepare_project` 与浏览器 `MaweProjectValidation.prepareProject` 返回 `ok/errors/project/changes`。错误含 JSON 路径；失败时 `project` 为 null，`changes` 为空。成功时 changes 记录实际差异，再次导入规范化结果不产生新差异。可用 `python -m maw.project_boundary project.mosp` 只读检查；加 `--strict` 禁止时间修复。该命令不写源文件。共享语料见 `tests/fixtures/project-boundary.json`。
 
 ## v1.5 独立颜色 / 表情包组
 
-本地编辑器继续读取缺 schema 和 `moy.asr.project.v1` 工程，保存时写 `moy.asr.project.v1.5`。Python 生成器可继续生成 v1；读写 v1.5 时必须保留版本，禁止降为 v1。未知版本拒绝写入。旧客户端不能编辑 v1.5；请保留原始旧工程或备份，不向旧客户端承诺兼容。
-
-`moy.asr.project.v2` 预留给未来顶层 `tracks` 真源格式，当前不接受；它与其他未知未来版本一样在导入、规范化和写入边界被拒绝。本次仅更改独立组格式标识，不改变工程数据结构。
-
-v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有 bindings 容器。新增必填 `subtitle_groups`：
+v1.5 是历史输入，使用顶层 `segments`、`overlay_track`、`multi_subtitle` 和必填的 `subtitle_groups`。各轨 cue ID 在工程内唯一；组 ID 在所属类型内唯一，组 `value` 必须有字符串 `name`，不保存 `start/end`。示例：
 
 ```json
 {
@@ -46,20 +94,13 @@ v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现�
 }
 ```
 
-- 各轨字幕 `id` 在整个工程内唯一；段上的 `color_group_id` / `sticker_group_id` 引用对应组表。组 ID 在所属类型内唯一，不能用同名素材或颜色推断组。`next_id` 是新建组的递增计数，随工程和撤销快照保存。
-- `value` 保存完整颜色 / 素材属性及其扩展字段；必须有字符串 `name`。组内不存 `start/end`，其范围是所有成员的最早 `start` 到最晚 `end`。字幕 1–3 / 5–7 / 8–10 秒的一组连续显示 1–10 秒；末条改为 12 秒即覆盖至 12 秒。
-- 禁用成员保留关系并参与范围；全部成员禁用时不显示或导出表情。换轨不拆组；删除头或中间成员后剩余成员仍同组。清除属性只移除所选成员，空组在编辑器中删除。
-- 关闭整条叠加轨或副字幕轨时保留其组关系；预览与导出的表情范围仅由仍启用轨道的成员决定，重新开启后恢复。单条字幕的禁用状态仍按上一条规则处理。
-- 拆分两侧继承原组。同组合并继承；不同组或混有无组字幕时，合并结果不继承该种组关系，未参与合并的成员保留原组。不同组即使素材同名也不合并。重复导入为输入组分配新 ID，避免与当前工程误关联。
-- v1 迁移先在原轨内数组解析 `headIdx`，再规范 ID；跨轨重复字幕 ID 确定性重映射，并更新 bindings。旧单数绑定端点同样保留，缺省 `track_id` 仅在唯一副轨时补齐，多副轨歧义在变更 ID 前拒绝。旧ref的第三方附加字段保存在对应段的可选 `color_group_metadata` / `sticker_group_metadata` 对象中（不含旧name/headIdx）；现有同名字段冲突时拒绝迁移而不覆盖。重映射记录在可选 `subtitle_group_migration.remapped_ids`（track/index/from/to）。失效引用或歧义绑定报告错误，不按名称猜引用。
-- v1.5 落盘不写 `color` / `color_ref` / `sticker` / `sticker_ref`；编辑器内部可生成显示投影，投影的下标与范围不构成持久化关系。三轨共同保留 items、帧、speaker、disabled、assOverride.pos 和第三方扩展。
-- 表情预览、共享时间线导出和 OTIO 按组连续区间输出。独立表情 OTIO（含去空隙模式）包含启用轨道的所有组，每组仅输出一次；完整时间线仍按主/叠加归属分轨。重叠组按稳定表顺序显示；单轨 OTIO 遇重叠继续报错。Resolve JSON 使用 `moy.asr_subtitle_editor.resolve.v2`，在顶层 `stickers` 输出连续组区间（group_id/start_ms/end_ms/素材属性）；派生 ID 和范围优先于素材扩展中的同名字段，段上保留组 ID；旧 Resolve v1 消费端需适配。
+组 `value` 保留完整颜色或素材属性及扩展字段，范围由成员的最早开始和最晚结束时间推导。禁用成员保留组关系；全部成员禁用时不显示或导出表情。关闭轨道保留其组关系，预览和导出的表情范围只计算启用轨道的成员。
 
-文稿匹配读取并保留 v1.5；沿既有等条数槽位继承非时间属性。对带独立组且会改变条数的文稿匹配，当前明确拒绝生成有损结果，原工程保留；可先在编辑器中拆合。该限制不影响编辑器正常拆分、合并或重新断句。
+拆分后的两侧继承原组；同组合并继承，不同组或混有无组字幕时，合并结果不继承该种组关系。未参与合并的成员保留原组，同名素材也不会自动合并为同一组。
 
-以下 v1 字段示例与 headIdx 约束用于历史输入兼容；v1.5 颜色 / 表情关系以本节为准。整数毫秒、字词、Gap、样式和时间基准的其余契约继续适用。
+## 一、v1 历史结构及共享字段参考
 
-## 一、顶层结构
+以下旧容器示例仅描述 v1 迁移输入，不是 v2 保存结构。通用 cue、媒体、波形、预览、空隙和工作区字段的详细规则继续适用；字幕路径按上方映射阅读。
 
 ```json
 {
@@ -106,8 +147,8 @@ v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现�
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `schema` | `string` | 否（写出时必填） | 支持 `moy.asr.project.v1` 与带独立组表的 `moy.asr.project.v1.5`，详见上文。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
-| `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
+| `schema` | `string` | 否 | 历史输入可省略或使用 `moy.asr.project.v1`；当前保存格式为 v2，详见上文 |
+| `segments` | `array<object>` | **必填** | v1 输入的主字幕段数组；缺失或不是数组时拒绝加载 |
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可），相对路径以工程文件所在目录为基准。生成与服务器保存优先写相对路径（如 `_maw/clip.mosp` 引用 `../clip.mp4`），跨盘无法相对引用时写绝对路径。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
 | `audio_processing` | `object` | 否 | 工程固定音量增益及响度参考。`gain_db` 为 −60 到 +24 的有限数值，缺省 0；界面默认显示 −6 到 +12，扩大范围只改变控件显示，不改变已保存的增益。`target_lufs` 为 −70 到 0 的有限数值，预设 −14（常见标准）、−16（播客）、−23（广播电视 / EBU R128），支持自定义，缺省 −14。已保存的有效参考值保持原样；缺字段或非法参考回到 −14。`peak_ceiling_dbtp` 当前固定 −1，仅用于匹配增益计算。无效增益回到 0，越界有限值限制到工程范围。只保存参数，LUFS/真峰值测量属于运行态缓存。工程增益用于编辑器预览与视频烧录，监听音量不写入该字段 |
 | `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。用于显示、选择切句计量方式，以及结合语言来源决定是否启用中文翻译预过滤 |
@@ -145,7 +186,7 @@ v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现�
 
 - 转写器和 Launcher 默认生成 `.mosp`；命令行的 `--json` 参数名称为历史兼容名称，含义是“同时生成工程文件”。
 - `.mosp` 文件不是新的二进制容器，而是普通 UTF-8 JSON，方便脚本、版本控制和其他工具读取。
-- 编辑器、服务器和桌面入口都继续接受 `.json`。打开旧 `.json` 工程时可以原扩展名保存，也可以通过“另存为”改成 `.mosp`。
+- 编辑器、服务器和桌面入口都继续接受 `.json`。旧工程首次迁移须另存为新 `.json` 或 `.mosp` 文件。
 - 服务器覆盖保存会保留当前扩展名，并先创建同目录备份：`project.mosp.bak` 或 `project.json.bak`。
 - `.workspace.json` 是可选的独立工作区迁移文件，不是字幕工程文件；Resolve JSON、保留区域 JSON 等导出文件也不应重新作为工程打开。
 
@@ -532,9 +573,9 @@ v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现�
 - `preview.sticker` 缺失时同样按旧工程处理，使用默认几何 `{ x: 0.73, y: 0.04, width: 0.24, height: 0.3 }`（右上角）。两个几何共用同一套归一化与钳制规则。
 - 该几何只移动/缩放预览框容器；内部文字 `<span>` 仍保持居中与药丸样式，`segments[*].start/end/items[*].start/end` 永不被此几何改动。
 
-### 1.5 overlay_track 叠加字幕轨
+### 1.5 overlay_track 叠加字幕轨（v1 历史输入）
 
-`overlay_track` 是可选的单条独立字幕轨，用于保存同一份 SRT 中与主轨重叠的字幕。顶层 `segments` 始终是主轨真源；叠加轨只含自身的 `segments`，不建立主副绑定关系，也不替代 §1.6 的双语 `multi_subtitle`。
+v1 输入的 `overlay_track` 是可选叠加字幕轨；v2 将它转换为 `role: overlay` 的轨道。
 
 ```json
 {
@@ -562,9 +603,9 @@ v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现�
 - 后处理与 Server 导出的单个 SRT 会合并启用的主轨和叠加轨：先按 `start` 升序，开始时间相同则主轨在前；禁用或空文本段不导出。
 - 从 SRT 导入时优先放入主轨；与主轨冲突的 cue 放入叠加轨；若同一时刻需要第三层则导入失败，不会静默丢失字幕。
 
-### 1.6 multi_subtitle 双语字幕
+### 1.6 multi_subtitle 双语字幕（v1 历史输入）
 
-`multi_subtitle` 是可选的双语字幕结构。旧工程缺失该字段时，编辑器按关闭状态加载；保存时会补写关闭的空结构。顶层 `segments` 始终是主轨真源，副字幕只放在 `tracks[*].segments` 中。
+v1 输入的 `multi_subtitle` 是可选双语结构；v2 将副轨迁移为 `secondary`，不保存该容器。
 
 ```json
 {
@@ -630,7 +671,7 @@ v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现�
 
 约束：
 
-- 主轨和扩展轨段均使用不重复的稳定字符串 ID；当前规范化会为缺失 ID 的输入补齐，并在导出/保存时写入。主轨按 `main-001`、扩展轨按 `<track-id>-segment-001` 的顺序生成；如果生成值与后续显式 ID 冲突，会使用确定性的 `-generated` 后缀。浏览器与 Python 服务端使用同一规则。
+- v1 旧规范化器曾按 `main-001`、`<track-id>-segment-001` 生成轨内 ID，冲突时使用 `-generated` 后缀。导入会识别这些隐式绑定端点，再生成 v2 ID 并更新引用。
 - 当前 MVP 强制每个绑定一对一；数组形式保留给未来一对多关系，但当前校验要求数组长度均为 1，且一个端点不能重复绑定。
 - 自动导入按段级时间码匹配：时间区间有交集，且开始/结束时间差均不超过 `300ms`；冲突选择总差值最小的候选。未匹配段保留，可手动绑定。
 - 副字幕段也可以保存 `color` / `color_ref`；其中 `color_ref.headIdx` 是当前副字幕数组中的 0-based 整数下标，并且必须指向更早的颜色 head。交换主副字幕时，各字幕属性跟随原字幕，不自动映射颜色。
@@ -780,11 +821,11 @@ v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现�
 
 「字词转为独立字幕」仅转换选中的、文字完整覆盖且时间合法的主字幕；每个有效 item 生成一条 segment，并保留为该 segment 唯一的 item。原文中的标点和空白保留，未覆盖的有声文字使整句跳过。转换解除相关副字幕绑定，但保留副字幕文字与时间；转换可撤销，不提供反向转换工具。
 
-## 四、表情包 / 颜色（head + ref 系统）
+## 四、表情包 / 颜色（v1 历史 head + ref 输入）
 
 这套机制服务于「跨多句字幕覆盖同一个表情包或颜色」的需求。
 
-**生成 JSON 时直接全部填 `null` 即可**，让用户在编辑器里手动分配。本节仅供深度二次开发参考。
+本节用于读取 v1 历史数据；v2 使用上文独立组表，不写 head / ref。
 
 ### 4.1 sticker head（首条持完整信息）
 
@@ -817,7 +858,7 @@ v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现�
 }
 ```
 
-`headIdx` 是当前字幕数组里的整数下标（0-based），指向同属一个表情包的 head 段：主轨使用顶层 `segments`，副字幕使用对应的 `tracks[i].segments`。拆分/合并/删除时编辑器会自动维护这个索引。
+v1 的 `headIdx` 是所属字幕数组里的整数下标（0-based），指向同属一个表情包的 head 段。迁移时先按原轨数组解析，再转换为组 ID。
 
 ### 4.3 color head
 
@@ -841,11 +882,11 @@ v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现�
 { "name": "red", "headIdx": 5 }
 ```
 
-`headIdx` 使用当前字幕数组的 0-based 下标；主轨颜色引用查找顶层 `segments`，副字幕颜色引用查找所属的 `tracks[i].segments`。交换主副字幕时，编辑器会按绑定关系重建新主轨的颜色组索引，并保留移到副字幕的原主轨颜色字段。
+v1 的 `headIdx` 使用所属字幕数组的 0-based 下标；迁移时在原轨解析。v2 使用稳定组 ID，交换主副字幕时保留各句组关系。
 
 ---
 
-## 五、最小可用示例
+## 五、v1 历史输入示例
 
 下面这份 JSON 可被编辑器直接接受：
 
@@ -905,7 +946,9 @@ v1.5 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现�
 
 ---
 
-## 六、给 LLM 生成 JSON 的 Prompt 模板
+## 六、v1 历史输入 Prompt 模板
+
+本节保留旧输入示例供兼容参考，不用于生成新的 v2 工程。
 
 把下面这段直接粘给任意模型当生成约束：
 
@@ -961,7 +1004,7 @@ uv run --no-sync python server-editor/serve.py your_generated.mosp
 
 ---
 
-## 八、字段速查表
+## 八、v1 历史字段及共享字段速查表
 
 | 字段路径 | 类型 | 必填 | 单位/取值 |
 |---|---|---|---|
@@ -1026,17 +1069,9 @@ uv run --no-sync python server-editor/serve.py your_generated.mosp
 
 ## 九、版本与兼容
 
-- 当前支持 `moy.asr.project.v1` 与带独立组表的 `moy.asr.project.v1.5`；编辑器保存为 v1.5，Python 生成器可继续生成 v1，详见上文
-- 没有顶层 `schema` 的历史工程按 v1 兼容读取；规范化补写 v1，编辑器保存时迁移为 v1.5
-- 当前客户端拒绝加载未知的顶层工程版本，且不会用旧结构覆盖原工程
-- v1 内允许新增可选字段及不改变既有语义的向后兼容调整；编辑器保存时保留不认识的顶层字段
-- 删除字段、改变既有字段的单位或语义、调整为不兼容结构，或要求强制迁移时需要升级 schema
-- 本规范与 `edit.py` / `maw.asr.qwen` 当前实现同步
-- 设计决策（字级时间戳为何重要、长音频切片策略等）见 `CHANGELOG.md`
-- 字段命名保持向后兼容：新增可选字段不会破坏旧 JSON 加载
-- 旧编辑器会忽略新增的 `waveform` 字段；新编辑器可加载完全不含该字段的旧工程
-- 不兼容变更必须升级顶层 schema，并记录到 `CHANGELOG.md`
-
+- 无 schema 或 v1、v1.5 可作为历史输入；v2 为统一轨道格式，未知版本拒绝。
+- 打开旧工程不覆盖原文件；首次写 v2 必须显式另存为新文件。v2 保存保留未知扩展字段并剥离运行缓存。
+- 不兼容变更需要升级顶层 schema，并记录在 `CHANGELOG.md`。
 
 ### AI 口播整理的文字编辑稿
 

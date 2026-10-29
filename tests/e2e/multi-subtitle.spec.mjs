@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  getMainTrack, getExtensionTrack,
   cleanupTempDir,
   disableOnboarding,
   findFreePort,
@@ -183,12 +184,12 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
   await page.locator('#undo-btn').click();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
-  expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(0);
+  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').length)).toBe(0);
   await page.locator('#redo-btn').click();
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
-  expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(1);
+  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').length)).toBe(1);
   expect(dialogs).toEqual(Array(2).fill('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）'));
   await openMultiSubtitleSettings(page);
   const importGap = await page.locator('#multi-subtitle-import').evaluate((item) => {
@@ -269,16 +270,18 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   await page.locator('#download-json').click();
   await expect.poll(() => page.evaluate(() => Boolean(window.__savedEmptyTrackProject))).toBe(true);
   const empty = JSON.parse(await page.evaluate(() => window.__savedEmptyTrackProject));
-  expect(empty.multi_subtitle.enabled).toBe(true);
-  expect(empty.multi_subtitle.tracks).toHaveLength(1);
-  expect(empty.multi_subtitle.tracks[0].segments).toEqual([]);
+  expect(empty.schema).toBe('moy.asr.project.v2');
+  for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(empty).not.toHaveProperty(field);
+  expect(getExtensionTrack(empty).enabled).toBe(true);
+  expect(empty.tracks.filter(track => track.role === 'secondary')).toHaveLength(1);
+  expect(getExtensionTrack(empty).segments).toEqual([]);
   await dropProject(empty);
-  await openSettingsPage(page, 'project-tracks');
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
   await closeSettingsPanels(page);
   await page.screenshot({ path: test.info().outputPath('empty-secondary-lane.png') });
   // 旧工程已开启双语但没有轨道，同样补齐可编辑空轨。
-  await dropProject({ ...empty, multi_subtitle: { ...empty.multi_subtitle, tracks: [] } });
+  await dropProject({ ...project, multi_subtitle: { enabled: true, tracks: [] } });
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
   const row = page.locator('.waveform-row.multi-subtitle-row').first();
   const box = await waitForLayoutBox(row, 'empty secondary lane has no layout');
@@ -302,12 +305,14 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await expect(page.locator('.waveform-row.multi-subtitle-row')).toHaveCount(0);
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
-  expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(1);
+  expect(await page.evaluate(() => AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').length)).toBe(1);
   const previousSave = await page.evaluate(() => window.__savedEmptyTrackProject);
   await page.locator('#download-json').click();
   await expect.poll(() => page.evaluate(() => window.__savedEmptyTrackProject)).not.toBe(previousSave);
   const saved = JSON.parse(await page.evaluate(() => window.__savedEmptyTrackProject));
-  expect(saved.multi_subtitle.tracks[0].segments[0].text).toBe('手动副字幕');
+  expect(saved.schema).toBe('moy.asr.project.v2');
+  for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(saved).not.toHaveProperty(field);
+  expect(getExtensionTrack(saved).segments[0].text).toBe('手动副字幕');
   await dropProject(saved);
   await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(1);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].text)).toBe('手动副字幕');
@@ -1078,7 +1083,7 @@ test('Ctrl-clicking an extension waveform cue keeps the extension as the active 
   await main.click();
   await extension.click({ modifiers: ['ControlOrMeta'] });
   await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments[1].id))
+  expect(await page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[1].id))
     .toBe('extension-002');
 });
 
@@ -1112,16 +1117,16 @@ test('undoing an auto-synced binding restores the extension timing as well as th
   await page.locator('#ctxmenu .item').filter({ hasText: '与选中的主字幕绑定' }).click();
   const waveformExtension = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   expect(await page.evaluate(() => ({
-    range: [MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start, MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end],
-    bindings: MaweBoot.DATA.multi_subtitle.bindings.length,
+    range: [AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].end],
+    bindings: MaweBoot.DATA.bindings.length,
   }))).toEqual({ range: [1000, 3000], bindings: 1 });
   await expect(waveformExtension).toHaveAttribute('data-start', '1000');
   await expect(waveformExtension).toHaveAttribute('data-end', '3000');
 
   await page.keyboard.press('ControlOrMeta+z');
   expect(await page.evaluate(() => ({
-    range: [MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start, MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end],
-    bindings: MaweBoot.DATA.multi_subtitle.bindings.length,
+    range: [AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].end],
+    bindings: MaweBoot.DATA.bindings.length,
   }))).toEqual({ range: [1200, 2200], bindings: 0 });
   await expect(waveformExtension).toHaveAttribute('data-start', '1200');
   await expect(waveformExtension).toHaveAttribute('data-end', '2200');
@@ -1183,7 +1188,7 @@ test('marquee selection includes secondary waveform cues', async ({ page }) => {
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   const extensionBox = await waitForLayoutBox(extensionBlock, '副字幕波形块没有布局');
-  const row = extensionBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = extensionBlock.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const rowBox = await waitForLayoutBox(row, '多重字幕波形行没有布局');
   await page.keyboard.down('Shift');
   await page.mouse.move(Math.max(rowBox.x + 4, extensionBox.x - 32), extensionBox.y + extensionBox.height / 2);
@@ -1352,13 +1357,13 @@ test('keeps inline edits after switching to another dual-column subtitle', async
   await mainText.fill('主轨修改后保留');
   await secondRow.locator('.multi-cue-column.main .text').click();
   await expect(mainText).toHaveText('主轨修改后保留');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('主轨修改后保留');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('主轨修改后保留');
 
   await extensionText.dblclick();
   await extensionText.fill('副轨修改后保留');
   await secondRow.locator('.multi-cue-column.extension .text').click();
   await expect(extensionText).toHaveText('副轨修改后保留');
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].text))
+  expect(await page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].text))
     .toBe('副轨修改后保留');
 });
 
@@ -1752,12 +1757,12 @@ test('splits only the main subtitle and unbinds when the extension cannot be spl
   await page.keyboard.press('Enter');
 
   await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.map((segment) => segment.text)))
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => segment.text)))
     .toEqual(['主字幕可以', '正常拆分']);
   // 副字幕保持原样且已解绑。
   expect(await page.evaluate(() => ({
-    bindings: MaweBoot.DATA.multi_subtitle.bindings.length,
-    extensionCount: MaweBoot.DATA.multi_subtitle.tracks[0].segments.length,
+    bindings: MaweBoot.DATA.bindings.length,
+    extensionCount: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.length,
   }))).toEqual({ bindings: 0, extensionCount: 1 });
   await expect(page.locator('.multi-cue-column.extension.unbound')).toHaveCount(1);
   await expect(page.locator('#hint-stack')).toContainText('为了拆分主字幕，已解除绑定');
@@ -1824,12 +1829,11 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
-  await page.evaluate(() => {
-    const [first, second] = MaweBoot.DATA.segments;
-    first.color = { name: 'yellow', value: '#c4a019', start: first.start, end: second.end };
-    first.color_ref = null;
-    second.color = null;
-    second.color_ref = { name: 'yellow', headIdx: 0 };
+  const beforeSwap = await page.evaluate(() => {
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, main.segments, [0, 1], 'color',
+      { name: 'yellow', value: '#c4a019' });
+    return AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA);
   });
 
   await openMultiSubtitleSettings(page);
@@ -1840,26 +1844,18 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
     .toHaveText('你好，世界。');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension .text'))
     .toHaveText('Hello world.');
-  expect(await page.evaluate(() => JSON.parse(JSON.stringify({
-    main: MaweBoot.DATA.segments.slice(0, 2).map(({ color, color_ref }) => ({ color, color_ref })),
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.slice(0, 2)
-      .map(({ color, color_ref }) => ({ color, color_ref })),
-  })))).toEqual({
-    main: [
-      { color: { name: 'yellow', value: '#c4a019', start: 50, end: 4950 }, color_ref: null },
-      { color: null, color_ref: { name: 'yellow', headIdx: 0 } },
-    ],
-    extension: [
-      { color: { name: 'yellow', value: '#c4a019', start: 0, end: 5000 } },
-      { color_ref: { name: 'yellow', headIdx: 0 } },
-    ],
-  });
+  const afterSwap = await page.evaluate(() => AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA));
+  // Track entities retain their own cue attributes when their roles change.
+  expect(getMainTrack(afterSwap)).toEqual({ ...getExtensionTrack(beforeSwap), role: 'main', enabled: true });
+  expect(getExtensionTrack(afterSwap)).toEqual({ ...getMainTrack(beforeSwap), role: 'extension', enabled: true });
+  expect(afterSwap.subtitle_groups).toEqual(beforeSwap.subtitle_groups);
 
   await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main .text'))
     .toHaveText('Hello world.');
   await expect(page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension .text'))
     .toHaveText('你好，世界。');
+  expect(await page.evaluate(() => AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA).tracks)).toEqual(beforeSwap.tracks);
 });
 
 test('uses the maximum waveform row height while multiple subtitles are enabled and restores it', async ({ page }) => {
@@ -2008,7 +2004,7 @@ test('uses B on a waveform-selected extension cue instead of its overlapping mai
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   await expect(extensionBlock).toBeVisible();
-  const mainBefore = await page.evaluate(() => MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end]));
+  const mainBefore = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]));
   await extensionBlock.click();
   await expect(extensionBlock).toHaveClass(/selected/);
   await page.keyboard.press('b');
@@ -2016,7 +2012,7 @@ test('uses B on a waveform-selected extension cue instead of its overlapping mai
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择副字幕拆分点');
   await expect(page.locator('#multi-subtitle-split-main-lane')).toBeHidden();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end])))
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end])))
     .toEqual(mainBefore);
   await page.keyboard.press('Escape');
 });
@@ -2046,9 +2042,9 @@ test('uses B on a waveform-selected unbound extension cue instead of an overlapp
   }]);
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end])))
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end])))
     .toEqual([[1000, 3000]]);
-  const mainBefore = await page.evaluate(() => MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end]));
+  const mainBefore = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]));
   // Project import and media loading can rebuild the lanes between a geometry
   // read and a raw mouse click. Let locator actionability target the live block.
   await extensionBlock.click();
@@ -2058,7 +2054,7 @@ test('uses B on a waveform-selected unbound extension cue instead of an overlapp
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择副字幕拆分点');
   await expect(page.locator('#multi-subtitle-split-main-lane')).toBeHidden();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end])))
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end])))
     .toEqual(mainBefore);
   await page.keyboard.press('Escape');
 });
@@ -2088,7 +2084,7 @@ test('retries a short linked split with B before forcing both tracks to 100ms', 
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await page.evaluate(() => {
-    const main = MaweBoot.DATA.segments[0];
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
     main.start = 1000;
     main.end = 5000;
     main.text = 'Alpha Bravo';
@@ -2096,7 +2092,7 @@ test('retries a short linked split with B before forcing both tracks to 100ms', 
       { start: 1000, end: 1050, text: 'Alpha' },
       { start: 1050, end: 5000, text: 'Bravo' },
     ];
-    const extension = MaweBoot.DATA.multi_subtitle.tracks[0].segments[0];
+    const extension = AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0];
     extension.start = 1000;
     extension.end = 5000;
     extension.text = 'One Two';
@@ -2123,7 +2119,7 @@ test('retries a short linked split with B before forcing both tracks to 100ms', 
 
   await page.keyboard.press('b');
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(2);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(2);
   await expect(page.locator('.hint-card.hint-warning', {
     hasText: '请再次按 B 或 Enter 强制拆分',
   })).toBeVisible();
@@ -2131,8 +2127,8 @@ test('retries a short linked split with B before forcing both tracks to 100ms', 
   await page.keyboard.press('b');
   await expect.poll(() => page.locator('.multi-dual-cue').count()).toBe(4);
   expect(await page.evaluate(() => ({
-    main: MaweBoot.DATA.segments.slice(0, 2).map((segment) => segment.end - segment.start),
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.slice(0, 2)
+    main: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2).map((segment) => segment.end - segment.start),
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.slice(0, 2)
       .map((segment) => segment.end - segment.start),
   }))).toEqual({ main: [100, 3900], extension: [100, 3900] });
 });
@@ -2148,7 +2144,7 @@ test('shows unbind in a bound main subtitle context menu', async ({ page }) => {
   await expect(unbind.locator('kbd')).toHaveText('Shift+G');
   await unbind.click();
   await expect(page.locator('.waveform-binding-marker')).toHaveCount(0);
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.bindings)).toHaveLength(1);
+  expect(await page.evaluate(() => MaweBoot.DATA.bindings)).toHaveLength(1);
 });
 
 test('applies Subtitle Ninja feedback after a linked split-modal split', async ({ page }) => {
@@ -2179,13 +2175,13 @@ test('keeps the subtitle-list caret position as the linked main split point', as
   await toggleGlobalSettings(page);
 
   await page.evaluate(() => {
-    const main = MaweBoot.DATA.segments[0];
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
     main.text = '那更加离谱的就是这颗卫星上搭载了一颗';
     main.items = [
       { text: '那更加离谱的就是这', start: main.start, end: 1000 },
       { text: '颗卫星上搭载了一颗', start: 1000, end: main.end },
     ];
-    MaweBoot.DATA.multi_subtitle.main_split_mode = 'continuous';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).split_mode_override = 'continuous';
     MaweCuePanel.renderAll({ waveform: 'none' });
   });
 
@@ -2307,15 +2303,18 @@ test('normal extension clicks replace stale main selection with the clicked bind
   expect(await page.evaluate(() => [...window.MAWE_EDITOR_BRIDGE.selectedIdxs])).toEqual([]);
   await page.keyboard.press('g');
   await expect(page.locator('#hint-stack')).toContainText('请点击一条主字幕完成绑定');
-  const extensionIds = await page.evaluate(() => Object.fromEntries(
-    MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => [segment.text, segment.id]),
+  const mainIds = await page.evaluate(() => Object.fromEntries(
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(segment => [segment.text, segment.id]),
   ));
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.bindings.map((binding) => ({
-    main: binding.main_segment_ids,
-    extension: binding.extension_segment_ids,
+  const extensionIds = await page.evaluate(() => Object.fromEntries(
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.text, segment.id]),
+  ));
+  expect(await page.evaluate(() => MaweBoot.DATA.bindings.map((binding) => ({
+    main: [binding.source.segment_id],
+    extension: [binding.target.segment_id],
   })))).toEqual([
-    { main: ['main-001'], extension: [extensionIds['你好，世界。']] },
-    { main: ['main-002'], extension: [extensionIds['第二句。']] },
+    { main: [mainIds['Hello world.']], extension: [extensionIds['你好，世界。']] },
+    { main: [mainIds['Second line.']], extension: [extensionIds['第二句。']] },
   ]);
   await page.keyboard.press('Escape');
 });
@@ -2421,15 +2420,15 @@ test('keeps extension selection, timing, disabled, and hide shortcuts in parity 
   const extensionColumn = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension');
   await extensionColumn.click();
   const originalStart = await page.evaluate(() => (
-    MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].start
   ));
   await page.keyboard.press('ArrowRight');
   await expect.poll(() => page.evaluate(() => (
-    MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].start
   ))).toBe(originalStart + 50);
   await page.keyboard.press('ControlOrMeta+ArrowLeft');
   await expect.poll(() => page.evaluate(() => (
-    MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].start
   ))).toBe(originalStart);
 
   await page.keyboard.press('ControlOrMeta+a');
@@ -2440,7 +2439,9 @@ test('keeps extension selection, timing, disabled, and hide shortcuts in parity 
   await extensionColumn.click({ modifiers: ['Alt'] });
   await expect(extensionColumn).toHaveClass(/disabled/);
   const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(saved.multi_subtitle.tracks[0].segments[0].disabled).toBe(true);
+  expect(saved.schema).toBe('moy.asr.project.v2');
+  for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(saved).not.toHaveProperty(field);
+  expect(getExtensionTrack(saved).segments[0].disabled).toBe(true);
 
   await page.locator('#cue-list-settings-toggle').click();
   await page.locator('#hide-disabled-toggle').check();
@@ -2457,9 +2458,9 @@ test('Shift+arrow snaps selected main and secondary cues in multiple-subtitle mo
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].end = 2500;
-    MaweBoot.DATA.segments[1].start = 3000;
-    const extension = MaweBoot.DATA.multi_subtitle.tracks[0].segments;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = 2500;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start = 3000;
+    const extension = AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments;
     extension[0].end = 2400;
     extension[1].start = 3000;
     MaweCuePanel.renderAll();
@@ -2468,13 +2469,13 @@ test('Shift+arrow snaps selected main and secondary cues in multiple-subtitle mo
   await page.locator('.multi-cue-column.main').filter({ hasText: 'Second line.' }).click();
   await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
   await page.keyboard.press('Shift+ArrowLeft');
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[1].start)).toBe(2500);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start)).toBe(2500);
 
   await page.locator('.multi-cue-column.extension').filter({ hasText: '你好，世界。' }).click();
   await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
   await page.keyboard.press('Shift+ArrowRight');
   await expect.poll(() => page.evaluate(() => (
-    MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].end
   ))).toBe(3000);
 });
 
@@ -2496,7 +2497,7 @@ test('选中的主字幕与绑定副字幕一起合并并支持撤销', async ({
   const merged = page.locator('.multi-dual-cue').filter({ hasText: 'Hello world.' });
   await expect(merged.locator('.multi-cue-column.main .time')).toHaveText('00:00.000 → 00:05.000');
   await expect(merged.locator('.multi-cue-column.extension .time')).toHaveText('00:00.000 → 00:05.000');
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.bindings.map((binding) => ({
+  expect(await page.evaluate(() => MaweBoot.DATA.bindings.map((binding) => ({
     start: binding.start_offset_ms,
     end: binding.end_offset_ms,
   })))).toEqual([{ start: 0, end: 0 }]);
@@ -2550,7 +2551,7 @@ test('ignores a tiny unbound extension overlap at the main merge boundary', asyn
   await page.locator('.multi-cue-column.main').filter({ hasText: '主字幕二' }).click({ modifiers: ['ControlOrMeta'] });
   await page.keyboard.press('c');
 
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => ({
+  expect(await page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => ({
     id: segment.id,
     start: segment.start,
     end: segment.end,
@@ -2807,9 +2808,9 @@ test('keeps the main range fixed and removes a fully covered extension cue on H 
   await page.keyboard.press('h');
   await expect(page.locator('#hint-stack')).toContainText('删除 1 条副字幕');
   expect(await page.evaluate(() => ({
-    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => [segment.start, segment.end]),
-    bindings: MaweBoot.DATA.multi_subtitle.bindings.map((binding) => binding.extension_segment_ids),
+    main: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end],
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]),
+    bindings: MaweBoot.DATA.bindings.map((binding) => [binding.target.segment_id]),
   }))).toEqual({
     main: [1000, 4000],
     extension: [[1000, 4000]],
@@ -2850,8 +2851,8 @@ test('keeps the longer remaining side and restores extension time order after H 
   await page.keyboard.press('h');
   await expect(page.locator('#hint-stack')).toContainText('挤压 1 条副字幕');
   expect(await page.evaluate(() => ({
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => [segment.id, segment.start, segment.end]),
-    bindings: MaweBoot.DATA.multi_subtitle.bindings.map((binding) => binding.extension_segment_ids),
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.id, segment.start, segment.end]),
+    bindings: MaweBoot.DATA.bindings.map((binding) => [binding.target.segment_id]),
   }))).toEqual({
     extension: [
       ['extension-002', 2000, 3000],
@@ -2892,7 +2893,7 @@ test('keeps the main range fixed when its extension follower hits another extens
 
   const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
   const handle = mainBlock.locator('.waveform-cue-handle.right');
-  const row = mainBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = mainBlock.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const [handleBox, rowBox, rowStart, rowEnd] = await Promise.all([
     handle.boundingBox(),
     row.boundingBox(),
@@ -2912,8 +2913,8 @@ test('keeps the main range fixed when its extension follower hits another extens
 
   await expect(page.locator('#hint-stack')).toContainText('挤压 1 条副字幕');
   const timing = await page.evaluate(() => ({
-    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => [segment.start, segment.end]),
+    main: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end],
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]),
   }));
   expect(timing.main[0]).toBe(1000);
   expect(timing.main[1]).toBeGreaterThan(3000);
@@ -2955,7 +2956,7 @@ test('lets an extension drag move only the extension cue beyond the main-track b
   const block = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   const handle = block.locator('.waveform-cue-handle.right');
   await expect(handle).toBeVisible();
-  const row = block.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = block.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const [handleBox, rowBox, rowStart, rowEnd] = await Promise.all([
     handle.boundingBox(),
     row.boundingBox(),
@@ -2973,11 +2974,11 @@ test('lets an extension drag move only the extension cue beyond the main-track b
   await page.mouse.move(targetX, centerY, { steps: 4 });
   await page.mouse.up();
 
-  await expect.poll(() => page.evaluate(() => [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end]))
+  await expect.poll(() => page.evaluate(() => [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end]))
     .toEqual([1000, 3000]);
   const timing = await page.evaluate(() => ({
-    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
-    extension: [MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start, MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end],
+    main: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end],
+    extension: [AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].end],
   }));
   expect(timing.main).toEqual([1000, 3000]);
   expect(timing.extension[0]).toBe(1000);
@@ -3087,7 +3088,7 @@ test('renders one scissors marker per word-space split and trims the split text'
 
   await splitText.locator('.multi-subtitle-split-gap').first().evaluate((element) => element.click());
   await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => segment.text)))
+  expect(await page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => segment.text)))
     .toEqual(['A', 'B C']);
 });
 
@@ -3148,7 +3149,7 @@ test('renders a scissors marker for a symbol-connected word split', async ({ pag
 
   await symbolGap.evaluate((element) => element.click());
   await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => segment.text)))
+  expect(await page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => segment.text)))
     .toEqual(['the story—', 'you']);
 });
 
@@ -3192,7 +3193,7 @@ test('renders a post-period word split without dropping the period', async ({ pa
 
   await gaps.first().click();
   await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => segment.text)))
+  expect(await page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => segment.text)))
     .toEqual(['quickly.', 'And']);
 });
 
@@ -3235,7 +3236,7 @@ test('renders one scissors marker for a continuous split across repeated spaces'
 
   await splitText.locator('.multi-subtitle-split-gap').first().evaluate((element) => element.click());
   await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => segment.text)))
+  expect(await page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => segment.text)))
     .toEqual(['甲', '乙']);
 });
 
@@ -3276,7 +3277,7 @@ test('keeps only the left text in the first main cue after a linked word split',
   await page.locator('#multi-subtitle-split-text .multi-subtitle-split-gap').first().click();
   await page.locator('#multi-subtitle-split-confirm').click();
   await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.map((segment) => segment.text)))
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => segment.text)))
     .toEqual(['说实话', '那是因为确实如此']);
 });
 
@@ -3379,7 +3380,7 @@ test('uses the waveform lane to choose blank-area context-menu semantics', async
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分副字幕' })).toHaveClass(/disabled/);
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '创建字幕' })).toBeVisible();
   await page.keyboard.press('Escape');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(1);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(1);
 });
 
 test('keeps one shared waveform background with two lanes, switch visibility, and Alt drag semantics', async ({ page }) => {
@@ -3640,7 +3641,7 @@ test('restores squeezed bound extension subtitles when an Alt drag is pulled bac
   }]);
 
   const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
-  const row = mainBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = mainBlock.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const box = await waitForLayoutBox(mainBlock, '主字幕挤压恢复测试没有波形块');
   const rowGeometry = await row.evaluate((element) => ({
     width: element.getBoundingClientRect().width,
@@ -3660,8 +3661,8 @@ test('restores squeezed bound extension subtitles when an Alt drag is pulled bac
   await page.keyboard.up('Alt');
 
   expect(await page.evaluate(() => ({
-    main: MaweBoot.DATA.segments.map(({ id, start, end }) => ({ id, start, end })),
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(({ id, start, end }) => ({ id, start, end })),
+    main: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(({ id, start, end }) => ({ id, start, end })),
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map(({ id, start, end }) => ({ id, start, end })),
   }))).toEqual({
     main: [
       { id: 'main-squeeze-1', start: 1000, end: 3000 },
@@ -3719,8 +3720,8 @@ test('keeps bound extensions synced when a main shared boundary is dragged indep
   }]);
 
   const readRanges = () => page.evaluate(() => ({
-    main: MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end]),
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => [segment.start, segment.end]),
+    main: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]),
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]),
   }));
   const dragHandleBy = async (selector, deltaMs) => {
     const handle = page.locator(selector);
@@ -3749,10 +3750,10 @@ test('keeps bound extensions synced when a main shared boundary is dragged indep
   });
 
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].end = 2000;
-    MaweBoot.DATA.segments[1].start = 2000;
-    MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end = 2000;
-    MaweBoot.DATA.multi_subtitle.tracks[0].segments[1].start = 2000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = 2000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start = 2000;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].end = 2000;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[1].start = 2000;
     MaweCuePanel.renderAll();
   });
 
@@ -3797,7 +3798,7 @@ test('snaps an extension cue to main-track boundaries when cross-track snapping 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"]').first();
   await expect(extensionBlock).toBeVisible();
   await expect(page.locator('#multi-subtitle-cross-track-snap')).toBeChecked();
-  const row = extensionBlock.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = extensionBlock.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const rowGeometry = await row.evaluate((element) => ({
     width: element.getBoundingClientRect().width,
     startMs: Number(element.dataset.startMs),
@@ -3909,7 +3910,7 @@ test('uses the split dialog for waveform main splitting when word timestamps are
   const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
   await expect(block).toBeVisible();
   const box = await waitForLayoutBox(block, '主字幕波形块没有布局');
-  const row = block.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = block.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const rowBox = await waitForLayoutBox(row, '主字幕波形行没有布局');
   const rowStart = Number(await row.getAttribute('data-start-ms'));
   const rowEnd = Number(await row.getAttribute('data-end-ms'));
@@ -3932,7 +3933,7 @@ test('uses the split dialog for waveform main splitting when word timestamps are
   await expect(page.locator('#multi-subtitle-split-preview')).toContainText(' / ');
   await page.locator('#multi-subtitle-split-confirm').click();
   await expect(page.locator('#cues-container > .cue')).toHaveCount(2);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(expectedCut);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBe(expectedCut);
   await page.keyboard.press('ControlOrMeta+z');
   await expect(page.locator('#cues-container > .cue')).toHaveCount(1);
 });
@@ -3966,7 +3967,7 @@ test('splits a timestamped main subtitle directly when automatic timecode splitt
   await page.mouse.click(box.x + box.width * 0.62, box.y + box.height / 2);
   await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
   await expect(page.locator('#cues-container > .cue')).toHaveCount(2);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(2500);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBe(2500);
 });
 
 test('uses the split dialog for SRT-style main subtitles without word timestamps', async ({ page }) => {
@@ -4033,7 +4034,7 @@ test('can split a hand-created subtitle while keeping the original text on both 
   await expect(page.locator('#multi-subtitle-split-duplicate')).toBeEnabled();
   await page.locator('#multi-subtitle-split-duplicate').click();
 
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => ({
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => ({
     start: segment.start,
     end: segment.end,
     text: segment.text,
@@ -4043,7 +4044,7 @@ test('can split a hand-created subtitle while keeping the original text on both 
     { start: 3000, end: 5000, text: 'AABBCC', items: null },
   ]);
   await page.keyboard.press('ControlOrMeta+z');
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => segment.text)))
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => segment.text)))
     .toEqual(['AABBCC']);
 });
 
@@ -4084,7 +4085,7 @@ test('keeps the waveform pointer as the absolute cut in a linked split dialog', 
   const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
   await expect(block).toBeVisible();
   const blockBox = await waitForLayoutBox(block, '联动拆分主字幕波形块没有布局');
-  const row = block.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
+  const row = block.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
   const rowBox = await waitForLayoutBox(row, '联动拆分波形行没有布局');
   const rowStart = Number(await row.getAttribute('data-start-ms'));
   const rowEnd = Number(await row.getAttribute('data-end-ms'));
@@ -4108,8 +4109,8 @@ test('keeps the waveform pointer as the absolute cut in a linked split dialog', 
     .toContainText('当前切分位置固定为波形指针位置');
   await page.locator('#multi-subtitle-split-confirm').click();
   await expect(page.locator('.multi-dual-cue')).toHaveCount(2);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(expectedCut);
-  expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end)).toBe(expectedCut);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBe(expectedCut);
+  expect(await page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].end)).toBe(expectedCut);
 });
 
 test('labels a linked split time inferred from main word timestamps', async ({ page }) => {
@@ -4227,8 +4228,8 @@ test('Z/X adjust one main or extension cue at the pointer and ignore multi-selec
   }]);
 
   const readRanges = () => page.evaluate(() => ({
-    main: MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end]),
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map((segment) => [segment.start, segment.end]),
+    main: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]),
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]),
   }));
   const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
   const secondMainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]');
@@ -4579,7 +4580,7 @@ test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap
   // 开启多重字幕（不重载工程，直接翻转状态）：副字幕恢复导出，
   // 去空隙 ASS 与常规 ASS 同一三轨契约（3200-3700 → 2200-2700）。
   const enabled = await page.evaluate(() => {
-    MaweMultiSubtitleCore.getMultiSubtitleState().enabled = true;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = true;
     return { ass: MaweExportSrt.buildAss(), gapRemoved: MaweExportSrt.buildGapRemovedAss() };
   });
   const enabledLines = enabled.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));

@@ -32,12 +32,7 @@ export function initMaweHistory() {
   function snapshotSegments() {
   // 会话高亮可随快照保留，但不参与保存检查点；多字幕数据与主轨
   // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
-  return window.AsrEditorUtils.buildSegmentsHistorySnapshot(
-    MaweBoot.DATA.segments,
-    MaweMultiSubtitleCore.getMultiSubtitleState(),
-    getOverlayTrack(),
-    MaweBoot.DATA.subtitle_groups,
-  );
+  return window.AsrEditorUtils.buildSegmentsHistorySnapshot(MaweBoot.DATA);
 }
 
 
@@ -47,7 +42,7 @@ export function initMaweHistory() {
     ? MaweMultiSubtitleCore.getExtensionTrack(MaweCuePanelState.currentCuePanelTrackId) : null;
   return {
     mainIds: [...MaweSelection.selectedIdxs]
-      .map((index) => MaweBoot.DATA.segments[index]?.id)
+      .map((index) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.id)
       .filter(Boolean),
     extensionTrackId: extensionTrack?.id || null,
     extensionIds: extensionTrack
@@ -62,8 +57,8 @@ export function initMaweHistory() {
       ? panelTrack?.segments?.[MaweCuePanelState.currentCuePanelIdx]?.id || null
       : MaweCuePanelState.currentCuePanelKind === 'overlay'
       ? getOverlayTrack()?.segments?.[MaweCuePanelState.currentCuePanelIdx]?.id || null
-      : MaweBoot.DATA.segments[MaweCuePanelState.currentCuePanelIdx]?.id || null,
-    lastMainId: MaweBoot.DATA.segments[MaweSelection.lastClickedIdx]?.id || null,
+      : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[MaweCuePanelState.currentCuePanelIdx]?.id || null,
+    lastMainId: window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[MaweSelection.lastClickedIdx]?.id || null,
     lastExtensionId: extensionTrack?.segments?.[MaweSelection.lastClickedExtensionIdx]?.id || null,
     lastOverlayId: getOverlayTrack()?.segments?.[MaweState.selection.overlayAnchor]?.id || null,
   };
@@ -184,7 +179,7 @@ export function initMaweHistory() {
   MaweState.selection.clear('extension');
   MaweState.selection.clear('overlay');
   const mainIds = new Set(snapshot.mainIds || []);
-  MaweBoot.DATA.segments.forEach((segment, index) => {
+  window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((segment, index) => {
     if (mainIds.has(segment?.id)) MaweState.selection.add('main', index);
   });
   const extensionTrack = MaweMultiSubtitleCore.getExtensionTrack(snapshot.extensionTrackId) || MaweMultiSubtitleCore.getActiveExtensionTrack();
@@ -199,7 +194,7 @@ export function initMaweHistory() {
     if (overlayIds.has(segment?.id)) MaweState.selection.add('overlay', index);
   });
   MaweSelection.lastClickedIdx = snapshot.lastMainId
-    ? MaweBoot.DATA.segments.findIndex((segment) => segment?.id === snapshot.lastMainId) : -1;
+    ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === snapshot.lastMainId) : -1;
   MaweSelection.lastClickedExtensionIdx = extensionTrack && snapshot.lastExtensionId
     ? extensionTrack.segments.findIndex((segment) => segment?.id === snapshot.lastExtensionId) : -1;
   MaweState.selection.overlayAnchor = snapshot.lastOverlayId != null
@@ -224,7 +219,7 @@ export function initMaweHistory() {
   } else if (snapshot.panelKind === 'main' && snapshot.panelId) {
     MaweCuePanelState.currentCuePanelKind = 'main';
     MaweCuePanelState.currentCuePanelTrackId = null;
-    MaweCuePanelState.currentCuePanelIdx = MaweBoot.DATA.segments.findIndex((segment) => segment?.id === snapshot.panelId);
+    MaweCuePanelState.currentCuePanelIdx = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === snapshot.panelId);
   }
   if (MaweCuePanelState.currentCuePanelIdx < 0) {
     MaweCuePanelState.currentCuePanelKind = 'main';
@@ -274,24 +269,12 @@ export function initMaweHistory() {
     applyPreviewState(record.preview);
     return true;
   }
-  const snapshot = record.segs && Array.isArray(record.segs.segments)
-    ? record.segs
-    : {
-      segments: record.segs,
-      multi_subtitle: MaweBoot.DATA.multi_subtitle,
-      overlay_track: MaweBoot.DATA.overlay_track,
-    };
-  // 视口属于本次撤销动作，不随历史快照恢复。
+  const snapshot = record.segs;
   const cueListAnchor = MaweCueListAnchor.captureCueListRenderAnchor();
   const previousWaveformStructure = MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
   MaweState.rememberSessionHighlights();
-  MaweBoot.DATA.subtitle_groups = snapshot.subtitle_groups || null;
-  MaweBoot.DATA.segments.length = 0;
-  (snapshot.segments || []).forEach(s => MaweBoot.DATA.segments.push(s));
-  MaweBoot.DATA.multi_subtitle = snapshot.multi_subtitle || {
-    schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
-  };
-  MaweBoot.DATA.overlay_track = window.AsrEditorUtils.normalizeOverlayTrack(snapshot.overlay_track);
+  window.AsrEditorUtils.restoreSegmentsHistorySnapshot(MaweBoot.DATA, snapshot);
+  MaweState.restoreSessionHighlights();
   if (record.projectChanges) Object.assign(MaweState.changes, record.projectChanges);
   MaweMultiSubtitleCore.normalizeMultiSubtitleState();
   MaweState.restoreSessionHighlights();

@@ -11,6 +11,7 @@ from maw.postprocess_comparison import comparison_data, render_comparison
 from maw.postprocess_io import render_srt
 from maw.postprocess_llm import LlmClientError
 from maw.postprocess_pipeline import normalize_plan
+from maw.project_tracks import get_main_track
 from tests.compact_assertions import CompactContainerAssertions
 from tests.test_postprocess_ai_cleanup import AiCleanupTestCase, _project, _segment, _write_project
 
@@ -22,7 +23,7 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
             "[c001] ~~我也可以只我也可以只显示图片~~ %删除：旧版%\n[c002] 但是不说话\n"
             "[c003] 我也可以只显示图片\n[c004] ~~但是不说话~~ %删除：重复%",
         )
-        self.assertEqual([bool(segment.get("disabled")) for segment in project["segments"]], [True, True, False, False])
+        self.assertEqual([bool(segment.get("disabled")) for segment in get_main_track(project)["segments"]], [True, True, False, False])
         self.assertEqual(artifact.stats["removed"], 2)
         self.assertEqual(artifact.stats["pendingReview"], 0)
 
@@ -31,8 +32,8 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
             ["演示这个功能", "但是不能导出", "演示这个功能", "但是不能预览"],
             "[c001] ~~演示这个功能~~\n[c002] 但是不能导出\n[c003] 演示这个功能\n[c004] 但是不能预览",
         )
-        self.assertFalse(project["segments"][1].get("disabled"))
-        self.assertFalse(project["segments"][3].get("disabled"))
+        self.assertFalse(get_main_track(project)["segments"][1].get("disabled"))
+        self.assertFalse(get_main_track(project)["segments"][3].get("disabled"))
 
     def test_literal_restart_with_only_keeps_one_complete_qualified_expression(self):
         artifact, _project, _ = self.execute(["我也可以只我也可以只显示图片"], "[c001] ~~我也可以只~~我也可以只显示图片 %删除：重复起头%")
@@ -48,8 +49,8 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
             "[c002] ~~但是不说话~~ %删除：旧版收尾%\n"
             "[c003] 我也可以只显示图片\n[c004] 但是不说话",
         )
-        self.assertEqual([bool(segment.get("disabled")) for segment in project["segments"]], [True, True, False, False])
-        self.assertEqual([segment["text"] for segment in cleaned_srt_segments(project, project["segments"]) if not segment.get("disabled")], ["我也可以只显示图片", "但是不说话"])
+        self.assertEqual([bool(segment.get("disabled")) for segment in get_main_track(project)["segments"]], [True, True, False, False])
+        self.assertEqual([segment["text"] for segment in cleaned_srt_segments(project, get_main_track(project)["segments"]) if not segment.get("disabled")], ["我也可以只显示图片", "但是不说话"])
         self.assertNotIn("我也可以只我也可以只", artifact.srt_path.read_text(encoding="utf-8-sig"))
 
     def execute(self, texts, draft, *, scan=None, reviews=(), comparison=False):
@@ -70,13 +71,13 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
     def test_partial_deletion_is_gap_and_pending_note_is_region(self):
         artifact, project, calls = self.execute(["我可以我可以显示画面", "接着演示"], "[c001] ~~我可以~~我可以显示画面\n[c002] 接着演示 %待确认：原声需核实%", comparison=True)
         self.assertEqual(len(calls), 3)
-        self.assertEqual(project["segments"][0]["text"], "我可以我可以显示画面")
-        self.assertEqual(len(project["segments"][0]["items"]), 10)
+        self.assertEqual(get_main_track(project)["segments"][0]["text"], "我可以我可以显示画面")
+        self.assertEqual(len(get_main_track(project)["segments"][0]["items"]), 10)
         self.assertEqual(artifact.stats["removedItems"], 3)
         ai_range = project["gap_remove"]["provenance"]["sources"]["ai_cleanup"][0]
         self.assertEqual((ai_range["start"], ai_range["end"]), (0, 600))
         self.assertEqual(ai_range["cleanup_scope"], {
-            "segment_id": project["segments"][0]["id"],
+            "segment_id": get_main_track(project)["segments"][0]["id"],
             "item_start": 0, "item_end": 3, "text": "我可以",
         })
         self.assertIn("我可以显示画面", artifact.srt_path.read_text(encoding="utf-8-sig"))
@@ -89,7 +90,7 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
 
     def test_markdown_cut_scope_cannot_remove_words_from_an_overlapping_cue(self):
         _, project, _ = self.execute(["这个这个方法"], "[c001] ~~这个~~这个方法")
-        source = project["segments"][0]
+        source = get_main_track(project)["segments"][0]
         other = {**source, "id": "overlapping-other"}
         self.assertEqual(cleaned_srt_segments(project, [source, other])[1]["text"], source["text"])
         project["gap_remove"]["provenance"]["sources"]["ai_cleanup"][0]["cleanup_scope"]["text"] = "旧文本"
@@ -97,13 +98,13 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
 
     def test_missed_scan_can_cut_even_if_first_pass_has_no_deletion(self):
         artifact, project, _ = self.execute(["演示这个功能", "演示这个功能"], "[c001] 演示这个功能\n[c002] 演示这个功能", scan="[c001] ~~演示这个功能~~ %删除：重复旧版%\n[c002] 演示这个功能")
-        self.assertTrue(project["segments"][0]["disabled"])
-        self.assertFalse(project["segments"][1].get("disabled"))
+        self.assertTrue(get_main_track(project)["segments"][0]["disabled"])
+        self.assertFalse(get_main_track(project)["segments"][1].get("disabled"))
         self.assertEqual(artifact.stats["removed"], 1)
 
     def test_multicue_retained_expression_covers_earlier_take(self):
         _, project, _ = self.execute(["介绍这个功能", "介绍这个", "功能"], "[c001] ~~介绍这个功能~~\n[c002] 介绍这个\n[c003] 功能")
-        self.assertTrue(project["segments"][0]["disabled"])
+        self.assertTrue(get_main_track(project)["segments"][0]["disabled"])
 
     def test_unique_negation_is_restored_with_review(self):
         artifact, project, _ = self.execute(["这不能公开"], "[c001] 这~~不~~能公开")
@@ -182,7 +183,7 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
                 self.assertEqual(review["decisions"][0]["reason"], "人工核查")
         literal = "~~原文格式~~"
         artifact, project, calls = self.execute([literal], "[c001] " + escape_source_text(literal))
-        self.assertEqual(project["segments"][0]["text"], literal)
+        self.assertEqual(get_main_track(project)["segments"][0]["text"], literal)
         self.assertEqual(calls[0][1][0]["sourceLine"], draft_line("c001", literal))
         self.assertIn(literal, artifact.srt_path.read_text(encoding="utf-8-sig"))
 
@@ -228,7 +229,7 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
         second = run_ai_cleanup(AiCleanupRequest(project_path=first.project_path, srt_path=None, script_path=None, output_mode=OutputMode.BOTH, output_directory=self.directory, generate_comparison=True), complete=complete)
         project = json.loads(second.project_path.read_text(encoding="utf-8"))
         self.assertEqual(seen[0][0]["asrText"], "这个方法方法")
-        self.assertEqual(project["segments"][0], before["segments"][0])
+        self.assertEqual(get_main_track(project)["segments"][0], get_main_track(before)["segments"][0])
         self.assertIn("这个方法", second.srt_path.read_text(encoding="utf-8-sig"))
         self.assertEqual(len(project["gap_remove"]["provenance"]["sources"]["ai_cleanup"]), 2)
         data = comparison_data(before, project, "ai_cleanup")

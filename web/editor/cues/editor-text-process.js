@@ -89,7 +89,7 @@
 
 
   function textProcessAllTargets() {
-    return MaweBoot.DATA.segments.map((_, index) => ({ kind: 'main', index }));
+    return window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((_, index) => ({ kind: 'main', index }));
   }
 
 
@@ -97,7 +97,7 @@
   function textProcessTargetSegments(target) {
     return target?.kind === 'extension'
       ? MaweMultiSubtitleCore.getExtensionTrack(target.trackId)?.segments || []
-      : MaweBoot.DATA.segments;
+      : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   }
 
 
@@ -152,7 +152,7 @@
     const selected = textProcessScope && textProcessScope.length;
     textProcessScopeInfo.textContent = selected
       ? `当前范围：仅选中的 ${textProcessScope.length} 条字幕`
-      : `当前范围：全部 ${MaweBoot.DATA.segments.length} 条字幕`;
+      : `当前范围：全部 ${window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length} 条字幕`;
     textProcessScopeInfo.classList.toggle('selected', Boolean(selected));
   }
 
@@ -272,13 +272,13 @@
   function applyWrapChars(scope, left, right, label = '左右添加字符', { warnWordTimings = true } = {}) {
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     const indexes = [...new Set((Array.isArray(scope) ? scope : [])
-      .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length))]
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length))]
       .sort((a, b) => a - b);
     if (!indexes.length) return;
     const { wrapCharsAroundText } = window.AsrEditorUtils;
     const previews = indexes.map((index) => ({
       index,
-      ...wrapCharsAroundText(MaweBoot.DATA.segments[index]?.text, left, right,
+      ...wrapCharsAroundText(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.text, left, right,
         MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule),
     }));
     const skipped = previews.filter((row) => row.skipped).length;
@@ -290,7 +290,7 @@
       let changed = 0, staleWordTimings = 0;
       previews.forEach((row) => {
         if (!row.changed) return;
-        const segment = MaweBoot.DATA.segments[row.index];
+        const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[row.index];
         const previousText = segment.text;
         segment.text = row.text;
         segment._dirty = true;
@@ -313,7 +313,7 @@
   function openWrapCharsModal(scope) {
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     wrapCharsScope = (Array.isArray(scope) ? scope : [...MaweSelection.selectedIdxs])
-      .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length);
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length);
     if (!wrapCharsScope.length) {
       MaweHint.flashHint('请先选择要处理的字幕', 'invalid');
       return;
@@ -340,7 +340,7 @@
     textProcessPreviewExpanded = false;
     textProcessPreviewOpenRows.clear();
     textProcessPreview.replaceChildren();
-    if (!MaweBoot.DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
+    if (!window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
       MaweHint.flashHint('当前没有可处理的字幕', 'invalid');
       return;
     }

@@ -29,6 +29,7 @@ from pathlib import Path
 
 import requests
 
+from maw.project_tracks import make_project
 from maw.editor_entry_policy import should_generate_standalone_editor
 from maw.stickers import get_default_sticker_dir
 from maw.asr.common import (
@@ -54,7 +55,7 @@ from maw.asr.segmentation import (
 from maw.app_paths import default_env_path
 from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
-from maw.speaker import apply_speaker_colors
+from maw.speaker import speaker_color_summary, apply_project_speaker_colors
 from maw.console import configure_utf8_stdio
 from maw.energy_valley import snap_cue_boundaries
 from maw.ffmpeg import resolve_ffmpeg_tools
@@ -1503,7 +1504,7 @@ def main():
         speakers = sorted({str(seg["speaker"]) for seg in segments if seg.get("speaker") is not None})
         print(f"[speaker] 识别到 {len(speakers)} 个说话人: {', '.join(speakers)}")
         if args.speaker_colors:
-            stats = apply_speaker_colors(segments)
+            stats = speaker_color_summary(segments)
             print(f"[speaker] 已为 {stats['colored_segments']} 条字幕写入颜色快照")
             if stats["overflow"]:
                 print("[警告] 说话人超过 5 个，颜色已循环复用，请在编辑器中手动调整")
@@ -1596,40 +1597,30 @@ def main():
 
     if args.json_out:
         json_path = output_path.with_suffix(".mosp")
-        json_data = {
-            "media": str(input_path),
-            "language": normalize_language_code(result.get("language")),
-            "language_source": result.get("language_source", "unknown"),
-            "split_mode": result.get("split_mode") or split_mode_for_text(
-                str(result.get("text") or ""),
-                result.get("language"),
-            ),
-            "timestamp_granularity": result.get("timestamp_granularity") or (
-                timestamp_granularity_for_items(
-                    result.get("items") or [],
-                    result.get("split_mode") or "word",
-                    has_segments=bool(segments),
-                )
-            ),
-            "model": (
-                args.model if is_funasr_model(args.model)
-                else "qwen-audio-3.1-asr-api" if is_qwen_audio_31_model(args.model)
-                else "qwen-audio-asr-api" if is_qwen_audio_model(args.model)
-                else "qwen3-asr-api"
-            ),
-            "segments": [
+        json_data = make_project(
+            [
                 {
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": seg["text"],
                     **({"items": seg["items"]} if "items" in seg else {}),
                     **({"speaker": seg["speaker"]} if seg.get("speaker") is not None else {}),
-                    **({"color": seg["color"]} if seg.get("color") else {}),
-                    **({"color_ref": seg["color_ref"]} if seg.get("color_ref") else {}),
                 }
                 for seg in segments
             ],
-        }
+            main_fields={
+                'language': normalize_language_code(result.get('language')),
+                'language_source': result.get('language_source', 'unknown'),
+                'split_mode': result.get('split_mode') or split_mode_for_text(str(result.get('text') or ''), result.get('language')),
+                'timestamp_granularity': result.get('timestamp_granularity') or timestamp_granularity_for_items(result.get('items') or [], result.get('split_mode') or 'word', has_segments=bool(segments)),
+                'model': args.model if is_funasr_model(args.model) else 'qwen-audio-3.1-asr-api' if is_qwen_audio_31_model(args.model) else 'qwen-audio-asr-api' if is_qwen_audio_model(args.model) else 'qwen3-asr-api',
+            },
+            project_fields={
+                'media': str(input_path),
+            },
+        )
+        if args.speaker_colors:
+            apply_project_speaker_colors(json_data)
         if cache_result is not None:
             json_data = merge_media_caches(json_data, cache_result)
         print("[输出] 正在写入工程文件...")

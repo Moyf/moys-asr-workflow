@@ -89,14 +89,14 @@ test('undoing a waveform-created subtitle keeps redo available', async ({ page }
   expect(box).not.toBeNull();
   await page.mouse.click(box.x + box.width * 0.9, box.y + 20, { button: 'right' });
   await page.locator('#ctxmenu .item', { hasText: '创建字幕' }).click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(7);
 
   await page.getByRole('button', { name: /撤销/ }).click();
 
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(6);
   await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
   await page.getByRole('button', { name: /重做/ }).click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(7);
 });
 
 test('blank waveform context menu disables subtitle creation over an existing cue', async ({ page }) => {
@@ -109,7 +109,7 @@ test('blank waveform context menu disables subtitle creation over an existing cu
   await page.mouse.click(box.x + box.width * 0.4, box.y + 20, { button: 'right' });
   const createItem = page.locator('#ctxmenu .item', { hasText: '创建字幕' });
   await expect(createItem).toHaveClass(/disabled/);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(6);
 });
 
 test('gap click does not show drag styling until the pointer moves', async ({ page }) => {
@@ -376,13 +376,13 @@ test('gap settings expose compact actions and screenshot defaults', async ({ pag
 test('disables subtitles by removed-gap coverage and remaining duration thresholds', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments.length = 0;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length = 0;
     [
       { id: 'full-gap', start: 1000, end: 2000, text: '完全在空隙内' },
       { id: 'partial', start: 0, end: 2000, text: '覆盖一半' },
       { id: 'near-gap', start: 800, end: 2000, text: '覆盖率和剩余时长都满足' },
       { id: 'outside', start: 3000, end: 4000, text: '不在空隙内' },
-    ].forEach((segment) => MaweBoot.DATA.segments.push(segment));
+    ].forEach((segment) => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.push(segment));
     MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
@@ -413,13 +413,13 @@ test('disables subtitles by removed-gap coverage and remaining duration threshol
   await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 2 条未禁用）');
 
   await page.locator('#gap-remove-disable-button').click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => Boolean(segment.disabled))))
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => Boolean(segment.disabled))))
     .toEqual([true, false, true, false]);
   await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 0 条未禁用）');
   await expect(page.locator('#hint-stack')).toContainText('已禁用 2 条静音空隙内的字幕');
 
   await page.locator('#undo-btn').click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => Boolean(segment.disabled))))
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => Boolean(segment.disabled))))
     .toEqual([false, false, false, false]);
   await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 2 条未禁用）');
 
@@ -429,7 +429,7 @@ test('disables subtitles by removed-gap coverage and remaining duration threshol
   await page.locator('#gap-remove-disable-remaining').press('Tab');
   await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 3 条未禁用）');
   await page.locator('#gap-remove-disable-button').click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => Boolean(segment.disabled))))
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => Boolean(segment.disabled))))
     .toEqual([true, true, true, false]);
   await expect.poll(() => page.evaluate(() => ({
     coverage: MaweBoot.DATA.gap_remove.disable_coverage_percent,
@@ -492,7 +492,7 @@ test('N creates a subtitle at the waveform pointer and focuses the new cue', asy
   await page.goto(server.url);
   await page.locator('.player-stage').hover();
   await page.keyboard.press('n');
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(6);
 
   const row = page.locator('.waveform-row').first();
   await expect(row).toBeVisible();
@@ -502,13 +502,13 @@ test('N creates a subtitle at the waveform pointer and focuses the new cue', asy
   await page.mouse.move(pointer.x, pointer.y);
   await page.keyboard.press('n');
 
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(7);
   await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
   await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(1);
   await expect(page.locator('#cue-panel-text')).toHaveValue('');
   await expect(page.locator('#cue-panel-text')).toBeFocused();
   await expect(page.locator('.cue[data-idx="1"] .text')).not.toHaveAttribute('contenteditable', 'plaintext-only');
-  const created = await page.evaluate(() => MaweBoot.DATA.segments[1]);
+  const created = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1]);
   expect(created.start).toBeGreaterThanOrEqual(8000);
   expect(created.end - created.start).toBe(1000);
 });
@@ -546,12 +546,12 @@ test('Ctrl+dragging blank waveform creates the dragged duration and focuses the 
   await page.mouse.up();
   await page.keyboard.up('ControlOrMeta');
 
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(7);
   await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
   await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(1);
   await expect(page.locator('#cue-panel-text')).toBeFocused();
   await expect(page.locator('.cue[data-idx="1"] .text')).not.toHaveAttribute('contenteditable', 'plaintext-only');
-  const created = await page.evaluate(() => MaweBoot.DATA.segments[1]);
+  const created = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1]);
   const expectedDuration = Math.round((((endX - startX) / box.width) * 10000) / 10) * 10;
   expect(Math.abs((created.end - created.start) - expectedDuration)).toBeLessThanOrEqual(10);
 });
@@ -575,7 +575,7 @@ test('Ctrl+dragging a too-short range shows a warning toast', async ({ page }) =
   await page.mouse.up();
   await page.keyboard.up('ControlOrMeta');
 
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(6);
   const warning = page.locator('#hint-stack .hint-card.hint-warning', {
     hasText: '该空白区域不足 100ms，无法新增字幕',
   });
@@ -597,7 +597,7 @@ test('Ctrl+dragging an existing cue is rejected without a preview', async ({ pag
   await page.mouse.up();
   await page.keyboard.up('ControlOrMeta');
 
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(6);
   await expect(page.locator('#hint-stack .hint-card.hint-warning', {
     hasText: '该位置已有字幕，无法新增字幕',
   })).toBeVisible();
@@ -629,8 +629,8 @@ test('Ctrl+dragging from blank space stops at an existing cue boundary', async (
   await expect(preview).toBeVisible();
   await page.mouse.up();
   await page.keyboard.up('ControlOrMeta');
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
-  const created = await page.evaluate(() => MaweBoot.DATA.segments[1]);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(7);
+  const created = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1]);
   expect(created.start).toBe(8000);
   expect(created.end).toBe(9000);
 });
@@ -647,20 +647,20 @@ test('waveform background split supports undo and redo', async ({ page }) => {
   const splitItem = page.locator('#ctxmenu .item', { hasText: '按音频位置拆分' });
   await expect(splitItem).toBeEnabled();
   await splitItem.click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => segment.text))).toEqual([
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2).map((segment) => segment.text))).toEqual([
     'Alpha',
     'Bravo',
   ]);
 
   await page.getByRole('button', { name: /撤销/ }).click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('Alpha Bravo');
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('Alpha Bravo');
   await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
 
   await page.getByRole('button', { name: /重做/ }).click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => segment.text))).toEqual([
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2).map((segment) => segment.text))).toEqual([
     'Alpha',
     'Bravo',
   ]);
@@ -682,7 +682,7 @@ test('manual text split keeps malformed item timing inside both cues and restore
     ],
   };
   await page.evaluate((segment) => {
-    MaweBoot.DATA.segments[0] = segment;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0] = segment;
     MaweCuePanel.renderAll({ waveform: 'full' });
   }, original);
 
@@ -703,7 +703,7 @@ test('manual text split keeps malformed item timing inside both cues and restore
   await expect(page.locator('.cue[data-idx="1"]')).toHaveCount(1);
 
   const splitState = await page.evaluate(() => ({
-    segments: MaweBoot.DATA.segments.slice(0, 2).map((segment) => ({
+    segments: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2).map((segment) => ({
       start: segment.start,
       end: segment.end,
       text: segment.text,
@@ -732,14 +732,14 @@ test('manual text split keeps malformed item timing inside both cues and restore
 
   await page.getByRole('button', { name: /撤销/ }).click();
   await expect.poll(() => page.evaluate(() => JSON.stringify(
-    MaweBoot.DATA.segments[0],
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0],
     (key, value) => (key === 'start_frame' || key === 'end_frame' ? undefined : value),
   ))).toBe(JSON.stringify(original));
   await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
 
   await page.getByRole('button', { name: /重做/ }).click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
-  const redone = await page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => ({
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(7);
+  const redone = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2).map((segment) => ({
     start: segment.start,
     end: segment.end,
     items: segment.items,
@@ -758,7 +758,7 @@ test('manual text split keeps malformed item timing inside both cues and restore
     response.url().endsWith('/api/project') && response.request().method() === 'POST'
   ));
   await page.evaluate((segments) => {
-    MaweBoot.DATA.segments = segments.map((segment) => JSON.parse(JSON.stringify(segment)));
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = segments.map((segment) => JSON.parse(JSON.stringify(segment)));
     MaweCuePanel.renderAll();
   }, testSegments());
   await page.keyboard.press('ControlOrMeta+s');
@@ -857,7 +857,7 @@ test('C merge keeps the subtitle list at its current position', async ({ page })
       text: `Cue ${index + 1}`,
       items: [],
     }));
-    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...segments);
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(0, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length, ...segments);
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
@@ -931,7 +931,7 @@ test('B splits the selected subtitle under the cue-list pointer and supports und
 test('retries an inline split with B or Enter and clamps both halves to 100ms', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    const segment = MaweBoot.DATA.segments[0];
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
     segment.text = 'Alpha Bravo';
     segment.items = [
       { start: segment.start, end: segment.start + 50, text: 'Alpha' },
@@ -969,7 +969,7 @@ test('retries an inline split with B or Enter and clamps both halves to 100ms', 
   // B/Enter is accepted only for this armed retry while the inline editor is open.
   await page.keyboard.press('Enter');
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
-  const splitTiming = await page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => ({
+  const splitTiming = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2).map((segment) => ({
     text: segment.text,
     duration: segment.end - segment.start,
   })));
@@ -985,7 +985,7 @@ test('retries an inline split with B or Enter and clamps both halves to 100ms', 
   await expect(page.locator('.cue[data-idx="0"]')).toHaveClass(/selected/);
   await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(0);
   await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText('Alpha Bravo');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].end - MaweBoot.DATA.segments[0].start)).toBe(8000);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end - AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start)).toBe(8000);
 });
 
 test('long-only filtering temporarily keeps split results visible until focus leaves', async ({ page }) => {
@@ -1059,7 +1059,7 @@ test('waveform navigation keeps a cue row in the comfort zone', async ({ page })
   await page.locator('.cue[data-idx="1"]').click();
   const before = await page.evaluate(() => {
     const scroll = document.getElementById('waveform-scroll');
-    const rowIndex = Math.floor(MaweBoot.DATA.segments[2].start / (20 * 1000));
+    const rowIndex = Math.floor(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[2].start / (20 * 1000));
     const stride = 64 + 10;
     const comfortInset = Math.min(120, Math.max(48, scroll.clientHeight * 0.2));
     scroll.scrollTop = Math.max(0, rowIndex * stride - comfortInset - 8);
@@ -1280,25 +1280,36 @@ test('Home and End follow the main cue-list owner without seeking media', async 
 test('Home and End keep extension cue-list navigation on the exact track', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    MaweBoot.DATA.multi_subtitle = {
-      schema: 'moy.asr.multi_subtitle.v1',
-      enabled: true,
-      display_mode: 'both',
-      tracks: [{
-        id: 'extension-home-end',
-        role: 'extension',
-        name: 'English',
-        language: 'English',
-        split_mode: 'word',
-        segments: MaweBoot.DATA.segments.slice(0, 3).map((segment, index) => ({
-          id: `extension-home-end-${index}`,
-          start: segment.start,
-          end: segment.end,
-          text: `Extension ${index + 1}`,
-        })),
-      }],
-      bindings: [],
-    };
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: {
+          schema: 'moy.asr.multi_subtitle.v1',
+          enabled: true,
+          display_mode: 'both',
+          tracks: [{
+            id: 'extension-home-end',
+            role: 'extension',
+            name: 'English',
+            language: 'English',
+            split_mode: 'word',
+            segments: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 3).map((segment, index) => ({
+              id: `extension-home-end-${index}`,
+              start: segment.start,
+              end: segment.end,
+              text: `Extension ${index + 1}`,
+            })),
+          }],
+          bindings: [],
+        },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
+    }
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
   const extensionCue = page.locator(
@@ -1384,7 +1395,7 @@ test('requires a second B in the split dialog before forcing a short-side cut', 
   });
   await page.goto(server.url);
   await page.evaluate(() => {
-    const segment = MaweBoot.DATA.segments[0];
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
     segment.text = 'Alpha Bravo';
     segment.items = [
       { start: segment.start, end: segment.start + 50, text: 'Alpha' },
@@ -1416,7 +1427,7 @@ test('requires a second B in the split dialog before forcing a short-side cut', 
 
   await page.keyboard.press('b');
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => [
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2).map((segment) => [
     segment.text,
     segment.end - segment.start,
   ]))).toEqual([
@@ -1866,7 +1877,7 @@ test('extends selected subtitles without remapping items and undoes the batch in
   await expect(page.locator('.cue.selected')).toHaveCount(2);
 
   const before = await page.evaluate(() => JSON.parse(JSON.stringify({
-    segments: MaweBoot.DATA.segments.slice(0, 2),
+    segments: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2),
   })));
   await page.locator('#subtitle-extend-manage').click();
   await expect(page.locator('#subtitle-extend-panel')).toHaveClass(/show/);
@@ -1878,13 +1889,13 @@ test('extends selected subtitles without remapping items and undoes the batch in
   await expect(page.locator('#hint-stack .hint-card.hint-invalid', {
     hasText: '向前延长时长必须是大于等于 0 的数字',
   })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2))).toEqual(before.segments);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2))).toEqual(before.segments);
 
   // 产品语义：「向前延长」作用于起点侧（不越过前一条/时间轴 0），「向后延长」作用于终点侧。
   // forward=250 时 seg0 起点已在 0 只能由向后 60ms 补终点；seg1 起点前移 250、终点后延 60。
   await page.locator('#subtitle-extend-forward-ms').fill('250');
   await page.locator('#subtitle-extend-run').click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => ({
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2).map((segment) => ({
     start: segment.start,
     end: segment.end,
     items: segment.items,
@@ -1897,7 +1908,7 @@ test('extends selected subtitles without remapping items and undoes the batch in
   })).toBeVisible();
 
   await page.getByRole('button', { name: /撤销/ }).click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2))).toEqual(before.segments);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2))).toEqual(before.segments);
 });
 
 test('C merges a common group and Shift+A/D extends the subtitle selection', async ({ page }) => {
@@ -1924,22 +1935,9 @@ test('C merges a common group and Shift+A/D extends the subtitle selection', asy
   await page.reload();
   await expect(cues).toHaveCount(6);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].color = {
-      name: 'red',
-      value: '#e74c3c',
-      start: MaweBoot.DATA.segments[0].start,
-      end: MaweBoot.DATA.segments[2].end,
-    };
-    MaweBoot.DATA.segments[0].sticker = {
-      name: 'reaction',
-      path: 'reaction.png',
-      start: MaweBoot.DATA.segments[0].start,
-      end: MaweBoot.DATA.segments[2].end,
-    };
-    for (const index of [1, 2]) {
-      MaweBoot.DATA.segments[index].color_ref = { name: 'red', headIdx: 0 };
-      MaweBoot.DATA.segments[index].sticker_ref = { name: 'reaction', headIdx: 0 };
-    }
+    const segments = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, segments, [0, 1, 2], 'color', { name: 'red', value: '#e74c3c' });
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, segments, [0, 1, 2], 'sticker', { name: 'reaction', path: 'reaction.png' });
     MaweCuePanel.renderAll();
   });
 
@@ -1952,12 +1950,11 @@ test('C merges a common group and Shift+A/D extends the subtitle selection', asy
 
   await expect(cues).toHaveCount(5);
   await expect(cues.nth(1).locator('.text')).toHaveText('Bravo Charlie');
-  await expect.poll(() => page.evaluate(() => ({
-    colorRef: MaweBoot.DATA.segments[1].color_ref,
-    stickerRef: MaweBoot.DATA.segments[1].sticker_ref,
-    colorEnd: MaweBoot.DATA.segments[0].color.end,
-    stickerEnd: MaweBoot.DATA.segments[0].sticker.end,
-  }))).toEqual({
+  await expect.poll(() => page.evaluate(() => {
+    const segments = AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).id);
+    return { colorRef: segments[1].color_ref, stickerRef: segments[1].sticker_ref,
+      colorEnd: segments[0].color.end, stickerEnd: segments[0].sticker.end };
+  })).toEqual({
     colorRef: { name: 'red', headIdx: 0 },
     stickerRef: { name: 'reaction', headIdx: 0 },
     colorEnd: 108000,
@@ -2002,9 +1999,9 @@ test('colored subtitles export per-color SRT files including the uncolored defau
   for (const lang of ['zh', 'en']) {
     await page.goto(`${server.url}?lang=${lang}`);
     await page.evaluate(() => {
-      MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
-      MaweBoot.DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
-      MaweBoot.DATA.segments[2].color = { name: 'blue', value: '#168cff', start: 100000, end: 108000 };
+      AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+        [0, 1], 'color', { name: 'red', value: '#e74c3c' });
+      AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [2], 'color', { name: 'blue', value: '#168cff' });
       MaweCuePanel.renderAll();
       window.showSaveFilePicker = undefined;
     });
@@ -2047,8 +2044,8 @@ test('subtitle export keeps a stable menu and hides colors without enabled color
   await expect(page.locator('#subtitle-export-separator')).toBeHidden();
 
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 8000 };
-    MaweBoot.DATA.segments[0].disabled = true;
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0], 'color', { name: 'red', value: '#e74c3c' });
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].disabled = true;
     MaweCuePanel.renderAll();
   });
   await expect(page.locator('#subtitle-export-dropdown')).toBeVisible();
@@ -2141,19 +2138,38 @@ test('nested export menus keep the current submenu while the pointer crosses its
   await expect(page.locator('#extra-dynamic-menu')).toBeVisible();
 });
 
+const legacyStickerSegments = [
+  { start: 1000, end: 2000, text: 'one', sticker: { name: 'reaction', path: 'reaction.png' } },
+  { start: 3000, end: 4000, text: 'two', sticker_ref: { name: 'reaction', headIdx: 0 } },
+  { start: 5000, end: 6000, text: 'disabled', disabled: true, sticker_ref: { name: 'reaction', headIdx: 0 } },
+  { start: 7000, end: 8000, text: 'dangling', sticker_ref: { name: 'missing', headIdx: 99 } },
+];
+
+test('legacy dangling sticker references are rejected before entering the runtime project', async ({ page }) => {
+  await page.goto(server.url);
+  const rejected = await page.evaluate(async segments => {
+    const before = JSON.stringify(MaweBoot.DATA);
+    const opened = await MaweMultiImport.openProjectFile(new File([
+      JSON.stringify({ segments }),
+    ], 'invalid-sticker.mosp', { type: 'application/json' }), { suppressMediaPrompt: true });
+    return { opened, unchanged: before === JSON.stringify(MaweBoot.DATA) };
+  }, legacyStickerSegments);
+  expect(rejected).toEqual({ opened: false, unchanged: true });
+});
+
 test('sticker Resolve and OTIO exports expand references per enabled subtitle', async ({ page }) => {
   await page.goto(server.url);
-  const result = await page.evaluate(() => {
-    MaweBoot.DATA.segments = [
-      { start: 1000, end: 2000, text: 'one', sticker: { name: 'reaction', path: 'reaction.png' } },
-      { start: 3000, end: 4000, text: 'two', sticker_ref: { name: 'reaction', headIdx: 0 } },
-      { start: 5000, end: 6000, text: 'disabled', disabled: true, sticker_ref: { name: 'reaction', headIdx: 0 } },
-      { start: 7000, end: 8000, text: 'dangling', sticker_ref: { name: 'missing', headIdx: 99 } },
-    ];
+  const result = await page.evaluate(segments => {
+    const fixture = AsrEditorUtils.importProject({ segments }).project;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = AsrEditorUtils.getMainTrack(fixture).segments;
+    MaweBoot.DATA.subtitle_groups = fixture.subtitle_groups;
+    const before = JSON.stringify(MaweBoot.DATA);
     const resolve = JSON.parse(MaweExportTimeline.buildResolveJson());
     const otio = JSON.parse(MaweExportTimeline.buildStickerOtio());
     const children = otio.tracks.children[0].children;
     return {
+      schema: resolve.schema,
+      unchanged: before === JSON.stringify(MaweBoot.DATA),
       resolveStickers: resolve.segments.filter((segment) => segment.sticker).map((segment) => [
         segment.start_ms, segment.end_ms, segment.sticker.start, segment.sticker.end,
       ]),
@@ -2161,8 +2177,10 @@ test('sticker Resolve and OTIO exports expand references per enabled subtitle', 
         clip.metadata.moy.start_ms, clip.metadata.moy.end_ms,
       ]),
     };
-  });
+  }, [...legacyStickerSegments.slice(0, 3), { start: 7000, end: 8000, text: 'dangling' }]);
 
+  expect(result.schema).toBe('moy.asr_subtitle_editor.resolve.v1');
+  expect(result.unchanged).toBe(true);
   expect(result.resolveStickers).toEqual([[1000, 2000, 1000, 2000], [3000, 4000, 3000, 4000]]);
   expect(result.otioClips).toEqual([[1000, 2000], [3000, 4000]]);
 });
@@ -2170,9 +2188,7 @@ test('sticker Resolve and OTIO exports expand references per enabled subtitle', 
 test('gap-removed OTIO exports subtitle text as clip markers with Resolve colors', async ({ page }) => {
   await page.goto(server.url);
   const result = await page.evaluate(() => {
-    MaweBoot.DATA.segments.splice(
-      0,
-      MaweBoot.DATA.segments.length,
+    const fixture = AsrEditorUtils.importProject({ segments: [
       { id: 'marker-yellow', start: 0, end: 1000, text: 'yellow', items: [], color: { name: 'yellow' } },
       { id: 'marker-green', start: 1000, end: 2000, text: 'green', items: [], color: { name: 'green' } },
       { id: 'marker-removed', start: 2200, end: 2800, text: 'removed', items: [], color: { name: 'red' } },
@@ -2189,7 +2205,9 @@ test('gap-removed OTIO exports subtitle text as clip markers with Resolve colors
       },
       { id: 'marker-default', start: 7000, end: 8000, text: 'default', items: [] },
       { id: 'marker-disabled', start: 8000, end: 9000, text: 'disabled', items: [], disabled: true },
-    );
+    ] }).project;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = AsrEditorUtils.getMainTrack(fixture).segments;
+    MaweBoot.DATA.subtitle_groups = fixture.subtitle_groups;
     MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
@@ -2251,8 +2269,8 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
   for (const lang of ['zh', 'en']) {
     await page.goto(`${server.url}?lang=${lang}`);
     await page.evaluate(() => {
-      MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
-      MaweBoot.DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
+      AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+        [0, 1], 'color', { name: 'red', value: '#e74c3c' });
       MaweBoot.DATA.gap_remove = {
         schema: 'moy.asr.gap_remove.v1',
         detector: 'audio_gate',

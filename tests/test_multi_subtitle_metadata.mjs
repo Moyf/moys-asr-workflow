@@ -16,19 +16,21 @@ test('two swaps preserve all cue properties without mapping or nested aliases', 
     vendor: { nested: ['keep'] },
   });
   const original = [cue('a', 'blue'), cue('b', 'yellow')];
-  const project = { segments: [original[0]], multi_subtitle: {
+  const project = utils.importProject({ segments: [original[0]], multi_subtitle: {
     enabled: true, tracks: [{ id: 'ext', segments: [original[1]] }],
     bindings: [{ track_id: 'ext', main_segment_ids: ['a'], extension_segment_ids: ['b'] }],
-  } };
+  } }).project;
+  const before = JSON.parse(JSON.stringify(project));
   for (let round = 0; round < 2; round++) {
     assert.equal(utils.swapMainAndExtensionSubtitle(project).mappedColorCount, 0);
-    const cues = [...project.segments, ...project.multi_subtitle.tracks[0].segments];
+    const cues = [...utils.getMainTrack(project).segments, ...utils.getExtensionTrack(project).segments];
     for (const segment of cues) {
-      const source = original.find(s => s.id === segment.id);
+      const source = before.tracks.flatMap(track => track.segments).find(s => s.id === segment.id);
       assert.deepEqual(JSON.parse(JSON.stringify(segment)), source);
-      assert.notEqual(segment.vendor, source.vendor);
-      assert.notEqual(segment.items[0].vendor, source.items[0].vendor);
-      assert.notEqual(segment.assOverride.pos, source.assOverride.pos);
+      const input = original.find(s => s.id === segment.id);
+      assert.notEqual(segment.vendor, input.vendor);
+      assert.notEqual(segment.items[0].vendor, input.items[0].vendor);
+      assert.notEqual(segment.assOverride.pos, input.assOverride.pos);
     }
   }
 });
@@ -36,8 +38,9 @@ test('two swaps preserve all cue properties without mapping or nested aliases', 
 test('track normalization deep clones third party and nested item fields', () => {
   const segment = { id: 'a', start: 0, end: 1000, text: 'a',
     vendor: { values: [1] }, items: [{ text: 'a', start: 0, end: 1000, vendor: { v: 1 } }] };
-  for (const copy of [utils.normalizeOverlayTrack({ segments: [segment] }).segments[0],
-    utils.normalizeMultiSubtitle({ tracks: [{ segments: [segment] }] }).tracks[0].segments[0]]) {
+  const overlay = utils.importProject({ segments: [], overlay_track: { segments: [segment] } }).project;
+  const secondary = utils.importProject({ segments: [], multi_subtitle: { tracks: [{ segments: [segment] }] } }).project;
+  for (const copy of [utils.getOverlayTrack(overlay).segments[0], utils.getExtensionTrack(secondary).segments[0]]) {
     copy.vendor.values.push(2);
     copy.items[0].vendor.v = 2;
     assert.deepEqual(segment.vendor.values, [1]);
@@ -51,15 +54,15 @@ test('track swaps retain speaker and disabled metadata and keep discarded cues o
     { id: `${prefix}-enabled`, start: 1200, end: 2200, text: `${prefix} enabled`, speaker: `${prefix}-other`, disabled: false },
     { id: `${prefix}-legacy`, start: 2400, end: 3400, text: `${prefix} legacy` },
   ];
-  const project = {
+  const project = utils.importProject({
     segments: makeSegments('main'),
     multi_subtitle: { enabled: true, tracks: [{ id: 'translation', segments: makeSegments('ext') }] },
-  };
-  const originalMetadata = new Map([...project.segments, ...project.multi_subtitle.tracks[0].segments]
+  }).project;
+  const originalMetadata = new Map([...utils.iterSegments(project)]
     .map(({ id, speaker, disabled }) => [id, { speaker, disabled }]));
   for (let round = 0; round < 2; round++) {
     assert.equal(utils.swapMainAndExtensionSubtitle(project).swapped, true);
-    for (const segments of [project.segments, project.multi_subtitle.tracks[0].segments]) {
+    for (const { segments } of project.tracks) {
       for (const { id, speaker, disabled } of segments) {
         assert.deepEqual({ speaker, disabled }, originalMetadata.get(id));
       }

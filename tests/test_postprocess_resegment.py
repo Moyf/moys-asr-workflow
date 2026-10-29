@@ -20,6 +20,7 @@ from maw.postprocess_resegment import (
     remap_cleanup_scopes,
     source_units,
 )
+from tests.track_helpers import main_segments, extension_tracks
 
 
 def timed(text, parts, start=0, **metadata):
@@ -47,7 +48,7 @@ class ResegmentTests(unittest.TestCase):
         self.assertEqual(marker["ai"]["task"], "resegment")
         self.assertEqual((marker["start"], marker["end"]), (0, 200))
         self.assertTrue(marker["note"].startswith("[AI] 待核查："))
-        self.assertEqual(project["segments"][0]["text"], "完整名称不能拆")
+        self.assertEqual(main_segments(project)[0]["text"], "完整名称不能拆")
         self.assertTrue(artifact.warnings)
 
     def setUp(self):
@@ -74,7 +75,7 @@ class ResegmentTests(unittest.TestCase):
             complete=complete,
         )
         self.assertEqual(original, self.source.read_bytes())
-        return read_project(artifact.project_path)["segments"], artifact
+        return main_segments(read_project(artifact.project_path)), artifact
 
     def last_boundary(self, _prompt, rows):
         return {"draft": f"[{rows[-1]['items'][-1]['id']}]"}
@@ -98,15 +99,15 @@ class ResegmentTests(unittest.TestCase):
         )
         after = read_project(artifact.project_path)
         self.assertEqual(len(calls), 2)
-        self.assertEqual([s["id"] for s in after["segments"]], ["cut-cue", "plain-cue"])
+        self.assertEqual([s["id"] for s in main_segments(after)], ["cut-cue", "plain-cue"])
         self.assertNotIn("这个这个方法", render_srt(after))
         self.assertIn("这个方法", render_srt(after))
         self.assertIn("没有词级时间", render_srt(after))
-        by_source = {i: source_units(segment, i) for i, segment in enumerate(project["segments"])}
+        by_source = {i: source_units(segment, i) for i, segment in enumerate(main_segments(project))}
         # A future caller must fail safely if it bypasses the separate batches.
         mixed = [{"id": "mixed", "start": 0, "end": 2500, "text": source["text"] + itemless["text"]}]
         with self.assertRaisesRegex(ValueError, "词项绑定"):
-            remap_cleanup_scopes(copy.deepcopy(project), project["segments"], mixed, [[*by_source[0], *by_source[1]]], by_source)
+            remap_cleanup_scopes(copy.deepcopy(project), main_segments(project), mixed, [[*by_source[0], *by_source[1]]], by_source)
 
     def test_bound_main_cue_is_preserved_while_unbound_cues_resegment_and_reopen(self):
         source = timed("绑定正文", ["绑定", "正文"], 700, id="bound-main")
@@ -127,9 +128,12 @@ class ResegmentTests(unittest.TestCase):
         )
         reopened = read_project(artifact.project_path)
         self.assertEqual([row["id"] for batch in calls for row in batch], ["c0001", "c0003"])
-        self.assertEqual(next(segment for segment in reopened["segments"] if segment["id"] == "bound-main"), source)
-        self.assertEqual([s["text"] for s in reopened["segments"]], ["介绍", "方法", "绑定正文", "后续", "内容"])
-        self.assertEqual(reopened["multi_subtitle"], read_project(self.source)["multi_subtitle"])
+        self.assertEqual(next(segment for segment in main_segments(reopened) if segment["id"] == "bound-main"), source)
+        self.assertEqual([s["text"] for s in main_segments(reopened)], ["介绍", "方法", "绑定正文", "后续", "内容"])
+        original = read_project(self.source)
+        self.assertEqual(extension_tracks(reopened), extension_tracks(original))
+        self.assertEqual(reopened["bindings"], original["bindings"])
+        self.assertEqual(reopened["bilingual"], original["bilingual"])
         self.assertTrue(any("一对一" in warning and "超过最大 2 字" in warning for warning in artifact.warnings))
         self.assertIn("绑定正文", artifact.srt_path.read_text(encoding="utf-8-sig"))
 
@@ -159,15 +163,18 @@ class ResegmentTests(unittest.TestCase):
                     complete=lambda _prompt, rows: {"draft": "\n".join(f"[{item['id']}]" for row in rows for item in row["items"])},
                 )
                 reopened = read_project(artifact.project_path)
-                bound = next(s for s in reopened["segments"] if s["id"] == "bound")
+                bound = next(s for s in main_segments(reopened) if s["id"] == "bound")
                 self.assertEqual((bound["text"], bound["items"]), (segments[2]["text"], segments[2]["items"]))
                 if preserve_head:
-                    head_index = next(i for i, s in enumerate(reopened["segments"]) if s["id"] == "color-head")
+                    head_index = next(i for i, s in enumerate(main_segments(reopened)) if s["id"] == "color-head")
                     self.assertNotEqual(head_index, 1)
-                    self.assertEqual(bound["color_ref"]["headIdx"], head_index)
+                    self.assertEqual(bound["color_group_id"], main_segments(reopened)[head_index]["color_group_id"])
                 else:
                     self.assertNotIn("color_ref", bound)
-                    self.assertEqual(bound["color"], color)
+                    group = next(group for group in reopened["subtitle_groups"]["color"] if group["id"] == bound["color_group_id"])
+                    self.assertEqual(group["value"], color)
+                self.assertTrue(all(segment["color_group_id"] == bound["color_group_id"]
+                                    for segment in main_segments(reopened) if 1000 <= segment["start"] < 2000))
 
     def test_cleanup_split_merge_and_manual_restore_preserve_words_and_audio(self):
         source = timed("这个这个这个方法", list("这个这个这个方法"), id="original")
@@ -179,15 +186,15 @@ class ResegmentTests(unittest.TestCase):
             complete=lambda _p, _r: {"timeline": "[c001] ~~这个这个~~这个方法"},
         )
         cleaned = read_project(cleanup.project_path)
-        self.assertEqual("".join(s["text"] for s in cleaned_srt_segments(cleaned, cleaned["segments"])), "这个方法")
+        self.assertEqual("".join(s["text"] for s in cleaned_srt_segments(cleaned, main_segments(cleaned))), "这个方法")
         original_gaps = cleaned["gap_remove"]["gaps"]
         split = run_llm_postprocess(
             LlmPostprocessRequest(project_path=cleanup.project_path, srt_path=None, output_mode=OutputMode.BOTH, operation="resegment", custom_prompt=""),
             complete=lambda _p, _r: {"draft": "[c0001a0001]\n[c0001a0003]\n[c0001a0008]"},
         )
         split_project = read_project(split.project_path)
-        self.assertEqual("".join(s["text"] for s in split_project["segments"]), source["text"])
-        self.assertEqual("".join(s["text"] for s in cleaned_srt_segments(split_project, split_project["segments"])), "这个方法")
+        self.assertEqual("".join(s["text"] for s in main_segments(split_project)), source["text"])
+        self.assertEqual("".join(s["text"] for s in cleaned_srt_segments(split_project, main_segments(split_project))), "这个方法")
         provenance = split_project["gap_remove"]["provenance"]
         cuts = provenance["sources"]["ai_cleanup"]
         self.assertEqual(len([r for r in cuts if r.get("cleanup_scope")]), 3)
@@ -210,7 +217,7 @@ class ResegmentTests(unittest.TestCase):
             complete=self.last_boundary,
         )
         merged_project = read_project(merged.project_path)
-        self.assertEqual("".join(s["text"] for s in cleaned_srt_segments(merged_project, merged_project["segments"])), "这个方法")
+        self.assertEqual("".join(s["text"] for s in cleaned_srt_segments(merged_project, main_segments(merged_project))), "这个方法")
         gap_remove = merged_project["gap_remove"]
         gap_remove["provenance"]["manual_overrides"].append({"id": "restore", "start": 0, "end": 720, "removed": False})
         gap_remove["gaps"] = _gap_ranges_from_provenance(gap_remove["provenance"])

@@ -155,7 +155,19 @@ source: "docs/INDEX.md"
 
 [正式实现、缓存契约、验证与实验历史](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/FILMSTRIP_EXPLORATION.md)
 
+<a name="engineering-track-unification"></a>
+### 字幕轨道统一设计调研（2026-10-27）
+
+[当前三容器数据模型证据、统一 Track/Binding 契约提案与 v1→v1.5→v2 分期迁移边界](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/research/2026-10-27-track-unification.md)
+
 ## 共享计划
+
+<a name="plans-unified-tracks"></a>
+### 统一字幕轨道实施方案
+
+[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/UNIFIED_TRACKS_PLAN.md)
+
+[v2 整合与验证](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.2/261030_轨道v2整合/整合记录.md) · [人工核验](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.2/261030_轨道v2整合/轨道v2.checklist.md)
 
 <a name="plan-release-pipeline"></a>
 ### 正式版本归档、官网与更新检测管线
@@ -219,6 +231,16 @@ source: "docs/INDEX.md"
 
 [保留日志索引](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/INDEX.md) · [当前相关参考与未决事项](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/CURRENT.md) · [2026-08-11 README 原文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/archived/README-2026-08-11.md)
 
+当前安全记录：[2026-10 证书与工具链安全修复](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.1/261022_证书与工具链安全/SECURITY.md)。
+
 当前功能记录：[单句放大出现设计账本](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.3/261020_每句放大出现/SENTENCE_POP_IN.md) · [主字幕单句缩放进度账本](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.md) · [人工核对清单](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)
 
 反馈账本中的“已修复”只对应其记录的版本和验证范围。发布变化见 [CHANGELOG](https://github.com/Moyf/moys-asr-workflow/blob/main/CHANGELOG.md)。
+
+### v1 轨道只读访问协议
+
+[TrackStore 与 CueRef（P1）](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/TRACK_ACCESS.md)：旧容器引用、运行时身份与兼容 getter；不改变 v1 落盘。
+<a name="log-media-required-reports"></a>
+### 媒体分层与可信报告
+
+[打开记录](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.1/261023_媒体分层与可信报告/验证记录.md)

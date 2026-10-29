@@ -13,6 +13,8 @@ from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
 from typing import Final
 
+from maw.project_mutations import replace_main_segments
+from maw.project_tracks import get_main_track, iter_segments
 from maw.postprocess import OutputMode, _reconcile_items
 from maw.postprocess_io import SubtitleArtifact, PostprocessFileError, read_project, read_srt, write_artifacts
 from maw.project import normalize_project
@@ -153,9 +155,9 @@ def run_script_match(
         )
     # Both character-timed and sentence-level matching must keep the same v2
     # group contract. The fallback must not silently reassign grouped content.
-    if len(matched["segments"]) != len(project["segments"]) and any(
+    if len(get_main_track(matched)["segments"]) != len(get_main_track(project)["segments"]) and any(
         segment.get("color_group_id") or segment.get("sticker_group_id")
-        for segment in project["segments"]
+        for segment in get_main_track(project)["segments"]
     ):
         raise ValueError("带独立分组的字幕暂不支持文稿匹配改变条数；请先在编辑器中拆合，避免丢失组关系。")
     check_match_cancelled(is_cancelled)
@@ -238,7 +240,7 @@ def processed_script_text(
 
 def _has_complete_item_timings(project: JsonDict, *, is_cancelled: Callable[[], bool] | None = None) -> bool:
     check_match_cancelled(is_cancelled)
-    segments = project.get("segments")
+    segments = get_main_track(project)["segments"]
     if not isinstance(segments, list) or not segments:
         return False
     enabled_count = 0
@@ -280,15 +282,21 @@ def _match_project_with_character_timings(
     if any(len(symbol) != 1 for symbol in split_punctuation | preserved):
         return _match_project(project, script_text, split_punctuation, preserved, "script", is_cancelled=is_cancelled)
 
-    source_segments = project.get("segments")
+    source_segments = get_main_track(project)["segments"]
     if not isinstance(source_segments, list):
         raise ValueError("project segments must be an array")
     matcher_project = copy.deepcopy(project)
-    matcher_project["segments"] = [
+    matcher_main = get_main_track(matcher_project)
+    matcher_main["segments"] = [
         segment
-        for segment in source_segments
+        for segment in matcher_main["segments"]
         if isinstance(segment, dict) and segment.get("disabled") is not True
     ]
+    active_ids = {segment["id"] for segment in matcher_main["segments"]}
+    # The filtered project is only a temporary matcher input. Keep disabled
+    # cues and their relations in the original until the final transaction.
+    matcher_project["bindings"] = [binding for binding in matcher_project["bindings"]
+                                   if all(identifier in active_ids for identifier in [binding["source"]["segment_id"]])]
     mosp_text = json.dumps(matcher_project, ensure_ascii=False)
     try:
         _cues, report, matched_text = generate_matched_mosp(
@@ -297,6 +305,7 @@ def _match_project_with_character_timings(
             split_punctuation=split_punctuation,
             preserve_punctuation=preserved,
             is_cancelled=is_cancelled,
+            reserved_cue_ids={cue["id"] for cue in iter_segments(project)},
         )
     except AlignmentError as error:
         raise SubtitleMatchError(str(error)) from error
@@ -313,13 +322,18 @@ def _match_project_with_character_timings(
         raise ValueError("character matcher returned an invalid project")
     _preserve_equal_count_segment_metadata(matcher_project, raw_matched, is_cancelled=is_cancelled)
     preserved_extras = _merge_unmatched_source_segments(
-        matcher_project.get("segments"),
+        get_main_track(matcher_project)["segments"],
         raw_matched,
         report,
         is_cancelled=is_cancelled,
     )
-    raw_matched["segments"] = _merge_disabled_segments(source_segments, raw_matched)
-    matched = normalize_project(raw_matched)
+    final_segments = _merge_disabled_segments(source_segments, raw_matched)
+    grouped = any(segment.get("color_group_id") or segment.get("sticker_group_id") for segment in source_segments)
+    if len(final_segments) != len(source_segments) and (grouped or project["bindings"]):
+        raise SubtitleMatchError("带独立分组或双语绑定的工程暂不支持文稿匹配改变字幕条数。")
+    restored = copy.deepcopy(project)
+    replace_main_segments(restored, final_segments)
+    matched = normalize_project(restored)
     warnings: list[str] = [
         f"文稿匹配度：{coverage:.0%}；已按字词时间码重新生成字幕段。",
     ]
@@ -348,7 +362,7 @@ def _merge_disabled_segments(
     source_segments: list[JsonValue],
     matched: JsonDict,
 ) -> list[JsonValue]:
-    matched_segments = matched.get("segments")
+    matched_segments = get_main_track(matched)["segments"]
     if not isinstance(matched_segments, list):
         raise ValueError("character matcher returned invalid segments")
     disabled_segments = [
@@ -384,7 +398,7 @@ def _merge_unmatched_source_segments(
     """
 
     check_match_cancelled(is_cancelled)
-    matched_segments = matched.get("segments")
+    matched_segments = get_main_track(matched)["segments"]
     if not isinstance(matched_segments, list) or not isinstance(matcher_segments, list):
         raise ValueError("character matcher returned invalid segments")
     raw_indexes = report.get("unmatched_source_segment_indexes")
@@ -400,13 +414,14 @@ def _merge_unmatched_source_segments(
             extras.append(copy.deepcopy(source_segment))
     if not extras:
         return 0
-    matched["segments"] = [*matched_segments, *extras]
-    matched["segments"].sort(
+    combined = [*matched_segments, *extras]
+    combined.sort(
         key=lambda segment: (
             segment.get("start", 0) if isinstance(segment, dict) else 0,
             segment.get("end", 0) if isinstance(segment, dict) else 0,
         )
     )
+    replace_main_segments(matched, combined)
     return len(extras)
 
 
@@ -417,8 +432,8 @@ def _preserve_equal_count_segment_metadata(
     is_cancelled: Callable[[], bool] | None = None,
 ) -> None:
     check_match_cancelled(is_cancelled)
-    source_segments = source.get("segments")
-    matched_segments = matched.get("segments")
+    source_segments = get_main_track(source)["segments"]
+    matched_segments = get_main_track(matched)["segments"]
     if not isinstance(source_segments, list) or not isinstance(matched_segments, list):
         return
     if len(source_segments) != len(matched_segments):
@@ -447,7 +462,7 @@ def _match_project(
     check_match_cancelled(is_cancelled)
     if match_mode not in {"script", "text"}:
         raise ValueError("不支持的文稿匹配模式")
-    segments = project.get("segments")
+    segments = get_main_track(project)["segments"]
     if not isinstance(segments, list):
         raise ValueError("project segments must be an array")
 
@@ -521,7 +536,7 @@ def _match_project(
 
     if match_mode == "script" and ("\n" in script_text or "\r" in script_text) and len(punctuation_segments) == len(spans):
         result = copy.deepcopy(project)
-        result_segments = result.get("segments")
+        result_segments = get_main_track(result)["segments"]
         if not isinstance(result_segments, list):
             raise ValueError("project segments must be an array")
         changed = 0
@@ -551,7 +566,7 @@ def _match_project(
 
     boundaries = _alignment_boundaries(len(source_text), len(script.value), blocks)
     result = copy.deepcopy(project)
-    result_segments = result.get("segments")
+    result_segments = get_main_track(result)["segments"]
     if not isinstance(result_segments, list):
         raise ValueError("project segments must be an array")
     unmatched = 0
@@ -757,7 +772,20 @@ def _resegment_project(
         for start, end, segment in extra_segments
     ]
     entries.sort(key=lambda item: (item[0], item[1], item[2]))
-    result["segments"] = [segment for _start, _end, _kind, segment in entries]
+    replacement = [segment for _start, _end, _kind, segment in entries]
+    grouped = any(segment.get("color_group_id") or segment.get("sticker_group_id")
+                  for segment in original_segments)
+    if grouped or project["bindings"]:
+        if len(replacement) != len(original_segments):
+            raise SubtitleMatchError("带独立分组或双语绑定的工程暂不支持文稿匹配改变字幕条数。")
+        timing_fields = {"start", "end", "text", "items", "start_frame", "end_frame"}
+        for original, target in zip(original_segments, replacement, strict=True):
+            for key in set(target) - timing_fields:
+                del target[key]
+            for key, value in original.items():
+                if key not in timing_fields:
+                    target[key] = copy.deepcopy(value)
+    replace_main_segments(result, replacement)
     return normalize_project(result)
 
 

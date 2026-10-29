@@ -155,7 +155,7 @@ export function initMaweDynamicExports() {
     try {
       const extension = MaweDom.lottieExportTrack?.value === 'extension';
       const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
-      const sourceSegments = extension ? track?.segments : MaweBoot.DATA.segments;
+      const sourceSegments = extension ? track?.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
       if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
         !segment?.disabled && String(segment?.text || '').trim()
       ))) {
@@ -277,7 +277,7 @@ export function initMaweDynamicExports() {
     try {
       const extension = MaweDom.ografExportTrack?.value === 'extension';
       const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
-      const sourceSegments = extension ? track?.segments : MaweBoot.DATA.segments;
+      const sourceSegments = extension ? track?.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
       if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
         !segment?.disabled && String(segment?.text || '').trim()
       ))) {

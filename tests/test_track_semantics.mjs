@@ -6,9 +6,9 @@ import { readFixture, createProjectHarness, initializeStickerOverlay } from './h
 const load = (context, file) => vm.runInNewContext(fs.readFileSync(new URL(`../web/${file}`, import.meta.url), 'utf8'), context);
 
 test('P0 Z/X target is main/secondary only; overlay pointer still falls back to main', () => {
-  const data = readFixture('three-tracks');
-  const main = data.segments[0], secondary = data.multi_subtitle.tracks[0];
-  const context = { window: {}, MaweBoot: { DATA: data },
+  const { data, h } = createProjectHarness(readFixture('three-tracks'));
+  const main = h.getMainTrack(data).segments[0], secondary = h.getExtensionTrack(data);
+  const context = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: data },
     MaweSelection: { selectedIdxs: new Set(), selectedExtensionIdxs: new Set(), selectedOverlayIdxs: new Set([0]) },
     MaweContextMenus: { findWaveformCueAtTime: (time, segments) => segments.findIndex(s => s.start <= time && s.end >= time) },
     MaweMultiSubtitleCore: { multiSubtitleVisible: () => true, getExtensionTrack: () => secondary },
@@ -28,7 +28,7 @@ function element() {
       toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); } } };
 }
 test('disabled overlay is excluded from stickers; preview and burn share both sticker switches', () => {
-  const { context } = createProjectHarness(readFixture('color-sticker-groups'));
+  const { context, h } = createProjectHarness(readFixture('color-sticker-groups'));
   Object.assign(context, {
     document: { createElement: element },
     MaweStickerPreviewWiring: { activeStickerHasOverlay: false },
@@ -41,7 +41,7 @@ test('disabled overlay is excluded from stickers; preview and burn share both st
   const api = context.window.MaweStickerOverlay;
   assert.equal(api.stickerOverlayContent.childElementCount, 1, 'disabled overlay sticker is excluded');
   assert.ok(api.stickerIntervals.every(interval => !interval.hasOverlay), 'disabled overlay does not contribute intervals');
-  context.MaweBoot.DATA.overlay_track.enabled = true;
+  h.getOverlayTrack(context.MaweBoot.DATA).enabled = true;
   api.stickerOverlayDataVersion += 1;
   api.renderStickerOverlay(500);
   assert.equal(api.stickerOverlayContent.childElementCount, 2, 're-enabling overlay restores its sticker');

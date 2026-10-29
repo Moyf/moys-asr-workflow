@@ -74,7 +74,7 @@ export function initMaweSelection() {
   function isHiddenDisabled(idx, track = 'main') {
     const segments = track === 'extension'
       ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
-      : (track?.segments || MaweBoot.DATA.segments);
+      : (track?.segments || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
     return MaweDom.hideDisabled && !!(segments[idx] && segments[idx].disabled);
   }
 
@@ -161,7 +161,7 @@ export function initMaweSelection() {
 
 
   function addMainIndexToSelection(index) {
-    if (!Number.isInteger(index) || !MaweBoot.DATA.segments[index] || isHiddenDisabled(index)) return;
+    if (!Number.isInteger(index) || !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index] || isHiddenDisabled(index)) return;
     MaweState.selection.add('main', index);
     const el = MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`);
     if (el) el.classList.add('selected');
@@ -182,9 +182,9 @@ export function initMaweSelection() {
     if (kind === 'main') {
       const binding = MaweMultiSubtitleCore.bindingForMainIndex(index);
       const activeTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
-      const bindingTrack = binding ? (MaweMultiSubtitleCore.getExtensionTrack(binding.track_id) || activeTrack) : null;
+      const bindingTrack = binding ? (MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id) || activeTrack) : null;
       if (!binding || !activeTrack || bindingTrack?.id !== activeTrack.id) return;
-      (binding.extension_segment_ids || []).forEach((id) => {
+      (binding.target?.segment_id ? [binding.target.segment_id] : []).forEach((id) => {
         const extensionIndex = activeTrack.segments.findIndex((segment) => segment?.id === id);
         if (extensionIndex >= 0) addExtensionIndexToSelection(extensionIndex, activeTrack);
       });
@@ -192,8 +192,8 @@ export function initMaweSelection() {
     }
     const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(index, track);
     if (!binding) return;
-    (binding.main_segment_ids || []).forEach((id) => {
-      const mainIndex = MaweBoot.DATA.segments.findIndex((segment) => segment?.id === id);
+    (binding.source?.segment_id ? [binding.source.segment_id] : []).forEach((id) => {
+      const mainIndex = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === id);
       if (mainIndex >= 0) addMainIndexToSelection(mainIndex);
     });
   }
@@ -364,7 +364,7 @@ export function initMaweSelection() {
   function addManyToSelection(idxs) {
   const added = [];
   (Array.isArray(idxs) ? idxs : []).forEach((idx) => {
-    if (!Number.isInteger(idx) || !MaweBoot.DATA.segments[idx] || isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
+    if (!Number.isInteger(idx) || !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] || isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
     MaweState.selection.add('main', idx);
     added.push(idx);
   });
@@ -399,7 +399,7 @@ export function initMaweSelection() {
   function selectAll() {
   MaweCuePanel.commitCuePanelEdit();
   clearSelection({ silent: true });
-  MaweBoot.DATA.segments.forEach((_, idx) => {
+  window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((_, idx) => {
     if (isHiddenDisabled(idx)) return;
     MaweState.selection.add('main', idx);
     syncBoundSelection('main', idx);
@@ -419,7 +419,7 @@ export function initMaweSelection() {
   updateMultiSelectionClasses();
   window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-  const last = MaweBoot.DATA.segments.length - 1;
+  const last = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length - 1;
   if (last >= 0 && selectedIdxs.has(last)) {
     MaweCuePanel.setCurrentCuePanelIndex(last);
     return;

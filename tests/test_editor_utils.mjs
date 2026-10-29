@@ -166,8 +166,12 @@ for (const fps of [30, 29.97]) {
 
 test('accepts legacy and current project schemas but rejects unknown versions', () => {
   assert.equal(helpers.supportsProjectSchema({ segments: [] }), true);
-  assert.equal(helpers.supportsProjectSchema({ schema: helpers.PROJECT_SCHEMA, segments: [] }), true);
-  assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v99', segments: [] }), false);
+  assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v1', segments: [] }), true);
+  assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v1.5', segments: [] }), true);
+  assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v2', segments: [] }), true);
+  assert.equal(helpers.supportsProjectSchema(helpers.makeProject([])), true);
+  assert.equal(helpers.PROJECT_SCHEMA, 'moy.asr.project.v2');
+  assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v4', tracks: [] }), false);
 });
 
 test('maps searchable font input text back to stored family keys', () => {
@@ -1791,14 +1795,14 @@ test('normalizes invalid gap subtitle-disable settings before matching', () => {
 });
 
 test('builds immutable-shaped history records for each editor history kind', () => {
-  const snapshot = helpers.buildSegmentsHistorySnapshot([{ text: 'before' }], { enabled: false });
+  const snapshot = helpers.buildSegmentsHistorySnapshot(helpers.makeProject([{ id: 'a', start: 0, end: 1000, text: 'before' }]));
   const record = helpers.buildHistoryRecord('segments', '', snapshot, { mainIds: ['a'] });
   assert.deepEqual(JSON.parse(JSON.stringify(record)), {
     kind: 'segments', label: '编辑',
     segs: JSON.parse(JSON.stringify(snapshot)), view: { mainIds: ['a'] },
   });
-  snapshot.segments[0].text = 'after';
-  assert.equal(record.segs.segments[0].text, 'before');
+  snapshot.tracks[0].segments[0].text = 'after';
+  assert.equal(record.segs.tracks[0].segments[0].text, 'before');
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.buildHistoryRecord('gap_remove', null, {
     gapRemove: { gaps: [] }, gapRemoveDirty: true,
   }))), {
@@ -3759,40 +3763,38 @@ test('extends keyboard selection from its outer edge and skips hidden disabled c
   );
 });
 
-test('merge group inheritance keeps a common head or reference and rejects mixed groups', () => {
+test('merge group inheritance keeps common membership and rejects mixed groups without mutating attributes', () => {
   const segments = [
-    {
-      color: { name: 'red', value: '#e74c3c', start: 0, end: 3000 },
-    },
-    {
-      color_ref: { name: 'red', headIdx: 0 },
-    },
-    {
-      color_ref: { name: 'red', headIdx: 0 },
-    },
-    {
-      color: { name: 'blue', value: '#3498db', start: 3000, end: 4000 },
-    },
+    { id: 'red-head', start: 0, end: 1000, text: 'A', color_group_id: 'red' },
+    { id: 'red-member-1', start: 1000, end: 2000, text: 'B', color_group_id: 'red' },
+    { id: 'red-member-2', start: 2000, end: 3000, text: 'C', color_group_id: 'red' },
+    { id: 'blue', start: 3000, end: 4000, text: 'D', color_group_id: 'blue' },
   ];
+  const project = helpers.makeProject(segments, { projectFields: { subtitle_groups: { color: [
+    { id: 'red', value: { name: 'red', value: '#e74c3c' } },
+    { id: 'blue', value: { name: 'blue', value: '#3498db' } },
+  ], sticker: [] } } });
 
   const refsOnly = helpers.resolveMergedGroupInheritance(
     segments, [1, 2], 'color', 'color_ref',
   );
   assert.equal(refsOnly.head, null);
-  assert.deepEqual(JSON.parse(JSON.stringify(refsOnly.ref)), { name: 'red', headIdx: 0 });
+  assert.equal(refsOnly.groupId, 'red');
 
   const includingHead = helpers.resolveMergedGroupInheritance(
     segments, [0, 1], 'color', 'color_ref',
   );
-  assert.deepEqual(JSON.parse(JSON.stringify(includingHead.head)), segments[0].color);
+  assert.equal(includingHead.groupId, 'red');
   assert.equal(includingHead.ref, null);
-  includingHead.head.name = 'changed';
-  assert.equal(segments[0].color.name, 'red', 'inherited head must be cloned');
+  const projected = helpers.materializeTrackSegments(project, 'main');
+  projected[0].color.name = 'changed';
+  assert.equal(project.subtitle_groups.color[0].value.name, 'red', 'rendered group attributes must be detached');
 
   const mixed = helpers.resolveMergedGroupInheritance(
     segments, [2, 3], 'color', 'color_ref',
   );
   assert.deepEqual(JSON.parse(JSON.stringify(mixed)), {
+    groupId: null,
     head: null,
     ref: null,
     headIdx: null,
@@ -5101,14 +5103,17 @@ test('characterizes removed-gap mapping and sticker inheritance without mutation
     { start: 1000, end: 1600 },
     { start: 4000, end: 4500 },
   ]);
-  const segments = [
-    { sticker: { name: 'head', path: 'head.png' } },
-    { sticker_ref: { name: 'head', headIdx: 0 } },
-  ];
+  const project = helpers.makeProject([
+    { id: 'head', start: 0, end: 1000, text: 'head', sticker_group_id: 'sticker' },
+    { id: 'member', start: 1000, end: 2000, text: 'member', sticker_group_id: 'sticker' },
+  ], { projectFields: { subtitle_groups: { color: [], sticker: [{ id: 'sticker', value: { name: 'head', path: 'head.png' } }] } } });
+  const segments = helpers.getMainTrack(project).segments;
   const before = JSON.stringify(segments);
   const inherited = helpers.resolveMergedGroupInheritance(segments, [1], 'sticker', 'sticker_ref');
-  assert.deepEqual(JSON.parse(JSON.stringify(inherited.ref)), segments[1].sticker_ref);
-  inherited.ref.name = 'changed';
+  assert.equal(inherited.groupId, 'sticker');
+  const projection = helpers.materializeTrackSegments(project, 'main');
+  assert.deepEqual(JSON.parse(JSON.stringify(projection[1].sticker_ref)), { name: 'head', headIdx: 0 });
+  projection[1].sticker_ref.name = 'changed';
   assert.equal(JSON.stringify(segments), before);
 });
 
@@ -5145,7 +5150,7 @@ test('builds an immutable gap-removed export plan with cue and sticker projectio
   assert.equal(helpers.mapExportTime(serializedPlan.mapping, 5000), 3900);
   assert.equal(helpers.exportPolicyMsToFrames(serializedPlan.framePolicy, 1001), 30);
   assert.deepEqual(plan.cues.main.map((cue) => cue.id), ['a', 'b', 'e', 'f']);
-  assert.deepEqual(plan.cues.extension.map((cue) => cue.id), ['x']);
+  assert.deepEqual(Array.from(plan.cues.extension, (cue) => cue.id), ['x']);
   assert.deepEqual(JSON.parse(JSON.stringify(plan.cues.extension.map((cue) => [cue.startMs, cue.endMs]))), [[1500, 1700]]);
   const disabledExtension = helpers.buildProjectExportPlan({
     ...project, multi_subtitle: { ...project.multi_subtitle, enabled: false },
@@ -6693,31 +6698,34 @@ test('builds an OGraf package contract with a Chinese-capable Canvas Web Compone
 
 // === multi-subtitle helpers ===
 
-test('normalizes legacy multi-subtitle data with stable IDs and preserves optional extension items', () => {
-  const project = {
+test('imports legacy multi-subtitle data with stable IDs and preserves optional extension items', () => {
+  const legacy = {
     segments: [{ start: 0, end: 1000, text: '主' }],
     multi_subtitle: {
       enabled: true,
       tracks: [{
         id: 'translation',
-        segments: [{ start: 40, end: 960, text: 'extension', items: [{ start: 40, end: 960 }] }],
+        segments: [{ start: 40, end: 960, text: 'extension', items: [{ start: 40, end: 960, text: 'extension' }] }],
       }],
       bindings: [],
     },
   };
+  const before = JSON.stringify(legacy);
+  const project = helpers.importProject(legacy).project;
   helpers.normalizeMultiSubtitleProject(project);
-  assert.equal(project.segments[0].id, 'main-001');
-  assert.equal(project.multi_subtitle.tracks[0].segments[0].id, 'translation-segment-001');
-  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments[0].items)), [
-    { start: 40, end: 960 },
+  assert.equal(helpers.getMainTrack(project).segments[0].id, 'main-cue-1');
+  assert.equal(helpers.getExtensionTrack(project).segments[0].id, 'translation-cue-1');
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.getExtensionTrack(project).segments[0].items)), [
+    { start: 40, end: 960, text: 'extension' },
   ]);
-  assert.equal(project.multi_subtitle.display_mode, 'both');
-  assert.equal(project.multi_subtitle.main_split_mode, 'continuous');
+  assert.equal(project.bilingual.display_mode, 'both');
+  assert.equal(helpers.detectSubtitleSplitMode(helpers.getMainTrack(project).segments[0].text), 'continuous');
+  assert.equal(JSON.stringify(legacy), before);
 });
 
 
-test('normalizes an enabled overlay track with stable IDs without creating a bilingual track', () => {
-  const project = {
+test('imports an enabled overlay track with stable IDs without creating a bilingual track', () => {
+  const legacy = {
     segments: [{ start: 0, end: 1000, text: '主字幕' }],
     overlay_track: {
       enabled: true,
@@ -6725,11 +6733,20 @@ test('normalizes an enabled overlay track with stable IDs without creating a bil
     },
   };
 
-  helpers.normalizeMultiSubtitleProject(project);
+  const project = helpers.importProject(legacy).project;
 
-  assert.equal(project.overlay_track.enabled, true);
-  assert.equal(project.overlay_track.segments[0].id, 'overlay-001');
-  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks)), []);
+  assert.equal(helpers.getOverlayTrack(project).enabled, true);
+  assert.equal(helpers.getOverlayTrack(project).segments[0].id, 'overlay-cue-1');
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.getTracksByRole(project, 'secondary'))), []);
+});
+
+test('invalid imported subtitle items fail without changing the source project', () => {
+  const legacy = { segments: [{ start: 0, end: 1000, text: 'main' }], multi_subtitle: { tracks: [
+    { id: 'translation', segments: [{ start: 0, end: 1000, text: 'translation', items: [{ start: 0, end: 1000 }] }] },
+  ] } };
+  const before = JSON.stringify(legacy);
+  assert.throws(() => helpers.importProject(legacy), /items\[0\]\.text/);
+  assert.equal(JSON.stringify(legacy), before);
 });
 
 
@@ -6752,15 +6769,13 @@ test('merges main and overlay cues by start time with main track tie priority', 
 
 
 test('includes overlay track data in a segment history snapshot', () => {
-  const snapshot = helpers.buildSegmentsHistorySnapshot(
-    [{ text: '主字幕' }],
-    { enabled: false },
-    { enabled: true, segments: [{ text: '叠加字幕' }] },
-  );
+  const project = helpers.importProject({ segments: [{ start: 0, end: 1000, text: '主字幕' }],
+    overlay_track: { enabled: true, segments: [{ start: 0, end: 1000, text: '叠加字幕' }] } }).project;
+  const snapshot = helpers.buildSegmentsHistorySnapshot(project);
 
-  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.overlay_track)), {
-    enabled: true, segments: [{ text: '叠加字幕' }],
-  });
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.tracks.find(track => track.role === 'overlay'))),
+    JSON.parse(JSON.stringify(helpers.getOverlayTrack(project))));
+  assert.notEqual(snapshot.tracks[1].segments, helpers.getOverlayTrack(project).segments);
 });
 
 
@@ -6836,21 +6851,21 @@ test('browser ID repair reserves later explicit IDs like the server contract', (
   const project = {
     segments: [
       { start: 0, end: 1000, text: 'generated' },
-      { id: 'main-001', start: 1000, end: 2000, text: 'explicit' },
+      { id: 'main-cue-1', start: 1000, end: 2000, text: 'explicit' },
       { start: 2000, end: 3000, text: 'next' },
     ],
   };
 
-  helpers.normalizeMultiSubtitleProject(project);
+  const canonical = helpers.importProject(project).project;
 
-  assert.deepEqual(project.segments.map((segment) => segment.id), [
-    'main-001-generated', 'main-001', 'main-003',
+  assert.deepEqual([...helpers.getMainTrack(canonical).segments].map((segment) => segment.id), [
+    'main-cue-1-2', 'main-cue-1', 'main-cue-3',
   ]);
 });
 
 
 test('swaps main and extension subtitle tracks and rewrites binding offsets', () => {
-  const project = {
+  const legacy = {
     segments: [{
       id: 'main-001', start: 0, end: 1000, text: 'English',
       items: [{ start: 0, end: 1000, text: 'English' }],
@@ -6886,49 +6901,44 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
     },
   };
 
+  const project = helpers.importProject(legacy).project;
+  const before = JSON.parse(JSON.stringify(project));
+  const originalMain = helpers.getMainTrack(project);
+  const originalExtension = helpers.getExtensionTrack(project);
+  const originalMainCues = originalMain.segments;
+  const originalExtensionCues = originalExtension.segments;
   const result = helpers.swapMainAndExtensionSubtitle(project, 'translation');
   assert.equal(result.swapped, true);
   assert.equal(result.mappedColorCount, 0);
-  assert.deepEqual(JSON.parse(JSON.stringify(project.segments.map(({ color, color_ref }) => ({ color, color_ref })))), [
-    {}, {},
-  ]);
-  assert.equal(project.segments[0].text, '中文');
-  assert.deepEqual(JSON.parse(JSON.stringify(project.segments[0].items)), [
+  assert.equal(helpers.getMainTrack(project), originalExtension);
+  assert.equal(helpers.getExtensionTrack(project), originalMain);
+  assert.equal(originalMain.segments, originalMainCues);
+  assert.equal(originalExtension.segments, originalExtensionCues);
+  assert.equal(helpers.getMainTrack(project).segments[0].text, '中文');
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.getMainTrack(project).segments[0].items)), [
     { start: 40, end: 960, text: '中文' },
   ]);
-  assert.equal(project.multi_subtitle.tracks[0].segments[0].text, 'English');
-  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments[0].items)), [
+  assert.equal(helpers.getExtensionTrack(project).segments[0].text, 'English');
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.getExtensionTrack(project).segments[0].items)), [
     { start: 0, end: 1000, text: 'English' },
   ]);
-  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments.map(({ color, color_ref }) => ({ color, color_ref })))), [
-    { color: { name: 'yellow', value: '#c4a019', start: 0, end: 2200 } },
-    { color: null, color_ref: { name: 'yellow', headIdx: 0 } },
-  ]);
-  assert.equal(project.multi_subtitle.main_split_mode, 'continuous');
-  assert.equal(project.multi_subtitle.tracks[0].split_mode, 'word');
-  assert.deepEqual([...project.multi_subtitle.bindings[0].main_segment_ids], ['translation-001']);
-  assert.deepEqual([...project.multi_subtitle.bindings[0].extension_segment_ids], ['main-001']);
-  assert.equal(project.multi_subtitle.bindings[0].start_offset_ms, -40);
-  assert.equal(project.multi_subtitle.bindings[0].end_offset_ms, 40);
+  // Each cue retains its own attributes when its track changes roles. An
+  // uncoloured translation is not overwritten with the other track's colour.
+  assert.equal(originalMain.segments[0].color_group_id, 'color-main-1');
+  assert.equal(originalMain.segments[1].color_group_id, 'color-main-1');
+  assert.equal(Object.hasOwn(originalExtension.segments[0], 'color_group_id'), false);
+  assert.deepEqual(JSON.parse(JSON.stringify(project.subtitle_groups)), before.subtitle_groups);
+  assert.equal(helpers.getMainTrack(project).split_mode, 'continuous');
+  assert.equal(helpers.getExtensionTrack(project).split_mode_override, 'word');
+  assert.deepEqual(JSON.parse(JSON.stringify(project.bindings[0].source)), { track_id: 'translation', segment_id: 'translation-001' });
+  assert.deepEqual(JSON.parse(JSON.stringify(project.bindings[0].target)), { track_id: 'main', segment_id: 'main-001' });
+  assert.equal(project.bindings[0].start_offset_ms, -40);
+  assert.equal(project.bindings[0].end_offset_ms, 40);
 
-  const secondResult = helpers.swapMainAndExtensionSubtitle(project, 'translation');
+  const secondResult = helpers.swapMainAndExtensionSubtitle(project);
   assert.equal(secondResult.swapped, true);
-  assert.deepEqual(JSON.parse(JSON.stringify(project.segments)), [{
-    id: 'main-001', start: 0, end: 1000, text: 'English',
-    items: [{ start: 0, end: 1000, text: 'English' }],
-    color: { name: 'yellow', value: '#c4a019', start: 0, end: 2200 },
-  }, {
-    id: 'main-002', start: 1200, end: 2200, text: 'English two',
-    items: [{ start: 1200, end: 2200, text: 'English two' }],
-    color: null, color_ref: { name: 'yellow', headIdx: 0 },
-  }]);
-  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments)), [{
-    id: 'translation-001', start: 40, end: 960, text: '中文',
-    items: [{ start: 40, end: 960, text: '中文' }],
-  }, {
-    id: 'translation-002', start: 1240, end: 2160, text: '中文二',
-    items: [{ start: 1240, end: 2160, text: '中文二' }],
-  }]);
+  assert.equal(helpers.getMainTrack(project), originalMain);
+  assert.deepEqual(JSON.parse(JSON.stringify(project)), before);
 });
 
 
@@ -7003,7 +7013,7 @@ test('builds bindings with offsets and aligns bound/unbound dual display rows', 
     { id: 'e1', start: 50, end: 950 },
     { id: 'e2', start: 1300, end: 1800 },
   ];
-  const binding = helpers.buildSubtitleBinding(main[0], extension[0], 'translation');
+  const binding = helpers.buildSubtitleBinding(main[0], extension[0], 'translation', null, 'main');
   assert.equal(binding.start_offset_ms, 50);
   assert.equal(binding.end_offset_ms, -50);
   assert.deepEqual(JSON.parse(JSON.stringify(

@@ -21,6 +21,7 @@ export function initMaweServerSave() {
   // 浏览器「新建工程 / 另存为」选择的文件由页面持有 FileSystemFileHandle 持续写回；
   // Server 绑定的工程仍由服务器按真实路径原子保存，且优先级高于句柄。
   let projectFileHandle = null;
+  let requiresMigrationSaveAs = MaweBoot.SERVER_CONFIG?.requiresMigrationSaveAs === true;
 
 
 
@@ -39,16 +40,15 @@ export function initMaweServerSave() {
 
   function parseProjectValidationTarget(detail) {
     const value = String(detail || '');
-    const mainMatch = /^\$\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
-    const extensionMatch = /^\$\.multi_subtitle\.tracks\[(\d+)\]\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
-    if (!mainMatch && !extensionMatch) return null;
-    const kind = mainMatch ? 'main' : 'extension';
-    const trackIndex = extensionMatch ? Number(extensionMatch[1]) : null;
-    const segmentIndex = Number(mainMatch ? mainMatch[1] : extensionMatch[2]);
-    const itemValue = mainMatch ? mainMatch[2] : extensionMatch[3];
-    const itemIndex = itemValue === undefined ? null : Number(itemValue);
-    const track = extensionMatch ? MaweMultiSubtitleCore.getMultiSubtitleState().tracks?.[trackIndex] : null;
-    const segments = kind === 'main' ? MaweBoot.DATA.segments : (track?.segments || []);
+    const match = /^\$\.tracks\[(\d+)\]\.segments\[(\d+)\](?:\.items\[(\d+)\])?(?:\.[A-Za-z_]\w*)?\s*:/.exec(value);
+    if (!match) return null;
+    const trackIndex = Number(match[1]);
+    const track = MaweBoot.DATA.tracks[trackIndex];
+    const kind = track?.role === 'secondary' ? 'extension' : track?.role;
+    if (!kind) return null;
+    const segmentIndex = Number(match[2]);
+    const itemIndex = match[3] === undefined ? null : Number(match[3]);
+    const segments = track.segments;
     const segment = segments[segmentIndex];
     if (!segment) return null;
     const item = itemIndex === null
@@ -150,7 +150,7 @@ export function initMaweServerSave() {
 
   function focusProjectValidationTarget(target) {
     const { segmentIndex, segment } = target || {};
-    const segments = target?.segments || MaweBoot.DATA.segments;
+    const segments = target?.segments || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     if (!segment || !segments[segmentIndex]) return;
 
     // 校验错误不能因为用户当前的筛选状态而再次变得不可见。
@@ -161,7 +161,8 @@ export function initMaweServerSave() {
     }
     const cueSelector = target.kind === 'extension'
       ? `.cue[data-ext-idx="${segmentIndex}"]`
-      : `.cue[data-idx="${segmentIndex}"]`;
+      : target.kind === 'overlay' ? `.cue[data-overlay-idx="${segmentIndex}"]`
+        : `.cue[data-idx="${segmentIndex}"]`;
     const cueBeforeFilter = MaweCoreState.container.querySelector(cueSelector);
     if (cueBeforeFilter?.classList.contains('hidden')) {
       MaweDom.searchEl.value = '';
@@ -173,6 +174,8 @@ export function initMaweServerSave() {
     if (target.kind === 'extension') {
       MaweSelection.selectOnlyExtension(segmentIndex, target.track || MaweMultiSubtitleCore.getActiveExtensionTrack());
       MaweSelection.lastClickedExtensionIdx = segmentIndex;
+    } else if (target.kind === 'overlay') {
+      window.MaweCuePanelWiring.selectOverlayCueRow(segmentIndex);
     } else {
       MaweSelection.selectOnly(segmentIndex);
       MaweSelection.lastClickedIdx = segmentIndex;
@@ -298,7 +301,9 @@ export function initMaweServerSave() {
        if (!projectSaveTargetEnabled()) button.title = '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件';
     });
     if (MaweDom.saveProjectButton && projectSaveTargetEnabled()) {
-      MaweDom.saveProjectButton.title = '保存回当前工程文件（Ctrl(Cmd)+S）';
+      MaweDom.saveProjectButton.title = requiresMigrationSaveAs
+        ? '旧工程需要另存为 v2，原文件将保留（Ctrl(Cmd)+S）'
+        : '保存回当前工程文件（Ctrl(Cmd)+S）';
     }
     // 另存为走系统文件对话框，不依赖服务器绑定，始终可用。
     if (MaweDom.saveProjectAsButton) {
@@ -647,6 +652,8 @@ export function initMaweServerSave() {
     get projectCheckpointInFlight() { return projectCheckpointInFlight; },
     set projectCheckpointInFlight(v) { projectCheckpointInFlight = v; },
     get projectFileHandle() { return projectFileHandle; },
+    get requiresMigrationSaveAs() { return requiresMigrationSaveAs; },
+    set requiresMigrationSaveAs(value) { requiresMigrationSaveAs = value === true; },
     set projectFileHandle(v) { projectFileHandle = v; },
     serverProjectSavingEnabled,
     projectSaveTargetEnabled,

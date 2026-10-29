@@ -8,8 +8,7 @@
 // === 轨道查询 ===
 
 function getOverlayTrack() {
-  MaweMultiSubtitleCore.getMultiSubtitleState();
-  return MaweBoot.DATA.overlay_track;
+  return window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
 }
 
 function overlayTrackVisible() {
@@ -20,7 +19,7 @@ function overlayTrackVisible() {
 // 多重字幕关闭时轨道数据仍保留在工程里，但副字幕不参与 ASS 预览与导出；
 // 与 multiSubtitleVisible() 的开合语义保持一致。
 function activeExtensionSegments() {
-  if (MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return [];
+  if (MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled !== true) return [];
   return MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [];
 }
 
@@ -37,17 +36,17 @@ export const overlaySticker = Object.freeze({
 });
 
 function stickerSegmentsForTrack(track) {
-  return track === 'overlay' ? (getOverlayTrack()?.segments || []) : MaweBoot.DATA.segments;
+  return track === 'overlay' ? (getOverlayTrack()?.segments || []) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
 }
 
 // === 主轨 ↔ 叠加轨 段落迁移 ===
 // 两条轨道互不绑定；迁移保持目标轨按 start 升序（同 start 插到既有段之后），
 // 返回段在目标轨中的新下标，失败返回 -1。数组操作委托给 editor-utils 纯函数。
 function moveSegmentToOverlayTrack(index) {
-  const segment = MaweBoot.DATA.segments[index];
-  const overlay = getOverlayTrack();
+  const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
+  const overlay = window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
   if (!segment || !overlay || !Array.isArray(overlay.segments)) return -1;
-  const newIndex = window.AsrEditorUtils.moveSegmentBetweenTracks(MaweBoot.DATA.segments, overlay.segments, index);
+  const newIndex = window.AsrEditorUtils.moveSegmentBetweenTracks(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, overlay.segments, index);
   if (newIndex < 0) return -1;
   overlay.enabled = true;
   overlay._dirty = true;
@@ -59,8 +58,8 @@ function moveSegmentToOverlayTrack(index) {
 function moveOverlaySegmentToMainTrack(index) {
   const overlay = getOverlayTrack();
   const segment = overlay?.segments?.[index];
-  if (!segment || !Array.isArray(MaweBoot.DATA.segments)) return -1;
-  const newIndex = window.AsrEditorUtils.moveSegmentBetweenTracks(overlay.segments, MaweBoot.DATA.segments, index);
+  if (!segment || !Array.isArray(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)) return -1;
+  const newIndex = window.AsrEditorUtils.moveSegmentBetweenTracks(overlay.segments, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, index);
   if (newIndex < 0) return -1;
   overlay._dirty = true;
   segment._dirty = true;
@@ -69,56 +68,19 @@ function moveOverlaySegmentToMainTrack(index) {
 }
 
 function shiftMainGroupRefsAfterMove(movedIndexes) {
-  const removeSet = new Set(movedIndexes);
-  // 迁移对主轨组关系的影响与删除一致：先按切点拆组（清掉被迁移段的 head/ref），
-  // 再把剩余 ref 的 headIdx 前移，最后断开仍指向被迁移下标的残余 ref。
-  if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
-  if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
-  // 被迁移段若曾绑定副字幕，绑定一并解除（叠加轨不参与主副绑定）。
-  const movedIds = [...removeSet].map((index) => MaweBoot.DATA.segments[index]?.id).filter(Boolean);
+  // Moving keeps stable group membership and only detaches bilingual relations.
+  const movedIds = [...movedIndexes].map((index) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.id).filter(Boolean);
   if (movedIds.length) {
     MaweMultiSubtitleCore.removeBindingsForSegmentIds(movedIds, []);
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
   }
-  const shiftHeadIdx = (ref) => {
-    let shift = 0;
-    for (const index of movedIndexes) { if (index < ref.headIdx) shift += 1; else break; }
-    if (shift) ref.headIdx -= shift;
-  };
-  MaweBoot.DATA.segments.forEach((segment) => {
-    if (segment.sticker_ref) {
-      // 兜底判定必须用迁移前的原始 headIdx：先平移再判定会把「平移后恰好
-      // 撞上已迁移下标」的合法引用（如 head@5、迁移 [1,3] → 3）误清掉。
-      if (removeSet.has(segment.sticker_ref.headIdx)) segment.sticker_ref = null;
-      else shiftHeadIdx(segment.sticker_ref);
-    }
-    if (segment.color_ref) {
-      if (removeSet.has(segment.color_ref.headIdx)) segment.color_ref = null;
-      else shiftHeadIdx(segment.color_ref);
-    }
-  });
 }
 
 // 回轨方向：主轨在 insertAt 处插入一段后，其后所有 *_ref.headIdx 需 +1，
 // 否则组引用会指到错误的段（保存校验报 "must point to a color head"）。
-function shiftMainGroupRefsAfterInsert(insertAt) {
-  MaweBoot.DATA.segments.forEach((segment) => {
-    if (segment.sticker_ref && segment.sticker_ref.headIdx >= insertAt) segment.sticker_ref.headIdx += 1;
-    if (segment.color_ref && segment.color_ref.headIdx >= insertAt) segment.color_ref.headIdx += 1;
-  });
-}
+function shiftMainGroupRefsAfterInsert(_index) {}
 
-function resetOverlayGroupRefs(index) {
-  if (MaweBoot.DATA.subtitle_groups) return;
-  // 叠加轨的 ref 只引用叠加轨自身段；一条段离开后断开指向它的 ref 并前移 headIdx。
-  const overlay = getOverlayTrack();
-  (overlay?.segments || []).forEach((segment) => {
-    if (segment.sticker_ref?.headIdx === index) segment.sticker_ref = null;
-    if (segment.color_ref?.headIdx === index) segment.color_ref = null;
-    if (segment.sticker_ref && segment.sticker_ref.headIdx > index) segment.sticker_ref.headIdx -= 1;
-    if (segment.color_ref && segment.color_ref.headIdx > index) segment.color_ref.headIdx -= 1;
-  });
-}
+function resetOverlayGroupRefs(_index) {}
 
 function detachCuePanelFromTrackEdits() {
   MaweCuePanel.commitCuePanelEdit();
@@ -135,43 +97,19 @@ function detachCuePanelFromTrackEdits() {
 // 语义一致）。叠加轨的 color_ref 只引用叠加轨自身段，因此迁移后的颜色
 // 一律以「单段 head」形式存在，不产生跨轨引用。
 function captureCueColorSnapshot(segment) {
-  if (!segment) return null;
-  if (segment.color?.name) return { name: segment.color.name, value: segment.color.value ?? null };
-  if (segment.color_ref?.name) return { name: segment.color_ref.name, value: null };
-  return null;
+  return window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, segment, 'color');
 }
 
-function applyCueColorSnapshot(segment, snapshot) {
-  if (segment?.color_group_id) return true;
-  if (!segment || !snapshot?.name) return false;
-  segment.color_ref = null;
-  segment.color = {
-    name: snapshot.name,
-    value: snapshot.value || MaweColors.colorValue(snapshot.name),
-    start: segment.start,
-    end: segment.end,
-  };
-  return true;
-}
+function applyCueColorSnapshot(segment, _snapshot) { return Boolean(segment?.color_group_id); }
 
 // 表情包继承：与颜色同理。ref 迁移时需要 head 的完整素材数据（文件名、
 // 尺寸等），因此快照按所在轨数组解析并深拷贝；应用时物化为自持 head，
 // 时间范围改写为段自身范围，避免跨轨引用。
 function captureCueStickerSnapshot(segments, index) {
-  const segment = segments?.[index];
-  if (!segment) return null;
-  if (segment.sticker) return JSON.parse(JSON.stringify(segment.sticker));
-  const head = segments[segment.sticker_ref?.headIdx];
-  return head?.sticker ? JSON.parse(JSON.stringify(head.sticker)) : null;
+  return window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, segments[index], 'sticker');
 }
 
-function applyCueStickerSnapshot(segment, snapshot) {
-  if (segment?.sticker_group_id) return true;
-  if (!segment || !snapshot) return false;
-  segment.sticker_ref = null;
-  segment.sticker = { ...snapshot, start: segment.start, end: segment.end };
-  return true;
-}
+function applyCueStickerSnapshot(segment, _snapshot) { return Boolean(segment?.sticker_group_id); }
 
 // 拖动换轨入口专用的面板分离：不走 commitCuePanelEdit——它会把段钳回
 // 主轨非重叠区间（previousEnd/nextStart 夹逼），与 Shift+拖动「故意重叠」
@@ -187,7 +125,7 @@ function detachCuePanelDuringDrag() {
 // 菜单入口：把选中的主轨字幕转为叠加字幕。返回成功迁移的数量。
 function convertMainCuesToOverlay(idxs, { label = '转为叠加字幕', pushHistory = true, silent = false } = {}) {
   const targets = [...new Set(Array.isArray(idxs) ? idxs : [])]
-    .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < MaweBoot.DATA.segments.length)
+    .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)
     .sort((a, b) => a - b);
   if (!targets.length) return 0;
   detachCuePanelFromTrackEdits();
@@ -195,9 +133,9 @@ function convertMainCuesToOverlay(idxs, { label = '转为叠加字幕', pushHist
     // 迁移前快照颜色与表情包：splitGroupsAtCutPoints 会把切点的
     // color/color_ref/sticker/sticker_ref 清空，迁移后按快照物化回段上。
     const colorSnapshots = new Map(targets.map((index) => [index, {
-      segment: MaweBoot.DATA.segments[index],
-      color: captureCueColorSnapshot(MaweBoot.DATA.segments[index]),
-      sticker: captureCueStickerSnapshot(MaweBoot.DATA.segments, index),
+      segment: window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index],
+      color: captureCueColorSnapshot(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]),
+      sticker: captureCueStickerSnapshot(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, index),
     }]));
     shiftMainGroupRefsAfterMove(targets);
     let converted = 0;
@@ -229,12 +167,12 @@ function convertMainCuesToOverlay(idxs, { label = '转为叠加字幕', pushHist
 // 迁移后主轨下标整体前移：同步主轨选中集与 Shift 锚点，避免选中状态落到
 // 后面的字幕上；被迁移字幕保持选中（转入叠加轨选中集与字幕面板）。
 function convertMainCueToOverlayForDrag(index) {
-  if (!Number.isInteger(index) || index < 0 || index >= MaweBoot.DATA.segments.length) return -1;
+  if (!Number.isInteger(index) || index < 0 || index >= window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length) return -1;
   const panelWasHere = MaweCuePanelState.currentCuePanelKind === 'main' && MaweCuePanelState.currentCuePanelIdx === index;
   detachCuePanelDuringDrag();
-  const segment = MaweBoot.DATA.segments[index];
+  const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
   const colorSnapshot = captureCueColorSnapshot(segment);
-  const stickerSnapshot = captureCueStickerSnapshot(MaweBoot.DATA.segments, index);
+  const stickerSnapshot = captureCueStickerSnapshot(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, index);
   shiftMainGroupRefsAfterMove([index]);
   const newIndex = moveSegmentToOverlayTrack(index);
   if (newIndex < 0) return -1;
@@ -266,8 +204,6 @@ function convertOverlayCueToMainForDrag(index) {
   const stickerSnapshot = captureCueStickerSnapshot(overlay.segments, index);
   // 剩下的叠加轨组员按主轨同款「组拆分」语义提升新 head，然后迁移段
   // 物化自持颜色/表情回到主轨（split 依赖迁移前下标，必须在 splice 前调用）。
-  if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
-  if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'sticker', 'sticker_ref', overlay.segments);
   resetOverlayGroupRefs(index);
   const newIndex = moveOverlaySegmentToMainTrack(index);
   if (newIndex < 0) return -1;
@@ -294,8 +230,6 @@ function convertOverlayCueToMain(index) {
     const colorSnapshot = captureCueColorSnapshot(segment);
     const stickerSnapshot = captureCueStickerSnapshot(overlay.segments, index);
     // 与拖动入口一致：剩余组员先提升新 head，迁移段物化自持颜色/表情。
-    if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'color', 'color_ref', overlay.segments);
-    if (!MaweBoot.DATA.subtitle_groups) MaweSegmentOps.splitGroupsAtCutPoints(new Set([index]), 'sticker', 'sticker_ref', overlay.segments);
     resetOverlayGroupRefs(index);
     const newIndex = moveOverlaySegmentToMainTrack(index);
     if (newIndex < 0) return false;
@@ -318,6 +252,9 @@ function deleteOverlayCues(indices) {
   if (!sorted.length) return;
   detachCuePanelFromTrackEdits();
   return MaweCommands.run(`删除 ${sorted.length} 条叠加字幕`, (command) => {
+    const removed = new Set(sorted);
+    MaweSegmentOps.splitGroupsAtCutPoints(removed, 'color', 'color_ref', overlay.segments);
+    MaweSegmentOps.splitGroupsAtCutPoints(removed, 'sticker', 'sticker_ref', overlay.segments);
     for (let index = sorted.length - 1; index >= 0; index -= 1) {
       resetOverlayGroupRefs(sorted[index]);
       overlay.segments.splice(sorted[index], 1);
@@ -358,43 +295,28 @@ function assignOverlayColor(idxs, colorName) {
 // === 主轨颜色组（右键「移出颜色组」的数据面） ===
 // 数据结构与表情包同构：head 持完整 color，后续条持 color_ref（仅 name + headIdx）
 function colorGroupHeadIndex(idx) {
-  const segment = MaweBoot.DATA.segments[idx];
-  if (!segment) return -1;
-
-  const refHeadIdx = Number(segment.color_ref?.headIdx);
-  if (segment.color_ref
-      && Number.isInteger(refHeadIdx)
-      && refHeadIdx >= 0
-      && refHeadIdx < MaweBoot.DATA.segments.length
-      && refHeadIdx !== idx
-      && MaweBoot.DATA.segments[refHeadIdx]?.color) {
-    return refHeadIdx;
-  }
-
-  if (!segment.color) return -1;
-  return MaweBoot.DATA.segments.some((candidate, candidateIdx) => (
-    candidateIdx !== idx
-    && candidate?.color_ref
-    && Number(candidate.color_ref.headIdx) === idx
-  )) ? idx : -1;
+  const segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+  const id = segments[idx]?.color_group_id;
+  if (!id) return -1;
+  const members = segments.map((cue, index) => cue.color_group_id === id ? index : -1).filter(index => index >= 0);
+  return members.length > 1 ? members[0] : -1;
 }
 
 function detachColorFromGroup(idx) {
-  const segment = MaweBoot.DATA.segments[idx];
+  const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
   const headIdx = colorGroupHeadIndex(idx);
-  const groupColor = headIdx >= 0 ? MaweBoot.DATA.segments[headIdx]?.color : null;
+  const groupColor = headIdx >= 0 ? window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, segment, 'color') : null;
   if (!segment || !groupColor) return false;
 
   // 先复制颜色；拆分组时原 head 的时间范围可能会被收缩。
-  // 颜色组的 head 必为对象形态（captureCueColorSnapshot 同一假设）。
   const detachedColor = {
-    .../** @type {ProjectColorMark} */ (groupColor),
+    ...groupColor,
     start: segment.start,
     end: segment.end,
   };
     return MaweCommands.run('移出颜色组', () => {
     MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
-    window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, MaweBoot.DATA.segments, [idx], 'color', detachedColor);
+    window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [idx], 'color', detachedColor);
     MaweColorFilter.refreshColorAssignmentUi();
     MaweHint.flashHint('已移出颜色组', 'success');
     return true;
@@ -423,7 +345,7 @@ function clearOverlayColorOnTargets(idxs) {
 function clearOverlaySticker(index) {
   const overlay = getOverlayTrack();
   const segment = overlay?.segments?.[index];
-  if (!segment || (!segment.sticker && !segment.sticker_ref)) return;
+  if (!segment || !segment.sticker_group_id) return;
   window.AsrEditorUtils.clearSubtitleGroupMembers(MaweBoot.DATA, overlay.segments, [index], 'sticker');
   segment._dirty = true;
   overlay._dirty = true;
@@ -481,22 +403,17 @@ function mergeOverlaySegments(idxs) {
     ...window.AsrEditorUtils.cloneJsonValue(segments[0]),
     color_group_id: segments.every(s => s.color_group_id === segments[0].color_group_id) ? segments[0].color_group_id : undefined,
     sticker_group_id: segments.every(s => s.sticker_group_id === segments[0].sticker_group_id) ? segments[0].sticker_group_id : undefined,
-    id: window.AsrEditorUtils.uniqueStableSegmentId(
-      window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments),
-      `${segments[0].id || track.id}-merged`,
-      'overlay',
-    ),
+    id: segments[0].id,
     start: segments[0].start,
     end: segments[segments.length - 1].end,
     text: overlayJoin.text,
     items: overlayJoin.items,
-    sticker: stickerGroup.head,
-    sticker_ref: stickerGroup.ref,
-    color: colorGroup.head,
-    color_ref: colorGroup.ref,
     disabled: !!segments[0].disabled,
     _dirty: true,
   };
+  // 说话人身份独立于颜色；只有来源段的身份全部一致且非 null/undefined 时才继承。
+  const speaker = segments[0].speaker;
+  if (speaker == null || segments.some(segment => segment.speaker !== speaker)) delete merged.speaker;
   // 逐句缩放/定位与主字幕合并同规则：取最左句的完整覆盖（独立副本）。
   if (segments[0].assOverride) {
     merged.assOverride = window.AsrEditorUtils.normalizeAssOverride(segments[0].assOverride);
@@ -524,8 +441,8 @@ function mergeOverlaySegments(idxs) {
 // 叠加轨创建入口：与主轨不同，允许与主字幕时间重叠（这正是叠加轨的用途）；
 // 只要求不与叠加轨自身已有段重叠，范围夹进相邻叠加段之间。
 function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, clickY) {
-  const overlay = getOverlayTrack();
-  if (!overlay || !Array.isArray(overlay.segments)) {
+  let overlay = getOverlayTrack() || { segments: [] };
+  if (!Array.isArray(overlay.segments)) {
     MaweHint.flashHint('当前没有可用的叠加字幕轨', 'invalid');
     return;
   }
@@ -552,6 +469,7 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
   }
   MaweCuePanel.commitCuePanelEdit();
   return MaweCommands.run('新增叠加字幕', (command) => {
+    overlay = window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
     overlay.segments.splice(index, 0, {
       id: window.AsrEditorUtils.uniqueStableSegmentId(
         window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `overlay-${index + 1}`, 'overlay'),
@@ -575,8 +493,8 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
 // 右键菜单 / 后续菜单入口：在指针时间点创建一条默认时长的叠加字幕，
 // 范围夹进叠加轨相邻段之间（主轨是否占用不参与判断）。
 function addOverlayAtWaveformTime(timeMs, clickX, clickY) {
-  const overlay = getOverlayTrack();
-  if (!overlay || !Array.isArray(overlay.segments)) {
+  let overlay = getOverlayTrack() || { segments: [] };
+  if (!Array.isArray(overlay.segments)) {
     MaweHint.flashHint('当前没有可用的叠加字幕轨', 'invalid');
     return;
   }

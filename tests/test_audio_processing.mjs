@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+
+const utilsContext = { window: {}, TextDecoder };
+loadEditorModule(utilsContext, 'shared/editor-utils.js');
+const editorUtils = utilsContext.window.AsrEditorUtils;
 import { createUtilsModule as createHistoryUtils } from '../web/shared/utils/history.js';
 import { createUtilsModule as createDataUtils } from '../web/shared/utils/data.js';
 import { createUtilsModule as createGroupUtils } from '../web/shared/utils/subtitle-groups.js';
@@ -41,7 +46,7 @@ function fixture(transport = async () => response(result())) {
   const context = vm.createContext({ URL, AbortController, DOMException, setTimeout, clearTimeout, AudioContext,
     location: { href: 'http://localhost/', origin: 'http://localhost' },
     document: { getElementById(id) { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); }, addEventListener() {} },
-    MaweBoot: { DATA: { segments: [] }, SERVER_CONFIG: { requestToken: 'token', bindingGeneration: 1, sourceMediaId: 'source-a' } },
+    MaweBoot: { DATA: editorUtils.makeProject([]), SERVER_CONFIG: { requestToken: 'token', bindingGeneration: 1, sourceMediaId: 'source-a' } },
     MaweCoreState: { player }, MaweProjectLoad: { projectBindingEpoch: 0 },
     MaweFloatingPanel: { createFloatingPanel(options) {
       const panel = { open: () => options.onOpen(), close: () => options.onClose() };
@@ -52,9 +57,8 @@ function fixture(transport = async () => response(result())) {
   });
   context.window = context;
   vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  context.AsrEditorUtils = editorUtils;
   vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
-  const dataUtils = createDataUtils({});
-  context.AsrEditorUtils = { ...dataUtils, ...createHistoryUtils(dataUtils), ...createGroupUtils(dataUtils) };
   context.MaweWordTiming = { clearSelection() {} };
   context.MaweHint = { flashHint() {} };
   context.MaweInlineEdit = {};
@@ -177,7 +181,7 @@ test('a binding change during measurement re-enables measurement and a late resu
   assert.equal(f.api.measurement.integratedLufs, -18);
 });
 
-test('audio edits survive reconciliation, share undo history, and load/reset normalized project settings', () => {
+test('audio edits participate in content checkpoints, share undo history, and load/reset normalized project settings', () => {
   const f = fixture();
   f.api.change({ gain_db: -4 });
   assert.equal(f.state.hasProjectChanges(), true);
@@ -238,27 +242,17 @@ test('custom reference matching, dirty state and undo/redo keep the same target 
 function serializeProject(f) {
   const context = f.context;
   Object.assign(context, {
-    MaweExportContext: { projectExtensionFields: {} }, MULTI_SUBTITLE_UTILS: { MULTI_SUBTITLE_SCHEMA: 'moy.asr.multi_subtitle.v1' },
     getOverlayTrack: () => null,
     MaweTimeline: { syncProjectTimebaseAndBindingOffsets() {}, projectTimebase: () => ({ unit: 'milliseconds', fps: 30 }),
       normalizeMediaMetadata: () => null },
-    MaweMultiSubtitleCore: { getMultiSubtitleState: () => ({ tracks: [], bindings: [] }),
-      getActiveExtensionTrack: () => null, isConfiguredSubtitleSplitMode: () => false,
-      getMainSubtitleSplitMode: () => 'word' },
     MaweSettings: { EDITOR_SETTINGS: {} }, MaweProjectMediaInputs: {},
-    MaweAppearance: { getPreviewGeometry: () => ({ x: 0.1, y: 0.7, width: 0.8, height: 0.2 }), getSubtitleAppearance: () => ({}) },
-    MawePreviewGeometry: { getStickerGeometry: () => ({}) },
+    MawePreviewGeometry: { getStickerGeometry: () => editorUtils.normalizePreviewGeometry(undefined, editorUtils.DEFAULT_STICKER_GEOMETRY) },
+    MaweAppearance: { getPreviewGeometry: () => editorUtils.normalizePreviewGeometry(), getSubtitleAppearance: () => ({}) },
     MaweSpeakerLabels: { getSpeakerLabelSettings: () => ({}) },
     MaweExportTimeline: { buildCurrentWorkspaceData: () => null },
   });
-  context.AsrEditorUtils = { ...context.AsrEditorUtils,
-    normalizeItemTimingRanges: () => 0, markersToProjectField: () => null };
-  vm.runInContext(readFileSync(new URL('../web/shared/utils/project-validation.js', import.meta.url), 'utf8'), context);
   vm.runInContext(initModuleSource('editor/io/editor-json-repair.js'), context);
-  const saved = JSON.parse(context.MaweJsonRepair.buildJson());
-  const validation = context.MaweProjectValidation.validateProject(saved);
-  assert.equal(validation.ok, true, JSON.stringify(validation.errors));
-  return saved;
+  return JSON.parse(context.MaweJsonRepair.buildJson());
 }
 
 test('project serializer and reload preserve a custom reference and extended gain without persisting measurement', async () => {

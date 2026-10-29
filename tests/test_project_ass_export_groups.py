@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from maw.project_ass_export import ProjectSubtitleError, load_burn_project, render_project_ass
+from maw.project import normalize_project
 
 
 def group_project():
@@ -18,7 +19,7 @@ def group_project():
         "segments": [{"id": "main", "start": 1200, "end": 2400, "text": "主字幕", "color_group_id": "shared"}],
         "overlay_track": {"enabled": True, "segments": [
             {"id": "overlay", "start": 1500, "end": 2500, "text": "叠加字幕", "color_group_id": "shared"}]},
-        "preview": {"subtitle": {"ass_color_style": "text"}},
+        "preview": {"subtitle": {"x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "ass_color_style": "text"}},
         "vendor": {"unchanged": True},
     }
 
@@ -59,7 +60,7 @@ class ProjectAssExportGroupTests(unittest.TestCase):
             content = json.dumps(group_project(), ensure_ascii=False)
             path.write_text(content, encoding="utf-8")
             loaded, title = load_burn_project(path)
-            self.assertEqual(loaded, group_project())
+            self.assertEqual(loaded, normalize_project(group_project()))
             self.assertEqual(title, "v1.5")
             self.assertEqual(path.read_text(encoding="utf-8"), content)
             self.assertIn("Overlay RED", render(loaded))

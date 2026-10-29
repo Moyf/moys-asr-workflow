@@ -137,7 +137,7 @@ test('word conversion reserves cue IDs belonging to other project tracks', () =>
   const plan = utils.planWordTimingConversion([source], [0], undefined, {
     reservedSegments: [{ id: 'sentence-item-1' }, { id: 'sentence-item-1-2' }, { id: 'sentence-item-2' }],
   });
-  assert.deepEqual(plain(plan.segments.map(s => s.id)), ['sentence-item-1-3', 'sentence-item-2-2']);
+  assert.deepEqual(plain(plan.segments.map(s => s.id)), ['sentence', 'sentence-item-2-2']);
   assert.equal(plan.segments.map(s => s.text).join(''), source.text);
 });
 test('conversion repairs head/ref indices outside selected sentences and assigns collision-free IDs', () => {

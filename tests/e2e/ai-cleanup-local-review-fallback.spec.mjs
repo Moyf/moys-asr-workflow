@@ -27,7 +27,7 @@ test('two consecutive failed local mappings survive actual marker UI, save and r
         { start: offset, end: offset + 110, cleanup_scope: { segment_id: id, item_start: 0, item_end: 1, text: '我' } },
         { start: offset + 810, end: offset + 930, cleanup_scope: { segment_id: id, item_start: 4, item_end: 5, text: '嗯' } },
       ];
-      MaweBoot.DATA.segments = [{ id: 'lead', start: 0, end: 2000, text: '前文', items: [{ text: '前文', start: 0, end: 2000 }] },
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'lead', start: 0, end: 2000, text: '前文', items: [{ text: '前文', start: 0, end: 2000 }] },
         segment('first', 0), segment('second', 1000)];
       MaweBoot.DATA.gap_remove = { provenance: { sources: {
         ai_cleanup: [...ranges('first', 0), ...ranges('second', 1000)],
@@ -39,7 +39,7 @@ test('two consecutive failed local mappings survive actual marker UI, save and r
         { id: 'ai-second', start: 1810, end: 1930, name: 'AI', note: '[AI] 删除：填充词', color: '#8e4ec6' },
       ];
       const incoming = MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup.every((range) => {
-        const cue = MaweBoot.DATA.segments.find((item) => item.id === range.cleanup_scope.segment_id);
+        const cue = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.find((item) => item.id === range.cleanup_scope.segment_id);
         return AsrGapRemoveCore.getCleanupScopeItems(cue, range).length > 0;
       });
       MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA);

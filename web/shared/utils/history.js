@@ -8,13 +8,27 @@ export function createUtilsModule(dependencies) {
     segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览', markers: '标记',
   });
 
-  function buildSegmentsHistorySnapshot(segments, multiSubtitle, overlayTrack = null, subtitleGroups = null) {
-    return {
-      segments: cloneJsonValue(segments),
-      multi_subtitle: cloneJsonValue(multiSubtitle),
-      overlay_track: cloneJsonValue(overlayTrack),
-      subtitle_groups: cloneJsonValue(subtitleGroups),
-    };
+  function buildSegmentsHistorySnapshot(project) {
+    return cloneJsonValue({ tracks: project.tracks, bindings: project.bindings,
+      bilingual: project.bilingual, subtitle_groups: project.subtitle_groups });
+  }
+
+  function restoreSegmentsHistorySnapshot(project, snapshot) {
+    const restored = cloneJsonValue(snapshot);
+    const existing = new Map(project.tracks.map(track => [track.id, track]));
+    const tracks = restored.tracks.map(value => {
+      const track = existing.get(value.id);
+      if (!track) return value;
+      const segments = track.segments;
+      for (const key of Object.keys(track)) delete track[key];
+      Object.assign(track, value);
+      segments.splice(0, segments.length, ...value.segments);
+      track.segments = segments;
+      return track;
+    });
+    project.tracks.splice(0, project.tracks.length, ...tracks);
+    for (const field of ['bindings', 'bilingual', 'subtitle_groups']) project[field] = restored[field];
+    return project;
   }
 
   // options.clone = false 时直接附加调用方传入的 payload：
@@ -79,5 +93,5 @@ export function createUtilsModule(dependencies) {
     };
   }
 
-  return Object.freeze({ buildHistoryRecord, buildSegmentsHistorySnapshot, createHistoryStack });
+  return Object.freeze({ buildHistoryRecord, buildSegmentsHistorySnapshot, restoreSegmentsHistorySnapshot, createHistoryStack });
 }

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { runtimeProject } from './helpers/runtime-project.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -25,16 +26,15 @@ function fixture(markerShape) {
     { id: 'ai-first', start: 0, end: 110, name: 'AI', note: '[AI] 删除：口吃', color: '#8e4ec6' },
     { id: 'ai-second', start: 1810, end: 1930, name: 'AI', note: '[AI] 删除：填充词', color: '#8e4ec6' },
   ];
-  const project = {
-    segments: [{ id: 'lead', start: 0, end: 2000, text: '前文', items: [{ text: '前文', start: 0, end: 2000 }] },
-      segment('first', 0), segment('second', 1000)],
+  const project = runtimeProject([{ id: 'lead', start: 0, end: 2000, text: '前文', items: [{ text: '前文', start: 0, end: 2000 }] },
+      segment('first', 0), segment('second', 1000)], {
     markers: markerShape === 'array' ? markers : { schema: 'moy.asr.markers.v1', items: markers },
     gap_remove: { provenance: { sources: {
       ai_cleanup: [...ranges('first', 0), ...ranges('second', 1000)],
       audio_gate: [{ start: 810, end: 930 }],
       script_alignment: [{ start: 3000, end: 3050 }],
     }, manual_overrides: [{ id: 'manual-late', start: 1500, end: 1600, removed: true }] } },
-  };
+  });
   context.MaweBoot = { DATA: project };
   vm.runInNewContext(initModuleSource('editor/io/editor-json-repair.js'), context);
   return { context, core, project };
@@ -45,7 +45,7 @@ for (const shape of ['array', 'project-field']) {
     const { context, core, project } = fixture(shape);
     const ranges = project.gap_remove.provenance.sources.ai_cleanup;
     for (const range of ranges) {
-      const cue = project.segments.find((segment) => segment.id === range.cleanup_scope.segment_id);
+      const cue = context.window.AsrEditorUtils.getMainTrack(project).segments.find((segment) => segment.id === range.cleanup_scope.segment_id);
       assert.ok(core.getCleanupScopeItems(cue, range).length, 'every incoming local scope is individually exact');
     }
     // Both cues overlap the preceding cue; the real normalizer must repair
@@ -68,7 +68,7 @@ for (const shape of ['array', 'project-field']) {
     assert.equal(markers.find((marker) => marker.id === 'ordinary').review, undefined);
     assert.equal(markers.find((marker) => marker.id === 'ai-first').review.status, 'pending');
     assert.equal(markers.find((marker) => marker.id === 'ai-second').review.status, 'pending');
-    for (const cue of core.projectCleanupRetainedSegments(project.segments, project.gap_remove).slice(1)) {
+    for (const cue of core.projectCleanupRetainedSegments(context.window.AsrEditorUtils.getMainTrack(project).segments, project.gap_remove).slice(1)) {
       assert.equal(cue.text, '我我这个，功能嗯很好呢');
       assert.equal(cue.disabled, undefined);
     }

@@ -27,6 +27,7 @@ from typing import Any, Mapping
 
 import requests
 
+from maw.project_tracks import make_project
 from maw.stickers import get_default_sticker_dir
 from maw.asr.common import (
     extract_audio,
@@ -816,17 +817,19 @@ def main() -> None:
             str(result.get("text") or ""),
         )
         split_mode = split_mode_for_text(str(result.get("text") or ""), language)
-        json_data: dict[str, Any] = {
-            "media": str(input_path),
-            "language": language,
-            "language_source": language_source,
-            "split_mode": split_mode,
-            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
-                result.get("items") or [], split_mode, has_segments=bool(segments)
-            ),
-            "model": args.model,
-            "segments": segments,
-        }
+        json_data: dict[str, Any] = make_project(
+            segments,
+            main_fields={
+                'language': language,
+                'language_source': language_source,
+                'split_mode': split_mode,
+                'timestamp_granularity': result.get('timestamp_granularity') or timestamp_granularity_for_items(result.get('items') or [], split_mode, has_segments=bool(segments)),
+                'model': args.model,
+            },
+            project_fields={
+                'media': str(input_path),
+            },
+        )
         if cache_result is not None:
             json_data = merge_media_caches(json_data, cache_result)
         json_path = output_path.with_suffix(".mosp")

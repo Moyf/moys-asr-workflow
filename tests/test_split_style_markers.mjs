@@ -3,13 +3,15 @@ import test from 'node:test';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { runtimeProject } from './helpers/runtime-project.mjs';
 const fixture = { window: {} };
 loadEditorModule(fixture, 'shared/editor-utils.js');
 const utils = fixture.window.AsrEditorUtils;
 const settings = { assMode: true, assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both' };
 const context = { window: { AsrEditorUtils: utils }, MULTI_SUBTITLE_UTILS: utils,
-  MaweBoot: { DATA: { segments: [] } },
+  MaweBoot: { DATA: runtimeProject([]) },
   MaweSettings: { EDITOR_SETTINGS: { ...settings } }, MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
+context.window.MaweBoot = context.MaweBoot;
 vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), context);
 const core = context.window.MaweSplitCore;
 const plain = value => JSON.parse(JSON.stringify(value));
@@ -235,11 +237,11 @@ test('same-style single/double nesting and overlap preserve actual ASS rendering
 });
 
 test('long repeated speech recovery stays linear for complete coverage and budgets optional ambiguous DP', () => {
-  const original = context.MULTI_SUBTITLE_UTILS;
+  const original = context.window.AsrEditorUtils;
   let calls;
-  context.MULTI_SUBTITLE_UTILS = { ...original, alignItemsToText(text, items) {
+  context.window.AsrEditorUtils = { ...original, alignItemsToText(text, items, options) {
     calls += 1;
-    return original.alignItemsToText(text, items);
+    return original.alignItemsToText(text, items, options);
   } };
   try {
     for (const suffix of ['', '新增']) {
@@ -256,7 +258,7 @@ test('long repeated speech recovery stays linear for complete coverage and budge
         assert.ok(item.start >= source.start && item.end <= source.end);
       }
     }
-  } finally { context.MULTI_SUBTITLE_UTILS = original; }
+  } finally { context.window.AsrEditorUtils = original; }
 });
 
 

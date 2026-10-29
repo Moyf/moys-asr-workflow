@@ -116,6 +116,7 @@ runpy.run_path("scripts/packaging/MAW.spec", init_globals={"SPECPATH":"scripts/p
 from pathlib import Path
 import json, wave
 from maw.local_asr import LocalTranscription, write_local_outputs
+from maw.project_tracks import get_main_track
 media = Path("local.wav").resolve()
 with wave.open(str(media), "wb") as stream:
     stream.setnchannels(1); stream.setsampwidth(2); stream.setframerate(8000)
@@ -127,7 +128,7 @@ result = write_local_outputs(input_path=media, output_srt=Path("local.srt").reso
     generate_html=True, with_waveform=False)
 assert result.html is None
 assert "Local output" in result.srt.read_text(encoding="utf-8")
-assert json.loads(result.json.read_text(encoding="utf-8"))["segments"][0]["text"] == "Local output"
+assert get_main_track(json.loads(result.json.read_text(encoding="utf-8")))["segments"][0]["text"] == "Local output"
 assert not Path("local.edit.html").exists()
 ''')
         self.assertEqual(result.returncode, 0, result.stderr[-1500:])

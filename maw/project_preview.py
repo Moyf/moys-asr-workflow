@@ -175,9 +175,25 @@ def clamped_preview(project: JsonDict, duration_ms: int) -> JsonDict:
     """Return a deep copy whose validated segments are clipped to a duration."""
     preview = copy.deepcopy(project)
     duration = max(0, duration_ms)
-    segments = project.get("segments")
+    from maw.project_tracks import project_tracks
+    for track in project_tracks(preview):
+        track["segments"] = _clamped_segments(track["segments"], duration)
+    retained = {segment["id"] for track in preview["tracks"] for segment in track["segments"]}
+    preview["bindings"] = [binding for binding in preview.get("bindings", [])
+                           if all(identifier in retained for identifier in
+                                  [*[binding["source"]["segment_id"]], *[binding["target"]["segment_id"]]])]
+    by_id = {segment["id"]: segment for track in preview["tracks"] for segment in track["segments"]}
+    for binding in preview["bindings"]:
+        source = by_id[binding["source"]["segment_id"]]
+        target = by_id[binding["target"]["segment_id"]]
+        binding["start_offset_ms"] = target["start"] - source["start"]
+        binding["end_offset_ms"] = target["end"] - source["end"]
+    return preview
+
+
+def _clamped_segments(segments: list[JsonValue], duration: int) -> list[JsonValue]:
     if not isinstance(segments, list):
-        return preview
+        return []
     preview_segments: list[JsonValue] = []
     for segment in segments:
         if not isinstance(segment, dict):
@@ -195,8 +211,7 @@ def clamped_preview(project: JsonDict, duration_ms: int) -> JsonDict:
         if isinstance(items, list):
             next_segment["items"] = _clamped_items(items, next_start, next_end)
         preview_segments.append(next_segment)
-    preview["segments"] = preview_segments
-    return preview
+    return preview_segments
 
 
 def _clamped_items(items: list[JsonValue], start: int, end: int) -> list[JsonValue]:

@@ -75,7 +75,7 @@ function stickerBoxError(page) {
 
 test('server startup repairs legacy sticker groups before the first render', async ({ page }) => {
   expect(await page.evaluate(() => ({
-    end: MaweBoot.DATA.segments[0].sticker.end,
+    end: AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker')[0].end,
     count: MaweStickerOverlay.activeStickersAt(1500).length,
   }))).toEqual({ end: 2600, count: 1 });
 });

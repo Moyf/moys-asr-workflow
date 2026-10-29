@@ -55,13 +55,14 @@ test('checked sticker column stays collapsed until the project contains a sticke
   await expect(cueList).toHaveClass(/hide-cue-sticker/);
 
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].sticker = { name: 'test', filename: 'test.png' };
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+      [0], 'sticker', { name: 'test', filename: 'test.png' });
     MaweCuePanel.renderAll();
   });
   await expect(cueList).not.toHaveClass(/hide-cue-sticker/);
 
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].sticker = null;
+    AsrEditorUtils.clearSubtitleGroupMembers(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0], 'sticker');
     MaweCuePanel.renderAll();
   });
   await expect(cueList).toHaveClass(/hide-cue-sticker/);

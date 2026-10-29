@@ -29,7 +29,7 @@
 
   // === 纯文本编辑（支持调整字幕行结构的 MVP） ===
   function timedTextEditSegments(kind) {
-    return kind === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [] : MaweBoot.DATA.segments;
+    return kind === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [] : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   }
 
 
@@ -932,7 +932,7 @@
   function refreshTimedTextEditTrackOptions(kind = currentTimedTextEditKind()) {
     const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
     // 「已开启模式但尚未导入副轨」时没有第二条字幕可编辑，不显示轨道切换控件。
-    const multiSubtitleEnabled = multi.enabled === true && Boolean((multi.tracks || []).length);
+    const multiSubtitleEnabled = MaweMultiSubtitleCore.multiSubtitleVisible();
     if (MaweDom.timedTextEditTrackControl) MaweDom.timedTextEditTrackControl.hidden = !multiSubtitleEnabled;
     const extensionAvailable = multiSubtitleEnabled && Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length);
     const extensionOption = MaweDom.timedTextEditTrack.querySelector('option[value="extension"]');
@@ -981,7 +981,7 @@
 
   function refreshTimedTextEditButton() {
     if (!MaweDom.timedTextEditButton) return;
-    const hasMain = MaweBoot.DATA.segments.length > 0;
+    const hasMain = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0;
     const hasExtension = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length);
     MaweDom.timedTextEditButton.disabled = !hasMain && !hasExtension;
   }
@@ -1134,8 +1134,8 @@
       extensionTrack = MaweMultiSubtitleCore.multiSubtitleVisible() && removedIds.length ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
       if (extensionTrack) {
         (multi.bindings || []).forEach((binding) => {
-          if (!binding.main_segment_ids?.some((id) => removedIds.includes(id))) return;
-          (binding.extension_segment_ids || []).forEach((id) => {
+          if (!removedIds.includes(binding.source?.segment_id)) return;
+          (binding.target?.segment_id ? [binding.target.segment_id] : []).forEach((id) => {
             const index = extensionTrack.segments.findIndex((segment) => segment?.id === id);
             if (index >= 0) pairedExtensionIndices.add(index);
           });
@@ -1154,7 +1154,7 @@
         // 与删除字幕相同的分组语义：来源行离开后，颜色 / 表情包组在切点处拆开。
         MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
         MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
-        MaweBoot.DATA.segments.forEach((segment, index) => {
+        window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((segment, index) => {
           if (removeSet.has(index)) return;
           if (segment.sticker_ref && removeSet.has(segment.sticker_ref.headIdx)) {
             segment.sticker_ref = null;
@@ -1185,11 +1185,11 @@
         }
         if (shift) ref.headIdx -= shift;
       };
-      MaweBoot.DATA.segments.forEach((segment) => {
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((segment) => {
         if (segment.sticker_ref) shiftHeadIdx(segment.sticker_ref);
         if (segment.color_ref) shiftHeadIdx(segment.color_ref);
       });
-      window.AsrEditorUtils.repairGroupReferenceIndices(MaweBoot.DATA.segments);
+      window.AsrEditorUtils.repairGroupReferenceIndices(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
       if (extensionTrack && pairedExtensionIndices.size) {
         [...pairedExtensionIndices].sort((a, b) => b - a)
           .forEach((index) => extensionTrack.segments.splice(index, 1));
@@ -1228,7 +1228,7 @@
 
 
   function openTimedTextEdit() {
-    if (!MaweBoot.DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
+    if (!window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
       MaweHint.flashHint('当前没有可编辑的字幕', 'invalid');
       return;
     }

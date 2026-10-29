@@ -11,6 +11,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+from maw.project_mutations import replace_main_segments
+from maw.project_tracks import get_main_track, get_tracks_by_role, iter_segments
 from maw.language import normalize_language_code
 from maw.output_naming import TRANSLATION_TARGET_NAMES, translation_marker_name
 from maw.postprocess_io import SubtitleArtifact, read_project, read_srt, write_artifacts
@@ -99,7 +101,7 @@ PROMPTS: Final[dict[str, str]] = {
 }
 
 SAFE_SCALARS: Final = ("speaker", "disabled")
-VISUAL_FIELDS: Final = ("sticker", "sticker_ref", "color", "color_ref")
+VISUAL_FIELDS: Final = ("sticker_group_id", "color_group_id")
 # Structured subtitle output is considerably longer than the input text.  Keep
 # requests small enough that a model has room to return every ID, especially
 # for one-to-one translation where an omitted final cue would make the result
@@ -316,8 +318,7 @@ def _run_llm_postprocess(
     if strict_translation:
         if request.merge_bilingual and request.embed_translations:
             raise ValueError("「将双语字幕合并为单个字幕」与「只翻译非中文（英文）的字幕」不能同时启用，请只选择一个输出方式。")
-        multi = project.get("multi_subtitle")
-        if source_project is None or not isinstance(multi, dict) or not multi.get("tracks"):
+        if source_project is None or not get_tracks_by_role(project, "secondary"):
             _reject_recursive_translation_input(source_project, source_srt, request.operation)
     item_aware_resegment = request.operation == "resegment" and _has_complete_items(project)
     system_prompt = _protocol_prompt(
@@ -575,6 +576,7 @@ def merge_bilingual_project(
     else:
         translation_first = translation_target == "zh"
 
+    source_project, translated_project = normalize_project(source_project), normalize_project(translated_project)
     source_segments = _segments(source_project)
     translated_segments = _segments(translated_project)
     if len(source_segments) != len(translated_segments):
@@ -612,11 +614,14 @@ def merge_bilingual_project(
         merged_segments.append(merged)
 
     merged_project = copy.deepcopy(source_project)
-    merged_project["segments"] = merged_segments
+    replace_main_segments(merged_project, merged_segments)
     # A bilingual merge is intentionally a single-track result.  Do not carry
     # an older extension track into the final project if the input was already
     # a multi-subtitle project.
-    merged_project.pop("multi_subtitle", None)
+    merged_project["tracks"] = [track for track in merged_project["tracks"] if track["role"] != "secondary"]
+    merged_project["bindings"] = []
+    merged_project["bilingual"].pop("active_track_id", None)
+    merged_project["bilingual"]["display_mode"] = "main"
     merged_project.pop("extensionSegments", None)
     return normalize_project(merged_project)
 
@@ -646,6 +651,7 @@ def embed_translated_project(source_project: JsonDict, translated_project: JsonD
     时间码）；发生翻译的句子替换文本并丢弃字词时间码。
     """
 
+    source_project, translated_project = normalize_project(source_project), normalize_project(translated_project)
     source_segments = _segments(source_project)
     translated_segments = _segments(translated_project)
     if len(source_segments) != len(translated_segments):
@@ -670,8 +676,11 @@ def embed_translated_project(source_project: JsonDict, translated_project: JsonD
         embedded_segments.append(merged)
 
     embedded_project = copy.deepcopy(source_project)
-    embedded_project["segments"] = embedded_segments
-    embedded_project.pop("multi_subtitle", None)
+    replace_main_segments(embedded_project, embedded_segments)
+    embedded_project["tracks"] = [track for track in embedded_project["tracks"] if track["role"] != "secondary"]
+    embedded_project["bindings"] = []
+    embedded_project["bilingual"].pop("active_track_id", None)
+    embedded_project["bilingual"]["display_mode"] = "main"
     embedded_project.pop("extensionSegments", None)
     return normalize_project(embedded_project)
 
@@ -695,7 +704,7 @@ def _postprocess_step_error(message: str, error: BaseException) -> PostprocessSt
 
 
 def apply_llm_groups(project: JsonDict, response: Mapping[str, JsonValue]) -> JsonDict:
-    processed, _warnings = _apply_llm_groups_with_warnings(project, response)
+    processed, _warnings = _apply_llm_groups_with_warnings(normalize_project(project), response)
     return processed
 
 
@@ -865,8 +874,8 @@ def _can_prefilter_chinese(project: JsonDict, cues: Sequence[Mapping[str, JsonVa
     the input so short Han-only cues in the same file are sent to the model.
     """
     return (
-        normalize_language_code(project.get("language")) == "zh"
-        and project.get("language_source") in ("detected", "hint")
+        normalize_language_code(get_main_track(project).get("language")) == "zh"
+        and get_main_track(project).get("language_source") in ("detected", "hint")
         and not any(_JAPANESE_KOREAN_PATTERN.search(str(cue.get("text") or "")) for cue in cues)
     )
 
@@ -1231,6 +1240,7 @@ def _apply_llm_groups_with_warnings(
         index_by_id,
         preserve_items_on_equal_text=preserve_items_on_equal_text,
         drop_items=drop_items,
+        reserved_ids={cue["id"] for track in project["tracks"] if track["role"] != "main" for cue in track["segments"]},
     )
     if preserved and not strict_translation:
         for index, (source_ids, _text) in enumerate(build_groups):
@@ -1253,7 +1263,7 @@ def _apply_llm_groups_with_warnings(
             raise ValueError("translation output contains unexpected extra cues")
         new_segments = rebuilt_segments
     result = copy.deepcopy(project)
-    result["segments"] = new_segments
+    replace_main_segments(result, new_segments)
     warnings: list[str] = []
     if regrouped:
         warnings.append("重分句/合并已清理受影响字幕的逐词时间和贴纸/颜色引用；未受影响的字幕尽量保留。")
@@ -1342,7 +1352,8 @@ def _apply_llm_atom_groups_with_warnings(
     split_positions: dict[str, int] = {}
     preserved_indexes = iter(sorted(source_index_by_id[source_id] for source_id in preserved))
     next_preserved = next(preserved_indexes, None)
-    used_output_ids = {str(source_segments[source_index_by_id[source_id]].get("id")) for source_id in preserved}
+    used_output_ids = {segment["id"] for segment in iter_segments(project)}
+    retained_source_ids = {source_segments[source_index_by_id[source_id]]["id"] for source_id in preserved}
     for atom_ids in parsed:
         group_source_ids = tuple(dict.fromkeys(atom_source_id[atom_id] for atom_id in atom_ids))
         source_indexes = [source_index_by_id[source_id] for source_id in group_source_ids]
@@ -1370,7 +1381,10 @@ def _apply_llm_atom_groups_with_warnings(
         text = "".join(str(atom_by_id[atom_id]["text"]) for atom_id in atom_ids)
         segment = copy.deepcopy(first_source) if full_source and not regrouped else _copy_common_metadata(source_group)
         segment.update({"start": start, "end": end, "text": text})
-        if not full_source or regrouped:
+        if first_source["id"] not in retained_source_ids:
+            segment["id"] = first_source["id"]
+            retained_source_ids.add(first_source["id"])
+        elif not full_source or regrouped:
             segment["id"] = _unique_derived_segment_id(
                 first_source,
                 group_source_ids[0],
@@ -1382,20 +1396,20 @@ def _apply_llm_atom_groups_with_warnings(
         if len(group_source_ids) == 1:
             split_positions[group_source_ids[0]] = split_positions.get(group_source_ids[0], 0) + 1
         segment["items"] = [copy.deepcopy(atom_by_id[atom_id]) for atom_id in atom_ids]
-        if regrouped:
-            for field in VISUAL_FIELDS:
-                _ = segment.pop(field, None)
-        for field in SAFE_SCALARS:
-            first_value = first_source.get(field)
-            if first_value is not None and all(source.get(field) == first_value for source in source_group):
-                segment[field] = copy.deepcopy(first_value)
+        for visual_field in VISUAL_FIELDS:
+            if visual_field in first_source:
+                segment[visual_field] = copy.deepcopy(first_source[visual_field])
+        for scalar_field in SAFE_SCALARS:
+            first_value = first_source.get(scalar_field)
+            if first_value is not None and all(source.get(scalar_field) == first_value for source in source_group):
+                segment[scalar_field] = copy.deepcopy(first_value)
         output_segments.append(segment)
 
     while next_preserved is not None:
         output_segments.append(copy.deepcopy(source_segments[next_preserved]))
         next_preserved = next(preserved_indexes, None)
     result = copy.deepcopy(project)
-    result["segments"] = output_segments
+    replace_main_segments(result, output_segments)
     warnings: list[str] = []
     if regrouped:
         warnings.append("已按字词时间码重新断句，并保留逐词时间对齐。")
@@ -1409,16 +1423,15 @@ def _build_segments(
     *,
     preserve_items_on_equal_text: bool = True,
     drop_items: bool = False,
+    reserved_ids: set[str] | None = None,
 ) -> list[JsonValue]:
     split_counts: dict[str, int] = {}
     for source_ids, _text in groups:
         if len(source_ids) == 1:
             split_counts[source_ids[0]] = split_counts.get(source_ids[0], 0) + 1
     split_positions: dict[str, int] = {}
-    used_output_ids: set[str] = set()
+    used_output_ids: set[str] = set(reserved_ids or ())
     result: list[JsonValue] = []
-    occurrences = [cue_id for source_ids, _text in groups for cue_id in source_ids]
-    regrouped = any(len(source_ids) != 1 for source_ids, _text in groups) or len(set(occurrences)) != len(occurrences)
     for source_ids, text in groups:
         source_indexes = [index_by_id[cue_id] for cue_id in source_ids]
         first = sources[source_indexes[0]]
@@ -1445,7 +1458,11 @@ def _build_segments(
         segment.update({"start": start, "end": end, "text": text})
         if len(source_ids) == 1 and split_counts.get(source_ids[0], 0) > 1:
             split_position = split_positions[source_ids[0]]
-            segment["id"] = _unique_derived_segment_id(first, source_ids[0], split_position, used_output_ids)
+            if split_position == 1:
+                segment["id"] = first["id"]
+                used_output_ids.add(first["id"])
+            else:
+                segment["id"] = _unique_derived_segment_id(first, source_ids[0], split_position, used_output_ids)
         elif source_ids:
             candidate_id = str(first.get("id") or source_ids[0])
             if candidate_id in used_output_ids:
@@ -1473,17 +1490,13 @@ def _build_segments(
                 _ = segment.pop("items", None)
         elif not preserve_items_on_equal_text:
             _ = segment.pop("items", None)
-        if regrouped:
-            for field in VISUAL_FIELDS:
-                _ = segment.pop(field, None)
-        elif not unchanged:
-            for field in VISUAL_FIELDS:
-                if field in first:
-                    segment[field] = copy.deepcopy(first[field])
+        for visual_field in VISUAL_FIELDS:
+            if visual_field in first:
+                segment[visual_field] = copy.deepcopy(first[visual_field])
         scalar_values = {field: first.get(field) for field in SAFE_SCALARS}
-        for field, value in scalar_values.items():
-            if value is not None and all(source.get(field) == value for source in (sources[index] for index in source_indexes)):
-                segment[field] = copy.deepcopy(value)
+        for scalar_field, value in scalar_values.items():
+            if value is not None and all(source.get(scalar_field) == value for source in (sources[index] for index in source_indexes)):
+                segment[scalar_field] = copy.deepcopy(value)
         result.append(segment)
     return result
 
@@ -1494,13 +1507,18 @@ def _copy_common_metadata(source_segments: Sequence[JsonDict]) -> JsonDict:
     # Split outputs inherit independent copies; merged cues take the first
     # source position, including its absence, just like the editor's merge.
     result: JsonDict = {}
+    for visual_field in VISUAL_FIELDS:
+        values = {source.get(visual_field) for source in source_segments}
+        if len(values) > 1:
+            raise ValueError("cannot merge cues with different subtitle group membership")
+        if visual_field in first:
+            result[visual_field] = copy.deepcopy(first[visual_field])
     if "assOverride" in first:
         result["assOverride"] = copy.deepcopy(first["assOverride"])
     for metadata_key, value in first.items():
         if metadata_key in excluded:
             continue
-        if all(metadata_key in source and source[metadata_key] == value for source in source_segments[1:]):
-            result[metadata_key] = copy.deepcopy(value)
+        result[metadata_key] = copy.deepcopy(value)
     return result
 
 def _derived_segment_id(source: JsonDict, source_id: str, part_number: int) -> str:
@@ -1953,7 +1971,7 @@ def _write(
 
 
 def _segments(project: JsonDict) -> list[JsonDict]:
-    raw_segments = project.get("segments")
+    raw_segments = get_main_track(project)["segments"]
     if not isinstance(raw_segments, list):
         raise ValueError("project segments must be an array")
     segments: list[JsonDict] = []

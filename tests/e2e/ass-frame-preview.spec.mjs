@@ -64,7 +64,7 @@ test('only auto-renders while the comparison window or stage overlay needs a fra
   const before = requests;
   await seek(page, 2);
   await page.evaluate(() => {
-    window.MaweBoot.DATA.segments[0].text = '关闭窗口后的编辑';
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '关闭窗口后的编辑';
     window.MawePlaybackLoop.refreshSubtitlePreview();
   });
   await page.waitForTimeout(350);
@@ -107,7 +107,7 @@ test('manual frames remain current through unchanged preview refreshes', async (
     await page.evaluate(() => clearInterval(window.__manualRefreshTimer));
   }
   await page.evaluate(() => {
-    window.MaweBoot.DATA.segments[0].text = '手动帧之后的编辑';
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '手动帧之后的编辑';
     window.MawePlaybackLoop.refreshSubtitlePreview();
   });
   await expect(page.locator('#ass-frame-stale')).toBeVisible();
@@ -196,7 +196,7 @@ test('paused video uses native libass, updates after edits, and falls back immed
   expect(await page.evaluate(() => window.__assTimes[1])).toBe('0:00:00.00');
   const first = await frame.getAttribute('src');
   await page.evaluate(() => {
-    window.MaweBoot.DATA.segments[0].text = '样式修改后的**强调**';
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '样式修改后的**强调**';
     window.MawePlaybackLoop.refreshSubtitlePreview();
   });
   await expect.poll(() => frame.getAttribute('src')).not.toBe(first);
@@ -312,7 +312,7 @@ test('preview visibility and speaker labels remain independent from exports and 
   await seek(page, 1.5);
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
   const options = await page.evaluate(() => {
-    window.MaweBoot.DATA.segments[0].color = { name: 'yellow' };
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0], 'color', { name: 'yellow' });
     window.MaweBoot.DATA.preview.subtitle.speaker_labels = {
       mapping_enabled: true, enabled: true, separator: '：', names: { yellow: 'Host' },
     };

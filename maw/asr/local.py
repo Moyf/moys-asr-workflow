@@ -311,9 +311,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             if snapped:
                 print(f"[输出] 已将 {snapped} 个插值切点吸附到语音能量谷")
             if args.speaker_colors:
-                from maw.speaker import apply_speaker_colors
+                from maw.speaker import speaker_color_summary
 
-                apply_speaker_colors(segments)
+                speaker_color_summary(segments)
             if not segments:
                 print("错误: 本地模型没有返回可用的转写文本")
                 return 1
@@ -326,6 +326,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     },
                 )
             outputs = write_local_outputs(
+                speaker_colors=args.speaker_colors,
                 input_path=input_path,
                 cache_media_path=audio_path,
                 output_srt=output_srt,

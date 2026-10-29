@@ -50,6 +50,7 @@ export function createUtilsModule(dependencies) {
       throw new TypeError('timebase.fps_source must be auto or user');
     }
     return {
+      ...raw,
       unit: TIMELINE_TIMEBASE_UNITS.includes(raw.unit) ? raw.unit : fallbackUnit,
       fps: normalizeTimelineFps(raw.fps, fallbackRaw.fps ?? DEFAULT_TIMELINE_FPS),
       // Absence preserves legacy inference; never invent a historical choice.
@@ -79,8 +80,11 @@ export function createUtilsModule(dependencies) {
     const hasSelectedAudioTrack = value.selected_audio_track !== undefined;
     if (hasSelectedAudioTrack
         && (!Number.isInteger(value.selected_audio_track) || value.selected_audio_track < 0)) return null;
-    if (!hasFps && !hasAudioTracks && !hasSelectedAudioTrack && !hasVideoDimensions) return null;
-    const metadata = {};
+    // Keep extension fields while rebuilding the managed keys from their
+    // validated, normalized values. A stale managed value must never leak back.
+    const metadata = { ...value };
+    for (const field of ['video_width', 'video_height', 'video_fps', 'video_fps_ratio', 'audio_tracks', 'selected_audio_track']) delete metadata[field];
+    if (!hasFps && !hasAudioTracks && !hasSelectedAudioTrack && !hasVideoDimensions && !Object.keys(metadata).length) return null;
     if (hasVideoDimensions) {
       metadata.video_width = value.video_width;
       metadata.video_height = value.video_height;
@@ -96,7 +100,9 @@ export function createUtilsModule(dependencies) {
         if (!Number.isInteger(streamIndex) || streamIndex < 0) return null;
         const audioIndex = track.audio_index === undefined ? index : track.audio_index;
         if (!Number.isInteger(audioIndex) || audioIndex < 0) return null;
-        const normalized = { audio_index: audioIndex, stream_index: streamIndex };
+        const normalized = { ...track };
+        for (const field of ['audio_index', 'stream_index', 'codec', 'language', 'title', 'channels', 'sample_rate', 'default']) delete normalized[field];
+        Object.assign(normalized, { audio_index: audioIndex, stream_index: streamIndex });
         for (const field of ['codec', 'language', 'title']) {
           if (track[field] !== undefined && typeof track[field] !== 'string') return null;
           if (typeof track[field] === 'string') normalized[field] = track[field].trim();

@@ -7,13 +7,17 @@ import difflib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from maw.project_tracks import get_main_track, get_tracks_by_role
+from maw.project import normalize_project
 from maw.postprocess_ai_cleanup_items import cleaned_srt_segments, item_text_spans
 
 
 def comparison_data(before: Mapping[str, object], after: Mapping[str, object], operation: str, decisions: Sequence[Mapping[str, object]] = (), *, translation: Mapping[str, object] | None = None, line_order: str = "", download_name: str = "译文.核对后.mosp") -> dict[str, object]:
-    source = [s for s in cleaned_srt_segments(before, before.get("segments", [])) if isinstance(s, Mapping) and not s.get("disabled")]
+    before, after = normalize_project(dict(before)), normalize_project(dict(after))
+    translation = normalize_project(dict(translation)) if translation is not None else None
+    source = [s for s in cleaned_srt_segments(before, get_main_track(before)["segments"]) if isinstance(s, Mapping) and not s.get("disabled")]
     display_after = translation if translation is not None else after
-    output = [s for s in cleaned_srt_segments(display_after, display_after.get("segments", [])) if isinstance(s, Mapping) and not s.get("disabled")]
+    output = [s for s in cleaned_srt_segments(display_after, get_main_track(display_after)["segments"]) if isinstance(s, Mapping) and not s.get("disabled")]
     annotations = {str(row["id"]): row for row in decisions}
     markers = after.get("markers", {})
     review_markers = [m for m in markers.get("items", []) if isinstance(m, Mapping) and isinstance(m.get("review"), Mapping) and m["review"].get("status") == "pending"] if isinstance(markers, Mapping) else []
@@ -28,7 +32,7 @@ def comparison_data(before: Mapping[str, object], after: Mapping[str, object], o
         reasons = [str(m["review"].get("reason") or "") for m in review_markers if int(m.get("start", 0)) < int(segment["end"]) and int(m.get("end", m.get("start", 0) + 1)) > int(segment["start"])]
         review = review or bool(reasons)
         decision = str(annotation.get("decision") or ("review" if review else "changed" if text != cleaned else "keep"))
-        original = next((s for s in before.get("segments", []) if isinstance(s, Mapping) and s.get("id") == segment.get("id")), segment)
+        original = next((s for s in get_main_track(before)["segments"] if isinstance(s, Mapping) and s.get("id") == segment.get("id")), segment)
         parts = [{"text": text, "deleted": not cleaned}]
         spans = item_text_spans(text, segment.get("items", [])) if decision == "edit" and original.get("text") == text else None
         if spans:
@@ -55,7 +59,7 @@ def comparison_data(before: Mapping[str, object], after: Mapping[str, object], o
         # requires the validated intermediate translation, never split by newline.
         # Persisted dual-track input needs the validated translation snapshot;
         # without it, keep the generic comparison rather than infer a track.
-        if translation is not None or (not operation.endswith("-bilingual") and not after.get("multi_subtitle", {}).get("tracks")):
+        if translation is not None or (not operation.endswith("-bilingual") and not get_tracks_by_role(after, "secondary")):
             result["translationReview"] = translation_review(before, translation or after, after, operation, line_order, download_name)
     all_markers = markers.get("items", []) if isinstance(markers, Mapping) else []
     for row in rows:

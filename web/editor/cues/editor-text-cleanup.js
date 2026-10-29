@@ -10,37 +10,43 @@ export function initMaweTextCleanup() {
 (function initMaweTextCleanup(global) {
   'use strict';
 
+  // Explicit normalization remains available to callers; opening a project
+  // keeps the original text and does not invoke this operation.
+  function cleanPunctuation() {
+    const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    if (main.preserve_punctuation === true) return;
+    const PUNCT_REPL = '  ';
+    const REPLACE_INSIDE = /[，。]/g;
+    for (const seg of main.segments) {
+      if (!seg.text) continue;
+      const aiRanges = MaweBoot.DATA.gap_remove?.provenance?.sources?.ai_cleanup;
+      const validScopes = (Array.isArray(aiRanges) ? aiRanges : [])
+        .filter((range) => window.AsrGapRemoveCore.getCleanupScopeItems(seg, range).length);
+      let text = seg.text;
+      while (text.length && (text.endsWith('，') || text.endsWith('。'))) text = text.slice(0, -1);
+      seg.text = text.replace(REPLACE_INSIDE, PUNCT_REPL).replace(/[ \t]+$/, '');
+      if (seg.items) {
+        const total = seg.items.length;
+        for (let index = 0; index < total; index++) {
+          let itemText = seg.items[index].text;
+          if (index === total - 1) {
+            while (itemText.length && (itemText.endsWith('，') || itemText.endsWith('。'))) itemText = itemText.slice(0, -1);
+          }
+          seg.items[index].text = itemText.replace(REPLACE_INSIDE, PUNCT_REPL);
+        }
+      }
+      for (const range of validScopes) {
+        const scope = range.cleanup_scope;
+        scope.text = seg.items.slice(scope.item_start, scope.item_end).map((item) => item.text).join('');
+      }
+    }
+  }
+
 
 
   function syncTimelineGroupRanges() {
-  if (MaweBoot.DATA.subtitle_groups) {
     window.AsrEditorUtils.refreshSubtitleGroupViews(MaweBoot.DATA);
-    return;
   }
-  function sync(segments, headField, refField) {
-    segments.forEach((segment, headIdx) => {
-      const head = segment[headField];
-      if (!head) return;
-      let end = segment.end;
-      segments.forEach((candidate) => {
-        if (candidate[refField]?.headIdx === headIdx) end = Math.max(end, candidate.end);
-      });
-      head.start = segment.start;
-      head.end = end;
-    });
-  }
-  sync(MaweBoot.DATA.segments, 'sticker', 'sticker_ref');
-  sync(MaweBoot.DATA.segments, 'color', 'color_ref');
-  // 叠加轨自持 head 的范围随段拖动自动归位：换轨瞬间物化的颜色快照
-  // 记录的是当时的位置，以 onCommitEdit 的这次同步为准。
-  const overlay = getOverlayTrack();
-  if (overlay?.segments?.length) {
-    sync(overlay.segments, 'sticker', 'sticker_ref');
-    sync(overlay.segments, 'color', 'color_ref');
-  }
-}
-
-
 
   function seekFromWaveform(timeSec, { dragPreview = false, mouseClick = false } = {}) {
   const seekableEnd = MaweCoreState.player.seekable.length ? MaweCoreState.player.seekable.end(MaweCoreState.player.seekable.length - 1) : 0;

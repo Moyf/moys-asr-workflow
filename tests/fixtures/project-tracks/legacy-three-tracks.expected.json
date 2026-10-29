@@ -1,0 +1,120 @@
+{
+  "schema": "moy.asr.project.v2",
+  "media": "../clip.mp4",
+  "custom_project": {
+    "empty": [],
+    "zero": 0
+  },
+  "tracks": [
+    {
+      "id": "main",
+      "role": "main",
+      "name": "主字幕",
+      "enabled": true,
+      "language": "zh",
+      "split_mode": "continuous",
+      "split_mode_override": "word",
+      "segments": [
+        {
+          "id": "shared",
+          "start": 1000,
+          "end": 2000,
+          "text": "甲",
+          "color_group_id": "color-main-1"
+        },
+        {
+          "id": "main-tail",
+          "start": 2100,
+          "end": 3000,
+          "text": "乙",
+          "disabled": true,
+          "color_group_id": "color-main-1",
+          "color_group_metadata": {
+            "custom_ref": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "overlay",
+      "role": "overlay",
+      "name": "叠加字幕",
+      "enabled": false,
+      "custom_overlay": [],
+      "segments": [
+        {
+          "id": "overlay-1",
+          "start": 1200,
+          "end": 1800,
+          "text": "注",
+          "items": [],
+          "assOverride": {
+            "pos": {
+              "x": 0,
+              "y": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "translation-en",
+      "role": "secondary",
+      "name": "英语",
+      "enabled": true,
+      "language": "en",
+      "split_mode": "word",
+      "custom_track": false,
+      "segments": [
+        {
+          "id": "translation-en-cue-1",
+          "start": 1050,
+          "end": 2050,
+          "text": "A",
+          "speaker": "person",
+          "items": [
+            {
+              "start": 1050,
+              "end": 2050,
+              "text": "A"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "bilingual": {
+    "display_mode": "both",
+    "active_track_id": "translation-en",
+    "custom_multi": {}
+  },
+  "bindings": [
+    {
+      "id": "bind",
+      "start_offset_ms": 50,
+      "end_offset_ms": 50,
+      "custom_binding": [],
+      "source": {
+        "track_id": "main",
+        "segment_id": "shared"
+      },
+      "target": {
+        "track_id": "translation-en",
+        "segment_id": "translation-en-cue-1"
+      }
+    }
+  ],
+  "subtitle_groups": {
+    "next_id": 1,
+    "color": [
+      {
+        "id": "color-main-1",
+        "value": {
+          "name": "暖黄",
+          "custom": false
+        }
+      }
+    ],
+    "sticker": []
+  }
+}

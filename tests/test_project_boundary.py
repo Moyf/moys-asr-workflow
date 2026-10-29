@@ -72,7 +72,7 @@ class ProjectBoundaryTests(CompactContainerAssertions, unittest.TestCase):
                     if case["import_ok"]:
                         project = server_editor.load_project(path, None, str(root), no_waveform=True, peaks_per_second=100)
                         # Server media enrichment is separate from subtitle acceptance.
-                        self.assertEqual(project.data["segments"], prepare_project(case["input"]).validation.project["segments"])
+                        self.assertEqual(project.data["tracks"], prepare_project(case["input"]).validation.project["tracks"])
                     else:
                         with self.assertRaises(ProjectValidationFailed):
                             server_editor.load_project(path, None, str(root), no_waveform=True, peaks_per_second=100)

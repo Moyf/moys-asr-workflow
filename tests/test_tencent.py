@@ -11,6 +11,7 @@ from unittest import mock
 
 from maw.speaker import apply_speaker_colors
 from maw.tencent import build_tc3_headers, parse_result, poll_task, submit_task
+from tests.track_helpers import main_track
 
 
 class TencentProviderTests(unittest.TestCase):
@@ -43,7 +44,7 @@ class TencentProviderTests(unittest.TestCase):
             {"text": "你", "start": 10, "end": 300, "speaker": "2"},
             {"text": "好。", "start": 300, "end": 800, "speaker": "2"},
         ])
-        self.assertEqual(result["timestamp_granularity"], "char")
+        self.assertEqual(main_track(result)['timestamp_granularity'], "char")
         self.assertEqual(result["sentences"][0]["speaker"], "2")
 
     def test_parse_result_derives_word_granularity_for_latin_text(self) -> None:
@@ -59,7 +60,7 @@ class TencentProviderTests(unittest.TestCase):
             }],
         })
 
-        self.assertEqual(result["timestamp_granularity"], "word")
+        self.assertEqual(main_track(result)['timestamp_granularity'], "word")
 
     def test_parse_result_marks_non_mapping_word_as_sentence_fallback(self) -> None:
         result = parse_result({
@@ -76,7 +77,7 @@ class TencentProviderTests(unittest.TestCase):
         })
 
         self.assertEqual(result["items"], [])
-        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(main_track(result)['timestamp_granularity'], "segment")
         self.assertEqual(result["sentences"], [{
             "start": 100,
             "end": 900,
@@ -122,7 +123,7 @@ class TencentProviderTests(unittest.TestCase):
         self.assertEqual(result["text"], "有时间码没有可用范围")
         self.assertEqual(result["items"], [])
         self.assertEqual(result["sentences"], [])
-        self.assertEqual(result["timestamp_granularity"], "unknown")
+        self.assertEqual(main_track(result)['timestamp_granularity'], "unknown")
 
     def test_submit_task_uses_base64_for_small_local_audio(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

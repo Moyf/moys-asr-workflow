@@ -155,6 +155,13 @@
 
 ## 共享计划
 
+<a name="plans-unified-tracks"></a>
+### 统一字幕轨道实施方案
+
+[打开正文](plans/UNIFIED_TRACKS_PLAN.md)
+
+[v2 整合与验证](logs/release1.10.0-beta.2/261030_轨道v2整合/整合记录.md) · [人工核验](logs/release1.10.0-beta.2/261030_轨道v2整合/轨道v2.checklist.md)
+
 <a name="plan-release-pipeline"></a>
 ### 正式版本归档、官网与更新检测管线
 

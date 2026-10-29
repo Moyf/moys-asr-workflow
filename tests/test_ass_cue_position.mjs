@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { createHash } from 'node:crypto';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { runtimeProject } from './helpers/runtime-project.mjs';
+import { createProjectHarness } from './helpers/track-golden.mjs';
 import { initModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
 const context = { window: {} };
 loadEditorModule(context, 'shared/editor-utils.js');
@@ -64,9 +66,9 @@ test('strict override normalization rejects coercion and returns independent can
   assert.deepEqual(plain(copy), original);
   copy.pos.x = 1;
   assert.equal(original.pos.x, -42.125);
-  const project = { segments: [{ start: 0, end: 1000, text: 'old' }, { start: 1000, end: 2000, text: 'empty', assOverride: {} }] };
+  const project = runtimeProject([{ start: 0, end: 1000, text: 'old' }, { start: 1000, end: 2000, text: 'empty', assOverride: {} }]);
   h.normalizeMultiSubtitleProject(project);
-  assert.ok(project.segments.every(segment => !Object.hasOwn(segment, 'assOverride')));
+  assert.ok(h.getMainTrack(project).segments.every(segment => h.normalizeAssOverride(segment.assOverride) === undefined));
 });
 
 test('scale-only overrides keep the global anchor and remain in automatic layout', () => {
@@ -176,13 +178,13 @@ test('manual cues do not move, shrink or obstruct automatic main/overlay and fix
 
 test('secondary tracks ignore positioning metadata, but track swaps retain it for return to main', () => {
   const override = { pos: { x: 123, y: 456 } };
-  const project = { segments: [{ id: 'a', start: 0, end: 1000, text: 'Main', assOverride: override }],
-    multi_subtitle: { enabled: true, tracks: [{ id: 'e', segments: [{ id: 'e1', start: 0, end: 1000, text: 'Ext' }] }] } };
+  const project = runtimeProject([{ id: 'a', start: 0, end: 1000, text: 'Main', assOverride: override }],
+    { extensions: [{ id: 'e', segments: [{ id: 'e1', start: 0, end: 1000, text: 'Ext' }] }] });
   h.normalizeMultiSubtitleProject(project);
   h.swapMainAndExtensionSubtitle(project, 'e');
-  assert.deepEqual(plain(project.multi_subtitle.tracks[0].segments[0].assOverride), override);
-  h.swapMainAndExtensionSubtitle(project, 'e');
-  assert.deepEqual(plain(project.segments[0].assOverride), override);
+  assert.deepEqual(plain(h.getExtensionTrack(project).segments[0].assOverride), override);
+  h.swapMainAndExtensionSubtitle(project);
+  assert.deepEqual(plain(h.getMainTrack(project).segments[0].assOverride), override);
   let plan;
   h.buildAssPayload([], { assProfile: {}, assExtensionStyle: {}, extensionSegments: [{ start: 0, end: 1000, text: 'Ext', assOverride: override }], onAssPlan: value => { plan = value; } });
   assert.ok(plan.slices[0].items.every(item => !item.manual));
@@ -198,8 +200,9 @@ test('copy split makes independent overrides and merge preserves the leftmost va
   assert.equal(parts.right.assOverride.pos.x, 100);
   assert.equal(original.assOverride.pos.x, 100);
   const segs = [parts.left, parts.right];
-  const mergeContext = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: { segments: segs } },
-    MaweMultiSubtitleCore: { getMultiSubtitleState: () => ({ tracks: [] }), multiSubtitleVisible: () => false,
+  const mergeProject = runtimeProject(segs);
+  const mergeContext = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: mergeProject },
+    MaweMultiSubtitleCore: { getMultiSubtitleState: () => mergeProject, multiSubtitleVisible: () => false,
       getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '', removeBindingsForSegmentIds() {} },
     MaweTextCleanup: { syncTimelineGroupRanges() {} },
     MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } } };
@@ -298,12 +301,14 @@ test('overlay overrides normalize strictly and invalid values are rejected', () 
     overlaySegments: [{ start: 0, end: 1000, text: 'O', assOverride: { scale: 9 } }] }), /assOverride/);
   assert.throws(() => h.buildAssPayload([], { assProfile: {},
     overlaySegments: [{ start: 0, end: 1000, text: 'O', assOverride: { pos: { x: 1 } } }] }), /assOverride/);
-  const project = { overlay_track: { enabled: true, segments: [
+  const project = runtimeProject([], { overlay: { enabled: true, segments: [
     { id: 'overlay-001', start: 0, end: 1000, text: 'O', assOverride: {} },
-    { id: 'overlay-002', start: 1000, end: 2000, text: 'O', assOverride: { scale: 1.22, pos: { x: 12.5, y: -3 } } }] } };
+    { id: 'overlay-002', start: 1000, end: 2000, text: 'O', assOverride: { scale: 1.22, pos: { x: 12.5, y: -3 } } }] } });
+  const before = plain(project);
   h.normalizeMultiSubtitleProject(project);
-  assert.ok(!Object.hasOwn(project.overlay_track.segments[0], 'assOverride'), 'empty override normalizes to absence');
-  assert.deepEqual(plain(project.overlay_track.segments[1].assOverride), { scale: 1.22, pos: { x: 12.5, y: -3 } });
+  assert.equal(h.normalizeAssOverride(h.getOverlayTrack(project).segments[0].assOverride), undefined, 'empty override renders as absence');
+  assert.deepEqual(plain(h.normalizeAssOverride(h.getOverlayTrack(project).segments[1].assOverride)), { scale: 1.22, pos: { x: 12.5, y: -3 } });
+  assert.deepEqual(plain(project), before, 'canonical runtime normalization must preserve imported payloads');
 });
 
 test('overlay merge keeps the leftmost override and split copies it to both halves', () => {
@@ -324,9 +329,9 @@ test('real overlay merge retains only leftmost override as an independent copy',
   for (const override of [{ scale: 1.22, pos: { x: 100, y: 200 } }, undefined]) {
     const left = { id: 'overlay-left', start: 0, end: 1000, text: 'A', ...(override ? { assOverride: override } : {}) };
     const right = { id: 'overlay-right', start: 1000, end: 2000, text: 'B', assOverride: { scale: 2, pos: { x: 900, y: 800 } } };
-    const track = { id: 'overlay', segments: [left, right] };
-    const context = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h,
-      MaweBoot: { DATA: { segments: [], overlay_track: track } },
+    const project = runtimeProject([], { overlay: { segments: [left, right] } });
+    const track = h.getOverlayTrack(project);
+    const context = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: project }, MULTI_SUBTITLE_UTILS: h, getOverlayTrack: () => track,
       MaweCoreState: { container: { querySelector: () => null } },
       MaweCueListAnchor: { captureVisibleCueListVisualAnchor: () => null },
       MaweMultiSubtitleCore: { getMultiSubtitleState: () => ({}), getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '' },
@@ -347,6 +352,74 @@ test('real overlay merge retains only leftmost override as an independent copy',
       assert.equal(right.assOverride.pos.x, 900);
     }
   }
+});
+
+function mergeOverlayForSpeakerTest(segments, colors = []) {
+  const project = runtimeProject([], { overlay: { enabled: true, segments } });
+  const track = h.getOverlayTrack(project);
+  for (const color of new Set(colors)) {
+    h.assignSubtitleGroup(project, segments, colors.flatMap((value, index) => value === color ? [index] : []), 'color', { name: color });
+  }
+  const context = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: project },
+    MaweCoreState: { container: { querySelector: () => null } },
+    MaweCueListAnchor: { captureVisibleCueListVisualAnchor: () => null },
+    MaweMultiSubtitleCore: { getMultiSubtitleState: () => project, getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '' },
+    MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } },
+    MaweSelection: { clearSelection() {} }, MaweCommands: { run: (_label, fn) => fn({ commit() {} }) },
+    MaweState: { selection: { clear() {}, add() {} }, markProjectDirty() {} }, MaweCuePanel: { setCuePanelTarget() {} },
+    MaweViewUpdates: { invalidate() {} }, MaweHint: { flashHint() {} } };
+  vm.runInNewContext(plainModuleSource('editor/cues/overlay-track.js'), context);
+  assert.equal(context.mergeOverlaySegments([1, 0]), true);
+  assert.equal(track.segments.length, 1);
+  return { context, project, merged: track.segments[0] };
+}
+
+for (const { name, speakers, colors, expected } of [
+  { name: 'same speaker, different colors', speakers: ['Alice', 'Alice'], colors: ['red', 'blue'], expected: 'Alice' },
+  { name: 'different speakers, same color', speakers: ['Alice', 'Bob'], colors: ['red', 'red'] },
+  { name: 'second speaker missing', speakers: ['Alice', undefined], colors: ['red', 'red'] },
+  { name: 'first speaker missing', speakers: [undefined, 'Bob'], colors: ['red', 'red'] },
+  { name: 'both speakers missing', speakers: [undefined, undefined], colors: ['red', 'red'] },
+  { name: 'both speakers null', speakers: [null, null], colors: ['red', 'red'] },
+  { name: 'second speaker null', speakers: ['Alice', null], colors: ['red', 'red'] },
+]) {
+  test(`overlay merge speaker: ${name}`, () => {
+    const items = [
+      { text: 'A', start: 0, end: 1000, speaker: 'Alice' },
+      { text: 'B', start: 1000, end: 2000, speaker: 'Bob' },
+    ];
+    const segments = items.map((item, index) => ({ id: `overlay-${index}`, start: item.start, end: item.end,
+      text: item.text, items: [{ ...item }], ...(speakers[index] === undefined ? {} : { speaker: speakers[index] }) }));
+    const { merged } = mergeOverlayForSpeakerTest(segments, colors);
+    assert.equal(merged.speaker, expected);
+    assert.equal(Object.hasOwn(merged, 'speaker'), expected !== undefined);
+    assert.deepEqual(plain(merged.items), items);
+  });
+}
+
+test('mixed overlay speaker does not reappear after save, reopen, and transfer to main', () => {
+  const segments = [
+    { id: 'overlay-0', start: 0, end: 1000, text: 'A', speaker: 'Alice',
+      items: [{ text: 'A', start: 0, end: 1000, speaker: 'Alice' }] },
+    { id: 'overlay-1', start: 1000, end: 2000, text: 'B', speaker: 'Bob',
+      items: [{ text: 'B', start: 1000, end: 2000 }] },
+  ];
+  const { context, project, merged } = mergeOverlayForSpeakerTest(segments, ['red', 'red']);
+  assert.equal(Object.hasOwn(merged, 'speaker'), false);
+  const saved = createProjectHarness(project).save();
+  assert.equal(Object.hasOwn(h.getOverlayTrack(saved).segments[0], 'speaker'), false);
+  const reopened = h.importProject(plain(saved)).project;
+  const reopenedCue = h.getOverlayTrack(reopened).segments[0];
+  assert.equal(Object.hasOwn(reopenedCue, 'speaker'), false);
+  assert.equal(Object.hasOwn(reopenedCue.items[1], 'speaker'), false);
+  context.MaweBoot.DATA = reopened;
+  assert.equal(context.moveOverlaySegmentToMainTrack(0), 0);
+  const main = h.getMainTrack(reopened).segments[0];
+  assert.equal(Object.hasOwn(main, 'speaker'), false);
+  assert.equal(h.mergeWordTimingItems(main, [0, 1]), null);
+  const outputs = h.planWordTimingConversion([main], [0]).conversions[0].segments;
+  assert.equal(outputs[0].speaker, 'Alice');
+  assert.equal(outputs[1].speaker, undefined);
 });
 
 

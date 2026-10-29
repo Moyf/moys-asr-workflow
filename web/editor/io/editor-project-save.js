@@ -11,7 +11,7 @@ export function initMaweProjectSave() {
 function inlineEditHasUncommittedText() {
 const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
 if (!state) return false;
-const segment = MaweInlineEdit.editingState ? MaweBoot.DATA.segments[state.idx]
+const segment = MaweInlineEdit.editingState ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.idx]
 : MaweMultiSubtitleCore.getExtensionTrack(state.trackId)?.segments[state.index];
 return Boolean(segment && state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd() !== segment.text);
 }
@@ -41,7 +41,7 @@ return;
 const extension = Boolean(MaweInlineEdit.extensionEditingState);
 const index = extension ? state.index : state.idx;
 const track = extension ? MaweMultiSubtitleCore.getExtensionTrack(state.trackId) : null;
-const segment = extension ? track?.segments[index] : MaweBoot.DATA.segments[index];
+const segment = extension ? track?.segments[index] : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
 const text = state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
 if (!segment || text === segment.text) return;
 return MaweCommands.run(extension ? '编辑副字幕' : '编辑文本', () => {
@@ -92,7 +92,22 @@ jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
 
 
 
+  // v2 validation runs before any I/O. Surface its cue/word repair actions
+  // without writing invalid bytes or acknowledging the dirty checkpoint.
+  function buildProjectJsonForSave(options) {
+    try {
+      return MaweJsonRepair.buildJson(options);
+    } catch (error) {
+      MaweServerSave.showProjectSaveError(error?.message || error);
+      return null;
+    }
+  }
+
   async function saveProjectToServer({ silent = false, backupOnly = false } = {}) {
+    if (MaweServerSave.requiresMigrationSaveAs) {
+      if (silent || backupOnly) return false;
+      return saveProjectAsToFile();
+    }
     const bindingEpoch = MaweProjectLoad.projectBindingEpoch;
     const generation = MaweState.projectLoadGeneration;
     const current = () => bindingEpoch === MaweProjectLoad.projectBindingEpoch
@@ -105,7 +120,8 @@ jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
     }
 if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
 flushInlineEditsForSave();
-const projectJson = MaweJsonRepair.buildJson();
+const projectJson = buildProjectJsonForSave();
+if (projectJson === null) return false;
 const contentEpoch = MaweState.projectEpoch;
 const contentFingerprint = MaweState.projectFingerprint(JSON.parse(projectJson));
 MaweServerSave.projectSaveInFlight = true;
@@ -162,7 +178,8 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
     if (!MaweServerSave.projectFileHandle) return false;
 if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
 flushInlineEditsForSave();
-const projectJson = MaweJsonRepair.buildJson({ forFileExport: true });
+const projectJson = buildProjectJsonForSave({ forFileExport: true });
+if (projectJson === null) return false;
 const contentEpoch = MaweState.projectEpoch;
 // The export copy may use an absolute media reference for its new directory.
 // Acknowledge the equivalent runtime snapshot, captured before the async write.
@@ -187,6 +204,10 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
   // 统一保存入口：句柄目标优先（最近一次新建/另存为选定的文件），否则写回服务器绑定工程。
   async function saveCurrentProject({ silent = false } = {}) {
     if (MaweState.projectLoadPending) return false;
+    if (MaweServerSave.requiresMigrationSaveAs) {
+      if (silent) return false;
+      return saveProjectAsToFile();
+    }
     // A pointer preview is not committed subtitle truth. Timed autosave waits;
     // an explicit save first finishes this one history transaction.
     if (global.MaweAssCuePosition?.dragging) {
@@ -213,10 +234,12 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
     MaweCuePanel.commitCuePanelEdit();
-    const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
+    const suggested = `${MaweBoot.FILENAME_BASE}${MaweServerSave.requiresMigrationSaveAs ? '_v2' : ''}.mosp`;
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
     if (!MaweHost.files.hasSavePicker()) {
-      await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), suggested, 'application/json', {
+      const projectJson = buildProjectJsonForSave({ forFileExport: true });
+      if (projectJson === null) return false;
+      await MaweExportTimeline.downloadFile(projectJson, suggested, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
       });
       return;
@@ -228,6 +251,14 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
         types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
       });
       if (!current()) return false;
+      if (MaweServerSave.requiresMigrationSaveAs) {
+        const existing = await handle.getFile();
+        if (!current()) return false;
+        if (existing.size > 0) {
+          MaweHint.flashHint('格式升级需要保存到新文件，请选择一个尚不存在的文件名；原工程未修改。', 'warning');
+          return false;
+        }
+      }
       let contentFingerprint;
       await MaweHost.files.writeBlob(handle, () => {
         if (!current()) throw new DOMException('工程已切换', 'AbortError');
@@ -238,13 +269,14 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
       });
       if (!current()) return false;
       MaweServerSave.projectFileHandle = handle;
+      MaweServerSave.requiresMigrationSaveAs = false;
       markProjectSaved(handle.name, null, { contentFingerprint, epoch: contentEpoch });
       MaweServerSave.configureServerSaveControls();
       MaweServerSave.scheduleAutoSave();
     } catch (error) {
       if (!current()) return false;
       if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
-      MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
+      MaweServerSave.showProjectSaveError(error?.message || error);
     } finally {
       MaweServerSave.projectSaveInFlight = false;
     }

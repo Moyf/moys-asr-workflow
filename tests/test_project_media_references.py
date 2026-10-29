@@ -105,13 +105,15 @@ class ProjectMediaReferenceTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(self.output.read_bytes(), original)
         self.assertFalse(self.output.with_suffix(".mosp.bak").exists())
 
-    def test_remember_only_updates_media_and_preserves_backup_and_caches(self) -> None:
+    def test_remember_preserves_legacy_storage_and_backup_and_caches(self) -> None:
         self.raw["waveform"] = {"legacy": "must stay during relink"}
         self.output.write_text(json.dumps(self.raw), encoding="utf-8")
         original = self.output.read_bytes()
         self.load(remember=True)
         saved = json.loads(self.output.read_text(encoding="utf-8"))
         self.assertEqual(saved, {**self.raw, "media": "../" + self.media.name})
+        self.assertEqual(saved["waveform"], self.raw["waveform"])
+        self.assertEqual(saved["extra"], self.raw["extra"])
         self.assertEqual(self.output.with_suffix(".mosp.bak").read_bytes(), original)
         self.assertNotIn(b"\r\n", self.output.read_bytes())
         self.assertEqual(resolve_project_media(self.output, saved).resolved_path, self.media)

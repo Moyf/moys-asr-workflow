@@ -1,0 +1,10 @@
+[
+  {"name": "future-schema", "input": {"schema": "moy.asr.project.v4", "segments": []}, "error_path": "$.schema"},
+  {"name": "mixed-containers", "input": {"segments": [], "tracks": []}, "error_path": "$.tracks"},
+  {"name": "duplicate-legacy-cue", "input": {"segments": [{"id": "same", "start": 0, "end": 1000, "text": "A"}, {"id": "same", "start": 1000, "end": 2000, "text": "B"}]}, "error_path": "$.tracks[0].segments[1].id"},
+  {"name": "invalid-timebase", "input": {"segments": [], "timebase": {"unit": "seconds", "fps": 25}}, "error_path": "$.timebase.unit"},
+  {"name": "incomplete-video-size", "input": {"segments": [], "media_metadata": {"video_width": 1920}}, "error_path": "$.media_metadata.video_height"},
+  {"name": "invalid-preview", "input": {"segments": [], "preview": {"subtitle": {"x": 0.8, "y": 0, "width": 0.5, "height": 0.1}}}, "error_path": "$.preview.subtitle"},
+  {"name": "extension-metadata-conflict", "input": {"segments": [], "multi_subtitle": {"enabled": true, "tracks": [{"id": "en", "enabled": false, "segments": []}]}}, "error_path": "$.multi_subtitle.tracks[0].enabled"},
+  {"name": "v2-duplicate-global-id", "input": {"schema": "moy.asr.project.v1.5", "segments": [{"id": "same", "start": 0, "end": 1000, "text": "A"}], "overlay_track": {"segments": [{"id": "same", "start": 0, "end": 1000, "text": "B"}]}, "subtitle_groups": {"color": [], "sticker": []}}, "error_path": "$.tracks[1].segments[0].id"}
+]

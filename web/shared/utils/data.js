@@ -2,12 +2,13 @@
 export function createUtilsModule(dependencies) {
   'use strict';
 
-  const PROJECT_SCHEMA = 'moy.asr.project.v1';
+  const PROJECT_SCHEMA = dependencies.PROJECT_TRACKS_SCHEMA;
 
 
   function supportsProjectSchema(project) {
     if (!project || typeof project !== 'object' || Array.isArray(project)) return false;
-    return project.schema === undefined || project.schema === PROJECT_SCHEMA || project.schema === 'moy.asr.project.v1.5';
+    return project.schema === undefined
+      || ['moy.asr.project.v1', 'moy.asr.project.v1.5', 'moy.asr.project.v2', PROJECT_SCHEMA].includes(project.schema);
   }
 
 
@@ -16,11 +17,6 @@ export function createUtilsModule(dependencies) {
     let total = 0;
     for (const ch of normalized) total += ch.codePointAt(0) < 256 ? 0.5 : 1;
     return total;
-  }
-
-
-  function cloneJsonValue(value) {
-    return value == null ? null : JSON.parse(JSON.stringify(value));
   }
 
 
@@ -55,7 +51,7 @@ export function createUtilsModule(dependencies) {
 
   function stableId(value) {
     const id = String(value == null ? '' : value).trim();
-    return id && id.length <= 160 ? id : '';
+    return id && Array.from(id).length <= 160 ? id : '';
   }
 
 
@@ -73,7 +69,7 @@ export function createUtilsModule(dependencies) {
       if (!segment || typeof segment !== 'object') return;
       let id = stableId(segment.id);
       if (!id || used.has(id)) {
-        const base = `${prefix}-${String(index + 1).padStart(3, '0')}`;
+        const base = `${Array.from(prefix).slice(0, 140).join('')}-${String(index + 1).padStart(3, '0')}`;
         id = base;
         let suffix = 2;
         while (used.has(id) || (id !== base && reserved.has(id))) {
@@ -101,11 +97,15 @@ export function createUtilsModule(dependencies) {
   function uniqueStableSegmentId(segments, baseId, fallbackPrefix = 'segment') {
     const used = new Set((Array.isArray(segments) ? segments : [])
       .map((segment) => stableId(segment?.id)).filter(Boolean));
-    const base = stableId(baseId) || `${fallbackPrefix}-new`;
+    const base = stableId(baseId) || `${Array.from(fallbackPrefix).slice(0, 140).join('')}-new`;
     if (!used.has(base)) return base;
     let suffix = 2;
-    let candidate = `${base}-${suffix}`;
-    while (used.has(candidate)) candidate = `${base}-${suffix++}`;
+    const withSuffix = number => {
+      const tail = `-${number}`;
+      return Array.from(base).slice(0, 160 - tail.length).join('') + tail;
+    };
+    let candidate = withSuffix(suffix);
+    while (used.has(candidate)) candidate = withSuffix(++suffix);
     return candidate;
   }
 
@@ -117,7 +117,9 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function effectiveColorName(segment, segments) {
+  function effectiveColorName(segment, segments, project = dependencies.getProject?.()) {
+    const group = project?.subtitle_groups?.color?.find((entry) => entry.id === segment?.color_group_id);
+    if (typeof group?.value?.name === 'string' && group.value.name) return group.value.name;
     const direct = segment?.color?.name;
     if (typeof direct === 'string' && direct) return direct;
     const reference = segment?.color_ref;

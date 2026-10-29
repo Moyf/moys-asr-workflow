@@ -170,6 +170,13 @@
   }
 
 
+  const SUBTITLE_APPEARANCE_FIELDS = new Set(['font_size', 'font_family', 'background_color',
+    'background_alpha', 'color', 'color_style', 'ass_color_style', 'color_underline']);
+
+  function subtitleAppearanceExtensionFields(value = MaweBoot.DATA.preview?.subtitle) {
+    return Object.fromEntries(Object.entries(value || {}).filter(([key]) => !SUBTITLE_APPEARANCE_FIELDS.has(key)));
+  }
+
   function normalizeSubtitleAppearance(value) {
   const result = {};
   const fontSize = value && typeof value.font_size === 'number' && Number.isFinite(value.font_size)
@@ -207,7 +214,8 @@
 
 
   function getStoredExtensionSubtitleAppearance(value = MaweBoot.DATA.preview?.extension_subtitle) {
-    return normalizeSubtitleAppearance(value);
+    return { ...subtitleAppearanceExtensionFields(value),
+      ...normalizeSubtitleAppearance(value) };
   }
 
 
@@ -391,6 +399,7 @@
   }
   if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
   MaweBoot.DATA.preview.subtitle = {
+    ...subtitleAppearanceExtensionFields(),
     ...getPreviewGeometry(),
     ...next,
     speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
@@ -530,7 +539,7 @@
 
 
   function restoreExtensionSubtitleAppearance(value, { markDirty = true } = {}) {
-    const next = normalizeSubtitleAppearance(value);
+    const next = getStoredExtensionSubtitleAppearance(value);
     if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
     if (Object.keys(next).length) MaweBoot.DATA.preview.extension_subtitle = next;
     else delete MaweBoot.DATA.preview.extension_subtitle;
@@ -571,6 +580,7 @@
     normalizeSubtitleAppearance,
     getSubtitleAppearance,
     getStoredExtensionSubtitleAppearance,
+    subtitleAppearanceExtensionFields,
     getExtensionSubtitleDefaultFontSize,
     getExtensionSubtitleAppearance,
     syncSubtitleFontSizeSelect,

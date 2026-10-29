@@ -6,130 +6,76 @@ import copy
 
 from maw.project import normalize_project
 from maw.project_preview import JsonDict
+from maw.project_tracks import get_main_track, get_track, project_tracks
+
+
+def _unique_id(base: str, reserved: set[str]) -> str:
+    identifier = base[:150]
+    suffix = 2
+    while identifier in reserved:
+        identifier = f"{base[:150]}-{suffix}"
+        suffix += 1
+    reserved.add(identifier)
+    return identifier
 
 
 def attach_translation_project(source_project: JsonDict, translated_project: JsonDict, *, target: str) -> JsonDict:
-    """Replace the editor's fixed secondary track after validating every cue."""
-    source_segments = source_project.get("segments")
-    translated_segments = translated_project.get("segments")
-    if not isinstance(source_segments, list) or not isinstance(translated_segments, list):
-        raise ValueError("翻译前后的工程缺少有效字幕段。")
+    """Replace the active secondary track atomically and retain every other track."""
+    combined = normalize_project(source_project)
+    translated_project = normalize_project(translated_project)
+    main = get_main_track(combined)
+    source_segments = main["segments"]
+    translated_segments = get_main_track(translated_project)["segments"]
     if len(source_segments) != len(translated_segments):
         raise ValueError("翻译结果未保持原字幕段数，无法生成主副字幕工程。")
-
     for index, (source, translated) in enumerate(zip(source_segments, translated_segments, strict=True), 1):
-        if not isinstance(source, dict) or not isinstance(translated, dict):
-            raise ValueError(f"第 {index} 条翻译结果不是有效字幕段。")
-        if (
-            source.get("start") != translated.get("start")
-            or source.get("end") != translated.get("end")
-            or source.get("id") != translated.get("id")
-        ):
+        if any(source.get(field) != translated.get(field) for field in ("id", "start", "end")):
             raise ValueError(f"第 {index} 条翻译结果未保持原字幕时间范围或稳定 ID。")
-        source_text = source.get("text")
-        translated_text = translated.get("text")
-        if not isinstance(source_text, str) or not isinstance(translated_text, str):
+        if not str(translated.get("text") or "").strip() and str(source.get("text") or "").strip():
             raise ValueError(f"第 {index} 条翻译结果为空。")
-        if not translated_text.strip() and source_text.strip():
-            raise ValueError(f"第 {index} 条翻译结果为空。")
-
-    combined = copy.deepcopy(source_project)
     if "markers" in translated_project:
         combined["markers"] = copy.deepcopy(translated_project["markers"])
-    combined.pop("extensionSegments", None)
-    multi = combined.get("multi_subtitle")
-    if not isinstance(multi, dict):
-        multi = {}
-        combined["multi_subtitle"] = multi
-    multi["schema"] = str(multi.get("schema") or "moy.asr.multi_subtitle.v1")
-    multi["enabled"] = True
-    multi["display_mode"] = "both"
-    tracks = multi.get("tracks")
-    if not isinstance(tracks, list):
-        tracks = []
-        multi["tracks"] = tracks
-    bindings = multi.get("bindings")
-    if not isinstance(bindings, list):
-        bindings = []
-        multi["bindings"] = bindings
-
-    # The editor previews and exports tracks[0]. Reuse that track's identity
-    # and presentation settings; never append a new translation behind it.
-    track = tracks[0] if tracks else {"id": f"translation-{target}", "role": "extension"}
-    track_id = str(track["id"])
-    track["language"] = target
-    if track.get("name") in (None, "中文翻译", "英文翻译"):
+    bilingual = combined.setdefault("bilingual", {})
+    track = get_track(combined, str(bilingual.get("active_track_id") or ""))
+    if track is None:
+        track_ids = {item["id"] for item in project_tracks(combined)}
+        track = {"id": _unique_id(f"translation-{target}", track_ids), "role": "secondary",
+                 "name": "", "enabled": True, "segments": []}
+        combined["tracks"].append(track)
+    track_id = track["id"]
+    bilingual.update({"display_mode": "both", "active_track_id": track_id})
+    track.update({"language": target, "enabled": True,
+                  "split_mode": "continuous" if target == "zh" else "word",
+                  "source_name": f"translation-{target}.srt"})
+    if track.get("name") in (None, "", "中文翻译", "英文翻译"):
         track["name"] = "中文翻译" if target == "zh" else "英文翻译"
-    track["split_mode"] = "continuous" if target == "zh" else "word"
-    track["source_name"] = f"translation-{target}.srt"
 
-    extension_segments: list[dict[str, object]] = []
-    extension_bindings: list[tuple[int, dict[str, object], dict[str, object]]] = []
+    bindings = combined.setdefault("bindings", [])
+    previous = {binding["source"]["segment_id"]: binding for binding in bindings
+                if binding["source"]["track_id"] == main["id"] and binding["target"]["track_id"] == track_id}
+    previous_cues = {segment["id"]: segment for segment in track["segments"]}
+    bindings[:] = [binding for binding in bindings if binding["target"]["track_id"] != track_id]
+    cue_ids = {segment["id"] for other in project_tracks(combined) if other is not track
+               for segment in other["segments"]}
+    binding_ids = {binding["id"] for binding in bindings}
+    extension_segments = []
     for index, (source, translated) in enumerate(zip(source_segments, translated_segments, strict=True), 1):
-        assert isinstance(source, dict)
-        assert isinstance(translated, dict)
-        source_text = source.get("text")
-        translated_text = translated.get("text")
-        if (
-            isinstance(source_text, str)
-            and isinstance(translated_text, str)
-            and translated_text.strip()
-            and translated_text.strip() == source_text.strip()
-        ):
-            # 目标语言预过滤保留的句子：译文与主字幕相同，副轨再放一份只会
-            # 造成重复显示，跳过该句的副轨段与绑定（空↔空字幕保持原有占位行为）。
+        if translated["text"].strip() and translated["text"].strip() == source["text"].strip():
             continue
-        extension_segment: dict[str, object] = {
-            "id": f"{track_id}-segment-{index:03d}",
-            "start": translated["start"],
-            "end": translated["end"],
-            "text": translated["text"],
-        }
-        if translated.get("disabled") is True:
-            extension_segment["disabled"] = True
-        extension_segments.append(extension_segment)
-        extension_bindings.append((index, source, extension_segment))
-
-    # Assign a fresh list, including when the new result is shorter or empty.
-    track["segments"] = extension_segments
-    if tracks:
-        tracks[0] = track
-    else:
-        tracks.append(track)
-
-    old_bindings = {str(binding["main_segment_ids"][0]): binding
-                    for binding in bindings if binding.get("track_id") == track_id}
-    bindings = [binding for binding in bindings if binding.get("track_id") != track_id]
-    multi["bindings"] = bindings
-
-    used_main_ids = {
-        str(main_id)
-        for binding in bindings
-        if isinstance(binding, dict)
-        for main_id in (binding.get("main_segment_ids") or [])
-    }
-    used_binding_ids = {str(binding.get("id")) for binding in bindings if isinstance(binding, dict) and binding.get("id")}
-    for index, source, extension in extension_bindings:
-        main_id = str(source["id"])
-        if main_id in used_main_ids:
-            continue
-        previous = old_bindings.get(main_id)
-        binding = copy.deepcopy(previous) if previous is not None else {}
-        binding_id = str(binding.get("id") or f"translation-binding-{index:03d}")
-        binding_suffix = 2
-        while binding_id in used_binding_ids:
-            binding_id = f"translation-binding-{index:03d}-{binding_suffix}"
-            binding_suffix += 1
-        used_binding_ids.add(binding_id)
-        binding.update({
-            "id": binding_id,
-            "track_id": track_id,
-            "main_segment_ids": [main_id],
-            "extension_segment_ids": [extension["id"]],
-            "start_offset_ms": int(extension["start"]) - int(source["start"]),
-            "end_offset_ms": int(extension["end"]) - int(source["end"]),
-        })
+        old_binding = previous.get(source["id"])
+        old_target = old_binding["target"]["segment_id"] if old_binding is not None else None
+        extension = copy.deepcopy(previous_cues.get(old_target, {}))
+        extension.update(copy.deepcopy(translated))
+        if "items" not in translated:
+            extension.pop("items", None)
+        extension["id"] = _unique_id(old_target or f"{track_id}-segment-{index:03d}", cue_ids)
+        extension_segments.append(extension)
+        binding = copy.deepcopy(old_binding) if old_binding is not None else {}
+        binding.update({"id": _unique_id(str(binding.get("id") or f"translation-binding-{index:03d}"), binding_ids),
+                        "source": {**binding.get("source", {}), "track_id": main["id"], "segment_id": source["id"]},
+                        "target": {**binding.get("target", {}), "track_id": track_id, "segment_id": extension["id"]},
+                        "start_offset_ms": extension["start"] - source["start"],
+                        "end_offset_ms": extension["end"] - source["end"]})
         bindings.append(binding)
-        used_main_ids.add(main_id)
-
+    track["segments"] = extension_segments
     return normalize_project(combined)

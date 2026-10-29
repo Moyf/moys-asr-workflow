@@ -10,6 +10,7 @@ from unittest import mock
 
 from maw.media import resolve_default_audio_track
 from maw.project import PROJECT_SCHEMA, ProjectValidationFailed
+from maw.project_tracks import get_main_track
 from maw.project_io import (
     INLINE_CACHE_KEYS,
     default_audio_track_from_metadata,
@@ -58,7 +59,19 @@ class ProjectIoTests(CompactContainerAssertions, unittest.TestCase):
             self.assertNotIn(b"\r\n", raw)
             self.assertNotIn("media_metadata", project)
 
-    def test_write_mosp_rejects_unknown_schema_without_overwriting(self) -> None:
+    def test_write_mosp_migrates_missing_schema_and_rejects_unknown_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "project.mosp"
+
+            write_mosp(output, {"segments": []})
+            before = output.read_bytes()
+            with self.assertRaises(ValueError):
+                write_mosp(output, {"schema": "moy.asr.project.draft", "segments": []})
+            self.assertEqual(output.read_bytes(), before)
+
+            saved = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(saved["schema"], PROJECT_SCHEMA)
+    def test_write_mosp_rejects_unknown_or_invalid_schema_without_overwriting(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output = Path(temp_dir) / "project.mosp"
             output.write_text("original", encoding="utf-8")
@@ -66,6 +79,33 @@ class ProjectIoTests(CompactContainerAssertions, unittest.TestCase):
                 with self.subTest(schema=schema), self.assertRaises(ProjectValidationFailed):
                     write_mosp(output, {"schema": schema, "segments": []})
                 self.assertEqual(output.read_text(encoding="utf-8"), "original")
+
+    def test_write_mosp_migrates_v15_group_membership(self) -> None:
+        source = {"schema": "moy.asr.project.v1.5",
+                  "segments": [{"id": "source", "start": 0, "end": 1000, "text": "你好",
+                                "color_group_id": "color-1"}],
+                  "subtitle_groups": {"next_id": 2, "color": [{"id": "color-1", "value": {"name": "red"}}],
+                                      "sticker": []}}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "project.mosp"
+            write_mosp(output, source)
+            saved = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(saved["schema"], PROJECT_SCHEMA)
+            self.assertEqual(get_main_track(saved)["segments"][0]["color_group_id"], "color-1")
+            self.assertEqual(saved["subtitle_groups"], source["subtitle_groups"])
+            self.assertEqual(source["schema"], "moy.asr.project.v1.5")
+
+    def test_write_mosp_migrates_explicit_v1(self) -> None:
+        source = {"schema": "moy.asr.project.v1", "segments": [
+            {"id": "cue-1", "start": 0, "end": 1000, "text": "你好"},
+        ]}
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "project.mosp"
+            write_mosp(output, source)
+            saved = json.loads(output.read_text(encoding="utf-8"))
+        self.assertEqual(saved["schema"], PROJECT_SCHEMA)
+        self.assertEqual(get_main_track(saved)["segments"], source["segments"])
+        self.assertEqual(source["schema"], "moy.asr.project.v1")
 
     def test_write_mosp_persists_selected_audio_track_without_caches(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -193,27 +233,57 @@ class ProjectIoTests(CompactContainerAssertions, unittest.TestCase):
 class InlineCacheStripTests(CompactContainerAssertions, unittest.TestCase):
     """工程去内联：各层波形缓存（含响度统计）只活在运行态，落盘边界统一剥离。"""
 
+    def test_strip_session_flags_in_legacy_and_canonical_projects(self) -> None:
+        cue = {"id": "main-cue", "start": 0, "end": 100, "text": "a", "_dirty": True,
+               "vendor": {"_dirty": "keep"}}
+        legacy = {"segments": [cue], "_dirty": True,
+                  "multi_subtitle": {"_dirty": True, "tracks": [
+                      {"id": "secondary", "_dirty": True, "segments": [{**cue, "id": "secondary-cue"}]}]},
+                  "overlay_track": {"_dirty": True, "segments": [{**cue, "id": "overlay-cue"}]},
+                  "vendor": {"_dirty": "keep"}}
+        original = json.loads(json.dumps(legacy))
+        stripped = strip_inline_caches(legacy)
+        self.assertNotIn("_dirty", stripped)
+        self.assertNotIn("_dirty", stripped["multi_subtitle"])
+        for track in (stripped, stripped["overlay_track"], stripped["multi_subtitle"]["tracks"][0]):
+            self.assertNotIn("_dirty", track)
+            self.assertNotIn("_dirty", track["segments"][0])
+            self.assertEqual(track["segments"][0]["vendor"]["_dirty"], "keep")
+        self.assertEqual(stripped["vendor"]["_dirty"], "keep")
+        self.assertEqual(legacy, original)
+
+        saved = json.loads(serialize_mosp(legacy))
+        self.assertNotIn("_dirty", saved["bilingual"])
+        for track in saved["tracks"]:
+            self.assertNotIn("_dirty", track)
+            self.assertNotIn("_dirty", track["segments"][0])
+            self.assertEqual(track["segments"][0]["vendor"]["_dirty"], "keep")
+
     def test_session_flags_are_removed_at_all_save_boundaries_without_mutation(self) -> None:
-        segment = {"id": "s", "text": "saved", "_dirty": True,
+        segment = {"id": "s", "start": 0, "end": 100, "text": "saved", "_dirty": True,
                    "assOverride": {"pos": {"x": -12, "y": 80}},
                    "vendor": {"_dirty": "extension value"}}
         project = {"segments": [segment], "_dirty": True,
-                   "timebase": {"fps": 30, "fps_source": "user"},
+                   "timebase": {"unit": "milliseconds", "fps": 30, "fps_source": "user"},
                    "multi_subtitle": {"_dirty": True, "tracks": [
-                       {"id": "e", "_dirty": True, "segments": [segment]}]},
-                   "overlay_track": {"_dirty": True, "segments": [segment]},
+                       {"id": "e", "_dirty": True, "segments": [{**segment, "id": "e-s"}]}]},
+                   "overlay_track": {"_dirty": True, "segments": [{**segment, "id": "overlay-s"}]},
                    "vendor": {"_dirty": "extension value"}}
         original = json.loads(json.dumps(project))
-        for saved in (strip_inline_caches(project), json.loads(serialize_mosp(project))):
-            self.assertNotIn("_dirty", saved)
-            self.assertNotIn("_dirty", saved["multi_subtitle"])
-            for track in [saved, saved["overlay_track"], *saved["multi_subtitle"]["tracks"]]:
+        stripped = strip_inline_caches(project)
+        saved = json.loads(serialize_mosp(project))
+        self.assertNotIn("_dirty", stripped["multi_subtitle"])
+        self.assertNotIn("_dirty", saved["bilingual"])
+        for result, tracks in ((stripped, [stripped, stripped["overlay_track"], *stripped["multi_subtitle"]["tracks"]]),
+                               (saved, saved["tracks"])):
+            self.assertNotIn("_dirty", result)
+            for track in tracks:
                 self.assertNotIn("_dirty", track)
                 self.assertNotIn("_dirty", track["segments"][0])
                 self.assertEqual(track["segments"][0]["assOverride"], segment["assOverride"])
                 self.assertEqual(track["segments"][0]["vendor"], segment["vendor"])
-            self.assertEqual(saved["vendor"], project["vendor"])
-            self.assertEqual(saved["timebase"], project["timebase"])
+            self.assertEqual(result["vendor"], project["vendor"])
+            self.assertEqual(result["timebase"], project["timebase"])
         self.assertEqual(project, original)
 
     def test_serialize_mosp_strips_inline_caches_and_keeps_input_intact(self) -> None:
@@ -252,7 +322,7 @@ class InlineCacheStripTests(CompactContainerAssertions, unittest.TestCase):
         for key in INLINE_CACHE_KEYS:
             self.assertNotIn(key, saved, f"{key} 不得再写进工程文件")
             self.assertIn(key, project, "剥离必须发生在副本上，运行态工程不能被动到")
-        self.assertEqual(saved["segments"], [])
+        self.assertEqual(get_main_track(saved)["segments"], [])
         self.assertEqual(saved["schema"], PROJECT_SCHEMA)
 
     def test_strip_inline_caches_returns_copy_without_touching_runtime(self) -> None:

@@ -47,7 +47,7 @@
   function normalizeBatchSelection(indexes) {
     const candidates = Array.isArray(indexes) ? indexes : [...MaweSelection.selectedIdxs];
     return [...new Set(candidates
-      .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length))]
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length))]
       .sort((a, b) => a - b);
   }
 
@@ -56,7 +56,7 @@
   function getReplaceTargetIndexes() {
     return replaceScope && replaceScope.length
       ? [...replaceScope]
-      : MaweBoot.DATA.segments.map((_, index) => index);
+      : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((_, index) => index);
   }
 
 
@@ -70,7 +70,7 @@
       return;
     }
     const result = window.AsrEditorUtils.buildReplacementPreview(
-      MaweBoot.DATA.segments,
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
       getReplaceTargetIndexes(),
       find,
       replaceInput.value,
@@ -114,7 +114,7 @@
       replaceScopeInfo.style.color = '#d4a04a';
     } else {
       replaceModalTitle.textContent = '批量替换';
-      replaceScopeInfo.textContent = `当前范围：全部 ${MaweBoot.DATA.segments.length} 条字幕`;
+      replaceScopeInfo.textContent = `当前范围：全部 ${window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length} 条字幕`;
       replaceScopeInfo.style.color = '#888';
     }
   }

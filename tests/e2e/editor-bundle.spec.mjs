@@ -16,10 +16,11 @@ test.beforeAll(async () => {
   injected = join(directory, 'injected.edit.html');
   const python = process.env.MAW_E2E_PYTHON || 'uv';
   const prefix = process.env.MAW_E2E_PYTHON ? [] : ['run', '--no-sync', 'python'];
-  execFileSync(python, [...prefix, '-c', `import edit, pathlib, sys
+  execFileSync(python, [...prefix, '-c', `import edit, json, pathlib, sys
+from maw.project import normalize_project
 original = edit.render_editor_page
 def render(**context):
-    context.update(data_json='{"segments":[{"id":"injected","start":0,"end":1000,"text":"Injected cue"}]}',
+    context.update(data_json=json.dumps(normalize_project(json.loads('{"segments":[{"id":"injected","start":0,"end":1000,"text":"Injected cue"}]}'))),
                    filename_base_json='"injected project"', stickers_json='[]',
                    sticker_root_json='"portable-root"', sticker_url_prefix_json='"fixture-stickers/"',
                    ninja_sfx_base_url_json='"fixture-sfx/"', ui_language_json='"en"')
@@ -38,7 +39,7 @@ test('minified portable bundle preserves non-default data, paths and generated l
   await page.goto(pathToFileURL(injected).href);
   await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  expect(await page.evaluate(() => ({text:MaweBoot.DATA.segments[0]?.text,
+  expect(await page.evaluate(() => ({text:AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]?.text,
     filename:MaweBoot.FILENAME_BASE, stickers:MaweBoot.STICKERS, root:MaweBoot.STICKER_ROOT,
     prefix:MaweBoot.STICKER_URL_PREFIX, sfx:MaweBoot.NINJA_SFX_BASE_URL, server:MaweBoot.SERVER_CONFIG})))
     .toEqual({text:'Injected cue',filename:'injected project',stickers:[],root:'portable-root',
@@ -71,13 +72,13 @@ for (const transport of ['file', 'HTTP']) {
       MaweProjectLoad.applyCanonicalProject(project, 'synthetic.mosp');
       const serialized = JSON.parse(MaweJsonRepair.buildJson());
       const srt = MaweExportSrt.buildSrt();
-      const before = JSON.stringify(MaweBoot.DATA.segments);
+      const before = AsrEditorUtils.getMainTrack(AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA)).segments;
       MaweSegmentOps.mergeSegments([0,1]);
-      const merged = MaweBoot.DATA.segments.length === 1;
+      const merged = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 1;
       MaweHistory.performUndo();
       return {preserved:serialized.extension_fixture?.preserved, srt, merged,
-        restored:JSON.stringify(MaweBoot.DATA.segments) === before,
-        integerTiming:serialized.segments.every(cue => Number.isInteger(cue.start) && Number.isInteger(cue.end))};
+        restored:JSON.stringify(AsrEditorUtils.getMainTrack(AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA)).segments) === JSON.stringify(before),
+        integerTiming:AsrEditorUtils.getMainTrack(serialized).segments.every(cue => Number.isInteger(cue.start) && Number.isInteger(cue.end))};
     });
     expect(result.preserved).toBe(true);
     expect(result.srt).toContain('00:00:00,000 --> 00:00:01,000');

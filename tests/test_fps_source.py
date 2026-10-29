@@ -6,6 +6,7 @@ import unittest
 
 from maw.project import normalize_project, validate_project
 from maw.project_io import serialize_mosp
+from maw.project_tracks import get_main_track
 
 
 class FpsSourceTests(unittest.TestCase):
@@ -25,7 +26,7 @@ class FpsSourceTests(unittest.TestCase):
                     before = copy.deepcopy(project)
                     result = json.loads(serialize_mosp(normalize_project(project)))
                     self.assertEqual(result["timebase"], timebase)
-                    self.assertEqual(result["segments"], project["segments"])
+                    self.assertEqual(get_main_track(result)["segments"], project["segments"])
                     self.assertEqual(result["custom_extension"], project["custom_extension"])
                     self.assertEqual(project, before)
 

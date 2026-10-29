@@ -26,6 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from maw.project_tracks import get_main_track, project_tracks, make_project
+from maw.project import normalize_project
 from maw.alignment_models import (
     FIRERED_ASR2_CTC_MODEL_ID,
     QWEN_FORCED_ALIGNER_MODEL_ID,
@@ -369,6 +371,8 @@ def align_project(
     cancel_event: Any = None,
 ) -> TimestampAlignmentReport:
     """Fill or regenerate item timestamps in every subtitle track."""
+    original_project = project
+    project = normalize_project(project)
     normalized_mode = _normalize_mode(mode)
     normalized_model = normalize_alignment_model_id(model_id)
     if not media_path.is_file():
@@ -442,13 +446,16 @@ def align_project(
                 ]
                 aligned_segments += 1
                 aligned_items += len(items)
-        granularity = _project_granularity(project)
-        if granularity:
-            project["timestamp_granularity"] = granularity
+        for track in project_tracks(project):
+            granularity = _segments_granularity(track["segments"])
+            if granularity:
+                track["timestamp_granularity"] = granularity
     if failed_segments:
         emit(f"[aligner] 完成：成功 {aligned_segments} 段，跳过 {skipped_segments} 段，失败 {failed_segments} 段。")
     else:
         emit(f"[aligner] 完成：成功 {aligned_segments} 段，跳过 {skipped_segments} 段。")
+    original_project.clear()
+    original_project.update(project)
     return TimestampAlignmentReport(
         normalized_model,
         normalized_mode,
@@ -488,11 +495,10 @@ def align_local_transcription(
         segments = [{"start": start, "end": max(end, start + 1), "text": text}]
         if items:
             segments[0]["items"] = items
-    project: JsonDict = {
-        "segments": segments,
+    project = make_project(segments, main_fields={
         "language": str(getattr(transcription, "language", "") or ""),
         "split_mode": str(getattr(transcription, "split_mode", "") or ""),
-    }
+    })
     report = align_project(
         project,
         media_path=audio_path,
@@ -505,7 +511,7 @@ def align_local_transcription(
         on_event=on_event,
         cancel_event=cancel_event,
     )
-    aligned_segments = [dict(segment) for segment in project.get("segments", []) if isinstance(segment, dict)]
+    aligned_segments = [dict(segment) for segment in get_main_track(project)["segments"] if isinstance(segment, dict)]
     all_items = [
         dict(item)
         for segment in aligned_segments
@@ -862,22 +868,17 @@ def _segment_has_complete_items(segment: Mapping[str, object]) -> bool:
 
 
 def _project_segment_collections(project: Mapping[str, object]) -> Iterable[tuple[list[object], str | None]]:
-    main = project.get("segments")
-    language = str(project.get("language") or "")
-    if isinstance(main, list):
-        yield main, language
-    overlay = project.get("overlay_track")
-    if isinstance(overlay, Mapping) and isinstance(overlay.get("segments"), list):
-        yield overlay["segments"], language
-    multi = project.get("multi_subtitle")
-    if isinstance(multi, Mapping) and isinstance(multi.get("tracks"), list):
-        for track in multi["tracks"]:
-            if isinstance(track, Mapping) and isinstance(track.get("segments"), list):
-                yield track["segments"], str(track.get("language") or language)
+    language = str(get_main_track(project).get("language") or "")
+    for track in project_tracks(project):
+        yield track["segments"], str(track.get("language") or language)
 
 
 def _project_granularity(project: Mapping[str, object]) -> str:
-    main = project.get("segments")
+    main = get_main_track(project)["segments"]
+    return _segments_granularity(main)
+
+
+def _segments_granularity(main: list[object]) -> str:
     if not isinstance(main, list):
         return ""
     text_segments = [

@@ -16,6 +16,7 @@ from pathlib import Path
 from threading import Event
 from typing import BinaryIO, Final, TextIO, final
 
+from maw.project_tracks import get_main_track
 from maw.editor_entry_policy import require_standalone_editor, should_generate_standalone_editor
 from maw.console import configure_utf8_environment
 from maw.audio_diagnostics import empty_transcription_error, is_empty_transcription_error
@@ -542,12 +543,13 @@ def run_transcription(
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
     try:
-        project = json.loads(paths.json.read_text(encoding="utf-8"))
+        from maw.project import normalize_project
+        project = normalize_project(json.loads(paths.json.read_text(encoding="utf-8")))
     except (OSError, UnicodeError, ValueError):
         # Preserve existing optional-HTML handling for unreadable projects;
         # malformed output is not evidence of an empty ASR response.
         project = None
-    segments = project.get("segments") if isinstance(project, dict) else None
+    segments = get_main_track(project)["segments"] if isinstance(project, dict) else None
     if isinstance(segments, list) and not any(
         isinstance(segment, dict) and str(segment.get("text") or "").strip() for segment in segments
     ):

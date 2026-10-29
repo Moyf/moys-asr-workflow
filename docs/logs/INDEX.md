@@ -14,15 +14,15 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.2 之后 | 2026-10-30 | [轨道 v2 整合](release1.10.0-beta.2/261030_轨道v2整合/整合记录.md) / [人工核验](release1.10.0-beta.2/261030_轨道v2整合/轨道v2.checklist.md) | v2、CueRef、单副轨和显式另存保护；保留 Draft 与后续设计边界 |
 | 1.10.0-beta.2 之后 | 2026-10-29 | [PR239 合并准备与复核](release1.10.0-beta.2/261029_PR239合并准备/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261029_PR239合并准备/PR239合并准备.checklist.md) | 按维护者补丁落地 v1.5，整合最新 2.0dev，补齐 ESM 测试装配与副轨说话人规则 |
 | 1.10.0-beta.2 之后 | 2026-10-28 | [PR239 格式标识改名与复核](release1.10.0-beta.2/261028_PR239格式标识/REVIEW_FINDINGS.md) | 独立组标识 v1.5、v2 保留边界与验证证据 |
 | 1.10.0-beta.2 之后 | 2026-10-28 | [PR239 与 PR312 组合](release1.10.0-beta.2/261028_PR239轨道读取组合/整合记录.md) / [人工核验](release1.10.0-beta.2/261028_PR239轨道读取组合/轨道读取组合.checklist.md) | 保留 v1 基线，审阅 v2 保存、跨轨组与读取层组合 |
-| 1.10.0-beta.2 之后 | 2026-10-25 | [PR239 同步 main](release1.10.0-beta.2/261025_PR239同步main/整合记录.md) / [独立审阅](release1.10.0-beta.2/261025_PR239同步main/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261025_PR239同步main/PR239同步.checklist.md) | ESM 领域迁移与稳定组、完整保存检查点组合；保持 Draft 与 2.0dev |
-| 1.10.0-beta.1 之后 | 2026-10-22 | [PR239 对齐 2.0dev](release1.10.0-beta.1/261022_PR239开发分支/整合记录.md) / [人工核验](release1.10.0-beta.1/261022_PR239开发分支/PR239开发分支.checklist.md) | 最新 main 合成、完整保存检查点与包装路径，保持 Draft |
 | 1.10.0-beta.2 之后 | 2026-10-28 | [PR312 远端修复覆盖复核](release1.10.0-beta.2/261028_远端CI复核/复核记录.md) / [独立自审](release1.10.0-beta.2/261028_远端CI复核/REVIEW_FINDINGS.md) | reset 对齐 48501e62；核对四个提交净变化与两处 CI 契约缺口 |
 | 1.10.0-beta.2 之后 | 2026-10-27 | [轨道读取 ESM 适配](release1.10.0-beta.2/261027_轨道读取ESM适配/修复记录.md) / [独立自审](release1.10.0-beta.2/261027_轨道读取ESM适配/REVIEW_FINDINGS.md) | 合并新 2.0dev 后的测试装配修复，golden 保持原值 |
 | 1.10.0-beta.1 之后 | 2026-10-27 | [轨道统一读取 P0/P1](release1.10.0-beta.1/261027_轨道统一读取/交付报告.md) / [核验清单](release1.10.0-beta.1/261027_轨道统一读取/轨道统一读取.checklist.md) | v1 golden、只读 adapter、差异与验证边界 |
 | 1.10.0-beta.2 之后 | 2026-10-26 | [本地模型目录误判修复](release1.10.0-beta.2/261026_本地模型目录误判/本地模型目录误判修复.checklist.md) / [独立复核](release1.10.0-beta.2/261026_本地模型目录误判/REVIEW_FINDINGS.md) | 运行时根目录误判为已安装、切换模型串写 localModelPaths 两类修复；仓库根选择解析到可用修订层；新增清除自定义目录自救按钮，自动化与独立复核通过待人工验收 |
+| 1.10.0-beta.2 之后 | 2026-10-25 | [PR239 同步 main](release1.10.0-beta.2/261025_PR239同步main/整合记录.md) / [独立审阅](release1.10.0-beta.2/261025_PR239同步main/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261025_PR239同步main/PR239同步.checklist.md) | ESM 领域迁移与稳定组、完整保存检查点组合；保持 Draft 与 2.0dev |
 | 1.10.0-beta.2 之后 | 2026-10-24 | [G10 状态域 ESM 修复与复核](release1.10.0-beta.2/261024_G10状态域ESM/REVIEW_FINDINGS.md) / [人工核对清单](release1.10.0-beta.2/261024_G10状态域ESM/G10状态域ESM.checklist.md) | rebase 后修复工程加载作用域错误，更新 ESM VM 测试装载并复验 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [编辑器显示与像素组合验证](release1.10.0-beta.1/261023_编辑器显示与像素验证/验证记录.md) / [独立复核](release1.10.0-beta.1/261023_编辑器显示与像素验证/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261023_编辑器显示与像素验证/编辑器显示.checklist.md) | 斜体字形、真实像素准备复用与动态双语提示；最新 main 组合和旧红新绿 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [测试夹具组合验证](release1.10.0-beta.1/261023_测试夹具组合/验证记录.md) / [独立复核](release1.10.0-beta.1/261023_测试夹具组合/REVIEW_FINDINGS.md) / [核验清单](release1.10.0-beta.1/261023_测试夹具组合/测试基础设施.checklist.md) | H/L/C 组合、Windows 同一完整报告承接；真实符号链接与 Launcher 浏览器验收分别记录 |
@@ -31,10 +31,12 @@
 | 1.10.0-beta.1 之后 | 2026-10-23 | [叠加轨 ESM 门面摘除](release1.10.0-beta.1/261023_叠加轨ESM/叠加轨ESM门面摘除.checklist.md) | overlay-track 纯模块 + 24 调用者转 init，函数转发门面与 bridges 删除；自动化全绿，人工核验待完成 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [媒体分层与可信报告](release1.10.0-beta.1/261023_媒体分层与可信报告/验证记录.md) / [整合复核](release1.10.0-beta.1/261023_媒体分层与可信报告/REVIEW_FINDINGS.md) | Q1 required/JSON/完整日志及真实 FFprobe 保存备份边界；类级 skip 串并行一致性 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [波形交互稳定修复](release1.10.0-beta.1/261023_波形交互稳定/修复记录.md) / [整合复核](release1.10.0-beta.1/261023_波形交互稳定/REVIEW_FINDINGS.md) | 同高度缩略图通知保留波形行、真实高度变化保滚动锚点；删除回归保留自动保存隔离 |
-| 1.10.0-beta.1 之后 | 2026-10-22 | [Launcher ESM 迁移 L00 基线](release1.10.0-beta.1/261022_Launcher_ESM_L00/BASELINE.md) | 20 个 JS 台账、上游 PR 核对与页面加载契约 |
-| 1.10.0-beta.1 之后 | 2026-10-22 | [main e2e 回归修复提交前自审](release1.10.0-beta.1/261022_main_e2e回归修复/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261022_main_e2e回归修复/字体与本地媒体.checklist.md) | 双审查者 Greptile 式自审：绿幕修复的 player 快照缺陷真修、AssetsV2/TTC 测试补覆盖，含双向验证与遗留说明；实机核验待完成 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [ASS 像素核验准备复用](release1.10.0-beta.1/261023_ASS像素核验复用/验证记录.md) | 原两画布、原断言不变；真实七时点像素等价与 FFmpeg 启动减少 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [ASS 斜体字形边缘修复](release1.10.0-beta.1/261023_ASS斜体边缘/修复记录.md) | 大字号外伸笔画保留完整位图；原 libass oracle 与旧红新绿像素回归 |
+| 1.10.0-beta.1 之后 | 2026-10-22 | [统一字幕轨道开发与验证](release1.10.0-beta.1/261022_统一字幕轨道/开发与验证.md) / [人工核验](release1.10.0-beta.1/261022_统一字幕轨道/统一字幕轨道.checklist.md) | 历史 tracks[] / v3 草案（现行目标为 v2），旧格式迁移和三轨消费统一 |
+| 1.10.0-beta.1 之后 | 2026-10-22 | [PR239 对齐 2.0dev](release1.10.0-beta.1/261022_PR239开发分支/整合记录.md) / [人工核验](release1.10.0-beta.1/261022_PR239开发分支/PR239开发分支.checklist.md) | 最新 main 合成、完整保存检查点与包装路径，保持 Draft |
+| 1.10.0-beta.1 之后 | 2026-10-22 | [Launcher ESM 迁移 L00 基线](release1.10.0-beta.1/261022_Launcher_ESM_L00/BASELINE.md) | 20 个 JS 台账、上游 PR 核对与页面加载契约 |
+| 1.10.0-beta.1 之后 | 2026-10-22 | [main e2e 回归修复提交前自审](release1.10.0-beta.1/261022_main_e2e回归修复/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261022_main_e2e回归修复/字体与本地媒体.checklist.md) | 双审查者 Greptile 式自审：绿幕修复的 player 快照缺陷真修、AssetsV2/TTC 测试补覆盖，含双向验证与遗留说明；实机核验待完成 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [证书与工具链安全修复](release1.10.0-beta.1/261022_证书与工具链安全/SECURITY.md) | certifi、pip 引导、Node/uv 与 hf-xet TLS 缓解及安装包验证 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [MASS 弱化与斜体复审](release1.10.0-beta.1/261022_MASS语法复审/MASS弱化与斜体.checklist.md) | 符号禁用、拆分、斜体动画组合修复与人工核验边界 |
 | 1.10.0-beta.1 之后 | 2026-10-21 | [ASS 字体名兼容审阅](release1.10.0-beta.1/261021_ASS字体中文名/TEST_FEEDBACK_ASS字体中文名.md) / [人工核验](release1.10.0-beta.1/261021_ASS字体中文名/ASS字体名归一化.checklist.md) | 字体别名归一化、字重保留与预览/烧录/导出一致性 |

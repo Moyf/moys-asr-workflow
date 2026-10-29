@@ -111,7 +111,7 @@
     if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll) {
       MaweCueListAnchor.scrollCueToCenter(el);
     }
-    MaweCoreState.waveformEditor?.revealTime(MaweBoot.DATA.segments[idx].start, true);
+    MaweCoreState.waveformEditor?.revealTime(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].start, true);
     const wasPlaying = isPlaybackActive();
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior !== 'select-only') {
       // 默认只跳转不改动播放状态；“选中并跳转（自动播放）”会在暂停时启动播放。
@@ -119,7 +119,7 @@
       MawePlaybackLoop.suppressCueListAutoScroll = state?.preserveListScroll
         ? true : !MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick;
       try {
-        MaweTextCleanup.seekFromWaveform(MaweBoot.DATA.segments[idx].start / 1000, { mouseClick: true });
+        MaweTextCleanup.seekFromWaveform(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].start / 1000, { mouseClick: true });
       } finally {
         MawePlaybackLoop.suppressCueListAutoScroll = state?.preserveListScroll
           ? true : previousSuppress;

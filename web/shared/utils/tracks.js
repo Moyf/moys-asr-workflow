@@ -6,7 +6,7 @@ export function createTrackModule() {
   const secondaryTrackId = legacyId => `secondary:${legacyId}`;
 
   /** @typedef {{id: string, start?: number, end?: number, [key: string]: unknown}} Segment */
-  /** @typedef {{segments?: Segment[], enabled?: boolean, id?: string, multi_subtitle?: {enabled?: boolean, tracks?: LegacySource[]}, overlay_track?: LegacySource}} LegacySource */
+  /** @typedef {{segments?: Segment[], enabled?: boolean, id?: string, role?: string, tracks?: LegacySource[], multi_subtitle?: {enabled?: boolean, tracks?: LegacySource[]}, overlay_track?: LegacySource}} LegacySource */
   /** @typedef {{track_id: string, segment_id: string}} CueRef */
 
   // Freeze only the descriptor. Never freeze, normalize, copy or annotate cues.
@@ -29,6 +29,10 @@ export function createTrackModule() {
     tracks() {
       const project = this.project;
       if (!project) return [];
+      if (Array.isArray(project.tracks)) {
+        return project.tracks.filter(source => typeof source?.id === 'string' && Array.isArray(source.segments))
+          .map(source => view(source.id, source.role, source, () => source.enabled === true));
+      }
       const tracks = [];
       if (Array.isArray(project.segments)) tracks.push(view(MAIN_TRACK_ID, 'main', project, () => true));
       const multi = project.multi_subtitle;
@@ -66,10 +70,13 @@ export function createTrackModule() {
 
     // Old accessors return the original legacy container, not a TrackView.
     getLegacyExtensionTrack(trackId = null) {
+      if (Array.isArray(this.project?.tracks)) return this.project.tracks.find(track =>
+        (track.role === 'secondary' || track.role === 'extension') && (!trackId || track.id === trackId)) || null;
       return (this.project?.multi_subtitle?.tracks || []).find(track => !trackId || track.id === trackId) || null;
     }
 
-    getLegacyOverlayTrack() { return this.project?.overlay_track; }
+    getLegacyOverlayTrack() { return Array.isArray(this.project?.tracks)
+      ? this.project.tracks.find(track => track.role === 'overlay') : this.project?.overlay_track; }
   }
 
   return Object.freeze({ LegacyProjectAdapter, MAIN_TRACK_ID, OVERLAY_TRACK_ID, secondaryTrackId });

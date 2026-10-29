@@ -86,7 +86,7 @@ export function initMaweStickerOverlay() {
       boundaries.add(range.start); boundaries.add(range.end);
     }
   } else {
-    collect(MaweBoot.DATA.segments, 'main');
+    collect(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, 'main');
     collect(getOverlayTrack()?.segments || [], 'overlay');
   }
   stickerIntervals = intervals;

@@ -42,9 +42,9 @@ async function loadAttachedCues(page, autoSnapAdjacentCues, adjacentBoundaryMode
     if (MaweTimeline.timelineIsFrameMode()) {
       MaweTimeline.setTimelineTimebase({ unit: 'milliseconds' });
     }
-    MaweBoot.DATA.segments.splice(
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(
       0,
-      MaweBoot.DATA.segments.length,
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
       { start: 5000, end: 10000, text: 'First', items: [{ start: 5000, end: 10000, text: 'First' }] },
       { start: 10000, end: 18000, text: 'Second', items: [{ start: 10000, end: 18000, text: 'Second' }] },
       { start: 25000, end: 30000, text: 'Third', items: [{ start: 25000, end: 30000, text: 'Third' }] },
@@ -54,7 +54,7 @@ async function loadAttachedCues(page, autoSnapAdjacentCues, adjacentBoundaryMode
 }
 
 function readTimings(page) {
-  return page.evaluate(() => MaweBoot.DATA.segments.map(({ start, end }) => ({ start, end })));
+  return page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(({ start, end }) => ({ start, end })));
 }
 
 async function selectedCueIndex(page) {
@@ -100,9 +100,9 @@ async function moveWaveformPointerToTime(page, blockLocator, timeMs) {
 test('WASD during playback follows the playhead instead of the last selected cue', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[2].start = 100000;
-    MaweBoot.DATA.segments[2].end = 110000;
-    MaweBoot.DATA.segments[2].items = [{ start: 100000, end: 110000, text: 'Third' }];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[2].start = 100000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[2].end = 110000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[2].items = [{ start: 100000, end: 110000, text: 'Third' }];
     MaweCuePanel.renderAll();
   });
   await page.locator('.cue[data-idx="0"]').click();
@@ -142,20 +142,31 @@ test('A/D at the outer cue boundaries still seeks the boundary cue', async ({ pa
 test('F seeks and plays a selected extension cue', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
-    MaweBoot.DATA.multi_subtitle = {
-      schema: 'moy.asr.multi_subtitle.v1',
-      enabled: true,
-      display_mode: 'both',
-      tracks: [{
-        id: 'extension-1',
-        role: 'extension',
-        name: 'English',
-        language: 'English',
-        split_mode: 'word',
-        segments: [{ id: 'extension-001', start: 12000, end: 16000, text: 'Extension' }],
-      }],
-      bindings: [],
-    };
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: {
+          schema: 'moy.asr.multi_subtitle.v1',
+          enabled: true,
+          display_mode: 'both',
+          tracks: [{
+            id: 'extension-1',
+            role: 'extension',
+            name: 'English',
+            language: 'English',
+            split_mode: 'word',
+            segments: [{ id: 'extension-001', start: 12000, end: 16000, text: 'Extension' }],
+          }],
+          bindings: [],
+        },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
+    }
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
@@ -252,7 +263,7 @@ test('advanced time offset moves selected cues atomically and rejects bounds or 
     { start: 9000, end: 17000 },
     { start: 25000, end: 30000 },
   ]);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].items[0].start)).toBe(4000);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items[0].start)).toBe(4000);
 
   await page.locator('.cue[data-idx="2"]').click({ button: 'right' });
   await page.locator('.word-timing-advanced > .ctxmenu-submenu-toggle').click();
@@ -269,30 +280,41 @@ test('advanced time offset moves selected cues atomically and rejects bounds or 
 
 async function seedBoundSubtitleForOffset(page, extensionConflict = false) {
   await page.evaluate((conflict) => {
-    MaweBoot.DATA.segments.splice(
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(
       0,
-      MaweBoot.DATA.segments.length,
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
       { id: 'main-offset-1', start: 5000, end: 10000, text: 'First', items: [{ start: 5000, end: 10000, text: 'First' }] },
       { id: 'main-offset-2', start: 12000, end: 20000, text: 'Second', items: [{ start: 12000, end: 20000, text: 'Second' }] },
       { id: 'main-offset-3', start: 25000, end: 30000, text: 'Third', items: [{ start: 25000, end: 30000, text: 'Third' }] },
     );
-    MaweBoot.DATA.multi_subtitle = {
-      schema: 'moy.asr.multi_subtitle.v1',
-      enabled: true,
-      display_mode: 'both',
-      tracks: [{
-        id: 'extension-offset', role: 'extension', name: 'English', language: 'English',
-        split_mode: 'word',
-        segments: [
-          { id: 'extension-bound', start: 4500, end: 5500, text: 'Bound' },
-          { id: 'extension-other', start: conflict ? 3500 : 12000, end: conflict ? 4500 : 13000, text: 'Other' },
-        ].sort((left, right) => left.start - right.start),
-      }],
-      bindings: [{
-        id: 'binding-offset', track_id: 'extension-offset',
-        main_segment_ids: ['main-offset-1'], extension_segment_ids: ['extension-bound'],
-      }],
-    };
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: {
+          schema: 'moy.asr.multi_subtitle.v1',
+          enabled: true,
+          display_mode: 'both',
+          tracks: [{
+            id: 'extension-offset', role: 'extension', name: 'English', language: 'English',
+            split_mode: 'word',
+            segments: [
+              { id: 'extension-bound', start: 4500, end: 5500, text: 'Bound' },
+              { id: 'extension-other', start: conflict ? 3500 : 12000, end: conflict ? 4500 : 13000, text: 'Other' },
+            ].sort((left, right) => left.start - right.start),
+          }],
+          bindings: [{
+            id: 'binding-offset', track_id: 'extension-offset',
+            main_segment_ids: ['main-offset-1'], extension_segment_ids: ['extension-bound'],
+          }],
+        },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
+    }
     MaweCuePanel.renderAll({ waveform: 'full' });
   }, extensionConflict);
 }
@@ -318,23 +340,34 @@ for (const timebase of ['milliseconds', 'frames']) {
   test(`advanced ${timebase} offset rejects a disabled neighbor without moving any cue`, async ({ page }) => {
     await loadAttachedCues(page);
     await page.evaluate(() => {
-      MaweBoot.DATA.segments.splice(
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(
         0,
-        MaweBoot.DATA.segments.length,
+        AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
         { id: 'offset-main', start: 1000, end: 2000, text: 'Selected', items: [] },
         { id: 'offset-disabled', start: 2400, end: 3000, text: 'Disabled neighbor', items: [], disabled: true },
         { id: 'offset-other', start: 4000, end: 5000, text: 'Other', items: [] },
       );
-      MaweBoot.DATA.multi_subtitle = {
-        schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
-      };
+      {
+        const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+        AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+        const fixture = AsrEditorUtils.importProject({
+          segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+          multi_subtitle: {
+              schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
+            },
+        }).project;
+        MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+          .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
+        MaweBoot.DATA.bilingual = fixture.bilingual;
+        MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
+      }
       // The fixture starts without overlaps; only the attempted offset would
       // create one, through the production command and renderAll path.
       MaweCuePanel.renderAll();
     });
     if (timebase === 'frames') await useFrameTimebase(page);
     await page.locator('.cue[data-idx="0"]').click();
-    const readRanges = () => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => ({
+    const readRanges = () => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => ({
       start: segment.start, end: segment.end,
       start_frame: segment.start_frame, end_frame: segment.end_frame,
     })));
@@ -354,8 +387,8 @@ test('advanced time offset shifts a bound secondary cue with its main cue', asyn
   await page.locator('.cue[data-idx="0"]').click();
   await openTimeOffsetForCue(page, 0, -1000);
   await expect.poll(() => page.evaluate(() => ({
-    main: MaweBoot.DATA.segments[0].start,
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start,
+    main: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start,
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].start,
   }))).toEqual({ main: 4000, extension: 3500 });
 });
 
@@ -367,8 +400,8 @@ test('advanced time offset rolls back all tracks when a bound secondary cue woul
   await expect(page.locator('#subtitle-time-offset-dialog')).toBeHidden();
   await expect(page.locator('.hint-card.hint-invalid').first()).toContainText('绑定的副字幕空间受阻');
   await expect.poll(() => page.evaluate(() => ({
-    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(({ start, end }) => [start, end]),
+    main: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end],
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map(({ start, end }) => [start, end]),
   }))).toEqual({ main: [5000, 10000], extension: [[3500, 4500], [4500, 5500]] });
 });
 
@@ -412,19 +445,19 @@ test('advanced frame offset shifts a bound secondary cue with its main cue', asy
   await useFrameTimebase(page);
   await page.locator('.cue[data-idx="0"]').click();
   const before = await page.evaluate(() => ({
-    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
+    main: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end],
     extension: [
-      MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start,
-      MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end,
+      AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].start,
+      AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].end,
     ],
   }));
 
   await openTimeOffsetForCue(page, 0, 120);
   await expect.poll(() => page.evaluate(() => ({
-    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
+    main: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end],
     extension: [
-      MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start,
-      MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end,
+      AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].start,
+      AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].end,
     ],
   }))).toEqual({
     main: before.main.map((time) => time + 120),
@@ -438,16 +471,16 @@ test('advanced frame offset rolls back all tracks when a bound secondary cue wou
   await useFrameTimebase(page);
   await page.locator('.cue[data-idx="0"]').click();
   const before = await page.evaluate(() => ({
-    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(({ start, end }) => [start, end]),
+    main: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end],
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map(({ start, end }) => [start, end]),
   }));
 
   await openTimeOffsetForCue(page, 0, -1000);
   await expect(page.locator('#subtitle-time-offset-dialog')).toBeHidden();
   await expect(page.locator('.hint-card.hint-invalid').first()).toContainText('绑定的副字幕空间受阻');
   await expect.poll(() => page.evaluate(() => ({
-    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
-    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(({ start, end }) => [start, end]),
+    main: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end],
+    extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map(({ start, end }) => [start, end]),
   }))).toEqual(before);
 });
 
@@ -465,22 +498,35 @@ async function seedFrameOffsetRanges(page, { fps, mainFrames, target = 0, extens
       return { id, start, end, start_frame: frames[0], end_frame: frames[1], text: id, disabled,
         items: [{ start, end, start_frame: frames[0], end_frame: frames[1], text: id }] };
     };
-    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length,
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(0, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
       ...mainFrames.map((frames, index) => segment(frames, `frame-main-${index}`, index !== target)));
-    MaweBoot.DATA.multi_subtitle = {
-      schema: 'moy.asr.multi_subtitle.v1', enabled: extensionFrames.length > 0, display_mode: 'both',
-      tracks: extensionFrames.length ? [{ id: 'frame-extension', role: 'extension', name: 'Bound',
-        segments: extensionFrames.map((frames, index) => segment(frames, `frame-extension-${index}`, index !== follower)) }] : [],
-      bindings: extensionFrames.length ? [{ id: 'frame-binding', track_id: 'frame-extension',
-        main_segment_ids: [`frame-main-${target}`], extension_segment_ids: [`frame-extension-${follower}`] }] : [],
-    };
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: {
+          schema: 'moy.asr.multi_subtitle.v1', enabled: extensionFrames.length > 0, display_mode: 'both',
+          tracks: extensionFrames.length ? [{ id: 'frame-extension', role: 'extension', name: 'Bound',
+            segments: extensionFrames.map((frames, index) => segment(frames, `frame-extension-${index}`, index !== follower)) }] : [],
+          bindings: extensionFrames.length ? [{ id: 'frame-binding', track_id: 'frame-extension',
+            main_segment_ids: [`frame-main-${target}`], extension_segment_ids: [`frame-extension-${follower}`] }] : [],
+        },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
+    }
     MaweCuePanel.renderAll();
   }, { fps, mainFrames, target, extensionFrames, follower });
 }
 
 function readOffsetProject(page) {
-  return page.evaluate(() => JSON.parse(JSON.stringify({ segments: MaweBoot.DATA.segments,
-    multi: MaweBoot.DATA.multi_subtitle, undo: MaweHistory.editorHistory.undoLength() })));
+  return page.evaluate(() => JSON.parse(JSON.stringify({ segments: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+    multi: { tracks: AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary'),
+      bindings: MaweBoot.DATA.bindings, bilingual: MaweBoot.DATA.bilingual },
+    undo: MaweHistory.editorHistory.undoLength() })));
 }
 
 for (const fps of [30, 29.97]) {
@@ -598,8 +644,8 @@ test('automatic adjacent snapping links shared-boundary dragging by default and 
   ]);
 
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].end = 10000;
-    MaweBoot.DATA.segments[1].start = 10000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = 10000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start = 10000;
     MaweCuePanel.renderAll();
   });
   // Alt 临时反转：只移动当前字幕的边界，相邻字幕保持不动。
@@ -651,8 +697,8 @@ test('dual mode links both edges via the seam zone while side handles trim indep
   ]);
 
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].end = 10000;
-    MaweBoot.DATA.segments[1].start = 10000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = 10000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start = 10000;
     MaweCuePanel.renderAll();
   });
 
@@ -682,26 +728,41 @@ test('shared seams align exactly, stay hidden across an 80ms gap, and use accent
   const zone = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
   await expect(zone).toBeVisible();
   await page.evaluate(() => {
-    MaweBoot.DATA.multi_subtitle = {
-      schema: 'moy.asr.multi_subtitle.v1',
-      enabled: true,
-      display_mode: 'both',
-      tracks: [{
-        id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
-        segments: [
-          { id: 'extension-001', start: 5000, end: 10000, text: 'First' },
-          { id: 'extension-002', start: 10000, end: 18000, text: 'Second' },
-        ],
-      }],
-      bindings: [],
-    };
-    MaweBoot.DATA.overlay_track = {
-      enabled: true,
-      segments: [
-        { id: 'overlay-001', start: 5000, end: 10000, text: 'First overlay' },
-        { id: 'overlay-002', start: 10000, end: 18000, text: 'Second overlay' },
-      ],
-    };
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: {
+          schema: 'moy.asr.multi_subtitle.v1',
+          enabled: true,
+          display_mode: 'both',
+          tracks: [{
+            id: 'extension-1', role: 'extension', name: 'English', language: 'English', split_mode: 'word',
+            segments: [
+              { id: 'extension-001', start: 5000, end: 10000, text: 'First' },
+              { id: 'extension-002', start: 10000, end: 18000, text: 'Second' },
+            ],
+          }],
+          bindings: [],
+        },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
+    }
+    {
+      const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+      Object.assign(overlay, {
+          enabled: true,
+          segments: [
+            { id: 'overlay-001', start: 5000, end: 10000, text: 'First overlay' },
+            { id: 'overlay-002', start: 10000, end: 18000, text: 'Second overlay' },
+          ],
+        });
+      AsrEditorUtils.ensureStableSegmentIds(overlay.segments, overlay.id);
+    }
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
   const firstPosition = await zone.evaluate((element) => {
@@ -710,7 +771,7 @@ test('shared seams align exactly, stay hidden across an 80ms gap, and use accent
     const row = element.closest('.waveform-row');
     const start = Number(row.dataset.startMs);
     const end = Number(row.dataset.endMs);
-    const seam = Number(MaweBoot.DATA.segments[0].end);
+    const seam = Number(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end);
     const boundaryX = rowRect.left + row.clientLeft
       + ((seam - start) / (end - start)) * row.clientWidth;
     return {
@@ -769,8 +830,8 @@ test('shared seams align exactly, stay hidden across an 80ms gap, and use accent
   }
 
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].end = 9000;
-    MaweBoot.DATA.segments[1].start = 9000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = 9000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start = 9000;
     MaweCuePanel.renderAll();
   });
   const inRowZone = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]');
@@ -786,7 +847,7 @@ test('shared seams align exactly, stay hidden across an 80ms gap, and use accent
   expect(inRowPosition).toBeLessThan(1);
 
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[1].start = 9080;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start = 9080;
     MaweCuePanel.renderAll();
   });
   await expect(page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]'))
@@ -820,7 +881,7 @@ test('crossing visible waveform rows keeps horizontal-only seam movement across 
 
   const startX = seamBox.x + seamBox.width / 2;
   await page.mouse.move(startX, secondBox.y + secondBox.height / 2, { steps: 8 });
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(10000);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBe(10000);
   await expect.poll(() => page.locator(
     '.waveform-row[data-row-index="0"] .waveform-cue-boundary[data-left-idx="0"].dragging',
   ).count()).toBe(1);
@@ -834,8 +895,8 @@ test('crossing visible waveform rows keeps horizontal-only seam movement across 
   expect(targetX).toBeLessThan(page.viewportSize().width);
   expect(targetX).toBeGreaterThan(firstBox.x + firstBox.width);
   await page.mouse.move(targetX, secondBox.y + secondBox.height / 2, { steps: 8 });
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBeGreaterThan(12000);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBeLessThan(17900);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBeGreaterThan(12000);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBeLessThan(17900);
   await expect.poll(() => page.locator(
     '.waveform-row[data-row-index="1"] .waveform-cue-boundary[data-left-idx="0"].dragging',
   ).count()).toBe(1);
@@ -845,7 +906,7 @@ test('crossing visible waveform rows keeps horizontal-only seam movement across 
     const lineRect = marker.getBoundingClientRect();
     const rowStart = Number(row.dataset.startMs);
     const rowEnd = Number(row.dataset.endMs);
-    const seamMs = Number(MaweBoot.DATA.segments[0].end);
+    const seamMs = Number(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end);
     const expectedX = rect.left + row.clientLeft
       + ((seamMs - rowStart) / (rowEnd - rowStart)) * row.clientWidth;
     return Math.abs(lineRect.left + lineRect.width / 2 - expectedX);
@@ -860,23 +921,23 @@ test('crossing visible waveform rows keeps horizontal-only seam movement across 
   expect(dragStyles.opacity).toBe('0.85');
   expect(dragStyles.cursor).toContain('data:image/svg+xml');
 
-  const currentBoundary = await page.evaluate(() => MaweBoot.DATA.segments[0].end);
+  const currentBoundary = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end);
   const rowGapY = (firstBox.y + firstBox.height + secondBox.y) / 2;
   if (secondBox.y > firstBox.y + firstBox.height) {
     await page.mouse.move(targetX, rowGapY);
-    await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(currentBoundary);
+    await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBe(currentBoundary);
   }
 
   await page.mouse.move(targetX, firstBox.y + firstBox.height / 2, { steps: 8 });
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(currentBoundary);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBe(currentBoundary);
   await page.mouse.move(startX, firstBox.y + firstBox.height / 2, { steps: 8 });
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(10000);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBe(10000);
   await page.mouse.up();
   await expect(page.locator('.waveform-pointer-line.boundary-snapped')).toHaveCount(0);
   await expect(page.locator('.waveform-row[data-row-index="0"] .waveform-pointer-line:not([hidden])'))
     .toHaveCount(1);
   await expect.poll(() => page.evaluate(() => (
-    MaweBoot.DATA.segments[0].end === MaweBoot.DATA.segments[1].start
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end === AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start
   ))).toBe(true);
 });
 
@@ -908,7 +969,7 @@ test('moving a cue keeps tracking horizontal pointer deltas past its waveform ro
   await page.mouse.move(startX, y);
   await page.mouse.down();
   await page.mouse.move(targetX, y, { steps: 10 });
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[2].start)).toBeGreaterThan(30000);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[2].start)).toBeGreaterThan(30000);
   await expect.poll(() => page.locator(
     '.waveform-row[data-row-index="3"] .waveform-cue-block[data-track="main"][data-idx="2"]',
   ).count()).toBe(1);
@@ -925,9 +986,9 @@ test('selected cue group reflows fragments into the next waveform row while drag
   await page.setViewportSize({ width: 1600, height: 900 });
   await loadAttachedCues(page);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments.splice(
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(
       0,
-      MaweBoot.DATA.segments.length,
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
       { start: 21000, end: 25000, text: 'A', items: [] },
       { start: 25000, end: 28000, text: 'B', items: [] },
       { start: 28000, end: 29000, text: 'C', items: [] },
@@ -959,7 +1020,7 @@ test('selected cue group reflows fragments into the next waveform row while drag
   await page.mouse.move(startX, dragY);
   await page.mouse.down();
   await page.mouse.move(targetX, dragY, { steps: 8 });
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[2].start)).toBeGreaterThan(30000);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[2].start)).toBeGreaterThan(30000);
   await expect.poll(() => targetRow.locator('.waveform-cue-block[data-track="main"][data-idx="2"]').count()).toBe(1);
   await expect(sourceRow.locator('.waveform-cue-block[data-track="main"][data-idx="2"]')).toHaveCount(0);
   await page.mouse.up();
@@ -983,7 +1044,7 @@ test('A/D on an independent right handle follows the effective end edge', async 
   await page.mouse.down();
   await expect(page.locator('.waveform-pointer-line.boundary-snapped')).toBeVisible();
   await page.keyboard.press('a');
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(9900);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBe(9900);
 
   const line = page.locator('.waveform-row[data-row-index="0"] .waveform-pointer-line.boundary-snapped');
   await expect(line).toBeVisible();
@@ -1041,7 +1102,7 @@ test('Escape and pointer cancellation restore the normal pointer line', async ({
   };
 
   await dragSeam(9500);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).not.toBe(10000);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).not.toBe(10000);
   await page.keyboard.press('Escape');
   await expect.poll(() => readTimings(page)).toEqual([
     { start: 5000, end: 10000 },
@@ -1064,7 +1125,7 @@ test('Escape and pointer cancellation restore the normal pointer line', async ({
     }, { capture: true });
   });
   await dragSeam(9500);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).not.toBe(10000);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).not.toBe(10000);
   await page.evaluate(() => {
     const point = window.__boundaryPointerPosition;
     window.dispatchEvent(new PointerEvent('pointercancel', {
@@ -1088,24 +1149,35 @@ test('Escape and pointer cancellation restore the normal pointer line', async ({
 test('dual-mode extension seam replaces the existing selection with both adjacent cues', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
-    MaweBoot.DATA.multi_subtitle = {
-      schema: 'moy.asr.multi_subtitle.v1',
-      enabled: true,
-      display_mode: 'both',
-      tracks: [{
-        id: 'extension-1',
-        role: 'extension',
-        name: 'English',
-        language: 'English',
-        split_mode: 'word',
-        segments: [
-          { id: 'extension-001', start: 5000, end: 10000, text: 'First' },
-          { id: 'extension-002', start: 10000, end: 18000, text: 'Second' },
-          { id: 'extension-003', start: 25000, end: 30000, text: 'Third' },
-        ],
-      }],
-      bindings: [],
-    };
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      const fixture = AsrEditorUtils.importProject({
+        segments: main.segments.map(({ id, start, end, text }) => ({ id, start, end, text })),
+        multi_subtitle: {
+          schema: 'moy.asr.multi_subtitle.v1',
+          enabled: true,
+          display_mode: 'both',
+          tracks: [{
+            id: 'extension-1',
+            role: 'extension',
+            name: 'English',
+            language: 'English',
+            split_mode: 'word',
+            segments: [
+              { id: 'extension-001', start: 5000, end: 10000, text: 'First' },
+              { id: 'extension-002', start: 10000, end: 18000, text: 'Second' },
+              { id: 'extension-003', start: 25000, end: 30000, text: 'Third' },
+            ],
+          }],
+          bindings: [],
+        },
+      }).project;
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
+    }
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
@@ -1156,11 +1228,11 @@ test('an independent shared-boundary drag can reverse before release', async ({ 
   await page.mouse.down();
   await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
   await page.mouse.move(startX + deltaX, y, { steps: 5 });
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(9500);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBe(9500);
 
   // 回到按下时的共享边界；旧逻辑会把 9500 当成单向上限，无法回到 10000。
   await page.mouse.move(startX, y, { steps: 5 });
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(10000);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBe(10000);
   await page.mouse.up();
   await expect.poll(() => readTimings(page)).toEqual([
     { start: 5000, end: 10000 },
@@ -1185,8 +1257,8 @@ test('explicit Shift snapping remains available when automatic adjacent snapping
   // Shift 贴合是显式命令；这里显式关闭自动吸附，验证其不受开关影响。
   await loadAttachedCues(page, false);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].end = 9000;
-    MaweBoot.DATA.segments[1].start = 10000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = 9000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start = 10000;
     MaweCuePanel.renderAll();
   });
   await page.locator('.cue[data-idx="1"]').click();
@@ -1201,10 +1273,10 @@ test('explicit Shift snapping remains available when automatic adjacent snapping
 test('Shift+arrow keys snap selected subtitle boundaries to neighbors', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].end = 9000;
-    MaweBoot.DATA.segments[1].start = 10000;
-    MaweBoot.DATA.segments[1].end = 18000;
-    MaweBoot.DATA.segments[2].start = 20000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = 9000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start = 10000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].end = 18000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[2].start = 20000;
     MaweCuePanel.renderAll();
   });
   await page.locator('.cue[data-idx="1"]').click();
@@ -1291,10 +1363,10 @@ test('A also compresses an attached preceding cue', async ({ page }) => {
 test('Shift+A/D on a held subtitle snaps its outer boundaries to neighbors', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].end = 9000;
-    MaweBoot.DATA.segments[1].start = 10000;
-    MaweBoot.DATA.segments[1].end = 18000;
-    MaweBoot.DATA.segments[2].start = 20000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = 9000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start = 10000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].end = 18000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[2].start = 20000;
     MaweCuePanel.renderAll();
   });
   await toggleGlobalSettings(page);

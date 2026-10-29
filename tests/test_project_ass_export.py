@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from maw.project_tracks import get_main_track
+from maw.project import normalize_project
 from maw.project_ass_export import (
     PROJECT_SUBTITLE_EXTENSIONS,
     ProjectSubtitleError,
@@ -29,10 +31,10 @@ def _basic_project() -> dict[str, object]:
     return {
         "segments": [
             {"id": "a", "start": 0, "end": 1500, "text": "第一句"},
-            {"id": "b", "start": 2000, "end": 4000, "text": "禁用句", "disabled": True},
+            {"id": "b", "start": 2000, "end": 2400, "text": "禁用句", "disabled": True},
             {"id": "c", "start": 2500, "end": 5200, "text": "第三句"},
         ],
-        "preview": {"subtitle": {"font_family": "yahei", "font_size": 20, "color": "#123456"}},
+        "preview": {"subtitle": {"x": 0, "y": 0, "width": 1, "height": 1, "font_family": "yahei", "font_size": 20, "color": "#123456"}},
     }
 
 
@@ -72,12 +74,12 @@ class ProjectAssExportTests(unittest.TestCase):
         project = _basic_project()
         for key, expected in [("hei", "SimHei"), ("song", "SimSun"), ("sans", "Arial")]:
             with self.subTest(key=key):
-                project["preview"] = {"subtitle": {"font_family": key}}
+                project["preview"] = {"subtitle": {"x": 0, "y": 0, "width": 1, "height": 1, "font_family": key}}
                 content = render_project_ass(project, title="t", play_resolution=(1920, 1080))
                 self.assertIn(f"Style: Default,{expected},", content)
-        project["preview"] = {"subtitle": {"font_family": "My,Font\nName"}}
-        content = render_project_ass(project, title="t", play_resolution=(1920, 1080))
-        self.assertIn("Style: Default,My Font Name,", content)
+        project["preview"] = {"subtitle": {"x": 0, "y": 0, "width": 1, "height": 1, "font_family": "My,Font\nName"}}
+        with self.assertRaises(ProjectSubtitleError):
+            render_project_ass(project, title="t", play_resolution=(1920, 1080))
 
     def test_disabled_segments_are_skipped_and_order_is_preserved(self) -> None:
         content = render_project_ass(_basic_project(), title="t", play_resolution=(1920, 1080))
@@ -96,14 +98,14 @@ class ProjectAssExportTests(unittest.TestCase):
 
     def test_color_styles_follow_ass_color_style_mode(self) -> None:
         project = _basic_project()
-        project["preview"] = {"subtitle": {"ass_color_style": "text"}}
+        project["preview"] = {"subtitle": {"x": 0, "y": 0, "width": 1, "height": 1, "ass_color_style": "text"}}
         content = render_project_ass(project, title="t", play_resolution=(1920, 1080))
         lines = content.splitlines()
         for name in ("YELLOW", "GREEN", "RED", "PURPLE", "BLUE"):
             _style_line(lines, name)
         self.assertIn("&H001FCAF9", _style_line(lines, "YELLOW"))
         # speaker / none 不生成颜色样式，事件全部回落 Default。
-        project["preview"] = {"subtitle": {"ass_color_style": "none"}}
+        project["preview"] = {"subtitle": {"x": 0, "y": 0, "width": 1, "height": 1, "ass_color_style": "none"}}
         content = render_project_ass(project, title="t", play_resolution=(1920, 1080))
         self.assertNotIn("Style: YELLOW,", content)
 
@@ -157,7 +159,7 @@ class ProjectAssExportTests(unittest.TestCase):
             "enabled": True,
             "segments": [
                 {"id": "o1", "start": 300, "end": 900, "text": "叠加"},
-                {"id": "o2", "start": 100, "end": 50, "text": "倒置跳过"},
+                {"id": "o2", "start": 1000, "end": 1100, "text": "禁用跳过", "disabled": True},
             ],
         }
         content = render_project_ass(project, title="t", play_resolution=(1920, 1080))
@@ -206,17 +208,25 @@ class ProjectAssExportTests(unittest.TestCase):
 
     def test_load_burn_project_reads_mosp_and_json(self) -> None:
         for suffix in (".mosp", ".json"):
-            for schema in (None, "moy.asr.project.v1"):
+            for schema in (None, "moy.asr.project.v1", "moy.asr.project.v1.5", "moy.asr.project.v2"):
                 with self.subTest(suffix=suffix, schema=schema):
                     with tempfile.TemporaryDirectory() as root:
                         path = Path(root) / f"demo{suffix}"
                         project = _basic_project()
-                        if schema is not None:
+                        if schema == "moy.asr.project.v2":
+                            project = normalize_project(project)
+                        elif schema == "moy.asr.project.v1.5":
+                            migrated = normalize_project(project)
+                            project.update(schema=schema, segments=get_main_track(migrated)["segments"],
+                                           subtitle_groups=migrated["subtitle_groups"])
+                        elif schema is not None:
                             project["schema"] = schema
                         path.write_text(json.dumps(project), encoding="utf-8")
                         document, stem = load_burn_project(path)
                         self.assertEqual(stem, "demo")
-                        self.assertEqual(len(document["segments"]), 3)
+                        self.assertEqual(document["schema"], "moy.asr.project.v2")
+                        self.assertEqual(len(get_main_track(document)["segments"]), 3)
+                        self.assertNotIn("segments", document)
 
     def test_load_burn_project_rejects_unsupported_schema(self) -> None:
         with tempfile.TemporaryDirectory() as root:
@@ -226,8 +236,15 @@ class ProjectAssExportTests(unittest.TestCase):
                     project = _basic_project()
                     project["schema"] = schema
                     path.write_text(json.dumps(project), encoding="utf-8")
-                    with self.assertRaisesRegex(ProjectSubtitleError, "不支持的工程版本"):
+                    with self.assertRaises(ProjectSubtitleError):
                         load_burn_project(path)
+
+    def test_load_burn_project_rejects_v15_without_its_required_group_table(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "invalid-v15.mosp"
+            path.write_text(json.dumps({"schema": "moy.asr.project.v1.5", "segments": []}), encoding="utf-8")
+            with self.assertRaisesRegex(ProjectSubtitleError, "subtitle_groups"):
+                load_burn_project(path)
 
     def test_load_burn_project_rejects_invalid_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as root:
