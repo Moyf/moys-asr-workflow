@@ -316,7 +316,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(translate_step["mergeBilingual"])
         self.assertEqual(plan["steps"][0]["matchMode"], "script")
         self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["，", "。", "？", "！", "；", ",", ".", ";"])
-        self.assertEqual(plan["steps"][0]["preservePunctuation"], ["？", "！"])
+        self.assertEqual(plan["steps"][0]["preservePunctuation"], ["，", "。", "？", "！", "；", ",", ".", ";"])
         self.assertTrue(plan["steps"][0]["cleanMarkdownSymbols"])
         self.assertEqual(plan["steps"][-1]["videoEncoder"], "auto")
 
@@ -1592,13 +1592,13 @@ class PostprocessPreflightTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIsNotNone(request.postprocess_plan)
         self.assertEqual(request.postprocess_plan["steps"][0]["id"], "match")
 
-    def test_default_plan_preserves_question_and_exclamation_for_transcription(self) -> None:
+    def test_default_plan_preserves_all_punctuation_for_transcription(self) -> None:
         self.assertEqual(
             default_postprocess_plan()["steps"][0]["preservePunctuation"],
-            ["？", "！"],
+            ["，", "。", "？", "！", "；", ",", ".", ";"],
         )
-        # 默认保留 ？！ → 转写剥尾剥其余断句符号（，。；,.）。
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。；,.;")
+        # 新设置保留全部标点，已存配置仍按用户列表派生。
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "")
 
     def test_transcribe_strip_tail_punct_follows_saved_preserve_symbols(self) -> None:
         plan = default_postprocess_plan()
@@ -1611,3 +1611,13 @@ class PostprocessPreflightTests(CompactContainerAssertions, unittest.TestCase):
         save_postprocess_plan(self.env_path, plan)
 
         self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "？！；,.;")
+
+    def test_saved_old_default_preserve_list_is_not_guessed_or_replaced(self) -> None:
+        plan = default_postprocess_plan()
+        plan["steps"][0]["preservePunctuation"] = ["？", "！"]
+        save_postprocess_plan(self.env_path, plan)
+        self.assertEqual(normalize_plan(plan)["steps"][0]["preservePunctuation"], ["？", "！"])
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。；,.;")
+        plan["steps"][0]["preservePunctuation"] = []
+        save_postprocess_plan(self.env_path, plan)
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。？！；,.;")

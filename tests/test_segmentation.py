@@ -304,7 +304,7 @@ class CjkNaturalLimitTests(unittest.TestCase):
     def test_explicit_semicolon_default_splits_and_is_strippable(self) -> None:
         segmentation.configure_extra_strong_punct(segmentation._DEFAULT_EXTRA_STRONG_PUNCT)
         self.assertEqual(self.split("第一句话;第二句话", 20), ["第一句话;", "第二句话"])
-        self.assertIn(";", segmentation._DEFAULT_STRIP_TAIL_PUNCT)
+        self.assertEqual(segmentation._DEFAULT_STRIP_TAIL_PUNCT, "")
 
 
 class WesternSplitTests(unittest.TestCase):
