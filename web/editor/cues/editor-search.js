@@ -1,3 +1,4 @@
+import { colorFilterSuspended, effectiveCueColorKey } from './editor-color-filter.js';
 import { getOverlayTrack } from './overlay-track.js';
 
 export function initMaweSearch() {
@@ -43,8 +44,8 @@ export function initMaweSearch() {
       }
       let matched = !re || re.test(searchableText);
       if (re) re.lastIndex = 0;
-      if (matched && MaweColorFilter.colorFilterSelection && !MaweColorFilter.colorFilterSuspended()) {
-        matched = MaweColorFilter.colorFilterSelection.has(MaweColorFilter.effectiveCueColorKey(mainSeg || extensionSeg || overlaySeg));
+      if (matched && MaweColorFilter.colorFilterSelection && !colorFilterSuspended()) {
+        matched = MaweColorFilter.colorFilterSelection.has(effectiveCueColorKey(mainSeg || extensionSeg || overlaySeg));
       }
       const keepTemporaryVisible = filterOver
         && MaweSettings.EDITOR_SETTINGS.cueListKeepSplitVisible
@@ -87,3 +88,5 @@ export function initMaweSearch() {
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function applySearch(...args) { return window.MaweSearch.applySearch(...args); }

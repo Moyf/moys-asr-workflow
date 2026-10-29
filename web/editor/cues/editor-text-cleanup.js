@@ -123,3 +123,9 @@ export function initMaweTextCleanup() {
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function cleanPunctuation(...args) { return window.MaweTextCleanup.cleanPunctuation(...args); }
+export function syncTimelineGroupRanges(...args) { return window.MaweTextCleanup.syncTimelineGroupRanges(...args); }
+export function seekFromWaveform(...args) { return window.MaweTextCleanup.seekFromWaveform(...args); }
+export function notifyAutoLoadedMediaReady(...args) { return window.MaweTextCleanup.notifyAutoLoadedMediaReady(...args); }
+export function flushPendingMediaSeek(...args) { return window.MaweTextCleanup.flushPendingMediaSeek(...args); }
