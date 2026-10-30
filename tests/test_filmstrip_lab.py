@@ -93,7 +93,7 @@ class FilmstripServerTests(unittest.TestCase):
         self.media = Path(self.temp.name) / "test.mp4"; self.media.write_bytes(b"0123456789")
         with patch.object(server, "probe", return_value=INFO):
             self.lab = server.Lab(0, [self.media], Path(self.temp.name) / "cache")
-        self.thread = threading.Thread(target=self.lab.serve_forever, daemon=True); self.thread.start()
+        self.thread = threading.Thread(target=self.lab.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True); self.thread.start()
         self.url = f"http://127.0.0.1:{self.lab.server_port}"
 
     def tearDown(self):
