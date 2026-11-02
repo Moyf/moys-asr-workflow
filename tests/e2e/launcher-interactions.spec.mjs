@@ -34,7 +34,9 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
 
 test('alignment model shortcut opens the selected model without changing the ASR provider', async ({ page }, testInfo) => {
   await openLauncher(page);
+  await page.locator('#navTranscribe').click();
   await page.locator('#provider').selectOption('qwen');
+  await page.locator('#navToolbox').click();
   await page.locator('#toolboxTimestampsTab').click();
   const provider = await page.locator('#provider').inputValue();
   const asrModel = await page.locator('#model').inputValue();
@@ -76,7 +78,7 @@ test('alignment model shortcut opens the selected model without changing the ASR
   await expect(page.locator('#localRuntimeProgress')).toBeHidden();
   await expect(page.locator('#provider')).toHaveValue(provider);
   await expect(page.locator('#model')).toHaveValue(asrModel);
-  await page.locator('#settingsClose').click();
+  await page.locator('#navToolbox').click();
   await shortcut.click();
   await expect(page.locator('#prepareAlignmentModel')).toBeEnabled();
   const selectedModel = page.locator(`#localAlignmentModelList [data-model-id="${modelId}"]`);
@@ -149,6 +151,7 @@ test('runtime upgrade and alignment model states distinguish files, validation, 
       },
     };
   });
+  await page.locator('#navTranscribe').click();
   await page.locator('#provider').selectOption('local');
   await page.locator('#settingsButton').click();
   await page.locator('#settingsRuntimeTab').click();
@@ -183,7 +186,7 @@ test('runtime upgrade and alignment model states distinguish files, validation, 
   await expect(page.locator('#localAlignmentModelStatus')).toContainText('未下载 · 缺少依赖');
   const recognitionModel = await page.evaluate(() => window.MAWLauncher.config.providers
     .find((item) => item.id === 'local').models.find((model) => !model.supportsWordTimestamps).id);
-  await page.locator('#settingsClose').click();
+  await page.locator('#navTranscribe').click();
   await page.locator('#model').selectOption(recognitionModel);
   await page.evaluate(() => {
     const select = document.getElementById('recognitionAlignmentModel');
@@ -503,7 +506,7 @@ test('translation language filter defaults on, persists, syncs and reaches reque
     };
   });
   await page.locator('#toolboxLlmTab').click();
-  await page.locator('#postprocessOperation').selectOption('translate_zh');
+  await page.locator('#toolboxTranslateTarget').selectOption('zh');
   await expect(page.locator('#postprocessSkipTarget')).toBeChecked();
   await page.locator('#postprocessSkipTarget').uncheck();
   await expect(page.locator('#autoTranslateSkipTarget')).not.toBeChecked();
@@ -519,21 +522,31 @@ test('translation language filter defaults on, persists, syncs and reaches reque
   expect(manualGap).toBeGreaterThanOrEqual(8);
   await page.locator('#postprocessSkipTarget').scrollIntoViewIfNeeded();
   await page.screenshot({ path: '.artifacts/translation-filter-manual.png' });
-  await page.locator('#toolboxClose').click();
+  await page.locator('#navTranscribe').click();
   await page.locator('#autoPostprocessEnabled').check();
+  await page.evaluate(async () => {
+    await window.MAWLauncher.callBackend('test_postprocess_connection', {
+      providerId: 'deepseek', apiKey: 'demo-key', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', save: true,
+    });
+  });
   await page.locator('#autoStepTranslate').check();
-  await expect(page.locator('#autoTranslateSkipTargetField')).toBeVisible();
-  await page.locator('#autoTranslateSkipTarget').check();
+  // Automatic translation parameters now live in the shared configuration drawer.
+  await page.locator('#configureAutoTranslate').click();
+  await expect(page.locator('#postprocessSheet')).toBeVisible();
+  await page.locator('#postprocessSkipTarget').check();
+  await expect(page.locator('#autoTranslateSkipTarget')).toBeChecked();
   await expect(page.locator('#postprocessSkipTarget')).toBeChecked();
   await expect.poll(() => page.evaluate(() => window.__filterPlans.at(-1)?.steps
     .find(s => s.id === 'translate')?.skipTargetLanguage)).toBe(true);
-  const autoGap = await page.locator('#autoTranslateSkipTargetField').evaluate(group => {
+  const autoGap = await page.locator('#postprocessSkipTarget').evaluate(input => {
+    const group = input.closest('.translation-skip-target');
     const [label, hint] = group.children;
     return hint.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
   });
   expect(autoGap).toBeGreaterThanOrEqual(8);
-  await page.locator('#autoTranslateSkipTargetField').scrollIntoViewIfNeeded();
+  await page.locator('#postprocessSkipTarget').scrollIntoViewIfNeeded();
   await page.screenshot({ path: '.artifacts/translation-filter-auto.png' });
+  await page.locator('#postprocessSheetDone').click();
   await page.locator('#autoStepTranslate').uncheck();
   await expect(page.locator('#autoTranslateSkipTargetField')).toBeHidden();
 });
@@ -2111,8 +2124,7 @@ test('AI cleanup notes persist in the automatic plan and reach the manual reques
   });
   // #224 起 AI 口播整理的备注统一走 LLM 工具箱的按任务提示词：自动计划的
   // cleanup 步骤记录 customPrompt，手动请求把它作为 notes 发给 run_ai_cleanup。
-  await page.locator('#toolboxLlmTab').click();
-  await page.locator('#postprocessOperation').selectOption('ai_cleanup');
+  await page.locator('#toolboxCleanupTab').click();
   await page.locator('#postprocessPrompt').fill('  保留所有数字\n去除试麦  ');
   // 计划按原文保存提示词（不裁剪）；trim 只发生在手动请求的 notes 上。
   await expect.poll(() => page.evaluate(() => window.__notesPlans.at(-1)?.steps
@@ -2120,9 +2132,9 @@ test('AI cleanup notes persist in the automatic plan and reach the manual reques
   await page.locator('#toolboxInputPath').fill('source.mosp');
   await page.locator('#runLlmPostprocess').click();
   await expect.poll(() => page.evaluate(() => window.__cleanupPayload?.notes)).toBe('保留所有数字\n去除试麦');
-  await page.locator('#postprocessOperation').selectOption('proofread');
+  await page.locator('#toolboxProofreadTab').click();
   await expect(page.locator('#postprocessPrompt')).toHaveValue('');
-  await page.locator('#postprocessOperation').selectOption('ai_cleanup');
+  await page.locator('#toolboxCleanupTab').click();
   await expect(page.locator('#postprocessPrompt')).toHaveValue('  保留所有数字\n去除试麦  ');
 });
 
@@ -2149,10 +2161,9 @@ async function prepareDeferredAiLauncher(page, entry) {
       return original(method, payload);
     };
   });
-  // #224 起 AI 口播整理并入 LLM 工具箱的任务下拉；两个入口都经 #runLlmPostprocess 启动。
-  await page.locator('#toolboxLlmTab').click();
+  // 改版后各 AI 操作有独立导航；仍经同一个执行按钮与生命周期协议。
+  await page.locator(entry === 'cleanup' ? '#toolboxCleanupTab' : '#toolboxLlmTab').click();
   await page.locator('#toolboxInputPath').fill('D:\\Demo\\source.mosp');
-  if (entry === 'cleanup') await page.locator('#postprocessOperation').selectOption('ai_cleanup');
   return page.locator('#runLlmPostprocess');
 }
 

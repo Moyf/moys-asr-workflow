@@ -71,9 +71,18 @@ async function openServerEditor() {
   clearErrors();
   $("htmlMenu").classList.add("hidden");
   if (state.serverStarting) return;
-  const projectPath = $("jsonPath").value.trim();
+  const requestedPayload = serverPayload();
+  const projectPath = requestedPayload.jsonPath;
   const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
   if (!$("serverMediaPath").value.trim() && ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath))) { await bridge("open_url", { url: currentUrl }); return; }
+  // All entry points share this guard, including result cards and batch outputs.
+  if (state.detectedServerUrl && projectPath) {
+    $("recentProjectStatus").textContent = t("redesign_external_server_warning");
+    showPage("projects");
+    return;
+  }
+  if (state.serverRunning && state.serverProjectPath !== projectPath && !(await confirmAction(t("redesign_switch_project_warning")))) return;
+  if (state.serverStarting || JSON.stringify(serverPayload()) !== JSON.stringify(requestedPayload)) return;
   const restartProjectPath = serverRestartProjectPath;
   serverStatusRequest += 1;
   state.serverStarting = true;
@@ -81,12 +90,14 @@ async function openServerEditor() {
   try {
     if (projectPath) {
       const mediaState = await refreshServerMedia();
+      // The form stays editable during media probing; never start an unconfirmed target.
+      if (JSON.stringify(serverPayload()) !== JSON.stringify(requestedPayload)) return;
       if ((!mediaState.hasMedia || !mediaState.mediaExists) && !$("serverMediaPath").value.trim()) {
         expandServer();
         return fail("serverMediaPath", errText("server_media_missing", ""));
       }
     }
-    const result = await bridge("start_server", serverPayload());
+    const result = await bridge("start_server", requestedPayload);
     if (result.ok) {
       $("serverMediaPath").value = "";
       serverRestartProjectPath = null;

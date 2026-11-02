@@ -8,6 +8,8 @@ let settingsReturnPage = "transcribe";
 function pageSection(page) { return page; }
 function showPage(page) {
   const previous = activePage;
+  // Sidebar navigation is also a settings exit; invalidate in-flight verification.
+  if (previous === "settings" && page !== "settings") window.MAWLauncher?.onSettingsClosed?.();
   const section = pageSection(page);
   document.querySelectorAll(".page[data-page]").forEach((node) => node.classList.toggle("hidden", node.dataset.page !== section));
   activePage = page;

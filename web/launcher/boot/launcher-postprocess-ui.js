@@ -17,10 +17,10 @@ function createLauncherPostprocessUI({ steps, checkboxes, tools, panels, label, 
   let movedPanel = null;
   let panelHome = null;
   const nav = $("toolboxToolNav");
-  const icons = { match: "doc", replace: "text", ocr: "eye", timestamps: "clock", ai_cleanup: "spark", proofread: "check", resegment: "cut", translate: "language", custom: "text", burnSubtitle: "play", alignment: "mic", extractAudio: "music", waveform: "wave" };
+  const icons = { match: "doc", replace: "text", ocr: "eye", timestamps: "clock", scriptAlignment: "text", ai_cleanup: "spark", proofread: "check", resegment: "cut", translate: "language", custom: "text", burnSubtitle: "play", alignment: "mic", extractAudio: "music", waveform: "wave" };
   const slot = $("toolboxPanelSlot");
   const toolItems = [
-    ["match", "toolboxMatchTab", "auto_step_match"],
+    ["match", "toolboxMatchTab", "toolbox_match"],
     ["replace", "toolboxReplaceTab", "auto_step_replace"],
     ["ocr", "toolboxOcrTab", "auto_step_ocr"],
     ["timestamps", "toolboxTimestampsTab", "toolbox_timestamps"],
@@ -29,6 +29,7 @@ function createLauncherPostprocessUI({ steps, checkboxes, tools, panels, label, 
     ["llm", "toolboxResegmentTab", "auto_step_resegment", "resegment"],
     ["llm", "toolboxLlmTab", "auto_step_translate", "translate"],
     ["llm", "toolboxCustomTab", "toolbox_custom", "custom"],
+    ["scriptAlignment", "toolboxScriptAlignmentTab", "toolbox_script_alignment"],
     ["burnSubtitle", "toolboxBurnSubtitleTab", "auto_step_burn"],
     ["alignment", "toolboxAlignmentTab", "toolbox_alignment"],
     ["extractAudio", "toolboxExtractAudioTab", "toolbox_extract_audio"],

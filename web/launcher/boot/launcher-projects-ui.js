@@ -23,14 +23,10 @@ function initializeLauncherProjects() {
     $("projectStopServer").disabled = state.serverStarting || state.serverStopping;
     $("projectOpenEditor").disabled = state.serverStarting;
     $("projectOpenSelected").disabled = state.serverStarting || !$("jsonPath").value.trim();
+    $("projectOpenPortable").classList.toggle("hidden", state.config?.standaloneEditorSupported === false);
   }
   async function openProject(path) {
     if (state.serverStarting) return;
-    if (state.detectedServerUrl && path) {
-      $("recentProjectStatus").textContent = t("redesign_external_server_warning");
-      return;
-    }
-    if (state.serverRunning && state.serverProjectPath !== path && !(await confirmAction(t("redesign_switch_project_warning")))) return;
     setJsonPath(path);
     await openServerEditor();
   }
@@ -101,7 +97,11 @@ function initializeLauncherProjects() {
   $("projectStopServer").addEventListener("click", () => { void stopEditorServer(); });
   $("projectOpenSelected").addEventListener("click", () => { void openProject($("jsonPath").value.trim()); });
   $("projectOpenBlank").addEventListener("click", () => { void openProject(""); });
-  $("projectOpenPortable").addEventListener("click", () => { void bridge("open_blank_html"); });
+  $("projectOpenPortable").addEventListener("click", async () => {
+    if (state.config?.standaloneEditorSupported === false) return;
+    const result = await bridge("open_blank_html");
+    if (!result.ok) $("recentProjectStatus").textContent = errText(result.code, result.detail || result.error);
+  });
   $("jsonPath").addEventListener("input", renderServer);
   $("aboutAppVersion").textContent = state.config?.appVersion || "";
   $("aboutSupport").addEventListener("click", () => $("supportLink").click());

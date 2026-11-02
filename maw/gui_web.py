@@ -515,7 +515,7 @@ class LauncherApi:
         self.alignment_media_path: Path | None = None
         self.alignment_gap_remove: dict[str, int | float] | None = None
         self._media_tool_lock = Lock()
-        self.recent_projects = RecentProjects(default_app_data_root() / "launcher-recent-projects.json")
+        self.launcher_recent_projects = RecentProjects(default_app_data_root() / "launcher-recent-projects.json")
         self.media_tool_process: subprocess.Popen[str] | None = None
         self.media_tool_cancel_event: Event | None = None
         self.result: TranscriptionResult | None = None
@@ -2102,11 +2102,11 @@ class LauncherApi:
         return _open_existing_path(path)
 
     def get_recent_projects(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
-        return self.recent_projects.get()
+        return self.launcher_recent_projects.get()
 
     def update_recent_projects(self, payload: Mapping[str, object]) -> dict[str, object]:
         try:
-            return self.recent_projects.update(dict(payload))
+            return self.launcher_recent_projects.update(dict(payload))
         except (OSError, ValueError) as error:
             return _error_result("recentProjectStatus", "recent_projects_failed", str(error))
 

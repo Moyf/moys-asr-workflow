@@ -516,7 +516,6 @@ function providerGateHarness({ providers, storedTaskMemory = {}, backendProvider
     llmReasoningMode: { value: "off" },
     testLlmConnection: {}, getLlmModels: {},
     autoStepCleanup: { checked: false }, autoStepProofread: { checked: false },
-    settingsModal: { classList: { add() {} } },
     llmKeyStatus: { textContent: "" },
     postprocessProviderStatus: { textContent: "" },
   };
@@ -528,6 +527,9 @@ function providerGateHarness({ providers, storedTaskMemory = {}, backendProvider
   const openedSettings = [];
   const context = vm.createContext({
     console,
+    activePage: "settings",
+    settingsReturnPage: "transcribe",
+    navigateTo: () => {},
     window: { MAWLauncher: { config: { postprocessProviders: providers }, openSettings: (section, focus) => openedSettings.push({ section, focus }) }, localStorage: localStorageStub },
     document: { querySelector: () => null },
     $: (id) => fields[id] || { value: "", textContent: "" },

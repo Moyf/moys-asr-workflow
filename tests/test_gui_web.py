@@ -7002,7 +7002,10 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function showPage(page)', script)
         self.assertIn('function navigateTo(page)', script)
         self.assertIn('window.MAWLauncher?.setTranscribeMode?.(page === "batch" ? "batch" : "single");', script)
-        self.assertIn('function closeSettings() { if (activePage === "settings") navigateTo(settingsReturnPage); }', script)
+        close = script[script.index("function closeSettings()"):script.index("async function openServerEditor()")]
+        self.assertIn('if (activePage !== "settings") return;', close)
+        self.assertIn('window.MAWLauncher?.onSettingsClosed?.();', close)
+        self.assertIn('navigateTo(settingsReturnPage);', close)
         self.assertIn('function expandServer() { $("serverCard").classList.remove("collapsed"); renderChevron("serverCard"); showPage("projects"); }', script)
         # 窄窗口（< 760px）导航只显示图标，文字保留给读屏。
         self.assertIn('@media (max-width: 760px) {\n  .app-nav {\n    flex-basis: 56px;', stylesheet)
