@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.2 之后 | 2026-11-02 | [Launcher 同步 2.0dev 与自审](release1.10.0-beta.2/261102_Launcher同步2dev/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261102_Launcher同步2dev/Launcher同步.checklist.md) | PR235 rebase、上游接口保护、独立审查与回归 |
 | 1.10.0-beta.2 之后 | 2026-10-29 | [PR239 合并准备与复核](release1.10.0-beta.2/261029_PR239合并准备/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261029_PR239合并准备/PR239合并准备.checklist.md) | 按维护者补丁落地 v1.5，整合最新 2.0dev，补齐 ESM 测试装配与副轨说话人规则 |
 | 1.10.0-beta.2 之后 | 2026-10-28 | [PR239 格式标识改名与复核](release1.10.0-beta.2/261028_PR239格式标识/REVIEW_FINDINGS.md) | 独立组标识 v1.5、v2 保留边界与验证证据 |
 | 1.10.0-beta.2 之后 | 2026-10-28 | [PR239 与 PR312 组合](release1.10.0-beta.2/261028_PR239轨道读取组合/整合记录.md) / [人工核验](release1.10.0-beta.2/261028_PR239轨道读取组合/轨道读取组合.checklist.md) | 保留 v1 基线，审阅 v2 保存、跨轨组与读取层组合 |

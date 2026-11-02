@@ -7,19 +7,18 @@ const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 async function openScriptMode(page) {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
-  await page.locator('#toolboxFab').click();
-  await page.locator('#openScriptAlignmentTool').click();
+  await page.locator('#navToolbox').click();
+  await page.locator('#toolboxScriptAlignmentTab').click();
 }
 
 test('standalone script tool is before take review and leaves existing subtitle timestamp modes intact', async ({ page }) => {
   await openScriptMode(page);
-  await expect(page.locator('#toolboxUtilitiesPrimaryTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#toolboxScriptAlignmentTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeVisible();
-  const utilityTabs = await page.locator('#toolboxUtilitiesTabList [data-tool]:not(.hidden)').evaluateAll((items) => items.map((item) => item.dataset.tool));
+  const utilityTabs = await page.locator('#toolboxToolNav [data-tool]').evaluateAll(items => items.map(item => item.dataset.tool).filter(tool => ['scriptAlignment', 'burnSubtitle', 'alignment', 'extractAudio', 'waveform'].includes(tool)));
   expect(utilityTabs).toEqual(['scriptAlignment', 'burnSubtitle', 'alignment', 'extractAudio', 'waveform']);
-  const postprocessTabs = await page.locator('#toolboxPostprocessTabList [data-tool]:not(.hidden)').evaluateAll((items) => items.map((item) => item.dataset.tool));
-  expect(postprocessTabs).toEqual(['llm', 'ocr', 'replace', 'match', 'timestamps']);
+  const postprocessTabs = await page.locator('#toolboxToolNav [data-tool]').evaluateAll(items => [...new Set(items.map(item => item.dataset.tool).filter(tool => ['match', 'replace', 'ocr', 'timestamps', 'llm'].includes(tool)))]);
+  expect(postprocessTabs).toEqual(['match', 'replace', 'ocr', 'timestamps', 'llm']);
   await expect(page.locator('#toolboxMatchTab')).toHaveText('文稿修正');
   await expect(page.locator('#toolboxScriptAlignmentTab')).toHaveText('文稿匹配');
   await page.screenshot({ path: test.info().outputPath('media-tool-navigation.png') });
@@ -31,7 +30,6 @@ test('standalone script tool is before take review and leaves existing subtitle 
   await expect(page.locator('#runScriptAlignment')).toBeDisabled();
   await expect(page.locator('#checkScriptAlignment')).toBeEnabled();
   await expect(page.locator('#toolboxScriptAlignmentPanel > .toolbox-panel-hint')).toContainText('不识别实际说了什么');
-  await page.locator('#toolboxPostprocessPrimaryTab').click();
   await page.locator('#toolboxTimestampsTab').click();
   await expect(page.locator('#toolboxInputDropZone')).toBeVisible();
   await expect(page.locator('#toolboxTimestampScriptInputs')).toBeHidden();
@@ -39,10 +37,9 @@ test('standalone script tool is before take review and leaves existing subtitle 
   expect(await page.locator('#toolboxTimestampMode option').evaluateAll((items) => items.map((item) => item.value))).toEqual(['fill', 'generate']);
   await page.locator('#toolboxTimestampMode').selectOption('generate');
   await page.locator('#toolboxTimestampModel').selectOption('firered-asr2-ctc');
-  await page.locator('#toolboxUtilitiesPrimaryTab').click();
   await page.locator('#toolboxScriptAlignmentTab').click();
   await expect(page.locator('#toolboxScriptAlignmentModel')).toHaveValue('qwen3-forced-aligner-0.6b');
-  await page.locator('#toolboxPostprocessPrimaryTab').click();
+  await page.locator('#toolboxTimestampsTab').click();
   await expect(page.locator('#toolboxTimestampMode')).toHaveValue('generate');
   await expect(page.locator('#toolboxTimestampModel')).toHaveValue('firered-asr2-ctc');
 });
@@ -75,9 +72,9 @@ test('script mode sends script and media without a source project, displays arti
   await expect(page.locator('#jsonPath')).toHaveValue('/tmp/script.script-aligned.mosp');
   await expect(page.locator('#srtPath')).toHaveValue('/tmp/script.script-aligned.srt');
   await expect(page.locator('#toolboxResult')).toContainText('人工锚点 · 12 行 · 2 个块');
-  await page.locator('#toolboxPostprocessPrimaryTab').click();
+  await page.locator('#toolboxTimestampsTab').click();
   await expect(page.locator('#toolboxResult')).toBeHidden();
-  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+  await page.locator('#toolboxScriptAlignmentTab').click();
   await expect(page.locator('#toolboxResult')).toContainText('人工锚点 · 12 行 · 2 个块');
 });
 
@@ -138,7 +135,8 @@ test('script controls have measured spacing and bilingual labels', async ({ page
 test('script matching guidance is bilingual, spaced and opens the standalone tool settings', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
-  await page.locator('#toolboxFab').click();
+  await page.locator('#navToolbox').click();
+  await page.locator('#toolboxMatchTab').click();
   await page.locator('#toolboxInputPath').fill('/tmp/existing.mosp');
   await page.locator('#postprocessScriptPath').fill('/tmp/corrected.txt');
   const guidance = page.locator('#toolboxScriptAlignmentGuidance');
@@ -153,13 +151,13 @@ test('script matching guidance is bilingual, spaced and opens the standalone too
   await expect(page.locator('#toolboxScriptAlignmentTab')).toBeFocused();
   await expect(page.locator('#toolboxInputDropZone')).toBeHidden();
   await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeVisible();
-  await page.locator('#toolboxDrawer .toolbox-content').evaluate((element) => element.scrollTo({ top: 0, behavior: 'instant' }));
+  await page.locator('#toolboxPanel .toolbox-content').evaluate((element) => element.scrollTo({ top: 0, behavior: 'instant' }));
   await page.screenshot({ path: test.info().outputPath('standalone-script-alignment.png') });
   await page.locator('#openScriptAlignmentModelSettings').click();
   await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#localAlignmentModelList [data-model-id="qwen3-forced-aligner-0.6b"]')).toHaveAttribute('aria-pressed', 'true');
-  await page.locator('#settingsClose').click();
-  await page.locator('#toolboxPostprocessPrimaryTab').click();
+  await page.locator('#navToolbox').click();
+  await page.locator('#toolboxMatchTab').click();
   await expect(page.locator('#toolboxInputPath')).toHaveValue('/tmp/existing.mosp');
   await expect(page.locator('#postprocessScriptPath')).toHaveValue('/tmp/corrected.txt');
 });

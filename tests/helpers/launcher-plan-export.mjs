@@ -25,6 +25,7 @@ const context = vm.createContext({
   parseReplacements: () => [],
   autoLlmOperation: (id) => id,
   ocrVideoManual: false,
+  redesignUI: null,
 });
 for (const name of ['punctuationLines', 'defaultAutoPlan', 'autoPlanFromControls']) {
   vm.runInContext(launcherFunction(name), context);

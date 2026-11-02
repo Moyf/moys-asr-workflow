@@ -39,7 +39,8 @@ function moveSettingsFocus(event) {
 }
 function openSettings(sectionId = "", focusId = "") {
   selectSettingsTab(settingsTabForSection(sectionId) || activeSettingsTab);
-  $("settingsModal").classList.remove("hidden");
+  if (activePage !== "settings") settingsReturnPage = activePage;
+  showPage("settings");
   refreshFfmpeg();
   void refreshOcrRuntime();
   renderStickerCurrent();
@@ -51,8 +52,8 @@ function openSettings(sectionId = "", focusId = "") {
   $("notifyOnComplete").checked = state.config.notifyOnComplete === true;
   if (sectionId) {
     requestAnimationFrame(() => {
-      // 只滚动 .settings-scroll 容器；scrollIntoView 会连带滚动 overflow:hidden 的
-      // .modal-card，把标题和标签页顶出视野，区块位于容器顶部时表现为下坠一小段。
+      // 只滚动 .settings-scroll 容器；scrollIntoView 会连带滚动外层页面容器，
+      // 把分区导航顶出视野，区块位于容器顶部时表现为下坠一小段。
       const section = $(sectionId);
       const scroll = section?.closest(".settings-scroll");
       if (section && scroll) scroll.scrollTo({ top: Math.max(0, section.offsetTop - scroll.offsetTop), behavior: "smooth" });
@@ -60,17 +61,28 @@ function openSettings(sectionId = "", focusId = "") {
     });
   }
 }
+// 设置是页面；保留上游取消待验证步骤的关闭通知。
 function closeSettings() {
-  $("settingsModal").classList.add("hidden");
+  if (activePage !== "settings") return;
   window.MAWLauncher?.onSettingsClosed?.();
+  navigateTo(settingsReturnPage);
 }
 async function openServerEditor() {
   clearErrors();
   $("htmlMenu").classList.add("hidden");
   if (state.serverStarting) return;
-  const projectPath = $("jsonPath").value.trim();
+  const requestedPayload = serverPayload();
+  const projectPath = requestedPayload.jsonPath;
   const currentUrl = state.detectedServerUrl || `http://127.0.0.1:${$("port").value || "8250"}/?lang=${state.lang}`;
   if (!$("serverMediaPath").value.trim() && ((state.serverRunning && projectPath === state.serverProjectPath) || (state.detectedServerUrl && !projectPath))) { await bridge("open_url", { url: currentUrl }); return; }
+  // All entry points share this guard, including result cards and batch outputs.
+  if (state.detectedServerUrl && projectPath) {
+    $("recentProjectStatus").textContent = t("redesign_external_server_warning");
+    showPage("projects");
+    return;
+  }
+  if (state.serverRunning && state.serverProjectPath !== projectPath && !(await confirmAction(t("redesign_switch_project_warning")))) return;
+  if (state.serverStarting || JSON.stringify(serverPayload()) !== JSON.stringify(requestedPayload)) return;
   const restartProjectPath = serverRestartProjectPath;
   serverStatusRequest += 1;
   state.serverStarting = true;
@@ -78,15 +90,18 @@ async function openServerEditor() {
   try {
     if (projectPath) {
       const mediaState = await refreshServerMedia();
+      // The form stays editable during media probing; never start an unconfirmed target.
+      if (JSON.stringify(serverPayload()) !== JSON.stringify(requestedPayload)) return;
       if ((!mediaState.hasMedia || !mediaState.mediaExists) && !$("serverMediaPath").value.trim()) {
         expandServer();
         return fail("serverMediaPath", errText("server_media_missing", ""));
       }
     }
-    const result = await bridge("start_server", serverPayload());
+    const result = await bridge("start_server", requestedPayload);
     if (result.ok) {
       $("serverMediaPath").value = "";
       serverRestartProjectPath = null;
+      if (projectPath && !result.serverAlreadyRunning) launcherProjects?.remember(projectPath);
       state.serverRunning = !result.serverAlreadyRunning;
       state.serverProjectPath = state.serverRunning ? projectPath : "";
       state.detectedServerUrl = result.serverAlreadyRunning ? result.url || "" : "";
@@ -172,5 +187,7 @@ async function init() {
   setStatus(t("ready"));
   revealLauncher();
   window.dispatchEvent(new CustomEvent("mawlauncherready"));
+  initializeLauncherWorkflow();
+  initializeLauncherProjects();
   refreshStartupState();
 }
