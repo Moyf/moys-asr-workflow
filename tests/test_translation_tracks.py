@@ -92,6 +92,9 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                         multi = saved
                         self.assertEqual(multi["bilingual"]["display_mode"], "both")
                         self.assertEqual([s["text"] for s in get_tracks_by_role(multi, "secondary")[-1]["segments"]], [translation])
+                        translated_cue = get_tracks_by_role(multi, "secondary")[-1]["segments"][0]
+                        self.assertEqual(translated_cue["speaker"], main_segments(canonical_source)[0]["speaker"])
+                        self.assertIn(translated_cue["speaker"], {speaker["id"] for speaker in saved["speakers"]})
                         self.assertEqual(multi["bindings"][0]["source"], {"track_id": "main", "segment_id": "source"})
                     text = result.srt_path.read_text(encoding="utf-8-sig")
                     expected = (f"{translation}\n{original}" if order == "translation_first" else f"{original}\n{translation}") if merge else original
