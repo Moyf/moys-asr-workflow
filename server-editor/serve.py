@@ -2892,7 +2892,13 @@ def write_project_json(target: Path, project_data: dict, *, strip_caches: bool =
     ``strip_inline_caches`` 返回副本，调用方持有的运行态工程不受影响，
     页面波形不消失。
     """
-    validated = normalize_project(project_data)
+    if preserve_format:
+        imported = prepare_project(project_data)
+        if imported.validation.project is None:
+            raise ProjectValidationFailed(imported.validation.errors)
+        validated = imported.validation.project
+    else:
+        validated = normalize_project(project_data)
     portable = rebase_project_media(project_data if preserve_format else validated, target)
     content = json.dumps(strip_inline_caches(portable) if strip_caches else portable, ensure_ascii=False, indent=2) + "\n"
     target.parent.mkdir(parents=True, exist_ok=True)

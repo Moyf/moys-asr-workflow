@@ -3675,6 +3675,42 @@ test('restores squeezed bound extension subtitles when an Alt drag is pulled bac
   });
 });
 
+test('moves an unbound main cue across successive Alt drag frames with a secondary track open', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-unbound', start: 1000, end: 3000, text: '主字幕', items: [] }],
+    waveform: generateWaveformPayload(10000),
+    multi_subtitle: { enabled: true, display_mode: 'both',
+      tracks: [{ id: 'secondary', segments: [{ id: 'sub', start: 1000, end: 3000, text: 'secondary', items: [] }] }],
+      bindings: [] },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{ name: 'unbound.json', type: 'application/json',
+    base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64') }]);
+  const mainBlock = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
+  const row = mainBlock.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " waveform-row ")][1]');
+  const box = await waitForLayoutBox(mainBlock, '主字幕波形块没有布局');
+  const geometry = await row.evaluate(element => ({ width: element.getBoundingClientRect().width,
+    start: Number(element.dataset.startMs), end: Number(element.dataset.endMs) }));
+  const delta = 500 / (geometry.end - geometry.start) * geometry.width;
+  const x = box.x + box.width / 2, y = box.y + box.height / 2;
+  await page.keyboard.down('Alt');
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + delta / 4, y);
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  expect(await page.evaluate(() => Boolean(MaweCoreState.waveformEditor.drag?.moveTracks))).toBe(false);
+  await page.mouse.move(x + delta, y);
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  const moved = await page.evaluate(() => ({
+    main: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start,
+    secondary: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].start,
+  }));
+  await page.mouse.up();
+  await page.keyboard.up('Alt');
+  expect(moved.main).toBeGreaterThan(1300);
+  expect(moved.secondary).toBe(1000);
+});
+
 test('keeps bound extensions synced when a main shared boundary is dragged independently', async ({ page }) => {
   const project = {
     segments: [

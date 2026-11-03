@@ -614,12 +614,13 @@ def merge_bilingual_project(
         merged_segments.append(merged)
 
     merged_project = copy.deepcopy(source_project)
-    replace_main_segments(merged_project, merged_segments)
     # A bilingual merge is intentionally a single-track result.  Do not carry
     # an older extension track into the final project if the input was already
-    # a multi-subtitle project.
+    # a multi-subtitle project. This is a detached export projection, so empty
+    # source cues can be dropped without modifying the editable source project.
     merged_project["tracks"] = [track for track in merged_project["tracks"] if track["role"] != "secondary"]
     merged_project["bindings"] = []
+    get_main_track(merged_project)["segments"] = merged_segments
     merged_project["bilingual"].pop("active_track_id", None)
     merged_project["bilingual"]["display_mode"] = "main"
     merged_project.pop("extensionSegments", None)

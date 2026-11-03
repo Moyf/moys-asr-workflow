@@ -1,7 +1,35 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, makeTempDir, startServer } from './helpers.mjs';
+import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, makeTempDir, startBlankServer, startServer } from './helpers.mjs';
+
+test('browser imports repairable legacy timing through both project entry points', async ({ page }) => {
+  const directory = makeTempDir('v2-import-repair');
+  let server;
+  try {
+    server = await startBlankServer(await findFreePort(), join(directory, 'settings'));
+    await disableOnboarding(page);
+    await page.goto(server.url);
+    await page.waitForFunction(() => Boolean(window.MaweMultiImport && window.MaweLoadingProgress));
+    const result = await page.evaluate(async () => {
+      const legacy = { segments: [{ start: 0, end: 0, text: 'repair me' }] };
+      const file = data => new File([JSON.stringify(data)], 'legacy.mosp', { type: 'application/json' });
+      let subtitleEnd = null;
+      try { subtitleEnd = (await MaweLoadingProgress.parseSubtitleImportFile(file(legacy)))[0].end; }
+      catch (_) { /* Still exercise the separate full-project entry point. */ }
+      const opened = await MaweMultiImport.openProjectFile(file(legacy), { suppressMediaPrompt: true });
+      const current = JSON.stringify(MaweBoot.DATA);
+      const invalid = await MaweMultiImport.openProjectFile(file({ segments: [{ start: 0, end: 0, text: 42 }] }),
+        { suppressMediaPrompt: true });
+      return { subtitleEnd, opened, end: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]?.end ?? null,
+        saveAs: MaweServerSave.requiresMigrationSaveAs, invalid, unchanged: JSON.stringify(MaweBoot.DATA) === current };
+    });
+    expect(result).toEqual({ subtitleEnd: 100, opened: true, end: 100, saveAs: true, invalid: false, unchanged: true });
+  } finally {
+    await server?.stop();
+    cleanupTempDir(directory);
+  }
+});
 
 for (const schema of ['moy.asr.project.v1', 'moy.asr.project.v1.5']) {
   test(`${schema} migration requires a new v2 file and preserves the source`, async ({ page }) => {

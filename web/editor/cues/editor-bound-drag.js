@@ -61,7 +61,8 @@
     if (drag?.track !== 'main' || drag.boundDragTimelineOriginals) return;
     const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
     drag.boundDragTimelineOriginals = {
-      tracks: (multi.tracks || []).map((track) => snapshotBoundDragTrack(track)),
+      tracks: (multi.tracks || []).filter((track) => track.role === 'secondary')
+        .map((track) => snapshotBoundDragTrack(track)),
       bindings: JSON.parse(JSON.stringify(multi.bindings || [])),
     };
   }

@@ -279,7 +279,8 @@ export function initMaweMultiImport() {
       if (!current()) return false;
       MaweLoadingProgress.updateEditorLoading(60, `正在解析工程 ${file.name}…`);
       const rawProject = JSON.parse(text);
-      const imported = window.AsrEditorUtils.importProject(rawProject);
+      const imported = window.MaweProjectValidation.prepareProject(rawProject);
+      if (!imported.ok) throw new Error(imported.errors.map(error => `${error.path}: ${error.message}`).join('; '));
       const data = imported.project;
       MaweJsonRepair.noteImportReport(imported.changes);
 MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation, repaired: imported.changes.length > 0,
