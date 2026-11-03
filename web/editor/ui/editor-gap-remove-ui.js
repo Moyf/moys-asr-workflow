@@ -31,6 +31,10 @@ export function initMaweGapRemoveUi() {
     MaweCuePanelState.gapPreviewRange = null;
     if (dirty) MaweHistory.gapRemoveDirty = true;
     updateGapRemoveUi();
+    window.MaweGapPlayback?.refresh();
+    if (MaweCoreState.player && !MaweCoreState.player.paused) {
+      void window.MaweAudioProcessing?.applyPreview({ gesture: true });
+    }
   }
 
 
