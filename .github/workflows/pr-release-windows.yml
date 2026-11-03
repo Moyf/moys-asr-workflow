@@ -169,7 +169,7 @@ jobs:
           retention-days: 7
 
       - name: Run Python tests
-        run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py --report .artifacts/windows-python.json
+        run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py --report .artifacts/windows-python.json --github-summary
 
       - name: Require cache coverage from the same Python run
         shell: pwsh

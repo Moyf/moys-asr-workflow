@@ -10,6 +10,7 @@ from tests.compact_assertions import CompactContainerAssertions
 
 import io
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -56,6 +57,35 @@ class CompactTextTests(unittest.TestCase):
             _to_module_name("tests.test_gui_web.GuiWebBridgeTests"),
             "tests.test_gui_web.GuiWebBridgeTests",
         )
+
+
+class GithubSummaryTests(unittest.TestCase):
+    def test_skip_summary_does_not_change_test_result(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / "test_sample.py").write_text(
+                "import unittest\n"
+                "class Case(unittest.TestCase):\n"
+                "    @unittest.skip('optional dependency')\n"
+                "    def test_skipped(self): pass\n"
+                "    def test_passed(self): pass\n", encoding="utf-8", newline="\n"
+            )
+            summary = root / "summary.md"
+            command = [sys.executable, str(ROOT / "scripts/run_tests.py"),
+                       "--start-dir", str(root), "--github-summary"]
+            env = {**os.environ, "GITHUB_STEP_SUMMARY": str(summary)}
+            result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(summary.read_text(encoding="utf-8"), "Python tests skipped: 1\n")
+
+            env["GITHUB_STEP_SUMMARY"] = str(root / "missing" / "summary.md")
+            result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0)
+
+            with (root / "test_sample.py").open("a", encoding="utf-8", newline="\n") as sample:
+                sample.write("    def test_failed(self): self.fail('failure')\n")
+            result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
 
 
 class ParallelWorkerTests(unittest.TestCase):
