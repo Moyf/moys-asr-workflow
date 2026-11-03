@@ -1350,7 +1350,9 @@
   z-index: 30;
   display: grid;
   gap: 8px;
-  width: 208px;
+  width: max-content;
+  min-width: 208px;
+  max-width: calc(100% - 8px);
   padding: 9px;
   color: var(--text-primary);
   background: var(--bg-panel);
