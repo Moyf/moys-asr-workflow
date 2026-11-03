@@ -1,6 +1,6 @@
 ---
 name: maw-subtitle-pipeline
-description: 基于 MAW 源码的批量字幕流水线：长视频无损切分成多份 → Qwen 云端转写生成 SRT 与 .mosp 工程 → 把字幕硬烧进视频（保留全部音轨）。当用户要求"切分/拆分视频""生成字幕""转写""烧录字幕""压字幕""硬字幕""批量出片"，提到 MAW、OBS 录像加字幕、长视频出多份成片，或要求在本仓库运行完整 ASR → 烧录流程时使用。适用于已克隆本仓库并完成 uv sync 的源码环境；MAW.exe 发布包不含烧录入口，不在本技能范围。
+description: 基于 MAW 的批量字幕流水线：长视频无损切分成多份 → Qwen 云端转写生成 SRT 与 .mosp 工程 → 用公开 CLI --burn 把字幕硬烧进视频（保留全部音轨）。当用户要求"切分/拆分视频""生成字幕""转写""烧录字幕""压字幕""硬字幕""批量出片"，提到 MAW、OBS 录像加字幕、长视频出多份成片，或要求在本仓库运行完整 ASR → 烧录流程时使用。转写与烧录均通过公开 CLI（源码入口 uv run --no-sync python maw_gui.py，或含 --burn 的 MAW.exe 发布包）；本技能以源码环境为准，需要 uv sync 与带 libass 的 FFmpeg。
 ---
 
 # maw-subtitle-pipeline
@@ -47,15 +47,16 @@ uv run --no-sync python maw_gui.py -i "<part>.mkv" -o "<part>.srt" "<part>.mosp"
 - 多音轨默认取 `0:a:0`（OBS 录像第一轨通常是混音轨）；换轨需高级模块命令 `python -m maw.asr.qwen --audio-track N`，公开 CLI 无此参数。
 - 超时建议 ≥ 10 分钟/份；逐份串行执行，不要并发打 API。
 
-### Step 3 逐份烧录（技能自带驱动，工具箱「烧录字幕」同款逻辑）
+### Step 3 逐份烧录（公开 CLI `--burn`）
 
 ```sh
-uv run --no-sync python .agents/skills/maw-subtitle-pipeline/scripts/burn_driver.py "<part>.mkv" "<part>.srt" <encoder>
+uv run --no-sync python maw_gui.py --burn "<part>.srt" -i "<part>.mkv" --encoder <encoder>
 ```
 
-- 驱动自动定位仓库根（按 `maw/__init__.py` 向上查找），复用 `maw.postprocess_ffmpeg.run_burn_subtitles`：SRT 按样式库转 ASS、PlayRes 取视频实际分辨率、字体名归一化、缺字中止、编码失败自动回退。
-- 输出自动命名为同目录 `<原名>.压字幕.mp4`，重名自动避让，不覆盖任何文件；默认 CRF 21、音频 AAC 192k，**保留全部音轨**。
-- `<encoder>` 传首次配置里确定的值（如 `amf`）；显式值不存在于当前 FFmpeg 时会报错，此时回退 `auto`。
+- `--burn` 接受 SRT/ASS/SSA 或 `.mosp`/`.json` 工程：SRT 与工程按样式库样式转换，PlayRes 取视频实际分辨率，字体名归一化，缺字中止，与工具箱「烧录字幕」同一套转换与编码逻辑。
+- 输出自动写入媒体同目录 `<原名>.压字幕.mp4`，重名自动避让，不覆盖任何文件；默认 CRF 21、音频 AAC 192k，保留全部音轨。
+- `<encoder>` 传首次配置里确定的值（如 `amf`）；`--encoder` 仅限 `auto|cpu|nvenc|amf|qsv`，显式值不存在于当前 FFmpeg 时报错，此时回退 `auto`。
+- 成功判据：退出码 0 +「视频已烧录字幕:」行 + 输出文件真实存在；失败时 stderr 说明原因（含字幕文件缺失、格式不支持）。
 - 超时建议：媒体时长 ÷ 0.5（4K CPU 编码更慢，必要时换硬件编码器或告知用户耗时）。
 
 ### Step 4 验证（不可省略）

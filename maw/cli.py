@@ -43,11 +43,12 @@ def _port_value(value: str) -> int:
 def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=prog or Path(sys.argv[0]).name,
-        description="MAW 命令行：直接转写媒体，或启动/停止本机字幕编辑器 Server。",
+        description="MAW 命令行：直接转写媒体、烧录字幕，或启动/停止本机字幕编辑器 Server。",
         epilog=(
             "示例:\n"
             "  MAW.exe -i \"clip.mp3\" -o \"clip.srt\" \"clip.mosp\"\n"
             "  MAW.exe --provider soniox -i \"clip.mp4\" -o \"clip.srt\"\n"
+            "  MAW.exe --burn \"clip.srt\" -i \"clip.mp4\" --encoder amf\n"
             "  MAW.exe --server 8250\n"
             "  MAW.exe --stop-server 8250\n"
             "\n"
@@ -70,6 +71,16 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         const="",
         metavar="PORT",
         help="停止指定端口上的 MAW Server；省略端口时使用 8250",
+    )
+    server_group.add_argument(
+        "--burn",
+        metavar="SUBTITLE",
+        help="把 SRT/ASS/SSA 或 .mosp/.json 字幕烧录进 -i 视频，输出 <原名>.压字幕.mp4",
+    )
+    parser.add_argument(
+        "--encoder",
+        choices=("auto", "cpu", "nvenc", "amf", "qsv"),
+        help="烧录视频编码器（仅 --burn；默认 auto，硬件失败自动回退 CPU）",
     )
     parser.add_argument("--port", type=_port_value, help="用 --server/--stop-server 指定端口的另一种写法")
     parser.add_argument("server_project", nargs="?", metavar="PROJECT", help="Server 启动时打开的 .mosp/.json 工程")
@@ -156,6 +167,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.alignment_check and not args.align_script:
         parser.error("--alignment-check 需要 --align-script")
+    if args.burn:
+        return _run_burn(parser, args)
     if args.align_script:
         return _run_script_alignment(parser, args)
     if args.server is not None:
@@ -221,6 +234,41 @@ def _run_script_alignment(parser: argparse.ArgumentParser, args: argparse.Namesp
         return 1
 
 
+def _run_burn(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if not args.input:
+        parser.error("烧录必须提供 -i/--input 视频")
+    allowed = {"burn", "input", "encoder"}
+    unsupported = [
+        name for name, value in vars(args).items()
+        if name not in allowed and value != parser.get_default(name)
+    ]
+    if unsupported:
+        parser.error("--burn 不支持转写 / Server 参数；视频编码器用 --encoder 指定")
+    from maw.ffmpeg import resolve_ffmpeg_tool
+    from maw.postprocess_ffmpeg import BurnSubtitleRequest, run_burn_subtitles
+
+    ffmpeg_path = resolve_ffmpeg_tool("ffmpeg")
+    ffprobe_path = resolve_ffmpeg_tool("ffprobe", configured_path=ffmpeg_path)
+    try:
+        result = run_burn_subtitles(
+            BurnSubtitleRequest(
+                media_path=Path(args.input),
+                subtitle_path=Path(args.burn),
+                video_encoder=args.encoder or "auto",
+            ),
+            ffmpeg_path=ffmpeg_path,
+            ffprobe_path=ffprobe_path,
+        )
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"烧录失败：{error}", file=sys.stderr)
+        return 1
+    print(f"视频已烧录字幕: {result.media_path}")
+    print(f"编码器: {result.video_encoder}")
+    for warning in result.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
+    return 0
+
+
 def prepare_cli_stdio() -> None:
     """Make help/errors usable when the GUI PyInstaller bootloader has no streams."""
     if sys.stdout is not None and sys.stderr is not None:
@@ -274,6 +322,8 @@ def _open_console_stream() -> io.TextIOBase | None:
 def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if not args.input:
         parser.error("转写必须提供 -i/--input；启动 Server 请使用 --server")
+    if args.encoder:
+        parser.error("--encoder 仅适用于 --burn")
     if args.port is not None or args.server_project or args.server_media or args.no_open or args.no_waveform or args.waveform_peaks_per_second is not None:
         parser.error("--port、Server 工程和 Server 专用参数只能与 --server/--stop-server 一起使用")
     if args.outputs and len(args.outputs) > 2:
