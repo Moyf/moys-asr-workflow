@@ -33,6 +33,16 @@ ffprobe -v error -show_entries format=duration -show_entries stream=codec_type,c
 - 预算基准（实测，可据此设超时与告知用户）：转写费用 ≈ **0.00022 元/秒**（Qwen，RTF ≈ 0.02，约 60x 实时，每份几分钟）；4K AMF 烧录 ≈ **0.65x 实时**（30 分钟片段约 20 分钟）；无损切分 ≈ 磁盘读写速度（51 GB 约 7 分钟）。
 - 磁盘空间：切分产物 ≈ 源文件大小，烧录产物另计，确认目标盘剩余空间足够。
 
+**音轨核验**（多音轨必做）：OBS 等录像常见 Mix / Voice / OriginSound 之类的分轨，转写基于哪条必须由用户决定：
+
+```sh
+ffprobe -v error -select_streams a -show_entries stream=index:stream_tags=language,title -of default=noprint_wrappers=1 "<媒体>"
+```
+
+- 单音轨：直接继续，无需询问。
+- ==多音轨：先向用户询问转写基于哪条音轨==，按出现顺序列出零基音轨序号与名称，如「音轨 0：Mix」「音轨 1：Voice」「音轨 2：OriginSound」。注意 ffprobe 输出的 `index=1/2/3` 是容器流序号，转写参数用零基音轨序号 0/1/2（一般相差 1，因为开头有一条视频流），两者不要混用；音轨无标签时标注「无标签」，可提示第一轨通常是混音轨。
+- 用户选定后：选第 0 条走默认公开 CLI；选其他条时 Step 2 改用模块命令（见 Step 2 的音轨说明）。烧录不受影响——它保留全部音轨。
+
 ### Step 1 无损切分
 
 ```sh
@@ -52,7 +62,7 @@ uv run --no-sync python maw_gui.py -i "<part>.mkv" -o "<part>.srt" "<part>.mosp"
 
 - 必须显式给 `-o` 两个路径（SRT + MOSP），自动化不要依赖自动命名。
 - 成功判据：退出码 0 + SRT/MOSP 文件真实存在 + 日志有 `MAW_STAT rtf=` 行；只看到进度信息不算成功。
-- 多音轨默认取 `0:a:0`（OBS 录像第一轨通常是混音轨）；换轨需高级模块命令 `python -m maw.asr.qwen --audio-track N`，公开 CLI 无此参数。
+- 音轨按 Step 0 核验结果：默认第 0 条（`0:a:0`，OBS 录像第一轨通常是混音轨）；用户选定其他轨时，改用模块命令并带零基音轨序号：`uv run --no-sync python -m maw.asr.qwen "<part>.mkv" -o "<part>.srt" --json --no-html --audio-track <N>`（`--audio-track` 为零基序号，公开 CLI 无此参数）。
 - `-o` 指定的 SRT/MOSP 会直接覆盖已有文件；复用同名产物前先确认（见「任务目录与防覆盖」）。
 - 超时建议 ≥ 10 分钟/份；逐份串行执行，不要并发打 API。
 
