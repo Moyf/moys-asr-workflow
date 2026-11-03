@@ -292,3 +292,163 @@ test('S3-T03 multi-track drag fail-opens the moved scope and saves independent t
   expect(reopened.overlay).toBe('overlay-only');
   expect(reopened.extension).toBe('extension-only');
 });
+
+test('S3-T04 playback reuses cleanup projections and observes direct edits, restoration, history and project switches', async ({ page }) => {
+  const stable = await page.evaluate(() => {
+    const ranges = MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup;
+    window.cleanupSourceNormalizations = 0;
+    ranges.map = function (...args) {
+      window.cleanupSourceNormalizations += 1;
+      return Array.prototype.map.apply(this, args);
+    };
+    // Replacing the source object starts a fresh projection lifetime.
+    MaweBoot.DATA.gap_remove = { ...MaweBoot.DATA.gap_remove, skip_playback: false };
+    MaweDom.overlayToggle.checked = true;
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(2500, 0);
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MawePlaybackLoop.refreshSubtitlePreview(2500, 0);
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(2500, 0);
+    const prepared = window.cleanupSourceNormalizations;
+    for (let frame = 0; frame < 30; frame += 1) MawePlaybackLoop.refreshSubtitlePreview(2500 + frame, 0);
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    for (let frame = 0; frame < 30; frame += 1) MawePlaybackLoop.refreshSubtitlePreview(2500 + frame, 0);
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MaweCoreState.player.currentTime = 2.5;
+    return { prepared, after: window.cleanupSourceNormalizations };
+  });
+  expect(stable.prepared).toBeGreaterThan(0);
+  expect(stable.after).toBe(stable.prepared);
+  await expect(page.locator('#overlay-main-text')).toHaveText('kept');
+  await page.evaluate(() => MaweCoreState.player.play());
+  await expect.poll(() => page.evaluate(() => MaweCoreState.player.currentTime)).toBeGreaterThan(2.8);
+  await page.evaluate(() => MaweCoreState.player.pause());
+
+  await page.evaluate(() => {
+    const cue = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
+    cue.text = 'deleted words expanded';
+    cue.items[2].text = 'expanded';
+  });
+  expectAllMainOutputs(await renderOutputs(page, 2500), 'expanded');
+
+  await page.evaluate(() => {
+    MaweHistory.pushGapRemoveUndo('restore scoped words');
+    const state = MaweGapRemoveData.getGapRemoveData(true);
+    MaweGapRemoveUi.commitManualGapRemoveChange(state, [{ start: 0, end: 1200, removed: false }]);
+  });
+  expectRestoredMainOutputs(await renderOutputs(page, 2500), 'deleted', 'words', 'expanded');
+  await page.evaluate(() => MaweHistory.performUndo());
+  const undone = await renderOutputs(page, 2500);
+  expectAllMainOutputs(undone, 'expanded');
+  expect(undone.css).not.toContain('deleted');
+  await page.evaluate(() => MaweHistory.performRedo());
+  expectRestoredMainOutputs(await renderOutputs(page, 2500), 'deleted', 'words', 'expanded');
+
+  const switched = await page.evaluate(() => {
+    const project = JSON.parse(JSON.stringify(MaweBoot.DATA));
+    project.tracks = [{ id: 'new-main', role: 'main', name: '新主轨', enabled: true,
+      segments: [{ id: 'new-cue', start: 0, end: 5000, text: 'new project', items: [] }] }];
+    project.bindings = [];
+    project.bilingual = { display_mode: 'main' };
+    delete project.gap_remove;
+    MaweProjectLoad.applyCanonicalProject(project, 'new-project.mosp');
+    MaweDom.overlayToggle.checked = true;
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(2500, 0);
+    return { text: MaweDom.overlayMainTextNode.nodeValue, srt: MaweExportSrt.buildSrt() };
+  });
+  expect(switched.text).toBe('new project');
+  expect(switched.srt).toContain('new project');
+  expect(switched.srt).not.toContain('deleted');
+});
+
+test('S3-T05 unrelated current cues return immediately and re-enter cleanup after scope edits and undo/redo', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweDom.overlayToggle.checked = true;
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MaweCoreState.player.currentTime = 2.5;
+    MawePlaybackLoop.refreshSubtitlePreview(2500, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('kept');
+  await page.evaluate(() => {
+    MaweHistory.pushGapRemoveUndo('move scope away from current cue');
+    MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope.segment_id = 'other-cue';
+    MawePlaybackLoop.refreshSubtitlePreview(2500, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText(INITIAL_TEXT);
+  await page.evaluate(() => MaweHistory.performUndo());
+  await expect(page.locator('#overlay-main-text')).toHaveText('kept');
+  await page.evaluate(() => MaweHistory.performRedo());
+  await expect(page.locator('#overlay-main-text')).toHaveText(INITIAL_TEXT);
+  await page.evaluate(() => {
+    MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope.segment_id = 'main-001';
+    MawePlaybackLoop.refreshSubtitlePreview(2500, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('kept');
+  expectAllMainOutputs(await renderOutputs(page, 2500), 'kept');
+  await page.evaluate(() => {
+    MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope.segment_id = 'other-cue';
+  });
+  const outputs = await renderOutputs(page, 2500);
+  expectAllMainOutputs(outputs, 'deleted', 'words', 'kept');
+});
+
+test('S3-T06 diagnostic on/off preserves preview, covered export paths and saved v2 content', async ({ page }) => {
+  expect(await page.evaluate(() => MaweExportSrt.isCleanupProjectionCacheEnabled())).toBe(true);
+  async function equivalent() {
+    await page.evaluate(() => MaweExportSrt.setCleanupProjectionCacheEnabled(false));
+    const off = await renderOutputs(page, 2500);
+    const exportOff = await page.evaluate(() => ({ secondary: MaweExportSrt.buildExtensionSrt(), bilingual: MaweExportSrt.buildBilingualSrt(), json: MaweJsonRepair.buildJson() }));
+    await page.evaluate(() => MaweExportSrt.setCleanupProjectionCacheEnabled(true));
+    expect(await renderOutputs(page, 2500)).toEqual(off);
+    expect(await page.evaluate(() => ({ secondary: MaweExportSrt.buildExtensionSrt(), bilingual: MaweExportSrt.buildBilingualSrt(), json: MaweJsonRepair.buildJson() }))).toEqual(exportOff);
+    expect(exportOff.json).not.toContain('cleanupProjectionCache');
+  }
+  await equivalent();
+  await page.evaluate(() => { AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].speaker = 'diag-b'; });
+  await equivalent();
+  expect(await page.evaluate(() => MaweExportSrt.cleanupMainSegments()[0].speaker)).toBe('diag-b');
+  await page.evaluate(() => { AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].speaker = 'diag-a'; });
+  await equivalent();
+  expect(await page.evaluate(() => MaweExportSrt.cleanupMainSegments()[0].speaker)).toBe('diag-a');
+  await page.evaluate(() => { delete AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].speaker; });
+  await page.evaluate(() => {
+    MaweHistory.pushGapRemoveUndo('restore for diagnostic');
+    MaweGapRemoveUi.commitManualGapRemoveChange(MaweGapRemoveData.getGapRemoveData(true), [{ start: 0, end: 1200, removed: false }]);
+  });
+  await equivalent();
+  await page.evaluate(() => MaweHistory.performUndo()); await equivalent();
+  await page.evaluate(() => MaweHistory.performRedo()); await equivalent();
+  const saved = await page.evaluate(async () => {
+    let text;
+    window.showSaveFilePicker = async () => ({ name: 'cleanup-v2.mosp', getFile: async () => new File([], 'cleanup-v2.mosp'),
+      createWritable: async () => ({ write: async blob => { text = await blob.text(); }, close: async () => {} }) });
+    await MaweProjectSave.saveProjectAsToFile(); return JSON.parse(text);
+  });
+  expect(saved.schema).toBe('moy.asr.project.v2');
+  await page.evaluate(saved => MaweProjectLoad.applyCanonicalProject(saved, 'cleanup-reopened.mosp'), saved);
+  await equivalent();
+  const timing = await page.evaluate(() => {
+    const original = MaweBoot.DATA.gap_remove;
+    const scope = original.provenance.sources.ai_cleanup[0];
+    MaweBoot.DATA.gap_remove = AsrEditorUtils.normalizeGapRemoveData({ provenance: { sources: { ai_cleanup:
+      Array.from({ length: 100 }, (_, i) => ({ start: scope.start + i * 6000, end: scope.end + i * 6000,
+        cleanup_scope: { ...scope.cleanup_scope, segment_id: i ? `other-${i}` : scope.cleanup_scope.segment_id } })) } } });
+    const samples = { off: [], on: [] };
+    try {
+      for (let round = 0; round < 6; round++) for (const enabled of round % 2 ? [true, false] : [false, true]) {
+        MaweExportSrt.setCleanupProjectionCacheEnabled(enabled);
+        MawePlaybackLoop.refreshSubtitlePreview(2500, 0);
+        const start = performance.now();
+        for (let frame = 0; frame < 10; frame++) MawePlaybackLoop.refreshSubtitlePreview(2500 + frame, 0);
+        if (round) samples[enabled ? 'on' : 'off'].push((performance.now() - start) / 10);
+      }
+    } finally {
+      MaweBoot.DATA.gap_remove = original;
+      MaweExportSrt.setCleanupProjectionCacheEnabled(true);
+    }
+    return Object.fromEntries(Object.entries(samples).map(([key, values]) => [key, values.sort((a, b) => a - b)[2]]));
+  });
+  console.log('cleanup browser preview 100 scopes median ms/frame', timing);
+});

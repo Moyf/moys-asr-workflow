@@ -1,3 +1,5 @@
+import { createCleanupProjectionCache } from './cleanup-projection-cache.js';
+
 // gap-remove: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
@@ -67,13 +69,18 @@ export function createUtilsModule(dependencies) {
   const buildGapRemovedIntervals = GAP_REMOVE_CORE.buildGapRemovedIntervals;
 
   // Export projection only: raw source cues remain recoverable in the editor.
-  function buildAiCleanupSegments(segments, gapRemove) {
-    const source = Array.isArray(segments) ? segments : [];
+  function createAiCleanupProjector(gapRemove) {
     const aiRanges = gapRemove?.provenance?.sources?.ai_cleanup;
-    if (!Array.isArray(aiRanges) || !aiRanges.length) return source;
-    const provenance = normalizeGapRemoveProvenance(gapRemove.provenance, gapRemove.gaps);
-    const active = getRemovedGapRanges(Array.isArray(gapRemove.gaps) ? gapRemove.gaps : gapRangesFromProvenance(provenance));
-    return source.flatMap((segment) => {
+    if (!Array.isArray(aiRanges) || !aiRanges.length) return (segments) => Array.isArray(segments) ? segments : [];
+    const bySegment = new Map();
+    for (const range of aiRanges) {
+      const id = range?.cleanup_scope?.segment_id;
+      if (!bySegment.has(id)) bySegment.set(id, []);
+      bySegment.get(id).push(range);
+    }
+    const active = getRemovedGapRanges(Array.isArray(gapRemove.gaps) ? gapRemove.gaps
+      : gapRangesFromProvenance(normalizeGapRemoveProvenance(gapRemove.provenance, gapRemove.gaps)));
+    return (segments) => (Array.isArray(segments) ? segments : []).flatMap((segment) => {
       if (!segment || segment.disabled || !Array.isArray(segment.items)) return [segment];
       const text = String(segment.text || '');
       let cursor = 0;
@@ -87,7 +94,7 @@ export function createUtilsModule(dependencies) {
       }
       if (/[\p{L}\p{N}]/u.test(text.slice(cursor))) return [segment];
       const deleted = segment.items.map((item) => Number.isInteger(item.start) && Number.isInteger(item.end) && item.end > item.start
-        && aiRanges.some((range) => {
+        && (bySegment.get(segment.id) || []).some((range) => {
           if (!Number.isInteger(range.start) || !Number.isInteger(range.end)) return false;
           const scope = range.cleanup_scope;
           if (!scope || typeof scope !== 'object') return false;
@@ -114,6 +121,11 @@ export function createUtilsModule(dependencies) {
       return [{ ...segment, text: cleaned.trim(), items,
         ...(items.length ? { start: items[0].start, end: items.at(-1).end } : {}) }];
     });
+  }
+
+
+  function buildAiCleanupSegments(segments, gapRemove) {
+    return createAiCleanupProjector(gapRemove)(segments);
   }
 
 
@@ -172,5 +184,5 @@ export function createUtilsModule(dependencies) {
     return { start, end };
   }
 
-  return Object.freeze({ buildAiCleanupSegments, GAP_REMOVE_DISABLE_COVERAGE_DEFAULT, GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS, GAP_REMOVE_DISABLE_REMAINING_MAX_MS, appendGapRemoveManualOverrides, applyGapRemoveRange, buildGapRemovedDynamicSegments, buildGapRemovedIntervals, clampGapRemoveDisableCoverage, clampGapRemoveDisableRemaining, copyGapRemoveRange, decorateGapRemoveGaps, detectAudioGapRemoveGaps, findGapRemoveDisableMatches, gapRangesFromProvenance, getGapRemoveDisplayGaps, getGapRemoveDisplayType, getRemovedGapRanges, isGapRemoveDisplayProtected, isRangeInsideRemovedGap, mapGapRemovedTime, moveGapRemoveProvenance, moveGapRemoveRange, normalizeGapRemoveData, normalizeGapRemoveGaps, normalizeGapRemoveProvenance, removeGapRemoveProvenanceRange, replaceGapRemoveProvenanceSource, resizeGapRemoveBoundary, resolveGapFillRange, shrinkGapRemoveGaps });
+  return Object.freeze({ createCleanupProjectionCache, createAiCleanupProjector, buildAiCleanupSegments, GAP_REMOVE_DISABLE_COVERAGE_DEFAULT, GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS, GAP_REMOVE_DISABLE_REMAINING_MAX_MS, appendGapRemoveManualOverrides, applyGapRemoveRange, buildGapRemovedDynamicSegments, buildGapRemovedIntervals, clampGapRemoveDisableCoverage, clampGapRemoveDisableRemaining, copyGapRemoveRange, decorateGapRemoveGaps, detectAudioGapRemoveGaps, findGapRemoveDisableMatches, gapRangesFromProvenance, getGapRemoveDisplayGaps, getGapRemoveDisplayType, getRemovedGapRanges, isGapRemoveDisplayProtected, isRangeInsideRemovedGap, mapGapRemovedTime, moveGapRemoveProvenance, moveGapRemoveRange, normalizeGapRemoveData, normalizeGapRemoveGaps, normalizeGapRemoveProvenance, removeGapRemoveProvenanceRange, replaceGapRemoveProvenanceSource, resizeGapRemoveBoundary, resolveGapFillRange, shrinkGapRemoveGaps });
 }
