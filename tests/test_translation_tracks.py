@@ -34,6 +34,22 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
             "user_metadata": {"keep": True},
         }
 
+    def test_toolbox_translation_preserves_secondary_groups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = self.existing_source(count=1)
+            secondary = get_tracks_by_role(source, "secondary")[0]["segments"][0]
+            source["subtitle_groups"]["color"].append({"id": "secondary-color", "value": {"name": "副轨颜色"}})
+            secondary["color_group_id"] = "secondary-color"
+            path = Path(directory) / "input.mosp"
+            path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+            result = run_llm_postprocess(
+                LlmPostprocessRequest(path, None, OutputMode.BOTH, "translate_zh", ""),
+                complete=lambda _prompt, cues: {"groups": [{"id": cue["id"], "text": "新译文"} for cue in cues]},
+            )
+            saved = read_project(result.project_path)
+            self.assertEqual(get_tracks_by_role(saved, "secondary")[0]["segments"][0]["color_group_id"], "secondary-color")
+            self.assertNotEqual(main_segments(saved)[0]["color_group_id"], "secondary-color")
+
     def test_pipeline_keeps_editable_intermediate_and_final_projects(self):
         for original, target, translation in (
             ("今日はいい天気ですね。", "zh", "今天天气很好。"),
