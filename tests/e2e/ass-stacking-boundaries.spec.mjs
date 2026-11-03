@@ -115,26 +115,41 @@ async function configure(page, fixture) {
       MaweColors.COLOR_BY_NAME[name].value = value;
     }
     MaweBoot.DATA.media_metadata = { video_width: f.width ?? 1280, video_height: f.height ?? 720 };
-    const project = {
-      segments: f.mainSegments || [{ id: 'main', start: 0, end: 4000, text: f.main || 'Main' }],
-      multi_subtitle: { enabled: true, tracks: [{ id: 'extension', segments:
-        f.extensionSegments || [{ id: 'extension', start: 0, end: 4000, text: f.extension || 'Secondary' }] }] },
-      overlay_track: { enabled: true, segments:
-        (f.overlaySegments || [{ id: 'overlay', start: 0, end: 4000, text: 'Overlay' }])
-          .map(s => ({ ...s, color: { name: 'blue' } })) },
-    };
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = f.mainSegments || [{ id: 'main', start: 0, end: 4000, text: f.main || 'Main' }];
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      // Exercise renderer collision handling with in-memory overlaps, without
+      // passing those deliberately invalid save timings through import validation.
+      const fixture = AsrEditorUtils.importProject({
+        segments: [],
+        multi_subtitle: { enabled: true, tracks: [{ id: 'extension', segments: [] }] },
+      }).project;
+      const secondary = AsrEditorUtils.getExtensionTrack(fixture);
+      secondary.segments = f.extensionSegments || [{ id: 'extension', start: 0, end: 4000, text: f.extension || 'Secondary' }];
+      AsrEditorUtils.ensureStableSegmentIds(secondary.segments, secondary.id);
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
+    }
+    const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA, { enabled: true });
+    overlay.segments = f.overlaySegments || [{ id: 'overlay', start: 0, end: 4000, text: 'Overlay' }];
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, overlay.segments,
+      overlay.segments.map((_, index) => index), 'color', { name: 'blue' });
     MaweBoot.DATA.preview = { subtitle: { ass_color_style: 'text' } };
     if (f.speaker) {
-      project.segments.forEach(s => { s.color = { name: 'red' }; });
-      project.multi_subtitle.tracks[0].segments.forEach(s => { s.color = { name: 'green' }; });
+      for (const [track, name] of [[AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'red'],
+        [AsrEditorUtils.getExtensionTrack(MaweBoot.DATA), 'green']]) {
+        AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, track.segments,
+          track.segments.map((_, index) => index), 'color', { name });
+      }
       MaweBoot.DATA.preview.subtitle.speaker_labels = { mapping_enabled: true, enabled: true,
         separator: ': ', names: { red: 'MainSpeakerWithLongPrefix', green: 'SecondarySpeaker', blue: 'OverlaySpeaker' } };
     }
-    // Install fixture colours through the same migration used when opening v1
-    // projects. Direct legacy fields are only views once the group table exists.
-    window.AsrEditorUtils.migrateSubtitleGroups(project);
-    window.AsrEditorUtils.refreshSubtitleGroupViews(project);
-    Object.assign(MaweBoot.DATA, project);
+    // Groups above are assigned directly to the canonical v2 project. Refresh
+    // their materialized views before the real preview/export consumers run.
+    window.AsrEditorUtils.refreshSubtitleGroupViews(MaweBoot.DATA);
     Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assEmphasisSyntax: 'both',
       assSpecialSymbolRule: 'both', assCommentEnabled: true, assLargeTextEnabled: true,
       exportSpeakerLabels: Boolean(f.speaker) });
@@ -171,7 +186,7 @@ async function capture(page, timeMs) {
     };
     try {
       window.MaweAssCanvas.clearCaches();
-      const index = MaweBoot.DATA.segments.findIndex(s => s.start <= tMs && tMs < s.end);
+      const index = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex(s => s.start <= tMs && tMs < s.end);
       MaweCoreState.player.currentTime = tMs / 1000;
       MawePlaybackLoop.refreshSubtitlePreview(tMs, index);
     } finally {
@@ -315,11 +330,11 @@ function visibleStack(tracks, width, height, label, { skipStackOrder = false } =
 for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
   await configure(page, fixture);
   const originalClock = fixture.verifyOriginalMove || fixture.verifyOriginalTransform ? await page.evaluate(() => {
-    MaweBoot.DATA.multi_subtitle.enabled = false;
-    MaweBoot.DATA.overlay_track.enabled = false;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = false;
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = false;
     const source = MaweExportSrt.buildAss();
-    MaweBoot.DATA.multi_subtitle.enabled = true;
-    MaweBoot.DATA.overlay_track.enabled = true;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = true;
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = true;
     return source;
   }) : null;
   const frames = [];
@@ -642,10 +657,10 @@ for (const [name, t1, t2] of [['instant', 500, 500], ['linear', 0, 1000]]) {
       extensionSegments: [cue('move-secondary', 'W', 500, 1500)],
       animations: { move: { enabled: true, x1: 400, y1: 560, x2: 1000, y2: 560, t1, t2 } } });
     const original = await page.evaluate(() => {
-      MaweBoot.DATA.overlay_track.enabled = false;
-      MaweBoot.DATA.multi_subtitle.enabled = false;
+      AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = false;
+      AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = false;
       const source = MaweExportSrt.buildAss();
-      MaweBoot.DATA.multi_subtitle.enabled = true;
+      AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = true;
       return source;
     });
     const results = [];
@@ -682,11 +697,11 @@ test('overlapping fad intervals retain libass fade-in priority in actual pixels'
     animations: { fad: { enabled: true, inMs: 800, outMs: 800 } },
   });
   const standalone = await page.evaluate(() => {
-    MaweBoot.DATA.multi_subtitle.enabled = false;
-    MaweBoot.DATA.overlay_track.enabled = false;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = false;
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = false;
     const source = MaweExportSrt.buildAss();
-    MaweBoot.DATA.multi_subtitle.enabled = true;
-    MaweBoot.DATA.overlay_track.enabled = true;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = true;
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = true;
     return source;
   });
   const results = [];
@@ -737,7 +752,7 @@ for (const diagnostic of ['raw 3D perspective', 'negative base spacing', 'negati
       if (kind === 'raw 3D perspective') animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\frx30' };
       if (kind === 'negative base spacing') main.spacing = -100;
       if (kind === 'negative transform spacing') animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\fsp-100' };
-      if (kind === 'unreadable group fit') MaweBoot.DATA.segments[0].text = Array(200).fill('M').join('\n');
+      if (kind === 'unreadable group fit') AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = Array(200).fill('M').join('\n');
       MaweBoot.DATA.gap_remove = { schema: 'moy.asr.gap_remove.v1', detector: 'audio_gate',
         minimum_ms: 500, threshold_db: -24, hysteresis_db: 2, lead_in_ms: 40, lead_out_ms: 80,
         skip_playback: true, operation_mode: 'boundary_drag', manual_corrections: false,
@@ -798,8 +813,8 @@ test('exported layout slices preserve the original main cue nonlinear and fade c
   });
   const sources = await page.evaluate(() => {
     const grouped = MaweExportSrt.buildAss();
-    MaweBoot.DATA.multi_subtitle.enabled = false;
-    MaweBoot.DATA.overlay_track.enabled = false;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = false;
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = false;
     return { grouped, standalone: MaweExportSrt.buildAss() };
   });
   const rows = [];

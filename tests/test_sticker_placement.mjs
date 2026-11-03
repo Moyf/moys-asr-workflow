@@ -358,6 +358,10 @@ function stickerBindingContext(segments) {
   };
   context.window = context;
   loadEditorModule(context, 'shared/editor-utils.js');
+  const project = context.AsrEditorUtils.importProject({ segments }).project;
+  segments.splice(0, segments.length, ...context.AsrEditorUtils.getMainTrack(project).segments);
+  context.AsrEditorUtils.getMainTrack(project).segments = segments;
+  context.MaweBoot.DATA = project;
   return context;
 }
 
@@ -366,13 +370,13 @@ for (const target of ['main', 'overlay']) test(`clearing sticker targets uses th
     { id: 'main-a', start: 0, end: 1000, text: '主一' },
     { id: 'main-b', start: 1000, end: 2600, text: '主二' },
   ];
-  const overlay = { enabled: true, segments: [
+  const overlayInput = { enabled: true, segments: [
     { id: 'overlay-a', start: 0, end: 1000, text: '叠一' },
     { id: 'overlay-b', start: 1000, end: 2600, text: '叠二' },
   ] };
   const binding = stickerBindingContext(main);
   const project = binding.MaweBoot.DATA;
-  project.overlay_track = overlay;
+  const overlay = binding.AsrEditorUtils.ensureOverlayTrack(project, overlayInput);
   binding.getOverlayTrack = () => overlay;
   binding.stickerSegmentsForTrack = track => track === 'overlay' ? overlay.segments : main;
   const u = binding.AsrEditorUtils;
@@ -385,14 +389,13 @@ for (const target of ['main', 'overlay']) test(`clearing sticker targets uses th
   const otherGroup = other[0].sticker_group_id;
   vm.runInNewContext(readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), binding);
   loadEditorSource(binding, 'editor/cues/editor-sticker-picker.js');
-  project.segments = main;
   binding.MaweBoot.STICKERS = [sticker];
   binding.MaweStickerPicker.openStickerPicker([0], false, { overlay: target === 'overlay' });
   binding.MaweStickerPicker.clearStickerOnTargets();
   assert.equal(selected[0].sticker_group_id, undefined);
   assert.equal(selected[1].sticker_group_id, selectedGroup);
-  assert.equal(selected[1].sticker.name, 'bind');
-  assert.deepEqual(other.map(cue => cue.sticker_group_id), [otherGroup, otherGroup]);
+  assert.equal(u.getSubtitleGroupValue(project, selected[1], 'sticker').name, 'bind');
+  assert.deepEqual(Array.from(other, cue => cue.sticker_group_id), [otherGroup, otherGroup]);
 });
 
 test('multi-sentence sticker binding covers every bound cue without a drag', () => {
@@ -410,15 +413,18 @@ test('multi-sentence sticker binding covers every bound cue without a drag', () 
   binding.window.MaweStickerPicker.openStickerPicker([0, 1], true);
   binding.window.MaweStickerPicker.assignSticker(sticker);
 
-  // 稳定组保存成员关系，兼容视图中的 head.sticker 覆盖整个选区。
+  // 稳定组保存成员关系，渲染投影中的 head.sticker 覆盖整个选区。
+  const projection = binding.AsrEditorUtils.materializeTrackSegments(binding.MaweBoot.DATA, 'main');
   assert.deepEqual(
-    { start: segments[0].sticker.start, end: segments[0].sticker.end, name: segments[0].sticker.name },
+    { start: projection[0].sticker.start, end: projection[0].sticker.end, name: projection[0].sticker.name },
     { start: 0, end: 2600, name: 'bind' },
   );
   assert.equal(Object.hasOwn(segments[1], 'sticker'), false);
   assert.equal(segments[1].sticker_group_id, segments[0].sticker_group_id);
   assert.equal(binding.MaweBoot.DATA.subtitle_groups.sticker[0].id, segments[0].sticker_group_id);
-  assert.deepEqual({ ...segments[1].sticker_ref }, { name: 'bind', headIdx: 0 });
+  assert.deepEqual({ ...projection[1].sticker_ref }, { name: 'bind', headIdx: 0 });
+  assert.equal(Object.hasOwn(segments[0], 'sticker'), false);
+  assert.equal(Object.hasOwn(segments[1], 'sticker_ref'), false);
 
   // 预览读取契约：不做任何拖动，第二句时间点就命中表情包区间。
   const overlay = binding.window.MaweStickerOverlay;
@@ -445,9 +451,10 @@ test('rebinding a single head that owns references re-syncs the group range', ()
 
   // 单选重分配 head：既有 ref 仍指向它，区间必须回到整组覆盖，而不是丢掉
   // start/end 后回落到 head 自身句范围。
+  const projection = binding.AsrEditorUtils.materializeTrackSegments(binding.MaweBoot.DATA, 'main');
   assert.deepEqual(
-    { start: segments[0].sticker.start, end: segments[0].sticker.end, name: segments[0].sticker.name },
+    { start: projection[0].sticker.start, end: projection[0].sticker.end, name: projection[0].sticker.name },
     { start: 0, end: 2600, name: 'next' },
   );
-  assert.deepEqual({ ...segments[1].sticker_ref }, { name: 'next', headIdx: 0 });
+  assert.deepEqual({ ...projection[1].sticker_ref }, { name: 'next', headIdx: 0 });
 });

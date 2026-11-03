@@ -123,7 +123,7 @@ if (MaweDom.mergeJoinTextContinuousInput) MaweDom.mergeJoinTextContinuousInput.v
 if (MaweDom.mergeJoinTextWordInput) MaweDom.mergeJoinTextWordInput.value = MaweSettings.EDITOR_SETTINGS.mergeJoinTextWord;
 // 「合并字幕时插入字符」旁的提示：显示当前主字幕拆分类型（自动检测或已指定），
 // 并提供一键切换。手动指定的类型存入 EDITOR_SETTINGS.mainSplitModeOverride
-// （本地偏好，多重字幕开关无关），同时同步 multi_subtitle.main_split_mode，
+// （本地偏好，多重字幕开关无关），同时同步 主轨 split_mode_override，
 // 与多重字幕菜单的「主字幕语言」互为镜像。
 
 
@@ -194,10 +194,10 @@ MaweDom.multiSubtitleToggle?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const next = MaweDom.multiSubtitleToggle.checked;
   const promptImportSecondSrt = next && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments.length;
-  multi.enabled = !next;
   return MaweCommands.run(next ? '开启双语字幕' : '关闭双语字幕', (command) => {
-    multi.enabled = next;
-    if (next) MaweMultiSubtitleCore.ensureEmptyExtensionTrack(multi);
+    const track = next ? MaweMultiSubtitleCore.ensureEmptyExtensionTrack(multi)
+      : MaweMultiSubtitleCore.getActiveExtensionTrack();
+    if (track) track.enabled = next;
     multi._dirty = true;
     // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
     command.commit({ cueList: true, waveform: 'full' });
@@ -216,10 +216,10 @@ document.getElementById('multi-subtitle-import')?.addEventListener('click', () =
 MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const next = MaweDom.multiSubtitleDisplayMode.value;
-  const previous = multi.display_mode;
-  multi.display_mode = previous;
+  const previous = multi.bilingual.display_mode;
+  multi.bilingual.display_mode = previous;
   return MaweCommands.run('切换双语字幕列表', (command) => {
-    multi.display_mode = window.AsrEditorUtils.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
+    multi.bilingual.display_mode = window.AsrEditorUtils.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
     multi._dirty = true;
     // 三种显示模式的行 DOM 结构互不相同，列表只能全量重建（长工程会明显卡顿）。
     // 这里不同步重建：先提交变更并让下拉框状态上屏，下一帧再重建列表，
@@ -232,10 +232,10 @@ MaweDom.multiSubtitleMainLanguageMode?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const next = MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(MaweDom.multiSubtitleMainLanguageMode.value)
     ? MaweDom.multiSubtitleMainLanguageMode.value : 'word';
-  if (multi.main_split_mode === next
+  if (window.AsrEditorUtils.getMainTrack(multi).split_mode_override === next
       && MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride === next) return;
   return MaweCommands.run('切换主字幕语言', (command) => {
-    multi.main_split_mode = next;
+    window.AsrEditorUtils.getMainTrack(multi).split_mode_override = next;
     // 与设置面板的类型提示共用同一个手动指定偏好，两个入口互为镜像。
     MaweSettings.updateEditorSettings({ mainSplitModeOverride: next });
     MaweMultiSubtitleCore.markMultiSubtitleDirty();

@@ -21,7 +21,7 @@ async function open(page, options = {}) {
     cueListAutoScrollOnClick: false, clickBehavior: 'select-only', splitAutoSubmit: false,
   })));
   await page.goto(server.url);
-  await page.waitForFunction(() => typeof MaweCuePanel.renderAll === 'function' && MaweBoot.DATA.segments.length > 0);
+  await page.waitForFunction(() => typeof MaweCuePanel.renderAll === 'function' && AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0);
   await page.locator('#editor-loading').waitFor({ state: 'hidden' }).catch(() => {});
 }
 
@@ -134,7 +134,7 @@ test('undo after browsing keeps current viewport and restores selection identity
   await page.keyboard.press(undoKey);
   await stable(page, before, 25, 'undo after browsing', info);
   const state = await page.evaluate(() => ({
-    selected: [...MaweSelection.selectedIdxs].map(i => MaweBoot.DATA.segments[i]?.id),
+    selected: [...MaweSelection.selectedIdxs].map(i => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i]?.id),
     panel: MaweCuePanel.getCurrentCuePanelTarget()?.segment?.id || null,
   }));
   expect(state.selected.every(Boolean)).toBe(true);
@@ -224,7 +224,7 @@ async function visual(page, index, kind = 'main') {
   return page.evaluate(({ index, kind }) => {
     const row = MaweCoreState.container.querySelector(
       kind === 'main' ? `.cue[data-idx="${index}"]` : `.cue[data-ext-idx="${index}"]`);
-    const segment = kind === 'main' ? MaweBoot.DATA.segments[index]
+    const segment = kind === 'main' ? AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]
       : MaweMultiSubtitleCore.getActiveExtensionTrack().segments[index];
     return {
       id: segment.id,

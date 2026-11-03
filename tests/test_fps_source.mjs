@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { runtimeProject } from './helpers/runtime-project.mjs';
 
 function harness(timebase, acceptRemap = true) {
-  const data = { timebase, media_metadata: { video_fps: 25 }, segments: [{
+  const data = runtimeProject([{
     id: 's', start: 101, end: 899, start_frame: 3, end_frame: 27, text: 'hello',
     items: [{ start: 101, end: 899, start_frame: 3, end_frame: 27, text: 'hello' }],
-  }], multi_subtitle: { tracks: [], bindings: [{ offset: 17 }] } };
+  }], { timebase, media_metadata: { video_fps: 25 }, extensions: [{ id: 'translation', enabled: true,
+    segments: [{ id: 'translated', start: 118, end: 916, text: 'translation' }] }], bindings: [{ id: 'binding',
+    source: { track_id: 'main', segment_id: 's' }, target: { track_id: 'translation', segment_id: 'translated' },
+    start_offset_ms: 17, end_offset_ms: 17 }] });
   let saves = 0, confirms = 0;
   const context = { window: { confirm: () => { confirms++; return acceptRemap; } },
     MaweBoot: { DATA: data }, MaweDom: {}, MaweSettings: { EDITOR_SETTINGS: {} },

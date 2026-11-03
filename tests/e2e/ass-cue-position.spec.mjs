@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 let tempDir, server, portraitServer;
 const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
@@ -13,8 +14,10 @@ test.beforeAll(async () => {
   // Phase regression samples at 220/340ms must be actual video frame PTS.
   execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=black:s=640x360:r=50:d=5', '-c:v', 'libx264', '-y', media]);
   const project = join(tempDir, 'project.mosp');
-  writeFileSync(project, JSON.stringify({ media: 'synthetic.mp4', preserve_punctuation: true,
-    segments: [{ id: 'main', start: 0, end: 2000, text: 'MMMM' }, { id: 'next', start: 2000, end: 4000, text: 'NEXT' }], waveform: generateWaveformPayload(5000) }));
+  // This suite exercises ordinary save/reopen; legacy Save As protection has
+  // its own real-file coverage in v2-migration-save.spec.mjs.
+  writeFileSync(project, JSON.stringify(createProjectTracks().importProject({ media: 'synthetic.mp4', preserve_punctuation: true,
+    segments: [{ id: 'main', start: 0, end: 2000, text: 'MMMM' }, { id: 'next', start: 2000, end: 4000, text: 'NEXT' }], waveform: generateWaveformPayload(5000) }).project));
   server = await startServer(project, media, await findFreePort());
   const portraitMedia=join(tempDir,'portrait.mp4'),portraitProject=join(tempDir,'portrait.mosp');
   execFileSync(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=black:s=360x640:r=25:d=5','-c:v','libx264','-y',portraitMedia]);
@@ -35,8 +38,8 @@ test.beforeEach(async ({ page }, info) => {
     ASS_STYLE_LIBRARY.assProfiles[0].animations = { fad: { enabled: false }, fade: { enabled: false }, move: { enabled: false }, t: { enabled: false } };
     Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assFrameAutoRender: false, autoSaveProject: false });
     MaweDom.overlayToggle.checked = true;
-    delete MaweBoot.DATA.segments[0].assOverride;
-    MaweBoot.DATA.segments[0].text = 'MMMM';
+    delete AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = 'MMMM';
     MaweCoreState.player.currentTime = 1;
     MaweSelection.selectOnly(0);
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
@@ -44,7 +47,7 @@ test.beforeEach(async ({ page }, info) => {
   });
   await expect(page.locator('#ass-cue-position')).toBeHidden();
 });
-const snapshot = page => page.evaluate(() => ({ override: MaweBoot.DATA.segments[0].assOverride ?? null,
+const snapshot = page => page.evaluate(() => ({ override: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride ?? null,
   undo: MaweHistory.editorHistory.undoLength(), redo: MaweHistory.editorHistory.redoLength(), dirty: MaweServerSave.hasUnsavedProjectChanges() }));
 
 test('inspector, focus-scoped arrows, reset, undo and save/reopen retain positioning', async ({ page }, info) => {
@@ -72,12 +75,12 @@ test('inspector, focus-scoped arrows, reset, undo and save/reopen retain positio
   await page.locator('#redo-btn').click(); expect((await snapshot(page)).override).toBeNull();
   await page.locator('#undo-btn').click();
   const save = await page.evaluate(async () => { const json = JSON.parse(MaweJsonRepair.buildJson());
-    await MaweProjectSave.saveProjectToServer({ silent: true }); return json.segments[0].assOverride; });
+    await MaweProjectSave.saveProjectToServer({ silent: true }); return AsrEditorUtils.getMainTrack(json).segments[0].assOverride; });
   expect(save).toEqual({ pos: { x: 331, y: 162 } });
   expect((await snapshot(page)).dirty).toBe(false);
   await page.reload();
   await page.waitForFunction(() => Boolean(
-    window.MaweExportContext?.mergedExportSegments && MaweBoot.DATA.segments[0].assOverride,
+    window.MaweExportContext?.mergedExportSegments && AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride,
   ));
   expect((await snapshot(page)).override).toEqual(save);
   await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.assMode = true; MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000,0); });
@@ -257,7 +260,7 @@ test('wheel resize requires a visible current main-cue preview', async ({ page }
 
 test('wheel resize commits before other edits and stays out of pointer transactions', async ({ page }) => {
   const historyState = () => page.evaluate(() => ({
-    project: MaweState.persistenceSnapshot(MaweHistory.snapshotSegments()),
+    project: AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA),
     undo: MaweHistory.editorHistory.undoLength(),
     redo: MaweHistory.editorHistory.redoLength(),
     active: MaweAssCuePosition.dragging,
@@ -283,7 +286,7 @@ test('wheel resize commits before other edits and stays out of pointer transacti
   const restored = await historyState();
   expect(restored.project).toEqual(initial.project);
   expect(restored.undo).toBe(initial.undo);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0]._dirty)).toBe(true);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty)).toBe(true);
   await page.evaluate(() => { MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000, 0); });
   const baseline = await historyState();
 
@@ -316,7 +319,7 @@ test('box drag maps letterbox and scaled portrait/landscape canvases into one un
   for (const [width, height, boxWidth, boxHeight] of [[640,360,440,300],[360,640,340,280]]) {
     await page.evaluate(({ width, height, boxWidth, boxHeight }) => {
       MaweBoot.DATA.media_metadata = { video_width: width, video_height: height };
-      delete MaweBoot.DATA.segments[0].assOverride;
+      delete AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride;
       MaweDom.playerStage.style.cssText = `flex:0 0 auto;width:${boxWidth}px;height:${boxHeight}px;`;
       MawePlaybackLoop.refreshSubtitlePreview(1000,0);
     }, {width,height,boxWidth,boxHeight});
@@ -337,7 +340,7 @@ test('box drag maps letterbox and scaled portrait/landscape canvases into one un
         box: (() => { const r=MaweDom.overlayEl.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height}; })() }];
       for(const name of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture']) document.addEventListener(name, event=>{
         window.__dragEvidence.push({name,target:event.target.className,id:event.pointerId,x:event.clientX,y:event.clientY,
-          override: JSON.parse(JSON.stringify(MaweBoot.DATA.segments[0].assOverride||null))});
+          override: JSON.parse(JSON.stringify(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride||null))});
       }, true);
     }, point);
     await page.mouse.move(point.x,point.y); await page.mouse.down();
@@ -373,7 +376,7 @@ test('box drag maps letterbox and scaled portrait/landscape canvases into one un
 
 test('active ASS dragging isolates editing shortcuts and cancellation preserves real color history', async ({ page }) => {
   const state = () => page.evaluate(() => ({
-    project: MaweState.persistenceSnapshot(MaweHistory.snapshotSegments()),
+    project: AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA),
     selection: MaweHistory.snapshotEditorSelection(),
     undo: MaweHistory.editorHistory.undoLength(),
     redo: MaweHistory.editorHistory.redoLength(),
@@ -420,7 +423,7 @@ test('active ASS dragging isolates editing shortcuts and cancellation preserves 
   expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
   expect(await state()).toEqual(colored);
 
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0]._dirty)).toBe(true);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty)).toBe(true);
 
   // Every history shortcut cancels only the in-flight gesture. Cover both an
   // existing undo entry and an existing redo entry without consuming either.
@@ -474,7 +477,7 @@ for(const [width,height] of [[640,360],[360,640]]) test(`all nine anchors match 
   for (let an=1;an<=9;an++) {
     const frame=await page.evaluate(({an,width,height,paintedBox}) => {
       MaweBoot.DATA.media_metadata={video_width:width,video_height:height};
-      MaweBoot.DATA.segments[0].assOverride={pos:{x:width/2,y:height/2}};
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride={pos:{x:width/2,y:height/2}};
       ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').alignment = an;
       ASS_STYLE_LIBRARY.assProfiles[0].animations.move={enabled:true,x1:10,y1:10,x2:200,y2:300,t1:0,t2:2000};
       MawePlaybackLoop.refreshSubtitlePreview(1000,0);
@@ -512,7 +515,7 @@ test('positioned shake phase survives non-periodic overlap in Canvas, Server lib
     // Release the current text-panel draft before changing fixture timing/text.
     // Selecting it afterwards must not commit the old draft over this setup.
     MaweSelection.clearSelection();
-    const [shaken, ordinary] = MaweBoot.DATA.segments;
+    const [shaken, ordinary] = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     Object.assign(shaken, { start: 100, end: 400, text: '!!MMMM!!', assOverride: { pos: { x: 320, y: 240 } } });
     delete shaken.color; delete shaken.color_ref;
     Object.assign(ordinary, { start: 200, end: 300, text: 'NEXT', assOverride: { pos: { x: 120, y: 100 } },
@@ -571,7 +574,7 @@ test('positioned shake phase survives non-periodic overlap in Canvas, Server lib
 
 test('inactive selected cue inspector reuses the cached ASS plan during playback refreshes', async ({page}) => {
   const result = await page.evaluate(() => {
-    delete MaweBoot.DATA.segments[0].assOverride;
+    delete AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride;
     MaweSelection.selectOnly(0);
     MawePlaybackLoop.refreshSubtitlePreview(3000,1);
     const original=window.MaweExportSrt;
@@ -589,7 +592,7 @@ test('inactive selected cue inspector reuses the cached ASS plan during playback
 
 test('shaken cue matches Canvas, Server libass and exported frame boxes at sample time', async ({ page }, info) => {
   const frame = await page.evaluate(({ paintedBox }) => {
-    MaweBoot.DATA.segments[0].text = '!!MMMM!!';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '!!MMMM!!';
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const canvas = document.querySelector('.ass-preview-canvas');
     return { box: (0,eval)(`(${paintedBox})`)(canvas), ass: MaweExportSrt.buildAss() };
@@ -617,8 +620,8 @@ test('shaken cue matches Canvas, Server libass and exported frame boxes at sampl
 
 test('scaled main cue matches Canvas, Server libass and exported frame boxes', async ({ page }, info) => {
   const frame = await page.evaluate(({ paintedBox }) => {
-    MaweBoot.DATA.segments[0].text = 'MMMM';
-    MaweBoot.DATA.segments[0].assOverride = { scale: 1.22 };
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = 'MMMM';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride = { scale: 1.22 };
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const canvas = document.querySelector('.ass-preview-canvas');
     return { box: (0, eval)(`(${paintedBox})`)(canvas), ass: MaweExportSrt.buildAss() };
@@ -646,7 +649,7 @@ test('scaled main cue matches Canvas, Server libass and exported frame boxes', a
 
 test('scaled automatic stack matches Canvas, Server libass and exported frame boxes', async ({ page }, info) => {
   const frame = await page.evaluate(({ paintedBox }) => {
-    const [base, scaled] = MaweBoot.DATA.segments;
+    const [base, scaled] = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     // The small synthetic video uses 640×360 PlayRes. A larger baseline font
     // keeps the auto-fit path active there as it is in the 1080p unit fixture.
     ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize = 150;
@@ -720,7 +723,7 @@ test('shaken cue scale does not depend on pointermove event count', async ({ pag
   for (const steps of [1, 8]) {
     await page.evaluate(() => {
       ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize = 12;
-      Object.assign(MaweBoot.DATA.segments[0], { text: '!!I!!', assOverride: { scale: 4 } });
+      Object.assign(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0], { text: '!!I!!', assOverride: { scale: 4 } });
       MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     });
     const handle = page.locator('.ass-cue-scale-handle[data-corner="nw"]').filter({ visible: true });
@@ -736,7 +739,7 @@ test('shaken cue scale does not depend on pointermove event count', async ({ pag
 test('shaken cue corner scaling projects movement around the stable center', async ({ page }, info) => {
   await page.evaluate(() => {
     ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize = 12;
-    MaweBoot.DATA.segments[0].text = '!!I!!';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '!!I!!';
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   });
   const handle = page.locator('.ass-cue-scale-handle[data-corner="nw"]').filter({ visible: true });
@@ -769,7 +772,7 @@ test('dragged shaken cue saves the base anchor and window blur cancels the next 
   const box=page.locator('.ass-cue-drag-target').first(),r=await box.boundingBox();
   const data=await page.evaluate(()=>({anchor:MaweAssCanvas.lastRender.tracks[0].anchor,
     res:MaweAssCanvas.lastRender.playResX, width:MaweDom.overlayEl.getBoundingClientRect().width,
-    text:MaweBoot.DATA.segments[0].text,count:MaweBoot.DATA.segments.length}));
+    text:AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text,count:AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length}));
   await page.mouse.move(r.x+r.width/2,r.y+r.height/2);await page.mouse.down();await page.mouse.move(r.x+r.width/2+15,r.y+r.height/2);await page.mouse.up();
   const saved=await snapshot(page);
   expect(saved.override.pos.x).toBe(roundPosition(data.anchor.x+15*data.res/data.width));
@@ -778,13 +781,13 @@ test('dragged shaken cue saves the base anchor and window blur cancels the next 
   await page.mouse.down();await page.mouse.move(next.x+next.width/2+12,next.y+next.height/2);
   await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.mouse.up();
   expect(await snapshot(page)).toEqual(saved);
-  expect(await page.evaluate(()=>({text:MaweBoot.DATA.segments[0].text,count:MaweBoot.DATA.segments.length}))).toEqual({text:data.text,count:data.count});
+  expect(await page.evaluate(()=>({text:AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text,count:AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length}))).toEqual({text:data.text,count:data.count});
   await page.locator('.player-stage').screenshot({path:info.outputPath('shake-drag.png')});
 });
 
 test('dragging an automatically stacked upper cue uses the global top anchor', async ({page}) => {
   const before=await page.evaluate(() => {
-    const cue=MaweBoot.DATA.segments[1]; cue.start=0; cue.end=2000;
+    const cue=AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1]; cue.start=0; cue.end=2000;
     ASS_STYLE_LIBRARY.styles.find(style=>style.id==='ass').alignment=8;
     MaweSelection.selectOnly(1); MawePlaybackLoop.refreshSubtitlePreview(1000,0);
     const frame=MaweAssCanvas.lastRender, record=frame.tracks.find(item=>item.cueId==='next');
@@ -794,7 +797,7 @@ test('dragging an automatically stacked upper cue uses the global top anchor', a
   const box=page.locator('.ass-cue-drag-target.selected'),r=await box.boundingBox();
   await page.mouse.move(r.x+r.width/2,r.y+r.height/2);await page.mouse.down();
   await page.mouse.move(r.x+r.width/2+15,r.y+r.height/2);await page.mouse.up();
-  const after=await page.evaluate(()=>({pos:MaweBoot.DATA.segments[1].assOverride.pos,
+  const after=await page.evaluate(()=>({pos:AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].assOverride.pos,
     record:MaweAssCanvas.lastRender.tracks.find(item=>item.cueId==='next')}));
   expect(after.record.alignment).toBe(8);
   expect(after.pos.x).toBe(roundPosition(before.record.positionAnchor.x+15*before.res/before.width));
@@ -805,7 +808,7 @@ test('dragging an automatically stacked upper cue uses the global top anchor', a
 
 test('pop and custom scale preview follow libass transform order', async ({ page }, info) => {
   const rendered = await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].text = '{{MMMM}}';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '{{MMMM}}';
     const animations = ASS_STYLE_LIBRARY.assProfiles[0].animations;
     animations.pop = { enabled: false, fromScale: 1.4, inMs: 250, accel: 1 };
     animations.t = { enabled: true, startMs: 0, endMs: 250, accel: 1, tags: String.raw`\fscx200\fscy200` };
@@ -823,9 +826,10 @@ test('pop and custom scale preview follow libass transform order', async ({ page
 });
 test('overlay inspector defaults and Canvas layer order survive cue switches and reset', async ({ page }, info) => {
   await page.evaluate(() => {
-    MaweBoot.DATA.overlay_track = { enabled: true, segments: [
+    const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+    Object.assign(overlay, { enabled: true, segments: [
       { id: 'overlay-a', start: 0, end: 2000, text: 'OVERLAY', assOverride: { scale: 1.5, pos: { x: 320, y: 280 } } },
-      { id: 'overlay-b', start: 0, end: 2000, text: 'SECOND' } ] };
+      { id: 'overlay-b', start: 0, end: 2000, text: 'SECOND' } ] });
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     MaweCuePanel.setCuePanelTarget('overlay', 0);
     MaweAssCuePosition.sync();

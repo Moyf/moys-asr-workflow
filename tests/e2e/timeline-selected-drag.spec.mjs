@@ -53,8 +53,8 @@ async function seed(page, { neighbor = false, frames = false } = {}) {
 }
 
 function ranges(page) {
-  return page.evaluate(() => [MaweBoot.DATA.segments, MaweBoot.DATA.overlay_track.segments,
-    MaweBoot.DATA.multi_subtitle.tracks[0].segments].map((segments) =>
+  return page.evaluate(() => [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments,
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments].map((segments) =>
     segments.map(({ start, end, items }) => ({ start, end, items: items.map(({ start, end }) => [start, end]) }))));
 }
 
@@ -119,7 +119,7 @@ for (const action of ['undo', 'redo']) {
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.evaluate(() => MaweCommands.run('edit main text', () => {
-        MaweBoot.DATA.segments[0].text = 'previous edit';
+        AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = 'previous edit';
       }, { invalidate: { cueList: true } }));
       if (action === 'redo') await page.evaluate(() => MaweHistory.performUndo());
       await page.evaluate(() => MaweSelection.selectAll());
@@ -145,7 +145,7 @@ for (const action of ['undo', 'redo']) {
       expect(await ranges(page)).toEqual(before);
       if (entry === 'keyboard') expect(await page.evaluate(() => MaweHistory.historyGuarded())).toBe(false);
       await request();
-      expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe(action === 'undo' ? 'main' : 'previous edit');
+      expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe(action === 'undo' ? 'main' : 'previous edit');
       expect(errors).toEqual([]);
     });
   }
@@ -280,8 +280,8 @@ test('all selected indices on each track move together and are saved together', 
   });
   await seed(page);
   await page.evaluate(() => {
-    for (const [track, id] of [[MaweBoot.DATA.segments, 'main2'], [MaweBoot.DATA.overlay_track.segments, 'overlay2'],
-      [MaweBoot.DATA.multi_subtitle.tracks[0].segments, 'extension2']]) {
+    for (const [track, id] of [[AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, 'main2'], [AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments, 'overlay2'],
+      [AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments, 'extension2']]) {
       track.push({ id, start: 4500, end: 5500, text: id, items: [] });
     }
     MaweCuePanel.renderAll();
@@ -389,7 +389,7 @@ test('a bound follower that is outside the selection still follows a selected ma
 test('held Shift+D rebases every selected track before further mouse and keyboard movement', async ({ page }) => {
   await seed(page);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments.push({ id: 'neighbor', start: 4000, end: 5000, text: 'neighbor', items: [] });
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.push({ id: 'neighbor', start: 4000, end: 5000, text: 'neighbor', items: [] });
     MaweCuePanel.renderAll();
     MaweSelection.selectAll();
     MaweState.selection.remove('main', 1);
@@ -468,7 +468,7 @@ for (const track of ['main', 'overlay', 'extension']) {
   test(`a removed unselected bound-track neighbor preserves a drag anchored on ${track}`, async ({ page }) => {
     await seed(page, { neighbor: true });
     await page.evaluate(() => {
-      const track = MaweBoot.DATA.multi_subtitle.tracks[0];
+      const track = AsrEditorUtils.getExtensionTrack(MaweBoot.DATA);
       track.segments.splice(1, 0, { id: 'covered', start: 2200, end: 2500, text: 'covered', items: [] });
       MaweCuePanel.renderAll();
       MaweSelection.selectAll();
@@ -482,7 +482,7 @@ for (const track of ['main', 'overlay', 'extension']) {
     const selector = `.waveform-cue-block[data-track="${track}"]${track === 'extension' ? '[data-ext-idx="2"]' : ''}`;
     const drag = await grab(page, selector);
     await page.mouse.move(drag.x + 500 / drag.msPerPixel, drag.y, { steps: 4 });
-    await expect.poll(() => page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.length)).toBe(2);
+    await expect.poll(() => page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.length)).toBe(2);
     await page.mouse.move(drag.x + 1000 / drag.msPerPixel, drag.y, { steps: 4 });
     expect(errors).toEqual([]);
     const moved = await ranges(page);

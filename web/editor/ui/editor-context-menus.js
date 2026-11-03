@@ -19,10 +19,10 @@ export function initMaweContextMenus() {
 
 
 
-  function findWaveformCueAtTime(timeMs, segments = MaweBoot.DATA.segments) {
+  function findWaveformCueAtTime(timeMs, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) {
     const time = Number(timeMs);
     if (!Number.isFinite(time)) return -1;
-    const list = Array.isArray(segments) ? segments : MaweBoot.DATA.segments;
+    const list = Array.isArray(segments) ? segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     return list.findIndex((segment) => {
       const start = Number(segment?.start);
       const end = Number(segment?.end);
@@ -57,7 +57,7 @@ export function initMaweContextMenus() {
     sep.className = 'sep';
     MaweDom.ctxmenu.appendChild(sep);
   }
-  const mainIdx = findWaveformCueAtTime(timeMs, MaweBoot.DATA.segments);
+  const mainIdx = findWaveformCueAtTime(timeMs, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
   const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const extensionIdx = findWaveformCueAtTime(timeMs, extensionTrack?.segments);
   if (effectiveTrack === 'extension') {
@@ -85,7 +85,7 @@ export function initMaweContextMenus() {
       );
     }
   }
-  if (Array.isArray(MaweBoot.DATA.segments) && MaweBoot.DATA.segments.length) {
+  if (Array.isArray(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length) {
     addItem(
       '按音频位置拆分主字幕',
       'B',
@@ -280,7 +280,7 @@ export function initMaweContextMenus() {
     MaweDom.ctxmenu.appendChild(row);
     // 「清除颜色」项：仅当选中范围内有颜色时显示
     const hasColorInRange = targets.some(i =>
-      MaweBoot.DATA.segments[i].color || MaweBoot.DATA.segments[i].color_ref);
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].color_group_id);
     if (hasColorInRange) {
       addItem('清除颜色', '0', () => MaweStickerPicker.clearColorOnTargets(targets), { danger: true });
     }
@@ -373,20 +373,20 @@ export function initMaweContextMenus() {
     // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only') {
       addItem('跳转并播放', '', () => {
-        MaweTextCleanup.seekFromWaveform(MaweBoot.DATA.segments[idx].start / 1000);
+        MaweTextCleanup.seekFromWaveform(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].start / 1000);
         if (MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
       });
     }
     // 试听：只播放该字幕自身的时间范围，到终点自动暂停；F 为全局快捷键。
     addItem('试听', 'F', () => {
-      const segment = MaweBoot.DATA.segments[idx];
+      const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
       MaweMediaPlayback.auditionRange(segment.start, segment.end);
     });
     addSep();
     // 组 2：外观（表情包与颜色）；表情包功能关闭时隐藏分配入口
     const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
     if (stickersEnabled) addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker([idx], false));
-    if (stickersEnabled && (MaweBoot.DATA.segments[idx].sticker || MaweBoot.DATA.segments[idx].sticker_ref)) {
+    if (stickersEnabled && (window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].sticker_group_id)) {
       addItem('删除表情包', '', () => {
         MaweStickerPicker.removeStickerCascade(idx);
         MaweCuePanel.renderAll();
@@ -400,7 +400,7 @@ export function initMaweContextMenus() {
     addSep();
     // 组 3：状态与删除
     addItem(
-      MaweBoot.DATA.segments[idx].disabled ? '启用此条' : '禁用此条',
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].disabled ? '启用此条' : '禁用此条',
       'Alt+点击',
       () => MaweStickerPicker.toggleDisabled([idx])
     );
@@ -427,7 +427,7 @@ export function initMaweContextMenus() {
     // 组 2：外观（表情包与颜色）；「延长表情包」仅在范围内已有表情包时显示
     const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
     const hasStickerInRange = stickersEnabled && targetIdxs.some(i =>
-      MaweBoot.DATA.segments[i].sticker || MaweBoot.DATA.segments[i].sticker_ref);
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].sticker_group_id);
     if (hasStickerInRange) {
       addItem('延长表情包', '', () => MaweStickerPicker.expandStickerTime(targetIdxs));
     }
@@ -435,7 +435,7 @@ export function initMaweContextMenus() {
     addColorSubmenu(targetIdxs);
     addSep();
     // 组 3：状态与删除
-    const _disabledInSel = targetIdxs.filter(i => MaweBoot.DATA.segments[i].disabled).length;
+    const _disabledInSel = targetIdxs.filter(i => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].disabled).length;
     addItem(
       _disabledInSel === targetIdxs.length ? '启用选中' : '禁用选中',
       '',

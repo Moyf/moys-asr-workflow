@@ -11,6 +11,8 @@ from pathlib import Path
 from unittest import mock
 
 from tests.test_local_editor_server import server_editor
+from maw.project import normalize_project
+from maw.project_tracks import get_main_track
 
 
 class ProjectBindingLifecycleTests(unittest.TestCase):
@@ -50,8 +52,9 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
                 stream.setparams((1, 2, 8000, 0, "NONE", "not compressed"))
                 stream.writeframes(b"\0\0" * 800)
             path = self.root / f"{name}.mosp"
-            path.write_text(json.dumps({"media": str(media), "segments": [
-                {"id": name, "start": 0, "end": 100, "text": name}]}), encoding="utf8")
+            project = normalize_project({"media": str(media), "segments": [
+                {"id": name, "start": 0, "end": 100, "text": name}]})
+            path.write_text(json.dumps(project), encoding="utf8")
             self.paths[name] = path
         self.server = server_editor.EditorServer(("127.0.0.1", 0), self.load("a"), no_waveform=True)
         self.addCleanup(self.server.server_close)
@@ -212,8 +215,8 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
         started, release = threading.Event(), threading.Event()
         real_write = server_editor.write_project_json
         errors = []
-        data = self.load_data("a")
-        data["segments"][0]["text"] = "saved a"
+        data = self.load("a").data
+        get_main_track(data)["segments"][0]["text"] = "saved a"
         binding = self.server.project_binding_payload()
         before_b = self.paths["b"].read_bytes()
 
@@ -249,7 +252,7 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
                     switching.join(5)
         self.assertFalse(saving.is_alive() or switching.is_alive())
         self.assertEqual(errors, [])
-        self.assertEqual(self.load_data("a")["segments"][0]["text"], "saved a")
+        self.assertEqual(get_main_track(self.load_data("a"))["segments"][0]["text"], "saved a")
         self.assertEqual(self.paths["b"].read_bytes(), before_b)
         self.assertEqual(self.server.project.json_path, self.paths["b"])
 
@@ -317,14 +320,14 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
     def test_http_save_as_returns_new_binding_for_followup_save(self):
         self.start_http()
         old = self.server.project_binding_payload()
-        status, saved = self.post('/api/project', {**old, 'project': self.load_data('a'), 'filename': 'copy.mosp'})
+        status, saved = self.post('/api/project', {**old, 'project': self.load('a').data, 'filename': 'copy.mosp'})
         self.assertEqual(status, 200)
         self.assertGreater(saved['bindingGeneration'], old['bindingGeneration'])
-        data = self.load_data('a')
-        data['segments'][0]['text'] = 'followup'
+        data = self.load('a').data
+        get_main_track(data)['segments'][0]['text'] = 'followup'
         self.assertEqual(self.post('/api/project', {**saved, 'project': data})[0], 200)
-        self.assertEqual(json.loads((self.root / 'copy.mosp').read_text(encoding='utf8'))['segments'][0]['text'], 'followup')
-        self.assertEqual(self.load_data('a')['segments'][0]['text'], 'a')
+        self.assertEqual(get_main_track(json.loads((self.root / 'copy.mosp').read_text(encoding='utf8')))['segments'][0]['text'], 'followup')
+        self.assertEqual(get_main_track(self.load_data('a'))['segments'][0]['text'], 'a')
 
     def test_save_as_restarts_deferred_loader_after_changing_its_binding(self):
         entered, release = threading.Event(), threading.Event()

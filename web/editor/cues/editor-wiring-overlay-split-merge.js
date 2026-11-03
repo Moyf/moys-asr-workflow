@@ -196,7 +196,7 @@ function splitTimingIsValid(segment, cutMs) {
 function duplicateSplitTimingIsValid(state) {
   if (!state) return false;
   if (state.kind === 'main') {
-    return splitTimingIsValid(MaweBoot.DATA.segments[state.mainIndex], state.mainCutMs);
+    return splitTimingIsValid(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex], state.mainCutMs);
   }
   const track = splitStateTrack(state);
   if (state.kind === 'extension' || state.kind === 'overlay') {
@@ -205,7 +205,7 @@ function duplicateSplitTimingIsValid(state) {
       state.extensionCutMs,
     );
   }
-  const main = MaweBoot.DATA.segments[state.mainIndex];
+  const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex];
   const extension = MaweMultiSubtitleCore.extensionSegmentById(state.extensionId, track);
   return splitTimingIsValid(main, state.mainCutMs)
     && splitTimingIsValid(extension, state.extensionCutMs);

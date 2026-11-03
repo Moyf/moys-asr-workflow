@@ -65,7 +65,7 @@ test('overall editing completes MASS styles in both preview and saved word timin
   await page.evaluate(() => {
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule = 'both';
-    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, {
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(0, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length, {
       id: 'styled', start: 0, end: 1500, text: '**甲乙丙**', items: [
         { text: '**甲', start: 0, end: 500 }, { text: '乙', start: 500, end: 1000 }, { text: '丙**', start: 1000, end: 1500 },
       ],
@@ -80,7 +80,7 @@ test('overall editing completes MASS styles in both preview and saved word timin
   await expect.poll(() => page.evaluate(() => MaweDom.timedTextEditDraft.report.previewSegments?.map(row => row.text) || [])).toEqual(expected);
   await page.locator('#timed-text-edit-apply').click();
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
-  const saved = await page.evaluate(() => MaweBoot.DATA.segments.map(row => ({ text: row.text, items: row.items })));
+  const saved = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(row => ({ text: row.text, items: row.items })));
   expect(saved.map(row => row.text)).toEqual(expected);
   expect(saved.flatMap(row => row.items).map(item => [item.start, item.end])).toEqual([[0, 500], [500, 1000], [1000, 1500]]);
 });
@@ -170,10 +170,10 @@ test('previews text changes and applies the reported item-timing mapping', async
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
   await expect(page.locator('#cues-container .cue[data-idx="0"]')).toHaveClass(/dirty/);
   const state = await page.evaluate(() => ({
-    texts: MaweBoot.DATA.segments.map((segment) => segment.text),
-    items: MaweBoot.DATA.segments.map((segment) => segment.items),
-    ranges: MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end]),
-    dirty: MaweBoot.DATA.segments.map((segment) => Boolean(segment._dirty)),
+    texts: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => segment.text),
+    items: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => segment.items),
+    ranges: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]),
+    dirty: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => Boolean(segment._dirty)),
   }));
   expect(state.texts).toEqual(['就是那颗', 'abXc', 'disabled']);
   expect(state.ranges).toEqual([[0, 1000], [1200, 2200], [2300, 2800]]);
@@ -215,8 +215,8 @@ test('shows disabled subtitles on demand without replacing hidden cues', async (
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
 
   const state = await page.evaluate(() => ({
-    texts: MaweBoot.DATA.segments.map((segment) => segment.text),
-    disabled: MaweBoot.DATA.segments.map((segment) => Boolean(segment.disabled)),
+    texts: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => segment.text),
+    disabled: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment) => Boolean(segment.disabled)),
   }));
   expect(state.texts).toEqual(['就是那颗！', 'abc', 'disabled']);
   expect(state.disabled).toEqual([false, false, true]);
@@ -259,7 +259,7 @@ test('search navigation focuses the hit textarea with a visible caret, F3/Enter 
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length,
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(0, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
       { id: 's-1', start: 0, end: 900, text: 'alpha beta' },
       { id: 's-2', start: 1000, end: 1900, text: 'gamma delta' },
     );
@@ -340,7 +340,7 @@ test('search reveals filtered rows in the center and highlights/scrolls the matc
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments = Array.from({ length: 24 }, (_, index) => ({
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = Array.from({ length: 24 }, (_, index) => ({
       id: `search-${index}`, start: index * 100, end: index * 100 + 80,
       text: index === 12 ? `${'x'.repeat(160)}needle target${'y'.repeat(160)}` : `caption ${index}`,
     }));
@@ -390,8 +390,8 @@ test('English whole-text search mirror preserves subtitles through highlights an
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(`${server.url}?lang=en`);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].text = '查找';
-    MaweBoot.DATA.segments[1].text = '查找保存';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '查找';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].text = '查找保存';
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
   await page.locator('#timed-text-edit-btn').click();
@@ -422,7 +422,7 @@ test('English whole-text search mirror preserves subtitles through highlights an
 test('regex replacement uses captures, single replacement advances, and changes stay in the draft until applied', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
-  const before = await page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments)));
+  const before = await page.evaluate(() => JSON.parse(JSON.stringify(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)));
   await page.locator('#timed-text-edit-btn').click();
   await page.locator('#timed-text-edit-view [data-view="single"]').click();
   const find = page.locator('#timed-text-edit-find');
@@ -433,21 +433,21 @@ test('regex replacement uses captures, single replacement advances, and changes 
   await replacement.fill('X');
   await page.locator('#timed-text-edit-replace-one').click();
   await expect(page.locator('#timed-text-edit-search-count')).toHaveText('2/7');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[1].text)).toBe('abc');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].text)).toBe('abc');
   await find.fill('([a-z])');
   await replacement.fill('$01$01');
   await page.locator('#timed-text-edit-replace-all').click();
   await expect(page.locator('#timed-text-edit-single-textarea')).toHaveValue('XX是这颗\naabbcc');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[1].text)).toBe('abc');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].text)).toBe('abc');
   await page.locator('#timed-text-edit-apply').click();
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('XX是这颗');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[1].text)).toBe('aabbcc');
-  const applied = await page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments)));
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('XX是这颗');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].text)).toBe('aabbcc');
+  const applied = await page.evaluate(() => JSON.parse(JSON.stringify(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)));
   await page.keyboard.press('Control+z');
-  expect(await page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments)))).toEqual(before);
+  expect(await page.evaluate(() => JSON.parse(JSON.stringify(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)))).toEqual(before);
   await page.keyboard.press('Control+Shift+z');
-  expect(await page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments)))).toEqual(applied);
+  expect(await page.evaluate(() => JSON.parse(JSON.stringify(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)))).toEqual(applied);
 });
 
 test('cancelling pure-text replacement discards the draft', async ({ page }) => {
@@ -458,11 +458,11 @@ test('cancelling pure-text replacement discards the draft', async ({ page }) => 
   await page.locator('#timed-text-edit-replace-toggle').click();
   await page.locator('#timed-text-edit-replace').fill('changed');
   await page.locator('#timed-text-edit-replace-one').click();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[1].text)).toBe('abc');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].text)).toBe('abc');
   page.once('dialog', (dialog) => dialog.accept());
   await page.locator('#timed-text-edit-cancel').click();
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[1].text)).toBe('abc');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].text)).toBe('abc');
 });
 
 test('immediate close and scope changes confirm the latest draft before its report debounce', async ({ page }) => {
@@ -484,7 +484,7 @@ test('immediate close and scope changes confirm the latest draft before its repo
         confirmations, openAfterClose,
         showDisabled: MaweDom.timedTextEditDraft?.showDisabled,
         text: MaweDom.timedTextEditDraft?.texts[0],
-        originalText: MaweBoot.DATA.segments[0].text,
+        originalText: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text,
       };
     } finally { window.confirm = originalConfirm; }
   });
@@ -638,7 +638,7 @@ test('unavailable single view falls back only at runtime and loading another pro
   await page.evaluate(() => {
     const project = JSON.parse(MaweJsonRepair.buildJson());
     project.timed_text_edit_view = 'single';
-    project.segments[0].text = '甲\n乙';
+    AsrEditorUtils.getMainTrack(project).segments[0].text = '甲\n乙';
     MaweProjectLoad.applyCanonicalProject(project, 'multiline.mosp');
   });
   await page.locator('#batch-operations-btn').click();

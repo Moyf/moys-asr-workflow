@@ -18,8 +18,8 @@
     return current?.kind === 'main' || current?.kind === 'overlay' ? current : null;
   };
   const trackSegments = kind => kind === 'overlay'
-    ? (global.MaweBoot.DATA.overlay_track?.segments || [])
-    : global.MaweBoot.DATA.segments;
+    ? (global.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments || [])
+    : global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   // 同一 id 命中两条轨在正常工程里不可能（main-/overlay- 前缀），仍按当前
   // 面板目标轨优先，避免异常数据时拖错轨。
   function locateSegment(id) {

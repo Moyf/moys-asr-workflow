@@ -32,8 +32,7 @@ const compiled = new Map(await Promise.all(Object.entries(sourceGroups).map(asyn
 const loadSources = (context, name) => vm.runInNewContext(compiled.get(name), context, { filename: `track-${name}-fixture.js` });
 export const initializeStickerOverlay = context => loadSources(context, 'stickers');
 export function createProjectHarness(input) {
-  const data = structuredClone(input);
-  const context = { document: { getElementById: () => null }, MaweBoot: { DATA: data },
+  const context = { document: { getElementById: () => null }, MaweBoot: {},
     MaweHint: { flashHint() {} }, MaweSettings: { EDITOR_SETTINGS: { assMode: input.preview?.ass_mode === true } },
     MaweProjectMediaInputs: {},
     MawePreviewGeometry: { getStickerGeometry: () => input.preview?.sticker || {} },
@@ -44,9 +43,11 @@ export function createProjectHarness(input) {
   context.window = context; // Browser window and globalThis share the same live facades.
   loadEditorModule(context, 'shared/editor-utils.js');
   const h = context.window.AsrEditorUtils;
+  context.MaweAppearance.getPreviewGeometry = () => h.normalizePreviewGeometry(input.preview?.subtitle);
+  context.MawePreviewGeometry.getStickerGeometry = () => h.normalizePreviewGeometry(input.preview?.sticker, h.DEFAULT_STICKER_GEOMETRY);
+  const data = h.importProject(structuredClone(input)).project;
+  context.MaweBoot.DATA = data;
   h.normalizeMultiSubtitleProject(data);
-  h.migrateSubtitleGroups(data);
-  h.refreshSubtitleGroupViews(data);
   context.MULTI_SUBTITLE_UTILS = h;
   loadSources(context, 'project');
   return { data, h, context, save: () => JSON.parse(context.window.MaweJsonRepair.buildJson()) };
@@ -54,9 +55,11 @@ export function createProjectHarness(input) {
 export function browserOutputs(input) {
   const { data, h, save } = createProjectHarness(input);
   const project = save();
-  const main = data.segments;
-  const secondary = data.multi_subtitle.enabled ? data.multi_subtitle.tracks[0]?.segments || [] : [];
-  const overlay = data.overlay_track.enabled ? data.overlay_track.segments : [];
+  const main = h.getMainTrack(data).segments;
+  const secondaryTrack = h.getExtensionTrack(data);
+  const overlayTrack = h.getOverlayTrack(data);
+  const secondary = secondaryTrack?.enabled ? secondaryTrack.segments : [];
+  const overlay = overlayTrack?.enabled ? overlayTrack.segments : [];
   const combined = h.mergeMainAndOverlaySegments(main, overlay);
   const options = { formatTime: time => {
     const ms = Math.round(time);

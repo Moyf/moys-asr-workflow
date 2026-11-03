@@ -4,6 +4,7 @@
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { runtimeProject } from './helpers/runtime-project.mjs';
 
 
 const utilsContext = { window: {}, TextDecoder, TextEncoder, Uint8Array };
@@ -239,7 +240,7 @@ test('OTIO export writes marker fields as Marker.2 with name, comment and mapped
   const context = {
     window: { AsrEditorUtils: utilsWindow.AsrEditorUtils, AsrGapRemoveCore: utilsWindow.AsrGapRemoveCore },
     document: { querySelectorAll: () => [] },
-    MaweBoot: { DATA: { markers: [] } },
+    MaweBoot: { DATA: runtimeProject([], { markers: [] }) },
     MaweSettings: { EDITOR_SETTINGS: {}, GAP_REMOVE_SCHEMA: 'moy.asr.gap_remove.v1' },
     MaweCoreState: {},
     MaweTimeline: {},
@@ -297,12 +298,13 @@ test('OTIO export writes marker fields as Marker.2 with name, comment and mapped
   assert.equal(fromProject.length, 1);
   assert.equal(fromProject[0].color, 'YELLOW');
   // 字幕来源的标记带「MAW 字幕」备注（名称 = 字幕文本）。
-  context.MaweBoot.DATA.segments = [{
+  const mainSegments = utilsWindow.AsrEditorUtils.getMainTrack(context.MaweBoot.DATA).segments;
+  mainSegments.push({
     start: 1000, end: 2000, text: '大家好', items: [],
-  }];
+  });
   const subtitleMarkers = otio.buildGapRemovedSubtitleMarkers(
     { start: 0, end: 30000 }, 0,
-    context.MaweBoot.DATA.segments, context.MaweBoot.DATA.segments,
+    mainSegments, mainSegments,
   );
   // effectiveColorName 依赖字幕样式上下文，颜色回退 WHITE 即可。
   assert.equal(subtitleMarkers.length, 1);

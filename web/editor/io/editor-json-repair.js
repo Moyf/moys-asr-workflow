@@ -13,175 +13,69 @@ export function initMaweJsonRepair() {
 
 
   let lastImportReport = [];
+  let markerContainer = null;
+  function setMarkerContainer(value) {
+    markerContainer = value && typeof value === 'object' && !Array.isArray(value) && Array.isArray(value.items)
+      ? window.AsrEditorUtils.cloneMarkerValue(Object.fromEntries(
+        Object.entries(value).filter(([key]) => key !== 'schema' && key !== 'items'),
+      )) : null;
+  }
   function noteImportReport(changes) { lastImportReport = JSON.parse(JSON.stringify(changes)); }
   function importRequiresSave(changes) {
     return changes.some((change) => change.kind !== 'add' || /\.(start|end)$/.test(change.path));
   }
 
   function buildJson({ forFileExport = false } = {}) {
-  if (!window.AsrEditorUtils.supportsProjectSchema(MaweBoot.DATA)) throw new Error('Unsupported project schema');
-  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
-  const repairedTimingCount = repairCurrentProjectTimings();
-  if (repairedTimingCount > 0) {
-    MaweHint.flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
+    MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+    const repairedTimingCount = repairCurrentProjectTimings();
+    if (repairedTimingCount > 0) {
+      MaweHint.flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
+    }
+    MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+    const out = projectSnapshot();
+    if (forFileExport && !MaweProjectMediaInputs.currentMediaBlobUrl
+        && MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath) {
+      out.media = MaweBoot.SERVER_CONFIG.autoLoadedMediaPath;
+    }
+    const validation = window.AsrEditorUtils.validateTracksProject(out);
+    if (!validation.ok) throw new window.AsrEditorUtils.ProjectTracksError(validation.errors);
+    return JSON.stringify(out, null, 2);
   }
-  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
-  const out = projectSnapshot();
-  // File pickers hide the destination directory. Rebase the export copy only;
-  // the pure runtime snapshot remains the checkpoint for later content edits.
-  if (forFileExport && !MaweProjectMediaInputs.currentMediaBlobUrl
-      && MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath) {
-    out.media = MaweBoot.SERVER_CONFIG.autoLoadedMediaPath;
-  }
-  return JSON.stringify(out, null, 2);
-}
 
-  // Pure persistence projection shared by save and dirty detection. No timing
-  // repair, stateful track getter or synchronization is allowed in this reader.
+  // One pure projection drives both save and content checkpoints. Preserve all
+  // source metadata and extension fields on every role; runtime views stay out.
   function projectSnapshot() {
-  const out = {
-    schema: window.AsrEditorUtils.PROJECT_SCHEMA,
-    ...window.MaweExportContext.projectExtensionFields,
-    subtitle_groups: window.AsrEditorUtils.cloneJsonValue(MaweBoot.DATA.subtitle_groups),
-    media: MaweBoot.DATA.media || '',
-    audio_processing: { ...window.AsrEditorUtils.cloneJsonValue(MaweBoot.DATA.audio_processing),
-      ...(window.MaweAudioProcessing?.settings() || { gain_db: 0, target_lufs: -14, peak_ceiling_dbtp: -1 }) },
-    language: MaweBoot.DATA.language || '',
-    model: MaweBoot.DATA.model || '',
-    sticker_root: MaweBoot.DATA.sticker_root || '',
-    timebase: { ...MaweTimeline.projectTimebase() },
-    segments: MaweBoot.DATA.segments.map(s => {
-      const o = {
-        ...window.AsrEditorUtils.cloneJsonValue(s),
-        id: s.id,
-        start: s.start, end: s.end, text: s.text,
-        start_frame: s.start_frame, end_frame: s.end_frame,
-        items: s.items || [],
-        sticker: s.sticker || null,
-        sticker_ref: s.sticker_ref || null,
-        color: s.color || null,
-        color_ref: s.color_ref || null,
-      };
-      // 持久化"禁用"标记（未禁用的不写字段，加载时默认 undefined=falsy 兼容旧工程）
-      if (s.disabled) o.disabled = true;
-      const override = window.AsrEditorUtils.normalizeAssOverride(s.assOverride);
-      if (override) o.assOverride = override;
-      if (typeof s.speaker === 'string' && s.speaker.trim()) o.speaker = s.speaker;
-      return o;
-    }),
-  };
-  if (typeof MaweBoot.DATA.language_source === 'string') out.language_source = MaweBoot.DATA.language_source;
-  if (typeof MaweBoot.DATA.preserve_punctuation === 'boolean') out.preserve_punctuation = MaweBoot.DATA.preserve_punctuation;
-  if (typeof MaweBoot.DATA.split_mode === 'string') out.split_mode = MaweBoot.DATA.split_mode;
-  // rows is the legacy default; omit it to keep untouched projects compact.
-  if (MaweBoot.DATA.timed_text_edit_view === 'single') out.timed_text_edit_view = 'single';
-  if (typeof MaweBoot.DATA.timestamp_granularity === 'string') {
-    out.timestamp_granularity = MaweBoot.DATA.timestamp_granularity;
-  }
-  const multi = MaweBoot.DATA.multi_subtitle || {};
-  out.multi_subtitle = {
-    schema: multi.schema || window.AsrEditorUtils.MULTI_SUBTITLE_SCHEMA,
-    enabled: multi.enabled === true,
-    display_mode: multi.display_mode || 'both',
-    main_split_mode: MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(multi.main_split_mode)
-      ? multi.main_split_mode : (['word', 'continuous'].includes(MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride)
-        ? MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride
-        : window.AsrEditorUtils.detectSubtitleSplitMode(MaweBoot.DATA.segments[0]?.text || '')),
-    tracks: (multi.tracks || []).map((track) => ({
-      id: track.id,
-      role: 'extension',
-      name: track.name || '副字幕',
-      language: track.language || '',
-      split_mode: track.split_mode || 'word',
-      source_name: track.source_name || '',
-      segments: (track.segments || []).map((segment) => {
-        const outSegment = {
-          ...window.AsrEditorUtils.cloneJsonValue(segment),
-          id: segment.id,
-          start: segment.start,
-          end: segment.end,
-          start_frame: segment.start_frame,
-          end_frame: segment.end_frame,
-          text: segment.text || '',
-        };
-        if (Array.isArray(segment.items)) outSegment.items = segment.items;
-        // Untimed linked splits use null at runtime; the project contract only
-        // accepts an array or an omitted optional items field.
-        else if (segment.items == null) delete outSegment.items;
-        if (segment.color != null) outSegment.color = segment.color;
-        if (segment.color_ref != null) outSegment.color_ref = segment.color_ref;
-        if (segment.disabled) outSegment.disabled = true;
-        if (segment.assOverride !== undefined) outSegment.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
-        if (typeof segment.speaker === 'string' && segment.speaker.trim()) outSegment.speaker = segment.speaker;
-        return outSegment;
-      }),
-    })),
-    bindings: (multi.bindings || []).map((binding) => ({
-      id: binding.id,
-      track_id: binding.track_id,
-      main_segment_ids: [...(binding.main_segment_ids || [])],
-      extension_segment_ids: [...(binding.extension_segment_ids || [])],
-      start_offset_ms: binding.start_offset_ms || 0,
-      end_offset_ms: binding.end_offset_ms || 0,
-    })),
-  };
-  const overlay = MaweBoot.DATA.overlay_track;
-  if (overlay?.enabled === true || overlay?.segments?.length) {
-    out.overlay_track = {
-      enabled: overlay.enabled === true,
-      segments: (overlay.segments || []).map((segment) => {
-        const outSegment = {
-          ...window.AsrEditorUtils.cloneJsonValue(segment),
-          id: segment.id,
-          start: segment.start,
-          end: segment.end,
-          start_frame: segment.start_frame,
-          end_frame: segment.end_frame,
-          text: segment.text || '',
-          items: segment.items || [],
-          sticker: segment.sticker || null,
-          sticker_ref: segment.sticker_ref || null,
-          color: segment.color || null,
-          color_ref: segment.color_ref || null,
-        };
-        if (segment.disabled) outSegment.disabled = true;
-        if (segment.assOverride !== undefined) outSegment.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
-        if (typeof segment.speaker === 'string' && segment.speaker.trim()) outSegment.speaker = segment.speaker;
-        return outSegment;
-      }),
+    const out = window.AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA);
+    // Use the same effective project gain in saved bytes and content checkpoints.
+    // The reader is pure; retain extension fields beside the known gain settings.
+    out.audio_processing = {
+      ...out.audio_processing,
+      ...(window.MaweAudioProcessing?.settings()
+        || { gain_db: 0, target_lufs: -14, peak_ceiling_dbtp: -1 }),
     };
+    const markers = window.AsrEditorUtils.markersToProjectField(MaweBoot.DATA.markers, markerContainer);
+    if (markers) out.markers = markers;
+    else delete out.markers;
+    if (MaweBoot.DATA.gap_remove) out.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(MaweBoot.DATA.gap_remove);
+    const workspace = MaweExportTimeline.buildCurrentWorkspaceData();
+    if (workspace) out.workspace = workspace;
+    const preview = {
+      ...out.preview,
+      ass_mode: MaweSettings.EDITOR_SETTINGS.assMode === true,
+      sticker: { ...out.preview?.sticker, ...MawePreviewGeometry.getStickerGeometry() },
+      subtitle: {
+        ...out.preview?.subtitle,
+        ...MaweAppearance.getPreviewGeometry(), ...MaweAppearance.getSubtitleAppearance(),
+        speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
+      },
+    };
+    if (window.AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').length
+        || out.preview?.extension_subtitle) {
+      preview.extension_subtitle = { ...out.preview?.extension_subtitle, ...MaweAppearance.getStoredExtensionSubtitleAppearance() };
+    }
+    out.preview = preview;
+    return MaweState.persistenceSnapshot(out);
   }
-  // 波形缓存（含响度统计）不再写进工程：运行态 DATA 保留 payload 供本页渲染，落盘
-  // 真源在媒体旁的 .quapeaks / .mopeaks（后端落盘边界也会再剥一次兜底）。
-  // 旧工程里的内联缓存经 window.MaweExportContext.CANONICAL_PROJECT_FIELDS 进 DATA，不会混进扩展字段。
-  const mediaMetadata = MaweTimeline.normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
-  if (mediaMetadata) out.media_metadata = mediaMetadata;
-  if (MaweBoot.DATA.gap_remove) out.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(MaweBoot.DATA.gap_remove);
-  // 通用 Marker / Region：无标记时不写字段，保持旧工程 diff 干净。
-  const markersField = window.AsrEditorUtils.markersToProjectField(MaweBoot.DATA.markers);
-  if (markersField) out.markers = markersField;
-  if (MaweBoot.DATA.script_alignment) out.script_alignment = MaweBoot.DATA.script_alignment;
-  const workspace = MaweExportTimeline.buildCurrentWorkspaceData();
-  if (workspace) out.workspace = workspace;
-  // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
-  const preview = {
-    ass_mode: MaweSettings.EDITOR_SETTINGS.assMode === true,
-    sticker: { ...MawePreviewGeometry.getStickerGeometry() },
-    subtitle: {
-      ...MaweAppearance.getPreviewGeometry(),
-      ...MaweAppearance.getSubtitleAppearance(),
-      speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
-    },
-  };
-  if (multi.tracks?.length || MaweBoot.DATA.preview?.extension_subtitle) {
-    preview.extension_subtitle = { ...MaweAppearance.getStoredExtensionSubtitleAppearance() };
-  }
-  out.preview = preview;
-  window.AsrEditorUtils.serializeSubtitleGroups(out);
-  return MaweState.persistenceSnapshot(out);
-}
-
-
 
   function captureCleanupNormalization(segments, project) {
     const gapRemove = project?.gap_remove;
@@ -190,9 +84,10 @@ export function initMaweJsonRepair() {
     if (!Array.isArray(segments) || !Array.isArray(ranges) || typeof verify !== 'function') return [];
     // A stale index may accidentally become valid after a neutral item merges.
     // Remove that authority before changing any items; keep the audio range.
+    const allSegments = (project.tracks || []).flatMap((track) => track.segments || []);
     for (const range of ranges) {
       if (!range?.cleanup_scope) continue;
-      const segment = segments.find((item) => item?.id === range.cleanup_scope.segment_id);
+      const segment = allSegments.find((item) => item?.id === range.cleanup_scope.segment_id);
       if (!segment || !verify(segment, range).length) delete range.cleanup_scope;
     }
     return segments.flatMap((segment) => {
@@ -338,21 +233,14 @@ export function initMaweJsonRepair() {
 
   function normalizeProjectTimings(project, { repairSegmentRanges = true, preserveValid = false } = {}) {
   if (!project || typeof project !== 'object') return 0;
-  if (preserveValid && [project.segments, project.overlay_track?.segments,
-    ...(project.multi_subtitle?.tracks || []).map((track) => track?.segments)].every(hasValidTimingRanges)) return 0;
+  if (preserveValid && (project.tracks || []).every(track => hasValidTimingRanges(track.segments))) return 0;
   const normalize = (segments) => (repairSegmentRanges
     ? window.AsrEditorUtils.normalizeSegmentTimings
     : window.AsrEditorUtils.normalizeItemTimingRanges)(segments, 100, { preserveZero: preserveValid });
-  const cleanup = captureCleanupNormalization(project.segments, project);
-  let fixed = normalize(project.segments);
+  const cleanup = captureCleanupNormalization((project.tracks || []).flatMap(track => track.segments || []), project);
+  let fixed = 0;
+  for (const track of project.tracks || []) fixed += normalize(track.segments);
   fixed = Math.max(0, fixed - migrateCleanupNormalization(cleanup));
-  const tracks = project.multi_subtitle?.tracks;
-  if (Array.isArray(tracks)) {
-    tracks.forEach((track) => {
-      fixed += normalize(track?.segments);
-    });
-  }
-  fixed += normalize(project.overlay_track?.segments);
   return fixed;
 }
 
@@ -362,9 +250,7 @@ export function initMaweJsonRepair() {
   // synchronization whose edits are not represented in repair counters.
   function projectTimingSignature(project) {
     const signatures = segments => (segments || []).map(timingRepairSignature);
-    return JSON.stringify([signatures(project?.segments),
-      (project?.multi_subtitle?.tracks || []).map(track => signatures(track.segments)),
-      signatures(project?.overlay_track?.segments)]);
+    return JSON.stringify((project?.tracks || []).map(track => [track.id, signatures(track.segments)]));
   }
 
   function timingRepairSignature(segment) {
@@ -383,7 +269,9 @@ export function initMaweJsonRepair() {
     const source = Array.isArray(segments) ? segments : [];
     if (preserveValid && hasValidTimingRanges(source)) return { fixed: 0, changed: [] };
     const before = source.map((segment) => timingRepairSignature(segment));
-    const cleanup = captureCleanupNormalization(source, source === MaweBoot.DATA.segments ? MaweBoot.DATA : null);
+    const project = MaweBoot.DATA;
+    const cleanup = captureCleanupNormalization(source,
+      project.tracks.some((track) => track.segments === source) ? project : null);
     const fixed = Math.max(0, window.AsrEditorUtils.normalizeItemTimingRanges(source, 100, { preserveZero: preserveValid })
       - migrateCleanupNormalization(cleanup));
     const changed = source.filter((segment, index) => (
@@ -395,8 +283,8 @@ export function initMaweJsonRepair() {
 
 
   function repairCurrentProjectTimings() {
-  const main = repairTimingGroup(MaweBoot.DATA.segments, { preserveValid: true });
-  const extension = (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).reduce((result, track) => {
+  const main = repairTimingGroup(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, { preserveValid: true });
+  const extension = window.AsrEditorUtils.getTracksByRole(MaweBoot.DATA, 'secondary').reduce((result, track) => {
     const repaired = repairTimingGroup(track?.segments, { preserveValid: true });
     result.fixed += repaired.fixed;
     result.changed.push(...repaired.changed);
@@ -422,6 +310,7 @@ export function initMaweJsonRepair() {
     buildJson,
     noteImportReport,
     importRequiresSave,
+    setMarkerContainer,
     get lastImportReport() { return JSON.parse(JSON.stringify(lastImportReport)); },
     projectSnapshot,
     normalizeProjectTimings,

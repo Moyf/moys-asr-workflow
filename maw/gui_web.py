@@ -23,6 +23,7 @@ from typing import BinaryIO, Final, final
 
 from send2trash import send2trash
 
+from maw.project_tracks import get_main_track, make_project
 from maw.editor_entry_policy import RETIREMENT_MESSAGE, standalone_editor_supported
 from maw.app_paths import application_directory, default_app_data_root
 from maw.web_build import BundlePreflightError, ensure_bundle
@@ -2030,7 +2031,7 @@ class LauncherApi:
                     frozenset(preserve if match_mode == "script" else ()),
                     match_mode,
                 )
-            segments = matched.get("segments", [])
+            segments = get_main_track(matched)["segments"]
             preview = "\n".join(
                 f"{index + 1}. {segment.get('text', '')}"
                 for index, segment in enumerate(segments)
@@ -2045,7 +2046,7 @@ class LauncherApi:
                 None,
             )
             original_segment_count = sum(
-                1 for segment in project.get("segments", ()) if isinstance(segment, dict) and segment.get("text")
+                1 for segment in get_main_track(project)["segments"] if isinstance(segment, dict) and segment.get("text")
             )
             matched_segment_count = sum(
                 1 for segment in segments if isinstance(segment, dict) and segment.get("text")
@@ -2756,7 +2757,7 @@ class LauncherApi:
 
         output_seed = unique_output_path(media_path.with_suffix(".waveform.srt"))
         project_path = output_seed.with_suffix(".mosp")
-        project: dict[str, object] = {"media": str(media_path), "segments": []}
+        project = make_project([], project_fields={"media": str(media_path)})
         try:
             ffmpeg_tools = _postprocess_ffmpeg_tools(self.paths.env_path)
             ffmpeg_path = ffmpeg_tools.ffmpeg

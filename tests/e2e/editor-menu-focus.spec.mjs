@@ -24,7 +24,7 @@ for (const menuId of ['extra-otio-menu', 'gap-removed-otio-menu']) {
       await page.evaluate(({menuId, language}) => {
         MAWE_I18N.applyLanguage(language);
         if (menuId === 'gap-removed-otio-menu') {
-          MaweBoot.DATA.segments.push({id: 'test', start: 0, end: 1000, text: 'Test'});
+          AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.push({id: 'test', start: 0, end: 1000, text: 'Test'});
           MaweBoot.DATA.gap_remove = {gaps: [{start: 100, end: 300}], enabled: true};
           document.getElementById('gap-removed-export-dropdown').hidden = false;
         }
@@ -59,7 +59,7 @@ async function loadMedia(page) {
     MaweCoreState.player.pause();
     MaweCoreState.player.currentTime = 0;
     MaweCoreState.player.muted = true;
-    MaweBoot.DATA.segments.push({id: 'selection-test', start: 0, end: 1000, text: 'Test'});
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.push({id: 'selection-test', start: 0, end: 1000, text: 'Test'});
     MaweCuePanel.renderAll({waveform: 'full'});
     MaweSelection.selectOnly(0);
   });

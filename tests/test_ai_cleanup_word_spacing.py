@@ -11,6 +11,7 @@ from maw.postprocess import OutputMode
 from maw.postprocess_ai_cleanup import AiCleanupRequest, build_clips, run_ai_cleanup
 from maw.postprocess_ai_cleanup_items import item_text_spans, remaining_text, verified_scope_indices
 from maw.postprocess_ai_cleanup_timeline import parse_timeline
+from maw.project_tracks import get_main_track
 
 
 def word_cue(words):
@@ -59,10 +60,10 @@ class WordSpacingCleanupTest(unittest.TestCase):
             project = json.loads(first.project_path.read_text(encoding="utf-8"))
             self.assertEqual(first.stats["removedItems"], 1)
             scope = project["gap_remove"]["provenance"]["sources"]["ai_cleanup"][0]
-            self.assertEqual(list(verified_scope_indices(scope, project["segments"][0])), [0])
+            self.assertEqual(list(verified_scope_indices(scope, get_main_track(project)["segments"][0])), [0])
             self.assertEqual(scope["cleanup_scope"]["text"], " Hello")
             self.assertEqual((scope["start"], scope["end"]), (0, 200))
-            self.assertEqual(project["segments"][0]["items"], cue["items"])
+            self.assertEqual(get_main_track(project)["segments"][0]["items"], cue["items"])
             self.assertEqual(remaining_text(cue["text"], cue["items"], [0]), "Hello world")
             second = run_ai_cleanup(AiCleanupRequest(first.project_path, None, None, OutputMode.BOTH, output_directory=directory), complete=lambda p, r: {"timeline": r[0]["sourceLine"]})
             self.assertEqual(second.stats["pendingReview"], 0)
@@ -122,8 +123,8 @@ class WordSpacingCleanupTest(unittest.TestCase):
             self.assertEqual(artifact.stats["removed"], 1)
             self.assertEqual(artifact.stats["pendingReview"], 1)
             self.assertEqual(artifact.stats["removedItems"], 0)
-            self.assertEqual(project["segments"][0], first)
-            self.assertTrue(project["segments"][1]["disabled"])
+            self.assertEqual(get_main_track(project)["segments"][0], first)
+            self.assertTrue(get_main_track(project)["segments"][1]["disabled"])
             self.assertIn("we we already know", artifact.srt_path.read_text(encoding="utf-8-sig"))
             self.assertEqual(source.read_bytes(), original)
 

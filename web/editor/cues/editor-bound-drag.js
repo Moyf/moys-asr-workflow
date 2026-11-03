@@ -12,7 +12,7 @@
     if (!source) return null;
     const binding = MaweMultiSubtitleCore.bindingForMainIndex(index);
     if (!binding) return null;
-    const target = MaweMultiSubtitleCore.extensionSegmentById(binding.extension_segment_ids?.[0], MaweMultiSubtitleCore.getExtensionTrack(binding.track_id));
+    const target = MaweMultiSubtitleCore.extensionSegmentById(binding.target?.segment_id, MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id));
     return target ? { target, binding } : null;
   }
 
@@ -61,7 +61,8 @@
     if (drag?.track !== 'main' || drag.boundDragTimelineOriginals) return;
     const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
     drag.boundDragTimelineOriginals = {
-      tracks: (multi.tracks || []).map((track) => snapshotBoundDragTrack(track)),
+      tracks: (multi.tracks || []).filter((track) => track.role === 'secondary')
+        .map((track) => snapshotBoundDragTrack(track)),
       bindings: JSON.parse(JSON.stringify(multi.bindings || [])),
     };
   }
@@ -116,7 +117,7 @@
     // resize-boundary-independent，也仍需带着绑定副字幕一起调整。
     if (!drag || drag.track !== 'main' || !MaweMultiSubtitleCore.multiSubtitleVisible()) return;
     if (!drag.selectedMoveSegments) prepareBoundCueDrag(drag);
-    const sourceSegments = MaweBoot.DATA.segments;
+    const sourceSegments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     if (!drag.boundOriginals) drag.boundOriginals = new Map();
 
     const boundEntries = drag.indices.map((index) => ({
@@ -154,7 +155,7 @@
       }
       if (nextEnd <= nextStart) nextEnd = nextStart + MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
 
-      const targetTrack = MaweMultiSubtitleCore.getExtensionTrack(binding.track_id);
+      const targetTrack = MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id);
       const dragEdge = getBoundDragEdge(drag, index);
       const resolved = MaweMultiSubtitleCore.resolveExtensionFollowerRange(
         target,
@@ -196,7 +197,7 @@
     // 无需每帧恢复整个副轨。已有预览快照仍须恢复，保证反向拖回可逆。
     if (drag.selectedMoveSegments && !drag.boundDragTimelineOriginals
         && !drag.indices.some((index) => {
-          const bound = getBoundDragTarget(index, MaweBoot.DATA.segments);
+          const bound = getBoundDragTarget(index, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
           return bound && !drag.selectedMoveSegments.has(bound.target);
         })) return;
     ensureBoundDragTimelineOriginals(drag);
@@ -205,7 +206,7 @@
     // 跟随字幕，避免在同步绑定时把已经调整过的时间当成拖动起点。
     if (drag.selectedMoveSegments) {
       drag.indices.forEach((index) => {
-        const bound = getBoundDragTarget(index, MaweBoot.DATA.segments);
+        const bound = getBoundDragTarget(index, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
         if (bound && !drag.selectedMoveSegments.has(bound.target)) ensureBoundDragOriginal(drag, index, bound.target);
       });
     }

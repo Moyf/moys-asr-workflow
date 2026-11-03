@@ -54,6 +54,7 @@ WAVEFORM_RETIRED_UTILS = (
 )
 
 import base64
+import json
 import math
 import os
 import re
@@ -559,7 +560,15 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("this.cues = document.getElementById('cues-container')", source)
         self.assertIn('flex-direction: column;', page)
         self.assertIn("class WaveformEditor", source)
-        self.assertIn('{"segments": [], "media": "", "language": "", "model": ""}', page)
+        blank = json.JSONDecoder().raw_decode(page[page.index('{"media": ""'):])[0]
+        self.assertEqual(blank["schema"], "moy.asr.project.v2")
+        self.assertNotIn("segments", blank)
+        self.assertNotIn("multi_subtitle", blank)
+        self.assertNotIn("overlay_track", blank)
+        self.assertEqual(len(blank["tracks"]), 1)
+        self.assertEqual(blank["tracks"][0]["role"], "main")
+        self.assertEqual(blank["tracks"][0]["segments"], [])
+        self.assertEqual(blank["media"], "")
         self.assertIn('id="save-project"', page)
         self.assertIn('id="save-project-as"', page)
         self.assertNotIn('__SERVER_CONFIG_JSON__', page)
@@ -902,11 +911,10 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         )
         self.assertIn('function syncProjectTimebaseAndBindingOffsets(', source)
         self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', source)
-        self.assertIn(
-            'function buildJson({ forFileExport = false } = {}) {\n'
-            "  if (!window.AsrEditorUtils.supportsProjectSchema(MaweBoot.DATA)) throw new Error('Unsupported project schema');\n"
-            '  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
+        self.assertRegex(
             edit.read_web_asset("editor/io/editor-json-repair.js"),
+            r'function buildJson\(\{ forFileExport = false \} = \{\}\) \{\s+'
+            r'MaweTimeline\.syncProjectTimebaseAndBindingOffsets\(MaweBoot\.DATA, \{ preferFrames: false \}\);',
         )
         self.assertIn('id="help-media-seek-step"', page)
         self.assertIn('class="help-break"', page)
@@ -1144,8 +1152,9 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('跳过静音空隙', page)
         self.assertIn('const DEFAULT_LAYOUT_ROWS = [42, 16, 42];', source)
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", source)
-        self.assertIn('const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)', source)
-        self.assertIn('overlaySegments.some((segment) => segment.sticker || segment.sticker_ref)', source)
+        self.assertIn('const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((segment) => segment.sticker_group_id)', source)
+        self.assertIn('const overlaySegments = getOverlayTrack()?.segments || [];', source)
+        self.assertIn('overlaySegments.some((segment) => segment.sticker_group_id)', source)
         self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', source)
         self.assertIn('rows.sort((a, b) => a.start - b.start || a.order - b.order);', source)
         self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: window.MaweCuePanelWiring.buildOverlayCueEl(seg, i) }));', source)

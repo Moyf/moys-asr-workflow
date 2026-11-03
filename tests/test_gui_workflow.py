@@ -93,7 +93,7 @@ class EmptyTranscriptionTests(unittest.TestCase):
         self.request.srt_path.with_suffix('.mosp').write_text(json.dumps({'segments': segments}), encoding='utf-8')
 
     def test_successful_child_with_empty_or_blank_segments_is_not_reported_done(self):
-        for segments in ([], [{'text': ' \n\t'}]):
+        for segments in ([], [{'start': 0, 'end': 1000, 'text': ' \n\t'}]):
             with self.subTest(segments=segments):
                 self.write_outputs(segments)
                 with self.assertRaises(type(self.error)) as caught:

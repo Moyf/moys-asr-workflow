@@ -26,6 +26,7 @@ from maw.gui_platform import creationflags, startupinfo
 from maw.language import normalize_language_code, split_mode_for_text
 from maw.postprocess_io import SubtitleArtifact, write_artifacts
 from maw.project_io import enrich_project_media_metadata
+from maw.project_tracks import make_project
 from maw.timestamp_alignment import (
     AlignmentBackend,
     QwenForcedAlignerBackend,
@@ -406,14 +407,17 @@ def run_script_alignment(
     warnings = SCRIPT_ALIGNMENT_WARNINGS
     script = request.script_path.expanduser().resolve()
     mode = split_mode_for_text("".join(lines))
-    project = enrich_project_media_metadata({
-        "schema": "moy.asr.project.v1", "media": str(media),
-        "language": language, "language_source": "hint", "split_mode": mode,
-        "timestamp_granularity": "char" if mode == "continuous" else "word",
-        "model": QWEN_FORCED_ALIGNER_MODEL_ID, "segments": segments,
-        "preserve_punctuation": True,
-        "media_metadata": {"selected_audio_track": audio_track},
-    }, media)
+    project = enrich_project_media_metadata(make_project(
+        segments,
+        main_fields={
+            "language": language, "language_source": "hint", "split_mode": mode,
+            "timestamp_granularity": "char" if mode == "continuous" else "word",
+            "model": QWEN_FORCED_ALIGNER_MODEL_ID, "preserve_punctuation": True,
+        },
+        project_fields={
+            "media": str(media), "media_metadata": {"selected_audio_track": audio_track},
+        },
+    ), media)
     artifact = write_artifacts(
         project, source_project_path=None, source_srt_path=script,
         operation="script-aligned", write_project=True, write_srt=True,

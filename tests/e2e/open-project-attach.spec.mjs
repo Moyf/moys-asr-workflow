@@ -10,6 +10,7 @@ import {
   findFreePort,
   generateWaveformPayload,
   generateWav,
+  getMainTrack,
   makeTempDir,
   startBlankServer,
   testSegments,
@@ -84,8 +85,8 @@ test('dropping a legacy project lets the blank server take over after ID normali
   await page.locator('#cue-panel-text').fill('AttachedSave');
   await page.locator('#cue-panel-target').click();
   expect(await page.evaluate(() => ({
-    text: MaweBoot.DATA.segments[0].text,
-    dirty: MaweBoot.DATA.segments[0]._dirty,
+    text: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text,
+    dirty: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty,
     canSave: MaweBoot.SERVER_CONFIG.canSave,
   }))).toEqual({ text: 'AttachedSave', dirty: true, canSave: true });
   const saveRequest = page.waitForRequest((request) => (
@@ -95,8 +96,8 @@ test('dropping a legacy project lets the blank server take over after ID normali
     response.url().endsWith('/api/project') && response.request().method() === 'POST'
   ));
   await page.keyboard.press('Control+s');
-  expect(JSON.parse((await saveRequest).postData()).project.segments[0].text).toBe('AttachedSave');
+  expect(getMainTrack(JSON.parse((await saveRequest).postData()).project).segments[0].text).toBe('AttachedSave');
   expect((await saveResponse).ok()).toBe(true);
   await expect.poll(() => readFileSync(projectPath, 'utf-8')).toContain('AttachedSave');
-  expect(JSON.parse(readFileSync(projectPath, 'utf-8')).segments[0].id).toBe('main-001');
+  expect(getMainTrack(JSON.parse(readFileSync(projectPath, 'utf-8'))).segments[0].id).toBe('main-cue-1');
 });

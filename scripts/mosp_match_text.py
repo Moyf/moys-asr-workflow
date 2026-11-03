@@ -19,6 +19,12 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Sequence
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+if str(_PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PACKAGE_ROOT))
+from maw.project_tracks import get_main_track, iter_segments  # noqa: E402
+from maw.project import normalize_project  # noqa: E402
+from maw.project_mutations import replace_main_segments, fresh_segment_id  # noqa: E402
 
 
 PRESERVED_END_PUNCTUATION = frozenset("！？：!?:")
@@ -35,7 +41,6 @@ CLOSING_PUNCTUATION = frozenset(
     "〞〟〙〗〛｠｣"
 )
 MARKDOWN_EXTENSIONS = frozenset({".md", ".markdown"})
-PROJECT_SCHEMA = "moy.asr.project.v1"
 _MARKDOWN_HEADING_PREFIX = re.compile(r"^[ \t]{0,3}#{1,6}(?:[ \t]+|$)", re.MULTILINE)
 
 
@@ -206,9 +211,11 @@ def parse_mosp(text: str, *, is_cancelled: Callable[[], bool] | None = None) -> 
         raise AlignmentError(f"MOSP JSON 无效：第 {exc.lineno} 行第 {exc.colno} 列") from exc
     if not isinstance(project, dict):
         raise AlignmentError("MOSP 顶层必须是 JSON 对象")
-    if "schema" in project and project.get("schema") not in (PROJECT_SCHEMA, "moy.asr.project.v1.5"):
-        raise AlignmentError(f"不支持的 MOSP 工程版本：{project.get('schema')}")
-    segments = project.get("segments")
+    try:
+        project = normalize_project(project)
+    except ValueError as error:
+        raise AlignmentError(str(error)) from error
+    segments = get_main_track(project)["segments"]
     if not isinstance(segments, list) or not segments:
         raise AlignmentError("MOSP 缺少非空 segments 数组")
 
@@ -703,6 +710,7 @@ def generate_matched_mosp(
     preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
     *,
     is_cancelled: Callable[[], bool] | None = None,
+    reserved_cue_ids: Iterable[str] = (),
 ) -> tuple[list[OutputCue], dict[str, object], str]:
     check_match_cancelled(is_cancelled)
     output, report, segments, timings = _align_mosp_and_manuscript(
@@ -717,56 +725,22 @@ def generate_matched_mosp(
         project = json.loads(mosp_text.lstrip("\ufeff"))
     except json.JSONDecodeError as exc:  # parse_mosp normally reports this first.
         raise AlignmentError("MOSP JSON 无效") from exc
-    source_segments = project["segments"]
-    rebuilt = build_mosp_segments(segments, timings, output, is_cancelled=is_cancelled)
-    multi = project.get("multi_subtitle") or {}
-    overlay = project.get("overlay_track") or {}
-    bindings = multi.get("bindings") or []
-    grouped = any(s.get("color_group_id") or s.get("sticker_group_id") for s in source_segments)
-    if grouped and len(rebuilt) != len(source_segments):
-        raise AlignmentError("带独立分组的字幕暂不支持文稿匹配改变条数；请先保留原工程并在编辑器中拆合，避免丢失组关系。")
-    if bindings and len(rebuilt) != len(source_segments):
-        raise AlignmentError("带双语绑定的工程暂不支持文稿匹配改变条数；请先在编辑器中拆合，避免丢失绑定关系。")
-    if len(rebuilt) == len(source_segments):
-        for original, target in zip(source_segments, rebuilt, strict=True):
+    project = normalize_project(project)
+    source_segments = get_main_track(project)["segments"]
+    generated = build_mosp_segments(segments, timings, output, is_cancelled=is_cancelled)
+    grouped = any(cue.get("color_group_id") or cue.get("sticker_group_id") for cue in source_segments)
+    if len(generated) != len(source_segments) and (grouped or project["bindings"]):
+        raise AlignmentError("带独立分组或双语绑定的工程暂不支持文稿匹配改变字幕条数。")
+    if len(generated) == len(source_segments):
+        for original, cue in zip(source_segments, generated, strict=True):
             for key, value in original.items():
                 if key not in {"start", "end", "text", "items", "start_frame", "end_frame"}:
-                    target[key] = copy.deepcopy(value)
-    # Main cue identities survive one-to-one rebuilding; extension times stay
-    # unchanged, so their recorded offsets must follow the rebuilt main times.
-    def canonical_id(value):
-        return value.strip() if isinstance(value, str) else value
-
-    main_by_id = {canonical_id(s.get("id")): s for s in rebuilt if s.get("id")}
-    tracks_by_id = {canonical_id(t.get("id")): t for t in multi.get("tracks") or []}
-    for binding in bindings:
-        main_ids = binding.get("main_segment_ids") or [binding.get("main_segment_id")]
-        ext_ids = binding.get("extension_segment_ids") or [binding.get("extension_segment_id")]
-        track_id = canonical_id(binding.get("track_id"))
-        track = tracks_by_id.get(track_id) if track_id else next(iter(tracks_by_id.values()), {})
-        main = main_by_id.get(canonical_id(main_ids[0])) if len(main_ids) == 1 else None
-        extension = next((s for s in (track or {}).get("segments") or [] if len(ext_ids) == 1 and canonical_id(s.get("id")) == canonical_id(ext_ids[0])), None)
-        if main and extension:
-            for edge in ("start", "end"):
-                binding[f"{edge}_offset_ms"] = extension[edge] - main[edge]
-    if project.get("schema") == "moy.asr.project.v1.5":
-        reserved = {s.get("id") for track in multi.get("tracks") or [] for s in track.get("segments") or []}
-        reserved.update(s.get("id") for s in overlay.get("segments") or [])
-        reserved.update(s.get("id") for s in source_segments)
-        reserved = {identifier.strip() for identifier in reserved if isinstance(identifier, str)}
-        for index, target in enumerate(rebuilt):
-            if target.get("id"):
-                continue
-            base = f"match-{index + 1:03d}"
-            identifier = base
-            suffix = 2
-            while identifier in reserved:
-                identifier = f"{base}-{suffix}"
-                suffix += 1
-            target["id"] = identifier
-            reserved.add(identifier)
-    project["schema"] = project.get("schema", PROJECT_SCHEMA)
-    project["segments"] = rebuilt
+                    cue[key] = copy.deepcopy(value)
+    else:
+        reserved = {cue["id"] for cue in iter_segments(project)} | set(reserved_cue_ids)
+        for index, cue in enumerate(generated, 1):
+            cue["id"] = fresh_segment_id(f"matched-cue-{index}", reserved)
+    replace_main_segments(project, generated)
     content = json.dumps(project, ensure_ascii=False, indent=2) + "\n"
     return output, report, content
 

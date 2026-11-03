@@ -26,15 +26,19 @@ test.beforeEach(async ({ page }) => {
 
 async function seed(page, { text = '甲乙丙丁', timed = true, linked = false } = {}) {
   await page.evaluate(({ text, timed, linked }) => {
-    MaweBoot.DATA.segments = [{ id: 'main-1', start: 1000, end: 5000, text,
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'main-1', start: 1000, end: 5000, text,
       items: timed ? Array.from(text, (text, i) => ({ text,
         start: i === 2 ? 3500 : 1000 + i * 1000,
         end: i === 2 ? 4000 : 2000 + i * 1000 })) : null }];
-    MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: linked, display_mode: 'both',
-      tracks: linked ? [{ id: 'ext-1', role: 'extension', name: '译文', split_mode: 'character',
-        segments: [{ id: 'ext-cue', start: 1000, end: 5000, text: '一二三四' }] }] : [],
-      bindings: linked ? [{ id: 'binding-1', track_id: 'ext-1', main_segment_ids: ['main-1'],
-        extension_segment_ids: ['ext-cue'] }] : [] };
+    MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary');
+    MaweBoot.DATA.bindings = [];
+    MaweBoot.DATA.bilingual = { display_mode: 'both' };
+    if (linked) {
+      const extension = AsrEditorUtils.ensureExtensionTrack(MaweBoot.DATA, { id: 'ext-1', name: '译文',
+        enabled: true, split_mode: 'continuous', segments: [{ id: 'ext-cue', start: 1000, end: 5000, text: '一二三四' }] });
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      MaweBoot.DATA.bindings.push(AsrEditorUtils.buildSubtitleBinding(main.segments[0], extension.segments[0], extension.id, 'binding-1', main.id));
+    }
     MaweSettings.updateEditorSettings({ autoSaveProject: false });
     MaweSelection.clearSelection({ silent: true });
     MaweCuePanel.renderAll({ waveform: 'full' });
@@ -104,7 +108,7 @@ for (const mode of ['progressive', 'duplicate']) {
         await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
         await page.locator('#multi-subtitle-split-confirm').click();
       }
-      const result = await page.evaluate(() => MaweBoot.DATA.segments);
+      const result = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
       expect(result.map(s => s.text)).toEqual(mode === 'progressive' ? ['甲乙', '甲乙丙丁'] : ['甲乙丙丁', '甲乙丙丁']);
       expect(result.map(s => [s.start, s.end])).toEqual([[1000, 3000], [3000, 5000]]);
       expect(result[1].start).toBe(result[0].end);
@@ -118,7 +122,7 @@ for (const mode of ['progressive', 'duplicate']) {
       if (mode === 'duplicate') expect(result[0].items).toBeNull();
       else if (path === 'timed') expect(result[0].items.map(i => i.text)).toEqual(['甲', '乙']);
       await page.locator('#undo-btn').click();
-      expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.text))).toEqual(['甲乙丙丁']);
+      expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.text))).toEqual(['甲乙丙丁']);
     });
   }
 }
@@ -132,23 +136,23 @@ for (const path of ['timed', 'untimed', 'linked']) {
   test(`splitting and project save preserve the source speaker through the ${path} path`, async ({ page }) => {
     await seed(page, { timed: path === 'timed', linked: path === 'linked' });
     await page.evaluate(() => {
-      const segment = MaweBoot.DATA.segments[0];
+      const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
       segment.speaker = 'opaque-speaker';
       segment.items?.forEach(item => { item.speaker = segment.speaker; });
       MaweSplitContext.splitFromContextMenu(0, 10, 10, 3000, { splitTextMode: 'progressive' });
     });
     if (path !== 'timed') await page.locator('#multi-subtitle-split-confirm').click();
-    expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.speaker)))
+    expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.speaker)))
       .toEqual(['opaque-speaker', 'opaque-speaker']);
     const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-    expect(await page.evaluate(project => MaweProjectValidation.validateProject(project).errors, saved))
-      .toEqual([]);
-    expect(saved.segments.map(s => s.speaker)).toEqual(['opaque-speaker', 'opaque-speaker']);
-    expect(saved.segments.map(s => s.text)).toEqual(['甲乙', '甲乙丙丁']);
+    expect(await page.evaluate(project => AsrEditorUtils.validateTracksProject(project).errors, saved)).toEqual([]);
+    const savedMain = saved.tracks.find(track => track.role === 'main');
+    expect(savedMain.segments.map(s => s.speaker)).toEqual(['opaque-speaker', 'opaque-speaker']);
+    expect(savedMain.segments.map(s => s.text)).toEqual(['甲乙', '甲乙丙丁']);
     await page.locator('#undo-btn').click();
-    expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.speaker))).toEqual(['opaque-speaker']);
+    expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.speaker))).toEqual(['opaque-speaker']);
     await page.locator('#redo-btn').click();
-    expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.speaker)))
+    expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.speaker)))
       .toEqual(['opaque-speaker', 'opaque-speaker']);
     // Reopen through the real project drop loader in a fresh portable editor.
     await page.goto(`file://${portable}`);
@@ -160,7 +164,7 @@ for (const path of ['timed', 'untimed', 'linked']) {
     }, saved);
     await page.dispatchEvent('body', 'drop', { dataTransfer });
     await dataTransfer.dispose();
-    await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map(s => s.speaker)))
+    await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.speaker)))
       .toEqual(['opaque-speaker', 'opaque-speaker']);
   });
 }
@@ -172,9 +176,9 @@ test('custom wrapping isolates Delete and B while a button has focus', async ({ 
   await expect(page.locator('#wrap-chars-left')).toBeFocused();
   await page.locator('#wrap-chars-confirm').focus();
   await page.keyboard.press('Delete');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(1);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(1);
   await page.keyboard.press('Shift+B');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(1);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(1);
   await page.keyboard.press('Escape');
   await expect(page.locator('#wrap-chars-modal')).not.toHaveClass(/show/);
   expect(await page.evaluate(() => [...MaweSelection.selectedIdxs])).toEqual([0]);
@@ -211,7 +215,7 @@ test('text processing uses the custom wrapping row and allows one-sided characte
 
 test('text process preview expands all rows and syncs the action label', async ({ page }) => {
   await page.evaluate(() => {
-    MaweBoot.DATA.segments = [
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [
       { id: 'main-a', start: 1000, end: 2000, text: ' 甲 ', items: null },
       { id: 'main-b', start: 2000, end: 3000, text: ' 乙 ', items: null },
     ];
@@ -260,7 +264,7 @@ test('batch replacement uses shared capture replacement and current-scope previe
   await page.locator('#replace-input').fill('$02/$01');
   await expect(page.locator('#replace-preview')).toContainText('鸟/猫');
   await page.locator('#replace-confirm').click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('狗/猫\n鸟/猫');
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('狗/猫\n鸟/猫');
 });
 
 test('text processing converts clear Chinese numbers with surrounding spaces', async ({ page }) => {
@@ -295,7 +299,7 @@ for (const gesture of ['Shift+B', 'Control+Shift+B', 'Meta+Shift+B']) {
     });
     await page.mouse.move(point.x, point.y);
     await page.keyboard.press(gesture);
-    expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.text)))
+    expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.text)))
       .toEqual(gesture === 'Shift+B' ? ['甲乙', '甲乙丙丁'] : ['甲乙丙丁', '甲乙丙丁']);
   });
 }
@@ -330,5 +334,5 @@ test('expanded wrapping menu stays inside a short viewport and keeps custom wrap
   expect(fields[0].top).toBeCloseTo(fields[1].top, 0);
   expect(fields[1].left - fields[0].right).toBeGreaterThanOrEqual(8);
   await page.locator('#wrap-chars-right').press('Enter');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('【甲乙丙丁】');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('【甲乙丙丁】');
 });

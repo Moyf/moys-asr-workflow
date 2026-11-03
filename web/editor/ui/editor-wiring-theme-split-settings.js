@@ -84,13 +84,13 @@ if (MaweDom.mergeJoinTextWordInput) MaweDom.mergeJoinTextWordInput.addEventListe
 MaweSplitTrim.renderSplitTrimSymbolGrid();
 MaweSplitTrim.refreshSplitTrimExtraInput();
 MaweSplitTrim.splitTrimExtraInput?.addEventListener('change', () => {
-  const extras = MULTI_SUBTITLE_UTILS.parseSplitTrimSymbolInput(MaweSplitTrim.splitTrimExtraInput.value);
+  const extras = window.AsrEditorUtils.parseSplitTrimSymbolInput(MaweSplitTrim.splitTrimExtraInput.value);
   MaweSplitTrim.persistSplitTrimSymbols([...MaweSplitTrim.splitTrimPrimaryCheckedSet(), ...extras]);
   MaweSplitTrim.refreshSplitTrimExtraInput();
 });
 MaweSplitTrim.splitTrimSymbolsReset?.addEventListener('click', () => {
-  const defaults = MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(
-    [...MULTI_SUBTITLE_UTILS.DEFAULT_SPLIT_TRIM_SYMBOLS],
+  const defaults = window.AsrEditorUtils.setSplitTrimSymbols(
+    [...window.AsrEditorUtils.DEFAULT_SPLIT_TRIM_SYMBOLS],
   );
   MaweSettings.updateEditorSettings({ splitTrimSymbols: defaults });
   MaweSplitTrim.renderSplitTrimSymbolGrid();

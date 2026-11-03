@@ -94,23 +94,23 @@ test('unknown, malformed and ambiguous CueRefs fail closed without repairing inp
   assert.equal(store.getTrack('secondary:translation'), null);
 });
 
-test('production legacy getters proxy the same live project objects after load/restore', () => {
-  const { data, context } = createProjectHarness(readFixture('three-tracks'));
+test('production getters proxy the same live project objects after load/restore', () => {
+  const { data, context, h } = createProjectHarness(readFixture('three-tracks'));
   const legacy = context.MaweMultiSubtitleCore;
   const beforeReads = plain(data);
   const store = legacy.getTrackStore();
   store.tracks();
   assert.deepEqual(plain(data), beforeReads, 'pure accessor never normalizes/creates legacy state');
-  assert.equal(legacy.getActiveExtensionTrack(), data.multi_subtitle.tracks[0]);
-  assert.equal(legacy.getExtensionTrack('translation'), store.getTrack('secondary:translation').source);
+  assert.equal(legacy.getActiveExtensionTrack(), h.getExtensionTrack(data));
+  assert.equal(legacy.getExtensionTrack('translation'), store.getTrack('translation').source);
   assert.equal(context.MAWE.resolve('overlay-track').getOverlayTrack(), store.getTrack('overlay').source);
-  assert.equal(store.getSegments('main'), data.segments);
-  context.MaweBoot.DATA = readFixture('unbound-secondary');
+  assert.equal(store.getSegments('main'), h.getMainTrack(data).segments);
+  context.MaweBoot.DATA = h.importProject(readFixture('unbound-secondary')).project;
   const restored = legacy.getExtensionTrack('translation');
   assert.equal(legacy.getTrackStore(), store);
-  assert.equal(restored, store.getTrack('secondary:translation').source);
-  assert.equal(store.getSegments('main'), context.MaweBoot.DATA.segments);
-  assert.equal(context.MAWE.resolve('overlay-track').getOverlayTrack(), context.MaweBoot.DATA.overlay_track);
+  assert.equal(restored, store.getTrack('translation').source);
+  assert.equal(store.getSegments('main'), h.getMainTrack(context.MaweBoot.DATA).segments);
+  assert.equal(context.MAWE.resolve('overlay-track').getOverlayTrack(), h.getOverlayTrack(context.MaweBoot.DATA));
 });
 
 
@@ -125,26 +125,30 @@ test('JS and Python share the same explicit v1 track enumeration contract', () =
   }
 });
 
-test('ESM overlay getter and TrackStore follow lazy normalization and container replacement', () => {
-  const { data, context } = createProjectHarness(readFixture('three-tracks'));
+test('ESM overlay getter and TrackStore follow import and container replacement', () => {
+  const { context, h } = createProjectHarness(readFixture('three-tracks'));
   const core = context.MaweMultiSubtitleCore;
   const store = core.getTrackStore();
   const overlay = context.MAWE.resolve('overlay-track');
   const ref = { track_id: 'overlay', segment_id: 'replacement' };
-  data.multi_subtitle = structuredClone(data.multi_subtitle); // invalidate the legacy normalization guard
+  const legacy = readFixture('three-tracks');
   const incoming = { enabled: false, segments: [{ id: ref.segment_id, start: 0, end: 1000, text: 'replacement' }] };
-  data.overlay_track = incoming;
-  const beforeReads = plain(data);
+  legacy.overlay_track = incoming;
+  context.MaweBoot.DATA = legacy;
+  const beforeReads = plain(legacy);
   assert.equal(store.getTrack('overlay').source, incoming);
-  assert.deepEqual(plain(data), beforeReads, 'adapter reads leave legacy normalization to the load/getter boundary');
+  assert.deepEqual(plain(legacy), beforeReads, 'adapter reads do not modify the project');
+  const data = h.importProject(legacy).project;
+  context.MaweBoot.DATA = data;
   const normalized = overlay.getOverlayTrack();
-  assert.notEqual(normalized, incoming, 'existing normalization replaces the overlay container');
-  assert.equal(normalized, data.overlay_track);
+  assert.notEqual(normalized, incoming, 'import replaces the legacy overlay container');
+  assert.equal(normalized, h.getOverlayTrack(data));
   assert.equal(store.getTrack('overlay').source, normalized);
   assert.equal(store.resolve(ref).segment, normalized.segments[0]);
   assert.equal(store.resolve({ track_id: 'overlay', segment_id: 'shared' }), null);
-  data.overlay_track = incoming; // same project, already-normalized multi state
-  assert.equal(overlay.getOverlayTrack(), incoming);
-  assert.equal(store.getSegments('overlay'), incoming.segments);
-  assert.equal(store.resolve(ref).segment, incoming.segments[0]);
+  const replacement = { ...normalized, segments: [{ ...normalized.segments[0] }] };
+  data.tracks[data.tracks.indexOf(normalized)] = replacement;
+  assert.equal(overlay.getOverlayTrack(), replacement);
+  assert.equal(store.getSegments('overlay'), replacement.segments);
+  assert.equal(store.resolve(ref).segment, replacement.segments[0]);
 });

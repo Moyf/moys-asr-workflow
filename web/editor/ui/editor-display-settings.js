@@ -30,8 +30,8 @@ export function initMaweDisplaySettings() {
   // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
   // 分配首个表情包时由本函数根据最新数据直接恢复。
   const overlaySegments = getOverlayTrack()?.segments || [];
-  const projectHasStickers = MaweBoot.DATA.segments.some(segment => segment.sticker || segment.sticker_ref)
-    || overlaySegments.some(segment => segment.sticker || segment.sticker_ref);
+  const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some(segment => segment.sticker_group_id)
+    || overlaySegments.some(segment => segment.sticker_group_id);
   MaweCoreState.container.classList.toggle('hide-cue-sticker',
     !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
   );
@@ -204,12 +204,12 @@ export function initMaweDisplaySettings() {
   function updateMultiSubtitleUi() {
   // 「允许字幕重叠」开关常驻工具栏；勾选状态跟随用户意图（overlay.enabled），
   // 不要求叠加轨已有字幕，否则空轨道时勾选会被立即弹回。
-  if (window.MaweDomPanelsWiring.overlayTrackSeparator) window.MaweDomPanelsWiring.overlayTrackSeparator.hidden = MaweBoot.DATA.segments.length === 0;
+  if (window.MaweDomPanelsWiring.overlayTrackSeparator) window.MaweDomPanelsWiring.overlayTrackSeparator.hidden = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 0;
   if (window.MaweDomPanelsWiring.overlayTrackToggle) window.MaweDomPanelsWiring.overlayTrackToggle.checked = getOverlayTrack()?.enabled === true;
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const hasTrack = Boolean(track && Array.isArray(track.segments));
-  const enabled = hasTrack && MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
-  const hasMainSubtitle = MaweBoot.DATA.segments.length > 0;
+  const enabled = hasTrack && MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled === true;
+  const hasMainSubtitle = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0;
   const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
   const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
   syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
@@ -224,7 +224,7 @@ export function initMaweDisplaySettings() {
   }
   if (MaweDom.multiSubtitleToggle) {
     // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
-    MaweDom.multiSubtitleToggle.checked = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+    MaweDom.multiSubtitleToggle.checked = MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled === true;
     // 开启时创建空副轨；导入第二条字幕是可选操作。
     MaweDom.multiSubtitleToggle.disabled = false;
   }
@@ -234,11 +234,11 @@ export function initMaweDisplaySettings() {
   }
   if (MaweDom.multiSubtitleToggle) MaweDom.multiSubtitleToggle.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
   if (MaweDom.multiSubtitleDisplayMode) {
-    MaweDom.multiSubtitleDisplayMode.value = MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both';
+    MaweDom.multiSubtitleDisplayMode.value = MaweBoot.DATA.bilingual.display_mode || 'both';
     MaweDom.multiSubtitleDisplayMode.disabled = !enabled;
   }
   if (MaweDom.multiSubtitleMainLanguageMode) {
-    MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]);
+    MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]);
     MaweDom.multiSubtitleMainLanguageMode.hidden = false;
   }
   if (MaweDom.multiSubtitleExtensionLanguageMode) {
@@ -258,7 +258,7 @@ export function initMaweDisplaySettings() {
   // 波形工具栏的「双语 / 重叠」快捷开关：aria 状态与对应工程设置开关保持一致。
   const multiQuickToggle = document.getElementById('multi-subtitle-quick-toggle');
   if (multiQuickToggle) {
-    const multiEnabled = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+    const multiEnabled = MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled === true;
     multiQuickToggle.classList.toggle('active', multiEnabled);
     multiQuickToggle.setAttribute('aria-pressed', String(multiEnabled));
   }
@@ -285,8 +285,8 @@ export function initMaweDisplaySettings() {
     MaweDom.multiSubtitleShowTrackBadgesToggle.disabled = !enabled;
   }
   if (MaweDom.multiSubtitleSwapButton) {
-    const canSwap = enabled && (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).length === 1
-      && MaweBoot.DATA.segments.length > 0 && (track?.segments || []).length > 0;
+    const canSwap = enabled
+      && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0 && (track?.segments || []).length > 0;
     MaweDom.multiSubtitleSwapButton.disabled = !canSwap;
     MaweDom.multiSubtitleSwapButton.title = canSwap
       ? '交换主字幕和副字幕的文本、时间与绑定关系'
@@ -318,7 +318,7 @@ export function initMaweDisplaySettings() {
     }
   }
   MaweCoreState.container.classList.toggle('multi-subtitle-enabled', enabled);
-  MaweCoreState.container.dataset.multiDisplayMode = enabled ? (MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both') : 'main';
+  MaweCoreState.container.dataset.multiDisplayMode = enabled ? (MaweBoot.DATA.bilingual.display_mode || 'both') : 'main';
   // 多重字幕开合影响副字幕相关的 ASS 样式入口（设置页副字幕组、样式库
   // 副字幕槽位），同步刷新它们的可见性与选项。
   window.MaweAssManagerWiring.syncAssModeDependentControls();

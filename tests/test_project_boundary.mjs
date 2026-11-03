@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import vm from 'node:vm';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 
 const cases = JSON.parse(fs.readFileSync(new URL('./fixtures/project-boundary.json', import.meta.url), 'utf8'));
 const context = { window: {} };
-vm.runInNewContext(fs.readFileSync(new URL('../web/shared/utils/project-validation.js', import.meta.url), 'utf8'), context);
+loadEditorModule(context, 'shared/editor-utils.js');
 const boundary = context.window.MaweProjectValidation;
 const json = (v) => JSON.parse(JSON.stringify(v));
 const python = process.env.MAW_TEST_PYTHON || 'python';

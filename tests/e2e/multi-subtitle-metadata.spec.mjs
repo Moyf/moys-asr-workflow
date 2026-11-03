@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
-  generateWav, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
+  generateWav, getMainTrack, getExtensionTrack, materializeTrackSegments,
+  makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -32,8 +33,10 @@ async function saveAndReopen(page) {
   expect(saved).toMatchObject({ ok: true });
   const project = JSON.parse(readFileSync(projectPath, 'utf8'));
   await page.reload();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map(s => s.id)))
-    .toEqual(project.segments.map(s => s.id));
+  expect(project.schema).toBe('moy.asr.project.v2');
+  expect(project.segments).toBeUndefined();
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.id)))
+    .toEqual(getMainTrack(project).segments.map(s => s.id));
   return project;
 }
 
@@ -124,14 +127,14 @@ test('swapping once and twice preserves speaker and discarded cues through save 
       { id: `${prefix}-discarded`, start: 1000, end: 2000, text: `${prefix} discarded`, speaker: `${prefix}-speaker`, disabled: true, assOverride: { pos: { x: 123, y: 456 } }, vendor: { nested: ['keep'] }, sticker: { name: prefix, filename: `${prefix}.png`, start: 1000, end: 2000 }, color: { name: prefix === 'main' ? 'blue' : 'yellow', value: '#123456', start: 1000, end: 2000 } },
       { id: `${prefix}-enabled`, start: 3000, end: 4000, text: `${prefix} enabled`, speaker: `${prefix}-other`, disabled: false },
     ];
-    delete MaweBoot.DATA.subtitle_groups;
-    MaweBoot.DATA.schema = 'moy.asr.project.v1';
-    MaweBoot.DATA.segments = makeSegments('main');
-    MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true,
-      display_mode: 'both', tracks: [{ id: 'ext', name: '译文', segments: makeSegments('ext') }],
-      bindings: [0, 1].map(i => window.AsrEditorUtils.buildSubtitleBinding(
-        MaweBoot.DATA.segments[i], makeSegments('ext')[i], 'ext', `binding-${i}`)),
-    };
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    main.segments = makeSegments('main');
+    MaweBoot.DATA.tracks = [main];
+    MaweBoot.DATA.bilingual = { display_mode: 'both' };
+    const extension = AsrEditorUtils.ensureExtensionTrack(MaweBoot.DATA,
+      { id: 'ext', name: '译文', enabled: true, segments: makeSegments('ext') });
+    MaweBoot.DATA.bindings = [0, 1].map(i => AsrEditorUtils.buildSubtitleBinding(
+      main.segments[i], extension.segments[i], extension.id, `binding-${i}`, main.id));
     MaweSelection.clearSelection({ silent: true });
     MaweCuePanel.renderAll();
     MaweDisplaySettings.updateMultiSubtitleUi();
@@ -142,10 +145,10 @@ test('swapping once and twice preserves speaker and discarded cues through save 
     await expect(page.locator('#multi-subtitle-swap')).toBeVisible();
     await page.locator('#multi-subtitle-swap').click();
     const expectedMain = round === 0 ? 'ext' : 'main';
-    await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].id))
+    await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].id))
       .toBe(`${expectedMain}-discarded`);
     const saved = await saveAndReopen(page);
-    for (const segments of [saved.segments, saved.multi_subtitle.tracks[0].segments]) {
+    for (const segments of [getMainTrack(saved).segments, getExtensionTrack(saved).segments]) {
       const prefix = segments[0].id.split('-')[0];
       expect(segments[0].assOverride).toEqual({ pos: { x: 123, y: 456 } });
       expect(segments[0].vendor).toEqual({ nested: ['keep'] });
@@ -155,13 +158,13 @@ test('swapping once and twice preserves speaker and discarded cues through save 
         .toEqual([[`${prefix}-speaker`, true], [`${prefix}-other`, false]]);
     }
     const reopened = await page.evaluate(() => ({
-      main: MaweBoot.DATA.segments.map(s => [s.speaker, Boolean(s.disabled)]),
-      ext: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(s => [s.speaker, Boolean(s.disabled)]),
-      mainSrt: window.AsrEditorUtils.buildSrtPayload(MaweBoot.DATA.segments),
-      extSrt: window.AsrEditorUtils.buildSrtPayload(MaweBoot.DATA.multi_subtitle.tracks[0].segments),
+      main: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => [s.speaker, Boolean(s.disabled)]),
+      ext: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map(s => [s.speaker, Boolean(s.disabled)]),
+      mainSrt: AsrEditorUtils.buildSrtPayload(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments),
+      extSrt: AsrEditorUtils.buildSrtPayload(AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments),
     }));
-    expect(reopened.main).toEqual(saved.segments.map(s => [s.speaker, Boolean(s.disabled)]));
-    expect(reopened.ext).toEqual(saved.multi_subtitle.tracks[0].segments.map(s => [s.speaker, Boolean(s.disabled)]));
+    expect(reopened.main).toEqual(getMainTrack(saved).segments.map(s => [s.speaker, Boolean(s.disabled)]));
+    expect(reopened.ext).toEqual(getExtensionTrack(saved).segments.map(s => [s.speaker, Boolean(s.disabled)]));
     expect(reopened.mainSrt).not.toContain('discarded');
     expect(reopened.extSrt).not.toContain('discarded');
     expect(reopened.mainSrt).toContain('enabled');
@@ -188,14 +191,17 @@ for (const path of ['extension', 'linked']) {
         const source = segments[targetIndex];
         const main = { id: 'main-bound', start: source.start, end: source.end, text: '一二三四', speaker: 'main-speaker',
           color: { name: 'yellow', value: '#ffff00', start: source.start, end: source.end } };
-        MaweBoot.DATA.segments = [main];
-        MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
-          tracks: [{ id: 'ext', name: '译文', split_mode: 'continuous', segments }],
-          bindings: [window.AsrEditorUtils.buildSubtitleBinding(main, source, 'ext', 'bound')],
-        };
+        const imported = AsrEditorUtils.importProject({ segments: [main],
+          multi_subtitle: { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+            tracks: [{ id: 'ext', name: '译文', split_mode: 'continuous', segments }],
+            bindings: [{ id: 'bound', track_id: 'ext', main_segment_ids: [main.id],
+              extension_segment_ids: [source.id], start_offset_ms: 0, end_offset_ms: 0 }] },
+        }).project;
+        for (const field of ['tracks', 'bilingual', 'bindings', 'subtitle_groups']) MaweBoot.DATA[field] = imported[field];
         MaweSelection.clearSelection({ silent: true });
         MaweCuePanel.renderAll();
-        return segments.map(s => ({ id: s.id, speaker: s.speaker, color: s.color || null, color_ref: s.color_ref || null }));
+        return AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, 'ext')
+          .map(s => ({ id: s.id, speaker: s.speaker, color: s.color || null, color_ref: s.color_ref || null }));
       }, targetIndex);
       const cutMs = 1900 + targetIndex * 2000;
       await page.evaluate(({ path, targetIndex, cutMs }) => {
@@ -204,7 +210,7 @@ for (const path of ['extension', 'linked']) {
       }, { path, targetIndex, cutMs });
       await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
       await page.locator('#multi-subtitle-split-confirm').click();
-      const after = await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments);
+      const after = await page.evaluate(() => AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, 'ext'));
       expect(after).toHaveLength(7);
       expect(after[targetIndex + 1].color_ref).toEqual(targetIndex === 1
         ? { name: 'red', headIdx: 1 } : { name: 'blue', headIdx: 2 });
@@ -214,20 +220,20 @@ for (const path of ['extension', 'linked']) {
         if (segment.color_ref) expect(after[segment.color_ref.headIdx]?.color?.name).toBe(segment.color_ref.name);
       }
       if (path === 'linked') {
-        expect(await page.evaluate(() => MaweBoot.DATA.segments[1].color_ref)).toEqual({ name: 'yellow', headIdx: 0 });
+        expect(await page.evaluate(() => AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA,
+          AsrEditorUtils.getMainTrack(MaweBoot.DATA).id)[1].color_ref)).toEqual({ name: 'yellow', headIdx: 0 });
       }
       await page.locator('#undo-btn').click();
-      expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments
+      expect(await page.evaluate(() => AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, 'ext')
         .map(s => ({ id: s.id, speaker: s.speaker, color: s.color || null, color_ref: s.color_ref || null }))))
         .toEqual(before);
       await page.locator('#redo-btn').click();
       const saved = await saveAndReopen(page);
-      expect(saved.multi_subtitle.tracks[0].segments.map(s => s.color_group_id || null))
-        .toEqual(after.map(s => s.color_group_id || null));
-      expect(JSON.stringify(saved)).not.toContain('headIdx');
-      expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(s => s.color_ref || null)))
+      expect(materializeTrackSegments(saved, getExtensionTrack(saved).id).map(s => s.color_ref || null))
         .toEqual(after.map(s => s.color_ref || null));
-      expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(s => s.speaker)))
+      expect(await page.evaluate(() => AsrEditorUtils.materializeTrackSegments(MaweBoot.DATA, 'ext').map(s => s.color_ref || null)))
+        .toEqual(after.map(s => s.color_ref || null));
+      expect(await page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map(s => s.speaker)))
         .toEqual(Array(7).fill('ext-speaker'));
     });
   }

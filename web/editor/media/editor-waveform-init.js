@@ -29,7 +29,7 @@ export function initMaweWaveformInit() {
       ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
       : track === 'overlay'
         ? (overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [])
-        : MaweBoot.DATA.segments,
+        : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
     getExtensionSegments: (trackId = null) => MaweMultiSubtitleCore.getExtensionTrack(trackId)?.segments || [],
     getCrossTrackSnapTargets: (track = 'main', excludedSegments = new Set()) => {
       if (!MaweSettings.EDITOR_SETTINGS.crossTrackSnap) return [];
@@ -40,7 +40,7 @@ export function initMaweWaveformInit() {
         .map((timeMs) => Number(timeMs));
       // 叠加轨与主轨互为吸附参照；多重字幕开启时副轨边界同样参与。
       if (track === 'overlay') {
-        const targets = collectEdges(MaweBoot.DATA.segments);
+        const targets = collectEdges(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
         if (MaweMultiSubtitleCore.multiSubtitleVisible()) targets.push(...collectEdges(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments));
         return targets;
       }
@@ -50,7 +50,7 @@ export function initMaweWaveformInit() {
           : [];
       }
       const otherSegments = track === 'extension'
-        ? MaweBoot.DATA.segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
+        ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
       const targets = collectEdges(otherSegments);
       if (track === 'main' && overlayTrackVisible()) targets.push(...collectEdges(getOverlayTrack()?.segments));
       return targets;
@@ -216,7 +216,7 @@ export function initMaweWaveformInit() {
       let linkedChanged = false;
       if (kind === 'resize-boundary-pointer' && track === 'main' && !independent) {
         const targetIndex = Number.isInteger(details?.targetIndex) ? details.targetIndex : idxs[0];
-        const main = MaweBoot.DATA.segments[targetIndex];
+        const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[targetIndex];
         const original = details?.original;
         if (main && original) {
           linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(main, {
@@ -233,7 +233,7 @@ export function initMaweWaveformInit() {
       if (MaweMultiSubtitleCore.multiSubtitleVisible() && editedTracks.some((entry) => entry.track !== 'overlay')) MaweMultiSubtitleCore.sortExtensionTrackSegments(MaweMultiSubtitleCore.getActiveExtensionTrack());
       MaweMultiSubtitleCore.syncBindingOffsets();
       const mainIndices = editedTracks.find((entry) => entry.track === 'main')?.indices || [];
-      MaweMultiSubtitleCore.markMainSegmentsDirty(mainIndices.map((idx) => MaweBoot.DATA.segments[idx]).filter(Boolean));
+      MaweMultiSubtitleCore.markMainSegmentsDirty(mainIndices.map((idx) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]).filter(Boolean));
       const overlayIndices = editedTracks.find((entry) => entry.track === 'overlay')?.indices;
       if (overlayIndices) {
         const overlay = getOverlayTrack();

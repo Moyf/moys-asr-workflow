@@ -48,9 +48,9 @@ test('Shift drag stays stable when its main-overlapping target is occupied on th
   }
   await page.mouse.up();
   await page.keyboard.up('Shift');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].end)).toBe(5000);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end)).toBe(5000);
   await page.keyboard.press('ControlOrMeta+z');
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].start)).toBe(1000);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start)).toBe(1000);
 });
 
 test('point markers and drag previews stay 8px across zoom; regions stop audition at their end', async ({ page }) => {
@@ -142,7 +142,7 @@ test('occupied cue creation suggests overlap only while overlap is disabled', as
   for (const enabled of [false, true]) {
     await page.evaluate(enabled => {
       document.getElementById('hint-stack')?.replaceChildren();
-      MaweBoot.DATA.overlay_track.enabled = enabled;
+      AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = enabled;
       MaweCoreState.waveformEditor.options.onCueCreateRejected('occupied');
       MaweAddCue.addCueRangeFromWaveform(1100, 1600, 0, 0, 'main');
     }, enabled);

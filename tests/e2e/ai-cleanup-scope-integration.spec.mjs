@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import {
+import { getMainTrack, getOverlayTrack, getExtensionTrack,
   cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
   generateWav, makeTempDir, startServer,
 } from './helpers.mjs';
@@ -102,8 +102,8 @@ async function editCueThroughWordTiming(page, replacement) {
   await expect(editor).toHaveValue(INITIAL_TEXT);
   await editor.fill(replacement);
   await editor.blur();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe(replacement);
-  return page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments[0])));
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe(replacement);
+  return page.evaluate(() => JSON.parse(JSON.stringify(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0])));
 }
 
 async function saveAndReload(page) {
@@ -132,8 +132,8 @@ async function renderOutputs(page, timeMs) {
     MaweSettings.EDITOR_SETTINGS.assMode = false;
     return {
       ordinary, gapRemoved, ass, css, canvas,
-      overlay: MaweBoot.DATA.overlay_track.segments[0].text,
-      extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].text,
+      overlay: AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments[0].text,
+      extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments[0].text,
     };
   }, timeMs);
 }
@@ -161,7 +161,7 @@ test('S3-T01 #220 edit of a scoped item revokes stale clipping on save and reope
   expect(edited.items.map((item) => item.text)).toEqual(['deleted ', 'substantially-rewritten ', 'kept']);
 
   const saved = await saveAndReload(page);
-  expect(saved.segments[0].items.map((item) => item.text))
+  expect(getMainTrack(saved).segments[0].items.map((item) => item.text))
     .toEqual(['deleted ', 'substantially-rewritten ', 'kept']);
   expect(saved.gap_remove.provenance.sources.ai_cleanup[0]).not.toHaveProperty('cleanup_scope');
 
@@ -178,7 +178,7 @@ test('S3-T02 editing an unscoped item keeps the scope until the user restores it
     .toEqual(['deleted ', 'words ', 'retained-expanded']);
 
   const saved = await saveAndReload(page);
-  expect(saved.segments[0].items.map((item) => item.text))
+  expect(getMainTrack(saved).segments[0].items.map((item) => item.text))
     .toEqual(['deleted ', 'words ', 'retained-expanded']);
   expect(saved.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope)
     .toEqual({ segment_id: 'main-001', item_start: 0, item_end: 2, text: 'deleted words ' });
@@ -218,9 +218,9 @@ test('S3-T02 editing an unscoped item keeps the scope until the user restores it
 
 async function trackRanges(page) {
   return page.evaluate(() => [
-    MaweBoot.DATA.segments,
-    MaweBoot.DATA.overlay_track.segments,
-    MaweBoot.DATA.multi_subtitle.tracks[0].segments,
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments,
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments,
   ].map((segments) => segments.map((segment) => ({
     id: segment.id,
     start: segment.start,
@@ -284,8 +284,8 @@ test('S3-T03 multi-track drag fail-opens the moved scope and saves independent t
 
   const saved = await saveAndReload(page);
   expect(saved.gap_remove.provenance.sources.ai_cleanup[0]).not.toHaveProperty('cleanup_scope');
-  expect(saved.overlay_track.segments[0].text).toBe('overlay-only');
-  expect(saved.multi_subtitle.tracks[0].segments.map((segment) => segment.text))
+  expect(getOverlayTrack(saved).segments[0].text).toBe('overlay-only');
+  expect(getExtensionTrack(saved).segments.map((segment) => segment.text))
     .toEqual(['extension-only', 'neighbor-only']);
   const reopened = await renderOutputs(page, 2500);
   expectAllMainOutputs(reopened, 'deleted', 'words', 'kept');

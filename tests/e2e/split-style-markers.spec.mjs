@@ -31,11 +31,15 @@ async function seed(page, role = 'main', text = '**甲乙**') {
   await page.evaluate(({ role, text }) => {
     const cue = (id) => ({ id, start: 1000, end: 5000, text,
       items: [{ text, start: 1000, end: 5000 }] });
-    MaweBoot.DATA.segments = [cue('a')];
-    MaweBoot.DATA.overlay_track = { enabled: true, segments: role === 'overlay' ? [cue('o')] : [] };
-    MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: ['extension', 'linked'].includes(role),
-      display_mode: 'both', tracks: [{ id: 'e', role: 'extension', name: '译文', split_mode: 'continuous', segments: [cue('b')] }],
-      bindings: role === 'linked' ? [{ id: 'bind', track_id: 'e', main_segment_ids: ['a'], extension_segment_ids: ['b'] }] : [] };
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    main.segments = [cue('a')];
+    MaweBoot.DATA.tracks = [main];
+    MaweBoot.DATA.bilingual = { display_mode: 'both' };
+    AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA, { enabled: true, segments: role === 'overlay' ? [cue('o')] : [] });
+    const extension = AsrEditorUtils.ensureExtensionTrack(MaweBoot.DATA, { id: 'e', name: '译文',
+      enabled: ['extension', 'linked'].includes(role), split_mode: 'continuous', segments: [cue('b')] });
+    MaweBoot.DATA.bindings = role === 'linked'
+      ? [AsrEditorUtils.buildSubtitleBinding(main.segments[0], extension.segments[0], extension.id, 'bind', main.id)] : [];
     MaweMultiSubtitleCore.normalizeMultiSubtitleState();
     MaweSelection.clearSelection({ silent: true });
     MaweCuePanel.renderAll({ waveform: 'full' });
@@ -65,12 +69,12 @@ for (const role of ['main', 'linked']) {
       }
       await page.locator('#multi-subtitle-split-confirm').click();
       expect(await page.evaluate((role) => {
-        const tracks = [MaweBoot.DATA.segments];
-        if (role === 'linked') tracks.push(MaweBoot.DATA.multi_subtitle.tracks[0].segments);
+        const tracks = [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments];
+        if (role === 'linked') tracks.push(AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments);
         return tracks.map(segments => segments.map(segment => segment.text));
       }, role)).toEqual(expected);
       await page.locator('#undo-btn').click();
-      expect(await page.evaluate(() => MaweBoot.DATA.segments.map(segment => segment.text)))
+      expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(segment => segment.text)))
         .toEqual(['!!重新开始!!']);
     });
   }
@@ -95,10 +99,10 @@ for (const role of ['main', 'extension', 'overlay', 'linked']) {
     await expect(page.locator('#multi-subtitle-split-preview')).toContainText('**乙**');
     await page.locator('#multi-subtitle-split-confirm').click();
     const result = await page.evaluate((role) => {
-      const tracks = role === 'overlay' ? [MaweBoot.DATA.overlay_track.segments]
-        : role === 'extension' ? [MaweBoot.DATA.multi_subtitle.tracks[0].segments]
-          : role === 'linked' ? [MaweBoot.DATA.segments, MaweBoot.DATA.multi_subtitle.tracks[0].segments]
-            : [MaweBoot.DATA.segments];
+      const tracks = role === 'overlay' ? [AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments]
+        : role === 'extension' ? [AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments]
+          : role === 'linked' ? [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments]
+            : [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments];
       return tracks.map(segments => segments.map(({ text, start, end, items }) => ({ text, start, end, items })));
     }, role);
     for (const segments of result) {
@@ -109,8 +113,8 @@ for (const role of ['main', 'extension', 'overlay', 'linked']) {
       expect(segments[1].items[0].start).toBe(3000);
     }
     await page.locator('#undo-btn').click();
-    const restored = await page.evaluate((role) => (role === 'overlay' ? MaweBoot.DATA.overlay_track.segments
-      : role === 'extension' ? MaweBoot.DATA.multi_subtitle.tracks[0].segments : MaweBoot.DATA.segments), role);
+    const restored = await page.evaluate((role) => (role === 'overlay' ? AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments
+      : role === 'extension' ? AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments : AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments), role);
     expect(restored.map(s => s.text)).toEqual(['**甲乙**']);
     expect(restored[0].items.map(({ text, start, end }) => ({ text, start, end })))
       .toEqual([{ text: '**甲乙**', start: 1000, end: 5000 }]);
@@ -120,7 +124,7 @@ for (const role of ['main', 'extension', 'overlay', 'linked']) {
 for (const includeMarkers of [false, true]) {
   test(`caret inside opening marker moves it to its paired side, items include markers=${includeMarkers}`, async ({ page }) => {
     await page.evaluate((includeMarkers) => {
-      MaweBoot.DATA.segments = [{ id: 'a', start: 1000, end: 4000, text: '甲++乙丙++',
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'a', start: 1000, end: 4000, text: '甲++乙丙++',
         items: [{ text: includeMarkers ? '甲++乙丙++' : '甲乙丙', start: 1000, end: 4000 }] }];
       MaweCuePanel.renderAll({ waveform: 'full' });
     }, includeMarkers);
@@ -137,7 +141,7 @@ for (const includeMarkers of [false, true]) {
       const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
     });
     await page.keyboard.press('Enter');
-    const segments = await page.evaluate(() => MaweBoot.DATA.segments);
+    const segments = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
     expect(segments.map(s => s.text)).toEqual(['甲', '++乙丙++']);
     expect(segments.map(s => [s.start, s.end])).toEqual([[1000, 2000], [2000, 4000]]);
     expect(segments.flatMap(s => s.items).map(i => i.text).join('')).toBe(includeMarkers ? '甲++乙丙++' : '甲乙丙');
@@ -147,7 +151,8 @@ for (const includeMarkers of [false, true]) {
 for (const includeMarkers of [false, true]) {
   test(`same-style nested split keeps actual ASS runs emphasized, items include markers=${includeMarkers}`, async ({ page }) => {
     await page.evaluate((includeMarkers) => {
-      MaweBoot.DATA.segments = [{ id: 'nested', start: 1000, end: 5000, text: '**a*bc*d**',
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).split_mode_override = 'continuous';
+      AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'nested', start: 1000, end: 5000, text: '**a*bc*d**',
         items: [{ text: includeMarkers ? '**a*bc*d**' : 'abcd', start: 1000, end: 5000 }] }];
       MaweCuePanel.renderAll({ waveform: 'full' });
       MaweSplitCore.openMainWaveformSplitModal(0, 3000);
@@ -157,8 +162,8 @@ for (const includeMarkers of [false, true]) {
     await expect(page.locator('#multi-subtitle-split-preview')).toContainText('**cd**');
     await page.locator('#multi-subtitle-split-confirm').click();
     const output = await page.evaluate(() => ({
-      segments: MaweBoot.DATA.segments,
-      runs: MaweBoot.DATA.segments.flatMap(segment => window.AsrEditorUtils.assInlineStyleRuns(
+      segments: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+      runs: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.flatMap(segment => window.AsrEditorUtils.assInlineStyleRuns(
         segment.text, MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax, MaweSettings.EDITOR_SETTINGS)),
     }));
     expect(output.runs.map(run => run.text).join('')).toBe('abcd');
@@ -171,12 +176,12 @@ for (const includeMarkers of [false, true]) {
 
 test('fade splits into two complete sentence effects without inventing timed words', async ({ page }) => {
   await page.evaluate(() => {
-    MaweBoot.DATA.segments = [{ id: 'a', start: 1000, end: 5000, text: '>>甲乙<<',
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'a', start: 1000, end: 5000, text: '>>甲乙<<',
       items: [{ text: '甲', start: 1000, end: 3000 }, { text: '乙', start: 3000, end: 5000 }] }];
     MaweCuePanel.renderAll({ waveform: 'full' });
     MaweSplitContext.splitFromContextMenu(0, 10, 10, 3000);
   });
-  const segments = await page.evaluate(() => MaweBoot.DATA.segments);
+  const segments = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
   expect(segments.map(s => s.text)).toEqual(['>>甲<<', '>>乙<<']);
   expect(segments.map(s => [s.start, s.end])).toEqual([[1000, 3000], [3000, 5000]]);
   expect(segments.flatMap(s => s.items).map(({ text, start, end }) => ({ text, start, end })))
@@ -185,7 +190,7 @@ test('fade splits into two complete sentence effects without inventing timed wor
 
 test('ordered style toggles, custom wrapping, scope changes and options preserve expanded previews', async ({ page }, testInfo) => {
   await page.evaluate(() => {
-    MaweBoot.DATA.segments = [{ id: 'a', start: 1000, end: 3000, text: ' 甲 ' },
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'a', start: 1000, end: 3000, text: ' 甲 ' },
       { id: 'b', start: 3000, end: 5000, text: ' 乙 ' }];
     MaweCuePanel.renderAll({ waveform: 'full' });
     MaweSelection.selectOnly(0);
@@ -214,7 +219,7 @@ test('ordered style toggles, custom wrapping, scope changes and options preserve
   await expect(page.locator('#text-process-preview details[open]')).toHaveCount(2);
   await page.locator('#text-process-modal .modal').screenshot({ path: testInfo.outputPath('text-process-multistyle.png') });
   await page.locator('#text-process-confirm').click();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.text))).toEqual(['++【**甲**】++', '++【**乙**】++']);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.text))).toEqual(['++【**甲**】++', '++【**乙**】++']);
   await page.locator('#undo-btn').click();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.text))).toEqual([' 甲 ', ' 乙 ']);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.text))).toEqual([' 甲 ', ' 乙 ']);
 });

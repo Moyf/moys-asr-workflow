@@ -28,6 +28,7 @@ from maw.asr.qwen import (
 )
 from maw.asr.segmentation import build_segments_from_api_sentences
 from maw.qwen_audio import parse_qwen_audio_hotwords
+from tests.track_helpers import main_segments, main_track
 
 
 class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
@@ -77,10 +78,10 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
             }],
         })
 
-        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(main_track(result)['timestamp_granularity'], "segment")
         self.assertEqual(len(result["items"]), 2)
-        self.assertEqual(result["segments"][0]["items"], result["items"])
-        self.assertNotIn("items", result["segments"][1])
+        self.assertEqual(main_segments(result)[0]["items"], result["items"])
+        self.assertNotIn("items", main_segments(result)[1])
 
     def test_qwen_standard_sentence_range_contains_word_items(self) -> None:
         result = parse_transcription_result({
@@ -106,7 +107,7 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
             }],
         })
 
-        sentence = result["segments"][0]
+        sentence = main_segments(result)[0]
         self.assertEqual((sentence["start"], sentence["end"]), (100, 900))
         self.assertTrue(
             all(sentence["start"] <= item["start"] < item["end"] <= sentence["end"]
@@ -131,7 +132,7 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
         })
 
         self.assertEqual(result["text"], "你好。")
-        self.assertEqual(result["timestamp_granularity"], "word")
+        self.assertEqual(main_track(result)['timestamp_granularity'], "word")
 
     @mock.patch("maw.asr.qwen.requests.post")
     def test_submit_uses_qwen3_file_url_contract(self, post: mock.Mock) -> None:
@@ -423,9 +424,9 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
             }
         )
 
-        self.assertEqual(result["language"], "zh")
+        self.assertEqual(main_track(result)['language'], "zh")
         self.assertEqual(result["items"], [])
-        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(main_track(result)['timestamp_granularity'], "segment")
         self.assertEqual(result["sentences"], [{
             "text": "你好。",
             "start": 100,
@@ -477,7 +478,7 @@ class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
             }
         )
 
-        self.assertEqual(result["timestamp_granularity"], "segment")
+        self.assertEqual(main_track(result)['timestamp_granularity'], "segment")
         self.assertEqual(len(result["items"]), 2)
         self.assertEqual(result["sentences"][0]["items"], result["items"])
         self.assertNotIn("items", result["sentences"][1])

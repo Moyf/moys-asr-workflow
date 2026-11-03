@@ -1,0 +1,72 @@
+{
+  "schema": "moy.asr.project.v2",
+  "tracks": [
+    {
+      "id": "main",
+      "role": "main",
+      "name": "主字幕",
+      "enabled": true,
+      "segments": [
+        {
+          "id": "main-cue-1",
+          "start": 0,
+          "end": 100,
+          "text": "generated"
+        },
+        {
+          "id": "main-001",
+          "start": 100,
+          "end": 200,
+          "text": "reserved"
+        }
+      ]
+    },
+    {
+      "id": "extension-1",
+      "role": "secondary",
+      "name": "副字幕",
+      "enabled": true,
+      "split_mode": "word",
+      "segments": [
+        {
+          "id": "extension-1-cue-1",
+          "start": 0,
+          "end": 100,
+          "text": "translation"
+        }
+      ]
+    },
+    {
+      "id": "extension-001",
+      "role": "secondary",
+      "name": "副字幕",
+      "enabled": true,
+      "split_mode": "word",
+      "segments": []
+    }
+  ],
+  "bilingual": {
+    "active_track_id": "extension-1",
+    "display_mode": "both"
+  },
+  "bindings": [
+    {
+      "id": "binding-1",
+      "start_offset_ms": 0,
+      "end_offset_ms": 0,
+      "source": {
+        "track_id": "main",
+        "segment_id": "main-cue-1"
+      },
+      "target": {
+        "track_id": "extension-1",
+        "segment_id": "extension-1-cue-1"
+      }
+    }
+  ],
+  "subtitle_groups": {
+    "next_id": 1,
+    "color": [],
+    "sticker": []
+  }
+}

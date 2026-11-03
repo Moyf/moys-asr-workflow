@@ -105,6 +105,8 @@ export function createEditorState(project) {
     timedTextEditViewDirty: false, audioProcessingDirty: false };
   // 显式访问器（defineProperties 的动态键 TS 推断不出）：写入 true 触发 markProjectDirty()。
   const changes = {
+    get timedTextEditViewDirty() { return changesFlags.timedTextEditViewDirty; },
+    set timedTextEditViewDirty(value) { changesFlags.timedTextEditViewDirty = Boolean(value); if (changesFlags.timedTextEditViewDirty) markProjectDirty(); },
     get audioProcessingDirty() { return changesFlags.audioProcessingDirty; },
     set audioProcessingDirty(value) { changesFlags.audioProcessingDirty = Boolean(value); if (changesFlags.audioProcessingDirty) markProjectDirty(); },
     get projectImportDirty() { return changesFlags.projectImportDirty; },
@@ -133,10 +135,7 @@ export function createEditorState(project) {
       delete track._dirty;
       for (const segment of track.segments || []) delete segment._dirty;
     };
-    clear(out);
-    clear(out.multi_subtitle);
-    for (const track of out.multi_subtitle?.tracks || []) clear(track);
-    clear(out.overlay_track);
+    for (const track of out.tracks || []) clear(track);
     return out;
   }
   function projectFingerprint(value = snapshotReader()) {
@@ -149,12 +148,10 @@ export function createEditorState(project) {
   let savedProject = projectFingerprint();
   function noteSavedSegments(fingerprint = projectFingerprint()) { savedProject = fingerprint; }
   function subtitleTracks() {
-    return [['main', project], ['overlay', project.overlay_track],
-      ...(project.multi_subtitle?.tracks || []).map(track => ['extension:' + track.id, track])];
+    return (project.tracks || []).map(track => [track.id, track]);
   }
   function clearSubtitleDirtyFlags() {
     delete project._dirty;
-    if (project.multi_subtitle) delete project.multi_subtitle._dirty;
     for (const [, track] of subtitleTracks()) {
       if (!track) continue;
       delete track._dirty;

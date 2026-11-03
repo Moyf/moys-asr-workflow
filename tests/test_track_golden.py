@@ -26,6 +26,12 @@ class TrackGoldenTests(unittest.TestCase):
                 before = copy.deepcopy(source)
                 expected = json.loads(path.with_name(path.name.replace('.input.', '.python.')).read_text())
                 actual = python_outputs(source)
-                self.assertEqual(actual, expected)
+                legacy_project = copy.deepcopy(expected['project'])
+                for index, segment in enumerate(source.get('segments', [])):
+                    if 'id' not in segment:
+                        legacy_project['segments'][index].pop('id', None)
+                self.assertEqual(actual['project'], normalize_project(legacy_project))
+                self.assertEqual(actual['ass'], expected['ass'])
+                self.assertEqual(actual['srt'], expected['srt'])
                 self.assertEqual(source, before)
-                self.assertEqual(python_outputs(actual['project']), expected)
+                self.assertEqual(python_outputs(actual['project']), actual)
