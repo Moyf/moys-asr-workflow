@@ -96,6 +96,16 @@ class ThumbnailCacheTests(unittest.TestCase):
         self.assertFalse(c.base_path(self.media).exists(), "限长版不得占用全片 sidecar 路径")
         self.assertEqual(c.load_base(self.media)["duration_limit_ms"], 12000)
 
+    def test_limited_coverage_uses_media_origin_with_delayed_video(self):
+        self.video = VideoInfo(1, 40000, 0, 10000)
+        c.probe_video.return_value = self.video
+        manifest = self.build(duration_limit_sec=12)
+        self.assertEqual(manifest["coverage"], [[10000, 12000]])
+        self.assertEqual(c.load_base(self.media)["coverage"], [[10000, 12000]])
+        before_video = self.build(duration_limit_sec=8)
+        self.assertTrue(before_video["base_complete"])
+        self.assertEqual(before_video["coverage"], [])
+
     def test_full_media_cache_is_neither_reused_nor_replaced_by_limited_request(self):
         """缓存隔离：全片缓存不得冒充限长命中，限长版也不得覆盖全片 sidecar。"""
         full = self.build()
@@ -162,6 +172,29 @@ class ThumbnailCacheTests(unittest.TestCase):
         candidates = [str(path) for path in c.base_candidates(self.media)]
         self.assertIn(str(self.root / "video.mkv.limit-12s.mothumbs"), candidates)
         self.assertIn(str(global_dir / (key + ".limit-30s.mothumbs")), candidates)
+
+    def test_limited_partial_sidecar_remains_discoverable_after_restart(self):
+        self.video = VideoInfo(1, 400000, 0)
+        c.probe_video.return_value = self.video
+        packs = 0
+        def pack(frames, **kwargs):
+            nonlocal packs
+            packs += 1
+            if packs == 2:
+                raise ThumbnailCancelled("interrupted while packing")
+            return jpeg(1280, ((len(frames) + 7) // 8) * 90)
+        with self.assertRaises(ThumbnailCancelled):
+            self.build(duration_limit_sec=200, batch_pack=pack)
+        limited = self.root / "video.mkv.limit-200s.mothumbs"
+        self.assertFalse(limited.exists())
+        self.assertTrue(limited.with_name(limited.name + ".partial").exists())
+        c._base_memo.clear()
+        c._session_bases.clear()
+        loaded = c.load_base(self.media)
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded["duration_limit_ms"], 200000)
+        self.assertGreater(loaded["valid_count"], 0)
+        self.assertFalse(loaded["base_complete"])
 
     def test_same_millisecond_same_size_source_replacement_invalidates_all_caches(self):
         stat = self.media.stat()

@@ -695,16 +695,9 @@ class ThumbnailJobManager:
             if not cache.can_prefetch(path):
                 targets = [point for point in targets if priority[point][0] < 2]
             hits = cache.lookup_frames(path, targets, stream_index=self.info.stream_index)
-            # A limited base (quick-test build) bounds on-demand refills too:
-            # frames beyond its range never decode here, so the band stays
-            # aligned with the transcribed range instead of spinning forever
-            # on cells the cache deliberately does not cover.
-            base = cache.load_base(path)
-            decode_limit_ms = base.get("duration_limit_ms") if base else None
             # Cache-only views keep their display targets but never join a decode batch.
             missing = [point for point, hit in zip(targets, hits) if point in decoding
-                and (hit is None or hit.status == "preview") and self.failures.get(point, 0) < 2
-                and (decode_limit_ms is None or point < decode_limit_ms)]
+                and (hit is None or hit.status == "preview") and self.failures.get(point, 0) < 2]
             for lease, item in self.leases.items():
                 self._publish_lease(lease, item,
                     missing=item.get("decode", True) and any(point in missing for point in item["targets"]))

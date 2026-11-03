@@ -225,8 +225,8 @@ class ThumbnailDemandTests(unittest.TestCase):
             self.assertEqual(result,[fresh])
             decode.assert_called_once()
 
-    def test_visible_decode_demand_stays_within_cached_duration_limit(self):
-        """限长缓存（快速测试版）在场时，编辑器按需补帧不越过其时长边界。"""
+    def test_visible_decode_demand_can_extend_beyond_limited_base(self):
+        """共享的限长基础缓存不能限制当前工程的可见区补帧。"""
         from maw import thumbnail_cache, thumbnails
         import maw.thumbnail_jobs as jobs_module
         with tempfile.TemporaryDirectory() as temp:
@@ -254,8 +254,7 @@ class ThumbnailDemandTests(unittest.TestCase):
                  mock.patch.object(thumbnail_cache, 'release_owner'), \
                  mock.patch.object(jobs_module, 'coordinated_extract', side_effect=extract):
                 manager._step(thumbnails, thumbnail_cache)
-            self.assertEqual(captured['batch'], [0, 2000],
-                "4000ms 超出限长缓存的边界，不进入解码批次")
+            self.assertEqual(captured['batch'], [0, 2000, 4000, 6000, 8000])
             manager.close()
 
     def test_visible_decode_demand_without_limit_covers_whole_media(self):

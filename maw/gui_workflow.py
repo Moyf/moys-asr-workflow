@@ -518,7 +518,7 @@ def run_transcription(
         generate_thumbnails=request.generate_thumbnails,
         test_run=request.test_run,
     )
-    if request.test_run and on_event is not None:
+    if request.test_run and request.generate_keyframes and on_event is not None:
         # 快速测试的画面缓存与音频截断同范围，提前一句说明，避免用户把
         # 「画面带只有前几分钟的帧」当成缺陷。
         on_event(f"[info] 快速测试模式：画面缓存只生成前 {_test_run_limit_label()}")

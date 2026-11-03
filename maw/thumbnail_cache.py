@@ -87,7 +87,7 @@ def _limit_variants_for(directories: Sequence[Path], prefix: str) -> list[Path]:
     renamed with different letter casing must still find its limited sidecars
     (the exact full-media path resolves through the filesystem either way).
     """
-    found: list[Path] = []
+    found: set[Path] = set()
     marker = (prefix + ".limit-").casefold()
     for directory in directories:
         try:
@@ -96,10 +96,12 @@ def _limit_variants_for(directories: Sequence[Path], prefix: str) -> list[Path]:
             continue
         for entry in entries:
             folded = entry.name.casefold()
+            if folded.endswith(".mothumbs.partial"):
+                entry = entry.with_name(entry.name[:-len(".partial")])
+                folded = entry.name.casefold()
             if folded.startswith(marker) and folded.endswith(".mothumbs"):
-                found.append(entry)
-    found.sort()
-    return found
+                found.add(entry)
+    return sorted(found)
 
 
 def base_candidates(media_path: Path | str) -> list[Path]:
@@ -649,10 +651,10 @@ def get_or_extract_frame(media_path: Path | str, requested_ms: int, *, stream_in
 
 def _manifest(video: VideoInfo, signature: dict, *, interval: int, samples=None, assets=None, complete=False, revision=None, duration_limit_ms: int | None = None) -> dict:
     samples = samples or []
-    limit_end = None
-    if duration_limit_ms is not None:
-        limit_end = min(video.duration_ms, video.video_start_ms + duration_limit_ms)
-    return {"schema": SCHEMA, "generator_version": GENERATOR_VERSION, "cache_revision": revision or uuid.uuid4().hex, "source_signature": signature, "video_stream_index": video.stream_index, "duration_ms": video.duration_ms, "source_start_ms": video.start_ms, "time_origin": "source-format-start-ms", "video_start_ms": video.video_start_ms, "image_spec": dict(IMAGE_SPEC), "duration_limit_ms": duration_limit_ms, "sampling_interval": interval, "target_interval": interval, "base_complete": complete, "valid_count": sum(s["status"] == "target" for s in samples), "coverage": [[video.video_start_ms, limit_end or video.duration_ms]] if complete else [[s["requested_ms"], min(video.duration_ms, s["requested_ms"] + interval)] for s in samples if s["status"] == "target"], "samples": samples, "assets": assets or [], "state": "ready" if complete else "partial", "persisted": True}
+    grid_end = duration_limit_ms if duration_limit_ms is not None else video.duration_ms
+    coverage = ([[video.video_start_ms, grid_end]] if video.video_start_ms < grid_end else []) if complete else [
+        [s["requested_ms"], min(grid_end, s["requested_ms"] + interval)] for s in samples if s["status"] == "target"]
+    return {"schema": SCHEMA, "generator_version": GENERATOR_VERSION, "cache_revision": revision or uuid.uuid4().hex, "source_signature": signature, "video_stream_index": video.stream_index, "duration_ms": video.duration_ms, "source_start_ms": video.start_ms, "time_origin": "source-format-start-ms", "video_start_ms": video.video_start_ms, "image_spec": dict(IMAGE_SPEC), "duration_limit_ms": duration_limit_ms, "sampling_interval": interval, "target_interval": interval, "base_complete": complete, "valid_count": sum(s["status"] == "target" for s in samples), "coverage": coverage, "samples": samples, "assets": assets or [], "state": "ready" if complete else "partial", "persisted": True}
 
 
 def _valid_manifest(value, signature, entries) -> bool:
@@ -818,7 +820,8 @@ def load_base(media_path: Path | str) -> dict | None:
     result["valid_count"] = sum(sample["status"] == "target" for sample in result["samples"])
     result["cache_revision"] = _base_revision(hits)
     if not result["base_complete"]:
-        result["coverage"] = [[sample["requested_ms"], min(result["duration_ms"], sample["requested_ms"] + result["sampling_interval"])] for sample in result["samples"] if sample["status"] == "target"]
+        grid_end = result.get("duration_limit_ms") or result["duration_ms"]
+        result["coverage"] = [[sample["requested_ms"], min(grid_end, sample["requested_ms"] + result["sampling_interval"])] for sample in result["samples"] if sample["status"] == "target"]
     return result
 
 

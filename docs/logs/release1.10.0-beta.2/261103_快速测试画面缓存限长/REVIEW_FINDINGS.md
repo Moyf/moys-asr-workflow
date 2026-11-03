@@ -23,3 +23,21 @@
 ## 复验
 
 修复后重跑：`uv run --no-sync python scripts/run_check.py --timeout 300 -- uv run --no-sync python scripts/run_tests.py tests/test_thumbnails.py tests/test_thumbnail_media_cache.py tests/test_thumbnail_cache.py tests/test_thumbnail_jobs.py tests/test_gui_workflow.py tests/test_gui_web.py` → 539 项通过（1 项既有跳过）。全量 Python 套件 2799 项通过（19 项既有跳过）；Node 套件 998 项通过。`git diff --check`、`check_personal_paths --diff-ref main` 干净。
+
+## 2026-11-03 PR 复审与独立验收
+
+复审基线为 PR 头 `6c7f5b08`，以下处理位于该提交后的工作树改动。原记录保留当时的结论；其中 F4、O1 和 O4 的判断由本节更新。
+
+| 发现 | 判断与处理 |
+| --- | --- |
+| Greptile 两条限长补帧意见 | 默认关键帧构建不保存限长基础清单；同时基础清单按媒体共享，旧快速测试清单也无法代表新打开的完整工程。取消从共享基础清单推断补帧边界：快速测试只限制转写阶段的预生成，编辑器仍按可见区需求补帧。指南和更新日志已同步。 |
+| 首次中断限长高精度构建后，单独存在的 `.mothumbs.partial` 不被候选枚举发现 | 已修复发现与去重；恢复读取和当前媒体的清理保护沿用原有逻辑。新增测试通过中断实际构建、清空内存清单并从磁盘读回已封装样本验证。 |
+| 延迟视频流的限长覆盖终点计算错误 | F4 的原判断不成立。终点改为媒体时间轴的限长值，视频开始时间不在范围内时覆盖为空；部分清单的覆盖也裁到限长终点。测试覆盖延迟视频和限长范围内无视频的情况。 |
+| 目录枚举成本 | 基础缓存查询会枚举限长变体，目录很大时可能增加交互开销。本轮未做大目录压测，暂列为非阻塞观察。 |
+
+Sol 独立审阅完整 PR 和修复，使用真实 FFmpeg 检查非零起始时间、带 B 帧的视频：多种限长提取结果与全片提取的对应前缀一致；复核上述修复后未发现新的合并阻塞项。该验收不代表浏览器交互或长视频性能实测通过。
+
+三项回归测试在修复前分别重现补帧、部分缓存发现或覆盖范围错误；修复后定向运行通过（`.artifacts/checks/20261103T084945Z-f4544779/result.json`）。
+中断恢复测试随后去掉对进度文案和固定样本数的依赖，重新运行通过（`.artifacts/checks/20261103T085208Z-8a35f695/result.json`）。
+
+复用锁文件一致的已有 Python 环境运行 PR 六个相关测试文件：541 项中 2 项因当前工作树缺少编辑器 bundle 报错、2 项跳过（`.artifacts/checks/20261103T084904Z-8e908e3f/result.json`）。安装锁定的 Node 依赖并构建 bundle 后，两项失败用例单独重跑通过（`.artifacts/checks/20261103T085121Z-d293d7b6/result.json`）；未再次运行整组。浏览器交互与长视频人工实测待完成。
