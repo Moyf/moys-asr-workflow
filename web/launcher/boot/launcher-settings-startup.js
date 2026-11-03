@@ -166,7 +166,7 @@ async function init() {
   fillSelect("provider", state.config.providers, state.config.providerId || "qwen");
   applyProvider(false);
   $("workspaceId").value = state.config.workspaceId || "";
-  syncTestRun(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage();
+  syncTestRun(); syncThumbnailFields(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage();
   appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled.");
   setStatus(t("ready"));
   revealLauncher();

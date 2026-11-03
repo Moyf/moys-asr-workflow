@@ -331,6 +331,7 @@ $("provider").addEventListener("change", () => applyProvider(true)); $("model").
 $("testRun").addEventListener("change", syncTestRun);
 $("openaiModel").addEventListener("input", () => { if (isCustomOpenAiModel()) state.config.openaiCustomModel = $("openaiModel").value.trim(); });
 $("generateHtml").addEventListener("change", syncHtmlMenu);
+$("generateKeyframes").addEventListener("change", syncThumbnailFields);
 $("mediaPath").addEventListener("input", () => { setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); scheduleAudioTrackProbe($("mediaPath").value); }); $("srtPath").addEventListener("input", () => { state.srtAuto = false; state.testSuffixAdded = false; setError("srtPath", ""); setOutputNotice(""); });
 $("pickMedia").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "media" }); if (!result.ok) return; if (!MEDIA_EXTS.has(ext(result.path))) { setError("mediaPath", mediaDropError()); return; } setMedia(result.path); });
 $("qwenAudioHotwordsModeText").addEventListener("click", () => { setHotwordsMode("text"); setError("qwenAudioHotwordsFile", ""); }); $("qwenAudioHotwordsModeFile").addEventListener("click", () => { setHotwordsMode("file"); setError("qwenAudioHotwordsFile", ""); }); $("pickQwenAudioHotwordsFile").addEventListener("click", async () => { const result = await bridge("choose_file", { kind: "hotwords" }); if (result.ok) await loadHotwordFile(result.path || "", false); });

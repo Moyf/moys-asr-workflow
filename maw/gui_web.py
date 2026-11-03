@@ -4293,6 +4293,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         provider=provider.id,
         speaker_colors=bool(payload.get("speakerColors")) and model.supports_speaker,
         generate_spectral=bool(payload.get("generateSpectral")),
+        generate_keyframes=bool(payload.get("generateKeyframes", True)),
         generate_thumbnails=bool(payload.get("generateThumbnails")),
         ui_language=_gui_lang(payload),
         generate_html=bool(payload.get("generateHtml")) and not bool(payload.get("batchSrtOnly")),
