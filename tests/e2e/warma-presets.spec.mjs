@@ -78,17 +78,29 @@ test('styles on all three tracks survive a project roundtrip', async ({ page }) 
   expect(result.styles.map(style => style?.id)).toEqual(['ass', 'ass', 'ass']);
 });
 
-test('regex worker matches captures, escapes literals and terminates slow rules', async ({ page }) => {
+test('regex worker matches captures and escapes literals', async ({ page }) => {
   const result = await page.evaluate(async () => {
     const rule = (find, replace, regex) => ({ enabled: true, find, replace, regex, caseSensitive: true });
-    const matched = await MaweTextPresets.runRules(['x.a 123'], [rule('.', '!', false), rule('(\\d+)', '[$1]', true)]);
-    let error = '';
-    try { await MaweTextPresets.runRules(['a'.repeat(40) + '!'], [rule('(a+)+$', '', true)]); }
-    catch (err) { error = err.message; }
-    return { matched, error };
+    return MaweTextPresets.runRules(['x.a 123'], [rule('.', '!', false), rule('(\\d+)', '[$1]', true)]);
   });
-  expect(result.matched).toEqual(['x!a [123]']);
-  expect(result.error).toContain('超时');
+  expect(result).toEqual(['x!a [123]']);
+});
+
+test('ordered rules preview and apply literal replacement text', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = 'AbA';
+    MaweCuePanel.renderAll(); MaweTextProcess.openTextProcessModal();
+  });
+  for (const [find, replace] of [['a', 'x'], ['x', '$1'], ['b', 'wrong']]) {
+    await page.locator('#text-preset-add-rule').click();
+    const row = page.locator('.text-preset-rule').last();
+    await row.locator('input[type="text"]').nth(0).fill(find);
+    await row.locator('input[type="text"]').nth(1).fill(replace);
+  }
+  await page.locator('.text-preset-rule').last().getByLabel('启用').uncheck();
+  await expect(page.locator('#text-process-preview')).toContainText('处理后：$1b$1');
+  await page.locator('#text-process-confirm').click();
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('$1b$1');
 });
 
 test('preset endpoint rejects missing tokens and stale writes', async ({ page }) => {

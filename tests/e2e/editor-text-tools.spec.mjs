@@ -180,13 +180,21 @@ test('custom wrapping isolates Delete and B while a button has focus', async ({ 
 
 test('batch wrap presets skip existing wrappers and keep preview and undo consistent', async ({ page }) => {
   await seed(page, { text: '**甲乙**', timed: false });
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments.push({ id: 'main-2', start: 5000, end: 7000, text: '丙丁', items: null });
+    MaweCuePanel.renderAll();
+  });
   await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-mode-toggle').check();
   await page.locator('#project-settings-close').click();
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
   await page.locator('#text-process-wrap-presets-ass button').filter({ hasText: '强调文本' }).click();
-  expect(await page.evaluate(() => MaweTextProcess.buildTextProcessPreview(MaweTextProcess.textProcessTargets(),
-    MaweTextProcess.getTextProcessOptions())[0].after)).toBe('**甲乙**');
+  await expect(page.locator('#text-process-preview')).toContainText('预计修改 1 条');
+  await expect(page.locator('#text-process-preview')).toContainText('处理后：**丙丁**');
+  await page.locator('#text-process-confirm').click();
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map(segment => segment.text))).toEqual(['**甲乙**', '**丙丁**']);
+  await page.evaluate(() => MaweHistory.performUndo());
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map(segment => segment.text))).toEqual(['**甲乙**', '丙丁']);
 });
 
 test('text processing uses the custom wrapping row and allows one-sided characters', async ({ page }) => {

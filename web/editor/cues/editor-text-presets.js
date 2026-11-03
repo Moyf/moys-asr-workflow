@@ -85,7 +85,11 @@
 
   function renderSelect(current = '') {
     select.replaceChildren(new Option('自定义', ''));
-    library.presets.forEach((preset) => select.add(new Option(preset.name, preset.id)));
+    library.presets.forEach((preset) => {
+      const option = new Option(preset.name, preset.id);
+      option.dataset.markerProjectContent = '';
+      select.add(option);
+    });
     select.value = current;
   }
 

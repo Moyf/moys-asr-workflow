@@ -354,13 +354,23 @@ export function initMaweCuePanel() {
   function syncCueAssStyle(segment) {
     const select = document.getElementById('cue-ass-style');
     if (!select) return;
+    const builtinNames = { default: 'SRT 渲染样式', ass: 'ASS 默认样式', 'ass-extension': 'ASS 副字幕样式' };
+    const addOption = (value, name, translate = false) => {
+      const label = translate ? window.MAWE_I18N?.translateText?.(name) || name : name;
+      const option = new Option(label, value);
+      // User-defined names are content, even when they match an interface label.
+      option.dataset.markerProjectContent = '';
+      select.add(option);
+    };
     select.disabled = !segment;
-    select.replaceChildren(new Option(window.MAWE_I18N?.translateText?.('继承默认样式') || '继承默认样式', ''));
-    if (segment?.assStyle) select.add(new Option(segment.assStyle.name || 'ASS', '__snapshot'));
-    (window.MaweAssStorageWiring?.styles() || []).forEach((style) => select.add(new Option(style.name, style.id)));
+    select.replaceChildren();
+    addOption('', '继承默认样式', true);
+    if (segment?.assStyle) addOption('__snapshot', segment.assStyle.name || 'ASS', builtinNames[segment.assStyle.id] === segment.assStyle.name);
+    (window.MaweAssStorageWiring?.styles() || []).forEach((style) => addOption(style.id, style.name, builtinNames[style.id] === style.name));
     select.value = segment?.assStyle ? '__snapshot' : '';
   }
 
+  document.addEventListener('mawe:languagechange', () => syncCueAssStyle(getCurrentCuePanelTarget()?.segment));
   document.getElementById('cue-ass-style')?.addEventListener('focus', () => syncCueAssStyle(getCurrentCuePanelTarget()?.segment));
   document.getElementById('cue-ass-style')?.addEventListener('change', (event) => {
     const target = getCurrentCuePanelTarget();

@@ -124,19 +124,6 @@
 
 
 
-  function buildTextProcessPreview(targets, options) {
-    return (Array.isArray(targets) ? targets : []).flatMap((target) => {
-      const segments = textProcessTargetSegments(target);
-      const segment = segments[target.index];
-      if (!segment) return [];
-      const before = String(segment.text == null ? '' : segment.text);
-      const after = window.AsrEditorUtils.applyTextProcessingRules(before, window.MaweTextPresets?.rules() || [], options);
-      return [{ ...target, before, after, changed: before !== after }];
-    });
-  }
-
-
-
   function getTextProcessOptions() {
     const wraps = textProcessWrapPresets.map((preset) => preset.id === 'custom'
       ? { left: textProcessPrefixInput.value, right: textProcessSuffixInput.value } : preset);
@@ -261,10 +248,20 @@
       details.appendChild(title);
       const before = document.createElement('div');
       before.className = 'replace-preview-before';
-      before.textContent = `处理前：${row.before}`;
+      const beforeLabel = document.createElement('span');
+      beforeLabel.textContent = '处理前：';
+      const beforeText = document.createElement('span');
+      beforeText.dataset.markerProjectContent = '';
+      beforeText.textContent = row.before;
+      before.append(beforeLabel, beforeText);
       const after = document.createElement('div');
       after.className = 'replace-preview-after';
-      after.textContent = `处理后：${row.after}`;
+      const afterLabel = document.createElement('span');
+      afterLabel.textContent = '处理后：';
+      const afterText = document.createElement('span');
+      afterText.dataset.markerProjectContent = '';
+      afterText.textContent = row.after;
+      after.append(afterLabel, afterText);
       details.append(before, after);
       textProcessPreview.appendChild(details);
     });
@@ -424,7 +421,6 @@
     textProcessTargetSegments,
     textProcessTargetLabel,
     textProcessTargets,
-    buildTextProcessPreview,
     getTextProcessOptions,
     refreshTextProcessScopeInfo,
     refreshTextProcessSelectionControl,
