@@ -225,7 +225,8 @@ test('overlay cue scale and positioning retain pop animation through shared expo
     assert.equal(item.cueScale, 1.5);
     assert.equal(Boolean(item.manual), positioned);
     assert.equal(item.pop.fromScale, 2);
-    const line = dialogues(output).find(event => event.startsWith('Dialogue: 2,'));
+    const line = dialogues(output).find(event => event.startsWith(`Dialogue: ${positioned ? 5 : 2},`));
+    assert.ok(line, 'manual overlay renders above automatic tracks; scale alone retains the automatic layer');
     assert.ok(line.includes(String.raw`\fs108`), 'overlay keeps per-cue font scaling');
     assert.ok(line.includes(String.raw`\fscx200\fscy200\t(0,250,1,\fscx100\fscy100)`));
     assert.ok(!line.includes('{{'), 'sentence marker becomes animation rather than visible text');

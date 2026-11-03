@@ -1,4 +1,4 @@
-// Main-cue ASS positioning and per-cue scaling.
+// Per-cue ASS positioning and scaling for every subtitle track.
 (function initAssCuePosition(global) {
   'use strict';
   const panel = document.getElementById('ass-cue-position');
@@ -15,22 +15,24 @@
   let scaleWheel = null;
   const target = () => {
     const current = global.MaweCuePanel.getCurrentCuePanelTarget();
-    return current?.kind === 'main' || current?.kind === 'overlay' ? current : null;
+    return ['main', 'extension', 'overlay'].includes(current?.kind) ? current : null;
   };
   const trackSegments = kind => kind === 'overlay'
     ? (global.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments || [])
-    : global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    : kind === 'extension' ? (global.MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
+      : global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   // 同一 id 命中两条轨在正常工程里不可能（main-/overlay- 前缀），仍按当前
   // 面板目标轨优先，避免异常数据时拖错轨。
   function locateSegment(id) {
-    for (const kind of (target()?.kind === 'overlay' ? ['overlay', 'main'] : ['main', 'overlay'])) {
+    const preferred = target()?.kind;
+    for (const kind of [preferred, 'main', 'extension', 'overlay'].filter((value, index, all) => value && all.indexOf(value) === index)) {
       const segments = trackSegments(kind);
       const index = segments.findIndex(segment => segment?.id === id);
       if (index >= 0) return { kind, index, segment: segments[index] };
     }
     return null;
   }
-  const trackLabel = kind => kind === 'overlay' ? '叠加字幕' : '主字幕';
+  const trackLabel = kind => kind === 'overlay' ? '叠加字幕' : kind === 'extension' ? '副字幕' : '主字幕';
   const enabled = () => global.MaweSettings.EDITOR_SETTINGS.assMode === true;
   const roundPosition = value => Math.floor(Number(value) + 0.5);
   const roundScale = value => Number(Number(value).toFixed(2));
@@ -39,10 +41,10 @@
   const translated = value => global.MAWE_I18N?.translateText?.(value) || value;
   function singleSelected(id) {
     const current = target();
-    const selected = global.MaweState.selection.indices(current?.kind === 'overlay' ? 'overlay' : 'main');
+    const selected = global.MaweState.selection.indices(current?.kind || 'main');
     return selected.size === 1 && current?.segment.id === id;
   }
-  function recordFor(segment, kind = target()?.kind === 'overlay' ? 'overlay' : 'main') {
+  function recordFor(segment, kind = target()?.kind || 'main') {
     return global.MaweAssCanvas.lastRender?.tracks.find(item => item.role === kind && item.cueId === segment.id && !item.skipped);
   }
   function anchorFor(segment) {
@@ -150,6 +152,7 @@
     // The first gesture only selects. A second gesture can move the cue.
     if (currentTargetId() !== id) {
       if (located.kind === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(located.index);
+      else if (located.kind === 'extension') global.MaweSelection.selectOnlyExtension(located.index, global.MaweMultiSubtitleCore.getActiveExtensionTrack());
       else global.MaweSelection.selectOnly(located.index);
       event.preventDefault(); event.stopPropagation();
       return;
@@ -259,13 +262,13 @@
     const override = current?.segment.assOverride;
     // 叠加字幕行常驻倍率入口：ASS 模式选中叠加 cue 即可输入缩放，无需先在
     // 画布上改出覆盖；主字幕保持「有覆盖才显示」的既有行为，不增加编辑区高度。
-    const overlayTarget = current?.kind === 'overlay';
-    panel.hidden = !enabled() || !current || (!overlayTarget && !override?.pos && !override?.scale);
+    const secondaryOrOverlay = current?.kind === 'overlay' || current?.kind === 'extension';
+    panel.hidden = !enabled() || !current || (!secondaryOrOverlay && !override?.pos && !override?.scale);
     if (current) {
       panel.setAttribute('aria-label', translated(`${trackLabel(current.kind)} ASS 定位`));
     }
     positionControls.hidden = !override?.pos;
-    scaleControls.hidden = !override?.scale && !overlayTarget;
+    scaleControls.hidden = !override?.scale && !secondaryOrOverlay;
     if (!panel.hidden) {
       const anchor = anchorFor(current.segment);
       if (override?.pos) {
@@ -278,9 +281,8 @@
     }
     const frame = global.MaweAssCanvas.lastRender;
     const visible = new Set();
-    if (enabled() && global.MaweDom.overlayToggle.checked) for (const record of frame?.tracks || []) {
-      // 主字幕与叠加字幕都提供画布选择/拖动/缩放；扩展轨是固定层，不参与。
-      if ((record.role !== 'main' && record.role !== 'overlay') || record.skipped || !record.bounds) continue;
+    if (enabled() && global.MaweDom.overlayToggle.checked) for (const [layerIndex, record] of (frame?.tracks || []).entries()) {
+      if (!['main', 'extension', 'overlay'].includes(record.role) || record.skipped || !record.bounds) continue;
       const kind = record.role;
       const id = record.cueId;
       const key = `${kind}:${id}`;
@@ -302,7 +304,8 @@
       const selected = current?.segment.id === id && current?.kind === kind;
       box.classList.toggle('selected', selected);
       const bounds = record.bounds;
-      Object.assign(box.style, { left: `${bounds.left / frame.playResX * 100}%`, top: `${bounds.top / frame.playResY * 100}%`,
+      // Hit targets follow the same bottom-to-top order as the Canvas records.
+      Object.assign(box.style, { zIndex: String(8 + layerIndex), left: `${bounds.left / frame.playResX * 100}%`, top: `${bounds.top / frame.playResY * 100}%`,
         width: `${(bounds.right - bounds.left) / frame.playResX * 100}%`, height: `${(bounds.bottom - bounds.top) / frame.playResY * 100}%` });
       let cueHandles = handles.get(key);
       if (!cueHandles) {
@@ -329,6 +332,7 @@
         handle.hidden = !canScale;
         handle.classList.toggle('dragging', scaleDrag?.handle === handle);
         Object.assign(handle.style, {
+          zIndex: String(8 + frame.tracks.length),
           left: `${(corner.includes('w') ? bounds.left : bounds.right) / frame.playResX * 100}%`,
           top: `${(corner.includes('n') ? bounds.top : bounds.bottom) / frame.playResY * 100}%`,
         });
@@ -399,6 +403,7 @@
       const index = trackSegments(kind).findIndex(segment => segment?.id === id);
       if (index >= 0 && currentTargetId() !== id) {
         if (kind === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(index);
+        else if (kind === 'extension') global.MaweSelection.selectOnlyExtension(index, global.MaweMultiSubtitleCore.getActiveExtensionTrack());
         else global.MaweSelection.selectOnly(index);
       }
     }

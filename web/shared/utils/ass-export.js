@@ -463,7 +463,8 @@ export function createUtilsModule(dependencies) {
             const content = slice.legacy && !item.manual && !item.shake && item.cueScale === 1 && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
               { ...inlineOptions, preparedRuns: item.runs, fontTransform });
             const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
-            events.push(`Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
+            const layer = { main: 0, extension: 1, overlay: 2 }[item.role] + (item.manual ? 3 : 0);
+            events.push(`Dialogue: ${layer},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
           };
           if (item.shake) {
             // 原地震动：一条 ASS 事件只能有一个定位标签，导出时按固定间隔

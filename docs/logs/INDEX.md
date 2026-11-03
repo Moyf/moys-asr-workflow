@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [副轨定位 dev 适配复核](release1.10.0-beta.2/261103_副轨定位dev适配/REVIEW_FINDINGS.md) | PR 26 独立适配、命中层序与定位测试 |
 | 1.10.0-beta.2 之后 | 2026-10-30 | [轨道 v2 整合](release1.10.0-beta.2/261030_轨道v2整合/整合记录.md) / [人工核验](release1.10.0-beta.2/261030_轨道v2整合/轨道v2.checklist.md) / [翻译补丁自审](release1.10.0-beta.2/261030_轨道v2整合/REVIEW_FINDINGS.md) | v2、CueRef、单副轨和显式另存保护；保留 Draft 与后续设计边界 |
 | 1.10.0-beta.2 之后 | 2026-10-29 | [PR239 合并准备与复核](release1.10.0-beta.2/261029_PR239合并准备/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261029_PR239合并准备/PR239合并准备.checklist.md) | 按维护者补丁落地 v1.5，整合最新 2.0dev，补齐 ESM 测试装配与副轨说话人规则 |
 | 1.10.0-beta.2 之后 | 2026-10-28 | [PR239 格式标识改名与复核](release1.10.0-beta.2/261028_PR239格式标识/REVIEW_FINDINGS.md) | 独立组标识 v1.5、v2 保留边界与验证证据 |

@@ -333,7 +333,7 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
     const style = { ...animated, spacing: animated.spacing * scale,
       outline: animated.outline * scale, shadow: animated.shadow * scale,
       __assMove: item.legacy && !item.manual && item.role === 'main' && profile.animations.move.enabled ? { x: animation.moveX, y: animation.moveY } : null };
-    return { visible: true, role: item.role, cueId: item.segment.id ?? item.index,
+    return { visible: true, role: item.role, manual: item.manual === true, cueId: item.segment.id ?? item.index,
       runs: item.runs, style, animation,
       shakeOffset: item.shakeOffset || null,
       fractionalFontSize: !item.legacy || item.sharedStackCue,

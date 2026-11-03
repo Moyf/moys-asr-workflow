@@ -333,11 +333,9 @@ export function createUtilsModule(dependencies) {
       events.get(time).push({ item, active });
     };
     for (const raw of items || []) {
-      // 主字幕与叠加字幕共用逐句 assOverride（scale/pos）；扩展轨是固定层，
-      // 仍不消费逐句覆盖。手动定位句成为独立 ASS 事件：不参与整组适配、
+      // 所有字幕轨共用逐句 assOverride（scale/pos）。手动定位句成为独立 ASS 事件：不参与整组适配、
       // 避碰与方案移动；只有缩放的句继续留在自动排布内。
-      const override = raw.role === 'main' || raw.role === 'overlay'
-        ? dependencies.normalizeAssOverride(raw.segment?.assOverride) : undefined;
+      const override = dependencies.normalizeAssOverride(raw.segment?.assOverride);
       const item = { ...raw, cueScale: override?.scale || 1,
         ...(override ? { assOverride: override, manual: Boolean(override.pos) } : {}) };
       queue(item.start, item, true); queue(item.end, item, false);
