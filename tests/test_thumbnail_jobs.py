@@ -225,6 +225,70 @@ class ThumbnailDemandTests(unittest.TestCase):
             self.assertEqual(result,[fresh])
             decode.assert_called_once()
 
+    def test_visible_decode_demand_can_extend_beyond_limited_base(self):
+        """共享的限长基础缓存不能限制当前工程的可见区补帧。"""
+        from maw import thumbnail_cache, thumbnails
+        import maw.thumbnail_jobs as jobs_module
+        with tempfile.TemporaryDirectory() as temp:
+            coord = ThumbnailCoordinator(Path(temp)/'jobs.sqlite3')
+            manager = ThumbnailJobManager(coordinator=coord)
+            path = Path(temp)/'media.mp4'
+            path.write_bytes(b"media")
+            manager.bind(path, 'binding')
+            manager.info = SimpleNamespace(stream_index=0, duration_ms=9000)
+            manager.identity = source_key(path)
+            manager._start = lambda: None
+            manager._snapshot = lambda lease: dict(manager.leases[lease], lease=lease)
+            manager.demand({'binding': 'binding', 'client_id': 'tab', 'view': 1, 'interval_ms': 2000,
+                            'ranges': [{'start_ms': 0, 'end_ms': 9000}], 'visible': True, 'decode': True})
+            captured = {}
+
+            def extract(media, batch, **kwargs):
+                captured['batch'] = list(batch)
+                raise thumbnails.ThumbnailCancelled('stop')
+
+            with mock.patch.object(thumbnail_cache, 'load_base', return_value={'duration_limit_ms': 4000}), \
+                 mock.patch.object(thumbnail_cache, 'lookup_frames', return_value=[None, None, None, None, None]), \
+                 mock.patch.object(thumbnail_cache, 'can_prefetch', return_value=False), \
+                 mock.patch.object(thumbnail_cache, 'sample_manifest', return_value={'assets': []}), \
+                 mock.patch.object(thumbnail_cache, 'release_owner'), \
+                 mock.patch.object(jobs_module, 'coordinated_extract', side_effect=extract):
+                manager._step(thumbnails, thumbnail_cache)
+            self.assertEqual(captured['batch'], [0, 2000, 4000, 6000, 8000])
+            manager.close()
+
+    def test_visible_decode_demand_without_limit_covers_whole_media(self):
+        from maw import thumbnail_cache, thumbnails
+        import maw.thumbnail_jobs as jobs_module
+        with tempfile.TemporaryDirectory() as temp:
+            coord = ThumbnailCoordinator(Path(temp)/'jobs.sqlite3')
+            manager = ThumbnailJobManager(coordinator=coord)
+            path = Path(temp)/'media.mp4'
+            path.write_bytes(b"media")
+            manager.bind(path, 'binding')
+            manager.info = SimpleNamespace(stream_index=0, duration_ms=9000)
+            manager.identity = source_key(path)
+            manager._start = lambda: None
+            manager._snapshot = lambda lease: dict(manager.leases[lease], lease=lease)
+            manager.demand({'binding': 'binding', 'client_id': 'tab', 'view': 1, 'interval_ms': 2000,
+                            'ranges': [{'start_ms': 0, 'end_ms': 9000}], 'visible': True, 'decode': True})
+            captured = {}
+
+            def extract(media, batch, **kwargs):
+                captured['batch'] = list(batch)
+                raise thumbnails.ThumbnailCancelled('stop')
+
+            with mock.patch.object(thumbnail_cache, 'load_base', return_value=None), \
+                 mock.patch.object(thumbnail_cache, 'lookup_frames', return_value=[None, None, None, None, None]), \
+                 mock.patch.object(thumbnail_cache, 'can_prefetch', return_value=False), \
+                 mock.patch.object(thumbnail_cache, 'sample_manifest', return_value={'assets': []}), \
+                 mock.patch.object(thumbnail_cache, 'release_owner'), \
+                 mock.patch.object(jobs_module, 'coordinated_extract', side_effect=extract):
+                manager._step(thumbnails, thumbnail_cache)
+            self.assertEqual(captured['batch'], [0, 2000, 4000, 6000, 8000],
+                "无限长缓存时解码批次只受 8000ms 跨度约束")
+            manager.close()
+
     def test_release_before_lease_adoption_blocks_late_requests(self):
         manager = ThumbnailJobManager()
         manager.bind(None, "binding")

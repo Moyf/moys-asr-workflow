@@ -84,6 +84,24 @@ def _persist_mopeaks_fallback(
     print(f"[mopeaks] 自研波形已回退到二进制 sidecar: {written.name}")
 
 
+def _keyframes_duration_limit_from_env() -> float | None:
+    """快速测试经 ``MAW_MEDIA_KEYFRAMES_LIMIT``（秒）传入的画面缓存时长上限。"""
+    raw = os.environ.get("MAW_MEDIA_KEYFRAMES_LIMIT", "").strip()
+    if not raw:
+        return None
+    try:
+        limit = float(raw)
+    except ValueError:
+        print(f"[thumbnails] 忽略无效的画面缓存时长上限: {raw}")
+        return None
+    if limit <= 0:
+        print(f"[thumbnails] 忽略非正数的画面缓存时长上限: {raw}")
+        return None
+    # 与音频截断同一语义：只生成媒体开头 N 秒，日志说明一次，便于对照帧数。
+    print(f"[thumbnails] 快速测试：画面缓存只生成前 {limit:g} 秒")
+    return limit
+
+
 def embed_media_caches(
     project: dict[str, Any],
     media_path: Path | str,
@@ -127,7 +145,10 @@ def embed_media_caches(
     ``generate_keyframes`` 关闭（或环境变量 ``MAW_MEDIA_KEYFRAMES=0``，Launcher
     用它把「生成缩略图」开关穿透转写子进程边界）时跳过整个画面缓存阶段，关键帧
     底图与精确网格都不生成；``generate_thumbnails`` 关闭（或环境变量
-    ``MAW_MEDIA_THUMBNAILS=0``）时只跳过精确网格阶段。已有缓存帧与已保存的
+    ``MAW_MEDIA_THUMBNAILS=0``）时只跳过精确网格阶段。环境变量
+    ``MAW_MEDIA_KEYFRAMES_LIMIT``（秒数，快速测试与音频截断共用同一上限）把
+    两个阶段都限制在媒体前 N 秒，与转写范围一致；编辑器仍可按可见区需求补帧。
+    已有缓存帧与已保存的
     画面带显示偏好不变；无缓存帧且未保存显示偏好时，编辑器画面带默认隐藏，
     用户手动开启后仍可按需补帧（按需路径不读取这些开关）。
     """
@@ -301,6 +322,9 @@ def embed_media_caches(
             thumbnail_cache=None,
             thumbnail_error=None,
         )
+    # 限长解析放在开关早退之后：总开关关闭时不再打印「只生成前 N 秒」的
+    # 矛盾日志。
+    duration_limit_sec = _keyframes_duration_limit_from_env()
     try:
         from maw.thumbnail_jobs import build_base
         from maw import thumbnail_cache
@@ -318,7 +342,8 @@ def embed_media_caches(
         # Keep explicit callbacks unchanged for embedded callers.
         progress = thumbnail_progress if thumbnail_progress is not None else lambda message: print(message, flush=True)
         thumbnail_manifest = build_base(source_path, cancel=cancel,
-            progress=progress, ffmpeg_path=ffmpeg_bin, exact=generate_thumbnails)
+            progress=progress, ffmpeg_path=ffmpeg_bin, exact=generate_thumbnails,
+            duration_limit_sec=duration_limit_sec)
         if thumbnail_manifest is not None:
             if thumbnail_manifest.get("cache_hit"):
                 print("[thumbnails] 已复用原视频画面缓存")
