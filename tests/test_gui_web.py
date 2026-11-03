@@ -4744,6 +4744,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "2m")
+        self.assertTrue(request.test_run,
+            "testRun 载荷要进入请求，供画面缓存限长与日志说明使用")
         self.assertEqual(request.srt_path.name, "out-test.srt")
         self.assertEqual(request.ui_language, "en")
         self.assertTrue(request.debug_raw)
@@ -4762,6 +4764,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "30m")
+        self.assertFalse(request.test_run)
 
     def test_request_from_payload_carries_selected_audio_track(self) -> None:
         media = self.root / "clip.mp4"
@@ -4922,6 +4925,21 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(_request_from_payload(payload, self.env_path).generate_spectral)
         self.assertTrue(
             _request_from_payload({**payload, "generateSpectral": True}, self.env_path).generate_spectral
+        )
+
+    def test_request_from_payload_controls_keyframe_generation(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        payload = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }
+
+        self.assertTrue(_request_from_payload(payload, self.env_path).generate_keyframes,
+            "旧载荷缺省该字段时按默认开启处理")
+        self.assertFalse(
+            _request_from_payload({**payload, "generateKeyframes": False}, self.env_path).generate_keyframes
         )
 
     def test_request_from_payload_controls_thumbnail_generation(self) -> None:
@@ -6079,6 +6097,12 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="generateSpectralField"', page)
         self.assertIn('id="generateThumbnails" type="checkbox"', page)
         self.assertIn('id="generateThumbnailsField"', page)
+        self.assertIn('id="generateKeyframes" type="checkbox" checked', page)
+        self.assertIn('id="generateKeyframesField"', page)
+        self.assertLess(page.index('id="generateKeyframesField"'), page.index('id="generateThumbnailsField"'),
+            "基础缩略图开关位于高精度开关之前，级联隐藏时保持视觉顺序")
+        keyframes_block = page[page.index('id="generateKeyframesField"'):page.index('id="generateThumbnailsField"')]
+        self.assertIn("checked", keyframes_block, "生成缩略图默认勾选")
         thumbnails_block = page[page.index('id="generateThumbnailsField"'):page.index('id="debugRawField"')]
         self.assertNotIn("checked", thumbnails_block, "生成高精度画面预览图默认不勾选")
         self.assertIn('class="segmentation-row segmentation-character-row"', page)
@@ -6100,7 +6124,12 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
+        self.assertIn('generateKeyframes: $("generateKeyframes").checked', script)
         self.assertIn('generateThumbnails: $("generateThumbnails").checked', script)
+        self.assertIn('$("generateKeyframes").addEventListener("change", syncThumbnailFields)', script)
+        self.assertIn('$("generateThumbnailsField").classList.toggle("hidden", !baseOn)', script)
+        self.assertIn('generate_keyframes: "生成缩略图"', script)
+        self.assertIn('generate_keyframes: "Generate thumbnails"', script)
         self.assertIn('generate_spectral: "生成频谱数据"', script)
         self.assertIn('generate_spectral: "Generate spectral data"', script)
         self.assertIn('segmentation: "断句"', script)

@@ -65,7 +65,7 @@ from maw.gui_config import (
     save_env,
 )
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, restore_host_library_path, startupinfo, terminate_process_tree
-from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.gui_workflow import TEST_RUN_LENGTH_LIMIT, TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
@@ -4267,7 +4267,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
-        length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
+        length_limit=TEST_RUN_LENGTH_LIMIT if test_run else str(payload.get("lengthLimit") or "").strip(),
+        test_run=test_run,
         max_len=max_len,
         min_len=min_len,
         max_words=max_words,
@@ -4293,6 +4294,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         provider=provider.id,
         speaker_colors=bool(payload.get("speakerColors")) and model.supports_speaker,
         generate_spectral=bool(payload.get("generateSpectral")),
+        generate_keyframes=bool(payload.get("generateKeyframes", True)),
         generate_thumbnails=bool(payload.get("generateThumbnails")),
         ui_language=_gui_lang(payload),
         generate_html=bool(payload.get("generateHtml")) and not bool(payload.get("batchSrtOnly")),

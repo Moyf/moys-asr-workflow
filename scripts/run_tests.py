@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import sys
 import tempfile
 import time
@@ -173,6 +174,12 @@ def write_report(args, report):
         print("[run_tests] required gate failed: unsupported skips; inspect report")
     if args.required and report["expected_failures"]:
         print("[run_tests] required gate failed: expected failures remain unverified")
+    if args.github_summary and (summary_path := os.environ.get("GITHUB_STEP_SUMMARY")):
+        try:
+            with Path(summary_path).open("a", encoding="utf-8") as summary:
+                summary.write(f"Python tests skipped: {len(report['skips'])}\n")
+        except OSError:
+            pass  # Summary is informational; it must not change test results.
 
 
 def _write_full_log(full_text: str, explicit_log: str, report: Path | None = None) -> Path:
@@ -468,6 +475,7 @@ def main(argv=None) -> int:
     parser.add_argument("--pack", choices=PYTHON_PACKS, help="按成本/边界分组；不改变无参数的历史全量入口")
     parser.add_argument("--required", action="store_true", help="依赖、编码器和夹具缺失导致的 skip 视为失败")
     parser.add_argument("--report", type=Path, help="机器可读结果，包含每个 skip 的原因")
+    parser.add_argument("--github-summary", action="store_true", help="在 GitHub Actions 摘要中显示跳过总数")
     parser.add_argument("-v", "--verbose", action="count", default=1, help="提高 unittest 详细度")
     parser.add_argument(
         "--parallel",

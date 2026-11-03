@@ -114,7 +114,7 @@ jobs:
         run: uv run python scripts/run_tests.py tests/test_packaging_contract.py
 
       - name: Run Python tests
-        run: uv run python scripts/run_tests.py
+        run: uv run python scripts/run_tests.py --github-summary
 
       - name: Required media failure compatibility
         run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_media.py tests/test_ffmpeg.py tests/test_ffprobe_failure_integration.py --required --report .artifacts/media-required.json
