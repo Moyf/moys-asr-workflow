@@ -98,3 +98,23 @@ test('gap-removed ASS keeps the burn clock and layout callback together despite 
   assert.equal(Math.min(...plan.slices.map(slice => slice.start)), 2500);
   assert.equal(Math.max(...plan.slices.map(slice => slice.end)), 3000);
 });
+test('track visibility independently gates ordinary SRT and ASS surfaces', () => {
+  const main = [{ start: 0, end: 1000, text: 'main text' }];
+  const overlay = [{ start: 0, end: 1000, text: 'overlay text' }];
+  const { api, context } = fixture(main, overlay);
+  const project = context.MaweBoot.DATA;
+  const mainTrack = context.window.AsrEditorUtils.getMainTrack(project);
+  const overlayTrack = context.window.AsrEditorUtils.getOverlayTrack(project);
+  assert.match(api.buildSrt(), /main text/);
+  assert.match(api.buildSrt(), /overlay text/);
+  overlayTrack.preview_visible = false;
+  assert.match(api.buildSrt(), /overlay text/);
+  overlayTrack.export = { enabled: false };
+  assert.doesNotMatch(api.buildSrt(), /overlay text/);
+  mainTrack.export = { enabled: false };
+  assert.doesNotMatch(api.buildSrt(), /main text/);
+  assert.equal(mainTrack.segments[0].text, 'main text');
+  overlayTrack.export.enabled = true;
+  overlayTrack.variant = 'future';
+  assert.throws(() => api.buildSrt(), /不支持导出叠加轨/);
+});

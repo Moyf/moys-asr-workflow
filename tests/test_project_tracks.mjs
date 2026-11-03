@@ -2,8 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const source = readFileSync(new URL('../web/shared/utils/project-tracks.js', import.meta.url), 'utf8');
-const model = (await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)).createUtilsModule();
+const model = (await import('../web/shared/utils/project-tracks.js')).createUtilsModule();
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/project-tracks/${name}.json`, import.meta.url), 'utf8'));
 const canonical = () => fixture('canonical');
 const json = value => JSON.parse(JSON.stringify(value));
@@ -13,6 +12,32 @@ function rejects(raw, path) {
     && error.errors.some(entry => entry.path === path), path);
   assert.deepEqual(raw, before);
 }
+
+test('shared track options preserve legacy behavior and reject invalid canonical types', () => {
+  const options = fixture('track-options');
+  for (const schema of ['moy.asr.project.v1', 'moy.asr.project.v1.5']) {
+    const raw = { ...json(options.legacy), schema };
+    if (schema.endsWith('v1.5')) raw.subtitle_groups = { color: [], sticker: [] };
+    const before = json(raw);
+    const project = model.importProject(raw).project;
+    assert.deepEqual(raw, before);
+    const [main, overlay, secondary] = project.tracks;
+    assert.deepEqual([main.preview_visible, main.variant, main.export], [true, 'plain', { enabled: true }]);
+    assert.equal(overlay.enabled, false);
+    assert.equal(overlay.preview_visible, false);
+    assert.equal(overlay.variant, 'future-overlay');
+    assert.deepEqual(overlay.export, before.overlay_track.export);
+    assert.equal(secondary.enabled, false);
+    assert.deepEqual(secondary.export, { enabled: true, vendor: [] });
+    assert.deepEqual(model.importProject(project).project, project);
+  }
+  for (const item of options.invalid) {
+    const project = canonical(); project.tracks[0][item.field] = item.value;
+    rejects(project, item.path);
+    const legacy = json(options.legacy); legacy.overlay_track[item.field] = item.value;
+    rejects(legacy, item.path.replace('tracks[0]', 'tracks[1]'));
+  }
+});
 
 test('legacy binding migrates to named CueRefs, preserves extension fields and rejects old canonical fields', () => {
   const input = { segments: [{ id: 'a', start: 0, end: 100, text: 'A' }],

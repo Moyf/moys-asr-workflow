@@ -95,6 +95,27 @@
 
 
 
+  // 比较拖动前与当前预览，松手时提示实际保留下来的裁剪和删除。
+  function boundDragImpact(drag) {
+    const snapshot = drag?.boundDragTimelineOriginals;
+    const impact = { squeezedCount: 0, removedCount: 0, unboundCount: 0 };
+    if (!snapshot) return impact;
+    const followers = new Set([...(drag.boundOriginals?.values() || [])].map((entry) => entry.target));
+    for (const { track, segments } of snapshot.tracks) {
+      if (track?.role !== 'secondary') continue;
+      for (const original of segments) {
+        if (followers.has(original.segment) || drag.selectedMoveSegments?.has(original.segment)) continue;
+        if (!track.segments.includes(original.segment)) impact.removedCount += 1;
+        else if (original.segment.start !== original.start || original.segment.end !== original.end) impact.squeezedCount += 1;
+      }
+    }
+    const currentBindings = MaweMultiSubtitleCore.getMultiSubtitleState().bindings || [];
+    impact.unboundCount = Math.max(0, snapshot.bindings.length - currentBindings.length);
+    return impact;
+  }
+
+
+
   function getBoundDragEdge(drag, index) {
     if (drag.kind === 'move') return { mode: 'move', edge: null };
     if (drag.kind === 'resize-left') return { mode: 'edge', edge: 'start' };
@@ -218,6 +239,7 @@
     snapshotBoundDragTrack,
     ensureBoundDragTimelineOriginals,
     restoreBoundDragTimelineOriginals,
+    boundDragImpact,
     getBoundDragEdge,
     syncBoundCueDrag,
     prepareBoundCueDrag

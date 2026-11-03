@@ -37,35 +37,19 @@ export function initMaweHistory() {
 
 
   function snapshotEditorSelection() {
-  const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
-  const panelTrack = MaweCuePanelState.currentCuePanelKind === 'extension'
-    ? MaweMultiSubtitleCore.getExtensionTrack(MaweCuePanelState.currentCuePanelTrackId) : null;
+  const kind = MaweCuePanelState.currentCuePanelKind;
+  const track = kind === 'extension'
+    ? MaweMultiSubtitleCore.getExtensionTrack(MaweCuePanelState.currentCuePanelTrackId)
+    : kind === 'overlay' ? getOverlayTrack() : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+  const segment = track?.segments?.[MaweCuePanelState.currentCuePanelIdx];
   return {
-    mainIds: [...MaweSelection.selectedIdxs]
-      .map((index) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.id)
-      .filter(Boolean),
-    extensionTrackId: extensionTrack?.id || null,
-    extensionIds: extensionTrack
-      ? [...MaweSelection.selectedExtensionIdxs].map((index) => extensionTrack.segments[index]?.id).filter(Boolean)
-      : [],
-    overlayIds: [...MaweState.selection.indices('overlay')]
-      .map((index) => getOverlayTrack()?.segments?.[index]?.id)
-      .filter(Boolean),
-    panelKind: MaweCuePanelState.currentCuePanelKind,
-    panelTrackId: panelTrack?.id || MaweCuePanelState.currentCuePanelTrackId || null,
-    panelId: MaweCuePanelState.currentCuePanelKind === 'extension'
-      ? panelTrack?.segments?.[MaweCuePanelState.currentCuePanelIdx]?.id || null
-      : MaweCuePanelState.currentCuePanelKind === 'overlay'
-      ? getOverlayTrack()?.segments?.[MaweCuePanelState.currentCuePanelIdx]?.id || null
-      : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[MaweCuePanelState.currentCuePanelIdx]?.id || null,
-    lastMainId: window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[MaweSelection.lastClickedIdx]?.id || null,
-    lastExtensionId: extensionTrack?.segments?.[MaweSelection.lastClickedExtensionIdx]?.id || null,
-    lastOverlayId: getOverlayTrack()?.segments?.[MaweState.selection.overlayAnchor]?.id || null,
+    selection: MaweState.selection.snapshot(),
+    panel: segment ? { track_id: track.id, segment_id: segment.id } : null,
   };
 }
 
 
-  function captureSegmentsRecord(label, { captureView = false } = {}) {
+  function captureSegmentsRecord(label, { captureView = true } = {}) {
     // snapshotSegments() 已是深克隆；让 buildHistoryRecord 跳过二次克隆，
     // 长工程下省掉一遍 O(工程体积) 的 JSON 序列化。
     const record = window.AsrEditorUtils.buildHistoryRecord(
@@ -175,56 +159,13 @@ export function initMaweHistory() {
 
   function restoreEditorSelection(snapshot) {
   if (!snapshot) return;
-  MaweState.selection.clear('main');
-  MaweState.selection.clear('extension');
-  MaweState.selection.clear('overlay');
-  const mainIds = new Set(snapshot.mainIds || []);
-  window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((segment, index) => {
-    if (mainIds.has(segment?.id)) MaweState.selection.add('main', index);
-  });
-  const extensionTrack = MaweMultiSubtitleCore.getExtensionTrack(snapshot.extensionTrackId) || MaweMultiSubtitleCore.getActiveExtensionTrack();
-  const extensionIds = new Set(snapshot.extensionIds || []);
-  if (extensionTrack) {
-    extensionTrack.segments.forEach((segment, index) => {
-      if (extensionIds.has(segment?.id)) MaweState.selection.add('extension', index);
-    });
-  }
-  const overlayIds = new Set(snapshot.overlayIds || []);
-  (getOverlayTrack()?.segments || []).forEach((segment, index) => {
-    if (overlayIds.has(segment?.id)) MaweState.selection.add('overlay', index);
-  });
-  MaweSelection.lastClickedIdx = snapshot.lastMainId
-    ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === snapshot.lastMainId) : -1;
-  MaweSelection.lastClickedExtensionIdx = extensionTrack && snapshot.lastExtensionId
-    ? extensionTrack.segments.findIndex((segment) => segment?.id === snapshot.lastExtensionId) : -1;
-  MaweState.selection.overlayAnchor = snapshot.lastOverlayId != null
-    ? (getOverlayTrack()?.segments || []).findIndex((segment) => segment?.id === snapshot.lastOverlayId) : -1;
-  const panelTrack = snapshot.panelTrackId ? MaweMultiSubtitleCore.getExtensionTrack(snapshot.panelTrackId) : null;
-  if (snapshot.panelKind === 'extension' && panelTrack && snapshot.panelId) {
-    MaweCuePanelState.currentCuePanelKind = 'extension';
-    MaweCuePanelState.currentCuePanelTrackId = panelTrack.id;
-    MaweCuePanelState.currentCuePanelIdx = panelTrack.segments.findIndex((segment) => segment?.id === snapshot.panelId);
-    if (MaweCuePanelState.currentCuePanelIdx < 0) {
-      MaweCuePanelState.currentCuePanelKind = 'main';
-      MaweCuePanelState.currentCuePanelTrackId = null;
-    }
-  } else if (snapshot.panelKind === 'overlay' && snapshot.panelId) {
-    MaweCuePanelState.currentCuePanelKind = 'overlay';
-    MaweCuePanelState.currentCuePanelTrackId = null;
-    MaweCuePanelState.currentCuePanelIdx = (getOverlayTrack()?.segments || [])
-      .findIndex((segment) => segment?.id === snapshot.panelId);
-    if (MaweCuePanelState.currentCuePanelIdx < 0) {
-      MaweCuePanelState.currentCuePanelKind = 'main';
-    }
-  } else if (snapshot.panelKind === 'main' && snapshot.panelId) {
-    MaweCuePanelState.currentCuePanelKind = 'main';
-    MaweCuePanelState.currentCuePanelTrackId = null;
-    MaweCuePanelState.currentCuePanelIdx = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === snapshot.panelId);
-  }
-  if (MaweCuePanelState.currentCuePanelIdx < 0) {
-    MaweCuePanelState.currentCuePanelKind = 'main';
-    MaweCuePanelState.currentCuePanelTrackId = null;
-  }
+  MaweState.selection.restore(snapshot.selection);
+  const panelTrack = (MaweBoot.DATA.tracks || []).find(track => track.id === snapshot.panel?.track_id);
+  const panelIndex = panelTrack?.segments?.findIndex(segment => segment.id === snapshot.panel?.segment_id) ?? -1;
+  MaweCuePanelState.currentCuePanelKind = panelIndex < 0 ? 'main'
+    : panelTrack.role === 'secondary' ? 'extension' : panelTrack.role;
+  MaweCuePanelState.currentCuePanelTrackId = panelIndex >= 0 && panelTrack.role === 'secondary' ? panelTrack.id : null;
+  MaweCuePanelState.currentCuePanelIdx = panelIndex;
   MaweDom.selCountEl.textContent = String(
     MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size + MaweState.selection.indices('overlay').size,
   );

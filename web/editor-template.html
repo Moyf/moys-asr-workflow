@@ -988,7 +988,12 @@ __WAVEFORM_CSS__
         </div>
 <small class="settings-panel-hint">英文按词拆，中文按字拆。</small>
 </div></div><div class="editor-settings-page" id="editor-settings-page-project-tracks" role="tabpanel" aria-labelledby="editor-settings-tab-project-tracks" hidden><span class="editor-settings-group-heading" id="project-track-settings-title">字幕轨道</span>
-<div class="editor-settings-group" role="group" aria-labelledby="project-track-settings-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item project-track-toggle" title="临时查看和调整主字幕已有的字词时间范围；快捷键 Q，与波形工具栏 🔤 联动；打开另一工程后关闭"><input type="checkbox" id="project-word-timing-toggle"> 显示字词时间码</label><label class="toggle editor-settings-item project-track-toggle" title="启用标记编辑（快捷键 M）：显示「标记与区段」入口并允许编辑标记与区段"><input type="checkbox" id="project-marker-track-toggle"> 显示标记轨道</label><label class="toggle editor-settings-item project-track-toggle" id="overlay-track-controls"
+<div class="editor-settings-group" role="group" aria-labelledby="project-track-settings-title"><div class="track-visibility-settings" aria-label="字幕轨道状态">
+  <p class="settings-panel-hint">关闭轨道会同时停止预览和导出，字幕数据会保留。</p>
+  <div class="track-visibility-row" data-track-role="main"><strong>主字幕</strong><label><input type="checkbox" data-track-field="enabled" disabled checked title="主字幕轨始终启用"> 启用</label><label><input type="checkbox" data-track-field="preview"> 预览</label><label><input type="checkbox" data-track-field="export"> 导出</label></div>
+  <div class="track-visibility-row" data-track-role="secondary"><strong>副字幕</strong><label><input type="checkbox" data-track-field="enabled"> 启用</label><label><input type="checkbox" data-track-field="preview"> 预览</label><label><input type="checkbox" data-track-field="export"> 导出</label></div>
+  <div class="track-visibility-row" data-track-role="overlay"><strong>叠加字幕</strong><label><input type="checkbox" data-track-field="enabled"> 启用</label><label><input type="checkbox" data-track-field="preview"> 预览</label><label><input type="checkbox" data-track-field="export"> 导出</label><span class="track-variant-warning" role="status" hidden></span></div>
+</div><div class="editor-settings-sub-group"><label class="toggle editor-settings-item project-track-toggle" title="临时查看和调整主字幕已有的字词时间范围；快捷键 Q，与波形工具栏 🔤 联动；打开另一工程后关闭"><input type="checkbox" id="project-word-timing-toggle"> 显示字词时间码</label><label class="toggle editor-settings-item project-track-toggle" title="启用标记编辑（快捷键 M）：显示「标记与区段」入口并允许编辑标记与区段"><input type="checkbox" id="project-marker-track-toggle"> 显示标记轨道</label><label class="toggle editor-settings-item project-track-toggle" id="overlay-track-controls"
          title="开启后可在叠加轨创建与主字幕时间重叠的叠加字幕；叠加轨不会与双语字幕建立绑定关系">
     <input type="checkbox" id="overlay-track-toggle">
     允许字幕重叠

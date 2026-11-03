@@ -39,7 +39,12 @@
           "end": 300,
           "text": "empty"
         }
-      ]
+      ],
+      "preview_visible": true,
+      "variant": "plain",
+      "export": {
+        "enabled": true
+      }
     }
   ],
   "bilingual": {

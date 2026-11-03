@@ -33,7 +33,12 @@
             "custom_ref": 0
           }
         }
-      ]
+      ],
+      "preview_visible": true,
+      "variant": "plain",
+      "export": {
+        "enabled": true
+      }
     },
     {
       "id": "overlay",
@@ -55,7 +60,12 @@
             }
           }
         }
-      ]
+      ],
+      "preview_visible": true,
+      "variant": "plain",
+      "export": {
+        "enabled": true
+      }
     },
     {
       "id": "translation-en",
@@ -80,7 +90,12 @@
             }
           ]
         }
-      ]
+      ],
+      "preview_visible": true,
+      "variant": "plain",
+      "export": {
+        "enabled": true
+      }
     }
   ],
   "bilingual": {

@@ -202,6 +202,7 @@ export function initMaweDisplaySettings() {
 
 
   function updateMultiSubtitleUi() {
+  window.MaweProjectSettings?.syncTrackControls();
   // 「允许字幕重叠」开关常驻工具栏；勾选状态跟随用户意图（overlay.enabled），
   // 不要求叠加轨已有字幕，否则空轨道时勾选会被立即弹回。
   if (window.MaweDomPanelsWiring.overlayTrackSeparator) window.MaweDomPanelsWiring.overlayTrackSeparator.hidden = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 0;

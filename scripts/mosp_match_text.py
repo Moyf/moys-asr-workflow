@@ -24,6 +24,7 @@ if str(_PACKAGE_ROOT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_ROOT))
 from maw.project_tracks import get_main_track, iter_segments  # noqa: E402
 from maw.project import normalize_project  # noqa: E402
+from maw.postprocess_io import render_srt  # noqa: E402
 from maw.project_mutations import replace_main_segments, fresh_segment_id  # noqa: E402
 
 
@@ -830,8 +831,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         output_cues, report, matched_mosp = generate_matched_mosp(
             mosp_text, manuscript_text, args.mismatch_policy
         )
+        srt = render_srt(json.loads(matched_mosp))
         output_srt.parent.mkdir(parents=True, exist_ok=True)
-        output_srt.write_text(generate_srt(output_cues), encoding="utf-8", newline="\n")
+        output_srt.write_text(srt, encoding="utf-8", newline="\n")
         output_mosp.parent.mkdir(parents=True, exist_ok=True)
         output_mosp.write_text(matched_mosp, encoding="utf-8", newline="\n")
         if args.report:
@@ -841,7 +843,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 encoding="utf-8",
                 newline="\n",
             )
-    except (AlignmentError, OSError, UnicodeError) as exc:
+    except (ValueError, OSError, UnicodeError) as exc:
         print(f"错误：{exc}", file=sys.stderr)
         return 2
 

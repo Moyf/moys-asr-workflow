@@ -37,6 +37,34 @@ class ProjectTracksTests(unittest.TestCase):
         self.assertIn(path, [error.path for error in result.errors])
         self.assertEqual(value, original)
 
+    def test_shared_track_options(self):
+        options = json.loads((Path(__file__).parent / "fixtures" / "project-tracks" / "track-options.json").read_text(encoding="utf-8"))
+        for schema in ("moy.asr.project.v1", "moy.asr.project.v1.5"):
+            raw = copy.deepcopy(options["legacy"])
+            raw["schema"] = schema
+            if schema.endswith("v1.5"):
+                raw["subtitle_groups"] = {"color": [], "sticker": []}
+            before = copy.deepcopy(raw)
+            project = import_project(raw).project
+            self.assertEqual(raw, before)
+            main, overlay, secondary = project["tracks"]
+            self.assertEqual((main["preview_visible"], main["variant"], main["export"]), (True, "plain", {"enabled": True}))
+            self.assertFalse(overlay["enabled"])
+            self.assertFalse(overlay["preview_visible"])
+            self.assertEqual(overlay["variant"], "future-overlay")
+            self.assertEqual(overlay["export"], before["overlay_track"]["export"])
+            self.assertFalse(secondary["enabled"])
+            self.assertEqual(secondary["export"], {"enabled": True, "vendor": []})
+            self.assertEqual(import_project(project).project, project)
+        for case in options["invalid"]:
+            with self.subTest(case=case):
+                project = canonical()
+                project["tracks"][0][case["field"]] = case["value"]
+                self.assertRejected(project, case["path"])
+                legacy = copy.deepcopy(options["legacy"])
+                legacy["overlay_track"][case["field"]] = case["value"]
+                self.assertRejected(legacy, case["path"].replace("tracks[0]", "tracks[1]"))
+
     def test_shared_migration_fixtures(self):
         folder = Path(os.environ.get("MAW_TRACKS_FIXTURES", Path(__file__).parent / "fixtures" / "project-tracks"))
         paths = sorted(folder.glob("*.input.json"))

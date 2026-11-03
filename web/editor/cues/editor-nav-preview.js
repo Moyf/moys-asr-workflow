@@ -151,62 +151,42 @@
 
 
 
-  // Z/X 只接受一个“逻辑字幕”作为目标：点击主字幕时，绑定副字幕是它的
-  // 联动对象；点击副字幕时，即使界面同时选中了主字幕，也仍只改副字幕。
-  // 其它多选或来自不同绑定组的混合选择直接不处理。
+  // Z/X 使用最后主动选择的轨道；空选区始终命中主轨。
   function getPointerBoundaryEditTarget(context) {
     if (!context) return null;
-    const mainIndices = [...MaweSelection.selectedIdxs];
-    const extensionIndices = [...MaweSelection.selectedExtensionIdxs];
-
-    if (!mainIndices.length && !extensionIndices.length) {
-      const extension = context.track === 'extension' && MaweMultiSubtitleCore.multiSubtitleVisible();
-      const track = extension ? MaweMultiSubtitleCore.getExtensionTrack(context.trackId) : null;
-      const segments = extension ? track?.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
-      const index = MaweContextMenus.findWaveformCueAtTime(context.timeMs, segments);
-      if (index < 0 || !segments?.[index]) return null;
-      return {
-        kind: extension ? 'extension' : 'main',
-        index,
-        trackId: track?.id || null,
-        track,
-        segment: segments[index],
-      };
+    const selection = MaweState.selection;
+    const refs = selection.getSelectedCueRefs();
+    const track = selection.getCurrentTrack();
+    if (!track) return null;
+    const kind = track.role === 'secondary' ? 'extension' : track.role;
+    if (!['main', 'extension', 'overlay'].includes(kind)) return null;
+    const selected = refs.filter((ref) => ref.track_id === track.id);
+    if (!refs.length) {
+      const index = MaweContextMenus.findWaveformCueAtTime(context.timeMs, track.segments);
+      return index >= 0 && track.segments[index]
+        ? { kind, index, trackId: track.id, track, segment: track.segments[index] } : null;
     }
-
-    const panelTarget = MaweCuePanel.getCurrentCuePanelTarget();
-    if (!panelTarget) return null;
-    if (panelTarget.kind === 'main') {
-      if (mainIndices.length !== 1 || mainIndices[0] !== panelTarget.index) return null;
-      const binding = MaweMultiSubtitleCore.bindingForMainIndex(panelTarget.index);
-      const bindingTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id) : null;
-      const boundExtensionIndices = (binding?.target?.segment_id ? [binding.target.segment_id] : [])
-        .map((id) => bindingTrack?.segments?.findIndex((segment) => segment?.id === id) ?? -1)
-        .filter((index) => index >= 0);
-      const extensionMatchesBinding = extensionIndices.length === 0
-        || (boundExtensionIndices.length === 1
-          && extensionIndices.length === 1
-          && extensionIndices[0] === boundExtensionIndices[0]);
-      if (!extensionMatchesBinding) return null;
-      return panelTarget;
+    if (selected.length !== 1) return null;
+    const current = selection.getCurrentCueRef();
+    if (!current || current.track_id !== track.id || current.segment_id !== selected[0].segment_id) return null;
+    const index = track.segments.findIndex((segment) => segment.id === current.segment_id);
+    if (index < 0) return null;
+    // 主副轨绑定会联动选中；只有同一绑定组才算一条逻辑字幕。
+    const otherRefs = refs.filter((ref) => ref.track_id !== track.id);
+    if (otherRefs.length) {
+      const binding = kind === 'main'
+        ? MaweMultiSubtitleCore.bindingForMainIndex(index)
+        : kind === 'extension' ? MaweMultiSubtitleCore.bindingForExtensionIndex(index, track) : null;
+      const partner = kind === 'main' ? binding?.target : binding?.source;
+      if (otherRefs.length !== 1 || otherRefs[0].track_id !== partner?.track_id
+          || otherRefs[0].segment_id !== partner?.segment_id) return null;
     }
-
-    if (extensionIndices.length !== 1 || extensionIndices[0] !== panelTarget.index) return null;
-    const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(panelTarget.index, panelTarget.track);
-    const boundMainIndices = (binding?.source?.segment_id ? [binding.source.segment_id] : [])
-      .map((id) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === id))
-      .filter((index) => index >= 0);
-    const mainMatchesBinding = mainIndices.length === 0
-      || (boundMainIndices.length === 1
-        && mainIndices.length === 1
-        && mainIndices[0] === boundMainIndices[0]);
-    return mainMatchesBinding ? panelTarget : null;
+    return { kind, index, trackId: track.id, track, segment: track.segments[index] };
   }
 
 
 
-  // Z：起点定位；X：终点定位。无选中时使用波形指针命中的字幕；有选中时
-  // 只允许一个逻辑字幕，避免把多选误当成批量边界调整。
+  // Z：起点定位；X：终点定位。多选时只接受一组绑定字幕。
   function handlePointerBoundaryShortcut(event, edge) {
     if (event.key !== (edge === 'start' ? 'z' : 'x')
         && event.key !== (edge === 'start' ? 'Z' : 'X')) return;
@@ -230,8 +210,7 @@
       if (!reference) MaweHint.flashHint('无有效的快捷键时间基准', 'invalid');
       return;
     }
-    const track = target.kind === 'extension' ? 'extension' : 'main';
-    if (!MaweCoreState.waveformEditor.setCueBoundaryToTime(context.timeMs, edge, track, target.index)) return;
+    if (!MaweCoreState.waveformEditor.setCueBoundaryToTime(context.timeMs, edge, target.kind, target.index)) return;
     event.preventDefault();
     event.stopPropagation();
   }

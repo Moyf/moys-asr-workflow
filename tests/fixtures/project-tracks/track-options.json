@@ -1,0 +1,13 @@
+{
+  "legacy": {
+    "segments": [],
+    "overlay_track": {"enabled": false, "segments": [], "variant": "future-overlay", "preview_visible": false, "export": {"enabled": false, "vendor": {"zero": 0, "false": false, "empty": [], "object": {}}}},
+    "multi_subtitle": {"enabled": false, "tracks": [{"id": "en", "segments": [], "export": {"vendor": []}}]}
+  },
+  "invalid": [
+    {"field": "preview_visible", "value": 0, "path": "$.tracks[0].preview_visible"},
+    {"field": "variant", "value": false, "path": "$.tracks[0].variant"},
+    {"field": "export", "value": [], "path": "$.tracks[0].export"},
+    {"field": "export", "value": {"enabled": 1}, "path": "$.tracks[0].export.enabled"}
+  ]
+}

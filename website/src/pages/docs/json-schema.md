@@ -47,6 +47,7 @@ source: "docs/engineering/JSON_SCHEMA.md"
 | `tracks` | 必填数组；恰好一条 main，至多一条 secondary 和一条 overlay；数组顺序不决定角色。旧工程有多条副轨时拒绝迁移，不丢弃数据 |
 | `tracks[*].id` | 工程内唯一的非空字符串，最多 160 个 Unicode 码点；角色交换不更改轨道 ID |
 | `role` / `name` / `enabled` / `segments` | 所有轨道共同字段。role 为 `main`、`secondary` 或 `overlay`；main 必须启用。关闭轨道不删除内容或关系 |
+| `preview_visible` / `export.enabled` / `variant` | 可选；预览与导出开关缺失时均视为开启，`variant` 缺失时为 `plain`。关闭轨道同时关闭预览和导出；关闭任一开关不删除轨道数据。未知叠加轨类型保留但不预览，选中导出时明确报错 |
 | 轨道来源元数据 | `language`、`language_source`、`split_mode`、`timestamp_granularity`、`model`、`preserve_punctuation`、`source_name` 跟随具体轨；`split_mode_override` 保留旧主轨手动覆盖 |
 | cue ID 与时间 | cue ID 跨轨唯一；start/end 和 items 使用源媒体整数毫秒。允许合法零时长标点 item，cue 本身须 start < end |
 | `bilingual` | 双语显示配置；`active_track_id` 指向副轨。`display_mode` 的 `extension` 是显示选项，不是轨道角色 |

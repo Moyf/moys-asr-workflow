@@ -6,63 +6,132 @@
 export function createEditorState(project) {
   'use strict';
 
-  const sets = { main: new Set(), extension: new Set(), overlay: new Set() };
-  const anchors = { main: -1, extension: -1, overlay: -1 };
-  const views = Object.fromEntries(Object.entries(sets).map(([kind, set]) => [kind, Object.freeze({
-    get size() { return set.size; },
-    has: index => set.has(index),
-    values: () => set.values(),
-    keys: () => set.keys(),
-    entries: () => set.entries(),
-    forEach(callback, receiver) {
-      set.forEach(index => callback.call(receiver, index, index, views[kind]));
-    },
-    [Symbol.iterator]: () => set.values(),
-  })]));
-  function trackSet(kind) {
-    if (!Object.hasOwn(sets, kind)) throw new TypeError('Unknown selection track: ' + kind);
-    return sets[kind];
+  // Cue references are the selection source of truth. Legacy index views are
+  // resolved against the current project each time, including after a splice.
+  const refs = new Map();
+  const anchors = { main: null, extension: null, overlay: null };
+  let currentRef = null;
+  const key = ref => JSON.stringify([ref.track_id, ref.segment_id]);
+  const copy = ref => ref ? { track_id: ref.track_id, segment_id: ref.segment_id } : null;
+  function trackForKind(kind) {
+    const role = { main: 'main', extension: 'secondary', overlay: 'overlay' }[kind];
+    if (!role) throw new TypeError('Unknown selection track: ' + kind);
+    const tracks = project.tracks || [];
+    return (role === 'secondary' && tracks.find(track => track.role === role && track.id === project.bilingual?.active_track_id))
+      || tracks.find(track => track.role === role) || null;
   }
+  function findTrack(id) { return (project.tracks || []).find(track => track.id === id) || null; }
+  function resolve(ref) {
+    const track = ref && findTrack(ref.track_id);
+    const index = track?.segments?.findIndex(segment => segment?.id === ref.segment_id) ?? -1;
+    return index < 0 ? null : { track, index };
+  }
+  function refAt(kind, index) {
+    const track = trackForKind(kind);
+    const segment = Number.isInteger(index) && index >= 0 ? track?.segments?.[index] : null;
+    return track?.id != null && segment?.id != null ? { track_id: track.id, segment_id: segment.id } : null;
+  }
+  function validRefs() {
+    const ids = new Map((project.tracks || []).map(track =>
+      [track.id, new Set((track.segments || []).map(segment => segment?.id))]));
+    return [...refs.values()].filter(ref => ids.get(ref.track_id)?.has(ref.segment_id));
+  }
+  function putRef(ref, { activate = true } = {}) {
+    const stable = copy(ref);
+    refs.set(key(stable), stable);
+    if (activate) currentRef = stable;
+  }
+  function addRef(ref, options) { if (ref && resolve(ref)) putRef(ref, options); }
+  function removeRef(ref) {
+    if (!ref) return false;
+    const removed = refs.delete(key(ref));
+    if (currentRef && key(currentRef) === key(ref)) currentRef = null;
+    return removed;
+  }
+  function current() {
+    if (currentRef && refs.has(key(currentRef)) && resolve(currentRef)) return currentRef;
+    const valid = validRefs();
+    return valid[valid.length - 1] || null;
+  }
+  function indexValues(kind) {
+    const track = trackForKind(kind);
+    if (!track) return [];
+    // Preserve selection insertion order, rather than track order.
+    const indexById = new Map((track.segments || []).map((segment, index) => [segment?.id, index]));
+    return [...refs.values()].filter(ref => ref.track_id === track.id && indexById.has(ref.segment_id))
+      .map(ref => indexById.get(ref.segment_id));
+  }
+  const views = {};
+  for (const kind of ['main', 'extension', 'overlay']) {
+    views[kind] = Object.freeze({
+      get size() { return indexValues(kind).length; },
+      has(index) { const ref = refAt(kind, index); return !!ref && refs.has(key(ref)); },
+      values() { return indexValues(kind).values(); },
+      keys() { return indexValues(kind).values(); },
+      entries() { return indexValues(kind).map(index => [index, index]).values(); },
+      forEach(callback, receiver) { for (const index of indexValues(kind)) callback.call(receiver, index, index, views[kind]); },
+      [Symbol.iterator]() { return indexValues(kind).values(); },
+    });
+  }
+  function anchor(kind) {
+    trackForKind(kind);
+    const found = resolve(anchors[kind]);
+    return found && found.track.id === trackForKind(kind)?.id ? found.index : -1;
+  }
+  function setAnchor(kind, index) { anchors[kind] = refAt(kind, index); }
   const selection = Object.freeze({
-    get mainAnchor() { return anchors.main; },
-    set mainAnchor(index) { anchors.main = index; },
-    get extensionAnchor() { return anchors.extension; },
-    set extensionAnchor(index) { anchors.extension = index; },
-    get overlayAnchor() { return anchors.overlay; },
-    set overlayAnchor(index) { anchors.overlay = index; },
-    indices(kind) { trackSet(kind); return views[kind]; },
-    add(kind, index) {
-      const set = trackSet(kind);
-      if (Number.isInteger(index) && index >= 0) set.add(index);
+    get mainAnchor() { return anchor('main'); },
+    set mainAnchor(index) { setAnchor('main', index); },
+    get extensionAnchor() { return anchor('extension'); },
+    set extensionAnchor(index) { setAnchor('extension', index); },
+    get overlayAnchor() { return anchor('overlay'); },
+    set overlayAnchor(index) { setAnchor('overlay', index); },
+    indices(kind) { trackForKind(kind); return views[kind]; },
+    add(kind, index, options) { const ref = refAt(kind, index); if (ref) putRef(ref, options); },
+    addRef,
+    activateRef(ref) { if (ref && refs.has(key(ref)) && resolve(ref)) currentRef = copy(ref); },
+    remove(kind, index) { return removeRef(refAt(kind, index)); },
+    removeRef,
+    clear(kind) {
+      const track = trackForKind(kind);
+      if (track) for (const ref of refs.values()) if (ref.track_id === track.id) removeRef(ref);
     },
-    remove: (kind, index) => trackSet(kind).delete(index),
-    clear: kind => trackSet(kind).clear(),
     replace(kind, indices) {
-      const set = trackSet(kind);
-      const next = [...indices].filter(index => Number.isInteger(index) && index >= 0);
-      set.clear();
-      next.forEach(index => set.add(index));
+      const next = [...indices].map(index => refAt(kind, index)).filter(Boolean);
+      this.clear(kind);
+      next.forEach(ref => putRef(ref));
     },
+    replaceRefs(next, active = null) {
+      refs.clear(); currentRef = null;
+      const ids = new Map((project.tracks || []).map(track =>
+        [track.id, new Set((track.segments || []).map(segment => segment?.id))]));
+      for (const ref of next || []) if (ids.get(ref?.track_id)?.has(ref.segment_id)) putRef(ref, { activate: false });
+      if (active && refs.has(key(active)) && resolve(active)) currentRef = copy(active);
+      else currentRef = current();
+    },
+    getSelectedCueRefs() { return validRefs().map(copy); },
+    getCurrentCueRef() { return copy(current()); },
+    getCurrentTrack() { return findTrack(current()?.track_id) || trackForKind('main'); },
+    snapshot() { return { refs: validRefs().map(copy), current: copy(current()),
+      anchors: Object.fromEntries(Object.entries(anchors).map(([kind, ref]) => [kind, resolve(ref) ? copy(ref) : null])) }; },
+    restore(snapshot) {
+      this.replaceRefs(snapshot?.refs || [], snapshot?.current);
+      for (const kind of Object.keys(anchors)) anchors[kind] = resolve(snapshot?.anchors?.[kind]) ? copy(snapshot.anchors[kind]) : null;
+    },
+    // Existing transfer callers invoke this after the source splice. Removed
+    // refs are then unresolved; remaining refs already point at their new index.
     removeAndShift(kind, removedIndex) {
-      const set = trackSet(kind);
-      const anchor = anchors[kind];
-      if (!Number.isInteger(removedIndex) || removedIndex < 0) return { wasSelected: false, nextAnchor: anchor };
-      const wasSelected = set.has(removedIndex);
-      const next = [...set].filter(index => index !== removedIndex)
-        .map(index => index > removedIndex ? index - 1 : index);
-      set.clear();
-      next.forEach(index => set.add(index));
-      anchors[kind] = anchor === removedIndex ? -1 : anchor > removedIndex ? anchor - 1 : anchor;
-      return { wasSelected, nextAnchor: anchors[kind] };
+      const track = trackForKind(kind);
+      if (!Number.isInteger(removedIndex) || removedIndex < 0) return { wasSelected: false, nextAnchor: anchor(kind) };
+      let wasSelected = false;
+      if (track) for (const ref of [...refs.values()]) {
+        if (ref.track_id === track.id && !resolve(ref)) { wasSelected = true; removeRef(ref); }
+      }
+      if (anchors[kind] && !resolve(anchors[kind])) anchors[kind] = null;
+      return { wasSelected, nextAnchor: anchor(kind) };
     },
-    anchor(kind) { trackSet(kind); return anchors[kind]; },
-    setAnchor(kind, index) {
-      trackSet(kind);
-      anchors[kind] = Number.isInteger(index) && index >= 0 ? index : -1;
-    },
-    reset() {
-      for (const kind of Object.keys(sets)) { sets[kind].clear(); anchors[kind] = -1; }
-    },
+    anchor, setAnchor,
+    reset() { refs.clear(); currentRef = null; for (const kind of Object.keys(anchors)) anchors[kind] = null; },
   });
 
   const preferences = Object.seal({ editor: {} });
@@ -70,9 +139,19 @@ export function createEditorState(project) {
     player: null, waveformEditor: null, playbackFrameId: 0, playbackFramePlayer: null,
     waveformLoadedFromProject: false,
   });
+  let panelKind = 'main', panelTrackId = null, panelRef = null;
   const panel = Object.seal({
     gapPreviewRange: null, gapRemovePanelDrag: null,
-    currentCuePanelIdx: -1, currentCuePanelKind: 'main', currentCuePanelTrackId: null,
+    get currentCuePanelIdx() { return resolve(panelRef)?.index ?? -1; },
+    set currentCuePanelIdx(index) {
+      const track = panelKind === 'extension' && panelTrackId ? findTrack(panelTrackId) : trackForKind(panelKind);
+      const segment = Number.isInteger(index) && index >= 0 ? track?.segments?.[index] : null;
+      panelRef = segment?.id != null ? { track_id: track.id, segment_id: segment.id } : null;
+    },
+    get currentCuePanelKind() { return panelKind; },
+    set currentCuePanelKind(value) { panelKind = value; },
+    get currentCuePanelTrackId() { return panelTrackId; },
+    set currentCuePanelTrackId(value) { panelTrackId = value; },
     cuePanelUndoPushed: false, cuePanelUndoRecord: null,
     cuePanelTextEditSnapshot: null, cuePanelCanceling: false,
   });
@@ -180,6 +259,8 @@ export function createEditorState(project) {
   }
   function beginProjectSession() {
     projectEpoch += 1;
+    selection.reset();
+    panelRef = null; panelKind = 'main'; panelTrackId = null;
     sessionHighlights.clear();
     clearSubtitleDirtyFlags();
     markSaved();

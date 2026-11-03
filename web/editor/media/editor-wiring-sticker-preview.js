@@ -98,8 +98,7 @@ MaweDom.overlayToggle.addEventListener('change', () => {
   MaweHistory.pushPreviewUndo('切换字幕预览', previous);
   MaweSettings.updateEditorSettings({ overlayEnabled: MaweDom.overlayToggle.checked });
   MawePreviewGeometry.refreshPreviewGeometryEditable();
-  if (!MaweDom.overlayToggle.checked) MaweDom.overlayEl.classList.add('hidden');
-  else MawePlaybackLoop.update();
+  MawePlaybackLoop.update();
 });
 
 // init 化模块经 window 延迟取用本文件的运行时状态（门面已在本文件前部挂载）。

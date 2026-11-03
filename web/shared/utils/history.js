@@ -10,7 +10,7 @@ export function createUtilsModule(dependencies) {
 
   function buildSegmentsHistorySnapshot(project) {
     return cloneJsonValue({ tracks: project.tracks, bindings: project.bindings,
-      bilingual: project.bilingual, subtitle_groups: project.subtitle_groups });
+      bilingual: project.bilingual, subtitle_groups: project.subtitle_groups, styles: project.styles });
   }
 
   function restoreSegmentsHistorySnapshot(project, snapshot) {
@@ -27,7 +27,10 @@ export function createUtilsModule(dependencies) {
       return track;
     });
     project.tracks.splice(0, project.tracks.length, ...tracks);
-    for (const field of ['bindings', 'bilingual', 'subtitle_groups']) project[field] = restored[field];
+    for (const field of ['bindings', 'bilingual', 'subtitle_groups', 'styles']) {
+      if (Object.hasOwn(restored, field)) project[field] = restored[field];
+      else delete project[field];
+    }
     return project;
   }
 

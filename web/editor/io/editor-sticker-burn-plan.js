@@ -31,9 +31,9 @@
   function collectStickerIntervals({ gapRemoved = null } = {}) {
     const overlay = global.MaweStickerOverlay;
     if (!overlay) return [];
-    overlay.rebuildStickerIntervals();
+    const intervals = overlay.rebuildStickerIntervals('export');
     const windows = [];
-    overlay.stickerIntervals.forEach((interval) => {
+    intervals.forEach((interval) => {
       const rel = interval.source?.rel;
       if (typeof rel !== 'string' || !rel.trim()) return;
       let start = Number(interval.start);

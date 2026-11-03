@@ -230,6 +230,14 @@ def _validate_canonical(project: dict[str, Any]) -> None:
             _fail(f"{path}.enabled", "must be a boolean")
         if role == "main" and track["enabled"] is not True:
             _fail(f"{path}.enabled", "main track must be enabled")
+        if "preview_visible" in track and type(track["preview_visible"]) is not bool:
+            _fail(f"{path}.preview_visible", "must be a boolean")
+        if "variant" in track and not isinstance(track["variant"], str):
+            _fail(f"{path}.variant", "must be a string")
+        if "export" in track:
+            export = _object(track["export"], f"{path}.export")
+            if "enabled" in export and type(export["enabled"]) is not bool:
+                _fail(f"{path}.export.enabled", "must be a boolean")
         for field in ("name", "model", "source_name"):
             if (field == "name" or field in track) and not isinstance(track.get(field), str):
                 _fail(f"{path}.{field}", "must be a string")
@@ -513,6 +521,12 @@ def _migrate_legacy(raw: dict[str, Any]) -> dict[str, Any]:
         if track.get("split_mode") is None:
             track["split_mode"] = "word"
         tracks.append(track)
+    for track in tracks:
+        track.setdefault("preview_visible", True)
+        track.setdefault("variant", "plain")
+        export = track.setdefault("export", {})
+        if isinstance(export, dict):
+            export.setdefault("enabled", True)
     project.update(schema=TRACKS_PROJECT_SCHEMA, tracks=tracks)
     bilingual = {key: value for key, value in multi.items()
                  if key not in ("schema", "tracks", "bindings", "enabled", "main_split_mode")}

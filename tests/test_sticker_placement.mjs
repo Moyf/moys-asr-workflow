@@ -458,3 +458,25 @@ test('rebinding a single head that owns references re-syncs the group range', ()
   );
   assert.deepEqual({ ...projection[1].sticker_ref }, { name: 'next', headIdx: 0 });
 });
+test('track switches filter preview and burn stickers independently', () => {
+  const segments = [{ id: 'main-1', start: 0, end: 1000, text: 'main' }];
+  const binding = stickerBindingContext(segments);
+  const project = binding.MaweBoot.DATA;
+  const utils = binding.AsrEditorUtils;
+  const track = utils.getMainTrack(project);
+  utils.assignSubtitleGroup(project, segments, [0], 'sticker', { name: 'sticker', rel: 'sticker.png' });
+  loadEditorSource(binding, 'editor/media/editor-sticker-overlay.js');
+  const overlay = binding.MaweStickerOverlay;
+  assert.equal(overlay.activeStickersAt(500).length, 1);
+  track.preview_visible = false;
+  assert.equal(overlay.activeStickersAt(500).length, 0);
+  assert.equal(overlay.rebuildStickerIntervals('export').length, 1);
+  track.preview_visible = true;
+  track.export = { enabled: false };
+  assert.equal(overlay.activeStickersAt(500).length, 1);
+  assert.equal(overlay.rebuildStickerIntervals('export').length, 0);
+  track.enabled = false;
+  assert.equal(overlay.activeStickersAt(500).length, 0);
+  assert.equal(overlay.rebuildStickerIntervals('export').length, 0);
+  assert.equal(segments[0].sticker_group_id, project.subtitle_groups.sticker[0].id);
+});

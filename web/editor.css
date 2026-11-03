@@ -1438,6 +1438,12 @@
   }
   .editor-settings-item { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
   .editor-settings-item[hidden] { display: none; }
+  .track-visibility-settings { display: flex; flex-direction: column; gap: 8px; width: 100%; min-width: 0; margin-bottom: 8px; }
+  .track-visibility-settings > p { margin: 0; }
+  .track-visibility-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px; border: 1px solid var(--btn-border); border-radius: var(--radius-sm); }
+  .track-visibility-row strong { flex: 1 0 100%; color: var(--text-primary); }
+  .track-visibility-row label { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); }
+  .track-variant-warning { flex: 1 0 100%; color: var(--text-primary); overflow-wrap: anywhere; }
   .project-track-toggle {
     box-sizing: border-box; display: flex; align-items: center; gap: 6px; min-height: var(--control-h);
     padding: 3px 8px; border: 1px solid var(--btn-border); border-radius: var(--radius-sm);

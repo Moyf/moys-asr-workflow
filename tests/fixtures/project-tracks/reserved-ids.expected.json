@@ -19,7 +19,12 @@
           "end": 2000,
           "text": "reserved"
         }
-      ]
+      ],
+      "preview_visible": true,
+      "variant": "plain",
+      "export": {
+        "enabled": true
+      }
     },
     {
       "id": "main",
@@ -34,7 +39,12 @@
           "end": 1000,
           "text": "duplicate across tracks"
         }
-      ]
+      ],
+      "preview_visible": true,
+      "variant": "plain",
+      "export": {
+        "enabled": true
+      }
     }
   ],
   "bilingual": {

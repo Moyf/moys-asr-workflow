@@ -5,19 +5,23 @@ import test from 'node:test';
 import { readFixture, createProjectHarness, initializeStickerOverlay } from './helpers/track-golden.mjs';
 const load = (context, file) => vm.runInNewContext(fs.readFileSync(new URL(`../web/${file}`, import.meta.url), 'utf8'), context);
 
-test('P0 Z/X target is main/secondary only; overlay pointer still falls back to main', () => {
+test('Z/X targets the current track and uses main when selection is empty', () => {
   const { data, h } = createProjectHarness(readFixture('three-tracks'));
-  const main = h.getMainTrack(data).segments[0], secondary = h.getExtensionTrack(data);
+  const main = h.getMainTrack(data), secondary = h.getExtensionTrack(data), overlay = h.getOverlayTrack(data);
+  let refs = [], current = null;
   const context = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: data },
-    MaweSelection: { selectedIdxs: new Set(), selectedExtensionIdxs: new Set(), selectedOverlayIdxs: new Set([0]) },
+    MaweState: { selection: { getSelectedCueRefs: () => refs, getCurrentCueRef: () => current,
+      getCurrentTrack: () => data.tracks.find(t => t.id === current?.track_id) || main } },
     MaweContextMenus: { findWaveformCueAtTime: (time, segments) => segments.findIndex(s => s.start <= time && s.end >= time) },
-    MaweMultiSubtitleCore: { multiSubtitleVisible: () => true, getExtensionTrack: () => secondary },
+    MaweMultiSubtitleCore: {},
   };
   load(context, 'editor/cues/editor-nav-preview.js');
   const target = context.window.MaweNavPreview.getPointerBoundaryEditTarget;
-  assert.equal(target({ track: 'main', timeMs: 1800 }).segment, main);
-  assert.equal(target({ track: 'extension', trackId: secondary.id, timeMs: 1800 }).segment, secondary.segments[0]);
-  assert.equal(target({ track: 'overlay', timeMs: 1800 }).segment, main, 'freeze the current upper-layer gap, do not enable overlay commands in P1');
+  assert.equal(target({ track: 'overlay', timeMs: 1800 }).segment, main.segments[0]);
+  for (const track of [secondary, overlay]) {
+    current = { track_id: track.id, segment_id: track.segments[0].id }; refs = [current];
+    assert.equal(target({ track: 'main', timeMs: 1800 }).segment, track.segments[0]);
+  }
 });
 
 function element() {

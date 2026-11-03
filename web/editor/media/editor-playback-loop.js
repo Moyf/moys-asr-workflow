@@ -173,11 +173,14 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   const seg = sourceSegment
     ? window.AsrGapRemoveCore.projectCleanupRetainedSegments([sourceSegment], MaweBoot.DATA.gap_remove)[0]
     : null;
-  const mainVisible = !!MaweDom.overlayToggle.checked && isSubtitlePreviewActive(seg, tMs);
+  const policy = window.AsrEditorUtils.TrackPolicy;
+  const mainVisible = policy.isTrackEnabled(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'preview')
+    && !!MaweDom.overlayToggle.checked && isSubtitlePreviewActive(seg, tMs);
   const extension = extensionSegmentAtTime(tMs, idx);
-  const extensionVisible = !!MaweDom.extensionOverlayToggle?.checked && !!extension;
+  const extensionVisible = policy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'preview')
+    && !!MaweDom.extensionOverlayToggle?.checked && !!extension;
   // 独立叠加轨预览：播放头落在叠加字幕内时显示其文本（叠加轨开启即预览）。
-  const overlayCue = overlayTrackVisible()
+  const overlayCue = policy.isTrackEnabled(getOverlayTrack(), 'preview') && overlayTrackVisible()
     ? (getOverlayTrack()?.segments || []).find((segment) => isSubtitlePreviewActive(segment, tMs)) || null
     : null;
   const overlayCueVisible = Boolean(overlayCue);

@@ -66,17 +66,41 @@ if (MaweDom.editorSettingsPanel) {
 
 
 window.MaweDomPanelsWiring.overlayTrackToggle?.addEventListener('change', () => {
-  const overlay = getOverlayTrack();
-  if (!overlay) return;
-  overlay.enabled = window.MaweDomPanelsWiring.overlayTrackToggle.checked;
-  overlay._dirty = true;
-  MaweState.markProjectDirty();
-  MaweViewUpdates.invalidate({ save: true });
-  MaweCuePanel.renderAll({ waveform: 'full' });
-  if (window.MaweDomPanelsWiring.overlayTrackToggle.checked) {
+  const next = window.MaweDomPanelsWiring.overlayTrackToggle.checked;
+  MaweCommands.run('切换叠加字幕', command => {
+    const overlay = next ? window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA) : getOverlayTrack();
+    if (!overlay) return;
+    overlay.enabled = next;
+    overlay._dirty = true;
+    command.commit({ cueList: true, waveform: 'full' });
+  });
+  if (next) {
     MaweHint.flashHint('已允许字幕重叠；Ctrl+拖拽波形空白或用右键菜单可创建叠加字幕', 'success');
   }
 });
+
+document.querySelector('.track-visibility-settings')?.addEventListener('change', event => {
+  const input = event.target;
+  const row = input.closest('.track-visibility-row');
+  if (!row) return;
+  if (!input.dataset.trackField) return;
+  const role = row.dataset.trackRole;
+  if (input.dataset.trackField === 'enabled') {
+    const existing = role === 'secondary' ? MaweDom.multiSubtitleToggle : window.MaweDomPanelsWiring.overlayTrackToggle;
+    if (existing && existing.checked !== input.checked) existing.click();
+    window.MaweProjectSettings.syncTrackControls();
+    return;
+  }
+  const track = MaweBoot.DATA.tracks.find(item => item.role === role);
+  if (!track) return;
+  MaweCommands.run(input.dataset.trackField === 'preview' ? '切换轨道预览' : '切换轨道导出', command => {
+    if (input.dataset.trackField === 'preview') track.preview_visible = input.checked;
+    else track.export = { ...track.export, enabled: input.checked };
+    track._dirty = true;
+    command.commit({ cueList: true, waveform: 'full' });
+  });
+});
+
 
 
 

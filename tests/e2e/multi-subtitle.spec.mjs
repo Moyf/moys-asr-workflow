@@ -1847,7 +1847,7 @@ test('swaps main and extension subtitles from the gear menu and supports undo', 
   const afterSwap = await page.evaluate(() => AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA));
   // Track entities retain their own cue attributes when their roles change.
   expect(getMainTrack(afterSwap)).toEqual({ ...getExtensionTrack(beforeSwap), role: 'main', enabled: true });
-  expect(getExtensionTrack(afterSwap)).toEqual({ ...getMainTrack(beforeSwap), role: 'extension', enabled: true });
+  expect(getExtensionTrack(afterSwap)).toEqual({ ...getMainTrack(beforeSwap), role: 'secondary', enabled: true });
   expect(afterSwap.subtitle_groups).toEqual(beforeSwap.subtitle_groups);
 
   await page.keyboard.press('ControlOrMeta+z');
@@ -2276,6 +2276,41 @@ test('uses G to bind a single extension cue and labels extension context shortcu
   await expect(unboundExtension.locator('.time')).toHaveText('00:00.000 → 00:02.000');
   await page.keyboard.press('Shift+G');
   await expect(unboundExtension).toHaveClass(/unbound/);
+});
+
+test('background secondary selection restoration preserves the active cue', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  const result = await page.evaluate(() => {
+    const selection = MaweState.selection;
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const secondary = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    selection.reset();
+    selection.add('main', 0);
+    selection.add('extension', 0, { activate: false });
+    const originalMain = selection.getCurrentCueRef();
+    secondary.segments.reverse();
+    MaweMultiSubtitleCore.sortExtensionTrackSegments(secondary);
+    const mainAfterSort = selection.getCurrentCueRef();
+    const secondaryRef = selection.getSelectedCueRefs().find(ref => ref.track_id === secondary.id);
+    selection.activateRef(secondaryRef);
+    secondary.segments.reverse();
+    MaweMultiSubtitleCore.sortExtensionTrackSegments(secondary);
+    const secondaryAfterSort = selection.getCurrentCueRef();
+    const snapshot = MaweMultiSubtitleCore.extensionTrackSelectionSnapshot(secondary);
+    secondary.segments = secondary.segments.filter(segment => segment.id !== secondaryRef.segment_id);
+    MaweMultiSubtitleCore.restoreExtensionTrackSelection(secondary, snapshot);
+    return { mainId: main.id, secondaryId: secondary.id, originalMain, mainAfterSort,
+      secondaryRef, secondaryAfterSort, afterRemoved: selection.getCurrentCueRef(),
+      selectedAfterRemoved: selection.getSelectedCueRefs() };
+  });
+  expect(result.mainAfterSort).toEqual(result.originalMain);
+  expect(result.originalMain.track_id).toBe(result.mainId);
+  expect(result.secondaryAfterSort).toEqual(result.secondaryRef);
+  expect(result.secondaryRef.track_id).toBe(result.secondaryId);
+  expect(result.afterRemoved).toEqual(result.originalMain);
+  expect(result.selectedAfterRemoved).toEqual([result.originalMain]);
 });
 
 test('normal extension clicks replace stale main selection with the clicked binding', async ({ page }) => {
@@ -2911,7 +2946,7 @@ test('keeps the main range fixed when its extension follower hits another extens
   await page.mouse.move(targetX, centerY, { steps: 4 });
   await page.mouse.up();
 
-  await expect(page.locator('#hint-stack')).toContainText('挤压 1 条副字幕');
+  await expect(page.locator('#hint-stack')).toContainText('裁剪 1 条其他副字幕');
   const timing = await page.evaluate(() => ({
     main: [AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end],
     extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map((segment) => [segment.start, segment.end]),
@@ -4644,4 +4679,49 @@ test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap
   const enabledGapRemovedLines = enabled.gapRemoved.split('\n').filter((line) => line.startsWith('Dialogue:'));
   assertSecondaryCoverage(enabledGapRemovedLines, 1000);
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
+test('Z/X edits the selected overlay cue and undo restores it without changing main', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-zx', start: 1000, end: 4000, text: 'main' }],
+    overlay_track: { enabled: true, segments: [{ id: 'overlay-zx', start: 1200, end: 3800, text: 'overlay' }] },
+    waveform: generateWaveformPayload(5000),
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{ name: 'overlay-zx.json', type: 'application/json', base64: Buffer.from(JSON.stringify(project)).toString('base64') }]);
+  const block = page.locator('.waveform-cue-block[data-track="overlay"][data-overlay-idx="0"]');
+  await block.click();
+  await moveWaveformPointerToTime(page, block, 2000);
+  await page.keyboard.press('z');
+  const ranges = () => page.evaluate(() => ({
+    main: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => [s.start, s.end]),
+    overlay: AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).segments.map(s => [s.start, s.end]),
+  }));
+  await expect.poll(ranges).toEqual({ main: [[1000, 4000]], overlay: [[2000, 3800]] });
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect.poll(ranges).toEqual({ main: [[1000, 4000]], overlay: [[1200, 3800]] });
+});
+
+
+test('binding auto-sync reports an extra subtitle removed and undo restores both', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-bind-impact', start: 1000, end: 3000, text: 'main' }],
+    waveform: generateWaveformPayload(5000),
+    multi_subtitle: { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+      tracks: [{ id: 'ext-bind-impact', role: 'extension', name: 'English', language: 'en', split_mode: 'word',
+        segments: [
+          { id: 'bound', start: 1200, end: 2000, text: 'bound' },
+          { id: 'covered', start: 2400, end: 2800, text: 'covered' },
+        ] }], bindings: [] },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{ name: 'binding-impact.json', type: 'application/json', base64: Buffer.from(JSON.stringify(project)).toString('base64') }]);
+  await page.locator('.multi-cue-column.main').first().click();
+  await page.locator('.multi-cue-column.extension[data-ext-idx="0"]').first().click({ button: 'right' });
+  await page.locator('#ctxmenu .item').filter({ hasText: '与选中的主字幕绑定' }).click();
+  await expect(page.locator('#hint-stack')).toContainText('删除 1 条副字幕');
+  const ranges = () => page.evaluate(() => AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).segments.map(s => [s.id, s.start, s.end]));
+  await expect.poll(ranges).toEqual([['bound', 1000, 3000]]);
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect.poll(ranges).toEqual([['bound', 1200, 2000], ['covered', 2400, 2800]]);
 });

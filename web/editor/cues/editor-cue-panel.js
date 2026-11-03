@@ -206,15 +206,23 @@ export function initMaweCuePanel() {
   } else if (!window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[nextIndex]) {
     nextIndex = -1;
   }
+  const activateSelectedTarget = () => {
+    const track = nextKind === 'extension' ? MaweMultiSubtitleCore.getExtensionTrack(nextTrackId)
+      : nextKind === 'overlay' ? getOverlayTrack() : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const segment = track?.segments?.[nextIndex];
+    if (segment) MaweState.selection.activateRef({ track_id: track.id, segment_id: segment.id });
+  };
   if (
     MaweCuePanelState.currentCuePanelKind === nextKind
     && MaweCuePanelState.currentCuePanelIdx === nextIndex
     && MaweCuePanelState.currentCuePanelTrackId === nextTrackId
   ) {
+    activateSelectedTarget();
     renderCurrentCuePanel();
     return;
   }
   commitCuePanelEdit();
+  activateSelectedTarget();
   MaweCuePanelState.currentCuePanelKind = nextKind;
   MaweCuePanelState.currentCuePanelIdx = nextIndex;
   MaweCuePanelState.currentCuePanelTrackId = nextTrackId;

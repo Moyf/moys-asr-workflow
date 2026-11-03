@@ -2,6 +2,9 @@
 export function createUtilsModule(dependencies) {
   'use strict';
   const { cloneJsonValue, stableId } = dependencies;
+  let bindingIndexEnabled = true;
+  function setBindingIndexEnabled(enabled) { bindingIndexEnabled = enabled !== false; }
+  function isBindingIndexEnabled() { return bindingIndexEnabled; }
   const MULTI_SUBTITLE_TOLERANCE_MS = 300;
   const MULTI_SUBTITLE_DISPLAY_MODES = new Set(['main', 'extension', 'both']);
   const MULTI_SUBTITLE_SPLIT_MODES = new Set(['continuous', 'word']);
@@ -81,9 +84,26 @@ export function createUtilsModule(dependencies) {
     };
   }
   function rebuildBindingOffsets(project) {
+    const trackById = new Map();
+    const indexes = new Map();
+    if (bindingIndexEnabled) {
+      for (const track of tracks(project)) if (!trackById.has(track.id)) trackById.set(track.id, track);
+    }
+    function resolve(ref) {
+      if (!bindingIndexEnabled) return cue(project, ref?.track_id, ref?.segment_id);
+      if (Number.isNaN(ref?.track_id) || Number.isNaN(ref?.segment_id)) return null;
+      const track = trackById.get(ref?.track_id);
+      if (!track) return null;
+      if (!indexes.has(track)) {
+        const byId = new Map();
+        for (const segment of track.segments) if (!byId.has(segment.id)) byId.set(segment.id, segment);
+        indexes.set(track, byId);
+      }
+      return indexes.get(track).get(ref?.segment_id) || null;
+    }
     for (const binding of project?.bindings || []) {
-      const source = cue(project, binding.source?.track_id, binding.source?.segment_id);
-      const target = cue(project, binding.target?.track_id, binding.target?.segment_id);
+      const source = resolve(binding.source);
+      const target = resolve(binding.target);
       if (!source || !target) continue;
       binding.start_offset_ms = target.start - source.start;
       binding.end_offset_ms = target.end - source.end;
@@ -184,6 +204,7 @@ export function createUtilsModule(dependencies) {
       head: null, ref: null, headIdx: null };
   }
   return Object.freeze({ MULTI_SUBTITLE_DISPLAY_MODES, MULTI_SUBTITLE_SPLIT_MODES, MULTI_SUBTITLE_TOLERANCE_MS,
+    setBindingIndexEnabled, isBindingIndexEnabled,
     bindingForSegment, buildMultiDisplayRows, buildSubtitleBinding, matchSubtitleSegments, mergeMainAndOverlaySegments,
     moveSegmentBetweenTracks, normalizeMultiSubtitleProject, rebuildBindingOffsets, removeSubtitleBindings,
     removeBindingsForSegments, resolveMergedGroupInheritance, swapMainAndExtensionSubtitle, ensureExtensionTrack, ensureOverlayTrack });
