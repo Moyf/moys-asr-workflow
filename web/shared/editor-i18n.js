@@ -9,6 +9,9 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '字幕轨道状态': 'Subtitle track status',
+    '主字幕轨始终启用': 'The main subtitle track is always enabled',
+    '关闭轨道会同时停止预览和导出，字幕数据会保留。': 'Disabling a track stops preview and export while keeping its subtitle data.',
     '工程音量': 'Project volume',
     '整体增益': 'Overall gain',
     '整体增益（dB）': 'Overall gain (dB)',
@@ -1677,6 +1680,12 @@
     if (lang !== EN) return text;
     if (EN_TEXT[text]) return EN_TEXT[text];
     if (EN_ATTR[text]) return EN_ATTR[text];
+    const trackWarning = /^不支持的叠加轨类型：([\s\S]*)。数据已保留。$/.exec(text);
+    if (trackWarning) return `Unsupported overlay track type: ${trackWarning[1]}. Data has been preserved.`;
+    const trackExportError = /^不支持导出叠加轨“([\s\S]*)”的类型“([\s\S]*)”；请关闭该轨或其导出开关$/.exec(text);
+    if (trackExportError) return `Cannot export overlay track “${trackExportError[1]}” with type “${trackExportError[2]}”; disable the track or its export switch.`;
+    const trackExportWrapper = /^(ASS 导出失败|无法生成匹配字幕)：(不支持导出叠加轨[\s\S]*)$/.exec(text);
+    if (trackExportWrapper) return `${trackExportWrapper[1] === 'ASS 导出失败' ? 'ASS export failed' : 'Unable to generate matching subtitles'}: ${translateText(trackExportWrapper[2], EN)}`;
     let scope = /^当前范围：全部 (\d+) 条字幕$/.exec(text);
     if (scope) return `Current scope: all ${scope[1]} subtitles`;
     scope = /^当前范围：仅选中的 (\d+) 条字幕$/.exec(text);

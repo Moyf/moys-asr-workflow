@@ -61,3 +61,24 @@ test('plain text export respects the main track export switch without deleting t
  expect(await exportText(false)).not.toContain('字幕');
  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('字幕');
 });
+
+test('unknown overlay warnings follow the interface language', async ({ page }) => {
+ await disableOnboarding(page); await page.goto(`${server.url}?lang=en`);
+ await expect(page.locator('.waveform-row').first()).toBeVisible();
+ await page.evaluate(() => {
+  const overlay = AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
+  overlay.enabled = true; overlay.export = { enabled: true }; overlay.name = 'My overlay'; overlay.variant = 'future-type';
+  MaweProjectSettings.syncTrackControls();
+  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-project-tracks');
+ });
+ const warning = page.locator('[data-track-role="overlay"] .track-variant-warning');
+ await expect(warning).toHaveText('Unsupported overlay track type: future-type. Data has been preserved.');
+ await page.evaluate(() => document.getElementById('download-full-srt').click());
+ await expect(page.locator('.hint-card').last()).toHaveText('Cannot export overlay track “My overlay” with type “future-type”; disable the track or its export switch.');
+ await page.evaluate(() => document.getElementById('download-full-ass').click());
+ await expect(page.locator('.hint-card').last()).toHaveText('ASS export failed: Cannot export overlay track “My overlay” with type “future-type”; disable the track or its export switch.');
+ await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
+ await expect(warning).toHaveText('不支持的叠加轨类型：future-type。数据已保留。');
+ await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
+ await expect(warning).toHaveText('Unsupported overlay track type: future-type. Data has been preserved.');
+});
