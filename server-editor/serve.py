@@ -172,6 +172,7 @@ class ServerProject:
     default_audio_track: int = 0
     import_changes: tuple[dict, ...] = ()
     source_schema: str = PROJECT_SCHEMA
+    requires_identity_upgrade: bool = False
 
 
 ProjectLoadProgressCallback = Callable[[str, int], None]
@@ -1364,6 +1365,7 @@ def load_project(
         raise ProjectValidationFailed(imported.validation.errors)
     data = imported.validation.project
     source_schema = raw_data.get("schema", "moy.asr.project.v1")
+    requires_identity_upgrade = not isinstance(raw_data.get("speakers"), list)
     payload_audio_track = audio_track_from_payloads(
         data.get("waveform"),
         data.get("spectral"),
@@ -1405,6 +1407,7 @@ def load_project(
             default_audio_track=default_audio_track,
             import_changes=imported.changes,
             source_schema=source_schema,
+            requires_identity_upgrade=requires_identity_upgrade,
         )
 
     resolution = resolve_project_media(json_path, data, explicit_media)
@@ -1531,6 +1534,7 @@ def load_project(
         default_audio_track=default_audio_track,
         import_changes=imported.changes,
         source_schema=source_schema,
+        requires_identity_upgrade=requires_identity_upgrade,
     )
 
 
@@ -1697,7 +1701,7 @@ def build_server_page(
             "startupError": startup_status.get("error", ""),
             "canSave": project.json_path is not None,
             "projectImportChanges": list(project.import_changes),
-            "requiresMigrationSaveAs": project.source_schema != PROJECT_SCHEMA,
+            "requiresMigrationSaveAs": project.source_schema != PROJECT_SCHEMA or project.requires_identity_upgrade,
             "canPortableStickerExport": project.json_path is not None,
             "canOtozStickerExport": project.json_path is not None,
             "canOtozTimelineExport": project.json_path is not None,
@@ -1743,6 +1747,9 @@ def _attach_segments_match(server_project: dict, browser_project: dict) -> bool:
     Frame-mode projects keep their frame fields significant and are compared as
     supplied.
     """
+    if any(server_project.get(field) != browser_project.get(field)
+           for field in ("speakers", "annotation_mode", "palette_size", "speaker_shortcuts")):
+        return False
     server_segments = copy.deepcopy(get_main_track(server_project)["segments"])
     browser_segments = copy.deepcopy(get_main_track(browser_project)["segments"])
     if not isinstance(server_segments, list) or not isinstance(browser_segments, list):
@@ -1861,7 +1868,7 @@ class EditorServer(ThreadingHTTPServer):
         return {
             "bindingGeneration": self.binding_generation,
             "sourceMediaId": self.source_media_id,
-            "requiresMigrationSaveAs": self.project.source_schema != PROJECT_SCHEMA,
+            "requiresMigrationSaveAs": self.project.source_schema != PROJECT_SCHEMA or self.project.requires_identity_upgrade,
             "thumbnailBinding": f"{self.binding_generation}:{self.source_media_id}",
             # A valid persisted base cache means the Launcher stage ran with
             # thumbnails enabled; without one the editor keeps its display
@@ -2380,6 +2387,9 @@ class EditorServer(ThreadingHTTPServer):
             raise SaveProjectError("最大保存版本数必须为 1–1000 的整数")
         if backup_only and (backup_limit is None or filename is not None):
             raise SaveProjectError("备份必须使用当前绑定工程与有效的版本数")
+        if (self.project.source_schema == PROJECT_SCHEMA and not self.project.requires_identity_upgrade
+                and isinstance(self.project.data.get("speakers"), list) and not isinstance(project_data.get("speakers"), list)):
+            raise SaveProjectError("$.speakers: 保存请求缺少工程身份表，请使用支持说话人身份的编辑器重新打开工程")
         try:
             normalized_project = normalize_project(project_data)
         except ProjectValidationFailed as error:
@@ -2388,7 +2398,7 @@ class EditorServer(ThreadingHTTPServer):
         target = self.project.json_path
         if filename is not None:
             target = safe_project_filename(target.parent, filename)
-        requires_migration = self.project.source_schema != PROJECT_SCHEMA
+        requires_migration = self.project.source_schema != PROJECT_SCHEMA or self.project.requires_identity_upgrade
         if requires_migration:
             if filename is None or target.resolve() == self.project.json_path.resolve() or backup_only:
                 raise SaveProjectError("旧格式工程需要另存为新的 v2 工程文件，原文件不会被覆盖")
@@ -2410,7 +2420,7 @@ class EditorServer(ThreadingHTTPServer):
         # 同一音轨时把运行态缓存合并回新工程，媒体/音轨变化则失效。
         _restore_runtime_inline_caches(self.project.data, normalized_project)
         saved_project = replace(self.project, data=normalized_project, json_path=target,
-                                import_changes=(), source_schema=PROJECT_SCHEMA)
+                                import_changes=(), source_schema=PROJECT_SCHEMA, requires_identity_upgrade=False)
         if target != self.project.json_path:
             self._bind_project_locked(saved_project)
         else:

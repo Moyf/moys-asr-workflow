@@ -41,6 +41,7 @@ function runtime() {
   const extension = [{ id: 'ext-001', start: 0, end: 2000, text: 'translated body' }];
   const overlay = [{ id: 'overlay-001', start: 0, end: 2000, text: 'overlay untouched' }];
   const project = runtimeProject(main, { overlay: { segments: overlay }, extensions: [{ id: 'extension', segments: extension }],
+    speakers: [], annotation_mode: 'color', palette_size: 5, speaker_shortcuts: {},
     gap_remove: localGap(), media: 'synthetic.mp4', waveform: { duration_ms: 2000 } });
   Object.assign(context, {
     ASS_STYLE_LIBRARY: {},

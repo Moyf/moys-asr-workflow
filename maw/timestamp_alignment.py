@@ -436,14 +436,9 @@ def align_project(
                     failed_segments += 1
                     warnings.append(f"字幕对齐结果未覆盖完整文本：{text[:32]}")
                     continue
-                speaker = segment.get("speaker")
-                segment["items"] = [
-                    {
-                        **item,
-                        **({"speaker": str(speaker)} if isinstance(speaker, str) and speaker.strip() else {}),
-                    }
-                    for item in item_payloads
-                ]
+                # The normalized project owns identity at the cue level.
+                # Timing alignment must neither duplicate nor replace it.
+                segment["items"] = item_payloads
                 aligned_segments += 1
                 aligned_items += len(items)
         for track in project_tracks(project):

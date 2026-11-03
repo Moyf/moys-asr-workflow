@@ -272,6 +272,7 @@ function deleteOverlayCues(indices) {
 // 叠加段的颜色组只引用叠加轨自身段；这里按「单段自持 head」分配，
 // 不产生跨轨引用，也不走主轨的组拆分逻辑。
 function assignOverlayColor(idxs, colorName) {
+  if (window.MaweSpeakerLabels?.assignFromColorShortcut(getOverlayTrack(), idxs, colorName)) return;
   const overlay = getOverlayTrack();
   const def = MaweColors.COLOR_BY_NAME[colorName];
   if (!overlay || !def) return;
@@ -324,6 +325,7 @@ function detachColorFromGroup(idx) {
 }
 
 function clearOverlayColorOnTargets(idxs) {
+  if (window.MaweSpeakerLabels?.assignFromColorShortcut(getOverlayTrack(), idxs, null)) return;
   const overlay = getOverlayTrack();
   if (!overlay) return;
   const targets = [...new Set(idxs)].filter((index) => Number.isInteger(index) && overlay.segments[index]);
@@ -362,14 +364,13 @@ function clearOverlaySticker(index) {
 // 且仅按时间连续校验：混合组会丢标记，跳过中间段的合并会留下被新段覆盖
 // 的旧段，保存后违反相邻段 end <= next.start 的契约导致工程无法再打开。
 function mergeOverlayCues(idxs) {
-  detachCuePanelFromTrackEdits();
-  if (!mergeOverlaySegments(idxs)) return;
+  if (!mergeOverlaySegments(idxs, { detachPanel: true })) return;
   MaweViewUpdates.invalidate({ save: true });
 }
 
 // 只合并叠加轨连续字幕。叠加轨的分组（颜色/表情包）引用叠加轨自身段，
 // 合并语义与主轨一致：全部成员同组时继承，混合组不继承。
-function mergeOverlaySegments(idxs) {
+function mergeOverlaySegments(idxs, { detachPanel = false } = {}) {
   const track = getOverlayTrack();
   if (!track || !idxs?.length) return false;
   const sorted = [...new Set(idxs)].sort((a, b) => a - b);
@@ -385,6 +386,11 @@ function mergeOverlaySegments(idxs) {
   }
   const segments = sorted.map((index) => track.segments[index]).filter(Boolean);
   if (segments.length !== sorted.length) return false;
+  if (!window.AsrEditorUtils.canMergeSpeakerSegments(segments)) {
+    MaweHint.flashHint('不同说话人的字幕不能合并，请先统一归属', 'invalid');
+    return false;
+  }
+  if (detachPanel) detachCuePanelFromTrackEdits();
   const sourceEl = MaweCoreState.container.querySelector(`.overlay-track-cue[data-overlay-idx="${sorted[0]}"]`);
   const cueListAnchor = MaweCueListAnchor.captureVisibleCueListVisualAnchor(sourceEl);
   const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(

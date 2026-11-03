@@ -67,5 +67,9 @@
         }
       }
     ]
-  }
+  },
+  "speakers": [],
+  "annotation_mode": "color",
+  "palette_size": 5,
+  "speaker_shortcuts": {}
 }

@@ -165,6 +165,7 @@ export function initMaweStickerPicker() {
   // 单选 → 设为 head；多选 → 第一条为 head，时间跨整个范围，后续为 ref
   function assignColor(idxs, colorName) {
     if (!idxs.length) return;
+    if (window.MaweSpeakerLabels?.assignFromColorShortcut(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), idxs, colorName)) return;
     const def = MaweColors.COLOR_BY_NAME[colorName];
     if (!def) return;
     return MaweCommands.run('标记颜色', () => {
@@ -193,6 +194,7 @@ export function initMaweStickerPicker() {
 
 
   function clearColorOnTargets(idxs) {
+    if (window.MaweSpeakerLabels?.assignFromColorShortcut(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), idxs, null)) return;
     return MaweCommands.run('清除颜色', () => {
       // 一次性切除所有目标 idx，触发组拆分
       MaweSegmentOps.splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');

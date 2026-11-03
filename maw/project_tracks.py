@@ -16,6 +16,7 @@ from maw.project import (
     _validate_timebase, _validate_transcription_metadata,
 )
 from maw.project_preview import JsonDict, JsonValue, validate_preview
+from maw.speaker_identity import SpeakerMigrationError, upgrade_project_speakers, validate_project_speakers
 
 TRACKS_PROJECT_SCHEMA = "moy.asr.project.v2"
 LEGACY_PROJECT_SCHEMA = "moy.asr.project.v1"
@@ -127,8 +128,8 @@ def make_project(
     project.setdefault("bindings", [])
     project.setdefault("bilingual", {"display_mode": "both"})
     project.setdefault("subtitle_groups", {"next_id": 1, "color": [], "sticker": []})
-    _validate_canonical(project)
-    return project
+    _validate_canonical(project, speaker_contract="speakers" in project)
+    return _upgrade_speaker_contract(project)
 
 
 def _validate_groups(project: dict[str, Any]) -> None:
@@ -199,7 +200,7 @@ def _validate_bindings(project: dict[str, Any]) -> None:
                 _fail(f"{path}.{field}", "must equal the segment time offset in integer milliseconds")
 
 
-def _validate_canonical(project: dict[str, Any]) -> None:
+def _validate_canonical(project: dict[str, Any], *, speaker_contract: bool = True) -> None:
     if project.get("schema") != TRACKS_PROJECT_SCHEMA:
         _fail("$.schema", f"must be {TRACKS_PROJECT_SCHEMA}")
     for field in (*LEGACY_CONTAINERS, *TRACK_SOURCE_FIELDS):
@@ -287,6 +288,19 @@ def _validate_canonical(project: dict[str, Any]) -> None:
             _fail("$.bilingual.active_track_id", "must reference an existing extension track")
     _validate_bindings(project)
     _validate_groups(project)
+    if speaker_contract:
+        issues = validate_project_speakers(project)
+        if issues:
+            raise ProjectValidationFailed(tuple(ProjectValidationError(issue["path"], issue["message"]) for issue in issues))
+
+
+def _upgrade_speaker_contract(project: dict[str, Any]) -> dict[str, Any]:
+    try:
+        upgraded = upgrade_project_speakers(project)
+    except SpeakerMigrationError as error:
+        _fail(error.path, str(error))
+    _validate_canonical(upgraded)
+    return upgraded
 
 
 def validate_tracks_project(raw: JsonValue) -> ProjectValidationResult:
@@ -644,8 +658,19 @@ def import_project(raw: JsonValue) -> ProjectTracksImport:
     if schema not in {LEGACY_PROJECT_SCHEMA, TRACKS_PROJECT_SCHEMA, *GROUP_PROJECT_SCHEMAS}:
         _fail("$.schema", "unsupported project schema")
     candidate = copy.deepcopy(source) if schema == TRACKS_PROJECT_SCHEMA else _migrate_legacy(source)
-    _validate_canonical(candidate)
-    return ProjectTracksImport(candidate, tuple(_changes(source, candidate)))
+    _validate_canonical(candidate, speaker_contract="speakers" in candidate)
+    canonical_bindings = candidate["bindings"]
+    candidate = _upgrade_speaker_contract(candidate)
+    changes = _changes(source, candidate)
+    # v1/v1.5 store bindings inside multi_subtitle. A raw structural diff only
+    # says that container was removed and a new root bindings array was added;
+    # retain the canonical before/after when identity splitting released a pair.
+    retained_binding_ids = {binding["id"] for binding in candidate["bindings"]}
+    if schema != TRACKS_PROJECT_SCHEMA and any(binding["id"] not in retained_binding_ids for binding in canonical_bindings):
+        changes = [change for change in changes if change["path"] != "$.bindings"]
+        changes.append({"path": "$.bindings", "kind": "replace", "before": copy.deepcopy(canonical_bindings),
+                        "after": copy.deepcopy(candidate["bindings"])})
+    return ProjectTracksImport(candidate, tuple(changes))
 
 
 def migrate_project_tracks(raw: JsonValue) -> JsonDict:

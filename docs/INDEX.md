@@ -155,6 +155,11 @@
 
 ## 共享计划
 
+<a name="plans-speaker-core"></a>
+### 说话人核心与后续依赖
+
+[打开正文](plans/SPEAKER_IDENTITY_CORE_PLAN.md)
+
 <a name="plans-unified-tracks"></a>
 ### 统一字幕轨道实施方案
 

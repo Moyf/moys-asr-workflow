@@ -72,7 +72,7 @@ export function initMaweProjectLoad() {
 
 
 function applyCanonicalProject(data, filename, { repaired = false, loadGeneration = null,
-  requiresMigrationSaveAs = data?.schema !== window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA } = {}) {
+  requiresMigrationSaveAs = data?.schema !== window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA || !Array.isArray(data?.speakers) } = {}) {
   const imported = window.AsrEditorUtils.importProject(data);
   data = imported.project;
   repaired ||= imported.changes.length > 0;

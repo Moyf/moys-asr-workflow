@@ -2,6 +2,8 @@
 // ESM init 模块：initMaweMultiImport 在原清单位次执行原 IIFE 体（挂
 // window.MaweMultiImport 冻结门面——classic 侧出接口）；底部具名导出经门面
 // 在调用时转发，兄弟模块可静态 import。
+import { prepareImportedSpeakerIdentities } from '../../shared/utils/speaker-project-import.js';
+
 export function initMaweMultiImport() {
   // Preserve the classic editor.js alias inside this module's own closure.
   const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
@@ -137,6 +139,13 @@ export function initMaweMultiImport() {
   function commitMultiSubtitleImport() {
   const pending = pendingMultiImport;
   if (!pending) return false;
+  let importedIdentities;
+  try {
+    importedIdentities = prepareImportedSpeakerIdentities(MaweBoot.DATA, pending.segments.speakers, pending.segments);
+  } catch (error) {
+    MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
+    return false;
+  }
   const match = pending.match || window.AsrEditorUtils.matchSubtitleSegments(
     window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, pending.segments, MaweMultiSubtitleCore.MULTI_SUBTITLE_TOLERANCE_MS,
   );
@@ -146,7 +155,7 @@ export function initMaweMultiImport() {
   const trackId = oldTrack?.id || window.AsrEditorUtils.uniqueStableSegmentId(
     multi.tracks || [], 'extension-1', 'extension',
   );
-  const extensionSegments = pending.segments.map((segment, index) => ({
+  const extensionSegments = importedIdentities.segments.map((segment, index) => ({
     ...window.AsrEditorUtils.cloneJsonValue(segment),
     id: window.AsrEditorUtils.uniqueStableSegmentId(
       [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA), ...pending.segments.slice(0, index)], `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
@@ -168,6 +177,7 @@ export function initMaweMultiImport() {
     segments: extensionSegments,
   };
   return MaweCommands.run(replacing ? '替换副字幕' : '导入双语字幕', (command) => {
+    MaweBoot.DATA.speakers = importedIdentities.speakers;
     if (replacing) {
       const oldIds = new Set(oldTrack?.segments?.map((segment) => segment.id) || []);
       multi.bindings = (multi.bindings || []).filter((binding) => (
@@ -284,7 +294,7 @@ export function initMaweMultiImport() {
       const data = imported.project;
       MaweJsonRepair.noteImportReport(imported.changes);
 MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation, repaired: imported.changes.length > 0,
-  requiresMigrationSaveAs: rawProject.schema !== window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA });
+  requiresMigrationSaveAs: rawProject.schema !== window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA || !Array.isArray(rawProject.speakers) });
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();
 const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);

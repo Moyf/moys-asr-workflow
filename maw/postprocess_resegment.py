@@ -3,6 +3,7 @@
 from __future__ import annotations
 from maw.project_mutations import replace_main_segments
 from maw.project_tracks import iter_segments
+from maw.speaker_identity import can_merge_speaker_segments
 
 import copy
 import json
@@ -507,11 +508,7 @@ def _run_resegment(
             continue
         units = by_source[index]
         if previous_index is not None and (
-            (
-                segment.get("speaker") is not None
-                and sources[previous_index].get("speaker") is not None
-                and segment.get("speaker") != sources[previous_index].get("speaker")
-            )
+            not can_merge_speaker_segments([sources[previous_index], segment])
             or any(segment.get(f"{kind}_group_id") != sources[previous_index].get(f"{kind}_group_id")
                    for kind in ("color", "sticker"))
             or bool(units[0].item) != bool(by_source[previous_index][0].item)

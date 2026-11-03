@@ -726,7 +726,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         )
         original = self.project_path.read_bytes()
         with server_editor.EditorServer(('127.0.0.1', 0), project) as server:
-            data = {'segments': [], 'language': 'en'}
+            data = make_project([], main_fields={'language': 'en'})
             target, backup = server.save_project(data, backup_limit=2, backup_only=True)
             self.assertEqual(target, self.project_path)
             self.assertEqual(self.project_path.read_bytes(), original)
@@ -2847,10 +2847,15 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     except urllib.error.HTTPError as error:
                         return error.code, json.loads(error.read())
 
-                saved_project = {
+                legacy_saved_project = {
                     "media": str(self.media),
                     "segments": [{"start": 0, "end": 1000, "text": "保存后的字幕"}],
                 }
+                status, result = post({"project": legacy_saved_project, "filename": None})
+                self.assertEqual(status, 400)
+                self.assertIn("$.speakers", result["error"])
+                self.assertEqual(self.project_path.read_bytes(), original)
+                saved_project = normalize_project(legacy_saved_project)
                 normalized_saved_project = make_project(
                     [{"id": "main-cue-1", "start": 0, "end": 1000, "text": "保存后的字幕"}],
                     project_fields={"media": self.media.name},
@@ -2881,6 +2886,31 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
+
+    def test_old_core_v2_save_requires_new_file_and_preserves_source(self) -> None:
+        old_core = normalize_project(json.loads(self.project_path.read_text(encoding="utf-8")))
+        for field in ("speakers", "annotation_mode", "palette_size", "speaker_shortcuts"):
+            old_core.pop(field)
+        self.project_path.write_text(json.dumps(old_core), encoding="utf-8")
+        original = self.project_path.read_bytes()
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        self.assertTrue(project.requires_identity_upgrade)
+        self.assertEqual(self.project_path.read_bytes(), original)
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            for kwargs in ({}, {"filename": self.project_path.name}, {"backup_only": True, "backup_limit": 2}):
+                with self.subTest(kwargs=kwargs), self.assertRaises(server_editor.SaveProjectError):
+                    server.save_project(project.data, **kwargs)
+                self.assertEqual(self.project_path.read_bytes(), original)
+            target, _ = server.save_project(project.data, filename="identity-v2.mosp")
+            self.assertEqual(self.project_path.read_bytes(), original)
+            saved = json.loads(target.read_text(encoding="utf-8"))
+            self.assertIsInstance(saved["speakers"], list)
+            self.assertEqual(saved["palette_size"], 5)
+            self.assertFalse(server.project.requires_identity_upgrade)
+            server.save_project(saved)
+            self.assertEqual(self.project_path.read_bytes(), original)
 
     def test_save_keeps_runtime_caches_off_disk_and_intact_in_memory(self) -> None:
         """浏览器保存不带缓存：磁盘必须干净，运行态原生波形不得被清空。
@@ -2933,11 +2963,11 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     waveform_payload, schema="moy.asr.loudness.v1", p95=0.3357, max=0.3357,
                 )
 
-                browser_payload = {
+                browser_payload = normalize_project({
                     "media": str(self.media),
                     "segments": [{"start": 0, "end": 1000, "text": "浏览器格式"}],
                     "media_metadata": {"selected_audio_track": 0},
-                }
+                })
                 status, _ = post({"project": browser_payload, "filename": None})
                 self.assertEqual(status, 200)
                 # 磁盘干净：内联缓存（含 loudness）不得落盘。
@@ -2957,9 +2987,9 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 for key in ("waveform", "spectral", "waveform_reapeaks"):
                     self.assertNotIn(key, server.project.data)
 
-                # 旧页面不带 selected_audio_track 字段时不得误清运行态缓存（防御路径）。
+                # 合法工程缺少 selected_audio_track 时不得误清运行态缓存。
                 server.project.data["waveform"] = waveform_payload
-                legacy_payload = {"media": str(self.media), "segments": []}
+                legacy_payload = make_project([], project_fields={"media": str(self.media)})
                 status, _ = post({"project": legacy_payload, "filename": None})
                 self.assertEqual(status, 200)
                 self.assertEqual(server.project.data["waveform"]["data"], "AQIDBA==")
@@ -2968,7 +2998,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 other = self.root / "other.wav"
                 other.write_bytes(b"audio")
                 status, _ = post({
-                    "project": {"media": str(other), "segments": []},
+                    "project": make_project([], project_fields={"media": str(other)}),
                     "filename": None,
                 })
                 self.assertEqual(status, 200)
@@ -3030,12 +3060,14 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                         }],
                     },
                 }
+                valid_project = normalize_project(valid_project)
                 status, result = post(valid_project)
                 self.assertEqual(status, 200)
                 self.assertTrue(result["ok"])
 
                 invalid_project = json.loads(json.dumps(valid_project))
-                invalid_project["multi_subtitle"]["tracks"][0]["segments"][1]["start"] = 2999
+                secondary = next(track for track in invalid_project["tracks"] if track["role"] == "secondary")
+                secondary["segments"][1]["start"] = 2999
                 status, result = post(invalid_project)
                 self.assertEqual(status, 400)
                 self.assertFalse(result["ok"])

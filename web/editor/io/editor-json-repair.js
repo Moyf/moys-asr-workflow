@@ -20,7 +20,17 @@ export function initMaweJsonRepair() {
         Object.entries(value).filter(([key]) => key !== 'schema' && key !== 'items'),
       )) : null;
   }
-  function noteImportReport(changes) { lastImportReport = JSON.parse(JSON.stringify(changes)); }
+  function noteImportReport(changes) {
+    lastImportReport = JSON.parse(JSON.stringify(changes));
+    const bindingChange = changes.find(change => change.path === '$.bindings' && Array.isArray(change.before) && Array.isArray(change.after));
+    if (bindingChange) {
+      const retained = new Set(bindingChange.after.map(binding => binding.id));
+      const released = bindingChange.before.filter(binding => !retained.has(binding.id)).length;
+      if (released) global.MaweHint?.flashHint(
+        `说话人拆段后解除了 ${released} 组无法保持一对一的绑定；字幕和分组已保留，请另存升级后的工程。`, 'warning',
+      );
+    }
+  }
   function importRequiresSave(changes) {
     return changes.some((change) => change.kind !== 'add' || /\.(start|end)$/.test(change.path));
   }

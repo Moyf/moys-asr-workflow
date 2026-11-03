@@ -60,6 +60,7 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                 with self.subTest(original=original, merge=merge, order=order), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
                     source = self.source(original)
+                    canonical_source = normalize_project(source)
                     project, srt, media = root / "input.mosp", root / "input.srt", root / "media.mp3"
                     project.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
                     srt.write_text(f"1\n00:00:00,000 --> 00:00:01,000\n{original}\n", encoding="utf-8")
@@ -84,7 +85,9 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                     stage = manifest["steps"][0]
                     for path in (result.project_path, Path(stage["projectPath"]), Path(stage["translationIntermediateProjectPath"])):
                         saved = read_project(path)
-                        self.assertEqual(main_segments(saved), main_segments(source))
+                        self.assertEqual(main_segments(saved), main_segments(canonical_source))
+                        self.assertEqual(saved["speakers"], canonical_source["speakers"])
+                        self.assertEqual(saved["speaker_shortcuts"], canonical_source["speaker_shortcuts"])
                         self.assertEqual(saved["user_metadata"], source["user_metadata"])
                         multi = saved
                         self.assertEqual(multi["bilingual"]["display_mode"], "both")

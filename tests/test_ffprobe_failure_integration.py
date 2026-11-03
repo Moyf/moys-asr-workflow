@@ -97,8 +97,8 @@ class FFprobeFailureIntegrationTests(CompactContainerAssertions, unittest.TestCa
         self.addCleanup(stop)
         binding = server.project_binding_payload()
         self.assertFalse(binding["thumbnailBaseReady"])
-        incoming = {"media": self.source.name, "segments": [
-            {"start": 0, "end": 1000, "text": "after"}]}
+        incoming = normalize_project({"media": self.source.name, "segments": [
+            {"start": 0, "end": 1000, "text": "after"}]})
         request = urllib.request.Request(
             f"http://127.0.0.1:{server.server_address[1]}/api/project",
             data=json.dumps({**binding, "project": incoming, "filename": None}).encode(),

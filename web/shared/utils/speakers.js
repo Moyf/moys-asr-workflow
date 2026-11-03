@@ -1,7 +1,7 @@
 // speakers: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { effectiveColorName } = dependencies;
+  const { effectiveColorName, getProject, resolveProjectSpeaker } = dependencies;
 
 
   const SPEAKER_LABEL_COLORS = Object.freeze([
@@ -72,6 +72,8 @@ export function createUtilsModule(dependencies) {
 
 
   function speakerLabelForSegment(segment, segments, labels) {
+    const project = getProject?.();
+    if (project?.annotation_mode === 'speaker') return resolveProjectSpeaker(project, segment)?.name || '';
     const colorName = effectiveColorName(segment, segments);
     if (!colorName) return '';
     return normalizeSpeakerLabels(labels)[colorName] || '';

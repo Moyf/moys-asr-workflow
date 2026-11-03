@@ -464,7 +464,7 @@ def _validate_segment(
         errors.append(ProjectValidationError(f"{path}.text", "must be a string"))
     _validate_frame_pair(segment, path, errors)
     _validate_ass_override(segment, path, errors)
-    if "speaker" in segment and (not isinstance(segment["speaker"], str) or not segment["speaker"].strip()):
+    if segment.get("speaker") is not None and (not isinstance(segment["speaker"], str) or not segment["speaker"].strip()):
         errors.append(ProjectValidationError(f"{path}.speaker", "must be a non-empty string"))
     _validate_items(segment, path, errors)
 

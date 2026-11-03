@@ -224,6 +224,11 @@ def render_project_ass(
     appearance: Mapping[str, object] = (
         preview.get("subtitle") if isinstance(preview, Mapping) and isinstance(preview.get("subtitle"), Mapping) else {}
     )
+    labels = appearance.get("speaker_labels")
+    if (project.get("annotation_mode") == "speaker" and isinstance(labels, Mapping)
+            and labels.get("mapping_enabled", labels.get("enabled", False))
+            and (labels.get("enabled", True) or labels.get("export_enabled", False))):
+        raise ProjectSubtitleError("基础 ASS 输出尚未支持独立身份姓名；请关闭姓名前缀，或使用编辑器的 ASS 导出。")
     family = _font_family(appearance.get("font_family"))
     size = _font_size(appearance, play_res_y)
     color = _primary_color(appearance)

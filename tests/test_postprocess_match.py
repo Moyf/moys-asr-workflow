@@ -484,13 +484,17 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
             encoding="utf-8",
         )
         self.script_path.write_text("第一句文稿。\n第二句文稿。", encoding="utf-8")
+        canonical_input = read_project(self.project_path)
+        expected_speakers = [segment["speaker"] for segment in main_segments(canonical_input)]
+        self.assertEqual(len(set(expected_speakers)), 4)
 
         result = run_script_match(ScriptMatchRequest(
             self.project_path, None, self.script_path, OutputMode.JSON,
         ))
 
         assert result.project_path is not None
-        segments = main_segments(read_project(result.project_path))
+        processed = read_project(result.project_path)
+        segments = main_segments(processed)
         self.assertEqual(
             [(segment["start"], segment["end"], segment["text"]) for segment in segments],
             [
@@ -500,7 +504,8 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
                 (3000, 4000, "第二句文稿。"),
             ],
         )
-        self.assertEqual([segment["speaker"] for segment in segments], ["script-1", "extra-1", "extra-2", "script-2"])
+        self.assertEqual([segment["speaker"] for segment in segments], expected_speakers)
+        self.assertEqual(processed["speakers"], canonical_input["speakers"])
 
     def test_timed_matching_keeps_unmatched_source_cues_between_script_lines(self) -> None:
         def timed_segment(start: int, end: int, text: str) -> dict[str, object]:

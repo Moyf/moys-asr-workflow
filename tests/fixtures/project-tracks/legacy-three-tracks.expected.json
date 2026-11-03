@@ -71,7 +71,7 @@
           "start": 1050,
           "end": 2050,
           "text": "A",
-          "speaker": "person",
+          "speaker": "spk-001",
           "items": [
             {
               "start": 1050,
@@ -116,5 +116,17 @@
       }
     ],
     "sticker": []
+  },
+  "speakers": [
+    {
+      "id": "spk-001",
+      "name": "说话人 1",
+      "color": "#f9ca1f"
+    }
+  ],
+  "annotation_mode": "color",
+  "palette_size": 5,
+  "speaker_shortcuts": {
+    "1": "spk-001"
   }
 }
