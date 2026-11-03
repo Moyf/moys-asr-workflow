@@ -58,7 +58,7 @@ export function initMaweCommands() {
   const fingerprint = value => JSON.stringify(value, (key, item) => key === '_dirty' ? undefined : item);
   const projectSegments = () => ({
     tracks: MaweState.project.tracks, bindings: MaweState.project.bindings,
-    bilingual: MaweState.project.bilingual, subtitle_groups: MaweState.project.subtitle_groups,
+    bilingual: MaweState.project.bilingual, subtitle_groups: MaweState.project.subtitle_groups, styles: MaweState.project.styles,
   });
   function restoreDirtyFlags(current, previous) {
     if (!current || typeof current !== 'object') return;

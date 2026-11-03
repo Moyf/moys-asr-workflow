@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests.compact_assertions import CompactContainerAssertions
+
 from maw.postprocess_io import render_srt, write_artifacts
 from maw.project_ass_export import ProjectSubtitleError, render_project_ass
 from scripts.mosp_match_text import main as match_main
@@ -18,7 +20,7 @@ def project():
     return value
 
 
-class PythonTrackOutputTests(unittest.TestCase):
+class PythonTrackOutputTests(CompactContainerAssertions, unittest.TestCase):
     def test_export_switches_apply_to_srt_and_ass_not_preview(self):
         for enabled in (False, True):
             for export in (False, True):
