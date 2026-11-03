@@ -614,12 +614,13 @@ def merge_bilingual_project(
         merged_segments.append(merged)
 
     merged_project = copy.deepcopy(source_project)
-    replace_main_segments(merged_project, merged_segments)
     # A bilingual merge is intentionally a single-track result.  Do not carry
     # an older extension track into the final project if the input was already
-    # a multi-subtitle project.
+    # a multi-subtitle project. This is a detached export projection, so empty
+    # source cues can be dropped without modifying the editable source project.
     merged_project["tracks"] = [track for track in merged_project["tracks"] if track["role"] != "secondary"]
     merged_project["bindings"] = []
+    get_main_track(merged_project)["segments"] = merged_segments
     merged_project["bilingual"].pop("active_track_id", None)
     merged_project["bilingual"]["display_mode"] = "main"
     merged_project.pop("extensionSegments", None)
@@ -1226,6 +1227,19 @@ def _apply_llm_groups_with_warnings(
         if len(group_indexes) > 1 and any(len(parsed[index][0]) != 1 for index in group_indexes):
             raise ValueError(f"LLM split groups for {cue_id} must contain only one source ID")
     index_by_id = {cue_id: index for index, cue_id in enumerate(all_expected)}
+    protected_groups = 0
+    protected_ids: set[str] = set()
+    safe_groups: list[tuple[tuple[str, ...], str]] = []
+    for source_ids, text in parsed:
+        sources = [source_segments[index_by_id[source_id]] for source_id in source_ids]
+        if any(len({source.get(field) for source in sources}) > 1 for field in VISUAL_FIELDS):
+            protected_groups += 1
+            protected_ids.update(source_ids)
+            safe_groups.extend(((source_id,), str(source_segments[index_by_id[source_id]]["text"]))
+                               for source_id in source_ids)
+        else:
+            safe_groups.append((source_ids, text))
+    parsed = safe_groups
     regrouped = any(len(ids) != 1 for ids, _text in parsed) or len(parsed) != len(expected)
     # Insert preserved original cues in source order only after validating the
     # successful response's coverage. Each parsed group produces one segment.
@@ -1242,9 +1256,10 @@ def _apply_llm_groups_with_warnings(
         drop_items=drop_items,
         reserved_ids={cue["id"] for track in project["tracks"] if track["role"] != "main" for cue in track["segments"]},
     )
-    if preserved and not strict_translation:
+    exact_original_ids = preserved | protected_ids
+    if exact_original_ids and not strict_translation:
         for index, (source_ids, _text) in enumerate(build_groups):
-            if len(source_ids) == 1 and source_ids[0] in preserved:
+            if len(source_ids) == 1 and source_ids[0] in exact_original_ids:
                 new_segments[index] = copy.deepcopy(source_segments[index_by_id[source_ids[0]]])
     if preserved and strict_translation:
         # 空字幕没有可翻译内容，但仍可能携带时间或展示元数据；按原位置完整放回。
@@ -1265,8 +1280,10 @@ def _apply_llm_groups_with_warnings(
     result = copy.deepcopy(project)
     replace_main_segments(result, new_segments)
     warnings: list[str] = []
+    if protected_groups:
+        warnings.append(f"{protected_groups} 组模型合并跨越颜色或贴纸组，未应用这些模型文本；已原样保留字幕，请人工复核。")
     if regrouped:
-        warnings.append("重分句/合并已清理受影响字幕的逐词时间和贴纸/颜色引用；未受影响的字幕尽量保留。")
+        warnings.append("已按模型结果重组字幕；受影响字幕的逐词时间可能需要重新对齐。")
     return normalize_project(result), tuple(warnings)
 
 
@@ -1431,6 +1448,13 @@ def _build_segments(
             split_counts[source_ids[0]] = split_counts.get(source_ids[0], 0) + 1
     split_positions: dict[str, int] = {}
     used_output_ids: set[str] = set(reserved_ids or ())
+    original_ids = {str(source["id"]) for source in sources}
+    taken_ids = used_output_ids | original_ids
+
+    def derived_id(source: JsonDict, source_id: str, part: int) -> str:
+        result = _unique_derived_segment_id(source, source_id, part, taken_ids)
+        used_output_ids.add(result)
+        return result
     result: list[JsonValue] = []
     for source_ids, text in groups:
         source_indexes = [index_by_id[cue_id] for cue_id in source_ids]
@@ -1462,11 +1486,11 @@ def _build_segments(
                 segment["id"] = first["id"]
                 used_output_ids.add(first["id"])
             else:
-                segment["id"] = _unique_derived_segment_id(first, source_ids[0], split_position, used_output_ids)
+                segment["id"] = derived_id(first, source_ids[0], split_position)
         elif source_ids:
             candidate_id = str(first.get("id") or source_ids[0])
             if candidate_id in used_output_ids:
-                candidate_id = _unique_derived_segment_id(first, source_ids[0], 1, used_output_ids)
+                candidate_id = derived_id(first, source_ids[0], 1)
             else:
                 used_output_ids.add(candidate_id)
             segment["id"] = candidate_id

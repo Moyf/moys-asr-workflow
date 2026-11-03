@@ -43,3 +43,21 @@ test('overlay enable creates a track and shares the old switch with undo', async
  await expect(page.locator('[data-track-role="overlay"] .track-variant-warning')).toContainText('不支持的叠加轨类型：future-type');
  expect(await page.evaluate(()=>AsrEditorUtils.TrackPolicy.isTrackEnabled(AsrEditorUtils.getOverlayTrack(MaweBoot.DATA), 'preview'))).toBe(false);
 });
+
+test('plain text export respects the main track export switch without deleting the cue', async ({ page }) => {
+ await disableOnboarding(page); await page.goto(server.url); await expect(page.locator('.waveform-row').first()).toBeVisible();
+ await page.evaluate(() => { window.showSaveFilePicker = undefined; });
+ async function exportText(enabled) {
+  await page.evaluate(value => { AsrEditorUtils.getMainTrack(MaweBoot.DATA).export = { enabled: value }; }, enabled);
+  await page.locator('#extra-export-btn').click();
+  await page.locator('#extra-export-menu > .dropdown-submenu').nth(2).locator('.dropdown-submenu-toggle').click();
+  const pending = page.waitForEvent('download');
+  await page.locator('#download-plain-text').click();
+  const stream = await (await pending).createReadStream(); const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  return Buffer.concat(chunks).toString('utf8');
+ }
+ expect(await exportText(true)).toContain('字幕');
+ expect(await exportText(false)).not.toContain('字幕');
+ expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('字幕');
+});

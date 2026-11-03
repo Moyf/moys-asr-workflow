@@ -46,12 +46,8 @@ source: "docs/engineering/JSON_SCHEMA.md"
 | --- | --- |
 | `tracks` | 必填数组；恰好一条 main，至多一条 secondary 和一条 overlay；数组顺序不决定角色。旧工程有多条副轨时拒绝迁移，不丢弃数据 |
 | `tracks[*].id` | 工程内唯一的非空字符串，最多 160 个 Unicode 码点；角色交换不更改轨道 ID |
-| `role` / `name` / `enabled` / `segments` | 所有轨道共同字段。role 为 `main`、`secondary` 或 `overlay`；main 的 `enabled` 必须为 `true`。关闭副轨或叠加轨不删除内容或关系 |
-| `preview_visible` | 可选布尔值，缺省为 `true`。仅当轨道已启用时控制预览，不改变导出选择 |
-| `export.enabled` | 可选布尔值，缺省为 `true`。仅当轨道已启用时控制字幕及所属表情的导出，不改变预览 |
-| `variant` | 可选字符串，缺省按 `plain` 处理。当前支持普通叠加轨；启用且选中导出的叠加轨使用未知类型时，字幕导出提示错误，不静默丢弃该轨 |
-| `styles` | 可选数组；每项是工程使用的 ASS 样式快照。`id` 为工程内唯一的非空字符串、最多 160 个 Unicode 码点且无首尾空格；`name` 为字符串。样式参数沿用 ASS 样式库的规范化规则，校验不要求逐项提供参数。快照随工程保存，不依赖本机样式库 |
-| `tracks[*].style` | 可选对象；`style_id` 引用工程 `styles` 中的样式 ID，`forked` 为可选布尔值，标记工程样式已与样式库分离 |
+| `role` / `name` / `enabled` / `segments` | 所有轨道共同字段。role 为 `main`、`secondary` 或 `overlay`；main 必须启用。关闭轨道不删除内容或关系 |
+| `preview_visible` / `export.enabled` / `variant` | 可选；预览与导出开关缺失时均视为开启，`variant` 缺失时为 `plain`。关闭轨道同时关闭预览和导出；关闭任一开关不删除轨道数据。未知叠加轨类型保留但不预览，选中导出时明确报错 |
 | 轨道来源元数据 | `language`、`language_source`、`split_mode`、`timestamp_granularity`、`model`、`preserve_punctuation`、`source_name` 跟随具体轨；`split_mode_override` 保留旧主轨手动覆盖 |
 | cue ID 与时间 | cue ID 跨轨唯一；start/end 和 items 使用源媒体整数毫秒。允许合法零时长标点 item，cue 本身须 start < end |
 | `bilingual` | 双语显示配置；`active_track_id` 指向副轨。`display_mode` 的 `extension` 是显示选项，不是轨道角色 |
@@ -61,9 +57,7 @@ source: "docs/engineering/JSON_SCHEMA.md"
 
 轨内保持时间顺序和非重叠，轨道之间可以重叠。保存只写 `tracks`，不再写顶层 `segments`、`overlay_track` 或 `multi_subtitle`。v2 拒绝新旧容器混用、重复 ID 和悬空引用；未知扩展字段应保留。主副交换保留字幕、稳定身份、组和轨道来源元数据，并同步反转绑定。
 
-工程打开时，名称和规范化参数都相同且匹配唯一的样式可与本机库联动；库中修改会更新联动的工程快照并标记工程已修改。编辑工程样式会分离该轨快照，不修改其他轨或库。没有匹配库样式时仍使用工程快照。主副交换时样式随轨道保留。
-
-组表不存范围副本。删除或转轨保留剩余字幕的组成员关系；清除最后一个成员后删除空组。Resolve 使用 `moy.asr_subtitle_editor.resolve.v2` 按组区间输出；OTIO 按组的连续区间输出。普通 SRT 包含选中导出的主轨和普通叠加轨；副轨按所选导出方式处理。
+组表不存范围副本。删除或转轨保留剩余字幕的组成员关系；清除最后一个成员后删除空组。Resolve 使用 `moy.asr_subtitle_editor.resolve.v2` 按组区间输出；OTIO 按组的连续区间输出。普通 SRT 包含主轨和启用的叠加轨，新增 overlay 变体默认不进入主 SRT。
 
 ### 旧格式迁移
 
@@ -756,7 +750,6 @@ v1 输入的 `multi_subtitle` 是可选双语结构；v2 将副轨迁移为 `sec
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
 | `disabled` | `bool` | 否 | 禁用该字幕；预览、隐藏禁用项和默认导出会跳过它 |
-| `assStyle` | `object` | 否 | 当前句独立 ASS 样式快照，字段与样式库样式一致；省略时继承轨道样式。无外部 ID 引用，离线、换轨和导入保留；不改变 `assOverride` 定位与缩放 |
 | `assOverride` | `object` | 否 | 主字幕/叠加字幕逐句 ASS 覆盖：可独立保存 PlayRes 坐标与整体缩放；见下方契约 |
 | `speaker` | `string` | 否 | 说话人标签（非空字符串）。保存供应商返回的 opaque ID（如 Soniox 的 `"1"`/`"2"`），不转换为整数或姓名。仅当该段所有带语音 items 都是同一 speaker 时才写入；缺少该字段的旧工程继续有效 |
 | `sticker` | `object\|null` | 否 | 表情包 head 信息。见第四节 |

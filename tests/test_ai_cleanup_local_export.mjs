@@ -387,31 +387,7 @@ test('source/gap OTIO subtitle marker names and FCP/XML plans use exact retained
   }
   assert.equal(main[0].text, source().text);
 });
-test('ASS renders independent track snapshots even when the library has no matching styles', () => {
-  const { context, utils, srt } = runtime();
-  const project = context.MaweBoot.DATA;
-  const main = utils.getMainTrack(project);
-  const extension = utils.getExtensionTrack(project);
-  const overlay = utils.getOverlayTrack(project);
-  main.style = { style_id: 'saved-main' };
-  extension.style = { style_id: 'saved-extension' };
-  overlay.style = { style_id: 'saved-overlay' };
-  project.styles = [
-    { ...utils.ASS_DEFAULT_ASS_STYLE, id: 'saved-main', fontName: 'Snapshot Main', fontSize: 40 },
-    { ...utils.ASS_DEFAULT_EXTENSION_STYLE, id: 'saved-extension', fontName: 'Snapshot Extension', fontSize: 30 },
-    { ...utils.ASS_DEFAULT_ASS_STYLE, id: 'saved-overlay', fontName: 'Snapshot Overlay', fontSize: 50 },
-  ];
-  const ass = srt.buildAss();
-  assert.match(ass, /Style: Default,Snapshot Main,40,/);
-  assert.match(ass, /Style: Extension,Snapshot Extension,30,/);
-  assert.match(ass, /Style: Overlay,Snapshot Overlay,50,/);
-  let plan;
-  srt.buildAss({ preview: true, allowAssPlanDiagnostics: true, onAssPlan: value => { plan = value; } });
-  const styles = new Map(plan.slices.flatMap(slice => slice.items.map(item => [item.role, item.style.fontName])));
-  assert.equal(styles.get('main'), 'Snapshot Main');
-  assert.equal(styles.get('extension'), 'Snapshot Extension');
-  assert.equal(styles.get('overlay'), 'Snapshot Overlay');
-});
+
 test('unsupported selected overlay blocks SRT and ASS, but disabled overlay and preview remain usable', () => {
   const { context, utils, srt } = runtime();
   const overlay = utils.getOverlayTrack(context.MaweBoot.DATA);

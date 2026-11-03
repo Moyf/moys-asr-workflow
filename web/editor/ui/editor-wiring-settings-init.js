@@ -70,7 +70,6 @@ window.MaweDomPanelsWiring.overlayTrackToggle?.addEventListener('change', () => 
   MaweCommands.run('切换叠加字幕', command => {
     const overlay = next ? window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA) : getOverlayTrack();
     if (!overlay) return;
-    window.MaweAssManagerWiring?.initializeProjectStyles?.();
     overlay.enabled = next;
     overlay._dirty = true;
     command.commit({ cueList: true, waveform: 'full' });
@@ -80,23 +79,10 @@ window.MaweDomPanelsWiring.overlayTrackToggle?.addEventListener('change', () => 
   }
 });
 
-document.querySelector('.track-visibility-settings')?.addEventListener('click', event => {
-  const button = event.target.closest('[data-track-style-action]');
-  if (!button) return;
-  const role = button.closest('.track-visibility-row').dataset.trackRole;
-  if (button.dataset.trackStyleAction === 'edit') window.MaweAssManagerWiring?.openProjectStyleEditor?.(role);
-  else window.MaweAssManagerWiring?.saveProjectStyleToLibrary?.(role);
-});
-
 document.querySelector('.track-visibility-settings')?.addEventListener('change', event => {
   const input = event.target;
   const row = input.closest('.track-visibility-row');
   if (!row) return;
-  if (input.matches('[data-track-style]')) {
-    if (input.value) window.MaweAssManagerWiring?.applyProjectStyleSelection?.(row.dataset.trackRole, input.value);
-    window.MaweProjectSettings.syncTrackControls();
-    return;
-  }
   if (!input.dataset.trackField) return;
   const role = row.dataset.trackRole;
   if (input.dataset.trackField === 'enabled') {

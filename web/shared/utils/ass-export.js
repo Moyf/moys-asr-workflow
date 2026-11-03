@@ -213,23 +213,9 @@ export function createUtilsModule(dependencies) {
       ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
-    const cueStyleLines = [];
     const stackItems = [];
     const addStackItem = (role, segment, index, context, start, end, style, size, styleName, speakerName, fade, originalText, shake = false) => {
       const colorName = effectiveColorName(segment, context);
-      if (segment.assStyle) {
-        style = normalizeAssStyle(segment.assStyle, ASS_DEFAULT_ASS_STYLE, 'cue');
-        style.fontName = canonicalizeAssFontName(style.fontName);
-        if (assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)) {
-          style = assStyleVariant(style, colorStyles.find(entry => entry.name === colorName)?.value || '#ffffff', colorStyle);
-        }
-        size = normalizeAssFontSize(style.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y);
-        styleName = `Cue_${role}_${index}`;
-        cueStyleLines.push(assStyleLine(style, styleName, size));
-        originalText = assEventText({ segment, text: fade.text, speakerName, speakerLabelSeparator,
-          colorName, colorStyles, style, fontSize: size, colorStyle, speakerLabels,
-          assMode, emphasisSyntax, inlineOptions });
-      }
       const speakerColor = colorStyle === 'text' || colorStyle === 'speaker'
         ? colorStyles.find(entry => entry.name === colorName)?.value || style.primaryColor : style.primaryColor;
       const runs = assInlineStyleRuns(fade.text, emphasisSyntax, inlineOptions);
@@ -358,18 +344,13 @@ export function createUtilsModule(dependencies) {
     // when enabled. Active-event positions and motion come from the stack plan.
     const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
     const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true);
-    const explicitOverlayStyle = assMode && options.assOverlayStyle && typeof options.assOverlayStyle === 'object'
-      ? normalizeAssStyle(options.assOverlayStyle, ASS_DEFAULT_ASS_STYLE, options.assOverlayStyle.id || 'ass-overlay') : null;
-    if (explicitOverlayStyle) explicitOverlayStyle.fontName = canonicalizeAssFontName(explicitOverlayStyle.fontName);
-    const overlayFontSize = explicitOverlayStyle
-      ? normalizeAssFontSize(explicitOverlayStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y) : fontSize;
     const overlayMarginV = assMode
-      ? Math.max(0, Number((explicitOverlayStyle || baseStyle).marginV) || 0) + Math.round(1.2 * overlayFontSize)
+      ? Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize)
       : 80 + Math.round(1.2 * fontSize);
     // 叠加字幕固定锚定在主字幕上方：对齐与水平边距完全来自主字幕样式；
     // 副字幕在主字幕下方（跟随其样式预设），与叠加字幕互不影响。
     const overlayBaseStyle = assMode
-      ? (explicitOverlayStyle || baseStyle)
+      ? baseStyle
       : {
         ...ASS_DEFAULT_ASS_STYLE,
         fontName: fontFamily,
@@ -417,7 +398,7 @@ export function createUtilsModule(dependencies) {
           colorName: overlayColorName,
           colorStyles,
           style: overlayStyleFor(overlayColorName),
-          fontSize: overlayFontSize,
+          fontSize,
           colorStyle,
           speakerLabels,
           assMode,
@@ -425,7 +406,7 @@ export function createUtilsModule(dependencies) {
           inlineOptions,
         })
         : escapeAssText(segment.text);
-      if (assMode) addStackItem('overlay', segment, index, overlaySource, startCentiseconds, endCentiseconds, overlayStyleFor(overlayColorName), overlayFontSize, overlayStyleNameFor(overlayColorName), overlaySpeakerName, overlayFade);
+      if (assMode) addStackItem('overlay', segment, index, overlaySource, startCentiseconds, endCentiseconds, overlayStyleFor(overlayColorName), fontSize, overlayStyleNameFor(overlayColorName), overlaySpeakerName, overlayFade);
       const overlayText = overlayAnimationTags
         ? `{${overlayAnimationTags}}${overlayContent}` : overlayContent;
       events.push(
@@ -559,7 +540,6 @@ export function createUtilsModule(dependencies) {
       '',
       '[V4+ Styles]',
       `Format: ${ASS_STYLE_FORMAT}`,
-      ...cueStyleLines,
       ...(assMode
         ? [
           assStyleLine(baseStyle, 'Default', fontSize),
@@ -577,12 +557,12 @@ export function createUtilsModule(dependencies) {
           // 叠加字幕：字段复用主字幕样式，MarginV 固化为链式锚定结果。
           ...(hasOverlayCues
             ? [
-              assStyleLine(overlayStyleFor(null), 'Overlay', overlayFontSize),
+              assStyleLine(overlayStyleFor(null), 'Overlay', fontSize),
               ...(colorStyle === 'text' || colorStyle === 'stroke'
                 ? colorStyles.map((color) => assStyleLine(
                   overlayStyleFor(color.name),
                   `Overlay ${color.name.toUpperCase()}`,
-                  overlayFontSize,
+                  fontSize,
                 ))
                 : []),
             ]
@@ -616,12 +596,12 @@ export function createUtilsModule(dependencies) {
           // legacy 叠加样式：同样固化为算好的锚定边距（80 + 1.2 × 字号）。
           ...(hasOverlayCues
             ? [
-              assStyleLine(overlayStyleFor(null), 'Overlay', overlayFontSize),
+              assStyleLine(overlayStyleFor(null), 'Overlay', fontSize),
               ...(colorStyle === 'text' || colorStyle === 'stroke'
                 ? colorStyles.map((color) => assStyleLine(
                   overlayStyleFor(color.name),
                   `Overlay ${color.name.toUpperCase()}`,
-                  overlayFontSize,
+                  fontSize,
                 ))
                 : []),
             ]

@@ -13,31 +13,6 @@ export function syncTrackControls() {
     preview.checked = Boolean(track && track.preview_visible !== false);
     output.checked = Boolean(track && track.export?.enabled !== false);
     preview.disabled = output.disabled = !track;
-    row.dataset.trackId = track?.id || '';
-    const select = row.querySelector('[data-track-style]');
-    const styleInfo = window.MaweAssManagerWiring?.projectStyleOptions?.(row.dataset.trackRole);
-    if (select && styleInfo) {
-      select.replaceChildren();
-      if (!styleInfo.libraryStyle) {
-        const option = document.createElement('option');
-        option.value = '';
-        option.textContent = styleInfo.style ? '工程样式' : '未设置';
-        select.append(option);
-      }
-      for (const style of styleInfo.styles) {
-        const option = document.createElement('option');
-        option.value = style.id;
-        option.textContent = style.name || style.id;
-        select.append(option);
-      }
-      select.value = styleInfo.libraryStyle?.id || '';
-      select.disabled = !track;
-      row.querySelector('[data-track-style-status]').textContent = styleInfo.status === 'forked' ? '已修改' : styleInfo.status === 'linked' ? '样式库' : '未设置';
-      row.querySelectorAll('[data-track-style-action]').forEach(button => { button.disabled = !track || !styleInfo.style; });
-    } else if (select) {
-      select.disabled = true;
-      row.querySelectorAll('[data-track-style-action]').forEach(button => { button.disabled = true; });
-    }
     const warning = row.querySelector('.track-variant-warning');
     if (warning) {
       const unsupported = track && window.AsrEditorUtils.TrackPolicy.unsupportedVariant(track);

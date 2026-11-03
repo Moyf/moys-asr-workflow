@@ -284,12 +284,10 @@ export function initMaweExportSrt() {
   const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
   const profileId = library.assignments?.assExportProfileId || 'ass';
   const assProfile = window.AsrEditorUtils.assProfileForId(library, profileId);
-  const resolve = track => window.AsrEditorUtils.resolveTrackStyle?.(MaweBoot.DATA, track, library)?.style;
-  const assStyle = resolve(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA))
-    || window.AsrEditorUtils.assStyleForId(library, assProfile.styleId);
-  const assExtensionStyle = resolve(window.AsrEditorUtils.getExtensionTrack(MaweBoot.DATA))
-    || window.AsrEditorUtils.assStyleForId(library, library.assignments?.assExtensionStyleId || 'ass-extension');
-  const assOverlayStyle = resolve(window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA));
+  const assStyle = window.AsrEditorUtils.assStyleForId(library, assProfile.styleId);
+  const assExtensionStyle = window.AsrEditorUtils.assStyleForId(
+    library, library.assignments?.assExtensionStyleId || 'ass-extension',
+  );
   return {
     title: MaweBoot.PROJECT_NAME || MaweBoot.FILENAME_BASE || 'MAW',
     mediaMetadata: MaweTimeline.normalizeMediaMetadata(MaweBoot.DATA.media_metadata),
@@ -301,7 +299,6 @@ export function initMaweExportSrt() {
     measureAssRun: window.MaweAssCanvas?.measureRun,
     assStyle,
     assExtensionStyle,
-    assOverlayStyle,
     assEmphasisSyntax: MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax,
     assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     assUnderlineEnabled: MaweSettings.EDITOR_SETTINGS.assUnderlineEnabled,

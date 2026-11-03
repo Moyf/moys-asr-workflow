@@ -58,7 +58,8 @@
     try {
       if (MaweDragDrop.isSrtFile(file)) return MaweProjectLoad.parseSrtSegments(await readFileTextWithProgress(file));
       if (MaweDragDrop.isLrcFile(file)) return window.AsrEditorUtils.parseLrcSegments(await readFileTextWithProgress(file));
-      const imported = window.AsrEditorUtils.importProject(JSON.parse(await readFileTextWithProgress(file)));
+      const imported = window.MaweProjectValidation.prepareProject(JSON.parse(await readFileTextWithProgress(file)));
+      if (!imported.ok) throw new Error(imported.errors.map(error => `${error.path}: ${error.message}`).join('; '));
       const data = imported.project;
       MaweJsonRepair.noteImportReport(imported.changes);
       const sourceTrack = window.AsrEditorUtils.getMainTrack(data);
@@ -70,7 +71,6 @@
       Object.defineProperties(validSegments, {
         subtitle_groups: { value: window.AsrEditorUtils.cloneJsonValue(data.subtitle_groups) },
         sourceTrack: { value: window.AsrEditorUtils.cloneJsonValue({ ...sourceTrack, segments: undefined }) },
-        sourceStyle: { value: window.AsrEditorUtils.cloneJsonValue((data.styles || []).find(style => style.id === sourceTrack.style?.style_id) || null) },
       });
       return validSegments;
     } finally {

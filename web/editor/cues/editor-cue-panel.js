@@ -355,53 +355,12 @@ export function initMaweCuePanel() {
 
 
 
-  function syncCueAssStyle(segment) {
-    const controls = document.getElementById('cue-ass-style-controls');
-    const select = document.getElementById('cue-ass-style');
-    if (!controls || !select) return;
-    // Reserve the row even without a selected cue: selection must not resize
-    // the video stage and change the coordinate system during a gesture.
-    controls.hidden = false;
-    select.disabled = !segment;
-    const styles = window.MaweAssManagerWiring?.projectStyleOptions?.('main')?.styles || [];
-    select.replaceChildren();
-    const add = (value, text) => {
-      const option = document.createElement('option');
-      if (value) option.dataset.cueStyleName = '';
-      option.value = value; option.textContent = text; select.append(option);
-    };
-    add('', window.MAWE_I18N?.translateText?.('继承轨道样式') || '继承轨道样式');
-    if (segment?.assStyle) add('__snapshot', segment.assStyle.name || 'ASS');
-    styles.forEach(style => add(style.id, style.builtin ? window.MAWE_I18N?.translateText?.(style.name) || style.name : style.name));
-    select.value = segment?.assStyle ? '__snapshot' : '';
-  }
-
-  document.getElementById('cue-ass-style')?.addEventListener('focus', () => {
-    syncCueAssStyle(getCurrentCuePanelTarget()?.segment);
-  });
-
-  document.getElementById('cue-ass-style')?.addEventListener('change', event => {
-    const segment = getCurrentCuePanelTarget()?.segment;
-    const value = event.target.value;
-    if (!segment || value === '__snapshot') return;
-    const style = window.MaweAssManagerWiring?.projectStyleOptions?.('main')?.styles.find(item => item.id === value);
-    if (value && !style) return;
-    if (!value && !segment.assStyle) return;
-    MaweCommands.run('修改单句 ASS 样式', command => {
-      if (style) segment.assStyle = JSON.parse(JSON.stringify(window.AsrEditorUtils.normalizeAssStyle(style)));
-      else delete segment.assStyle;
-      segment._dirty = true;
-      command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
-    });
-  });
-
   function renderCurrentCuePanel() {
   if (!MaweDom.cuePanel) return;
   const target = getCurrentCuePanelTarget();
   window.MaweAssCuePosition?.sync();
   const idx = target?.index ?? -1;
   const seg = target?.segment || null;
-  syncCueAssStyle(seg);
   const empty = !target;
   MaweDom.cuePanel.classList.toggle('empty', empty);
   MaweDom.cuePanel.classList.toggle('extension-target', !empty && target.kind === 'extension');

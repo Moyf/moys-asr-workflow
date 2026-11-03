@@ -1443,9 +1443,6 @@
   .track-visibility-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px; border: 1px solid var(--btn-border); border-radius: var(--radius-sm); }
   .track-visibility-row strong { flex: 1 0 100%; color: var(--text-primary); }
   .track-visibility-row label { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); }
-  .track-style-controls { display: flex; flex: 1 0 100%; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .track-style-controls select { max-width: 100%; }
-  .track-style-controls [data-track-style-status] { color: var(--text-secondary); }
   .track-variant-warning { flex: 1 0 100%; color: var(--text-primary); overflow-wrap: anywhere; }
   .project-track-toggle {
     box-sizing: border-box; display: flex; align-items: center; gap: 6px; min-height: var(--control-h);
@@ -2758,8 +2755,6 @@
   .cue-panel-time-fields input:focus,
   #cue-panel-text:focus { outline: none; border-color: var(--amber); box-shadow: var(--focus-ring-amber); }
   .cue-panel-text-wrap { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-  #cue-ass-style-controls { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  #cue-ass-style { width: min(22rem, 65%); min-width: 0; }
   .cue-panel-target {
     min-height: 16px; color: var(--text-secondary); font-size: 11px; font-weight: 700;
     letter-spacing: .04em; text-transform: uppercase;

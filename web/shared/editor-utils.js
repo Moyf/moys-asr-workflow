@@ -14,7 +14,6 @@ import { createUtilsModule as createSpeakersModule } from './utils/speakers.js';
 import { createUtilsModule as createMediaMetadataModule } from './utils/media-metadata.js';
 import { createUtilsModule as createNavigationModule } from './utils/navigation.js';
 import { createUtilsModule as createAssStyleModule } from './utils/ass-style.js';
-import { createUtilsModule as createTrackStylesModule } from './utils/track-styles.js';
 import { createUtilsModule as createTextProcessingModule } from './utils/text-processing.js';
 import { createUtilsModule as createTimedTextCoreModule } from './utils/timed-text-core.js';
 import { createUtilsModule as createTimedTextPlansModule } from './utils/timed-text-plans.js';
@@ -63,8 +62,6 @@ Object.assign(helpers, createNavigationModule(helpers));
 // ass-style 需要先于 text-processing / word-timing / srt 解析：MASS 成对
 // 检测（strip / 拆分补齐 / 合并折叠 / 字词块归位）都复用它导出的 assMarkedRanges。
 Object.assign(helpers, createAssStyleModule(helpers));
-const trackStylesHelpers = createTrackStylesModule(helpers);
-Object.assign(helpers, trackStylesHelpers);
 Object.assign(helpers, createTextProcessingModule(helpers));
 Object.assign(helpers, createTimedTextCoreModule(helpers));
 Object.assign(helpers, createTimedTextPlansModule(helpers));
@@ -363,6 +360,8 @@ const {
   previewGeometryToCss,
   readBwfTimeReferenceFromFile,
   rebuildBindingOffsets,
+  setBindingIndexEnabled,
+  isBindingIndexEnabled,
   removeGapRemoveProvenanceRange,
   removeSubtitleBindings,
   repairGroupReferenceIndices,
@@ -409,7 +408,6 @@ window.AsrEditorUtils = {
   TrackPolicy,
   cloneJsonValue: helpers.cloneJsonValue,
   ...projectTracksHelpers,
-  ...trackStylesHelpers,
   ...multiSubtitleHelpers,
   ...subtitleGroupHelpers,
   ...historyHelpers,
@@ -549,6 +547,8 @@ filterFontFamilyOptions,
   bindingForSegment,
   buildSubtitleBinding,
   rebuildBindingOffsets,
+  setBindingIndexEnabled,
+  isBindingIndexEnabled,
   swapMainAndExtensionSubtitle,
   removeSubtitleBindings,
   matchSubtitleSegments,

@@ -88,8 +88,8 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Build web bundles
         # bundle 是构建产物（不入库）：Python 全量测试与打包都会读取，在测试前
-        # 显式构建（pnpm install 的 postinstall 也会构建，这里保持显式不依赖钩子）。
-        run: pnpm install --frozen-lockfile && pnpm run build
+        # 安装阶段跳过脚本，随后显式构建，避免 postinstall 重复编译。
+        run: pnpm install --frozen-lockfile --ignore-scripts && pnpm run build
 
       - name: Install FFmpeg for media integration tests
         shell: pwsh

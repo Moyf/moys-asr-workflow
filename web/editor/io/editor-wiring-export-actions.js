@@ -313,7 +313,9 @@ document.getElementById('download-full-ass')?.addEventListener('click', async ()
 document.getElementById('download-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(false));
 document.getElementById('download-plain-text')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  await MaweExportTimeline.downloadFile(window.AsrEditorUtils.buildPlainTextPayload(MaweExportSrt.cleanupMainSegments(), {
+  const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+  const segments = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(main, 'export') ? MaweExportSrt.cleanupMainSegments() : [];
+  await MaweExportTimeline.downloadFile(window.AsrEditorUtils.buildPlainTextPayload(segments, {
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
     assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
   }), `${MaweBoot.FILENAME_BASE}.txt`, 'text/plain', {

@@ -36,8 +36,7 @@ test('disabled overlay is excluded from stickers; preview and burn share both st
   Object.assign(context, {
     document: { createElement: element },
     MaweStickerPreviewWiring: { activeStickerHasOverlay: false },
-    MaweDom: { stickerOverlayToggle: { checked: true }, overlayToggle: { checked: true },
-      extensionOverlayToggle: { checked: true } },
+    MaweDom: { stickerOverlayToggle: { checked: true } },
     MaweSettings: { EDITOR_SETTINGS: { stickersEnabled: true } },
     MaweSelection: { stickerUrl: sticker => sticker.rel },
   });

@@ -179,17 +179,6 @@ export function initMaweMultiImport() {
     } else {
       multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
     }
-    if (pending.segments.sourceTrack?.style) {
-      delete track.style;
-      if (pending.segments.sourceStyle) {
-        window.AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, track, pending.segments.sourceStyle);
-        const newId = track.style.style_id;
-        const snapshot = MaweBoot.DATA.styles.find(style => style.id === newId);
-        Object.assign(snapshot, { ...pending.segments.sourceStyle, ...snapshot });
-        track.style = { ...pending.segments.sourceTrack.style, style_id: newId };
-      }
-    }
-    window.MaweAssManagerWiring?.initializeProjectStyles?.();
     extensionSegments.forEach(segment => { delete segment.color_group_id; delete segment.sticker_group_id; });
     for (const kind of ['color', 'sticker']) {
       for (const group of pending.segments.subtitle_groups?.[kind] || []) {
@@ -290,7 +279,8 @@ export function initMaweMultiImport() {
       if (!current()) return false;
       MaweLoadingProgress.updateEditorLoading(60, `正在解析工程 ${file.name}…`);
       const rawProject = JSON.parse(text);
-      const imported = window.AsrEditorUtils.importProject(rawProject);
+      const imported = window.MaweProjectValidation.prepareProject(rawProject);
+      if (!imported.ok) throw new Error(imported.errors.map(error => `${error.path}: ${error.message}`).join('; '));
       const data = imported.project;
       MaweJsonRepair.noteImportReport(imported.changes);
 MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation, repaired: imported.changes.length > 0,

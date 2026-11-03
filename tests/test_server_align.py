@@ -216,7 +216,7 @@ class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
             state = SERVER.load_state(project_path, script_path, None)
 
             with SERVER.AlignmentServer(("127.0.0.1", 0), state) as server:
-                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
                 thread.start()
                 base = f"http://127.0.0.1:{server.server_address[1]}"
                 with urlopen(f"{base}/api/state") as response:
@@ -272,7 +272,7 @@ class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
             candidate = state.alignment["candidatesByLine"][0][0]
 
             with SERVER.AlignmentServer(("127.0.0.1", 0), state) as server:
-                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
                 thread.start()
                 base = f"http://127.0.0.1:{server.server_address[1]}"
                 body = json.dumps({
@@ -320,7 +320,7 @@ class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
             )
 
             with SERVER.AlignmentServer(("127.0.0.1", 0), state) as server:
-                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
                 thread.start()
                 base = f"http://127.0.0.1:{server.server_address[1]}"
                 body = json.dumps({
@@ -375,7 +375,7 @@ class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
             candidate = state.alignment["candidatesByLine"][0][0]
 
             with SERVER.AlignmentServer(("127.0.0.1", 0), state) as server:
-                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
                 thread.start()
                 base = f"http://127.0.0.1:{server.server_address[1]}"
                 body = json.dumps({
@@ -431,7 +431,7 @@ class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
             }
 
             with SERVER.AlignmentServer(("127.0.0.1", 0), state) as server:
-                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
                 thread.start()
                 base = f"http://127.0.0.1:{server.server_address[1]}"
                 body = json.dumps({
@@ -500,7 +500,7 @@ class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
             state = SERVER.load_state(project_path, script_path, None)
 
             with SERVER.AlignmentServer(("127.0.0.1", 0), state) as server:
-                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
                 thread.start()
                 base = f"http://127.0.0.1:{server.server_address[1]}"
                 body = json.dumps({
@@ -536,7 +536,7 @@ class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
             state = SERVER.load_state(project_path, script_path, None)
 
             with SERVER.AlignmentServer(("127.0.0.1", 0), state) as server:
-                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
                 thread.start()
                 base = f"http://127.0.0.1:{server.server_address[1]}"
                 body = json.dumps({

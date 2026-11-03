@@ -512,6 +512,8 @@ def _run_resegment(
                 and sources[previous_index].get("speaker") is not None
                 and segment.get("speaker") != sources[previous_index].get("speaker")
             )
+            or any(segment.get(f"{kind}_group_id") != sources[previous_index].get(f"{kind}_group_id")
+                   for kind in ("color", "sticker"))
             or bool(units[0].item) != bool(by_source[previous_index][0].item)
             or int(segment["start"]) - int(sources[previous_index]["end"]) > 1500
         ):

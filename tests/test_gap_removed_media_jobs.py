@@ -460,8 +460,11 @@ class MediaJobsHttpTests(unittest.TestCase):
         project = server_editor.ServerProject(data={"segments": []}, json_path=self.root / "project.json",
             media_path=self.source, source_media_path=self.source, sticker_root=None, stickers=[])
         self.server = server_editor.EditorServer(("127.0.0.1", 0), project, no_waveform=True)
+        # This byte-only routing fixture has no thumbnail cache. Keep binding,
+        # admission, cancellation and downloads real; cache validation is separate.
+        self.enterContext(mock.patch.object(self.server, "_thumbnail_base_ready", return_value=False))
         self.server.media_jobs.temp_root = self.root
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
         self.origin = f"http://127.0.0.1:{self.server.server_address[1]}"
         self.base = "/api/exports/gap-removed-video/jobs"

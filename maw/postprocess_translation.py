@@ -8,6 +8,11 @@ from maw.project import normalize_project
 from maw.project_preview import JsonDict
 from maw.project_tracks import get_main_track, get_track, project_tracks
 
+_TRACK_PRESENTATION_FIELDS = frozenset(
+    {"assOverride"} | {f"{kind}_group_{suffix}" for kind in ("color", "sticker") for suffix in ("id", "metadata")}
+)
+_EXISTING_CUE_FIELDS = frozenset({"disabled", "speaker"})
+
 
 def _unique_id(base: str, reserved: set[str]) -> str:
     identifier = base[:150]
@@ -65,7 +70,11 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
         old_binding = previous.get(source["id"])
         old_target = old_binding["target"]["segment_id"] if old_binding is not None else None
         extension = copy.deepcopy(previous_cues.get(old_target, {}))
-        extension.update(copy.deepcopy(translated))
+        # Preserve the secondary cue's own presentation and, when replacing an
+        # existing cue, its enabled state and speaker identity.
+        extension.update({key: copy.deepcopy(value) for key, value in translated.items()
+                          if key not in _TRACK_PRESENTATION_FIELDS
+                          and (old_target is None or key not in _EXISTING_CUE_FIELDS)})
         if "items" not in translated:
             extension.pop("items", None)
         extension["id"] = _unique_id(old_target or f"{track_id}-segment-{index:03d}", cue_ids)

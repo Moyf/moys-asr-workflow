@@ -37,6 +37,25 @@ def timed(text, parts, start=0, **metadata):
 
 
 class ResegmentTests(unittest.TestCase):
+    def test_visual_group_boundaries_split_resegment_batches(self):
+        for kind in ("color", "sticker"):
+            with self.subTest(kind=kind):
+                value = {"name": "red"} if kind == "color" else {"name": "star"}
+                sources = [
+                    timed("甲", ["甲"], 0, **{kind: value}),
+                    timed("乙", ["乙"], 200, **{f"{kind}_ref": {"name": value["name"], "headIdx": 0}}),
+                    timed("丙", ["丙"], 400),
+                ]
+                calls = []
+                def complete(_prompt, rows):
+                    calls.append([row["text"] for row in rows])
+                    return self.last_boundary(_prompt, rows)
+                segments, _ = self.run_case(sources, complete)
+                self.assertEqual(calls, [["甲", "乙"], ["丙"]])
+                self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙"])
+                self.assertIn(f"{kind}_group_id", segments[0])
+                self.assertNotIn(f"{kind}_group_id", segments[1])
+
     def test_unsplittable_limits_are_pending_regions_without_modifying_source(self):
         _, artifact = self.run_case(
             [timed("完整名称不能拆", ["完整名称不能拆"])],

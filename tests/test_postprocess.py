@@ -146,6 +146,72 @@ class PostprocessTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_proofread_keeps_original_cues_when_model_merges_different_groups(self) -> None:
+        for kind in ("color", "sticker"):
+            with self.subTest(kind=kind):
+                value = {"name": "red"} if kind == "color" else {"name": "star"}
+                source = {"segments": [
+                    {"start": 0, "end": 200, "text": "甲", kind: value,
+                     "items": [{"start": 0, "end": 200, "text": "甲"}]},
+                    {"start": 200, "end": 400, "text": "乙", f"{kind}_ref": {"name": value["name"], "headIdx": 0},
+                     "items": [{"start": 200, "end": 400, "text": "乙"}]},
+                    {"start": 400, "end": 600, "text": "丙"},
+                ]}
+                self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+                before = self.project_path.read_bytes()
+                original = main_segments(read_project(self.project_path))
+                calls = []
+                def complete(_prompt, rows):
+                    calls.append([row["text"] for row in rows])
+                    return {"groups": [{"source_ids": [row["id"] for row in rows],
+                                        "text": "".join(str(row["text"]) for row in rows)}]}
+                result = run_llm_postprocess(LlmPostprocessRequest(self.project_path, None, OutputMode.BOTH,
+                                                                   "proofread", ""), complete=complete)
+                segments = main_segments(read_project(result.project_path))
+                self.assertEqual(calls, [["甲", "乙", "丙"]])
+                self.assertEqual(segments, original)
+                self.assertIn("跨越颜色或贴纸组", "\n".join(result.warnings))
+                self.assertEqual(self.project_path.read_bytes(), before)
+
+    def test_group_fallback_preserves_original_ids_after_an_earlier_split(self) -> None:
+        source = {"segments": [
+            {"id": "foo", "start": 0, "end": 400, "text": "甲乙"},
+            {"id": "foo-part-002", "start": 400, "end": 600, "text": "丙", "color": {"name": "red"}},
+            {"id": "last", "start": 600, "end": 800, "text": "丁"},
+        ]}
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        result = run_llm_postprocess(LlmPostprocessRequest(self.project_path, None, OutputMode.BOTH,
+                                                           "proofread", ""),
+            complete=lambda _prompt, _rows: {"groups": [
+                {"source_ids": ["c0001"], "text": "甲"},
+                {"source_ids": ["c0001"], "text": "乙"},
+                {"source_ids": ["c0002", "c0003"], "text": "丙丁"},
+            ]})
+        segments = main_segments(read_project(result.project_path))
+        self.assertEqual([segment["text"] for segment in segments], ["甲", "乙", "丙", "丁"])
+        ids = [segment["id"] for segment in segments]
+        self.assertEqual((ids[0], ids[2], ids[3]), ("foo", "foo-part-002", "last"))
+        self.assertEqual(len(set(ids)), len(ids))
+        self.assertIn("未应用这些模型文本", "\n".join(result.warnings))
+
+    def test_group_fallback_keeps_other_proofread_results(self) -> None:
+        source = {"segments": [
+            {"id": "first", "start": 0, "end": 200, "text": "甲", "color": {"name": "red"}},
+            {"id": "second", "start": 200, "end": 400, "text": "乙", "color_ref": {"name": "red", "headIdx": 0}},
+            {"id": "third", "start": 400, "end": 600, "text": "丙"},
+        ]}
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        result = run_llm_postprocess(LlmPostprocessRequest(self.project_path, None, OutputMode.BOTH,
+                                                           "proofread", ""),
+            complete=lambda _prompt, _rows: {"groups": [
+                {"source_ids": ["c0001"], "text": "甲的校对"},
+                {"source_ids": ["c0002", "c0003"], "text": "乙丙的校对"},
+            ]})
+        segments = main_segments(read_project(result.project_path))
+        self.assertEqual([segment["text"] for segment in segments], ["甲的校对", "乙", "丙"])
+        self.assertEqual([segment["id"] for segment in segments], ["first", "second", "third"])
+        self.assertIn("未应用这些模型文本", "\n".join(result.warnings))
+
     def test_fixed_replacement_preserves_timing_and_creates_chainable_outputs(self) -> None:
         request = ReplacementRequest(
             project_path=self.project_path,
@@ -937,20 +1003,19 @@ class PostprocessTests(unittest.TestCase):
                 operation="resegment",
                 custom_prompt="",
             ),
-            complete=lambda _prompt, _cues: {
-                "groups": [
-                    {"atom_ids": ["c0001a0001"]},
-                    {"atom_ids": ["c0001a0002"]},
-                    {"atom_ids": ["c0002a0001", "c0002a0002"]},
-                ]
-            },
+            complete=lambda _prompt, cues: {"groups": [
+                group for cue in cues for group in (
+                    [{"atom_ids": [item["id"]]} for item in cue["items"]]
+                    if cue["id"] == "c0001" else [{"atom_ids": [item["id"] for item in cue["items"]]}]
+                )
+            ]},
         )
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project file")
         output = project_segments(read_project(result.project_path))
         ids = [str(segment["id"]) for segment in output]
-        self.assertEqual(ids, ["source-first", "source-first-part-002", "source-second"])
+        self.assertEqual((ids[0], ids[2]), ("source-first", "source-second"))
         self.assertEqual(len(ids), len(set(ids)))
 
     def test_llm_regroup_preserves_stable_groups_and_unaffected_word_timings(self) -> None:
@@ -993,6 +1058,9 @@ class PostprocessTests(unittest.TestCase):
     def test_llm_rejects_merging_enabled_and_disabled_cues(self) -> None:
         project = sample_project(self.media)
         project_segments(project)[1]["disabled"] = True
+        # Keep both cues in the same visual group so the disabled-state guard
+        # is exercised rather than the cross-group fallback.
+        project_segments(project)[1].pop("color", None)
 
         with self.assertRaisesRegex(ValueError, "enabled and disabled"):
             _ = apply_llm_groups(project, {

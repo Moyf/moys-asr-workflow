@@ -354,8 +354,7 @@ function stickerBindingContext(segments) {
     MaweColorFilter: { refreshStickerAssignmentUi() {} },
     MaweHint: { flashHint() {} },
     MaweState: { markProjectDirty() {} },
-    MaweDom: { stickerModal: stubElement(), stickerPreviewModal: stubElement(),
-      overlayToggle: { checked: true }, extensionOverlayToggle: { checked: true } },
+    MaweDom: { stickerModal: stubElement(), stickerPreviewModal: stubElement() },
   };
   context.window = context;
   loadEditorModule(context, 'shared/editor-utils.js');

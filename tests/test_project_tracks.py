@@ -37,39 +37,6 @@ class ProjectTracksTests(unittest.TestCase):
         self.assertIn(path, [error.path for error in result.errors])
         self.assertEqual(value, original)
 
-    def test_shared_style_contract(self):
-        folder = Path(__file__).parent / "fixtures" / "project-tracks"
-        fixture = json.loads((folder / "style-contract.json").read_text(encoding="utf-8"))
-        project = json.loads((folder / "canonical.json").read_text(encoding="utf-8"))
-        project["styles"] = copy.deepcopy(fixture["styles"])
-        project["tracks"][0]["style"] = copy.deepcopy(fixture["style"])
-        project["tracks"][1]["style"] = {"style_id": "shared"}
-        original = copy.deepcopy(project)
-        imported = import_project(project).project
-        self.assertEqual(imported, original)
-        self.assertEqual(project, original)
-        imported["styles"][0]["vendor"]["zero"] = 2
-        self.assertEqual(project, original)
-        for case in fixture["invalid"]:
-            with self.subTest(case=case):
-                invalid = copy.deepcopy(original)
-                if "styles" in case:
-                    invalid["styles"] = case["styles"]
-                if case.get("delete_styles"):
-                    del invalid["styles"]
-                if "style" in case:
-                    invalid["tracks"][0]["style"] = case["style"]
-                before = copy.deepcopy(invalid)
-                result = validate_tracks_project(invalid)
-                self.assertFalse(result.ok)
-                self.assertEqual([(error.path, error.message) for error in result.errors], [(case["path"], case["message"])])
-                self.assertEqual(invalid, before)
-        too_long = copy.deepcopy(original)
-        too_long["styles"][0]["id"] = "x" * 161
-        result = validate_tracks_project(too_long)
-        self.assertEqual([(error.path, error.message) for error in result.errors], [
-            ("$.styles[0].id", "must be a non-empty string of at most 160 characters")])
-
     def test_shared_track_options(self):
         options = json.loads((Path(__file__).parent / "fixtures" / "project-tracks" / "track-options.json").read_text(encoding="utf-8"))
         for schema in ("moy.asr.project.v1", "moy.asr.project.v1.5"):

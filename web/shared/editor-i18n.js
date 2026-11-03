@@ -9,39 +9,6 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
-    '单句 ASS 样式': 'Cue ASS style',
-    'SRT 渲染样式': 'SRT rendering style',
-    'ASS 默认样式': 'Default ASS style',
-    'ASS 副字幕样式': 'Secondary ASS style',
-    '继承轨道样式': 'Inherit track style',
-    '修改单句 ASS 样式': 'Change cue ASS style',
-    '选择样式库中的样式，仅覆盖当前字幕；清除后继承轨道样式。': 'Choose a library style for this cue only; clear it to inherit the track style.',
-    '字幕轨道状态': 'Subtitle track state',
-    '关闭轨道会同时停止预览和导出，字幕数据会保留。': 'Disabling a track stops preview and export while preserving its subtitles.',
-    '主字幕轨始终启用': 'The main subtitle track is always enabled',
-    '预览': 'Preview',
-    '主字幕样式': 'Main subtitle style',
-    '副字幕样式': 'Secondary subtitle style',
-    '叠加字幕样式': 'Overlay subtitle style',
-    '编辑工程样式': 'Edit project style',
-    '存回样式库': 'Save to style library',
-    '工程样式': 'Project style',
-    '未设置': 'Not set',
-    '已修改': 'Modified',
-    '样式库': 'Style library',
-    '与样式库联动': 'Linked to style library',
-    '工程样式已分离': 'Independent project style',
-    '尚未设置工程样式': 'Project style not set',
-    '选择主字幕轨的工程样式': 'Choose the main track project style',
-    '选择副字幕轨的工程样式': 'Choose the secondary track project style',
-    '无法存回样式库：请检查同名样式或样式数量。': 'Cannot save to the style library: check duplicate names or the style limit.',
-    '工程样式已存回样式库': 'Project style saved to the style library',
-    '样式库中已有同名但参数不同的样式。要覆盖它吗？': 'A library style has the same name but different parameters. Replace it?',
-    '切换工程样式': 'Change project style',
-    '存回工程样式': 'Save project style to library',
-    '更新联动样式': 'Update linked styles',
-    '切换轨道预览': 'Toggle track preview',
-    '切换轨道导出': 'Toggle track export',
     '工程音量': 'Project volume',
     '整体增益': 'Overall gain',
     '整体增益（dB）': 'Overall gain (dB)',
@@ -1638,7 +1605,7 @@
   ].join(',');
   const SKIP_SELECTOR = [
     // Reference text includes the project name, but its title is a UI hint.
-    '.cue .sticker-slot .sref', '#cue-panel-sticker .ref', '[data-cue-style-name]',
+    '.cue .sticker-slot .sref', '#cue-panel-sticker .ref',
     PROJECT_TEXT_SELECTOR, '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
     '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', '[data-marker-project-content]', 'script', 'style'
   ].join(',');
@@ -1710,10 +1677,6 @@
     if (lang !== EN) return text;
     if (EN_TEXT[text]) return EN_TEXT[text];
     if (EN_ATTR[text]) return EN_ATTR[text];
-    const projectStyle = /^(.*)（工程样式）$/.exec(text);
-    if (projectStyle) return `${projectStyle[1]} (project style)`;
-    const unsupportedTrack = /^不支持的叠加轨类型：(.+)。数据已保留。$/.exec(text);
-    if (unsupportedTrack) return `Unsupported overlay variant: ${unsupportedTrack[1]}. Data has been preserved.`;
     let scope = /^当前范围：全部 (\d+) 条字幕$/.exec(text);
     if (scope) return `Current scope: all ${scope[1]} subtitles`;
     scope = /^当前范围：仅选中的 (\d+) 条字幕$/.exec(text);

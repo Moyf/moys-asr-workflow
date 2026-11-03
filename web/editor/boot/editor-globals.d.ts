@@ -46,7 +46,6 @@ interface ProjectSegment {
   disabled?: boolean;
   speaker?: string;
   assOverride?: AssCueOverride;
-  assStyle?: Record<string, any>;
   color_group_id?: string;
   sticker_group_id?: string;
   _dirty?: boolean;
@@ -103,7 +102,6 @@ interface ProjectOverlayTrack {
 interface ProjectData {
   schema: 'moy.asr.project.v2';
   tracks: ProjectTrack[];
-  styles?: Array<{ id: string; name: string; [key: string]: unknown }>;
   bindings: ProjectBinding[];
   bilingual: { display_mode: string; active_track_id?: string };
   subtitle_groups?: {

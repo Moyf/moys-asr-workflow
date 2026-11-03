@@ -4,7 +4,6 @@ import io
 import json
 import tempfile
 import unittest
-from tests.compact_assertions import CompactContainerAssertions
 from pathlib import Path
 
 from maw.postprocess_io import render_srt, write_artifacts
@@ -19,23 +18,7 @@ def project():
     return value
 
 
-class PythonTrackOutputTests(CompactContainerAssertions, unittest.TestCase):
-    def test_cue_snapshots_override_each_track_without_library(self):
-        from maw.project import normalize_project, ProjectValidationFailed
-        p = project()
-        for index, track in enumerate(p['tracks']):
-            track['segments'][0]['assStyle'] = {'fontName': f'CueFont{index}', 'fontSize': 81 + index}
-        before = copy.deepcopy(p)
-        output = render_project_ass(p, title='cue styles', play_resolution=(1920, 1080), mode='main_and_extension')
-        for index in range(3):
-            self.assertIn(f',CueFont{index},{81 + index},', output)
-        self.assertEqual(p, before)
-        self.assertEqual(normalize_project(p), p)
-        for invalid in (None, [], 'preset'):
-            p['tracks'][0]['segments'][0]['assStyle'] = invalid
-            with self.assertRaises(ProjectValidationFailed):
-                normalize_project(p)
-
+class PythonTrackOutputTests(unittest.TestCase):
     def test_export_switches_apply_to_srt_and_ass_not_preview(self):
         for enabled in (False, True):
             for export in (False, True):
@@ -78,23 +61,6 @@ class PythonTrackOutputTests(CompactContainerAssertions, unittest.TestCase):
         p['tracks'][2]['export'] = {'enabled': False}
         self.assertIn('你好', render_srt(p))
         self.assertNotIn('overlay', render_srt(p))
-
-    def test_project_snapshots_override_preview_without_library(self):
-        p = project()
-        p['styles'] = [{'id':'p-main','name':'main snapshot','fontName':'Snapshot Font','fontSize':55,
-                        'primaryColor':'#123456','outline':3},
-                       {'id':'p-overlay','name':'overlay snapshot','fontName':'Overlay Font','fontSize':42,
-                        'primaryColor':'#654321','alignment':8},
-                       {'id':'p-secondary','name':'secondary snapshot','fontName':'Secondary Font','fontSize':30}]
-        p['tracks'][0]['style'] = {'style_id':'p-main','forked':True}
-        p['tracks'][2]['style'] = {'style_id':'p-overlay'}
-        p['tracks'][1]['style'] = {'style_id':'p-secondary'}
-        before = copy.deepcopy(p)
-        output = render_project_ass(p, title='t', play_resolution=(1920, 1080), mode='main_and_extension')
-        self.assertIn('Style: Secondary,Secondary Font,30,', output)
-        self.assertIn('Style: Default,Snapshot Font,55,&H00563412', output)
-        self.assertIn('Style: Overlay,Overlay Font,42,&H00214365', output)
-        self.assertEqual(p, before)
 
     def test_sidecar_respects_export_flags_but_project_keeps_all_tracks(self):
         p = project()
