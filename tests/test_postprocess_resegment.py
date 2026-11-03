@@ -48,10 +48,10 @@ class ResegmentTests(unittest.TestCase):
                 ]
                 calls = []
                 def complete(_prompt, rows):
-                    calls.append([row["id"] for row in rows])
+                    calls.append([row["text"] for row in rows])
                     return self.last_boundary(_prompt, rows)
                 segments, _ = self.run_case(sources, complete)
-                self.assertEqual(calls, [["c0001", "c0002"], ["c0003"]])
+                self.assertEqual(calls, [["甲", "乙"], ["丙"]])
                 self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙"])
                 self.assertIn(f"{kind}_group_id", segments[0])
                 self.assertNotIn(f"{kind}_group_id", segments[1])
