@@ -137,6 +137,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/io/editor-sticker-root.js",
                 "editor/cues/editor-find-replace.js",
                 "editor/cues/editor-text-process.js",
+                "editor/cues/editor-text-presets.js",
                 "editor/cues/editor-timed-text-edit.js",
                 "editor/cues/editor-sticker-picker.js",
                 "editor/cues/editor-add-cue.js",

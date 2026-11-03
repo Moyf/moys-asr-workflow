@@ -284,6 +284,7 @@ a = Analysis(
         "maw.cli",
         "maw.postprocess",
         "maw.text_conversion",
+        "maw.text_processing_presets",
         "maw.postprocess_io",
         "maw.postprocess_llm",
         "maw.postprocess_ffmpeg",

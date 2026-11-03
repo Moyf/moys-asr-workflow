@@ -60,6 +60,14 @@
   let textProcessWrapPresets = [];
   let textProcessPreviewExpanded = false;
   const textProcessPreviewOpenRows = new Map();
+  let textProcessPreviewRevision = 0;
+  let textProcessReadyRows = null;
+
+  function invalidatePreview() {
+    textProcessPreviewRevision += 1;
+    textProcessReadyRows = null;
+    textProcessConfirm.disabled = true;
+  }
 
 
   let textProcessSelectionSnapshot = [];
@@ -122,7 +130,7 @@
       const segment = segments[target.index];
       if (!segment) return [];
       const before = String(segment.text == null ? '' : segment.text);
-      const after = window.AsrEditorUtils.applyTextProcessing(before, options);
+      const after = window.AsrEditorUtils.applyTextProcessingRules(before, window.MaweTextPresets?.rules() || [], options);
       return [{ ...target, before, after, changed: before !== after }];
     });
   }
@@ -149,9 +157,9 @@
 
 
   function refreshTextProcessScopeInfo() {
-    const selected = textProcessScope && textProcessScope.length;
+    const selected = textProcessSelectedOnlyCb.checked;
     textProcessScopeInfo.textContent = selected
-      ? `当前范围：仅选中的 ${textProcessScope.length} 条字幕`
+      ? `当前范围：仅选中的 ${textProcessScope?.length || 0} 条字幕`
       : `当前范围：全部 ${MaweBoot.DATA.segments.length} 条字幕`;
     textProcessScopeInfo.classList.toggle('selected', Boolean(selected));
   }
@@ -170,23 +178,54 @@
 
 
 
-  function renderTextProcessPreview() {
+  async function renderTextProcessPreview() {
+    const revision = ++textProcessPreviewRevision;
+    textProcessReadyRows = null;
+    textProcessConfirm.disabled = true;
     const options = getTextProcessOptions();
+    const rules = window.MaweTextPresets?.rules() || [];
     const wrapHasCharacters = options.addWrapChars && (options.wrapLeft || options.wrapRight);
     const hasOperation = textProcessTrim.checked || textProcessCapitalize.checked
-      || textProcessConvertNumbers.checked || textProcessStripMarkdown.checked || wrapHasCharacters;
+      || textProcessConvertNumbers.checked || textProcessStripMarkdown.checked || wrapHasCharacters
+      || rules.some((rule) => rule.enabled);
     const targets = textProcessTargets();
     textProcessPreview.querySelectorAll('details[data-target]').forEach((details) => {
       textProcessPreviewOpenRows.set(details.dataset.target, details.open);
     });
     textProcessPreview.replaceChildren();
+    if (textProcessSelectedOnlyCb.checked && !textProcessSelectionSnapshot.length) {
+      textProcessPreview.textContent = '请先选择要处理的字幕';
+      textProcessConfirm.disabled = true;
+      return;
+    }
     if (!hasOperation) {
       textProcessPreview.textContent = '请选择至少一项文本处理操作';
       textProcessPreview.style.color = '';
       textProcessConfirm.disabled = true;
       return;
     }
-    const rows = buildTextProcessPreview(targets, options);
+    let rows;
+    try {
+      const source = targets.flatMap((target) => {
+        const segment = textProcessTargetSegments(target)[target.index];
+        return segment ? [{ ...target, before: String(segment.text ?? ''), snapshot: JSON.stringify(segment) }] : [];
+      });
+      textProcessPreview.textContent = '正在生成预览…';
+      const replacements = await window.MaweTextPresets.runRules(source.map((row) => row.before), JSON.parse(JSON.stringify(rules)));
+      if (revision !== textProcessPreviewRevision) return;
+      rows = source.map((row, index) => {
+        const after = window.AsrEditorUtils.applyTextProcessing(replacements[index], options);
+        return { ...row, after, changed: row.before !== after };
+      });
+    }
+    catch (error) {
+      if (revision !== textProcessPreviewRevision) return;
+      textProcessPreview.textContent = `替换规则错误：${error.message}`;
+      textProcessConfirm.disabled = true;
+      return;
+    }
+    textProcessPreview.replaceChildren();
+    textProcessReadyRows = rows;
     const result = {
       targetCount: rows.length,
       changedCount: rows.filter((row) => row.changed).length,
@@ -261,6 +300,8 @@
 
 
   function closeTextProcessModal() {
+    textProcessPreviewRevision += 1;
+    textProcessReadyRows = null;
     MaweDom.textProcessModal.classList.remove('show');
   }
 
@@ -355,6 +396,7 @@
     textProcessSuffixInput.value = '';
     refreshTextProcessInputState();
     MaweDom.textProcessModal.classList.add('show');
+    window.MaweTextPresets?.onOpen();
     renderTextProcessPreview();
     setTimeout(() => textProcessTrim.focus(), 50);
   }
@@ -387,6 +429,8 @@
     refreshTextProcessScopeInfo,
     refreshTextProcessSelectionControl,
     renderTextProcessPreview,
+    invalidatePreview,
+    get textProcessReadyRows() { return textProcessReadyRows; },
     refreshTextProcessInputState,
     closeTextProcessModal,
     openTextProcessModal,

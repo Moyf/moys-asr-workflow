@@ -383,6 +383,23 @@ export function createUtilsModule(dependencies) {
     return result;
   }
 
+  // Apply replacement rules in order before the existing fixed operations.
+  // Preview and commit call this same function.
+  function applyTextProcessingRules(text, rules, options = {}) {
+    let result = String(text == null ? '' : text);
+    for (const rule of Array.isArray(rules) ? rules : []) {
+      if (rule.enabled === false) continue;
+      const find = String(rule.find ?? '');
+      if (!find) throw new TypeError('查找内容不能为空');
+      const searchOptions = { useRegex: rule.regex === true, caseSensitive: rule.caseSensitive === true };
+      const compiled = compileTextSearchPattern(find, searchOptions);
+      if (compiled.error) throw new TypeError(compiled.error);
+      const matches = collectTextSearchMatchesWithRegex([result], compiled.regex);
+      result = replaceTextSearchMatchesInText(result, matches, rule.replace, searchOptions);
+    }
+    return applyTextProcessing(result, options);
+  }
+
 
   function normalizeTextProcessingIndexes(segments, indexes) {
     const source = Array.isArray(segments) ? segments : [];
@@ -1066,6 +1083,7 @@ export function createUtilsModule(dependencies) {
 
   return Object.freeze({
     applyTextProcessing,
+    applyTextProcessingRules,
     buildReplacementPreview,
     compileTextSearchPattern,
     collectTextSearchMatches,

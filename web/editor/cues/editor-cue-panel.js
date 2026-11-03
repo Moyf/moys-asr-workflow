@@ -351,12 +351,42 @@ export function initMaweCuePanel() {
 
 
 
+  function syncCueAssStyle(segment) {
+    const select = document.getElementById('cue-ass-style');
+    if (!select) return;
+    select.disabled = !segment;
+    select.replaceChildren(new Option(window.MAWE_I18N?.translateText?.('继承默认样式') || '继承默认样式', ''));
+    if (segment?.assStyle) select.add(new Option(segment.assStyle.name || 'ASS', '__snapshot'));
+    (window.MaweAssStorageWiring?.styles() || []).forEach((style) => select.add(new Option(style.name, style.id)));
+    select.value = segment?.assStyle ? '__snapshot' : '';
+  }
+
+  document.getElementById('cue-ass-style')?.addEventListener('focus', () => syncCueAssStyle(getCurrentCuePanelTarget()?.segment));
+  document.getElementById('cue-ass-style')?.addEventListener('change', (event) => {
+    const target = getCurrentCuePanelTarget();
+    const segment = target?.segment;
+    const value = event.target.value;
+    if (!segment || value === '__snapshot') return;
+    const style = (window.MaweAssStorageWiring?.styles() || []).find((item) => item.id === value);
+    if (value && !style) return;
+    if (!value && !segment.assStyle) return;
+    MaweCommands.run('修改单句 ASS 样式', (command) => {
+      if (style) segment.assStyle = JSON.parse(JSON.stringify(window.AsrEditorUtils.normalizeAssStyle(style)));
+      else delete segment.assStyle;
+      segment._dirty = true;
+      if (target.kind === 'overlay') target.track._dirty = true;
+      if (target.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
+    });
+  });
+
   function renderCurrentCuePanel() {
   if (!MaweDom.cuePanel) return;
   const target = getCurrentCuePanelTarget();
   window.MaweAssCuePosition?.sync();
   const idx = target?.index ?? -1;
   const seg = target?.segment || null;
+  syncCueAssStyle(seg);
   const empty = !target;
   MaweDom.cuePanel.classList.toggle('empty', empty);
   MaweDom.cuePanel.classList.toggle('extension-target', !empty && target.kind === 'extension');

@@ -45,6 +45,7 @@ export function initMaweJsonRepair() {
       if (s.disabled) o.disabled = true;
       const override = window.AsrEditorUtils.normalizeAssOverride(s.assOverride);
       if (override) o.assOverride = override;
+      if (s.assStyle !== undefined) o.assStyle = structuredClone(s.assStyle);
       if (typeof s.speaker === 'string' && s.speaker.trim()) o.speaker = s.speaker;
       return o;
     }),
@@ -93,6 +94,7 @@ export function initMaweJsonRepair() {
         if (segment._dirty) outSegment._dirty = true;
         if (segment.disabled) outSegment.disabled = true;
         if (segment.assOverride !== undefined) outSegment.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
+        if (segment.assStyle !== undefined) outSegment.assStyle = structuredClone(segment.assStyle);
         if (typeof segment.speaker === 'string' && segment.speaker.trim()) outSegment.speaker = segment.speaker;
         return outSegment;
       }),
@@ -127,6 +129,7 @@ export function initMaweJsonRepair() {
         if (segment._dirty) outSegment._dirty = true;
         if (segment.disabled) outSegment.disabled = true;
         if (segment.assOverride !== undefined) outSegment.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
+        if (segment.assStyle !== undefined) outSegment.assStyle = structuredClone(segment.assStyle);
         if (typeof segment.speaker === 'string' && segment.speaker.trim()) outSegment.speaker = segment.speaker;
         return outSegment;
       }),
