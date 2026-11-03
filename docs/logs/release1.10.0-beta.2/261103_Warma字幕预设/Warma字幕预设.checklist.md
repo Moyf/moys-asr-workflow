@@ -1,5 +1,6 @@
 ---
 task: warma-subtitle-presets-ass
+pr: 324
 date: 2026-11-03
 status: pending
 ---
