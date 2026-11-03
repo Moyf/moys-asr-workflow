@@ -4744,6 +4744,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "2m")
+        self.assertTrue(request.test_run,
+            "testRun 载荷要进入请求，供画面缓存限长与日志说明使用")
         self.assertEqual(request.srt_path.name, "out-test.srt")
         self.assertEqual(request.ui_language, "en")
         self.assertTrue(request.debug_raw)
@@ -4762,6 +4764,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "30m")
+        self.assertFalse(request.test_run)
 
     def test_request_from_payload_carries_selected_audio_track(self) -> None:
         media = self.root / "clip.mp4"
