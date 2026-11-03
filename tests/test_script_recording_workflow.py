@@ -1,6 +1,7 @@
 import copy
 import json
 import math
+import shutil
 import tempfile
 import unittest
 import wave
@@ -32,6 +33,29 @@ def request_for(alignment):
 
 
 class RecordingReviewTests(unittest.TestCase):
+    def test_final_recording_preserves_consistent_source_speaker_color(self):
+        from maw.project_tracks import make_project
+        from maw.speaker import apply_project_speaker_colors
+        with tempfile.TemporaryDirectory() as directory:
+            media = Path(directory) / "audio.wav"
+            with wave.open(str(media), "wb") as audio:
+                audio.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+                audio.writeframes(bytes(64000))
+            raw = make_project([{**cue("你好世界", 0, 1000), "speaker": "speaker-1"}],
+                               main_fields={"language": "zh", "model": "qwen3-asr"})
+            apply_project_speaker_colors(raw)
+            original = copy.deepcopy(raw)
+            group = main_segments(raw)[0]["color_group_id"]
+            alignment = align_project_to_script(raw, "你好世界")
+            backend = mock.Mock()
+            backend.align.return_value = [TimedToken("你好世界", 100, 900)]
+            with mock.patch("maw.script_recording_workflow._decode_recording_audio",
+                            side_effect=lambda _project, src, dest, **_kwargs: shutil.copyfile(src, dest)):
+                output, _ = finalize_recording(raw, alignment, request_for(alignment), media, backend=backend)
+            self.assertEqual(main_segments(output)[0]["color_group_id"], group)
+            self.assertEqual(main_segments(output)[0]["speaker"], "speaker-1")
+            self.assertEqual(raw, original)
+
     def test_unique_exact_recommendation_does_not_mutate_evidence(self):
         raw = project([cue("你好，世界", 0, 1000)])
         original = copy.deepcopy(raw)

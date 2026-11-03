@@ -308,6 +308,7 @@ def finalize_recording(project: Mapping[str, Any], alignment: dict[str, Any], re
     emit = on_event or (lambda _: None)
     generated = []
     used_ranges = []
+    source_cues = {cue["id"]: cue for cue in get_main_track(project)["segments"]}
     with tempfile.TemporaryDirectory(prefix="maw-recording-align-") as directory:
         root = Path(directory)
         audio = root / "source.wav"
@@ -337,6 +338,14 @@ def finalize_recording(project: Mapping[str, Any], alignment: dict[str, Any], re
                 cue["speaker"] = line["speaker"]
                 for item in cue["items"]:
                     item["speaker"] = line["speaker"]
+            # A generated line can inherit a group only when all selected
+            # source cues agree. Conflicting groups remain protected below.
+            for kind in ("color", "sticker"):
+                field = f"{kind}_group_id"
+                groups = {source_cues.get(part.get("sourceCueId"), {}).get(field)
+                          for part in line["sourceSlices"]}
+                if len(groups) == 1 and None not in groups:
+                    cue[field] = next(iter(groups))
             cue["start"], cue["end"] = cue["items"][0]["start"], cue["items"][-1]["end"]
             generated.append(cue)
     _check_cancel(cancel_event)
@@ -354,15 +363,14 @@ def finalize_recording(project: Mapping[str, Any], alignment: dict[str, Any], re
             replaced_ids.append(cue.get("id"))
         else:
             retained.append(cue)
-    replace_main_segments(output, retained)
     for index, cue in enumerate(generated, 1):
         identifier = f"script-recording-{index:03d}"
         while identifier in used_ids:
             identifier += "-new"
         used_ids.add(identifier)
         cue["id"] = identifier
-    get_main_track(output)["segments"].extend(generated)
-    get_main_track(output)["segments"].sort(key=lambda cue: (cue["start"], cue["end"]))
+    replacement = sorted([*retained, *generated], key=lambda cue: (cue["start"], cue["end"]))
+    replace_main_segments(output, replacement)
     from maw.timestamp_alignment import _project_granularity
     get_main_track(output)["timestamp_granularity"] = _project_granularity(output)
     get_main_track(output)["preserve_punctuation"] = True

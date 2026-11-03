@@ -357,7 +357,11 @@ def _run_llm_postprocess(
                     f"所有非空字幕已经是{target_name}，没有需要翻译的内容，未写出输出产物。"
                 )
             raise ValueError("工程没有可翻译的非空字幕，未写出输出产物。")
-    batches = _llm_batches(cues)
+    group_keys = None if strict_translation else {
+        f"c{index:04d}": (segment.get("color_group_id"), segment.get("sticker_group_id"))
+        for index, segment in enumerate(_segments(project), 1)
+    }
+    batches = _llm_batches(cues, group_keys=group_keys)
     _notify_status(on_status, "toolbox_status_preparing_llm")
     responses: list[Mapping[str, JsonValue]] = []
     skipped_source_ids: set[str] = set()
@@ -709,7 +713,11 @@ def apply_llm_groups(project: JsonDict, response: Mapping[str, JsonValue]) -> Js
     return processed
 
 
-def _llm_batches(cues: list[dict[str, JsonValue]]) -> list[list[dict[str, JsonValue]]]:
+def _llm_batches(
+    cues: list[dict[str, JsonValue]],
+    *,
+    group_keys: Mapping[str, tuple[JsonValue, JsonValue]] | None = None,
+) -> list[list[dict[str, JsonValue]]]:
     batches: list[list[dict[str, JsonValue]]] = []
     current: list[dict[str, JsonValue]] = []
     current_chars = 0
@@ -718,6 +726,7 @@ def _llm_batches(cues: list[dict[str, JsonValue]]) -> list[list[dict[str, JsonVa
         if current and (
             len(current) >= MAX_LLM_CUES_PER_REQUEST
             or current_chars + cue_chars > MAX_LLM_INPUT_CHARS_PER_REQUEST
+            or (group_keys is not None and group_keys[str(cue["id"])] != group_keys[str(current[-1]["id"])])
         ):
             batches.append(current)
             current = []

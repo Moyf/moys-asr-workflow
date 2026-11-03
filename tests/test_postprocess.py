@@ -146,6 +146,31 @@ class PostprocessTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_proofread_splits_batches_at_visual_group_boundaries(self) -> None:
+        for kind in ("color", "sticker"):
+            with self.subTest(kind=kind):
+                value = {"name": "red"} if kind == "color" else {"name": "star"}
+                source = {"segments": [
+                    {"start": 0, "end": 200, "text": "甲", kind: value},
+                    {"start": 200, "end": 400, "text": "乙", f"{kind}_ref": {"name": value["name"], "headIdx": 0}},
+                    {"start": 400, "end": 600, "text": "丙"},
+                ]}
+                self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+                before = self.project_path.read_bytes()
+                calls = []
+                def complete(_prompt, rows):
+                    calls.append([row["id"] for row in rows])
+                    return {"groups": [{"source_ids": [row["id"] for row in rows],
+                                        "text": "".join(str(row["text"]) for row in rows)}]}
+                result = run_llm_postprocess(LlmPostprocessRequest(self.project_path, None, OutputMode.BOTH,
+                                                                   "proofread", ""), complete=complete)
+                segments = main_segments(read_project(result.project_path))
+                self.assertEqual(calls, [["c0001", "c0002"], ["c0003"]])
+                self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙"])
+                self.assertIn(f"{kind}_group_id", segments[0])
+                self.assertNotIn(f"{kind}_group_id", segments[1])
+                self.assertEqual(self.project_path.read_bytes(), before)
+
     def test_fixed_replacement_preserves_timing_and_creates_chainable_outputs(self) -> None:
         request = ReplacementRequest(
             project_path=self.project_path,
