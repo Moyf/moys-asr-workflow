@@ -14,6 +14,13 @@ description: 基于 MAW 的批量字幕流水线：长视频无损切分成多�
 3. **GPU → 烧录编码器**：`powershell -NoProfile -Command "(Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name)"` 判断厂商，烧录步骤按映射显式传编码器：
    - AMD → `amf`；NVIDIA → `nvenc`；Intel 核显 → `qsv`；查不到 → `auto`（auto 按 nvenc → qsv → amf → cpu 顺序尝试、失败自动回退，AMD 机器显式指定可省去失败的尝试）。
 
+## 任务目录与防覆盖
+
+- 默认新建任务目录：`<源媒体同名>_full/`；已存在时改用带日期后缀的新目录（如 `<源媒体同名>_full-1103/`），不要在旧任务目录里用不同切点重跑。
+- 覆盖行为差异：切分（ffmpeg）与转写（`-o`）会直接覆盖同名文件，只有烧录输出 `<原名>.压字幕.mp4` 自动编号避让。
+- 复用已有产物前逐文件向用户确认；切点变了必须全部重新生成——旧 SRT/MOSP 对应的是旧切点，混用会让字幕指到不同画面。
+- 断点续跑的前提：目录里的既有产物来自同一次切点，且抽验时长完整，才可跳过已完成的份。
+
 ## 流程
 
 ### Step 0 探测媒体并做预算
@@ -29,12 +36,13 @@ ffprobe -v error -show_entries format=duration -show_entries stream=codec_type,c
 ### Step 1 无损切分
 
 ```sh
-ffmpeg -hide_banner -loglevel error -y -ss <起点秒> -i "<源媒体>" -map 0 -t <时长秒> -c copy "part<N>.mkv"
+ffmpeg -hide_banner -loglevel error -n -ss <起点秒> -i "<源媒体>" -map 0 -t <时长秒> -c copy "part<N>.mkv"
 ```
 
 - 最后一份省略 `-t` 直接到结尾；`-map 0` 保留全部流（含 OBS 多音轨）。
 - `-c copy` 切点对齐关键帧：每份开头可能提前数秒、相邻份有几秒重叠。**份内音画字幕始终同步**（转写和烧录都基于同一份文件），无须追求帧精确。
-- 产出用独立目录，如 `<源媒体同名>_full/`。
+- `-n` 遇到已存在的目标文件会直接报错退出，防止静默覆盖旧片段；确需覆盖时先向用户确认，再对该份单独改用 `-y`。
+- 产出目录遵循「任务目录与防覆盖」。
 
 ### Step 2 逐份转写（MAW 公开 CLI 的源码入口）
 
@@ -45,6 +53,7 @@ uv run --no-sync python maw_gui.py -i "<part>.mkv" -o "<part>.srt" "<part>.mosp"
 - 必须显式给 `-o` 两个路径（SRT + MOSP），自动化不要依赖自动命名。
 - 成功判据：退出码 0 + SRT/MOSP 文件真实存在 + 日志有 `MAW_STAT rtf=` 行；只看到进度信息不算成功。
 - 多音轨默认取 `0:a:0`（OBS 录像第一轨通常是混音轨）；换轨需高级模块命令 `python -m maw.asr.qwen --audio-track N`，公开 CLI 无此参数。
+- `-o` 指定的 SRT/MOSP 会直接覆盖已有文件；复用同名产物前先确认（见「任务目录与防覆盖」）。
 - 超时建议 ≥ 10 分钟/份；逐份串行执行，不要并发打 API。
 
 ### Step 3 逐份烧录（公开 CLI `--burn`）
