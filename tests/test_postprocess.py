@@ -1058,6 +1058,9 @@ class PostprocessTests(unittest.TestCase):
     def test_llm_rejects_merging_enabled_and_disabled_cues(self) -> None:
         project = sample_project(self.media)
         project_segments(project)[1]["disabled"] = True
+        # Keep both cues in the same visual group so the disabled-state guard
+        # is exercised rather than the cross-group fallback.
+        project_segments(project)[1].pop("color", None)
 
         with self.assertRaisesRegex(ValueError, "enabled and disabled"):
             _ = apply_llm_groups(project, {
