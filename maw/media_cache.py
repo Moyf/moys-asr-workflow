@@ -90,6 +90,7 @@ def embed_media_caches(
     *,
     source_media_path: Path | str | None = None,
     generate_spectral: bool = False,
+    generate_keyframes: bool = True,
     generate_thumbnails: bool = True,
     ffmpeg_bin: str | None = None,
     audio_track: int = 0,
@@ -123,9 +124,11 @@ def embed_media_caches(
     ``generate_spectral`` 关闭时仍生成 reapeaks wave 层，但跳过频谱 FFT
     与工程内的 spectral payload。
 
-    ``generate_thumbnails`` 关闭（或环境变量 ``MAW_MEDIA_THUMBNAILS=0``，Launcher
-    用它把「生成高精度画面预览图」开关穿透转写子进程边界）时跳过精确网格阶段；
-    关键帧底图不受它影响，总是生成。编辑器打开工程后仍可按需补帧。
+    ``generate_keyframes`` 关闭（或环境变量 ``MAW_MEDIA_KEYFRAMES=0``，Launcher
+    用它把「生成缩略图」开关穿透转写子进程边界）时跳过整个画面缓存阶段，关键帧
+    底图与精确网格都不生成；``generate_thumbnails`` 关闭（或环境变量
+    ``MAW_MEDIA_THUMBNAILS=0``）时只跳过精确网格阶段。编辑器打开无基础缓存的
+    工程时画面带默认隐藏，用户手动开启后仍可按需补帧（按需路径不读取这些开关）。
     """
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
         raise ValueError("audio_track must be a non-negative integer")
@@ -278,10 +281,25 @@ def embed_media_caches(
             )
     thumbnail_manifest = None
     thumbnail_error = None
+    if generate_keyframes and os.environ.get("MAW_MEDIA_KEYFRAMES", "1") == "0":
+        # 「生成缩略图」开关与 ``MAW_MEDIA_THUMBNAILS`` 同一套穿透模式：转写子
+        # 进程经环境变量传递；进程内调用方不经环境变量，由参数（或默认值）控制。
+        generate_keyframes = False
     if generate_thumbnails and os.environ.get("MAW_MEDIA_THUMBNAILS", "1") == "0":
         # 「生成高精度画面预览图」开关经子进程环境变量穿透转写管线，各 provider
         # CLI 无需逐一透传；关键帧底图不受它影响，总是生成。
         generate_thumbnails = False
+    if not generate_keyframes:
+        # 总开关关闭：关键帧底图与高精度网格都不生成。跳过不是错误，返回与
+        # build_base 无视频画面时一致的 None，下游无需区分。
+        print("[thumbnails] 已按设置跳过画面缓存生成")
+        return MediaCacheResult(
+            project=project,
+            waveform_error=waveform_result.error,
+            reapeaks_path=reapeaks_path,
+            thumbnail_cache=None,
+            thumbnail_error=None,
+        )
     try:
         from maw.thumbnail_jobs import build_base
         from maw import thumbnail_cache

@@ -62,6 +62,7 @@ class TranscriptionRequest:
     base_url: str = ""
     speaker_colors: bool = False
     generate_spectral: bool = False
+    generate_keyframes: bool = True
     generate_thumbnails: bool = False
     ui_language: str = "zh"
     generate_html: bool = True
@@ -501,6 +502,7 @@ def run_transcription(
         request.model_cache_root,
         request.engine,
         request.base_url,
+        generate_keyframes=request.generate_keyframes,
         generate_thumbnails=request.generate_thumbnails,
     )
     if request.provider == "local" and request.runtime_python:
@@ -680,6 +682,7 @@ def _child_environment(
     model_cache_root: str = "",
     engine: str = "",
     base_url: str = "",
+    generate_keyframes: bool = True,
     generate_thumbnails: bool = True,
 ) -> dict[str, str]:
     env = dict(parent)
@@ -687,6 +690,11 @@ def _child_environment(
     # pass the parent process's resolved configuration file explicitly.
     env["MAW_ENV_FILE"] = str(DEFAULT_ENV_PATH)
     env["PYTHONUNBUFFERED"] = "1"
+    if not generate_keyframes:
+        # 「生成缩略图」开关经子进程环境变量穿透转写管线：关闭时跳过整个画面
+        # 缓存阶段（关键帧底图与高精度网格都不生成），与 MAW_MEDIA_THUMBNAILS
+        # 同一套穿透模式。
+        env["MAW_MEDIA_KEYFRAMES"] = "0"
     if not generate_thumbnails:
         # 「生成视频缩略图」开关经子进程环境传给 embed_media_caches，
         # 免去在每个 provider CLI 的长参数签名里逐一透传。

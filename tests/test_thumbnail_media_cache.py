@@ -67,6 +67,25 @@ class ThumbnailMediaCacheTests(unittest.TestCase):
         self.assertFalse(build.call_args.kwargs["exact"])
         self.assertIn("关键帧底图完成：3 格（已按设置跳过高精度画面预览图）", output.getvalue())
 
+    def test_generate_keyframes_false_skips_whole_base_build(self):
+        with mock.patch.object(thumbnail_jobs, 'build_base') as build, \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            result = media_cache.embed_media_caches(self.project, self.wav, source_media_path=self.source, audio_track=0, generate_keyframes=False)
+        build.assert_not_called()
+        self.assertFalse(self.cleaner.called, "跳过整个画面缓存阶段时不再做过期缓存回收")
+        self.assertIsNone(result.thumbnail_cache)
+        self.assertIsNone(result.thumbnail_error)
+        self.assertIn("[thumbnails] 已按设置跳过画面缓存生成", output.getvalue())
+
+    def test_environment_disable_keyframes_skips_whole_base_build(self):
+        with mock.patch.dict(os.environ, {"MAW_MEDIA_KEYFRAMES": "0"}), \
+             mock.patch.object(thumbnail_jobs, 'build_base') as build, \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            result = media_cache.embed_media_caches(self.project, self.wav, source_media_path=self.source, audio_track=0, generate_thumbnails=True)
+        build.assert_not_called()
+        self.assertIsNone(result.thumbnail_cache)
+        self.assertIn("[thumbnails] 已按设置跳过画面缓存生成", output.getvalue())
+
     def test_default_thumbnail_progress_reaches_launcher_output(self):
         output = io.StringIO()
         def build_with_progress(path, *, progress, **kwargs):
