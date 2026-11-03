@@ -373,7 +373,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         server = QuietServer(("127.0.0.1", 0), Handler)
         server.daemon_threads = True
-        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         server_thread.start()
 
         original_post = requests.Session.post
@@ -4924,6 +4924,21 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             _request_from_payload({**payload, "generateSpectral": True}, self.env_path).generate_spectral
         )
 
+    def test_request_from_payload_controls_keyframe_generation(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        payload = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }
+
+        self.assertTrue(_request_from_payload(payload, self.env_path).generate_keyframes,
+            "旧载荷缺省该字段时按默认开启处理")
+        self.assertFalse(
+            _request_from_payload({**payload, "generateKeyframes": False}, self.env_path).generate_keyframes
+        )
+
     def test_request_from_payload_controls_thumbnail_generation(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -6079,6 +6094,12 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="generateSpectralField"', page)
         self.assertIn('id="generateThumbnails" type="checkbox"', page)
         self.assertIn('id="generateThumbnailsField"', page)
+        self.assertIn('id="generateKeyframes" type="checkbox" checked', page)
+        self.assertIn('id="generateKeyframesField"', page)
+        self.assertLess(page.index('id="generateKeyframesField"'), page.index('id="generateThumbnailsField"'),
+            "基础缩略图开关位于高精度开关之前，级联隐藏时保持视觉顺序")
+        keyframes_block = page[page.index('id="generateKeyframesField"'):page.index('id="generateThumbnailsField"')]
+        self.assertIn("checked", keyframes_block, "生成缩略图默认勾选")
         thumbnails_block = page[page.index('id="generateThumbnailsField"'):page.index('id="debugRawField"')]
         self.assertNotIn("checked", thumbnails_block, "生成高精度画面预览图默认不勾选")
         self.assertIn('class="segmentation-row segmentation-character-row"', page)
@@ -6100,7 +6121,12 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
+        self.assertIn('generateKeyframes: $("generateKeyframes").checked', script)
         self.assertIn('generateThumbnails: $("generateThumbnails").checked', script)
+        self.assertIn('$("generateKeyframes").addEventListener("change", syncThumbnailFields)', script)
+        self.assertIn('$("generateThumbnailsField").classList.toggle("hidden", !baseOn)', script)
+        self.assertIn('generate_keyframes: "生成缩略图"', script)
+        self.assertIn('generate_keyframes: "Generate thumbnails"', script)
         self.assertIn('generate_spectral: "生成频谱数据"', script)
         self.assertIn('generate_spectral: "Generate spectral data"', script)
         self.assertIn('segmentation: "断句"', script)
@@ -6973,7 +6999,7 @@ class WaitForServerProbeTests(unittest.TestCase):
                 return
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         try:
             url = f"http://127.0.0.1:{server.server_address[1]}/"
             self.assertTrue(
@@ -6997,7 +7023,7 @@ class WaitForServerProbeTests(unittest.TestCase):
                 return
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         try:
             url = f"http://127.0.0.1:{server.server_address[1]}/"
             self.assertFalse(_wait_for_server(url, timeout=0.35, probe_timeout=0.2))

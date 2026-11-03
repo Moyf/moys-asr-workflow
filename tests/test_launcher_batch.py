@@ -367,6 +367,8 @@ class BatchApiTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
+        # This fixture owns no editor server; shutdown must not probe an unrelated local listener.
+        self.enterContext(mock.patch("maw.gui_web._wait_for_server", return_value=False))
         self.enterContext(mock.patch("maw.gui_web.probe_audio_tracks", return_value=None))
         self.enterContext(mock.patch("maw.launcher_batch.media_duration_seconds", return_value=None))
         # 批量清单与输出路径用例隔离真实 .env 的输出目录开关

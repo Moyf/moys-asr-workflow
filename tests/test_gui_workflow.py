@@ -197,6 +197,17 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertEqual(env["MAW_ENV_FILE"], str(env_path))
 
+    def test_child_environment_disables_keyframe_base_when_requested(self) -> None:
+        """Given the base thumbnail switch off, When building env, Then the child skips the whole picture-cache stage."""
+        env = _child_environment({"PATH": ""}, api_key="", generate_keyframes=False)
+        self.assertEqual(env["MAW_MEDIA_KEYFRAMES"], "0")
+        self.assertNotIn("MAW_MEDIA_THUMBNAILS", env,
+            "基础开关与高精度开关相互独立：只关基础层不注入高精度开关")
+
+        default_env = _child_environment({"PATH": ""}, api_key="")
+        self.assertNotIn("MAW_MEDIA_KEYFRAMES", default_env)
+        self.assertNotIn("MAW_MEDIA_THUMBNAILS", default_env)
+
     def test_child_environment_prepends_managed_site_packages_for_local_provider(self) -> None:
         """Given source-mode local transcription, When building env, Then managed site-packages go first on PYTHONPATH."""
         runtime_root = self.root / "local-runtime-moss"
