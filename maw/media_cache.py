@@ -127,8 +127,9 @@ def embed_media_caches(
     ``generate_keyframes`` 关闭（或环境变量 ``MAW_MEDIA_KEYFRAMES=0``，Launcher
     用它把「生成缩略图」开关穿透转写子进程边界）时跳过整个画面缓存阶段，关键帧
     底图与精确网格都不生成；``generate_thumbnails`` 关闭（或环境变量
-    ``MAW_MEDIA_THUMBNAILS=0``）时只跳过精确网格阶段。编辑器打开无基础缓存的
-    工程时画面带默认隐藏，用户手动开启后仍可按需补帧（按需路径不读取这些开关）。
+    ``MAW_MEDIA_THUMBNAILS=0``）时只跳过精确网格阶段。已有缓存帧与已保存的
+    画面带显示偏好不变；无缓存帧且未保存显示偏好时，编辑器画面带默认隐藏，
+    用户手动开启后仍可按需补帧（按需路径不读取这些开关）。
     """
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
         raise ValueError("audio_track must be a non-negative integer")
