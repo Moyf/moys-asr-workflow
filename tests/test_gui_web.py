@@ -6128,6 +6128,15 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('generateThumbnails: $("generateThumbnails").checked', script)
         self.assertIn('$("generateKeyframes").addEventListener("change", syncThumbnailFields)', script)
         self.assertIn('$("generateThumbnailsField").classList.toggle("hidden", !baseOn)', script)
+        self.assertIn('syncDefaultOutput(); syncThumbnailFields(); scheduleAudioTrackProbe(', script,
+            "mediaPath 输入联动：手输路径即时切换缩略图开关禁用态")
+        self.assertIn('syncDefaultOutput(); syncThumbnailFields(); void refreshAudioTracks(path)', script,
+            "setMedia（选择/拖入媒体）联动同一禁用逻辑")
+        self.assertIn('checkbox.disabled = audioOnly', script)
+        self.assertIn('const audioOnly = Boolean(media) && !VIDEO_EXTS.has(ext(media));', script,
+            "音频输入判定沿用音轨探测同一套视频扩展名集合")
+        self.assertIn('#generateKeyframesField.unavailable .check-field', stylesheet,
+            "音频禁用态有清晰置灰样式")
         self.assertIn('generate_keyframes: "生成缩略图"', script)
         self.assertIn('generate_keyframes: "Generate thumbnails"', script)
         self.assertIn('generate_spectral: "生成频谱数据"', script)
