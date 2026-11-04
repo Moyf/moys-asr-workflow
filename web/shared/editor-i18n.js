@@ -562,6 +562,7 @@
     '音频解码失败，请检查源文件是否完整': 'Audio decoding failed; check that the source file is complete',
     '源文件没有完整的音频样本': 'The source file has no complete audio samples',
     '保留区间超出了音频实际时长，请重新加载工程后再试': 'The kept intervals exceed the audio duration; reload the project and retry',
+    '所选音轨时长与编辑器不一致，请重新加载工程后再试': 'The selected audio track duration differs from the editor timeline; reload the project and retry',
     '保留区间过短，没有可导出的音频样本': 'The kept intervals are too short to contain audio samples',
     '音频样本读取不完整，导出已停止': 'Audio samples could not be read completely; the export was stopped',
     '导出音频的样本数不正确': 'The exported audio sample count is incorrect',
