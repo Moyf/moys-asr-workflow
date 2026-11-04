@@ -100,6 +100,12 @@ git diff --check
 
 交互改动还需启动 `uv run --no-sync python server-editor/serve.py --blank`，验证拖动、播放、Seek、布局与保存。新增界面文字保持可读字号，元素垂直间隔至少 8px，并实测间距和截图自查。文本统一 UTF-8 / LF。
 
+### PR 的文档与网站检查
+
+`scripts/ci_impact.py` 只在 PR 合并结果与事件基线一致时识别普通用户指南、README 和网站内容变更。只包含这些路径时，文档检查照常运行，编辑器门禁同步文档并构建网站，Windows 预览不生成测试包。官网生成页面和资源、应用代码、混合或未知路径、无法确认差异的情况，以及 push 和手动运行，均继续完整门禁。具体可识别范围以脚本为准。
+
+已有门禁名称不变：选测任务失败或没有有效结论时，编辑器与 Windows 门禁显式失败。发布工作流不使用此选测。分支保护要求和 GitHub 上的实际工作流行为仍需在目标仓库确认。
+
 ### 浏览器回归
 
 `tests/e2e/helpers.mjs` 默认以 `uv run --frozen python` 启动服务并清理继承的 PYTHONPATH；明确设置 `MAW_E2E_PYTHON` 时用指定解释器。Agent 已有环境时可设置该变量避免测试 helper 再同步依赖。
