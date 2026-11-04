@@ -1,6 +1,6 @@
 export function createWordBlocks(dependencies) {
   'use strict';
-  const { colorForSegment, firstCueIndexOverlapping, resolveTiming, localizedWaveformMessage } = dependencies;
+  const { colorForSegment, firstCueIndexOverlapping, resolveTiming, localizedWaveformMessage, wordTimingFullLane } = dependencies;
   // 全文预览气泡（仅基础模式单行 + 字词码全条带）的密度控制旋钮：
   // 同屏 chip 硬上限与最多向上叠的行数；超限按优先级丢弃。
   // 上限评估（账本 #29）：canvas 同 pass 绘制 64 个 chip ~1-2ms，相对整行
@@ -52,9 +52,9 @@ export function createWordBlocks(dependencies) {
       const entries = window.AsrEditorUtils.getWordTimingEntries(segment, timing);
       const selection = this.options.wordTiming.getSelection(segment);
       // 与整句块采用相同分层条件，确保字词与整句的操作区域不重叠。
-      const fullLane = this.options.multiSubtitleVisible?.() !== true
-        && (this.settings.mode === 'basic'
-          || (this.settings.mode === 'multi' && (Number(this.settings.rowHeight) || 0) >= 96));
+      // 判定真源：visibility.wordTimingFullLane。
+      const fullLane = wordTimingFullLane(this.options.wordTiming?.enabled,
+        this.settings.mode, this.settings.rowHeight, this.options.multiSubtitleVisible?.() === true);
       entries.forEach(entry => {
         const range = { start: timing.toMs(entry.start), end: timing.toMs(entry.end) };
         if (range.end <= startMs || range.start >= endMs) return;
@@ -343,7 +343,9 @@ export function createWordBlocks(dependencies) {
     drawWordChips(row, ctx, width, height, startMs, endMs) {
       if (!this.options.wordTiming?.enabled) return;
       if (this.settings.mode !== 'basic' || row.dataset.basic !== 'true') return;
-      if (row.classList.contains('multi-subtitle-row')) return;
+      // 单行双语行同样画气泡（回归修复）：条带几何从 computed style 读取，
+      // 自动贴双语主块上方（CSS 同步），与共享判定
+      // visibility.wordTimingFullLane 的单行语义一致。
       const blocks = /** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-word-block.word-timing-full'));
       if (!blocks.length) return;
       // 条带几何读第一个可见块的 computed style：bottom/height 是解析后的

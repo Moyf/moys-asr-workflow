@@ -986,6 +986,26 @@
   bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + var(--multi-subtitle-lane-gap) + 2px);
   height: max(1px, min(31px, calc(var(--multi-subtitle-lane-height) - 12px)));
 }
+/* 单行双语行（basic × multi_subtitle.enabled）在字词码下同样走 full 布局：
+   分层判定真源是 visibility.wordTimingFullLane（单行恒 full），双语只增补
+   底部译文格、不压缩条带。条带贴双语主块（top = inset + 两格 lane）上方
+   2px，与通用 full 条带同为 35px 厚；沿用上面紧凑规则时条带
+   （inset + lane + 2）会压进主块内。组序号徽章随条带上移（条带顶 + 2px），
+   避免与条带混叠。 */
+.waveform-basic .waveform-pane.word-timing-mode .waveform-row.multi-subtitle-row :is(.waveform-word-block, .waveform-word-boundary).word-timing-full {
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 2px);
+  height: 35px;
+}
+.waveform-basic .waveform-pane.word-timing-mode .waveform-row.multi-subtitle-row .waveform-word-block.word-timing-full {
+  display: flex;
+  align-items: center;
+}
+.waveform-basic .waveform-pane.word-timing-mode .waveform-row.multi-subtitle-row .waveform-word-block.word-timing-full .waveform-word-label {
+  line-height: normal;
+}
+.waveform-basic .waveform-pane.word-timing-mode .waveform-row.multi-subtitle-row .waveform-cue-badge.word-timing-full {
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 39px + var(--badge-stack-index, 0) * 16px);
+}
 .waveform-cue-block.dragging::before { opacity: calc(var(--wave-drag-brightness) - 1); }
 .waveform-cue-handle {
   position: absolute;
@@ -1223,6 +1243,19 @@
 }
 .waveform-row.multi-subtitle-row .waveform-cue-badge.waveform-overlay-cue-badge {
   bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + 38px + var(--badge-stack-index, 0) * 16px);
+}
+/* 单行双语行的叠加轨回归修复：双语只增补底部译文格，不改变叠加轨定位——
+   叠加块保持 50% 线（与无双语行一致）。双语行统一下移到「inset + 两格 lane
+   + 1px」的规则按多行 192px 行高设计，命中单行（行高数百 px）时把叠加块拽
+   到主字幕格上方、远离 50% 线。这里按模式区分：单行恢复 50% 线，行高过矮
+   放不下「主块 + 字词条带」时以该顶部位置 max() 兜底（单行恒无
+   overlay-cover-mode，见 appendCueBlocks 注释）；多行双语行保持上面贴格
+   布局不变。 */
+.waveform-basic .waveform-row.multi-subtitle-row .waveform-cue-block.waveform-overlay-block:not(.overlay-cover-mode) {
+  bottom: max(50%, calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 1px));
+}
+.waveform-basic .waveform-row.multi-subtitle-row .waveform-cue-badge.waveform-overlay-cue-badge {
+  bottom: calc(max(50%, var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 1px) + 37px + var(--badge-stack-index, 0) * 16px);
 }
 
 /* === 通用 Marker / Region 轨道 ===
