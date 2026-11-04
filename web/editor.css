@@ -4564,6 +4564,9 @@
 .markers-item-actions button.markers-review-toggle.confirmed {
   color: #d9f2e3; background: #2b5b3f; border-color: #2b5b3f;
 }
+.markers-item-actions button.markers-review-toggle.restored {
+  color: var(--text-secondary); background: var(--btn-bg); border-color: var(--border);
+}
 .markers-item-actions button.markers-review-toggle.removed,
 .markers-item-actions button.markers-review-toggle.partially-removed {
   color: var(--text-secondary); background: var(--panel-bg, var(--btn-bg));

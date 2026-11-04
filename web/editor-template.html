@@ -1982,8 +1982,8 @@ __WAVEFORM_CSS__
         </div>
         <div class="ass-animation-card">
           <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-pop-enabled" data-ass-animation="pop.enabled"> 放大出现</label>
-          <div class="ass-animation-fields"><label>起点倍率<input type="number" id="ass-animation-pop-from" data-ass-animation="pop.fromScale" min="1" max="10" step="0.1"><span>×</span></label><label>入场<input type="number" id="ass-animation-pop-in" data-ass-animation="pop.inMs" min="0" max="60000" step="10"><span>ms</span></label><label>加速度<input type="number" id="ass-animation-pop-accel" data-ass-animation="pop.accel" min="0.01" max="100" step="0.1"></label></div>
-          <small>文字从起点倍率缩小落定到正常字号。句级 <code>{{文字}}</code> 标记复用这组参数（不受上方开关影响）；开关只控制每句自动应用。</small>
+          <div class="ass-animation-fields"><label>起点倍率<input type="number" id="ass-animation-pop-from" data-ass-animation="pop.fromScale" min="0.3" max="10" step="0.1"><span>×</span></label><label>入场<input type="number" id="ass-animation-pop-in" data-ass-animation="pop.inMs" min="0" max="60000" step="10"><span>ms</span></label><label>加速度<input type="number" id="ass-animation-pop-accel" data-ass-animation="pop.accel" min="0.01" max="100" step="0.1"></label></div>
+          <small>文字从起点倍率对应的字号缓动落定到正常字号（默认 0.8，从小放大；大于 1 则从大缩小）。句级 <code>{{文字}}</code> 标记复用这组参数（不受上方开关影响）；开关只控制每句自动应用。</small>
         </div>
         <details class="ass-animation-advanced-group" id="ass-animation-advanced-group">
           <summary>进阶动画</summary>
