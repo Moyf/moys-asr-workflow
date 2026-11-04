@@ -44,12 +44,34 @@
     return update(player, currentGap(player));
   }
 
+  function seekPastGap(player, gap) {
+    const pause = !player.paused;
+    skipping = { start: gap.start, end: gap.end, resumePending: true, internalPause: pause || skipping?.internalPause };
+    if (pause) player.pause();
+    player.currentTime = gap.end / 1000;
+  }
+
+  function retargetPendingSeek(player) {
+    if (player !== MaweCoreState.player || !player.seeking || !skipping) return;
+    // Keep the play intent, but discard the previous gap and drain callback.
+    skipping = skipping.resumePending ? { resumePending: true, internalPause: skipping.internalPause } : null;
+  }
+
   function finishSeek(player) {
     const pending = skipping;
-    if (!pending?.resumePending || pending.finishing) return;
+    if (player.seeking || !pending?.resumePending || pending.finishing) return;
     pending.finishing = true;
     const resume = () => {
-      if (player !== MaweCoreState.player || skipping !== pending || !pending.resumePending) return;
+      if (player !== MaweCoreState.player || player.seeking || skipping !== pending || !pending.resumePending) return;
+      if (player.ended) {
+        reset();
+        return;
+      }
+      const gap = currentGap(player, true);
+      if (gap && (gap.start !== pending.start || gap.end !== pending.end)) {
+        seekPastGap(player, gap);
+        return;
+      }
       pending.resumePending = false;
       const promise = player.play();
       promise?.catch(() => { if (skipping === pending) reset(); });
@@ -81,9 +103,7 @@
       if (player.seeking) return true;
       const same = skipping && skipping.start === gap.start && skipping.end === gap.end;
       if (!same) {
-        skipping = { start: gap.start, end: gap.end, resumePending: true, internalPause: true };
-        player.pause();
-        player.currentTime = gap.end / 1000;
+        seekPastGap(player, gap);
       } else {
         // A quantized seek may land just inside the gap. Let the clock leave it
         // under the closed gate instead of interrupting that seek every frame.
@@ -151,7 +171,7 @@
     });
     player.addEventListener('seeking', () => {
       if (player !== MaweCoreState.player) return;
-      if (skipping?.finishing) reset();
+      if (skipping?.finishing) retargetPendingSeek(player);
       clearTimer();
       if (!skipping) global.MaweAudioProcessing?.setGapPlaybackMuted(false);
       refresh(player);
@@ -166,6 +186,6 @@
   }
 
   global.MaweState?.observeProjectLoad(reset);
-  global.MaweGapPlayback = Object.freeze({ needsAudioGate, beforePlay, bindPlayer, update, refresh, reset, cancelPendingPlayback,
+  global.MaweGapPlayback = Object.freeze({ needsAudioGate, beforePlay, bindPlayer, update, refresh, reset, cancelPendingPlayback, retargetPendingSeek,
     get pendingPlayback() { return skipping?.resumePending === true; } });
 })(typeof window !== 'undefined' ? window : globalThis);

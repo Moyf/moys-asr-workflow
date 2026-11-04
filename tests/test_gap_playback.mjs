@@ -3,21 +3,22 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 
-function fixture() {
+function fixture({ mediaControls = false } = {}) {
   const timers = new Map(), gates = [], schedules = [], seeks = [];
-  let nextTimer = 0, position = .9;
+  let nextTimer = 0, position = .9, playCalls = 0;
   const listeners = new Map();
-  const player = { paused: false, seeking: false, ended: false, playbackRate: 1, volume: .6, muted: false,
+  const player = { currentSrc: 'test.wav', duration: 5, paused: false, seeking: false, ended: false,
+    playbackRate: 1, volume: .6, muted: false,
     get currentTime() { return position; },
     set currentTime(value) { seeks.push(value); position = value; this.seeking = true; },
     pause() { this.paused = true; for (const fn of listeners.get('pause') || []) fn(); },
-    play() { this.paused = false; return Promise.resolve(); },
+    play() { playCalls++; this.paused = false; return Promise.resolve(); },
     addEventListener(name, fn) { listeners.set(name, [...(listeners.get(name) || []), fn]); } };
   let gaps = [{ start: 1000, end: 2000 }], enabled = true;
   const context = { MaweCoreState: { player }, MaweCuePanelState: {},
     MaweMediaPlayback: { isAuditioning: false },
     MaweGapRemoveData: { getGapRemoveData: () => ({ skip_playback: enabled }), getRemovedGapRanges: () => gaps },
-    MaweAudioProcessing: { setGapPlaybackMuted: value => gates.push(value),
+    MaweAudioProcessing: { render() {}, setGapPlaybackMuted: value => gates.push(value),
       scheduleGapPlaybackMute: delay => { schedules.push(delay); return true; } },
     setTimeout(fn, delay) { timers.set(++nextTimer, { fn, delay }); return nextTimer; },
     clearTimeout(id) { timers.delete(id); } };
@@ -26,9 +27,18 @@ function fixture() {
     vm.runInNewContext(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'), context);
   }
   const api = context.MaweGapPlayback;
+  if (mediaControls) {
+    Object.assign(context, {
+      MaweDom: {}, document: {}, MaweTimeline: { timelineIsFrameMode: () => false, timelineMediaSeekStepValue: () => 100 },
+      MaweJklPlayback: { stopJklReversePlayback() {} }, MaweCueListAnchor: { resumeCueListFollowing() {} },
+      MawePlaybackLoop: { update: () => api.refresh() },
+    });
+    vm.runInNewContext(readFileSync(new URL('../web/editor/media/editor-media-playback.js', import.meta.url), 'utf8'), context);
+  }
   api.bindPlayer(player);
   gates.length = 0;
   return { context, api, player, timers, gates, schedules, seeks,
+    get playCalls() { return playCalls; },
     time(value) { position = value; },
     gaps(value) { gaps = value; }, enable(value) { enabled = value; },
     emit(name) { for (const fn of listeners.get(name) || []) fn(); },
@@ -160,17 +170,71 @@ test('seek pauses the source until its old PCM drains; a user pause cancels resu
   }
 });
 
-test('manual seek and a media replacement invalidate an unfinished audio handoff', async () => {
-  for (const action of ['seek', 'replace']) {
-    const f = fixture();
-    let drain;
-    f.context.MaweAudioProcessing.waitForGapPlaybackSilence = () => new Promise(resolve => { drain = resolve; });
+test('a media replacement cancels an unfinished audio handoff', async () => {
+  const f = fixture();
+  let drain;
+  f.context.MaweAudioProcessing.waitForGapPlaybackSilence = () => new Promise(resolve => { drain = resolve; });
+  f.time(1.1); f.api.refresh();
+  f.player.seeking = false; f.emit('seeked');
+  f.context.MaweCoreState.player = { ...f.player, addEventListener() {} };
+  f.api.bindPlayer(f.context.MaweCoreState.player);
+  drain(); await Promise.resolve();
+  assert.equal(f.player.paused, true);
+  assert.equal(f.api.pendingPlayback, false);
+});
+
+test('manual seek during the gap seek checks the latest target before resuming', async () => {
+  const f = fixture({ mediaControls: true });
+  let drain;
+  f.context.MaweAudioProcessing.waitForGapPlaybackSilence = () => new Promise(resolve => { drain = resolve; });
+  f.time(1.1); f.api.refresh();
+  f.context.MaweMediaPlayback.seekMediaBy(-.5);
+  assert.deepEqual(f.seeks, [2, 1.5]);
+  f.emit('seeked'); // An event for the superseded seek arrives while still seeking.
+  assert.equal(drain, undefined);
+  f.player.seeking = false; f.emit('seeked');
+  drain(); await Promise.resolve();
+  assert.deepEqual(f.seeks, [2, 1.5, 2]);
+  assert.equal(f.playCalls, 0);
+  assert.equal(f.gates.at(-1), true);
+  f.player.seeking = false; f.emit('seeked');
+  drain(); await Promise.resolve();
+  assert.equal(f.playCalls, 1);
+  assert.equal(f.gates.at(-1), false);
+});
+
+test('rapid manual seeks during PCM drain resume only the last target unless the user pauses', async () => {
+  for (const pause of [false, true]) {
+    const f = fixture({ mediaControls: true });
+    const drains = [];
+    f.context.MaweAudioProcessing.waitForGapPlaybackSilence = () => new Promise(resolve => drains.push(resolve));
     f.time(1.1); f.api.refresh();
     f.player.seeking = false; f.emit('seeked');
-    if (action === 'seek') { f.time(3); f.player.seeking = true; f.emit('seeking'); }
-    else { f.context.MaweCoreState.player = { ...f.player, addEventListener() {} }; f.api.bindPlayer(f.context.MaweCoreState.player); }
-    drain(); await Promise.resolve();
-    assert.equal(f.player.paused, true, action);
-    assert.equal(f.api.pendingPlayback, false, action);
+    f.context.MaweMediaPlayback.seekMediaTo(1.25);
+    drains[0](); await Promise.resolve();
+    assert.equal(f.playCalls, 0);
+    assert.equal(f.gates.at(-1), true);
+    f.player.seeking = false; f.emit('seeked');
+    f.context.MaweMediaPlayback.seekMediaTo(3);
+    f.player.seeking = false; f.emit('seeked');
+    drains[1](); await Promise.resolve();
+    assert.deepEqual(f.seeks, [2, 1.25, 3]);
+    assert.equal(f.playCalls, 0);
+    if (pause) f.context.MaweMediaPlayback.togglePlayback();
+    drains[2](); await Promise.resolve();
+    assert.equal(f.playCalls, pause ? 0 : 1);
+    assert.equal(f.player.paused, pause);
+    assert.equal(f.gates.at(-1), false);
   }
+});
+
+test('a manual seek to the end during a handoff stays at the end', () => {
+  const f = fixture({ mediaControls: true });
+  f.time(1.1); f.api.refresh();
+  f.context.MaweMediaPlayback.seekMediaTo(f.player.duration);
+  f.player.seeking = false; f.player.ended = true; f.emit('seeked');
+  assert.equal(f.playCalls, 0, 'playing from the end would restart at zero');
+  assert.equal(f.player.paused, true);
+  assert.equal(f.api.pendingPlayback, false);
+  assert.equal(f.gates.at(-1), false);
 });

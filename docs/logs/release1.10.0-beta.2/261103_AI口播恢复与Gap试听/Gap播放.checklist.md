@@ -1,5 +1,6 @@
 ---
 task: gap-playback-audio
+pr: 327
 date: 2026-11-03
 status: pending
 ---
@@ -23,6 +24,8 @@ status: pending
 
 领域单测与脚本语法 / 顺序、编辑器工具、波形回归合计 452/452；TypeScript 通过；浏览器三种真实解码与音频采样场景各重复两次，6/6。旧代码在同一声音输出断言上失败。初次跨语言检查遇到 uv 缓存权限失败，指定已有 Python 后整组通过。原片实听不包含在自动化结果内；直接引用相对地址或 file 地址的便携页面未接入门控。
 
+PR 327 审查回修复验通过：目标 Node 套件 488/488、Python 资产契约 25/25、Chromium 音频 6/6。新增手动定位、连续定位与末尾停止回归。
+
 ```text
 node --test tests/test_gap_playback.mjs tests/test_audio_processing.mjs tests/test_editor_audition.mjs
 node node_modules/@playwright/test/cli.js test --config tests/config/playwright.config.mjs tests/e2e/gap-playback-audio.spec.mjs --workers=1
@@ -45,6 +48,11 @@ node node_modules/@playwright/test/cli.js test --config tests/config/playwright.
   （操作）对已移除区段执行标记「定位试听」，随后暂停并恢复正常播放；再切换跳过开关和播放速度。
   （预期）定位试听能听到原声；正常播放恢复跳过；暂停与切换设置不会留下静音。
   <!-- id: audition-controls -->
+
+- [ ] **跳过 Gap 期间手动定位保留播放状态**
+  （操作）正常播放跨过 Gap 时，用播放条或步进按钮快速定位到保留区间；再试一次并立即按暂停。
+  （预期）第一次从最后落点继续播放；第二次停在最后落点，等待下一次播放操作。
+  <!-- id: seek-during-gap -->
 
 - [ ] **监听音量和工程增益不被改写**
   （操作）设定监听音量、工程增益与静音状态，播放经过 Gap，再检查这些值。
