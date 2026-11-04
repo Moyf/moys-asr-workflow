@@ -114,6 +114,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/ui/editor-settings-panels.js",
                 "editor/ui/editor-ninja.js",
                 "editor/media/editor-audio-processing.js",
+                "editor/media/editor-gap-playback.js",
                 "editor/media/editor-media-playback.js",
                 "editor/cues/editor-keyboard-targets.js",
                 "editor/cues/editor-shortcuts.js",

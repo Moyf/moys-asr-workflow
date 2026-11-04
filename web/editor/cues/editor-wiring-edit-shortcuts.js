@@ -61,7 +61,7 @@ document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (MaweJklPlayback.isJklDirectionMode()) {
     if (k === 'k') {
-      const wasPlaying = MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused;
+      const wasPlaying = MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused || window.MaweGapPlayback?.pendingPlayback;
       if (!wasPlaying) {
         MaweJklPlayback.jklPlaybackRate = 1;
         MaweCoreState.player.playbackRate = 1;
@@ -71,6 +71,7 @@ document.addEventListener('keydown', (e) => {
       MaweJklPlayback.stopJklReversePlayback({ render: false });
       MaweJklPlayback.jklPlaybackRate = 1;
       MaweCoreState.player.playbackRate = 1;
+      window.MaweGapPlayback?.cancelPendingPlayback();
       MaweCoreState.player.pause();
       MawePlaybackLoop.update();
       MaweCoreState.waveformEditor?.updatePlayback();

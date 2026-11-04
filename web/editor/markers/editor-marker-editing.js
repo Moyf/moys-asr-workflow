@@ -217,9 +217,9 @@
     }
     const player = MaweCoreState.player;
     if (player && Number.isFinite(Number(player.currentTime))) {
-      player.currentTime = marker.start / 1000;
+      MaweMediaPlayback.setPlayerCurrentTime(marker.start / 1000);
     }
-    if (play && player?.paused) {
+    if (play && player?.paused && !global.MaweGapPlayback?.pendingPlayback) {
       const promise = player.play?.();
       promise?.catch?.(() => {});
     }
