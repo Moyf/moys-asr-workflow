@@ -158,6 +158,7 @@
 
   function isAiCleanupReviewMarker(marker) {
     if (typeof marker?.id !== 'string') return false;
+    if (markerUtils().isAiCleanupRemovalMarker(marker)) return true;
     if (isAiCleanupReviewMuted(marker.id)) return true;
     const start = Number(marker?.start);
     const end = Number(marker?.end);
@@ -180,11 +181,12 @@
 
   function aiCleanupReviewMuteState(markerId, marker = MaweMarkerEditing.findMarker(markerId)) {
     const state = MaweGapRemoveData.getGapRemoveData(false);
+    const automatic = markerUtils().isAiCleanupRemovalMarker(marker);
     const ranges = state?.provenance?.sources?.ai_cleanup_review;
     const ownedRanges = Array.isArray(ranges) ? ranges.filter((range) => (
       (range.review_marker_id || range.id) === markerId
     )) : [];
-    if (!ownedRanges.length) {
+    if (!ownedRanges.length && !automatic) {
       return { owned: false, matchesCurrentRange: false, removed: false, partiallyRemoved: false };
     }
     const markerStart = Math.round(Number(marker?.start));
@@ -193,8 +195,8 @@
     // 没有另存原始几何，包围这些片段的区段扩大也按此几何关联解释。
     const matchesCurrentRange = Number.isFinite(markerStart) && Number.isFinite(markerEnd)
       && markerEnd > markerStart
-      && ownedRanges.every((range) => range.start >= markerStart && range.end <= markerEnd)
-      && ownedRanges.some((range) => range.start < markerEnd && range.end > markerStart);
+      && (automatic || (ownedRanges.every((range) => range.start >= markerStart && range.end <= markerEnd)
+        && ownedRanges.some((range) => range.start < markerEnd && range.end > markerStart)));
 
     const removedGaps = (Array.isArray(state?.gaps) ? state.gaps : [])
       .filter((gap) => gap?.removed !== false)
@@ -216,7 +218,8 @@
     const currentRange = { start: markerStart, end: markerEnd };
     const removed = matchesCurrentRange && isFullyRemoved(currentRange);
     return {
-      owned: true,
+      owned: ownedRanges.length > 0,
+      automatic,
       matchesCurrentRange,
       removed,
       partiallyRemoved: matchesCurrentRange && !removed && overlapsRemoved(currentRange),
@@ -228,6 +231,16 @@
     if (!button) return;
     button.hidden = !isAiCleanupReviewMarker(MaweMarkerEditing.findMarker(markerId));
     const status = aiCleanupReviewMuteState(markerId);
+    if (status.automatic) {
+      const removed = status.removed || status.partiallyRemoved;
+      const label = removed ? '恢复' : '移除';
+      const title = removed ? '恢复此区段声音；字幕启用状态单独设置' : '移除此区段声音';
+      button.textContent = window.MAWE_I18N?.translateText(label) || label;
+      button.title = window.MAWE_I18N?.translateText(title) || title;
+      button.setAttribute('aria-pressed', String(removed));
+      button.classList.toggle('is-muted', removed);
+      return;
+    }
     const label = !status.owned ? '设静音'
       : !status.matchesCurrentRange ? '取消原静音'
         : status.removed ? '已静音'
@@ -258,7 +271,9 @@
         return;
       }
       MaweHint.flashHint(
-        result.muted ? '已静音 AI 复核区段' : '已取消 AI 复核静音',
+        result.automatic
+          ? (result.muted ? '已移除 AI 区段声音' : '已恢复 AI 区段声音')
+          : (result.muted ? '已静音 AI 复核区段' : '已取消 AI 复核静音'),
         'success',
       );
       refreshAiCleanupReviewMuteButtons();
@@ -272,20 +287,24 @@
     const status = aiCleanupReviewMuteState(marker.id);
     const removed = status.matchesCurrentRange && status.removed;
     const partiallyRemoved = status.matchesCurrentRange && status.partiallyRemoved;
+    const restored = status.automatic && !removed && !partiallyRemoved;
     const label = removed ? '已移除'
       : partiallyRemoved ? '部分移除'
+        : restored ? '已恢复'
         : markerUtils().markerReviewStatusLabel(marker);
     button.textContent = window.MAWE_I18N?.translateText(label) || label;
     button.classList.toggle('pending', !removed && !partiallyRemoved && marker.review?.status === 'pending');
     button.classList.toggle('confirmed', !removed && !partiallyRemoved && marker.review?.status === 'confirmed');
     button.classList.toggle('removed', removed);
     button.classList.toggle('partially-removed', partiallyRemoved);
-    button.disabled = removed || partiallyRemoved;
-    const title = removed || partiallyRemoved
+    button.classList.toggle('restored', restored);
+    button.disabled = status.automatic || removed || partiallyRemoved;
+    const title = status.automatic ? '恢复此区段声音；字幕启用状态单独设置'
+      : removed || partiallyRemoved
       ? (removed ? 'AI 复核区段已移除' : 'AI 复核区段已部分移除')
       : String(marker.review?.reason || '');
     button.title = window.MAWE_I18N?.translateText(title) || title;
-    if (marker.review?.reason && !removed && !partiallyRemoved) {
+    if (marker.review?.reason && !removed && !partiallyRemoved && !status.automatic) {
       button.dataset.markerProjectReason = 'true';
     } else {
       delete button.dataset.markerProjectReason;

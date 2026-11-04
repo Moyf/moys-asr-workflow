@@ -1026,6 +1026,8 @@ def _ai_annotation(
         marker["end"] = end
     if pending:
         marker["review"] = {"status": "pending", "reason": reason}
+    elif operation in {"删除", "移除"}:
+        marker["cleanup_action"] = "remove"
     return marker
 
 
