@@ -94,6 +94,56 @@ test('automatic removal restores actual audio range through popup, undo, save an
   await expect(status()).toHaveText('已移除');
 });
 
+test('English popup stays inside the right edge when keyboard undo widens its status', async ({ page }) => {
+  await seed(page);
+  await page.evaluate(() => {
+    MAWE_I18N.applyLanguage('en');
+    const row = document.querySelector('.waveform-marker-item[data-marker-id="auto"]').closest('.waveform-row');
+    const rowStart = Number(row.dataset.startMs);
+    const span = Number(row.dataset.endMs) - rowStart;
+    const start = Math.round(rowStart + span * 0.92);
+    const end = Math.round(rowStart + span * 0.97);
+    MaweMarkerEditing.updateMarkerFields('auto', { start, end });
+    const provenance = AsrGapRemoveCore.normalizeGapRemoveProvenance({ sources: {
+      ai_cleanup: [{ start: Math.round((start + end) / 2), end }],
+    } });
+    MaweGapRemoveUi.setGapRemoveData({ gaps: AsrGapRemoveCore.gapRangesFromProvenance(provenance) },
+      { dirty: false, provenance });
+  });
+  const popup = await openPopup(page);
+  const status = popup.locator('.markers-review-toggle');
+  await expect(status).toHaveText('Partially removed');
+  await popup.getByRole('button', { name: 'Restore', exact: true }).click();
+  await expect(status).toHaveText('Restored');
+  // Reopen at the right edge with the narrower label, as a user would.
+  await page.keyboard.press('Escape');
+  await openPopup(page);
+  await expect(status).toHaveText('Restored');
+  const geometry = () => popup.evaluate(element => {
+    const content = element.parentElement;
+    const contentRight = content.getBoundingClientRect().left + content.clientLeft + content.clientWidth;
+    const rect = element.getBoundingClientRect();
+    const deleteRight = element.querySelector('.markers-item-actions .danger').getBoundingClientRect().right;
+    return { width: rect.width, rightInset: contentRight - rect.right, deleteInset: contentRight - deleteRight };
+  });
+  await expect.poll(async () => (await geometry()).rightInset).toBeGreaterThanOrEqual(3);
+  const before = await geometry();
+  expect(before.rightInset).toBeLessThanOrEqual(5);
+  expect(before.deleteInset).toBeGreaterThan(0);
+  const originalPopup = await popup.elementHandle();
+  await popup.getByRole('button', { name: 'Remove', exact: true }).focus();
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(status).toHaveText('Partially removed');
+  expect(await originalPopup.evaluate(element => element.isConnected)).toBe(true);
+  await expect.poll(async () => (await geometry()).rightInset, {
+    message: 'the expanded popup must stay inside the waveform',
+  }).toBeGreaterThanOrEqual(3);
+  const after = await geometry();
+  expect(after.width).toBeGreaterThan(before.width);
+  expect(after.deleteInset).toBeGreaterThan(after.rightInset);
+  await popup.screenshot({ path: test.info().outputPath('auto-marker-popup-en-after-undo.png') });
+});
+
 test('partial and edited regions use current coverage; existing actions and measured layout stay coherent', async ({ page }) => {
   await seed(page);
   await page.evaluate(() => {
