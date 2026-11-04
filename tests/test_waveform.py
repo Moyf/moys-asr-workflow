@@ -59,6 +59,7 @@ import os
 import re
 import shutil
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -429,6 +430,32 @@ class WaveformExtractionTests(CompactContainerAssertions, unittest.TestCase):
             peaks_per_second=waveform_module.DEFAULT_PEAKS_PER_SECOND,
             ffmpeg_bin="C:/MAW/ffmpeg.exe",
             audio_track=0,
+        )
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_extraction_sends_stderr_to_a_file_not_a_pipe(self) -> None:
+        """stderr 不能留在管道里，否则会与 stdout 读取互等死锁。
+
+        损坏的 AV1 录制会让 ffmpeg 在 ``-loglevel error`` 下仍然吐十几 KB 帧错误；
+        Windows 匿名管道只有 4 KiB 缓冲，旧实现在 stdout 读完后才读 stderr，ffmpeg
+        就卡在写日志上，屏幕上停在转写管线的「正在校验和修复时间码」。
+        """
+        captured: dict[str, object] = {}
+        real_popen = subprocess.Popen
+
+        def spy(*args: object, **kwargs: object) -> subprocess.Popen:
+            captured.update(kwargs)
+            return real_popen(*args, **kwargs)
+
+        with mock.patch.object(waveform_module.subprocess, "Popen", side_effect=spy):
+            payload = waveform_module.extract_waveform(self.media_path)
+
+        self.assertEqual(payload["peak_count"], 40)
+        self.assertIs(captured.get("stdout"), subprocess.PIPE)
+        stderr = captured.get("stderr")
+        self.assertIsNot(stderr, subprocess.PIPE)
+        self.assertTrue(
+            hasattr(stderr, "seek"), f"stderr 应该是可回读的文件，实际为 {stderr!r}"
         )
 
 
