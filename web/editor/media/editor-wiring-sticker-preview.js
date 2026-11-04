@@ -88,24 +88,32 @@ applyStickerFeatureEnabled();
 // === 自定义表情包背景 ===
 // 设置 → CSS 变量（舞台小窗与实际画面层共用）；同一份取值经
 // MaweStickerBurnPlan.stickerBackgroundPayload 进烧录 drawbox，三处同源。
-// 关闭时移除变量：舞台小窗恢复默认底衬+阴影+圆角，实际画面与成片无底衬。
+// 开关关闭：移除变量，舞台小窗恢复默认底衬+阴影+圆角，实际画面与成片无底衬。
+// 开关开启：一律取消舞台默认阴影与圆角（所见即所得）——透明度为 0 或颜色
+// 非法时底衬按透明处理（烧录同样不画 drawbox），而不是恢复默认黑色底衬。
 function applyStickerBackgroundVars() {
-  const payload = globalThis.MaweStickerBurnPlan?.stickerBackgroundPayload?.() ?? null;
+  const settings = MaweSettings.EDITOR_SETTINGS;
   const rootStyle = document.documentElement.style;
-  if (!payload) {
+  if (!settings || settings.stickerBackgroundEnabled !== true) {
     rootStyle.removeProperty('--sticker-bg');
     rootStyle.removeProperty('--sticker-bg-shadow');
     rootStyle.removeProperty('--sticker-bg-radius');
     return;
   }
-  const hex = payload.color;
+  rootStyle.setProperty('--sticker-bg-shadow', 'none');
+  rootStyle.setProperty('--sticker-bg-radius', '0');
+  const color = String(settings.stickerBackgroundColor ?? '').trim();
+  const opacity = Number(settings.stickerBackgroundOpacity);
+  const valid = /^#[0-9a-fA-F]{6}$/.test(color) && Number.isFinite(opacity) && opacity > 0;
+  if (!valid) {
+    rootStyle.setProperty('--sticker-bg', 'transparent');
+    return;
+  }
+  const hex = color.toLowerCase();
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
-  rootStyle.setProperty('--sticker-bg', `rgba(${r}, ${g}, ${b}, ${payload.opacity})`);
-  // 烧录只画纯色矩形：开启自定义后预览同步取消默认阴影与圆角（所见即所得）。
-  rootStyle.setProperty('--sticker-bg-shadow', 'none');
-  rootStyle.setProperty('--sticker-bg-radius', '0');
+  rootStyle.setProperty('--sticker-bg', `rgba(${r}, ${g}, ${b}, ${Math.min(opacity, 100) / 100})`);
 }
 
 function syncStickerBackgroundControls() {

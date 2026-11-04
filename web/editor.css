@@ -1463,6 +1463,8 @@
   .editor-settings-panel .sticker-root-controls input[type="text"] { flex: 1 1 auto; width: auto; min-width: 0; }
   .sticker-root-controls button { flex: 0 0 auto; }
   .sticker-background-controls { display: flex; flex: 0 0 100%; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+  /* display:flex 会覆盖 hidden 属性的默认隐藏，需要显式声明（同 sub-group[hidden]）。 */
+  .sticker-background-controls[hidden] { display: none; }
   .editor-settings-panel .sticker-background-controls input[type="color"] { flex: 0 0 auto; width: 42px; height: 28px; padding: 2px; }
   .editor-settings-panel .sticker-background-controls input[type="number"] { width: 72px; flex: 0 0 auto; }
   #editor-settings-page-project-tracks .editor-settings-item { white-space: normal; }
