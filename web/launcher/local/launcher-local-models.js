@@ -537,16 +537,22 @@ function renderLocalModelStatus() {
   const preparing = state.localPreparing;
   const target = $("localModelStatus");
   const optionalFireRedPunc = isFireRedModel() && status.ctcReady && !status.puncReady;
-  const key = optionalFireRedPunc ? "local_firered_punc_optional" : (status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_mismatch: "local_model_path_mismatch", missing: "local_missing", checking: "local_checking" }[status.status] || "local_missing"));
+  const key = optionalFireRedPunc ? "local_firered_punc_optional" : (status.status === "installed" && status.path ? "local_path_selected" : ({ installed: "local_installed", partial: "local_partial", runtime_missing: "local_runtime_missing", path_invalid: "local_model_path_invalid", path_mismatch: "local_model_path_mismatch", missing: "local_missing", checking: "local_checking" }[status.status] || "local_missing"));
+  // 目录类失败把后端的具体原因一并展示，帮助用户识别「选了 runtime 根目录」。
+  const pathProblemDetail = !preparing && (status.status === "path_invalid" || status.status === "path_mismatch") && status.detail
+    ? `${state.lang === "zh" ? "：" : ": "}${status.detail}`
+    : "";
   // 与 runtime 面板一致：preparing 状态行固定"正在准备"文案，实时流水只在进度条下方。
   target.textContent = "";
   if (!preparing && status.status === "runtime_missing") {
     renderLocalRuntimeMissingHint(target);
   } else {
-    target.textContent = t(preparing ? "local_prepare_running" : key);
+    target.textContent = t(preparing ? "local_prepare_running" : key) + pathProblemDetail;
   }
   target.className = `local-status ${preparing ? "warn" : (status.status === "installed" ? "ready" : "warn")}`;
   $("localModelPath").value = status.path || $("localModelPath").value || "";
+  const clearButton = $("clearLocalModelPath");
+  if (clearButton) clearButton.disabled = !String((state.localModelPaths || {})[selectedModel()?.id] || "").trim();
   const canPrepare = Boolean(status.canPrepare) && !preparing;
   const button = $("prepareLocalModel");
   button.disabled = preparing ? false : !canPrepare;
@@ -817,7 +823,8 @@ async function refreshAlignmentModels() {
 }
 function syncLocalModelPath(model) {
   if (!isLocalProvider()) return;
-  if (state.localModelId && state.localModelId !== model.id) state.localModelPaths[state.localModelId] = $("localModelPath").value.trim();
+  // 条目只由输入与目录选择事件实时更新；切换时不回写输入框值——
+  // 程序性填充（扫描回显）若被写回，会撤销用户「删空回到自动发现」的选择。
   $("localModelPath").value = state.localModelPaths[model.id] || "";
   state.localModelId = model.id;
   setError("localModelPath", "");

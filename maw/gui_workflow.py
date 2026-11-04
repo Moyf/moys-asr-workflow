@@ -17,6 +17,7 @@ from threading import Event
 from typing import BinaryIO, Final, TextIO, final
 
 from maw.console import configure_utf8_environment
+from maw.asr.common import parse_duration
 from maw.audio_diagnostics import empty_transcription_error, is_empty_transcription_error
 from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, bundled_ffmpeg_directory, ffmpeg_search_path, resolve_ffmpeg_tools
 from maw.gui_config import QWEN_AUDIO_31_MODEL_ID, QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, effective_config, load_env
@@ -27,6 +28,16 @@ from maw.qwen_audio import split_qwen_audio_hotwords
 from maw.local_runtime import default_runtime_root, model_cache_environment
 from maw.local_debug import local_debug_manifest_path
 from maw.runtimes import LOCAL
+
+# 快速测试（testRun）只转写媒体开头一小段：音频侧经 ``--length-limit`` 截断，
+# 画面缓存经 ``MAW_MEDIA_KEYFRAMES_LIMIT`` 共用同一上限，两处数值必须同源。
+TEST_RUN_LENGTH_LIMIT: Final = "2m"
+TEST_RUN_KEYFRAME_LIMIT_SEC: Final = int(parse_duration(TEST_RUN_LENGTH_LIMIT))
+
+
+def _test_run_limit_label() -> str:
+    seconds = TEST_RUN_KEYFRAME_LIMIT_SEC
+    return f"{seconds // 60} 分钟" if seconds % 60 == 0 else f"{seconds} 秒"
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +55,7 @@ class TranscriptionRequest:
     language: str = ""
     api_key: str = ""
     length_limit: str = ""
+    test_run: bool = False
     max_len: str = ""
     min_len: str = ""
     gap_split: str = ""
@@ -62,6 +74,7 @@ class TranscriptionRequest:
     base_url: str = ""
     speaker_colors: bool = False
     generate_spectral: bool = False
+    generate_keyframes: bool = True
     generate_thumbnails: bool = False
     ui_language: str = "zh"
     generate_html: bool = True
@@ -501,8 +514,14 @@ def run_transcription(
         request.model_cache_root,
         request.engine,
         request.base_url,
+        generate_keyframes=request.generate_keyframes,
         generate_thumbnails=request.generate_thumbnails,
+        test_run=request.test_run,
     )
+    if request.test_run and request.generate_keyframes and on_event is not None:
+        # 快速测试的画面缓存与音频截断同范围，提前一句说明，避免用户把
+        # 「画面带只有前几分钟的帧」当成缺陷。
+        on_event(f"[info] 快速测试模式：画面缓存只生成前 {_test_run_limit_label()}")
     if request.provider == "local" and request.runtime_python:
         # 本地引擎子进程跑在托管 venv 的宿主解释器上（见 build_transcribe_command），
         # 与冻结包内更旧的 libexpat / libssl 不兼容，需要还原系统动态库搜索路径。
@@ -680,17 +699,28 @@ def _child_environment(
     model_cache_root: str = "",
     engine: str = "",
     base_url: str = "",
+    generate_keyframes: bool = True,
     generate_thumbnails: bool = True,
+    test_run: bool = False,
 ) -> dict[str, str]:
     env = dict(parent)
     # The bundled local-runtime Python is not itself PyInstaller-frozen, so
     # pass the parent process's resolved configuration file explicitly.
     env["MAW_ENV_FILE"] = str(DEFAULT_ENV_PATH)
     env["PYTHONUNBUFFERED"] = "1"
+    if not generate_keyframes:
+        # 「生成缩略图」开关经子进程环境变量穿透转写管线：关闭时跳过整个画面
+        # 缓存阶段（关键帧底图与高精度网格都不生成），与 MAW_MEDIA_THUMBNAILS
+        # 同一套穿透模式。
+        env["MAW_MEDIA_KEYFRAMES"] = "0"
     if not generate_thumbnails:
         # 「生成视频缩略图」开关经子进程环境传给 embed_media_caches，
         # 免去在每个 provider CLI 的长参数签名里逐一透传。
         env["MAW_MEDIA_THUMBNAILS"] = "0"
+    if test_run:
+        # 快速测试与音频侧截断（length_limit）同源：画面缓存只生成前 N 秒，
+        # 与转写范围一致；开关语义（MAW_MEDIA_KEYFRAMES/THUMBNAILS）不受影响。
+        env["MAW_MEDIA_KEYFRAMES_LIMIT"] = str(TEST_RUN_KEYFRAME_LIMIT_SEC)
     configure_utf8_environment(env)
     configured_path = parent.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
     lookup_path = _ffmpeg_search_path(env.get("PATH", "")) or ""

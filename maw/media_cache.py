@@ -84,12 +84,31 @@ def _persist_mopeaks_fallback(
     print(f"[mopeaks] 自研波形已回退到二进制 sidecar: {written.name}")
 
 
+def _keyframes_duration_limit_from_env() -> float | None:
+    """快速测试经 ``MAW_MEDIA_KEYFRAMES_LIMIT``（秒）传入的画面缓存时长上限。"""
+    raw = os.environ.get("MAW_MEDIA_KEYFRAMES_LIMIT", "").strip()
+    if not raw:
+        return None
+    try:
+        limit = float(raw)
+    except ValueError:
+        print(f"[thumbnails] 忽略无效的画面缓存时长上限: {raw}")
+        return None
+    if limit <= 0:
+        print(f"[thumbnails] 忽略非正数的画面缓存时长上限: {raw}")
+        return None
+    # 与音频截断同一语义：只生成媒体开头 N 秒，日志说明一次，便于对照帧数。
+    print(f"[thumbnails] 快速测试：画面缓存只生成前 {limit:g} 秒")
+    return limit
+
+
 def embed_media_caches(
     project: dict[str, Any],
     media_path: Path | str,
     *,
     source_media_path: Path | str | None = None,
     generate_spectral: bool = False,
+    generate_keyframes: bool = True,
     generate_thumbnails: bool = True,
     ffmpeg_bin: str | None = None,
     audio_track: int = 0,
@@ -123,9 +142,15 @@ def embed_media_caches(
     ``generate_spectral`` 关闭时仍生成 reapeaks wave 层，但跳过频谱 FFT
     与工程内的 spectral payload。
 
-    ``generate_thumbnails`` 关闭（或环境变量 ``MAW_MEDIA_THUMBNAILS=0``，Launcher
-    用它把「生成高精度画面预览图」开关穿透转写子进程边界）时跳过精确网格阶段；
-    关键帧底图不受它影响，总是生成。编辑器打开工程后仍可按需补帧。
+    ``generate_keyframes`` 关闭（或环境变量 ``MAW_MEDIA_KEYFRAMES=0``，Launcher
+    用它把「生成缩略图」开关穿透转写子进程边界）时跳过整个画面缓存阶段，关键帧
+    底图与精确网格都不生成；``generate_thumbnails`` 关闭（或环境变量
+    ``MAW_MEDIA_THUMBNAILS=0``）时只跳过精确网格阶段。环境变量
+    ``MAW_MEDIA_KEYFRAMES_LIMIT``（秒数，快速测试与音频截断共用同一上限）把
+    两个阶段都限制在媒体前 N 秒，与转写范围一致；编辑器仍可按可见区需求补帧。
+    已有缓存帧与已保存的
+    画面带显示偏好不变；无缓存帧且未保存显示偏好时，编辑器画面带默认隐藏，
+    用户手动开启后仍可按需补帧（按需路径不读取这些开关）。
     """
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
         raise ValueError("audio_track must be a non-negative integer")
@@ -278,10 +303,28 @@ def embed_media_caches(
             )
     thumbnail_manifest = None
     thumbnail_error = None
+    if generate_keyframes and os.environ.get("MAW_MEDIA_KEYFRAMES", "1") == "0":
+        # 「生成缩略图」开关与 ``MAW_MEDIA_THUMBNAILS`` 同一套穿透模式：转写子
+        # 进程经环境变量传递；进程内调用方不经环境变量，由参数（或默认值）控制。
+        generate_keyframes = False
     if generate_thumbnails and os.environ.get("MAW_MEDIA_THUMBNAILS", "1") == "0":
         # 「生成高精度画面预览图」开关经子进程环境变量穿透转写管线，各 provider
         # CLI 无需逐一透传；关键帧底图不受它影响，总是生成。
         generate_thumbnails = False
+    if not generate_keyframes:
+        # 总开关关闭：关键帧底图与高精度网格都不生成。跳过不是错误，返回与
+        # build_base 无视频画面时一致的 None，下游无需区分。
+        print("[thumbnails] 已按设置跳过画面缓存生成")
+        return MediaCacheResult(
+            project=project,
+            waveform_error=waveform_result.error,
+            reapeaks_path=reapeaks_path,
+            thumbnail_cache=None,
+            thumbnail_error=None,
+        )
+    # 限长解析放在开关早退之后：总开关关闭时不再打印「只生成前 N 秒」的
+    # 矛盾日志。
+    duration_limit_sec = _keyframes_duration_limit_from_env()
     try:
         from maw.thumbnail_jobs import build_base
         from maw import thumbnail_cache
@@ -299,7 +342,8 @@ def embed_media_caches(
         # Keep explicit callbacks unchanged for embedded callers.
         progress = thumbnail_progress if thumbnail_progress is not None else lambda message: print(message, flush=True)
         thumbnail_manifest = build_base(source_path, cancel=cancel,
-            progress=progress, ffmpeg_path=ffmpeg_bin, exact=generate_thumbnails)
+            progress=progress, ffmpeg_path=ffmpeg_bin, exact=generate_thumbnails,
+            duration_limit_sec=duration_limit_sec)
         if thumbnail_manifest is not None:
             if thumbnail_manifest.get("cache_hit"):
                 print("[thumbnails] 已复用原视频画面缓存")

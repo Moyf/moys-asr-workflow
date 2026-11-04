@@ -28,3 +28,9 @@ export function plainModuleSource(relativeWebPath) {
   return withoutExportBlock
     .replace(/^export (?=(?:function|const|let|var)\b)/gm, '');
 }
+
+// Run an ESM init module inside a fixture's VM context while retaining its
+// function bodies and named helpers. The fixture supplies any imported globals.
+export function invokedInitModuleSource(relativeWebPath, initializer) {
+  return `${plainModuleSource(relativeWebPath)}\n${initializer}();`;
+}

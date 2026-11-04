@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { createUtilsModule } from '../web/shared/utils/history.js';
-import { initModuleSource } from './helpers/init-module-source.mjs';
+import { initModuleSource, invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 const source = readFileSync(new URL('../web/editor/media/editor-audio-processing.js', import.meta.url), 'utf8');
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
@@ -12,7 +12,7 @@ const result = (extra = {}) => ({ ok: true, status: 'measured', integratedLufs: 
   audioTrack: 0, measurementSource: 'preview', bindingGeneration: 1, sourceMediaId: 'source-a', ...extra });
 const response = data => ({ ok: true, json: async () => data });
 function fixture(transport = async () => response(result())) {
-  const calls = [], routes = [], contexts = [], nodes = new Map(), panels = [];
+  const calls = [], routes = [], contexts = [], nodes = new Map(), panels = [], gainNodes = [];
   function node() {
     const listeners = new Map(), classes = new Set();
     return { textContent: '', hidden: false, value: '', checked: false,
@@ -26,10 +26,18 @@ function fixture(transport = async () => response(result())) {
   }
   const player = Object.assign(node(), { currentSrc: 'http://localhost/media', volume: .6, muted: false });
   class AudioContext {
-    state = 'suspended'; destination = {}; resumes = 0;
+    state = 'suspended'; destination = {}; resumes = 0; currentTime = 50;
     constructor() { contexts.push(this); }
     async resume() { this.resumes++; this.state = 'running'; }
-    createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+    createGain() {
+      const events = [];
+      const gain = { gain: { value: 1,
+        cancelScheduledValues(time) { events.push(['cancel', time]); },
+        setValueAtTime(value, time) { events.push(['set', value, time]); } },
+        events, connect() {}, disconnect() {} };
+      gainNodes.push(gain);
+      return gain;
+    }
     createMediaElementSource(media) {
       const route = { player: media, connected: false, connect(gain) { this.connected = true; this.gain = gain; },
         disconnect() { this.connected = false; } };
@@ -49,18 +57,33 @@ function fixture(transport = async () => response(result())) {
     MaweHost: { server: { fetch(url, options) { const body = JSON.parse(options.body); calls.push({ url, body, signal: options.signal }); return transport(body); } } },
   });
   context.window = context;
-  for (const path of ['boot/editor-runtime.js', 'state/editor-state.js']) {
-    vm.runInContext(readFileSync(new URL('../web/editor/' + path, import.meta.url), 'utf8'), context);
-  }
+  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   context.AsrEditorUtils = createUtilsModule({ cloneJsonValue: clone });
   context.MaweWordTiming = { clearSelection() {} };
   context.MaweHint = { flashHint() {} };
   context.MaweInlineEdit = {};
-  vm.runInContext(initModuleSource('editor/state/editor-history.js'), context);
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-history.js', 'initMaweHistory'), context);
   vm.runInContext(source, context);
   context.MaweAudioProcessing.init();
-  return { context, api: context.MaweAudioProcessing, state: context.MaweState, calls, routes, contexts, nodes, panels, player, node };
+  return { context, api: context.MaweAudioProcessing, state: context.MaweState, calls, routes, contexts, nodes, panels, player, node, gainNodes };
 }
+
+test('gap audio automation uses a separate gate at unity project gain and preserves listening controls', async () => {
+  const f = fixture();
+  f.context.MaweGapPlayback = { needsAudioGate: () => true, refresh() {} };
+  await f.api.applyPreview({ gesture: true });
+  assert.equal(f.routes.length, 1);
+  assert.equal(f.api.scheduleGapPlaybackMute(.1), true);
+  assert.deepEqual(f.gainNodes[0].events.slice(-2), [['set', 1, 50], ['set', 0, 50.1]]);
+  f.api.change({ gain_db: 6 }, { gesture: true });
+  assert.ok(Math.abs(f.gainNodes[1].gain.value - 10 ** .3) < 1e-10);
+  assert.deepEqual(f.gainNodes[0].events.slice(-2), [['set', 1, 50], ['set', 0, 50.1]]);
+  f.api.setGapPlaybackMuted(false);
+  assert.deepEqual(f.gainNodes[0].events.at(-1), ['set', 1, 50]);
+  assert.equal(f.player.volume, .6);
+  assert.equal(f.player.muted, false);
+});
 
 test('fixed gain preserves listening volume, captures each player only once, and disconnects old routes', async () => {
   const f = fixture();

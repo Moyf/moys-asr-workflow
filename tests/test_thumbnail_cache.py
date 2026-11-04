@@ -81,6 +81,121 @@ class ThumbnailCacheTests(unittest.TestCase):
         asset = first["samples"][0]["asset"]
         self.assertIsNotNone(c.read_asset(self.media, asset, cache_revision=second["cache_revision"]))
 
+    def test_duration_limit_bounds_grid_and_marks_manifest(self):
+        """限长构建只覆盖前 N 秒网格，写独立 sidecar，并在命中校验里要求同限。"""
+        with mock.patch.object(c, "extract_keyframes", return_value=[]) as keyframes:
+            manifest = self.build(duration_limit_sec=12)
+        self.assertEqual(keyframes.call_args.kwargs.get("duration_limit_sec"), 12)
+        self.assertEqual(manifest["duration_limit_ms"], 12000)
+        self.assertEqual([s["requested_ms"] for s in manifest["samples"]], [0, 2000, 4000, 6000, 8000, 10000])
+        self.assertTrue(manifest["base_complete"])
+        self.assertEqual(manifest["coverage"], [[0, 12000]])
+        self.assertTrue(self.build(duration_limit_sec=12)["cache_hit"])
+        limited_path = self.root / "video.mkv.limit-12s.mothumbs"
+        self.assertTrue(limited_path.exists())
+        self.assertFalse(c.base_path(self.media).exists(), "限长版不得占用全片 sidecar 路径")
+        self.assertEqual(c.load_base(self.media)["duration_limit_ms"], 12000)
+
+    def test_limited_coverage_uses_media_origin_with_delayed_video(self):
+        self.video = VideoInfo(1, 40000, 0, 10000)
+        c.probe_video.return_value = self.video
+        manifest = self.build(duration_limit_sec=12)
+        self.assertEqual(manifest["coverage"], [[10000, 12000]])
+        self.assertEqual(c.load_base(self.media)["coverage"], [[10000, 12000]])
+        before_video = self.build(duration_limit_sec=8)
+        self.assertTrue(before_video["base_complete"])
+        self.assertEqual(before_video["coverage"], [])
+
+    def test_full_media_cache_is_neither_reused_nor_replaced_by_limited_request(self):
+        """缓存隔离：全片缓存不得冒充限长命中，限长版也不得覆盖全片 sidecar。"""
+        full = self.build()
+        self.assertTrue(full["base_complete"])
+        self.calls.clear()
+        limited = self.build(duration_limit_sec=12)
+        self.assertFalse(limited["cache_hit"])
+        self.assertEqual(self.calls, [], "限长重建只复用已缓存的帧，不重新解码")
+        self.assertTrue(c.base_path(self.media).exists())
+        self.assertTrue((self.root / "video.mkv.limit-12s.mothumbs").exists())
+        self.assertTrue(self.build()["cache_hit"], "限长构建后全片缓存继续命中全片请求")
+
+    def test_limited_cache_first_then_full_request_rebuilds_full_grid(self):
+        limited = self.build(duration_limit_sec=12)
+        self.assertTrue(limited["base_complete"])
+        self.calls.clear()
+        full = self.build()
+        self.assertFalse(full["cache_hit"], "限长缓存不得冒充全片命中")
+        self.assertEqual(len(full["samples"]), 20, "全片请求按完整网格重建（缺帧重新解码，已有帧复用）")
+        self.assertTrue(c.base_path(self.media).exists())
+        self.assertTrue(self.build(duration_limit_sec=12)["cache_hit"],
+            "已有的限长版不被全片重建冲掉，可直接命中")
+
+    def test_request_at_or_beyond_duration_normalizes_to_full_cache(self):
+        manifest = self.build(duration_limit_sec=40)
+        self.assertIsNone(manifest["duration_limit_ms"])
+        self.assertEqual(len(manifest["samples"]), 20)
+        self.assertTrue(c.base_path(self.media).exists())
+        self.assertTrue(self.build()["cache_hit"])
+
+    def test_legacy_manifest_without_limit_field_stays_valid_and_hits(self):
+        """旧版本 sidecar 没有该字段，等价全片语义，继续命中。"""
+        manifest = self.build()
+        path = c.base_path(self.media)
+        legacy = {key: value for key, value in manifest.items() if key != "duration_limit_ms"}
+        blobs = {}
+        with zipfile.ZipFile(path) as archive:
+            for name in archive.namelist():
+                if name != "manifest.json":
+                    blobs[name.split("/", 1)[1].removesuffix(".jpg")] = archive.read(name)
+        self.assertTrue(c._atomic_save(path, legacy, blobs, self.media))
+        self.assertIsNone(c.load_base(self.media).get("duration_limit_ms"),
+            "旧版清单缺字段等价全片语义，读取视图不补写该字段")
+        self.assertTrue(self.build()["cache_hit"])
+
+    def test_invalid_limit_values_reject_manifest(self):
+        manifest = self.build(duration_limit_sec=12)
+        path = self.root / "video.mkv.limit-12s.mothumbs"
+        with zipfile.ZipFile(path) as archive:
+            entries = {info.filename: info for info in archive.infolist()}
+        self.assertTrue(c._valid_manifest(manifest, manifest["source_signature"], entries))
+        for bad in (0, -5, "12000", True, 40000):
+            with self.subTest(bad=bad):
+                broken = dict(manifest, duration_limit_ms=bad)
+                self.assertFalse(c._valid_manifest(broken, manifest["source_signature"], entries))
+
+    def test_base_candidates_discovers_limited_sidecar_variants(self):
+        self.assertFalse(any(".limit-" in str(path) for path in c.base_candidates(self.media)))
+        (self.root / "video.mkv.limit-12s.mothumbs").write_bytes(b"")
+        global_dir = self.root / "app" / "bases"
+        global_dir.mkdir(parents=True, exist_ok=True)
+        key = c._source_key(self.media)
+        (global_dir / (key + ".limit-30s.mothumbs")).write_bytes(b"")
+        candidates = [str(path) for path in c.base_candidates(self.media)]
+        self.assertIn(str(self.root / "video.mkv.limit-12s.mothumbs"), candidates)
+        self.assertIn(str(global_dir / (key + ".limit-30s.mothumbs")), candidates)
+
+    def test_limited_partial_sidecar_remains_discoverable_after_restart(self):
+        self.video = VideoInfo(1, 400000, 0)
+        c.probe_video.return_value = self.video
+        packs = 0
+        def pack(frames, **kwargs):
+            nonlocal packs
+            packs += 1
+            if packs == 2:
+                raise ThumbnailCancelled("interrupted while packing")
+            return jpeg(1280, ((len(frames) + 7) // 8) * 90)
+        with self.assertRaises(ThumbnailCancelled):
+            self.build(duration_limit_sec=200, batch_pack=pack)
+        limited = self.root / "video.mkv.limit-200s.mothumbs"
+        self.assertFalse(limited.exists())
+        self.assertTrue(limited.with_name(limited.name + ".partial").exists())
+        c._base_memo.clear()
+        c._session_bases.clear()
+        loaded = c.load_base(self.media)
+        self.assertIsNotNone(loaded)
+        self.assertEqual(loaded["duration_limit_ms"], 200000)
+        self.assertGreater(loaded["valid_count"], 0)
+        self.assertFalse(loaded["base_complete"])
+
     def test_same_millisecond_same_size_source_replacement_invalidates_all_caches(self):
         stat = self.media.stat()
         anchor = (stat.st_mtime_ns // 1_000_000) * 1_000_000

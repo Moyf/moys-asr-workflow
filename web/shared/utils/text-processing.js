@@ -429,10 +429,11 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  // ASS 单句放大出现标记：整行两端各写 `{{` `}}` 表示该句以「从大缩小落定」
-  // 的入场动画出现（参数取自样式库 profile 的 pop 组，不管其全局开关；与
-  // 单句 fade 复用 fad 参数同一模式）。仅识别双符号；至少要有一个字符的
-  // 正文才视为标记。句级标记之间可按任意嵌套顺序组合。
+  // ASS 单句放大出现标记：整行两端各写 `{{` `}}` 表示该句以「放大落定到原
+  // 字号」的入场动画出现（起点倍率 < 1 从小放大、> 1 从大缩小；参数取自
+  // 样式库 profile 的 pop 组，不管其全局开关；与单句 fade 复用 fad 参数
+  // 同一模式）。仅识别双符号；至少要有一个字符的正文才视为标记。句级标记
+  // 之间可按任意嵌套顺序组合。
   function parseSentencePopMarkers(text, rule) {
     const source = String(text == null ? '' : text);
     if (rule === 'none') return { text: source, pop: false };

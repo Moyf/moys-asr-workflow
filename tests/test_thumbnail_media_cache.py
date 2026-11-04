@@ -67,6 +67,49 @@ class ThumbnailMediaCacheTests(unittest.TestCase):
         self.assertFalse(build.call_args.kwargs["exact"])
         self.assertIn("关键帧底图完成：3 格（已按设置跳过高精度画面预览图）", output.getvalue())
 
+    def test_generate_keyframes_false_skips_whole_base_build(self):
+        with mock.patch.object(thumbnail_jobs, 'build_base') as build, \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            result = media_cache.embed_media_caches(self.project, self.wav, source_media_path=self.source, audio_track=0, generate_keyframes=False)
+        build.assert_not_called()
+        self.assertFalse(self.cleaner.called, "跳过整个画面缓存阶段时不再做过期缓存回收")
+        self.assertIsNone(result.thumbnail_cache)
+        self.assertIsNone(result.thumbnail_error)
+        self.assertIn("[thumbnails] 已按设置跳过画面缓存生成", output.getvalue())
+
+    def test_environment_disable_keyframes_skips_whole_base_build(self):
+        with mock.patch.dict(os.environ, {"MAW_MEDIA_KEYFRAMES": "0"}), \
+             mock.patch.object(thumbnail_jobs, 'build_base') as build, \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            result = media_cache.embed_media_caches(self.project, self.wav, source_media_path=self.source, audio_track=0, generate_thumbnails=True)
+        build.assert_not_called()
+        self.assertIsNone(result.thumbnail_cache)
+        self.assertIn("[thumbnails] 已按设置跳过画面缓存生成", output.getvalue())
+
+    def test_environment_keyframes_limit_bounds_base_build_duration(self):
+        """快速测试经环境变量把画面缓存限制在前 N 秒，与音频截断同范围。"""
+        manifest = {"state": "ready", "samples": []}
+        with mock.patch.dict(os.environ, {"MAW_MEDIA_KEYFRAMES_LIMIT": "120"}), \
+             mock.patch.object(thumbnail_jobs, 'build_base', return_value=manifest) as build, \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            result = media_cache.embed_media_caches(self.project, self.wav, source_media_path=self.source, audio_track=0)
+        self.assertEqual(build.call_args.kwargs["duration_limit_sec"], 120.0)
+        self.assertIn("[thumbnails] 快速测试：画面缓存只生成前 120 秒", output.getvalue())
+        self.assertIs(result.thumbnail_cache, manifest)
+
+    def test_without_limit_env_base_build_covers_whole_media(self):
+        with mock.patch.object(thumbnail_jobs, 'build_base', return_value={"state": "unavailable"}) as build:
+            media_cache.embed_media_caches(self.project, self.wav, source_media_path=self.source, audio_track=0)
+        self.assertIsNone(build.call_args.kwargs["duration_limit_sec"])
+
+    def test_environment_invalid_keyframes_limit_is_ignored(self):
+        with mock.patch.dict(os.environ, {"MAW_MEDIA_KEYFRAMES_LIMIT": "soon"}), \
+             mock.patch.object(thumbnail_jobs, 'build_base', return_value={"state": "unavailable"}) as build, \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            media_cache.embed_media_caches(self.project, self.wav, source_media_path=self.source, audio_track=0)
+        self.assertIsNone(build.call_args.kwargs["duration_limit_sec"])
+        self.assertIn("忽略无效的画面缓存时长上限", output.getvalue())
+
     def test_default_thumbnail_progress_reaches_launcher_output(self):
         output = io.StringIO()
         def build_with_progress(path, *, progress, **kwargs):

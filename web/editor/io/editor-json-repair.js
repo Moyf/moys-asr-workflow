@@ -203,6 +203,7 @@ export function initMaweJsonRepair() {
       }
       marker.review = { status: 'pending', reason };
       marker.note = `[AI] 复核：${reason}`;
+      delete marker.cleanup_action;
     }
     project.markers = Array.isArray(project.markers) ? markers
       : { ...(project.markers || {}), schema: 'moy.asr.markers.v1', items: markers };

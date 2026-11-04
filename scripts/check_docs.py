@@ -259,7 +259,7 @@ def compare(issues: list[dict], baseline: list[dict], mapping: dict[str, str] | 
     return [issue for issue in issues if signature(issue) not in known]
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--base-ref", help="Compare links with a locally available Git snapshot")
@@ -267,7 +267,7 @@ def main() -> int:
     parser.add_argument("--scan-only", action="store_true", help="Inventory links without requiring the new structure")
     parser.add_argument("--strict", action="store_true", help="Also fail on registered historical broken links")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable results to stdout; never write files")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     texts, paths = read_tree(args.root)
     issues = scan(texts, paths)
     mapping = {}

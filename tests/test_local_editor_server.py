@@ -19,6 +19,7 @@ import urllib.request
 import zipfile
 from decimal import Decimal
 from dataclasses import replace
+from functools import cache
 from pathlib import Path
 from unittest import mock
 
@@ -62,6 +63,15 @@ def _write_reapeaks_for(media_path: Path) -> Path:
 
 
 class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        # Share only the immutable script payload. Every page still runs the
+        # server's bundle preflight and renders its own project and settings.
+        # The first read uses the real builder; class cleanup restores it.
+        # Bundle mutation/rebuild regressions live in test_web_build.
+        cls.enterClassContext(mock.patch.object(edit, "build_editor_scripts", new=cache(edit.build_editor_scripts)))
+
     def test_about_release_url_targets_the_build_tag_and_dev_release_list(self) -> None:
         version = edit.get_app_version()
         self.assertEqual(
@@ -310,7 +320,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             return output_path
 
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -351,7 +361,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             media_path=source, sticker_root=None, stickers=[], source_media_path=source,
         )
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -833,7 +843,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 ("127.0.0.1", 0), project,
                 project_loader=load_project_in_background,
             ) as server:
-                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
                 thread.start()
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
                 try:
@@ -944,7 +954,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             ("127.0.0.1", 0), project, no_waveform=True,
             project_loader=fail_project_load,
         ) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             base_url = f"http://127.0.0.1:{server.server_address[1]}"
             try:
@@ -1210,7 +1220,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
         )
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -1229,7 +1239,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
         )
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             base_url = f"http://127.0.0.1:{server.server_address[1]}"
             request = urllib.request.Request(
@@ -1248,7 +1258,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
         )
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 self.assertEqual(server.server_address[0], "127.0.0.1")
@@ -1269,7 +1279,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         )
         output_path = self.root / "attempted.prproj"
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -1362,7 +1372,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function configureServerWorkspaceLibrary()', source)
 
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -1383,7 +1393,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         alternate.mkdir()
         (alternate / "new.png").write_bytes(b"new")
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -1455,7 +1465,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         with server_editor.EditorServer(("127.0.0.1", 0), server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
         )) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -1552,7 +1562,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         server = server_editor.EditorServer(("127.0.0.1", 0), server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
         ))
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         thread.start()
         base_url = f"http://127.0.0.1:{server.server_address[1]}"
         return server, thread, base_url
@@ -1977,7 +1987,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         server = server_editor.EditorServer(("127.0.0.1", 0), server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
         ))
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         thread.start()
         base_url = f"http://127.0.0.1:{server.server_address[1]}"
         animation = {
@@ -2050,7 +2060,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         server = server_editor.EditorServer(("127.0.0.1", 0), server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
         ))
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         thread.start()
         base_url = f"http://127.0.0.1:{server.server_address[1]}"
         graphic = {
@@ -2223,7 +2233,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 peaks_per_second=100,
             ) as server,
         ):
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             base_url = f"http://127.0.0.1:{server.server_address[1]}"
             try:
@@ -2356,7 +2366,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             no_waveform=True,
             peaks_per_second=100,
         ) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -2448,7 +2458,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             with server_editor.EditorServer(
                 ("127.0.0.1", 0), project, no_waveform=True, peaks_per_second=100,
             ) as server:
-                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
                 thread.start()
                 try:
                     base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -2565,7 +2575,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         ) as server:
             server.save_workspace("剪辑工作区", workspace, overwrite=False)
             server.save_preset_workspace("wave-right", preset_workspace)
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -2645,7 +2655,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             ("127.0.0.1", 0), project, settings_path=settings_path,
         ) as server:
             server.save_workspace("剪辑工作区", workspace, overwrite=False)
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -2692,7 +2702,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         with server_editor.EditorServer(
             ("127.0.0.1", 0), project, settings_path=settings_path,
         ) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -2814,7 +2824,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         )
         original = self.project_path.read_bytes()
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -2895,7 +2905,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         project.data["waveform"] = waveform_payload
 
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -2970,7 +2980,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
         )
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
@@ -3044,7 +3054,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             no_waveform=True,
             peaks_per_second=100,
         ) as server:
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"

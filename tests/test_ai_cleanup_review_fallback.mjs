@@ -7,7 +7,7 @@ import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-function fixture(markerShape) {
+function fixture(markerShape, typed) {
   const context = { window: {}, document: { querySelectorAll: () => [], getElementById: () => null } };
   loadEditorModule(context, 'shared/editor-utils.js');
   const core = context.window.AsrGapRemoveCore;
@@ -25,6 +25,9 @@ function fixture(markerShape) {
     { id: 'ai-first', start: 0, end: 110, name: 'AI', note: '[AI] 删除：口吃', color: '#8e4ec6' },
     { id: 'ai-second', start: 1810, end: 1930, name: 'AI', note: '[AI] 删除：填充词', color: '#8e4ec6' },
   ];
+  if (typed) {
+    for (const marker of markers.filter(marker => marker.id.startsWith('ai-'))) marker.cleanup_action = 'remove';
+  }
   const project = {
     segments: [{ id: 'lead', start: 0, end: 2000, text: '前文', items: [{ text: '前文', start: 0, end: 2000 }] },
       segment('first', 0), segment('second', 1000)],
@@ -40,9 +43,9 @@ function fixture(markerShape) {
   return { context, core, project };
 }
 
-for (const shape of ['array', 'project-field']) {
-  test(`two consecutive unsafe timing repairs revoke both cues once and retain unrelated state (${shape})`, () => {
-    const { context, core, project } = fixture(shape);
+for (const shape of ['array', 'project-field']) for (const typed of [false, true]) {
+  test(`two consecutive unsafe timing repairs revoke both cues once and retain unrelated state (${shape}, typed=${typed})`, () => {
+    const { context, core, project } = fixture(shape, typed);
     const ranges = project.gap_remove.provenance.sources.ai_cleanup;
     for (const range of ranges) {
       const cue = project.segments.find((segment) => segment.id === range.cleanup_scope.segment_id);
@@ -62,6 +65,10 @@ for (const shape of ['array', 'project-field']) {
     assert.equal(Array.isArray(project.markers), shape === 'array');
     const pending = markers.filter((marker) => marker.review?.status === 'pending');
     assert.equal(pending.length, 4);
+    for (const marker of pending) {
+      assert.equal(marker.cleanup_action, undefined, 'safe review fallback must clear automatic removal type');
+      assert.equal(context.window.AsrEditorUtils.isAiCleanupRemovalMarker(marker), false);
+    }
     assert.deepEqual(plain(pending).map(({ start, end }) => [start, end]).sort((a, b) => a[0] - b[0]),
       [[0, 110], [810, 930], [1000, 1110], [1810, 1930]]);
     assert.equal(markers.find((marker) => marker.id === 'ordinary').note, '用户备注');
