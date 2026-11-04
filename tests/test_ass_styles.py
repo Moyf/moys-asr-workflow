@@ -70,7 +70,7 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertEqual(library["assProfiles"][0]["animations"]["fad"],
                          {"enabled": True, "inMs": 250, "outMs": 250})
         self.assertEqual(library["assProfiles"][0]["animations"]["pop"],
-                         {"enabled": False, "fromScale": 0.8, "inMs": 250, "accel": 1})
+                         {"enabled": False, "fromScale": 0.7, "inMs": 120, "accel": 1})
         main.update(fontName="Arial", fontSize=72, emphasisScale=1.1, backColor="#000000",
                     backOpacity=100, bold=False, outline=4, marginV=80)
         library["assProfiles"][0]["animations"]["fad"]["enabled"] = False
@@ -80,7 +80,7 @@ class AssStyleLibraryTests(unittest.TestCase):
         # 旧库没有 pop 组：归一化补默认值；非法值按边界收敛。
         legacy = normalize_ass_style_library({})
         self.assertEqual(legacy["assProfiles"][0]["animations"]["pop"],
-                         {"enabled": False, "fromScale": 0.8, "inMs": 250, "accel": 1})
+                         {"enabled": False, "fromScale": 0.7, "inMs": 120, "accel": 1})
         library = normalize_ass_style_library({"assProfiles": [{"id": "ass", "animations": {
             "pop": {"enabled": True, "fromScale": 99, "inMs": -5, "accel": 0}},
         }]})

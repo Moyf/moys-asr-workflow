@@ -176,6 +176,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 "operationId": "ai-cleanup-cancel-test",
             })
 
+        self.api.pump.flush()
         self.api.pump.shutdown()
         scripts = "\n".join(self.window.scripts)
         self.assertFalse(result["ok"])
@@ -2394,6 +2395,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 "operationId": "llm-stream-test",
             })
 
+        self.api.pump.flush()
         self.api.pump.shutdown()
         scripts = "\n".join(self.window.scripts)
         self.assertTrue(result["ok"])
@@ -5178,13 +5180,33 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "returned non-zero exit status 1.",
         ]))
 
-    def test_launcher_api_queues_started_event_and_shutdown_flushes(self) -> None:
+    def test_launcher_shutdown_stops_event_delivery_before_cancelling_tasks(self) -> None:
+        def cancel_and_flush() -> None:
+            self.api._emit({"type": "log", "message": "cancelled"})
+            self.api.pump.flush()
+
         self.api._emit({"type": "log", "message": "queued"})
+        with mock.patch.object(self.api, "cancel_recording_review", side_effect=cancel_and_flush):
+            self.api.shutdown()
 
-        self.api.shutdown()
+        self.api.pump.start()
+        self.api._emit({"type": "log", "message": "late event"})
+        self.api.pump.flush()
 
-        self.assertTrue(self.window.scripts)
-        self.assertIn("queued", self.window.scripts[-1])
+        self.assertEqual(self.window.scripts, [])
+        self.assertIsNone(self.api.pump.thread)
+
+    def test_event_pump_skips_delivery_if_window_lookup_overlaps_shutdown(self) -> None:
+        def close_during_lookup() -> FakeWindow:
+            pump.shutdown()
+            return self.window
+
+        pump = EventPump(window_getter=close_during_lookup)
+        pump.enqueue({"type": "log", "message": "queued"})
+
+        pump.flush()
+
+        self.assertEqual(self.window.scripts, [])
 
     def test_worker_emits_done_with_json_when_optional_html_is_missing(self) -> None:
         request = TranscriptionRequest(
