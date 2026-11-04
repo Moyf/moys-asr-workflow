@@ -242,10 +242,15 @@ export function createUtilsModule(dependencies) {
     // Pop followed by a custom axis transform can have an interior extremum.
     // Its value is a convex combination of the current pop scale and target:
     // bound both endpoints of that combination instead of sampling the curve.
+    // Pop 从 fromScale 单调落到 1，窗口内缩放峰值是 max(fromScale, 1)
+    //（fromScale < 1 时峰值在落定点）；两者与目标值的凸组合都不超过
+    // 峰值缩放与目标，足以覆盖整个入场窗口。
     const popAtStart = dependencies.assStackAnimationState(profile, elapsed(start), item.end - item.start,
       { pop: item.pop || null }).popScale || 1;
-    const axisMax = key => popAtStart > 1 && profile?.animations?.t?.enabled && targets[key] !== undefined
-      ? Math.max(max(key, 100), item.style[key] * popAtStart, targets[key]) : max(key, 100);
+    const popPeak = Math.max(1, popAtStart);
+    const popApplied = popAtStart !== 1;
+    const axisMax = key => popApplied && profile?.animations?.t?.enabled && targets[key] !== undefined
+      ? Math.max(max(key, 100), item.style[key] * popPeak, targets[key]) : max(key, 100);
     const sx = axisMax('scaleX') / 100;
     const sy = axisMax('scaleY') / 100;
     const angleA = Number(styles[0].angle) || 0;

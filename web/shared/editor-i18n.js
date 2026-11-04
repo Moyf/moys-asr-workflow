@@ -858,7 +858,7 @@
     '\\fade': '\\fade', '复杂淡入淡出': 'Complex fade', '启用': 'Enable', '\\move': '\\move', '位移': 'Movement', '\\t': '\\t', '变换': 'Transform',
     '开始': 'Start', '结束': 'End', '加速度': 'Acceleration', 'ASS 标签（不含大括号）': 'ASS tags (without braces)',
     '起点倍率': 'Start scale', '入场': 'Entrance',
-    '文字从起点倍率缩小落定到正常字号。句级': 'Text shrinks from the start scale to its normal size. Sentence-level',
+    '文字从起点倍率对应的字号缓动落定到正常字号（默认 0.8，从小放大；大于 1 则从大缩小）。句级': 'Text settles from the start scale to its normal size (default 0.8, growing in; above 1 shrinks down). Sentence-level',
     '{{文字}}': '{{text}}',
     '标记复用这组参数（不受上方开关影响）；开关只控制每句自动应用。': 'markers reuse these settings regardless of the toggle above; the toggle only controls automatic application to every cue.',
     '自定义 ASS 标签（不含大括号）': 'Custom ASS tags (without braces)', '进阶动画': 'Advanced animations',
