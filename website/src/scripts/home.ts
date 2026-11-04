@@ -3,6 +3,8 @@
 export {};
 
 const root = document.documentElement;
+// 渐进增强：JS 可用时才标记 <html class="js">，CSS 据此设置 .reveal 初始隐藏；无 JS 时内容默认可见。
+root.classList.add('js');
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const THEME_KEY = 'maw-site-theme';
 
