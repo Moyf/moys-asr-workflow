@@ -16,6 +16,7 @@
 | --- | --- | --- | --- |
 | 1.10.0-beta.2 之后 | 2026-11-05 | [文本处理弹窗反馈](release1.10.0-beta.2/261105_文本处理弹窗/TEST_FEEDBACK_文本处理弹窗.md) / [独立复核](release1.10.0-beta.2/261105_文本处理弹窗/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_文本处理弹窗/文本处理弹窗.checklist.md) | 双列预览、预设导入确认、工程预填和 MASS 分组 |
 | 1.10.0-beta.2 之后 | 2026-11-05 | [编辑器处理配置复审](release1.10.0-beta.2/261105_编辑器处理配置/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_编辑器处理配置/编辑器处理配置.checklist.md) | 有序文本处理、用户默认与工程覆盖、旧库迁移 |
+| 1.10.0-beta.2 之后 | 2026-11-04 | [波形提取 stderr 死锁](release1.10.0-beta.2/261104_波形提取stderr死锁/排查记录.md) | 转写卡在「正在校验和修复时间码」实为波形提取把 ffmpeg stderr 留在管道里，4 KiB 缓冲写满后与 stdout 读取互等；stderr 改落临时文件，含矩阵探针与打包版端到端复验 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [Warma 字幕预设开发](release1.10.0-beta.2/261103_Warma字幕预设/开发记录.md) / [独立复核](release1.10.0-beta.2/261103_Warma字幕预设/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261103_Warma字幕预设/Warma字幕预设.checklist.md) | 文本处理预设与单句 ASS 样式，待真实素材核验 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [表情包 cue-left 叠加字幕轨修复](release1.10.0-beta.2/261103_表情包cue-left叠加轨/REVIEW_FINDINGS.md) | cue-left 贴放候选集加入叠加轨（主轨优先、空窗兜底）；根因在 placement 计算，含提交前自审与双向回归 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [单行双语叠加轨回归反馈与修复](release1.10.0-beta.2/261103_单行双语叠加轨回归/TEST_FEEDBACK_单行双语叠加轨.md) / [提交前自审](release1.10.0-beta.2/261103_单行双语叠加轨回归/REVIEW_FINDINGS.md) | 单行（基础）波形开双语后叠加块跳离 50% 线、字词条带压块、气泡消失；根因 `e9a4fa8e`/`fa5ae60c`，分层判定收敛 `visibility.wordTimingFullLane` + CSS 单行双语行规则，多行不变；自动化与实机探针全绿，目视验收待人工 |
