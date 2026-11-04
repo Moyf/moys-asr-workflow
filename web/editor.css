@@ -860,11 +860,16 @@
     height: 200%;
   }
   /* img 元素不收缩：多个表情包按原始高度垂直堆叠（同字幕预览的行堆叠），
-     超出层高向下延伸；单个表情包（:only-child）维持原有 contain 行为不溢出 */
+     超出层高向下延伸；单个表情包（:only-child）维持原有 contain 行为不溢出。
+     底衬/阴影/圆角走 --sticker-bg-* 变量：默认=历史草稿样式；用户开启
+     「自定义表情包背景」后由设置接线换成所配纯色并取消阴影圆角（与烧录
+     drawbox 同源，见 editor-wiring-sticker-preview.js）。 */
   #sticker-overlay-layer .sticker-overlay-content img {
     flex: 0 0 auto; max-width: 100%;
-    object-fit: contain; border-radius: var(--radius-sm);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); background: rgba(0,0,0,0.35);
+    object-fit: contain;
+    background: var(--sticker-bg, rgba(0, 0, 0, 0.35));
+    box-shadow: var(--sticker-bg-shadow, 0 2px 8px rgba(0, 0, 0, 0.5));
+    border-radius: var(--sticker-bg-radius, var(--radius-sm));
   }
   #sticker-overlay-layer .sticker-overlay-content img:only-child {
     max-height: 100%;
@@ -1457,6 +1462,9 @@
   .sticker-root-controls { display: flex; flex: 0 0 100%; gap: 8px; min-width: 0; }
   .editor-settings-panel .sticker-root-controls input[type="text"] { flex: 1 1 auto; width: auto; min-width: 0; }
   .sticker-root-controls button { flex: 0 0 auto; }
+  .sticker-background-controls { display: flex; flex: 0 0 100%; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+  .editor-settings-panel .sticker-background-controls input[type="color"] { flex: 0 0 auto; width: 42px; height: 28px; padding: 2px; }
+  .editor-settings-panel .sticker-background-controls input[type="number"] { width: 72px; flex: 0 0 auto; }
   #editor-settings-page-project-tracks .editor-settings-item { white-space: normal; }
   .multi-subtitle-setting-row[hidden] { display: none; }
   .editor-settings-field > .editor-settings-item { width: auto; }
@@ -2156,11 +2164,13 @@
   }
   /* 与舞台层相同：叠加轨表情包显示时内容区加高到 200%，给垂直堆叠留空间。 */
   .ass-frame-sticker-layer .sticker-overlay-content.has-overlay-sticker { height: 200%; }
-  /* 不带舞台层的底衬/阴影/圆角：烧录管线只 overlay 原图（server-editor/serve.py
-     的 _burn_sticker_chain_lines），成片无背景装饰，本窗口按成片观感显示。 */
+  /* 不带舞台层的默认草稿装饰：本窗口按成片观感显示，只跟随用户配置的
+     --sticker-bg（开启「自定义表情包背景」时与烧录 drawbox 一致）；
+     烧录管线见 server-editor/serve.py 的 _burn_sticker_chain_lines。 */
   .ass-frame-sticker-layer .sticker-overlay-content img {
     flex: 0 0 auto; max-width: 100%;
     object-fit: contain;
+    background: var(--sticker-bg, transparent);
   }
   .ass-frame-sticker-layer .sticker-overlay-content img:only-child { max-height: 100%; }
   .ass-frame-sticker-layer .sticker-overlay-content img:not(:only-child) { max-height: 50%; }
