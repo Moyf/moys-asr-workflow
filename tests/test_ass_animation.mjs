@@ -52,7 +52,7 @@ test('sentence marker reuses pop parameters regardless of the global enabled swi
 });
 
 test('export emits a two-stage fscx/t pop tag and never leaks the marker', () => {
-  // 默认 fromScale=0.8：文字从 80% 放大落定到样式原值（0.8→1.0 方向）。
+  // 夹具 fromScale=0.8：文字从 80% 放大落定到样式原值（0.8→1.0 方向）。
   const output = h.buildAssPayload([{ start: 0, end: 1000, text: '{{放大文字}}' }],
     { assProfile: popProfile(POP) });
   const line = dialogues(output)[0];

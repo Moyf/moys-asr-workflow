@@ -230,8 +230,8 @@ export function createUtilsModule(dependencies) {
   const ASS_DEFAULT_ANIMATIONS = Object.freeze({
     fad: Object.freeze({ enabled: true, inMs: 250, outMs: 250 }),
     // 放大出现：句级 {{…}} 标记与全局自动应用共用；enabled 只控制全局自动应用。
-    // fromScale < 1 为「从小放大落定」（默认 0.8），> 1 为从大缩小落定。
-    pop: Object.freeze({ enabled: false, fromScale: 0.8, inMs: 250, accel: 1 }),
+    // fromScale < 1 为「从小放大落定」（默认 0.7），> 1 为从大缩小落定。
+    pop: Object.freeze({ enabled: false, fromScale: 0.7, inMs: 120, accel: 1 }),
     fade: Object.freeze({
       enabled: false, alpha1: 0, alpha2: 255, alpha3: 0,
       t1: 0, t2: 250, t3: 750, t4: 1000,
@@ -360,11 +360,11 @@ export function createUtilsModule(dependencies) {
         outMs: normalizeAssLibraryNumber(fad.outMs, 250, 0, 60000),
       },
       // 单句 {{…}} 标记在全局关闭时仍复用这组参数，enabled 只管全局自动应用。
-      // fromScale 允许 < 1（放大出现，默认 0.8），下限 0.3 防 0/负值。
+      // fromScale 允许 < 1（放大出现，默认 0.7），下限 0.3 防 0/负值。
       pop: {
         enabled: normalizeAssLibraryBoolean(pop.enabled),
-        fromScale: normalizeAssLibraryNumber(pop.fromScale, 0.8, 0.3, 10, false),
-        inMs: normalizeAssLibraryNumber(pop.inMs, 250, 0, 60000),
+        fromScale: normalizeAssLibraryNumber(pop.fromScale, 0.7, 0.3, 10, false),
+        inMs: normalizeAssLibraryNumber(pop.inMs, 120, 0, 60000),
         accel: normalizeAssLibraryNumber(pop.accel, 1, 0.01, 100, false),
       },
       fade: (() => {

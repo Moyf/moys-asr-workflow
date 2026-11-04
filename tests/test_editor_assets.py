@@ -266,7 +266,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         canvas = edit.read_web_asset("editor/styles/editor-wiring-ass-canvas.js")
         self.assertIn("animation.popScale", canvas)
         styles_py = (ROOT / "maw" / "ass_styles.py").read_text(encoding="utf-8")
-        self.assertIn('"pop": {"enabled": False, "fromScale": 0.8, "inMs": 250, "accel": 1}', styles_py)
+        self.assertIn('"pop": {"enabled": False, "fromScale": 0.7, "inMs": 120, "accel": 1}', styles_py)
 
     def test_ass_frame_preview_wires_template_module_and_styles(self) -> None:
         # 单帧实际画面预览：设置页入口按钮、浮层窗口、接线模块与样式必须同时存在。
