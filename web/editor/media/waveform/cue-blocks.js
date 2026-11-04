@@ -1,7 +1,7 @@
 // cue-blocks: waveform class methods with explicit dependencies.
 export function createWaveformModule(dependencies) {
   'use strict';
-  const { colorForSegment, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, formatCompact, gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, hasSubtitleColor, isActiveCueVisualHit, localizedWaveformMessage } = dependencies;
+  const { colorForSegment, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, formatCompact, gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, hasSubtitleColor, isActiveCueVisualHit, localizedWaveformMessage, wordTimingFullLane: wordTimingFullLanePredicate } = dependencies;
 
   class WaveformMethods {
 
@@ -271,11 +271,11 @@ export function createWaveformModule(dependencies) {
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
       // 传统模式沿用旧版系统光标（ew-resize）；原创边界光标只在
       const multiLane = this.options.multiSubtitleVisible?.() === true;
-      // 非双语行：单行波形或行高 ≥96 的多行波形上下等高分层，整句保留
-      // 拖动与边界操作；低行高或双语行沿用紧凑叠加布局。
-      const wordTimingFullLane = this.options.wordTiming?.enabled
-        && !multiLane && (this.settings.mode === 'basic'
-          || (this.settings.mode === 'multi' && (Number(this.settings.rowHeight) || 0) >= 96));
+      // 单行波形始终上下等高分层（双语只增补底部译文格，不改变叠加轨与
+      // 字词显示布局）；多行波形仅非双语行且行高 ≥96 时分层，其余沿用
+      // 紧凑叠加布局。判定真源：visibility.wordTimingFullLane。
+      const wordTimingFullLane = wordTimingFullLanePredicate(
+        this.options.wordTiming?.enabled, this.settings.mode, this.settings.rowHeight, multiLane);
       const segments = this.options.getSegments('main');
       const selected = this.options.getSelection('main');
       const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
@@ -398,7 +398,10 @@ export function createWaveformModule(dependencies) {
         // createRow 返回后才写 row.style.height，这里读内联样式恒为空，
         // cover-mode 会永远不生效。
         // 双语行叠加块放在主字幕格上方（CSS 同步），需要高度 = 上下 inset
-        // (14) + 两格 lane + 块 35 + 间隙 1；放不下时同样回退 cover。
+        // (14) + 两格 lane + 块 35 + 间隙 1；放不下时同样回退 cover。仅多行
+        // 模式适用：单行双语行（basic 恒无内联 height，cover 恒 false）由
+        // waveform.css 的 max() 兜底保持 50% 线，与共享判定
+        // visibility.wordTimingFullLane 的单行语义一致。
         const rowHeightPx = this.settings.mode === 'multi'
           ? Number(this.settings.rowHeight) || 0
           : Number.parseFloat(row.style.height) || 0;
@@ -546,10 +549,11 @@ export function createWaveformModule(dependencies) {
       const segments = this.options.getSegments(track);
       if (!Array.isArray(segments) || segments.length < 2) return;
       // 与 appendCueBlocks/appendWordBlocks 的分层判定一致：字词条带在独立
-      // 一层（full）时中缝区与其不重叠，词块手柄无需让位。
-      const wordTimingFullLane = this.options.multiSubtitleVisible?.() !== true
-        && (this.settings.mode === 'basic'
-          || (this.settings.mode === 'multi' && (Number(this.settings.rowHeight) || 0) >= 96));
+      // 一层（full）时中缝区与其不重叠，词块手柄无需让位。判定真源：
+      // visibility.wordTimingFullLane。
+      const multiLane = this.options.multiSubtitleVisible?.() === true;
+      const wordTimingFullLane = wordTimingFullLanePredicate(
+        this.options.wordTiming?.enabled, this.settings.mode, this.settings.rowHeight, multiLane);
       const clock = this.cueTiming();
       const duration = Math.max(1, endMs - startMs);
       const firstIndex = Math.max(0, firstCueIndexOverlapping(segments, startMs) - 1);
@@ -729,8 +733,9 @@ export function createWaveformModule(dependencies) {
       const multiLane = this.options.multiSubtitleVisible?.() === true;
       // 句块手柄存在性（与 appendCueBlocks 创建条件一致）：非字词模式按
       // 窗口边界；字词 full lane 常显；紧凑模式仅选中句。平移不改选区。
-      const fullLane = wordTimingEnabled && !multiLane && (this.settings.mode === 'basic'
-        || (this.settings.mode === 'multi' && (Number(this.settings.rowHeight) || 0) >= 96));
+      // 判定真源：visibility.wordTimingFullLane。
+      const fullLane = wordTimingFullLanePredicate(
+        wordTimingEnabled, this.settings.mode, this.settings.rowHeight, multiLane);
       const selected = this.options.getSelection('main');
       for (const block of blocks) {
         const index = Number(block.dataset.idx);

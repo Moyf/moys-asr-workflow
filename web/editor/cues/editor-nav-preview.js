@@ -264,6 +264,7 @@
     if (!target || !Number.isFinite(timeMs) || !MaweMediaPlayback.hasLoadedMedia()
         || !Number.isFinite(duration) || duration <= 0) return false;
     MaweJklPlayback.stopJklReversePlayback({ render: false });
+    window.MaweGapPlayback?.cancelPendingPlayback();
     MaweCoreState.player.pause();
     return MaweMediaPlayback.seekMediaTo(timeMs / 1000);
   }

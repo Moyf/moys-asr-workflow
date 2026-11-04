@@ -116,10 +116,12 @@ class ExistingMarkersPreservationTest(AiCleanupTestCase):
         )
         self.assertEqual(deletion["note"], "[AI] 删除：口误")
         self.assertNotIn("review", deletion)
+        self.assertEqual(deletion["cleanup_action"], "remove")
         uncertain = _ai_annotation(segment, "替代项", "删除：版本尚不能覆盖原句")
         self.assertEqual(uncertain["note"], "[AI] 替代项：版本尚不能覆盖原句")
         self.assertEqual(uncertain["end"], 900)
         self.assertEqual(uncertain["review"]["status"], "pending")
+        self.assertNotIn("cleanup_action", uncertain)
 
     def test_new_review_markers_preserve_existing_annotations_and_ids(self) -> None:
         existing = {
