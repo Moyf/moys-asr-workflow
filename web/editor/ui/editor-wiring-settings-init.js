@@ -200,7 +200,7 @@ MaweDom.multiSubtitleToggle?.addEventListener('change', () => {
     if (next) MaweMultiSubtitleCore.ensureEmptyExtensionTrack(multi);
     multi._dirty = true;
     // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
-    command.commit({ cueList: true, waveform: 'full' });
+    command.commit({ cueList: true, waveform: 'full', preview: 'refresh' });
     // 先启用空副轨；快速导入询问只决定是否立即选择 SRT。
     if (!promptImportSecondSrt || !confirm(MaweMultiSubtitleCore.MULTI_SUBTITLE_IMPORT_PROMPT)) return;
     MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
