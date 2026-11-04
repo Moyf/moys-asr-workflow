@@ -3824,9 +3824,9 @@ test('prefers the later subtitle at a shared playhead boundary', () => {
 
 test('finds the first enabled subtitle for optional SRT alignment', () => {
   const segments = [
-    { start: 1200, disabled: true },
-    { start: 2450, disabled: false },
-    { start: 4000 },
+    { start: 1200, text: 'disabled', disabled: true },
+    { start: 2450, text: 'first', disabled: false },
+    { start: 4000, text: 'next' },
   ];
   assert.equal(helpers.getSrtExportFirstIndex(segments, true), 1);
   assert.equal(helpers.getSrtExportFirstIndex(segments, false), -1);
@@ -3834,6 +3834,7 @@ test('finds the first enabled subtitle for optional SRT alignment', () => {
   assert.equal(helpers.getSrtExportOffset(segments, false), 0);
   assert.equal(helpers.getSrtExportOffset(segments), 0);
   assert.equal(helpers.getSrtExportOffset([{ start: 500, disabled: true }], true), 0);
+  assert.equal(helpers.getSrtExportFirstIndex([{ start: 500, text: '' }, { start: 800, text: 'visible' }], true), 1);
 });
 
 

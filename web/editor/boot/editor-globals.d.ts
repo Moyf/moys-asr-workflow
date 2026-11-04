@@ -46,6 +46,7 @@ interface ProjectSegment {
   disabled?: boolean;
   speaker?: string;
   assOverride?: AssCueOverride;
+  assStyle?: Record<string, any>;
   color?: string | ProjectColorMark;
   color_ref?: ProjectGroupRef | null;
   sticker?: unknown;

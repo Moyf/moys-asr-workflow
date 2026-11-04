@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [Warma 字幕预设开发](release1.10.0-beta.2/261103_Warma字幕预设/开发记录.md) / [独立复核](release1.10.0-beta.2/261103_Warma字幕预设/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261103_Warma字幕预设/Warma字幕预设.checklist.md) | 文本处理预设与单句 ASS 样式，待真实素材核验 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [单行双语叠加轨回归反馈与修复](release1.10.0-beta.2/261103_单行双语叠加轨回归/TEST_FEEDBACK_单行双语叠加轨.md) / [提交前自审](release1.10.0-beta.2/261103_单行双语叠加轨回归/REVIEW_FINDINGS.md) | 单行（基础）波形开双语后叠加块跳离 50% 线、字词条带压块、气泡消失；根因 `e9a4fa8e`/`fa5ae60c`，分层判定收敛 `visibility.wordTimingFullLane` + CSS 单行双语行规则，多行不变；自动化与实机探针全绿，目视验收待人工 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [Gap 播放漏音修复](release1.10.0-beta.2/261103_AI口播恢复与Gap试听/排查记录.md) / [独立自审](release1.10.0-beta.2/261103_AI口播恢复与Gap试听/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261103_AI口播恢复与Gap试听/Gap播放.checklist.md) | 音频时钟门控与暂停交接排空旧 PCM；452 项回归、6 次真实音频采样通过，独立审查放行；原片人工实听待核验，标记恢复入口另行提交 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [AI 标记恢复](release1.10.0-beta.2/261103_AI标记恢复/修复记录.md) / [独立复核](release1.10.0-beta.2/261103_AI标记恢复/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261103_AI标记恢复/AI标记恢复.checklist.md) | AI 自动移除标记的实际状态与恢复入口；独立于播放修复 PR 327 |

@@ -145,10 +145,17 @@ MaweDom.textProcessModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.textProcessModal) MaweTextProcess.closeTextProcessModal();
 });
 MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
-  const options = MaweTextProcess.getTextProcessOptions();
-  const result = {
-    rows: MaweTextProcess.buildTextProcessPreview(MaweTextProcess.textProcessTargets(), options),
-  };
+  if (MaweTextProcess.textProcessConfirm.disabled) return;
+  const rows = MaweTextProcess.textProcessReadyRows;
+  if (!rows || rows.some((row) => {
+    const segment = MaweTextProcess.textProcessTargetSegments(row)[row.index];
+    return !segment || JSON.stringify(segment) !== row.snapshot;
+  })) {
+    MaweHint.flashHint('字幕已变化，请重新查看预览', 'warning');
+    MaweTextProcess.renderTextProcessPreview();
+    return;
+  }
+  const result = { rows };
   result.changedCount = result.rows.filter((row) => row.changed).length;
   if (!result.changedCount) {
     MaweHint.flashHint('当前文本处理对于选中的字幕没有任何影响，未作改动', 'invalid');
@@ -175,12 +182,12 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
   });
   const nextMainSegments = mainDraftTexts
     ? window.AsrEditorUtils.applyTimedTextEdit(MaweBoot.DATA.segments, mainDraftTexts,
-      { rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule })
+      { rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule, preserveRows: true })
     : null;
   const nextExtensionSegments = [];
   for (const draft of extensionDrafts.values()) {
     const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(draft.track.segments, draft.texts,
-      { rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule });
+      { rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule, preserveRows: true });
     if (!nextSegments) {
       MaweHint.flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
       return;
@@ -191,6 +198,10 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
     MaweHint.flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
     return;
   }
+  const countLostTimings = (before, after) => before.reduce((count, segment, index) =>
+    count + (Array.isArray(segment.items) && segment.items.length > 0 && !after[index]?.items?.length ? 1 : 0), 0);
+  const lostTimings = (nextMainSegments ? countLostTimings(MaweBoot.DATA.segments, nextMainSegments) : 0)
+    + nextExtensionSegments.reduce((count, entry) => count + countLostTimings(entry.track.segments, entry.segments), 0);
   return MaweCommands.run('文本处理', (command) => {
     if (nextMainSegments) {
       MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...nextMainSegments);
@@ -208,6 +219,7 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
 
     MaweHistory.updateUndoRedoButtons();
     MaweHint.flashHint(`已应用文本处理：${result.changedCount} 条字幕`, 'success');
+    if (lostTimings) MaweHint.flashHint(`${lostTimings} 条字幕的字词时间码已清除，请按需检查`, 'warning');
   });
 });
 

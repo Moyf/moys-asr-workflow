@@ -60,6 +60,14 @@
   let textProcessWrapPresets = [];
   let textProcessPreviewExpanded = false;
   const textProcessPreviewOpenRows = new Map();
+  let textProcessPreviewRevision = 0;
+  let textProcessReadyRows = null;
+
+  function invalidatePreview() {
+    textProcessPreviewRevision += 1;
+    textProcessReadyRows = null;
+    textProcessConfirm.disabled = true;
+  }
 
 
   let textProcessSelectionSnapshot = [];
@@ -116,19 +124,6 @@
 
 
 
-  function buildTextProcessPreview(targets, options) {
-    return (Array.isArray(targets) ? targets : []).flatMap((target) => {
-      const segments = textProcessTargetSegments(target);
-      const segment = segments[target.index];
-      if (!segment) return [];
-      const before = String(segment.text == null ? '' : segment.text);
-      const after = window.AsrEditorUtils.applyTextProcessing(before, options);
-      return [{ ...target, before, after, changed: before !== after }];
-    });
-  }
-
-
-
   function getTextProcessOptions() {
     const wraps = textProcessWrapPresets.map((preset) => preset.id === 'custom'
       ? { left: textProcessPrefixInput.value, right: textProcessSuffixInput.value } : preset);
@@ -149,9 +144,9 @@
 
 
   function refreshTextProcessScopeInfo() {
-    const selected = textProcessScope && textProcessScope.length;
+    const selected = textProcessSelectedOnlyCb.checked;
     textProcessScopeInfo.textContent = selected
-      ? `当前范围：仅选中的 ${textProcessScope.length} 条字幕`
+      ? `当前范围：仅选中的 ${textProcessScope?.length || 0} 条字幕`
       : `当前范围：全部 ${MaweBoot.DATA.segments.length} 条字幕`;
     textProcessScopeInfo.classList.toggle('selected', Boolean(selected));
   }
@@ -170,23 +165,54 @@
 
 
 
-  function renderTextProcessPreview() {
+  async function renderTextProcessPreview() {
+    const revision = ++textProcessPreviewRevision;
+    textProcessReadyRows = null;
+    textProcessConfirm.disabled = true;
     const options = getTextProcessOptions();
+    const rules = window.MaweTextPresets?.rules() || [];
     const wrapHasCharacters = options.addWrapChars && (options.wrapLeft || options.wrapRight);
     const hasOperation = textProcessTrim.checked || textProcessCapitalize.checked
-      || textProcessConvertNumbers.checked || textProcessStripMarkdown.checked || wrapHasCharacters;
+      || textProcessConvertNumbers.checked || textProcessStripMarkdown.checked || wrapHasCharacters
+      || rules.some((rule) => rule.enabled);
     const targets = textProcessTargets();
     textProcessPreview.querySelectorAll('details[data-target]').forEach((details) => {
       textProcessPreviewOpenRows.set(details.dataset.target, details.open);
     });
     textProcessPreview.replaceChildren();
+    if (textProcessSelectedOnlyCb.checked && !textProcessSelectionSnapshot.length) {
+      textProcessPreview.textContent = '请先选择要处理的字幕';
+      textProcessConfirm.disabled = true;
+      return;
+    }
     if (!hasOperation) {
       textProcessPreview.textContent = '请选择至少一项文本处理操作';
       textProcessPreview.style.color = '';
       textProcessConfirm.disabled = true;
       return;
     }
-    const rows = buildTextProcessPreview(targets, options);
+    let rows;
+    try {
+      const source = targets.flatMap((target) => {
+        const segment = textProcessTargetSegments(target)[target.index];
+        return segment ? [{ ...target, before: String(segment.text ?? ''), snapshot: JSON.stringify(segment) }] : [];
+      });
+      textProcessPreview.textContent = '正在生成预览…';
+      const replacements = await window.MaweTextPresets.runRules(source.map((row) => row.before), JSON.parse(JSON.stringify(rules)));
+      if (revision !== textProcessPreviewRevision) return;
+      rows = source.map((row, index) => {
+        const after = window.AsrEditorUtils.applyTextProcessing(replacements[index], options);
+        return { ...row, after, changed: row.before !== after };
+      });
+    }
+    catch (error) {
+      if (revision !== textProcessPreviewRevision) return;
+      textProcessPreview.textContent = `替换规则错误：${error.message}`;
+      textProcessConfirm.disabled = true;
+      return;
+    }
+    textProcessPreview.replaceChildren();
+    textProcessReadyRows = rows;
     const result = {
       targetCount: rows.length,
       changedCount: rows.filter((row) => row.changed).length,
@@ -222,10 +248,20 @@
       details.appendChild(title);
       const before = document.createElement('div');
       before.className = 'replace-preview-before';
-      before.textContent = `处理前：${row.before}`;
+      const beforeLabel = document.createElement('span');
+      beforeLabel.textContent = '处理前：';
+      const beforeText = document.createElement('span');
+      beforeText.dataset.markerProjectContent = '';
+      beforeText.textContent = row.before;
+      before.append(beforeLabel, beforeText);
       const after = document.createElement('div');
       after.className = 'replace-preview-after';
-      after.textContent = `处理后：${row.after}`;
+      const afterLabel = document.createElement('span');
+      afterLabel.textContent = '处理后：';
+      const afterText = document.createElement('span');
+      afterText.dataset.markerProjectContent = '';
+      afterText.textContent = row.after;
+      after.append(afterLabel, afterText);
       details.append(before, after);
       textProcessPreview.appendChild(details);
     });
@@ -261,6 +297,8 @@
 
 
   function closeTextProcessModal() {
+    textProcessPreviewRevision += 1;
+    textProcessReadyRows = null;
     MaweDom.textProcessModal.classList.remove('show');
   }
 
@@ -355,6 +393,7 @@
     textProcessSuffixInput.value = '';
     refreshTextProcessInputState();
     MaweDom.textProcessModal.classList.add('show');
+    window.MaweTextPresets?.onOpen();
     renderTextProcessPreview();
     setTimeout(() => textProcessTrim.focus(), 50);
   }
@@ -382,11 +421,12 @@
     textProcessTargetSegments,
     textProcessTargetLabel,
     textProcessTargets,
-    buildTextProcessPreview,
     getTextProcessOptions,
     refreshTextProcessScopeInfo,
     refreshTextProcessSelectionControl,
     renderTextProcessPreview,
+    invalidatePreview,
+    get textProcessReadyRows() { return textProcessReadyRows; },
     refreshTextProcessInputState,
     closeTextProcessModal,
     openTextProcessModal,

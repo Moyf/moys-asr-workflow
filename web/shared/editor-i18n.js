@@ -1320,6 +1320,26 @@
     '当前有未应用的文本修改，确定关闭编辑窗口吗？': 'You have unapplied text changes. Close the editing window?',
     '区分大小写': 'Case sensitive',
     '正则表达式': 'Regular expression',
+    '处理预设': 'Processing preset', '保存预设': 'Save preset', '另存预设': 'Save as new preset',
+    '删除预设': 'Delete preset', '导出库': 'Export library', '导入库': 'Import library',
+    '替换规则（按顺序执行，之后执行下方操作）': 'Replacement rules (run in order before the operations below)',
+    '添加规则': 'Add rule', '语气词列表（每行一个，按原文删除）': 'Filler words (one per line, deleted literally)',
+    '添加语气词规则': 'Add filler rules', '启用': 'Enabled', '正则': 'Regex', '上移': 'Move up', '下移': 'Move down',
+    '单句 ASS 样式': 'Cue ASS style', '继承默认样式': 'Inherit default style',
+    '正在加载预设库…': 'Loading preset library…', '预设库已保存': 'Preset library saved',
+    '请先选择要处理的字幕': 'Select subtitles to process first', '正在生成预览…': 'Preparing preview…',
+    '预设名称': 'Preset name', '删除这个预设？': 'Delete this preset?',
+    '导入会替换当前预设库，是否继续？': 'Importing will replace the current preset library. Continue?',
+    '该预设包含 ASS 特殊文本样式，请先开启 ASS 模式': 'This preset contains ASS text styles. Enable ASS mode first.',
+    '规则运行超时，请简化正则表达式': 'The rules timed out. Simplify the regular expression.',
+    '无法运行替换规则': 'Could not run replacement rules', '预览已更新': 'Preview updated',
+    '预设库格式无效': 'Invalid preset library', '预设格式无效': 'Invalid preset',
+    '预设操作格式无效': 'Invalid preset operations', '替换规则格式无效': 'Invalid replacement rule',
+    '预设库已被其他页面修改，请重新打开': 'The preset library was changed by another page. Reopen text processing and try again.',
+    '文件过大': 'File is too large',
+    '请选择至少一项文本处理操作': 'Select at least one text-processing operation',
+    '字幕已变化，请重新查看预览': 'Subtitles changed. Review the preview again.',
+    '无法应用文本处理：字幕行结构发生了变化': 'Cannot apply text processing because the subtitle structure changed.',
     '输入查找内容查看预览': 'Enter text to preview replacements',
     '文本处理…': 'Text processing…', '文本处理': 'Text processing', '仅处理选中的字幕': 'Process selected subtitles only', '需要先选中至少1条字幕才可启用': 'Select at least one subtitle first to enable this option',
     'Trim': 'Trim', '修剪前后空白': 'Trim surrounding whitespace', '去除字幕前方和后方的空格': 'Remove spaces before and after the subtitle text', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
@@ -1684,6 +1704,29 @@
     if (lang !== EN) return text;
     if (EN_TEXT[text]) return EN_TEXT[text];
     if (EN_ATTR[text]) return EN_ATTR[text];
+    let presetRule = /^规则 (\d+) (查找|替换为)$/.exec(text);
+    if (presetRule) return `Rule ${presetRule[1]} ${presetRule[2] === '查找' ? 'find' : 'replace with'}`;
+    presetRule = /^第 (\d+) 条规则的查找内容为空$/.exec(text);
+    if (presetRule) return `Rule ${presetRule[1]}: Enter text to find.`;
+    presetRule = /^第 (\d+) 条规则：(.+)$/.exec(text);
+    if (presetRule) return `Rule ${presetRule[1]}: ${translateText(presetRule[2], EN)}`;
+    presetRule = /^(替换规则错误|加载失败，无法保存|导入失败)：(.+)$/.exec(text);
+    if (presetRule) {
+      const prefix = { '替换规则错误': 'Replacement rule error', '加载失败，无法保存': 'Could not load the preset library; saving is unavailable', '导入失败': 'Import failed' }[presetRule[1]];
+      return `${prefix}: ${translateText(presetRule[2], EN)}`;
+    }
+    presetRule = /^保存失败：(预设库格式无效|预设格式无效|预设操作格式无效|替换规则格式无效|预设库已被其他页面修改，请重新打开)$/.exec(text);
+    if (presetRule) return `Save failed: ${translateText(presetRule[1], EN)}`;
+    presetRule = /^(主字幕|副字幕)第 (\d+) 条$/.exec(text);
+    if (presetRule) return `${presetRule[1] === '主字幕' ? 'Main subtitle' : 'Secondary subtitle'} ${presetRule[2]}`;
+    presetRule = /^将处理 (\d+) 条字幕，预计修改 (\d+) 条（展开查看前后文本）$/.exec(text);
+    if (presetRule) return `Processing ${presetRule[1]} subtitles; ${presetRule[2]} will change (expand to compare)`;
+    presetRule = /^选定的 (\d+) 条字幕不会发生变化$/.exec(text);
+    if (presetRule) return `None of the ${presetRule[1]} selected subtitles will change`;
+    presetRule = /^已应用文本处理：(\d+) 条字幕$/.exec(text);
+    if (presetRule) return `Text processing applied to ${presetRule[1]} subtitles`;
+    presetRule = /^(\d+) 条字幕的字词时间码已清除，请按需检查$/.exec(text);
+    if (presetRule) return `Word timings were cleared from ${presetRule[1]} subtitles. Check them as needed.`;
     let scope = /^当前范围：全部 (\d+) 条字幕$/.exec(text);
     if (scope) return `Current scope: all ${scope[1]} subtitles`;
     scope = /^当前范围：仅选中的 (\d+) 条字幕$/.exec(text);

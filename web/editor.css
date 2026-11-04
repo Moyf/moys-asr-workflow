@@ -3410,6 +3410,7 @@
 
   .text-process-modal {
     width: min(620px, calc(100vw - 24px)); min-width: 0; max-width: none;
+    max-height: calc(100vh - 24px); overflow-y: auto;
   }
   .text-process-scope-info {
     margin: 0 0 7px; color: var(--text-muted); font-size: 12px;
@@ -3469,6 +3470,14 @@
   }
   .text-process-custom-wrap-fields label { margin: 0; white-space: nowrap; }
   .text-process-preview { margin-top: 10px !important; min-height: 42px !important; }
+  .text-preset-controls, .text-preset-rules { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .text-preset-controls + .text-process-scope-info { margin-top: 8px; }
+  .text-preset-rules + .text-process-operations { margin-top: 12px; }
+  .text-preset-rules > div, .text-preset-rules > label, .text-preset-rules > textarea { flex-basis: 100%; }
+  .text-preset-rule { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  .text-preset-rule input[type="text"] { flex: 1 1 120px; min-width: 0; }
+  .text-preset-import input { width: 150px; }
+  .cue-ass-style-controls { display: flex; align-items: center; gap: 8px; margin-top: 8px; margin-bottom: 8px; }
   .text-process-preview .replace-preview-row { margin-top: 5px; }
 
   /* 纯文本编辑 MVP：保留字幕行结构，集中展示文字修改与字词时间码影响。 */

@@ -2128,6 +2128,9 @@ __WAVEFORM_CSS__
       </div>
       <div class="cue-panel-text-wrap">
         <div class="cue-panel-target" id="cue-panel-target">未选择</div>
+        <label id="cue-ass-style-controls" class="cue-ass-style-controls">单句 ASS 样式
+          <select id="cue-ass-style" aria-label="单句 ASS 样式"></select>
+        </label>
         <div class="cue-panel-text-row">
           <textarea id="cue-panel-text" rows="3" placeholder="选择一条字幕开始编辑…"></textarea>
           <div id="ass-cue-position" class="ass-cue-position" hidden aria-label="逐句 ASS 定位" tabindex="0" title="PlayRes 坐标；方向键微调，Shift：10 像素；重置恢复全局排布">
@@ -2516,12 +2519,30 @@ __WAVEFORM_CSS__
     <p class="modal-desc" id="text-process-description">
       选择要对字幕批量执行的文本操作（若处理结尾为空，会保留空字幕行）。
     </p>
+    <div class="text-preset-controls">
+      <label for="text-preset-select">处理预设</label>
+      <select id="text-preset-select"><option value="">自定义</option></select>
+      <button type="button" id="text-preset-save">保存预设</button>
+      <button type="button" id="text-preset-save-as">另存预设</button>
+      <button type="button" id="text-preset-delete">删除预设</button>
+      <button type="button" id="text-preset-export">导出库</button>
+      <label class="text-preset-import">导入库<input type="file" id="text-preset-import" accept="application/json,.json"></label>
+      <div id="text-preset-status" role="status"></div>
+    </div>
     <div id="text-process-scope-info" class="text-process-scope-info">当前范围：全部字幕</div>
     <label class="modal-check-row" for="text-process-selected-only">
       <input type="checkbox" id="text-process-selected-only" disabled>
       <span>仅处理选中的字幕</span>
       <span id="text-process-selected-only-hint" class="modal-hint batch-selected-only-hint" hidden>需要先选中至少1条字幕才可启用</span>
     </label>
+    <div class="text-preset-rules">
+      <div>替换规则（按顺序执行，之后执行下方操作）</div>
+      <div id="text-preset-rules"></div>
+      <button type="button" id="text-preset-add-rule">添加规则</button>
+      <label for="text-preset-fillers">语气词列表（每行一个，按原文删除）</label>
+      <textarea id="text-preset-fillers" rows="2"></textarea>
+      <button type="button" id="text-preset-add-fillers">添加语气词规则</button>
+    </div>
     <div class="text-process-operations" aria-label="文本处理操作">
       <label class="text-process-operation" for="text-process-trim">
         <input type="checkbox" id="text-process-trim">
