@@ -133,6 +133,75 @@ test('windows across two cues split into per-cue placements', () => {
   assert.notEqual(placements[0].x, placements[1].x);
 });
 
+// === 叠加字幕轨参与 cue-left 贴放 ===
+// 叠加轨字幕（role 'overlay'）与主轨同一份排版计划、同样烧录进 ASS：主轨
+// 空窗时表情包贴叠加轨字幕左侧；同屏时段主轨优先。offset.x=60 让叠加句
+// 几何可区分：inkLeft = 900 + 60 − 30 = 930 → x = 930 − 7 − 240 = 683。
+function makeOverlayPlan() {
+  const plan = makePlan();
+  plan.slices[0].items[0].start = 1000; // 主轨 [1000,2000]，[0,1000] 只有叠加字幕
+  plan.slices[0].items.push({
+    role: 'overlay', start: 0, end: 1000, fontSize: 60, cueScale: 1,
+    alignment: 2, manual: false, absolute: false,
+    offset: { x: 60, y: -10 },
+    rect: { left: -30, top: -80, right: 500, bottom: 10 },
+  });
+  return plan;
+}
+
+test('overlay-track cues place the sticker when the main track is silent', () => {
+  const plan = makeOverlayPlan();
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 800 }],
+  });
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].align, 'right');
+  assert.equal(placements[0].x, 683);
+});
+
+test('main-track cues win when both tracks are on screen', () => {
+  const plan = makePlan();
+  plan.slices[0].items.push({
+    role: 'overlay', start: 1000, end: 3000, fontSize: 60, cueScale: 1,
+    alignment: 2, manual: false, absolute: false,
+    offset: { x: 60, y: -10 },
+    rect: { left: -30, top: -80, right: 500, bottom: 10 },
+  });
+  // 窗口 [1000,2000] 与主轨 [0,2000]、叠加轨 [1000,3000] 同时重叠：
+  // 贴主字幕左侧（643），不贴叠加字幕（683）。
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 1000, end: 2000 }],
+  });
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].align, 'right');
+  assert.equal(placements[0].x, 643);
+});
+
+test('a window across main-then-overlay cues switches target per segment', () => {
+  // 叠加句起止是切分边界：[0,1000] 贴叠加轨字幕、[1000,2000] 贴主轨字幕，
+  // 两段几何不同各自成 placement。
+  const plan = makeOverlayPlan();
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 2000 }],
+  });
+  assert.equal(placements.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(placements[0].intervals)), [{ start: 0, end: 1000 }]);
+  assert.equal(placements[0].x, 683);
+  assert.deepEqual(JSON.parse(JSON.stringify(placements[1].intervals)), [{ start: 1000, end: 2000 }]);
+  assert.equal(placements[1].x, 643);
+});
+
+test('overlay cues inside legacy slices still fall back to the fixed box', () => {
+  const plan = makeOverlayPlan();
+  plan.slices[0].legacy = true;
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 800 }],
+  });
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].x, FIXED_BOX.x);
+  assert.equal(placements[0].align, 'center');
+});
+
 test('window in a cue gap falls back to the fixed box', () => {
   const plan = makePlan();
   plan.slices[0].items[0].start = 1000;

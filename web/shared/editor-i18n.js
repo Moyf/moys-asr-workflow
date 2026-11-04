@@ -131,7 +131,7 @@
     '烧录视频时的表情包位置': 'Sticker placement for burned-in videos',
     '固定位置（预览层设定框）': 'Fixed position (preview layer box)',
     '字幕第一个字左侧': 'Left of the first subtitle character',
-    '「字幕第一个字左侧」按 ASS 字幕的实际位置贴放；SRT 字幕、字幕重叠 / 句间空隙 / 特殊排版无法贴放时自动回退固定位置。同屏多张表情包时固定位置为居中叠放（预览是垂直堆叠）。预览层始终显示固定位置，最终以烧录结果为准。': '“Left of the first subtitle character” places stickers next to each ASS subtitle at its actual position; SRT subtitles, overlapping cues, gaps, or unsupported layouts fall back to the fixed position. With multiple stickers on screen the fixed position stacks them centered (the preview stacks them vertically). The preview layer always shows the fixed position; the burned video is the source of truth.',
+    '「字幕第一个字左侧」按 ASS 字幕的实际位置贴放，主字幕与叠加字幕轨都参与（同屏时贴主字幕左侧）；SRT 字幕、字幕重叠 / 句间空隙 / 特殊排版无法贴放时自动回退固定位置。同屏多张表情包时固定位置为居中叠放（预览是垂直堆叠）。预览层始终显示固定位置，最终以烧录结果为准。': '“Left of the first subtitle character” places stickers next to each ASS subtitle at its actual position; both the main and overlay subtitle tracks take part (the main track wins when both are on screen). SRT subtitles, overlapping cues, gaps, or unsupported layouts fall back to the fixed position. With multiple stickers on screen the fixed position stacks them centered (the preview stacks them vertically). The preview layer always shows the fixed position; the burned video is the source of truth.',
     '显示语言': 'Display language',
     '关闭覆盖时使用': 'Disabling the override uses the ',
     '，不把默认路径写入工程。': ' without writing that path into the project.',
