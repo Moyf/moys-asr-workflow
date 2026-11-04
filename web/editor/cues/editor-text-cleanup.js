@@ -84,7 +84,7 @@ export function initMaweTextCleanup() {
     MaweHint.flashHint('媒体尚不可 seek；请等待加载完成或用 file:// 直接打开 HTML', 'warning');
   }
   try {
-    MaweCoreState.player.currentTime = Math.max(0, timeSec);
+    MaweMediaPlayback.setPlayerCurrentTime(Math.max(0, timeSec));
     if (mouseClick) window.MaweKeyboardGuards.pausePlaybackAfterMouseClick();
     if (!dragPreview) {
       MawePlaybackLoop.update();

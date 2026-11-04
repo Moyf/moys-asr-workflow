@@ -108,6 +108,7 @@
       return false;
     }
     jklReversePlaying = true;
+    window.MaweGapPlayback?.cancelPendingPlayback();
     jklReverseLastTimestamp = 0;
     MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
     if (!MaweCoreState.player.paused) MaweCoreState.player.pause();
@@ -125,6 +126,7 @@
     }
     stopJklReversePlayback({ render: false });
     MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(jklPlaybackRate));
+    if (window.MaweGapPlayback?.pendingPlayback) return true;
     const promise = MaweCoreState.player.play();
     if (promise && promise.catch) promise.catch(() => {});
     MaweMediaPlayback.syncMediaControls();

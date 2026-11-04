@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import queue
 import re
 import socket
 import subprocess
@@ -356,40 +355,39 @@ class EventPump:
     def __init__(self, *, window_getter: Callable[[], object | None], interval: float = 0.1) -> None:
         self.window_getter = window_getter
         self.interval = interval
-        self.events: queue.Queue[Mapping[str, object]] = queue.Queue()
+        self.events: list[Mapping[str, object]] = []
         self.stop_event = threading.Event()
         self.thread: threading.Thread | None = None
         self.lock = threading.Lock()
 
     def start(self) -> None:
         with self.lock:
-            if self.thread and self.thread.is_alive():
+            if self.stop_event.is_set() or (self.thread and self.thread.is_alive()):
                 return
-            self.stop_event.clear()
             self.thread = threading.Thread(target=self._run, daemon=True)
             self.thread.start()
 
     def enqueue(self, event: Mapping[str, object]) -> None:
-        self.events.put(dict(event))
+        with self.lock:
+            if not self.stop_event.is_set():
+                self.events.append(dict(event))
 
     def flush(self) -> None:
-        batch: list[Mapping[str, object]] = []
-        while True:
-            try:
-                batch.append(self.events.get_nowait())
-            except queue.Empty:
-                break
-        if not batch:
-            return
+        with self.lock:
+            if not self.events:
+                return
+            batch, self.events = self.events, []
         window = self.window_getter()
         if window is None:
             return
         script = f"window.MAWLauncher && window.MAWLauncher.onBackendEvents({json.dumps(batch, ensure_ascii=False)})"
-        window.evaluate_js(script)
+        if not self.stop_event.is_set():
+            window.evaluate_js(script)
 
     def shutdown(self) -> None:
-        self.stop_event.set()
-        self.flush()
+        with self.lock:
+            self.stop_event.set()
+            self.events.clear()
 
     def _run(self) -> None:
         while not self.stop_event.wait(self.interval):
@@ -3193,6 +3191,9 @@ class LauncherApi:
         return _open_existing_path(directory.resolve())
 
     def shutdown(self) -> None:
+        # closing runs on the GUI thread. Stop UI delivery before cancellation
+        # wakes workers. Joining a worker here could block the GUI thread.
+        self.pump.shutdown()
         self.cancel_recording_review()
         self.cancel_transcription()
         self.cancel_batch_transcription()
@@ -3212,7 +3213,6 @@ class LauncherApi:
                 if isinstance(stream, TeeWriter) and stream._sink is self._log_sink:
                     stream.flush()
             self._log_sink.close()
-        self.pump.shutdown()
 
     def _worker_main(self, request: TranscriptionRequest, cancel_event: Event) -> None:
         child_output: list[str] = []
