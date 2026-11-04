@@ -26,6 +26,10 @@
       MaweHint.flashHint('请先导入媒体，然后才能预览', 'invalid');
       return;
     }
+    if (window.MaweGapPlayback?.cancelPendingPlayback()) {
+      syncMediaControls();
+      return;
+    }
     if (MaweJklPlayback.jklReversePlaying) {
       MaweJklPlayback.stopJklReversePlayback();
       return;
@@ -35,6 +39,8 @@
       return;
     }
     if (MaweCoreState.player.paused) {
+      window.MaweGapPlayback?.beforePlay(MaweCoreState.player);
+      void window.MaweAudioProcessing?.applyPreview({ gesture: true });
       if (MaweJklPlayback.isJklDirectionMode()) MaweCoreState.player.playbackRate = Math.max(0.0625, Math.abs(MaweJklPlayback.jklPlaybackRate));
       const promise = MaweCoreState.player.play();
       if (promise && promise.catch) promise.catch(() => {});
@@ -122,6 +128,7 @@
 
 
   function syncMediaControls() {
+  window.MaweAudioProcessing?.render();
   const fullscreenPreview = Boolean(MaweDom.playerWrap && document.fullscreenElement === MaweDom.playerWrap);
   const wasFullscreenPreview = MaweDom.playerWrap?.classList.contains('fullscreen-preview') === true;
   MaweDom.playerWrap?.classList.toggle('fullscreen-preview', fullscreenPreview);
@@ -131,7 +138,8 @@
   const hasMedia = hasLoadedMedia();
   const duration = Number.isFinite(MaweCoreState.player.duration) && MaweCoreState.player.duration > 0 ? MaweCoreState.player.duration : 0;
   const current = Number.isFinite(MaweCoreState.player.currentTime) ? Math.max(0, MaweCoreState.player.currentTime) : 0;
-  const active = hasMedia && (MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused);
+  const active = hasMedia && (MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused
+    || window.MaweGapPlayback?.pendingPlayback);
   MaweDom.mediaPlayToggle.disabled = !hasMedia;
   MaweDom.mediaStepBack.disabled = !hasMedia;
   MaweDom.mediaStepForward.disabled = !hasMedia;
@@ -199,6 +207,9 @@
 
   function bindPlayerEvents(mediaElement) {
     if (!mediaElement) return;
+    window.MaweAudioProcessing?.bindPlayer(mediaElement);
+    window.MaweGapPlayback?.bindPlayer(mediaElement);
+    window.MaweAssFrame?.bindPlayer(mediaElement);
     observeAssSubtitlePreviewPlayer(mediaElement);
     mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
     mediaElement.addEventListener('timeupdate', () => watchAuditionBoundary(mediaElement));
@@ -264,10 +275,16 @@ MawePlaybackLoop.update();
 
 
 
+  function setPlayerCurrentTime(seconds) {
+    const player = MaweCoreState.player;
+    player.currentTime = seconds;
+    window.MaweGapPlayback?.retargetPendingSeek(player);
+  }
+
   function seekMediaBy(deltaSeconds) {
     if (!hasLoadedMedia()) return;
     const duration = Number.isFinite(MaweCoreState.player.duration) ? MaweCoreState.player.duration : Infinity;
-    MaweCoreState.player.currentTime = Math.max(0, Math.min(duration, MaweCoreState.player.currentTime + deltaSeconds));
+    setPlayerCurrentTime(Math.max(0, Math.min(duration, MaweCoreState.player.currentTime + deltaSeconds)));
     MawePlaybackLoop.update();
     syncMediaControls();
   }
@@ -281,7 +298,7 @@ MawePlaybackLoop.update();
     if (!Number.isFinite(duration)) return false;
     MaweJklPlayback.stopJklReversePlayback({ render: false });
     const targetSeconds = Math.max(0, Math.min(duration, Number(timeSeconds) || 0));
-MaweCoreState.player.currentTime = targetSeconds;
+setPlayerCurrentTime(targetSeconds);
 MawePlaybackLoop.update();
 MaweCueListAnchor.resumeCueListFollowing();
 MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
@@ -311,6 +328,7 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     const start = Math.max(0, (Number(startMs) || 0) / 1000);
     const stop = (Number(endMs) || 0) / 1000;
     if (!(stop > start)) return false;
+    window.MaweGapPlayback?.cancelPendingPlayback();
     // seekMediaTo 会同步刷新播放状态；必须先进入试听，避免落入空隙后立即被跳过。
     auditionStopSeconds = stop;
     auditionSeekPending = true;
@@ -356,6 +374,7 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     stopPlaybackRefresh,
     startPlaybackRefresh,
     bindPlayerEvents,
+    setPlayerCurrentTime,
     seekMediaBy,
     seekMediaTo,
     get isAuditioning() { return auditionStopSeconds !== null; },

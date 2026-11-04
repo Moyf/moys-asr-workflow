@@ -36,12 +36,13 @@ test('stripMassMarkers removes recognized pairs and keeps orphan markers literal
   assert.equal(h.stripMassMarkers('**强调**文本*', 'both'), '强调文本*');
   assert.equal(h.stripMassMarkers('*强调', 'both'), '*强调');
   assert.equal(h.stripMassMarkers('**强调**', 'both'), '强调');
-  // 八对中的其余同符号对：放大 / 缩小 / 下划线 / 删除线 / 注释 / 原地震动
+  // 九对中的其余同符号对：放大 / 缩小 / 下划线 / 删除线 / 斜体 / 弱化 / 原地震动
   assert.equal(h.stripMassMarkers('++大++文本', 'both'), '大文本');
   assert.equal(h.stripMassMarkers('--小--文本', 'both'), '小文本');
   assert.equal(h.stripMassMarkers('__线__文本', 'both'), '线文本');
   assert.equal(h.stripMassMarkers('~~删~~文本', 'both'), '删文本');
-  assert.equal(h.stripMassMarkers('//注释//正文', 'both'), '注释正文');
+  assert.equal(h.stripMassMarkers('//斜体//正文', 'both'), '斜体正文');
+  assert.equal(h.stripMassMarkers('%%弱化%%正文', 'both'), '弱化正文');
   assert.equal(h.stripMassMarkers('!!震动!!文本', 'both'), '震动文本');
   // 句级 fade >>…<< 是非对称标记，由 stripSentenceFadeMarkers 负责，这里不动
   assert.equal(h.stripMassMarkers('>>淡入<<', 'both'), '>>淡入<<');
@@ -309,6 +310,13 @@ test('merge fold removes both junction markers and reunites the pair across styl
   assert.equal(joinedFold.text, '**甲乙**');
   assert.deepEqual(plain(joinedFold.items.map(item => item.text)), ['**甲', '乙**']);
   assert.equal(joinedFold.items.map(item => item.text).join(''), joinedFold.text);
+  // 弱化 %% 与斜体 // 作为固定双符号行内对，走同一套拆分补齐与合并折叠。
+  assert.deepEqual(plain(h.completeSplitMassPairs('今天%%的', '弱化%%', 'both')),
+    { left: '今天%%的%%', right: '%%弱化%%', leftAppend: '%%', rightPrepend: '%%' });
+  const subduedFold = h.foldMassPairJunction('%%甲%%', '%%乙%%', 'both');
+  assert.equal(subduedFold.left + subduedFold.right, '%%甲乙%%');
+  const italicFold = h.foldMassPairJunction('//甲//', '//乙//', 'both');
+  assert.equal(italicFold.left + italicFold.right, '//甲乙//');
 });
 
 test('conversion completion only touches rows of the converted sentence', () => {
@@ -335,12 +343,12 @@ test('conversion completion only touches rows of the converted sentence', () => 
 });
 
 test('assMarkedRanges nests three MASS pairs in one sentence (ledger #30)', () => {
-  const text = '>>** //The *editing* //process**<<';
+  const text = '>>** %%The *editing* %%process**<<';
   const ranges = plain(h.massMarkedRanges(text, 'both'));
   const byMarker = (marker) => ranges.filter(range => range.marker === marker).map(range => [range.start, range.end]);
-  // **[2,30) ⊃ //[5,21) ⊃ *[11,19)：同符号对互不重叠、跨符号允许嵌套
+  // **[2,30) ⊃ %%[5,21) ⊃ *[11,19)：同符号对互不重叠、跨符号允许嵌套
   assert.deepEqual(byMarker('**'), [[2, 30]]);
-  assert.deepEqual(byMarker('//'), [[5, 21]]);
+  assert.deepEqual(byMarker('%%'), [[5, 21]]);
   assert.deepEqual(byMarker('*'), [[11, 19]]);
   // 句级 fade 外壳同样成立
   const fade = h.parseSentenceFadeMarkers(text, 'both');

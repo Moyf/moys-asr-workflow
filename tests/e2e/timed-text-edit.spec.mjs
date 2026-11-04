@@ -255,6 +255,87 @@ test('search follows disabled visibility, loops, handles invalid and zero-length
   await expect(page.locator('#timed-text-edit-replace')).toBeFocused();
 });
 
+test('search navigation focuses the hit textarea with a visible caret, F3/Enter continue while armed', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length,
+      { id: 's-1', start: 0, end: 900, text: 'alpha beta' },
+      { id: 's-2', start: 1000, end: 1900, text: 'gamma delta' },
+    );
+    MaweCuePanel.renderAll({ waveform: 'full' });
+  });
+  await page.locator('#timed-text-edit-btn').click();
+
+  const find = page.locator('#timed-text-edit-find');
+  await find.fill('a');
+  // 在查找框输入时的预览定位不抢焦点：光标留在查找框继续输入。
+  await expect(page.locator('#timed-text-edit-search-count')).toHaveText('1/6');
+  await expect(find).toBeFocused();
+
+  const rowSelection = () => page.evaluate(() => {
+    const textarea = document.activeElement;
+    if (!(textarea instanceof HTMLTextAreaElement)) return null;
+    return {
+      value: textarea.value,
+      selected: textarea.value.slice(textarea.selectionStart, textarea.selectionEnd),
+      row: textarea.closest('.timed-text-edit-row')?.dataset.index ?? null,
+      // 行 textarea 必须叠在镜像层之上（与整体视图一致），caret 才不会被
+      // 不透明镜像背景盖住。
+      caretAboveMirror: getComputedStyle(textarea).zIndex === '2'
+        && getComputedStyle(textarea).position === 'relative'
+        && getComputedStyle(textarea).caretColor !== 'transparent',
+    };
+  });
+
+  await page.locator('#timed-text-edit-find-next').click();
+  // 显式导航把焦点移入命中所在 textarea：选区落在命中文字上，caret 可见。
+  await expect(page.locator('#timed-text-edit-search-count')).toHaveText('2/6');
+  expect(await rowSelection()).toEqual({
+    value: 'alpha beta', selected: 'a', row: '0', caretAboveMirror: true,
+  });
+
+  await page.keyboard.press('F3');
+  await expect(page.locator('#timed-text-edit-search-count')).toHaveText('3/6');
+  expect((await rowSelection()).row).toBe('0');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#timed-text-edit-search-count')).toHaveText('4/6');
+  expect((await rowSelection())).toMatchObject({ value: 'gamma delta', selected: 'a', row: '1' });
+  await page.keyboard.press('Shift+F3');
+  await expect(page.locator('#timed-text-edit-search-count')).toHaveText('3/6');
+
+  // 方向键移动光标后选区不再等于命中，武装解除：Enter 恢复普通换行，
+  // 不再跳转下一个命中（定位到命中后直接拆句的工作流不受影响）。
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Enter');
+  // 草稿在输入事件里同步拆行：row0 从命中字母处断开，且计数没有前进。
+  const disarmed = await page.evaluate(() => MaweDom.timedTextEditDraft.texts.slice(0, 2));
+  expect(disarmed).toEqual(['alpha bet', 'a']);
+  await expect(page.locator('#timed-text-edit-search-count')).toHaveText('3/6');
+
+  // Greptile P2 场景：拆行触发防抖重渲染，等第三行出现后再继续。
+  await expect(page.locator('#timed-text-edit-rows .timed-text-edit-row[data-index="2"]')).toHaveCount(1);
+  // 打字编辑（替换命中的 a）后即使退格删掉、光标回到原位置，武装也已
+  // 解除——Enter 插入换行，而不是复活成跳转。
+  await page.keyboard.press('Shift+F3');
+  await expect(page.locator('#timed-text-edit-search-count')).toHaveText('2/6');
+  expect(await rowSelection()).toMatchObject({ value: 'alpha bet', selected: 'a', row: '0' });
+  await page.keyboard.type('X');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type('a');
+  await page.keyboard.press('Enter');
+  const typedAndDisarmed = await page.evaluate(() => MaweDom.timedTextEditDraft.texts.slice(0, 2));
+  expect(typedAndDisarmed).toEqual(['alpha', ' bet']);
+
+  await page.keyboard.press('Control+f');
+  await expect(find).toBeFocused();
+
+  // 收尾关闭弹窗，避免脏草稿跨测试残留（有未应用修改时 Esc 会弹确认）。
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
+});
+
 test('search reveals filtered rows in the center and highlights/scrolls the matching text in overall view', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);

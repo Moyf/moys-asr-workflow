@@ -71,6 +71,15 @@ class RecognitionPresetTests(unittest.TestCase):
         self.assertIs(restored["generateThumbnails"], False,
             "两档缓存上线前保存的识别预设按默认关闭迁移，而不是整份拒绝加载")
 
+    def test_legacy_preset_without_keyframe_switch_loads_with_default_on(self):
+        path = self.library / "pre-keyframes.json"
+        legacy_options = dict(self.options)
+        legacy_options.pop("generateKeyframes")
+        path.write_text(json.dumps({"schema": SCHEMA, "options": legacy_options}), encoding="utf-8")
+        restored = read_preset(path)
+        self.assertIs(restored["generateKeyframes"], True,
+            "基础缩略图开关上线前保存的识别预设按当前默认（开启）迁移，而不是整份拒绝加载")
+
     def test_legacy_per_provider_contexts_merge_into_shared_prompt_context(self):
         path = self.library / "merged.json"
         legacy_options = dict(self.options)

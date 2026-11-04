@@ -260,3 +260,9 @@ async function loadAssStyleLibrary({ force = false } = {}) {
   })();
   return assStyleLibraryLoadPromise;
 }
+
+// G07：init 化模块经 window 延迟取用本文件的运行时入口；classic 调用方不受影响。
+window.MaweAssStorageWiring = window.MaweAssStorageWiring || Object.freeze({
+  DEFAULT_ASS_COLOR_STYLE,
+  updateAssStyleLibrarySummary,
+});

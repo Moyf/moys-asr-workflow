@@ -77,7 +77,7 @@ class OcrRuntimeTests(unittest.TestCase):
             calls.append(command)
             if "install" in command:
                 site_packages = self.root / "site-packages"
-                for package in ("numpy", "onnxruntime", "PIL", "rapidocr"):
+                for package in ("certifi", "numpy", "onnxruntime", "PIL", "rapidocr"):
                     (site_packages / package).mkdir(parents=True, exist_ok=True)
             on_line("fake command complete")
             return 0
@@ -165,10 +165,10 @@ class OcrRuntimeTests(unittest.TestCase):
         python.parent.mkdir(parents=True, exist_ok=True)
         python.write_bytes(b"python")
         site_packages = self.root / "site-packages"
-        for package in ("numpy", "onnxruntime", "PIL", "rapidocr"):
+        for package in ("certifi", "numpy", "onnxruntime", "PIL", "rapidocr"):
             (site_packages / package).mkdir(parents=True, exist_ok=True)
         (self.root / "runtime.json").write_text(
-            json.dumps({"status": "ready", "runtimeVersion": "3"}),
+            json.dumps({"status": "ready", "runtimeVersion": OCR.spec.runtime_version}),
             encoding="utf-8",
         )
 

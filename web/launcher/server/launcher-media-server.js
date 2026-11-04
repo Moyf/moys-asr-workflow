@@ -115,6 +115,61 @@ function handleRoutedDrop(path) {
   }
   setError("mediaPath", mediaDropError());
 }
-async function refreshServerMedia() { const jsonPath = $("jsonPath").value.trim(); const result = await bridge("check_server_media", { jsonPath }); state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists); $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath); return result; }
+let serverMediaRequest = 0;
+async function refreshServerMedia() {
+  const requestId = ++serverMediaRequest;
+  const jsonPath = $("jsonPath").value.trim();
+  const result = await bridge("check_server_media", { jsonPath });
+  // 快速切换工程时，旧路径的慢响应不能覆盖当前工程的媒体提示。
+  if (requestId !== serverMediaRequest || jsonPath !== $("jsonPath").value.trim()) return result;
+  state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists);
+  $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath);
+  return result;
+}
 async function refreshFfmpeg() { const requestId = ++ffmpegRequest; const result = await bridge("check_ffmpeg"); if (requestId !== ffmpegRequest) return result; $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
 function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
+// 最近工程：读取编辑器持久化的 recent_projects，点击条目即填入工程文件输入框
+// 并走 setJsonPath 既有的 refreshServerMedia 流程；失效条目置灰但仍可点击尝试。
+// 失效徽标挂 data-i18n：语言切换由 renderLanguage() 的通用扫描接管
+//（MAWLauncher.onLanguageChanged 会被 batch.js/postprocess.js 覆盖，不能依赖）。
+function renderRecentProjects(projects) {
+  const list = $("recentProjectsList");
+  const field = $("recentProjectsField");
+  if (!list || !field) return;
+  const items = Array.isArray(projects) ? projects : [];
+  list.replaceChildren();
+  field.classList.toggle("hidden", !items.length);
+  items.forEach((project) => {
+    if (!project || typeof project.path !== "string" || typeof project.name !== "string") return;
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "recent-project-item";
+    item.dataset.projectPath = project.path;
+    const label = document.createElement("span");
+    label.className = "recent-project-name";
+    label.textContent = project.name;
+    item.append(label);
+    if (project.exists === false) {
+      item.classList.add("is-missing");
+      const badge = document.createElement("span");
+      badge.className = "recent-project-badge";
+      badge.dataset.i18n = "recent_project_missing_badge";
+      badge.textContent = t("recent_project_missing_badge");
+      item.append(badge);
+    }
+    item.title = project.path;
+    item.addEventListener("click", () => setJsonPath(project.path));
+    list.append(item);
+  });
+}
+let recentProjectsRequest = 0;
+async function loadRecentProjects() {
+  const requestId = ++recentProjectsRequest;
+  try {
+    const result = await bridge("recent_projects");
+    if (requestId === recentProjectsRequest && result?.ok && Array.isArray(result.projects)) renderRecentProjects(result.projects);
+    return result;
+  } catch (_error) {
+    return { ok: false };
+  }
+}

@@ -57,7 +57,12 @@
 
   // subtitleFontFamilyCss 可能返回 var(--font-sans) 兜底；ctx.font 不解析
   // CSS 变量，这里解析成具体字体族列表。
+  // 字体别名表就绪时优先用别名链（"<存储值>", "<canonical>", "<其余别名>",
+  // sans-serif）：浏览器按列表顺序回退匹配，任一名字命中即与 libass 渲染
+  // 同一字形；链已是具体族名列表，无需再解析 var(--font-sans)。
   function fontFamilyCss(fontName) {
+    const aliasChain = global.MaweAssFontAliases?.chainCssFor?.(fontName) || '';
+    if (aliasChain) return aliasChain;
     let family = global.MaweAppearance?.subtitleFontFamilyCss?.(fontName) || '';
     if (family.includes('var(--font-sans)')) {
       if (!resolvedSansFamily) {
@@ -70,9 +75,10 @@
   }
 
 
-  function fontSpec(style, cssSize) {
+  function fontSpec(style, cssSize, run) {
     const weight = style.bold ? '700' : '400';
-    const italic = style.italic ? 'italic ' : '';
+    // 斜体 run（//…//）覆盖样式级斜体设置：任一为真即按斜体字体绘制/测量。
+    const italic = style.italic || Boolean(run?.italic) ? 'italic ' : '';
     return `${italic}${weight} ${cssSize}px ${fontFamilyCss(style.fontName)}`.trim();
   }
 
@@ -125,8 +131,15 @@
   // ctx.letterSpacing 不可用时退回逐字符排版（放弃连字，与旧 CSS
   // letter-spacing 预览的行为一致）。
   function spacingInfo(track, run, ratio) {
+    // run 级斜体（//…//）与样式级斜体的有效态 = 二者按或合并（与 fontSpec
+    // 一致）；有效态与样式级不同时字号换算比例按实际斜体重算（有缓存），
+    // 一致时复用整轨比例，避免重复查表。
+    const styleItalic = Boolean(track.style.italic);
+    const runItalic = styleItalic || Boolean(run?.italic);
+    const effectiveRatio = runItalic === styleItalic ? ratio
+      : fontBoxRatio({ ...track.style, italic: runItalic });
     const nativeSize = runNativeSize(track, run);
-    const cssSize = nativeSize * ratio;
+    const cssSize = nativeSize * effectiveRatio;
     const spacingCss = track.fractionalFontSize ? Number(track.style.spacing) || 0
       : nativeSize > 0 ? (Number(track.style.spacing) || 0) * cssSize / nativeSize : 0;
     return {
@@ -140,7 +153,7 @@
 
   function applyItemFont(g, track, run, ratio) {
     const info = spacingInfo(track, run, ratio);
-    g.font = fontSpec(track.style, info.cssSize);
+    g.font = fontSpec(track.style, info.cssSize, run);
     g.letterSpacing = info.perChar || !info.spacingCss ? '0px' : `${info.spacingCss}px`;
     return info;
   }
@@ -175,7 +188,7 @@
     return (run, text) => {
       const info = spacingInfo(track, run, ratio);
       const g = ensureMeasureCtx();
-      g.font = fontSpec(track.style, info.cssSize);
+      g.font = fontSpec(track.style, info.cssSize, run);
       g.letterSpacing = info.perChar || !info.spacingCss ? '0px' : `${info.spacingCss}px`;
       const metrics = g.measureText(text);
       const width = info.perChar
@@ -237,7 +250,7 @@
     return JSON.stringify([
       line.items.map((item) => [item.text, Boolean(item.run.emphasized), Boolean(item.run.underlined),
         Boolean(item.run.struck), item.run.size || '', Boolean(item.run.comment),
-        item.run.speakerColor || '', quantize(item.width)]),
+        Boolean(item.run.italic), item.run.speakerColor || '', quantize(item.width)]),
       quantize(ratio), fontFamilyCss(style.fontName), Boolean(style.bold), Boolean(style.italic),
       Boolean(track.fractionalFontSize), track.fractionalFontSize
         ? Number((Number(track.nativeFontSize) || 1).toFixed(4)) : Math.round(Number(track.nativeFontSize) || 1),
@@ -264,7 +277,11 @@
     const outline = Math.max(0, Number(style.outline) || 0);
     const shadow = Math.max(0, Number(style.shadow) || 0);
     const borderBox = Math.round(Number(style.borderStyle) || 1) === 3;
-    const pad = Math.ceil(outline + shadow + 2);
+    // Italic glyphs can paint beyond the advance width. Keep that ink in the
+    // bitmap instead of clipping it at the generic two-pixel guard.
+    const measure = measurerFor(track, ratio);
+    const inkPadding = Math.max(2, ...line.items.map(item => measure(item.run, item.text).inkPadding));
+    const pad = Math.ceil(outline + shadow + inkPadding);
     const bodyWidth = Math.ceil(line.width);
     const bodyHeight = Math.ceil(line.ascent + line.descent);
     const bitmap = document.createElement('canvas');
@@ -479,12 +496,15 @@
     const foreshortenX = rotationY ? Math.cos(rotationY * Math.PI / 180) : 1;
     const foreshortenY = rotationX ? Math.cos(rotationX * Math.PI / 180) : 1;
     const angle = Number(style.angle) || 0;
+    // 放大出现：围绕锚点的入场缩放（animation.popScale 由导出同一公式插值，
+    // 落定后恒为 1），等价 libass 在 origin 上施加 \fscx\fscy 的行为。
+    const popScale = Math.max(0, Number(animation.popScale) || 1);
     // libass rotates the already-scaled glyph coordinates, with counterclockwise
     // positive ASS angles. Matrix order matters for nonuniform scale factors.
     if (angle) ctx.rotate(-angle * Math.PI / 180);
     ctx.scale(
-      Math.max(0, Number(style.scaleX ?? 100)) / 100 * foreshortenX,
-      Math.max(0, Number(style.scaleY ?? 100)) / 100 * foreshortenY,
+      Math.max(0, Number(style.scaleX ?? 100)) / 100 * foreshortenX * popScale,
+      Math.max(0, Number(style.scaleY ?? 100)) / 100 * foreshortenY * popScale,
     );
     let lineTop = u.assCanvasBlockTopY(grid.row, layout.blockHeight);
     layout.lines.forEach((line) => {
@@ -499,8 +519,8 @@
     const pad = Math.ceil((Number(style.outline) || 0) + (Number(style.shadow) || 0) + 2);
     const left = u.assCanvasLineOffsetX(grid.column, layout.blockWidth) - pad;
     const top = u.assCanvasBlockTopY(grid.row, layout.blockHeight) - pad;
-    const sx = Math.max(0, Number(style.scaleX ?? 100)) / 100 * foreshortenX;
-    const sy = Math.max(0, Number(style.scaleY ?? 100)) / 100 * foreshortenY;
+    const sx = Math.max(0, Number(style.scaleX ?? 100)) / 100 * foreshortenX * popScale;
+    const sy = Math.max(0, Number(style.scaleY ?? 100)) / 100 * foreshortenY * popScale;
     const theta = -angle * Math.PI / 180;
     // Automatic stacking can attach an upper cue by its bottom edge even
     // when the global style uses a top/centre anchor. Re-express its base
@@ -535,8 +555,10 @@
     }
     ctx.clearRect(0, 0, width, height);
     canvas.hidden = false;
-    const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
-    // 快照顺序与 payload 一致；播放预览只传当前活跃字幕，同轨可以有多句。
+    const layer = { main: 0, extension: 1, overlay: 2 };
+    const tracks = Array.isArray(payload?.tracks) ? [...payload.tracks]
+      .sort((a, b) => (layer[a?.role] ?? 0) - (layer[b?.role] ?? 0)) : [];
+    // 按 ASS 层序绘制，手动定位只改变布局，不改变叠放顺序；同轨保持稳定顺序。
     // 检查指定字幕时用 role + cueId 定位，不假定主/副/叠加轨固定下标。
     const records = [];
     tracks.forEach((track) => {

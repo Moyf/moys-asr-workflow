@@ -18,7 +18,10 @@ function scheduler() {
       clearTimeout(key) { timers.delete(key); }, addEventListener(name, fn) { listeners.set(name, fn); } },
   };
   const source = fs.readFileSync(new URL('../web/editor/media/editor-wiring-keyboard-guards.js', import.meta.url), 'utf8');
-  vm.runInNewContext(source.slice(source.indexOf('let assPreviewRefreshFrame')), context);
+  const start = source.indexOf('let assPreviewRefreshFrame');
+  const end = source.indexOf('window.MaweKeyboardGuards =', start);
+  assert.ok(start >= 0 && end > start, 'ASS refresh implementation must be present');
+  vm.runInNewContext(source.slice(start, end), context);
   const flush = () => { const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn()); };
   return { context, frames, timers, observed, unobserved, listeners, player, flush, draws: () => draws };
 }

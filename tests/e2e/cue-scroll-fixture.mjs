@@ -27,7 +27,8 @@ export function syntheticScrollProject(count = 107, mode = 'main', paired = fals
   };
 }
 
-export async function startScrollFixture({ count = 107, mode = 'main', paired = false, blank = false } = {}) {
+export async function startScrollFixture({ count = 107, mode = 'main', paired = false, blank = false, readinessTimeoutMs = 45_000 } = {}) {
+  if (!Number.isFinite(readinessTimeoutMs) || readinessTimeoutMs <= 0) throw new RangeError('readinessTimeoutMs must be finite and positive');
   const evidenceRoot = resolve(process.env.MAW_SCROLL_EVIDENCE || 'output/playwright/cue-scroll');
   mkdirSync(evidenceRoot, { recursive: true });
   const directory = mkdtempSync(join(evidenceRoot, 'fixture-'));
@@ -52,6 +53,7 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
   const log = createWriteStream(join(directory, 'server.log'));
   const child = spawnServerProcess(command, args, { env: {
     PATH: process.env.PATH, LANG: 'zh_CN.UTF-8', PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1',
+    PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8',
     ...(process.platform === 'win32' ? {
       SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR,
       TEMP: directory, TMP: directory,
@@ -59,7 +61,11 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
     MAW_ENV_FILE: emptyEnv, MAW_APP_DATA_ROOT: settings,
     LOCALAPPDATA: settings, XDG_CONFIG_HOME: settings, XDG_DATA_HOME: settings,
     PYINSTALLER_RESET_ENVIRONMENT: '1',
-  }, stdio: ['ignore', 'pipe', 'pipe'] });
+  },
+  // PowerShell's OS/module cache uses the normal Windows environment. The
+  // actual application still receives only the isolated environment above.
+  ...(process.platform === 'win32' ? { supervisorEnv: process.env } : {}),
+  stdio: ['ignore', 'pipe', 'pipe'] });
   const output = createOutputTail();
   child.stdout.on('data', chunk => output.append(chunk));
   child.stderr.on('data', chunk => output.append(chunk, 'stderr'));
@@ -80,7 +86,7 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
   })();
   const url = `http://127.0.0.1:${port}/`;
   try {
-    const deadline = Date.now() + 45000;
+    const deadline = Date.now() + readinessTimeoutMs;
     while (Date.now() < deadline) {
       if (launchError) throw launchError;
       if (serverHasExited(child)) throw new Error(`Synthetic server exited: ${child.exitCode ?? child.signalCode}. Output tail: ${output.text()}`);

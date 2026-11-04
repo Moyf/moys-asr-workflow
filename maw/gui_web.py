@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import queue
 import re
 import socket
 import subprocess
@@ -65,7 +64,7 @@ from maw.gui_config import (
     save_env,
 )
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, restore_host_library_path, startupinfo, terminate_process_tree
-from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.gui_workflow import TEST_RUN_LENGTH_LIMIT, TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
@@ -98,6 +97,7 @@ from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMo
 from maw.postprocess_io import PostprocessFileError, read_project, read_srt
 from maw.project_io import write_mosp
 from maw.project import ProjectValidationFailed, normalize_project
+from maw.recent_projects import load_recent_projects
 from maw.postprocess_ai_cleanup import AiCleanupError, AiCleanupRequest, llm_complete, run_ai_cleanup as process_ai_cleanup
 from maw.postprocess_ffmpeg import (
     AUDIO_BITRATES,
@@ -355,40 +355,39 @@ class EventPump:
     def __init__(self, *, window_getter: Callable[[], object | None], interval: float = 0.1) -> None:
         self.window_getter = window_getter
         self.interval = interval
-        self.events: queue.Queue[Mapping[str, object]] = queue.Queue()
+        self.events: list[Mapping[str, object]] = []
         self.stop_event = threading.Event()
         self.thread: threading.Thread | None = None
         self.lock = threading.Lock()
 
     def start(self) -> None:
         with self.lock:
-            if self.thread and self.thread.is_alive():
+            if self.stop_event.is_set() or (self.thread and self.thread.is_alive()):
                 return
-            self.stop_event.clear()
             self.thread = threading.Thread(target=self._run, daemon=True)
             self.thread.start()
 
     def enqueue(self, event: Mapping[str, object]) -> None:
-        self.events.put(dict(event))
+        with self.lock:
+            if not self.stop_event.is_set():
+                self.events.append(dict(event))
 
     def flush(self) -> None:
-        batch: list[Mapping[str, object]] = []
-        while True:
-            try:
-                batch.append(self.events.get_nowait())
-            except queue.Empty:
-                break
-        if not batch:
-            return
+        with self.lock:
+            if not self.events:
+                return
+            batch, self.events = self.events, []
         window = self.window_getter()
         if window is None:
             return
         script = f"window.MAWLauncher && window.MAWLauncher.onBackendEvents({json.dumps(batch, ensure_ascii=False)})"
-        window.evaluate_js(script)
+        if not self.stop_event.is_set():
+            window.evaluate_js(script)
 
     def shutdown(self) -> None:
-        self.stop_event.set()
-        self.flush()
+        with self.lock:
+            self.stop_event.set()
+            self.events.clear()
 
     def _run(self) -> None:
         while not self.stop_event.wait(self.interval):
@@ -1607,6 +1606,7 @@ class LauncherApi:
             "mediaPath": str(result.media_path),
             "videoEncoder": str(getattr(result, "video_encoder", "auto") or "auto"),
             "srtStyleName": str(srt_style.get("name") or "SRT 渲染样式"),
+            "warnings": list(getattr(result, "warnings", ()) or ()),
         }
 
     def get_burn_subtitle_settings(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
@@ -2332,7 +2332,19 @@ class LauncherApi:
         ):
             return {"ok": True, "running": False, "url": url}
         pid = _maw_server_process_id(port)
-        return {"ok": True, "running": pid is not None, "url": url, "pid": pid}
+        return {
+            "ok": True, "running": pid is not None, "url": url, "pid": pid,
+            "startupStatus": _server_startup_status(url) if pid is not None else "",
+        }
+
+    def recent_projects(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Expose the editor's persisted recent projects for the Launcher card.
+
+        Read-only view of ``server-editor-settings.json`` (with the same
+        legacy fallback the editor uses); a missing or malformed file simply
+        yields an empty list so the card stays hidden.
+        """
+        return {"ok": True, "projects": load_recent_projects()}
 
     def check_server_media(self, payload: Mapping[str, object]) -> dict[str, object]:
         json_text = str(payload.get("jsonPath") or "").strip()
@@ -3179,6 +3191,9 @@ class LauncherApi:
         return _open_existing_path(directory.resolve())
 
     def shutdown(self) -> None:
+        # closing runs on the GUI thread. Stop UI delivery before cancellation
+        # wakes workers. Joining a worker here could block the GUI thread.
+        self.pump.shutdown()
         self.cancel_recording_review()
         self.cancel_transcription()
         self.cancel_batch_transcription()
@@ -3198,7 +3213,6 @@ class LauncherApi:
                 if isinstance(stream, TeeWriter) and stream._sink is self._log_sink:
                     stream.flush()
             self._log_sink.close()
-        self.pump.shutdown()
 
     def _worker_main(self, request: TranscriptionRequest, cancel_event: Event) -> None:
         child_output: list[str] = []
@@ -4127,6 +4141,10 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             raise PreflightError("model", "local_model_missing", local_status.detail)
         if local_status.status == "partial":
             raise PreflightError("model", "local_model_incomplete", local_status.detail)
+        if local_model_path and local_status.status == "installed" and local_status.path:
+            # Explicit cache roots may resolve to a snapshot; pass the checked
+            # directory to the engine even if the UI refresh has not finished.
+            local_model_path = local_status.path
         if model.engine == "firered" and firered_punc == "ct-punc":
             _ctc_ready, punc_ready = firered_components_ready(
                 model,
@@ -4249,7 +4267,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
-        length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
+        length_limit=TEST_RUN_LENGTH_LIMIT if test_run else str(payload.get("lengthLimit") or "").strip(),
+        test_run=test_run,
         max_len=max_len,
         min_len=min_len,
         max_words=max_words,
@@ -4275,6 +4294,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         provider=provider.id,
         speaker_colors=bool(payload.get("speakerColors")) and model.supports_speaker,
         generate_spectral=bool(payload.get("generateSpectral")),
+        generate_keyframes=bool(payload.get("generateKeyframes", True)),
         generate_thumbnails=bool(payload.get("generateThumbnails")),
         ui_language=_gui_lang(payload),
         generate_html=bool(payload.get("generateHtml")) and not bool(payload.get("batchSrtOnly")),
@@ -4691,6 +4711,17 @@ def _probe_server(
         reason = getattr(error, "reason", None)
         detail = str(reason or error).strip() or error.__class__.__name__
         return False, f"{error.__class__.__name__}: {detail}"
+
+
+def _server_startup_status(url: str) -> str:
+    """Read project readiness separately from HTTP liveness (including older servers)."""
+    try:
+        with urlopen(f"{url.rstrip('/')}/api/startup-status", timeout=0.25) as response:
+            payload = json.loads(response.read(4096))
+        status = payload.get("status") if isinstance(payload, dict) else None
+        return status if status in ("loading", "ready", "error") else ""
+    except (OSError, URLError, ValueError):
+        return ""
 
 
 def _wait_for_server(

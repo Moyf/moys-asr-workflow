@@ -313,6 +313,27 @@ test('picker resume rejects revoked burn capability before creating a job', asyn
   });
 });
 
+for (const button of ['#burn-video-export-btn', '#download-gap-removed-burn-video', '#download-green-screen-video']) {
+  test(`${button} snapshots project gain before waiting for the save picker`, async ({ page }) => {
+    await fixture('ready', async (origin, state) => {
+      await install(page, origin, 'ready');
+      await page.evaluate(() => {
+        window.fixtureGain = 6;
+        window.MaweAudioProcessing = { settings: () => ({ gain_db: window.fixtureGain }) };
+        const originalPicker = MaweHost.files.pickSaveFile;
+        MaweHost.files.pickSaveFile = options => new Promise(resolve => {
+          window.finishGainPicker = () => resolve(originalPicker(options));
+        });
+      });
+      await page.click(button);
+      await expect.poll(() => page.evaluate(() => Boolean(window.finishGainPicker))).toBe(true);
+      await page.evaluate(() => { window.fixtureGain = -12; window.finishGainPicker(); });
+      await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
+      expect(state.payloads[0].audioGainDb).toBe(6);
+    });
+  });
+}
+
 for (const phase of ['admission-body', 'write-pending']) {
   test(`detach cancels burn during ${phase} without committing output`, async ({ page }) => {
     await fixture(phase === 'admission-body' ? phase : 'ready', async (origin, state) => {

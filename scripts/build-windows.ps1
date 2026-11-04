@@ -22,9 +22,9 @@ try {
 
     # bundle 是构建产物（不入库）：打包前显式构建；MAW.spec 会在缺失时 fail fast。
     if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
-        throw "pnpm is required to build web bundles. Install Node.js (>=22.13) and pnpm, then re-run."
+        throw "pnpm is required to build web bundles. Install Node.js (22.23.4+, 24.22.1+ or 26.12.1+) and pnpm, then re-run."
     }
-    pnpm install --frozen-lockfile
+    pnpm install --frozen-lockfile --ignore-scripts
     if ($LASTEXITCODE -ne 0) { throw "pnpm install failed (exit $LASTEXITCODE)." }
     pnpm run build
     if ($LASTEXITCODE -ne 0) { throw "Web bundle build failed (exit $LASTEXITCODE)." }

@@ -3,6 +3,7 @@
 # 由 scripts/refactor-tools/split-launcher.mjs 自 launcher.js 机械切割而来；
 # 簇边界与等价性说明见 docs/logs/unversioned/2026-10-10/REFACTOR_LAUNCHER_SPLIT.md。
 launcher/i18n/launcher-strings.js
+launcher/theme/launcher-theme-keys.js
 launcher/boot/launcher-state.js
 launcher/boot/launcher-mock-api.js
 launcher/i18n/launcher-labels.js

@@ -14,8 +14,20 @@ _CONDITIONS = re.compile(
     r"可能|大概|通常|一般|部分|必须|需要|仅|只|约|不|没|未|无|"
     r"\b(?:not|never|no|without|only|unless|if|at least|at most|may|might|must|should)\b"
 )
-_FILLER_ONLY = re.compile("[啊呀呢吧呃嗯哦唉]+")
+# 纯感叹/拟声词在任何位置都没有命题内容，可整体作为口水词移除；
+# 「吧呢呀」是语气助词，只在整段独立成句时无内容，不进入句中删除白名单
+# （「走吧」删「吧」会改变句义）。
+PURE_INTERJECTIONS = "哎啊呃嗯哦噢唉诶欸唔哟"
+_TONE_PARTICLES = "吧呢呀"
+WHOLE_UTTERANCE_INTERJECTIONS = PURE_INTERJECTIONS + "呀"
+_FILLER_ONLY = re.compile(f"[{PURE_INTERJECTIONS}{_TONE_PARTICLES}]+")
+_RESTART_STRIP_CHARS = PURE_INTERJECTIONS + _TONE_PARTICLES
 _NEGATIONS = re.compile(r"不|没|未|无|除非|\b(?:not|never|no|without|unless)\b", re.I)
+
+
+def english_hesitation_only(text: str) -> bool:
+    """Recognize only isolated hesitation sounds, never English content words."""
+    return re.fullmatch(r"(?:u+h+|u+m+|h+m+)(?:[\s,.!?;:…]+(?:u+h+|u+m+|h+m+))*[\s,.!?;:…]*", text.strip(), re.I) is not None
 
 
 def safe_echo_phrase(text: str) -> bool:
@@ -80,7 +92,7 @@ def local_information_loss_reason(
         return "局部内容包含否定或限定条件，需要人工确认"
     lost = normalize(removed)
     # Filler can surround an aborted restart, but never hide substantive words.
-    restart = lost.strip("啊呀呢吧呃嗯哦唉")
+    restart = lost.strip(_RESTART_STRIP_CHARS)
     if restart and not (normalize(after).startswith(restart) or normalize(before).endswith(restart)):
         return "缺少可本地验证的相邻口吃或重复证据"
     manuscript = normalize(script_line)

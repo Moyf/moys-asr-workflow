@@ -9,10 +9,11 @@ function canvasFixture() {
   const makeContext = () => new Proxy({
     letterSpacing: '0px',
     measureText(text) {
-      return { width: text.length * 20, fontBoundingBoxAscent: 80, fontBoundingBoxDescent: 20 };
+      const size = Number(/([\d.]+)px/u.exec(this.font || '')?.[1]) || 100;
+      return { width: text.length * size * 0.2, fontBoundingBoxAscent: size * 0.8, fontBoundingBoxDescent: size * 0.2 };
     },
-    fillText(text) { paint.push({ mode: 'fill', text, color: this.fillStyle }); },
-    strokeText(text) { paint.push({ mode: 'stroke', text, color: this.strokeStyle }); },
+    fillText(text) { paint.push({ mode: 'fill', text, color: this.fillStyle, font: this.font }); },
+    strokeText(text) { paint.push({ mode: 'stroke', text, color: this.strokeStyle, font: this.font }); },
   }, { get(target, key) { return key in target ? target[key] : () => {}; } });
   const context = { window: {} };
   loadEditorModule(context, 'shared/editor-utils.js');
@@ -26,7 +27,7 @@ function canvasFixture() {
   const style = context.window.AsrEditorUtils.normalizeAssStyle({ commentColor: '#111111', outline: 2, shadow: 0 });
   const track = { style, nativeFontSize: 72, runs: [{ text: 'comment', comment: true }] };
   const render = () => context.window.MaweAssCanvas.render({ playResX: 1920, playResY: 1080, tracks: [track] });
-  return { paint, track, render, canvas: context.window.MaweAssCanvas };
+  return { paint, track, render, context, canvas: context.window.MaweAssCanvas };
 }
 
 test('stacked fractional plain font sizes retain line advance and invalidate raster cache', () => {
@@ -65,4 +66,36 @@ test('changing comment text color to stroke color repaints both glyph layers', (
   render();
   assert.ok(paint.some(item => item.mode === 'stroke' && item.color === '#111111'));
   assert.ok(paint.some(item => item.mode === 'fill' && item.color === track.style.primaryColor));
+});
+
+test('italic runs paint with the italic font face while sibling runs stay upright', () => {
+  const { paint, track, render } = canvasFixture();
+  track.runs = [{ text: 'normal' }, { text: '斜体', italic: true }];
+  render();
+  const italicPaint = paint.find(item => item.text === '斜体');
+  const normalPaint = paint.find(item => item.text === 'normal');
+  assert.ok(italicPaint && normalPaint, 'both runs are painted');
+  assert.match(italicPaint.font, /^italic /);
+  assert.doesNotMatch(normalPaint.font, /^italic /);
+  // 样式级斜体已开启时，普通 run 也按斜体绘制；lineCacheKey 含 run 级斜体，
+  // 同一 track 的斜体状态变化必须换新位图。
+  paint.length = 0;
+  track.style = { ...track.style, italic: true };
+  render();
+  assert.ok(paint.every(item => item.mode !== 'fill' || /^italic /.test(item.font)));
+  paint.length = 0;
+  track.style = { ...track.style, italic: false };
+  track.runs = [{ text: 'normal' }];
+  render();
+  assert.doesNotMatch(paint.find(item => item.text === 'normal').font, /^italic /);
+});
+
+
+test('Canvas paints manual overlays above automatic main in ASS layer order', () => {
+  const { context, track, canvas } = canvasFixture();
+  const tracks = ['overlay', 'main', 'extension', 'overlay'].map((role, index) => ({ ...track,
+    role, cueId: index, anchor: { x: 500, y: 500 }, runs: [{ text: role + index }] }));
+  canvas.render({ playResX: 1920, playResY: 1080, tracks });
+  assert.deepEqual(Array.from(canvas.lastRender.tracks, record => record.role), ['main', 'extension', 'overlay', 'overlay']);
+  assert.deepEqual(tracks.map(item => item.role), ['overlay', 'main', 'extension', 'overlay'], 'input plan remains unchanged');
 });

@@ -79,3 +79,19 @@ CI 的 Editor job 目前只运行两类 Python 装配契约与两份 browser spe
 任务记录只维护：问题、状态、修改文件、验证命令、对应 HEAD/工作区变化、结果路径、未验证边界。恢复先读这个表与 diff 文件清单，再读所需源码和某一次 result.json。不要重新调入完整历史会话或整个测试日志；引用旧会话时先取少量回合与所需字段。
 
 已有结果在对应源码未变且环境一致时复用；代码变化只使相关层证据失效。失败次数、跳过原因、环境阻塞和人工未验收必须单列，不能用总体退出码 0 代替覆盖范围说明。
+
+
+### unittest 分组与可信报告
+
+`python scripts/run_tests.py --pack media --required --report .artifacts/media.json`
+在 unittest 标准发现之后按测试 ID 分组（common / media / long-media / tools / manual）；
+未知测试默认 common。发现仍执行包初始化、导入及 `load_tests`，加载错误不会被分组隐藏。
+分组暂用串行，`--parallel N` 保留无参数全量的文件并行入口；显式 targets 不拆分，
+也不能与 `--pack` 混用。无参数仍跑原来的完整集合。
+
+`--report` 在串行和并行模式记录所选 ID、实际运行数、失败/错误、skip 原因、
+expected failure、unexpected success、退出码及完整日志位置；并行另有文件、PID 和耗时。
+完整日志包含成功与失败测试、加载阶段以及子进程输出；终端仅打印有界摘要。
+`--full-log` 可指定日志位置，未指定时报告旁生成同名 `.log`。
+`--required` 将缺工具、缺依赖、缺夹具或 expected failure 视为失败；仅准确匹配的
+异平台测试 ID 和 skip 原因可豁免。空集合返回失败。分组是显式执行入口，不自动缩减 CI。

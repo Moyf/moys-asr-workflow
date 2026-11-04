@@ -150,19 +150,25 @@ class ThumbnailJobsIntegrationTests(unittest.TestCase):
         body={'binding':'binding','client_id':'tab','view':1,'ranges':[{'start_ms':0,'end_ms':2000}],
               'interval_ms':500,'playing':False,'visible':True}
         with mock.patch.object(thumbnails,'extract_frames',side_effect=slow):
-            manager.demand(body)
-            self.assertTrue(started.wait(5))
-            manager.demand(dict(body,view=2,playing=True))
-            deadline=time.monotonic()+2
-            while manager.decode_active and time.monotonic()<deadline:
-                time.sleep(.01)
-            self.assertFalse(manager.decode_active)
-            self.assertTrue(manager.worker.is_alive())
-            self.assertNotEqual(manager.state,'error')
-            manager.demand(dict(body,view=3,playing=False))
-            deadline=time.monotonic()+8
-            while manager.state!='ready' and time.monotonic()<deadline:
-                time.sleep(.05)
-            self.assertEqual(manager.state,'ready',manager.error)
-        manager.release('binding',next(iter(manager.leases)),client='tab')
-        self.assertFalse(self.coord.paused(source_key(self.media),background=True))
+            try:
+                manager.demand(body)
+                self.assertTrue(started.wait(5))
+                manager.demand(dict(body,view=2,playing=True))
+                deadline=time.monotonic()+2
+                while manager.decode_active and time.monotonic()<deadline:
+                    time.sleep(.01)
+                self.assertFalse(manager.decode_active)
+                self.assertTrue(manager.worker.is_alive())
+                self.assertNotEqual(manager.state,'error')
+                manager.demand(dict(body,view=3,playing=False))
+                deadline=time.monotonic()+8
+                while manager.state!='ready' and time.monotonic()<deadline:
+                    time.sleep(.05)
+                self.assertEqual(manager.state,'ready',manager.error)
+                manager.release('binding',next(iter(manager.leases)),client='tab')
+                self.assertFalse(self.coord.paused(source_key(self.media),background=True))
+            finally:
+                # A failed readiness assertion must stop the worker before the
+                # process-global extractor patch is restored for another test.
+                manager.close()
+                self.assertFalse(manager.worker and manager.worker.is_alive())

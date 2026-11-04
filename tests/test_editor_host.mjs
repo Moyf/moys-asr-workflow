@@ -12,13 +12,28 @@ const factories = new Map([
   ['shared/host/server-api.js', ['host-server-api',createServerApi]],
 ]);
 
+// editor-host.js is an ESM init module (G03): it imports the host trio
+// directly, so the loader strips the import statements and evaluates the
+// remaining classic body, then invokes initEditorHost(). MAWE registration
+// inside is optional-guarded.
 function loadHost(environment = {}) {
-  const context = { window: {}, ...environment };
-  for (const file of ['editor/boot/editor-runtime.js', 'shared/host/storage.js',
-    'shared/host/files.js', 'shared/host/server-api.js', 'editor/boot/editor-host.js']) {
-    if (factories.has(file)) context.window.MAWE.register(...factories.get(file));
-    else vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
-  }
+  const context = { window: {}, console, ...environment };
+  context.globalThis = context;
+  // The host file imports the trio; after stripping imports the classic body
+  // references the names — bind the real imported factories.
+  context.createStorage = createStorage;
+  context.createFiles = createFiles;
+  context.createServerApi = createServerApi;
+  const registered = new Map();
+  context.window.MAWE = {
+    register(name, factory) { registered.set(name, factory); },
+    resolve(name, ...args) { const factory = registered.get(name); return factory ? factory(...args) : undefined; },
+  };
+  const host_source = readFileSync(new URL('../web/editor/boot/editor-host.js', import.meta.url), 'utf8');
+  const classic = host_source
+    .replace(/^import \{[^}]+\} from '[^']+';$/gm, '')
+    .replace(/^export function initEditorHost/m, 'function initEditorHost');
+  vm.runInNewContext(classic + '\ninitEditorHost();', context, { filename: 'editor/boot/editor-host.js' });
   return context;
 }
 
@@ -108,4 +123,14 @@ test('a desktop host can replace every capability without initializing browser s
   const capabilities = Object.fromEntries(['storage', 'files', 'server', 'runtime'].map(name => [name, { name }]));
   const host = context.window.MAWE.resolve('editor-host', capabilities);
   for (const name of Object.keys(capabilities)) assert.equal(host[name], capabilities[name]);
+});
+
+test('resolve with an injected environment reads that environment for runtime', () => {
+  const context = loadHost({ navigator: { platform: 'MacIntel' } });
+  const capabilities = { environment: { navigator: { platform: 'Win32' } } };
+  const host = context.window.MAWE.resolve('editor-host', capabilities);
+  assert.equal(host.runtime.getNavigator().platform, 'Win32');
+  assert.equal(host.runtime.hasUserActivation(), false);
+  // 默认路径仍读当前页面环境。
+  assert.equal(context.window.MaweHost.runtime.getNavigator().platform, 'MacIntel');
 });

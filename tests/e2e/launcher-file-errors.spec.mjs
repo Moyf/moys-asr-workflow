@@ -1,3 +1,4 @@
+import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,7 @@ for (const language of ['zh', 'en']) {
   test(`file failures show actionable guidance and preserve raw report (${language})`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: language === 'zh' ? 900 : 760, height: 880 });
     await page.goto(`file://${launcherPath}`);
+    await completeStaticLauncherDiscovery(page);
     await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
     if (language === 'en') {
       await page.evaluate(() => window.MAWLauncher.openSettings());

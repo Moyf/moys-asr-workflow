@@ -197,6 +197,28 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertEqual(env["MAW_ENV_FILE"], str(env_path))
 
+    def test_child_environment_disables_keyframe_base_when_requested(self) -> None:
+        """Given the base thumbnail switch off, When building env, Then the child skips the whole picture-cache stage."""
+        env = _child_environment({"PATH": ""}, api_key="", generate_keyframes=False)
+        self.assertEqual(env["MAW_MEDIA_KEYFRAMES"], "0")
+        self.assertNotIn("MAW_MEDIA_THUMBNAILS", env,
+            "基础开关与高精度开关相互独立：只关基础层不注入高精度开关")
+
+        default_env = _child_environment({"PATH": ""}, api_key="")
+        self.assertNotIn("MAW_MEDIA_KEYFRAMES", default_env)
+        self.assertNotIn("MAW_MEDIA_THUMBNAILS", default_env)
+
+    def test_child_environment_test_run_bounds_keyframes_without_disabling(self) -> None:
+        """Given quick-test mode, When building env, Then the picture cache is range-bounded, not disabled."""
+        env = _child_environment({"PATH": ""}, api_key="", test_run=True)
+        self.assertEqual(env["MAW_MEDIA_KEYFRAMES_LIMIT"], "120")
+        self.assertNotIn("MAW_MEDIA_KEYFRAMES", env,
+            "快速测试只限制生成范围，不得顺带关闭用户开关通道")
+        self.assertNotIn("MAW_MEDIA_THUMBNAILS", env)
+
+        default_env = _child_environment({"PATH": ""}, api_key="")
+        self.assertNotIn("MAW_MEDIA_KEYFRAMES_LIMIT", default_env)
+
     def test_child_environment_prepends_managed_site_packages_for_local_provider(self) -> None:
         """Given source-mode local transcription, When building env, Then managed site-packages go first on PYTHONPATH."""
         runtime_root = self.root / "local-runtime-moss"
@@ -716,6 +738,49 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
             self.root / "_maw" / "out.edit.html",
             "en",
         )
+
+    def _run_and_capture_env_and_events(self, request: TranscriptionRequest) -> tuple[dict[str, str], list[str]]:
+        self.srt_path.write_text("1\n", encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": [{"start": 0, "end": 1000, "text": "test"}]}\n', encoding="utf-8")
+
+        class FakeProcess:
+            returncode = 0
+            stdout = ["done\n"]
+
+            def poll(self) -> int | None:
+                return 0
+
+            def wait(self, timeout: float | None = None) -> int:
+                return 0
+
+        events: list[str] = []
+        with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()) as popen:
+            run_transcription(request, on_event=events.append)
+        return popen.call_args.kwargs["env"], events
+
+    def test_run_transcription_test_run_passes_keyframes_limit_to_child(self) -> None:
+        """Given a quick-test request, When launching the child, Then the picture cache shares the audio trim range."""
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            test_run=True,
+            generate_html=False,
+        )
+        env, events = self._run_and_capture_env_and_events(request)
+        self.assertEqual(env["MAW_MEDIA_KEYFRAMES_LIMIT"], "120")
+        self.assertNotEqual(env.get("MAW_MEDIA_KEYFRAMES"), "0",
+            "快速测试只限范围，不得注入整体关闭开关")
+        self.assertIn("[info] 快速测试模式：画面缓存只生成前 2 分钟", events)
+
+    def test_run_transcription_without_test_run_keeps_full_media_cache(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            generate_html=False,
+        )
+        env, events = self._run_and_capture_env_and_events(request)
+        self.assertNotIn("MAW_MEDIA_KEYFRAMES_LIMIT", env)
+        self.assertFalse(any("快速测试" in line for line in events))
 
     def _run_local_transcription_and_capture_env(self) -> dict[str, str]:
         request = TranscriptionRequest(

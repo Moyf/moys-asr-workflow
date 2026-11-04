@@ -1,6 +1,9 @@
-// One owner for project identity, selection, preferences and transient UI state.
-// The project is the original template object; no second subtitle source exists.
-window.MAWE.register('editor-state', function createEditorState(project) {
+// 工程身份、选择集、偏好与瞬态运行态的唯一持有者。
+// project 是原始模板对象，不存在第二份字幕源。
+// ESM 模块：createEditorState 为纯工厂具名导出（测试直调、按项目实例化），
+// initMaweState 在原清单位次以 window.MaweBoot.DATA 组装单例并挂
+// window.MaweState（register/resolve 注册表随之退役）。
+export function createEditorState(project) {
   'use strict';
 
   const sets = { main: new Set(), extension: new Set(), overlay: new Set() };
@@ -99,9 +102,11 @@ window.MAWE.register('editor-state', function createEditorState(project) {
   // markProjectDirty()（写入 false 不触发）。命令发布（projectImportDirty）、
   // 外观/标记等代理 setter、撤销恢复的 Object.assign 因此都汇入同一事件。
   const changesFlags = { projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false, markersDirty: false,
-    timedTextEditViewDirty: false };
+    timedTextEditViewDirty: false, audioProcessingDirty: false };
   // 显式访问器（defineProperties 的动态键 TS 推断不出）：写入 true 触发 markProjectDirty()。
   const changes = {
+    get audioProcessingDirty() { return changesFlags.audioProcessingDirty; },
+    set audioProcessingDirty(value) { changesFlags.audioProcessingDirty = Boolean(value); if (changesFlags.audioProcessingDirty) markProjectDirty(); },
     get projectImportDirty() { return changesFlags.projectImportDirty; },
     set projectImportDirty(value) { changesFlags.projectImportDirty = Boolean(value); if (changesFlags.projectImportDirty) markProjectDirty(); },
     get gapRemoveDirty() { return changesFlags.gapRemoveDirty; },
@@ -143,7 +148,7 @@ window.MAWE.register('editor-state', function createEditorState(project) {
   function hasProjectChanges(pendingText = false) {
     const dirty = track => Boolean(track?._dirty) || (track?.segments || []).some(segment => segment._dirty);
     return Boolean(pendingText || changes.projectImportDirty || changes.gapRemoveDirty || changes.previewGeometryDirty
-      || changes.markersDirty || changes.timedTextEditViewDirty
+      || changes.markersDirty || changes.timedTextEditViewDirty || changes.audioProcessingDirty
       || (project.segments || []).some(segment => segment._dirty)
       || dirty(project.overlay_track) || dirty(project.multi_subtitle)
       || (project.multi_subtitle?.tracks || []).some(dirty));
@@ -179,5 +184,12 @@ window.MAWE.register('editor-state', function createEditorState(project) {
     get projectLoadPending() { return projectLoadPending; },
     segmentsFingerprint, noteSavedSegments, markSaved, reconcileSegmentsDirty,
     markProjectDirty, getProjectDirtyEpoch, onProjectDirtyChange });
-});
-window.MaweState = window.MAWE.resolve('editor-state', window.MaweBoot.DATA);
+}
+
+export function initMaweState() {
+  'use strict';
+  // 注册表 resolve 时代的返回值即 any；与原装配语义一致，经局部
+  // 中转赋窗口单例，类型断言由 editor-globals.d.ts 的接口描述承担。
+  const state = /** @type {any} */ (createEditorState(window.MaweBoot.DATA));
+  window.MaweState = state;
+}

@@ -1,7 +1,10 @@
 // 工程加载：规范化应用、检查点、SRT 解析与主轨替换。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweProjectLoad 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweProjectLoad 在原清单位次执行原 IIFE 体（挂
+// window.MaweProjectLoad 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweProjectLoad() {
+  // The classic editor.js binding is local to initializeLegacy, not visible to ESM modules.
+  const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 (function initMaweProjectLoad(global) {
   'use strict';
 
@@ -87,11 +90,12 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweCuePanelState.currentCuePanelTrackId = null;
   MaweCuePanelState.resetCuePanelEditState({ discard: true });
   resetLoadedMedia();
-  projectExtensionFields = Object.fromEntries(
-    Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
+  window.MaweExportContext.projectExtensionFields = Object.fromEntries(
+    Object.entries(data).filter(([key]) => !window.MaweExportContext.CANONICAL_PROJECT_FIELDS.has(key)),
   );
   MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
   MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
+  window.MaweAudioProcessing?.loadProject(data.audio_processing);
   // A browser-imported project is not the server's native media binding.
   if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.autoLoadedMediaPath = null;
   MaweBoot.DATA.language = data.language || '';
@@ -137,6 +141,9 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweBoot.DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, MaweBoot.DATA.segments);
   MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(data.overlay_track);
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
+  // 载入即归一分组区间：旧版本多句绑定曾把 head.sticker 写成首句范围（拖动才
+  // 被同步修正），落盘工程重开后预览仍按首句区间显示；打开时就对齐组契约。
+  MaweTextCleanup.syncTimelineGroupRanges();
   MaweHistory.editorHistory.clear();
   MaweHistory.updateUndoRedoButtons();
   MaweSelection.clearSelection();
@@ -451,3 +458,12 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
     replaceMainTrack
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function replaceMainTrack(...args) { return window.MaweProjectLoad.replaceMainTrack(...args); }
+export function parseSrtSegments(...args) { return window.MaweProjectLoad.parseSrtSegments(...args); }
+export function ensureProjectCheckpointForImport(...args) { return window.MaweProjectLoad.ensureProjectCheckpointForImport(...args); }
+export function detachServerProjectSaving(...args) { return window.MaweProjectLoad.detachServerProjectSaving(...args); }
+export function suggestedProjectName(...args) { return window.MaweProjectLoad.suggestedProjectName(...args); }
+export function isMawProject(...args) { return window.MaweProjectLoad.isMawProject(...args); }
+export function createProjectCheckpoint(...args) { return window.MaweProjectLoad.createProjectCheckpoint(...args); }

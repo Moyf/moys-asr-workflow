@@ -44,6 +44,8 @@ def model_cache_environment(model_cache_root: str | Path | None = None) -> dict[
     modelscope = root / "modelscope"
     return {
         "MAW_MODEL_CACHE_ROOT": str(root),
+        # 保持与模型 worker 的安全下载策略一致。
+        "HF_HUB_DISABLE_XET": "1",
         "HF_HOME": str(huggingface),
         "HF_HUB_CACHE": str(huggingface / "hub"),
         "HUGGINGFACE_HUB_CACHE": str(huggingface / "hub"),

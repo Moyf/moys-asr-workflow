@@ -75,7 +75,10 @@ test('inspector, focus-scoped arrows, reset, undo and save/reopen retain positio
     await MaweProjectSave.saveProjectToServer({ silent: true }); return json.segments[0].assOverride; });
   expect(save).toEqual({ pos: { x: 331, y: 162 } });
   expect((await snapshot(page)).dirty).toBe(false);
-  await page.reload(); await page.waitForFunction(() => Boolean(MaweBoot.DATA.segments[0].assOverride));
+  await page.reload();
+  await page.waitForFunction(() => Boolean(
+    window.MaweExportContext?.mergedExportSegments && MaweBoot.DATA.segments[0].assOverride,
+  ));
   expect((await snapshot(page)).override).toEqual(save);
   await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.assMode = true; MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000,0); });
   const gaps = await page.locator('#ass-cue-position').evaluate(panel => ({
@@ -794,4 +797,42 @@ test('dragging an automatically stacked upper cue uses the global top anchor', a
   expect(after.pos.x).toBe(roundPosition(before.record.positionAnchor.x+15*before.res/before.width));
   expect(after.pos.y).toBe(roundPosition(before.record.positionAnchor.y));
   expect(after.record.bounds.top).toBeCloseTo(before.record.bounds.top + after.pos.y - before.record.positionAnchor.y, 2);
+});
+
+
+test('pop and custom scale preview follow libass transform order', async ({ page }, info) => {
+  const rendered = await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = '{{MMMM}}';
+    const animations = ASS_STYLE_LIBRARY.assProfiles[0].animations;
+    animations.pop = { enabled: false, fromScale: 1.4, inMs: 250, accel: 1 };
+    animations.t = { enabled: true, startMs: 0, endMs: 250, accel: 1, tags: String.raw`\fscx200\fscy200` };
+    const originalCanvas = window.MaweAssCanvas;
+    let payload;
+    window.MaweAssCanvas = { ...originalCanvas, render(value) { payload = value; originalCanvas.render(value); } };
+    MawePlaybackLoop.refreshSubtitlePreview(125, 0);
+    window.MaweAssCanvas = originalCanvas;
+    const record = payload.tracks.find(item => item.role === 'main');
+    return { scaleX: record.style.scaleX, scaleY: record.style.scaleY, animation: record.animation };
+  });
+  expect(rendered.scaleX * rendered.animation.popScale).toBeCloseTo(160, 6);
+  expect(rendered.scaleY * rendered.animation.popScale).toBeCloseTo(160, 6);
+  await page.locator('.player-stage').screenshot({ path: info.outputPath('pop-custom-scale.png') });
+});
+test('overlay inspector defaults and Canvas layer order survive cue switches and reset', async ({ page }, info) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.overlay_track = { enabled: true, segments: [
+      { id: 'overlay-a', start: 0, end: 2000, text: 'OVERLAY', assOverride: { scale: 1.5, pos: { x: 320, y: 280 } } },
+      { id: 'overlay-b', start: 0, end: 2000, text: 'SECOND' } ] };
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    MaweCuePanel.setCuePanelTarget('overlay', 0);
+    MaweAssCuePosition.sync();
+  });
+  await expect(page.locator('#ass-cue-scale')).toHaveValue('1.50');
+  await page.evaluate(() => { MaweCuePanel.setCuePanelTarget('overlay', 1); MaweAssCuePosition.sync(); });
+  await expect(page.locator('#ass-cue-scale')).toHaveValue('1.00');
+  await page.evaluate(() => { MaweCuePanel.setCuePanelTarget('overlay', 0); MaweAssCuePosition.sync(); });
+  await page.locator('#ass-cue-scale-reset').click();
+  await expect(page.locator('#ass-cue-scale')).toHaveValue('1.00');
+  expect(await page.evaluate(() => MaweAssCanvas.lastRender.tracks.map(item => item.role))).toEqual(['main', 'overlay', 'overlay']);
+  await page.locator('#current-cue-panel').screenshot({ path: info.outputPath('overlay-inspector.png') });
 });

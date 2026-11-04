@@ -1,3 +1,8 @@
+import { overlayTrackVisible } from '../cues/overlay-track.js';
+
+export function initMaweDynamicExports() {
+'use strict';
+
 // 动态导出：FCP7XML、Lottie、Ograf 模态与导出。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweDynamicExports 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -129,8 +134,8 @@
   const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
   if (!extensionAvailable && MaweDom.lottieExportTrack) MaweDom.lottieExportTrack.value = 'main';
-  applyMediaSizeToResolutionModal(
-    MaweDom.lottieExportResolution, lottieExportCustomSize, lottieExportCustomWidth, lottieExportCustomHeight,
+  window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
+    MaweDom.lottieExportResolution, window.MaweDomPanelsWiring.lottieExportCustomSize, window.MaweDomPanelsWiring.lottieExportCustomWidth, window.MaweDomPanelsWiring.lottieExportCustomHeight,
   );
   MaweDom.lottieExportModal?.classList.add('show');
   MaweDom.lottieExportTrack?.focus();
@@ -139,7 +144,7 @@
 
 
   function lottieExportCanvasSize() {
-  return dynamicExportCanvasSize(MaweDom.lottieExportResolution, lottieExportCustomWidth, lottieExportCustomHeight);
+  return window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(MaweDom.lottieExportResolution, window.MaweDomPanelsWiring.lottieExportCustomWidth, window.MaweDomPanelsWiring.lottieExportCustomHeight);
 }
 
 
@@ -251,8 +256,8 @@
   const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
   if (!extensionAvailable && MaweDom.ografExportTrack) MaweDom.ografExportTrack.value = 'main';
-  applyMediaSizeToResolutionModal(
-    MaweDom.ografExportResolution, ografExportCustomSize, ografExportCustomWidth, ografExportCustomHeight,
+  window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
+    MaweDom.ografExportResolution, window.MaweDomPanelsWiring.ografExportCustomSize, window.MaweDomPanelsWiring.ografExportCustomWidth, window.MaweDomPanelsWiring.ografExportCustomHeight,
   );
   MaweDom.ografExportModal?.classList.add('show');
   MaweDom.ografExportTrack?.focus();
@@ -261,7 +266,7 @@
 
 
   function ografExportCanvasSize() {
-  return dynamicExportCanvasSize(MaweDom.ografExportResolution, ografExportCustomWidth, ografExportCustomHeight);
+  return window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(MaweDom.ografExportResolution, window.MaweDomPanelsWiring.ografExportCustomWidth, window.MaweDomPanelsWiring.ografExportCustomHeight);
 }
 
 
@@ -346,3 +351,4 @@
     exportOgrafDynamicCaptions
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

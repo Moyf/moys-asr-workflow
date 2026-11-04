@@ -268,6 +268,87 @@ test('merges and filters font combobox dropdown options without duplicates', () 
   );
 });
 
+test('merges and filters alias-table entries whose aliases join the search', () => {
+  // 别名表条目：value=label=canonical，aliases 参与搜索并随 merge 透传。
+  const merged = helpers.mergeFontFamilyOptions([
+    { value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] },
+    // 无别名的普通条目保持原有形状（不含 aliases 键）。
+    { value: 'Arial', label: 'Arial' },
+    { value: '  ' },
+    { value: 'Broken', label: 'Broken', aliases: ['ok', null, 42] },
+  ]);
+  assert.deepEqual(Array.from(merged, (entry) => ({ ...entry })), [
+    { value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] },
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Broken', label: 'Broken', aliases: ['ok'] },
+  ]);
+
+  // label 前缀优先级不变；别名命中归入包含匹配组。
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(merged, '得意'), (entry) => ({ ...entry })),
+    [{ value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] }],
+  );
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(merged, 'smiley'), (entry) => ({ ...entry })),
+    [{ value: '得意黑', label: '得意黑', aliases: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] }],
+  );
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(merged, '不存在'), (entry) => ({ ...entry })),
+    [],
+  );
+});
+
+test('builds the ASS preview font-family alias chain with dedupe and quoting', () => {
+  // 存储值 + canonical + 其余别名，大小写不敏感去重、逐个引号化、固定兜底。
+  assert.equal(
+    helpers.assFontFamilyAliasChainCss('Smiley Sans', [
+      '得意黑', 'smiley sans', 'Smiley Sans Oblique', 'SmileySans-Oblique',
+    ]),
+    '"Smiley Sans", "得意黑", "Smiley Sans Oblique", "SmileySans-Oblique", sans-serif',
+  );
+  // 无别名时退化为单名 + 兜底；引号内双引号/反斜杠转义。
+  assert.equal(helpers.assFontFamilyAliasChainCss('Arial'), '"Arial", sans-serif');
+  assert.equal(
+    helpers.assFontFamilyAliasChainCss('Weird "Name"', ['A\\B']),
+    '"Weird \\"Name\\"", "A\\\\B", sans-serif',
+  );
+  assert.equal(helpers.assFontFamilyAliasChainCss('  '), '');
+  assert.equal(helpers.assFontFamilyAliasChainCss('Arial', 'not-an-array'), '"Arial", sans-serif');
+});
+
+test('buildAssPayload rewrites Style Fontname through the alias table and leaves storage intact', () => {
+  const segments = [{ start: 0, end: 2000, text: '你好' }];
+  const fakeAliases = {
+    canonicalFor: (name) => ({ 'Smiley Sans': '得意黑' })[String(name ?? '').trim()] || null,
+  };
+  const previous = context.window.MaweAssFontAliases;
+  context.window.MaweAssFontAliases = fakeAliases;
+  try {
+    // 外观模式与 ASS 模式（库样式）都写出 canonical；扩展样式同样改写。
+    const legacy = helpers.buildAssPayload(segments, {
+      appearance: { font_family: 'Smiley Sans', font_size: 32, color: '#123456' },
+    });
+    assert.match(legacy, /Style: Default,得意黑,/);
+    const profiled = helpers.buildAssPayload(segments, {
+      assProfile: {},
+      assStyle: { fontName: 'Smiley Sans' },
+      assExtensionStyle: { fontName: 'Smiley Sans' },
+      extensionSegments: [{ start: 0, end: 1000, text: 'A' }],
+    });
+    assert.match(profiled, /Style: Default,得意黑,/);
+    assert.match(profiled, /Style: Extension,得意黑,/);
+  } finally {
+    // 恢复现场：字节 pin 等后续用例必须在无别名表环境下运行。
+    if (previous === undefined) delete context.window.MaweAssFontAliases;
+    else context.window.MaweAssFontAliases = previous;
+  }
+  // 表未加载时输出与现状一致（canonicalFor 缺失即原样返回）。
+  const plain = helpers.buildAssPayload(segments, {
+    appearance: { font_family: 'Smiley Sans', font_size: 32, color: '#123456' },
+  });
+  assert.match(plain, /Style: Default,Smiley Sans,/);
+});
+
 test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
   assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');
@@ -356,8 +437,8 @@ test('translates ASS special text format samples and rule hints for every symbol
   assert.equal(i18n.translateText('符号规则已关闭，字幕中的符号将保留原文。', 'en'),
     'Symbol rules are off; symbols in subtitles keep their literal text.');
   assert.equal(
-    i18n.translateText('你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。', 'en'),
-    'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, !!shake!!, and >>fade in/out<< to apply special styles.',
+    i18n.translateText('你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<<、{{放大出现}} 来添加特殊样式。', 'en'),
+    'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, !!shake!!, >>fade in/out<<, and {{pop in}} to apply special styles.',
   );
   assert.equal(
     i18n.translateText('详见字幕右键菜单「左右添加字符」部分。', 'en'),
@@ -2652,6 +2733,176 @@ test('keeps later cues aligned when whitespace at a split boundary is removed', 
   assert.equal(report.outputRows[3].mappingStatus, 'full');
 });
 
+// 真实工程里 Qwen 本地 ASR 的词标签自带前后空格，items 拼接会出现与
+// segment.text 不同的空白漂移（「 lucide 」+「 icon」拼出双空格）；
+// 严格布局失败会让拆句全部退化为估算。宽容布局应把 items 重新切齐到
+// 真实文字上，拆句后仍复用真实字词时间码。
+test('reuses word timings when splitting a cue whose item texts drift in whitespace', () => {
+  const source = [{
+    id: 'cue-1', start: 37560, end: 40060, text: ' lucide icon for example',
+    items: [
+      { text: ' lucide ', start: 37680, end: 38160 },
+      { text: ' icon', start: 38240, end: 38640 },
+      { text: ' for', start: 38960, end: 39040 },
+      { text: ' example', start: 39040, end: 40000 },
+    ],
+  }];
+  const expectations = [
+    { draft: [' lucide icon', ' for example'], ranges: [[37560, 38640], [38960, 40060]], itemStarts: [[37680, 38240], [38960, 39040]] },
+    { draft: ['lucide icon', 'for example'], ranges: [[37740, 38640], [38980, 40060]], itemStarts: [[37740, 38240], [38980, 39040]] },
+  ];
+  for (const { draft, ranges, itemStarts } of expectations) {
+    const report = helpers.buildTimedTextEditReport(source, draft);
+    assert.equal(report.valid, true);
+    assert.equal(report.stats.estimatedTimingCues, 0, JSON.stringify(draft));
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(report.previewSegments.map((segment) => [segment.start, segment.end]))),
+      ranges,
+    );
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(report.previewSegments.map((segment) => segment.items.map((item) => item.start)))),
+      itemStarts,
+    );
+    const applied = helpers.applyTimedTextEdit(source, draft);
+    assert.equal(applied.length, 2);
+    applied.forEach((segment) => {
+      assert.ok(Array.isArray(segment.items) && segment.items.length >= 2, segment.text);
+      assert.equal(segment.items.at(-1).end <= segment.end, true);
+      assert.equal(segment.items[0].start >= segment.start, true);
+    });
+  }
+});
+
+test('reuses word timings when item texts miss the space between words', () => {
+  const source = [{
+    id: 'cue-1', start: 60920, end: 62540, text: ' as the decoration you set',
+    items: [
+      { text: ' as', start: 61040, end: 61280 },
+      { text: ' the', start: 61280, end: 61440 },
+      { text: ' decoration', start: 61520, end: 62080 },
+      { text: ' you', start: 62080, end: 62160 },
+      { text: 'set', start: 62240, end: 62480 },
+    ],
+  }];
+  const report = helpers.buildTimedTextEditReport(source, [' as the decoration', ' you set']);
+  assert.equal(report.stats.estimatedTimingCues, 0);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(report.previewSegments.map((segment) => [segment.text, segment.start, segment.end]))),
+    [[' as the decoration', 60920, 62080], [' you set', 62080, 62540]],
+  );
+  // 逐条改写（非结构编辑）也不再因布局失败丢掉整组字词码。
+  const edited = helpers.buildTimedTextEditReport(source, [' as the decoration you set!']);
+  assert.equal(edited.rows[0].mappingStatus, 'partial');
+  assert.ok(edited.rows[0].items?.length >= 4);
+  assert.equal(edited.rows[0].items.at(-1).text, ' set!');
+});
+
+test('reuses word timings when item texts carry extra punctuation or the text has extra words', () => {
+  // items 拼接多一个尾逗号。
+  const comma = [{
+    id: 'cue-1', start: 0, end: 1000, text: ' source code mode',
+    items: [
+      { text: ' source', start: 0, end: 400 },
+      { text: ' code', start: 400, end: 700 },
+      { text: ' mode,', start: 700, end: 1000 },
+    ],
+  }];
+  const commaReport = helpers.buildTimedTextEditReport(comma, [' source code', ' mode']);
+  assert.equal(commaReport.stats.estimatedTimingCues, 0);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(commaReport.previewSegments.map((segment) => [segment.start, segment.end]))),
+    [[0, 700], [700, 1000]],
+  );
+  // 文字里多出 items 没有的插入词（AI 整理补写的括号注记）。
+  const extra = [{
+    id: 'cue-1', start: 0, end: 1000, text: ' will (be) rendered',
+    items: [
+      { text: ' will', start: 0, end: 300 },
+      { text: ' rendered', start: 400, end: 1000 },
+    ],
+  }];
+  const extraReport = helpers.buildTimedTextEditReport(extra, [' will', ' (be) rendered']);
+  assert.equal(extraReport.stats.estimatedTimingCues, 0);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(extraReport.previewSegments.map((segment) => [segment.start, segment.end]))),
+    [[0, 300], [400, 1000]],
+  );
+});
+
+test('keeps estimated timing when drifted items are too different from the text', () => {
+  const source = [{
+    id: 'cue-1', start: 0, end: 1000, text: '就是这颗',
+    items: [
+      { text: '甲乙丙', start: 0, end: 500 },
+      { text: '丁丁丁', start: 500, end: 1000 },
+    ],
+  }];
+  const report = helpers.buildTimedTextEditReport(source, ['就是', '这颗']);
+  assert.equal(report.valid, true);
+  assert.equal(report.stats.estimatedTimingCues, 2);
+  assert.equal(report.previewSegments[0].items, undefined);
+});
+
+test('does not let a deleted word fragment lend its times to a surviving word', () => {
+  // Greptile P1 场景：文字删掉了 items 里的 bar，残骸 ba 只能拼凑匹配。
+  // 宽容布局应整组放弃（诚实估算），而不是让 baz 继承 bar 的时间。
+  const source = [{
+    id: 'cue-1', start: 0, end: 1100, text: 'foo baz',
+    items: [
+      { text: 'foo ', start: 0, end: 300 },
+      { text: 'bar ', start: 400, end: 700 },
+      { text: 'baz', start: 800, end: 1100 },
+    ],
+  }];
+  const report = helpers.buildTimedTextEditReport(source, ['foo', 'baz']);
+  assert.equal(report.valid, true);
+  assert.equal(report.stats.estimatedTimingCues, 2);
+  assert.equal(report.previewSegments[0].items, undefined);
+  assert.equal(report.previewSegments[1].items, undefined);
+  // 估算按字符比例插值：baz 从 4/7 处开始，而不是被删词 bar 的 400ms。
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(report.previewSegments.map((segment) => [segment.start, segment.end]))),
+    [[0, 471], [629, 1100]],
+  );
+  // 整段改写（非结构编辑）同样不伪造：无法可靠映射就清掉字词码。
+  const edited = helpers.buildTimedTextEditReport(source, ['foo baz!']);
+  assert.equal(edited.rows[0].mappingStatus, 'lost');
+});
+
+test('keeps real items for the anchored line when a rewritten line forces anchor mode', () => {
+  const source = [{
+    id: 'cue-1', start: 0, end: 1900, text: "it's  automatically",
+    items: [
+      { text: " it's", start: 0, end: 800 },
+      { text: ' automatically', start: 900, end: 1900 },
+    ],
+  }];
+  // 等长改写走错别字修正路径，保留原 item 时间；未改行经锚点 + 漂移回退复用真实时间。
+  const typo = helpers.buildTimedTextEditReport(source, ["it'z", 'automatically']);
+  assert.equal(typo.structure.mode, 'anchor');
+  assert.equal(typo.stats.estimatedTimingCues, 0);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(typo.previewSegments.map((segment) => segment.items.map((item) => [item.text, item.start, item.end])))),
+    [[["it'z", 0, 800]], [['automatically', 900, 1900]]],
+  );
+  // 非等长改写拿不到可靠映射：改写行估算，未改行仍复用真实字词时间码。
+  const rewritten = helpers.buildTimedTextEditReport(source, ["it'zz", 'automatically']);
+  assert.equal(rewritten.structure.mode, 'anchor');
+  assert.equal(rewritten.stats.estimatedTimingCues, 1);
+  assert.equal(rewritten.previewSegments[0].items, undefined);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(rewritten.previewSegments[1].items.map((item) => [item.text, item.start, item.end]))),
+    [['automatically', 900, 1900]],
+  );
+  const exact = helpers.buildTimedTextEditReport(source, ["it's", 'automatically']);
+  assert.equal(exact.structure.mode, 'exact');
+  assert.equal(exact.stats.estimatedTimingCues, 0);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(exact.previewSegments.map((segment) => segment.items.map((item) => [item.text, item.end])))),
+    [[["it's", 800]], [['automatically', 1900]]],
+  );
+});
+
 test('merges and deletes complete subtitle lines while keeping remaining timings', () => {
   const source = [
     { id: 'cue-1', start: 0, end: 400, text: '就是', items: [{ start: 0, end: 400, text: '就是' }] },
@@ -3685,11 +3936,11 @@ test('ASS underscore markers render as local underline alongside emphasis', () =
   const text = '前 _下划线_ 与 _**共同**_ 后';
   const runs = Array.from(helpers.assInlineStyleRuns(text, 'double'), (run) => ({ ...run }));
   assert.deepEqual(runs, [
-    { text: '前 ', emphasized: false, underlined: false, struck: false, size: null, comment: false },
-    { text: '下划线', emphasized: false, underlined: true, struck: false, size: null, comment: false },
-    { text: ' 与 ', emphasized: false, underlined: false, struck: false, size: null, comment: false },
-    { text: '共同', emphasized: true, underlined: true, struck: false, size: null, comment: false },
-    { text: ' 后', emphasized: false, underlined: false, struck: false, size: null, comment: false },
+    { text: '前 ', emphasized: false, underlined: false, struck: false, size: null, comment: false, italic: false },
+    { text: '下划线', emphasized: false, underlined: true, struck: false, size: null, comment: false, italic: false },
+    { text: ' 与 ', emphasized: false, underlined: false, struck: false, size: null, comment: false, italic: false },
+    { text: '共同', emphasized: true, underlined: true, struck: false, size: null, comment: false, italic: false },
+    { text: ' 后', emphasized: false, underlined: false, struck: false, size: null, comment: false, italic: false },
   ]);
   const options = {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },
@@ -3710,6 +3961,42 @@ test('ASS underscore markers render as local underline alongside emphasis', () =
   assert.match(helpers.buildAssPayload([{ start: 0, end: 1000, text: '_下划线_' }]), /_下划线_/);
   assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo_bar_baz _未闭合', 'double'), (run) => run.text),
     ['foo_bar_baz _未闭合']);
+});
+
+test('ASS %%…%% subdued and //…// italic markers parse and export independently', () => {
+  const text = '前 %%弱化%% 中 //斜体// 后';
+  const runs = Array.from(helpers.assInlineStyleRuns(text, 'double'), (run) => ({ ...run }));
+  assert.deepEqual(runs.map((run) => [run.text, run.comment, run.italic]), [
+    ['前 ', false, false], ['弱化', true, false], [' 中 ', false, false],
+    ['斜体', false, true], [' 后', false, false],
+  ]);
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 40, commentColor: '#888888' },
+    assExtensionStyle: { id: 'ass-extension', fontSize: 40, commentColor: '#888888' },
+    extensionSegments: [{ start: 0, end: 1000, text }],
+    overlaySegments: [{ start: 0, end: 1000, text }],
+  };
+  const cues = [{ start: 0, end: 1000, text }];
+  const events = helpers.buildAssPayload(cues, options).split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(events.length, 3);
+  // 弱化 run 换注释色，斜体 run 写 \i 标签；两者互不干扰。
+  events.forEach((line) => assert.match(line,
+    /前 \{\\1c&H00888888&\}弱化\{\\1c&H[0-9A-F]{8}&\} 中 \{\\i1\}斜体\{\\i0\} 后/));
+  // 样式级斜体已开启时不再写 \i 切换标签。
+  const styleItalic = helpers.buildAssPayload(cues, {
+    ...options, assStyle: { ...options.assStyle, italic: true },
+    assExtensionStyle: { ...options.assExtensionStyle, italic: true },
+  });
+  styleItalic.split('\n').filter((line) => line.startsWith('Dialogue:'))
+    .forEach((line) => assert.doesNotMatch(line, /\\i[01]/));
+  // 同一段文字同时弱化+斜体：两个标记可嵌套，标签叠加。
+  const mixedRuns = Array.from(helpers.assInlineStyleRuns('%%//又弱又斜//%%', 'double'),
+    (run) => [run.text, run.comment, run.italic]);
+  assert.deepEqual(mixedRuns, [['又弱又斜', true, true]]);
+  // 孤儿符号与单个 % 字面保留。
+  assert.equal(helpers.assInlineStyleRuns('//未配对 %50 100%%', 'double')
+    .map((run) => run.text).join(''), '//未配对 %50 100%%');
 });
 
 test('ASS accepts single and double stars and tildes together, including nested delimiter widths', () => {
@@ -3781,6 +4068,53 @@ test('ASS special text checkboxes independently disable marker parsing and prese
   assert.equal(helpers.assInlineStyleRuns(text, 'none', off).map((run) => run.text).join(''), text);
 });
 
+test('ASS subdued and italic toggles disable parsing and normalize to enabled by default', () => {
+  const text = '%%弱化%% //斜体//';
+  for (const [key, marker] of [['assCommentEnabled', '%%弱化%%'], ['assItalicEnabled', '//斜体//']]) {
+    const options = { [key]: false };
+    const runs = helpers.assInlineStyleRuns(text, 'both', options);
+    assert.ok(runs.map((run) => run.text).join('').includes(marker));
+    const cues = [{ start: 0, end: 1000, text }];
+    const ass = helpers.buildAssPayload(cues, {
+      ...options, assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+      assStyle: { id: 'ass' }, assExtensionStyle: { id: 'ass-extension' },
+      extensionSegments: cues, overlaySegments: cues,
+    });
+    ass.split('\n').filter((line) => line.startsWith('Dialogue:'))
+      .forEach((line) => assert.ok(line.includes(marker)));
+    assert.equal(helpers.normalizeEditorSettings(options)[key], false);
+    assert.equal(helpers.normalizeEditorSettings()[key], true);
+  }
+  const off = { assCommentEnabled: false, assItalicEnabled: false };
+  assert.equal(helpers.assInlineStyleRuns(text, 'both', off).map((run) => run.text).join(''), text);
+});
+
+test('the none symbol rule preserves fixed-double markers in preview runs and every ASS track', () => {
+  const text = '%%弱化%% //斜体//';
+  const cues = [{ start: 0, end: 1000, text }];
+  for (const rule of ['none', 'double', 'both']) {
+    const settings = helpers.normalizeEditorSettings({ assSpecialSymbolRule: rule });
+    const runs = Array.from(helpers.assInlineStyleRuns(text, settings.assEmphasisSyntax, settings));
+    assert.equal(runs.map(run => run.text).join(''), rule === 'none' ? text : '弱化 斜体');
+    assert.equal(runs.some(run => run.comment), rule !== 'none');
+    assert.equal(runs.some(run => run.italic), rule !== 'none');
+    const ass = helpers.buildAssPayload(cues, { ...settings,
+      assProfile: { animations: {} }, assStyle: { id: 'ass' },
+      assExtensionStyle: { id: 'ass-extension' }, extensionSegments: cues, overlaySegments: cues });
+    const events = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
+    assert.equal(events.length, 3);
+    events.forEach(line => {
+      if (rule === 'none') {
+        assert.ok(line.includes(text));
+        assert.doesNotMatch(line, /\\i[01]/);
+      } else {
+        assert.doesNotMatch(line, /%%|\/\//);
+        assert.match(line, /\\i1/);
+      }
+    });
+  }
+});
+
 test('ASS inline strike and size markers restore the base style and use each track style scale', () => {
   const text = '前 ~~删除~~ -小字- +大字+ 后';
   const options = {
@@ -3804,7 +4138,7 @@ test('ASS inline strike and size markers restore the base style and use each tra
   assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo-bar-baz C++ 1+2+3 -未闭合', 'none'), (run) => run.text),
     ['foo-bar-baz C++ 1+2+3 -未闭合']);
   const combined = Array.from(helpers.assInlineStyleRuns('~~-**组合**-~~', 'double'), (run) => ({ ...run }));
-  assert.deepEqual(combined, [{ text: '组合', emphasized: true, underlined: false, struck: true, size: 'small', comment: false }]);
+  assert.deepEqual(combined, [{ text: '组合', emphasized: true, underlined: false, struck: true, size: 'small', comment: false, italic: false }]);
   const style = helpers.normalizeAssStyle({ smallTextScale: 0.63, largeTextScale: 5 });
   assert.equal(style.smallTextScale, 0.65);
   assert.equal(style.largeTextScale, 3);
@@ -6898,12 +7232,14 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
     [
       { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
       { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
-      { id: 'comment', label: '弱化文本', left: '//', right: '//', ass: true },
+      { id: 'comment', label: '弱化文本', left: '%%', right: '%%', ass: true },
       { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
+      { id: 'italic', label: '斜体文本', left: '//', right: '//', ass: true },
       { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
       { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
       { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true, sentenceLevel: true },
       { id: 'shake', label: '原地震动', left: '!!', right: '!!', ass: true, sentenceLevel: true },
+      { id: 'pop', label: '放大出现', left: '{{', right: '}}', ass: true, sentenceLevel: true },
       { id: 'note', label: '音符', left: '♪', right: '♪' },
       { id: 'music', label: '双音符', left: '♬', right: '♬' },
       { id: 'bracket', label: '中括号', left: '[', right: ']' },
@@ -7145,7 +7481,7 @@ test('sentence fade markers respect disabled and migrated symbol rules', () => {
 
 test('explicit zero-duration sentence fade suppresses global fades', () => {
   const profile = { animations: { fad: { enabled: true, inMs: 0, outMs: 500 } } };
-  const sentence = helpers.assSentenceFadeTags('>>原文', profile, 'both');
+  const sentence = helpers.assSentenceAnimationTags('>>原文', profile, 'both');
   assert.equal(helpers.assAnimationOverrideTags(profile, { fad: sentence.fad }), '\\fad(0,0)');
   assert.equal(helpers.assPreviewAnimationState(profile, 950, 1000, { fad: sentence.fad }).opacity, 1);
 });

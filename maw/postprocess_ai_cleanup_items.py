@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from maw.postprocess_ai_cleanup_safety import protected_information_loss_reason, safe_echo_phrase
+from maw.postprocess_ai_cleanup_safety import english_hesitation_only, protected_information_loss_reason, safe_echo_phrase
 
 
 def collapse_echo(text: str) -> str:
@@ -36,8 +36,15 @@ def item_text_spans(text: str, items: Sequence[Mapping[str, object]]) -> list[tu
     """Locate complete source items, preserving punctuation between items."""
     spans: list[tuple[int, int]] = []
     cursor = 0
-    for item in items:
+    for index, item in enumerate(items):
         value = str(item.get("text") or "")
+        # ASR word tokens can own the spaces at a cue's edges, while the
+        # editable source is stripped. Only remove whitespace absent at those
+        # edges; internal spaces and all spoken characters still match exactly.
+        if index == 0 and text and not text[0].isspace():
+            value = value.lstrip()
+        if index == len(items) - 1 and text and not text[-1].isspace():
+            value = value.rstrip()
         if not value:
             return None
         start = text.find(value, cursor)
@@ -46,6 +53,34 @@ def item_text_spans(text: str, items: Sequence[Mapping[str, object]]) -> list[tu
         cursor = start + len(value)
         spans.append((start, cursor))
     return None if any(char.isalnum() for char in text[cursor:]) else spans
+
+
+def english_hesitation_removal(text: str, items: Sequence[Mapping[str, object]], deleted: Sequence[int]) -> bool:
+    """Prove each continuous cut is a complete hesitation in the source."""
+    spans = item_text_spans(text, items)
+    indexes = sorted(set(deleted))
+    if spans is None or not indexes:
+        return False
+    runs: list[list[int]] = []
+    for index in indexes:
+        if runs and index == runs[-1][-1] + 1:
+            runs[-1].append(index)
+        else:
+            runs.append([index])
+    for run in runs:
+        start, end = spans[run[0]][0], spans[run[-1]][1]
+        # Items may split an English word. Neither those cuts nor unrelated
+        # fragments joined across retained words prove a hesitation sound.
+        value = text[start:end]
+        left = start + len(value) - len(value.lstrip())
+        right = end - (len(value) - len(value.rstrip()))
+        if (left and re.match(r"[A-Za-z0-9_]", text[left - 1])) or (
+            right < len(text) and re.match(r"[A-Za-z0-9_]", text[right - 1]) and re.match(r"[A-Za-z0-9_]", text[right])
+        ):
+            return False
+        if not english_hesitation_only(value):
+            return False
+    return True
 
 
 def item_ranges(items: Sequence[Mapping[str, object]], deleted: Sequence[int]) -> list[dict[str, int]]:

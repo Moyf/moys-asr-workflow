@@ -671,6 +671,49 @@
   .media-volume-control input { width: 78px; min-width: 0; accent-color: var(--accent); }
   .media-rate-control select { min-width: 0; padding: 3px 4px; }
   .media-controls #media-fullscreen { flex: 0 0 auto; }
+  .audio-processing-panel.gap-remove-panel { width: min(450px, calc(100vw - 24px)); font-size: 13px; line-height: 1.5; }
+  .audio-processing-body.gap-remove-panel-body { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+  .audio-processing-body p, .audio-processing-body dl { margin: 0; }
+  .audio-control-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .audio-control-label output { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .audio-gain-row, .audio-reference-inputs, .audio-processing-actions, .audio-processing-primary-actions { display: flex; align-items: center; gap: 8px; }
+  .audio-processing-body button, .audio-processing-body select, .audio-processing-body input[type="number"] {
+    min-height: 30px; padding: 4px 9px; color: var(--btn-text); background: var(--btn-bg);
+    border: 1px solid var(--btn-border); border-radius: var(--radius-sm); font: inherit;
+  }
+  .audio-processing-body button, .audio-processing-body select { cursor: pointer; }
+  .audio-processing-body button:hover:not(:disabled), .audio-processing-body select:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .audio-processing-body :is(button, input, select):focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+  .audio-processing-body button:disabled { opacity: .42; cursor: not-allowed; }
+  .audio-gain-row button { width: 32px; flex: 0 0 auto; font-size: 17px; line-height: 1; }
+  .audio-gain-row input { flex: 1; min-width: 48px; }
+  .audio-processing-body input[type="range"] { accent-color: var(--accent); margin: 0; }
+  .audio-reference-inputs { flex-wrap: wrap; }
+  #audio-target { flex: 1 1 180px; min-width: 0; }
+  #audio-target-custom-control { display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+  #audio-target-custom-control[hidden] { display: none; }
+  #audio-target-custom { width: 76px; }
+  #audio-measurement-status { color: var(--text-secondary); font-size: 12px; }
+  #audio-measurement-status.measuring { color: var(--amber-hover); }
+  .audio-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+  .audio-metrics > div { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+  .audio-metrics dt { color: var(--text-secondary); font-size: 12px; }
+  .audio-metrics dd { margin: 0; padding: 4px 10px; border: 1px solid var(--border-subtle); border-radius: 999px; background: var(--bg-panel); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .audio-processing-actions { justify-content: space-between; flex-wrap: wrap; }
+  .audio-processing-primary-actions { flex-wrap: wrap; }
+  #audio-normalize { color: #fff; background: #b85c16; border-color: #b85c16; }
+  #audio-normalize:hover:not(:disabled) { background: #a34d0d; border-color: #a34d0d; }
+  #audio-gain-reset { color: var(--text-secondary); background: transparent; }
+  .audio-processing-notes { color: var(--text-secondary); font-size: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .audio-gain-warning { color: var(--warning-text, #c77c17); font-size: 12px; }
+  .audio-listening-volume { border-top: 1px solid var(--border-subtle); padding-top: 14px; }
+  .audio-listening-volume input { display: block; width: 100%; }
+  .audio-gain-range-control { color: var(--text-secondary); font-size: 12px; }
+  .audio-gain-range-control label { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .audio-gain-range-control input { margin: 0; accent-color: var(--accent); }
+  .audio-gain-range { color: var(--text-muted); }
+  #audio-gain-range-note { display: block; margin-top: 8px; color: var(--warning-text, #c77c17); }
+  #audio-gain-range-note[hidden] { display: none; }
   @container media-controls (max-width: 680px) {
     .media-controls { gap: 4px; padding-inline: 5px; }
     .media-controls .media-step-button { display: none; }
@@ -2094,6 +2137,28 @@
   }
   .ass-frame-image { display: block; width: 100%; height: 100%; object-fit: contain; min-height: 0; border-radius: var(--radius-sm); }
   .ass-frame-image[hidden] { display: none; }
+  /* 实际画面窗口的表情包图层：叠在实际帧 PNG 上方，几何与 contain 显示语义
+     与播放器舞台的 #sticker-overlay-layer 一致；层的 left/top/width/height 由
+     接线按 PNG 实际绘制矩形（object-fit: contain 的显示区域）写入，几何层按
+     preview.sticker 归一化几何取百分比。素材与字幕位置不相交，叠放次序与
+     舞台暂停视图（表情包层压在实际帧上方）保持一致。 */
+  .ass-frame-sticker-layer { position: absolute; z-index: 2; pointer-events: none; }
+  .ass-frame-sticker-layer .ass-frame-sticker-geometry { position: absolute; pointer-events: none; }
+  .ass-frame-sticker-layer .sticker-overlay-content {
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column; gap: 6px;
+    align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  /* 与舞台层相同：叠加轨表情包显示时内容区加高到 200%，给垂直堆叠留空间。 */
+  .ass-frame-sticker-layer .sticker-overlay-content.has-overlay-sticker { height: 200%; }
+  .ass-frame-sticker-layer .sticker-overlay-content img {
+    flex: 0 0 auto; max-width: 100%;
+    object-fit: contain; border-radius: var(--radius-sm);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); background: rgba(0, 0, 0, 0.35);
+  }
+  .ass-frame-sticker-layer .sticker-overlay-content img:only-child { max-height: 100%; }
+  .ass-frame-sticker-layer .sticker-overlay-content img:not(:only-child) { max-height: 50%; }
   .ass-frame-image-wrap.ass-frame-native { display: block; overflow: auto; }
   .ass-frame-native .ass-frame-image { width: auto; height: auto; max-width: none; max-height: none; border-radius: 0; }
   .ass-frame-placeholder { margin: 0; color: var(--text-faint); font-size: 12px; text-align: center; }
@@ -3578,7 +3643,7 @@
     .timed-text-edit-row-main { grid-template-columns: minmax(0, 1fr); }
   }
   .timed-text-edit-row textarea {
-    display: block; width: 100%; min-height: 34px; box-sizing: border-box; resize: vertical; margin: 0;
+    display: block; position: relative; z-index: 2; width: 100%; min-height: 34px; box-sizing: border-box; resize: vertical; margin: 0;
     padding: 6px 8px; color: var(--text-primary); background: var(--bg-input);
     border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; line-height: 1.45;
     /* 显式声明与镜像层一致的换行规则，保证高亮位置逐行对齐 */
@@ -4498,6 +4563,9 @@
 }
 .markers-item-actions button.markers-review-toggle.confirmed {
   color: #d9f2e3; background: #2b5b3f; border-color: #2b5b3f;
+}
+.markers-item-actions button.markers-review-toggle.restored {
+  color: var(--text-secondary); background: var(--btn-bg); border-color: var(--border);
 }
 .markers-item-actions button.markers-review-toggle.removed,
 .markers-item-actions button.markers-review-toggle.partially-removed {

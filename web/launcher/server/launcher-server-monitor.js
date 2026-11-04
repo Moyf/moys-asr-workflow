@@ -1,4 +1,5 @@
 // 编辑器服务器状态监控与轮询，含 appendLog/confirm 桥。
+let recentProjectsReadyServer = "";
 
 function setServerStatus(url, alreadyRunning = false, prefix = "") {
   const status = $("status");
@@ -30,12 +31,21 @@ function scheduleServerStatusMonitor(delayMs = SERVER_STATUS_MONITOR_INTERVAL_MS
   }, Math.max(0, delayMs));
 }
 function startServerStatusMonitor() {
+  recentProjectsReadyServer = "";
   serverStatusMonitorEnabled = true;
   serverStatusMonitorState = "connected";
   serverStatusMonitorFailureCount = 0;
   scheduleServerStatusMonitor();
 }
 function handleServerStatusMonitorHealthy(result) {
+  const serverKey = `${result.url}|${result.pid || ""}`;
+  if (result.startupStatus !== "ready") recentProjectsReadyServer = "";
+  else if (recentProjectsReadyServer !== serverKey) {
+    recentProjectsReadyServer = serverKey;
+    void loadRecentProjects().then((refresh) => {
+      if (!refresh?.ok && recentProjectsReadyServer === serverKey) recentProjectsReadyServer = "";
+    });
+  }
   const wasDisconnected = serverStatusMonitorState === "disconnected";
   serverStatusMonitorFailureCount = 0;
   serverStatusMonitorState = "connected";
@@ -48,6 +58,7 @@ function handleServerStatusMonitorHealthy(result) {
   renderServerButton();
 }
 function handleServerStatusMonitorFailure() {
+  recentProjectsReadyServer = "";
   serverStatusMonitorFailureCount += 1;
   if (serverStatusMonitorFailureCount < SERVER_STATUS_MONITOR_FAILURE_THRESHOLD || serverStatusMonitorState === "disconnected") return;
   serverStatusMonitorState = "disconnected";

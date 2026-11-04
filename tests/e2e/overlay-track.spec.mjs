@@ -421,7 +421,7 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   expect(afterOut.segments[0].color_ref).toBeNull();
 
   // 转为主字幕：颜色同样跟随（数据层直调，菜单点击路径已有用例覆盖）。
-  const reverted = await page.evaluate(() => convertOverlayCueToMain(0));
+  const reverted = await page.evaluate(() => window.MAWE.resolve('overlay-track').convertOverlayCueToMain(0));
   expect(reverted).toBe(true);
   const afterBack = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(afterBack.overlay_track.segments).toHaveLength(0);
@@ -665,7 +665,7 @@ test('splits and merges overlay cues with group marks following', async ({ page 
   // 拆分：叠加轨复用副轨拆分弹窗（单 lane），提交后颜色组随拆分继承。
   const opened = await page.evaluate(() => {
     MaweCuePanel.setCuePanelTarget('overlay', 0);
-    return openOverlaySplitModal(0, 1000);
+    return window.MaweOverlaySplitMerge.openOverlaySplitModal(0, 1000);
   });
   expect(opened).toBe(true);
   await expect(page.locator('#multi-subtitle-split-modal.show')).toBeVisible();
@@ -811,6 +811,53 @@ test('raises the sticker overlay content while an overlay sticker is displayed',
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
+test('multi-sentence sticker binding covers every bound cue without a drag', async ({ page }) => {
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  const project = {
+    segments: [
+      { id: 'main-001', start: 0, end: 1000, text: '第一句' },
+      { id: 'main-002', start: 1000, end: 2600, text: '第二句' },
+    ],
+    waveform: generateWaveformPayload(3000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.cue[data-idx="1"]')).toHaveCount(1);
+
+  // 走真实分配入口：两条字幕多选 → 表情包选择器 → 点击素材。
+  // MaweBoot 门面冻结，但 STICKERS 数组本身可变，用 push 注入素材。
+  await page.evaluate(() => {
+    document.getElementById('sticker-overlay-toggle').checked = true;
+    MaweBoot.STICKERS.push({ name: 'bind', filename: 'bind.png', rel: 'bind.png' });
+    MaweState.selection.clear('main');
+    MaweState.selection.add('main', 0);
+    MaweState.selection.add('main', 1);
+    MaweStickerPicker.openStickerPicker([0, 1], true);
+  });
+  await page.locator('#sticker-grid .sticker-item').first().click();
+  await expect(page.locator('#sticker-modal')).not.toHaveClass(/show/);
+
+  // 数据契约：head.sticker 覆盖整个选区，第二句是 ref。
+  expect(await page.evaluate(() => {
+    const [head, member] = MaweBoot.DATA.segments;
+    return { start: head.sticker.start, end: head.sticker.end,
+      ref: member.sticker_ref && { name: member.sticker_ref.name, headIdx: member.sticker_ref.headIdx } };
+  })).toEqual({ start: 0, end: 2600, ref: { name: 'bind', headIdx: 0 } });
+
+  // 关键回归：不拖动任何字幕条，第二句时间内就要显示表情包
+  // （旧实现 head.sticker 只写到首句 end，必须拖动触发区间同步才恢复）。
+  const countAt = (ms) => page.evaluate((time) => {
+    MaweCoreState.player.currentTime = time / 1000;
+    MawePlaybackLoop.update();
+    return document.querySelectorAll('#sticker-overlay-layer .sticker-overlay-content img').length;
+  }, ms);
+  expect(await countAt(500)).toBe(1);
+  expect(await countAt(1500)).toBe(1);
+  expect(await countAt(2700)).toBe(0);
+  expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
 test('keeps color group references valid through an overlay round trip', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
@@ -850,7 +897,7 @@ test('keeps color group references valid through an overlay round trip', async (
   await expect(page.locator('#ctxmenu .item', { hasText: '转为主字幕' })).toBeVisible();
   await page.keyboard.press('Escape');
   const reverted = await page.evaluate(() => {
-    const ok = convertOverlayCueToMain(0);
+    const ok = window.MAWE.resolve('overlay-track').convertOverlayCueToMain(0);
     return { ok, segs: MaweBoot.DATA.segments.map((s) => s.id) };
   });
   expect(reverted.ok).toBe(true);

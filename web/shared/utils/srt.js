@@ -1,7 +1,7 @@
 // srt: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, stripMassMarkers, stripSentenceFadeMarkers, stripSentenceShakeMarkers } = dependencies;
+  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, stripMassMarkers, stripSentenceFadeMarkers, stripSentencePopMarkers, stripSentenceShakeMarkers } = dependencies;
 
 
   function getSrtExportFirstIndex(segments, alignFirstEnabled = false) {
@@ -96,9 +96,10 @@ export function createUtilsModule(dependencies) {
   function srtSentenceText(text, rule) {
     // Fade parsing can traverse an outer shake shell using the active rule.
     // Remove it first so single-symbol fade shells cannot hide an inner shake.
-    // MASS 成对符号最后剥离（只剥成对、孤儿保留字面）；句级 fade/shake 已由
-    // 前两步处理，这里不会重复剥也不会破坏其 parse-once 语义。
-    return stripMassMarkers(stripSentenceShakeMarkers(stripSentenceFadeMarkers(text, rule)), rule);
+    // MASS 成对符号最后剥离（只剥成对、孤儿保留字面）；句级 fade/shake/pop
+    // 已由前三步处理，这里不会重复剥也不会破坏其 parse-once 语义。
+    return stripMassMarkers(
+      stripSentencePopMarkers(stripSentenceShakeMarkers(stripSentenceFadeMarkers(text, rule)), rule), rule);
   }
 
   function srtEntry(index, start, end, text, formatTime) {

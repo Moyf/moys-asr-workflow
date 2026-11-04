@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Callable, Final, Mapping
 
 from maw.gui_platform import creationflags, release_process_tree, startupinfo, terminate_process_tree
+from maw.ass_fonts import normalize_ass_text_fontnames
 from maw.output_naming import media_suffix
 from maw.ass_styles import DEFAULT_SRT_STYLE, ass_style_force_style, ass_style_line, find_ass_style, load_ass_style_library
 from maw.ffmpeg import resolve_ffmpeg_tool
@@ -160,6 +161,8 @@ class BurnSubtitleResult:
     media_path: Path
     subtitle_path: Path
     video_encoder: str
+    # 烧录前 ASS 字体名归一化的人读说明（替换 + 未找到）；无归一化时为空。
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -526,6 +529,8 @@ def run_burn_subtitles(
             play_resolution = _probe_play_resolution(media, ffprobe_path=probe_tool)
     prepared_subtitle = subtitle
     converted_subtitle: Path | None = None
+    normalized_subtitle: Path | None = None
+    font_warnings: list[str] = []
     last_error: MediaToolError | None = None
     try:
         if subtitle.suffix.lower() == ".srt":
@@ -544,6 +549,29 @@ def run_burn_subtitles(
             prepared_subtitle = converted_subtitle
             if green_screen:
                 green_input, _ = _green_screen_input(prepared_subtitle, play_resolution)
+        # SRT/工程转换产物与用户原始 .ass 输入统一做字体名归一化：libass 只按
+        # nameID1 匹配，样式里的排版名（如 Smiley Sans）会被静默回退。有变更
+        # 时写归一化临时副本（滤镜指向副本），绝不改用户原文件；表不可用或
+        # 无 Style 行时归一化原样返回，走原有文件。
+        try:
+            source_text = prepared_subtitle.read_text(encoding="utf-8-sig", errors="replace")
+            normalized_text, font_warnings = normalize_ass_text_fontnames(source_text)
+            if normalized_text != source_text:
+                # 与 convert_srt_to_ass 的隐藏临时文件同风格；输入本身已是隐藏
+                # 临时产物（stem 以 . 开头）时不再叠加前导点，避免 ".." 前缀。
+                stem = prepared_subtitle.stem
+                hidden_prefix = stem if stem.startswith(".") else f".{stem}"
+                descriptor, temporary_name = tempfile.mkstemp(
+                    prefix=f"{hidden_prefix}.maw-fontfix-",
+                    suffix=".ass",
+                    dir=prepared_subtitle.parent,
+                )
+                with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+                    handle.write(normalized_text)
+                normalized_subtitle = Path(temporary_name)
+                prepared_subtitle = normalized_subtitle
+        except OSError:
+            font_warnings = []
         input_command = [*green_input, "-i", str(media)] if include_green_audio and media is not None else (
             green_input if green_screen else ["-i", str(media)]
         )
@@ -606,6 +634,7 @@ def run_burn_subtitles(
                 media_path=output,
                 subtitle_path=subtitle,
                 video_encoder=encoder,
+                warnings=tuple(font_warnings),
             )
         if last_error is not None:
             raise last_error
@@ -616,6 +645,8 @@ def run_burn_subtitles(
     finally:
         if converted_subtitle is not None:
             converted_subtitle.unlink(missing_ok=True)
+        if normalized_subtitle is not None:
+            normalized_subtitle.unlink(missing_ok=True)
 
 
 def run_extract_audio(

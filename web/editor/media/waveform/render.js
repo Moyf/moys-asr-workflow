@@ -13,6 +13,17 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    // ResizeObserver 回声抑制的快照端：完整 render 可能反过来改写 pane 盒
+    // 尺寸（几何切换重设内容高度、滚动条出现、工具栏换行），从而在下一帧
+    // 触发一次冗余的全量 render。在渲染完成时刻记录 pane 尺寸，供 _onResize
+    // 识别「通知完全可由刚完成的渲染解释」；外部真实尺寸变化（拖窗口/
+    // 分隔条）必然偏离该快照。不用时间窗：同帧到达的真实 resize 会被误吞。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    _snapshotRenderedPaneSize() {
+      this._renderedPaneSize = { width: this.pane.offsetWidth, height: this.pane.offsetHeight };
+    }
+
+
     /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleMultiVisible() {
       // 滚动事件一帧内可能触发多次；合并到每帧最多一次可视区渲染
@@ -86,6 +97,7 @@ export function createWaveformModule(dependencies) {
         this.content.replaceChildren();
         this.renderedRows = [];
         this.empty.classList.remove('hidden');
+        this._snapshotRenderedPaneSize();
         return;
       }
       this.empty.classList.add('hidden');
@@ -93,10 +105,13 @@ export function createWaveformModule(dependencies) {
         // 布局拖拽中：不做全量重建（每帧 14 个 canvas 重绘会卡顿），
         // 只把已有位图按新尺寸拉伸；松手后由 finish 里的 scheduleRender 恢复清晰
         this.stretchWaveformCanvases();
+        this._snapshotRenderedPaneSize();
         return;
       }
       if (this.settings.mode === 'basic') this.renderBasic();
       else this.renderMulti();
+      // 每个完成出口都刷新回声抑制快照（pane 盒尺寸以此刻布局为准）。
+      this._snapshotRenderedPaneSize();
     }
 
 

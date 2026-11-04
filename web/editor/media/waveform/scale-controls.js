@@ -157,8 +157,18 @@ export function createWaveformModule(dependencies) {
     }
 
 
-    /** @this {import('./waveform-types.js').WaveformInstance} */
-    revealTime(timeMs, center = true) {
+    // behavior（默认 'smooth'）透传给 scrollTo：常规 reveal（字幕跳转、
+    // 键盘导航）保持平滑滚动；几何切换后的锚点还原传 'auto' 瞬时定位，
+    // 避免滚动动画期间逐帧增量重建词密可视行（scroll 事件 →
+    // scheduleMultiVisible），叠加在刚完成的全量重建上放大卡顿。
+    /**
+     * @this {import('./waveform-types.js').WaveformInstance}
+     * @param {number} timeMs
+     * @param {boolean} [center]
+     * @param {{behavior?: ScrollBehavior}} [options]
+     */
+    revealTime(timeMs, center = true, options = {}) {
+      const behavior = options.behavior ?? 'smooth';
       if (!this.payload) return;
       this.autoScrolling = false;
       this.autoScrollTarget = null;
@@ -191,7 +201,7 @@ export function createWaveformModule(dependencies) {
       const nextScrollTop = Math.max(0, scrollTop);
       this.autoScrolling = Math.abs(nextScrollTop - currentScrollTop) > 0.5;
       if (this.autoScrolling) {
-        this.scroll.scrollTo({ top: nextScrollTop, behavior: 'smooth' });
+        this.scroll.scrollTo({ top: nextScrollTop, behavior });
       }
       this.manualFollowUntil = Date.now() + 3000;
       // 目标仍在当前可视行内时，字幕跳转只需要移动播放头；不要因为

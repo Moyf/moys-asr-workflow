@@ -1,9 +1,11 @@
+import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 
 const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).href;
 
 test('automatic processing reports skipped AI steps at the end', async ({ page }, testInfo) => {
   await page.goto(launcherUrl);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.onPostprocessPipeline);
   await page.locator('#toolboxFab').click();
   await page.evaluate(() => window.MAWLauncher.onPostprocessPipeline({
@@ -28,6 +30,7 @@ test('cleanup review defaults off, persists and reaches requests; reports never 
     };
   });
   await page.goto(launcherUrl);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   await page.evaluate(() => window.MAWLauncher.openToolboxAiProcessing());
   await page.locator('#postprocessOperation').selectOption('ai_cleanup');
@@ -98,6 +101,7 @@ test('cleanup review defaults off, persists and reaches requests; reports never 
     await expect(page.locator('#toolboxInputPath')).toHaveValue(kind === 'project' ? 'D:\\Demo\\clean.mosp' : 'D:\\Demo\\clean.srt');
   }
   await page.reload();
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   await page.evaluate(() => window.MAWLauncher.openToolboxAiProcessing());
   await page.locator('#postprocessOperation').selectOption('ai_cleanup');
@@ -110,6 +114,7 @@ test('cleanup review defaults off, persists and reaches requests; reports never 
 for (const extension of ['mosp', 'srt']) {
   test(`original ${extension} remains first and can be reused after multiple results`, async ({ page }, testInfo) => {
     await page.goto(launcherUrl);
+    await completeStaticLauncherDiscovery(page);
     await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
     await page.locator('#toolboxFab').click();
     await page.locator('#toolboxReplaceTab').click();

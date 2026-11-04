@@ -394,6 +394,42 @@ test('representative priority covers each visible row before optional second pic
   assert.ok(tail.representative_ms.every(time=>time>=0&&time<20500&&time%tail.interval_ms===0));
 });
 
+test('unchanged filmstrip height preserves waveform rows while real height changes preserve scroll anchoring',async()=>{
+  const source=fs.readFileSync(new URL('../web/editor/media/waveform/thumbnails.js',import.meta.url),'utf8');
+  const {createWaveformModule}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  const previous={document:globalThis.document,window:globalThis.window,raf:globalThis.requestAnimationFrame,cancel:globalThis.cancelAnimationFrame};
+  const frames=new Map();let serial=0,changed,renders=0,draws=0;
+  globalThis.document={getElementById:()=>null,addEventListener(){}};
+  globalThis.window={addEventListener(){}};
+  globalThis.requestAnimationFrame=fn=>{frames.set(++serial,fn);return serial;};
+  globalThis.cancelAnimationFrame=id=>frames.delete(id);
+  try {
+    const controller={visible:false};
+    const methods=createWaveformModule({thumbnailCore:{createController:callback=>{changed=callback;return controller;}},ROW_GAP:10});
+    const row={dataset:{startMs:'0',endMs:'10000'}};
+    const editor={settings:{rowHeight:96},scroll:{scrollTop:106},renderedRows:[row],
+      updateThumbnailStatus(){},setThumbnailBinding(){},thumbnailHeight:()=>controller.visible?48:0,
+      getTimelineRowHeight:()=>96+(controller.visible?48:0),isMultiMode:()=>true,
+      render(){renders++;},renderMultiVisible(){},drawThumbnails(){draws++;}};
+    methods.initThumbnails.value.call(editor);
+    changed(true);
+    assert.equal(frames.size,0,'audio/status changes cannot destroy waveform rows');
+    assert.equal(renders,0);assert.equal(draws,1);
+    controller.visible=true;changed(true);
+    assert.equal(frames.size,1);[...frames.values()][0]();frames.clear();
+    assert.equal(renders,1);assert.equal(editor.scroll.scrollTop,154);
+    changed(true);
+    assert.equal(frames.size,0,'same-height binding/state changes only refresh pictures');
+    assert.equal(renders,1);assert.equal(draws,2);
+    controller.visible=false;changed(true);
+    assert.equal(frames.size,1);[...frames.values()][0]();frames.clear();
+    assert.equal(renders,2);assert.equal(editor.scroll.scrollTop,106);
+  } finally {
+    globalThis.document=previous.document;globalThis.window=previous.window;
+    globalThis.requestAnimationFrame=previous.raf;globalThis.cancelAnimationFrame=previous.cancel;
+  }
+});
+
 test('play and pause events capture their current source head before sending the control state',async()=>{
   const source=fs.readFileSync(new URL('../web/editor/media/waveform/thumbnails.js',import.meta.url),'utf8');
   const {createWaveformModule}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);

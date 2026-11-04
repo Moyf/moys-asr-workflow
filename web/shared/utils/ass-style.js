@@ -104,27 +104,34 @@ export function createUtilsModule(dependencies) {
       });
     });
     if (['single', 'double', 'both'].includes(syntax)) addMarkers('*', 'emphasized');
-    if (includeUnderline) {
+    if (includeUnderline && rule !== 'none') {
       if (options.assUnderlineEnabled !== false) addMarkers('_', 'underlined');
       if (options.assStrikeEnabled !== false) addMarkers('~', 'struck');
       if (options.assSmallTextEnabled !== false) addMarkers('-', 'small');
       if (options.assLargeTextEnabled !== false) addMarkers('+', 'large');
-      // 注释固定双符号 //：不随单双规则变化，也不接受单 /。
+      // 弱化（注释）固定双符号 %%、斜体固定双符号 //：都不随单双规则变化，
+      // 也不接受单个 % 或单个 /，避免与字面百分号、路径与网址里的 // 冲突。
       if (options.assCommentEnabled !== false) {
-        assMarkedRanges(source, '//').forEach(({ start, end }) => {
+        assMarkedRanges(source, '%%').forEach(({ start, end }) => {
           markers.set(start, { field: 'comment', active: true, width: 2 });
           markers.set(end, { field: 'comment', active: false, width: 2 });
+        });
+      }
+      if (options.assItalicEnabled !== false) {
+        assMarkedRanges(source, '//').forEach(({ start, end }) => {
+          markers.set(start, { field: 'italic', active: true, width: 2 });
+          markers.set(end, { field: 'italic', active: false, width: 2 });
         });
       }
     }
     const runs = [];
     let content = '';
-    const active = { emphasized: 0, underlined: 0, struck: 0, small: 0, large: 0, comment: 0 };
+    const active = { emphasized: 0, underlined: 0, struck: 0, small: 0, large: 0, comment: 0, italic: 0 };
     const flush = () => {
       if (content) runs.push({ text: content, emphasized: active.emphasized > 0,
         underlined: active.underlined > 0, struck: active.struck > 0,
         size: active.large > 0 ? 'large' : active.small > 0 ? 'small' : null,
-        comment: active.comment > 0 });
+        comment: active.comment > 0, italic: active.italic > 0 });
       content = '';
     };
     for (let cursor = 0; cursor < source.length;) {
@@ -139,7 +146,7 @@ export function createUtilsModule(dependencies) {
       }
     }
     flush();
-    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false, struck: false, size: null, comment: false });
+    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false, struck: false, size: null, comment: false, italic: false });
     return runs;
   }
 
@@ -222,6 +229,9 @@ export function createUtilsModule(dependencies) {
 
   const ASS_DEFAULT_ANIMATIONS = Object.freeze({
     fad: Object.freeze({ enabled: true, inMs: 250, outMs: 250 }),
+    // 放大出现：句级 {{…}} 标记与全局自动应用共用；enabled 只控制全局自动应用。
+    // fromScale < 1 为「从小放大落定」（默认 0.7），> 1 为从大缩小落定。
+    pop: Object.freeze({ enabled: false, fromScale: 0.7, inMs: 120, accel: 1 }),
     fade: Object.freeze({
       enabled: false, alpha1: 0, alpha2: 255, alpha3: 0,
       t1: 0, t2: 250, t3: 750, t4: 1000,
@@ -339,6 +349,7 @@ export function createUtilsModule(dependencies) {
   function normalizeAssAnimations(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const fad = source.fad && typeof source.fad === 'object' ? source.fad : {};
+    const pop = source.pop && typeof source.pop === 'object' ? source.pop : {};
     const fade = source.fade && typeof source.fade === 'object' ? source.fade : {};
     const move = source.move && typeof source.move === 'object' ? source.move : {};
     const transform = source.t && typeof source.t === 'object' ? source.t : {};
@@ -347,6 +358,14 @@ export function createUtilsModule(dependencies) {
         enabled: normalizeAssLibraryBoolean(fad.enabled),
         inMs: normalizeAssLibraryNumber(fad.inMs, 250, 0, 60000),
         outMs: normalizeAssLibraryNumber(fad.outMs, 250, 0, 60000),
+      },
+      // 单句 {{…}} 标记在全局关闭时仍复用这组参数，enabled 只管全局自动应用。
+      // fromScale 允许 < 1（放大出现，默认 0.7），下限 0.3 防 0/负值。
+      pop: {
+        enabled: normalizeAssLibraryBoolean(pop.enabled),
+        fromScale: normalizeAssLibraryNumber(pop.fromScale, 0.7, 0.3, 10, false),
+        inMs: normalizeAssLibraryNumber(pop.inMs, 120, 0, 60000),
+        accel: normalizeAssLibraryNumber(pop.accel, 1, 0.01, 100, false),
       },
       fade: (() => {
         const t1 = normalizeAssLibraryNumber(fade.t1, 0, 0, 60000);
@@ -608,7 +627,7 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function assPreviewStyleAt(style, transformTags, progress = 1, { nativeFontSize = false } = {}) {
+  function assPreviewStyleAt(style, transformTags, progress = 1, { nativeFontSize = false, popScale = 1 } = {}) {
     const base = normalizeAssStyle(style);
     if (nativeFontSize && Number.isFinite(Number(style.fontSize))) base.fontSize = Number(style.fontSize);
     const target = assTransformStyleTargets(transformTags);
@@ -620,8 +639,12 @@ export function createUtilsModule(dependencies) {
     ];
     numericKeys.forEach((key) => {
       if (target[key] === undefined) return;
-      const start = Number(result[key]) || 0;
-      result[key] = start + (Number(target[key]) - start) * amount;
+      // libass applies the earlier pop transform before the custom transform.
+      // Canvas applies pop outside the glyph raster, so return its compensated
+      // scale. popScale < 1（放大出现）同样成立：公式对任意正缩放精确。
+      const outerScale = key === 'scaleX' || key === 'scaleY' ? Math.max(0.01, Number(popScale) || 1) : 1;
+      const start = (Number(result[key]) || 0) * outerScale;
+      result[key] = (start + (Number(target[key]) - start) * amount) / outerScale;
     });
     ['primaryColor', 'outlineColor'].forEach((key) => {
       if (target[key]) result[key] = interpolateAssColor(result[key], target[key], amount);
@@ -646,6 +669,27 @@ export function createUtilsModule(dependencies) {
     // names intact where possible, but do not let a malformed name shift the
     // remaining style columns.
     return family.replace(/[\r\n,]/g, ' ').replace(/\s+/g, ' ').trim() || ASS_DEFAULT_FONT_FAMILY;
+  }
+
+
+  // ASS 预览的 font-family 别名链：libass 与浏览器对同一字体的可用名字集合
+  // 不同（浏览器匹配规则不可预测），预览把存储值与其余别名（canonical 优先）
+  // 逐个列入 font-family，任一名字命中即按该字形渲染。名字大小写不敏感去重、
+  // 逐个 CSS 引号化，末尾固定追加 fallback；aliases 为空时退化为单名 + 兜底。
+  function assFontFamilyAliasChainCss(fontName, aliases, { fallback = 'sans-serif' } = {}) {
+    const primary = String(fontName ?? '').trim();
+    if (!primary) return '';
+    const chain = [primary];
+    const seen = new Set([primary.toLocaleLowerCase()]);
+    (Array.isArray(aliases) ? aliases : []).forEach((candidate) => {
+      const name = String(candidate ?? '').trim();
+      const key = name.toLocaleLowerCase();
+      if (!name || seen.has(key)) return;
+      seen.add(key);
+      chain.push(name);
+    });
+    const quoted = chain.map((name) => `"${name.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`);
+    return [...quoted, fallback].join(', ');
   }
 
 
@@ -757,5 +801,5 @@ export function createUtilsModule(dependencies) {
 
   // assMarkedRanges 同时供 text-processing 的 MASS 成对检测复用（strip /
   // 拆分补齐 / 合并折叠 / 字词块归位同一套配对语义），故从这里导出。
-  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assInlineStyleRuns, assMarkedRanges, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
+  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assFontFamilyAliasChainCss, assInlineStyleRuns, assMarkedRanges, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
 }

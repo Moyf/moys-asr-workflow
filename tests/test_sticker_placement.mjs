@@ -1,6 +1,8 @@
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import vm from 'node:vm';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const context = { window: {}, Uint8Array };
 loadEditorModule(context, 'shared/editor-utils.js');
@@ -129,6 +131,75 @@ test('windows across two cues split into per-cue placements', () => {
   // 第二句组根在 (700,800)：inkLeft = 720 − 30 = 690 → x = 690 − 7 − 240 = 443。
   assert.equal(placements[1].x, 443);
   assert.notEqual(placements[0].x, placements[1].x);
+});
+
+// === 叠加字幕轨参与 cue-left 贴放 ===
+// 叠加轨字幕（role 'overlay'）与主轨同一份排版计划、同样烧录进 ASS：主轨
+// 空窗时表情包贴叠加轨字幕左侧；同屏时段主轨优先。offset.x=60 让叠加句
+// 几何可区分：inkLeft = 900 + 60 − 30 = 930 → x = 930 − 7 − 240 = 683。
+function makeOverlayPlan() {
+  const plan = makePlan();
+  plan.slices[0].items[0].start = 1000; // 主轨 [1000,2000]，[0,1000] 只有叠加字幕
+  plan.slices[0].items.push({
+    role: 'overlay', start: 0, end: 1000, fontSize: 60, cueScale: 1,
+    alignment: 2, manual: false, absolute: false,
+    offset: { x: 60, y: -10 },
+    rect: { left: -30, top: -80, right: 500, bottom: 10 },
+  });
+  return plan;
+}
+
+test('overlay-track cues place the sticker when the main track is silent', () => {
+  const plan = makeOverlayPlan();
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 800 }],
+  });
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].align, 'right');
+  assert.equal(placements[0].x, 683);
+});
+
+test('main-track cues win when both tracks are on screen', () => {
+  const plan = makePlan();
+  plan.slices[0].items.push({
+    role: 'overlay', start: 1000, end: 3000, fontSize: 60, cueScale: 1,
+    alignment: 2, manual: false, absolute: false,
+    offset: { x: 60, y: -10 },
+    rect: { left: -30, top: -80, right: 500, bottom: 10 },
+  });
+  // 窗口 [1000,2000] 与主轨 [0,2000]、叠加轨 [1000,3000] 同时重叠：
+  // 贴主字幕左侧（643），不贴叠加字幕（683）。
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 1000, end: 2000 }],
+  });
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].align, 'right');
+  assert.equal(placements[0].x, 643);
+});
+
+test('a window across main-then-overlay cues switches target per segment', () => {
+  // 叠加句起止是切分边界：[0,1000] 贴叠加轨字幕、[1000,2000] 贴主轨字幕，
+  // 两段几何不同各自成 placement。
+  const plan = makeOverlayPlan();
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 2000 }],
+  });
+  assert.equal(placements.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(placements[0].intervals)), [{ start: 0, end: 1000 }]);
+  assert.equal(placements[0].x, 683);
+  assert.deepEqual(JSON.parse(JSON.stringify(placements[1].intervals)), [{ start: 1000, end: 2000 }]);
+  assert.equal(placements[1].x, 643);
+});
+
+test('overlay cues inside legacy slices still fall back to the fixed box', () => {
+  const plan = makeOverlayPlan();
+  plan.slices[0].legacy = true;
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 800 }],
+  });
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].x, FIXED_BOX.x);
+  assert.equal(placements[0].align, 'center');
 });
 
 test('window in a cue gap falls back to the fixed box', () => {
@@ -309,4 +380,110 @@ test('sticker box taller than the space above a top cue falls back instead of ne
   assert.equal(topPlacements.length, 1);
   assert.equal(topPlacements[0].x, FIXED_BOX.x);
   assert.equal(topPlacements[0].align, 'center');
+});
+
+// === 多句绑定表情包：写入路径与预览区间契约 ===
+// 真实模块源码装入最小桩环境：分配（editor-sticker-picker）→ 区间同步
+// （editor-text-cleanup）→ 预览区间读取（editor-sticker-overlay）。
+
+function stubElement() {
+  return {
+    classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+    style: {}, dataset: {},
+    appendChild() {}, addEventListener() {}, setAttribute() {},
+  };
+}
+
+function loadEditorSource(context, relative) {
+  vm.runInNewContext(initModuleSource(relative), context, { filename: relative });
+}
+
+function stickerBindingContext(segments) {
+  // window 自引用：模块把 facade 注册到 window，浏览器里 window 属性同时是
+  // 裸全局；桩环境用同一个对象充当 context 全局与 window，两种查找都命中。
+  const context = {
+    window: null,
+    document: {
+      createElement: stubElement,
+      getElementById: stubElement,
+      querySelector: () => null,
+      querySelectorAll: () => [],
+    },
+    confirm: () => false,
+    setTimeout: () => 0,
+    // stickerTargetTrack 由 editor-wiring-overlay-actions.js 以顶层 let 声明（跨
+    // 文件全局词法绑定）；桩环境里用上下文属性等价替代。
+    stickerTargetTrack: 'main',
+    activeStickerHasOverlay: false,
+    getOverlayTrack: () => null,
+    stickerSegmentsForTrack: () => segments,
+    overlaySticker: { stickerTargetTrack: 'main', previewTrack: 'main' },
+    MaweStickerPreviewWiring: { activeStickerHasOverlay: false },
+    MaweBoot: { DATA: { segments }, STICKERS: [] },
+    MaweCommands: { run: (label, mutate) => mutate({ commit() {} }) },
+    MaweSelection: { stickerUrl: () => 'about:blank#sticker' },
+    MaweSettings: { EDITOR_SETTINGS: { cueListShowSticker: true, cueEditorShowSticker: true } },
+    MaweColorFilter: { refreshStickerAssignmentUi() {} },
+    MaweHint: { flashHint() {} },
+    MaweState: { markProjectDirty() {} },
+    MaweDom: { stickerModal: stubElement(), stickerPreviewModal: stubElement() },
+  };
+  context.window = context;
+  return context;
+}
+
+test('multi-sentence sticker binding covers every bound cue without a drag', () => {
+  const segments = [
+    { id: 'main-001', start: 0, end: 1000, text: '第一句' },
+    { id: 'main-002', start: 1000, end: 2600, text: '第二句' },
+  ];
+  const sticker = { name: 'bind', filename: 'bind.png', rel: 'bind.png' };
+  const binding = stickerBindingContext(segments);
+  loadEditorSource(binding, 'editor/cues/editor-text-cleanup.js');
+  loadEditorSource(binding, 'editor/cues/editor-sticker-picker.js');
+  loadEditorSource(binding, 'editor/media/editor-sticker-overlay.js');
+
+  binding.MaweBoot.STICKERS = [sticker];
+  binding.window.MaweStickerPicker.openStickerPicker([0, 1], true);
+  binding.window.MaweStickerPicker.assignSticker(sticker);
+
+  // 写入契约：head.sticker 覆盖整个选区（与 syncTimelineGroupRanges、
+  // 延长表情包、标记颜色一致），ref 成员指向 head。
+  assert.deepEqual(
+    { start: segments[0].sticker.start, end: segments[0].sticker.end, name: segments[0].sticker.name },
+    { start: 0, end: 2600, name: 'bind' },
+  );
+  assert.equal(segments[1].sticker, null);
+  assert.deepEqual({ ...segments[1].sticker_ref }, { name: 'bind', headIdx: 0 });
+
+  // 预览读取契约：不做任何拖动，第二句时间点就命中表情包区间。
+  const overlay = binding.window.MaweStickerOverlay;
+  assert.equal(overlay.activeStickersAt(500).length, 1);
+  assert.equal(overlay.activeStickersAt(1500).length, 1);
+  assert.equal(overlay.activeStickersAt(2700).length, 0);
+});
+
+test('rebinding a single head that owns references re-syncs the group range', () => {
+  const segments = [
+    { id: 'main-001', start: 0, end: 1000, text: '第一句' },
+    { id: 'main-002', start: 1000, end: 2600, text: '第二句',
+      sticker_ref: { name: 'old', headIdx: 0 } },
+  ];
+  segments[0].sticker = { name: 'old', filename: 'old.png', rel: 'old.png', start: 0, end: 1000 };
+  const sticker = { name: 'next', filename: 'next.png', rel: 'next.png' };
+  const binding = stickerBindingContext(segments);
+  loadEditorSource(binding, 'editor/cues/editor-text-cleanup.js');
+  loadEditorSource(binding, 'editor/cues/editor-sticker-picker.js');
+
+  binding.MaweBoot.STICKERS = [sticker];
+  binding.window.MaweStickerPicker.openStickerPicker([0], false);
+  binding.window.MaweStickerPicker.assignSticker(sticker);
+
+  // 单选重分配 head：既有 ref 仍指向它，区间必须回到整组覆盖，而不是丢掉
+  // start/end 后回落到 head 自身句范围。
+  assert.deepEqual(
+    { start: segments[0].sticker.start, end: segments[0].sticker.end, name: segments[0].sticker.name },
+    { start: 0, end: 2600, name: 'next' },
+  );
+  assert.deepEqual({ ...segments[1].sticker_ref }, { name: 'next', headIdx: 0 });
 });

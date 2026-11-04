@@ -1,3 +1,4 @@
+import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -6,6 +7,7 @@ const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).hr
 
 test('resegment exposes optional limits, persists the plan and measures field spacing', async ({ page }) => {
   await page.goto(launcherUrl);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   await page.locator('#toolboxFab').click();
   await page.locator('#toolboxLlmTab').click();

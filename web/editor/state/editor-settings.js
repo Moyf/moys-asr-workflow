@@ -1,7 +1,9 @@
 // 编辑器设置：键名、默认值、localStorage 读写与 EDITOR_SETTINGS 中心可变对象。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweSettings 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweSettings 在原清单位次执行原 IIFE 体（组装
+// EDITOR_SETTINGS 并挂 window.MaweSettings 冻结门面——门面为尚未迁移
+// 消费者的出接口）；底部具名导出经门面在**调用时**转发，兄弟模块
+// 可静态 import 而不触碰求值期状态。
+export function initMaweSettings() {
 (function initMaweSettings(global) {
   'use strict';
 
@@ -125,6 +127,7 @@
   assSmallTextEnabled: true,
   assLargeTextEnabled: true,
   assCommentEnabled: true,
+  assItalicEnabled: true,
   // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
   multiSubtitleRowHeight: 168,
   // 字词时间码开启时使用的波形行高度与每行长度；关闭后恢复原设置。
@@ -180,7 +183,8 @@
   // 表情包功能总开关：关闭时隐藏预览与右键分配入口；工程数据保留。
   stickersEnabled: true,
   // 表情包烧录显示模式：fixed = 出现在预览层固定位置（方案一）；
-  // cue-left = 贴在当前字幕第一个字左侧（方案二，句间空隙/legacy 句回退 fixed）。
+  // cue-left = 贴在当前字幕第一个字左侧（方案二，主轨优先、叠加轨兜底；
+  // 句间空隙/legacy 句回退 fixed）。
   stickerBurnMode: 'fixed',
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
   stickerOtioExportMode: 'original',
@@ -450,3 +454,32 @@
     updateEditorSettings
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+// 以下函数可供其他模块导入；调用时通过 window.MaweSettings 找到原有实现。
+// 后续逐步迁移调用方，计划在 G16 退役旧接口。
+export function clampMediaSeekStepMs(...args) { return window.MaweSettings.clampMediaSeekStepMs(...args); }
+export function mediaSeekStepForValue(...args) { return window.MaweSettings.mediaSeekStepForValue(...args); }
+export function nextMediaSeekStepValue(...args) { return window.MaweSettings.nextMediaSeekStepValue(...args); }
+export function normalizeNativeMediaSeekStepValue(...args) { return window.MaweSettings.normalizeNativeMediaSeekStepValue(...args); }
+export function clampCueMoveStepMs(...args) { return window.MaweSettings.clampCueMoveStepMs(...args); }
+export function readEditorSettings(...args) { return window.MaweSettings.readEditorSettings(...args); }
+export function saveEditorSettings(...args) { return window.MaweSettings.saveEditorSettings(...args); }
+export function updateEditorSettings(...args) { return window.MaweSettings.updateEditorSettings(...args); }
+export function normalizeMultiSubtitleRowHeight(...args) { return window.MaweSettings.normalizeMultiSubtitleRowHeight(...args); }
+export function normalizeClickBehavior(...args) { return window.MaweSettings.normalizeClickBehavior(...args); }
+export function normalizeClickTarget(...args) { return window.MaweSettings.normalizeClickTarget(...args); }
+export function normalizeKeyboardOperationReferenceMode(...args) { return window.MaweSettings.normalizeKeyboardOperationReferenceMode(...args); }
+export function normalizeJklPlaybackMode(...args) { return window.MaweSettings.normalizeJklPlaybackMode(...args); }
+export function normalizeEditorAccentColor(...args) { return window.MaweSettings.normalizeEditorAccentColor(...args); }
+export function normalizeEditorAccentCustomColor(...args) { return window.MaweSettings.normalizeEditorAccentCustomColor(...args); }
+export function clampAutoSaveInterval(...args) { return window.MaweSettings.clampAutoSaveInterval(...args); }
+export function clampCharcountThreshold(...args) { return window.MaweSettings.clampCharcountThreshold(...args); }
+export function clampNinjaSlashLength(...args) { return window.MaweSettings.clampNinjaSlashLength(...args); }
+export function clampNinjaSlashRotateAmplitude(...args) { return window.MaweSettings.clampNinjaSlashRotateAmplitude(...args); }
+export function clampAutoMergeGapMs(...args) { return window.MaweSettings.clampAutoMergeGapMs(...args); }
+export function clampAutoMergeShortCount(...args) { return window.MaweSettings.clampAutoMergeShortCount(...args); }
+export function clampGapRemoveMinimum(...args) { return window.MaweSettings.clampGapRemoveMinimum(...args); }
+export function clampGapRemoveThreshold(...args) { return window.MaweSettings.clampGapRemoveThreshold(...args); }
+export function clampGapRemoveHysteresis(...args) { return window.MaweSettings.clampGapRemoveHysteresis(...args); }
+export function clampGapRemoveLeadMs(...args) { return window.MaweSettings.clampGapRemoveLeadMs(...args); }

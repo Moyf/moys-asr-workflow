@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, dragFloatingPanelAwayFrom, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 
@@ -47,7 +47,9 @@ test('waveform ASS shortcuts mirror project settings and open the style library 
   expect(Math.abs(rows[0] - rows[1])).toBeLessThanOrEqual(1);
 });
 test.beforeAll(async () => {
-  tempDir = makeTempDir('settings-structure');
+  // macOS 的 tmpdir 位于 /var（指向 /private/var 的符号链接）；服务器按
+  // realpath 回显表情包目录，断言用的路径必须预先解析成同一形式。
+  tempDir = realpathSync(makeTempDir('settings-structure'));
   const media = join(tempDir, 'synthetic.wav'), project = join(tempDir, 'settings.mosp');
   generateWav(media, 4);
   for (const folder of ['default-a', 'default-b', 'override']) {
@@ -788,4 +790,32 @@ test('project timing and language restore through history and save without chang
   await expect(page.locator('#timeline-timebase')).toHaveValue('frames');
   await expect(page.locator('#timeline-fps')).toHaveValue('25');
   await expect(page.locator('#multi-subtitle-main-language-mode')).toHaveValue('word');
+});
+
+test('enabling the sticker feature auto-checks the preview toggle without overriding saved preferences', async ({ page }) => {
+  await settings(page, 'sticker');
+  await expect(page.locator('#sticker-feature-toggle')).toBeChecked();
+  await settings(page, 'subtitle-preview');
+  await expect(page.locator('#sticker-overlay-toggle')).not.toBeChecked();
+
+  // 关闭功能：预览开关被强制关闭并禁用（既有行为）。
+  await settings(page, 'sticker');
+  await page.locator('#sticker-feature-toggle').uncheck();
+  await settings(page, 'subtitle-preview');
+  await expect(page.locator('#sticker-overlay-toggle')).toBeDisabled();
+  await expect(page.locator('#sticker-overlay-toggle')).not.toBeChecked();
+
+  // 重新启用功能：预览开关自动勾选，无需去预览页手动打开。
+  await settings(page, 'sticker');
+  await page.locator('#sticker-feature-toggle').check();
+  await settings(page, 'subtitle-preview');
+  await expect(page.locator('#sticker-overlay-toggle')).toBeEnabled();
+  await expect(page.locator('#sticker-overlay-toggle')).toBeChecked();
+
+  // 用户随后单独关闭预览并刷新：启动恢复已保存的关闭，不被强行覆盖。
+  await page.locator('#sticker-overlay-toggle').uncheck();
+  await page.reload();
+  await settings(page, 'subtitle-preview');
+  await expect(page.locator('#sticker-overlay-toggle')).toBeEnabled();
+  await expect(page.locator('#sticker-overlay-toggle')).not.toBeChecked();
 });

@@ -1,3 +1,8 @@
+import { getOverlayTrack, convertOverlayCueToMain, deleteOverlayCues, assignOverlayColor, clearOverlayColorOnTargets, clearOverlaySticker } from '../cues/overlay-track.js';
+
+export function initMaweContextMenusWiring() {
+'use strict';
+
 
 
 // === 右键菜单 ===
@@ -43,7 +48,7 @@ function showOverlayContextMenu(x, y, index) {
   }
   // 试听：只播放该叠加字幕自身的时间范围，到终点自动暂停。
   addItem('试听', () => MaweMediaPlayback.auditionRange(segment.start, segment.end));
-  addItem('拆分此叠加字幕', () => openOverlaySplitModal(index, null));
+  addItem('拆分此叠加字幕', () => window.MaweOverlaySplitMerge.openOverlaySplitModal(index, null));
   addItem('转为主字幕', () => convertOverlayCueToMain(index), { disabled: mainOccupied });
   addSep();
   // 组 2：外观（表情包与颜色），交互与主字幕菜单对齐（1~5 快捷键同源）。
@@ -127,3 +132,6 @@ document.addEventListener('keydown', (e) => {
     MaweDom.ctxmenu.classList.remove('show');
   }
 });
+
+window.MaweContextMenusWiring = Object.freeze({ showOverlayContextMenu });
+}

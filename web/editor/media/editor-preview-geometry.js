@@ -69,6 +69,8 @@
     MaweStickerOverlay.stickerOverlayLayer.style.height = css.height;
     MaweStickerOverlay.stickerOverlayLayer.style.right = 'auto';
     MaweStickerOverlay.stickerOverlayLayer.style.bottom = 'auto';
+    // 实际画面窗口的图层用同一份几何（拖动中实时跟随；无帧时是空操作）。
+    window.MaweAssFrame?.syncWindowStickers?.();
   }
 
 

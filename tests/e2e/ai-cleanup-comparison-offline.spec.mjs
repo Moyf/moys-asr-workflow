@@ -46,3 +46,30 @@ test('cleanup comparison stays searchable and complete offline after the project
     cleanupTempDir(directory);
   }
 });
+
+test('comparison theme switch follows the system and remembers an explicit choice', async ({ page }) => {
+  const directory = makeTempDir('cleanup-comparison-theme');
+  try {
+    const python = process.env.MAW_E2E_PYTHON;
+    const args = ['tests/fixtures/create_cleanup_comparison.py', directory];
+    const output = execFileSync(python || 'uv', python ? args : ['run', '--no-sync', 'python', ...args], { cwd: root, encoding: 'utf8' });
+    const artifact = JSON.parse(output.trim());
+    const theme = () => page.evaluate(() => document.documentElement.dataset.theme || 'dark');
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto(pathToFileURL(artifact.comparison).href);
+    expect(await theme()).toBe('light');
+    await expect(page.getByRole('button', { name: '自动' })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: '深色' }).click();
+    expect(await theme()).toBe('dark');
+    await page.reload();
+    expect(await theme()).toBe('dark');
+    await expect(page.getByRole('button', { name: '深色' })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: '自动' }).click();
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect.poll(theme).toBe('dark');
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect.poll(theme).toBe('light');
+  } finally {
+    cleanupTempDir(directory);
+  }
+});

@@ -486,3 +486,20 @@ const assStyleLibraryPathHint = document.getElementById('ass-style-library-path-
 
 // 全局设置窗口：复用 createFloatingPanel 获得拖动、位置持久化、Esc 关闭与按钮 active 态；
 // 窗口内部用左侧垂直标签页切换不同分区，并记忆用户上次停留的分区。
+// G07：init 化的 UI 模块经 window 延迟取用本文件的
+// 运行时入口；classic 调用方不受影响。
+window.MaweDomPanelsWiring = window.MaweDomPanelsWiring || Object.freeze({
+  overlayTrackSeparator,
+  overlayTrackToggle,
+  pauseOnMouseClickToggle,
+  overlayTrackTextEl,
+  overlayTrackTextNode,
+  overlayTrackSpeakerLabelEl,
+  assStyleWindow,
+  lottieExportCustomSize,
+  lottieExportCustomWidth,
+  lottieExportCustomHeight,
+  ografExportCustomSize,
+  ografExportCustomWidth,
+  ografExportCustomHeight,
+});

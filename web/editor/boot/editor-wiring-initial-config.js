@@ -156,3 +156,8 @@ const ASS_PREVIEW_REFERENCE_HEIGHT = Number(window.AsrEditorUtils.ASS_REFERENCE_
 if (MaweHistory.undoBtn) MaweHistory.undoBtn.addEventListener('click', () => MaweHistory.performUndo());
 if (MaweHistory.redoBtn) MaweHistory.redoBtn.addEventListener('click', () => MaweHistory.performRedo());
 MaweHistory.updateUndoRedoButtons();
+
+// G07：init 化模块经 window 延迟取用本文件的常量；classic 调用方不受影响。
+window.MaweInitialConfigWiring = window.MaweInitialConfigWiring || Object.freeze({
+  ASS_PREVIEW_REFERENCE_HEIGHT,
+});

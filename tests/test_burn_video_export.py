@@ -15,6 +15,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -87,6 +88,29 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("-progress", command)
         self.assertEqual(command[-1], str(self.output))
 
+    def test_fixed_gain_full_green_and_interval_audio_is_applied_once(self):
+        def run(command, **kwargs):
+            self.calls.append(command)
+            Path(command[-1]).write_bytes(b'burned')
+            return subprocess.CompletedProcess(command, 0, '', '')
+        for green, include in ((False, False), (True, True), (True, False)):
+            with self.subTest(green=green, include=include), \
+                 mock.patch.object(server_editor, '_probe_media_duration_ms', return_value=2000), \
+                 mock.patch.object(server_editor, '_green_screen_input',
+                    return_value=(['-f', 'lavfi', '-i', 'color=c=green:s=32x32:d=2'], None)), \
+                 mock.patch.object(server_editor.subprocess, 'run', side_effect=run):
+                server_editor.burn_ass_video(self.source, [], ASS_TEXT, self.output,
+                    ffmpeg_path=Path('ffmpeg'), ffprobe_path=Path('ffprobe'),
+                    green_screen=green, include_audio=include, audio_gain_db=6)
+                command = self.calls[-1]
+                self.assertEqual(command.count('-af'), int(not green or include))
+                if not green or include:
+                    self.assertEqual(command[command.index('-af') + 1], 'volume=6.000000dB')
+                self.assertNotIn('loudnorm', ' '.join(command))
+        graph = server_editor._burn_interval_filter([(0, 1000), (2000, 3000)], 2, audio_gain_db=-6)
+        self.assertEqual(graph.count('volume=-6.000000dB'), 2)
+        self.assertIn('concat=n=2:v=0:a=1,volume=-6.000000dB[burn_audio_1]', graph)
+
     def test_full_video_burn_resolves_source_and_runs_in_ass_directory(self) -> None:
         seen: dict[str, object] = {}
 
@@ -103,6 +127,48 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
             server_editor.burn_ass_video(self.source, [], ASS_TEXT, self.output,
                 ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"))
         self.assertEqual(seen["cwd"], self.output.parent)
+
+    def test_editor_burn_normalizes_ass_and_converted_srt_without_client_aliases(self) -> None:
+        from maw import ass_fonts
+        from maw import postprocess_ffmpeg
+
+        # SRT 转换产物会按「样式库 srtBurnStyleId 指向的样式」重写 Default
+        # 样式；样式库读取用户级真实配置，空缺时又回退到按操作系统选择的
+        # 默认字体，断言会随机器漂移。这里把样式库隔离为仅含雅黑字体的
+        # default 样式，让「别名表改写字体名」的断言在所有平台走同一路径。
+        ass = ASS_TEXT.replace("[Events]", "[V4+ Styles]\nStyle: Default,Microsoft YaHei,86\n[Events]")
+        ass = ass.replace("你好", r"{\i1}你好{\i0}")
+        entries = ({"canonical": "Example Local", "names": ["Microsoft YaHei"]},)
+
+        def run(command, **kwargs):
+            if command[0] == "ffprobe":
+                return subprocess.CompletedProcess(command, 0, json.dumps({
+                    "streams": [{"codec_type": "video", "width": 1920, "height": 1080}],
+                    "format": {"duration": "4.5"},
+                }), "")
+            if "-c:s" in command:
+                Path(command[-1]).write_text(ass, encoding="utf-8")
+            else:
+                text = self.output.with_name("burn.ass").read_text(encoding="utf-8")
+                self.assertIn("Style: Default,Example Local,", text)
+                self.assertNotIn("Microsoft YaHei", text)
+                self.assertIn(r"{\i1}你好{\i0}", text)
+                self.assertEqual(command.count("-af"), 1)
+                self.assertEqual(command[command.index("-af") + 1], "volume=6.000000dB")
+                Path(command[-1]).write_bytes(b"burned")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        for subtitle_format in ("ass", "srt"):
+            with self.subTest(subtitle_format=subtitle_format), \
+                    mock.patch.object(ass_fonts, "font_alias_entries", return_value=entries), \
+                    mock.patch.object(postprocess_ffmpeg, "load_ass_style_library",
+                                      return_value={"styles": [{"id": "default", "fontName": "Microsoft YaHei"}],
+                                                    "assignments": {"srtBurnStyleId": "default"}}), \
+                    mock.patch.object(server_editor.subprocess, "run", side_effect=run):
+                server_editor.burn_ass_video(self.source, [],
+                    ass if subtitle_format == "ass" else "1\n00:00:00,000 --> 00:00:01,000\n你好\n",
+                    self.output, ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"),
+                    subtitle_format=subtitle_format, audio_gain_db=6)
 
     def test_interval_burn_filters_decoded_video_and_audio(self) -> None:
         streams = [
@@ -323,8 +389,11 @@ class BurnVideoJobHttpTests(unittest.TestCase):
         project = self.server_editor.ServerProject(data={"segments": []}, json_path=self.root / "project.json",
             media_path=self.source, source_media_path=self.source, sticker_root=None, stickers=[])
         self.server = self.server_editor.EditorServer(("127.0.0.1", 0), project, no_waveform=True)
+        # This fake MP4 has no thumbnail cache. Keep token/binding generation
+        # real without launching an unrelated FFprobe for each HTTP request.
+        self.enterContext(mock.patch.object(self.server, "_thumbnail_base_ready", return_value=False))
         self.server.media_jobs.temp_root = self.root
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
         self.origin = f"http://127.0.0.1:{self.server.server_address[1]}"
         self.base = "/api/exports/burned-video/jobs"
@@ -367,6 +436,42 @@ class BurnVideoJobHttpTests(unittest.TestCase):
 
     def tools(self):
         return mock.Mock(ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))
+
+    def test_http_gain_validation_and_job_snapshot(self):
+        for gain in (True, '6', None, -61, 25, float('nan'), float('inf'), 10**400):
+            with self.subTest(gain=gain):
+                status, _ = self.request(self.base, self.payload(audioGainDb=gain))
+                self.assertEqual(status, 400)
+        captured = {}
+        def burn(source, intervals, ass, output, **kwargs):
+            captured.update(kwargs)
+            output.write_bytes(b'burned')
+        with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, 'ensure_libass_supported', return_value=True), \
+             mock.patch.object(self.server_editor, 'burn_ass_video', side_effect=burn):
+            status, started = self.request(self.base, self.payload(audioGainDb=6))
+            self.assertEqual(status, 202)
+            self.wait(started['jobId'], 'ready')
+            self.assertEqual(captured['audio_gain_db'], 6)
+
+    def test_http_loudness_pins_preview_media_and_rejects_stale_binding(self):
+        preview = self.root / 'converted.mp4'
+        preview.write_bytes(b'playback cache')
+        self.server.project = replace(self.server.project, media_path=preview)
+        result = {'ok': True, 'status': 'measuring'}
+        with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=self.tools()), \
+             mock.patch.object(self.server.loudness_analyzer, 'request', return_value=result) as analyze:
+            status, _ = self.request('/api/audio/loudness', self.payload())
+            self.assertEqual(status, 202)
+            self.assertEqual(analyze.call_args.args[0], preview)
+            self.assertNotEqual(analyze.call_args.args[0], self.source)
+            status, _ = self.request('/api/audio/loudness', self.payload(bindingGeneration=0))
+            self.assertEqual(status, 409)
+            status, _ = self.request('/api/audio/loudness', self.payload(requestToken='bad'))
+            self.assertEqual(status, 403)
+            status, _ = self.request('/api/audio/loudness', self.payload(force='yes'))
+            self.assertEqual(status, 400)
+            self.assertEqual(analyze.call_count, 1)
 
     def test_http_burn_job_lifecycle_download_and_filename(self) -> None:
         captured = {}
@@ -592,6 +697,40 @@ class BurnVideoPrecisionTests(CompactContainerAssertions, unittest.TestCase):
 
     def run_tool(self, args):
         return subprocess.run(args, capture_output=True, check=True, timeout=45)
+
+    def test_real_gain_matches_full_gap_and_green_screen_audio(self):
+        import array
+        import math
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            source = root / 'two-tracks.mkv'
+            self.run_tool([self.ffmpeg, '-v', 'error', '-y', '-f', 'lavfi', '-i',
+                'color=c=black:s=64x36:r=10:d=3', '-f', 'lavfi', '-i',
+                'sine=frequency=1000:sample_rate=48000:duration=3', '-f', 'lavfi', '-i',
+                'sine=frequency=500:sample_rate=48000:duration=3',
+                '-map', '0:v', '-map', '1:a', '-map', '2:a', '-c:v', 'libx264', '-c:a', 'pcm_s16le', str(source)])
+            original_bytes = source.read_bytes()
+            def rms(path, track):
+                data = self.run_tool([self.ffmpeg, '-v', 'error', '-ss', '0.4', '-i', str(path),
+                    '-t', '0.4', '-map', f'0:a:{track}', '-ac', '1', '-f', 'f32le', '-']).stdout
+                samples = array.array('f')
+                samples.frombytes(data)
+                self.assertTrue(samples)
+                return math.sqrt(sum(value * value for value in samples) / len(samples))
+            originals = [rms(source, index) for index in range(2)]
+            for kind in ('full', 'gap', 'green'):
+                with self.subTest(kind=kind):
+                    output = root / f'{kind}.mp4'
+                    options = {'green_screen': True, 'include_audio': True, 'audio_track': 1} if kind == 'green' else {}
+                    with mock.patch.object(server_editor, 'video_encoder_attempts', return_value=('cpu',)):
+                        server_editor.burn_ass_video(source, [(0, 1000), (2000, 3000)] if kind == 'gap' else [],
+                            ASS_TEXT.replace('你好', 'GAIN'), output,
+                            ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe), audio_gain_db=6, **options)
+                    tracks = (1,) if kind == 'green' else (0, 1)
+                    for output_track, original_track in enumerate(tracks):
+                        gain = 20 * math.log10(rms(output, output_track) / originals[original_track])
+                        self.assertAlmostEqual(gain, 6, delta=.3)
+            self.assertEqual(source.read_bytes(), original_bytes)
 
     def test_real_green_screen_optional_audio_and_caption_duration(self):
         with tempfile.TemporaryDirectory() as folder:

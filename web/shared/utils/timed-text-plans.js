@@ -1,7 +1,7 @@
 // timed-text-plans: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { cloneJsonValue, completeMassTextRows, countTextUnits, hasTimedTextContent, isTimedTextNeutralToken, sameTimedTextTokens, timedTextItemLayout, timedTextItemsOrdered, timedTextItemsPartition, timedTextItemsSlice, timedTextNeutralInsertionItems, timedTextTokens, uniqueStableSegmentId } = dependencies;
+  const { cloneJsonValue, completeMassTextRows, countTextUnits, hasTimedTextContent, isTimedTextNeutralToken, sameTimedTextTokens, timedTextItemLayout, timedTextItemsOrdered, timedTextItemsPartition, timedTextItemsSlice, timedTextNeutralDriftItems, timedTextNeutralInsertionItems, timedTextTokens, uniqueStableSegmentId } = dependencies;
 
 
   function timedTextStructureRequested(segments, draftTexts) {
@@ -41,6 +41,10 @@ export function createUtilsModule(dependencies) {
     const layout = timedTextItemLayout(sourceText, source);
     const neutralItems = timedTextNeutralInsertionItems(sourceText, layout, newText, true);
     if (neutralItems) return neutralItems;
+    // 切片文字与目标行只差空白/标点（拆分点落在空白上、行首尾空格被移除、
+    // 锚点吸附中性字符等）时，保留原时间码把文字切齐到目标行，不降级估算。
+    const driftItems = timedTextNeutralDriftItems(sourceText, layout, newText);
+    if (driftItems) return driftItems;
     if (lengths.reduce((sum, length) => sum + length, 0) !== targetTokens.length) return null;
     let offset = 0;
     return source.map((item, index) => {

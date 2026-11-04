@@ -216,8 +216,19 @@ function subtitleFontFamilyComboboxEntries() {
   return entries;
 }
 function assFontNameComboboxEntries() {
-  const entries = ASS_BUILTIN_FONT_SUGGESTIONS.map((name) => ({ value: name, label: name }));
+  const entries = [];
+  // 服务端别名表条目（value=label=canonical，aliases 参与搜索）放在内置建议
+  // 之前：merge 按 label 去重保留先出现项，与内置建议同名时保留带别名的版本。
+  // 本机扫描结果与别名表按名字归并——扫描名命中别名表任一名字时不单列。
+  const aliasNames = new Set();
+  window.MaweAssFontAliases?.entries?.().forEach((entry) => {
+    if (!entry?.canonical) return;
+    entries.push({ value: entry.canonical, label: entry.canonical, aliases: entry.names });
+    (entry.names || []).forEach((name) => aliasNames.add(String(name).toLocaleLowerCase()));
+  });
+  ASS_BUILTIN_FONT_SUGGESTIONS.forEach((name) => entries.push({ value: name, label: name }));
   MaweAppearance.subtitleLocalFontFamilies.forEach((family) => {
+    if (aliasNames.has(family.toLocaleLowerCase())) return;
     entries.push({ value: family, label: family });
   });
   return entries;
@@ -256,6 +267,10 @@ function rebuildSubtitleFontFamilyOptions() {
 function rebuildAssFontNameOptions() {
   getAssFontNameCombobox().refresh();
 }
+
+// 别名表是启动后异步拉取的：就绪时重建 ASS 字体下拉，让 canonical 条目与
+// 归并后的本机扫描结果进入选项列表。
+document.addEventListener('mawe:ass-font-aliases-loaded', rebuildAssFontNameOptions);
 
 
 

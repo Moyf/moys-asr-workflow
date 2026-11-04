@@ -20,7 +20,7 @@ Launcher 是转写与工具箱入口；MAWE 是编辑器。当前日常编辑使
 
 ### 从源码运行
 
-需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 22.13+、pnpm 和 FFmpeg / FFprobe。在仓库根目录执行：
+需要 Python 3.11+、[uv 0.13.4+](https://docs.astral.sh/uv/)、Node.js 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+、pnpm 和 FFmpeg / FFprobe。在仓库根目录执行：
 
 ```sh
 python --version

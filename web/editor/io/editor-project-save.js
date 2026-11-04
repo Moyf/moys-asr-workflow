@@ -1,7 +1,8 @@
 // 工程保存：服务器、文件句柄、另存为路径与脏标记清理。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweProjectSave 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweProjectSave 在原清单位次执行原 IIFE 体（挂
+// window.MaweProjectSave 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweProjectSave() {
 (function initMaweProjectSave(global) {
   'use strict';
 
@@ -10,7 +11,7 @@
   function projectSaveFingerprint() {
     return JSON.stringify([MaweBoot.DATA.segments, MaweBoot.DATA.multi_subtitle, MaweBoot.DATA.overlay_track, MaweBoot.DATA.gap_remove,
       MaweBoot.DATA.markers, MaweBoot.DATA.timed_text_edit_view === 'single' ? 'single' : 'rows',
-      MaweBoot.DATA.preview, MaweBoot.DATA.media_metadata, MaweHistory.gapRemoveDirty, MaweAppearance.previewGeometryDirty, MaweServerSave.projectImportDirty]);
+      MaweBoot.DATA.preview, MaweBoot.DATA.media_metadata, MaweBoot.DATA.audio_processing, MaweHistory.gapRemoveDirty, MaweAppearance.previewGeometryDirty, MaweServerSave.projectImportDirty]);
   }
 
 function inlineEditHasUncommittedText() {
@@ -299,3 +300,11 @@ jsonNameEl,
 translatedEditorText
 });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function translatedEditorText(...args) { return window.MaweProjectSave.translatedEditorText(...args); }
+export function saveCurrentProject(...args) { return window.MaweProjectSave.saveCurrentProject(...args); }
+export function saveProjectAsToFile(...args) { return window.MaweProjectSave.saveProjectAsToFile(...args); }
+export function updateProjectDirtyIndicator(...args) { return window.MaweProjectSave.updateProjectDirtyIndicator(...args); }
+export function saveProjectToServer(...args) { return window.MaweProjectSave.saveProjectToServer(...args); }
+export function inlineEditHasUncommittedText(...args) { return window.MaweProjectSave.inlineEditHasUncommittedText(...args); }

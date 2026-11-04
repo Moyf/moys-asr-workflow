@@ -63,6 +63,13 @@ def parse_timeline(text: str, rows: Sequence[Mapping[str, str]], items_by_id: Ma
     """Every target appears once, in order. Missing lines never mean deletion."""
     lines = draft_lines(text)
     targets = [row for row in rows if row.get("contextOnly") != "true"]
+    readonly_ids = {row["id"] for row in rows if row.get("contextOnly") == "true"}
+    # Some models echo the supplied context. It is never an editable target,
+    # so discard only rows explicitly identified as read-only in this request.
+    # Missing/duplicate targets, unknown IDs and extra prose remain errors.
+    lines = [line for line in lines if not (
+        (match := re.fullmatch(r"\[(c\d+)\] ?(.*)", line)) and match[1] in readonly_ids
+    )]
     if len(lines) != len(targets):
         expected = [row["id"] for row in targets]
         actual = [match[1] for line in lines if (match := re.match(r"\[(c\d+)\]", line))]
@@ -95,18 +102,30 @@ def parse_timeline(text: str, rows: Sequence[Mapping[str, str]], items_by_id: Ma
         items = items_by_id[row["id"]]
         spans = item_text_spans(original, items)
         if spans is None:
-            raise ValueError("词项与原文无法对齐")
+            raise ValueError(f"{row['id']} 词项与原文无法对齐")
         deleted = []
+        unsafe_cut = ""
         for index, (start, end) in enumerate(spans):
-            overlap = mask.intersection(range(start, end))
-            if overlap and len(overlap) != end - start:
-                raise ValueError(f"{row['id']} 划删切开了多字 item；必须删除完整词项")
+            # A word token can own a leading/trailing separator. Marking the
+            # complete word is sufficient; whitespace has no separate speech
+            # timing. All non-whitespace characters must still be selected.
+            content = {offset for offset in range(start, end) if not original[offset].isspace()}
+            overlap = mask.intersection(content)
+            if overlap and overlap != content:
+                unsafe_cut = f"划删切开了词项 {str(items[index]['text'])[:120]!r}，没有词项内部时间码；保留整行待回听"
+                break
             if overlap:
                 deleted.append(index)
+        if unsafe_cut:
+            # Source identity has already been verified. Reject the cut, not
+            # the recording: retain this entire row and expose the unsafe
+            # boundary as a review marker, including any other cuts in it.
+            decisions.append({"id": row["id"], "decision": "review", "scriptLine": row.get("scriptLine", ""), "reason": unsafe_cut + (f"；模型说明：{note}" if note else "")})
+            continue
         if mask and not deleted:
             raise ValueError("不能仅划删无时间来源的标点")
         timed_chars = {offset for index in deleted for offset in range(*spans[index])}
-        if len(deleted) < len(items) and mask - timed_chars:
+        if len(deleted) < len(items) and any(not original[offset].isspace() for offset in mask - timed_chars):
             raise ValueError("局部划删只能覆盖完整词项；不要扩到词项之外的标点")
         decision = "review" if review else "discard" if len(deleted) == len(items) else "edit" if deleted else "keep"
         result: dict[str, object] = {"id": row["id"], "decision": decision, "scriptLine": row.get("scriptLine", ""), "reason": note}

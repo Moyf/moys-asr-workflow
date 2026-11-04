@@ -15,7 +15,7 @@ from tests.test_local_editor_server import server_editor
 
 class ProjectBindingLifecycleTests(unittest.TestCase):
     def start_http(self):
-        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         thread.start()
         self.addCleanup(thread.join, 5)
         self.addCleanup(self.server.shutdown)
@@ -36,6 +36,13 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
+        # The fixture is a known mono PCM WAV. Keep metadata merging real;
+        # real probe compatibility is checked by test_ffprobe_failure_integration.
+        tracks = [{"audio_index": 0, "stream_index": 0, "codec": "pcm_s16le",
+                   "channels": 1, "sample_rate": 8000, "language": "", "title": "", "default": False}]
+        self.enterContext(mock.patch("maw.project_io.probe_audio_tracks",
+            side_effect=lambda *args, **kwargs: [dict(track) for track in tracks]))
+        self.enterContext(mock.patch.object(server_editor.EditorServer, "_thumbnail_base_ready", return_value=False))
         self.paths = {}
         for name in ("a", "b"):
             media = self.root / f"{name}.wav"
@@ -59,7 +66,7 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
         with self.server.settings_lock:
             self.server._bind_project_locked(self.load("b"))
         before = {name: path.read_bytes() for name, path in self.paths.items()}
-        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         thread.start()
         try:
             for token in ({}, binding):

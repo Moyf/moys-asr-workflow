@@ -176,6 +176,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 "operationId": "ai-cleanup-cancel-test",
             })
 
+        self.api.pump.flush()
         self.api.pump.shutdown()
         scripts = "\n".join(self.window.scripts)
         self.assertFalse(result["ok"])
@@ -373,7 +374,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         server = QuietServer(("127.0.0.1", 0), Handler)
         server.daemon_threads = True
-        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         server_thread.start()
 
         original_post = requests.Session.post
@@ -2394,6 +2395,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 "operationId": "llm-stream-test",
             })
 
+        self.api.pump.flush()
         self.api.pump.shutdown()
         scripts = "\n".join(self.window.scripts)
         self.assertTrue(result["ok"])
@@ -3771,6 +3773,35 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["stopped"])
         stop_external.assert_called_once_with(9876)
 
+    def test_server_status_reports_project_loading_separately_from_liveness(self) -> None:
+        for status in ("loading", "ready", "error"):
+            with self.subTest(status=status), \
+                    mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                    mock.patch("maw.gui_web._maw_server_process_id", return_value=4321), \
+                    mock.patch("maw.gui_web.urlopen") as request:
+                response = request.return_value.__enter__.return_value
+                response.read.return_value = json.dumps({"ok": True, "status": status}).encode()
+                result = self.api.get_server_status({"port": "9876"})
+                self.assertTrue(result["running"])
+                self.assertEqual(result["startupStatus"], status)
+                request.assert_called_once_with("http://127.0.0.1:9876/api/startup-status", timeout=0.25)
+                response.read.assert_called_once_with(4096)
+
+    def test_missing_or_malformed_startup_status_does_not_mark_live_server_offline(self) -> None:
+        for payload in (b"not json", b"[]", b'{"status":"unexpected"}', b"\xff"):
+            with self.subTest(payload=payload), \
+                    mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                    mock.patch("maw.gui_web._maw_server_process_id", return_value=4321), \
+                    mock.patch("maw.gui_web.urlopen") as request:
+                request.return_value.__enter__.return_value.read.return_value = payload
+                result = self.api.get_server_status({"port": "9876"})
+                self.assertTrue(result["running"])
+                self.assertEqual(result["startupStatus"], "")
+        with mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                mock.patch("maw.gui_web._maw_server_process_id", return_value=4321), \
+                mock.patch("maw.gui_web.urlopen", side_effect=URLError("timed out")):
+            self.assertTrue(self.api.get_server_status({"port": "9876"})["running"])
+
     def test_stop_server_refuses_a_non_maw_external_listener(self) -> None:
         with mock.patch("maw.gui_web._wait_for_server", return_value=True):
             with mock.patch("maw.gui_web._stop_external_maw_server", return_value=False):
@@ -4244,6 +4275,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(request.model, "Qwen/Qwen3-ASR-0.6B")
         self.assertEqual(request.device, "cpu")
         self.assertEqual(request.api_key, "")
+        self.assertEqual(request.model_path, "")
         self.assertEqual(request.runtime_python, str(self.root / "runtime" / "Scripts" / "python.exe"))
 
     def test_local_request_allows_mps_only_for_qwen_on_mac(self) -> None:
@@ -4268,6 +4300,25 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             with mock.patch("maw.gui_web.sys.platform", "win32"):
                 with self.assertRaises(PreflightError):
                     _request_from_payload(payload, self.env_path)
+
+    def test_local_request_uses_resolved_snapshot_for_explicit_cache_root(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        repository = self.root / "models--Qwen--Qwen3-ASR-0.6B"
+        snapshot = repository / "snapshots" / "revision"
+        snapshot.mkdir(parents=True)
+        (snapshot / "config.json").write_text(json.dumps({"model_type": "qwen3_asr"}), encoding="utf-8")
+        (snapshot / "model.safetensors").write_bytes(b"weights")
+        with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+            request = _request_from_payload({
+                "providerId": "local",
+                "modelId": "qwen3-asr-local",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "out.srt"),
+                "localModelPath": str(repository),
+            }, self.env_path)
+
+        self.assertEqual(Path(request.model_path).resolve(), snapshot.resolve())
 
     def test_firered_request_can_skip_optional_ct_punc(self) -> None:
         media = self.root / "clip.mp3"
@@ -4695,6 +4746,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "2m")
+        self.assertTrue(request.test_run,
+            "testRun 载荷要进入请求，供画面缓存限长与日志说明使用")
         self.assertEqual(request.srt_path.name, "out-test.srt")
         self.assertEqual(request.ui_language, "en")
         self.assertTrue(request.debug_raw)
@@ -4713,6 +4766,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "30m")
+        self.assertFalse(request.test_run)
 
     def test_request_from_payload_carries_selected_audio_track(self) -> None:
         media = self.root / "clip.mp4"
@@ -4873,6 +4927,21 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(_request_from_payload(payload, self.env_path).generate_spectral)
         self.assertTrue(
             _request_from_payload({**payload, "generateSpectral": True}, self.env_path).generate_spectral
+        )
+
+    def test_request_from_payload_controls_keyframe_generation(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        payload = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }
+
+        self.assertTrue(_request_from_payload(payload, self.env_path).generate_keyframes,
+            "旧载荷缺省该字段时按默认开启处理")
+        self.assertFalse(
+            _request_from_payload({**payload, "generateKeyframes": False}, self.env_path).generate_keyframes
         )
 
     def test_request_from_payload_controls_thumbnail_generation(self) -> None:
@@ -5111,13 +5180,33 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "returned non-zero exit status 1.",
         ]))
 
-    def test_launcher_api_queues_started_event_and_shutdown_flushes(self) -> None:
+    def test_launcher_shutdown_stops_event_delivery_before_cancelling_tasks(self) -> None:
+        def cancel_and_flush() -> None:
+            self.api._emit({"type": "log", "message": "cancelled"})
+            self.api.pump.flush()
+
         self.api._emit({"type": "log", "message": "queued"})
+        with mock.patch.object(self.api, "cancel_recording_review", side_effect=cancel_and_flush):
+            self.api.shutdown()
 
-        self.api.shutdown()
+        self.api.pump.start()
+        self.api._emit({"type": "log", "message": "late event"})
+        self.api.pump.flush()
 
-        self.assertTrue(self.window.scripts)
-        self.assertIn("queued", self.window.scripts[-1])
+        self.assertEqual(self.window.scripts, [])
+        self.assertIsNone(self.api.pump.thread)
+
+    def test_event_pump_skips_delivery_if_window_lookup_overlaps_shutdown(self) -> None:
+        def close_during_lookup() -> FakeWindow:
+            pump.shutdown()
+            return self.window
+
+        pump = EventPump(window_getter=close_during_lookup)
+        pump.enqueue({"type": "log", "message": "queued"})
+
+        pump.flush()
+
+        self.assertEqual(self.window.scripts, [])
 
     def test_worker_emits_done_with_json_when_optional_html_is_missing(self) -> None:
         request = TranscriptionRequest(
@@ -6030,6 +6119,12 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="generateSpectralField"', page)
         self.assertIn('id="generateThumbnails" type="checkbox"', page)
         self.assertIn('id="generateThumbnailsField"', page)
+        self.assertIn('id="generateKeyframes" type="checkbox" checked', page)
+        self.assertIn('id="generateKeyframesField"', page)
+        self.assertLess(page.index('id="generateKeyframesField"'), page.index('id="generateThumbnailsField"'),
+            "基础缩略图开关位于高精度开关之前，级联隐藏时保持视觉顺序")
+        keyframes_block = page[page.index('id="generateKeyframesField"'):page.index('id="generateThumbnailsField"')]
+        self.assertIn("checked", keyframes_block, "生成缩略图默认勾选")
         thumbnails_block = page[page.index('id="generateThumbnailsField"'):page.index('id="debugRawField"')]
         self.assertNotIn("checked", thumbnails_block, "生成高精度画面预览图默认不勾选")
         self.assertIn('class="segmentation-row segmentation-character-row"', page)
@@ -6051,7 +6146,21 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
+        self.assertIn('generateKeyframes: $("generateKeyframes").checked', script)
         self.assertIn('generateThumbnails: $("generateThumbnails").checked', script)
+        self.assertIn('$("generateKeyframes").addEventListener("change", syncThumbnailFields)', script)
+        self.assertIn('$("generateThumbnailsField").classList.toggle("hidden", !baseOn)', script)
+        self.assertIn('syncDefaultOutput(); syncThumbnailFields(); scheduleAudioTrackProbe(', script,
+            "mediaPath 输入联动：手输路径即时切换缩略图开关禁用态")
+        self.assertIn('syncDefaultOutput(); syncThumbnailFields(); void refreshAudioTracks(path)', script,
+            "setMedia（选择/拖入媒体）联动同一禁用逻辑")
+        self.assertIn('checkbox.disabled = audioOnly', script)
+        self.assertIn('const audioOnly = Boolean(media) && !VIDEO_EXTS.has(ext(media));', script,
+            "音频输入判定沿用音轨探测同一套视频扩展名集合")
+        self.assertIn('#generateKeyframesField.unavailable .check-field', stylesheet,
+            "音频禁用态有清晰置灰样式")
+        self.assertIn('generate_keyframes: "生成缩略图"', script)
+        self.assertIn('generate_keyframes: "Generate thumbnails"', script)
         self.assertIn('generate_spectral: "生成频谱数据"', script)
         self.assertIn('generate_spectral: "Generate spectral data"', script)
         self.assertIn('segmentation: "断句"', script)
@@ -6924,7 +7033,7 @@ class WaitForServerProbeTests(unittest.TestCase):
                 return
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         try:
             url = f"http://127.0.0.1:{server.server_address[1]}/"
             self.assertTrue(
@@ -6948,7 +7057,7 @@ class WaitForServerProbeTests(unittest.TestCase):
                 return
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
+        threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True).start()
         try:
             url = f"http://127.0.0.1:{server.server_address[1]}/"
             self.assertFalse(_wait_for_server(url, timeout=0.35, probe_timeout=0.2))

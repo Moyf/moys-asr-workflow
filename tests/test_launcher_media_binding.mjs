@@ -58,3 +58,33 @@ test('resetting the project clears stale manual media and restores remember defa
   assert.equal($('serverMediaPath').value, '');
   assert.equal($('serverRememberMedia').checked, true);
 });
+
+function pendingMediaFixture() {
+  const {context, $} = fixture();
+  const pending = [];
+  const hidden = new Map();
+  $('serverMediaField').classList.toggle = (name, value) => hidden.set(name, value);
+  context.renderMessage = () => {};
+  context.bridge = (_method, payload) => new Promise(resolve => pending.push({payload, resolve}));
+  vm.runInContext(readFileSync(new URL('../web/launcher/server/launcher-media-server.js', import.meta.url), 'utf8'), context);
+  return {context, $, pending, hidden};
+}
+
+for (const currentHasMedia of [true, false]) {
+  test(`a stale project media response cannot ${currentHasMedia ? 'show' : 'hide'} the current media picker`, async () => {
+    const {context, $, pending, hidden} = pendingMediaFixture();
+    vm.runInContext("setJsonPath('old.mosp'); setJsonPath('current.mosp');", context);
+    assert.deepEqual(pending.map(call => call.payload.jsonPath), ['old.mosp', 'current.mosp']);
+
+    pending[1].resolve({hasMedia: currentHasMedia, mediaExists: currentHasMedia});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(context.state.serverMediaOk, currentHasMedia);
+    assert.equal(hidden.get('hidden'), currentHasMedia);
+
+    pending[0].resolve({hasMedia: !currentHasMedia, mediaExists: !currentHasMedia});
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal($('jsonPath').value, 'current.mosp');
+    assert.equal(context.state.serverMediaOk, currentHasMedia);
+    assert.equal(hidden.get('hidden'), currentHasMedia);
+  });
+}

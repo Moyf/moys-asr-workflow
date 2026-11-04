@@ -1,5 +1,6 @@
 """Documentation checks catch broken targets without executing any consumer."""
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -8,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 
 from tests.compact_assertions import CompactContainerAssertions
 
@@ -41,7 +43,7 @@ class DocumentationCheckTests(CompactContainerAssertions, unittest.TestCase):
                 text = entry.read_text(encoding="utf-8").replace("#字幕设置", "#不存在的锚点")
                 entry.write_text(text, encoding="utf-8", newline="\n")
             subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
-            result = run_docs_check(root, "--scan-only", "--json")
+            result = run_docs_check(root, "--scan-only", "--json", cli=True)
             self.assertEqual(result.stderr, "")
             return result.returncode, json.loads(result.stdout)
 
@@ -225,8 +227,8 @@ class DocumentationCheckTests(CompactContainerAssertions, unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             write_docs_fixture(root, "docs/archived/old.md", "[历史](missing.md)\n")
-            default = run_docs_check(root)
-            strict = run_docs_check(root, "--strict")
+            default = run_docs_check(root, cli=True)
+            strict = run_docs_check(root, "--strict", cli=True)
             self.assertEqual(default.returncode, 0, default.stdout + default.stderr)
             self.assertEqual(strict.returncode, 1, strict.stdout + strict.stderr)
             self.assertIn("strict:", strict.stdout)
@@ -275,11 +277,21 @@ def write_docs_fixture(root: Path, source: str, text: str) -> None:
         path.write_text(content, encoding="utf-8")
 
 
-def run_docs_check(root: Path, *extra: str) -> subprocess.CompletedProcess:
-    """Invoke the real checker against a fixture tree, exactly as a contributor would."""
-    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
-    return subprocess.run([sys.executable, str(ROOT / "scripts/check_docs.py"), "--root", str(root), *extra],
-                          capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, timeout=30)
+def run_docs_check(root: Path, *extra: str, cli: bool = False) -> subprocess.CompletedProcess:
+    """Exercise the same parser/body; retain subprocesses for CLI/encoding/exit boundaries."""
+    args = ["--root", str(root), *extra]
+    command = [sys.executable, str(ROOT / "scripts/check_docs.py"), *args]
+    if cli:
+        env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+        return subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", env=env, timeout=30)
+    stdout, stderr = io.StringIO(), io.StringIO()
+    with redirect_stdout(stdout), redirect_stderr(stderr):
+        try:
+            code = checker.main(args)
+        except SystemExit as error:
+            code = error.code
+    return subprocess.CompletedProcess(command, code, stdout.getvalue(), stderr.getvalue())
 
 
 if __name__ == "__main__":

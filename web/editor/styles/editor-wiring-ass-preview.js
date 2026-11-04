@@ -1,3 +1,8 @@
+import { activeExtensionSegments } from '../cues/overlay-track.js';
+
+export function initMaweAssPreviewWiring() {
+  'use strict';
+
 
 // === ASS 预览接线（Canvas 合成） + 当前行高亮 ===
 
@@ -78,13 +83,13 @@ function assPreviewMetrics() {
 function assPreviewStyleVariant(style, segment, segments, appearance) {
   // ASS 预览的颜色映射只跟随 ass_color_style；color_underline 只控制 CSS 预览。
   const colorName = segment
-    ? MULTI_SUBTITLE_UTILS.effectiveColorName(segment, segments) : null;
+    ? window.AsrEditorUtils.effectiveColorName(segment, segments) : null;
   const paletteValue = MaweColors.COLOR_BY_NAME[colorName]?.value || '';
   if (!paletteValue || typeof window.AsrEditorUtils.assStyleVariant !== 'function') return style;
   return window.AsrEditorUtils.assStyleVariant(
     style,
     paletteValue,
-    appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE,
+    appearance.ass_color_style || window.MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE,
   );
 }
 
@@ -94,7 +99,7 @@ function assPreviewAnimatedStyle(style, profile, animationState, metrics) {
   // \fs targets are in native PlayRes pixels, whereas the library stores its
   // base size at 1080p. Interpolate both endpoints in native coordinates.
   const native = { ...style, fontSize: assPreviewExportFontSize(style, metrics) };
-  const result = window.AsrEditorUtils.assPreviewStyleAt(native, tags, animationState.transformProgress);
+  const result = window.AsrEditorUtils.assPreviewStyleAt(native, tags, animationState.transformProgress, { popScale: animationState.popScale });
   return { ...result, __assNativeFontSize: result.fontSize };
 }
 
@@ -105,7 +110,10 @@ function assPreviewFontScale(style) {
   // normal line box approximates that ratio without reading local font files.
   // This remains approximate (fallback fonts and OS/2 vs hhea metrics differ);
   // the paused Server preview uses libass itself for exact shaping/layout.
-  const family = MaweAppearance.subtitleFontFamilyCss(style.fontName);
+  // 预览优先用字体别名链：浏览器对样式存储名的匹配不可预测，把 canonical
+  // 与其余别名一并列入可让预览与 libass 尽量渲染同一字形。
+  const family = window.MaweAssFontAliases?.chainCssFor?.(style.fontName)
+    || MaweAppearance.subtitleFontFamilyCss(style.fontName);
   const key = JSON.stringify([family, style.bold, style.italic]);
   if (assPreviewFontMetrics.has(key)) return assPreviewFontMetrics.get(key);
   const probe = document.createElement('div');
@@ -125,7 +133,7 @@ function assPreviewFontScale(style) {
 function assPreviewExportFontSize(style, metrics) {
   if (Number.isFinite(style.__assNativeFontSize)) return Math.max(1, style.__assNativeFontSize);
   return window.AsrEditorUtils.normalizeAssFontSize(
-    Number(style.fontSize) * metrics.resolution.height / ASS_PREVIEW_REFERENCE_HEIGHT,
+    Number(style.fontSize) * metrics.resolution.height / window.MaweInitialConfigWiring.ASS_PREVIEW_REFERENCE_HEIGHT,
   );
 }
 
@@ -133,6 +141,14 @@ document.fonts?.addEventListener('loadingdone', () => {
   assPreviewFontMetrics.clear();
   window.MaweAssCanvas?.clearCaches();
   window.MawePlaybackLoop?.refreshSubtitlePreview();
+});
+
+// 字体别名表异步就绪后同样失效度量缓存：别名链改变 font-family 输出，
+// 排版计划（含字体度量）必须按新链重建。
+document.addEventListener('mawe:ass-font-aliases-loaded', () => {
+  assPreviewFontMetrics.clear();
+  assStackFontRevision += 1;
+  cachedAssStackKey = '';
 });
 
 function clearAssPreviewSpeakerLabelStyle(element) {
@@ -169,7 +185,7 @@ function restoreCssSubtitlePreview() {
   window.MaweAssCuePosition?.sync();
   clearAssEmphasisPreview(MaweDom.overlayTextEl);
   clearAssEmphasisPreview(MaweDom.overlayExtensionTextEl);
-  clearAssEmphasisPreview(overlayTrackTextEl);
+  clearAssEmphasisPreview(window.MaweDomPanelsWiring.overlayTrackTextEl);
   MaweDom.overlayEl.removeAttribute('data-ass-mode');
   MaweDom.overlayEl.classList.remove('ass-preview-active');
   delete MaweDom.overlayTextEl.dataset.colorUnderline;
@@ -202,12 +218,15 @@ function clearAssEmphasisPreview(element) {
   if (element) delete element.dataset.assEmphasisKey;
 }
 
-// ASS 文本 run 构建：预览剥离单句渐入渐出标记（`>>`/`<<` 由 fad 动画表现，
-// 不显示为文字），再按编辑器标记语法切成强调/下划线/删除线/大小字号
-// run——与旧 DOM 预览同源，绘制交给 MaweAssCanvas。
+// ASS 文本 run 构建：预览剥离单句渐入渐出（`>>`/`<<` 由 fad 动画表现）与
+// 放大出现标记（`{{`/`}}` 由 pop 动画表现），不显示为文字，再按编辑器标记
+// 语法切成强调/下划线/删除线/大小字号 run——与旧 DOM 预览同源，绘制交给
+// MaweAssCanvas。
 function assPreviewTrackRuns(text) {
-  const source = window.AsrEditorUtils.stripSentenceFadeMarkers(
-    String(text ?? ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+  const source = window.AsrEditorUtils.stripSentencePopMarkers(
+    window.AsrEditorUtils.stripSentenceFadeMarkers(
+      String(text ?? ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+    ), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
   );
   return window.AsrEditorUtils.assInlineStyleRuns(
     source, MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax, MaweSettings.EDITOR_SETTINGS,
@@ -284,7 +303,7 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
   MaweDom.overlayEl.style.height = `${metrics.stageHeight}px`;
   // ASS 文本由 Canvas 合成，DOM 文本元素整体隐藏（refreshSubtitlePreview
   // 在 CSS 模式下按可见性切换 hidden，这里每帧强制覆盖）。
-  [MaweDom.overlayTextEl, MaweDom.overlayExtensionTextEl, overlayTrackTextEl, MaweDom.overlayMainSpeakerLabelEl]
+  [MaweDom.overlayTextEl, MaweDom.overlayExtensionTextEl, window.MaweDomPanelsWiring.overlayTrackTextEl, MaweDom.overlayMainSpeakerLabelEl]
     .forEach((element) => {
       if (element && !element.classList.contains('hidden')) element.classList.add('hidden');
     });
@@ -292,16 +311,22 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
   const profile = cachedAssStackPlan.profile;
   const tracks = frame.items.map(item => {
     const animation = (item.legacy && !item.sharedStackCue ? window.AsrEditorUtils.assPreviewAnimationState : window.AsrEditorUtils.assStackAnimationState)(profile,
-      Number(tMs) - item.start, item.end - item.start, { fad: item.fad });
+      Number(tMs) - item.start, item.end - item.start, { fad: item.fad, pop: item.pop || null });
     const native = { ...item.style, fontSize: item.fontSize };
     const animated = animation.transformProgress === null ? native
-      : window.AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true });
-    if ((!item.legacy || item.sharedStackCue) && profile.animations.t.enabled) {
+      : window.AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true, popScale: animation.popScale });
+    if (profile.animations.t.enabled) {
       // libass applies discrete style tags inside t immediately, even before
       // the numeric transform window starts (real b/i frame-hash verification).
       const targets = window.AsrEditorUtils.assTransformStyleTargets(profile.animations.t.tags);
+      const shared = !item.legacy || item.sharedStackCue;
+      const inlineItalic = item.runs.some(run => run.italic);
       for (const key of ['bold', 'italic', 'underline', 'strikeOut']) {
-        if (targets[key] !== undefined) animated[key] = Boolean(targets[key]);
+        // Only the new inline italic path needs an immediate solo baseline;
+        // keep other legacy decoration and numeric animation behavior intact.
+        if (targets[key] !== undefined && (shared || (key === 'italic' && inlineItalic))) {
+          animated[key] = Boolean(targets[key]);
+        }
       }
     }
     const scale = item.scale * (item.cueScale || 1);
@@ -319,7 +344,7 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
 }
 
 function restoreAssOverlayTrackPreview() {
-  if (!overlayTrackTextEl) return;
+  if (!window.MaweDomPanelsWiring.overlayTrackTextEl) return;
   [
     'position', 'left', 'right', 'top', 'bottom', 'white-space', 'word-break', 'text-align',
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
@@ -327,15 +352,17 @@ function restoreAssOverlayTrackPreview() {
     'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
     'max-width', 'padding', 'background-color', 'border-radius', 'opacity',
     'transform-origin', 'transform',
-  ].forEach((property) => overlayTrackTextEl.style.removeProperty(property));
-  delete overlayTrackTextEl.dataset.colorUnderline;
-  delete overlayTrackTextEl.dataset.colorText;
-  delete overlayTrackTextEl.dataset.colorStroke;
+  ].forEach((property) => window.MaweDomPanelsWiring.overlayTrackTextEl.style.removeProperty(property));
+  delete window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorUnderline;
+  delete window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorText;
+  delete window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorStroke;
 }
 
 // The manager also uses the calibrated font metrics after boot has completed;
 // the Canvas layer reuses exportFontSize for native run sizes.
-window.MaweAssPreview = Object.freeze({
+window.MaweAssPreview = window.MaweAssPreview || Object.freeze({
+  applyAssSubtitlePreview,
+  restoreCssSubtitlePreview,
   fontScale: assPreviewFontScale,
   get stackPlan() { return cachedAssStackPlan; },
   exportFontSize: assPreviewExportFontSize,
@@ -351,3 +378,4 @@ window.MaweAssPreview = Object.freeze({
 // 再用被污染的 offsetTop 算出错误目标平滑滚走（页面放大倍率越高、真实
 // 行高与估算差异越大越容易触发）。这些操作是否滚动、滚到哪里都应由
 // 调用方显式决定（例如拆分按来源保持原位或居中新右半段）。
+}

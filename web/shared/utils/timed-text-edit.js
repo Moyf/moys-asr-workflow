@@ -202,14 +202,30 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function buildTimedTextEditReportFixed(segments, draftTexts) {
+  function buildTimedTextEditReportFixed(segments, draftTexts, previous = null) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
     const valid = source.length === texts.length;
     const boundaryPlan = buildTimedTextBoundaryPlan(source, texts);
+    // 逐行复用上一轮报告：编辑通常只改一行，未修改行的 diff / 字词重对齐 /
+    // 覆盖率 / 复用率只由本行（segment 引用、before/after 文本）决定，输入相同
+    // 结果必然相同，直接跳过重算（数千行时逐键卡顿的主要来源）。边界转移除外：
+    // 边界计划按相邻行草稿全局推导，同一行输入不变时其结论仍可能变化，因此
+    // 本轮命中边界、或上一轮结果来自边界的行一律重算。不传 previous 时与
+    // 既有行为完全一致。
+    const previousRows = Array.isArray(previous?.rows) ? previous.rows : null;
     const rows = source.map((segment, index) => {
       const before = String(segment?.text == null ? '' : segment.text);
       const after = String(texts[index] == null ? '' : texts[index]);
+      const previousRow = previousRows?.[index];
+      if (previousRow
+          && previousRow.segment === segment
+          && previousRow.before === before
+          && previousRow.after === after
+          && !boundaryPlan.updates[index]
+          && previousRow.mappingStatus !== 'boundary') {
+        return previousRow;
+      }
       const diff = buildTimedTextDiff(before, after);
       const boundary = boundaryPlan.updates[index];
       const mapping = boundary
@@ -228,6 +244,7 @@ export function createUtilsModule(dependencies) {
       );
       return {
         index,
+        segment,
         before,
         after,
         changed: before !== after,
@@ -434,19 +451,21 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function buildTimedTextEditReport(segments, draftTexts, options = {}) {
+  // previous（可选）：上一轮 buildTimedTextEditReport 的返回值，供逐行复用；
+  // 结构路径不使用复用（行结构与字段不同），previous 内的行天然不命中。
+  function buildTimedTextEditReport(segments, draftTexts, options = {}, previous = null) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
     if (timedTextStructureRequested(source, texts)) {
       const plan = buildTimedTextStructurePlan(source, texts, options);
       if (plan.valid) return buildTimedTextStructureReport(source, texts, plan);
       return {
-        ...buildTimedTextEditReportFixed(source, texts),
+        ...buildTimedTextEditReportFixed(source, texts, previous),
         structure: plan,
         previewSegments: [],
       };
     }
-    return buildTimedTextEditReportFixed(source, texts);
+    return buildTimedTextEditReportFixed(source, texts, previous);
   }
 
 

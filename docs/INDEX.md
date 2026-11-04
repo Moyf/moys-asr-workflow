@@ -212,6 +212,13 @@
 
 [保留日志索引](logs/INDEX.md) · [当前相关参考与未决事项](logs/CURRENT.md) · [2026-08-11 README 原文](archived/README-2026-08-11.md)
 
-当前功能记录：[主字幕单句缩放进度账本](logs/release1.9.0-beta.2/ASS_CUE_SCALE.md) · [人工核对清单](logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)
+当前安全记录：[2026-10 证书与工具链安全修复](logs/release1.10.0-beta.1/261022_证书与工具链安全/SECURITY.md)。
+
+当前功能记录：[单句放大出现设计账本](logs/release1.9.0-beta.3/261020_每句放大出现/SENTENCE_POP_IN.md) · [主字幕单句缩放进度账本](logs/release1.9.0-beta.2/ASS_CUE_SCALE.md) · [人工核对清单](logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)
 
 反馈账本中的“已修复”只对应其记录的版本和验证范围。发布变化见 [CHANGELOG](../CHANGELOG.md)。
+
+<a name="log-media-required-reports"></a>
+### 媒体分层与可信报告
+
+[打开记录](logs/release1.10.0-beta.1/261023_媒体分层与可信报告/验证记录.md)

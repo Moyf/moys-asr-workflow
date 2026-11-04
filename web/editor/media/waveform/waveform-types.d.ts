@@ -20,7 +20,7 @@ type WaveformMethods =
   DescriptorValues<ReturnType<typeof import('./media.js').createWaveformModule>, 'attachPlayer' | 'setMediaAvailable' | 'setPayload' | 'getPayload' | 'setSpectralPayload' | 'setReapeaksWaveform' | 'activeWaveShape' | 'getGapRemoveDetectionData' | 'processFile' | 'waitForPlayerDuration' | 'durationMs' | 'currentTimeMs' | 'centerBasicOnCurrentTime'> &
   DescriptorValues<ReturnType<typeof import('./playback.js').createWaveformModule>, 'updatePlayback' | 'getNavigationSnapshot' | 'restoreNavigation' | 'positionPlayheads'> &
   DescriptorValues<ReturnType<typeof import('./pointer.js').createWaveformModule>, 'pointerTimeMs' | 'refreshPointerLine' | 'showPointerLine' | 'hidePointerLine' | 'isCueBoundaryDrag' | 'findVisibleWaveformRowAtPoint' | 'findVisibleWaveformRowAtY' | 'findVisibleWaveformRowForTime' | 'cueBoundaryDragTimeMs' | 'showDragPointerLineAtTime' | 'refreshBoundaryDragPointerLine' | 'restorePointerLineAfterBoundaryDrag' | 'scheduleHoverSeekPreview' | 'cancelHoverSeekPreview' | 'flushHoverSeekPreview'> &
-  DescriptorValues<ReturnType<typeof import('./render.js').createWaveformModule>, 'scheduleRender' | 'scheduleMultiVisible' | 'scheduleBasicRender' | 'scheduleRefreshCueBlocks' | 'invalidateGroupBadges' | 'computeGroupBadgesCached' | '_readWaveColors' | '_getWaveColors' | 'render' | 'stretchWaveformCanvases' | 'redrawWaveformCanvases' | 'renderSegments' | 'renderBasic' | 'panBasicByMs' | 'relayoutBasicOverlays' | 'rebuildMarkerTrackForPan' | 'renderMulti' | 'renderMultiVisible' | 'createMultiRow'> &
+  DescriptorValues<ReturnType<typeof import('./render.js').createWaveformModule>, 'scheduleRender' | '_snapshotRenderedPaneSize' | 'scheduleMultiVisible' | 'scheduleBasicRender' | 'scheduleRefreshCueBlocks' | 'invalidateGroupBadges' | 'computeGroupBadgesCached' | '_readWaveColors' | '_getWaveColors' | 'render' | 'stretchWaveformCanvases' | 'redrawWaveformCanvases' | 'renderSegments' | 'renderBasic' | 'panBasicByMs' | 'relayoutBasicOverlays' | 'rebuildMarkerTrackForPan' | 'renderMulti' | 'renderMultiVisible' | 'createMultiRow'> &
   DescriptorValues<ReturnType<typeof import('./scale-controls.js').createWaveformModule>, 'focusWaveform' | 'changeWaveformScale' | 'applyWaveformScaleSteps' | 'renderWaveformScaleLabel' | 'setLoudnessStats' | 'fitWaveformScaleToLoudness' | 'scheduleWheelScaleChange' | 'scheduleRowHeightChange' | 'applyRowGeometryWithViewportAnchor' | 'updateDisabledVisibility' | 'revealTime' | 'changeZoom' | 'setStatus' | 'setSpectralColorStatus' | 'scheduleSpectralColorRender'> &
   DescriptorValues<ReturnType<typeof import('./workspace.js').createWaveformModule>, 'bindDivider' | 'bindLayoutResizers' | 'applyLayoutVariables' | 'applyLayout' | 'updateAdvancedSettingsAvailability' | 'setMode' | 'setTool' | 'getTool' | 'setLayout' | 'toggleLayoutEditMode' | 'isMultiMode' | 'getRowHeight' | 'setSecondsPerRow' | 'getMaxRowHeight' | 'setRowHeight' | 'isCustomLayout' | 'isPresetResizableLayout' | 'bindDockHandles' | 'bindWorkspaceDockTarget' | 'applyLayoutDrop' | 'showLayoutDropPreview' | 'clearLayoutDropPreview' | 'ensureCustomLayoutRoot' | 'restoreDirectLayoutModules' | 'createCustomLayoutNode' | 'applyCustomSplitRatio' | 'bindCustomLayoutDivider' | 'applyCustomLayoutTree' | 'getLayoutData' | 'getLayoutHistorySnapshot' | 'recordLayoutUndo' | 'restoreLayoutHistorySnapshot' | 'resetLayout' | 'setLayoutData'>;
 
@@ -253,7 +253,12 @@ export interface WaveformState {
   _gapBoundaryMove: (event: PointerEvent) => void; _gapBoundaryEnd: (event: PointerEvent) => void;
   _gapMoveMove: (event: PointerEvent) => void; _gapMoveEnd: (event: PointerEvent) => void;
   _gapRangeMove: (event: PointerEvent) => void; _gapRangeEnd: (event: PointerEvent) => void;
-  markerQuickEdit: {markerId: string; element: HTMLElement} | null;
+  markerQuickEdit: {
+    markerId: string;
+    element: HTMLElement;
+    anchor: {left: number; top: number; height: number};
+    resizeObserver: ResizeObserver;
+  } | null;
   _markerQuickEditOutside: ((event: PointerEvent) => void) | null;
   _markerQuickEditKey: ((event: KeyboardEvent) => void) | null;
   markerDrag: MarkerDragState | null; markerCreateDrag: MarkerDragState | null;
@@ -266,6 +271,7 @@ export interface WaveformState {
   _waveColumnCache: {source: Int8Array | Float32Array; peakCount: number; peaksPerSecond: number; columnMs: number; coverStartMs: number; coverEndMs: number; columns: number; low: Float32Array; high: Float32Array} | null;
   _groupBadgesCache: {epoch: number; segments: Cue[]; length: number; badges: Map<number, Array<{type: string; ordinal: number; total: number}>>} | null;
   _groupBadgesEpoch: number;
+  _renderedPaneSize: {width: number; height: number} | null;
   layoutDragging: boolean; layoutDragSource: string | null;
   layoutDropIntent: {mode?: string; kind?: string; targetId?: string; sourceId: string; edge?: string; direction?: string; ratio?: number} | null;
   customLayoutRoot: HTMLElement | null; renderedCustomLayoutTree: LayoutTree | null;

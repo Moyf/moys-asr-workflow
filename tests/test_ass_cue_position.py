@@ -52,3 +52,20 @@ class AssCuePositionTests(unittest.TestCase):
                 result = validate_project(self.project(value))
                 self.assertFalse(result.ok)
                 self.assertIn("$.segments[0].assOverride" + suffix, {error.path for error in result.errors})
+
+    def test_overlay_track_normalizes_and_rejects_ass_override(self):
+        def overlay_project(override):
+            return {"segments": [{"start": 2000, "end": 3000, "text": "主"}],
+                    "overlay_track": {"enabled": True, "segments": [
+                        {"start": 0, "end": 1000, "text": "叠", "assOverride": override}]}}
+
+        normalized = normalize_project(overlay_project({"scale": 1.225, "pos": {"x": -12.5, "y": 1300.25}}))
+        self.assertEqual(normalized["overlay_track"]["segments"][0]["assOverride"],
+                         {"scale": 1.23, "pos": {"x": -12.5, "y": 1300.25}})
+        self.assertNotIn("assOverride", normalize_project(overlay_project({}))["overlay_track"]["segments"][0])
+        for value, suffix in [({"an": 2}, ".an"), ({"scale": 0.09}, ".scale"), ({"pos": {"x": 1}}, ".pos.y")]:
+            with self.subTest(value=value):
+                result = validate_project(overlay_project(value))
+                self.assertFalse(result.ok)
+                self.assertIn("$.overlay_track.segments[0].assOverride" + suffix,
+                              {error.path for error in result.errors})

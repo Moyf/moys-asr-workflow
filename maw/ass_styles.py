@@ -196,6 +196,10 @@ DEFAULT_ASS_EXTENSION_STYLE: Final[dict[str, object]] = {
 def _animation_defaults() -> dict[str, object]:
     return {
         "fad": {"enabled": True, "inMs": 250, "outMs": 250},
+        # 放大出现：句级 {{…}} 标记与全局自动应用共用参数；enabled 只控制
+        # 全局自动应用，与 UI 参数编辑解耦（同 fad）。fromScale < 1 为
+        # 「从小放大落定」（默认 0.7），> 1 为从大缩小落定。
+        "pop": {"enabled": False, "fromScale": 0.7, "inMs": 120, "accel": 1},
         # These fields are intentionally part of v1 so newer clients can add
         # tags without changing the on-disk shape.  The first UI exposes fad.
         "fade": {
@@ -298,6 +302,14 @@ def _normalize_animation(raw: object) -> dict[str, object]:
         "enabled": _bool(fad.get("enabled"), False),
         "inMs": _number(fad.get("inMs"), 250, 0, 60000),
         "outMs": _number(fad.get("outMs"), 250, 0, 60000),
+    }
+    pop = source.get("pop") if isinstance(source.get("pop"), Mapping) else {}
+    defaults["pop"] = {
+        "enabled": _bool(pop.get("enabled"), False),
+        # fromScale 允许 < 1（放大出现），下限 0.3 防 0/负值。
+        "fromScale": _number(pop.get("fromScale"), 0.7, 0.3, 10, integer=False),
+        "inMs": _number(pop.get("inMs"), 120, 0, 60000),
+        "accel": _number(pop.get("accel"), 1, 0.01, 100, integer=False),
     }
     fade_t1 = _number(fade.get("t1"), 0, 0, 60000)
     fade_t2 = max(fade_t1, _number(fade.get("t2"), 250, 0, 60000))
