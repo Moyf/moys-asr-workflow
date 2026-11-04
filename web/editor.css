@@ -2141,7 +2141,11 @@
      与播放器舞台的 #sticker-overlay-layer 一致；层的 left/top/width/height 由
      接线按 PNG 实际绘制矩形（object-fit: contain 的显示区域）写入，几何层按
      preview.sticker 归一化几何取百分比。素材与字幕位置不相交，叠放次序与
-     舞台暂停视图（表情包层压在实际帧上方）保持一致。 */
+     舞台暂停视图（表情包层压在实际帧上方）保持一致。
+     视觉装饰刻意不同于舞台层：本窗口的定位是贴近烧录结果，而成片里表情包是
+     原像素叠加（无背景装饰），故 img 不加底衬/阴影/圆角；舞台小窗保留底衬
+     是为了让浅色贴纸在布局草稿视图里可见（2026-11 止血，详见
+     docs/plans/ASS_FRAME_STICKER_COMPOSE.md）。 */
   .ass-frame-sticker-layer { position: absolute; z-index: 2; pointer-events: none; }
   .ass-frame-sticker-layer .ass-frame-sticker-geometry { position: absolute; pointer-events: none; }
   .ass-frame-sticker-layer .sticker-overlay-content {
@@ -2152,10 +2156,11 @@
   }
   /* 与舞台层相同：叠加轨表情包显示时内容区加高到 200%，给垂直堆叠留空间。 */
   .ass-frame-sticker-layer .sticker-overlay-content.has-overlay-sticker { height: 200%; }
+  /* 不带舞台层的底衬/阴影/圆角：烧录管线只 overlay 原图（server-editor/serve.py
+     的 _burn_sticker_chain_lines），成片无背景装饰，本窗口按成片观感显示。 */
   .ass-frame-sticker-layer .sticker-overlay-content img {
     flex: 0 0 auto; max-width: 100%;
-    object-fit: contain; border-radius: var(--radius-sm);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); background: rgba(0, 0, 0, 0.35);
+    object-fit: contain;
   }
   .ass-frame-sticker-layer .sticker-overlay-content img:only-child { max-height: 100%; }
   .ass-frame-sticker-layer .sticker-overlay-content img:not(:only-child) { max-height: 50%; }
