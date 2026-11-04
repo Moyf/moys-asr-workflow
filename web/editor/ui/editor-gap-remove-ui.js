@@ -63,6 +63,17 @@ export function initMaweGapRemoveUi() {
 
     const core = window.AsrGapRemoveCore;
     const state = MaweGapRemoveData.getGapRemoveData(true);
+    if (window.AsrEditorUtils.isAiCleanupRemovalMarker(marker)) {
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        return { changed: false, muted: false };
+      }
+      // 自动移除区段按当前实际覆盖切换；手动保留优先于所有自动来源。
+      const removed = !core.getRemovedGapRanges(state?.gaps)
+        .some((gap) => gap.start < end && gap.end > start);
+      MaweHistory.pushGapRemoveUndo(removed ? '移除 AI 区段声音' : '恢复 AI 区段声音');
+      commitManualGapRemoveChange(state, [{ start, end, removed }]);
+      return { changed: true, muted: removed, automatic: true };
+    }
     const provenance = core.normalizeGapRemoveProvenance(state?.provenance, state?.gaps);
     const currentRanges = provenance.sources.ai_cleanup_review;
     // 拆分区间的 id 可变化；优先按稳定的标记归属匹配，旧记录才回退到 id。
