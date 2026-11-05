@@ -244,11 +244,11 @@
     renderPresets();
   }
 
-  function captureTargets() {
+  function captureTargets(mainIndexes) {
     const main = MaweBoot.DATA.segments;
-    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    const track = mainIndexes ? null : MaweMultiSubtitleCore.getActiveExtensionTrack();
     return [
-      ...[...MaweSelection.selectedIdxs].sort((a, b) => a - b)
+      ...[...(mainIndexes ?? MaweSelection.selectedIdxs)].sort((a, b) => a - b)
         .map((index) => ({ id: main[index]?.id })),
       ...[...MaweSelection.selectedExtensionIdxs].sort((a, b) => a - b)
         .filter(() => track).map((index) => ({ id: track.segments[index]?.id, trackId: track.id })),
@@ -473,7 +473,12 @@
     if (restoreFocus) $('text-process-btn')?.focus();
   }
 
-  async function openTextProcessModal() {
+  function createStep(type) {
+    if (type === 'replace') return { type, find: '', replacement: '', regex: false, caseSensitive: false };
+    return type === 'wrap' ? { type, wraps: [] } : { type };
+  }
+
+  async function openTextProcessModal({ replaceSelection } = {}) {
     if (!MaweBoot.DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
       MaweHint.flashHint('当前没有可处理的字幕', 'invalid');
       return;
@@ -481,17 +486,26 @@
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     MaweCuePanel.commitCuePanelEdit();
     const current = ++session;
-    selection = captureTargets();
+    selection = captureTargets(replaceSelection);
     openRows.clear();
-    $('text-preset-fillers').value = '';
     expanded = false;
     showUnchanged = false;
     reading = true;
     modal.classList.add('show');
     $('text-process-storage-scope').hidden = !MaweProcessing.portable;
     storageStatus.textContent = '正在读取用户配置…';
-    loadDefault();
-    $('text-preset-add-rule').focus();
+    if (replaceSelection) {
+      selectedPreset = '';
+      steps = [createStep('replace')];
+      stepType.value = 'replace';
+      setPresetScope('selected');
+      renderPresets();
+      renderSteps();
+      stepList.querySelector('.processing-replace-fields input')?.focus();
+    } else {
+      loadDefault();
+      $('text-preset-add-rule').focus();
+    }
     const fingerprint = () => JSON.stringify([steps, selectedPreset]);
     const initial = fingerprint();
     const initialScope = selectedOnly.checked;
@@ -499,7 +513,7 @@
     if (session !== current) return;
     reading = false;
     storageStatus.textContent = ok ? '' : '无法读取用户配置';
-    if (fingerprint() === initial) loadDefault({ preserveScope: selectedOnly.checked !== initialScope });
+    if (!replaceSelection && fingerprint() === initial) loadDefault({ preserveScope: selectedOnly.checked !== initialScope });
     else {
       renderPresets();
       schedulePreview();
@@ -540,7 +554,7 @@
     });
   }
 
-  $('text-process-btn').addEventListener('click', openTextProcessModal);
+  $('text-process-btn').addEventListener('click', () => openTextProcessModal());
   $('text-process-cancel').addEventListener('click', () => closeTextProcessModal());
   modal.addEventListener('click', (event) => { if (event.target === modal) closeTextProcessModal(); });
   document.addEventListener('keydown', (event) => {
@@ -552,10 +566,7 @@
   selectedOnly.addEventListener('change', schedulePreview);
   apply.addEventListener('click', confirm);
   $('text-preset-add-rule').addEventListener('click', () => {
-    const type = stepType.value;
-    const step = type === 'replace' ? { type, find: '', replacement: '', regex: false, caseSensitive: false }
-      : type === 'wrap' ? { type, wraps: [] } : { type };
-    steps = [...steps, step];
+    steps = [...steps, createStep(stepType.value)];
     renderSteps();
     stepList.lastElementChild?.querySelector('input, .text-process-wrap-preset-buttons button')?.focus();
   });
@@ -620,17 +631,6 @@
     } catch (error) {
       if (openedAt === session) storageStatus.textContent = '导入失败：' + error.message;
     }
-  });
-  $('text-preset-add-fillers').addEventListener('click', () => {
-    const input = $('text-preset-fillers');
-    const finds = input.value.split(/\r?\n/).filter(Boolean);
-    if (finds.length + steps.length > maxSteps) {
-      storageStatus.textContent = '步骤数量已达上限';
-      return;
-    }
-    steps.push(...finds.map((find) => ({ type: 'replace', find, replacement: '', regex: false, caseSensitive: false })));
-    input.value = '';
-    renderSteps();
   });
   $('text-preset-default').addEventListener('click', () => {
     const id = selectedPreset;

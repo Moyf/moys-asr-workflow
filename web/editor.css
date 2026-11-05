@@ -3460,8 +3460,6 @@
   .text-process-wrap-preset-buttons button[aria-pressed="true"] {
     border-color: var(--accent-line); color: var(--accent-text);
   }
-  .processing-fillers { margin-top: 8px; }
-  .processing-fillers textarea { display: block; width: 100%; margin: 8px 0; }
   .processing-steps > li.text-preset-rule { display: block; }
   .text-process-preview { margin-top: 10px !important; min-height: 42px !important; }
   .text-preset-controls, .text-preset-rules { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

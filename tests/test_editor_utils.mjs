@@ -1869,14 +1869,14 @@ test('translates editor project controls and dynamic save messages to English', 
   );
   assert.equal(i18n.translateText('操作支持撤销/重做。', 'en'), 'Operations support undo/redo.');
   assert.equal(i18n.translateText('处理范围', 'en'), 'Scope');
-  assert.equal(i18n.translateText('查找并批量替换字幕文本', 'en'), 'Find and batch-replace subtitle text');
+  assert.equal(i18n.translateText('按步骤替换、修剪空白或转换格式，并预览最终结果', 'en'), 'Replace text, trim whitespace, or format subtitles in steps, then preview the final result');
   assert.equal(
     i18n.translateText('集中编辑字幕文本，可预览拆分、合并和字词时间码映射', 'en'),
     'Edit subtitle text in one place and preview split, merge, and word-timing mappings',
   );
   assert.equal(
-    i18n.translateText('批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围', 'en'),
-    'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
+    i18n.translateText('文本处理支持勾选「仅处理选中的字幕」限定范围', 'en'),
+    'Check “Process selected subtitles only” to limit text processing to the selection',
   );
   assert.equal(i18n.translateText('注：微调幅度可在', 'en'), 'Note: Adjust the fine-tuning amount in');
   assert.equal(i18n.translateText('「高级编辑」中调节，默认 50ms', 'en'), 'under “Advanced editing” in Global settings; the default is 50 ms');

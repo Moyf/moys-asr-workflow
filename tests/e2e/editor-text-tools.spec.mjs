@@ -262,17 +262,45 @@ test('text process preview expands all rows and syncs the action label', async (
   await expect(rows).toHaveCount(2);
 });
 
-test('batch replacement uses shared capture replacement and current-scope preview', async ({ page }) => {
-  await seed(page, { text: '猫-狗\n猫-鸟', timed: false });
+test('the selected-cue shortcut uses the shared text processing preview', async ({ page }) => {
+  await page.route('**/api/text-processing-presets', route => route.fulfill({ json: {
+    schema: 'moy.asr.text_processing_presets.v2', revision: 1, defaultPresetId: 'default',
+    presets: [{ id: 'default', name: 'User trim', scope: 'all', steps: [{ type: 'trim' }] }],
+  } }));
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments = [
+      { id: 'one', start: 1000, end: 2000, text: '猫-狗\n猫-鸟' },
+      { id: 'two', start: 2000, end: 3000, text: '猫-狗' },
+      { id: 'three', start: 3000, end: 4000, text: '猫-鸟' },
+    ];
+    MaweCuePanel.renderAll({ waveform: 'full' });
+    MaweSelection.selectOnly(0);
+    MaweSelection.addManyToSelection([1]);
+  });
   await page.locator('#batch-operations-btn').click();
-  await page.locator('#replace-btn').click();
-  await expect(page.locator('#replace-scope-info')).toHaveText('当前范围：全部 1 条字幕');
-  await page.locator('#find-input').fill('(猫)-(狗|鸟)');
-  await page.locator('#use-regex').check();
-  await page.locator('#replace-input').fill('$02/$01');
-  await expect(page.locator('#replace-preview')).toContainText('鸟/猫');
-  await page.locator('#replace-confirm').click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('狗/猫\n鸟/猫');
+  await expect(page.locator('#replace-btn')).toHaveCount(0);
+  await expect(page.locator('#text-process-btn')).toBeVisible();
+  await page.locator('#batch-operations-btn').click();
+
+  await page.evaluate(() => MaweContextMenus.showContextMenu(350, 350, 0));
+  await page.locator('#ctxmenu').getByText('替换选中字幕…', { exact: true }).click();
+  const find = page.getByRole('textbox', { name: '规则 1 查找' });
+  await expect(find).toBeFocused();
+  await expect(page.locator('#text-preset-select')).toBeEnabled();
+  await expect(page.locator('#text-preset-select')).toHaveValue('');
+  await expect(page.locator('#text-process-scope-info')).toHaveText('当前范围：仅选中的 2 条字幕');
+  await find.fill('(猫)-(狗|鸟)');
+  await page.getByRole('checkbox', { name: '正则' }).check();
+  await page.getByRole('textbox', { name: '规则 1 替换为' }).fill('$02/$01');
+  const preview = page.locator('#text-process-preview');
+  await expect(preview.locator('details')).toHaveCount(2);
+  await expect(preview).toContainText('鸟/猫');
+  await page.locator('#text-process-cancel').focus();
+  await page.keyboard.press('Delete');
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(3);
+  await page.locator('#text-process-confirm').click();
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map(({ text }) => text)))
+    .toEqual(['狗/猫\n鸟/猫', '狗/猫', '猫-鸟']);
 });
 
 test('text processing converts clear Chinese numbers with surrounding spaces', async ({ page }) => {

@@ -18,22 +18,8 @@ test.beforeEach(async ({ page }) => {
 test('preset rules preview, persist, reload and undo', async ({ page }, info) => {
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
   await expect(page.locator('#text-preset-status')).toHaveText('');
-  const removal = page.locator('.processing-fillers');
-  await removal.getByText('批量添加文字删除步骤', { exact: true }).click();
-  const hint = removal.locator('#text-preset-fillers-hint');
-  await expect(hint).toContainText('替换为空');
-  const removalGaps = await removal.evaluate(element => {
-    const bounds = [...element.children].map(child => child.getBoundingClientRect());
-    return bounds.slice(1).map((box, index) => box.top - bounds[index].bottom);
-  });
-  expect(Math.min(...removalGaps)).toBeGreaterThanOrEqual(8);
-  await removal.screenshot({ path: info.outputPath('bulk-delete-zh.png') });
-  await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
-  await expect(hint).toContainText('replaces matching text with nothing');
-  await removal.screenshot({ path: info.outputPath('bulk-delete-en.png') });
-  await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
-  await page.getByRole('textbox', { name: '要删除的文字（每行一项）' }).fill('嗯');
-  await page.locator('#text-preset-add-fillers').click();
+  await addTextProcessStep(page, 'replace');
+  await page.getByRole('textbox', { name: '规则 1 查找' }).fill('嗯');
   await addTextProcessStep(page, 'trim');
   await expect(page.locator('#text-process-preview')).toContainText('处理后：123');
   page.once('dialog', dialog => dialog.accept('游戏清理'));
@@ -157,9 +143,8 @@ test('deleting a complete cue keeps the project row and exports re-importable SR
     ];
     MaweCuePanel.renderAll(); MaweTextProcess.openTextProcessModal();
   });
-  await page.locator('.processing-fillers summary').click();
-  await page.locator('#text-preset-fillers').fill('嗯');
-  await page.locator('#text-preset-add-fillers').click();
+  await addTextProcessStep(page, 'replace');
+  await page.getByRole('textbox', { name: '规则 1 查找' }).fill('嗯');
   await expect(page.locator('#text-process-preview')).toContainText('预计修改 1 条');
   await page.locator('#text-process-confirm').click();
   const output = await page.evaluate(() => {

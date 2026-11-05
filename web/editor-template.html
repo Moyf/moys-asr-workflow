@@ -768,15 +768,14 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">字幕列表</h5>
         <div class="help-category">
-          <span><kbd>批量替换</kbd> 查找并批量替换字幕文本</span>
           <span><kbd>纯文本编辑</kbd> 集中编辑字幕文本，可预览拆分、合并和字词时间码映射</span>
-          <span><kbd>文本处理</kbd> 批量修剪空白、首字母大写、添加前缀/后缀或去除 Markdown 符号</span>
+          <span><kbd>文本处理</kbd> 按步骤替换、修剪空白或转换格式，并预览最终结果</span>
         </div>
       </section>
       <section class="help-subgroup">
         <h5 class="help-subtitle">处理范围</h5>
         <div class="help-category">
-          <span>批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围</span>
+          <span>文本处理支持勾选「仅处理选中的字幕」限定范围</span>
         </div>
       </section>
     </section>
@@ -2334,7 +2333,6 @@ __WAVEFORM_CSS__
       <div class="dropdown batch-operations-dropdown" id="batch-operations-dropdown">
         <button type="button" id="batch-operations-btn" aria-expanded="false" aria-controls="batch-operations-menu" aria-haspopup="menu">批量操作 ▾</button>
         <div class="dropdown-menu" id="batch-operations-menu" role="menu">
-          <button type="button" class="dropdown-item" id="replace-btn" role="menuitem">批量替换</button>
           <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理</button>
         </div>
       </div>
@@ -2491,32 +2489,6 @@ __WAVEFORM_CSS__
   </div>
 </div>
 
-<!-- 批量替换 modal -->
-<div class="modal-mask" id="replace-modal">
-  <div class="modal">
-    <h3 id="replace-modal-title">批量替换</h3>
-    <div id="replace-scope-info" style="font-size:12px;color:#888;margin-bottom:8px;">当前范围：全部字幕</div>
-    <label class="modal-check-row" for="replace-selected-only">
-      <input type="checkbox" id="replace-selected-only" disabled>
-      <span>仅处理选中的字幕</span>
-      <span id="replace-selected-only-hint" class="modal-hint batch-selected-only-hint" hidden>需要先选中至少1条字幕才可启用</span>
-    </label>
-    <label>查找</label>
-    <input type="text" id="find-input" placeholder="要查找的内容" autocomplete="off">
-    <label>替换为</label>
-    <input type="text" id="replace-input" placeholder="替换后的内容" autocomplete="off">
-    <div class="row">
-      <label style="margin:0"><input type="checkbox" id="case-sensitive"> 区分大小写</label>
-      <label style="margin:0"><input type="checkbox" id="use-regex"> 正则表达式</label>
-    </div>
-    <div class="preview" id="replace-preview">输入查找内容查看预览</div>
-    <div class="actions">
-      <button id="replace-cancel">取消</button>
-      <button id="replace-confirm" class="primary">替换全部</button>
-    </div>
-  </div>
-</div>
-
 <!-- 常用文本处理 modal：保持字幕行和时间范围结构，只批量变更文本。 -->
 <div class="modal-mask" id="text-process-modal">
   <div class="modal text-process-modal" role="dialog" aria-modal="true"
@@ -2563,12 +2535,6 @@ __WAVEFORM_CSS__
       <button type="button" id="text-preset-add-rule">添加步骤</button>
     </div>
     <ol id="text-preset-rules" class="processing-steps"></ol>
-    <details class="processing-fillers">
-      <summary>批量添加文字删除步骤</summary>
-      <p class="modal-hint" id="text-preset-fillers-hint">每行输入一段要删除的文字。添加后，每一行都会生成一条「替换为空」的步骤，删掉字幕里匹配到的相同文字。</p>
-      <textarea id="text-preset-fillers" rows="2" aria-label="要删除的文字（每行一项）" aria-describedby="text-preset-fillers-hint"></textarea>
-      <button type="button" id="text-preset-add-fillers">添加删除步骤</button>
-    </details>
     <div class="preview text-process-preview" id="text-process-preview">选择操作后查看预览</div>
     <div class="actions">
       <button type="button" id="text-process-cancel">取消</button>

@@ -18,7 +18,7 @@ document.addEventListener('keydown', (event) => {
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
     || target.tagName === 'SELECT' || target.isContentEditable)) return;
   const modalShows = (dom) => dom?.classList.contains('show');
-  if (modalShows(MaweDom.replaceModal) || modalShows(MaweDom.stickerModal)
+  if (modalShows(MaweDom.textProcessModal) || modalShows(MaweDom.stickerModal)
     || modalShows(MaweDom.stickerPreviewModal) || modalShows(MaweDom.projectMediaModal)
     || modalShows(MaweDom.multiSubtitleImportModal) || MaweDom.ctxmenu.classList.contains('show')) return;
   event.preventDefault();
