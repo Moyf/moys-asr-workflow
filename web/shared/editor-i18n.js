@@ -967,7 +967,7 @@
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
     '全屏': 'Fullscreen', '退出全屏': 'Exit fullscreen',
     '显示': 'Display', '筛选': 'Filter', '隐藏禁用': 'Hide disabled',  '批量操作 ▾': 'Batch operations ▾', '批量操作': 'Batch operations', '批量替换…': 'Batch replace…',
-    '字幕处理': 'Subtitle processing', '对字幕进行查找替换、修剪空白、前后添加字符等批量操作': 'Find-and-replace, trim whitespace, add leading/trailing characters, and other batch operations for subtitles',
+    '字幕处理': 'Subtitle processing', '对字幕进行查找替换、修剪空白、前后添加字符等操作': 'Find and replace, trim whitespace, add leading or trailing characters, and more',
     '字数阈值': 'Character threshold', '仅看超长': 'Long only', '字幕列表设置': 'Subtitle list settings',
     '保留拆分结果显示': 'Keep split results visible', '点击字幕后自动滚动': 'Auto-scroll after clicking a subtitle', '显示内容': 'Displayed content',
     '当前': 'Current', '已选': 'Selected', '波形': 'Waveform', '音频波形区': 'Audio waveform', '波形设置': 'Waveform settings', '波形轨道徽标（开启后）：': 'Waveform track badges (when enabled):', '使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形': 'Color the waveform using the spectral cache by dominant frequency; when disabled, use the original solid-color waveform',

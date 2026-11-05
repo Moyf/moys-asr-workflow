@@ -593,6 +593,26 @@ test('processing columns scroll independently and group replacement and MASS con
   expect(spacing).toMatchObject({ rows: 8, editRight: 0, fileRight: 0, project: 8, divider: '1px' });
   expect(spacing.scopeGap).toBeGreaterThanOrEqual(8);
   expect(Math.abs(spacing.scopeCenter)).toBeLessThan(1);
+  const controls = await page.evaluate(() => {
+    const style = (selector) => {
+      const node = document.querySelector(selector);
+      const { fontSize, borderRadius, padding, minHeight, backgroundColor } = getComputedStyle(node);
+      return { fontSize, borderRadius, padding, minHeight, backgroundColor };
+    };
+    const caret = (selector) => getComputedStyle(document.querySelector(selector), '::after').content;
+    return {
+      toolbar: style('#auto-merge-manage'),
+      preset: style('#text-preset-save-as'),
+      fileMenu: style('#text-preset-file-menu > summary'),
+      projectMenu: style('#text-process-project-menu > summary'),
+      fileCaret: caret('#text-preset-file-menu > summary'),
+      projectCaret: caret('#text-process-project-menu > summary'),
+    };
+  });
+  expect(controls.preset).toEqual(controls.toolbar);
+  expect(controls.fileMenu).toEqual(controls.toolbar);
+  expect(controls.projectMenu).toEqual(controls.fileMenu);
+  expect(controls.projectCaret).toBe(controls.fileCaret);
   const types = page.getByLabel('处理步骤');
   await expect(types.locator('option').last()).toHaveText('去除格式符号');
   const steps = page.locator('#text-preset-rules');

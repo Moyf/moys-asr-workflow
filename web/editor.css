@@ -900,7 +900,8 @@
     transition: border-color var(--t-fast), box-shadow var(--t-fast);
   }
   .toolbar select:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
-  .toolbar button {
+  :is(.toolbar, .text-process-modal :where(.processing-controls, .text-process-wrap-preset-buttons)) button,
+  .text-process-menu > summary {
     background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--btn-border);
     border-radius: var(--radius-sm); padding: 4px 10px; font-size: 12px; cursor: pointer;
     min-height: var(--control-h);
@@ -917,11 +918,14 @@
     width: 14px; height: 14px; flex: 0 0 auto;
     font-size: 14px; line-height: 1;
   }
-  .toolbar button:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
-  .toolbar button:active { background: var(--btn-bg-active); }
-  .toolbar button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
-  .toolbar button:disabled { opacity: .42; cursor: not-allowed; }
-  .toolbar button:disabled:hover { background: var(--btn-bg); border-color: var(--btn-border); }
+  :is(.toolbar, .text-process-modal :where(.processing-controls, .text-process-wrap-preset-buttons)) button:hover,
+  .text-process-menu > summary:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  :is(.toolbar, .text-process-modal :where(.processing-controls, .text-process-wrap-preset-buttons)) button:active,
+  .text-process-menu > summary:active { background: var(--btn-bg-active); }
+  :is(.toolbar, .text-process-modal :where(.processing-controls, .text-process-wrap-preset-buttons)) button:focus-visible,
+  .text-process-menu > summary:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  :is(.toolbar, .text-process-modal :where(.processing-controls, .text-process-wrap-preset-buttons)) button:disabled { opacity: .42; cursor: not-allowed; }
+  :is(.toolbar, .text-process-modal :where(.processing-controls, .text-process-wrap-preset-buttons)) button:disabled:hover { background: var(--btn-bg); border-color: var(--btn-border); }
   .toolbar .undo-redo-group { display: inline-flex; gap: 4px; align-items: center; }
   .toolbar .undo-redo-group button { min-width: 32px; }
   /* 分段按钮（主按钮 + ▾）：必须保持 inline-flex，否则两瓣之间会出现空白缝隙。
@@ -3428,27 +3432,23 @@
   .text-preset-edit-actions {
     display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;
   }
-  .text-preset-controls > button, .text-preset-edit-actions > button { padding: 3px 5px; white-space: nowrap; }
+  .text-preset-controls > button, .text-preset-edit-actions > button { white-space: nowrap; }
   .text-preset-controls > :is(.text-preset-edit-actions, .text-process-menu) { margin-left: auto; }
   #text-preset-delete { color: var(--red-hover); border-color: var(--red); background: var(--red-soft); }
   #text-preset-delete:hover:not(:disabled) { background: color-mix(in srgb, var(--red) 22%, transparent); }
   #text-preset-add-rule { color: var(--green-hover); border-color: var(--green); background: var(--green-soft); }
   #text-preset-add-rule:hover:not(:disabled) { background: color-mix(in srgb, var(--green) 22%, transparent); }
-  #text-preset-file-menu > summary { padding: 3px 6px; white-space: nowrap; }
-  #text-preset-file-menu > summary::after {
-    content: '▾'; margin-left: 4px; color: var(--text-muted); font-size: 10px; line-height: 1;
-  }
   .text-process-preview-title { margin: 12px 0 0; font-size: 13px; color: var(--text-primary); }
   .text-process-menu { position: relative; }
   .text-process-menu[open] { z-index: 2; }
   .text-process-menu > summary {
-    cursor: pointer; padding: 4px 8px; border: 1px solid var(--btn-border);
-    border-radius: 5px; background: var(--btn-bg); color: var(--text-primary);
+    box-sizing: border-box; line-height: calc(var(--control-h) - 10px);
+    list-style: none; white-space: nowrap;
   }
-  .text-process-menu > summary:hover { background: var(--btn-bg-hover); }
-  /* 「导入导出」按钮改用文本右侧小三角（同工具栏下拉按钮样式），隐藏 details 原生 marker。 */
-  #text-preset-file-menu > summary { list-style: none; }
-  #text-preset-file-menu > summary::-webkit-details-marker { display: none; }
+  .text-process-menu > summary::-webkit-details-marker { display: none; }
+  .text-process-menu > summary::after {
+    content: '▾'; margin-left: 4px; color: var(--text-muted); font-size: 10px; line-height: 1;
+  }
   .text-process-modal .text-process-steps-hint { color: var(--amber-hover); font-size: 13px; }
   .text-process-modal .text-process-preview-error {
     color: var(--red-hover); font-size: 13px; overflow-wrap: anywhere;
@@ -3502,15 +3502,15 @@
   .processing-controls select, .processing-controls input[type="text"] {
     width: auto; min-width: 0; max-width: 100%;
   }
-  .processing-controls button, .text-process-wrap-preset-buttons button {
+  #auto-merge-panel .processing-controls button {
     font: inherit; color: var(--text-primary); background: var(--btn-bg);
     border: 1px solid var(--btn-border); border-radius: 5px; padding: 4px 8px; cursor: pointer;
   }
-  .processing-controls button:hover:not(:disabled), .text-process-wrap-preset-buttons button:hover {
+  #auto-merge-panel .processing-controls button:hover:not(:disabled) {
     background: var(--btn-bg-hover); border-color: var(--btn-border-hover);
   }
   .processing-controls .processing-step-icon { min-width: 32px; }
-  .processing-controls button:disabled { opacity: 0.55; cursor: default; }
+  #auto-merge-panel .processing-controls button:disabled { opacity: 0.55; cursor: default; }
   .processing-status { margin: 8px 0; }
   .text-process-modal .modal-hint { margin-top: 8px; }
   .text-process-modal .modal-hint:empty { display: none; }
