@@ -17,24 +17,36 @@ test.beforeEach(async ({ page }) => {
 
 test('preset rules preview, persist, reload and undo', async ({ page }, info) => {
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
-  await expect(page.locator('#text-preset-status')).toHaveText('');
+  const status = page.locator('#text-preset-status');
+  await expect(status).toHaveText('已与用户级配置同步');
+  await expect(status).toHaveAttribute('data-state', 'success');
   // 打开弹窗时空步骤已预填一步「替换文本」，直接填它的查找内容。
   await page.getByRole('textbox', { name: '查找' }).fill('嗯');
   await addTextProcessStep(page, 'trim');
   await expect(page.locator('#text-process-preview')).toContainText('处理后：123');
   page.once('dialog', dialog => dialog.accept('游戏清理'));
   await page.locator('#text-preset-save-as').click();
-  await expect(page.locator('#text-preset-status')).toHaveText('预设库已保存');
-  await page.locator('#text-process-modal .modal').screenshot({ path: info.outputPath('text-presets.png') });
-  const gap = await page.evaluate(() => {
-    const scope = document.querySelector('#text-process-scope-info');
-    const form = document.querySelector('label[for="text-process-selected-only"]');
-    const hint = document.querySelector('#text-process-selected-only-hint');
-    const title = document.querySelector('#text-process-preview-title');
-    const gap = (a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().bottom;
-    return Math.min(gap(scope, form), gap(form, hint), gap(hint, title));
+  await expect(page.locator('#text-preset-select option:checked')).toHaveText('游戏清理');
+  await expect(status).toHaveText('已与用户级配置同步');
+  await expect(page.locator('#ass-style-library-status')).toHaveAttribute('data-state', 'success');
+  const header = await status.evaluate((node) => {
+    const title = document.querySelector('#text-process-title').getBoundingClientRect();
+    const right = node.parentElement.getBoundingClientRect().right;
+    const description = document.querySelector('#text-process-description').getBoundingClientRect();
+    const statusRect = node.getBoundingClientRect();
+    const assStatus = document.querySelector('#ass-style-library-status');
+    const style = getComputedStyle(node);
+    const assStyle = getComputedStyle(assStatus);
+    return {
+      titleGap: statusRect.left - title.right,
+      rightGap: right - statusRect.right,
+      descriptionGap: description.top - node.parentElement.getBoundingClientRect().bottom,
+      sameStyle: style.color === assStyle.color && style.fontSize === assStyle.fontSize,
+    };
   });
-  expect(gap).toBeGreaterThanOrEqual(8);
+  expect(header).toMatchObject({ rightGap: 0, descriptionGap: 12, sameStyle: true });
+  expect(header.titleGap).toBeGreaterThanOrEqual(8);
+  await page.locator('#text-process-modal .modal').screenshot({ path: info.outputPath('text-presets.png') });
   await page.locator('#text-process-confirm').click();
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('123');
   await page.evaluate(() => MaweHistory.performUndo());
@@ -47,7 +59,27 @@ test('preset rules preview, persist, reload and undo', async ({ page }, info) =>
 
 test('single cue style is independent and undoable', async ({ page }, info) => {
   await page.evaluate(() => MaweCuePanel.setCuePanelTarget('main', 0));
-  await page.locator('#current-cue-panel').screenshot({ path: info.outputPath('cue-style.png') });
+  const heading = page.locator('.cue-panel-text-header');
+  const measure = () => heading.evaluate((node) => {
+    const title = node.querySelector('#cue-panel-target').getBoundingClientRect();
+    const style = node.querySelector('#cue-ass-style-controls').getBoundingClientRect();
+    return {
+      gap: style.left - title.right,
+      right: node.getBoundingClientRect().right - style.right,
+      center: (style.top + style.bottom - title.top - title.bottom) / 2,
+      textGap: document.querySelector('#cue-panel-text').getBoundingClientRect().top - node.getBoundingClientRect().bottom,
+    };
+  });
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await measure();
+    expect(layout.gap).toBeGreaterThanOrEqual(8);
+    expect(layout.right).toBe(0);
+    expect(Math.abs(layout.center)).toBeLessThan(1);
+    expect(layout.textGap).toBeGreaterThanOrEqual(8);
+    if (width === 1280) await page.locator('#current-cue-panel').screenshot({ path: info.outputPath('cue-style.png') });
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.locator('#cue-ass-style').selectOption('ass');
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].assStyle?.id)).toBe('ass');
   const output = await page.evaluate(() => {
@@ -172,15 +204,17 @@ test('portable pages reject a stale preset library save', async ({ browser }) =>
         MaweBoot.DATA.segments = [{ id: 'one', start: 0, end: 1000, text: 'test' }];
         MaweCuePanel.renderAll(); MaweTextProcess.openTextProcessModal();
       });
-      await expect(tab.locator('#text-preset-status')).toHaveText('');
+      await expect(tab.locator('#text-preset-status')).toHaveText('仅保存在当前浏览器（便携模式）');
       await addTextProcessStep(tab, 'trim');
     }
     first.once('dialog', dialog => dialog.accept('First'));
     await first.locator('#text-preset-save-as').click();
-    await expect(first.locator('#text-preset-status')).toHaveText('预设库已保存');
+    await expect(first.locator('#text-preset-select option:checked')).toHaveText('First');
+    await expect(first.locator('#text-preset-status')).toHaveAttribute('data-state', 'local');
     second.once('dialog', dialog => dialog.accept('Second'));
     await second.locator('#text-preset-save-as').click();
     await expect(second.locator('#text-preset-status')).toContainText('预设库已被其他页面修改');
+    await expect(second.locator('#text-preset-status')).toHaveAttribute('data-state', 'warning');
   } finally { await context.close(); }
 });
 
@@ -206,8 +240,10 @@ test('pending save cannot relabel a reopened custom form as the saved preset', a
   await page.locator('#text-process-cancel').click();
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
   await expect(page.locator('#text-preset-select')).toBeDisabled();
+  await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'pending');
   release();
-  await expect(page.locator('#text-preset-status')).toHaveText('预设库已保存');
+  await expect(page.locator('#text-preset-status')).toHaveText('已与用户级配置同步');
+  await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'success');
   await expect(page.locator('#text-preset-select')).toHaveValue('');
   // 空的自定义步骤会预填一步「替换文本」，不再是空列表。
   await expect(page.locator('#text-preset-rules > li')).toHaveCount(1);
@@ -270,7 +306,8 @@ test('restoring inheritance waits for the latest user preset scope', async ({ pa
   const restore = page.locator('#text-process-project-reset');
   try {
     await page.evaluate(() => { MaweTextProcess.openTextProcessModal(); });
-    await expect(page.locator('#text-preset-status')).toHaveText('正在读取用户配置…');
+    await expect(page.locator('#text-preset-status')).toHaveText('正在加载…');
+    await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'pending');
     await expect(restore).toBeDisabled({ timeout: 1500 });
   } finally {
     releaseRead();

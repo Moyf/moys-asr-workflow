@@ -271,23 +271,33 @@
     renderSteps();
   }
 
+  function showStorageStatus(text, state) {
+    storageStatus.textContent = text;
+    storageStatus.dataset.state = state;
+  }
+
+  function showStorageReady() {
+    if (MaweProcessing.portable) showStorageStatus('仅保存在当前浏览器（便携模式）', 'local');
+    else showStorageStatus('已与用户级配置同步', 'success');
+  }
+
   async function saveLibrary(change, newSelection = selectedPreset) {
     const current = session;
     writing = true;
+    showStorageStatus(MaweProcessing.portable ? '正在保存到当前浏览器…' : '正在保存用户级预设库…', 'pending');
     refreshActions();
     const status = await MaweProcessing.update(change);
     writing = false;
-    if (current !== session) {
-      if (modal.classList.contains('show')) {
-        if (status === 'saved') storageStatus.textContent = '预设库已保存';
-        renderPresets();
-      }
-      return status;
+    if (!modal.classList.contains('show')) return status;
+    if (status === 'saved') {
+      if (current === session) selectedPreset = newSelection;
+      showStorageReady();
+    } else if (status === 'conflict') {
+      showStorageStatus('预设库已被其他页面修改，请重新打开', 'warning');
+    } else {
+      const reason = status instanceof Error ? status.message : '无法保存用户配置';
+      showStorageStatus('保存失败：' + reason, 'error');
     }
-    if (status === 'saved') selectedPreset = newSelection;
-    storageStatus.textContent = status === 'saved' ? '预设库已保存'
-      : status === 'conflict' ? '预设库已被其他页面修改，请重新打开'
-        : '保存失败：' + (status instanceof Error ? status.message : '无法保存用户配置');
     renderPresets();
     return status;
   }
@@ -569,8 +579,7 @@
     showUnchanged = false;
     reading = true;
     modal.classList.add('show');
-    $('text-process-storage-scope').hidden = !MaweProcessing.portable;
-    storageStatus.textContent = '正在读取用户配置…';
+    if (!writing) showStorageStatus('正在加载…', 'pending');
     if (replaceSelection) {
       selectedPreset = '';
       steps = [createStep('replace')];
@@ -589,7 +598,10 @@
     const ok = await MaweProcessing.refresh();
     if (session !== current) return;
     reading = false;
-    storageStatus.textContent = ok ? '' : '无法读取用户配置';
+    if (!writing) {
+      if (ok) showStorageReady();
+      else showStorageStatus('无法读取用户配置', 'error');
+    }
     if (!replaceSelection && fingerprint() === initial) loadDefault({ preserveScope: selectedOnly.checked !== initialScope });
     else {
       renderPresets();

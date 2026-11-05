@@ -76,7 +76,7 @@ test('English preset editing, confirmations and rule errors remain understandabl
   await expect(page.locator('#text-process-preview .replace-preview-after')).toHaveText('After: 保存');
   page.once('dialog', dialog => { expect(dialog.message()).toBe('Preset name'); return dialog.accept('文本处理'); });
   await page.locator('#text-preset-save-as').click();
-  await expect(page.locator('#text-preset-status')).toHaveText('Preset library saved');
+  await expect(page.locator('#text-preset-status')).toHaveText('Synced with user-level config');
   await expect(page.locator('#text-preset-select option:checked')).toHaveText('文本处理');
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
@@ -104,6 +104,7 @@ test('English users see an actionable stale-library error', async ({ page }) => 
   await page.locator('#text-preset-save-as').click();
   await expect(page.locator('#text-preset-status')).toContainText(/reopen text processing/i);
   await expect(page.locator('#text-preset-status')).not.toContainText('预设');
+  await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'warning');
 });
 
 test('invalid preset names report a fully translated save error', async ({ page }) => {
@@ -113,6 +114,7 @@ test('invalid preset names report a fully translated save error', async ({ page 
   page.once('dialog', dialog => dialog.accept('x'.repeat(161)));
   await page.locator('#text-preset-save-as').click();
   await expect(page.locator('#text-preset-status')).toHaveText('Save failed: Invalid preset');
+  await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'error');
 });
 
 test('invalid imports retain the library and explain the error in English', async ({ page }) => {
@@ -121,7 +123,7 @@ test('invalid imports retain the library and explain the error in English', asyn
   await addTextProcessStep(page, 'trim');
   page.once('dialog', dialog => dialog.accept('Keep me'));
   await page.locator('#text-preset-save-as').click();
-  await expect(page.locator('#text-preset-status')).toHaveText('Preset library saved');
+  await expect(page.locator('#text-preset-status')).toHaveText('Synced with user-level config');
   const invalid = { schema: 'moy.asr.text_processing_presets.v1', presets: [{
     id: 'invalid', name: 'Invalid', scope: 'all', rules: [], operations: { wraps: [null] },
   }] };

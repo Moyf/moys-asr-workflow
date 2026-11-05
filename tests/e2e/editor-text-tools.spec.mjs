@@ -518,7 +518,8 @@ test('portable editor saves and reloads presets in its browser storage', async (
   await seed(page, { text: '  甲  ', timed: false });
   await openTextProcess(page);
   await removeTextProcessPrefill(page);
-  await expect(page.locator('#text-process-storage-scope')).toContainText('当前浏览器');
+  await expect(page.locator('#text-preset-status')).toHaveText('仅保存在当前浏览器（便携模式）');
+  await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'local');
   await addTextProcessStep(page, 'trim');
   page.once('dialog', (dialog) => dialog.accept('便携清理'));
   await page.locator('#text-preset-save-as').click();

@@ -1825,7 +1825,7 @@ __WAVEFORM_CSS__
 <aside class="editor-settings-window ass-style-window" id="ass-style-window" role="dialog" aria-modal="false" aria-label="ASS 样式库" aria-hidden="true">
   <header class="editor-settings-window-header ass-style-window-header" id="ass-style-drag-handle">
     <span class="editor-settings-window-title">ASS 样式库</span>
-    <span class="ass-style-library-status" id="ass-style-library-status" role="status" aria-live="polite">正在加载…</span>
+    <span class="editor-library-status" id="ass-style-library-status" role="status" aria-live="polite">正在加载…</span>
     <button type="button" class="editor-settings-window-close" id="ass-style-window-close" title="关闭（Esc）" aria-label="关闭 ASS 样式库">×</button>
   </header>
   <div class="ass-style-window-body">
@@ -2132,10 +2132,12 @@ __WAVEFORM_CSS__
         <button type="button" id="cue-panel-split">在光标处拆分（<kbd id="cue-panel-split-key">Enter</kbd>）</button>
       </div>
       <div class="cue-panel-text-wrap">
-        <div class="cue-panel-target" id="cue-panel-target">未选择</div>
-        <label id="cue-ass-style-controls" class="cue-ass-style-controls">单句 ASS 样式
-          <select id="cue-ass-style" aria-label="单句 ASS 样式"></select>
-        </label>
+        <div class="cue-panel-text-header">
+          <div class="cue-panel-target" id="cue-panel-target">未选择</div>
+          <label id="cue-ass-style-controls" class="cue-ass-style-controls">单句 ASS 样式
+            <select id="cue-ass-style" aria-label="单句 ASS 样式"></select>
+          </label>
+        </div>
         <div class="cue-panel-text-row">
           <textarea id="cue-panel-text" rows="3" placeholder="选择一条字幕开始编辑…"></textarea>
           <div id="ass-cue-position" class="ass-cue-position" hidden aria-label="逐句 ASS 定位" tabindex="0" title="PlayRes 坐标；方向键微调，Shift：10 像素；重置恢复全局排布">
@@ -2488,7 +2490,10 @@ __WAVEFORM_CSS__
 <div class="modal-mask" id="text-process-modal">
   <div class="modal text-process-modal" role="dialog" aria-modal="true"
        aria-labelledby="text-process-title" aria-describedby="text-process-description">
-    <h3 id="text-process-title">文本处理</h3>
+    <header class="text-process-header">
+      <h3 id="text-process-title">文本处理</h3>
+      <span class="editor-library-status" id="text-preset-status" role="status" aria-live="polite"></span>
+    </header>
     <p class="modal-desc" id="text-process-description">
       选择要对字幕批量执行的文本操作（若处理结尾为空，会保留空字幕行）。
     </p>
@@ -2517,8 +2522,6 @@ __WAVEFORM_CSS__
             </details>
             <input type="file" id="text-preset-import" accept="application/json,.json" hidden>
           </div>
-          <p class="modal-hint" id="text-preset-status" aria-live="polite"></p>
-          <p class="modal-hint" id="text-process-storage-scope" hidden>预设仅存于当前浏览器</p>
           <div class="processing-controls text-process-project-controls">
             <span class="text-process-control-label">当前工程预设配置</span>
             <span id="text-process-project-status" aria-live="polite"></span>
