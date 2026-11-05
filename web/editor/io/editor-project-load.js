@@ -163,6 +163,7 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweGapRemoveUi.updateGapRemoveUi();
   MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
   MaweProjectSettings.syncControls();
+  window.MaweAssManagerWiring?.updateAssStyleLibraryStatus();
   MaweStickerRoot.activateProjectRoot();
   MaweState.noteSavedSegments();
   MawePlaybackLoop.refreshSubtitlePreview(0, -1);

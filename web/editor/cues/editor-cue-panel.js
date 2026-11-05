@@ -369,9 +369,8 @@ export function initMaweCuePanel() {
     const styles = window.MaweAssStorageWiring?.styles() || [];
     const savedStyle = segment?.assStyle;
     const libraryStyle = savedStyle && styles.find((style) => style.id === savedStyle.id);
-    const normalize = window.AsrEditorUtils.normalizeAssStyle;
-    // Compare the full normalized styles: a saved copy can outlive edits to its library entry.
-    const matchesLibrary = libraryStyle && JSON.stringify(normalize(savedStyle)) === JSON.stringify(normalize(libraryStyle));
+    const snapshotKey = window.AsrEditorUtils.assStyleSnapshotKey;
+    const matchesLibrary = libraryStyle && snapshotKey(savedStyle) === snapshotKey(libraryStyle);
 
     select.disabled = !segment;
     select.replaceChildren();

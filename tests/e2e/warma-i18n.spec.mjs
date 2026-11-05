@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer, addTextProcessStep } from './helpers.mjs';
+import { cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer, addTextProcessStep, openSettingsPage } from './helpers.mjs';
 
 let server, dir;
 test.beforeAll(async () => { dir = makeTempDir('warma-i18n'); server = await startBlankServer(await findFreePort(), dir); });
@@ -50,6 +50,59 @@ test('ASS style choices follow language while custom names remain literal', asyn
   await expect(select).toHaveValue('ass');
   await expect(select.locator('option[value="__snapshot"]')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].assStyle.fontSize)).toBe(savedSize + 1);
+});
+
+test('style library footer distinguishes project copies from user sync', async ({ page }, info) => {
+  await expect(page.locator('#ass-style-library-status')).toHaveAttribute('data-state', 'success');
+  await page.evaluate(() => MaweCuePanel.setCuePanelTarget('main', 0));
+  await page.locator('#cue-ass-style').selectOption('ass');
+  await openSettingsPage(page, 'subtitle-style');
+  await page.locator('#ass-style-manager-open').click();
+
+  const library = page.locator('#ass-style-window');
+  const userStatus = library.locator('#ass-style-library-status');
+  const storage = library.locator('#ass-style-library-path-hint');
+  const warning = library.locator('#ass-style-project-hint');
+  const english = 'Project styles differ and are not synced to user settings';
+  await expect(userStatus).toHaveAttribute('data-state', 'success');
+  await expect(warning).toBeHidden();
+  const fontSize = library.locator('#ass-style-font-size');
+  const originalSize = await fontSize.inputValue();
+  await fontSize.fill(String(Number(originalSize) + 1));
+  await expect(warning).toHaveText(english);
+  await expect(userStatus).toHaveText('Synced with user-level config');
+  await expect(storage).toContainText('Saved to local user-level config');
+
+  await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
+  await expect(warning).toHaveText('工程内修改，未同步到用户级配置');
+  const layout = await library.locator('footer').evaluate((footer) => {
+    const hint = footer.querySelector('#ass-style-project-hint').getBoundingClientRect();
+    const location = footer.querySelector('#ass-style-library-path-hint').getBoundingClientRect();
+    return { gap: hint.top - location.bottom, left: hint.left - location.left };
+  });
+  expect(layout.gap).toBeGreaterThanOrEqual(8);
+  expect(layout.left).toBe(0);
+  await library.locator('footer').screenshot({ path: info.outputPath('ass-style-project-hint-zh.png') });
+  await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
+  await expect(warning).toHaveText(english);
+  await library.locator('footer').screenshot({ path: info.outputPath('ass-style-project-hint-en.png') });
+
+  await fontSize.fill(originalSize);
+  await expect(warning).toBeHidden();
+  await fontSize.fill(String(Number(originalSize) + 1));
+  await expect(warning).toBeVisible();
+
+  const opened = await page.evaluate(() => {
+    const project = { segments: [{ id: 'other', start: 0, end: 2000, text: 'Other cue' }] };
+    const file = new File([JSON.stringify(project)], 'other.mosp', { type: 'application/json' });
+    return MaweMultiImport.openProjectFile(file, { suppressMediaPrompt: true });
+  });
+  expect(opened).toBe(true);
+  await expect(library).toBeVisible();
+  await expect(warning).toBeHidden();
+  await fontSize.fill(originalSize);
+  await library.locator('#ass-style-save').click();
+  await expect(userStatus).toHaveAttribute('data-state', 'success');
 });
 
 test('English preset editing, confirmations and rule errors remain understandable', async ({ page }, info) => {

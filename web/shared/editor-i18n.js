@@ -1327,6 +1327,7 @@
     '添加规则': 'Add rule', '启用': 'Enabled', '正则': 'Regex', '上移': 'Move up', '下移': 'Move down',
     '单句 ASS 样式': 'Cue ASS style', '继承默认样式': 'Inherit default style',
     '（工程内保存）': ' (saved in project)',
+    '工程内修改，未同步到用户级配置': 'Project styles differ and are not synced to user settings',
     '正在加载预设库…': 'Loading preset library…', '正在保存用户级预设库…': 'Saving the user-level preset library…',
     '请先选择要处理的字幕': 'Select subtitles to process first', '正在生成预览…': 'Preparing preview…',
     '预设名称': 'Preset name', '删除这个预设？': 'Delete this preset?',
