@@ -191,12 +191,14 @@
     schedulePreview();
   }
 
+  class IncompleteStepError extends Error {}
+
   function prepareStep(step, assMode = true) {
     if (step.type === 'replace') {
-      if (!step.find) throw new Error('请输入查找内容');
+      if (!step.find) throw new IncompleteStepError('请输入查找内容');
       const compiled = global.AsrEditorUtils.compileTextSearchPattern(step.find,
         { useRegex: step.regex, caseSensitive: step.caseSensitive });
-      if (compiled.error) throw new Error(translate('正则表达式无效') + ' ' + compiled.error);
+      if (compiled.error) throw new Error('正则表达式无效 ' + compiled.error);
       return compiled.regex;
     }
     if (step.type === 'wrap') {
@@ -207,7 +209,7 @@
       });
       if (pairs.some((pair) => !pair)) throw new Error('未知步骤');
       if (pairs.some((pair) => pair.ass) && !assMode) throw new Error('该预设包含 ASS 特殊文本样式，请先开启 ASS 模式');
-      if (!pairs.length || pairs.some(({ left, right }) => !left && !right)) throw new Error('请选择包裹字符或填写自定义字符');
+      if (!pairs.length || pairs.some(({ left, right }) => !left && !right)) throw new IncompleteStepError('请选择包裹字符或填写自定义字符');
       return { addWrapChars: true, wrapPairs: pairs, skipWrapped: true };
     }
     if (!Object.hasOwn(stepLabels, step.type)) throw new Error('未知步骤');
@@ -240,7 +242,7 @@
 
   function renderPresets() {
     const { presets, defaultPresetId } = MaweProcessing.library;
-    presetSelect.replaceChildren(new Option(translate('自定义步骤'), ''));
+    presetSelect.replaceChildren(new Option('自定义步骤', ''));
     for (const { id, name } of presets) {
       const option = new Option(name + (id === defaultPresetId ? ' ★' : ''), id);
       option.dataset.markerProjectContent = '';
@@ -397,8 +399,9 @@
         } catch (error) {
           if (!signal.aborted) {
             stepList.children[index]?.setAttribute('aria-invalid', 'true');
-            throw new Error((index + 1) + '. ' + translate(stepLabels[step.type] || '未知步骤')
-              + ' · ' + translate(error.message));
+            const prefix = error instanceof IncompleteStepError ? '左侧步骤不完整' : '左侧步骤无法执行';
+            const label = stepLabels[step.type] || '未知步骤';
+            throw new Error(prefix + '： [' + (index + 1) + '. ' + label + '] （' + error.message + '）');
           }
           throw error;
         }
@@ -415,7 +418,7 @@
     header.className = 'replace-preview-summary text-process-preview-summary';
     const summary = document.createElement('span');
     summary.textContent = changed.length
-      ? '将处理 ' + rows.length + ' 条字幕，预计修改 ' + changed.length + ' 条（展开查看前后文本）'
+      ? '将处理 ' + rows.length + ' 条字幕，预计修改 ' + changed.length + ' 条'
       : '选定的 ' + rows.length + ' 条字幕不会发生变化';
     const controls = document.createElement('div');
     controls.className = 'text-process-preview-actions';
@@ -489,6 +492,7 @@
   function schedulePreview() {
     cancelPreview();
     if (!modal.classList.contains('show')) return;
+    preview.classList.remove('text-process-preview-error');
     stepList.querySelectorAll('[aria-invalid]').forEach((node) => node.removeAttribute('aria-invalid'));
     const rows = currentRows();
     scopeInfo.textContent = selectedOnly.checked ? '当前范围：仅选中的 ' + rows.length + ' 条字幕'
@@ -513,7 +517,9 @@
         result = rowsAfter;
         showResult(rowsAfter);
       } catch (error) {
-        if (!controller.signal.aborted) preview.textContent = error.message;
+        if (controller.signal.aborted) return;
+        preview.classList.add('text-process-preview-error');
+        preview.textContent = error.message;
       }
     }, 120);
   }

@@ -3407,25 +3407,33 @@
   .text-process-column { display: flex; flex-direction: column; min-height: min-content; min-width: 0; }
   .text-process-column + .text-process-column { padding: 8px 0 0 16px; border-left: 1px solid var(--border-subtle); }
   .text-process-column > :not(.text-process-step-scroll, .text-process-preview) { flex-shrink: 0; }
-  .text-process-column > .modal-check-row { margin: 0; }
+  .text-process-scope-controls { display: flex; align-items: center; gap: 8px; }
+  .text-process-modal .text-process-scope-controls > :is(.modal-check-row, .modal-hint) { margin: 0; }
+  .text-process-scope-controls > .modal-check-row { flex: 0 0 auto; }
   .text-process-modal .processing-controls > label, .text-process-control-label {
     margin: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600;
   }
   .text-process-column > .processing-controls > select { max-width: min(230px, 100%); }
-  .text-process-project-controls { font-size: 12px; color: var(--text-muted); }
-  /* 处理预设操作分组：把整行控件与状态提示框进一个带边框的区块，
-     与下方「本工程预填」「处理步骤」区分开。 */
   .text-preset-group {
-    flex-shrink: 0; margin-top: 8px; padding: 10px 10px 6px;
+    display: grid; gap: 8px; min-width: 0; margin-top: 8px; padding: 10px;
     border: 1px solid var(--btn-border); border-radius: 6px;
   }
-  .text-preset-group > .processing-controls { margin-top: 0; }
-  /* 控件按下拉、编辑操作、导入导出的顺序排列，空间不足时自然换行。 */
-  .text-preset-controls { flex-wrap: wrap; }
+  .text-process-modal .text-preset-group > :is(.processing-controls, .modal-hint) { margin: 0; }
+  .text-process-project-controls {
+    padding-top: 8px; border-top: 1px solid var(--border-subtle);
+    font-size: 12px; color: var(--text-muted);
+  }
   .text-preset-controls > label { white-space: nowrap; }
-  #text-preset-select { flex: 1 1 auto; min-width: 7em; max-width: 200px; }
-  .text-preset-controls > button { padding: 3px 5px; white-space: nowrap; }
-  .text-preset-controls > .text-process-menu { margin-left: auto; }
+  #text-preset-select { flex: 0 1 auto; min-width: 7em; max-width: min(200px, 100%); }
+  .text-preset-edit-actions {
+    display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;
+  }
+  .text-preset-controls > button, .text-preset-edit-actions > button { padding: 3px 5px; white-space: nowrap; }
+  .text-preset-controls > :is(.text-preset-edit-actions, .text-process-menu) { margin-left: auto; }
+  #text-preset-delete { color: var(--red-hover); border-color: var(--red); background: var(--red-soft); }
+  #text-preset-delete:hover:not(:disabled) { background: color-mix(in srgb, var(--red) 22%, transparent); }
+  #text-preset-add-rule { color: var(--green-hover); border-color: var(--green); background: var(--green-soft); }
+  #text-preset-add-rule:hover:not(:disabled) { background: color-mix(in srgb, var(--green) 22%, transparent); }
   #text-preset-file-menu > summary { padding: 3px 6px; white-space: nowrap; }
   #text-preset-file-menu > summary::after {
     content: '▾'; margin-left: 4px; color: var(--text-muted); font-size: 10px; line-height: 1;
@@ -3441,13 +3449,17 @@
   /* 「导入导出」按钮改用文本右侧小三角（同工具栏下拉按钮样式），隐藏 details 原生 marker。 */
   #text-preset-file-menu > summary { list-style: none; }
   #text-preset-file-menu > summary::-webkit-details-marker { display: none; }
-  .text-process-modal .text-process-steps-hint { color: var(--amber-hover); }
+  .text-process-modal .text-process-steps-hint { color: var(--amber-hover); font-size: 13px; }
+  .text-process-modal .text-process-preview-error {
+    color: var(--red-hover); font-size: 13px; overflow-wrap: anywhere;
+  }
   .text-process-menu-items {
     position: absolute; z-index: 2; top: calc(100% + 4px); left: 0;
     display: grid; gap: 6px; padding: 6px; width: max-content; max-width: 230px;
     background: var(--bg-overlay); border: 1px solid var(--border); border-radius: 6px;
     box-shadow: var(--shadow-3);
   }
+  #text-preset-file-menu .text-process-menu-items { right: 0; left: auto; }
   .text-process-menu-items button { text-align: left; }
   .text-preset-import-dialog:not([open]) { display: none; }
   .text-preset-import-dialog {

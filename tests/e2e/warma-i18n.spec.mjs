@@ -35,7 +35,7 @@ test('ASS style choices follow language while custom names remain literal', asyn
   await expect(select.locator('option[value="__snapshot"]')).toHaveText('ASS default style');
 });
 
-test('English preset editing, confirmations and rule errors remain understandable', async ({ page }) => {
+test('English preset editing, confirmations and rule errors remain understandable', async ({ page }, info) => {
   await page.evaluate(() => { MaweBoot.DATA.segments[0].text = '删除'; MaweTextProcess.openTextProcessModal(); });
   await expect(page.locator('#text-preset-select')).toBeEnabled();
   const rule = page.locator('.text-preset-rule').first();
@@ -46,20 +46,32 @@ test('English preset editing, confirmations and rule errors remain understandabl
   await expect(find).toHaveAttribute('aria-label', 'Find');
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
   await expect(find).toHaveAttribute('aria-label', '查找');
+  const custom = page.locator('#text-preset-select option:checked');
+  await expect(custom).toHaveText('自定义步骤');
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
   await expect(find).toHaveAttribute('aria-label', 'Find');
+  await expect(custom).toHaveText('Custom steps');
   const preview = page.locator('#text-process-preview');
   await expect(preview).toContainText('Add processing steps on the left to preview subtitle changes.');
   await addTextProcessStep(page, 'replace');
-  await expect(preview).toContainText('Enter search text');
+  const incomplete = 'Incomplete step on the left: [1. Replace text] (Enter search text)';
+  await expect(preview).toHaveText(incomplete);
+  await expect(preview).toHaveCSS('font-size', '13px');
+  await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
+  await expect(preview).toHaveText('左侧步骤不完整： [1. 替换文本] （请输入查找内容）');
+  await page.locator('.text-process-modal').screenshot({ path: info.outputPath('text-process-step-error-zh.png') });
+  await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
+  await expect(preview).toHaveText(incomplete);
   await find.fill('(');
   await rule.getByLabel('Regex').check();
-  await expect(page.locator('#text-process-preview')).toContainText('Invalid regular expression');
+  await expect(preview).toContainText('Could not run the step on the left: [1. Replace text] (Invalid regular expression');
+  await expect(preview).not.toContainText('Invalid regular expression Invalid regular expression');
   await expect(page.locator('#text-process-confirm')).toBeDisabled();
   await find.fill('删除');
   await rule.getByLabel('Regex').uncheck();
   await replacement.fill('保存');
-  await expect(page.locator('#text-process-preview')).toContainText('Processing 1 subtitles');
+  await expect(preview.locator('.replace-preview-summary > span')).toHaveText('Processing 1 subtitle, 1 will change');
+  await expect(preview).toHaveCSS('font-size', '12px');
   await expect(page.locator('#text-process-preview .replace-preview-before')).toHaveText('Before: 删除');
   await expect(page.locator('#text-process-preview .replace-preview-after')).toHaveText('After: 保存');
   page.once('dialog', dialog => { expect(dialog.message()).toBe('Preset name'); return dialog.accept('文本处理'); });

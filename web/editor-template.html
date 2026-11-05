@@ -2498,9 +2498,13 @@ __WAVEFORM_CSS__
           <div class="processing-controls text-preset-controls">
             <label for="text-preset-select">处理预设</label>
             <select id="text-preset-select"></select>
-            <button type="button" id="text-preset-save-as">另存为新预设</button>
-            <button type="button" id="text-preset-save">更新预设</button>
-            <button type="button" id="text-preset-rename">重命名</button>
+            <div class="text-preset-edit-actions">
+              <button type="button" id="text-preset-save-as">存为新预设</button>
+              <button type="button" id="text-preset-save">更新预设</button>
+              <button type="button" id="text-preset-rename">重命名</button>
+            </div>
+          </div>
+          <div class="processing-controls text-preset-controls">
             <button type="button" id="text-preset-delete">删除</button>
             <button type="button" id="text-preset-default">设为默认</button>
             <details class="text-process-menu" id="text-preset-file-menu">
@@ -2515,18 +2519,18 @@ __WAVEFORM_CSS__
           </div>
           <p class="modal-hint" id="text-preset-status" aria-live="polite"></p>
           <p class="modal-hint" id="text-process-storage-scope" hidden>预设仅存于当前浏览器</p>
-        </div>
-        <div class="processing-controls text-process-project-controls">
-          <span class="text-process-control-label">本工程预填</span>
-          <span id="text-process-project-status" aria-live="polite"></span>
-          <details class="text-process-menu" id="text-process-project-menu">
-            <summary>更改</summary>
-            <div class="text-process-menu-items">
-              <button type="button" id="text-process-project-reset" title="每次打开时都继承用户预设的处理步骤（若无则留空）。">工程内继承默认预设</button>
-              <button type="button" id="text-process-project-empty" title="这个工程每次都从空步骤开始，即使已经设了用户默认。">工程内默认留空</button>
-              <button type="button" id="text-process-project-save" title="把当前步骤存入工程。之后即使修改用户预设，工程内不受影响。">保存为当前工程默认处理</button>
-            </div>
-          </details>
+          <div class="processing-controls text-process-project-controls">
+            <span class="text-process-control-label">当前工程预设配置</span>
+            <span id="text-process-project-status" aria-live="polite"></span>
+            <details class="text-process-menu" id="text-process-project-menu">
+              <summary>更改</summary>
+              <div class="text-process-menu-items">
+                <button type="button" id="text-process-project-reset" title="每次打开时都继承用户预设的处理步骤（若无则留空）。">工程内继承默认预设</button>
+                <button type="button" id="text-process-project-empty" title="这个工程每次都从空步骤开始，即使已经设了用户默认。">工程内默认留空</button>
+                <button type="button" id="text-process-project-save" title="把当前步骤存入工程。之后即使修改用户预设，工程内不受影响。">保存为当前工程默认处理</button>
+              </div>
+            </details>
+          </div>
         </div>
         <div class="processing-controls text-process-step-controls">
           <label for="text-process-step-type">处理步骤</label>
@@ -2547,12 +2551,14 @@ __WAVEFORM_CSS__
       </div>
       <div class="text-process-column">
         <div id="text-process-scope-info" class="text-process-scope-info">当前范围：全部字幕</div>
-        <label class="modal-check-row" for="text-process-selected-only">
-          <input type="checkbox" id="text-process-selected-only" aria-describedby="text-process-selected-only-hint" disabled>
-          <span>仅处理选中字幕</span>
-        </label>
-        <p id="text-process-selected-only-hint" class="modal-hint" hidden>需要先选中至少1条字幕才可启用</p>
-        <h4 class="text-process-preview-title" id="text-process-preview-title">处理结果</h4>
+        <div class="text-process-scope-controls">
+          <label class="modal-check-row" for="text-process-selected-only">
+            <input type="checkbox" id="text-process-selected-only" aria-describedby="text-process-selected-only-hint" disabled>
+            <span>仅处理选中字幕</span>
+          </label>
+          <p id="text-process-selected-only-hint" class="modal-hint" hidden>需要先选中至少1条字幕才可启用</p>
+        </div>
+        <h4 class="text-process-preview-title" id="text-process-preview-title">处理后字幕预览</h4>
         <div class="preview text-process-preview" id="text-process-preview" role="region" aria-labelledby="text-process-preview-title" tabindex="0">在左侧添加处理步骤，即可查看字幕改动。</div>
       </div>
     </div>

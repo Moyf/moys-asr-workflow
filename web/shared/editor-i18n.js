@@ -1344,7 +1344,8 @@
     '仅看有变化的字幕': 'Show changed subtitles only',
     '查看全部字幕': 'Show all subtitles',
     '步骤数量已达上限': 'Step limit reached',
-    '处理步骤': 'Processing steps', '处理结果': 'Processing results',
+    '处理步骤': 'Processing steps', '处理后字幕预览': 'Processed subtitle preview',
+    '左侧步骤不完整': 'Incomplete step on the left', '左侧步骤无法执行': 'Could not run the step on the left',
     '替换文本': 'Replace text', '文字转数字': 'Convert Chinese numerals',
     '去除格式符号': 'Remove formatting markers',
     '查找文本': 'Find text', '替换为（留空即删除）': 'Leave blank to delete',
@@ -1352,7 +1353,7 @@
     '普通字符': 'Plain characters', 'MASS 特殊样式': 'MASS text styles',
     'MASS 整句动画': 'MASS sentence animations',
     '如需使用特殊文本样式（MASS），请先启用 ASS 字幕样式。': 'Enable ASS subtitle styles to use MASS text styles.',
-    '另存为新预设': 'Save as new preset', '更新预设': 'Update preset',
+    '存为新预设': 'Save as new preset', '更新预设': 'Update preset',
     '设为默认': 'Set as default', '取消默认': 'Clear default',
     '导入导出': 'Import/export', '导入处理预设': 'Import processing presets',
     '导出当前预设': 'Export current preset', '导出整个预设库': 'Export whole preset library',
@@ -1364,7 +1365,7 @@
     '无处理步骤': 'No processing steps', '全部字幕': 'All subtitles', '（空字幕）': '(Empty subtitle)',
     '正在保存预设库…': 'Saving preset library…',
     '此文件不含预设。确认后会清空现有预设库。': 'This file contains no presets. Confirming will clear the current library.',
-    '本工程预填': 'Project defaults', '更改': 'Change',
+    '当前工程预设配置': 'Current project preset settings', '更改': 'Change',
     '工程内继承默认预设': 'Inherit my default preset',
     '工程内默认留空': 'Start with no steps',
     '保存为当前工程默认处理': 'Save current steps for this project',
@@ -1781,8 +1782,22 @@
     if (presetRule) return `Save failed: ${translateText(presetRule[1], EN)}`;
     presetRule = /^(主字幕|副字幕)第 (\d+) 条$/.exec(text);
     if (presetRule) return `${presetRule[1] === '主字幕' ? 'Main subtitle' : 'Secondary subtitle'} ${presetRule[2]}`;
-    presetRule = /^将处理 (\d+) 条字幕，预计修改 (\d+) 条（展开查看前后文本）$/.exec(text);
-    if (presetRule) return `Processing ${presetRule[1]} subtitles; ${presetRule[2]} will change (expand to compare)`;
+    presetRule = /^(左侧步骤不完整|左侧步骤无法执行)： \[(\d+)\. (.+?)\] （([\s\S]+)）$/.exec(text);
+    if (presetRule) {
+      const [, prefix, index, step, reason] = presetRule;
+      return `${translateText(prefix, EN)}: [${index}. ${translateText(step, EN)}] (${translateText(reason, EN)})`;
+    }
+    presetRule = /^正则表达式无效 ([\s\S]+)$/.exec(text);
+    if (presetRule) {
+      const label = EN_TEXT['正则表达式无效'];
+      const reason = presetRule[1];
+      return reason.startsWith(label) ? reason : `${label}: ${reason}`;
+    }
+    presetRule = /^将处理 (\d+) 条字幕，预计修改 (\d+) 条$/.exec(text);
+    if (presetRule) {
+      const [, total, changed] = presetRule;
+      return `Processing ${total} subtitle${total === '1' ? '' : 's'}, ${changed} will change`;
+    }
     presetRule = /^选定的 (\d+) 条字幕不会发生变化$/.exec(text);
     if (presetRule) return `None of the ${presetRule[1]} selected subtitles will change`;
     presetRule = /^已应用文本处理：(\d+) 条字幕，(\d+) 条字词时间码未能完整保留$/.exec(text);

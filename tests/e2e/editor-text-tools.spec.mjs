@@ -571,6 +571,28 @@ test('processing columns scroll independently and group replacement and MASS con
   await removeTextProcessPrefill(page);
   const preview = page.locator('#text-process-preview');
   await expect(preview).toHaveText('在左侧添加处理步骤，即可查看字幕改动。');
+  await expect(page.locator('#text-process-preview-title')).toHaveText('处理后字幕预览');
+  await expect(page.locator('.text-preset-group .text-process-control-label')).toHaveText('当前工程预设配置');
+  const spacing = await page.locator('.text-process-modal').evaluate((element) => {
+    const rect = (selector) => element.querySelector(selector).getBoundingClientRect();
+    const rows = element.querySelectorAll('.text-preset-group > .text-preset-controls');
+    const [first, second] = Array.from(rows, (row) => row.getBoundingClientRect());
+    const project = element.querySelector('.text-process-project-controls');
+    const label = rect('.text-process-scope-controls label');
+    const hint = rect('#text-process-selected-only-hint');
+    return {
+      rows: second.top - first.bottom,
+      editRight: first.right - rect('#text-preset-rename').right,
+      fileRight: second.right - rect('#text-preset-file-menu').right,
+      project: project.getBoundingClientRect().top - second.bottom,
+      divider: getComputedStyle(project).borderTopWidth,
+      scopeGap: hint.left - label.right,
+      scopeCenter: (hint.top + hint.bottom - label.top - label.bottom) / 2,
+    };
+  });
+  expect(spacing).toMatchObject({ rows: 8, editRight: 0, fileRight: 0, project: 8, divider: '1px' });
+  expect(spacing.scopeGap).toBeGreaterThanOrEqual(8);
+  expect(Math.abs(spacing.scopeCenter)).toBeLessThan(1);
   const types = page.getByLabel('处理步骤');
   await expect(types.locator('option').last()).toHaveText('去除格式符号');
   const steps = page.locator('#text-preset-rules');
@@ -596,6 +618,7 @@ test('processing columns scroll independently and group replacement and MASS con
   await wrap.getByRole('group', { name: 'MASS 整句动画' }).getByRole('button', { name: '淡出淡入' }).click();
   for (let i = 0; i < 12; i++) await addTextProcessStep(page, 'trim');
   await expect(preview.locator('details')).toHaveCount(26);
+  await expect(preview.locator('.replace-preview-summary > span')).toHaveText('将处理 26 条字幕，预计修改 26 条');
   const modal = page.locator('.text-process-modal');
   const measure = () => modal.evaluate((element) => {
     const left = element.querySelector('.text-process-step-scroll');
@@ -621,6 +644,8 @@ test('processing columns scroll independently and group replacement and MASS con
   await modal.screenshot({ path: info.outputPath('text-process-layout-zh.png') });
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
   await expect(wrap.getByRole('group', { name: 'MASS sentence animations' })).toBeVisible();
+  await expect(page.locator('#text-process-preview-title')).toHaveText('Processed subtitle preview');
+  await expect(preview.locator('.replace-preview-summary > span')).toHaveText('Processing 26 subtitles, 26 will change');
   await modal.screenshot({ path: info.outputPath('text-process-layout-en.png') });
   for (const viewport of [{ width: 800, height: 360 }, { width: 390, height: 600 }]) {
     await page.setViewportSize(viewport);
@@ -628,10 +653,12 @@ test('processing columns scroll independently and group replacement and MASS con
       outerOverflow: getComputedStyle(element).overflowY,
       stepsHeight: element.querySelector('.text-process-step-scroll').clientHeight,
       previewHeight: element.querySelector('#text-process-preview').clientHeight,
+      horizontalOverflow: element.scrollWidth - element.clientWidth,
     }));
     expect(layout.outerOverflow).toBe('auto');
     expect(layout.stepsHeight).toBeGreaterThan(100);
     expect(layout.previewHeight).toBeGreaterThan(80);
+    expect(layout.horizontalOverflow).toBe(0);
   }
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.evaluate(() => {
@@ -656,6 +683,7 @@ test('empty custom steps prefill one replace step without fighting the user', as
   await expect(page.locator('#text-preset-rules > li').first()).toContainText('替换文本');
   const hint = page.locator('.text-process-steps-hint');
   await expect(hint).toBeVisible();
+  await expect(hint).toHaveCSS('font-size', '13px');
   const { color, amber, gap } = await hint.evaluate(node => {
     const sample = document.createElement('span');
     sample.style.color = 'var(--amber-hover)';
