@@ -2564,9 +2564,10 @@ __WAVEFORM_CSS__
     </div>
     <ol id="text-preset-rules" class="processing-steps"></ol>
     <details class="processing-fillers">
-      <summary>语气词列表（每行一个，按原文删除）</summary>
-      <textarea id="text-preset-fillers" rows="2" aria-label="语气词列表（每行一个，按原文删除）"></textarea>
-      <button type="button" id="text-preset-add-fillers">添加语气词规则</button>
+      <summary>批量添加文字删除步骤</summary>
+      <p class="modal-hint" id="text-preset-fillers-hint">每行输入一段要删除的文字。添加后，每一行都会生成一条「替换为空」的步骤，删掉字幕里匹配到的相同文字。</p>
+      <textarea id="text-preset-fillers" rows="2" aria-label="要删除的文字（每行一项）" aria-describedby="text-preset-fillers-hint"></textarea>
+      <button type="button" id="text-preset-add-fillers">添加删除步骤</button>
     </details>
     <div class="preview text-process-preview" id="text-process-preview">选择操作后查看预览</div>
     <div class="actions">
