@@ -524,11 +524,16 @@ test('portable editor saves and reloads presets in its browser storage', async (
   page.once('dialog', (dialog) => dialog.accept('便携清理'));
   await page.locator('#text-preset-save-as').click();
   await page.locator('#text-preset-default').click();
-  await expect(page.locator('#text-preset-select')).toContainText('便携清理 ★');
+  const preset = page.locator('#text-preset-select option:checked');
+  await expect(preset).toHaveText('便携清理 ★');
   await page.reload();
   await seed(page, { text: '  甲  ', timed: false });
   await openTextProcess(page);
-  await expect(page.locator('#text-process-preview .replace-preview-after')).toHaveText('处理后：甲');
+  await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'local');
+  await expect(preset).toHaveText('便携清理 ★');
+  const preview = page.locator('#text-process-preview');
+  await expect(preview).toContainText('将处理 1 条字幕，预计修改 1 条');
+  await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：甲');
 });
 
 test('join actions wait for the current user defaults', async ({ page }) => {
