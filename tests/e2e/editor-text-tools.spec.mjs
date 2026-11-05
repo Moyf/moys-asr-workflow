@@ -443,6 +443,15 @@ test('user presets, text overrides and explicit join defaults survive project ch
   expect(controlGap).toBeGreaterThanOrEqual(8);
   await join.screenshot({ path: testInfo.outputPath('join-zh.png') });
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
+  for (const id of ['auto-merge-snap-direction', 'auto-merge-absorb-direction']) {
+    const labelGap = await page.locator('#' + id).evaluate((select) => {
+      const label = select.previousElementSibling;
+      const text = document.createRange();
+      text.selectNodeContents(label);
+      return select.getBoundingClientRect().left - text.getBoundingClientRect().right;
+    });
+    expect(labelGap).toBeGreaterThanOrEqual(8);
+  }
   await join.screenshot({ path: testInfo.outputPath('join-en.png') });
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
   await page.evaluate((other) => MaweProjectLoad.applyCanonicalProject(other, 'other.mosp'), projects.other);

@@ -3821,6 +3821,7 @@
   }
   .auto-merge-panel .gap-remove-fields { row-gap: 8px; }
   .auto-merge-panel .gap-remove-field { row-gap: 8px; }
+  .auto-merge-panel .gap-remove-field:has(select) .gap-remove-field-label { white-space: normal; overflow-wrap: anywhere; }
   .auto-merge-panel .gap-remove-field small { font-size: 11px; line-height: 1.45; }
   .auto-merge-absorb-field { margin: 0; }
   .auto-merge-absorb-field input[type=checkbox] { justify-self: end; width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
