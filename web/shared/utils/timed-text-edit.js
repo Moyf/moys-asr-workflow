@@ -574,5 +574,5 @@ export function createUtilsModule(dependencies) {
     return normalized.split('\n').map((_line, index) => index + 1);
   }
 
-  return Object.freeze({ applyTimedTextEdit, buildTimedTextEditReport, timedTextEditDirtyFlags, timedTextEditGutterNumbers });
+  return Object.freeze({ reconcileTimedTextItems, applyTimedTextEdit, buildTimedTextEditReport, timedTextEditDirtyFlags, timedTextEditGutterNumbers });
 }

@@ -57,6 +57,7 @@ export function initMaweJsonRepair() {
       && MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath) {
     out.media = MaweBoot.SERVER_CONFIG.autoLoadedMediaPath;
   }
+  if (MaweBoot.DATA.processing_overrides) out.processing_overrides = MaweBoot.DATA.processing_overrides;
   if (typeof MaweBoot.DATA.language_source === 'string') out.language_source = MaweBoot.DATA.language_source;
   if (typeof MaweBoot.DATA.preserve_punctuation === 'boolean') out.preserve_punctuation = MaweBoot.DATA.preserve_punctuation;
   if (typeof MaweBoot.DATA.split_mode === 'string') out.split_mode = MaweBoot.DATA.split_mode;

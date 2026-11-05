@@ -9,7 +9,7 @@ import {
   buildPortableBlankEditor,
   generateWaveformPayload,
   makeTempDir,
-  startStaticServer, closeSettingsPanels, dragFloatingPanelAwayFrom, openSettingsPage, setProjectTrackEnabled, toggleGlobalSettings } from './helpers.mjs';
+  startStaticServer, closeSettingsPanels, dragFloatingPanelAwayFrom, openSettingsPage, setProjectTrackEnabled, toggleGlobalSettings, addTextProcessStep } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -1251,8 +1251,9 @@ test('applies text processing to selected extension subtitles', async ({ page })
   await page.locator('#batch-operations-btn').click();
   await page.locator('#text-process-btn').click();
   await expect(page.locator('#text-process-selected-only')).toBeChecked();
-  await page.locator('#text-process-wrap-presets-common').getByRole('button', { name: '自定义' }).click();
-  await page.locator('#text-process-prefix-input').fill('X ');
+  const step = await addTextProcessStep(page, 'wrap');
+  await step.getByRole('button', { name: '自定义' }).click();
+  await page.locator('#text-preset-rules').getByRole('textbox', { name: '左侧添加' }).fill('X ');
   await expect(page.locator('#text-process-preview')).toContainText('副字幕第 1 条');
   await page.locator('#text-process-confirm').click();
 

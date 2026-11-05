@@ -44,6 +44,7 @@
   "sticker_root": "...",
   "waveform": { ... },
   "gap_remove": { ... },
+  "processing_overrides": { ... },
   "script_alignment": { ... },
   "markers": { ... },
   "workspace": { ... },
@@ -70,6 +71,7 @@
 | `timebase` | `object` | 否 | 字幕编辑时间基准：`unit` 为 `milliseconds` 或 `frames`，`fps` 范围为 1–240。缺失时按毫秒模式兼容读取 |
 | `sticker_root` | `string` | 否 | 工程覆盖的表情包目录绝对路径；缺失或空字符串表示使用本机全局默认目录。有效覆盖目录优先，默认目录不写入工程 |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
+| `processing_overrides` | `object` | 否 | 编辑器文本处理和拼合字幕的工程覆盖 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
 | `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
 | `markers` | `object` | 否 | 可选的 `moy.asr.markers.v1` 标记与区段。旗标/彩条与 AI 复核项；从不改变字幕、空隙或媒体（见 1.7） |
@@ -263,6 +265,13 @@
 - 布局编辑模式拖动标题条时，中央区域会显示“对换”预览；靠近上/下/左/右边沿会显示对应半区的“插入”预览。松开后目标叶子会被拆成新的横向或纵向 split，可继续嵌套。
 - 工程文件导出会包含 `workspace`。单文件 HTML 在「工作区配置 ▾」提供“导出工作区配置 / 导入工作区配置”，以 `.workspace.json` 文件显式迁移该结构；服务器版的「保存工作区」则把同一结构保存到用户本机：内置工作区保存为该预设的本机覆盖版（可重置回默认），自定义工作区保存到命名工作区库（可另存、删除），均可供其他工程复用；该操作不会写回字幕工程文件。
 - 拖动模块、拖动任一布局分隔条、导入和重置工作区都会进入统一的 `Ctrl(Cmd)+Z` 撤销栈；「编辑布局」中可用「重置工作区」恢复当前内置工作区的默认状态。
+
+### 工程处理参数 `processing_overrides`
+
+工程只保存明确设置的覆盖。缺少 `text` 或 `join` 时分别继承用户默认。用户预设和用户默认 ID 存放在用户数据目录的 `text-processing-presets.json`，便携页面使用浏览器存储。
+
+- `text` 是有序步骤的副本，空数组表示本工程不预填。步骤用 `type` 区分，`enabled` 为 false 时跳过。`trim`、`capitalize`、`convertChineseNumbers`、`stripMarkdown` 只有类型。`replace` 另含 `find`、`replacement`、`regex`、`caseSensitive`。`wrap` 包含有序的 `wraps`，每项以 `id` 标识，自定义项 `custom` 还包含 `left` 和 `right`。
+- `join` 是整组拼合参数，包括 `gapMs`（0–10000）、`snapDirection`（`backward` / `forward`）、`absorbShort`、`shortCount`（1–20）、`absorbDirection`（`previous` / `next`）。
 
 ### 1.3 gap_remove 空隙移除
 

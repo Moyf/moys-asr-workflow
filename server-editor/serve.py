@@ -61,7 +61,7 @@ from maw.app_paths import default_server_settings_path, legacy_server_settings_p
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
 from maw.ass_fonts import font_alias_payload, normalize_ass_text_fontnames  # noqa: E402
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
-from maw.text_processing_presets import load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
+from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
     MEDIA_JOB_ADMISSION_TTL, MediaJob, MediaJobBusy, MediaJobCancelled, MediaJobManager, MediaJobUnavailable,
@@ -3812,11 +3812,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         try:
             request = self.read_json_request(max_bytes=1024 * 1024 + 8192)
             self._check_request_token(request)
-            with self.editor_server.settings_lock:
-                if request.get("expected") != load_text_presets():
-                    self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": "预设库已被其他页面修改，请重新打开"})
-                    return
-                library = save_text_presets(request)
+            library = save_text_presets(request)
+        except ProcessingConflict as error:
+            self.send_json(HTTPStatus.CONFLICT, {"current": error.current})
+            return
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             return

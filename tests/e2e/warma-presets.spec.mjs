@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer } from './helpers.mjs';
+import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer, addTextProcessStep } from './helpers.mjs';
 
 let server, dir;
 test.beforeAll(async () => { dir = makeTempDir('warma'); server = await startBlankServer(await findFreePort(), dir); });
@@ -18,9 +18,10 @@ test.beforeEach(async ({ page }) => {
 test('preset rules preview, persist, reload and undo', async ({ page }, info) => {
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
   await expect(page.locator('#text-preset-status')).toHaveText('');
+  await page.locator('.processing-fillers summary').click();
   await page.locator('#text-preset-fillers').fill('嗯');
   await page.locator('#text-preset-add-fillers').click();
-  await page.locator('#text-process-trim').check();
+  await addTextProcessStep(page, 'trim');
   await expect(page.locator('#text-process-preview')).toContainText('处理后：123');
   page.once('dialog', dialog => dialog.accept('游戏清理'));
   await page.locator('#text-preset-save-as').click();
@@ -78,14 +79,6 @@ test('styles on all three tracks survive a project roundtrip', async ({ page }) 
   expect(result.styles.map(style => style?.id)).toEqual(['ass', 'ass', 'ass']);
 });
 
-test('regex worker matches captures and escapes literals', async ({ page }) => {
-  const result = await page.evaluate(async () => {
-    const rule = (find, replace, regex) => ({ enabled: true, find, replace, regex, caseSensitive: true });
-    return MaweTextPresets.runRules(['x.a 123'], [rule('.', '!', false), rule('(\\d+)', '[$1]', true)]);
-  });
-  expect(result).toEqual(['x!a [123]']);
-});
-
 test('ordered rules preview and apply literal replacement text', async ({ page }) => {
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].text = 'AbA';
@@ -139,7 +132,7 @@ test('invalid imported operations are rejected and ASS wrappers require ASS mode
   await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.assMode = false; MaweTextProcess.openTextProcessModal(); });
   await expect(page.locator('#text-preset-select option').filter({ hasText: 'ASS wrapper' })).toHaveCount(1);
   await page.locator('#text-preset-select').selectOption({ label: 'ASS wrapper' });
-  await expect(page.locator('#text-preset-status')).toContainText('请先开启 ASS 模式');
+  await expect(page.locator('#text-process-preview')).toContainText('请先开启 ASS 模式');
   await expect(page.locator('#text-process-confirm')).toBeDisabled();
 });
 
@@ -151,6 +144,7 @@ test('deleting a complete cue keeps the project row and exports re-importable SR
     ];
     MaweCuePanel.renderAll(); MaweTextProcess.openTextProcessModal();
   });
+  await page.locator('.processing-fillers summary').click();
   await page.locator('#text-preset-fillers').fill('嗯');
   await page.locator('#text-preset-add-fillers').click();
   await expect(page.locator('#text-process-preview')).toContainText('预计修改 1 条');
@@ -178,7 +172,7 @@ test('portable pages reject a stale preset library save', async ({ browser }) =>
         MaweCuePanel.renderAll(); MaweTextProcess.openTextProcessModal();
       });
       await expect(tab.locator('#text-preset-status')).toHaveText('');
-      await tab.locator('#text-process-trim').check();
+      await addTextProcessStep(tab, 'trim');
     }
     first.once('dialog', dialog => dialog.accept('First'));
     await first.locator('#text-preset-save-as').click();
@@ -214,5 +208,5 @@ test('pending save cannot relabel a reopened custom form as the saved preset', a
   release();
   await expect(page.locator('#text-preset-status')).toHaveText('预设库已保存');
   await expect(page.locator('#text-preset-select')).toHaveValue('');
-  await expect(page.locator('#text-process-trim')).not.toBeChecked();
+  await expect(page.locator('#text-preset-rules > li')).toHaveCount(0);
 });

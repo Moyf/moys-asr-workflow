@@ -51,6 +51,7 @@ source: "docs/engineering/JSON_SCHEMA.md"
   "sticker_root": "...",
   "waveform": { ... },
   "gap_remove": { ... },
+  "processing_overrides": { ... },
   "script_alignment": { ... },
   "markers": { ... },
   "workspace": { ... },
@@ -77,6 +78,7 @@ source: "docs/engineering/JSON_SCHEMA.md"
 | `timebase` | `object` | 否 | 字幕编辑时间基准：`unit` 为 `milliseconds` 或 `frames`，`fps` 范围为 1–240。缺失时按毫秒模式兼容读取 |
 | `sticker_root` | `string` | 否 | 工程覆盖的表情包目录绝对路径；缺失或空字符串表示使用本机全局默认目录。有效覆盖目录优先，默认目录不写入工程 |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
+| `processing_overrides` | `object` | 否 | 编辑器文本处理和拼合字幕的工程覆盖 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
 | `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
 | `markers` | `object` | 否 | 可选的 `moy.asr.markers.v1` 标记与区段。旗标/彩条与 AI 复核项；从不改变字幕、空隙或媒体（见 1.7） |
@@ -270,6 +272,13 @@ source: "docs/engineering/JSON_SCHEMA.md"
 - 布局编辑模式拖动标题条时，中央区域会显示“对换”预览；靠近上/下/左/右边沿会显示对应半区的“插入”预览。松开后目标叶子会被拆成新的横向或纵向 split，可继续嵌套。
 - 工程文件导出会包含 `workspace`。单文件 HTML 在「工作区配置 ▾」提供“导出工作区配置 / 导入工作区配置”，以 `.workspace.json` 文件显式迁移该结构；服务器版的「保存工作区」则把同一结构保存到用户本机：内置工作区保存为该预设的本机覆盖版（可重置回默认），自定义工作区保存到命名工作区库（可另存、删除），均可供其他工程复用；该操作不会写回字幕工程文件。
 - 拖动模块、拖动任一布局分隔条、导入和重置工作区都会进入统一的 `Ctrl(Cmd)+Z` 撤销栈；「编辑布局」中可用「重置工作区」恢复当前内置工作区的默认状态。
+
+### 工程处理参数 `processing_overrides`
+
+工程只保存明确设置的覆盖。缺少 `text` 或 `join` 时分别继承用户默认。用户预设和用户默认 ID 存放在用户数据目录的 `text-processing-presets.json`，便携页面使用浏览器存储。
+
+- `text` 是有序步骤的副本，空数组表示本工程不预填。步骤用 `type` 区分，`enabled` 为 false 时跳过。`trim`、`capitalize`、`convertChineseNumbers`、`stripMarkdown` 只有类型。`replace` 另含 `find`、`replacement`、`regex`、`caseSensitive`。`wrap` 包含有序的 `wraps`，每项以 `id` 标识，自定义项 `custom` 还包含 `left` 和 `right`。
+- `join` 是整组拼合参数，包括 `gapMs`（0–10000）、`snapDirection`（`backward` / `forward`）、`absorbShort`、`shortCount`（1–20）、`absorbDirection`（`previous` / `next`）。
 
 ### 1.3 gap_remove 空隙移除
 
@@ -621,7 +630,8 @@ source: "docs/engineering/JSON_SCHEMA.md"
 - `id` 是稳定字符串。缺失、重复或非法 ID 由规范化按时间序补齐，显式 ID 合法时原样保留。已有稳定 ID 不随移动或新增标记而重排，因此 ID 数字不代表时间顺序。
 - `name` 最长 120 字符，`note` 最长 500 字符，写入前去除控制字符；`color` 为 `#RRGGBB` 六位十六进制，非法值回退默认 `#3e63dd`。
 - `review` 是可选的复核状态：`status` 为 `pending`（待复核）或 `confirmed`（已确认），`reason` 最长 300 字符。带 `review.status: "pending"` 的标记在轨道上以脉冲样式显示，并在「标记与区段」管理窗中计数；确认后置为 `confirmed`。AI 口播整理把待复核段写成 `pending` 复核标记（默认色 `#f5a623`），确认与否完全由用户决定。
-- AI 整理的新注释优先写覆盖源字幕的区段（合法 `end > start`），`note` 统一为 `[AI] 操作：原因`。自动删除使用「删除」且不带 `review`；替代版本存疑使用「替代项」，其他待复核使用「复核」，并带 `pending`。这是已有字段的使用约定，不增加 schema 字段；注释与字幕禁用、`gap_remove` 决定独立，删除注释不撤销剪辑。
+- AI 整理的新注释优先写覆盖源字幕的区段（合法 `end > start`），`note` 统一为 `[AI] 操作：原因`。自动删除使用「删除」且不带 `review`；替代版本存疑使用「替代项」，其他待复核使用「复核」，并带 `pending`。注释与字幕禁用、`gap_remove` 决定独立，删除注释不撤销剪辑。
+- `items[*].cleanup_action` 可选，目前仅接受 `"remove"`，表示 AI 口播整理的自动移除标记类型，不表示当前声音一定被移除。编辑器从无 `review` 的旧 `[AI] 删除：` / `[AI] 移除：` 备注迁移此字段，并在修改备注、颜色与保存时保留；普通同色标记不会迁移。合法 Region 的操作按钮根据最终空隙覆盖显示「已移除／部分移除／已恢复」，显式操作在当前区段写入可撤销的手动移除或保留决定，保留原自动来源及区段外决定。恢复声音不自动启用整句被禁用的字幕。
 - `items[*].ai` 可选，为通用 AI 备注的归属信息：`schema: "maw.ai-annotation.v1"`、任务名 `task`（最多64字符）、32位十六进制 `run_id`、64位十六进制 `key`，及 `generated` 生成状态快照（`start/end/name/color/note/review`，缺失值为 `null`）。此字段只用于追溯与重跑，不改变标记显示或字幕真源；旧工程无此字段仍有效。编辑器保存保留合法归属信息；生成快照中的文本与显示文本采用相同的去控制字符、截断和空白规范化，但不会把人工改动的备注、位置、颜色或复核状态复制回 `generated`。重跑只替换同任务且当前状态仍等于生成快照的备注，保留人工改动并避免在同源同类型位置重复添加；已确认状态也受保护。
 - 通用普通说明使用 `[AI] 注：…`，不含 `review`；待核查说明使用 `[AI] 待核查：…` 和 `review.status=pending`。源 ID 和时间由固定脚本映射，模型不生成毫秒。口播整理保留现有 `[AI] 操作：原因` 行为，复用标记写入与 ID 分配。
 - 读写双方都应容忍未知字段与非法项：规范化丢弃无法解析的项，不抛错。

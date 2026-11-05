@@ -265,7 +265,7 @@ interface MaweStateApi {
     currentCuePanelIdx: number; currentCuePanelKind: SelectionTrack; currentCuePanelTrackId: string | null;
     cuePanelUndoPushed: boolean; cuePanelUndoRecord: any; cuePanelTextEditSnapshot: any; cuePanelCanceling: boolean };
   readonly editing: { editingState: any; extensionEditingState: any };
-  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean };
+  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean; processingOverridesDirty: boolean };
   hasProjectChanges(pendingText?: boolean): boolean;
   segmentsFingerprint(): string;
   noteSavedSegments(fingerprint?: string): void;

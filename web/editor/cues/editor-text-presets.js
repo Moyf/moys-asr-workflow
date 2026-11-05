@@ -1,248 +1,213 @@
-// Personal text-processing presets; project content is never stored here.
-(function initTextPresets(global) {
+// User library I/O and per-project values shared by the two processing tools.
+(function initProcessing(global) {
   'use strict';
-  const schema = 'moy.asr.text_processing_presets.v1';
+  const schema = 'moy.asr.text_processing_presets.v2';
   const key = 'moy.asr.text_processing_presets.v1';
-  const byId = (id) => document.getElementById(id);
-  const select = byId('text-preset-select');
-  const list = byId('text-preset-rules');
-  const status = byId('text-preset-status');
-  let library = { schema, presets: [] };
-  let rules = [];
-  let loaded = false;
-  let busy = false;
-  let loadRevision = 0;
-  let worker = null;
-  let cancelWorker = null;
+  const joinDefaults = Object.freeze({
+    gapMs: 200, snapDirection: 'backward', absorbShort: true,
+    shortCount: 3, absorbDirection: 'previous',
+  });
+  const emptyLibrary = () => ({ schema, revision: 0, presets: [], defaultPresetId: null });
+  const endpoint = () => MaweBoot.SERVER_CONFIG?.textProcessingPresetsUrl;
+  let library = emptyLibrary();
+  let readRequest = null;
+  let pendingWrite = false;
 
-  function refreshLibraryControls() {
-    select.disabled = busy || !loaded;
-    ['text-preset-save', 'text-preset-save-as', 'text-preset-delete', 'text-preset-export', 'text-preset-import']
-      .forEach((id) => { byId(id).disabled = busy || !loaded; });
-  }
+  const simpleSteps = ['stripMarkdown', 'trim', 'capitalize', 'convertChineseNumbers'];
+  const text = (value, max = 512 * 1024) => typeof value === 'string' && value.length <= max;
+  const flag = (value) => typeof value === 'boolean';
+  const wrapIds = new Set(['custom', ...global.AsrEditorUtils.WRAP_CHAR_PRESETS.map(({ id }) => id)]);
 
-  function textPresetWorker() {
-    self.onmessage = ({ data }) => {
-      try {
-        const compiled = data.rules.map((rule, index) => ({ rule, index })).filter(({ rule }) => rule.enabled).map(({ rule, index }) => {
-          if (!rule.find) throw new Error(`第 ${index + 1} 条规则的查找内容为空`);
-          const pattern = rule.regex ? rule.find : rule.find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          try { return { regex: new RegExp(pattern, `gu${rule.caseSensitive ? '' : 'i'}`), rule }; }
-          catch (error) { throw new Error(`第 ${index + 1} 条规则：${error.message}`); }
+  function normalizeSteps(steps) {
+    if (!Array.isArray(steps) || steps.length > 110) throw new Error('预设操作格式无效');
+    return steps.map((step) => {
+      if (!step || !flag(step.enabled ?? true)) throw new Error('预设操作格式无效');
+      const base = { type: step.type, enabled: step.enabled ?? true };
+      if (simpleSteps.includes(step.type)) return base;
+      if (step.type === 'replace' && text(step.find) && text(step.replacement)
+          && flag(step.regex) && flag(step.caseSensitive)) {
+        return { ...base, find: step.find, replacement: step.replacement, regex: step.regex, caseSensitive: step.caseSensitive };
+      }
+      if (step.type === 'wrap' && Array.isArray(step.wraps) && step.wraps.length <= 100) {
+        const wraps = step.wraps.map((wrap) => {
+          if (!wrapIds.has(wrap?.id)
+              || ('left' in wrap && !text(wrap.left)) || ('right' in wrap && !text(wrap.right))) {
+            throw new Error('预设操作格式无效');
+          }
+          return wrap.id === 'custom' || 'left' in wrap || 'right' in wrap
+            ? { id: wrap.id, left: wrap.left ?? '', right: wrap.right ?? '' } : { id: wrap.id };
         });
-        self.postMessage({ texts: data.texts.map((text) => compiled.reduce((value, item) =>
-          value.replace(item.regex, item.rule.regex ? item.rule.replace : () => item.rule.replace), text)) });
-      } catch (error) { self.postMessage({ error: error.message }); }
-    };
+        return { ...base, wraps };
+      }
+      throw new Error('预设操作格式无效');
+    });
   }
 
-  // User-supplied regular expressions run off the UI thread. A pathological
-  // pattern must not freeze the editor or partially modify the project.
-  function runRules(texts, currentRules) {
-    if (cancelWorker) cancelWorker();
-    if (!currentRules.some((rule) => rule.enabled)) return Promise.resolve(texts);
-    return new Promise((resolve, reject) => {
-      const source = `(${textPresetWorker.toString()})();`;
-      const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
-      let timer;
-      const finish = (error, value) => {
-        clearTimeout(timer); worker?.terminate(); worker = null; cancelWorker = null; URL.revokeObjectURL(url);
-        if (error) reject(error); else resolve(value);
-      };
-      try {
-        worker = new Worker(url);
-        cancelWorker = () => finish(new Error('预览已更新'));
-        timer = setTimeout(() => finish(new Error('规则运行超时，请简化正则表达式')), 2000);
-        worker.onmessage = ({ data }) => finish(data.error ? new Error(data.error) : null, data.texts);
-        worker.onerror = () => finish(new Error('无法运行替换规则'));
-        worker.postMessage({ texts, rules: currentRules });
-      } catch (error) { finish(error); }
+  function legacySteps(preset) {
+    const ops = preset.operations;
+    if (!ops || typeof ops !== 'object' || Array.isArray(ops)
+        || !Array.isArray(preset.rules) || preset.rules.length > 100
+        || simpleSteps.some((kind) => kind in ops && !flag(ops[kind]))
+        || ['left', 'right'].some((key) => key in ops && !text(ops[key]))
+        || ('wraps' in ops && (!Array.isArray(ops.wraps) || ops.wraps.some((pair) =>
+          !pair || typeof pair.id !== 'string' || !text(pair.left) || !text(pair.right))))) throw new Error('预设操作格式无效');
+    const steps = preset.rules.map((rule) => {
+      if (!flag(rule?.enabled)) throw new Error('替换规则格式无效');
+      return { ...rule, type: 'replace', replacement: rule.replace };
     });
+    for (const type of simpleSteps) if (ops[type]) steps.push({ type });
+    const wraps = (ops.wraps || []).map((pair) =>
+      pair.id === 'custom' ? { ...pair, left: ops.left ?? '', right: ops.right ?? '' }
+        : wrapIds.has(pair.id) ? pair : { ...pair, id: 'custom' })
+      .filter(({ left, right }) => left || right);
+    if (wraps.length) steps.push({ type: 'wrap', wraps });
+    return steps;
   }
 
   function validate(value) {
-    if (!value || value.schema !== schema || !Array.isArray(value.presets) || value.presets.length > 100) throw new Error('预设库格式无效');
+    const revision = value?.revision ?? 0;
+    if (![schema, key].includes(value?.schema) || !Number.isSafeInteger(revision) || revision < 0
+        || !Array.isArray(value.presets) || value.presets.length > 100) throw new Error('预设库格式无效');
     const ids = new Set();
-    value.presets.forEach((preset) => {
-      if (!preset || typeof preset.id !== 'string' || !preset.id || preset.id.length > 160 || ids.has(preset.id)
-          || typeof preset.name !== 'string' || !preset.name.trim() || preset.name.length > 160 || !['all', 'selected'].includes(preset.scope)
-          || !preset.operations || typeof preset.operations !== 'object' || Array.isArray(preset.operations)
-          || !Array.isArray(preset.rules) || preset.rules.length > 100) throw new Error('预设格式无效');
+    const presets = value.presets.map((preset) => {
+      if (!text(preset?.id, 160) || !preset.id || ids.has(preset.id) || !text(preset.name, 160)
+          || !preset.name.trim() || !['all', 'selected'].includes(preset.scope)) throw new Error('预设格式无效');
       ids.add(preset.id);
-      const ops = preset.operations;
-      if (['trim', 'capitalize', 'convertChineseNumbers', 'stripMarkdown'].some((field) => field in ops && typeof ops[field] !== 'boolean')
-          || ['left', 'right'].some((field) => field in ops && typeof ops[field] !== 'string')
-          || ('wraps' in ops && (!Array.isArray(ops.wraps) || ops.wraps.length > 100 || ops.wraps.some((wrap) => !wrap || typeof wrap !== 'object' || Array.isArray(wrap)
-            || ['id', 'left', 'right'].some((field) => typeof wrap[field] !== 'string')
-            || (wrap.id !== 'custom' && !window.AsrEditorUtils.WRAP_CHAR_PRESETS.some((entry) => entry.id === wrap.id)))))) throw new Error('预设操作格式无效');
-      preset.rules.forEach((rule) => {
-        if (!rule || typeof rule.find !== 'string' || typeof rule.replace !== 'string'
-          || ['enabled', 'regex', 'caseSensitive'].some((field) => typeof rule[field] !== 'boolean')) throw new Error('替换规则格式无效');
+      return { id: preset.id, name: preset.name.trim(), scope: preset.scope,
+        steps: normalizeSteps('steps' in preset ? preset.steps : legacySteps(preset)) };
+    });
+    const defaultPresetId = value.defaultPresetId ?? null;
+    if (defaultPresetId !== null && !ids.has(defaultPresetId)) throw new Error('预设库格式无效');
+    if ('join' in value && !validJoin(value.join)) throw new Error('预设库格式无效');
+    return { schema, revision, presets, defaultPresetId, ...('join' in value ? { join: value.join } : {}) };
+  }
+
+  function validJoin(value) {
+    return value && Number.isInteger(value.gapMs) && value.gapMs >= 0 && value.gapMs <= 10000
+      && Number.isInteger(value.shortCount) && value.shortCount >= 1 && value.shortCount <= 20
+      && flag(value.absorbShort) && ['backward', 'forward'].includes(value.snapDirection)
+      && ['previous', 'next'].includes(value.absorbDirection);
+  }
+
+  function readLocal() {
+    const raw = MaweHost.storage.getItem(key);
+    return raw ? validate(JSON.parse(raw)) : emptyLibrary();
+  }
+
+  async function persist(next) {
+    next = validate(next);
+    if (new Blob([JSON.stringify(next, null, 2)]).size + 1 > 1024 * 1024) throw new Error('文件过大');
+    if (endpoint()) {
+      const response = await fetch(endpoint(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...next, requestToken: MaweBoot.SERVER_CONFIG.requestToken }),
       });
-    });
-    return JSON.parse(JSON.stringify(value));
-  }
-
-  function renderSelect(current = '') {
-    select.replaceChildren(new Option('自定义', ''));
-    library.presets.forEach((preset) => {
-      const option = new Option(preset.name, preset.id);
-      option.dataset.markerProjectContent = '';
-      select.add(option);
-    });
-    select.value = current;
-  }
-
-  function renderRules() {
-    list.replaceChildren();
-    rules.forEach((rule, index) => {
-      const row = document.createElement('div');
-      row.className = 'text-preset-rule';
-      const makeInput = (type, value, label, change) => {
-        const input = document.createElement('input'); input.type = type;
-        input.setAttribute('aria-label', label);
-        if (type === 'checkbox') input.checked = value; else { input.value = value; input.placeholder = label; }
-        input.addEventListener(type === 'checkbox' ? 'change' : 'input', () => { change(type === 'checkbox' ? input.checked : input.value); MaweTextProcess.renderTextProcessPreview(); });
-        return input;
-      };
-      const makeCheck = (field, label) => {
-        const wrapper = document.createElement('label');
-        wrapper.append(makeInput('checkbox', rule[field], label, value => { rule[field] = value; }), document.createTextNode(label));
-        return wrapper;
-      };
-      const button = (label, action) => {
-        const el = document.createElement('button'); el.type = 'button'; el.textContent = label;
-        el.addEventListener('click', () => { action(); renderRules(); MaweTextProcess.renderTextProcessPreview(); }); return el;
-      };
-      row.append(makeCheck('enabled', '启用'), makeInput('text', rule.find, `规则 ${index + 1} 查找`, value => { rule.find = value; }),
-        makeInput('text', rule.replace, `规则 ${index + 1} 替换为`, value => { rule.replace = value; }),
-        makeCheck('regex', '正则'), makeCheck('caseSensitive', '区分大小写'),
-        button('上移', () => { if (index > 0) [rules[index - 1], rules[index]] = [rules[index], rules[index - 1]]; }),
-        button('下移', () => { if (index + 1 < rules.length) [rules[index + 1], rules[index]] = [rules[index], rules[index + 1]]; }),
-        button('删除', () => rules.splice(index, 1)));
-      list.append(row);
-    });
-  }
-
-  function snapshot(id, name) {
-    return { id, name, scope: MaweTextProcess.textProcessSelectedOnlyCb.checked ? 'selected' : 'all', rules: JSON.parse(JSON.stringify(rules)), operations: {
-      trim: MaweTextProcess.textProcessTrim.checked, capitalize: MaweTextProcess.textProcessCapitalize.checked,
-      convertChineseNumbers: MaweTextProcess.textProcessConvertNumbers.checked, stripMarkdown: MaweTextProcess.textProcessStripMarkdown.checked,
-      wraps: MaweTextProcess.textProcessWrapPresets, left: MaweTextProcess.textProcessPrefixInput.value, right: MaweTextProcess.textProcessSuffixInput.value,
-    } };
-  }
-
-  function applyPreset(preset) {
-    MaweTextProcess.invalidatePreview();
-    const ops = preset.operations;
-    if (!MaweSettings.EDITOR_SETTINGS.assMode && (ops.wraps || []).some((wrap) =>
-      window.AsrEditorUtils.WRAP_CHAR_PRESETS.some((entry) => entry.id === wrap.id && entry.ass))) {
-      select.value = '';
-      status.textContent = '该预设包含 ASS 特殊文本样式，请先开启 ASS 模式';
-      MaweTextProcess.renderTextProcessPreview();
-      return;
-    }
-    status.textContent = '';
-    rules = JSON.parse(JSON.stringify(preset.rules));
-    MaweTextProcess.textProcessTrim.checked = ops.trim === true;
-    MaweTextProcess.textProcessCapitalize.checked = ops.capitalize === true;
-    MaweTextProcess.textProcessConvertNumbers.checked = ops.convertChineseNumbers === true;
-    MaweTextProcess.textProcessStripMarkdown.checked = ops.stripMarkdown === true;
-    MaweTextProcess.textProcessWrapPresets = (ops.wraps || []).map((wrap) => {
-      const builtin = window.AsrEditorUtils.WRAP_CHAR_PRESETS.find((entry) => entry.id === wrap.id);
-      return { ...wrap, ass: builtin?.ass === true, sentenceLevel: builtin?.sentenceLevel === true };
-    });
-    MaweTextProcess.textProcessPrefixInput.value = typeof ops.left === 'string' ? ops.left : '';
-    MaweTextProcess.textProcessSuffixInput.value = typeof ops.right === 'string' ? ops.right : '';
-    MaweTextProcess.textProcessSelectedOnlyCb.checked = preset.scope === 'selected';
-    if (preset.scope === 'selected') MaweTextProcess.textProcessSelectedOnlyCb.disabled = false;
-    MaweTextProcess.textProcessScope = preset.scope === 'selected' ? [...MaweTextProcess.textProcessSelectionSnapshot] : null;
-    MaweTextProcess.refreshTextProcessScopeInfo(); MaweTextProcess.refreshTextProcessInputState();
-    renderRules(); MaweTextProcess.renderTextProcessPreview();
-  }
-
-  async function persist(next, selected) {
-    if (!loaded || busy) return;
-    busy = true;
-    refreshLibraryControls();
-    const expected = JSON.parse(JSON.stringify(library));
-    const openedAt = loadRevision;
-    try {
-      next = validate(next);
-      const url = MaweBoot.SERVER_CONFIG?.textProcessingPresetsUrl;
-      if (url) {
-        const response = await fetch(new URL(url, location.href), { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...next, expected, requestToken: MaweBoot.SERVER_CONFIG.requestToken || '' }) });
-        if (response.status === 409) throw new Error('预设库已被其他页面修改，请重新打开');
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        next = validate(await response.json());
-      } else {
-        const write = () => {
-          const raw = localStorage.getItem(key);
-          const current = validate(raw ? JSON.parse(raw) : { schema, presets: [] });
-          if (JSON.stringify(current) !== JSON.stringify(expected)) throw new Error('预设库已被其他页面修改，请重新打开');
-          localStorage.setItem(key, JSON.stringify(next));
-        };
-        if (navigator.locks?.request) await navigator.locks.request(key, write);
-        else write();
+      if (response.status === 409) {
+        const payload = await response.json().catch(() => null);
+        if (payload?.current) library = validate(payload.current);
+        return 'conflict';
       }
-      const selectedAfterSave = openedAt === loadRevision ? selected : '';
-      loadRevision += 1; library = next; loaded = true;
-      renderSelect(selectedAfterSave); status.textContent = '预设库已保存';
-    } catch (error) { status.textContent = `保存失败：${error.message}`; }
-    finally { busy = false; refreshLibraryControls(); }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      library = validate(await response.json());
+    } else {
+      const write = () => {
+        const current = readLocal();
+        if (current.revision !== next.revision) {
+          library = current;
+          return 'conflict';
+        }
+        const saved = { ...next, revision: next.revision + 1 };
+        MaweHost.storage.setItem(key, JSON.stringify(saved));
+        library = saved;
+        return 'saved';
+      };
+      return navigator.locks?.request ? navigator.locks.request(key, write) : write();
+    }
+    return 'saved';
   }
 
-  async function onOpen() {
-    const revision = ++loadRevision;
-    rules = []; renderRules(); loaded = false; renderSelect(); refreshLibraryControls(); status.textContent = '正在加载预设库…';
+  function legacyJoin() {
     try {
-      const url = MaweBoot.SERVER_CONFIG?.textProcessingPresetsUrl;
-      if (url) {
-        const response = await fetch(new URL(url, location.href), { cache: 'no-store' });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const result = validate(await response.json());
-        if (revision !== loadRevision) return;
-        library = result;
-      } else library = validate(JSON.parse(localStorage.getItem(key) || JSON.stringify({ schema, presets: [] })));
-      if (revision !== loadRevision) return;
-      loaded = true; refreshLibraryControls(); renderSelect(); status.textContent = '';
-    } catch (error) { if (revision === loadRevision) status.textContent = `加载失败，无法保存：${error.message}`; }
+      const old = JSON.parse(MaweHost.storage.getItem(MaweSettings.EDITOR_SETTINGS_KEY) || '{}');
+      if (!Object.keys(old).some((name) => name.startsWith('autoMerge'))) return null;
+      const settings = window.AsrEditorUtils.normalizeEditorSettings(old);
+      const join = {
+        gapMs: settings.autoMergeGapMs, snapDirection: settings.autoMergeSnapDirection,
+        absorbShort: settings.autoMergeAbsorbShort, shortCount: settings.autoMergeShortCount,
+        absorbDirection: settings.autoMergeAbsorbDirection,
+      };
+      return Object.keys(joinDefaults).some((name) => join[name] !== joinDefaults[name]) ? join : null;
+    } catch {
+      return null;
+    }
   }
 
-  select.addEventListener('change', () => { if (!loaded || busy) return; const preset = library.presets.find((item) => item.id === select.value); if (preset) applyPreset(preset); });
-  byId('text-preset-add-rule').addEventListener('click', () => { rules.push({ enabled: true, find: '', replace: '', regex: false, caseSensitive: false }); renderRules(); MaweTextProcess.renderTextProcessPreview(); });
-  byId('text-preset-add-fillers').addEventListener('click', () => {
-    byId('text-preset-fillers').value.split(/\r?\n/).filter(Boolean).forEach((find) => rules.push({ enabled: true, find, replace: '', regex: false, caseSensitive: false }));
-    byId('text-preset-fillers').value = ''; renderRules(); MaweTextProcess.renderTextProcessPreview();
-  });
-  function save(asNew) {
-    if (!loaded) return;
-    const existing = !asNew && library.presets.find((item) => item.id === select.value);
-    const name = existing?.name || global.prompt('预设名称');
-    if (!name?.trim()) return;
-    const id = existing?.id || global.crypto.randomUUID();
-    const next = JSON.parse(JSON.stringify(library));
-    const index = next.presets.findIndex((item) => item.id === id);
-    if (index < 0) next.presets.push(snapshot(id, name.trim())); else next.presets[index] = snapshot(id, name.trim());
-    void persist(next, id);
+  async function refresh() {
+    if (readRequest) return readRequest;
+    if (pendingWrite) return true;
+    readRequest = (async () => {
+      try {
+        if (endpoint()) {
+          const response = await fetch(endpoint(), { cache: 'no-store' });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          library = validate(await response.json());
+        } else {
+          library = readLocal();
+        }
+        const legacy = !library.join && legacyJoin();
+        if (legacy) await persist({ ...library, join: legacy });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    try {
+      return await readRequest;
+    } finally {
+      readRequest = null;
+    }
   }
-  byId('text-preset-save').addEventListener('click', () => save(false));
-  byId('text-preset-save-as').addEventListener('click', () => save(true));
-  byId('text-preset-delete').addEventListener('click', () => {
-    const selected = select.value;
-    if (selected && global.confirm('删除这个预设？')) void persist({ ...library, presets: library.presets.filter((item) => item.id !== selected) }, '');
+
+  async function update(change) {
+    if (pendingWrite) return 'busy';
+    pendingWrite = true;
+    try {
+      if (readRequest && !await readRequest) return 'error';
+      const next = structuredClone(library);
+      change(next);
+      return await persist(next);
+    } catch (error) {
+      return error;
+    } finally {
+      pendingWrite = false;
+    }
+  }
+
+  function projectOverride(kind) {
+    const value = MaweBoot.DATA.processing_overrides?.[kind];
+    if (kind === 'text') {
+      if (value === undefined) return undefined;
+      try { return normalizeSteps(value); } catch { return undefined; }
+    }
+    return validJoin(value) ? value : undefined;
+  }
+
+  function setProjectOverride(kind, value) {
+    const next = { ...MaweBoot.DATA.processing_overrides };
+    if (value === undefined) delete next[kind];
+    else if (kind === 'text') next.text = normalizeSteps(value);
+    else if (validJoin(value)) next.join = structuredClone(value);
+    else throw new Error('拼合参数无效');
+    if (JSON.stringify(next) === JSON.stringify(MaweBoot.DATA.processing_overrides || {})) return;
+    MaweBoot.DATA.processing_overrides = Object.keys(next).length ? next : undefined;
+    MaweState.changes.processingOverridesDirty = true;
+  }
+
+  global.MaweProcessing = Object.freeze({
+    refresh, update, validate, projectOverride, setProjectOverride,
+    get library() { return library; },
+    get portable() { return !endpoint(); },
+    get effectiveJoin() { return projectOverride('join') || library.join || legacyJoin() || joinDefaults; },
   });
-  byId('text-preset-export').addEventListener('click', () => {
-    if (!loaded) return;
-    const url = URL.createObjectURL(new Blob([JSON.stringify(library, null, 2)], { type: 'application/json' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'text-processing-presets.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  });
-  byId('text-preset-import').addEventListener('change', async (event) => {
-    const file = event.target.files?.[0]; event.target.value = '';
-    if (!file || !loaded || !global.confirm('导入会替换当前预设库，是否继续？')) return;
-    try { if (file.size > 512 * 1024) throw new Error('文件过大'); await persist(validate(JSON.parse(await file.text())), ''); }
-    catch (error) { status.textContent = `导入失败：${error.message}`; }
-  });
-  global.MaweTextPresets = Object.freeze({ rules: () => rules, onOpen, runRules });
 })(window);

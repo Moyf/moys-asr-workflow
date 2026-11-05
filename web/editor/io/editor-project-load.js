@@ -118,6 +118,8 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweBoot.DATA.loudness = data.loudness || null;
   MaweBoot.DATA.workspace = data.workspace || null;
   MaweBoot.DATA.gap_remove = data.gap_remove || null;
+  MaweBoot.DATA.processing_overrides = data.processing_overrides;
+  MaweState.changes.processingOverridesDirty = false;
   MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(data.markers);
   // 带 markers 的工程（如 AI 整理产物）默认启用标记轨道，方便直接复核待确认项。
   window.MaweMarkerEditing?.enableForProjectMarkers?.(MaweBoot.DATA.markers);

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer } from './helpers.mjs';
+import { cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer, addTextProcessStep } from './helpers.mjs';
 
 let server, dir;
 test.beforeAll(async () => { dir = makeTempDir('warma-i18n'); server = await startBlankServer(await findFreePort(), dir); });
@@ -49,10 +49,10 @@ test('English preset editing, confirmations and rule errors remain understandabl
   await expect(find).toHaveAttribute('aria-label', '规则 1 查找');
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
   await expect(find).toHaveAttribute('aria-label', 'Rule 1 find');
-  await expect(page.locator('#text-process-preview')).toContainText('Rule 1');
+  await expect(page.locator('#text-process-preview')).toContainText('Enter search text');
   await find.fill('(');
   await rule.getByLabel('Regex').check();
-  await expect(page.locator('#text-process-preview')).toContainText('Rule 1:');
+  await expect(page.locator('#text-process-preview')).toContainText('Invalid regular expression');
   await expect(page.locator('#text-process-confirm')).toBeDisabled();
   await find.fill('删除');
   await rule.getByLabel('Regex').uncheck();
@@ -77,7 +77,7 @@ test('English preset editing, confirmations and rule errors remain understandabl
 test('English users see an actionable stale-library error', async ({ page }) => {
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
   await expect(page.locator('#text-preset-select')).toBeEnabled();
-  await page.locator('#text-process-trim').check();
+  await addTextProcessStep(page, 'trim');
   await page.route('**/api/text-processing-presets', async route => {
     if (route.request().method() === 'POST') await route.fulfill({ status: 409, contentType: 'application/json', body: '{}' });
     else await route.continue();
@@ -91,7 +91,7 @@ test('English users see an actionable stale-library error', async ({ page }) => 
 test('invalid preset names report a fully translated save error', async ({ page }) => {
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
   await expect(page.locator('#text-preset-select')).toBeEnabled();
-  await page.locator('#text-process-trim').check();
+  await addTextProcessStep(page, 'trim');
   page.once('dialog', dialog => dialog.accept('x'.repeat(161)));
   await page.locator('#text-preset-save-as').click();
   await expect(page.locator('#text-preset-status')).toHaveText('Save failed: Invalid preset');
@@ -100,7 +100,7 @@ test('invalid preset names report a fully translated save error', async ({ page 
 test('invalid imports retain the library and explain the error in English', async ({ page }) => {
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
   await expect(page.locator('#text-preset-select')).toBeEnabled();
-  await page.locator('#text-process-trim').check();
+  await addTextProcessStep(page, 'trim');
   page.once('dialog', dialog => dialog.accept('Keep me'));
   await page.locator('#text-preset-save-as').click();
   await expect(page.locator('#text-preset-status')).toHaveText('Preset library saved');
@@ -126,7 +126,7 @@ test('ASS-only presets explain how to use them when ASS mode is off', async ({ p
   });
   await expect(page.locator('#text-preset-select option[value="ass-only"]')).toHaveCount(1);
   await page.locator('#text-preset-select').selectOption('ass-only');
-  await expect(page.locator('#text-preset-status')).toContainText('Enable ASS mode first');
+  await expect(page.locator('#text-process-preview')).toContainText('Enable ASS mode first');
   await expect(page.locator('#text-process-confirm')).toBeDisabled();
 });
 

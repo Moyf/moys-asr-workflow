@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
-  generateWav, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
+  generateWav, makeTempDir, openSettingsPage, startServer, addTextProcessStep } from './helpers.mjs';
 
 let server;
 let portable;
@@ -187,29 +187,26 @@ test('batch wrap presets skip existing wrappers and keep preview and undo consis
   await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-mode-toggle').check();
   await page.locator('#project-settings-close').click();
-  await page.evaluate(() => MaweTextProcess.openTextProcessModal());
-  await page.locator('#text-process-wrap-presets-ass button').filter({ hasText: '强调文本' }).click();
-  await expect(page.locator('#text-process-preview')).toContainText('预计修改 1 条');
-  await expect(page.locator('#text-process-preview')).toContainText('处理后：**丙丁**');
-  await page.locator('#text-process-confirm').click();
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map(segment => segment.text))).toEqual(['**甲乙**', '**丙丁**']);
-  await page.evaluate(() => MaweHistory.performUndo());
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map(segment => segment.text))).toEqual(['**甲乙**', '丙丁']);
+  await page.evaluate(() => {
+    MaweSelection.selectOnly(0);
+    MaweTextProcess.openTextProcessModal();
+  });
+  const step = await addTextProcessStep(page, 'wrap');
+  await step.locator('[data-wrap-preset-id="emphasis"]').click();
+  await expect(page.locator('#text-process-preview')).toContainText('不会发生变化');
+  await expect(page.locator('#text-process-confirm')).toBeDisabled();
 });
 
 test('text processing uses the custom wrapping row and allows one-sided characters', async ({ page }) => {
   await seed(page);
   await page.locator('#batch-operations-btn').click();
   await page.locator('#text-process-btn').click();
-  const assPresetRows = page.locator('.text-process-wrap-preset-row-ass');
-  await expect(assPresetRows).toHaveCount(2);
-  await expect(assPresetRows.nth(0)).toBeHidden();
-  await expect(assPresetRows.nth(1)).toBeHidden();
-  await expect(page.locator('#text-process-wrap-presets-common')).toContainText('♪音符♪');
-  const custom = page.locator('#text-process-wrap-presets-common').getByRole('button', { name: '自定义' });
-  await custom.click();
-  await expect(page.locator('#text-process-custom-wrap-fields')).toBeVisible();
-  await page.locator('#text-process-prefix-input').fill('【');
+  const step = await addTextProcessStep(page, 'wrap');
+  await expect(step.locator('[data-wrap-preset-id="emphasis"]')).toHaveCount(0);
+  await expect(step.locator('[data-wrap-preset-id="note"]')).toBeVisible();
+  await step.getByRole('button', { name: '自定义' }).click();
+  await expect(step.getByRole('textbox', { name: '左侧添加' })).toBeVisible();
+  await page.locator('#text-preset-rules').getByRole('textbox', { name: '左侧添加' }).fill('【');
   await expect(page.locator('#text-process-preview')).toContainText('处理后：【甲乙丙丁');
   await page.locator('#text-process-confirm').click();
   await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText('【甲乙丙丁');
@@ -220,6 +217,7 @@ test('text process preview expands all rows and syncs the action label', async (
     MaweBoot.DATA.segments = [
       { id: 'main-a', start: 1000, end: 2000, text: ' 甲 ', items: null },
       { id: 'main-b', start: 2000, end: 3000, text: ' 乙 ', items: null },
+      { id: 'main-c', start: 3000, end: 4000, text: '丙', items: null },
     ];
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
@@ -237,8 +235,8 @@ test('text process preview expands all rows and syncs the action label', async (
 
   await page.locator('#batch-operations-btn').click();
   await page.locator('#text-process-btn').click();
-  await expect(page.locator('#text-process-scope-info')).toHaveText('当前范围：全部 2 条字幕');
-  await page.locator('#text-process-trim').check();
+  await expect(page.locator('#text-process-scope-info')).toHaveText('当前范围：全部 3 条字幕');
+  await addTextProcessStep(page, 'trim');
   const preview = page.locator('#text-process-preview');
   const rows = preview.locator('details.replace-preview-row');
   await expect(rows).toHaveCount(2);
@@ -254,6 +252,14 @@ test('text process preview expands all rows and syncs the action label', async (
   await expect(expand).toHaveText('全部展开');
   await expand.click();
   await expect(preview.locator('details[open]')).toHaveCount(2);
+  const showAll = preview.locator('.text-process-preview-filter');
+  await showAll.click();
+  await expect(rows).toHaveCount(3);
+  await expect(rows.last().locator('.replace-preview-before')).toHaveText('处理前：丙');
+  await expect(rows.last().locator('.replace-preview-after')).toHaveText('处理后：丙');
+  await expect(showAll).toBeFocused();
+  await showAll.click();
+  await expect(rows).toHaveCount(2);
 });
 
 test('batch replacement uses shared capture replacement and current-scope preview', async ({ page }) => {
@@ -273,7 +279,7 @@ test('text processing converts clear Chinese numbers with surrounding spaces', a
   await seed(page, { text: '一百八十六，等三两分钟，八九不离十', timed: false });
   await page.locator('#batch-operations-btn').click();
   await page.locator('#text-process-btn').click();
-  await page.locator('#text-process-convert-numbers').check();
+  await addTextProcessStep(page, 'convertChineseNumbers');
   await expect(page.locator('#text-process-preview')).toContainText('处理后： 186 ，等三两分钟，八九不离十');
   await page.locator('#text-process-confirm').click();
   await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText(' 186 ，等三两分钟，八九不离十');
@@ -322,7 +328,7 @@ test('expanded wrapping menu stays inside a short viewport and keeps custom wrap
   await page.setViewportSize({ width: 1280, height: 500 });
   await page.evaluate(() => MaweContextMenus.showContextMenu(350, 350, 0));
   // 「左右添加字符」已提为顶层菜单行，无需先展开「高级操作」。
-  await page.getByText('左右添加字符', { exact: true }).click();
+  await page.locator('#ctxmenu').getByText('左右添加字符', { exact: true }).click();
   const bounds = await page.locator('#ctxmenu').boundingBox();
   expect(bounds.y).toBeGreaterThanOrEqual(0);
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(496);
@@ -337,4 +343,147 @@ test('expanded wrapping menu stays inside a short viewport and keeps custom wrap
   expect(fields[1].left - fields[0].right).toBeGreaterThanOrEqual(8);
   await page.locator('#wrap-chars-right').press('Enter');
   expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('【甲乙丙丁】');
+});
+
+async function openTextProcess(page) {
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#text-process-btn').click();
+}
+
+test('ordered text processing previews the final output and keeps empty cues and their timing', async ({ page }) => {
+  await seed(page, { text: '  猫-狗  ', timed: false });
+  await openTextProcess(page);
+  await addTextProcessStep(page, 'trim');
+  let step = await addTextProcessStep(page, 'replace');
+  await step.getByRole('textbox', { name: /规则 .* 查找/ }).fill('^(?<cat>猫)-(狗)$');
+  await step.getByRole('textbox', { name: /规则 .* 替换为/ }).fill('$02/$<cat>');
+  await step.getByRole('checkbox', { name: '正则' }).check();
+  const preview = page.locator('#text-process-preview');
+  await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：狗/猫');
+  step = await addTextProcessStep(page, 'replace');
+  await step.getByRole('textbox', { name: /规则 .* 查找/ }).fill('狗/猫');
+  await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：');
+  await step.getByRole('button', { name: '上移' }).click();
+  await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：狗/猫');
+  await page.locator('#text-preset-rules > li').nth(1).getByRole('button', { name: '下移' }).click();
+  await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：');
+  await page.locator('#text-process-confirm').click();
+  const cues = () => page.evaluate(() => MaweBoot.DATA.segments.map(({ id, start, end, text }) => [id, start, end, text]));
+  expect(await cues()).toEqual([['main-1', 1000, 5000, '']]);
+  await page.locator('#undo-btn').click();
+  expect(await cues()).toEqual([['main-1', 1000, 5000, '  猫-狗  ']]);
+});
+
+test('invalid and runaway regular expressions block apply and can be replaced', async ({ page }) => {
+  await seed(page, { text: 'a'.repeat(64) + '!', timed: false });
+  await openTextProcess(page);
+  const step = await addTextProcessStep(page, 'replace');
+  const find = step.getByRole('textbox', { name: /规则 .* 查找/ });
+  await step.getByRole('checkbox', { name: '正则' }).check();
+  await find.fill('(');
+  const preview = page.locator('#text-process-preview');
+  const apply = page.locator('#text-process-confirm');
+  await expect(preview).toContainText('正则表达式无效');
+  await expect(apply).toBeDisabled();
+  await find.fill('^(?=(a+)+$).*$');
+  await expect(preview).toContainText('规则运行超时', { timeout: 6000 });
+  await expect(apply).toBeDisabled();
+  await find.fill('a+');
+  await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：!');
+  await expect(apply).toBeEnabled();
+  await step.getByRole('checkbox', { name: '正则' }).uncheck();
+  await find.fill('a');
+  await step.locator('input[type="text"]').nth(1).fill('b'.repeat(5000));
+  await expect(preview).toContainText('替换结果过长');
+  await expect(apply).toBeDisabled();
+});
+
+test('user presets, text overrides and explicit join defaults survive project changes', async ({ page }, testInfo) => {
+  await seed(page, { text: '  甲  ', timed: false });
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ autoMergeGapMs: 350 }));
+  await openTextProcess(page);
+  await addTextProcessStep(page, 'trim');
+  page.once('dialog', (dialog) => dialog.accept('清理空白'));
+  await page.locator('#text-preset-save-as').click();
+  await page.locator('#text-preset-default').click();
+  await expect(page.locator('#text-preset-select')).toContainText('清理空白 ★');
+  await addTextProcessStep(page, 'capitalize');
+  await page.locator('#text-process-project-save').click();
+  await expect(page.locator('#text-process-project-status')).toContainText('自己的文本处理默认');
+  const editor = page.locator('#text-process-modal .modal');
+  const gap = await editor.locator('#text-preset-rules > li').evaluateAll(([first, second]) =>
+    second.getBoundingClientRect().top - first.getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await editor.screenshot({ path: testInfo.outputPath('processing-zh.png') });
+  await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
+  await expect(page.locator('#text-preset-add-rule')).toHaveText('Add step');
+  await editor.screenshot({ path: testInfo.outputPath('processing-en.png') });
+  await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
+  await page.locator('#text-process-cancel').click();
+
+  await page.locator('#auto-merge-manage').click();
+  const threshold = page.locator('#auto-merge-gap-ms');
+  await expect(threshold).toHaveValue('350');
+  await threshold.fill('450');
+  await page.locator('#auto-merge-project-save').click();
+  const projects = await page.evaluate(() => {
+    const project = JSON.parse(MaweJsonRepair.buildJson());
+    const other = structuredClone(project);
+    delete other.processing_overrides;
+    return { project, other };
+  });
+  expect(projects.project.processing_overrides).toMatchObject({
+    text: [{ type: 'trim' }, { type: 'capitalize' }], join: { gapMs: 450 },
+  });
+  const join = page.locator('#auto-merge-panel');
+  const controlGap = await page.locator('#auto-merge-project-save').evaluate((button) => {
+    const group = button.parentElement;
+    return group.getBoundingClientRect().top - group.previousElementSibling.getBoundingClientRect().bottom;
+  });
+  expect(controlGap).toBeGreaterThanOrEqual(8);
+  await join.screenshot({ path: testInfo.outputPath('join-zh.png') });
+  await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
+  await join.screenshot({ path: testInfo.outputPath('join-en.png') });
+  await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
+  await page.evaluate((other) => MaweProjectLoad.applyCanonicalProject(other, 'other.mosp'), projects.other);
+  await page.locator('#auto-merge-manage').click();
+  await expect(threshold).toHaveValue('350');
+  await threshold.fill('600');
+  await page.locator('#auto-merge-user-save').click();
+  await expect(page.locator('#auto-merge-settings-status')).toContainText('用户配置已保存');
+  await page.locator('#auto-merge-close').click();
+  await openTextProcess(page);
+  await expect(page.locator('#text-preset-rules > li')).toHaveCount(1);
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('#text-preset-delete').click();
+  await expect(page.locator('#text-preset-select')).toHaveValue('');
+  await page.locator('#text-process-cancel').click();
+  await page.evaluate((project) => MaweProjectLoad.applyCanonicalProject(project, 'original.mosp'), projects.project);
+  await openTextProcess(page);
+  await expect(page.locator('#text-preset-rules > li')).toHaveCount(2);
+  await page.locator('#text-process-project-empty').click();
+  await expect(page.locator('#text-preset-rules > li')).toHaveCount(0);
+  await page.locator('#text-process-project-reset').click();
+  await expect(page.locator('#text-process-project-status')).toContainText('继承用户默认');
+  await page.locator('#text-process-cancel').click();
+  await page.locator('#auto-merge-manage').click();
+  await expect(threshold).toHaveValue('450');
+  await page.locator('#auto-merge-project-reset').click();
+  await expect(threshold).toHaveValue('600');
+});
+
+test('portable editor saves and reloads presets in its browser storage', async ({ page }) => {
+  await page.goto('file://' + portable);
+  await seed(page, { text: '  甲  ', timed: false });
+  await openTextProcess(page);
+  await expect(page.locator('#text-process-storage-scope')).toContainText('当前浏览器');
+  await addTextProcessStep(page, 'trim');
+  page.once('dialog', (dialog) => dialog.accept('便携清理'));
+  await page.locator('#text-preset-save-as').click();
+  await page.locator('#text-preset-default').click();
+  await expect(page.locator('#text-preset-select')).toContainText('便携清理 ★');
+  await page.reload();
+  await seed(page, { text: '  甲  ', timed: false });
+  await openTextProcess(page);
+  await expect(page.locator('#text-process-preview .replace-preview-after')).toHaveText('处理后：甲');
 });

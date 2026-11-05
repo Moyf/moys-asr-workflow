@@ -519,3 +519,9 @@ export function buildPortableBlankEditor(outputPath) {
   }
   return outputPath;
 }
+
+export async function addTextProcessStep(page, type) {
+  await page.locator('#text-process-step-type').selectOption(type);
+  await page.locator('#text-preset-add-rule').click();
+  return page.locator('#text-preset-rules > li').last();
+}

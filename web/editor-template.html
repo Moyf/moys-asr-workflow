@@ -476,6 +476,12 @@ __WAVEFORM_CSS__
         </label>
       </div>
     </section>
+    <div class="processing-controls">
+      <button type="button" id="auto-merge-user-save">保存为用户默认</button>
+      <button type="button" id="auto-merge-project-save">记为此工程默认</button>
+      <button type="button" id="auto-merge-project-reset">恢复继承</button>
+    </div>
+    <p class="hint processing-status" id="auto-merge-settings-status" aria-live="polite"></p>
     <button type="button" id="auto-merge-run" class="gap-remove-scan">
       <span>拼合字幕</span>
       <small>按当前参数处理整段工程</small>
@@ -2519,73 +2525,49 @@ __WAVEFORM_CSS__
     <p class="modal-desc" id="text-process-description">
       选择要对字幕批量执行的文本操作（若处理结尾为空，会保留空字幕行）。
     </p>
-    <div class="text-preset-controls">
-      <label for="text-preset-select">处理预设</label>
-      <select id="text-preset-select"><option value="">自定义</option></select>
-      <button type="button" id="text-preset-save">保存预设</button>
+    <div class="processing-controls text-preset-controls">
+      <select id="text-preset-select" aria-label="文本处理预设"></select>
       <button type="button" id="text-preset-save-as">另存预设</button>
+      <button type="button" id="text-preset-save">更新步骤</button>
+      <button type="button" id="text-preset-rename">重命名</button>
       <button type="button" id="text-preset-delete">删除预设</button>
+      <button type="button" id="text-preset-default">设为用户默认</button>
+      <button type="button" id="text-preset-clear">取消用户默认</button>
       <button type="button" id="text-preset-export">导出库</button>
       <label class="text-preset-import">导入库<input type="file" id="text-preset-import" accept="application/json,.json"></label>
-      <div id="text-preset-status" role="status"></div>
     </div>
+    <p class="modal-hint" id="text-preset-status" aria-live="polite"></p>
+    <p class="modal-hint" id="text-process-storage-scope" hidden>预设仅存于当前浏览器</p>
     <div id="text-process-scope-info" class="text-process-scope-info">当前范围：全部字幕</div>
     <label class="modal-check-row" for="text-process-selected-only">
       <input type="checkbox" id="text-process-selected-only" disabled>
       <span>仅处理选中的字幕</span>
       <span id="text-process-selected-only-hint" class="modal-hint batch-selected-only-hint" hidden>需要先选中至少1条字幕才可启用</span>
     </label>
-    <div class="text-preset-rules">
-      <div>替换规则（按顺序执行，之后执行下方操作）</div>
-      <div id="text-preset-rules"></div>
-      <button type="button" id="text-preset-add-rule">添加规则</button>
-      <label for="text-preset-fillers">语气词列表（每行一个，按原文删除）</label>
-      <textarea id="text-preset-fillers" rows="2"></textarea>
+
+    <div class="processing-controls">
+      <button type="button" id="text-process-project-save">记为此工程默认</button>
+      <button type="button" id="text-process-project-empty">此工程不预填</button>
+      <button type="button" id="text-process-project-reset">恢复继承</button>
+    </div>
+    <p class="modal-hint" id="text-process-project-status" aria-live="polite"></p>
+    <div class="processing-controls">
+      <select id="text-process-step-type" aria-label="文本处理操作">
+        <option value="replace">替换</option>
+        <option value="trim">修剪前后空白</option>
+        <option value="capitalize">首字母大写</option>
+        <option value="convertChineseNumbers">数字转换</option>
+        <option value="stripMarkdown">去除 md 格式符号</option>
+        <option value="wrap">左右添加字符</option>
+      </select>
+      <button type="button" id="text-preset-add-rule">添加步骤</button>
+    </div>
+    <ol id="text-preset-rules" class="processing-steps"></ol>
+    <details class="processing-fillers">
+      <summary>语气词列表（每行一个，按原文删除）</summary>
+      <textarea id="text-preset-fillers" rows="2" aria-label="语气词列表（每行一个，按原文删除）"></textarea>
       <button type="button" id="text-preset-add-fillers">添加语气词规则</button>
-    </div>
-    <div class="text-process-operations" aria-label="文本处理操作">
-      <label class="text-process-operation" for="text-process-trim">
-        <input type="checkbox" id="text-process-trim">
-        <span>修剪前后空白</span>
-        <span class="modal-hint">去除字幕前方和后方的空格</span>
-      </label>
-      <label class="text-process-operation" for="text-process-capitalize">
-        <input type="checkbox" id="text-process-capitalize">
-        <span>首字母大写</span>
-        <span class="modal-hint">只作用于第一个字母</span>
-      </label>
-      <label class="text-process-operation" for="text-process-convert-numbers">
-        <input type="checkbox" id="text-process-convert-numbers">
-        <span>数字转换</span>
-        <span class="modal-hint">将明确的中文数字转写为数字，前后留空格</span>
-      </label>
-      <label class="text-process-operation" for="text-process-strip-markdown">
-        <input type="checkbox" id="text-process-strip-markdown">
-        <span>去除 md 格式符号</span>
-        <span class="modal-hint">移除常见 Markdown 标记；含特殊文本样式（MASS）符号时会一并移除，建议先清理再加样式</span>
-      </label>
-    </div>
-    <div class="text-process-wrap-presets" aria-label="左右添加字符预设">
-      <div class="text-process-wrap-presets-head">左右添加字符（插入到字幕两端）</div>
-      <div class="text-process-wrap-preset-row text-process-wrap-preset-row-ass">
-        <span class="text-process-wrap-preset-row-label">ASS 特殊文本样式</span>
-        <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-ass"></div>
-      </div>
-      <div class="text-process-wrap-preset-row text-process-wrap-preset-row-ass">
-        <span class="text-process-wrap-preset-row-label text-process-wrap-sentence-badge">整句</span>
-        <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-ass-sentence"></div>
-      </div>
-      <div class="text-process-wrap-preset-row">
-        <span class="text-process-wrap-preset-row-label">普通字符</span>
-        <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-common"></div>
-      </div>
-      <div class="text-process-custom-wrap-fields" id="text-process-custom-wrap-fields" hidden>
-        <label for="text-process-prefix-input">左侧添加</label>
-        <input type="text" id="text-process-prefix-input" placeholder="输入左侧字符">
-        <label for="text-process-suffix-input">右侧添加</label>
-        <input type="text" id="text-process-suffix-input" placeholder="输入右侧字符">
-      </div>
-    </div>
+    </details>
     <div class="preview text-process-preview" id="text-process-preview">选择操作后查看预览</div>
     <div class="actions">
       <button type="button" id="text-process-cancel">取消</button>
