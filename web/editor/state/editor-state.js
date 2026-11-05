@@ -102,9 +102,11 @@ export function createEditorState(project) {
   // markProjectDirty()（写入 false 不触发）。命令发布（projectImportDirty）、
   // 外观/标记等代理 setter、撤销恢复的 Object.assign 因此都汇入同一事件。
   const changesFlags = { projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false, markersDirty: false,
-    timedTextEditViewDirty: false, audioProcessingDirty: false };
+    timedTextEditViewDirty: false, audioProcessingDirty: false, processingOverridesDirty: false };
   // 显式访问器（defineProperties 的动态键 TS 推断不出）：写入 true 触发 markProjectDirty()。
   const changes = {
+    get processingOverridesDirty() { return changesFlags.processingOverridesDirty; },
+    set processingOverridesDirty(value) { changesFlags.processingOverridesDirty = Boolean(value); if (value) markProjectDirty(); },
     get audioProcessingDirty() { return changesFlags.audioProcessingDirty; },
     set audioProcessingDirty(value) { changesFlags.audioProcessingDirty = Boolean(value); if (changesFlags.audioProcessingDirty) markProjectDirty(); },
     get projectImportDirty() { return changesFlags.projectImportDirty; },
@@ -148,7 +150,7 @@ export function createEditorState(project) {
   function hasProjectChanges(pendingText = false) {
     const dirty = track => Boolean(track?._dirty) || (track?.segments || []).some(segment => segment._dirty);
     return Boolean(pendingText || changes.projectImportDirty || changes.gapRemoveDirty || changes.previewGeometryDirty
-      || changes.markersDirty || changes.timedTextEditViewDirty || changes.audioProcessingDirty
+      || changes.markersDirty || changes.timedTextEditViewDirty || changes.audioProcessingDirty || changes.processingOverridesDirty
       || (project.segments || []).some(segment => segment._dirty)
       || dirty(project.overlay_track) || dirty(project.multi_subtitle)
       || (project.multi_subtitle?.tracks || []).some(dirty));

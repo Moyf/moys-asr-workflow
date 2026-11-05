@@ -346,6 +346,11 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  function assStyleSnapshotKey(style) {
+    return JSON.stringify(normalizeAssStyle(style));
+  }
+
+
   function normalizeAssAnimations(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const fad = source.fad && typeof source.fad === 'object' ? source.fad : {};
@@ -801,5 +806,5 @@ export function createUtilsModule(dependencies) {
 
   // assMarkedRanges 同时供 text-processing 的 MASS 成对检测复用（strip /
   // 拆分补齐 / 合并折叠 / 字词块归位同一套配对语义），故从这里导出。
-  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assFontFamilyAliasChainCss, assInlineStyleRuns, assMarkedRanges, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
+  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assFontFamilyAliasChainCss, assInlineStyleRuns, assMarkedRanges, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assStyleSnapshotKey, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
 }

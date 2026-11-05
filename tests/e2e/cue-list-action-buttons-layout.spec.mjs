@@ -1,11 +1,17 @@
 import { expect, test } from '@playwright/test';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-import { disableOnboarding } from './helpers.mjs';
+import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, makeTempDir } from './helpers.mjs';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const blankEditorUrl = pathToFileURL(path.join(repoRoot, 'blank-editor.html')).href;
+let dir, blankEditorUrl;
+test.beforeAll(() => {
+  dir = makeTempDir('cue-list-toolbar');
+  const portable = join(dir, 'editor.html');
+  buildPortableBlankEditor(portable);
+  blankEditorUrl = pathToFileURL(portable).href;
+});
+test.afterAll(() => cleanupTempDir(dir));
 
 test('ellipsizes cue-list action labels instead of wrapping', async ({ page }) => {
   await disableOnboarding(page);
@@ -19,7 +25,7 @@ test('ellipsizes cue-list action labels instead of wrapping', async ({ page }) =
       toolbar.style.width = '180px';
       toolbar.style.maxWidth = '180px';
     }
-    return ['#batch-operations-btn', '#filter-over'].map((selector) => {
+    return ['#text-process-btn', '#filter-over'].map((selector) => {
       const button = document.querySelector(selector);
       const style = button ? getComputedStyle(button) : null;
       const rect = button?.getBoundingClientRect();

@@ -71,7 +71,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;

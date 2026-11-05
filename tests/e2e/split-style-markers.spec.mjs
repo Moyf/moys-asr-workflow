@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
+import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer, addTextProcessStep, removeTextProcessPrefill } from './helpers.mjs';
 let server, tempDir;
 test.beforeAll(async () => {
   tempDir = makeTempDir('split-styles');
@@ -192,13 +192,15 @@ test('ordered style toggles, custom wrapping, scope changes and options preserve
     MaweTextProcess.openTextProcessModal();
   });
   const preset = id => page.locator(`[data-wrap-preset-id="${id}"]`);
-  await page.locator('#text-process-trim').check();
+  await removeTextProcessPrefill(page);
+  await addTextProcessStep(page, 'trim');
   await page.locator('.text-process-preview-toggle').click();
+  await addTextProcessStep(page, 'wrap');
   await preset('emphasis').click();
   await preset('large').click();
   await preset('custom').click();
-  await page.locator('#text-process-prefix-input').fill('【');
-  await page.locator('#text-process-suffix-input').fill('】');
+  await page.locator('#text-preset-rules').getByRole('textbox', { name: '左侧添加' }).fill('【');
+  await page.locator('#text-preset-rules').getByRole('textbox', { name: '右侧添加' }).fill('】');
   await expect(page.locator('#text-process-preview details[open]')).toHaveCount(1);
   await expect(page.locator('#text-process-preview')).toContainText('**++【甲】++**');
   await expect(preset('emphasis')).toHaveAttribute('aria-pressed', 'true');
@@ -206,7 +208,7 @@ test('ordered style toggles, custom wrapping, scope changes and options preserve
   await expect(preset('custom')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#text-process-selected-only').uncheck();
   await expect(page.locator('#text-process-preview details[open]')).toHaveCount(2);
-  await page.locator('#text-process-capitalize').check();
+  await addTextProcessStep(page, 'capitalize');
   await expect(page.locator('#text-process-preview details[open]')).toHaveCount(2);
   await preset('emphasis').click();
   await preset('emphasis').click();
