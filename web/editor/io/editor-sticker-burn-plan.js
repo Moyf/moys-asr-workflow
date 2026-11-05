@@ -67,9 +67,10 @@
 
   // 烧录表情包载荷。mode:
   // - 'fixed'（默认）：所有表情包出现在 preview.sticker 几何对应位置；
-  // - 'cue-left'：显示窗口与主字幕句重叠的段贴在该句第一个字左侧（placement
-  //   模块按排版计划推导，placement 自带 align=right），句间空隙 / legacy 句 /
-  //   会出画等回退段 align=center（与方案一相同的服务端 contain 居中）。
+  // - 'cue-left'：显示窗口与字幕句（主轨优先、叠加轨兜底）重叠的段贴在该句
+  //   第一个字左侧（placement 模块按排版计划推导，placement 自带 align=right），
+  //   句间空隙 / legacy 句 / 会出画等回退段 align=center（与方案一相同的服务端
+  //   contain 居中）。
   // plan 是 buildAss(onAssPlan) 的排版计划——与请求携带的 ASS 文本同一份
   // （同一时间轴、同一折行结果），保证字幕与表情包位置同源。
   // 返回 {mode, placements} 对象（服务端按 placement 的 align 决定 contain

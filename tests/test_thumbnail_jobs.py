@@ -70,12 +70,30 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
         ])
 
     def test_claim_batch_and_lease_limits(self):
-        self.assertEqual(len(self.coordinator.claim('v', [str(i) for i in range(100)], 'o')), 16)
-        for index in range(64):
-            self.coordinator.lease(str(index), 'v')
-        with self.assertRaises(RuntimeError):
-            self.coordinator.lease('overflow', 'v')
-        self.coordinator.lease('0', 'v', playing=True)
+        # 上限测试与真实时长解耦：逐个创建 64 个租约一旦跨过 8s TTL，早期租约
+        # 会被 _expire 清掉，第 65 个就不再抛错（Windows CI 偶发失败的机制）。
+        # 过期行为本身由 test_lease_expiry_cleans_rows_after_ttl 用时钟推进覆盖。
+        with mock.patch('maw.thumbnail_jobs.time.time', return_value=500.0):
+            self.assertEqual(len(self.coordinator.claim('v', [str(i) for i in range(100)], 'o')), 16)
+            for index in range(64):
+                self.coordinator.lease(str(index), 'v')
+            with self.assertRaises(RuntimeError):
+                self.coordinator.lease('overflow', 'v')
+            self.coordinator.lease('0', 'v', playing=True)
+
+    def test_lease_expiry_cleans_rows_after_ttl(self):
+        """时钟推过 LEASE_SECONDS 后 _expire 清掉过期租约行，腾出的名额立即可复用。"""
+        with mock.patch('maw.thumbnail_jobs.time.time', return_value=1000.0):
+            self.coordinator.lease('gone', 'v', playing=True)
+            self.assertTrue(self.coordinator.paused('v'))
+        with mock.patch('maw.thumbnail_jobs.time.time', return_value=1000.0 + 9.0):
+            self.assertFalse(self.coordinator.paused('v'), '过期租约不再视为暂停')
+            with self.coordinator._db() as db:
+                self.assertIsNone(db.execute("SELECT 1 FROM leases WHERE id='gone'").fetchone(),
+                    '过期租约行已被 _expire 删除')
+            self.coordinator.lease('fresh', 'v')
+            with self.coordinator._db() as db:
+                self.assertEqual(db.execute('SELECT count(*) FROM leases').fetchone()[0], 1)
 
     def test_keyframe_pass_resumes_with_fresh_cancellation_and_configured_tools(self):
         from maw import thumbnail_cache, thumbnails

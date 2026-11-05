@@ -73,6 +73,16 @@ class ThumbnailCacheTests(unittest.TestCase):
         self.assertIsNone(c.read_asset(self.media, asset, cache_revision="wrong"))
         self.assertIsNone(c.read_asset(self.media, "../../outside"))
 
+    def test_audio_only_source_skips_base_build_after_probe(self):
+        """无视频流（纯音频输入）时画面缓存在探测后早退：不解码帧、不落盘。"""
+        with mock.patch.object(c, "probe_video", return_value=None) as probe:
+            manifest = self.build()
+        probe.assert_called_once()
+        self.assertEqual(manifest, {"schema": c.SCHEMA, "state": "unavailable",
+            "samples": [], "assets": [], "base_complete": False})
+        self.assertEqual(self.calls, [], "早退不得触发任何批次解码")
+        self.assertFalse(c.base_path(self.media).exists(), "音频输入不产生画面缓存文件")
+
     def test_no_base_asset_revision_is_stable_across_status_requests(self):
         c.get_or_extract_frames(self.media, [0], extractor=self.extract)
         first = c.sample_manifest(self.media, [0])

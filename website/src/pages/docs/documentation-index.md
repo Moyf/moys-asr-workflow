@@ -207,7 +207,7 @@ source: "docs/INDEX.md"
 <a name="engineering-website"></a>
 ### 官网源文档同步
 
-[同步与构建](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md)
+[同步与构建](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) · [官网需求与设计](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/PROJECT_BRIEF.md) · [素材来源](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/ASSETS.md) · [改版人工核验](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.1/261021_官网改版/官网改版.checklist.md)
 
 <a name="engineering-releases"></a>
 ### 版本更新文档与发布管线

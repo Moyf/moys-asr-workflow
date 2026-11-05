@@ -1,17 +1,9 @@
 ---
-import BaseLayout from './BaseLayout.astro';
+import UpdatesLayout from './UpdatesLayout.astro';
 import { sitePath } from '../lib/site-path';
 import releaseData from '../generated/releases.json';
-import '../styles/docs.css';
-import '../styles/releases.css';
 
-interface Download { platform: string; arch: string; variant: string; url: string; size_bytes: number }
-interface ReleaseEntry {
-  version: string; date: string; published_at: string | null; summary: string;
-  notes_url: string; notes_json_url: string; github_url: string;
-  downloads: Download[]; base: string | null;
-}
-interface ReleaseIndex { mode: 'preview' | 'published'; latest_stable: string | null; releases: ReleaseEntry[] }
+import type { ReleaseIndex } from '../lib/releases';
 
 const { frontmatter = {} } = Astro.props;
 const data = releaseData as ReleaseIndex;
@@ -43,8 +35,8 @@ const date = (release?.published_at || release?.date || '').slice(0, 10);
 const variantName = (variant: string) => ({ full: '完整版', lite: '轻量版' }[variant] ?? '安装包');
 ---
 
-<BaseLayout title={`${frontmatter.title ?? `MAW ${version} 更新`} — MAW`} description={release?.summary ?? 'MAW 版本更新说明。'}>
-  <main class="releases-page shell release-detail-page">
+<UpdatesLayout title={`${frontmatter.title ?? `MAW ${version} 更新`} — MAW`} description={release?.summary ?? 'MAW 版本更新说明。'}>
+  <main class="releases-page release-detail-page" id="content">
     <header class="release-masthead">
       <a class="release-wordmark" href={sitePath('releases/')}>MAW <span>/ UPDATES</span></a>
       <nav aria-label="更新记录导航">
@@ -69,7 +61,7 @@ const variantName = (variant: string) => ({ full: '完整版', lite: '轻量版'
         </nav>
       </aside>
 
-      <article class="docs-content release-article">
+      <article class="release-article">
         {!release ? (
           <div class="release-missing"><p>没有找到此版本的发布信息。</p><a href={sitePath('releases/')}>返回更新记录</a></div>
         ) : (
@@ -118,7 +110,7 @@ const variantName = (variant: string) => ({ full: '完整版', lite: '轻量版'
               </details>
             )}
 
-            <section class="release-notes" aria-label="版本更新内容">
+            <section class="release-notes release-prose" aria-label="版本更新内容">
               <slot />
             </section>
           </>
@@ -126,4 +118,4 @@ const variantName = (variant: string) => ({ full: '完整版', lite: '轻量版'
       </article>
     </div>
   </main>
-</BaseLayout>
+</UpdatesLayout>
