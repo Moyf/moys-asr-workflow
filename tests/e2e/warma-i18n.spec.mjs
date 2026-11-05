@@ -38,7 +38,6 @@ test('ASS style choices follow language while custom names remain literal', asyn
 test('English preset editing, confirmations and rule errors remain understandable', async ({ page }) => {
   await page.evaluate(() => { MaweBoot.DATA.segments[0].text = '删除'; MaweTextProcess.openTextProcessModal(); });
   await expect(page.locator('#text-preset-select')).toBeEnabled();
-  await page.locator('#text-preset-add-rule').click();
   const rule = page.locator('.text-preset-rule').first();
   const find = rule.locator('input[type="text"]').nth(0);
   const replacement = rule.locator('input[type="text"]').nth(1);
@@ -49,7 +48,10 @@ test('English preset editing, confirmations and rule errors remain understandabl
   await expect(find).toHaveAttribute('aria-label', '查找');
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
   await expect(find).toHaveAttribute('aria-label', 'Find');
-  await expect(page.locator('#text-process-preview')).toContainText('Enter search text');
+  const preview = page.locator('#text-process-preview');
+  await expect(preview).toContainText('Add processing steps on the left to preview subtitle changes.');
+  await addTextProcessStep(page, 'replace');
+  await expect(preview).toContainText('Enter search text');
   await find.fill('(');
   await rule.getByLabel('Regex').check();
   await expect(page.locator('#text-process-preview')).toContainText('Invalid regular expression');
@@ -113,7 +115,8 @@ test('invalid imports retain the library and explain the error in English', asyn
   }] };
   await page.locator('#text-preset-import').setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(invalid)) });
   await expect(page.locator('#text-preset-import-status')).toHaveText('Import failed: Invalid preset operations');
-  await expect(page.locator('#text-preset-import-confirm')).toBeDisabled();
+  await expect(page.locator('#text-preset-import-warning')).toBeHidden();
+  await expect(page.locator('#text-preset-import-confirm')).toBeHidden();
   await page.locator('#text-preset-import-cancel').click();
   await expect(page.locator('#text-preset-select option:checked')).toHaveText('Keep me');
   const expanded = {
@@ -129,7 +132,8 @@ test('invalid imports retain the library and explain the error in English', asyn
   expect(buffer.byteLength).toBeLessThan(1024 * 1024);
   await page.locator('#text-preset-import').setInputFiles({ name: 'expanded.json', mimeType: 'application/json', buffer });
   await expect(page.locator('#text-preset-import-status')).toHaveText('Import failed: File is too large');
-  await expect(page.locator('#text-preset-import-confirm')).toBeDisabled();
+  await expect(page.locator('#text-preset-import-warning')).toBeHidden();
+  await expect(page.locator('#text-preset-import-confirm')).toBeHidden();
   await page.locator('#text-preset-import-cancel').click();
   await expect(page.locator('#text-preset-select option:checked')).toHaveText('Keep me');
 });
@@ -156,7 +160,6 @@ test('a slow regular expression reports a timeout without changing subtitles', a
     MaweBoot.DATA.segments[0].text = 'a'.repeat(40) + '!';
     MaweCuePanel.renderAll(); MaweTextProcess.openTextProcessModal();
   });
-  await page.locator('#text-preset-add-rule').click();
   const rule = page.locator('.text-preset-rule').first();
   await rule.getByLabel('Regex').check();
   await rule.getByRole('textbox', { name: 'Find' }).fill('(a+)+$');
@@ -173,7 +176,6 @@ test('English users see a warning when processing cannot preserve word timings',
     MaweCuePanel.renderAll();
     MaweTextProcess.openTextProcessModal();
   });
-  await addTextProcessStep(page, 'replace');
   await page.getByRole('textbox', { name: 'Find' }).fill('hello');
   await page.locator('#text-process-confirm').click();
   await expect(page.locator('.hint-card.hint-warning')).toHaveText(

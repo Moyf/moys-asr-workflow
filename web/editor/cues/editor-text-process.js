@@ -18,6 +18,8 @@
   const importDialog = $('text-preset-import-dialog');
   const importStatus = $('text-preset-import-status');
   const importPreview = $('text-preset-import-preview');
+  const importTitle = $('text-preset-import-title');
+  const importWarning = $('text-preset-import-warning');
   const importConfirm = $('text-preset-import-confirm');
   const importCancel = $('text-preset-import-cancel');
   const projectStatus = $('text-process-project-status');
@@ -33,6 +35,7 @@
   let wrapCharsScope = [];
 
   let steps = [];
+  let prefilledStep;
   let selectedPreset = '';
   let selection = [];
   let previewController = null;
@@ -215,10 +218,11 @@
     const { defaultPresetId, presets } = MaweProcessing.library;
     const saved = presets.some(({ id }) => id === selectedPreset);
     const available = !reading && !writing;
-    const valid = steps.length > 0;
+    const valid = steps.length > 0 && !hasUntouchedPrefill();
     presetSelect.disabled = !available;
     importCancel.disabled = writing;
-    for (const id of ['text-preset-export', 'text-preset-import-button', 'text-preset-import']) $(id).disabled = !available;
+    $('text-preset-export-current').disabled = !available || !saved;
+    for (const id of ['text-preset-export-library', 'text-preset-import-button', 'text-preset-import']) $(id).disabled = !available;
     $('text-preset-add-rule').disabled = steps.length >= maxSteps;
     $('text-preset-save-as').disabled = !available || !valid || presets.length >= 100;
     $('text-preset-save').disabled = !available || !saved || !valid;
@@ -260,6 +264,7 @@
     selectedPreset = project === undefined ? preset?.id || '' : '';
     steps = structuredClone(project ?? preset?.steps ?? []);
     if (!preserveScope) setPresetScope(project === undefined ? preset?.scope : undefined);
+    if (!selectedPreset) prefillEmptySteps();
     renderPresets();
     renderSteps();
   }
@@ -495,7 +500,7 @@
       preview.textContent = '需要先选中至少1条字幕才可启用';
       return;
     }
-    const hasSteps = steps.some((step) => step.enabled !== false);
+    const hasSteps = !hasUntouchedPrefill() && steps.some((step) => step.enabled !== false);
     preview.textContent = hasSteps ? '正在生成预览…' : emptyPreview;
     if (!hasSteps) return;
     const controller = new AbortController();
@@ -527,6 +532,21 @@
   function createStep(type) {
     if (type === 'replace') return { type, find: '', replacement: '', regex: false, caseSensitive: false };
     return type === 'wrap' ? { type, wraps: [] } : { type };
+  }
+
+  // 空步骤时预填一步「替换文本」，降低首次使用的上手成本。工程覆盖「显式留空」
+  // （空数组）时不预填；只在本函数被调用（打开弹窗/切换预设）时补一次，
+  // 用户删除后不强制回填。
+  function prefillEmptySteps() {
+    if (steps.length || MaweProcessing.projectOverride('text')?.length === 0) return;
+    prefilledStep = createStep('replace');
+    steps = [prefilledStep];
+  }
+
+  function hasUntouchedPrefill() {
+    return steps.length === 1 && steps[0] === prefilledStep && !prefilledStep.find
+      && !prefilledStep.replacement && !prefilledStep.regex && !prefilledStep.caseSensitive
+      && prefilledStep.enabled === undefined;
   }
 
   async function openTextProcessModal({ replaceSelection } = {}) {
@@ -628,7 +648,9 @@
   selectedOnly.addEventListener('change', schedulePreview);
   apply.addEventListener('click', confirm);
   $('text-preset-add-rule').addEventListener('click', () => {
-    steps = [...steps, createStep(stepType.value)];
+    // 第一次添加其他步骤时，让它接替尚未编辑的预填项。
+    const existing = hasUntouchedPrefill() ? [] : steps;
+    steps = [...existing, createStep(stepType.value)];
     renderSteps();
     const row = stepList.lastElementChild;
     (row?.querySelector('input[type="text"], .text-process-wrap-preset-buttons button') || row?.querySelector('input'))?.focus();
@@ -638,6 +660,7 @@
     const preset = MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
     steps = structuredClone(preset?.steps || []);
     if (preset) setPresetScope(preset.scope);
+    else prefillEmptySteps();
     renderSteps();
   });
   const currentScope = () => selectedOnly.checked ? 'selected' : 'all';
@@ -674,6 +697,16 @@
     menu.querySelector('summary').focus();
   }
 
+  // 导入单条预设时生成不与现有预设重名的名称（「原名 (2)」「原名 (3)」…）。
+  function uniquePresetName(name) {
+    const names = new Set(MaweProcessing.library.presets.map(({ name }) => name));
+    if (!names.has(name)) return name;
+    for (let index = 2; ; index++) {
+      const candidate = name + ' (' + index + ')';
+      if (!names.has(candidate)) return candidate;
+    }
+  }
+
   function closeImport({ restoreFocus = false } = {}) {
     importRequest = undefined;
     pendingImport = undefined;
@@ -682,20 +715,21 @@
     if (restoreFocus) presetFileMenu.querySelector('summary').focus();
   }
 
-  function renderImport({ presets, defaultPresetId }) {
+  function renderImport({ kind, presets, defaultPresetId, preset }) {
+    const rows = kind === 'single' ? [preset] : presets;
     const list = document.createElement('ul');
-    for (const preset of presets) {
+    for (const row of rows) {
       const item = document.createElement('li');
       const title = document.createElement('strong');
       title.dataset.markerProjectContent = '';
-      title.textContent = preset.name + (preset.id === defaultPresetId ? ' ★' : '');
+      title.textContent = row.name + (kind === 'library' && row.id === defaultPresetId ? ' ★' : '');
       const scope = document.createElement('small');
       scope.className = 'text-preset-import-scope';
-      scope.textContent = preset.scope === 'selected' ? '仅处理选中字幕' : '全部字幕';
+      scope.textContent = row.scope === 'selected' ? '仅处理选中字幕' : '全部字幕';
       item.append(title, scope);
-      if (preset.steps.length) {
+      if (row.steps.length) {
         const recipe = document.createElement('ol');
-        for (const step of preset.steps) {
+        for (const step of row.steps) {
           const line = document.createElement('li');
           line.append(document.createTextNode(stepLabels[step.type]));
           if (step.enabled === false) line.append(' · ', translate('已停用'));
@@ -725,19 +759,39 @@
       }
       list.append(item);
     }
-    if (presets.length) importPreview.replaceChildren(list);
+    if (kind === 'single' || rows.length) importPreview.replaceChildren(list);
     else importPreview.textContent = '此文件不含预设。确认后会清空现有预设库。';
   }
 
-  $('text-preset-export').addEventListener('click', () => {
+  // 导出优先走系统的「另存为」对话框（可选路径和文件名）；环境不支持或失败时
+  // 回退为普通 blob 下载。AbortError 是用户在对话框里点了取消，静默返回。
+  async function exportPresetFile(suggestedName, payload) {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    if (MaweHost.files.hasSavePicker()) {
+      try {
+        const handle = await MaweHost.files.pickSaveFile({
+          suggestedName,
+          types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+        });
+        await MaweHost.files.writeBlob(handle, () => blob);
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+    }
+    MaweHost.files.downloadBlob(blob, suggestedName);
+  }
+
+  $('text-preset-export-current').addEventListener('click', async () => {
+    dismissMenu(presetFileMenu);
+    const preset = MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
+    if (!preset) return;
+    await exportPresetFile(preset.name + '.json', preset);
+  });
+  $('text-preset-export-library').addEventListener('click', async () => {
     dismissMenu(presetFileMenu);
     const { schema, presets, defaultPresetId } = MaweProcessing.library;
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ schema, presets, defaultPresetId }, null, 2)], { type: 'application/json' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'text-processing-presets.json';
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    await exportPresetFile('处理预设库.json', { schema, presets, defaultPresetId });
   });
   $('text-preset-import-button').addEventListener('click', () => {
     dismissMenu(presetFileMenu);
@@ -751,6 +805,9 @@
     pendingImport = undefined;
     importPreview.replaceChildren();
     importPreview.hidden = true;
+    importTitle.textContent = translate('导入处理预设');
+    importWarning.hidden = true;
+    importConfirm.hidden = true;
     importConfirm.disabled = true;
     importStatus.textContent = '正在核验预设文件…';
     importDialog.showModal();
@@ -761,10 +818,18 @@
       try { parsed = JSON.parse(text); } catch { throw new Error('文件不是有效的 JSON'); }
       const imported = MaweProcessing.validateImport(parsed);
       if (request !== importRequest) return;
+      const single = imported.kind === 'single';
+      importTitle.textContent = translate(single ? '导入单条处理预设' : '导入处理预设');
+      importWarning.textContent = translate(single
+        ? '确认后会作为新预设加入当前预设库，不会改动现有预设和默认设置。'
+        : '确认后会替换现有预设库和默认预设设置。');
+      importConfirm.textContent = translate(single ? '加入预设库' : '确认替换预设库');
       renderImport(imported);
       pendingImport = imported;
       importStatus.textContent = '';
       importPreview.hidden = false;
+      importWarning.hidden = false;
+      importConfirm.hidden = false;
       importConfirm.disabled = false;
     } catch (error) {
       if (request === importRequest) importStatus.textContent = '导入失败：' + error.message;
@@ -777,11 +842,22 @@
   });
   importConfirm.addEventListener('click', async () => {
     if (!pendingImport || writing) return;
-    const { presets, defaultPresetId } = pendingImport;
     const request = importRequest;
     importConfirm.disabled = true;
     importStatus.textContent = '正在保存预设库…';
-    const status = await saveLibrary((draft) => Object.assign(draft, { presets, defaultPresetId }), '');
+    let status;
+    if (pendingImport.kind === 'single') {
+      const preset = {
+        ...structuredClone(pendingImport.preset),
+        id: crypto.randomUUID(),
+        name: uniquePresetName(pendingImport.preset.name),
+      };
+      // Append without changing which preset the current form edits.
+      status = await saveLibrary((draft) => { draft.presets.push(preset); });
+    } else {
+      const { presets, defaultPresetId } = pendingImport;
+      status = await saveLibrary((draft) => Object.assign(draft, { presets, defaultPresetId }), '');
+    }
     if (request !== importRequest) return;
     if (status === 'saved') closeImport({ restoreFocus: true });
     else {

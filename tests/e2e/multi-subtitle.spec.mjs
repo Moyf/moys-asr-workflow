@@ -9,7 +9,7 @@ import {
   buildPortableBlankEditor,
   generateWaveformPayload,
   makeTempDir,
-  startStaticServer, closeSettingsPanels, dragFloatingPanelAwayFrom, openSettingsPage, setProjectTrackEnabled, toggleGlobalSettings, addTextProcessStep } from './helpers.mjs';
+  startStaticServer, closeSettingsPanels, dragFloatingPanelAwayFrom, openSettingsPage, setProjectTrackEnabled, toggleGlobalSettings, addTextProcessStep, removeTextProcessPrefill } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -1248,8 +1248,8 @@ test('applies text processing to selected extension subtitles', async ({ page })
 
   const row = page.locator('.multi-dual-cue').first();
   await row.locator('.multi-cue-column.extension .text').click();
-  await page.locator('#batch-operations-btn').click();
   await page.locator('#text-process-btn').click();
+  await removeTextProcessPrefill(page);
   await expect(page.locator('#text-process-selected-only')).toBeChecked();
   const step = await addTextProcessStep(page, 'wrap');
   await step.getByRole('button', { name: '自定义' }).click();

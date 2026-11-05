@@ -769,7 +769,7 @@ __WAVEFORM_CSS__
         <h5 class="help-subtitle">字幕列表</h5>
         <div class="help-category">
           <span><kbd>纯文本编辑</kbd> 集中编辑字幕文本，可预览拆分、合并和字词时间码映射</span>
-          <span><kbd>文本处理</kbd> 按步骤替换、修剪空白或转换格式，并预览最终结果</span>
+          <span><kbd>字幕处理</kbd> 按步骤替换、修剪空白或转换格式，并预览最终结果</span>
         </div>
       </section>
       <section class="help-subgroup">
@@ -2330,12 +2330,7 @@ __WAVEFORM_CSS__
       </div>
       <span class="info cue-list-count">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
       <button type="button" id="timed-text-edit-btn" title="集中编辑字幕文本，并预览拆分、合并和字词时间码映射结果" aria-label="纯文本编辑">📝</button>
-      <div class="dropdown batch-operations-dropdown" id="batch-operations-dropdown">
-        <button type="button" id="batch-operations-btn" aria-expanded="false" aria-controls="batch-operations-menu" aria-haspopup="menu">批量操作 ▾</button>
-        <div class="dropdown-menu" id="batch-operations-menu" role="menu">
-          <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理</button>
-        </div>
-      </div>
+      <button type="button" id="text-process-btn" title="对字幕进行查找替换、修剪空白、前后添加字符等批量操作">字幕处理</button>
       <span class="sep" id="filter-over-sep"></span>
       <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）" aria-label="仅看超长" aria-pressed="false">🧐</button>
     </div>
@@ -2499,27 +2494,28 @@ __WAVEFORM_CSS__
     </p>
     <div class="text-process-columns">
       <div class="text-process-column">
-        <div class="processing-controls">
-          <label for="text-preset-select">处理预设</label>
-          <select id="text-preset-select"></select>
-          <details class="text-process-menu" id="text-preset-file-menu">
-            <summary>导入 / 导出</summary>
-            <div class="text-process-menu-items">
-              <button type="button" id="text-preset-export">导出处理预设</button>
-              <button type="button" id="text-preset-import-button">导入处理预设</button>
-            </div>
-          </details>
-          <input type="file" id="text-preset-import" accept="application/json,.json" hidden>
+        <div class="text-preset-group">
+          <div class="processing-controls text-preset-controls">
+            <label for="text-preset-select">处理预设</label>
+            <select id="text-preset-select"></select>
+            <button type="button" id="text-preset-save-as">另存为新预设</button>
+            <button type="button" id="text-preset-save">更新预设</button>
+            <button type="button" id="text-preset-rename">重命名</button>
+            <button type="button" id="text-preset-delete">删除</button>
+            <button type="button" id="text-preset-default">设为默认</button>
+            <details class="text-process-menu" id="text-preset-file-menu">
+              <summary>导入导出</summary>
+              <div class="text-process-menu-items">
+                <button type="button" id="text-preset-export-current">导出当前预设</button>
+                <button type="button" id="text-preset-export-library">导出整个预设库</button>
+                <button type="button" id="text-preset-import-button">导入处理预设</button>
+              </div>
+            </details>
+            <input type="file" id="text-preset-import" accept="application/json,.json" hidden>
+          </div>
+          <p class="modal-hint" id="text-preset-status" aria-live="polite"></p>
+          <p class="modal-hint" id="text-process-storage-scope" hidden>预设仅存于当前浏览器</p>
         </div>
-        <div class="processing-controls text-preset-controls">
-          <button type="button" id="text-preset-save-as">另存为新预设</button>
-          <button type="button" id="text-preset-save">更新预设</button>
-          <button type="button" id="text-preset-rename">重命名</button>
-          <button type="button" id="text-preset-delete">删除</button>
-          <button type="button" id="text-preset-default">设为默认</button>
-        </div>
-        <p class="modal-hint" id="text-preset-status" aria-live="polite"></p>
-        <p class="modal-hint" id="text-process-storage-scope" hidden>预设仅存于当前浏览器</p>
         <div class="processing-controls text-process-project-controls">
           <span class="text-process-control-label">本工程预填</span>
           <span id="text-process-project-status" aria-live="polite"></span>
@@ -2537,14 +2533,17 @@ __WAVEFORM_CSS__
           <select id="text-process-step-type">
             <option value="replace">替换文本</option>
             <option value="trim">修剪前后空白</option>
-            <option value="capitalize">首字母大写</option>
-            <option value="convertChineseNumbers">文字转数字</option>
             <option value="wrap">左右添加字符</option>
+            <option value="convertChineseNumbers">文字转数字</option>
+            <option value="capitalize">首字母大写</option>
             <option value="stripMarkdown">去除格式符号</option>
           </select>
           <button type="button" id="text-preset-add-rule">添加步骤</button>
         </div>
-        <ol id="text-preset-rules" class="processing-steps"></ol>
+        <div class="text-process-step-scroll">
+          <ol id="text-preset-rules" class="processing-steps"></ol>
+          <p class="modal-hint text-process-steps-hint">在上方选择处理步骤后点击「添加步骤」来增加处理。</p>
+        </div>
       </div>
       <div class="text-process-column">
         <div id="text-process-scope-info" class="text-process-scope-info">当前范围：全部字幕</div>

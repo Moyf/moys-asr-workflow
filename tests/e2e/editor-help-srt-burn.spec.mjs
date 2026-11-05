@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, closeSettingsPanels, disableOnboarding, findFreePort,
-  generateWaveformPayload, makeTempDir, openSettingsPage, startServer, addTextProcessStep } from './helpers.mjs';
+  generateWaveformPayload, makeTempDir, openSettingsPage, startServer, addTextProcessStep, removeTextProcessPrefill } from './helpers.mjs';
 
 let dir, server;
 test.beforeAll(async () => {
@@ -78,12 +78,13 @@ test('right-click and batch wrapping preserve single fade markers with undo', as
   });
   await page.locator('.word-timing-advanced > .item').hover();
   await page.locator('#ctxmenu').getByText('左右添加字符', { exact: true }).click();
-  await page.locator('#ctxmenu').getByText('放大文本', { exact: true }).click();
+  await page.locator('#ctxmenu').getByText('放大', { exact: true }).click();
   expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('>++HELLO++<');
   await page.locator('#undo-btn').click();
   expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('>HELLO<');
   expect(await page.evaluate(() => MaweSettings.EDITOR_SETTINGS.assMode)).toBe(true);
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
+  await removeTextProcessPrefill(page);
   const step = await addTextProcessStep(page, 'wrap');
   await step.locator('[data-wrap-preset-id="large"]').click();
   await page.locator('#text-process-confirm').click();

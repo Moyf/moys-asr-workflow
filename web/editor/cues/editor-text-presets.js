@@ -101,8 +101,15 @@
   }
 
   function validateImport(value) {
+    if (value && typeof value === 'object' && !Array.isArray(value) && !Array.isArray(value.presets)) {
+      // 单条预设文件：形如 { name, steps }（scope 可缺省为 'all'）。
+      if (!text(value.name, 160) || !value.name.trim() || !('steps' in value)) throw new Error('预设格式无效');
+      const scope = value.scope === undefined ? 'all' : value.scope;
+      if (!['all', 'selected'].includes(scope)) throw new Error('预设格式无效');
+      return { kind: 'single', preset: { name: value.name.trim(), scope, steps: normalizeSteps(value.steps) } };
+    }
     const { presets, defaultPresetId } = validate(value);
-    return validateForSave({ ...library, presets, defaultPresetId });
+    return { kind: 'library', ...validateForSave({ ...library, presets, defaultPresetId }) };
   }
 
   async function persist(next) {

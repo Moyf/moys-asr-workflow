@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer, addTextProcessStep } from './helpers.mjs';
+import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer, addTextProcessStep, removeTextProcessPrefill } from './helpers.mjs';
 
 let server, dir;
 test.beforeAll(async () => { dir = makeTempDir('warma'); server = await startBlankServer(await findFreePort(), dir); });
@@ -18,7 +18,7 @@ test.beforeEach(async ({ page }) => {
 test('preset rules preview, persist, reload and undo', async ({ page }, info) => {
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
   await expect(page.locator('#text-preset-status')).toHaveText('');
-  await addTextProcessStep(page, 'replace');
+  // 打开弹窗时空步骤已预填一步「替换文本」，直接填它的查找内容。
   await page.getByRole('textbox', { name: '查找' }).fill('嗯');
   await addTextProcessStep(page, 'trim');
   await expect(page.locator('#text-process-preview')).toContainText('处理后：123');
@@ -86,6 +86,7 @@ test('ordered rules preview and apply literal replacement text', async ({ page }
     MaweBoot.DATA.segments[0].text = 'AbA';
     MaweCuePanel.renderAll(); MaweTextProcess.openTextProcessModal();
   });
+  await removeTextProcessPrefill(page);
   for (const [find, replace] of [['a', 'x'], ['x', '$1'], ['b', 'wrong']]) {
     await page.locator('#text-preset-add-rule').click();
     const row = page.locator('.text-preset-rule').last();
@@ -146,7 +147,6 @@ test('deleting a complete cue keeps the project row and exports re-importable SR
     ];
     MaweCuePanel.renderAll(); MaweTextProcess.openTextProcessModal();
   });
-  await addTextProcessStep(page, 'replace');
   await page.getByRole('textbox', { name: '查找' }).fill('嗯');
   await expect(page.locator('#text-process-preview')).toContainText('预计修改 1 条');
   await page.locator('#text-process-confirm').click();
@@ -209,7 +209,9 @@ test('pending save cannot relabel a reopened custom form as the saved preset', a
   release();
   await expect(page.locator('#text-preset-status')).toHaveText('预设库已保存');
   await expect(page.locator('#text-preset-select')).toHaveValue('');
-  await expect(page.locator('#text-preset-rules > li')).toHaveCount(0);
+  // 空的自定义步骤会预填一步「替换文本」，不再是空列表。
+  await expect(page.locator('#text-preset-rules > li')).toHaveCount(1);
+  await expect(page.locator('#text-preset-rules > li').first()).toContainText('替换文本');
 });
 
 test('a selected-only user default never falls back to the full main track', async ({ page }) => {
@@ -223,6 +225,7 @@ test('a selected-only user default never falls back to the full main track', asy
   const presetSelect = page.locator('#text-preset-select');
   const apply = page.locator('#text-process-confirm');
   await expect(selectedOnly).toBeChecked();
+  await removeTextProcessPrefill(page);
   await addTextProcessStep(page, 'trim');
   page.once('dialog', dialog => dialog.accept('Only selected cues'));
   await page.locator('#text-preset-save-as').click();
@@ -333,8 +336,84 @@ test('import previews ordered steps and replaces presets only after confirmation
   await expect(toggle).toHaveText('设为默认');
   await toggle.click();
   await expect(select.locator('option:checked')).toHaveText('带有两步的预设 ★');
+  // 导出整库：走「另存为」选择器（stub），文件名与内容为完整预设库。
+  await page.evaluate(() => {
+    window.__exportedFile = null;
+    window.showSaveFilePicker = async ({ suggestedName }) => ({
+      name: suggestedName,
+      createWritable: async () => ({
+        write: async (data) => { window.__exportedFile = { name: suggestedName, text: await data.text() }; },
+        close: async () => {},
+      }),
+    });
+  });
+  await page.locator('#text-preset-file-menu summary').click();
+  await page.getByRole('button', { name: '导出整个预设库' }).click();
+  await expect.poll(() => page.evaluate(() => window.__exportedFile?.name)).toBe('处理预设库.json');
+  const exported = JSON.parse(await page.evaluate(() => window.__exportedFile.text));
+  expect(exported.presets.map((preset) => preset.name)).toEqual(['带有两步的预设']);
+  expect(exported.defaultPresetId).toBe('imported');
+  // 导出当前预设：文件名为「预设名.json」，内容是该预设对象本身。
+  await page.locator('#text-preset-file-menu summary').click();
+  await page.getByRole('button', { name: '导出当前预设' }).click();
+  await expect.poll(() => page.evaluate(() => window.__exportedFile?.name)).toBe('带有两步的预设.json');
+  const exportedPreset = JSON.parse(await page.evaluate(() => window.__exportedFile.text));
+  expect(exportedPreset.name).toBe('带有两步的预设');
+  expect(exportedPreset.steps.map((step) => step.type)).toEqual(['replace', 'trim']);
+  // 环境不支持保存选择器时回退为普通下载。
+  await page.evaluate(() => { window.showSaveFilePicker = undefined; });
   await page.locator('#text-preset-file-menu summary').click();
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出处理预设' }).click();
-  expect((await download).suggestedFilename()).toBe('text-processing-presets.json');
+  await page.getByRole('button', { name: '导出当前预设' }).click();
+  expect((await download).suggestedFilename()).toBe('带有两步的预设.json');
+});
+
+test('importing a single preset keeps the current form and default intact', async ({ page }) => {
+  await page.evaluate(() => MaweTextProcess.openTextProcessModal());
+  const select = page.locator('#text-preset-select');
+  await expect(select).toBeEnabled();
+  await select.selectOption('');
+  const current = page.locator('#text-preset-export-current');
+  await expect(current).toBeDisabled();
+  const find = page.getByRole('textbox', { name: '查找', exact: true });
+  const replacement = page.getByRole('textbox', { name: '替换为' });
+  await find.fill('嗯');
+  await replacement.fill('原步骤');
+  page.once('dialog', dialog => dialog.accept('当前草稿'));
+  await page.locator('#text-preset-save-as').click();
+  await expect(select.locator('option:checked')).toHaveText('当前草稿');
+  await expect(current).toBeEnabled();
+  await replacement.fill('尚未保存');
+  const initialDefault = await page.evaluate(() => MaweProcessing.library.defaultPresetId);
+
+  const chooseFile = async (payload) => {
+    await page.locator('#text-preset-file-menu summary').click();
+    const fileChooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: '导入处理预设' }).click();
+    await (await fileChooser).setFiles({
+      name: 'single.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(payload)),
+    });
+  };
+  await chooseFile({ name: '修剪', scope: 'selected', steps: [{ type: 'trim' }] });
+  const dialog = page.getByRole('dialog', { name: '导入单条处理预设' });
+  await expect(dialog.getByText('确认后会作为新预设加入当前预设库，不会改动现有预设和默认设置。')).toBeVisible();
+  await expect(dialog.locator('strong')).toHaveText('修剪');
+  await expect(dialog.locator('ol > li')).toHaveText(['修剪前后空白']);
+  await dialog.getByRole('button', { name: '加入预设库' }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(select.locator('option:checked')).toHaveText('当前草稿');
+  await expect(replacement).toHaveValue('尚未保存');
+  await expect(page.locator('#text-process-selected-only')).not.toBeChecked();
+  await select.selectOption({ label: '修剪' });
+  await expect(page.locator('#text-preset-rules > li')).toHaveText(/修剪前后空白/);
+  await expect(page.locator('#text-process-selected-only')).toBeChecked();
+
+  await chooseFile({ name: '修剪', steps: [{ type: 'stripMarkdown' }] });
+  await dialog.getByRole('button', { name: '加入预设库' }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(select.locator('option:checked')).toHaveText('修剪');
+  const library = await page.evaluate(async () => (await fetch(MaweBoot.SERVER_CONFIG.textProcessingPresetsUrl)).json());
+  expect(library.presets.find(preset => preset.name === '修剪')).toMatchObject({ scope: 'selected', steps: [{ type: 'trim' }] });
+  expect(library.presets.find(preset => preset.name === '修剪 (2)')).toMatchObject({ scope: 'all', steps: [{ type: 'stripMarkdown' }] });
+  expect(library.defaultPresetId).toBe(initialDefault);
 });

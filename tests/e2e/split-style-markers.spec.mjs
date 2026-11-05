@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer, addTextProcessStep } from './helpers.mjs';
+import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer, addTextProcessStep, removeTextProcessPrefill } from './helpers.mjs';
 let server, tempDir;
 test.beforeAll(async () => {
   tempDir = makeTempDir('split-styles');
@@ -192,6 +192,7 @@ test('ordered style toggles, custom wrapping, scope changes and options preserve
     MaweTextProcess.openTextProcessModal();
   });
   const preset = id => page.locator(`[data-wrap-preset-id="${id}"]`);
+  await removeTextProcessPrefill(page);
   await addTextProcessStep(page, 'trim');
   await page.locator('.text-process-preview-toggle').click();
   await addTextProcessStep(page, 'wrap');

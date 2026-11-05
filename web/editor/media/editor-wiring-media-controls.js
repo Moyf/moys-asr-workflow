@@ -55,6 +55,8 @@ document.addEventListener('keydown', (e) => {
   if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   // 拆分弹窗内方向键用于移动 ✂️ 断点，不再 seek 媒体或微调字幕时间。
   if (MaweDom.multiSubtitleSplitModal?.classList.contains('show')) return;
+  // 文本处理弹窗内方向键用于移动光标/滚动预览，绝不能误改字幕时间或 seek。
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   const target = e.target instanceof Element ? e.target : document.activeElement;
   if (target?.closest?.('.geo-box, input, select, textarea')) return;
   if (target?.closest?.('[role="menu"]')) return;

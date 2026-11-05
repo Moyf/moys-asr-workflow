@@ -984,14 +984,10 @@
   .toolbar.cue-editor-toolbar { overflow-x: hidden; }
   .toolbar.cue-list-toolbar #search { flex: 1 1 auto; min-width: 0; width: 20ch; max-width: 100%; }
   /* 字幕列表操作按钮在窄宽度下保持单行，并用省略号收缩文本。 */
-  .toolbar.cue-list-toolbar #batch-operations-dropdown,
-  .toolbar.cue-list-toolbar #batch-operations-btn,
+  .toolbar.cue-list-toolbar #text-process-btn,
   .toolbar.cue-list-toolbar #filter-over {
     flex: 0 1 auto;
     min-width: 0;
-  }
-  .toolbar.cue-list-toolbar #batch-operations-btn,
-  .toolbar.cue-list-toolbar #filter-over {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2229,11 +2225,6 @@
     left: auto; right: 0;
     width: max-content; min-width: 100%; max-width: 320px;
   }
-  .toolbar .batch-operations-dropdown > .dropdown-menu {
-    position: fixed; left: 0; right: auto; top: 0;
-    width: max-content; min-width: 150px; max-width: min(260px, calc(100vw - 16px));
-    z-index: 1000;
-  }
   /* 颜色过滤：🎨 按钮与工程中存在彩色字幕时的固定定位菜单。 */
   .toolbar #color-filter-btn {
     padding: 3px 7px; font-size: 14px; line-height: 1;
@@ -2308,10 +2299,6 @@
     outline-offset: -2px;
   }
   .toolbar .dropdown-item[hidden] { display: none; }
-  #batch-operations-dropdown.open > #batch-operations-menu {
-    display: flex; flex-direction: column; gap: 4px; padding: 6px;
-    z-index: 1000;
-  }
   .toolbar .multi-subtitle-settings-dropdown > button {
     min-width: 30px; padding: 3px 7px; font-size: 15px; line-height: 1;
   }
@@ -3415,17 +3402,34 @@
   }
   .text-process-columns {
     flex: 1; min-height: min-content; display: grid; gap: 16px;
-    grid-template-columns: minmax(0, 5fr) minmax(0, 4fr);
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
   }
   .text-process-column { display: flex; flex-direction: column; min-height: min-content; min-width: 0; }
   .text-process-column + .text-process-column { padding: 8px 0 0 16px; border-left: 1px solid var(--border-subtle); }
-  .text-process-column > :not(.processing-steps, .text-process-preview) { flex-shrink: 0; }
+  .text-process-column > :not(.text-process-step-scroll, .text-process-preview) { flex-shrink: 0; }
   .text-process-column > .modal-check-row { margin: 0; }
   .text-process-modal .processing-controls > label, .text-process-control-label {
     margin: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600;
   }
   .text-process-column > .processing-controls > select { max-width: min(230px, 100%); }
   .text-process-project-controls { font-size: 12px; color: var(--text-muted); }
+  /* 处理预设操作分组：把整行控件与状态提示框进一个带边框的区块，
+     与下方「本工程预填」「处理步骤」区分开。 */
+  .text-preset-group {
+    flex-shrink: 0; margin-top: 8px; padding: 10px 10px 6px;
+    border: 1px solid var(--btn-border); border-radius: 6px;
+  }
+  .text-preset-group > .processing-controls { margin-top: 0; }
+  /* 控件按下拉、编辑操作、导入导出的顺序排列，空间不足时自然换行。 */
+  .text-preset-controls { flex-wrap: wrap; }
+  .text-preset-controls > label { white-space: nowrap; }
+  #text-preset-select { flex: 1 1 auto; min-width: 7em; max-width: 200px; }
+  .text-preset-controls > button { padding: 3px 5px; white-space: nowrap; }
+  .text-preset-controls > .text-process-menu { margin-left: auto; }
+  #text-preset-file-menu > summary { padding: 3px 6px; white-space: nowrap; }
+  #text-preset-file-menu > summary::after {
+    content: '▾'; margin-left: 4px; color: var(--text-muted); font-size: 10px; line-height: 1;
+  }
   .text-process-preview-title { margin: 12px 0 0; font-size: 13px; color: var(--text-primary); }
   .text-process-menu { position: relative; }
   .text-process-menu[open] { z-index: 2; }
@@ -3434,6 +3438,10 @@
     border-radius: 5px; background: var(--btn-bg); color: var(--text-primary);
   }
   .text-process-menu > summary:hover { background: var(--btn-bg-hover); }
+  /* 「导入导出」按钮改用文本右侧小三角（同工具栏下拉按钮样式），隐藏 details 原生 marker。 */
+  #text-preset-file-menu > summary { list-style: none; }
+  #text-preset-file-menu > summary::-webkit-details-marker { display: none; }
+  .text-process-modal .text-process-steps-hint { color: var(--amber-hover); }
   .text-process-menu-items {
     position: absolute; z-index: 2; top: calc(100% + 4px); left: 0;
     display: grid; gap: 6px; padding: 6px; width: max-content; max-width: 230px;
@@ -3464,6 +3472,7 @@
       padding: 12px 0 0; border: 0; border-top: 1px solid var(--border-subtle);
     }
     .text-process-column > .processing-controls { position: relative; }
+    .text-preset-group > .processing-controls { position: relative; }
     .text-process-menu { position: static; }
     .text-process-menu-items { max-width: min(230px, 100%); }
   }
@@ -3518,15 +3527,13 @@
     border-color: var(--accent-line); color: var(--accent-text);
   }
   .text-process-modal .processing-wrap-fields > .modal-hint { margin: 0; }
-  .text-process-column > .processing-steps, .text-process-modal .text-process-preview {
+  .text-process-step-scroll, .text-process-modal .text-process-preview {
     flex: 1; min-height: 132px; overflow-y: auto; padding: 2px;
     /* The scrollers contribute only their minimum to the column's intrinsic height. */
     contain: size;
     overscroll-behavior: contain;
   }
-  .text-process-column > .processing-steps {
-    align-content: start;
-  }
+  .text-process-step-scroll > .processing-steps:empty { display: none; }
   .text-process-modal .text-process-preview {
     max-height: none; margin-top: 8px;
   }

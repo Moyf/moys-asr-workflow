@@ -7231,11 +7231,11 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
   assert.deepEqual(
     Array.from(helpers.WRAP_CHAR_PRESETS, (preset) => ({ ...preset })),
     [
-      { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
-      { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
-      { id: 'comment', label: '弱化文本', left: '%%', right: '%%', ass: true },
-      { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
-      { id: 'italic', label: '斜体文本', left: '//', right: '//', ass: true },
+      { id: 'emphasis', label: '强调', left: '**', right: '**', ass: true },
+      { id: 'large', label: '放大', left: '++', right: '++', ass: true },
+      { id: 'comment', label: '弱化', left: '%%', right: '%%', ass: true },
+      { id: 'small', label: '缩小', left: '--', right: '--', ass: true },
+      { id: 'italic', label: '斜体', left: '//', right: '//', ass: true },
       { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
       { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
       { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true, sentenceLevel: true },
