@@ -94,9 +94,19 @@
     return raw ? validate(JSON.parse(raw)) : emptyLibrary();
   }
 
+  function validateForSave(value) {
+    const normalized = validate(value);
+    if (new Blob([JSON.stringify(normalized, null, 2)]).size + 1 > 1024 * 1024) throw new Error('文件过大');
+    return normalized;
+  }
+
+  function validateImport(value) {
+    const { presets, defaultPresetId } = validate(value);
+    return validateForSave({ ...library, presets, defaultPresetId });
+  }
+
   async function persist(next) {
-    next = validate(next);
-    if (new Blob([JSON.stringify(next, null, 2)]).size + 1 > 1024 * 1024) throw new Error('文件过大');
+    next = validateForSave(next);
     if (endpoint()) {
       const response = await fetch(endpoint(), {
         method: 'POST',
@@ -205,7 +215,7 @@
   }
 
   global.MaweProcessing = Object.freeze({
-    refresh, update, validate, projectOverride, setProjectOverride,
+    refresh, update, validateImport, projectOverride, setProjectOverride,
     get library() { return library; },
     get portable() { return !endpoint(); },
     get effectiveJoin() { return projectOverride('join') || library.join || legacyJoin() || joinDefaults; },

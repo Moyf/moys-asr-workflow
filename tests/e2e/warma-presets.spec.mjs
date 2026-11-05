@@ -19,7 +19,7 @@ test('preset rules preview, persist, reload and undo', async ({ page }, info) =>
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
   await expect(page.locator('#text-preset-status')).toHaveText('');
   await addTextProcessStep(page, 'replace');
-  await page.getByRole('textbox', { name: '规则 1 查找' }).fill('嗯');
+  await page.getByRole('textbox', { name: '查找' }).fill('嗯');
   await addTextProcessStep(page, 'trim');
   await expect(page.locator('#text-process-preview')).toContainText('处理后：123');
   page.once('dialog', dialog => dialog.accept('游戏清理'));
@@ -27,9 +27,12 @@ test('preset rules preview, persist, reload and undo', async ({ page }, info) =>
   await expect(page.locator('#text-preset-status')).toHaveText('预设库已保存');
   await page.locator('#text-process-modal .modal').screenshot({ path: info.outputPath('text-presets.png') });
   const gap = await page.evaluate(() => {
-    const a = document.querySelector('#text-preset-controls') || document.querySelector('.text-preset-controls');
-    const b = document.querySelector('#text-process-scope-info');
-    return b.getBoundingClientRect().top - a.getBoundingClientRect().bottom;
+    const scope = document.querySelector('#text-process-scope-info');
+    const form = document.querySelector('label[for="text-process-selected-only"]');
+    const hint = document.querySelector('#text-process-selected-only-hint');
+    const title = document.querySelector('#text-process-preview-title');
+    const gap = (a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().bottom;
+    return Math.min(gap(scope, form), gap(form, hint), gap(hint, title));
   });
   expect(gap).toBeGreaterThanOrEqual(8);
   await page.locator('#text-process-confirm').click();
@@ -144,7 +147,7 @@ test('deleting a complete cue keeps the project row and exports re-importable SR
     MaweCuePanel.renderAll(); MaweTextProcess.openTextProcessModal();
   });
   await addTextProcessStep(page, 'replace');
-  await page.getByRole('textbox', { name: '规则 1 查找' }).fill('嗯');
+  await page.getByRole('textbox', { name: '查找' }).fill('嗯');
   await expect(page.locator('#text-process-preview')).toContainText('预计修改 1 条');
   await page.locator('#text-process-confirm').click();
   const output = await page.evaluate(() => {
@@ -269,8 +272,69 @@ test('restoring inheritance waits for the latest user preset scope', async ({ pa
   } finally {
     releaseRead();
   }
+  await page.locator('#text-process-project-menu summary').click();
   await restore.click();
   await expect(page.locator('#text-process-selected-only')).toBeChecked();
   await expect(page.locator('#text-process-preview')).toContainText('需要先选中至少1条字幕');
   await expect(page.locator('#text-process-confirm')).toBeDisabled();
+});
+
+test('import previews ordered steps and replaces presets only after confirmation', async ({ page }) => {
+  await page.evaluate(() => MaweTextProcess.openTextProcessModal());
+  const select = page.locator('#text-preset-select');
+  await expect(select).toBeEnabled();
+  const before = await select.locator('option').allTextContents();
+  const source = {
+    schema: 'moy.asr.text_processing_presets.v2', defaultPresetId: 'imported',
+    presets: [{ id: 'imported', name: '带有两步的预设', scope: 'all', steps: [
+      { type: 'replace', find: '八', replacement: '8', regex: false, caseSensitive: false },
+      { type: 'trim' },
+    ] }],
+  };
+  const choose = async () => {
+    await page.locator('#text-preset-file-menu summary').click();
+    const fileChooser = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: '导入处理预设' }).click();
+    await (await fileChooser).setFiles({
+      name: 'presets.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(source)),
+    });
+  };
+  await choose();
+  const dialog = page.getByRole('dialog', { name: '导入处理预设' });
+  await expect(dialog.getByText('带有两步的预设 ★')).toBeVisible();
+  await expect(dialog.getByText('全部字幕', { exact: true })).toBeVisible();
+  await expect(dialog.locator('ol > li')).toHaveText(['替换文本　"八" → "8"', '修剪前后空白']);
+  await expect(select.locator('option')).toHaveText(before);
+  await dialog.getByRole('button', { name: '取消' }).click();
+  await expect(select.locator('option')).toHaveText(before);
+  await choose();
+  let releaseWrite;
+  const pendingWrite = new Promise(resolve => { releaseWrite = resolve; });
+  await page.route('**/api/text-processing-presets', async route => {
+    if (route.request().method() === 'POST') await pendingWrite;
+    await route.continue();
+  }, { times: 1 });
+  try {
+    await dialog.getByRole('button', { name: '确认替换预设库' }).click();
+    await expect(dialog.getByRole('button', { name: '取消' })).toBeDisabled();
+    await expect(dialog.getByText('正在保存预设库…')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeVisible();
+  } finally {
+    releaseWrite();
+  }
+  await expect(dialog).not.toBeVisible();
+  await expect(select.locator('option')).toHaveText(['自定义步骤', '带有两步的预设 ★']);
+  await select.selectOption('imported');
+  const toggle = page.locator('#text-preset-default');
+  await expect(toggle).toHaveText('取消默认');
+  await toggle.click();
+  await expect(select.locator('option:checked')).toHaveText('带有两步的预设');
+  await expect(toggle).toHaveText('设为默认');
+  await toggle.click();
+  await expect(select.locator('option:checked')).toHaveText('带有两步的预设 ★');
+  await page.locator('#text-preset-file-menu summary').click();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: '导出处理预设' }).click();
+  expect((await download).suggestedFilename()).toBe('text-processing-presets.json');
 });

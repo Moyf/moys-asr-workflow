@@ -42,13 +42,13 @@ test('English preset editing, confirmations and rule errors remain understandabl
   const rule = page.locator('.text-preset-rule').first();
   const find = rule.locator('input[type="text"]').nth(0);
   const replacement = rule.locator('input[type="text"]').nth(1);
-  await expect(find).toHaveAttribute('placeholder', 'Rule 1 find');
-  await expect(replacement).toHaveAttribute('placeholder', 'Rule 1 replace with');
-  await expect(find).toHaveAttribute('aria-label', 'Rule 1 find');
+  await expect(find).toHaveAttribute('placeholder', 'Find text');
+  await expect(replacement).toHaveAttribute('placeholder', 'Leave blank to delete');
+  await expect(find).toHaveAttribute('aria-label', 'Find');
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
-  await expect(find).toHaveAttribute('aria-label', '规则 1 查找');
+  await expect(find).toHaveAttribute('aria-label', '查找');
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
-  await expect(find).toHaveAttribute('aria-label', 'Rule 1 find');
+  await expect(find).toHaveAttribute('aria-label', 'Find');
   await expect(page.locator('#text-process-preview')).toContainText('Enter search text');
   await find.fill('(');
   await rule.getByLabel('Regex').check();
@@ -69,8 +69,12 @@ test('English preset editing, confirmations and rule errors remain understandabl
   await expect(page.locator('#text-preset-select option:checked')).toHaveText('文本处理');
   page.once('dialog', dialog => { expect(dialog.message()).toBe('Delete this preset?'); return dialog.dismiss(); });
   await page.locator('#text-preset-delete').click();
-  page.once('dialog', dialog => { expect(dialog.message()).toContain('replace the current preset library'); return dialog.dismiss(); });
-  await page.locator('#text-preset-import').setInputFiles({ name: 'preset.json', mimeType: 'application/json', buffer: Buffer.from('{}') });
+  await page.locator('#text-preset-import').setInputFiles({ name: 'preset.json', mimeType: 'application/json', buffer: Buffer.from('{') });
+  await expect(page.getByRole('dialog', { name: 'Import processing presets' })).toBeVisible();
+  await expect(page.locator('#text-preset-import-status')).toHaveText('Import failed: File is not valid JSON');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#text-preset-import-dialog')).not.toBeVisible();
+  await expect(page.locator('#text-process-modal')).toBeVisible();
   await expect(page.locator('#text-preset-select option:checked')).toHaveText('文本处理');
 });
 
@@ -107,9 +111,26 @@ test('invalid imports retain the library and explain the error in English', asyn
   const invalid = { schema: 'moy.asr.text_processing_presets.v1', presets: [{
     id: 'invalid', name: 'Invalid', scope: 'all', rules: [], operations: { wraps: [null] },
   }] };
-  page.once('dialog', dialog => dialog.accept());
   await page.locator('#text-preset-import').setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(invalid)) });
-  await expect(page.locator('#text-preset-status')).toHaveText('Import failed: Invalid preset operations');
+  await expect(page.locator('#text-preset-import-status')).toHaveText('Import failed: Invalid preset operations');
+  await expect(page.locator('#text-preset-import-confirm')).toBeDisabled();
+  await page.locator('#text-preset-import-cancel').click();
+  await expect(page.locator('#text-preset-select option:checked')).toHaveText('Keep me');
+  const expanded = {
+    schema: 'moy.asr.text_processing_presets.v2',
+    presets: Array.from({ length: 80 }, (_, index) => ({
+      id: 'preset-' + index, name: 'Preset ' + index, scope: 'all',
+      steps: Array.from({ length: 85 }, () => ({
+        type: 'replace', find: 'a', replacement: 'b', caseSensitive: false, regex: false,
+      })),
+    })),
+  };
+  const buffer = Buffer.from(JSON.stringify(expanded));
+  expect(buffer.byteLength).toBeLessThan(1024 * 1024);
+  await page.locator('#text-preset-import').setInputFiles({ name: 'expanded.json', mimeType: 'application/json', buffer });
+  await expect(page.locator('#text-preset-import-status')).toHaveText('Import failed: File is too large');
+  await expect(page.locator('#text-preset-import-confirm')).toBeDisabled();
+  await page.locator('#text-preset-import-cancel').click();
   await expect(page.locator('#text-preset-select option:checked')).toHaveText('Keep me');
 });
 
@@ -138,7 +159,7 @@ test('a slow regular expression reports a timeout without changing subtitles', a
   await page.locator('#text-preset-add-rule').click();
   const rule = page.locator('.text-preset-rule').first();
   await rule.getByLabel('Regex').check();
-  await rule.getByRole('textbox', { name: 'Rule 1 find' }).fill('(a+)+$');
+  await rule.getByRole('textbox', { name: 'Find' }).fill('(a+)+$');
   await expect(page.locator('#text-process-preview')).toContainText('The rules timed out', { timeout: 10000 });
   await expect(page.locator('#text-process-confirm')).toBeDisabled();
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('a'.repeat(40) + '!');
@@ -153,7 +174,7 @@ test('English users see a warning when processing cannot preserve word timings',
     MaweTextProcess.openTextProcessModal();
   });
   await addTextProcessStep(page, 'replace');
-  await page.getByRole('textbox', { name: 'Rule 1 find' }).fill('hello');
+  await page.getByRole('textbox', { name: 'Find' }).fill('hello');
   await page.locator('#text-process-confirm').click();
   await expect(page.locator('.hint-card.hint-warning')).toHaveText(
     'Text processing applied to 1 subtitle. Word timings could not be fully preserved for 1 subtitle.',

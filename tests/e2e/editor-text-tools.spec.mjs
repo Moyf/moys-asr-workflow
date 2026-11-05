@@ -284,14 +284,14 @@ test('the selected-cue shortcut uses the shared text processing preview', async 
 
   await page.evaluate(() => MaweContextMenus.showContextMenu(350, 350, 0));
   await page.locator('#ctxmenu').getByText('替换选中字幕…', { exact: true }).click();
-  const find = page.getByRole('textbox', { name: '规则 1 查找' });
+  const find = page.getByRole('textbox', { name: '查找' });
   await expect(find).toBeFocused();
   await expect(page.locator('#text-preset-select')).toBeEnabled();
   await expect(page.locator('#text-preset-select')).toHaveValue('');
   await expect(page.locator('#text-process-scope-info')).toHaveText('当前范围：仅选中的 2 条字幕');
   await find.fill('(猫)-(狗|鸟)');
   await page.getByRole('checkbox', { name: '正则' }).check();
-  await page.getByRole('textbox', { name: '规则 1 替换为' }).fill('$02/$01');
+  await page.getByRole('textbox', { name: '替换为' }).fill('$02/$01');
   const preview = page.locator('#text-process-preview');
   await expect(preview.locator('details')).toHaveCount(2);
   await expect(preview).toContainText('鸟/猫');
@@ -383,13 +383,13 @@ test('ordered text processing previews the final output and keeps empty cues and
   await openTextProcess(page);
   await addTextProcessStep(page, 'trim');
   let step = await addTextProcessStep(page, 'replace');
-  await step.getByRole('textbox', { name: /规则 .* 查找/ }).fill('^(?<cat>猫)-(狗)$');
-  await step.getByRole('textbox', { name: /规则 .* 替换为/ }).fill('$02/$<cat>');
+  await step.getByRole('textbox', { name: '查找' }).fill('^(?<cat>猫)-(狗)$');
+  await step.getByRole('textbox', { name: '替换为' }).fill('$02/$<cat>');
   await step.getByRole('checkbox', { name: '正则' }).check();
   const preview = page.locator('#text-process-preview');
   await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：狗/猫');
   step = await addTextProcessStep(page, 'replace');
-  await step.getByRole('textbox', { name: /规则 .* 查找/ }).fill('狗/猫');
+  await step.getByRole('textbox', { name: '查找' }).fill('狗/猫');
   await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：');
   await step.getByRole('button', { name: '上移' }).click();
   await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：狗/猫');
@@ -406,7 +406,7 @@ test('invalid and runaway regular expressions block apply and can be replaced', 
   await seed(page, { text: 'a'.repeat(64) + '!', timed: false });
   await openTextProcess(page);
   const step = await addTextProcessStep(page, 'replace');
-  const find = step.getByRole('textbox', { name: /规则 .* 查找/ });
+  const find = step.getByRole('textbox', { name: '查找' });
   await step.getByRole('checkbox', { name: '正则' }).check();
   await find.fill('(');
   const preview = page.locator('#text-process-preview');
@@ -436,8 +436,9 @@ test('user presets, text overrides and explicit join defaults survive project ch
   await page.locator('#text-preset-default').click();
   await expect(page.locator('#text-preset-select')).toContainText('清理空白 ★');
   await addTextProcessStep(page, 'capitalize');
+  await page.locator('#text-process-project-menu summary').click();
   await page.locator('#text-process-project-save').click();
-  await expect(page.locator('#text-process-project-status')).toContainText('自己的文本处理默认');
+  await expect(page.locator('#text-process-project-status')).toHaveText('已保存当前工程默认处理');
   const editor = page.locator('#text-process-modal .modal');
   const gap = await editor.locator('#text-preset-rules > li').evaluateAll(([first, second]) =>
     second.getBoundingClientRect().top - first.getBoundingClientRect().bottom);
@@ -498,10 +499,12 @@ test('user presets, text overrides and explicit join defaults survive project ch
   await page.evaluate((project) => MaweProjectLoad.applyCanonicalProject(project, 'original.mosp'), projects.project);
   await openTextProcess(page);
   await expect(page.locator('#text-preset-rules > li')).toHaveCount(2);
+  await page.locator('#text-process-project-menu summary').click();
   await page.locator('#text-process-project-empty').click();
   await expect(page.locator('#text-preset-rules > li')).toHaveCount(0);
+  await page.locator('#text-process-project-menu summary').click();
   await page.locator('#text-process-project-reset').click();
-  await expect(page.locator('#text-process-project-status')).toContainText('继承用户默认');
+  await expect(page.locator('#text-process-project-status')).toHaveText('工程内继承默认预设');
   await page.locator('#text-process-cancel').click();
   await page.locator('#auto-merge-manage').click();
   await expect(threshold).toHaveValue('450');
@@ -552,4 +555,91 @@ test('join actions wait for the current user defaults', async ({ page }) => {
   await expect(page.locator('#auto-merge-gap-ms')).toHaveValue('75');
   await expect(run).toBeEnabled();
   await expect(saveProject).toBeEnabled();
+});
+
+test('processing columns scroll independently and group replacement and MASS controls', async ({ page }, info) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments = Array.from({ length: 26 }, (_, index) => ({
+      id: 'layout-' + index, start: index * 2000, end: index * 2000 + 1800, text: '八百标兵',
+    }));
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweCuePanel.renderAll();
+  });
+  await openTextProcess(page);
+  const preview = page.locator('#text-process-preview');
+  await expect(preview).toHaveText('在左侧添加处理步骤，即可查看字幕改动。');
+  const types = page.getByLabel('处理步骤');
+  await expect(types.locator('option').last()).toHaveText('去除格式符号');
+  const steps = page.locator('#text-preset-rules');
+  await addTextProcessStep(page, 'replace');
+  const replace = steps.locator('li').first();
+  await expect(replace.getByRole('textbox', { name: '查找', exact: true })).toHaveAttribute('placeholder', '查找文本');
+  await expect(replace.getByRole('textbox', { name: '替换为' })).toHaveAttribute('placeholder', '替换为（留空即删除）');
+  await expect(replace.getByRole('group', { name: '选项' }).getByRole('checkbox')).toHaveCount(2);
+  const fields = await replace.evaluate((step) => {
+    const [find, replace] = step.querySelectorAll('input[type="text"]');
+    const options = step.querySelector('.processing-replace-options').getBoundingClientRect();
+    return { sameLine: find.offsetTop === replace.offsetTop, gap: options.top - replace.getBoundingClientRect().bottom };
+  });
+  expect(fields.sameLine).toBe(true);
+  expect(fields.gap).toBeGreaterThanOrEqual(8);
+  await replace.getByRole('textbox', { name: '查找', exact: true }).fill('八');
+  await replace.getByRole('textbox', { name: '替换为' }).fill('8');
+  await addTextProcessStep(page, 'wrap');
+  const wrap = steps.locator('li').nth(1);
+  await wrap.getByRole('group', { name: '普通字符' }).getByRole('button', { name: '中括号' }).click();
+  await wrap.getByRole('group', { name: 'MASS 特殊样式' }).getByRole('button', { name: '强调文本' }).click();
+  await wrap.getByRole('group', { name: 'MASS 整句动画' }).getByRole('button', { name: '淡出淡入' }).click();
+  for (let i = 0; i < 12; i++) await addTextProcessStep(page, 'trim');
+  await expect(preview.locator('details')).toHaveCount(26);
+  const modal = page.locator('.text-process-modal');
+  const measure = () => modal.evaluate((element) => {
+    const left = element.querySelector('#text-preset-rules');
+    const right = element.querySelector('#text-process-preview');
+    return {
+      width: element.clientWidth, height: element.clientHeight, modalScroll: element.scrollHeight - element.clientHeight,
+      left: left.scrollTop, right: right.scrollTop,
+      leftOverflow: left.scrollHeight - left.clientHeight, rightOverflow: right.scrollHeight - right.clientHeight,
+    };
+  });
+  await steps.evaluate(node => { node.scrollTop = 0; });
+  const initial = await measure();
+  expect(initial.width).toBeGreaterThan(1000);
+  expect(initial.leftOverflow).toBeGreaterThan(0);
+  expect(initial.rightOverflow).toBeGreaterThan(0);
+  expect(initial.modalScroll).toBe(0);
+  await steps.evaluate(node => { node.scrollTop = 100; });
+  expect(await measure()).toMatchObject({ left: 100, right: 0, height: initial.height });
+  await preview.evaluate(node => { node.scrollTop = 100; });
+  expect(await measure()).toMatchObject({ left: 100, right: 100, height: initial.height });
+  await steps.evaluate(node => { node.scrollTop = 0; });
+  await preview.evaluate(node => { node.scrollTop = 0; });
+  await modal.screenshot({ path: info.outputPath('text-process-layout-zh.png') });
+  await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
+  await expect(wrap.getByRole('group', { name: 'MASS sentence animations' })).toBeVisible();
+  await modal.screenshot({ path: info.outputPath('text-process-layout-en.png') });
+  for (const viewport of [{ width: 800, height: 360 }, { width: 390, height: 600 }]) {
+    await page.setViewportSize(viewport);
+    const layout = await modal.evaluate((element) => ({
+      outerOverflow: getComputedStyle(element).overflowY,
+      stepsHeight: element.querySelector('#text-preset-rules').clientHeight,
+      previewHeight: element.querySelector('#text-process-preview').clientHeight,
+    }));
+    expect(layout.outerOverflow).toBe('auto');
+    expect(layout.stepsHeight).toBeGreaterThan(100);
+    expect(layout.previewHeight).toBeGreaterThan(80);
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => {
+    MAWE_I18N.applyLanguage('zh');
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    const checkbox = document.getElementById('ass-mode-toggle');
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event('change'));
+  });
+  await expect(wrap.getByRole('group')).toHaveCount(1);
+  await expect(wrap.getByText('如需使用特殊文本样式（MASS），请先启用 ASS 字幕样式。')).toHaveCount(1);
+  await expect(wrap.getByRole('button', { name: '强调文本' })).toHaveCount(0);
+  await expect(preview).toContainText('请先开启 ASS 模式');
+  await expect(page.locator('#text-process-confirm')).toBeDisabled();
 });

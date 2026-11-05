@@ -2497,51 +2497,84 @@ __WAVEFORM_CSS__
     <p class="modal-desc" id="text-process-description">
       选择要对字幕批量执行的文本操作（若处理结尾为空，会保留空字幕行）。
     </p>
-    <div class="processing-controls text-preset-controls">
-      <select id="text-preset-select" aria-label="文本处理预设"></select>
-      <button type="button" id="text-preset-save-as">另存预设</button>
-      <button type="button" id="text-preset-save">更新步骤</button>
-      <button type="button" id="text-preset-rename">重命名</button>
-      <button type="button" id="text-preset-delete">删除预设</button>
-      <button type="button" id="text-preset-default">设为用户默认</button>
-      <button type="button" id="text-preset-clear">取消用户默认</button>
-      <button type="button" id="text-preset-export">导出库</button>
-      <label class="text-preset-import">导入库<input type="file" id="text-preset-import" accept="application/json,.json"></label>
+    <div class="text-process-columns">
+      <div class="text-process-column">
+        <div class="processing-controls">
+          <label for="text-preset-select">处理预设</label>
+          <select id="text-preset-select"></select>
+          <details class="text-process-menu" id="text-preset-file-menu">
+            <summary>导入 / 导出</summary>
+            <div class="text-process-menu-items">
+              <button type="button" id="text-preset-export">导出处理预设</button>
+              <button type="button" id="text-preset-import-button">导入处理预设</button>
+            </div>
+          </details>
+          <input type="file" id="text-preset-import" accept="application/json,.json" hidden>
+        </div>
+        <div class="processing-controls text-preset-controls">
+          <button type="button" id="text-preset-save-as">另存为新预设</button>
+          <button type="button" id="text-preset-save">更新预设</button>
+          <button type="button" id="text-preset-rename">重命名</button>
+          <button type="button" id="text-preset-delete">删除</button>
+          <button type="button" id="text-preset-default">设为默认</button>
+        </div>
+        <p class="modal-hint" id="text-preset-status" aria-live="polite"></p>
+        <p class="modal-hint" id="text-process-storage-scope" hidden>预设仅存于当前浏览器</p>
+        <div class="processing-controls text-process-project-controls">
+          <span class="text-process-control-label">本工程预填</span>
+          <span id="text-process-project-status" aria-live="polite"></span>
+          <details class="text-process-menu" id="text-process-project-menu">
+            <summary>更改</summary>
+            <div class="text-process-menu-items">
+              <button type="button" id="text-process-project-reset" title="每次打开时都继承用户预设的处理步骤（若无则留空）。">工程内继承默认预设</button>
+              <button type="button" id="text-process-project-empty" title="这个工程每次都从空步骤开始，即使已经设了用户默认。">工程内默认留空</button>
+              <button type="button" id="text-process-project-save" title="把当前步骤存入工程。之后即使修改用户预设，工程内不受影响。">保存为当前工程默认处理</button>
+            </div>
+          </details>
+        </div>
+        <div class="processing-controls text-process-step-controls">
+          <label for="text-process-step-type">处理步骤</label>
+          <select id="text-process-step-type">
+            <option value="replace">替换文本</option>
+            <option value="trim">修剪前后空白</option>
+            <option value="capitalize">首字母大写</option>
+            <option value="convertChineseNumbers">文字转数字</option>
+            <option value="wrap">左右添加字符</option>
+            <option value="stripMarkdown">去除格式符号</option>
+          </select>
+          <button type="button" id="text-preset-add-rule">添加步骤</button>
+        </div>
+        <ol id="text-preset-rules" class="processing-steps"></ol>
+      </div>
+      <div class="text-process-column">
+        <div id="text-process-scope-info" class="text-process-scope-info">当前范围：全部字幕</div>
+        <label class="modal-check-row" for="text-process-selected-only">
+          <input type="checkbox" id="text-process-selected-only" aria-describedby="text-process-selected-only-hint" disabled>
+          <span>仅处理选中字幕</span>
+        </label>
+        <p id="text-process-selected-only-hint" class="modal-hint" hidden>需要先选中至少1条字幕才可启用</p>
+        <h4 class="text-process-preview-title" id="text-process-preview-title">处理结果</h4>
+        <div class="preview text-process-preview" id="text-process-preview" role="region" aria-labelledby="text-process-preview-title" tabindex="0">在左侧添加处理步骤，即可查看字幕改动。</div>
+      </div>
     </div>
-    <p class="modal-hint" id="text-preset-status" aria-live="polite"></p>
-    <p class="modal-hint" id="text-process-storage-scope" hidden>预设仅存于当前浏览器</p>
-    <div id="text-process-scope-info" class="text-process-scope-info">当前范围：全部字幕</div>
-    <label class="modal-check-row" for="text-process-selected-only">
-      <input type="checkbox" id="text-process-selected-only" disabled>
-      <span>仅处理选中的字幕</span>
-      <span id="text-process-selected-only-hint" class="modal-hint batch-selected-only-hint" hidden>需要先选中至少1条字幕才可启用</span>
-    </label>
-
-    <div class="processing-controls">
-      <button type="button" id="text-process-project-save">记为此工程默认</button>
-      <button type="button" id="text-process-project-empty">此工程不预填</button>
-      <button type="button" id="text-process-project-reset">恢复继承</button>
-    </div>
-    <p class="modal-hint" id="text-process-project-status" aria-live="polite"></p>
-    <div class="processing-controls">
-      <select id="text-process-step-type" aria-label="文本处理操作">
-        <option value="replace">替换</option>
-        <option value="trim">修剪前后空白</option>
-        <option value="capitalize">首字母大写</option>
-        <option value="convertChineseNumbers">数字转换</option>
-        <option value="stripMarkdown">去除 md 格式符号</option>
-        <option value="wrap">左右添加字符</option>
-      </select>
-      <button type="button" id="text-preset-add-rule">添加步骤</button>
-    </div>
-    <ol id="text-preset-rules" class="processing-steps"></ol>
-    <div class="preview text-process-preview" id="text-process-preview">选择操作后查看预览</div>
     <div class="actions">
       <button type="button" id="text-process-cancel">取消</button>
       <button type="button" id="text-process-confirm" class="primary" disabled>应用处理</button>
     </div>
   </div>
 </div>
+
+<dialog class="modal text-preset-import-dialog" id="text-preset-import-dialog"
+        aria-labelledby="text-preset-import-title" aria-describedby="text-preset-import-warning">
+  <h3 id="text-preset-import-title">导入处理预设</h3>
+  <p class="modal-desc" id="text-preset-import-warning">确认后会替换现有预设库和默认预设设置。</p>
+  <p class="modal-hint" id="text-preset-import-status" aria-live="polite"></p>
+  <div class="text-preset-import-preview" id="text-preset-import-preview" tabindex="0" hidden></div>
+  <div class="actions">
+    <button type="button" id="text-preset-import-cancel" autofocus>取消</button>
+    <button type="button" class="primary" id="text-preset-import-confirm" disabled>确认替换预设库</button>
+  </div>
+</dialog>
 
 <!-- 「左右添加字符」自定义输入：在选中字幕两端原样插入用户输入的字符。 -->
 <div class="modal-mask" id="wrap-chars-modal">

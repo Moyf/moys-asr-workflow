@@ -11,8 +11,19 @@
   const stepType = $('text-process-step-type');
   const presetSelect = $('text-preset-select');
   const storageStatus = $('text-preset-status');
+  const presetDefault = $('text-preset-default');
+  const presetFileMenu = $('text-preset-file-menu');
+  const projectMenu = $('text-process-project-menu');
+  const importFile = $('text-preset-import');
+  const importDialog = $('text-preset-import-dialog');
+  const importStatus = $('text-preset-import-status');
+  const importPreview = $('text-preset-import-preview');
+  const importConfirm = $('text-preset-import-confirm');
+  const importCancel = $('text-preset-import-cancel');
   const projectStatus = $('text-process-project-status');
   const maxSteps = 110;
+  const wrapPresets = global.AsrEditorUtils.WRAP_CHAR_PRESETS;
+  const emptyPreview = '在左侧添加处理步骤，即可查看字幕改动。';
   const stepLabels = Object.fromEntries([...stepType.options].map(({ value, text }) => [value, text]));
   const translate = (value) => global.MAWE_I18N?.translateText(value) ?? value;
 
@@ -32,6 +43,8 @@
   let writing = false;
   let expanded = false;
   let showUnchanged = false;
+  let importRequest;
+  let pendingImport;
   const openRows = new Map();
 
   function button(text, click) {
@@ -42,7 +55,7 @@
     return node;
   }
 
-  function input(label, value, onInput, type = 'text') {
+  function input(label, value, onInput, type = 'text', placeholder = label) {
     const wrapper = document.createElement('label');
     wrapper.textContent = label;
     const field = document.createElement('input');
@@ -50,7 +63,7 @@
     field.setAttribute('aria-label', label);
     if (type === 'checkbox') field.checked = value;
     else {
-      field.placeholder = label;
+      field.placeholder = placeholder;
       field.value = value;
       field.autocomplete = 'off';
     }
@@ -64,34 +77,53 @@
   }
 
   function renderWrappers(host, step, assMode) {
-    const presets = [...global.AsrEditorUtils.WRAP_CHAR_PRESETS, { id: 'custom', label: '自定义' }];
-    const buttons = document.createElement('div');
-    buttons.className = 'text-process-wrap-preset-buttons';
-    for (const preset of presets) {
-      const active = step.wraps.some(({ id }) => id === preset.id);
-      if (preset.ass && !assMode && !active) continue;
-      const toggle = button(preset.label, () => {
-        if (active) step.wraps = step.wraps.filter(({ id }) => id !== preset.id);
-        else step.wraps.push(preset.id === 'custom' ? { id: 'custom', left: '', right: '' } : { id: preset.id });
-        host.replaceChildren();
-        renderWrappers(host, step, assMode);
-        const replacement = host.querySelector('[data-wrap-preset-id="' + preset.id + '"]');
-        if (!active && preset.id === 'custom') host.querySelector('input')?.focus();
-        else (replacement || host.querySelector('button'))?.focus();
-        refreshActions();
-        schedulePreview();
-      });
-      toggle.dataset.wrapPresetId = preset.id;
-      toggle.setAttribute('aria-pressed', String(active));
-      buttons.append(toggle);
+    function addGroup(title, presets) {
+      const group = document.createElement('div');
+      group.className = 'text-process-wrap-group';
+      group.setAttribute('role', 'group');
+      group.setAttribute('aria-label', title);
+      const caption = document.createElement('span');
+      caption.className = 'text-process-wrap-group-title';
+      caption.textContent = title;
+      const buttons = document.createElement('div');
+      buttons.className = 'text-process-wrap-preset-buttons';
+      for (const preset of presets) {
+        const active = step.wraps.some(({ id }) => id === preset.id);
+        const toggle = button(preset.label, () => {
+          if (active) step.wraps = step.wraps.filter(({ id }) => id !== preset.id);
+          else step.wraps.push(preset.id === 'custom' ? { id: 'custom', left: '', right: '' } : { id: preset.id });
+          host.replaceChildren();
+          renderWrappers(host, step, assMode);
+          if (!active && preset.id === 'custom') host.querySelector('input')?.focus();
+          else host.querySelector('[data-wrap-preset-id="' + preset.id + '"]')?.focus();
+          refreshActions();
+          schedulePreview();
+        });
+        toggle.dataset.wrapPresetId = preset.id;
+        toggle.setAttribute('aria-pressed', String(active));
+        buttons.append(toggle);
+      }
+      group.append(caption, buttons);
+      host.append(group);
+      return group;
     }
-    host.append(buttons);
+
+    const plain = addGroup('普通字符', [...wrapPresets.filter(({ ass }) => !ass), { id: 'custom', label: '自定义' }]);
     for (const custom of step.wraps.filter(({ id }) => id === 'custom')) {
       const fields = document.createElement('div');
       fields.className = 'processing-controls';
       fields.append(input('左侧添加', custom.left, (value) => { custom.left = value; }),
         input('右侧添加', custom.right, (value) => { custom.right = value; }));
-      host.append(fields);
+      plain.append(fields);
+    }
+    if (assMode) {
+      addGroup('MASS 特殊样式', wrapPresets.filter(({ ass, sentenceLevel }) => ass && !sentenceLevel));
+      addGroup('MASS 整句动画', wrapPresets.filter(({ sentenceLevel }) => sentenceLevel));
+    } else {
+      const hint = document.createElement('p');
+      hint.className = 'modal-hint';
+      hint.textContent = '如需使用特殊文本样式（MASS），请先启用 ASS 字幕样式。';
+      host.append(hint);
     }
   }
 
@@ -132,15 +164,24 @@
       const fields = document.createElement('div');
       if (step.type === 'replace') {
         fields.className = 'processing-controls processing-replace-fields';
-        fields.append(input('规则 ' + (index + 1) + ' 查找', step.find, (value) => { step.find = value; }),
-          input('规则 ' + (index + 1) + ' 替换为', step.replacement, (value) => { step.replacement = value; }),
+        fields.append(input('查找', step.find, (value) => { step.find = value; }, 'text', '查找文本'),
+          input('替换为', step.replacement, (value) => { step.replacement = value; }, 'text', '替换为（留空即删除）'));
+        const options = document.createElement('div');
+        options.className = 'processing-controls processing-replace-options';
+        options.setAttribute('role', 'group');
+        options.setAttribute('aria-label', '选项');
+        const optionLabel = document.createElement('span');
+        optionLabel.className = 'text-process-control-label';
+        optionLabel.textContent = '选项';
+        options.append(optionLabel,
           input('区分大小写', step.caseSensitive, (value) => { step.caseSensitive = value; }, 'checkbox'),
           input('正则', step.regex, (value) => { step.regex = value; }, 'checkbox'));
+        row.append(fields, options);
       } else if (step.type === 'wrap') {
         fields.className = 'processing-wrap-fields';
         renderWrappers(fields, step, MaweSettings.EDITOR_SETTINGS.assMode);
+        row.append(fields);
       }
-      row.append(fields);
       stepList.append(row);
     });
     refreshActions();
@@ -156,10 +197,9 @@
       return compiled.regex;
     }
     if (step.type === 'wrap') {
-      const presets = global.AsrEditorUtils.WRAP_CHAR_PRESETS;
       const pairs = step.wraps.map((wrap) => {
         if (wrap.id === 'custom') return wrap;
-        const preset = presets.find(({ id }) => id === wrap.id);
+        const preset = wrapPresets.find(({ id }) => id === wrap.id);
         return preset && { ...preset, ...wrap };
       });
       if (pairs.some((pair) => !pair)) throw new Error('未知步骤');
@@ -177,20 +217,21 @@
     const available = !reading && !writing;
     const valid = steps.length > 0;
     presetSelect.disabled = !available;
-    for (const id of ['text-preset-export', 'text-preset-import']) $(id).disabled = !available;
+    importCancel.disabled = writing;
+    for (const id of ['text-preset-export', 'text-preset-import-button', 'text-preset-import']) $(id).disabled = !available;
     $('text-preset-add-rule').disabled = steps.length >= maxSteps;
     $('text-preset-save-as').disabled = !available || !valid || presets.length >= 100;
     $('text-preset-save').disabled = !available || !saved || !valid;
     $('text-preset-rename').disabled = !available || !saved;
     $('text-preset-delete').disabled = !available || !saved;
-    $('text-preset-default').disabled = !available || !saved || selectedPreset === defaultPresetId;
-    $('text-preset-clear').disabled = !available || !defaultPresetId;
+    presetDefault.disabled = !available || !saved;
+    presetDefault.textContent = saved && selectedPreset === defaultPresetId ? '取消默认' : '设为默认';
     $('text-process-project-save').disabled = !valid;
     const override = MaweProcessing.projectOverride('text');
     $('text-process-project-reset').disabled = !available || override === undefined;
     $('text-process-project-empty').disabled = Array.isArray(override) && !override.length;
-    projectStatus.textContent = override === undefined ? '此工程继承用户默认'
-      : override.length ? '此工程使用自己的文本处理默认' : '此工程不预填';
+    projectStatus.textContent = override === undefined ? '工程内继承默认预设'
+      : override.length ? '已保存当前工程默认处理' : '工程内默认留空';
   }
 
   function renderPresets() {
@@ -210,7 +251,6 @@
     const hasSelection = selection.length > 0;
     selectedOnly.checked = scope === undefined ? hasSelection : scope === 'selected';
     selectedOnly.disabled = !hasSelection && !selectedOnly.checked;
-    $('text-process-selected-only-hint').hidden = hasSelection || selectedOnly.checked;
   }
 
   function loadDefault({ preserveScope = false } = {}) {
@@ -235,13 +275,14 @@
         if (status === 'saved') storageStatus.textContent = '预设库已保存';
         renderPresets();
       }
-      return;
+      return status;
     }
     if (status === 'saved') selectedPreset = newSelection;
     storageStatus.textContent = status === 'saved' ? '预设库已保存'
       : status === 'conflict' ? '预设库已被其他页面修改，请重新打开'
         : '保存失败：' + (status instanceof Error ? status.message : '无法保存用户配置');
     renderPresets();
+    return status;
   }
 
   function captureTargets(mainIndexes) {
@@ -392,6 +433,11 @@
       node.open = openRows.get(key) ?? expanded;
       const title = document.createElement('summary');
       title.textContent = (row.trackId ? '副字幕' : '主字幕') + '第 ' + (row.index + 1) + ' 条';
+      const snippet = document.createElement('span');
+      snippet.className = 'text-process-result-snippet';
+      snippet.textContent = row.after || '（空字幕）';
+      if (row.after) snippet.dataset.markerProjectContent = '';
+      title.append(snippet);
       const before = document.createElement('div');
       const after = document.createElement('div');
       before.className = 'replace-preview-before';
@@ -443,12 +489,14 @@
     scopeInfo.textContent = selectedOnly.checked ? '当前范围：仅选中的 ' + rows.length + ' 条字幕'
       : '当前范围：全部 ' + rows.length + ' 条字幕';
     scopeInfo.classList.toggle('selected', selectedOnly.checked);
-    if (selectedOnly.checked && !rows.length) {
+    const missingSelection = selectedOnly.checked && !rows.length;
+    $('text-process-selected-only-hint').hidden = !selectedOnly.disabled && !missingSelection;
+    if (missingSelection) {
       preview.textContent = '需要先选中至少1条字幕才可启用';
       return;
     }
     const hasSteps = steps.some((step) => step.enabled !== false);
-    preview.textContent = hasSteps ? '正在生成预览…' : '请选择至少一项文本处理操作';
+    preview.textContent = hasSteps ? '正在生成预览…' : emptyPreview;
     if (!hasSteps) return;
     const controller = new AbortController();
     previewController = controller;
@@ -468,6 +516,9 @@
   function closeTextProcessModal({ restoreFocus = true } = {}) {
     if (!modal.classList.contains('show')) return;
     session++;
+    closeImport();
+    presetFileMenu.open = false;
+    projectMenu.open = false;
     modal.classList.remove('show');
     cancelPreview();
     if (restoreFocus) $('text-process-btn')?.focus();
@@ -556,19 +607,31 @@
 
   $('text-process-btn').addEventListener('click', () => openTextProcessModal());
   $('text-process-cancel').addEventListener('click', () => closeTextProcessModal());
-  modal.addEventListener('click', (event) => { if (event.target === modal) closeTextProcessModal(); });
+  modal.addEventListener('click', (event) => {
+    for (const menu of [presetFileMenu, projectMenu]) {
+      if (!menu.contains(event.target)) menu.open = false;
+    }
+    if (event.target === modal) closeTextProcessModal();
+  });
   document.addEventListener('keydown', (event) => {
     if (!modal.classList.contains('show') || event.key !== 'Escape') return;
     event.stopImmediatePropagation();
     event.preventDefault();
-    closeTextProcessModal();
+    if (importDialog.open) {
+      if (!writing) closeImport({ restoreFocus: true });
+      return;
+    }
+    const menu = [presetFileMenu, projectMenu].find(({ open }) => open);
+    if (menu) dismissMenu(menu);
+    else closeTextProcessModal();
   }, true);
   selectedOnly.addEventListener('change', schedulePreview);
   apply.addEventListener('click', confirm);
   $('text-preset-add-rule').addEventListener('click', () => {
     steps = [...steps, createStep(stepType.value)];
     renderSteps();
-    stepList.lastElementChild?.querySelector('input, .text-process-wrap-preset-buttons button')?.focus();
+    const row = stepList.lastElementChild;
+    (row?.querySelector('input[type="text"], .text-process-wrap-preset-buttons button') || row?.querySelector('input'))?.focus();
   });
   presetSelect.addEventListener('change', () => {
     selectedPreset = presetSelect.value;
@@ -606,7 +669,68 @@
       if (draft.defaultPresetId === id) draft.defaultPresetId = null;
     }, '');
   });
+  function dismissMenu(menu) {
+    menu.open = false;
+    menu.querySelector('summary').focus();
+  }
+
+  function closeImport({ restoreFocus = false } = {}) {
+    importRequest = undefined;
+    pendingImport = undefined;
+    if (!importDialog.open) return;
+    importDialog.close();
+    if (restoreFocus) presetFileMenu.querySelector('summary').focus();
+  }
+
+  function renderImport({ presets, defaultPresetId }) {
+    const list = document.createElement('ul');
+    for (const preset of presets) {
+      const item = document.createElement('li');
+      const title = document.createElement('strong');
+      title.dataset.markerProjectContent = '';
+      title.textContent = preset.name + (preset.id === defaultPresetId ? ' ★' : '');
+      const scope = document.createElement('small');
+      scope.className = 'text-preset-import-scope';
+      scope.textContent = preset.scope === 'selected' ? '仅处理选中字幕' : '全部字幕';
+      item.append(title, scope);
+      if (preset.steps.length) {
+        const recipe = document.createElement('ol');
+        for (const step of preset.steps) {
+          const line = document.createElement('li');
+          line.append(document.createTextNode(stepLabels[step.type]));
+          if (step.enabled === false) line.append(' · ', translate('已停用'));
+          if (step.type === 'replace' || step.type === 'wrap') {
+            const values = document.createElement('code');
+            values.dataset.markerProjectContent = '';
+            values.textContent = step.type === 'replace'
+              ? JSON.stringify(step.find) + ' → ' + JSON.stringify(step.replacement)
+              : step.wraps.map(({ id, left, right }) => {
+                const preset = wrapPresets.find((preset) => preset.id === id);
+                const pair = JSON.stringify(left ?? preset?.left) + ' … ' + JSON.stringify(right ?? preset?.right);
+                if (id === 'custom') return pair;
+                const label = translate(preset.label);
+                return left === undefined && right === undefined ? label : label + ' ' + pair;
+              }).join(' → ');
+            if (values.textContent) line.append('　', values);
+            if (step.regex) line.append(' · ', translate('正则'));
+            if (step.caseSensitive) line.append(' · ', translate('区分大小写'));
+          }
+          recipe.append(line);
+        }
+        item.append(recipe);
+      } else {
+        const empty = document.createElement('p');
+        empty.textContent = '无处理步骤';
+        item.append(empty);
+      }
+      list.append(item);
+    }
+    if (presets.length) importPreview.replaceChildren(list);
+    else importPreview.textContent = '此文件不含预设。确认后会清空现有预设库。';
+  }
+
   $('text-preset-export').addEventListener('click', () => {
+    dismissMenu(presetFileMenu);
     const { schema, presets, defaultPresetId } = MaweProcessing.library;
     const url = URL.createObjectURL(new Blob([JSON.stringify({ schema, presets, defaultPresetId }, null, 2)], { type: 'application/json' }));
     const link = document.createElement('a');
@@ -615,31 +739,62 @@
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
-  $('text-preset-import').addEventListener('change', async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file || !global.confirm('导入会替换当前预设库，是否继续？')) return;
-    const openedAt = session;
+  $('text-preset-import-button').addEventListener('click', () => {
+    dismissMenu(presetFileMenu);
+    importFile.click();
+  });
+  importFile.addEventListener('change', async () => {
+    const file = importFile.files?.[0];
+    importFile.value = '';
+    if (!file || reading || writing || !modal.classList.contains('show')) return;
+    const request = importRequest = Symbol();
+    pendingImport = undefined;
+    importPreview.replaceChildren();
+    importPreview.hidden = true;
+    importConfirm.disabled = true;
+    importStatus.textContent = '正在核验预设文件…';
+    importDialog.showModal();
     try {
       if (file.size > 1024 * 1024) throw new Error('文件过大');
-      const imported = MaweProcessing.validate(JSON.parse(await file.text()));
-      if (openedAt !== session) return;
-      await saveLibrary((draft) => {
-        draft.presets = imported.presets;
-        draft.defaultPresetId = imported.defaultPresetId;
-      }, '');
+      const text = await file.text();
+      let parsed;
+      try { parsed = JSON.parse(text); } catch { throw new Error('文件不是有效的 JSON'); }
+      const imported = MaweProcessing.validateImport(parsed);
+      if (request !== importRequest) return;
+      renderImport(imported);
+      pendingImport = imported;
+      importStatus.textContent = '';
+      importPreview.hidden = false;
+      importConfirm.disabled = false;
     } catch (error) {
-      if (openedAt === session) storageStatus.textContent = '导入失败：' + error.message;
+      if (request === importRequest) importStatus.textContent = '导入失败：' + error.message;
     }
   });
-  $('text-preset-default').addEventListener('click', () => {
-    const id = selectedPreset;
-    void saveLibrary((draft) => { draft.defaultPresetId = id; });
+  importCancel.addEventListener('click', () => closeImport({ restoreFocus: true }));
+  importDialog.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    if (!writing) closeImport({ restoreFocus: true });
   });
-  $('text-preset-clear').addEventListener('click', () => {
-    void saveLibrary((draft) => { draft.defaultPresetId = null; });
+  importConfirm.addEventListener('click', async () => {
+    if (!pendingImport || writing) return;
+    const { presets, defaultPresetId } = pendingImport;
+    const request = importRequest;
+    importConfirm.disabled = true;
+    importStatus.textContent = '正在保存预设库…';
+    const status = await saveLibrary((draft) => Object.assign(draft, { presets, defaultPresetId }), '');
+    if (request !== importRequest) return;
+    if (status === 'saved') closeImport({ restoreFocus: true });
+    else {
+      importStatus.textContent = storageStatus.textContent;
+      importConfirm.disabled = status === 'conflict';
+    }
+  });
+  presetDefault.addEventListener('click', () => {
+    const id = selectedPreset;
+    void saveLibrary((draft) => { draft.defaultPresetId = draft.defaultPresetId === id ? null : id; });
   });
   $('text-process-project-save').addEventListener('click', () => {
+    dismissMenu(projectMenu);
     try {
       MaweProcessing.setProjectOverride('text', steps);
       refreshActions();
@@ -648,10 +803,12 @@
     }
   });
   $('text-process-project-empty').addEventListener('click', () => {
+    dismissMenu(projectMenu);
     MaweProcessing.setProjectOverride('text', []);
     loadDefault();
   });
   $('text-process-project-reset').addEventListener('click', () => {
+    dismissMenu(projectMenu);
     MaweProcessing.setProjectOverride('text', undefined);
     loadDefault();
   });
