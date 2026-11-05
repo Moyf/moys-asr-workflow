@@ -656,6 +656,10 @@ test('processing columns scroll independently and group replacement and MASS con
   expect(initial.leftOverflow).toBeGreaterThan(0);
   expect(initial.rightOverflow).toBeGreaterThan(0);
   expect(initial.modalScroll).toBe(0);
+  for (const scroller of [stepScroll, preview]) {
+    await expect(scroller).toHaveCSS('scrollbar-width', 'thin');
+    await expect(scroller).toHaveCSS('scrollbar-color', / rgba\(0, 0, 0, 0\)$/);
+  }
   await stepScroll.evaluate(node => { node.scrollTop = 100; });
   expect(await measure()).toMatchObject({ left: 100, right: 0, height: initial.height });
   await preview.evaluate(node => { node.scrollTop = 100; });

@@ -80,7 +80,13 @@ test('single cue style is independent and undoable', async ({ page }, info) => {
     if (width === 1280) await page.locator('#current-cue-panel').screenshot({ path: info.outputPath('cue-style.png') });
   }
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.locator('#cue-ass-style').selectOption('ass');
+  const select = page.locator('#cue-ass-style');
+  await select.selectOption('default');
+  await expect(select).toHaveValue('default');
+  await expect(select.locator('option', { hasText: /^SRT 渲染样式$/ })).toHaveCount(1);
+  await expect(select.locator('option[value="__snapshot"]')).toHaveCount(0);
+  await select.selectOption('');
+  await select.selectOption('ass');
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].assStyle?.id)).toBe('ass');
   const output = await page.evaluate(() => {
     MaweSettings.EDITOR_SETTINGS.assMode = true;

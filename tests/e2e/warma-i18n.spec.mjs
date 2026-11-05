@@ -25,14 +25,31 @@ test('ASS style choices follow language while custom names remain literal', asyn
   await expect(select.locator('option[value="ass"]')).toHaveText('ASS default style');
   await expect(select.locator('option[value="custom-style"]')).toHaveText('ASS 默认样式');
   await select.selectOption('custom-style');
-  await expect(select.locator('option[value="__snapshot"]')).toHaveText('ASS 默认样式');
+  await expect(select).toHaveValue('custom-style');
+  await expect(select.locator('option[value="__snapshot"]')).toHaveCount(0);
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
   await expect(select.locator('option[value="ass"]')).toHaveText('ASS 默认样式');
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
   await expect(select.locator('option[value="ass"]')).toHaveText('ASS default style');
-  await expect(select.locator('option[value="__snapshot"]')).toHaveText('ASS 默认样式');
+  await expect(select.locator('option:checked')).toHaveText('ASS 默认样式');
   await select.selectOption('ass');
-  await expect(select.locator('option[value="__snapshot"]')).toHaveText('ASS default style');
+  await expect(select.locator('option:checked')).toHaveText('ASS default style');
+
+  const savedSize = await page.evaluate(() => {
+    const savedSize = MaweBoot.DATA.segments[0].assStyle.fontSize;
+    MaweAssStorageWiring.styles().find(style => style.id === 'ass').fontSize = savedSize + 1;
+    return savedSize;
+  });
+  await select.evaluate((element) => { element.blur(); element.focus(); });
+  await expect(select).toHaveValue('__snapshot');
+  await expect(select.locator('option:checked')).toHaveText('ASS default style (saved in project)');
+  await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
+  await expect(select.locator('option:checked')).toHaveText('ASS 默认样式（工程内保存）');
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].assStyle.fontSize)).toBe(savedSize);
+  await select.selectOption('ass');
+  await expect(select).toHaveValue('ass');
+  await expect(select.locator('option[value="__snapshot"]')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].assStyle.fontSize)).toBe(savedSize + 1);
 });
 
 test('English preset editing, confirmations and rule errors remain understandable', async ({ page }, info) => {

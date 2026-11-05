@@ -355,19 +355,32 @@ export function initMaweCuePanel() {
     const select = document.getElementById('cue-ass-style');
     if (!select) return;
     const builtinNames = { default: 'SRT 渲染样式', ass: 'ASS 默认样式', 'ass-extension': 'ASS 副字幕样式' };
-    const addOption = (value, name, translate = false) => {
-      const label = translate ? window.MAWE_I18N?.translateText?.(name) || name : name;
+    const translate = (text) => window.MAWE_I18N?.translateText?.(text) || text;
+    const styleLabel = (style) => {
+      const name = style.name || 'ASS';
+      return builtinNames[style.id] === name ? translate(name) : name;
+    };
+    const addOption = (value, label) => {
       const option = new Option(label, value);
       // User-defined names are content, even when they match an interface label.
       option.dataset.markerProjectContent = '';
       select.add(option);
     };
+    const styles = window.MaweAssStorageWiring?.styles() || [];
+    const savedStyle = segment?.assStyle;
+    const libraryStyle = savedStyle && styles.find((style) => style.id === savedStyle.id);
+    const normalize = window.AsrEditorUtils.normalizeAssStyle;
+    // Compare the full normalized styles: a saved copy can outlive edits to its library entry.
+    const matchesLibrary = libraryStyle && JSON.stringify(normalize(savedStyle)) === JSON.stringify(normalize(libraryStyle));
+
     select.disabled = !segment;
     select.replaceChildren();
-    addOption('', '继承默认样式', true);
-    if (segment?.assStyle) addOption('__snapshot', segment.assStyle.name || 'ASS', builtinNames[segment.assStyle.id] === segment.assStyle.name);
-    (window.MaweAssStorageWiring?.styles() || []).forEach((style) => addOption(style.id, style.name, builtinNames[style.id] === style.name));
-    select.value = segment?.assStyle ? '__snapshot' : '';
+    addOption('', translate('继承默认样式'));
+    if (savedStyle && !matchesLibrary) {
+      addOption('__snapshot', styleLabel(savedStyle) + translate('（工程内保存）'));
+    }
+    styles.forEach((style) => addOption(style.id, styleLabel(style)));
+    select.value = savedStyle ? (matchesLibrary ? savedStyle.id : '__snapshot') : '';
   }
 
   document.addEventListener('mawe:languagechange', () => syncCueAssStyle(getCurrentCuePanelTarget()?.segment));

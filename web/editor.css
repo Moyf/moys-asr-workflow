@@ -4409,6 +4409,7 @@
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .modal .preview,
+  :is(.text-process-modal, .text-process-step-scroll, .text-preset-import-preview),
   .settings-panel,
   .editor-settings-pages,
   .editor-settings-nav,
@@ -4430,6 +4431,7 @@
   .toolbar.cue-list-toolbar::-webkit-scrollbar,
   .toolbar.waveform-toolbar::-webkit-scrollbar,
   .modal .preview::-webkit-scrollbar,
+  :is(.text-process-modal, .text-process-step-scroll, .text-preset-import-preview)::-webkit-scrollbar,
   .settings-panel::-webkit-scrollbar,
   .multi-subtitle-import-preview::-webkit-scrollbar,
   .gap-remove-list::-webkit-scrollbar,
@@ -4446,6 +4448,7 @@
   .toolbar.cue-list-toolbar::-webkit-scrollbar-track,
   .toolbar.waveform-toolbar::-webkit-scrollbar-track,
   .modal .preview::-webkit-scrollbar-track,
+  :is(.text-process-modal, .text-process-step-scroll, .text-preset-import-preview)::-webkit-scrollbar-track,
   .settings-panel::-webkit-scrollbar-track,
   .multi-subtitle-import-preview::-webkit-scrollbar-track,
   .gap-remove-list::-webkit-scrollbar-track,
@@ -4462,6 +4465,7 @@
   .toolbar.cue-list-toolbar::-webkit-scrollbar-thumb,
   .toolbar.waveform-toolbar::-webkit-scrollbar-thumb,
   .modal .preview::-webkit-scrollbar-thumb,
+  :is(.text-process-modal, .text-process-step-scroll, .text-preset-import-preview)::-webkit-scrollbar-thumb,
   .settings-panel::-webkit-scrollbar-thumb,
   .multi-subtitle-import-preview::-webkit-scrollbar-thumb,
   .gap-remove-list::-webkit-scrollbar-thumb,
@@ -4481,6 +4485,7 @@
   .toolbar.cue-list-toolbar::-webkit-scrollbar-thumb:hover,
   .toolbar.waveform-toolbar::-webkit-scrollbar-thumb:hover,
   .modal .preview::-webkit-scrollbar-thumb:hover,
+  :is(.text-process-modal, .text-process-step-scroll, .text-preset-import-preview)::-webkit-scrollbar-thumb:hover,
   .settings-panel::-webkit-scrollbar-thumb:hover,
   .multi-subtitle-import-preview::-webkit-scrollbar-thumb:hover,
   .gap-remove-list::-webkit-scrollbar-thumb:hover,
@@ -4492,6 +4497,8 @@
   .hint-project-preview-value::-webkit-scrollbar-thumb:hover,
   .ass-frame-window-body::-webkit-scrollbar-thumb:hover,
   .ass-frame-image-wrap.ass-frame-native::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: padding-box; }
+
+  :is(.text-process-modal, .text-process-step-scroll, .text-preset-import-preview)::-webkit-scrollbar-button { display: none; }
 
 /* === 标记与区段管理窗 —— 复用 .gap-remove-panel 家族样式，只补充自有差异 ===
    间距约定：区块之间保持 ≥8px 垂直间隔；.gap-remove-field 自带 0 外边距，
