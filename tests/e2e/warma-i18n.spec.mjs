@@ -143,3 +143,20 @@ test('a slow regular expression reports a timeout without changing subtitles', a
   await expect(page.locator('#text-process-confirm')).toBeDisabled();
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('a'.repeat(40) + '!');
 });
+
+test('English users see a warning when processing cannot preserve word timings', async ({ page }) => {
+  await page.evaluate(() => {
+    Object.assign(MaweBoot.DATA.segments[0], {
+      text: 'hello', items: [{ text: 'hello', start: 0, end: 1500 }],
+    });
+    MaweCuePanel.renderAll();
+    MaweTextProcess.openTextProcessModal();
+  });
+  await addTextProcessStep(page, 'replace');
+  await page.getByRole('textbox', { name: 'Rule 1 find' }).fill('hello');
+  await page.locator('#text-process-confirm').click();
+  await expect(page.locator('.hint-card.hint-warning')).toHaveText(
+    'Text processing applied to 1 subtitle. Word timings could not be fully preserved for 1 subtitle.',
+  );
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('');
+});

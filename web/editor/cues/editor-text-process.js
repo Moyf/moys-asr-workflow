@@ -206,12 +206,20 @@
     refreshActions();
   }
 
-  function loadDefault() {
+  function setPresetScope(scope) {
+    const hasSelection = selection.length > 0;
+    selectedOnly.checked = scope === undefined ? hasSelection : scope === 'selected';
+    selectedOnly.disabled = !hasSelection && !selectedOnly.checked;
+    $('text-process-selected-only-hint').hidden = hasSelection || selectedOnly.checked;
+  }
+
+  function loadDefault({ preserveScope = false } = {}) {
     const { presets, defaultPresetId } = MaweProcessing.library;
     const preset = presets.find(({ id }) => id === defaultPresetId);
     const project = MaweProcessing.projectOverride('text');
     selectedPreset = project === undefined ? preset?.id || '' : '';
     steps = structuredClone(project ?? preset?.steps ?? []);
+    if (!preserveScope) setPresetScope(project === undefined ? preset?.scope : undefined);
     renderPresets();
     renderSteps();
   }
@@ -416,7 +424,7 @@
     if (details.length) controls.append(toggle);
     syncExpandLabel();
     for (const node of details) preview.append(node);
-    apply.disabled = changed.length === 0;
+    apply.disabled = reading || changed.length === 0;
   }
 
   function cancelPreview() {
@@ -474,9 +482,6 @@
     MaweCuePanel.commitCuePanelEdit();
     const current = ++session;
     selection = captureTargets();
-    selectedOnly.checked = selection.length > 0;
-    selectedOnly.disabled = !selection.length;
-    $('text-process-selected-only-hint').hidden = Boolean(selection.length);
     openRows.clear();
     $('text-preset-fillers').value = '';
     expanded = false;
@@ -489,16 +494,20 @@
     $('text-preset-add-rule').focus();
     const fingerprint = () => JSON.stringify([steps, selectedPreset]);
     const initial = fingerprint();
+    const initialScope = selectedOnly.checked;
     const ok = await MaweProcessing.refresh();
     if (session !== current) return;
     reading = false;
     storageStatus.textContent = ok ? '' : '无法读取用户配置';
-    if (fingerprint() === initial) loadDefault();
-    else renderPresets();
+    if (fingerprint() === initial) loadDefault({ preserveScope: selectedOnly.checked !== initialScope });
+    else {
+      renderPresets();
+      schedulePreview();
+    }
   }
 
   function confirm() {
-    if (!result) return;
+    if (reading || !result) return;
     const current = currentRows();
     if (current.length !== result.length || current.some(({ segment, before }, index) =>
       segment !== result[index].segment || before !== result[index].before)) {
@@ -554,10 +563,7 @@
     selectedPreset = presetSelect.value;
     const preset = MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
     steps = structuredClone(preset?.steps || []);
-    if (preset) {
-      selectedOnly.checked = preset.scope === 'selected';
-      selectedOnly.disabled = !selection.length && !selectedOnly.checked;
-    }
+    if (preset) setPresetScope(preset.scope);
     renderSteps();
   });
   const currentScope = () => selectedOnly.checked ? 'selected' : 'all';

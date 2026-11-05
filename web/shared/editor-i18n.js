@@ -1754,6 +1754,11 @@
     if (presetRule) return `Processing ${presetRule[1]} subtitles; ${presetRule[2]} will change (expand to compare)`;
     presetRule = /^选定的 (\d+) 条字幕不会发生变化$/.exec(text);
     if (presetRule) return `None of the ${presetRule[1]} selected subtitles will change`;
+    presetRule = /^已应用文本处理：(\d+) 条字幕，(\d+) 条字词时间码未能完整保留$/.exec(text);
+    if (presetRule) {
+      const [, changed, affected] = presetRule;
+      return `Text processing applied to ${changed} subtitle${changed === '1' ? '' : 's'}. Word timings could not be fully preserved for ${affected} subtitle${affected === '1' ? '' : 's'}.`;
+    }
     presetRule = /^已应用文本处理：(\d+) 条字幕$/.exec(text);
     if (presetRule) return `Text processing applied to ${presetRule[1]} subtitles`;
     presetRule = /^(\d+) 条字幕的字词时间码已清除，请按需检查$/.exec(text);

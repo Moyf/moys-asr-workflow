@@ -210,3 +210,37 @@ test('pending save cannot relabel a reopened custom form as the saved preset', a
   await expect(page.locator('#text-preset-select')).toHaveValue('');
   await expect(page.locator('#text-preset-rules > li')).toHaveCount(0);
 });
+
+test('a selected-only user default never falls back to the full main track', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments.push({ id: 'two', start: 2000, end: 4000, text: '  another cue  ' });
+    MaweCuePanel.renderAll();
+    MaweSelection.selectOnly(1);
+    MaweTextProcess.openTextProcessModal();
+  });
+  const selectedOnly = page.locator('#text-process-selected-only');
+  const presetSelect = page.locator('#text-preset-select');
+  const apply = page.locator('#text-process-confirm');
+  await expect(selectedOnly).toBeChecked();
+  await addTextProcessStep(page, 'trim');
+  page.once('dialog', dialog => dialog.accept('Only selected cues'));
+  await page.locator('#text-preset-save-as').click();
+  await page.locator('#text-preset-default').click();
+  await expect(presetSelect.locator('option:checked')).toHaveText('Only selected cues ★');
+  await page.locator('#text-process-cancel').click();
+  await page.evaluate(() => {
+    MaweSelection.clearSelection({ silent: true });
+    MaweTextProcess.openTextProcessModal();
+  });
+  await expect(presetSelect).toBeEnabled();
+  await expect(presetSelect.locator('option:checked')).toHaveText('Only selected cues ★');
+  await expect(selectedOnly).toBeChecked();
+  await expect(page.locator('#text-process-preview')).toContainText('需要先选中至少1条字幕');
+  await expect(apply).toBeDisabled();
+  await page.locator('#text-process-cancel').click();
+
+  await page.evaluate(() => { MaweSelection.selectOnly(1); MaweTextProcess.openTextProcessModal(); });
+  await expect(page.locator('#text-process-scope-info')).toHaveText('当前范围：仅选中的 1 条字幕');
+  await apply.click();
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map(({ text }) => text))).toEqual(['嗯 123', 'another cue']);
+});

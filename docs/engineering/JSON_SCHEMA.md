@@ -268,7 +268,7 @@
 
 ### 工程处理参数 `processing_overrides`
 
-工程只保存明确设置的覆盖。缺少 `text` 或 `join` 时分别继承用户默认。用户预设和用户默认 ID 存放在用户数据目录的 `text-processing-presets.json`，便携页面使用浏览器存储。
+工程只保存明确设置的覆盖。缺少 `text` 或 `join` 时分别继承用户默认。用户预设、默认预设 ID 和用户拼合默认值存放在 MAW 用户数据目录的 `editor-processing.json`。新版库缺失时会读取旧 `text-processing-presets.json`，之后首次保存写入新文件。便携页面使用浏览器存储。
 
 - `text` 是有序步骤的副本，空数组表示本工程不预填。步骤用 `type` 区分，`enabled` 为 false 时跳过。`trim`、`capitalize`、`convertChineseNumbers`、`stripMarkdown` 只有类型。`replace` 另含 `find`、`replacement`、`regex`、`caseSensitive`。`wrap` 包含有序的 `wraps`，每项以 `id` 标识，自定义项 `custom` 还包含 `left` 和 `right`。
 - `join` 是整组拼合参数，包括 `gapMs`（0–10000）、`snapDirection`（`backward` / `forward`）、`absorbShort`、`shortCount`（1–20）、`absorbDirection`（`previous` / `next`）。
