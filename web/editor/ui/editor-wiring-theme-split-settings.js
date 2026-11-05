@@ -113,8 +113,10 @@ MaweSplitTrim.splitTrimSymbolsReset?.addEventListener('click', () => {
     const storage = MaweProcessing.portable ? '拼合默认仅存于当前浏览器' : '';
     const translate = window.MAWE_I18N?.translateText ?? ((value) => value);
     status.textContent = [scope, storage, message].filter(Boolean).map((part) => translate(part)).join(' · ');
-    inherit.disabled = !MaweProcessing.projectOverride('join');
+    inherit.disabled = reading || writing || !MaweProcessing.projectOverride('join');
     saveUser.disabled = reading || writing;
+    saveProject.disabled = reading;
+    if (MaweDom.autoMergeRunButton) MaweDom.autoMergeRunButton.disabled = reading;
   }
 
   async function open() {

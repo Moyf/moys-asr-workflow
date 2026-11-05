@@ -244,3 +244,35 @@ test('a selected-only user default never falls back to the full main track', asy
   await apply.click();
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map(({ text }) => text))).toEqual(['嗯 123', 'another cue']);
 });
+
+test('restoring inheritance waits for the latest user preset scope', async ({ page }) => {
+  let scope = 'all';
+  let pendingRead = Promise.resolve();
+  await page.route('**/api/text-processing-presets', async route => {
+    await pendingRead;
+    await route.fulfill({ json: {
+      schema: 'moy.asr.text_processing_presets.v2', revision: 1, defaultPresetId: 'cached',
+      presets: [{ id: 'cached', name: 'User cleanup', scope, steps: [{ type: 'trim' }] }],
+    } });
+  });
+  await page.evaluate(() => MaweTextProcess.openTextProcessModal());
+  await expect(page.locator('#text-preset-select option:checked')).toHaveText('User cleanup ★');
+  await page.locator('#text-process-cancel').click();
+  await page.evaluate(() => MaweProcessing.setProjectOverride('text', [{ type: 'capitalize' }]));
+
+  let releaseRead;
+  pendingRead = new Promise(resolve => { releaseRead = resolve; });
+  scope = 'selected';
+  const restore = page.locator('#text-process-project-reset');
+  try {
+    await page.evaluate(() => { MaweTextProcess.openTextProcessModal(); });
+    await expect(page.locator('#text-preset-status')).toHaveText('正在读取用户配置…');
+    await expect(restore).toBeDisabled({ timeout: 1500 });
+  } finally {
+    releaseRead();
+  }
+  await restore.click();
+  await expect(page.locator('#text-process-selected-only')).toBeChecked();
+  await expect(page.locator('#text-process-preview')).toContainText('需要先选中至少1条字幕');
+  await expect(page.locator('#text-process-confirm')).toBeDisabled();
+});

@@ -496,3 +496,32 @@ test('portable editor saves and reloads presets in its browser storage', async (
   await openTextProcess(page);
   await expect(page.locator('#text-process-preview .replace-preview-after')).toHaveText('处理后：甲');
 });
+
+test('join actions wait for the current user defaults', async ({ page }) => {
+  const join = { gapMs: 75, snapDirection: 'forward', absorbShort: false, shortCount: 3, absorbDirection: 'previous' };
+  await page.evaluate(value => MaweProcessing.setProjectOverride('join', { ...value, gapMs: 400 }), join);
+  let releaseRead;
+  const pendingRead = new Promise(resolve => { releaseRead = resolve; });
+  await page.route('**/api/text-processing-presets', async route => {
+    await pendingRead;
+    await route.fulfill({ json: {
+      schema: 'moy.asr.text_processing_presets.v2', revision: 1, presets: [], defaultPresetId: null, join,
+    } });
+  });
+  const run = page.locator('#auto-merge-run');
+  const saveProject = page.locator('#auto-merge-project-save');
+  const restore = page.locator('#auto-merge-project-reset');
+  try {
+    await page.locator('#auto-merge-manage').click();
+    await expect(page.locator('#auto-merge-settings-status')).toContainText('正在读取用户配置');
+    await expect(run).toBeDisabled({ timeout: 1500 });
+    await expect(saveProject).toBeDisabled();
+    await expect(restore).toBeDisabled();
+  } finally {
+    releaseRead();
+  }
+  await restore.click();
+  await expect(page.locator('#auto-merge-gap-ms')).toHaveValue('75');
+  await expect(run).toBeEnabled();
+  await expect(saveProject).toBeEnabled();
+});

@@ -187,7 +187,7 @@
     $('text-preset-clear').disabled = !available || !defaultPresetId;
     $('text-process-project-save').disabled = !valid;
     const override = MaweProcessing.projectOverride('text');
-    $('text-process-project-reset').disabled = override === undefined;
+    $('text-process-project-reset').disabled = !available || override === undefined;
     $('text-process-project-empty').disabled = Array.isArray(override) && !override.length;
     projectStatus.textContent = override === undefined ? '此工程继承用户默认'
       : override.length ? '此工程使用自己的文本处理默认' : '此工程不预填';
