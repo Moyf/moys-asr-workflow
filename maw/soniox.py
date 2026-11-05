@@ -256,7 +256,7 @@ def _parse_translation_terms_context(value: str) -> list[dict[str, str]]:
 
 def _validate_context_size(context: dict[str, object]) -> None:
     content: list[str] = []
-    for item in context.get("general", []):
+    for item in context.get("general" , []):
         if isinstance(item, Mapping):
             content.extend((str(item.get("key") or ""), str(item.get("value") or "")))
     content.append(str(context.get("text") or ""))
