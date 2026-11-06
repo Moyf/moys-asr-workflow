@@ -307,12 +307,6 @@
       "exportName": "initMaweMultiImport"
     },
     {
-      "file": "editor/cues/editor-find-replace.js",
-      "kind": "init",
-      "name": "find-replace-init",
-      "exportName": "initMaweFindReplace"
-    },
-    {
       "file": "editor/cues/editor-text-process.js",
       "kind": "init",
       "name": "text-process-init",
