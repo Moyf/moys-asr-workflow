@@ -3470,6 +3470,8 @@ test('translates snap-subtitles flash hints to English', () => {
   assert.equal(i18n.translateText('已为 4 条字幕写入字词时间码（1 条对齐失败）', 'en'), 'Wrote word timing for 4 cues (1 failed to align)');
   assert.equal(i18n.translateText('提交 AI 任务失败（HTTP 502）', 'en'), 'Failed to submit the AI task (HTTP 502)');
   assert.equal(i18n.translateText('未配置密钥', 'en'), 'No key configured');
+  // 空主体 + 纯备注括号：不得把整串中文原样带出（自审 nit #1 的守门用例）
+  assert.equal(i18n.translateText('AI 文本任务：（3 条已符合目标）', 'en'), 'AI text task: (3 already match the target)');
 });
 
 test('widens a zero-length trailing item and extends its segment', () => {

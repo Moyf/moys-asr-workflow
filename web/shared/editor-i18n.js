@@ -1472,7 +1472,7 @@
     '智谱 Coding Plan': 'Zhipu Coding Plan', '阿里云 Qwen': 'Alibaba Cloud Qwen',
     // 右键菜单「AI 处理」子菜单
     'AI 处理': 'AI actions',
-    '加粗关键词…': 'Bold keywords…', '翻译为副字幕…': 'Translate to secondary…', 'Emoji 点缀…': 'Emoji decoration…',
+    '加粗关键词…': 'Bold keywords…', '翻译为副字幕…': 'Translate to secondary subtitles…', 'Emoji 点缀…': 'Emoji decoration…',
     'AI 拆分建议…': 'AI split suggestion…', 'AI 拆分建议': 'AI split suggestion', 'AI 智能合并…': 'AI smart merge…', '时间码→字词…': 'Timecodes → word items…',
     'AI 提示词设置…': 'AI prompt settings…', '打开 AI 设置…': 'Open AI settings…',
     // 任务浮条 / 设置面板 / 回写提示的静态消息
@@ -1837,14 +1837,16 @@
   function translateAiNoteGroup(body) {
     const trimmed = String(body || '').trim();
     const paren = /^(.*?)(?:（([^（）]+)）)?$/.exec(trimmed);
-    const core = ((paren && paren[1]) || trimmed).trim();
+    // paren[1] 可能是空串（body 只有一段备注、无主体），不能用 || 回退到整串。
+    const core = (paren && paren[1] !== undefined ? paren[1] : trimmed).trim();
     const notes = paren && paren[2]
       ? ` (${paren[2].split('；').map((segment) => translateText(segment.trim(), EN)).filter(Boolean).join('; ')})`
       : '';
     const parts = core.split(/[；、]/)
       .map((segment) => translateText(segment.trim(), EN))
       .filter(Boolean);
-    return `${parts.join('; ')}${notes}`;
+    const joined = parts.join('; ');
+    return joined ? `${joined}${notes}` : notes.trim();
   }
 
   function translateText(value, lang = language) {
