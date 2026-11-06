@@ -1,3 +1,5 @@
+import { refreshColorAssignmentUi, refreshStickerAssignmentUi } from './editor-color-filter.js';
+import { stickerUrl, updateMultiSelectionClasses } from './editor-selection.js';
 import { getOverlayTrack, stickerSegmentsForTrack, overlaySticker } from './overlay-track.js';
 
 export function initMaweStickerPicker() {
@@ -49,7 +51,7 @@ export function initMaweStickerPicker() {
         it.classList.add('hidden');
       }
       const img = document.createElement('img');
-      img.src = MaweSelection.stickerUrl(s); img.alt = s.name;
+      img.src = stickerUrl(s); img.alt = s.name;
       const nameEl = document.createElement('div');
       nameEl.className = 'sname'; nameEl.textContent = s.name;
       it.appendChild(img); it.appendChild(nameEl);
@@ -87,7 +89,7 @@ export function initMaweStickerPicker() {
       MaweDisplaySettings.applyCueListDisplaySettings();
       MaweDisplaySettings.applyCueEditorDisplaySettings();
     }
-    MaweColorFilter.refreshStickerAssignmentUi();
+    refreshStickerAssignmentUi();
     MaweHint.flashHint(`已分配「${sticker.name}」`, 'success');
   });
 }
@@ -100,7 +102,7 @@ export function initMaweStickerPicker() {
       MaweSegmentOps.splitGroupsAtCutPoints(new Set(stickerTargetIdxs), 'sticker', 'sticker_ref',
         overlaySticker.stickerTargetTrack === 'overlay' ? getOverlayTrack().segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
       MaweDom.stickerModal.classList.remove('show');
-      MaweColorFilter.refreshStickerAssignmentUi();
+      refreshStickerAssignmentUi();
       MaweHint.flashHint('已清除', 'success');
     });
   }
@@ -117,7 +119,7 @@ export function initMaweStickerPicker() {
   if (!sticker) return;
   previewIdx = idx;
   overlaySticker.previewTrack = overlay ? 'overlay' : 'main';
-  document.getElementById('sticker-preview-img').src = MaweSelection.stickerUrl(sticker);
+  document.getElementById('sticker-preview-img').src = stickerUrl(sticker);
   document.getElementById('sticker-preview-name').textContent = sticker.name;
   MaweDom.stickerPreviewModal.classList.add('show');
 }
@@ -173,7 +175,7 @@ export function initMaweStickerPicker() {
       // 单条修改 lead（其 color_ref 成员仍指向它）或多选统一分配时，视为整组联动修改
       const isUnifiedGroup = sorted.length > 1
         || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.filter(s => s.color_group_id === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[sorted[0]].color_group_id).length > 1;
-      MaweColorFilter.refreshColorAssignmentUi();
+      refreshColorAssignmentUi();
       MaweHint.flashHint(isUnifiedGroup
         ? `已将关联字幕统一设为「${def.label}色」`
         : `已将字幕设为「${def.label}色」`, 'success');
@@ -196,7 +198,7 @@ export function initMaweStickerPicker() {
     return MaweCommands.run('清除颜色', () => {
       // 一次性切除所有目标 idx，触发组拆分
       MaweSegmentOps.splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
-      MaweColorFilter.refreshColorAssignmentUi();
+      refreshColorAssignmentUi();
       MaweHint.flashHint('已清除颜色', 'success');
     });
   }
@@ -270,7 +272,7 @@ export function initMaweStickerPicker() {
             `.multi-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
           ).forEach((el) => el.classList.remove('selected'));
         }));
-        MaweSelection.updateMultiSelectionClasses();
+        updateMultiSelectionClasses();
         window.MaweCuePanelWiring.updateSelectionCountText();
       }
     }
@@ -309,3 +311,15 @@ export function initMaweStickerPicker() {
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function openStickerPicker(...args) { return window.MaweStickerPicker.openStickerPicker(...args); }
+export function renderStickerGrid(...args) { return window.MaweStickerPicker.renderStickerGrid(...args); }
+export function assignSticker(...args) { return window.MaweStickerPicker.assignSticker(...args); }
+export function clearStickerOnTargets(...args) { return window.MaweStickerPicker.clearStickerOnTargets(...args); }
+export function openStickerPreview(...args) { return window.MaweStickerPicker.openStickerPreview(...args); }
+export function removeStickerCascade(...args) { return window.MaweStickerPicker.removeStickerCascade(...args); }
+export function expandStickerTime(...args) { return window.MaweStickerPicker.expandStickerTime(...args); }
+export function assignColor(...args) { return window.MaweStickerPicker.assignColor(...args); }
+export function removeColorCascade(...args) { return window.MaweStickerPicker.removeColorCascade(...args); }
+export function clearColorOnTargets(...args) { return window.MaweStickerPicker.clearColorOnTargets(...args); }
+export function toggleDisabled(...args) { return window.MaweStickerPicker.toggleDisabled(...args); }

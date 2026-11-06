@@ -618,6 +618,24 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(helpers.normalizeEditorSettings({ accentColorCustom: 'invalid' }).accentColorCustom, '#6ca5e8');
   assert.equal(settings.stickerOtioExportMode, 'portable');
   assert.equal(settings.autoMergeShortCount, 20);
+  // 表情包自定义背景：默认值、合法值归一、非法颜色回退与透明度钳制。
+  assert.equal(settings.stickerBackgroundEnabled, false);
+  assert.equal(settings.stickerBackgroundColor, '#000000');
+  assert.equal(settings.stickerBackgroundOpacity, 35);
+  const stickerBackground = helpers.normalizeEditorSettings({
+    stickerBackgroundEnabled: true,
+    stickerBackgroundColor: '#FF8800',
+    stickerBackgroundOpacity: 120,
+  });
+  assert.equal(stickerBackground.stickerBackgroundEnabled, true);
+  assert.equal(stickerBackground.stickerBackgroundColor, '#ff8800');
+  assert.equal(stickerBackground.stickerBackgroundOpacity, 100);
+  const invalidStickerBackground = helpers.normalizeEditorSettings({
+    stickerBackgroundColor: 'red',
+    stickerBackgroundOpacity: 'x',
+  });
+  assert.equal(invalidStickerBackground.stickerBackgroundColor, '#000000');
+  assert.equal(invalidStickerBackground.stickerBackgroundOpacity, 35);
   assert.equal(settings.assMode, false);
   assert.equal(helpers.normalizeEditorSettings({ assMode: true }).assMode, true);
   assert.equal(helpers.normalizeEditorSettings({ assMode: 1 }).assMode, false);

@@ -55,7 +55,7 @@ from maw.speaker import (
 )
 
 BASE_URL = "https://api.soniox.com"
-DEFAULT_MODEL = "stt-async-v5"
+DEFAULT_MODEL = "stt-async-v6"
 
 # Soniox documents this as 8,000 tokens (approximately 10,000 characters).
 # The API remains authoritative for the actual token count.
@@ -256,7 +256,7 @@ def _parse_translation_terms_context(value: str) -> list[dict[str, str]]:
 
 def _validate_context_size(context: dict[str, object]) -> None:
     content: list[str] = []
-    for item in context.get("general", []):
+    for item in context.get("general" , []):
         if isinstance(item, Mapping):
             content.extend((str(item.get("key") or ""), str(item.get("value") or "")))
     content.append(str(context.get("text") or ""))
@@ -504,6 +504,8 @@ def merge_word_fragments(tokens: list[dict]) -> list[dict]:
     实测契约（2026-07-28，stt-async-v5）：词首片段带前导空格（" edit"），
     词内续段没有前导空格（"ing"、"'t"、"ong,"）；标点通常无前导空格，
     自然并入前词（"process."）。
+    stt-async-v6（2026-11 新增，官方声明与 v5 完全兼容）沿用同一 token 契约，
+    实现仍按 v5 的实测结果，尚未针对 v6 重新实测。
     规则：无前导空格且非 CJK 开头 → 并入前一个 token；CJK 开头
     （中/日文逐字粒度）始终独立。合并后 start 取词首、end 取词尾，
     speaker/language 取词首片段。

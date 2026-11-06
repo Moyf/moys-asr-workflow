@@ -4,6 +4,8 @@
 // （contain 缩放 + 层内居中），与 ass 字幕在同一张滤镜图串联一次性编码。
 // 区间收集契约与表情包预览层（rebuildStickerIntervals）一致：主轨 + 叠加轨、
 // ref 解析 head、跳过禁用段、同一 rel 合并 enable 区间。
+// 载荷可带 background（stickerBackgroundPayload）：自定义底衬，服务端在每个
+// placement 的 overlay 前画同矩形 drawbox；与预览 CSS 变量同一份设置。
 (function initMaweStickerBurnPlan(global) {
   'use strict';
 
@@ -87,12 +89,28 @@
       const placements = global.AsrEditorUtils?.computeStickerCuePlacements?.({
         plan, windows, fixedBox: box,
       });
-      if (Array.isArray(placements)) return { mode: resolvedMode, placements };
+      if (Array.isArray(placements)) {
+        return { mode: resolvedMode, placements, background: stickerBackgroundPayload() };
+      }
     }
-    return { mode: 'fixed', placements: collectFixedPlacements({ windows, box }) };
+    return { mode: 'fixed', placements: collectFixedPlacements({ windows, box }), background: stickerBackgroundPayload() };
+  }
+
+  // 自定义表情包背景（预览 CSS 变量与烧录 drawbox 同源）。关闭/颜色不合法/
+  // 不透明度为 0 时返回 null——服务端按缺省处理，不画底衬。透明度以 0~1
+  // 两位小数下发（设置里是 0~100 的整数百分比）。
+  function stickerBackgroundPayload() {
+    const settings = global.MaweSettings?.EDITOR_SETTINGS;
+    if (!settings || settings.stickerBackgroundEnabled !== true) return null;
+    const color = String(settings.stickerBackgroundColor ?? '').trim();
+    const opacity = Number(settings.stickerBackgroundOpacity);
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) return null;
+    if (!Number.isFinite(opacity) || opacity <= 0) return null;
+    return { color: color.toLowerCase(), opacity: Math.round(Math.min(opacity, 100)) / 100 };
   }
 
   global.MaweStickerBurnPlan = Object.freeze({
     stickerBurnEnabled, collectStickerPlans, collectStickerIntervals, stickerLayerBox,
+    stickerBackgroundPayload,
   });
 })(typeof window !== 'undefined' ? window : globalThis);
