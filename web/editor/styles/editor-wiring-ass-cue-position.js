@@ -235,7 +235,7 @@
     if (!current || !singleSelected(current.segment.id)) return;
     const overlay = global.MaweDom.overlayEl;
     const record = recordFor(current.segment);
-    if (global.MaweDom.overlayToggle?.checked !== true || overlay.dataset.assMode !== 'true'
+    if (overlay.dataset.assMode !== 'true'
         || overlay.classList.contains('hidden') || !record || !(record.opacity > 0)) return;
     const rect = overlay.getBoundingClientRect();
     if (event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) return;
@@ -283,7 +283,7 @@
     }
     const frame = global.MaweAssCanvas.lastRender;
     const visible = new Set();
-    if (enabled() && global.MaweDom.overlayToggle.checked) for (const [layerIndex, record] of (frame?.tracks || []).entries()) {
+    if (enabled()) for (const [layerIndex, record] of (frame?.tracks || []).entries()) {
       if (!['main', 'extension', 'overlay'].includes(record.role) || record.skipped || !record.bounds) continue;
       const kind = record.role;
       const id = record.cueId;

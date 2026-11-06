@@ -119,3 +119,37 @@ test('overlapping hit targets follow Canvas order when secondary position is set
   expect(reset.order.indexOf('secondary-cue')).toBeLessThan(reset.order.indexOf('automatic-overlay'));
   expect(reset.secondaryZ).toBeLessThan(reset.overlayZ);
 });
+
+test('secondary remains selectable, draggable and wheel-scalable with main preview off', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
+  await page.goto(server.url);
+  await page.waitForFunction(() => window.MaweCoreState?.player?.videoWidth > 0 && window.MaweAssCuePosition);
+  await page.evaluate(async () => {
+    await loadAssStyleLibrary({ force: true });
+    ASS_STYLE_LIBRARY = AsrEditorUtils.defaultAssStyleLibrary();
+    Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assFrameAutoRender: false, autoSaveProject: false });
+    const secondary = AsrEditorUtils.ensureExtensionTrack(MaweBoot.DATA);
+    Object.assign(secondary, { enabled: true, segments: [{ id: 'secondary-only', start: 0, end: 2000, text: 'SECONDARY' }] });
+    MaweBoot.DATA.bilingual.active_track_id = secondary.id;
+    MaweCoreState.player.currentTime = 1;
+    MaweDom.extensionOverlayToggle.checked = true;
+    MaweDom.extensionOverlayToggle.dispatchEvent(new Event('change'));
+    MaweDom.overlayToggle.checked = false;
+    MaweDom.overlayToggle.dispatchEvent(new Event('change'));
+  });
+  const box = page.locator('.ass-cue-drag-target[data-cue-id="secondary-only"]');
+  await expect(box).toBeVisible();
+  await box.click();
+  await expect(box).toHaveClass(/selected/);
+  const bounds = await box.boundingBox();
+  const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 20, y + 10);
+  await page.mouse.up();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].assOverride?.pos)).toBeTruthy();
+  await page.mouse.move(x + 20, y + 10);
+  await page.mouse.wheel(0, -120);
+  await expect.poll(() => page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].assOverride?.scale)).toBeGreaterThan(1);
+});
