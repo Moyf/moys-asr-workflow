@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 function playbackHarness() {
   const listeners = new Map();
@@ -93,7 +94,7 @@ test('both playback refresh paths suspend gap skipping only while auditioning', 
     MaweGapRemoveData: { getGapRemoveData: () => ({ skip_playback: true }), getRemovedGapRanges: () => [] },
     MaweMediaPlayback: { get isAuditioning() { return auditioning; } },
   };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/media/editor-playback-loop.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/media/editor-playback-loop.js'), context);
   for (const name of ['update', 'updatePlaybackFrame']) {
     for (const active of [true, false]) {
       auditioning = active;

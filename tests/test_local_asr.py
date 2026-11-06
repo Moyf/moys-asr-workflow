@@ -40,6 +40,7 @@ from maw.local_asr import (
     resolve_engine_model_source,
     write_local_outputs,
 )
+from tests.track_helpers import main_track
 
 
 class LocalAsrNormalizationTests(unittest.TestCase):
@@ -143,7 +144,7 @@ class LocalAsrNormalizationTests(unittest.TestCase):
         self.assertNotIn("items", result.segments[1])
         self.assertEqual(
             [segment["text"] for segment in build_local_segments(result, duration_ms=2000)],
-            ["你好", "没有逐字时间码"],
+            ["你好。", "没有逐字时间码。"],
         )
 
     def test_fun_asr_mixed_invalid_timestamps_use_valid_sentence_range(self) -> None:
@@ -186,7 +187,7 @@ class LocalAsrNormalizationTests(unittest.TestCase):
         self.assertEqual(result.timestamp_granularity, "unknown")
         self.assertEqual(
             build_local_segments(result, duration_ms=2000),
-            [{"start": 0, "end": 2000, "text": "有时间码。没有可用范围"}],
+            [{"start": 0, "end": 2000, "text": "有时间码。没有可用范围。"}],
         )
 
     def test_items_from_timestamps_supports_word_units_with_spaces(self) -> None:
@@ -304,11 +305,8 @@ class LocalSegmentationTuningTests(unittest.TestCase):
         for previous, current in zip(segments, segments[1:]):
             self.assertLessEqual(previous["end"], current["start"])
             self.assertLess(current["start"], current["end"])
-        # 剥尾标点只影响各条结尾，去掉标点后文本不丢字。
-        self.assertEqual(
-            "".join(seg["text"] for seg in segments).replace("，", "").replace("。", ""),
-            text.replace("，", "").replace("。", ""),
-        )
+        # 重切仍保留原始文字与标点。
+        self.assertEqual("".join(seg["text"] for seg in segments), text)
 
     def test_segment_only_continuous_short_cues_pass_through(self) -> None:
         source = {"start": 1000, "end": 3000, "text": "嗯，好的。", "speaker": "S02"}
@@ -325,7 +323,7 @@ class LocalSegmentationTuningTests(unittest.TestCase):
 
         segments = build_local_segments(result, duration_ms=4000, max_len=15)
 
-        self.assertEqual([seg["text"] for seg in segments], ["嗯，好的"])
+        self.assertEqual([seg["text"] for seg in segments], ["嗯，好的。"])
         self.assertEqual([seg["start"] for seg in segments], [1000])
         self.assertEqual([seg["end"] for seg in segments], [3000])
         self.assertNotIn("items", segments[0])
@@ -344,12 +342,12 @@ class LocalSegmentationTuningTests(unittest.TestCase):
         segments = build_local_segments(result, duration_ms=12_000, max_len=15, min_len=5, gap_split_ms=300)
 
         self.assertEqual([seg["text"] for seg in segments], [
-            # 共享断句配置下全角逗号也是强断句，句尾剥除 ，。 保留 ！。
-            "本地模型",
-            "AI校准和翻译",
-            "双语字幕",
-            "免费ASR",
-            "这些功能全都加上了",
+            # 共享断句配置下全角逗号仍切句，默认保留所有句尾符号。
+            "本地模型，",
+            "AI校准和翻译，",
+            "双语字幕，",
+            "免费ASR，",
+            "这些功能全都加上了。",
             "这么长一句话！",
         ])
         self.assertTrue(all(len(seg["text"]) <= 15 for seg in segments))
@@ -362,12 +360,12 @@ class LocalSegmentationTuningTests(unittest.TestCase):
             self.assertLessEqual(previous["end"], current["start"])
             self.assertLess(current["start"], current["end"])
 
-    def test_trailing_full_width_punct_is_stripped(self) -> None:
+    def test_explicit_trailing_full_width_punct_is_stripped(self) -> None:
         text = "这是结尾。"
         coarse = {"start": 0, "end": 2000, "text": text, "items": [{"text": text, "start": 0, "end": 2000}]}
         result = LocalTranscription(text, "zh", [], [coarse], "test-model")
 
-        segments = build_local_segments(result, duration_ms=2000)
+        segments = build_local_segments(result, duration_ms=2000, strip_tail_punct="，。")
 
         self.assertEqual(len(segments), 1)
         self.assertEqual(segments[0]["text"], "这是结尾")
@@ -405,7 +403,7 @@ class LocalSegmentationTuningTests(unittest.TestCase):
 
         segments = build_local_segments(result, duration_ms=2000, max_len=7)
 
-        self.assertEqual([seg["text"] for seg in segments], ["哈哈哈哈", "呵呵呵呵"])
+        self.assertEqual([seg["text"] for seg in segments], ["哈哈哈哈，", "呵呵呵呵"])
         # 切分边界来自真实词级时间码，而不是字符插值估计。
         self.assertEqual(segments[0]["start"], 100)
         self.assertEqual(segments[0]["end"], 900)
@@ -735,8 +733,8 @@ class LocalAsrFlowTests(unittest.TestCase):
         )
         self.assertEqual(
             [segment["text"] for segment in build_local_segments(result, duration_ms=2200)],
-            # 默认剥尾清单（，。；,.）剥掉英文句尾句号，问叹号保留。
-            ["Hello, world", " Next sentence works!"],
+            # 默认保留全部标点，字词间空格不变。
+            ["Hello, world.", " Next sentence works!"],
         )
 
     def test_qwen_long_audio_is_split_and_timestamps_are_shifted(self) -> None:
@@ -1008,8 +1006,8 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertEqual(result.text, "Hello, world. Next sentence works!")
         self.assertEqual(
             [segment["text"] for segment in build_local_segments(result, duration_ms=2000)],
-            # 默认剥尾清单剥掉英文句尾句号。
-            ["Hello, world", " Next sentence works!"],
+            # 默认保留英文句尾句号。
+            ["Hello, world.", " Next sentence works!"],
         )
 
     def test_whisper_segment_without_words_keeps_sentence_boundary(self) -> None:
@@ -1071,7 +1069,7 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertNotIn("items", result.segments[1])
         self.assertEqual(
             [segment["text"] for segment in build_local_segments(result, duration_ms=2200)],
-            ["有精确字词", "只有句子级时间码"],
+            ["有精确字词。", "只有句子级时间码。"],
         )
 
     def test_whisper_generator_words_are_not_consumed_and_can_supply_text(self) -> None:
@@ -1326,9 +1324,9 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertTrue(runtime.kwargs["sentence_timestamp"])
         segments = build_local_segments(result, duration_ms=2000)
         self.assertEqual([segment["text"] for segment in segments], [
-            # 默认剥尾清单剥掉英文句尾句号。
-            "First sentence works here",
-            " Second sentence works too",
+            # 默认保留英文句尾句号。
+            "First sentence works here.",
+            " Second sentence works too.",
         ])
 
     def test_fun_asr_runtime_import_is_lazy(self) -> None:
@@ -1551,10 +1549,10 @@ class LocalAsrFlowTests(unittest.TestCase):
 
             self.assertEqual(paths.json, root / "sample.funasr-local.mosp")
             project = json.loads(paths.json.read_text(encoding="utf-8"))
-            self.assertEqual(project["model"], "paraformer-zh")
+            self.assertEqual(main_track(project)['model'], "paraformer-zh")
             self.assertEqual(project["media_metadata"]["selected_audio_track"], 2)
             self.assertEqual(
-                {field: project[field] for field in (
+                {field: main_track(project)[field] for field in (
                     "language", "language_source", "split_mode", "timestamp_granularity"
                 )},
                 {

@@ -4,6 +4,7 @@
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { runtimeProject } from './helpers/runtime-project.mjs';
 
 
 const utilsContext = { window: {}, TextDecoder, TextEncoder, Uint8Array };
@@ -28,6 +29,31 @@ const waveTesting = waveContext.window.AsrWaveform.testing;
 // vm 沙箱与测试文件处于不同 realm，deepStrictEqual 会比较 Object.prototype；
 // 统一 JSON 还原成测试 realm 的普通对象再比较。
 const plain = (value) => JSON.parse(JSON.stringify(value));
+
+test('AI cleanup removal type migrates legacy notes and survives user edits and export', () => {
+  for (const note of ['[AI] 删除：口误', '[ai] 移除: 试麦']) {
+    const marker = plain(utils.normalizeMarkers([{ id: 'auto', start: 100, end: 900, note }]))[0];
+    assert.equal(marker.cleanup_action, 'remove');
+    assert.equal(utils.isAiCleanupRemovalMarker(marker), true);
+    marker.note = '人工改写原因';
+    marker.color = '#ffffff';
+    const saved = plain(utils.markersToProjectField([marker])).items[0];
+    assert.equal(saved.cleanup_action, 'remove');
+    assert.equal(utils.isAiCleanupRemovalMarker(saved), true);
+    assert.equal(saved.note, '人工改写原因');
+  }
+  for (const raw of [
+    { color: '#8e4ec6', note: '人工标记' },
+    { note: '[AI] 复核：删除建议', review: { status: 'pending' } },
+    { note: '[AI] 删除：待确认', review: { status: 'pending' } },
+    { cleanup_action: 'invalid' },
+  ]) {
+    const marker = utils.normalizeMarkers([{ id: 'ordinary', start: 100, end: 900, ...raw }])[0];
+    assert.equal(utils.isAiCleanupRemovalMarker(marker), false);
+    assert.equal(marker.cleanup_action, undefined);
+  }
+  assert.equal(utils.isAiCleanupRemovalMarker({ start: 100, cleanup_action: 'remove' }), false);
+});
 
 test('AI annotation provenance survives normalization and manual review edits', () => {
   const raw = { id: 'ai-1', start: 0, end: 1000, name: '原文', color: '#3e63dd', note: '[AI] 注：术语',
@@ -239,7 +265,7 @@ test('OTIO export writes marker fields as Marker.2 with name, comment and mapped
   const context = {
     window: { AsrEditorUtils: utilsWindow.AsrEditorUtils, AsrGapRemoveCore: utilsWindow.AsrGapRemoveCore },
     document: { querySelectorAll: () => [] },
-    MaweBoot: { DATA: { markers: [] } },
+    MaweBoot: { DATA: runtimeProject([], { markers: [] }) },
     MaweSettings: { EDITOR_SETTINGS: {}, GAP_REMOVE_SCHEMA: 'moy.asr.gap_remove.v1' },
     MaweCoreState: {},
     MaweTimeline: {},
@@ -297,12 +323,13 @@ test('OTIO export writes marker fields as Marker.2 with name, comment and mapped
   assert.equal(fromProject.length, 1);
   assert.equal(fromProject[0].color, 'YELLOW');
   // 字幕来源的标记带「MAW 字幕」备注（名称 = 字幕文本）。
-  context.MaweBoot.DATA.segments = [{
+  const mainSegments = utilsWindow.AsrEditorUtils.getMainTrack(context.MaweBoot.DATA).segments;
+  mainSegments.push({
     start: 1000, end: 2000, text: '大家好', items: [],
-  }];
+  });
   const subtitleMarkers = otio.buildGapRemovedSubtitleMarkers(
     { start: 0, end: 30000 }, 0,
-    context.MaweBoot.DATA.segments, context.MaweBoot.DATA.segments,
+    mainSegments, mainSegments,
   );
   // effectiveColorName 依赖字幕样式上下文，颜色回退 WHITE 即可。
   assert.equal(subtitleMarkers.length, 1);

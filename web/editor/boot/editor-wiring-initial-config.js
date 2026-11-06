@@ -12,7 +12,7 @@
 
 
 // 把用户配置的拆分移除符号同步给共享工具层；设置面板修改时也会同步。
-MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(MaweSettings.EDITOR_SETTINGS.splitTrimSymbols);
+window.AsrEditorUtils.setSplitTrimSymbols(MaweSettings.EDITOR_SETTINGS.splitTrimSymbols);
 // 「特殊文本规则」同步给字词块归位的 MASS 成对检测（与 assSpecialSymbolRule 同源）。
 window.AsrEditorUtils.setMassSymbolRule(MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule);
 
@@ -156,3 +156,8 @@ const ASS_PREVIEW_REFERENCE_HEIGHT = Number(window.AsrEditorUtils.ASS_REFERENCE_
 if (MaweHistory.undoBtn) MaweHistory.undoBtn.addEventListener('click', () => MaweHistory.performUndo());
 if (MaweHistory.redoBtn) MaweHistory.redoBtn.addEventListener('click', () => MaweHistory.performRedo());
 MaweHistory.updateUndoRedoButtons();
+
+// G07：init 化模块经 window 延迟取用本文件的常量；classic 调用方不受影响。
+window.MaweInitialConfigWiring = window.MaweInitialConfigWiring || Object.freeze({
+  ASS_PREVIEW_REFERENCE_HEIGHT,
+});

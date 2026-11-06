@@ -1,5 +1,8 @@
-// Stage a snapshot; publish history only after a real, successful mutation.
-window.MAWE.register('editor-commands', function createEditorCommands(dependencies) {
+// 命令事务：暂存快照，只有真实成功变更后才发布历史。
+// ESM 模块：createEditorCommands 为纯工厂具名导出（测试直调），
+// initMaweCommands 在原清单位次组装依赖并挂 window.MaweCommands
+//（register/resolve 注册表随之退役，G16 后窗口出接口同样退役）。
+export function createEditorCommands(dependencies) {
   'use strict';
   const { capture, hasChanges, publish, restore, refresh } = dependencies;
   const beforeBeginListeners = new Set();
@@ -48,15 +51,14 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
     }
   }
   return Object.freeze({ begin, run, onBeforeBegin });
-});
+}
 
-(function composeEditorCommands() {
+export function initMaweCommands() {
   'use strict';
   const fingerprint = value => JSON.stringify(value, (key, item) => key === '_dirty' ? undefined : item);
   const projectSegments = () => ({
-    segments: MaweState.project.segments,
-    multi_subtitle: MaweState.project.multi_subtitle,
-    overlay_track: MaweState.project.overlay_track,
+    tracks: MaweState.project.tracks, bindings: MaweState.project.bindings,
+    bilingual: MaweState.project.bilingual, subtitle_groups: MaweState.project.subtitle_groups,
   });
   function restoreDirtyFlags(current, previous) {
     if (!current || typeof current !== 'object') return;
@@ -66,14 +68,18 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
       if (key !== '_dirty') restoreDirtyFlags(current[key], previous?.[key]);
     }
   }
-  window.MaweCommands = window.MAWE.resolve('editor-commands', {
+  window.MaweCommands = createEditorCommands({
     capture(label, options) {
       MaweCueListAnchor.rememberCueListMutation();
       const record = MaweHistory.captureSegmentsRecord(label, options);
       return { record, fingerprint: fingerprint(record.segs), selection: MaweHistory.snapshotEditorSelection() };
     },
-    hasChanges: snapshot => fingerprint(projectSegments()) !== snapshot.fingerprint,
+    hasChanges: snapshot => {
+      window.AsrEditorUtils.refreshSubtitleGroupViews(MaweState.project);
+      return fingerprint(projectSegments()) !== snapshot.fingerprint;
+    },
     publish(snapshot) {
+      window.AsrEditorUtils.refreshSubtitleGroupViews(MaweState.project);
       MaweHistory.commitRecord(snapshot.record);
       MaweState.changes.projectImportDirty = true;
     },
@@ -87,4 +93,4 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
     },
     refresh: invalidation => MaweViewUpdates.invalidate({ save: true, ...invalidation }),
   });
-})();
+}

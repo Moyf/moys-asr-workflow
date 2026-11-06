@@ -1,0 +1,154 @@
+{
+  "schema": "moy.asr.project.v1.5",
+  "metadata": {
+    "fixture": true
+  },
+  "subtitle_groups": {
+    "color": [
+      {
+        "id": "color-main-1",
+        "value": {
+          "name": "red"
+        }
+      },
+      {
+        "id": "color-overlay-1",
+        "value": {
+          "name": "blue"
+        }
+      }
+    ],
+    "sticker": [
+      {
+        "id": "sticker-main-1",
+        "value": {
+          "name": "main",
+          "filename": "main.png",
+          "rel": "main.png"
+        }
+      },
+      {
+        "id": "sticker-overlay-1",
+        "value": {
+          "name": "overlay",
+          "filename": "overlay.png",
+          "rel": "overlay.png"
+        }
+      },
+      {
+        "id": "sticker-extension-1-1",
+        "value": {
+          "name": "secondary",
+          "rel": "secondary.png"
+        }
+      }
+    ]
+  },
+  "media": "",
+  "audio_processing": {
+    "gain_db": 0,
+    "target_lufs": -14,
+    "peak_ceiling_dbtp": -1
+  },
+  "language": "zh",
+  "model": "fixture",
+  "sticker_root": "",
+  "timebase": {
+    "unit": "milliseconds",
+    "fps": 30
+  },
+  "segments": [
+    {
+      "id": "main-head",
+      "start": 0,
+      "end": 1000,
+      "text": "头",
+      "color_group_id": "color-main-1",
+      "sticker_group_id": "sticker-main-1",
+      "start_frame": 0,
+      "end_frame": 30,
+      "items": []
+    },
+    {
+      "id": "main-ref",
+      "start": 1000,
+      "end": 2000,
+      "text": "组员",
+      "color_group_id": "color-main-1",
+      "sticker_group_id": "sticker-main-1",
+      "start_frame": 30,
+      "end_frame": 60,
+      "items": []
+    }
+  ],
+  "preserve_punctuation": true,
+  "multi_subtitle": {
+    "schema": "moy.asr.multi_subtitle.v1",
+    "enabled": true,
+    "display_mode": "both",
+    "main_split_mode": "continuous",
+    "tracks": [
+      {
+        "id": "translation",
+        "role": "extension",
+        "name": "English",
+        "language": "en",
+        "split_mode": "word",
+        "source_name": "translation.srt",
+        "segments": [
+          {
+            "id": "secondary",
+            "start": 2000,
+            "end": 3000,
+            "text": "副轨附件保留探针",
+            "custom": {
+              "nested": [
+                1,
+                2
+              ]
+            },
+            "sticker_group_id": "sticker-extension-1-1",
+            "start_frame": 60,
+            "end_frame": 90
+          }
+        ]
+      }
+    ],
+    "bindings": []
+  },
+  "overlay_track": {
+    "enabled": false,
+    "segments": [
+      {
+        "id": "overlay-head",
+        "start": 0,
+        "end": 1000,
+        "text": "头",
+        "color_group_id": "color-overlay-1",
+        "sticker_group_id": "sticker-overlay-1",
+        "start_frame": 0,
+        "end_frame": 30,
+        "items": []
+      },
+      {
+        "id": "overlay-ref",
+        "start": 1000,
+        "end": 2000,
+        "text": "组员",
+        "color_group_id": "color-overlay-1",
+        "sticker_group_id": "sticker-overlay-1",
+        "start_frame": 30,
+        "end_frame": 60,
+        "items": []
+      }
+    ]
+  },
+  "preview": {
+    "ass_mode": false,
+    "sticker": {},
+    "subtitle": {
+      "speaker_labels": {}
+    },
+    "extension_subtitle": {}
+  }
+}

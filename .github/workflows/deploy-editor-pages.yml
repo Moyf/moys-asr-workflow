@@ -11,6 +11,8 @@ on:
       - "edit.py"
       - "web/**"
       - "scripts/build-*.mjs"
+      - "pyproject.toml"
+      - "scripts/prepare_editor_pages.py"
       - "scripts/build_release_site.py"
       - "scripts/prepare_release_notes.py"
       - "scripts/verify_release_site.py"
@@ -66,6 +68,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.4"
 
       - name: Install locked Python dependencies
         run: uv sync --frozen --no-group build --no-dev
@@ -79,7 +83,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version: "22.23.4"
           cache: pnpm
           cache-dependency-path: |
             pnpm-lock.yaml
@@ -112,11 +116,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p website/dist/editor
-          # Deployment-only artifact build; local development does not refresh
-          # the repository-root blank-editor.html by default.
-          uv run --no-sync python edit.py --blank -o website/dist/editor/index.html
-          touch website/dist/.nojekyll
+          # 1.x only. At 2.0+ this fails on stale /editor/ output and emits no editor.
+          uv run --no-sync python scripts/prepare_editor_pages.py --output website/dist
 
       - name: Setup Pages
         uses: actions/configure-pages@v6

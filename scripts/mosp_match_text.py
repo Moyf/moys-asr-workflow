@@ -9,6 +9,7 @@ each item, then difflib anchors those characters to the corrected manuscript.
 from __future__ import annotations
 
 import argparse
+import copy
 import difflib
 import json
 import math
@@ -18,6 +19,12 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable, Iterator, Sequence
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+if str(_PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PACKAGE_ROOT))
+from maw.project_tracks import get_main_track, iter_segments  # noqa: E402
+from maw.project import normalize_project  # noqa: E402
+from maw.project_mutations import replace_main_segments, fresh_segment_id  # noqa: E402
 
 
 PRESERVED_END_PUNCTUATION = frozenset("！？：!?:")
@@ -34,7 +41,6 @@ CLOSING_PUNCTUATION = frozenset(
     "〞〟〙〗〛｠｣"
 )
 MARKDOWN_EXTENSIONS = frozenset({".md", ".markdown"})
-PROJECT_SCHEMA = "moy.asr.project.v1"
 _MARKDOWN_HEADING_PREFIX = re.compile(r"^[ \t]{0,3}#{1,6}(?:[ \t]+|$)", re.MULTILINE)
 
 
@@ -205,9 +211,11 @@ def parse_mosp(text: str, *, is_cancelled: Callable[[], bool] | None = None) -> 
         raise AlignmentError(f"MOSP JSON 无效：第 {exc.lineno} 行第 {exc.colno} 列") from exc
     if not isinstance(project, dict):
         raise AlignmentError("MOSP 顶层必须是 JSON 对象")
-    if "schema" in project and project.get("schema") != PROJECT_SCHEMA:
-        raise AlignmentError(f"不支持的 MOSP 工程版本：{project.get('schema')}")
-    segments = project.get("segments")
+    try:
+        project = normalize_project(project)
+    except ValueError as error:
+        raise AlignmentError(str(error)) from error
+    segments = get_main_track(project)["segments"]
     if not isinstance(segments, list) or not segments:
         raise AlignmentError("MOSP 缺少非空 segments 数组")
 
@@ -702,6 +710,7 @@ def generate_matched_mosp(
     preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
     *,
     is_cancelled: Callable[[], bool] | None = None,
+    reserved_cue_ids: Iterable[str] = (),
 ) -> tuple[list[OutputCue], dict[str, object], str]:
     check_match_cancelled(is_cancelled)
     output, report, segments, timings = _align_mosp_and_manuscript(
@@ -716,8 +725,22 @@ def generate_matched_mosp(
         project = json.loads(mosp_text.lstrip("\ufeff"))
     except json.JSONDecodeError as exc:  # parse_mosp normally reports this first.
         raise AlignmentError("MOSP JSON 无效") from exc
-    project["schema"] = PROJECT_SCHEMA
-    project["segments"] = build_mosp_segments(segments, timings, output, is_cancelled=is_cancelled)
+    project = normalize_project(project)
+    source_segments = get_main_track(project)["segments"]
+    generated = build_mosp_segments(segments, timings, output, is_cancelled=is_cancelled)
+    grouped = any(cue.get("color_group_id") or cue.get("sticker_group_id") for cue in source_segments)
+    if len(generated) != len(source_segments) and (grouped or project["bindings"]):
+        raise AlignmentError("带独立分组或双语绑定的工程暂不支持文稿匹配改变字幕条数。")
+    if len(generated) == len(source_segments):
+        for original, cue in zip(source_segments, generated, strict=True):
+            for key, value in original.items():
+                if key not in {"start", "end", "text", "items", "start_frame", "end_frame"}:
+                    cue[key] = copy.deepcopy(value)
+    else:
+        reserved = {cue["id"] for cue in iter_segments(project)} | set(reserved_cue_ids)
+        for index, cue in enumerate(generated, 1):
+            cue["id"] = fresh_segment_id(f"matched-cue-{index}", reserved)
+    replace_main_segments(project, generated)
     content = json.dumps(project, ensure_ascii=False, indent=2) + "\n"
     return output, report, content
 

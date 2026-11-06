@@ -47,8 +47,8 @@ def _fake_extract(_zip_path: Path, target_dir: Path) -> None:
 
 class MossRuntimeConstantTests(unittest.TestCase):
     def test_constant_values(self) -> None:
-        # 版本 2：新增 modelscope（MOSS 模型下载的 HF → ModelScope 回退）。
-        self.assertEqual(MOSS_RUNTIME_VERSION, "2")
+        # 版本 3：更新 certifi 安全下界。
+        self.assertEqual(MOSS_RUNTIME_VERSION, "3")
         self.assertEqual(MOSS_PYTHON_VERSION, "3.11")
         self.assertEqual(MOSS_RUNTIME_ROOT_NAME, "local-runtime-moss")
 
@@ -62,7 +62,7 @@ class MossRuntimeConstantTests(unittest.TestCase):
         )
 
     def test_package_dirs_cover_runtime_imports(self) -> None:
-        self.assertEqual(MOSS_PACKAGE_DIRS, ("moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"))
+        self.assertEqual(MOSS_PACKAGE_DIRS, ("certifi", "moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"))
         self.assertIn("moss_transcribe_diarize", MOSS_VERIFY_IMPORT)
         self.assertIn("import modelscope", MOSS_VERIFY_IMPORT)
         self.assertIn("MAW_LOCAL_RUNTIME_READY", MOSS_VERIFY_IMPORT)

@@ -1,3 +1,8 @@
+import { activeExtensionSegments } from '../cues/overlay-track.js';
+
+export function initMaweExportSrt() {
+'use strict';
+
 // SRT 导出：主/副/去空隙 SRT、配色分拆与动态字幕数据。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweExportSrt 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -10,14 +15,18 @@
   // 程序内开关（不暴露 GUI）：导出 SRT 时保留禁用项的时间轴序号但内容替换为空白
   let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
+  function cleanupSegments(segments) {
+    return window.AsrEditorUtils.buildAiCleanupSegments(segments, MaweBoot.DATA.gap_remove);
+  }
+
   function cleanupMainSegments() {
-    return window.AsrEditorUtils.buildAiCleanupSegments(MaweBoot.DATA.segments, MaweBoot.DATA.gap_remove);
+    return cleanupSegments(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
   }
 
   function cleanupMergedExportSegments() {
-    const merged = mergedExportSegments();
+    const merged = window.MaweExportContext.mergedExportSegments();
     const main = cleanupMainSegments();
-    const projection = new Map(MaweBoot.DATA.segments.map((segment, index) => [segment, main[index]]));
+    const projection = new Map(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment, index) => [segment, main[index]]));
     return { ...merged, segments: merged.segments.map((segment) => projection.get(segment) || segment)
       .sort((left, right) => left.start - right.start) };
   }
@@ -32,7 +41,7 @@
     alignFirstStart,
     firstEnabledIndex,
     keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
-    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+    colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
     assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     formatTime: MaweCueElements.fmtSrtTime,
@@ -45,7 +54,7 @@
   function captureVideoSrt() {
     const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
     const options = {
-      colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+      colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
       ...MaweSpeakerLabels.speakerLabelExportOptions(),
       assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
       formatTime: MaweCueElements.fmtSrtTime,
@@ -124,7 +133,7 @@
     timeOffset: 0,
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
-    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+    colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
     mapTime: gapRemoved
       ? (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed)
       : undefined,
@@ -187,7 +196,7 @@
 
   function buildDynamicCaptionExportData(segments, gapRemoved) {
     const colorContext = Array.isArray(segments) ? segments : [];
-    const projected = segments === MaweBoot.DATA.segments ? cleanupMainSegments() : colorContext;
+    const projected = cleanupSegments(colorContext);
     const source = projected.map((segment) => ({
       ...segment,
       text: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
@@ -310,7 +319,7 @@
   const { overlaySegments } = cleanupMergedExportSegments();
   // 副字幕轨随 ASS 导出（多重字幕开启时才存在）；叠加轨与副字幕分层输出。
   const extensionSegments = preview && !MaweDom.extensionOverlayToggle?.checked
-    ? [] : activeExtensionSegments();
+    ? [] : cleanupSegments(activeExtensionSegments());
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     cleanupMainSegments(),
     alignFirstStart,
@@ -334,7 +343,7 @@
 
 
   function buildExtensionSrt(track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
-    return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+    return window.AsrEditorUtils.buildSrtPayload(cleanupSegments(track?.segments || []), {
       ...MaweSpeakerLabels.speakerLabelExportOptions(),
       assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
       formatTime: MaweCueElements.fmtSrtTime,
@@ -342,12 +351,12 @@
   }
 
   function buildBilingualSrt() {
-    if (MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return '';
+    if (MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled !== true) return '';
     const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
     return window.AsrEditorUtils.buildBilingualSrtPayload(segments,
-      MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [], {
+      cleanupSegments(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []), {
         alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
-        colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+        colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
         ...MaweSpeakerLabels.speakerLabelExportOptions(),
         assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
         formatTime: MaweCueElements.fmtSrtTime,
@@ -382,7 +391,7 @@
     firstEnabledIndex,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
     ensurePositiveDuration: true,
-    colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+    colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
     assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     formatTime: MaweCueElements.fmtSrtTime,
@@ -408,7 +417,7 @@
   // onAssPlan 透传给表情包烧录：排版计划与 ASS 文本同一份（收缩时间轴），
   // 字幕位置与表情包窗口天然一致。
   const { overlaySegments } = cleanupMergedExportSegments();
-  const extensionSegments = activeExtensionSegments();
+  const extensionSegments = cleanupSegments(activeExtensionSegments());
   return window.AsrEditorUtils.buildAssPayload(mainSegments, {
     ...assExportOptions(),
     alignFirstStart,
@@ -425,7 +434,7 @@
 
   function usedSubtitleColors() {
   const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
-  const resolveColor = exportColorContextResolver(overlaySet, overlaySegments);
+  const resolveColor = window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments);
   const names = new Set(segments.filter((segment) => !segment.disabled).map((segment) => (
     window.AsrEditorUtils.effectiveColorName(segment, resolveColor(segment)) || 'default'
   )).filter((name) => name === 'default' || MaweColors.COLOR_BY_NAME[name]));
@@ -438,7 +447,7 @@
 
 
   function updateSubtitleExportUi() {
-    const bilingual = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+    const bilingual = MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled === true;
     const hasSecondary = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments
       ?.some((segment) => segment && segment.disabled !== true && String(segment.text || '').trim());
     const mainItem = document.getElementById('download-full-srt');
@@ -506,3 +515,4 @@
     buildGapRemovedRegionsJson
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

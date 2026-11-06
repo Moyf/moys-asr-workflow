@@ -64,7 +64,7 @@ test('only auto-renders while the comparison window or stage overlay needs a fra
   const before = requests;
   await seek(page, 2);
   await page.evaluate(() => {
-    window.MaweBoot.DATA.segments[0].text = '关闭窗口后的编辑';
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '关闭窗口后的编辑';
     window.MawePlaybackLoop.refreshSubtitlePreview();
   });
   await page.waitForTimeout(350);
@@ -107,7 +107,7 @@ test('manual frames remain current through unchanged preview refreshes', async (
     await page.evaluate(() => clearInterval(window.__manualRefreshTimer));
   }
   await page.evaluate(() => {
-    window.MaweBoot.DATA.segments[0].text = '手动帧之后的编辑';
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '手动帧之后的编辑';
     window.MawePlaybackLoop.refreshSubtitlePreview();
   });
   await expect(page.locator('#ass-frame-stale')).toBeVisible();
@@ -196,7 +196,7 @@ test('paused video uses native libass, updates after edits, and falls back immed
   expect(await page.evaluate(() => window.__assTimes[1])).toBe('0:00:00.00');
   const first = await frame.getAttribute('src');
   await page.evaluate(() => {
-    window.MaweBoot.DATA.segments[0].text = '样式修改后的**强调**';
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '样式修改后的**强调**';
     window.MawePlaybackLoop.refreshSubtitlePreview();
   });
   await expect.poll(() => frame.getAttribute('src')).not.toBe(first);
@@ -312,7 +312,7 @@ test('preview visibility and speaker labels remain independent from exports and 
   await seek(page, 1.5);
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
   const options = await page.evaluate(() => {
-    window.MaweBoot.DATA.segments[0].color = { name: 'yellow' };
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0], 'color', { name: 'yellow' });
     window.MaweBoot.DATA.preview.subtitle.speaker_labels = {
       mapping_enabled: true, enabled: true, separator: '：', names: { yellow: 'Host' },
     };
@@ -334,6 +334,26 @@ test('preview visibility and speaker labels remain independent from exports and 
   });
   await expect(page.locator('#ass-stage-frame')).toBeHidden();
   await expect(page.locator('#ass-stage-status')).toBeHidden();
+});
+
+test('browser-local media loaded through the editor keeps frames and green screen hidden', async ({ page }) => {
+  const requests = [];
+  await page.route('**/api/ass-frame', async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.continue();
+  });
+  await enableAss(page);
+  await enableStage(page);
+  await seek(page, 1.5);
+  await expect(page.locator('#ass-stage-frame')).toBeVisible();
+  // 媒体加载会 replaceChild 整体替换 player 元素；ass-frame 的判定必须跟随
+  // 新元素，浏览器本地媒体（blob:）才不会退回服务器工程媒体或绿幕（#166）。
+  await page.locator('#load-media-file').setInputFiles(join(tempDir, 'synthetic.mp4'));
+  await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.currentSrc.startsWith('blob:'))).toBe(true);
+  await expect(page.locator('#ass-stage-frame')).toBeHidden();
+  await expect(page.locator('#ass-stage-status')).toBeHidden();
+  await page.waitForTimeout(350);
+  expect(requests.every((request) => request.greenScreen !== true)).toBe(true);
 });
 
 test('auto-renders a new seek while preview refreshes keep arriving', async ({ page }) => {
@@ -607,4 +627,61 @@ test('stage overlay defaults to off while auto rendering defaults to on', async 
   await expect(page.locator('#ass-frame-stage-toggle')).toBeVisible();
   await expect(page.locator('#ass-frame-stage-toggle')).toBeChecked();
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
+});
+
+test('overlays the sticker layer on the actual frame window following the preview toggle', async ({ page }) => {
+  await enableAss(page);
+  // 「预览表情包」默认关闭；与烧录同源的开关先打开。
+  await openSettingsPage(page, 'subtitle-preview');
+  await page.locator('#sticker-overlay-toggle').check();
+  await closeSettingsPanels(page);
+  await seek(page, 1.5);
+  await page.locator('#ass-frame-quick-open').click();
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+
+  const layer = page.locator('#ass-frame-sticker-layer');
+  // 尚未绑定表情包：图层保持隐藏。
+  await expect(layer).toBeHidden();
+
+  // 注入覆盖整句的表情包区间（等价分配后的 head.sticker 数据并推进区间版本）。
+  await page.evaluate(() => {
+    window.MaweBoot.DATA.segments[0].sticker = {
+      name: 'demo', filename: 'demo.png', rel: 'demo.png', start: 1000, end: 2800,
+    };
+    window.MaweStickerOverlay.stickerOverlayDataVersion += 1;
+    window.MaweAssFrame.syncWindowStickers();
+  });
+
+  await expect(layer).toBeVisible();
+  expect(await layer.evaluate((el) => el.querySelectorAll('img').length)).toBe(1);
+  // 层定位框必须是 PNG 的 contain 绘制矩形：宽高比等于源视频 640x360。
+  const ratio = await layer.evaluate((el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.width / rect.height;
+  });
+  expect(ratio).toBeCloseTo(640 / 360, 1);
+  // 几何层与舞台 #sticker-overlay-layer 使用同一份 preview.sticker 几何。
+  expect(await page.evaluate(() => {
+    const win = document.getElementById('ass-frame-sticker-geometry').style;
+    const stage = document.getElementById('sticker-overlay-layer').style;
+    return ['left', 'top', 'width', 'height'].every((key) => win[key] === stage[key]);
+  })).toBe(true);
+
+  // 关闭「预览表情包」→ 窗口图层立即隐藏（stickerBurnEnabled 同源）。
+  await openSettingsPage(page, 'subtitle-preview');
+  await page.locator('#sticker-overlay-toggle').uncheck();
+  await closeSettingsPanels(page);
+  await expect(layer).toBeHidden();
+
+  // 重新打开后 seek 出区间 → 随新帧隐藏；seek 回区间 → 随新帧恢复。
+  await openSettingsPage(page, 'subtitle-preview');
+  await page.locator('#sticker-overlay-toggle').check();
+  await closeSettingsPanels(page);
+  await expect(layer).toBeVisible();
+  await seek(page, 3.5);
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  await expect(layer).toBeHidden();
+  await seek(page, 1.5);
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  await expect(layer).toBeVisible();
 });

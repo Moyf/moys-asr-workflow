@@ -285,8 +285,8 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("maw.runtimes.freezer", release)
         self.assertNotIn("uv export --frozen", release)
 
-        self.assertIn('RUNTIME_VERSION = "7"', local_spec)
-        self.assertIn('OCR_RUNTIME_VERSION = "3"', ocr_spec)
+        self.assertIn('RUNTIME_VERSION = "8"', local_spec)
+        self.assertIn('OCR_RUNTIME_VERSION = "4"', ocr_spec)
 
         self.assertIn("_has_cuda", runtimes_base)
         self.assertIn("requirements_in", runtimes_base)
@@ -376,6 +376,8 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(
             ocr_dependencies,
             {
+                "certifi>=2026.10.19",
+                "urllib3>=2.8.0",
                 "numpy>=2.2,<2.5",
                 "onnxruntime>=1.18",
                 "pillow>=10.0.0",
@@ -774,7 +776,15 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("permissions:\n  contents: read", workflow)
         self.assertNotIn("actions/setup-node@v4", workflow)
         self.assertNotIn("dtolnay/rust-toolchain@stable", workflow)
-        self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", workflow)
+        # checkout 默认 merge ref（与 GitHub 选取的 workflow 文件版本一致）；
+        # 显式 checkout PR 头 commit 会在 PR 落后 main 时错配 workflow 与
+        # 被测代码（2026-10-24 Group `test` 事故，2026-10-26 改回默认）。
+        checkout_steps = [
+            step for step in re.split(r"(?m)^      - ", workflow)
+            if re.search(r"(?m)^\s*uses:\s*actions/checkout@", step)
+        ]
+        self.assertTrue(checkout_steps, "PR preview workflow must check out the repository")
+        self.assertNotRegex(checkout_steps[0], r"(?m)^\s*ref\s*:")
         self.assertIn("uv sync --group build --frozen", workflow)
         self.assertIn("scripts\\build-windows.ps1 -SkipTests", workflow)
         self.assertIn("dist\\MAW\\MAW.exe", workflow)
@@ -785,7 +795,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("retention-days: 14", workflow)
         self.assertIn("MAW-lite-Windows-x64-pr-", workflow)
         self.assertNotIn(".zip.sha256", workflow)
-        self.assertIn("persist-credentials: false", workflow)
+        self.assertIn("persist-credentials: false", checkout_steps[0])
         self.assertNotIn("MAWxFF", workflow)
         self.assertNotIn("softprops/action-gh-release", workflow)
 

@@ -2,7 +2,7 @@
 // No production positioning helper or predicted anchor formula is an oracle.
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { copyFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWav,
   generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
@@ -23,6 +23,14 @@ test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 
 const cue = (id, text, start = 0, end = 4000) => ({ id, text, start, end });
 const cases = [
+  { name: 'independent cue style snapshots match Canvas and libass',
+    mainSegments: [{ ...cue('main', 'Main'), assStyle: { fontName: 'Arial', fontSize: 112, primaryColor: '#ff0000', alignment: 2, marginV: 180, outline: 0, shadow: 0 } }],
+    extensionSegments: [{ ...cue('secondary', 'Secondary'), assStyle: { fontName: 'Arial', fontSize: 68, primaryColor: '#00ff00', alignment: 2, marginV: 60, outline: 0, shadow: 0 } }],
+    overlaySegments: [{ ...cue('overlay', 'Overlay'), assStyle: { fontName: 'Arial', fontSize: 80, primaryColor: '#0000ff', alignment: 2, marginV: 180, outline: 0, shadow: 0 } }],
+    times: [1000] },
+  { name: 'large italic overhang keeps complete glyph ink visible',
+    main: '//ffff//', extension: '//ffff//', fontSize: 240, extensionFontSize: 180,
+    marginV: 220, times: [1000] },
   { name: 'static single-line control', times: [1000] },
   { name: '1440p preview and burn share the native frame coordinate system',
     width: 2560, height: 1440, times: [1000] },
@@ -112,19 +120,41 @@ async function configure(page, fixture) {
       MaweColors.COLOR_BY_NAME[name].value = value;
     }
     MaweBoot.DATA.media_metadata = { video_width: f.width ?? 1280, video_height: f.height ?? 720 };
-    MaweBoot.DATA.segments = f.mainSegments || [{ id: 'main', start: 0, end: 4000, text: f.main || 'Main' }];
-    MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'extension', segments:
-      f.extensionSegments || [{ id: 'extension', start: 0, end: 4000, text: f.extension || 'Secondary' }] }] };
-    MaweBoot.DATA.overlay_track = { enabled: true, segments:
-      (f.overlaySegments || [{ id: 'overlay', start: 0, end: 4000, text: 'Overlay' }])
-        .map(s => ({ ...s, color: { name: 'blue' } })) };
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = f.mainSegments || [{ id: 'main', start: 0, end: 4000, text: f.main || 'Main' }];
+    {
+      const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      AsrEditorUtils.ensureStableSegmentIds(main.segments, main.id);
+      // Exercise renderer collision handling with in-memory overlaps, without
+      // passing those deliberately invalid save timings through import validation.
+      const fixture = AsrEditorUtils.importProject({
+        segments: [],
+        multi_subtitle: { enabled: true, tracks: [{ id: 'extension', segments: [] }] },
+      }).project;
+      const secondary = AsrEditorUtils.getExtensionTrack(fixture);
+      secondary.segments = f.extensionSegments || [{ id: 'extension', start: 0, end: 4000, text: f.extension || 'Secondary' }];
+      AsrEditorUtils.ensureStableSegmentIds(secondary.segments, secondary.id);
+      MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary')
+        .concat(AsrEditorUtils.getTracksByRole(fixture, 'secondary'));
+      MaweBoot.DATA.bilingual = fixture.bilingual;
+      MaweBoot.DATA.bindings = fixture.bindings.map(binding => ({ ...binding, source: { ...binding.source, track_id: main.id } }));
+    }
+    const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA, { enabled: true });
+    overlay.segments = f.overlaySegments || [{ id: 'overlay', start: 0, end: 4000, text: 'Overlay' }];
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, overlay.segments,
+      overlay.segments.map((_, index) => index), 'color', { name: 'blue' });
     MaweBoot.DATA.preview = { subtitle: { ass_color_style: 'text' } };
     if (f.speaker) {
-      MaweBoot.DATA.segments.forEach(s => { s.color = { name: 'red' }; });
-      MaweBoot.DATA.multi_subtitle.tracks[0].segments.forEach(s => { s.color = { name: 'green' }; });
+      for (const [track, name] of [[AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'red'],
+        [AsrEditorUtils.getExtensionTrack(MaweBoot.DATA), 'green']]) {
+        AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, track.segments,
+          track.segments.map((_, index) => index), 'color', { name });
+      }
       MaweBoot.DATA.preview.subtitle.speaker_labels = { mapping_enabled: true, enabled: true,
         separator: ': ', names: { red: 'MainSpeakerWithLongPrefix', green: 'SecondarySpeaker', blue: 'OverlaySpeaker' } };
     }
+    // Groups above are assigned directly to the canonical v2 project. Refresh
+    // their materialized views before the real preview/export consumers run.
+    window.AsrEditorUtils.refreshSubtitleGroupViews(MaweBoot.DATA);
     Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assEmphasisSyntax: 'both',
       assSpecialSymbolRule: 'both', assCommentEnabled: true, assLargeTextEnabled: true,
       exportSpeakerLabels: Boolean(f.speaker) });
@@ -161,7 +191,7 @@ async function capture(page, timeMs) {
     };
     try {
       window.MaweAssCanvas.clearCaches();
-      const index = MaweBoot.DATA.segments.findIndex(s => s.start <= tMs && tMs < s.end);
+      const index = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex(s => s.start <= tMs && tMs < s.end);
       MaweCoreState.player.currentTime = tMs / 1000;
       MawePlaybackLoop.refreshSubtitlePreview(tMs, index);
     } finally {
@@ -234,9 +264,36 @@ async function capture(page, timeMs) {
   }, timeMs);
 }
 
-function libass(ass, timeMs, testInfo, label) {
+// Per-test, source-content keyed reuse: a changed browser export cannot hit an
+// earlier sequence. Raw files are still materialized under each original label.
+const oracleSeries = new WeakMap();
+function libass(ass, timeMs, testInfo, label, times = [timeMs]) {
   const path = testInfo.outputPath(`${label}.ass`);
   writeFileSync(path, ass);
+  if (times.length > 1) {
+    let cache = oracleSeries.get(testInfo);
+    if (!cache) oracleSeries.set(testInfo, cache = new Map());
+    const key = JSON.stringify([ass, times]);
+    let series = cache.get(key);
+    if (!series) {
+      const stem = join(tempDir, `oracle-series-${testInfo.testId}-${cache.size}`);
+      writeFileSync(`${stem}.ass`, ass);
+      const metrics = JSON.parse(execFileSync(process.env.MAW_E2E_PYTHON || 'python', [
+        resolve('tests/helpers/ass-stacking-pixel-oracle.py'), `${stem}.ass`, String(timeMs),
+        stem, '--times', ...times.map(String),
+      ], { encoding: 'utf8', timeout: 40_000, windowsHide: true }));
+      cache.set(key, series = { stem, metrics });
+    }
+    const index = times.indexOf(timeMs);
+    if (index < 0) throw new Error(`Missing libass sample time: ${timeMs}`);
+    const output = testInfo.outputPath(`${label}-libass`);
+    for (const kind of ['', '-guard']) {
+      copyFileSync(`${series.stem}${kind}-${index}.png`, `${output}${kind}.png`);
+      copyFileSync(`${series.stem}${kind}.ffmpeg.log`, `${output}${kind}.ffmpeg.log`);
+      if (kind) copyFileSync(`${series.stem}${kind}.ass`, `${output}${kind}.ass`);
+    }
+    return structuredClone(series.metrics[index]);
+  }
   return JSON.parse(execFileSync(process.env.MAW_E2E_PYTHON || 'python', [
     resolve('tests/helpers/ass-stacking-pixel-oracle.py'), path, String(timeMs),
     testInfo.outputPath(`${label}-libass`),
@@ -278,22 +335,22 @@ function visibleStack(tracks, width, height, label, { skipStackOrder = false } =
 for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
   await configure(page, fixture);
   const originalClock = fixture.verifyOriginalMove || fixture.verifyOriginalTransform ? await page.evaluate(() => {
-    MaweBoot.DATA.multi_subtitle.enabled = false;
-    MaweBoot.DATA.overlay_track.enabled = false;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = false;
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = false;
     const source = MaweExportSrt.buildAss();
-    MaweBoot.DATA.multi_subtitle.enabled = true;
-    MaweBoot.DATA.overlay_track.enabled = true;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = true;
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = true;
     return source;
   }) : null;
   const frames = [];
   for (const time of fixture.times) {
     const frame = await capture(page, time);
     const metrics = await evidence(frame, testInfo, `t${time}`);
-    const pixels = libass(frame.ass, time, testInfo, `t${time}`);
+    const pixels = libass(frame.ass, time, testInfo, `t${time}`, fixture.times);
     if (originalClock) {
       // The legacy single-cue raw libass animation is the independent timing oracle.
       // Matching two consumers of the group planner would be circular.
-      const original = libass(originalClock, time, testInfo, `original-clock-${time}`);
+      const original = libass(originalClock, time, testInfo, `original-clock-${time}`, fixture.times);
       writeFileSync(testInfo.outputPath(`original-clock-${time}.json`), JSON.stringify(original, null, 2));
       for (const engine of ['canvas', 'libass']) {
         const box = engine === 'canvas' ? frame.tracks[0].box : pixels.tracks.main.box;
@@ -478,10 +535,11 @@ test('secondary preset paint remains fixed before during and after the main cue'
   await configure(page, { mainSegments: [cue('short-main', 'Main', 500, 1500)],
     extensionSegments: [cue('long-secondary', 'Secondary', 0, 2000)], overlaySegments: [] });
   let previous;
-  for (const time of [250, 1000, 1750]) {
+  const times = [250, 1000, 1750];
+  for (const time of times) {
     const frame = await capture(page, time);
     await evidence(frame, testInfo, `secondary-alone-${time}`);
-    const pixels = libass(frame.ass, time, testInfo, `secondary-alone-${time}`);
+    const pixels = libass(frame.ass, time, testInfo, `secondary-alone-${time}`, times);
     writeFileSync(testInfo.outputPath(`secondary-alone-${time}-libass.json`), JSON.stringify(pixels, null, 2));
     const actual = frame.nativeTracks.extension.box;
     expect(actual, 'Canvas paints the fixed extension').not.toBeNull();
@@ -604,18 +662,19 @@ for (const [name, t1, t2] of [['instant', 500, 500], ['linear', 0, 1000]]) {
       extensionSegments: [cue('move-secondary', 'W', 500, 1500)],
       animations: { move: { enabled: true, x1: 400, y1: 560, x2: 1000, y2: 560, t1, t2 } } });
     const original = await page.evaluate(() => {
-      MaweBoot.DATA.overlay_track.enabled = false;
-      MaweBoot.DATA.multi_subtitle.enabled = false;
+      AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = false;
+      AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = false;
       const source = MaweExportSrt.buildAss();
-      MaweBoot.DATA.multi_subtitle.enabled = true;
+      AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = true;
       return source;
     });
     const results = [];
-    for (const time of [490, 500, 501, 1490, 1500, 1501, 1750]) {
+    const times = [490, 500, 501, 1490, 1500, 1501, 1750];
+    for (const time of times) {
       const frame = await capture(page, time);
       await evidence(frame, testInfo, `slice-move-${time}`);
-      const pixels = libass(frame.ass, time, testInfo, `slice-move-${time}`);
-      const reference = libass(original, time, testInfo, `unsplit-move-${time}`);
+      const pixels = libass(frame.ass, time, testInfo, `slice-move-${time}`, times);
+      const reference = libass(original, time, testInfo, `unsplit-move-${time}`, times);
       results.push({ time, canvas: frame.nativeTracks.main, grouped: pixels.tracks.main, original: reference.tracks.main });
       expect.soft(frame.captured, 'slice move records all actual paint').toBe(frame.assigned);
       expect.soft(pixels.sha256, `slice move guard preserves native pixels at ${time}`).toBe(pixels.guardCropSha256);
@@ -643,19 +702,20 @@ test('overlapping fad intervals retain libass fade-in priority in actual pixels'
     animations: { fad: { enabled: true, inMs: 800, outMs: 800 } },
   });
   const standalone = await page.evaluate(() => {
-    MaweBoot.DATA.multi_subtitle.enabled = false;
-    MaweBoot.DATA.overlay_track.enabled = false;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = false;
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = false;
     const source = MaweExportSrt.buildAss();
-    MaweBoot.DATA.multi_subtitle.enabled = true;
-    MaweBoot.DATA.overlay_track.enabled = true;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = true;
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = true;
     return source;
   });
   const results = [];
-  for (const time of [250, 500, 750]) {
+  const times = [250, 500, 750];
+  for (const time of times) {
     const frame = await capture(page, time);
     await evidence(frame, testInfo, `overlap-fad-${time}`);
-    const pixels = libass(frame.ass, time, testInfo, `overlap-fad-${time}`);
-    const original = libass(standalone, time, testInfo, `original-fad-${time}`);
+    const pixels = libass(frame.ass, time, testInfo, `overlap-fad-${time}`, times);
+    const original = libass(standalone, time, testInfo, `original-fad-${time}`, times);
     results.push({ time, canvas: frame.nativeTracks, grouped: pixels, original });
     expect.soft(pixels.sha256, 'fad guard render preserves native pixels').toBe(pixels.guardCropSha256);
     expect.soft(pixels.outside, 'fad group loses no actual pixels').toBe(0);
@@ -697,7 +757,7 @@ for (const diagnostic of ['raw 3D perspective', 'negative base spacing', 'negati
       if (kind === 'raw 3D perspective') animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\frx30' };
       if (kind === 'negative base spacing') main.spacing = -100;
       if (kind === 'negative transform spacing') animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\fsp-100' };
-      if (kind === 'unreadable group fit') MaweBoot.DATA.segments[0].text = Array(200).fill('M').join('\n');
+      if (kind === 'unreadable group fit') AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = Array(200).fill('M').join('\n');
       MaweBoot.DATA.gap_remove = { schema: 'moy.asr.gap_remove.v1', detector: 'audio_gate',
         minimum_ms: 500, threshold_db: -24, hysteresis_db: 2, lead_in_ms: 40, lead_out_ms: 80,
         skip_playback: true, operation_mode: 'boundary_drag', manual_corrections: false,
@@ -735,10 +795,11 @@ test('libass keeps nonlinear transform and fade clocks when a cue is sliced', as
   const shifted = header + 'Dialogue: 0,0:00:00.50,0:00:02.00,Default,,0,0,0,,{\\t(-500,500,2,\\fs144)\\fade(255,0,255,-500,500,1000,1500)}Clock\n';
   const reset = header + 'Dialogue: 0,0:00:00.50,0:00:02.00,Default,,0,0,0,,{\\t(0,1000,2,\\fs144)\\fade(255,0,255,0,1000,1500,2000)}Clock\n';
   const results = [];
-  for (const time of [750, 1750]) {
-    const original = libass(reference, time, testInfo, `clock-reference-${time}`);
-    const preserved = libass(shifted, time, testInfo, `clock-shifted-${time}`);
-    const restarted = libass(reset, time, testInfo, `clock-reset-${time}`);
+  const times = [750, 1750];
+  for (const time of times) {
+    const original = libass(reference, time, testInfo, `clock-reference-${time}`, times);
+    const preserved = libass(shifted, time, testInfo, `clock-shifted-${time}`, times);
+    const restarted = libass(reset, time, testInfo, `clock-reset-${time}`, times);
     results.push({ time, original: original.sha256, preserved: preserved.sha256, restarted: restarted.sha256 });
     expect(preserved.sha256, `sliced nonlinear/fade clock at ${time}ms`).toBe(original.sha256);
     expect(restarted.sha256, `reset clock is observably different at ${time}ms`).not.toBe(original.sha256);
@@ -757,8 +818,8 @@ test('exported layout slices preserve the original main cue nonlinear and fade c
   });
   const sources = await page.evaluate(() => {
     const grouped = MaweExportSrt.buildAss();
-    MaweBoot.DATA.multi_subtitle.enabled = false;
-    MaweBoot.DATA.overlay_track.enabled = false;
+    AsrEditorUtils.getExtensionTrack(MaweBoot.DATA).enabled = false;
+    AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).enabled = false;
     return { grouped, standalone: MaweExportSrt.buildAss() };
   });
   const rows = [];

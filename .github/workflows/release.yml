@@ -35,6 +35,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.13.4"
           enable-cache: true
 
       - name: Compute version
@@ -82,13 +83,13 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Build web bundles
         # bundle 是构建产物（不入库）：Python 全量测试与打包都会读取，在测试前
-        # 显式构建（pnpm install 的 postinstall 也会构建，这里保持显式不依赖钩子）。
-        run: pnpm install --frozen-lockfile && pnpm run build
+        # 安装阶段跳过脚本，随后显式构建，避免 postinstall 重复编译。
+        run: pnpm install --frozen-lockfile --ignore-scripts && pnpm run build
 
       - name: Install FFmpeg for media integration tests
         shell: pwsh
@@ -113,7 +114,22 @@ jobs:
         run: uv run python scripts/run_tests.py tests/test_packaging_contract.py
 
       - name: Run Python tests
-        run: uv run python scripts/run_tests.py
+        run: uv run python scripts/run_tests.py --github-summary
+
+      - name: Required media failure compatibility
+        run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_media.py tests/test_ffmpeg.py tests/test_ffprobe_failure_integration.py --required --report .artifacts/media-required.json
+      - name: Preserve media required report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: media-required-${{ runner.os }}
+          path: |
+            .artifacts/media-required.json
+            .artifacts/media-required.log
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
+
 
       - name: Download embedded Python bootstrap assets
         run: |
@@ -306,6 +322,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
+          version: "0.13.4"
           enable-cache: true
 
       - name: Compute version
@@ -349,7 +366,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '22.23.4'
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - name: Build web bundles

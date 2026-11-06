@@ -459,7 +459,7 @@
       enabled: false,
       retainIntermediate: true,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], cleanMarkdownSymbols: true },
         { id: "cleanup", enabled: false, scriptPath: "", providerId: "deepseek", customPrompt: "", generateComparison: false },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -717,7 +717,13 @@
   }
 
   function syncPaths() {
-    if (!inputManual) $("toolboxInputPath").value = autoSourcePath();
+    if (!inputManual) {
+      const next = autoSourcePath();
+      if ($("toolboxInputPath").value !== next) {
+        $("toolboxInputPath").value = next;
+        setFieldError("toolboxInputPath", "");
+      }
+    }
     if (!utilityMediaManual) $("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();
     if (!timestampMediaManual && $("toolboxTimestampMediaPath").value !== $("mediaPath").value.trim()) {
       $("toolboxTimestampMediaPath").value = $("mediaPath").value.trim();

@@ -6,11 +6,11 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import {
+import { getMainTrack,
   cleanupTempDir,
   DURATION_MS,
   findFreePort,
-  buildPortableBlankEditor,
+  buildBrowserEditorFixture,
   generateProjectJson,
   generateWav,
   makeTempDir,
@@ -58,7 +58,7 @@ function readGeometry(page) {
 }
 
 function readSegments(page) {
-  return page.evaluate(() => MaweBoot.DATA.segments.map((s) => ({
+  return page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((s) => ({
     start: s.start,
     end: s.end,
     text: s.text,
@@ -237,7 +237,7 @@ test.describe('portable HTML', () => {
     blankHtmlPath = join(portableDir, 'blank-editor.html');
     generateWav(portableWavPath, DURATION_MS / 1000);
     generateProjectJson(portableProjectPath);
-    buildPortableBlankEditor(blankHtmlPath);
+    buildBrowserEditorFixture(blankHtmlPath);
     portableStaticServer = await startStaticServer(blankHtmlPath, await findFreePort());
   });
 
@@ -310,7 +310,7 @@ test.describe('portable HTML', () => {
     expect(exported.preview.subtitle.y).toBeCloseTo(edited.y, 4);
     expect(exported.preview.subtitle.width).toBeCloseTo(edited.width, 4);
     expect(exported.preview.subtitle.height).toBeCloseTo(edited.height, 4);
-    expect(onDiskSegmentTiming(exported.segments)).toEqual(EXPECTED_SEGMENTS);
+    expect(onDiskSegmentTiming(getMainTrack(exported).segments)).toEqual(EXPECTED_SEGMENTS);
 
     // --- Reimport the downloaded JSON through #open-project-file ---
     // (Fresh reload so the reimport starts from the legacy default, proving the

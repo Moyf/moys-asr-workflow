@@ -90,7 +90,7 @@ uv run --no-sync python -m maw.asr.local "clip.mp4" --engine whisper --model lar
 | `--audio-track N` | 音频流序号，从 0 开始。 |
 | `-ll` / `--length-limit` | 截取短样本。 |
 | `-o` / `--output PATH` | SRT 输出，工程同名。 |
-| `--json` / `--no-html` | 生成 `.mosp` / 关闭默认便携 HTML。 |
+| `--json` / `--no-html` | 生成 `.mosp`；1.x 的 `--no-html` 关闭可选便携 HTML，2.0 起始终不生成，仍接受此兼容参数。 |
 | `--with-waveform` / `--with-spectral` | 预生成外置缓存；前者要求 `--json`，后者还要求波形开关。 |
 | `--debug-raw` | 保存原始/中间产物与 `.local-debug.json` 清单。 |
 | `--no-model-tag` | 省略默认文件名的模型段；实时率仍在日志中显示。 |

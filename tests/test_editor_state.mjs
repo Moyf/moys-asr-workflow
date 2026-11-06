@@ -2,13 +2,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
 
-function loadState(project = { segments: [] }) {
-  const context = { window: { MaweBoot: { DATA: project } } };
-  for (const file of ['editor/boot/editor-runtime.js', 'editor/state/editor-state.js']) {
-    vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
-  }
-  return context.window.MaweState;
+// editor-state 已转 ESM 模块（register/resolve 注册表退役）：
+// 源码在 vm 里还原后直调 createEditorState 工厂。
+const STATE_SRC = readFileSync(new URL('../web/editor/state/editor-state.js', import.meta.url), 'utf8');
+const { createEditorState } = (() => {
+  const context = { window: {} };
+  const stripped = STATE_SRC
+    .replace(/^import .*$/gm, '')
+    .replace(/^export function/gm, 'function');
+  return vm.runInNewContext(`(function () { ${stripped}\nreturn { createEditorState }; })()`, context);
+})();
+
+function loadState(project = runtimeProject()) {
+  return createEditorState(project);
 }
 
 test('only the current project load can release saving, and replacement cancels registered media work', () => {
@@ -40,15 +48,17 @@ test('superseded project waits finish immediately while late transport completio
 });
 
 test('state keeps the original project identity and excludes transient state from project serialization', () => {
-  const project = { segments: [{ id: 'one', text: 'original' }] };
+  const project = runtimeProject([{ id: 'one', text: 'original' }]);
+  const expected = JSON.parse(JSON.stringify(project));
   const state = loadState(project);
   assert.equal(state.project, project);
-  state.project.segments[0].text = 'edited';
-  assert.equal(project.segments[0].text, 'edited');
+  projectModel.getMainTrack(state.project).segments[0].text = 'edited';
+  assert.equal(projectModel.getMainTrack(project).segments[0].text, 'edited');
   state.runtime.player = { transient: true };
   state.preferences.editor.theme = 'dark';
   state.selection.add('main', 0);
-  assert.deepEqual(JSON.parse(JSON.stringify(project)), { segments: [{ id: 'one', text: 'edited' }] });
+  expected.tracks[0].segments[0].text = 'edited';
+  assert.deepEqual(JSON.parse(JSON.stringify(project)), expected);
 });
 
 test('selection views stay live while every mutation goes through the owner', () => {
@@ -94,58 +104,80 @@ test('track transfers remap selection and its anchor without exposing a mutable 
   assert.equal(selection.mainAnchor, 3);
 });
 
-test('dirty detection includes pending native text, all tracks and project-level flags', () => {
-  const project = { segments: [], multi_subtitle: { tracks: [{ segments: [{}] }] }, overlay_track: { segments: [{}] } };
+test('dirty detection includes pending native text, every track and persistent project settings', () => {
+  const project = runtimeProject([], { extensions: [{ segments: [{ text: 'extension' }] }], overlay: { segments: [{ text: 'overlay' }] } });
   const state = loadState(project);
   assert.equal(state.hasProjectChanges(), false);
   assert.equal(state.hasProjectChanges(true), true);
-  project.multi_subtitle.tracks[0].segments[0]._dirty = true;
+  const extension = projectModel.getExtensionTrack(project);
+  extension.segments[0].text = 'edited extension';
   assert.equal(state.hasProjectChanges(), true);
-  delete project.multi_subtitle.tracks[0].segments[0]._dirty;
-  project.overlay_track._dirty = true;
+  extension.segments[0].text = 'extension';
+  projectModel.getOverlayTrack(project).enabled = false;
   assert.equal(state.hasProjectChanges(), true);
-  delete project.overlay_track._dirty;
-  for (const key of Object.keys(state.changes)) {
-    state.changes[key] = true;
+  projectModel.getOverlayTrack(project).enabled = true;
+  for (const [key, value] of Object.entries({ markers: [{ id: 'marker', start: 0 }],
+    gap_remove: { gaps: [] }, preview: { ass_mode: true }, workspace: { preset: 'wide' } })) {
+    project[key] = value;
     assert.equal(state.hasProjectChanges(), true);
-    state.changes[key] = false;
+    delete project[key];
   }
   assert.equal(state.hasProjectChanges(), false);
 });
 
-test('saved subtitle truth governs undo dirtiness without involving rebuildable caches or other edit domains', () => {
-  const project = { segments: [{ text: 'saved' }], overlay_track: { segments: [] } };
+test('saved content governs undo dirtiness while session highlights and rebuildable caches stay transient', () => {
+  const project = runtimeProject([{ text: 'saved' }], { overlay: { segments: [] } });
+  const segment = projectModel.getMainTrack(project).segments[0];
   const state = loadState(project);
   state.noteSavedSegments();
-  project.segments[0]._dirty = true;
+  segment._dirty = true;
   project.waveform = { cache: 'new' };
   state.changes.gapRemoveDirty = true;
   state.reconcileSegmentsDirty();
   assert.equal(state.changes.projectImportDirty, false);
-  assert.equal(project.segments[0]._dirty, undefined);
+  assert.equal(segment._dirty, true, 'saved-content comparison must preserve session highlights');
   assert.equal(state.changes.gapRemoveDirty, true);
-  project.segments[0].text = 'undo';
+  segment.text = 'undo';
   state.reconcileSegmentsDirty();
   assert.equal(state.changes.projectImportDirty, true);
-  project.segments[0].text = 'saved';
+  segment.text = 'saved';
   state.reconcileSegmentsDirty();
   assert.equal(state.changes.projectImportDirty, false);
 });
 
-test('saving an earlier snapshot keeps subsequent edits dirty and clears every track only when saved', () => {
-  const project = { segments: [{ text: 'written', _dirty: true }],
-    multi_subtitle: { _dirty: true, tracks: [{ _dirty: true, segments: [{ _dirty: true }] }] },
-    overlay_track: { _dirty: true, segments: [{ _dirty: true }] } };
+test('saving an earlier snapshot keeps later edits dirty and excludes highlights from every saved track', () => {
+  const project = runtimeProject([{ id: 'one', text: 'written', _dirty: true }], {
+    extensions: [{ _dirty: true, segments: [{ _dirty: true }] }],
+    overlay: { _dirty: true, segments: [{ _dirty: true }] } });
   const state = loadState(project);
   const written = state.segmentsFingerprint();
-  project.segments[0].text = 'later';
+  projectModel.getMainTrack(project).segments[0].text = 'later';
   state.noteSavedSegments(written);
+  state.markSaved();
+  assert.equal(state.hasProjectChanges(), true);
+  state.rememberSessionHighlights();
+  projectModel.getMainTrack(project).segments[0] = { id: 'one', start: 0, end: 1000, text: 'written' };
+  state.restoreSessionHighlights();
   state.reconcileSegmentsDirty();
+  assert.equal(state.hasProjectChanges(), false);
+  assert.equal(projectModel.getMainTrack(project).segments[0]._dirty, true);
+  assert.equal(JSON.stringify(state.persistenceSnapshot(project)).includes('_dirty'), false);
+  assert.equal(JSON.stringify(project).includes('_dirty'), true, 'saving keeps current-session highlights');
+  const epoch = state.projectEpoch;
+  state.beginProjectSession();
+  state.establishProjectCheckpoint();
+  assert.equal(state.projectEpoch, epoch + 1);
+  assert.equal(projectModel.getMainTrack(project).segments[0]._dirty, undefined);
+});
+
+test('actual import repairs remain unsaved until successful save acknowledgement', () => {
+  const state = loadState();
+  state.beginProjectSession();
+  state.establishProjectCheckpoint({ repaired: true });
   assert.equal(state.hasProjectChanges(), true);
   state.noteSavedSegments();
   state.markSaved();
   assert.equal(state.hasProjectChanges(), false);
-  assert.equal(JSON.stringify(project).includes('_dirty'), false);
 });
 
 test('markProjectDirty increments the epoch and notifies registered listeners exactly once', () => {
@@ -194,6 +226,6 @@ test('changes flag writes notify on dirty transitions only, and markSaved stays 
   assert.equal(events, 2, 'writing false must not fire the dirty event');
   state.markSaved();
   assert.equal(events, 2, 'clearing bookkeeping on save must not fire the dirty event');
-  Object.assign(state.changes, { markersDirty: true, timedTextEditViewDirty: true });
+  Object.assign(state.changes, { markersDirty: true, projectImportDirty: true });
   assert.equal(events, 4, 'bulk assignment must go through the same notify path');
 });

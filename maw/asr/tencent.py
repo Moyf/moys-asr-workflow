@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from maw.project_tracks import make_project
 from maw.stickers import get_default_sticker_dir
 from maw.output_naming import debug_artifact_path, format_elapsed, format_maw_stat
 from maw.asr.common import (
@@ -30,7 +31,7 @@ from maw.language import resolve_language, split_mode_for_text, timestamp_granul
 from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.project_io import write_mosp
 from maw.project import repair_segment_durations, validate_project
-from maw.speaker import apply_speaker_colors
+from maw.speaker import speaker_color_summary, apply_project_speaker_colors
 from maw.tencent import DEFAULT_ENGINE, load_config, transcribe
 
 
@@ -60,7 +61,7 @@ def main() -> int:
     parser.add_argument("-ll", "--length-limit", type=parse_duration, help="只处理媒体前 N 秒")
     parser.add_argument("--file-url", help="公网或 COS 音频 URL；大于 5MB 时必须使用")
     parser.add_argument("--model", default=None, help=f"腾讯云引擎（默认 {DEFAULT_ENGINE}）")
-    parser.add_argument("--strip-tail-punct", default="，。；,.;", help="句尾剥除的标点集合；传空串禁用剥除")
+    parser.add_argument("--strip-tail-punct", default="", help="句尾剥除的标点集合；传空串禁用剥除")
     parser.add_argument("--debug", action="store_true", help="输出 API 调试摘要")
     parser.add_argument("--debug-raw", action="store_true", help="保存完整 API 原始 JSON")
     parser.add_argument("--no-model-tag", action="store_true", help="输出文件名不附加 tencent 供应商标识段")
@@ -207,7 +208,7 @@ def main() -> int:
                 else:
                     segment.pop("items")
     if args.speaker_colors:
-        apply_speaker_colors(segments)
+        speaker_color_summary(segments)
     output_path.write_text(generate_srt(segments), encoding="utf-8", newline="\n")
     print(f"字幕已保存到: {output_path}")
     if args.debug_raw:
@@ -230,17 +231,21 @@ def main() -> int:
             str(result.get("text") or ""),
         )
         split_mode = split_mode_for_text(str(result.get("text") or ""), language)
-        project = {
-            "media": str(input_path),
-            "language": language,
-            "language_source": language_source,
-            "split_mode": split_mode,
-            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
-                result.get("items") or [], split_mode, has_segments=bool(segments)
-            ),
-            "model": f"tencent-{config['engine']}",
-            "segments": segments,
-        }
+        project = make_project(
+            segments,
+            main_fields={
+                'language': language,
+                'language_source': language_source,
+                'split_mode': split_mode,
+                'timestamp_granularity': result.get('timestamp_granularity') or timestamp_granularity_for_items(result.get('items') or [], split_mode, has_segments=bool(segments)),
+                'model': f"tencent-{config['engine']}",
+            },
+            project_fields={
+                'media': str(input_path),
+            },
+        )
+        if args.speaker_colors:
+            apply_project_speaker_colors(project)
         if cache_result is not None:
             project = merge_media_caches(project, cache_result)
         check = validate_project(project)

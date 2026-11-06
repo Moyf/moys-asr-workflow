@@ -1,7 +1,8 @@
 // 拆分模式：快捷键提示、合并/接续模式 UI 与主字幕拆分类型绑定。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweSplitMode 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweSplitMode 在原清单位次执行原 IIFE 体（挂
+// window.MaweSplitMode 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweSplitMode() {
 (function initMaweSplitMode(global) {
   'use strict';
 
@@ -18,7 +19,7 @@
 
   // 「合并字幕时插入字符」旁的提示：显示当前主字幕拆分类型（自动检测或已指定），
   // 并提供一键切换。手动指定的类型存入 EDITOR_SETTINGS.mainSplitModeOverride
-  // （工程设置，与多重字幕开关无关），通过 multi_subtitle.main_split_mode 保存，
+  // （工程设置，与多重字幕开关无关），通过 主轨 split_mode_override 保存，
   // 与多重字幕菜单的「主字幕语言」互为镜像。
   const mergeJoinModeHint = document.getElementById('merge-join-mode-hint');
 
@@ -36,7 +37,7 @@
 
   function refreshMergeJoinModeHint() {
     if (!mergeJoinModeHint || !mergeJoinModeText || !mergeJoinModeSwitch) return;
-    const text = MaweBoot.DATA.segments.map((item) => item?.text || '').join('\n');
+    const text = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((item) => item?.text || '').join('\n');
     if (!text) {
       mergeJoinModeHint.hidden = true;
       return;
@@ -66,7 +67,7 @@
       // 工程内的 main_split_mode 立即生效并随工程保存，
       // 保证多重字幕菜单与保存后的工程文件读到同一类型。
       MaweSettings.updateEditorSettings({ mainSplitModeOverride: next });
-      MaweMultiSubtitleCore.getMultiSubtitleState().main_split_mode = next;
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).split_mode_override = next;
       MaweMultiSubtitleCore.markMultiSubtitleDirty();
       // renderAll → updateMultiSubtitleUi 会回写多重字幕下拉框并刷新本提示。
       command.commit({ cueList: true, waveform: 'none' });
@@ -83,3 +84,12 @@
     setMainSubtitleSplitModeBinding
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function refreshSplitKeyHelp(...args) { return window.MaweSplitMode.refreshSplitKeyHelp(...args); }
+export function mergeJoinModeHint(...args) { return window.MaweSplitMode.mergeJoinModeHint(...args); }
+export function mergeJoinModeText(...args) { return window.MaweSplitMode.mergeJoinModeText(...args); }
+export function mergeJoinModeSwitch(...args) { return window.MaweSplitMode.mergeJoinModeSwitch(...args); }
+export function isConfiguredMainSplitModeOverride(...args) { return window.MaweSplitMode.isConfiguredMainSplitModeOverride(...args); }
+export function refreshMergeJoinModeHint(...args) { return window.MaweSplitMode.refreshMergeJoinModeHint(...args); }
+export function setMainSubtitleSplitModeBinding(...args) { return window.MaweSplitMode.setMainSubtitleSplitModeBinding(...args); }

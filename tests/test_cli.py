@@ -21,6 +21,75 @@ class CliTests(unittest.TestCase):
         self.assertIsNone(args.server)
         self.assertIsNone(args.stop_server)
 
+    def test_burn_parses_subtitle_media_and_encoder(self) -> None:
+        args = cli.build_parser("MAW.exe").parse_args(
+            ["--burn", "clip.srt", "-i", "clip.mp4", "--encoder", "amf"]
+        )
+
+        self.assertEqual(args.burn, "clip.srt")
+        self.assertEqual(args.input, "clip.mp4")
+        self.assertEqual(args.encoder, "amf")
+        self.assertIsNone(args.server)
+
+    def test_burn_defaults_encoder_to_none(self) -> None:
+        args = cli.build_parser("MAW.exe").parse_args(["--burn", "clip.srt", "-i", "clip.mp4"])
+
+        self.assertIsNone(args.encoder)
+
+    def test_burn_conflicts_with_server_mode(self) -> None:
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                cli.build_parser("MAW.exe").parse_args(["--burn", "clip.srt", "--server", "8250"])
+
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_burn_requires_input_media(self) -> None:
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(["--burn", "clip.srt"])
+
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_burn_rejects_transcription_options(self) -> None:
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(["--burn", "clip.srt", "-i", "clip.mp4", "--provider", "soniox"])
+
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_transcription_rejects_encoder_without_burn(self) -> None:
+        with redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(["-i", "clip.mp4", "-o", "clip.srt", "--encoder", "amf"])
+
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_burn_invokes_run_burn_subtitles_and_reports_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subtitle = root / "clip.srt"
+            subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\nhi\n", encoding="utf-8")
+            media = root / "clip.mp4"
+            output = root / "clip.压字幕.mp4"
+            fake_result = mock.Mock(media_path=output, video_encoder="amf", warnings=())
+
+            with (
+                mock.patch("maw.ffmpeg.resolve_ffmpeg_tool") as resolve_tool,
+                mock.patch(
+                    "maw.postprocess_ffmpeg.run_burn_subtitles", return_value=fake_result
+                ) as run_burn,
+            ):
+                resolve_tool.side_effect = lambda tool, configured_path=None: Path(f"{tool}.exe")
+                result = cli.main(["--burn", str(subtitle), "-i", str(media), "--encoder", "amf"])
+
+            self.assertEqual(result, 0)
+            run_burn.assert_called_once()
+            request = run_burn.call_args.args[0]
+            self.assertEqual(request.media_path, media)
+            self.assertEqual(request.subtitle_path, subtitle)
+            self.assertEqual(request.video_encoder, "amf")
+            resolve_tool.assert_any_call("ffmpeg")
+
     def test_openai_provider_forwards_base_url_to_generator(self) -> None:
         args = cli.build_parser("MAW.exe").parse_args(
             [
@@ -89,6 +158,7 @@ class CliTests(unittest.TestCase):
             self.assertIn("--no-html", generator_args)
             self.assertEqual(generator_args[generator_args.index("--output") + 1], str(srt.resolve()))
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_html_option_renders_portable_editor_after_generator(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir).resolve()

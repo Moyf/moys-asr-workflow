@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { runtimeProject, projectModel } from './helpers/runtime-project.mjs';
+import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 const deferred = () => {
   let resolve;
@@ -15,7 +17,7 @@ function fixture(transport) {
   let detached = 0, reloads = 0;
   const context = vm.createContext({
     document: { getElementById: () => null },
-    MaweBoot: { DATA: { segments: [] }, SERVER_CONFIG: {
+    MaweBoot: { DATA: runtimeProject(), SERVER_CONFIG: {
       canSave: true, attachUrl: '/api/project/attach', projectSwitchPageId: 'page-a',
       requestToken: 'page-token', bindingGeneration: 1, sourceMediaId: 'original',
     } },
@@ -26,14 +28,13 @@ function fixture(transport) {
       calls.push({ url, body });
       return transport(url, body);
     } } },
-    window: { location: { reload() { reloads++; } } },
+    window: { AsrEditorUtils: projectModel, location: { reload() { reloads++; } } },
   });
-  for (const path of ['editor/boot/editor-runtime.js', 'editor/state/editor-state.js']) {
-    context.window.MaweBoot = context.MaweBoot;
-    vm.runInContext(readFileSync(new URL('../web/' + path, import.meta.url), 'utf8'), context);
-  }
+  context.window.MaweBoot = context.MaweBoot;
+  vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
   context.MaweState = context.window.MaweState;
-  vm.runInContext(readFileSync(new URL('../web/editor/io/editor-server-save.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(invokedInitModuleSource('editor/io/editor-server-save.js', 'initMaweServerSave'), context);
   return { context, calls, hints, state: context.MaweState, api: context.window.MaweServerSave,
     detached: () => detached, reloads: () => reloads };
 }

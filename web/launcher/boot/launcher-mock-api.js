@@ -64,7 +64,7 @@ function mockApi() {
       perVideoSubfolder: saved.perVideoSubfolder,
       attachModelName: saved.attachModelName,
       notifyOnComplete: saved.notifyOnComplete === true,
-      appVersion: "1.10.0-beta.1",
+      appVersion: "1.11.0",
       asrPresetRoot: saved.asrPresetRoot || "D:\\Models\\MAW\\asr-presets",
       asrPresetRootConfigured: Boolean(saved.asrPresetRoot),
       serverPort: null,
@@ -191,7 +191,7 @@ function mockApi() {
           supportsSpeaker: true,
           multiLanguage: true,
           commonLanguages: ["zh", "en", "ja", "ko"],
-          models: [{ id: "stt-async-v5", label: "Soniox Async STT（v5，上下文）", envKey: "SONIOX_API_KEY", note: "支持提示词、说话人与字词时间码。", priceNote: "Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本 $3.50 / 1M。", supportsSpeaker: true, supportsContext: true, languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }] }],
+          models: [{ id: "stt-async-v6", label: "Soniox Async STT（v6，上下文）", envKey: "SONIOX_API_KEY", note: "当前主力模型；支持提示词、说话人与字词时间码。", priceNote: "Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本 $3.50 / 1M。", supportsSpeaker: true, supportsContext: true, languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }] }, { id: "stt-async-v5", label: "Soniox Async STT（v5，旧版）", envKey: "SONIOX_API_KEY", note: "旧版模型，2026-12-15 移除后自动转 v6；支持提示词、说话人与字词时间码。", priceNote: "Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本 $3.50 / 1M。", supportsSpeaker: true, supportsContext: true, languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }] }],
           regions: [],
           languages: [{ id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }, { id: "fr", label: "法语 / French" }, { id: "de", label: "德语 / German" }]
         },
@@ -219,8 +219,10 @@ function mockApi() {
         }
       ]
       };
+      const version = /^v?(\d+)\.\d+\.\d+(?:[-+.]?[0-9A-Za-z.-]+)?$/u.exec(config.appVersion);
+      const standaloneEditorSupported = version !== null && Number(version[1]) < 2;
       const provider = config.providers.find(item => item.id === config.providerId);
-      return { ...config, models: provider.models, regions: provider.regions, languages: provider.languages };
+      return { ...config, standaloneEditorSupported, models: provider.models, regions: provider.regions, languages: provider.languages };
     },
     default_output: async ({ mediaPath, providerId, modelId, testRun }) => {
       let path = "";

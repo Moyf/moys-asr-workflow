@@ -1,3 +1,8 @@
+import { deleteOverlayCues, assignOverlayColor, clearOverlayColorOnTargets, mergeOverlayCues } from './overlay-track.js';
+
+export function initMaweEditShortcutsWiring() {
+'use strict';
+
 document.addEventListener('click', (event) => {
   if (event.detail === 0) return;
   const target = event.target instanceof Element ? event.target : null;
@@ -11,7 +16,7 @@ document.addEventListener('click', (event) => {
 document.addEventListener('keydown', (e) => {
   if (!MaweKeyboardTargets.isSpaceKey(e)) return;
   if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -45,7 +50,7 @@ window.addEventListener('blur', () => { MaweShortcuts.interceptedSpace = false; 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'j' && e.key !== 'J' && e.key !== 'k' && e.key !== 'K' && e.key !== 'l' && e.key !== 'L') return;
   if (MaweInlineEdit.editingState) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   const a = document.activeElement;
@@ -56,7 +61,7 @@ document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (MaweJklPlayback.isJklDirectionMode()) {
     if (k === 'k') {
-      const wasPlaying = MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused;
+      const wasPlaying = MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused || window.MaweGapPlayback?.pendingPlayback;
       if (!wasPlaying) {
         MaweJklPlayback.jklPlaybackRate = 1;
         MaweCoreState.player.playbackRate = 1;
@@ -66,6 +71,7 @@ document.addEventListener('keydown', (e) => {
       MaweJklPlayback.stopJklReversePlayback({ render: false });
       MaweJklPlayback.jklPlaybackRate = 1;
       MaweCoreState.player.playbackRate = 1;
+      window.MaweGapPlayback?.cancelPendingPlayback();
       MaweCoreState.player.pause();
       MawePlaybackLoop.update();
       MaweCoreState.waveformEditor?.updatePlayback();
@@ -107,7 +113,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -118,7 +124,7 @@ document.addEventListener('keydown', (e) => {
   const panelTarget = MaweCuePanel.getCurrentCuePanelTarget();
   const extensionTarget = panelTarget?.kind === 'extension';
   const extensionTrack = extensionTarget ? panelTarget.track : null;
-  const segments = extensionTarget ? extensionTrack.segments : MaweBoot.DATA.segments;
+  const segments = extensionTarget ? extensionTrack.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   const wasPlaying = !MaweCoreState.player.paused;
   const heldCueKey = (!e.shiftKey || key === 'a' || key === 'd')
     && MaweCoreState.waveformEditor?.handleHeldCueKey?.(
@@ -199,7 +205,7 @@ document.addEventListener('keydown', (e) => {
     active.tagName === 'INPUT' || active.tagName === 'TEXTAREA'
       || active.tagName === 'SELECT' || active.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
+  if (MaweDom.textProcessModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
       || MaweDom.ctxmenu.classList.contains('show')) return;
   e.preventDefault();
@@ -222,7 +228,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -246,7 +252,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -267,7 +273,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -295,7 +301,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -337,7 +343,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'BUTTON'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -359,7 +365,7 @@ document.addEventListener('keydown', (e) => {
   if (MaweInlineEdit.editingState || e.repeat) return;
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -410,7 +416,7 @@ document.addEventListener('keydown', (e) => {
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
   // modal 打开时不触发
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -444,7 +450,7 @@ document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;
     if (MaweInlineEdit.editingState) return;
     if (MaweDom.ctxmenu.classList.contains('show')) return;
-    if (MaweDom.replaceModal.classList.contains('show')) return;
+    if (MaweDom.textProcessModal.classList.contains('show')) return;
     if (MaweDom.stickerModal.classList.contains('show')) return;
     if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
     if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -463,7 +469,7 @@ document.addEventListener('keydown', (e) => {
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
   if (MaweInlineEdit.editingState) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -482,7 +488,7 @@ document.addEventListener('keydown', (e) => {
   if (MaweInlineEdit.editingState || e.repeat) return;
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -491,7 +497,7 @@ document.addEventListener('keydown', (e) => {
   const target = MaweCuePanel.getCurrentCuePanelTarget();
   const extensionTarget = target?.kind === 'extension';
   const selected = extensionTarget ? MaweSelection.selectedExtensionIdxs : MaweSelection.selectedIdxs;
-  const segments = extensionTarget ? target.track.segments : MaweBoot.DATA.segments;
+  const segments = extensionTarget ? target.track.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   if (!selected.size) return;
   const first = Math.min(...selected);
   const segment = segments[first];
@@ -505,7 +511,7 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'i' && e.key !== 'I' && e.key !== 'o' && e.key !== 'O') return;
   if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || e.repeat || MaweKeyboardTargets.isTextEditingTarget(e)) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -526,7 +532,7 @@ document.addEventListener('keydown', (e) => {
   if (MaweInlineEdit.editingState || e.repeat || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -559,7 +565,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -625,7 +631,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -679,7 +685,7 @@ document.addEventListener('keydown', (e) => {
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT'
     || (a.isContentEditable && !forceMainEdit))) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -709,7 +715,7 @@ document.addEventListener('keydown', (e) => {
   const activeCuePanel = MaweCuePanel.getCurrentCuePanelTarget();
   const operationReference = MaweNavPreview.keyboardOperationReference();
   const pointerMainIndex = operationReference
-    ? MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, MaweBoot.DATA.segments) : -1;
+    ? MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) : -1;
   const activeExtensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const pointerExtensionIndex = operationReference?.track === 'extension'
     ? MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, MaweMultiSubtitleCore.getExtensionTrack(operationReference.trackId)?.segments) : -1;
@@ -796,7 +802,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     // 同上：首次 B 只负责打开叠加字幕拆分弹窗。
     e.stopImmediatePropagation();
-    openOverlaySplitModal(
+    window.MaweOverlaySplitMerge.openOverlaySplitModal(
       overlayIndex,
       MaweSettings.EDITOR_SETTINGS.keyboardOperationReference === 'playhead'
         ? operationReference?.timeMs ?? null : timeMs,
@@ -806,14 +812,14 @@ document.addEventListener('keydown', (e) => {
   // 1) 字幕列表：需要单选 + 悬停提供文字位置
   if (MaweSelection.selectedIdxs.size === 1) {
     const context = MaweNavPreview.hoveredSelectedCueContext();
-    if (context && MaweBoot.DATA.segments[context.idx]) {
+    if (context && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[context.idx]) {
       splitAt(context.idx, context.x, context.y, null);
       return;
     }
   }
   // 2) 波形：指针音频位置
   if (operationReference?.source === 'pointer' || operationReference?.track === 'extension') {
-    const idx = MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, MaweBoot.DATA.segments);
+    const idx = MaweContextMenus.findWaveformCueAtTime(operationReference.timeMs, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
     if (idx >= 0) {
       splitAt(idx, 0, 0, operationReference.timeMs);
       return;
@@ -832,7 +838,7 @@ document.addEventListener('keydown', (e) => {
   }
   // 3) 播放头位置
   const timeMs = operationReference?.timeMs ?? Math.round(MaweCoreState.player.currentTime * 1000);
-  const idx = MaweBoot.DATA.segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
+  const idx = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => timeMs > segment.start && timeMs < segment.end);
   if (idx >= 0) {
     splitAt(idx, 0, 0, timeMs);
     return;
@@ -859,3 +865,4 @@ document.addEventListener('pointerdown', (e) => {
     !target || !MaweInlineEdit.extensionEditingState.textEl.contains(target)
   )) MaweInlineEdit.finishExtensionEdit(true);
 }, true);
+}

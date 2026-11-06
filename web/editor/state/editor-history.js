@@ -1,3 +1,8 @@
+import { getOverlayTrack } from '../cues/overlay-track.js';
+
+export function initMaweHistory() {
+'use strict';
+
 // 撤销/重做：历史栈、快照与各类型记录的入栈恢复。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweHistory 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -25,13 +30,9 @@
 
 
   function snapshotSegments() {
-  // _dirty 也保留，恢复后能再次导出"工程文件"时正确标记；多字幕数据与主轨
+  // 会话高亮可随快照保留，但不参与保存检查点；多字幕数据与主轨
   // 必须处于同一条记录中，绑定/成对删除/联动拆分才能原子撤销。
-  return EDITOR_SETTINGS_UTILS.buildSegmentsHistorySnapshot(
-    MaweBoot.DATA.segments,
-    MaweMultiSubtitleCore.getMultiSubtitleState(),
-    getOverlayTrack(),
-  );
+  return window.AsrEditorUtils.buildSegmentsHistorySnapshot(MaweBoot.DATA);
 }
 
 
@@ -41,7 +42,7 @@
     ? MaweMultiSubtitleCore.getExtensionTrack(MaweCuePanelState.currentCuePanelTrackId) : null;
   return {
     mainIds: [...MaweSelection.selectedIdxs]
-      .map((index) => MaweBoot.DATA.segments[index]?.id)
+      .map((index) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.id)
       .filter(Boolean),
     extensionTrackId: extensionTrack?.id || null,
     extensionIds: extensionTrack
@@ -56,8 +57,8 @@
       ? panelTrack?.segments?.[MaweCuePanelState.currentCuePanelIdx]?.id || null
       : MaweCuePanelState.currentCuePanelKind === 'overlay'
       ? getOverlayTrack()?.segments?.[MaweCuePanelState.currentCuePanelIdx]?.id || null
-      : MaweBoot.DATA.segments[MaweCuePanelState.currentCuePanelIdx]?.id || null,
-    lastMainId: MaweBoot.DATA.segments[MaweSelection.lastClickedIdx]?.id || null,
+      : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[MaweCuePanelState.currentCuePanelIdx]?.id || null,
+    lastMainId: window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[MaweSelection.lastClickedIdx]?.id || null,
     lastExtensionId: extensionTrack?.segments?.[MaweSelection.lastClickedExtensionIdx]?.id || null,
     lastOverlayId: getOverlayTrack()?.segments?.[MaweState.selection.overlayAnchor]?.id || null,
   };
@@ -178,7 +179,7 @@
   MaweState.selection.clear('extension');
   MaweState.selection.clear('overlay');
   const mainIds = new Set(snapshot.mainIds || []);
-  MaweBoot.DATA.segments.forEach((segment, index) => {
+  window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((segment, index) => {
     if (mainIds.has(segment?.id)) MaweState.selection.add('main', index);
   });
   const extensionTrack = MaweMultiSubtitleCore.getExtensionTrack(snapshot.extensionTrackId) || MaweMultiSubtitleCore.getActiveExtensionTrack();
@@ -193,7 +194,7 @@
     if (overlayIds.has(segment?.id)) MaweState.selection.add('overlay', index);
   });
   MaweSelection.lastClickedIdx = snapshot.lastMainId
-    ? MaweBoot.DATA.segments.findIndex((segment) => segment?.id === snapshot.lastMainId) : -1;
+    ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === snapshot.lastMainId) : -1;
   MaweSelection.lastClickedExtensionIdx = extensionTrack && snapshot.lastExtensionId
     ? extensionTrack.segments.findIndex((segment) => segment?.id === snapshot.lastExtensionId) : -1;
   MaweState.selection.overlayAnchor = snapshot.lastOverlayId != null
@@ -218,7 +219,7 @@
   } else if (snapshot.panelKind === 'main' && snapshot.panelId) {
     MaweCuePanelState.currentCuePanelKind = 'main';
     MaweCuePanelState.currentCuePanelTrackId = null;
-    MaweCuePanelState.currentCuePanelIdx = MaweBoot.DATA.segments.findIndex((segment) => segment?.id === snapshot.panelId);
+    MaweCuePanelState.currentCuePanelIdx = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === snapshot.panelId);
   }
   if (MaweCuePanelState.currentCuePanelIdx < 0) {
     MaweCuePanelState.currentCuePanelKind = 'main';
@@ -268,24 +269,15 @@
     applyPreviewState(record.preview);
     return true;
   }
-  const snapshot = record.segs && Array.isArray(record.segs.segments)
-    ? record.segs
-    : {
-      segments: record.segs,
-      multi_subtitle: MaweBoot.DATA.multi_subtitle,
-      overlay_track: MaweBoot.DATA.overlay_track,
-    };
-  // 视口属于本次撤销动作，不随历史快照恢复。
+  const snapshot = record.segs;
   const cueListAnchor = MaweCueListAnchor.captureCueListRenderAnchor();
   const previousWaveformStructure = MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
-  MaweBoot.DATA.segments.length = 0;
-  (snapshot.segments || []).forEach(s => MaweBoot.DATA.segments.push(s));
-  MaweBoot.DATA.multi_subtitle = snapshot.multi_subtitle || {
-    schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
-  };
-  MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(snapshot.overlay_track);
+  MaweState.rememberSessionHighlights();
+  window.AsrEditorUtils.restoreSegmentsHistorySnapshot(MaweBoot.DATA, snapshot);
+  MaweState.restoreSessionHighlights();
   if (record.projectChanges) Object.assign(MaweState.changes, record.projectChanges);
   MaweMultiSubtitleCore.normalizeMultiSubtitleState();
+  MaweState.restoreSessionHighlights();
   MaweState.reconcileSegmentsDirty();
   // 历史恢复会改变下标身份；丢弃旧面板绑定，避免 clearSelection() 把旧面板
   // 内容提交到恢复后占据同一下标的另一条字幕，并因此生成新历史、清空 redo。
@@ -301,6 +293,10 @@
     waveform: structureChanged ? 'full' : 'overlay',
     cueListAnchor,
   });
+  // 暂停状态下撤销/重做不会触发播放器事件：与正向命令一致地刷新播放器
+  // 字幕预览（SRT overlay），并通知 ASS 实际画面重查快照。
+  MaweViewUpdates.invalidate({ preview: 'refresh' });
+  window.MaweAssFrame?.notifyProjectChanged?.();
   if (record.view) restoreEditorSelection(record.view);
   return true;
 }
@@ -366,14 +362,13 @@
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) {
     return true;
   }
-  return MaweDom.replaceModal.classList.contains('show')
-      || MaweDom.textProcessModal.classList.contains('show')
+  return MaweDom.textProcessModal.classList.contains('show')
       || document.getElementById('wrap-chars-modal')?.classList.contains('show')
       || MaweDom.timedTextEditModal.classList.contains('show')
       || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show')
       || MaweDom.projectMediaModal.classList.contains('show')
-      || assStyleWindow?.classList.contains('show');
+      || window.MaweDomPanelsWiring.assStyleWindow?.classList.contains('show');
 }
 
 
@@ -414,3 +409,19 @@
     updateUndoRedoButtons
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+// 以下函数可供其他模块导入；调用时通过 window.MaweHistory 找到原有实现。
+// 旧代码仍使用该对象，计划在 G16 退役。
+export function captureSegmentsRecord(...args) { return window.MaweHistory.captureSegmentsRecord(...args); }
+export function commitRecord(...args) { return window.MaweHistory.commitRecord(...args); }
+export function applyHistoryRecord(...args) { return window.MaweHistory.applyHistoryRecord(...args); }
+export function snapshotEditorSelection(...args) { return window.MaweHistory.snapshotEditorSelection(...args); }
+export function snapshotPreviewState(...args) { return window.MaweHistory.snapshotPreviewState(...args); }
+export function pushPreviewUndo(...args) { return window.MaweHistory.pushPreviewUndo(...args); }
+export function pushGapRemoveUndo(...args) { return window.MaweHistory.pushGapRemoveUndo(...args); }
+export function pushLayoutUndo(...args) { return window.MaweHistory.pushLayoutUndo(...args); }
+export function pushMarkersUndo(...args) { return window.MaweHistory.pushMarkersUndo(...args); }
+export function performUndo(...args) { return window.MaweHistory.performUndo(...args); }
+export function performRedo(...args) { return window.MaweHistory.performRedo(...args); }
+export function updateUndoRedoButtons(...args) { return window.MaweHistory.updateUndoRedoButtons(...args); }

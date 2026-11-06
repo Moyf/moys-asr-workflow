@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import struct
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -247,6 +248,32 @@ class MediaResolutionTests(unittest.TestCase):
             with mock.patch("maw.media.subprocess.run") as process:
                 self.assertIsNone(probe_video_fps(audio))
         process.assert_not_called()
+
+    def test_probe_process_failures_return_unknown_information(self) -> None:
+        media = self.root / "broken.mp4"
+        media.write_bytes(b"not a media container")
+        for probe in (probe_video_fps, probe_audio_tracks):
+            for error in (
+                subprocess.CalledProcessError(1, ["ffprobe"], stderr="invalid data"),
+                subprocess.TimeoutExpired(["ffprobe"], 10),
+                OSError("cannot start ffprobe"),
+            ):
+                with self.subTest(probe=probe.__name__, error=type(error).__name__):
+                    with mock.patch("maw.media.find_ffprobe", return_value=Path("ffprobe")), \
+                            mock.patch("maw.media.subprocess.run", side_effect=error) as process:
+                        self.assertIsNone(probe(media))
+                    process.assert_called_once()
+
+    def test_probe_invalid_json_returns_unknown_information(self) -> None:
+        media = self.root / "broken.mp4"
+        media.write_bytes(b"not a media container")
+        for probe in (probe_video_fps, probe_audio_tracks):
+            for output in ("", "{truncated"):
+                with self.subTest(probe=probe.__name__, output=output):
+                    with mock.patch("maw.media.find_ffprobe", return_value=Path("ffprobe")), \
+                            mock.patch("maw.media.subprocess.run", return_value=mock.Mock(stdout=output)) as process:
+                        self.assertIsNone(probe(media))
+                    process.assert_called_once()
 
     def test_missing_project_media_falls_back_to_one_same_name_candidate(self) -> None:
         media = self.root / "take.flv"

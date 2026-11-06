@@ -2,8 +2,12 @@
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweGapRemoveUi 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweGapRemoveUi(global) {
+export function initMaweGapRemoveUi() {
   'use strict';
+
+  // 装配器无参调用；宿主对象固定为当前页面 window。
+  // 顶层 DOM 查询/监听随函数体在装配器调用位次执行，时机不变（G07 gate）。
+  const global = window;
 
 
 
@@ -27,6 +31,10 @@
     MaweCuePanelState.gapPreviewRange = null;
     if (dirty) MaweHistory.gapRemoveDirty = true;
     updateGapRemoveUi();
+    window.MaweGapPlayback?.refresh();
+    if (MaweCoreState.player && !MaweCoreState.player.paused) {
+      void window.MaweAudioProcessing?.applyPreview({ gesture: true });
+    }
   }
 
 
@@ -59,6 +67,17 @@
 
     const core = window.AsrGapRemoveCore;
     const state = MaweGapRemoveData.getGapRemoveData(true);
+    if (window.AsrEditorUtils.isAiCleanupRemovalMarker(marker)) {
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        return { changed: false, muted: false };
+      }
+      // 自动移除区段按当前实际覆盖切换；手动保留优先于所有自动来源。
+      const removed = !core.getRemovedGapRanges(state?.gaps)
+        .some((gap) => gap.start < end && gap.end > start);
+      MaweHistory.pushGapRemoveUndo(removed ? '移除 AI 区段声音' : '恢复 AI 区段声音');
+      commitManualGapRemoveChange(state, [{ start, end, removed }]);
+      return { changed: true, muted: removed, automatic: true };
+    }
     const provenance = core.normalizeGapRemoveProvenance(state?.provenance, state?.gaps);
     const currentRanges = provenance.sources.ai_cleanup_review;
     // 拆分区间的 id 可变化；优先按稳定的标记归属匹配，旧记录才回退到 id。
@@ -161,14 +180,14 @@
   function updateGapRemoveDisableHint() {
     if (!MaweDom.gapRemoveDisableHint) return;
     const matches = window.AsrEditorUtils.findGapRemoveDisableMatches(
-      MaweBoot.DATA.segments,
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
       MaweGapRemoveData.getGapRemoveGaps(),
       {
         coveragePercent: MaweGapRemoveData.clampGapRemoveDisableCoverage(MaweDom.gapRemoveDisableCoverage?.value),
         remainingMs: MaweGapRemoveData.clampGapRemoveDisableRemaining(MaweDom.gapRemoveDisableRemaining?.value),
       },
     );
-    const count = matches.filter(({ index }) => !MaweBoot.DATA.segments[index]?.disabled).length;
+    const count = matches.filter(({ index }) => !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.disabled).length;
     MaweDom.gapRemoveDisableHint.textContent = `禁用位于空隙范围内的字幕（当前有 ${count} 条未禁用）`;
   }
 
@@ -347,13 +366,13 @@
   function disableSubtitlesInRemovedGaps() {
     const settings = commitGapRemoveDisableSettings();
     const matches = window.AsrEditorUtils.findGapRemoveDisableMatches(
-      MaweBoot.DATA.segments,
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
       MaweGapRemoveData.getGapRemoveGaps(),
       settings,
     );
     const targetIndexes = matches
       .map((match) => match.index)
-      .filter((index) => !MaweBoot.DATA.segments[index]?.disabled);
+      .filter((index) => !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.disabled);
     if (!targetIndexes.length) {
       const message = matches.length ? '符合条件的字幕已全部禁用' : '没有符合条件的字幕';
       MaweHint.flashHint(
@@ -799,4 +818,4 @@
     toggleGapRemovePanel,
     finishGapRemovePanelDrag
   });
-})(typeof window !== 'undefined' ? window : globalThis);
+}

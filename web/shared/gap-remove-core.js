@@ -34,6 +34,18 @@
     return value == null ? null : JSON.parse(JSON.stringify(value));
   }
 
+  function unknownFields(value, managed) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => !managed.includes(key))
+      .map(([key, field]) => [key, cloneJsonValue(field)]));
+  }
+
+  const GAP_FIELDS = ['start', 'end', 'removed', 'source', 'origins'];
+  const PROVENANCE_RANGE_FIELDS = ['id', 'source', 'start', 'end', 'removed', 'cleanup_scope',
+    'review_marker_id', 'operation', 'edge', 'base', 'boundary', 'cleared_ranges',
+    'base_start', 'base_end', 'target_start', 'target_end', 'target_ranges'];
+
   function clampInteger(value, fallback, minimum, maximum) {
     const rounded = Math.round(Number(value));
     return Math.min(maximum, Math.max(minimum, Number.isFinite(rounded) ? rounded : fallback));
@@ -104,6 +116,7 @@
   function normalizeGapRangeList(value) {
     return (Array.isArray(value) ? value : [value])
       .map((range) => ({
+        ...unknownFields(range, ['start', 'end']),
         start: Math.max(0, Math.round(Number(range?.start))),
         end: Math.max(0, Math.round(Number(range?.end))),
       }))
@@ -151,6 +164,7 @@
       : [{ start: item?.target_start, end: item?.target_end }];
     const ranges = rawTargets
       .map((range) => ({
+        ...unknownFields(range, ['start', 'end']),
         start: Math.max(0, Math.round(Number(range?.start))),
         end: Math.max(0, Math.round(Number(range?.end))),
       }))
@@ -219,6 +233,7 @@
     const end = Math.max(0, Math.round(Number(item.end)));
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
     const result = {
+      ...unknownFields(item, PROVENANCE_RANGE_FIELDS),
       id: provenanceId(item.id, source, index, used),
       source,
       start,
@@ -304,8 +319,10 @@
     const legacyAudioGaps = legacy.filter((item) => item.removed !== false);
     const legacyManualOverrides = legacy.filter((item) => item.removed === false);
     return {
+      ...unknownFields(source, ['schema', 'sources', 'manual_overrides', 'legacy']),
       schema: GAP_PROVENANCE_SCHEMA,
       sources: {
+        ...unknownFields(rawSources, ['script_alignment', 'ai_cleanup', 'ai_cleanup_review', 'audio_gate', 'manual', 'legacy']),
         script_alignment: normalizeProvenanceRangeList(rawSources.script_alignment, 'script_alignment', {sort: true}),
         ai_cleanup: normalizeProvenanceRangeList(rawSources.ai_cleanup, 'ai_cleanup', {sort: true}),
         ai_cleanup_review: normalizeProvenanceRangeList(rawSources.ai_cleanup_review, 'ai_cleanup_review', {sort: true}),
@@ -819,8 +836,33 @@
     const hasProvenance = Boolean(source.provenance && typeof source.provenance === 'object');
     const provenance = normalizeGapRemoveProvenance(source.provenance, rawGaps);
     const computedGaps = hasProvenance ? gapRangesFromProvenance(provenance) : rawGaps;
-    const gaps = cloneJsonValue(decorateGapRemoveGaps(computedGaps, provenance)) || [];
+    const projected = cloneJsonValue(decorateGapRemoveGaps(computedGaps, provenance)) || [];
+    const extended = (Array.isArray(source.gaps) ? source.gaps : []).flatMap(item => {
+      const range = normalizeGapRemoveGaps([item])[0];
+      const extra = unknownFields(item, GAP_FIELDS);
+      return range && Object.keys(extra).length ? [{ ...range, extra }] : [];
+    });
+    const gaps = projected.flatMap(gap => {
+      const matching = extended.filter(item => item.removed === gap.removed && item.start < gap.end && item.end > gap.start);
+      if (!matching.length) return [gap];
+      // Preserve metadata belonging to separate adjacent input ranges even if
+      // the authoritative provenance projection coalesces those ranges.
+      const edges = new Set([gap.start, gap.end]);
+      for (const item of matching) {
+        edges.add(Math.max(gap.start, item.start));
+        edges.add(Math.min(gap.end, item.end));
+      }
+      const points = [...edges].sort((a, b) => a - b);
+      return points.slice(0, -1).map((start, index) => {
+        const end = points[index + 1];
+        const item = matching.find(range => range.start <= start && range.end >= end);
+        return { ...gap, ...(item?.extra || {}), start, end };
+      });
+    });
     return {
+      ...unknownFields(source, ['schema', 'detector', 'minimum_ms', 'threshold_db', 'hysteresis_db', 'lead_in_ms',
+        'lead_out_ms', 'skip_playback', 'manual_corrections', 'operation_mode', 'disable_coverage_percent',
+        'disable_remaining_ms', 'gaps', 'provenance']),
       schema: GAP_REMOVE_SCHEMA,
       // Older gap lists came from the same audio-gate workflow but did not
       // carry a provenance layer. Normalize them into the current detector so
@@ -1421,7 +1463,8 @@
         || !Number.isInteger(value.item_start) || value.item_start < 0
         || !Number.isInteger(value.item_end) || value.item_end <= value.item_start
         || typeof value.text !== 'string' || !value.text) return null;
-    return { segment_id: value.segment_id, item_start: value.item_start, item_end: value.item_end, text: value.text };
+    return { ...unknownFields(value, ['segment_id', 'item_start', 'item_end', 'text']),
+      segment_id: value.segment_id, item_start: value.item_start, item_end: value.item_end, text: value.text };
   }
 
   function reliableCleanupItems(segment) {

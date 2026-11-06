@@ -363,15 +363,40 @@ MawePreviewGeometry.bindPreviewBoxPointerEvents(MaweDom.overlayEl, 'subtitle');
 
 MaweDom.overlayEl.addEventListener('keydown', (event) => MawePreviewGeometry.handlePreviewBoxKeydown(event, 'subtitle'));
 
+const isPreviewStageBackground = (target) => target === MaweDom.playerStage || target === MaweDom.playerEmpty
+  || (target === MaweCoreState.player && target.tagName === 'VIDEO');
+let previewBackgroundPress = null;
+
 // 点击预览框（字幕/表情包）以外的地方：失焦并退出控制点编辑态，调整框随之隐藏。
 // 捕获阶段监听，避免其他组件 pointerdown 的 stopPropagation 跳过失焦。
 document.addEventListener('pointerdown', (event) => {
+  previewBackgroundPress = null;
   if (MawePreviewGeometry.previewGesture) return;
+  if (event.button === 0 && isPreviewStageBackground(event.target)) {
+    previewBackgroundPress = { hadBoxSelection: false };
+  }
   [MaweDom.overlayEl, MaweStickerOverlay.stickerOverlayLayer].forEach((el) => {
     if (el.contains(event.target)) return;
+    const focused = document.activeElement === el;
+    if (previewBackgroundPress && (focused || el.classList.contains('editable'))) {
+      previewBackgroundPress.hadBoxSelection = true;
+    }
     el.classList.remove('editable');
-    if (document.activeElement === el) el.blur();
+    if (focused) el.blur();
   });
+}, true);
+
+MaweDom.playerStage.addEventListener('click', (event) => {
+  // 取消拖动并释放指针捕获后，click 可能落到舞台。只处理从空白处开始的点击。
+  const press = previewBackgroundPress;
+  previewBackgroundPress = null;
+  if (!press || event.defaultPrevented || event.detail === 0 || !isPreviewStageBackground(event.target)) return;
+  const hasCueSelection = MaweCuePanel.getCurrentCuePanelTarget()
+    || ['main', 'extension', 'overlay'].some(track => MaweState.selection.indices(track).size > 0);
+  if (!hasCueSelection && !press.hadBoxSelection) return;
+  // 视频的 click 播放处理器会跳过已消费的点击。
+  event.preventDefault();
+  MaweSelection.clearSelection();
 }, true);
 
 // 播放器缩放时几何以百分比表达，天然自适应；ResizeObserver 仅在盒子越界后回钳。

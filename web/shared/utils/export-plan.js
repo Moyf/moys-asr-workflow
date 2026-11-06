@@ -206,6 +206,32 @@ export function createUtilsModule(dependencies) {
     return { width, height };
   }
 
+  function exportTrackInput(project) {
+    if (project.schema !== undefined) {
+      const canonical = project.schema === dependencies.PROJECT_TRACKS_SCHEMA
+        ? project : dependencies.importProject(project).project;
+      const checked = dependencies.validateTracksProject(canonical);
+      if (!checked.ok) throw new dependencies.ProjectTracksError(checked.errors);
+      return { canonical, tracks: dependencies.selectSubtitleTracks(canonical, { subtitleTracks: 'all' }) };
+    }
+    // Historical export-options inputs are not MOSP documents: they permit
+    // malformed cues for warning projection and object-shaped media metadata.
+    // Translate that API at its boundary; the renderer below only sees tracks.
+    const tracks = [{ id: 'main', role: 'main', enabled: true,
+      segments: Array.isArray(project.segments) ? project.segments : [] }];
+    if (project.overlay_track?.enabled === true) tracks.push({ id: 'overlay', role: 'overlay', enabled: true,
+      segments: Array.isArray(project.overlay_track.segments) ? project.overlay_track.segments : [] });
+    if (project.multi_subtitle?.enabled === true) {
+      for (const [index, track] of (project.multi_subtitle.tracks || []).entries()) {
+        tracks.push({ id: track.id || `extension-${index}`, role: 'secondary', enabled: true,
+          segments: Array.isArray(track.segments) ? track.segments : [] });
+      }
+    } else if (project.multi_subtitle == null && Array.isArray(project.extensionSegments)) {
+      tracks.push({ id: 'extension', role: 'secondary', enabled: true, segments: project.extensionSegments });
+    }
+    return { canonical: null, tracks };
+  }
+
 
   function buildProjectExportPlan(project, options = {}) {
     if (!project || typeof project !== 'object') throw new Error('invalid export project');
@@ -254,24 +280,21 @@ export function createUtilsModule(dependencies) {
       : mapGapRemovedTime(sourceMs, gaps);
     const warnings = [];
     if (mode === 'gap_removed' && !gaps.some((gap) => gap.removed)) warnings.push({ code: 'no_removed_gaps' });
-    const projectSegments = gapRemoveCore.projectCleanupRetainedSegments(
-      Array.isArray(project.segments) ? project.segments : [], project.gap_remove,
-    );
-    // schema §1.5：叠加轨 enabled=false 时保留数据但不显示也不导出。
-    const projectOverlaySegments = project.overlay_track?.enabled === true
-      && Array.isArray(project.overlay_track.segments)
-      ? project.overlay_track.segments : [];
-    const schemaExtension = Array.isArray(project.multi_subtitle?.tracks)
-      ? project.multi_subtitle.tracks.flatMap((track) => Array.isArray(track?.segments) ? track.segments : [])
-      : [];
+    const input = exportTrackInput(project);
+    const selectedIds = input.tracks.map(track => track.id);
+    const renderTracks = input.tracks.map(track => ({ ...track,
+      segments: input.canonical ? dependencies.materializeTrackSegments(input.canonical, track.id,
+        { trackIds: selectedIds, includeDisabled: false }) : track.segments }));
+    const main = renderTracks.find(track => track.role === 'main');
+    const overlay = renderTracks.find(track => track.role === 'overlay');
+    const extensions = renderTracks.filter(track => track.role === 'secondary');
+    const projectSegments = gapRemoveCore.projectCleanupRetainedSegments(main?.segments || [], project.gap_remove);
+    const projectOverlaySegments = overlay?.segments || [];
     const extensionColorContexts = new Map();
-    (Array.isArray(project.multi_subtitle?.tracks) ? project.multi_subtitle.tracks : []).forEach((track) => {
+    extensions.forEach((track) => {
       (Array.isArray(track?.segments) ? track.segments : []).forEach((segment) => extensionColorContexts.set(segment, track.segments));
     });
-    const projectExtension = project.multi_subtitle?.enabled === true
-      ? schemaExtension
-      : (project.multi_subtitle == null && Array.isArray(project.extensionSegments)
-        ? project.extensionSegments : []);
+    const projectExtension = extensions.flatMap(track => track.segments);
     const projectCues = (segments, track) => segments.map((segment, index) => {
       if (!segment || segment.disabled) return null;
       const rawStart = Math.round(Number(segment.start));
@@ -316,6 +339,24 @@ export function createUtilsModule(dependencies) {
         || rawPath.startsWith('/') || rawPath.startsWith('file://')) return rawPath;
       return `${stickerRoot}/${rawPath.replace(/^[\\/]+/, '')}`;
     };
+    const appendSticker = (source, rawStart, rawEnd, track, index, output) => {
+      const start = Math.min(durationMs, Math.max(0, rawStart));
+      const end = Math.min(durationMs, Math.max(start, rawEnd));
+      if (end <= start || mapSourceToOutput(end) <= mapSourceToOutput(start)) {
+        warnings.push({ code: 'fully_removed_sticker', track, index });
+        return;
+      }
+      const resolvedStickerPath = resolveStickerPath(source);
+      if (!resolvedStickerPath) {
+        warnings.push({ code: 'missing_sticker_path', track, index });
+        return;
+      }
+      if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_sticker_to_duration', track, index });
+      output.push({ headIndex: index, track, name: String(source.name || ''), path: resolvedStickerPath,
+        width: Number.isInteger(source.width) ? source.width : 720,
+        height: Number.isInteger(source.height) ? source.height : 480,
+        sourceStartMs: start, sourceEndMs: end, startMs: mapSourceToOutput(start), endMs: mapSourceToOutput(end) });
+    };
     // 收集一条轨的表情包：ref 在所在轨数组内解析 head（叠加轨的 ref 只引用
     // 叠加轨自身段）。track 用于区分主轨 stickers 与叠加轨 overlayStickers。
     const collectStickers = (segments, track, output) => {
@@ -342,30 +383,20 @@ export function createUtilsModule(dependencies) {
         const stickerEnd = Number(timing.end);
         const rawStart = Math.round(Number.isFinite(stickerStart) ? stickerStart : Number(segment.start) || 0);
         const rawEnd = Math.round(Number.isFinite(stickerEnd) ? stickerEnd : Number(segment.end) || 0);
-        const start = Math.min(durationMs, Math.max(0, rawStart));
-        const end = Math.min(durationMs, Math.max(start, rawEnd));
-        if (end <= start || mapSourceToOutput(end) <= mapSourceToOutput(start)) {
-          warnings.push({ code: 'fully_removed_sticker', track, index });
-          return;
-        }
-        const resolvedStickerPath = resolveStickerPath(source);
-        if (!resolvedStickerPath) {
-          warnings.push({ code: 'missing_sticker_path', track, index });
-          return;
-        }
-        if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_sticker_to_duration', track, index });
-        output.push({
-          headIndex: index, track, name: String(source.name || ''),
-          path: resolvedStickerPath, width: Number.isInteger(source.width) ? source.width : 720,
-          height: Number.isInteger(source.height) ? source.height : 480,
-          sourceStartMs: start, sourceEndMs: end,
-          startMs: mapSourceToOutput(start), endMs: mapSourceToOutput(end),
-        });
+        appendSticker(source, rawStart, rawEnd, track, index, output);
       });
     };
-    collectStickers(projectSegments, 'main', stickers);
     const overlayStickers = [];
-    collectStickers(projectOverlaySegments, 'overlay', overlayStickers);
+    if (input.canonical) {
+      dependencies.subtitleGroupRanges(input.canonical, 'sticker', { trackIds: selectedIds }).filter(range => range.enabled)
+        .forEach((range, index) => {
+          const track = range.members.every(member => member.track === 'overlay') ? 'overlay' : 'main';
+          appendSticker(range.source, range.start, range.end, track, index, track === 'overlay' ? overlayStickers : stickers);
+        });
+    } else {
+      collectStickers(projectSegments, 'main', stickers);
+      collectStickers(projectOverlaySegments, 'overlay', overlayStickers);
+    }
     if (cues.main.length === 0 && cues.extension.length === 0 && cues.overlay.length === 0) {
       warnings.push({ code: 'no_enabled_cues' });
     }

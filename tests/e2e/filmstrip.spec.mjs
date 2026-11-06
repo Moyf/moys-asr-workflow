@@ -62,11 +62,11 @@ test('filmstrip preserves the waveform region, seek and scroll anchor',async({pa
     filmstrip:row._thumbnailCanvas.getBoundingClientRect().height}));
   expect(geometry.height).toBe(previous);expect(geometry.shellHeight).toBe(previous+48);expect(geometry.offset).toBe(48);expect(geometry.filmstrip).toBe(48);
   const canvas=page.locator('.waveform-filmstrip').first();const box=await canvas.boundingBox();
-  const cueCount=await page.evaluate(()=>MaweBoot.DATA.segments.length);
+  const cueCount=await page.evaluate(()=>AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length);
   await page.keyboard.down('Control');await page.mouse.click(box.x+box.width*.5,box.y+24);await page.keyboard.up('Control');
   const time=await page.evaluate(()=>document.getElementById('player').currentTime);
   expect(time).toBeGreaterThan(4.8);expect(time).toBeLessThan(5.2);
-  expect(await page.evaluate(()=>MaweBoot.DATA.segments.length)).toBe(cueCount);
+  expect(await page.evaluate(()=>AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(cueCount);
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-multi.png'});
   await page.locator('#waveform-settings-toggle').click();
   const spacing=await page.locator('#waveform-thumbnail-setting').evaluate(row=>{

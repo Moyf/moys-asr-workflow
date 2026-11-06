@@ -11,6 +11,7 @@ from send2trash import send2trash
 
 from maw.output_naming import BACKUP_DIR_NAMES, resolve_lang
 from maw.project_io import strip_inline_caches
+from maw.project import normalize_project
 
 
 def _backup_root(project: Path) -> Path:
@@ -51,6 +52,7 @@ def write_backup(project: Path, data: dict, limit: int) -> Path:
     """Publish a complete snapshot before pruning only this project's versions."""
     if type(limit) is not int or not 1 <= limit <= 1000:
         raise ValueError("最大保存版本数必须为 1–1000 的整数")
+    data = normalize_project(data)
     directory = backup_directory(project)
     directory.mkdir(parents=True, exist_ok=True)
     if directory.is_symlink() or directory.resolve() != directory.absolute():

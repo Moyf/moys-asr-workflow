@@ -7,6 +7,16 @@ from tests.compact_assertions import CompactContainerAssertions
 # G04 后这些叶子不再出现在清单里，但仍是 shared/editor-utils.js
 # 的显式 import 与源码契约；源码形态断言需要继续覆盖它们。
 WAVEFORM_RETIRED_UTILS = (
+    # G06 composition 模块
+    "editor/media/editor-thumbnails.js",
+    "editor/media/waveform/thumbnails.js",
+    "editor/media/waveform/media.js",
+    "editor/media/waveform/render.js",
+    "editor/media/waveform/cue-blocks.js",
+    "editor/media/waveform/word-blocks.js",
+    "editor/media/waveform/canvas.js",
+    "editor/media/waveform/input.js",
+
     "shared/utils/data.js",
     "shared/utils/fonts.js",
     "shared/utils/speakers.js",
@@ -44,11 +54,13 @@ WAVEFORM_RETIRED_UTILS = (
 )
 
 import base64
+import json
 import math
 import os
 import re
 import shutil
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -421,6 +433,32 @@ class WaveformExtractionTests(CompactContainerAssertions, unittest.TestCase):
             audio_track=0,
         )
 
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_extraction_sends_stderr_to_a_file_not_a_pipe(self) -> None:
+        """stderr 不能留在管道里，否则会与 stdout 读取互等死锁。
+
+        损坏的 AV1 录制会让 ffmpeg 在 ``-loglevel error`` 下仍然吐十几 KB 帧错误；
+        Windows 匿名管道只有 4 KiB 缓冲，旧实现在 stdout 读完后才读 stderr，ffmpeg
+        就卡在写日志上，屏幕上停在转写管线的「正在校验和修复时间码」。
+        """
+        captured: dict[str, object] = {}
+        real_popen = subprocess.Popen
+
+        def spy(*args: object, **kwargs: object) -> subprocess.Popen:
+            captured.update(kwargs)
+            return real_popen(*args, **kwargs)
+
+        with mock.patch.object(waveform_module.subprocess, "Popen", side_effect=spy):
+            payload = waveform_module.extract_waveform(self.media_path)
+
+        self.assertEqual(payload["peak_count"], 40)
+        self.assertIs(captured.get("stdout"), subprocess.PIPE)
+        stderr = captured.get("stderr")
+        self.assertIsNot(stderr, subprocess.PIPE)
+        self.assertTrue(
+            hasattr(stderr, "seek"), f"stderr 应该是可回读的文件，实际为 {stderr!r}"
+        )
+
 
 class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
     def test_project_waveform_survives_loading_media(self) -> None:
@@ -468,11 +506,11 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("请使用 MAW GUI 预生成波形", waveform)
         self.assertIn("use the MAW GUI to pre-generate the waveform", waveform)
         self.assertNotIn("请用 edit.py 预生成波形", waveform)
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         self.assertIn("请使用 MAW GUI 预生成波形", page)
 
     def test_blank_editor_inlines_modular_assets(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         # Historical JavaScript source-shape checks stay at the source layer.
         source = "\n\n".join(edit.read_web_asset(name) for name in list(edit.read_editor_script_manifest()) + [name for name in WAVEFORM_RETIRED_UTILS if name not in edit.read_editor_script_manifest()])
         self.assertIn(edit.build_editor_scripts().splitlines()[0], page)
@@ -549,7 +587,15 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("this.cues = document.getElementById('cues-container')", source)
         self.assertIn('flex-direction: column;', page)
         self.assertIn("class WaveformEditor", source)
-        self.assertIn('{"segments": [], "media": "", "language": "", "model": ""}', page)
+        blank = json.JSONDecoder().raw_decode(page[page.index('{"media": ""'):])[0]
+        self.assertEqual(blank["schema"], "moy.asr.project.v2")
+        self.assertNotIn("segments", blank)
+        self.assertNotIn("multi_subtitle", blank)
+        self.assertNotIn("overlay_track", blank)
+        self.assertEqual(len(blank["tracks"]), 1)
+        self.assertEqual(blank["tracks"][0]["role"], "main")
+        self.assertEqual(blank["tracks"][0]["segments"], [])
+        self.assertEqual(blank["media"], "")
         self.assertIn('id="save-project"', page)
         self.assertIn('id="save-project-as"', page)
         self.assertNotIn('__SERVER_CONFIG_JSON__', page)
@@ -668,7 +714,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             + page.count('class="editor-settings-group subtitle-preview-style-group"')
             + page.count('class="editor-settings-group subtitle-color-settings-group"')
             + page.count('class="editor-settings-group subtitle-speaker-settings-group"'),
-            36,  # 「更多导出」新增绿幕视频导出分组；表情包页新增烧录显示位置分组；AI 页新增功能开关与供应商两组。
+37,  # 「更多导出」新增绿幕视频导出分组；表情包页新增烧录显示位置与表情包背景分组；AI 页新增功能开关与供应商两组。
         )
         self.assertEqual(page.count('aria-labelledby="export-green-screen-title"'), 1)
         self.assertIn('<span class="editor-settings-group-heading" id="export-green-screen-title">绿幕视频导出</span>', page)
@@ -892,10 +938,10 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         )
         self.assertIn('function syncProjectTimebaseAndBindingOffsets(', source)
         self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', source)
-        self.assertIn(
-            'function buildJson({ forFileExport = false } = {}) {\n'
-            '  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
+        self.assertRegex(
             edit.read_web_asset("editor/io/editor-json-repair.js"),
+            r'function buildJson\(\{ forFileExport = false \} = \{\}\) \{\s+'
+            r'MaweTimeline\.syncProjectTimebaseAndBindingOffsets\(MaweBoot\.DATA, \{ preferFrames: false \}\);',
         )
         self.assertIn('id="help-media-seek-step"', page)
         self.assertIn('class="help-break"', page)
@@ -983,7 +1029,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('波形外观调整', page)
         self.assertIn('微调字幕', page)
         self.assertIn('空隙操作', page)
-        self.assertIn('批量替换字幕文本', page)
+        self.assertIn('id="text-process-btn" title="对字幕进行查找替换、修剪空白、前后添加字符等操作">字幕处理</button>', page)
         self.assertIn('纯文本编辑', page)
         self.assertIn('文本处理', page)
         self.assertIn('处理范围', page)
@@ -1133,11 +1179,12 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('跳过静音空隙', page)
         self.assertIn('const DEFAULT_LAYOUT_ROWS = [42, 16, 42];', source)
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", source)
-        self.assertIn('const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)', source)
-        self.assertIn('overlaySegments.some((segment) => segment.sticker || segment.sticker_ref)', source)
+        self.assertIn('const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((segment) => segment.sticker_group_id)', source)
+        self.assertIn('const overlaySegments = getOverlayTrack()?.segments || [];', source)
+        self.assertIn('overlaySegments.some((segment) => segment.sticker_group_id)', source)
         self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', source)
         self.assertIn('rows.sort((a, b) => a.start - b.start || a.order - b.order);', source)
-        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));', source)
+        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: window.MaweCuePanelWiring.buildOverlayCueEl(seg, i) }));', source)
         self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", source)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", source)
@@ -1318,7 +1365,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function isPlaybackKeyboardTarget(event)', source)
         self.assertIn('if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;', source)
         self.assertIn('let interceptedSpace = false;', source)
-        self.assertIn('e.stopImmediatePropagation();', page)
+        self.assertIn('.stopImmediatePropagation();', page)
         self.assertIn('width: 74px; aspect-ratio: 1;', page)
         # 面板行对选中/未选中使用同一套轨道尺寸：高度只随手动拖拽变化，不再因选中跳变
         self.assertIn('minmax(max-content, calc(var(--layout-row-middle)', page)
@@ -1334,7 +1381,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             self.assertNotIn(token, page, token)
 
     def test_media_controls_stay_on_one_line_and_preserve_fullscreen(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         controls_start = page.index("  .media-controls {\n")
         controls_end = page.index("  .player-wrap.empty-state", controls_start)
         controls_css = page[controls_start:controls_end]
@@ -1358,7 +1405,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             os.environ["STICKER_DIR"] = sticker_dir
             try:
                 with mock.patch.object(edit, 'render_editor_page', wraps=edit.render_editor_page) as render:
-                    page = edit.build_blank_html()
+                    page = edit.render_empty_editor_page()
             finally:
                 if previous_sticker_dir is None:
                     del os.environ["STICKER_DIR"]
@@ -1373,7 +1420,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn(Path(sticker_dir).resolve().as_posix(), page)
 
     def test_ninja_settings_and_split_feedback_are_rendered(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         for marker in (
             'id="ninja-mode"',
             'id="ninja-sound"',

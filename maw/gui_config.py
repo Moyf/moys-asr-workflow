@@ -484,10 +484,20 @@ OPENAI_ASR_MODELS: Final[tuple[ModelConfig, ...]] = (
 
 SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
-        id="stt-async-v5",
-        label="Soniox Async STT（v5，上下文）",
+        id="stt-async-v6",
+        label="Soniox Async STT（v6，上下文）",
         env_key="SONIOX_API_KEY",
-        note="支持提示词、说话人与字词时间码。",
+        note="当前主力模型；支持提示词、说话人与字词时间码。",
+        price_note="Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本 $3.50 / 1M。",
+        supports_speaker=True,
+        supports_context=True,
+        languages=SONIOX_LANGUAGES,
+    ),
+    ModelConfig(
+        id="stt-async-v5",
+        label="Soniox Async STT（v5，旧版）",
+        env_key="SONIOX_API_KEY",
+        note="旧版模型，2026-12-15 移除后自动转 v6；支持提示词、说话人与字词时间码。",
         price_note="Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本 $3.50 / 1M。",
         supports_speaker=True,
         supports_context=True,

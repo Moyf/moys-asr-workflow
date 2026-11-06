@@ -25,7 +25,7 @@ declare const __STICKER_ROOT_JSON__: string;
 declare const __STICKER_URL_PREFIX_JSON__: string;
 declare const __SERVER_CONFIG_JSON__: any;
 
-/** 毫秒整数。JSON_SCHEMA.md：segments[*].start/end 必须为整数毫秒。 */
+/** 毫秒整数。工程契约：tracks[*].segments[*].start/end 必须为整数毫秒。 */
 type Milliseconds = number;
 
 interface ProjectSegmentItem {
@@ -35,15 +35,46 @@ interface ProjectSegmentItem {
 }
 
 interface AssCueOverride { pos?: { x: number; y: number }; scale?: number; }
+/** 运行时颜色标记：head 持完整 color，成员持 color_ref（仅 name + headIdx）。 */
+interface ProjectColorMark { name: string; value?: string | null; start?: number; end?: number; }
+interface ProjectGroupRef { name: string; headIdx: number; }
 interface ProjectSegment {
+  id: string;
   start: Milliseconds;
   end: Milliseconds;
   text: string;
   disabled?: boolean;
   speaker?: string;
   assOverride?: AssCueOverride;
-  color?: string;
+  color_group_id?: string;
+  sticker_group_id?: string;
+  assStyle?: Record<string, any>;
+  _dirty?: boolean;
   items?: ProjectSegmentItem[];
+}
+
+interface ProjectTrack {
+  id: string;
+  role: 'main' | 'secondary' | 'overlay';
+  name: string;
+  enabled: boolean;
+  segments: ProjectSegment[];
+  language?: string;
+  language_source?: string;
+  split_mode?: string;
+  split_mode_override?: string;
+  timestamp_granularity?: string;
+  model?: string;
+  preserve_punctuation?: boolean;
+  source_name?: string;
+}
+
+interface ProjectBinding {
+  id: string;
+  source: { track_id: string; segment_id: string };
+  target: { track_id: string; segment_id: string };
+  start_offset_ms: Milliseconds;
+  end_offset_ms: Milliseconds;
 }
 
 interface ProjectMediaMetadata {
@@ -60,16 +91,27 @@ interface ProjectWaveformInfo {
   [key: string]: unknown;
 }
 
+/** 叠加轨：与主轨同构的独立段列表（JSON_SCHEMA.md overlay_track）。 */
+interface ProjectOverlayTrack {
+  id?: string;
+  enabled?: boolean;
+  segments?: ProjectSegment[];
+  /** 运行时脏标记，不进工程 JSON。 */
+  _dirty?: boolean;
+}
+
 interface ProjectData {
-  schema?: string;
-  segments: ProjectSegment[];
+  schema: 'moy.asr.project.v2';
+  tracks: ProjectTrack[];
+  bindings: ProjectBinding[];
+  bilingual: { display_mode: string; active_track_id?: string };
+  subtitle_groups?: {
+    next_id: number;
+    color: Array<{ id: string; value: Record<string, unknown> }>;
+    sticker: Array<{ id: string; value: Record<string, unknown> }>;
+  };
   media?: string;
-  language?: string;
-  language_source?: string;
-  split_mode?: string;
   timed_text_edit_view?: 'rows' | 'single';
-  timestamp_granularity?: string;
-  model?: string;
   media_metadata?: ProjectMediaMetadata;
   audio_processing?: { gain_db: number; target_lufs: number; peak_ceiling_dbtp: number };
   timebase?: Record<string, unknown>;
@@ -79,8 +121,6 @@ interface ProjectData {
   script_alignment?: unknown;
   workspace?: unknown;
   preview?: Record<string, unknown>;
-  overlay_track?: unknown;
-  multi_subtitle?: unknown;
 }
 
 // 冻结门面契约：模块通过 global.MaweXxx = Object.freeze({...}) 挂载，
@@ -156,10 +196,34 @@ declare const MaweTimeline: any;
 declare const MaweColors: any;
 declare const MaweDom: any;
 declare const MaweMultiSubtitleCore: any;
+declare const MaweSegmentOps: any;
+declare const MaweSelection: any;
+declare const MaweContextMenus: any;
+declare const MaweColorFilter: any;
+declare const MaweCuePanelState: any;
 declare const ASS_STYLE_LIBRARY: any;
 declare const mergedExportSegments: any;
 declare const aiCleanupExportSegments: any;
 declare const activeExtensionSegments: any;
+
+// G07 领域门面（init 化接线文件挂载，window 与裸名同源）；契约仍以 any
+// 占位，升级方式同上。
+interface Window {
+  MaweExportContext: any;
+  MaweCuePanelWiring: any;
+  MaweOverlaySplitMerge: any;
+  MaweAssStorageWiring: any;
+  MaweAssManagerWiring: any;
+  MaweKeyboardGuards: any;
+  MaweStickerPreviewWiring: any;
+  MaweInitialConfigWiring: any;
+  MaweAssPreview: any;
+  MaweGapRemovedMediaExport: any;
+  MaweDomPanelsWiring: any;
+  MaweContextMenusWiring: any;
+  MaweDisplaySettings: any;
+  MaweContextMenus: any;
+}
 
 interface Window {
   AsrEditorUtils: any;
@@ -222,8 +286,16 @@ interface MaweStateApi {
     currentCuePanelIdx: number; currentCuePanelKind: SelectionTrack; currentCuePanelTrackId: string | null;
     cuePanelUndoPushed: boolean; cuePanelUndoRecord: any; cuePanelTextEditSnapshot: any; cuePanelCanceling: boolean };
   readonly editing: { editingState: any; extensionEditingState: any };
-  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean };
+  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean; processingOverridesDirty: boolean };
   hasProjectChanges(pendingText?: boolean): boolean;
+  readonly projectEpoch: number;
+  projectFingerprint(value?: any): string;
+  persistenceSnapshot(value: any): any;
+  setSnapshotReader(reader: () => any): void;
+  beginProjectSession(): void;
+  establishProjectCheckpoint(options?: { repaired?: boolean }): void;
+  rememberSessionHighlights(): void;
+  restoreSessionHighlights(): void;
   segmentsFingerprint(): string;
   noteSavedSegments(fingerprint?: string): void;
   markSaved(): void;
@@ -265,6 +337,7 @@ interface Window {
   MaweCommands: MaweCommandsApi;
   MaweViewUpdates: typeof MaweViewUpdates;
   MaweMarkerEditing?: { isEditingEnabled(): boolean };
+  MaweAssFrame?: { notifyProjectChanged?(): void };
   webkitAudioContext?: typeof AudioContext;
   AsrGapRemoveCore: {
     projectCleanupRetainedSegments(segments: ProjectSegment[], gapRemove: unknown): ProjectSegment[];

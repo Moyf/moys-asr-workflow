@@ -37,7 +37,7 @@ from maw.project import normalize_project  # noqa: E402
 from maw.project_io import (  # noqa: E402
     default_audio_track_from_metadata,
     selected_audio_track_from_metadata,
-    strip_inline_caches,
+    serialize_mosp,
 )
 from maw.script_alignment import (  # noqa: E402
     align_project_to_script,
@@ -455,7 +455,7 @@ def write_project(project_path: Path, payload: dict[str, object]) -> Path:
     while candidate.exists():
         candidate = directory / f"{project_path.stem}.aligned-{counter}.mosp"
         counter += 1
-    text = json.dumps(strip_inline_caches(payload), ensure_ascii=False, indent=2) + "\n"
+    text = serialize_mosp(payload)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{candidate.name}.", suffix=".tmp", dir=directory)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:

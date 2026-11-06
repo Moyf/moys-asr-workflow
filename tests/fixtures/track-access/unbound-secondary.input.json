@@ -1,0 +1,63 @@
+{
+  "schema": "moy.asr.project.v1",
+  "language": "zh",
+  "model": "fixture",
+  "preserve_punctuation": true,
+  "metadata": {
+    "fixture": true
+  },
+  "segments": [
+    {
+      "id": "main",
+      "start": 1000,
+      "end": 2000,
+      "text": "原文"
+    }
+  ],
+  "multi_subtitle": {
+    "schema": "moy.asr.multi_subtitle.v1",
+    "enabled": true,
+    "display_mode": "both",
+    "main_split_mode": "continuous",
+    "tracks": [
+      {
+        "id": "translation",
+        "role": "extension",
+        "name": "English",
+        "language": "en",
+        "split_mode": "word",
+        "source_name": "translation.srt",
+        "segments": [
+          {
+            "id": "bound",
+            "start": 1100,
+            "end": 1900,
+            "text": "Bound",
+            "items": []
+          },
+          {
+            "id": "unbound",
+            "start": 3000,
+            "end": 4000,
+            "text": "Unbound",
+            "disabled": true
+          }
+        ]
+      }
+    ],
+    "bindings": [
+      {
+        "id": "binding-001",
+        "track_id": "translation",
+        "main_segment_ids": [
+          "main"
+        ],
+        "extension_segment_ids": [
+          "bound"
+        ],
+        "start_offset_ms": 100,
+        "end_offset_ms": -100
+      }
+    ]
+  }
+}

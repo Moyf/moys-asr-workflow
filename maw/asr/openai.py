@@ -27,6 +27,7 @@ from typing import Any, Mapping
 
 import requests
 
+from maw.project_tracks import make_project
 from maw.stickers import get_default_sticker_dir
 from maw.asr.common import (
     extract_audio,
@@ -39,6 +40,7 @@ from maw.asr.segmentation import (
     WESTERN_MAX_WORDS,
     WESTERN_MIN_WORDS,
 )
+from maw.editor_entry_policy import should_generate_standalone_editor
 from maw.app_paths import default_env_path
 from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
@@ -685,8 +687,8 @@ def main() -> None:
     parser.add_argument("--keep-punct", action="store_true")
     parser.add_argument(
         "--strip-tail-punct",
-        default="，。；,.;",
-        help="句尾剥除的标点集合；传空串禁用剥除（默认 = 共享断句配置默认清单 − 默认保留符号）",
+        default="",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认保留全部标点）",
     )
     parser.add_argument("--json", dest="json_out", action="store_true")
     parser.add_argument("--with-waveform", action="store_true")
@@ -815,17 +817,19 @@ def main() -> None:
             str(result.get("text") or ""),
         )
         split_mode = split_mode_for_text(str(result.get("text") or ""), language)
-        json_data: dict[str, Any] = {
-            "media": str(input_path),
-            "language": language,
-            "language_source": language_source,
-            "split_mode": split_mode,
-            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
-                result.get("items") or [], split_mode, has_segments=bool(segments)
-            ),
-            "model": args.model,
-            "segments": segments,
-        }
+        json_data: dict[str, Any] = make_project(
+            segments,
+            main_fields={
+                'language': language,
+                'language_source': language_source,
+                'split_mode': split_mode,
+                'timestamp_granularity': result.get('timestamp_granularity') or timestamp_granularity_for_items(result.get('items') or [], split_mode, has_segments=bool(segments)),
+                'model': args.model,
+            },
+            project_fields={
+                'media': str(input_path),
+            },
+        )
         if cache_result is not None:
             json_data = merge_media_caches(json_data, cache_result)
         json_path = output_path.with_suffix(".mosp")
@@ -841,7 +845,7 @@ def main() -> None:
             ),
         )
         print(f"工程文件已保存到: {json_path}")
-        if not args.no_html:
+        if should_generate_standalone_editor(not args.no_html):
             edit_script = Path(__file__).resolve().parents[2] / "edit.py"
             if edit_script.exists():
                 command = [sys.executable, str(edit_script), str(json_path)]

@@ -1,7 +1,10 @@
 // 工程加载：规范化应用、检查点、SRT 解析与主轨替换。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweProjectLoad 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweProjectLoad 在原清单位次执行原 IIFE 体（挂
+// window.MaweProjectLoad 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweProjectLoad() {
+  // The classic editor.js binding is local to initializeLegacy, not visible to ESM modules.
+  const MULTI_SUBTITLE_UTILS = window.AsrEditorUtils;
 (function initMaweProjectLoad(global) {
   'use strict';
 
@@ -52,13 +55,13 @@
 
   function buildBlankProject() {
     return {
-      schema: window.AsrEditorUtils.PROJECT_SCHEMA,
-      media: '', language: '', model: '',
-      timebase: { unit: 'milliseconds', fps: 30 },
-      segments: [],
+      schema: window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA,
+      media: '', timebase: { unit: 'milliseconds', fps: 30 },
+      tracks: [{ id: 'main', role: 'main', name: '主字幕', enabled: true, segments: [] }],
+      bilingual: { display_mode: 'both' }, bindings: [],
+      subtitle_groups: { next_id: 1, color: [], sticker: [] },
     };
   }
-
 
 
   function suggestedProjectName(file = null) {
@@ -68,13 +71,19 @@
 
 
 
-function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
+function applyCanonicalProject(data, filename, { repaired = false, loadGeneration = null,
+  requiresMigrationSaveAs = data?.schema !== window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA } = {}) {
+  const imported = window.AsrEditorUtils.importProject(data);
+  data = imported.project;
+  repaired ||= imported.changes.length > 0;
+  const timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
   if (loadGeneration === null) {
     const generation = MaweState.beginProjectLoad();
     MaweState.finishProjectLoad(generation);
   }
   // Retire the previous file target before installing the new content.
   MaweServerSave.projectFileHandle = null;
+  MaweServerSave.requiresMigrationSaveAs = requiresMigrationSaveAs;
   detachServerProjectSaving();
   if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.thumbnailBinding = '';
   MaweCoreState.waveformEditor?.setThumbnailBinding('');
@@ -87,43 +96,20 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweCuePanelState.currentCuePanelTrackId = null;
   MaweCuePanelState.resetCuePanelEditState({ discard: true });
   resetLoadedMedia();
-  projectExtensionFields = Object.fromEntries(
-    Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
-  );
-  MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
-  MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
+  // Retain the project object's identity while replacing its sole track tree.
+  for (const key of Object.keys(MaweBoot.DATA)) delete MaweBoot.DATA[key];
+  Object.assign(MaweBoot.DATA, data, { timebase });
   window.MaweAudioProcessing?.loadProject(data.audio_processing);
   // A browser-imported project is not the server's native media binding.
   if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.autoLoadedMediaPath = null;
-  MaweBoot.DATA.language = data.language || '';
-  MaweBoot.DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
-  MaweBoot.DATA.preserve_punctuation = typeof data.preserve_punctuation === 'boolean' ? data.preserve_punctuation : undefined;
-  MaweBoot.DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
-  MaweBoot.DATA.timed_text_edit_view = data.timed_text_edit_view === 'single' ? 'single' : 'rows';
-  MaweBoot.DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
-    ? data.timestamp_granularity : undefined;
-  MaweBoot.DATA.model = data.model || '';
-  MaweBoot.DATA.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
   MaweTimeline.timelineFpsManuallySet = MaweTimeline.hasExplicitTimelineFps(data.timebase);
-  MaweBoot.DATA.media_metadata = MaweTimeline.normalizeMediaMetadata(data.media_metadata);
-  MaweBoot.DATA.media_time_reference = data.media_time_reference || null;
-  MaweBoot.DATA.waveform = data.waveform || null;
-  MaweBoot.DATA.spectral = data.spectral || null;
-  MaweBoot.DATA.waveform_reapeaks = data.waveform_reapeaks || null;
-  // 响度统计不写进工程文件，所以这里恒为 null：切工程必须先清掉上一个素材的
-  // 标尺，等新媒体的 /api/waveform 回来再拟合。
-  MaweBoot.DATA.loudness = data.loudness || null;
-  MaweBoot.DATA.workspace = data.workspace || null;
-  MaweBoot.DATA.gap_remove = data.gap_remove || null;
+  MaweJsonRepair.setMarkerContainer(data.markers);
+  MaweState.changes.processingOverridesDirty = false;
   MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(data.markers);
-  // 带 markers 的工程（如 AI 整理产物）默认启用标记轨道，方便直接复核待确认项。
   window.MaweMarkerEditing?.enableForProjectMarkers?.(MaweBoot.DATA.markers);
   window.MaweMarkersPanel?.resetSelection?.();
-  MaweBoot.DATA.script_alignment = data.script_alignment || null;
-  MaweBoot.DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
   MaweHistory.gapRemoveDirty = false;
   MaweState.changes.markersDirty = false;
-  MaweState.changes.timedTextEditViewDirty = false;
   MaweAppearance.previewGeometryDirty = false;
   MaweServerSave.projectImportDirty = false;
   // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。
@@ -133,11 +119,11 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MawePreviewGeometry.setStickerGeometry(MawePreviewGeometry.getStickerGeometry(), { markDirty: false });
   MawePreviewGeometry.refreshPreviewGeometryEditable();
   MaweBoot.DATA.sticker_root = typeof data.sticker_root === 'string' ? data.sticker_root : '';
-  MaweBoot.DATA.segments.length = 0;
-  data.segments.forEach((segment) => MaweBoot.DATA.segments.push(segment));
-  MaweBoot.DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, MaweBoot.DATA.segments);
-  MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(data.overlay_track);
+  MaweState.beginProjectSession();
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
+  // 载入即归一分组区间：旧版本多句绑定曾把 head.sticker 写成首句范围（拖动才
+  // 被同步修正），落盘工程重开后预览仍按首句区间显示；打开时就对齐组契约。
+  MaweTextCleanup.syncTimelineGroupRanges();
   MaweHistory.editorHistory.clear();
   MaweHistory.updateUndoRedoButtons();
   MaweSelection.clearSelection();
@@ -155,8 +141,9 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweGapRemoveUi.updateGapRemoveUi();
   MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
   MaweProjectSettings.syncControls();
+  window.MaweAssManagerWiring?.updateAssStyleLibraryStatus();
   MaweStickerRoot.activateProjectRoot();
-  MaweState.noteSavedSegments();
+  MaweState.establishProjectCheckpoint({ repaired });
   MawePlaybackLoop.refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(MaweBoot.DATA.media);
   window.MaweGapRemovedMediaExport?.updateButton();
@@ -292,44 +279,9 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
 
 
   function isMawProject(data) {
-    if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
-    if (data.preserve_punctuation !== undefined && typeof data.preserve_punctuation !== 'boolean') return false;
-    if (data.media_metadata !== undefined && data.media_metadata !== null
-        && !MaweTimeline.normalizeMediaMetadata(data.media_metadata)) return false;
-    if (data.timebase !== undefined) {
-      const timebase = data.timebase;
-      if (!timebase || typeof timebase !== 'object' || Array.isArray(timebase)
-          || (timebase.unit !== 'milliseconds' && timebase.unit !== 'frames')
-          || typeof timebase.fps !== 'number' || !Number.isFinite(timebase.fps)
-          || timebase.fps < MaweTimeline.MIN_TIMELINE_FPS || timebase.fps > MaweTimeline.MAX_TIMELINE_FPS) return false;
-    }
-    const hasOptionalFramePair = (value) => {
-      const hasStart = Object.prototype.hasOwnProperty.call(value || {}, 'start_frame');
-      const hasEnd = Object.prototype.hasOwnProperty.call(value || {}, 'end_frame');
-      return (!hasStart && !hasEnd) || MaweTimeline.hasValidFramePair(value);
-    };
-    let previousEnd = 0;
-    return data.segments.every((segment) => {
-      if (!segment || typeof segment !== 'object'
-          || !Number.isInteger(segment.start) || !Number.isInteger(segment.end)
-          || segment.start < 0 || segment.end <= segment.start || segment.start < previousEnd
-          || typeof segment.text !== 'string' || !hasOptionalFramePair(segment)) return false;
-      previousEnd = segment.end;
-      if (!Array.isArray(segment.items)) return segment.items === undefined;
-      let itemEnd = segment.start;
-      return segment.items.every((item) => {
-        if (!item || typeof item !== 'object'
-            || !Number.isInteger(item.start) || !Number.isInteger(item.end)
-            || item.start < segment.start || item.end > segment.end || item.end <= item.start
-            || item.start < itemEnd || typeof item.text !== 'string'
-            || !hasOptionalFramePair(item)) return false;
-        itemEnd = item.end;
-        return true;
-      });
-    });
+    try { window.AsrEditorUtils.importProject(data); return true; }
+    catch { return false; }
   }
-
-
 
   function parseSrtTimestamp(value) {
     const match = /^(\d+):(\d{2}):(\d{2})[,.](\d{1,3})$/.exec(value.trim());
@@ -391,24 +343,25 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
   MaweCuePanelState.currentCuePanelTrackId = null;
   MaweCuePanelState.resetCuePanelEditState();
   return MaweCommands.run('替换字幕', (command) => {
-    MaweBoot.DATA.segments.length = 0;
-    (segments || []).forEach((segment) => MaweBoot.DATA.segments.push({ ...segment }));
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length = 0;
+    (segments || []).forEach((segment) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.push({ ...segment }));
     // 替换语义同时接管叠加轨：导入双层 SRT 时第二层落到叠加轨；
     // 导入普通 SRT（未提供 overlaySegments）时清空旧叠加轨，避免残留混入新工程。
     const overlayLayer = Array.isArray(overlaySegments) ? overlaySegments : [];
-    MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack({
-      enabled: overlayLayer.length > 0,
-      segments: overlayLayer,
-    });
-    MaweBoot.DATA.overlay_track._dirty = true;
-    MaweBoot.DATA.multi_subtitle = {
-      schema: MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
-      enabled: false,
-      display_mode: 'both',
-      tracks: [],
-      bindings: [],
-    };
-    MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(MaweBoot.DATA);
+    const overlay = window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+    overlay.segments = overlayLayer.map(segment => ({ ...segment }));
+    overlay.enabled = overlayLayer.length > 0;
+    overlay._dirty = true;
+    MaweBoot.DATA.tracks = MaweBoot.DATA.tracks.filter(track => track.role !== 'secondary');
+    MaweBoot.DATA.bindings = [];
+    MaweBoot.DATA.bilingual = { display_mode: 'both' };
+    MaweBoot.DATA.subtitle_groups = { next_id: 1, color: [], sticker: [] };
+    const cues = [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA)];
+    const used = new Set();
+    for (const track of MaweBoot.DATA.tracks) for (const [index, cue] of track.segments.entries()) {
+      if (!cue.id || used.has(cue.id)) cue.id = window.AsrEditorUtils.uniqueStableSegmentId(cues, `${track.id}-${index + 1}`, track.id);
+      used.add(cue.id);
+    }
     MaweBoot.DATA.gap_remove = null;
     MaweHistory.gapRemoveDirty = false;
     MaweState.changes.markersDirty = false;
@@ -427,7 +380,7 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
     }
     MaweServerSave.configureServerSaveControls();
     MaweServerSave.scheduleAutoSave();
-    MaweHint.flashHint(`已导入字幕：${displayName}（${MaweBoot.DATA.segments.length} 条）`, 'success');
+    MaweHint.flashHint(`已导入字幕：${displayName}（${window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length} 条）`, 'success');
     return true;
   });
 }
@@ -452,3 +405,12 @@ function applyCanonicalProject(data, filename, { loadGeneration = null } = {}) {
     replaceMainTrack
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function replaceMainTrack(...args) { return window.MaweProjectLoad.replaceMainTrack(...args); }
+export function parseSrtSegments(...args) { return window.MaweProjectLoad.parseSrtSegments(...args); }
+export function ensureProjectCheckpointForImport(...args) { return window.MaweProjectLoad.ensureProjectCheckpointForImport(...args); }
+export function detachServerProjectSaving(...args) { return window.MaweProjectLoad.detachServerProjectSaving(...args); }
+export function suggestedProjectName(...args) { return window.MaweProjectLoad.suggestedProjectName(...args); }
+export function isMawProject(...args) { return window.MaweProjectLoad.isMawProject(...args); }
+export function createProjectCheckpoint(...args) { return window.MaweProjectLoad.createProjectCheckpoint(...args); }

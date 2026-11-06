@@ -1,5 +1,7 @@
 # 官网文档同步
 
+版本边界：下文独立 HTML / 在线编辑器的生成步骤仅适用于 1.x。2.0（含预发布版）起停止生成、打包和部署；历史文件保留。本地 Server 与共享 Web 前端继续维护，推荐下载本地应用。Pages 使用 `scripts/prepare_editor_pages.py` 执行版本策略，不直接调用旧生成命令。
+
 源文档位于本仓库根 README、JSON_SCHEMA 和 docs/user、docs/engineering；文档导航来自 docs/INDEX.md。`website/src/pages/docs/*.md` 是生成副本，不手工编辑正文。
 
 ## 刷新与检查

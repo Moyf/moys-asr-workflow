@@ -1,3 +1,8 @@
+import { getOverlayTrack, convertOverlayCueToMain, deleteOverlayCues, assignOverlayColor, clearOverlayColorOnTargets, clearOverlaySticker } from '../cues/overlay-track.js';
+
+export function initMaweContextMenusWiring() {
+'use strict';
+
 
 
 // === 右键菜单 ===
@@ -11,7 +16,7 @@ function showOverlayContextMenu(x, y, index) {
   if (!segment) return;
   // 主轨同时间段已有字幕时，转回去会产生主轨重叠，置灰禁用；
   // 只把该条叠加段的时间范围与主轨比对，相邻贴合（端点相接）不算占用。
-  const mainOccupied = MaweBoot.DATA.segments.some((main) =>
+  const mainOccupied = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((main) =>
     Number(main?.start) < Number(segment?.end) && Number(main?.end) > Number(segment?.start));
   MaweDom.ctxmenu.innerHTML = '';
   const addItem = (label, fn, opts = {}) => {
@@ -43,14 +48,14 @@ function showOverlayContextMenu(x, y, index) {
   }
   // 试听：只播放该叠加字幕自身的时间范围，到终点自动暂停。
   addItem('试听', () => MaweMediaPlayback.auditionRange(segment.start, segment.end));
-  addItem('拆分此叠加字幕', () => openOverlaySplitModal(index, null));
+  addItem('拆分此叠加字幕', () => window.MaweOverlaySplitMerge.openOverlaySplitModal(index, null));
   addItem('转为主字幕', () => convertOverlayCueToMain(index), { disabled: mainOccupied });
   addSep();
   // 组 2：外观（表情包与颜色），交互与主字幕菜单对齐（1~5 快捷键同源）。
   // 表情包功能总开关关闭时隐藏分配入口，工程数据保留。
   const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
   if (stickersEnabled) addItem('分配表情包…', () => MaweStickerPicker.openStickerPicker([index], false, { overlay: true }));
-  if (stickersEnabled && (segment.sticker || segment.sticker_ref)) {
+  if (stickersEnabled && (segment.sticker_group_id)) {
     addItem('删除表情包', () => clearOverlaySticker(index));
   }
   const colorRow = document.createElement('div');
@@ -84,7 +89,7 @@ function showOverlayContextMenu(x, y, index) {
   });
   colorRow.appendChild(swatches);
   MaweDom.ctxmenu.appendChild(colorRow);
-  if (segment.color || segment.color_ref) {
+  if (segment.color_group_id) {
     addItem('清除颜色', () => clearOverlayColorOnTargets([index]), { danger: true });
   }
   addSep();
@@ -127,3 +132,6 @@ document.addEventListener('keydown', (e) => {
     MaweDom.ctxmenu.classList.remove('show');
   }
 });
+
+window.MaweContextMenusWiring = Object.freeze({ showOverlayContextMenu });
+}

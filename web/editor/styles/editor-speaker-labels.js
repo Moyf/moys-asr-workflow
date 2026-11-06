@@ -91,6 +91,7 @@
     const settings = getSpeakerLabelSettings(value);
     if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
     MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
       ...MaweAppearance.getPreviewGeometry(),
       ...MaweAppearance.getSubtitleAppearance(),
       speaker_labels: settings,

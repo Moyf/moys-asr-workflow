@@ -23,6 +23,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from maw.project_tracks import make_project
+from maw.editor_entry_policy import should_generate_standalone_editor
 from maw.stickers import get_default_sticker_dir
 from maw.asr.common import (
     extract_audio,
@@ -38,10 +40,10 @@ from maw.console import configure_utf8_stdio
 from maw.ffmpeg import resolve_ffmpeg_tools
 from maw.project_io import write_mosp
 from maw.project import repair_segment_durations, validate_project
+from maw.speaker import speaker_color_summary, apply_project_speaker_colors
 from maw.soniox import (
     MAX_AUDIO_SECONDS,
     SonioxContextError,
-    apply_speaker_colors,
     build_segments,
     load_config,
     parse_soniox_context_json,
@@ -96,11 +98,11 @@ def main():
     )
     parser.add_argument(
         "--keep-punct", action="store_true",
-        help="保留每条字幕末尾的逗号和句号（默认去除）",
+        help="保留全部句尾标点，覆盖 --strip-tail-punct 的显式删除设置",
     )
     parser.add_argument(
-        "--strip-tail-punct", default="，。；,.;",
-        help="句尾剥除的标点集合；传空串禁用剥除（默认 = 共享断句配置默认清单 − 默认保留符号）",
+        "--strip-tail-punct", default="",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认保留全部标点）",
     )
     parser.add_argument(
         "--gap-split", type=int, default=500,
@@ -137,7 +139,7 @@ def main():
     )
     parser.add_argument(
         "--no-html", action="store_true",
-        help="禁用自动生成 edit HTML（默认 --json 时会一并生成）",
+        help="禁用自动生成 edit HTML（仅 1.x 默认 --json 时会一并生成；2.0 起始终不生成）",
     )
     parser.add_argument(
         "-ll", "--length-limit", type=parse_duration, default=None,
@@ -145,7 +147,7 @@ def main():
     )
     parser.add_argument(
         "--model", default=None,
-        help="覆盖 Soniox 模型（默认读 .env 的 SONIOX_MODEL，兜底 stt-async-v5）",
+        help="覆盖 Soniox 模型（默认读 .env 的 SONIOX_MODEL，兜底 stt-async-v6）",
     )
     parser.add_argument(
         "--context-json", default=None,
@@ -332,7 +334,7 @@ def main():
         speakers = sorted({str(seg["speaker"]) for seg in segments if seg.get("speaker")})
         print(f"[speaker] 识别到 {len(speakers)} 个说话人: {', '.join(speakers)}")
         if args.speaker_colors:
-            stats = apply_speaker_colors(segments)
+            stats = speaker_color_summary(segments)
             print(f"[speaker] 已为 {stats['colored_segments']} 条字幕写入颜色快照")
             if stats["overflow"]:
                 print(f"[警告] 说话人超过 {len(stats['speakers'])} 个（>5），颜色已循环复用，"
@@ -402,28 +404,30 @@ def main():
         )
         split_mode = split_mode_for_text(str(result.get("text") or ""), language)
         json_path = output_path.with_suffix(".mosp")
-        json_data = {
-            "media": str(input_path),
-            "language": language,
-            "language_source": language_source,
-            "split_mode": split_mode,
-            "timestamp_granularity": result.get("timestamp_granularity") or timestamp_granularity_for_items(
-                result.get("items") or [], split_mode, has_segments=bool(segments)
-            ),
-            "model": f"soniox-{args.model or config['model']}",
-            "segments": [
+        json_data = make_project(
+            [
                 {
                     "start": seg["start"],
                     "end": seg["end"],
                     "text": seg["text"],
                     **({"items": seg["items"]} if "items" in seg else {}),
                     **({"speaker": seg["speaker"]} if seg.get("speaker") else {}),
-                    **({"color": seg["color"]} if seg.get("color") else {}),
-                    **({"color_ref": seg["color_ref"]} if seg.get("color_ref") else {}),
                 }
                 for seg in segments
             ],
-        }
+            main_fields={
+                'language': language,
+                'language_source': language_source,
+                'split_mode': split_mode,
+                'timestamp_granularity': result.get('timestamp_granularity') or timestamp_granularity_for_items(result.get('items') or [], split_mode, has_segments=bool(segments)),
+                'model': f"soniox-{args.model or config['model']}",
+            },
+            project_fields={
+                'media': str(input_path),
+            },
+        )
+        if args.speaker_colors:
+            apply_project_speaker_colors(json_data)
         if cache_result is not None:
             json_data = merge_media_caches(json_data, cache_result)
         print("[输出] 正在校验工程文件...")
@@ -442,7 +446,7 @@ def main():
         )
         print(f"工程文件已保存到: {json_path}")
 
-        if not args.no_html:
+        if should_generate_standalone_editor(not args.no_html):
             edit_script = Path(__file__).resolve().parents[2] / "edit.py"
             if not edit_script.exists():
                 print("[警告] 找不到 edit.py，跳过 HTML 生成")

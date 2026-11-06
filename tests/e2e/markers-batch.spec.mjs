@@ -32,7 +32,7 @@ async function seed(page) {
       { id: 'ai-review', start: 3000, end: 4000, name: '有效步骤', color: '#f5a623', note: '[AI] 替代项：信息覆盖待决策',
         review: { status: 'pending', reason: '步骤没有被覆盖' } },
     ]);
-    MaweBoot.DATA.segments[0].disabled = true;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].disabled = true;
     MaweMarkerEditing.afterExternalMarkersChange();
   });
   // 带标记的工程在载入时会自动启用标记轨道；这里确保开启而不是翻转。
@@ -471,7 +471,7 @@ test('filter-select-delete is one undo and preserves manual markers and clip dec
   await expect(page.locator('.markers-item-checkbox:checked')).toHaveCount(2);
   await page.locator('#markers-delete-selected').click();
   expect(await page.evaluate(() => MaweMarkerEditing.getMarkers().map(m => m.id))).toEqual(['human']);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].disabled)).toBe(true);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].disabled)).toBe(true);
   await page.locator('#undo-btn').click();
   expect(await page.evaluate(() => MaweMarkerEditing.getMarkers().map(m => m.id)))
     .toEqual(['human', 'ai-delete', 'ai-review']);
@@ -483,7 +483,7 @@ test('filter-select-delete is one undo and preserves manual markers and clip dec
   expect((await response).ok()).toBe(true);
   await page.reload();
   expect(await page.evaluate(() => MaweMarkerEditing.getMarkers().map(m => m.id))).toEqual(['human']);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].disabled)).toBe(true);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].disabled)).toBe(true);
 });
 
 test('changing filters drops hidden selections and all-select matches kind/review filters', async ({ page }) => {

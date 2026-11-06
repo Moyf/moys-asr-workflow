@@ -66,9 +66,16 @@ async function runScenario(kind, scenario, action = 'stop') {
   const evidence = join(root, 'evidence');
   mkdirSync(evidence);
   const bystander = await startBystander();
-  const child = spawn(process.execPath, [driver, kind, action], { cwd: root, env: {
+  // Successful Windows startup includes the cold PowerShell/Add-Type Job
+  // supervisor. Use the real scroll fixture's existing readiness budget;
+  // synthetic failure scenarios keep their short deadlines below.
+  const readinessTimeoutMs = process.platform === 'win32'
+    ? (scenario === 'ready' ? 45_000 : 10_000) : 1_500;
+  const scenarioDeadlineMs = readinessTimeoutMs + 8_000;
+  const child = spawn(process.execPath, [driver, kind, action, String(readinessTimeoutMs)], { cwd: root, env: {
     ...process.env, MAW_E2E_PYTHON: scenario === 'missing-command' ? join(root, 'missing-python')
       : process.env.MAW_E2E_PYTHON || 'python', MAW_SCROLL_EVIDENCE: evidence,
+    MAW_LIFECYCLE_PARENT_ONLY: 'synthetic-supervisor-marker',
   }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'], windowsHide: true });
   let output = '';
   let message;
@@ -90,12 +97,12 @@ async function runScenario(kind, scenario, action = 'stop') {
   const timer = setTimeout(() => {
     timedOut = true;
     try { killOwned(child.pid); } catch {}
-  }, scenario === 'hang' ? 52000 : 15000);
+  }, scenarioDeadlineMs);
   try {
     const result = await exited;
     assert.equal(timedOut, false, `driver exceeded deadline: ${output}`);
     if (scenario === 'ready' && action === 'stop') {
-      assert.equal(result.code, 0, output);
+      assert.equal(result.code, 0, message?.failure || output);
       assert.equal(message?.stopped, true);
     } else if (scenario !== 'ready') {
       assert.equal(result.code, 1, output);
@@ -105,10 +112,15 @@ async function runScenario(kind, scenario, action = 'stop') {
       assert.equal(result.code, { SIGINT: 130, SIGTERM: 143, SIGBREAK: 149, SIGHUP: 129 }[action.slice(7)]);
     } else if (action === 'exit') assert.equal(result.code, 0, output);
     else if (action === 'exception') assert.equal(result.code, 1, output);
-    assert.ok(Date.now() - started < (scenario === 'hang' ? 52000 : 15000));
+    assert.ok(Date.now() - started < scenarioDeadlineMs);
     const dir = join(evidence, readdirSync(evidence)[0]);
     const { port } = JSON.parse(readFileSync(join(dir, 'runtime.json')));
     if (scenario !== 'missing-command') {
+      if (kind === 'scroll') {
+        const environment = JSON.parse(readFileSync(join(dir, 'runtime-environment.json')));
+        assert.equal(environment.localAppData, join(dir, 'settings'));
+        assert.equal(environment.parentOnlyMarker, false, 'supervisor-only environment cannot reach the application');
+      }
       const pids = JSON.parse(readFileSync(join(dir, 'owned-pids.json')));
       const deadline = Date.now() + 2000;
       while (pids.some(alive) && Date.now() < deadline) await delay(25);
@@ -131,13 +143,15 @@ async function runScenario(kind, scenario, action = 'stop') {
 for (const kind of ['scroll', 'helpers']) {
   for (const scenario of ['ready', 'startup-error', 'wrapper-exit', 'missing-command', 'hang']) {
     test(`${kind}: ${scenario} reaps descendants, frees port, and returns within deadline`,
-      { timeout: 58000 }, () => runScenario(kind, scenario));
+      { timeout: process.platform === 'win32' && scenario === 'ready' ? 60_000 : 24_000 },
+      () => runScenario(kind, scenario));
   }
   for (const action of ['exit', 'exception', 'signal:SIGINT', 'signal:SIGTERM',
     process.platform === 'win32' ? 'signal:SIGBREAK' : 'signal:SIGHUP', 'hold']) {
     // emit exercises the JS handler on Windows; process.kill(SIGTERM) there is
     // unconditional termination, not delivery of a catchable POSIX signal.
-    test(`${kind}: ${action} cleans up after owner exit`, { timeout: 20000 },
+    test(`${kind}: ${action} cleans up after owner exit`,
+      { timeout: process.platform === 'win32' ? 60_000 : 20_000 },
       () => runScenario(kind, 'ready', action));
   }
 }

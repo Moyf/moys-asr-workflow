@@ -1,3 +1,4 @@
+import { completeStaticLauncherDiscovery } from './launcher-ready.mjs';
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -6,6 +7,7 @@ const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 
 test('Launcher theme choice remains selected after reload', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
 
   await page.locator('#settingsButton').click();
@@ -14,6 +16,7 @@ test('Launcher theme choice remains selected after reload', async ({ page }) => 
   await expect.poll(() => page.evaluate(() => localStorage.getItem('MAW_GUI_THEME'))).toBe('dark');
 
   await page.reload();
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#settingsButton').click();
   await expect(page.locator('#themeDark')).toHaveClass(/active/);
@@ -21,6 +24,7 @@ test('Launcher theme choice remains selected after reload', async ({ page }) => 
 
 test('Launcher Ctrl+wheel zoom is bounded, persisted, and leaves ordinary wheel alone', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.zoomPercent === 100);
 
   const zoom = async (deltaY) => page.evaluate((delta) => {
@@ -52,6 +56,7 @@ test('Launcher Ctrl+wheel zoom is bounded, persisted, and leaves ordinary wheel 
 
   await page.waitForTimeout(400);
   await page.reload();
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.zoomPercent === 150);
   await expect.poll(() => page.evaluate(() => document.documentElement.style.zoom)).toBe('150%');
 });
@@ -60,6 +65,7 @@ test('Launcher action footer remains flush with the viewport after zoom changes'
   // Given: the Launcher has completed initialization at a regular desktop viewport.
   await page.setViewportSize({ width: 884, height: 630 });
   await page.goto(`file://${launcherPath}`);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.zoomPercent === 100);
 
   // When: the user switches between the smallest and largest supported Launcher zoom levels.
@@ -81,6 +87,7 @@ test('Launcher action footer remains flush with the viewport after zoom changes'
 test('Launcher keyboard zoom supports equals, plus, minus, and reset without stealing native controls', async ({ page }) => {
   // Given: a fresh Launcher at the default zoom.
   await page.goto(`file://${launcherPath}`);
+  await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.zoomPercent === 100);
 
   // When: the supported Ctrl keyboard variants are pressed on the document.

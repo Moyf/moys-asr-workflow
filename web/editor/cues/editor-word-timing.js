@@ -14,7 +14,7 @@
       .forEach(block => block.classList.remove('selected'));
   }
   function getSelection(segment) {
-    if (selection && (!MaweBoot.DATA.segments.includes(selection.segment)
+    if (selection && (!window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.includes(selection.segment)
         || selection.segment.items !== selection.items || selection.segment.text !== selection.text)) clearSelection();
     return selection?.segment === segment ? selection.indices : new Set();
   }
@@ -47,7 +47,7 @@
   }
   function select(index, itemIndex, event = {}) {
     MaweCuePanel.commitCuePanelEdit();
-    const segment = MaweBoot.DATA.segments[index];
+    const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
     if (!segment) return;
     const entries = global.AsrEditorUtils.getWordTimingEntries(segment, clock());
     if (!entries.some(e => e.index === itemIndex)) return;
@@ -123,7 +123,7 @@
     MaweMediaPlayback.auditionRange(timing.toMs(entries[0].start), timing.toMs(entries[entries.length - 1].end));
   }
   function showMenu(x, y, index, itemIndex) {
-    const segment = MaweBoot.DATA.segments[index];
+    const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
     if (!getSelection(segment).has(itemIndex)) select(index, itemIndex);
     const menu = MaweDom.ctxmenu;
     menu.replaceChildren();
@@ -160,9 +160,10 @@
   }
 
   function conversionPlan() {
-    if (!conversionTarget || conversionTarget.project !== MaweBoot.DATA.segments) return null;
-    const indices = MaweBoot.DATA.segments.map((segment, index) => conversionTarget.ids.includes(segment.id) ? index : -1).filter(i => i >= 0);
-    return global.AsrEditorUtils.planWordTimingConversion(MaweBoot.DATA.segments, indices, clock(), {
+    if (!conversionTarget || conversionTarget.project !== window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) return null;
+    const indices = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment, index) => conversionTarget.ids.includes(segment.id) ? index : -1).filter(i => i >= 0);
+    return global.AsrEditorUtils.planWordTimingConversion(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, indices, clock(), {
+      reservedSegments: [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA)],
       // 转换产物对跨行 MASS 对做两侧补齐（账本 #21），预览与确认同一计划。
       rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     });
@@ -171,7 +172,7 @@
     const plan = conversionPlan();
     const bindings = MaweMultiSubtitleCore.getMultiSubtitleState()?.bindings || [];
     const ids = new Set(plan?.conversions.map(c => c.id) || []);
-    const count = bindings.filter(binding => binding.main_segment_ids?.some(id => ids.has(id)) || ids.has(binding.main_segment_id)).length;
+    const count = bindings.filter(binding => ids.has(binding.source?.segment_id)).length;
     document.getElementById('word-conversion-summary').textContent = ui(
       `将转换${plan?.conversions.length || 0}句，生成${plan?.generatedCount || 0}条新的字幕（跳过${plan?.skipped.length || 0}句，解除${count}个副字幕绑定）`,
       `Convert ${plan?.conversions.length || 0} sentences into ${plan?.generatedCount || 0} new subtitles (skip ${plan?.skipped.length || 0} sentences and unlink ${count} secondary subtitles)`,
@@ -195,7 +196,7 @@
   function openConversion(indices) {
     MaweCuePanel.commitCuePanelEdit();
     MaweCoreState.waveformEditor?.cancelWordDrag();
-    conversionTarget = { project: MaweBoot.DATA.segments, ids: indices.map(i => MaweBoot.DATA.segments[i]?.id).filter(Boolean) };
+    conversionTarget = { project: window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, ids: indices.map(i => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i]?.id).filter(Boolean) };
     conversionTarget.fingerprint = conversionFingerprint(renderConversion());
     dialog().showModal();
   }
@@ -213,7 +214,7 @@
       MaweSelection.clearSelection({ commitCuePanel: false });
       clearSelection();
       MaweMultiSubtitleCore.removeBindingsForSegmentIds(plan.conversions.map(c => c.id), []);
-      MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...plan.segments);
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(0, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length, ...plan.segments);
       MaweTextCleanup.syncTimelineGroupRanges();
       MaweMultiSubtitleCore.markMainSegmentsDirty(plan.conversions.flatMap(c => c.segments));
       MaweMultiSubtitleCore.syncBindingOffsets();

@@ -11,6 +11,10 @@ port = int(sys.argv[sys.argv.index('--port') + 1])
 root = Path(os.environ['MAW_APP_DATA_ROOT']).parent
 mode = (Path.cwd() / 'scenario.txt').read_text()
 if '--leaf' not in sys.argv:
+    (root / 'runtime-environment.json').write_text(json.dumps({
+        'localAppData': os.environ.get('LOCALAPPDATA'),
+        'parentOnlyMarker': 'MAW_LIFECYCLE_PARENT_ONLY' in os.environ,
+    }))
     child = subprocess.Popen([sys.executable, __file__, *sys.argv[1:], '--leaf'])
     (root / 'owned-pids.json').write_text(json.dumps([os.getpid(), child.pid]))
     if mode == 'wrapper-exit':

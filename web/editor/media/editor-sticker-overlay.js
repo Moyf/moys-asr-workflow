@@ -1,3 +1,8 @@
+import { getOverlayTrack } from '../cues/overlay-track.js';
+
+export function initMaweStickerOverlay() {
+'use strict';
+
 // 表情包浮层：叠加层渲染与区间缓存。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweStickerOverlay 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -74,8 +79,16 @@
       boundaries.add(end);
     });
   };
-  collect(MaweBoot.DATA.segments, 'main');
-  collect(getOverlayTrack()?.segments || [], 'overlay');
+  if (MaweBoot.DATA.subtitle_groups) {
+    for (const range of window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true })) {
+      if (!range.enabled) continue;
+      intervals.push({ ...range, key: range.id });
+      boundaries.add(range.start); boundaries.add(range.end);
+    }
+  } else {
+    collect(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, 'main');
+    collect(getOverlayTrack()?.segments || [], 'overlay');
+  }
   stickerIntervals = intervals;
   stickerIntervalBoundaries = [...boundaries].sort((a, b) => a - b);
   stickerIntervalCacheVersion = stickerOverlayDataVersion;
@@ -83,7 +96,7 @@
   activeStickerCacheTime = -Infinity;
   activeStickerCacheUntil = -Infinity;
   activeStickerCache = [];
-  activeStickerHasOverlay = false;
+  window.MaweStickerPreviewWiring.activeStickerHasOverlay = false;
 }
 
 
@@ -99,13 +112,13 @@
 
   const found = new Map();  // 同组 head/ref 去重，按文件名键
   stickerIntervals.forEach((interval) => {
-    if (time >= interval.start && time <= interval.end) found.set(interval.key, interval.source);
+    if (time >= interval.start && time < interval.end) found.set(interval.key, interval.source);
   });
   // 当前时刻是否有叠加轨表情包在显示（同名素材在主轨同时显示时也算——
   // 预览层展示的就是这张图，叠加归属用于决定预览内容区是否加高）。
-  activeStickerHasOverlay = stickerIntervals.some((interval) => (
-    interval.track === 'overlay'
-    && time >= interval.start && time <= interval.end
+  window.MaweStickerPreviewWiring.activeStickerHasOverlay = stickerIntervals.some((interval) => (
+    (interval.hasOverlay || interval.track === 'overlay')
+    && time >= interval.start && time < interval.end
     && found.has(interval.key)
   ));
   // 播放时间单调前进时，缓存只需保留到下一个边界；二分定位避免每次
@@ -144,14 +157,14 @@
   }
   const stickers = activeStickersAt(tMs);
   // 签名带上叠加归属：同名素材的显示集合不变但叠加状态翻转时也要切换 class。
-  const signature = `${activeStickerHasOverlay ? 'O' : ''}\u0001${
-    stickers.map((sticker) => sticker.filename || sticker.name).join('\u0001')
-  }`;
+  const sources = stickers.map(sticker => ({ sticker, url: MaweSelection.stickerUrl(sticker) }));
+  const signature = JSON.stringify([window.MaweStickerPreviewWiring.activeStickerHasOverlay,
+    sources.map(({ sticker, url }) => [url, sticker.name])]);
   if (renderedStickerOverlayEnabled && renderedStickerSignature === signature) return;
-  stickerOverlayContent.classList.toggle('has-overlay-sticker', activeStickerHasOverlay);
-  stickerOverlayContent.replaceChildren(...stickers.map((sticker) => {
+  stickerOverlayContent.classList.toggle('has-overlay-sticker', window.MaweStickerPreviewWiring.activeStickerHasOverlay);
+  stickerOverlayContent.replaceChildren(...sources.map(({ sticker, url }) => {
     const img = document.createElement('img');
-    img.src = MaweSelection.stickerUrl(sticker);
+    img.src = url;
     img.alt = sticker.name;
     img.title = sticker.name;
     return img;
@@ -181,6 +194,9 @@
     set activeStickerCacheUntil(v) { activeStickerCacheUntil = v; },
     get activeStickerCache() { return activeStickerCache; },
     set activeStickerCache(v) { activeStickerCache = v; },
+    // 最近一次 activeStickersAt 计算的叠加轨显示标记；实际画面窗口复用同一
+    // 判断决定内容区加高 class（与 renderStickerOverlay 相同的签名输入）。
+    get activeStickerHasOverlay() { return window.MaweStickerPreviewWiring.activeStickerHasOverlay; },
     get renderedStickerSignature() { return renderedStickerSignature; },
     set renderedStickerSignature(v) { renderedStickerSignature = v; },
     get renderedStickerOverlayEnabled() { return renderedStickerOverlayEnabled; },
@@ -190,3 +206,4 @@
     renderStickerOverlay
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

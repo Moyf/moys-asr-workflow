@@ -1,0 +1,74 @@
+{
+  "schema": "moy.asr.project.v1",
+  "language": "zh",
+  "model": "fixture",
+  "preserve_punctuation": true,
+  "metadata": {
+    "fixture": true
+  },
+  "segments": [
+    {
+      "id": "shared",
+      "start": 1000,
+      "end": 3000,
+      "text": "主字幕\n第二行",
+      "items": [
+        {
+          "start": 1000,
+          "end": 3000,
+          "text": "主字幕\n第二行"
+        }
+      ],
+      "speaker": "示例"
+    }
+  ],
+  "multi_subtitle": {
+    "schema": "moy.asr.multi_subtitle.v1",
+    "enabled": true,
+    "display_mode": "both",
+    "main_split_mode": "continuous",
+    "tracks": [
+      {
+        "id": "translation",
+        "role": "extension",
+        "name": "English",
+        "language": "en",
+        "split_mode": "word",
+        "source_name": "translation.srt",
+        "segments": [
+          {
+            "id": "shared",
+            "start": 1100,
+            "end": 2900,
+            "text": "Translation"
+          }
+        ]
+      }
+    ],
+    "bindings": [
+      {
+        "id": "binding-001",
+        "track_id": "translation",
+        "main_segment_ids": [
+          "shared"
+        ],
+        "extension_segment_ids": [
+          "shared"
+        ],
+        "start_offset_ms": 100,
+        "end_offset_ms": -100
+      }
+    ]
+  },
+  "overlay_track": {
+    "enabled": true,
+    "segments": [
+      {
+        "id": "shared",
+        "start": 1500,
+        "end": 2500,
+        "text": "叠加"
+      }
+    ]
+  }
+}

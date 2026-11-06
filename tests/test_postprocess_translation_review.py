@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import tempfile
 import unittest
@@ -11,9 +12,34 @@ from maw.postprocess_comparison import render_comparison
 from maw.postprocess_io import read_project, write_artifacts
 from maw.postprocess_translation_review import translation_review
 from maw.project import normalize_project
+from tests.track_helpers import main_segments
 
 
 class TranslationReviewTest(CompactContainerAssertions, unittest.TestCase):
+    def test_bilingual_projection_drops_empty_cues_with_bindings_or_groups(self):
+        for mode in ("binding", "group"):
+            with self.subTest(mode=mode):
+                source = {"segments": [
+                    {"id": "main-1", "start": 0, "end": 1000, "text": "Hello"},
+                    {"id": "main-2", "start": 1000, "end": 2000, "text": ""},
+                ]}
+                if mode == "group":
+                    source["segments"][1]["color"] = {"name": "red"}
+                else:
+                    source["multi_subtitle"] = {"enabled": True, "tracks": [{"id": "sub", "segments": [
+                        {"id": "sub-2", "start": 1000, "end": 2000, "text": ""},
+                    ]}], "bindings": [{"id": "bind", "track_id": "sub",
+                                      "main_segment_ids": ["main-2"], "extension_segment_ids": ["sub-2"]}]}
+                source = normalize_project(source)
+                before = copy.deepcopy(source)
+                translated = copy.deepcopy(source)
+                main_segments(translated)[0]["text"] = "你好"
+                result = merge_bilingual_project(source, translated, translation_target="zh")
+                self.assertEqual([cue["text"] for cue in main_segments(result)], ["你好\nHello"])
+                self.assertEqual(result["bindings"], [])
+                self.assertFalse(any(track["role"] == "secondary" for track in result["tracks"]))
+                self.assertEqual(source, before)
+
     def test_bilingual_review_matches_existing_writer_for_whitespace_and_empty_text(self):
         for original, translated in ((" API ", "API"), ("API", " API "),
                                      ("源文", " "), (" ", "Translated."),
@@ -36,7 +62,7 @@ class TranslationReviewTest(CompactContainerAssertions, unittest.TestCase):
                                        source_srt_path=None, operation="translate_en-bilingual",
                                        write_project=True, write_srt=True,
                                        comparison_source=source, comparison_translation=translated)
-            self.assertEqual(read_project(artifact.project_path)["segments"][0]["text"], " API ")
+            self.assertEqual(main_segments(read_project(artifact.project_path))[0]["text"], " API ")
             self.assertTrue(artifact.srt_path.is_file())
             self.assertTrue(artifact.comparison_path.is_file())
 

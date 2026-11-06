@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from maw.project_tracks import make_project
 from maw.asr.common import extract_audio, generate_srt, get_duration_sec, parse_duration
 from maw.asr.segmentation import (
     is_cjk_char,
@@ -29,6 +30,7 @@ from maw.asr.segmentation import (
     split_coarse_segments,
     split_segments_auto,
 )
+from maw.editor_entry_policy import should_generate_standalone_editor
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.alignment_models import FIRERED_ASR2_CTC_MODEL_ID
 from maw.gui_platform import creationflags, startupinfo
@@ -2094,7 +2096,7 @@ def create_local_engine(
     raise ValueError("engine must be one of: qwen-asr, funasr, moss, firered, whisper")
 
 
-_LOCAL_TAIL_PUNCT = "，。；,.;"
+_LOCAL_TAIL_PUNCT = ""
 
 
 def _char_weight_weights(text: str) -> list[float]:
@@ -2361,6 +2363,7 @@ def write_local_outputs(
     write_json: bool,
     generate_html: bool,
     with_waveform: bool,
+    speaker_colors: bool = False,
     generate_spectral: bool = False,
     ffmpeg_path: str | Path | None = None,
     ffprobe_path: str | Path | None = None,
@@ -2386,15 +2389,22 @@ def write_local_outputs(
             split_mode,
             has_segments=bool(segments),
         )
-    project: dict[str, Any] = {
-        "media": str(input_path),
-        "language": language,
-        "language_source": transcription.language_source,
-        "split_mode": split_mode,
-        "timestamp_granularity": timestamp_granularity,
-        "model": transcription.model,
-        "segments": segments,
-    }
+    project: dict[str, Any] = make_project(
+        segments,
+        main_fields={
+            'language': language,
+            'language_source': transcription.language_source,
+            'split_mode': split_mode,
+            'timestamp_granularity': timestamp_granularity,
+            'model': transcription.model,
+        },
+        project_fields={
+            'media': str(input_path),
+        },
+    )
+    if speaker_colors:
+        from maw.speaker import apply_project_speaker_colors
+        apply_project_speaker_colors(project)
     if with_waveform:
         from maw.media_cache import embed_media_caches
 
@@ -2420,7 +2430,7 @@ def write_local_outputs(
     )
 
     html_path: Path | None = None
-    if generate_html:
+    if should_generate_standalone_editor(generate_html):
         edit_script = Path(__file__).resolve().parents[1] / "edit.py"
         candidate = json_path.with_name(f"{json_path.stem}.edit.html")
         completed = subprocess.run(

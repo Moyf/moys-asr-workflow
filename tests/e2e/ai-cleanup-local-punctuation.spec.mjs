@@ -5,16 +5,16 @@ import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, generateWav, makeTempDir, startServer } from './helpers.mjs';
 
 const cases = [
-  { name: 'an unselected emoji followed by a separate terminal punctuation item', expected: '正文😀', artifactText: '正文😀。', manuscript: '正文', previewTime: 500,
+  { name: 'an unselected emoji followed by a separate terminal punctuation item', expected: '正文😀。', artifactText: '正文😀。', manuscript: '正文', previewTime: 500,
     rows: [['正文', 0, 900], ['啊', 1000, 1200], ['😀', 1210, 1250], ['。', 1300, 2000]],
     decision: { removeItemIds: ['c001:i002'], evidence: '啊' }, removed: '啊' },
-  { name: 'a separate terminal punctuation item', expected: '我这个功能',
+  { name: 'a separate terminal punctuation item', expected: '我这个功能。',
     rows: [['啊，', 0, 210], ['我这个功能', 300, 1800], ['。', 1800, 2000]],
     decision: { removeItemIds: ['c001:i001'], evidence: '啊，' }, removed: '啊' },
   { name: 'two nonadjacent local ranges', expected: '我这个功能很好呢', afterFirstRestore: '我我这个功能很好呢',
     rows: [['我', 0, 110], ['我这个', 130, 430], ['功能', 500, 800], ['嗯', 810, 930], ['很好', 1000, 1200], ['呢', 1300, 2000]],
     decision: { removeItemRanges: [['c001:i001'], ['c001:i004']], evidence: '我嗯' }, removed: '嗯' },
-  { name: 'a neutral punctuation item before the second local range', expected: '我这个  功能很好呢', afterFirstRestore: '我我这个  功能很好呢', artifactText: '我这个，功能很好呢', manuscript: '我这个功能很好呢',
+  { name: 'a neutral punctuation item before the second local range', expected: '我这个，功能很好呢', afterFirstRestore: '我我这个，功能很好呢', artifactText: '我这个，功能很好呢', manuscript: '我这个功能很好呢',
     rows: [['我', 0, 110], ['我这个', 130, 400], ['，', 410, 430], ['功能', 500, 800], ['嗯', 810, 930], ['很好', 1000, 1200], ['呢', 1300, 2000]],
     decision: { removeItemRanges: [['c001:i001'], ['c001:i005']], evidence: '我嗯' }, removed: '嗯' },
   { name: 'the removal scope including a separate terminal punctuation item', expected: '正文', previewTime: 500,
@@ -27,10 +27,10 @@ const cases = [
     rows: [['啊，', 0, 210], ['我这个功能', 300, 2000]],
     overlay: { enabled: true, segments: [{ id: 'overlay-001', start: 100, end: 1500, text: '独立叠加' }] },
     decision: { removeItemIds: ['c001:i001'], evidence: '啊，' }, removed: '啊' },
-  { name: 'a stale scope index becoming coincidentally valid after neutral merge', expected: '我这个  功能嗯很好', artifactText: '我这个，功能很好', manuscript: '我这个功能很好', preserveRemoved: true,
+  { name: 'a stale scope index becoming coincidentally valid after neutral merge', expected: '我这个，功能嗯很好', artifactText: '我这个，功能很好', manuscript: '我这个功能很好', preserveRemoved: true,
     rows: [['我这个', 0, 400], ['，', 410, 430], ['功能', 500, 800], ['嗯', 810, 930], ['很好', 1000, 2000]],
     invalidScope: { item_start: 2, item_end: 3 }, decision: { removeItemIds: ['c001:i004'], evidence: '嗯' }, removed: '嗯' },
-  { name: 'a stale scope text becoming coincidentally valid after punctuation cleanup', expected: '正文嗯  很好', artifactText: '正文很好', manuscript: '正文很好', preserveRemoved: true,
+  { name: 'a stale scope text becoming coincidentally valid after punctuation cleanup', expected: '正文嗯，很好', artifactText: '正文很好', manuscript: '正文很好', preserveRemoved: true,
     rows: [['正文', 0, 900], ['嗯，', 1000, 1200], ['很好', 1300, 2000]],
     invalidScope: { text: '嗯  ' }, decision: { removeItemIds: ['c001:i002'], evidence: '嗯，' }, removed: '嗯' },
   { name: 'an unselected emoji adjacent to a valid removed filler', expected: '正文😀很好', artifactText: '正文😀很好', manuscript: '正文很好', preserveRemoved: true, allowReviewFallback: true,
@@ -40,7 +40,7 @@ const cases = [
 ];
 
 for (const fixture of cases) {
-  test(`real AI artifact keeps local projection through default cleanup, save and restoration: ${fixture.name}`, async ({ page }) => {
+  test(`real AI artifact keeps local projection through opening, save and restoration: ${fixture.name}`, async ({ page }) => {
     const directory = makeTempDir('ai-local-punctuation');
     let server;
     try {
@@ -96,8 +96,8 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
         MawePlaybackLoop.refreshSubtitlePreview(previewTime, 0);
         return { css, canvas: MaweAssCanvas.lastRender.tracks.flatMap((track) => track.lines.flatMap((line) => line.items.map((item) => item.text))).join(''),
           ordinary: MaweExportSrt.buildSrt(), compressed: MaweExportSrt.buildGapRemovedSrt(), ass: MaweExportSrt.buildAss(),
-          dynamic: MaweExportSrt.buildDynamicCaptionExportData(MaweBoot.DATA.segments, true),
-          removedGaps: MaweGapRemoveData.getRemovedGapRanges(), raw: MaweBoot.DATA.segments[0],
+          dynamic: MaweExportSrt.buildDynamicCaptionExportData(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, true),
+          removedGaps: MaweGapRemoveData.getRemovedGapRanges(), raw: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0],
           aiSources: MaweBoot.DATA.gap_remove?.provenance?.sources?.ai_cleanup || [], markers: MaweBoot.DATA.markers };
       }, fixture.previewTime || 1000);
       await test.info().attach('consumer-snapshot', { body: JSON.stringify(snapshot, null, 2), contentType: 'application/json' });
@@ -154,7 +154,7 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
           const good = structuredClone(segment);
           good.id = 'second'; good.start += 4000; good.end += 4000;
           good.items.forEach((item) => { item.start += 4000; item.end += 4000; });
-          MaweBoot.DATA.segments = [{ id: 'lead', start: 0, end: 2000, text: '前文',
+          AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'lead', start: 0, end: 2000, text: '前文',
             items: [{ text: '前文', start: 0, end: 2000 }] }, failed, good];
           const later = ranges.map((range) => ({ ...structuredClone(range), start: range.start + 4000, end: range.end + 4000,
             cleanup_scope: { ...range.cleanup_scope, segment_id: 'second' } }));

@@ -14,7 +14,7 @@ from __future__ import annotations
 from maw.runtimes.base import RuntimeCancelled, RuntimeSpec
 from maw.runtimes.local_spec import LocalRuntimeError
 
-MOSS_RUNTIME_VERSION = "2"
+MOSS_RUNTIME_VERSION = "3"
 MOSS_PYTHON_VERSION = "3.11"
 PYTORCH_INDEX = "https://download.pytorch.org/whl/cu130"
 
@@ -31,9 +31,11 @@ class MossRuntimeCancelled(MossRuntimeError, RuntimeCancelled):
     """Raised when the user cancels MOSS runtime work."""
 
 
+# 版本 3：更新 certifi/urllib3 安全下界；旧运行环境需升级。
 # 版本 2：新增 modelscope（MOSS 模型下载的 HF → ModelScope 回退需要），
 # 老安装需重装一次 MOSS 运行环境以补齐依赖。
 _VERIFY_COMMAND = (
+    "import certifi; "
     "from moss_transcribe_diarize import parse_transcript; "
     "import modelscope, transformers, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')"
 )
@@ -51,7 +53,7 @@ MOSS_SPEC = RuntimeSpec(
     requirements_in="scripts/packaging/moss-requirements.in",
     requirements_in_args=("--extra-index-url", PYTORCH_INDEX),
     verify_command=_VERIFY_COMMAND,
-    package_dirs=("moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"),
+    package_dirs=("certifi", "moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"),
     worker_module="maw.local_runtime_worker",
     message_prefix="MOSS 运行环境",
     feature_label="MOSS 模型",

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  getMainTrack,
   cleanupTempDir,
   disableOnboarding,
   DURATION_MS,
@@ -14,6 +15,25 @@ import {
 let tempDir;
 let server;
 let projectPath;
+
+const shellTest = test.extend({
+  shellServerUrl: async ({}, use) => {
+    // Earlier literal-content cases may legitimately autosave Chinese text.
+    // Scan a fresh real project and settings directory for untranslated UI.
+    const directory = makeTempDir('editor-i18n-shell');
+    let shellServer;
+    try {
+      const media = join(directory, 'synthetic.wav');
+      generateWav(media, DURATION_MS / 1000);
+      const project = generateProjectJson(join(directory, 'project.json'));
+      shellServer = await startServer(project, media, await findFreePort());
+      await use(shellServer.url);
+    } finally {
+      await shellServer?.stop();
+      cleanupTempDir(directory);
+    }
+  },
+});
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('editor-i18n-save');
@@ -51,11 +71,11 @@ test('English waveform and sticker names preserve project text', async ({ page }
   await disableOnboarding(page);
   await page.goto(`${server.url}?lang=en`);
   await page.evaluate(() => {
-    const segment = MaweBoot.DATA.segments[0];
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
     segment.text = '删除';
     segment.items = [];
-    segment.sticker = { name: '保存', path: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/%3E' };
-    MaweBoot.DATA.segments[1].sticker_ref = { headIdx: 0, name: '保存' };
+    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [0, 1], 'sticker',
+      { name: '保存', path: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/%3E' });
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
   await expect(page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-label').first()).toHaveText('删除');
@@ -80,9 +100,13 @@ test('English overlay subtitles and the editing panel preserve literal input', a
   await disableOnboarding(page);
   await page.goto(`${server.url}?lang=en`);
   await page.evaluate(() => {
-    MaweBoot.DATA.overlay_track = { enabled: true, segments: [
-      { id: 'literal-overlay', start: 1000, end: 3000, text: '删除', items: [] },
-    ] };
+    {
+      const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+      Object.assign(overlay, { enabled: true, segments: [
+          { id: 'literal-overlay', start: 1000, end: 3000, text: '删除', items: [] },
+        ] });
+      AsrEditorUtils.ensureStableSegmentIds(overlay.segments, overlay.id);
+    }
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
   const text = page.locator('.overlay-track-cue .text').first();
@@ -101,11 +125,10 @@ test('English timed-text differences preserve literal subtitle content', async (
   await disableOnboarding(page);
   await page.goto(`${server.url}?lang=en`);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].text = '删除';
-    MaweBoot.DATA.segments[0].items = [];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '删除';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items = [];
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
-  await page.locator('#batch-operations-btn').click();
   await page.locator('#timed-text-edit-btn').click();
   await page.locator('#timed-text-edit-rows textarea').first().fill('保存');
   const row = page.locator('.timed-text-edit-row[data-index="0"]');
@@ -119,9 +142,9 @@ test('English split preview preserves both subtitle halves', async ({ page }) =>
   await disableOnboarding(page);
   await page.goto(`${server.url}?lang=en`);
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].text = '删除保存';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '删除保存';
     MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride = 'continuous';
-    MaweBoot.DATA.segments[0].items = [];
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items = [];
     MaweCuePanel.renderAll({ waveform: 'full' });
     MaweSplitCore.openMainWaveformSplitModal(0, 4000);
   });
@@ -130,16 +153,16 @@ test('English split preview preserves both subtitle halves', async ({ page }) =>
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await page.screenshot({ path: test.info().outputPath('literal-split-preview.png') });
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].text = '主副无';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '主副无';
     MaweSplitCore.openMainWaveformSplitModal(0, 4000);
   });
   await expect(page.locator('#multi-subtitle-split-main-text .multi-subtitle-split-char'))
     .toHaveText(['主', '副', '无']);
 });
 
-test('English locale covers the editor shell and recent-project setting stays first', async ({ page }) => {
+shellTest('English locale covers the editor shell and recent-project setting stays first', async ({ page, shellServerUrl }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
-  await page.goto(server.url);
+  await page.goto(shellServerUrl);
 
   await expect(page.locator('#open-project')).toHaveText('Open project');
   await expect(page.locator('#save-project')).toHaveText('Save project');
@@ -181,9 +204,9 @@ test('English locale covers the editor shell and recent-project setting stays fi
       const value = node.nodeValue.trim();
       if (/[\u3400-\u9fff]/u.test(value)) found.add(value);
     }
-    document.querySelectorAll('[title], [placeholder], [aria-label]').forEach((element) => {
+    document.querySelectorAll('[title], [placeholder], [aria-label], [data-title]').forEach((element) => {
       if (element.closest(skip)) return;
-      ['title', 'placeholder', 'aria-label'].forEach((name) => {
+      ['title', 'placeholder', 'aria-label', 'data-title'].forEach((name) => {
         const value = element.getAttribute(name) || '';
         if (/[\u3400-\u9fff]/u.test(value)) found.add(value);
       });
@@ -205,6 +228,32 @@ test('English locale covers the editor shell and recent-project setting stays fi
   await expect(page.locator('#search')).toHaveAttribute('placeholder', '过滤字幕');
   await expect(page.locator('#cue-panel-text')).toHaveAttribute('placeholder', '选择一条字幕开始编辑…');
   expect(await page.evaluate(() => localStorage.getItem('mawe.language'))).toBe('zh');
+});
+
+test('English dynamic stored tooltips translate updates and restore Chinese without translating project names', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(`${server.url}?lang=en`);
+  const button = page.locator('#import-btn');
+  await expect(button).toHaveAttribute('data-title', 'Import media / subtitles / lyrics');
+  // Change an existing tooltip store, without adding a node or a title mutation.
+  await button.evaluate(element => element.dataset.title = '打开工程设置的时间与语言页');
+  await expect(button).toHaveAttribute('data-title', 'Open Time & language in project settings');
+  await button.hover();
+  await expect(page.locator('.mawe-tooltip[aria-hidden="false"]')).toHaveText('Open Time & language in project settings');
+  await page.mouse.move(0, 0);
+  await expect(page.locator('.mawe-tooltip')).toHaveAttribute('aria-hidden', 'true');
+  await page.evaluate(() => window.MAWE_I18N.applyLanguage('zh'));
+  await expect(button).toHaveAttribute('data-title', '打开工程设置的时间与语言页');
+  await button.hover();
+  await expect(page.locator('.mawe-tooltip[aria-hidden="false"]')).toHaveText('打开工程设置的时间与语言页');
+  await page.mouse.move(0, 0);
+  await expect(page.locator('.mawe-tooltip')).toHaveAttribute('aria-hidden', 'true');
+  await page.evaluate(() => window.MAWE_I18N.applyLanguage('en'));
+  await button.evaluate(element => element.title = '导入媒体 / 字幕 / 歌词');
+  await expect(button).not.toHaveAttribute('title');
+  await expect(button).toHaveAttribute('data-title', 'Import media / subtitles / lyrics');
+  await page.locator('#json-name').evaluate(element => element.setAttribute('data-title', '保存'));
+  await expect(page.locator('#json-name')).toHaveAttribute('data-title', '保存');
 });
 
 test('Interface settings supports light, dark, and system themes', async ({ page }) => {
@@ -329,7 +378,7 @@ test('Ctrl+S saves and Ctrl+Shift+S invokes save as', async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.__saveAsCapture)).not.toBeNull();
   const saveAsCapture = await page.evaluate(() => window.__saveAsCapture);
   expect(saveAsCapture.suggestedName).toBe('project.mosp');
-  expect(JSON.parse(saveAsCapture.content).segments).toHaveLength(6);
+  expect(getMainTrack(JSON.parse(saveAsCapture.content)).segments).toHaveLength(6);
 });
 
 test('validation save error previews the item and jumps to its subtitle', async ({ page }) => {
@@ -344,14 +393,14 @@ test('validation save error previews the item and jumps to its subtitle', async 
       contentType: 'application/json',
       body: JSON.stringify({
         ok: false,
-        error: '$.segments[1].items[1].start: must be >= previous item end',
+        error: '$.tracks[0].segments[1].items[1].start: must be >= previous item end',
       }),
     });
   });
 
   await page.keyboard.press('Control+s');
   const hint = page.locator('.hint-project-error');
-  await expect(hint).toContainText('$.segments[1].items[1].start: must be >= previous item end');
+  await expect(hint).toContainText('$.tracks[0].segments[1].items[1].start: must be >= previous item end');
   await expect(hint.locator('.hint-project-preview-value')).toHaveText('vo');
   await expect(hint.locator('.hint-project-action')).toHaveText('定位到第 2 条字幕');
 
@@ -370,64 +419,41 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
       return;
     }
     saveAttempts += 1;
-    if (saveAttempts === 1) {
-      await route.fulfill({
-        status: 400,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          ok: false,
-          error: '$.segments[1].start: must be >= previous segment end',
-        }),
-      });
-      return;
-    }
     await route.continue();
   });
 
   await page.evaluate(() => {
     // 重叠修复 UX 针对毫秒时间基准；帧模式下 1ms 会被对齐到帧抹平。
     MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
-    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 1;
-    MaweBoot.DATA.segments[0]._dirty = true;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start + 1;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty = true;
     MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
   await page.keyboard.press('Control+s');
   const hint = page.locator('.hint-project-error');
   await expect(hint.locator('.hint-project-conflict')).toContainText('重叠 1ms');
   await expect(hint.locator('.hint-project-repair-auto')).toContainText('自动修复');
+  // The canonical v2 validator rejects the overlap before any HTTP write.
+  expect(saveAttempts).toBe(0);
 
   const retry = page.waitForResponse((response) => (
     response.url().endsWith('/api/project') && response.request().method() === 'POST'
   ));
   await hint.locator('.hint-project-repair-auto').click();
   expect((await retry).ok()).toBe(true);
-  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[1].start)).toBe(50001);
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start)).toBe(50001);
   await expect(page.locator('.hint-card').last()).toContainText('保存成功！');
-  expect(saveAttempts).toBe(2);
+  expect(saveAttempts).toBe(1);
 });
 
 test('larger subtitle-segment overlap requires an explicit repair direction', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
-  await page.route('**/api/project', async (route) => {
-    if (route.request().method() !== 'POST') {
-      await route.continue();
-      return;
-    }
-    await route.fulfill({
-      status: 400,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ok: false,
-        error: '$.segments[1].start: must be >= previous segment end',
-      }),
-    });
-  });
   await page.evaluate(() => {
     // 同上：钉住毫秒时间基准，避免对齐到帧改写时间边界。
     MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
-    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 2000;
-    MaweBoot.DATA.segments[0]._dirty = true;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start + 2000;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty = true;
     MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
 
@@ -451,7 +477,9 @@ test('auto-saves a text edit shortly after it loses focus', async ({ page }) => 
 
   expect((await saveResponse).ok()).toBe(true);
   const savedProject = JSON.parse(readFileSync(projectPath, 'utf8'));
-  expect(savedProject.segments[0].text).toBe('Alpha autosaved');
+  expect(savedProject.schema).toBe('moy.asr.project.v2');
+  for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(savedProject).not.toHaveProperty(field);
+  expect(getMainTrack(savedProject).segments[0].text).toBe('Alpha autosaved');
 });
 
 test('a disconnected save endpoint offers a JSON fallback download', async ({ page }) => {

@@ -1,3 +1,11 @@
+import { commitCuePanelEdit, renderCurrentCuePanel } from './editor-cue-panel.js';
+import { applySearch } from './editor-search.js';
+import { clearSelection, isHiddenDisabled, updateMultiSelectionClasses } from './editor-selection.js';
+import { getOverlayTrack } from './overlay-track.js';
+
+export function initMaweColorFilter() {
+'use strict';
+
 // 颜色筛选：配色下拉、用量缓存与行色刷新。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweColorFilter 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -31,7 +39,7 @@
 
   function effectiveCueColorKey(mainSeg) {
     if (!mainSeg) return COLOR_FILTER_DEFAULT_KEY;
-    return window.AsrEditorUtils.effectiveColorName(mainSeg, MaweBoot.DATA.segments) || COLOR_FILTER_DEFAULT_KEY;
+    return window.AsrEditorUtils.effectiveColorName(mainSeg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) || COLOR_FILTER_DEFAULT_KEY;
   }
 
 
@@ -40,14 +48,14 @@
   // 避免出现“看不到过滤开关但列表被过滤”的死角。只有单列主轨列表参与过滤。
   function colorFilterSuspended() {
     if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return false;
-    return MaweMultiSubtitleCore.getMultiSubtitleState().display_mode !== 'main';
+    return MaweBoot.DATA.bilingual.display_mode !== 'main';
   }
 
 
 
   function collectProjectColorUsage() {
     const counts = new Map();
-    MaweBoot.DATA.segments.forEach((seg) => {
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((seg) => {
       const key = effectiveCueColorKey(seg);
       counts.set(key, (counts.get(key) || 0) + 1);
     });
@@ -115,7 +123,7 @@
   function setColorFilterSelection(next) {
     colorFilterSelection = next && next.size ? new Set(next) : null;
     renderColorFilterMenu();
-    MaweSearch.applySearch(MaweDom.searchEl.value);
+    applySearch(MaweDom.searchEl.value);
   }
 
 
@@ -127,18 +135,18 @@
     MaweHint.flashHint('当前没有生效的颜色过滤', 'invalid');
     return;
   }
-  MaweCuePanel.commitCuePanelEdit();
-  MaweSelection.clearSelection({ silent: true });
-  MaweBoot.DATA.segments.forEach((seg, idx) => {
-    if (MaweSelection.isHiddenDisabled(idx)) return;
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
+  window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((seg, idx) => {
+    if (isHiddenDisabled(idx)) return;
     if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
     MaweState.selection.add('main', idx);
     const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
     if (el) el.classList.add('selected');
   });
-  MaweSelection.updateMultiSelectionClasses();
+  updateMultiSelectionClasses();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-  updateSelectionCountText();
+  window.MaweCuePanelWiring.updateSelectionCountText();
   MaweHint.flashHint(`已选中 ${MaweSelection.selectedIdxs.size} 条过滤字幕`, MaweSelection.selectedIdxs.size ? 'success' : 'invalid');
 }
 
@@ -190,6 +198,7 @@
 
 
   function refreshCueColorRows() {
+    MaweMultiSubtitleCore.invalidateSegmentPresentation?.();
   const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   MaweCoreState.container.querySelectorAll(':scope > .cue').forEach((el) => {
     const colorBar = el.querySelector(':scope > .color-bar');
@@ -214,7 +223,7 @@
       ? Number(el.dataset.idx)
       : (el.dataset.mainIdx != null ? Number(el.dataset.mainIdx) : -1);
     const segment = Number.isInteger(mainIndex) && mainIndex >= 0
-      ? MaweBoot.DATA.segments[mainIndex]
+      ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex]
       : null;
     if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
   });
@@ -223,6 +232,7 @@
 
 
   function refreshCueStickerRows() {
+    MaweMultiSubtitleCore.invalidateSegmentPresentation?.();
   const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   MaweCoreState.container.querySelectorAll(':scope > .cue').forEach((el) => {
     const slotEl = el.querySelector(':scope > .sticker-slot');
@@ -239,7 +249,7 @@
     const index = Number(isExtension ? el.dataset.extIdx : (el.dataset.idx ?? el.dataset.mainIdx));
     const segment = isExtension
       ? (Number.isInteger(index) ? extensionTrack?.segments?.[index] : null)
-      : (Number.isInteger(index) && index >= 0 ? MaweBoot.DATA.segments[index] : null);
+      : (Number.isInteger(index) && index >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index] : null);
     if (segment) {
       MaweCueElements.updateCueStickerPresentation(el, slotEl, segment, index, {
         extensionTrack: isExtension ? extensionTrack : null,
@@ -255,8 +265,8 @@
   // 原地更新可以避免 renderAll() 替换列表节点后产生滚动闪烁。
   refreshCueStickerRows();
   const overlaySegments = getOverlayTrack()?.segments || [];
-  const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)
-    || overlaySegments.some((segment) => segment.sticker || segment.sticker_ref);
+  const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((segment) => segment.sticker_group_id)
+    || overlaySegments.some((segment) => segment.sticker_group_id);
   MaweCoreState.container.classList.toggle('hide-cue-sticker',
     !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
   );
@@ -264,7 +274,7 @@
   // 表情包变化影响波形块上的 🦊 徽章分组；颜色走 updateCueColorPresentation
   // 自行刷新，徽章需要整层重建才会重新计数。
   MaweCoreState.waveformEditor?.refreshCueOverlay?.();
-  MaweCuePanel.renderCurrentCuePanel();
+  renderCurrentCuePanel();
   MawePlaybackLoop.refreshSubtitlePreview();
 }
 
@@ -279,7 +289,7 @@
     // 不保存/恢复滚动位置，也不主动滚动。
     if (MaweDom.searchEl.value || colorFilterSelection
         || document.getElementById('filter-over')?.classList.contains('active')) {
-      MaweSearch.applySearch(MaweDom.searchEl.value, { refreshText: false, preserveCueListScroll: false });
+      applySearch(MaweDom.searchEl.value, { refreshText: false, preserveCueListScroll: false });
     }
     MaweCoreState.waveformEditor?.refreshCueOverlay?.();
     MawePlaybackLoop.refreshSubtitlePreview();
@@ -336,3 +346,25 @@
     positionColorFilterMenu
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function COLOR_FILTER_DEFAULT_KEY(...args) { return window.MaweColorFilter.COLOR_FILTER_DEFAULT_KEY(...args); }
+export function colorFilterDropdown(...args) { return window.MaweColorFilter.colorFilterDropdown(...args); }
+export function colorFilterButton(...args) { return window.MaweColorFilter.colorFilterButton(...args); }
+export function colorFilterMenu(...args) { return window.MaweColorFilter.colorFilterMenu(...args); }
+export function effectiveCueColorKey(...args) { return window.MaweColorFilter.effectiveCueColorKey(...args); }
+export function colorFilterSuspended(...args) { return window.MaweColorFilter.colorFilterSuspended(...args); }
+export function collectProjectColorUsage(...args) { return window.MaweColorFilter.collectProjectColorUsage(...args); }
+export function colorFilterLabelFor(...args) { return window.MaweColorFilter.colorFilterLabelFor(...args); }
+export function colorFilterValueFor(...args) { return window.MaweColorFilter.colorFilterValueFor(...args); }
+export function syncColorFilterControls(...args) { return window.MaweColorFilter.syncColorFilterControls(...args); }
+export function renderColorFilterMenu(...args) { return window.MaweColorFilter.renderColorFilterMenu(...args); }
+export function setColorFilterSelection(...args) { return window.MaweColorFilter.setColorFilterSelection(...args); }
+export function selectAllFilteredCues(...args) { return window.MaweColorFilter.selectAllFilteredCues(...args); }
+export function buildColorFilterItem(...args) { return window.MaweColorFilter.buildColorFilterItem(...args); }
+export function refreshColorFilterUi(...args) { return window.MaweColorFilter.refreshColorFilterUi(...args); }
+export function refreshCueColorRows(...args) { return window.MaweColorFilter.refreshCueColorRows(...args); }
+export function refreshCueStickerRows(...args) { return window.MaweColorFilter.refreshCueStickerRows(...args); }
+export function refreshStickerAssignmentUi(...args) { return window.MaweColorFilter.refreshStickerAssignmentUi(...args); }
+export function refreshColorAssignmentUi(...args) { return window.MaweColorFilter.refreshColorAssignmentUi(...args); }
+export function positionColorFilterMenu(...args) { return window.MaweColorFilter.positionColorFilterMenu(...args); }

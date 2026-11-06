@@ -1,6 +1,9 @@
 // 主题解析/应用与后端桥接（bridge/waitForBackend）、首屏 reveal。
+// L02 过渡接入：常量与无状态判断来自 ESM 叶子（theme/launcher-theme-keys.js），
+// 经 transition 机制注入 classic 作用域；localStorage 读写仍在本文件。
 
-function isThemePreference(value) { return value === "light" || value === "dark" || value === "system"; }
+const themeKeys = createThemeKeys();
+const { THEME_KEY, isThemePreference } = themeKeys;
 function readStoredTheme() { try { const savedTheme = localStorage.getItem(THEME_KEY); return isThemePreference(savedTheme) ? savedTheme : "system"; } catch (error) { return "system"; } }
 function storeTheme(pref) { try { localStorage.setItem(THEME_KEY, pref); } catch (error) { /* localStorage 不可用时交给后端持久化 */ } }
 function resolveTheme() { if (state.theme === "light" || state.theme === "dark") return state.theme; return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; }

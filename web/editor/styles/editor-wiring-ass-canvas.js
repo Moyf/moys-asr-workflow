@@ -277,7 +277,11 @@
     const outline = Math.max(0, Number(style.outline) || 0);
     const shadow = Math.max(0, Number(style.shadow) || 0);
     const borderBox = Math.round(Number(style.borderStyle) || 1) === 3;
-    const pad = Math.ceil(outline + shadow + 2);
+    // Italic glyphs can paint beyond the advance width. Keep that ink in the
+    // bitmap instead of clipping it at the generic two-pixel guard.
+    const measure = measurerFor(track, ratio);
+    const inkPadding = Math.max(2, ...line.items.map(item => measure(item.run, item.text).inkPadding));
+    const pad = Math.ceil(outline + shadow + inkPadding);
     const bodyWidth = Math.ceil(line.width);
     const bodyHeight = Math.ceil(line.ascent + line.descent);
     const bitmap = document.createElement('canvas');

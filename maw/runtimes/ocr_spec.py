@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from maw.runtimes.base import ManagedRuntimeError, RuntimeCancelled, RuntimeSpec
 
-OCR_RUNTIME_VERSION = "3"
+# 版本 4：更新 certifi/urllib3 安全下界；旧运行环境需升级。
+OCR_RUNTIME_VERSION = "4"
 OCR_PYTHON_VERSION = "3.11"
 OCR_MODEL_ID = "pp-ocrv6-tiny"
 OCR_MODEL_LABEL = "PP-OCRv6 tiny（CPU）"
@@ -24,6 +25,7 @@ OCR_MODEL_LABELS: dict[str, str] = {
 # asset_path("ocr-runtime/requirements-ocr.txt")。
 
 _VERIFY_COMMAND = (
+    "import certifi; "
     "from rapidocr import RapidOCR; import numpy, onnxruntime; "
     "from PIL import Image; print('MAW_OCR_RUNTIME_READY')"
 )
@@ -48,7 +50,7 @@ OCR_SPEC = RuntimeSpec(
     # OCR 是 pyproject dependency-groups 中的独立最小运行时依赖组。
     requirements_group="ocr",
     verify_command=_VERIFY_COMMAND,
-    package_dirs=("numpy", "onnxruntime", "PIL", "rapidocr"),
+    package_dirs=("certifi", "numpy", "onnxruntime", "PIL", "rapidocr"),
     worker_module="maw.ocr_runtime_worker",
     message_prefix="OCR 运行环境",
     feature_label="OCR 模型",

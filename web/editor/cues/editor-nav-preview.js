@@ -90,7 +90,7 @@
             + `.multi-extension-cue[data-ext-idx="${request.idx}"]`,
         )
         : MaweCoreState.container.querySelector(`.cue[data-idx="${request.idx}"]`);
-      const segment = isExtension ? track?.segments?.[request.idx] : MaweBoot.DATA.segments[request.idx];
+      const segment = isExtension ? track?.segments?.[request.idx] : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[request.idx];
       const textEl = cue?.querySelector('.text');
       const text = String(segment?.text || '');
       if (!cue || !segment || !textEl || text.length < 2 || segment.end - segment.start < 200) {
@@ -162,7 +162,7 @@
     if (!mainIndices.length && !extensionIndices.length) {
       const extension = context.track === 'extension' && MaweMultiSubtitleCore.multiSubtitleVisible();
       const track = extension ? MaweMultiSubtitleCore.getExtensionTrack(context.trackId) : null;
-      const segments = extension ? track?.segments : MaweBoot.DATA.segments;
+      const segments = extension ? track?.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
       const index = MaweContextMenus.findWaveformCueAtTime(context.timeMs, segments);
       if (index < 0 || !segments?.[index]) return null;
       return {
@@ -179,8 +179,8 @@
     if (panelTarget.kind === 'main') {
       if (mainIndices.length !== 1 || mainIndices[0] !== panelTarget.index) return null;
       const binding = MaweMultiSubtitleCore.bindingForMainIndex(panelTarget.index);
-      const bindingTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.track_id) : null;
-      const boundExtensionIndices = (binding?.extension_segment_ids || [])
+      const bindingTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id) : null;
+      const boundExtensionIndices = (binding?.target?.segment_id ? [binding.target.segment_id] : [])
         .map((id) => bindingTrack?.segments?.findIndex((segment) => segment?.id === id) ?? -1)
         .filter((index) => index >= 0);
       const extensionMatchesBinding = extensionIndices.length === 0
@@ -193,8 +193,8 @@
 
     if (extensionIndices.length !== 1 || extensionIndices[0] !== panelTarget.index) return null;
     const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(panelTarget.index, panelTarget.track);
-    const boundMainIndices = (binding?.main_segment_ids || [])
-      .map((id) => MaweBoot.DATA.segments.findIndex((segment) => segment?.id === id))
+    const boundMainIndices = (binding?.source?.segment_id ? [binding.source.segment_id] : [])
+      .map((id) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === id))
       .filter((index) => index >= 0);
     const mainMatchesBinding = mainIndices.length === 0
       || (boundMainIndices.length === 1
@@ -216,7 +216,7 @@
       active.tagName === 'INPUT' || active.tagName === 'TEXTAREA'
         || active.tagName === 'SELECT' || active.isContentEditable
     )) return;
-    if (MaweDom.replaceModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
+    if (MaweDom.textProcessModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
         || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
         || MaweDom.multiSubtitleSplitModal?.classList.contains('show')
         || MaweDom.multiSubtitleImportModal?.classList.contains('show')
@@ -264,6 +264,7 @@
     if (!target || !Number.isFinite(timeMs) || !MaweMediaPlayback.hasLoadedMedia()
         || !Number.isFinite(duration) || duration <= 0) return false;
     MaweJklPlayback.stopJklReversePlayback({ render: false });
+    window.MaweGapPlayback?.cancelPendingPlayback();
     MaweCoreState.player.pause();
     return MaweMediaPlayback.seekMediaTo(timeMs / 1000);
   }

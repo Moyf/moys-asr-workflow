@@ -1,3 +1,9 @@
+import { colorFilterSuspended, effectiveCueColorKey } from './editor-color-filter.js';
+import { getOverlayTrack } from './overlay-track.js';
+
+export function initMaweSearch() {
+'use strict';
+
 // 搜索：过滤应用与防抖。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweSearch 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -25,7 +31,7 @@
         : (el.dataset.idx != null ? Number(el.dataset.idx) : -1);
       const extIdx = el.dataset.extIdx != null ? Number(el.dataset.extIdx) : -1;
       const overlayIdx = el.dataset.overlayIdx != null ? Number(el.dataset.overlayIdx) : -1;
-      const mainSeg = Number.isInteger(mainIdx) && mainIdx >= 0 ? MaweBoot.DATA.segments[mainIdx] : null;
+      const mainSeg = Number.isInteger(mainIdx) && mainIdx >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIdx] : null;
       const extensionSeg = Number.isInteger(extIdx) && extIdx >= 0 && extensionTrack
         ? extensionTrack.segments[extIdx] : null;
       const overlaySeg = Number.isInteger(overlayIdx) && overlayIdx >= 0
@@ -38,8 +44,8 @@
       }
       let matched = !re || re.test(searchableText);
       if (re) re.lastIndex = 0;
-      if (matched && MaweColorFilter.colorFilterSelection && !MaweColorFilter.colorFilterSuspended()) {
-        matched = MaweColorFilter.colorFilterSelection.has(MaweColorFilter.effectiveCueColorKey(mainSeg || extensionSeg || overlaySeg));
+      if (matched && MaweColorFilter.colorFilterSelection && !colorFilterSuspended()) {
+        matched = MaweColorFilter.colorFilterSelection.has(effectiveCueColorKey(mainSeg || extensionSeg || overlaySeg));
       }
       const keepTemporaryVisible = filterOver
         && MaweSettings.EDITOR_SETTINGS.cueListKeepSplitVisible
@@ -81,3 +87,6 @@
     set searchDebounce(v) { searchDebounce = v; },
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function applySearch(...args) { return window.MaweSearch.applySearch(...args); }

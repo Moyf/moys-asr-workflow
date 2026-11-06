@@ -1,9 +1,13 @@
 // 主题：明暗色应用。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweTheme 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweTheme(global) {
+// ESM init 模块：装配器在原清单位次调用；顶层无 DOM 绑定，
+// matchMedia 只读配置（G07 gate：监听挂载仍在显式初始化函数内）。
+export function initMaweTheme() {
   'use strict';
+
+  // 装配器无参调用；宿主对象固定为当前页面 window。
+  const global = window;
 
 
   function applyTheme(theme, { rerenderWaveform = true } = {}) {
@@ -132,4 +136,4 @@
     refreshEditorSystemTheme,
     applyTheme
   });
-})(typeof window !== 'undefined' ? window : globalThis);
+}

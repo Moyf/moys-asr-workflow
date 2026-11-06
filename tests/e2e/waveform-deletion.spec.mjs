@@ -9,7 +9,7 @@ import {
   findFreePort,
   generateWav,
   generateProjectJson,
-  buildPortableBlankEditor,
+  buildBrowserEditorFixture,
   startServer,
   startStaticServer,
   DURATION_MS,
@@ -41,6 +41,8 @@ async function configureMultiRowMode(page) {
       waveformScale: 1,
       disabledDisplay: 'dim',
     };
+    // Reloads reuse this fixture; autosave must not persist an earlier scenario's deletions.
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false }));
     localStorage.setItem('moy.asr.waveform.settings.v1', JSON.stringify(settings));
   });
 }
@@ -128,7 +130,7 @@ async function shiftClickWaveformCue(page, idx) {
 
 // Read the text of all segments from DATA (observable JS state).
 async function getSegmentTexts(page) {
-  return page.evaluate(() => MaweBoot.DATA.segments.map((s) => s.text));
+  return page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((s) => s.text));
 }
 
 // Read the selected indices from the cue list DOM.
@@ -142,7 +144,7 @@ async function getSelectedIndices(page) {
 async function pressDeleteAndWait(page, expectedSegmentCount) {
   await page.keyboard.press('Delete');
   await page.waitForFunction(
-    (expected) => MaweBoot.DATA.segments.length === expected,
+    (expected) => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === expected,
     expectedSegmentCount,
     { timeout: 5000 },
   );
@@ -159,7 +161,7 @@ async function pressDeleteAndExpectRefusal(page, expectedSegmentCount) {
   );
   // Verify segment count is unchanged
   await page.waitForFunction(
-    (expected) => MaweBoot.DATA.segments.length === expected,
+    (expected) => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === expected,
     expectedSegmentCount,
     { timeout: 2000 },
   );
@@ -307,7 +309,7 @@ test.beforeAll(async () => {
   blankHtmlPath = join(portableDir, 'blank-editor.html');
   generateWav(portableWavPath, DURATION_MS / 1000);
   generateProjectJson(portableProjectPath);
-  buildPortableBlankEditor(blankHtmlPath);
+  buildBrowserEditorFixture(blankHtmlPath);
   portablePort = await findFreePort();
   portableStaticServer = await startStaticServer(blankHtmlPath, portablePort);
 });

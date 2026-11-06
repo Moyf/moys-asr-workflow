@@ -11,6 +11,20 @@ const sentence = () => ({ id: 'sentence', start: 100, end: 900, text: '我很喜
   { text: '很喜欢', start: 300, end: 550 },
 ] });
 
+test('word conversion combines MASS completion with cross-track ID reservations', () => {
+  const source = [{ id: 'sentence', start: 0, end: 1000, text: '**甲乙**', items: [
+    { text: '**甲', start: 0, end: 500 }, { text: '乙**', start: 500, end: 1000 },
+  ] }];
+  const reservedSegments = [{ id: 'sentence-item-1' }, { id: 'sentence-item-1-2' }, { id: 'sentence-item-2' }];
+  const before = JSON.stringify({ source, reservedSegments });
+  const plan = utils.planWordTimingConversion(source, [0], undefined, { rule: 'both', reservedSegments });
+  assert.equal(plan.conversions.length, 1);
+  assert.deepEqual(plain(plan.segments.map(row => row.text)), ['**甲**', '**乙**']);
+  assert.deepEqual(plain(plan.segments.map(row => [row.start, row.end])), [[0, 500], [500, 1000]]);
+  assert.equal(new Set([...reservedSegments, ...plan.segments].map(row => row.id)).size, reservedSegments.length + plan.segments.length);
+  assert.equal(JSON.stringify({ source, reservedSegments }), before);
+});
+
 test('renders shared inserted text as one range and attaches untimed punctuation', () => {
   const source = sentence();
   const entries = utils.getWordTimingEntries(source);
@@ -116,6 +130,15 @@ test('conversion preserves all original text and one item per output without str
     assert.equal(output.disabled, true);
   }
   assert.equal(utils.planWordTimingConversion(plan.segments, [0, 1]).conversions.length, 0);
+});
+
+test('word conversion reserves cue IDs belonging to other project tracks', () => {
+  const source = sentence();
+  const plan = utils.planWordTimingConversion([source], [0], undefined, {
+    reservedSegments: [{ id: 'sentence-item-1' }, { id: 'sentence-item-1-2' }, { id: 'sentence-item-2' }],
+  });
+  assert.deepEqual(plain(plan.segments.map(s => s.id)), ['sentence', 'sentence-item-2-2']);
+  assert.equal(plan.segments.map(s => s.text).join(''), source.text);
 });
 test('conversion repairs head/ref indices outside selected sentences and assigns collision-free IDs', () => {
   const source = { ...sentence(), color: { name: 'red', start: 100, end: 1800 } };

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import queue
 import re
 import socket
 import subprocess
@@ -23,6 +22,8 @@ from typing import BinaryIO, Final, final
 
 from send2trash import send2trash
 
+from maw.project_tracks import get_main_track, make_project
+from maw.editor_entry_policy import RETIREMENT_MESSAGE, standalone_editor_supported
 from maw.app_paths import application_directory, default_app_data_root
 from maw.web_build import BundlePreflightError, ensure_bundle
 from maw.asr_presets import (
@@ -65,7 +66,7 @@ from maw.gui_config import (
     save_env,
 )
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, restore_host_library_path, startupinfo, terminate_process_tree
-from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.gui_workflow import TEST_RUN_LENGTH_LIMIT, TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
@@ -115,7 +116,7 @@ from maw.postprocess_ffmpeg import (
     run_extract_audio as process_extract_audio,
     run_ffconcat_rebuild as process_ffconcat_rebuild,
 )
-from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
+from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESERVE_PUNCTUATION, DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, is_custom_slot, list_llm_models, loopback_base_url, normalize_reasoning_mode, postprocess_api_key_required as _postprocess_api_key_required, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
@@ -356,40 +357,39 @@ class EventPump:
     def __init__(self, *, window_getter: Callable[[], object | None], interval: float = 0.1) -> None:
         self.window_getter = window_getter
         self.interval = interval
-        self.events: queue.Queue[Mapping[str, object]] = queue.Queue()
+        self.events: list[Mapping[str, object]] = []
         self.stop_event = threading.Event()
         self.thread: threading.Thread | None = None
         self.lock = threading.Lock()
 
     def start(self) -> None:
         with self.lock:
-            if self.thread and self.thread.is_alive():
+            if self.stop_event.is_set() or (self.thread and self.thread.is_alive()):
                 return
-            self.stop_event.clear()
             self.thread = threading.Thread(target=self._run, daemon=True)
             self.thread.start()
 
     def enqueue(self, event: Mapping[str, object]) -> None:
-        self.events.put(dict(event))
+        with self.lock:
+            if not self.stop_event.is_set():
+                self.events.append(dict(event))
 
     def flush(self) -> None:
-        batch: list[Mapping[str, object]] = []
-        while True:
-            try:
-                batch.append(self.events.get_nowait())
-            except queue.Empty:
-                break
-        if not batch:
-            return
+        with self.lock:
+            if not self.events:
+                return
+            batch, self.events = self.events, []
         window = self.window_getter()
         if window is None:
             return
         script = f"window.MAWLauncher && window.MAWLauncher.onBackendEvents({json.dumps(batch, ensure_ascii=False)})"
-        window.evaluate_js(script)
+        if not self.stop_event.is_set():
+            window.evaluate_js(script)
 
     def shutdown(self) -> None:
-        self.stop_event.set()
-        self.flush()
+        with self.lock:
+            self.stop_event.set()
+            self.events.clear()
 
     def _run(self) -> None:
         while not self.stop_event.wait(self.interval):
@@ -710,6 +710,7 @@ class LauncherApi:
             "language": config.language,
             "guiLang": config.gui_lang,
             "appVersion": _app_version(self.paths),
+            "standaloneEditorSupported": standalone_editor_supported(),
             "asrPresetRoot": str(asr_preset_root),
             "asrPresetRootConfigured": asr_preset_root_configured,
             "stickerDir": config.sticker_dir,
@@ -1227,8 +1228,8 @@ class LauncherApi:
                     script_path=script_path,
                     output_mode=_output_mode(payload.get("outputMode")),
                     media_path=_optional_path(payload.get("mediaPath")),
-                    extra_split_punctuation=tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value)),
-                    preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
+                    extra_split_punctuation=tuple(str(value) for value in payload.get("extraSplitPunctuation", DEFAULT_EXTRA_SPLIT_PUNCTUATION) if str(value)),
+                    preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", DEFAULT_PRESERVE_PUNCTUATION) if str(value)),
                     match_mode=str(payload.get("matchMode") or "script"),
                     clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
                 ),
@@ -1971,8 +1972,8 @@ class LauncherApi:
         try:
             _script_path, script_text = _read_script(path)
             match_mode = str(payload.get("matchMode") or "script")
-            extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
-            preserve = tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value))
+            extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", DEFAULT_EXTRA_SPLIT_PUNCTUATION) if str(value))
+            preserve = tuple(str(value) for value in payload.get("preservePunctuation", DEFAULT_PRESERVE_PUNCTUATION) if str(value))
             text = processed_script_text(
                 script_text,
                 match_mode=match_mode,
@@ -2004,8 +2005,8 @@ class LauncherApi:
             except PostprocessFileError as error:
                 return {"ok": False, "preview": "", "errorCode": "script_invalid", "code": "script_invalid", "detail": str(error)}
             match_mode = str(payload.get("matchMode") or "script")
-            extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", ()) if str(value))
-            preserve = tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value))
+            extra_split = tuple(str(value) for value in payload.get("extraSplitPunctuation", DEFAULT_EXTRA_SPLIT_PUNCTUATION) if str(value))
+            preserve = tuple(str(value) for value in payload.get("preservePunctuation", DEFAULT_PRESERVE_PUNCTUATION) if str(value))
             clean_markdown_symbols = payload.get("cleanMarkdownSymbols", True) is not False
             prepared, _warning = prepare_script_text(
                 script_text,
@@ -2028,7 +2029,7 @@ class LauncherApi:
                     frozenset(preserve if match_mode == "script" else ()),
                     match_mode,
                 )
-            segments = matched.get("segments", [])
+            segments = get_main_track(matched)["segments"]
             preview = "\n".join(
                 f"{index + 1}. {segment.get('text', '')}"
                 for index, segment in enumerate(segments)
@@ -2043,7 +2044,7 @@ class LauncherApi:
                 None,
             )
             original_segment_count = sum(
-                1 for segment in project.get("segments", ()) if isinstance(segment, dict) and segment.get("text")
+                1 for segment in get_main_track(project)["segments"] if isinstance(segment, dict) and segment.get("text")
             )
             matched_segment_count = sum(
                 1 for segment in segments if isinstance(segment, dict) and segment.get("text")
@@ -2754,7 +2755,7 @@ class LauncherApi:
 
         output_seed = unique_output_path(media_path.with_suffix(".waveform.srt"))
         project_path = output_seed.with_suffix(".mosp")
-        project: dict[str, object] = {"media": str(media_path), "segments": []}
+        project = make_project([], project_fields={"media": str(media_path)})
         try:
             ffmpeg_tools = _postprocess_ffmpeg_tools(self.paths.env_path)
             ffmpeg_path = ffmpeg_tools.ffmpeg
@@ -3135,11 +3136,15 @@ class LauncherApi:
         return _open_existing_path(directory)
 
     def open_html(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        if not standalone_editor_supported():
+            return {"ok": False, "error": RETIREMENT_MESSAGE}
         if self.result and self.result.html_path and self.result.html_path.exists():
             return _open_existing_path(self.result.html_path)
         return {"ok": False, "error": "No editor HTML yet."}
 
     def open_blank_html(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        if not standalone_editor_supported():
+            return {"ok": False, "error": RETIREMENT_MESSAGE}
         path = self.paths.root / "blank-editor.html"
         if not path.exists():
             frozen_path = asset_path("blank-editor.html")
@@ -3193,6 +3198,9 @@ class LauncherApi:
         return _open_existing_path(directory.resolve())
 
     def shutdown(self) -> None:
+        # closing runs on the GUI thread. Stop UI delivery before cancellation
+        # wakes workers. Joining a worker here could block the GUI thread.
+        self.pump.shutdown()
         self.cancel_recording_review()
         self.cancel_transcription()
         self.cancel_batch_transcription()
@@ -3212,7 +3220,6 @@ class LauncherApi:
                 if isinstance(stream, TeeWriter) and stream._sink is self._log_sink:
                     stream.flush()
             self._log_sink.close()
-        self.pump.shutdown()
 
     def _worker_main(self, request: TranscriptionRequest, cancel_event: Event) -> None:
         child_output: list[str] = []
@@ -4141,6 +4148,10 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             raise PreflightError("model", "local_model_missing", local_status.detail)
         if local_status.status == "partial":
             raise PreflightError("model", "local_model_incomplete", local_status.detail)
+        if local_model_path and local_status.status == "installed" and local_status.path:
+            # Explicit cache roots may resolve to a snapshot; pass the checked
+            # directory to the engine even if the UI refresh has not finished.
+            local_model_path = local_status.path
         if model.engine == "firered" and firered_punc == "ct-punc":
             _ctc_ready, punc_ready = firered_components_ready(
                 model,
@@ -4263,7 +4274,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
-        length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
+        length_limit=TEST_RUN_LENGTH_LIMIT if test_run else str(payload.get("lengthLimit") or "").strip(),
+        test_run=test_run,
         max_len=max_len,
         min_len=min_len,
         max_words=max_words,
@@ -4289,6 +4301,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         provider=provider.id,
         speaker_colors=bool(payload.get("speakerColors")) and model.supports_speaker,
         generate_spectral=bool(payload.get("generateSpectral")),
+        generate_keyframes=bool(payload.get("generateKeyframes", True)),
         generate_thumbnails=bool(payload.get("generateThumbnails")),
         ui_language=_gui_lang(payload),
         generate_html=bool(payload.get("generateHtml")) and not bool(payload.get("batchSrtOnly")),

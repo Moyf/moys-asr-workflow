@@ -11,6 +11,7 @@ from maw.postprocess import LlmPostprocessRequest, OutputMode, run_llm_postproce
 from maw.postprocess_annotations import append_markers, validate_annotations, write_annotations
 from maw.postprocess_comparison import comparison_data
 from maw.project import normalize_project
+from maw.project_tracks import get_main_track
 
 
 def source_project():
@@ -41,7 +42,7 @@ def editor_save(project):
 class AnnotationTest(unittest.TestCase):
     def test_scope_validation_and_distinct_review_state(self):
         project = source_project()
-        sources = {"c0001": project["segments"][0], "c0002": project["segments"][1]}
+        sources = {"c0001": get_main_track(project)["segments"][0], "c0002": get_main_track(project)["segments"][1]}
         raw = [{"source_ids": ["c0001"], "kind": "note", "message": "API 指接口"},
                {"source_ids": ["c0002"], "kind": "review", "message": "代词指向需要确认"}]
         self.assertFalse(write_annotations(project, sources, raw, "translate_en"))
@@ -60,7 +61,7 @@ class AnnotationTest(unittest.TestCase):
 
     def test_rerun_reuses_ids_and_preserves_user_edits_and_other_tasks(self):
         project = source_project()
-        sources = {"c0001": project["segments"][0], "c0002": project["segments"][1]}
+        sources = {"c0001": get_main_track(project)["segments"][0], "c0002": get_main_track(project)["segments"][1]}
         raw = [{"source_ids": ["c0001"], "kind": "note", "message": "原备注"},
                {"source_ids": ["c0002"], "kind": "review", "message": "疑点"}]
         write_annotations(project, sources, raw, "proofread")
@@ -76,15 +77,15 @@ class AnnotationTest(unittest.TestCase):
         write_annotations(project, sources, raw[:1], "translate_en")
         write_annotations(project, sources, [], "translate_en")
         self.assertEqual(project["markers"]["items"], protected)
-        self.assertEqual(project["segments"], source_project()["segments"])
+        self.assertEqual(get_main_track(project)["segments"], get_main_track(source_project())["segments"])
 
     def test_new_earlier_note_does_not_take_reused_id(self):
         project = source_project()
-        sources = {"later": project["segments"][1]}
+        sources = {"later": get_main_track(project)["segments"][1]}
         write_annotations(project, sources, [{"source_ids": ["later"], "kind": "note", "message": "旧备注"}], "custom")
         old_id = project["markers"]["items"][0]["id"]
         self.assertEqual(old_id, "marker-001")
-        sources["earlier"] = project["segments"][0]
+        sources["earlier"] = get_main_track(project)["segments"][0]
         write_annotations(project, sources, [
             {"source_ids": ["earlier"], "kind": "note", "message": "新增"},
             {"source_ids": ["later"], "kind": "note", "message": "更新"},
@@ -108,8 +109,8 @@ class AnnotationTest(unittest.TestCase):
 
     def test_editor_save_roundtrip_keeps_untouched_truncated_notes_replaceable(self):
         project = source_project()
-        project["segments"][0]["text"] = "甲" * 19 + " " + "后文"
-        sources = {"c0001": project["segments"][0]}
+        get_main_track(project)["segments"][0]["text"] = "甲" * 19 + " " + "后文"
+        sources = {"c0001": get_main_track(project)["segments"][0]}
         # Multiple valid messages make the grouped note hit the 300-character cap at a space.
         raw = [{"source_ids": ["c0001"], "kind": "review", "message": "a" * 290},
                {"source_ids": ["c0001"], "kind": "review", "message": "12345678 later"}]
@@ -138,7 +139,7 @@ class AnnotationTest(unittest.TestCase):
 
     def test_normalized_save_reopen_and_multiple_batches(self):
         project = source_project()
-        sources = {"c0001": project["segments"][0]}
+        sources = {"c0001": get_main_track(project)["segments"][0]}
         raw = [{"source_ids": ["c0001"], "kind": "note", "message": f"注{i}"} for i in range(90)]
         write_annotations(project, sources, raw, "custom")
         reopened = normalize_project(json.loads(json.dumps(project)))

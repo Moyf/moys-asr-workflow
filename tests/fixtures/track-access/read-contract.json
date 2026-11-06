@@ -1,0 +1,29 @@
+{
+  "legacy": [
+    {"id":"main","role":"main","legacy_id":null,"enabled":true,"segment_ids":[null]}
+  ],
+  "three-tracks": [
+    {"id":"main","role":"main","legacy_id":null,"enabled":true,"segment_ids":["shared"]},
+    {"id":"secondary:translation","role":"secondary","legacy_id":"translation","enabled":true,"segment_ids":["shared"]},
+    {"id":"overlay","role":"overlay","legacy_id":null,"enabled":true,"segment_ids":["shared"]}
+  ],
+  "unbound-secondary": [
+    {"id":"main","role":"main","legacy_id":null,"enabled":true,"segment_ids":["main"]},
+    {"id":"secondary:translation","role":"secondary","legacy_id":"translation","enabled":true,"segment_ids":["bound","unbound"]}
+  ],
+  "color-sticker-groups": [
+    {"id":"main","role":"main","legacy_id":null,"enabled":true,"segment_ids":["main-head","main-ref"]},
+    {"id":"secondary:translation","role":"secondary","legacy_id":"translation","enabled":true,"segment_ids":["secondary"]},
+    {"id":"overlay","role":"overlay","legacy_id":null,"enabled":false,"segment_ids":["overlay-head","overlay-ref"]}
+  ],
+  "frames": [
+    {"id":"main","role":"main","legacy_id":null,"enabled":true,"segment_ids":["frame-main"]},
+    {"id":"secondary:translation","role":"secondary","legacy_id":"translation","enabled":true,"segment_ids":["frame-secondary"]},
+    {"id":"overlay","role":"overlay","legacy_id":null,"enabled":true,"segment_ids":["frame-overlay"]}
+  ],
+  "manual-ass": [
+    {"id":"main","role":"main","legacy_id":null,"enabled":true,"segment_ids":["main"]},
+    {"id":"secondary:translation","role":"secondary","legacy_id":"translation","enabled":true,"segment_ids":["secondary"]},
+    {"id":"overlay","role":"overlay","legacy_id":null,"enabled":true,"segment_ids":["overlay"]}
+  ]
+}

@@ -18,8 +18,8 @@
     return current?.kind === 'main' || current?.kind === 'overlay' ? current : null;
   };
   const trackSegments = kind => kind === 'overlay'
-    ? (global.MaweBoot.DATA.overlay_track?.segments || [])
-    : global.MaweBoot.DATA.segments;
+    ? (global.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments || [])
+    : global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   // 同一 id 命中两条轨在正常工程里不可能（main-/overlay- 前缀），仍按当前
   // 面板目标轨优先，避免异常数据时拖错轨。
   function locateSegment(id) {
@@ -146,10 +146,11 @@
     const located = locateSegment(id);
     if (!located) return;
     global.MaweCuePanel.commitCuePanelEdit();
+    global.MaweGapPlayback?.cancelPendingPlayback();
     global.MaweCoreState.player?.pause();
     // The first gesture only selects. A second gesture can move the cue.
     if (currentTargetId() !== id) {
-      if (located.kind === 'overlay') selectOverlayCueRow(located.index);
+      if (located.kind === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(located.index);
       else global.MaweSelection.selectOnly(located.index);
       event.preventDefault(); event.stopPropagation();
       return;
@@ -187,6 +188,7 @@
     const record = segment && recordFor(segment, located.kind);
     if (!segment || !record?.bounds) return;
     global.MaweCuePanel.commitCuePanelEdit();
+    global.MaweGapPlayback?.cancelPendingPlayback();
     global.MaweCoreState.player?.pause();
     event.preventDefault(); event.stopPropagation();
     handle.focus({ preventScroll: true });
@@ -398,7 +400,7 @@
       const kind = box?.dataset.trackKind;
       const index = trackSegments(kind).findIndex(segment => segment?.id === id);
       if (index >= 0 && currentTargetId() !== id) {
-        if (kind === 'overlay') selectOverlayCueRow(index);
+        if (kind === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(index);
         else global.MaweSelection.selectOnly(index);
       }
     }

@@ -1,0 +1,17 @@
+{
+  "segments": [
+    {
+      "start": 0,
+      "end": 1000,
+      "text": "旧工程，无 schema、ID、items"
+    }
+  ],
+  "custom": {
+    "keep": [
+      "原文",
+      {
+        "value": true
+      }
+    ]
+  }
+}

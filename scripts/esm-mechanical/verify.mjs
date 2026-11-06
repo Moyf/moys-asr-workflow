@@ -24,7 +24,7 @@ if (!fresh) throw new Error('Stale bundle before browser probes');
 function buildPage(root, name) {
   const output = path.join(converted, name);
   execFileSync(python, ['-c',
-    'import edit, pathlib, sys; pathlib.Path(sys.argv[1]).write_text(edit.build_blank_html(), encoding="utf-8", newline="\\n")', output],
+    'import edit, pathlib, sys; pathlib.Path(sys.argv[1]).write_text((getattr(edit, "render_empty_editor_page", None) or edit.build_blank_html)(), encoding="utf-8", newline="\\n")', output],
   { cwd: root, windowsHide: true, env: process.env });
   return output;
 }

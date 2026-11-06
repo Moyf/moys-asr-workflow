@@ -26,6 +26,7 @@ import threading
 import time
 import webbrowser
 import zipfile
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
@@ -61,6 +62,7 @@ from maw.app_paths import default_server_settings_path, legacy_server_settings_p
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
 from maw.ass_fonts import font_alias_payload, normalize_ass_text_fontnames  # noqa: E402
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
+from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
     MEDIA_JOB_ADMISSION_TTL, MediaJob, MediaJobBusy, MediaJobCancelled, MediaJobManager, MediaJobUnavailable,
@@ -79,11 +81,13 @@ from maw.postprocess_ffmpeg import (  # noqa: E402
     normalize_video_encoder, video_encoder_attempts, video_encoder_options,
     _green_screen_input, _green_screen_size_resolution,
 )
+from maw.project_boundary import import_project, prepare_project  # noqa: E402
 from maw.project import (  # noqa: E402
+    PROJECT_SCHEMA,
     ProjectValidationFailed,
     normalize_project,
-    repair_project_timing_ranges,
 )
+from maw.project_tracks import get_main_track, make_project  # noqa: E402
 from maw.project_io import (  # noqa: E402
     default_audio_track_from_metadata,
     enrich_project_media_metadata,
@@ -170,6 +174,8 @@ class ServerProject:
     reapeaks_path: Path | None = None
     audio_track: int = 0
     default_audio_track: int = 0
+    import_changes: tuple[dict, ...] = ()
+    source_schema: str = PROJECT_SCHEMA
 
 
 ProjectLoadProgressCallback = Callable[[str, int], None]
@@ -768,17 +774,38 @@ def _fit_contain_box(box: dict, image_size: tuple[int, int] | None, align: str =
             "width": width, "height": height}
 
 
+def _parse_burn_sticker_background(raw_background: object) -> dict | None:
+    """Parse and validate the optional custom sticker background of one request.
+
+    ``{"color": "#RRGGBB", "opacity": 0~1}``，缺省 / None 表示无自定义背景
+    （保持历史行为：成片不画底衬）。颜色只收 6 位 hex，透明度收 0~1 的开区间
+    左端（0 等效于不画，前端直接不发），避免歧义。
+    """
+    if raw_background is None:
+        return None
+    if not isinstance(raw_background, dict):
+        raise ValueError("表情包背景参数无效")
+    color = raw_background.get("color")
+    opacity = raw_background.get("opacity")
+    if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+        raise ValueError("表情包背景颜色无效")
+    if type(opacity) not in (int, float) or isinstance(opacity, bool) or not 0 < opacity <= 1:
+        raise ValueError("表情包背景不透明度无效")
+    return {"color": color.lower(), "opacity": float(opacity)}
+
+
 def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[dict]:
     """Parse and validate sticker overlay entries of one burn-video request.
 
     接受两种载荷： placements 列表（老格式，等同 fixed 模式），或
-    ``{"mode": "fixed"|"cue-left", "placements": [...]}`` 对象。每项 placement
-    ``{rel, x, y, width, height, intervals:[{start,end}], align?}``：几何是前端
-    按视频分辨率与排版计划换算好的像素目标框，服务端读取图片尺寸做 contain
-    适配——对齐取 placement 自己的 ``align``（cue-left 贴字幕段为 ``right``、
-    回退段为 ``center``），缺省按 mode 推断。方案二下同一 ``rel`` 会有多个
-    placement（每句一个），FFmpeg 输入按 ``rel`` 去重，overlay 节点经 split
-    复用同一输入。
+    ``{"mode": "fixed"|"cue-left", "placements": [...], "background"?}`` 对象。
+    每项 placement ``{rel, x, y, width, height, intervals:[{start,end}], align?}``：
+    几何是前端按视频分辨率与排版计划换算好的像素目标框，服务端读取图片尺寸做
+    contain 适配——对齐取 placement 自己的 ``align``（cue-left 贴字幕段为
+    ``right``、回退段为 ``center``），缺省按 mode 推断。方案二下同一 ``rel``
+    会有多个 placement（每句一个），FFmpeg 输入按 ``rel`` 去重，overlay 节点
+    经 split 复用同一输入。可选 ``background``（``_parse_burn_sticker_background``）
+    校验后挂到每个 placement，滤镜链据此画自定义底衬。
     """
     if raw_stickers is None:
         return []
@@ -797,6 +824,9 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
         raise ValueError("表情包烧录参数无效")
     if not raw_placements:
         return []
+    # 只有对象载荷带 background；裸列表（老格式）没有该字段，保持无底衬。
+    background = _parse_burn_sticker_background(
+        raw_stickers.get("background") if isinstance(raw_stickers, dict) else None)
     if len(raw_placements) > MAX_BURN_STICKER_PLACEMENTS:
         raise ValueError(f"表情包烧录条目超过上限（{MAX_BURN_STICKER_PLACEMENTS} 条）")
     if root is None:
@@ -851,7 +881,8 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
             image_size = None
         placed = _fit_contain_box(
             {"x": box[0], "y": box[1], "width": box[2], "height": box[3]}, image_size, item_align)
-        placements.append({"rel": rel, "path": path, **placed, "intervals": intervals})
+        placements.append({"rel": rel, "path": path, **placed, "intervals": intervals,
+                           **({"background": background} if background else {})})
     for placement in placements:
         placement["intervals"].sort()
     # 唯一图片数上限按实际参与烧录的条目统计（区间全空被跳过的条目不计）。
@@ -861,6 +892,12 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
     return placements
 
 
+def _burn_sticker_background_args(background: dict | None) -> str:
+    """Format one drawbox color/alpha pair for the custom sticker background."""
+    alpha = format(Decimal(str(background["opacity"])), "f")
+    return f"0x{background['color'][1:]}@{alpha}"
+
+
 def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[str]:
     """Overlay sticker inputs between the video entry and the ass filter.
 
@@ -868,7 +905,9 @@ def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[st
     overlay 的 W/H 表达式：表达式坐标在 -stream_loop 输入下会被静默丢弃
     （FFmpeg 实测行为），纯数字坐标可靠。同一图片的多个 placement（方案二
     逐句贴放）经 split 复用一个输入，每个 placement 一个 scale + overlay
-    节点；enable 取各自的显示区间。
+    节点；enable 取各自的显示区间。placement 自带可选 ``background`` 底衬：
+    overlay 前对主画面画同矩形 drawbox（t=fill），enable 相同——底衬只盖
+    图片 contain 后的实际矩形，贴纸透明区域透出底衬颜色。
     """
     input_index: dict[str, int] = {}
     unique: list[str] = []
@@ -905,6 +944,16 @@ def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[st
                           for start, end in sticker["intervals"])
         # shortest=1：主视频 EOF 即终止输出；所有表情包输入都已被无限化，
         # 主视频恒为最短输入，缺省 shortest=0 会让 FFmpeg 永不退出。
+        background = sticker.get("background")
+        if background is not None:
+            # drawbox 支持时间线 enable：底衬与贴纸共用同一显示区间，矩形用
+            # 与 overlay 相同的 contain 显示矩形（贴纸透明区域透出底衬）。
+            lines.append(
+                f"{previous}drawbox=x={sticker['x']}:y={sticker['y']}"
+                f":w={sticker['width']}:h={sticker['height']}"
+                f":color={_burn_sticker_background_args(background)}:t=fill"
+                f":enable='{enable}'[burn_bg{placement_index}]")
+            previous = f"[burn_bg{placement_index}]"
         lines.append(f"{previous}{image_label}overlay="
                      f"x={sticker['x']}:y={sticker['y']}"
                      f":enable='{enable}':shortest=1{output_label}")
@@ -1357,12 +1406,11 @@ def load_project(
     if not json_path.exists():
         raise FileNotFoundError(f"JSON 文件不存在 - {json_path}")
     raw_data = json.loads(json_path.read_text(encoding="utf-8"))
-    # 兜底：上游（或旧版工具）可能写入 0 长/倒挂的段、词时间码，
-    # 加载时先拉齐到至少 100ms，避免编辑器里出现看不见的字幕块、保存被校验拒绝。
-    repaired_count = repair_project_timing_ranges(raw_data)
-    if repaired_count:
-        print(f"[project] 已兜底修复 {repaired_count} 处异常时间码（保底 100ms）")
-    data = normalize_project(raw_data)
+    imported = prepare_project(raw_data)
+    if imported.validation.project is None:
+        raise ProjectValidationFailed(imported.validation.errors)
+    data = imported.validation.project
+    source_schema = raw_data.get("schema", "moy.asr.project.v1")
     payload_audio_track = audio_track_from_payloads(
         data.get("waveform"),
         data.get("spectral"),
@@ -1402,6 +1450,8 @@ def load_project(
             reapeaks_path=None,
             audio_track=audio_track,
             default_audio_track=default_audio_track,
+            import_changes=imported.changes,
+            source_schema=source_schema,
         )
 
     resolution = resolve_project_media(json_path, data, explicit_media)
@@ -1526,6 +1576,8 @@ def load_project(
         reapeaks_path=reapeaks_base,
         audio_track=audio_track,
         default_audio_track=default_audio_track,
+        import_changes=imported.changes,
+        source_schema=source_schema,
     )
 
 
@@ -1534,7 +1586,7 @@ def load_blank_project(stickers_dir: str | None) -> ServerProject:
     sticker_root = Path(source).resolve() if source else None
     root_text, stickers = edit.scan_stickers(sticker_root) if sticker_root else ("", [])
     return ServerProject(
-        {"segments": [], "media": "", "language": "", "model": ""},
+        make_project([], main_fields={"language": "", "model": ""}, project_fields={"media": ""}),
         None,
         None,
         Path(root_text) if root_text else None,
@@ -1691,6 +1743,8 @@ def build_server_page(
             "startupProgress": startup_status.get("progress", 100),
             "startupError": startup_status.get("error", ""),
             "canSave": project.json_path is not None,
+            "projectImportChanges": list(project.import_changes),
+            "requiresMigrationSaveAs": project.source_schema != PROJECT_SCHEMA,
             "canPortableStickerExport": project.json_path is not None,
             "canOtozStickerExport": project.json_path is not None,
             "canOtozTimelineExport": project.json_path is not None,
@@ -1704,6 +1758,7 @@ def build_server_page(
             "settingsUrl": "/api/settings",
             "recentProjects": [item.to_json() for item in settings.recent_projects],
             "assStylesUrl": "/api/ass-styles",
+            "textProcessingPresetsUrl": "/api/text-processing-presets",
             "assFrameUrl": "/api/ass-frame",
             "assFontAliasesUrl": "/api/ass-font-aliases",
             "autoOpenLastProject": settings.auto_open_last_project,
@@ -1736,8 +1791,8 @@ def _attach_segments_match(server_project: dict, browser_project: dict) -> bool:
     Frame-mode projects keep their frame fields significant and are compared as
     supplied.
     """
-    server_segments = copy.deepcopy(server_project.get("segments"))
-    browser_segments = copy.deepcopy(browser_project.get("segments"))
+    server_segments = copy.deepcopy(get_main_track(server_project)["segments"])
+    browser_segments = copy.deepcopy(get_main_track(browser_project)["segments"])
     if not isinstance(server_segments, list) or not isinstance(browser_segments, list):
         return server_segments == browser_segments
 
@@ -1857,6 +1912,7 @@ class EditorServer(ThreadingHTTPServer):
         return {
             "bindingGeneration": self.binding_generation,
             "sourceMediaId": self.source_media_id,
+            "requiresMigrationSaveAs": self.project.source_schema != PROJECT_SCHEMA,
             "thumbnailBinding": f"{self.binding_generation}:{self.source_media_id}",
             # A valid persisted base cache means the Launcher stage ran with
             # thumbnails enabled; without one the editor keeps its display
@@ -2319,9 +2375,8 @@ class EditorServer(ThreadingHTTPServer):
 
         # 防止同目录同名旧文件掉包：段落内容与浏览器打开的副本一致才接管。
         browser_data = copy.deepcopy(browser_project)
-        repair_project_timing_ranges(browser_data)
         try:
-            normalized_browser = normalize_project(browser_data)
+            normalized_browser = import_project(browser_data)
         except ProjectValidationFailed as error:
             raise AttachProjectError(f"打开的工程内容无效：{error}") from error
         project = load_project(
@@ -2377,30 +2432,36 @@ class EditorServer(ThreadingHTTPServer):
         if backup_only and (backup_limit is None or filename is not None):
             raise SaveProjectError("备份必须使用当前绑定工程与有效的版本数")
         try:
-            repaired_project = copy.deepcopy(project_data)
-            # 保存时只自动修复字/词级取整冲突；真正的字幕段重叠仍交给严格校验，
-            # 避免把用户有意或误操作造成的段落重叠静默改写。
-            repair_project_timing_ranges(repaired_project, repair_segment_ranges=False)
-            normalized_project = normalize_project(repaired_project)
+            normalized_project = normalize_project(project_data)
         except ProjectValidationFailed as error:
             raise SaveProjectError(str(error)) from error
 
         target = self.project.json_path
         if filename is not None:
             target = safe_project_filename(target.parent, filename)
+        requires_migration = self.project.source_schema != PROJECT_SCHEMA
+        if requires_migration:
+            if filename is None or target.resolve() == self.project.json_path.resolve() or backup_only:
+                raise SaveProjectError("旧格式工程需要另存为新的 v2 工程文件，原文件不会被覆盖")
+            if target.exists():
+                raise SaveProjectError("迁移目标已存在，请选择新的文件名")
         normalized_project = rebase_project_media(
             normalized_project, target, source_project_path=self.project.json_path,
         )
         if backup_only:
             return target, write_backup(target, normalized_project, backup_limit)
-        backup = write_project_json(target, normalized_project)
+        try:
+            backup = write_project_json(target, normalized_project, exclusive=requires_migration)
+        except FileExistsError as error:
+            raise SaveProjectError("迁移目标已存在，请选择新的文件名") from error
         if backup_limit is not None:
             backup = write_backup(target, normalized_project, backup_limit)
         # 磁盘副本已剥离；运行态不能跟着丢缓存，否则保存→刷新后原生
         # 波形被清空、被 /api/waveform 的 REAPER 峰静默顶替。同一媒体、
         # 同一音轨时把运行态缓存合并回新工程，媒体/音轨变化则失效。
         _restore_runtime_inline_caches(self.project.data, normalized_project)
-        saved_project = replace(self.project, data=normalized_project, json_path=target)
+        saved_project = replace(self.project, data=normalized_project, json_path=target,
+                                import_changes=(), source_schema=PROJECT_SCHEMA)
         if target != self.project.json_path:
             self._bind_project_locked(saved_project)
         else:
@@ -2868,12 +2929,13 @@ def remember_project_media(target: Path, media_reference: str) -> None:
         if original.get("media") == media_reference:
             return
         original["media"] = media_reference
-        write_project_json(target, original, strip_caches=False)
+        write_project_json(target, original, strip_caches=False, preserve_format=True)
     except (OSError, ValueError) as error:
         raise ValueError(f"已找到媒体，但无法记住关联；原工程未更新，请检查写入权限后重试：{error}") from error
 
 
-def write_project_json(target: Path, project_data: dict, *, strip_caches: bool = True) -> Path | None:
+def write_project_json(target: Path, project_data: dict, *, strip_caches: bool = True, preserve_format: bool = False,
+                       exclusive: bool = False) -> Path | None:
     """Atomically write LF JSON and retain the immediately previous file as .bak.
 
     落盘前剥掉内联波形缓存：磁盘工程的波形真源在媒体旁的 ``.quapeaks`` /
@@ -2881,17 +2943,33 @@ def write_project_json(target: Path, project_data: dict, *, strip_caches: bool =
     ``strip_inline_caches`` 返回副本，调用方持有的运行态工程不受影响，
     页面波形不消失。
     """
+    if preserve_format:
+        imported = prepare_project(project_data)
+        if imported.validation.project is None:
+            raise ProjectValidationFailed(imported.validation.errors)
+        validated = imported.validation.project
+    else:
+        validated = normalize_project(project_data)
+    portable = rebase_project_media(project_data if preserve_format else validated, target)
+    content = json.dumps(strip_inline_caches(portable) if strip_caches else portable, ensure_ascii=False, indent=2) + "\n"
     target.parent.mkdir(parents=True, exist_ok=True)
-    backup = target.with_suffix(f"{target.suffix}.bak") if target.exists() else None
+    backup = target.with_suffix(f"{target.suffix}.bak") if not exclusive and target.exists() else None
     if backup:
         backup.write_bytes(target.read_bytes())
     fd, temp_name = tempfile.mkstemp(prefix=f".{target.stem}.", suffix=".tmp", dir=target.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
-            portable = rebase_project_media(project_data, target)
-            json.dump(strip_inline_caches(portable) if strip_caches else portable, output, ensure_ascii=False, indent=2)
-            output.write("\n")
-        os.replace(temp_name, target)
+            output.write(content)
+        if exclusive:
+            # Windows rename refuses an existing destination; POSIX rename
+            # would replace it, so publish through an exclusive hard link.
+            if os.name == "nt":
+                os.rename(temp_name, target)
+            else:
+                os.link(temp_name, target)
+                os.unlink(temp_name)
+        else:
+            os.replace(temp_name, target)
     except Exception:
         # 保留未完成的临时文件以便排障；不要静默删除用户可恢复的文件。
         raise
@@ -2984,6 +3062,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.list_ai_models()
         elif path == "/api/ass-styles":
             self.update_ass_styles()
+        elif path == "/api/text-processing-presets":
+            self.update_text_processing_presets()
         elif path == "/api/ass-frame":
             self.render_ass_frame()
         elif path == "/api/audio/loudness":
@@ -3918,6 +3998,22 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_json(HTTPStatus.OK, library)
 
+    def update_text_processing_presets(self) -> None:
+        try:
+            request = self.read_json_request(max_bytes=1024 * 1024 + 8192)
+            self._check_request_token(request)
+            library = save_text_presets(request)
+        except ProcessingConflict as error:
+            self.send_json(HTTPStatus.CONFLICT, {"current": error.current})
+            return
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, library)
+
     def render_ass_frame(self) -> None:
         """Render the current project's media at one timestamp with libass.
 
@@ -4085,6 +4181,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/ai/tasks":
             self.send_json(HTTPStatus.OK, self.editor_server.ai_tasks.snapshot())
+        if path == "/api/text-processing-presets":
+            try:
+                self.send_json(HTTPStatus.OK, load_text_presets())
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
         if path == "/api/ass-font-aliases":
             self.send_json(HTTPStatus.OK, font_alias_payload())

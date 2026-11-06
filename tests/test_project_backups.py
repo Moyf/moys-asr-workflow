@@ -6,9 +6,11 @@ from unittest.mock import patch
 from datetime import datetime
 
 from maw.project_backups import backup_directory, backup_directory_candidates, write_backup
+from maw.project_tracks import get_main_track
+from tests.compact_assertions import CompactContainerAssertions
 
 
-class BackupTests(unittest.TestCase):
+class BackupTests(CompactContainerAssertions, unittest.TestCase):
     def test_locations(self):
         with patch('maw.project_backups.resolve_lang', return_value='zh'):
             self.assertEqual(backup_directory(Path('folder/a.mosp')), Path('folder/_maw/备份'))
@@ -33,7 +35,9 @@ class BackupTests(unittest.TestCase):
             self.assertEqual(first.name, 'project-2026-06-26_165903.mosp-bak')
             self.assertTrue(second.exists())
             self.assertTrue(other.exists())
-            self.assertEqual(json.loads(third.read_text(encoding='utf-8'))['language'], 'zh')
+            saved = json.loads(third.read_text(encoding='utf-8'))
+            self.assertEqual(get_main_track(saved)['language'], 'zh')
+            self.assertNotIn('segments', saved)
             self.assertNotIn(b'\r', third.read_bytes())
             self.assertFalse(project.exists())
 

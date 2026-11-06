@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 
@@ -109,15 +109,15 @@ test('video filmstrip respects tail width, cross-row seek, frame snapping and ex
   expect(tail.width/tail.total).toBeCloseTo(tail.span/tail.duration,2);
   await page.evaluate(()=>{const wave=MaweCoreState.waveformEditor;wave.scroll.scrollTop=0;wave.renderMultiVisible();});
   const cue=page.locator('.waveform-cue-block[data-idx="0"]').first();await cue.click({position:{x:30,y:18}});await expect(cue).toHaveClass(/selected/);
-  const before=await page.evaluate(()=>MaweBoot.DATA.segments[0].start), box=await cue.boundingBox();
+  const before=await page.evaluate(()=>AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start), box=await cue.boundingBox();
   await page.mouse.move(box.x+40,box.y+18);await page.mouse.down();await page.mouse.move(box.x+65,box.y+18,{steps:5});await page.mouse.up();
-  expect(await page.evaluate(()=>MaweBoot.DATA.segments[0].start)).toBeGreaterThan(before);
+  expect(await page.evaluate(()=>AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].start)).toBeGreaterThan(before);
   await page.keyboard.press('ControlOrMeta+z');
   const quick=page.locator('#word-timing-quick-toggle');if(await quick.getAttribute('aria-pressed')!=='true')await quick.click();
   const word=page.locator('.waveform-word-block[data-segment-idx="0"][data-item-idx="0"]').first();await expect(word).toBeVisible();
-  const wordBox=await word.boundingBox(),wordBefore=await page.evaluate(()=>MaweBoot.DATA.segments[0].items[0].start);
+  const wordBox=await word.boundingBox(),wordBefore=await page.evaluate(()=>AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items[0].start);
   await page.mouse.move(wordBox.x+15,wordBox.y+15);await page.mouse.down();await page.mouse.move(wordBox.x+35,wordBox.y+15,{steps:4});await page.mouse.up();
-  expect(await page.evaluate(()=>MaweBoot.DATA.segments[0].items[0].start)).toBeGreaterThan(wordBefore);
+  expect(await page.evaluate(()=>AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items[0].start)).toBeGreaterThan(wordBefore);
   const mark=page.locator('.waveform-marker-item[data-marker-id="scene-mark"]').first();await expect(mark).toBeVisible();await mark.dblclick();
   const name=page.locator('.waveform-marker-quick-edit input[type="text"]').first();await name.fill('Updated scene');await name.press('Tab');
   expect(await page.evaluate(()=>MaweBoot.DATA.markers.find(marker=>marker.id==='scene-mark').name)).toBe('Updated scene');
@@ -125,4 +125,53 @@ test('video filmstrip respects tail width, cross-row seek, frame snapping and ex
   await page.evaluate(()=>MaweCoreState.waveformEditor.setRowHeight(64));
   expect(await page.locator('.waveform-row').first().evaluate(row=>row.getBoundingClientRect().height)).toBe(64);
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-real-interactions.png'});
+});
+
+test('video preview preferences stay outside project checkpoints while v1.5 groups and FPS survive save and reopen',async({page})=>{
+  const {requests}=await opened(page);
+  const dirty=()=>page.evaluate(()=>MaweState.hasProjectChanges());
+  expect(await dirty()).toBe(false);
+  const snapshot=await page.evaluate(()=>MaweJsonRepair.buildJson());
+  await page.evaluate(()=>{
+    const controller=MaweCoreState.waveformEditor.thumbnailController;
+    controller.setDecodeEnabled(false);
+    MaweCoreState.waveformEditor.render();
+  });
+  await expect.poll(()=>requests.some(request=>request.url.endsWith('/demand')&&request.body.decode===false)).toBe(true);
+  for(const mode of ['marks','hidden','strip']){
+    await page.evaluate(mode=>{
+      MaweCoreState.waveformEditor.thumbnailController.setMode(mode);
+      MaweCoreState.waveformEditor.render();
+    },mode);
+    expect(await dirty()).toBe(false);
+    expect(await page.evaluate(()=>MaweJsonRepair.buildJson())).toBe(snapshot);
+  }
+  await page.evaluate(()=>MaweCommands.run('group and FPS edit',()=>{
+    MaweBoot.DATA.timebase.fps_source='user';
+    MaweTimeline.timelineFpsManuallySet=true;
+    MaweBoot.DATA.subtitle_groups={color:[{id:'preview-color',value:{name:'blue'}}],sticker:[]};
+    MaweBoot.DATA.segments[0].color_group_id='preview-color';
+    MaweBoot.DATA.segments[0].text='Saved with video preview';
+    MaweBoot.DATA.segments[0].items=[];
+    MaweBoot.DATA.segments[0]._dirty=true;
+  }));
+  expect(await dirty()).toBe(true);
+  expect(await page.evaluate(()=>MaweProjectSave.saveCurrentProject())).toBe(true);
+  expect(await dirty()).toBe(false);
+  const saved=JSON.parse(readFileSync(project,'utf8'));
+  expect(saved.schema).toBe('moy.asr.project.v1.5');
+  expect(saved.timebase.fps_source).toBe('user');
+  expect(saved.subtitle_groups.color[0].id).toBe('preview-color');
+  expect(saved.segments[0].color_group_id).toBe('preview-color');
+  expect(saved.segments[0].text).toBe('Saved with video preview');
+  expect(saved.segments[0]._dirty).toBeUndefined();
+  for(const key of ['waveform','spectral','waveform_reapeaks','loudness'])expect(saved[key]).toBeUndefined();
+  await page.reload();
+  await page.waitForFunction(()=>MaweCoreState.waveformEditor?.thumbnailController?.bytes>0);
+  expect(await dirty()).toBe(false);
+  expect(await page.evaluate(()=>({source:MaweBoot.DATA.timebase.fps_source,
+    group:MaweBoot.DATA.segments[0].color_group_id,
+    mode:MaweCoreState.waveformEditor.thumbnailController.mode,
+    decode:MaweCoreState.waveformEditor.thumbnailController.decodeEnabled})))
+    .toEqual({source:'user',group:'preview-color',mode:'strip',decode:false});
 });

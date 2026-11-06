@@ -11,12 +11,14 @@ export function createWaveformModule(dependencies) {
       this.thumbnailFadeSeen = new Map();
       this.thumbnailController = thumbnailCore.createController((layoutChanged, dirtyRanges = []) => {
         this.updateThumbnailStatus();
-        if (layoutChanged) {
+        const nextHeight = this.thumbnailHeight();
+        if (layoutChanged && nextHeight !== this.thumbnailLayoutHeight) {
           const oldStride = this.settings.rowHeight + this.thumbnailLayoutHeight + ROW_GAP;
           const anchorRow = this.scroll.scrollTop / Math.max(1, oldStride);
-          this.thumbnailLayoutHeight = this.thumbnailHeight();
+          this.thumbnailLayoutHeight = nextHeight;
           cancelAnimationFrame(this.resizeFrame);
           this.resizeFrame = requestAnimationFrame(() => {
+            this.resizeFrame = 0;
             this.render();
             if (this.isMultiMode()) {
               this.scroll.scrollTop = anchorRow * (this.getTimelineRowHeight() + ROW_GAP);
@@ -25,7 +27,7 @@ export function createWaveformModule(dependencies) {
           });
         } else this.renderedRows.forEach(row => {
           const start = Number(row.dataset.startMs), end = Number(row.dataset.endMs);
-          if (dirtyRanges.some(range => range.end_ms > start && range.start_ms < end)) this.drawThumbnails(row, true);
+          if (layoutChanged || dirtyRanges.some(range => range.end_ms > start && range.start_ms < end)) this.drawThumbnails(row, true);
         });
       });
       this.thumbnailPlayListener = () => {

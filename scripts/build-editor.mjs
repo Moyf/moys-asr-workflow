@@ -117,16 +117,57 @@ function validateModule(source, item) {
 function validateInitModule(source, item) {
   if (item.kind !== 'init') return;
   // The initializer body runs at this file's manifest position. Imported
-  // modules follow normal ESM evaluation and should keep top-level work declarative.
+  // modules follow normal ESM evaluation and should keep top-level work
+  // declarative. Other modules may import the functions this module exports, so
+  // additional named exports are allowed as long as they are plain hoisted
+  // function declarations (no module-evaluation side effects).
   const ast = parse(source,'module');
   const imports = ast.body.filter(node => node.type === 'ImportDeclaration');
   const exports = ast.body.filter(node => node.type === 'ExportNamedDeclaration');
-  const initializer = exports[0]?.declaration;
-  if (imports.length + exports.length !== ast.body.length || exports.length !== 1
+  const initializer = exports.map(node => node.declaration)
+    .find(node => node?.type === 'FunctionDeclaration' && node.id?.name === item.exportName);
+  const extraExports = exports.filter(node => node.declaration !== initializer);
+  const extraIsPure = extraExports.every(node => node.declaration?.type === 'FunctionDeclaration'
+      && !node.declaration.async && !node.declaration.generator);
+  // Allow declarative top-level consts. This is a syntactic guard, not a proof
+  // of purity: identifiers, coercion and imported modules can still run code.
+  const inert = (node) => {
+    if (node.type === 'Literal' || node.type === 'RegExpLiteral' || node.type === 'Identifier') return true;
+    if (node.type === 'TemplateLiteral') return node.expressions.every(inert);
+    if (node.type === 'UnaryExpression') return ['-', '+', '!', 'typeof'].includes(node.operator) && inert(node.argument);
+    if (node.type === 'ArrayExpression') return (node.elements ?? []).every(el => el && inert(el));
+    if (node.type === 'ObjectExpression') return node.properties.every(p => p.type === 'Property'
+        && (!p.computed || inert(p.key)) && inert(p.value));
+    if (node.type === 'BinaryExpression') return inert(node.left) && inert(node.right);
+    return false;
+  };
+  const constDecls = ast.body.filter(node => node.type === 'VariableDeclaration' && node.kind === 'const');
+  // Destructuring can evaluate computed keys and default expressions too.
+  const constsInert = constDecls.every(node => node.declarations.every(d =>
+    d.id.type === 'Identifier' && d.init && inert(d.init)));
+  if (imports.length + exports.length + constDecls.length !== ast.body.length || exports.length === 0
+      || !constsInert
       || initializer?.type !== 'FunctionDeclaration'
       || initializer.id?.name !== item.exportName
-      || initializer.async || initializer.generator) {
-    throw new Error(`Init module must export exactly one function: ${item.file}`);
+      || initializer.async || initializer.generator || !extraIsPure) {
+    throw new Error(`Init module must export ${item.exportName} plus optional pure function exports: ${item.file}`);
+  }
+}
+
+function validateTransitionModule(source, item) {
+  if (item.kind !== 'transition') return;
+  // Same shape as an init module: exactly one exported function
+  // declaration and imports only. The assembler binds the export
+  // lexically; evaluation must have no side effects.
+  const ast = parse(source,'module');
+  const imports = ast.body.filter(node => node.type === 'ImportDeclaration');
+  const exports = ast.body.filter(node => node.type === 'ExportNamedDeclaration');
+  const exported = exports[0]?.declaration;
+  if (imports.length + exports.length !== ast.body.length || exports.length !== 1
+      || exported?.type !== 'FunctionDeclaration'
+      || exported.id?.name !== item.exportName
+      || exported.async || exported.generator) {
+    throw new Error(`Transition module must export exactly one function: ${item.file}`);
   }
 }
 
@@ -154,13 +195,20 @@ export async function compileSources(root, files, modules, read, options = {}) {
         || !/^[A-Za-z_$][\w$]*$/.test(item.exportName) || typeof item.name !== 'string') {
       throw new Error(`Invalid/duplicate factory or omitted source in manifest: ${item.file}`);
     }
+    if (item.kind !== undefined && !['factory', 'init', 'transition'].includes(item.kind)) {
+      throw new Error(`Unknown module kind: ${item.kind}: ${item.file}`);
+    }
     byFile.set(item.file,item); names.add(item.name);
   }
   const sources = new Map(files.map(file => [file,read(file)]));
+  // Caller-owned set so a second compile in the same process cannot
+  // reuse this call's registration state.
+  options.transitionBindings?.clear?.();
   const imports = modules.map((item,index) =>
     `import { ${item.exportName} as factory${index} } from ${JSON.stringify('maw-factory:'+item.file)};`);
   for (const item of modules) {
     if (item.kind === 'init') validateInitModule(sources.get(item.file),item);
+    else if (item.kind === 'transition') validateTransitionModule(sources.get(item.file),item);
     else validateModule(sources.get(item.file),item);
   }
   // Keep lexical declarations INSIDE this function: esbuild otherwise lowers
@@ -181,6 +229,26 @@ export async function compileSources(root, files, modules, read, options = {}) {
     if (item?.kind === 'init') {
       const index = modules.indexOf(item);
       body.push(`// Init module: ${file}\nfactory${index}();`);
+    } else if (item?.kind === 'transition') {
+      // Launcher transitional mechanism: the compiled module replaces the
+      // file's slot; its single export becomes a lexical binding the
+      // remaining classic scope reads by name at the original position.
+      if (!options.transitionBindings || !/^[A-Za-z_$][\w$]*$/.test(item.binding ?? '')) {
+        // transitionBindings 缺失说明装配方未启用过渡接入，而不是绑定名非法。
+        throw new Error(`Invalid transition binding${options.transitionBindings ? '' : ' (transition support not enabled by this builder)'}: ${item.binding}`);
+      }
+      if (options.transitionBindings.has(item.binding)) {
+        throw new Error(`Duplicate transition binding: ${item.binding}`);
+      }
+      if (names.has(item.binding)) {
+        throw new Error(`Transition binding collides with a module name: ${item.binding}`);
+      }
+      if (options.bridges?.some(bridge => bridge.name === item.binding)) {
+        // 不可变桥的 window getter 会静默捕获同名词法绑定，运行期才暴露。
+        throw new Error(`Transition binding collides with an external bridge: ${item.binding}`);
+      }
+      options.transitionBindings.add(item.binding);
+      body.push(`// Transition module: ${file}\nconst ${item.binding} = factory${modules.indexOf(item)};`);
     } else if (item) body.push(`window.MAWE.register(${JSON.stringify(item.name)}, factory${modules.indexOf(item)});`);
     else {
       try { parse(sources.get(file),'script'); }

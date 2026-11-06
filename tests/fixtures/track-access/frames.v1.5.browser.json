@@ -1,0 +1,92 @@
+{
+  "schema": "moy.asr.project.v1.5",
+  "metadata": {
+    "fixture": true
+  },
+  "subtitle_groups": {
+    "color": [],
+    "sticker": []
+  },
+  "media": "",
+  "audio_processing": {
+    "gain_db": 0,
+    "target_lufs": -14,
+    "peak_ceiling_dbtp": -1
+  },
+  "language": "zh",
+  "model": "fixture",
+  "sticker_root": "",
+  "timebase": {
+    "unit": "frames",
+    "fps": 29.97
+  },
+  "segments": [
+    {
+      "id": "frame-main",
+      "start": 1001,
+      "end": 2002,
+      "text": "帧模式",
+      "start_frame": 30,
+      "end_frame": 60,
+      "items": [
+        {
+          "start": 1001,
+          "end": 2002,
+          "text": "帧模式",
+          "start_frame": 30,
+          "end_frame": 60
+        }
+      ]
+    }
+  ],
+  "preserve_punctuation": true,
+  "multi_subtitle": {
+    "schema": "moy.asr.multi_subtitle.v1",
+    "enabled": true,
+    "display_mode": "both",
+    "main_split_mode": "continuous",
+    "tracks": [
+      {
+        "id": "translation",
+        "role": "extension",
+        "name": "English",
+        "language": "en",
+        "split_mode": "word",
+        "source_name": "translation.srt",
+        "segments": [
+          {
+            "id": "frame-secondary",
+            "start": 1001,
+            "end": 2002,
+            "text": "Frames",
+            "start_frame": 30,
+            "end_frame": 60
+          }
+        ]
+      }
+    ],
+    "bindings": []
+  },
+  "overlay_track": {
+    "enabled": true,
+    "segments": [
+      {
+        "id": "frame-overlay",
+        "start": 1001,
+        "end": 2002,
+        "text": "帧叠加",
+        "start_frame": 30,
+        "end_frame": 60,
+        "items": []
+      }
+    ]
+  },
+  "preview": {
+    "ass_mode": false,
+    "sticker": {},
+    "subtitle": {
+      "speaker_labels": {}
+    },
+    "extension_subtitle": {}
+  }
+}

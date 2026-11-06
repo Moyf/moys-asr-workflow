@@ -15,6 +15,18 @@ export function createWaveformModule(dependencies) {
   }
 
 
+  // 字词码分层判定真源（appendCueBlocks / appendWordBlocks /
+  // appendSharedBoundaryZones 与 drawWordChips 门共用，禁止再内联重复条件）：
+  // 单行波形始终上下等高分层——双语只增补底部译文格，不改变叠加轨与字词
+  // 显示布局（叠加块保持 50% 线、条带与气泡照画）；多行波形仅非双语行且
+  // 行高 ≥96 时分层，其余沿用紧凑叠加布局。
+  function wordTimingFullLane(wordTimingEnabled, mode, rowHeight, multiLane) {
+    if (!wordTimingEnabled) return false;
+    if (mode === 'basic') return true;
+    return mode === 'multi' && multiLane !== true && (Number(rowHeight) || 0) >= 96;
+  }
+
+
   function waveformTopEdgeMs(state) {
     if (state?.mode === 'basic') return Math.max(0, Math.round(Number(state.basicWindowStartMs) || 0));
     const scrollTop = Math.max(0, Number(state?.scrollTop) || 0);
@@ -45,9 +57,15 @@ export function createWaveformModule(dependencies) {
       // 再扫描整个字幕数组，长工程或多行缓存下可从 O(N²) 降到 O(N)。
       const membersByHead = new Map();
       segments.forEach((seg, headIdx) => {
-        if (seg[headField]) membersByHead.set(headIdx, [headIdx]);
+        const groupId = seg[`${type}_group_id`];
+        if (groupId) {
+          const key = `group:${groupId}`;
+          if (!membersByHead.has(key)) membersByHead.set(key, []);
+          membersByHead.get(key).push(headIdx);
+        } else if (seg[headField]) membersByHead.set(headIdx, [headIdx]);
       });
       segments.forEach((seg, idx) => {
+        if (seg[`${type}_group_id`]) return;
         const headIdx = seg[refField]?.headIdx;
         const members = membersByHead.get(headIdx);
         if (members && headIdx !== idx) members.push(idx);
@@ -154,5 +172,5 @@ export function createWaveformModule(dependencies) {
     }
   }
 
-  return Object.freeze({ computeGroupBadges, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, isActiveCueVisualHit, isMultiRowInComfortZone, restoreWaveformTopEdgeMs, syncSpectralColorToggle, waveformTopEdgeMs });
+  return Object.freeze({ computeGroupBadges, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, isActiveCueVisualHit, isMultiRowInComfortZone, restoreWaveformTopEdgeMs, syncSpectralColorToggle, waveformTopEdgeMs, wordTimingFullLane });
 }

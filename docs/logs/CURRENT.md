@@ -17,3 +17,5 @@
 | MAW20 Gap 实现与局部 AI 移除 | PR-A 至 PR-D / 独立审查任务基线 | [Gap 来源与可重建规范](../INDEX.md#engineering-gap)、[编辑器指南](../INDEX.md#user-editor) | [PR-A](unversioned/2026-10-11/maw20-gap/MAW20_GAP_A.md)、[PR-B](unversioned/2026-10-11/maw20-gap/MAW20_GAP_B.md)、[PR-C](unversioned/2026-10-11/maw20-gap/MAW20_GAP_C.md)、[PR-D](unversioned/2026-10-11/maw20-gap/MAW20_GAP_D.md)、[独立审查](unversioned/2026-10-11/maw20-gap/MAW20_GAP_Q.md) | 这些日志记录各自基线和测试边界，不代替当前代码核验；PR-D 的真实模型样片未提供，合成协议验证不构成真实供应商验收。 |
 
 PR #231 定位与震动返工的当前证据见[反馈账本](release1.9.0-beta.1/ASS_POSITION_REWORK.md)；逐句只保存 X/Y，使用全局样式锚点，人工素材确认与自动化检查分别记录。
+
+- [媒体分层与可信报告](release1.10.0-beta.1/261023_媒体分层与可信报告/验证记录.md)：Q1 抽取和媒体真实边界；分组暂串行，新增 CI required 调用待远端运行。

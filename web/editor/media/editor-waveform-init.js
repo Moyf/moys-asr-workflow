@@ -1,3 +1,8 @@
+import { getOverlayTrack, overlayTrackVisible, convertMainCueToOverlayForDrag, convertOverlayCueToMainForDrag } from '../cues/overlay-track.js';
+
+export function initMaweWaveformInit() {
+'use strict';
+
 // 波形初始化：WaveformEditor 装配与 reapeaks 懒加载。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweWaveformInit 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -24,7 +29,7 @@
       ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
       : track === 'overlay'
         ? (overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [])
-        : MaweBoot.DATA.segments,
+        : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
     getExtensionSegments: (trackId = null) => MaweMultiSubtitleCore.getExtensionTrack(trackId)?.segments || [],
     getCrossTrackSnapTargets: (track = 'main', excludedSegments = new Set()) => {
       if (!MaweSettings.EDITOR_SETTINGS.crossTrackSnap) return [];
@@ -35,7 +40,7 @@
         .map((timeMs) => Number(timeMs));
       // 叠加轨与主轨互为吸附参照；多重字幕开启时副轨边界同样参与。
       if (track === 'overlay') {
-        const targets = collectEdges(MaweBoot.DATA.segments);
+        const targets = collectEdges(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
         if (MaweMultiSubtitleCore.multiSubtitleVisible()) targets.push(...collectEdges(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments));
         return targets;
       }
@@ -45,7 +50,7 @@
           : [];
       }
       const otherSegments = track === 'extension'
-        ? MaweBoot.DATA.segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
+        ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments : (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []);
       const targets = collectEdges(otherSegments);
       if (track === 'main' && overlayTrackVisible()) targets.push(...collectEdges(getOverlayTrack()?.segments));
       return targets;
@@ -71,26 +76,26 @@
       MaweCuePanel.focusCuePanelText(idx, 'extension');
     },
     selectOverlayCue: (idx) => {
-      selectOverlayCueRow(idx);
+      window.MaweCuePanelWiring.selectOverlayCueRow(idx);
       MaweState.selection.overlayAnchor = idx;
     },
-    toggleOverlaySelection: (idx) => toggleOverlaySelection(idx),
+    toggleOverlaySelection: (idx) => window.MaweCuePanelWiring.toggleOverlaySelection(idx),
     selectOverlayRange: (idx) => {
-      if (MaweState.selection.overlayAnchor >= 0) selectOverlayRange(MaweState.selection.overlayAnchor, idx);
-      else selectOverlayCueRow(idx);
+      if (MaweState.selection.overlayAnchor >= 0) window.MaweCuePanelWiring.selectOverlayRange(MaweState.selection.overlayAnchor, idx);
+      else window.MaweCuePanelWiring.selectOverlayCueRow(idx);
       MaweState.selection.overlayAnchor = idx;
     },
     activateOverlayCue: (idx) => {
       MaweCuePanel.setCuePanelTarget('overlay', idx);
     },
     enterOverlayCueEditor: (idx) => {
-      selectOverlayCueRow(idx, { focusEditor: true });
+      window.MaweCuePanelWiring.selectOverlayCueRow(idx, { focusEditor: true });
     },
     // Shift+拖动逃逸：主轨邻居挡路时把被拖字幕迁入叠加轨，返回新下标。
     convertCueToOverlay: (idx) => convertMainCueToOverlayForDrag(idx),
     // Shift+拖动往返：叠加轨字幕拖回主轨空隙时移回主轨，返回新下标。
     convertOverlayCueToMainDrag: (idx) => convertOverlayCueToMainForDrag(idx),
-    showOverlayContextMenu: (x, y, idx) => showOverlayContextMenu(x, y, idx),
+    showOverlayContextMenu: (x, y, idx) => window.MaweContextMenusWiring.showOverlayContextMenu(x, y, idx),
     selectCue: (idx) => {
       MaweBindingAlign.selectCueByClick(idx);
       MaweSelection.lastClickedIdx = idx;
@@ -133,7 +138,7 @@
       MaweTextCleanup.seekFromWaveform(timeSec, options);
       if (!options.dragPreview) MaweCueListAnchor.resumeCueListFollowing();
     },
-    isPlaybackActive: () => isPlaybackActive(),
+    isPlaybackActive: () => window.MaweKeyboardGuards.isPlaybackActive(),
     onPlayheadDragStateChange: (active) => {
       MawePlaybackLoop.waveformPlayheadDragging = active === true;
       if (!active) MaweCueListAnchor.resumeCueListFollowing();
@@ -180,7 +185,7 @@
     // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径；
     // 有可靠主轨字词时间码时沿用字词锚点，否则在弹窗中保留指针的绝对切点。
     splitCueAtTime: (idx, timeMs) => MaweSplitContext.splitFromContextMenu(idx, 0, 0, timeMs),
-    splitOverlayCueAtTime: (idx, timeMs) => openOverlaySplitModal(
+    splitOverlayCueAtTime: (idx, timeMs) => window.MaweOverlaySplitMerge.openOverlaySplitModal(
       idx, Number.isFinite(timeMs) ? MaweTimeline.timelineFrameAlignedMilliseconds(timeMs) : timeMs,
     ),
     getClickBehavior: () => MaweSettings.EDITOR_SETTINGS.clickBehavior,
@@ -211,7 +216,7 @@
       let linkedChanged = false;
       if (kind === 'resize-boundary-pointer' && track === 'main' && !independent) {
         const targetIndex = Number.isInteger(details?.targetIndex) ? details.targetIndex : idxs[0];
-        const main = MaweBoot.DATA.segments[targetIndex];
+        const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[targetIndex];
         const original = details?.original;
         if (main && original) {
           linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(main, {
@@ -228,7 +233,7 @@
       if (MaweMultiSubtitleCore.multiSubtitleVisible() && editedTracks.some((entry) => entry.track !== 'overlay')) MaweMultiSubtitleCore.sortExtensionTrackSegments(MaweMultiSubtitleCore.getActiveExtensionTrack());
       MaweMultiSubtitleCore.syncBindingOffsets();
       const mainIndices = editedTracks.find((entry) => entry.track === 'main')?.indices || [];
-      MaweMultiSubtitleCore.markMainSegmentsDirty(mainIndices.map((idx) => MaweBoot.DATA.segments[idx]).filter(Boolean));
+      MaweMultiSubtitleCore.markMainSegmentsDirty(mainIndices.map((idx) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx]).filter(Boolean));
       const overlayIndices = editedTracks.find((entry) => entry.track === 'overlay')?.indices;
       if (overlayIndices) {
         const overlay = getOverlayTrack();
@@ -338,3 +343,4 @@
     set deferredReapeaksEpoch(v) { deferredReapeaksEpoch = v; }
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

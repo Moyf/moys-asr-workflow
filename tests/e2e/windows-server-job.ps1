@@ -58,7 +58,7 @@ public static class MawServerJob {
         return text.Append('"').ToString();
     }
 
-    public static void Run(string command, string[] arguments) {
+    public static void Run(string command, string[] arguments, string[] environment) {
         IntPtr job = CreateJobObject(IntPtr.Zero, null);
         if (job == IntPtr.Zero) throw new Win32Exception();
         var limits = new ExtendedLimits();
@@ -77,6 +77,13 @@ public static class MawServerJob {
         var info = new ProcessStartInfo(command, args.ToString());
         info.UseShellExecute = false;
         info.RedirectStandardInput = true;
+        if (environment != null) {
+            info.EnvironmentVariables.Clear();
+            foreach (string entry in environment) {
+                int separator = entry.IndexOf('=');
+                info.EnvironmentVariables[entry.Substring(0, separator)] = entry.Substring(separator + 1);
+            }
+        }
         using (var child = Process.Start(info)) {
             child.StandardInput.Close();
             child.WaitForExit();
@@ -86,7 +93,10 @@ public static class MawServerJob {
     }
 }
 '@
-    [MawServerJob]::Run([string]$spec.command, [string[]]$spec.args)
+    $serverEnvironment = if ($null -ne $spec.environment) {
+        @($spec.environment.PSObject.Properties | ForEach-Object { "$($_.Name)=$($_.Value)" })
+    } else { $null }
+    [MawServerJob]::Run([string]$spec.command, [string[]]$spec.args, [string[]]$serverEnvironment)
 } catch {
     [Console]::Error.WriteLine($_.Exception.ToString())
     exit 1

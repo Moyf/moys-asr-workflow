@@ -1,0 +1,94 @@
+{
+  "schema": "moy.asr.project.v2",
+  "media": "../clip.mp4",
+  "tracks": [
+    {
+      "id": "main",
+      "role": "main",
+      "name": "主字幕",
+      "enabled": true,
+      "language": "zh",
+      "split_mode": "continuous",
+      "segments": [
+        {
+          "id": "cue-main",
+          "start": 1200,
+          "end": 2300,
+          "text": "你好",
+          "color_group_id": "color-1",
+          "items": [
+            {
+              "start": 1200,
+              "end": 2300,
+              "text": "你好"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "translation-en",
+      "role": "secondary",
+      "name": "英语",
+      "enabled": true,
+      "language": "en",
+      "split_mode": "word",
+      "segments": [
+        {
+          "id": "cue-en",
+          "start": 1250,
+          "end": 2350,
+          "text": "Hello",
+          "color_group_id": "color-1",
+          "speaker": "A",
+          "metadata": {
+            "confidence": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "overlay",
+      "role": "overlay",
+      "name": "叠加字幕",
+      "enabled": false,
+      "segments": []
+    }
+  ],
+  "bilingual": {
+    "display_mode": "both",
+    "active_track_id": "translation-en"
+  },
+  "bindings": [
+    {
+      "id": "binding-1",
+      "start_offset_ms": 50,
+      "end_offset_ms": 50,
+      "source": {
+        "track_id": "main",
+        "segment_id": "cue-main"
+      },
+      "target": {
+        "track_id": "translation-en",
+        "segment_id": "cue-en"
+      }
+    }
+  ],
+  "subtitle_groups": {
+    "next_id": 2,
+    "color": [
+      {
+        "id": "color-1",
+        "value": {
+          "name": "暖黄",
+          "custom": false
+        }
+      }
+    ],
+    "sticker": []
+  },
+  "custom_project": {
+    "empty": [],
+    "zero": 0
+  }
+}

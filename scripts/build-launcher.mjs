@@ -41,12 +41,13 @@ export async function buildLauncher(root = ROOT) {
   const configText = snapshot['web/'+CONFIG], config = JSON.parse(configText);
   const modules = config.modules ?? [];
   const inputHashes = {};
+  const transitionBindings = new Set();
   const result = await compileSources(root, files, modules, file => {
     const source = fs.readFileSync(path.join(root, 'web', file), 'utf8');
     snapshot['web/'+file] = source;
     inputHashes[file] = sha(source);
     return source;
-  }, { bridges: config.externalBridges ?? [], trace: true, onDependency: (relative, source) => {
+  }, { bridges: config.externalBridges ?? [], transitionBindings, trace: true, onDependency: (relative, source) => {
     const key = 'web/' + relative;
     if (Object.hasOwn(snapshot, key) && snapshot[key] !== source) {
       throw new Error(`Build input changed during compilation: ${key}; retry the build`);
@@ -61,6 +62,9 @@ export async function buildLauncher(root = ROOT) {
     esbuild: esbuild.version,
     sourceFiles: files,
     esmFactories: modules.length,
+    // Per-module assembly kinds (classic / factory / init / transition);
+    // staleness is covered by configHash, this ledger is for reviewers.
+    moduleKinds: modules.map(item => ({ file: item.file, kind: item.kind ?? 'factory', binding: item.binding ?? null })),
     inputs: inputHashes,
     configHash: sha(configText),
     // compileSources 来自 build-editor.mjs，它的变更同样要求重建产物。

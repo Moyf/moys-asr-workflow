@@ -2,6 +2,8 @@
 // historical API. ESM init module: the assembler calls this at the
 // file's original manifest position.
 import { createUtilsModule as createDataModule } from './utils/data.js';
+import { createUtilsModule as createProjectTracksModule } from './utils/project-tracks.js';
+import { createUtilsModule as createSubtitleGroupsModule } from './utils/subtitle-groups.js';
 import { createUtilsModule as createMarkersModule } from './utils/markers.js';
 import { createUtilsModule as createSplitAlignmentModule } from './utils/split-alignment.js';
 import { createUtilsModule as createSplitTrimModule } from './utils/split-trim.js';
@@ -40,11 +42,17 @@ import { createUtilsModule as createOgrafModule } from './utils/ograf.js';
 export function initEditorUtils() {
   'use strict';
 
+const trackHelpers = window.MAWE.resolve('project-tracks');
 const helpers = {
   gapRemoveCore: window.AsrGapRemoveCore,
   getNavigator: () => window.MaweHost.runtime.getNavigator(),
+  getProject: () => window.MaweBoot?.DATA,
 };
+const projectTracksHelpers = createProjectTracksModule(helpers);
+Object.assign(helpers, projectTracksHelpers);
 Object.assign(helpers, createDataModule(helpers));
+const subtitleGroupHelpers = createSubtitleGroupsModule(helpers);
+Object.assign(helpers, subtitleGroupHelpers);
 Object.assign(helpers, createFontsModule(helpers));
 Object.assign(helpers, createSpeakersModule(helpers));
 Object.assign(helpers, createMediaMetadataModule(helpers));
@@ -63,8 +71,10 @@ Object.assign(helpers, createSplitTrimModule(helpers));
 Object.assign(helpers, createTimelineModule(helpers));
 Object.assign(helpers, createSettingsModule(helpers));
 Object.assign(helpers, createGapRemoveModule(helpers));
-Object.assign(helpers, createHistoryModule(helpers));
-Object.assign(helpers, createMultiSubtitleModule(helpers));
+const historyHelpers = createHistoryModule(helpers);
+Object.assign(helpers, historyHelpers);
+const multiSubtitleHelpers = createMultiSubtitleModule(helpers);
+Object.assign(helpers, multiSubtitleHelpers);
 const wordTimingHelpers = createWordTimingModule(helpers);
 Object.assign(helpers, createWordSplitModule(helpers));
 Object.assign(helpers, createSrtModule(helpers));
@@ -141,6 +151,7 @@ const {
   applySubtitleExtension,
   applyTextProcessing,
   collectTextSearchMatches,
+  compileTextSearchPattern,
   expandTextSearchReplacement,
   replaceTextSearchMatch,
   replaceAllTextSearchMatches,
@@ -151,6 +162,7 @@ const {
   stripSentenceShakeMarkers,
   parseSentencePopMarkers,
   stripSentencePopMarkers,
+  reconcileTimedTextItems,
   applyTimedTextEdit,
   assAnimationOverrideTags,
   assAnimationSliceTags,
@@ -179,6 +191,7 @@ const {
   assProfileForId,
   assSentenceAnimationTags,
   assStyleForId,
+  assStyleSnapshotKey,
   assStyleLine,
   assStyleVariant,
   assTransformStyleTargets,
@@ -268,6 +281,7 @@ const {
   isMacPlatform,
   isPendingReviewMarker,
   isRegionMarker,
+  isAiCleanupRemovalMarker,
   isShortSubtitleText,
   isRangeInsideRemovedGap,
   isTimedTextNeutralToken,
@@ -391,6 +405,12 @@ const {
 } = helpers;
 
 window.AsrEditorUtils = {
+  cloneJsonValue: helpers.cloneJsonValue,
+  ...projectTracksHelpers,
+  ...multiSubtitleHelpers,
+  ...subtitleGroupHelpers,
+  ...historyHelpers,
+  ...trackHelpers,
 ...wordTimingHelpers,
   PROJECT_SCHEMA,
   supportsProjectSchema,
@@ -419,6 +439,7 @@ filterFontFamilyOptions,
   resolveKeyboardOperationReference,
   buildReplacementPreview,
   collectTextSearchMatches,
+  compileTextSearchPattern,
   expandTextSearchReplacement,
   replaceTextSearchMatch,
   replaceAllTextSearchMatches,
@@ -443,6 +464,7 @@ filterFontFamilyOptions,
   buildTimedTextEditReport,
   timedTextEditDirtyFlags,
   timedTextEditGutterNumbers,
+  reconcileTimedTextItems,
   applyTimedTextEdit,
   countTextUnits,
   countSubtitleUnits,
@@ -466,6 +488,7 @@ filterFontFamilyOptions,
   filterMarkers,
   isPendingReviewMarker,
   isRegionMarker,
+  isAiCleanupRemovalMarker,
   markerKind,
   markerMatchesFilter,
   markerPresetColorLabel,
@@ -620,6 +643,7 @@ filterFontFamilyOptions,
   defaultAssStyleLibrary,
   normalizeAssStyleLibrary,
   assStyleForId,
+  assStyleSnapshotKey,
   assProfileForId,
   assStyleVariant,
   assEmphasisRuns,

@@ -29,7 +29,7 @@
 
   // === 纯文本编辑（支持调整字幕行结构的 MVP） ===
   function timedTextEditSegments(kind) {
-    return kind === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [] : MaweBoot.DATA.segments;
+    return kind === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [] : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   }
 
 
@@ -389,9 +389,16 @@
 
 
   function timedTextEditCanUseSingleView() {
-    return Boolean(MaweDom.timedTextEditDraft?.sourceSegments.every((segment, index) => {
-      return !String(segment?.text || '').includes('\n');
-    }));
+    const draft = MaweDom.timedTextEditDraft;
+    if (!draft) return false;
+    // sourceSegments 只在 loadTimedTextEditTrack 重建 draft 时替换，与会话内的
+    // 文本草稿无关；结果恒定，读缓存避免每次击键全量扫描所有字幕行。
+    if (typeof draft.canUseSingleView !== 'boolean') {
+      draft.canUseSingleView = draft.sourceSegments.every(
+        (segment) => !String(segment?.text || '').includes('\n'),
+      );
+    }
+    return draft.canUseSingleView;
   }
 
 
@@ -791,10 +798,12 @@
   function updateTimedTextEditReport() {
     if (!MaweDom.timedTextEditDraft) return;
     const draftTexts = timedTextEditEffectiveTexts();
+    // 传入上一轮报告供逐行复用：draft.report 每轮整体替换，此刻仍是上一轮结果。
     const report = window.AsrEditorUtils.buildTimedTextEditReport(
       MaweDom.timedTextEditDraft.sourceSegments,
       draftTexts,
-      { rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule },
+      { reservedSegments: window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(track => track.segments), rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule },
+      MaweDom.timedTextEditDraft.report,
     );
     MaweDom.timedTextEditDraft.report = report;
     const { stats } = report;
@@ -864,8 +873,12 @@
     }
 
     const draftRowReports = timedTextEditDraftRowReports(report, draftTexts);
+    // renderTimedTextEditRows 按 index 顺序 append，行数与草稿不一致时整体重建
+    // （上方守卫），children 顺序即 data-index 顺序；逐行 querySelector 是
+    // O(N²)，数千行时每键卡顿的第二来源。
+    const rowElements = MaweDom.timedTextEditRows.children;
     draftRowReports.forEach((rowReport, index) => {
-      const rowElement = MaweDom.timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${index}"]`);
+      const rowElement = rowElements[index];
       if (!rowElement) return;
       rowElement.classList.toggle('changed', Boolean(rowReport?.changed));
       rowElement.classList.toggle('deleted', Boolean(rowReport?.deleted));
@@ -874,7 +887,7 @@
       if (rowReport) renderTimedTextEditRowDiff(rowElement, rowReport);
     });
     MaweDom.timedTextEditDraft.texts.forEach((_text, index) => {
-      const rowElement = MaweDom.timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${index}"]`);
+      const rowElement = rowElements[index];
       const coverage = rowElement?.querySelector('.timed-text-edit-coverage');
       const reuse = rowElement?.querySelector('.timed-text-edit-reuse');
       const rowReport = draftRowReports[index];
@@ -919,7 +932,7 @@
   function refreshTimedTextEditTrackOptions(kind = currentTimedTextEditKind()) {
     const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
     // 「已开启模式但尚未导入副轨」时没有第二条字幕可编辑，不显示轨道切换控件。
-    const multiSubtitleEnabled = multi.enabled === true && Boolean((multi.tracks || []).length);
+    const multiSubtitleEnabled = MaweMultiSubtitleCore.multiSubtitleVisible();
     if (MaweDom.timedTextEditTrackControl) MaweDom.timedTextEditTrackControl.hidden = !multiSubtitleEnabled;
     const extensionAvailable = multiSubtitleEnabled && Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length);
     const extensionOption = MaweDom.timedTextEditTrack.querySelector('option[value="extension"]');
@@ -950,6 +963,10 @@
       trimWhitespace: false,
       singleText: (sourceSegments || []).map((segment) => String(segment?.text || '')).join('\n'),
       singleLineError: '',
+      // sourceSegments 在面板会话内不变，单视图可用性只取决于它，这里算一次。
+      canUseSingleView: (sourceSegments || []).every(
+        (segment) => !String(segment?.text || '').includes('\n'),
+      ),
       report: null,
     };
     if (MaweDom.timedTextEditShowDisabledToggle) MaweDom.timedTextEditShowDisabledToggle.checked = Boolean(showDisabled);
@@ -964,7 +981,7 @@
 
   function refreshTimedTextEditButton() {
     if (!MaweDom.timedTextEditButton) return;
-    const hasMain = MaweBoot.DATA.segments.length > 0;
+    const hasMain = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0;
     const hasExtension = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length);
     MaweDom.timedTextEditButton.disabled = !hasMain && !hasExtension;
   }
@@ -1117,8 +1134,8 @@
       extensionTrack = MaweMultiSubtitleCore.multiSubtitleVisible() && removedIds.length ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
       if (extensionTrack) {
         (multi.bindings || []).forEach((binding) => {
-          if (!binding.main_segment_ids?.some((id) => removedIds.includes(id))) return;
-          (binding.extension_segment_ids || []).forEach((id) => {
+          if (!removedIds.includes(binding.source?.segment_id)) return;
+          (binding.target?.segment_id ? [binding.target.segment_id] : []).forEach((id) => {
             const index = extensionTrack.segments.findIndex((segment) => segment?.id === id);
             if (index >= 0) pairedExtensionIndices.add(index);
           });
@@ -1137,7 +1154,7 @@
         // 与删除字幕相同的分组语义：来源行离开后，颜色 / 表情包组在切点处拆开。
         MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
         MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
-        MaweBoot.DATA.segments.forEach((segment, index) => {
+        window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((segment, index) => {
           if (removeSet.has(index)) return;
           if (segment.sticker_ref && removeSet.has(segment.sticker_ref.headIdx)) {
             segment.sticker_ref = null;
@@ -1168,11 +1185,11 @@
         }
         if (shift) ref.headIdx -= shift;
       };
-      MaweBoot.DATA.segments.forEach((segment) => {
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((segment) => {
         if (segment.sticker_ref) shiftHeadIdx(segment.sticker_ref);
         if (segment.color_ref) shiftHeadIdx(segment.color_ref);
       });
-      window.AsrEditorUtils.repairGroupReferenceIndices(MaweBoot.DATA.segments);
+      window.AsrEditorUtils.repairGroupReferenceIndices(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
       if (extensionTrack && pairedExtensionIndices.size) {
         [...pairedExtensionIndices].sort((a, b) => b - a)
           .forEach((index) => extensionTrack.segments.splice(index, 1));
@@ -1211,7 +1228,7 @@
 
 
   function openTimedTextEdit() {
-    if (!MaweBoot.DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
+    if (!window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
       MaweHint.flashHint('当前没有可编辑的字幕', 'invalid');
       return;
     }

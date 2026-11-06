@@ -1,3 +1,9 @@
+import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
+import { getOverlayTrack, mergeOverlaySegments } from './overlay-track.js';
+
+export function initMaweMergeAdjacent() {
+'use strict';
+
 // 相邻字幕合并。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweMergeAdjacent 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -8,13 +14,13 @@
 
 
   function mergeAdjacentSubtitle(direction) {
-  const target = MaweCuePanel.getCurrentCuePanelTarget();
+  const target = getCurrentCuePanelTarget();
   const extension = target?.kind === 'extension';
   const overlay = target?.kind === 'overlay';
   const track = extension ? target.track : null;
   const segments = extension
     ? track?.segments || []
-    : overlay ? (getOverlayTrack()?.segments || []) : MaweBoot.DATA.segments;
+    : overlay ? (getOverlayTrack()?.segments || []) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   let index = Number.isInteger(target?.index) ? target.index : -1;
   if (index < 0) {
     const selected = extension ? MaweSelection.selectedExtensionIdxs
@@ -39,3 +45,6 @@
     mergeAdjacentSubtitle
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function mergeAdjacentSubtitle(...args) { return window.MaweMergeAdjacent.mergeAdjacentSubtitle(...args); }

@@ -21,6 +21,24 @@ test('structural preview and apply complete the active MASS rule across three ro
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.applyTimedTextEdit(source, drafts, { rule: 'none' }).map(row => row.text))), drafts);
 });
 
+test('structural MASS completion keeps generated IDs clear of other tracks', () => {
+  const source = [{ id: 'styled', start: 0, end: 1500, text: '**甲乙丙**', items: [
+    { text: '**甲', start: 0, end: 500 }, { text: '乙', start: 500, end: 1000 }, { text: '丙**', start: 1000, end: 1500 },
+  ] }];
+  const drafts = ['**甲', '乙', '丙**'];
+  const baseline = helpers.applyTimedTextEdit(source, drafts, { rule: 'both' });
+  const reservedSegments = baseline.slice(1).map(row => ({ id: row.id }));
+  const options = { rule: 'both', reservedSegments };
+  const before = JSON.stringify({ source, reservedSegments });
+  const report = helpers.buildTimedTextEditReport(source, drafts, options);
+  const applied = helpers.applyTimedTextEdit(source, drafts, options);
+  assert.equal(report.valid, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(applied)), JSON.parse(JSON.stringify(report.previewSegments)));
+  assert.deepEqual(JSON.parse(JSON.stringify(applied.map(row => row.text))), ['**甲**', '**乙**', '**丙**']);
+  assert.equal(new Set([...reservedSegments, ...applied].map(row => row.id)).size, reservedSegments.length + applied.length);
+  assert.equal(JSON.stringify({ source, reservedSegments }), before);
+});
+
 test('structural output reports compare whole source timing while preserving mapped items', () => {
   const source = [{start: 30000, end: 40000, text: '甲乙', items: [
     {start: 30500, end: 36250, text: '甲'}, {start: 36250, end: 39500, text: '乙'},

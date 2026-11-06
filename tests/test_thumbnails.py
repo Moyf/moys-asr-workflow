@@ -85,6 +85,101 @@ class ThumbnailTests(unittest.TestCase):
                 self.assertEqual(packets.call_count, 1)
                 decode.assert_not_called()
 
+    def test_keyframe_duration_limit_bounds_scan_and_decode(self):
+        """限长只扫描/解码媒体开头 N 秒：扫描窗口收窄，解码命令带 -t，边界多余帧被裁掉。"""
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "long.mp4"
+            source.write_bytes(b"source")
+            scanned = []
+            commands = []
+
+            def scan(media, video, begin_s, end_s, **kwargs):
+                scanned.append((begin_s, end_s))
+                stamps = [1.0, 4.0, 7.0, 11.9, 13.0]
+                return stamps, stamps
+
+            def decode(command, **kwargs):
+                commands.append(list(command))
+                outdir = Path(command[-1]).parent
+                for index in range(5):
+                    (outdir / f"{index + 1:06d}.jpg").write_bytes(b"jpeg")
+                return subprocess.CompletedProcess([], 0, b"", b"")
+
+            with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("ffmpeg")), \
+                 mock.patch.object(t, "_packet_times", side_effect=scan), \
+                 mock.patch.object(t, "_run", side_effect=decode):
+                frames = t.extract_keyframes(source, info=t.VideoInfo(0, 900_000, 0), duration_limit_sec=12)
+
+            self.assertEqual(scanned, [(0.0, 12.0), (0.0, 12.0)], "包扫描两趟 union pass 都收窄到前 12 秒")
+            self.assertEqual(commands[0][commands[0].index("-t") + 1], "12.500",
+                "解码命令带输入侧 -t（含边界余量），6 小时媒体不再全片解码")
+            self.assertEqual([f.requested_ms for f in frames], [1000, 4000, 7000, 11900],
+                "限长之外的 13.0s 关键帧被过滤，解码超产出的边界帧被裁掉")
+
+    def test_keyframe_limit_input_t_counts_content_not_start_offset(self):
+        """输入侧 -t 从首包起算：start_ms 偏移的媒体不得按 begin+limit 超量解码。"""
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "shifted.mp4"
+            source.write_bytes(b"source")
+            scanned = []
+            commands = []
+
+            def scan(media, video, begin_s, end_s, **kwargs):
+                scanned.append((begin_s, end_s))
+                stamps = [60.5, 63.0, 73.0]
+                return stamps, stamps
+
+            def decode(command, **kwargs):
+                commands.append(list(command))
+                outdir = Path(command[-1]).parent
+                for index in range(3):
+                    (outdir / f"{index + 1:06d}.jpg").write_bytes(b"jpeg")
+                return subprocess.CompletedProcess([], 0, b"", b"")
+
+            with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("ffmpeg")), \
+                 mock.patch.object(t, "_packet_times", side_effect=scan), \
+                 mock.patch.object(t, "_run", side_effect=decode):
+                frames = t.extract_keyframes(source, info=t.VideoInfo(0, 900_000, 60_000), duration_limit_sec=12)
+
+            self.assertEqual(scanned, [(60.0, 72.0), (60.0, 72.0)], "扫描窗口仍是 begin..begin+limit")
+            self.assertEqual(commands[0][commands[0].index("-t") + 1], "12.500",
+                "-t 计量内容时长而非 begin+limit：12.5 而不是 72.5")
+            self.assertEqual([f.requested_ms for f in frames], [500, 3000],
+                "13.0s（流内 73s）在限长之外被过滤")
+
+    def test_keyframe_limit_at_or_beyond_duration_decodes_whole_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "short.mp4"
+            source.write_bytes(b"source")
+            commands = []
+
+            def scan(media, video, begin_s, end_s, **kwargs):
+                return [0.5], [0.5]
+
+            def decode(command, **kwargs):
+                commands.append(list(command))
+                outdir = Path(command[-1]).parent
+                (outdir / "000001.jpg").write_bytes(b"jpeg")
+                return subprocess.CompletedProcess([], 0, b"", b"")
+
+            with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("ffmpeg")), \
+                 mock.patch.object(t, "_packet_times", side_effect=scan), \
+                 mock.patch.object(t, "_run", side_effect=decode):
+                frames = t.extract_keyframes(source, info=t.VideoInfo(0, 900_000, 0), duration_limit_sec=9000)
+
+            self.assertNotIn("-t", commands[0], "限长覆盖全片时按全片语义处理，不加 -t")
+            self.assertEqual([f.requested_ms for f in frames], [500])
+
+    def test_keyframe_limit_rejects_non_positive_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "clip.mp4"
+            source.write_bytes(b"source")
+            for bad in (0, -1, "12"):
+                with self.subTest(bad=bad), mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("ffmpeg")), \
+                     mock.patch.object(t, "probe_video", return_value=t.VideoInfo(0, 900_000, 0)):
+                    with self.assertRaises(ValueError):
+                        t.extract_keyframes(source, duration_limit_sec=bad)
+
     def test_child_cancel_and_timeout_reap_process(self):
         with tempfile.TemporaryDirectory() as temp:
             ready = Path(temp) / "ready"
