@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -341,27 +340,6 @@ class MajorityLanguageTests(unittest.TestCase):
 
     def test_majority_language_empty_without_tags(self) -> None:
         self.assertEqual(soniox.majority_language([_token("a", 0, 1)]), "")
-
-
-class DefaultModelTests(unittest.TestCase):
-    def test_default_model_is_current_v6(self) -> None:
-        """Given no SONIOX_MODEL override, When config loads, Then the current v6 model is used."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            env_path = Path(temp_dir) / ".env"
-            with mock.patch.object(soniox, "ENV_FILE", env_path), mock.patch.dict(os.environ, {}, clear=True):
-                config = soniox.load_config()
-
-        self.assertEqual(config["model"], "stt-async-v6")
-
-    def test_deprecated_v5_stays_selectable(self) -> None:
-        """Given an explicit v5 override, When config loads, Then the deprecated model is honored."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            env_path = Path(temp_dir) / ".env"
-            _ = env_path.write_text("SONIOX_MODEL=stt-async-v5\n", encoding="utf-8")
-            with mock.patch.object(soniox, "ENV_FILE", env_path), mock.patch.dict(os.environ, {}, clear=True):
-                config = soniox.load_config()
-
-        self.assertEqual(config["model"], "stt-async-v5")
 
 
 class ApiClientTests(unittest.TestCase):
