@@ -313,6 +313,12 @@
       "exportName": "initMaweTextProcess"
     },
     {
+      "file": "editor/cues/editor-text-presets.js",
+      "kind": "init",
+      "name": "text-presets-init",
+      "exportName": "initMaweTextPresets"
+    },
+    {
       "file": "editor/cues/editor-timed-text-edit.js",
       "kind": "init",
       "name": "timed-text-edit-init",

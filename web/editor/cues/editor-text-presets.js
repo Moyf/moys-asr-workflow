@@ -1,4 +1,9 @@
 // User library I/O and per-project values shared by the two processing tools.
+// User library I/O and per-project values shared by the two processing tools. ESM init 模块：initMaweTextPresets 在原清单位次执行原 IIFE 体（挂
+
+// window.MaweProcessing 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
+// 兄弟模块可静态 import。
+export function initMaweTextPresets() {
 (function initProcessing(global) {
   'use strict';
   const schema = 'moy.asr.text_processing_presets.v2';
@@ -228,3 +233,10 @@
     get effectiveJoin() { return projectOverride('join') || library.join || legacyJoin() || joinDefaults; },
   });
 })(window);
+}
+
+export function refresh(...args) { return window.MaweProcessing.refresh(...args); }
+export function update(...args) { return window.MaweProcessing.update(...args); }
+export function validateImport(...args) { return window.MaweProcessing.validateImport(...args); }
+export function projectOverride(...args) { return window.MaweProcessing.projectOverride(...args); }
+export function setProjectOverride(...args) { return window.MaweProcessing.setProjectOverride(...args); }
