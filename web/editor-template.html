@@ -476,6 +476,12 @@ __WAVEFORM_CSS__
         </label>
       </div>
     </section>
+    <div class="processing-controls">
+      <button type="button" id="auto-merge-user-save">保存为用户默认</button>
+      <button type="button" id="auto-merge-project-save">记为此工程默认</button>
+      <button type="button" id="auto-merge-project-reset">恢复继承</button>
+    </div>
+    <p class="hint processing-status" id="auto-merge-settings-status" aria-live="polite"></p>
     <button type="button" id="auto-merge-run" class="gap-remove-scan">
       <span>拼合字幕</span>
       <small>按当前参数处理整段工程</small>
@@ -762,15 +768,14 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">字幕列表</h5>
         <div class="help-category">
-          <span><kbd>批量替换</kbd> 查找并批量替换字幕文本</span>
           <span><kbd>纯文本编辑</kbd> 集中编辑字幕文本，可预览拆分、合并和字词时间码映射</span>
-          <span><kbd>文本处理</kbd> 批量修剪空白、首字母大写、添加前缀/后缀或去除 Markdown 符号</span>
+          <span><kbd>字幕处理</kbd> 按步骤替换、修剪空白或转换格式，并预览最终结果</span>
         </div>
       </section>
       <section class="help-subgroup">
         <h5 class="help-subtitle">处理范围</h5>
         <div class="help-category">
-          <span>批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围</span>
+          <span>文本处理支持勾选「仅处理选中的字幕」限定范围</span>
         </div>
       </section>
     </section>
@@ -1742,7 +1747,7 @@ __WAVEFORM_CSS__
 <div class="editor-settings-group" role="group" aria-labelledby="sticker-feature-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item" title="关闭后隐藏「预览表情包」开关，右键菜单不再提供分配表情包；工程内已有表情包数据保留"><input type="checkbox" id="sticker-feature-toggle" checked> 启用表情包</label>
 <small class="editor-settings-hint">关闭后不影响工程里已设置的表情包数据，重新开启即可恢复预览与分配。</small></div></div>
 <span class="editor-settings-group-heading" id="sticker-burn-mode-title">烧录显示位置</span>
-<div class="editor-settings-group" role="group" aria-labelledby="sticker-burn-mode-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-burn-mode">烧录视频时的表情包位置</label><select id="sticker-burn-mode" class="editor-settings-item"><option value="fixed">固定位置（预览层设定框）</option><option value="cue-left">字幕第一个字左侧</option></select><small class="editor-settings-hint">「字幕第一个字左侧」按 ASS 字幕的实际位置贴放；SRT 字幕、字幕重叠 / 句间空隙 / 特殊排版无法贴放时自动回退固定位置。同屏多张表情包时固定位置为居中叠放（预览是垂直堆叠）。预览层始终显示固定位置，最终以烧录结果为准。</small></div></div>
+<div class="editor-settings-group" role="group" aria-labelledby="sticker-burn-mode-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-burn-mode">烧录视频时的表情包位置</label><select id="sticker-burn-mode" class="editor-settings-item"><option value="fixed">固定位置（预览层设定框）</option><option value="cue-left">字幕第一个字左侧</option></select><small class="editor-settings-hint">「字幕第一个字左侧」按 ASS 字幕的实际位置贴放，主字幕与叠加字幕轨都参与（同屏时贴主字幕左侧）；SRT 字幕、字幕重叠 / 句间空隙 / 特殊排版无法贴放时自动回退固定位置。同屏多张表情包时固定位置为居中叠放（预览是垂直堆叠）。预览层始终显示固定位置，最终以烧录结果为准。</small></div></div>
 <span class="editor-settings-group-heading" id="default-sticker-root-title">默认文件夹</span>
 <div class="editor-settings-group" role="group" aria-labelledby="default-sticker-root-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-root-input">默认目录</label><div class="sticker-root-controls"><input type="text" id="sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="sticker-root-status"><button type="button" id="sticker-root-read">应用</button></div><p class="editor-settings-hint" id="sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">工程设置中的覆盖目录优先；清空覆盖后恢复使用默认目录。</small></div></div>
 </div>
@@ -1820,7 +1825,7 @@ __WAVEFORM_CSS__
 <aside class="editor-settings-window ass-style-window" id="ass-style-window" role="dialog" aria-modal="false" aria-label="ASS 样式库" aria-hidden="true">
   <header class="editor-settings-window-header ass-style-window-header" id="ass-style-drag-handle">
     <span class="editor-settings-window-title">ASS 样式库</span>
-    <span class="ass-style-library-status" id="ass-style-library-status" role="status" aria-live="polite">正在加载…</span>
+    <span class="editor-library-status" id="ass-style-library-status" role="status" aria-live="polite">正在加载…</span>
     <button type="button" class="editor-settings-window-close" id="ass-style-window-close" title="关闭（Esc）" aria-label="关闭 ASS 样式库">×</button>
   </header>
   <div class="ass-style-window-body">
@@ -2011,8 +2016,11 @@ __WAVEFORM_CSS__
     </main>
   </div>
   <footer class="ass-style-window-footer">
-    <span id="ass-style-library-path-hint">样式库将根据打开方式保存。</span>
-    <div><button type="button" id="ass-style-save" class="primary">保存样式库</button><button type="button" id="ass-style-window-close-footer">完成</button></div>
+    <div class="ass-style-library-notes">
+      <span id="ass-style-library-path-hint">样式库将根据打开方式保存。</span>
+      <span id="ass-style-project-hint" role="status" hidden>工程内修改，未同步到用户级配置</span>
+    </div>
+    <div class="ass-style-library-actions"><button type="button" id="ass-style-save" class="primary">保存样式库</button><button type="button" id="ass-style-window-close-footer">完成</button></div>
   </footer>
 </aside>
 
@@ -2127,7 +2135,12 @@ __WAVEFORM_CSS__
         <button type="button" id="cue-panel-split">在光标处拆分（<kbd id="cue-panel-split-key">Enter</kbd>）</button>
       </div>
       <div class="cue-panel-text-wrap">
-        <div class="cue-panel-target" id="cue-panel-target">未选择</div>
+        <div class="cue-panel-text-header">
+          <div class="cue-panel-target" id="cue-panel-target">未选择</div>
+          <label id="cue-ass-style-controls" class="cue-ass-style-controls">单句 ASS 样式
+            <select id="cue-ass-style" aria-label="单句 ASS 样式"></select>
+          </label>
+        </div>
         <div class="cue-panel-text-row">
           <textarea id="cue-panel-text" rows="3" placeholder="选择一条字幕开始编辑…"></textarea>
           <div id="ass-cue-position" class="ass-cue-position" hidden aria-label="逐句 ASS 定位" tabindex="0" title="PlayRes 坐标；方向键微调，Shift：10 像素；重置恢复全局排布">
@@ -2322,13 +2335,7 @@ __WAVEFORM_CSS__
       </div>
       <span class="info cue-list-count">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
       <button type="button" id="timed-text-edit-btn" title="集中编辑字幕文本，并预览拆分、合并和字词时间码映射结果" aria-label="纯文本编辑">📝</button>
-      <div class="dropdown batch-operations-dropdown" id="batch-operations-dropdown">
-        <button type="button" id="batch-operations-btn" aria-expanded="false" aria-controls="batch-operations-menu" aria-haspopup="menu">批量操作 ▾</button>
-        <div class="dropdown-menu" id="batch-operations-menu" role="menu">
-          <button type="button" class="dropdown-item" id="replace-btn" role="menuitem">批量替换</button>
-          <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理</button>
-        </div>
-      </div>
+      <button type="button" id="text-process-btn" title="对字幕进行查找替换、修剪空白、前后添加字符等操作">字幕处理</button>
       <span class="sep" id="filter-over-sep"></span>
       <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）" aria-label="仅看超长" aria-pressed="false">🧐</button>
     </div>
@@ -2482,96 +2489,103 @@ __WAVEFORM_CSS__
   </div>
 </div>
 
-<!-- 批量替换 modal -->
-<div class="modal-mask" id="replace-modal">
-  <div class="modal">
-    <h3 id="replace-modal-title">批量替换</h3>
-    <div id="replace-scope-info" style="font-size:12px;color:#888;margin-bottom:8px;">当前范围：全部字幕</div>
-    <label class="modal-check-row" for="replace-selected-only">
-      <input type="checkbox" id="replace-selected-only" disabled>
-      <span>仅处理选中的字幕</span>
-      <span id="replace-selected-only-hint" class="modal-hint batch-selected-only-hint" hidden>需要先选中至少1条字幕才可启用</span>
-    </label>
-    <label>查找</label>
-    <input type="text" id="find-input" placeholder="要查找的内容" autocomplete="off">
-    <label>替换为</label>
-    <input type="text" id="replace-input" placeholder="替换后的内容" autocomplete="off">
-    <div class="row">
-      <label style="margin:0"><input type="checkbox" id="case-sensitive"> 区分大小写</label>
-      <label style="margin:0"><input type="checkbox" id="use-regex"> 正则表达式</label>
-    </div>
-    <div class="preview" id="replace-preview">输入查找内容查看预览</div>
-    <div class="actions">
-      <button id="replace-cancel">取消</button>
-      <button id="replace-confirm" class="primary">替换全部</button>
-    </div>
-  </div>
-</div>
-
 <!-- 常用文本处理 modal：保持字幕行和时间范围结构，只批量变更文本。 -->
 <div class="modal-mask" id="text-process-modal">
   <div class="modal text-process-modal" role="dialog" aria-modal="true"
        aria-labelledby="text-process-title" aria-describedby="text-process-description">
-    <h3 id="text-process-title">文本处理</h3>
+    <header class="text-process-header">
+      <h3 id="text-process-title">文本处理</h3>
+      <span class="editor-library-status" id="text-preset-status" role="status" aria-live="polite"></span>
+    </header>
     <p class="modal-desc" id="text-process-description">
       选择要对字幕批量执行的文本操作（若处理结尾为空，会保留空字幕行）。
     </p>
-    <div id="text-process-scope-info" class="text-process-scope-info">当前范围：全部字幕</div>
-    <label class="modal-check-row" for="text-process-selected-only">
-      <input type="checkbox" id="text-process-selected-only" disabled>
-      <span>仅处理选中的字幕</span>
-      <span id="text-process-selected-only-hint" class="modal-hint batch-selected-only-hint" hidden>需要先选中至少1条字幕才可启用</span>
-    </label>
-    <div class="text-process-operations" aria-label="文本处理操作">
-      <label class="text-process-operation" for="text-process-trim">
-        <input type="checkbox" id="text-process-trim">
-        <span>修剪前后空白</span>
-        <span class="modal-hint">去除字幕前方和后方的空格</span>
-      </label>
-      <label class="text-process-operation" for="text-process-capitalize">
-        <input type="checkbox" id="text-process-capitalize">
-        <span>首字母大写</span>
-        <span class="modal-hint">只作用于第一个字母</span>
-      </label>
-      <label class="text-process-operation" for="text-process-convert-numbers">
-        <input type="checkbox" id="text-process-convert-numbers">
-        <span>数字转换</span>
-        <span class="modal-hint">将明确的中文数字转写为数字，前后留空格</span>
-      </label>
-      <label class="text-process-operation" for="text-process-strip-markdown">
-        <input type="checkbox" id="text-process-strip-markdown">
-        <span>去除 md 格式符号</span>
-        <span class="modal-hint">移除常见 Markdown 标记；含特殊文本样式（MASS）符号时会一并移除，建议先清理再加样式</span>
-      </label>
+    <div class="text-process-columns">
+      <div class="text-process-column">
+        <div class="text-preset-group">
+          <div class="processing-controls text-preset-controls">
+            <label for="text-preset-select">处理预设</label>
+            <select id="text-preset-select"></select>
+            <div class="text-preset-edit-actions">
+              <button type="button" id="text-preset-save-as">存为新预设</button>
+              <button type="button" id="text-preset-save">更新预设</button>
+              <button type="button" id="text-preset-rename">重命名</button>
+            </div>
+          </div>
+          <div class="processing-controls text-preset-controls">
+            <button type="button" id="text-preset-delete">删除</button>
+            <button type="button" id="text-preset-default">设为默认</button>
+            <details class="text-process-menu" id="text-preset-file-menu">
+              <summary>导入导出</summary>
+              <div class="text-process-menu-items">
+                <button type="button" id="text-preset-export-current">导出当前预设</button>
+                <button type="button" id="text-preset-export-library">导出整个预设库</button>
+                <button type="button" id="text-preset-import-button">导入处理预设</button>
+              </div>
+            </details>
+            <input type="file" id="text-preset-import" accept="application/json,.json" hidden>
+          </div>
+          <div class="processing-controls text-process-project-controls">
+            <span class="text-process-control-label">当前工程预设配置</span>
+            <span id="text-process-project-status" aria-live="polite"></span>
+            <details class="text-process-menu" id="text-process-project-menu">
+              <summary>更改</summary>
+              <div class="text-process-menu-items">
+                <button type="button" id="text-process-project-reset" title="每次打开时都继承用户预设的处理步骤（若无则留空）。">工程内继承默认预设</button>
+                <button type="button" id="text-process-project-empty" title="这个工程每次都从空步骤开始，即使已经设了用户默认。">工程内默认留空</button>
+                <button type="button" id="text-process-project-save" title="把当前步骤存入工程。之后即使修改用户预设，工程内不受影响。">保存为当前工程默认处理</button>
+              </div>
+            </details>
+          </div>
+        </div>
+        <div class="processing-controls text-process-step-controls">
+          <label for="text-process-step-type">处理步骤</label>
+          <select id="text-process-step-type">
+            <option value="replace">替换文本</option>
+            <option value="trim">修剪前后空白</option>
+            <option value="wrap">左右添加字符</option>
+            <option value="convertChineseNumbers">文字转数字</option>
+            <option value="capitalize">首字母大写</option>
+            <option value="stripMarkdown">去除格式符号</option>
+          </select>
+          <button type="button" id="text-preset-add-rule">添加步骤</button>
+        </div>
+        <div class="text-process-step-scroll">
+          <ol id="text-preset-rules" class="processing-steps"></ol>
+          <p class="modal-hint text-process-steps-hint">在上方选择处理步骤后点击「添加步骤」来增加处理。</p>
+        </div>
+      </div>
+      <div class="text-process-column">
+        <div id="text-process-scope-info" class="text-process-scope-info">当前范围：全部字幕</div>
+        <div class="text-process-scope-controls">
+          <label class="modal-check-row" for="text-process-selected-only">
+            <input type="checkbox" id="text-process-selected-only" aria-describedby="text-process-selected-only-hint" disabled>
+            <span>仅处理选中字幕</span>
+          </label>
+          <p id="text-process-selected-only-hint" class="modal-hint" hidden>需要先选中至少1条字幕才可启用</p>
+        </div>
+        <h4 class="text-process-preview-title" id="text-process-preview-title">处理后字幕预览</h4>
+        <div class="preview text-process-preview" id="text-process-preview" role="region" aria-labelledby="text-process-preview-title" tabindex="0">在左侧添加处理步骤，即可查看字幕改动。</div>
+      </div>
     </div>
-    <div class="text-process-wrap-presets" aria-label="左右添加字符预设">
-      <div class="text-process-wrap-presets-head">左右添加字符（插入到字幕两端）</div>
-      <div class="text-process-wrap-preset-row text-process-wrap-preset-row-ass">
-        <span class="text-process-wrap-preset-row-label">ASS 特殊文本样式</span>
-        <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-ass"></div>
-      </div>
-      <div class="text-process-wrap-preset-row text-process-wrap-preset-row-ass">
-        <span class="text-process-wrap-preset-row-label text-process-wrap-sentence-badge">整句</span>
-        <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-ass-sentence"></div>
-      </div>
-      <div class="text-process-wrap-preset-row">
-        <span class="text-process-wrap-preset-row-label">普通字符</span>
-        <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-common"></div>
-      </div>
-      <div class="text-process-custom-wrap-fields" id="text-process-custom-wrap-fields" hidden>
-        <label for="text-process-prefix-input">左侧添加</label>
-        <input type="text" id="text-process-prefix-input" placeholder="输入左侧字符">
-        <label for="text-process-suffix-input">右侧添加</label>
-        <input type="text" id="text-process-suffix-input" placeholder="输入右侧字符">
-      </div>
-    </div>
-    <div class="preview text-process-preview" id="text-process-preview">选择操作后查看预览</div>
     <div class="actions">
       <button type="button" id="text-process-cancel">取消</button>
       <button type="button" id="text-process-confirm" class="primary" disabled>应用处理</button>
     </div>
   </div>
 </div>
+
+<dialog class="modal text-preset-import-dialog" id="text-preset-import-dialog"
+        aria-labelledby="text-preset-import-title" aria-describedby="text-preset-import-warning">
+  <h3 id="text-preset-import-title">导入处理预设</h3>
+  <p class="modal-desc" id="text-preset-import-warning">确认后会替换现有预设库和默认预设设置。</p>
+  <p class="modal-hint" id="text-preset-import-status" aria-live="polite"></p>
+  <div class="text-preset-import-preview" id="text-preset-import-preview" tabindex="0" hidden></div>
+  <div class="actions">
+    <button type="button" id="text-preset-import-cancel" autofocus>取消</button>
+    <button type="button" class="primary" id="text-preset-import-confirm" disabled>确认替换预设库</button>
+  </div>
+</dialog>
 
 <!-- 「左右添加字符」自定义输入：在选中字幕两端原样插入用户输入的字符。 -->
 <div class="modal-mask" id="wrap-chars-modal">

@@ -45,6 +45,7 @@ export function initMaweJsonRepair() {
       if (s.disabled) o.disabled = true;
       const override = window.AsrEditorUtils.normalizeAssOverride(s.assOverride);
       if (override) o.assOverride = override;
+      if (s.assStyle !== undefined) o.assStyle = structuredClone(s.assStyle);
       if (typeof s.speaker === 'string' && s.speaker.trim()) o.speaker = s.speaker;
       return o;
     }),
@@ -56,6 +57,7 @@ export function initMaweJsonRepair() {
       && MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath) {
     out.media = MaweBoot.SERVER_CONFIG.autoLoadedMediaPath;
   }
+  if (MaweBoot.DATA.processing_overrides) out.processing_overrides = MaweBoot.DATA.processing_overrides;
   if (typeof MaweBoot.DATA.language_source === 'string') out.language_source = MaweBoot.DATA.language_source;
   if (typeof MaweBoot.DATA.preserve_punctuation === 'boolean') out.preserve_punctuation = MaweBoot.DATA.preserve_punctuation;
   if (typeof MaweBoot.DATA.split_mode === 'string') out.split_mode = MaweBoot.DATA.split_mode;
@@ -93,6 +95,7 @@ export function initMaweJsonRepair() {
         if (segment._dirty) outSegment._dirty = true;
         if (segment.disabled) outSegment.disabled = true;
         if (segment.assOverride !== undefined) outSegment.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
+        if (segment.assStyle !== undefined) outSegment.assStyle = structuredClone(segment.assStyle);
         if (typeof segment.speaker === 'string' && segment.speaker.trim()) outSegment.speaker = segment.speaker;
         return outSegment;
       }),
@@ -127,6 +130,7 @@ export function initMaweJsonRepair() {
         if (segment._dirty) outSegment._dirty = true;
         if (segment.disabled) outSegment.disabled = true;
         if (segment.assOverride !== undefined) outSegment.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
+        if (segment.assStyle !== undefined) outSegment.assStyle = structuredClone(segment.assStyle);
         if (typeof segment.speaker === 'string' && segment.speaker.trim()) outSegment.speaker = segment.speaker;
         return outSegment;
       }),

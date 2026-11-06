@@ -55,6 +55,8 @@ document.addEventListener('keydown', (e) => {
   if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   // 拆分弹窗内方向键用于移动 ✂️ 断点，不再 seek 媒体或微调字幕时间。
   if (MaweDom.multiSubtitleSplitModal?.classList.contains('show')) return;
+  // 文本处理弹窗内方向键用于移动光标/滚动预览，绝不能误改字幕时间或 seek。
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   const target = e.target instanceof Element ? e.target : document.activeElement;
   if (target?.closest?.('.geo-box, input, select, textarea')) return;
   if (target?.closest?.('[role="menu"]')) return;
@@ -112,7 +114,7 @@ document.addEventListener('keydown', (e) => {
   if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   if (!MaweKeyboardTargets.isPlaybackKeyboardTarget(e) && MaweKeyboardTargets.isNativeKeyboardControl(e)) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  if (MaweDom.replaceModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
+  if (MaweDom.textProcessModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
       || MaweDom.multiSubtitleSplitModal?.classList.contains('show')
       || MaweDom.multiSubtitleImportModal?.classList.contains('show')
@@ -156,7 +158,7 @@ document.addEventListener('keydown', (e) => {
   if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
   if (MaweKeyboardTargets.isNativeKeyboardControl(e) || MaweKeyboardTargets.isPlayerKeyboardTarget(e)) return;
-  if (MaweDom.replaceModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
+  if (MaweDom.textProcessModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
       || MaweDom.multiSubtitleSplitModal?.classList.contains('show')
       || MaweDom.ctxmenu.classList.contains('show')) return;
