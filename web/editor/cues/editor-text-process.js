@@ -223,7 +223,7 @@ export function initMaweTextProcess() {
   }
 
   function refreshActions() {
-    const { defaultPresetId, presets } = MaweProcessing.library;
+    const { defaultPresetId, presets } = window.MaweProcessing.library;
     const saved = presets.some(({ id }) => id === selectedPreset);
     const available = !reading && !writing;
     const valid = steps.length > 0 && !hasUntouchedPrefill();
@@ -239,7 +239,7 @@ export function initMaweTextProcess() {
     presetDefault.disabled = !available || !saved;
     presetDefault.textContent = saved && selectedPreset === defaultPresetId ? '取消默认' : '设为默认';
     $('text-process-project-save').disabled = !valid;
-    const override = MaweProcessing.projectOverride('text');
+    const override = projectOverride('text');
     $('text-process-project-reset').disabled = !available || override === undefined;
     $('text-process-project-empty').disabled = Array.isArray(override) && !override.length;
     projectStatus.textContent = override === undefined ? '工程内继承默认预设'
@@ -247,7 +247,7 @@ export function initMaweTextProcess() {
   }
 
   function renderPresets() {
-    const { presets, defaultPresetId } = MaweProcessing.library;
+    const { presets, defaultPresetId } = window.MaweProcessing.library;
     presetSelect.replaceChildren(new Option('自定义步骤', ''));
     for (const { id, name } of presets) {
       const option = new Option(name + (id === defaultPresetId ? ' ★' : ''), id);
@@ -266,9 +266,9 @@ export function initMaweTextProcess() {
   }
 
   function loadDefault({ preserveScope = false } = {}) {
-    const { presets, defaultPresetId } = MaweProcessing.library;
+    const { presets, defaultPresetId } = window.MaweProcessing.library;
     const preset = presets.find(({ id }) => id === defaultPresetId);
-    const project = MaweProcessing.projectOverride('text');
+    const project = projectOverride('text');
     selectedPreset = project === undefined ? preset?.id || '' : '';
     steps = structuredClone(project ?? preset?.steps ?? []);
     if (!preserveScope) setPresetScope(project === undefined ? preset?.scope : undefined);
@@ -283,16 +283,16 @@ export function initMaweTextProcess() {
   }
 
   function showStorageReady() {
-    if (MaweProcessing.portable) showStorageStatus('仅保存在当前浏览器（便携模式）', 'local');
+    if (window.MaweProcessing.portable) showStorageStatus('仅保存在当前浏览器（便携模式）', 'local');
     else showStorageStatus('已与用户级配置同步', 'success');
   }
 
   async function saveLibrary(change, newSelection = selectedPreset) {
     const current = session;
     writing = true;
-    showStorageStatus(MaweProcessing.portable ? '正在保存到当前浏览器…' : '正在保存用户级预设库…', 'pending');
+    showStorageStatus(window.MaweProcessing.portable ? '正在保存到当前浏览器…' : '正在保存用户级预设库…', 'pending');
     refreshActions();
-    const status = await MaweProcessing.update(change);
+    const status = await update(change);
     writing = false;
     if (!modal.classList.contains('show')) return status;
     if (status === 'saved') {
@@ -560,7 +560,7 @@ export function initMaweTextProcess() {
   // （空数组）时不预填；只在本函数被调用（打开弹窗/切换预设）时补一次，
   // 用户删除后不强制回填。
   function prefillEmptySteps() {
-    if (steps.length || MaweProcessing.projectOverride('text')?.length === 0) return;
+    if (steps.length || projectOverride('text')?.length === 0) return;
     prefilledStep = createStep('replace');
     steps = [prefilledStep];
   }
@@ -601,7 +601,7 @@ export function initMaweTextProcess() {
     const fingerprint = () => JSON.stringify([steps, selectedPreset]);
     const initial = fingerprint();
     const initialScope = selectedOnly.checked;
-    const ok = await MaweProcessing.refresh();
+    const ok = await refresh();
     if (session !== current) return;
     reading = false;
     if (!writing) {
@@ -681,7 +681,7 @@ export function initMaweTextProcess() {
   });
   presetSelect.addEventListener('change', () => {
     selectedPreset = presetSelect.value;
-    const preset = MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
+    const preset = window.MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
     steps = structuredClone(preset?.steps || []);
     if (preset) setPresetScope(preset.scope);
     else prefillEmptySteps();
@@ -704,7 +704,7 @@ export function initMaweTextProcess() {
   });
   $('text-preset-rename').addEventListener('click', () => {
     const id = selectedPreset;
-    const current = MaweProcessing.library.presets.find((preset) => preset.id === id);
+    const current = window.MaweProcessing.library.presets.find((preset) => preset.id === id);
     const name = global.prompt('预设名称', current.name)?.trim();
     if (name) void saveLibrary((draft) => { draft.presets.find((preset) => preset.id === id).name = name; });
   });
@@ -723,7 +723,7 @@ export function initMaweTextProcess() {
 
   // 导入单条预设时生成不与现有预设重名的名称（「原名 (2)」「原名 (3)」…）。
   function uniquePresetName(name) {
-    const names = new Set(MaweProcessing.library.presets.map(({ name }) => name));
+    const names = new Set(window.MaweProcessing.library.presets.map(({ name }) => name));
     if (!names.has(name)) return name;
     for (let index = 2; ; index++) {
       const candidate = name + ' (' + index + ')';
@@ -808,13 +808,13 @@ export function initMaweTextProcess() {
 
   $('text-preset-export-current').addEventListener('click', async () => {
     dismissMenu(presetFileMenu);
-    const preset = MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
+    const preset = window.MaweProcessing.library.presets.find(({ id }) => id === selectedPreset);
     if (!preset) return;
     await exportPresetFile(preset.name + '.json', preset);
   });
   $('text-preset-export-library').addEventListener('click', async () => {
     dismissMenu(presetFileMenu);
-    const { schema, presets, defaultPresetId } = MaweProcessing.library;
+    const { schema, presets, defaultPresetId } = window.MaweProcessing.library;
     await exportPresetFile('处理预设库.json', { schema, presets, defaultPresetId });
   });
   $('text-preset-import-button').addEventListener('click', () => {
@@ -840,7 +840,7 @@ export function initMaweTextProcess() {
       const text = await file.text();
       let parsed;
       try { parsed = JSON.parse(text); } catch { throw new Error('文件不是有效的 JSON'); }
-      const imported = MaweProcessing.validateImport(parsed);
+      const imported = validateImport(parsed);
       if (request !== importRequest) return;
       const single = imported.kind === 'single';
       importTitle.textContent = translate(single ? '导入单条处理预设' : '导入处理预设');
@@ -896,7 +896,7 @@ export function initMaweTextProcess() {
   $('text-process-project-save').addEventListener('click', () => {
     dismissMenu(projectMenu);
     try {
-      MaweProcessing.setProjectOverride('text', steps);
+      setProjectOverride('text', steps);
       refreshActions();
     } catch (error) {
       projectStatus.textContent = '保存失败：' + error.message;
@@ -904,12 +904,12 @@ export function initMaweTextProcess() {
   });
   $('text-process-project-empty').addEventListener('click', () => {
     dismissMenu(projectMenu);
-    MaweProcessing.setProjectOverride('text', []);
+    setProjectOverride('text', []);
     loadDefault();
   });
   $('text-process-project-reset').addEventListener('click', () => {
     dismissMenu(projectMenu);
-    MaweProcessing.setProjectOverride('text', undefined);
+    setProjectOverride('text', undefined);
     loadDefault();
   });
   MaweState.observeProjectLoad(() => closeTextProcessModal({ restoreFocus: false }));
