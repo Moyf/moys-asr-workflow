@@ -116,7 +116,7 @@ def resolve_llm_settings(env_path: Path, provider_id: str | None = None) -> LlmS
     """把选中（或指定）供应商的 .env 值变成一次 LLM 调用的设置。"""
     values = load_env(env_path)
     resolved = provider_id or values.get(LAST_PROVIDER_ENV_KEY, "deepseek")
-    preset = preset_by_id(resolved)
+    preset_by_id(resolved)  # 校验 provider 存在
     current = _provider_values(env_path, resolved)
     return LlmSettings(
         provider_id=resolved,
@@ -135,14 +135,12 @@ def write_settings(env_path: Path, payload: Mapping[str, Any]) -> dict[str, Any]
         raise ValueError("未知的 AI 供应商")
     updates: dict[str, str] = {LAST_PROVIDER_ENV_KEY: provider_id}
     prefix = preset.env_prefix
-    file_values = load_env(env_path)
 
     base_url = payload.get("baseUrl")
     if base_url is not None:
         if not isinstance(base_url, str):
             raise ValueError("baseUrl 必须是字符串")
         updates[f"{prefix}_BASE_URL"] = base_url.strip()
-    effective_base_url = updates.get(f"{prefix}_BASE_URL", file_values.get(f"{prefix}_BASE_URL", "")) or preset.base_url
 
     model = payload.get("model")
     if model is not None:
