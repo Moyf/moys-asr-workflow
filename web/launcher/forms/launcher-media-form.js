@@ -99,7 +99,7 @@ function getDefaultAudioTrackForMedia(path) {
   const defaultTrack = state.audioTracks.find(audioTrackIsDefault) || state.audioTracks[0];
   return audioTrackIndex(defaultTrack) ?? 0;
 }
-function setMedia(path, { refreshOcrVideo = false } = {}) { clearTimeout(state.audioTrackProbeTimer); $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); void refreshAudioTracks(path); window.MAWLauncher?.onMediaPathChanged?.({ refreshOcrVideo }); }
+function setMedia(path, { refreshOcrVideo = false } = {}) { clearTimeout(state.audioTrackProbeTimer); $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); syncThumbnailFields(); void refreshAudioTracks(path); window.MAWLauncher?.onMediaPathChanged?.({ refreshOcrVideo }); }
 function setDroppedPath(field, path, eventType = "input") {
   const value = String(path || "").trim();
   const input = $(field);

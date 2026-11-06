@@ -220,12 +220,15 @@ def coordinated_pack(path, jpegs, *, coordinator, before_batch, cancel=None, tim
         # The next iteration waits for the lease, then retries this unsealed block.
 
 
-def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinator=None, timeout_s=1200, exact: bool = True):
+def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinator=None, timeout_s=1200, exact: bool = True, duration_limit_sec: float | None = None):
     """Launcher-only base build: keyframe tier always, exact grid when enabled.
 
     The keyframe stage decodes only keyframes (seconds for a whole film) and
     covers the display grid as preview cells; the exact stage — bounded by the
     same visible-demand priority as before — upgrades them when enabled.
+    ``duration_limit_sec`` bounds both stages to the first N seconds of the
+    media (quick-test parity with the audio-side trim); the resulting cache is
+    marked and isolated from full-media caches.
     """
     from maw import thumbnail_cache
     path = Path(path)
@@ -300,7 +303,8 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
             watcher.start()
             try:
                 return thumbnails.extract_keyframes(path, cancel=kf_cancel, threads=threads,
-                    ffmpeg_path=ffmpeg_path, timeout_s=min(600, remaining))
+                    ffmpeg_path=ffmpeg_path, timeout_s=min(600, remaining),
+                    duration_limit_sec=duration_limit_sec)
             except thumbnails.ThumbnailCancelled:
                 if cancel is not None and cancel.is_set():
                     raise
@@ -312,7 +316,7 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
     return thumbnail_cache.load_or_build_base(path, cancel=cancel, progress=progress,
         before_batch=before_batch, batch_extract=extract, batch_pack=pack,
         ffmpeg_path=ffmpeg_path, timeout_s=timeout_s, exact=exact, decode_threads=threads,
-        keyframe_extract=keyframe_extract)
+        keyframe_extract=keyframe_extract, duration_limit_sec=duration_limit_sec)
 
 
 def plan_targets(ranges, interval, duration, representatives=(), playhead=None):

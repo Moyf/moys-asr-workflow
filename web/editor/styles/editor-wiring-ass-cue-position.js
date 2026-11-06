@@ -146,6 +146,7 @@
     const located = locateSegment(id);
     if (!located) return;
     global.MaweCuePanel.commitCuePanelEdit();
+    global.MaweGapPlayback?.cancelPendingPlayback();
     global.MaweCoreState.player?.pause();
     // The first gesture only selects. A second gesture can move the cue.
     if (currentTargetId() !== id) {
@@ -187,6 +188,7 @@
     const record = segment && recordFor(segment, located.kind);
     if (!segment || !record?.bounds) return;
     global.MaweCuePanel.commitCuePanelEdit();
+    global.MaweGapPlayback?.cancelPendingPlayback();
     global.MaweCoreState.player?.pause();
     event.preventDefault(); event.stopPropagation();
     handle.focus({ preventScroll: true });

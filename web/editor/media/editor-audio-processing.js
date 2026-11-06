@@ -9,6 +9,7 @@
   let measurement = null, measurementSnapshot = null, measurementState = 'idle', measurementError = '';
   let controller = null, revision = 0, previewError = '', initialized = false, pendingGainUndo = null;
   let expandedGain = false, customTarget = false;
+  let gapPlaybackMuted = false;
   const el = id => document.getElementById(id);
   const tr = text => global.MAWE_I18N?.translateText?.(text) || text;
   const finite = value => typeof value === 'number' && Number.isFinite(value);
@@ -59,13 +60,15 @@
     customTarget = !TARGET_PRESETS.includes(settings().target_lufs);
     MaweState.changes.audioProcessingDirty = false;
     previewError = '';
+    setGapPlaybackMuted(false);
     if (activeRoute) activeRoute.gain.gain.value = 10 ** (settings().gain_db / 20);
     render();
   }
 
   async function applyPreview({ gesture = false } = {}) {
     const player = MaweCoreState.player;
-    if (!player || (settings().gain_db === 0 && !routes.has(player))) return;
+    if (!player || (settings().gain_db === 0 && !routes.has(player)
+        && !global.MaweGapPlayback?.needsAudioGate(player))) return;
     try {
       const source = new URL(sourceOf(player), global.location.href);
       if (source.protocol !== 'blob:' && !(source.origin === global.location.origin && source.pathname === '/media')) {
@@ -81,14 +84,17 @@
       if (context.state !== 'running') throw new Error(tr('请点击播放或音量滑块以启用增益预览'));
       let route = routes.get(player);
       if (!route) {
+        const gate = context.createGain();
+        gate.gain.value = gapPlaybackMuted ? 0 : 1;
         const gain = context.createGain();
         gain.gain.value = 10 ** (settings().gain_db / 20);
-        gain.connect(context.destination);
+        gain.connect(gate);
+        gate.connect(context.destination);
         let source;
         try { source = context.createMediaElementSource(player); }
-        catch (error) { gain.disconnect(); throw error; }
+        catch (error) { gain.disconnect(); gate.disconnect(); throw error; }
         source.connect(gain);
-        route = { source, gain, connected: true };
+        route = { source, gain, gate, connected: true };
         routes.set(player, route);
       }
       if (activeRoute && activeRoute !== route) { activeRoute.source.disconnect(); activeRoute.connected = false; }
@@ -97,10 +103,40 @@
       activePlayer = player;
       route.gain.gain.value = 10 ** (settings().gain_db / 20);
       previewError = '';
+      global.MaweGapPlayback?.refresh(player);
     } catch (error) {
       previewError = `${tr('增益预览未生效')}：${error?.message || error}`;
     }
     render();
+  }
+  function setGapPlaybackMuted(muted) {
+    gapPlaybackMuted = muted === true;
+    const parameter = activeRoute?.gate.gain;
+    if (!parameter) return;
+    parameter.cancelScheduledValues?.(context.currentTime);
+    if (parameter.setValueAtTime) parameter.setValueAtTime(gapPlaybackMuted ? 0 : 1, context.currentTime);
+    else parameter.value = gapPlaybackMuted ? 0 : 1;
+  }
+  function scheduleGapPlaybackMute(delaySeconds) {
+    if (!activeRoute || activePlayer !== MaweCoreState.player || context?.state !== 'running') return false;
+    const parameter = activeRoute.gate.gain;
+    parameter.cancelScheduledValues(context.currentTime);
+    parameter.setValueAtTime(1, context.currentTime);
+    parameter.setValueAtTime(0, context.currentTime + Math.max(0, delaySeconds));
+    return true;
+  }
+  function waitForGapPlaybackSilence() {
+    if (!activeRoute || context?.state !== 'running') return null;
+    // Drain the old MediaElementSource queue while the element is paused and
+    // the gate is closed. Waiting after resuming would trim retained speech.
+    const until = context.currentTime + Math.max(.02, Number(context.baseLatency) || 0) + 256 / (Number(context.sampleRate) || 48000);
+    return new Promise(resolve => {
+      const check = () => {
+        if (context.state !== 'running' || context.currentTime >= until) { resolve(); return; }
+        global.setTimeout(check, Math.max(1, (until - context.currentTime) * 1000));
+      };
+      check();
+    });
   }
   function bindPlayer(player) {
     if (activePlayer !== player) {
@@ -302,5 +338,6 @@
   }
   global.MaweAudioProcessing = Object.freeze({ normalize, settings, loadProject, bindPlayer, change,
     normalizationGain, normalizeToTarget, measure, invalidateMeasurement, applyPreview, render, init,
+    setGapPlaybackMuted, scheduleGapPlaybackMute, waitForGapPlaybackSilence,
     get measurement() { return measurement; }, get measurementState() { return measurementState; } });
 })(typeof window !== 'undefined' ? window : globalThis);

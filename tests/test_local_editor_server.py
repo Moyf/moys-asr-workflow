@@ -1325,7 +1325,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"recentProjectsUrl": "/api/recent-projects/open"', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
-        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "assFrameUrl": "/api/ass-frame", "assFontAliasesUrl": "/api/ass-font-aliases", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
+        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "textProcessingPresetsUrl": "/api/text-processing-presets", "assFrameUrl": "/api/ass-frame", "assFontAliasesUrl": "/api/ass-font-aliases", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
         self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""}', page)
         completed_page = server_editor.build_server_page(
