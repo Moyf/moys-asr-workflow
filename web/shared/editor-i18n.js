@@ -131,7 +131,7 @@
     '烧录视频时的表情包位置': 'Sticker placement for burned-in videos',
     '固定位置（预览层设定框）': 'Fixed position (preview layer box)',
     '字幕第一个字左侧': 'Left of the first subtitle character',
-    '「字幕第一个字左侧」按 ASS 字幕的实际位置贴放；SRT 字幕、字幕重叠 / 句间空隙 / 特殊排版无法贴放时自动回退固定位置。同屏多张表情包时固定位置为居中叠放（预览是垂直堆叠）。预览层始终显示固定位置，最终以烧录结果为准。': '“Left of the first subtitle character” places stickers next to each ASS subtitle at its actual position; SRT subtitles, overlapping cues, gaps, or unsupported layouts fall back to the fixed position. With multiple stickers on screen the fixed position stacks them centered (the preview stacks them vertically). The preview layer always shows the fixed position; the burned video is the source of truth.',
+    '「字幕第一个字左侧」按 ASS 字幕的实际位置贴放，主字幕与叠加字幕轨都参与（同屏时贴主字幕左侧）；SRT 字幕、字幕重叠 / 句间空隙 / 特殊排版无法贴放时自动回退固定位置。同屏多张表情包时固定位置为居中叠放（预览是垂直堆叠）。预览层始终显示固定位置，最终以烧录结果为准。': '“Left of the first subtitle character” places stickers next to each ASS subtitle at its actual position; both the main and overlay subtitle tracks take part (the main track wins when both are on screen). SRT subtitles, overlapping cues, gaps, or unsupported layouts fall back to the fixed position. With multiple stickers on screen the fixed position stacks them centered (the preview stacks them vertically). The preview layer always shows the fixed position; the burned video is the source of truth.',
     '显示语言': 'Display language',
     '关闭覆盖时使用': 'Disabling the override uses the ',
     '，不把默认路径写入工程。': ' without writing that path into the project.',
@@ -202,6 +202,13 @@
     '静音区段': 'Mute region',
     '取消静音': 'Unmute',
     '已移除': 'Removed',
+    '已恢复': 'Restored',
+    '恢复': 'Restore',
+    '移除': 'Remove',
+    '恢复此区段声音；字幕启用状态单独设置': 'Restore audio in this region; subtitle visibility is controlled separately',
+    '移除此区段声音': 'Remove audio in this region',
+    '已移除 AI 区段声音': 'Removed audio in the AI region',
+    '已恢复 AI 区段声音': 'Restored audio in the AI region',
     '部分移除': 'Partially removed',
     '取消会仅撤销此 AI 复核项的静音来源': 'Cancel only removes the mute source for this AI review item',
     '此复核区段已被编辑；点击仅撤销旧范围的 AI 静音来源': 'This review region was edited; clicking removes only its previous AI mute range',
@@ -858,7 +865,7 @@
     '\\fade': '\\fade', '复杂淡入淡出': 'Complex fade', '启用': 'Enable', '\\move': '\\move', '位移': 'Movement', '\\t': '\\t', '变换': 'Transform',
     '开始': 'Start', '结束': 'End', '加速度': 'Acceleration', 'ASS 标签（不含大括号）': 'ASS tags (without braces)',
     '起点倍率': 'Start scale', '入场': 'Entrance',
-    '文字从起点倍率缩小落定到正常字号。句级': 'Text shrinks from the start scale to its normal size. Sentence-level',
+    '文字从起点倍率对应的字号缓动落定到正常字号（默认 0.8，从小放大；大于 1 则从大缩小）。句级': 'Text settles from the start scale to its normal size (default 0.8, growing in; above 1 shrinks down). Sentence-level',
     '{{文字}}': '{{text}}',
     '标记复用这组参数（不受上方开关影响）；开关只控制每句自动应用。': 'markers reuse these settings regardless of the toggle above; the toggle only controls automatic application to every cue.',
     '自定义 ASS 标签（不含大括号）': 'Custom ASS tags (without braces)', '进阶动画': 'Advanced animations',
@@ -905,7 +912,7 @@
     '什么是 MASS？': 'What is MASS?',
     '基于 Markdown 语法灵感的进阶式 ASS，也可以理解为 MAW-ASS。': 'An advanced ASS layer inspired by Markdown syntax; also read as MAW-ASS.',
     '强调': 'Emphasis', '缩小': 'Smaller', '放大': 'Larger',
-    '下划线文本': 'Underlined text', '删除线文本': 'Struck text', '缩小文本': 'Smaller text', '放大文本': 'Larger text',
+    '下划线文本': 'Underlined text', '删除线文本': 'Struck text',
     '强调文字比例': 'Emphasis text scale', '缩小文字比例': 'Small text scale', '放大文字比例': 'Large text scale',
     '用成对符号标记特殊文本；开启的语法统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。颜色与字号比例在 ASS 样式库中配置。': 'Mark special text with paired symbols. Enabled syntax applies to preview and export for all ASS caption tracks. Configure colors and size ratios in the ASS style library.',
     // 提示句子固定为双符号示例（双符号在任何非关闭规则下都生效），
@@ -914,11 +921,11 @@
     '详见字幕右键菜单「左右添加字符」部分。': 'See the "Wrap with characters" section in the subtitle right-click menu.',
     '注释色': 'Comment color', '注释样式': 'Comment style', '注释文字比例': 'Comment text scale',
     '弱化': 'Subdued', '%%弱化%%': '%%subdued%%', '//斜体//': '//italic//',
-    '强调文本': 'Emphasis text', '强调文本语法': 'Emphasis syntax', '文字放大比例': 'Text scale', '强调样式': 'Emphasis style',
+    '强调文本语法': 'Emphasis syntax', '文字放大比例': 'Text scale', '强调样式': 'Emphasis style',
     '左右添加字符预设': 'Character wrapping presets',
     '左右添加字符': 'Wrap with characters', '自定义左右字符': 'Custom wrap characters',
     '左侧字符': 'Left characters', '右侧字符': 'Right characters', '插入': 'Insert',
-    '音符': 'Music note', '淡出淡入': 'Fade in/out', '弱化文本': 'Subdued text', '斜体文本': 'Italic text', '整句': 'Sentence',
+    '音符': 'Music note', '淡出淡入': 'Fade in/out', '整句': 'Sentence',
     '原地震动': 'Shake in place', '放大出现': 'Pop in',
     'ASS 特殊文本样式': 'ASS text styles', '普通字符': 'Regular characters',
     '♪音符♪': '♪Music note♪', '♬双音符♬': '♬Double music notes♬', '[中括号]': '[Square brackets]',
@@ -960,6 +967,7 @@
     '媒体进度': 'Media progress', '音量': 'Volume', '速度': 'Speed', '播放速度': 'Playback speed',
     '全屏': 'Fullscreen', '退出全屏': 'Exit fullscreen',
     '显示': 'Display', '筛选': 'Filter', '隐藏禁用': 'Hide disabled',  '批量操作 ▾': 'Batch operations ▾', '批量操作': 'Batch operations', '批量替换…': 'Batch replace…',
+    '字幕处理': 'Subtitle processing', '对字幕进行查找替换、修剪空白、前后添加字符等操作': 'Find and replace, trim whitespace, add leading or trailing characters, and more',
     '字数阈值': 'Character threshold', '仅看超长': 'Long only', '字幕列表设置': 'Subtitle list settings',
     '保留拆分结果显示': 'Keep split results visible', '点击字幕后自动滚动': 'Auto-scroll after clicking a subtitle', '显示内容': 'Displayed content',
     '当前': 'Current', '已选': 'Selected', '波形': 'Waveform', '音频波形区': 'Audio waveform', '波形设置': 'Waveform settings', '波形轨道徽标（开启后）：': 'Waveform track badges (when enabled):', '使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形': 'Color the waveform using the spectral cache by dominant frequency; when disabled, use the original solid-color waveform',
@@ -1139,10 +1147,10 @@
     '右键': 'Right-click', '通用': 'General', '基础操作': 'Basic operations', '快捷操作': 'Shortcuts', '字幕操作': 'Subtitle actions', '波形区': 'Waveform area', '波形区字幕操作': 'Waveform subtitle actions',
     '进阶': 'Advanced', '帮助分区': 'Help sections',
     '鼠标操作': 'Mouse actions', '选择操作': 'Selection', '编辑操作': 'Editing actions', '快捷功能': 'Quick actions', '切换工具': 'Switch tools',
-    '处理范围': 'Scope', '查找并批量替换字幕文本': 'Find and batch-replace subtitle text',
+    '处理范围': 'Scope',
     '集中编辑字幕文本，可预览拆分、合并和字词时间码映射': 'Edit subtitle text in one place and preview split, merge, and word-timing mappings',
-    '批量修剪空白、首字母大写、添加前缀/后缀或去除 Markdown 符号': 'Batch-trim whitespace, capitalize initials, add prefixes/suffixes, or remove Markdown markers',
-    '批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围': 'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
+    '按步骤替换、修剪空白或转换格式，并预览最终结果': 'Replace text, trim whitespace, or format subtitles in steps, then preview the final result',
+    '文本处理支持勾选「仅处理选中的字幕」限定范围': 'Check “Process selected subtitles only” to limit text processing to the selection',
     '波形区操作': 'Waveform actions', '空白波形区': 'Blank waveform area', '波形外观调整': 'Waveform appearance', '静音空隙操作': 'Silent-gap operations', '字幕列表': 'Subtitle list',
     'WASD 方向键': 'WASD directional keys', '选择前/后字幕': 'Select previous/next subtitle', '连选前/后字幕': 'Extend selection backward/forward',
     '选择并显示当前轨道首/末条可见字幕': 'Select and reveal the first/last visible subtitle on the current track',
@@ -1313,7 +1321,90 @@
     '当前有未应用的文本修改，确定关闭编辑窗口吗？': 'You have unapplied text changes. Close the editing window?',
     '区分大小写': 'Case sensitive',
     '正则表达式': 'Regular expression',
+    '处理预设': 'Processing preset', '保存预设': 'Save preset', '另存预设': 'Save as new preset',
+    '删除预设': 'Delete preset', '导出库': 'Export library', '导入库': 'Import library',
+    '替换规则（按顺序执行，之后执行下方操作）': 'Replacement rules (run in order before the operations below)',
+    '添加规则': 'Add rule', '启用': 'Enabled', '正则': 'Regex', '上移': 'Move up', '下移': 'Move down',
+    '单句 ASS 样式': 'Cue ASS style', '继承默认样式': 'Inherit default style',
+    '（工程内保存）': ' (saved in project)',
+    '工程内修改，未同步到用户级配置': 'Project styles differ and are not synced to user settings',
+    '正在加载预设库…': 'Loading preset library…', '正在保存用户级预设库…': 'Saving the user-level preset library…',
+    '请先选择要处理的字幕': 'Select subtitles to process first', '正在生成预览…': 'Preparing preview…',
+    '预设名称': 'Preset name', '删除这个预设？': 'Delete this preset?',
+    '导入会替换当前预设库，是否继续？': 'Importing will replace the current preset library. Continue?',
+    '该预设包含 ASS 特殊文本样式，请先开启 ASS 模式': 'This preset contains ASS text styles. Enable ASS mode first.',
+    '规则运行超时，请简化正则表达式': 'The rules timed out. Simplify the regular expression.',
+    '无法运行替换规则': 'Could not run replacement rules', '预览已更新': 'Preview updated',
+    '预设库格式无效': 'Invalid preset library', '预设格式无效': 'Invalid preset',
+    '预设操作格式无效': 'Invalid preset operations', '替换规则格式无效': 'Invalid replacement rule',
+    '预设库已被其他页面修改，请重新打开': 'The preset library was changed by another page. Reopen text processing and try again.',
+    '文件过大': 'File is too large',
+    '请选择至少一项文本处理操作': 'Select at least one text-processing operation',
+    '字幕已变化，请重新查看预览': 'Subtitles changed. Review the preview again.',
+    '无法应用文本处理：字幕行结构发生了变化': 'Cannot apply text processing because the subtitle structure changed.',
     '输入查找内容查看预览': 'Enter text to preview replacements',
+    '仅看有变化的字幕': 'Show changed subtitles only',
+    '查看全部字幕': 'Show all subtitles',
+    '步骤数量已达上限': 'Step limit reached',
+    '处理步骤': 'Processing steps', '处理后字幕预览': 'Processed subtitle preview',
+    '左侧步骤不完整': 'Incomplete step on the left', '左侧步骤无法执行': 'Could not run the step on the left',
+    '替换文本': 'Replace text', '文字转数字': 'Convert Chinese numerals',
+    '去除格式符号': 'Remove formatting markers',
+    '查找文本': 'Find text', '替换为（留空即删除）': 'Leave blank to delete',
+    '选项': 'Options', '已停用': 'Disabled',
+    '普通字符': 'Plain characters', 'MASS 特殊样式': 'MASS text styles',
+    'MASS 整句动画': 'MASS sentence animations',
+    '如需使用特殊文本样式（MASS），请先启用 ASS 字幕样式。': 'Enable ASS subtitle styles to use MASS text styles.',
+    '存为新预设': 'Save as new preset', '更新预设': 'Update preset',
+    '设为默认': 'Set as default', '取消默认': 'Clear default',
+    '导入导出': 'Import/export', '导入处理预设': 'Import processing presets',
+    '导出当前预设': 'Export current preset', '导出整个预设库': 'Export whole preset library',
+    '导入单条处理预设': 'Import a single processing preset', '加入预设库': 'Add to preset library',
+    '确认替换预设库': 'Replace preset library',
+    '确认后会替换现有预设库和默认预设设置。': 'Confirming will replace the current preset library and its default preset setting.',
+    '确认后会作为新预设加入当前预设库，不会改动现有预设和默认设置。': 'Confirming will add it to the current preset library as a new preset; existing presets and the default setting stay unchanged.',
+    '正在核验预设文件…': 'Validating preset file…', '文件不是有效的 JSON': 'File is not valid JSON',
+    '无处理步骤': 'No processing steps', '全部字幕': 'All subtitles', '（空字幕）': '(Empty subtitle)',
+    '正在保存预设库…': 'Saving preset library…',
+    '此文件不含预设。确认后会清空现有预设库。': 'This file contains no presets. Confirming will clear the current library.',
+    '当前工程预设配置': 'Current project preset settings', '更改': 'Change',
+    '工程内继承默认预设': 'Inherit my default preset',
+    '工程内默认留空': 'Start with no steps',
+    '保存为当前工程默认处理': 'Save current steps for this project',
+    '已保存当前工程默认处理': 'Using steps saved in this project',
+    '每次打开时都继承用户预设的处理步骤（若无则留空）。': 'Load the steps from your default preset on open, or start empty if none is set.',
+    '这个工程每次都从空步骤开始，即使已经设了用户默认。': 'Open this project with no steps even if you have set a user default.',
+    '把当前步骤存入工程。之后即使修改用户预设，工程内不受影响。': 'Save a copy of these steps in the project. Changes to user presets will leave the copy intact.',
+    '仅处理选中字幕': 'Process selected subtitles only',
+    '在左侧添加处理步骤，即可查看字幕改动。': 'Add processing steps on the left to preview subtitle changes.',
+    '在上方选择处理步骤后点击「添加步骤」来增加处理。': 'Pick a processing step above, then click “Add step” to add one.',
+    '添加步骤': 'Add step',
+    '删除步骤': 'Remove step',
+    '文本处理预设': 'Text processing presets',
+    '更新步骤': 'Update steps',
+    '设为用户默认': 'Set as user default',
+    '取消用户默认': 'Clear user default',
+    '保存为用户默认': 'Save as user default',
+    '记为此工程默认': 'Save as project default',
+    '此工程不预填': 'Leave this project blank',
+    '恢复继承': 'Use inherited default',
+    '此工程继承用户默认': 'This project inherits the user default',
+    '此工程使用自己的文本处理默认': 'This project uses its own text processing default',
+    '此工程使用自己的拼合默认': 'This project uses its own join default',
+    '自定义步骤': 'Custom steps',
+    '未知步骤': 'Unknown step',
+    '拼合默认仅存于当前浏览器': 'Join defaults are stored in this browser only',
+    '正在读取用户配置…': 'Loading user settings…',
+    '用户配置已保存': 'User settings saved',
+    '无法读取用户配置': 'Could not load user settings',
+    '无法保存用户配置': 'Could not save user settings',
+    '另一窗口已更新配置，草稿已保留。请核对预设后重试。': 'Another window updated the settings. Your draft is intact. Review the presets and retry.',
+    '请输入查找内容': 'Enter search text',
+    '此步骤需要开启 ASS 字幕模式': 'This step requires ASS subtitle mode',
+    '请选择包裹字符或填写自定义字符': 'Select a wrapper or enter custom characters',
+    '正则执行超时': 'Regular expression timed out',
+    '替换结果过长': 'Replacement result is too long',
+    '无法启动正则预览': 'Could not start regular expression preview',
     '文本处理…': 'Text processing…', '文本处理': 'Text processing', '仅处理选中的字幕': 'Process selected subtitles only', '需要先选中至少1条字幕才可启用': 'Select at least one subtitle first to enable this option',
     'Trim': 'Trim', '修剪前后空白': 'Trim surrounding whitespace', '去除字幕前方和后方的空格': 'Remove spaces before and after the subtitle text', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
     '添加前缀': 'Add prefix', '插入到字幕开头': 'Insert at the beginning', '附加内容': 'Add suffix', '插入到字幕结尾': 'Insert at the end',
@@ -1348,7 +1439,7 @@
     '切换主字幕语言': 'Change main subtitle language',
     '启用此条': 'Enable this subtitle', '禁用此条': 'Disable this subtitle',
     '删除字幕': 'Delete subtitle', '延长表情包': 'Extend sticker duration',
-    '批量替换选中字幕…': 'Batch replace selected subtitles…',
+    '替换选中字幕…': 'Replace selected subtitles…',
     '启用选中': 'Enable selection', '禁用选中': 'Disable selection',
     '清除所有选中': 'Clear selection', '取消选中': 'Deselect', '取消选择': 'Deselect', '请选择至少两个同轨道字幕块！': 'Select at least two subtitle blocks on the same track!',
     '红': 'Red', '黄': 'Yellow',
@@ -1677,6 +1768,48 @@
     if (lang !== EN) return text;
     if (EN_TEXT[text]) return EN_TEXT[text];
     if (EN_ATTR[text]) return EN_ATTR[text];
+    let presetRule = /^规则 (\d+) (查找|替换为)$/.exec(text);
+    if (presetRule) return `Rule ${presetRule[1]} ${presetRule[2] === '查找' ? 'find' : 'replace with'}`;
+    presetRule = /^第 (\d+) 条规则的查找内容为空$/.exec(text);
+    if (presetRule) return `Rule ${presetRule[1]}: Enter text to find.`;
+    presetRule = /^第 (\d+) 条规则：(.+)$/.exec(text);
+    if (presetRule) return `Rule ${presetRule[1]}: ${translateText(presetRule[2], EN)}`;
+    presetRule = /^(替换规则错误|加载失败，无法保存|导入失败)：(.+)$/.exec(text);
+    if (presetRule) {
+      const prefix = { '替换规则错误': 'Replacement rule error', '加载失败，无法保存': 'Could not load the preset library; saving is unavailable', '导入失败': 'Import failed' }[presetRule[1]];
+      return `${prefix}: ${translateText(presetRule[2], EN)}`;
+    }
+    presetRule = /^保存失败：(预设库格式无效|预设格式无效|预设操作格式无效|替换规则格式无效|预设库已被其他页面修改，请重新打开)$/.exec(text);
+    if (presetRule) return `Save failed: ${translateText(presetRule[1], EN)}`;
+    presetRule = /^(主字幕|副字幕)第 (\d+) 条$/.exec(text);
+    if (presetRule) return `${presetRule[1] === '主字幕' ? 'Main subtitle' : 'Secondary subtitle'} ${presetRule[2]}`;
+    presetRule = /^(左侧步骤不完整|左侧步骤无法执行)： \[(\d+)\. (.+?)\] （([\s\S]+)）$/.exec(text);
+    if (presetRule) {
+      const [, prefix, index, step, reason] = presetRule;
+      return `${translateText(prefix, EN)}: [${index}. ${translateText(step, EN)}] (${translateText(reason, EN)})`;
+    }
+    presetRule = /^正则表达式无效 ([\s\S]+)$/.exec(text);
+    if (presetRule) {
+      const label = EN_TEXT['正则表达式无效'];
+      const reason = presetRule[1];
+      return reason.startsWith(label) ? reason : `${label}: ${reason}`;
+    }
+    presetRule = /^将处理 (\d+) 条字幕，预计修改 (\d+) 条$/.exec(text);
+    if (presetRule) {
+      const [, total, changed] = presetRule;
+      return `Processing ${total} subtitle${total === '1' ? '' : 's'}, ${changed} will change`;
+    }
+    presetRule = /^选定的 (\d+) 条字幕不会发生变化$/.exec(text);
+    if (presetRule) return `None of the ${presetRule[1]} selected subtitles will change`;
+    presetRule = /^已应用文本处理：(\d+) 条字幕，(\d+) 条字词时间码未能完整保留$/.exec(text);
+    if (presetRule) {
+      const [, changed, affected] = presetRule;
+      return `Text processing applied to ${changed} subtitle${changed === '1' ? '' : 's'}. Word timings could not be fully preserved for ${affected} subtitle${affected === '1' ? '' : 's'}.`;
+    }
+    presetRule = /^已应用文本处理：(\d+) 条字幕$/.exec(text);
+    if (presetRule) return `Text processing applied to ${presetRule[1]} subtitles`;
+    presetRule = /^(\d+) 条字幕的字词时间码已清除，请按需检查$/.exec(text);
+    if (presetRule) return `Word timings were cleared from ${presetRule[1]} subtitles. Check them as needed.`;
     let scope = /^当前范围：全部 (\d+) 条字幕$/.exec(text);
     if (scope) return `Current scope: all ${scope[1]} subtitles`;
     scope = /^当前范围：仅选中的 (\d+) 条字幕$/.exec(text);

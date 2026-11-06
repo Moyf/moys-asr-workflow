@@ -347,12 +347,64 @@ export function initMaweCuePanel() {
 
 
 
+  function syncCueAssStyle(segment) {
+    const select = document.getElementById('cue-ass-style');
+    if (!select) return;
+    const builtinNames = { default: 'SRT 渲染样式', ass: 'ASS 默认样式', 'ass-extension': 'ASS 副字幕样式' };
+    const translate = (text) => window.MAWE_I18N?.translateText?.(text) || text;
+    const styleLabel = (style) => {
+      const name = style.name || 'ASS';
+      return builtinNames[style.id] === name ? translate(name) : name;
+    };
+    const addOption = (value, label) => {
+      const option = new Option(label, value);
+      // User-defined names are content, even when they match an interface label.
+      option.dataset.markerProjectContent = '';
+      select.add(option);
+    };
+    const styles = window.MaweAssStorageWiring?.styles() || [];
+    const savedStyle = segment?.assStyle;
+    const libraryStyle = savedStyle && styles.find((style) => style.id === savedStyle.id);
+    const snapshotKey = window.AsrEditorUtils.assStyleSnapshotKey;
+    const matchesLibrary = libraryStyle && snapshotKey(savedStyle) === snapshotKey(libraryStyle);
+
+    select.disabled = !segment;
+    select.replaceChildren();
+    addOption('', translate('继承默认样式'));
+    if (savedStyle && !matchesLibrary) {
+      addOption('__snapshot', styleLabel(savedStyle) + translate('（工程内保存）'));
+    }
+    styles.forEach((style) => addOption(style.id, styleLabel(style)));
+    select.value = savedStyle ? (matchesLibrary ? savedStyle.id : '__snapshot') : '';
+  }
+
+  document.addEventListener('mawe:languagechange', () => syncCueAssStyle(getCurrentCuePanelTarget()?.segment));
+  document.getElementById('cue-ass-style')?.addEventListener('focus', () => syncCueAssStyle(getCurrentCuePanelTarget()?.segment));
+  document.getElementById('cue-ass-style')?.addEventListener('change', (event) => {
+    const target = getCurrentCuePanelTarget();
+    const segment = target?.segment;
+    const value = event.target.value;
+    if (!segment || value === '__snapshot') return;
+    const style = (window.MaweAssStorageWiring?.styles() || []).find((item) => item.id === value);
+    if (value && !style) return;
+    if (!value && !segment.assStyle) return;
+    MaweCommands.run('修改单句 ASS 样式', (command) => {
+      if (style) segment.assStyle = JSON.parse(JSON.stringify(window.AsrEditorUtils.normalizeAssStyle(style)));
+      else delete segment.assStyle;
+      segment._dirty = true;
+      if (target.kind === 'overlay') target.track._dirty = true;
+      if (target.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
+    });
+  });
+
   function renderCurrentCuePanel() {
   if (!MaweDom.cuePanel) return;
   const target = getCurrentCuePanelTarget();
   window.MaweAssCuePosition?.sync();
   const idx = target?.index ?? -1;
   const seg = target?.segment || null;
+  syncCueAssStyle(seg);
   const empty = !target;
   MaweDom.cuePanel.classList.toggle('empty', empty);
   MaweDom.cuePanel.classList.toggle('extension-target', !empty && target.kind === 'extension');

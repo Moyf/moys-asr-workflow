@@ -281,25 +281,43 @@ def extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, strea
     return [output[t] for t in values]
 
 
-def extract_keyframes(media_path: Path | str, *, stream_index: int | None = None, cancel: threading.Event | None = None, timeout_s: float = 600, ffmpeg_path: str | None = None, info: VideoInfo | None = None, threads: int = 2, max_cells: int = 4000) -> list[FrameResult]:
+def extract_keyframes(media_path: Path | str, *, stream_index: int | None = None, cancel: threading.Event | None = None, timeout_s: float = 600, ffmpeg_path: str | None = None, info: VideoInfo | None = None, threads: int = 2, max_cells: int = 4000, duration_limit_sec: float | None = None) -> list[FrameResult]:
     """Decode only keyframes in one full-file pass and stamp their real PTS.
 
     Keyframes decode independently, so a whole film costs a small fraction of
     the exact-grid pass. Frames land on their own presentation timestamps; the
     cache holds them onto display grids at render time. Dense sources are
     decimated to ``max_cells`` during planning, before any FFmpeg work.
+    ``duration_limit_sec`` bounds the packet scan and the keyframe decode to
+    the first N seconds of stream time (quick-test range); the decode reads a
+    slightly wider input window and the result is trimmed back to the scanned
+    stamps, so the scan/decode 1:1 pairing invariant survives the bound.
     """
     video = info or probe_video(media_path, cancel=cancel, ffmpeg_path=ffmpeg_path)
     if video is None:
         return []
     if stream_index is not None and stream_index != video.stream_index:
         raise ValueError("stream_index does not name the probed video stream")
+    if duration_limit_sec is not None and (
+        not isinstance(duration_limit_sec, (int, float)) or isinstance(duration_limit_sec, bool)
+        or not duration_limit_sec > 0
+    ):
+        raise ValueError("duration_limit_sec must be a positive number")
     tool = resolve_ffmpeg_tool("ffmpeg", ffmpeg_path)
     if tool is None:
         raise ThumbnailError("ffmpeg is unavailable")
     source_stat = Path(media_path).stat()
     source_identity = (source_stat.st_size, source_stat.st_mtime_ns)
     begin_s, end_s = video.start_ms / 1000, (video.start_ms + video.duration_ms) / 1000
+    limit_ms = None
+    if duration_limit_sec is not None:
+        limit_ms = round(float(duration_limit_sec) * 1000)
+        # Quick test never extends past the media itself; a bigger request is
+        # equivalent to no limit and shares the full-media cache identity.
+        if limit_ms >= video.duration_ms:
+            duration_limit_sec, limit_ms = None, None
+        else:
+            end_s = min(end_s, begin_s + float(duration_limit_sec))
     deadline = time.monotonic() + timeout_s
 
     def remaining():
@@ -322,6 +340,8 @@ def extract_keyframes(media_path: Path | str, *, stream_index: int | None = None
             keyframe_times.update(keyframes)
             position += chunk_s
     stamps = sorted(keyframe_times)
+    if limit_ms is not None:
+        stamps = [stamp for stamp in stamps if stamp * 1000 - video.start_ms < limit_ms]
     if not stamps:
         return []
     stride = 1
@@ -331,12 +351,25 @@ def extract_keyframes(media_path: Path | str, *, stream_index: int | None = None
     with tempfile.TemporaryDirectory(prefix="maw-keyframes-") as temp:
         decimate = f"select='not(mod(n\\,{stride}))'," if stride > 1 else ""
         vf = decimate + "scale=w='trunc(min(160/iw/sar,90/ih)*iw*sar/2)*2':h='trunc(min(160/iw/sar,90/ih)*ih/2)*2',setsar=1,pad=160:90:(ow-iw)/2:(oh-ih)/2"
-        command = [str(tool), "-hide_banner", "-nostdin", "-v", "error", "-skip_frame", "nokey", "-threads", str(threads), "-filter_threads", "1", "-i", str(media_path), "-map", f"0:{video.stream_index}", "-an", "-sn", "-dn", "-vf", vf, "-fps_mode", "passthrough", "-q:v", "5", "-pix_fmt", "yuvj420p", "-y", str(Path(temp) / "%06d.jpg")]
+        command = [str(tool), "-hide_banner", "-nostdin", "-v", "error", "-skip_frame", "nokey", "-threads", str(threads), "-filter_threads", "1"]
+        if duration_limit_sec is not None:
+            # Input-side -t counts from the first packet, not from PTS
+            # begin_s: the read window is the first limit (+ margin) seconds
+            # of content for any start offset — a superset of the scanned
+            # stamps without seeking; the trim below restores the 1:1 pairing.
+            command += ["-t", f"{float(duration_limit_sec) + 0.5:.3f}"]
+        command += ["-i", str(media_path), "-map", f"0:{video.stream_index}", "-an", "-sn", "-dn", "-vf", vf, "-fps_mode", "passthrough", "-q:v", "5", "-pix_fmt", "yuvj420p", "-y", str(Path(temp) / "%06d.jpg")]
         result = _run(command, timeout_s=remaining(), cancel=cancel)
         if result.returncode:
             raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
         files = sorted(Path(temp).glob("*.jpg"))
-        if len(files) != len(stamps):
+        if limit_ms is not None:
+            # The decode window is a superset of the scan window; drop the
+            # boundary extras so files pair with stamps exactly.
+            if len(files) < len(stamps):
+                raise ThumbnailError("keyframe decode did not match the packet scan")
+            files = files[:len(stamps)]
+        elif len(files) != len(stamps):
             raise ThumbnailError("keyframe decode did not match the packet scan")
         frames = []
         for stamp, file in zip(stamps, files):

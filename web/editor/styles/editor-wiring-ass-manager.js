@@ -16,6 +16,15 @@ function setAssStyleLibraryStatus(text, state = 'idle') {
   updateAssStyleLibraryStatus();
 }
 
+function updateAssStyleProjectHint() {
+  if (!assStyleProjectHint) return;
+  const project = MaweBoot.DATA;
+  const snapshotKey = window.AsrEditorUtils.assStyleSnapshotKey;
+  const styleKeys = new Map(ASS_STYLE_LIBRARY.styles.map(style => [style.id, snapshotKey(style)]));
+  assStyleProjectHint.hidden = ![...window.AsrEditorUtils.iterSegments(project)].some(({ assStyle }) =>
+    assStyle && snapshotKey(assStyle) !== styleKeys.get(assStyle.id));
+}
+
 function updateAssStyleLibraryStatus() {
   if (!assStyleLibraryStatus) return;
   const usesServerStorage = assStyleLibraryUsesServerStorage();
@@ -34,6 +43,7 @@ function updateAssStyleLibraryStatus() {
         : '当前使用本地副本；服务器恢复后可再次点击保存同步。';
     assStyleLibraryPathHint.textContent = window.MAWE_I18N?.translateText?.(pathHint) || pathHint;
   }
+  updateAssStyleProjectHint();
 }
 
 function assStyleManagerClone(value) {
@@ -459,6 +469,9 @@ const assStyleFloatingPanel = MaweFloatingPanel.createFloatingPanel({
     syncAssStyleManager({ force: true });
     void loadAssStyleLibrary({ force: true });
   },
+});
+MaweState.onProjectDirtyChange(() => {
+  if (assStyleFloatingPanel.isOpen()) updateAssStyleProjectHint();
 });
 document.getElementById('ass-frame-style-edit')?.addEventListener('click', () => assStyleFloatingPanel.open());
 assStyleWindowClose?.addEventListener('click', () => assStyleFloatingPanel.close());

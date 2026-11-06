@@ -1527,7 +1527,7 @@ def _build_segments(
 
 def _copy_common_metadata(source_segments: Sequence[JsonDict]) -> JsonDict:
     first = source_segments[0]
-    excluded = set(TIMING_FIELDS) | set(SAFE_SCALARS) | set(VISUAL_FIELDS) | {"assOverride"}
+    excluded = set(TIMING_FIELDS) | set(SAFE_SCALARS) | set(VISUAL_FIELDS) | {"assOverride", "assStyle"}
     # Split outputs inherit independent copies; merged cues take the first
     # source position, including its absence, just like the editor's merge.
     result: JsonDict = {}
@@ -1539,6 +1539,8 @@ def _copy_common_metadata(source_segments: Sequence[JsonDict]) -> JsonDict:
             result[visual_field] = copy.deepcopy(first[visual_field])
     if "assOverride" in first:
         result["assOverride"] = copy.deepcopy(first["assOverride"])
+    if "assStyle" in first:
+        result["assStyle"] = copy.deepcopy(first["assStyle"])
     for metadata_key, value in first.items():
         if metadata_key in excluded:
             continue

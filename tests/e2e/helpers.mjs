@@ -524,3 +524,15 @@ export function buildBrowserEditorFixture(outputPath) {
   }
   return outputPath;
 }
+
+export async function addTextProcessStep(page, type) {
+  await page.locator('#text-process-step-type').selectOption(type);
+  await page.locator('#text-preset-add-rule').click();
+  return page.locator('#text-preset-rules > li').last();
+}
+
+// 打开弹窗时空步骤会预填一步「替换文本」（新交互）；需要干净空步骤的旧用例
+// 先调用它删掉预填行。
+export async function removeTextProcessPrefill(page) {
+  await page.locator('#text-preset-rules > li').first().getByRole('button', { name: '删除步骤' }).click();
+}

@@ -12,6 +12,7 @@
 | `-dbg` / `--debug`，且无转写参数 | 启动 Launcher 调试。 |
 | `-dt` / `--devtools` | 启动 Launcher 并打开 DevTools。 |
 | `-i INPUT` | 转写，默认生成 SRT 与 `.mosp`。 |
+| `--burn SUBTITLE -i MEDIA` | 把字幕烧录进视频，输出 `<原名>.压字幕.mp4`；跳过 ASR。 |
 | `--align-script SCRIPT -i MEDIA` | 文稿与录音直接生成 SRT 与字词时间码工程，跳过 ASR；详见[使用指南](SCRIPT_DRIVEN_ALIGNMENT.md)。 |
 | `--align-script SCRIPT -i MEDIA --alignment-check` | 无需模型，先检查输入 / 音轨与分块；输出 JSON，不生成字幕。 |
 | `--server` / `--stop-server` | 启动或停止本机编辑器。 |
@@ -105,6 +106,18 @@ OpenAI 兼容服务与实验必剪：
 ```
 
 CLI 不为 OpenRouter 模型自动补前缀，必须填服务商实际模型 ID。兼容接口只返回纯文本时不能生成字幕。以上 URL 示例需替换为真实、可访问且允许提交的地址。
+
+## 烧录字幕
+
+```powershell
+.\MAW.exe --burn "clip.srt" -i "clip.mp4" --encoder amf
+```
+
+- `--burn SUBTITLE` 接受 SRT/ASS/SSA 或 `.mosp`/`.json` 工程：SRT 按样式库样式转换，工程按自身基础外观转换，ASS/SSA 保留文件内嵌样式，与工具箱「烧录字幕」同一套转换与编码逻辑。
+- 工程输入使用基础 ASS 导出：包含主轨和启用的叠加轨，不包含副轨或单句 ASS 样式。需要完整双语及 ASS 效果时，请先在编辑器导出 ASS，再将该文件传给 `--burn`。
+- 输出写入媒体同目录 `<原名>.压字幕.mp4`，重名自动避让；默认 CRF 21、预设 medium、音频 192k，保留全部音轨，需要自定义编码参数时改用工具箱。
+- `--encoder` 可选 `auto`（默认，硬件编码失败自动回退 CPU）、`cpu`、`nvenc`、`amf`、`qsv`；已知显卡厂商时建议显式指定，避免 auto 盲试不存在的硬件编码器。
+- `--burn` 不能与转写、Server 或文稿对齐参数混用；字幕缺字或编码失败时退出码非零，stderr 说明原因。
 
 ## 高级模块命令与公开 CLI 的区别
 

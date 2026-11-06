@@ -408,6 +408,7 @@ const assStyleSaveButton = document.getElementById('ass-style-save');
 const assStyleDeleteButton = document.getElementById('ass-style-delete');
 const assStyleResetButton = document.getElementById('ass-style-reset');
 const assStyleLibraryPathHint = document.getElementById('ass-style-library-path-hint');
+const assStyleProjectHint = document.getElementById('ass-style-project-hint');
 
 
 

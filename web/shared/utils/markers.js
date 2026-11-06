@@ -133,6 +133,11 @@ export function createUtilsModule() {
     if (end !== null && end > start) marker.end = end;
     const review = normalizeReviewField(raw.review);
     if (review) marker.review = review;
+    // 旧口播整理标记没有类型字段；只按明确的 AI 删除备注迁移，不能按颜色推断。
+    if (raw.cleanup_action === 'remove'
+        || (!review && /^\[AI\]\s*(?:删除|移除)\s*[:：]/i.test(marker.note))) {
+      marker.cleanup_action = 'remove';
+    }
     const ai = raw.ai;
     if (ai?.schema === 'maw.ai-annotation.v1' && typeof ai.task === 'string' && ai.task.length <= 64
         && /^[a-f0-9]{32}$/.test(ai.run_id) && /^[a-f0-9]{64}$/.test(ai.key)
@@ -184,6 +189,10 @@ export function createUtilsModule() {
       ? unknownFields(container, ['schema', 'items']) : {};
     if (!normalized.length && !Object.keys(extra).length) return null;
     return { ...extra, schema: MARKERS_SCHEMA, items: normalized };
+  }
+
+  function isAiCleanupRemovalMarker(marker) {
+    return marker?.cleanup_action === 'remove' && markerKind(marker) === 'region';
   }
 
   // 管理窗过滤：query 匹配名称与备注（大小写不敏感）；
@@ -258,6 +267,7 @@ export function createUtilsModule() {
     nextMarkerId,
     markerKind,
     isRegionMarker,
+    isAiCleanupRemovalMarker,
     isPendingReviewMarker,
     countPendingReviewMarkers,
     markerMatchesFilter,
