@@ -203,8 +203,154 @@ def list_models(env_path: Path, provider_id: str | None = None) -> list[str]:
     return list_llm_models(settings)
 
 
+# 文本任务共用 complete_subtitle_groups 的 JSON 协议：输入 cues（id+text），
+# 输出 groups（source_ids→text）。前端在提交时附带选中字幕快照，回写前
+# 逐条核对文本未变，避免任务期间的人工编辑被静默覆盖。
+TEXT_TASK_MAX_CUES = 80
+TEXT_TASK_LANGS = ("zh", "en")
+
+# 预设系统提示词：zh/en 两套，前端按选中字幕的检测语言选择；用户在编辑器
+# 里自定义的提示词整段替换预设（customPrompt）。
+AI_TEXT_TASK_PROMPTS: dict[str, dict[str, str]] = {
+    "ai-bold": {
+        "zh": (
+            "你是字幕排版助手。为下面每条字幕中最核心的关键词或短语添加「**」强调标记（Markdown 粗体）。规则：\n"
+            "- 每条字幕只强调 1~2 处，不要整句加粗；\n"
+            "- 保留原文语言、标点、空格，不增删任何文字；\n"
+            "- 已有 **标记** 的片段保持原样，不要嵌套或重复包裹；\n"
+            "- 输出 JSON：{\"groups\": [{\"source_ids\": [\"<原字幕id>\"], \"text\": \"<处理后的完整文本>\"}]}，"
+            "每条字幕一个 group，source_ids 原样回传。"
+        ),
+        "en": (
+            "You are a subtitle typesetting assistant. Add \"**\" emphasis markers (Markdown bold) around "
+            "the most important keyword or phrase in each subtitle line. Rules:\n"
+            "- Emphasize only 1-2 core words or phrases per line; never bold the entire line;\n"
+            "- Preserve the original language, punctuation and spacing; never add or remove words;\n"
+            "- Leave existing **bold** spans untouched; never nest or double-wrap;\n"
+            "- Output JSON: {\"groups\": [{\"source_ids\": [\"<original cue id>\"], \"text\": \"<full processed text>\"}]} "
+            "- one group per cue, echoing source_ids unchanged."
+        ),
+    },
+    "ai-translate": {
+        "zh": (
+            "你是专业字幕翻译。把每条字幕翻译成自然的简体中文口语，用作双语字幕的副字幕轨。规则：\n"
+            "- 译文简洁、口语化，符合中文字幕习惯，避免书面腔；\n"
+            "- 保留专有名词与数字；不合并、不拆分字幕条数；\n"
+            "- 输出 JSON：{\"groups\": [{\"source_ids\": [\"<原字幕id>\"], \"text\": \"<译文>\"}]}，"
+            "每条字幕一个 group，source_ids 原样回传。"
+        ),
+        "en": (
+            "You are a professional subtitle translator. Translate each subtitle into natural spoken English "
+            "for a secondary subtitle track. Rules:\n"
+            "- Keep the translation concise and conversational, in the style of English subtitles;\n"
+            "- Preserve proper nouns and numbers; never merge or split cues;\n"
+            "- Output JSON: {\"groups\": [{\"source_ids\": [\"<original cue id>\"], \"text\": \"<translation>\"}]} "
+            "- one group per cue, echoing source_ids unchanged."
+        ),
+    },
+    "ai-emoji": {
+        "zh": (
+            "你是字幕润色助手。给每条字幕开头添加一个贴切的 emoji 表情。规则：\n"
+            "- 只在文本最前面加一个 emoji，其后接一个空格；不要在句中或句尾添加；\n"
+            "- emoji 需与该句语义或情绪匹配；没有合适选择时保持原文不加；\n"
+            "- 不修改原文的任何其他字符；\n"
+            "- 输出 JSON：{\"groups\": [{\"source_ids\": [\"<原字幕id>\"], \"text\": \"<处理后的完整文本>\"}]}，"
+            "每条字幕一个 group，source_ids 原样回传。"
+        ),
+        "en": (
+            "You are a subtitle polishing assistant. Prepend one fitting emoji to each subtitle line. Rules:\n"
+            "- Add exactly one emoji at the very start followed by a single space; never inside or at the end;\n"
+            "- Match the emoji to the line's meaning or mood; leave the line unchanged if no emoji fits;\n"
+            "- Do not modify any other characters;\n"
+            "- Output JSON: {\"groups\": [{\"source_ids\": [\"<original cue id>\"], \"text\": \"<full processed text>\"}]} "
+            "- one group per cue, echoing source_ids unchanged."
+        ),
+    },
+}
+
+
+def normalize_task_cues(payload_cues: object) -> list[dict[str, str]]:
+    """校验并规整任务负载里的字幕快照：[{id, text}]，丢弃空文本与非法项。"""
+    if not isinstance(payload_cues, list):
+        raise AiTaskError("任务负载缺少字幕快照（cues）")
+    cues: list[dict[str, str]] = []
+    for item in payload_cues:
+        if not isinstance(item, dict):
+            continue
+        cue_id = str(item.get("id") or "").strip()
+        text = str(item.get("text") or "")
+        if cue_id and text.strip():
+            cues.append({"id": cue_id, "text": text})
+    return cues
+
+
+def collect_group_texts(response: Mapping[str, Any], cues: list[dict[str, str]]) -> dict[str, str]:
+    """把 LLM groups 输出整理成 id→text；只接受单源 group，未知 id 丢弃。"""
+    known_ids = {cue["id"] for cue in cues}
+    texts: dict[str, str] = {}
+    groups = response.get("groups")
+    if not isinstance(groups, list):
+        return texts
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        source_ids = group.get("source_ids")
+        text = str(group.get("text") or "").strip()
+        if not isinstance(source_ids, list) or len(source_ids) != 1 or not text:
+            continue
+        cue_id = str(source_ids[0])
+        if cue_id in known_ids:
+            texts[cue_id] = text
+    return texts
+
+
+def run_ai_text_task(
+    kind: str,
+    env_path: Path,
+    payload: Mapping[str, Any],
+    report: Callable[[str, int | None], None],
+    cancel: Callable[[], bool],
+) -> dict[str, Any]:
+    """加粗 / 翻译 / Emoji 三类文本任务的共用 runner。
+
+    走 postprocess_llm.complete_subtitle_groups 的同一 JSON 协议；结果只回传
+    id→text 映射，字幕结构仍由前端经既有编辑命令写回（可撤销）。
+    """
+    from maw.postprocess_llm import complete_subtitle_groups
+
+    prompts = AI_TEXT_TASK_PROMPTS[kind]
+    cues = normalize_task_cues(payload.get("cues"))
+    if not cues:
+        raise AiTaskError("没有可处理的字幕文本")
+    if len(cues) > TEXT_TASK_MAX_CUES:
+        raise AiTaskError(f"一次最多处理 {TEXT_TASK_MAX_CUES} 条字幕，请分批选择。")
+    report("connecting", 10)
+    settings = resolve_llm_settings(env_path, payload.get("providerId") or None)
+    if not settings.model:
+        raise LlmClientError("该供应商还没有配置模型，请先在设置中填写模型。")
+    if not settings.api_key and postprocess_api_key_required(settings.provider_id, settings.base_url):
+        raise LlmClientError("该供应商缺少 API Key，请先在设置中填写并保存。")
+    lang = payload.get("lang")
+    prompt = str(payload.get("customPrompt") or "").strip() or prompts[
+        lang if lang in TEXT_TASK_LANGS else "zh"
+    ]
+    report("waiting_provider", 30)
+    response = complete_subtitle_groups(settings, prompt, cues, is_cancelled=cancel)
+    texts = collect_group_texts(response, cues)
+    if not texts:
+        raise LlmClientError("模型没有返回可用的逐条结果，请重试或调整提示词。")
+    report("done", 100)
+    return {"texts": texts}
+
+
 TASK_RUNNERS: dict[str, TaskRunner] = {
     "test-connection": run_test_connection,
+    "ai-bold": lambda env_path, payload, report, cancel: run_ai_text_task(
+        "ai-bold", env_path, payload, report, cancel),
+    "ai-translate": lambda env_path, payload, report, cancel: run_ai_text_task(
+        "ai-translate", env_path, payload, report, cancel),
+    "ai-emoji": lambda env_path, payload, report, cancel: run_ai_text_task(
+        "ai-emoji", env_path, payload, report, cancel),
 }
 
 

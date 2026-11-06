@@ -284,5 +284,114 @@ class EditorAiHandlerTests(_EditorAiTaskTestBase):
         self.assertTrue(payload["ok"])
 
 
+class EditorAiTextTaskTests(_EditorAiTaskTestBase):
+    """ai-bold / ai-translate / ai-emoji 共用 runner 的行为契约。"""
+
+    def _write_custom_slot(self) -> None:
+        # custom 槽位回环地址免密钥，测试无需真实 Key。
+        editor_ai.write_settings(self.env_path, {
+            "providerId": "custom",
+            "baseUrl": "http://127.0.0.1:1234/v1",
+            "model": "test-model",
+        })
+
+    def _run_kind(self, kind: str, payload: dict) -> tuple[object, object]:
+        self._write_custom_slot()
+        captured: dict[str, object] = {}
+
+        def fake_complete(settings, prompt, cues, **kwargs):  # noqa: ANN001, ANN202
+            captured["settings"] = settings
+            captured["prompt"] = prompt
+            captured["cues"] = cues
+            captured["cancel"] = kwargs.get("is_cancelled")
+            return {"groups": [
+                {"source_ids": ["c1"], "text": "**你好**"},
+                {"source_ids": ["c2"], "text": "hello world"},
+            ]}
+
+        with mock.patch("maw.postprocess_llm.complete_subtitle_groups", fake_complete):
+            manager = editor_ai.AiTaskManager(self.env_path)
+            snapshot = manager.submit(kind, payload)
+            self.assertTrue(manager.wait_until_idle())
+            return manager.snapshot(snapshot["id"]), captured
+
+    def test_bold_task_returns_text_map_without_leaking_prompt(self) -> None:
+        final, captured = self._run_kind("ai-bold", {"cues": [
+            {"id": "c1", "text": "你好世界"},
+            {"id": "c2", "text": "hello world"},
+        ]})
+        self.assertEqual(final["status"], "done")
+        self.assertEqual(final["result"], {"texts": {"c1": "**你好**", "c2": "hello world"}})
+        # 默认使用 zh 预设；payload 里的字幕快照原样进入 LLM 调用。
+        self.assertIn("字幕排版助手", captured["prompt"])
+        self.assertEqual(captured["cues"], [
+            {"id": "c1", "text": "你好世界"},
+            {"id": "c2", "text": "hello world"},
+        ])
+        settings = captured["settings"]
+        self.assertEqual(settings.provider_id, "custom")
+        self.assertEqual(settings.model, "test-model")
+
+    def test_text_task_uses_custom_prompt_over_preset_and_lang_variant(self) -> None:
+        _, captured = self._run_kind("ai-emoji", {
+            "cues": [{"id": "c1", "text": "测试"}],
+            "lang": "zh",
+            "customPrompt": "MY CUSTOM PROMPT",
+        })
+        self.assertEqual(captured["prompt"], "MY CUSTOM PROMPT")
+
+        _, captured = self._run_kind("ai-translate", {
+            "cues": [{"id": "c1", "text": "hello"}],
+            "lang": "en",
+        })
+        self.assertIn("spoken English", captured["prompt"])
+
+    def test_text_task_reports_progress_stages(self) -> None:
+        self._write_custom_slot()
+        stages: list[str] = []
+
+        def fake_complete(settings, prompt, cues, **kwargs):  # noqa: ANN001, ANN202
+            return {"groups": [{"source_ids": ["c1"], "text": "x"}]}
+
+        def runner(env_path, payload, report, cancel):  # noqa: ANN001, ANN202
+            return editor_ai.run_ai_text_task("ai-bold", env_path, payload, 
+                                              lambda stage, percent: stages.append(stage), cancel)
+
+        with mock.patch("maw.postprocess_llm.complete_subtitle_groups", fake_complete):
+            manager = editor_ai.AiTaskManager(self.env_path, runners={"ai-bold": runner})
+            snapshot = manager.submit("ai-bold", {"cues": [{"id": "c1", "text": "文本"}]})
+            manager.wait_until_idle()
+        final = manager.snapshot(snapshot["id"])
+        self.assertEqual(final["status"], "done")
+        self.assertEqual(stages, ["connecting", "waiting_provider", "done"])
+
+    def test_text_task_rejects_empty_and_over_limit_cues(self) -> None:
+        self._write_custom_slot()
+        manager = editor_ai.AiTaskManager(self.env_path)
+        snapshot = manager.submit("ai-bold", {"cues": []})
+        manager.wait_until_idle()
+        final = manager.snapshot(snapshot["id"])
+        self.assertEqual(final["status"], "error")
+        self.assertIn("没有可处理的字幕文本", final["error"])
+
+        snapshot = manager.submit("ai-bold", {
+            "cues": [{"id": f"c{i}", "text": f"t{i}"} for i in range(editor_ai.TEXT_TASK_MAX_CUES + 1)],
+        })
+        manager.wait_until_idle()
+        final = manager.snapshot(snapshot["id"])
+        self.assertEqual(final["status"], "error")
+        self.assertIn(str(editor_ai.TEXT_TASK_MAX_CUES), final["error"])
+
+    def test_collect_group_texts_ignores_multi_source_unknown_and_empty(self) -> None:
+        texts = editor_ai.collect_group_texts({"groups": [
+            {"source_ids": ["c1"], "text": "ok"},
+            {"source_ids": ["c1", "c2"], "text": "merged"},
+            {"source_ids": ["ghost"], "text": "unknown"},
+            {"source_ids": ["c2"], "text": "   "},
+            "not-a-group",
+        ]}, [{"id": "c1", "text": "a"}, {"id": "c2", "text": "b"}])
+        self.assertEqual(texts, {"c1": "ok"})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2612,6 +2612,36 @@ __WAVEFORM_CSS__
   </div>
 </div>
 
+<!-- AI 文本任务的提示词设置：留空使用内置预设，自定义内容保存在本机浏览器。 -->
+<div class="modal-mask" id="ai-prompts-modal">
+  <div class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="ai-prompts-title" aria-describedby="ai-prompts-description">
+    <h3 id="ai-prompts-title">AI 提示词设置</h3>
+    <p class="modal-desc" id="ai-prompts-description">
+      自定义各 AI 文本任务发给模型的系统提示词；留空时使用内置预设。自定义内容只保存在本机浏览器，不会上传。
+    </p>
+    <div class="ai-prompts-fields">
+      <div class="ai-prompts-field">
+        <label for="ai-prompt-bold">加粗关键词</label>
+        <textarea id="ai-prompt-bold" rows="3" placeholder="留空使用内置加粗预设提示词" spellcheck="false"></textarea>
+      </div>
+      <div class="ai-prompts-field">
+        <label for="ai-prompt-translate">翻译为副字幕</label>
+        <textarea id="ai-prompt-translate" rows="3" placeholder="留空使用内置翻译预设提示词" spellcheck="false"></textarea>
+      </div>
+      <div class="ai-prompts-field">
+        <label for="ai-prompt-emoji">Emoji 点缀</label>
+        <textarea id="ai-prompt-emoji" rows="3" placeholder="留空使用内置 Emoji 预设提示词" spellcheck="false"></textarea>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="button" id="ai-prompts-reset">恢复默认</button>
+      <button type="button" id="ai-prompts-cancel">取消</button>
+      <button type="button" id="ai-prompts-save" class="primary">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- 支持调整字幕行结构并预览字词时间码映射的纯文本编辑 MVP。 -->
 <dialog id="subtitle-time-offset-dialog" class="subtitle-time-offset-dialog" aria-labelledby="subtitle-time-offset-title">
   <form id="subtitle-time-offset-form" class="subtitle-time-offset-form">

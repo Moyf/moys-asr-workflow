@@ -236,18 +236,19 @@
 
 
 
-  // 右键菜单「AI 处理」子菜单。targets 是选中的字幕下标（M1 仅提供设置
-  // 入口；文本/结构任务条目由 M2/M3 追加）。
+  // 右键菜单「AI 处理」子菜单。targets 是选中的字幕下标；文本任务在
+  // MaweAiTextTasks 内构建快照并回写，这里只负责入口与可用性标注。
   function appendContextMenu(container, targets = []) {
     const { wrapper, list } = MaweContextMenus.createContextSubmenu('AI 处理', 'ai-actions');
     const closeMenu = () => MaweDom.ctxmenu.classList.remove('show');
-    const addEntry = (label, fn, { disabled = false } = {}) => {
+    const addEntry = (label, fn, { disabled = false, hint = '' } = {}) => {
       const entry = document.createElement('button');
       entry.type = 'button';
       entry.className = 'item' + (disabled ? ' disabled' : '');
       const text = document.createElement('span');
       text.textContent = label;
       entry.appendChild(text);
+      if (hint) entry.title = hint;
       if (!disabled) {
         entry.addEventListener('click', () => {
           closeMenu();
@@ -256,6 +257,29 @@
       }
       list.appendChild(entry);
     };
+    const addSeparator = () => {
+      const separator = document.createElement('div');
+      separator.className = 'sep';
+      list.appendChild(separator);
+    };
+    const textTask = (kind) => (selected) => MaweAiTextTasks.runTextTask(kind, selected);
+    const hasTargets = targets.length > 0;
+    addEntry('加粗关键词…', textTask('ai-bold'), {
+      disabled: !hasTargets,
+      hint: 'AI 为每条字幕的核心词添加 ** 强调标记（可撤销）',
+    });
+    addEntry('翻译为副字幕…', textTask('ai-translate'), {
+      disabled: !hasTargets,
+      hint: 'AI 翻译选中字幕并写入副字幕轨；未开启双语时自动开启',
+    });
+    addEntry('Emoji 点缀…', textTask('ai-emoji'), {
+      disabled: !hasTargets,
+      hint: 'AI 为每条字幕开头添加一个贴切的 emoji（可撤销）',
+    });
+    addSeparator();
+    addEntry('AI 提示词设置…', () => {
+      if (global.MaweAiTextTasks?.openPromptsModal) global.MaweAiTextTasks.openPromptsModal();
+    });
     addEntry('打开 AI 设置…', () => {
       if (global.MaweAi?.openSettings) global.MaweAi.openSettings();
     });

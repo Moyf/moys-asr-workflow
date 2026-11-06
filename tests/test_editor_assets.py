@@ -165,6 +165,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/styles/editor-speaker-labels.js",
                 "editor/ai/editor-ai-settings.js",
                 "editor/ai/editor-ai-tasks.js",
+                "editor/ai/editor-ai-text-tasks.js",
                 "editor/boot/editor.js",
                 "editor/cues/editor-wiring-overlay-transfer.js",
                 "editor/styles/editor-wiring-ass-font-aliases.js",
