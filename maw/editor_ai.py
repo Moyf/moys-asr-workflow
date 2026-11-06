@@ -266,6 +266,47 @@ AI_TEXT_TASK_PROMPTS: dict[str, dict[str, str]] = {
             "- one group per cue, echoing source_ids unchanged."
         ),
     },
+    # 拆句建议：LLM 在合适断点插入恰好一个「⎪」标记；结构操作（真正拆分）
+    # 仍由前端走 split 核心 API，LLM 只建议位置。
+    "ai-suggest-split": {
+        "zh": (
+            "你是字幕断句助手。在每条字幕文本中合适的断句位置插入恰好一个「⎪」标记（U+23AA），"
+            "把文本分成语气自然的两段。规则：\n"
+            "- 只插入一个「⎪」，不要添加、删除或修改任何其他字符；\n"
+            "- 断点优先选在标点、连词或语义停顿处；两段长度尽量均衡；\n"
+            "- 已经很短（不足 6 个字）或语义不可分的字幕保持原文不加标记；\n"
+            "- 输出 JSON：{\"groups\": [{\"source_ids\": [\"<原字幕id>\"], \"text\": \"<插入标记后的完整文本>\"}]}，"
+            "每条字幕一个 group，source_ids 原样回传。"
+        ),
+        "en": (
+            "You are a subtitle segmentation assistant. Insert exactly one \"⎪\" marker (U+23AA) at the most "
+            "natural break point in each subtitle line, splitting it into two balanced halves. Rules:\n"
+            "- Insert exactly one \"⎪\"; never add, remove or modify any other character;\n"
+            "- Prefer punctuation, conjunctions or semantic pauses; keep the halves balanced;\n"
+            "- Leave very short lines (fewer than 6 words) or inseparable lines unchanged;\n"
+            "- Output JSON: {\"groups\": [{\"source_ids\": [\"<original cue id>\"], \"text\": \"<full text with the marker>\"}]} "
+            "- one group per cue, echoing source_ids unchanged."
+        ),
+    },
+    # 智能合并：前端先用既有合并命令同步合并，LLM 只负责修合并缝
+    # （补空格/清重复标点）；parts 上下文由 runner 拼进提示词。
+    "ai-smart-merge": {
+        "zh": (
+            "你是字幕合并助手。下面几条字幕已被合并成一条，合并文本可能缺少词间空格或在拼接处有重复标点。"
+            "请输出合并后的最终文本。规则：\n"
+            "- 英文等空格语言按词界补齐空格；中文等无空格语言不加空格；\n"
+            "- 清理拼接处重复的标点或连接符；不要改动任何词语本身；\n"
+            "- 输出 JSON：{\"groups\": [{\"source_ids\": [\"<合并后字幕id>\"], \"text\": \"<最终文本>\"}]}，只输出一个 group。"
+        ),
+        "en": (
+            "You are a subtitle merging assistant. Several subtitle lines were merged into one; the merged text "
+            "may be missing inter-word spaces or have duplicated punctuation at the seams. Output the final text. Rules:\n"
+            "- Restore spaces between words for spaced languages; do not insert spaces in unspaced languages;\n"
+            "- Clean duplicated punctuation or connectors at the seams; never change any word itself;\n"
+            "- Output JSON: {\"groups\": [{\"source_ids\": [\"<merged cue id>\"], \"text\": \"<final text>\"}]} "
+            "- exactly one group."
+        ),
+    },
 }
 
 
@@ -343,6 +384,153 @@ def run_ai_text_task(
     return {"texts": texts}
 
 
+def run_ai_smart_merge(
+    env_path: Path,
+    payload: Mapping[str, Any],
+    report: Callable[[str, int | None], None],
+    cancel: Callable[[], bool],
+) -> dict[str, Any]:
+    """智能合并的润色 runner：输入合并后文本与原始分句，输出缝合结果。
+
+    合并结构操作由前端既有合并命令完成（同步、可撤销）；这里只回传
+    合并缝的最终文本，前端按快照核对后写回。
+    """
+    from maw.postprocess_llm import complete_subtitle_groups
+
+    merged_id = str(payload.get("mergedId") or "").strip()
+    merged_text = str(payload.get("mergedText") or "").strip()
+    parts = [str(part).strip() for part in payload.get("parts") or [] if str(part).strip()]
+    if not merged_id or not merged_text:
+        raise AiTaskError("缺少合并后的字幕信息")
+    if len(parts) < 2:
+        raise AiTaskError("智能合并至少需要两条原始字幕")
+    if len(parts) > TEXT_TASK_MAX_CUES:
+        raise AiTaskError(f"一次最多合并 {TEXT_TASK_MAX_CUES} 条字幕。")
+    report("connecting", 10)
+    settings = resolve_llm_settings(env_path, payload.get("providerId") or None)
+    if not settings.model:
+        raise LlmClientError("该供应商还没有配置模型，请先在设置中填写模型。")
+    if not settings.api_key and postprocess_api_key_required(settings.provider_id, settings.base_url):
+        raise LlmClientError("该供应商缺少 API Key，请先在设置中填写并保存。")
+    lang = payload.get("lang")
+    base_prompt = AI_TEXT_TASK_PROMPTS["ai-smart-merge"][lang if lang in TEXT_TASK_LANGS else "zh"]
+    listing = "\n".join(f"{index}. {part}" for index, part in enumerate(parts, 1))
+    if lang == "en":
+        context_block = f"Original subtitles in order:\n{listing}\n\nMerged text:\n{merged_text}"
+    else:
+        context_block = f"原始字幕依次为：\n{listing}\n\n合并后的文本：\n{merged_text}"
+    prompt = f"{base_prompt}\n\n{context_block}"
+    report("waiting_provider", 30)
+    response = complete_subtitle_groups(
+        settings, prompt, [{"id": merged_id, "text": merged_text}], is_cancelled=cancel,
+    )
+    texts = collect_group_texts(response, [{"id": merged_id, "text": merged_text}])
+    polished = texts.get(merged_id, "").strip()
+    if not polished:
+        raise LlmClientError("模型没有返回合并结果，请重试。")
+    report("done", 100)
+    return {"texts": {merged_id: polished}}
+
+
+def normalize_alignment_cues(payload_cues: object) -> list[dict[str, Any]]:
+    """时间码任务的字幕快照：[{id, text, start, end}]，毫秒整数。"""
+    if not isinstance(payload_cues, list):
+        raise AiTaskError("任务负载缺少字幕快照（cues）")
+    cues: list[dict[str, Any]] = []
+    for item in payload_cues:
+        if not isinstance(item, dict):
+            continue
+        cue_id = str(item.get("id") or "").strip()
+        text = str(item.get("text") or "")
+        start = item.get("start")
+        end = item.get("end")
+        if not cue_id or not text.strip():
+            continue
+        if type(start) is not int or type(end) is not int or end <= start:
+            raise AiTaskError(f"字幕时间范围无效：{text[:32]}")
+        cues.append({"id": cue_id, "text": text, "start": start, "end": end})
+    if not cues:
+        raise AiTaskError("没有可对齐的字幕")
+    if len(cues) > TEXT_TASK_MAX_CUES:
+        raise AiTaskError(f"一次最多对齐 {TEXT_TASK_MAX_CUES} 条字幕，请分批选择。")
+    return cues
+
+
+def run_timecode_alignment(
+    env_path: Path,
+    payload: Mapping[str, Any],
+    report: Callable[[str, int | None], None],
+    cancel: Callable[[], bool],
+) -> dict[str, Any]:
+    """时间码→字词 runner：临时工程走 align_project（in-process）。
+
+    mediaPath / ffmpegPath 由 serve.py 从当前工程绑定注入（不接受前端
+    任意路径）；结果按 cue id 回传 items，前端核对快照后写回。
+    """
+    from maw.alignment_models import QWEN_FORCED_ALIGNER_MODEL_ID, normalize_alignment_model_id
+    from maw.timestamp_alignment import TimestampAlignmentError, align_project
+
+    cues = normalize_alignment_cues(payload.get("cues"))
+    media_path = Path(str(payload.get("mediaPath") or "").strip())
+    if not media_path.is_file():
+        raise TimestampAlignmentError("当前工程的媒体文件不可用，无法对齐。")
+    report("loading_model", 15)
+    project: dict[str, Any] = {
+        "segments": [dict(cue) for cue in cues],
+        "language": str(payload.get("lang") or ""),
+    }
+    model_id = normalize_alignment_model_id(str(payload.get("modelId") or QWEN_FORCED_ALIGNER_MODEL_ID))
+    ffmpeg_path = str(payload.get("ffmpegPath") or "").strip()
+    total = len(cues)
+    progress_state = {"aligned": 0}
+
+    def on_event(message: str) -> None:
+        progress_state["aligned"] += 1
+        percent = 20 + int(70 * progress_state["aligned"] / max(1, total))
+        report(f"对齐中 {min(progress_state['aligned'], total)}/{total}", percent)
+
+    alignment_report = align_project(
+        project,
+        media_path=media_path,
+        model_id=model_id,
+        mode="fill",
+        ffmpeg_path=ffmpeg_path or None,
+        on_event=on_event,
+        cancel_event=_CancelProbe(cancel),
+    )
+    items_by_id: dict[str, list[dict[str, Any]]] = {}
+    for segment in project["segments"]:
+        cue_id = str(segment.get("id") or "")
+        items = segment.get("items")
+        if not cue_id or not isinstance(items, list) or not items:
+            continue
+        items_by_id[cue_id] = [
+            {"text": str(item.get("text")), "start": int(item.get("start")), "end": int(item.get("end"))}
+            for item in items
+            if isinstance(item, dict) and item.get("text") and type(item.get("start")) is int
+        ]
+    if not items_by_id:
+        warnings = "；".join(alignment_report.warnings[:3]) or "没有字幕成功对齐"
+        raise TimestampAlignmentError(f"时间码对齐失败：{warnings}")
+    report("done", 100)
+    return {
+        "items": items_by_id,
+        "aligned": alignment_report.aligned_segments,
+        "failed": alignment_report.failed_segments,
+        "warnings": list(alignment_report.warnings)[:5],
+    }
+
+
+class _CancelProbe:
+    """align_project(cancel_event) 需要的是有 is_set() 的取消事件。"""
+
+    def __init__(self, is_cancelled: Callable[[], bool]) -> None:
+        self._is_cancelled = is_cancelled
+
+    def is_set(self) -> bool:
+        return bool(self._is_cancelled())
+
+
 TASK_RUNNERS: dict[str, TaskRunner] = {
     "test-connection": run_test_connection,
     "ai-bold": lambda env_path, payload, report, cancel: run_ai_text_task(
@@ -351,6 +539,10 @@ TASK_RUNNERS: dict[str, TaskRunner] = {
         "ai-translate", env_path, payload, report, cancel),
     "ai-emoji": lambda env_path, payload, report, cancel: run_ai_text_task(
         "ai-emoji", env_path, payload, report, cancel),
+    "ai-suggest-split": lambda env_path, payload, report, cancel: run_ai_text_task(
+        "ai-suggest-split", env_path, payload, report, cancel),
+    "ai-smart-merge": run_ai_smart_merge,
+    "ai-timecode-items": run_timecode_alignment,
 }
 
 

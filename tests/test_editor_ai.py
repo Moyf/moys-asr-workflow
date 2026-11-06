@@ -393,5 +393,135 @@ class EditorAiTextTaskTests(_EditorAiTaskTestBase):
         self.assertEqual(texts, {"c1": "ok"})
 
 
+class EditorAiStructureTaskTests(_EditorAiTaskTestBase):
+    """ai-smart-merge / ai-suggest-split / ai-timecode-items 的行为契约。"""
+
+    def _write_custom_slot(self) -> None:
+        editor_ai.write_settings(self.env_path, {
+            "providerId": "custom",
+            "baseUrl": "http://127.0.0.1:1234/v1",
+            "model": "test-model",
+        })
+
+    def _run_kind(self, kind: str, payload: dict) -> tuple[object, object]:
+        captured: dict[str, object] = {}
+
+        def fake_complete(settings, prompt, cues, **kwargs):  # noqa: ANN001, ANN202
+            captured["settings"] = settings
+            captured["prompt"] = prompt
+            captured["cues"] = cues
+            return {"groups": [{"source_ids": [cues[0]["id"]], "text": "缝合结果"}]}
+
+        with mock.patch("maw.postprocess_llm.complete_subtitle_groups", fake_complete):
+            manager = editor_ai.AiTaskManager(self.env_path)
+            snapshot = manager.submit(kind, payload)
+            self.assertTrue(manager.wait_until_idle())
+            return manager.snapshot(snapshot["id"]), captured
+
+    def test_smart_merge_prompt_contains_parts_and_returns_polished_text(self) -> None:
+        self._write_custom_slot()
+        final, captured = self._run_kind("ai-smart-merge", {
+            "mergedId": "m1",
+            "mergedText": "HelloWorld",
+            "parts": ["Hello", "World"],
+            "lang": "en",
+        })
+        self.assertEqual(final["status"], "done")
+        self.assertEqual(final["result"], {"texts": {"m1": "缝合结果"}})
+        self.assertIn("Original subtitles in order:", captured["prompt"])
+        self.assertIn("1. Hello", captured["prompt"])
+        self.assertIn("2. World", captured["prompt"])
+        self.assertIn("HelloWorld", captured["prompt"])
+        # cues 负载只携带合并后的单条字幕。
+        self.assertEqual(captured["cues"], [{"id": "m1", "text": "HelloWorld"}])
+
+    def test_smart_merge_rejects_missing_parts_and_merged_text(self) -> None:
+        self._write_custom_slot()
+        manager = editor_ai.AiTaskManager(self.env_path)
+        snapshot = manager.submit("ai-smart-merge", {"mergedId": "m1", "mergedText": "x", "parts": ["只一条"]})
+        manager.wait_until_idle()
+        final = manager.snapshot(snapshot["id"])
+        self.assertEqual(final["status"], "error")
+        self.assertIn("智能合并至少需要两条原始字幕", final["error"])
+
+        snapshot = manager.submit("ai-smart-merge", {"parts": ["a", "b"]})
+        manager.wait_until_idle()
+        final = manager.snapshot(snapshot["id"])
+        self.assertEqual(final["status"], "error")
+        self.assertIn("缺少合并后的字幕信息", final["error"])
+
+    def test_suggest_split_uses_marker_preset_prompt(self) -> None:
+        self._write_custom_slot()
+        final, captured = self._run_kind("ai-suggest-split", {
+            "cues": [{"id": "c1", "text": "今天天气很好我们一起去公园散步"}],
+            "lang": "zh",
+        })
+        self.assertEqual(final["status"], "done")
+        self.assertIn("⎪", captured["prompt"])
+        self.assertIn("断句", captured["prompt"])
+
+    def test_timecode_alignment_returns_items_by_cue_id(self) -> None:
+        self._write_custom_slot()
+        media_path = Path(self._tmp.name) / "media.mp4"
+        media_path.write_bytes(b"")
+        captured: dict[str, object] = {}
+
+        def fake_align(project, **kwargs):  # noqa: ANN001, ANN202
+            captured["cancel_event"] = kwargs.get("cancel_event")
+            captured["media_path"] = kwargs.get("media_path")
+            captured["ffmpeg_path"] = kwargs.get("ffmpeg_path")
+            captured["model_id"] = kwargs.get("model_id")
+            for segment in project["segments"]:
+                segment["items"] = [{
+                    "text": segment["text"],
+                    "start": segment["start"],
+                    "end": segment["end"],
+                }]
+            from maw.timestamp_alignment import TimestampAlignmentReport
+
+            return TimestampAlignmentReport(
+                captured["model_id"], "fill",
+                aligned_segments=len(project["segments"]), failed_segments=0, warnings=(),
+            )
+
+        with mock.patch("maw.timestamp_alignment.align_project", fake_align):
+            manager = editor_ai.AiTaskManager(self.env_path)
+            snapshot = manager.submit("ai-timecode-items", {"cues": [
+                {"id": "c1", "text": "你好世界", "start": 1000, "end": 3000},
+            ], "mediaPath": str(media_path)})
+            self.assertTrue(manager.wait_until_idle())
+        final = manager.snapshot(snapshot["id"])
+        self.assertEqual(final["status"], "done")
+        self.assertEqual(final["result"], {
+            "items": {"c1": [{"text": "你好世界", "start": 1000, "end": 3000}]},
+            "aligned": 1,
+            "failed": 0,
+            "warnings": [],
+        })
+        self.assertEqual(captured["media_path"], media_path)
+        self.assertEqual(captured["model_id"], "qwen3-forced-aligner-0.6b")
+        self.assertTrue(hasattr(captured["cancel_event"], "is_set"))
+        self.assertFalse(captured["cancel_event"].is_set())
+
+    def test_timecode_alignment_rejects_missing_media_and_bad_cues(self) -> None:
+        self._write_custom_slot()
+        manager = editor_ai.AiTaskManager(self.env_path)
+        snapshot = manager.submit("ai-timecode-items", {"cues": [
+            {"id": "c1", "text": "你好", "start": 1000, "end": 3000},
+        ]})
+        manager.wait_until_idle()
+        final = manager.snapshot(snapshot["id"])
+        self.assertEqual(final["status"], "error")
+        self.assertIn("媒体文件不可用", final["error"])
+
+        snapshot = manager.submit("ai-timecode-items", {"cues": [
+            {"id": "c1", "text": "你好", "start": 3000, "end": 1000},
+        ], "mediaPath": "does-not-matter"})
+        manager.wait_until_idle()
+        final = manager.snapshot(snapshot["id"])
+        self.assertEqual(final["status"], "error")
+        self.assertIn("时间范围无效", final["error"])
+
+
 if __name__ == "__main__":
     unittest.main()

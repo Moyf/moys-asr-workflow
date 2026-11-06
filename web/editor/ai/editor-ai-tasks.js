@@ -277,6 +277,23 @@
       hint: 'AI 为每条字幕开头添加一个贴切的 emoji（可撤销）',
     });
     addSeparator();
+    const structure = global.MaweAiStructureTasks;
+    const timecodeReady = Boolean(MaweBoot.SERVER_CONFIG?.sourceMediaId);
+    addEntry('AI 拆分建议…', () => structure?.runSuggestSplit(targets), {
+      disabled: !hasTargets,
+      hint: 'AI 建议一个断句位置并直接拆分（可撤销）',
+    });
+    addEntry('AI 智能合并…', () => structure?.runSmartMerge(targets), {
+      disabled: targets.length < 2,
+      hint: '先合并选中的连续字幕，再由 AI 修顺合并缝（可撤销）',
+    });
+    addEntry('时间码→字词…', () => structure?.runTimecodeItems(targets), {
+      disabled: !hasTargets || !timecodeReady,
+      hint: timecodeReady
+        ? '用本地对齐模型为选中字幕生成字词级时间码'
+        : '当前编辑器没有绑定媒体，无法做时间码对齐',
+    });
+    addSeparator();
     addEntry('AI 提示词设置…', () => {
       if (global.MaweAiTextTasks?.openPromptsModal) global.MaweAiTextTasks.openPromptsModal();
     });

@@ -3815,6 +3815,27 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_json(HTTPStatus.OK, payload)
 
+    def _inject_timecode_media(self, payload: dict, kind: str) -> None:
+        """时间码对齐任务的媒体/FFmpeg 路径由服务端从当前工程绑定解析。
+
+        前端只回传 bindingGeneration/sourceMediaId 做提交时一致性校验；客户端
+        提供的任何路径字段都会被覆盖，避免该任务变成任意文件路径入口。
+        """
+        if kind != "ai-timecode-items":
+            return
+        server = self.editor_server
+        with server.settings_lock:
+            binding = (server.binding_generation, server.source_media_id)
+            if (type(payload.get("bindingGeneration")) is not int
+                    or (payload.get("bindingGeneration"), payload.get("sourceMediaId")) != binding):
+                raise ProjectBindingChangedError("工程或媒体绑定已变更，请重新执行时间码对齐")
+            media = server.project.media_path
+        if media is None:
+            raise ValueError("当前工程没有可用于时间码对齐的媒体")
+        tools = editor_ffmpeg_tools()
+        payload["mediaPath"] = str(media)
+        payload["ffmpegPath"] = str(tools.ffmpeg) if tools.ffmpeg else ""
+
     def start_ai_task(self) -> None:
         """提交一个 AI 后台任务；立即返回 queued 快照供进度轮询。"""
         try:
@@ -3826,9 +3847,14 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             payload = request.get("payload")
             if payload is not None and not isinstance(payload, dict):
                 raise ValueError("AI 任务负载必须是对象")
-            snapshot = self.editor_server.ai_tasks.submit(kind.strip(), payload or {})
+            payload = dict(payload or {})
+            self._inject_timecode_media(payload, kind.strip())
+            snapshot = self.editor_server.ai_tasks.submit(kind.strip(), payload)
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
             return
         except AiTaskError as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
