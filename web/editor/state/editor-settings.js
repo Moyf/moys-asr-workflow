@@ -183,7 +183,8 @@ export function initMaweSettings() {
   // 表情包功能总开关：关闭时隐藏预览与右键分配入口；工程数据保留。
   stickersEnabled: true,
   // 表情包烧录显示模式：fixed = 出现在预览层固定位置（方案一）；
-  // cue-left = 贴在当前字幕第一个字左侧（方案二，句间空隙/legacy 句回退 fixed）。
+  // cue-left = 贴在当前字幕第一个字左侧（方案二，主轨优先、叠加轨兜底；
+  // 句间空隙/legacy 句回退 fixed）。
   stickerBurnMode: 'fixed',
   // 表情包自定义背景：开启后预览与烧录在图片 contain 显示矩形上画所配底衬
   // （透明区域透出颜色）；关闭时保持默认表现——舞台小窗有默认底衬，实际画面

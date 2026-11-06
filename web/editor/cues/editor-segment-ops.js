@@ -69,6 +69,7 @@
       color_ref: colorGroup.ref,
       ...(commonSpeaker !== null ? { speaker: commonSpeaker } : {}),
       ...(segs[0].assOverride ? { assOverride: window.AsrEditorUtils.normalizeAssOverride(segs[0].assOverride) } : {}),
+      ...(segs[0].assStyle ? { assStyle: JSON.parse(JSON.stringify(segs[0].assStyle)) } : {}),
       disabled: !!segs[0].disabled,  // 合并后取 index=0 的禁用状态
       _dirty: true,
     };
@@ -90,6 +91,7 @@
         start: Math.min(...extensionMergeSegments.map((segment) => segment.start)),
         end: Math.max(...extensionMergeSegments.map((segment) => segment.end)),
         text: extensionJoin.text,
+        ...(extensionMergeSegments[0].assStyle ? { assStyle: JSON.parse(JSON.stringify(extensionMergeSegments[0].assStyle)) } : {}),
         _dirty: true,
       };
       if (extensionMergeSegments.some((segment) => Array.isArray(segment.items))) {
@@ -455,36 +457,37 @@
 
   // === 拼合字幕 ===
   // 把工具窗参数同步到控件；「合并短句」关闭时禁用短句相关参数。
-  function syncAutoMergePanelInputs() {
-    if (MaweDom.autoMergeGapMsInput) MaweDom.autoMergeGapMsInput.value = String(MaweSettings.EDITOR_SETTINGS.autoMergeGapMs);
-    if (MaweDom.autoMergeSnapDirectionSelect) MaweDom.autoMergeSnapDirectionSelect.value = MaweSettings.EDITOR_SETTINGS.autoMergeSnapDirection;
-    if (MaweDom.autoMergeAbsorbShortToggle) MaweDom.autoMergeAbsorbShortToggle.checked = MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbShort;
-    if (MaweDom.autoMergeShortCountInput) MaweDom.autoMergeShortCountInput.value = String(MaweSettings.EDITOR_SETTINGS.autoMergeShortCount);
-    if (MaweDom.autoMergeAbsorbDirectionSelect) MaweDom.autoMergeAbsorbDirectionSelect.value = MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbDirection;
+  function syncAutoMergePanelInputs(options = MaweProcessing.effectiveJoin) {
+    MaweDom.autoMergeGapMsInput.value = String(options.gapMs);
+    MaweDom.autoMergeSnapDirectionSelect.value = options.snapDirection;
+    MaweDom.autoMergeAbsorbShortToggle.checked = options.absorbShort;
+    MaweDom.autoMergeShortCountInput.value = String(options.shortCount);
+    MaweDom.autoMergeAbsorbDirectionSelect.value = options.absorbDirection;
     syncAutoMergeAbsorbFields();
   }
 
-
+  function readAutoMergePanelInputs() {
+    return {
+      gapMs: MaweSettings.clampAutoMergeGapMs(MaweDom.autoMergeGapMsInput.value),
+      snapDirection: MaweDom.autoMergeSnapDirectionSelect.value === 'forward' ? 'forward' : 'backward',
+      absorbShort: MaweDom.autoMergeAbsorbShortToggle.checked,
+      shortCount: MaweSettings.clampAutoMergeShortCount(MaweDom.autoMergeShortCountInput.value),
+      absorbDirection: MaweDom.autoMergeAbsorbDirectionSelect.value === 'next' ? 'next' : 'previous',
+    };
+  }
 
   function syncAutoMergeAbsorbFields() {
-    const enabled = MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbShort;
-    if (MaweDom.autoMergeShortCountInput) MaweDom.autoMergeShortCountInput.disabled = !enabled;
-    if (MaweDom.autoMergeAbsorbDirectionSelect) MaweDom.autoMergeAbsorbDirectionSelect.disabled = !enabled;
+    const enabled = MaweDom.autoMergeAbsorbShortToggle.checked;
+    MaweDom.autoMergeShortCountInput.disabled = !enabled;
+    MaweDom.autoMergeAbsorbDirectionSelect.disabled = !enabled;
     MaweDom.autoMergePanel?.classList.toggle('absorb-disabled', !enabled);
   }
 
-
-
-  // 一键处理整段工程：相邻间隔不超过 autoMergeGapMs 时按吸附方向拼接；
-  // 过短的字幕（中文 < N 字 / 英文 < N 词）按吸收方向并入相邻字幕。
+  // Apply the displayed values once to the entire project.
   function autoMergeSegments() {
-    const plan = window.AsrEditorUtils.planAutoMerge(MaweBoot.DATA.segments, {
-      gapMs: MaweSettings.EDITOR_SETTINGS.autoMergeGapMs,
-      snapDirection: MaweSettings.EDITOR_SETTINGS.autoMergeSnapDirection,
-      absorbShort: MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbShort,
-      shortCount: MaweSettings.EDITOR_SETTINGS.autoMergeShortCount,
-      absorbDirection: MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbDirection,
-    });
+    const options = readAutoMergePanelInputs();
+    syncAutoMergePanelInputs(options);
+    const plan = window.AsrEditorUtils.planAutoMerge(MaweBoot.DATA.segments, options);
     if (!plan.snaps.length && !plan.groups.length) {
       MaweHint.flashHint('没有需要拼合的间隔或过短字幕', 'invalid');
       return;
@@ -769,6 +772,7 @@
     applySubtitleTimeOffset,
     extendSubtitleRanges,
     syncAutoMergePanelInputs,
+    readAutoMergePanelInputs,
     syncAutoMergeAbsorbFields,
     autoMergeSegments,
     applyAutoMergeSnapsWithBindings,

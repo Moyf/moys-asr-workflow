@@ -62,6 +62,7 @@ from maw.app_paths import default_server_settings_path, legacy_server_settings_p
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
 from maw.ass_fonts import font_alias_payload, normalize_ass_text_fontnames  # noqa: E402
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
+from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
     MEDIA_JOB_ADMISSION_TTL, MediaJob, MediaJobBusy, MediaJobCancelled, MediaJobManager, MediaJobUnavailable,
@@ -787,7 +788,7 @@ def _parse_burn_sticker_background(raw_background: object) -> dict | None:
     return {"color": color.lower(), "opacity": float(opacity)}
 
 
-def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> tuple[list[dict], dict | None]:
+def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[dict]:
     """Parse and validate sticker overlay entries of one burn-video request.
 
     接受两种载荷： placements 列表（老格式，等同 fixed 模式），或
@@ -1746,6 +1747,7 @@ def build_server_page(
             "settingsUrl": "/api/settings",
             "recentProjects": [item.to_json() for item in settings.recent_projects],
             "assStylesUrl": "/api/ass-styles",
+            "textProcessingPresetsUrl": "/api/text-processing-presets",
             "assFrameUrl": "/api/ass-frame",
             "assFontAliasesUrl": "/api/ass-font-aliases",
             "autoOpenLastProject": settings.auto_open_last_project,
@@ -3015,6 +3017,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.update_settings()
         elif path == "/api/ass-styles":
             self.update_ass_styles()
+        elif path == "/api/text-processing-presets":
+            self.update_text_processing_presets()
         elif path == "/api/ass-frame":
             self.render_ass_frame()
         elif path == "/api/audio/loudness":
@@ -3848,6 +3852,22 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_json(HTTPStatus.OK, library)
 
+    def update_text_processing_presets(self) -> None:
+        try:
+            request = self.read_json_request(max_bytes=1024 * 1024 + 8192)
+            self._check_request_token(request)
+            library = save_text_presets(request)
+        except ProcessingConflict as error:
+            self.send_json(HTTPStatus.CONFLICT, {"current": error.current})
+            return
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, library)
+
     def render_ass_frame(self) -> None:
         """Render the current project's media at one timestamp with libass.
 
@@ -4009,6 +4029,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/ass-styles":
             self.send_json(HTTPStatus.OK, load_ass_style_library())
+            return
+        if path == "/api/text-processing-presets":
+            try:
+                self.send_json(HTTPStatus.OK, load_text_presets())
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
         if path == "/api/ass-font-aliases":
             self.send_json(HTTPStatus.OK, font_alias_payload())

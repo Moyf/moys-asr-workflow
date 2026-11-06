@@ -416,9 +416,6 @@ export function initMaweDom() {
   const autoSnapAdjacentCuesRow = document.getElementById('auto-snap-adjacent-cues-row');
   const autoSnapAdjacentCuesHint = document.getElementById('auto-snap-adjacent-cues-hint');
 
-  const replaceModal = document.getElementById('replace-modal');
-
-
   const textProcessModal = document.getElementById('text-process-modal');
 
 
@@ -1175,7 +1172,6 @@ export function initMaweDom() {
     adjacentBoundaryModeHintDual,
     autoSnapAdjacentCuesRow,
     autoSnapAdjacentCuesHint,
-    replaceModal,
     textProcessModal,
     timedTextEditButton,
     timedTextEditModal,

@@ -15,6 +15,12 @@ export function createUtilsModule(dependencies) {
 
   const MULTI_SUBTITLE_SPLIT_MODES = new Set(['continuous', 'word']);
 
+  function validateCueAssStyle(segment) {
+    if (Object.hasOwn(segment, 'assStyle') && (!segment.assStyle || typeof segment.assStyle !== 'object' || Array.isArray(segment.assStyle))) {
+      throw new TypeError('assStyle must be an object');
+    }
+  }
+
 
   function normalizeOverlayTrack(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -22,6 +28,7 @@ export function createUtilsModule(dependencies) {
     const segments = rawSegments
       .filter((segment) => segment && typeof segment === 'object')
       .map((segment) => {
+        validateCueAssStyle(segment);
         const copy = { ...segment };
         const override = dependencies.normalizeAssOverride(segment.assOverride);
         if (override) copy.assOverride = override;
@@ -89,6 +96,7 @@ export function createUtilsModule(dependencies) {
       const segments = rawSegments
         .filter((segment) => segment && typeof segment === 'object')
         .map((segment) => {
+          validateCueAssStyle(segment);
           const copy = { ...segment };
           const override = dependencies.normalizeAssOverride(segment.assOverride);
           if (override) copy.assOverride = override;
@@ -176,6 +184,7 @@ export function createUtilsModule(dependencies) {
     if (!project || typeof project !== 'object') return project;
     ensureStableSegmentIds(project.segments, 'main');
     for (const segment of project.segments || []) {
+      validateCueAssStyle(segment);
       const override = dependencies.normalizeAssOverride(segment.assOverride);
       if (override) segment.assOverride = override;
       else delete segment.assOverride;
@@ -348,6 +357,7 @@ export function createUtilsModule(dependencies) {
       }
       copySubtitleColorFields(segment, copy);
       if (segment.assOverride !== undefined) copy.assOverride = dependencies.normalizeAssOverride(segment.assOverride);
+      if (segment.assStyle !== undefined) copy.assStyle = cloneJsonValue(segment.assStyle);
       if (segment.speaker != null) copy.speaker = segment.speaker;
       if (typeof segment.disabled === 'boolean') copy.disabled = segment.disabled;
       if (segment._dirty) copy._dirty = true;

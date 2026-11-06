@@ -237,7 +237,7 @@ export function initMaweFloatingPanel() {
     manageButton: MaweDom.autoMergeManageButton,
     anchorButton: MaweDom.autoMergeManageButton,
     positionKey: MaweDom.AUTO_MERGE_PANEL_POSITION_KEY,
-    onOpen: () => MaweSegmentOps.syncAutoMergePanelInputs(),
+    onOpen: () => window.MaweSubtitleJoinSettings.open(),
   });
 
 

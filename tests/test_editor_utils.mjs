@@ -1887,14 +1887,14 @@ test('translates editor project controls and dynamic save messages to English', 
   );
   assert.equal(i18n.translateText('操作支持撤销/重做。', 'en'), 'Operations support undo/redo.');
   assert.equal(i18n.translateText('处理范围', 'en'), 'Scope');
-  assert.equal(i18n.translateText('查找并批量替换字幕文本', 'en'), 'Find and batch-replace subtitle text');
+  assert.equal(i18n.translateText('按步骤替换、修剪空白或转换格式，并预览最终结果', 'en'), 'Replace text, trim whitespace, or format subtitles in steps, then preview the final result');
   assert.equal(
     i18n.translateText('集中编辑字幕文本，可预览拆分、合并和字词时间码映射', 'en'),
     'Edit subtitle text in one place and preview split, merge, and word-timing mappings',
   );
   assert.equal(
-    i18n.translateText('批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围', 'en'),
-    'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
+    i18n.translateText('文本处理支持勾选「仅处理选中的字幕」限定范围', 'en'),
+    'Check “Process selected subtitles only” to limit text processing to the selection',
   );
   assert.equal(i18n.translateText('注：微调幅度可在', 'en'), 'Note: Adjust the fine-tuning amount in');
   assert.equal(i18n.translateText('「高级编辑」中调节，默认 50ms', 'en'), 'under “Advanced editing” in Global settings; the default is 50 ms');
@@ -3842,9 +3842,9 @@ test('prefers the later subtitle at a shared playhead boundary', () => {
 
 test('finds the first enabled subtitle for optional SRT alignment', () => {
   const segments = [
-    { start: 1200, disabled: true },
-    { start: 2450, disabled: false },
-    { start: 4000 },
+    { start: 1200, text: 'disabled', disabled: true },
+    { start: 2450, text: 'first', disabled: false },
+    { start: 4000, text: 'next' },
   ];
   assert.equal(helpers.getSrtExportFirstIndex(segments, true), 1);
   assert.equal(helpers.getSrtExportFirstIndex(segments, false), -1);
@@ -3852,6 +3852,7 @@ test('finds the first enabled subtitle for optional SRT alignment', () => {
   assert.equal(helpers.getSrtExportOffset(segments, false), 0);
   assert.equal(helpers.getSrtExportOffset(segments), 0);
   assert.equal(helpers.getSrtExportOffset([{ start: 500, disabled: true }], true), 0);
+  assert.equal(helpers.getSrtExportFirstIndex([{ start: 500, text: '' }, { start: 800, text: 'visible' }], true), 1);
 });
 
 
@@ -7248,11 +7249,11 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
   assert.deepEqual(
     Array.from(helpers.WRAP_CHAR_PRESETS, (preset) => ({ ...preset })),
     [
-      { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
-      { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
-      { id: 'comment', label: '弱化文本', left: '%%', right: '%%', ass: true },
-      { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
-      { id: 'italic', label: '斜体文本', left: '//', right: '//', ass: true },
+      { id: 'emphasis', label: '强调', left: '**', right: '**', ass: true },
+      { id: 'large', label: '放大', left: '++', right: '++', ass: true },
+      { id: 'comment', label: '弱化', left: '%%', right: '%%', ass: true },
+      { id: 'small', label: '缩小', left: '--', right: '--', ass: true },
+      { id: 'italic', label: '斜体', left: '//', right: '//', ass: true },
       { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
       { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
       { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true, sentenceLevel: true },

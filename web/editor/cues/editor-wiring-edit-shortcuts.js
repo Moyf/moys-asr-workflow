@@ -16,7 +16,7 @@ document.addEventListener('click', (event) => {
 document.addEventListener('keydown', (e) => {
   if (!MaweKeyboardTargets.isSpaceKey(e)) return;
   if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -50,7 +50,7 @@ window.addEventListener('blur', () => { MaweShortcuts.interceptedSpace = false; 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'j' && e.key !== 'J' && e.key !== 'k' && e.key !== 'K' && e.key !== 'l' && e.key !== 'L') return;
   if (MaweInlineEdit.editingState) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   const a = document.activeElement;
@@ -61,7 +61,7 @@ document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (MaweJklPlayback.isJklDirectionMode()) {
     if (k === 'k') {
-      const wasPlaying = MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused;
+      const wasPlaying = MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused || window.MaweGapPlayback?.pendingPlayback;
       if (!wasPlaying) {
         MaweJklPlayback.jklPlaybackRate = 1;
         MaweCoreState.player.playbackRate = 1;
@@ -71,6 +71,7 @@ document.addEventListener('keydown', (e) => {
       MaweJklPlayback.stopJklReversePlayback({ render: false });
       MaweJklPlayback.jklPlaybackRate = 1;
       MaweCoreState.player.playbackRate = 1;
+      window.MaweGapPlayback?.cancelPendingPlayback();
       MaweCoreState.player.pause();
       MawePlaybackLoop.update();
       MaweCoreState.waveformEditor?.updatePlayback();
@@ -112,7 +113,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -204,7 +205,7 @@ document.addEventListener('keydown', (e) => {
     active.tagName === 'INPUT' || active.tagName === 'TEXTAREA'
       || active.tagName === 'SELECT' || active.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
+  if (MaweDom.textProcessModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
       || MaweDom.ctxmenu.classList.contains('show')) return;
   e.preventDefault();
@@ -227,7 +228,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -251,7 +252,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -272,7 +273,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -300,7 +301,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -342,7 +343,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'BUTTON'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -364,7 +365,7 @@ document.addEventListener('keydown', (e) => {
   if (MaweInlineEdit.editingState || e.repeat) return;
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -415,7 +416,7 @@ document.addEventListener('keydown', (e) => {
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
   // modal 打开时不触发
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -449,7 +450,7 @@ document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;
     if (MaweInlineEdit.editingState) return;
     if (MaweDom.ctxmenu.classList.contains('show')) return;
-    if (MaweDom.replaceModal.classList.contains('show')) return;
+    if (MaweDom.textProcessModal.classList.contains('show')) return;
     if (MaweDom.stickerModal.classList.contains('show')) return;
     if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
     if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -468,7 +469,7 @@ document.addEventListener('keydown', (e) => {
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
   if (MaweInlineEdit.editingState) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -487,7 +488,7 @@ document.addEventListener('keydown', (e) => {
   if (MaweInlineEdit.editingState || e.repeat) return;
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -510,7 +511,7 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'i' && e.key !== 'I' && e.key !== 'o' && e.key !== 'O') return;
   if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || e.repeat || MaweKeyboardTargets.isTextEditingTarget(e)) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -531,7 +532,7 @@ document.addEventListener('keydown', (e) => {
   if (MaweInlineEdit.editingState || e.repeat || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -564,7 +565,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -630,7 +631,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -684,7 +685,7 @@ document.addEventListener('keydown', (e) => {
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT'
     || (a.isContentEditable && !forceMainEdit))) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;

@@ -21,7 +21,7 @@ export function createUtilsModule(dependencies) {
 
 
   // 放大出现的标签片段：文字从 `fromScale × 样式缩放` 缓动落定到样式原值。
-  // fromScale < 1 从小放大出现（默认 0.8），> 1 从大缩小落定；= 1 无视觉
+  // fromScale < 1 从小放大出现（默认 0.7），> 1 从大缩小落定；= 1 无视觉
   // 变化，不发射标签。ASS 的 \t 从当前值渐变到目标值（libass 中 t ≥ t2 后
   // 恒取目标值），因此先写显式 \fscx\fscy 设定起点帧，再由 \t 缓动落定；
   // 窗口结束后停在终点，不会跳回。offsetMs 是分片事件相对句首的偏移
