@@ -132,6 +132,7 @@
     '自定义表情包背景': 'Custom sticker background',
     '开启后预览与烧录在表情包图片的实际显示区域绘制所配底衬；关闭时保持默认表现': 'When enabled, previews and burned videos draw the configured backdrop over the sticker image area; disabled keeps the default look',
     '背景颜色': 'Background color',
+    '底衬颜色': 'Backdrop color',
     '不透明度': 'Opacity',
     '底衬垫在表情包图片的 contain 显示矩形上，贴纸透明区域透出底衬颜色，预览与烧录一致；开启后舞台小窗的默认阴影与圆角一并取消。': 'The backdrop sits under the sticker’s contain-fit image rect, showing through transparent pixels; previews and burned videos match. When enabled, the stage window drops its default shadow and rounded corners.',
     '烧录视频时的表情包位置': 'Sticker placement for burned-in videos',
