@@ -357,6 +357,10 @@ export function initMaweDom() {
 
 
   const stickerBurnModeSelect = document.getElementById('sticker-burn-mode');
+  const stickerBackgroundToggle = document.getElementById('sticker-background-toggle');
+  const stickerBackgroundControls = document.getElementById('sticker-background-controls');
+  const stickerBackgroundColor = document.getElementById('sticker-background-color');
+  const stickerBackgroundOpacity = document.getElementById('sticker-background-opacity');
 
 
   const clickTargetField = document.getElementById('click-target-field');
@@ -1144,6 +1148,10 @@ export function initMaweDom() {
     helpMediaSeekStep,
     clickBehaviorSelect,
     stickerBurnModeSelect,
+    stickerBackgroundToggle,
+    stickerBackgroundControls,
+    stickerBackgroundColor,
+    stickerBackgroundOpacity,
     clickTargetField,
     clickTargetSelect,
     keyboardOperationReferenceSelect,

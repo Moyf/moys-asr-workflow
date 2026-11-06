@@ -192,6 +192,11 @@
 
 [打开正文](plans/MAWE%20%E6%8E%A5%E7%BA%BF%E6%8B%86%E5%88%86%E4%B8%8E%E7%9B%AE%E5%BD%95%E5%88%86%E5%B1%82%E8%AE%A1%E5%88%92.md)
 
+<a name="plan-ass-frame-sticker-compose"></a>
+### 实际画面表情包合成路线（真·所见即所得）
+
+[评估结论、现成件清单与设计要点](plans/ASS_FRAME_STICKER_COMPOSE.md)；CSS 止血已实施，路线未实施，待 cue-left / 同屏多张成为日常再投入。
+
 <a name="engineering-server"></a>
 ### 源码服务与桌面开发
 
