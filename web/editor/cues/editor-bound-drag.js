@@ -1,7 +1,10 @@
+import { remapPanelItems } from './editor-cue-panel.js';
+
 // 绑定拖拽：主副字幕联动调整的范围解析与快照恢复。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweBoundDrag 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweBoundDrag 在原清单位次执行原 IIFE 体（挂
+// window.MaweBoundDrag 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweBoundDrag() {
 (function initMaweBoundDrag(global) {
   'use strict';
 
@@ -176,7 +179,7 @@
       }
       target.start = resolved.start;
       target.end = resolved.end;
-      target.items = MaweCuePanel.remapPanelItems(
+      target.items = remapPanelItems(
         targetOriginal.items,
         targetOriginal.start,
         targetOriginal.end,
@@ -222,3 +225,13 @@
     prepareBoundCueDrag
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function getBoundDragTarget(...args) { return window.MaweBoundDrag.getBoundDragTarget(...args); }
+export function ensureBoundDragOriginal(...args) { return window.MaweBoundDrag.ensureBoundDragOriginal(...args); }
+export function snapshotBoundDragTrack(...args) { return window.MaweBoundDrag.snapshotBoundDragTrack(...args); }
+export function ensureBoundDragTimelineOriginals(...args) { return window.MaweBoundDrag.ensureBoundDragTimelineOriginals(...args); }
+export function restoreBoundDragTimelineOriginals(...args) { return window.MaweBoundDrag.restoreBoundDragTimelineOriginals(...args); }
+export function getBoundDragEdge(...args) { return window.MaweBoundDrag.getBoundDragEdge(...args); }
+export function syncBoundCueDrag(...args) { return window.MaweBoundDrag.syncBoundCueDrag(...args); }
+export function prepareBoundCueDrag(...args) { return window.MaweBoundDrag.prepareBoundCueDrag(...args); }
