@@ -1,3 +1,4 @@
+import { projectOverride, update, refresh, validateImport, setProjectOverride } from './editor-text-presets.js';
 // Ordered subtitle processing, including the existing right-click wrapper.
 // Ordered subtitle processing, including the existing right-click wrapper. ESM init 模块：initMaweTextProcess 在原清单位次执行原 IIFE 体（挂
 
