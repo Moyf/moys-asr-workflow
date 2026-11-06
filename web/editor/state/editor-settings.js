@@ -180,6 +180,8 @@
   markerEditingEnabled: false,
   // 表情包功能总开关：关闭时隐藏预览与右键分配入口；工程数据保留。
   stickersEnabled: true,
+  // AI 功能总开关：默认关闭；开启后右键菜单出现「AI 处理」分组（本地偏好）。
+  aiEnabled: false,
   // 表情包烧录显示模式：fixed = 出现在预览层固定位置（方案一）；
   // cue-left = 贴在当前字幕第一个字左侧（方案二，句间空隙/legacy 句回退 fixed）。
   stickerBurnMode: 'fixed',

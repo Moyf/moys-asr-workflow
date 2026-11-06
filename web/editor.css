@@ -4282,6 +4282,35 @@
   .editor-loading-progress-row progress { flex: 1 1 auto; min-width: 0; height: 8px; accent-color: var(--accent); }
   .editor-loading-progress-row span { flex: 0 0 3em; color: var(--text-muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
 
+  /* === AI 后台任务进度浮条（非阻塞） === */
+  .ai-task-progress {
+    position: fixed; left: 16px; bottom: 16px; z-index: 480;
+    width: min(320px, calc(100vw - 32px)); padding: 10px 12px;
+    background: var(--bg-overlay); border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md); box-shadow: var(--shadow-3);
+  }
+  .ai-task-progress[hidden] { display: none; }
+  .ai-task-progress-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .ai-task-progress-label {
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text-primary); font-size: 12px;
+  }
+  .ai-task-progress.is-error .ai-task-progress-label { color: var(--danger, #e5484d); }
+  .ai-task-progress-cancel {
+    flex: 0 0 auto; width: 20px; height: 20px; padding: 0; line-height: 1;
+    background: transparent; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    color: var(--text-muted); font-size: 12px; cursor: pointer;
+  }
+  .ai-task-progress-cancel:hover { color: var(--text-primary); border-color: var(--accent); }
+  .ai-task-progress-row { display: flex; align-items: center; gap: 8px; }
+  .ai-task-progress-row progress { flex: 1 1 auto; min-width: 0; height: 6px; accent-color: var(--accent); }
+  .ai-task-progress-row span { flex: 0 0 3em; color: var(--text-muted); font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* === 编辑器 AI 设置动作行 === */
+  .ai-settings-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .ai-settings-actions button { flex: 0 0 auto; }
+  #ai-settings-status.is-error { color: var(--danger, #e5484d); }
+
   /* === 统一细滚动条（字幕列表 / 波形 / 面板工具栏 / 模态预览 / 空隙面板 / 表情网格）=== */
   .cues-container,
   .waveform-scroll,

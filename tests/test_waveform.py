@@ -558,16 +558,16 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="editor-settings-drag-handle"', page)
         self.assertIn('id="editor-settings-close"', page)
         # 全局设置窗口：左侧垂直标签页与内容页配对，About 位于导航末尾
-        for settings_section in ('interface', 'general', 'subtitle-preview', 'subtitle-style', 'subtitle-color', 'timebase', 'split-merge', 'export', 'save', 'sticker', 'easter-eggs', 'about'):
+        for settings_section in ('interface', 'general', 'subtitle-preview', 'subtitle-style', 'subtitle-color', 'timebase', 'split-merge', 'export', 'save', 'sticker', 'ai', 'easter-eggs', 'about'):
             self.assertIn(f'id="editor-settings-tab-{settings_section}"', page)
             self.assertIn(f'id="editor-settings-page-{settings_section}"', page)
-        # 全局设置 13 页、工程设置 6 页；帮助导航复用该类，另有 11 页。
-        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 30)
+        # 全局设置 14 页、工程设置 6 页；帮助导航复用该类，另有 11 页。
+        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 31)
         for help_section in ('ass', 'multi', 'export', 'markers'):
             self.assertEqual(page.count(f'id="help-tab-{help_section}"'), 1)
             self.assertEqual(page.count(f'id="help-tab-panel-{help_section}"'), 1)
             self.assertIn(f'data-help-tab-target="{help_section}"', page)
-        self.assertEqual(page.count('class="editor-settings-page"'), 19)
+        self.assertEqual(page.count('class="editor-settings-page"'), 20)
         self.assertEqual(page.count('class="editor-settings-nav-group-label"'), 9)
         for group_label in ('基础', '播放预览', '编辑', '保存导出', '扩展功能', '关于'):
             self.assertIn(f'class="editor-settings-nav-group-label" aria-hidden="true">{group_label}</div>', page)
@@ -668,7 +668,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             + page.count('class="editor-settings-group subtitle-preview-style-group"')
             + page.count('class="editor-settings-group subtitle-color-settings-group"')
             + page.count('class="editor-settings-group subtitle-speaker-settings-group"'),
-            34,  # 「更多导出」新增绿幕视频导出分组；表情包页新增烧录显示位置分组。
+            36,  # 「更多导出」新增绿幕视频导出分组；表情包页新增烧录显示位置分组；AI 页新增功能开关与供应商两组。
         )
         self.assertEqual(page.count('aria-labelledby="export-green-screen-title"'), 1)
         self.assertIn('<span class="editor-settings-group-heading" id="export-green-screen-title">绿幕视频导出</span>', page)

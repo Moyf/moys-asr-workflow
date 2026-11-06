@@ -1324,6 +1324,7 @@ __WAVEFORM_CSS__
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-save" role="tab" data-settings-tab="save" aria-selected="false" aria-controls="editor-settings-page-save" tabindex="-1">保存</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-export" role="tab" data-settings-tab="export" aria-selected="false" aria-controls="editor-settings-page-export" tabindex="-1">字幕导出</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-export-more" role="tab" data-settings-tab="export-more" aria-selected="false" aria-controls="editor-settings-page-export-more" tabindex="-1">更多导出</button>
       <div class="editor-settings-nav-group-label" aria-hidden="true">扩展功能</div>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-ai" role="tab" data-settings-tab="ai" aria-selected="false" aria-controls="editor-settings-page-ai" tabindex="-1">AI 功能</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-sticker" role="tab" data-settings-tab="sticker" aria-selected="false" aria-controls="editor-settings-page-sticker" tabindex="-1">表情包</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-easter-eggs" role="tab" data-settings-tab="easter-eggs" aria-selected="false" aria-controls="editor-settings-page-easter-eggs" tabindex="-1">彩蛋</button>
       <div class="editor-settings-nav-group-label" aria-hidden="true">关于</div>
@@ -1745,6 +1746,20 @@ __WAVEFORM_CSS__
 <div class="editor-settings-group" role="group" aria-labelledby="sticker-burn-mode-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-burn-mode">烧录视频时的表情包位置</label><select id="sticker-burn-mode" class="editor-settings-item"><option value="fixed">固定位置（预览层设定框）</option><option value="cue-left">字幕第一个字左侧</option></select><small class="editor-settings-hint">「字幕第一个字左侧」按 ASS 字幕的实际位置贴放；SRT 字幕、字幕重叠 / 句间空隙 / 特殊排版无法贴放时自动回退固定位置。同屏多张表情包时固定位置为居中叠放（预览是垂直堆叠）。预览层始终显示固定位置，最终以烧录结果为准。</small></div></div>
 <span class="editor-settings-group-heading" id="default-sticker-root-title">默认文件夹</span>
 <div class="editor-settings-group" role="group" aria-labelledby="default-sticker-root-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-root-input">默认目录</label><div class="sticker-root-controls"><input type="text" id="sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="sticker-root-status"><button type="button" id="sticker-root-read">应用</button></div><p class="editor-settings-hint" id="sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">工程设置中的覆盖目录优先；清空覆盖后恢复使用默认目录。</small></div></div>
+</div>
+  <div class="editor-settings-page" id="editor-settings-page-ai" role="tabpanel" aria-labelledby="editor-settings-tab-ai" hidden><span class="editor-settings-group-heading" id="ai-feature-title">AI 辅助</span>
+<div class="editor-settings-group" role="group" aria-labelledby="ai-feature-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item" title="开启后，右键菜单提供「AI 处理」入口；关闭时所有 AI 入口隐藏"><input type="checkbox" id="ai-feature-toggle"> 启用 AI 功能</label>
+<small class="editor-settings-hint">供应商、模型与密钥与 Launcher 工具箱共享同一份配置，改一处两边同步；密钥保存在本机 .env，不会上传。</small></div></div>
+<span class="editor-settings-group-heading" id="ai-provider-title">供应商与模型</span>
+<div class="editor-settings-group" role="group" aria-labelledby="ai-provider-title"><div class="editor-settings-sub-group">
+<label class="editor-settings-item" for="ai-provider-select">供应商</label><select id="ai-provider-select" class="editor-settings-item"></select>
+<label class="editor-settings-item" for="ai-base-url-input">API URL</label><input type="text" id="ai-base-url-input" class="editor-settings-item" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false">
+<label class="editor-settings-item" for="ai-model-input">模型</label><input type="text" id="ai-model-input" class="editor-settings-item" list="ai-model-datalist" placeholder="模型 ID" autocomplete="off" spellcheck="false"><datalist id="ai-model-datalist"></datalist>
+<label class="editor-settings-item" for="ai-api-key-input">API Key</label><input type="password" id="ai-api-key-input" class="editor-settings-item" placeholder="留空保持当前密钥不变" autocomplete="new-password" aria-describedby="ai-api-key-status">
+<small class="editor-settings-hint" id="ai-api-key-status" role="status" aria-live="polite"></small>
+<label class="editor-settings-item" for="ai-reasoning-select">思考强度</label><select id="ai-reasoning-select" class="editor-settings-item"><option value="off">关闭</option><option value="auto">自动</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select>
+<div class="ai-settings-actions"><button type="button" id="ai-settings-save">保存设置</button><button type="button" id="ai-settings-test">测试连接</button><button type="button" id="ai-models-refresh" title="从供应商拉取可用模型列表">拉取模型</button></div>
+<p class="editor-settings-hint" id="ai-settings-status" role="status" aria-live="polite"></p></div></div>
 </div>
   <div class="editor-settings-page" id="editor-settings-page-easter-eggs" role="tabpanel" aria-labelledby="editor-settings-tab-easter-eggs" hidden>
 
@@ -2828,6 +2843,18 @@ __WAVEFORM_CSS__
       <progress id="editor-loading-progress" max="100" value="0"></progress>
       <span id="editor-loading-progress-value">0%</span>
     </div>
+  </div>
+</div>
+
+<!-- AI 后台任务进度：非阻塞浮条，任务进行中不阻碍继续编辑；完成后自动收起 -->
+<div class="ai-task-progress" id="ai-task-progress" hidden role="status" aria-live="polite">
+  <div class="ai-task-progress-header">
+    <span class="ai-task-progress-label" id="ai-task-progress-label">AI 任务…</span>
+    <button type="button" class="ai-task-progress-cancel" id="ai-task-progress-cancel" title="取消此 AI 任务" aria-label="取消此 AI 任务">✕</button>
+  </div>
+  <div class="ai-task-progress-row">
+    <progress id="ai-task-progress-bar" max="100" value="0"></progress>
+    <span id="ai-task-progress-percent">0%</span>
   </div>
 </div>
 
