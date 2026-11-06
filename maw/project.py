@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Final, TypeGuard, final
 
+from maw.text_processing_presets import normalize_overrides as normalize_processing_overrides
 from maw.project_preview import JsonDict, JsonValue, clamped_preview, validate_preview
 from maw.language import LANGUAGE_SOURCES, SPLIT_MODES, TIMESTAMP_GRANULARITIES
 
@@ -228,6 +229,11 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
     normalized["schema"] = PROJECT_SCHEMA
     if "preserve_punctuation" in normalized and type(normalized["preserve_punctuation"]) is not bool:
         errors.append(ProjectValidationError("$.preserve_punctuation", "must be a boolean"))
+    if "processing_overrides" in normalized:
+        try:
+            normalized["processing_overrides"] = normalize_processing_overrides(normalized["processing_overrides"])
+        except ValueError as error:
+            errors.append(ProjectValidationError("$.processing_overrides", str(error)))
     _validate_timebase(normalized, errors)
     _validate_media_metadata(normalized, errors)
     segments = normalized.get("segments")
@@ -743,6 +749,8 @@ def _validate_extension_segment(
 
 
 def _validate_ass_override(segment: JsonDict, path: str, errors: list[ProjectValidationError]) -> None:
+    if "assStyle" in segment and not isinstance(segment["assStyle"], dict):
+        errors.append(ProjectValidationError(f"{path}.assStyle", "must be an object"))
     if "assOverride" not in segment:
         return
     value = segment["assOverride"]

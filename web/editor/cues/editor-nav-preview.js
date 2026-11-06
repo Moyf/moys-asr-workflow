@@ -216,7 +216,7 @@
       active.tagName === 'INPUT' || active.tagName === 'TEXTAREA'
         || active.tagName === 'SELECT' || active.isContentEditable
     )) return;
-    if (MaweDom.replaceModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
+    if (MaweDom.textProcessModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
         || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
         || MaweDom.multiSubtitleSplitModal?.classList.contains('show')
         || MaweDom.multiSubtitleImportModal?.classList.contains('show')

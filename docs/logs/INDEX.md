@@ -14,6 +14,9 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.2 之后 | 2026-11-05 | [文本处理弹窗反馈](release1.10.0-beta.2/261105_文本处理弹窗/TEST_FEEDBACK_文本处理弹窗.md) / [独立复核](release1.10.0-beta.2/261105_文本处理弹窗/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_文本处理弹窗/文本处理弹窗.checklist.md) | 双列预览、预设导入确认、工程预填和 MASS 分组 |
+| 1.10.0-beta.2 之后 | 2026-11-05 | [编辑器处理配置复审](release1.10.0-beta.2/261105_编辑器处理配置/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_编辑器处理配置/编辑器处理配置.checklist.md) | 有序文本处理、用户默认与工程覆盖、旧库迁移 |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [Warma 字幕预设开发](release1.10.0-beta.2/261103_Warma字幕预设/开发记录.md) / [独立复核](release1.10.0-beta.2/261103_Warma字幕预设/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261103_Warma字幕预设/Warma字幕预设.checklist.md) | 文本处理预设与单句 ASS 样式，待真实素材核验 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [表情包 cue-left 叠加字幕轨修复](release1.10.0-beta.2/261103_表情包cue-left叠加轨/REVIEW_FINDINGS.md) | cue-left 贴放候选集加入叠加轨（主轨优先、空窗兜底）；根因在 placement 计算，含提交前自审与双向回归 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [单行双语叠加轨回归反馈与修复](release1.10.0-beta.2/261103_单行双语叠加轨回归/TEST_FEEDBACK_单行双语叠加轨.md) / [提交前自审](release1.10.0-beta.2/261103_单行双语叠加轨回归/REVIEW_FINDINGS.md) | 单行（基础）波形开双语后叠加块跳离 50% 线、字词条带压块、气泡消失；根因 `e9a4fa8e`/`fa5ae60c`，分层判定收敛 `visibility.wordTimingFullLane` + CSS 单行双语行规则，多行不变；自动化与实机探针全绿，目视验收待人工 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [Gap 播放漏音修复](release1.10.0-beta.2/261103_AI口播恢复与Gap试听/排查记录.md) / [独立自审](release1.10.0-beta.2/261103_AI口播恢复与Gap试听/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261103_AI口播恢复与Gap试听/Gap播放.checklist.md) | 音频时钟门控与暂停交接排空旧 PCM；452 项回归、6 次真实音频采样通过，独立审查放行；原片人工实听待核验，标记恢复入口另行提交 |
@@ -24,6 +27,7 @@
 | 1.10.0-beta.2 之后 | 2026-11-03 | [1.10.0 正式版发布核验](release1.10.0-beta.2/261103_1.10.0正式版发布核验/1.10.0正式版发布核验.checklist.md) | 对比 v1.9.0 合并核验 beta.1、beta.2 与未发布全部条目及发布一致性；2026-11-03 自动化全绿，人工核验与发布准备检查待维护者完成 |
 | 1.10.0-beta.2 之后 | 2026-10-29 | [CI 选测试点独立复核](release1.10.0-beta.2/261029_CI选测试点/REVIEW_FINDINGS.md) | 文档和网站按影响选测，记录生成路径、必需门禁及预览评论边界 |
 | 1.10.0-beta.2 之后 | 2026-10-26 | [本地模型目录误判修复](release1.10.0-beta.2/261026_本地模型目录误判/本地模型目录误判修复.checklist.md) / [独立复核](release1.10.0-beta.2/261026_本地模型目录误判/REVIEW_FINDINGS.md) | 运行时根目录误判为已安装、切换模型串写 localModelPaths 两类修复；仓库根选择解析到可用修订层；新增清除自定义目录自救按钮，自动化与独立复核通过待人工验收 |
+| 1.10.0-beta.2 之后 | 2026-10-26 | [对齐模型联网反馈](release1.10.0-beta.2/261026_对齐模型联网/TEST_FEEDBACK_对齐模型联网.md) | 加载路径离线核实与 HF-first 准备路径溯源；下载源顺序改进待拍板 |
 | 1.10.0-beta.2 之后 | 2026-10-24 | [G10 状态域 ESM 修复与复核](release1.10.0-beta.2/261024_G10状态域ESM/REVIEW_FINDINGS.md) / [人工核对清单](release1.10.0-beta.2/261024_G10状态域ESM/G10状态域ESM.checklist.md) | rebase 后修复工程加载作用域错误，更新 ESM VM 测试装载并复验 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [编辑器显示与像素组合验证](release1.10.0-beta.1/261023_编辑器显示与像素验证/验证记录.md) / [独立复核](release1.10.0-beta.1/261023_编辑器显示与像素验证/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261023_编辑器显示与像素验证/编辑器显示.checklist.md) | 斜体字形、真实像素准备复用与动态双语提示；最新 main 组合和旧红新绿 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [测试夹具组合验证](release1.10.0-beta.1/261023_测试夹具组合/验证记录.md) / [独立复核](release1.10.0-beta.1/261023_测试夹具组合/REVIEW_FINDINGS.md) / [核验清单](release1.10.0-beta.1/261023_测试夹具组合/测试基础设施.checklist.md) | H/L/C 组合、Windows 同一完整报告承接；真实符号链接与 Launcher 浏览器验收分别记录 |
