@@ -122,7 +122,7 @@ export function createUtilsModule() {
     const end = normalizeIntMs(raw.end);
     /** @type {Record<string, any>} */
     const marker = {
-      ...unknownFields(raw, ['id', 'start', 'end', 'name', 'color', 'note', 'review', 'ai']),
+      ...unknownFields(raw, ['id', 'start', 'end', 'name', 'color', 'note', 'review', 'ai', 'cleanup_action']),
       // ID 合法性（缺失 / 重复）在 normalizeMarkers 统一按时间序处理。
       id: typeof raw.id === 'string' ? raw.id.trim() : '',
       start,
