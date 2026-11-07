@@ -12,6 +12,7 @@ import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 
 const aiTasksSource = fs.readFileSync(new URL('../web/editor/ai/editor-ai-tasks.js', import.meta.url), 'utf8');
 const aiTextTasksSource = fs.readFileSync(new URL('../web/editor/ai/editor-ai-text-tasks.js', import.meta.url), 'utf8');
+const aiSettingsSource = fs.readFileSync(new URL('../web/editor/ai/editor-ai-settings.js', import.meta.url), 'utf8');
 
 function flush() {
   // 两次 setImmediate：让 vm 内的 async fetch/poll 链走完
@@ -65,11 +66,11 @@ function createCoreAdapters(win) {
   return core;
 }
 
-function createContext() {
+function createContext({ elements = {} } = {}) {
   const context = { TextDecoder, TextEncoder, Uint8Array };
   context.window = context; // 与浏览器一致：window 即全局对象
   const state = { hints: [], timers: [], responses: [], fetches: [], beginCalls: [] };
-  context.document = { getElementById: () => null };
+  context.document = { getElementById: (id) => elements[id] || null };
   context.MaweState = { markProjectDirty() {} };
   context.MaweSettings = { EDITOR_SETTINGS: {} };
   context.MaweHistory = { updateUndoRedoButtons() {} };
@@ -105,6 +106,7 @@ function createContext() {
   win.MaweMultiSubtitleCore = createCoreAdapters(win);
   vm.runInNewContext(aiTasksSource, context, { filename: 'editor-ai-tasks.js' });
   vm.runInNewContext(aiTextTasksSource, context, { filename: 'editor-ai-text-tasks.js' });
+  vm.runInNewContext(aiSettingsSource, context, { filename: 'editor-ai-settings.js' });
   return { win, state };
 }
 
@@ -277,4 +279,24 @@ test('轮询迟到响应不会终结或污染新任务（#6）', async () => {
   state.timers.at(-1)(); // B 自己的下一轮 tick
   await flush();
   assert.deepEqual(await promiseB, { marker: 'B' });
+});
+
+test('切换供应商时清空未提交的密钥输入（#8）', async () => {
+  const keyInput = { value: '' };
+  const providerSelect = { value: 'provider-b' };
+  const { win, state } = createContext({
+    elements: { 'ai-api-key-input': keyInput, 'ai-provider-select': providerSelect },
+  });
+  state.responses.push({ body: { ok: true, providerId: 'provider-a', providers: [
+    { id: 'provider-a', label: 'A', hasApiKey: false, apiKeyRequired: true },
+    { id: 'provider-b', label: 'B', hasApiKey: false, apiKeyRequired: true },
+  ] } });
+  await win.MaweAiSettings.fetchSettings();
+  win.MaweAiSettings.applyProviderSelection('provider-a');
+  keyInput.value = 'sk-provider-a-key'; // 用户为 A 输入了密钥
+  win.MaweAiSettings.applyProviderSelection('provider-b'); // 切到 B
+  assert.equal(keyInput.value, '');
+  const form = win.MaweAiSettings.readFormValues();
+  assert.equal(form.apiKey, null); // A 的密钥不得进入 B 的保存负载
+  assert.equal(form.providerId, 'provider-b');
 });

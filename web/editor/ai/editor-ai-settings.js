@@ -99,10 +99,12 @@
 
 
   // 按供应商切换时展示该槽位的配置；只改表单，点「保存设置」才写入。
+  // 未提交的密钥不跨供应商：切换即清空，避免 A 的密钥被保存进 B 并发往 B 地址。
   function applyProviderSelection(providerId) {
     const data = serverSettings;
     if (!data) return;
     const entry = (data.providers || []).find((provider) => provider.id === providerId) || null;
+    clearApiKeyInput();
     const baseUrlInput = element('ai-base-url-input');
     const modelInput = element('ai-model-input');
     const reasoningSelect = element('ai-reasoning-select');

@@ -26,8 +26,8 @@
 
 | # | 位置 | 问题 | 状态 | 修法 |
 | --- | --- | --- | --- | --- |
-| 8 | settings.js:113 | 切换供应商不清空密钥输入，A 的密钥可被保存进 B | 待处理 | applyProviderSelection 清空 ai-api-key-input |
-| 9 | CHANGELOG | 2.0dev 未发布区缺「编辑器 AI 辅助（第一期）」条目 | 待处理 | ✨ 提升 小节补条目，含总开关默认关闭说明 |
+| 8 | settings.js:113 | 切换供应商不清空密钥输入，A 的密钥可被保存进 B | 已修复 | applyProviderSelection 开头 clearApiKeyInput()（fillSettingsPanel 与保存后刷新同路径，保存流程先读后清不受影响）|
+| 9 | CHANGELOG | 2.0dev 未发布区缺「编辑器 AI 辅助（第一期）」条目 | 已修复 | ✨ 提升 小节补条目（设置区/右键菜单任务/后台进度浮条/回写可撤销/时间码走独立运行环境），含总开关默认关闭说明 |
 
 ## 验证记录
 
@@ -49,3 +49,11 @@
 - `python3 scripts/run_check.py --timeout 300 -- .venv/bin/python -m unittest tests.test_timestamp_alignment tests.test_server_align`：23/23（对齐模块本体与 server 对齐端点回归）
 - `uv run --no-sync ruff check maw/editor_ai.py tests/test_editor_ai.py server-editor/serve.py`：通过
 - 未验证边界：真实发布包运行环境子进程链路（torch/qwen_asr 安装环境）只能维护者实机验收；本地已验证到转发契约与错误映射层
+
+### C 组（commit 前，全部实跑）
+
+- 先红后绿：`切换供应商时清空未提交的密钥输入（#8）` 修复前红（keyInput 残留 A 的密钥、readFormValues.apiKey 非 null），修复后绿；夹具为 settings 模块补装元素桩（elements 注入 document.getElementById）
+- `node --test tests/test_editor_ai_tasks.mjs`：8/8
+- `node --test tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs`：2/2
+- `node scripts/build-editor.mjs --write` 重建 bundle；`pnpm run check:editor` / `pnpm run typecheck` 全过
+- e2e `editor-i18n-save.spec.mjs`（chromium）：17/17
