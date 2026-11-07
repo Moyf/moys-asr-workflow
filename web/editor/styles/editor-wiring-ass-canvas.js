@@ -557,8 +557,9 @@
     canvas.hidden = false;
     const layer = { main: 0, extension: 1, overlay: 2 };
     const tracks = Array.isArray(payload?.tracks) ? [...payload.tracks]
-      .sort((a, b) => (layer[a?.role] ?? 0) - (layer[b?.role] ?? 0)) : [];
-    // 按 ASS 层序绘制，手动定位只改变布局，不改变叠放顺序；同轨保持稳定顺序。
+      .sort((a, b) => Number(a?.manual === true) - Number(b?.manual === true)
+        || (layer[a?.role] ?? 0) - (layer[b?.role] ?? 0)) : [];
+    // 手动定位位于自动布局之上；同层按轨道及原顺序绘制。
     // 检查指定字幕时用 role + cueId 定位，不假定主/副/叠加轨固定下标。
     const records = [];
     tracks.forEach((track) => {

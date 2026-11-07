@@ -222,13 +222,14 @@ test('overlay cues honor per-cue scale and pos overrides like main cues', () => 
   const bothCue = both.slices[0].items[0];
   assert.equal(bothCue.manual, true);
   assert.equal(bothCue.cueScale, 1.5);
-  // 扩展轨闸门保持关闭：带 override 的扩展句不受影响。
+  // 副轨同样应用逐句定位和缩放。
   const extension = { role: 'extension', index: 0, start: 0, end: 2000,
     segment: { id: 'ext-001', assOverride: { scale: 1.5, pos: { x: 10, y: 20 } } }, style, fontSize: 48, runs: [{ text: 'EXT' }] };
   const extensionPlan = h.assCreateStackPlan({ profile, items: [extension] });
   const extensionCue = extensionPlan.slices[0].items[0];
-  assert.equal(extensionCue.cueScale, 1);
-  assert.equal(extensionCue.manual, undefined);
+  assert.equal(extensionCue.cueScale, 1.5);
+  assert.equal(extensionCue.manual, true);
+  assert.deepEqual({ ...extensionCue.offset }, { x: 10, y: 20 });
 });
 
 test('formatted font transforms retain the source clock and plain fractional fit never resets font animation', () => {

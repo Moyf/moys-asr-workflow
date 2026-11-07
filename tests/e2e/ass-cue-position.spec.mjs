@@ -2,11 +2,16 @@ import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
+import { loadEditorModule } from '../helpers/editor-module-loader.mjs';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 let tempDir, server, portraitServer;
 const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
 const roundPosition = value => Math.floor(value + 0.5);
+const projectV2 = input => {
+  const context = {}; context.window = context;
+  loadEditorModule(context, 'shared/editor-utils.js');
+  return context.AsrEditorUtils.importProject(input).project;
+};
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('ass-cue-position');
@@ -14,14 +19,13 @@ test.beforeAll(async () => {
   // Phase regression samples at 220/340ms must be actual video frame PTS.
   execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=black:s=640x360:r=50:d=5', '-c:v', 'libx264', '-y', media]);
   const project = join(tempDir, 'project.mosp');
-  // This suite exercises ordinary save/reopen; legacy Save As protection has
-  // its own real-file coverage in v2-migration-save.spec.mjs.
-  writeFileSync(project, JSON.stringify(createProjectTracks().importProject({ media: 'synthetic.mp4', preserve_punctuation: true,
-    segments: [{ id: 'main', start: 0, end: 2000, text: 'MMMM' }, { id: 'next', start: 2000, end: 4000, text: 'NEXT' }], waveform: generateWaveformPayload(5000) }).project));
+  // This suite uses a canonical v2 project; migration Save As has separate coverage.
+  writeFileSync(project, JSON.stringify(projectV2({ media: 'synthetic.mp4', preserve_punctuation: true,
+    segments: [{ id: 'main', start: 0, end: 2000, text: 'MMMM' }, { id: 'next', start: 2000, end: 4000, text: 'NEXT' }], waveform: generateWaveformPayload(5000) })));
   server = await startServer(project, media, await findFreePort());
   const portraitMedia=join(tempDir,'portrait.mp4'),portraitProject=join(tempDir,'portrait.mosp');
   execFileSync(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=black:s=360x640:r=25:d=5','-c:v','libx264','-y',portraitMedia]);
-  writeFileSync(portraitProject,JSON.stringify({media:'portrait.mp4',segments:[{id:'main',start:0,end:2000,text:'MMMM'}],waveform:generateWaveformPayload(5000)}));
+  writeFileSync(portraitProject,JSON.stringify(projectV2({media:'portrait.mp4',segments:[{id:'main',start:0,end:2000,text:'MMMM'}],waveform:generateWaveformPayload(5000)})));
   portraitServer=await startServer(portraitProject,portraitMedia,await findFreePort());
 });
 test.afterAll(async () => { await server?.stop(); await portraitServer?.stop(); if (tempDir) cleanupTempDir(tempDir); });
@@ -505,7 +509,9 @@ for(const [width,height] of [[640,360],[360,640]]) test(`all nine anchors match 
       expect(Math.abs(frame.box[axis]-exportBox[axis])).toBeLessThanOrEqual(5);
       expect(Math.abs(serverBox[axis]-exportBox[axis])).toBeLessThanOrEqual(1);
     }
-    expect(frame.ass.split('\n').filter(line=>line.startsWith('Dialogue: 0,')).every(line=>!line.endsWith('MMMM') || !line.includes('\\move('))).toBe(true);
+    const positionedEvents = frame.ass.split('\n').filter(line => line.startsWith('Dialogue:') && line.endsWith('MMMM'));
+    expect(positionedEvents.length).toBeGreaterThan(0);
+    expect(positionedEvents.every(line => line.startsWith('Dialogue: 3,') && !line.includes('\\move('))).toBe(true);
     evidence.push({an,canvas:frame.box,server:serverBox,export:exportBox,font:result.fontSelections});
   }
   writeFileSync(info.outputPath('frame-comparison.json'),JSON.stringify(evidence,null,2));
@@ -845,4 +851,63 @@ test('overlay inspector defaults and Canvas layer order survive cue switches and
   await expect(page.locator('#ass-cue-scale')).toHaveValue('1.00');
   expect(await page.evaluate(() => MaweAssCanvas.lastRender.tracks.map(item => item.role))).toEqual(['main', 'overlay', 'overlay']);
   await page.locator('#current-cue-panel').screenshot({ path: info.outputPath('overlay-inspector.png') });
+});
+test('secondary ASS positioning supports drag, scale, undo and reset above automatic overlays', async ({ page }) => {
+  await page.evaluate(() => {
+    const extension = AsrEditorUtils.ensureExtensionTrack(MaweBoot.DATA);
+    Object.assign(extension, { enabled: true, segments: [{ id: 'secondary-cue', start: 0, end: 2000, text: 'SECONDARY' }] });
+    MaweBoot.DATA.bilingual.active_track_id = extension.id;
+    MaweDom.extensionOverlayToggle.checked = true;
+    MaweSelection.selectOnlyExtension(0, extension);
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  const box = page.locator('.ass-cue-drag-target[data-track-kind="extension"]');
+  await expect(box).toBeVisible();
+  const bounds = await box.boundingBox();
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 + 35, bounds.y + bounds.height / 2 - 35);
+  await page.mouse.up();
+  const state = () => page.evaluate(() => ({
+    extension: structuredClone(MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].assOverride ?? null),
+    main: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride ?? null,
+    order: MaweAssCanvas.lastRender.tracks.map(item => item.cueId),
+  }));
+  await page.evaluate(() => {
+    const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+    Object.assign(overlay, { enabled: true, segments: [{ id: 'automatic-overlay', start: 0, end: 2000, text: 'OVERLAY' }] });
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  const dragged = await state();
+  expect(dragged.extension.pos).toEqual({ x: expect.any(Number), y: expect.any(Number) });
+  expect(dragged.main).toBeNull();
+  expect(dragged.order.indexOf('secondary-cue')).toBeGreaterThan(dragged.order.indexOf('automatic-overlay'));
+  await expect(page.locator('#ass-cue-position')).toBeVisible();
+  await page.locator('#ass-cue-scale').fill('1.50');
+  await page.locator('#ass-cue-scale').press('Tab');
+  expect((await state()).extension).toEqual({ pos: dragged.extension.pos, scale: 1.5 });
+  await page.locator('#undo-btn').click();
+  expect((await state()).extension).toEqual(dragged.extension);
+  await page.locator('#redo-btn').click();
+  expect((await state()).extension).toEqual({ pos: dragged.extension.pos, scale: 1.5 });
+  await page.evaluate(() => { MaweSelection.selectOnlyExtension(0, MaweMultiSubtitleCore.getActiveExtensionTrack()); MaweAssCuePosition.sync(); });
+  await page.locator('#ass-cue-reset').click();
+  expect((await state()).extension).toEqual({ scale: 1.5 });
+  await page.locator('#undo-btn').click();
+  expect((await state()).extension).toEqual({ pos: dragged.extension.pos, scale: 1.5 });
+  await page.evaluate(() => { MaweSelection.selectOnlyExtension(0, MaweMultiSubtitleCore.getActiveExtensionTrack()); MaweAssCuePosition.sync(); });
+  await page.locator('#ass-cue-scale-reset').click();
+  expect((await state()).extension).toEqual({ pos: dragged.extension.pos });
+  await page.evaluate(() => {
+    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    track.segments.unshift({ id: 'other-secondary', start: 2000, end: 4000, text: 'OTHER' });
+    MaweSelection.selectOnlyExtension(1, track);
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await page.locator('#ass-cue-scale').fill('1.25');
+  await page.locator('#ass-cue-scale').press('Tab');
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.map(cue => ({ id: cue.id, override: cue.assOverride ?? null })))).toEqual([
+    { id: 'other-secondary', override: null },
+    { id: 'secondary-cue', override: { pos: dragged.extension.pos, scale: 1.25 } },
+  ]);
 });
