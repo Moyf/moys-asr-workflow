@@ -3,6 +3,13 @@
   'use strict';
   let serial = 0;
   let panel = null;
+  // These are explicitly selected preview presets, not the default fallback.
+  const previewFamilies = Object.freeze({
+    yahei: ['Microsoft YaHei', 'PingFang SC'],
+    hei: ['SimHei', 'Microsoft YaHei'],
+    song: ['SimSun', 'Songti SC'],
+    sans: ['Arial', 'Segoe UI'],
+  });
 
   function projectNames() {
     const preview = MaweBoot.DATA.preview;
@@ -13,8 +20,7 @@
       for (const segment of track.segments || []) names.push(segment.assStyle?.fontName);
     }
     return [...new Set(names
-      .filter(name => typeof name === 'string' && name.trim()
-        && !MaweAppearance.isBuiltInSubtitleFontFamily(name.trim()))
+      .filter(name => typeof name === 'string' && name.trim() && name.trim() !== 'default')
       .map(name => name.trim()))];
   }
 
@@ -103,7 +109,7 @@
       }
       if (result.missing.length) {
         paragraph('本机未匹配到以下工程字体。继续编辑时，预览或渲染可能回退到其他字体：');
-        list(result.missing);
+        list(result.missing.map(name => previewFamilies[name] ? `${name}（${previewFamilies[name].join(' / ')}）` : name));
         paragraph('安装字体后可重新检查；也可以将这些名称统一替换为一个本机字体。');
         const input = document.createElement('input');
         input.type = 'text';
@@ -156,6 +162,10 @@
     const legacy = [];
     const missing = [];
     for (const name of names) {
+      if (previewFamilies[name]) {
+        if (!previewFamilies[name].some(candidate => aliases.canonicalFor(candidate))) missing.push(name);
+        continue;
+      }
       const canonical = aliases.canonicalFor(name);
       if (!canonical) missing.push(name);
       else if (aliases.isLegacy(name) && canonical !== name) legacy.push({ from: name, to: canonical });

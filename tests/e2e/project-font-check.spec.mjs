@@ -198,3 +198,18 @@ test('legacy font name replacement covers track and cue styles', async ({ page }
   expect(await page.evaluate(() => [MaweBoot.DATA.styles.find(style => style.id === 'old').fontName,
     MaweBoot.DATA.tracks[0].segments[0].assStyle.fontName])).toEqual(['Old Font', 'Old Font']);
 });
+
+test('explicit preview font preset is checked but the default is silent', async ({ page }) => {
+  await page.route('**/api/ass-font-aliases', route => route.fulfill({ json: good }));
+  await page.goto(server.url);
+  await open(page, project('default'));
+  await page.waitForTimeout(500);
+  await expect(page.locator('.project-font-check')).toHaveCount(0);
+  await open(page, project('yahei'), 'preset.mosp');
+  const box = page.locator('.project-font-check');
+  await expect(box).toContainText('Microsoft YaHei / PingFang SC');
+  await box.getByLabel('替换为本机字体').fill('Good Font');
+  await box.getByText('统一替换缺失字体').click();
+  await expect(box).toHaveCount(0);
+  expect(await page.evaluate(() => MaweBoot.DATA.preview.subtitle.font_family)).toBe('Good Font');
+});
