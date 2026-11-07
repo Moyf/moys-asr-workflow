@@ -82,7 +82,7 @@ class PngJobHttpTests(unittest.TestCase):
                 self.assertEqual({Path(unquote(e.text)).resolve() for e in vegas_tree.iter('pathurl')},
                                  {Path(c['path']).resolve() for t in manifest['tracks'] for c in t['clips']})
                 self.assertEqual(Path(published['xmlPath']).read_text('utf-8'), xml)
-                self.assertEqual(len(list((package / 'images').glob('*.png'))), manifest['imageCount'])
+                self.assertEqual(len(list((package / 'images').glob('*.webp'))), manifest['imageCount'])
                 self.assertIsNone(self.server.media_jobs.active)
                 paths.append(package)
             self.assertNotEqual(paths[0], paths[1])

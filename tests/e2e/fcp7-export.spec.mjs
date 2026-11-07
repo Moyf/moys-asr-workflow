@@ -103,6 +103,7 @@ test('opens the export modal with native text checked by default and closed choi
   await disableOnboarding(page);
   await page.goto(server.url);
   await expect(page.locator('#download-fcp7-export')).toBeAttached();
+  await expect(page.locator('#download-fcp7-export')).toHaveText('FCP 7 XML（PR / VEGAS）');
 
   await openFcp7Modal(page);
   await expect(page.locator('#fcp7-export-native-text')).toBeChecked();
@@ -267,7 +268,7 @@ test('translates the export modal into English and keeps native text checked', a
 
   await openFcp7Modal(page);
   await expect(page.locator('#fcp7-export-title'))
-    .toHaveText('Premiere FCP 7 XML');
+    .toHaveText('FCP 7 XML (PR / VEGAS)');
   await expect(page.locator('#fcp7-export-confirm')).toHaveText('Export XML');
   await expect(page.locator('#fcp7-export-modal')).toContainText('Write native subtitle text objects');
   await expect(page.locator('#fcp7-export-native-text')).toBeChecked();

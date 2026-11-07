@@ -162,6 +162,8 @@ source: "docs/INDEX.md"
 
 [方案决定、现有渲染复用与分层验证提议](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/FCP7_PNG_SUBTITLES.md)
 
+[无损 WebP 与通用入口验证](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md)
+
 <a name="plan-release-pipeline"></a>
 ### 正式版本归档、官网与更新检测管线
 

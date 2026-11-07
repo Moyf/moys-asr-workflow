@@ -131,7 +131,7 @@ __WAVEFORM_CSS__
       <button id="extra-export-btn" title="更多导出" aria-expanded="false" aria-controls="extra-export-menu" aria-haspopup="menu">更多导出 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu" role="menu">
         <div class="dropdown-item" id="download-green-screen-video" role="menuitem" tabindex="0" hidden>生成绿幕视频</div>
-        <div class="dropdown-item" id="download-fcp7-export" role="menuitem" tabindex="0" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML</div>
+        <div class="dropdown-item" id="download-fcp7-export" role="menuitem" tabindex="0" title="FCP 7 XML，可用于 PR / VEGAS">FCP 7 XML（PR / VEGAS）</div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-otio-menu">OTIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="extra-otio-menu" role="menu">
@@ -2347,15 +2347,15 @@ __WAVEFORM_CSS__
   </div>
 </div>
 
-<!-- Premiere FCP 7 XML 实验性交接导出。 -->
+<!-- FCP 7 XML（PR / VEGAS） 实验性交接导出。 -->
 <div class="modal-mask" id="fcp7-export-modal">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fcp7-export-title" aria-describedby="fcp7-export-description">
-    <h3 id="fcp7-export-title">Premiere FCP 7 XML</h3>
-    <p class="modal-desc" id="fcp7-export-description">导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。</p>
+    <h3 id="fcp7-export-title">FCP 7 XML（PR / VEGAS）</h3>
+    <p class="modal-desc" id="fcp7-export-description">FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere，图片模式需目标软件支持 WebP。</p>
     <label for="fcp7-export-format">字幕形式</label>
     <select id="fcp7-export-format">
       <option value="native">Premiere 原生文字</option>
-      <option value="png">透明 PNG 字幕（VEGAS / FCP 7 XML）</option>
+      <option value="png">透明 WebP 字幕（FCP 7 XML）</option>
     </select>
     <div id="fcp7-export-png-options" hidden style="margin-top: 12px">
       <label for="fcp7-export-scope">输出范围</label>
@@ -2363,7 +2363,7 @@ __WAVEFORM_CSS__
         <option value="subtitles">仅字幕</option>
         <option value="media">字幕与源媒体</option>
       </select>
-      <p class="modal-hint" style="margin-top: 8px">动态部分输出序列帧，静止部分保持单张图片；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，图片模式不包含贴图。</p>
+      <p class="modal-hint" style="margin-top: 8px">动态部分输出序列帧，静止部分保持单张无损 WebP；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，目标软件需支持 WebP，图片模式不包含贴图。</p>
     </div>
     <label for="fcp7-export-timeline-mode" style="margin-top: 12px">导出时间线模式</label>
     <select id="fcp7-export-timeline-mode">

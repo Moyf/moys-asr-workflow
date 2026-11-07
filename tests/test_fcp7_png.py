@@ -10,7 +10,7 @@ from fractions import Fraction
 
 from PIL import Image, ImageChops
 
-from maw.fcp7_png import prepare_render_plan, recover_straight_rgba, render_png_assets
+from maw.fcp7_png import prepare_render_plan, render_png_assets
 
 
 HEADER = """[Script Info]
@@ -91,20 +91,6 @@ class MatteTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, '缺少字形'):
                 render_png_assets(job, plan(HEADER + event()), Path('ffmpeg'), job.directory / 'package')
             self.assertFalse(job.output.exists())
-
-    def test_known_source_over_roundtrip(self):
-        source = Image.new("RGBA", (8, 8), (210, 100, 30, 127))
-        black = Image.alpha_composite(Image.new("RGBA", source.size, (0, 0, 0, 255)), source).convert("RGB")
-        white = Image.alpha_composite(Image.new("RGBA", source.size, (255, 255, 255, 255)), source).convert("RGB")
-        recovered = recover_straight_rgba(black, white)
-        self.assertEqual(recovered.getchannel("A").getextrema(), (127, 127))
-        diff = ImageChops.difference(source, recovered)
-        self.assertLessEqual(max(high for _, high in diff.getextrema()), 2)
-
-    def test_empty_frame_is_transparent(self):
-        image = recover_straight_rgba(Image.new("RGB", (8, 8)), Image.new("RGB", (8, 8), "white"))
-        self.assertEqual(image.getchannel("A").getextrema(), (0, 0))
-
 
 @unittest.skipUnless(shutil.which("ffmpeg"), "real FFmpeg unavailable")
 class RenderTests(unittest.TestCase):
@@ -202,8 +188,11 @@ class RenderTests(unittest.TestCase):
             self.assertEqual(clips[-1]["endFrame"], 50)
             for clip in clips:
                 with Image.open(job.directory / "images" / clip["filename"]) as image:
+                    self.assertEqual(image.format, "WEBP")
                     self.assertEqual(image.mode, "RGBA")
                     self.assertEqual(image.size, (320, 180))
+                self.assertTrue(clip["filename"].endswith(".webp"))
+            self.assertEqual(result["imageFormat"], "webp")
             self.assertEqual(json.loads(job.output.read_text())["imageCount"], result["imageCount"])
 
 

@@ -9,18 +9,18 @@ const plan = h.buildProjectExportPlan({ media: 'C:/demo/source.mp4', segments: [
 ] }, { timelineMode: 'source', fps: '25', durationMs: 3000 });
 const manifest = { fps: '25', durationFrames: 75, width: 1920, height: 1080,
   sourcePath: 'C:/demo/source.mp4', tracks: [
-    { layer: 0, lane: 0, clips: [{ startFrame: 0, endFrame: 5, path: 'C:/demo/a & b.png' },
-      { startFrame: 5, endFrame: 50, path: 'C:/demo/hold.png' }] },
-    { layer: 2, lane: 0, clips: [{ startFrame: 10, endFrame: 40, path: 'C:/demo/hold.png' }] },
+    { layer: 0, lane: 0, clips: [{ startFrame: 0, endFrame: 5, path: 'C:/demo/a & b.webp' },
+      { startFrame: 5, endFrame: 50, path: 'C:/demo/hold.webp' }] },
+    { layer: 2, lane: 0, clips: [{ startFrame: 10, endFrame: 40, path: 'C:/demo/hold.webp' }] },
   ] };
 
-test('PNG handoff keeps two tracks, static holds, alpha and URL escaping', () => {
+test('WebP handoff keeps two tracks, static holds, alpha and URL escaping', () => {
   const xml = h.serializeFcp7PngXml(plan, manifest);
   assert.equal((xml.match(/<track>/g) || []).length, 2);
   assert.equal((xml.match(/<clipitem /g) || []).length, 3);
   assert.ok(xml.includes('<start>5</start><end>50</end>'));
   assert.ok(xml.includes('<alphatype>straight</alphatype>'));
-  assert.ok(xml.includes('a%20%26%20b.png'));
+  assert.ok(xml.includes('a%20%26%20b.webp'));
   assert.equal((xml.match(/<pathurl>/g) || []).length, 2);
   assert.ok(!xml.includes('GraphicAndType'));
   assert.ok(!xml.includes('source.mp4'));
@@ -45,7 +45,7 @@ test('long static image has sufficient source duration in minutes and frame-base
     { start: 0, end: 180000, text: 'HOLD' },
   ] }, { timelineMode: 'source', fps: '25', durationMs: 180000 });
   const longManifest = { ...manifest, durationFrames: 4500, tracks: [
-    { clips: [{ startFrame: 0, endFrame: 4500, path: 'C:/demo/hold.png' }] },
+    { clips: [{ startFrame: 0, endFrame: 4500, path: 'C:/demo/hold.webp' }] },
   ] };
   const xml = h.serializeFcp7PngXml(longPlan, longManifest);
   assert.ok(xml.includes('<duration>3</duration>'));

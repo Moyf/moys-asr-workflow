@@ -134,11 +134,11 @@ export function initMaweDynamicExports() {
     const png = document.getElementById('fcp7-export-format').value === 'png';
     document.getElementById('fcp7-export-png-options').hidden = !png;
     document.getElementById('fcp7-export-native-hint').hidden = png;
-    document.getElementById('fcp7-export-title').textContent = MaweProjectSave.translatedEditorText(png ? 'PNG 字幕 · FCP 7 XML' : 'Premiere FCP 7 XML');
+    document.getElementById('fcp7-export-title').textContent = MaweProjectSave.translatedEditorText(png ? 'WebP 字幕 · FCP 7 XML' : 'FCP 7 XML（PR / VEGAS）');
     MaweDom.fcp7ExportNativeText.closest('label').style.display = png ? 'none' : '';
     document.getElementById('fcp7-export-description').textContent = MaweProjectSave.translatedEditorText(png
-      ? '将 ASS 字幕渲染为透明图片，连同多轨 XML 导出到工程旁的独立目录。'
-      : '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。');
+      ? '将 ASS 字幕渲染为无损透明 WebP 图片，连同多轨 XML 导出到工程旁的独立目录。'
+      : 'FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere，图片模式需目标软件支持 WebP。');
     MaweDom.fcp7ExportSubtitleTracks.disabled = !png && !MaweDom.fcp7ExportNativeText.checked;
   }
 
