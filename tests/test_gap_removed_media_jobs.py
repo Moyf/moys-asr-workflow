@@ -12,7 +12,6 @@ import unittest
 import urllib.request
 import urllib.error
 from unittest import mock
-from datetime import datetime
 from pathlib import Path
 
 from maw.local_log import LocalLogSink
