@@ -22,17 +22,18 @@ class SpeakerProjectBoundaryTests(unittest.TestCase):
                 browser = {**copy.deepcopy(project), field: value}
                 self.assertFalse(server_editor._attach_segments_match(project, browser))
 
-    def test_basic_python_ass_explicitly_rejects_unsupported_identity_names(self):
-        from maw.project_ass_export import ProjectSubtitleError, render_project_ass
+    def test_basic_python_ass_uses_export_flag_independently_of_preview(self):
+        from maw.project_ass_export import render_project_ass
 
         project = make_project([{"start": 0, "end": 100, "text": "x", "speaker": "one"}],
                                project_fields={"annotation_mode": "speaker"})
         project["preview"] = {"subtitle": {"x": 0.1, "y": 0.8, "width": 0.8, "height": 0.1,
                                              "speaker_labels": {"mapping_enabled": True, "enabled": True}}}
-        with self.assertRaisesRegex(ProjectSubtitleError, "身份姓名"):
-            render_project_ass(project, title="test", play_resolution=(640, 360))
-        project["preview"]["subtitle"]["speaker_labels"]["enabled"] = False
-        self.assertIn("Dialogue:", render_project_ass(project, title="test", play_resolution=(640, 360)))
+        content = render_project_ass(project, title="test", play_resolution=(640, 360))
+        self.assertIn("Dialogue:", content)
+        self.assertNotIn("说话人 1：x", content)
+        project["preview"]["subtitle"]["speaker_labels"].update(enabled=False, export_enabled=True)
+        self.assertIn("说话人 1：x", render_project_ass(project, title="test", play_resolution=(640, 360)))
 
     def test_local_asr_output_registers_identities_without_a_paid_provider(self):
         from maw.local_asr import LocalTranscription, write_local_outputs
@@ -48,9 +49,9 @@ class SpeakerProjectBoundaryTests(unittest.TestCase):
             paths = write_local_outputs(input_path=media, output_srt=root / "result.srt", transcription=result,
                                         segments=segments, write_json=True, generate_html=False, with_waveform=False)
             project = normalize_project(json.loads(paths.json.read_text(encoding="utf-8")))
-        # Automatic expansion is an upper-layer ASR feature; core creation
-        # registers every identity while retaining the default five slots.
-        self.assertEqual(project["palette_size"], 5)
+        # The ASR producer expands its six-identity result; the generic core
+        # constructor below still respects its five-slot default.
+        self.assertEqual(project["palette_size"], 9)
         self.assertEqual(len(project["speakers"]), 6)
         self.assertEqual(get_main_track(project)["segments"][5]["speaker"], "spk-006")
 

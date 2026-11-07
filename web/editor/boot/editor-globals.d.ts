@@ -44,7 +44,7 @@ interface ProjectSegment {
   end: Milliseconds;
   text: string;
   disabled?: boolean;
-  speaker?: string;
+  speaker?: string | null;
   assOverride?: AssCueOverride;
   color_group_id?: string;
   sticker_group_id?: string;
@@ -102,6 +102,10 @@ interface ProjectOverlayTrack {
 
 interface ProjectData {
   schema: 'moy.asr.project.v2';
+  speakers: Array<{ id: string; name: string; color: string }>;
+  annotation_mode?: 'color' | 'speaker';
+  palette_size?: 5 | 9;
+  speaker_shortcuts?: Record<string, string>;
   tracks: ProjectTrack[];
   styles?: Array<Record<string, unknown>>;
   bindings: ProjectBinding[];
@@ -190,6 +194,7 @@ declare const exportColorContextResolver: any;
 declare const MaweSettings: any;
 declare const MaweHint: any;
 declare const MaweSpeakerLabels: any;
+declare const MaweSpeakerManager: any;
 declare const MaweCueElements: any;
 declare const MaweInlineEdit: any;
 declare const MaweGapRemoveData: any;
@@ -216,6 +221,8 @@ interface Window {
   MaweExportContext: any;
   MaweCuePanelWiring: any;
   MaweSpeakerLabels: any;
+  MaweSpeakerManager: any;
+  MaweColors: any;
   MaweOverlaySplitMerge: any;
   MaweAssStorageWiring: any;
   MaweAssManagerWiring: any;

@@ -26,7 +26,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from maw.project_tracks import make_project
+from maw.speaker_identity import make_asr_project
 from maw.editor_entry_policy import should_generate_standalone_editor
 from maw.stickers import get_default_sticker_dir
 from maw.asr.common import (
@@ -336,7 +336,7 @@ def main():
         split_mode = split_mode_for_text(str(result.get("text") or ""), language)
         # 必剪接口不返回语种；result.language 是解析器根据完整文本脚本推断的，
         # 因此保留 inferred，而不是把它误标为 detected。
-        json_data = make_project(
+        json_data = make_asr_project(
             [
                 {
                     "start": seg["start"],

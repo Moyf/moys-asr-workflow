@@ -36,7 +36,7 @@ from typing import NotRequired, TypedDict
 from urllib.parse import quote
 
 from maw.editor_entry_policy import RETIREMENT_MESSAGE, require_standalone_editor
-from maw.colors import COLOR_PALETTE
+from maw.colors import COLOR_PALETTE_ALL as COLOR_PALETTE
 from maw.console import configure_utf8_stdio
 from maw.project import ProjectValidationFailed, normalize_project
 from maw.project_boundary import import_project

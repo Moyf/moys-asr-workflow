@@ -9,6 +9,7 @@
 
   function updateCueColorPresentation(el, colorBar, seg) {
   if (!el || !colorBar || !seg) return;
+  const originalSegment = seg;
   seg = MaweMultiSubtitleCore.segmentPresentation(seg);
 
   // 颜色组可能在不重建字幕行的情况下从 head 变成 ref（或反过来）。
@@ -39,6 +40,20 @@
   delete colorBar.dataset.colorRefHeadIdx;
   el.classList.remove('has-color');
   el.style.removeProperty('--color-bar');
+
+  if (MaweBoot.DATA.annotation_mode === 'speaker') {
+    const speaker = window.AsrEditorUtils.resolveProjectSpeaker(MaweBoot.DATA, originalSegment);
+    colorBar.dataset.speakerProjectContent = '';
+    if (speaker) {
+      colorBar.classList.add('has-color');
+      el.classList.add('has-color');
+      colorBar.style.setProperty('--color-bar', speaker.color);
+      el.style.setProperty('--color-bar', speaker.color);
+      colorBar.title = speakerDescription(speaker);
+    } else colorBar.title = speakerDescription(null);
+    return;
+  }
+  delete colorBar.dataset.speakerProjectContent;
 
   if (seg.color) {
     const value = MaweColors.colorCssValue(seg.color.name);
@@ -110,6 +125,48 @@
 
 
 
+  function speakerUi(zh, en) { return window.MAWE_I18N?.language === 'en' ? en : zh; }
+
+  function speakerName(speaker) {
+    return speaker ? (speaker.name || speakerUi('未命名说话人', 'Unnamed speaker'))
+      : speakerUi('未分配', 'Unassigned');
+  }
+
+  function speakerDescription(speaker) {
+    const name = speakerName(speaker);
+    const prefix = speakerUi('说话人：', 'Speaker: ');
+    return speaker ? `${prefix}${name}（${speaker.id}）` : `${prefix}${name}`;
+  }
+
+  function refreshSpeakerBadge(badge, speaker) {
+    badge.textContent = speakerName(speaker);
+    badge.title = speakerDescription(speaker);
+    badge.classList.toggle('unassigned', !speaker);
+    if (speaker) badge.style.setProperty('--speaker-color', speaker.color);
+    else badge.style.removeProperty('--speaker-color');
+  }
+
+  function buildSpeakerBadge(segment) {
+    const speaker = window.AsrEditorUtils.resolveProjectSpeaker(MaweBoot.DATA, segment);
+    const badge = document.createElement('span');
+    badge.className = 'cue-speaker-badge';
+    badge.dataset.speakerProjectContent = '';
+    if (speaker) badge.dataset.speakerId = speaker.id;
+    refreshSpeakerBadge(badge, speaker);
+    return badge;
+  }
+
+  document.addEventListener('mawe:languagechange', () => {
+    document.querySelectorAll('.cue-speaker-badge').forEach(badge => {
+      const speaker = (MaweBoot.DATA.speakers || []).find(entry => entry.id === badge.dataset.speakerId) || null;
+      refreshSpeakerBadge(badge, speaker);
+      if (MaweBoot.DATA.annotation_mode === 'speaker') {
+        const bar = badge.parentElement?.querySelector(':scope > .color-bar');
+        if (bar) bar.title = speakerDescription(speaker);
+      }
+    });
+  });
+
   function buildCueEl(seg, idx, { extensionTrack = null, overlayTrack = false } = {}) {
   const isExtension = Boolean(extensionTrack);
   const isOverlay = Boolean(overlayTrack);
@@ -170,6 +227,7 @@
   el.appendChild(colorBar);
   el.appendChild(indexEl);
   el.appendChild(timeEl);
+  el.appendChild(buildSpeakerBadge(seg));
   el.appendChild(slotEl);
   el.appendChild(textEl);
   el.appendChild(cntEl);
@@ -205,7 +263,7 @@
     const indexEl = document.createElement('span');
     indexEl.className = 'index';
     indexEl.textContent = `${kind === 'main' ? '主字幕' : '副字幕'} ${index + 1}`;
-    header.append(indexEl, buildMultiTimeEl(segment));
+    header.append(indexEl, buildMultiTimeEl(segment), buildSpeakerBadge(segment));
     const text = document.createElement('span');
     text.className = 'text';
     setTextHtml(text, segment.text || '', MaweDom.searchEl.value);
@@ -473,6 +531,9 @@
   global.MaweCueElements = Object.freeze({
     updateCueColorPresentation,
     updateCueStickerPresentation,
+    speakerUi,
+    speakerName,
+    speakerDescription,
     buildCueEl,
     buildMultiTimeEl,
     buildMultiCueColumn,

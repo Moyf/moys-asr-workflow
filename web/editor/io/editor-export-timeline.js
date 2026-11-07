@@ -45,22 +45,23 @@
         if (absPath) sticker.abs_path = absPath;
       }
       const groupColor = window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, seg, 'color');
-      const colorName = groupColor?.name || null;
+      const displayColor = window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+      const colorName = displayColor?.name || null;
       return {
         idx,
         start_ms: seg.start,
         end_ms: seg.end,
         text: MaweSpeakerLabels.subtitleExportText(seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments),
-        color: groupColor || null,
+        color: MaweBoot.DATA.annotation_mode === 'speaker' ? displayColor : groupColor || null,
         color_ref: null,
         resolve_color: colorName,
         sticker: null,
         sticker_group_id: seg.sticker_group_id,
-        color_group_id: seg.color_group_id,
+        color_group_id: MaweBoot.DATA.annotation_mode === 'speaker' ? undefined : seg.color_group_id,
         sticker_ref: null,
       };
     });
-    const colorCount = segments.filter(s => s.resolve_color).length;
+    const colorCount = segments.filter(s => s.resolve_color || s.color?.value).length;
     const stickerCount = groupStickers?.length || segments.filter(s => s.sticker).length;
     if (!colorCount && !stickerCount) {
       MaweHint.flashHint('没有颜色或表情包配置，无法导出 Resolve JSON', 'invalid');
@@ -127,7 +128,8 @@
     green: 'GREEN',
     red: 'RED',
     purple: 'PURPLE',
-    blue: 'BLUE',
+    // OTIO has no gray marker enum; BLACK distinguishes it from unassigned WHITE.
+    blue: 'BLUE', orange: 'ORANGE', cyan: 'CYAN', magenta: 'MAGENTA', gray: 'BLACK',
   });
 
 
@@ -190,14 +192,15 @@
     const markerEndFrame = sourceStartFrame + msToOtioFrames(endMs);
     if (markerEndFrame <= markerStartFrame) return [];
 
-    const colorName = window.AsrEditorUtils.effectiveColorName(segment, colorContext);
+    const displayColor = window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, segment, colorContext);
+    const colorName = displayColor?.name;
     return [{
       OTIO_SCHEMA: 'Marker.2',
-      metadata: {},
+      metadata: displayColor ? { maw: { display_color: displayColor.value } } : {},
       name: MaweSpeakerLabels.subtitleExportText(projected, colorContext),
       // 字幕来源的标记在备注里自明来源；名称本身即字幕内容。
       comment: 'MAW 字幕',
-      color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
+      color: OTIO_MARKER_COLORS[colorName] || otioMarkerColorForHex(displayColor?.value),
       marked_range: otioTimeRange(
         markerStartFrame,
         markerEndFrame - markerStartFrame,

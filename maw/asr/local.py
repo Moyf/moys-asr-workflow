@@ -93,7 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="FireRed 是否使用 ct-punc 自动标点（默认: ct-punc）",
     )
     parser.add_argument("--speaker-model", help="FunASR 可选说话人模型")
-    parser.add_argument("--speaker-colors", action="store_true", help="为说话人段落生成颜色快照")
+    parser.add_argument("--speaker-colors", action="store_true", help="按独立说话人身份着色，超过五人时工程自动使用九色")
     parser.add_argument("--language", help="语言提示，例如 zh 或 en")
     parser.add_argument(
         "--audio-track", type=int, default=0,
