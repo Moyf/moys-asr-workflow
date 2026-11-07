@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createUtilsModule } from '../../web/shared/utils/project-tracks.js';
 import { getMainTrack, getOverlayTrack, getExtensionTrack,
   cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
   generateWav, makeTempDir, startServer,
@@ -24,7 +25,7 @@ function cue(id, start, end, text) {
 }
 
 function projectData({ neighbor = false } = {}) {
-  return {
+  const legacy = {
     media: 'synthetic.wav',
     waveform: generateWaveformPayload(10000),
     segments: [{
@@ -55,6 +56,9 @@ function projectData({ neighbor = false } = {}) {
       }] } },
     },
   };
+  // The save/reopen cases start from a canonical file; legacy imports must use
+  // Save As and are covered by the separate v2 migration tests.
+  return createUtilsModule().importProject(legacy).project;
 }
 
 test.beforeAll(async () => {
@@ -163,7 +167,10 @@ test('S3-T01 #220 edit of a scoped item revokes stale clipping on save and reope
   const saved = await saveAndReload(page);
   expect(getMainTrack(saved).segments[0].items.map((item) => item.text))
     .toEqual(['deleted ', 'substantially-rewritten ', 'kept']);
-  expect(saved.gap_remove.provenance.sources.ai_cleanup[0]).not.toHaveProperty('cleanup_scope');
+  expect(saved.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope)
+    .toEqual({ segment_id: 'main-001', item_start: 0, item_end: 2, text: 'deleted words ' });
+  expect(await page.evaluate(() => AsrGapRemoveCore.getCleanupScopeItems(
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0], MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup[0]).length)).toBe(0);
 
   const outputs = await renderOutputs(page, 500);
   expectAllMainOutputs(outputs, 'deleted', 'substantially-rewritten', 'kept');
@@ -283,7 +290,10 @@ test('S3-T03 multi-track drag fail-opens the moved scope and saves independent t
   expect(live.extension).toBe('extension-only');
 
   const saved = await saveAndReload(page);
-  expect(saved.gap_remove.provenance.sources.ai_cleanup[0]).not.toHaveProperty('cleanup_scope');
+  expect(saved.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope)
+    .toEqual({ segment_id: 'main-001', item_start: 0, item_end: 2, text: 'deleted words ' });
+  expect(await page.evaluate(() => AsrGapRemoveCore.getCleanupScopeItems(
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0], MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup[0]).length)).toBe(0);
   expect(getOverlayTrack(saved).segments[0].text).toBe('overlay-only');
   expect(getExtensionTrack(saved).segments.map((segment) => segment.text))
     .toEqual(['extension-only', 'neighbor-only']);

@@ -17,8 +17,8 @@ function aiCleanupExportSegments(segments) {
   return window.AsrEditorUtils.buildAiCleanupSegments(segments, MaweBoot.DATA.gap_remove);
 }
 
-function mergedExportSegments() {
-  const mainSegments = aiCleanupExportSegments(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+function mergedExportSegments(projectMain = aiCleanupExportSegments) {
+  const mainSegments = projectMain(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
   const overlaySegments = overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [];
   if (!overlaySegments.length) {
     return { segments: mainSegments, overlaySet: new Set(), overlaySegments };

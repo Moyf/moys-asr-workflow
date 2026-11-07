@@ -60,7 +60,7 @@ function runtime() {
     activeExtensionSegments: () => extension,
   });
   context.window.MaweExportContext = {
-    mergedExportSegments: () => ({ segments: [...main, ...overlay], overlaySet: new Set(overlay), overlaySegments: overlay }),
+    mergedExportSegments: (projectMain = value => value) => ({ segments: [...projectMain(main), ...overlay], overlaySet: new Set(overlay), overlaySegments: overlay }),
     exportColorContextResolver: () => () => main,
   };
   context.window.MaweBoot = context.MaweBoot;
@@ -73,6 +73,43 @@ function runtime() {
   context.MaweExportSrt = context.window.MaweExportSrt;
   return { context, core, utils, main, extension, overlay, srt: context.window.MaweExportSrt, timeline: context.window.MaweExportTimeline };
 }
+
+test('ordinary SRT reuses the real merged export projection when cache is enabled', () => {
+  const { context, utils } = runtime();
+  let projections = 0, bypasses = 0;
+  const tracked = { ...utils, createAiCleanupProjector: (...args) => {
+    const project = utils.createAiCleanupProjector(...args);
+    return (...values) => { projections++; return project(...values); };
+  }, buildAiCleanupSegments: (...args) => { bypasses++; return utils.buildAiCleanupSegments(...args); } };
+  context.window.AsrEditorUtils = tracked;
+  context.getOverlayTrack = () => utils.getOverlayTrack(context.MaweBoot.DATA);
+  context.overlayTrackVisible = () => utils.getOverlayTrack(context.MaweBoot.DATA)?.enabled === true;
+  vm.runInNewContext(initModuleSource('editor/io/editor-wiring-export-context.js'), context);
+  vm.runInNewContext(initModuleSource('editor/io/editor-export-srt.js'), context);
+  const srt = context.window.MaweExportSrt;
+  const cold = srt.buildSrt(), afterCold = projections;
+  const warm = srt.buildSrt(), afterWarm = projections;
+  srt.setCleanupProjectionCacheEnabled(false);
+  const off = srt.buildSrt(), afterOff = projections;
+  srt.setCleanupProjectionCacheEnabled(true);
+  const restored = srt.buildSrt();
+  assert.equal(afterCold, 1);
+  assert.equal(afterWarm, afterCold);
+  assert.equal(afterOff, afterWarm + 1);
+  assert.equal(projections, afterOff + 1);
+  assert.equal(bypasses, 0, 'ordinary export never takes the uncached default path');
+  assert.equal(cold, warm); assert.equal(cold, off); assert.equal(cold, restored);
+  assert.match(cold, /我这个功能呢/); assert.doesNotMatch(cold, /啊，|我这……/);
+  const defaultMerged = context.window.MaweExportContext.mergedExportSegments();
+  assert.equal(bypasses, 1, 'direct callers retain the cleanup default');
+  assert.ok(defaultMerged.segments.some(cue => cue.text === '我这个功能呢'));
+  utils.getOverlayTrack(context.MaweBoot.DATA).enabled = false;
+  const main = utils.getMainTrack(context.MaweBoot.DATA).segments;
+  main.push({ id: 'overlap', start: 500, end: 1800, text: 'overlap', items: [] });
+  const ordered = srt.buildSrt();
+  assert.ok(ordered.indexOf('overlap') < ordered.indexOf('我这个功能呢'));
+  assert.equal(main[0].id, 'main-001');
+});
 
 test('trusted scope projects exact words/items, saves/reopens and safely restores with gap history', () => {
   const { core, main, context, utils } = runtime();
@@ -312,7 +349,7 @@ test('production ordinary/gap SRT and ASS builders remove local words while inde
 
 test('burn subtitles can retain media cue timing while file export extends the first cue', () => {
   const { context, srt, main } = runtime();
-  context.window.MaweExportContext.mergedExportSegments = () => ({ segments: main, overlaySet: new Set(), overlaySegments: [] });
+  context.window.MaweExportContext.mergedExportSegments = (projectMain = value => value) => ({ segments: projectMain(main), overlaySet: new Set(), overlaySegments: [] });
   context.activeExtensionSegments = () => [];
   context.MaweSettings.EDITOR_SETTINGS.exportStartAtZero = true;
   const ordinaryFile = srt.buildSrt();

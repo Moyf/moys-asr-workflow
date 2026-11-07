@@ -36,11 +36,8 @@ export function initMaweExportSrt() {
   }
 
   function cleanupMergedExportSegments() {
-    const merged = window.MaweExportContext.mergedExportSegments();
-    const main = cleanupMainSegments();
-    const projection = new Map(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment, index) => [segment, main[index]]));
-    return { ...merged, segments: merged.segments.map((segment) => projection.get(segment) || segment)
-      .sort((left, right) => left.start - right.start) };
+    const merged = window.MaweExportContext.mergedExportSegments(cleanupSegments);
+    return { ...merged, segments: [...merged.segments].sort((left, right) => left.start - right.start) };
   }
 
   function buildSrt({ alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
