@@ -311,8 +311,11 @@
       return;
     }
     MaweCommands.run(label, (command) => {
-      const targetTrack = MaweMultiSubtitleCore.getActiveExtensionTrack()
-        || ensureMultiSubtitleReady();
+      // 命令内统一「确保有轨且启用」：无轨建轨；轨在但双语关闭时重新启用
+      // （关闭双语只隐藏副轨，update 行也要让开关回到开启，与提示一致）。
+      let targetTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
+      if (!targetTrack) targetTrack = ensureMultiSubtitleReady();
+      else if (!wasEnabled) targetTrack.enabled = true;
       let updated = 0;
       let created = 0;
       const createdMains = [];

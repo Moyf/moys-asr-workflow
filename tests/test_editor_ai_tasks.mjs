@@ -56,7 +56,14 @@ function createCoreAdapters(win) {
       return binding;
     },
     markMainSegmentsDirty(segments = utils.getMainTrack(win.MaweBoot.DATA).segments) {
-      (Array.isArray(segments) ? segments : []).forEach((segment) => { if (segment) segment._dirty = true; });
+      let marked = false;
+      (Array.isArray(segments) ? segments : []).forEach((segment) => {
+        if (segment) {
+          segment._dirty = true;
+          marked = true;
+        }
+      });
+      if (marked) win.MaweState.markProjectDirty();
     },
     markMultiSubtitleDirty() {
       const multi = core.getMultiSubtitleState();
@@ -241,6 +248,25 @@ test('副字幕在任务期间被人工修改时跳过不覆盖（#5）', async 
   assert.equal(track.segments.length, 1);
   assert.equal(win.MaweBoot.DATA.bindings.length, 1);
   assert.ok(state.hints.some(({ message }) => message.includes('1 条副字幕在任务期间被修改')));
+});
+
+test('双语关闭但副轨仍在时更新译文并重新启用副轨（#2 边界）', async () => {
+  const { win, state } = createContext();
+  const segments = [makeSegment('seg-1', '你好世界', 0, 1200)];
+  win.MaweBoot.DATA = makeProject(segments);
+  const track = enableBilingual(win);
+  const extA = { id: 'ext-a', start: 0, end: 1200, text: '旧译文' };
+  track.segments.push(extA);
+  win.MaweMultiSubtitleCore.addSubtitleBinding(segments[0], extA, track);
+  track.enabled = false; // 用户关闭双语：隐藏副轨但保留内容与绑定
+  win.MaweAiTasks = { begin: async () => ({ texts: { 'seg-1': 'AI 译文' } }) };
+  win.MaweAiTextTasks.runTextTask('ai-translate', [0]);
+  await flush();
+  assert.equal(track.enabled, true); // 提示声称自动开启，必须真的开启
+  assert.equal(extA.text, 'AI 译文');
+  assert.equal(track.segments.length, 1);
+  assert.equal(win.MaweBoot.DATA.bindings.length, 1);
+  assert.ok(state.hints.some(({ message }) => message.includes('已自动开启双语字幕')));
 });
 
 test('轮询迟到响应不会终结或污染新任务（#6）', async () => {

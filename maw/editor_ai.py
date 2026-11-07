@@ -466,8 +466,9 @@ def run_timecode_alignment(
 
     对齐依赖（torch / qwen_asr）只存在于独立运行环境，发布版编辑器
     serve 进程不引入；本函数只做临时工程准备、进度转发与结果抽取。
-    mediaPath / ffmpegPath 由 serve.py 从当前工程绑定注入（不接受前端
-    任意路径）；结果按 cue id 回传 items，前端核对快照后写回。
+    mediaPath 由 serve.py 从当前工程绑定注入（不接受前端任意路径）；
+    serve.py 注入的 ffmpegPath 此处不消费，运行环境自行解析 ffmpeg。
+    结果按 cue id 回传 items，前端核对快照后写回。
     """
     from maw.alignment_models import QWEN_FORCED_ALIGNER_MODEL_ID, normalize_alignment_model_id
     from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, run_timestamp_alignment_in_runtime
@@ -479,13 +480,6 @@ def run_timecode_alignment(
         raise AiTaskError("当前工程的媒体文件不可用，无法对齐。")
     report("loading_model", 15)
     language = str(payload.get("lang") or "")
-    # 经 import_project 迁移为 v2 形状再落盘：cue id 原样保留，语言写进
-    # 主轨（v2 工程顶层没有 language 字段，worker 只认轨上的语言）。
-    project = import_project({"segments": [dict(cue) for cue in cues], "language": language})
-    for track in project.get("tracks", []):
-        if track.get("role") == "main":
-            track["language"] = language
-            break
     model_id = normalize_alignment_model_id(str(payload.get("modelId") or QWEN_FORCED_ALIGNER_MODEL_ID))
     total = len(cues)
     progress_state = {"events": 0}
@@ -499,6 +493,14 @@ def run_timecode_alignment(
     warnings: list[str] = []
     aligned = failed = 0
     try:
+        # 经 import_project 迁移为 v2 形状再落盘：cue id 原样保留，语言写进
+        # 主轨（v2 工程顶层没有 language 字段，worker 只认轨上的语言）。
+        # 校验失败是 ValueError 家族，统一映射为带前缀的 AiTaskError。
+        project = import_project({"segments": [dict(cue) for cue in cues], "language": language})
+        for track in project.get("tracks", []):
+            if track.get("role") == "main":
+                track["language"] = language
+                break
         with tempfile.TemporaryDirectory(prefix="maw-editor-align-") as temp_dir:
             project_path = Path(temp_dir) / "alignment-input.mosp"
             project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
@@ -525,11 +527,14 @@ def run_timecode_alignment(
             if not output_path.is_file():
                 raise AiTaskError("时间码对齐失败：运行环境没有生成对齐后的工程文件。")
             output_project = json.loads(output_path.read_text(encoding="utf-8"))
+            if not isinstance(output_project, dict):
+                raise AiTaskError("时间码对齐失败：结果工程形状异常。")
             segments: list[Any] = []
             for track in output_project.get("tracks", []):
-                if track.get("role") == "main":
-                    segments = track.get("segments") or []
-                    break
+                if not isinstance(track, dict) or track.get("role") != "main":
+                    continue
+                segments = track.get("segments") or []
+                break
             for segment in segments:
                 if not isinstance(segment, Mapping):
                     continue
@@ -559,7 +564,7 @@ def run_timecode_alignment(
 
 
 class _CancelProbe:
-    """align_project(cancel_event) 需要的是有 is_set() 的取消事件。"""
+    """run_timestamp_alignment_in_runtime(cancel_event) 需要有 is_set() 的取消事件。"""
 
     def __init__(self, is_cancelled: Callable[[], bool]) -> None:
         self._is_cancelled = is_cancelled
