@@ -1,7 +1,21 @@
+import { fmtSrtTime, syncCharCountThresholdInputs, updateTimedTextEditSingleGuide } from './editor-cue-elements.js';
+import { finishEdit } from './editor-inline-edit.js';
+import { releaseClosedUiFocus } from './editor-keyboard-targets.js';
+import { splitGroupsAtCutPoints } from './editor-segment-ops.js';
+import { clearSelection } from './editor-selection.js';
+
 // 整轨定时编辑：逐行 diff 呈现、时间映射与覆盖统计。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweTimedTextEdit 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 整轨定时编辑：逐行 diff 呈现、时间映射与覆盖统计。 ESM init 模块：initMaweTimedTextEdit 在原清单位次执行原 IIFE 体（挂
+// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
+// window.MaweTimedTextEdit 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
+// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+
+// window.MaweTimedTextEdit 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
+// 兄弟模块可静态 import。
+export function initMaweTimedTextEdit() {
 (function initMaweTimedTextEdit(global) {
   'use strict';
 
@@ -145,29 +159,29 @@
       timing.appendChild(document.createTextNode('时间范围：'));
       if (beforeStart !== afterStart && beforeEnd !== afterEnd) {
         timing.append(
-          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(beforeStart), 'before'),
+          timedTextEditTimingPill(fmtSrtTime(beforeStart), 'before'),
           document.createTextNode(' – '),
-          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(beforeEnd), 'before'),
+          timedTextEditTimingPill(fmtSrtTime(beforeEnd), 'before'),
           document.createTextNode(' → '),
-          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(afterStart), 'after'),
+          timedTextEditTimingPill(fmtSrtTime(afterStart), 'after'),
           document.createTextNode(' – '),
-          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(afterEnd), 'after'),
+          timedTextEditTimingPill(fmtSrtTime(afterEnd), 'after'),
         );
       } else if (beforeStart !== afterStart) {
         timing.append(
-          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(beforeStart), 'before'),
+          timedTextEditTimingPill(fmtSrtTime(beforeStart), 'before'),
           document.createTextNode(' – '),
-          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(afterStart), 'after'),
+          timedTextEditTimingPill(fmtSrtTime(afterStart), 'after'),
           document.createTextNode(' → '),
-          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(afterEnd)),
+          timedTextEditTimingPill(fmtSrtTime(afterEnd)),
         );
       } else {
         timing.append(
-          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(beforeStart)),
+          timedTextEditTimingPill(fmtSrtTime(beforeStart)),
           document.createTextNode(' → '),
-          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(beforeEnd), 'before'),
+          timedTextEditTimingPill(fmtSrtTime(beforeEnd), 'before'),
           document.createTextNode(' – '),
-          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(afterEnd), 'after'),
+          timedTextEditTimingPill(fmtSrtTime(afterEnd), 'after'),
         );
       }
       if (timingEstimated) timing.appendChild(timedTextEditEstimatedBadge());
@@ -331,7 +345,7 @@
       const time = document.createElement('span');
       time.className = 'timed-text-edit-row-time';
       time.textContent = segment
-        ? `${MaweCueElements.fmtSrtTime(segment.start)}\n${MaweCueElements.fmtSrtTime(segment.end)}` : '—\n—';
+        ? `${fmtSrtTime(segment.start)}\n${fmtSrtTime(segment.end)}` : '—\n—';
       const coverage = document.createElement('span');
       const coverageData = window.AsrEditorUtils.timedTextItemCoverage(
         textValue, segment?.items,
@@ -425,9 +439,9 @@
     MaweDom.timedTextEditSingleTextarea.hidden = !single;
     MaweDom.timedTextEditSingleHint.hidden = !single || !MaweDom.timedTextEditDraft.singleLineError;
     if (single) {
-      MaweCueElements.syncCharCountThresholdInputs();
+      syncCharCountThresholdInputs();
       MaweDom.timedTextEditSingleTextarea.value = MaweDom.timedTextEditDraft.singleText;
-      MaweCueElements.updateTimedTextEditSingleGuide();
+      updateTimedTextEditSingleGuide();
     }
     updateTimedTextEditGutter();
     refreshTimedTextEditSearch({ preserveIndex: true });
@@ -996,7 +1010,7 @@
     MaweDom.timedTextEditRows.replaceChildren();
     const returnFocus = MaweDom.timedTextEditReturnFocus;
     if (returnFocus?.matches('button, input, select, textarea, a')) {
-      MaweKeyboardTargets.releaseClosedUiFocus(MaweDom.timedTextEditModal, returnFocus);
+      releaseClosedUiFocus(MaweDom.timedTextEditModal, returnFocus);
     } else returnFocus?.focus();
     MaweDom.timedTextEditReturnFocus = null;
   }
@@ -1152,8 +1166,8 @@
 
       if (removedIndexList.length) {
         // 与删除字幕相同的分组语义：来源行离开后，颜色 / 表情包组在切点处拆开。
-        MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
-        MaweSegmentOps.splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
+        splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
+        splitGroupsAtCutPoints(removeSet, 'color', 'color_ref');
         MaweBoot.DATA.segments.forEach((segment, index) => {
           if (removeSet.has(index)) return;
           if (segment.sticker_ref && removeSet.has(segment.sticker_ref.headIdx)) {
@@ -1167,7 +1181,7 @@
     }
 
     // 结构发生变化后，旧下标选中态和字幕编辑面板都必须失效，避免渲染后指向相邻字幕。
-    MaweSelection.clearSelection({ silent: true });
+    clearSelection({ silent: true });
     MaweCuePanelState.currentCuePanelKind = 'main';
     MaweCuePanelState.currentCuePanelIdx = -1;
     MaweCuePanelState.currentCuePanelTrackId = null;
@@ -1232,7 +1246,7 @@
       MaweHint.flashHint('当前没有可编辑的字幕', 'invalid');
       return;
     }
-    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+    if (MaweInlineEdit.editingState) finishEdit(true);
     MaweDom.timedTextEditReturnFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
     timedTextEditFindInput.value = '';
@@ -1413,3 +1427,43 @@
     openTimedTextEdit
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function timedTextEditSegments(...args) { return window.MaweTimedTextEdit.timedTextEditSegments(...args); }
+export function timedTextEditSourceSelection(...args) { return window.MaweTimedTextEdit.timedTextEditSourceSelection(...args); }
+export function currentTimedTextEditKind(...args) { return window.MaweTimedTextEdit.currentTimedTextEditKind(...args); }
+export function timedTextEditTrackLabel(...args) { return window.MaweTimedTextEdit.timedTextEditTrackLabel(...args); }
+export function appendTimedTextEditStat(...args) { return window.MaweTimedTextEdit.appendTimedTextEditStat(...args); }
+export function appendTimedTextEditDivider(...args) { return window.MaweTimedTextEdit.appendTimedTextEditDivider(...args); }
+export function appendTimedTextEditDiffLine(...args) { return window.MaweTimedTextEdit.appendTimedTextEditDiffLine(...args); }
+export function appendTimedTextEditTimingChange(...args) { return window.MaweTimedTextEdit.appendTimedTextEditTimingChange(...args); }
+export function renderTimedTextEditRowDiff(...args) { return window.MaweTimedTextEdit.renderTimedTextEditRowDiff(...args); }
+export function timedTextEditMappingLabel(...args) { return window.MaweTimedTextEdit.timedTextEditMappingLabel(...args); }
+export function timedTextEditCoverageClass(...args) { return window.MaweTimedTextEdit.timedTextEditCoverageClass(...args); }
+export function renderTimedTextEditMetric(...args) { return window.MaweTimedTextEdit.renderTimedTextEditMetric(...args); }
+export function renderTimedTextEditChangeList(...args) { return window.MaweTimedTextEdit.renderTimedTextEditChangeList(...args); }
+export function renderTimedTextEditRows(...args) { return window.MaweTimedTextEdit.renderTimedTextEditRows(...args); }
+export function timedTextEditCanUseSingleView(...args) { return window.MaweTimedTextEdit.timedTextEditCanUseSingleView(...args); }
+export function renderTimedTextEditView(...args) { return window.MaweTimedTextEdit.renderTimedTextEditView(...args); }
+export function refreshTimedTextEditSearch(...args) { return window.MaweTimedTextEdit.refreshTimedTextEditSearch(...args); }
+export function moveTimedTextEditSearchMatch(...args) { return window.MaweTimedTextEdit.moveTimedTextEditSearchMatch(...args); }
+export function applyTimedTextEditSearchReplacement(...args) { return window.MaweTimedTextEdit.applyTimedTextEditSearchReplacement(...args); }
+export function revealTimedTextEditSearchMatch(...args) { return window.MaweTimedTextEdit.revealTimedTextEditSearchMatch(...args); }
+export function timedTextEditRowFilterKey(...args) { return window.MaweTimedTextEdit.timedTextEditRowFilterKey(...args); }
+export function timedTextEditDraftRowReports(...args) { return window.MaweTimedTextEdit.timedTextEditDraftRowReports(...args); }
+export function normalizeTimedTextEditDraftLines(...args) { return window.MaweTimedTextEdit.normalizeTimedTextEditDraftLines(...args); }
+export function syncTimedTextEditDraftFromDom(...args) { return window.MaweTimedTextEdit.syncTimedTextEditDraftFromDom(...args); }
+export function timedTextEditEffectiveTexts(...args) { return window.MaweTimedTextEdit.timedTextEditEffectiveTexts(...args); }
+export function cancelTimedTextEditReport(...args) { return window.MaweTimedTextEdit.cancelTimedTextEditReport(...args); }
+export function flushTimedTextEditReport(...args) { return window.MaweTimedTextEdit.flushTimedTextEditReport(...args); }
+export function scheduleTimedTextEditReport(...args) { return window.MaweTimedTextEdit.scheduleTimedTextEditReport(...args); }
+export function updateTimedTextEditReport(...args) { return window.MaweTimedTextEdit.updateTimedTextEditReport(...args); }
+export function refreshTimedTextEditTrackOptions(...args) { return window.MaweTimedTextEdit.refreshTimedTextEditTrackOptions(...args); }
+export function loadTimedTextEditTrack(...args) { return window.MaweTimedTextEdit.loadTimedTextEditTrack(...args); }
+export function refreshTimedTextEditButton(...args) { return window.MaweTimedTextEdit.refreshTimedTextEditButton(...args); }
+export function closeTimedTextEdit(...args) { return window.MaweTimedTextEdit.closeTimedTextEdit(...args); }
+export function timedTextEditHasUnappliedChanges(...args) { return window.MaweTimedTextEdit.timedTextEditHasUnappliedChanges(...args); }
+export function mergeTimedTextEditSegmentsWithHidden(...args) { return window.MaweTimedTextEdit.mergeTimedTextEditSegmentsWithHidden(...args); }
+export function applyTimedTextEditSegments(...args) { return window.MaweTimedTextEdit.applyTimedTextEditSegments(...args); }
+export function requestCloseTimedTextEdit(...args) { return window.MaweTimedTextEdit.requestCloseTimedTextEdit(...args); }
+export function openTimedTextEdit(...args) { return window.MaweTimedTextEdit.openTimedTextEdit(...args); }

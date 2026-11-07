@@ -1,7 +1,21 @@
+import { fmtShort, rememberTemporaryVisibleSplitCues } from './editor-cue-elements.js';
+import { captureCueListVisualAnchor } from './editor-cue-list-anchor.js';
+import { commitCuePanelEdit } from './editor-cue-panel.js';
+import { caretCharFromPoint, finishEdit } from './editor-inline-edit.js';
+import { clearSelection, selectOnly, selectOnlyExtension } from './editor-selection.js';
+
 // 拆分核心：拆分点计算、字词时间码回退与拆分会话状态。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweSplitCore 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 拆分核心：拆分点计算、字词时间码回退与拆分会话状态。 ESM init 模块：initMaweSplitCore 在原清单位次执行原 IIFE 体（挂
+// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
+// window.MaweSplitCore 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
+// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+
+// window.MaweSplitCore 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
+// 兄弟模块可静态 import。
+export function initMaweSplitCore() {
 (function initMaweSplitCore(global) {
   'use strict';
 
@@ -63,7 +77,7 @@
       }
     }
     // The fade parser also understands fades nested inside complete sentence shells.
-    const faded = MULTI_SUBTITLE_UTILS.parseSentenceFadeMarkers(text, rule);
+    const faded = window.AsrEditorUtils.parseSentenceFadeMarkers(text, rule);
     if (faded.fadeIn || faded.fadeOut) {
       let start = 0, end = text.length;
       const shells = ['!!', '++', '--', '**', '__', '~~', '//', '%%'];
@@ -109,7 +123,7 @@
       });
     // 渐进拆分的右段保留完整文本，却只保留后缀 items；绝对时间码仍在段内。
     // 这种可从保存后的段/词数据重建的结构必须从右对齐，避免重复词抢占前缀位置。
-    const aligned = MULTI_SUBTITLE_UTILS.alignItemsToText(text, items, { fromEnd: timedSuffix });
+    const aligned = window.AsrEditorUtils.alignItemsToText(text, items, { fromEnd: timedSuffix });
     if (!tokens.length || aligned.every((record, index) => record || !items[index]?.text)) return aligned;
     const positions = [];
     for (let index = 0; index < text.length; index++) {
@@ -131,7 +145,7 @@
       // Recovery is optional and runs on the input path. Keep its extra DP work below
       // the general aligner's budget; oversized/ambiguous inputs retain the old fallback.
       if (items.length * (visible.length + 2) > 50_000) return aligned;
-      recovered = MULTI_SUBTITLE_UTILS.alignItemsToText(visible, items);
+      recovered = window.AsrEditorUtils.alignItemsToText(visible, items);
     }
     const previous = [], next = [];
     let anchor = null;
@@ -242,14 +256,14 @@
     let right = !display.edits.size && sameOffset ? parts.right
       : displaySlice(sameOffset ? text.length - parts.right.length : offset, text.length);
     if (!sameOffset) {
-      left = MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(left, 'end');
-      right = MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(right, 'start');
+      left = window.AsrEditorUtils.applySplitEdgeTrim(left, 'end');
+      right = window.AsrEditorUtils.applySplitEdgeTrim(right, 'start');
     }
     const content = (start, end) => text.slice(start, end).split('').filter(
       (_, index) => splitVisibleLength(text, index + start, index + start + 1, tokens) > 0,
     ).join('');
-    if (!MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(content(0, offset), 'end')
-        || !MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(content(offset, text.length), 'start')) return null;
+    if (!window.AsrEditorUtils.applySplitEdgeTrim(content(0, offset), 'end')
+        || !window.AsrEditorUtils.applySplitEdgeTrim(content(offset, text.length), 'start')) return null;
     const leftClosures = [...crossing].reverse().map((token) => token.marker).join('');
     const rightClosures = crossing.map((token) => token.marker).join('');
     left += leftClosures;
@@ -598,7 +612,7 @@
       }
       return { ...item, start: range.start, end: range.end, side };
     });
-    const placed = MULTI_SUBTITLE_UTILS.placeUnalignedSplitItems(
+    const placed = window.AsrEditorUtils.placeUnalignedSplitItems(
       leftItems,
       rightItems,
       unalignedRanges,
@@ -646,7 +660,7 @@
   }) {
     const left = {
       ...segment,
-      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
+      id: window.AsrEditorUtils.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
       end: leftEnd,
       text: leftText,
       items: leftItems.length ? leftItems : null,
@@ -654,7 +668,7 @@
     };
     const right = {
       ...segment,
-      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
+      id: window.AsrEditorUtils.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
       start: rightStart,
       text: rightText,
       items: rightItems.length ? rightItems : null,
@@ -705,13 +719,13 @@
   { preserveCutMs = false, forceCut = false, duplicateText = false, splitTextMode = null, headIndex } = {},
 ) {
   const text = String(segment?.text || '');
-  const mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
-    ? splitMode : MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
+  const mode = window.AsrEditorUtils.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
+    ? splitMode : window.AsrEditorUtils.detectSubtitleSplitMode(text);
   const safeOffset = Math.max(0, Math.min(text.length, Math.round(Number(offset) || 0)));
   const duplicateOutputText = duplicateText || splitTextMode === 'duplicate';
   let parts = duplicateOutputText
     ? (text ? { left: text, right: text, offset: safeOffset } : null)
-    : MULTI_SUBTITLE_UTILS.splitSubtitleText(text, safeOffset, mode);
+    : window.AsrEditorUtils.splitSubtitleText(text, safeOffset, mode);
   let styledClosures = null;
   if (!duplicateOutputText) {
     parts = splitStyledTextParts(text, parts, currentSplitStyleSettings());
@@ -725,7 +739,7 @@
   // 渐进拆分同样按原始两段补齐：左段成为带完整符号对的独立句；右段的补齐
   // 结果不采用——它保留整句原文（自带开符号，含被拆走的前缀）。
   const massCompletion = !duplicateOutputText
-    ? MULTI_SUBTITLE_UTILS.completeSplitMassPairs(
+    ? window.AsrEditorUtils.completeSplitMassPairs(
       parts.left, parts.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     ) : null;
   if (massCompletion) {
@@ -758,9 +772,9 @@
   // 复制原文后，原有逐词时间码无法再与两侧文本一一对应；清空 items，
   // 避免把只属于一半文本的时间码带到重复文本上。
   const leftItems = duplicateOutputText
-    ? [] : MULTI_SUBTITLE_UTILS.appendMassMarkersToLastItem(cleanSplitItems(itemParts.leftItems, 'left'), leftAppend);
+    ? [] : window.AsrEditorUtils.appendMassMarkersToLastItem(cleanSplitItems(itemParts.leftItems, 'left'), leftAppend);
   const rightItems = duplicateOutputText
-    ? [] : MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemParts.rightItems, 'right'), rightPrepend);
+    ? [] : window.AsrEditorUtils.prependMassMarkersToFirstItem(cleanSplitItems(itemParts.rightItems, 'right'), rightPrepend);
   const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
   // 普通拆分保留词间静音；渐进/复制拆分用同一 splitMs 贴合边界，
   // 避免逐字跳出时闪空。right items 仍用原媒体绝对毫秒，不随段界移动。
@@ -788,7 +802,7 @@
     splitMs,
     alignment: {
       ...(itemParts.alignment || { total: 0, aligned: 0, broken: false }),
-      driftMs: MULTI_SUBTITLE_UTILS.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
+      driftMs: window.AsrEditorUtils.splitAlignmentDriftMs(itemParts.leftEndMs, itemParts.rightStartMs, cutMs),
     },
   };
 }
@@ -812,7 +826,7 @@
   }
   const mainMode = MaweMultiSubtitleCore.getMainSubtitleSplitMode(main);
   const extensionMode = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, extension);
-  const hasMainWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
+  const hasMainWordTimestamps = window.AsrEditorUtils.hasUsableSplitTimestamps(main);
   const initialTime = Number.isFinite(initial.timeMs)
     ? initial.timeMs
     : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
@@ -831,7 +845,7 @@
   const initialMainCutMs = fixedCutMs ?? (hasMainWordTimestamps
     ? splitTimeForTextOffset(main, initialMainOffset)
     : splitCutTime(main, initialMainOffset, false));
-  const initialOffset = MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+  const initialOffset = window.AsrEditorUtils.nearestSubtitleSplitOffset(
     extension.text, initialMainCutMs, extension.start, extension.end, extensionMode,
   ) ?? window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(extension, initialMainCutMs, extensionMode);
   return {
@@ -871,7 +885,7 @@
   const main = MaweBoot.DATA.segments[mainIndex];
   if (!main) return null;
   const mainMode = MaweMultiSubtitleCore.getMainSubtitleSplitMode(main);
-  const hasMainWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
+  const hasMainWordTimestamps = window.AsrEditorUtils.hasUsableSplitTimestamps(main);
   const initialTime = Number.isFinite(initial.timeMs)
     ? initial.timeMs
     : splitTimeForTextOffset(main, initial.mainOffset ?? Math.floor(String(main.text || '').length / 2));
@@ -916,7 +930,7 @@
   const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
   const initialOffset = hasInitialTextPosition
     ? window.MaweOverlaySplitMerge.splitOffsetNearTextPositionForModal(extension.text, initial.extensionOffset, extensionMode)
-    : MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
+    : window.AsrEditorUtils.nearestSubtitleSplitOffset(
       extension.text, initialTime, extension.start, extension.end, extensionMode,
     ) ?? window.MaweOverlaySplitMerge.splitOffsetNearTimeForModal(extension, initialTime, extensionMode);
   if (!Number.isInteger(initialOffset)) return null;
@@ -1356,7 +1370,7 @@
           updateLinkedSplitPreview(Number(gap.dataset.offset), lane);
           return;
         }
-        const rawOffset = MaweInlineEdit.caretCharFromPoint(textEl, event.clientX, event.clientY);
+        const rawOffset = caretCharFromPoint(textEl, event.clientX, event.clientY);
         if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
       };
       textEl.onclick = (event) => {
@@ -1371,7 +1385,7 @@
         const gap = target?.closest?.('.multi-subtitle-split-gap');
         const rawOffset = gap && textEl.contains(gap)
           ? Number(gap.dataset.offset)
-          : MaweInlineEdit.caretCharFromPoint(textEl, event.clientX, event.clientY);
+          : caretCharFromPoint(textEl, event.clientX, event.clientY);
         if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
         current.lockedLanes[lane] = true;
         updateLinkedSplitLockVisual();
@@ -1508,7 +1522,7 @@
   function completeStyledSplitPreviewParts(text, parts) {
     const styled = splitStyledTextParts(text, parts, currentSplitStyleSettings());
     if (!styled) return null;
-    const completed = MULTI_SUBTITLE_UTILS.completeSplitMassPairs(
+    const completed = window.AsrEditorUtils.completeSplitMassPairs(
       styled.left, styled.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     );
     return { ...styled, left: completed.left, right: completed.right };
@@ -1527,14 +1541,14 @@
 
   if (lane === 'main' && main) {
     const requestedOffset = Math.max(0, Math.min(String(main.text || '').length, Math.round(Number(offset) || 0)));
-    const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(main.text, state.mainMode);
+    const legalOffsets = window.AsrEditorUtils.subtitleSplitOffsets(main.text, state.mainMode);
     state.mainOffset = legalOffsets.length
       ? legalOffsets.reduce((best, candidate) => (
         Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
       ), legalOffsets[0])
       : window.MaweOverlaySplitMerge.fallbackSplitOffset(main.text, requestedOffset);
     if (!Number.isInteger(state.mainOffset)) return false;
-    const mainHasWordTimestamps = MULTI_SUBTITLE_UTILS.hasUsableSplitTimestamps(main);
+    const mainHasWordTimestamps = window.AsrEditorUtils.hasUsableSplitTimestamps(main);
     state.mainCutMs = Number.isFinite(state.fixedCutMs)
       ? state.fixedCutMs
       : mainHasWordTimestamps
@@ -1545,7 +1559,7 @@
       0,
       Math.min(String(extension.text || '').length, Math.round(Number(offset) || 0)),
     );
-    const legalOffsets = MULTI_SUBTITLE_UTILS.subtitleSplitOffsets(extension.text, state.extensionMode);
+    const legalOffsets = window.AsrEditorUtils.subtitleSplitOffsets(extension.text, state.extensionMode);
     state.offset = legalOffsets.length
       ? legalOffsets.reduce((best, candidate) => (
         Math.abs(candidate - requestedOffset) < Math.abs(best - requestedOffset) ? candidate : best
@@ -1560,7 +1574,7 @@
 
   const mainMode = state.mainMode || (main && MaweMultiSubtitleCore.getMainSubtitleSplitMode(main));
   let mainParts = main
-    ? MULTI_SUBTITLE_UTILS.splitSubtitleText(main.text, state.mainOffset, mainMode)
+    ? window.AsrEditorUtils.splitSubtitleText(main.text, state.mainOffset, mainMode)
     : null;
   if (mainParts && state.splitTextMode !== 'duplicate') {
     // 渐进拆分与普通拆分同样做刀点吸附与符号补齐：预览里的左半句就是
@@ -1569,7 +1583,7 @@
   }
   const extensionParts = extension
     ? completeStyledSplitPreviewParts(extension.text,
-      MULTI_SUBTITLE_UTILS.splitSubtitleText(extension.text, state.offset, state.extensionMode))
+      window.AsrEditorUtils.splitSubtitleText(extension.text, state.offset, state.extensionMode))
     : null;
   const mainTextValid = !main || Boolean(mainParts);
   const extensionTextValid = !extension || Boolean(extensionParts);
@@ -1609,16 +1623,16 @@
   updateSplitLaneVisual(state, 'extension');
   if (MaweDom.multiSubtitleSplitMeta) {
     if (mainOnly) {
-      renderSplitMeta(`主轨：${MaweMultiSubtitleCore.splitModeLabel(state.mainMode)} · 切点 ${MaweCueElements.fmtShort(state.mainCutMs)} · 字符位置 ${state.mainOffset ?? '—'}`, state);
+      renderSplitMeta(`主轨：${MaweMultiSubtitleCore.splitModeLabel(state.mainMode)} · 切点 ${fmtShort(state.mainCutMs)} · 字符位置 ${state.mainOffset ?? '—'}`, state);
     } else if (extensionOnly) {
-      renderSplitMeta(`副轨：${MaweMultiSubtitleCore.splitModeLabel(state.extensionMode)} · 切点 ${MaweCueElements.fmtShort(state.extensionCutMs)}`, state);
+      renderSplitMeta(`副轨：${MaweMultiSubtitleCore.splitModeLabel(state.extensionMode)} · 切点 ${fmtShort(state.extensionCutMs)}`, state);
     } else {
       const mainLabel = state.mainTimestampLocked
-        ? `⌚️主轨时间码锚点 ${MaweCueElements.fmtShort(state.mainCutMs)}`
+        ? `⌚️主轨时间码锚点 ${fmtShort(state.mainCutMs)}`
         : state.mainInteractive
           ? `主轨文字断点 ${state.mainOffset ?? '—'}`
-          : `主轨字词锚点 ${MaweCueElements.fmtShort(state.mainCutMs)}`;
-      renderSplitMeta(`${mainLabel} · 副轨文字断点 ${state.offset ?? '—'} · 共用绝对切点 ${MaweCueElements.fmtShort(state.cutMs)}`, state);
+          : `主轨字词锚点 ${fmtShort(state.mainCutMs)}`;
+      renderSplitMeta(`${mainLabel} · 副轨文字断点 ${state.offset ?? '—'} · 共用绝对切点 ${fmtShort(state.cutMs)}`, state);
     }
   }
   if (MaweDom.multiSubtitleSplitPreview) {
@@ -1647,6 +1661,9 @@
   if (MaweDom.multiSubtitleSplitConfirm) {
     MaweDom.multiSubtitleSplitConfirm.disabled = !valid && !state.mainOnlyFallbackEligible;
   }
+  // classic 时代从 dom-panels 全局提升取元素；init 化后改为调用时
+  // 直查（该元素未列入 MaweDom 门面，属于可选增强控件）。
+  const multiSubtitleSplitDuplicate = document.getElementById('multi-subtitle-split-duplicate');
   if (multiSubtitleSplitDuplicate) {
     multiSubtitleSplitDuplicate.disabled = !state.duplicateTimingValid;
   }
@@ -1715,7 +1732,7 @@
 ) {
   // 波形入口可能是在当前字幕面板仍有未提交编辑时触发；先完成面板编辑，
   // 再为“拆分”建立快照，确保一次撤销能回到拆分前的完整字幕状态。
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   const mainIndex = state.mainIndex;
   const main = MaweBoot.DATA.segments[mainIndex];
   if (!main) return false;
@@ -1751,14 +1768,14 @@
   if (!force && !duplicateText) window.MaweOverlaySplitMerge.flashSplitAlignmentHint(pair.alignment, { committed: true });
   const oldMainId = main.id;
   return MaweCommands.run(duplicateText ? '拆分字幕并保留原文' : '拆分字幕', (command) => {
-    MaweSelection.clearSelection({ commitCuePanel: false });
+    clearSelection({ commitCuePanel: false });
     MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], []);
     replaceSegmentWithSplit(MaweBoot.DATA.segments, mainIndex, pair);
     MaweMultiSubtitleCore.markMainSegmentsDirty([pair.left, pair.right]);
-    MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
+    rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
     closeLinkedSplitModal();
     command.commit({ cueList: true });
-    MaweSelection.selectOnly(mainIndex + 1);
+    selectOnly(mainIndex + 1);
     MaweSelection.lastClickedIdx = mainIndex + 1;
     MaweViewUpdates.invalidate({ preview: 'update' });
     flashSplitFeedback({
@@ -1854,14 +1871,14 @@
     MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [oldExtensionId]);
     replaceSegmentWithSplit(track.segments, extensionIndex, pair);
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweCueElements.rememberTemporaryVisibleSplitCues({
+    rememberTemporaryVisibleSplitCues({
       extensionSegments: [pair.left, pair.right],
       extensionTrackId: track.id,
     });
     closeLinkedSplitModal();
-    MaweSelection.clearSelection({ commitCuePanel: false });
+    clearSelection({ commitCuePanel: false });
     command.commit({ cueList: true });
-    MaweSelection.selectOnlyExtension(extensionIndex + 1);
+    selectOnlyExtension(extensionIndex + 1);
     MaweSelection.lastClickedExtensionIdx = extensionIndex + 1;
     MaweViewUpdates.invalidate({ preview: 'update' });
     flashSplitFeedback({
@@ -1990,21 +2007,21 @@
     if (track) replaceSegmentWithSplit(track.segments, extensionIndex, extensionPair);
     const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
     multi.bindings.push(
-      MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.left, extensionPair.left, track.id),
-      MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.right, extensionPair.right, track.id),
+      window.AsrEditorUtils.buildSubtitleBinding(mainPair.left, extensionPair.left, track.id),
+      window.AsrEditorUtils.buildSubtitleBinding(mainPair.right, extensionPair.right, track.id),
     );
     multi.enabled = true;
     MaweMultiSubtitleCore.markMainSegmentsDirty([mainPair.left, mainPair.right]);
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweCueElements.rememberTemporaryVisibleSplitCues({
+    rememberTemporaryVisibleSplitCues({
       mainSegments: [mainPair.left, mainPair.right],
       extensionSegments: [extensionPair.left, extensionPair.right],
       extensionTrackId: track.id,
     });
     closeLinkedSplitModal();
-    MaweSelection.clearSelection({ commitCuePanel: false });
+    clearSelection({ commitCuePanel: false });
     command.commit({ cueList: true });
-    MaweSelection.selectOnly(mainIndex);
+    selectOnly(mainIndex);
     MaweSelection.lastClickedIdx = mainIndex;
     MaweViewUpdates.invalidate({ preview: 'update' });
     flashSplitFeedback({
@@ -2063,7 +2080,7 @@
     } else {
       const sel = window.getSelection();
       if (!sel.rangeCount) {
-        MaweInlineEdit.finishEdit(false);
+        finishEdit(false);
         return false;
       }
       const range = sel.getRangeAt(0);
@@ -2083,7 +2100,7 @@
     }
 
     if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
-      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) finishEdit(false);
       pendingLinkedSplit = linkedSplitState(idx, {
         mainOffset: cursorOffset,
         feedbackPoint: ninjaFeedbackPoint,
@@ -2097,7 +2114,7 @@
     }
 
     if (cursorOffset <= 0 || cursorOffset >= fullText.length) {
-      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) finishEdit(false);
       MaweHint.flashHint('光标必须在词与词之间才能拆分', 'invalid');
       return false;
     }
@@ -2117,7 +2134,7 @@
       // styled 的返回值携带两端点闭符号串，供 items 层同步（同 buildSplitPair）。
       styledClosures = parts;
       if (parts) {
-        massCompletion = MULTI_SUBTITLE_UTILS.completeSplitMassPairs(
+        massCompletion = window.AsrEditorUtils.completeSplitMassPairs(
           parts.left, parts.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
         );
         parts.left = massCompletion.left;
@@ -2136,7 +2153,7 @@
       rightText = fullText;
     }
     if (!leftText || !rightText) {
-      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) finishEdit(false);
       MaweHint.flashHint('拆分后任一段为空，已取消', 'warning');
       return false;
     }
@@ -2144,7 +2161,7 @@
     // 原字幕总时长不足 200ms 时，无法在原时间范围内让两侧都达到 100ms；
     // 这和“切点靠边、可通过再次按键强制钳制”的情况不同。
     if (seg.end - seg.start < 200) {
-      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) finishEdit(false);
       MaweHint.flashHint('字幕时长不足 200ms，无法拆分', 'warning');
       return false;
     }
@@ -2194,7 +2211,7 @@
     if (force) {
       const forcedCut = forceSplitCutForSegments([seg], splitMs);
       if (!Number.isFinite(forcedCut)) {
-        if (!explicitSplit) MaweInlineEdit.finishEdit(false);
+        if (!explicitSplit) finishEdit(false);
         MaweHint.flashHint('字幕时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
         return false;
       }
@@ -2233,8 +2250,8 @@
     // 渐进拆分的右段是整句原文，边界 item 不再补任何符号（补齐只属于左段）。
     const rightPrepend = progressiveSplit ? ''
       : `${itemsFollowText ? (massCompletion?.rightPrepend || '') : ''}${styledRightPrepend}`;
-    const leftItemsClean = MULTI_SUBTITLE_UTILS.appendMassMarkersToLastItem(cleanSplitItems(itemSplit.leftItems, 'left'), leftAppend);
-    const rightItemsClean = MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemSplit.rightItems, 'right'), rightPrepend);
+    const leftItemsClean = window.AsrEditorUtils.appendMassMarkersToLastItem(cleanSplitItems(itemSplit.leftItems, 'left'), leftAppend);
+    const rightItemsClean = window.AsrEditorUtils.prependMassMarkersToFirstItem(cleanSplitItems(itemSplit.rightItems, 'right'), rightPrepend);
     // 复制拆分两侧都是全文，逐词时间码再也对不上文本，清空两侧 items；
     // 渐进拆分后半句虽然带上复制来的前缀，但后半区间的 items 仍有效，保留。
     const leftItemsFinal = duplicateSplit ? [] : leftItemsClean;
@@ -2251,7 +2268,7 @@
     // 当前字幕被累计行高误差顶走。列表来源的拆分因此保存原行的屏幕位置，
     // 重绘后再用左半段恢复这个视觉锚点。
     const cueListAnchor = listFeedback
-      ? suppliedCueListAnchor || MaweCueListAnchor.captureCueListVisualAnchor(el)
+      ? suppliedCueListAnchor || captureCueListVisualAnchor(el)
       : null;
 
     if (explicitSplit) {
@@ -2267,15 +2284,15 @@
     return MaweCommands.run(
       duplicateSplit ? '复制拆分字幕' : progressiveSplit ? '渐进拆分字幕' : '拆分字幕',
       (command) => {
-      MaweSelection.clearSelection({ silent: true });
+      clearSelection({ silent: true });
       // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
       // 只移除这条关系，保留隐藏的副字幕供用户重新绑定。
       MaweMultiSubtitleCore.removeBindingsForSegmentIds([seg.id], []);
       replaceSegmentWithSplit(MaweBoot.DATA.segments, idx, { left: leftSeg, right: rightSeg });
 
-      MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
+      rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
       command.commit({ cueList: true, cueListAnchor });
-      MaweSelection.selectOnly(idx + 1);
+      selectOnly(idx + 1);
       // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
       MaweSelection.lastClickedIdx = idx + 1;
       // 列表来源（B 键悬停等）沿用列表光标坐标；编辑区 Ctrl+Enter 等其余来源
@@ -2405,3 +2422,59 @@
     flashSplitFeedback
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function splitTimeForTextOffset(...args) { return window.MaweSplitCore.splitTimeForTextOffset(...args); }
+export function shouldUseMainSplitTimestamps(...args) { return window.MaweSplitCore.shouldUseMainSplitTimestamps(...args); }
+export function notifyMainSplitTimestampFallback(...args) { return window.MaweSplitCore.notifyMainSplitTimestampFallback(...args); }
+export function splitOffsetNearTime(...args) { return window.MaweSplitCore.splitOffsetNearTime(...args); }
+export function splitOffsetNearTextPosition(...args) { return window.MaweSplitCore.splitOffsetNearTextPosition(...args); }
+export function cleanSplitItems(...args) { return window.MaweSplitCore.cleanSplitItems(...args); }
+export function forceSplitCutForSegments(...args) { return window.MaweSplitCore.forceSplitCutForSegments(...args); }
+export function forcedSplitRetryHint(...args) { return window.MaweSplitCore.forcedSplitRetryHint(...args); }
+export function armForcedSplit(...args) { return window.MaweSplitCore.armForcedSplit(...args); }
+export function splitItemsAtChar(...args) { return window.MaweSplitCore.splitItemsAtChar(...args); }
+export function splitStyledTextParts(...args) { return window.MaweSplitCore.splitStyledTextParts(...args); }
+export function buildSplitPair(...args) { return window.MaweSplitCore.buildSplitPair(...args); }
+export function replaceSegmentWithSplit(...args) { return window.MaweSplitCore.replaceSegmentWithSplit(...args); }
+export function linkedSplitState(...args) { return window.MaweSplitCore.linkedSplitState(...args); }
+export function mainWaveformSplitState(...args) { return window.MaweSplitCore.mainWaveformSplitState(...args); }
+export function extensionOnlySplitState(...args) { return window.MaweSplitCore.extensionOnlySplitState(...args); }
+export function splitLaneElements(...args) { return window.MaweSplitCore.splitLaneElements(...args); }
+export function splitLaneLocked(...args) { return window.MaweSplitCore.splitLaneLocked(...args); }
+export function splitLaneUsesMainTimestamp(...args) { return window.MaweSplitCore.splitLaneUsesMainTimestamp(...args); }
+export function splitLaneKeyboardInteractive(...args) { return window.MaweSplitCore.splitLaneKeyboardInteractive(...args); }
+export function splitLaneSegment(...args) { return window.MaweSplitCore.splitLaneSegment(...args); }
+export function stepSplitLaneOffset(...args) { return window.MaweSplitCore.stepSplitLaneOffset(...args); }
+export function SPLIT_LANE_LINE_TOLERANCE_PX(...args) { return window.MaweSplitCore.SPLIT_LANE_LINE_TOLERANCE_PX(...args); }
+export function splitLaneGapLines(...args) { return window.MaweSplitCore.splitLaneGapLines(...args); }
+export function verticalSplitLaneOffset(...args) { return window.MaweSplitCore.verticalSplitLaneOffset(...args); }
+export function splitKeyboardActiveLane(...args) { return window.MaweSplitCore.splitKeyboardActiveLane(...args); }
+export function splitLaneVisible(...args) { return window.MaweSplitCore.splitLaneVisible(...args); }
+export function focusSplitLane(...args) { return window.MaweSplitCore.focusSplitLane(...args); }
+export function splitKeyboardSwitchLane(...args) { return window.MaweSplitCore.splitKeyboardSwitchLane(...args); }
+export function toggleSplitLaneKeyboardLock(...args) { return window.MaweSplitCore.toggleSplitLaneKeyboardLock(...args); }
+export function flashSplitLaneBlockedFeedback(...args) { return window.MaweSplitCore.flashSplitLaneBlockedFeedback(...args); }
+export function syncLinkedSplitTime(...args) { return window.MaweSplitCore.syncLinkedSplitTime(...args); }
+export function splitCutTime(...args) { return window.MaweSplitCore.splitCutTime(...args); }
+export function setSplitPreviewLine(...args) { return window.MaweSplitCore.setSplitPreviewLine(...args); }
+export function updateSplitLaneVisual(...args) { return window.MaweSplitCore.updateSplitLaneVisual(...args); }
+export function renderSplitLane(...args) { return window.MaweSplitCore.renderSplitLane(...args); }
+export function renderLinkedSplitText(...args) { return window.MaweSplitCore.renderLinkedSplitText(...args); }
+export function updateLinkedSplitLockVisual(...args) { return window.MaweSplitCore.updateLinkedSplitLockVisual(...args); }
+export function isSplitAutoSubmitEnabled(...args) { return window.MaweSplitCore.isSplitAutoSubmitEnabled(...args); }
+export function splitAutoSubmitReady(...args) { return window.MaweSplitCore.splitAutoSubmitReady(...args); }
+export function maybeAutoSubmitLinkedSplit(...args) { return window.MaweSplitCore.maybeAutoSubmitLinkedSplit(...args); }
+export function splitCutSourceHint(...args) { return window.MaweSplitCore.splitCutSourceHint(...args); }
+export function renderSplitMeta(...args) { return window.MaweSplitCore.renderSplitMeta(...args); }
+export function updateLinkedSplitPreview(...args) { return window.MaweSplitCore.updateLinkedSplitPreview(...args); }
+export function closeLinkedSplitModal(...args) { return window.MaweSplitCore.closeLinkedSplitModal(...args); }
+export function openMainWaveformSplitModal(...args) { return window.MaweSplitCore.openMainWaveformSplitModal(...args); }
+export function openExtensionSplitModal(...args) { return window.MaweSplitCore.openExtensionSplitModal(...args); }
+export function commitMainWaveformSplit(...args) { return window.MaweSplitCore.commitMainWaveformSplit(...args); }
+export function commitLinkedSplitMainOnly(...args) { return window.MaweSplitCore.commitLinkedSplitMainOnly(...args); }
+export function commitExtensionSplit(...args) { return window.MaweSplitCore.commitExtensionSplit(...args); }
+export function confirmLinkedSplit(...args) { return window.MaweSplitCore.confirmLinkedSplit(...args); }
+export function splitAtCursor(...args) { return window.MaweSplitCore.splitAtCursor(...args); }
+export function flashCueSplitAt(...args) { return window.MaweSplitCore.flashCueSplitAt(...args); }
+export function flashSplitFeedback(...args) { return window.MaweSplitCore.flashSplitFeedback(...args); }

@@ -31,7 +31,7 @@ export function initModuleSource(relativeWebPath) {
       // prefix 里的正则元字符（括号、点）先转义再拼接。
       const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const facadeMatch = line ? line.match(new RegExp('^' + esc + '(Mawe\\w+)\\.')) : null;
-      if (facadeMatch) shims.push(`var ${name} = (...args) => window.${facadeMatch[1]}.${name}(...args);`);
+      if (facadeMatch) shims.push(`var ${name} = (...args) => (globalThis.${facadeMatch[1]} ?? window.${facadeMatch[1]}).${name}(...args);`);
       else if (target !== 'overlay-track') {
         shims.push(`var ${name} = () => { throw new Error('No facade shim for ${name} (from ${target}.js)'); };`);
       }
