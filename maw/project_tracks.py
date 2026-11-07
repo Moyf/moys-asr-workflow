@@ -222,6 +222,8 @@ def _validate_styles(project: dict[str, Any], tracks: list[Any]) -> None:
             _fail(f"{path}.style_id", "must reference an existing style")
         if "forked" in style and type(style["forked"]) is not bool:
             _fail(f"{path}.forked", "must be a boolean")
+        if "font_default" in style and type(style["font_default"]) is not bool:
+            _fail(f"{path}.font_default", "must be a boolean")
 
 
 def _validate_canonical(project: dict[str, Any], *, speaker_contract: bool = True) -> None:

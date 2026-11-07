@@ -185,6 +185,21 @@ class ProjectAssExportTests(unittest.TestCase):
                 self.assertEqual(int(_style_line(lines, "Overlay").split(",")[-2]), expected)
                 self.assertEqual(int(_style_line(lines, "Overlay RED").split(",")[-2]), expected)
 
+    def test_overlay_cue_style_keeps_automatic_stack_offset(self) -> None:
+        project = _basic_project()
+        project["overlay_track"] = {"enabled": True, "segments": [{
+            "id": "o", "start": 0, "end": 500, "text": "overlay",
+            "assStyle": {"fontName": "Arial", "fontSize": 60, "marginV": 80},
+        }]}
+        # Main text is larger than the overlay; allow space for its font too.
+        for height, expected in [(1080, 176), (540, 128)]:
+            with self.subTest(height=height):
+                lines = render_project_ass(project, title="t", play_resolution=(1920, height)).splitlines()
+                cue = _style_line(lines, "Cue_0")
+                self.assertEqual(cue.split(",")[1], "Arial")
+                self.assertEqual(int(cue.split(",")[-2]), expected)
+                self.assertIn(",Cue_0,", _dialogues("\n".join(lines), "2")[0])
+
     def test_overlay_disabled_or_closed_track_is_ignored(self) -> None:
         project = _basic_project()
         project["overlay_track"] = {"enabled": False, "segments": [{"id": "o", "start": 0, "end": 500, "text": "x"}]}

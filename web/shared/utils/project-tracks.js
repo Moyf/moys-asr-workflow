@@ -298,6 +298,7 @@ export function createUtilsModule() {
       if (invalidId) return invalidId;
       if (!styleIds.has(track.style.style_id)) return error(`${path}.style_id`, 'must reference an existing style');
       if (own(track.style, 'forked') && typeof track.style.forked !== 'boolean') return error(`${path}.forked`, 'must be a boolean');
+      if (own(track.style, 'font_default') && typeof track.style.font_default !== 'boolean') return error(`${path}.font_default`, 'must be a boolean');
     }
     return null;
   }

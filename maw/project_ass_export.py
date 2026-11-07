@@ -227,6 +227,27 @@ def render_project_ass(
     cue_style_lines = []
     events = []
 
+    def overlay_cue_margin(style, segment):
+        scaled_size = min(512, max(1, _round_half_up(float(style["fontSize"]) * snapshot_scale)))
+        margin = int(style["marginV"]) + _round_half_up(1.2 * scaled_size)
+        if style["alignment"] not in (1, 2, 3) or not main:
+            return margin
+        main_snapshot = resolve_track_style(project, main)
+        main_base = (_normalize_style(main_snapshot, DEFAULT_ASS_STYLE, style_id=main_snapshot["id"])
+                     if main_snapshot else _stroke_base_style(family, size, color))
+        for other in main_segments:
+            if (other.get("disabled") is True or not str(other.get("text") or "").strip()
+                    or other.get("start", 0) >= segment["end"] or other.get("end", 0) <= segment["start"]):
+                continue
+            override = other.get("assStyle")
+            effective = _normalize_style(override, DEFAULT_ASS_STYLE, style_id="cue") if override else main_base
+            if effective["alignment"] not in (1, 2, 3):
+                continue
+            scale = snapshot_scale if override or main_snapshot else 1.0
+            main_size = min(512, max(1, _round_half_up(float(effective["fontSize"]) * scale)))
+            margin = max(margin, int(effective["marginV"]) + _round_half_up(1.2 * main_size))
+        return margin
+
     def render_track(track, segments, *, default_name, layer):
         is_overlay = default_name == "Overlay"
         is_main = default_name == "Default"
@@ -254,6 +275,8 @@ def render_project_ass(
             body_color = base["primaryColor"]
             if cue_snapshot is not None:
                 cue_style = _normalize_style(cue_snapshot, DEFAULT_ASS_STYLE, style_id="cue")
+                if is_overlay:
+                    cue_style["marginV"] = overlay_cue_margin(cue_style, segment)
                 tint = speaker_display_color(project, segment, groups) if tint_field else None
                 if tint:
                     cue_style[tint_field] = tint

@@ -41,6 +41,7 @@ export function createUtilsModule(dependencies) {
     const id = nextId(styles);
     styles.push({ ...normalized(libraryStyle), id, builtin: false });
     track.style = { ...track.style, style_id: id, forked: false };
+    delete track.style.font_default;
     discardUnused(project, oldId);
     return true;
   }
@@ -55,6 +56,7 @@ export function createUtilsModule(dependencies) {
     if (comparable(updated) === comparable(previous)) return false;
     styles.push({ ...previous, ...updated, id, builtin: false });
     track.style = { ...track.style, style_id: id, forked: true };
+    if (Object.hasOwn(patch, 'fontName')) delete track.style.font_default;
     discardUnused(project, previous.id);
     return true;
   }
@@ -79,6 +81,7 @@ export function createUtilsModule(dependencies) {
       const id = nextId(styles);
       styles.push({ ...resolved.style, ...normalized(replacement), id, builtin: false });
       track.style = { ...track.style, style_id: id, forked: false };
+      if (replacement.fontName !== resolved.style.fontName) delete track.style.font_default;
       discardUnused(project, resolved.style.id);
       changed = true;
     }

@@ -69,3 +69,17 @@ test('editing a shared snapshot separates just the edited track and library dele
   assert.equal(h.resolveTrackStyle(project, secondary, changed).status, 'forked');
   assert.equal(h.resolveTrackStyle(project, secondary, changed).style.fontSize, library.styles[1].fontSize);
 });
+
+test('default font marker survives unrelated edits and is cleared by an explicit font choice', () => {
+  const library = h.defaultAssStyleLibrary();
+  const project = fixture(), track = project.tracks[0];
+  h.applyTrackStyle(project, track, library.styles[1]);
+  track.style.font_default = true;
+  h.updateTrackStyle(project, track, { fontSize: 77 });
+  assert.equal(track.style.font_default, true);
+  h.updateTrackStyle(project, track, { fontName: 'Chosen Font' });
+  assert.equal(track.style.font_default, undefined);
+  track.style.font_default = true;
+  h.applyTrackStyle(project, track, library.styles[1]);
+  assert.equal(track.style.font_default, undefined);
+});

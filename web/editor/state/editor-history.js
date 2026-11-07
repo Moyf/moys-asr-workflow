@@ -153,7 +153,9 @@ export function initMaweHistory() {
     if (kind === 'preview') {
       return window.AsrEditorUtils.buildHistoryRecord('preview', label, snapshotPreviewState());
     }
-    return captureSegmentsRecord(label, { captureView: Boolean(sourceRecord?.view) });
+    const current = captureSegmentsRecord(label, { captureView: Boolean(sourceRecord?.view) });
+    if (sourceRecord?.fontPreview) current.fontPreview = snapshotPreviewState();
+    return current;
   }
 
 
@@ -215,6 +217,7 @@ export function initMaweHistory() {
   const previousWaveformStructure = MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
   MaweState.rememberSessionHighlights();
   window.AsrEditorUtils.restoreSegmentsHistorySnapshot(MaweBoot.DATA, snapshot);
+  if (record.fontPreview) applyPreviewState(record.fontPreview);
   MaweState.restoreSessionHighlights();
   if (record.projectChanges) Object.assign(MaweState.changes, record.projectChanges);
   MaweMultiSubtitleCore.normalizeMultiSubtitleState();

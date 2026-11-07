@@ -14,7 +14,7 @@
       "vendor": {"false": false, "zero": 0, "empty": [], "object": {}}
     }
   ],
-  "style": {"style_id": "shared", "forked": false, "vendor": {"empty": [], "zero": 0}},
+  "style": {"style_id": "shared", "forked": false, "font_default": true, "vendor": {"empty": [], "zero": 0}},
   "invalid": [
     {"styles": null, "path": "$.styles", "message": "must be an array"},
     {"styles": [null], "path": "$.styles[0]", "message": "must be an object"},
@@ -27,6 +27,7 @@
     {"style": {}, "path": "$.tracks[0].style.style_id", "message": "must be a non-empty string of at most 160 characters"},
     {"delete_styles": true, "path": "$.tracks[0].style.style_id", "message": "must reference an existing style"},
     {"style": {"style_id": "missing"}, "path": "$.tracks[0].style.style_id", "message": "must reference an existing style"},
-    {"style": {"style_id": "shared", "forked": 0}, "path": "$.tracks[0].style.forked", "message": "must be a boolean"}
+    {"style": {"style_id": "shared", "forked": 0}, "path": "$.tracks[0].style.forked", "message": "must be a boolean"},
+    {"style": {"style_id": "shared", "font_default": 0}, "path": "$.tracks[0].style.font_default", "message": "must be a boolean"}
   ]
 }

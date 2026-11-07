@@ -293,6 +293,7 @@ export function initMaweMultiImport() {
 
   async function openProjectFile(file, options = {}) {
     const generation = MaweState.beginProjectLoad();
+    let applied = false;
     const current = () => generation === MaweState.projectLoadGeneration;
     const suppressMediaPrompt = options.suppressMediaPrompt === true;
     const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在读取工程 ${file.name}…`, 5);
@@ -307,6 +308,7 @@ export function initMaweMultiImport() {
       MaweJsonRepair.noteImportReport(imported.changes);
 MaweProjectLoad.applyCanonicalProject(data, file.name, { loadGeneration: generation, repaired: imported.changes.length > 0,
   requiresMigrationSaveAs: rawProject.schema !== window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA || !Array.isArray(rawProject.speakers) });
+      applied = true;
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();
 const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
@@ -339,6 +341,7 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
       return false;
     } finally {
       MaweState.finishProjectLoad(generation);
+      if (current() && applied) window.MaweProjectFontCheck?.schedule();
       if (current()) MaweServerSave.configureServerSaveControls();
       finishLoading();
     }

@@ -4866,3 +4866,24 @@
 .speaker-manager-row select { max-width: 180px; }
 .speaker-manager-row input, .speaker-manager-row select, #speaker-manager button, #speaker-project-controls button { min-height: 28px; }
 .speaker-manager-row input[type="color"] { width: 40px; padding: 2px; }
+/* Non-modal project font check: editing remains available while it is open. */
+.project-font-check {
+  position: fixed;
+  z-index: 1100;
+  right: 16px;
+  bottom: 16px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(70vh, 620px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--border, #888);
+  border-radius: 8px;
+  background: var(--bg-panel, #252525);
+  color: var(--text-primary, #fff);
+  box-shadow: 0 6px 24px #0006;
+}
+.project-font-check h2 { margin: 0 0 10px; font-size: 16px; }
+.project-font-check p { margin: 10px 0; }
+.project-font-check ul { padding-left: 22px; overflow-wrap: anywhere; }
+.project-font-check input { max-width: 100%; margin-right: 8px; }
+.project-font-check-actions { display: flex; gap: 8px; margin-top: 12px; }

@@ -162,6 +162,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweServerSave.projectCheckpointed = true;
   MaweServerSave.configureServerSaveControls();
   MaweServerSave.scheduleAutoSave();
+  if (!MaweState.projectLoadPending) window.MaweProjectFontCheck?.schedule();
 }
 
 

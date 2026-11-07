@@ -14,7 +14,9 @@
   const entries = [];
   const canonicalByFold = new Map();
   const renderableFamilies = new Set();
+  const legacyNames = new Set();
   let ready = false;
+  let loading = null;
 
   // 导出替换捕获窗口：仅 .ass 下载入口在 buildAss 前后开启，预览等高频
   // buildAss 的归一化不会污染替换记录。
@@ -26,10 +28,12 @@
   }
 
   function ingest(payload) {
-    if (!payload || payload.schema !== SCHEMA || !Array.isArray(payload.fonts)) return false;
+    if (!payload || payload.error || payload.schema !== SCHEMA
+        || !Array.isArray(payload.fonts) || !payload.fonts.length) return false;
     entries.length = 0;
     canonicalByFold.clear();
     renderableFamilies.clear();
+    legacyNames.clear();
     for (const entry of payload.fonts) {
       const canonical = typeof entry?.canonical === 'string' ? entry.canonical.trim() : '';
       if (!canonical) continue;
@@ -58,7 +62,10 @@
         if (!key || canonicalByFold.has(key)) continue;
         const faceCanonical = typeof entry.canonicalByName?.[key] === 'string'
           ? entry.canonicalByName[key].trim() : '';
-        if (faceCanonical) canonicalByFold.set(key, faceCanonical);
+        if (faceCanonical) {
+          canonicalByFold.set(key, faceCanonical);
+          legacyNames.add(key);
+        }
       }
       // 下拉选择也保留 face 粒度，搜索 Semibold/PS 名不能选成 Regular。
       entries.push(...faces.values());
@@ -128,27 +135,40 @@
     return captured.splice(0);
   }
 
-  async function loadAliases() {
-    if (!config?.assFontAliasesUrl || ready) return;
+  async function loadAliases({ refresh = false } = {}) {
+    if (loading) {
+      await loading;
+      if (!refresh) return ready;
+    }
+    if (!config?.assFontAliasesUrl) return false;
+    if (ready && !refresh) return true;
+    loading = (async () => {
     try {
       const response = await fetch(new URL(config.assFontAliasesUrl, global.location.href), {
         cache: 'no-store',
+        ...(refresh ? { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestToken: config.requestToken }) } : {}),
       });
-      if (!response.ok) return;
+      if (!response.ok) throw new Error('font scan unavailable');
       const payload = await response.json();
-      if (!ingest(payload)) return;
+      if (!ingest(payload)) throw new Error('font scan unavailable');
       // 别名链改变预览字体匹配结果：清掉画布行/字体度量缓存并刷新预览与
       // 下拉；导出排版计划缓存经 mawe:ass-font-aliases-loaded 事件失效。
       global.MaweAssCanvas?.clearCaches?.();
       document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-loaded'));
       global.MawePlaybackLoop?.refreshSubtitlePreview?.();
+      return true;
     } catch (_) {
-      // 端点不存在（旧服务器）或请求失败：保持未加载，全部消费点走现状。
+      ready = false;
+      return false;
     }
+    })();
+    try { return await loading; } finally { loading = null; }
   }
 
   global.MaweAssFontAliases = Object.freeze({
     loaded: () => ready,
+    isLegacy: (name) => ready && legacyNames.has(fold(name)),
     entries: () => entries.map((entry) => ({ ...entry, names: [...entry.names] })),
     canonicalFor,
     aliasChainFor,
