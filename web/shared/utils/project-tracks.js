@@ -77,6 +77,7 @@ export function createUtilsModule() {
       if (own(segment, 'start_frame') !== own(segment, 'end_frame')) add(field, 'start_frame and end_frame must be provided together');
       for (const frame of ['start_frame', 'end_frame']) if (own(segment, frame) && (!integer(segment[frame]) || segment[frame] < 0)) add(`${field}.${frame}`, 'must be a non-negative integer');
       if (own(segment, 'start_frame') && own(segment, 'end_frame') && segment.end_frame <= segment.start_frame) add(`${field}.end_frame`, 'must be greater than start_frame');
+      if (own(segment, 'assStyle') && !object(segment.assStyle)) add(`${field}.assStyle`, 'must be an object');
       if (own(segment, 'assOverride')) {
         const override = segment.assOverride;
         if (!object(override)) add(`${field}.assOverride`, 'must be an object');
@@ -156,6 +157,32 @@ export function createUtilsModule() {
       if (!number(value)) add(path, 'must be a finite number');
       else if (value < 1 || value > 240) add(path, 'must be between 1 and 240');
     };
+    if (own(project, 'processing_overrides')) {
+      const value = project.processing_overrides;
+      const invalid = () => add('$.processing_overrides', 'invalid processing settings');
+      const text = value => typeof value === 'string' && value.length <= 512 * 1024;
+      const wraps = new Set(['emphasis', 'large', 'comment', 'small', 'italic', 'strike', 'underline', 'fade', 'shake', 'pop', 'note', 'music', 'bracket', 'custom']);
+      if (!object(value)) invalid();
+      else {
+        if (own(value, 'text')) {
+          if (!Array.isArray(value.text) || value.text.length > 110) invalid();
+          else for (const step of value.text) {
+            if (!object(step) || typeof step.type !== 'string' || step.type.length > 32 || (own(step, 'enabled') && !bool(step.enabled))) { invalid(); continue; }
+            if (['trim', 'capitalize', 'convertChineseNumbers', 'stripMarkdown'].includes(step.type)) continue;
+            if (step.type === 'replace') {
+              if (!text(step.find) || !text(step.replacement) || !bool(step.regex) || !bool(step.caseSensitive)) invalid();
+            } else if (step.type === 'wrap') {
+              if (!Array.isArray(step.wraps) || step.wraps.length > 100) invalid();
+              else for (const wrap of step.wraps) if (!object(wrap) || !wraps.has(wrap.id) || (own(wrap, 'left') && !text(wrap.left)) || (own(wrap, 'right') && !text(wrap.right))) invalid();
+            } else invalid();
+          }
+        }
+        if (own(value, 'join')) {
+          const join = value.join;
+          if (!object(join) || !Number.isInteger(join.gapMs) || join.gapMs < 0 || join.gapMs > 10000 || !Number.isInteger(join.shortCount) || join.shortCount < 1 || join.shortCount > 20 || !['backward', 'forward'].includes(join.snapDirection) || !['previous', 'next'].includes(join.absorbDirection) || !bool(join.absorbShort)) invalid();
+        }
+      }
+    }
     if (own(project, 'timed_text_edit_view')) {
       if (typeof project.timed_text_edit_view !== 'string') add('$.timed_text_edit_view', 'must be a string');
       if (!['rows', 'single'].includes(project.timed_text_edit_view)) add('$.timed_text_edit_view', 'must be rows or single');

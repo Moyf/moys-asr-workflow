@@ -20,13 +20,16 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  // 放大出现的标签片段：文字从 `fromScale × 样式缩放` 缩小落定到样式原值。
-  // ASS 的 \t 从当前值渐变到目标值，因此先写显式 \fscx\fscy 设定起点帧，
-  // 再由 \t 缓动落定；窗口结束后停在终点。offsetMs 是分片事件相对句首的
-  // 偏移（震动拆分 / 排布分片）：负相对时钟让动画跨片连续，片起点已越过
-  // 入场窗口时不再发射。百分比值不乘组缩放（\fscx 是已缩放字号的百分比）。
+  // 放大出现的标签片段：文字从 `fromScale × 样式缩放` 缓动落定到样式原值。
+  // fromScale < 1 从小放大出现（默认 0.7），> 1 从大缩小落定；= 1 无视觉
+  // 变化，不发射标签。ASS 的 \t 从当前值渐变到目标值（libass 中 t ≥ t2 后
+  // 恒取目标值），因此先写显式 \fscx\fscy 设定起点帧，再由 \t 缓动落定；
+  // 窗口结束后停在终点，不会跳回。offsetMs 是分片事件相对句首的偏移
+  // （震动拆分 / 排布分片）：负相对时钟让动画跨片连续，片起点已越过入场
+  // 窗口时不再发射。百分比值不乘组缩放（\fscx 是已缩放字号的百分比）。
   function assPopTransformTag(pop, style, offsetMs = 0) {
-    if (!pop || !(Number(pop.fromScale) > 1)) return '';
+    const fromScale = Number(pop?.fromScale);
+    if (!Number.isFinite(fromScale) || fromScale <= 0 || fromScale === 1) return '';
     const baseX = Number.isFinite(Number(style?.scaleX ?? 100)) ? Math.max(0, Number(style?.scaleX ?? 100)) : 100;
     const baseY = Number.isFinite(Number(style?.scaleY ?? 100)) ? Math.max(0, Number(style?.scaleY ?? 100)) : 100;
     const inMs = Math.max(0, Number(pop.inMs) || 0);
@@ -131,14 +134,15 @@ export function createUtilsModule(dependencies) {
       transformProgress = Math.pow(linear, Math.max(0.01, animations.t.accel));
     }
     // 放大出现：与导出的 `\fscx…\t(…,\fscx终点)` 同一插值公式（线性进度取
-    // accel 次幂），入场窗口结束或 fromScale ≤ 1 时恒为 1。
+    // accel 次幂），入场窗口结束或 fromScale = 1（无缩放）时恒为 1。
     const popAnimation = pop || (animations.pop.enabled ? animations.pop : null);
     let popScale = 1;
-    if (popAnimation && Number(popAnimation.fromScale) > 1) {
+    const fromScale = Number(popAnimation?.fromScale);
+    if (popAnimation && Number.isFinite(fromScale) && fromScale > 0 && fromScale !== 1) {
       const inMs = Math.max(0, Number(popAnimation.inMs) || 0);
       const linear = inMs <= 0 ? 1 : Math.min(1, elapsed / inMs);
       const progress = Math.pow(linear, Math.max(0.01, Number(popAnimation.accel) || 1));
-      popScale = popAnimation.fromScale + (1 - popAnimation.fromScale) * progress;
+      popScale = fromScale + (1 - fromScale) * progress;
     }
     const safePlayResX = Math.max(1, Number(playResX) || ASS_DEFAULT_PLAY_RES_X);
     const safePlayResY = Math.max(1, Number(playResY) || ASS_DEFAULT_PLAY_RES_Y);

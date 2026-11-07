@@ -265,4 +265,5 @@ async function loadAssStyleLibrary({ force = false } = {}) {
 window.MaweAssStorageWiring = window.MaweAssStorageWiring || Object.freeze({
   DEFAULT_ASS_COLOR_STYLE,
   updateAssStyleLibrarySummary,
+  styles: () => ASS_STYLE_LIBRARY.styles || [],
 });

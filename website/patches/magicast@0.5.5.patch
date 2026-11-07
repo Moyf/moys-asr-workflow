@@ -1,0 +1,83 @@
+diff --git a/dist/builders-CDdrUKLb.js b/dist/builders-CDdrUKLb.js
+index 14f91b272c5986f1a99e1472691f7c84aa84b454..fc63430f2ee1d19283cc9c4c24fd1961333e75ae 100644
+--- a/dist/builders-CDdrUKLb.js
++++ b/dist/builders-CDdrUKLb.js
+@@ -3079,10 +3079,9 @@ var require_source_map_generator = /* @__PURE__ */ __commonJSMin(((exports) => {
+ 			next = "";
+ 			if (mapping.generatedLine !== previousGeneratedLine) {
+ 				previousGeneratedColumn = 0;
+-				while (mapping.generatedLine !== previousGeneratedLine) {
+-					next += ";";
+-					previousGeneratedLine++;
+-				}
++				var lineDelta = mapping.generatedLine - previousGeneratedLine;
++				next += lineDelta === 1 ? ";" : ";".repeat(lineDelta);
++				previousGeneratedLine = mapping.generatedLine;
+ 			} else if (i > 0) {
+ 				if (!util.compareByGeneratedPositionsInflated(mapping, mappings[i - 1])) continue;
+ 				next += ",";
+@@ -3878,6 +3877,7 @@ var require_source_map_consumer = /* @__PURE__ */ __commonJSMin(((exports) => {
+ 	*
+ 	* [0]: https://docs.google.com/document/d/1U1RGAehQwRypUTovF1KRlpiOFze0b-_2gc6fAH0KY0k/edit#heading=h.535es3xeprgt
+ 	*/
++	var MAX_SECTION_OFFSET_LINE = 1e7;
+ 	function IndexedSourceMapConsumer(aSourceMap, aSourceMapURL) {
+ 		var sourceMap = aSourceMap;
+ 		if (typeof aSourceMap === "string") sourceMap = util.parseSourceMapInput(aSourceMap);
+@@ -3890,21 +3890,32 @@ var require_source_map_consumer = /* @__PURE__ */ __commonJSMin(((exports) => {
+ 			line: -1,
+ 			column: 0
+ 		};
++		var maxOffsetLine = 0;
+ 		this._sections = sections.map(function(s) {
+ 			if (s.url) throw new Error("Support for url field in sections not implemented.");
+ 			var offset = util.getArg(s, "offset");
+ 			var offsetLine = util.getArg(offset, "line");
+ 			var offsetColumn = util.getArg(offset, "column");
++			if (!isValidOffset(offsetLine) || !isValidOffset(offsetColumn)) throw new Error("Section offset line and column must be non-negative integers.");
++			if (offsetLine > MAX_SECTION_OFFSET_LINE) throw new Error("Section offset line must not exceed " + MAX_SECTION_OFFSET_LINE + ".");
+ 			if (offsetLine < lastOffset.line || offsetLine === lastOffset.line && offsetColumn < lastOffset.column) throw new Error("Section offsets must be ordered and non-overlapping.");
+ 			lastOffset = offset;
++			var consumer = new SourceMapConsumer(util.getArg(s, "map"), aSourceMapURL);
++			var totalOffsetLine = offsetLine + (consumer._maxOffsetLine || 0);
++			if (totalOffsetLine > MAX_SECTION_OFFSET_LINE) throw new Error("Section offset line must not exceed " + MAX_SECTION_OFFSET_LINE + ", including offsets of nested sections.");
++			if (totalOffsetLine > maxOffsetLine) maxOffsetLine = totalOffsetLine;
+ 			return {
+ 				generatedOffset: {
+ 					generatedLine: offsetLine + 1,
+ 					generatedColumn: offsetColumn + 1
+ 				},
+-				consumer: new SourceMapConsumer(util.getArg(s, "map"), aSourceMapURL)
++				consumer: consumer
+ 			};
+ 		});
++		this._maxOffsetLine = maxOffsetLine;
++	}
++	function isValidOffset(value) {
++		return typeof value === "number" && value >= 0 && value <= 9007199254740991 && Math.floor(value) === value;
+ 	}
+ 	IndexedSourceMapConsumer.prototype = Object.create(SourceMapConsumer.prototype);
+ 	IndexedSourceMapConsumer.prototype.constructor = SourceMapConsumer;
+@@ -3917,7 +3928,10 @@ var require_source_map_consumer = /* @__PURE__ */ __commonJSMin(((exports) => {
+ 	*/
+ 	Object.defineProperty(IndexedSourceMapConsumer.prototype, "sources", { get: function() {
+ 		var sources = [];
+-		for (var i = 0; i < this._sections.length; i++) for (var j = 0; j < this._sections[i].consumer.sources.length; j++) sources.push(this._sections[i].consumer.sources[j]);
++		for (var i = 0; i < this._sections.length; i++) {
++			var sectionSources = this._sections[i].consumer.sources;
++			for (var j = 0; j < sectionSources.length; j++) sources.push(sectionSources[j]);
++		}
+ 		return sources;
+ 	} });
+ 	/**
+@@ -4124,6 +4138,10 @@ var require_source_node = /* @__PURE__ */ __commonJSMin(((exports) => {
+ 				}
+ 			}
+ 			while (lastGeneratedLine < mapping.generatedLine) {
++				if (remainingLinesIndex >= remainingLines.length) {
++					lastGeneratedLine = mapping.generatedLine;
++					break;
++				}
+ 				node.add(shiftNextLine());
+ 				lastGeneratedLine++;
+ 			}

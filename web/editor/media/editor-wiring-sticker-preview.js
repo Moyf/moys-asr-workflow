@@ -85,6 +85,77 @@ document.getElementById('sticker-feature-toggle')?.addEventListener('change', (e
 });
 applyStickerFeatureEnabled();
 
+// === 自定义表情包背景 ===
+// 设置 → CSS 变量（舞台小窗与实际画面层共用）；同一份取值经
+// MaweStickerBurnPlan.stickerBackgroundPayload 进烧录 drawbox，三处同源。
+// 开关关闭：移除变量，舞台小窗恢复默认底衬+阴影+圆角，实际画面与成片无底衬。
+// 开关开启：一律取消舞台默认阴影与圆角（所见即所得）——透明度为 0 或颜色
+// 非法时底衬按透明处理（烧录同样不画 drawbox），而不是恢复默认黑色底衬。
+function applyStickerBackgroundVars() {
+  const settings = MaweSettings.EDITOR_SETTINGS;
+  const rootStyle = document.documentElement.style;
+  if (!settings || settings.stickerBackgroundEnabled !== true) {
+    rootStyle.removeProperty('--sticker-bg');
+    rootStyle.removeProperty('--sticker-bg-shadow');
+    rootStyle.removeProperty('--sticker-bg-radius');
+    return;
+  }
+  rootStyle.setProperty('--sticker-bg-shadow', 'none');
+  rootStyle.setProperty('--sticker-bg-radius', '0');
+  const color = String(settings.stickerBackgroundColor ?? '').trim();
+  const opacity = Number(settings.stickerBackgroundOpacity);
+  const valid = /^#[0-9a-fA-F]{6}$/.test(color) && Number.isFinite(opacity) && opacity > 0;
+  if (!valid) {
+    rootStyle.setProperty('--sticker-bg', 'transparent');
+    return;
+  }
+  const hex = color.toLowerCase();
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  rootStyle.setProperty('--sticker-bg', `rgba(${r}, ${g}, ${b}, ${Math.min(opacity, 100) / 100})`);
+}
+
+function syncStickerBackgroundControls() {
+  const settings = MaweSettings.EDITOR_SETTINGS;
+  if (MaweDom.stickerBackgroundToggle) {
+    MaweDom.stickerBackgroundToggle.checked = settings.stickerBackgroundEnabled === true;
+  }
+  if (MaweDom.stickerBackgroundControls) {
+    MaweDom.stickerBackgroundControls.hidden = settings.stickerBackgroundEnabled !== true;
+  }
+  if (MaweDom.stickerBackgroundColor) {
+    MaweDom.stickerBackgroundColor.value = settings.stickerBackgroundColor || '#000000';
+  }
+  if (MaweDom.stickerBackgroundOpacity) {
+    MaweDom.stickerBackgroundOpacity.value = String(settings.stickerBackgroundOpacity ?? 35);
+  }
+}
+
+MaweDom.stickerBackgroundToggle?.addEventListener('change', () => {
+  MaweSettings.updateEditorSettings({
+    stickerBackgroundEnabled: MaweDom.stickerBackgroundToggle.checked === true,
+  });
+  syncStickerBackgroundControls();
+  applyStickerBackgroundVars();
+});
+
+// change 提交（与其它设置一致）：透明度钳到 0~100 整数，非法输入回写钳制值。
+function pushStickerBackgroundStyle() {
+  const raw = Number(MaweDom.stickerBackgroundOpacity?.value);
+  const opacity = Number.isFinite(raw) ? Math.min(100, Math.max(0, Math.round(raw))) : 35;
+  if (MaweDom.stickerBackgroundOpacity) MaweDom.stickerBackgroundOpacity.value = String(opacity);
+  MaweSettings.updateEditorSettings({
+    stickerBackgroundColor: MaweDom.stickerBackgroundColor?.value || '#000000',
+    stickerBackgroundOpacity: opacity,
+  });
+  applyStickerBackgroundVars();
+}
+MaweDom.stickerBackgroundColor?.addEventListener('change', pushStickerBackgroundStyle);
+MaweDom.stickerBackgroundOpacity?.addEventListener('change', pushStickerBackgroundStyle);
+syncStickerBackgroundControls();
+applyStickerBackgroundVars();
+
 // 初次应用（不弄脏工程）：字幕与表情包预览几何。必须在 stickerOverlayLayer 创建之后执行（TDZ）。
 MawePreviewGeometry.setPreviewGeometry(MaweAppearance.getPreviewGeometry(), { markDirty: false });
 MawePreviewGeometry.setStickerGeometry(MawePreviewGeometry.getStickerGeometry(), { markDirty: false });
@@ -98,8 +169,7 @@ MaweDom.overlayToggle.addEventListener('change', () => {
   MaweHistory.pushPreviewUndo('切换字幕预览', previous);
   MaweSettings.updateEditorSettings({ overlayEnabled: MaweDom.overlayToggle.checked });
   MawePreviewGeometry.refreshPreviewGeometryEditable();
-  if (!MaweDom.overlayToggle.checked) MaweDom.overlayEl.classList.add('hidden');
-  else MawePlaybackLoop.update();
+  MawePlaybackLoop.update();
 });
 
 // init 化模块经 window 延迟取用本文件的运行时状态（门面已在本文件前部挂载）。

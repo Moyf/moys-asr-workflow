@@ -253,7 +253,12 @@ export interface WaveformState {
   _gapBoundaryMove: (event: PointerEvent) => void; _gapBoundaryEnd: (event: PointerEvent) => void;
   _gapMoveMove: (event: PointerEvent) => void; _gapMoveEnd: (event: PointerEvent) => void;
   _gapRangeMove: (event: PointerEvent) => void; _gapRangeEnd: (event: PointerEvent) => void;
-  markerQuickEdit: {markerId: string; element: HTMLElement} | null;
+  markerQuickEdit: {
+    markerId: string;
+    element: HTMLElement;
+    anchor: {left: number; top: number; height: number};
+    resizeObserver: ResizeObserver;
+  } | null;
   _markerQuickEditOutside: ((event: PointerEvent) => void) | null;
   _markerQuickEditKey: ((event: KeyboardEvent) => void) | null;
   markerDrag: MarkerDragState | null; markerCreateDrag: MarkerDragState | null;

@@ -79,6 +79,7 @@ export function createUtilsModule(dependencies) {
     stickerOverlayEnabled: false,
     markerEditingEnabled: false, stickersEnabled: true,
     stickerBurnMode: 'fixed',
+    stickerBackgroundEnabled: false, stickerBackgroundColor: '#000000', stickerBackgroundOpacity: 35,
     wordTimingRowHeight: 168, wordTimingSecondsPerRow: 5,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     pauseOnMouseClick: false,
@@ -204,6 +205,12 @@ export function createUtilsModule(dependencies) {
       markerEditingEnabled: savedSettings.markerEditingEnabled === true,
       stickersEnabled: savedSettings.stickersEnabled !== false,
       stickerBurnMode: savedSettings.stickerBurnMode === 'cue-left' ? 'cue-left' : 'fixed',
+      // 表情包自定义背景：颜色只收 6 位 hex（非法回退黑），透明度钳到 0~100 整数。
+      stickerBackgroundEnabled: savedSettings.stickerBackgroundEnabled === true,
+      stickerBackgroundColor: typeof savedSettings.stickerBackgroundColor === 'string'
+        && /^#[0-9a-fA-F]{6}$/.test(savedSettings.stickerBackgroundColor)
+        ? savedSettings.stickerBackgroundColor.toLowerCase() : '#000000',
+      stickerBackgroundOpacity: clampInteger(savedSettings.stickerBackgroundOpacity, 35, 0, 100),
       stickerOtioExportMode: savedSettings.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
       // 时间线 OTIO 导出选项：默认同时导出 SRT、合并表情包轨、写入字幕标记与标记区段。
       otioExportIncludeSrt: savedSettings.otioExportIncludeSrt !== false,

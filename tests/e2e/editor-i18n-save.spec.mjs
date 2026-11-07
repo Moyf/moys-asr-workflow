@@ -129,7 +129,6 @@ test('English timed-text differences preserve literal subtitle content', async (
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items = [];
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
-  await page.locator('#batch-operations-btn').click();
   await page.locator('#timed-text-edit-btn').click();
   await page.locator('#timed-text-edit-rows textarea').first().fill('保存');
   const row = page.locator('.timed-text-edit-row[data-index="0"]');

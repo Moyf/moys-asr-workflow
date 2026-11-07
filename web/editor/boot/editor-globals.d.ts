@@ -48,6 +48,7 @@ interface ProjectSegment {
   assOverride?: AssCueOverride;
   color_group_id?: string;
   sticker_group_id?: string;
+  assStyle?: Record<string, any>;
   _dirty?: boolean;
   items?: ProjectSegmentItem[];
 }
@@ -288,7 +289,7 @@ interface MaweStateApi {
     currentCuePanelIdx: number; currentCuePanelKind: SelectionTrack; currentCuePanelTrackId: string | null;
     cuePanelUndoPushed: boolean; cuePanelUndoRecord: any; cuePanelTextEditSnapshot: any; cuePanelCanceling: boolean };
   readonly editing: { editingState: any; extensionEditingState: any };
-  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean };
+  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean; processingOverridesDirty: boolean };
   hasProjectChanges(pendingText?: boolean): boolean;
   readonly projectEpoch: number;
   projectFingerprint(value?: any): string;

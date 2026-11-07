@@ -256,9 +256,10 @@ function assStackInputRevision(tracks, identityTracks = tracks) {
         || previous[3] !== cue.text || previous[4] !== cue.disabled || previous[5] !== color
         || previous[6] !== cue.speaker || previous[7] !== cue.id
         || previous[8] !== cue.color_ref?.headIdx || previous[9] !== cue.color_ref?.name
-        || previous[10] !== retainedItems || previous[11] !== JSON.stringify(cue.assOverride)) {
+        || previous[10] !== retainedItems || previous[11] !== JSON.stringify(cue.assOverride)
+        || previous[12] !== JSON.stringify(cue.assStyle)) {
         snapshot[index] = [identity, cue.start, cue.end, cue.text, cue.disabled, color, cue.speaker, cue.id,
-          cue.color_ref?.headIdx, cue.color_ref?.name, retainedItems, JSON.stringify(cue.assOverride)]; changed = true;
+          cue.color_ref?.headIdx, cue.color_ref?.name, retainedItems, JSON.stringify(cue.assOverride), JSON.stringify(cue.assStyle)]; changed = true;
       }
     }
   }
@@ -333,7 +334,7 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
     const style = { ...animated, spacing: animated.spacing * scale,
       outline: animated.outline * scale, shadow: animated.shadow * scale,
       __assMove: item.legacy && !item.manual && item.role === 'main' && profile.animations.move.enabled ? { x: animation.moveX, y: animation.moveY } : null };
-    return { visible: true, role: item.role, cueId: item.segment.id ?? item.index,
+    return { visible: true, role: item.role, manual: item.manual === true, cueId: item.segment.id ?? item.index,
       runs: item.runs, style, animation,
       shakeOffset: item.shakeOffset || null,
       fractionalFontSize: !item.legacy || item.sharedStackCue,

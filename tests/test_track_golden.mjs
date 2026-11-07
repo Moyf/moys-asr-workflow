@@ -50,10 +50,14 @@ for (const name of fixtureNames) {
     const expectedV15 = JSON.parse(fs.readFileSync(new URL(`${name}.v1.5.browser.json`, fixtureRoot), 'utf8'));
     const actual = browserOutputs(input);
     // Keep the captured v1 serializer output as historical evidence. The
-    // editor now writes v2 tracks; its text exports retain the P0 baseline.
+    // editor now writes v2 tracks. Manual positioning intentionally changes
+    // ASS layers and activates the secondary position/scale stored in v1.
     assert.equal(expected.project.schema, 'moy.asr.project.v1');
     for (const key of ['ass', 'srt', 'secondarySrt', 'bilingualSrt', 'redSrt']) {
-      assert.deepEqual(actual[key], expected[key], `${name}: ${key}`);
+      const baseline = name === 'manual-ass' && key === 'ass'
+        ? fs.readFileSync(new URL('manual-ass.positioned.ass', fixtureRoot), 'utf8')
+        : expected[key];
+      assert.deepEqual(actual[key], baseline, `${name}: ${key}`);
     }
     assert.equal(expectedV15.schema, 'moy.asr.project.v1.5');
     assert.equal(actual.project.schema, 'moy.asr.project.v2');

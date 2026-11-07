@@ -14,14 +14,32 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.2 之后 | 2026-11-06 | [PR44 同步 main 独立复核](release1.10.0-beta.2/261106_PR44同步main/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261106_PR44同步main/PR44同步main.checklist.md) | 三轨、贴纸、字体、波形与 Soniox 的真实流程待核验 |
+| 1.10.0-beta.2 之后 | 2026-11-06 | [main 合入 2.0dev 独立复核](release1.10.0-beta.2/261106_main合入2dev/REVIEW_FINDINGS.md) | 三轨适配、处理配置扩展保留与验收边界 |
+| 1.10.0-beta.2 之后 | 2026-11-05 | [文本处理弹窗反馈](release1.10.0-beta.2/261105_文本处理弹窗/TEST_FEEDBACK_文本处理弹窗.md) / [独立复核](release1.10.0-beta.2/261105_文本处理弹窗/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_文本处理弹窗/文本处理弹窗.checklist.md) | 双列预览、预设导入确认、工程预填和 MASS 分组 |
+| 1.10.0-beta.2 之后 | 2026-11-05 | [编辑器处理配置复审](release1.10.0-beta.2/261105_编辑器处理配置/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_编辑器处理配置/编辑器处理配置.checklist.md) | 有序文本处理、用户默认与工程覆盖、旧库迁移 |
+| 1.10.0-beta.2 之后 | 2026-11-04 | [波形提取 stderr 死锁](release1.10.0-beta.2/261104_波形提取stderr死锁/排查记录.md) | 转写卡在「正在校验和修复时间码」实为波形提取把 ffmpeg stderr 留在管道里，4 KiB 缓冲写满后与 stdout 读取互等；stderr 改落临时文件，含矩阵探针与打包版端到端复验 |
+| 1.10.0-beta.2 之后 | 2026-11-04 | [寒蝉字体名脏名与预览回退](release1.10.0-beta.2/261104_寒蝉字体名脏名/TEST_FEEDBACK_寒蝉活仿楷.md) / [独立审查](release1.10.0-beta.2/261104_寒蝉字体名脏名/REVIEW_FINDINGS.md) | 第三方字体损坏的 Macintosh 中文名混进下拉与样式：扫描按 Windows 记录优先清洗，存量脏名在导出/烧录/实机画面自愈改写；实测字形、像素比对与全套自动化通过，独立审查无 blocker/major |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [Warma 字幕预设开发](release1.10.0-beta.2/261103_Warma字幕预设/开发记录.md) / [独立复核](release1.10.0-beta.2/261103_Warma字幕预设/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261103_Warma字幕预设/Warma字幕预设.checklist.md) | 文本处理预设与单句 ASS 样式，待真实素材核验 |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [表情包 cue-left 叠加字幕轨修复](release1.10.0-beta.2/261103_表情包cue-left叠加轨/REVIEW_FINDINGS.md) | cue-left 贴放候选集加入叠加轨（主轨优先、空窗兜底）；根因在 placement 计算，含提交前自审与双向回归 |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [单行双语叠加轨回归反馈与修复](release1.10.0-beta.2/261103_单行双语叠加轨回归/TEST_FEEDBACK_单行双语叠加轨.md) / [提交前自审](release1.10.0-beta.2/261103_单行双语叠加轨回归/REVIEW_FINDINGS.md) | 单行（基础）波形开双语后叠加块跳离 50% 线、字词条带压块、气泡消失；根因 `e9a4fa8e`/`fa5ae60c`，分层判定收敛 `visibility.wordTimingFullLane` + CSS 单行双语行规则，多行不变；自动化与实机探针全绿，目视验收待人工 |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [Gap 播放漏音修复](release1.10.0-beta.2/261103_AI口播恢复与Gap试听/排查记录.md) / [独立自审](release1.10.0-beta.2/261103_AI口播恢复与Gap试听/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261103_AI口播恢复与Gap试听/Gap播放.checklist.md) | 音频时钟门控与暂停交接排空旧 PCM；452 项回归、6 次真实音频采样通过，独立审查放行；原片人工实听待核验，标记恢复入口另行提交 |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [AI 标记恢复](release1.10.0-beta.2/261103_AI标记恢复/修复记录.md) / [独立复核](release1.10.0-beta.2/261103_AI标记恢复/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261103_AI标记恢复/AI标记恢复.checklist.md) | AI 自动移除标记的实际状态与恢复入口；独立于播放修复 PR 327 |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [放大出现方向修复](release1.10.0-beta.2/261103_放大出现方向修复/POP_SCALE_DIRECTION.md) / [独立复核](release1.10.0-beta.2/261103_放大出现方向修复/REVIEW_FINDINGS.md) | `{{单句放大出现}}` 从缩小落定改为放大落定（默认 0.8 倍），放开 fromScale 0.3–10；结尾跳回实为预览补偿钳制，重叠字幕排布压小随保守边界一并修复；自动化全绿，libass 实机帧对照待人工抽查 |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [缩略图开关音频禁用自审](release1.10.0-beta.2/261103_缩略图开关音频禁用/REVIEW_FINDINGS.md) / [人工核对清单](release1.10.0-beta.2/261103_缩略图开关音频禁用/缩略图开关音频禁用.checklist.md) | 「生成缩略图」hint 精简与音频输入自动禁用（保留勾选、切回恢复）；payload 语义保持勾选上报、后端探测早退补回归；自动化全绿，2 minor + 3 nit 记录在案，实机核验待完成 |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [快速测试画面缓存限长自审](release1.10.0-beta.2/261103_快速测试画面缓存限长/REVIEW_FINDINGS.md) | 快速测试画面缓存只生成前 N 秒：缓存隔离、限长解码 `-t` 偏移修正（F1 major）与按需补帧边界；自动化全绿，实机长视频快速测试待人工验证 |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [1.10.0 正式版发布核验](release1.10.0-beta.2/261103_1.10.0正式版发布核验/1.10.0正式版发布核验.checklist.md) | 对比 v1.9.0 合并核验 beta.1、beta.2 与未发布全部条目及发布一致性；2026-11-03 自动化全绿，人工核验与发布准备检查待维护者完成 |
+| 1.10.0-beta.2 之后 | 2026-11-03 | [副轨定位 dev 适配复核](release1.10.0-beta.2/261103_副轨定位dev适配/REVIEW_FINDINGS.md) | PR 26 独立适配、命中层序与定位测试 |
 | 1.10.0-beta.2 之后 | 2026-10-30 | [轨道 v2 整合](release1.10.0-beta.2/261030_轨道v2整合/整合记录.md) / [人工核验](release1.10.0-beta.2/261030_轨道v2整合/轨道v2.checklist.md) / [翻译补丁自审](release1.10.0-beta.2/261030_轨道v2整合/REVIEW_FINDINGS.md) | v2、CueRef、单副轨和显式另存保护；保留 Draft 与后续设计边界 |
 | 1.10.0-beta.2 之后 | 2026-10-29 | [PR239 合并准备与复核](release1.10.0-beta.2/261029_PR239合并准备/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261029_PR239合并准备/PR239合并准备.checklist.md) | 按维护者补丁落地 v1.5，整合最新 2.0dev，补齐 ESM 测试装配与副轨说话人规则 |
+| 1.10.0-beta.2 之后 | 2026-10-29 | [CI 选测试点独立复核](release1.10.0-beta.2/261029_CI选测试点/REVIEW_FINDINGS.md) | 文档和网站按影响选测，记录生成路径、必需门禁及预览评论边界 |
 | 1.10.0-beta.2 之后 | 2026-10-28 | [PR239 格式标识改名与复核](release1.10.0-beta.2/261028_PR239格式标识/REVIEW_FINDINGS.md) | 独立组标识 v1.5、v2 保留边界与验证证据 |
 | 1.10.0-beta.2 之后 | 2026-10-28 | [PR239 与 PR312 组合](release1.10.0-beta.2/261028_PR239轨道读取组合/整合记录.md) / [人工核验](release1.10.0-beta.2/261028_PR239轨道读取组合/轨道读取组合.checklist.md) | 保留 v1 基线，审阅 v2 保存、跨轨组与读取层组合 |
 | 1.10.0-beta.2 之后 | 2026-10-28 | [PR312 远端修复覆盖复核](release1.10.0-beta.2/261028_远端CI复核/复核记录.md) / [独立自审](release1.10.0-beta.2/261028_远端CI复核/REVIEW_FINDINGS.md) | reset 对齐 48501e62；核对四个提交净变化与两处 CI 契约缺口 |
 | 1.10.0-beta.2 之后 | 2026-10-27 | [轨道读取 ESM 适配](release1.10.0-beta.2/261027_轨道读取ESM适配/修复记录.md) / [独立自审](release1.10.0-beta.2/261027_轨道读取ESM适配/REVIEW_FINDINGS.md) | 合并新 2.0dev 后的测试装配修复，golden 保持原值 |
 | 1.10.0-beta.1 之后 | 2026-10-27 | [轨道统一读取 P0/P1](release1.10.0-beta.1/261027_轨道统一读取/交付报告.md) / [核验清单](release1.10.0-beta.1/261027_轨道统一读取/轨道统一读取.checklist.md) | v1 golden、只读 adapter、差异与验证边界 |
 | 1.10.0-beta.2 之后 | 2026-10-26 | [本地模型目录误判修复](release1.10.0-beta.2/261026_本地模型目录误判/本地模型目录误判修复.checklist.md) / [独立复核](release1.10.0-beta.2/261026_本地模型目录误判/REVIEW_FINDINGS.md) | 运行时根目录误判为已安装、切换模型串写 localModelPaths 两类修复；仓库根选择解析到可用修订层；新增清除自定义目录自救按钮，自动化与独立复核通过待人工验收 |
+| 1.10.0-beta.2 之后 | 2026-10-26 | [对齐模型联网反馈](release1.10.0-beta.2/261026_对齐模型联网/TEST_FEEDBACK_对齐模型联网.md) | 加载路径离线核实与 HF-first 准备路径溯源；下载源顺序改进待拍板 |
 | 1.10.0-beta.2 之后 | 2026-10-25 | [PR239 同步 main](release1.10.0-beta.2/261025_PR239同步main/整合记录.md) / [独立审阅](release1.10.0-beta.2/261025_PR239同步main/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261025_PR239同步main/PR239同步.checklist.md) | ESM 领域迁移与稳定组、完整保存检查点组合；保持 Draft 与 2.0dev |
 | 1.10.0-beta.2 之后 | 2026-10-24 | [G10 状态域 ESM 修复与复核](release1.10.0-beta.2/261024_G10状态域ESM/REVIEW_FINDINGS.md) / [人工核对清单](release1.10.0-beta.2/261024_G10状态域ESM/G10状态域ESM.checklist.md) | rebase 后修复工程加载作用域错误，更新 ESM VM 测试装载并复验 |
 | 1.10.0-beta.1 之后 | 2026-10-23 | [编辑器显示与像素组合验证](release1.10.0-beta.1/261023_编辑器显示与像素验证/验证记录.md) / [独立复核](release1.10.0-beta.1/261023_编辑器显示与像素验证/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261023_编辑器显示与像素验证/编辑器显示.checklist.md) | 斜体字形、真实像素准备复用与动态双语提示；最新 main 组合和旧红新绿 |
@@ -39,13 +57,14 @@
 | 1.10.0-beta.1 之后 | 2026-10-22 | [main e2e 回归修复提交前自审](release1.10.0-beta.1/261022_main_e2e回归修复/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.1/261022_main_e2e回归修复/字体与本地媒体.checklist.md) | 双审查者 Greptile 式自审：绿幕修复的 player 快照缺陷真修、AssetsV2/TTC 测试补覆盖，含双向验证与遗留说明；实机核验待完成 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [证书与工具链安全修复](release1.10.0-beta.1/261022_证书与工具链安全/SECURITY.md) | certifi、pip 引导、Node/uv 与 hf-xet TLS 缓解及安装包验证 |
 | 1.10.0-beta.1 之后 | 2026-10-22 | [MASS 弱化与斜体复审](release1.10.0-beta.1/261022_MASS语法复审/MASS弱化与斜体.checklist.md) | 符号禁用、拆分、斜体动画组合修复与人工核验边界 |
+| 1.10.0-beta.1 之后 | 2026-10-21 | [官网改版人工核验](release1.10.0-beta.1/261021_官网改版/官网改版.checklist.md) | 中英文纸感首页、可控功能展示与连续更新页；审美、真机和跨浏览器待确认 |
 | 1.10.0-beta.1 之后 | 2026-10-21 | [ASS 字体名兼容审阅](release1.10.0-beta.1/261021_ASS字体中文名/TEST_FEEDBACK_ASS字体中文名.md) / [人工核验](release1.10.0-beta.1/261021_ASS字体中文名/ASS字体名归一化.checklist.md) | 字体别名归一化、字重保留与预览/烧录/导出一致性 |
 | 1.10.0-beta.1 之后 | 2026-10-21 | [工程音量与响度方案及验证](release1.10.0-beta.1/261021_工程音量与响度/设计与验证.md) / [反馈修复](release1.10.0-beta.1/261021_工程音量与响度/TEST_FEEDBACK_工程音量.md) / [人工核验](release1.10.0-beta.1/261021_工程音量与响度/工程音量.checklist.md) | 固定增益、标准测量、预览与烧录共用；浮窗及自定义参考反馈修复，草案 PR，人工验收待完成 |
 | 1.10.0-beta.1 之后 | 2026-10-21 | [纯文本编辑拆句字词码与搜索光标](release1.10.0-beta.1/261021_纯文本编辑拆句字词码/TEST_FEEDBACK_纯文本编辑拆句字词码.md) | items 与文字空白/标点漂移导致拆句全估算的宽容对齐修复；搜索定位焦点与 F3 续跳 |
 | 1.10.0-beta.1 之后 | 2026-10-21 | [口播整理与字幕动画整合核验](release1.10.0-beta.1/261021_四PR整合/四PR整合.checklist.md) | PR274/266 中英文删除保护、PR275/277 叠加字幕定位与 pop 组合审查及人工边界 |
-| 1.9.0-beta.3 之后 | 2026-10-20 | [单句放大出现](release1.9.0-beta.3/261020_每句放大出现/SENTENCE_POP_IN.md) | 句级 `{{文字}}` 放大出现动画：标记解析、两段式 `\t` 导出、预览插值与 fad/pop 参数解耦 |
 | 1.10.0-beta.1 之后 | 2026-10-21 | [Launcher 最近工程审阅](release1.10.0-beta.1/261021_Launcher最近工程/审阅记录.md) / [人工核验](release1.10.0-beta.1/261021_Launcher最近工程/最近工程.checklist.md) | PR278 修复、Greptile 与 Windows 检查；PR235 双历史和桥遮蔽接入要求 |
 | 1.10.0-beta.1 之后 | 2026-10-21 | [表情包区间与实际画面图层](release1.10.0-beta.1/261021_表情包区间与实际画面图层/表情包区间与实际画面.checklist.md) / [集成复核](release1.10.0-beta.1/261021_表情包区间与实际画面图层/REVIEW_FINDINGS.md) | 多句绑定与旧工程启动区间修复；ASS 实际画面表情包图层、目录刷新与原尺寸几何 |
+| 1.9.0-beta.3 之后 | 2026-10-20 | [单句放大出现](release1.9.0-beta.3/261020_每句放大出现/SENTENCE_POP_IN.md) | 句级 `{{文字}}` 放大出现动画：标记解析、两段式 `\t` 导出、预览插值与 fad/pop 参数解耦 |
 | 1.9.0 之后 | 2026-10-20 | [口播整理协议修复](release1.9.0/261020_口播整理协议修复/修复记录.md) / [人工核验](release1.9.0/261020_口播整理协议修复/口播整理.checklist.md) | 英文词项空格、只读上下文与真实模型验证 |
 | 1.9.0 之后 | 2026-10-20 | [1.10.0-beta.1 发布人工核验](release1.9.0/261020_1.10.0-beta.1发布核验/1.10.0-beta.1发布核验.checklist.md) | 等待维护者安装 beta 并验证烧录、Launcher 与字幕工作流；正式版须等核验完成 |
 | 1.9.0 之后 | 2026-10-20 | [根目录整理](release1.9.0/261020_根目录整理/根目录整理.md)、[第二阶段](release1.9.0/261020_根目录整理/第二阶段.md) | 文档、打包与测试配置归位；转写入口模块化与独立 Runtime 适配 |

@@ -147,7 +147,7 @@ def main():
     )
     parser.add_argument(
         "--model", default=None,
-        help="覆盖 Soniox 模型（默认读 .env 的 SONIOX_MODEL，兜底 stt-async-v5）",
+        help="覆盖 Soniox 模型（默认读 .env 的 SONIOX_MODEL，兜底 stt-async-v6）",
     )
     parser.add_argument(
         "--context-json", default=None,

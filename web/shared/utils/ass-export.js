@@ -203,9 +203,12 @@ export function createUtilsModule(dependencies) {
       ? options.mapTime
       : (timeMs) => Math.max(0, Math.round(Number(timeMs) || 0) - timeOffset);
     const alignFirstStart = options.alignFirstStart === true;
-    const firstEnabledIndex = Number.isInteger(options.firstEnabledIndex)
-      ? options.firstEnabledIndex
-      : getSrtExportFirstIndex(source, alignFirstStart);
+    const requestedFirstIndex = Number.isInteger(options.firstEnabledIndex)
+      ? options.firstEnabledIndex : getSrtExportFirstIndex(source, alignFirstStart);
+    const firstEnabledIndex = alignFirstStart && (!source[requestedFirstIndex]
+        || source[requestedFirstIndex].disabled === true || !String(source[requestedFirstIndex].text ?? '').trim())
+      ? source.findIndex((segment) => segment && segment.disabled !== true && String(segment.text ?? '').trim())
+      : requestedFirstIndex;
     const speakerLabels = options.speakerLabelsEnabled === true
       ? normalizeSpeakerLabels(options.speakerLabels)
       : null;
@@ -213,9 +216,29 @@ export function createUtilsModule(dependencies) {
       ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
+    const cueStyleLines = [];
+    const cueStyleNames = new Map();
     const stackItems = [];
     const addStackItem = (role, segment, index, context, start, end, style, size, styleName, speakerName, fade, originalText, shake = false) => {
       const colorName = effectiveColorName(segment, context);
+      if (segment.assStyle && typeof segment.assStyle === 'object' && !Array.isArray(segment.assStyle)) {
+        style = normalizeAssStyle(segment.assStyle, ASS_DEFAULT_ASS_STYLE, 'cue');
+        style.fontName = canonicalizeAssFontName(style.fontName);
+        if (assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)) {
+          style = assStyleVariant(style, colorStyles.find(entry => entry.name === colorName)?.value || '#ffffff', colorStyle);
+        }
+        size = normalizeAssFontSize(style.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y);
+        const key = JSON.stringify([style, size]);
+        styleName = cueStyleNames.get(key);
+        if (!styleName) {
+          styleName = `Cue_${cueStyleNames.size}`;
+          cueStyleNames.set(key, styleName);
+          cueStyleLines.push(assStyleLine(style, styleName, size));
+        }
+        originalText = assEventText({ segment, text: fade.text, speakerName, speakerLabelSeparator,
+          colorName, colorStyles, style, fontSize: size, colorStyle, speakerLabels,
+          assMode, emphasisSyntax, inlineOptions });
+      }
       const speakerColor = colorStyle === 'text' || colorStyle === 'speaker'
         ? colorStyles.find(entry => entry.name === colorName)?.value || style.primaryColor : style.primaryColor;
       const runs = assInlineStyleRuns(fade.text, emphasisSyntax, inlineOptions);
@@ -229,7 +252,7 @@ export function createUtilsModule(dependencies) {
 
     // 主轨事件：Layer 0，底部居中（Default 样式自带对齐）。
     source.forEach((segment, sourceIndex) => {
-      if (!segment || segment.disabled === true) return;
+      if (!segment || segment.disabled === true || !String(segment.text ?? '').trim()) return;
       const rawStart = normalizeAssTimeMs(mapTime(segment.start));
       const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
       const start = alignFirstStart && sourceIndex === firstEnabledIndex ? 0 : rawStart;
@@ -292,7 +315,7 @@ export function createUtilsModule(dependencies) {
     // the shared active-cue plan, which supplies group positions and movement.
     const extensionSource = Array.isArray(options.extensionSegments)
       ? options.extensionSegments : [];
-    const hasExtensionCues = extensionSource.some((segment) => segment && segment.disabled !== true);
+    const hasExtensionCues = extensionSource.some((segment) => segment && segment.disabled !== true && String(segment.text ?? '').trim());
     const extensionStyle = assMode && options.assExtensionStyle && typeof options.assExtensionStyle === 'object'
       ? normalizeAssStyle(options.assExtensionStyle, ASS_DEFAULT_EXTENSION_STYLE, options.assExtensionStyle.id || 'ass-extension')
       : null;
@@ -304,7 +327,7 @@ export function createUtilsModule(dependencies) {
     // 固定层（见 assCreateStackPlan），不再强制排在主字幕上方。
     if (assMode && extensionStyle) {
       extensionSource.forEach((segment, index) => {
-        if (!segment || segment.disabled === true) return;
+        if (!segment || segment.disabled === true || !String(segment.text ?? '').trim()) return;
         const rawStart = normalizeAssTimeMs(mapTime(segment.start));
         const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
         if (rawEnd <= rawStart) return;
@@ -343,7 +366,7 @@ export function createUtilsModule(dependencies) {
     // Overlay inherits main typography and the extension's horizontal style
     // when enabled. Active-event positions and motion come from the stack plan.
     const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
-    const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true);
+    const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true && String(segment.text ?? '').trim());
     const overlayMarginV = assMode
       ? Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize)
       : 80 + Math.round(1.2 * fontSize);
@@ -375,7 +398,7 @@ export function createUtilsModule(dependencies) {
         ? `Overlay ${colorName.toUpperCase()}` : 'Overlay'
     );
     overlaySource.forEach((segment, index) => {
-      if (!segment || segment.disabled === true) return;
+      if (!segment || segment.disabled === true || !String(segment.text ?? '').trim()) return;
       const rawStart = normalizeAssTimeMs(mapTime(segment.start));
       const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
       if (rawEnd <= rawStart) return;
@@ -463,7 +486,8 @@ export function createUtilsModule(dependencies) {
             const content = slice.legacy && !item.manual && !item.shake && item.cueScale === 1 && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
               { ...inlineOptions, preparedRuns: item.runs, fontTransform });
             const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
-            events.push(`Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
+            const layer = { main: 0, extension: 1, overlay: 2 }[item.role] + (item.manual ? 3 : 0);
+            events.push(`Dialogue: ${layer},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
           };
           if (item.shake) {
             // 原地震动：一条 ASS 事件只能有一个定位标签，导出时按固定间隔
@@ -543,6 +567,7 @@ export function createUtilsModule(dependencies) {
       ...(assMode
         ? [
           assStyleLine(baseStyle, 'Default', fontSize),
+          ...cueStyleLines,
           ...(colorStyle === 'text' || colorStyle === 'stroke'
             ? colorStyles.map((color) => assStyleLine(
               assStyleVariant(baseStyle, color.value, colorStyle),

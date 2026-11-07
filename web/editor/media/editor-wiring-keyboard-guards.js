@@ -71,7 +71,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -99,12 +99,13 @@ document.addEventListener('keydown', (e) => {
 
 
 function isPlaybackActive() {
-  return MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused;
+  return MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused || window.MaweGapPlayback?.pendingPlayback;
 }
 
 function pausePlaybackAfterMouseClick() {
   if (!MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick || !isPlaybackActive()) return;
   if (MaweJklPlayback.jklReversePlaying) MaweJklPlayback.stopJklReversePlayback({ render: false });
+  window.MaweGapPlayback?.cancelPendingPlayback();
   MaweCoreState.player.pause();
   MaweMediaPlayback.syncMediaControls();
 }

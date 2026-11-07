@@ -59,7 +59,7 @@ export function initMaweTextCleanup() {
     MaweHint.flashHint('媒体尚不可 seek；请等待加载完成或用 file:// 直接打开 HTML', 'warning');
   }
   try {
-    MaweCoreState.player.currentTime = Math.max(0, timeSec);
+    MaweMediaPlayback.setPlayerCurrentTime(Math.max(0, timeSec));
     if (mouseClick) window.MaweKeyboardGuards.pausePlaybackAfterMouseClick();
     if (!dragPreview) {
       MawePlaybackLoop.update();
@@ -97,3 +97,9 @@ export function initMaweTextCleanup() {
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function cleanPunctuation(...args) { return window.MaweTextCleanup.cleanPunctuation(...args); }
+export function syncTimelineGroupRanges(...args) { return window.MaweTextCleanup.syncTimelineGroupRanges(...args); }
+export function seekFromWaveform(...args) { return window.MaweTextCleanup.seekFromWaveform(...args); }
+export function notifyAutoLoadedMediaReady(...args) { return window.MaweTextCleanup.notifyAutoLoadedMediaReady(...args); }
+export function flushPendingMediaSeek(...args) { return window.MaweTextCleanup.flushPendingMediaSeek(...args); }
