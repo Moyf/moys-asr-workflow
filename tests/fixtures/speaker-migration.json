@@ -1,0 +1,297 @@
+{
+  "segments": [
+    {
+      "id": "cue",
+      "text": " 甲乙 丙!",
+      "start": 0,
+      "end": 500,
+      "start_frame": 0,
+      "end_frame": 15,
+      "speaker": "old",
+      "color_group_id": "group-1",
+      "extension": {
+        "keep": [
+          1,
+          2
+        ]
+      },
+      "items": [
+        {
+          "text": " ",
+          "start": 0,
+          "end": 50,
+          "start_frame": 0,
+          "end_frame": 1
+        },
+        {
+          "text": "甲",
+          "start": 50,
+          "end": 100,
+          "start_frame": 1,
+          "end_frame": 3,
+          "speaker": "6",
+          "meta": {
+            "x": 1
+          }
+        },
+        {
+          "text": "乙",
+          "start": 100,
+          "end": 200,
+          "start_frame": 3,
+          "end_frame": 6,
+          "speaker": "6"
+        },
+        {
+          "text": " ",
+          "start": 200,
+          "end": 250,
+          "start_frame": 6,
+          "end_frame": 8,
+          "speaker": "  "
+        },
+        {
+          "text": "丙",
+          "start": 250,
+          "end": 400,
+          "start_frame": 8,
+          "end_frame": 12,
+          "speaker": "01"
+        },
+        {
+          "text": "!",
+          "start": 400,
+          "end": 500,
+          "start_frame": 12,
+          "end_frame": 15
+        }
+      ]
+    },
+    {
+      "id": "cue-speaker-1",
+      "text": "x",
+      "start": 600,
+      "end": 700,
+      "speaker": "old",
+      "items": [
+        {
+          "text": "x",
+          "start": 600,
+          "end": 700,
+          "speaker": "6"
+        }
+      ]
+    },
+    {
+      "id": "plain",
+      "text": "y",
+      "start": 800,
+      "end": 900,
+      "items": [
+        {
+          "text": "y",
+          "start": 800,
+          "end": 900,
+          "speaker": "01"
+        }
+      ]
+    }
+  ],
+  "mapping": {
+    "6": "p6",
+    "01": "p01",
+    "old": "pold"
+  },
+  "reserved_ids": [
+    "cue-speaker-2"
+  ],
+  "expected": [
+    {
+      "id": "cue",
+      "text": " 甲乙 ",
+      "start": 0,
+      "end": 250,
+      "start_frame": 0,
+      "end_frame": 8,
+      "speaker": "p6",
+      "color_group_id": "group-1",
+      "extension": {
+        "keep": [
+          1,
+          2
+        ]
+      },
+      "items": [
+        {
+          "text": " ",
+          "start": 0,
+          "end": 50,
+          "start_frame": 0,
+          "end_frame": 1
+        },
+        {
+          "text": "甲",
+          "start": 50,
+          "end": 100,
+          "start_frame": 1,
+          "end_frame": 3,
+          "meta": {
+            "x": 1
+          }
+        },
+        {
+          "text": "乙",
+          "start": 100,
+          "end": 200,
+          "start_frame": 3,
+          "end_frame": 6
+        },
+        {
+          "text": " ",
+          "start": 200,
+          "end": 250,
+          "start_frame": 6,
+          "end_frame": 8
+        }
+      ]
+    },
+    {
+      "id": "cue-speaker-3",
+      "text": "丙!",
+      "start": 250,
+      "end": 500,
+      "start_frame": 8,
+      "end_frame": 15,
+      "speaker": "p01",
+      "color_group_id": "group-1",
+      "extension": {
+        "keep": [
+          1,
+          2
+        ]
+      },
+      "items": [
+        {
+          "text": "丙",
+          "start": 250,
+          "end": 400,
+          "start_frame": 8,
+          "end_frame": 12
+        },
+        {
+          "text": "!",
+          "start": 400,
+          "end": 500,
+          "start_frame": 12,
+          "end_frame": 15
+        }
+      ]
+    },
+    {
+      "id": "cue-speaker-1",
+      "text": "x",
+      "start": 600,
+      "end": 700,
+      "speaker": "pold",
+      "items": [
+        {
+          "text": "x",
+          "start": 600,
+          "end": 700
+        }
+      ]
+    },
+    {
+      "id": "plain",
+      "text": "y",
+      "start": 800,
+      "end": 900,
+      "speaker": "p01",
+      "items": [
+        {
+          "text": "y",
+          "start": 800,
+          "end": 900
+        }
+      ]
+    }
+  ],
+  "expected_mappings": [
+    {
+      "input_index": 0,
+      "old_id": "cue",
+      "new_ids": [
+        "cue",
+        "cue-speaker-3"
+      ]
+    },
+    {
+      "input_index": 1,
+      "old_id": "cue-speaker-1",
+      "new_ids": [
+        "cue-speaker-1"
+      ]
+    },
+    {
+      "input_index": 2,
+      "old_id": "plain",
+      "new_ids": [
+        "plain"
+      ]
+    }
+  ],
+  "punctuation": {
+    "segments": [
+      {
+        "id": "p",
+        "text": "你好， 世界！",
+        "start": 0,
+        "end": 200,
+        "items": [
+          {
+            "text": "你好",
+            "start": 0,
+            "end": 100,
+            "speaker": "6"
+          },
+          {
+            "text": "世界",
+            "start": 100,
+            "end": 200,
+            "speaker": "01"
+          }
+        ]
+      }
+    ],
+    "expected": [
+      {
+        "id": "p",
+        "text": "你好， ",
+        "start": 0,
+        "end": 100,
+        "speaker": "p6",
+        "items": [
+          {
+            "text": "你好",
+            "start": 0,
+            "end": 100
+          }
+        ]
+      },
+      {
+        "id": "p-speaker-1",
+        "text": "世界！",
+        "start": 100,
+        "end": 200,
+        "speaker": "p01",
+        "items": [
+          {
+            "text": "世界",
+            "start": 100,
+            "end": 200
+          }
+        ]
+      }
+    ]
+  }
+}

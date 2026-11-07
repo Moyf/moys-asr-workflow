@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from maw.script_alignment import align_project_to_script
+from maw.project_tracks import make_project
 from maw.script_recording_workflow import (
     RecordingWorkflowError, evidence_errors, finalize_recording, input_signature, load_recording_inputs,
     map_joined_items, recommend_recording, review_recording, run_recording_job, run_source_items_job,
@@ -46,6 +47,7 @@ class RecordingReviewTests(unittest.TestCase):
             apply_project_speaker_colors(raw)
             original = copy.deepcopy(raw)
             group = main_segments(raw)[0]["color_group_id"]
+            identity = main_segments(raw)[0]["speaker"]
             alignment = align_project_to_script(raw, "你好世界")
             backend = mock.Mock()
             backend.align.return_value = [TimedToken("你好世界", 100, 900)]
@@ -53,8 +55,34 @@ class RecordingReviewTests(unittest.TestCase):
                             side_effect=lambda _project, src, dest, **_kwargs: shutil.copyfile(src, dest)):
                 output, _ = finalize_recording(raw, alignment, request_for(alignment), media, backend=backend)
             self.assertEqual(main_segments(output)[0]["color_group_id"], group)
-            self.assertEqual(main_segments(output)[0]["speaker"], "speaker-1")
+            self.assertEqual(main_segments(output)[0]["speaker"], identity)
+            self.assertTrue(all("speaker" not in item for item in main_segments(output)[0]["items"]))
             self.assertEqual(raw, original)
+
+    def test_multi_slice_recording_inherits_groups_and_segment_identity(self):
+        groups = {"next_id": 3, "color": [{"id": "color-1", "value": {"name": "red"}}],
+                  "sticker": [{"id": "sticker-1", "value": {"name": "star"}}]}
+        with tempfile.TemporaryDirectory() as directory:
+            media = Path(directory) / "audio.wav"
+            with wave.open(str(media), "wb") as audio:
+                audio.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+                audio.writeframes(bytes(64000))
+            raw = make_project([
+                {**cue("你好", 0, 500), "speaker": "host", "color_group_id": "color-1", "sticker_group_id": "sticker-1"},
+                {**cue("世界", 500, 1000), "speaker": "host", "color_group_id": "color-1", "sticker_group_id": "sticker-1"},
+            ], main_fields={"language": "zh", "model": "qwen3-asr"},
+                project_fields={"speakers": [{"id": "host", "name": "Host", "color": "#969fab"}], "subtitle_groups": groups})
+            alignment = align_project_to_script(raw, "你好世界")
+            backend = mock.Mock()
+            backend.align.return_value = [TimedToken("你好", 100, 400), TimedToken("世界", 600, 900)]
+            with mock.patch("maw.script_recording_workflow._decode_recording_audio",
+                            side_effect=lambda _project, src, dest, **_kwargs: shutil.copyfile(src, dest)):
+                output, review = finalize_recording(raw, alignment, request_for(alignment), media, backend=backend)
+            self.assertEqual(len(review["lines"][0]["sourceSlices"]), 2)
+            generated = next(c for c in main_segments(output) if c["id"].startswith("script-recording-"))
+            self.assertEqual((generated["speaker"], generated["color_group_id"], generated["sticker_group_id"]),
+                             ("host", "color-1", "sticker-1"))
+            self.assertTrue(all("speaker" not in item for item in generated["items"]))
 
     def test_unique_exact_recommendation_does_not_mutate_evidence(self):
         raw = project([cue("你好，世界", 0, 1000)])
@@ -160,8 +188,9 @@ class RecordingReviewTests(unittest.TestCase):
             generated = [c for c in main_segments(final) if c["id"].startswith("script-recording-")]
             self.assertEqual(generated[0]["text"], "你好，世界。")
             self.assertEqual(generated[0]["items"][0]["start"], 1100)
-            self.assertEqual(generated[0]["speaker"], "speaker-1")
-            self.assertTrue(all(i["speaker"]=="speaker-1" for i in generated[0]["items"]))
+            self.assertEqual(generated[0]["speaker"], "spk-001")
+            self.assertTrue(any(s["id"] == generated[0]["speaker"] for s in final["speakers"]))
+            self.assertTrue(all("speaker" not in i for i in generated[0]["items"]))
             self.assertEqual(main_track(final)['timestamp_granularity'], "segment")  # Extra still lacks full items.
             self.assertEqual("".join(i["text"] for i in generated[0]["items"]), generated[0]["text"])
             self.assertTrue(any(c["text"] == "补充说明" and not c.get("disabled") for c in main_segments(final)))
@@ -295,12 +324,50 @@ class RecordingReviewTests(unittest.TestCase):
             self.assertEqual(json.loads(source.read_text(encoding="utf-8")),raw)
             self.assertFalse(list(root.glob(".maw-recording-stage-*")))
 
+    def test_finalization_preserves_project_identity_and_cleared_assignment(self):
+        identity = {"id": "host-stable", "name": "主持人", "color": "#969fab", "vendor": {"keep": 1}}
+        with tempfile.TemporaryDirectory() as directory:
+            media = Path(directory) / "audio.wav"
+            with wave.open(str(media), "wb") as audio:
+                audio.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+                audio.writeframes(b"\0\0" * 16000)
+            for assignment in ({"speaker": "host-stable"}, {"speaker": None}, {}):
+                with self.subTest(assignment=assignment):
+                    raw = make_project([{**cue("你好", 0, 1000), **assignment}],
+                                       main_fields={"model": "qwen3-asr", "language": "zh"},
+                                       project_fields={"speakers": [identity], "annotation_mode": "speaker",
+                                                       "palette_size": 5, "speaker_shortcuts": {"1": "host-stable"}})
+                    before = copy.deepcopy(raw)
+                    alignment = align_project_to_script(raw, "你好。")
+                    backend = mock.Mock()
+                    backend.align.return_value = [TimedToken("你", 100, 400), TimedToken("好", 400, 900)]
+                    output, review = finalize_recording(raw, alignment, request_for(alignment), media, backend=backend)
+                    generated = next(c for c in main_segments(output) if c["id"].startswith("script-recording-"))
+                    self.assertTrue(review["ready"])
+                    self.assertEqual(generated.get("speaker"), assignment.get("speaker"))
+                    self.assertEqual(output["speakers"], before["speakers"])
+                    self.assertEqual(output["speaker_shortcuts"], before["speaker_shortcuts"])
+                    self.assertEqual(generated["text"], "你好。")
+                    self.assertEqual([(item["start"], item["end"]) for item in generated["items"]], [(100, 400), (400, 900)])
+                    self.assertTrue(all("speaker" not in item for item in generated["items"]))
+                    self.assertEqual(raw, before)
+
     def test_speaker_change_requires_script_split(self):
         raw=project([{**cue("你好",0,1000),"speaker":"a"},{**cue("世界",1100,2000),"speaker":"b"}])
         alignment=align_project_to_script(raw,"你好世界")
         review=review_recording(raw,alignment,request_for(alignment))[0]
         self.assertFalse(review["ready"])
         self.assertTrue(any("说话人" in b["reason"] for b in review["blockers"]))
+
+    def test_assigned_and_unassigned_sources_cannot_be_finalized_as_one_speaker(self):
+        raw = make_project([{**cue("你好", 0, 1000), "speaker": "a"}, cue("世界", 1100, 2000)])
+        before = copy.deepcopy(raw)
+        alignment = align_project_to_script(raw, "你好世界")
+        backend = mock.Mock()
+        with self.assertRaisesRegex(RecordingWorkflowError, "说话人不一致"):
+            finalize_recording(raw, alignment, request_for(alignment), Path("unused.wav"), backend=backend)
+        backend.align.assert_not_called()
+        self.assertEqual(raw, before)
 
     def test_retained_extra_inside_joined_script_envelope_refuses_finalization(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -136,9 +136,9 @@ for (const path of ['timed', 'untimed', 'linked']) {
   test(`splitting and project save preserve the source speaker through the ${path} path`, async ({ page }) => {
     await seed(page, { timed: path === 'timed', linked: path === 'linked' });
     await page.evaluate(() => {
+      MaweBoot.DATA.speakers = [{ id: 'opaque-speaker', name: '源说话人', color: '#49c5c1' }];
       const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
       segment.speaker = 'opaque-speaker';
-      segment.items?.forEach(item => { item.speaker = segment.speaker; });
       MaweSplitContext.splitFromContextMenu(0, 10, 10, 3000, { splitTextMode: 'progressive' });
     });
     if (path !== 'timed') await page.locator('#multi-subtitle-split-confirm').click();
@@ -146,8 +146,10 @@ for (const path of ['timed', 'untimed', 'linked']) {
       .toEqual(['opaque-speaker', 'opaque-speaker']);
     const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
     expect(await page.evaluate(project => AsrEditorUtils.validateTracksProject(project).errors, saved)).toEqual([]);
+    expect(saved.speakers).toEqual([{ id: 'opaque-speaker', name: '源说话人', color: '#49c5c1' }]);
     const savedMain = saved.tracks.find(track => track.role === 'main');
     expect(savedMain.segments.map(s => s.speaker)).toEqual(['opaque-speaker', 'opaque-speaker']);
+    expect(savedMain.segments.flatMap(s => s.items || []).every(item => !Object.hasOwn(item, 'speaker'))).toBe(true);
     expect(savedMain.segments.map(s => s.text)).toEqual(['甲乙', '甲乙丙丁']);
     await page.locator('#undo-btn').click();
     expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.speaker))).toEqual(['opaque-speaker']);
@@ -166,6 +168,7 @@ for (const path of ['timed', 'untimed', 'linked']) {
     await dataTransfer.dispose();
     await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.speaker)))
       .toEqual(['opaque-speaker', 'opaque-speaker']);
+    expect(await page.evaluate(() => MaweBoot.DATA.speakers)).toEqual(saved.speakers);
   });
 }
 

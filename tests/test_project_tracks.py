@@ -25,6 +25,7 @@ def track(identifier="main", role="main", segments=None, **fields):
 def canonical():
     return {"schema": PROJECT_SCHEMA, "tracks": [track()], "bindings": [],
             "bilingual": {"display_mode": "both"},
+            "speakers": [], "annotation_mode": "color", "palette_size": 5, "speaker_shortcuts": {},
             "subtitle_groups": {"next_id": 1, "color": [], "sticker": []}}
 
 

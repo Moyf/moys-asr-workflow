@@ -211,6 +211,7 @@ declare const activeExtensionSegments: any;
 interface Window {
   MaweExportContext: any;
   MaweCuePanelWiring: any;
+  MaweSpeakerLabels: any;
   MaweOverlaySplitMerge: any;
   MaweAssStorageWiring: any;
   MaweAssManagerWiring: any;

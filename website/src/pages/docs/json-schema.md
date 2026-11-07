@@ -77,6 +77,29 @@ v1 的轨内合法 ID 保留；跨轨重名和缺失 ID 确定性分配并更新
 
 Python `maw.project_boundary.prepare_project` 与浏览器 `MaweProjectValidation.prepareProject` 返回 `ok/errors/project/changes`。错误含 JSON 路径；失败时 `project` 为 null，`changes` 为空。成功时 changes 记录实际差异，再次导入规范化结果不产生新差异。可用 `python -m maw.project_boundary project.mosp` 只读检查；加 `--strict` 禁止时间修复。该命令不写源文件。共享语料见 `tests/fixtures/project-boundary.json`。
 
+## v2 说话人身份核心
+
+说话人身份与普通颜色组分开。规范工程保存 `speakers` 表，字幕的 `speaker` 引用表内稳定 ID；`null` 或缺失表示未分配。同名、同色不表示同一个人。分配、清除及身份合并不改 items，规范 items 不含 `speaker`。下文 v1 的供应商标签只适用于历史输入。
+
+| 字段 | 规则 |
+| --- | --- |
+| `speakers` | 数组；成员含唯一 `id`、`name`、`color`。ID 最多 160 个 Unicode 码点，无首尾空白或控制字符；名称最多 64 码点，无控制字符；颜色为六位 HEX。允许同名同色 |
+| `annotation_mode` | `color` 或 `speaker`，缺失默认 `color`；切换用途不重写字幕身份或普通颜色组 |
+| `palette_size` | `5` 或 `9`，缺失默认 `5`；收起后仍保留 6–9 槽、身份和色值。核心登记不按人数自动扩色 |
+| `speaker_shortcuts` | `1`–`9` 到现有身份 ID 的映射；0 不入表，表示清除操作 |
+
+默认五色不变；扩展显示色预留为橙 `#f2a65a`、青 `#49c5c1`、紫红 `#d675b9`、灰 `#969fab`。这些持久化字段和核心接口不代表九色界面或 ASR 自动扩展已经完成。
+
+v1、v1.5 及不带身份表的早期 v2 在读取时升级。段级供应商 ID 登记为项目身份；只有 items 有一致身份时收敛到段级；多个字词身份按已有换人边界拆段，保留原文、时间、帧字段、组引用及扩展。没有可靠正文或边界时沿用普通输入校验错误，不补造数据。已有身份表的 v2 严格读取，清除后不从旧颜色或 items 恢复身份。
+
+拆段首段保留旧 cue ID，新 ID 有界且避碰撞。绑定双方按相同绝对切点拆分时重新建立一对一绑定；单边拆分或切点不匹配时，沿用独立拆分规则解除该绑定，保留全部字幕与组，并在导入变化报告中说明。以上旧格式／早期 v2 升级首次必须另存；取消、自动保存或备份不得覆盖原件。
+
+跨工程导入为副字幕时，仅复制所用身份并分配新的目标 ID；同 ID、同名或同色都不会跨工程自动认同为一人。导入、身份分配／清除／合并连同四个根字段一起撤销。新身份工程拒绝缺表的保存请求；服务器接管浏览器副本时同时比较身份表与设置。
+
+手动合并、自动合并及 AI 分组只允许各自受影响轨道内的身份一致；已分配与未分配混合也拒绝。独立身份模式下，已有绑定槽位的旧色块／0 键调用身份分配／清除；未绑定槽位明确提示功能尚未开放，不改普通颜色。旧颜色姓名编辑在此模式禁用；JavaScript 姓名前缀读取身份表。基础 Python ASS 尚不支持身份姓名，请求该能力会明确报错；无姓名输出仍可用。
+
+完整身份管理、九色 UI、ASR 自动扩色、筛选和完整预览／导出呈现属于后续功能，按 [说话人核心交付边界](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/SPEAKER_IDENTITY_CORE_PLAN.md) 接续。
+
 ## v1.5 独立颜色 / 表情包组
 
 v1.5 是历史输入，使用顶层 `segments`、`overlay_track`、`multi_subtitle` 和必填的 `subtitle_groups`。各轨 cue ID 在工程内唯一；组 ID 在所属类型内唯一，组 `value` 必须有字符串 `name`，不保存 `start/end`。示例：

@@ -241,7 +241,7 @@ class PostprocessTests(unittest.TestCase):
             [(item["text"], item["start"], item["end"]) for item in segment_items(first_segments[0])],
             [("8+1", 100, 300), ("很好喝", 300, 900)],
         )
-        self.assertEqual(first_segments[0]["speaker"], "speaker-1")
+        self.assertEqual(first_segments[0]["speaker"], source_segments[0]["speaker"])
         self.assertEqual(first_segments[1]["color_group_id"], source_segments[1]["color_group_id"])
         self.assertEqual(source_segments[0]["text"], "酒很好喝")
         self.assertTrue(first.srt_path.is_file())
@@ -828,6 +828,7 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_resegment_uses_atom_boundaries_and_preserves_item_timing(self) -> None:
         project = sample_project(self.media)
+        project_segments(project)[1]["speaker"] = project_segments(project)[0]["speaker"]
         project_segments(project)[1].pop("color", None)
         project_segments(project)[1]["items"] = [
             {"start": 1200, "end": 1600, "text": "下"},
@@ -938,6 +939,9 @@ class PostprocessTests(unittest.TestCase):
 
     def test_mosp_resegment_uses_atom_boundaries_and_preserves_word_timings(self) -> None:
         project = sample_project(self.media)
+        # This fixture tests regrouped word timing within one identity; identity
+        # boundaries have separate rejection and batching regressions.
+        project_segments(project)[1]["speaker"] = project_segments(project)[0]["speaker"]
         project_segments(project)[1].pop("color", None)
         project_segments(project)[1]["items"] = [
             {"start": 1200, "end": 1600, "text": "下"},
@@ -987,6 +991,7 @@ class PostprocessTests(unittest.TestCase):
     def test_mosp_resegment_assigns_unique_ids_when_one_cue_splits(self) -> None:
         project = sample_project(self.media)
         segments = project_segments(project)
+        segments[1]["speaker"] = segments[0]["speaker"]
         segments[0]["id"] = "source-first"
         segments[1]["id"] = "source-second"
         segments[1]["items"] = [
@@ -1021,6 +1026,7 @@ class PostprocessTests(unittest.TestCase):
     def test_llm_regroup_preserves_stable_groups_and_unaffected_word_timings(self) -> None:
         project = sample_project(self.media)
         segments = project_segments(project)
+        segments[1]["speaker"] = segments[0]["speaker"]
         segments[0]["color"] = {"name": "黄色", "value": "#ffcc00"}
         segments[1].pop("color", None)
         segments[1]["color_ref"] = {"headIdx": 0}
@@ -2000,7 +2006,7 @@ class PostprocessTests(unittest.TestCase):
             ["The wine is delicious.", "The next sentence."],
         )
         self.assertNotIn("items", translated_segments[0])
-        self.assertEqual(translated_segments[0]["speaker"], "speaker-1")
+        self.assertEqual(translated_segments[0]["speaker"], source_segments[0]["speaker"])
         self.assertEqual(translated_segments[1]["color_group_id"], source_segments[1]["color_group_id"])
         self.assertIn("规范格式中每个 group", prompts[0])
         self.assertIn("多个 source_ids 一律无效", prompts[0])
@@ -2274,7 +2280,7 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual(merged, project_segments(read_project(self.project_path)))
         self.assertEqual(extension_tracks(saved)[0]["id"], "old-extension")
         self.assertEqual([s["text"] for s in translation_segments(saved)], ["The wine is delicious.", "The next sentence."])
-        self.assertEqual(merged[0]["speaker"], "speaker-1")
+        self.assertEqual(merged[0]["speaker"], project_segments(read_project(self.project_path))[0]["speaker"])
         self.assertEqual(merged[1]["color_group_id"], project_segments(read_project(self.project_path))[1]["color_group_id"])
         self.assertIsNone(result.translated_srt_path)
         self.assertEqual(result.project_path.name, "clip.translate-en-bilingual.mosp")

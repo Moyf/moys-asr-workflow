@@ -90,5 +90,17 @@
   "custom_project": {
     "empty": [],
     "zero": 0
+  },
+  "speakers": [
+    {
+      "id": "A",
+      "name": "Speaker A",
+      "color": "#f9ca1f"
+    }
+  ],
+  "annotation_mode": "color",
+  "palette_size": 5,
+  "speaker_shortcuts": {
+    "1": "A"
   }
 }

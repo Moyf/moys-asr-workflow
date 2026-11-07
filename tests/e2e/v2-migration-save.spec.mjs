@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createUtilsModule } from '../../web/shared/utils/project-tracks.js';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, makeTempDir, startBlankServer, startServer } from './helpers.mjs';
 
 test('browser imports repairable legacy timing through both project entry points', async ({ page }) => {
@@ -31,7 +32,7 @@ test('browser imports repairable legacy timing through both project entry points
   }
 });
 
-for (const schema of ['moy.asr.project.v1', 'moy.asr.project.v1.5']) {
+for (const schema of ['moy.asr.project.v1', 'moy.asr.project.v1.5', 'moy.asr.project.v2']) {
   test(`${schema} migration requires a new v2 file and preserves the source`, async ({ page }) => {
     const directory = makeTempDir('v2-migration-save');
     const projectPath = join(directory, 'legacy.mosp');
@@ -41,6 +42,12 @@ for (const schema of ['moy.asr.project.v1', 'moy.asr.project.v1.5']) {
       generateWav(mediaPath, 2);
       const project = { schema, media: 'synthetic.wav', segments: [{ id: 'original', start: 100, end: 900, text: '原字幕' }],
         ...(schema === 'moy.asr.project.v1.5' ? { subtitle_groups: { next_id: 1, color: [], sticker: [] } } : {}) };
+      if (schema === 'moy.asr.project.v2') {
+        const canonical = createUtilsModule().makeProject(project.segments, { projectFields: { media: project.media } });
+        delete project.segments;
+        Object.assign(project, canonical);
+        for (const field of ['speakers', 'annotation_mode', 'palette_size', 'speaker_shortcuts']) delete project[field];
+      }
       const sourceBytes = Buffer.from(JSON.stringify(project, null, 2) + '\n', 'utf8');
       writeFileSync(projectPath, sourceBytes);
       server = await startServer(projectPath, mediaPath, await findFreePort());
