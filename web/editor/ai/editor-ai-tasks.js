@@ -256,6 +256,9 @@
     if (active && !active.settled) {
       return Promise.reject(new Error('已有 AI 任务进行中，请等它完成或取消后再试'));
     }
+    if (global.MaweAiPreview?.hasPending()) {
+      return Promise.reject(new Error('请先处理或丢弃已有的 AI 建议'));
+    }
     hideProgress();
     let resolve;
     let reject;
@@ -346,7 +349,7 @@
     });
     addSeparator();
     const structure = global.MaweAiStructureTasks;
-    const timecodeReady = Boolean(MaweBoot.SERVER_CONFIG?.sourceMediaId);
+    const timecodeReady = Boolean(MaweBoot.SERVER_CONFIG?.sourceMediaId && !global.MaweProjectMediaInputs?.currentMediaBlobUrl);
     addEntry('AI 拆分建议…', () => structure?.runSuggestSplit(targets), {
       disabled: !hasTargets,
       hint: 'AI 建议一个断句位置并直接拆分（可撤销）',

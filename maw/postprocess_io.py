@@ -19,6 +19,7 @@ from maw.project_tracks import get_main_track, make_project
 from maw.track_output import select_export_tracks
 from maw.project_boundary import import_project
 from maw.project_preview import JsonDict, JsonValue
+from maw.speaker_export import labelled_export_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +209,7 @@ def render_srt(project: JsonDict, *, mode: str = "main") -> str:
         text = segment.get("text")
         if type(start) is int and type(end) is int and isinstance(text, str) and text.strip():
             safe_text = re.sub(r"\r?\n\s*\r?\n+", "\n", text.strip())
+            safe_text = labelled_export_text(project, segment, safe_text)
             blocks.append(f"{output_index}\n{_format_srt_time(start)} --> {_format_srt_time(end)}\n{safe_text}\n")
     return "\n".join(blocks)
 

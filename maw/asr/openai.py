@@ -27,7 +27,7 @@ from typing import Any, Mapping
 
 import requests
 
-from maw.project_tracks import make_project
+from maw.speaker_identity import make_asr_project
 from maw.stickers import get_default_sticker_dir
 from maw.asr.common import (
     extract_audio,
@@ -817,7 +817,7 @@ def main() -> None:
             str(result.get("text") or ""),
         )
         split_mode = split_mode_for_text(str(result.get("text") or ""), language)
-        json_data: dict[str, Any] = make_project(
+        json_data: dict[str, Any] = make_asr_project(
             segments,
             main_fields={
                 'language': language,

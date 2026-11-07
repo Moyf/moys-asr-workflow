@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.2 之后 | 2026-11-07 | [PR347 AI 建议预览独立复审](release1.10.0-beta.2/261107_PR347预览/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261107_PR347预览/PR347预览.checklist.md) | 翻译、媒体切换及联动拆分保护；Windows Promise 回收具体根因未明，真实模型与媒体待核验 |
 | 1.10.0-beta.2 之后 | 2026-11-07 | [AI 功能英文翻译自审](release1.10.0-beta.2/261107_AI功能英文翻译/REVIEW_FINDINGS.md) | 编辑器英文界面补译 AI 全部文案；独立复核零 blocker，2 nit 顺手修、2 nit 接受 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [PR44 同步 main 独立复核](release1.10.0-beta.2/261106_PR44同步main/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261106_PR44同步main/PR44同步main.checklist.md) | 三轨、贴纸、字体、波形与 Soniox 的真实流程待核验 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [main 合入 2.0dev 独立复核](release1.10.0-beta.2/261106_main合入2dev/REVIEW_FINDINGS.md) | 三轨适配、处理配置扩展保留与验收边界 |
@@ -32,6 +33,7 @@
 | 1.10.0-beta.2 之后 | 2026-11-03 | [1.10.0 正式版发布核验](release1.10.0-beta.2/261103_1.10.0正式版发布核验/1.10.0正式版发布核验.checklist.md) | 对比 v1.9.0 合并核验 beta.1、beta.2 与未发布全部条目及发布一致性；2026-11-03 自动化全绿，人工核验与发布准备检查待维护者完成 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [副轨定位 dev 适配复核](release1.10.0-beta.2/261103_副轨定位dev适配/REVIEW_FINDINGS.md) | PR 26 独立适配、命中层序与定位测试 |
 | 1.10.0-beta.2 之后 | 2026-10-30 | [轨道 v2 整合](release1.10.0-beta.2/261030_轨道v2整合/整合记录.md) / [人工核验](release1.10.0-beta.2/261030_轨道v2整合/轨道v2.checklist.md) / [翻译补丁自审](release1.10.0-beta.2/261030_轨道v2整合/REVIEW_FINDINGS.md) | v2、CueRef、单副轨和显式另存保护；保留 Draft 与后续设计边界 |
+| 2.0dev；1.10.0-beta.2 之后 | 2026-10-30 | [#40 说话人体验核验](release1.10.0-beta.2/261030_说话人体验/说话人体验.checklist.md) | 基于 #15，身份管理、九色、ASR、三轨筛选与姓名导出；人工待验 |
 | 1.10.0-beta.2 之后 | 2026-10-29 | [PR239 合并准备与复核](release1.10.0-beta.2/261029_PR239合并准备/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261029_PR239合并准备/PR239合并准备.checklist.md) | 按维护者补丁落地 v1.5，整合最新 2.0dev，补齐 ESM 测试装配与副轨说话人规则 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [身份核心 dev 适配复核](release1.10.0-beta.2/261103_身份核心dev适配/REVIEW_FINDINGS.md) | PR 15 与轨道分组保护及旧工程迁移 |
 | 1.10.0-beta.2 之后 | 2026-10-29 | [CI 选测试点独立复核](release1.10.0-beta.2/261029_CI选测试点/REVIEW_FINDINGS.md) | 文档和网站按影响选测，记录生成路径、必需门禁及预览评论边界 |

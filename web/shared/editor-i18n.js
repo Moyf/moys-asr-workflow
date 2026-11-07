@@ -9,6 +9,33 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '查看建议': 'Review suggestions',
+    'AI 建议': 'AI suggestions',
+    '稍后查看': 'Review later',
+    '检查并编辑建议，再应用勾选的字幕。关闭窗口会保留建议。': 'Review and edit suggestions, then apply the selected cues. Closing this window keeps the suggestions.',
+    '全选可应用的建议': 'Select all applicable suggestions',
+    '丢弃全部': 'Discard all',
+    '应用勾选': 'Apply selected',
+    '已合并字幕 · AI 润色建议': 'Cues merged · AI polish suggestions',
+    '工程或媒体已切换': 'The project or media changed',
+    '原字幕已修改或删除': 'The source cue was edited or deleted',
+    '副字幕轨已切换': 'The secondary subtitle track changed',
+    '副字幕绑定不适合自动替换': 'The secondary subtitle binding cannot be replaced automatically',
+    '副字幕或绑定已修改': 'The secondary subtitle or binding changed',
+    '模型未返回有效结果': 'The model returned no valid result',
+    '结果修改了原文或格式不符': 'The result changed the original text or has an invalid format',
+    '没有变化': 'No changes',
+    '字幕时间或字词已修改': 'The subtitle timing or words changed',
+    '拆分断点不可用': 'The split point cannot be used',
+    'AI 翻译为英文副字幕': 'AI translation to English secondary subtitles',
+    'AI 翻译为中文副字幕': 'AI translation to Chinese secondary subtitles',
+    'AI 按提示词翻译为副字幕': 'AI translation to secondary subtitles with a custom prompt',
+    '副字幕时间范围已占用': 'The secondary subtitle time range is occupied',
+    '此绑定暂不能联动拆分': 'This binding cannot currently be split together',
+    '需逐条联动拆分': 'Split linked cues one at a time',
+    '字幕已修改，请重新查看 AI 建议': 'The subtitle changed; review the AI suggestion again',
+    '查看全部': 'View all',
+    '只看有变化': 'Changes only',
     '字幕轨道状态': 'Subtitle track status',
     '主字幕轨始终启用': 'The main subtitle track is always enabled',
     '关闭轨道会同时停止预览和导出，字幕数据会保留。': 'Disabling a track stops preview and export while keeping its subtitle data.',
@@ -147,6 +174,7 @@
     '，不把默认路径写入工程。': ' without writing that path into the project.',
     '打开全局设置的表情包页': 'Open the sticker page in Global settings',
     '名称配色在': 'Speaker name colors are adjusted in ',
+    '说话人名称和显示色在管理区修改，随工程保存。普通分类色可在': 'Speaker names and display colors are edited in the manager and saved with the project. Category colors can be adjusted in ',
     '中调整；色板是本机偏好，随编辑器复用。': '; the palette is a personal preference reused across sessions.',
     '打开全局设置的调色板页': 'Open the palette page in Global settings',
     '工程颜色的呈现与说话人映射在': 'Project color presentation and speaker mappings are configured in ',
@@ -266,6 +294,7 @@
     '目录配置已保存。': 'Directory settings saved.',
     '「高级编辑」中调节，默认 50ms': 'under “Advanced editing” in Global settings; the default is 50 ms',
     '开启预览说话人会默认勾选导出名称；之后可在此独立调整。': 'Enabling speaker preview also enables speaker export labels; this can be changed independently here.',
+    '预览姓名和导出姓名分别控制；切换用途或色数不会改变这两个开关。': 'Preview and exported names have separate switches. Changing the marking purpose or palette size leaves both switches unchanged.',
     '打开波形区设置': 'Open waveform area settings',
     '打开编辑区设置': 'Open editing-area settings',
     "配置 OTIO 导出": "Configure OTIO exports",
@@ -336,6 +365,7 @@
     '需要已开启双语字幕且主副轨都有字幕': 'Bilingual subtitles must be enabled, with subtitles on both the main and secondary tracks.',
     '选择 ASS 导出和预览中，颜色字幕的应用方式；「不生效」时所有颜色字幕使用统一样式': 'Choose how colored subtitles apply in ASS exports and previews; “No effect” uses one style for all colored subtitles.',
     '需要启用「颜色对应说话人」；勾选「': 'Enable “Map colors to speakers”; select “',
+    '先分配说话人，并勾选「': 'Assign a speaker, then select “',
     '」。': '”.',
     '打开全局设置的自定义颜色页': 'Open the custom colors page in Global settings',
     '关闭后隐藏「预览表情包」开关，右键菜单不再提供分配表情包；工程内已有表情包数据保留': 'When disabled, hide the sticker preview toggle and remove sticker assignment from the context menu; existing project sticker data remains.',
@@ -438,6 +468,11 @@
     '拖入工程或 SRT/LRC 字幕后显示字幕列表': 'Drop a project or SRT/LRC subtitles to display subtitles',
     '松开以加载工程、媒体或 SRT/LRC 字幕': 'Drop to load a project, media, or SRT/LRC subtitles',
     '自动保存': 'Auto-save', '保存间隔': 'Auto-save interval', '秒': 'sec', '说话人': 'Speaker',
+    '未分配': 'Unassigned', '未命名说话人': 'Unnamed speaker', '说话人：未分配': 'Speaker: Unassigned',
+    '按说话人筛选': 'Filter by speaker', '清除说话人过滤': 'Clear speaker filter',
+    '按颜色筛选': 'Filter by color', '分配说话人': 'Assign speaker', '清除说话人': 'Clear speaker',
+    '选择此人在当前轨道的全部字幕': "Select this speaker's subtitles in this track",
+    '分配说话人槽位': 'Assign speaker slot', '空槽': 'Empty slot', '中调整。': '.',
     '强调色': 'Accent Color', '自定义颜色': 'Custom color', '自定义': 'Custom', '橙色': 'Orange', '品牌色（默认）': 'Brand (default)',
     '显示说话人名称': 'Show speaker names',
     '预览显示说话人': 'Show speakers in preview',
@@ -1777,7 +1812,7 @@
   // and read-only previews. Translate their surrounding controls and labels.
   const PROJECT_TEXT_SELECTOR = [
     '.cue .text', '.multi-cue-column .text', '.waveform-cue-label',
-    '.timed-text-edit-diff-part', '#timed-text-edit-search-mirror', '[data-word-project-content]',
+    '.timed-text-edit-diff-part', '#timed-text-edit-search-mirror', '[data-word-project-content]', '[data-speaker-project-content]',
     '.multi-subtitle-split-char',
     '.multi-subtitle-split-preview-left', '.multi-subtitle-split-preview-right',
     '.cue .sticker-slot .sname', '.cue .sticker-slot img', '#sticker-preview-name',
@@ -1786,12 +1821,12 @@
     // Reference text includes the project name, but its title is a UI hint.
     '.cue .sticker-slot .sref', '#cue-panel-sticker .ref',
     PROJECT_TEXT_SELECTOR, '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
-    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', '[data-marker-project-content]', 'script', 'style'
+    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', '[data-marker-project-content]', '[data-ai-preview-content]', 'script', 'style'
   ].join(',');
   const ATTRIBUTE_SKIP_SELECTOR = [
     // .waveform-cue-block 的 title 是用户字幕原文，不能参与翻译
     PROJECT_TEXT_SELECTOR, '#overlay', '#sticker-overlay-layer', '.waveform-cue-block', '.waveform-word-block', '[data-marker-project-content]',
-    '#media-name', '#json-name', '#sticker-grid', 'script', 'style'
+    '#media-name', '#json-name', '#sticker-grid', '[data-ai-preview-content]', 'script', 'style'
   ].join(',');
 
   function normalizeLanguage(value) {

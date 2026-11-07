@@ -1744,6 +1744,7 @@
     MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
     closeLinkedSplitModal();
     command.commit({ cueList: true });
+    state.onAiSplitCommitted?.();
     MaweSelection.selectOnly(mainIndex + 1);
     MaweSelection.lastClickedIdx = mainIndex + 1;
     MaweViewUpdates.invalidate({ preview: 'update' });
@@ -1874,6 +1875,11 @@
   function confirmLinkedSplit({ duplicateText = false } = {}) {
   const state = pendingLinkedSplit;
   if (!state) return;
+  if (state.onAiBeforeCommit && !state.onAiBeforeCommit()) {
+    closeLinkedSplitModal();
+    MaweHint.flashHint('字幕已修改，请重新查看 AI 建议', 'warning');
+    return;
+  }
   const previewLane = state.kind === 'main' ? 'main' : 'extension';
   const previewOffset = state.kind === 'main' ? state.mainOffset : state.offset;
   const previewValid = updateLinkedSplitPreview(previewOffset, previewLane);
@@ -1990,6 +1996,7 @@
     closeLinkedSplitModal();
     MaweSelection.clearSelection({ commitCuePanel: false });
     command.commit({ cueList: true });
+    state.onAiSplitCommitted?.();
     MaweSelection.selectOnly(mainIndex);
     MaweSelection.lastClickedIdx = mainIndex;
     MaweViewUpdates.invalidate({ preview: 'update' });

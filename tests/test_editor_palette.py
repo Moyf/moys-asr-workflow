@@ -6,7 +6,7 @@ import json
 import unittest
 
 import edit
-from maw.colors import COLOR_PALETTE
+from maw.colors import COLOR_PALETTE, COLOR_PALETTE_ALL
 
 
 class EditorPaletteInjectionTests(CompactContainerAssertions, unittest.TestCase):
@@ -17,15 +17,16 @@ class EditorPaletteInjectionTests(CompactContainerAssertions, unittest.TestCase)
 
         self.assertEqual(
             injected,
-            [{"name": name, "value": value} for name, value in COLOR_PALETTE],
+            [{"name": name, "value": value} for name, value in COLOR_PALETTE_ALL],
         )
+        self.assertEqual(injected[:5], [{"name": name, "value": value} for name, value in COLOR_PALETTE])
 
     def test_rendered_page_contains_injected_palette_script(self) -> None:
         page = edit.render_editor_page(**self._minimal_context())
 
         self.assertIn("window.ASR_EDITOR_PALETTE = ", page)
         self.assertNotIn("__PALETTE_JSON__", page)
-        for name, value in COLOR_PALETTE:
+        for name, value in COLOR_PALETTE_ALL:
             self.assertIn(json.dumps({"name": name, "value": value}, ensure_ascii=False), page)
 
     def test_blank_editor_renderer_injects_current_palette(self) -> None:
@@ -38,7 +39,7 @@ class EditorPaletteInjectionTests(CompactContainerAssertions, unittest.TestCase)
         injected, _ = json.JSONDecoder().raw_decode(blank.split(assignment, 1)[1])
         self.assertEqual(
             injected,
-            [{"name": name, "value": value} for name, value in COLOR_PALETTE],
+            [{"name": name, "value": value} for name, value in COLOR_PALETTE_ALL],
         )
         self.assertNotIn("__PALETTE_JSON__", blank)
 

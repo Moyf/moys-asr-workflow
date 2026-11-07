@@ -11,7 +11,7 @@
   // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
   // 调色板数值唯一来源于 maw/colors.py（渲染时注入 window.ASR_EDITOR_PALETTE）；
   // 这里只补充编辑器 UI 用的中文标签。
-  const COLOR_LABELS = { yellow: '黄', green: '绿', red: '红', purple: '紫', blue: '蓝' };
+  const COLOR_LABELS = { yellow: '黄', green: '绿', red: '红', purple: '紫', blue: '蓝', orange: '橙', cyan: '青', magenta: '紫红', gray: '灰' };
 
   // 调色板注入守卫（原 editor.js 加载期校验，随调色板初始化一同迁移）。
   if (!Array.isArray(window.ASR_EDITOR_PALETTE) || !window.ASR_EDITOR_PALETTE.length) {
@@ -142,6 +142,7 @@
     COLOR_LABELS,
     get COLOR_PALETTE() { return COLOR_PALETTE; },
     set COLOR_PALETTE(v) { COLOR_PALETTE = v; },
+    get ACTIVE_COLOR_PALETTE() { return COLOR_PALETTE.slice(0, window.MaweBoot?.DATA?.palette_size === 9 ? 9 : 5); },
     get COLOR_BY_NAME() { return COLOR_BY_NAME; },
     set COLOR_BY_NAME(v) { COLOR_BY_NAME = v; },
     COLOR_PALETTE_DEFAULTS,

@@ -36,6 +36,7 @@ export function initMaweSettingsPanels() {
       const markerMirror = document.getElementById('project-marker-track-toggle');
       if (markerMirror) markerMirror.checked = window.MaweMarkerEditing?.isEditingEnabled?.()
         ?? (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true);
+      window.MaweSpeakerManager?.sync?.();
     },
   });
   document.getElementById('project-settings-close')?.addEventListener('click', () => projectFloatingPanel.close());

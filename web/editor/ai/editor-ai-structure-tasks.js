@@ -52,17 +52,17 @@
 
   function beginStructureTask(kind, payload, onResult) {
     const context = MaweAiTextTasks.captureTaskContext();
-    let applied = false;
-    const applyResult = async (result, isCurrent = () => true, onWait = () => {}) => {
-      if (!await MaweAiTextTasks.waitForTaskApply(context, isCurrent, onWait)) return false;
-      applied = true;
-      onResult(result);
+    let presented = false;
+    const presentResult = (result) => {
+      if (!MaweAiTextTasks.taskContextCurrent(context)) return false;
+      onResult(result, context);
+      presented = true;
       return true;
     };
     return MaweAiTasks.begin(kind, payload, STRUCT_TASK_LABELS[kind] || 'AI 结构任务', {
-      beforeComplete: (isCurrent, result, onWait) => applyResult(result, isCurrent, onWait),
-    }).then(async (result) => {
-      if (!applied && !await applyResult(result)) throw new Error('工程或媒体已切换，已丢弃本次 AI 结果');
+      beforeComplete: (_isCurrent, result) => presentResult(result),
+    }).then((result) => {
+      if (!presented && !presentResult(result)) throw new Error('工程或媒体已切换，已丢弃本次 AI 结果');
     });
   }
 
@@ -74,6 +74,89 @@
     return index < 0 ? null : { index, segment: segments[index] };
   }
 
+  function splitBindingSnapshot(cue) {
+    const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+    const mainTrack = global.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const bindings = (multi.bindings || []).filter((binding) => binding?.source?.track_id === mainTrack.id
+      && binding?.source?.segment_id === cue.segmentId);
+    const targets = bindings.map((binding) => {
+      const track = (MaweBoot.DATA.tracks || []).find((item) => item.id === binding.target?.track_id);
+      const segment = track?.segments?.find((item) => item.id === binding.target?.segment_id);
+      const peers = (multi.bindings || []).filter((item) => item?.target?.track_id === binding.target?.track_id
+        && item?.target?.segment_id === binding.target?.segment_id).map((item) => item.source);
+      return { source: binding.source, target: binding.target, peers,
+        segment: segment && { id: segment.id, text: segment.text, start: segment.start, end: segment.end, items: segment.items } };
+    });
+    return JSON.stringify(targets);
+  }
+
+  function splitBindingState(cue) {
+    const current = locateCue(cue);
+    if (!current) return 'changed';
+    const main = global.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const bindings = MaweMultiSubtitleCore.getMultiSubtitleState().bindings || [];
+    const matches = bindings.filter((binding) => binding?.source?.track_id === main.id
+      && binding?.source?.segment_id === cue.segmentId);
+    if (!matches.length) return 'unbound';
+    const target = matches[0].target;
+    const shared = bindings.filter((binding) => binding?.target?.track_id === target?.track_id
+      && binding?.target?.segment_id === target?.segment_id).length > 1;
+    const active = MaweMultiSubtitleCore.multiSubtitleVisible?.()
+      && MaweMultiSubtitleCore.bindingForMainIndex?.(current.index);
+    return matches.length === 1 && !shared && active?.id === matches[0].id && MaweDom.multiSubtitleSplitModal
+      ? 'linked' : 'unsupported';
+  }
+
+  function presentStructure(kind, cues, result, context) {
+    const byId = new Map(cues.map((cue) => [cue.id, cue]));
+    const isTiming = kind === 'ai-timecode-items';
+    const isSplit = kind === 'ai-suggest-split';
+    const values = isTiming ? result?.items || {} : result?.texts || {};
+    const describeItems = (items) => Array.isArray(items)
+      ? items.map((item) => `${item.text} (${item.start}–${item.end} ms)`).join('  ') : '';
+    const rows = cues.map((cue) => ({
+      id: cue.id, index: cue.index, start: cue.start, end: cue.end,
+      source: cue.text, before: isTiming ? describeItems(JSON.parse(cue.itemsSnapshot)) : cue.text,
+      after: isTiming ? describeItems(values[cue.id]) : String(values[cue.id] || ''), checked: true,
+    }));
+    const refresh = (currentRows) => currentRows.map((row) => {
+      const cue = byId.get(row.id);
+      const segment = MaweAiTextTasks.taskContextCurrent(context) ? locateCue(cue)?.segment : null;
+      let reason = '';
+      if (!MaweAiTextTasks.taskContextCurrent(context)) reason = '工程或媒体已切换';
+      else if (!segment || segment.text !== cue.text) reason = '原字幕已修改或删除';
+      else if (cue.itemsSnapshot !== undefined && (Number(segment.start) !== cue.start || Number(segment.end) !== cue.end
+        || JSON.stringify(segment.items ?? null) !== cue.itemsSnapshot)) reason = '字幕时间或字词已修改';
+      else if (isSplit && splitBindingSnapshot(cue) !== cue.bindingSnapshot) reason = '副字幕或绑定已修改';
+      else if (isSplit && splitBindingState(cue) === 'unsupported') reason = '此绑定暂不能联动拆分';
+      else if (!row.after.trim()) reason = '模型未返回有效结果';
+      else if (isSplit && parseSplitMarker(cue.text, row.after) == null) reason = '拆分断点不可用';
+      else if (!isTiming && !isSplit && row.before === row.after) reason = '没有变化';
+      const conflict = Boolean(reason);
+      if (!conflict && isSplit && splitBindingState(cue) === 'linked') reason = '需逐条联动拆分';
+      return { ...row, reason, conflict };
+    });
+    const apply = async (selectedRows) => {
+      if (!await MaweAiTextTasks.waitForTaskApply(context)) return [];
+      const valid = refresh(selectedRows).filter((row) => !row.conflict);
+      const chosen = valid.map((row) => byId.get(row.id));
+      if (!chosen.length) return [];
+      if (isTiming) return applyTimecodeItems(chosen, { ...result, items: Object.fromEntries(chosen.map((cue) => [cue.id, values[cue.id]])) });
+      if (isSplit) {
+        const unbound = chosen.filter((cue) => splitBindingState(cue) === 'unbound');
+        const selected = unbound.length ? unbound : chosen.slice(0, 1);
+        return applySplitSuggestions(selected, Object.fromEntries(valid.map((row) => [row.id, row.after])), (id, index) => {
+          const row = valid.find((item) => item.id === id);
+          const cue = byId.get(id);
+          return Boolean(row && cue && locateCue(cue)?.index === index && !refresh([row])[0].conflict);
+        });
+      }
+      return applyMergedPolish(chosen[0], { texts: { [chosen[0].id]: valid[0].after } });
+    };
+    const label = kind === 'ai-smart-merge' ? '已合并字幕 · AI 润色建议' : STRUCT_TASK_LABELS[kind];
+    if (!global.MaweAiPreview?.present({ label, rows, refresh, apply })) throw new Error('无法保存 AI 建议，请先处理已有结果');
+  }
+
 
 
   // === 智能合并：先同步合并（既有命令），再用 LLM 修顺合并缝 ===
@@ -83,7 +166,7 @@
       MaweHint.flashHint('AI 功能仅在本地服务器版编辑器可用（当前通过 file:// 打开）', 'invalid');
       return;
     }
-    if (MaweAiTasks.active) {
+    if (MaweAiTasks.active || global.MaweAiPreview?.hasPending()) {
       MaweHint.flashHint('已有 AI 任务进行中，请等它完成或取消后再试', 'invalid');
       return;
     }
@@ -107,14 +190,15 @@
       // 合并未发生（选择不连续等）；mergeSegments 已给出提示。
       return;
     }
-    const snapshot = { id: mergedSegment.id, segmentId: mergedSegment.id, text: String(mergedSegment.text ?? '') };
+    const snapshot = { id: mergedSegment.id, segmentId: mergedSegment.id, index: indexes[0], text: String(mergedSegment.text ?? ''),
+      start: Number(mergedSegment.start), end: Number(mergedSegment.end), itemsSnapshot: JSON.stringify(mergedSegment.items ?? null) };
     const lang = MaweAiTextTasks.detectTaskLang([{ text: snapshot.text }]);
     beginStructureTask('ai-smart-merge', {
       mergedId: snapshot.id,
       mergedText: snapshot.text,
       parts,
       lang,
-    }, (result) => applyMergedPolish(snapshot, result))
+    }, (result, context) => presentStructure('ai-smart-merge', [snapshot], result, context))
       .catch((error) => MaweHint.flashHint(error.message || 'AI 任务失败', 'invalid'));
   }
 
@@ -127,11 +211,11 @@
     if (!polished.trim() || !segment || segment.id !== snapshot.id || segment.text !== snapshot.text) {
       const reason = !polished.trim() ? '模型未返回结果' : '字幕已被修改';
       MaweHint.flashHint(`合并已完成；AI 润色未应用（${reason}，可撤销合并）`, 'warning');
-      return;
+      return [];
     }
     if (segment.text === polished) {
       MaweHint.flashHint('合并完成，文本已符合目标', 'success');
-      return;
+      return [];
     }
     MaweCommands.run('AI 智能合并', (command) => {
       const previousText = segment.text;
@@ -146,6 +230,7 @@
         MaweHint.flashHint('合并字幕的字词时间码文字未随文本更新，请按需检查', 'warning');
       }
     });
+    return [snapshot.id];
   }
 
 
@@ -157,16 +242,17 @@
       MaweHint.flashHint('AI 功能仅在本地服务器版编辑器可用（当前通过 file:// 打开）', 'invalid');
       return;
     }
-    const cues = collectCues(targets);
+    const cues = collectCues(targets, { withTime: true });
     if (!cues.length) {
       MaweHint.flashHint('选中字幕没有可处理的文本', 'invalid');
       return;
     }
     const lang = MaweAiTextTasks.detectTaskLang(cues);
+    cues.forEach((cue) => { cue.bindingSnapshot = splitBindingSnapshot(cue); });
     beginStructureTask('ai-suggest-split', {
       cues: cues.map(({ id, text }) => ({ id, text })),
       lang,
-    }, (result) => applySplitSuggestions(cues, result?.texts && typeof result.texts === 'object' ? result.texts : {}))
+    }, (result, context) => presentStructure('ai-suggest-split', cues, result, context))
       .catch((error) => MaweHint.flashHint(error.message || 'AI 任务失败', 'invalid'));
   }
 
@@ -187,7 +273,7 @@
 
 
 
-  function applySplitSuggestions(cues, texts) {
+  function applySplitSuggestions(cues, texts, validateBeforeCommit = () => true) {
     const rows = [];
     const notes = [];
     let stale = 0;
@@ -201,7 +287,7 @@
       if (!segment || segment.text !== cue.text) { stale += 1; continue; }
       const offset = parseSplitMarker(cue.text, marked);
       if (offset == null) { invalid += 1; continue; }
-      rows.push({ index: current.index, segment, offset });
+      rows.push({ id: cue.id, index: current.index, segment, offset });
     }
     const mainTrack = global.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
     const bindings = MaweMultiSubtitleCore.getMultiSubtitleState().bindings || [];
@@ -219,14 +305,19 @@
         && MaweDom.multiSubtitleSplitModal) {
         if (MaweSplitCore.pendingLinkedSplit || MaweDom.multiSubtitleSplitModal.classList.contains('show')) {
           MaweHint.flashHint('请先关闭当前拆分窗口，再重试 AI 拆分建议', 'warning');
-          return;
+          return [];
         }
         const state = MaweSplitCore.linkedSplitState(row.index, { mainOffset: row.offset });
         if (state) {
           MaweSplitCore.pendingLinkedSplit = state;
+          const previewToken = global.MaweAiPreview?.token?.();
+          state.onAiSplitCommitted = () => global.MaweAiPreview?.consume([row.id], previewToken);
+          state.onAiBeforeCommit = () => previewToken === global.MaweAiPreview?.token?.()
+            && validateBeforeCommit(row.id, state.mainIndex);
+          global.MaweAiPreview?.close();
           MaweDom.multiSubtitleSplitModal.classList.add('show');
           MaweSplitCore.renderLinkedSplitText(state);
-          return;
+          return [];
         }
       }
     }
@@ -245,7 +336,7 @@
         null,
         {},
       );
-      if (pair) pairs.push({ index: row.index, segment: row.segment, pair });
+      if (pair) pairs.push({ id: row.id, index: row.index, segment: row.segment, pair });
       else invalid += 1;
     }
     if (!pairs.length) {
@@ -254,7 +345,7 @@
       if (invalid) notes.push(`${invalid} 条断点不可用`);
       if (bound) notes.push(`${bound} 条已绑定副字幕，请逐条联动拆分`);
       MaweHint.flashHint(`AI 拆分建议${skipHintSuffix(notes)}`, 'invalid');
-      return;
+      return [];
     }
     MaweCommands.run('AI 拆分字幕', (command) => {
       MaweSelection.clearSelection({ commitCuePanel: false });
@@ -278,6 +369,7 @@
         'success',
       );
     });
+    return pairs.map(({ id }) => id);
   }
 
 
@@ -290,7 +382,7 @@
       return;
     }
     const config = MaweBoot.SERVER_CONFIG || {};
-    if (!config.sourceMediaId) {
+    if (!config.sourceMediaId || global.MaweProjectMediaInputs?.currentMediaBlobUrl) {
       MaweHint.flashHint('当前编辑器没有绑定媒体，无法做时间码对齐', 'invalid');
       return;
     }
@@ -303,7 +395,7 @@
       cues: cues.map(({ id, text, start, end }) => ({ id, text, start, end })),
       bindingGeneration: typeof config.bindingGeneration === 'number' ? config.bindingGeneration : null,
       sourceMediaId: config.sourceMediaId ?? null,
-    }, (result) => applyTimecodeItems(cues, result))
+    }, (result, context) => presentStructure('ai-timecode-items', cues, result, context))
       .catch((error) => MaweHint.flashHint(error.message || 'AI 任务失败', 'invalid'));
   }
 
@@ -326,13 +418,13 @@
         stale += 1;
         continue;
       }
-      rows.push({ segment, items });
+      rows.push({ id: cue.id, segment, items });
     }
     if (!rows.length) {
       if (stale) notes.push(`${stale} 条在任务期间被修改，已跳过`);
       if (missing) notes.push(`${missing} 条对齐失败`);
       MaweHint.flashHint(`时间码→字词${skipHintSuffix(notes)}`, 'invalid');
-      return;
+      return [];
     }
     const timedCount = rows.filter(({ segment }) => segment.items?.length).length;
     if (timedCount) {
@@ -340,7 +432,7 @@
         || '将替换 {count} 条字幕已有的字词时间码。是否继续？';
       if (!global.confirm(message.replace('{count}', String(timedCount)))) {
         MaweHint.flashHint('已取消应用 AI 字词时间码', 'warning');
-        return;
+        return [];
       }
     }
     MaweCommands.run('时间码→字词', (command) => {
@@ -365,6 +457,7 @@
     if (warnings.length) {
       console.warn('[ai] 时间码对齐告警：', warnings.join('；'));
     }
+    return rows.map(({ id }) => id);
   }
 
 

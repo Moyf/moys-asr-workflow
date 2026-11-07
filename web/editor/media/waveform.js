@@ -41,6 +41,7 @@ export function initWaveform() {
     storage: window.MaweHost.storage,
     gapRemoveCore: window.AsrGapRemoveCore,
     getSubtitleGroupValue: (segment, kind) => window.AsrEditorUtils.getSubtitleGroupValue(window.MaweBoot.DATA, segment, kind),
+    getSegmentDisplayColor: segment => window.AsrEditorUtils.effectiveSegmentColor(window.MaweBoot.DATA, segment),
     getLanguage: () => window.MAWE_I18N?.language,
   };
   Object.assign(helpers, createWaveformConstants(helpers));

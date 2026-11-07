@@ -1,4 +1,4 @@
-import { deleteOverlayCues, assignOverlayColor, clearOverlayColorOnTargets, mergeOverlayCues } from './overlay-track.js';
+import { deleteOverlayCues, getOverlayTrack, assignOverlayColor, clearOverlayColorOnTargets, mergeOverlayCues } from './overlay-track.js';
 
 export function initMaweEditShortcutsWiring() {
 'use strict';
@@ -290,10 +290,14 @@ document.addEventListener('keydown', (e) => {
   MaweStickerPicker.openStickerPicker(idxs, idxs.length > 1);
 });
 
-// 数字键 1~5：给选中字幕标记对应颜色（红黄蓝绿紫）；0：清除颜色。
+// 数字键使用当前工程的五/九色槽位；用途决定分配身份或普通分类色。
 document.addEventListener('keydown', (e) => {
-  if (!/^[0-5]$/.test(e.key)) return;
-  if (MaweInlineEdit.editingState || e.repeat) return;
+  if (!/^[0-9]$/.test(e.key)) return;
+  if (MaweDom.multiSubtitleSplitModal?.classList.contains('show')) return;
+  const slot = Number(e.key);
+  const color = slot ? MaweColors.ACTIVE_COLOR_PALETTE[slot - 1] : null;
+  if (slot && !color) return;
+  if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || e.repeat) return;
   const a = document.activeElement;
   if (a && (
     a.tagName === 'INPUT'
@@ -307,25 +311,20 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  if (MaweSelection.selectedIdxs.size === 0 && MaweState.selection.indices('overlay').size === 0) return;
+  const preferred = MaweCuePanel.getCurrentCuePanelTarget()?.kind;
+  if (preferred && !MaweState.selection.indices(preferred).size) return;
+  const kinds = [...new Set([preferred, 'overlay', 'extension', 'main'])].filter(Boolean);
+  const kind = kinds.find(value => MaweState.selection.indices(value).size);
+  if (!kind) return;
+  const track = kind === 'overlay' ? getOverlayTrack() : kind === 'extension'
+    ? MaweMultiSubtitleCore.getActiveExtensionTrack() : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+  const indices = [...MaweState.selection.indices(kind)].sort((a, b) => a - b);
+  if (!track) return;
   e.preventDefault();
-  if (MaweState.selection.indices('overlay').size > 0) {
-    const overlayIdxs = [...MaweState.selection.indices('overlay')].sort((x, y) => x - y);
-    if (e.key === '0') {
-      clearOverlayColorOnTargets(overlayIdxs);
-      return;
-    }
-    const overlayColor = MaweColors.COLOR_PALETTE[Number(e.key) - 1];
-    if (overlayColor) assignOverlayColor(overlayIdxs, overlayColor.name);
-    return;
-  }
-  const idxs = [...MaweSelection.selectedIdxs].sort((x, y) => x - y);
-  if (e.key === '0') {
-    MaweStickerPicker.clearColorOnTargets(idxs);
-    return;
-  }
-  const color = MaweColors.COLOR_PALETTE[Number(e.key) - 1];
-  if (color) MaweStickerPicker.assignColor(idxs, color.name);
+  if (kind === 'overlay') {
+    if (slot) assignOverlayColor(indices, color.name);
+    else clearOverlayColorOnTargets(indices);
+  } else MaweStickerPicker.assignTrackColor(track, indices, color?.name ?? null);
 });
 
 // Enter：聚焦最后点击的主/副字幕对应的字幕编辑区，并把光标置于末尾。

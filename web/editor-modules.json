@@ -402,6 +402,18 @@
       "exportName": "initMaweSearch"
     },
     {
+      "file": "editor/styles/editor-speaker-labels.js",
+      "kind": "init",
+      "name": "speaker-labels-init",
+      "exportName": "initMaweSpeakerLabels"
+    },
+    {
+      "file": "editor/styles/editor-speaker-manager.js",
+      "kind": "init",
+      "name": "speaker-manager-init",
+      "exportName": "initMaweSpeakerManager"
+    },
+    {
       "file": "editor/cues/editor-wiring-overlay-transfer.js",
       "kind": "init",
       "name": "overlay-transfer-wiring-init",

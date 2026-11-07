@@ -107,8 +107,10 @@ editor/cues/editor-cue-events.js
 editor/cues/editor-cue-list-anchor.js
 editor/cues/editor-timeline.js
 editor/styles/editor-speaker-labels.js
+editor/styles/editor-speaker-manager.js
 editor/ai/editor-ai-settings.js
 editor/ai/editor-ai-tasks.js
+editor/ai/editor-ai-preview.js
 editor/ai/editor-ai-text-tasks.js
 editor/ai/editor-ai-structure-tasks.js
 editor/boot/editor.js

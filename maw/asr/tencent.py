@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from maw.project_tracks import make_project
+from maw.speaker_identity import make_asr_project
 from maw.stickers import get_default_sticker_dir
 from maw.output_naming import debug_artifact_path, format_elapsed, format_maw_stat
 from maw.asr.common import (
@@ -47,7 +47,7 @@ def main() -> int:
     parser.add_argument("--keep-punct", action="store_true", help="保留字幕末尾标点")
     parser.add_argument("--gap-split", type=int, default=500, help="静音切句阈值（毫秒，默认 500）")
     parser.add_argument("--speaker", action="store_true", help="请求腾讯云说话人分离并保留 speaker 标签")
-    parser.add_argument("--speaker-colors", action="store_true", help="请求说话人分离并写入一次性的字幕颜色快照")
+    parser.add_argument("--speaker-colors", action="store_true", help="请求说话人分离并启用身份着色，超过五人时工程自动使用九色")
     parser.add_argument("--json", dest="json_out", action="store_true", help="同时输出 .mosp 工程")
     parser.add_argument("--with-waveform", action="store_true", help="在媒体旁生成 .quapeaks 波形缓存（不再写进工程文件）")
     parser.add_argument(
@@ -231,7 +231,7 @@ def main() -> int:
             str(result.get("text") or ""),
         )
         split_mode = split_mode_for_text(str(result.get("text") or ""), language)
-        project = make_project(
+        project = make_asr_project(
             segments,
             main_fields={
                 'language': language,
