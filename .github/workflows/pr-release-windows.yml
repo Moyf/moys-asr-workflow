@@ -357,14 +357,19 @@ jobs:
           if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
             throw 'Missing dist\MAW\MAW.exe after build.'
           }
-          $HelpProcess = Start-Process -FilePath $ExePath -ArgumentList '--help' -PassThru -WindowStyle Hidden
-          if ($HelpProcess.WaitForExit(10000)) {
-            if ($HelpProcess.ExitCode -ne 0) {
-              throw "MAW.exe launch smoke exited with $($HelpProcess.ExitCode)."
-            }
-          } else {
-            Stop-Process -Id $HelpProcess.Id -Force
-          }
+          uv run --no-sync python scripts/run_check.py --timeout 120 -- uv run --no-sync python scripts/packaging/smoke_editor.py $ExePath
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged editor startup smoke failed.' }
+
+      - name: Preserve packaged editor startup evidence
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-packaged-editor-startup
+          path: |
+            .artifacts/packaged-editor-smoke/
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Verify no FFmpeg is bundled
         if: ${{ needs.selection.outputs.light != 'true' }}

@@ -98,6 +98,28 @@ def _local_runtime_spec_entry(relative_path: str) -> str:
 
 
 class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
+    def test_png_editor_runtime_is_not_excluded_from_main_bundle(self) -> None:
+        tree = ast.parse(read_text("scripts/packaging/MAW.spec"))
+        excluded = next(
+            ast.literal_eval(node.value)
+            for node in tree.body if isinstance(node, ast.Assign)
+            if any(isinstance(target, ast.Name) and target.id == "excluded_local_modules"
+                   for target in node.targets)
+        )
+        self.assertNotIn("PIL", excluded)
+        # The dependency belongs to the base install as serve imports it before
+        # any export is requested, not only to build/dev or optional OCR groups.
+        project = tomllib.loads(read_text("pyproject.toml"))
+        self.assertIn("pillow>=10.3.0", project["project"]["dependencies"])
+
+    def test_windows_preview_starts_packaged_editor_instead_of_only_help(self) -> None:
+        workflow = read_text(".github/workflows/pr-release-windows.yml")
+        step = workflow.split("- name: Smoke MAW executable", 1)[1].split("- name:", 1)[0]
+        self.assertIn("scripts/packaging/smoke_editor.py $ExePath", step)
+        self.assertIn("--timeout 120", step)
+        self.assertIn("$LASTEXITCODE -ne 0", step)
+        self.assertNotIn("'--help'", step)
+
     def test_relocated_spec_resolves_repository_resources(self) -> None:
         tree = ast.parse(read_text("scripts/packaging/MAW.spec"))
         assignments = {
@@ -248,7 +270,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("MAW-lite", faq)
         self.assertIn("下载带内置 FFmpeg 的完整版 MAW 包", faq)
         self.assertIn("FAQ-常见问题.txt", spec)
-        for excluded_module in ("funasr", "qwen_asr", "onnxruntime", "PIL", "rapidocr", "torch", "torchaudio", "readline"):
+        for excluded_module in ("funasr", "qwen_asr", "onnxruntime", "rapidocr", "torch", "torchaudio", "readline"):
             self.assertIn(f'"{excluded_module}"', spec)
         self.assertIn('"maw.waveform"', spec)
         self.assertNotIn('"waveform",', spec)
@@ -370,7 +392,9 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         dependencies = set(project["project"]["dependencies"])
         ocr_dependencies = set(project["dependency-groups"]["ocr"])
         self.assertNotIn("onnxruntime>=1.18", dependencies)
-        self.assertNotIn("pillow>=10.0.0", dependencies)
+        # Pillow also serves the editor's transparent PNG export. It is shared
+        # with OCR, while inference engines remain in the optional runtime.
+        self.assertIn("pillow>=10.3.0", dependencies)
         self.assertNotIn("rapidocr>=3.9.0", dependencies)
         self.assertNotIn("numpy>=2.2,<2.5", dependencies)
         self.assertEqual(
