@@ -36,7 +36,10 @@ def request_for(alignment):
 class RecordingReviewTests(unittest.TestCase):
     def test_final_recording_preserves_consistent_source_speaker_color(self):
         from maw.project_tracks import make_project
+        from maw.ass_styles import ass_color
+        from maw.project_ass_export import render_project_ass
         from maw.speaker import apply_project_speaker_colors
+        from maw.speaker_export import speaker_display_color
         with tempfile.TemporaryDirectory() as directory:
             media = Path(directory) / "audio.wav"
             with wave.open(str(media), "wb") as audio:
@@ -45,18 +48,30 @@ class RecordingReviewTests(unittest.TestCase):
             raw = make_project([{**cue("你好世界", 0, 1000), "speaker": "speaker-1"}],
                                main_fields={"language": "zh", "model": "qwen3-asr"})
             apply_project_speaker_colors(raw)
-            original = copy.deepcopy(raw)
-            group = main_segments(raw)[0]["color_group_id"]
             identity = main_segments(raw)[0]["speaker"]
+            speaker = next(s for s in raw["speakers"] if s["id"] == identity)
+            speaker["color"] = "#123456"
+            original = copy.deepcopy(raw)
+            self.assertEqual(speaker_display_color(raw, main_segments(raw)[0], {}), "#123456")
             alignment = align_project_to_script(raw, "你好世界")
             backend = mock.Mock()
             backend.align.return_value = [TimedToken("你好世界", 100, 900)]
             with mock.patch("maw.script_recording_workflow._decode_recording_audio",
                             side_effect=lambda _project, src, dest, **_kwargs: shutil.copyfile(src, dest)):
                 output, _ = finalize_recording(raw, alignment, request_for(alignment), media, backend=backend)
-            self.assertEqual(main_segments(output)[0]["color_group_id"], group)
-            self.assertEqual(main_segments(output)[0]["speaker"], identity)
-            self.assertTrue(all("speaker" not in item for item in main_segments(output)[0]["items"]))
+            generated = next(c for c in main_segments(output) if c["id"].startswith("script-recording-"))
+            self.assertEqual(output["annotation_mode"], "speaker")
+            self.assertEqual(generated.get("speaker"), identity)
+            self.assertNotIn("color_group_id", generated)
+            self.assertEqual(speaker_display_color(output, generated, {}), "#123456")
+            self.assertTrue(all("speaker" not in item for item in generated["items"]))
+            ass = render_project_ass(output, title="Recording", play_resolution=(1920, 1080))
+            events = [line.removeprefix("Dialogue: ").split(",", 9) for line in ass.splitlines()
+                      if line.startswith("Dialogue: ") and "你好世界" in line]
+            self.assertEqual(len(events), 1)
+            styles = {fields[0]: fields for line in ass.splitlines() if line.startswith("Style: ")
+                      for fields in [line.removeprefix("Style: ").split(",")]}
+            self.assertEqual(styles[events[0][3]][3], ass_color("#123456"))
             self.assertEqual(raw, original)
 
     def test_multi_slice_recording_inherits_groups_and_segment_identity(self):
