@@ -18,8 +18,9 @@
 
   // 升序去重的合法下标；结构任务统一按此顺序处理。
   function normalizeTargets(targets = []) {
+    const segments = global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     return [...new Set(targets)]
-      .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length)
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < segments.length)
       .sort((a, b) => a - b);
   }
 
@@ -28,18 +29,19 @@
   function collectCues(targets, { withTime = false } = {}) {
     const cues = [];
     for (const index of normalizeTargets(targets)) {
-      const segment = MaweBoot.DATA.segments[index];
-      const text = String(segment?.text ?? '').trim();
-      if (!text) continue;
+      const segment = global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
+      const text = String(segment?.text ?? '');
+      if (!text.trim()) continue;
       let id = String(segment?.id ?? '').trim();
       if (!id) id = `idx-${index}`;
-      const cue = { id, index, text };
+      const cue = { id, segmentId: segment.id || null, segment, index, text };
       if (withTime) {
         const start = Number(segment?.start);
         const end = Number(segment?.end);
         if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
         cue.start = start;
         cue.end = end;
+        cue.itemsSnapshot = JSON.stringify(segment.items ?? null);
       }
       cues.push(cue);
     }
@@ -49,7 +51,19 @@
 
 
   function beginStructureTask(kind, payload) {
-    return MaweAiTasks.begin(kind, payload, STRUCT_TASK_LABELS[kind] || 'AI 结构任务');
+    const context = MaweAiTextTasks.captureTaskContext();
+    return MaweAiTasks.begin(kind, payload, STRUCT_TASK_LABELS[kind] || 'AI 结构任务').then(async (result) => {
+      if (!await MaweAiTextTasks.waitForTaskApply(context)) throw new Error('工程或媒体已切换，已丢弃本次 AI 结果');
+      return result;
+    });
+  }
+
+  function locateCue(cue) {
+    const segments = global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    const index = cue.segmentId
+      ? segments.findIndex((segment) => segment?.id === cue.segmentId)
+      : segments.indexOf(cue.segment);
+    return index < 0 ? null : { index, segment: segments[index] };
   }
 
 
@@ -71,17 +85,17 @@
       MaweHint.flashHint('选中的字幕缺少可合并的文本', 'invalid');
       return;
     }
-    const segmentsBefore = MaweBoot.DATA.segments.length;
-    const firstIdBefore = MaweBoot.DATA.segments[indexes[0]]?.id ?? null;
-    // 同步合并命令：不连续时内部已提示并直接返回，这里靠段数与首段 id 判别。
+    const segments = global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    const segmentsBefore = segments.length;
+    // 同步合并命令：不连续时内部已提示并直接返回。
     MaweSegmentOps.mergeSegments(indexes);
-    const mergedSegment = MaweBoot.DATA.segments[indexes[0]];
-    const shrank = MaweBoot.DATA.segments.length === segmentsBefore - (indexes.length - 1);
-    if (!shrank || !mergedSegment?.id || mergedSegment.id === firstIdBefore) {
+    const mergedSegment = segments[indexes[0]];
+    const shrank = segments.length === segmentsBefore - (indexes.length - 1);
+    if (!shrank || !mergedSegment?.id) {
       // 合并未发生（选择不连续等）；mergeSegments 已给出提示。
       return;
     }
-    const snapshot = { id: mergedSegment.id, index: indexes[0], text: String(mergedSegment.text ?? '') };
+    const snapshot = { id: mergedSegment.id, segmentId: mergedSegment.id, text: String(mergedSegment.text ?? '') };
     const lang = MaweAiTextTasks.detectTaskLang([{ text: snapshot.text }]);
     beginStructureTask('ai-smart-merge', {
       mergedId: snapshot.id,
@@ -99,7 +113,7 @@
   function applyMergedPolish(snapshot, result) {
     const polished = typeof result?.texts?.[snapshot.id] === 'string'
       ? result.texts[snapshot.id].trim() : '';
-    const segment = MaweBoot.DATA.segments[snapshot.index];
+    const segment = locateCue(snapshot)?.segment;
     if (!polished || !segment || segment.id !== snapshot.id || segment.text !== snapshot.text) {
       const reason = !polished ? '模型未返回结果' : '字幕已被修改';
       MaweHint.flashHint(`合并已完成；AI 润色未应用（${reason}，可撤销合并）`, 'warning');
@@ -113,11 +127,12 @@
       const previousText = segment.text;
       segment.text = polished;
       segment._dirty = true;
-      const staleWordTimings = window.AsrEditorUtils.planWordTimingTextSync(segment, previousText)?.warn ? 1 : 0;
+      const timing = global.AsrEditorUtils.planWordTimingTextSync(segment, previousText);
+      if (timing?.items) segment.items = timing.items;
       command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
       MaweHistory.updateUndoRedoButtons();
       MaweHint.flashHint('已应用 AI 合并润色', 'success');
-      if (staleWordTimings) {
+      if (timing?.warn) {
         MaweHint.flashHint('合并字幕的字词时间码文字未随文本更新，请按需检查', 'warning');
       }
     });
@@ -156,7 +171,10 @@
     if (first < 0 || text.indexOf(SPLIT_MARKER, first + 1) >= 0) return null;
     if (first <= 0 || first >= originalText.length) return null;
     if (text.slice(0, first) + text.slice(first + SPLIT_MARKER.length) !== originalText) return null;
-    return first;
+    // 单词型拆分核心把连续空白后的偏移作为断点；模型也常把标记放在空白前。
+    let offset = first;
+    while (offset < originalText.length && /\s/u.test(originalText[offset])) offset += 1;
+    return offset < originalText.length ? offset : null;
   }
 
 
@@ -170,11 +188,12 @@
     for (const cue of cues) {
       const marked = typeof texts[cue.id] === 'string' ? texts[cue.id] : '';
       if (!marked) { missing += 1; continue; }
-      const segment = MaweBoot.DATA.segments[cue.index];
+      const current = locateCue(cue);
+      const segment = current?.segment;
       if (!segment || segment.text !== cue.text) { stale += 1; continue; }
       const offset = parseSplitMarker(cue.text, marked);
       if (offset == null) { invalid += 1; continue; }
-      rows.push({ index: cue.index, segment, offset });
+      rows.push({ index: current.index, segment, offset });
     }
     // 预构建拆分对（纯读操作）：时长不足等非法切点在命令外剔除。
     const pairs = [];
@@ -206,7 +225,7 @@
       for (const row of [...pairs].sort((a, b) => b.index - a.index)) {
         const oldMainId = row.segment.id;
         if (oldMainId) MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], []);
-        MaweSplitCore.replaceSegmentWithSplit(MaweBoot.DATA.segments, row.index, row.pair);
+        MaweSplitCore.replaceSegmentWithSplit(global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, row.index, row.pair);
         touched.push(row.pair.left, row.pair.right);
       }
       MaweMultiSubtitleCore.markMainSegmentsDirty(touched);
@@ -264,10 +283,11 @@
     for (const cue of cues) {
       const items = Array.isArray(itemsById[cue.id]) ? itemsById[cue.id] : null;
       if (!items || !items.length) { missing += 1; continue; }
-      const segment = MaweBoot.DATA.segments[cue.index];
+      const segment = locateCue(cue)?.segment;
       // 文本或时间在任务期间变过的条目跳过：items 按提交时的范围生成。
       if (!segment || segment.text !== cue.text
-        || Number(segment.start) !== cue.start || Number(segment.end) !== cue.end) {
+        || Number(segment.start) !== cue.start || Number(segment.end) !== cue.end
+        || JSON.stringify(segment.items ?? null) !== cue.itemsSnapshot) {
         stale += 1;
         continue;
       }
@@ -278,6 +298,12 @@
       if (missing) notes.push(`${missing} 条对齐失败`);
       MaweHint.flashHint(`时间码→字词${skipHintSuffix(notes)}`, 'invalid');
       return;
+    }
+    const timedCount = rows.filter(({ segment }) => segment.items?.length).length;
+    if (timedCount) {
+      const message = global.MAWE_I18N?.translateText?.('将替换 {count} 条字幕已有的字词时间码。是否继续？')
+        || '将替换 {count} 条字幕已有的字词时间码。是否继续？';
+      if (!global.confirm(message.replace('{count}', String(timedCount)))) return;
     }
     MaweCommands.run('时间码→字词', (command) => {
       rows.forEach(({ segment, items }) => {

@@ -103,6 +103,7 @@ interface ProjectOverlayTrack {
 interface ProjectData {
   schema: 'moy.asr.project.v2';
   tracks: ProjectTrack[];
+  styles?: Array<Record<string, unknown>>;
   bindings: ProjectBinding[];
   bilingual: { display_mode: string; active_track_id?: string };
   subtitle_groups?: {
@@ -211,6 +212,7 @@ declare const activeExtensionSegments: any;
 interface Window {
   MaweExportContext: any;
   MaweCuePanelWiring: any;
+  MaweSpeakerLabels: any;
   MaweOverlaySplitMerge: any;
   MaweAssStorageWiring: any;
   MaweAssManagerWiring: any;
@@ -257,6 +259,8 @@ declare var MaweHost: MaweHostApi;
 interface Window { MaweHost: MaweHostApi; }
 
 type SelectionTrack = 'main' | 'extension' | 'overlay';
+interface CueRef { track_id: string; segment_id: string; }
+interface SelectionSnapshot { refs: CueRef[]; current: CueRef | null; anchors: Record<SelectionTrack, CueRef | null>; }
 interface SelectionIndices extends Iterable<number> {
   readonly size: number;
   has(index: number): boolean;
@@ -270,7 +274,16 @@ interface MaweStateApi {
   readonly selection: {
     mainAnchor: number; extensionAnchor: number; overlayAnchor: number;
     indices(kind: SelectionTrack): SelectionIndices;
-    add(kind: SelectionTrack, index: number): void;
+    add(kind: SelectionTrack, index: number, options?: { activate?: boolean }): void;
+    addRef(ref: CueRef, options?: { activate?: boolean }): void;
+    activateRef(ref: CueRef): void;
+    removeRef(ref: CueRef): boolean;
+    replaceRefs(refs: Iterable<CueRef>, active?: CueRef | null): void;
+    getSelectedCueRefs(): CueRef[];
+    getCurrentCueRef(): CueRef | null;
+    getCurrentTrack(): ProjectTrack | null;
+    snapshot(): SelectionSnapshot;
+    restore(snapshot: SelectionSnapshot): void;
     remove(kind: SelectionTrack, index: number): boolean;
     clear(kind: SelectionTrack): void;
     replace(kind: SelectionTrack, indices: Iterable<number>): void;

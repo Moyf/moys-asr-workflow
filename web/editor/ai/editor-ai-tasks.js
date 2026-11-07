@@ -273,7 +273,7 @@
     });
     addEntry('翻译为副字幕…', textTask('ai-translate'), {
       disabled: !hasTargets,
-      hint: 'AI 翻译选中字幕并写入副字幕轨；未开启双语时自动开启',
+      hint: '优先按副轨的中英文语言翻译；否则中日韩译英文，其他译中文。可自定义提示词',
     });
     addEntry('Emoji 点缀…', textTask('ai-emoji'), {
       disabled: !hasTargets,

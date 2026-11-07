@@ -13,6 +13,10 @@
 
 
   function applySpeakerLabelInput(color, { finalize = false } = {}) {
+    if (MaweBoot.DATA.annotation_mode === 'speaker') {
+      MaweHint.flashHint('当前工程使用独立说话人身份，不能通过旧颜色姓名映射改名。', 'warning');
+      return false;
+    }
     const input = MaweDom.subtitleSpeakerLabelInputs[color];
     if (!input) return;
     if (!speakerLabelUndoColors.has(color)) {
@@ -73,6 +77,10 @@
       MaweDom.subtitleSpeakerLabelsSettings.hidden = !mappingEnabled;
     }
     Object.entries(MaweDom.subtitleSpeakerLabelInputs).forEach(([color, input]) => {
+      if (input) {
+        input.disabled = MaweBoot.DATA.annotation_mode === 'speaker';
+        input.title = input.disabled ? '当前工程使用独立说话人身份，旧颜色姓名映射不适用' : '';
+      }
       if (input && document.activeElement !== input) input.value = settings.names[color] || '';
     });
     if (MaweDom.subtitleSpeakerLabelSeparatorInput && document.activeElement !== MaweDom.subtitleSpeakerLabelSeparatorInput) {
@@ -127,7 +135,37 @@
       : text;
   }
 
+  function assignIdentity(refs, identity) {
+    return MaweCommands.run('分配说话人', () => window.AsrEditorUtils.assignProjectSpeaker(MaweBoot.DATA, refs, identity),
+      { invalidate: { cueList: true, waveform: 'full', preview: 'update' } });
+  }
+
+  function mergeIdentities(sourceIds, targetId) {
+    return MaweCommands.run('合并说话人身份', () => window.AsrEditorUtils.mergeProjectSpeakers(MaweBoot.DATA, sourceIds, targetId),
+      { invalidate: { cueList: true, waveform: 'full', preview: 'update' } });
+  }
+
+  function assignFromColorShortcut(track, indices, colorName) {
+    if (MaweBoot.DATA.annotation_mode !== 'speaker') return false;
+    const refs = [...new Set(indices)].filter(index => track?.segments[index])
+      .map(index => ({ track_id: track.id, segment_id: track.segments[index].id }));
+    if (!refs.length) return true;
+    if (colorName === null) { assignIdentity(refs, null); return true; }
+    const slot = ['yellow', 'green', 'red', 'purple', 'blue', 'orange', 'cyan', 'magenta', 'gray'].indexOf(colorName) + 1;
+    const identity = MaweBoot.DATA.speaker_shortcuts?.[String(slot)];
+    if (!identity) {
+      MaweHint.flashHint('此槽位尚未绑定说话人；身份管理与空槽创建入口将在后续版本提供。', 'warning');
+      return true;
+    }
+    assignIdentity(refs, identity);
+    return true;
+  }
+
   global.MaweSpeakerLabels = Object.freeze({
+    assignIdentity,
+    clearIdentity: refs => assignIdentity(refs, null),
+    mergeIdentities,
+    assignFromColorShortcut,
     subtitleExportText,
     speakerLabelUndoColors,
     get speakerLabelSeparatorUndo() { return speakerLabelSeparatorUndo; },

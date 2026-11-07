@@ -219,6 +219,15 @@ class EditorAiHandlerTests(_EditorAiTaskTestBase):
         handler.read_json_request = mock.Mock(return_value=request)
         return handler
 
+    def test_task_poll_sends_only_one_response(self) -> None:
+        handler = self._handler({})
+        handler.path = "/api/ai/tasks"
+        handler.server.ai_tasks.snapshot.return_value = {"ok": True, "tasks": []}
+        handler.send_localized_error = mock.Mock()
+        handler.handle_request(include_body=True)
+        handler.send_json.assert_called_once_with(200, {"ok": True, "tasks": []})
+        handler.send_localized_error.assert_not_called()
+
     def test_update_ai_settings_requires_token(self) -> None:
         handler = self._handler({"requestToken": "wrong", "providerId": "deepseek"})
         handler.update_ai_settings()
@@ -411,7 +420,8 @@ class EditorAiStructureTaskTests(_EditorAiTaskTestBase):
             captured["settings"] = settings
             captured["prompt"] = prompt
             captured["cues"] = cues
-            return {"groups": [{"source_ids": [cues[0]["id"]], "text": "缝合结果"}]}
+            text = "Hello World" if kind == "ai-smart-merge" else "缝合结果"
+            return {"groups": [{"source_ids": [cues[0]["id"]], "text": text}]}
 
         with mock.patch("maw.postprocess_llm.complete_subtitle_groups", fake_complete):
             manager = editor_ai.AiTaskManager(self.env_path)
@@ -428,13 +438,26 @@ class EditorAiStructureTaskTests(_EditorAiTaskTestBase):
             "lang": "en",
         })
         self.assertEqual(final["status"], "done")
-        self.assertEqual(final["result"], {"texts": {"m1": "缝合结果"}})
+        self.assertEqual(final["result"], {"texts": {"m1": "Hello World"}})
         self.assertIn("Original subtitles in order:", captured["prompt"])
         self.assertIn("1. Hello", captured["prompt"])
         self.assertIn("2. World", captured["prompt"])
         self.assertIn("HelloWorld", captured["prompt"])
         # cues 负载只携带合并后的单条字幕。
         self.assertEqual(captured["cues"], [{"id": "m1", "text": "HelloWorld"}])
+
+    def test_smart_merge_keeps_original_when_model_rewrites_words(self) -> None:
+        self._write_custom_slot()
+        payload = {"mergedId": "m1", "mergedText": "HelloWorld", "parts": ["Hello", "World"], "lang": "en"}
+        with mock.patch("maw.postprocess_llm.complete_subtitle_groups", return_value={
+            "groups": [{"source_ids": ["m1"], "text": "Hello there"}],
+        }):
+            manager = editor_ai.AiTaskManager(self.env_path)
+            snapshot = manager.submit("ai-smart-merge", payload)
+            self.assertTrue(manager.wait_until_idle())
+            final = manager.snapshot(snapshot["id"])
+        self.assertEqual(final["status"], "error")
+        self.assertIn("已保留普通合并结果", final["error"])
 
     def test_smart_merge_rejects_missing_parts_and_merged_text(self) -> None:
         self._write_custom_slot()

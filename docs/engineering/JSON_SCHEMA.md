@@ -40,6 +40,7 @@
 | `tracks` | 必填数组；恰好一条 main，至多一条 secondary 和一条 overlay；数组顺序不决定角色。旧工程有多条副轨时拒绝迁移，不丢弃数据 |
 | `tracks[*].id` | 工程内唯一的非空字符串，最多 160 个 Unicode 码点；角色交换不更改轨道 ID |
 | `role` / `name` / `enabled` / `segments` | 所有轨道共同字段。role 为 `main`、`secondary` 或 `overlay`；main 必须启用。关闭轨道不删除内容或关系 |
+| `preview_visible` / `export.enabled` / `variant` | 可选；预览与导出开关缺失时均视为开启，`variant` 缺失时为 `plain`。关闭轨道同时关闭预览和导出；关闭任一开关不删除轨道数据。未知叠加轨类型保留但不预览，选中导出时明确报错 |
 | 轨道来源元数据 | `language`、`language_source`、`split_mode`、`timestamp_granularity`、`model`、`preserve_punctuation`、`source_name` 跟随具体轨；`split_mode_override` 保留旧主轨手动覆盖 |
 | cue ID 与时间 | cue ID 跨轨唯一；start/end 和 items 使用源媒体整数毫秒。允许合法零时长标点 item，cue 本身须 start < end |
 | `bilingual` | 双语显示配置；`active_track_id` 指向副轨。`display_mode` 的 `extension` 是显示选项，不是轨道角色 |
@@ -69,6 +70,29 @@ v1 的轨内合法 ID 保留；跨轨重名和缺失 ID 确定性分配并更新
 ### 导入边界与修复报告
 
 Python `maw.project_boundary.prepare_project` 与浏览器 `MaweProjectValidation.prepareProject` 返回 `ok/errors/project/changes`。错误含 JSON 路径；失败时 `project` 为 null，`changes` 为空。成功时 changes 记录实际差异，再次导入规范化结果不产生新差异。可用 `python -m maw.project_boundary project.mosp` 只读检查；加 `--strict` 禁止时间修复。该命令不写源文件。共享语料见 `tests/fixtures/project-boundary.json`。
+
+## v2 说话人身份核心
+
+说话人身份与普通颜色组分开。规范工程保存 `speakers` 表，字幕的 `speaker` 引用表内稳定 ID；`null` 或缺失表示未分配。同名、同色不表示同一个人。分配、清除及身份合并不改 items，规范 items 不含 `speaker`。下文 v1 的供应商标签只适用于历史输入。
+
+| 字段 | 规则 |
+| --- | --- |
+| `speakers` | 数组；成员含唯一 `id`、`name`、`color`。ID 最多 160 个 Unicode 码点，无首尾空白或控制字符；名称最多 64 码点，无控制字符；颜色为六位 HEX。允许同名同色 |
+| `annotation_mode` | `color` 或 `speaker`，缺失默认 `color`；切换用途不重写字幕身份或普通颜色组 |
+| `palette_size` | `5` 或 `9`，缺失默认 `5`；收起后仍保留 6–9 槽、身份和色值。核心登记不按人数自动扩色 |
+| `speaker_shortcuts` | `1`–`9` 到现有身份 ID 的映射；0 不入表，表示清除操作 |
+
+默认五色不变；扩展显示色预留为橙 `#f2a65a`、青 `#49c5c1`、紫红 `#d675b9`、灰 `#969fab`。这些持久化字段和核心接口不代表九色界面或 ASR 自动扩展已经完成。
+
+v1、v1.5 及不带身份表的早期 v2 在读取时升级。段级供应商 ID 登记为项目身份；只有 items 有一致身份时收敛到段级；多个字词身份按已有换人边界拆段，保留原文、时间、帧字段、组引用及扩展。没有可靠正文或边界时沿用普通输入校验错误，不补造数据。已有身份表的 v2 严格读取，清除后不从旧颜色或 items 恢复身份。
+
+拆段首段保留旧 cue ID，新 ID 有界且避碰撞。绑定双方按相同绝对切点拆分时重新建立一对一绑定；单边拆分或切点不匹配时，沿用独立拆分规则解除该绑定，保留全部字幕与组，并在导入变化报告中说明。以上旧格式／早期 v2 升级首次必须另存；取消、自动保存或备份不得覆盖原件。
+
+跨工程导入为副字幕时，仅复制所用身份并分配新的目标 ID；同 ID、同名或同色都不会跨工程自动认同为一人。导入、身份分配／清除／合并连同四个根字段一起撤销。新身份工程拒绝缺表的保存请求；服务器接管浏览器副本时同时比较身份表与设置。
+
+手动合并、自动合并及 AI 分组只允许各自受影响轨道内的身份一致；已分配与未分配混合也拒绝。独立身份模式下，已有绑定槽位的旧色块／0 键调用身份分配／清除；未绑定槽位明确提示功能尚未开放，不改普通颜色。旧颜色姓名编辑在此模式禁用；JavaScript 姓名前缀读取身份表。基础 Python ASS 尚不支持身份姓名，请求该能力会明确报错；无姓名输出仍可用。
+
+完整身份管理、九色 UI、ASR 自动扩色、筛选和完整预览／导出呈现属于后续功能，按 [说话人核心交付边界](../plans/SPEAKER_IDENTITY_CORE_PLAN.md) 接续。
 
 ## v1.5 独立颜色 / 表情包组
 
@@ -753,7 +777,7 @@ v1 输入的 `multi_subtitle` 是可选双语结构；v2 将副轨迁移为 `sec
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
 | `disabled` | `bool` | 否 | 禁用该字幕；预览、隐藏禁用项和默认导出会跳过它 |
 | `assStyle` | `object` | 否 | 主、副或叠加字幕的独立 ASS 样式快照；缺省继承当前默认样式，不依赖外部样式库 |
-| `assOverride` | `object` | 否 | 主字幕/叠加字幕逐句 ASS 覆盖：可独立保存 PlayRes 坐标与整体缩放；见下方契约 |
+| `assOverride` | `object` | 否 | 主、副和叠加字幕的逐句 ASS 覆盖：可独立保存 PlayRes 坐标与整体缩放；见下方契约 |
 | `speaker` | `string` | 否 | 说话人标签（非空字符串）。保存供应商返回的 opaque ID（如 Soniox 的 `"1"`/`"2"`），不转换为整数或姓名。仅当该段所有带语音 items 都是同一 speaker 时才写入；缺少该字段的旧工程继续有效 |
 | `sticker` | `object\|null` | 否 | 表情包 head 信息。见第四节 |
 | `sticker_ref` | `object\|null` | 否 | 引用上方 head 的表情包（跨多句用） |
@@ -763,14 +787,14 @@ v1 输入的 `multi_subtitle` 是可选双语结构；v2 将副轨迁移为 `sec
 
 ### 逐句 ASS 定位与缩放（可选）
 
-主字幕与叠加字幕（`overlay_track.segments`）segment 可独立保存大小和位置，例如 `"assOverride": { "scale": 1.22, "pos": { "x": 1720, "y": 180 } }`。两个字段都可以单独省略。
+主、副和叠加字幕的 segment 可独立保存大小和位置，例如 `"assOverride": { "scale": 1.22, "pos": { "x": 1720, "y": 180 } }`。两个字段都可以单独省略。手动定位字幕位于自动排布字幕之上；已有副字幕的覆盖值也会生效。
 
 - `scale` 是整体缩放倍率，范围 `0.10–5.00`，归一化到两位小数；`1.00` 是默认值并省略。它统一缩放字体、句内相对字号、字距、描边、阴影和字号动画目标。只设置 `scale` 不创建 `pos`，字幕继续参与全局自动排布、避碰与整体适配。
 - `pos` 存储当前 ASS `PlayResX / PlayResY` 画布坐标，必须同时包含有限数字 `x` 和 `y`；允许历史工程中的小数、负值与画布外位置。编辑器显示坐标为整数，新输入、方向键微调和拖动保存时四舍五入到整数；读取旧小数或只改大小时不自动改写坐标。显式 `pos` 优先于方案 `move` 与自动排布，该句导出为固定 `\pos` 事件，不参与自动组平移或避碰。
 - 逐句不保存 `an`；文字块附着点由该句有效 ASS 样式的 alignment 规定，拖动、缩放、预览与导出始终共用该锚点。震动叠加时保存基准坐标，不包含瞬时抖动偏移。
-- 重置大小只清除 `scale`，重置定位只清除 `pos`；未设置对应字段时，相应控件隐藏。选择或原地点选不写位置覆盖。
+- 重置大小只清除 `scale`，重置定位只清除 `pos`；未设置位置时隐藏定位控件，副字幕与叠加字幕选中后仍显示倍率入口。选择或原地点选不写位置覆盖。
 - 不存在或空对象表示样式默认；规范化与保存不写空对象。非数字、非有限或超范围的倍率、非法坐标、缺少任一坐标或逐句 `an` 被拒绝。普通预览和 SRT 不消费该字段。
-- 拆分（包括复制/渐进拆分）两端各自深拷贝原覆盖；合并取时间顺序中最左句的完整覆盖，左句没有覆盖时合并结果也没有覆盖。复制/历史记录不得共享嵌套 `pos` 对象。主副/主叠换轨保留元数据：叠加字幕应用逐句定位与缩放，副字幕（extension）仍不应用；换回主轨后继续生效。
+- 拆分（包括复制/渐进拆分）两端各自深拷贝原覆盖；合并取时间顺序中最左句的完整覆盖，左句没有覆盖时合并结果也没有覆盖。复制/历史记录不得共享嵌套 `pos` 对象。主副/主叠换轨保留元数据，各轨均应用逐句定位与缩放。
 
 ### 关键约束
 
@@ -1027,7 +1051,7 @@ uv run --no-sync python server-editor/serve.py your_generated.mosp
 | `segments[i].items[k].start_frame` | int | ❌ | 帧编号，与 `end_frame` 成对 |
 | `segments[i].items[k].end_frame` | int | ❌ | 帧编号，与 `start_frame` 成对 |
 | `segments[i].items[k].speaker` | string | ❌ | 说话人 opaque ID |
-| `segments[i].assOverride` | object | ❌ | 可选主字幕/叠加字幕 ASS 覆盖：`scale` 为 0.10–5.00 的两位倍率，`pos` 为有限 PlayRes x/y 坐标，字段独立且使用该句有效样式锚点；空对象归一化为省略。副字幕（extension）不应用该字段 |
+| `segments[i].assOverride` | object | ❌ | 可选逐句 ASS 覆盖：`scale` 为 0.10–5.00 的两位倍率，`pos` 为有限 PlayRes x/y 坐标，字段独立且使用该句有效样式锚点；空对象归一化为省略。主、副和叠加字幕均应用该字段 |
 | `segments[i].assStyle` | object | ❌ | 单句 ASS 样式快照；主、副和叠加字幕可保存，缺省使用对应默认样式 |
 | `segments[i].speaker` | string | ❌ | 段内统一说话人才写入 |
 | `segments[i].sticker` | object\|null | ❌ | 表情包 head |

@@ -29,13 +29,14 @@
 
 
   function buildResolveJson() {
-    const groupStickers = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true })
+    const groupStickers = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { trackIds: window.AsrEditorUtils.TrackPolicy.selectTracks(MaweBoot.DATA, 'all', 'export').map(track => track.id) })
       .filter(range => range.enabled).map(range => ({
         ...window.AsrEditorUtils.cloneJsonValue(range.source),
         group_id: range.id, start_ms: range.start, end_ms: range.end,
         abs_path: MaweSelection.stickerAbsPath(range.source),
       }));
-    const segments = MaweExportSrt.cleanupMainSegments().map((seg, idx) => {
+    const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const segments = (window.AsrEditorUtils.TrackPolicy.isTrackEnabled(main, 'export') ? MaweExportSrt.cleanupMainSegments() : []).map((seg, idx) => {
       const groupSticker = !seg.disabled
         ? window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, seg, 'sticker') : null;
       const sticker = groupSticker ? { ...groupSticker, start: seg.start, end: seg.end } : null;
@@ -167,6 +168,8 @@
   const clipEndFrame = msToOtioFrames(intervalEndMs);
   if (clipEndFrame <= clipStartFrame) return [];
 
+  if (segments === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments
+      && !window.AsrEditorUtils.TrackPolicy.isTrackEnabled(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'export')) return [];
   return segments.flatMap((segment) => {
     if (!segment || segment.disabled) return [];
     const segmentStartMs = Number(segment.start);
@@ -446,7 +449,7 @@
   }
   // 叠加轨独立导出：字幕以「叠加字幕」标记轨写入（与主轨 clip 标记分开），
   // 表情包在「叠加表情」视频轨（与主轨表情包轨分开）；轨道为空时静默跳过。
-  const overlaySegments = window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.enabled === true
+  const overlaySegments = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA), 'export')
     ? (window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments || []) : [];
   if (overlaySegments.length) {
     if (includeSubtitleMarkers) {
@@ -564,7 +567,9 @@
   // 表情包必须有真实磁盘路径（服务器 OTIO/OTIOZ 均按 sticker_rel 读盘）。
   function collectStickerOtioEntries(removed, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, { allGroups = false } = {}) {
   const role = segments === window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments ? 'overlay' : 'main';
-  segments = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true })
+  const selectedTrack = role === 'overlay' ? window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+  if (!allGroups && !window.AsrEditorUtils.TrackPolicy.isTrackEnabled(selectedTrack, 'export')) return { entries: [] };
+  segments = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { trackIds: window.AsrEditorUtils.TrackPolicy.selectTracks(MaweBoot.DATA, 'all', 'export').map(track => track.id) })
     .filter(range => range.enabled && (allGroups || range.track === role))
     .map(range => ({ start: range.start, end: range.end, sticker: range.source }));
   const entries = [];

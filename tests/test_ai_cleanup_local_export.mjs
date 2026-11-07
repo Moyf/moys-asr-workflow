@@ -12,6 +12,25 @@ const source = () => ({ id: 'main-001', start: 0, end: 2000, text: '啊，我这
 const localGap = () => ({ detector: 'audio_gate', provenance: { sources: { ai_cleanup: [{ start: 0, end: 770,
   cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 2, text: '啊，我这……' } }] } } });
 
+test('swapped legacy identity upgrade keeps authorized secondary cleanup in real exports', () => {
+  const { context, utils, srt, main } = runtime();
+  const project = context.MaweBoot.DATA;
+  delete project.speakers; delete project.speaker_shortcuts;
+  main[0].items[0].speaker = 'one';
+  main[0].items[1].speaker = 'two';
+  main[0].items[2].speaker = 'two';
+  assert.equal(utils.swapMainAndExtensionSubtitle(project).swapped, true);
+  Object.assign(project, utils.importProject(plain(project)).project);
+  context.activeExtensionSegments = () => utils.getExtensionTrack(project)?.segments || [];
+  context.window.MaweExportContext.mergedExportSegments = () => ({ segments: utils.getMainTrack(project).segments,
+    overlaySet: new Set(), overlaySegments: [] });
+  for (const output of [srt.buildExtensionSrt(), srt.buildBilingualSrt(), srt.buildAss()]) {
+    assert.match(output, /我这个功能呢/);
+    assert.doesNotMatch(output, /啊，|我这……/);
+  }
+  assert.equal(utils.getMainTrack(project).segments[0].text, 'translated body');
+});
+
 test('ASS cache retains raw identity but invalidates equal-text selections with different item boundaries', () => {
   const script = initModuleSource('editor/styles/editor-wiring-ass-preview.js');
   const start = script.indexOf('const assStackCueSnapshots =');
@@ -41,6 +60,7 @@ function runtime() {
   const extension = [{ id: 'ext-001', start: 0, end: 2000, text: 'translated body' }];
   const overlay = [{ id: 'overlay-001', start: 0, end: 2000, text: 'overlay untouched' }];
   const project = runtimeProject(main, { overlay: { segments: overlay }, extensions: [{ id: 'extension', segments: extension }],
+    speakers: [], annotation_mode: 'color', palette_size: 5, speaker_shortcuts: {},
     gap_remove: localGap(), media: 'synthetic.mp4', waveform: { duration_ms: 2000 } });
   Object.assign(context, {
     ASS_STYLE_LIBRARY: {},
@@ -313,7 +333,8 @@ test('production ordinary/gap SRT and ASS builders remove local words while inde
 test('burn subtitles can retain media cue timing while file export extends the first cue', () => {
   const { context, srt, main } = runtime();
   context.window.MaweExportContext.mergedExportSegments = () => ({ segments: main, overlaySet: new Set(), overlaySegments: [] });
-  context.activeExtensionSegments = () => [];
+  context.window.AsrEditorUtils.getExtensionTrack(context.MaweBoot.DATA).enabled = false;
+  context.window.AsrEditorUtils.getOverlayTrack(context.MaweBoot.DATA).enabled = false;
   context.MaweSettings.EDITOR_SETTINGS.exportStartAtZero = true;
   const ordinaryFile = srt.buildSrt();
   const ordinaryBurn = srt.buildSrt({ alignFirstStart: false });
@@ -385,4 +406,30 @@ test('source/gap OTIO subtitle marker names and FCP/XML plans use exact retained
     assert.doesNotMatch(artifact.content, /我这……/);
   }
   assert.equal(main[0].text, source().text);
+});
+
+test('unsupported selected overlay blocks SRT and ASS, but disabled overlay and preview remain usable', () => {
+  const { context, utils, srt } = runtime();
+  const overlay = utils.getOverlayTrack(context.MaweBoot.DATA);
+  context.window.MaweExportContext.mergedExportSegments = () => {
+    const overlaySegments = utils.TrackPolicy.isTrackEnabled(overlay, 'export') ? overlay.segments : [];
+    return { segments: [...utils.getMainTrack(context.MaweBoot.DATA).segments, ...overlaySegments], overlaySet: new Set(overlaySegments), overlaySegments };
+  };
+  overlay.variant = 'future';
+  overlay.preview_visible = false;
+  for (const build of [() => srt.buildSrt(), () => srt.buildAss(), () => srt.buildGapRemovedSrt(), () => srt.buildGapRemovedAss()]) {
+    assert.throws(build, /不支持导出叠加轨.*future/);
+  }
+  assert.doesNotThrow(() => srt.buildAss({ preview: true }));
+  for (const disable of ['enabled', 'export']) {
+    overlay.enabled = true;
+    overlay.export = { enabled: true };
+    if (disable === 'enabled') overlay.enabled = false;
+    else overlay.export.enabled = false;
+    assert.match(srt.buildSrt(), /我这个功能呢/);
+    assert.doesNotMatch(srt.buildSrt(), /overlay untouched/);
+    assert.match(srt.buildAss(), /Dialogue:/);
+    assert.doesNotMatch(srt.buildAss(), /overlay untouched/);
+    assert.equal(overlay.variant, 'future');
+  }
 });

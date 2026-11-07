@@ -1557,3 +1557,26 @@ test('keeps overlay cue and boundary drags realtime while badge-bearing cues exi
 
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
+test('unknown overlay variant warns instead of silently downloading SRT or ASS', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(String(error)));
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  await dropProject(page, {
+    segments: [{ id: 'main-1', start: 0, end: 1000, text: 'main cue' }],
+    overlay_track: { enabled: true, segments: [{ id: 'overlay-1', start: 0, end: 1000, text: 'overlay cue' }] },
+    waveform: generateWaveformPayload(2000),
+  });
+  await expect.poll(() => page.evaluate(() => Boolean(window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)))).toBe(true);
+  await page.evaluate(() => { window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).variant = 'future'; });
+  for (const id of ['download-full-srt', 'download-full-ass']) {
+    await page.evaluate(id => document.getElementById(id).click(), id);
+    await expect(page.locator('.hint-card').last()).toContainText('不支持导出叠加轨');
+    expect(await page.evaluate(() => window.__overlayTrackExports.length)).toBe(0);
+  }
+  await page.evaluate(() => { window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA).export = { enabled: false }; });
+  await page.evaluate(() => document.getElementById('download-full-srt').click());
+  await expect.poll(() => page.evaluate(() => window.__overlayTrackExports.length)).toBe(1);
+  expect(await page.evaluate(() => window.__overlayTrackExports[0].content)).toContain('main cue');
+  expect(errors).toEqual([]);
+});

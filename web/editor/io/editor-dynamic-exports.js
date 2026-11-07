@@ -1,5 +1,3 @@
-import { overlayTrackVisible } from '../cues/overlay-track.js';
-
 export function initMaweDynamicExports() {
 'use strict';
 
@@ -22,8 +20,8 @@ export function initMaweDynamicExports() {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   MaweCuePanel.commitCuePanelEdit();
-  const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
-  const overlayAvailable = overlayTrackVisible();
+  const extensionAvailable = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
+  const overlayAvailable = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA), 'export');
   const extensionOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="main_and_extension"]');
   extensionOption.disabled = !extensionAvailable;
   const overlayOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="overlay"]');
@@ -58,6 +56,13 @@ export function initMaweDynamicExports() {
         nativeTextObjects: MaweDom.fcp7ExportNativeText.checked,
         baseName: MaweBoot.FILENAME_BASE,
       });
+      // FCP exports overlay stickers even when its text-track choice is main only.
+      const overlay = window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
+      const includesOverlayText = options.nativeTextObjects && ['overlay', 'all'].includes(options.subtitleTracks);
+      const includesOverlayStickers = overlay?.segments?.some(segment => segment.sticker_group_id);
+      if (includesOverlayText || includesOverlayStickers) {
+        window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'overlay');
+      }
       const plan = window.AsrEditorUtils.buildProjectExportPlan(MaweBoot.DATA, {
         ...options,
         ...MaweSpeakerLabels.speakerLabelExportOptions(),
@@ -131,7 +136,7 @@ export function initMaweDynamicExports() {
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   MaweCuePanel.commitCuePanelEdit();
   const extensionOption = MaweDom.lottieExportTrack?.querySelector('option[value="extension"]');
-  const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
+  const extensionAvailable = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
   if (!extensionAvailable && MaweDom.lottieExportTrack) MaweDom.lottieExportTrack.value = 'main';
   window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
@@ -154,8 +159,8 @@ export function initMaweDynamicExports() {
     MaweDom.lottieExportConfirm.disabled = true;
     try {
       const extension = MaweDom.lottieExportTrack?.value === 'extension';
-      const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
-      const sourceSegments = extension ? track?.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+      const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      const sourceSegments = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(track, 'export') ? track.segments : [];
       if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
         !segment?.disabled && String(segment?.text || '').trim()
       ))) {
@@ -253,7 +258,7 @@ export function initMaweDynamicExports() {
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   MaweCuePanel.commitCuePanelEdit();
   const extensionOption = MaweDom.ografExportTrack?.querySelector('option[value="extension"]');
-  const extensionAvailable = Boolean(MaweMultiSubtitleCore.getActiveExtensionTrack());
+  const extensionAvailable = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
   if (!extensionAvailable && MaweDom.ografExportTrack) MaweDom.ografExportTrack.value = 'main';
   window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
@@ -276,8 +281,8 @@ export function initMaweDynamicExports() {
     MaweDom.ografExportConfirm.disabled = true;
     try {
       const extension = MaweDom.ografExportTrack?.value === 'extension';
-      const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
-      const sourceSegments = extension ? track?.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+      const track = extension ? MaweMultiSubtitleCore.getActiveExtensionTrack() : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      const sourceSegments = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(track, 'export') ? track.segments : [];
       if (!Array.isArray(sourceSegments) || !sourceSegments.some((segment) => (
         !segment?.disabled && String(segment?.text || '').trim()
       ))) {

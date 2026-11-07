@@ -1,8 +1,10 @@
+import { TrackPolicy } from './utils/track-policy.js';
 // Compatibility facade: initialize domain factories once and retain the
 // historical API. ESM init module: the assembler calls this at the
 // file's original manifest position.
 import { createUtilsModule as createDataModule } from './utils/data.js';
 import { createUtilsModule as createProjectTracksModule } from './utils/project-tracks.js';
+import * as speakerIdentity from './utils/speaker-identity.js';
 import { createUtilsModule as createSubtitleGroupsModule } from './utils/subtitle-groups.js';
 import { createUtilsModule as createMarkersModule } from './utils/markers.js';
 import { createUtilsModule as createSplitAlignmentModule } from './utils/split-alignment.js';
@@ -44,12 +46,14 @@ export function initEditorUtils() {
 
 const trackHelpers = window.MAWE.resolve('project-tracks');
 const helpers = {
+  TrackPolicy,
   gapRemoveCore: window.AsrGapRemoveCore,
   getNavigator: () => window.MaweHost.runtime.getNavigator(),
   getProject: () => window.MaweBoot?.DATA,
 };
 const projectTracksHelpers = createProjectTracksModule(helpers);
 Object.assign(helpers, projectTracksHelpers);
+Object.assign(helpers, speakerIdentity);
 Object.assign(helpers, createDataModule(helpers));
 const subtitleGroupHelpers = createSubtitleGroupsModule(helpers);
 Object.assign(helpers, subtitleGroupHelpers);
@@ -362,6 +366,8 @@ const {
   previewGeometryToCss,
   readBwfTimeReferenceFromFile,
   rebuildBindingOffsets,
+  setBindingIndexEnabled,
+  isBindingIndexEnabled,
   removeGapRemoveProvenanceRange,
   removeSubtitleBindings,
   repairGroupReferenceIndices,
@@ -405,6 +411,8 @@ const {
 } = helpers;
 
 window.AsrEditorUtils = {
+  TrackPolicy,
+  ...speakerIdentity,
   cloneJsonValue: helpers.cloneJsonValue,
   ...projectTracksHelpers,
   ...multiSubtitleHelpers,
@@ -549,6 +557,8 @@ filterFontFamilyOptions,
   bindingForSegment,
   buildSubtitleBinding,
   rebuildBindingOffsets,
+  setBindingIndexEnabled,
+  isBindingIndexEnabled,
   swapMainAndExtensionSubtitle,
   removeSubtitleBindings,
   matchSubtitleSegments,

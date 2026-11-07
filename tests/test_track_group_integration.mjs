@@ -43,7 +43,8 @@ test('v1 duplicate cross-track cue IDs migrate without losing bindings or word d
   assert.equal(new Set([main.id, secondary.id, overlay.id]).size, 3);
   assert.deepEqual(saved.bindings[0].source, { track_id: h.getMainTrack(saved).id, segment_id: main.id });
   assert.deepEqual(saved.bindings[0].target, { track_id: h.getExtensionTrack(saved).id, segment_id: secondary.id });
-  assert.equal(main.speaker, '示例');
+  assert.equal(main.speaker, 'spk-001');
+  assert.equal(saved.speakers.find(speaker => speaker.id === main.speaker).name, '说话人 1');
   assert.deepEqual(main.items, [{ start: 1000, end: 3000, text: '主字幕\n第二行', start_frame: 30, end_frame: 90 }]);
   const store = createProjectHarness(saved).context.MaweMultiSubtitleCore.getTrackStore();
   assert.equal(store.resolve({ track_id: 'main', segment_id: main.id }).segment.text, main.text);

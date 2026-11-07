@@ -123,16 +123,17 @@
   function collectTaskCues(targets = [], extensionTrack = null) {
     const cues = [];
     const seen = new Set();
+    const segments = global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     for (const target of targets) {
-      if (!Number.isInteger(target) || target < 0 || target >= MaweBoot.DATA.segments.length) continue;
-      const segment = MaweBoot.DATA.segments[target];
-      const text = String(segment?.text ?? '').trim();
-      if (!text) continue;
+      if (!Number.isInteger(target) || target < 0 || target >= segments.length) continue;
+      const segment = segments[target];
+      const text = String(segment?.text ?? '');
+      if (!text.trim()) continue;
       let id = String(segment?.id ?? '').trim();
       if (!id) id = `idx-${target}`;
       if (seen.has(id)) continue;
       seen.add(id);
-      cues.push({ id, index: target, text, extension: snapshotBoundExtension(segment, extensionTrack) });
+      cues.push({ id, segmentId: segment.id || null, segment, index: target, text, extension: snapshotBoundExtension(segment, extensionTrack) });
     }
     return cues;
   }
@@ -151,6 +152,14 @@
     return total > 0 && cjk / total >= CJK_RATIO_THRESHOLD ? 'zh' : 'en';
   }
 
+  // 内置翻译预设的 zh/en 是目标语言；优先沿用副轨语言。
+  function translationTargetLang(cues, track) {
+    const language = String(track?.language || '').toLowerCase();
+    if (/^zh(?:[-_]|$)/.test(language)) return 'zh';
+    if (/^en(?:[-_]|$)/.test(language)) return 'en';
+    return detectTaskLang(cues) === 'zh' ? 'en' : 'zh';
+  }
+
 
 
   // === 主字幕文本回写（加粗 / Emoji）===
@@ -162,8 +171,8 @@
     let missing = 0;
     let unchanged = 0;
     for (const cue of cues) {
-      const newText = typeof texts[cue.id] === 'string' ? texts[cue.id].trim() : '';
-      if (!newText) { missing += 1; continue; }
+      const newText = typeof texts[cue.id] === 'string' ? texts[cue.id] : '';
+      if (!newText.trim()) { missing += 1; continue; }
       const segment = locateTaskSegment(cue);
       if (!segment) { stale += 1; continue; }
       if (segment.text === newText) { unchanged += 1; continue; }
@@ -183,7 +192,9 @@
         const previousText = segment.text;
         segment.text = text;
         segment._dirty = true;
-        if (window.AsrEditorUtils.planWordTimingTextSync(segment, previousText)?.warn) staleWordTimings += 1;
+        const timing = global.AsrEditorUtils.planWordTimingTextSync(segment, previousText);
+        if (timing?.items) segment.items = timing.items;
+        if (timing?.warn) staleWordTimings += 1;
       });
       command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
       MaweHistory.updateUndoRedoButtons();
@@ -231,21 +242,50 @@
     const bindings = bindingsForMainSegment(multi, segment.id, track.id);
     if (bindings.length !== 1) return null;
     const bound = track.segments.find((item) => item?.id === bindings[0].target?.segment_id);
-    return bound ? { id: bound.id, text: bound.text } : null;
+    return bound ? { id: bound.id, text: bound.text, items: JSON.stringify(bound.items ?? null) } : null;
   }
 
 
-  // 按稳定 id 定位主字幕并核对文本指纹；无 id 的旧段按下标+指纹兜底。
+  // 按稳定 id 定位主字幕并核对文本指纹；无 id 的旧段按对象身份查找。
   // 删除、切工程或文本被改都返回 null，由调用方按 stale 跳过（#4）。
   function locateTaskSegment(cue) {
-    const id = String(cue.id || '');
-    const segments = MaweBoot.DATA.segments;
-    if (id && !id.startsWith('idx-')) {
+    const id = cue.segmentId;
+    const segments = global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    if (id) {
       const byId = segments.find((segment) => segment?.id === id);
       return byId && byId.text === cue.text ? byId : null;
     }
-    const byIndex = segments[cue.index];
-    return byIndex && byIndex.text === cue.text ? byIndex : null;
+    return segments.includes(cue.segment) && cue.segment.text === cue.text ? cue.segment : null;
+  }
+
+  function captureTaskContext() {
+    return {
+      bindingGeneration: MaweBoot.SERVER_CONFIG?.bindingGeneration ?? null,
+      sourceMediaId: MaweBoot.SERVER_CONFIG?.sourceMediaId ?? null,
+      projectBindingEpoch: global.MaweProjectLoad?.projectBindingEpoch,
+      projectLoadGeneration: global.MaweState?.projectLoadGeneration,
+    };
+  }
+
+  function taskContextCurrent(context) {
+    const current = captureTaskContext();
+    return !global.MaweState?.projectLoadPending
+      && Object.keys(context).every((key) => context[key] === current[key]);
+  }
+
+  async function waitForTaskApply(context) {
+    let notified = false;
+    while (global.MaweInlineEdit?.editingState || global.MaweInlineEdit?.extensionEditingState) {
+      if (!taskContextCurrent(context)) return false;
+      if (!notified) {
+        MaweHint.flashHint('正在编辑字幕，AI 结果将在编辑结束后应用', 'warning');
+        notified = true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    if (!taskContextCurrent(context)) return false;
+    global.MaweCuePanel?.commitCuePanelEdit();
+    return taskContextCurrent(context);
   }
 
 
@@ -260,7 +300,8 @@
     const bound = track.segments.find((item) => item?.id === bindings[0].target?.segment_id) || null;
     if (!bound) return cue.extension ? { state: 'changed' } : { state: 'unbound' };
     const snapshot = cue.extension;
-    if (!snapshot || snapshot.id !== bound.id || snapshot.text !== bound.text) return { state: 'changed' };
+    if (!snapshot || snapshot.id !== bound.id || snapshot.text !== bound.text
+      || snapshot.items !== JSON.stringify(bound.items ?? null)) return { state: 'changed' };
     return { state: 'bound', bound };
   }
 
@@ -310,6 +351,12 @@
       MaweHint.flashHint(parts.length ? `${label}：${parts.join('；')}` : `${label}：没有需要更新的字幕`, 'invalid');
       return;
     }
+    const timedCount = rows.filter((row) => row.kind === 'update' && row.extension.items?.length).length;
+    if (timedCount) {
+      const message = global.MAWE_I18N?.translateText?.('修改译文将清除 {count} 条副字幕的字词时间码。是否继续？')
+        || '修改译文将清除 {count} 条副字幕的字词时间码。是否继续？';
+      if (!global.confirm(message.replace('{count}', String(timedCount)))) return;
+    }
     MaweCommands.run(label, (command) => {
       // 命令内统一「确保有轨且启用」：无轨建轨；轨在但双语关闭时重新启用
       // （关闭双语只隐藏副轨，update 行也要让开关回到开启，与提示一致）。
@@ -322,6 +369,7 @@
       for (const row of rows) {
         if (row.kind === 'update') {
           row.extension.text = row.text;
+          if (row.extension.items?.length) delete row.extension.items;
           row.extension._dirty = true;
           updated += 1;
           continue;
@@ -337,6 +385,9 @@
           ),
           start: row.main.start,
           end: row.main.end,
+          ...(row.main.start_frame != null ? { start_frame: row.main.start_frame } : {}),
+          ...(row.main.end_frame != null ? { end_frame: row.main.end_frame } : {}),
+          ...(row.main.speaker != null ? { speaker: row.main.speaker } : {}),
           text: row.text,
           _dirty: true,
         };
@@ -385,21 +436,21 @@
     }
     const payload = {
       cues: cues.map(({ id, text }) => ({ id, text })),
-      lang: detectTaskLang(cues),
+      lang: kind === 'ai-translate' ? translationTargetLang(cues, extensionTrack) : detectTaskLang(cues),
       customPrompt: customPrompts[kind] || null,
     };
     const label = TEXT_TASK_LABELS[kind] || 'AI 文本任务';
     // 提交时记录工程/媒体绑定：完成时不一致说明上下文已切换，结果整体丢弃（#4）。
-    const taskContext = {
-      bindingGeneration: MaweBoot.SERVER_CONFIG?.bindingGeneration ?? null,
-      sourceMediaId: MaweBoot.SERVER_CONFIG?.sourceMediaId ?? null,
-    };
+    const taskContext = captureTaskContext();
     MaweAiTasks.begin(kind, payload, label).then(
-      (result) => {
-        const config = MaweBoot.SERVER_CONFIG || {};
-        if ((config.bindingGeneration ?? null) !== taskContext.bindingGeneration
-          || (config.sourceMediaId ?? null) !== taskContext.sourceMediaId) {
+      async (result) => {
+        if (!await waitForTaskApply(taskContext)) {
           MaweHint.flashHint('工程或媒体已切换，已丢弃本次 AI 结果', 'warning');
+          return;
+        }
+        if (kind === 'ai-translate'
+          && (MaweMultiSubtitleCore.getActiveExtensionTrack()?.id ?? null) !== (extensionTrack?.id ?? null)) {
+          MaweHint.flashHint('副字幕轨已切换，已丢弃本次 AI 结果', 'warning');
           return;
         }
         const texts = result && typeof result.texts === 'object' && result.texts ? result.texts : {};
@@ -417,6 +468,9 @@
     openPromptsModal,
     collectTaskCues,
     detectTaskLang,
+    captureTaskContext,
+    taskContextCurrent,
+    waitForTaskApply,
     get customPrompts() { return { ...customPrompts }; },
   });
 })(typeof window !== 'undefined' ? window : globalThis);

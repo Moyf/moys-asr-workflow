@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from maw.colors import COLOR_PALETTE
+from maw.speaker_identity import distinct_speaker_ids, is_valid_speaker_id
 
 
 def speaker_color_summary(segments: list[dict]) -> dict:
     """Describe speaker coloring without writing any legacy cue fields."""
-    speakers = list(dict.fromkeys(segment["speaker"] for segment in segments if segment.get("speaker")))
-    return {"speakers": speakers, "colored_segments": sum(bool(segment.get("speaker")) for segment in segments),
+    speakers = distinct_speaker_ids(segments)
+    identities = set(speakers)
+    return {"speakers": speakers, "colored_segments": sum(
+                isinstance(segment.get("speaker"), str) and segment["speaker"] in identities for segment in segments),
             "overflow": len(speakers) > len(COLOR_PALETTE)}
 
 
@@ -23,7 +26,7 @@ def apply_project_speaker_colors(project: dict) -> dict:
     identifier = None
     for segment in segments:
         speaker = segment.get("speaker")
-        if not speaker:
+        if not is_valid_speaker_id(speaker):
             previous_speaker = None
             continue
         if speaker != previous_speaker:

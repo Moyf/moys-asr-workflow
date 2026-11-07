@@ -18,9 +18,11 @@ import os
 import tempfile
 import threading
 import time
+import unicodedata
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -336,8 +338,8 @@ def collect_group_texts(response: Mapping[str, Any], cues: list[dict[str, str]])
         if not isinstance(group, dict):
             continue
         source_ids = group.get("source_ids")
-        text = str(group.get("text") or "").strip()
-        if not isinstance(source_ids, list) or len(source_ids) != 1 or not text:
+        text = str(group.get("text") or "")
+        if not isinstance(source_ids, list) or len(source_ids) != 1 or not text.strip():
             continue
         cue_id = str(source_ids[0])
         if cue_id in known_ids:
@@ -384,6 +386,24 @@ def run_ai_text_task(
     return {"texts": texts}
 
 
+def _merge_polish_preserves_text(original: str, result: str) -> bool:
+    """只允许调整空白或删除连续重复的标点，避免模型改写正文。"""
+    before = "".join(original.split())
+    after = "".join(result.split())
+    for operation, start, end, _new_start, _new_end in SequenceMatcher(None, before, after, autojunk=False).get_opcodes():
+        if operation == "equal":
+            continue
+        if operation != "delete":
+            return False
+        for index in range(start, end):
+            char = before[index]
+            if not unicodedata.category(char).startswith("P"):
+                return False
+            if not ((index > 0 and before[index - 1] == char) or (index + 1 < len(before) and before[index + 1] == char)):
+                return False
+    return True
+
+
 def run_ai_smart_merge(
     env_path: Path,
     payload: Mapping[str, Any],
@@ -428,6 +448,8 @@ def run_ai_smart_merge(
     polished = texts.get(merged_id, "").strip()
     if not polished:
         raise LlmClientError("模型没有返回合并结果，请重试。")
+    if not _merge_polish_preserves_text(merged_text, polished):
+        raise LlmClientError("AI 合并结果改动了原文，已保留普通合并结果。")
     report("done", 100)
     return {"texts": {merged_id: polished}}
 

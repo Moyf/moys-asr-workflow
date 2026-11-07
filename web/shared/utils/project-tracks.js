@@ -1,5 +1,8 @@
+import { selectTracks } from './track-policy.js';
 // The only project-level subtitle model. Legacy containers are accepted solely
 // by importProject; consumers receive track entities from one canonical tree.
+import { validateProjectSpeakers, upgradeProjectSpeakers } from './speaker-identity.js';
+
 export function createUtilsModule() {
   const PROJECT_TRACKS_SCHEMA = 'moy.asr.project.v2';
   const GROUP_SCHEMAS = new Set(['moy.asr.project.v1.5']);
@@ -73,7 +76,7 @@ export function createUtilsModule() {
       if (integer(segment.end) && (!legacy || (integer(segment.start) && segment.end > segment.start))) previousEnd = segment.end;
       if (typeof segment.text !== 'string') add(`${field}.text`, 'must be a string');
       if (own(segment, 'disabled') && typeof segment.disabled !== 'boolean') add(`${field}.disabled`, 'must be a boolean');
-      if (own(segment, 'speaker') && (typeof segment.speaker !== 'string' || !segment.speaker.trim())) add(`${field}.speaker`, 'must be a non-empty string');
+      if (segment.speaker != null && (typeof segment.speaker !== 'string' || !segment.speaker.trim())) add(`${field}.speaker`, 'must be a non-empty string');
       if (own(segment, 'start_frame') !== own(segment, 'end_frame')) add(field, 'start_frame and end_frame must be provided together');
       for (const frame of ['start_frame', 'end_frame']) if (own(segment, frame) && (!integer(segment[frame]) || segment[frame] < 0)) add(`${field}.${frame}`, 'must be a non-negative integer');
       if (own(segment, 'start_frame') && own(segment, 'end_frame') && segment.end_frame <= segment.start_frame) add(`${field}.end_frame`, 'must be greater than start_frame');
@@ -267,7 +270,7 @@ export function createUtilsModule() {
     if (own(track, 'metadata') && !object(track.metadata)) add('metadata', 'must be an object');
   }
 
-  function validateTracksProject(project) {
+  function validateTracksProject(project, { skipSpeakers = false } = {}) {
     const errors = [];
     const add = (path, message) => errors.push({ path, message });
     if (!object(project)) return { ok: false, errors: [{ path: '$', message: 'must be an object' }], project: null };
@@ -286,6 +289,12 @@ export function createUtilsModule() {
       if (!ROLES.has(track.role)) add(`${path}.role`, 'must be main, secondary or overlay');
       if (typeof track.name !== 'string') add(`${path}.name`, 'must be a string');
       if (typeof track.enabled !== 'boolean' || (track.role === 'main' && track.enabled !== true)) add(`${path}.enabled`, track.role === 'main' ? 'main track must be enabled' : 'must be a boolean');
+      if (own(track, 'preview_visible') && typeof track.preview_visible !== 'boolean') add(`${path}.preview_visible`, 'must be a boolean');
+      if (own(track, 'variant') && typeof track.variant !== 'string') add(`${path}.variant`, 'must be a string');
+      if (own(track, 'export')) {
+        if (!object(track.export)) add(`${path}.export`, 'must be an object');
+        else if (own(track.export, 'enabled') && typeof track.export.enabled !== 'boolean') add(`${path}.export.enabled`, 'must be a boolean');
+      }
       validateTrackMetadata(track, path, errors);
       validateSegments(track.segments, `${path}.segments`, errors, cueIds);
     });
@@ -337,6 +346,7 @@ export function createUtilsModule() {
       }
     });
     if (!errors.length) validateGroups(project, errors);
+    if (!skipSpeakers) errors.push(...validateProjectSpeakers(project));
     return { ok: !errors.length, errors, project: errors.length ? null : project };
   }
 
@@ -454,6 +464,12 @@ export function createUtilsModule() {
       oldTrackIds.set(trackId, oldExtensionIds[index]);
       tracks.push({ ...track, id: trackId, role: 'secondary', name: own(track, 'name') ? track.name : '副字幕', enabled: multi.enabled ?? false, split_mode: track.split_mode ?? 'word', segments: track.segments ?? [] });
     });
+    for (const track of tracks) {
+      if (!own(track, 'preview_visible')) track.preview_visible = true;
+      if (!own(track, 'variant')) track.variant = 'plain';
+      if (!own(track, 'export')) track.export = {};
+      if (object(track.export) && !own(track.export, 'enabled')) track.export.enabled = true;
+    }
     const errors = [];
     const globalIds = new Set();
     if (GROUP_SCHEMAS.has(raw.schema)) {
@@ -599,13 +615,24 @@ export function createUtilsModule() {
   function importProject(raw) {
     if (!object(raw)) fail('$', 'must be an object');
     if (own(raw, 'schema') && raw.schema !== PROJECT_TRACKS_SCHEMA && !LEGACY_SCHEMAS.has(raw.schema)) fail('$.schema', 'unsupported project schema');
-    const project = raw.schema === PROJECT_TRACKS_SCHEMA ? clone(raw) : migrateLegacy(raw);
+    const candidate = raw.schema === PROJECT_TRACKS_SCHEMA ? clone(raw) : migrateLegacy(raw);
+    const structural = validateTracksProject(candidate, { skipSpeakers: !own(candidate, 'speakers') });
+    if (!structural.ok) throw new ProjectTracksError(structural.errors);
+    let project;
+    try { project = upgradeProjectSpeakers(candidate); }
+    catch (error) { throw new ProjectTracksError([{ path: error.path || '$.speakers', message: error.message }]); }
     const result = validateTracksProject(project);
     if (!result.ok) throw new ProjectTracksError(result.errors);
-    return { project, changes: changesBetween(raw, project) };
+    let changes = changesBetween(raw, project);
+    const afterBindings = new Set(project.bindings.map(binding => binding.id));
+    if (raw.schema !== PROJECT_TRACKS_SCHEMA && candidate.bindings.some(binding => !afterBindings.has(binding.id))) {
+      changes = changes.filter(change => change.path !== '$.bindings');
+      changes.push({ path: '$.bindings', kind: 'replace', before: clone(candidate.bindings), after: clone(project.bindings) });
+    }
+    return { project, changes };
   }
   function migrateProjectTracks(raw) { return importProject(raw).project; }
-  // Producers create v3 directly; only this constructor and legacy import may
+  // Producers create v2 directly; only this constructor and legacy import may
   // generate omitted cue identities. Strict reads/saves never generate them.
   function makeProject(segments, { mainFields = {}, projectFields = {} } = {}) {
     if (!object(mainFields)) fail('$.tracks[0]', 'main fields must be an object');
@@ -631,9 +658,7 @@ export function createUtilsModule() {
     });
     Object.assign(project, { schema: PROJECT_TRACKS_SCHEMA, tracks: [main] });
     for (const [field, value] of Object.entries({ bindings: [], bilingual: { display_mode: 'both' }, subtitle_groups: { next_id: 1, color: [], sticker: [] } })) if (!own(project, field)) project[field] = value;
-    const result = validateTracksProject(project);
-    if (!result.ok) throw new ProjectTracksError(result.errors);
-    return project;
+    return importProject(project).project;
   }
   function snapshotProjectContent(project) {
     const snapshot = clone(project);
@@ -646,16 +671,8 @@ export function createUtilsModule() {
     }
     return snapshot;
   }
-  function selectSubtitleTracks(project, { subtitleTracks = 'main', includeOverlay = true } = {}) {
-    const main = getMainTrack(project);
-    const overlay = getOverlayTrack(project);
-    const extension = getExtensionTrack(project);
-    const selections = {
-      main: [main, ...(includeOverlay ? [overlay] : [])], overlay: [overlay], extension: [extension],
-      main_and_extension: [main, ...(includeOverlay ? [overlay] : []), extension], all: [main, overlay, extension],
-    };
-    if (!own(selections, subtitleTracks)) throw new Error('Unknown subtitle track selection');
-    return selections[subtitleTracks].filter(track => track?.enabled === true);
+  function selectSubtitleTracks(project, { subtitleTracks = 'main', includeOverlay = true, surface = 'export' } = {}) {
+    return selectTracks(project, subtitleTracks, surface, { includeOverlay });
   }
   return Object.freeze({ PROJECT_TRACKS_SCHEMA, ProjectTracksError, importProject, migrateProjectTracks, makeProject,
     validateTracksProject, getTrack, getTracksByRole, getMainTrack, getExtensionTrack, getOverlayTrack,

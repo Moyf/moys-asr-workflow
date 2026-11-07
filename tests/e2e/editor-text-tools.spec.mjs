@@ -136,9 +136,9 @@ for (const path of ['timed', 'untimed', 'linked']) {
   test(`splitting and project save preserve the source speaker through the ${path} path`, async ({ page }) => {
     await seed(page, { timed: path === 'timed', linked: path === 'linked' });
     await page.evaluate(() => {
+      MaweBoot.DATA.speakers = [{ id: 'opaque-speaker', name: '源说话人', color: '#49c5c1' }];
       const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
       segment.speaker = 'opaque-speaker';
-      segment.items?.forEach(item => { item.speaker = segment.speaker; });
       MaweSplitContext.splitFromContextMenu(0, 10, 10, 3000, { splitTextMode: 'progressive' });
     });
     if (path !== 'timed') await page.locator('#multi-subtitle-split-confirm').click();
@@ -146,8 +146,10 @@ for (const path of ['timed', 'untimed', 'linked']) {
       .toEqual(['opaque-speaker', 'opaque-speaker']);
     const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
     expect(await page.evaluate(project => AsrEditorUtils.validateTracksProject(project).errors, saved)).toEqual([]);
+    expect(saved.speakers).toEqual([{ id: 'opaque-speaker', name: '源说话人', color: '#49c5c1' }]);
     const savedMain = saved.tracks.find(track => track.role === 'main');
     expect(savedMain.segments.map(s => s.speaker)).toEqual(['opaque-speaker', 'opaque-speaker']);
+    expect(savedMain.segments.flatMap(s => s.items || []).every(item => !Object.hasOwn(item, 'speaker'))).toBe(true);
     expect(savedMain.segments.map(s => s.text)).toEqual(['甲乙', '甲乙丙丁']);
     await page.locator('#undo-btn').click();
     expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.speaker))).toEqual(['opaque-speaker']);
@@ -166,6 +168,7 @@ for (const path of ['timed', 'untimed', 'linked']) {
     await dataTransfer.dispose();
     await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(s => s.speaker)))
       .toEqual(['opaque-speaker', 'opaque-speaker']);
+    expect(await page.evaluate(() => MaweBoot.DATA.speakers)).toEqual(saved.speakers);
   });
 }
 
@@ -520,26 +523,47 @@ test('user presets, text overrides and explicit join defaults survive project ch
 });
 
 test('portable editor saves and reloads presets in its browser storage', async ({ page }) => {
-  await page.goto('file://' + portable);
-  await seed(page, { text: '  甲  ', timed: false });
-  await openTextProcess(page);
-  await removeTextProcessPrefill(page);
-  await expect(page.locator('#text-preset-status')).toHaveText('仅保存在当前浏览器（便携模式）');
-  await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'local');
-  await addTextProcessStep(page, 'trim');
-  page.once('dialog', (dialog) => dialog.accept('便携清理'));
-  await page.locator('#text-preset-save-as').click();
-  await page.locator('#text-preset-default').click();
-  const preset = page.locator('#text-preset-select option:checked');
-  await expect(preset).toHaveText('便携清理 ★');
-  await page.reload();
-  await seed(page, { text: '  甲  ', timed: false });
-  await openTextProcess(page);
-  await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'local');
-  await expect(preset).toHaveText('便携清理 ★');
-  const preview = page.locator('#text-process-preview');
-  await expect(preview).toContainText('将处理 1 条字幕，预计修改 1 条');
-  await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：甲');
+  const errors = [];
+  const snapshots = {};
+  page.on('pageerror', error => errors.push(String(error.stack || error)));
+  const snapshot = () => page.evaluate(() => {
+    let storage;
+    try { storage = localStorage.getItem('moy.asr.text_processing_presets.v1'); }
+    catch (error) { storage = `ERROR: ${String(error)}`; }
+    return { storage, library: window.MaweProcessing?.library ?? null,
+      projectOverride: window.MaweProcessing?.projectOverride('text') ?? null,
+      selected: document.querySelector('#text-preset-select')?.value ?? null,
+      status: document.querySelector('#text-preset-status')?.dataset.state ?? null };
+  });
+  try {
+    await page.goto('file://' + portable);
+    await seed(page, { text: '  甲  ', timed: false });
+    await openTextProcess(page);
+    await removeTextProcessPrefill(page);
+    await expect(page.locator('#text-preset-status')).toHaveText('仅保存在当前浏览器（便携模式）');
+    await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'local');
+    await addTextProcessStep(page, 'trim');
+    page.once('dialog', (dialog) => dialog.accept('便携清理'));
+    await page.locator('#text-preset-save-as').click();
+    await page.locator('#text-preset-default').click();
+    const preset = page.locator('#text-preset-select option:checked');
+    await expect(preset).toHaveText('便携清理 ★');
+    snapshots.beforeReload = await snapshot();
+    await page.reload();
+    snapshots.afterReload = await snapshot();
+    await seed(page, { text: '  甲  ', timed: false });
+    await openTextProcess(page);
+    await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'local');
+    snapshots.afterOpen = await snapshot();
+    await expect(preset).toHaveText('便携清理 ★');
+    const preview = page.locator('#text-process-preview');
+    await expect(preview).toContainText('将处理 1 条字幕，预计修改 1 条');
+    await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：甲');
+  } catch (error) {
+    try { snapshots.onFailure = await snapshot(); } catch (snapshotError) { snapshots.snapshotError = String(snapshotError); }
+    console.error('portable preset synthetic diagnostics:', JSON.stringify({ snapshots, errors }));
+    throw error;
+  }
 });
 
 test('join actions wait for the current user defaults', async ({ page }) => {

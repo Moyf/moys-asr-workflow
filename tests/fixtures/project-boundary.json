@@ -14,10 +14,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -32,10 +36,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -61,10 +69,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -85,10 +97,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -120,10 +136,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -150,10 +170,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -180,10 +204,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -210,10 +238,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -268,10 +300,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -297,12 +333,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
       "$.multi_subtitle",
       "$.overlay_track",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -344,11 +384,15 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
       "$.multi_subtitle",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -374,10 +418,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -403,10 +451,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -432,10 +484,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -665,10 +721,14 @@
       "$.tracks[0].segments[0].end"
     ],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -695,10 +755,14 @@
       "$.tracks[0].segments[1].start"
     ],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -732,10 +796,14 @@
       "$.tracks[0].segments[0].items[1].start"
     ],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -764,10 +832,14 @@
       "$.tracks[0].segments[0].items[0].end"
     ],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -1181,10 +1253,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -1203,10 +1279,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -1374,10 +1454,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.tracks"
     ]
   },
@@ -1395,10 +1479,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.tracks"
     ]
   },
@@ -1467,11 +1555,15 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
       "$.overlay_track",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.tracks"
     ]
   },
@@ -2318,12 +2410,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
       "$.multi_subtitle",
       "$.overlay_track",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.tracks"
     ]
   },
@@ -2338,10 +2434,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -2357,10 +2457,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.subtitle_groups",
       "$.tracks"
     ]
@@ -2464,10 +2568,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.tracks"
     ]
   },
@@ -2486,10 +2594,14 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
       "$.bilingual",
       "$.bindings",
+      "$.palette_size",
       "$.schema",
       "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
       "$.tracks"
     ]
   },

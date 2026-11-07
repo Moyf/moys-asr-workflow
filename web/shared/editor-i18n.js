@@ -9,6 +9,9 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '字幕轨道状态': 'Subtitle track status',
+    '主字幕轨始终启用': 'The main subtitle track is always enabled',
+    '关闭轨道会同时停止预览和导出，字幕数据会保留。': 'Disabling a track stops preview and export while keeping its subtitle data.',
     '工程音量': 'Project volume',
     '整体增益': 'Overall gain',
     '整体增益（dB）': 'Overall gain (dB)',
@@ -1484,6 +1487,10 @@
     '测试 AI 连接': 'Test AI connection', '正在拉取模型列表…': 'Fetching model list…',
     'AI 任务已取消': 'AI task cancelled', 'AI 任务不存在或已过期': 'AI task not found or expired',
     'AI 任务失败': 'AI task failed', '取消 AI 任务失败': 'Failed to cancel the AI task',
+    '正在编辑字幕，AI 结果将在编辑结束后应用': 'Finish editing the subtitle to apply the AI result',
+    '副字幕轨已切换，已丢弃本次 AI 结果': 'The secondary subtitle track changed; the AI result was discarded',
+    '修改译文将清除 {count} 条副字幕的字词时间码。是否继续？': 'Changing the translation will remove word timestamps from {count} secondary subtitles. Continue?',
+    '将替换 {count} 条字幕已有的字词时间码。是否继续？': 'Replace existing word timestamps on {count} subtitles?',
     '已有 AI 任务进行中，请等它完成或取消后再试': 'An AI task is already running; wait for it to finish or cancel it first',
     'AI 加粗关键词': 'AI bold keywords', 'AI 翻译为副字幕': 'AI translate to secondary subtitles',
     'AI Emoji 点缀': 'AI emoji decoration', 'AI 文本任务': 'AI text task',
@@ -1746,7 +1753,7 @@
     '留空保持当前密钥不变': 'Leave blank to keep the current key',
     '取消此 AI 任务': 'Cancel this AI task',
     'AI 为每条字幕的核心词添加 ** 强调标记（可撤销）': 'AI adds ** emphasis marks around each cue\'s key words (undoable)',
-    'AI 翻译选中字幕并写入副字幕轨；未开启双语时自动开启': 'AI translates the selected cues into the secondary subtitle track; bilingual mode is enabled automatically when it is off',
+    '优先按副轨的中英文语言翻译；否则中日韩译英文，其他译中文。可自定义提示词': 'Uses the secondary track language when it is Chinese or English; otherwise translates CJK text into English and other text into Chinese. The prompt can be customized.',
     'AI 为每条字幕开头添加一个贴切的 emoji（可撤销）': 'AI prepends a fitting emoji to each cue (undoable)',
     'AI 建议一个断句位置并直接拆分（可撤销）': 'AI suggests one break point and splits the cue directly (undoable)',
     '先合并选中的连续字幕，再由 AI 修顺合并缝（可撤销）': 'Merges the selected contiguous cues first, then lets AI smooth the seams (undoable)',
@@ -1855,6 +1862,13 @@
     if (lang !== EN) return text;
     if (EN_TEXT[text]) return EN_TEXT[text];
     if (EN_ATTR[text]) return EN_ATTR[text];
+    const trackWarning = /^不支持的叠加轨类型：([\s\S]*)。数据已保留。$/.exec(text);
+    if (trackWarning) return `Unsupported overlay track type: ${trackWarning[1]}. Data has been preserved.`;
+    const trackExportError = /^不支持导出叠加轨“([\s\S]*)”的类型“([\s\S]*)”；请关闭该轨或其导出开关$/.exec(text);
+    if (trackExportError) return `Cannot export overlay track “${trackExportError[1]}” with type “${trackExportError[2]}”; disable the track or its export switch.`;
+    const trackExportWrapper = /^(ASS 导出失败|无法生成匹配字幕)：(不支持导出叠加轨[\s\S]*)$/.exec(text);
+    if (trackExportWrapper) return `${trackExportWrapper[1] === 'ASS 导出失败' ? 'ASS export failed' : 'Unable to generate matching subtitles'}: ${translateText(trackExportWrapper[2], EN)}`;
+
     let presetRule = /^规则 (\d+) (查找|替换为)$/.exec(text);
     if (presetRule) return `Rule ${presetRule[1]} ${presetRule[2] === '查找' ? 'find' : 'replace with'}`;
     presetRule = /^第 (\d+) 条规则的查找内容为空$/.exec(text);
