@@ -150,6 +150,11 @@
 
 ## 共享计划
 
+<a name="plan-fcp7-png-subtitles"></a>
+### FCP 7 XML 图片字幕导出
+
+[方案决定、现有渲染复用与分层验证提议](plans/FCP7_PNG_SUBTITLES.md)
+
 <a name="plan-release-pipeline"></a>
 ### 正式版本归档、官网与更新检测管线
 
