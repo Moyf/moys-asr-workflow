@@ -4726,3 +4726,26 @@ test('binding auto-sync reports an extra subtitle removed and undo restores both
   await page.keyboard.press('ControlOrMeta+z');
   await expect.poll(ranges).toEqual([['bound', 1200, 2000], ['covered', 2400, 2800]]);
 });
+
+test('same-speaker merge reports linked trimming and undo restores the project', async ({ page }) => {
+  const project = {
+    segments: [{ id: 'main-a', start: 1000, end: 1800, text: 'one', speaker: 'person' },
+      { id: 'main-b', start: 1800, end: 3000, text: 'two', speaker: 'person' }],
+    waveform: generateWaveformPayload(5000),
+    multi_subtitle: { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+      tracks: [{ id: 'ext', segments: [{ id: 'bound', start: 1100, end: 1500, text: 'bound', speaker: 'person' },
+        { id: 'nearby', start: 2950, end: 3500, text: 'nearby', speaker: 'person' }] }],
+      bindings: [{ id: 'binding', track_id: 'ext', main_segment_ids: ['main-a'], extension_segment_ids: ['bound'] }] },
+  };
+  await page.goto(server.url);
+  await dropFiles(page, [{ name: 'same-speaker-merge.json', type: 'application/json', base64: Buffer.from(JSON.stringify(project)).toString('base64') }]);
+  const snapshot = () => page.evaluate(() => AsrEditorUtils.snapshotProjectContent(MaweBoot.DATA));
+  const before = await snapshot();
+  await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration = true; MaweSegmentOps.mergeSegments([0, 1]); });
+  await expect(page.locator('#hint-stack')).toContainText('裁剪 1 条其他副字幕');
+  const after = await snapshot();
+  expect(after.tracks.find(t => t.role === 'main').segments).toHaveLength(1);
+  expect(after.tracks.find(t => t.role === 'secondary').segments.find(s => s.id === 'nearby').start).toBe(3000);
+  await page.evaluate(() => MaweHistory.performUndo());
+  expect(await snapshot()).toEqual(before);
+});

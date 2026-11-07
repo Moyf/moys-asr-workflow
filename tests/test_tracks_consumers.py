@@ -28,7 +28,10 @@ def cue(identifier="a", text="原文", start=5000, end=6000, **fields):
 def multi_project():
     project = make_project([cue(custom={"false": False, "zero": 0}, speaker="speaker-1")],
                            main_fields={"language": "ja", "model": "fixture"},
-                           project_fields={"custom_project": {"keep": []}})
+                           project_fields={"custom_project": {"keep": []}, "speakers": [
+                               {"id": "speaker-1", "name": "原文说话人", "color": "#f9ca1f"},
+                               {"id": "speaker-2", "name": "译文说话人", "color": "#66bb6a"},
+                           ]})
     project["tracks"].extend([
         {"id": "second", "role": "secondary", "enabled": True, "name": "Active", "metadata": {"keep": False},
          "segments": [cue("second-cue", "旧译文", speaker="speaker-2")], "language": "zh"},
@@ -59,6 +62,7 @@ class TracksConsumerTests(unittest.TestCase):
         self.assertEqual(get_main_track(saved)["segments"][0]["custom"], {"false": False, "zero": 0})
         self.assertEqual(get_track(saved, "second")["metadata"], {"keep": False})
         self.assertEqual(get_track(saved, "overlay"), get_track(source, "overlay"))
+        self.assertEqual(saved["speakers"], source["speakers"])
         self.assertNotIn("_dirty", get_main_track(saved)["segments"][0])
         self.assertNotIn("waveform", saved)
         self.assertEqual(source, original)
@@ -209,6 +213,8 @@ class TracksConsumerTests(unittest.TestCase):
 
     def test_alignment_visits_all_tracks_and_keeps_per_track_language(self):
         project = multi_project()
+        speakers = copy.deepcopy(project["speakers"])
+        speaker_refs = [segment.get("speaker") for track in project["tracks"] for segment in track["segments"]]
         visited = []
         def align(_backend, _media, text, start, end, *, language, **_kwargs):
             visited.append((text, language))
@@ -222,6 +228,10 @@ class TracksConsumerTests(unittest.TestCase):
         self.assertEqual(report.aligned_segments, 3)
         self.assertEqual(visited, [("原文", "ja"), ("旧译文", "zh"), ("叠加", "ja")])
         self.assertTrue(all(track["timestamp_granularity"] == "char" for track in project["tracks"]))
+        self.assertEqual(project["speakers"], speakers)
+        self.assertEqual([segment.get("speaker") for track in project["tracks"] for segment in track["segments"]], speaker_refs)
+        self.assertTrue(all("speaker" not in item for track in project["tracks"] for segment in track["segments"]
+                            for item in segment.get("items", [])))
         self.assert_canonical(project)
 
     def test_llm_changes_only_canonical_main_content(self):

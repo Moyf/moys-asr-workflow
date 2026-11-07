@@ -22,6 +22,7 @@ from maw.project import normalize_project
 from maw.postprocess_translation import attach_translation_project
 from maw.project_preview import JsonDict, JsonValue
 from maw.text_conversion import TextConversion, apply_text_conversion
+from maw.speaker_identity import can_merge_speaker_segments
 
 
 class OutputMode(StrEnum):
@@ -1526,6 +1527,8 @@ def _build_segments(
 
 
 def _copy_common_metadata(source_segments: Sequence[JsonDict]) -> JsonDict:
+    if not can_merge_speaker_segments(source_segments):
+        raise ValueError("cannot merge cues with different speaker identities; assign the same speaker first")
     first = source_segments[0]
     excluded = set(TIMING_FIELDS) | set(SAFE_SCALARS) | set(VISUAL_FIELDS) | {"assOverride", "assStyle"}
     # Split outputs inherit independent copies; merged cues take the first

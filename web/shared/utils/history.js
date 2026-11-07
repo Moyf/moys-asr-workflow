@@ -10,7 +10,9 @@ export function createUtilsModule(dependencies) {
 
   function buildSegmentsHistorySnapshot(project) {
     return cloneJsonValue({ tracks: project.tracks, bindings: project.bindings,
-      bilingual: project.bilingual, subtitle_groups: project.subtitle_groups, styles: project.styles });
+      bilingual: project.bilingual, subtitle_groups: project.subtitle_groups,
+      ...Object.fromEntries(['styles', 'speakers', 'annotation_mode', 'palette_size', 'speaker_shortcuts']
+        .filter(field => Object.hasOwn(project, field)).map(field => [field, project[field]])) });
   }
 
   function restoreSegmentsHistorySnapshot(project, snapshot) {
@@ -27,7 +29,7 @@ export function createUtilsModule(dependencies) {
       return track;
     });
     project.tracks.splice(0, project.tracks.length, ...tracks);
-    for (const field of ['bindings', 'bilingual', 'subtitle_groups', 'styles']) {
+    for (const field of ['bindings', 'bilingual', 'subtitle_groups', 'styles', 'speakers', 'annotation_mode', 'palette_size', 'speaker_shortcuts']) {
       if (Object.hasOwn(restored, field)) project[field] = restored[field];
       else delete project[field];
     }

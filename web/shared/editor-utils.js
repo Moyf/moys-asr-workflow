@@ -4,6 +4,7 @@ import { TrackPolicy } from './utils/track-policy.js';
 // file's original manifest position.
 import { createUtilsModule as createDataModule } from './utils/data.js';
 import { createUtilsModule as createProjectTracksModule } from './utils/project-tracks.js';
+import * as speakerIdentity from './utils/speaker-identity.js';
 import { createUtilsModule as createSubtitleGroupsModule } from './utils/subtitle-groups.js';
 import { createUtilsModule as createMarkersModule } from './utils/markers.js';
 import { createUtilsModule as createSplitAlignmentModule } from './utils/split-alignment.js';
@@ -52,6 +53,7 @@ const helpers = {
 };
 const projectTracksHelpers = createProjectTracksModule(helpers);
 Object.assign(helpers, projectTracksHelpers);
+Object.assign(helpers, speakerIdentity);
 Object.assign(helpers, createDataModule(helpers));
 const subtitleGroupHelpers = createSubtitleGroupsModule(helpers);
 Object.assign(helpers, subtitleGroupHelpers);
@@ -410,6 +412,7 @@ const {
 
 window.AsrEditorUtils = {
   TrackPolicy,
+  ...speakerIdentity,
   cloneJsonValue: helpers.cloneJsonValue,
   ...projectTracksHelpers,
   ...multiSubtitleHelpers,
