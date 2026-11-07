@@ -66,7 +66,7 @@ class ResegmentTests(unittest.TestCase):
                 project_path=self.source,
                 srt_path=None,
                 output_mode=OutputMode.BOTH,
-                operation="resegment",
+                operation=kwargs.pop("operation", "resegment"),
                 custom_prompt="",
                 max_chars=max_chars,
                 **kwargs,
@@ -75,6 +75,46 @@ class ResegmentTests(unittest.TestCase):
         )
         self.assertEqual(original, self.source.read_bytes())
         return read_project(artifact.project_path)["segments"], artifact
+
+    def test_zero_duration_punctuation_roundtrip_and_limit(self):
+        source = timed("你好。再见！", ["你好", "。", "再见", "！"])
+        source["items"][1].update(start=200, end=200, confidence=0.9)
+        source["items"][3].update(start=600, end=600, confidence=0.8)
+        for maximum in (0, 3):
+            with self.subTest(maximum=maximum):
+                result, _ = self.run_case([source], self.last_boundary, max_chars=maximum)
+                self.assertEqual([i for cue in result for i in cue["items"]], source["items"])
+                self.assertTrue(all(cue["start"] < cue["end"] for cue in result))
+
+    def test_punctuation_only_model_group_rejected(self):
+        from maw.postprocess_resegment import parse_boundaries
+        source = timed("好。", ["好", "。"])
+        source["items"][1].update(start=200, end=200)
+        units = source_units(source, 0)
+        with self.assertRaisesRegex(ValueError, "零时长"):
+            parse_boundaries({"draft": "[c0001a0001]\n[c0001a0002]"}, units)
+
+    def test_proofread_merge_items_roundtrip_and_fallback(self):
+        first = timed("你好。", ["你好", "。"])
+        first["items"][1].update(start=200, end=200, confidence=0.9)
+        second = timed("再见！", ["再见", "！"], start=500)
+        for changed, broken in ((False, False), (True, False), (False, True)):
+            with self.subTest(changed=changed, broken=broken):
+                import copy
+                sources = copy.deepcopy([first, second])
+                if broken:
+                    sources[1]["items"][0]["text"] = "错误"
+                text = "你好。再见！" if not changed else "您好。再见！"
+                result, _ = self.run_case(
+                    sources,
+                    lambda _prompt, rows: {"groups": [{"source_ids": [row["id"] for row in rows], "text": text}]},
+                    operation="proofread",
+                )
+                self.assertEqual(len(result), 1)
+                if changed or broken:
+                    self.assertNotIn("items", result[0])
+                else:
+                    self.assertEqual(result[0]["items"], first["items"] + second["items"])
 
     def last_boundary(self, _prompt, rows):
         return {"draft": f"[{rows[-1]['items'][-1]['id']}]"}

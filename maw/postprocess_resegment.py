@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
@@ -71,11 +72,12 @@ def source_units(segment: JsonDict, source: int) -> list[Unit]:
     valid = spans is not None and all(
         type(i.get("start")) is int
         and type(i.get("end")) is int
-        and int(segment["start"]) <= i["start"] < i["end"] <= int(segment["end"])
+        and int(segment["start"]) <= i["start"] <= i["end"] <= int(segment["end"])
+        and (i["start"] < i["end"] or all(unicodedata.category(c).startswith("P") or c.isspace() for c in str(i.get("text") or "")))
         and (index == 0 or items[index - 1]["end"] <= i["start"])
         for index, i in enumerate(items)
     )
-    if not valid:
+    if not valid or items[0]["start"] >= items[-1]["end"]:
         return [
             Unit(cue_id, text, source, int(segment["start"]), int(segment["end"]), None)
         ]
@@ -193,6 +195,8 @@ def parse_boundaries(
                 ends.append(char_ends[cursor])
     if not ends or ends[-1] != len(units) or ends != sorted(set(ends)):
         raise ValueError("断点必须唯一、递增且包含最后一个单元；不能遗漏尾部。")
+    if any(units[start].start >= units[end - 1].end for start, end in zip([0, *ends[:-1]], ends)):
+        raise ValueError("断点不能生成零时长字幕。")
     invalid = []
     for end in ends[:-1]:
         # Existing source-cue boundaries are already legal recovery points.
@@ -285,6 +289,8 @@ def limit_groups(
         length = 0
         for start in range(end - 1, -1, -1):
             length += sum(char_count(u.text) for u in blocks[start])
+            if blocks[start][0].start >= blocks[end - 1][-1].end:
+                continue
             if length > maximum and start != end - 1:
                 break
             punctuation = blocks[end - 1][-1].text.rstrip()[-1:]

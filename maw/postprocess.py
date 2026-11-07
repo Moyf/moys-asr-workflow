@@ -1458,6 +1458,19 @@ def _build_segments(
             _ = segment.pop("items", None)
         elif group_regrouped:
             _ = segment.pop("items", None)
+            if preserve_items_on_equal_text and len(source_ids) > 1:
+                from maw.postprocess_resegment import source_units
+
+                merged_sources = [sources[index] for index in source_indexes]
+                units = [unit for index in source_indexes for unit in source_units(sources[index], index)]
+                if (
+                    text == "".join(str(source.get("text") or "") for source in merged_sources)
+                    and source_indexes == sorted(set(source_indexes))
+                    and all(unit.item is not None for unit in units)
+                    and all(start <= unit.start <= unit.end <= end for unit in units)
+                    and all(left.end <= right.start for left, right in zip(units, units[1:]))
+                ):
+                    segment["items"] = [copy.deepcopy(unit.item) for unit in units]
         elif not unchanged:
             if preserve_items_on_equal_text:
                 reconciled_items = _reconcile_items(
