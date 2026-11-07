@@ -54,7 +54,12 @@ export function upgradeProjectSpeakers(input) {
     }
   }
   const reserved = new Set(project.tracks.flatMap(track => track.segments.map(segment => segment.id)));
+  for (const entry of project.gap_remove?.provenance?.sources?.ai_cleanup ?? []) {
+    if (typeof entry?.cleanup_scope?.segment_id === 'string') reserved.add(entry.cleanup_scope.segment_id);
+  }
   const replacements = new Map();
+  const cleanupTracks = project.tracks;
+  const cleanupOriginals = JSON.parse(JSON.stringify(cleanupTracks.flatMap(track => track.segments)));
   const fail = (path, message) => { throw Object.assign(new Error(message), { path }); };
   for (const [index, track] of project.tracks.entries()) {
     let result;
@@ -65,6 +70,8 @@ export function upgradeProjectSpeakers(input) {
     replacements.set(track.id, new Map(result.mappings.map(entry => [entry.old_id, entry.new_ids.map(id => byId.get(id))])));
     for (const segment of track.segments) reserved.add(segment.id);
   }
+  const cleanupReplacements = new Map(cleanupTracks.flatMap(track => [...replacements.get(track.id)]));
+  remapCleanupScopes(project, cleanupOriginals, cleanupReplacements);
   const usedBindings = new Set(project.bindings.map(binding => binding.id));
   project.bindings = project.bindings.flatMap(binding => {
     const sources = replacements.get(binding.source.track_id).get(binding.source.segment_id);
@@ -111,6 +118,62 @@ export function upgradeProjectSpeakers(input) {
     }));
   }
   return project;
+}
+
+function remapCleanupScopes(project, originals, replacements) {
+  const entries = project.gap_remove?.provenance?.sources?.ai_cleanup;
+  if (!Array.isArray(entries) || !replacements) return;
+  const byId = new Map(originals.map(cue => [cue.id, cue]));
+  const used = new Set(entries.map(entry => entry?.id).filter(id => typeof id === 'string'));
+  const result = [];
+  for (const entry of entries) {
+    const scope = entry?.cleanup_scope, original = byId.get(scope?.segment_id);
+    const children = original && replacements.get(original.id);
+    if (!children || children.length < 2) { result.push(entry); continue; }
+    const items = original.items, first = scope.item_start, last = scope.item_end;
+    let cursorText = 0;
+    const sourceText = String(original.text || '');
+    const reliable = Array.isArray(items) && items.length && items.every((item, index) => {
+      let value = typeof item?.text === 'string' ? item.text : '';
+      if (index === 0 && sourceText && !/^\s/u.test(sourceText)) value = value.trimStart();
+      if (index === items.length - 1 && sourceText && !/\s$/u.test(sourceText)) value = value.trimEnd();
+      const start = value ? sourceText.indexOf(value, cursorText) : -1;
+      if (start < 0 || /[\p{L}\p{N}]/u.test(sourceText.slice(cursorText, start))) return false;
+      cursorText = start + value.length; return true;
+    }) && !/[\p{L}\p{N}]/u.test(sourceText.slice(cursorText));
+    const valid = reliable && Number.isInteger(first) && Number.isInteger(last)
+      && first >= 0 && first < last && last <= items.length && Number.isInteger(entry.start)
+      && Number.isInteger(entry.end) && entry.start < entry.end
+      && items[first]?.start === entry.start && items[last - 1]?.end === entry.end
+      && items.slice(first, last).every(item => item && typeof item.text === 'string')
+      && items.slice(first, last).map(item => item.text).join('') === scope.text;
+    if (!valid) { const copy = { ...entry }; delete copy.cleanup_scope; result.push(copy); continue; }
+    let offset = 0, cursor = entry.start;
+    const pieces = [];
+    for (const child of children) {
+      const end = offset + child.items.length, from = Math.max(first, offset), to = Math.min(last, end);
+      if (from < to) {
+        const selected = child.items.slice(from - offset, to - offset);
+        if (cursor < selected[0].start) pieces.push({ start: cursor, end: selected[0].start });
+        pieces.push({ start: selected[0].start, end: selected.at(-1).end,
+          cleanup_scope: { ...scope, segment_id: child.id, item_start: from - offset, item_end: to - offset,
+            text: selected.map(item => item.text).join('') } });
+        cursor = selected.at(-1).end;
+      }
+      offset = end;
+    }
+    if (cursor < entry.end) pieces.push({ start: cursor, end: entry.end });
+    pieces.forEach((piece, i) => {
+      const next = { ...entry, ...piece }; if (!piece.cleanup_scope) delete next.cleanup_scope;
+      if (i && typeof entry.id === 'string') {
+        const base = `${entry.id}-speaker-${i}`; let id = base, suffix = 1;
+        while (used.has(id)) id = `${base}-${suffix++}`;
+        next.id = id; used.add(id);
+      }
+      result.push(next);
+    });
+  }
+  project.gap_remove.provenance.sources.ai_cleanup = result;
 }
 
 export function validateProjectSpeakers(project) {
@@ -240,6 +303,21 @@ export function migrateSpeakerSegments(segments, sourceToProject, reservedSegmen
         cuts.push(cursor);
       }
       textPieces = [0, ...cuts].map((start, i) => text.slice(start, [...cuts, text.length][i]).join(''));
+      const joined = items.map(item => item.text).join('');
+      if (joined === segment.text || joined === segment.text.trim()) {
+        const prefix = segment.text.indexOf(joined);
+        textPieces = runs.map(([run]) => run.map(item => item.text).join(''));
+        textPieces[0] = segment.text.slice(0, prefix) + textPieces[0];
+        textPieces[textPieces.length - 1] += segment.text.slice(prefix + joined.length);
+      } else if (joined.trim() === segment.text) {
+        const left = joined.indexOf(segment.text), right = left + segment.text.length;
+        let cursor = 0;
+        textPieces = runs.map(([run]) => {
+          const end = cursor + run.map(item => item.text).join('').length;
+          const piece = joined.slice(Math.max(cursor, left), Math.min(end, right));
+          cursor = end; return piece;
+        });
+      }
       const edges = [...runs.slice(1).map(([run]) => [run[0], 'start']),
         ...runs.slice(0, -1).map(([run]) => [run.at(-1), 'end'])];
       if (edges.some(([item, key]) => !Number.isInteger(item[key]))) {

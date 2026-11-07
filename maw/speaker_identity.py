@@ -167,6 +167,21 @@ def migrate_speaker_segments(
                     cursor += 1
                 cuts.append(cursor)
             text_pieces = [text[start:end] for start, end in zip([0, *cuts], [*cuts, len(text)])]
+            joined = "".join(item["text"] for item in items)
+            if joined == text or joined == text.strip():
+                prefix = text.index(joined)
+                text_pieces = ["".join(item["text"] for item in run) for run, _ in runs]
+                text_pieces[0] = text[:prefix] + text_pieces[0]
+                text_pieces[-1] += text[prefix + len(joined):]
+            elif joined.strip() == text:
+                left = joined.index(text)
+                right = left + len(text)
+                cursor = 0
+                text_pieces = []
+                for run, _ in runs:
+                    part = "".join(item["text"] for item in run)
+                    text_pieces.append(joined[max(cursor, left):min(cursor + len(part), right)])
+                    cursor += len(part)
             edges = [(run[0], "start") for run, _ in runs[1:]] + [
                 (run[-1], "end") for run, _ in runs[:-1]
             ]
@@ -325,7 +340,18 @@ def upgrade_project_speakers(project: Mapping[str, Any]) -> dict[str, Any]:
     old_segments = [segment for track in tracks for segment in track["segments"]]
     identities = allocate_source_speaker_ids(old_segments, reserved_ids=())
     reserved = {segment["id"] for segment in old_segments}
+    gap = result.get("gap_remove")
+    provenance = gap.get("provenance") if isinstance(gap, dict) else None
+    sources = provenance.get("sources") if isinstance(provenance, dict) else None
+    entries = sources.get("ai_cleanup") if isinstance(sources, dict) else None
+    if isinstance(entries, list):
+        for entry in entries:
+            scope = entry.get("cleanup_scope") if isinstance(entry, dict) else None
+            if isinstance(scope, dict) and isinstance(scope.get("segment_id"), str):
+                reserved.add(scope["segment_id"])
     replacements: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    cleanup_tracks = tracks
+    cleanup_originals = copy.deepcopy([cue for track in cleanup_tracks for cue in track["segments"]])
     for ti, track in enumerate(tracks):
         try:
             migrated, mappings = migrate_speaker_segments(track["segments"], identities, reserved_segment_ids=reserved)
@@ -336,6 +362,9 @@ def upgrade_project_speakers(project: Mapping[str, Any]) -> dict[str, Any]:
         for mapping in mappings:
             replacements[track["id"], mapping["old_id"]] = [by_id[identifier] for identifier in mapping["new_ids"]]
         track["segments"] = migrated
+
+    cleanup_replacements = {cue_id: children for (_track_id, cue_id), children in replacements.items()}
+    _remap_cleanup_scopes(result, cleanup_originals, cleanup_replacements)
 
     palette_size = result.setdefault("palette_size", 5)
     if type(palette_size) is not int or palette_size not in (5, 9):
@@ -383,3 +412,66 @@ def upgrade_project_speakers(project: Mapping[str, Any]) -> dict[str, Any]:
             migrated_bindings.append(replacement)
     result["bindings"] = migrated_bindings
     return result
+
+
+def _remap_cleanup_scopes(project: dict[str, Any], originals: list[dict[str, Any]],
+                          replacements: dict[str, list[dict[str, Any]]]) -> None:
+    from maw.postprocess_ai_cleanup_items import item_text_spans, verified_scope_indices
+
+    gap = project.get("gap_remove")
+    provenance = gap.get("provenance") if isinstance(gap, dict) else None
+    sources = provenance.get("sources") if isinstance(provenance, dict) else None
+    entries = sources.get("ai_cleanup") if isinstance(sources, dict) else None
+    if not isinstance(entries, list):
+        return
+    by_id = {cue["id"]: cue for cue in originals}
+    used = {entry["id"] for entry in entries if isinstance(entry, dict) and isinstance(entry.get("id"), str)}
+    output = []
+    for entry in entries:
+        scope = entry.get("cleanup_scope") if isinstance(entry, dict) else None
+        original = by_id.get(scope.get("segment_id")) if isinstance(scope, dict) else None
+        children = replacements.get(original["id"]) if original else None
+        if not children or len(children) < 2:
+            output.append(entry)
+            continue
+        items = original.get("items")
+        text = original.get("text") or ""
+        reliable = isinstance(items, list) and bool(items)
+        if reliable:
+            reliable = all(isinstance(item, dict) for item in items) and item_text_spans(text, items) is not None
+        indices = verified_scope_indices(entry, original) if reliable else range(0)
+        if not indices:
+            item = copy.deepcopy(entry)
+            item.pop("cleanup_scope", None)
+            output.append(item)
+            continue
+        pieces = []
+        offset, cursor = 0, entry["start"]
+        for child in children:
+            end = offset + len(child["items"])
+            first, last = max(indices.start, offset), min(indices.stop, end)
+            if first < last:
+                selected = child["items"][first - offset:last - offset]
+                if cursor < selected[0]["start"]:
+                    pieces.append({"start": cursor, "end": selected[0]["start"]})
+                pieces.append({"start": selected[0]["start"], "end": selected[-1]["end"],
+                               "cleanup_scope": {**scope, "segment_id": child["id"],
+                                                 "item_start": first - offset, "item_end": last - offset,
+                                                 "text": "".join(item["text"] for item in selected)}})
+                cursor = selected[-1]["end"]
+            offset = end
+        if cursor < entry["end"]:
+            pieces.append({"start": cursor, "end": entry["end"]})
+        for index, piece in enumerate(pieces):
+            updated = copy.deepcopy(entry)
+            updated.pop("cleanup_scope", None)
+            updated.update(piece)
+            if index and isinstance(entry.get("id"), str):
+                base = f"{entry['id']}-speaker-{index}"
+                identifier, suffix = base, 1
+                while identifier in used:
+                    identifier, suffix = f"{base}-{suffix}", suffix + 1
+                updated["id"] = identifier
+                used.add(identifier)
+            output.append(updated)
+    sources["ai_cleanup"] = output

@@ -1478,7 +1478,9 @@
           || item.start < previousEnd || item.end <= item.start || item.end > segment.end) return [];
       previousEnd = item.end;
     }
-    return items.map((item) => item.text).join('') === String(segment.text || '').trim() ? items : [];
+    const text = String(segment.text || '');
+    const joined = items.map((item) => item.text).join('');
+    return joined === text || joined === text.trim() || joined.trim() === text.trim() ? items : [];
   }
 
   function getCleanupScopeItems(segment, gap) {

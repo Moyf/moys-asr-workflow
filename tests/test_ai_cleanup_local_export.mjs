@@ -12,6 +12,25 @@ const source = () => ({ id: 'main-001', start: 0, end: 2000, text: '啊，我这
 const localGap = () => ({ detector: 'audio_gate', provenance: { sources: { ai_cleanup: [{ start: 0, end: 770,
   cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 2, text: '啊，我这……' } }] } } });
 
+test('swapped legacy identity upgrade keeps authorized secondary cleanup in real exports', () => {
+  const { context, utils, srt, main } = runtime();
+  const project = context.MaweBoot.DATA;
+  delete project.speakers; delete project.speaker_shortcuts;
+  main[0].items[0].speaker = 'one';
+  main[0].items[1].speaker = 'two';
+  main[0].items[2].speaker = 'two';
+  assert.equal(utils.swapMainAndExtensionSubtitle(project).swapped, true);
+  Object.assign(project, utils.importProject(plain(project)).project);
+  context.activeExtensionSegments = () => utils.getExtensionTrack(project)?.segments || [];
+  context.window.MaweExportContext.mergedExportSegments = () => ({ segments: utils.getMainTrack(project).segments,
+    overlaySet: new Set(), overlaySegments: [] });
+  for (const output of [srt.buildExtensionSrt(), srt.buildBilingualSrt(), srt.buildAss()]) {
+    assert.match(output, /我这个功能呢/);
+    assert.doesNotMatch(output, /啊，|我这……/);
+  }
+  assert.equal(utils.getMainTrack(project).segments[0].text, 'translated body');
+});
+
 test('ASS cache retains raw identity but invalidates equal-text selections with different item boundaries', () => {
   const script = initModuleSource('editor/styles/editor-wiring-ass-preview.js');
   const start = script.indexOf('const assStackCueSnapshots =');
