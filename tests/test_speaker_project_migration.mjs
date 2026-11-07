@@ -38,7 +38,7 @@ test('JS/Python input boundaries agree on split identities and one-to-one bindin
     for (const id of [...actual.project.tracks.flatMap(track => track.segments.map(cue => cue.id)),
       ...actual.project.bindings.map(binding => binding.id)]) assert.ok(Array.from(id).length <= 160);
     if (variant === 'independent') assert.ok(actual.changes.some(change => change.path === '$.bindings' && change.before.length === 1 && change.after.length === 0));
-    const python = spawnSync(process.env.MAW_TEST_PYTHON || 'python', ['-c',
+    const python = spawnSync(process.env.MAW_TEST_PYTHON || 'python', ['-X', 'utf8', '-c',
       'import json,sys; from maw.project_tracks import import_project; result=import_project(json.load(sys.stdin)); print(json.dumps(dict(project=result.project,changes=result.changes),ensure_ascii=True))'],
     { input: JSON.stringify(input), encoding: 'utf8', windowsHide: true });
     assert.equal(python.status, 0, python.stderr);
