@@ -17,10 +17,11 @@ export function createUtilsModule(dependencies) {
 
   const clampIndex = (value, fallback) => (Number.isFinite(Number(value)) ? Number(value) : fallback);
 
-  // 把一个窗口按字幕排布边界切成段：主字幕 cue 起止 + slice 起止都要参与
-  // 切分——同一主句跨 slice（例如叠加字幕出现/消失）时布局可能切换
-  // （legacy ↔ 堆叠、位置与缩放变化），中点采样必须落在同一段内才准确。
-  // 返回 [{start, end, cue}]，cue 为覆盖该段的主字幕（null = 句间空隙段）。
+  // 把一个窗口按字幕排布边界切成段：字幕 cue（主轨 + 叠加轨）起止 + slice
+  // 起止都要参与切分——同一主句跨 slice（例如叠加字幕出现/消失）时布局可能
+  // 切换（legacy ↔ 堆叠、位置与缩放变化），中点采样必须落在同一段内才准确。
+  // 返回 [{start, end, cue}]，cue 为覆盖该段的字幕条目（主轨优先：同屏时
+  // 贴主字幕左侧，主轨空窗才贴叠加轨字幕左侧；null = 句间空隙段）。
   // 短段也保留自己的布局边界，避免中点跨入另一布局或丢失窗口开头；
   // 最终几何相同的段由 mergePlacementIntervals 合并。
   function splitWindowByCues(cues, bounds, win) {
@@ -38,9 +39,10 @@ export function createUtilsModule(dependencies) {
       const start = ordered[index];
       const end = ordered[index + 1];
       const middle = (start + end) / 2;
-      segments.push({ start, end,
-        cue: cues.find(cue => middle >= cue.start && middle < cue.end
-          && middle >= cue.slice.start && middle < cue.slice.end) || null });
+      const covering = role => cues.find(cue => cue.role === role
+        && middle >= cue.start && middle < cue.end
+        && middle >= cue.slice.start && middle < cue.slice.end) || null;
+      segments.push({ start, end, cue: covering('main') || covering('overlay') });
     }
     return segments;
   }
@@ -53,7 +55,7 @@ export function createUtilsModule(dependencies) {
   function cueLeftBox(plan, cue, segmentMiddle) {
     const frame = assStackFrame(plan, segmentMiddle);
     if (frame?.diagnostic) return null;
-    const item = (frame?.items || []).find(item => item.role === 'main'
+    const item = (frame?.items || []).find(item => item.role === cue.role
       && item.start === cue.start && item.end === cue.end);
     if (!item || item.legacy) return null;
     const scale = clampIndex(item.scale, 1);
@@ -101,7 +103,9 @@ export function createUtilsModule(dependencies) {
 
   // 把表情包窗口集合编译成 placements。windows: [{rel, start, end}]（毫秒、
   // 最终时间轴）；fixedBox 为回退固定矩形（方案一几何，像素）；多图同屏时
-  // 时间重叠的窗口只有第一张贴字幕左侧，其余回退固定位置。
+  // 时间重叠的窗口只有第一张贴字幕左侧，其余回退固定位置。贴放目标句取
+  // 主字幕与叠加字幕（role main/overlay）条目：同屏时段主轨优先、主轨空窗
+  // 贴叠加轨字幕；legacy / 移动段 / 越界段等与主轨同样规则回退固定位置。
   /**
    * @param {{ plan?: { slices?: Array<{ start?: number, end?: number, legacy?: boolean,
    *   pieces?: Array<{ start?: number, end?: number, instant?: number | null,
@@ -131,10 +135,13 @@ export function createUtilsModule(dependencies) {
         if (Number.isFinite(piece?.instant)) bounds.push(piece.instant);
       }
       for (const item of slice.items || []) {
-        if (item.role !== 'main') continue;
+        // 叠加字幕轨的 cue 同样参与贴放（与 ASS 导出同一份排版计划，叠加轨
+        // 字幕也烧录进视频）：主轨空窗时贴叠加轨字幕第一个字左侧；role 随
+        // cue 传递，段匹配时主轨优先、叠加轨兜底。
+        if (item.role !== 'main' && item.role !== 'overlay') continue;
         // 带上所属 slice：线性移动段（from→to）内固定采样必然漂移，
         // 承载句的 slice 需要被识别并回退固定位置。
-        cues.push({ start: item.start, end: item.end, slice });
+        cues.push({ start: item.start, end: item.end, slice, role: item.role });
       }
     }
     cues.sort((a, b) => a.start - b.start);

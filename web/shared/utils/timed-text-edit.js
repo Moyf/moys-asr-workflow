@@ -521,6 +521,20 @@ export function createUtilsModule(dependencies) {
   function applyTimedTextEdit(segments, draftTexts, options = {}) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
+    if (options.preserveRows) {
+      if (source.length !== texts.length) return null;
+      return source.map((segment, index) => {
+        const next = cloneJsonValue(segment || {});
+        const before = String(next.text ?? '');
+        const after = String(texts[index] ?? '');
+        if (before === after) return next;
+        const mapping = reconcileTimedTextItems(before, next.items, after);
+        next.text = after;
+        if (!after || mapping.status === 'lost') delete next.items;
+        else if (mapping.status === 'full' || mapping.status === 'partial') next.items = mapping.items;
+        return next;
+      });
+    }
     if (timedTextStructureRequested(source, texts)) {
       const structurePlan = buildTimedTextStructurePlan(source, texts, options);
       return structurePlan.valid ? cloneJsonValue(structurePlan.segments) : null;
@@ -560,5 +574,5 @@ export function createUtilsModule(dependencies) {
     return normalized.split('\n').map((_line, index) => index + 1);
   }
 
-  return Object.freeze({ applyTimedTextEdit, buildTimedTextEditReport, timedTextEditDirtyFlags, timedTextEditGutterNumbers });
+  return Object.freeze({ reconcileTimedTextItems, applyTimedTextEdit, buildTimedTextEditReport, timedTextEditDirtyFlags, timedTextEditGutterNumbers });
 }

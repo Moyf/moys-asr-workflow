@@ -302,12 +302,14 @@ class GuiConfigTests(unittest.TestCase):
 
         self.assertEqual(provider.label, "Soniox STT（海外 / 小语种）")
         self.assertIn("console.soniox.com", provider.key_url)
-        self.assertEqual(provider.models[0].id, "stt-async-v5")
+        self.assertEqual(provider.models[0].id, "stt-async-v6")
+        self.assertEqual([model.id for model in provider.models], ["stt-async-v6", "stt-async-v5"])
         self.assertEqual(provider.models[0].env_key, "SONIOX_API_KEY")
         self.assertEqual(provider.regions, ())
         self.assertTrue(provider.supports_speaker)
         self.assertTrue(provider.multi_language)
         self.assertTrue(provider.models[0].supports_context)
+        self.assertTrue(provider.models[1].supports_context)
         self.assertIn("0.10", provider.models[0].price_note)
 
     def test_provider_registry_contains_tencent_recording_recognition(self) -> None:
@@ -639,13 +641,15 @@ class GuiConfigTests(unittest.TestCase):
 
     def test_model_by_label_searches_all_providers(self) -> None:
         """Given a Soniox model id, When resolved, Then its env key comes from the Soniox entry."""
-        model = gui_config.model_by_label("stt-async-v5")
+        model = gui_config.model_by_label("stt-async-v6")
 
         self.assertEqual(model.env_key, "SONIOX_API_KEY")
+        self.assertEqual(gui_config.model_by_label("stt-async-v5").env_key, "SONIOX_API_KEY")
         self.assertEqual(gui_config.model_by_label("no-such-model").id, "qwen-audio-3.0-asr-flash-filetrans")
 
     def test_provider_for_model_maps_soniox_model(self) -> None:
         """Given a Soniox model id, When provider resolved, Then it maps to the soniox provider."""
+        self.assertEqual(gui_config.provider_for_model("stt-async-v6").id, "soniox")
         self.assertEqual(gui_config.provider_for_model("stt-async-v5").id, "soniox")
         self.assertEqual(gui_config.provider_for_model("qwen3-asr-flash-filetrans").id, "qwen")
 
