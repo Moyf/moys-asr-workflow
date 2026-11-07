@@ -27,6 +27,7 @@
     '图片字幕 XML 已保存到工程旁的独立目录': 'PNG subtitle XML saved in a separate folder beside the project',
     '请从本地编辑器服务导出图片字幕': 'Export PNG subtitles from the local editor server',
     '图片字幕请求失败': 'PNG subtitle request failed',
+    '所选轨道没有可导出的字幕': 'The selected tracks have no subtitles to export',
     '工程或媒体绑定已变更，已停止图片字幕导出': 'The project or media binding changed; PNG subtitle export stopped',
     '无法查询图片字幕任务': 'Unable to query the PNG subtitle task',
     '清理尚未完成': 'Cleanup has not finished',
