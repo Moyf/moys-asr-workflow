@@ -749,6 +749,8 @@ v1 输入的 `multi_subtitle` 是可选双语结构；v2 将副轨迁移为 `sec
 
 ## 二、segment 对象
 
+v2 工程可在根字段 `styles` 保存 ASS 样式快照，轨道的 `style.style_id` 必须引用其中的样式；`style.forked` 表示与本机样式库分离。可选布尔字段 `style.font_default` 标记自动建立的默认轨道字体，用于打开工程时区分默认值与用户明确指定的字体；用户选择轨道样式或编辑字体后移除此标记。单句 `assStyle` 独立于轨道样式。工程只记录字体名和样式参数，不包含字体文件。
+
 `segments[i]` 的字段定义：
 
 ```json

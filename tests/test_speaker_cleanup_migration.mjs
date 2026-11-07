@@ -15,7 +15,7 @@ function project(first = 1, last = 2) {
       text: items.slice(first, last).map(item => item.text).join(''), vendor: 9 } };
   return { schema: 'moy.asr.project.v2', tracks: [{ id: 'main', role: 'main', name: 'Main', enabled: true, segments: [cue] }], bindings: [],
     bilingual: { display_mode: 'both' }, subtitle_groups: { next_id: 1, color: [], sticker: [] },
-    processing_overrides: { text: [] }, styles: { vendor: true }, gap_remove: core.normalizeGapRemoveData({ provenance: { sources: { ai_cleanup: [range] } } }) };
+    processing_overrides: { text: [] }, styles: [{ id: 'example', name: 'Example', vendor: true }], gap_remove: core.normalizeGapRemoveData({ provenance: { sources: { ai_cleanup: [range] } } }) };
 }
 test('speaker migration preserves exact cleanup, pauses, metadata and restoration', () => {
   for (const [first, last] of [[1, 2], [0, 2]]) {

@@ -381,7 +381,7 @@ export function initMaweCuePanel() {
 
     select.disabled = !segment;
     select.replaceChildren();
-    addOption('', translate('继承默认样式'));
+    addOption('', translate('继承轨道样式'));
     if (savedStyle && !matchesLibrary) {
       addOption('__snapshot', styleLabel(savedStyle) + translate('（工程内保存）'));
     }

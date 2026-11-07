@@ -179,6 +179,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/boot/editor.js",
                 "editor/cues/editor-wiring-overlay-transfer.js",
                 "editor/styles/editor-wiring-ass-font-aliases.js",
+                "editor/styles/editor-project-font-check.js",
                 "editor/styles/editor-wiring-ass-storage.js",
                 "editor/boot/editor-wiring-initial-config.js",
                 "editor/ui/editor-wiring-dom-panels.js",

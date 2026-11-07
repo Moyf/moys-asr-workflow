@@ -250,6 +250,7 @@ interface Window {
   // 服务端 ASS 字体别名表门面（editor-wiring-ass-font-aliases.js 注入）；
   // 便携模式/旧服务器下不存在，消费点按可选访问降级。
   MaweAssFontAliases?: any;
+  MaweProjectFontCheck?: { schedule(): void };
   showSaveFilePicker?: any;
 }
 

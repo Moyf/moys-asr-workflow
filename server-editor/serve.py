@@ -3059,6 +3059,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.update_settings()
         elif path == "/api/ass-styles":
             self.update_ass_styles()
+        elif path == "/api/ass-font-aliases":
+            self.refresh_ass_font_aliases()
         elif path == "/api/text-processing-presets":
             self.update_text_processing_presets()
         elif path == "/api/ass-frame":
@@ -3198,6 +3200,18 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         token = request.get("requestToken")
         if not isinstance(token, str) or not compare_digest(token, self.editor_server.request_token):
             raise PermissionError("请求令牌无效")
+
+    def refresh_ass_font_aliases(self) -> None:
+        try:
+            request = self.read_json_request(max_bytes=8192)
+            self._check_request_token(request)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, font_alias_payload(refresh=True))
 
     def measure_audio_loudness(self) -> None:
         """Poll analysis of the current preview, never a client-supplied path."""

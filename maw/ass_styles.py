@@ -543,7 +543,7 @@ def ass_color(value: object, fallback: str = "#ffffff", opacity: object = 100) -
     return f"&H{alpha:02X}{color[5:7]}{color[3:5]}{color[1:3]}".upper()
 
 
-def ass_style_line(style: Mapping[str, object], *, name: str = "Default") -> str:
+def ass_style_line(style: Mapping[str, object], *, name: str = "Default", font_size_scale: float = 1.0) -> str:
     """Serialize one normalized style as a ``Style:`` line."""
 
     normalized = _normalize_style(style, DEFAULT_ASS_STYLE, style_id=_id(style.get("id"), "ass"))
@@ -552,7 +552,7 @@ def ass_style_line(style: Mapping[str, object], *, name: str = "Default") -> str
     values = [
         name,
         normalized["fontName"],
-        normalized["fontSize"],
+        min(512, max(1, math.floor(float(normalized["fontSize"]) * font_size_scale + 0.5))),
         ass_color(normalized["primaryColor"]),
         ass_color(normalized["secondaryColor"]),
         ass_color(normalized["outlineColor"], opacity=normalized.get("outlineOpacity", 100)),
