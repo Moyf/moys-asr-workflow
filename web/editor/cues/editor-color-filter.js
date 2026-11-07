@@ -34,12 +34,21 @@ export function initMaweColorFilter() {
   let colorFilterSelection = null;
   // null = no identity filter; null inside the set means unassigned.
   let speakerFilterSelection = null;
+  let speakerFilterProjectEpoch = MaweState.projectEpoch;
+
+  function syncSpeakerFilterProject() {
+    if (speakerFilterProjectEpoch !== MaweState.projectEpoch) {
+      speakerFilterProjectEpoch = MaweState.projectEpoch;
+      speakerFilterSelection = null;
+    }
+  }
 
   function speakerMatches(segment) {
     return Boolean(segment) && (!speakerFilterSelection || speakerFilterSelection.has(segment.speaker ?? null));
   }
 
   function setSpeakerFilterSelection(next) {
+    syncSpeakerFilterProject();
     speakerFilterSelection = next && next.size ? new Set(next) : null;
     colorFilterButton?.classList.toggle('filter-active', Boolean((colorFilterSelection && !colorFilterSuspended()) || speakerFilterSelection));
     renderColorFilterMenu();
@@ -104,6 +113,7 @@ export function initMaweColorFilter() {
 
 
   function renderColorFilterMenu() {
+    syncSpeakerFilterProject();
     if (!colorFilterMenu) return;
     const usage = colorFilterUsageCache;
     // 过滤掉工程里已不存在的选择项，避免按钮显示“过滤中”但列表为空。
@@ -409,7 +419,7 @@ export function initMaweColorFilter() {
     colorFilterButton,
     colorFilterMenu,
     get colorFilterSelection() { return colorFilterSelection; },
-    get speakerFilterSelection() { return speakerFilterSelection; },
+    get speakerFilterSelection() { syncSpeakerFilterProject(); return speakerFilterSelection; },
     speakerMatches,
     setSpeakerFilterSelection,
     set colorFilterSelection(v) { colorFilterSelection = v; },

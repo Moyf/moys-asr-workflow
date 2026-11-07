@@ -63,6 +63,22 @@ test('identity is visible in color mode and filters distinguish same-name same-c
   await expect(page.locator('.overlay-track-cue')).not.toHaveClass(/hidden/);
 });
 
+test('speaker filters stay within their project even when another project reuses an ID', async ({ page }) => {
+  await openProject(page);
+  await page.locator('#color-filter-btn').click();
+  await page.locator('.speaker-filter-item').filter({ hasText: '同名（b）' }).locator('.color-name').click();
+  await expect(page.locator('.cue:not(.hidden)').filter({ hasText: '主一' })).toHaveCount(0);
+  await page.evaluate(() => MaweCuePanel.renderAll({ waveform: 'none' }));
+  await expect(page.locator('.cue:not(.hidden)').filter({ hasText: '主一' })).toHaveCount(0);
+  await page.evaluate(() => {
+    const next = structuredClone(MaweBoot.DATA);
+    next.speakers.find(s => s.id === 'b').name = '另一工程的人';
+    MaweProjectLoad.applyCanonicalProject(next, 'another.mosp');
+  });
+  await expect(page.locator('.cue:not(.hidden)').filter({ hasText: '主一' })).toHaveCount(1);
+  expect(await page.evaluate(() => MaweColorFilter.speakerFilterSelection)).toBeNull();
+});
+
 test('panel and context menus assign or clear only the targeted track', async ({ page }) => {
   await openProject(page);
   await page.evaluate(() => MaweCuePanel.setCuePanelTarget('overlay', 0));
