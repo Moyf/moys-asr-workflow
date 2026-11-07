@@ -213,3 +213,36 @@ test('explicit preview font preset is checked but the default is silent', async 
   await expect(box).toHaveCount(0);
   expect(await page.evaluate(() => MaweBoot.DATA.preview.subtitle.font_family)).toBe('Good Font');
 });
+
+test('a custom library font captured in an automatically initialized track is checked on reopen', async ({ page }) => {
+  await page.route('**/api/ass-font-aliases', route => route.fulfill({ json: good }));
+  await page.route('**/api/ass-styles', route => route.fulfill({ json: {
+    schema: 'moy.asr.ass_styles.v1', version: 2,
+    styles: [{ id: 'ass', name: 'custom', fontName: 'Missing Font' }],
+  } }));
+  await page.goto(server.url);
+  await open(page, { media: '', segments: [{ start: 0, end: 1000, text: 'Hello' }] });
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.styles?.find(style => style.id === MaweBoot.DATA.tracks[0].style?.style_id)?.fontName)).toBe('Missing Font');
+  const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+  await open(page, saved, 'custom-style.mosp');
+  await expect(page.locator('.project-font-check')).toContainText('Missing Font');
+});
+
+test('late library initialization checks a custom font after switching projects', async ({ page }) => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  await page.route('**/api/ass-font-aliases', route => route.fulfill({ json: good }));
+  await page.route('**/api/ass-styles', async route => {
+    await gate;
+    await route.fulfill({ json: { schema: 'moy.asr.ass_styles.v1', version: 2,
+      styles: [{ id: 'ass', name: 'custom', fontName: 'Missing Font' }] } });
+  });
+  await page.goto(server.url);
+  try {
+    await open(page, { media: '', segments: [{ start: 0, end: 1000, text: 'Hello' }] });
+    release();
+    await expect(page.locator('.project-font-check')).toContainText('Missing Font');
+  } finally {
+    release();
+  }
+});

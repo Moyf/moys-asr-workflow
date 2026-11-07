@@ -110,6 +110,7 @@ function scheduleCurrentProjectStyleInit() {
         MaweState.markProjectDirty();
         syncAssStyleManager?.();
         MawePlaybackLoop.refreshSubtitlePreview?.();
+        window.MaweProjectFontCheck?.schedule();
       }
     });
   };
@@ -258,7 +259,10 @@ async function loadAssStyleLibrary({ force = false } = {}) {
         MaweState.markProjectDirty();
       }
     }
-    if (initializeProjectStyles()) MaweState.markProjectDirty();
+    if (initializeProjectStyles()) {
+      MaweState.markProjectDirty();
+      if (!MaweState.projectLoadPending) window.MaweProjectFontCheck?.schedule();
+    }
   };
   setAssStyleLibrary(readLocalAssStyleLibrary());
   setAssStyleLibraryStatus('正在加载…', 'pending');

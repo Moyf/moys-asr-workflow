@@ -545,8 +545,11 @@ function initializeProjectStyles() {
   const secondary = window.AsrEditorUtils.assStyleForId(ASS_STYLE_LIBRARY, ASS_STYLE_LIBRARY.assignments?.assExtensionStyleId || 'ass-extension');
   let changed = false;
   for (const track of MaweBoot.DATA.tracks || []) {
-    if (!track.style && window.AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, track, track.role === 'secondary' ? secondary : main)) {
-      track.style.font_default = true;
+    const source = track.role === 'secondary' ? secondary : main;
+    if (!track.style && window.AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, track, source)) {
+      // The library can contain a user-selected font even when the track is
+      // initialized automatically; only the built-in system font is implicit.
+      if (source.fontName === window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName) track.style.font_default = true;
       changed = true;
     }
   }

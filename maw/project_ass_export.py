@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import math
+from bisect import bisect_right
 from pathlib import Path
 from typing import Mapping
 
@@ -226,10 +227,19 @@ def render_project_ass(
     style_lines = []
     cue_style_lines = []
     events = []
+    collision_stack = (main is not None and secondary is None
+                       and any(item.get("disabled") is not True and item.get("assStyle") is not None
+                               for item in overlay_segments))
+    main_starts = sorted({times[0] for item in main_segments
+                          if item.get("disabled") is not True and str(item.get("text") or "").strip()
+                          and (times := _cue_times(item)) is not None})
 
     def overlay_cue_margin(style, segment):
         scaled_size = min(512, max(1, _round_half_up(float(style["fontSize"]) * snapshot_scale)))
         margin = int(style["marginV"]) + _round_half_up(1.2 * scaled_size)
+        if collision_stack:
+            # The renderer handles actual line wrapping and glyph metrics.
+            return margin
         if style["alignment"] not in (1, 2, 3) or not main:
             return margin
         main_snapshot = resolve_track_style(project, main)
@@ -245,7 +255,9 @@ def render_project_ass(
                 continue
             scale = snapshot_scale if override or main_snapshot else 1.0
             main_size = min(512, max(1, _round_half_up(float(effective["fontSize"]) * scale)))
-            margin = max(margin, int(effective["marginV"]) + _round_half_up(1.2 * main_size))
+            # Explicit line breaks occupy multiple rows above the bottom anchor.
+            rows = len(str(other.get("text") or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"))
+            margin = max(margin, int(effective["marginV"]) + _round_half_up(1.2 * main_size * rows))
         return margin
 
     def render_track(track, segments, *, default_name, layer):
@@ -292,8 +304,21 @@ def render_project_ass(
                 if variant:
                     event_style = prefix + variant
             name, text = _event_text(project, segment, groups, color_style=color_style, base_color=body_color)
-            start, end = map(_format_ass_time, times)
-            events.append(f"Dialogue: {layer},{start},{end},{event_style},{name},0,0,0,,{text}")
+            if is_overlay and cue_snapshot is not None and collision_stack:
+                # Same-layer libass collision detection uses actual font metrics.
+                # Restart an overlay event when a main cue begins so a later main
+                # cue stays below an already visible overlay, not vice versa.
+                first = bisect_right(main_starts, times[0])
+                last = bisect_right(main_starts, times[1] - 1)
+                boundaries = [times[0], *main_starts[first:last], times[1]]
+                slices = zip(boundaries, boundaries[1:])
+                event_layer = 0
+            else:
+                slices = [times]
+                event_layer = layer
+            for start_cs, end_cs in slices:
+                start, end = map(_format_ass_time, (start_cs, end_cs))
+                events.append(f"Dialogue: {event_layer},{start},{end},{event_style},{name},0,0,0,,{text}")
 
         if is_overlay and len(events) == first_event:
             return
