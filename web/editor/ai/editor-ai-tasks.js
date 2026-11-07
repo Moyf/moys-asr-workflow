@@ -157,9 +157,12 @@
     try {
       task = await pollOnce(current.id);
     } catch (error) {
+      // await 期间任务可能已切换或终结：迟到的旧响应直接作废（#6）。
+      if (active !== current || current.settled) return;
       fail(`无法获取 AI 任务状态：${error.message || error}`);
       return;
     }
+    if (active !== current || current.settled) return;
     if (!task) {
       fail('AI 任务不存在或已过期');
       return;
@@ -183,7 +186,7 @@
       if (!response.ok || !body?.ok) throw new Error(body?.error || '取消 AI 任务失败');
     }).catch((error) => {
       // 取消失败不打断轮询：任务可能刚好完成；下一次 tick 会给出终态。
-      if (!active || active.settled) return;
+      if (active !== current || active.settled) return;
       fail(`取消失败：${error.message || error}`);
     });
   }

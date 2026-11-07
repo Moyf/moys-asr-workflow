@@ -3942,7 +3942,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
-        self.send_json(HTTPStatus.OK, snapshot)
+        # 成功也走 ok 包络：前端 begin() 以 body.ok + body.task 识别提交结果，
+        # 与轮询接口的 {ok, tasks} 保持同一契约。
+        self.send_json(HTTPStatus.OK, {"ok": True, "task": snapshot})
 
     def cancel_ai_task(self) -> None:
         try:

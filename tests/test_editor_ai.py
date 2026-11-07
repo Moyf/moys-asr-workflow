@@ -263,7 +263,8 @@ class EditorAiHandlerTests(_EditorAiTaskTestBase):
         handler.start_ai_task()
         status, payload = handler.send_json.call_args.args
         self.assertEqual(status, 200)
-        self.assertEqual(payload["status"], "queued")
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["task"]["status"], "queued")
         handler.server.ai_tasks.submit.assert_called_once_with("test-connection", {"providerId": "qwen"})
 
     def test_start_ai_task_rejects_unknown_kind(self) -> None:

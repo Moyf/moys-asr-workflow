@@ -1503,6 +1503,7 @@
     '当前编辑器没有绑定媒体，无法做时间码对齐': 'The editor has no bound media; timecode alignment is unavailable',
     '选中字幕缺少有效的文本与时间范围': 'Selected cues lack valid text and time ranges',
     '模型未返回结果': 'the model returned nothing', '字幕已被修改': 'the cue was edited',
+    '工程或媒体已切换，已丢弃本次 AI 结果': 'The project or media has changed; the AI results were discarded',
     '无变更': 'No changes',
   };
 
@@ -2240,6 +2241,10 @@
     if (match) return `${match[1]} secondary cues already carry this translation`;
     match = /^(\d+) 条已是该译文$/.exec(text);
     if (match) return `${match[1]} already carry this translation`;
+    match = /^(\d+) 条副字幕在任务期间被修改，已跳过$/.exec(text);
+    if (match) return `${match[1]} secondary cues changed during the task and were skipped`;
+    match = /^(\d+) 条绑定多条副字幕，已跳过$/.exec(text);
+    if (match) return `${match[1]} bound to multiple secondary cues and were skipped`;
     match = /^(\d+) 条对齐失败$/.exec(text);
     if (match) return `${match[1]} failed to align`;
     match = /^(\d+) 条断点不可用$/.exec(text);
@@ -2248,8 +2253,6 @@
     if (match) return `Updated ${match[1]}`;
     match = /^新建 (\d+) 条$/.exec(text);
     if (match) return `Created ${match[1]}`;
-    match = /^当前没有副字幕轨，需重试$/.exec(text);
-    if (match) return 'No secondary subtitle track is available; try again';
     match = /^没有需要更新的字幕$/.exec(text);
     if (match) return 'No subtitles need updating';
     match = /^没有需要处理的字幕$/.exec(text);
