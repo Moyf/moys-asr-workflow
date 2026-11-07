@@ -18,10 +18,13 @@
 
   // 后端 stage → 进度条文案；未知 stage 直接展示原文，空 stage 用通用文案。
   const STAGE_LABELS = Object.freeze({
+    submitting: '正在提交…',
     queued: '排队中…',
     starting: '启动中…',
     connecting: '连接供应商…',
     waiting_provider: '等待供应商响应…',
+    waiting_edit: '结果已生成，等待结束字幕编辑…',
+    applying: '正在应用结果…',
     done: '完成',
     cancelled: '已取消',
   });
@@ -76,7 +79,18 @@
     if (label) label.textContent = `${active.label} · ${stageText}`;
     const percentText = element('ai-task-progress-percent');
     const bar = element('ai-task-progress-bar');
-    const percent = Number(task.percent);
+    const cancel = element('ai-task-progress-cancel');
+    if (cancel) {
+      const discard = ['waiting_edit', 'applying'].includes(task.stage);
+      const action = discard ? '丢弃尚未应用的 AI 结果' : '取消此 AI 任务';
+      const translated = global.MAWE_I18N?.translateText?.(action) || action;
+      cancel.title = translated;
+      cancel.setAttribute('aria-label', translated);
+      cancel.textContent = global.MAWE_I18N?.translateText?.(discard ? '丢弃' : '取消') || (discard ? '丢弃' : '取消');
+    }
+    // LLM 的 connecting / waiting_provider 是阶段而非可测的完成百分比。
+    const percent = ['submitting', 'queued', 'starting', 'connecting', 'waiting_provider', 'waiting_edit', 'applying'].includes(task.stage)
+      ? NaN : Number(task.percent);
     if (Number.isFinite(percent) && percent > 0) {
       if (percentText) percentText.textContent = `${percent}%`;
       if (bar) bar.setAttribute('value', String(Math.min(100, Math.max(0, percent))));
@@ -116,8 +130,32 @@
   }
 
 
-  function succeed(task) {
-    const resolve = active?.resolve;
+  async function succeed(task) {
+    const current = active;
+    if (!current || current.settled || current.phase !== 'running') return;
+    stopTimer();
+    if (current.beforeComplete) {
+      current.phase = 'applying';
+      renderTask({ ...task, stage: 'applying', percent: 0 });
+      try {
+        const ready = await current.beforeComplete(
+          () => active === current && !current.settled,
+          task.result || {},
+          () => {
+            if (active !== current || current.settled) return;
+            current.phase = 'waiting_edit';
+            renderTask({ ...task, stage: 'waiting_edit', percent: 0 });
+          },
+        );
+        if (active !== current || current.settled) return;
+        if (!ready) { fail('工程或媒体已切换，已丢弃本次 AI 结果'); return; }
+      } catch (error) {
+        if (active === current && !current.settled) fail(error?.message || String(error));
+        return;
+      }
+    }
+    if (active !== current || current.settled) return;
+    const resolve = current.resolve;
     settle();
     renderTask({ ...task, stage: 'done', percent: 100 });
     scheduleHide(DONE_HIDE_DELAY_MS);
@@ -152,17 +190,17 @@
 
   async function tick() {
     const current = active;
-    if (!current || current.settled || !current.id) return;
+    if (!current || current.settled || !current.id || current.phase !== 'running') return;
     let task = null;
     try {
       task = await pollOnce(current.id);
     } catch (error) {
       // await 期间任务可能已切换或终结：迟到的旧响应直接作废（#6）。
-      if (active !== current || current.settled) return;
+      if (active !== current || current.settled || current.phase !== 'running') return;
       fail(`无法获取 AI 任务状态：${error.message || error}`);
       return;
     }
-    if (active !== current || current.settled) return;
+    if (active !== current || current.settled || current.phase !== 'running') return;
     if (!task) {
       fail('AI 任务不存在或已过期');
       return;
@@ -174,17 +212,30 @@
   }
 
 
-  function cancelCurrent() {
-    const current = active;
-    if (!current || current.settled || !current.id) return Promise.resolve();
+  function requestCancellation(id) {
     return MaweHost.server.fetch(TASK_CANCEL_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, id: current.id }),
+      body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, id }),
     }).then(async (response) => {
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) throw new Error(body?.error || '取消 AI 任务失败');
-    }).catch((error) => {
+    });
+  }
+
+  function cancelCurrent() {
+    const current = active;
+    if (!current || current.settled) return Promise.resolve();
+    if (!current.id) {
+      current.cancelRequested = true;
+      markCancelled();
+      return Promise.resolve();
+    }
+    if (current.phase !== 'running') {
+      markCancelled();
+      return Promise.resolve();
+    }
+    return requestCancellation(current.id).catch((error) => {
       // 取消失败不打断轮询：任务可能刚好完成；下一次 tick 会给出终态。
       if (active !== current || active.settled) return;
       fail(`取消失败：${error.message || error}`);
@@ -200,7 +251,7 @@
    * @param {string} label 进度浮条标题
    * @returns {Promise<Record<string, unknown>>} resolve 为任务 result
    */
-  function begin(kind, payload = {}, label = 'AI 任务') {
+  function begin(kind, payload = {}, label = 'AI 任务', { beforeComplete = null } = {}) {
     MaweAiSettings.ensureServerAvailable();
     if (active && !active.settled) {
       return Promise.reject(new Error('已有 AI 任务进行中，请等它完成或取消后再试'));
@@ -209,7 +260,9 @@
     let resolve;
     let reject;
     const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
-    active = { id: '', kind, label, settled: false, timer: 0, hideTimer: 0, resolve, reject };
+    active = { id: '', kind, label, settled: false, timer: 0, hideTimer: 0, resolve, reject, beforeComplete, phase: 'running' };
+    const current = active;
+    renderTask({ stage: 'submitting', percent: 0 });
     MaweHost.server.fetch(TASK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -219,13 +272,18 @@
       if (!response.ok || !body?.ok || !body?.task?.id) {
         throw new Error(body?.error || `提交 AI 任务失败（HTTP ${response.status}）`);
       }
-      if (!active || active.settled) return; // 理论不可达；防御提交回调晚于清理
-      active.id = body.task.id;
+      if (current.cancelRequested) {
+        void requestCancellation(body.task.id).catch(() => {});
+        return;
+      }
+      if (active !== current || current.settled) return;
+      current.id = body.task.id;
       renderTask(body.task);
-      active.timer = setInterval(() => { tick(); }, POLL_INTERVAL_MS);
+      current.timer = setInterval(() => { tick(); }, POLL_INTERVAL_MS);
     }).catch((error) => {
+      if (active !== current || current.settled) return;
       const message = error?.message || String(error);
-      if (active && !active.settled && !active.id) {
+      if (!current.id) {
         // 提交阶段失败：没有可跟踪的任务，直接收起浮条并拒绝。
         settle();
         hideProgress();
@@ -271,10 +329,17 @@
       disabled: !hasTargets,
       hint: 'AI 为每条字幕的核心词添加 ** 强调标记（可撤销）',
     });
-    addEntry('翻译为副字幕…', textTask('ai-translate'), {
-      disabled: !hasTargets,
-      hint: '优先按副轨的中英文语言翻译；否则中日韩译英文，其他译中文。可自定义提示词',
-    });
+    const customTranslation = Boolean(MaweAiTextTasks.customPrompts?.['ai-translate']);
+    const suggestedLanguage = hasTargets ? MaweAiTextTasks.translationSuggestion(targets) : 'zh';
+    if (customTranslation) {
+      addEntry('按自定义提示词翻译…', textTask('ai-translate'), { disabled: !hasTargets, hint: '目标语言由自定义翻译提示词决定' });
+    } else {
+      const hint = '优先按副轨的中英文语言翻译；否则中日韩译英文，其他译中文。可自定义提示词';
+      addEntry(suggestedLanguage === 'zh' ? '译为中文副字幕（建议）' : '译为中文副字幕',
+        (selected) => MaweAiTextTasks.runTextTask('ai-translate', selected, { targetLanguage: 'zh' }), { disabled: !hasTargets, hint });
+      addEntry(suggestedLanguage === 'en' ? '译为英文副字幕（建议）' : '译为英文副字幕',
+        (selected) => MaweAiTextTasks.runTextTask('ai-translate', selected, { targetLanguage: 'en' }), { disabled: !hasTargets, hint });
+    }
     addEntry('Emoji 点缀…', textTask('ai-emoji'), {
       disabled: !hasTargets,
       hint: 'AI 为每条字幕开头添加一个贴切的 emoji（可撤销）',

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -22,7 +23,6 @@ import unicodedata
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
@@ -296,15 +296,17 @@ AI_TEXT_TASK_PROMPTS: dict[str, dict[str, str]] = {
         "zh": (
             "你是字幕合并助手。下面几条字幕已被合并成一条，合并文本可能缺少词间空格或在拼接处有重复标点。"
             "请输出合并后的最终文本。规则：\n"
-            "- 英文等空格语言按词界补齐空格；中文等无空格语言不加空格；\n"
+            "- 仅在原始字幕的拼接处调整空格；句内的任何文字、空格和标点均逐字符保留；\n"
             "- 清理拼接处重复的标点或连接符；不要改动任何词语本身；\n"
+            "- 保留 MASS 样式符号；无法确定拼接处时，保持合并后的文本原样；\n"
             "- 输出 JSON：{\"groups\": [{\"source_ids\": [\"<合并后字幕id>\"], \"text\": \"<最终文本>\"}]}，只输出一个 group。"
         ),
         "en": (
             "You are a subtitle merging assistant. Several subtitle lines were merged into one; the merged text "
             "may be missing inter-word spaces or have duplicated punctuation at the seams. Output the final text. Rules:\n"
-            "- Restore spaces between words for spaced languages; do not insert spaces in unspaced languages;\n"
+            "- Adjust spacing only at the joins between original subtitles; preserve every character, space and punctuation mark inside each subtitle;\n"
             "- Clean duplicated punctuation or connectors at the seams; never change any word itself;\n"
+            "- Preserve MASS style markers; if the seams are uncertain, return the merged text unchanged;\n"
             "- Output JSON: {\"groups\": [{\"source_ids\": [\"<merged cue id>\"], \"text\": \"<final text>\"}]} "
             "- exactly one group."
         ),
@@ -386,22 +388,74 @@ def run_ai_text_task(
     return {"texts": texts}
 
 
-def _merge_polish_preserves_text(original: str, result: str) -> bool:
-    """只允许调整空白或删除连续重复的标点，避免模型改写正文。"""
-    before = "".join(original.split())
-    after = "".join(result.split())
-    for operation, start, end, _new_start, _new_end in SequenceMatcher(None, before, after, autojunk=False).get_opcodes():
-        if operation == "equal":
-            continue
-        if operation != "delete":
-            return False
-        for index in range(start, end):
-            char = before[index]
-            if not unicodedata.category(char).startswith("P"):
-                return False
-            if not ((index > 0 and before[index - 1] == char) or (index + 1 < len(before) and before[index + 1] == char)):
-                return False
-    return True
+def _merge_polish_pattern(original: str, parts: list[str]) -> str | None:
+    """Only locate seams when the exact parts reproduce a uniform whitespace join.
+
+    The frontend can also fold MASS wrappers during merging. Without its symbol
+    rule and fold offsets, those seams cannot safely be reconstructed here.
+    """
+    if len(parts) < 2 or any(not part.strip() for part in parts):
+        return None
+    added = len(original) - sum(map(len, parts))
+    joins = len(parts) - 1
+    if added < 0 or added % joins:
+        return None
+    width = added // joins
+    separator = original[len(parts[0]):len(parts[0]) + width]
+    if (separator and not separator.isspace()) or separator.join(parts) != original:
+        return None
+
+    regions: list[tuple[int, int, str]] = []
+    offset = 0
+    for left, right in zip(parts, parts[1:]):
+        boundary = offset + len(left)
+        start = offset + len(left.rstrip())
+        end = boundary + width + len(right) - len(right.lstrip())
+        replacement = r"\s*"
+        # MASS control characters are syntax, even when Unicode calls them
+        # punctuation. Leave them byte-for-byte intact; only the core folds them.
+        char = original[start - 1] if start > offset else ""
+        if (
+            char and end < boundary + width + len(right)
+            and original[end] == char
+            and unicodedata.category(char).startswith("P")
+            and char not in "*_+-~/%!<>{}"
+        ):
+            left_count = right_count = 0
+            while start > offset and original[start - 1] == char:
+                start -= 1
+                left_count += 1
+            right_end = boundary + width + len(right)
+            while end < right_end and original[end] == char:
+                end += 1
+                right_count += 1
+            # Preserve the longer original run (e.g. an ellipsis), while allowing
+            # the duplicate contributed by the other subtitle to be removed.
+            minimum = max(left_count, right_count)
+            maximum = left_count + right_count
+            escaped = re.escape(char)
+            unchanged_runs = re.escape(char * left_count) + r"\s*" + re.escape(char * right_count)
+            collapsed_run = rf"\s*{escaped}{{{minimum},{maximum - 1}}}\s*"
+            replacement = rf"(?:{unchanged_runs}|{collapsed_run})"
+        if regions and start < regions[-1][1]:
+            return None  # A punctuation-only part gives overlapping seams.
+        regions.append((start, end, replacement))
+        offset = boundary + width
+
+    pattern = ""
+    cursor = 0
+    for start, end, replacement in regions:
+        pattern += re.escape(original[cursor:start]) + replacement
+        cursor = end
+    return pattern + re.escape(original[cursor:])
+
+
+def _merge_polish_preserves_text(original: str, result: str, parts: list[str]) -> bool:
+    """Keep every character outside proven seams, including sentence spacing."""
+    if result == original:
+        return True
+    pattern = _merge_polish_pattern(original, parts)
+    return pattern is not None and re.fullmatch(pattern, result) is not None
 
 
 def run_ai_smart_merge(
@@ -418,9 +472,9 @@ def run_ai_smart_merge(
     from maw.postprocess_llm import complete_subtitle_groups
 
     merged_id = str(payload.get("mergedId") or "").strip()
-    merged_text = str(payload.get("mergedText") or "").strip()
-    parts = [str(part).strip() for part in payload.get("parts") or [] if str(part).strip()]
-    if not merged_id or not merged_text:
+    merged_text = str(payload.get("mergedText") or "")
+    parts = [str(part) for part in payload.get("parts") or [] if str(part).strip()]
+    if not merged_id or not merged_text.strip():
         raise AiTaskError("缺少合并后的字幕信息")
     if len(parts) < 2:
         raise AiTaskError("智能合并至少需要两条原始字幕")
@@ -445,11 +499,11 @@ def run_ai_smart_merge(
         settings, prompt, [{"id": merged_id, "text": merged_text}], is_cancelled=cancel,
     )
     texts = collect_group_texts(response, [{"id": merged_id, "text": merged_text}])
-    polished = texts.get(merged_id, "").strip()
-    if not polished:
+    polished = texts.get(merged_id, "")
+    if not polished.strip():
         raise LlmClientError("模型没有返回合并结果，请重试。")
-    if not _merge_polish_preserves_text(merged_text, polished):
-        raise LlmClientError("AI 合并结果改动了原文，已保留普通合并结果。")
+    if not _merge_polish_preserves_text(merged_text, polished, parts):
+        raise LlmClientError("AI 合并结果无法确认仅修改了合并缝，已保留普通合并结果。")
     report("done", 100)
     return {"texts": {merged_id: polished}}
 

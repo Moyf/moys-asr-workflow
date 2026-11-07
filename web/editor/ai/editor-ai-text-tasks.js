@@ -160,21 +160,70 @@
     return detectTaskLang(cues) === 'zh' ? 'en' : 'zh';
   }
 
+  function translationSuggestion(targets) {
+    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    return translationTargetLang(collectTaskCues(targets, track), track);
+  }
+
+  // 只允许在原文原位置增加成对的 **；原有标记和正文必须保留。
+  function boldMarkerLayout(text) {
+    let plain = '';
+    const spans = [];
+    let open = null;
+    const parts = text.split('**');
+    for (let index = 0; index < parts.length; index += 1) {
+      if (index % 2 === 1) open = plain.length;
+      else if (index > 0) {
+        spans.push({ start: open, end: plain.length });
+        open = null;
+      }
+      plain += parts[index];
+    }
+    return { plain, spans, open };
+  }
+
+  function preservesDefaultBold(original, result) {
+    const before = boldMarkerLayout(original);
+    const after = boldMarkerLayout(result);
+    if (before.plain !== after.plain || before.open !== after.open) return false;
+    let retained = 0;
+    for (const span of after.spans) {
+      const existing = before.spans[retained];
+      if (existing && existing.start === span.start && existing.end === span.end) retained += 1;
+      else if (span.start === span.end) return false;
+    }
+    return retained === before.spans.length;
+  }
+
+  function preservesDefaultEmoji(original, result) {
+    if (result === original) return true;
+    const suffix = ` ${original}`;
+    if (!result.endsWith(suffix)) return false;
+    const prefix = result.slice(0, -suffix.length);
+    const clusters = typeof Intl.Segmenter === 'function'
+      ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(prefix)].length
+      : Array.from(prefix).length;
+    return clusters === 1 && /[\p{Extended_Pictographic}\p{Regional_Indicator}\u20e3]/u.test(prefix);
+  }
+
 
 
   // === 主字幕文本回写（加粗 / Emoji）===
 
-  function applyMainTextResults(kind, cues, texts) {
+  function applyMainTextResults(kind, cues, texts, validatePreset = false) {
     const label = TEXT_TASK_LABELS[kind] || 'AI 文本任务';
     const rows = [];
     let stale = 0;
     let missing = 0;
     let unchanged = 0;
+    let invalid = 0;
     for (const cue of cues) {
       const newText = typeof texts[cue.id] === 'string' ? texts[cue.id] : '';
       if (!newText.trim()) { missing += 1; continue; }
       const segment = locateTaskSegment(cue);
       if (!segment) { stale += 1; continue; }
+      if (validatePreset && ((kind === 'ai-bold' && !preservesDefaultBold(cue.text, newText))
+        || (kind === 'ai-emoji' && !preservesDefaultEmoji(cue.text, newText)))) { invalid += 1; continue; }
       if (segment.text === newText) { unchanged += 1; continue; }
       rows.push({ segment, text: newText });
     }
@@ -183,6 +232,7 @@
       if (unchanged) parts.push(`${unchanged} 条已符合目标`);
       if (stale) parts.push(`${stale} 条在任务期间被修改，已跳过`);
       if (missing) parts.push(`${missing} 条模型未返回结果`);
+      if (invalid) parts.push(`${invalid} 条结果修改了原文或格式不符，已跳过`);
       MaweHint.flashHint(parts.length ? `${label}：${parts.join('；')}` : `${label}：没有需要更新的字幕`, 'invalid');
       return;
     }
@@ -202,6 +252,7 @@
       if (stale) notes.push(`${stale} 条期间被修改已跳过`);
       if (missing) notes.push(`${missing} 条模型未返回`);
       if (unchanged) notes.push(`${unchanged} 条已符合目标`);
+      if (invalid) notes.push(`${invalid} 条结果修改了原文或格式不符，已跳过`);
       MaweHint.flashHint(
         `${label}已更新 ${rows.length} 条字幕${notes.length ? `（${notes.join('；')}）` : ''}`,
         'success',
@@ -273,17 +324,23 @@
       && Object.keys(context).every((key) => context[key] === current[key]);
   }
 
-  async function waitForTaskApply(context) {
+  async function waitForTaskApply(context, isCurrent = () => true, onWait = () => {}) {
     let notified = false;
-    while (global.MaweInlineEdit?.editingState || global.MaweInlineEdit?.extensionEditingState) {
-      if (!taskContextCurrent(context)) return false;
+    const editing = () => {
+      const focused = document.activeElement;
+      const panel = global.MaweDom;
+      return Boolean(global.MaweInlineEdit?.editingState || global.MaweInlineEdit?.extensionEditingState
+        || (focused && [panel?.cuePanelText, panel?.cuePanelStart, panel?.cuePanelDuration].includes(focused)));
+    };
+    while (editing()) {
+      if (!isCurrent() || !taskContextCurrent(context)) return false;
       if (!notified) {
-        MaweHint.flashHint('正在编辑字幕，AI 结果将在编辑结束后应用', 'warning');
+        onWait();
         notified = true;
       }
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
-    if (!taskContextCurrent(context)) return false;
+    if (!isCurrent() || !taskContextCurrent(context)) return false;
     global.MaweCuePanel?.commitCuePanelEdit();
     return taskContextCurrent(context);
   }
@@ -355,7 +412,10 @@
     if (timedCount) {
       const message = global.MAWE_I18N?.translateText?.('修改译文将清除 {count} 条副字幕的字词时间码。是否继续？')
         || '修改译文将清除 {count} 条副字幕的字词时间码。是否继续？';
-      if (!global.confirm(message.replace('{count}', String(timedCount)))) return;
+      if (!global.confirm(message.replace('{count}', String(timedCount)))) {
+        MaweHint.flashHint('已取消应用 AI 译文', 'warning');
+        return;
+      }
     }
     MaweCommands.run(label, (command) => {
       // 命令内统一「确保有轨且启用」：无轨建轨；轨在但双语关闭时重新启用
@@ -422,7 +482,7 @@
 
   // === 任务入口 ===
 
-  function runTextTask(kind, targets = []) {
+  function runTextTask(kind, targets = [], { targetLanguage = null } = {}) {
     if (!MaweAiSettings.serverAvailable()) {
       MaweHint.flashHint('AI 功能仅在本地服务器版编辑器可用（当前通过 file:// 打开）', 'invalid');
       return;
@@ -436,26 +496,34 @@
     }
     const payload = {
       cues: cues.map(({ id, text }) => ({ id, text })),
-      lang: kind === 'ai-translate' ? translationTargetLang(cues, extensionTrack) : detectTaskLang(cues),
+      lang: kind === 'ai-translate'
+        ? (targetLanguage === 'zh' || targetLanguage === 'en' ? targetLanguage : translationTargetLang(cues, extensionTrack))
+        : detectTaskLang(cues),
       customPrompt: customPrompts[kind] || null,
     };
+    const validatePreset = !payload.customPrompt;
     const label = TEXT_TASK_LABELS[kind] || 'AI 文本任务';
     // 提交时记录工程/媒体绑定：完成时不一致说明上下文已切换，结果整体丢弃（#4）。
     const taskContext = captureTaskContext();
-    MaweAiTasks.begin(kind, payload, label).then(
+    let applied = false;
+    const applyResult = async (result, isCurrent = () => true, onWait = () => {}) => {
+      if (!await waitForTaskApply(taskContext, isCurrent, onWait)) return false;
+      applied = true;
+      if (kind === 'ai-translate'
+        && (MaweMultiSubtitleCore.getActiveExtensionTrack()?.id ?? null) !== (extensionTrack?.id ?? null)) {
+        MaweHint.flashHint('副字幕轨已切换，已丢弃本次 AI 结果', 'warning');
+        return true;
+      }
+      const texts = result && typeof result.texts === 'object' && result.texts ? result.texts : {};
+      if (kind === 'ai-translate') applyTranslationResults(cues, texts);
+      else applyMainTextResults(kind, cues, texts, validatePreset);
+      return true;
+    };
+    MaweAiTasks.begin(kind, payload, label, {
+      beforeComplete: (isCurrent, result, onWait) => applyResult(result, isCurrent, onWait),
+    }).then(
       async (result) => {
-        if (!await waitForTaskApply(taskContext)) {
-          MaweHint.flashHint('工程或媒体已切换，已丢弃本次 AI 结果', 'warning');
-          return;
-        }
-        if (kind === 'ai-translate'
-          && (MaweMultiSubtitleCore.getActiveExtensionTrack()?.id ?? null) !== (extensionTrack?.id ?? null)) {
-          MaweHint.flashHint('副字幕轨已切换，已丢弃本次 AI 结果', 'warning');
-          return;
-        }
-        const texts = result && typeof result.texts === 'object' && result.texts ? result.texts : {};
-        if (kind === 'ai-translate') applyTranslationResults(cues, texts);
-        else applyMainTextResults(kind, cues, texts);
+        if (!applied && !await applyResult(result)) MaweHint.flashHint('工程或媒体已切换，已丢弃本次 AI 结果', 'warning');
       },
       (error) => MaweHint.flashHint(error.message || 'AI 任务失败', 'invalid'),
     );
@@ -468,6 +536,7 @@
     openPromptsModal,
     collectTaskCues,
     detectTaskLang,
+    translationSuggestion,
     captureTaskContext,
     taskContextCurrent,
     waitForTaskApply,

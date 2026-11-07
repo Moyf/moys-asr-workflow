@@ -860,6 +860,8 @@ document.addEventListener('keydown', (e) => {
 // 双列时编辑行的容器同时包含主/副两列，因此只判断当前 contenteditable。
 document.addEventListener('pointerdown', (e) => {
   const target = e.target instanceof Node ? e.target : null;
+  // 丢弃待回写的结果时先保留编辑状态，避免松开按钮之前结果抢先应用。
+  if (window.MaweAiTasks?.active?.phase === 'waiting_edit' && target instanceof Element && target.closest('#ai-task-progress-cancel')) return;
   if (MaweInlineEdit.editingState && (!target || !MaweInlineEdit.editingState.textEl.contains(target))) MaweInlineEdit.finishEdit(true);
   if (MaweInlineEdit.extensionEditingState && (
     !target || !MaweInlineEdit.extensionEditingState.textEl.contains(target)

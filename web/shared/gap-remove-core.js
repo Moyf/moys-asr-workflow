@@ -1495,34 +1495,53 @@
   // Projection keeps one cue per source cue, preserving ID/color-ref indexes.
   // Only verified local AI scopes authorize hiding words; ordinary silence
   // ranges, old whole-cue AI decisions and independent tracks never do.
-  function projectCleanupRetainedSegments(segments, gapRemove) {
-    const source = Array.isArray(segments) ? segments : [];
-    if (!gapRemove || typeof gapRemove !== 'object') return source;
-    const scopes = gapRemove.provenance?.sources?.ai_cleanup;
-    if (!Array.isArray(scopes) || !scopes.some((range) => range?.cleanup_scope
-        && source.some((segment) => segment?.id === range.cleanup_scope.segment_id))) return source;
-    const provenance = normalizeGapRemoveProvenance(gapRemove.provenance, gapRemove.gaps);
-    const effective = getRemovedGapRanges(gapRangesFromProvenance(provenance));
-    return source.map((segment) => {
-      const items = reliableCleanupItems(segment);
-      if (!items.length || segment.disabled === true) return segment;
-      const hidden = new Set();
-      for (const gap of provenance.sources.ai_cleanup) {
-        const scope = gap.cleanup_scope;
-        if (!getCleanupScopeItems(segment, gap).length) continue;
-        for (let index = scope.item_start; index < scope.item_end; index += 1) {
-          if (effective.some((range) => range.start <= items[index].start && items[index].end <= range.end)) hidden.add(index);
+  function createCleanupRetainedProjector(gapRemove) {
+    const scopes = gapRemove?.provenance?.sources?.ai_cleanup;
+    const scopedIds = new Set(Array.isArray(scopes)
+      ? scopes.filter((range) => range?.cleanup_scope).map((range) => range.cleanup_scope.segment_id) : []);
+    let prepared = null;
+    // The caller owns the lifetime of this immutable-input projection. Delay
+    // the full provenance projection until a cue actually has a local scope.
+    return (segments) => {
+      const source = Array.isArray(segments) ? segments : [];
+      if (!source.some((segment) => scopedIds.has(segment?.id))) return source;
+      if (!prepared) {
+        const provenance = normalizeGapRemoveProvenance(gapRemove.provenance, gapRemove.gaps);
+        const bySegment = new Map();
+        for (const gap of provenance.sources.ai_cleanup) {
+          const id = gap.cleanup_scope?.segment_id;
+          if (!bySegment.has(id)) bySegment.set(id, []);
+          bySegment.get(id).push(gap);
         }
+        prepared = { bySegment, effective: getRemovedGapRanges(gapRangesFromProvenance(provenance)) };
       }
-      if (!hidden.size) return segment;
-      const kept = items.filter((_item, index) => !hidden.has(index));
-      return { ...segment, text: kept.map((item) => item.text).join(''), items: kept.map((item) => ({ ...item })),
-        ...(kept.length ? { start: kept[0].start, end: kept.at(-1).end } : { disabled: true }) };
-    });
+      const { bySegment, effective } = prepared;
+      return source.map((segment) => {
+        const items = reliableCleanupItems(segment);
+        if (!items.length || segment.disabled === true) return segment;
+        const hidden = new Set();
+        for (const gap of bySegment.get(segment.id) || []) {
+          const scope = gap.cleanup_scope;
+          if (!getCleanupScopeItems(segment, gap).length) continue;
+          for (let index = scope.item_start; index < scope.item_end; index += 1) {
+            if (effective.some((range) => range.start <= items[index].start && items[index].end <= range.end)) hidden.add(index);
+          }
+        }
+        if (!hidden.size) return segment;
+        const kept = items.filter((_item, index) => !hidden.has(index));
+        return { ...segment, text: kept.map((item) => item.text).join(''), items: kept.map((item) => ({ ...item })),
+          ...(kept.length ? { start: kept[0].start, end: kept.at(-1).end } : { disabled: true }) };
+      });
+    };
+  }
+
+  function projectCleanupRetainedSegments(segments, gapRemove) {
+    return createCleanupRetainedProjector(gapRemove)(segments);
   }
 
   global.AsrGapRemoveCore = Object.freeze({
     getCleanupScopeItems,
+    createCleanupRetainedProjector,
     projectCleanupRetainedSegments,
     GAP_REMOVE_SCHEMA,
     GAP_PROVENANCE_SCHEMA,

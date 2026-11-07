@@ -4443,7 +4443,7 @@
   }
   .ai-task-progress.is-error .ai-task-progress-label { color: var(--danger, #e5484d); }
   .ai-task-progress-cancel {
-    flex: 0 0 auto; width: 20px; height: 20px; padding: 0; line-height: 1;
+    flex: 0 0 auto; min-width: 20px; height: 20px; padding: 0 5px; line-height: 1;
     background: transparent; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
     color: var(--text-muted); font-size: 12px; cursor: pointer;
   }

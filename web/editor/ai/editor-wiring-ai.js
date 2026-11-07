@@ -31,7 +31,10 @@
     }
     try {
       const settings = await MaweAiSettings.fetchSettings({ force: true });
-      if (settings) MaweAiSettings.fillSettingsPanel();
+      if (settings) {
+        MaweAiSettings.fillSettingsPanel();
+        setStatus('');
+      }
     } catch (error) {
       setStatus(error.message || String(error), true);
     }
@@ -50,6 +53,9 @@
 
 
   function wireSettingsControls() {
+    element('editor-settings-tab-ai')?.addEventListener('mawe:settings-tab-activated', () => {
+      if (!MaweAiSettings.serverSettings) void refreshSettingsPanel();
+    });
     const toggle = element('ai-feature-toggle');
     if (toggle) {
       toggle.checked = MaweSettings.EDITOR_SETTINGS.aiEnabled === true;
@@ -108,7 +114,7 @@
   if (MaweAiSettings.serverAvailable()) {
     MaweAiSettings.fetchSettings().then((settings) => {
       if (settings) MaweAiSettings.fillSettingsPanel();
-    }).catch(() => { /* 网络暂不可用时留到打开设置页再重试 */ });
+    }).catch((error) => setStatus(error.message || String(error), true));
   }
 
 

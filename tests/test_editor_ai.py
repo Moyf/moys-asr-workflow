@@ -459,6 +459,45 @@ class EditorAiStructureTaskTests(_EditorAiTaskTestBase):
         self.assertEqual(final["status"], "error")
         self.assertIn("已保留普通合并结果", final["error"])
 
+    def test_smart_merge_only_polishes_proven_seams(self) -> None:
+        cases = [
+            # Both ordinary join modes, including whitespace already in parts.
+            (["New York", "City"], "New YorkCity", "New York City", True),
+            (["New York ", " City"], "New York   City", "New York City", True),
+            (["New York", "City"], "New YorkCity", "NewYork City", False),
+            (["Hello,", ",World"], "Hello,,World", "Hello, World", True),
+            (["Wait...", ".Next"], "Wait....Next", "Wait... Next", True),
+            (["Wait...", ".Next"], "Wait....Next", "Wait. Next", False),
+            (["Wait...", ".Next"], "Wait....Next", "Wait. . . Next", False),
+            (["Wait...", "Next,,please"], "Wait...Next,,please", "Wait... Next,please", False),
+            # The merge core folds MASS wrappers using frontend settings. Unknown
+            # folds may pass unchanged, but do not authorize guessed seam edits.
+            (["**New York**", "**City**"], "**New York City**", "**New York City**", True),
+            (["**New York**", "**City**"], "**New York City**", "**NewYork City**", False),
+            (["!!Hello!!", "!!World!!"], "!!Hello!!!!World!!", "!!Hello!!!World!!", False),
+        ]
+        for parts, original, result, expected in cases:
+            with self.subTest(parts=parts, result=result):
+                self.assertEqual(editor_ai._merge_polish_preserves_text(original, result, parts), expected)
+
+    def test_smart_merge_rejects_sentence_and_outer_spacing_changes(self) -> None:
+        self._write_custom_slot()
+        for original, parts, polished in [
+            ("New YorkCity", ["New York", "City"], "NewYork City"),
+            ("  New YorkCity  ", ["  New York", "City  "], "New York City"),
+        ]:
+            with self.subTest(original=original), mock.patch(
+                "maw.postprocess_llm.complete_subtitle_groups",
+                return_value={"groups": [{"source_ids": ["m1"], "text": polished}]},
+            ):
+                with self.assertRaisesRegex(LlmClientError, "已保留普通合并结果"):
+                    editor_ai.run_ai_smart_merge(
+                        self.env_path,
+                        {"mergedId": "m1", "mergedText": original, "parts": parts, "lang": "en"},
+                        lambda *_: None,
+                        lambda: False,
+                    )
+
     def test_smart_merge_rejects_missing_parts_and_merged_text(self) -> None:
         self._write_custom_slot()
         manager = editor_ai.AiTaskManager(self.env_path)

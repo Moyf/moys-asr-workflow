@@ -1476,18 +1476,26 @@
     // 右键菜单「AI 处理」子菜单
     'AI 处理': 'AI actions',
     '加粗关键词…': 'Bold keywords…', '翻译为副字幕…': 'Translate to secondary subtitles…', 'Emoji 点缀…': 'Emoji decoration…',
+    '按自定义提示词翻译…': 'Translate with custom prompt…',
+    '译为中文副字幕（建议）': 'Translate to Chinese (suggested)', '译为英文副字幕（建议）': 'Translate to English (suggested)',
+    '译为中文副字幕': 'Translate to Chinese', '译为英文副字幕': 'Translate to English',
     'AI 拆分建议…': 'AI split suggestion…', 'AI 拆分建议': 'AI split suggestion', 'AI 智能合并…': 'AI smart merge…', '时间码→字词…': 'Timecodes → word items…',
     'AI 提示词设置…': 'AI prompt settings…', '打开 AI 设置…': 'Open AI settings…',
     // 任务浮条 / 设置面板 / 回写提示的静态消息
     'AI 功能仅在本地服务器版编辑器可用（当前通过 file:// 打开）': 'AI features are only available in the local-server editor (opened via file://)',
     'AI 设置仅在本地服务器版编辑器可用（当前通过 file:// 打开）': 'AI settings are only available in the local-server editor (opened via file://)',
     '未配置密钥': 'No key configured', '该供应商可免密钥访问': 'This provider needs no API key',
-    '排队中…': 'Queued…', '启动中…': 'Starting…', '连接供应商…': 'Connecting to provider…',
+    '正在提交…': 'Submitting…', '排队中…': 'Queued…', '启动中…': 'Starting…', '连接供应商…': 'Connecting to provider…',
     '等待供应商响应…': 'Waiting for provider…', '处理中…': 'Working…', '已取消': 'Cancelled',
     '测试 AI 连接': 'Test AI connection', '正在拉取模型列表…': 'Fetching model list…',
     'AI 任务已取消': 'AI task cancelled', 'AI 任务不存在或已过期': 'AI task not found or expired',
     'AI 任务失败': 'AI task failed', '取消 AI 任务失败': 'Failed to cancel the AI task',
     '正在编辑字幕，AI 结果将在编辑结束后应用': 'Finish editing the subtitle to apply the AI result',
+    '结果已生成，等待结束字幕编辑…': 'Result ready; waiting for subtitle editing to finish…',
+    '正在应用结果…': 'Applying result…',
+    '请先关闭当前拆分窗口，再重试 AI 拆分建议': 'Close the current split dialog before retrying the AI split suggestion',
+    '已取消应用 AI 译文': 'AI translation was not applied',
+    '已取消应用 AI 字词时间码': 'AI word timing was not applied',
     '副字幕轨已切换，已丢弃本次 AI 结果': 'The secondary subtitle track changed; the AI result was discarded',
     '修改译文将清除 {count} 条副字幕的字词时间码。是否继续？': 'Changing the translation will remove word timestamps from {count} secondary subtitles. Continue?',
     '将替换 {count} 条字幕已有的字词时间码。是否继续？': 'Replace existing word timestamps on {count} subtitles?',
@@ -1754,6 +1762,9 @@
     '取消此 AI 任务': 'Cancel this AI task',
     'AI 为每条字幕的核心词添加 ** 强调标记（可撤销）': 'AI adds ** emphasis marks around each cue\'s key words (undoable)',
     '优先按副轨的中英文语言翻译；否则中日韩译英文，其他译中文。可自定义提示词': 'Uses the secondary track language when it is Chinese or English; otherwise translates CJK text into English and other text into Chinese. The prompt can be customized.',
+    '目标语言由自定义翻译提示词决定': 'The target language is determined by the custom translation prompt',
+    '丢弃尚未应用的 AI 结果': 'Discard the unapplied AI result',
+    '丢弃': 'Discard',
     'AI 为每条字幕开头添加一个贴切的 emoji（可撤销）': 'AI prepends a fitting emoji to each cue (undoable)',
     'AI 建议一个断句位置并直接拆分（可撤销）': 'AI suggests one break point and splits the cue directly (undoable)',
     '先合并选中的连续字幕，再由 AI 修顺合并缝（可撤销）': 'Merges the selected contiguous cues first, then lets AI smooth the seams (undoable)',
@@ -2197,7 +2208,7 @@
     match = /^取消失败：(.+)$/.exec(text);
     if (match) return `Cancel failed: ${translateText(match[1], EN)}`;
     // 进度浮条：<任务名> · <stage>；stage 文案本身在 EN_TEXT / 下方映射
-    match = /^(.+?) · (排队中…|启动中…|连接供应商…|等待供应商响应…|处理中…|完成|已取消)$/.exec(text);
+    match = /^(.+?) · (正在提交…|排队中…|启动中…|连接供应商…|等待供应商响应…|结果已生成，等待结束字幕编辑…|正在应用结果…|处理中…|完成|已取消)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} · ${translateText(match[2], EN)}`;
     match = /^(.+?) · 对齐中 (\d+)\/(\d+)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} · aligning ${match[2]}/${match[3]}`;
@@ -2263,6 +2274,10 @@
     if (match) return `${match[1]} failed to align`;
     match = /^(\d+) 条断点不可用$/.exec(text);
     if (match) return `${match[1]} had an unusable break point`;
+    match = /^(\d+) 条结果修改了原文或格式不符，已跳过$/.exec(text);
+    if (match) return `${match[1]} changed the original or had an invalid format and were skipped`;
+    match = /^(\d+) 条已绑定副字幕，请逐条联动拆分$/.exec(text);
+    if (match) return `${match[1]} have bound secondary subtitles; split them one at a time`;
     match = /^更新 (\d+) 条$/.exec(text);
     if (match) return `Updated ${match[1]}`;
     match = /^新建 (\d+) 条$/.exec(text);

@@ -72,7 +72,7 @@ function createCoreAdapters(win) {
   return core;
 }
 
-function createContext({ elements = {} } = {}) {
+function createContext({ elements = {}, storedPrompts = null } = {}) {
   const context = { TextDecoder, TextEncoder, Uint8Array };
   context.window = context; // 与浏览器一致：window 即全局对象
   const state = { hints: [], timers: [], responses: [], fetches: [], beginCalls: [] };
@@ -98,7 +98,7 @@ function createContext({ elements = {} } = {}) {
   };
   // host 夹具会注入真实网络层的 MaweHost：模块加载完成后用桩覆盖
   context.MaweHost = {
-    storage: { getItem: () => null, setItem() {} },
+    storage: { getItem: () => storedPrompts ? JSON.stringify(storedPrompts) : null, setItem() {} },
     server: {
       fetch: async (url, options = {}) => {
         state.fetches.push({ url, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null });
@@ -151,6 +151,76 @@ test('智能合并保留首条 ID 时仍提交 AI 润色', async () => {
   assert.equal(win.AsrEditorUtils.getMainTrack(win.MaweBoot.DATA).segments[0].text, 'Hello world');
 });
 
+test('已有 AI 任务时智能合并在写工程前退出', async () => {
+  for (const phase of ['running', 'waiting_edit']) {
+    const { win, state } = createContext();
+    const segments = [makeSegment('a', 'Hello', 0, 1000), makeSegment('b', 'world', 1000, 2000)];
+    win.MaweBoot.DATA = makeProject(segments);
+    let merged = false;
+    win.MaweSegmentOps = { mergeSegments() { merged = true; segments.splice(1, 1); } };
+    const active = { id: 'existing', phase };
+    win.MaweAiTasks = { active, begin: async (...args) => { state.beginCalls.push(args); return {}; } };
+    win.MaweAiStructureTasks.runSmartMerge([0, 1]);
+    await flush();
+    assert.equal(merged, false);
+    assert.equal(segments.length, 2);
+    assert.deepEqual(segments.map(segment => segment.text), ['Hello', 'world']);
+    assert.equal(state.beginCalls.length, 0);
+    assert.equal(win.MaweAiTasks.active, active);
+    assert.ok(state.hints.some(({ message }) => message.includes('已有 AI 任务进行中')));
+  }
+});
+
+test('AI 单条联动拆分保留正在使用的拆分弹窗', async () => {
+  for (const occupied of ['pending', 'visible', 'idle']) {
+    const { win, state } = createContext();
+    const segment = makeSegment('a', 'first line', 0, 1000);
+    win.MaweBoot.DATA = makeProject([segment]);
+    const track = enableBilingual(win);
+    const translation = makeSegment('translated', '已有译文', 0, 1000);
+    track.segments.push(translation);
+    const binding = win.MaweMultiSubtitleCore.addSubtitleBinding(segment, translation, track);
+    win.MaweMultiSubtitleCore.multiSubtitleVisible = () => true;
+    win.MaweMultiSubtitleCore.bindingForMainIndex = () => binding;
+    const resolveBegin = stubDeferredBegin(win, state);
+    let visible = false;
+    let built = 0;
+    let rendered = 0;
+    const existing = { mainOffset: 2, userSelection: 'keep this selection' };
+    const suggested = { mainOffset: 6 };
+    win.MaweDom = { multiSubtitleSplitModal: { classList: {
+      contains: () => visible,
+      add: () => { visible = true; },
+    } } };
+    win.MaweSplitCore = {
+      pendingLinkedSplit: null,
+      linkedSplitState: () => { built += 1; return suggested; },
+      renderLinkedSplitText: () => { rendered += 1; },
+    };
+    win.MaweAiStructureTasks.runSuggestSplit([0]);
+    // The user starts another split while the provider is still running.
+    if (occupied === 'pending') win.MaweSplitCore.pendingLinkedSplit = existing;
+    if (occupied === 'visible') visible = true;
+    resolveBegin({ texts: { a: 'first⎪ line' } });
+    await flush();
+    assert.equal(segment.text, 'first line');
+    assert.equal(track.segments[0], translation);
+    assert.equal(win.MaweBoot.DATA.bindings[0], binding);
+    if (occupied === 'idle') {
+      assert.equal(win.MaweSplitCore.pendingLinkedSplit, suggested);
+      assert.equal(visible, true);
+      assert.equal(built, 1);
+      assert.equal(rendered, 1);
+    } else {
+      assert.equal(win.MaweSplitCore.pendingLinkedSplit, occupied === 'pending' ? existing : null);
+      assert.equal(visible, occupied === 'visible');
+      assert.equal(built, 0);
+      assert.equal(rendered, 0);
+      assert.ok(state.hints.some(({ message }) => message.includes('关闭当前拆分窗口')));
+    }
+  }
+});
+
 test('拆句按 ID 跟随原字幕而非旧下标', async () => {
   const { win, state } = createContext();
   const segments = [makeSegment('a', 'other', 0, 1000), makeSegment('b', 'same text', 1000, 2000), makeSegment('c', 'same text', 2000, 3000)];
@@ -170,6 +240,31 @@ test('拆句按 ID 跟随原字幕而非旧下标', async () => {
   await flush();
   assert.deepEqual(segments.map((segment) => segment.id), ['b', 'new', 'c']);
   assert.equal(segments[2].text, 'same text');
+});
+
+test('批量拆句保留已绑定字幕，仍处理未绑定字幕', async () => {
+  const { win, state } = createContext();
+  const segments = [makeSegment('a', 'first line', 0, 1000), makeSegment('b', 'second line', 1000, 2000)];
+  win.MaweBoot.DATA = makeProject(segments);
+  const track = enableBilingual(win);
+  const translation = makeSegment('translated', '已有译文', 0, 1000);
+  track.segments.push(translation);
+  win.MaweMultiSubtitleCore.addSubtitleBinding(segments[0], translation, track);
+  win.MaweSelection = { clearSelection() {}, selectOnly() {} };
+  win.MaweViewUpdates = { invalidate() {} };
+  win.MaweMultiSubtitleCore.removeBindingsForSegmentIds = () => { throw new Error('不应解除已绑定字幕'); };
+  win.MaweSplitCore = {
+    splitTimeForTextOffset: () => 1500,
+    buildSplitPair: (segment) => ({ left: { ...segment, text: 'second' }, right: { ...segment, id: 'new', text: 'line' } }),
+    replaceSegmentWithSplit: (list, index, pair) => list.splice(index, 1, pair.left, pair.right),
+  };
+  win.MaweAiTasks = { begin: async () => ({ texts: { a: 'first⎪ line', b: 'second⎪ line' } }) };
+  win.MaweAiStructureTasks.runSuggestSplit([0, 1]);
+  await flush();
+  assert.deepEqual(segments.map(segment => segment.id), ['a', 'b', 'new']);
+  assert.equal(win.MaweBoot.DATA.bindings.length, 1);
+  assert.equal(track.segments[0].text, '已有译文');
+  assert.ok(state.hints.some(({ message }) => message.includes('已绑定副字幕')));
 });
 
 test('字词对齐期间人工修改时间码时跳过写回', async () => {
@@ -259,6 +354,59 @@ test('begin 接受服务端 {ok, task} 包络并轮询到结果（#1 契约）',
   state.timers.at(-1)();
   await flush();
   assert.deepEqual(await promise, { texts: { a: 'b' } });
+});
+
+test('结果等待编辑结束时可丢弃，迟到的等待结果不影响新任务', async () => {
+  const { win, state } = createContext();
+  let release;
+  const waiting = new Promise(resolve => { release = resolve; });
+  state.responses.push(
+    { body: { ok: true, task: { id: 'old', status: 'queued' } } },
+    { body: { ok: true, tasks: [{ id: 'old', status: 'done', result: { texts: { a: 'old' } } }] } },
+  );
+  const previous = win.MaweAiTasks.begin('ai-bold', {}, 'AI 加粗关键词', { beforeComplete: async (_current, _result, onWait) => { onWait(); await waiting; return true; } });
+  const rejected = assert.rejects(previous, /已取消/);
+  await flush();
+  state.timers.at(-1)();
+  await flush();
+  assert.equal(win.MaweAiTasks.active.phase, 'waiting_edit');
+  await win.MaweAiTasks.cancelCurrent();
+  await rejected;
+  state.responses.push(
+    { body: { ok: true, task: { id: 'new', status: 'queued' } } },
+    { body: { ok: true, tasks: [{ id: 'new', status: 'done', result: { texts: { a: 'new' } } }] } },
+  );
+  const next = win.MaweAiTasks.begin('ai-bold', {}, 'AI 加粗关键词');
+  await flush();
+  release();
+  await flush();
+  assert.equal(win.MaweAiTasks.active.id, 'new');
+  state.timers.at(-1)();
+  await flush();
+  assert.deepEqual(await next, { texts: { a: 'new' } });
+});
+
+test('提交阶段取消后，迟到的任务会被取消且不影响新任务', async () => {
+  const { win, state } = createContext();
+  let release;
+  const response = new Promise(resolve => { release = resolve; });
+  state.responses.push({ deferred: true, promise: response });
+  const previous = win.MaweAiTasks.begin('ai-bold', {}, '旧任务');
+  const rejected = assert.rejects(previous, /已取消/);
+  await win.MaweAiTasks.cancelCurrent();
+  await rejected;
+  state.responses.push({ body: { ok: true, task: { id: 'new', status: 'queued' } } });
+  const next = win.MaweAiTasks.begin('ai-bold', {}, '新任务');
+  await flush();
+  state.responses.push({ body: { ok: true } });
+  release({ ok: true, status: 200, json: async () => ({ ok: true, task: { id: 'old', status: 'queued' } }) });
+  await flush();
+  assert.equal(state.fetches.at(-1).body.id, 'old');
+  assert.equal(win.MaweAiTasks.active.id, 'new');
+  state.responses.push({ body: { ok: true, tasks: [{ id: 'new', status: 'done', result: { texts: { a: 'new' } } }] } });
+  state.timers.at(-1)();
+  await flush();
+  assert.deepEqual(await next, { texts: { a: 'new' } });
 });
 
 test('未开启双语时翻译任务在命令内自动建副轨写入（#2）', async () => {
@@ -416,6 +564,48 @@ test('源字幕保留首尾空白，AI 结果可正常写回', async () => {
   await flush();
   assert.equal(state.beginCalls[0][1].cues[0].text, ' hello ');
   assert.equal(segment.text, ' **hello** ');
+});
+
+test('默认加粗仅插入标记，自定义提示词仍可改写', async () => {
+  const { win, state } = createContext();
+  const segments = [makeSegment('a', 'keep **old** words', 0, 1000), makeSegment('b', 'original words', 1000, 2000)];
+  win.MaweBoot.DATA = makeProject(segments);
+  win.MaweAiTasks = { begin: async () => ({ texts: { a: 'keep **old** **words**', b: '**rewritten** words' } }) };
+  win.MaweAiTextTasks.runTextTask('ai-bold', [0, 1]);
+  await flush();
+  assert.equal(segments[0].text, 'keep **old** **words**');
+  assert.equal(segments[1].text, 'original words');
+  assert.ok(state.hints.some(({ message }) => message.includes('格式不符，已跳过')));
+
+  const custom = createContext({ storedPrompts: { 'ai-bold': '改写语句' } });
+  const segment = makeSegment('c', 'original words', 0, 1000);
+  custom.win.MaweBoot.DATA = makeProject([segment]);
+  custom.win.MaweAiTasks = { begin: async () => ({ texts: { c: 'rewritten words' } }) };
+  custom.win.MaweAiTextTasks.runTextTask('ai-bold', [0]);
+  await flush();
+  assert.equal(segment.text, 'rewritten words');
+});
+
+test('默认加粗保留已有强调范围，拒绝重复包裹、嵌套与空标记', async () => {
+  const { win } = createContext();
+  const original = 'a **bold** word';
+  const results = ['a ****bold**** word', 'a **b**ol**d** word', 'a **bold** ****word', 'a **bold** **word**'];
+  const segments = results.map((_, index) => makeSegment(String(index), original, index * 1000, (index + 1) * 1000));
+  win.MaweBoot.DATA = makeProject(segments);
+  win.MaweAiTasks = { begin: async () => ({ texts: Object.fromEntries(results.entries()) }) };
+  win.MaweAiTextTasks.runTextTask('ai-bold', [0, 1, 2, 3]);
+  await flush();
+  assert.deepEqual(segments.map(segment => segment.text), [original, original, original, results[3]]);
+});
+
+test('默认 Emoji 保留原文并接受组合表情，拒绝普通文字前缀', async () => {
+  const { win } = createContext();
+  const segments = ['a', 'b', 'c', 'd'].map((id, index) => makeSegment(id, '原文', index * 1000, (index + 1) * 1000));
+  win.MaweBoot.DATA = makeProject(segments);
+  win.MaweAiTasks = { begin: async () => ({ texts: { a: '🇨🇳 原文', b: '👩🏽‍💻 原文', c: '1️⃣ 原文', d: 'foo 原文' } }) };
+  win.MaweAiTextTasks.runTextTask('ai-emoji', [0, 1, 2, 3]);
+  await flush();
+  assert.deepEqual(segments.map(segment => segment.text), ['🇨🇳 原文', '👩🏽‍💻 原文', '1️⃣ 原文', '原文']);
 });
 
 test('双语关闭但副轨仍在时更新译文并重新启用副轨（#2 边界）', async () => {

@@ -14,8 +14,20 @@ export function initMaweExportSrt() {
   // 程序内开关（不暴露 GUI）：导出 SRT 时保留禁用项的时间轴序号但内容替换为空白
   let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
+  const cleanupProjection = window.AsrEditorUtils.createCleanupProjectionCache({
+    createRetainedProjector: window.AsrGapRemoveCore.createCleanupRetainedProjector,
+    createExportProjector: window.AsrEditorUtils.createAiCleanupProjector,
+  });
+
+  function cleanupPreviewSegment(segment) {
+    return cleanupProjection.retainedCue(segment, MaweBoot.DATA.gap_remove);
+  }
+
+  function setCleanupProjectionCacheEnabled(enabled) { cleanupProjection.setEnabled(enabled); }
+  function isCleanupProjectionCacheEnabled() { return cleanupProjection.isEnabled(); }
+
   function cleanupSegments(segments) {
-    return window.AsrEditorUtils.buildAiCleanupSegments(segments, MaweBoot.DATA.gap_remove);
+    return cleanupProjection.exportSegments(segments, MaweBoot.DATA.gap_remove);
   }
 
   function cleanupMainSegments() {
@@ -23,11 +35,8 @@ export function initMaweExportSrt() {
   }
 
   function cleanupMergedExportSegments() {
-    const merged = window.MaweExportContext.mergedExportSegments();
-    const main = cleanupMainSegments();
-    const projection = new Map(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((segment, index) => [segment, main[index]]));
-    return { ...merged, segments: merged.segments.map((segment) => projection.get(segment) || segment)
-      .sort((left, right) => left.start - right.start) };
+    const merged = window.MaweExportContext.mergedExportSegments(cleanupSegments);
+    return { ...merged, segments: [...merged.segments].sort((left, right) => left.start - right.start) };
   }
 
   function buildSrt({ alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
@@ -504,6 +513,9 @@ export function initMaweExportSrt() {
 
   global.MaweExportSrt = Object.freeze({
     cleanupMainSegments,
+    cleanupPreviewSegment,
+    setCleanupProjectionCacheEnabled,
+    isCleanupProjectionCacheEnabled,
     currentAssVideoResolution,
     assExportOptions,
     buildAss,
