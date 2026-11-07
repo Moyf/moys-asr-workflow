@@ -109,7 +109,10 @@ def prepare_render_plan(ass: str, *, fps: str, width: int, height: int,
             type(n) is not int or n not in (0, 1, 2) for n in selected_layers):
         raise ValueError("字幕轨选择无效")
     rate = Fraction(fps)
-    frame = lambda ms: math.ceil(Fraction(str(ms)) * rate / 1000)
+
+    def frame(ms):
+        return math.ceil(Fraction(str(ms)) * rate / 1000)
+
     total = frame(duration_ms)
     ass, font_notices = normalize_ass_text_fontnames(ass)
     header, events = [], []

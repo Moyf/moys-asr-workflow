@@ -617,6 +617,7 @@
     '工程或媒体绑定已变更，请重新发起音频导出': 'The project or source media changed; start the audio export again',
     '正在准备导出…': 'Preparing the export…',
     '正在停止导出…': 'Stopping the export…',
+    '停止导出': 'Stop export',
     '导出状态异常，请重试': 'The export status is invalid; please retry',
     '导出已结束，但临时文件清理失败，请重试': 'The export has ended, but temporary files could not be removed; please retry',
     '无法确认导出已停止，请重试': 'Could not confirm the export has stopped; please retry',

@@ -10,7 +10,8 @@ test('export capability changes preserve stored tooltips after title migration',
   try {
     const page = await browser.newPage();
     const ids = ['download-otioz', 'download-gap-removed-otioz', 'download-sticker-otioz', 'download-gap-removed-sticker-otioz', 'download-lottie', 'download-ograf'];
-    await page.setContent(ids.map(id => `<button id="${id}" title="${id} help">Export</button>`).join(''));
+    await page.setContent(ids.map(id => `<button id="${id}" title="${id} help">Export</button>`).join('')
+      + '<select id="fcp7-export-format"><option value="native">Native text</option></select>');
     await page.addScriptTag({ path: 'web/shared/tooltip.js' });
     await page.addScriptTag({ path: 'web/editor/io/editor-export-timeline.js' });
     await page.addScriptTag({ content: initModuleSource('editor/io/editor-dynamic-exports.js') });

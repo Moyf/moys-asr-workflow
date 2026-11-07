@@ -84,6 +84,7 @@ test('PNG options and completed status translate in the English interface', asyn
   await expect(page.locator('#fcp7-export-title')).toHaveText('PNG subtitles · FCP 7 XML');
   await expect(page.locator('#fcp7-export-scope option:checked')).toHaveText('Subtitles only');
   await expect(page.locator('#fcp7-export-description')).toContainText('transparent images');
+  await expect(page.locator('#fcp7-export-stop')).toHaveText('Stop export');
   await page.locator('#fcp7-export-confirm').click();
   await expect(page.locator('#fcp7-export-status')).toContainText('images and XML:', { timeout: 30000 });
   await expect(page.locator('#fcp7-export-status')).toContainText('VEGAS compatible XML:');
