@@ -65,7 +65,8 @@ from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noq
 from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
-    MEDIA_JOB_ADMISSION_TTL, MediaJob, MediaJobBusy, MediaJobCancelled, MediaJobManager, MediaJobUnavailable,
+    MEDIA_JOB_ADMISSION_TTL, MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S, MediaJob, MediaJobBusy, MediaJobCancelled,
+    MediaJobManager, MediaJobUnavailable,
 )
 from maw.media_export_audio import rebuild_gap_removed_audio  # noqa: E402
 from maw.media_export_video import (  # noqa: E402
@@ -4114,7 +4115,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         disposition = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename, safe="")} '
         previous_timeout = self.connection.gettimeout()
         if job:
-            self.connection.settimeout(2)
+            # 取消主路径是 abort_download 立即 shutdown socket，「停止」的响应速度
+            # 不受此超时影响；它只是客户端异常消失时的兜底，容忍慢速磁盘/杀软
+            # 造成的短暂写停顿，避免浏览器写盘慢时被服务端主动断流。
+            self.connection.settimeout(MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S)
         try:
             if job:
                 job.check_cancelled()
