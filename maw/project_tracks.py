@@ -211,6 +211,12 @@ def _validate_canonical(project: dict[str, Any], *, speaker_contract: bool = Tru
     seen_cues: set[str] = set()
     main_count = overlay_count = 0
     errors: list[ProjectValidationError] = []
+    if "processing_overrides" in project:
+        from maw.text_processing_presets import normalize_overrides
+        try:
+            normalize_overrides(project["processing_overrides"])
+        except ValueError as error:
+            errors.append(ProjectValidationError("$.processing_overrides", str(error)))
     _validate_timebase(project, errors)
     _validate_media_metadata(project, errors)
     _validate_transcription_metadata(project, errors)

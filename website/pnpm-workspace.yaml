@@ -1,3 +1,6 @@
 allowBuilds:
   esbuild: true
   fsevents: true
+# Backport CVE-2026-93749 until magicast ships a fixed inline copy.
+patchedDependencies:
+  magicast@0.5.5: patches/magicast@0.5.5.patch

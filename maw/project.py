@@ -398,6 +398,8 @@ def _validate_frame_pair(
 
 
 def _validate_ass_override(segment: JsonDict, path: str, errors: list[ProjectValidationError]) -> None:
+    if "assStyle" in segment and not isinstance(segment["assStyle"], dict):
+        errors.append(ProjectValidationError(f"{path}.assStyle", "must be an object"))
     if "assOverride" not in segment:
         return
     value = segment["assOverride"]

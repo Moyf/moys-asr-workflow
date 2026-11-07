@@ -131,7 +131,10 @@ test('scale handles and video wheel use one scale-only transaction and independe
   await page.mouse.move(center.x + 18, center.y + 18, { steps: 3 });
   expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(true);
   await page.keyboard.press('Escape'); await page.mouse.up();
+  // Releasing pointer capture on Escape can retarget the trailing click to the stage.
+  await page.locator('.player-stage').dispatchEvent('click', { detail: 1 });
   expect(await snapshot(page)).toEqual(beforeClick);
+  await expect(handle).toBeVisible();
 
   const dragBefore = await snapshot(page);
   await page.mouse.move(center.x, center.y); await page.mouse.down();

@@ -179,7 +179,12 @@ test('legacy import edits all roles and saves/reopens one tracks tree without lo
   }
   expect(saved.tracks[1].custom_overlay).toEqual([]);
   expect(saved.tracks[2].custom_track).toBe(false);
-  expect(saved.tracks[2].segments[0].speaker).toBe('person');
+  const migratedSpeaker = canonical.tracks[2].segments[0].speaker;
+  expect(saved.tracks[2].segments[0].speaker).toBe(migratedSpeaker);
+  expect(saved.speakers).toEqual(canonical.speakers);
+  if (Array.isArray(canonical.speakers)) {
+    expect(saved.speakers.filter(speaker => speaker.id === migratedSpeaker)).toHaveLength(1);
+  }
   expect(saved.bindings[0].custom_binding).toEqual([]);
   expect(await install(page, saved, 'reopened.mosp')).toBe(true);
   expect(await projectContent(page)).toEqual(saved);

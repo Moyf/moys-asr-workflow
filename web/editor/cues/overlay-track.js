@@ -424,6 +424,7 @@ function mergeOverlaySegments(idxs, { detachPanel = false } = {}) {
   if (segments[0].assOverride) {
     merged.assOverride = window.AsrEditorUtils.normalizeAssOverride(segments[0].assOverride);
   }
+  if (segments[0].assStyle) merged.assStyle = JSON.parse(JSON.stringify(segments[0].assStyle));
   if (Array.isArray(merged.items) && merged.items.length === 0) merged.items = null;
   MaweSelection.clearSelection();
   return MaweCommands.run('合并叠加字幕', (command) => {

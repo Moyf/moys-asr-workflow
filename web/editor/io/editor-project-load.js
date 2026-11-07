@@ -104,6 +104,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.autoLoadedMediaPath = null;
   MaweTimeline.timelineFpsManuallySet = MaweTimeline.hasExplicitTimelineFps(data.timebase);
   MaweJsonRepair.setMarkerContainer(data.markers);
+  MaweState.changes.processingOverridesDirty = false;
   MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(data.markers);
   window.MaweMarkerEditing?.enableForProjectMarkers?.(MaweBoot.DATA.markers);
   window.MaweMarkersPanel?.resetSelection?.();
@@ -140,6 +141,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweGapRemoveUi.updateGapRemoveUi();
   MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
   MaweProjectSettings.syncControls();
+  window.MaweAssManagerWiring?.updateAssStyleLibraryStatus();
   MaweStickerRoot.activateProjectRoot();
   MaweState.establishProjectCheckpoint({ repaired });
   MawePlaybackLoop.refreshSubtitlePreview(0, -1);
