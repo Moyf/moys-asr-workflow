@@ -12,6 +12,14 @@ export function initMaweAddCue() {
 (function initMaweAddCue(global) {
   'use strict';
 
+  // 创建空字幕后的编辑入口：优先在新字幕块上方弹出快速编辑气泡（与
+  // 双击波形字幕块一致）；气泡彻底打不开时回退聚焦下方字幕面板文本框。
+  function editNewCue(track, index, fallback) {
+    const editor = MaweCoreState.waveformEditor;
+    if (editor?.openCueQuickEditAtIndex) editor.openCueQuickEditAtIndex(track, index, fallback);
+    else fallback();
+  }
+
 
 
   // === 从波形空白处新增字幕 ===
@@ -66,10 +74,11 @@ export function initMaweAddCue() {
         const cue = extensionText.closest('.cue');
         if (cue) MaweCueListAnchor.scrollCueToCenter(cue);
       }
-      // 拖动创建后聚焦下方副字幕编辑区（而不是列表行内编辑），
-      // 视线自然落在「新建条目 → 直接打字」的路径上。
+      // 拖动创建后在新字幕块上方弹出快速编辑气泡（与双击波形块一致），
+      // 视线自然落在「新建条目 → 直接打字」的路径上；打不开时回退聚焦
+      // 下方副字幕编辑区。
       setCurrentCuePanelExtensionIndex(index, track);
-      focusCuePanelText(index, 'extension');
+      editNewCue('extension', index, () => focusCuePanelText(index, 'extension'));
       MaweCoreState.waveformEditor?.revealTime(safeStart, true);
       MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
     });
@@ -127,7 +136,8 @@ export function initMaweAddCue() {
     if (cue) {
       MaweCueListAnchor.scrollCueToCenter(cue);
     }
-    setTimeout(() => focusCuePanelText(index), 0);
+    // 新字幕块上方弹出快速编辑气泡（块渲染是异步的，内部带重试与回退）。
+    editNewCue('main', index, () => focusCuePanelText(index));
     MaweCoreState.waveformEditor?.revealTime(safeStart, true);
     MaweHint.flashHint(`已新增第 ${index + 1} 条字幕`, 'success');
   });
@@ -217,9 +227,10 @@ export function initMaweAddCue() {
         const cue = extensionText.closest('.cue');
         if (cue) MaweCueListAnchor.scrollCueToCenter(cue);
       }
-      // 与拖动创建一致：聚焦下方副字幕编辑区，直接输入文本。
+      // 与拖动创建一致：弹出快速编辑气泡直接输入文本，打不开时回退聚焦
+      // 下方副字幕编辑区。
       setCurrentCuePanelExtensionIndex(index, track);
-      focusCuePanelText(index, 'extension');
+      editNewCue('extension', index, () => focusCuePanelText(index, 'extension'));
       MaweCoreState.waveformEditor?.revealTime(adjustedStart, true);
       MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
     });

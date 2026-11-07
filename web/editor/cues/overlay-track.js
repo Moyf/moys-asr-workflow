@@ -562,7 +562,14 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
     MaweSelection.clearSelection({ silent: true });
     command.commit({ cueList: true, preserveCueListScroll: false });
     window.MaweCuePanelWiring.selectOverlayCueRow(index);
-    setTimeout(() => MaweCuePanel.focusCuePanelText(index, 'overlay'), 0);
+    // 与主/副字幕一致：新建后在字幕块上方弹出快速编辑气泡直接输入；
+    // 气泡打不开时回退聚焦下方字幕面板文本框。
+    if (MaweCoreState.waveformEditor?.openCueQuickEditAtIndex) {
+      MaweCoreState.waveformEditor.openCueQuickEditAtIndex(
+        'overlay', index, () => MaweCuePanel.focusCuePanelText(index, 'overlay'));
+    } else {
+      MaweCuePanel.focusCuePanelText(index, 'overlay');
+    }
     MaweCoreState.waveformEditor?.revealTime(safeStart, true);
 
     MaweHint.flashHint(`已新增第 ${index + 1} 条叠加字幕`, 'success');
