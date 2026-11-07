@@ -74,6 +74,7 @@ export function initMaweSettingsPanels() {
     // its floating window remains at the position saved for a shorter page.
     requestAnimationFrame(() => (project ? projectFloatingPanel : editorSettingsFloatingPanel).reclamp());
     if (focus) tab.focus();
+    tab.dispatchEvent(new Event('mawe:settings-tab-activated'));
     try {
       localStorage.setItem(project ? projectTabKey : MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
     } catch (_) {

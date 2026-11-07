@@ -1334,6 +1334,7 @@ __WAVEFORM_CSS__
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-save" role="tab" data-settings-tab="save" aria-selected="false" aria-controls="editor-settings-page-save" tabindex="-1">保存</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-export" role="tab" data-settings-tab="export" aria-selected="false" aria-controls="editor-settings-page-export" tabindex="-1">字幕导出</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-export-more" role="tab" data-settings-tab="export-more" aria-selected="false" aria-controls="editor-settings-page-export-more" tabindex="-1">更多导出</button>
       <div class="editor-settings-nav-group-label" aria-hidden="true">扩展功能</div>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-ai" role="tab" data-settings-tab="ai" aria-selected="false" aria-controls="editor-settings-page-ai" tabindex="-1">AI 功能</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-sticker" role="tab" data-settings-tab="sticker" aria-selected="false" aria-controls="editor-settings-page-sticker" tabindex="-1">表情包</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-easter-eggs" role="tab" data-settings-tab="easter-eggs" aria-selected="false" aria-controls="editor-settings-page-easter-eggs" tabindex="-1">彩蛋</button>
       <div class="editor-settings-nav-group-label" aria-hidden="true">关于</div>
@@ -1759,6 +1760,20 @@ __WAVEFORM_CSS__
 <small class="editor-settings-hint">底衬垫在表情包图片的 contain 显示矩形上，贴纸透明区域透出底衬颜色，预览与烧录一致；开启后舞台小窗的默认阴影与圆角一并取消。</small></div></div>
 <span class="editor-settings-group-heading" id="default-sticker-root-title">默认文件夹</span>
 <div class="editor-settings-group" role="group" aria-labelledby="default-sticker-root-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-root-input">默认目录</label><div class="sticker-root-controls"><input type="text" id="sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="sticker-root-status"><button type="button" id="sticker-root-read">应用</button></div><p class="editor-settings-hint" id="sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">工程设置中的覆盖目录优先；清空覆盖后恢复使用默认目录。</small></div></div>
+</div>
+  <div class="editor-settings-page" id="editor-settings-page-ai" role="tabpanel" aria-labelledby="editor-settings-tab-ai" hidden><span class="editor-settings-group-heading" id="ai-feature-title">AI 辅助</span>
+<div class="editor-settings-group" role="group" aria-labelledby="ai-feature-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item" title="开启后，右键菜单提供「AI 处理」入口；关闭时所有 AI 入口隐藏"><input type="checkbox" id="ai-feature-toggle"> 启用 AI 功能</label>
+<small class="editor-settings-hint">供应商、模型与密钥与 Launcher 工具箱共享同一份配置，改一处两边同步；密钥保存在本机 .env，不会上传。</small></div></div>
+<span class="editor-settings-group-heading" id="ai-provider-title">供应商与模型</span>
+<div class="editor-settings-group" role="group" aria-labelledby="ai-provider-title"><div class="editor-settings-sub-group">
+<label class="editor-settings-item" for="ai-provider-select">供应商</label><select id="ai-provider-select" class="editor-settings-item"></select>
+<label class="editor-settings-item" for="ai-base-url-input">API URL</label><input type="text" id="ai-base-url-input" class="editor-settings-item" placeholder="https://api.example.com/v1" autocomplete="off" spellcheck="false">
+<label class="editor-settings-item" for="ai-model-input">模型</label><input type="text" id="ai-model-input" class="editor-settings-item" list="ai-model-datalist" placeholder="模型 ID" autocomplete="off" spellcheck="false"><datalist id="ai-model-datalist"></datalist>
+<label class="editor-settings-item" for="ai-api-key-input">API Key</label><input type="password" id="ai-api-key-input" class="editor-settings-item" placeholder="留空保持当前密钥不变" autocomplete="new-password" aria-describedby="ai-api-key-status">
+<small class="editor-settings-hint" id="ai-api-key-status" role="status" aria-live="polite"></small>
+<label class="editor-settings-item" for="ai-reasoning-select">思考强度</label><select id="ai-reasoning-select" class="editor-settings-item"><option value="off">关闭思考</option><option value="auto">自动</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select>
+<div class="ai-settings-actions"><button type="button" id="ai-settings-save">保存设置</button><button type="button" id="ai-settings-test">测试连接</button><button type="button" id="ai-models-refresh" title="从供应商拉取可用模型列表">拉取模型</button></div>
+<p class="editor-settings-hint" id="ai-settings-status" role="status" aria-live="polite"></p></div></div>
 </div>
   <div class="editor-settings-page" id="editor-settings-page-easter-eggs" role="tabpanel" aria-labelledby="editor-settings-tab-easter-eggs" hidden>
 
@@ -2621,6 +2636,36 @@ __WAVEFORM_CSS__
   </div>
 </div>
 
+<!-- AI 文本任务的提示词设置：留空使用内置预设，自定义内容保存在本机浏览器。 -->
+<div class="modal-mask" id="ai-prompts-modal">
+  <div class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="ai-prompts-title" aria-describedby="ai-prompts-description">
+    <h3 id="ai-prompts-title">AI 提示词设置</h3>
+    <p class="modal-desc" id="ai-prompts-description">
+      自定义各 AI 文本任务发给模型的系统提示词；留空时使用内置预设。自定义内容只保存在本机浏览器，不会上传。
+    </p>
+    <div class="ai-prompts-fields">
+      <div class="ai-prompts-field">
+        <label for="ai-prompt-bold">加粗关键词</label>
+        <textarea id="ai-prompt-bold" rows="3" placeholder="留空使用内置加粗预设提示词" spellcheck="false"></textarea>
+      </div>
+      <div class="ai-prompts-field">
+        <label for="ai-prompt-translate">翻译为副字幕</label>
+        <textarea id="ai-prompt-translate" rows="3" placeholder="留空使用内置翻译预设提示词" spellcheck="false"></textarea>
+      </div>
+      <div class="ai-prompts-field">
+        <label for="ai-prompt-emoji">Emoji 点缀</label>
+        <textarea id="ai-prompt-emoji" rows="3" placeholder="留空使用内置 Emoji 预设提示词" spellcheck="false"></textarea>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="button" id="ai-prompts-reset">恢复默认</button>
+      <button type="button" id="ai-prompts-cancel">取消</button>
+      <button type="button" id="ai-prompts-save" class="primary">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- 支持调整字幕行结构并预览字词时间码映射的纯文本编辑 MVP。 -->
 <dialog id="subtitle-time-offset-dialog" class="subtitle-time-offset-dialog" aria-labelledby="subtitle-time-offset-title">
   <form id="subtitle-time-offset-form" class="subtitle-time-offset-form">
@@ -2854,6 +2899,43 @@ __WAVEFORM_CSS__
     </div>
   </div>
 </div>
+
+<!-- AI 后台任务进度：非阻塞浮条，任务进行中不阻碍继续编辑；完成后自动收起 -->
+<div class="ai-task-tray">
+<div class="ai-task-progress" id="ai-task-progress" hidden role="status" aria-live="polite">
+  <div class="ai-task-progress-header">
+    <span class="ai-task-progress-label" id="ai-task-progress-label">AI 任务…</span>
+    <button type="button" class="ai-task-progress-cancel" id="ai-task-progress-cancel" title="取消此 AI 任务" aria-label="取消此 AI 任务">✕</button>
+  </div>
+  <div class="ai-task-progress-row">
+    <progress id="ai-task-progress-bar" max="100" value="0"></progress>
+    <span id="ai-task-progress-percent">0%</span>
+  </div>
+</div>
+<div class="ai-preview-entry" id="ai-preview-entry" hidden>
+  <span id="ai-preview-ready" role="status" aria-live="polite"></span>
+  <button type="button" id="ai-preview-open" aria-haspopup="dialog" aria-controls="ai-preview-dialog">查看建议</button>
+</div>
+</div>
+
+<dialog class="modal ai-preview-dialog" id="ai-preview-dialog" aria-labelledby="ai-preview-title" aria-describedby="ai-preview-hint">
+  <div class="ai-preview-header">
+    <h3 id="ai-preview-title">AI 建议</h3>
+    <button type="button" id="ai-preview-close" autofocus>稍后查看</button>
+  </div>
+  <p class="modal-desc" id="ai-preview-hint">检查并编辑建议，再应用勾选的字幕。关闭窗口会保留建议。</p>
+  <div class="ai-preview-selection">
+    <label><input type="checkbox" id="ai-preview-select-all"> <span id="ai-preview-select-label">全选可应用的建议</span></label>
+    <button type="button" id="ai-preview-filter" aria-pressed="true">查看全部</button>
+    <span id="ai-preview-summary" role="status" aria-live="polite"></span>
+  </div>
+  <div class="ai-preview-rows" id="ai-preview-rows"></div>
+  <p class="modal-hint ai-preview-status" id="ai-preview-status" role="status" aria-live="polite"></p>
+  <div class="actions">
+    <button type="button" class="danger" id="ai-preview-discard">丢弃全部</button>
+    <button type="button" class="primary" id="ai-preview-apply">应用勾选</button>
+  </div>
+</dialog>
 
 <!-- 字幕忍者刀光：默认不参与布局与鼠标交互，仅在成功拆分时短暂显示。 -->
 <div id="ninja-slash-flash" aria-hidden="true"></div>

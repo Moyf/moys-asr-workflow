@@ -549,6 +549,12 @@ export function initMaweContextMenus() {
   // 「左右添加字符」与「高级操作」同组不加分隔线（账本 #31）；组前的
   // 分隔线已由上方各分支在 addWrapCharsSubmenu 之前画好。
   MaweDom.ctxmenu.appendChild(advanced);
+  // AI 处理分组：功能总开关关闭（或模块缺失）时整组隐藏；单选/多选共用
+  // 同一分组，条目由 AI 模块按选中字幕集合构建。
+  if (global.MaweAi?.aiEnabled?.()) {
+    addSep();
+    global.MaweAi.appendContextMenu(MaweDom.ctxmenu, targetIdxs);
+  }
   // 调整 ctxmenu 位置（避免溢出）
   MaweDom.ctxmenu.classList.add('show');
   const rect = MaweDom.ctxmenu.getBoundingClientRect();
@@ -679,6 +685,9 @@ export function initMaweContextMenus() {
     addSpeakerSubmenu,
     showExtensionContextMenu,
     showGapContextMenu,
+    // AI 等模块需要在字幕菜单里追加自己的子菜单时复用同一套交互
+    // （hover 展开、互斥、越界修正）。
+    createContextSubmenu,
     closeContextMenuOnOutsidePointerDown
   });
 }

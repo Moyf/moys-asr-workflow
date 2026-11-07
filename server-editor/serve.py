@@ -72,6 +72,8 @@ from maw.media_export_video import (  # noqa: E402
     VideoNoOutput, VideoTimelineError, packet_filter, prepare_video_copy, verify_video_packets,
 )
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
+from maw.editor_ai import AiTaskError, AiTaskManager, read_settings, write_settings  # noqa: E402
+from maw.postprocess_llm import LlmClientError  # noqa: E402
 from maw.gui_platform import creationflags, restore_host_library_path, startupinfo  # noqa: E402
 from maw.postprocess_ffmpeg import (  # noqa: E402
     ASS_FALLBACK_PLAY_RESOLUTION, DEFAULT_BURN_AUDIO_BITRATE, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET,
@@ -1859,6 +1861,9 @@ class EditorServer(ThreadingHTTPServer):
         self.gap_removed_video_lock = threading.Lock()
         self.media_jobs = MediaJobManager(self.gap_removed_video_lock)
         self.thumbnail_jobs = ThumbnailJobManager()
+        # 编辑器 AI 辅助：与 Launcher 共享同一份 .env 的 LLM 设置；后台任务
+        # 注册表为常驻单线程，daemon 线程随进程退出，不需要显式关闭。
+        self.ai_tasks = AiTaskManager(DEFAULT_ENV_PATH)
         self.loudness_analyzer = LoudnessAnalyzer()
         self.thumbnail_jobs.bind(project.source_media_path or project.media_path,
                                  f"{self.binding_generation}:{self.source_media_id}")
@@ -3057,6 +3062,14 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.open_recent_project()
         elif path == "/api/settings":
             self.update_settings()
+        elif path == "/api/ai/settings":
+            self.update_ai_settings()
+        elif path == "/api/ai/task":
+            self.start_ai_task()
+        elif path == "/api/ai/task/cancel":
+            self.cancel_ai_task()
+        elif path == "/api/ai/models":
+            self.list_ai_models()
         elif path == "/api/ass-styles":
             self.update_ass_styles()
         elif path == "/api/text-processing-presets":
@@ -3878,6 +3891,109 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "onboardingStatus": settings.onboarding_status,
         })
 
+    def update_ai_settings(self) -> None:
+        """读写与 Launcher 共享的编辑器 LLM 设置；api_key 只存不回。"""
+        try:
+            request = self.read_json_request(max_bytes=65536)
+            self._check_request_token(request)
+            payload = write_settings(DEFAULT_ENV_PATH, request)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, payload)
+
+    def _inject_timecode_media(self, payload: dict, kind: str) -> None:
+        """时间码对齐任务的媒体/FFmpeg 路径由服务端从当前工程绑定解析。
+
+        前端只回传 bindingGeneration/sourceMediaId 做提交时一致性校验；客户端
+        提供的任何路径字段都会被覆盖，避免该任务变成任意文件路径入口。
+        """
+        if kind != "ai-timecode-items":
+            return
+        server = self.editor_server
+        with server.settings_lock:
+            binding = (server.binding_generation, server.source_media_id)
+            if (type(payload.get("bindingGeneration")) is not int
+                    or (payload.get("bindingGeneration"), payload.get("sourceMediaId")) != binding):
+                raise ProjectBindingChangedError("工程或媒体绑定已变更，请重新执行时间码对齐")
+            media = server.project.media_path
+        if media is None:
+            raise ValueError("当前工程没有可用于时间码对齐的媒体")
+        tools = editor_ffmpeg_tools()
+        payload["mediaPath"] = str(media)
+        payload["ffmpegPath"] = str(tools.ffmpeg) if tools.ffmpeg else ""
+
+    def start_ai_task(self) -> None:
+        """提交一个 AI 后台任务；立即返回 queued 快照供进度轮询。"""
+        try:
+            request = self.read_json_request(max_bytes=2 * 1024 * 1024)
+            self._check_request_token(request)
+            kind = request.get("kind")
+            if not isinstance(kind, str) or not kind.strip():
+                raise ValueError("缺少 AI 任务类型")
+            payload = request.get("payload")
+            if payload is not None and not isinstance(payload, dict):
+                raise ValueError("AI 任务负载必须是对象")
+            payload = dict(payload or {})
+            self._inject_timecode_media(payload, kind.strip())
+            snapshot = self.editor_server.ai_tasks.submit(kind.strip(), payload)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except AiTaskError as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        # 成功也走 ok 包络：前端 begin() 以 body.ok + body.task 识别提交结果，
+        # 与轮询接口的 {ok, tasks} 保持同一契约。
+        self.send_json(HTTPStatus.OK, {"ok": True, "task": snapshot})
+
+    def cancel_ai_task(self) -> None:
+        try:
+            request = self.read_json_request(max_bytes=65536)
+            self._check_request_token(request)
+            task_id = request.get("id")
+            if not isinstance(task_id, str) or not task_id:
+                raise ValueError("缺少任务 ID")
+            cancelled = self.editor_server.ai_tasks.cancel(task_id)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {"ok": cancelled})
+
+    def list_ai_models(self) -> None:
+        """拉取当前供应商的模型列表；网络失败按 400 返回可读错误。"""
+        try:
+            request = self.read_json_request(max_bytes=65536)
+            self._check_request_token(request)
+            provider_id = request.get("providerId")
+            if provider_id is not None and not isinstance(provider_id, str):
+                raise ValueError("providerId 必须是字符串")
+            from maw.editor_ai import list_models
+
+            models = list_models(DEFAULT_ENV_PATH, provider_id or None)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except LlmClientError as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {"ok": True, "models": models})
+
     def update_ass_styles(self) -> None:
         """Persist the shared user-level style library used by Editor and Launcher."""
         try:
@@ -4071,6 +4187,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/ass-styles":
             self.send_json(HTTPStatus.OK, load_ass_style_library())
+            return
+        if path == "/api/ai/settings":
+            self.send_json(HTTPStatus.OK, read_settings(DEFAULT_ENV_PATH))
+            return
+        if path == "/api/ai/tasks":
+            self.send_json(HTTPStatus.OK, self.editor_server.ai_tasks.snapshot())
             return
         if path == "/api/text-processing-presets":
             try:

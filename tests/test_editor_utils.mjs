@@ -3444,6 +3444,34 @@ test('translates snap-subtitles flash hints to English', () => {
     i18n.translateText('已处理 3 个选中字幕：完整延长 1 条，部分延长 1 条，未延长 1 条', 'en'),
     'Processed 3 selected subtitles: 1 fully extended, 1 partially extended, 1 unchanged',
   );
+  // 编辑器 AI 辅助（editor/ai/*.js）：静态表 + 动态规则抽样
+  assert.equal(i18n.translateText('AI 功能', 'en'), 'AI features');
+  assert.equal(i18n.translateText('加粗关键词…', 'en'), 'Bold keywords…');
+  assert.equal(i18n.translateText('时间码→字词…', 'en'), 'Timecodes → word items…');
+  assert.equal(i18n.translateText('智谱 Coding Plan', 'en'), 'Zhipu Coding Plan');
+  assert.equal(i18n.translateText('关闭思考', 'en'), 'Off');
+  assert.equal(i18n.translateText('AI 翻译为副字幕 · 已取消', 'en'), 'AI translate to secondary subtitles · Cancelled');
+  assert.equal(
+    i18n.translateText('AI 加粗关键词已更新 5 条字幕（2 条期间被修改已跳过；1 条模型未返回）', 'en'),
+    'AI bold keywords updated 5 cues (2 changed during the task and were skipped; 1 had no model result)',
+  );
+  assert.equal(
+    i18n.translateText('AI 翻译为副字幕：更新 2 条、新建 1 条（1 条已是该译文）；已自动开启双语字幕', 'en'),
+    'AI translate to secondary subtitles: Updated 2; Created 1 (1 already carry this translation); bilingual subtitles were enabled automatically',
+  );
+  assert.equal(
+    i18n.translateText('AI 拆分建议：1 条在任务期间被修改，已跳过；1 条断点不可用', 'en'),
+    'AI split suggestion: 1 changed during the task and were skipped; 1 had an unusable break point',
+  );
+  assert.equal(
+    i18n.translateText('合并已完成；AI 润色未应用（模型未返回结果，可撤销合并）', 'en'),
+    'Merge complete; AI polish not applied (the model returned nothing; the merge can be undone)',
+  );
+  assert.equal(i18n.translateText('已为 4 条字幕写入字词时间码（1 条对齐失败）', 'en'), 'Wrote word timing for 4 cues (1 failed to align)');
+  assert.equal(i18n.translateText('提交 AI 任务失败（HTTP 502）', 'en'), 'Failed to submit the AI task (HTTP 502)');
+  assert.equal(i18n.translateText('未配置密钥', 'en'), 'No key configured');
+  // 空主体 + 纯备注括号：不得把整串中文原样带出（自审 nit #1 的守门用例）
+  assert.equal(i18n.translateText('AI 文本任务：（3 条已符合目标）', 'en'), 'AI text task: (3 already match the target)');
 });
 
 test('widens a zero-length trailing item and extends its segment', () => {

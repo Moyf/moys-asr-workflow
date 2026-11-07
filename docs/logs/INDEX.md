@@ -14,6 +14,8 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.2 之后 | 2026-11-07 | [PR347 AI 建议预览独立复审](release1.10.0-beta.2/261107_PR347预览/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261107_PR347预览/PR347预览.checklist.md) | 翻译、媒体切换及联动拆分保护；Windows Promise 回收具体根因未明，真实模型与媒体待核验 |
+| 1.10.0-beta.2 之后 | 2026-11-07 | [AI 功能英文翻译自审](release1.10.0-beta.2/261107_AI功能英文翻译/REVIEW_FINDINGS.md) | 编辑器英文界面补译 AI 全部文案；独立复核零 blocker，2 nit 顺手修、2 nit 接受 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [PR44 同步 main 独立复核](release1.10.0-beta.2/261106_PR44同步main/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261106_PR44同步main/PR44同步main.checklist.md) | 三轨、贴纸、字体、波形与 Soniox 的真实流程待核验 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [main 合入 2.0dev 独立复核](release1.10.0-beta.2/261106_main合入2dev/REVIEW_FINDINGS.md) | 三轨适配、处理配置扩展保留与验收边界 |
 | 1.10.0-beta.2 之后 | 2026-11-05 | [文本处理弹窗反馈](release1.10.0-beta.2/261105_文本处理弹窗/TEST_FEEDBACK_文本处理弹窗.md) / [独立复核](release1.10.0-beta.2/261105_文本处理弹窗/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_文本处理弹窗/文本处理弹窗.checklist.md) | 双列预览、预设导入确认、工程预填和 MASS 分组 |

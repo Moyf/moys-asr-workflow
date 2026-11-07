@@ -9,6 +9,33 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '查看建议': 'Review suggestions',
+    'AI 建议': 'AI suggestions',
+    '稍后查看': 'Review later',
+    '检查并编辑建议，再应用勾选的字幕。关闭窗口会保留建议。': 'Review and edit suggestions, then apply the selected cues. Closing this window keeps the suggestions.',
+    '全选可应用的建议': 'Select all applicable suggestions',
+    '丢弃全部': 'Discard all',
+    '应用勾选': 'Apply selected',
+    '已合并字幕 · AI 润色建议': 'Cues merged · AI polish suggestions',
+    '工程或媒体已切换': 'The project or media changed',
+    '原字幕已修改或删除': 'The source cue was edited or deleted',
+    '副字幕轨已切换': 'The secondary subtitle track changed',
+    '副字幕绑定不适合自动替换': 'The secondary subtitle binding cannot be replaced automatically',
+    '副字幕或绑定已修改': 'The secondary subtitle or binding changed',
+    '模型未返回有效结果': 'The model returned no valid result',
+    '结果修改了原文或格式不符': 'The result changed the original text or has an invalid format',
+    '没有变化': 'No changes',
+    '字幕时间或字词已修改': 'The subtitle timing or words changed',
+    '拆分断点不可用': 'The split point cannot be used',
+    'AI 翻译为英文副字幕': 'AI translation to English secondary subtitles',
+    'AI 翻译为中文副字幕': 'AI translation to Chinese secondary subtitles',
+    'AI 按提示词翻译为副字幕': 'AI translation to secondary subtitles with a custom prompt',
+    '副字幕时间范围已占用': 'The secondary subtitle time range is occupied',
+    '此绑定暂不能联动拆分': 'This binding cannot currently be split together',
+    '需逐条联动拆分': 'Split linked cues one at a time',
+    '字幕已修改，请重新查看 AI 建议': 'The subtitle changed; review the AI suggestion again',
+    '查看全部': 'View all',
+    '只看有变化': 'Changes only',
     '字幕轨道状态': 'Subtitle track status',
     '主字幕轨始终启用': 'The main subtitle track is always enabled',
     '关闭轨道会同时停止预览和导出，字幕数据会保留。': 'Disabling a track stops preview and export while keeping its subtitle data.',
@@ -1465,6 +1492,69 @@
     '红色': 'Red', '黄色': 'Yellow', '蓝色': 'Blue', '绿色': 'Green', '紫色': 'Purple',
     // 文案重命名（Launcher + Editor 菜单与设置，2026-10）引入的新增 key
     '单行': 'Single row', '表情包素材': 'Sticker media',
+    // 编辑器 AI 辅助（M1-M3）：设置页、提示词对话框、右键菜单与任务浮条静态文案
+    'AI 功能': 'AI features', 'AI 辅助': 'AI assistance',
+    '启用 AI 功能': 'Enable AI features',
+    '供应商与模型': 'Provider & model', '供应商': 'Provider', '模型': 'Model',
+    '思考强度': 'Reasoning effort',
+    '关闭思考': 'Off', '低': 'Low', '中': 'Medium', '高': 'High',
+    '保存设置': 'Save settings', '测试连接': 'Test connection', '拉取模型': 'Fetch models',
+    'AI 提示词设置': 'AI prompt settings',
+    '供应商、模型与密钥与 Launcher 工具箱共享同一份配置，改一处两边同步；密钥保存在本机 .env，不会上传。': 'The provider, model and key are shared with the Launcher toolbox; changes apply to both. The key is stored in the local .env file and never uploaded.',
+    '自定义各 AI 文本任务发给模型的系统提示词；留空时使用内置预设。自定义内容只保存在本机浏览器，不会上传。': 'Customize the system prompt sent to the model for each AI text task; leave blank to use the built-in preset. Custom prompts stay in this browser and are never uploaded.',
+    '加粗关键词': 'Bold keywords', '翻译为副字幕': 'Translate to secondary subtitles', 'Emoji 点缀': 'Emoji decoration',
+    '留空使用内置加粗预设提示词': 'Leave blank to use the built-in bold prompt',
+    '留空使用内置翻译预设提示词': 'Leave blank to use the built-in translate prompt',
+    '留空使用内置 Emoji 预设提示词': 'Leave blank to use the built-in emoji prompt',
+    'AI 任务': 'AI task', 'AI 任务…': 'AI task…',
+    '智谱 Coding Plan': 'Zhipu Coding Plan', '阿里云 Qwen': 'Alibaba Cloud Qwen',
+    // 右键菜单「AI 处理」子菜单
+    'AI 处理': 'AI actions',
+    '加粗关键词…': 'Bold keywords…', '翻译为副字幕…': 'Translate to secondary subtitles…', 'Emoji 点缀…': 'Emoji decoration…',
+    '按自定义提示词翻译…': 'Translate with custom prompt…',
+    '译为中文副字幕（建议）': 'Translate to Chinese (suggested)', '译为英文副字幕（建议）': 'Translate to English (suggested)',
+    '译为中文副字幕': 'Translate to Chinese', '译为英文副字幕': 'Translate to English',
+    'AI 拆分建议…': 'AI split suggestion…', 'AI 拆分建议': 'AI split suggestion', 'AI 智能合并…': 'AI smart merge…', '时间码→字词…': 'Timecodes → word items…',
+    'AI 提示词设置…': 'AI prompt settings…', '打开 AI 设置…': 'Open AI settings…',
+    // 任务浮条 / 设置面板 / 回写提示的静态消息
+    'AI 功能仅在本地服务器版编辑器可用（当前通过 file:// 打开）': 'AI features are only available in the local-server editor (opened via file://)',
+    'AI 设置仅在本地服务器版编辑器可用（当前通过 file:// 打开）': 'AI settings are only available in the local-server editor (opened via file://)',
+    '未配置密钥': 'No key configured', '该供应商可免密钥访问': 'This provider needs no API key',
+    '正在提交…': 'Submitting…', '排队中…': 'Queued…', '启动中…': 'Starting…', '连接供应商…': 'Connecting to provider…',
+    '等待供应商响应…': 'Waiting for provider…', '处理中…': 'Working…', '已取消': 'Cancelled',
+    '测试 AI 连接': 'Test AI connection', '正在拉取模型列表…': 'Fetching model list…',
+    'AI 任务已取消': 'AI task cancelled', 'AI 任务不存在或已过期': 'AI task not found or expired',
+    'AI 任务失败': 'AI task failed', '取消 AI 任务失败': 'Failed to cancel the AI task',
+    '正在编辑字幕，AI 结果将在编辑结束后应用': 'Finish editing the subtitle to apply the AI result',
+    '结果已生成，等待结束字幕编辑…': 'Result ready; waiting for subtitle editing to finish…',
+    '正在应用结果…': 'Applying result…',
+    '请先关闭当前拆分窗口，再重试 AI 拆分建议': 'Close the current split dialog before retrying the AI split suggestion',
+    '已取消应用 AI 译文': 'AI translation was not applied',
+    '已取消应用 AI 字词时间码': 'AI word timing was not applied',
+    '副字幕轨已切换，已丢弃本次 AI 结果': 'The secondary subtitle track changed; the AI result was discarded',
+    '修改译文将清除 {count} 条副字幕的字词时间码。是否继续？': 'Changing the translation will remove word timestamps from {count} secondary subtitles. Continue?',
+    '将替换 {count} 条字幕已有的字词时间码。是否继续？': 'Replace existing word timestamps on {count} subtitles?',
+    '已有 AI 任务进行中，请等它完成或取消后再试': 'An AI task is already running; wait for it to finish or cancel it first',
+    'AI 加粗关键词': 'AI bold keywords', 'AI 翻译为副字幕': 'AI translate to secondary subtitles',
+    'AI Emoji 点缀': 'AI emoji decoration', 'AI 文本任务': 'AI text task',
+    'AI 智能合并': 'AI smart merge', 'AI 拆分字幕': 'AI split', '时间码→字词': 'Timecodes → word items',
+    'AI 结构任务': 'AI structure task',
+    'AI 提示词已保存到本机浏览器': 'AI prompts saved to this browser',
+    '已恢复内置预设提示词': 'Built-in preset prompts restored',
+    '已启用 AI 功能': 'AI features enabled', '已关闭 AI 功能': 'AI features disabled',
+    '已保存；编辑器与 Launcher 工具箱共用这份配置。': 'Saved; the editor and the Launcher toolbox share this configuration.',
+    '当前模型': 'the current model',
+    '合并完成，文本已符合目标': 'Merge complete; the text already matches the target',
+    '已应用 AI 合并润色': 'AI merge polish applied',
+    '合并字幕的字词时间码文字未随文本更新，请按需检查': 'Word timing text on the merged cue was not updated with the text; review if needed',
+    '请至少选择两条字幕进行合并': 'Select at least two subtitles to merge',
+    '选中的字幕缺少可合并的文本': 'Selected subtitles have no text to merge',
+    '选中字幕没有可处理的文本': 'Selected cues have no text to process',
+    '当前编辑器没有绑定媒体，无法做时间码对齐': 'The editor has no bound media; timecode alignment is unavailable',
+    '选中字幕缺少有效的文本与时间范围': 'Selected cues lack valid text and time ranges',
+    '模型未返回结果': 'the model returned nothing', '字幕已被修改': 'the cue was edited',
+    '工程或媒体已切换，已丢弃本次 AI 结果': 'The project or media has changed; the AI results were discarded',
+    '无变更': 'No changes',
   };
 
   const EN_ATTR = {
@@ -1699,6 +1789,21 @@
     '蓝字幕颜色十六进制值': 'Blue subtitle color hex value',
     '缺少可靠时间码，新时间范围基于字数估算。': 'No reliable timecodes available; the new time range is estimated from text length.',
     '应用修改时去掉每条字幕文本首尾的空格': 'Remove leading and trailing spaces from every subtitle text when applying',
+    // 编辑器 AI 辅助（M1-M3）：title / placeholder / aria-label 属性文案
+    '开启后，右键菜单提供「AI 处理」入口；关闭时所有 AI 入口隐藏': 'When enabled, the context menu gains an "AI actions" entry; disabling it hides every AI entry',
+    '从供应商拉取可用模型列表': 'Fetch the available model list from the provider',
+    '模型 ID': 'Model ID',
+    '留空保持当前密钥不变': 'Leave blank to keep the current key',
+    '取消此 AI 任务': 'Cancel this AI task',
+    'AI 为每条字幕的核心词添加 ** 强调标记（可撤销）': 'AI adds ** emphasis marks around each cue\'s key words (undoable)',
+    '优先按副轨的中英文语言翻译；否则中日韩译英文，其他译中文。可自定义提示词': 'Uses the secondary track language when it is Chinese or English; otherwise translates CJK text into English and other text into Chinese. The prompt can be customized.',
+    '目标语言由自定义翻译提示词决定': 'The target language is determined by the custom translation prompt',
+    '丢弃尚未应用的 AI 结果': 'Discard the unapplied AI result',
+    '丢弃': 'Discard',
+    'AI 为每条字幕开头添加一个贴切的 emoji（可撤销）': 'AI prepends a fitting emoji to each cue (undoable)',
+    'AI 建议一个断句位置并直接拆分（可撤销）': 'AI suggests one break point and splits the cue directly (undoable)',
+    '先合并选中的连续字幕，再由 AI 修顺合并缝（可撤销）': 'Merges the selected contiguous cues first, then lets AI smooth the seams (undoable)',
+    '用本地对齐模型为选中字幕生成字词级时间码': 'Generate word-level timecodes for the selected cues with a local alignment model',
   };
 
   const textOriginals = new WeakMap();
@@ -1716,12 +1821,12 @@
     // Reference text includes the project name, but its title is a UI hint.
     '.cue .sticker-slot .sref', '#cue-panel-sticker .ref',
     PROJECT_TEXT_SELECTOR, '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
-    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', '[data-marker-project-content]', 'script', 'style'
+    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', '[data-marker-project-content]', '[data-ai-preview-content]', 'script', 'style'
   ].join(',');
   const ATTRIBUTE_SKIP_SELECTOR = [
     // .waveform-cue-block 的 title 是用户字幕原文，不能参与翻译
     PROJECT_TEXT_SELECTOR, '#overlay', '#sticker-overlay-layer', '.waveform-cue-block', '.waveform-word-block', '[data-marker-project-content]',
-    '#media-name', '#json-name', '#sticker-grid', 'script', 'style'
+    '#media-name', '#json-name', '#sticker-grid', '[data-ai-preview-content]', 'script', 'style'
   ].join(',');
 
   function normalizeLanguage(value) {
@@ -1779,6 +1884,23 @@
   function exportTag(segment) {
     if (language !== ZH) return segment;
     return EXPORT_NAME_SEGMENTS[segment] || segment;
+  }
+
+  // 拆解 AI 提示的「主体（备注1；备注2）」结构：主体按 ；、 分段、备注按 ； 分段，
+  // 每段各自走 translateText（数字段命中下方 presetRule）后用英文标点重组。
+  function translateAiNoteGroup(body) {
+    const trimmed = String(body || '').trim();
+    const paren = /^(.*?)(?:（([^（）]+)）)?$/.exec(trimmed);
+    // paren[1] 可能是空串（body 只有一段备注、无主体），不能用 || 回退到整串。
+    const core = (paren && paren[1] !== undefined ? paren[1] : trimmed).trim();
+    const notes = paren && paren[2]
+      ? ` (${paren[2].split('；').map((segment) => translateText(segment.trim(), EN)).filter(Boolean).join('; ')})`
+      : '';
+    const parts = core.split(/[；、]/)
+      .map((segment) => translateText(segment.trim(), EN))
+      .filter(Boolean);
+    const joined = parts.join('; ');
+    return joined ? `${joined}${notes}` : notes.trim();
   }
 
   function translateText(value, lang = language) {
@@ -2101,6 +2223,104 @@
     // 表情包导出灰显拦截 flashHint：当前模式不可用：<原因>
     match = /^当前模式不可用：(.+)$/.exec(text);
     if (match) return `Unavailable in the current mode: ${translateText(match[1], EN)}`;
+    // === 编辑器 AI 辅助（editor/ai/*.js）动态消息 ===
+    // 设置 / 模型 / 任务 HTTP 失败：<操作>失败（HTTP N）
+    match = /^((?:读取|保存) AI 设置|拉取模型列表|获取任务状态|提交 AI 任务)失败（HTTP (\d+)）$/.exec(text);
+    if (match) {
+      const prefix = {
+        '读取 AI 设置': 'Failed to read AI settings',
+        '保存 AI 设置': 'Failed to save AI settings',
+        '拉取模型列表': 'Failed to fetch the model list',
+        '获取任务状态': 'Failed to get the task status',
+        '提交 AI 任务': 'Failed to submit the AI task',
+      }[match[1]] || match[1];
+      return `${prefix} (HTTP ${match[2]})`;
+    }
+    match = /^已保存：(.+)$/.exec(text);
+    if (match) return `Saved: ${match[1]}`;
+    match = /^无法获取 AI 任务状态：(.+)$/.exec(text);
+    if (match) return `Could not get the AI task status: ${translateText(match[1], EN)}`;
+    match = /^取消失败：(.+)$/.exec(text);
+    if (match) return `Cancel failed: ${translateText(match[1], EN)}`;
+    // 进度浮条：<任务名> · <stage>；stage 文案本身在 EN_TEXT / 下方映射
+    match = /^(.+?) · (正在提交…|排队中…|启动中…|连接供应商…|等待供应商响应…|结果已生成，等待结束字幕编辑…|正在应用结果…|处理中…|完成|已取消)$/.exec(text);
+    if (match) return `${translateText(match[1], EN)} · ${translateText(match[2], EN)}`;
+    match = /^(.+?) · 对齐中 (\d+)\/(\d+)$/.exec(text);
+    if (match) return `${translateText(match[1], EN)} · aligning ${match[2]}/${match[3]}`;
+    match = /^(.+?) · loading_model$/.exec(text);
+    if (match) return `${translateText(match[1], EN)} · loading model`;
+    // 测试连接 / 拉取模型的状态行
+    match = /^正在用 (.+) 测试连接…$/.exec(text);
+    if (match) return `Testing connection with ${translateText(match[1], EN)}…`;
+    match = /^连接成功：(.+)$/.exec(text);
+    if (match) return `Connected: ${translateText(match[1], EN)}`;
+    match = /^已拉取 (\d+) 个模型，输入模型时可从下拉列表选择。$/.exec(text);
+    if (match) return `Fetched ${match[1]} models; pick one from the dropdown when entering a model.`;
+    match = /^(\d+) 条字幕的字词时间码文字未随文本更新，请按需检查$/.exec(text);
+    if (match) return `Word timing text on ${match[1]} cues was not updated with the text; review if needed`;
+    // 写回成功提示：<任务名>已更新 N 条字幕（<备注>）
+    match = /^(.+?)已更新 (\d+) 条字幕$/.exec(text);
+    if (match) return `${translateText(match[1], EN)} updated ${match[2]} cues`;
+    match = /^(.+?)已更新 (\d+) 条字幕（(.+)）$/.exec(text);
+    if (match) return `${translateText(match[1], EN)} updated ${match[2]} cues (${translateAiNoteGroup(match[3]).trim()})`;
+    match = /^已按 AI 建议拆分 (\d+) 条字幕$/.exec(text);
+    if (match) return `Split ${match[1]} cues by AI suggestion`;
+    match = /^已按 AI 建议拆分 (\d+) 条字幕（(.+)）$/.exec(text);
+    if (match) return `Split ${match[1]} cues by AI suggestion (${translateAiNoteGroup(match[2]).trim()})`;
+    match = /^已为 (\d+) 条字幕写入字词时间码$/.exec(text);
+    if (match) return `Wrote word timing for ${match[1]} cues`;
+    match = /^已为 (\d+) 条字幕写入字词时间码（(.+)）$/.exec(text);
+    if (match) return `Wrote word timing for ${match[1]} cues (${translateAiNoteGroup(match[2]).trim()})`;
+    match = /^合并已完成；AI 润色未应用（(模型未返回结果|字幕已被修改)，可撤销合并）$/.exec(text);
+    if (match) {
+      return `Merge complete; AI polish not applied (${translateText(match[1], EN)}; the merge can be undone)`;
+    }
+    // <任务名>：<主体分段[；、]｜无变更>[（<备注>）][；已自动开启双语字幕]
+    match = /^(AI 加粗关键词|AI 翻译为副字幕|AI Emoji 点缀|AI 文本任务|AI 拆分建议|时间码→字词)：(.+)$/.exec(text);
+    if (match) {
+      let body = match[2];
+      let autoEnabled = '';
+      if (body.endsWith('；已自动开启双语字幕')) {
+        autoEnabled = '; bilingual subtitles were enabled automatically';
+        body = body.slice(0, -'；已自动开启双语字幕'.length);
+      }
+      return `${translateText(match[1], EN)}: ${translateAiNoteGroup(body)}${autoEnabled}`;
+    }
+    // 备注分段（整行不会独立出现，供上方规则逐段递归调用）
+    match = /^(\d+) 条已符合目标$/.exec(text);
+    if (match) return `${match[1]} already match the target`;
+    match = /^(\d+) 条在任务期间被修改，已跳过$/.exec(text);
+    if (match) return `${match[1]} changed during the task and were skipped`;
+    match = /^(\d+) 条期间被修改已跳过$/.exec(text);
+    if (match) return `${match[1]} changed during the task and were skipped`;
+    match = /^(\d+) 条模型未返回结果$/.exec(text);
+    if (match) return `${match[1]} had no model result`;
+    match = /^(\d+) 条模型未返回$/.exec(text);
+    if (match) return `${match[1]} had no model result`;
+    match = /^(\d+) 条副字幕已是该译文$/.exec(text);
+    if (match) return `${match[1]} secondary cues already carry this translation`;
+    match = /^(\d+) 条已是该译文$/.exec(text);
+    if (match) return `${match[1]} already carry this translation`;
+    match = /^(\d+) 条副字幕在任务期间被修改，已跳过$/.exec(text);
+    if (match) return `${match[1]} secondary cues changed during the task and were skipped`;
+    match = /^(\d+) 条绑定多条副字幕，已跳过$/.exec(text);
+    if (match) return `${match[1]} bound to multiple secondary cues and were skipped`;
+    match = /^(\d+) 条对齐失败$/.exec(text);
+    if (match) return `${match[1]} failed to align`;
+    match = /^(\d+) 条断点不可用$/.exec(text);
+    if (match) return `${match[1]} had an unusable break point`;
+    match = /^(\d+) 条结果修改了原文或格式不符，已跳过$/.exec(text);
+    if (match) return `${match[1]} changed the original or had an invalid format and were skipped`;
+    match = /^(\d+) 条已绑定副字幕，请逐条联动拆分$/.exec(text);
+    if (match) return `${match[1]} have bound secondary subtitles; split them one at a time`;
+    match = /^更新 (\d+) 条$/.exec(text);
+    if (match) return `Updated ${match[1]}`;
+    match = /^新建 (\d+) 条$/.exec(text);
+    if (match) return `Created ${match[1]}`;
+    match = /^没有需要更新的字幕$/.exec(text);
+    if (match) return 'No subtitles need updating';
+    match = /^没有需要处理的字幕$/.exec(text);
+    if (match) return 'No subtitles to process';
     return text;
   }
 
