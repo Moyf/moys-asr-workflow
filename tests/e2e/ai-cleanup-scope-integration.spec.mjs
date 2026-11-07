@@ -58,7 +58,12 @@ function projectData({ neighbor = false } = {}) {
   };
   // The save/reopen cases start from a canonical file; legacy imports must use
   // Save As and are covered by the separate v2 migration tests.
-  return createUtilsModule().importProject(legacy).project;
+  const project = createUtilsModule().importProject(legacy).project;
+  project.speakers.push(
+    { id: 'diag-a', name: '诊断 A', color: '#f9ca1f' },
+    { id: 'diag-b', name: '诊断 B', color: '#66bb6a' },
+  );
+  return project;
 }
 
 test.beforeAll(async () => {
