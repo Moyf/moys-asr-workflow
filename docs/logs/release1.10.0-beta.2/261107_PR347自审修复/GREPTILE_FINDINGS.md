@@ -20,7 +20,7 @@
 
 | # | 位置 | 问题 | 状态 | 修法 |
 | --- | --- | --- | --- | --- |
-| 7 | editor_ai.py:497 | 发布包编辑器进程直接 import align_project（torch 依赖不在编辑器环境），导入即失败 | 待处理 | 改走 run_timestamp_alignment_in_runtime 独立运行环境子进程；临时工程文件转发 + 进度转发；保留 409 绑定守卫 |
+| 7 | editor_ai.py:497 | 发布包编辑器进程直接 import align_project（torch 依赖不在编辑器环境），导入即失败 | 已修复 | run_timecode_alignment 改走 run_timestamp_alignment_in_runtime：临时工程经 import_project 迁 v2 落盘（cue id 保留、语言写主轨），serve 进程只做转发/进度转发/结果抽取；LocalRuntimeError/Cancelled 映射为 AiTaskError；409 绑定守卫（_inject_timecode_media）与进度事件格式不变 |
 
 ## C 组·安全与杂项（commit 3）
 
@@ -41,3 +41,11 @@
 - e2e `editor-i18n-save.spec.mjs`（chromium）：17/17（新增动态文案均有 EN 规则；退役「当前没有副字幕轨，需重试」规则同步删除，无引用残留）
 
 （B/C 组 commit 前回填）
+
+### B 组（commit 前，全部实跑）
+
+- 先红后绿：改写后的 `test_timecode_alignment_forwards_to_local_runtime`（旧实现下命中「不得在编辑器进程内调用 align_project」断言）与 `test_timecode_alignment_surfaces_runtime_errors_and_cancel`（旧实现抛 TimestampAlignmentError 非 AiTaskError）修复前均红，修复后绿
+- `python3 scripts/run_check.py --timeout 180 -- .venv/bin/python -m unittest tests.test_editor_ai`：31/31
+- `python3 scripts/run_check.py --timeout 300 -- .venv/bin/python -m unittest tests.test_timestamp_alignment tests.test_server_align`：23/23（对齐模块本体与 server 对齐端点回归）
+- `uv run --no-sync ruff check maw/editor_ai.py tests/test_editor_ai.py server-editor/serve.py`：通过
+- 未验证边界：真实发布包运行环境子进程链路（torch/qwen_asr 安装环境）只能维护者实机验收；本地已验证到转发契约与错误映射层

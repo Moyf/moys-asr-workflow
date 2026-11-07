@@ -461,48 +461,91 @@ class EditorAiStructureTaskTests(_EditorAiTaskTestBase):
         self.assertIn("⎪", captured["prompt"])
         self.assertIn("断句", captured["prompt"])
 
-    def test_timecode_alignment_returns_items_by_cue_id(self) -> None:
+    def test_timecode_alignment_forwards_to_local_runtime(self) -> None:
+        """时间码→字词必须走独立运行环境子进程，不在编辑器进程内对齐（#347 #7）。"""
         self._write_custom_slot()
         media_path = Path(self._tmp.name) / "media.mp4"
         media_path.write_bytes(b"")
         captured: dict[str, object] = {}
+        output_project = {
+            "schema": 2,
+            "tracks": [{"id": "main", "role": "main", "enabled": True, "language": "zh", "segments": [
+                {"id": "c1", "text": "你好世界", "start": 1000, "end": 3000, "items": [
+                    {"text": "你", "start": 1000, "end": 2000},
+                    {"text": "好世界", "start": 2000, "end": 3000},
+                ]},
+            ]}],
+            "bilingual": {"display_mode": "both", "active_track_id": None},
+            "bindings": [],
+        }
 
-        def fake_align(project, **kwargs):  # noqa: ANN001, ANN202
-            captured["cancel_event"] = kwargs.get("cancel_event")
-            captured["media_path"] = kwargs.get("media_path")
-            captured["ffmpeg_path"] = kwargs.get("ffmpeg_path")
-            captured["model_id"] = kwargs.get("model_id")
-            for segment in project["segments"]:
-                segment["items"] = [{
-                    "text": segment["text"],
-                    "start": segment["start"],
-                    "end": segment["end"],
-                }]
-            from maw.timestamp_alignment import TimestampAlignmentReport
+        def fake_runtime(**kwargs):  # noqa: ANN001, ANN202
+            captured.update(kwargs)
+            input_project = json.loads(Path(str(kwargs["project_path"])).read_text(encoding="utf-8"))
+            captured["input_main"] = input_project
+            output_path = Path(str(kwargs["project_path"])).parent / "output.json"
+            output_path.write_text(json.dumps(output_project, ensure_ascii=False), encoding="utf-8")
+            kwargs["on_event"]("已对齐 1 条")
+            return {
+                "artifact": {"projectPath": str(output_path), "warnings": ["提示A"]},
+                "report": {"alignedSegments": 1, "failedSegments": 0, "warnings": ["提示A"]},
+            }
 
-            return TimestampAlignmentReport(
-                captured["model_id"], "fill",
-                aligned_segments=len(project["segments"]), failed_segments=0, warnings=(),
+        reports: list[tuple[str, int | None]] = []
+        with mock.patch("maw.local_runtime.run_timestamp_alignment_in_runtime", fake_runtime), mock.patch(
+            "maw.timestamp_alignment.align_project",
+            side_effect=AssertionError("不得在编辑器进程内调用 align_project"),
+        ):
+            result = editor_ai.run_timecode_alignment(
+                self.env_path,
+                {"cues": [{"id": "c1", "text": "你好世界", "start": 1000, "end": 3000}],
+                 "lang": "zh", "mediaPath": str(media_path)},
+                lambda stage, percent: reports.append((stage, percent)),
+                lambda: False,
             )
-
-        with mock.patch("maw.timestamp_alignment.align_project", fake_align):
-            manager = editor_ai.AiTaskManager(self.env_path)
-            snapshot = manager.submit("ai-timecode-items", {"cues": [
-                {"id": "c1", "text": "你好世界", "start": 1000, "end": 3000},
-            ], "mediaPath": str(media_path)})
-            self.assertTrue(manager.wait_until_idle())
-        final = manager.snapshot(snapshot["id"])
-        self.assertEqual(final["status"], "done")
-        self.assertEqual(final["result"], {
-            "items": {"c1": [{"text": "你好世界", "start": 1000, "end": 3000}]},
-            "aligned": 1,
-            "failed": 0,
-            "warnings": [],
-        })
+        self.assertEqual(result["items"], {"c1": [
+            {"text": "你", "start": 1000, "end": 2000},
+            {"text": "好世界", "start": 2000, "end": 3000},
+        ]})
+        self.assertEqual(result["aligned"], 1)
+        self.assertEqual(result["failed"], 0)
+        self.assertEqual(result["warnings"], ["提示A"])
         self.assertEqual(captured["media_path"], media_path)
+        self.assertEqual(captured["output_mode"], "json")
+        self.assertEqual(captured["alignment_mode"], "fill")
         self.assertEqual(captured["model_id"], "qwen3-forced-aligner-0.6b")
         self.assertTrue(hasattr(captured["cancel_event"], "is_set"))
         self.assertFalse(captured["cancel_event"].is_set())
+        self.assertTrue(callable(captured["on_event"]))
+        input_main = captured["input_main"]["tracks"]
+        main = [track for track in input_main if track.get("role") == "main"][0]
+        self.assertEqual([segment["id"] for segment in main["segments"]], ["c1"])
+        self.assertEqual(main["language"], "zh")
+        stages = [stage for stage, _percent in reports]
+        self.assertEqual(stages[0], "loading_model")
+        self.assertTrue(any(stage.startswith("对齐中") for stage in stages))
+        self.assertEqual(stages[-1], "done")
+
+    def test_timecode_alignment_surfaces_runtime_errors_and_cancel(self) -> None:
+        """运行环境错误/取消映射为面向编辑器的 AiTaskError 提示。"""
+        from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError
+
+        media_path = Path(self._tmp.name) / "media.mp4"
+        media_path.write_bytes(b"")
+        payload = {"cues": [{"id": "c1", "text": "你好", "start": 1000, "end": 3000}],
+                   "mediaPath": str(media_path)}
+        with mock.patch("maw.local_runtime.run_timestamp_alignment_in_runtime",
+                        mock.Mock(side_effect=LocalRuntimeError("本地模型运行环境未就绪"))):
+            with self.assertRaises(editor_ai.AiTaskError) as ctx:
+                editor_ai.run_timecode_alignment(self.env_path, payload, lambda *args: None, lambda: False)
+        self.assertIn("时间码对齐失败", str(ctx.exception))
+        self.assertIn("本地模型运行环境未就绪", str(ctx.exception))
+
+        with mock.patch("maw.local_runtime.run_timestamp_alignment_in_runtime",
+                        mock.Mock(side_effect=LocalRuntimeCancelled("字词时间码生成已取消。"))):
+            with self.assertRaises(editor_ai.AiTaskError) as ctx:
+                editor_ai.run_timecode_alignment(self.env_path, payload, lambda *args: None, lambda: False)
+        self.assertIn("已取消", str(ctx.exception))
 
     def test_timecode_alignment_rejects_missing_media_and_bad_cues(self) -> None:
         self._write_custom_slot()

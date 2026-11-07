@@ -13,7 +13,9 @@ HTTP 形状留在 serve.py；本模块拥有：
 
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 import threading
 import time
 import uuid
@@ -460,62 +462,99 @@ def run_timecode_alignment(
     report: Callable[[str, int | None], None],
     cancel: Callable[[], bool],
 ) -> dict[str, Any]:
-    """时间码→字词 runner：临时工程走 align_project（in-process）。
+    """时间码→字词 runner：转发独立本地模型运行环境子进程执行。
 
+    对齐依赖（torch / qwen_asr）只存在于独立运行环境，发布版编辑器
+    serve 进程不引入；本函数只做临时工程准备、进度转发与结果抽取。
     mediaPath / ffmpegPath 由 serve.py 从当前工程绑定注入（不接受前端
     任意路径）；结果按 cue id 回传 items，前端核对快照后写回。
     """
     from maw.alignment_models import QWEN_FORCED_ALIGNER_MODEL_ID, normalize_alignment_model_id
-    from maw.timestamp_alignment import TimestampAlignmentError, align_project
+    from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, run_timestamp_alignment_in_runtime
+    from maw.postprocess_io import import_project
 
     cues = normalize_alignment_cues(payload.get("cues"))
     media_path = Path(str(payload.get("mediaPath") or "").strip())
     if not media_path.is_file():
-        raise TimestampAlignmentError("当前工程的媒体文件不可用，无法对齐。")
+        raise AiTaskError("当前工程的媒体文件不可用，无法对齐。")
     report("loading_model", 15)
-    project: dict[str, Any] = {
-        "segments": [dict(cue) for cue in cues],
-        "language": str(payload.get("lang") or ""),
-    }
+    language = str(payload.get("lang") or "")
+    # 经 import_project 迁移为 v2 形状再落盘：cue id 原样保留，语言写进
+    # 主轨（v2 工程顶层没有 language 字段，worker 只认轨上的语言）。
+    project = import_project({"segments": [dict(cue) for cue in cues], "language": language})
+    for track in project.get("tracks", []):
+        if track.get("role") == "main":
+            track["language"] = language
+            break
     model_id = normalize_alignment_model_id(str(payload.get("modelId") or QWEN_FORCED_ALIGNER_MODEL_ID))
-    ffmpeg_path = str(payload.get("ffmpegPath") or "").strip()
     total = len(cues)
-    progress_state = {"aligned": 0}
+    progress_state = {"events": 0}
 
     def on_event(message: str) -> None:
-        progress_state["aligned"] += 1
-        percent = 20 + int(70 * progress_state["aligned"] / max(1, total))
-        report(f"对齐中 {min(progress_state['aligned'], total)}/{total}", percent)
+        progress_state["events"] += 1
+        percent = 20 + int(70 * progress_state["events"] / max(1, total))
+        report(f"对齐中 {min(progress_state['events'], total)}/{total}", percent)
 
-    alignment_report = align_project(
-        project,
-        media_path=media_path,
-        model_id=model_id,
-        mode="fill",
-        ffmpeg_path=ffmpeg_path or None,
-        on_event=on_event,
-        cancel_event=_CancelProbe(cancel),
-    )
     items_by_id: dict[str, list[dict[str, Any]]] = {}
-    for segment in project["segments"]:
-        cue_id = str(segment.get("id") or "")
-        items = segment.get("items")
-        if not cue_id or not isinstance(items, list) or not items:
-            continue
-        items_by_id[cue_id] = [
-            {"text": str(item.get("text")), "start": int(item.get("start")), "end": int(item.get("end"))}
-            for item in items
-            if isinstance(item, dict) and item.get("text") and type(item.get("start")) is int
-        ]
+    warnings: list[str] = []
+    aligned = failed = 0
+    try:
+        with tempfile.TemporaryDirectory(prefix="maw-editor-align-") as temp_dir:
+            project_path = Path(temp_dir) / "alignment-input.mosp"
+            project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+            worker_result = run_timestamp_alignment_in_runtime(
+                project_path=project_path,
+                media_path=media_path,
+                model_id=model_id,
+                output_mode="json",
+                alignment_mode="fill",
+                on_event=on_event,
+                cancel_event=_CancelProbe(cancel),
+            )
+            artifact = worker_result.get("artifact") if isinstance(worker_result, Mapping) else None
+            worker_report = worker_result.get("report") if isinstance(worker_result, Mapping) else None
+            if not isinstance(artifact, Mapping):
+                raise AiTaskError("时间码对齐失败：运行环境没有返回结果文件。")
+            if isinstance(worker_report, Mapping):
+                aligned = int(worker_report.get("alignedSegments") or 0)
+                failed = int(worker_report.get("failedSegments") or 0)
+                raw_warnings = worker_report.get("warnings")
+                if isinstance(raw_warnings, list):
+                    warnings = [str(item) for item in raw_warnings]
+            output_path = Path(str(artifact.get("projectPath") or ""))
+            if not output_path.is_file():
+                raise AiTaskError("时间码对齐失败：运行环境没有生成对齐后的工程文件。")
+            output_project = json.loads(output_path.read_text(encoding="utf-8"))
+            segments: list[Any] = []
+            for track in output_project.get("tracks", []):
+                if track.get("role") == "main":
+                    segments = track.get("segments") or []
+                    break
+            for segment in segments:
+                if not isinstance(segment, Mapping):
+                    continue
+                cue_id = str(segment.get("id") or "")
+                items = segment.get("items")
+                if not cue_id or not isinstance(items, list) or not items:
+                    continue
+                items_by_id[cue_id] = [
+                    {"text": str(item.get("text")), "start": int(item.get("start")), "end": int(item.get("end"))}
+                    for item in items
+                    if isinstance(item, dict) and item.get("text") and type(item.get("start")) is int
+                ]
+    except LocalRuntimeCancelled as error:
+        raise AiTaskError(f"时间码对齐已取消：{error}") from error
+    except (LocalRuntimeError, ValueError, OSError) as error:
+        raise AiTaskError(f"时间码对齐失败：{error}") from error
     if not items_by_id:
-        warnings = "；".join(alignment_report.warnings[:3]) or "没有字幕成功对齐"
-        raise TimestampAlignmentError(f"时间码对齐失败：{warnings}")
+        summary = "；".join(warnings[:3]) or "没有字幕成功对齐"
+        raise AiTaskError(f"时间码对齐失败：{summary}")
     report("done", 100)
     return {
         "items": items_by_id,
-        "aligned": alignment_report.aligned_segments,
-        "failed": alignment_report.failed_segments,
-        "warnings": list(alignment_report.warnings)[:5],
+        "aligned": aligned,
+        "failed": failed,
+        "warnings": warnings[:5],
     }
 
 
