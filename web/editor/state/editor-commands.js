@@ -59,7 +59,7 @@ export function initMaweCommands() {
   const projectSegments = () => ({
     tracks: MaweState.project.tracks, bindings: MaweState.project.bindings,
     bilingual: MaweState.project.bilingual, subtitle_groups: MaweState.project.subtitle_groups,
-    ...Object.fromEntries(['speakers', 'annotation_mode', 'palette_size', 'speaker_shortcuts']
+    ...Object.fromEntries(['styles', 'speakers', 'annotation_mode', 'palette_size', 'speaker_shortcuts']
       .filter(field => Object.hasOwn(MaweState.project, field)).map(field => [field, MaweState.project[field]])),
   });
   function restoreDirtyFlags(current, previous) {

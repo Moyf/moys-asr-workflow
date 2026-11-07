@@ -62,7 +62,7 @@ test('state keeps the original project identity and excludes transient state fro
 });
 
 test('selection views stay live while every mutation goes through the owner', () => {
-  const { selection } = loadState();
+  const { selection } = loadState(runtimeProject(Array.from({ length: 6 }, () => ({})), { extensions: [{ segments: Array.from({ length: 4 }, () => ({})) }], overlay: { segments: Array.from({ length: 9 }, () => ({})) } }));
   const main = selection.indices('main');
   assert.equal(main.add, undefined);
   assert.equal(main.clear, undefined);
@@ -95,13 +95,63 @@ test('separate editor instances share neither selection nor runtime or preferenc
 });
 
 test('track transfers remap selection and its anchor without exposing a mutable Set', () => {
-  const { selection } = loadState();
+  const project = runtimeProject(Array.from({ length: 5 }, () => ({})));
+  const { selection } = loadState(project);
   selection.replace('main', [4, 3, 1]);
   selection.mainAnchor = 4;
+  project.tracks[0].segments.splice(1, 1);
   const result = selection.removeAndShift('main', 1);
   assert.deepEqual({ ...result }, { wasSelected: true, nextAnchor: 3 });
   assert.deepEqual([...selection.indices('main')], [3, 2]);
   assert.equal(selection.mainAnchor, 3);
+});
+
+test('selection and panel follow cue IDs through insertion, removal, transfer, and history restoration', () => {
+  const project = runtimeProject([{ id: 'a' }, { id: 'b' }, { id: 'c' }], {
+    extensions: [{ id: 'secondary', segments: [{ id: 'translation' }] }],
+    overlay: { id: 'overlay', segments: [{ id: 'overlay-cue' }] },
+  });
+  const { selection, panel, beginProjectSession } = loadState(project);
+  const [main, overlay, secondary] = project.tracks;
+  selection.add('main', 1);
+  selection.mainAnchor = 1;
+  panel.currentCuePanelIdx = 1;
+  selection.add('extension', 0, { activate: false });
+  assert.equal(selection.getCurrentTrack().id, main.id);
+  assert.equal(selection.getCurrentCueRef().segment_id, 'b');
+  selection.activateRef({ track_id: secondary.id, segment_id: 'translation' });
+  assert.equal(selection.getCurrentTrack().id, secondary.id);
+  selection.activateRef({ track_id: main.id, segment_id: 'b' });
+  selection.activateRef({ track_id: main.id, segment_id: 'not-selected' });
+  assert.equal(selection.getCurrentTrack().id, main.id);
+  main.segments.unshift({ id: 'new' });
+  assert.deepEqual([...selection.indices('main')], [2]);
+  assert.equal(selection.mainAnchor, 2);
+  assert.equal(panel.currentCuePanelIdx, 2);
+  const before = selection.snapshot();
+  const moved = main.segments.splice(2, 1)[0];
+  overlay.segments.push(moved);
+  assert.deepEqual({ ...selection.removeAndShift('main', 2) }, { wasSelected: true, nextAnchor: -1 });
+  selection.add('overlay', 1);
+  assert.equal(selection.getCurrentTrack().id, overlay.id);
+  assert.equal(panel.currentCuePanelIdx, -1);
+  const after = selection.snapshot();
+  overlay.segments.pop(); main.segments.splice(2, 0, moved);
+  selection.restore(before);
+  assert.equal(selection.getCurrentCueRef().segment_id, 'b');
+  assert.deepEqual([...selection.indices('main')], [2]);
+  main.segments.splice(2, 1); overlay.segments.push(moved);
+  selection.restore(after);
+  assert.equal(selection.getCurrentTrack().id, overlay.id);
+  assert.deepEqual([...selection.indices('overlay')], [1]);
+  selection.clear('overlay'); selection.clear('extension');
+  assert.equal(selection.getCurrentTrack().id, main.id);
+  assert.equal(selection.getCurrentCueRef(), null);
+  selection.add('extension', 0);
+  beginProjectSession();
+  assert.equal(selection.getSelectedCueRefs().length, 0);
+  assert.equal(panel.currentCuePanelIdx, -1);
+  assert.equal(secondary.segments[0].id, 'translation');
 });
 
 test('dirty detection includes pending native text, every track and persistent project settings', () => {

@@ -14,6 +14,7 @@ export function initMaweWaveformInit() {
 
   function initWaveformEditor() {
   let timingCommand = null;
+  let boundDrag = null;
   if (!window.AsrWaveform) {
     MaweHint.flashHint('波形模块加载失败，字幕编辑仍可使用', 'warning');
     return;
@@ -199,14 +200,21 @@ export function initMaweWaveformInit() {
     getHoverSeekPreview: () => MaweSettings.EDITOR_SETTINGS.hoverSeekPreview && !MaweJklPlayback.jklReversePlaying,
     showTrackBadges: () => MaweSettings.EDITOR_SETTINGS.multiSubtitleShowTrackBadges,
     onBeginEdit: (label) => {
-      timingCommand ||= MaweCommands.begin(label, { captureView: true });
+      if (!timingCommand) {
+        boundDrag = null;
+        timingCommand = MaweCommands.begin(label, { captureView: true });
+      }
     },
     onCancelEdit: () => {
       const command = timingCommand;
       timingCommand = null;
+      boundDrag = null;
       command?.cancel();
     },
-    syncBoundCueDrag: MaweBoundDrag.syncBoundCueDrag,
+    syncBoundCueDrag: (drag) => {
+      MaweBoundDrag.syncBoundCueDrag(drag);
+      if (drag?.track === 'main') boundDrag = drag;
+    },
     prepareBoundCueDrag: MaweBoundDrag.prepareBoundCueDrag,
     onLayoutUndo: (label, snapshot) => MaweHistory.pushLayoutUndo(label, snapshot),
     // 波形模块经依赖注入访问脏态事件；不直接引用 MaweState 全局。
@@ -214,17 +222,21 @@ export function initMaweWaveformInit() {
     onCommitEdit: (idxs, kind, track = 'main', independent = false, details = null) => {
       const editedTracks = details?.moveTracks || [{ track, indices: idxs }];
       let linkedChanged = false;
+      let syncImpact = boundDrag ? MaweBoundDrag.boundDragImpact(boundDrag) : null;
+      boundDrag = null;
       if (kind === 'resize-boundary-pointer' && track === 'main' && !independent) {
         const targetIndex = Number.isInteger(details?.targetIndex) ? details.targetIndex : idxs[0];
         const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[targetIndex];
         const original = details?.original;
         if (main && original) {
-          linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(main, {
+          const patch = {
             oldStart: original.start,
             oldEnd: original.end,
             edge: details.edge,
             mode: 'range',
-          });
+          };
+          linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(main, patch);
+          syncImpact = { squeezedCount: patch.syncSqueezedCount, removedCount: patch.syncRemovedCount, unboundCount: patch.syncUnboundCount };
         }
       }
       MaweTextCleanup.syncTimelineGroupRanges();
@@ -260,7 +272,8 @@ export function initMaweWaveformInit() {
       if (command && !command.commit(listInvalidation)) return;
       if (!command) MaweViewUpdates.invalidate(listInvalidation);
       MaweViewUpdates.invalidate({ preview: 'update' });
-      MaweHint.flashHint(kind === 'move'
+      const impactText = MaweMultiSubtitleCore.boundSyncImpactText(syncImpact);
+      const successText = kind === 'move'
         ? details?.moveTracks
           ? `已移动 ${editedTracks.reduce((total, entry) => total + entry.indices.length, 0)} 条字幕`
           : track === 'extension'
@@ -274,7 +287,8 @@ export function initMaweWaveformInit() {
           ? `已${independent ? '独立' : '联动'}调整第 ${idxs[0] + 1} / ${idxs[1] + 1} 条边界`
           : kind === 'resize-boundary-independent'
             ? `已独立调整第 ${idxs[0] + 1} 条字幕边界`
-            : `已调整${track === 'overlay' ? '叠加字幕' : '字幕'}时间`);
+            : `已调整${track === 'overlay' ? '叠加字幕' : '字幕'}时间`;
+      MaweHint.flashHint(`${successText}${impactText ? `，${impactText}` : ''}`, impactText ? 'warning' : undefined);
     },
     onPayload: (payload) => {
       MaweBoot.DATA.waveform = payload;

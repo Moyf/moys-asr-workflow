@@ -126,6 +126,43 @@ for (const unsavedLayout of [false, true]) {
   });
 }
 
+test('no-op command and clearing an uncolored cue preserve redo with project styles', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.styles = [];
+    AsrEditorUtils.importProject(MaweBoot.DATA);
+    MaweState.establishProjectCheckpoint();
+  });
+  await seedRedo(page);
+  const before = await snapshot(page);
+  expect(before.dirty).toBe(false);
+  expect(before.redo).toBe(1);
+  expect(before.content.styles).toEqual([]);
+  expect(before.segments[0].color_group_id).toBeUndefined();
+  await page.evaluate(() => MaweCommands.run('no-op test', () => {}));
+  expect(await snapshot(page)).toEqual(before);
+  await page.evaluate(() => document.activeElement.blur());
+  await page.keyboard.press('0');
+  await expect(page.getByText('已清除颜色', { exact: true })).toBeVisible();
+  expect(await snapshot(page)).toEqual(before);
+});
+
+test('returning a waveform drag to its origin preserves redo for a project with styles', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.styles = [{ id: 'custom-style', name: 'Custom', fontSize: 86 }];
+    // Exercise a valid existing v2 project with preserved extension data.
+    AsrEditorUtils.importProject(MaweBoot.DATA);
+    MaweState.establishProjectCheckpoint();
+  });
+  await seedRedo(page);
+  const before = await snapshot(page);
+  expect(before.dirty).toBe(false);
+  expect(before.content.styles).toEqual([{ id: 'custom-style', name: 'Custom', fontSize: 86 }]);
+  const point = await beginDrag(page);
+  await page.mouse.move(point.x, point.y, { steps: 5 });
+  await page.mouse.up();
+  expect(await snapshot(page)).toEqual(before);
+});
+
 test('cancelling cue-panel text restores the original without clearing redo', async ({ page }) => {
   await page.evaluate(() => MaweSettings.updateEditorSettings({ cueEditorCancelOnEscape: true }));
   await seedRedo(page);

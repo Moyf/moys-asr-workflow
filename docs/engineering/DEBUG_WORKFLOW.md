@@ -95,3 +95,7 @@ expected failure、unexpected success、退出码及完整日志位置；并行�
 `--full-log` 可指定日志位置，未指定时报告旁生成同名 `.log`。
 `--required` 将缺工具、缺依赖、缺夹具或 expected failure 视为失败；仅准确匹配的
 异平台测试 ID 和 skip 原因可豁免。空集合返回失败。分组是显式执行入口，不自动缩减 CI。
+
+## v2 绑定索引诊断
+
+在编辑器开发者控制台执行 `AsrEditorUtils.setBindingIndexEnabled(false)` 可暂时关闭绑定索引；传入 `true` 恢复，`AsrEditorUtils.isBindingIndexEnabled()` 返回当前状态。开关默认开启，不写入工程；每次同步都会重新建立索引。

@@ -152,4 +152,20 @@ test('secondary remains selectable, draggable and wheel-scalable with main previ
   await page.mouse.move(x + 20, y + 10);
   await page.mouse.wheel(0, -120);
   await expect.poll(() => page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].assOverride?.scale)).toBeGreaterThan(1);
+  const positioned = await page.evaluate(() => structuredClone(MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].assOverride));
+  await page.evaluate(() => {
+    MaweMultiSubtitleCore.getActiveExtensionTrack().preview_visible = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await expect(box).toHaveCount(0);
+  await page.evaluate(() => {
+    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    track.preview_visible = true; track.export = { enabled: false };
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await expect(box).toBeVisible();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].assOverride)).toEqual(positioned);
+  expect(await page.evaluate(() => MaweExportSrt.buildAss())).not.toContain('SECONDARY');
+  await page.evaluate(() => { MaweMultiSubtitleCore.getActiveExtensionTrack().export.enabled = true; });
+  expect(await page.evaluate(() => MaweExportSrt.buildAss())).toContain('SECONDARY');
 });

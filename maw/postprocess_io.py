@@ -15,7 +15,8 @@ from pathlib import Path
 from maw.file_errors import file_write_operation
 from maw.output_naming import OPERATION_NAMES, is_translation_operation, operation_suffix
 from maw.project import normalize_project
-from maw.project_tracks import get_main_track, get_tracks_by_role, make_project
+from maw.project_tracks import get_main_track, make_project
+from maw.track_output import select_export_tracks
 from maw.project_boundary import import_project
 from maw.project_preview import JsonDict, JsonValue
 
@@ -164,13 +165,14 @@ def write_artifacts(
     if comparison_source is not None:
         from maw.postprocess_comparison import comparison_data, render_comparison
         comparison_html = render_comparison(comparison_data(comparison_source, normalized, operation, comparison_rows or [], translation=comparison_translation, line_order=bilingual_line_order, download_name=f"{base.stem}.核对后.mosp"))
+    srt_content = render_srt(normalize_project(srt_project) if srt_project is not None else normalized) if srt_path is not None else None
     if project_path is not None:
         from maw.project_io import rebase_project_media, serialize_mosp
 
         portable = rebase_project_media(normalized, project_path, source_project_path=base)
         _atomic_write(project_path, serialize_mosp(portable))
     if srt_path is not None:
-        _atomic_write(srt_path, render_srt(normalize_project(srt_project) if srt_project is not None else normalized))
+        _atomic_write(srt_path, srt_content)
     if comparison_path is not None and comparison_html is not None:
         _atomic_write(comparison_path, comparison_html)
     return SubtitleArtifact(
@@ -184,10 +186,11 @@ def write_artifacts(
     )
 
 
-def render_srt(project: JsonDict) -> str:
+def render_srt(project: JsonDict, *, mode: str = "main") -> str:
     project = normalize_project(project)
     from maw.postprocess_ai_cleanup_items import cleaned_srt_segments
-    main_segments = get_main_track(project)["segments"]
+    selected = select_export_tracks(project, mode)
+    main_segments = next((track["segments"] for track in selected if track["role"] == "main"), [])
     if not isinstance(main_segments, list):
         return ""
     # Source segments remain reversible. Only trustworthy, still-active local
@@ -195,7 +198,7 @@ def render_srt(project: JsonDict) -> str:
     from maw.script_alignment import project_cleanup_retained_segments
     main_segments = project_cleanup_retained_segments(main_segments, project.get("gap_remove"))
     blocks: list[str] = []
-    for output_index, segment in enumerate(_srt_segments(project, cleaned_srt_segments(project, main_segments)), 1):
+    for output_index, segment in enumerate(_srt_segments(selected, cleaned_srt_segments(project, main_segments)), 1):
         if not isinstance(segment, dict):
             continue
         if segment.get("disabled") is True:
@@ -209,16 +212,12 @@ def render_srt(project: JsonDict) -> str:
     return "\n".join(blocks)
 
 
-def _srt_segments(project: JsonDict, main_segments: list[JsonValue]) -> list[JsonValue]:
-    """Return enabled main and overlay cues ordered by start time and track."""
-    overlay_segments: list[JsonValue] = []
-    for overlay in get_tracks_by_role(project, "overlay"):
-        if overlay.get("enabled") is True:
-            overlay_segments.extend(overlay["segments"])
+def _srt_segments(selected: list[JsonDict], main_segments: list[JsonValue]) -> list[JsonValue]:
+    """Return selected cues ordered by start time and track."""
     cues = [
         (segment, track_index, segment_index)
-        for track_index, track_segments in enumerate((main_segments, overlay_segments))
-        for segment_index, segment in enumerate(track_segments)
+        for track_index, track in enumerate(selected)
+        for segment_index, segment in enumerate(main_segments if track["role"] == "main" else track["segments"])
         if isinstance(segment, dict)
         and segment.get("disabled") is not True
         and type(segment.get("start")) is int

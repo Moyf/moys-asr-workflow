@@ -30,6 +30,7 @@ function fixture({ main = [], secondary = [], overlay = [], bindings = [] } = {}
       getMainSubtitleSplitMode: () => 'continuous', getExtensionSubtitleSplitMode: () => 'continuous',
       mergeJoinSeparatorForMode: () => '', MULTI_SUBTITLE_MERGE_OVERLAP_TOLERANCE_MS: 100,
       removeBindingsForSegmentIds() { effects.bindings++; }, markMultiSubtitleDirty() { effects.dirty++; },
+      boundSyncImpactText: () => '',
     },
     MaweCommands: { run(_label, mutate) { effects.history++; return mutate({ commit() { effects.commits++; } }); } },
     MaweCoreState: { container: { querySelector: () => null } },
@@ -171,3 +172,18 @@ for (const speakers of [['a', 'a'], [null, undefined]]) {
     assert.equal(f.effects.commits, 1);
   });
 }
+
+test('same-name same-color identities remain distinct for linked merges with indexed and linear binding lookup', () => {
+  for (const indexed of [true, false]) {
+    baseUtils.setBindingIndexEnabled(indexed);
+    try {
+      const f = fixture({ main: [cue('m0', 'a'), cue('m1', 'a', 1000)],
+        secondary: [cue('s0', 'a', 4000), cue('s1', 'b', 5000)],
+        bindings: [0, 1].map(i => ({ id: `b${i}`, source: { track_id: 'main', segment_id: `m${i}` },
+          target: { track_id: 'secondary', segment_id: `s${i}` }, start_offset_ms: 4000, end_offset_ms: 4000 })) });
+      f.data.speakers = [{ id: 'a', name: 'same', color: '#f9ca1f' }, { id: 'b', name: 'same', color: '#f9ca1f' }];
+      baseUtils.rebuildBindingOffsets(f.data);
+      rejectsWithoutChanges(f, () => f.api.mergeSegments([0, 1]));
+    } finally { baseUtils.setBindingIndexEnabled(true); }
+  }
+});

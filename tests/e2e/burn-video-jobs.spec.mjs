@@ -375,7 +375,7 @@ for (const assMode of [true, false]) {
           }) };
           const removed = [{ start: 1000, end: 2000, removed: true }];
           window.MaweGapRemoveData = { getRemovedGapRanges: () => removed };
-          window.MaweStickerOverlay = { rebuildStickerIntervals() {}, stickerIntervals: [
+          window.MaweStickerOverlay = { rebuildStickerIntervals() { return this.stickerIntervals; }, stickerIntervals: [
             { start: 3000, end: 4000, source: { rel: 'a.png' } },
             // A second window is wholly removed; it must not survive at a zero-length boundary.
             ...(gapRemoved ? [{ start: 1300, end: 1500, source: { rel: 'removed.png' } }] : []),

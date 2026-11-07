@@ -1,4 +1,4 @@
-import { getOverlayTrack, overlayTrackVisible } from '../cues/overlay-track.js';
+import { getOverlayTrack } from '../cues/overlay-track.js';
 
 export function initMaweExportContextWiring() {
 'use strict';
@@ -18,8 +18,11 @@ function aiCleanupExportSegments(segments) {
 }
 
 function mergedExportSegments() {
-  const mainSegments = aiCleanupExportSegments(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
-  const overlaySegments = overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [];
+  const policy = window.AsrEditorUtils.TrackPolicy;
+  const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+  const overlay = getOverlayTrack();
+  const mainSegments = policy.isTrackEnabled(main, 'export') ? aiCleanupExportSegments(main.segments) : [];
+  const overlaySegments = policy.isTrackEnabled(overlay, 'export') ? overlay.segments : [];
   if (!overlaySegments.length) {
     return { segments: mainSegments, overlaySet: new Set(), overlaySegments };
   }

@@ -1,3 +1,4 @@
+import { TrackPolicy } from './utils/track-policy.js';
 // Compatibility facade: initialize domain factories once and retain the
 // historical API. ESM init module: the assembler calls this at the
 // file's original manifest position.
@@ -45,6 +46,7 @@ export function initEditorUtils() {
 
 const trackHelpers = window.MAWE.resolve('project-tracks');
 const helpers = {
+  TrackPolicy,
   gapRemoveCore: window.AsrGapRemoveCore,
   getNavigator: () => window.MaweHost.runtime.getNavigator(),
   getProject: () => window.MaweBoot?.DATA,
@@ -364,6 +366,8 @@ const {
   previewGeometryToCss,
   readBwfTimeReferenceFromFile,
   rebuildBindingOffsets,
+  setBindingIndexEnabled,
+  isBindingIndexEnabled,
   removeGapRemoveProvenanceRange,
   removeSubtitleBindings,
   repairGroupReferenceIndices,
@@ -407,6 +411,7 @@ const {
 } = helpers;
 
 window.AsrEditorUtils = {
+  TrackPolicy,
   ...speakerIdentity,
   cloneJsonValue: helpers.cloneJsonValue,
   ...projectTracksHelpers,
@@ -552,6 +557,8 @@ filterFontFamilyOptions,
   bindingForSegment,
   buildSubtitleBinding,
   rebuildBindingOffsets,
+  setBindingIndexEnabled,
+  isBindingIndexEnabled,
   swapMainAndExtensionSubtitle,
   removeSubtitleBindings,
   matchSubtitleSegments,
