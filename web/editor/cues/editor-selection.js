@@ -161,18 +161,18 @@ export function initMaweSelection() {
 
 
 
-  function addMainIndexToSelection(index) {
+  function addMainIndexToSelection(index, options) {
     if (!Number.isInteger(index) || !window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index] || isHiddenDisabled(index)) return;
-    MaweState.selection.add('main', index);
+    MaweState.selection.add('main', index, options);
     const el = MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`);
     if (el) el.classList.add('selected');
   }
 
 
 
-  function addExtensionIndexToSelection(index, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
+  function addExtensionIndexToSelection(index, track = MaweMultiSubtitleCore.getActiveExtensionTrack(), options) {
     if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
-    MaweState.selection.add('extension', index);
+    MaweState.selection.add('extension', index, options);
   }
 
 
@@ -187,7 +187,7 @@ export function initMaweSelection() {
       if (!binding || !activeTrack || bindingTrack?.id !== activeTrack.id) return;
       (binding.target?.segment_id ? [binding.target.segment_id] : []).forEach((id) => {
         const extensionIndex = activeTrack.segments.findIndex((segment) => segment?.id === id);
-        if (extensionIndex >= 0) addExtensionIndexToSelection(extensionIndex, activeTrack);
+        if (extensionIndex >= 0) addExtensionIndexToSelection(extensionIndex, activeTrack, { activate: false });
       });
       return;
     }
@@ -195,7 +195,7 @@ export function initMaweSelection() {
     if (!binding) return;
     (binding.source?.segment_id ? [binding.source.segment_id] : []).forEach((id) => {
       const mainIndex = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment?.id === id);
-      if (mainIndex >= 0) addMainIndexToSelection(mainIndex);
+      if (mainIndex >= 0) addMainIndexToSelection(mainIndex, { activate: false });
     });
   }
 
@@ -222,6 +222,9 @@ export function initMaweSelection() {
     commitCuePanelEdit();
     MaweState.selection.clear('main');
     MaweState.selection.mainAnchor = -1;
+    MaweState.selection.clear('overlay');
+    MaweState.selection.overlayAnchor = -1;
+    window.MaweCuePanelWiring.syncOverlaySelectionClasses();
   }
   MaweState.selection.clear('extension');
   MaweState.selection.add('extension', index);
@@ -269,6 +272,7 @@ export function initMaweSelection() {
   updateMultiSelectionClasses();
   window.MaweCuePanelWiring.updateSelectionCountText();
   if (lastSelected < 0) return;
+  if (selectedExtensionIdxs.has(b)) MaweState.selection.add('extension', b);
   MaweState.selection.extensionAnchor = lastSelected;
   MaweCoreState.waveformEditor?.updateSelection();
   setCurrentCuePanelExtensionIndex(lastSelected, track);
@@ -306,6 +310,7 @@ export function initMaweSelection() {
     }
     syncBoundSelection('main', i);
   }
+  if (selectedIdxs.has(b)) MaweState.selection.add('main', b);
   applyMainSelectionClasses((el) => el.classList.add('selected'));
   window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
@@ -422,11 +427,13 @@ export function initMaweSelection() {
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   const last = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length - 1;
   if (last >= 0 && selectedIdxs.has(last)) {
+    MaweState.selection.add('main', last);
     setCurrentCuePanelIndex(last);
     return;
   }
   const firstMain = selectedIdxs.values().next().value;
   if (firstMain !== undefined) {
+    MaweState.selection.add('main', firstMain);
     setCurrentCuePanelIndex(firstMain);
     return;
   }
@@ -436,10 +443,12 @@ export function initMaweSelection() {
   }
   const lastExtension = extensionTrack.segments.length - 1;
   if (lastExtension >= 0 && selectedExtensionIdxs.has(lastExtension)) {
+    MaweState.selection.add('extension', lastExtension);
     setCurrentCuePanelExtensionIndex(lastExtension, extensionTrack);
     return;
   }
   const firstExtension = selectedExtensionIdxs.values().next().value;
+  if (firstExtension !== undefined) MaweState.selection.add('extension', firstExtension);
   setCurrentCuePanelExtensionIndex(firstExtension ?? -1, extensionTrack);
 }
 

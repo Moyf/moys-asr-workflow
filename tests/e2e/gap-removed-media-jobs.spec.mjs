@@ -380,3 +380,14 @@ test('rendered editor real open GOP completes without output and releases its ta
     cleanupTempDir(dir);
   }
 });
+test('unsupported matching subtitles do not block reassembled video', async ({ page }) => {
+  await fixture('timeline-0', async origin => {
+    await install(page, origin, 'timeline-0');
+    await page.evaluate(() => { window.MaweExportSrt.captureVideoSrt = () => { throw new Error('不支持导出叠加轨'); }; });
+    await page.click('#download-gap-removed-video');
+    await expect(page.locator('#gap-video-job-close')).toBeVisible();
+    await expect(page.locator('#gap-video-job-save-srt')).toHaveCount(0);
+    expect(await page.evaluate(() => window.hints.some(text => text.includes('无法生成匹配字幕：不支持导出叠加轨')))).toBe(true);
+    expect(await page.evaluate(() => window.saved)).toBe(true);
+  });
+});

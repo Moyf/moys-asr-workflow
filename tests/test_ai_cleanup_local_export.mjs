@@ -123,6 +123,14 @@ test('ordinary SRT reuses the real merged export projection when cache is enable
   const defaultMerged = context.window.MaweExportContext.mergedExportSegments();
   assert.equal(bypasses, 1, 'direct callers retain the cleanup default');
   assert.ok(defaultMerged.segments.some(cue => cue.text === '我这个功能呢'));
+  const mainTrack = utils.getMainTrack(context.MaweBoot.DATA);
+  mainTrack.export = { enabled: false };
+  const countBeforeHidden = projections;
+  assert.doesNotMatch(srt.buildSrt(), /我这个功能呢/);
+  assert.equal(projections, countBeforeHidden, 'disabled main export does not project');
+  mainTrack.export.enabled = true;
+  assert.match(srt.buildSrt(), /我这个功能呢/);
+  assert.equal(projections, countBeforeHidden, 're-enabled main reuses the warm projection');
   utils.getOverlayTrack(context.MaweBoot.DATA).enabled = false;
   const main = utils.getMainTrack(context.MaweBoot.DATA).segments;
   main.push({ id: 'overlap', start: 500, end: 1800, text: 'overlap', items: [] });
@@ -370,7 +378,8 @@ test('production ordinary/gap SRT and ASS builders remove local words while inde
 test('burn subtitles can retain media cue timing while file export extends the first cue', () => {
   const { context, srt, main } = runtime();
   context.window.MaweExportContext.mergedExportSegments = (projectMain = value => value) => ({ segments: projectMain(main), overlaySet: new Set(), overlaySegments: [] });
-  context.activeExtensionSegments = () => [];
+  context.window.AsrEditorUtils.getExtensionTrack(context.MaweBoot.DATA).enabled = false;
+  context.window.AsrEditorUtils.getOverlayTrack(context.MaweBoot.DATA).enabled = false;
   context.MaweSettings.EDITOR_SETTINGS.exportStartAtZero = true;
   const ordinaryFile = srt.buildSrt();
   const ordinaryBurn = srt.buildSrt({ alignFirstStart: false });
@@ -442,4 +451,30 @@ test('source/gap OTIO subtitle marker names and FCP/XML plans use exact retained
     assert.doesNotMatch(artifact.content, /我这……/);
   }
   assert.equal(main[0].text, source().text);
+});
+
+test('unsupported selected overlay blocks SRT and ASS, but disabled overlay and preview remain usable', () => {
+  const { context, utils, srt } = runtime();
+  const overlay = utils.getOverlayTrack(context.MaweBoot.DATA);
+  context.window.MaweExportContext.mergedExportSegments = () => {
+    const overlaySegments = utils.TrackPolicy.isTrackEnabled(overlay, 'export') ? overlay.segments : [];
+    return { segments: [...utils.getMainTrack(context.MaweBoot.DATA).segments, ...overlaySegments], overlaySet: new Set(overlaySegments), overlaySegments };
+  };
+  overlay.variant = 'future';
+  overlay.preview_visible = false;
+  for (const build of [() => srt.buildSrt(), () => srt.buildAss(), () => srt.buildGapRemovedSrt(), () => srt.buildGapRemovedAss()]) {
+    assert.throws(build, /不支持导出叠加轨.*future/);
+  }
+  assert.doesNotThrow(() => srt.buildAss({ preview: true }));
+  for (const disable of ['enabled', 'export']) {
+    overlay.enabled = true;
+    overlay.export = { enabled: true };
+    if (disable === 'enabled') overlay.enabled = false;
+    else overlay.export.enabled = false;
+    assert.match(srt.buildSrt(), /我这个功能呢/);
+    assert.doesNotMatch(srt.buildSrt(), /overlay untouched/);
+    assert.match(srt.buildAss(), /Dialogue:/);
+    assert.doesNotMatch(srt.buildAss(), /overlay untouched/);
+    assert.equal(overlay.variant, 'future');
+  }
 });

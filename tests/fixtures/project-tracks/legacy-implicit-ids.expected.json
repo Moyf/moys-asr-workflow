@@ -19,7 +19,12 @@
           "end": 200,
           "text": "reserved"
         }
-      ]
+      ],
+      "preview_visible": true,
+      "variant": "plain",
+      "export": {
+        "enabled": true
+      }
     },
     {
       "id": "extension-1",
@@ -34,7 +39,12 @@
           "end": 100,
           "text": "translation"
         }
-      ]
+      ],
+      "preview_visible": true,
+      "variant": "plain",
+      "export": {
+        "enabled": true
+      }
     },
     {
       "id": "extension-001",
@@ -42,7 +52,12 @@
       "name": "副字幕",
       "enabled": true,
       "split_mode": "word",
-      "segments": []
+      "segments": [],
+      "preview_visible": true,
+      "variant": "plain",
+      "export": {
+        "enabled": true
+      }
     }
   ],
   "bilingual": {

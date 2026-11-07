@@ -239,3 +239,18 @@ test('timed text splits reserve all project IDs and merged rows inherit only com
   assert.equal(merge.valid, true); assert.equal(merge.segments[0].color_group_id, 'same');
   assert.equal(Object.hasOwn(merge.segments[0], 'sticker_group_id'), false);
 });
+
+
+test('history restores shared styles and removes styles absent from the snapshot', () => {
+  const project = model.makeProject([{ id: 'a', start: 0, end: 1000, text: '' }]);
+  const before = history.buildSegmentsHistorySnapshot(project);
+  project.styles = { one: { font: 'A' } };
+  project.tracks[0].style = { style_id: 'one', forked: true };
+  const after = history.buildSegmentsHistorySnapshot(project);
+  history.restoreSegmentsHistorySnapshot(project, before);
+  assert.equal(Object.hasOwn(project, 'styles'), false);
+  assert.equal(Object.hasOwn(project.tracks[0], 'style'), false);
+  history.restoreSegmentsHistorySnapshot(project, after);
+  assert.deepEqual(project.styles, { one: { font: 'A' } });
+  assert.deepEqual(project.tracks[0].style, { style_id: 'one', forked: true });
+});

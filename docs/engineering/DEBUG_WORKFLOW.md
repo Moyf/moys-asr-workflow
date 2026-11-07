@@ -101,3 +101,7 @@ expected failure、unexpected success、退出码及完整日志位置；并行�
 编辑器开发者控制台中，`MaweExportSrt.setCleanupProjectionCacheEnabled(false)` 暂时关闭缓存，传入 `true` 恢复；`MaweExportSrt.isCleanupProjectionCacheEnabled()` 查看状态。默认开启，页面重载后恢复默认，状态不写入工程。
 
 关闭缓存仍执行清理投影；切换时清空播放与导出缓存。对照性能时使用相同工程和操作，分别记录首次与重复操作的耗时。
+
+## v2 绑定索引诊断
+
+在编辑器开发者控制台执行 `AsrEditorUtils.setBindingIndexEnabled(false)` 可暂时关闭绑定索引；传入 `true` 恢复，`AsrEditorUtils.isBindingIndexEnabled()` 返回当前状态。开关默认开启，不写入工程；每次同步都会重新建立索引。

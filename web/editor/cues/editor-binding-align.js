@@ -133,8 +133,11 @@
   const replacedBinding = MaweMultiSubtitleCore.bindingForMainIndex(mainIndex);
   return MaweCommands.run('绑定双语字幕', (command) => {
     MaweMultiSubtitleCore.addSubtitleBinding(main, extension, track);
+    let syncImpact = null;
     const autoSynced = MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration
-      && alignExtensionToMainTimeRange(extensionIndex, track, { pushHistory: false, showHint: false });
+      && alignExtensionToMainTimeRange(extensionIndex, track, {
+        pushHistory: false, showHint: false, onImpact: (impact) => { syncImpact = impact; },
+      });
     MaweMultiSubtitleCore.markMainSegmentsDirty([main]);
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     // 绑定会更新波形上的绑定标记；自动同步时也会改变副字幕范围，
@@ -145,7 +148,8 @@
       || (replacedBinding
         ? `已替换主字幕 ${mainIndex + 1} 的绑定，改为副字幕 ${extensionIndex + 1}`
         : `已绑定主字幕 ${mainIndex + 1} 与副字幕 ${extensionIndex + 1}`);
-    MaweHint.flashHint(`${bindingMessage}${autoSynced ? '，并同步时长' : ''}`, 'success');
+    const impact = syncImpact ? MaweMultiSubtitleCore.boundSyncImpactText(syncImpact) : '';
+    MaweHint.flashHint(`${bindingMessage}${autoSynced ? '，并同步时长' : ''}${impact ? `，${impact}` : ''}`, impact ? 'warning' : 'success');
   });
 }
 
@@ -185,7 +189,7 @@
   function alignExtensionToMainTimeRanges(
     indices,
     track = MaweMultiSubtitleCore.getActiveExtensionTrack(),
-    { pushHistory = true, showHint = true, batch = false } = {},
+    { pushHistory = true, showHint = true, batch = false, onImpact = null } = {},
   ) {
     const uniqueIndices = [...new Set((Array.isArray(indices) ? indices : [indices])
       .map((index) => Number(index)).filter(Number.isInteger))];
@@ -231,6 +235,7 @@
       // 先写入全部目标范围，再统一处理其它副字幕的冲突；主字幕范围不会被改写。
       targets.forEach(({ extension, start, end }) => MaweMultiSubtitleCore.setExtensionSegmentRange(extension, start, end));
       const resolved = MaweMultiSubtitleCore.reconcileExtensionTrack(track, targets.map(({ extension }) => extension));
+      onImpact?.(resolved);
       MaweMultiSubtitleCore.markMultiSubtitleDirty();
       MaweMultiSubtitleCore.syncBindingOffsets();
       command.commit({ cueList: true, preview: 'update' });
@@ -257,9 +262,9 @@
   function alignExtensionToMainTimeRange(
     index,
     track = MaweMultiSubtitleCore.getActiveExtensionTrack(),
-    { pushHistory = true, showHint = true } = {},
+    { pushHistory = true, showHint = true, onImpact = null } = {},
   ) {
-    return alignExtensionToMainTimeRanges([index], track, { pushHistory, showHint });
+    return alignExtensionToMainTimeRanges([index], track, { pushHistory, showHint, onImpact });
   }
 
 

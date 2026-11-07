@@ -1,5 +1,3 @@
-import { getOverlayTrack } from '../cues/overlay-track.js';
-
 export function initMaweStickerOverlay() {
 'use strict';
 
@@ -30,6 +28,7 @@ export function initMaweStickerOverlay() {
 
 
   let stickerIntervalCacheVersion = -1;
+  let stickerIntervalTrackKey = '';
 
 
   let stickerIntervals = [];
@@ -57,8 +56,10 @@ export function initMaweStickerOverlay() {
 
 
 
-  function rebuildStickerIntervals() {
-  if (stickerIntervalCacheVersion === stickerOverlayDataVersion) return;
+  function rebuildStickerIntervals(surface = 'preview') {
+  const selected = window.AsrEditorUtils.TrackPolicy.selectTracks(MaweBoot.DATA, 'all', surface);
+  const trackKey = selected.map(track => track.id).join('\0');
+  if (surface === 'preview' && stickerIntervalCacheVersion === stickerOverlayDataVersion && stickerIntervalTrackKey === trackKey) return stickerIntervals;
   const intervals = [];
   const boundaries = new Set();
   // 收集一条轨的表情包区间：ref 在所在轨数组内解析 head。
@@ -80,15 +81,16 @@ export function initMaweStickerOverlay() {
     });
   };
   if (MaweBoot.DATA.subtitle_groups) {
-    for (const range of window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true })) {
+    for (const range of window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { trackIds: selected.map(track => track.id) })) {
       if (!range.enabled) continue;
       intervals.push({ ...range, key: range.id });
       boundaries.add(range.start); boundaries.add(range.end);
     }
   } else {
-    collect(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, 'main');
-    collect(getOverlayTrack()?.segments || [], 'overlay');
+    for (const track of selected) collect(track.segments, track.role);
   }
+  if (surface !== 'preview') return intervals;
+  stickerIntervalTrackKey = trackKey;
   stickerIntervals = intervals;
   stickerIntervalBoundaries = [...boundaries].sort((a, b) => a - b);
   stickerIntervalCacheVersion = stickerOverlayDataVersion;
@@ -97,6 +99,7 @@ export function initMaweStickerOverlay() {
   activeStickerCacheUntil = -Infinity;
   activeStickerCache = [];
   window.MaweStickerPreviewWiring.activeStickerHasOverlay = false;
+  return stickerIntervals;
 }
 
 

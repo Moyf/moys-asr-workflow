@@ -14,7 +14,12 @@
           "text": "源",
           "sticker_group_id": "shared-sticker"
         }
-      ]
+      ],
+      "preview_visible": true,
+      "variant": "plain",
+      "export": {
+        "enabled": true
+      }
     },
     {
       "id": "fr",
@@ -30,7 +35,12 @@
           "text": "Bonjour",
           "sticker_group_id": "shared-sticker"
         }
-      ]
+      ],
+      "preview_visible": true,
+      "variant": "plain",
+      "export": {
+        "enabled": true
+      }
     }
   ],
   "bilingual": {
