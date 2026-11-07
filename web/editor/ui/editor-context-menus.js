@@ -422,7 +422,7 @@ export function initMaweContextMenus() {
   } else {
     // 组 1：合并与批量文本操作
     addItem(`合并 ${targetIdxs.length} 条字幕`, 'C', () => MaweSegmentOps.mergeSegments(targetIdxs));
-    addItem('批量替换选中字幕…', '', () => MaweFindReplace.openReplaceModal(targetIdxs));
+    addItem('替换选中字幕…', '', () => MaweTextProcess.openTextProcessModal({ replaceSelection: targetIdxs }));
     addSep();
     // 组 2：外观（表情包与颜色）；「延长表情包」仅在范围内已有表情包时显示
     const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;

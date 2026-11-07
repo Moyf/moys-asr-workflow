@@ -65,6 +65,18 @@ class ProjectTracksTests(unittest.TestCase):
                 legacy["overlay_track"][case["field"]] = case["value"]
                 self.assertRejected(legacy, case["path"].replace("tracks[0]", "tracks[1]"))
 
+    def test_processing_overrides_and_ass_style_validate_without_losing_extensions(self):
+        project = canonical()
+        project["processing_overrides"] = {"text": [{"type": "wrap", "wraps": [{"id": "custom", "vendor": 1}], "vendor": 2}], "vendor": 3}
+        project["tracks"][0]["segments"][0]["assStyle"] = {"vendor": 4}
+        self.assertEqual(normalize_project(project), project)
+        bad = copy.deepcopy(project)
+        bad["processing_overrides"]["text"][0]["wraps"][0]["id"] = "unknown"
+        self.assertRejected(bad, "$.processing_overrides")
+        bad = copy.deepcopy(project)
+        bad["tracks"][0]["segments"][0]["assStyle"] = []
+        self.assertRejected(bad, "$.tracks[0].segments[0].assStyle")
+
     def test_shared_migration_fixtures(self):
         folder = Path(os.environ.get("MAW_TRACKS_FIXTURES", Path(__file__).parent / "fixtures" / "project-tracks"))
         paths = sorted(folder.glob("*.input.json"))

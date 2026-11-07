@@ -90,3 +90,59 @@ test('loaded font aliases invalidate the paused preview plan before its first re
   await context.window.MaweAssFontAliases.reload();
   assert.equal(refreshed, true);
 });
+
+test('legacy dirty font names stay out of the dropdown while still resolving to matchable canonicals', async () => {
+  // 寒蝉活仿楷场景：坏 Macintosh 记录的脏名（CoreText/libass 匹配不到）进
+  // legacy——下拉不展示，但旧工程存量的脏名仍能解析出可匹配 canonical，
+  // 导出改写与预览别名链都能自愈。
+  const config = {};
+  const context = {
+    window: { MaweBoot: { SERVER_CONFIG: config }, location: { href: 'http://localhost/' } },
+    document: { dispatchEvent() {} },
+    CustomEvent: class {},
+    URL,
+    fetch: async () => ({ ok: true, json: async () => ({
+      schema: 'moy.asr.font_aliases.v1',
+      fonts: [{ canonical: '寒蝉活仿楷_復 Con',
+        names: ['ChillHuoFangKai_F Con', '寒蝉活仿楷_復 Con', '寒蝉活仿楷_復ConRegular'],
+        family: ['ChillHuoFangKai_F Con', '寒蝉活仿楷_復 Con'],
+        legacy: ['寒蝉活仿楷__ Con', '_______ConRegular'],
+        canonicalByName: {
+          'chillhuofangkai_f con': '寒蝉活仿楷_復 Con',
+          '寒蝉活仿楷_復 con': '寒蝉活仿楷_復 Con',
+          '寒蝉活仿楷_復conregular': '寒蝉活仿楷_復 Con',
+          '寒蝉活仿楷__ con': '寒蝉活仿楷_復 Con',
+          '_______conregular': '寒蝉活仿楷_復 Con',
+        } }],
+    }) }),
+  };
+  loadEditorModule(context, 'shared/editor-utils.js');
+  vm.runInNewContext(fs.readFileSync(new URL(
+    '../web/editor/styles/editor-wiring-ass-font-aliases.js', import.meta.url,
+  ), 'utf8'), context);
+  config.assFontAliasesUrl = '/api/ass-font-aliases';
+  const aliases = context.window.MaweAssFontAliases;
+  await aliases.reload();
+
+  const choices = Array.from(aliases.entries(), (entry) => entry.canonical);
+  assert.deepEqual(choices, ['寒蝉活仿楷_復 Con']);
+  for (const entry of aliases.entries()) {
+    assert.ok(!entry.names.includes('寒蝉活仿楷__ Con'), '脏名不能进下拉');
+    assert.ok(!entry.names.includes('_______ConRegular'), '垃圾名不能进下拉');
+  }
+
+  // 存量脏名：查询命中、导出改写记录替换、预览链落到可匹配名。
+  assert.equal(aliases.canonicalFor('寒蝉活仿楷__ Con'), '寒蝉活仿楷_復 Con');
+  assert.deepEqual(Array.from(aliases.aliasChainFor('寒蝉活仿楷__ Con')), ['寒蝉活仿楷_復 Con']);
+  assert.equal(aliases.chainCssFor('寒蝉活仿楷__ Con'),
+    '"寒蝉活仿楷__ Con", "寒蝉活仿楷_復 Con", sans-serif');
+  aliases.beginReplacementCapture();
+  try {
+    assert.equal(aliases.canonicalFor('寒蝉活仿楷__ Con'), '寒蝉活仿楷_復 Con');
+  } finally {
+    aliases.endReplacementCapture();
+  }
+  assert.deepEqual(JSON.parse(JSON.stringify(aliases.takeReplacementNotice())), [
+    { from: '寒蝉活仿楷__ Con', to: '寒蝉活仿楷_復 Con' },
+  ]);
+});

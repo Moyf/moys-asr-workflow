@@ -60,6 +60,20 @@ test('legacy binding migrates to named CueRefs, preserves extension fields and r
   rejects(badRole, '$.tracks[1].role');
 });
 
+test('processing overrides and cue styles retain extensions and reject malformed known values', () => {
+  const project = canonical();
+  project.processing_overrides = { text: [{ type: 'wrap', wraps: [{ id: 'custom', vendor: 1 }], vendor: 2 }], vendor: 3 };
+  for (const track of project.tracks) for (const cue of track.segments) cue.assStyle = { vendor: 4 };
+  assert.deepEqual(model.importProject(project).project, project);
+  const bad = json(project); bad.processing_overrides.text[0].wraps[0].id = 'unknown';
+  rejects(bad, '$.processing_overrides');
+  for (const [index, track] of project.tracks.entries()) {
+    if (!track.segments.length) continue;
+    const invalid = json(project); invalid.tracks[index].segments[0].assStyle = [];
+    rejects(invalid, `$.tracks[${index}].segments[0].assStyle`);
+  }
+});
+
 test('canonical import is an independent, lossless and idempotent snapshot', () => {
   const input = canonical();
   const before = json(input);

@@ -53,6 +53,8 @@ Qwen 与 Fun-ASR 共用 Key。北京默认 `DASHSCOPE_REGION=beijing`，Workspac
 
 语言提示可用 `zh,en` 等逗号分隔值。context 分为 `general`、`text`、`terms`、`translation_terms`，Launcher 提供文本输入，公开 CLI 用 `--soniox-context-json`。转写结束后程序尝试删除云端文件与转写记录；删除动作不能代替服务商的数据政策。
 
+默认模型为 `stt-async-v6`（2026-11 新增）；旧版 `stt-async-v5` 仍可在 Launcher 下拉框和 `SONIOX_MODEL` / `--model` 中选用，官方将在 2026-12-15 移除它并自动转接到 v6，接口无变化。v6 把价格、编号等写成口语原样（如 `15 dollars and 20 cents`），不再自动补 `$15.20` 这类格式。
+
 ### 豆包
 
 模型通过 `VOLC_ASR_RESOURCE_ID` 或 CLI `--model` 指定，默认 `volc.seedasr.auc`。MAW 提取 Ogg / Opus 单声道压缩音频后提交；当前通道按 25 MB / 120 分钟限制处理，未接入 Files API 大文件通道。使用 `--hotword` 添加术语；该入口不接受 Qwen 的地域、词表 ID 或 file-url 参数。

@@ -70,12 +70,30 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
         ])
 
     def test_claim_batch_and_lease_limits(self):
-        self.assertEqual(len(self.coordinator.claim('v', [str(i) for i in range(100)], 'o')), 16)
-        for index in range(64):
-            self.coordinator.lease(str(index), 'v')
-        with self.assertRaises(RuntimeError):
-            self.coordinator.lease('overflow', 'v')
-        self.coordinator.lease('0', 'v', playing=True)
+        # 上限测试与真实时长解耦：逐个创建 64 个租约一旦跨过 8s TTL，早期租约
+        # 会被 _expire 清掉，第 65 个就不再抛错（Windows CI 偶发失败的机制）。
+        # 过期行为本身由 test_lease_expiry_cleans_rows_after_ttl 用时钟推进覆盖。
+        with mock.patch('maw.thumbnail_jobs.time.time', return_value=500.0):
+            self.assertEqual(len(self.coordinator.claim('v', [str(i) for i in range(100)], 'o')), 16)
+            for index in range(64):
+                self.coordinator.lease(str(index), 'v')
+            with self.assertRaises(RuntimeError):
+                self.coordinator.lease('overflow', 'v')
+            self.coordinator.lease('0', 'v', playing=True)
+
+    def test_lease_expiry_cleans_rows_after_ttl(self):
+        """时钟推过 LEASE_SECONDS 后 _expire 清掉过期租约行，腾出的名额立即可复用。"""
+        with mock.patch('maw.thumbnail_jobs.time.time', return_value=1000.0):
+            self.coordinator.lease('gone', 'v', playing=True)
+            self.assertTrue(self.coordinator.paused('v'))
+        with mock.patch('maw.thumbnail_jobs.time.time', return_value=1000.0 + 9.0):
+            self.assertFalse(self.coordinator.paused('v'), '过期租约不再视为暂停')
+            with self.coordinator._db() as db:
+                self.assertIsNone(db.execute("SELECT 1 FROM leases WHERE id='gone'").fetchone(),
+                    '过期租约行已被 _expire 删除')
+            self.coordinator.lease('fresh', 'v')
+            with self.coordinator._db() as db:
+                self.assertEqual(db.execute('SELECT count(*) FROM leases').fetchone()[0], 1)
 
     def test_keyframe_pass_resumes_with_fresh_cancellation_and_configured_tools(self):
         from maw import thumbnail_cache, thumbnails
@@ -224,6 +242,70 @@ class ThumbnailDemandTests(unittest.TestCase):
                 result = coordinated_extract(path,[0],coordinator=coord,background=True)
             self.assertEqual(result,[fresh])
             decode.assert_called_once()
+
+    def test_visible_decode_demand_can_extend_beyond_limited_base(self):
+        """共享的限长基础缓存不能限制当前工程的可见区补帧。"""
+        from maw import thumbnail_cache, thumbnails
+        import maw.thumbnail_jobs as jobs_module
+        with tempfile.TemporaryDirectory() as temp:
+            coord = ThumbnailCoordinator(Path(temp)/'jobs.sqlite3')
+            manager = ThumbnailJobManager(coordinator=coord)
+            path = Path(temp)/'media.mp4'
+            path.write_bytes(b"media")
+            manager.bind(path, 'binding')
+            manager.info = SimpleNamespace(stream_index=0, duration_ms=9000)
+            manager.identity = source_key(path)
+            manager._start = lambda: None
+            manager._snapshot = lambda lease: dict(manager.leases[lease], lease=lease)
+            manager.demand({'binding': 'binding', 'client_id': 'tab', 'view': 1, 'interval_ms': 2000,
+                            'ranges': [{'start_ms': 0, 'end_ms': 9000}], 'visible': True, 'decode': True})
+            captured = {}
+
+            def extract(media, batch, **kwargs):
+                captured['batch'] = list(batch)
+                raise thumbnails.ThumbnailCancelled('stop')
+
+            with mock.patch.object(thumbnail_cache, 'load_base', return_value={'duration_limit_ms': 4000}), \
+                 mock.patch.object(thumbnail_cache, 'lookup_frames', return_value=[None, None, None, None, None]), \
+                 mock.patch.object(thumbnail_cache, 'can_prefetch', return_value=False), \
+                 mock.patch.object(thumbnail_cache, 'sample_manifest', return_value={'assets': []}), \
+                 mock.patch.object(thumbnail_cache, 'release_owner'), \
+                 mock.patch.object(jobs_module, 'coordinated_extract', side_effect=extract):
+                manager._step(thumbnails, thumbnail_cache)
+            self.assertEqual(captured['batch'], [0, 2000, 4000, 6000, 8000])
+            manager.close()
+
+    def test_visible_decode_demand_without_limit_covers_whole_media(self):
+        from maw import thumbnail_cache, thumbnails
+        import maw.thumbnail_jobs as jobs_module
+        with tempfile.TemporaryDirectory() as temp:
+            coord = ThumbnailCoordinator(Path(temp)/'jobs.sqlite3')
+            manager = ThumbnailJobManager(coordinator=coord)
+            path = Path(temp)/'media.mp4'
+            path.write_bytes(b"media")
+            manager.bind(path, 'binding')
+            manager.info = SimpleNamespace(stream_index=0, duration_ms=9000)
+            manager.identity = source_key(path)
+            manager._start = lambda: None
+            manager._snapshot = lambda lease: dict(manager.leases[lease], lease=lease)
+            manager.demand({'binding': 'binding', 'client_id': 'tab', 'view': 1, 'interval_ms': 2000,
+                            'ranges': [{'start_ms': 0, 'end_ms': 9000}], 'visible': True, 'decode': True})
+            captured = {}
+
+            def extract(media, batch, **kwargs):
+                captured['batch'] = list(batch)
+                raise thumbnails.ThumbnailCancelled('stop')
+
+            with mock.patch.object(thumbnail_cache, 'load_base', return_value=None), \
+                 mock.patch.object(thumbnail_cache, 'lookup_frames', return_value=[None, None, None, None, None]), \
+                 mock.patch.object(thumbnail_cache, 'can_prefetch', return_value=False), \
+                 mock.patch.object(thumbnail_cache, 'sample_manifest', return_value={'assets': []}), \
+                 mock.patch.object(thumbnail_cache, 'release_owner'), \
+                 mock.patch.object(jobs_module, 'coordinated_extract', side_effect=extract):
+                manager._step(thumbnails, thumbnail_cache)
+            self.assertEqual(captured['batch'], [0, 2000, 4000, 6000, 8000],
+                "无限长缓存时解码批次只受 8000ms 跨度约束")
+            manager.close()
 
     def test_release_before_lease_adoption_blocks_late_requests(self):
         manager = ThumbnailJobManager()

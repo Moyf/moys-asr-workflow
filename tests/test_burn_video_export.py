@@ -805,6 +805,65 @@ class BurnVideoPrecisionTests(CompactContainerAssertions, unittest.TestCase):
                 self.assertEqual(is_light, expect_sticker,
                     f't={stamp}: sticker box {color}, expected sticker={expect_sticker}')
 
+    def test_sticker_background_drawbox_shows_through_transparent_pixels(self):
+        """真实编码回归：自定义底衬只画在贴纸 contain 矩形上，透明像素透出底衬
+        颜色，enable 窗口外不出现（drawbox 与 overlay 同区间同矩形）。"""
+        import zlib
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'colors.mp4'
+            command = [self.ffmpeg, '-y', '-hide_banner', '-loglevel', 'error']
+            for color in ('red', 'green', 'blue'):
+                command += ['-f', 'lavfi', '-i', f'color={color}:s=160x90:r=25:d=1']
+            self.run_tool(command + ['-filter_complex',
+                '[0:v][1:v][2:v]concat=n=3:v=1:a=0[out]', '-map', '[out]', str(source)])
+            # RGBA PNG（40x30）：左半不透明白、右半全透明——透明区域透出底衬。
+            sticker = root / 'half.png'
+            row = b'\x00' + b'\xff\xff\xff\xff' * 20 + b'\x00\x00\x00\x00' * 20
+            raw = row * 30
+
+            def chunk(tag, payload):
+                return (struct.pack('>I', len(payload)) + tag + payload
+                        + struct.pack('>I', zlib.crc32(tag + payload)))
+            sticker.write_bytes(b'\x89PNG\r\n\x1a\n'
+                + chunk(b'IHDR', struct.pack('>IIBBBBB', 40, 30, 8, 6, 0, 0, 0))
+                + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
+            output = root / 'stickered.mp4'
+            server_editor.burn_ass_video(source, [], ASS_TEXT.replace('你好', 'OK'), output,
+                ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe),
+                stickers=[{'rel': 'half.png', 'path': sticker, 'x': 10, 'y': 10,
+                           'width': 40, 'height': 30, 'intervals': [(400, 1200)],
+                           'background': {'color': '#ff00ff', 'opacity': 1}}])
+
+            def sample(frame_bytes, x0, y0, x1, y1):
+                total = [0, 0, 0]
+                count = 0
+                for y in range(y0, y1):
+                    for x in range(x0, x1):
+                        offset = (y * 160 + x) * 3
+                        for channel in range(3):
+                            total[channel] += frame_bytes[offset + channel]
+                        count += 1
+                return tuple(value // count for value in total)
+            for stamp in (0.8, 2.5):
+                frame = root / f'bg-{stamp}.raw'
+                self.run_tool([self.ffmpeg, '-y', '-v', 'error', '-ss', str(stamp),
+                    '-i', str(output), '-frames:v', '1', '-pix_fmt', 'rgb24',
+                    '-f', 'rawvideo', str(frame)])
+                pixels = frame.read_bytes()
+                # 右半是贴纸透明区域：窗口内透出品红底衬（源画面红色，混色出不来），
+                # 窗口外贴纸与底衬一起消失，露出源画面蓝色。
+                right = sample(pixels, 32, 15, 48, 35)
+                if stamp == 0.8:
+                    self.assertTrue(right[0] > 180 and right[2] > 180 and right[1] < 90,
+                        f't={stamp}: transparent half over background {right}')
+                    left = sample(pixels, 15, 15, 25, 35)
+                    self.assertTrue(all(channel > 180 for channel in left),
+                        f't={stamp}: opaque half {left}')
+                else:
+                    self.assertTrue(right[2] > 180 and right[0] < 90 and right[1] < 90,
+                        f't={stamp}: outside window {right}')
+
     def test_long_gop_cuts_exclude_removed_frames_and_keep_audio_clock(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -1103,6 +1162,49 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(stickers[1]["intervals"], [(5000, 6000)])
         self.assertEqual(server_editor._burn_sticker_input_args(stickers),
                          ["-loop", "1", "-i", str(self.sticker_a)])
+
+    def test_parse_attaches_background_and_normalizes_color(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs(
+            {"mode": "fixed", "placements": [self._entry()],
+             "background": {"color": "#FF8800", "opacity": 0.35}}, self.stickers_dir)
+        self.assertEqual(stickers[0]["background"], {"color": "#ff8800", "opacity": 0.35})
+
+    def test_parse_without_background_keeps_placements_unchanged(self) -> None:
+        # 旧载荷（裸列表 / 对象缺 background 字段）不带 background 键，行为不变。
+        for payload in ([self._entry()], {"mode": "fixed", "placements": [self._entry()]}):
+            stickers = server_editor._parse_burn_sticker_inputs(payload, self.stickers_dir)
+            self.assertNotIn("background", stickers[0])
+
+    def test_parse_rejects_invalid_background(self) -> None:
+        for background in (
+            {"color": "red", "opacity": 0.5},
+            {"color": "#12456", "opacity": 0.5},
+            {"color": "#000000", "opacity": 0},
+            {"color": "#000000", "opacity": 1.5},
+            {"color": "#000000", "opacity": "0.5"},
+        ):
+            with self.subTest(background=background):
+                payload = {"mode": "fixed", "placements": [self._entry()], "background": background}
+                with self.assertRaises(ValueError) as caught:
+                    server_editor._parse_burn_sticker_inputs(payload, self.stickers_dir)
+                self.assertIn("背景", str(caught.exception))
+
+    def test_chain_lines_add_drawbox_only_with_background(self) -> None:
+        sticker = {"rel": "a.png", "path": self.sticker_a, "x": 10, "y": 20, "width": 30, "height": 40,
+                   "intervals": [(1000, 2000)], "background": {"color": "#ff8800", "opacity": 0.35}}
+        lines = server_editor._burn_sticker_chain_lines([sticker], "[0:v:0]")
+        drawbox_lines = [line for line in lines if "drawbox=" in line]
+        self.assertEqual(len(drawbox_lines), 1)
+        self.assertIn("drawbox=x=10:y=20:w=30:h=40", drawbox_lines[0])
+        self.assertIn(":color=0xff8800@0.35:t=fill", drawbox_lines[0])
+        # 底衬与贴纸共用同一 enable 区间，drawbox 输出接到同 placement 的 overlay。
+        self.assertIn("enable='gte(t,1.000)*lt(t,2.000)'", drawbox_lines[0])
+        self.assertIn("[burn_bg0]", drawbox_lines[0])
+        overlay_line = next(line for line in lines if "overlay=" in line)
+        self.assertTrue(overlay_line.startswith("[burn_bg0]"))
+        plain = server_editor._burn_sticker_chain_lines(
+            [{key: value for key, value in sticker.items() if key != "background"}], "[0:v:0]")
+        self.assertFalse(any("drawbox=" in line for line in plain))
 
     def test_parse_accepts_object_payload_with_mode(self) -> None:
         stickers = server_editor._parse_burn_sticker_inputs(

@@ -14,6 +14,7 @@ import math
 import struct
 import subprocess
 import sys
+import tempfile
 from array import array
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -244,19 +245,30 @@ def extract_waveform(
         command.extend(
             ("-ac", "1", "-ar", str(pcm_sample_rate), "-f", "s16le", "pipe:1")
         )
+    # Windows 匿名管道只有 4 KiB 缓冲：stdout 按块读取时，写满 stderr 的
+    # ffmpeg 会阻塞在写日志上，两边互等就是死锁（实测 8.1.2 解码损坏 AV1
+    # 记录时，即使 -loglevel error 也会吐十几 KB 帧错误）。stderr 因此落到
+    # 临时文件，等进程结束后再读回来，不再依赖管道缓冲。
+    stderr_file = tempfile.TemporaryFile()
     try:
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=stderr_file,
             startupinfo=startupinfo(),
             creationflags=creationflags(),
         )
     except OSError as exc:
+        stderr_file.close()
         raise WaveformError(f"无法启动 ffmpeg: {exc}") from exc
 
+    def read_stderr() -> str:
+        stderr_file.seek(0)
+        text = stderr_file.read().decode("utf-8", errors="replace").strip()
+        stderr_file.close()
+        return text
+
     assert process.stdout is not None
-    assert process.stderr is not None
     if preserve_channels:
         header = process.stdout.read(4096)
         parsed = parse_ffmpeg_wav_header(header)
@@ -264,9 +276,8 @@ def extract_waveform(
             if process.poll() is None:
                 process.kill()
             process.wait()
-            stderr = process.stderr.read().decode("utf-8", errors="replace").strip()
+            stderr = read_stderr()
             process.stdout.close()
-            process.stderr.close()
             raise WaveformError(stderr or "FFmpeg 返回的 WAV 头无法解析")
         channels, sample_rate, data_offset = parsed
         first_chunk = header[data_offset:]
@@ -308,9 +319,8 @@ def extract_waveform(
     if sample_carry:
         _append_bucket(encoded, sample_carry)
 
-    stderr = process.stderr.read().decode("utf-8", errors="replace").strip()
+    stderr = read_stderr()
     process.stdout.close()
-    process.stderr.close()
     return_code = process.wait()
     if return_code != 0:
         raise WaveformError(stderr or f"ffmpeg 退出码 {return_code}")

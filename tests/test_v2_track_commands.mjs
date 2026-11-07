@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const load = (context, file) => vm.runInNewContext(fs.readFileSync(new URL(`../web/editor/${file}`, import.meta.url), 'utf8'), context);
 
@@ -31,7 +32,7 @@ test('Z/X dispatches to current cue track and empty selection uses main', () => 
       bindingForExtensionIndex: () => ({ source: { track_id: 'm', segment_id: 'same' } }),
     },
     MaweInlineEdit: {}, MaweKeyboardTargets: { isTextEditingTarget: () => false },
-    MaweDom: { replaceModal: modal, stickerModal: modal, stickerPreviewModal: modal, projectMediaModal: modal, ctxmenu: modal },
+    MaweDom: { textProcessModal: modal, stickerModal: modal, stickerPreviewModal: modal, projectMediaModal: modal, ctxmenu: modal },
     MaweHint: { flashHint() {} },
   };
   load(context, 'cues/editor-nav-preview.js');
@@ -54,7 +55,7 @@ test('drag warning counts only other subtitles still changed when released', () 
   const neighbor = { id: 'n', start: 450, end: 800 };
   const track = { role: 'secondary', segments: [follower, neighbor] };
   const context = { window: {}, MaweMultiSubtitleCore: { getMultiSubtitleState: () => ({ bindings: [] }) } };
-  load(context, 'cues/editor-bound-drag.js');
+  vm.runInNewContext(initModuleSource('editor/cues/editor-bound-drag.js'), context);
   const drag = { boundOriginals: new Map([[0, { target: follower }]]), boundDragTimelineOriginals: {
     tracks: [{ track, segments: [{ segment: follower, start: 0, end: 300 }, { segment: neighbor, start: 400, end: 800 }] }], bindings: [],
   } };

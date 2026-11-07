@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 test('squeezed bound drag restores only secondary tracks between frames', () => {
   const main = { id: 'main', role: 'main', segments: [{ id: 'm', start: 1000, end: 2000 }] };
@@ -21,8 +21,9 @@ test('squeezed bound drag restores only secondary tracks between frames', () => 
   };
   const context = { MaweBoot: { DATA: project }, MaweMultiSubtitleCore: core,
     MaweState: { markProjectDirty() {} }, MaweCuePanel: { remapPanelItems: () => undefined },
-    window: { AsrEditorUtils: { getMainTrack: () => main } } };
-  vm.runInNewContext(readFileSync(new URL('../web/editor/cues/editor-bound-drag.js', import.meta.url), 'utf8'), context);
+    window: { AsrEditorUtils: { getMainTrack: () => main },
+      MaweCuePanel: { remapPanelItems: () => undefined } } };
+  vm.runInNewContext(initModuleSource('editor/cues/editor-bound-drag.js'), context);
   const drag = { track: 'main', kind: 'move', indices: [0], allowSqueeze: true,
     originals: new Map([[0, { start: 1000, end: 2000 }]]) };
   const move = start => {

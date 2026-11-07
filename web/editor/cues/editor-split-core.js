@@ -666,6 +666,10 @@
       left.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
       right.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
     }
+    if (segment.assStyle) {
+      left.assStyle = JSON.parse(JSON.stringify(segment.assStyle));
+      right.assStyle = JSON.parse(JSON.stringify(segment.assStyle));
+    }
     return { left, right };
   }
 
