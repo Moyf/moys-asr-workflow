@@ -19,4 +19,12 @@ COLOR_PALETTE: tuple[tuple[str, str], ...] = (
     ("blue", "#61a7fa"),
 )
 
-COLOR_NAMES: frozenset[str] = frozenset(name for name, _ in COLOR_PALETTE)
+COLOR_PALETTE_ALL: tuple[tuple[str, str], ...] = (
+    *COLOR_PALETTE,
+    ("orange", "#f2a65a"),
+    ("cyan", "#49c5c1"),
+    ("magenta", "#d675b9"),
+    ("gray", "#969fab"),
+)
+
+COLOR_NAMES: frozenset[str] = frozenset(name for name, _ in COLOR_PALETTE_ALL)

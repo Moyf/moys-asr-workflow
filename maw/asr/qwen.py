@@ -29,7 +29,7 @@ from pathlib import Path
 
 import requests
 
-from maw.project_tracks import make_project
+from maw.speaker_identity import make_asr_project
 from maw.editor_entry_policy import should_generate_standalone_editor
 from maw.stickers import get_default_sticker_dir
 from maw.asr.common import (
@@ -1178,7 +1178,7 @@ def main():
     )
     parser.add_argument(
         "--speaker-colors", action="store_true",
-        help="Qwen-Audio/Fun-ASR 在说话人分离基础上，把不同说话人映射成 5 种字幕颜色",
+        help="Qwen-Audio/Fun-ASR 开启说话人身份着色，超过五人时工程自动使用九色",
     )
     parser.add_argument(
         "--json", dest="json_out", action="store_true",
@@ -1505,9 +1505,9 @@ def main():
         print(f"[speaker] 识别到 {len(speakers)} 个说话人: {', '.join(speakers)}")
         if args.speaker_colors:
             stats = speaker_color_summary(segments)
-            print(f"[speaker] 已为 {stats['colored_segments']} 条字幕写入颜色快照")
+            print(f"[speaker] {stats['colored_segments']} 条字幕将按独立说话人身份显示")
             if stats["overflow"]:
-                print("[警告] 说话人超过 5 个，颜色已循环复用，请在编辑器中手动调整")
+                print("[speaker] 说话人超过九位，显示色循环使用，每位身份仍独立保留")
 
     # 剥句末标点（与本地版一致；--keep-punct 优先，空集合禁用）
     if not args.keep_punct and args.strip_tail_punct:
@@ -1597,7 +1597,7 @@ def main():
 
     if args.json_out:
         json_path = output_path.with_suffix(".mosp")
-        json_data = make_project(
+        json_data = make_asr_project(
             [
                 {
                     "start": seg["start"],

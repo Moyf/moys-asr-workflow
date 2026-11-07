@@ -51,7 +51,7 @@
 | `--keep-punct` | 保留全部句尾标点；默认已保留，此开关还可覆盖显式 `--strip-tail-punct`。 |
 | `--strip-tail-punct CHARS` | 显式指定要删除的句尾标点；默认不剥除。`--keep-punct` 可覆盖显式删除；高级模块命令也接受空字符串禁用剥除。 |
 | `--extra-strong-punct CHARS` | 额外强断句符号，仅向 Qwen 下发。 |
-| `--speaker` / `--speaker-colors` | 请求说话人分离；后者同时写颜色快照，无需重复前者。能力取决于模型。 |
+| `--speaker` / `--speaker-colors` | 请求说话人分离；后者同时启用按真实身份着色，无需重复前者。单次结果超过五人自动扩九色，身份独立于分类颜色。能力取决于模型。 |
 | `-ll` / `--length-limit VALUE` | 限制处理时长，支持 `90`、`20s`、`2m`、`1h`。 |
 | `--json` | 兼容旧调用；输出仍为 `.mosp`。 |
 | `--with-waveform` | 提前生成外置波形缓存，工程落盘不内嵌缓存。 |

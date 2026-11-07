@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from maw.project_tracks import make_project
+from maw.speaker_identity import make_asr_project
 from maw.asr.common import extract_audio, generate_srt, get_duration_sec, parse_duration
 from maw.asr.segmentation import (
     is_cjk_char,
@@ -2389,7 +2389,7 @@ def write_local_outputs(
             split_mode,
             has_segments=bool(segments),
         )
-    project: dict[str, Any] = make_project(
+    project: dict[str, Any] = make_asr_project(
         segments,
         main_fields={
             'language': language,

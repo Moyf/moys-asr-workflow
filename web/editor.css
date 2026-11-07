@@ -4835,3 +4835,34 @@
   .ass-cue-scale-handle.dragging { background: var(--text-primary); }
 
   .player-stage.ass-stage-ready #overlay .ass-cue-drag-target { visibility: visible; }
+
+/* Stable identities remain visible independently of category colours. */
+.cue-speaker-badge { display: inline-flex; align-items: center; gap: 6px; max-width: 150px; min-width: 0; padding: 2px 6px; border: 1px solid var(--border-strong); border-radius: 4px; font-size: 11px; line-height: 1.4; color: var(--text-primary); background: var(--bg-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cue-speaker-badge::before { content: ''; flex: 0 0 8px; height: 8px; border-radius: 50%; background: var(--speaker-color, transparent); border: 1px solid var(--border-strong); }
+.cue-speaker-badge.unassigned { color: var(--text-secondary); }
+.cue-speaker-badge.unassigned::before { border-style: dashed; }
+.cue-panel-speaker { display: flex; align-items: center; gap: 8px; margin-block: 8px; min-width: 0; }
+.cue-panel-speaker label { flex: 0 0 auto; }
+.cue-panel-speaker select { min-width: 0; max-width: 100%; flex: 1; }
+.speaker-filter-item { display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; }
+.speaker-filter-item .color-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.speaker-context-swatches { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; max-width: 100%; padding-bottom: 4px; }
+.speaker-context-slot { display: inline-flex; flex-direction: column; align-items: center; flex: 0 0 68px; gap: 8px; min-width: 0; }
+.speaker-context-slot > span:last-child { max-width: 68px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.speaker-context-menu .ctxmenu-submenu-list { max-height: min(360px, 55dvh); overflow-y: auto; }
+#speaker-project-controls, .speaker-manager-add, .speaker-manager-actions, .speaker-manager-slots { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; overflow-x: auto; min-width: 0; padding-block: 8px; }
+#speaker-project-controls > *, .speaker-manager-actions > *, .speaker-manager-slots > * { flex: 0 0 auto; }
+#speaker-manager { padding: 12px; margin-block: 12px; border: 1px solid var(--border-strong); border-radius: 6px; min-width: 0; }
+#speaker-manager label, #speaker-project-controls label { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+#speaker-manager label[hidden], #speaker-project-controls label[hidden], .cue-panel-speaker[hidden] { display: none; }
+.subtitle-speaker-label-list[hidden] { display: none; }
+#speaker-manager label > span, #speaker-project-controls label > span,
+#speaker-manager button, #speaker-project-controls button { white-space: nowrap; }
+.speaker-manager-add > * { flex: 0 0 auto; }
+#speaker-manager[hidden] { display: none; }
+.speaker-manager-row { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; margin-top: 8px; padding-block: 8px; overflow-x: auto; min-width: 0; border-top: 1px solid var(--border-strong); }
+.speaker-manager-row > * { flex: 0 0 auto; }
+.speaker-manager-row input[type="text"], .speaker-manager-add input[type="text"] { width: 150px; min-width: 100px; }
+.speaker-manager-row select { max-width: 180px; }
+.speaker-manager-row input, .speaker-manager-row select, #speaker-manager button, #speaker-project-controls button { min-height: 28px; }
+.speaker-manager-row input[type="color"] { width: 40px; padding: 2px; }

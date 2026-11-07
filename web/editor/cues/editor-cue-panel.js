@@ -409,6 +409,47 @@ export function initMaweCuePanel() {
     });
   });
 
+  function syncCuePanelSpeakerField(target) {
+  if (!MaweDom.cuePanel) return;
+  let speakerField = MaweDom.cuePanel.querySelector('.cue-panel-speaker');
+  if (!speakerField) {
+    speakerField = document.createElement('label');
+    speakerField.className = 'cue-panel-speaker';
+    const text = document.createElement('span');
+    text.textContent = '说话人';
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', '说话人');
+    select.addEventListener('change', () => {
+      const current = getCurrentCuePanelTarget();
+      if (!current) return;
+      const track = current.track || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      const identity = select.value || null;
+      MaweCuePanel.commitCuePanelEdit();
+      MaweSpeakerLabels.assignIdentity([{ track_id: track.id, segment_id: current.segment.id }], identity);
+    });
+    speakerField.append(text, select);
+    MaweDom.cuePanelTarget.insertAdjacentElement('afterend', speakerField);
+  }
+  const speakerSelect = speakerField.querySelector('select');
+  speakerSelect.replaceChildren();
+  const unassigned = document.createElement('option');
+  unassigned.value = '';
+  unassigned.dataset.speakerProjectContent = '';
+  unassigned.textContent = MaweCueElements.speakerName(null);
+  speakerSelect.appendChild(unassigned);
+  (MaweBoot.DATA.speakers || []).forEach(speaker => {
+    const option = document.createElement('option');
+    option.value = speaker.id;
+    option.dataset.speakerProjectContent = '';
+    option.textContent = `${MaweCueElements.speakerName(speaker)}（${speaker.id}）`;
+    speakerSelect.appendChild(option);
+  });
+  speakerSelect.value = target?.segment?.speaker || '';
+  speakerSelect.disabled = !target;
+  }
+
+  document.addEventListener('mawe:languagechange', () => syncCuePanelSpeakerField(getCurrentCuePanelTarget()));
+
   function renderCurrentCuePanel() {
   if (!MaweDom.cuePanel) return;
   const target = getCurrentCuePanelTarget();
@@ -417,6 +458,7 @@ export function initMaweCuePanel() {
   const seg = target?.segment || null;
   syncCueAssStyle(seg);
   const empty = !target;
+  syncCuePanelSpeakerField(target);
   MaweDom.cuePanel.classList.toggle('empty', empty);
   MaweDom.cuePanel.classList.toggle('extension-target', !empty && target.kind === 'extension');
   MaweDom.cuePanel.classList.toggle('overlay-target', !empty && target.kind === 'overlay');

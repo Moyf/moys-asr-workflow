@@ -32,7 +32,7 @@ export function createUtilsModule(dependencies) {
 
   const ASS_REFERENCE_PLAY_RES_Y = 1080;
 
-  const ASS_COLOR_STYLE_NAMES = Object.freeze(['yellow', 'green', 'red', 'purple', 'blue']);
+  const ASS_COLOR_STYLE_NAMES = Object.freeze(['yellow', 'green', 'red', 'purple', 'blue', 'orange', 'cyan', 'magenta', 'gray']);
 
   // The editor injects window.ASR_EDITOR_PALETTE from maw/colors.py before
   // this module runs. Keep a small fallback so the utility remains usable in
@@ -43,6 +43,10 @@ export function createUtilsModule(dependencies) {
     Object.freeze({ name: 'red', value: '#f07f6f' }),
     Object.freeze({ name: 'purple', value: '#bf89e6' }),
     Object.freeze({ name: 'blue', value: '#61a7fa' }),
+    Object.freeze({ name: 'orange', value: '#f2a65a' }),
+    Object.freeze({ name: 'cyan', value: '#49c5c1' }),
+    Object.freeze({ name: 'magenta', value: '#d675b9' }),
+    Object.freeze({ name: 'gray', value: '#969fab' }),
   ]);
 
   const ASS_STYLE_FORMAT = 'Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding';

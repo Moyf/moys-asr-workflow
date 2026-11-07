@@ -58,6 +58,9 @@ function showOverlayContextMenu(x, y, index) {
   if (stickersEnabled && (segment.sticker_group_id)) {
     addItem('删除表情包', () => clearOverlaySticker(index));
   }
+  const selectedOverlay = MaweState.selection.indices('overlay');
+  const speakerTargets = selectedOverlay.has(index) ? [...selectedOverlay] : [index];
+  MaweContextMenus.addSpeakerSubmenu(overlay, speakerTargets, segment, 'overlay');
   const colorRow = document.createElement('div');
   colorRow.className = 'item';
   colorRow.style.cssText = 'cursor:default;display:block;';
@@ -65,31 +68,51 @@ function showOverlayContextMenu(x, y, index) {
   const colorHead = document.createElement('div');
   colorHead.style.cssText = 'display:flex;align-items:center;';
   const colorLabel = document.createElement('span');
-  colorLabel.textContent = '标记颜色';
+  colorLabel.textContent = MaweBoot.DATA.annotation_mode === 'speaker' ? '分配说话人槽位' : '标记颜色';
   colorHead.appendChild(colorLabel);
   const colorRangeHint = document.createElement('kbd');
-  colorRangeHint.textContent = '1~5';
+  colorRangeHint.textContent = `1~${MaweBoot.DATA.palette_size || 5}`;
   colorRangeHint.style.marginLeft = 'auto';
   colorHead.appendChild(colorRangeHint);
   colorRow.appendChild(colorHead);
   const swatches = document.createElement('div');
-  swatches.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
-  MaweColors.COLOR_PALETTE.forEach((c, colorIndex) => {
+  swatches.className = 'speaker-context-swatches';
+  swatches.style.cssText = 'display:flex;gap:8px;margin-top:8px;overflow-x:auto;';
+  MaweColors.ACTIVE_COLOR_PALETTE.forEach((c, colorIndex) => {
     const swatch = document.createElement('span');
-    swatch.title = `${c.label}色（按 ${colorIndex + 1}）`;
-    swatch.style.cssText = `width:22px;height:22px;border-radius:50%;background:${c.value};border:1px solid rgba(255,255,255,.25);cursor:pointer;display:inline-block;box-sizing:border-box;flex:0 0 auto;`;
+    const identity = MaweBoot.DATA.speakers?.find(s => s.id === MaweBoot.DATA.speaker_shortcuts?.[String(colorIndex + 1)]);
+    const speakerMode = MaweBoot.DATA.annotation_mode === 'speaker';
+    const name = identity ? MaweCueElements.speakerName(identity) : MaweCueElements.speakerUi('空槽', 'Empty slot');
+    swatch.title = speakerMode ? `${name}${identity ? `（${identity.id}）` : ''}${MaweCueElements.speakerUi(`（按 ${colorIndex + 1}）`, ` (press ${colorIndex + 1})`)}` : `${c.label}色（按 ${colorIndex + 1}）`;
+    swatch.style.cssText = `width:22px;height:22px;border-radius:50%;background:${speakerMode && identity ? identity.color : c.value};border:1px solid rgba(255,255,255,.25);cursor:pointer;display:inline-block;box-sizing:border-box;flex:0 0 auto;`;
     swatch.addEventListener('mouseenter', () => swatch.style.transform = 'scale(1.15)');
     swatch.addEventListener('mouseleave', () => swatch.style.transform = '');
     swatch.addEventListener('click', (e) => {
       e.stopPropagation();
       MaweDom.ctxmenu.classList.remove('show');
-      assignOverlayColor([index], c.name);
+      if (MaweBoot.DATA.annotation_mode === 'speaker') {
+        const refs = speakerTargets.filter(i => overlay.segments[i])
+          .map(i => ({ track_id: overlay.id, segment_id: overlay.segments[i].id }));
+        MaweSpeakerLabels.assignShortcut(refs, colorIndex + 1);
+      }
+      else assignOverlayColor([index], c.name);
     });
-    swatches.appendChild(swatch);
+    if (speakerMode) {
+      swatch.dataset.speakerProjectContent = '';
+      swatch.dataset.speakerContextSlot = String(colorIndex + 1);
+      const slot = document.createElement('span');
+      slot.className = 'speaker-context-slot';
+      const label = document.createElement('span');
+      label.className = 'speaker-context-slot-name';
+      label.dataset.speakerProjectContent = '';
+      label.textContent = name;
+      slot.append(swatch, label);
+      swatches.appendChild(slot);
+    } else swatches.appendChild(swatch);
   });
   colorRow.appendChild(swatches);
   MaweDom.ctxmenu.appendChild(colorRow);
-  if (segment.color_group_id) {
+  if (MaweBoot.DATA.annotation_mode === 'color' && segment.color_group_id) {
     addItem('清除颜色', () => clearOverlayColorOnTargets([index]), { danger: true });
   }
   addSep();
