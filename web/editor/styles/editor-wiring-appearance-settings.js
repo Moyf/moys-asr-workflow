@@ -72,19 +72,7 @@ MaweDom.subtitleSpeakerLabelSeparatorInput?.addEventListener(
   () => MaweSpeakerLabels.applySpeakerLabelSeparatorInput({ finalize: true }),
 );
 MaweDom.subtitleSpeakerMappingEnabledInput?.addEventListener('change', () => {
-  const previous = MaweHistory.snapshotPreviewState();
-  previous.speakerLabels.mapping_enabled = !MaweDom.subtitleSpeakerMappingEnabledInput.checked;
-  MaweHistory.pushPreviewUndo('切换颜色说话人映射', previous);
-  const mappingEnabled = MaweDom.subtitleSpeakerMappingEnabledInput.checked;
-  MaweSpeakerLabels.setSpeakerLabelSettings({
-    ...MaweSpeakerLabels.getSpeakerLabelSettings(),
-    mapping_enabled: mappingEnabled,
-  });
-  if (mappingEnabled) {
-    MaweSettings.updateEditorSettings({ exportSpeakerLabels: true });
-    if (MaweDom.exportSpeakerLabelsToggle) MaweDom.exportSpeakerLabelsToggle.checked = true;
-  }
-  MawePlaybackLoop.update();
+  MaweSpeakerLabels.setAnnotationMode(MaweDom.subtitleSpeakerMappingEnabledInput.checked ? 'speaker' : 'color');
 });
 MaweDom.subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
   const previous = MaweHistory.snapshotPreviewState();
@@ -94,10 +82,6 @@ MaweDom.subtitleSpeakerLabelsEnabledInput?.addEventListener('change', () => {
     ...MaweSpeakerLabels.getSpeakerLabelSettings(),
     enabled: MaweDom.subtitleSpeakerLabelsEnabledInput.checked,
   });
-  // 显示开关改变时同步 SRT 附加选项；导出开关仍可在全局设置中独立调整。
-  const speakerLabelsEnabled = MaweDom.subtitleSpeakerLabelsEnabledInput.checked;
-  MaweSettings.updateEditorSettings({ exportSpeakerLabels: speakerLabelsEnabled });
-  if (MaweDom.exportSpeakerLabelsToggle) MaweDom.exportSpeakerLabelsToggle.checked = speakerLabelsEnabled;
   MawePlaybackLoop.update();
 });
 MaweDom.extensionSubtitleFontSizeSelect?.addEventListener('change', () => {

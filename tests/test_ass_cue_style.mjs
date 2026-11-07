@@ -27,6 +27,31 @@ for (const role of ['main', 'extension', 'overlay']) test(`independent ${role} s
   if (role !== 'extension') assert.ok(output.includes('\\pos(800,500)'));
 });
 
+for (const role of ['main', 'extension', 'overlay']) for (const colorStyle of ['text', 'stroke']) {
+  test(`speaker color survives independent ${role} style in ${colorStyle} ASS export`, () => {
+    const cue = { id: 'styled', speaker: 'p1', start: 0, end: 1000, text: 'Styled',
+      assStyle: { fontName: 'Arial', fontSize: 112, primaryColor: '#abcdef', outlineColor: '#abcdef' } };
+    const speakerProject = { annotation_mode: 'speaker', palette_size: 5,
+      speakers: [{ id: 'p1', name: 'Speaker', color: '#123456' }] };
+    let plan;
+    const options = { speakerProject, appearance: { ass_color_style: colorStyle },
+      assProfile: h.normalizeAssProfile({}), assExtensionStyle: { fontSize: 50 },
+      onAssPlan: value => { plan = value; } };
+    if (role === 'extension') options.extensionSegments = [cue];
+    if (role === 'overlay') options.overlaySegments = [cue];
+    const main = role === 'main' ? [cue] : role === 'extension'
+      ? [{ id: 'anchor', start: 0, end: 1000, text: 'Anchor' }] : [];
+    const output = h.buildAssPayload(main, options);
+    const item = plan.slices.flatMap(slice => slice.items).find(entry => entry.segment.id === 'styled');
+    assert.equal(item.style[colorStyle === 'text' ? 'primaryColor' : 'outlineColor'], '#123456');
+    const styleLine = output.split('\n').find(line => line.startsWith('Style: Cue_0,'));
+    assert.ok(styleLine, 'independent cue style is emitted');
+    const fields = styleLine.split(',');
+    assert.equal(fields[colorStyle === 'text' ? 3 : 5], '&H00563412');
+    assert.equal(fields[colorStyle === 'text' ? 5 : 3], '&H00EFCDAB');
+  });
+}
+
 test('batch processing preserves rows, timing and independent ASS style even for empty results', () => {
   const source = [{ id: 'one', start: 10, end: 1000, text: '嗯', items: [{ text: '嗯', start: 10, end: 1000 }], assStyle: { fontSize: 100 } }];
   const result = h.applyTimedTextEdit(source, [''], { preserveRows: true });

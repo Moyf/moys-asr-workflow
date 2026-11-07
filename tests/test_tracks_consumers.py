@@ -185,16 +185,21 @@ class TracksConsumerTests(unittest.TestCase):
         self.assertIn("Overlay GREEN", ass)
         self.assertEqual(source, original)
 
-    def test_speaker_colors_write_group_table_without_legacy_fields(self):
-        source = make_project([cue(speaker="a"), cue("b", start=7000, end=8000, speaker="a")])
+    def test_speaker_colors_use_identity_table_and_preserve_classification_groups(self):
+        source = make_project([cue(speaker="a", color_group_id="category"), cue("b", start=7000, end=8000, speaker="a")],
+                              project_fields={"subtitle_groups": {"next_id": 2, "color": [
+                                  {"id": "category", "value": {"name": "blue", "value": "#61a7fa"}}], "sticker": []}})
+        before = copy.deepcopy(source)
         result = apply_project_speaker_colors(source)
         self.assertEqual(result["colored_segments"], 2)
-        self.assertEqual(len(source["subtitle_groups"]["color"]), 1)
-        self.assertTrue(all("color_group_id" in segment and "color" not in segment and "color_ref" not in segment
-                            for segment in get_main_track(source)["segments"]))
+        self.assertEqual(source["annotation_mode"], "speaker")
+        self.assertEqual(source["speakers"], before["speakers"])
+        self.assertEqual(source["subtitle_groups"], before["subtitle_groups"])
+        self.assertEqual(source["tracks"], before["tracks"])
+        self.assertEqual(source["speakers"][0]["color"], "#f9ca1f")
         self.assert_canonical(source)
 
-    def test_asr_writer_creates_v2_tracks_with_speaker_groups(self):
+    def test_asr_writer_creates_v2_tracks_with_independent_speaker_colors(self):
         with tempfile.TemporaryDirectory() as directory:
             media = Path(directory) / "input.wav"
             media.write_bytes(b"unchanged source")
@@ -208,7 +213,14 @@ class TracksConsumerTests(unittest.TestCase):
             saved = read_project(result.json)
             self.assert_canonical(saved)
             self.assertEqual(get_main_track(saved)["model"], "fixture")
-            self.assertIn("color_group_id", get_main_track(saved)["segments"][0])
+            segment = get_main_track(saved)["segments"][0]
+            self.assertEqual(saved["annotation_mode"], "speaker")
+            self.assertEqual(saved["subtitle_groups"]["color"], [])
+            self.assertEqual(len(saved["speakers"]), 1)
+            self.assertEqual(segment["speaker"], saved["speakers"][0]["id"])
+            self.assertEqual(saved["speakers"][0]["color"], "#f9ca1f")
+            self.assertTrue(all(field not in segment for field in ("color_group_id", "color", "color_ref")))
+            self.assertEqual(segments, [cue(speaker="one")])
             self.assertEqual(media.read_bytes(), b"unchanged source")
 
     def test_alignment_visits_all_tracks_and_keeps_per_track_language(self):

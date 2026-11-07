@@ -330,7 +330,7 @@ export function initMaweExportSrt() {
   const speakerOptions = MaweSpeakerLabels.speakerLabelExportOptions();
   if (preview) {
     const settings = MaweSpeakerLabels.getSpeakerLabelSettings();
-    speakerOptions.speakerLabelsEnabled = settings.mapping_enabled && settings.enabled;
+    speakerOptions.speakerLabelsEnabled = (Array.isArray(MaweBoot.DATA.speakers) || settings.mapping_enabled) && settings.enabled;
   }
   const surface = preview ? 'preview' : 'export';
   const policy = window.AsrEditorUtils.TrackPolicy;
@@ -459,8 +459,20 @@ export function initMaweExportSrt() {
   function usedSubtitleColors() {
   const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
   const resolveColor = window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments);
+  if (MaweBoot.DATA.annotation_mode === 'speaker') {
+    const colors = new Map();
+    for (const segment of segments) {
+      if (segment.disabled) continue;
+      const color = window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, segment, resolveColor(segment));
+      const key = color?.value || 'default';
+      if (!colors.has(key)) colors.set(key, color
+        ? { name: key, value: key, label: MaweColors.COLOR_BY_NAME[color.name]?.label || key }
+        : { name: 'default', label: '默认' });
+    }
+    return [...colors.values()];
+  }
   const names = new Set(segments.filter((segment) => !segment.disabled).map((segment) => (
-    window.AsrEditorUtils.effectiveColorName(segment, resolveColor(segment)) || 'default'
+    window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, segment, resolveColor(segment))?.name || 'default'
   )).filter((name) => name === 'default' || MaweColors.COLOR_BY_NAME[name]));
   return [
     ...MaweColors.COLOR_PALETTE.filter((color) => names.has(color.name)),
@@ -506,6 +518,11 @@ export function initMaweExportSrt() {
 
   function colorExportFilenameSuffix(color, speakerSettings = MaweSpeakerLabels.getSpeakerLabelSettings()) {
     const colorSuffix = window.MAWE_I18N?.exportTag?.(color.name) || color.name;
+    if (MaweSettings.EDITOR_SETTINGS.exportSpeakerNamesAsSuffix && MaweBoot.DATA.annotation_mode === 'speaker') {
+      const names = (MaweBoot.DATA.speakers || []).filter(speaker => speaker.color.toLowerCase() === color.value?.toLowerCase())
+        .map(speaker => speaker.name).filter(Boolean);
+      return safeColorExportFilenameSuffix([...new Set(names)].join('_'), colorSuffix);
+    }
     if (!MaweSettings.EDITOR_SETTINGS.exportSpeakerNamesAsSuffix
         || speakerSettings.mapping_enabled !== true
         || color.name === 'default') {

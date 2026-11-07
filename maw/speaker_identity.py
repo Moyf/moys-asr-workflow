@@ -8,11 +8,10 @@ import unicodedata
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from maw.colors import COLOR_PALETTE
+from maw.colors import COLOR_PALETTE_ALL
 
 # The first five entries retain the existing shortcuts and display colours.
-SPEAKER_PALETTE = (*COLOR_PALETTE, ("orange", "#f2a65a"), ("cyan", "#49c5c1"),
-                   ("magenta", "#d675b9"), ("gray", "#969fab"))
+SPEAKER_PALETTE = COLOR_PALETTE_ALL
 SPEAKER_PROJECT_FIELDS = ("speakers", "annotation_mode", "palette_size", "speaker_shortcuts")
 
 
@@ -42,6 +41,46 @@ def distinct_speaker_ids(segments: Iterable[Mapping[str, Any]]) -> list[str]:
         result.append(speaker)
         seen.add(speaker)
     return result
+
+
+def asr_palette_size(segments: Iterable[Mapping[str, Any]], *, current_size: int) -> int:
+    """Expand the saved palette on a new ASR result without shrinking it."""
+    if type(current_size) is not int or current_size not in (5, 9):
+        raise ValueError("current_size must be 5 or 9")
+    return 9 if current_size == 9 or len(distinct_speaker_ids(segments)) > 5 else 5
+
+
+def make_asr_project(
+    segments: list[dict[str, Any]], *, main_fields: dict[str, Any] | None = None,
+    project_fields: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create one new ASR result using core identity migration, then select its palette.
+
+    Only this producer boundary expands from five to nine automatically. Opening
+    an existing project continues to respect its saved setting. This is not an
+    append-ASR API: independent results cannot reuse a previous identity table.
+    """
+    from maw.project_tracks import get_main_track, make_project
+
+    fields = copy.deepcopy(project_fields if project_fields is not None else {})
+    if "speakers" in fields or "speaker_shortcuts" in fields:
+        raise ValueError("new ASR results cannot reuse an existing speaker table or shortcuts")
+    # Some provider fallbacks carry an empty segment label. It denotes no
+    # assignment; keep word labels until core migration has split speaker runs.
+    source = copy.deepcopy(segments)
+    for segment in source:
+        if isinstance(segment, dict) and (segment.get("speaker") is None
+                or isinstance(segment.get("speaker"), str) and not is_valid_speaker_id(segment["speaker"])):
+            segment.pop("speaker", None)
+    project = make_project(source, main_fields=main_fields, project_fields=fields)
+    size = asr_palette_size(get_main_track(project)["segments"], current_size=project["palette_size"])
+    project["palette_size"] = size
+    for index, speaker in enumerate(project["speakers"]):
+        speaker["color"] = SPEAKER_PALETTE[index % size][1]
+    project["speaker_shortcuts"] = {
+        str(index + 1): speaker["id"] for index, speaker in enumerate(project["speakers"][:size])
+    }
+    return project
 
 
 def allocate_source_speaker_ids(

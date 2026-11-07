@@ -16,6 +16,7 @@ export function createViewUpdates(dependencies) {
     // 字幕数据可能已变化：通知 ASS 实际画面重查预览（模块内部防抖，窗口与
     // 舞台叠加都关闭时自身直接返回）；可选链容错该模块晚于本文件加载。
     window.MaweAssFrame?.notifyProjectChanged?.();
+    window.MaweSpeakerManager?.sync?.();
   }
   return Object.freeze({ invalidate });
 }

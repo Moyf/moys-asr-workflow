@@ -80,9 +80,7 @@ function assPreviewMetrics() {
 
 function assPreviewStyleVariant(style, segment, segments, appearance) {
   // ASS 预览的颜色映射只跟随 ass_color_style；color_underline 只控制 CSS 预览。
-  const colorName = segment
-    ? window.AsrEditorUtils.effectiveColorName(segment, segments) : null;
-  const paletteValue = MaweColors.COLOR_BY_NAME[colorName]?.value || '';
+  const paletteValue = window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, segment, segments)?.value || '';
   if (!paletteValue || typeof window.AsrEditorUtils.assStyleVariant !== 'function') return style;
   return window.AsrEditorUtils.assStyleVariant(
     style,
@@ -190,6 +188,7 @@ function restoreCssSubtitlePreview() {
   delete MaweDom.overlayTextEl.dataset.colorText;
   delete MaweDom.overlayTextEl.dataset.colorStroke;
   delete MaweDom.overlayMainSpeakerLabelEl.dataset.color;
+  delete MaweDom.overlayExtensionTextEl.dataset.speakerDisplayColor;
   ['align-items', 'justify-content', 'text-align', 'padding', 'box-sizing'].forEach((property) => {
     MaweDom.overlayEl.style.removeProperty(property);
   });
@@ -281,7 +280,7 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
   const revision = assStackInputRevision([rawTracks[0].length ? MaweExportSrt.cleanupMainSegments() : [], rawTracks[1], rawTracks[2]], rawTracks);
   const key = JSON.stringify([revision, ASS_STYLE_LIBRARY, MaweBoot.DATA.styles, main?.style, extension?.style, overlay?.style, MaweSettings.EDITOR_SETTINGS,
     MaweAppearance.getSubtitleAppearance(), metrics.resolution, MaweColors.COLOR_PALETTE,
-    MaweSpeakerLabels.getSpeakerLabelSettings(), MaweDom.overlayToggle.checked,
+    MaweSpeakerLabels.getSpeakerLabelSettings(), MaweBoot.DATA.speakers, MaweBoot.DATA.annotation_mode, MaweDom.overlayToggle.checked,
     MaweDom.extensionOverlayToggle?.checked, assStackFontRevision]);
   if (key !== cachedAssStackKey || !cachedAssStackPlan) {
     MaweExportSrt.buildAss({ preview: true, allowAssPlanDiagnostics: true,

@@ -18,12 +18,14 @@ export function createWaveformModule(dependencies) {
 
 
   function groupColor(segment) {
+    if (dependencies.getSegmentDisplayColor) return dependencies.getSegmentDisplayColor(segment);
     return dependencies.getSubtitleGroupValue?.(segment, 'color') || segment.color
       || (segment.color_ref?.name ? { name: segment.color_ref.name } : null);
   }
   function colorForSegment(segment) {
     const color = groupColor(segment);
-    return PALETTE[color?.name] || color?.value || '#66727d';
+    return dependencies.getSegmentDisplayColor ? color?.value || '#66727d'
+      : PALETTE[color?.name] || color?.value || '#66727d';
   }
   function hasSubtitleColor(segment) {
     const color = groupColor(segment);

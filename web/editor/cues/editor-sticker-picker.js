@@ -205,6 +205,21 @@ export function initMaweStickerPicker() {
     });
   }
 
+  function assignTrackColor(track, idxs, colorName) {
+    if (!track?.segments) return;
+    const valid = [...new Set(idxs)].filter(index => Number.isInteger(index) && track.segments[index]);
+    if (!valid.length) return;
+    if (window.MaweSpeakerLabels?.assignFromColorShortcut(track, valid, colorName)) return;
+    if (track.role === 'main') return colorName === null ? clearColorOnTargets(valid) : assignColor(valid, colorName);
+    const color = colorName === null ? null : MaweColors.COLOR_BY_NAME[colorName];
+    if (colorName !== null && !color) return;
+    return MaweCommands.run(color ? '标记颜色' : '清除颜色', () => {
+      if (color) window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, track.segments, valid, 'color',
+        { name: color.name, value: color.value }, null, { replaceHead: true });
+      else MaweSegmentOps.splitGroupsAtCutPoints(new Set(valid), 'color', 'color_ref', track.segments);
+    }, { invalidate: { cueList: true, waveform: 'full', preview: 'update' } });
+  }
+
 
 
   // === 禁用/启用 ===
@@ -307,6 +322,7 @@ export function initMaweStickerPicker() {
     removeStickerCascade,
     expandStickerTime,
     assignColor,
+    assignTrackColor,
     removeColorCascade,
     clearColorOnTargets,
     toggleDisabled

@@ -6,7 +6,7 @@
 - 无需 GPU、模型权重，只调 API（SONIOX_API_KEY）
 - 官方 Files API 直接上传 + 异步轮询，token 级毫秒时间戳
 - --speaker 开启说话人分离（token 级 speaker 写入 segments/items）
-- --speaker-colors 在说话人基础上把不同 speaker 一次性映射成 5 种字幕颜色
+- --speaker-colors 按独立说话人身份着色，超过五人时工程自动使用九色
 - 单文件最长 5 小时；转写完成后自动清理云端文件与转写记录
 
 输出为通用的 UTF-8 JSON 工程格式（默认保存为 `.mosp`，包含 items/text/language，可选 speaker/color），
@@ -23,7 +23,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from maw.project_tracks import make_project
+from maw.speaker_identity import make_asr_project
 from maw.editor_entry_policy import should_generate_standalone_editor
 from maw.stickers import get_default_sticker_dir
 from maw.asr.common import (
@@ -114,7 +114,7 @@ def main():
     )
     parser.add_argument(
         "--speaker-colors", action="store_true",
-        help="在 --speaker 基础上，把不同说话人一次性映射成 5 种字幕颜色（可在编辑器修改）",
+        help="在 --speaker 基础上开启说话人身份着色，超过五人时工程自动使用九色",
     )
     parser.add_argument(
         "--json", dest="json_out", action="store_true",
@@ -335,10 +335,9 @@ def main():
         print(f"[speaker] 识别到 {len(speakers)} 个说话人: {', '.join(speakers)}")
         if args.speaker_colors:
             stats = speaker_color_summary(segments)
-            print(f"[speaker] 已为 {stats['colored_segments']} 条字幕写入颜色快照")
+            print(f"[speaker] {stats['colored_segments']} 条字幕将按独立说话人身份显示")
             if stats["overflow"]:
-                print(f"[警告] 说话人超过 {len(stats['speakers'])} 个（>5），颜色已循环复用，"
-                      f"不同说话人可能同色，请在编辑器中手动调整")
+                print("[speaker] 说话人超过九位，显示色循环使用，每位身份仍独立保留")
 
     # 剥句末标点（与 Qwen 版一致；--keep-punct 优先，空集合禁用）
     if not args.keep_punct and args.strip_tail_punct:
@@ -404,7 +403,7 @@ def main():
         )
         split_mode = split_mode_for_text(str(result.get("text") or ""), language)
         json_path = output_path.with_suffix(".mosp")
-        json_data = make_project(
+        json_data = make_asr_project(
             [
                 {
                     "start": seg["start"],

@@ -1,7 +1,7 @@
 // Dev-only Playwright regression for speaker labels in the subtitle preview.
-// Proves that labels are configurable, preview-only, rendered as a separate
-// colored element, persisted in the project, and independently included or
-// omitted from exported SRT text.
+// Proves that project identities supply configurable, separately colored
+// prefixes without rewriting subtitle text, and that preview/export switches
+// remain independent through project save and reopen.
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
@@ -46,7 +46,17 @@ async function revealSpeakerCue(page) {
   await expect(page.locator('#overlay')).toBeVisible();
 }
 
-test('configures preview-only speaker labels and independently controls SRT export', async ({ page }) => {
+async function registerHostIdentity(page) {
+  await page.evaluate(() => {
+    const speaker = MaweBoot.DATA.speakers.find(entry => entry.name === 'Host')
+      || MaweSpeakerLabels.createIdentity({ name: 'Host', color: '#f9ca1f' });
+    const track = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    MaweSpeakerLabels.assignIdentity([{ track_id: track.id, segment_id: track.segments[0].id }], speaker.id);
+    MaweSpeakerLabels.setAnnotationMode('speaker');
+  });
+}
+
+test('configures real speaker identities and independently controls preview and SRT export', async ({ page }) => {
   await page.goto(server.url);
   await revealSpeakerCue(page);
 
@@ -70,43 +80,35 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#subtitle-color-style option[value="underline"]')).toHaveCount(1);
   await expect(page.locator('#subtitle-color-style option[value="text"]')).toHaveCount(1);
   await expect(page.locator('#subtitle-color-style option[value="stroke"]')).toHaveCount(1);
+  const originalLabelSettings = await page.evaluate(() => MaweSpeakerLabels.getSpeakerLabelSettings());
   await expect(page.locator('#subtitle-speaker-mapping-enabled')).not.toBeChecked();
-  await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeHidden();
+  await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeVisible();
   await expect(page.locator('#subtitle-speaker-labels-enabled')).toBeChecked();
-  await expect(page.locator('#subtitle-speaker-labels-settings')).toBeHidden();
-  await expect(page.locator('#subtitle-speaker-label-separator')).toBeHidden();
-  await expect(page.locator('#subtitle-speaker-label-yellow')).toHaveValue('SP1');
-  await expect(page.locator('#subtitle-speaker-label-blue')).toHaveValue('SP5');
+  await expect(page.locator('#subtitle-speaker-labels-settings')).toBeVisible();
+  await expect(page.locator('#subtitle-speaker-label-separator')).toBeVisible();
+  await expect(page.locator('.subtitle-speaker-label-list')).toBeHidden();
+  await expect(page.locator('#export-speaker-labels')).not.toBeChecked();
 
   await page.locator('#subtitle-speaker-mapping-enabled').check();
   await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeVisible();
   await expect(page.locator('#subtitle-speaker-labels-enabled')).toBeChecked();
-  await expect(page.locator('#export-speaker-labels')).toBeChecked();
+  await expect(page.locator('#export-speaker-labels')).not.toBeChecked();
   await expect(page.locator('#subtitle-speaker-labels-settings')).toBeVisible();
   await page.locator('#subtitle-speaker-labels-enabled').check();
   await expect(page.locator('#subtitle-speaker-labels-settings')).toBeVisible();
   await expect(page.locator('#subtitle-speaker-label-separator')).toBeVisible();
-  const speakerLabelGrid = await page.locator('.subtitle-speaker-label-list').evaluate((element) => {
-    const style = getComputedStyle(element);
-    return {
-      inputIds: [...element.querySelectorAll('input')].map((input) => input.id),
-      columns: style.gridTemplateColumns.trim().split(/\s+/).length,
-      rows: style.gridTemplateRows.trim().split(/\s+/).length,
-    };
+  await page.locator('#speaker-manager-toggle').click();
+  await page.locator('#speaker-new-name').fill('Initial');
+  await page.locator('#speaker-add').click();
+  const host = await page.evaluate(() => {
+    const identity = MaweBoot.DATA.speakers[0].id;
+    const track = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    MaweSpeakerLabels.assignIdentity([{ track_id: track.id, segment_id: track.segments[0].id }], identity);
+    return identity;
   });
-  expect(speakerLabelGrid).toEqual({
-    inputIds: [
-      'subtitle-speaker-label-yellow',
-      'subtitle-speaker-label-green',
-      'subtitle-speaker-label-red',
-      'subtitle-speaker-label-purple',
-      'subtitle-speaker-label-blue',
-      'subtitle-speaker-label-separator',
-    ],
-    columns: 2,
-    rows: 3,
-  });
-  await page.locator('#subtitle-speaker-label-yellow').fill('Host');
+  await page.locator('.speaker-manager-row [data-speaker-field="name"]').fill('Host');
+  await page.locator('.speaker-manager-row [data-speaker-field="name"]').press('Tab');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].speaker)).toBe(host);
   await expect(page.locator('#subtitle-speaker-label-separator')).toHaveValue('：');
   const previewStructure = await page.evaluate(() => {
     const label = document.getElementById('overlay-main-speaker-label');
@@ -197,10 +199,13 @@ test('configures preview-only speaker labels and independently controls SRT expo
   }))).toEqual({ label: 'Host ', text: 'Host Alpha' });
   await page.locator('#subtitle-speaker-label-separator').fill('"');
 
+  // Enabling export is explicit; changing preview visibility cannot change it.
+  await page.locator('#export-speaker-labels').check();
+
   await page.locator('#subtitle-speaker-labels-enabled').uncheck();
   await expect(page.locator('#subtitle-speaker-labels-settings')).toBeVisible();
   await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeVisible();
-  await expect(page.locator('#export-speaker-labels')).not.toBeChecked();
+  await expect(page.locator('#export-speaker-labels')).toBeChecked();
   await expect(page.locator('#overlay-main-speaker-label')).toBeHidden();
   await expect(page.locator('#overlay-main-text')).toHaveText('Alpha');
   await page.locator('#subtitle-speaker-labels-enabled').check();
@@ -209,10 +214,11 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#overlay-main-text')).toHaveText('Host"Alpha');
 
   await page.locator('#subtitle-speaker-mapping-enabled').uncheck();
-  await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeHidden();
-  await expect(page.locator('#subtitle-speaker-labels-settings')).toBeHidden();
-  await expect(page.locator('#overlay-main-speaker-label')).toBeHidden();
-  await expect(page.locator('#overlay-main-text')).toHaveText('Alpha');
+  await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeVisible();
+  await expect(page.locator('#subtitle-speaker-labels-settings')).toBeVisible();
+  await expect(page.locator('#overlay-main-speaker-label')).toBeVisible();
+  await expect(page.locator('#overlay-main-text')).toHaveText('Host"Alpha');
+  await expect(page.locator('#export-speaker-labels')).toBeChecked();
   await page.locator('#subtitle-speaker-mapping-enabled').check();
   await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeVisible();
   await expect(page.locator('#subtitle-speaker-labels-enabled')).toBeChecked();
@@ -232,22 +238,18 @@ test('configures preview-only speaker labels and independently controls SRT expo
   const collectDownload = (download) => downloads.push(download.suggestedFilename());
   page.on('download', collectDownload);
   const { filenameBase } = await page.evaluate(async () => {
-    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1];
-    const previousColorGroupId = segment.color_group_id;
-    const previousGroups = AsrEditorUtils.cloneJsonValue(MaweBoot.DATA.subtitle_groups);
-    AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [1], 'color', { name: 'green' });
+    const track = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const guest = MaweSpeakerLabels.createIdentity({ name: 'Guest', color: '#66bb6a' });
+    MaweSpeakerLabels.assignIdentity([{ track_id: track.id, segment_id: track.segments[1].id }], guest.id);
     window.showSaveFilePicker = undefined;
     await MaweExportSrt.downloadColorSrts(false);
-    if (previousColorGroupId) segment.color_group_id = previousColorGroupId;
-    else delete segment.color_group_id;
-    MaweBoot.DATA.subtitle_groups = previousGroups;
     return { filenameBase: MaweBoot.FILENAME_BASE };
   });
   await expect.poll(() => downloads.length).toBe(3);
   page.off('download', collectDownload);
   expect(downloads).toEqual(expect.arrayContaining([
     `${filenameBase}_Host.srt`,
-    `${filenameBase}_SP2.srt`,
+    `${filenameBase}_Guest.srt`,
     `${filenameBase}_默认.srt`,
   ]));
   await openSettingsPage(page, 'project-color');
@@ -271,18 +273,13 @@ test('configures preview-only speaker labels and independently controls SRT expo
 
   const onDisk = JSON.parse(readFileSync(projectPath, 'utf-8'));
   expect(onDisk.preview.subtitle.speaker_labels).toEqual({
-    mapping_enabled: true,
+    ...originalLabelSettings,
     enabled: true,
     export_enabled: false,
     separator: '"',
-    names: {
-      yellow: 'Host',
-      green: 'SP2',
-      red: 'SP3',
-      purple: 'SP4',
-      blue: 'SP5',
-    },
   });
+  expect(onDisk.speakers.find(speaker => speaker.id === host).name).toBe('Host');
+  expect(getMainTrack(onDisk).segments[0].speaker).toBe(host);
   expect(onDisk.preview.subtitle.color_style).toBe('stroke');
   expect(onDisk.schema).toBe('moy.asr.project.v2');
   for (const field of ['segments', 'multi_subtitle', 'overlay_track']) expect(onDisk).not.toHaveProperty(field);
@@ -294,7 +291,8 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await toggleGlobalSettings(page);
   await openSettingsPage(page, 'project-color');
   await expect(page.locator('#subtitle-speaker-mapping-enabled')).toBeChecked();
-  await expect(page.locator('#subtitle-speaker-label-yellow')).toHaveValue('Host');
+  await page.locator('#speaker-manager-toggle').click();
+  await expect(page.locator('.speaker-manager-row').first().locator('[data-speaker-field="name"]')).toHaveValue('Host');
   await expect(page.locator('#subtitle-speaker-label-separator')).toHaveValue('"');
   await expect(page.locator('#subtitle-color-style')).toHaveValue('stroke');
 });
@@ -302,6 +300,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
 test('keeps ASS speaker labels in the same style across preview resizing and fullscreen', async ({ page }) => {
   await page.goto(server.url);
   await revealSpeakerCue(page);
+  await registerHostIdentity(page);
 
   const smallWindow = await page.evaluate(() => {
     MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
@@ -448,6 +447,7 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
 test('uses ASS speaker-only colour for the label while preserving the base text style', async ({ page }) => {
   await page.goto(server.url);
   await revealSpeakerCue(page);
+  await registerHostIdentity(page);
 
   const preview = await page.evaluate(() => {
     MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
@@ -503,6 +503,7 @@ test('uses ASS speaker-only colour for the label while preserving the base text 
 test('overlay track speaker labels render through the canvas in ASS mode', async ({ page }) => {
   await page.goto(server.url);
   await revealSpeakerCue(page);
+  await registerHostIdentity(page);
   const payload = await page.evaluate(() => {
     MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
     MaweBoot.DATA.preview.subtitle = {
@@ -517,6 +518,8 @@ test('overlay track speaker labels render through the canvas in ASS mode', async
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'main-ov', start: 0, end: 4000, text: 'main cue' }];
     const overlayTrack = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA, { enabled: true });
     overlayTrack.segments = [{ id: 'ov-1', start: 0, end: 4000, text: 'overlay cue' }];
+    MaweSpeakerLabels.assignIdentity([{ track_id: overlayTrack.id, segment_id: 'ov-1' }],
+      MaweBoot.DATA.speakers.find(speaker => speaker.name === 'Host').id);
     AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, overlayTrack.segments, [0], 'color', { name: 'yellow' });
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;

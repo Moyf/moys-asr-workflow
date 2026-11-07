@@ -416,6 +416,7 @@ const {
 } = helpers;
 
 window.AsrEditorUtils = {
+  effectiveSegmentColor: helpers.effectiveSegmentColor,
   TrackPolicy,
   ...speakerIdentity,
   cloneJsonValue: helpers.cloneJsonValue,

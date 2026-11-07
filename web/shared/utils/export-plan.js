@@ -319,7 +319,7 @@ export function createUtilsModule(dependencies) {
       return {
         id: String(segment.id || `${track}-${index}`), track, index,
         text: options.speakerLabelsEnabled === true
-          ? formatSpeakerLabelledText(exportText, segment, extensionColorContexts.get(segment) || segments, options.speakerLabels, options.speakerLabelSeparator)
+          ? formatSpeakerLabelledText(exportText, segment, extensionColorContexts.get(segment) || segments, options.speakerLabels, options.speakerLabelSeparator, options.speakerProject ?? project)
           : exportText,
         sourceStartMs: start, sourceEndMs: end,
         startMs: mappedStart, endMs: mappedEnd,

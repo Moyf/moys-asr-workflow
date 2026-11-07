@@ -1248,7 +1248,7 @@ __WAVEFORM_CSS__
           </select>
         </label>
         <small class="editor-settings-hint" id="ass-color-speaker-hint" hidden>
-          <span>需要启用「颜色对应说话人」；勾选「</span><button type="button" class="editor-settings-inline-action" id="ass-color-speaker-export-link" title="打开导出设置并定位到说话人名称选项" aria-label="打开导出设置并定位到说话人名称选项">导出带上说话人</button><span>」。</span>
+          <span>先分配说话人，并勾选「</span><button type="button" class="editor-settings-inline-action" id="ass-color-speaker-export-link" title="打开导出设置并定位到说话人名称选项" aria-label="打开导出设置并定位到说话人名称选项">导出带上说话人</button><span>」。</span>
         </small>
         <label class="subtitle-preview-setting-row subtitle-color-style-control" id="subtitle-color-style-control" title="选择按字幕颜色快照应用到预览字幕的样式" hidden>
           <span>预览颜色样式</span>
@@ -1304,8 +1304,8 @@ __WAVEFORM_CSS__
     </div>
   </div>
 
-  <small class="editor-settings-hint">开启预览说话人会默认勾选导出名称；之后可在此独立调整。</small>
-  <small class="editor-settings-hint">名称配色在<button type="button" class="editor-settings-inline-action" data-settings-page="subtitle-color" title="打开全局设置的自定义颜色页">调色板</button>中调整；色板是本机偏好，随编辑器复用。</small>
+  <small class="editor-settings-hint">预览姓名和导出姓名分别控制；切换用途或色数不会改变这两个开关。</small>
+  <small class="editor-settings-hint">说话人名称和显示色在管理区修改，随工程保存。普通分类色可在<button type="button" class="editor-settings-inline-action" data-settings-page="subtitle-color" title="打开全局设置的自定义颜色页">调色板</button>中调整。</small>
   <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。">
       <input type="checkbox" id="export-speaker-labels"> 导出带上说话人

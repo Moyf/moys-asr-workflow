@@ -1,7 +1,7 @@
 // srt: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, stripMassMarkers, stripSentenceFadeMarkers, stripSentencePopMarkers, stripSentenceShakeMarkers } = dependencies;
+  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, effectiveSegmentColor, getProject, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, stripMassMarkers, stripSentenceFadeMarkers, stripSentencePopMarkers, stripSentenceShakeMarkers } = dependencies;
 
 
   function getSrtExportFirstIndex(segments, alignFirstEnabled = false) {
@@ -140,8 +140,11 @@ export function createUtilsModule(dependencies) {
       if (!disabled && !String(segment.text ?? '').trim()) return;
       const colorContext = colorContextResolver(segment) || source;
       if (!disabled && colorName) {
-        const effectiveName = effectiveColorName(segment, colorContext);
-        const matches = colorName === 'default' ? !effectiveName : effectiveName === colorName;
+        const project = options.speakerProject ?? getProject?.();
+        const displayColor = project?.annotation_mode === 'speaker' ? effectiveSegmentColor(project, segment, colorContext) : null;
+        const effectiveName = project?.annotation_mode === 'speaker' ? displayColor?.value : effectiveColorName(segment, colorContext, project);
+        const matches = colorName === 'default' ? !effectiveName
+          : effectiveName === colorName || (displayColor && (displayColor.value === colorName.toLowerCase() || displayColor.name === colorName));
         if (!matches) return;
       }
       const mappedStart = Math.max(0, Math.round(Number(mapTime(segment.start)) || 0));
@@ -152,7 +155,7 @@ export function createUtilsModule(dependencies) {
       const cueText = srtSentenceText(String(segment.text ?? ''), options.assSpecialSymbolRule);
       const text = disabled ? '' : speakerLabels
         ? formatSpeakerLabelledText(
-          cueText, segment, colorContext, speakerLabels, speakerLabelSeparator,
+          cueText, segment, colorContext, speakerLabels, speakerLabelSeparator, options.speakerProject,
         )
         : cueText;
       parts.push(srtEntry(outputIndex, start, end, text, formatTime));
@@ -184,7 +187,7 @@ export function createUtilsModule(dependencies) {
       const context = track === 0 && typeof options.colorContextResolver === 'function'
         ? options.colorContextResolver(segment) || source : source;
       const strippedText = srtSentenceText(String(segment.text ?? ''), options.assSpecialSymbolRule);
-      const text = String(labels ? formatSpeakerLabelledText(strippedText, segment, context, labels, separator)
+      const text = String(labels ? formatSpeakerLabelledText(strippedText, segment, context, labels, separator, options.speakerProject)
         : strippedText).replace(/\r\n?/g, '\n');
       if (!text.trim()) return;
       const record = { track, index, text };
@@ -222,7 +225,7 @@ export function createUtilsModule(dependencies) {
         // 出口不再携带编辑器标记语法；孤儿符号维持字面。
         const text = srtSentenceText(String(segment.text || '').replace(/\r\n?/g, '\n'), options.assSpecialSymbolRule);
         return options.speakerLabelsEnabled === true
-          ? formatSpeakerLabelledText(text, segment, source, options.speakerLabels, options.speakerLabelSeparator)
+          ? formatSpeakerLabelledText(text, segment, source, options.speakerLabels, options.speakerLabelSeparator, options.speakerProject)
           : text;
       })
       .join('\n');

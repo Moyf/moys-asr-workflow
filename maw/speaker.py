@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from maw.colors import COLOR_PALETTE
-from maw.speaker_identity import distinct_speaker_ids, is_valid_speaker_id
+from maw.speaker_identity import distinct_speaker_ids, SPEAKER_PALETTE
 
 
 def speaker_color_summary(segments: list[dict]) -> dict:
@@ -10,37 +10,21 @@ def speaker_color_summary(segments: list[dict]) -> dict:
     identities = set(speakers)
     return {"speakers": speakers, "colored_segments": sum(
                 isinstance(segment.get("speaker"), str) and segment["speaker"] in identities for segment in segments),
-            "overflow": len(speakers) > len(COLOR_PALETTE)}
+            "palette_size": 9 if len(speakers) > 5 else 5,
+            "overflow": len(speakers) > len(SPEAKER_PALETTE)}
 
 
 def apply_project_speaker_colors(project: dict) -> dict:
-    """Assign speaker colors directly to the canonical project group table."""
+    """Honor the explicit ASR speaker-colors option using project identities.
+
+    Identity colours already live in the speaker table. Do not create colour
+    group snapshots or overwrite independent classification groups.
+    """
     from maw.project_tracks import get_main_track
     segments = get_main_track(project)["segments"]
     stats = speaker_color_summary(segments)
-    palette = {speaker: COLOR_PALETTE[index % len(COLOR_PALETTE)] for index, speaker in enumerate(stats["speakers"])}
-    table = project["subtitle_groups"]
-    groups = table["color"]
-    reserved = {group["id"] for group in groups}
-    previous_speaker = None
-    identifier = None
-    for segment in segments:
-        speaker = segment.get("speaker")
-        if not is_valid_speaker_id(speaker):
-            previous_speaker = None
-            continue
-        if speaker != previous_speaker:
-            next_id = table.get("next_id", 1)
-            identifier = f"speaker-color-{next_id}"
-            while identifier in reserved:
-                next_id += 1
-                identifier = f"speaker-color-{next_id}"
-            table["next_id"] = next_id + 1
-            reserved.add(identifier)
-            name, value = palette[speaker]
-            groups.append({"id": identifier, "value": {"name": name, "value": value}})
-        segment["color_group_id"] = identifier
-        previous_speaker = speaker
+    project["annotation_mode"] = "speaker"
+    stats["overflow"] = len(stats["speakers"]) > len(SPEAKER_PALETTE)
     return stats
 
 
