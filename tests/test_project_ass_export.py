@@ -171,6 +171,20 @@ class ProjectAssExportTests(unittest.TestCase):
         self.assertEqual(len(events), 1)
         self.assertIn("Overlay,,0,0,0,,叠加", events[0])
 
+    def test_overlay_snapshot_uses_its_scaled_font_and_margin_for_stacking(self) -> None:
+        for font_size, margin, height, expected in [(60, 80, 1080, 152), (100, 35, 540, 95)]:
+            with self.subTest(font_size=font_size, margin=margin, height=height):
+                project = normalize_project(_basic_project())
+                project["styles"] = [{"id": "shared", "name": "Shared", "fontSize": font_size, "marginV": margin}]
+                project["tracks"][0]["style"] = {"style_id": "shared"}
+                project["tracks"].append({"id": "overlay", "name": "Overlay", "role": "overlay", "enabled": True,
+                    "style": {"style_id": "shared"}, "segments": [{"id": "o", "start": 0, "end": 500, "text": "overlay"}]})
+                project["preview"]["subtitle"]["ass_color_style"] = "text"
+                lines = render_project_ass(project, title="t", play_resolution=(1920, height)).splitlines()
+                self.assertEqual(int(_style_line(lines, "Default").split(",")[-2]), margin)
+                self.assertEqual(int(_style_line(lines, "Overlay").split(",")[-2]), expected)
+                self.assertEqual(int(_style_line(lines, "Overlay RED").split(",")[-2]), expected)
+
     def test_overlay_disabled_or_closed_track_is_ignored(self) -> None:
         project = _basic_project()
         project["overlay_track"] = {"enabled": False, "segments": [{"id": "o", "start": 0, "end": 500, "text": "x"}]}

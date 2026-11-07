@@ -200,6 +200,30 @@ def _validate_bindings(project: dict[str, Any]) -> None:
                 _fail(f"{path}.{field}", "must equal the segment time offset in integer milliseconds")
 
 
+def _validate_styles(project: dict[str, Any], tracks: list[Any]) -> None:
+    style_ids: set[str] = set()
+    if "styles" in project:
+        for index, value in enumerate(_array(project["styles"], "$.styles")):
+            path = f"$.styles[{index}]"
+            style = _object(value, path)
+            identifier = _identifier(style.get("id"), f"{path}.id")
+            if identifier in style_ids:
+                _fail(f"{path}.id", "must be a unique style ID")
+            style_ids.add(identifier)
+            if not isinstance(style.get("name"), str):
+                _fail(f"{path}.name", "must be a string")
+    for index, track in enumerate(tracks):
+        if not isinstance(track, dict) or "style" not in track:
+            continue
+        path = f"$.tracks[{index}].style"
+        style = _object(track["style"], path)
+        identifier = _identifier(style.get("style_id"), f"{path}.style_id")
+        if identifier not in style_ids:
+            _fail(f"{path}.style_id", "must reference an existing style")
+        if "forked" in style and type(style["forked"]) is not bool:
+            _fail(f"{path}.forked", "must be a boolean")
+
+
 def _validate_canonical(project: dict[str, Any], *, speaker_contract: bool = True) -> None:
     if project.get("schema") != TRACKS_PROJECT_SCHEMA:
         _fail("$.schema", f"must be {TRACKS_PROJECT_SCHEMA}")
@@ -207,6 +231,7 @@ def _validate_canonical(project: dict[str, Any], *, speaker_contract: bool = Tru
         if field in project:
             _fail(f"$.{field}", "legacy field is not allowed in v2")
     tracks = _array(project.get("tracks"), "$.tracks")
+    _validate_styles(project, tracks)
     seen_tracks: set[str] = set()
     seen_cues: set[str] = set()
     main_count = overlay_count = 0

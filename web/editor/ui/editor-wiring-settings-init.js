@@ -70,6 +70,7 @@ window.MaweDomPanelsWiring.overlayTrackToggle?.addEventListener('change', () => 
   MaweCommands.run('切换叠加字幕', command => {
     const overlay = next ? window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA) : getOverlayTrack();
     if (!overlay) return;
+    if (next) window.MaweAssManagerWiring?.initializeProjectStyles?.();
     overlay.enabled = next;
     overlay._dirty = true;
     command.commit({ cueList: true, waveform: 'full' });
@@ -97,7 +98,7 @@ document.querySelector('.track-visibility-settings')?.addEventListener('change',
     if (input.dataset.trackField === 'preview') track.preview_visible = input.checked;
     else track.export = { ...track.export, enabled: input.checked };
     track._dirty = true;
-    command.commit({ cueList: true, waveform: 'full' });
+    command.commit({ cueList: true, waveform: 'full', preview: 'refresh' });
   });
 });
 

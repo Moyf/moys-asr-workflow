@@ -46,6 +46,7 @@ function moveSegmentToOverlayTrack(index) {
   const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index];
   const overlay = window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
   if (!segment || !overlay || !Array.isArray(overlay.segments)) return -1;
+  window.MaweAssManagerWiring?.initializeProjectStyles?.();
   const newIndex = window.AsrEditorUtils.moveSegmentBetweenTracks(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, overlay.segments, index);
   if (newIndex < 0) return -1;
   overlay.enabled = true;
@@ -477,6 +478,7 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
   MaweCuePanel.commitCuePanelEdit();
   return MaweCommands.run('新增叠加字幕', (command) => {
     overlay = window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA);
+    window.MaweAssManagerWiring?.initializeProjectStyles?.();
     overlay.segments.splice(index, 0, {
       id: window.AsrEditorUtils.uniqueStableSegmentId(
         window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `overlay-${index + 1}`, 'overlay'),

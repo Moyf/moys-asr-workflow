@@ -367,13 +367,18 @@ export function createUtilsModule(dependencies) {
     // when enabled. Active-event positions and motion come from the stack plan.
     const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
     const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true && String(segment.text ?? '').trim());
+    const explicitOverlayStyle = assMode && options.assOverlayStyle && typeof options.assOverlayStyle === 'object'
+      ? normalizeAssStyle(options.assOverlayStyle, ASS_DEFAULT_ASS_STYLE, options.assOverlayStyle.id || 'ass-overlay') : null;
+    if (explicitOverlayStyle) explicitOverlayStyle.fontName = canonicalizeAssFontName(explicitOverlayStyle.fontName);
+    const overlayFontSize = explicitOverlayStyle
+      ? normalizeAssFontSize(explicitOverlayStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y) : fontSize;
     const overlayMarginV = assMode
-      ? Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize)
+      ? Math.max(0, Number((explicitOverlayStyle || baseStyle).marginV) || 0) + Math.round(1.2 * overlayFontSize)
       : 80 + Math.round(1.2 * fontSize);
     // 叠加字幕固定锚定在主字幕上方：对齐与水平边距完全来自主字幕样式；
     // 副字幕在主字幕下方（跟随其样式预设），与叠加字幕互不影响。
     const overlayBaseStyle = assMode
-      ? baseStyle
+      ? (explicitOverlayStyle || baseStyle)
       : {
         ...ASS_DEFAULT_ASS_STYLE,
         fontName: fontFamily,
@@ -421,7 +426,7 @@ export function createUtilsModule(dependencies) {
           colorName: overlayColorName,
           colorStyles,
           style: overlayStyleFor(overlayColorName),
-          fontSize,
+          fontSize: overlayFontSize,
           colorStyle,
           speakerLabels,
           assMode,
@@ -429,7 +434,7 @@ export function createUtilsModule(dependencies) {
           inlineOptions,
         })
         : escapeAssText(segment.text);
-      if (assMode) addStackItem('overlay', segment, index, overlaySource, startCentiseconds, endCentiseconds, overlayStyleFor(overlayColorName), fontSize, overlayStyleNameFor(overlayColorName), overlaySpeakerName, overlayFade);
+      if (assMode) addStackItem('overlay', segment, index, overlaySource, startCentiseconds, endCentiseconds, overlayStyleFor(overlayColorName), overlayFontSize, overlayStyleNameFor(overlayColorName), overlaySpeakerName, overlayFade);
       const overlayText = overlayAnimationTags
         ? `{${overlayAnimationTags}}${overlayContent}` : overlayContent;
       events.push(
@@ -564,10 +569,10 @@ export function createUtilsModule(dependencies) {
       '',
       '[V4+ Styles]',
       `Format: ${ASS_STYLE_FORMAT}`,
+      ...cueStyleLines,
       ...(assMode
         ? [
           assStyleLine(baseStyle, 'Default', fontSize),
-          ...cueStyleLines,
           ...(colorStyle === 'text' || colorStyle === 'stroke'
             ? colorStyles.map((color) => assStyleLine(
               assStyleVariant(baseStyle, color.value, colorStyle),
@@ -582,12 +587,12 @@ export function createUtilsModule(dependencies) {
           // 叠加字幕：字段复用主字幕样式，MarginV 固化为链式锚定结果。
           ...(hasOverlayCues
             ? [
-              assStyleLine(overlayStyleFor(null), 'Overlay', fontSize),
+              assStyleLine(overlayStyleFor(null), 'Overlay', overlayFontSize),
               ...(colorStyle === 'text' || colorStyle === 'stroke'
                 ? colorStyles.map((color) => assStyleLine(
                   overlayStyleFor(color.name),
                   `Overlay ${color.name.toUpperCase()}`,
-                  fontSize,
+                  overlayFontSize,
                 ))
                 : []),
             ]
@@ -621,12 +626,12 @@ export function createUtilsModule(dependencies) {
           // legacy 叠加样式：同样固化为算好的锚定边距（80 + 1.2 × 字号）。
           ...(hasOverlayCues
             ? [
-              assStyleLine(overlayStyleFor(null), 'Overlay', fontSize),
+              assStyleLine(overlayStyleFor(null), 'Overlay', overlayFontSize),
               ...(colorStyle === 'text' || colorStyle === 'stroke'
                 ? colorStyles.map((color) => assStyleLine(
                   overlayStyleFor(color.name),
                   `Overlay ${color.name.toUpperCase()}`,
-                  fontSize,
+                  overlayFontSize,
                 ))
                 : []),
             ]

@@ -55,6 +55,8 @@ const ASS_BUILTIN_FONT_SUGGESTIONS = Object.freeze([
 const ASS_STYLE_LIBRARY_STORAGE_KEY = 'moy.asr.ass.styles.v1';
 let ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
 let ASS_STYLE_LIBRARY_READY = false;
+let assStyleLibraryHasLoaded = false;
+let assStyleProjectInitScheduled = false;
 let assStyleLibrarySaveTimer = 0;
 let assStyleLibraryLoadPromise = null;
 let assStyleLibraryDirty = false;
@@ -87,6 +89,31 @@ function setAssStyleLibrary(value, { persistLocal = false } = {}) {
   ASS_STYLE_LIBRARY = window.AsrEditorUtils.normalizeAssStyleLibrary(value);
   if (persistLocal) writeLocalAssStyleLibrary(ASS_STYLE_LIBRARY);
   return ASS_STYLE_LIBRARY;
+}
+
+// A library request can finish while an import replaces the project. Start a
+// fresh, generation-guarded initialization after that import has settled.
+function scheduleCurrentProjectStyleInit() {
+  if (assStyleProjectInitScheduled) return;
+  assStyleProjectInitScheduled = true;
+  const run = () => {
+    if (MaweState.projectLoadPending) { setTimeout(run, 100); return; }
+    const generation = MaweState.projectLoadGeneration;
+    const epoch = MaweState.projectEpoch;
+    queueMicrotask(() => {
+      assStyleProjectInitScheduled = false;
+      if (generation !== MaweState.projectLoadGeneration || epoch !== MaweState.projectEpoch || MaweState.projectLoadPending) {
+        scheduleCurrentProjectStyleInit();
+        return;
+      }
+      if (initializeProjectStyles()) {
+        MaweState.markProjectDirty();
+        syncAssStyleManager?.();
+        MawePlaybackLoop.refreshSubtitlePreview?.();
+      }
+    });
+  };
+  setTimeout(run, 0);
 }
 
 function assStyleLibrarySummary() {
@@ -214,6 +241,25 @@ async function loadAssStyleLibrary({ force = false } = {}) {
     MawePlaybackLoop.refreshSubtitlePreview?.();
     return ASS_STYLE_LIBRARY;
   }
+  const generation = MaweState.projectLoadGeneration;
+  const projectEpoch = MaweState.projectEpoch;
+  const previous = ASS_STYLE_LIBRARY;
+  const hadLoaded = assStyleLibraryHasLoaded;
+  const finishProjectStyles = () => {
+    assStyleLibraryHasLoaded = true;
+    if (generation !== MaweState.projectLoadGeneration || projectEpoch !== MaweState.projectEpoch) {
+      scheduleCurrentProjectStyleInit();
+      return;
+    }
+    if (hadLoaded) {
+      const record = MaweHistory.captureSegmentsRecord('更新联动样式');
+      if (window.AsrEditorUtils.updateLinkedTrackStyles(MaweBoot.DATA, previous, ASS_STYLE_LIBRARY)) {
+        MaweHistory.commitRecord(record);
+        MaweState.markProjectDirty();
+      }
+    }
+    if (initializeProjectStyles()) MaweState.markProjectDirty();
+  };
   setAssStyleLibrary(readLocalAssStyleLibrary());
   setAssStyleLibraryStatus('正在加载…', 'pending');
   assStyleLibraryLoadPromise = (async () => {
@@ -225,6 +271,7 @@ async function loadAssStyleLibrary({ force = false } = {}) {
     if (!assStyleLibraryUsesServerStorage()) {
       ASS_STYLE_LIBRARY_READY = true;
       setAssStyleLibraryStatus('', 'success');
+      finishProjectStyles();
       syncAssStyleManager?.();
       MawePlaybackLoop.refreshSubtitlePreview?.();
       assStyleLibraryLoadPromise = null;
@@ -251,6 +298,7 @@ async function loadAssStyleLibrary({ force = false } = {}) {
       ASS_STYLE_LIBRARY_READY = false;
       setAssStyleLibraryStatus('使用本地副本，服务器同步失败', 'warning');
     }
+    finishProjectStyles();
     syncAssStyleManager?.();
     MawePlaybackLoop.refreshSubtitlePreview?.();
     // Do not cache either a successful or failed request: each subsequent

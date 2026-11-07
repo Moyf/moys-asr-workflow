@@ -270,6 +270,38 @@ export function createUtilsModule() {
     if (own(track, 'metadata') && !object(track.metadata)) add('metadata', 'must be an object');
   }
 
+  function validateStyles(project, tracks) {
+    const styleIds = new Set();
+    const error = (path, message) => ({ path, message });
+    const identifierError = (value, path) => {
+      if (!id(value)) return error(path, 'must be a non-empty string of at most 160 characters');
+      if (value !== id(value)) return error(path, 'must not have surrounding whitespace');
+      return null;
+    };
+    if (own(project, 'styles')) {
+      if (!Array.isArray(project.styles)) return error('$.styles', 'must be an array');
+      for (const [index, style] of project.styles.entries()) {
+        const path = `$.styles[${index}]`;
+        if (!object(style)) return error(path, 'must be an object');
+        const invalidId = identifierError(style.id, `${path}.id`);
+        if (invalidId) return invalidId;
+        if (styleIds.has(style.id)) return error(`${path}.id`, 'must be a unique style ID');
+        styleIds.add(style.id);
+        if (typeof style.name !== 'string') return error(`${path}.name`, 'must be a string');
+      }
+    }
+    if (Array.isArray(tracks)) for (const [index, track] of tracks.entries()) {
+      if (!object(track) || !own(track, 'style')) continue;
+      const path = `$.tracks[${index}].style`;
+      if (!object(track.style)) return error(path, 'must be an object');
+      const invalidId = identifierError(track.style.style_id, `${path}.style_id`);
+      if (invalidId) return invalidId;
+      if (!styleIds.has(track.style.style_id)) return error(`${path}.style_id`, 'must reference an existing style');
+      if (own(track.style, 'forked') && typeof track.style.forked !== 'boolean') return error(`${path}.forked`, 'must be a boolean');
+    }
+    return null;
+  }
+
   function validateTracksProject(project, { skipSpeakers = false } = {}) {
     const errors = [];
     const add = (path, message) => errors.push({ path, message });
@@ -278,6 +310,10 @@ export function createUtilsModule() {
     validateProjectMetadata(project, errors);
     for (const field of OLD_FIELDS) if (own(project, field)) return { ok: false, errors: [{ path: `$.${field}`, message: 'legacy field is not allowed in v2' }], project: null };
     const tracks = project.tracks;
+    if (Array.isArray(tracks)) {
+      const styleError = validateStyles(project, tracks);
+      if (styleError) return { ok: false, errors: [styleError], project: null };
+    }
     const trackIds = new Set();
     const cueIds = new Set();
     if (!Array.isArray(tracks)) add('$.tracks', 'must be an array');

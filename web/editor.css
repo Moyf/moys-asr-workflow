@@ -2764,7 +2764,7 @@
   .cue-panel-time-fields input:focus,
   #cue-panel-text:focus { outline: none; border-color: var(--amber); box-shadow: var(--focus-ring-amber); }
   .cue-panel-text-wrap { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-  .cue-panel-text-header { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 4px; }
+  .cue-panel-text-header { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 8px; }
   .cue-ass-style-controls {
     display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: auto;
     color: var(--text-secondary); font-size: 12px; white-space: nowrap;

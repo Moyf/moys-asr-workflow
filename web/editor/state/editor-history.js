@@ -237,6 +237,7 @@ export function initMaweHistory() {
   // 暂停状态下撤销/重做不会触发播放器事件：与正向命令一致地刷新播放器
   // 字幕预览（SRT overlay），并通知 ASS 实际画面重查快照。
   MaweViewUpdates.invalidate({ preview: 'refresh' });
+  window.MaweAssManagerWiring?.syncAssStyleManager?.();
   window.MaweAssFrame?.notifyProjectChanged?.();
   if (record.view) restoreEditorSelection(record.view);
   return true;

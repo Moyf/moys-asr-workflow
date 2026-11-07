@@ -72,6 +72,7 @@
         subtitle_groups: { value: window.AsrEditorUtils.cloneJsonValue(data.subtitle_groups) },
         speakers: { value: window.AsrEditorUtils.cloneJsonValue(data.speakers) },
         sourceTrack: { value: window.AsrEditorUtils.cloneJsonValue({ ...sourceTrack, segments: undefined }) },
+        sourceStyle: { value: window.AsrEditorUtils.cloneJsonValue((data.styles || []).find(style => style.id === sourceTrack.style?.style_id) || null) },
       });
       return validSegments;
     } finally {

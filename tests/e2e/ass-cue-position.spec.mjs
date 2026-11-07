@@ -39,6 +39,8 @@ test.beforeEach(async ({ page }, info) => {
     ASS_STYLE_LIBRARY = AsrEditorUtils.defaultAssStyleLibrary();
     Object.assign(ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass'), { fontName: 'Arial', fontSize: 90,
       outline: 0, shadow: 0, primaryColor: '#ff0000', emphasisColor: '#ff0000', alignment: 2, marginV: 40 });
+    AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA),
+      ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass'));
     ASS_STYLE_LIBRARY.assProfiles[0].animations = { fad: { enabled: false }, fade: { enabled: false }, move: { enabled: false }, t: { enabled: false } };
     Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assFrameAutoRender: false, autoSaveProject: false });
     MaweDom.overlayToggle.checked = true;
@@ -485,7 +487,7 @@ for(const [width,height] of [[640,360],[360,640]]) test(`all nine anchors match 
     const frame=await page.evaluate(({an,width,height,paintedBox}) => {
       MaweBoot.DATA.media_metadata={video_width:width,video_height:height};
       AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride={pos:{x:width/2,y:height/2}};
-      ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').alignment = an;
+      AsrEditorUtils.updateTrackStyle(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA), { alignment: an });
       ASS_STYLE_LIBRARY.assProfiles[0].animations.move={enabled:true,x1:10,y1:10,x2:200,y2:300,t1:0,t2:2000};
       MawePlaybackLoop.refreshSubtitlePreview(1000,0);
       const canvas=document.querySelector('.ass-preview-canvas');
@@ -661,7 +663,7 @@ test('scaled automatic stack matches Canvas, Server libass and exported frame bo
     const [base, scaled] = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     // The small synthetic video uses 640×360 PlayRes. A larger baseline font
     // keeps the auto-fit path active there as it is in the 1080p unit fixture.
-    ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize = 150;
+    AsrEditorUtils.updateTrackStyle(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA), { fontSize: 150 });
     Object.assign(base, { start: 0, end: 2000, text: Array(10).fill('BASE').join('\n') });
     delete base.assOverride;
     Object.assign(scaled, { start: 0, end: 2000, text: Array(10).fill('SCALED').join('\n'), assOverride: { scale: 0.62 } });
@@ -731,7 +733,7 @@ test('shaken cue scale does not depend on pointermove event count', async ({ pag
   const scales = [];
   for (const steps of [1, 8]) {
     await page.evaluate(() => {
-      ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize = 12;
+      AsrEditorUtils.updateTrackStyle(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA), { fontSize: 12 });
       Object.assign(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0], { text: '!!I!!', assOverride: { scale: 4 } });
       MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     });
@@ -747,7 +749,7 @@ test('shaken cue scale does not depend on pointermove event count', async ({ pag
 
 test('shaken cue corner scaling projects movement around the stable center', async ({ page }, info) => {
   await page.evaluate(() => {
-    ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize = 12;
+    AsrEditorUtils.updateTrackStyle(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA), { fontSize: 12 });
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '!!I!!';
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   });
@@ -797,7 +799,7 @@ test('dragged shaken cue saves the base anchor and window blur cancels the next 
 test('dragging an automatically stacked upper cue uses the global top anchor', async ({page}) => {
   const before=await page.evaluate(() => {
     const cue=AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1]; cue.start=0; cue.end=2000;
-    ASS_STYLE_LIBRARY.styles.find(style=>style.id==='ass').alignment=8;
+    AsrEditorUtils.updateTrackStyle(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA), { alignment: 8 });
     MaweSelection.selectOnly(1); MawePlaybackLoop.refreshSubtitlePreview(1000,0);
     const frame=MaweAssCanvas.lastRender, record=frame.tracks.find(item=>item.cueId==='next');
     return {record,res:frame.playResX,width:MaweDom.overlayEl.getBoundingClientRect().width};

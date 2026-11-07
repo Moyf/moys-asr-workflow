@@ -140,6 +140,11 @@ async function configure(page, fixture) {
     }
     const overlay = AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA, { enabled: true });
     overlay.segments = f.overlaySegments || [{ id: 'overlay', start: 0, end: 4000, text: 'Overlay' }];
+    // The renderer consumes project snapshots, not subsequent direct mutations
+    // of the user library. Bind all fixture tracks to the styles set above.
+    AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA), main);
+    AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, AsrEditorUtils.getExtensionTrack(MaweBoot.DATA), extension);
+    AsrEditorUtils.applyTrackStyle(MaweBoot.DATA, overlay, main);
     AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, overlay.segments,
       overlay.segments.map((_, index) => index), 'color', { name: 'blue' });
     MaweBoot.DATA.preview = { subtitle: { ass_color_style: 'text' } };
@@ -755,7 +760,7 @@ for (const diagnostic of ['raw 3D perspective', 'negative base spacing', 'negati
       const main = ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass');
       const animations = ASS_STYLE_LIBRARY.assProfiles[0].animations;
       if (kind === 'raw 3D perspective') animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\frx30' };
-      if (kind === 'negative base spacing') main.spacing = -100;
+      if (kind === 'negative base spacing') AsrEditorUtils.updateTrackStyle(MaweBoot.DATA, AsrEditorUtils.getMainTrack(MaweBoot.DATA), { spacing: -100 });
       if (kind === 'negative transform spacing') animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\fsp-100' };
       if (kind === 'unreadable group fit') AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = Array(200).fill('M').join('\n');
       MaweBoot.DATA.gap_remove = { schema: 'moy.asr.gap_remove.v1', detector: 'audio_gate',
