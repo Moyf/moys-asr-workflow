@@ -21,6 +21,7 @@ function fixture(project = utils.importProject({ segments: legacyCues() }).proje
   const context = vm.createContext({
     document: { querySelectorAll: () => [] },
     AsrEditorUtils: utils,
+    AsrGapRemoveCore: utilsContext.window.AsrGapRemoveCore,
     MaweBoot: { DATA: project, FILENAME_BASE: 'clip', STICKER_ROOT: 'C:/stickers' },
     MaweSelection: { stickerAbsPath: sticker => sticker.rel ? `C:/stickers/${sticker.rel}` : '' },
     MaweSpeakerLabels: { subtitleExportText: cue => cue.text },

@@ -17,11 +17,11 @@ function aiCleanupExportSegments(segments) {
   return window.AsrEditorUtils.buildAiCleanupSegments(segments, MaweBoot.DATA.gap_remove);
 }
 
-function mergedExportSegments() {
+function mergedExportSegments(projectMain = aiCleanupExportSegments) {
   const policy = window.AsrEditorUtils.TrackPolicy;
   const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
   const overlay = getOverlayTrack();
-  const mainSegments = policy.isTrackEnabled(main, 'export') ? aiCleanupExportSegments(main.segments) : [];
+  const mainSegments = policy.isTrackEnabled(main, 'export') ? projectMain(main.segments) : [];
   const overlaySegments = policy.isTrackEnabled(overlay, 'export') ? overlay.segments : [];
   if (!overlaySegments.length) {
     return { segments: mainSegments, overlaySet: new Set(), overlaySegments };

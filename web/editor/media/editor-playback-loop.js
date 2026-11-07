@@ -148,7 +148,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   // 编辑字幕文本时只刷新播放器预览，避免每输入一个字都触发字幕列表的自动滚动。
   const sourceSegment = idx >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] : null;
   const seg = sourceSegment
-    ? window.AsrGapRemoveCore.projectCleanupRetainedSegments([sourceSegment], MaweBoot.DATA.gap_remove)[0]
+    ? MaweExportSrt.cleanupPreviewSegment(sourceSegment)
     : null;
   const policy = window.AsrEditorUtils.TrackPolicy;
   const mainVisible = policy.isTrackEnabled(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'preview')

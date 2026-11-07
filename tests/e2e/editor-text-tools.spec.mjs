@@ -526,15 +526,35 @@ test('portable editor saves and reloads presets in its browser storage', async (
   const errors = [];
   const snapshots = {};
   page.on('pageerror', error => errors.push(String(error.stack || error)));
-  const snapshot = () => page.evaluate(() => {
-    let storage;
-    try { storage = localStorage.getItem('moy.asr.text_processing_presets.v1'); }
-    catch (error) { storage = `ERROR: ${String(error)}`; }
-    return { storage, library: window.MaweProcessing?.library ?? null,
-      projectOverride: window.MaweProcessing?.projectOverride('text') ?? null,
-      selected: document.querySelector('#text-preset-select')?.value ?? null,
-      status: document.querySelector('#text-preset-status')?.dataset.state ?? null };
+  await page.addInitScript(() => {
+    try { window.__portablePresetAtDocumentStart = localStorage.getItem('moy.asr.text_processing_presets.v1'); }
+    catch (error) { window.__portablePresetAtDocumentStart = `ERROR: ${String(error)}`; }
   });
+  const snapshot = async () => {
+    const state = await page.evaluate(() => {
+      let storage;
+      try { storage = localStorage.getItem('moy.asr.text_processing_presets.v1'); }
+      catch (error) { storage = `ERROR: ${String(error)}`; }
+      return { href: location.href, origin: location.origin, storage, documentStartStorage: window.__portablePresetAtDocumentStart,
+        library: window.MaweProcessing?.library ?? null,
+        projectOverride: window.MaweProcessing?.projectOverride('text') ?? null,
+        selected: document.querySelector('#text-preset-select')?.value ?? null,
+        status: document.querySelector('#text-preset-status')?.dataset.state ?? null };
+    });
+    let cdp;
+    try {
+      cdp = await page.context().newCDPSession(page);
+      const { frameTree } = await cdp.send('Page.getFrameTree');
+      const frameId = frameTree.frame.id;
+      const { storageKey } = await cdp.send('Storage.getStorageKeyForFrame', { frameId });
+      state.cdp = { frameId, storageKey };
+    } catch (error) {
+      state.cdp = { error: String(error) };
+    } finally {
+      if (cdp) await cdp.detach().catch(() => {});
+    }
+    return state;
+  };
   try {
     await page.goto('file://' + portable);
     await seed(page, { text: '  甲  ', timed: false });
@@ -561,8 +581,9 @@ test('portable editor saves and reloads presets in its browser storage', async (
     await expect(preview.locator('.replace-preview-after')).toHaveText('处理后：甲');
   } catch (error) {
     try { snapshots.onFailure = await snapshot(); } catch (snapshotError) { snapshots.snapshotError = String(snapshotError); }
-    console.error('portable preset synthetic diagnostics:', JSON.stringify({ snapshots, errors }));
     throw error;
+  } finally {
+    console.log('portable preset synthetic diagnostics:', JSON.stringify({ snapshots, errors }));
   }
 });
 
