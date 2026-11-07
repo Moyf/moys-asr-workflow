@@ -70,6 +70,7 @@
       }
       Object.defineProperties(validSegments, {
         subtitle_groups: { value: window.AsrEditorUtils.cloneJsonValue(data.subtitle_groups) },
+        speakers: { value: window.AsrEditorUtils.cloneJsonValue(data.speakers) },
         sourceTrack: { value: window.AsrEditorUtils.cloneJsonValue({ ...sourceTrack, segments: undefined }) },
       });
       return validSegments;

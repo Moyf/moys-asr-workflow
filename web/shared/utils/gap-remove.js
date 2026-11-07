@@ -85,8 +85,10 @@ export function createUtilsModule(dependencies) {
       const text = String(segment.text || '');
       let cursor = 0;
       const spans = [];
-      for (const item of segment.items) {
-        const value = String(item?.text || '');
+      for (const [index, item] of segment.items.entries()) {
+        let value = String(item?.text || '');
+        if (index === 0 && text && !/^\s/u.test(text)) value = value.trimStart();
+        if (index === segment.items.length - 1 && text && !/\s$/u.test(text)) value = value.trimEnd();
         const start = value ? text.indexOf(value, cursor) : -1;
         if (start < 0 || /[\p{L}\p{N}]/u.test(text.slice(cursor, start))) return [segment];
         cursor = start + value.length;

@@ -36,6 +36,11 @@ for (const [i, c] of cases.entries()) test(`shared boundary: ${c.name}`, () => {
   assert.deepEqual(imported.changes, expected[i].imported.changes);
   assert.deepEqual(original, c.input, 'validation/import must not mutate the input');
   if (imported.ok) {
+    // This legacy acceptance corpus has no source speaker identities. Migration
+    // adds the explicit empty core, without enabling speaker mode or nine slots.
+    assert.deepEqual(Object.fromEntries(['speakers', 'annotation_mode', 'palette_size', 'speaker_shortcuts']
+      .map(field => [field, imported.project[field]])),
+    { speakers: [], annotation_mode: 'color', palette_size: 5, speaker_shortcuts: {} });
     if (c.change_paths) assert.deepEqual(imported.changes.map((change) => change.path), c.change_paths);
     assert.deepEqual(json(boundary.prepareProject(imported.project)).changes, [], 'reimport must be idempotent');
   } else assert.equal(imported.project, null);

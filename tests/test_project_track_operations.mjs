@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const source = readFileSync(new URL('../web/shared/utils/project-tracks.js', import.meta.url), 'utf8');
-const model = (await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)).createUtilsModule();
+import { createUtilsModule } from '../web/shared/utils/project-tracks.js';
+const model = createUtilsModule();
 const fixture = name => JSON.parse(readFileSync(new URL(`./fixtures/project-tracks/${name}.json`, import.meta.url), 'utf8'));
 const canonical = () => fixture('canonical');
 const json = value => JSON.parse(JSON.stringify(value));

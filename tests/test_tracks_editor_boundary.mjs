@@ -83,6 +83,7 @@ test('importing project subtitles keeps cue metadata and a detached source group
   const source = canonical();
   source.tracks[0].metadata = { vendor: 'track', empty: [] };
   source.tracks[0].segments[0].speaker = 'speaker';
+  source.speakers.push({ id: 'speaker', name: 'Imported speaker', color: '#f9ca1f' });
   source.tracks[0].segments[0].assOverride = { scale: 1.2, pos: { x: 0, y: 1 } };
   source.tracks[0].segments[0].vendor = { zero: 0, flag: false };
   const utils = { window: {}, TextDecoder };

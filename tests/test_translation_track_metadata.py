@@ -23,6 +23,10 @@ class TranslationTrackMetadataTests(unittest.TestCase):
                               "main_segment_ids": ["source"], "extension_segment_ids": ["target"]}],
             },
         })
+        source["speakers"] = [
+            {"id": "main speaker", "name": "Main", "color": "#112233"},
+            {"id": "secondary speaker", "name": "Secondary", "color": "#445566"},
+        ]
         get_main_track(source)["segments"][0]["assOverride"] = {"scale": 1.5}
         get_main_track(source)["segments"][0]["disabled"] = False
         get_main_track(source)["segments"][0]["speaker"] = "main speaker"
@@ -56,6 +60,7 @@ class TranslationTrackMetadataTests(unittest.TestCase):
     def test_new_translation_does_not_join_main_groups(self):
         source = normalize_project({"segments": [{"id": "source", "start": 0, "end": 1000,
             "text": "Hello", "color": {"name": "main color"}, "sticker": {"name": "main sticker"}}]})
+        source["speakers"] = [{"id": "main speaker", "name": "Main", "color": "#112233"}]
         translated = copy.deepcopy(source)
         get_main_track(translated)["segments"][0]["assOverride"] = {"scale": 1.5}
         get_main_track(translated)["segments"][0]["speaker"] = "main speaker"

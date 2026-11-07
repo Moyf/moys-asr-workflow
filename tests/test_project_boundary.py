@@ -29,6 +29,10 @@ class ProjectBoundaryTests(CompactContainerAssertions, unittest.TestCase):
                 self.assertEqual(imported.validation.ok, case["import_ok"])
                 self.assertEqual(original, case["input"])
                 if imported.validation.ok:
+                    # These legacy corpus inputs have no speaker identities;
+                    # adding the core fields must not enable speaker mode or nine slots.
+                    defaults = {"speakers": [], "annotation_mode": "color", "palette_size": 5, "speaker_shortcuts": {}}
+                    self.assertEqual({field: imported.validation.project[field] for field in defaults}, defaults)
                     expected = project_changes(original, imported.validation.project)
                     self.assertEqual(list(imported.changes), expected)
                     if case["change_paths"] is not None:

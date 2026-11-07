@@ -60,6 +60,7 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                 with self.subTest(original=original, merge=merge, order=order), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
                     source = self.source(original)
+                    canonical_source = normalize_project(source)
                     project, srt, media = root / "input.mosp", root / "input.srt", root / "media.mp3"
                     project.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
                     srt.write_text(f"1\n00:00:00,000 --> 00:00:01,000\n{original}\n", encoding="utf-8")
@@ -84,11 +85,16 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                     stage = manifest["steps"][0]
                     for path in (result.project_path, Path(stage["projectPath"]), Path(stage["translationIntermediateProjectPath"])):
                         saved = read_project(path)
-                        self.assertEqual(main_segments(saved), main_segments(source))
+                        self.assertEqual(main_segments(saved), main_segments(canonical_source))
+                        self.assertEqual(saved["speakers"], canonical_source["speakers"])
+                        self.assertEqual(saved["speaker_shortcuts"], canonical_source["speaker_shortcuts"])
                         self.assertEqual(saved["user_metadata"], source["user_metadata"])
                         multi = saved
                         self.assertEqual(multi["bilingual"]["display_mode"], "both")
                         self.assertEqual([s["text"] for s in get_tracks_by_role(multi, "secondary")[-1]["segments"]], [translation])
+                        translated_cue = get_tracks_by_role(multi, "secondary")[-1]["segments"][0]
+                        self.assertEqual(translated_cue["speaker"], main_segments(canonical_source)[0]["speaker"])
+                        self.assertIn(translated_cue["speaker"], {speaker["id"] for speaker in saved["speakers"]})
                         self.assertEqual(multi["bindings"][0]["source"], {"track_id": "main", "segment_id": "source"})
                     text = result.srt_path.read_text(encoding="utf-8-sig")
                     expected = (f"{translation}\n{original}" if order == "translation_first" else f"{original}\n{translation}") if merge else original
