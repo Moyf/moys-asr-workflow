@@ -2368,6 +2368,11 @@ __WAVEFORM_CSS__
         <label><input type="radio" name="fcp7-export-scope" value="media"> 字幕与源媒体</label>
       </fieldset>
       <p class="modal-hint" id="fcp7-export-format-hint" style="margin-top: 8px">动态部分输出序列帧，静止部分保持单张 PNG 图片；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，图片模式不包含贴图。</p>
+      <label>保存位置</label>
+      <div class="row fcp7-directory-controls"><span id="fcp7-export-directory">工程所在文件夹（默认）</span>
+        <button type="button" id="fcp7-export-choose-directory">选择文件夹</button>
+        <button type="button" id="fcp7-export-reset-directory" hidden>恢复默认</button>
+      </div>
       <label for="fcp7-export-resolution">图片尺寸</label>
       <select id="fcp7-export-resolution">
         <option value="1920x1080">1920 × 1080（横屏）</option>
@@ -2380,6 +2385,7 @@ __WAVEFORM_CSS__
         <span aria-hidden="true">×</span>
         <input type="number" id="fcp7-export-custom-height" min="1" max="8192" step="1" value="1080" aria-label="高度">
       </div>
+      <p class="modal-hint" id="fcp7-export-ratio-warning" role="status" hidden>图片尺寸与源画面的宽高比不同，字幕的位置和布局可能发生变化。</p>
     </div>
     <div class="fcp7-columns"><div>
     <label for="fcp7-export-fps">导出帧率</label>

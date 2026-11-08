@@ -9,6 +9,15 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '保存位置': 'Save location',
+    '工程所在文件夹（默认）': 'Project folder (default)',
+    '选择文件夹': 'Choose folder',
+    '恢复默认': 'Reset to default',
+    '无法选择文件夹': 'Could not choose folder',
+    '图片尺寸与源画面的宽高比不同，字幕的位置和布局可能发生变化。': 'The image and source aspect ratios differ; subtitle position and layout may change.',
+    '图片字幕 XML 已保存': 'Image subtitle XML saved',
+    '动态部分输出序列帧，静止部分保持单张无损 WebP；字幕与 XML 保存在所选位置的新目录。源媒体使用引用，目标软件需支持 WebP，图片模式不包含贴图。': 'Animated sections use image sequences; static sections use a single lossless WebP. Subtitles and XML are saved in a new folder at the chosen location. Source media is referenced; the target application must support WebP. Stickers are not included.',
+    '动态部分输出序列帧，静止部分保持单张 PNG 图片；字幕与 XML 保存在所选位置的新目录。源媒体使用引用，图片模式不包含贴图。': 'Animated sections use image sequences; static sections use a single PNG. Subtitles and XML are saved in a new folder at the chosen location. Source media is referenced; stickers are not included.',
     '自定义图片尺寸需要 1–8192 之间的整数宽高': 'Custom image width and height must be integers from 1 to 8192',
     '图片字幕帧校验失败': 'Subtitle image frame validation failed',
     '不支持的字幕图片格式': 'Unsupported subtitle image format',

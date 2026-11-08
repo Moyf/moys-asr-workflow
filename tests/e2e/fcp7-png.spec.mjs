@@ -63,6 +63,31 @@ test('image dimensions stay within the open project session', async ({ page }) =
   await expect(page.locator('#fcp7-export-custom-height')).toHaveValue('1080');
 });
 
+test('chosen directory can be cancelled or reset and aspect ratio changes show a warning', async ({ page }) => {
+  await open(page, 'png');
+  const warning = page.locator('#fcp7-export-ratio-warning');
+  await expect(warning).toBeHidden();
+  await page.locator('#fcp7-export-resolution').selectOption('1080x1920');
+  await expect(warning).toBeVisible();
+  await page.locator('#fcp7-export-resolution').selectOption('custom');
+  await page.locator('#fcp7-export-custom-width').fill('1280');
+  await page.locator('#fcp7-export-custom-height').fill('720');
+  await expect(warning).toBeHidden();
+  let cancelled = false;
+  await page.route('**/api/exports/fcp7-png/jobs/choose-directory', async route => {
+    await route.fulfill({ json: cancelled ? { ok: true, cancelled: true } :
+      { ok: true, directoryToken: 'chosen-token', directory: 'chosen folder' } });
+  });
+  await page.locator('#fcp7-export-choose-directory').click();
+  await expect(page.locator('#fcp7-export-directory')).toHaveText('chosen folder');
+  cancelled = true;
+  await page.locator('#fcp7-export-choose-directory').click();
+  await expect(page.locator('#fcp7-export-directory')).toHaveText('chosen folder');
+  await page.locator('#fcp7-export-reset-directory').click();
+  await expect(page.locator('#fcp7-export-directory')).toContainText('工程所在文件夹');
+  await expect(page.locator('#fcp7-export-reset-directory')).toBeHidden();
+});
+
 test('font notices keep the published folder action available', async ({ page }) => {
   await open(page);
   await page.route('**/api/exports/fcp7-png/jobs/*/publish', async route => {

@@ -20,6 +20,34 @@ from maw.gui_platform import restore_host_library_path
 PREFIX = "/api/exports/fcp7-png/jobs"
 
 
+def _choose_export_directory(initial: Path) -> Path | None:
+    """Use the platform folder picker; the browser never supplies an arbitrary path."""
+    env = restore_host_library_path(os.environ.copy())
+    env["MAW_FCP7_PICKER_INITIAL"] = str(initial)
+    if sys.platform == "win32":
+        script = ("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+                  "Add-Type -AssemblyName System.Windows.Forms; "
+                  "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                  "$d.SelectedPath = $env:MAW_FCP7_PICKER_INITIAL; "
+                  "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { "
+                  "[Console]::Write($d.SelectedPath) } else { exit 1 }; $d.Dispose()")
+        command = ["powershell.exe", "-NoProfile", "-STA", "-NonInteractive", "-Command", script]
+    elif sys.platform == "darwin":
+        command = ["osascript", "-e", 'on run argv\nset selectedFolder to choose folder default location (POSIX file (item 1 of argv))\nreturn POSIX path of selectedFolder\nend run', str(initial)]
+    else:
+        if not shutil.which("zenity"):
+            raise ValueError("无法打开文件夹选择窗口：请安装 zenity")
+        command = ["zenity", "--file-selection", "--directory", "--filename", str(initial) + os.sep]
+    result = subprocess.run(command, capture_output=True, env=env, encoding="utf-8", errors="replace",
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if sys.platform == "win32" else 0)
+    if result.returncode:
+        if result.returncode == 1 or (sys.platform == "darwin" and "-128" in result.stderr):
+            return None
+        raise ValueError("无法打开文件夹选择窗口")
+    selected = result.stdout.strip()
+    return Path(selected).resolve(strict=True) if selected else None
+
+
 def _open_export_folder(directory: Path) -> None:
     if sys.platform == "win32":
         os.startfile(str(directory))
@@ -75,7 +103,7 @@ def vegas_package_xml(xml: str) -> str:
 
 
 def handle_fcp7_png(handler, path: str, *, mutate=False, include_body=True, tools_factory):
-    """All directories are server-selected next to the currently bound project."""
+    """Publish alongside the project or in a folder selected by the local user."""
     manager = handler.editor_server.media_jobs
     try:
         request = handler.read_json_request(max_bytes=36 * 1024 * 1024) if mutate else {
@@ -83,6 +111,25 @@ def handle_fcp7_png(handler, path: str, *, mutate=False, include_body=True, tool
         handler._check_request_token(request)
         if not include_body:
             handler.send_json(HTTPStatus.METHOD_NOT_ALLOWED, {"ok": False, "error": "请使用 GET 查询任务"})
+            return
+        if path == PREFIX + "/choose-directory" and mutate:
+            handler.editor_server.gap_removed_media_source_snapshot(request)
+            project = handler.editor_server.project
+            if project.json_path is None:
+                raise ValueError("请先保存工程文件，再导出图片字幕")
+            binding = (request["bindingGeneration"], request["sourceMediaId"])
+            selected = _choose_export_directory(project.json_path.parent)
+            if selected is None:
+                handler.send_json(HTTPStatus.OK, {"ok": True, "cancelled": True})
+                return
+            if not selected.is_dir():
+                raise ValueError("所选位置不是文件夹")
+            with handler.editor_server.settings_lock:
+                if binding != (handler.editor_server.binding_generation, handler.editor_server.source_media_id):
+                    raise MediaJobUnavailable("工程或媒体绑定已变更，请重新选择文件夹")
+                token = secrets.token_urlsafe(24)
+                handler.editor_server.fcp7_export_directory = (token, binding, selected)
+            handler.send_json(HTTPStatus.OK, {"ok": True, "directoryToken": token, "directory": str(selected)})
             return
         if path == PREFIX and mutate:
             snapshot = handler.editor_server.gap_removed_media_source_snapshot(request)
@@ -96,8 +143,18 @@ def handle_fcp7_png(handler, path: str, *, mutate=False, include_body=True, tool
             tools = tools_factory()
             if tools.ffmpeg is None or not handler.editor_server.ensure_libass_supported(tools.ffmpeg):
                 raise ValueError("图片字幕导出需要带 libass 的 FFmpeg")
-            package = project.json_path.parent / f"{project.json_path.stem}_{plan['imageFormat']}_subtitles_{secrets.token_hex(4)}"
             binding = (request["bindingGeneration"], request["sourceMediaId"])
+            directory_token = request.get("directoryToken")
+            directory = project.json_path.parent
+            if directory_token:
+                with handler.editor_server.settings_lock:
+                    selection = getattr(handler.editor_server, "fcp7_export_directory", None)
+                    if not selection or selection[0] != directory_token or selection[1] != binding:
+                        raise ValueError("导出文件夹选择已失效，请重新选择")
+                    directory = selection[2]
+                if not directory.is_dir():
+                    raise ValueError("所选导出文件夹不存在，请重新选择")
+            package = directory / f"{project.json_path.stem}_{plan['imageFormat']}_subtitles_{secrets.token_hex(4)}"
             def render(job):
                 job.fcp7_png = True
                 manifest = render_png_assets(job, plan, tools.ffmpeg, package)

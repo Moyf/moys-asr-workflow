@@ -11,6 +11,58 @@ export function initMaweDynamicExports() {
 (function initMaweDynamicExports(global) {
   'use strict';
   let fcp7SizeProjectEpoch = null;
+  let fcp7DirectoryToken = null;
+
+  function resetFcp7Directory() {
+    fcp7DirectoryToken = null;
+    document.getElementById('fcp7-export-directory').textContent = MaweProjectSave.translatedEditorText('工程所在文件夹（默认）');
+    document.getElementById('fcp7-export-reset-directory').hidden = true;
+  }
+
+  function updateFcp7RatioWarning() {
+    const original = MaweExportSrt.currentAssVideoResolution();
+    let size;
+    try {
+      size = window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(
+        document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-width'),
+        document.getElementById('fcp7-export-custom-height'), 8192, 1);
+    } catch { /* Invalid inputs are reported when exporting. */ }
+    document.getElementById('fcp7-export-ratio-warning').hidden = !original || !size
+      || Math.abs(size.width * original.height / (size.height * original.width) - 1) < 0.001;
+  }
+
+  async function chooseFcp7Directory() {
+    const button = document.getElementById('fcp7-export-choose-directory');
+    const config = MaweBoot.SERVER_CONFIG;
+    const epoch = MaweProjectLoad.projectBindingEpoch;
+    if (!config?.fcp7PngJobsUrl) {
+      MaweHint.flashHint(MaweProjectSave.translatedEditorText('请从本地编辑器服务导出图片字幕'), 'warning');
+      return;
+    }
+    button.disabled = true;
+    MaweDom.fcp7ExportConfirm.disabled = true;
+    MaweDom.fcp7ExportCancel.disabled = true;
+    MaweDom.fcp7ExportModal.dataset.busy = 'true';
+    try {
+      const response = await fetch(`${config.fcp7PngJobsUrl}/choose-directory`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestToken: config.requestToken, bindingGeneration: config.bindingGeneration, sourceMediaId: config.sourceMediaId }),
+      });
+      const result = await response.json();
+      if (!response.ok || result.ok === false) throw new Error(result.error || '无法选择文件夹');
+      if (result.cancelled || MaweBoot.SERVER_CONFIG !== config || MaweProjectLoad.projectBindingEpoch !== epoch) return;
+      fcp7DirectoryToken = result.directoryToken;
+      document.getElementById('fcp7-export-directory').textContent = result.directory;
+      document.getElementById('fcp7-export-reset-directory').hidden = false;
+    } catch (error) {
+      MaweHint.flashHint(`${MaweProjectSave.translatedEditorText('无法选择文件夹')}：${error.message}`, 'warning');
+    } finally {
+      button.disabled = false;
+      MaweDom.fcp7ExportConfirm.disabled = false;
+      MaweDom.fcp7ExportCancel.disabled = false;
+      delete MaweDom.fcp7ExportModal.dataset.busy;
+    }
+  }
 
 
 
@@ -41,6 +93,7 @@ export function initMaweDynamicExports() {
   const projectEpoch = MaweProjectLoad.projectBindingEpoch;
   if (projectEpoch !== fcp7SizeProjectEpoch) {
     fcp7SizeProjectEpoch = projectEpoch;
+    resetFcp7Directory();
     document.getElementById('fcp7-export-resolution').value = '1920x1080';
     document.getElementById('fcp7-export-custom-width').value = '1920';
     document.getElementById('fcp7-export-custom-height').value = '1080';
@@ -49,6 +102,7 @@ export function initMaweDynamicExports() {
       document.getElementById('fcp7-export-custom-width'), document.getElementById('fcp7-export-custom-height'));
   }
   updateFcp7Mode();
+  updateFcp7RatioWarning();
   MaweDom.fcp7ExportModal.classList.add('show');
   MaweDom.fcp7ExportTimelineMode.focus();
 }
@@ -89,7 +143,7 @@ export function initMaweDynamicExports() {
         }
         const stop = document.getElementById('fcp7-export-stop');
         const controller = new AbortController();
-        const controls = [...MaweDom.fcp7ExportModal.querySelectorAll('input, select')]
+        const controls = [...MaweDom.fcp7ExportModal.querySelectorAll('input, select, #fcp7-export-choose-directory, #fcp7-export-reset-directory')]
           .map(element => ({ element, disabled: element.disabled }));
         controls.forEach(({ element }) => { element.disabled = true; });
         const showStatus = (text, fraction) => {
@@ -109,7 +163,7 @@ export function initMaweDynamicExports() {
           const layers = { main: [0], main_and_extension: [0, 1], extension: [1], overlay: [2], all: [0, 1, 2] }[options.subtitleTracks];
           const result = await runFcp7PngExport({ plan, ass, layers,
             includeMedia: document.querySelector('input[name="fcp7-export-scope"]:checked').value === 'media',
-            imageFormat, size,
+            imageFormat, size, directoryToken: fcp7DirectoryToken,
             config: MaweBoot.SERVER_CONFIG, signal: controller.signal,
             onProgress: showStatus });
           showStatus('');
@@ -135,7 +189,7 @@ export function initMaweDynamicExports() {
             document.createTextNode(MaweProjectSave.translatedEditorText('点击打开导出文件夹：')), folder);
           if (result.fontNotices?.length) status.append(document.createTextNode('\n' + result.fontNotices
             .map(message => MaweProjectSave.translatedEditorText(message)).join('\n')));
-          MaweHint.flashHint(MaweProjectSave.translatedEditorText('图片字幕 XML 已保存到工程旁的独立目录'), 'success');
+          MaweHint.flashHint(MaweProjectSave.translatedEditorText('图片字幕 XML 已保存'), 'success');
         } catch (error) {
           showStatus(error?.name === 'AbortError' ? '图片字幕导出已停止' : `图片字幕导出失败：${error.message}`);
           if (error?.name === 'AbortError') return;
@@ -180,8 +234,8 @@ export function initMaweDynamicExports() {
     document.getElementById('fcp7-export-native-hint').hidden = image;
     MaweDom.fcp7ExportConfirm.textContent = MaweProjectSave.translatedEditorText(image ? '导出 XML + 图片' : '导出 XML');
     document.getElementById('fcp7-export-format-hint').textContent = MaweProjectSave.translatedEditorText(format === 'webp'
-      ? '动态部分输出序列帧，静止部分保持单张无损 WebP；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，目标软件需支持 WebP，图片模式不包含贴图。'
-      : '动态部分输出序列帧，静止部分保持单张 PNG 图片；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，图片模式不包含贴图。');
+      ? '动态部分输出序列帧，静止部分保持单张无损 WebP；字幕与 XML 保存在所选位置的新目录。源媒体使用引用，目标软件需支持 WebP，图片模式不包含贴图。'
+      : '动态部分输出序列帧，静止部分保持单张 PNG 图片；字幕与 XML 保存在所选位置的新目录。源媒体使用引用，图片模式不包含贴图。');
     MaweDom.fcp7ExportNativeText.closest('label').style.display = image ? 'none' : '';
     document.getElementById('fcp7-export-description').textContent = MaweProjectSave.translatedEditorText(
       '导出 FCP 7 XML 工程文件，供 Premiere、Vegas 等剪辑软件使用。');
@@ -191,7 +245,12 @@ export function initMaweDynamicExports() {
   document.getElementById('fcp7-export-format').addEventListener('change', updateFcp7Mode);
   document.getElementById('fcp7-export-resolution').addEventListener('change', event => {
     document.getElementById('fcp7-export-custom-size').hidden = event.target.value !== 'custom';
+    updateFcp7RatioWarning();
   });
+  document.getElementById('fcp7-export-custom-width').addEventListener('input', updateFcp7RatioWarning);
+  document.getElementById('fcp7-export-custom-height').addEventListener('input', updateFcp7RatioWarning);
+  document.getElementById('fcp7-export-choose-directory').addEventListener('click', chooseFcp7Directory);
+  document.getElementById('fcp7-export-reset-directory').addEventListener('click', resetFcp7Directory);
 
 
 

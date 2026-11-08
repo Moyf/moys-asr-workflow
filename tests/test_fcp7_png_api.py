@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 import tempfile
@@ -58,6 +57,45 @@ class PngJobHttpTests(unittest.TestCase):
         for value in (None, 'jpeg', [], {}):
             self.assertEqual(self.request(self.base, self.png_request(imageFormat=value))[0], 400)
         self.assertIsNone(self.server.media_jobs.active)
+
+    def test_selected_directory_contains_xml_and_images_and_is_bound_to_project(self):
+        target = self.root / 'chosen directory'
+        target.mkdir()
+        with mock.patch.object(fcp7_png_api, '_choose_export_directory', return_value=target) as chooser:
+            status, selected = self.request(self.base + '/choose-directory', self.payload())
+        self.assertEqual(status, 200, selected)
+        self.assertEqual(selected['directory'], str(target))
+        chooser.assert_called_once_with(self.server.project.json_path.parent)
+        token = selected['directoryToken']
+        with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=mock.Mock(ffmpeg=Path('ffmpeg'))), \
+             mock.patch.object(self.server, 'ensure_libass_supported', return_value=True), \
+             mock.patch.object(fcp7_png_api, 'render_png_assets', side_effect=self.fake_render):
+            self.assertEqual(self.request(self.base, self.png_request(directoryToken='untrusted'))[0], 400)
+            status, result = self.request(self.base, self.png_request(directoryToken=token))
+            self.assertEqual(status, 202, result)
+            manifest = self.wait(result['jobId'], 'ready')['manifest']
+        package = Path(manifest['packagePath'])
+        self.assertEqual(package.parent, target)
+        status, result = self.request(self.base + '/' + result['jobId'] + '/publish', self.payload(xml=self.xml(manifest)))
+        self.assertEqual(status, 200, result)
+        self.assertTrue((package / 'images' / 'one.png').is_file())
+        self.assertTrue((package / 'subtitles.xml').is_file())
+        self.assertIn(Path(manifest['tracks'][0]['clips'][0]['path']).as_uri(), (package / 'subtitles.xml').read_text('utf-8'))
+        with self.server.settings_lock:
+            self.server.binding_generation += 1
+        with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=mock.Mock(ffmpeg=Path('ffmpeg'))), \
+             mock.patch.object(self.server, 'ensure_libass_supported', return_value=True):
+            self.assertEqual(self.request(self.base, self.png_request(directoryToken=token,
+                bindingGeneration=self.server.binding_generation))[0], 400)
+
+    def test_directory_picker_cancel_preserves_existing_choice(self):
+        with mock.patch.object(fcp7_png_api, '_choose_export_directory', return_value=self.root):
+            _, first = self.request(self.base + '/choose-directory', self.payload())
+        with mock.patch.object(fcp7_png_api, '_choose_export_directory', return_value=None):
+            status, cancelled = self.request(self.base + '/choose-directory', self.payload())
+        self.assertEqual(status, 200)
+        self.assertTrue(cancelled['cancelled'])
+        self.assertEqual(self.server.fcp7_export_directory[0], first['directoryToken'])
 
     @unittest.skipUnless(shutil.which('ffmpeg'), 'real FFmpeg unavailable')
     def test_render_publish_and_repeated_export_preserve_prior_package(self):
