@@ -59,7 +59,7 @@ class PngJobHttpTests(unittest.TestCase):
         self.assertIsNone(self.server.media_jobs.active)
 
     def test_selected_directory_contains_xml_and_images_and_is_bound_to_project(self):
-        target = self.root / 'chosen directory'
+        target = self.root / '选择 文件夹 & 50%'
         target.mkdir()
         with mock.patch.object(fcp7_png_api, '_choose_export_directory', return_value=target) as chooser:
             status, selected = self.request(self.base + '/choose-directory', self.payload())
