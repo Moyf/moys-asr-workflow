@@ -726,6 +726,7 @@
     '烧录视频已保存': 'The burned video was saved',
     '重组后烧录视频已保存': 'The reconstructed burn video was saved',
     '烧录视频导出失败': 'Burned video export failed',
+    '与本地服务的连接中断，请重试': 'The connection to the local server was interrupted. Please try again',
     'FFmpeg 将重新编码源视频并烧录当前 ASS 字幕；长视频可能需要较长时间。': 'FFmpeg re-encodes the source video and burns the current ASS subtitles; long videos may take a while.',
     '按保留区域重新编码并烧录当前 ASS 字幕；切点帧级精确。': 'Re-encodes kept intervals and burns the current ASS subtitles; cuts are frame-accurate.',
     '视频烧录需要可用的 FFmpeg 和 FFprobe': 'Video burn requires a working FFmpeg and FFprobe',
