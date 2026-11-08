@@ -1258,7 +1258,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('>Resolve JSON</div>', page)
         self.assertNotIn('>下载表情包 OTIO', page)
         self.assertNotIn('>下载 Resolve JSON</div>', page)
-        self.assertIn('<option value="gap_removed" selected>去空隙时间线</option>', page)
+        self.assertIn('id="fcp7-export-timeline-mode" name="fcp7-export-timeline-mode" value="gap_removed" checked', page)
         self.assertIn('id="fcp7-export-modal"', page)
         self.assertIn('id="fcp7-export-fps"', page)
         self.assertIn('id="fcp7-export-subtitle-tracks"', page)
