@@ -116,8 +116,8 @@ export function initMaweWaveformInit() {
       }
       const time = MaweSplitCore.splitTimeForTextOffset(segment, offset);
       const opened = track === 'extension'
-        ? MaweSplitCore.openExtensionSplitModal(index, time, MaweMultiSubtitleCore.getActiveExtensionTrack(), { extensionOffset: offset })
-        : window.MaweOverlaySplitMerge.openOverlaySplitModal(index, time, { extensionOffset: offset });
+        ? MaweSplitCore.openExtensionSplitModal(index, time, MaweMultiSubtitleCore.getActiveExtensionTrack(), { extensionOffset: offset, timeSource: 'text' })
+        : window.MaweOverlaySplitMerge.openOverlaySplitModal(index, time, { extensionOffset: offset, timeSource: 'text' });
       if (opened && MaweSplitCore.pendingLinkedSplit) MaweSplitCore.pendingLinkedSplit.onQuickEditSplitComplete = reopen;
       return opened;
     },

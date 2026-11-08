@@ -4,8 +4,8 @@
 // 2. Esc 关闭气泡并保留修改（与当前字幕面板默认一致）；
 // 3. 跨行字幕按鼠标双击的位置在对应行的片段上方弹出。
 import { expect, test } from '@playwright/test';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import {
   cleanupTempDir,
   DURATION_MS,
@@ -96,8 +96,14 @@ test('Ctrl+Enter 拆分设置、边界拒绝与快捷编辑帮助', async ({ pag
   await input.press('Control+Enter');
   await expect(input).toBeFocused();
   await expect(input).toHaveValue('第一句原文');
+  const gap = await input.evaluate(el => el.getBoundingClientRect().top - el.previousElementSibling.getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  const shotDir = resolve('.artifacts/pr354-review');
+  mkdirSync(shotDir, { recursive: true });
+  await page.screenshot({ path: join(shotDir, 'quick-edit.png') });
   await popup.locator('.waveform-cue-quick-edit-help').click();
   await expect(page.locator('#help-tab-panel-quick-edit')).toBeVisible();
+  await page.screenshot({ path: join(shotDir, 'quick-edit-help.png') });
   await expect(page.locator('#help-quick-split-key')).toHaveText('Ctrl+Enter');
   await expect(page.locator('#help-quick-confirm-key')).toHaveText('Enter');
   await page.locator('#help-tab-panel-quick-edit [data-settings-page="split-merge"]').click();
@@ -142,6 +148,55 @@ for (const track of ['extension', 'overlay']) {
     await page.locator('#multi-subtitle-split-confirm').click();
     await expect(input).toHaveValue('丙丁');
     await expect(input).toBeFocused();
+  });
+
+  test(`${track} 快捷编辑调整断点后时间随文字位置更新`, async ({ page }) => {
+    await openEditor(page);
+    await page.evaluate(track => {
+      const cue = { id: 'extra-1', start: 1000, end: 5000, text: '甲乙丙丁戊己庚辛壬癸天地玄黄宇宙' };
+      MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+        tracks: [{ id: 'ext-1', role: 'extension', split_mode: 'continuous', segments: [{ ...cue }] }], bindings: [] };
+      MaweBoot.DATA.overlay_track = { enabled: true, segments: [{ ...cue }] };
+      MaweCuePanel.renderAll({ waveform: 'full' });
+      MaweCoreState.waveformEditor.openCueQuickEditAtIndex(track, 0);
+    }, track);
+    const input = page.locator('.waveform-cue-quick-edit textarea');
+    await input.evaluate(el => el.setSelectionRange(2, 2));
+    await input.press('Enter');
+    await expect(page.locator('#multi-subtitle-split-modal')).toBeVisible();
+    for (let i = 0; i < 10; i += 1) await page.keyboard.press('ArrowRight');
+    await expect.poll(() => page.evaluate(() => ({
+      offset: MaweSplitCore.pendingLinkedSplit.offset,
+      cut: MaweSplitCore.pendingLinkedSplit.extensionCutMs,
+    }))).toEqual({ offset: 12, cut: 4000 });
+    await page.locator('#multi-subtitle-split-confirm').click();
+    await expect.poll(() => page.evaluate(track => {
+      const segments = track === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack().segments
+        : MaweBoot.DATA.overlay_track.segments;
+      return segments.map(({ start, end, text }) => ({ start, end, text }));
+    }, track)).toEqual([
+      { start: 1000, end: 4000, text: '甲乙丙丁戊己庚辛壬癸天地' },
+      { start: 4000, end: 5000, text: '玄黄宇宙' },
+    ]);
+  });
+
+  test(`${track} 波形时间入口调整文字断点仍固定时间`, async ({ page }) => {
+    await openEditor(page);
+    await page.evaluate(track => {
+      const cue = { id: 'extra-1', start: 1000, end: 5000, text: '甲乙丙丁戊己庚辛壬癸天地玄黄宇宙' };
+      MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+        tracks: [{ id: 'ext-1', role: 'extension', split_mode: 'continuous', segments: [{ ...cue }] }], bindings: [] };
+      MaweBoot.DATA.overlay_track = { enabled: true, segments: [{ ...cue }] };
+      MaweCuePanel.renderAll({ waveform: 'full' });
+      if (track === 'extension') MaweSplitCore.openExtensionSplitModal(0, 1500, MaweMultiSubtitleCore.getActiveExtensionTrack());
+      else MaweOverlaySplitMerge.openOverlaySplitModal(0, 1500);
+    }, track);
+    await expect(page.locator('#multi-subtitle-split-modal')).toBeVisible();
+    for (let i = 0; i < 10; i += 1) await page.keyboard.press('ArrowRight');
+    await expect.poll(() => page.evaluate(() => ({
+      offset: MaweSplitCore.pendingLinkedSplit.offset,
+      cut: MaweSplitCore.pendingLinkedSplit.extensionCutMs,
+    }))).toEqual({ offset: 12, cut: 1500 });
   });
 }
 

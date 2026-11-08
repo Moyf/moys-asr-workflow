@@ -913,7 +913,10 @@
   const initialTime = Number.isFinite(initial.timeMs)
     ? initial.timeMs
     : splitTimeForTextOffset(extension, initial.extensionOffset ?? Math.floor(String(extension.text || '').length / 2));
-  const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
+  // 从文字气泡进入时，timeMs 只用于定位视觉反馈；移动文字断点应重新估算时间。
+  // 波形指针进入仍固定绝对时间，不随字幕文字断点调整。
+  const fixedCutMs = initial.timeSource === 'text'
+    ? null : Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
   const initialOffset = hasInitialTextPosition
     ? window.MaweOverlaySplitMerge.splitOffsetNearTextPositionForModal(extension.text, initial.extensionOffset, extensionMode)
     : MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
