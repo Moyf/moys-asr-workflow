@@ -169,6 +169,7 @@ for (const format of ['png', 'webp']) test(`real ${format} job publishes subtitl
   }
   expect(manifest.tracks.flatMap(t => t.clips).some(c => c.endFrame - c.startFrame > 1)).toBeTruthy();
   const xml = readFileSync(result.xmlPath, 'utf8');
+  expect(xml).toContain('<width>320</width><height>180</height>');
   expect(xml).toContain('<stillframe>TRUE</stillframe>');
   expect(xml).not.toContain('source.wav');
   expect(xml).not.toContain('GraphicAndType');

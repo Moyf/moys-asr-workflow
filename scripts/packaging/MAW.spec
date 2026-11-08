@@ -137,6 +137,7 @@ datas = [
     (str(ROOT / "maw" / "project_io.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "ffmpeg.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "media_jobs.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "local_log.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "media_export_audio.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "text_processing_presets.py"), "local-runtime/maw"),

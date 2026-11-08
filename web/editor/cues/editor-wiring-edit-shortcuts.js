@@ -328,8 +328,10 @@ document.addEventListener('keydown', (e) => {
   if (color) MaweStickerPicker.assignColor(idxs, color.name);
 });
 
-// Enter：聚焦最后点击的主/副字幕对应的字幕编辑区，并把光标置于末尾。
-// 绑定字幕同时选中时仍以最后点击的一侧为准；内联编辑态、已聚焦编辑区或模态打开时不触发。
+// Enter：弹出最后点击的主/副/叠加字幕的快速编辑气泡（光标置于句尾）。
+// 绑定字幕同时选中时仍以最后点击的一侧为准；内联编辑态、已聚焦编辑区或模态打开时不触发；
+// 气泡无法锚定（字幕块未渲染等）时回退聚焦字幕面板文本框。字词时间码模式下主字幕同样放行：
+// 气泡提交与面板编辑一样走字词文本同步。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter') return;
   if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState) return;  // 内联编辑态的 Enter 交给 split/commit 处理
@@ -348,7 +350,8 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
-  if (!MaweCuePanel.getCurrentCuePanelTarget()) {
+  const panelTarget = MaweCuePanel.getCurrentCuePanelTarget();
+  if (!panelTarget) {
     e.preventDefault();
     e.stopPropagation();
     MaweShortcuts.showShortcutBlocked('请先选中字幕');
@@ -356,7 +359,19 @@ document.addEventListener('keydown', (e) => {
   }
   e.preventDefault();
   e.stopPropagation();
-  MaweCuePanel.focusCuePanelText();
+  // 选中后按 Enter：与双击波形字幕块一致，弹出快速编辑气泡（光标句尾）；
+  // 气泡无法锚定（字幕块被虚拟化等）时回退聚焦字幕面板文本框。
+  const editor = MaweCoreState.waveformEditor;
+  if (editor?.openCueQuickEditAtIndex) {
+    editor.openCueQuickEditAtIndex(
+      panelTarget?.kind === 'extension' ? 'extension'
+        : panelTarget?.kind === 'overlay' ? 'overlay' : 'main',
+      panelTarget?.index,
+      () => MaweCuePanel.focusCuePanelText(),
+    );
+  } else {
+    MaweCuePanel.focusCuePanelText();
+  }
 });
 
 // C：合并连续选中的字幕块。少于两条时只提示，不改动工程。
@@ -526,7 +541,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // N：仅在鼠标位于波形行时，从指针音频位置创建字幕；创建后单选新字幕，
-// 切换当前字幕面板并聚焦面板文本框。
+// 切换当前字幕面板，并在新字幕块上方弹出快速编辑气泡。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'n' && e.key !== 'N') return;
   if (MaweInlineEdit.editingState || e.repeat || MaweKeyboardTargets.isTextEditingTarget(e)) return;
