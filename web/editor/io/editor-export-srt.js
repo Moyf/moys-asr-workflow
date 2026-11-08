@@ -305,7 +305,7 @@ export function initMaweExportSrt() {
 
 
 
-  function buildAss({ preview = false, onAssPlan = null, allowAssPlanDiagnostics = false,
+  function buildAss({ preview = false, onAssPlan = null, allowAssPlanDiagnostics = false, pngEventNames = false,
     alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
   const speakerOptions = MaweSpeakerLabels.speakerLabelExportOptions();
   if (preview) {
@@ -323,6 +323,7 @@ export function initMaweExportSrt() {
   return window.AsrEditorUtils.buildAssPayload(preview && !MaweDom.overlayToggle.checked
     ? [] : cleanupMainSegments(), {
     ...assExportOptions(),
+    pngEventNames,
     onAssPlan,
     allowAssPlanDiagnostics,
     // Export-only lead-in extension must not make a cue appear before its
@@ -396,7 +397,7 @@ export function initMaweExportSrt() {
 
 
 
-  function buildGapRemovedAss({ onAssPlan = null,
+  function buildGapRemovedAss({ onAssPlan = null, pngEventNames = false,
     alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
@@ -416,6 +417,7 @@ export function initMaweExportSrt() {
   const extensionSegments = activeExtensionSegments();
   return window.AsrEditorUtils.buildAssPayload(mainSegments, {
     ...assExportOptions(),
+    pngEventNames,
     alignFirstStart,
     firstEnabledIndex,
     overlaySegments: filterSegmentsInsideRemovedGaps(overlaySegments, removed),

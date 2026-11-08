@@ -1,4 +1,5 @@
 import { overlayTrackVisible } from '../cues/overlay-track.js';
+import { runFcp7PngExport } from './editor-fcp7-png.js';
 
 export function initMaweDynamicExports() {
 'use strict';
@@ -13,6 +14,7 @@ export function initMaweDynamicExports() {
 
 
   function closeFcp7ExportModal() {
+    if (MaweDom.fcp7ExportModal.dataset.busy) return;
     MaweDom.fcp7ExportModal.classList.remove('show');
   }
 
@@ -37,7 +39,7 @@ export function initMaweDynamicExports() {
     MaweDom.fcp7ExportSubtitleTracks.value = 'main';
   }
   MaweDom.fcp7ExportNativeText.checked = true;
-  MaweDom.fcp7ExportSubtitleTracks.disabled = !MaweDom.fcp7ExportNativeText.checked;
+  updateFcp7Mode();
   MaweDom.fcp7ExportModal.classList.add('show');
   MaweDom.fcp7ExportTimelineMode.focus();
 }
@@ -64,6 +66,46 @@ export function initMaweDynamicExports() {
         assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
         durationMs: Math.round(durationMs),
       });
+      if (document.getElementById('fcp7-export-format').value === 'png') {
+        const status = document.getElementById('fcp7-export-status');
+        const stop = document.getElementById('fcp7-export-stop');
+        const controller = new AbortController();
+        const controls = [...MaweDom.fcp7ExportModal.querySelectorAll('input, select')]
+          .map(element => ({ element, disabled: element.disabled }));
+        controls.forEach(({ element }) => { element.disabled = true; });
+        const showStatus = text => { status.textContent = MaweProjectSave.translatedEditorText(text); };
+        const stopExport = () => { controller.abort(); showStatus('正在停止图片字幕导出…'); };
+        stop.hidden = false;
+        stop.addEventListener('click', stopExport);
+        MaweDom.fcp7ExportCancel.disabled = true;
+        MaweDom.fcp7ExportModal.dataset.busy = 'true';
+        try {
+          const assOptions = { alignFirstStart: false, pngEventNames: true };
+          const ass = options.timelineMode === 'gap_removed' && MaweGapRemoveData.getRemovedGapRanges().length
+            ? MaweExportSrt.buildGapRemovedAss(assOptions) : MaweExportSrt.buildAss(assOptions);
+          const layers = { main: [0], main_and_extension: [0, 1], extension: [1], overlay: [2], all: [0, 1, 2] }[options.subtitleTracks];
+          const result = await runFcp7PngExport({ plan, ass, layers,
+            includeMedia: document.getElementById('fcp7-export-scope').value === 'media',
+            config: MaweBoot.SERVER_CONFIG, signal: controller.signal,
+            onProgress: showStatus });
+          showStatus(`已保存 ${result.imageCount} 张图片与 XML：${result.xmlPath}`);
+          if (result.vegasXmlPath) status.textContent += '\n' + MaweProjectSave.translatedEditorText('VEGAS 兼容 XML：') + result.vegasXmlPath;
+          if (result.fontNotices?.length) status.textContent += '\n' + result.fontNotices
+            .map(message => MaweProjectSave.translatedEditorText(message)).join('\n');
+          MaweHint.flashHint(MaweProjectSave.translatedEditorText('图片字幕 XML 已保存到工程旁的独立目录'), 'success');
+        } catch (error) {
+          showStatus(error?.name === 'AbortError' ? '图片字幕导出已停止' : `图片字幕导出失败：${error.message}`);
+          if (error?.name === 'AbortError') return;
+          throw error;
+        } finally {
+          stop.hidden = true;
+          stop.removeEventListener('click', stopExport);
+          MaweDom.fcp7ExportCancel.disabled = false;
+          controls.forEach(({ element, disabled }) => { element.disabled = disabled; });
+          delete MaweDom.fcp7ExportModal.dataset.busy;
+        }
+        return;
+      }
       const [artifact] = window.AsrEditorUtils.buildFcp7ExportArtifacts(plan, options);
       closeFcp7ExportModal();
       const result = await MaweExportTimeline.downloadFile(
@@ -87,6 +129,20 @@ export function initMaweDynamicExports() {
       MaweDom.fcp7ExportConfirm.disabled = false;
     }
   }
+
+  function updateFcp7Mode() {
+    const png = document.getElementById('fcp7-export-format').value === 'png';
+    document.getElementById('fcp7-export-png-options').hidden = !png;
+    document.getElementById('fcp7-export-native-hint').hidden = png;
+    document.getElementById('fcp7-export-title').textContent = MaweProjectSave.translatedEditorText(png ? 'PNG 字幕 · FCP 7 XML' : 'Premiere FCP 7 XML');
+    MaweDom.fcp7ExportNativeText.closest('label').style.display = png ? 'none' : '';
+    document.getElementById('fcp7-export-description').textContent = MaweProjectSave.translatedEditorText(png
+      ? '将 ASS 字幕渲染为透明图片，连同多轨 XML 导出到工程旁的独立目录。'
+      : '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。');
+    MaweDom.fcp7ExportSubtitleTracks.disabled = !png && !MaweDom.fcp7ExportNativeText.checked;
+  }
+
+  document.getElementById('fcp7-export-format').addEventListener('change', updateFcp7Mode);
 
 
 

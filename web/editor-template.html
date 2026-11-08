@@ -2352,7 +2352,20 @@ __WAVEFORM_CSS__
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fcp7-export-title" aria-describedby="fcp7-export-description">
     <h3 id="fcp7-export-title">Premiere FCP 7 XML</h3>
     <p class="modal-desc" id="fcp7-export-description">导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。</p>
-    <label for="fcp7-export-timeline-mode">导出时间线模式</label>
+    <label for="fcp7-export-format">字幕形式</label>
+    <select id="fcp7-export-format">
+      <option value="native">Premiere 原生文字</option>
+      <option value="png">透明 PNG 字幕（VEGAS / FCP 7 XML）</option>
+    </select>
+    <div id="fcp7-export-png-options" hidden style="margin-top: 12px">
+      <label for="fcp7-export-scope">输出范围</label>
+      <select id="fcp7-export-scope">
+        <option value="subtitles">仅字幕</option>
+        <option value="media">字幕与源媒体</option>
+      </select>
+      <p class="modal-hint" style="margin-top: 8px">动态部分输出序列帧，静止部分保持单张图片；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，图片模式不包含贴图。</p>
+    </div>
+    <label for="fcp7-export-timeline-mode" style="margin-top: 12px">导出时间线模式</label>
     <select id="fcp7-export-timeline-mode">
       <option value="gap_removed" selected>去空隙时间线</option>
       <option value="source">原始时间线</option>
@@ -2377,11 +2390,13 @@ __WAVEFORM_CSS__
       <option value="overlay">叠加轨字幕</option>
       <option value="all">全部字幕轨（各占一轨）</option>
     </select>
-    <p class="modal-hint">原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。</p>
+    <p id="fcp7-export-native-hint" class="modal-hint">原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。</p>
     <div class="actions">
+      <button type="button" id="fcp7-export-stop" hidden>停止导出</button>
       <button type="button" id="fcp7-export-cancel">取消</button>
       <button type="button" id="fcp7-export-confirm" class="primary">导出 XML</button>
     </div>
+    <p id="fcp7-export-status" role="status" style="margin-top: 12px; overflow-wrap: anywhere; white-space: pre-line"></p>
   </div>
 </div>
 

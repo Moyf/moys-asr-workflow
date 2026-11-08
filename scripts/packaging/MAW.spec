@@ -214,6 +214,7 @@ opencc_hiddenimports = collect_submodules("opencc")
 
 # OCR dependencies and model files stay outside the frozen bundle. The bundled
 # worker only bootstraps the optional runtime when the user installs it.
+# Pillow is shared with the editor's PNG subtitle export and must stay bundled.
 
 excluded_local_modules = [
     "accelerate",
@@ -223,7 +224,6 @@ excluded_local_modules = [
     "modelscope",
     "qwen_asr",
     "onnxruntime",
-    "PIL",
     "rapidocr",
     "torch",
     "torchaudio",
