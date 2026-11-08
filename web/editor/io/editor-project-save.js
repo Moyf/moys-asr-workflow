@@ -219,6 +219,9 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
     MaweCuePanel.commitCuePanelEdit();
+    // 波形快速编辑气泡的待提交文字先落盘提交（幂等）；原生保存路径的
+    // 同样处理在 writeBlob 回调里的 flushInlineEditsForSave。
+    MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
     const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
     if (!MaweHost.files.hasSavePicker()) {

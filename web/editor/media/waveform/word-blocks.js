@@ -250,16 +250,17 @@ export function createWordBlocks(dependencies) {
       this.focusWaveform();
       // 双击字词块 → 字词快速编辑气泡。字词条带在选中刷新时会重建替换
       // 元素（原生 dblclick 的两次 click 目标不一致，不会触发），因此按
-      // pointerdown 序列自行识别双击（400ms 内两次按下同一字词）。光标
-      // 映射用第一次按下的坐标对当前标签测量，与字幕块行为一致；当前块
-      // 找不到时回退 openWordQuickEditAtIndex（合成锚点 + rAF 重试）。
+      // pointerdown 序列自行识别双击（500ms 内两次按下同一字词，与系统
+      // 双击阈值一致）。光标映射用第一次按下的坐标对当前标签测量，与
+      // 字幕块行为一致；当前块找不到时回退 openWordQuickEditAtIndex
+      //（合成锚点 + rAF 重试）。
       const now = Date.now();
       const lastWordClick = this._wordQuickEditClick;
       this._wordQuickEditClick = {
         index, itemIndex, time: now, clientX: event.clientX, clientY: event.clientY,
       };
       if (lastWordClick && lastWordClick.index === index && lastWordClick.itemIndex === itemIndex
-          && now - lastWordClick.time <= 400) {
+          && now - lastWordClick.time <= 500) {
         this._wordQuickEditClick = null;
         const block = this.firstVisibleWordBlock(index, itemIndex);
         if (block) {

@@ -55,9 +55,8 @@ export function createWaveformModule(dependencies) {
   // 纯函数：把折叠文本里的字符偏移映射回原文偏移。
   // 字幕块标签文本由 original.replace(/\s+/g, ' ') 生成：原文的每个空白
   // run（换行、连续空格）折叠成一个空格。点击落在折叠空格上时映射到
-  // run 之后（即 textarea 里下一个可见字的开头）；字符意外不一致时返回
-  // 已推进到的位置，由调用方兜底。字词标签不折叠空白，两者相同，
-  // 调用方先走恒等捷径。
+  // run 之前（即上一行行尾）；字符意外不一致时返回已推进到的位置，
+  // 由调用方兜底。字词标签不折叠空白，两者相同，调用方先走恒等捷径。
   function cueQuickEditOriginalOffset(originalText, collapsedText, collapsedOffset) {
     const original = String(originalText ?? '');
     const collapsed = String(collapsedText ?? '');
@@ -189,6 +188,8 @@ export function createWaveformModule(dependencies) {
         this.closeCueQuickEdit();
       };
       this._cueQuickEditKey = (keyEvent) => {
+        // 与气泡内快捷键一致：输入法组词期间的 Esc 是取消组词，不关气泡。
+        if (keyEvent.isComposing || keyEvent.keyCode === 229) return;
         if (keyEvent.key === 'Escape') {
           keyEvent.stopPropagation();
           this.closeCueQuickEdit();
@@ -488,13 +489,18 @@ export function createWaveformModule(dependencies) {
       const popup = state.element;
       // 可视视口换算到内容坐标系：气泡是 content 的子元素、随内容滚动，
       // 翻转与钳制必须相对可视范围而不是整份内容，否则滚动后贴近视口
-      // 顶部的块会把气泡顶进滚动容器的裁剪区。
+      // 顶部的块会把气泡顶进滚动容器的裁剪区。content 相对滚动容器有
+      // 内部偏移（工具栏等），用实时 rect 差值求可视带在内容坐标系的原点。
+      const contentRect = this.content.getBoundingClientRect();
+      const scrollRect = this.scroll.getBoundingClientRect();
+      const viewLeft = this.scroll.scrollLeft - Math.round(contentRect.left - scrollRect.left);
+      const viewTop = this.scroll.scrollTop - Math.round(contentRect.top - scrollRect.top);
       const layout = cueQuickEditLayout(
         state.anchor,
         popup.offsetWidth || 300,
         popup.offsetHeight || 120,
-        this.scroll.scrollLeft,
-        this.scroll.scrollTop,
+        viewLeft,
+        viewTop,
         this.scroll.clientWidth,
         this.scroll.clientHeight,
       );
