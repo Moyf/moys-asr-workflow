@@ -63,7 +63,138 @@ async function openEditor(page) {
   await page.waitForFunction(() => document.querySelectorAll('.waveform-cue-block[data-track="main"]').length > 0);
 }
 
-test('双击主轨字幕块：气泡在块上方弹出，Enter 提交并支持撤销', async ({ page }) => {
+test('快捷编辑按设置拆分并继续编辑后半句', async ({ page }) => {
+  await openEditor(page);
+  const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
+  await block.dblclick();
+  const input = page.locator('.waveform-cue-quick-edit textarea');
+  await input.fill('甲乙丙丁');
+  await input.evaluate(el => el.setSelectionRange(2, 2));
+  await input.press('Enter');
+  await expect(input).toHaveValue('丙丁');
+  await expect(input).toBeFocused();
+  await expect.poll(() => page.evaluate(() => window.MaweBoot.DATA.segments.slice(0, 2).map(s => s.text)))
+    .toEqual(['甲乙', '丙丁']);
+  await input.fill('后半句');
+  await input.press('Control+Enter');
+  await expect(page.locator('.waveform-cue-quick-edit')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.MaweBoot.DATA.segments[1].text)).toBe('后半句');
+});
+
+test('Ctrl+Enter 拆分设置、边界拒绝与快捷编辑帮助', async ({ page }) => {
+  await openEditor(page);
+  await page.evaluate(() => {
+    const select = document.getElementById('split-key');
+    select.value = 'ctrl-enter';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
+  await block.dblclick();
+  const popup = page.locator('.waveform-cue-quick-edit');
+  const input = popup.locator('textarea');
+  await input.evaluate(el => el.setSelectionRange(0, 0));
+  await input.press('Control+Enter');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('第一句原文');
+  await popup.locator('.waveform-cue-quick-edit-help').click();
+  await expect(page.locator('#help-tab-panel-quick-edit')).toBeVisible();
+  await expect(page.locator('#help-quick-split-key')).toHaveText('Ctrl+Enter');
+  await expect(page.locator('#help-quick-confirm-key')).toHaveText('Enter');
+  await page.locator('#help-tab-panel-quick-edit [data-settings-page="split-merge"]').click();
+  await expect(page.locator('#editor-settings-page-split-merge')).toBeVisible();
+});
+
+test('Ctrl+Enter 拆分时，Enter 保存；拆分后继续编辑后半句', async ({ page }) => {
+  await openEditor(page);
+  await page.evaluate(() => {
+    const select = document.getElementById('split-key');
+    select.value = 'ctrl-enter';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first().dblclick();
+  const input = page.locator('.waveform-cue-quick-edit textarea');
+  await input.fill('甲乙丙丁');
+  await input.evaluate(el => el.setSelectionRange(2, 2));
+  await input.press('Control+Enter');
+  await expect(input).toHaveValue('丙丁');
+  await input.fill('已保存');
+  await input.press('Enter');
+  await expect(page.locator('.waveform-cue-quick-edit')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.MaweBoot.DATA.segments[1].text)).toBe('已保存');
+});
+
+for (const track of ['extension', 'overlay']) {
+  test(`${track} 快捷编辑拆分确认后继续编辑后半句`, async ({ page }) => {
+    await openEditor(page);
+    await page.evaluate(() => {
+      const cue = { id: 'extra-1', start: 1000, end: 5000, text: '甲乙丙丁' };
+      MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+        tracks: [{ id: 'ext-1', role: 'extension', split_mode: 'continuous', segments: [{ ...cue }] }], bindings: [] };
+      MaweBoot.DATA.overlay_track = { enabled: true, segments: [{ ...cue }] };
+      MaweCuePanel.renderAll({ waveform: 'full' });
+    });
+    await page.evaluate(track => window.MaweCoreState.waveformEditor.openCueQuickEditAtIndex(track, 0), track);
+    const input = page.locator('.waveform-cue-quick-edit textarea');
+    await expect(input).toHaveValue('甲乙丙丁');
+    await input.evaluate(el => el.setSelectionRange(2, 2));
+    await input.press('Enter');
+    await expect(page.locator('#multi-subtitle-split-modal')).toBeVisible();
+    await page.locator('#multi-subtitle-split-confirm').click();
+    await expect(input).toHaveValue('丙丁');
+    await expect(input).toBeFocused();
+  });
+}
+
+test('绑定的主副字幕拆分确认后继续编辑主字幕后半句', async ({ page }) => {
+  await openEditor(page);
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].id = 'main-1';
+    MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+      tracks: [{ id: 'ext-1', role: 'extension', split_mode: 'continuous',
+        segments: [{ id: 'ext-cue', start: 1000, end: 5000, text: '甲乙丙丁' }] }],
+      bindings: [{ id: 'pair', track_id: 'ext-1', main_segment_ids: ['main-1'],
+        extension_segment_ids: ['ext-cue'], start_offset_ms: 0, end_offset_ms: 0 }] };
+    MaweCuePanel.renderAll({ waveform: 'full' });
+    MaweCoreState.waveformEditor.openCueQuickEditAtIndex('main', 0);
+  });
+  const input = page.locator('.waveform-cue-quick-edit textarea');
+  await expect(input).toHaveValue('第一句原文');
+  await input.evaluate(el => el.setSelectionRange(2, 2));
+  await input.press('Enter');
+  await expect(page.locator('#multi-subtitle-split-modal')).toBeVisible();
+  await page.locator('#multi-subtitle-split-confirm').click();
+  await expect(input).toHaveValue('句原文');
+  await expect(input).toBeFocused();
+});
+
+test('横向与纵向滚动后按实际视口定位气泡', async ({ page }) => {
+  await openEditor(page);
+  await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first().dblclick();
+  const geometry = await page.evaluate(() => {
+    const editor = MaweCoreState.waveformEditor;
+    editor.content.style.minWidth = '2400px';
+    editor.scroll.style.overflowX = 'auto';
+    editor.scroll.scrollTop = 200;
+    editor.scroll.scrollLeft = 300;
+    const view = editor.scroll.getBoundingClientRect();
+    const content = editor.content.getBoundingClientRect();
+    const state = editor.cueQuickEdit;
+    state.anchor = { pointerX: view.left - content.left + 30,
+      blockTop: view.top - content.top + 12, blockBottom: view.top - content.top + 32 };
+    editor.positionCueQuickEdit();
+    const popup = state.element.getBoundingClientRect();
+    return { left: popup.left - view.left, top: popup.top - view.top,
+      scrollLeft: editor.scroll.scrollLeft, scrollTop: editor.scroll.scrollTop };
+  });
+  expect(geometry.scrollLeft).toBeGreaterThan(0);
+  expect(geometry.scrollTop).toBeGreaterThan(0);
+  expect(geometry.left).toBeGreaterThanOrEqual(3);
+  expect(geometry.left).toBeLessThan(7);
+  expect(geometry.top).toBeGreaterThanOrEqual(39);
+  expect(geometry.top).toBeLessThanOrEqual(41);
+});
+
+test('双击主轨字幕块：气泡在块上方弹出，Ctrl+Enter 提交并支持撤销', async ({ page }) => {
   await openEditor(page);
   const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
   await expect(block).toBeVisible();
@@ -85,7 +216,7 @@ test('双击主轨字幕块：气泡在块上方弹出，Enter 提交并支持�
   expect(Math.abs(popupBox.x + popupBox.width / 2 - (blockBox.x + blockBox.width / 2))).toBeLessThan(8);
 
   await textarea.fill('第一句已改');
-  await textarea.press('Enter');
+  await textarea.press('Control+Enter');
   await expect(popup).toHaveCount(0);
   await expect(page.locator('.waveform-cue-block[data-track="main"][data-idx="0"] .waveform-cue-label'))
     .toHaveText('第一句已改');
@@ -155,7 +286,7 @@ test('编辑光标跟随双击位置：点标签左侧插入句首，点右侧�
   expect(selection.end - selection.start).toBe(0);
   expect(selection.start).toBeLessThanOrEqual(1);
   await textarea.type('左');
-  await textarea.press('Enter');
+  await textarea.press('Control+Enter');
   await expect(page.locator('.waveform-cue-block[data-track="main"][data-idx="0"] .waveform-cue-label'))
     .toHaveText('左第一句原文');
 
@@ -164,12 +295,12 @@ test('编辑光标跟随双击位置：点标签左侧插入句首，点右侧�
   await page.mouse.dblclick(labelBoxAfter.x + labelBoxAfter.width + 30, labelBoxAfter.y + labelBoxAfter.height / 2);
   await expect(popup.locator('textarea')).toBeFocused();
   await popup.locator('textarea').type('右');
-  await popup.locator('textarea').press('Enter');
+  await popup.locator('textarea').press('Control+Enter');
   await expect(page.locator('.waveform-cue-block[data-track="main"][data-idx="0"] .waveform-cue-label'))
     .toHaveText('左第一句原文右');
 });
 
-test('N 键创建空字幕：弹出气泡直接输入，Enter 保存为新字幕文本', async ({ page }) => {
+test('N 键创建空字幕：弹出气泡直接输入，Ctrl+Enter 保存为新字幕文本', async ({ page }) => {
   await openEditor(page);
   // 指针悬停在第二行（10–20s）的空白区，N 从指针位置创建一条空字幕。
   const row = page.locator('.waveform-row[data-start-ms="10000"]');
@@ -185,7 +316,7 @@ test('N 键创建空字幕：弹出气泡直接输入，Enter 保存为新字幕
   await expect(textarea).toHaveValue('');
 
   await textarea.type('N 键新建');
-  await textarea.press('Enter');
+  await textarea.press('Control+Enter');
   await expect(popup).toHaveCount(0);
   // 新字幕插在 25s 之前，成为第 2 条；波形与列表同步显示新文本。
   await expect(page.locator('.waveform-cue-block[data-track="main"][data-idx="1"] .waveform-cue-label'))

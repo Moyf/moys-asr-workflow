@@ -167,6 +167,8 @@ export interface WaveformOptions {
   activateCue?(...args: unknown[]): void;
   showOverlayContextMenu?(...args: unknown[]): void;
   onCueQuickEditText?(track: Track, index: number, text: string): void;
+  getQuickEditEnterAction?(event: KeyboardEvent): string | null;
+  onCueQuickEditSplit?(track: Track, index: number, offset: number, state: QuickEditPopupState): boolean;
   onWordQuickEditText?(segmentIndex: number, itemIndex: number, text: string): void;
   showExtensionContextMenu?(...args: unknown[]): void;
   activateExtensionCue?(...args: unknown[]): void;

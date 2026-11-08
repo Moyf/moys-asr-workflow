@@ -548,11 +548,13 @@ __WAVEFORM_CSS__
       <button type="button" class="editor-settings-nav-tab" id="help-tab-basic" role="tab" aria-selected="true" aria-controls="help-tab-panel-basic" data-help-tab="basic">基础操作</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-shortcuts" role="tab" aria-selected="false" aria-controls="help-tab-panel-shortcuts" data-help-tab="shortcuts" tabindex="-1">快捷操作</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-waveform" role="tab" aria-selected="false" aria-controls="help-tab-panel-waveform" data-help-tab="waveform" tabindex="-1">波形区</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-quick-edit" role="tab" aria-selected="false" aria-controls="help-tab-panel-quick-edit" data-help-tab="quick-edit" tabindex="-1">快捷编辑</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-playback" role="tab" aria-selected="false" aria-controls="help-tab-panel-playback" data-help-tab="playback" tabindex="-1">播放与导航</button>
       <div class="help-nav-group-label" aria-hidden="true">进阶</div>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-fine-tuning" role="tab" aria-selected="false" aria-controls="help-tab-panel-fine-tuning" data-help-tab="fine-tuning" tabindex="-1">微调字幕</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-gap" role="tab" aria-selected="false" aria-controls="help-tab-panel-gap" data-help-tab="gap" tabindex="-1">空隙操作</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-ass" role="tab" aria-selected="false" aria-controls="help-tab-panel-ass" data-help-tab="ass" tabindex="-1">ASS 字幕样式</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-word-timing" role="tab" aria-selected="false" aria-controls="help-tab-panel-word-timing" data-help-tab="word-timing" tabindex="-1">字词时间码</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-multi" role="tab" aria-selected="false" aria-controls="help-tab-panel-multi" data-help-tab="multi" tabindex="-1">双语字幕</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-export" role="tab" aria-selected="false" aria-controls="help-tab-panel-export" data-help-tab="export" tabindex="-1">导出与烧录</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-markers" role="tab" aria-selected="false" aria-controls="help-tab-panel-markers" data-help-tab="markers" tabindex="-1">标记与区段</button>
@@ -637,14 +639,6 @@ __WAVEFORM_CSS__
     <section class="help-group help-tab-panel" id="help-tab-panel-waveform" role="tabpanel" aria-labelledby="help-tab-waveform" data-help-tab-panel="waveform" tabindex="0" hidden>
       <h4 class="help-title">波形区操作</h4>
       <section class="help-subgroup">
-        <h5 class="help-subtitle">字词时间码</h5>
-        <div class="help-category">
-          <span>开启「字词时间码」后，可以查看和调整主字幕的字词时间。Q 快速切换开关。</span>
-          <span>点击选中，Ctrl(Cmd) 多选，Shift 范围选择；拖动移动或调整边界，C 合并同句内连续块，Esc 取消拖动。F 试听选中的字幕或字词。</span>
-          <span>显示字词时间码时，可在右键菜单的「高级操作」中，将选中字幕的字词逐个转为独立字幕。</span>
-        </div>
-      </section>
-      <section class="help-subgroup">
         <h5 class="help-subtitle">空白波形区</h5>
         <div class="help-category">
           <span><kbd>双击波形</kbd> 播放/暂停</span>
@@ -662,20 +656,11 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">波形区字幕操作</h5>
         <div class="help-category">
-          <span class="help-note">通用快捷键见「快捷操作」；此处只列出波形区特有的操作</span>
+          <span class="help-note">通用快捷键见「快捷操作」。双击字幕块打开快捷编辑弹窗；新建字幕后也会打开弹窗。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
           <span><kbd id="help-split-key">Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
           <span class="help-important"><kbd id="help-waveform-split-key">B</kbd> 按当前时间基准拆分字幕</span>
-        </div>
-      </section>
-      <h4 class="help-title">双语字幕</h4>
-      <section class="help-subgroup">
-        <div class="help-category">
-          <span class="help-important"><kbd>G</kbd> 绑定到主副字幕（自动匹配）</span>
-          <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
-          <span class="help-break" aria-hidden="true"></span>
-          <span class="help-important"><kbd>H</kbd> 将选中的副字幕的时长对齐到绑定主字幕</span>
         </div>
       </section>
       <h4 class="help-title">波形外观调整</h4>
@@ -838,6 +823,35 @@ __WAVEFORM_CSS__
         </div>
       </section>
     </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-quick-edit" role="tabpanel" aria-labelledby="help-tab-quick-edit" data-help-tab-panel="quick-edit" tabindex="0" hidden>
+      <h4 class="help-title">快捷编辑</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">快捷编辑弹窗</h5>
+        <div class="help-category">
+          <span>双击波形中的字幕块或字词块，就地编辑文字。新建字幕、选中字幕后按 Enter，或在叠加字幕右键菜单中选择「编辑文本」，也可打开弹窗。</span>
+          <span><kbd id="help-quick-split-key">Enter</kbd> 在光标处拆分字幕，拆分后继续编辑后半句</span>
+          <span><kbd id="help-quick-confirm-key">Ctrl+Enter</kbd> 保存并关闭</span>
+          <span><kbd>Shift+Enter</kbd> 换行</span>
+          <span><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> 切换同轨的下一句 / 上一句；编辑字词时切换同句字词</span>
+          <span><kbd>Esc</kbd> 或点击弹窗外部，关闭并保留修改</span>
+          <span>字词弹窗使用 Enter 保存；字词时间仍通过拖动调整。</span>
+          <span class="help-note">可在 <button type="button" class="help-inline-action" data-settings-page="split-merge" data-settings-target="split-key">全局设置 → 拆分合并</button> 中设置字幕拆分和保存按键。</span>
+        </div>
+      </section>
+    </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-word-timing" role="tabpanel" aria-labelledby="help-tab-word-timing" data-help-tab-panel="word-timing" tabindex="0" hidden>
+      <h4 class="help-title">字词时间码</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">显示与编辑</h5>
+        <div class="help-category">
+          <span>按 <kbd>Q</kbd> 或点击波形工具栏的「字词」，显示或隐藏主字幕已有的字词时间码。</span>
+          <span>点击选中字词；按住 <kbd data-mod-key>Ctrl</kbd> 点击多选，按住 <kbd>Shift</kbd> 点击范围选择。拖动字词块移动时间，拖动边缘调整起止时间。</span>
+          <span>双击字词块可在快捷编辑弹窗修改文字；<kbd>Tab</kbd> 在同句字词之间切换。修改文字不会移动时间。</span>
+          <span><kbd>C</kbd> 合并同句内连续选中的字词；<kbd>Esc</kbd> 取消拖动；<kbd>F</kbd> 试听选中的字幕或字词。</span>
+          <span>显示字词时间码时，可在右键菜单的「高级操作」中，将选中字幕的字词逐个转为独立字幕。</span>
+        </div>
+      </section>
+    </section>
     <section class="help-group help-tab-panel" id="help-tab-panel-multi" role="tabpanel" aria-labelledby="help-tab-multi" data-help-tab-panel="multi" tabindex="0" hidden>
       <h4 class="help-title">双语字幕</h4>
       <section class="help-subgroup">
@@ -851,7 +865,7 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">绑定与导出</h5>
         <div class="help-category">
-          <span>G 绑定，Shift+G 解绑，H 将副字幕时长对齐到绑定的主字幕。自动匹配依据时间，需人工检查；时间联动在工程设置中调整。</span>
+          <span><kbd>G</kbd> 自动匹配并绑定主副字幕；<kbd>Shift+G</kbd> 解绑当前副字幕；<kbd>H</kbd> 将选中的副字幕时长对齐到绑定的主字幕。自动匹配依据时间，需人工检查；时间联动在工程设置中调整。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span>SRT（双语合并）合并主副文本；ASS 可分别设置主副样式。导出前检查显隐、位置和同步，保留工程以便继续编辑。</span>
         </div>
@@ -2364,6 +2378,16 @@ __WAVEFORM_CSS__
         <option value="media">字幕与源媒体</option>
       </select>
       <p class="modal-hint" style="margin-top: 8px">动态部分输出序列帧，静止部分保持单张图片；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，图片模式不包含贴图。</p>
+      <label for="fcp7-png-size">图片尺寸</label>
+      <select id="fcp7-png-size">
+        <option value="project">跟随工程尺寸</option>
+        <option value="custom">自定义</option>
+      </select>
+      <div class="row" id="fcp7-png-custom-size" hidden>
+        <input type="number" id="fcp7-png-width" min="1" max="8192" step="1" aria-label="图片宽度">
+        <span aria-hidden="true">×</span>
+        <input type="number" id="fcp7-png-height" min="1" max="8192" step="1" aria-label="图片高度">
+      </div>
     </div>
     <label for="fcp7-export-timeline-mode" style="margin-top: 12px">导出时间线模式</label>
     <select id="fcp7-export-timeline-mode">

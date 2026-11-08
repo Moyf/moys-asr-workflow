@@ -1409,7 +1409,7 @@
       : state.mainInteractive ? 'main' : 'extension');
   updateLinkedSplitPreview(
     state.kind === 'main' ? state.mainOffset
-      : state.kind === 'extension' ? state.offset : state.mainOffset,
+      : state.kind === 'extension' || state.kind === 'overlay' ? state.offset : state.mainOffset,
     initialLane,
   );
   // 弹窗打开即聚焦初始 lane，让 WASD/方向键/Space 直接可用；
@@ -1772,6 +1772,7 @@
     // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
     MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'main'));
     if (successMessage) MaweHint.flashHint(successMessage, 'success');
+    state.onQuickEditSplitComplete?.(mainIndex + 1);
     return true;
   }, { captureView: true });
 }
@@ -1879,6 +1880,7 @@
         : '已按选择的断点拆分副字幕'),
       'success',
     );
+    state.onQuickEditSplitComplete?.(extensionIndex + 1);
     return true;
   }, { captureView: true });
 }
@@ -2029,6 +2031,7 @@
         : '已按同一绝对时间切点联动拆分',
       'success',
     );
+    state.onQuickEditSplitComplete?.(mainIndex + 1);
   }, { captureView: true });
 }
 

@@ -33,6 +33,9 @@ async function open(page) {
 test('real PNG job publishes subtitle-only XML and preserves a static hold', async ({ page }) => {
   test.setTimeout(120000);
   await open(page);
+  await page.locator('#fcp7-png-size').selectOption('custom');
+  await page.locator('#fcp7-png-width').fill('480');
+  await page.locator('#fcp7-png-height').fill('270');
   const spacing = await page.locator('[for="fcp7-export-timeline-mode"]').evaluate(el => {
     const previous = el.previousElementSibling;
     return el.getBoundingClientRect().top - previous.getBoundingClientRect().bottom;
@@ -52,8 +55,12 @@ test('real PNG job publishes subtitle-only XML and preserves a static hold', asy
   await expect(page.locator('#fcp7-export-status')).toContainText(result.vegasXmlPath);
   expect(readFileSync(result.vegasXmlPath, 'utf8')).not.toContain('file://');
   const manifest = JSON.parse(readFileSync(join(result.packagePath, 'manifest.json'), 'utf8'));
+  expect([manifest.width, manifest.height]).toEqual([480, 270]);
+  const png = readFileSync(manifest.tracks[0].clips[0].path);
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([480, 270]);
   expect(manifest.tracks.flatMap(t => t.clips).some(c => c.endFrame - c.startFrame > 1)).toBeTruthy();
   const xml = readFileSync(result.xmlPath, 'utf8');
+  expect(xml).toContain('<width>480</width><height>270</height>');
   expect(xml).toContain('<stillframe>TRUE</stillframe>');
   expect(xml).not.toContain('source.wav');
   expect(xml).not.toContain('GraphicAndType');
