@@ -35,14 +35,14 @@ MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S = 10
 # 失败诊断的按天日志（LocalLogSink 自带脱敏与静默降级）。serve.py 由 Launcher
 # 经 TemporaryFile 接管子进程输出且启动成功后不再读取，仅靠 stdout 无法取回；
 # 同一份诊断落盘到用户日志目录（maw-YYYY-MM-DD.log），崩溃或退出后仍可查。
-_diagnostic_sink: LocalLogSink | None = None
+_diagnostic_sink_instance: LocalLogSink | None = None
 
 
 def _diagnostic_sink() -> LocalLogSink:
-    global _diagnostic_sink
-    if _diagnostic_sink is None:
-        _diagnostic_sink = LocalLogSink()
-    return _diagnostic_sink
+    global _diagnostic_sink_instance
+    if _diagnostic_sink_instance is None:
+        _diagnostic_sink_instance = LocalLogSink()
+    return _diagnostic_sink_instance
 
 
 class MediaJobCancelled(RuntimeError):
