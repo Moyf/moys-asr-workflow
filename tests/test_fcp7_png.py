@@ -135,11 +135,15 @@ for fmt in ('png', 'webp'):
                                        capture_output=True, text=True, timeout=45)
             self.assertEqual(completed.returncode, 0, completed.stderr[-2000:])
 
-    def test_faint_black_pixels_survive_and_repeated_cues_reuse_images_across_batches(self):
+    def test_alpha_one_black_pixels_survive_and_repeated_cues_reuse_images_across_batches(self):
         class Job:
             def check_cancelled(self): pass
             def update(self, *args): pass
             def run_command(self, args, timeout, cwd):
+                # Exact black/254-white mattes yield A=1 independently of
+                # libass versions' rounding of an ASS alpha override.
+                args = [arg.replace("ass=filename='sub.ass'", 'null').replace('color=white:', 'color=0xfefefe:')
+                        for arg in args]
                 return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
         # 26 distinct cues cross the 24-sample batch boundary. A=1 must survive;
         # black RGB does not imply an empty frame. Cue identity must not merge.
@@ -183,13 +187,13 @@ for fmt in ('png', 'webp'):
             def update(self, *args): pass
             def run_command(self, args, timeout, cwd):
                 return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
-        for tag in (r'\move(30,70,250,150,0,0)', r'\fade(255,0,255,500,500,1500,1500)',
-                    r'\t(1000,1000,\fscx200)'):
-            with self.subTest(tag=tag), tempfile.TemporaryDirectory() as temporary:
+        for tag, fmt in product((r'\move(30,70,250,150,0,0)', r'\fade(255,0,255,500,500,1500,1500)',
+                               r'\t(1000,1000,\fscx200)'), ('png', 'webp')):
+            with self.subTest(tag=tag, fmt=fmt), tempfile.TemporaryDirectory() as temporary:
                 job = Job(); job.directory = Path(temporary); job.output = job.directory / 'manifest.json'
                 ass = HEADER + event(text='{' + tag + '}CHANGE')
                 (job.directory / 'reference.ass').write_text(ass, encoding='utf8')
-                result = render_png_assets(job, plan(ass), Path(shutil.which('ffmpeg')), job.directory / 'package')
+                result = render_png_assets(job, plan(ass), Path(shutil.which('ffmpeg')), job.directory / 'package', fmt)
                 for frame in (0, 15, 30, 40):
                     composed = Image.new('RGBA', (320,180), (0,0,0,255))
                     for track in result['tracks']:
@@ -211,12 +215,13 @@ for fmt in ('png', 'webp'):
             def update(self, *args): pass
             def run_command(self, args, timeout, cwd):
                 return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
-        with tempfile.TemporaryDirectory() as temporary:
-            job = Job(); job.directory = Path(temporary); job.output = job.directory / 'manifest.json'
-            with self.assertRaisesRegex(ValueError, '均为透明'):
-                render_png_assets(job, plan(HEADER + event(text=r'{\alpha&HFF&}EMPTY')),
-                                  Path(shutil.which('ffmpeg')), job.directory / 'package')
-            self.assertFalse(job.output.exists())
+        for fmt in ('png', 'webp'):
+            with self.subTest(fmt=fmt), tempfile.TemporaryDirectory() as temporary:
+                job = Job(); job.directory = Path(temporary); job.output = job.directory / 'manifest.json'
+                with self.assertRaisesRegex(ValueError, '均为透明'):
+                    render_png_assets(job, plan(HEADER + event(text=r'{\alpha&HFF&}EMPTY')),
+                                      Path(shutil.which('ffmpeg')), job.directory / 'package', fmt)
+                self.assertFalse(job.output.exists())
 
     def test_multitrack_recomposition_matches_direct_ass_at_frame_boundaries(self):
         class Job:

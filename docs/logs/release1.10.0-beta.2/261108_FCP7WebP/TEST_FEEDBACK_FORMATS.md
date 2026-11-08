@@ -33,3 +33,13 @@
 | 官网/文档 | sync/check/build 通过，40 页；文档 0 新断链/结构错误，4 个旧索引警告；个人路径检查通过 | `20261108T015132Z-0a49a86c`、`20261108T015210Z-e68ffadc`、`20261108T015313Z-195b597e`、`20261108T015313Z-61056e8f`、`20261108T015516Z-d2ed0a11` |
 
 全量 Python 串行在 240 秒限时终止，未生成最终报告（`20261108T015001Z-2c051e3d`），未作为通过证据。分析历史检查采用 4 worker 后，以同一方式复跑：2864 项、23 跳过、4 失败（`20261108T015505Z-4244b055`）；其中新增二进制成员断言缺 compact 混入已修复，4 项门禁复验通过（`20261108T015712Z-37b89698`）。其余 3 失败与既有报告一致：burn_video_export 两项帧边界/时长，thumbnails 非零 PTS 时长；不得称本地全量通过。三端 CI 将使用各平台工具链再检验。
+
+## 同期远端合并与 FFmpeg 8.1 修复
+
+合并 cat 远端 `22e01d89`：保留 PNG 默认选中、逐格式标题/说明/hint、原生模式专用 e2e 和第五个 image_format 参数兼容。当前 PNG/WebP 统一使用 FFmpeg，无 Pillow 恢复路径。旧分支将 WebP 像素阈值放宽 64 的做法不沿用；两格式均保持严格 3/6。
+
+- Gyan 官方 FFmpeg 8.1 初跑真实复现 7 失败/2 错误：`20261108T015838Z-3e333b1d`。逐阶段原始 RGB/Alpha 对照定位到 FFmpeg 8.1 在 alphamerge（声明 straight）→ unpremultiply（要求 premultiplied）之间自动插入预乘，造成重复预乘。旧图日志保存在 `.artifacts/fcp7-png/ffmpeg81-diagnostic-old/8.log`，诊断 `20261108T020317Z-1c0bbb35`；依据为官方 [alphamerge 源码](https://github.com/FFmpeg/FFmpeg/blob/n8.1/libavfilter/vf_alphamerge.c) 与 [premultiply 源码](https://github.com/FFmpeg/FFmpeg/blob/n8.1/libavfilter/vf_premultiply.c)。
+- 修复为 RGB 与复制成 RGB 的 Alpha 通过 lut2 显式计算 `min(255,channel*255/alpha)`，Alpha=0 时 RGB 归零，最后合入原始 Alpha。避免版本限定的 alpha_mode 选项，也不让 unpremultiply 触发自动协商。8.1 下严格像素检查恢复通过，`20261108T020247Z-7b9858cf`（17 项）。
+- 原 A=1 ASS 字形夹具在 8.1 的白底直接渲染已全部为 255，而 7.0.2 为 254–255；据双底计算预期 Alpha 分别为 0 和 1，均与管线恢复一致。直接诊断 `20261108T020317Z-31090542`，原始帧/日志在 `.artifacts/fcp7-png/ffmpeg81-diagnostic-faint/`。因此 Alpha=1 检测/跨批次去重用例改为精确黑/254白双底，独立验证真实 A=1 像素不被丢弃；实际 libass 的动画/多背景对照继续保留严格阈值，并非放宽像素断言。
+
+此合并与滤镜修改后的完整回归、浏览器和实际包验证另列最终结果，之前结果仅保留对应代码的证据。

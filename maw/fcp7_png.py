@@ -231,10 +231,10 @@ def prepare_render_plan(ass: str, *, fps: str, width: int, height: int,
             "tracks": tracks, "samples": samples, "fontNotices": font_notices}
 
 
-def render_png_assets(job, plan: dict, ffmpeg: Path, package: Path) -> dict:
+def render_png_assets(job, plan: dict, ffmpeg: Path, package: Path, image_format: str | None = None) -> dict:
     """Render PNG by default or opt-in lossless WebP, without a Python image decoder."""
-    image_format = plan.get("imageFormat", "png")
-    if image_format not in IMAGE_FORMATS:
+    image_format = plan.get("imageFormat", "png") if image_format is None else image_format
+    if not isinstance(image_format, str) or image_format not in IMAGE_FORMATS:
         raise ValueError("不支持的字幕图片格式")
     assets = job.directory / "images"
     assets.mkdir()
@@ -256,10 +256,16 @@ def render_png_assets(job, plan: dict, ffmpeg: Path, package: Path) -> dict:
                         f"color={color}:s={plan['width']}x{plan['height']}:r={plan['fps']},format=rgb24"]
                 timing = f"settb=1/{rate.numerator},setpts='{clock}',ass=filename='sub.ass',format=gbrp"
                 coverage = "255-max(max(r(X,Y),g(X,Y)),b(X,Y))"
+                # Divide RGB by coverage before adding alpha. FFmpeg 8.1 inserts
+                # alpha-mode conversions around unpremultiply, which would
+                # premultiply our already-premultiplied matte RGB a second time.
+                straight = "if(gt(y,0),min(255,x*255/y),0)"
                 graph = (f"[0:v]{timing},split[b][b2];[1:v]{timing}[w];"
                          "[w][b2]blend=all_mode=subtract[d];"
                          f"[d]geq=r='{coverage}':g=0:b=0,extractplanes=r[a];"
-                         "[b][a]alphamerge,unpremultiply=inplace=1,format=rgba,"
+                         "[a]split[div][merge];[div]format=gbrp[denominator];"
+                         f"[b][denominator]lut2=c0='{straight}':c1='{straight}':c2='{straight}'[rgb];"
+                         "[rgb][merge]alphamerge,format=rgba,"
                          f"settb=1/1,setpts=N,trim=end_frame={len(batch)},split=3[v][hash][alpha];"
                          "[alpha]alphaextract,metadata=mode=add:key=maw.sample:value=1,"
                          "bbox=min_val=0,metadata=mode=print:file=alpha.txt[check]")
