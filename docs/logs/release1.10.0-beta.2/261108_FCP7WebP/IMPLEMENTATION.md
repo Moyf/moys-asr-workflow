@@ -68,6 +68,8 @@ VEGAS 14 / PR 的 WebP 导入未实测，按维护者本轮允许略过此层；
 
 ## 返工：PNG 保留 + WebP 作为输出格式选项（2026-11-08）
 
+> 本节来自并行提交 `22e01d89`，保留当时经过。其 Pillow 恢复与 WebP 阈值 64 已在后续合并中替换：当前两格式均不依赖 Pillow，使用 RGB lut2 后合入 Alpha，并恢复严格 3/6 阈值；FFmpeg 8.1 已复验。详见 [当前反馈账本](TEST_FEEDBACK_FORMATS.md)。
+
 维护者在 PR 353 打回：意图是「增加 WebP」，不是「用 WebP 替代 PNG」。本轮只动格式选择层，双底恢复、静止帧去重与无损编码原样保留：
 
 - `render_png_assets` 增加 `image_format` 参数（默认 png，`IMAGE_FORMATS` 白名单校验；API 在开任务前拒绝未知格式并保留默认 png，兼容无该字段的旧缓存页面）。PNG 恢复 `1caa69ee` 的黑白双底 + Pillow 恢复管线与 `subtitle_%06d.png` 输出，VEGAS 14 验证结论继续适用于 PNG；WebP 保留上一轮 FFmpeg 滤镜管线，素材逐字节复制编码结果。manifest `imageFormat` 如实记录所选格式，`renderer` 按格式区分（rgb-dual-matte / ffmpeg-rgb-dual-matte + lossless）。
