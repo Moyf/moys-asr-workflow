@@ -24,6 +24,9 @@ return Boolean(segment && state.textEl.innerText.replace(/\r\n?/g, '\n').trimEnd
 
 // 保存正在输入的文字，但不结束行内编辑、不替换节点、不移动光标。
 function flushInlineEditsForSave() {
+// 波形快速编辑气泡的待提交文字先落盘提交（幂等：内容没变不进命令层），
+// 否则气泡内输入后直接 Ctrl+S 会把旧文本写进文件。气泡保持打开。
+MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
 const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
 if (!state) {
 if (!MaweDom.cuePanel?.contains(document.activeElement)) MaweCuePanel.commitCuePanelEdit();
@@ -216,6 +219,9 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
     MaweCuePanel.commitCuePanelEdit();
+    // 波形快速编辑气泡的待提交文字先落盘提交（幂等）；原生保存路径的
+    // 同样处理在 writeBlob 回调里的 flushInlineEditsForSave。
+    MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
     const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
     if (!MaweHost.files.hasSavePicker()) {
