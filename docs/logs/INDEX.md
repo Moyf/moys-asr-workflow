@@ -15,6 +15,7 @@
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [波形字幕快速编辑气泡](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/REVIEW_FINDINGS.md) | 字幕/字词原位快速编辑气泡（PR #352）：Greptile 3×P1 与内部复核 4 nit 全部修复，major 误报经探针实证反驳；含滚动裁剪与 Ctrl+S 落盘回归 |
+| 1.10.0-beta.2 之后 | 2026-11-06 | [FCP 7 图片字幕实施与验证](release1.10.0-beta.2/261106_FCP7图片字幕/IMPLEMENTATION.md) / [独立审查](release1.10.0-beta.2/261106_FCP7图片字幕/REVIEW_FINDINGS.md) / [目标应用核验](release1.10.0-beta.2/261106_FCP7图片字幕/FCP7图片字幕.checklist.md) | 动静分段、透明渲染、多轨 XML；VEGAS 14 原生导入与像素验证通过，缺图文件选择窗口待人工确认 |
 | 1.10.0-beta.2 之后 | 2026-11-05 | [文本处理弹窗反馈](release1.10.0-beta.2/261105_文本处理弹窗/TEST_FEEDBACK_文本处理弹窗.md) / [独立复核](release1.10.0-beta.2/261105_文本处理弹窗/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_文本处理弹窗/文本处理弹窗.checklist.md) | 双列预览、预设导入确认、工程预填和 MASS 分组 |
 | 1.10.0-beta.2 之后 | 2026-11-05 | [编辑器处理配置复审](release1.10.0-beta.2/261105_编辑器处理配置/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_编辑器处理配置/编辑器处理配置.checklist.md) | 有序文本处理、用户默认与工程覆盖、旧库迁移 |
 | 1.10.0-beta.2 之后 | 2026-11-04 | [波形提取 stderr 死锁](release1.10.0-beta.2/261104_波形提取stderr死锁/排查记录.md) | 转写卡在「正在校验和修复时间码」实为波形提取把 ffmpeg stderr 留在管道里，4 KiB 缓冲写满后与 stdout 读取互等；stderr 改落临时文件，含矩阵探针与打包版端到端复验 |

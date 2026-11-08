@@ -61,6 +61,7 @@ from maw.project_backups import backup_directory_candidates, write_backup  # noq
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
 from maw.ass_fonts import font_alias_payload, normalize_ass_text_fontnames  # noqa: E402
+from maw.fcp7_png_api import handle_fcp7_png  # noqa: E402
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
 from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
@@ -1706,6 +1707,7 @@ def build_server_page(
         "gapRemovedVideoJobsUrl": "/api/exports/gap-removed-video/jobs",
         "canGapRemovedMediaExport": can_gap_media_export,
         "burnVideoJobsUrl": "/api/exports/burned-video/jobs",
+        "fcp7PngJobsUrl": "/api/exports/fcp7-png/jobs",
         "canBurnVideoExport": bool(
             project.json_path is not None
             and gap_video_source is not None
@@ -3047,6 +3049,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.cancel_burn_video_admission()
         elif path.startswith("/api/exports/burned-video/jobs/"):
             self.burn_video_job_request(path, cancel=True)
+        elif path == "/api/exports/fcp7-png/jobs" or path.startswith("/api/exports/fcp7-png/jobs/"):
+            handle_fcp7_png(self, path, mutate=True, tools_factory=editor_ffmpeg_tools)
         elif path == "/api/exports/lottie":
             self.export_lottie()
         elif path == "/api/exports/ograf":
@@ -4009,6 +4013,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def handle_request(self, *, include_body: bool) -> None:
         path = urlsplit(self.path).path
+        if path.startswith("/api/exports/fcp7-png/jobs/"):
+            handle_fcp7_png(self, path, include_body=include_body, tools_factory=editor_ffmpeg_tools)
+            return
         if path == "/api/thumbnails" or path.startswith("/api/thumbnails/asset/"):
             self.thumbnail_request(path, include_body=include_body)
             return

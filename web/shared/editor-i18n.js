@@ -9,6 +9,28 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '字幕形式': 'Subtitle format',
+    'Premiere 原生文字': 'Premiere native text',
+    '透明 PNG 字幕（VEGAS / FCP 7 XML）': 'Transparent PNG subtitles (VEGAS / FCP 7 XML)',
+    '输出范围': 'Export scope',
+    '仅字幕': 'Subtitles only',
+    '字幕与源媒体': 'Subtitles and source media',
+    'PNG 字幕 · FCP 7 XML': 'PNG subtitles · FCP 7 XML',
+    'VEGAS 兼容 XML：': 'VEGAS compatible XML: ',
+    '将 ASS 字幕渲染为透明图片，连同多轨 XML 导出到工程旁的独立目录。': 'Render ASS subtitles as transparent images and export them with multitrack XML to a separate folder beside the project.',
+    '动态部分输出序列帧，静止部分保持单张图片；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，图片模式不包含贴图。': 'Animated sections use image frames; static sections hold one image. Images and XML are saved in a new folder beside the project. Source media is referenced; this mode excludes stickers.',
+    '正在停止图片字幕导出…': 'Stopping PNG subtitle export…',
+    '图片字幕导出已停止': 'PNG subtitle export stopped',
+    '正在停止并清理图片字幕任务…': 'Stopping and cleaning up the PNG subtitle task…',
+    '正在准备字幕图片…': 'Preparing subtitle images…',
+    '正在保存 XML 与图片素材…': 'Saving XML and image assets…',
+    '图片字幕 XML 已保存到工程旁的独立目录': 'PNG subtitle XML saved in a separate folder beside the project',
+    '请从本地编辑器服务导出图片字幕': 'Export PNG subtitles from the local editor server',
+    '图片字幕请求失败': 'PNG subtitle request failed',
+    '所选轨道没有可导出的字幕': 'The selected tracks have no subtitles to export',
+    '工程或媒体绑定已变更，已停止图片字幕导出': 'The project or media binding changed; PNG subtitle export stopped',
+    '无法查询图片字幕任务': 'Unable to query the PNG subtitle task',
+    '清理尚未完成': 'Cleanup has not finished',
     '工程音量': 'Project volume',
     '整体增益': 'Overall gain',
     '整体增益（dB）': 'Overall gain (dB)',
@@ -596,6 +618,7 @@
     '工程或媒体绑定已变更，请重新发起音频导出': 'The project or source media changed; start the audio export again',
     '正在准备导出…': 'Preparing the export…',
     '正在停止导出…': 'Stopping the export…',
+    '停止导出': 'Stop export',
     '导出状态异常，请重试': 'The export status is invalid; please retry',
     '导出已结束，但临时文件清理失败，请重试': 'The export has ended, but temporary files could not be removed; please retry',
     '无法确认导出已停止，请重试': 'Could not confirm the export has stopped; please retry',
@@ -1817,6 +1840,14 @@
     if (presetRule) return `Text processing applied to ${presetRule[1]} subtitles`;
     presetRule = /^(\d+) 条字幕的字词时间码已清除，请按需检查$/.exec(text);
     if (presetRule) return `Word timings were cleared from ${presetRule[1]} subtitles. Check them as needed.`;
+    const pngProgress = /^正在生成字幕图片：(\d+)%$/.exec(text);
+    if (pngProgress) return `Rendering subtitle images: ${pngProgress[1]}%`;
+    const pngSaved = /^已保存 (\d+) 张图片与 XML：(.+)$/.exec(text);
+    if (pngSaved) return `Saved ${pngSaved[1]} images and XML: ${pngSaved[2]}`;
+    const pngFailure = /^图片字幕导出失败：(.+)$/.exec(text);
+    if (pngFailure) return `PNG subtitle export failed: ${translateText(pngFailure[1], EN)}`;
+    const pngCleanup = /^无法确认图片字幕任务已清理，请稍后重试：(.+)$/.exec(text);
+    if (pngCleanup) return `Unable to confirm PNG subtitle cleanup; retry shortly: ${translateText(pngCleanup[1], EN)}`;
     let scope = /^当前范围：全部 (\d+) 条字幕$/.exec(text);
     if (scope) return `Current scope: all ${scope[1]} subtitles`;
     scope = /^当前范围：仅选中的 (\d+) 条字幕$/.exec(text);
