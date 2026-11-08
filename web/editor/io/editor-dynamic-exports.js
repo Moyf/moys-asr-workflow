@@ -10,6 +10,10 @@ export function initMaweDynamicExports() {
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
 (function initMaweDynamicExports(global) {
   'use strict';
+  // The controls themselves retain edits while this project remains open.
+  // A new binding starts from the new project's dimensions instead of inheriting
+  // another project's choice. Nothing is written to global preferences.
+  let fcp7PngSizeEpoch = null;
 
 
 
@@ -39,6 +43,15 @@ export function initMaweDynamicExports() {
     MaweDom.fcp7ExportSubtitleTracks.value = 'main';
   }
   MaweDom.fcp7ExportNativeText.checked = true;
+  const epoch = MaweProjectLoad.projectBindingEpoch;
+  if (fcp7PngSizeEpoch !== epoch) {
+    fcp7PngSizeEpoch = epoch;
+    const projectSize = MaweExportSrt.currentAssVideoResolution() || { width: 1920, height: 1080 };
+    document.getElementById('fcp7-png-size').value = 'project';
+    document.getElementById('fcp7-png-width').value = String(projectSize.width);
+    document.getElementById('fcp7-png-height').value = String(projectSize.height);
+    document.getElementById('fcp7-png-custom-size').hidden = true;
+  }
   updateFcp7Mode();
   MaweDom.fcp7ExportModal.classList.add('show');
   MaweDom.fcp7ExportTimelineMode.focus();
@@ -67,6 +80,13 @@ export function initMaweDynamicExports() {
         durationMs: Math.round(durationMs),
       });
       if (document.getElementById('fcp7-export-format').value === 'png') {
+        const size = document.getElementById('fcp7-png-size').value === 'custom'
+          ? { width: Number(document.getElementById('fcp7-png-width').value), height: Number(document.getElementById('fcp7-png-height').value) }
+          : (MaweExportSrt.currentAssVideoResolution() || { width: 1920, height: 1080 });
+        if (![size.width, size.height].every(n => Number.isInteger(n) && n >= 1 && n <= 8192)
+            || size.width * size.height > 33554432) {
+          throw new Error(MaweProjectSave.translatedEditorText('图片宽高须为 1–8192 的整数，且总像素不超过 33554432'));
+        }
         const status = document.getElementById('fcp7-export-status');
         const stop = document.getElementById('fcp7-export-stop');
         const controller = new AbortController();
@@ -84,7 +104,7 @@ export function initMaweDynamicExports() {
           const ass = options.timelineMode === 'gap_removed' && MaweGapRemoveData.getRemovedGapRanges().length
             ? MaweExportSrt.buildGapRemovedAss(assOptions) : MaweExportSrt.buildAss(assOptions);
           const layers = { main: [0], main_and_extension: [0, 1], extension: [1], overlay: [2], all: [0, 1, 2] }[options.subtitleTracks];
-          const result = await runFcp7PngExport({ plan, ass, layers,
+          const result = await runFcp7PngExport({ plan, ass, layers, size,
             includeMedia: document.getElementById('fcp7-export-scope').value === 'media',
             config: MaweBoot.SERVER_CONFIG, signal: controller.signal,
             onProgress: showStatus });
@@ -143,6 +163,9 @@ export function initMaweDynamicExports() {
   }
 
   document.getElementById('fcp7-export-format').addEventListener('change', updateFcp7Mode);
+  document.getElementById('fcp7-png-size').addEventListener('change', (event) => {
+    document.getElementById('fcp7-png-custom-size').hidden = event.target.value !== 'custom';
+  });
 
 
 

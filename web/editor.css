@@ -567,6 +567,7 @@
     background: var(--bg-base); color: var(--text-primary);
     display: flex; flex-direction: column; height: 100vh;
   }
+  kbd { font-family: var(--font-sans); }
   h1 {
     font-size: 14px; font-weight: 500; margin: 0 0 8px 0; color: var(--text-secondary);
     display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
@@ -2526,7 +2527,7 @@
   .help-panel kbd,
   .cue-editor-key-hints kbd {
     background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
-    padding: 2px 6px; font-size: 13px; color: var(--text-secondary); font-family: var(--font-mono);
+    padding: 2px 6px; font-size: 13px; color: var(--text-secondary); font-family: var(--font-sans);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
   /* 字幕编辑区工具栏不出现横向滚动条：空间不足时压缩按键提示并用省略号截断，
@@ -2686,7 +2687,7 @@
   .onboarding-undo-demo { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 52px; color: var(--text-secondary); font-size: 12px; }
   .onboarding-undo-demo kbd, .onboarding-split-demo kbd, .onboarding-description kbd {
     padding: 3px 7px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); box-shadow: 0 1px 0 var(--border-strong); font-family: var(--font-mono); font-size: 11px;
+    border-radius: var(--radius-sm); box-shadow: 0 1px 0 var(--border-strong); font-family: var(--font-sans); font-size: 11px;
   }
   .onboarding-card.complete { border-top-color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, var(--border-strong)); }
   .onboarding-card.complete .onboarding-glyph { background: var(--green); }
@@ -3142,6 +3143,7 @@
   .modal select:disabled { opacity: .48; cursor: not-allowed; }
   .modal select option { background: var(--bg-overlay); color: var(--text-primary); }
   .modal .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+  .modal .row[hidden] { display: none; }
   .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
   .modal .actions button {
     background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--btn-border);
@@ -3238,7 +3240,7 @@
   }
   .multi-subtitle-split-key-hints kbd {
     background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
-    padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
+    padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-sans);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
   .multi-subtitle-split-key-hint { display: inline-flex; align-items: center; gap: 4px; }
@@ -4191,7 +4193,7 @@
   .ctxmenu .sep { height: 1px; background: var(--border-subtle); margin: 4px 0; }
   .ctxmenu .item kbd {
     background: var(--bg-input); color: var(--text-muted); padding: 1px 6px; border-radius: var(--radius-sm);
-    font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--border-subtle);
+    font-family: var(--font-sans); font-size: 11px; border: 1px solid var(--border-subtle);
   }
   /* 句级效果预设的「整句」胶囊：缀在标签后，提示该样式只对整句生效。 */
   .ctxmenu .ctxmenu-sentence-badge {

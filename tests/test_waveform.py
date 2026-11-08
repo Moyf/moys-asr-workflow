@@ -598,8 +598,11 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         for settings_section in ('interface', 'general', 'subtitle-preview', 'subtitle-style', 'subtitle-color', 'timebase', 'split-merge', 'export', 'save', 'sticker', 'easter-eggs', 'about'):
             self.assertIn(f'id="editor-settings-tab-{settings_section}"', page)
             self.assertIn(f'id="editor-settings-page-{settings_section}"', page)
-        # 全局设置 13 页、工程设置 6 页；帮助导航复用该类，另有 11 页。
-        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 30)
+        # 全局设置 13 页、工程设置 6 页；帮助导航复用该类，另有 13 页。
+        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 32)
+        for help_section in ('quick-edit', 'word-timing'):
+            self.assertEqual(page.count(f'id="help-tab-{help_section}"'), 1)
+            self.assertEqual(page.count(f'id="help-tab-panel-{help_section}"'), 1)
         for help_section in ('ass', 'multi', 'export', 'markers'):
             self.assertEqual(page.count(f'id="help-tab-{help_section}"'), 1)
             self.assertEqual(page.count(f'id="help-tab-panel-{help_section}"'), 1)
@@ -953,7 +956,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="help-split-key"', page)
         self.assertIn('id="help-waveform-split-key"', page)
         self.assertIn('按当前时间基准拆分字幕', page)
-        self.assertIn('通用快捷键见「快捷操作」；此处只列出波形区特有的操作', page)
+        self.assertIn('双击字幕块打开快捷编辑弹窗', page)
         self.assertIn('<span class="help-important"><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>', page)
         self.assertIn(
             '<span class="help-important"><kbd>N</kbd> 在鼠标位置创建字幕（仅波形）</span>\n'
@@ -965,14 +968,9 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             '          <span class="help-important"><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>',
             page,
         )
-        self.assertIn('<span class="help-important"><kbd>G</kbd> 绑定到主副字幕（自动匹配）</span>', page)
-        self.assertIn('<span class="help-important"><kbd>H</kbd> 将选中的副字幕的时长对齐到绑定主字幕</span>', page)
-        self.assertIn(
-            '<span><kbd>Shift+G</kbd> 解绑当前副字幕</span>\n'
-            '          <span class="help-break" aria-hidden="true"></span>\n'
-            '          <span class="help-important"><kbd>H</kbd> 将选中的副字幕的时长对齐到绑定主字幕</span>',
-            page,
-        )
+        self.assertIn('<kbd>G</kbd> 自动匹配并绑定主副字幕', page)
+        self.assertIn('<kbd>Shift+G</kbd> 解绑当前副字幕', page)
+        self.assertIn('<kbd>H</kbd> 将选中的副字幕时长对齐到绑定的主字幕', page)
         self.assertIn('<button type="button" class="help-inline-action" id="help-open-waveform-settings"', page)
         self.assertIn('data-help-open-waveform-settings', page)
         self.assertIn('⚙️设置按钮', page)
@@ -985,7 +983,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('data-help-open-media-settings', page)
         self.assertIn('data-help-open-editor-settings aria-controls="editor-settings-panel">全局设置</button>', page)
         self.assertNotIn('红色播放指针', page)
-        self.assertEqual(page.count('data-help-tab='), 11)
+        self.assertEqual(page.count('data-help-tab='), 13)
         self.assertIn('id="help-tab-panel-basic"', page)
         self.assertIn('id="help-tab-panel-shortcuts"', page)
         self.assertIn('id="help-tab-panel-waveform"', page)

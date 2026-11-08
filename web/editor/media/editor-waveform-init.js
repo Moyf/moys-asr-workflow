@@ -80,6 +80,47 @@ export function initMaweWaveformInit() {
     activateOverlayCue: (idx) => {
       MaweCuePanel.setCuePanelTarget('overlay', idx);
     },
+    getQuickEditEnterAction: (event) => MaweCueEvents.getConfiguredEnterAction(event),
+    onCueQuickEditSplit: (track, index, offset, popupState) => {
+      const waveform = MaweCoreState.waveformEditor;
+      const segments = track === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments
+        : track === 'overlay' ? getOverlayTrack()?.segments : MaweBoot.DATA.segments;
+      const segment = segments?.[index];
+      if (!segment || offset <= 0 || offset >= String(segment.text || '').length) {
+        MaweHint.flashHint('光标必须在词与词之间才能拆分', 'invalid');
+        return false;
+      }
+      const reopen = (nextIndex) => requestAnimationFrame(() => {
+        const next = segments?.[nextIndex];
+        if (!next || !waveform) return;
+        if (track === 'extension') MaweSelection.selectOnlyExtension(nextIndex);
+        else if (track === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(nextIndex);
+        else MaweSelection.selectOnly(nextIndex);
+        waveform.revealTime(Number(next.start), true);
+        waveform.openCueQuickEditAtIndex(track, nextIndex);
+      });
+      if (track === 'main') {
+        const signature = `${offset}:${segment.text}`;
+        const previous = MaweSplitCore.pendingLinkedSplit;
+        const split = MaweSplitCore.splitAtCursor(null, {
+          listFeedback: false,
+          explicit: { idx: index, cursorOffset: offset, force: popupState.forceSplitSignature === signature,
+            onForcedSplitArmed: () => { popupState.forceSplitSignature = signature; } },
+        });
+        if (split) { reopen(index + 1); return true; }
+        if (MaweSplitCore.pendingLinkedSplit && MaweSplitCore.pendingLinkedSplit !== previous) {
+          MaweSplitCore.pendingLinkedSplit.onQuickEditSplitComplete = reopen;
+          return true;
+        }
+        return false;
+      }
+      const time = MaweSplitCore.splitTimeForTextOffset(segment, offset);
+      const opened = track === 'extension'
+        ? MaweSplitCore.openExtensionSplitModal(index, time, MaweMultiSubtitleCore.getActiveExtensionTrack(), { extensionOffset: offset, timeSource: 'text' })
+        : window.MaweOverlaySplitMerge.openOverlaySplitModal(index, time, { extensionOffset: offset, timeSource: 'text' });
+      if (opened && MaweSplitCore.pendingLinkedSplit) MaweSplitCore.pendingLinkedSplit.onQuickEditSplitComplete = reopen;
+      return opened;
+    },
     // 波形字幕块双击的快速编辑气泡提交入口：与字幕面板/行内编辑同一套
     // 命令事务（可撤销），文本变更走 cueList + 波形覆盖层 + 预览刷新。
     onCueQuickEditText: (track, index, text) => {

@@ -91,7 +91,7 @@ test('CSS 契约：快速编辑气泡样式与箭头变量存在于 waveform.css
   for (const needle of [
     '.waveform-cue-quick-edit {',
     '.waveform-cue-quick-edit-text',
-    '.waveform-cue-quick-edit-hint',
+    '.waveform-cue-quick-edit-help',
     '.waveform-cue-quick-edit.placement-below::after',
     'var(--cue-quick-edit-arrow-x, 50%)',
   ]) {

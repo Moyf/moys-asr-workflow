@@ -90,8 +90,8 @@ export function createWaveformModule(dependencies) {
     // Tab / Shift+Tab。返回内部状态对象。
     /** @this {import('./waveform-types.js').WaveformInstance} */
     _openQuickEditPopup({
-      caption, value, rows = 2, hint, ariaLabel,
-      anchorElement, event, caret = 'click', commit, navigate = null,
+      caption, value, rows = 2, ariaLabel,
+      anchorElement, event, caret = 'click', commit, navigate = null, split = null,
     }) {
       this.closeCueQuickEdit();
       // 光标定位要在气泡挂载前完成：与字幕列表的行内编辑一致，把编辑
@@ -106,6 +106,14 @@ export function createWaveformModule(dependencies) {
       const captionEl = document.createElement('div');
       captionEl.className = 'waveform-cue-quick-edit-caption';
       captionEl.textContent = caption;
+      const header = document.createElement('div');
+      header.className = 'waveform-cue-quick-edit-header';
+      const help = document.createElement('button');
+      help.type = 'button';
+      help.className = 'waveform-cue-quick-edit-help';
+      help.textContent = localizedWaveformMessage('操作说明', 'Help');
+      help.addEventListener('click', () => /** @type {any} */ (window).MaweHelpPanel?.openHelpAtTab('quick-edit'));
+      header.append(captionEl, help);
 
       const textarea = document.createElement('textarea');
       textarea.className = 'waveform-cue-quick-edit-text';
@@ -114,10 +122,7 @@ export function createWaveformModule(dependencies) {
       textarea.value = value;
       textarea.setAttribute('aria-label', ariaLabel);
 
-      const hintEl = document.createElement('div');
-      hintEl.className = 'waveform-cue-quick-edit-hint';
-      hintEl.textContent = hint;
-      popup.append(captionEl, textarea, hintEl);
+      popup.append(header, textarea);
 
       // 锚点坐标在打开时一次性换算成内容坐标：提交后字幕块覆盖层会整层
       // 重建（元素被替换），但文本编辑不移动块，几何位置不变。
@@ -147,8 +152,8 @@ export function createWaveformModule(dependencies) {
       this.positionCueQuickEdit();
       resizeObserver.observe(popup);
 
-      // Enter 提交并关闭；Shift+Enter 换行；Esc 关闭（保留修改，与当前
-      // 字幕面板默认一致）；Tab / Shift+Tab 交给 navigate（到头保持不动，
+      // 字幕的 Enter / Ctrl+Enter 按全局设置拆分或保存，Shift+Enter 换行；
+      // 字词的 Enter 保存。Esc 关闭并保留修改，Tab / Shift+Tab 交给 navigate（到头保持不动，
       // 阻断原生焦点移动）。其余按键交给 textarea 原生行为，编辑器快捷键
       // 层已有输入目标守卫（isTextEditingTarget），不会误触发。
       textarea.addEventListener('keydown', (keyEvent) => {
@@ -156,6 +161,22 @@ export function createWaveformModule(dependencies) {
         // Esc 是取消组词：跳过气泡快捷键，交给输入法原生处理，避免确认
         // 候选词误关气泡或打断组词。
         if (keyEvent.isComposing || keyEvent.keyCode === 229) return;
+        if (keyEvent.key === 'Enter' && !keyEvent.altKey && split) {
+          const action = this.options.getQuickEditEnterAction?.(keyEvent);
+          if (action === 'newline') return;
+          if (action === 'split') {
+            keyEvent.preventDefault();
+            keyEvent.stopPropagation();
+            const offset = textarea.selectionStart;
+            this.commitCueQuickEdit();
+            const savedCommit = state.commit;
+            state.commit = null;
+            const result = split(state, offset);
+            if (result) this.closeCueQuickEdit();
+            else state.commit = savedCommit;
+            return;
+          }
+        }
         if (keyEvent.key === 'Enter' && !keyEvent.shiftKey && !keyEvent.altKey) {
           keyEvent.preventDefault();
           keyEvent.stopPropagation();
@@ -228,16 +249,13 @@ export function createWaveformModule(dependencies) {
           + ` · ${formatCompact(Number(segment.start))} → ${formatCompact(Number(segment.end))}`,
         value: String(segment.text ?? ''),
         rows: 2,
-        hint: localizedWaveformMessage(
-          'Enter 保存 · Shift+Enter 换行 · Tab 切换字幕 · Esc 关闭',
-          'Enter to save · Shift+Enter for a new line · Tab to switch cue · Esc to close',
-        ),
         ariaLabel: localizedWaveformMessage('字幕文本', 'Cue text'),
         anchorElement,
         event,
         caret: caretAtEnd ? 'end' : 'click',
         commit: (state) => this._commitCueQuickEditState({ ...state, track, index, segmentId: segment.id || null }),
         navigate: (state, direction) => this.navigateCueQuickEdit({ ...state, track, index, segmentId: segment.id || null }, direction),
+        split: (state, offset) => this.options.onCueQuickEditSplit?.(track, index, offset, state),
       });
     }
 
@@ -257,10 +275,6 @@ export function createWaveformModule(dependencies) {
           + ` · ${formatCompact(timing.toMs(entry.start))} → ${formatCompact(timing.toMs(entry.end))}`,
         value: String(entry.text ?? ''),
         rows: 1,
-        hint: localizedWaveformMessage(
-          'Enter 保存 · Tab 切换字词 · Esc 关闭',
-          'Enter to save · Tab to switch word · Esc to close',
-        ),
         ariaLabel: localizedWaveformMessage('字词文本', 'Word text'),
         anchorElement,
         event,
@@ -493,8 +507,8 @@ export function createWaveformModule(dependencies) {
       // 内部偏移（工具栏等），用实时 rect 差值求可视带在内容坐标系的原点。
       const contentRect = this.content.getBoundingClientRect();
       const scrollRect = this.scroll.getBoundingClientRect();
-      const viewLeft = this.scroll.scrollLeft - Math.round(contentRect.left - scrollRect.left);
-      const viewTop = this.scroll.scrollTop - Math.round(contentRect.top - scrollRect.top);
+      const viewLeft = Math.round(scrollRect.left - contentRect.left);
+      const viewTop = Math.round(scrollRect.top - contentRect.top);
       const layout = cueQuickEditLayout(
         state.anchor,
         popup.offsetWidth || 300,

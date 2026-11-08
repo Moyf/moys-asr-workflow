@@ -1449,6 +1449,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.waveform-cue-quick-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.waveform-cue-quick-edit-help {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--amber-hover);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.waveform-cue-quick-edit-help:hover { text-decoration: underline; }
 .waveform-cue-quick-edit-text {
   width: 100%;
   box-sizing: border-box;
@@ -1468,11 +1486,6 @@
   outline: none;
   border-color: var(--accent);
   box-shadow: var(--focus-ring);
-}
-.waveform-cue-quick-edit-hint {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 11px;
 }
 /* 气泡三角：默认在弹窗底部指向下方（弹窗位于字幕块上方）；贴顶翻到
    下方时改为顶部指向上方。--cue-quick-edit-arrow-x 由 JS 按指针位置写入。 */
