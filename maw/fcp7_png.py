@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageChops, ImageMath
 
 from maw.ass_fonts import normalize_ass_text_fontnames
 from maw.postprocess_ffmpeg import libass_missing_glyphs
@@ -183,12 +183,39 @@ def prepare_render_plan(ass: str, *, fps: str, width: int, height: int,
             "tracks": tracks, "samples": samples, "fontNotices": font_notices}
 
 
-def render_png_assets(job, plan: dict, ffmpeg: Path, package: Path) -> dict:
-    """Render lossless WebP; keep the existing PNG task API for older clients.
+def recover_straight_rgba(black: Image.Image, white: Image.Image) -> Image.Image:
+    """Recover source-over coverage independently of libass's alpha drawing.
 
-    FFmpeg performs both RGB matte renders, coverage recovery, unpremultiplication
-    and encoding. Pillow only reads pixels for empty-frame detection and dedup.
+    RGB black/white renders avoid FFmpeg builds that square glyph alpha while
+    drawing into RGBA. Work in full RGB, with at most byte-rounding differences.
     """
+    difference = ImageChops.subtract(white.convert("RGB"), black.convert("RGB")).split()
+    alpha = ImageChops.invert(ImageChops.lighter(ImageChops.lighter(difference[0], difference[1]), difference[2]))
+    bounds = alpha.getbbox()
+    output = Image.new("RGBA", black.size)
+    if bounds is None:
+        return output
+    coverage = alpha.crop(bounds)
+    channels = [ImageMath.lambda_eval(lambda p: p["c"] * 255 / (p["a"] + (p["a"] == 0)),
+                c=c.crop(bounds).convert("F"), a=coverage.convert("F")).convert("L")
+                for c in black.convert("RGB").split()]
+    output.paste(Image.merge("RGBA", (*channels, coverage)), bounds[:2])
+    return output
+
+
+IMAGE_FORMATS = ("png", "webp")
+
+
+def render_png_assets(job, plan: dict, ffmpeg: Path, package: Path, image_format: str = "png") -> dict:
+    """Render straight-alpha images in the requested format; PNG stays the default.
+
+    PNG keeps the byte-compatible dual-matte pipeline verified in target
+    editors. WebP performs coverage recovery, unpremultiplication and lossless
+    encoding inside one FFmpeg graph; Pillow only reads pixels for empty-frame
+    detection and dedup.
+    """
+    if image_format not in IMAGE_FORMATS:
+        raise ValueError("图片字幕格式无效")
     assets = job.directory / "images"
     assets.mkdir()
     rate = Fraction(plan["fps"])
@@ -203,40 +230,64 @@ def render_png_assets(job, plan: dict, ffmpeg: Path, package: Path) -> dict:
                 root = Path(temporary)
                 (root / "sub.ass").write_text(track["ass"], encoding="utf-8", newline="\n")
                 clock = "+".join(f"eq(N,{i})*{span[0] * rate.denominator}" for i, span in enumerate(batch))
-                command = [str(ffmpeg), "-hide_banner", "-nostdin", "-loglevel", "warning", "-y"]
-                for color in ("black", "white"):
-                    command += ["-f", "lavfi", "-i",
-                        f"color={color}:s={plan['width']}x{plan['height']}:r={plan['fps']},format=rgb24"]
-                timing = f"settb=1/{rate.numerator},setpts='{clock}',ass=filename='sub.ass',format=gbrp"
-                coverage = "255-max(max(r(X,Y),g(X,Y)),b(X,Y))"
-                graph = (f"[0:v]{timing},split[b][b2];[1:v]{timing}[w];"
-                         "[w][b2]blend=all_mode=subtract[d];"
-                         f"[d]geq=r='{coverage}':g=0:b=0,extractplanes=r[a];"
-                         "[b][a]alphamerge,unpremultiply=inplace=1,format=bgra,setpts=N[v]")
-                command += ["-filter_complex_threads", "2", "-filter_complex", graph, "-map", "[v]",
-                    "-frames:v", str(len(batch)), "-fps_mode", "passthrough", "-threads", "1",
-                    "-c:v", "libwebp", "-lossless", "1", "-compression_level", "6",
-                    "-start_number", "0", "frame-%03d.webp"]
-                output = job.run_command(command, timeout=180, cwd=root)
-                if output.returncode:
-                    raise ValueError("图片字幕渲染失败：" + output.stderr[-2000:])
-                missing = libass_missing_glyphs(output.stderr)
-                if missing:
-                    glyph, family = missing[0]
-                    raise ValueError(f"字幕字体「{family}」缺少字形 {glyph}，请更换字体后导出")
+                if image_format == "webp":
+                    command = [str(ffmpeg), "-hide_banner", "-nostdin", "-loglevel", "warning", "-y"]
+                    for color in ("black", "white"):
+                        command += ["-f", "lavfi", "-i",
+                            f"color={color}:s={plan['width']}x{plan['height']}:r={plan['fps']},format=rgb24"]
+                    timing = f"settb=1/{rate.numerator},setpts='{clock}',ass=filename='sub.ass',format=gbrp"
+                    coverage = "255-max(max(r(X,Y),g(X,Y)),b(X,Y))"
+                    graph = (f"[0:v]{timing},split[b][b2];[1:v]{timing}[w];"
+                             "[w][b2]blend=all_mode=subtract[d];"
+                             f"[d]geq=r='{coverage}':g=0:b=0,extractplanes=r[a];"
+                             "[b][a]alphamerge,unpremultiply=inplace=1,format=bgra,setpts=N[v]")
+                    command += ["-filter_complex_threads", "2", "-filter_complex", graph, "-map", "[v]",
+                        "-frames:v", str(len(batch)), "-fps_mode", "passthrough", "-threads", "1",
+                        "-c:v", "libwebp", "-lossless", "1", "-compression_level", "6",
+                        "-start_number", "0", "frame-%03d.webp"]
+                    output = job.run_command(command, timeout=180, cwd=root)
+                    if output.returncode:
+                        raise ValueError("图片字幕渲染失败：" + output.stderr[-2000:])
+                    missing = libass_missing_glyphs(output.stderr)
+                    if missing:
+                        glyph, family = missing[0]
+                        raise ValueError(f"字幕字体「{family}」缺少字形 {glyph}，请更换字体后导出")
+                else:
+                    for color in ("black", "white"):
+                        command = [str(ffmpeg), "-hide_banner", "-nostdin", "-loglevel", "warning", "-y",
+                            "-f", "lavfi", "-i", f"color={color}:s={plan['width']}x{plan['height']}:r={plan['fps']},format=rgb24",
+                            "-vf", f"settb=1/{rate.numerator},setpts='{clock}',ass=filename='sub.ass',setpts=N",
+                            "-frames:v", str(len(batch)), "-fps_mode", "passthrough", "-threads", "1",
+                            "-start_number", "0", f"{color}-%03d.png"]
+                        output = job.run_command(command, timeout=180, cwd=root)
+                        if output.returncode:
+                            raise ValueError("图片字幕渲染失败：" + output.stderr[-2000:])
+                        missing = libass_missing_glyphs(output.stderr)
+                        if missing:
+                            glyph, family = missing[0]
+                            raise ValueError(f"字幕字体「{family}」缺少字形 {glyph}，请更换字体后导出")
                 for index, (start, end) in enumerate(batch):
                     job.check_cancelled()
                     cue_id = next((name for a, b, name in track["cueSpans"] if a <= start < b), "")
-                    frame_path = root / f"frame-{index:03d}.webp"
-                    with Image.open(frame_path) as image:
-                        rgba = image.convert("RGBA")
+                    if image_format == "webp":
+                        frame_path = root / f"frame-{index:03d}.webp"
+                        with Image.open(frame_path) as image:
+                            rgba = image.convert("RGBA")
+                    else:
+                        with Image.open(root / f"black-{index:03d}.png") as black, Image.open(root / f"white-{index:03d}.png") as white:
+                            rgba = recover_straight_rgba(black, white)
                     try:
                         if rgba.getchannel("A").getbbox() is not None:
                             digest = hashlib.sha256(rgba.tobytes()).hexdigest()
                             filename = unique.get(digest)
                             if filename is None:
-                                filename = f"subtitle_{len(unique) + 1:06d}.webp"
-                                shutil.copyfile(frame_path, assets / filename)
+                                filename = f"subtitle_{len(unique) + 1:06d}.{image_format}"
+                                # WebP keeps the exact encoder bytes; PNG saves the
+                                # recovered RGBA directly as in the verified pipeline.
+                                if image_format == "webp":
+                                    shutil.copyfile(frame_path, assets / filename)
+                                else:
+                                    rgba.save(assets / filename)
                                 unique[digest] = filename
                             if clips and clips[-1]["filename"] == filename and clips[-1]["endFrame"] == start and clips[-1]["cueId"] == cue_id:
                                 clips[-1]["endFrame"] = end
@@ -252,12 +303,16 @@ def render_png_assets(job, plan: dict, ffmpeg: Path, package: Path) -> dict:
     if not unique:
         raise ValueError("所选字幕在输出帧上均为透明，请检查字幕颜色、位置和时长")
     manifest = {"version": 1, "width": plan["width"], "height": plan["height"], "fps": plan["fps"],
-                "imageFormat": "webp",
+                "imageFormat": image_format,
                 "durationFrames": plan["durationFrames"], "tracks": result_tracks,
                 "sampleCount": plan["samples"], "imageCount": len(unique), "packagePath": str(package),
                 "fontNotices": plan["fontNotices"]}
-    manifest["renderer"] = {"method": "ffmpeg-rgb-dual-matte", "alpha": "straight", "pixelFormat": "rgba",
-                            "encoding": "lossless",
-                            "assSha256": hashlib.sha256("\n".join(t["ass"] for t in plan["tracks"]).encode("utf-8")).hexdigest()}
+    if image_format == "webp":
+        manifest["renderer"] = {"method": "ffmpeg-rgb-dual-matte", "alpha": "straight", "pixelFormat": "rgba",
+                                "encoding": "lossless",
+                                "assSha256": hashlib.sha256("\n".join(t["ass"] for t in plan["tracks"]).encode("utf-8")).hexdigest()}
+    else:
+        manifest["renderer"] = {"method": "rgb-dual-matte", "alpha": "straight", "pixelFormat": "rgba",
+                                "assSha256": hashlib.sha256("\n".join(t["ass"] for t in plan["tracks"]).encode("utf-8")).hexdigest()}
     job.output.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8", newline="\n")
     return manifest

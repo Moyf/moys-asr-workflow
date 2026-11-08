@@ -14,7 +14,8 @@ function setup(t, handler) {
     if (value === undefined) delete globalThis[key]; else globalThis[key] = value;
   } });
   return { plan: { frameProfile: { name: '25' }, outputDurationMs: 1000 },
-    config, ass: 'ASS snapshot', layers: [0], includeMedia: false, signal: new AbortController().signal,
+    config, ass: 'ASS snapshot', layers: [0], includeMedia: false, imageFormat: 'png',
+    signal: new AbortController().signal,
     onProgress: () => {} };
 }
 
@@ -26,12 +27,14 @@ test('PNG client publishes its captured snapshot and does not cancel a completed
     assert.equal(url, '/jobs/one/publish');
     return { xmlPath: 'result.xml' };
   });
+  args.imageFormat = 'webp';
   assert.equal((await runFcp7PngExport(args)).xmlPath, 'result.xml');
   assert.equal(calls.length, 2);
   const request = JSON.parse(calls[0][1].body);
   assert.equal(request.ass, 'ASS snapshot');
   assert.equal(request.width, 640);
   assert.equal(request.bindingGeneration, 1);
+  assert.equal(request.imageFormat, 'webp');
 });
 
 test('PNG client waits for cancellation cleanup before returning AbortError', async t => {

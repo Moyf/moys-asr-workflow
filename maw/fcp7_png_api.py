@@ -1,4 +1,4 @@
-"""Local editor transport for WebP rendering and atomic XML package publication."""
+"""Local editor transport for image rendering and atomic XML package publication."""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import quote, unquote, urlsplit
 
-from maw.fcp7_png import prepare_render_plan, render_png_assets
+from maw.fcp7_png import IMAGE_FORMATS, prepare_render_plan, render_png_assets
 from maw.media_jobs import MediaJobBusy, MediaJobCancelled, MediaJobUnavailable
 
 PREFIX = "/api/exports/fcp7-png/jobs"
@@ -78,17 +78,21 @@ def handle_fcp7_png(handler, path: str, *, mutate=False, include_body=True, tool
             project = handler.editor_server.project
             if project.json_path is None:
                 raise ValueError("请先保存工程文件，再导出图片字幕")
+            # The png default keeps pages bundled before this option working.
+            image_format = request.get("imageFormat", "png")
+            if image_format not in IMAGE_FORMATS:
+                raise ValueError("图片字幕格式无效")
             plan = prepare_render_plan(request.get("ass"), fps=request.get("fps"),
                 width=request.get("width"), height=request.get("height"),
                 duration_ms=request.get("durationMs"), selected_layers=request.get("layers"))
             tools = tools_factory()
             if tools.ffmpeg is None or not handler.editor_server.ensure_libass_supported(tools.ffmpeg):
                 raise ValueError("图片字幕导出需要带 libass 的 FFmpeg")
-            package = project.json_path.parent / f"{project.json_path.stem}_webp_subtitles_{secrets.token_hex(4)}"
+            package = project.json_path.parent / f"{project.json_path.stem}_{image_format}_subtitles_{secrets.token_hex(4)}"
             binding = (request["bindingGeneration"], request["sourceMediaId"])
             def render(job):
                 job.fcp7_png = True
-                manifest = render_png_assets(job, plan, tools.ffmpeg, package)
+                manifest = render_png_assets(job, plan, tools.ffmpeg, package, image_format)
                 manifest["sourcePath"] = str(snapshot.path)
                 manifest["sourceKind"] = snapshot.kind
                 job.output.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8", newline="\n")

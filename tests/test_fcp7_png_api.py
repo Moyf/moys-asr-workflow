@@ -29,12 +29,12 @@ class PngJobHttpTests(unittest.TestCase):
         return self.payload(ass=HEADER + event(), fps='25', width=320, height=180,
                             durationMs=3000, layers=[0], **overrides)
 
-    def fake_render(self, job, plan, ffmpeg, package):
+    def fake_render(self, job, plan, ffmpeg, package, image_format='png'):
         images = job.directory / 'images'
         images.mkdir()
-        (images / 'one.png').write_bytes(b'fixture image')
-        return {'tracks': [{'clips': [{'path': str(package / 'images' / 'one.png')}]}],
-                'packagePath': str(package), 'imageCount': 1}
+        (images / f'one.{image_format}').write_bytes(b'fixture image')
+        return {'tracks': [{'clips': [{'path': str(package / 'images' / f'one.{image_format}')}]}],
+                'packagePath': str(package), 'imageCount': 1, 'imageFormat': image_format}
 
     def start_fake(self, render=None):
         with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=mock.Mock(ffmpeg=Path('ffmpeg'))), \
@@ -62,12 +62,14 @@ class PngJobHttpTests(unittest.TestCase):
         with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=mock.Mock(
                 ffmpeg=Path(shutil.which('ffmpeg')), ffprobe=None)):
             paths = []
-            for _ in range(2):
-                status, result = self.request(self.base, self.png_request())
+            for image_format in ('png', 'webp', 'png'):
+                status, result = self.request(self.base, self.png_request(imageFormat=image_format))
                 self.assertEqual(status, 202, result)
                 ready = self.wait(result['jobId'], 'ready')
                 manifest = ready['manifest']
                 package = Path(manifest['packagePath'])
+                self.assertIn(f'_{image_format}_subtitles_', package.name)
+                self.assertEqual(manifest['imageFormat'], image_format)
                 self.assertFalse(package.exists())
                 urls = ''.join('<file><pathurl>' + escape(Path(c['path']).as_uri()) + '</pathurl></file>'
                                for t in manifest['tracks'] for c in t['clips'])
@@ -82,12 +84,26 @@ class PngJobHttpTests(unittest.TestCase):
                 self.assertEqual({Path(unquote(e.text)).resolve() for e in vegas_tree.iter('pathurl')},
                                  {Path(c['path']).resolve() for t in manifest['tracks'] for c in t['clips']})
                 self.assertEqual(Path(published['xmlPath']).read_text('utf-8'), xml)
-                self.assertEqual(len(list((package / 'images').glob('*.webp'))), manifest['imageCount'])
+                self.assertEqual(len(list((package / 'images').glob('*.' + image_format))), manifest['imageCount'])
                 self.assertIsNone(self.server.media_jobs.active)
                 paths.append(package)
-            self.assertNotEqual(paths[0], paths[1])
+            self.assertEqual(len(set(paths)), 3)
             self.assertTrue(all((p / 'subtitles.xml').is_file() for p in paths))
             self.assertTrue(all((p / 'subtitles-vegas.xml').is_file() for p in paths))
+
+    def test_unknown_image_format_rejected_without_admitting_a_job(self):
+        with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=mock.Mock(ffmpeg=Path('ffmpeg'))), \
+             mock.patch.object(self.server, 'ensure_libass_supported', return_value=True), \
+             mock.patch.object(fcp7_png_api, 'render_png_assets') as render:
+            self.assertEqual(self.request(self.base, self.png_request(imageFormat='jpg'))[0], 400)
+        render.assert_not_called()
+        self.assertIsNone(self.server.media_jobs.active)
+
+    def test_default_request_still_targets_png_packages(self):
+        job_id, manifest = self.start_fake()
+        self.assertIn('_png_subtitles_', Path(manifest['packagePath']).name)
+        self.assertEqual(manifest['imageFormat'], 'png')
+        self.assertEqual(self.server.media_jobs.get(job_id).state, 'ready')
 
     def test_cancel_before_admission_prevents_job_creation(self):
         token = 'a' * 48

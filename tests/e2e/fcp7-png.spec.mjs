@@ -52,13 +52,13 @@ test('real PNG job publishes subtitle-only XML and preserves a static hold', asy
   await expect(page.locator('#fcp7-export-status')).toContainText(result.vegasXmlPath);
   expect(readFileSync(result.vegasXmlPath, 'utf8')).not.toContain('file://');
   const manifest = JSON.parse(readFileSync(join(result.packagePath, 'manifest.json'), 'utf8'));
-  expect(manifest.imageFormat).toBe('webp');
-  expect(manifest.renderer.encoding).toBe('lossless');
+  expect(manifest.imageFormat).toBe('png');
+  expect(manifest.renderer.method).toBe('rgb-dual-matte');
+  expect(result.packagePath).toContain('_png_subtitles_');
   const images = manifest.tracks.flatMap(t => t.clips.map(c => c.path));
-  expect(images.every(path => path.endsWith('.webp'))).toBeTruthy();
+  expect(images.every(path => path.endsWith('.png'))).toBeTruthy();
   const firstImage = readFileSync(images[0]);
-  expect(firstImage.subarray(0, 4).toString()).toBe('RIFF');
-  expect(firstImage.subarray(8, 12).toString()).toBe('WEBP');
+  expect(firstImage.subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   expect(manifest.tracks.flatMap(t => t.clips).some(c => c.endFrame - c.startFrame > 1)).toBeTruthy();
   const xml = readFileSync(result.xmlPath, 'utf8');
   expect(xml).toContain('<stillframe>TRUE</stillframe>');
@@ -85,12 +85,35 @@ test('media scope includes the bound source and cancellation cleans an admitted 
   await expect(page.locator('#fcp7-export-confirm')).toBeEnabled();
 });
 
+test('WebP option renders lossless assets without changing the PNG default', async ({ page }) => {
+  test.setTimeout(120000);
+  await open(page);
+  await page.locator('#fcp7-export-format').selectOption('webp');
+  await expect(page.locator('#fcp7-export-description')).toContainText('目标软件需支持 WebP');
+  const published = page.waitForResponse(r => r.url().includes('/fcp7-png/jobs/') && r.url().endsWith('/publish'));
+  await page.locator('#fcp7-export-confirm').click();
+  const response = await published;
+  expect(response.status()).toBe(200);
+  const result = await response.json();
+  const manifest = JSON.parse(readFileSync(join(result.packagePath, 'manifest.json'), 'utf8'));
+  expect(manifest.imageFormat).toBe('webp');
+  expect(manifest.renderer.method).toBe('ffmpeg-rgb-dual-matte');
+  expect(manifest.renderer.encoding).toBe('lossless');
+  expect(result.packagePath).toContain('_webp_subtitles_');
+  const images = manifest.tracks.flatMap(t => t.clips.map(c => c.path));
+  expect(images.every(path => path.endsWith('.webp'))).toBeTruthy();
+  const firstImage = readFileSync(images[0]);
+  expect(firstImage.subarray(0, 4).toString()).toBe('RIFF');
+  expect(firstImage.subarray(8, 12).toString()).toBe('WEBP');
+  expect(readFileSync(result.xmlPath, 'utf8')).toContain('MAW WEBP subtitles');
+});
+
 test('PNG options and completed status translate in the English interface', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
   await open(page);
-  await expect(page.locator('#fcp7-export-title')).toHaveText('WebP subtitles · FCP 7 XML');
+  await expect(page.locator('#fcp7-export-title')).toHaveText('PNG subtitles · FCP 7 XML');
   await expect(page.locator('#fcp7-export-scope option:checked')).toHaveText('Subtitles only');
-  await expect(page.locator('#fcp7-export-description')).toContainText('transparent WebP images');
+  await expect(page.locator('#fcp7-export-description')).toContainText('transparent PNG images');
   await expect(page.locator('#fcp7-export-stop')).toHaveText('Stop export');
   await page.locator('#fcp7-export-confirm').click();
   await expect(page.locator('#fcp7-export-status')).toContainText('images and XML:', { timeout: 30000 });

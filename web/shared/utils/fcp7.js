@@ -367,7 +367,9 @@ export function createUtilsModule(dependencies) {
       }).join('');
       return `<track><enabled>TRUE</enabled><locked>FALSE</locked>${clips}</track>`;
     }).join('');
-    if (!includeMedia) return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="5"><sequence id="MAW-png-subtitles"><name>MAW WebP subtitles</name><duration>${duration}</duration>${rate}<media><video><format>${characteristics}</format>${tracks}</video></media></sequence></xmeml>`;
+    const imageLabel = String(manifest.imageFormat || 'png').toUpperCase();
+    const sequenceId = `MAW-${String(manifest.imageFormat || 'png')}-subtitles`;
+    if (!includeMedia) return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="5"><sequence id="${sequenceId}"><name>MAW ${imageLabel} subtitles</name><duration>${duration}</duration>${rate}<media><video><format>${characteristics}</format>${tracks}</video></media></sequence></xmeml>`;
     const sourcePlan = { ...exportPlan, media: { ...exportPlan.media,
       path: manifest.sourcePath || exportPlan.media.path, width: manifest.width, height: manifest.height },
     stickers: [], overlayStickers: [] };
