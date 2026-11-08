@@ -4,7 +4,7 @@
 // 2. Esc 关闭气泡并保留修改（与当前字幕面板默认一致）；
 // 3. 跨行字幕按鼠标双击的位置在对应行的片段上方弹出。
 import { expect, test } from '@playwright/test';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
@@ -19,11 +19,12 @@ import {
 
 let tempDir;
 let server;
+let projectPath;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('cuequickedit');
   const mediaPath = join(tempDir, 'synthetic.wav');
-  const projectPath = join(tempDir, 'project.json');
+  projectPath = join(tempDir, 'project.json');
   generateWav(mediaPath, DURATION_MS / 1000);
   // 25s–40s 的第二句横跨默认多行模式（10s/行）的 30s 行边界，
   // 双击不同行的片段时气泡必须跟随点击位置；第一句带字词时间码
@@ -297,4 +298,53 @@ test('字词码模式：双击字词块弹出字词气泡，等长改字同步�
   await expect(textarea).toHaveValue('第A句原文');
   await textarea.press('Escape');
   await expect(popup).toHaveCount(0);
+});
+
+test('滚动后贴近视口顶部的块：气泡翻到下方且完整可见，Ctrl+S 落盘气泡文字', async ({ page }) => {
+  await openEditor(page);
+  // 滚动波形让第二句的首个片段落在视口顶部工具栏下方一点（旧实现会按
+  // 内容顶部误判「上方充足」，气泡被滚动容器裁掉）。内容在滚动容器内有
+  // 内部偏移，用块的实时 rect 相对滚动，不手工换算 offsetTop。
+  await page.evaluate(() => {
+    const editor = window.MaweCoreState.waveformEditor;
+    const block = document.querySelector('.waveform-row[data-start-ms="20000"] .waveform-cue-block[data-idx="1"]');
+    const rect = block.getBoundingClientRect();
+    const viewport = editor.scroll.getBoundingClientRect();
+    // 下移 110px：视口最顶部被悬浮波形工具栏覆盖，块要落在工具栏下方。
+    editor.scroll.scrollTop += Math.round(rect.top - viewport.top) - 110;
+  });
+  await page.waitForFunction(() => {
+    const block = document.querySelector('.waveform-row[data-start-ms="20000"] .waveform-cue-block[data-idx="1"]');
+    if (!block) return false;
+    const rect = block.getBoundingClientRect();
+    const viewport = document.getElementById('waveform-scroll').getBoundingClientRect();
+    return rect.top >= viewport.top + 85 && rect.top <= viewport.top + 135;
+  });
+  const fragment = page.locator('.waveform-row[data-start-ms="20000"] .waveform-cue-block[data-idx="1"]');
+  const fragmentBox = await fragment.boundingBox();
+  await page.mouse.dblclick(fragmentBox.x + fragmentBox.width / 2, fragmentBox.y + fragmentBox.height / 2);
+
+  const popup = page.locator('.waveform-cue-quick-edit');
+  await expect(popup).toBeVisible();
+  const textarea = popup.locator('textarea');
+  await expect(textarea).toHaveValue('跨行长句需要分片显示');
+  // 气泡完整落在波形滚动视口内（不被顶部裁剪）。
+  const popupBox = await popup.boundingBox();
+  const scrollRect = await page.evaluate(() => {
+    const rect = document.getElementById('waveform-scroll').getBoundingClientRect();
+    return { top: rect.top, bottom: rect.bottom };
+  });
+  expect(popupBox.y).toBeGreaterThanOrEqual(scrollRect.top);
+  expect(popupBox.y + popupBox.height).toBeLessThanOrEqual(scrollRect.bottom + 2);
+
+  // 气泡内输入后直接 Ctrl+S：保存前先提交气泡文字，磁盘工程包含新文本，
+  // 气泡保持打开可继续编辑。
+  await textarea.fill('滚动后已改');
+  await page.keyboard.press('Control+s');
+  await expect(textarea).toHaveValue('滚动后已改');
+  await expect(popup).toBeVisible();
+  await expect(page.locator('.waveform-cue-block[data-idx="1"] .waveform-cue-label').first())
+    .toHaveText('滚动后已改');
+  await expect.poll(() => readFileSync(projectPath, 'utf8'), { timeout: 10_000 })
+    .toContain('滚动后已改');
 });

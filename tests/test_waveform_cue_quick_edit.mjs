@@ -32,40 +32,55 @@ const testing = waveContext.window.AsrWaveform.testing;
 
 test('cueQuickEditLayout：默认浮在点击片段上方，箭头对准指针', () => {
   const layout = testing.cueQuickEditLayout(
-    { pointerX: 300, blockTop: 200, blockBottom: 240 }, 300, 120, 1200, 800);
+    { pointerX: 300, blockTop: 200, blockBottom: 240 }, 300, 120, 0, 0, 1200, 800);
   assert.equal(layout.placement, 'above');
   assert.equal(layout.left, 150);
   assert.equal(layout.top, 200 - 120 - 8);
   assert.equal(layout.arrowX, 150);
 });
 
-test('cueQuickEditLayout：水平贴边时钳制在内容区内，箭头跟随指针', () => {
+test('cueQuickEditLayout：水平贴边时钳制在可视区内，箭头跟随指针', () => {
   const left = testing.cueQuickEditLayout(
-    { pointerX: 50, blockTop: 200, blockBottom: 240 }, 300, 120, 1200, 800);
+    { pointerX: 50, blockTop: 200, blockBottom: 240 }, 300, 120, 0, 0, 1200, 800);
   assert.equal(left.left, 4);
   assert.equal(left.arrowX, 46);
   const right = testing.cueQuickEditLayout(
-    { pointerX: 1150, blockTop: 200, blockBottom: 240 }, 300, 120, 1200, 800);
+    { pointerX: 1150, blockTop: 200, blockBottom: 240 }, 300, 120, 0, 0, 1200, 800);
   assert.equal(right.left, 1200 - 300 - 4);
   assert.equal(right.arrowX, 1150 - right.left);
 });
 
-test('cueQuickEditLayout：片段贴着内容区顶部时翻到下方并钳制', () => {
+test('cueQuickEditLayout：片段贴着可视区顶部时翻到下方并钳制', () => {
   const flip = testing.cueQuickEditLayout(
-    { pointerX: 300, blockTop: 100, blockBottom: 140 }, 300, 120, 1200, 800);
+    { pointerX: 300, blockTop: 100, blockBottom: 140 }, 300, 120, 0, 0, 1200, 800);
   assert.equal(flip.placement, 'below');
   assert.equal(flip.top, 140 + 8);
-  // 下方也放不下（内容区过矮）时退一步钳在内容区底部内。
+  // 下方也放不下（可视区过矮）时退一步钳在可视区底部内。
   const clamped = testing.cueQuickEditLayout(
-    { pointerX: 300, blockTop: 100, blockBottom: 280 }, 300, 120, 1200, 300);
+    { pointerX: 300, blockTop: 100, blockBottom: 280 }, 300, 120, 0, 0, 1200, 300);
   assert.equal(clamped.placement, 'below');
   assert.equal(clamped.top, 300 - 120 - 4);
+});
+
+test('cueQuickEditLayout：滚动后按可视视口翻转，不把气泡顶进裁剪区', () => {
+  // 视口已滚到内容 y=1700：贴近视口顶部的块（blockTop=1780）上方放不下
+  // 气泡，必须翻到下方而不是按内容顶部误判为「上方充足」。
+  const scrolled = testing.cueQuickEditLayout(
+    { pointerX: 300, blockTop: 1780, blockBottom: 1820 }, 300, 120, 0, 1700, 1200, 800);
+  assert.equal(scrolled.placement, 'below');
+  assert.equal(scrolled.top, 1820 + 8);
+  assert.ok(scrolled.top >= 1700 + 4, '气泡不得高出可视视口顶部');
+  // 可视区内上方确实放得下时仍优先上方。
+  const above = testing.cueQuickEditLayout(
+    { pointerX: 300, blockTop: 1900, blockBottom: 1940 }, 300, 120, 0, 1700, 1200, 800);
+  assert.equal(above.placement, 'above');
+  assert.equal(above.top, 1900 - 120 - 8);
 });
 
 test('cueQuickEditLayout：箭头位置始终留在弹窗左右边缘之内', () => {
   for (const pointerX of [0, 4, 600, 1196, 1200]) {
     const layout = testing.cueQuickEditLayout(
-      { pointerX, blockTop: 200, blockBottom: 240 }, 300, 120, 1200, 800);
+      { pointerX, blockTop: 200, blockBottom: 240 }, 300, 120, 0, 0, 1200, 800);
     assert.ok(layout.arrowX >= 14, `arrowX >= 14 (pointerX=${pointerX})`);
     assert.ok(layout.arrowX <= 300 - 14, `arrowX <= width-14 (pointerX=${pointerX})`);
   }
@@ -133,6 +148,19 @@ test('接线契约：气泡内 Tab 切换字幕并阻断原生焦点移动', () 
   assert.ok(source.includes("caret === 'select'"));
   // 光标定位兼容字词标签（不折叠空白时走恒等捷径）。
   assert.ok(source.includes("caretCollapsed.collapsed === text"));
+});
+
+test('接线契约：输入法组词期间跳过气泡快捷键，Ctrl+S 保存前先提交气泡', () => {
+  const source = fs.readFileSync(
+    path.join(root, 'web/editor/media/waveform/cue-quick-edit.js'), 'utf8');
+  assert.ok(source.includes('keyEvent.isComposing || keyEvent.keyCode === 229'));
+  // 保存与导出的 flushInlineEditsForSave 都要先提交气泡（幂等）。
+  const save = fs.readFileSync(
+    path.join(root, 'web/editor/io/editor-project-save.js'), 'utf8');
+  assert.ok(save.includes('MaweCoreState.waveformEditor?.commitCueQuickEdit?.()'));
+  const exportActions = fs.readFileSync(
+    path.join(root, 'web/editor/io/editor-wiring-export-actions.js'), 'utf8');
+  assert.ok(exportActions.includes('MaweCoreState.waveformEditor?.commitCueQuickEdit?.()'));
 });
 
 test('接线契约：选中后 Enter 与叠加轨菜单「编辑文本」也走气泡，聚焦面板仅作回退', () => {

@@ -62,6 +62,8 @@ function projectSaveFingerprint() {
 
 // 保存正在输入的文字，但不结束行内编辑、不替换节点、不移动光标。
 function flushInlineEditsForSave() {
+  // 波形快速编辑气泡的待提交文字先落盘提交（幂等），气泡保持打开。
+  MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
   const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
   if (!state) {
     // Start/duration changes are committed by their own input handlers.  Only

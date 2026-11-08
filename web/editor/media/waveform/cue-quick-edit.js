@@ -21,25 +21,28 @@ export function createWaveformModule(dependencies) {
     return localizedWaveformMessage('字幕', 'Cue');
   }
 
-  // 纯函数：锚点（内容坐标像素）+ 弹窗尺寸 + 内容区尺寸 → 定位。
-  // anchor: {pointerX, blockTop, blockBottom}。水平以指针 X 居中并夹在
-  // 内容区内；垂直优先在被点击片段上方，贴着内容区顶部时翻到片段下方；
-  // arrowX 是气泡三角相对弹窗左缘的位置，保持箭头指向指针点击处。
-  function cueQuickEditLayout(anchor, popupWidth, popupHeight, contentWidth, contentHeight) {
+  // 纯函数：锚点（内容坐标像素）+ 弹窗尺寸 + 可视视口（内容坐标）→ 定位。
+  // anchor: {pointerX, blockTop, blockBottom}；viewLeft/viewTop 是滚动容器
+  // 可视范围在内容坐标系的原点，viewWidth/viewHeight 是可视尺寸。水平以
+  // 指针 X 居中并夹在可视区内；垂直优先在被点击片段上方——只有上方在
+  // 可视区内放得下才算「上方」，否则翻到片段下方并钳在可视区内，避免
+  // 滚动后贴近视口顶部的块把气泡顶进滚动容器的裁剪区；arrowX 是气泡
+  // 三角相对弹窗左缘的位置，保持箭头指向指针点击处。
+  function cueQuickEditLayout(anchor, popupWidth, popupHeight, viewLeft, viewTop, viewWidth, viewHeight) {
     const pointerX = Number.isFinite(anchor?.pointerX) ? anchor.pointerX : 0;
     const left = clamp(
       pointerX - popupWidth / 2,
-      QUICK_EDIT_MARGIN_PX,
-      Math.max(QUICK_EDIT_MARGIN_PX, contentWidth - popupWidth - QUICK_EDIT_MARGIN_PX),
+      viewLeft + QUICK_EDIT_MARGIN_PX,
+      Math.max(viewLeft + QUICK_EDIT_MARGIN_PX, viewLeft + viewWidth - popupWidth - QUICK_EDIT_MARGIN_PX),
     );
     const aboveTop = anchor.blockTop - popupHeight - QUICK_EDIT_GAP_PX;
-    const placement = aboveTop >= QUICK_EDIT_MARGIN_PX ? 'above' : 'below';
+    const placement = aboveTop >= viewTop + QUICK_EDIT_MARGIN_PX ? 'above' : 'below';
     const top = placement === 'above'
       ? aboveTop
       : clamp(
         anchor.blockBottom + QUICK_EDIT_GAP_PX,
-        QUICK_EDIT_MARGIN_PX,
-        Math.max(QUICK_EDIT_MARGIN_PX, contentHeight - popupHeight - QUICK_EDIT_MARGIN_PX),
+        viewTop + QUICK_EDIT_MARGIN_PX,
+        Math.max(viewTop + QUICK_EDIT_MARGIN_PX, viewTop + viewHeight - popupHeight - QUICK_EDIT_MARGIN_PX),
       );
     const arrowX = clamp(
       pointerX - left,
@@ -150,6 +153,10 @@ export function createWaveformModule(dependencies) {
       // 阻断原生焦点移动）。其余按键交给 textarea 原生行为，编辑器快捷键
       // 层已有输入目标守卫（isTextEditingTarget），不会误触发。
       textarea.addEventListener('keydown', (keyEvent) => {
+        // 输入法组词期间（isComposing / keyCode 229）Enter 是确认候选词、
+        // Esc 是取消组词：跳过气泡快捷键，交给输入法原生处理，避免确认
+        // 候选词误关气泡或打断组词。
+        if (keyEvent.isComposing || keyEvent.keyCode === 229) return;
         if (keyEvent.key === 'Enter' && !keyEvent.shiftKey && !keyEvent.altKey) {
           keyEvent.preventDefault();
           keyEvent.stopPropagation();
@@ -479,12 +486,17 @@ export function createWaveformModule(dependencies) {
       const state = this.cueQuickEdit;
       if (!state?.element.isConnected) return;
       const popup = state.element;
+      // 可视视口换算到内容坐标系：气泡是 content 的子元素、随内容滚动，
+      // 翻转与钳制必须相对可视范围而不是整份内容，否则滚动后贴近视口
+      // 顶部的块会把气泡顶进滚动容器的裁剪区。
       const layout = cueQuickEditLayout(
         state.anchor,
         popup.offsetWidth || 300,
         popup.offsetHeight || 120,
-        this.content.clientWidth,
-        this.content.clientHeight,
+        this.scroll.scrollLeft,
+        this.scroll.scrollTop,
+        this.scroll.clientWidth,
+        this.scroll.clientHeight,
       );
       popup.style.left = `${layout.left}px`;
       popup.style.top = `${layout.top}px`;
