@@ -7,10 +7,13 @@
 | Finding | 级别 | 证据 | 处置 |
 | --- | --- | --- | --- |
 | 指南静止区间仍写“一张 WebP” | minor | `docs/user/EDITOR_GUIDE.md:228` 与实际 PNG 默认/显式 WebP 逻辑矛盾 | 已改为“一张图片”，同步官网副本。 |
+| fork 临时 CI wrapper 的换行偏差 | minor | `244ec030` 相对 `5276954b` 的工作流有 CRLF 变化；忽略行尾后仅新增 CI tag 触发行 | 保留该 tag 的实际测试证据，功能分支工作流仍为 LF；临时生成器已改用二进制 stdin，后续保持 LF，wrapper 不合回上游。 |
 
 审查覆盖三路共享 RGBA、split 前 trim、1 fps 本地检查时钟、SHA-256/Alpha 元数据的帧数/PTS/尺寸检查、Alpha=1、跨批次去重和 cueId 合并边界，以及旧 API 省略格式默认 PNG、前端捕获格式、依赖和锁文件一致性。
 
 合并同期提交后的补审：RGB lut2 先除覆盖度、再 alphamerge，避免 FFmpeg 8.1 自动 Alpha 协商；格式第五参数、PNG 默认选中、分格式提示与原生模式均保留，无新增 blocker/major。A=1 测试改为精确双底的理由已有原始 RGB 证据，并保留旧图诊断日志。最终 `707a0b48`：FFmpeg 8.1 下 Python 2864 项无失败（23 跳过）、Node 1055 项、Chromium 14 项通过；重新构建的无 PIL 实际 EXE 双格式导出也通过（`20261108T020558Z-ee8087e8`），满足复审条件。
+
+CI 小幅修复补审：`5276954b` 的 macos-14→15 与匹配契约未改动 arm64 架构、产物命名或发布条件；36 项契约与 fork 三端真实构建均通过，发布/刷新步骤 skipped，可以放行。上述临时 wrapper 的 minor 已记录，不影响功能分支实现和测试结论。
 
 放行条件的实际证据：14 项 Chromium 通过（`20261108T014734Z-8d956e2e`）；正式 MAW.spec 排除 PIL 后构建成功（`20261108T014734Z-243b1a40`），实际 EXE 在隔离目录启动，经浏览器导出 PNG 与 VP8L WebP，两包保留、无页面错误、布局距离至少 8 px（`20261108T014936Z-6cfb6e19`）。详细命令与后续完整回归见 [格式反馈账本](TEST_FEEDBACK_FORMATS.md)。目标软件 WebP 导入沿用用户允许跳过的边界。
 

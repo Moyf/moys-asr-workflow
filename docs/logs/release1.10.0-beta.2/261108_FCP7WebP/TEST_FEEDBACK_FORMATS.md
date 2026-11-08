@@ -9,7 +9,7 @@
 | 3. 回归、浏览器与发布包 | 已修复 | 14 项 Chromium 通过，`20261108T014734Z-8d956e2e`。正式 spec 构建 `20261108T014734Z-243b1a40`；实际排除 PIL 的 EXE 启动、浏览器导出两种格式及旧包保留通过，`20261108T014936Z-6cfb6e19`。整套 Python 的超时/基线失败单独记录，不声称全绿。 |
 | 4. 独立复审与文档 | 已修复 | 指南、计划、变更说明与官网同步；独立复审无 blocker/major，1 项文档 minor 已修复，见 REVIEW_FINDINGS.md。 |
 | 5. 目标软件 WebP 导入 | 仅说明 | 沿用用户允许跳过本机 VEGAS 14 WebP 导入的边界；不将 PNG 导入证据当成 WebP 证据。 |
-| 6. 同期远端提交与三端 CI | 进行中 | 远端新增 `22e01d89`，先合并其格式选择与兼容改进；另外验证其记录的 FFmpeg 8.1 像素偏差，再推 cat fork 专用 tag 检查三端。 |
+| 6. 同期远端提交与三端 CI | 已修复 | 正常合并 `22e01d89`，保留其界面和接口兼容；解决 FFmpeg 8.1 像素偏差。cat fork 专用 tag 的 Windows、Linux、macOS 三端构建均通过，见下文。 |
 
 测试统一经 scripts/run_check.py，原始证据存 `.artifacts/checks/<run-id>/`，逐项完成后回填。内联副本待发布前统一重生成。
 
@@ -63,3 +63,13 @@
 首个 tag `ci-fcp7-formats-20261108-71f98599` 对应源码 `71f98599`，CI commit 只增加 fork 专用 tag 触发规则，非 v tag 不执行发布 job。[运行记录](https://github.com/drunkenQCat/moys-asr-workflow/actions/runs/42437192505)。macOS 尚未分配 runner 就被取消，annotation 明确为 `The configuration 'macos-14-arm64-us-default' is not supported`，不是测试失败；依据 [GitHub 官方 runner 列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)，矩阵更新为受支持的 macos-15 ARM64，并同步打包契约后重跑。
 
 FFmpeg 7.0.2 的最终双格式渲染兼容检查 17 项通过，`20261108T020718Z-2b84a0e8`。可选目标软件核验清单已校验、生成并在浏览器打开，`20261108T020856Z-15fd995d`。
+
+修复 runner 后，打包契约 36 项通过（`20261108T021031Z-b2250ba7`）。最终源码 `5276954b`，cat fork tag `ci-fcp7-formats-20261108-5276954b`，CI commit `244ec030` 语义上仅增加 CI tag 触发规则；另有临时 wrapper 的 CRLF 偏差，已在 REVIEW_FINDINGS.md 记录并修正后续生成器，不带回功能分支。[完整运行](https://github.com/drunkenQCat/moys-asr-workflow/actions/runs/42437401842) 结论 success：
+
+| 平台 | CI job | 结果 |
+| --- | --- | --- |
+| Windows x64 | [完整构建](https://github.com/drunkenQCat/moys-asr-workflow/actions/runs/42437401842/job/128599098500) | success |
+| Linux x86_64 | [AppImage 构建](https://github.com/drunkenQCat/moys-asr-workflow/actions/runs/42437401842/job/128599098432) | success |
+| macOS arm64 | [macOS 15 构建](https://github.com/drunkenQCat/moys-asr-workflow/actions/runs/42437401842/job/128599098549) | success |
+
+非 v tag 的 GitHub Release 和更新索引步骤均按预期 skipped，未创建正式发布。上游 PR 353 的 editor、Ruff、Windows/Linux 调试工具与 CLA 在此源码上均通过。本条结果之后只补文档，不更改产品代码。三端构建通过不代表剪辑软件导入验收；目标软件 WebP 导入仍按用户允许未测，见条目 5。
