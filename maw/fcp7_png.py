@@ -11,14 +11,60 @@ from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 
-from PIL import Image
-
 from maw.ass_fonts import normalize_ass_text_fontnames
 from maw.postprocess_ffmpeg import libass_missing_glyphs
 
 FRAME_RATES = {"24", "25", "30", "30000/1001", "50", "60", "60000/1001"}
 MAX_RENDER_SAMPLES = 250_000
 BATCH_SIZE = 24
+IMAGE_FORMATS = {"png", "webp"}
+
+
+def _frame_checks(root: Path, count: int, width: int, height: int) -> list[tuple[str, bool]]:
+    """Read dense FFmpeg raw-RGBA hashes and explicit alpha records, fail closed."""
+    try:
+        hashes = []
+        for line in (root / "frames.sha256").read_text(encoding="utf-8").splitlines():
+            if not line.strip() or line.startswith("#"):
+                continue
+            stream, dts, pts, duration, size, digest = (item.strip() for item in line.split(","))
+            index = len(hashes)
+            if (int(stream) != 0 or int(dts) != index or int(pts) != index
+                    or int(duration) != 1 or int(size) != width * height * 4
+                    or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+                raise ValueError("invalid RGBA frame hash")
+            hashes.append(digest)
+        records = []
+        for line in (root / "alpha.txt").read_text(encoding="utf-8").splitlines():
+            if line.startswith("frame:"):
+                match = re.fullmatch(r"frame:(\d+)\s+pts:(\d+)\s+pts_time:\S+", line)
+                if not match or int(match[1]) != len(records) or int(match[2]) != len(records):
+                    raise ValueError("invalid alpha frame index")
+                records.append({})
+            elif line.strip():
+                key, value = line.split("=", 1)
+                if not records or key in records[-1]:
+                    raise ValueError("invalid alpha metadata")
+                records[-1][key] = value
+        if len(hashes) != count or len(records) != count:
+            raise ValueError("frame count mismatch")
+        result = []
+        bounds = {"x1", "x2", "y1", "y2", "w", "h"}
+        for digest, record in zip(hashes, records):
+            if record.pop("maw.sample", None) != "1":
+                raise ValueError("missing alpha record")
+            if record:
+                if set(record) != {"lavfi.bbox." + key for key in bounds}:
+                    raise ValueError("incomplete alpha bounds")
+                box = {key: int(record["lavfi.bbox." + key]) for key in bounds}
+                if not (0 <= box["x1"] <= box["x2"] < width and 0 <= box["y1"] <= box["y2"] < height
+                        and box["w"] == box["x2"] - box["x1"] + 1
+                        and box["h"] == box["y2"] - box["y1"] + 1):
+                    raise ValueError("invalid alpha bounds")
+            result.append((digest, bool(record)))
+        return result
+    except (OSError, ValueError) as error:
+        raise ValueError("图片字幕帧校验失败") from error
 
 
 def _ass_ms(value: str) -> int:
@@ -97,7 +143,9 @@ class Event:
 
 
 def prepare_render_plan(ass: str, *, fps: str, width: int, height: int,
-                        duration_ms: int, selected_layers: list[int]) -> dict:
+                        duration_ms: int, selected_layers: list[int], image_format: str = "png") -> dict:
+    if not isinstance(image_format, str) or image_format not in IMAGE_FORMATS:
+        raise ValueError("不支持的字幕图片格式")
     if not isinstance(ass, str) or not ass.strip() or len(ass.encode("utf-8")) > 4 * 1024 * 1024:
         raise ValueError("ASS 内容为空或超过 4 MB")
     if fps not in FRAME_RATES:
@@ -179,16 +227,15 @@ def prepare_render_plan(ass: str, *, fps: str, width: int, height: int,
                            "spans": spans, "cueSpans": [(frame(e.start), frame(e.end), e.name) for e in entries]})
     if not samples:
         raise ValueError("所选轨道没有可导出的字幕")
-    return {"width": width, "height": height, "fps": fps, "durationFrames": total,
+    return {"width": width, "height": height, "fps": fps, "durationFrames": total, "imageFormat": image_format,
             "tracks": tracks, "samples": samples, "fontNotices": font_notices}
 
 
 def render_png_assets(job, plan: dict, ffmpeg: Path, package: Path) -> dict:
-    """Render lossless WebP; keep the existing PNG task API for older clients.
-
-    FFmpeg performs both RGB matte renders, coverage recovery, unpremultiplication
-    and encoding. Pillow only reads pixels for empty-frame detection and dedup.
-    """
+    """Render PNG by default or opt-in lossless WebP, without a Python image decoder."""
+    image_format = plan.get("imageFormat", "png")
+    if image_format not in IMAGE_FORMATS:
+        raise ValueError("不支持的字幕图片格式")
     assets = job.directory / "images"
     assets.mkdir()
     rate = Fraction(plan["fps"])
@@ -212,11 +259,18 @@ def render_png_assets(job, plan: dict, ffmpeg: Path, package: Path) -> dict:
                 graph = (f"[0:v]{timing},split[b][b2];[1:v]{timing}[w];"
                          "[w][b2]blend=all_mode=subtract[d];"
                          f"[d]geq=r='{coverage}':g=0:b=0,extractplanes=r[a];"
-                         "[b][a]alphamerge,unpremultiply=inplace=1,format=bgra,setpts=N[v]")
+                         "[b][a]alphamerge,unpremultiply=inplace=1,format=rgba,"
+                         f"settb=1/1,setpts=N,trim=end_frame={len(batch)},split=3[v][hash][alpha];"
+                         "[alpha]alphaextract,metadata=mode=add:key=maw.sample:value=1,"
+                         "bbox=min_val=0,metadata=mode=print:file=alpha.txt[check]")
+                codec = (["-c:v", "png", "-pix_fmt", "rgba"] if image_format == "png" else
+                         ["-c:v", "libwebp", "-lossless", "1", "-compression_level", "6"])
                 command += ["-filter_complex_threads", "2", "-filter_complex", graph, "-map", "[v]",
-                    "-frames:v", str(len(batch)), "-fps_mode", "passthrough", "-threads", "1",
-                    "-c:v", "libwebp", "-lossless", "1", "-compression_level", "6",
-                    "-start_number", "0", "frame-%03d.webp"]
+                    "-r", "1", "-fps_mode", "cfr", "-threads", "1", *codec,
+                    "-start_number", "0", f"frame-%03d.{image_format}",
+                    "-map", "[hash]", "-r", "1", "-fps_mode", "cfr", "-threads", "1",
+                    "-c:v", "rawvideo", "-pix_fmt", "rgba", "-f", "framehash", "-hash", "sha256", "frames.sha256",
+                    "-map", "[check]", "-r", "1", "-fps_mode", "cfr", "-threads", "1", "-f", "null", "-"]
                 output = job.run_command(command, timeout=180, cwd=root)
                 if output.returncode:
                     raise ValueError("图片字幕渲染失败：" + output.stderr[-2000:])
@@ -224,27 +278,27 @@ def render_png_assets(job, plan: dict, ffmpeg: Path, package: Path) -> dict:
                 if missing:
                     glyph, family = missing[0]
                     raise ValueError(f"字幕字体「{family}」缺少字形 {glyph}，请更换字体后导出")
+                checks = _frame_checks(root, len(batch), plan["width"], plan["height"])
+                if len(list(root.glob(f"frame-*.{image_format}"))) != len(batch):
+                    raise ValueError("图片字幕帧校验失败")
                 for index, (start, end) in enumerate(batch):
                     job.check_cancelled()
                     cue_id = next((name for a, b, name in track["cueSpans"] if a <= start < b), "")
-                    frame_path = root / f"frame-{index:03d}.webp"
-                    with Image.open(frame_path) as image:
-                        rgba = image.convert("RGBA")
-                    try:
-                        if rgba.getchannel("A").getbbox() is not None:
-                            digest = hashlib.sha256(rgba.tobytes()).hexdigest()
-                            filename = unique.get(digest)
-                            if filename is None:
-                                filename = f"subtitle_{len(unique) + 1:06d}.webp"
-                                shutil.copyfile(frame_path, assets / filename)
-                                unique[digest] = filename
-                            if clips and clips[-1]["filename"] == filename and clips[-1]["endFrame"] == start and clips[-1]["cueId"] == cue_id:
-                                clips[-1]["endFrame"] = end
-                            else:
-                                clips.append({"cueId": cue_id, "filename": filename, "path": str(package / "images" / filename),
-                                              "startFrame": start, "endFrame": end})
-                    finally:
-                        rgba.close()
+                    frame_path = root / f"frame-{index:03d}.{image_format}"
+                    if frame_path.stat().st_size == 0:
+                        raise ValueError("图片字幕帧校验失败")
+                    digest, visible = checks[index]
+                    if visible:
+                        filename = unique.get(digest)
+                        if filename is None:
+                            filename = f"subtitle_{len(unique) + 1:06d}.{image_format}"
+                            shutil.copyfile(frame_path, assets / filename)
+                            unique[digest] = filename
+                        if clips and clips[-1]["filename"] == filename and clips[-1]["endFrame"] == start and clips[-1]["cueId"] == cue_id:
+                            clips[-1]["endFrame"] = end
+                        else:
+                            clips.append({"cueId": cue_id, "filename": filename, "path": str(package / "images" / filename),
+                                          "startFrame": start, "endFrame": end})
                     completed += 1
                     job.update("rendering", completed / plan["samples"])
         if clips:
@@ -252,7 +306,7 @@ def render_png_assets(job, plan: dict, ffmpeg: Path, package: Path) -> dict:
     if not unique:
         raise ValueError("所选字幕在输出帧上均为透明，请检查字幕颜色、位置和时长")
     manifest = {"version": 1, "width": plan["width"], "height": plan["height"], "fps": plan["fps"],
-                "imageFormat": "webp",
+                "imageFormat": image_format,
                 "durationFrames": plan["durationFrames"], "tracks": result_tracks,
                 "sampleCount": plan["samples"], "imageCount": len(unique), "packagePath": str(package),
                 "fontNotices": plan["fontNotices"]}

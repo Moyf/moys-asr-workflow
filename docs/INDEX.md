@@ -156,6 +156,7 @@
 [方案决定、现有渲染复用与分层验证提议](plans/FCP7_PNG_SUBTITLES.md)
 
 [无损 WebP 与通用入口验证](logs/release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md)
+[PNG/WebP 格式反馈与移除 Pillow](logs/release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md)
 
 <a name="plan-release-pipeline"></a>
 ### 正式版本归档、官网与更新检测管线

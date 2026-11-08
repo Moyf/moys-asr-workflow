@@ -55,6 +55,8 @@ class PngJobHttpTests(unittest.TestCase):
         bad = self.png_request()
         bad['width'] = 0
         self.assertEqual(self.request(self.base, bad)[0], 400)
+        for value in (None, 'jpeg', [], {}):
+            self.assertEqual(self.request(self.base, self.png_request(imageFormat=value))[0], 400)
         self.assertIsNone(self.server.media_jobs.active)
 
     @unittest.skipUnless(shutil.which('ffmpeg'), 'real FFmpeg unavailable')
@@ -62,11 +64,14 @@ class PngJobHttpTests(unittest.TestCase):
         with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=mock.Mock(
                 ffmpeg=Path(shutil.which('ffmpeg')), ffprobe=None)):
             paths = []
-            for _ in range(2):
-                status, result = self.request(self.base, self.png_request())
+            for image_format in (None, 'webp', 'png'):
+                status, result = self.request(self.base, self.png_request(
+                    **({} if image_format is None else {'imageFormat': image_format})))
                 self.assertEqual(status, 202, result)
                 ready = self.wait(result['jobId'], 'ready')
                 manifest = ready['manifest']
+                expected_format = image_format or 'png'
+                self.assertEqual(manifest['imageFormat'], expected_format)
                 package = Path(manifest['packagePath'])
                 self.assertFalse(package.exists())
                 urls = ''.join('<file><pathurl>' + escape(Path(c['path']).as_uri()) + '</pathurl></file>'
@@ -82,7 +87,7 @@ class PngJobHttpTests(unittest.TestCase):
                 self.assertEqual({Path(unquote(e.text)).resolve() for e in vegas_tree.iter('pathurl')},
                                  {Path(c['path']).resolve() for t in manifest['tracks'] for c in t['clips']})
                 self.assertEqual(Path(published['xmlPath']).read_text('utf-8'), xml)
-                self.assertEqual(len(list((package / 'images').glob('*.webp'))), manifest['imageCount'])
+                self.assertEqual(len(list((package / 'images').glob('*.' + expected_format))), manifest['imageCount'])
                 self.assertIsNone(self.server.media_jobs.active)
                 paths.append(package)
             self.assertNotEqual(paths[0], paths[1])

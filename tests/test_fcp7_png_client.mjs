@@ -32,6 +32,20 @@ test('PNG client publishes its captured snapshot and does not cancel a completed
   assert.equal(request.ass, 'ASS snapshot');
   assert.equal(request.width, 640);
   assert.equal(request.bindingGeneration, 1);
+  assert.equal(request.imageFormat, 'png');
+});
+
+test('WebP client submits an explicit format without changing the captured ASS', async t => {
+  const args = setup(t, (url, options) => {
+    if (url === '/jobs') {
+      const request = JSON.parse(options.body);
+      assert.equal(request.imageFormat, 'webp');
+      assert.equal(request.ass, 'ASS snapshot');
+      return { jobId: 'one', state: 'ready', manifest: { sourceKind: 'video' } };
+    }
+    return { xmlPath: 'webp.xml' };
+  });
+  assert.equal((await runFcp7PngExport({ ...args, imageFormat: 'webp' })).xmlPath, 'webp.xml');
 });
 
 test('PNG client waits for cancellation cleanup before returning AbortError', async t => {

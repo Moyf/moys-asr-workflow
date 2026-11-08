@@ -1,5 +1,7 @@
 # FCP 7 XML WebP 图片素材与通用入口
 
+> 历史阶段记录：下文 WebP 替换 PNG、Pillow 随包的决定已由 [格式反馈返工](TEST_FEEDBACK_FORMATS.md) 更新；当前为 PNG 默认、WebP 可选，图片字幕运行时不依赖 Pillow。旧测试结果仅代表当时实现。
+
 基线：`main` / `1caa69ee`，前一轮 PR 348 已合并；本轮在 `feat/fcp7-webp-subtitles` 实施。原工作区 WIP 与既有测试素材保留。
 
 | 工作项 | 状态 | 决定与验证 |

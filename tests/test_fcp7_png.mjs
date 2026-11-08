@@ -7,7 +7,7 @@ const h = context.window.AsrEditorUtils;
 const plan = h.buildProjectExportPlan({ media: 'C:/demo/source.mp4', segments: [
   { start: 0, end: 2000, text: 'TEST' },
 ] }, { timelineMode: 'source', fps: '25', durationMs: 3000 });
-const manifest = { fps: '25', durationFrames: 75, width: 1920, height: 1080,
+const manifest = { fps: '25', durationFrames: 75, width: 1920, height: 1080, imageFormat: 'webp',
   sourcePath: 'C:/demo/source.mp4', tracks: [
     { layer: 0, lane: 0, clips: [{ startFrame: 0, endFrame: 5, path: 'C:/demo/a & b.webp' },
       { startFrame: 5, endFrame: 50, path: 'C:/demo/hold.webp' }] },
@@ -24,6 +24,17 @@ test('WebP handoff keeps two tracks, static holds, alpha and URL escaping', () =
   assert.equal((xml.match(/<pathurl>/g) || []).length, 2);
   assert.ok(!xml.includes('GraphicAndType'));
   assert.ok(!xml.includes('source.mp4'));
+  assert.ok(xml.includes('MAW WebP subtitles'));
+});
+
+test('legacy PNG manifest paths remain usable without a format field', () => {
+  const legacy = JSON.parse(JSON.stringify(manifest).replaceAll('.webp', '.png'));
+  delete legacy.imageFormat;
+  const xml = h.serializeFcp7PngXml(plan, legacy);
+  assert.ok(xml.includes('MAW PNG subtitles'));
+  assert.ok(xml.includes('a%20%26%20b.png'));
+  assert.ok(!xml.includes('.webp'));
+  assert.equal((xml.match(/<clipitem /g) || []).length, 3);
 });
 
 test('media scope adds the source timeline without replacing subtitle tracks', () => {

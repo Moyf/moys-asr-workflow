@@ -19,20 +19,20 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 
-async function open(page) {
+async function open(page, format = 'png') {
   await disableOnboarding(page);
   await page.goto(server.url);
   await page.locator('#extra-export-btn').click();
   await page.locator('#download-fcp7-export').click();
-  await page.locator('#fcp7-export-format').selectOption('png');
+  await page.locator('#fcp7-export-format').selectOption(format);
   await expect(page.locator('#fcp7-export-native-text')).toBeHidden();
   await page.locator('#fcp7-export-timeline-mode').selectOption('source');
   await page.locator('#fcp7-export-fps').selectOption('25');
 }
 
-test('real PNG job publishes subtitle-only XML and preserves a static hold', async ({ page }) => {
+for (const format of ['png', 'webp']) test(`real ${format} job publishes subtitle-only XML and preserves a static hold`, async ({ page }) => {
   test.setTimeout(120000);
-  await open(page);
+  await open(page, format);
   const spacing = await page.locator('[for="fcp7-export-timeline-mode"]').evaluate(el => {
     const previous = el.previousElementSibling;
     return el.getBoundingClientRect().top - previous.getBoundingClientRect().bottom;
@@ -40,9 +40,11 @@ test('real PNG job publishes subtitle-only XML and preserves a static hold', asy
   expect(spacing).toBeGreaterThanOrEqual(8);
   const shotDir = resolve('.artifacts/fcp7-png');
   mkdirSync(shotDir, { recursive: true });
-  await page.screenshot({ path: join(shotDir, 'png-export-options.png') });
+  await page.screenshot({ path: join(shotDir, `${format}-export-options.png`) });
+  const admitted = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith('/fcp7-png/jobs'));
   const published = page.waitForResponse(r => r.url().includes('/fcp7-png/jobs/') && r.url().endsWith('/publish'));
   await page.locator('#fcp7-export-confirm').click();
+  expect((await admitted).postDataJSON().imageFormat).toBe(format);
   const response = await published;
   expect(response.status()).toBe(200);
   const result = await response.json();
@@ -52,19 +54,22 @@ test('real PNG job publishes subtitle-only XML and preserves a static hold', asy
   await expect(page.locator('#fcp7-export-status')).toContainText(result.vegasXmlPath);
   expect(readFileSync(result.vegasXmlPath, 'utf8')).not.toContain('file://');
   const manifest = JSON.parse(readFileSync(join(result.packagePath, 'manifest.json'), 'utf8'));
-  expect(manifest.imageFormat).toBe('webp');
+  expect(manifest.imageFormat).toBe(format);
   expect(manifest.renderer.encoding).toBe('lossless');
   const images = manifest.tracks.flatMap(t => t.clips.map(c => c.path));
-  expect(images.every(path => path.endsWith('.webp'))).toBeTruthy();
+  expect(images.every(path => path.endsWith('.' + format))).toBeTruthy();
   const firstImage = readFileSync(images[0]);
-  expect(firstImage.subarray(0, 4).toString()).toBe('RIFF');
-  expect(firstImage.subarray(8, 12).toString()).toBe('WEBP');
+  if (format === 'webp') {
+    expect(firstImage.subarray(0, 4).toString()).toBe('RIFF');
+    expect(firstImage.subarray(8, 12).toString()).toBe('WEBP');
+    expect(firstImage.includes(Buffer.from('VP8L'))).toBeTruthy();
+  } else expect(firstImage.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   expect(manifest.tracks.flatMap(t => t.clips).some(c => c.endFrame - c.startFrame > 1)).toBeTruthy();
   const xml = readFileSync(result.xmlPath, 'utf8');
   expect(xml).toContain('<stillframe>TRUE</stillframe>');
   expect(xml).not.toContain('source.wav');
   expect(xml).not.toContain('GraphicAndType');
-  await page.screenshot({ path: join(shotDir, 'png-export-complete.png') });
+  await page.screenshot({ path: join(shotDir, `${format}-export-complete.png`) });
 });
 
 test('media scope includes the bound source and cancellation cleans an admitted job', async ({ page }) => {
@@ -85,12 +90,12 @@ test('media scope includes the bound source and cancellation cleans an admitted 
   await expect(page.locator('#fcp7-export-confirm')).toBeEnabled();
 });
 
-test('PNG options and completed status translate in the English interface', async ({ page }) => {
+for (const format of ['png', 'webp']) test(`${format} options and completed status translate in the English interface`, async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
-  await open(page);
-  await expect(page.locator('#fcp7-export-title')).toHaveText('WebP subtitles · FCP 7 XML');
+  await open(page, format);
+  await expect(page.locator('#fcp7-export-title')).toHaveText(`${format === 'png' ? 'PNG' : 'WebP'} subtitles · FCP 7 XML`);
   await expect(page.locator('#fcp7-export-scope option:checked')).toHaveText('Subtitles only');
-  await expect(page.locator('#fcp7-export-description')).toContainText('transparent WebP images');
+  await expect(page.locator('#fcp7-export-description')).toContainText(`transparent ${format === 'png' ? 'PNG' : 'WebP'} images`);
   await expect(page.locator('#fcp7-export-stop')).toHaveText('Stop export');
   await page.locator('#fcp7-export-confirm').click();
   await expect(page.locator('#fcp7-export-status')).toContainText('images and XML:', { timeout: 30000 });

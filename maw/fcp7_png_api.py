@@ -1,4 +1,4 @@
-"""Local editor transport for WebP rendering and atomic XML package publication."""
+"""Local editor transport for PNG/WebP rendering and atomic XML publication."""
 from __future__ import annotations
 
 import json
@@ -80,11 +80,12 @@ def handle_fcp7_png(handler, path: str, *, mutate=False, include_body=True, tool
                 raise ValueError("请先保存工程文件，再导出图片字幕")
             plan = prepare_render_plan(request.get("ass"), fps=request.get("fps"),
                 width=request.get("width"), height=request.get("height"),
-                duration_ms=request.get("durationMs"), selected_layers=request.get("layers"))
+                duration_ms=request.get("durationMs"), selected_layers=request.get("layers"),
+                image_format=request.get("imageFormat", "png"))
             tools = tools_factory()
             if tools.ffmpeg is None or not handler.editor_server.ensure_libass_supported(tools.ffmpeg):
                 raise ValueError("图片字幕导出需要带 libass 的 FFmpeg")
-            package = project.json_path.parent / f"{project.json_path.stem}_webp_subtitles_{secrets.token_hex(4)}"
+            package = project.json_path.parent / f"{project.json_path.stem}_{plan['imageFormat']}_subtitles_{secrets.token_hex(4)}"
             binding = (request["bindingGeneration"], request["sourceMediaId"])
             def render(job):
                 job.fcp7_png = True

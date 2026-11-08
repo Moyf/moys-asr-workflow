@@ -6206,7 +6206,7 @@ test('translates every project-export option, outcome, and warning key in both l
     '导出副字幕轨', '主轨字幕', '主轨与副轨字幕', '导出文件名', '导出媒体路径缺失',
     '导出媒体时长缺失', '导出文件名无效', '导出警告',
     'FCP 7 XML，可用于 PR / VEGAS',
-    'FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere，图片模式需目标软件支持 WebP。',
+    'FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere，图片模式可选 PNG 或 WebP。',
     '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。',
     '导出 XML', 'FCP 7 XML 已保存', 'FCP 7 XML 下载已发起',
     'FCP 7 XML 保存已取消', 'FCP 7 XML 保存失败', 'FCP 7 XML 导出失败',

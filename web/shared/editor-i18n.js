@@ -12,6 +12,11 @@
     '字幕形式': 'Subtitle format',
     'FCP 7 XML（PR / VEGAS）': 'FCP 7 XML (PR / VEGAS)',
     'Premiere 原生文字': 'Premiere native text',
+    '透明 PNG 字幕（FCP 7 XML）': 'Transparent PNG subtitles (FCP 7 XML)',
+    'PNG 字幕 · FCP 7 XML': 'PNG subtitles · FCP 7 XML',
+    '将 ASS 字幕渲染为透明 PNG 图片，连同多轨 XML 导出到工程旁的独立目录。': 'Render ASS subtitles as transparent PNG images and export them with multitrack XML to a separate folder beside the project.',
+    '图片字幕帧校验失败': 'Subtitle image frame validation failed',
+    '不支持的字幕图片格式': 'Unsupported subtitle image format',
     '透明 WebP 字幕（FCP 7 XML）': 'Transparent WebP subtitles (FCP 7 XML)',
     '输出范围': 'Export scope',
     '仅字幕': 'Subtitles only',
@@ -19,18 +24,18 @@
     'WebP 字幕 · FCP 7 XML': 'WebP subtitles · FCP 7 XML',
     'VEGAS 兼容 XML：': 'VEGAS compatible XML: ',
     '将 ASS 字幕渲染为无损透明 WebP 图片，连同多轨 XML 导出到工程旁的独立目录。': 'Render ASS subtitles as lossless transparent WebP images and export them with multitrack XML to a separate folder beside the project.',
-    '动态部分输出序列帧，静止部分保持单张无损 WebP；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，目标软件需支持 WebP，图片模式不包含贴图。': 'Animated sections use image frames; static sections hold one lossless WebP. Images and XML are saved beside the project. Source media is referenced; the target editor must support WebP. This mode excludes stickers.',
-    '正在停止图片字幕导出…': 'Stopping WebP subtitle export…',
-    '图片字幕导出已停止': 'WebP subtitle export stopped',
-    '正在停止并清理图片字幕任务…': 'Stopping and cleaning up the WebP subtitle task…',
+    '动态部分输出序列帧，静止部分保持单张图片；默认图片格式为 PNG，可选体积更小的无损 WebP（需目标软件支持）。字幕与 XML 保存在工程旁的新目录，源媒体使用引用，图片模式不包含贴图。': 'Animated sections use image frames; static sections hold one image. PNG is the default image format; lossless WebP offers smaller files and requires support in the target editor. Images and XML are saved beside the project. Source media is referenced. This mode excludes stickers.',
+    '正在停止图片字幕导出…': 'Stopping image subtitle export…',
+    '图片字幕导出已停止': 'Image subtitle export stopped',
+    '正在停止并清理图片字幕任务…': 'Stopping and cleaning up the image subtitle task…',
     '正在准备字幕图片…': 'Preparing subtitle images…',
     '正在保存 XML 与图片素材…': 'Saving XML and image assets…',
-    '图片字幕 XML 已保存到工程旁的独立目录': 'WebP subtitle XML saved in a separate folder beside the project',
-    '请从本地编辑器服务导出图片字幕': 'Export WebP subtitles from the local editor server',
-    '图片字幕请求失败': 'WebP subtitle request failed',
+    '图片字幕 XML 已保存到工程旁的独立目录': 'Image subtitle XML saved in a separate folder beside the project',
+    '请从本地编辑器服务导出图片字幕': 'Export image subtitles from the local editor server',
+    '图片字幕请求失败': 'Image subtitle request failed',
     '所选轨道没有可导出的字幕': 'The selected tracks have no subtitles to export',
-    '工程或媒体绑定已变更，已停止图片字幕导出': 'The project or media binding changed; WebP subtitle export stopped',
-    '无法查询图片字幕任务': 'Unable to query the WebP subtitle task',
+    '工程或媒体绑定已变更，已停止图片字幕导出': 'The project or media binding changed; Image subtitle export stopped',
+    '无法查询图片字幕任务': 'Unable to query the image subtitle task',
     '清理尚未完成': 'Cleanup has not finished',
     '工程音量': 'Project volume',
     '整体增益': 'Overall gain',
@@ -546,7 +551,7 @@
     '动态字幕 .ograf.zip 导出失败': 'Dynamic-caption .ograf.zip export failed',
     '导出媒体路径缺失': 'Export media path is missing', '导出媒体时长缺失': 'Export media duration is missing',
     '导出文件名无效': 'Export filename is invalid', '导出警告': 'Export warning',
-    'FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere，图片模式需目标软件支持 WebP。': 'FCP 7 XML can be used with PR / VEGAS and other editors. Native text targets Premiere; image mode requires WebP support in the target editor.',
+    'FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere，图片模式可选 PNG 或 WebP。': 'FCP 7 XML can be used with PR / VEGAS and other editors. Native text targets Premiere; image mode offers PNG or WebP.',
     '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。': 'Native text is optional handoff data with no style or placement fidelity claim; export SRT with its separate button. Subtitle track choice has no effect unless native text is enabled.',
     '导出 XML': 'Export XML',
     'FCP 7 XML 已保存，SRT 保存已取消': 'FCP 7 XML was saved; SRT save was cancelled',
@@ -1846,9 +1851,9 @@
     const pngSaved = /^已保存 (\d+) 张图片与 XML：(.+)$/.exec(text);
     if (pngSaved) return `Saved ${pngSaved[1]} images and XML: ${pngSaved[2]}`;
     const pngFailure = /^图片字幕导出失败：(.+)$/.exec(text);
-    if (pngFailure) return `WebP subtitle export failed: ${translateText(pngFailure[1], EN)}`;
+    if (pngFailure) return `Image subtitle export failed: ${translateText(pngFailure[1], EN)}`;
     const pngCleanup = /^无法确认图片字幕任务已清理，请稍后重试：(.+)$/.exec(text);
-    if (pngCleanup) return `Unable to confirm WebP subtitle cleanup; retry shortly: ${translateText(pngCleanup[1], EN)}`;
+    if (pngCleanup) return `Unable to confirm image subtitle cleanup; retry shortly: ${translateText(pngCleanup[1], EN)}`;
     let scope = /^当前范围：全部 (\d+) 条字幕$/.exec(text);
     if (scope) return `Current scope: all ${scope[1]} subtitles`;
     scope = /^当前范围：仅选中的 (\d+) 条字幕$/.exec(text);

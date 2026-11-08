@@ -1,5 +1,19 @@
 # WebP 图片字幕独立复审
 
+## PNG/WebP 格式返工复审（2026-11-08）
+
+基线 `1b2f28d5`，独立审查者未参与实现，只读核对当前全部 diff。无新增 blocker/major。以下历史 WebP 专用方案的结论不代表当前默认值。
+
+| Finding | 级别 | 证据 | 处置 |
+| --- | --- | --- | --- |
+| 指南静止区间仍写“一张 WebP” | minor | `docs/user/EDITOR_GUIDE.md:228` 与实际 PNG 默认/显式 WebP 逻辑矛盾 | 已改为“一张图片”，同步官网副本。 |
+
+审查覆盖三路共享 RGBA、split 前 trim、1 fps 本地检查时钟、SHA-256/Alpha 元数据的帧数/PTS/尺寸检查、Alpha=1、跨批次去重和 cueId 合并边界，以及旧 API 省略格式默认 PNG、前端捕获格式、依赖和锁文件一致性。
+
+放行条件的实际证据：14 项 Chromium 通过（`20261108T014734Z-8d956e2e`）；正式 MAW.spec 排除 PIL 后构建成功（`20261108T014734Z-243b1a40`），实际 EXE 在隔离目录启动，经浏览器导出 PNG 与 VP8L WebP，两包保留、无页面错误、布局距离至少 8 px（`20261108T014936Z-6cfb6e19`）。详细命令与后续完整回归见 [格式反馈账本](TEST_FEEDBACK_FORMATS.md)。目标软件 WebP 导入沿用用户允许跳过的边界。
+
+## 之前阶段的复审
+
 范围：`feat/fcp7-webp-subtitles` 相对 `1caa69ee` 的全部变更，由未参与实现的审查者只读复核。最终结论：无未处置 blocker/major/minor，可以放行。
 
 复核覆盖双底采样时钟、geq 覆盖度计算、alphamerge/unpremultiply、无损 WebP 字节复制、透明帧过滤及哈希去重；发布白名单、暂存目录和原子发布未放宽，动静分段与轨道分配算法无变更。内部函数/API 的 PNG 名称保留，用户界面与 manifest 明确实际格式。指南已区分路径兼容与目标软件 WebP 解码支持。

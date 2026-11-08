@@ -66,7 +66,8 @@ export function initMaweDynamicExports() {
         assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
         durationMs: Math.round(durationMs),
       });
-      if (document.getElementById('fcp7-export-format').value === 'png') {
+      const imageFormat = document.getElementById('fcp7-export-format').value;
+      if (['png', 'webp'].includes(imageFormat)) {
         const status = document.getElementById('fcp7-export-status');
         const stop = document.getElementById('fcp7-export-stop');
         const controller = new AbortController();
@@ -84,7 +85,7 @@ export function initMaweDynamicExports() {
           const ass = options.timelineMode === 'gap_removed' && MaweGapRemoveData.getRemovedGapRanges().length
             ? MaweExportSrt.buildGapRemovedAss(assOptions) : MaweExportSrt.buildAss(assOptions);
           const layers = { main: [0], main_and_extension: [0, 1], extension: [1], overlay: [2], all: [0, 1, 2] }[options.subtitleTracks];
-          const result = await runFcp7PngExport({ plan, ass, layers,
+          const result = await runFcp7PngExport({ plan, ass, layers, imageFormat,
             includeMedia: document.getElementById('fcp7-export-scope').value === 'media',
             config: MaweBoot.SERVER_CONFIG, signal: controller.signal,
             onProgress: showStatus });
@@ -131,14 +132,18 @@ export function initMaweDynamicExports() {
   }
 
   function updateFcp7Mode() {
-    const png = document.getElementById('fcp7-export-format').value === 'png';
+    const format = document.getElementById('fcp7-export-format').value;
+    const png = ['png', 'webp'].includes(format);
     document.getElementById('fcp7-export-png-options').hidden = !png;
     document.getElementById('fcp7-export-native-hint').hidden = png;
-    document.getElementById('fcp7-export-title').textContent = MaweProjectSave.translatedEditorText(png ? 'WebP 字幕 · FCP 7 XML' : 'FCP 7 XML（PR / VEGAS）');
+    document.getElementById('fcp7-export-title').textContent = MaweProjectSave.translatedEditorText(png
+      ? (format === 'webp' ? 'WebP 字幕 · FCP 7 XML' : 'PNG 字幕 · FCP 7 XML') : 'FCP 7 XML（PR / VEGAS）');
     MaweDom.fcp7ExportNativeText.closest('label').style.display = png ? 'none' : '';
     document.getElementById('fcp7-export-description').textContent = MaweProjectSave.translatedEditorText(png
-      ? '将 ASS 字幕渲染为无损透明 WebP 图片，连同多轨 XML 导出到工程旁的独立目录。'
-      : 'FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere，图片模式需目标软件支持 WebP。');
+      ? (format === 'webp'
+        ? '将 ASS 字幕渲染为无损透明 WebP 图片，连同多轨 XML 导出到工程旁的独立目录。'
+        : '将 ASS 字幕渲染为透明 PNG 图片，连同多轨 XML 导出到工程旁的独立目录。')
+      : 'FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere，图片模式可选 PNG 或 WebP。');
     MaweDom.fcp7ExportSubtitleTracks.disabled = !png && !MaweDom.fcp7ExportNativeText.checked;
   }
 
