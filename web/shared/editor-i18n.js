@@ -18,7 +18,6 @@
     '图片宽高须为 1–8192 的整数，且总像素不超过 33554432': 'Image dimensions must be integers from 1 to 8192, with at most 33554432 pixels in total',
     '双击波形中的字幕块或字词块，就地编辑文字。新建字幕、选中字幕后按 Enter，或在叠加字幕右键菜单中选择「编辑文本」，也可打开弹窗。': 'Double-click a waveform subtitle or word block to edit its text. The popup also opens after creating a subtitle, pressing Enter on a selected subtitle, or choosing Edit text from an overlay subtitle context menu.',
     '字词弹窗使用 Enter 保存；字词时间仍通过拖动调整。': 'Press Enter to save a word. Drag its block or edges to adjust timing.',
-    '双击字词块可在快捷编辑弹窗修改文字；': 'Double-click a word block to edit its text in the quick edit popup; ',
     '显示与编辑': 'Display and editing',
     '全局设置 → 拆分合并': 'Global settings → Split & merge',
     '在光标处拆分字幕，拆分后继续编辑后半句': 'Split at the cursor and continue editing the second subtitle',
