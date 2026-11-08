@@ -32,6 +32,41 @@ test('PNG client publishes its captured snapshot and does not cancel a completed
   assert.equal(request.ass, 'ASS snapshot');
   assert.equal(request.width, 640);
   assert.equal(request.bindingGeneration, 1);
+  assert.equal(request.imageFormat, 'png');
+});
+
+test('WebP client submits an explicit format without changing the captured ASS', async t => {
+  const args = setup(t, (url, options) => {
+    if (url === '/jobs') {
+      const request = JSON.parse(options.body);
+      assert.equal(request.imageFormat, 'webp');
+      assert.equal(request.ass, 'ASS snapshot');
+      return { jobId: 'one', state: 'ready', manifest: { sourceKind: 'video' } };
+    }
+    return { xmlPath: 'webp.xml' };
+  });
+  assert.equal((await runFcp7PngExport({ ...args, imageFormat: 'webp' })).xmlPath, 'webp.xml');
+});
+
+test('image client forwards selected dimensions and render progress', async t => {
+  const updates = [];
+  let request;
+  const args = setup(t, (url, options) => {
+    if (url === '/jobs') {
+      request = JSON.parse(options.body);
+      return { jobId: 'one', state: 'rendering', progress: 0.42 };
+    }
+    if (url === '/jobs/one') return { state: 'ready', manifest: { sourceKind: 'video' } };
+    assert.equal(url, '/jobs/one/publish');
+    return { xmlPath: 'result.xml' };
+  });
+  args.size = { width: 1280, height: 720 };
+  args.onProgress = (text, value) => updates.push([text, value]);
+  await runFcp7PngExport(args);
+  assert.equal(request.width, 1280);
+  assert.equal(request.height, 720);
+  assert.deepEqual(updates[0], ['正在生成字幕图片：42%', 0.42]);
+  assert.equal(updates[1][1], undefined);
 });
 
 test('PNG client waits for cancellation cleanup before returning AbortError', async t => {

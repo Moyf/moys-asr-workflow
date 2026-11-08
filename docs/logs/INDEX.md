@@ -14,6 +14,9 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 导出界面改进](release1.10.0-beta.2/261108_FCP7WebP/EXPORT_UI_IMPROVEMENTS.md) / [复核](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_UI_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261108_FCP7WebP/FCP7导出改进.checklist.md) | 进度、尺寸与弹窗布局；图片导出路径选择尚未实现 |
+| 1.10.0-beta.2 之后 | 2026-11-08 | [PNG/WebP 格式反馈](release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md) / [可选目标软件核验](release1.10.0-beta.2/261108_FCP7WebP/PNG-WebP.checklist.md) | PNG 默认保留、显式选择 WebP、FFmpeg 检测去重并移除图片字幕 Pillow 运行时；三端 fork CI 另列结果 |
+| 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 WebP 与通用入口](release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md) / [独立复审](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_FINDINGS.md) | FFmpeg 双底恢复、无损 WebP 与 PR / VEGAS 通用引导；目标软件 WebP 导入另列边界 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [波形字幕快速编辑气泡](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/REVIEW_FINDINGS.md) / [PR 354 复核](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/PR354_REVIEW.md) / [人工核验](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/PR354.checklist.md) | 原位快速编辑气泡与快捷拆分、帮助和图片尺寸改进；三轨联动与滚动定位自动化通过，人工验收待完成 |
 | 1.10.0-beta.2 之后 | 2026-11-07 | [烧录导出 network 错误反馈](release1.10.0-beta.2/261107_烧录导出network错误/TEST_FEEDBACK_烧录导出.md) / [提交前自审](release1.10.0-beta.2/261107_烧录导出network错误/REVIEW_FINDINGS.md) | 条目1「network error」= 下载连接 2s socket 超时被慢盘写停顿触发断流（Chromium 原文透传）；条目2 ffmpeg stderr 无任何出口。修复：写超时提为常量 10s 且 close() 预算跟随、友好文案+i18n、failed 态 console.error errorDetails、服务端 stdout 失败诊断；自动化全绿，独立审查无 blocker/major，待人工验收 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [FCP 7 图片字幕实施与验证](release1.10.0-beta.2/261106_FCP7图片字幕/IMPLEMENTATION.md) / [独立审查](release1.10.0-beta.2/261106_FCP7图片字幕/REVIEW_FINDINGS.md) / [目标应用核验](release1.10.0-beta.2/261106_FCP7图片字幕/FCP7图片字幕.checklist.md) | 动静分段、透明渲染、多轨 XML；VEGAS 14 原生导入与像素验证通过，缺图文件选择窗口待人工确认 |

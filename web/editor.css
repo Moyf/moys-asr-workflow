@@ -3144,6 +3144,18 @@
   .modal select option { background: var(--bg-overlay); color: var(--text-primary); }
   .modal .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
   .modal .row[hidden] { display: none; }
+  .modal #fcp7-export-ratio-warning { margin-top: 8px; color: var(--amber-hover); }
+  #fcp7-export-modal .modal { overflow-y: auto; }
+  .fcp7-radio-group { border: 0; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 8px 24px; }
+  .fcp7-radio-group legend { padding: 0; color: var(--text-secondary); font-size: 12px; }
+  .modal .fcp7-radio-group label { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; }
+  .fcp7-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+  .fcp7-export-status { margin: 12px 0 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-line; }
+  .fcp7-export-success { color: var(--green); }
+  .fcp7-export-folder { display: inline; padding: 0; border: 0; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; text-decoration: underline; overflow-wrap: anywhere; cursor: pointer; }
+  .fcp7-export-folder:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+  #fcp7-export-progress { width: 100%; margin-top: 8px; accent-color: var(--accent); }
+  #fcp7-export-progress[hidden] { display: none; }
   .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
   .modal .actions button {
     background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--btn-border);

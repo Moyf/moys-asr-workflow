@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 import tempfile
@@ -55,18 +54,37 @@ class PngJobHttpTests(unittest.TestCase):
         bad = self.png_request()
         bad['width'] = 0
         self.assertEqual(self.request(self.base, bad)[0], 400)
+        for value in (None, 'jpeg', [], {}):
+            self.assertEqual(self.request(self.base, self.png_request(imageFormat=value))[0], 400)
         self.assertIsNone(self.server.media_jobs.active)
 
+    def test_image_package_is_published_next_to_project(self):
+        with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=mock.Mock(ffmpeg=Path('ffmpeg'))), \
+             mock.patch.object(self.server, 'ensure_libass_supported', return_value=True), \
+             mock.patch.object(fcp7_png_api, 'render_png_assets', side_effect=self.fake_render):
+            status, result = self.request(self.base, self.png_request(outputDirectory=str(self.root / 'other')))
+            self.assertEqual(status, 202, result)
+            manifest = self.wait(result['jobId'], 'ready')['manifest']
+        package = Path(manifest['packagePath'])
+        self.assertEqual(package.parent, self.server.project.json_path.parent)
+        status, result = self.request(self.base + '/' + result['jobId'] + '/publish', self.payload(xml=self.xml(manifest)))
+        self.assertEqual(status, 200, result)
+        self.assertTrue((package / 'images' / 'one.png').is_file())
+        self.assertTrue((package / 'subtitles.xml').is_file())
+        self.assertIn(Path(manifest['tracks'][0]['clips'][0]['path']).as_uri(), (package / 'subtitles.xml').read_text('utf-8'))
     @unittest.skipUnless(shutil.which('ffmpeg'), 'real FFmpeg unavailable')
     def test_render_publish_and_repeated_export_preserve_prior_package(self):
         with mock.patch.object(self.server_editor, 'editor_ffmpeg_tools', return_value=mock.Mock(
                 ffmpeg=Path(shutil.which('ffmpeg')), ffprobe=None)):
             paths = []
-            for _ in range(2):
-                status, result = self.request(self.base, self.png_request())
+            for image_format in (None, 'webp', 'png'):
+                status, result = self.request(self.base, self.png_request(
+                    **({} if image_format is None else {'imageFormat': image_format})))
                 self.assertEqual(status, 202, result)
                 ready = self.wait(result['jobId'], 'ready')
                 manifest = ready['manifest']
+                expected_format = image_format or 'png'
+                self.assertEqual(manifest['imageFormat'], expected_format)
                 package = Path(manifest['packagePath'])
                 self.assertFalse(package.exists())
                 urls = ''.join('<file><pathurl>' + escape(Path(c['path']).as_uri()) + '</pathurl></file>'
@@ -82,7 +100,7 @@ class PngJobHttpTests(unittest.TestCase):
                 self.assertEqual({Path(unquote(e.text)).resolve() for e in vegas_tree.iter('pathurl')},
                                  {Path(c['path']).resolve() for t in manifest['tracks'] for c in t['clips']})
                 self.assertEqual(Path(published['xmlPath']).read_text('utf-8'), xml)
-                self.assertEqual(len(list((package / 'images').glob('*.png'))), manifest['imageCount'])
+                self.assertEqual(len(list((package / 'images').glob('*.' + expected_format))), manifest['imageCount'])
                 self.assertIsNone(self.server.media_jobs.active)
                 paths.append(package)
             self.assertNotEqual(paths[0], paths[1])
@@ -108,6 +126,18 @@ class PngJobHttpTests(unittest.TestCase):
                 self.assertFalse(Path(manifest['packagePath']).exists())
                 self.assertEqual(self.server.media_jobs.get(job_id).state, 'ready')
         self.assertEqual(self.request(url, self.payload(xml=self.xml(manifest)))[0], 200)
+
+    def test_only_published_job_can_open_its_own_folder(self):
+        job_id, manifest = self.start_fake()
+        url = self.base + '/' + job_id + '/open-folder'
+        with mock.patch.object(fcp7_png_api, '_open_export_folder') as open_folder:
+            self.assertEqual(self.request(url, self.payload())[0], 409)
+            open_folder.assert_not_called()
+            self.assertEqual(self.request(self.base + '/' + job_id + '/publish',
+                                          self.payload(xml=self.xml(manifest)))[0], 200)
+            self.assertEqual(self.request(url, self.payload(path='arbitrary-untrusted-path'))[0], 200)
+            open_folder.assert_called_once_with(Path(manifest['packagePath']))
+            self.assertEqual(self.request(url, {}, token=False)[0], 403)
 
     def test_publish_copy_failure_leaves_no_partial_package_and_frees_slot(self):
         job_id, manifest = self.start_fake()

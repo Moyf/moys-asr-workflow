@@ -9,6 +9,11 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '图片尺寸与源画面的宽高比不同，字幕的位置和布局可能发生变化。': 'The image and source aspect ratios differ; subtitle position and layout may change.',
+    '图片字幕 XML 已保存': 'Image subtitle XML saved',
+    '自定义图片尺寸需要 1–8192 之间的整数宽高': 'Custom image width and height must be integers from 1 to 8192',
+    '图片字幕帧校验失败': 'Subtitle image frame validation failed',
+    '不支持的字幕图片格式': 'Unsupported subtitle image format',
     '快捷编辑': 'Quick edit',
     '快捷编辑弹窗': 'Quick edit popup',
     '图片尺寸': 'Image size',
@@ -40,26 +45,32 @@
     '将选中的副字幕时长对齐到绑定的主字幕。自动匹配依据时间，需人工检查；时间联动在工程设置中调整。': 'aligns the selected secondary subtitle to its bound main subtitle. Check automatic matches; configure timing synchronization in project settings.',
     '通用快捷键见「快捷操作」。双击字幕块打开快捷编辑弹窗；新建字幕后也会打开弹窗。': 'See Quick actions for general shortcuts. Double-click a subtitle block to open quick edit; the popup also opens after creating a subtitle.',
     '字幕形式': 'Subtitle format',
+    'FCP 7 XML（PR / VEGAS）': 'FCP 7 XML (PR / VEGAS)',
     'Premiere 原生文字': 'Premiere native text',
-    '透明 PNG 字幕（VEGAS / FCP 7 XML）': 'Transparent PNG subtitles (VEGAS / FCP 7 XML)',
+    '透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）': 'Transparent PNG image subtitles (FCP7XML, for Premiere / VEGAS)',
+    '透明 WebP 图片字幕（目标软件需支持 WebP）': 'Transparent WebP image subtitles (requires WebP support in the target application)',
     '输出范围': 'Export scope',
     '仅字幕': 'Subtitles only',
     '字幕与源媒体': 'Subtitles and source media',
     'PNG 字幕 · FCP 7 XML': 'PNG subtitles · FCP 7 XML',
+    'WebP 字幕 · FCP 7 XML': 'WebP subtitles · FCP 7 XML',
     'VEGAS 兼容 XML：': 'VEGAS compatible XML: ',
-    '将 ASS 字幕渲染为透明图片，连同多轨 XML 导出到工程旁的独立目录。': 'Render ASS subtitles as transparent images and export them with multitrack XML to a separate folder beside the project.',
-    '动态部分输出序列帧，静止部分保持单张图片；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，图片模式不包含贴图。': 'Animated sections use image frames; static sections hold one image. Images and XML are saved in a new folder beside the project. Source media is referenced; this mode excludes stickers.',
-    '正在停止图片字幕导出…': 'Stopping PNG subtitle export…',
-    '图片字幕导出已停止': 'PNG subtitle export stopped',
-    '正在停止并清理图片字幕任务…': 'Stopping and cleaning up the PNG subtitle task…',
+    '将 ASS 字幕渲染为透明 PNG 图片，连同多轨 XML 导出到工程旁的独立目录。': 'Render ASS subtitles as transparent PNG images and export them with multitrack XML to a separate folder beside the project.',
+    '将 ASS 字幕渲染为无损透明 WebP 图片，连同多轨 XML 导出到工程旁的独立目录。目标软件需支持 WebP。': 'Render ASS subtitles as lossless transparent WebP images and export them with multitrack XML to a separate folder beside the project. The target editor must support WebP.',
+    'FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere。': 'FCP 7 XML works in Premiere, VEGAS, and other editors; native text mode targets Premiere.',
+    '动态部分输出序列帧，静止部分保持单张 PNG 图片；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，图片模式不包含贴图。': 'Animated sections use image frames; static sections hold one PNG. Images and XML are saved beside the project. Source media is referenced; this mode excludes stickers.',
+    '动态部分输出序列帧，静止部分保持单张无损 WebP；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，目标软件需支持 WebP，图片模式不包含贴图。': 'Animated sections use image frames; static sections hold one lossless WebP. Images and XML are saved beside the project. Source media is referenced; the target editor must support WebP. This mode excludes stickers.',
+    '正在停止图片字幕导出…': 'Stopping image subtitle export…',
+    '图片字幕导出已停止': 'Image subtitle export stopped',
+    '正在停止并清理图片字幕任务…': 'Stopping and cleaning up the image subtitle task…',
     '正在准备字幕图片…': 'Preparing subtitle images…',
     '正在保存 XML 与图片素材…': 'Saving XML and image assets…',
-    '图片字幕 XML 已保存到工程旁的独立目录': 'PNG subtitle XML saved in a separate folder beside the project',
-    '请从本地编辑器服务导出图片字幕': 'Export PNG subtitles from the local editor server',
-    '图片字幕请求失败': 'PNG subtitle request failed',
+    '图片字幕 XML 已保存到工程旁的独立目录': 'Image subtitle XML saved in a separate folder beside the project',
+    '请从本地编辑器服务导出图片字幕': 'Export image subtitles from the local editor server',
+    '图片字幕请求失败': 'Image subtitle request failed',
     '所选轨道没有可导出的字幕': 'The selected tracks have no subtitles to export',
-    '工程或媒体绑定已变更，已停止图片字幕导出': 'The project or media binding changed; PNG subtitle export stopped',
-    '无法查询图片字幕任务': 'Unable to query the PNG subtitle task',
+    '工程或媒体绑定已变更，已停止图片字幕导出': 'The project or media binding changed; image subtitle export stopped',
+    '无法查询图片字幕任务': 'Unable to query the image subtitle task',
     '清理尚未完成': 'Cleanup has not finished',
     '工程音量': 'Project volume',
     '整体增益': 'Overall gain',
@@ -527,6 +538,16 @@
     '彩蛋': 'Easter eggs', '动态图形': 'Dynamic graphics',
     '导出时间线模式': 'Export timeline mode', '去空隙时间线': 'Gap-removed timeline', '原始时间线': 'Source timeline',
     '导出帧率': 'Export frame rate', '写入原生字幕文本对象': 'Write native subtitle text objects',
+    '导出 FCP 7 XML': 'Export FCP 7 XML', '图片尺寸': 'Image size', '导出 XML + 图片': 'Export XML + images',
+    '导出形式': 'Export format', 'FCP7XML 工程（PR 可用）': 'FCP7XML project (for PR)',
+    'FCP 7 XML 工程和字幕导出': 'Export FCP 7 XML project and subtitles',
+    '已保存 {count} 张字幕图片与对应工程 XML 文件': 'Saved {count} subtitle images and the corresponding XML project files',
+    '点击打开导出文件夹：': 'Click to open the export folder: ', '无法打开导出文件夹': 'Could not open the export folder',
+    '去空隙时间线将字幕和字词时间映射到压缩后的时间线。': 'The gap-removed timeline maps subtitle and word timing to the compressed timeline.',
+    '图片尺寸不能超过 33554432 像素': 'Image size cannot exceed 33554432 pixels',
+    '自定义图片尺寸需要 16–8192 之间的整数宽高': 'Custom image size needs integer width and height between 16 and 8192',
+    '导出 FCP 7 XML 工程文件，供 Premiere、Vegas 等剪辑软件使用。': 'Export an FCP 7 XML project for Premiere, Vegas, and other editing applications.',
+    '字幕图片生成进度': 'Subtitle image generation progress',
     '自定义…': 'Custom…', '宽度': 'Width', '高度': 'Height',
     '自定义合成尺寸需要 16–7680 之间的整数宽高': 'Custom canvas size needs integer width and height between 16 and 7680',
     '导出副字幕轨': 'Export secondary subtitle track', '主轨字幕': 'Main-track subtitles',
@@ -575,7 +596,7 @@
     '动态字幕 .ograf.zip 导出失败': 'Dynamic-caption .ograf.zip export failed',
     '导出媒体路径缺失': 'Export media path is missing', '导出媒体时长缺失': 'Export media duration is missing',
     '导出文件名无效': 'Export filename is invalid', '导出警告': 'Export warning',
-    '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。': 'Export FCP 7 XML for Premiere handoff. This handoff has not completed target-application validation.',
+    'FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere，图片模式需目标软件支持 WebP。': 'FCP 7 XML can be used with PR / VEGAS and other editors. Native text targets Premiere; image mode requires WebP support in the target editor.',
     '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。': 'Native text is optional handoff data with no style or placement fidelity claim; export SRT with its separate button. Subtitle track choice has no effect unless native text is enabled.',
     '导出 XML': 'Export XML',
     'FCP 7 XML 已保存，SRT 保存已取消': 'FCP 7 XML was saved; SRT save was cancelled',
@@ -1675,7 +1696,7 @@
     '更多导出': 'More exports',
     '导出颜色与表情包的 Resolve JSON，供兼容执行脚本批量导入': 'Export color and sticker Resolve JSON for compatible import scripts',
     '导出只包含表情包图片轨道的 OTIO 工程': 'Export an OTIO project containing only sticker image tracks',
-    '实验性 Premiere 交接：导出 FCP 7 XML': 'Experimental Premiere handoff: export FCP 7 XML',
+    'FCP 7 XML，可用于 PR / VEGAS': 'FCP 7 XML for PR / VEGAS',
     '在视频画面右上角预览当前时间的表情包': 'Preview stickers at the current time over the video',
     '选择工具（V，默认）：点击选中、拖动移动、拖动边界调整；Ctrl(Cmd)/Shift 多选，Shift+空白拖拽框选，Alt 临时反转相邻字幕联动，Alt+点击切换禁用': 'Select tool (V, default): click to select, drag to move, drag edges to trim; Ctrl(Cmd)/Shift multi-select, Shift+drag on blank area to box-select, Alt temporarily reverses adjacent-cue linking, Alt+click toggles disabled',
     '分割工具（R）：点击字幕块在指针位置安全拆分（按词/字级时间码对齐，拒绝 100ms 以内的边缘拆分）；Esc 切回选择': 'Razor tool (R): click a subtitle block to split at the pointer using word/character timing; splits within 100 ms of an edge are rejected; Esc returns to Select',
@@ -1876,9 +1897,9 @@
     const pngSaved = /^已保存 (\d+) 张图片与 XML：(.+)$/.exec(text);
     if (pngSaved) return `Saved ${pngSaved[1]} images and XML: ${pngSaved[2]}`;
     const pngFailure = /^图片字幕导出失败：(.+)$/.exec(text);
-    if (pngFailure) return `PNG subtitle export failed: ${translateText(pngFailure[1], EN)}`;
+    if (pngFailure) return `Image subtitle export failed: ${translateText(pngFailure[1], EN)}`;
     const pngCleanup = /^无法确认图片字幕任务已清理，请稍后重试：(.+)$/.exec(text);
-    if (pngCleanup) return `Unable to confirm PNG subtitle cleanup; retry shortly: ${translateText(pngCleanup[1], EN)}`;
+    if (pngCleanup) return `Unable to confirm image subtitle cleanup; retry shortly: ${translateText(pngCleanup[1], EN)}`;
     let scope = /^当前范围：全部 (\d+) 条字幕$/.exec(text);
     if (scope) return `Current scope: all ${scope[1]} subtitles`;
     scope = /^当前范围：仅选中的 (\d+) 条字幕$/.exec(text);
