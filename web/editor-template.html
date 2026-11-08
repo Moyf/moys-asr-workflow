@@ -2355,7 +2355,7 @@ __WAVEFORM_CSS__
     <label for="fcp7-export-format">导出形式</label>
     <select id="fcp7-export-format">
       <option value="native" selected>FCP7XML 工程（PR 可用）</option>
-      <option value="webp">透明 WEBP 图片字幕（FCP7XML，可用于 PR / VEGAS）</option>
+      <option value="webp">透明 WebP 图片字幕（目标软件需支持 WebP）</option>
       <option value="png">透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）</option>
     </select>
     <fieldset class="fcp7-radio-group"><legend>导出时间线模式</legend>
@@ -2376,9 +2376,9 @@ __WAVEFORM_CSS__
         <option value="custom">自定义…</option>
       </select>
       <div class="row" id="fcp7-export-custom-size" hidden>
-        <input type="number" id="fcp7-export-custom-width" min="16" max="8192" step="1" value="1920" aria-label="宽度">
+        <input type="number" id="fcp7-export-custom-width" min="1" max="8192" step="1" value="1920" aria-label="宽度">
         <span aria-hidden="true">×</span>
-        <input type="number" id="fcp7-export-custom-height" min="16" max="8192" step="1" value="1080" aria-label="高度">
+        <input type="number" id="fcp7-export-custom-height" min="1" max="8192" step="1" value="1080" aria-label="高度">
       </div>
     </div>
     <div class="fcp7-columns"><div>

@@ -111,7 +111,7 @@ test('opens the export modal defaulting to native XML and all available tracks',
     (options) => options.map((option) => option.textContent),
   );
   expect(formatLabels).toEqual(['FCP7XML 工程（PR 可用）',
-    '透明 WEBP 图片字幕（FCP7XML，可用于 PR / VEGAS）', '透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）']);
+    '透明 WebP 图片字幕（目标软件需支持 WebP）', '透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）']);
   await expect(page.locator('#fcp7-export-png-options')).toBeHidden();
   await expect(page.locator('#fcp7-export-native-text')).toBeVisible();
   await expect(page.locator('#fcp7-export-timeline-mode')).toBeChecked();

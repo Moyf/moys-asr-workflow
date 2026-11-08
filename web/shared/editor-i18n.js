@@ -9,13 +9,14 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '自定义图片尺寸需要 1–8192 之间的整数宽高': 'Custom image width and height must be integers from 1 to 8192',
     '图片字幕帧校验失败': 'Subtitle image frame validation failed',
     '不支持的字幕图片格式': 'Unsupported subtitle image format',
     '字幕形式': 'Subtitle format',
     'FCP 7 XML（PR / VEGAS）': 'FCP 7 XML (PR / VEGAS)',
     'Premiere 原生文字': 'Premiere native text',
     '透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）': 'Transparent PNG image subtitles (FCP7XML, for Premiere / VEGAS)',
-    '透明 WEBP 图片字幕（FCP7XML，可用于 PR / VEGAS）': 'Transparent WebP image subtitles (FCP7XML, for Premiere / VEGAS)',
+    '透明 WebP 图片字幕（目标软件需支持 WebP）': 'Transparent WebP image subtitles (requires WebP support in the target application)',
     '输出范围': 'Export scope',
     '仅字幕': 'Subtitles only',
     '字幕与源媒体': 'Subtitles and source media',

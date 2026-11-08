@@ -30,6 +30,57 @@ async function open(page, format = 'png') {
   await page.locator('#fcp7-export-fps').selectOption('25');
 }
 
+test('image dimensions stay within the open project session', async ({ page }) => {
+  await open(page, 'webp');
+  await page.locator('#fcp7-export-custom-width').fill('1280');
+  await page.locator('#fcp7-export-custom-height').fill('720');
+  await page.locator('#fcp7-export-cancel').click();
+  await page.evaluate(() => MaweDynamicExports.openFcp7ExportModal());
+  await expect(page.locator('#fcp7-export-resolution')).toHaveValue('custom');
+  await expect(page.locator('#fcp7-export-custom-width')).toHaveValue('1280');
+  await expect(page.locator('#fcp7-export-custom-height')).toHaveValue('720');
+  await page.locator('#fcp7-export-resolution').selectOption('3840x2160');
+  await page.locator('#fcp7-export-cancel').click();
+  await page.evaluate(() => MaweDynamicExports.openFcp7ExportModal());
+  await expect(page.locator('#fcp7-export-resolution')).toHaveValue('3840x2160');
+  await page.locator('#fcp7-export-cancel').click();
+  await page.evaluate(() => {
+    MaweProjectLoad.applyCanonicalProject({ media: '', media_metadata: { video_width: 800, video_height: 600 },
+      segments: [{ start: 0, end: 1000, text: '新工程' }] }, 'other.mosp');
+    MaweDynamicExports.openFcp7ExportModal();
+  });
+  await expect(page.locator('#fcp7-export-resolution')).toHaveValue('custom');
+  await expect(page.locator('#fcp7-export-custom-width')).toHaveValue('800');
+  await expect(page.locator('#fcp7-export-custom-height')).toHaveValue('600');
+  await page.locator('#fcp7-export-cancel').click();
+  await page.evaluate(() => {
+    MaweProjectLoad.applyCanonicalProject({ media: '', segments: [] }, 'no-size.mosp');
+    MaweDynamicExports.openFcp7ExportModal();
+  });
+  await expect(page.locator('#fcp7-export-resolution')).toHaveValue('1920x1080');
+  await page.locator('#fcp7-export-resolution').selectOption('custom');
+  await expect(page.locator('#fcp7-export-custom-width')).toHaveValue('1920');
+  await expect(page.locator('#fcp7-export-custom-height')).toHaveValue('1080');
+});
+
+test('font notices keep the published folder action available', async ({ page }) => {
+  await open(page);
+  await page.route('**/api/exports/fcp7-png/jobs/*/publish', async route => {
+    const response = await route.fetch();
+    const result = await response.json();
+    await route.fulfill({ response, json: { ...result, fontNotices: ['字体已替换'] } });
+  });
+  let opened = false;
+  await page.route('**/api/exports/fcp7-png/jobs/*/open-folder', async route => {
+    opened = true;
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.locator('#fcp7-export-confirm').click();
+  await expect(page.locator('#fcp7-export-status')).toContainText('字体已替换', { timeout: 30000 });
+  await page.locator('.fcp7-export-folder').click();
+  expect(opened).toBe(true);
+});
+
 for (const format of ['png', 'webp']) test(`real ${format} job publishes subtitle-only XML and preserves a static hold`, async ({ page }) => {
   test.setTimeout(120000);
   await open(page, format);
@@ -180,15 +231,21 @@ test('image dimensions accept 8K limits, reset without media metadata and clear 
   expect(await page.evaluate(() => window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(
     document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-width'),
     document.getElementById('fcp7-export-custom-height'), 8192))).toEqual({ width: 8192, height: 4096 });
+  await page.locator('#fcp7-export-custom-width').fill('1');
+  await page.locator('#fcp7-export-custom-height').fill('1');
+  expect(await page.evaluate(() => window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(
+    document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-width'),
+    document.getElementById('fcp7-export-custom-height'), 8192, 1))).toEqual({ width: 1, height: 1 });
   await page.locator('#fcp7-export-custom-width').fill('8193');
   await page.locator('#fcp7-export-status').evaluate(el => { el.textContent = 'old successful export'; });
   await page.locator('#fcp7-export-confirm').click();
   await expect(page.locator('#fcp7-export-status')).toBeEmpty();
-  await expect(page.locator('.hint-card.hint-warning').last()).toContainText('16–8192');
+  await expect(page.locator('.hint-card.hint-warning').last()).toContainText('1–8192');
   await page.locator('#fcp7-export-cancel').click();
-  await page.evaluate(() => { MaweBoot.DATA.media_metadata = null; });
-  await page.locator('#extra-export-btn').click();
-  await page.locator('#download-fcp7-export').click();
+  await page.evaluate(() => {
+    MaweProjectLoad.applyCanonicalProject({ media: '', segments: [] }, 'no-size.mosp');
+    MaweDynamicExports.openFcp7ExportModal();
+  });
   await expect(page.locator('#fcp7-export-resolution')).toHaveValue('1920x1080');
   await expect(page.locator('#fcp7-export-custom-size')).toBeHidden();
 });

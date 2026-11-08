@@ -10,6 +10,7 @@ export function initMaweDynamicExports() {
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
 (function initMaweDynamicExports(global) {
   'use strict';
+  let fcp7SizeProjectEpoch = null;
 
 
 
@@ -37,12 +38,16 @@ export function initMaweDynamicExports() {
     MaweDom.fcp7ExportSubtitleTracks.value = 'main';
   }
   MaweDom.fcp7ExportNativeText.checked = true;
-  if (!window.AsrEditorUtils?.exportVideoSize?.(MaweBoot.DATA)) {
+  const projectEpoch = MaweProjectLoad.projectBindingEpoch;
+  if (projectEpoch !== fcp7SizeProjectEpoch) {
+    fcp7SizeProjectEpoch = projectEpoch;
     document.getElementById('fcp7-export-resolution').value = '1920x1080';
+    document.getElementById('fcp7-export-custom-width').value = '1920';
+    document.getElementById('fcp7-export-custom-height').value = '1080';
+    window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
+      document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-size'),
+      document.getElementById('fcp7-export-custom-width'), document.getElementById('fcp7-export-custom-height'));
   }
-  window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
-    document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-size'),
-    document.getElementById('fcp7-export-custom-width'), document.getElementById('fcp7-export-custom-height'));
   updateFcp7Mode();
   MaweDom.fcp7ExportModal.classList.add('show');
   MaweDom.fcp7ExportTimelineMode.focus();
@@ -78,7 +83,7 @@ export function initMaweDynamicExports() {
         const progress = document.getElementById('fcp7-export-progress');
         const size = window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(
           document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-width'),
-          document.getElementById('fcp7-export-custom-height'), 8192);
+            document.getElementById('fcp7-export-custom-height'), 8192, 1);
         if (size.width * size.height > 33554432) {
           throw new Error(MaweProjectSave.translatedEditorText('图片尺寸不能超过 33554432 像素'));
         }
@@ -128,8 +133,8 @@ export function initMaweDynamicExports() {
           });
           status.append(success, document.createElement('br'),
             document.createTextNode(MaweProjectSave.translatedEditorText('点击打开导出文件夹：')), folder);
-          if (result.fontNotices?.length) status.textContent += '\n' + result.fontNotices
-            .map(message => MaweProjectSave.translatedEditorText(message)).join('\n');
+          if (result.fontNotices?.length) status.append(document.createTextNode('\n' + result.fontNotices
+            .map(message => MaweProjectSave.translatedEditorText(message)).join('\n')));
           MaweHint.flashHint(MaweProjectSave.translatedEditorText('图片字幕 XML 已保存到工程旁的独立目录'), 'success');
         } catch (error) {
           showStatus(error?.name === 'AbortError' ? '图片字幕导出已停止' : `图片字幕导出失败：${error.message}`);
