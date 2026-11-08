@@ -37,11 +37,18 @@ for (const format of ['png', 'webp']) test(`real ${format} job publishes subtitl
   await expect(page.locator('#fcp7-export-custom-size')).toBeVisible();
   await page.locator('#fcp7-export-custom-width').fill('320');
   await page.locator('#fcp7-export-custom-height').fill('180');
-  const spacing = await page.locator('.fcp7-radio-group').last().evaluate(el => {
-    const previous = el.previousElementSibling;
-    return el.getBoundingClientRect().top - previous.getBoundingClientRect().bottom;
+  const spacing = await page.evaluate(() => {
+    const form = document.getElementById('fcp7-export-format').closest('.modal');
+    const fieldset = [...form.querySelectorAll('fieldset')]
+      .find(el => el.querySelector('legend')?.textContent.includes('导出时间线模式'));
+    const columns = form.querySelector('.fcp7-columns');
+    return {
+      beforeTimeline: fieldset.getBoundingClientRect().top - fieldset.previousElementSibling.getBoundingClientRect().bottom,
+      beforeColumns: columns.getBoundingClientRect().top - fieldset.getBoundingClientRect().bottom,
+    };
   });
-  expect(spacing).toBeGreaterThanOrEqual(8);
+  expect(spacing.beforeTimeline).toBeGreaterThanOrEqual(8);
+  expect(spacing.beforeColumns).toBeGreaterThanOrEqual(8);
   const columns = await page.locator('#fcp7-export-fps').evaluate(el => {
     const left = el.getBoundingClientRect();
     const right = document.getElementById('fcp7-export-subtitle-tracks').getBoundingClientRect();
@@ -62,7 +69,8 @@ for (const format of ['png', 'webp']) test(`real ${format} job publishes subtitl
   await expect(page.locator('#fcp7-export-status')).toContainText('已保存');
   expect(existsSync(result.xmlPath)).toBeTruthy();
   expect(existsSync(result.vegasXmlPath)).toBeTruthy();
-  await expect(page.locator('#fcp7-export-status')).toContainText(result.vegasXmlPath);
+  await expect(page.locator('#fcp7-export-status')).toContainText('张字幕图片与对应工程 XML 文件');
+  await expect(page.locator('.fcp7-export-folder')).toHaveText(result.packagePath);
   expect(readFileSync(result.vegasXmlPath, 'utf8')).not.toContain('file://');
   const manifest = JSON.parse(readFileSync(join(result.packagePath, 'manifest.json'), 'utf8'));
   expect([manifest.width, manifest.height]).toEqual([320, 180]);
@@ -112,13 +120,13 @@ test('media scope includes the bound source and cancellation cleans an admitted 
 for (const format of ['png', 'webp']) test(`${format} options and completed status translate in the English interface`, async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
   await open(page, format);
-  await expect(page.locator('#fcp7-export-title')).toHaveText(`${format === 'png' ? 'PNG' : 'WebP'} subtitles · FCP 7 XML`);
+  await expect(page.locator('#fcp7-export-title')).toHaveText('Export FCP 7 XML project and subtitles');
   await expect(page.locator('input[name="fcp7-export-scope"][value="subtitles"]').locator('..')).toContainText('Subtitles only');
   await expect(page.locator('#fcp7-export-description')).toContainText('Premiere, Vegas');
   await expect(page.locator('#fcp7-export-stop')).toHaveText('Stop export');
   await page.locator('#fcp7-export-confirm').click();
-  await expect(page.locator('#fcp7-export-status')).toContainText('images and XML:', { timeout: 30000 });
-  await expect(page.locator('#fcp7-export-status')).toContainText('VEGAS compatible XML:');
+  await expect(page.locator('#fcp7-export-status')).toContainText('subtitle images and the corresponding XML project files', { timeout: 30000 });
+  await expect(page.locator('.fcp7-export-folder')).toBeVisible();
 });
 
 test('gap-removed PNG and source media share the compressed frame clock', async ({ page }) => {

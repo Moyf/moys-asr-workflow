@@ -2350,14 +2350,18 @@ __WAVEFORM_CSS__
 <!-- FCP 7 XML（PR / VEGAS） 实验性交接导出。 -->
 <div class="modal-mask" id="fcp7-export-modal">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fcp7-export-title" aria-describedby="fcp7-export-description">
-    <h3 id="fcp7-export-title">PNG 字幕 · FCP 7 XML</h3>
+    <h3 id="fcp7-export-title">FCP 7 XML 工程和字幕导出</h3>
     <p class="modal-desc" id="fcp7-export-description">导出 FCP 7 XML 工程文件，供 Premiere、Vegas 等剪辑软件使用。</p>
-    <label for="fcp7-export-format">字幕形式</label>
+    <label for="fcp7-export-format">导出形式</label>
     <select id="fcp7-export-format">
-      <option value="png" selected>透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）</option>
+      <option value="native" selected>FCP7XML 工程（PR 可用）</option>
       <option value="webp">透明 WEBP 图片字幕（FCP7XML，可用于 PR / VEGAS）</option>
-      <option value="native">Premiere 原生文字</option>
+      <option value="png">透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）</option>
     </select>
+    <fieldset class="fcp7-radio-group"><legend>导出时间线模式</legend>
+      <label><input type="radio" id="fcp7-export-timeline-mode" name="fcp7-export-timeline-mode" value="gap_removed" checked> 去空隙时间线</label>
+      <label><input type="radio" name="fcp7-export-timeline-mode" value="source"> 原始时间线</label>
+    </fieldset>
     <div id="fcp7-export-png-options" hidden style="margin-top: 12px">
       <fieldset class="fcp7-radio-group"><legend>输出范围</legend>
         <label><input type="radio" name="fcp7-export-scope" value="subtitles" checked> 仅字幕</label>
@@ -2377,10 +2381,6 @@ __WAVEFORM_CSS__
         <input type="number" id="fcp7-export-custom-height" min="16" max="8192" step="1" value="1080" aria-label="高度">
       </div>
     </div>
-    <fieldset class="fcp7-radio-group"><legend>导出时间线模式</legend>
-      <label><input type="radio" id="fcp7-export-timeline-mode" name="fcp7-export-timeline-mode" value="gap_removed" checked> 去空隙时间线</label>
-      <label><input type="radio" name="fcp7-export-timeline-mode" value="source"> 原始时间线</label>
-    </fieldset>
     <div class="fcp7-columns"><div>
     <label for="fcp7-export-fps">导出帧率</label>
     <select id="fcp7-export-fps">
@@ -2395,10 +2395,10 @@ __WAVEFORM_CSS__
     </div><div>
     <label for="fcp7-export-subtitle-tracks">导出字幕轨</label>
     <select id="fcp7-export-subtitle-tracks">
-      <option value="main" selected>主轨字幕</option>
+      <option value="main">主轨字幕</option>
       <option value="main_and_extension">主轨与副轨字幕</option>
       <option value="overlay">叠加轨字幕</option>
-      <option value="all">全部字幕轨（各占一轨）</option>
+      <option value="all" selected>全部字幕轨（各占一轨）</option>
     </select>
     </div></div>
     <label class="row" for="fcp7-export-native-text">
@@ -2410,7 +2410,7 @@ __WAVEFORM_CSS__
       <button type="button" id="fcp7-export-cancel">取消</button>
       <button type="button" id="fcp7-export-confirm" class="primary">导出 XML</button>
     </div>
-    <p id="fcp7-export-status" role="status" style="margin-top: 12px; overflow-wrap: anywhere; white-space: pre-line"></p>
+    <p id="fcp7-export-status" class="fcp7-export-status" role="status"></p>
     <progress id="fcp7-export-progress" max="1" aria-label="字幕图片生成进度" hidden></progress>
   </div>
 </div>
@@ -2420,15 +2420,11 @@ __WAVEFORM_CSS__
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="lottie-export-title" aria-describedby="lottie-export-description">
     <h3 id="lottie-export-title">Lottie 动态字幕</h3>
     <p class="modal-desc" id="lottie-export-description">导出单个 .lottie 文件，可直接拖入 DaVinci Resolve 21 的 Media Pool 或时间线。当前版本使用逐字/逐词高亮，并沿用 MAW 的字幕预览字体、颜色和位置。</p>
-    <label for="lottie-export-track">字幕轨道</label>
-    <select id="lottie-export-track">
-      <option value="main" selected>主轨字幕</option>
-      <option value="extension">副字幕轨</option>
-    </select>
-    <label class="row" for="lottie-export-gap-removed">
-      <input type="checkbox" id="lottie-export-gap-removed"> 去除间隙
-    </label>
-    <p class="modal-hint">勾选后将字幕和字词时间映射到去除静音空隙后的压缩时间线。</p>
+    <fieldset class="fcp7-radio-group"><legend>导出时间线模式</legend>
+      <label><input type="radio" name="lottie-export-timeline-mode" value="source" checked> 原始时间线</label>
+      <label><input type="radio" id="lottie-export-gap-removed" name="lottie-export-timeline-mode" value="gap_removed"> 去空隙时间线</label>
+    </fieldset>
+    <p class="modal-hint">去空隙时间线将字幕和字词时间映射到压缩后的时间线。</p>
     <label for="lottie-export-resolution">合成尺寸</label>
     <select id="lottie-export-resolution">
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>
@@ -2441,6 +2437,7 @@ __WAVEFORM_CSS__
       <span aria-hidden="true">×</span>
       <input type="number" id="lottie-export-custom-height" min="16" max="7680" step="1" value="1080" aria-label="高度">
     </div>
+    <div class="fcp7-columns"><div>
     <label for="lottie-export-fps">导出帧率</label>
     <select id="lottie-export-fps">
       <option value="24">24 fps</option>
@@ -2451,6 +2448,13 @@ __WAVEFORM_CSS__
       <option value="60">60 fps</option>
       <option value="60000/1001">60000/1001 fps</option>
     </select>
+    </div><div>
+    <label for="lottie-export-track">导出字幕轨</label>
+    <select id="lottie-export-track">
+      <option value="main" selected>主轨字幕</option>
+      <option value="extension">副字幕轨</option>
+    </select>
+    </div></div>
     <label for="lottie-export-render-mode">文字渲染</label>
     <select id="lottie-export-render-mode">
       <option value="text" selected>文本模式（依赖系统字体）</option>
@@ -2469,15 +2473,11 @@ __WAVEFORM_CSS__
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ograf-export-title" aria-describedby="ograf-export-description">
     <h3 id="ograf-export-title">OGraf 动态字幕</h3>
     <p class="modal-desc" id="ograf-export-description">导出符合 OGraf 规范的 .ograf.zip；解压后保持 .ograf.json 与 .mjs 同目录，再把 .ograf.json 拖入 DaVinci Resolve 21。字幕由 Canvas Web Component 渲染。</p>
-    <label for="ograf-export-track">字幕轨道</label>
-    <select id="ograf-export-track">
-      <option value="main" selected>主轨字幕</option>
-      <option value="extension">副字幕轨</option>
-    </select>
-    <label class="row" for="ograf-export-gap-removed">
-      <input type="checkbox" id="ograf-export-gap-removed"> 去除间隙
-    </label>
-    <p class="modal-hint">勾选后将字幕和字词时间映射到去除静音空隙后的压缩时间线。</p>
+    <fieldset class="fcp7-radio-group"><legend>导出时间线模式</legend>
+      <label><input type="radio" name="ograf-export-timeline-mode" value="source" checked> 原始时间线</label>
+      <label><input type="radio" id="ograf-export-gap-removed" name="ograf-export-timeline-mode" value="gap_removed"> 去空隙时间线</label>
+    </fieldset>
+    <p class="modal-hint">去空隙时间线将字幕和字词时间映射到压缩后的时间线。</p>
     <label for="ograf-export-resolution">合成尺寸</label>
     <select id="ograf-export-resolution">
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>
@@ -2490,6 +2490,7 @@ __WAVEFORM_CSS__
       <span aria-hidden="true">×</span>
       <input type="number" id="ograf-export-custom-height" min="16" max="7680" step="1" value="1080" aria-label="高度">
     </div>
+    <div class="fcp7-columns"><div>
     <label for="ograf-export-fps">导出帧率</label>
     <select id="ograf-export-fps">
       <option value="24">24 fps</option>
@@ -2500,6 +2501,13 @@ __WAVEFORM_CSS__
       <option value="60">60 fps</option>
       <option value="60000/1001">60000/1001 fps</option>
     </select>
+    </div><div>
+    <label for="ograf-export-track">导出字幕轨</label>
+    <select id="ograf-export-track">
+      <option value="main" selected>主轨字幕</option>
+      <option value="extension">副字幕轨</option>
+    </select>
+    </div></div>
     <p class="modal-hint">这是包含两个文件的压缩包，不是可单独使用的 JSON；解压后不要分离或改名。Canvas 使用 Resolve 所在机器的系统字体回退链，适合验证中文显示。</p>
     <div class="actions">
       <button type="button" id="ograf-export-cancel">取消</button>

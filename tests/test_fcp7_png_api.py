@@ -114,6 +114,18 @@ class PngJobHttpTests(unittest.TestCase):
                 self.assertEqual(self.server.media_jobs.get(job_id).state, 'ready')
         self.assertEqual(self.request(url, self.payload(xml=self.xml(manifest)))[0], 200)
 
+    def test_only_published_job_can_open_its_own_folder(self):
+        job_id, manifest = self.start_fake()
+        url = self.base + '/' + job_id + '/open-folder'
+        with mock.patch.object(fcp7_png_api, '_open_export_folder') as open_folder:
+            self.assertEqual(self.request(url, self.payload())[0], 409)
+            open_folder.assert_not_called()
+            self.assertEqual(self.request(self.base + '/' + job_id + '/publish',
+                                          self.payload(xml=self.xml(manifest)))[0], 200)
+            self.assertEqual(self.request(url, self.payload(path='arbitrary-untrusted-path'))[0], 200)
+            open_folder.assert_called_once_with(Path(manifest['packagePath']))
+            self.assertEqual(self.request(url, {}, token=False)[0], 403)
+
     def test_publish_copy_failure_leaves_no_partial_package_and_frees_slot(self):
         job_id, manifest = self.start_fake()
         with mock.patch.object(fcp7_png_api.shutil, 'copy2', side_effect=OSError('simulated disk failure')):

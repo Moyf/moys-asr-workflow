@@ -5,6 +5,8 @@ import json
 import os
 import secrets
 import shutil
+import subprocess
+import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from http import HTTPStatus
@@ -13,8 +15,17 @@ from urllib.parse import quote, unquote, urlsplit
 
 from maw.fcp7_png import prepare_render_plan, render_png_assets
 from maw.media_jobs import MediaJobBusy, MediaJobCancelled, MediaJobUnavailable
+from maw.gui_platform import restore_host_library_path
 
 PREFIX = "/api/exports/fcp7-png/jobs"
+
+
+def _open_export_folder(directory: Path) -> None:
+    if sys.platform == "win32":
+        os.startfile(str(directory))
+    else:
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(directory)],
+                         env=restore_host_library_path(os.environ.copy()))
 
 
 def _file_path(value: str) -> str:
@@ -105,7 +116,7 @@ def handle_fcp7_png(handler, path: str, *, mutate=False, include_body=True, tool
             handler.send_json(HTTPStatus.OK, manager.cancel_admission(request.get("admissionToken")))
             return
         parts = path.removeprefix(PREFIX + "/").split("/")
-        if len(parts) not in (1, 2) or (len(parts) == 2 and parts[1] not in ("cancel", "publish")):
+        if len(parts) not in (1, 2) or (len(parts) == 2 and parts[1] not in ("cancel", "publish", "open-folder")):
             raise ValueError("未知图片字幕任务操作")
         job = manager.get(parts[0])
         if not getattr(job, "fcp7_png", False):
@@ -115,6 +126,16 @@ def handle_fcp7_png(handler, path: str, *, mutate=False, include_body=True, tool
             return
         binding_request = {"bindingGeneration": job.binding[0], "sourceMediaId": job.binding[1]}
         handler.editor_server.gap_removed_media_source_snapshot(binding_request)
+        if mutate and len(parts) == 2 and parts[1] == "open-folder":
+            with manager.lock:
+                package = getattr(job, "published_package", None)
+                if job.state != "completed" or not isinstance(package, Path):
+                    raise MediaJobUnavailable("导出文件夹不存在或任务尚未完成")
+            if package.is_symlink() or not package.is_dir():
+                raise ValueError("导出文件夹不存在或已被替换")
+            _open_export_folder(package)
+            handler.send_json(HTTPStatus.OK, {"ok": True})
+            return
         if not mutate and len(parts) == 1:
             with manager.lock:
                 payload = job.snapshot()
@@ -152,6 +173,7 @@ def handle_fcp7_png(handler, path: str, *, mutate=False, include_body=True, tool
                         raise ValueError("输出目录已存在，请重新导出")
                     os.rename(staging, package)
                     published = True
+                    job.published_package = package
                     manager.finish_download(job, success=True)
             handler.send_json(HTTPStatus.OK, {"ok": True, "packagePath": str(package),
                 "xmlPath": str(package / "subtitles.xml"), "vegasXmlPath": str(package / "subtitles-vegas.xml"),

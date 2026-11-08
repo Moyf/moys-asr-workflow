@@ -30,12 +30,10 @@ export function initMaweDynamicExports() {
   extensionOption.disabled = !extensionAvailable;
   const overlayOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="overlay"]');
   overlayOption.disabled = !overlayAvailable;
-  const allOption = MaweDom.fcp7ExportSubtitleTracks.querySelector('option[value="all"]');
-  allOption.disabled = !extensionAvailable && !overlayAvailable;
   if (!extensionAvailable && MaweDom.fcp7ExportSubtitleTracks.value === 'main_and_extension') {
     MaweDom.fcp7ExportSubtitleTracks.value = 'main';
   }
-  if (!overlayAvailable && ['overlay', 'all'].includes(MaweDom.fcp7ExportSubtitleTracks.value)) {
+  if (!overlayAvailable && MaweDom.fcp7ExportSubtitleTracks.value === 'overlay') {
     MaweDom.fcp7ExportSubtitleTracks.value = 'main';
   }
   MaweDom.fcp7ExportNativeText.checked = true;
@@ -109,8 +107,27 @@ export function initMaweDynamicExports() {
             imageFormat, size,
             config: MaweBoot.SERVER_CONFIG, signal: controller.signal,
             onProgress: showStatus });
-          showStatus(`已保存 ${result.imageCount} 张图片与 XML：${result.xmlPath}`);
-          if (result.vegasXmlPath) status.textContent += '\n' + MaweProjectSave.translatedEditorText('VEGAS 兼容 XML：') + result.vegasXmlPath;
+          showStatus('');
+          const success = document.createElement('span');
+          success.className = 'fcp7-export-success';
+          success.textContent = MaweProjectSave.translatedEditorText('已保存 {count} 张字幕图片与对应工程 XML 文件')
+            .replace('{count}', String(result.imageCount));
+          const folder = document.createElement('button');
+          folder.type = 'button';
+          folder.className = 'fcp7-export-folder';
+          folder.textContent = result.packagePath;
+          folder.addEventListener('click', async () => {
+            try {
+              const response = await fetch(result.openFolderUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken }) });
+              const payload = await response.json();
+              if (!response.ok || payload.ok === false) throw new Error(payload.error || '无法打开导出文件夹');
+            } catch (error) {
+              MaweHint.flashHint(`${MaweProjectSave.translatedEditorText('无法打开导出文件夹')}：${error.message}`, 'warning');
+            }
+          });
+          status.append(success, document.createElement('br'),
+            document.createTextNode(MaweProjectSave.translatedEditorText('点击打开导出文件夹：')), folder);
           if (result.fontNotices?.length) status.textContent += '\n' + result.fontNotices
             .map(message => MaweProjectSave.translatedEditorText(message)).join('\n');
           MaweHint.flashHint(MaweProjectSave.translatedEditorText('图片字幕 XML 已保存到工程旁的独立目录'), 'success');
@@ -156,8 +173,6 @@ export function initMaweDynamicExports() {
     const image = format !== 'native';
     document.getElementById('fcp7-export-png-options').hidden = !image;
     document.getElementById('fcp7-export-native-hint').hidden = image;
-    document.getElementById('fcp7-export-title').textContent = MaweProjectSave.translatedEditorText(
-      format === 'png' ? 'PNG 字幕 · FCP 7 XML' : format === 'webp' ? 'WebP 字幕 · FCP 7 XML' : 'FCP 7 XML');
     MaweDom.fcp7ExportConfirm.textContent = MaweProjectSave.translatedEditorText(image ? '导出 XML + 图片' : '导出 XML');
     document.getElementById('fcp7-export-format-hint').textContent = MaweProjectSave.translatedEditorText(format === 'webp'
       ? '动态部分输出序列帧，静止部分保持单张无损 WebP；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，目标软件需支持 WebP，图片模式不包含贴图。'

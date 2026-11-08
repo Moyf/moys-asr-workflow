@@ -99,22 +99,21 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
-test('opens the export modal defaulting to PNG images and keeps native choices intact', async ({ page }) => {
+test('opens the export modal defaulting to native XML and all available tracks', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
   await expect(page.locator('#download-fcp7-export')).toBeAttached();
   await expect(page.locator('#download-fcp7-export')).toHaveText('FCP 7 XML');
 
   await openFcp7Modal(page);
-  // 图片格式默认 PNG：升级用户不会被静默切到 WebP。
-  await expect(page.locator('#fcp7-export-format')).toHaveValue('png');
+  await expect(page.locator('#fcp7-export-format')).toHaveValue('native');
   const formatLabels = await page.locator('#fcp7-export-format option').evaluateAll(
     (options) => options.map((option) => option.textContent),
   );
-  expect(formatLabels).toEqual(['透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）',
-    '透明 WEBP 图片字幕（FCP7XML，可用于 PR / VEGAS）', 'Premiere 原生文字']);
-  await expect(page.locator('#fcp7-export-png-options')).toBeVisible();
-  await expect(page.locator('#fcp7-export-native-text')).toBeHidden();
+  expect(formatLabels).toEqual(['FCP7XML 工程（PR 可用）',
+    '透明 WEBP 图片字幕（FCP7XML，可用于 PR / VEGAS）', '透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）']);
+  await expect(page.locator('#fcp7-export-png-options')).toBeHidden();
+  await expect(page.locator('#fcp7-export-native-text')).toBeVisible();
   await expect(page.locator('#fcp7-export-timeline-mode')).toBeChecked();
   await expect(page.locator('#fcp7-export-fps')).toHaveValue('30');
 
@@ -130,9 +129,8 @@ test('opens the export modal defaulting to PNG images and keeps native choices i
     .toBeDisabled();
   await expect(page.locator('#fcp7-export-subtitle-tracks option[value="overlay"]'))
     .toBeDisabled();
-  await expect(page.locator('#fcp7-export-subtitle-tracks option[value="all"]'))
-    .toBeDisabled();
-  await expect(page.locator('#fcp7-export-subtitle-tracks')).toHaveValue('main');
+  await expect(page.locator('#fcp7-export-subtitle-tracks option[value="all"]')).toBeEnabled();
+  await expect(page.locator('#fcp7-export-subtitle-tracks')).toHaveValue('all');
 
   // 切回原生文字：勾选项与字幕轨选择恢复为既有行为。
   await page.locator('#fcp7-export-format').selectOption('native');
@@ -285,10 +283,10 @@ test('translates the export modal into English and keeps native text checked', a
 
   await openFcp7Modal(page);
   await expect(page.locator('#fcp7-export-title'))
-    .toHaveText('PNG subtitles · FCP 7 XML');
+    .toHaveText('Export FCP 7 XML project and subtitles');
   await page.locator('#fcp7-export-format').selectOption('native');
   await expect(page.locator('#fcp7-export-title'))
-    .toHaveText('FCP 7 XML');
+    .toHaveText('Export FCP 7 XML project and subtitles');
   await expect(page.locator('#fcp7-export-confirm')).toHaveText('Export XML');
   await expect(page.locator('#fcp7-export-modal')).toContainText('Write native subtitle text objects');
   await expect(page.locator('#fcp7-export-native-text')).toBeChecked();

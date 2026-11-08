@@ -17,7 +17,7 @@ export async function runFcp7PngExport({ plan, ass, layers, imageFormat = 'png',
       body: JSON.stringify({ ...binding, ...data }), keepalive });
     const result = await response.json();
     if (!response.ok || result.ok === false) throw new Error(result.error || '图片字幕请求失败');
-    return result;
+    return { ...result, openFolderUrl: `${jobsUrl}/${jobId}/open-folder` };
   };
   const cancel = () => post(jobId ? `${jobsUrl}/${jobId}/cancel` : `${jobsUrl}/cancel-admission`, { admissionToken }, true);
   const aborted = () => {
