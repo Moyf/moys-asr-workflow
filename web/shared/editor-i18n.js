@@ -27,7 +27,7 @@
     '或点击弹窗外部，关闭并保留修改': 'or click outside to close and keep changes',
     '可在': 'In',
     '中设置字幕拆分和保存按键。': 'you can configure the split and save shortcuts.',
-    '或点击波形工具栏的「字词」，显示或隐藏主字幕已有的字词时间码。': 'or click Words in the waveform toolbar to show or hide the main subtitle word timings.',
+    '切换主字幕字词时间码；也可点击波形工具栏的「字词」。': 'toggles main subtitle word timings; you can also click Words in the waveform toolbar.',
     '点击选中字词；按住': 'Click a word to select it. Hold',
     '点击多选，按住': 'and click to select multiple words; hold',
     '点击范围选择。拖动字词块移动时间，拖动边缘调整起止时间。': 'and click to select a range. Drag a word block to move it, or drag its edges to adjust timing.',

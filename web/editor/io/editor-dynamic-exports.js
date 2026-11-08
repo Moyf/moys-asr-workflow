@@ -10,6 +10,10 @@ export function initMaweDynamicExports() {
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
 (function initMaweDynamicExports(global) {
   'use strict';
+  // The controls themselves retain edits while this project remains open.
+  // A new binding starts from the new project's dimensions instead of inheriting
+  // another project's choice. Nothing is written to global preferences.
+  let fcp7PngSizeEpoch = null;
 
 
 
@@ -39,9 +43,15 @@ export function initMaweDynamicExports() {
     MaweDom.fcp7ExportSubtitleTracks.value = 'main';
   }
   MaweDom.fcp7ExportNativeText.checked = true;
-  const projectSize = MaweExportSrt.currentAssVideoResolution() || { width: 1920, height: 1080 };
-  document.getElementById('fcp7-png-width').value = String(projectSize.width);
-  document.getElementById('fcp7-png-height').value = String(projectSize.height);
+  const epoch = MaweProjectLoad.projectBindingEpoch;
+  if (fcp7PngSizeEpoch !== epoch) {
+    fcp7PngSizeEpoch = epoch;
+    const projectSize = MaweExportSrt.currentAssVideoResolution() || { width: 1920, height: 1080 };
+    document.getElementById('fcp7-png-size').value = 'project';
+    document.getElementById('fcp7-png-width').value = String(projectSize.width);
+    document.getElementById('fcp7-png-height').value = String(projectSize.height);
+    document.getElementById('fcp7-png-custom-size').hidden = true;
+  }
   updateFcp7Mode();
   MaweDom.fcp7ExportModal.classList.add('show');
   MaweDom.fcp7ExportTimelineMode.focus();

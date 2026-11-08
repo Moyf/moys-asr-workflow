@@ -30,6 +30,29 @@ async function open(page) {
   await page.locator('#fcp7-export-fps').selectOption('25');
 }
 
+test('custom size is retained for this open project and reset when switching projects', async ({ page }) => {
+  await open(page);
+  await page.locator('#fcp7-png-size').selectOption('custom');
+  await page.locator('#fcp7-png-width').fill('1280');
+  await page.locator('#fcp7-png-height').fill('720');
+  await page.locator('#fcp7-export-cancel').click();
+  await page.evaluate(() => MaweDynamicExports.openFcp7ExportModal());
+  await expect(page.locator('#fcp7-png-size')).toHaveValue('custom');
+  await expect(page.locator('#fcp7-png-width')).toHaveValue('1280');
+  await expect(page.locator('#fcp7-png-height')).toHaveValue('720');
+  await page.locator('#fcp7-export-cancel').click();
+  await page.evaluate(() => {
+    MaweProjectLoad.applyCanonicalProject({ media: '', media_metadata: { video_width: 800, video_height: 600 },
+      segments: [{ start: 0, end: 1000, text: '新工程' }] }, 'other.mosp');
+    MaweDynamicExports.openFcp7ExportModal();
+  });
+  await expect(page.locator('#fcp7-png-size')).toHaveValue('project');
+  await expect(page.locator('#fcp7-png-custom-size')).toBeHidden();
+  await page.locator('#fcp7-png-size').selectOption('custom');
+  await expect(page.locator('#fcp7-png-width')).toHaveValue('800');
+  await expect(page.locator('#fcp7-png-height')).toHaveValue('600');
+});
+
 test('real PNG job publishes subtitle-only XML and preserves a static hold', async ({ page }) => {
   test.setTimeout(120000);
   await open(page);

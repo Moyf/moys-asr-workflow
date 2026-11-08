@@ -14,7 +14,7 @@ function setup(t, handler) {
     if (value === undefined) delete globalThis[key]; else globalThis[key] = value;
   } });
   return { plan: { frameProfile: { name: '25' }, outputDurationMs: 1000 },
-    config, ass: 'ASS snapshot', layers: [0], includeMedia: false, signal: new AbortController().signal,
+    config, ass: 'ASS snapshot', layers: [0], includeMedia: false, size: { width: 640, height: 360 }, signal: new AbortController().signal,
     onProgress: () => {} };
 }
 
