@@ -48,6 +48,27 @@ test('WebP client submits an explicit format without changing the captured ASS',
   assert.equal((await runFcp7PngExport({ ...args, imageFormat: 'webp' })).xmlPath, 'webp.xml');
 });
 
+test('image client forwards selected dimensions and render progress', async t => {
+  const updates = [];
+  let request;
+  const args = setup(t, (url, options) => {
+    if (url === '/jobs') {
+      request = JSON.parse(options.body);
+      return { jobId: 'one', state: 'rendering', progress: 0.42 };
+    }
+    if (url === '/jobs/one') return { state: 'ready', manifest: { sourceKind: 'video' } };
+    assert.equal(url, '/jobs/one/publish');
+    return { xmlPath: 'result.xml' };
+  });
+  args.size = { width: 1280, height: 720 };
+  args.onProgress = (text, value) => updates.push([text, value]);
+  await runFcp7PngExport(args);
+  assert.equal(request.width, 1280);
+  assert.equal(request.height, 720);
+  assert.deepEqual(updates[0], ['正在生成字幕图片：42%', 0.42]);
+  assert.equal(updates[1][1], undefined);
+});
+
 test('PNG client waits for cancellation cleanup before returning AbortError', async t => {
   let cancellations = 0;
   const controller = new AbortController();

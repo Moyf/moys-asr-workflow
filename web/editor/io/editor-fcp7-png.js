@@ -1,6 +1,6 @@
 // PNG/WebP rendering uses the local task API. The export plan/ASS are captured before
 // the first await; polling and publication never reread mutable project data.
-export async function runFcp7PngExport({ plan, ass, layers, imageFormat = 'png', includeMedia, config, onProgress, signal }) {
+export async function runFcp7PngExport({ plan, ass, layers, imageFormat = 'png', includeMedia, size, config, onProgress, signal }) {
   if (!config?.fcp7PngJobsUrl) throw new Error('请从本地编辑器服务导出图片字幕');
   const jobsUrl = config.fcp7PngJobsUrl;
   const binding = { requestToken: config.requestToken, bindingGeneration: config.bindingGeneration,
@@ -29,7 +29,7 @@ export async function runFcp7PngExport({ plan, ass, layers, imageFormat = 'png',
   window.addEventListener('pagehide', cancelOnAbort, { once: true });
   try {
     aborted();
-    const size = MaweExportSrt.currentAssVideoResolution() || { width: 1920, height: 1080 };
+    size ||= MaweExportSrt.currentAssVideoResolution() || { width: 1920, height: 1080 };
     const response = await post(jobsUrl, { ass, layers, fps: plan.frameProfile.name,
       width: size.width, height: size.height, durationMs: plan.outputDurationMs, imageFormat, admissionToken });
     jobId = response.jobId;
@@ -37,7 +37,7 @@ export async function runFcp7PngExport({ plan, ass, layers, imageFormat = 'png',
     while (state.state !== 'ready') {
       aborted();
       if (['failed', 'cancelled', 'cancelling'].includes(state.state)) throw new Error(state.error || '图片字幕导出已停止');
-      onProgress(state.progress == null ? '正在准备字幕图片…' : `正在生成字幕图片：${Math.round(state.progress * 100)}%`);
+      onProgress(state.progress == null ? '正在准备字幕图片…' : `正在生成字幕图片：${Math.round(state.progress * 100)}%`, state.progress);
       await new Promise(resolve => setTimeout(resolve, 300));
       aborted();
       const poll = await fetch(`${jobsUrl}/${jobId}`, { headers: { 'X-MAW-Request-Token': binding.requestToken } });

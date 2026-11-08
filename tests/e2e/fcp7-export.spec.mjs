@@ -103,7 +103,7 @@ test('opens the export modal defaulting to PNG images and keeps native choices i
   await disableOnboarding(page);
   await page.goto(server.url);
   await expect(page.locator('#download-fcp7-export')).toBeAttached();
-  await expect(page.locator('#download-fcp7-export')).toHaveText('FCP 7 XML（PR / VEGAS）');
+  await expect(page.locator('#download-fcp7-export')).toHaveText('FCP 7 XML');
 
   await openFcp7Modal(page);
   // 图片格式默认 PNG：升级用户不会被静默切到 WebP。
@@ -115,7 +115,7 @@ test('opens the export modal defaulting to PNG images and keeps native choices i
     '透明 WEBP 图片字幕（FCP7XML，可用于 PR / VEGAS）', 'Premiere 原生文字']);
   await expect(page.locator('#fcp7-export-png-options')).toBeVisible();
   await expect(page.locator('#fcp7-export-native-text')).toBeHidden();
-  await expect(page.locator('#fcp7-export-timeline-mode')).toHaveValue('gap_removed');
+  await expect(page.locator('#fcp7-export-timeline-mode')).toBeChecked();
   await expect(page.locator('#fcp7-export-fps')).toHaveValue('30');
 
   const fpsValues = await page.locator('#fcp7-export-fps option').evaluateAll(
@@ -156,7 +156,7 @@ test('opens the single FCP 7 XML entry with the gap-removed timeline by default'
   await expect(page.locator('#extra-export-dropdown')).toBeVisible();
 
   await openFcp7Modal(page);
-  await expect(page.locator('#fcp7-export-timeline-mode')).toHaveValue('gap_removed');
+  await expect(page.locator('#fcp7-export-timeline-mode')).toBeChecked();
 
   await page.locator('#fcp7-export-cancel').click();
   await expect(page.locator('#fcp7-export-modal')).not.toHaveClass(/show/);
@@ -288,7 +288,7 @@ test('translates the export modal into English and keeps native text checked', a
     .toHaveText('PNG subtitles · FCP 7 XML');
   await page.locator('#fcp7-export-format').selectOption('native');
   await expect(page.locator('#fcp7-export-title'))
-    .toHaveText('FCP 7 XML (PR / VEGAS)');
+    .toHaveText('FCP 7 XML');
   await expect(page.locator('#fcp7-export-confirm')).toHaveText('Export XML');
   await expect(page.locator('#fcp7-export-modal')).toContainText('Write native subtitle text objects');
   await expect(page.locator('#fcp7-export-native-text')).toBeChecked();

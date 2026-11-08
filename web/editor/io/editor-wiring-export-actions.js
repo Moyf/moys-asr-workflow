@@ -176,7 +176,7 @@ function applyMediaSizeToResolutionModal(select, customRow, widthInput, heightIn
   if (customRow) customRow.hidden = select.value !== 'custom';
 }
 
-function dynamicExportCanvasSize(select, widthInput, heightInput) {
+function dynamicExportCanvasSize(select, widthInput, heightInput, max = DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS.max) {
   if (select?.value !== 'custom') {
     const match = /^(\d+)x(\d+)$/u.exec(select?.value || '');
     if (!match) return { width: 1920, height: 1080 };
@@ -185,10 +185,10 @@ function dynamicExportCanvasSize(select, widthInput, heightInput) {
   const limits = DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS;
   const width = Number(widthInput?.value);
   const height = Number(heightInput?.value);
-  if (!Number.isInteger(width) || width < limits.min || width > limits.max
-    || !Number.isInteger(height) || height < limits.min || height > limits.max) {
+  if (!Number.isInteger(width) || width < limits.min || width > max
+    || !Number.isInteger(height) || height < limits.min || height > max) {
     throw new Error(MaweProjectSave.translatedEditorText(
-      '自定义合成尺寸需要 16–7680 之间的整数宽高',
+      max === 8192 ? '自定义图片尺寸需要 16–8192 之间的整数宽高' : '自定义合成尺寸需要 16–7680 之间的整数宽高',
     ));
   }
   return { width, height };

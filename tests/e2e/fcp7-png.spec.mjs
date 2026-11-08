@@ -26,18 +26,29 @@ async function open(page, format = 'png') {
   await page.locator('#download-fcp7-export').click();
   await page.locator('#fcp7-export-format').selectOption(format);
   await expect(page.locator('#fcp7-export-native-text')).toBeHidden();
-  await page.locator('#fcp7-export-timeline-mode').selectOption('source');
+  await page.locator('input[name="fcp7-export-timeline-mode"][value="source"]').check();
   await page.locator('#fcp7-export-fps').selectOption('25');
 }
 
 for (const format of ['png', 'webp']) test(`real ${format} job publishes subtitle-only XML and preserves a static hold`, async ({ page }) => {
   test.setTimeout(120000);
   await open(page, format);
-  const spacing = await page.locator('[for="fcp7-export-timeline-mode"]').evaluate(el => {
+  await expect(page.locator('#fcp7-export-confirm')).toHaveText('导出 XML + 图片');
+  await expect(page.locator('#fcp7-export-custom-size')).toBeVisible();
+  await page.locator('#fcp7-export-custom-width').fill('320');
+  await page.locator('#fcp7-export-custom-height').fill('180');
+  const spacing = await page.locator('.fcp7-radio-group').last().evaluate(el => {
     const previous = el.previousElementSibling;
     return el.getBoundingClientRect().top - previous.getBoundingClientRect().bottom;
   });
   expect(spacing).toBeGreaterThanOrEqual(8);
+  const columns = await page.locator('#fcp7-export-fps').evaluate(el => {
+    const left = el.getBoundingClientRect();
+    const right = document.getElementById('fcp7-export-subtitle-tracks').getBoundingClientRect();
+    return { gap: right.left - left.right, topDifference: Math.abs(right.top - left.top) };
+  });
+  expect(columns.gap).toBeGreaterThanOrEqual(8);
+  expect(columns.topDifference).toBeLessThanOrEqual(1);
   const shotDir = resolve('.artifacts/fcp7-png');
   mkdirSync(shotDir, { recursive: true });
   await page.screenshot({ path: join(shotDir, `${format}-export-options.png`) });
@@ -54,6 +65,7 @@ for (const format of ['png', 'webp']) test(`real ${format} job publishes subtitl
   await expect(page.locator('#fcp7-export-status')).toContainText(result.vegasXmlPath);
   expect(readFileSync(result.vegasXmlPath, 'utf8')).not.toContain('file://');
   const manifest = JSON.parse(readFileSync(join(result.packagePath, 'manifest.json'), 'utf8'));
+  expect([manifest.width, manifest.height]).toEqual([320, 180]);
   expect(manifest.imageFormat).toBe(format);
   expect(manifest.renderer.encoding).toBe('lossless');
   const images = manifest.tracks.flatMap(t => t.clips.map(c => c.path));
@@ -62,8 +74,15 @@ for (const format of ['png', 'webp']) test(`real ${format} job publishes subtitl
   if (format === 'webp') {
     expect(firstImage.subarray(0, 4).toString()).toBe('RIFF');
     expect(firstImage.subarray(8, 12).toString()).toBe('WEBP');
-    expect(firstImage.includes(Buffer.from('VP8L'))).toBeTruthy();
-  } else expect(firstImage.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const chunk = firstImage.indexOf(Buffer.from('VP8L'));
+    expect(chunk).toBeGreaterThanOrEqual(0);
+    expect(firstImage[chunk + 8]).toBe(0x2f);
+    const dimensions = firstImage.readUInt32LE(chunk + 9);
+    expect([(dimensions & 0x3fff) + 1, ((dimensions >>> 14) & 0x3fff) + 1]).toEqual([320, 180]);
+  } else {
+    expect(firstImage.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    expect([firstImage.readUInt32BE(16), firstImage.readUInt32BE(20)]).toEqual([320, 180]);
+  }
   expect(manifest.tracks.flatMap(t => t.clips).some(c => c.endFrame - c.startFrame > 1)).toBeTruthy();
   const xml = readFileSync(result.xmlPath, 'utf8');
   expect(xml).toContain('<stillframe>TRUE</stillframe>');
@@ -75,7 +94,7 @@ for (const format of ['png', 'webp']) test(`real ${format} job publishes subtitl
 test('media scope includes the bound source and cancellation cleans an admitted job', async ({ page }) => {
   test.setTimeout(120000);
   await open(page);
-  await page.locator('#fcp7-export-scope').selectOption('media');
+  await page.locator('input[name="fcp7-export-scope"][value="media"]').check();
   const published = page.waitForResponse(r => r.url().endsWith('/publish'));
   await page.locator('#fcp7-export-confirm').click();
   const response = await published;
@@ -94,8 +113,8 @@ for (const format of ['png', 'webp']) test(`${format} options and completed stat
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
   await open(page, format);
   await expect(page.locator('#fcp7-export-title')).toHaveText(`${format === 'png' ? 'PNG' : 'WebP'} subtitles · FCP 7 XML`);
-  await expect(page.locator('#fcp7-export-scope option:checked')).toHaveText('Subtitles only');
-  await expect(page.locator('#fcp7-export-description')).toContainText(`transparent ${format === 'png' ? 'PNG' : 'WebP'} images`);
+  await expect(page.locator('input[name="fcp7-export-scope"][value="subtitles"]').locator('..')).toContainText('Subtitles only');
+  await expect(page.locator('#fcp7-export-description')).toContainText('Premiere, Vegas');
   await expect(page.locator('#fcp7-export-stop')).toHaveText('Stop export');
   await page.locator('#fcp7-export-confirm').click();
   await expect(page.locator('#fcp7-export-status')).toContainText('images and XML:', { timeout: 30000 });
@@ -104,8 +123,8 @@ for (const format of ['png', 'webp']) test(`${format} options and completed stat
 
 test('gap-removed PNG and source media share the compressed frame clock', async ({ page }) => {
   await open(page);
-  await page.locator('#fcp7-export-timeline-mode').selectOption('gap_removed');
-  await page.locator('#fcp7-export-scope').selectOption('media');
+  await page.locator('input[name="fcp7-export-timeline-mode"][value="gap_removed"]').check();
+  await page.locator('input[name="fcp7-export-scope"][value="media"]').check();
   const published = page.waitForResponse(r => r.url().endsWith('/publish'));
   await page.locator('#fcp7-export-confirm').click();
   const response = await published;
@@ -117,4 +136,72 @@ test('gap-removed PNG and source media share the compressed frame clock', async 
   const xml = readFileSync(result.xmlPath, 'utf8');
   expect(xml).toContain('<start>25</start><end>65</end>');
   expect(xml).toContain('<in>35</in><out>75</out>');
+});
+
+test('image and dynamic caption custom dimensions are conditionally visible', async ({ page }) => {
+  await open(page);
+  const custom = page.locator('#fcp7-export-custom-size');
+  await expect(custom).toBeVisible();
+  await page.locator('#fcp7-export-resolution').selectOption('1920x1080');
+  await expect(custom).toBeHidden();
+  await page.locator('#fcp7-export-resolution').selectOption('custom');
+  await expect(custom).toBeVisible();
+  await page.locator('#fcp7-export-cancel').click();
+  for (const prefix of ['lottie', 'ograf']) {
+    const modal = page.locator(`#${prefix}-export-modal`);
+    await modal.evaluate(el => el.classList.add('show'));
+    const select = page.locator(`#${prefix}-export-resolution`);
+    const row = page.locator(`#${prefix}-export-custom-size`);
+    await select.selectOption('1920x1080');
+    await expect(row).toBeHidden();
+    await select.selectOption('custom');
+    await expect(row).toBeVisible();
+    const spacing = await row.evaluate(el => el.getBoundingClientRect().top - el.previousElementSibling.getBoundingClientRect().bottom);
+    expect(spacing).toBeGreaterThanOrEqual(8);
+    const shotDir = resolve('.artifacts/fcp7-png');
+    mkdirSync(shotDir, { recursive: true });
+    await page.screenshot({ path: join(shotDir, `${prefix}-custom-size.png`) });
+    await modal.evaluate(el => el.classList.remove('show'));
+  }
+});
+
+test('image dimensions accept 8K limits, reset without media metadata and clear stale status on invalid input', async ({ page }) => {
+  await open(page);
+  await page.locator('#fcp7-export-custom-width').fill('8192');
+  await page.locator('#fcp7-export-custom-height').fill('4096');
+  expect(await page.evaluate(() => window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(
+    document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-width'),
+    document.getElementById('fcp7-export-custom-height'), 8192))).toEqual({ width: 8192, height: 4096 });
+  await page.locator('#fcp7-export-custom-width').fill('8193');
+  await page.locator('#fcp7-export-status').evaluate(el => { el.textContent = 'old successful export'; });
+  await page.locator('#fcp7-export-confirm').click();
+  await expect(page.locator('#fcp7-export-status')).toBeEmpty();
+  await expect(page.locator('.hint-card.hint-warning').last()).toContainText('16–8192');
+  await page.locator('#fcp7-export-cancel').click();
+  await page.evaluate(() => { MaweBoot.DATA.media_metadata = null; });
+  await page.locator('#extra-export-btn').click();
+  await page.locator('#download-fcp7-export').click();
+  await expect(page.locator('#fcp7-export-resolution')).toHaveValue('1920x1080');
+  await expect(page.locator('#fcp7-export-custom-size')).toBeHidden();
+});
+
+test('image generation progress bar displays real task progress and disappears on stop', async ({ page }) => {
+  await open(page);
+  await page.route('**/api/exports/fcp7-png/jobs**', async route => {
+    const url = new URL(route.request().url());
+    const response = url.pathname.endsWith('/cancel') || url.pathname.endsWith('/cancel-admission')
+      ? { cleanupComplete: true } : { jobId: 'fake-job', state: 'rendering', progress: 0.42 };
+    await route.fulfill({ json: response });
+  });
+  await page.locator('#fcp7-export-confirm').click();
+  const progress = page.locator('#fcp7-export-progress');
+  await expect(progress).toBeVisible();
+  await expect.poll(() => progress.evaluate(el => el.value)).toBe(0.42);
+  await expect(page.locator('#fcp7-export-status')).toContainText('42%');
+  const shotDir = resolve('.artifacts/fcp7-png');
+  mkdirSync(shotDir, { recursive: true });
+  await page.screenshot({ path: join(shotDir, 'export-progress.png') });
+  await page.locator('#fcp7-export-stop').click();
+  await expect(progress).toBeHidden();
+  await expect(page.locator('#fcp7-export-status')).toContainText('已停止');
 });

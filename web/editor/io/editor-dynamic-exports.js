@@ -39,6 +39,12 @@ export function initMaweDynamicExports() {
     MaweDom.fcp7ExportSubtitleTracks.value = 'main';
   }
   MaweDom.fcp7ExportNativeText.checked = true;
+  if (!window.AsrEditorUtils?.exportVideoSize?.(MaweBoot.DATA)) {
+    document.getElementById('fcp7-export-resolution').value = '1920x1080';
+  }
+  window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
+    document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-size'),
+    document.getElementById('fcp7-export-custom-width'), document.getElementById('fcp7-export-custom-height'));
   updateFcp7Mode();
   MaweDom.fcp7ExportModal.classList.add('show');
   MaweDom.fcp7ExportTimelineMode.focus();
@@ -48,13 +54,15 @@ export function initMaweDynamicExports() {
 
   async function exportFcp7Xml() {
     MaweDom.fcp7ExportConfirm.disabled = true;
+    document.getElementById('fcp7-export-status').textContent = '';
+    document.getElementById('fcp7-export-progress').hidden = true;
     try {
       const durationMs = MaweCoreState.waveformEditor?.durationMs
         || Math.round(Number(MaweCoreState.player?.duration) * 1000)
         || MaweBoot.DATA.waveform?.duration_ms
         || 0;
       const options = window.AsrEditorUtils.normalizeExportOptions({
-        timelineMode: MaweDom.fcp7ExportTimelineMode.value,
+        timelineMode: document.querySelector('input[name="fcp7-export-timeline-mode"]:checked').value,
         fps: MaweDom.fcp7ExportFps.value,
         subtitleTracks: MaweDom.fcp7ExportSubtitleTracks.value,
         nativeTextObjects: MaweDom.fcp7ExportNativeText.checked,
@@ -69,12 +77,23 @@ export function initMaweDynamicExports() {
       const imageFormat = document.getElementById('fcp7-export-format').value;
       if (imageFormat !== 'native') {
         const status = document.getElementById('fcp7-export-status');
+        const progress = document.getElementById('fcp7-export-progress');
+        const size = window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(
+          document.getElementById('fcp7-export-resolution'), document.getElementById('fcp7-export-custom-width'),
+          document.getElementById('fcp7-export-custom-height'), 8192);
+        if (size.width * size.height > 33554432) {
+          throw new Error(MaweProjectSave.translatedEditorText('图片尺寸不能超过 33554432 像素'));
+        }
         const stop = document.getElementById('fcp7-export-stop');
         const controller = new AbortController();
         const controls = [...MaweDom.fcp7ExportModal.querySelectorAll('input, select')]
           .map(element => ({ element, disabled: element.disabled }));
         controls.forEach(({ element }) => { element.disabled = true; });
-        const showStatus = text => { status.textContent = MaweProjectSave.translatedEditorText(text); };
+        const showStatus = (text, fraction) => {
+          status.textContent = MaweProjectSave.translatedEditorText(text);
+          progress.hidden = fraction == null;
+          if (fraction != null) progress.value = Math.max(0, Math.min(1, fraction));
+        };
         const stopExport = () => { controller.abort(); showStatus('正在停止图片字幕导出…'); };
         stop.hidden = false;
         stop.addEventListener('click', stopExport);
@@ -86,8 +105,8 @@ export function initMaweDynamicExports() {
             ? MaweExportSrt.buildGapRemovedAss(assOptions) : MaweExportSrt.buildAss(assOptions);
           const layers = { main: [0], main_and_extension: [0, 1], extension: [1], overlay: [2], all: [0, 1, 2] }[options.subtitleTracks];
           const result = await runFcp7PngExport({ plan, ass, layers,
-            includeMedia: document.getElementById('fcp7-export-scope').value === 'media',
-            imageFormat,
+            includeMedia: document.querySelector('input[name="fcp7-export-scope"]:checked').value === 'media',
+            imageFormat, size,
             config: MaweBoot.SERVER_CONFIG, signal: controller.signal,
             onProgress: showStatus });
           showStatus(`已保存 ${result.imageCount} 张图片与 XML：${result.xmlPath}`);
@@ -138,19 +157,21 @@ export function initMaweDynamicExports() {
     document.getElementById('fcp7-export-png-options').hidden = !image;
     document.getElementById('fcp7-export-native-hint').hidden = image;
     document.getElementById('fcp7-export-title').textContent = MaweProjectSave.translatedEditorText(
-      format === 'png' ? 'PNG 字幕 · FCP 7 XML' : format === 'webp' ? 'WebP 字幕 · FCP 7 XML' : 'FCP 7 XML（PR / VEGAS）');
+      format === 'png' ? 'PNG 字幕 · FCP 7 XML' : format === 'webp' ? 'WebP 字幕 · FCP 7 XML' : 'FCP 7 XML');
+    MaweDom.fcp7ExportConfirm.textContent = MaweProjectSave.translatedEditorText(image ? '导出 XML + 图片' : '导出 XML');
     document.getElementById('fcp7-export-format-hint').textContent = MaweProjectSave.translatedEditorText(format === 'webp'
       ? '动态部分输出序列帧，静止部分保持单张无损 WebP；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，目标软件需支持 WebP，图片模式不包含贴图。'
       : '动态部分输出序列帧，静止部分保持单张 PNG 图片；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，图片模式不包含贴图。');
     MaweDom.fcp7ExportNativeText.closest('label').style.display = image ? 'none' : '';
     document.getElementById('fcp7-export-description').textContent = MaweProjectSave.translatedEditorText(
-      format === 'png' ? '将 ASS 字幕渲染为透明 PNG 图片，连同多轨 XML 导出到工程旁的独立目录。'
-      : format === 'webp' ? '将 ASS 字幕渲染为无损透明 WebP 图片，连同多轨 XML 导出到工程旁的独立目录。目标软件需支持 WebP。'
-      : 'FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere。');
+      '导出 FCP 7 XML 工程文件，供 Premiere、Vegas 等剪辑软件使用。');
     MaweDom.fcp7ExportSubtitleTracks.disabled = !image && !MaweDom.fcp7ExportNativeText.checked;
   }
 
   document.getElementById('fcp7-export-format').addEventListener('change', updateFcp7Mode);
+  document.getElementById('fcp7-export-resolution').addEventListener('change', event => {
+    document.getElementById('fcp7-export-custom-size').hidden = event.target.value !== 'custom';
+  });
 
 
 
