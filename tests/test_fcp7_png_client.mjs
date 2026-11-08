@@ -41,12 +41,11 @@ test('WebP client submits an explicit format without changing the captured ASS',
       const request = JSON.parse(options.body);
       assert.equal(request.imageFormat, 'webp');
       assert.equal(request.ass, 'ASS snapshot');
-      assert.equal(request.directoryToken, 'chosen-token');
       return { jobId: 'one', state: 'ready', manifest: { sourceKind: 'video' } };
     }
     return { xmlPath: 'webp.xml' };
   });
-  assert.equal((await runFcp7PngExport({ ...args, imageFormat: 'webp', directoryToken: 'chosen-token' })).xmlPath, 'webp.xml');
+  assert.equal((await runFcp7PngExport({ ...args, imageFormat: 'webp' })).xmlPath, 'webp.xml');
 });
 
 test('image client forwards selected dimensions and render progress', async t => {

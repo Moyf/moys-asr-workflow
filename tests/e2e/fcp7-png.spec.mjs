@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
   generateWav, makeTempDir, startServer } from './helpers.mjs';
 
@@ -63,7 +63,7 @@ test('image dimensions stay within the open project session', async ({ page }) =
   await expect(page.locator('#fcp7-export-custom-height')).toHaveValue('1080');
 });
 
-test('chosen directory can be cancelled or reset and aspect ratio changes show a warning', async ({ page }) => {
+test('aspect ratio changes show a warning', async ({ page }) => {
   await open(page, 'png');
   const warning = page.locator('#fcp7-export-ratio-warning');
   await expect(warning).toBeHidden();
@@ -76,31 +76,15 @@ test('chosen directory can be cancelled or reset and aspect ratio changes show a
   const spacing = await page.evaluate(() => {
     const warning = document.getElementById('fcp7-export-ratio-warning');
     const controls = document.getElementById('fcp7-export-custom-size');
-    const directory = document.querySelector('.fcp7-directory-controls');
-    return { warning: warning.getBoundingClientRect().top - controls.getBoundingClientRect().bottom,
-      directory: directory.getBoundingClientRect().top - directory.previousElementSibling.getBoundingClientRect().bottom };
+    return warning.getBoundingClientRect().top - controls.getBoundingClientRect().bottom;
   });
-  expect(spacing.warning).toBeGreaterThanOrEqual(8);
-  expect(spacing.directory).toBeGreaterThanOrEqual(8);
+  expect(spacing).toBeGreaterThanOrEqual(8);
   const shotDir = resolve('.artifacts/fcp7-png');
   mkdirSync(shotDir, { recursive: true });
   await page.screenshot({ path: join(shotDir, 'ratio-warning.png') });
   await page.locator('#fcp7-export-custom-width').fill('1280');
   await page.locator('#fcp7-export-custom-height').fill('720');
   await expect(warning).toBeHidden();
-  let cancelled = false;
-  await page.route('**/api/exports/fcp7-png/jobs/choose-directory', async route => {
-    await route.fulfill({ json: cancelled ? { ok: true, cancelled: true } :
-      { ok: true, directoryToken: 'chosen-token', directory: 'chosen folder' } });
-  });
-  await page.locator('#fcp7-export-choose-directory').click();
-  await expect(page.locator('#fcp7-export-directory')).toHaveText('chosen folder');
-  cancelled = true;
-  await page.locator('#fcp7-export-choose-directory').click();
-  await expect(page.locator('#fcp7-export-directory')).toHaveText('chosen folder');
-  await page.locator('#fcp7-export-reset-directory').click();
-  await expect(page.locator('#fcp7-export-directory')).toContainText('工程所在文件夹');
-  await expect(page.locator('#fcp7-export-reset-directory')).toBeHidden();
 });
 
 test('font notices keep the published folder action available', async ({ page }) => {
@@ -157,6 +141,7 @@ for (const format of ['png', 'webp']) test(`real ${format} job publishes subtitl
   const response = await published;
   expect(response.status()).toBe(200);
   const result = await response.json();
+  expect(resolve(dirname(result.packagePath))).toBe(resolve(tempDir));
   await expect(page.locator('#fcp7-export-status')).toContainText('已保存');
   expect(existsSync(result.xmlPath)).toBeTruthy();
   expect(existsSync(result.vegasXmlPath)).toBeTruthy();
