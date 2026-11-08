@@ -70,6 +70,21 @@ test('chosen directory can be cancelled or reset and aspect ratio changes show a
   await page.locator('#fcp7-export-resolution').selectOption('1080x1920');
   await expect(warning).toBeVisible();
   await page.locator('#fcp7-export-resolution').selectOption('custom');
+  await page.locator('#fcp7-export-custom-width').fill('900');
+  await page.locator('#fcp7-export-custom-height').fill('900');
+  await expect(warning).toBeVisible();
+  const spacing = await page.evaluate(() => {
+    const warning = document.getElementById('fcp7-export-ratio-warning');
+    const controls = document.getElementById('fcp7-export-custom-size');
+    const directory = document.querySelector('.fcp7-directory-controls');
+    return { warning: warning.getBoundingClientRect().top - controls.getBoundingClientRect().bottom,
+      directory: directory.getBoundingClientRect().top - directory.previousElementSibling.getBoundingClientRect().bottom };
+  });
+  expect(spacing.warning).toBeGreaterThanOrEqual(8);
+  expect(spacing.directory).toBeGreaterThanOrEqual(8);
+  const shotDir = resolve('.artifacts/fcp7-png');
+  mkdirSync(shotDir, { recursive: true });
+  await page.screenshot({ path: join(shotDir, 'ratio-warning.png') });
   await page.locator('#fcp7-export-custom-width').fill('1280');
   await page.locator('#fcp7-export-custom-height').fill('720');
   await expect(warning).toBeHidden();
