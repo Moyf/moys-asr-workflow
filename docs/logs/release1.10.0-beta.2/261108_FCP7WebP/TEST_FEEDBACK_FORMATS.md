@@ -57,3 +57,9 @@
 | 静态检查 | typecheck / Ruff / bundle freshness / 个人路径检查通过 | `20261108T020504Z-ce667b75`、`20261108T020505Z-c71d62de`、`20261108T020534Z-7017e792`、`20261108T020641Z-c917eae9` |
 
 按用户允许，目标软件 WebP 导入仍未实测；Pillow 保留在开发、构建图标与 OCR 可选依赖组，图片字幕模块及主程序依赖/发布包已移除它。清单仅提供可选目标软件复核，不作为已完成的人工验收。
+
+## cat fork 三端 CI
+
+首个 tag `ci-fcp7-formats-20261108-71f98599` 对应源码 `71f98599`，CI commit 只增加 fork 专用 tag 触发规则，非 v tag 不执行发布 job。[运行记录](https://github.com/drunkenQCat/moys-asr-workflow/actions/runs/42437192505)。macOS 尚未分配 runner 就被取消，annotation 明确为 `The configuration 'macos-14-arm64-us-default' is not supported`，不是测试失败；依据 [GitHub 官方 runner 列表](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)，矩阵更新为受支持的 macos-15 ARM64，并同步打包契约后重跑。
+
+FFmpeg 7.0.2 的最终双格式渲染兼容检查 17 项通过，`20261108T020718Z-2b84a0e8`。可选目标软件核验清单已校验、生成并在浏览器打开，`20261108T020856Z-15fd995d`。
