@@ -5360,7 +5360,11 @@ test('sanitizes deterministic names and escapes XML and file URLs', () => {
   assert.equal(helpers.escapeExportXml('a<&>"\''), 'a&lt;&amp;&gt;&quot;&apos;');
   assert.equal(
     helpers.exportPathToFileUrl('C:\\Fixtures\\测试 & take\".mp4'),
-    'file://localhost/C:/Fixtures/%E6%B5%8B%E8%AF%95%20%26%20take%22.mp4',
+    'file://localhost/c%3a/Fixtures/%E6%B5%8B%E8%AF%95%20%26%20take%22.mp4',
+  );
+  assert.equal(
+    helpers.exportPathToFileUrl('file:///E:/素材/表情包.gif'),
+    'file://localhost/e%3a/%E7%B4%A0%E6%9D%90/%E8%A1%A8%E6%83%85%E5%8C%85.gif',
   );
   assert.equal(
     helpers.exportPathToFileUrl('/fixtures/测试 & take.mp4'),
@@ -5411,7 +5415,7 @@ test('serializes the shared plan as deterministic FCP 7 XML and mapped SRT', () 
   assert.equal(xmlElements(xml, 'track').length, 3);
   assert.ok(xml.includes('<duration>147</duration>'));
   assert.ok(xml.includes('<in>47</in><out>119</out>'));
-  assert.ok(xml.includes('file://localhost/C:/fixtures/%E6%B5%8B%E8%AF%95%20%26%20take.mp4'));
+  assert.ok(xml.includes('file://localhost/c%3a/fixtures/%E6%B5%8B%E8%AF%95%20%26%20take.mp4'));
   assert.ok(xml.includes('file:///icons/%E6%B5%8B%E8%AF%95%20%26%20icon.png'));
   assert.deepEqual(parseSrt(srt).map(({ start, end }) => [start, end]), [
     ['00:00:00,700', '00:00:00,950'],
@@ -5484,11 +5488,85 @@ test('resolves sticker media from sticker_root and emits one clip per subtitle o
   parseXml(xml);
   assert.equal((xml.match(/<clipitem id="sticker-clip-/g) || []).length, 2);
   assert.equal((xml.match(/<file id="file-sticker-[^"]+">/g) || []).length, 1);
-  assert.match(xml, /<pathurl>file:\/\/localhost\/E(?:%3A|:)\/%E7%B4%A0%E6%9D%90\/%E8%A1%A8%E6%83%85%E5%8C%85\/%E6%8F%8F%E8%BE%B9gif\/.+<\/pathurl>/);
+  assert.match(xml, /<pathurl>file:\/\/localhost\/e%3a\/%E7%B4%A0%E6%9D%90\/%E8%A1%A8%E6%83%85%E5%8C%85\/%E6%8F%8F%E8%BE%B9gif\/.+<\/pathurl>/);
   assert.match(xml, /<clipitem id="sticker-clip-1"><masterclipid>master-sticker-1<\/masterclipid><name>[^<]+<\/name><enabled>TRUE<\/enabled><alphatype>straight<\/alphatype><pixelaspectratio>square<\/pixelaspectratio>/);
   assert.match(xml, /<file id="file-sticker-[^"]+">[\s\S]*?<timecode><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode>[\s\S]*?<media><video><samplecharacteristics>[\s\S]*?<width>720<\/width><height>480<\/height>/);
   assert.match(xml, /<clipitem id="sticker-clip-1">[\s\S]*?<start>30<\/start><end>60<\/end>/);
   assert.match(xml, /<clipitem id="sticker-clip-2">[\s\S]*?<start>90<\/start><end>120<\/end>/);
+});
+
+// 达芬奇兼容契约（BV195xo6JExV 实测）：
+// ① pathurl 必须紧贴 </name> 且位于 <media> 之前；
+// ② Windows 盘符编码必须是小写盘符 + 小写 %3a（大写 D%3A 会让达芬奇整段离线）；
+// ③ 每个定义型 <file> 节点都必须恰好带一个 <timecode>，且在 <media> 之前；
+//    引用型空节点 <file id="x"/> 不计（继承首次定义）。
+function assertDaVinciFileContract(xml) {
+  parseXml(xml);
+  const definingFiles = xml.match(/<file id="[^"]+">[\s\S]*?<\/file>/g) || [];
+  const stubFiles = xml.match(/<file id="[^"]+"\/>/g) || [];
+  assert.ok(definingFiles.length > 0);
+  for (const file of definingFiles) {
+    const hasPathurl = file.includes('<pathurl>');
+    if (hasPathurl) {
+      assert.ok(file.includes('</name><pathurl>'), `pathurl must directly follow </name>: ${file.slice(0, 160)}`);
+      assert.ok(file.indexOf('<pathurl>') < file.indexOf('<media>'), `pathurl must precede <media>: ${file.slice(0, 160)}`);
+    }
+    assert.equal((file.match(/<timecode>/g) || []).length, 1, `defining file needs exactly one timecode: ${file.slice(0, 160)}`);
+    assert.ok(file.indexOf('<timecode>') < file.indexOf('<media>'), `timecode must precede <media>: ${file.slice(0, 160)}`);
+    if (hasPathurl) {
+      const url = /<pathurl>([^<]+)<\/pathurl>/.exec(file)[1];
+      assert.doesNotMatch(url, /%3A/);
+      assert.doesNotMatch(url, /localhost\/[A-Za-z]:/);
+    }
+  }
+  const timecodeCount = (xml.match(/<timecode>/g) || []).length;
+  assert.equal(timecodeCount, definingFiles.length);
+  return { definingFiles, stubFiles };
+}
+
+test('keeps every FCP7 file node DaVinci-compatible (pathurl placement, lowercase drive, timecode)', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'E:\\素材\\take 1.mp4', type: 'video', durationMs: 9000 },
+    gaps: [{ start: 2000, end: 3000, removed: true }],
+    sticker_root: 'D:/素材/表情包',
+    segments: [
+      { id: 'a', start: 0, end: 1500, text: 'before', sticker: { name: '星', rel: '包/星.png', start: 0, end: 1500 } },
+      { id: 'b', start: 3500, end: 5000, text: 'after' },
+    ],
+  }, { fps: 30, nativeTextObjects: true });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  // 主媒体（多区间 → 1 定义 + 1 stub）、链接音频（1 定义 + 1 stub）、贴纸（1 定义）、
+  // GraphicAndType 生成器（每条字幕一个定义，共 2 个，无 pathurl）。
+  const { definingFiles, stubFiles } = assertDaVinciFileContract(xml);
+  assert.equal(definingFiles.length, 5);
+  assert.equal(stubFiles.length, 2);
+  assert.equal((xml.match(/<pathurl>/g) || []).length, 3);
+  // ② Windows 盘符 URL 一律小写盘符 + 小写 %3a。
+  for (const match of xml.matchAll(/<pathurl>file:\/\/localhost\/([^<]+)<\/pathurl>/g)) {
+    assert.match(match[1], /^[a-z]%3a\//, match[1]);
+  }
+  assert.ok(xml.includes('<pathurl>file://localhost/e%3a/%E7%B4%A0%E6%9D%90/take%201.mp4</pathurl>'));
+  assert.ok(xml.includes('<pathurl>file://localhost/d%3a/%E7%B4%A0%E6%9D%90/%E8%A1%A8%E6%83%85%E5%8C%85/%E5%8C%85/%E6%98%9F.png</pathurl>'));
+  // 主媒体与链接音频的 file 节点同样带 timecode（回归：此前只有贴纸带）。
+  assert.match(xml, /<file id="file-source-video-1"><name>take 1\.mp4<\/name><pathurl>[^<]+<\/pathurl><duration>\d+<\/duration><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><timecode><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode><media>/);
+  assert.match(xml, /<file id="file-source-audio"><name>take 1\.mp4<\/name><pathurl>[^<]+<\/pathurl>[\s\S]*?<timecode>[\s\S]*?<\/timecode><media><audio>/);
+});
+
+test('keeps audio-only FCP7 exports DaVinci-compatible as well', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'C:\\fixtures\\session.wav', type: 'audio', durationMs: 8000 },
+    gaps: [{ start: 3000, end: 4000, removed: true }],
+    segments: [
+      { id: 'a', start: 0, end: 2000, text: 'one' },
+      { id: 'b', start: 4500, end: 7000, text: 'two' },
+    ],
+  }, { fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  assert.doesNotMatch(xml, /<video>/);
+  const { definingFiles, stubFiles } = assertDaVinciFileContract(xml);
+  assert.equal(definingFiles.length, 1);
+  assert.equal(stubFiles.length, 1);
+  assert.ok(xml.includes('<pathurl>file://localhost/c%3a/fixtures/session.wav</pathurl>'));
 });
 
 test('preserves supplied sticker dimensions in FCP7 media metadata', () => {
