@@ -118,7 +118,6 @@ const url = 'http://127.0.0.1:8791/tools/changelog-editor/index.html';
     result.dropMark = cards()[1].classList.contains('drop-after');
     fire(cards()[1], 'drop', d.dt, r.top + r.height / 2 + 1);
     result.movedAfter = order()[1] === firstTitle;
-    result.selectionFollows = S.selectedCard === 1;
 
     // 2) 上半部 → 移到目标之前（把刚移下去的拖回去）
     d = dragByHandle(cards()[1]);
@@ -133,6 +132,8 @@ const url = 'http://127.0.0.1:8791/tools/changelog-editor/index.html';
     fire(cards()[0], 'dragover', d.dt, 0);
     fire(cards()[0], 'drop', d.dt, 0);
     result.selfDropNoop = order().join('\n') === original.join('\n');
+    // 选中跟随被拖拽的卡片：case 2 已把它拖回原位（index 0）
+    result.selectionFollows = S.selectedCard === S.parsed.get('1.9.0').cards[0];
 
     // 4) 子元素（如 textarea）发起的 dragstart 冒泡到卡片层不得被取消或污染
     const childDt = new DataTransfer();
@@ -148,10 +149,40 @@ const url = 'http://127.0.0.1:8791/tools/changelog-editor/index.html';
 
     result.marksCleared = !document.querySelector('.card.drop-before, .card.drop-after');
     result.restored = order().join('\n') === original.join('\n');
-    S.selectedCard = 0;
+    S.selectedCard = null;
     return result;
   });
   console.log('card drag:', JSON.stringify(cardDrag));
+
+  // 粘贴目标解析：聚焦文本框所在卡片必须优先于「已选中」卡片（修复图片贴错条目）
+  const pasteTarget = await page.evaluate(() => {
+    const parsed = S.parsed.get('1.9.0');
+    const entries = parsed.cards.filter((c) => c.kind === 'entry');
+    const [a, b] = entries;
+    const elOf = (card) => [...document.querySelectorAll('#cards .card')]
+      .find((el) => parsed.cards[Number(el.dataset.idx)] === card);
+    // 场景：选中第一条，但焦点在第二条的文本框 → 焦点必须赢；
+    // 失焦后按「选中」回退——选中已被 focus 更新为第二条，符合设计
+    selectCard(a);
+    const ta = elOf(b).querySelector('textarea');
+    ta.focus();
+    const byFocus = resolvePasteCard(parsed);
+    ta.blur();
+    const bySelected = resolvePasteCard(parsed);
+    // 选中对象在卡片重排后仍指向原卡（对象引用制 vs 旧索引制）
+    selectCard(a);
+    parsed.cards.splice(parsed.cards.indexOf(a), 1);
+    parsed.cards.push(a);
+    const afterShuffle = resolvePasteCard(parsed);
+    parsed.cards.splice(parsed.cards.indexOf(a), 1);
+    parsed.cards.unshift(a);
+    return {
+      focusWins: byFocus.source === 'focus' && byFocus.card === b,
+      selectedFallback: bySelected.source === 'selected' && bySelected.card === b,
+      stableAfterShuffle: afterShuffle.source === 'selected' && afterShuffle.card === a,
+    };
+  });
+  console.log('paste target:', JSON.stringify(pasteTarget));
 
   // 统一图片条：新图片(默认取条目标题做文件名/待写盘徽标/扩展名分离) + 模拟已有图片 + 真实拖拽排序
   const images = await page.evaluate(async () => {
@@ -177,6 +208,14 @@ const url = 'http://127.0.0.1:8791/tools/changelog-editor/index.html';
     // 扩展名分离后校验应通过（中文文件名合法）
     const errs = collectErrors('1.6.0');
     const validationClean = !errs.some((e) => e.includes('文件名'));
+    // 新图 alt 默认 = 文件名（不含扩展名）
+    const defaultAltMatchesFilename = newMeta != null && newMeta.alt === filenameInputValue;
+    // 输入框内拖动不触发图片条排序：mousedown 临时关 draggable，mouseup 恢复
+    const filenameInput = items[1].querySelector('input[data-f="filename"]');
+    filenameInput.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    const dragSuppressed = items[1].draggable === false;
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    const dragRestored = items[1].draggable === true;
     // 真实拖拽：把第二个（新图）拖到第一位
     const dt = new DataTransfer();
     dt.setData('text/cl-img-pos', '1');
@@ -194,7 +233,8 @@ const url = 'http://127.0.0.1:8791/tools/changelog-editor/index.html';
     entry.images = [];
     for (const [id] of [...S.images]) S.images.delete(id);
     return {
-      title, defaultName: newMeta ? newMeta.filename : null, extBadge: extBadge ? extBadge.textContent : null,
+      title, defaultName: newMeta ? newMeta.filename : null, defaultAltMatchesFilename,
+      dragSuppressed, dragRestored, extBadge: extBadge ? extBadge.textContent : null,
       filenameHasExt, validationClean, orderAfterDrag, emitted, notEmitted, errs,
     };
   });

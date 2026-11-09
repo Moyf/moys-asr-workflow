@@ -324,7 +324,7 @@
     sections: [],          // splitSections 结果
     parsed: new Map(),     // name -> { cards, trailingBlanks }
     selected: null,        // 当前版本名
-    selectedCard: null,    // 粘贴目标卡片 id
+    selectedCard: null,    // 粘贴目标卡片（对象引用，跨重排/增删稳定；换小节时重置）
     images: new Map(),     // id -> {id, blob, mime, size, alt, filename, version, cardKey}
     archiveStatus: new Map(), // version -> fresh|stale|missing|none
     tab: 'split',
@@ -524,6 +524,8 @@
   function selectSection(name) {
     // 外部编辑可能删掉当前小节（刷新重载后）：回落到第一个可选小节，避免渲染层炸掉
     if (!S.parsed.has(name)) name = firstEditableSection();
+    // 小节切换后旧选中的卡片对象不属于新小节，重置粘贴目标
+    if (S.selected !== name) S.selectedCard = null;
     S.selected = name;
     // 不重置 S.tab：切换版本保持当前视图（默认分屏），active 按钮跟随实际 tab
     const section = S.sections.find((s) => s.name === name);
@@ -637,7 +639,7 @@
     pane.appendChild(addRow);
     pane.querySelectorAll('textarea').forEach(fitTextarea);
     pane.querySelectorAll('.card').forEach((el) => {
-      if (el.dataset.cardId === String(S.selectedCard)) el.classList.add('selected');
+      if (parsed.cards[Number(el.dataset.cardId)] === S.selectedCard) el.classList.add('selected');
     });
   }
 
@@ -662,8 +664,8 @@
       refreshCardTags(el, card);
       scheduleSplitPreview();
     });
-    ta.addEventListener('focus', () => selectCard(cardId));
-    el.addEventListener('click', (e) => { if (e.target.closest('button, a, input, .img-item')) return; selectCard(cardId); });
+    ta.addEventListener('focus', () => selectCard(card));
+    el.addEventListener('click', (e) => { if (e.target.closest('button, a, input, .img-item')) return; selectCard(card); });
     el.querySelectorAll('.card-head button').forEach((btn) => {
       btn.onclick = () => cardAction(btn.dataset.act, card, idx, el);
     });
@@ -745,11 +747,15 @@
     if (!changed && tag) tag.remove();
   }
 
-  function selectCard(cardId) {
-    S.selectedCard = cardId;
+  function selectCard(card) {
+    // 存对象引用而非索引：卡片增删/拖拽重排会让索引整体偏移，索引制会把
+    // 粘贴目标指到错误的卡片
+    S.selectedCard = card;
     document.querySelectorAll('.card.selected').forEach((c) => c.classList.remove('selected'));
-    const el = document.querySelector(`.card[data-card-id="${cardId}"]`);
-    if (el) el.classList.add('selected');
+    document.querySelectorAll('#cards .card').forEach((el) => {
+      const i = Number(el.dataset.cardId);
+      if (S.parsed.get(S.selected)?.cards[i] === card) el.classList.add('selected');
+    });
   }
 
   function fitTextarea(ta) {
@@ -805,7 +811,7 @@
     const [moved] = parsed.cards.splice(from, 1);
     parsed.cards.splice(to, 0, moved);
     rebindImageCardKeys(parsed, S.selected);
-    S.selectedCard = to; // 选中跟随被移动的卡片
+    S.selectedCard = moved; // 选中跟随被移动的卡片（对象引用）
     markDirty(); renderPane();
   }
 
@@ -888,7 +894,7 @@
       .map((im) => S.images.get(im.id))
       .filter((m) => m && m.base === base).length;
     const defaulted = siblings > 0 ? `${base}-${siblings + 1}${ext}` : `${base}${ext}`;
-    S.images.set(id, { id, blob, size, alt: cardTitleOf(card), filename: defaulted, base, cardKey });
+    S.images.set(id, { id, blob, size, alt: base, filename: defaulted, base, cardKey });
     card.images = card.images || [];
     card.images.push({ kind: 'new', id });
     markDirty();
@@ -901,6 +907,15 @@
   }
 
   function truncate(text, n) { return text.length > n ? `${text.slice(0, n)}…` : text; }
+
+  /** 文本输入框内拖动选择文字时，临时关掉 img-item 的 draggable，
+   *  否则浏览器会把输入框内的拖动当成整个图片条目的拖拽排序。 */
+  function keepTextSelectionOver(item, input) {
+    input.addEventListener('mousedown', () => {
+      item.draggable = false;
+      document.addEventListener('mouseup', () => { item.draggable = true; }, { once: true });
+    });
+  }
 
   /** 统一图片条：已有引用与待写盘图片混排，可拖拽排序。 */
   function renderImages(card, idx, strip) {
@@ -921,7 +936,7 @@
         const baseName = ext ? meta.filename.slice(0, -ext.length) : meta.filename;
         thumb = `<img src="${url}" alt="" title="点击放大预览">
           <div class="fields">
-            <input type="text" data-f="alt" placeholder="alt 描述（默认取条目标题）" value="${escapeAttr(meta.alt)}">
+            <input type="text" data-f="alt" placeholder="alt 描述（默认同文件名）" value="${escapeAttr(meta.alt)}">
             <div style="display:flex; gap:4px; align-items:center;">
               <input type="text" data-f="filename" value="${escapeAttr(baseName)}" title="写入 docs/assets/${escapeAttr(S.selected)}/ 的文件名（不含扩展名）" style="flex:1; min-width:0;">
               <span class="ext-badge">${escapeHtml(ext)}</span>
@@ -932,6 +947,7 @@
               <button data-act="rm">移除</button></div>
           </div>`;
         item.innerHTML = thumb;
+        item.querySelectorAll('input[data-f]').forEach((inp) => keepTextSelectionOver(item, inp));
         item.querySelector('img').onclick = () => window.open(url, '_blank');
         item.querySelector('[data-f="alt"]').addEventListener('input', (e) => { meta.alt = e.target.value; markDirty(); });
         item.querySelector('[data-f="filename"]').addEventListener('input', (e) => {
@@ -952,6 +968,7 @@
             <div class="meta"><span>已有</span><button data-act="rm" title="从条目移除该图片行（不删除文件）">移除</button></div>
           </div>`;
         item.innerHTML = thumb;
+        item.querySelectorAll('input[data-f]').forEach((inp) => keepTextSelectionOver(item, inp));
         const imgEl = item.querySelector('img');
         if (imgEl.dataset.repo) resolveRepoImage(imgEl, imgEl.dataset.repo);
         else imgEl.onclick = () => window.open(img.path, '_blank');
@@ -1018,6 +1035,26 @@
   }
 
   // ---------- 粘贴 / 拖放 ----------
+  /** 粘贴图片的目标解析。优先级：当前聚焦文本框所在卡片 > 已选中卡片 >
+   *  第一条条目（带提示）。目标必须是 entry；heading/文本卡不能带图。 */
+  function resolvePasteCard(parsed) {
+    const active = document.activeElement;
+    const activeEl = active && active.closest ? active.closest('.card') : null;
+    if (activeEl) {
+      const i = Number(activeEl.dataset.idx);
+      const byFocus = Number.isInteger(i) ? parsed.cards[i] : null;
+      if (byFocus && byFocus.kind === 'entry') {
+        return { card: byFocus, idx: parsed.cards.indexOf(byFocus), source: 'focus' };
+      }
+    }
+    const selected = S.selectedCard;
+    if (selected && parsed.cards.includes(selected) && selected.kind === 'entry') {
+      return { card: selected, idx: parsed.cards.indexOf(selected), source: 'selected' };
+    }
+    const first = parsed.cards.find((c) => c.kind === 'entry');
+    return first ? { card: first, idx: parsed.cards.indexOf(first), source: 'first' } : null;
+  }
+
   document.addEventListener('paste', async (e) => {
     if ((S.tab !== 'edit' && S.tab !== 'split') || !S.selected) return;
     const files = [...(e.clipboardData?.items || [])]
@@ -1025,15 +1062,13 @@
       .map((item) => item.getAsFile()).filter(Boolean);
     if (!files.length) return;
     const parsed = S.parsed.get(S.selected);
-    let idx = S.selectedCard;
-    let card = parsed.cards[idx];
-    if (!card || card.kind !== 'entry') {
-      card = parsed.cards.find((c) => c.kind === 'entry');
-      idx = parsed.cards.indexOf(card);
-      if (!card) return;
-    }
+    const target = resolvePasteCard(parsed);
+    if (!target) return;
     e.preventDefault();
-    for (const file of files) await attachImage(card, idx, file);
+    if (target.source === 'first') {
+      toast(`未选中条目，图片已附加到第一条条目「${truncate(cardTitleOf(target.card), 18)}」`);
+    }
+    for (const file of files) await attachImage(target.card, target.idx, file);
     renderPane();
   });
 
