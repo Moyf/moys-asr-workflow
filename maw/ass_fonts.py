@@ -6,6 +6,14 @@ family，任意语言变体）匹配；用户在 ASS 样式里存了 nameID 16 �
 本模块扫描本机字体文件，把同一 family 的全部名字（nameID 1/4/6/16）聚合成
 别名条目，并改写 ASS ``Style:`` 行的 Fontname 字段为本机 canonical 名。
 
+同一 (nameID, 语言) 槽位同时存在 Windows 与 Macintosh 平台记录时只保留
+Windows 记录：寒蝉活仿楷等第三方字体的 Macintosh 中文记录（enc=25）由转码
+工具生成（「復」丢失产出「寒蝉活仿楷__」类脏名），且 CoreText / libass /
+浏览器都只按 Windows 记录与 Mac Roman 记录匹配，enc=25 记录完全不可见；
+被挤掉的脏名进入 ``legacy``，仅作为查询别名把旧工程存量名改写回可匹配名，
+不进字体下拉。没有 Windows 对应的 Macintosh 记录原样保留（Academy Engraved
+LET 等苹果字体仅靠 Mac Roman 记录携带 family 名）。
+
 扫描结果进程内缓存；fontTools 缺失或扫描失败时所有入口优雅降级（归一化
 原样返回、端点返回错误结构），与 serve.py 的 libass 探测降级风格一致。
 """
@@ -56,12 +64,18 @@ class FontNameRecord:
 
 @dataclass(frozen=True)
 class FontFileNames:
-    """单个字体 face 读出的各 nameID 名字集合（各自保序去重）。"""
+    """单个字体 face 读出的各 nameID 名字集合（各自保序去重）。
+
+    ``legacy`` 是被 Windows 记录挤掉的 Macintosh 平台脏名（如
+    「寒蝉活仿楷__ Con」）：CoreText/libass 匹配不到它们，但旧工程可能
+    已经把这类名字存进样式，保留为查询别名以便归一化改写回可匹配名。
+    """
 
     family: tuple[FontNameRecord, ...]  # nameID 1（全语言）
     typographic: tuple[str, ...]  # nameID 16
     full: tuple[str, ...]  # nameID 4
     postscript: tuple[str, ...]  # nameID 6
+    legacy: tuple[str, ...] = ()
 
     def all_names(self) -> tuple[str, ...]:
         return tuple(dict.fromkeys((
@@ -251,20 +265,30 @@ def _installed_font_files() -> tuple[Path, ...]:
             candidates = root.rglob("*")
         except OSError:
             continue
-        for path in candidates:
+        # 排序让别名聚合（同 face 集合的 canonical 归属）跨运行确定。
+        for path in sorted(candidates):
             if path.is_file():
                 add(path)
     return tuple(paths)
 
 
+_EXTRACT_NAME_IDS: Final = (1, 16, 4, 6)
+# 同 (nameID, 语言) 槽位的平台偏好：Windows Unicode 记录是现代系统唯一
+# 全量索引的来源（CoreText/libass/浏览器只按 Windows 记录与 Mac Roman
+# 记录匹配，Macintosh enc=25 等旧编码记录不可见）。
+_PLATFORM_WINDOWS: Final = 3
+
+
 def _extract_font_names(font: Any) -> FontFileNames:
-    """读单个 face 的 nameID 1/4/6/16；坏记录静默跳过。"""
+    """读单个 face 的 nameID 1/4/6/16；坏记录静默跳过。
+
+    同一 (nameID, 语言) 槽位 Windows 与 Macintosh 记录并存时只保留
+    Windows 记录，被挤掉的 Macintosh 脏名进 ``legacy``（详见模块 docstring
+    与 :class:`FontFileNames`）；仅 Macintosh 有的名字原样保留。
+    """
 
     name_table = font["name"] if "name" in font else None
-    family: list[FontNameRecord] = []
-    typographic: list[str] = []
-    full: list[str] = []
-    postscript: list[str] = []
+    buckets: dict[int, list[tuple[int | None, str, str]]] = {}
     if name_table is not None:
         for record in name_table.names:
             try:
@@ -274,19 +298,42 @@ def _extract_font_names(font: Any) -> FontFileNames:
             if not value:
                 continue
             name_id = getattr(record, "nameID", None)
+            if name_id in _EXTRACT_NAME_IDS:
+                platform = getattr(record, "platformID", None)
+                buckets.setdefault(name_id, []).append(
+                    (platform, _record_language(record), value),
+                )
+    family: list[FontNameRecord] = []
+    typographic: list[str] = []
+    full: list[str] = []
+    postscript: list[str] = []
+    targets: dict[int, list[Any]] = {1: family, 16: typographic, 4: full, 6: postscript}
+    dropped: list[str] = []
+    for name_id, records in buckets.items():
+        windows_langs = {lang for platform, lang, _ in records if platform == _PLATFORM_WINDOWS}
+        target = targets[name_id]
+        for platform, language, value in records:
+            if platform != _PLATFORM_WINDOWS and language in windows_langs:
+                dropped.append(value)
+                continue
             if name_id == 1:
-                family.append(FontNameRecord(value, _record_language(record)))
-            elif name_id == 16:
-                typographic.append(value)
-            elif name_id == 4:
-                full.append(value)
-            elif name_id == 6:
-                postscript.append(value)
+                target.append(FontNameRecord(value, language))
+            else:
+                target.append(value)
+    kept = {
+        *(record.value for record in family),
+        *typographic,
+        *full,
+        *postscript,
+    }
+    # 与保留值相同的重复 Macintosh 记录不是脏名（值仍在），不进 legacy。
+    legacy = [value for value in dict.fromkeys(dropped) if value not in kept]
     return FontFileNames(
         family=tuple(dict.fromkeys(family)),
         typographic=tuple(dict.fromkeys(typographic)),
         full=tuple(dict.fromkeys(full)),
         postscript=tuple(dict.fromkeys(postscript)),
+        legacy=tuple(legacy),
     )
 
 
@@ -346,6 +393,14 @@ def _canonical_family_name(
     return records[0].value
 
 
+# canonical_by_name 里同名多义时的映射优先级：nameID1（face 本名）高于
+# 排版名/full/PS 别名（如「寒蝉活仿楷_復」既是 Regular face 的 nameID1 又是
+# Con face 的 nameID16，应指向 Regular 的 canonical），高于 legacy 脏名。
+_FAMILY_TARGET_PRIORITY: Final = 2
+_ALIAS_TARGET_PRIORITY: Final = 1
+_LEGACY_TARGET_PRIORITY: Final = 0
+
+
 @dataclass
 class _AliasGroup:
     names: list[str]
@@ -353,6 +408,28 @@ class _AliasGroup:
     records: list[FontNameRecord]
     family: list[str]
     canonical_by_name: dict[str, str]
+    priorities: dict[str, int]
+    legacy: list[str]
+
+
+def _face_target_map(
+    data: FontFileNames, face_canonical: str,
+) -> dict[str, tuple[str, int]]:
+    """单 face 的「名字折叠 → (canonical, 优先级)」映射。"""
+
+    family_folds = {record.value.casefold() for record in data.family}
+    targets: dict[str, tuple[str, int]] = {}
+    for name in data.all_names():
+        fold = name.casefold()
+        priority = (
+            _FAMILY_TARGET_PRIORITY if fold in family_folds else _ALIAS_TARGET_PRIORITY
+        )
+        targets[fold] = (face_canonical, priority)
+    for name in data.legacy:
+        fold = name.casefold()
+        if fold and fold not in targets:
+            targets[fold] = (face_canonical, _LEGACY_TARGET_PRIORITY)
+    return targets
 
 
 def _merge_font_entries(
@@ -362,7 +439,7 @@ def _merge_font_entries(
 
     条目额外携带 ``family``（该 family 全部 nameID1 值）：libass 的 GDI 兼容
     匹配对任意语言变体的 nameID1 都能命中，归一化时存储名已是 nameID1 之一
-    就无需改写。
+    就无需改写。``legacy`` 仅在非空时输出：脏名只作查询别名（下拉不展示）。
     """
 
     groups: list[_AliasGroup] = []
@@ -373,13 +450,19 @@ def _merge_font_entries(
             continue
         folds = {name.casefold() for name in names}
         face_canonical = _canonical_family_name(data.family, system_langs) or names[0]
-        face_targets = {name.casefold(): face_canonical for name in names}
+        face_targets = _face_target_map(data, face_canonical)
         hit_indices = {fold_to_group[fold] for fold in folds if fold in fold_to_group}
         if not hit_indices:
             groups.append(_AliasGroup(
                 names=list(names), folds=set(folds), records=list(data.family),
                 family=[record.value for record in dict.fromkeys(data.family)],
-                canonical_by_name=face_targets,
+                canonical_by_name={
+                    fold: canonical for fold, (canonical, _) in face_targets.items()
+                },
+                priorities={
+                    fold: priority for fold, (_, priority) in face_targets.items()
+                },
+                legacy=list(data.legacy),
             ))
             target = len(groups) - 1
         else:
@@ -391,8 +474,14 @@ def _merge_font_entries(
                 merged.folds |= other.folds
                 merged.records.extend(other.records)
                 merged.family.extend(other.family)
-                for name, canonical in other.canonical_by_name.items():
-                    merged.canonical_by_name.setdefault(name, canonical)
+                merged.legacy.extend(other.legacy)
+                for fold, canonical in other.canonical_by_name.items():
+                    # 共有别名保持首次选择；nameID1 本名等高优先级映射在
+                    # 后续 face 合入时覆盖低优先级，避免跨 face 顺序巧合。
+                    incoming = other.priorities.get(fold, _ALIAS_TARGET_PRIORITY)
+                    if incoming > merged.priorities.get(fold, -1):
+                        merged.canonical_by_name[fold] = canonical
+                        merged.priorities[fold] = incoming
             if len(hit_indices) > 1:
                 # pop 会移动未参与合并的后续分组；所有别名索引都要随之重建。
                 fold_to_group = {
@@ -404,10 +493,11 @@ def _merge_font_entries(
             merged.folds |= folds
             merged.records.extend(data.family)
             merged.family.extend(record.value for record in data.family)
-            for name, canonical in face_targets.items():
-                # 共有排版名保持首次选择；full/PS 别名仍指向其所属 face，
-                # 避免 Semibold 与 Regular 共享 nameID16 后丢失字重。
-                merged.canonical_by_name.setdefault(name, canonical)
+            merged.legacy.extend(data.legacy)
+            for fold, (canonical, priority) in face_targets.items():
+                if merged.priorities.get(fold, -1) < priority:
+                    merged.canonical_by_name[fold] = canonical
+                    merged.priorities[fold] = priority
         group = groups[target]
         for fold in folds:
             fold_to_group[fold] = target
@@ -419,8 +509,16 @@ def _merge_font_entries(
             canonical = _canonical_family_name(group.records, system_langs) or family[0]
         else:
             canonical = names[0]
-        entries.append({"canonical": canonical, "names": names, "family": family,
-                        "canonicalByName": group.canonical_by_name})
+        entry: dict[str, Any] = {
+            "canonical": canonical,
+            "names": names,
+            "family": family,
+            "canonicalByName": group.canonical_by_name,
+        }
+        legacy = list(dict.fromkeys(group.legacy))
+        if legacy:
+            entry["legacy"] = legacy
+        entries.append(entry)
     return entries
 
 
@@ -459,7 +557,13 @@ def _resolve_entry(
         canonical = str(entry.get("canonical") or "").strip()
         if not canonical:
             continue
-        for candidate in [canonical, *(str(alias) for alias in entry.get("names") or ())]:
+        candidates = [
+            canonical,
+            *(str(alias) for alias in entry.get("names") or ()),
+            # legacy（坏 Macintosh 记录的脏名）只用于查询命中，不会出现在下拉。
+            *(str(alias) for alias in entry.get("legacy") or ()),
+        ]
+        for candidate in candidates:
             if candidate.strip().casefold() == key:
                 return entry
     return None

@@ -26,7 +26,7 @@ The default transcription path uses cloud APIs: bring your own **API key** and p
 - **Deliver several subtitle formats from one project:** manage main, secondary, and overlapping subtitles, speakers, and ASS styles. Export SRT / ASS or burn subtitles into video; use OTIO and other exchange formats for further editing.
 - **Continue from your last edit:** a `.mosp` project preserves timing, tracks, markers, and editing state. Presets, batch transcription, and automatic processing help reuse common workflows with inspectable, retryable stage outputs.
 
-This overview describes the current **1.10.0** workflow. Check the [release notes](https://moyf.github.io/moys-asr-workflow/releases/) for details. MAW does not replace a full video editor; transcription and AI decisions still need human review.
+This overview describes the current **1.11.0** workflow. Check the [release notes](https://moyf.github.io/moys-asr-workflow/releases/) for details. MAW does not replace a full video editor; transcription and AI decisions still need human review.
 
 ## Quick start
 

@@ -150,6 +150,14 @@
 
 ## 共享计划
 
+<a name="plan-fcp7-png-subtitles"></a>
+### FCP 7 XML 图片字幕导出
+
+[方案决定、现有渲染复用与分层验证提议](plans/FCP7_PNG_SUBTITLES.md)
+
+[无损 WebP 与通用入口验证](logs/release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md)
+[PNG/WebP 格式反馈与移除 Pillow](logs/release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md)
+
 <a name="plan-release-pipeline"></a>
 ### 正式版本归档、官网与更新检测管线
 
@@ -192,6 +200,11 @@
 
 [打开正文](plans/MAWE%20%E6%8E%A5%E7%BA%BF%E6%8B%86%E5%88%86%E4%B8%8E%E7%9B%AE%E5%BD%95%E5%88%86%E5%B1%82%E8%AE%A1%E5%88%92.md)
 
+<a name="plan-ass-frame-sticker-compose"></a>
+### 实际画面表情包合成路线（真·所见即所得）
+
+[评估结论、现成件清单与设计要点](plans/ASS_FRAME_STICKER_COMPOSE.md)；CSS 止血已实施，路线未实施，待 cue-left / 同屏多张成为日常再投入。
+
 <a name="engineering-server"></a>
 ### 源码服务与桌面开发
 
@@ -200,7 +213,7 @@
 <a name="engineering-website"></a>
 ### 官网源文档同步
 
-[同步与构建](../website/docs/CONTENT_SYNC.md)
+[同步与构建](../website/docs/CONTENT_SYNC.md) · [官网需求与设计](../website/docs/PROJECT_BRIEF.md) · [素材来源](../website/docs/ASSETS.md) · [改版人工核验](logs/release1.10.0-beta.1/261021_官网改版/官网改版.checklist.md)
 
 <a name="engineering-releases"></a>
 ### 版本更新文档与发布管线

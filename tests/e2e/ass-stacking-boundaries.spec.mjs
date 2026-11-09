@@ -23,6 +23,11 @@ test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 
 const cue = (id, text, start = 0, end = 4000) => ({ id, text, start, end });
 const cases = [
+  { name: 'independent cue style snapshots match Canvas and libass',
+    mainSegments: [{ ...cue('main', 'Main'), assStyle: { fontName: 'Arial', fontSize: 112, primaryColor: '#ff0000', alignment: 2, marginV: 180, outline: 0, shadow: 0 } }],
+    extensionSegments: [{ ...cue('secondary', 'Secondary'), assStyle: { fontName: 'Arial', fontSize: 68, primaryColor: '#00ff00', alignment: 2, marginV: 60, outline: 0, shadow: 0 } }],
+    overlaySegments: [{ ...cue('overlay', 'Overlay'), assStyle: { fontName: 'Arial', fontSize: 80, primaryColor: '#0000ff', alignment: 2, marginV: 180, outline: 0, shadow: 0 } }],
+    times: [1000] },
   { name: 'large italic overhang keeps complete glyph ink visible',
     main: '//ffff//', extension: '//ffff//', fontSize: 240, extensionFontSize: 180,
     marginV: 220, times: [1000] },

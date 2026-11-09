@@ -39,7 +39,18 @@ function renderServerButton() {
 async function stopEditorServer() { if (state.serverStopping) return; state.serverStopping = true; renderServerButton(); try { const result = await bridge("stop_server", serverPayload()); if (!result.ok) { applyErrorResult(result); return; } stopServerStatusMonitor(); serverRestartProjectPath = null; state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; setStatus(t("ready")); } finally { state.serverStopping = false; renderServerButton(); } }
 async function checkExistingServer(prefix = "") { const requestId = ++serverStatusRequest; const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (requestId !== serverStatusRequest) return result; if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return result; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); startServerStatusMonitor(); return result; }
 function syncHtmlMenu() { const enabled = $("generateHtml").checked; $("openHtml").classList.toggle("hidden", !enabled); $("openHtml").disabled = enabled && !state.result?.htmlPath; }
-function syncThumbnailFields() { const baseOn = $("generateKeyframes").checked; $("generateThumbnailsField").classList.toggle("hidden", !baseOn); }
+function syncThumbnailFields() {
+  const checkbox = $("generateKeyframes");
+  // 纯音频输入（非视频扩展名）没有画面流，底图无从生成：禁用开关并置灰，
+  // 但不清空勾选，切回视频后用户原选择继续生效；音频转写时 payload 仍按
+  // 勾选上报，画面缓存由后端视频探测天然跳过（load_or_build_base 早退）。
+  const media = $("mediaPath").value.trim();
+  const audioOnly = Boolean(media) && !VIDEO_EXTS.has(ext(media));
+  checkbox.disabled = audioOnly;
+  $("generateKeyframesField").classList.toggle("unavailable", audioOnly);
+  const baseOn = checkbox.checked;
+  $("generateThumbnailsField").classList.toggle("hidden", !baseOn);
+}
 function renderChevron(id) { const arrow = $(id).querySelector(".chevron"); if (arrow) arrow.textContent = $(id).classList.contains("collapsed") ? "▸" : "▾"; }
 function renderStickerCurrent() { const path = String(state.config?.stickerDir || "").trim(); const button = $("stickerCurrent"); button.textContent = path || t("unset"); button.disabled = !path; $("stickerDir").value = path; }
 async function saveStickerDirectory(path) { $("stickerDir").value = path; const result = await bridge("save_sticker_dir", { path }); setError("stickerDir", result.ok ? "" : errText(result.code, result.detail || result.error)); if (result.ok) { state.config.stickerDir = result.stickerDir; renderStickerCurrent(); setStatus(t("saved")); } else setStatus(errText(result.code, result.detail || result.error)); return result; }

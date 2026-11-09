@@ -7,7 +7,7 @@ export function createUtilsModule(dependencies) {
   function getSrtExportFirstIndex(segments, alignFirstEnabled = false) {
     if (!alignFirstEnabled || !Array.isArray(segments)) return -1;
     return segments.findIndex((segment) => (
-      segment && !segment.disabled && Number.isFinite(Number(segment.start))
+      segment && !segment.disabled && String(segment.text ?? '').trim() && Number.isFinite(Number(segment.start))
     ));
   }
 
@@ -137,6 +137,7 @@ export function createUtilsModule(dependencies) {
       if (!segment) return;
       const disabled = segment.disabled === true;
       if (disabled && !keepDisabledPlaceholder) return;
+      if (!disabled && !String(segment.text ?? '').trim()) return;
       const colorContext = colorContextResolver(segment) || source;
       if (!disabled && colorName) {
         const effectiveName = effectiveColorName(segment, colorContext);
@@ -173,7 +174,7 @@ export function createUtilsModule(dependencies) {
       events.get(time).push({ record, entering });
     };
     [main, secondary].forEach((source, track) => source.forEach((segment, index) => {
-      if (!segment || segment.disabled === true) return;
+      if (!segment || segment.disabled === true || !String(segment.text ?? '').trim()) return;
       const rawStart = Number(segment.start);
       const rawEnd = Number(segment.end);
       if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd)) return;

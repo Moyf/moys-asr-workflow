@@ -1,3 +1,6 @@
+import { refreshColorFilterUi } from './editor-color-filter.js';
+import { applySearch } from './editor-search.js';
+import { selectOnly, selectOnlyExtension, stickerUrl, updateMultiSelectionClasses } from './editor-selection.js';
 import { getOverlayTrack, overlayTrackVisible } from './overlay-track.js';
 
 export function initMaweCuePanel() {
@@ -69,13 +72,13 @@ export function initMaweCuePanel() {
   rows.forEach((row) => cueFragment.appendChild(row.el));
   MaweCoreState.container.appendChild(cueFragment);
   MaweDisplaySettings.applyCueListDisplaySettings({ preserveCueListScroll: false });
-  MaweColorFilter.refreshColorFilterUi();
+  refreshColorFilterUi();
   MaweDom.totalCountEl.textContent = multiVisible && displayMode === 'extension'
     ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments.length || 0) + overlaySegments.length
     : MaweBoot.DATA.segments.length + overlaySegments.length;
   // buildCueEl/buildMultiCueColumn 已经按当前搜索词生成了文本；这里仅
   // 计算隐藏状态和数量，避免长工程 renderAll() 再逐行重建一遍文本节点。
-  MaweSearch.applySearch(MaweDom.searchEl.value, { refreshText: false, preserveCueListScroll: false });
+  applySearch(MaweDom.searchEl.value, { refreshText: false, preserveCueListScroll: false });
   // 重新应用选中样式（idx 不变时还有效；如果有 splice 改了顺序就先 clearSelection）。
   // 长工程下逐选中项 querySelector 是 O(选中数 × 行数)，全选几千条会冻结
   // 数秒；这里单次扫描列表行，用选中集合判断。
@@ -88,7 +91,7 @@ export function initMaweCuePanel() {
   }
   // 字幕结构变化只需更新波形上的字幕块覆盖层；媒体峰值和行 Canvas
   // 没有变化，避免 B/C/删除等操作重新绘制整组波形。
-  MaweSelection.updateMultiSelectionClasses();
+  updateMultiSelectionClasses();
   if (MaweCoreState.waveformEditor) {
     if (waveform === 'full') MaweCoreState.waveformEditor.renderSegments();
     else if (waveform !== 'none') {
@@ -351,12 +354,64 @@ export function initMaweCuePanel() {
 
 
 
+  function syncCueAssStyle(segment) {
+    const select = document.getElementById('cue-ass-style');
+    if (!select) return;
+    const builtinNames = { default: 'SRT 渲染样式', ass: 'ASS 默认样式', 'ass-extension': 'ASS 副字幕样式' };
+    const translate = (text) => window.MAWE_I18N?.translateText?.(text) || text;
+    const styleLabel = (style) => {
+      const name = style.name || 'ASS';
+      return builtinNames[style.id] === name ? translate(name) : name;
+    };
+    const addOption = (value, label) => {
+      const option = new Option(label, value);
+      // User-defined names are content, even when they match an interface label.
+      option.dataset.markerProjectContent = '';
+      select.add(option);
+    };
+    const styles = window.MaweAssStorageWiring?.styles() || [];
+    const savedStyle = segment?.assStyle;
+    const libraryStyle = savedStyle && styles.find((style) => style.id === savedStyle.id);
+    const snapshotKey = window.AsrEditorUtils.assStyleSnapshotKey;
+    const matchesLibrary = libraryStyle && snapshotKey(savedStyle) === snapshotKey(libraryStyle);
+
+    select.disabled = !segment;
+    select.replaceChildren();
+    addOption('', translate('继承默认样式'));
+    if (savedStyle && !matchesLibrary) {
+      addOption('__snapshot', styleLabel(savedStyle) + translate('（工程内保存）'));
+    }
+    styles.forEach((style) => addOption(style.id, styleLabel(style)));
+    select.value = savedStyle ? (matchesLibrary ? savedStyle.id : '__snapshot') : '';
+  }
+
+  document.addEventListener('mawe:languagechange', () => syncCueAssStyle(getCurrentCuePanelTarget()?.segment));
+  document.getElementById('cue-ass-style')?.addEventListener('focus', () => syncCueAssStyle(getCurrentCuePanelTarget()?.segment));
+  document.getElementById('cue-ass-style')?.addEventListener('change', (event) => {
+    const target = getCurrentCuePanelTarget();
+    const segment = target?.segment;
+    const value = event.target.value;
+    if (!segment || value === '__snapshot') return;
+    const style = (window.MaweAssStorageWiring?.styles() || []).find((item) => item.id === value);
+    if (value && !style) return;
+    if (!value && !segment.assStyle) return;
+    MaweCommands.run('修改单句 ASS 样式', (command) => {
+      if (style) segment.assStyle = JSON.parse(JSON.stringify(window.AsrEditorUtils.normalizeAssStyle(style)));
+      else delete segment.assStyle;
+      segment._dirty = true;
+      if (target.kind === 'overlay') target.track._dirty = true;
+      if (target.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
+    });
+  });
+
   function renderCurrentCuePanel() {
   if (!MaweDom.cuePanel) return;
   const target = getCurrentCuePanelTarget();
   window.MaweAssCuePosition?.sync();
   const idx = target?.index ?? -1;
   const seg = target?.segment || null;
+  syncCueAssStyle(seg);
   const empty = !target;
   MaweDom.cuePanel.classList.toggle('empty', empty);
   MaweDom.cuePanel.classList.toggle('extension-target', !empty && target.kind === 'extension');
@@ -405,7 +460,7 @@ export function initMaweCuePanel() {
   MaweDom.cuePanelSticker.replaceChildren();
   if (seg.sticker) {
     const image = document.createElement('img');
-    image.src = MaweSelection.stickerUrl(seg.sticker);
+    image.src = stickerUrl(seg.sticker);
     image.alt = seg.sticker.name || '表情包';
     MaweDom.cuePanelSticker.title = '点击替换；右键删除';
     MaweDom.cuePanelSticker.appendChild(image);
@@ -557,12 +612,12 @@ export function initMaweCuePanel() {
   );
   if (next < 0) return;
   if (target.kind === 'extension') {
-    MaweSelection.selectOnlyExtension(next);
+    selectOnlyExtension(next);
     MaweSelection.lastClickedExtensionIdx = next;
   } else if (target.kind === 'overlay') {
     setCuePanelTarget('overlay', next);
   } else {
-    MaweSelection.selectOnly(next);
+    selectOnly(next);
     MaweSelection.lastClickedIdx = next;
   }
   const cue = MaweCoreState.container.querySelector(target.kind === 'extension'
@@ -601,7 +656,7 @@ export function initMaweCuePanel() {
   const idx = target.index;
   const cursorOffset = MaweDom.cuePanelText.selectionStart;
   commitCuePanelEdit();
-  MaweSelection.selectOnly(idx);
+  selectOnly(idx);
   const cue = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!cue) return;
   MaweInlineEdit.startEdit(cue, idx);
@@ -729,3 +784,26 @@ export function initMaweCuePanel() {
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function renderAll(...args) { return window.MaweCuePanel.renderAll(...args); }
+export function patchCueRows(...args) { return window.MaweCuePanel.patchCueRows(...args); }
+export function parsePanelTime(...args) { return window.MaweCuePanel.parsePanelTime(...args); }
+export function remapPanelItems(...args) { return window.MaweCuePanel.remapPanelItems(...args); }
+export function getCurrentCuePanelTarget(...args) { return window.MaweCuePanel.getCurrentCuePanelTarget(...args); }
+export function getCuePanelTextElement(...args) { return window.MaweCuePanel.getCuePanelTextElement(...args); }
+export function setCuePanelTarget(...args) { return window.MaweCuePanel.setCuePanelTarget(...args); }
+export function setCurrentCuePanelIndex(...args) { return window.MaweCuePanel.setCurrentCuePanelIndex(...args); }
+export function setCurrentCuePanelExtensionIndex(...args) { return window.MaweCuePanel.setCurrentCuePanelExtensionIndex(...args); }
+export function ensureCuePanelUndo(...args) { return window.MaweCuePanel.ensureCuePanelUndo(...args); }
+export function commitCuePanelEdit(...args) { return window.MaweCuePanel.commitCuePanelEdit(...args); }
+export function renderCurrentCuePanel(...args) { return window.MaweCuePanel.renderCurrentCuePanel(...args); }
+export function focusCuePanelText(...args) { return window.MaweCuePanel.focusCuePanelText(...args); }
+export function dirtyFlagSnapshot(...args) { return window.MaweCuePanel.dirtyFlagSnapshot(...args); }
+export function restoreDirtyFlag(...args) { return window.MaweCuePanel.restoreDirtyFlag(...args); }
+export function captureCuePanelTextEditSnapshot(...args) { return window.MaweCuePanel.captureCuePanelTextEditSnapshot(...args); }
+export function restoreCuePanelTextEditSnapshot(...args) { return window.MaweCuePanel.restoreCuePanelTextEditSnapshot(...args); }
+export function discardPendingCuePanelUndo(...args) { return window.MaweCuePanel.discardPendingCuePanelUndo(...args); }
+export function cancelCuePanelTextEdit(...args) { return window.MaweCuePanel.cancelCuePanelTextEdit(...args); }
+export function exitCuePanelEdit(...args) { return window.MaweCuePanel.exitCuePanelEdit(...args); }
+export function navigateCuePanel(...args) { return window.MaweCuePanel.navigateCuePanel(...args); }
+export function splitCuePanelAtCursor(...args) { return window.MaweCuePanel.splitCuePanelAtCursor(...args); }

@@ -48,6 +48,18 @@ class ThumbnailMediaCacheTests(unittest.TestCase):
         self.assertNotIn('thumbnail_cache',merged)
         self.assertEqual(merged['media_metadata']['selected_audio_track'],2)
 
+    def test_audio_source_with_keyframes_enabled_reports_unavailable_without_error(self):
+        """音频输入 + 开关保持勾选：payload 仍为 true 时经视频探测早退，无缓存也无错误。"""
+        manifest = {"schema": "moy.asr.thumbnails.v1", "state": "unavailable", "samples": [],
+            "assets": [], "base_complete": False, "cache_hit": False, "persisted": True}
+        with mock.patch.object(thumbnail_jobs, 'build_base', return_value=manifest) as build, \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            result = media_cache.embed_media_caches(self.project, self.wav, source_media_path=self.source, audio_track=0, generate_keyframes=True)
+        build.assert_called_once()
+        self.assertEqual(result.thumbnail_cache["state"], "unavailable")
+        self.assertIsNone(result.thumbnail_error)
+        self.assertIn("[thumbnails] 无视频画面，已跳过", output.getvalue())
+
     def test_generate_thumbnails_false_skips_exact_stage(self):
         manifest = {"schema": "moy.asr.thumbnails.v1", "state": "ready", "tier": "keyframes", "keyframe_count": 7,
             "samples": [], "assets": [], "base_complete": False, "cache_hit": False, "persisted": True}

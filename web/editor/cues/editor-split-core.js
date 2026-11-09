@@ -665,6 +665,10 @@
       left.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
       right.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
     }
+    if (segment.assStyle) {
+      left.assStyle = JSON.parse(JSON.stringify(segment.assStyle));
+      right.assStyle = JSON.parse(JSON.stringify(segment.assStyle));
+    }
     if (segment.sticker) {
       right.sticker = null;
       right.sticker_ref = { name: segment.sticker.name, headIdx: headIndex };
@@ -909,7 +913,10 @@
   const initialTime = Number.isFinite(initial.timeMs)
     ? initial.timeMs
     : splitTimeForTextOffset(extension, initial.extensionOffset ?? Math.floor(String(extension.text || '').length / 2));
-  const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
+  // 从文字气泡进入时，timeMs 只用于定位视觉反馈；移动文字断点应重新估算时间。
+  // 波形指针进入仍固定绝对时间，不随字幕文字断点调整。
+  const fixedCutMs = initial.timeSource === 'text'
+    ? null : Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
   const initialOffset = hasInitialTextPosition
     ? window.MaweOverlaySplitMerge.splitOffsetNearTextPositionForModal(extension.text, initial.extensionOffset, extensionMode)
     : MULTI_SUBTITLE_UTILS.nearestSubtitleSplitOffset(
@@ -1405,7 +1412,7 @@
       : state.mainInteractive ? 'main' : 'extension');
   updateLinkedSplitPreview(
     state.kind === 'main' ? state.mainOffset
-      : state.kind === 'extension' ? state.offset : state.mainOffset,
+      : state.kind === 'extension' || state.kind === 'overlay' ? state.offset : state.mainOffset,
     initialLane,
   );
   // 弹窗打开即聚焦初始 lane，让 WASD/方向键/Space 直接可用；
@@ -1768,6 +1775,7 @@
     // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
     MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'main'));
     if (successMessage) MaweHint.flashHint(successMessage, 'success');
+    state.onQuickEditSplitComplete?.(mainIndex + 1);
     return true;
   }, { captureView: true });
 }
@@ -1875,6 +1883,7 @@
         : '已按选择的断点拆分副字幕'),
       'success',
     );
+    state.onQuickEditSplitComplete?.(extensionIndex + 1);
     return true;
   }, { captureView: true });
 }
@@ -2025,6 +2034,7 @@
         : '已按同一绝对时间切点联动拆分',
       'success',
     );
+    state.onQuickEditSplitComplete?.(mainIndex + 1);
   }, { captureView: true });
 }
 

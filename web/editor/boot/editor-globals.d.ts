@@ -46,6 +46,7 @@ interface ProjectSegment {
   disabled?: boolean;
   speaker?: string;
   assOverride?: AssCueOverride;
+  assStyle?: Record<string, any>;
   color?: string | ProjectColorMark;
   color_ref?: ProjectGroupRef | null;
   sticker?: unknown;
@@ -264,7 +265,7 @@ interface MaweStateApi {
     currentCuePanelIdx: number; currentCuePanelKind: SelectionTrack; currentCuePanelTrackId: string | null;
     cuePanelUndoPushed: boolean; cuePanelUndoRecord: any; cuePanelTextEditSnapshot: any; cuePanelCanceling: boolean };
   readonly editing: { editingState: any; extensionEditingState: any };
-  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean };
+  readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean; processingOverridesDirty: boolean };
   hasProjectChanges(pendingText?: boolean): boolean;
   segmentsFingerprint(): string;
   noteSavedSegments(fingerprint?: string): void;
@@ -307,6 +308,7 @@ interface Window {
   MaweCommands: MaweCommandsApi;
   MaweViewUpdates: typeof MaweViewUpdates;
   MaweMarkerEditing?: { isEditingEnabled(): boolean };
+  MaweHint?: { flashHint(message: string, type?: string): void };
   MaweAssFrame?: { notifyProjectChanged?(): void };
   webkitAudioContext?: typeof AudioContext;
   AsrGapRemoveCore: {

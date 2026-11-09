@@ -14,9 +14,12 @@ import urllib.error
 from unittest import mock
 from pathlib import Path
 
+from maw.local_log import LocalLogSink
+from maw import media_jobs
 from maw.media_jobs import (MAX_MEDIA_JOB_STDERR_BYTES, MAX_MEDIA_JOB_ADMISSIONS,
                             MEDIA_JOB_ADMISSION_TTL, MediaJobBusy, MediaJobCancelled,
                             MediaJobManager, MediaJobUnavailable)
+from tests.compact_assertions import CompactContainerAssertions
 
 MEDIA_JOBS_TEST_TEMP_ROOT = Path(__file__).resolve().parents[1] / ".debug-runs"
 
@@ -39,6 +42,13 @@ class MediaJobsTests(unittest.TestCase):
 
     def start(self, runner):
         return self.manager.start(self.source, (7, "opaque-source"), [(0, 1000)], runner)
+
+    def test_diagnostic_sink_factory_returns_sink_instance(self):
+        # 回归守门（不打 mock）：`_diagnostic_sink` 曾与模块级变量同名自遮蔽，
+        # def 覆盖变量绑定导致生产路径诊断全部失效，而 mock 夹具掩盖了它。
+        sink = media_jobs._diagnostic_sink()
+        self.assertIsInstance(sink, LocalLogSink)
+        self.assertIs(media_jobs._diagnostic_sink(), sink)
 
     def test_controller_and_http_setup_create_missing_temp_roots(self):
         for fixture_type in (MediaJobsTests, MediaJobsHttpTests):
@@ -444,7 +454,7 @@ class MediaJobsTests(unittest.TestCase):
                 self.manager.cancel(job.id)
 
 
-class MediaJobsHttpTests(unittest.TestCase):
+class MediaJobsHttpTests(CompactContainerAssertions, unittest.TestCase):
     def setUp(self):
         from tests.test_local_editor_server import server_editor
         self.server_editor = server_editor
@@ -459,6 +469,9 @@ class MediaJobsHttpTests(unittest.TestCase):
         # admission, cancellation and downloads real; cache validation is separate.
         self.enterContext(mock.patch.object(self.server, "_thumbnail_base_ready", return_value=False))
         self.server.media_jobs.temp_root = self.root
+        # 失败诊断落盘到测试内临时目录，避免写真实用户日志目录。
+        self.enterContext(mock.patch("maw.media_jobs._diagnostic_sink",
+            return_value=LocalLogSink(directory=self.root / "logs")))
         self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
         self.origin = f"http://127.0.0.1:{self.server.server_address[1]}"
@@ -495,6 +508,43 @@ class MediaJobsHttpTests(unittest.TestCase):
                 return result
             time.sleep(.01)
         self.assertEqual(result["state"], state)
+
+    def test_failed_job_diagnostics_are_logged_and_redacted(self):
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=mock.Mock(
+                ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))), \
+             mock.patch.object(self.server_editor, "rebuild_gap_removed_video",
+                side_effect=RuntimeError("boom api_key=supersecret99")):
+            status, snapshot = self.request(self.base, self.payload())
+            self.assertEqual(status, 202)
+            failed = self.wait(snapshot["jobId"], "failed")
+        # 快照 error 保持原文供页面展示；日志文件则必须脱敏。
+        self.assertIn("boom api_key=supersecret99", failed["error"] or "")
+        logs = list((self.root / "logs").glob("maw-*.log"))
+        self.assertEqual(len(logs), 1)
+        content = logs[0].read_text(encoding="utf-8")
+        self.assertIn("[media-job]", content)
+        self.assertIn("boom api_key=[REDACTED]", content)
+        self.assertNotIn("supersecret99", content)
+
+    def test_cancelled_job_writes_no_diagnostics(self):
+        def rebuild(source, intervals, output, **kwargs):
+            output.write_bytes(b"partial")
+            kwargs["job"].cancelled.wait(5)
+        tools = mock.Mock(ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=tools), \
+             mock.patch.object(self.server_editor, "rebuild_gap_removed_video", side_effect=rebuild):
+            status, snapshot = self.request(self.base, self.payload())
+            self.assertEqual(status, 202)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and self.server.media_jobs.active is None:
+                time.sleep(.01)
+            job = self.server.media_jobs.active
+            self.assertIsNotNone(job)
+            status, _ = self.request(self.base + "/" + snapshot["jobId"] + "/cancel",
+                {"requestToken": self.server.request_token})
+            self.assertEqual(status, 200)
+            self.assertTrue(job.disposed_event.wait(5))
+        self.assertEqual(list((self.root / "logs").glob("maw-*.log")), [])
 
     def test_http_cancel_first_rejects_admission_and_expired_deadlines(self):
         token = "b" * 64
