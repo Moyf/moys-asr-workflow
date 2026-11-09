@@ -51,6 +51,8 @@ export function createWaveformModule(dependencies) {
       // 通用 Marker / Region 轨道：遵守标记编辑开关，启用时空轨也可添加标记。
       this.appendMarkerTrack(row, startMs, endMs);
 
+      // 在目标块处理 pointerdown 前清除上一轮手势，避免残留标记影响空白处双击。
+      row.addEventListener('pointerdown', () => { this._wordQuickEditDoubleClickTime = 0; }, true);
       row.addEventListener('pointerdown', (event) => {
         // 每次按下时读取最新模式；设置切换会重绘空隙块，但不会重建仍在
         // 可视区内的行，不能使用 createRow 时捕获的旧值。
@@ -160,7 +162,10 @@ export function createWaveformModule(dependencies) {
         }
       });
       row.addEventListener('dblclick', (event) => {
-        if ((/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block')))) return;
+        // 字词块可能在两次点击间被重建，原生 dblclick 因而落在共同祖先 row。
+        const wordQuickEdit = this._wordQuickEditDoubleClickTime && Date.now() - this._wordQuickEditDoubleClickTime <= 500;
+        this._wordQuickEditDoubleClickTime = 0;
+        if (wordQuickEdit || (/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block, .waveform-word-block, .waveform-word-boundary')))) return;
         if (event.ctrlKey || event.metaKey) return;
         event.preventDefault();
         this.options.togglePlayback();
@@ -307,7 +312,7 @@ export function createWaveformModule(dependencies) {
         block.appendChild(label);
         this.setBindingMarker(block, mainBindingMarkers?.has?.(index) === true);
         // 短块内文字会被截断，悬浮 title 给出完整字幕文本
-        block.title = label.textContent;
+        if (this.settings.showCueTooltip !== false) block.title = label.textContent;
         const badges = this.settings.showGroupBadges !== false ? badgesByIndex.get(index) : null;
         if (badges?.length) {
           // 徽章挂在行上、块上方（不遮挡块内文字）；短字幕也保留最小显示空间，
@@ -428,7 +433,7 @@ export function createWaveformModule(dependencies) {
           const label = document.createElement('span');
           label.className = 'waveform-cue-label';
           label.textContent = String(segment.text || '').replace(/\s+/g, ' ');
-          block.title = label.textContent;
+          if (this.settings.showCueTooltip !== false) block.title = label.textContent;
           block.appendChild(label);
           if (segment.start >= startMs) {
             const leftHandle = document.createElement('span');
@@ -501,7 +506,7 @@ export function createWaveformModule(dependencies) {
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
         label.textContent = String(segment.text || '').replace(/\s+/g, ' ');
-        block.title = label.textContent;
+        if (this.settings.showCueTooltip !== false) block.title = label.textContent;
         block.appendChild(label);
         this.setBindingMarker(block, extensionBindingMarkers?.has?.(index) === true);
         if (segment.start >= startMs) this.appendExtensionHandle(block, 'left');

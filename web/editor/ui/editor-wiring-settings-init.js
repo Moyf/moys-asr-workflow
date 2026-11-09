@@ -116,6 +116,8 @@ document.addEventListener('mawe:languagechange', () => {
 
 MaweDom.splitKeySel.value = MaweSettings.EDITOR_SETTINGS.splitKey;
 if (MaweDom.splitUseWordTimestampsToggle) MaweDom.splitUseWordTimestampsToggle.checked = MaweSettings.EDITOR_SETTINGS.splitUseWordTimestamps;
+const quickEditSplitFocusNextToggle = document.getElementById('quick-edit-split-focus-next');
+if (quickEditSplitFocusNextToggle) quickEditSplitFocusNextToggle.checked = MaweSettings.EDITOR_SETTINGS.quickEditSplitFocusNext;
 if (MaweDom.multiSubtitleSplitAutoSubmit) MaweDom.multiSubtitleSplitAutoSubmit.checked = MaweSettings.EDITOR_SETTINGS.splitAutoSubmit;
 MaweDisplaySettings.applyPlatformKeyLabels();
 MaweSplitMode.refreshSplitKeyHelp();
