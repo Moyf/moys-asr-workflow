@@ -1,4 +1,5 @@
 import { fmtSrtTime, syncCharCountThresholdInputs, updateTimedTextEditSingleGuide } from './editor-cue-elements.js';
+import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
 import { finishEdit } from './editor-inline-edit.js';
 import { releaseClosedUiFocus } from './editor-keyboard-targets.js';
 import { splitGroupsAtCutPoints } from './editor-segment-ops.js';
@@ -64,7 +65,7 @@ export function initMaweTimedTextEdit() {
 
 
   function currentTimedTextEditKind() {
-    const panelTarget = MaweCuePanel.getCurrentCuePanelTarget?.();
+    const panelTarget = getCurrentCuePanelTarget();
     if (panelTarget?.kind === 'extension' && panelTarget.track?.segments?.length) return 'extension';
     if (MaweSelection.selectedIdxs.size === 0 && MaweSelection.selectedExtensionIdxs.size > 0
         && MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) return 'extension';

@@ -1,4 +1,6 @@
 import { projectOverride, update, refresh, validateImport, setProjectOverride } from './editor-text-presets.js';
+import { finishEdit } from './editor-inline-edit.js';
+import { commitCuePanelEdit } from './editor-cue-panel.js';
 // Ordered subtitle processing, including the existing right-click wrapper.
 // Ordered subtitle processing, including the existing right-click wrapper. ESM init 模块：initMaweTextProcess 在原清单位次执行原 IIFE 体（挂
 
@@ -576,8 +578,8 @@ export function initMaweTextProcess() {
       MaweHint.flashHint('当前没有可处理的字幕', 'invalid');
       return;
     }
-    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-    MaweCuePanel.commitCuePanelEdit();
+    if (MaweInlineEdit.editingState) finishEdit(true);
+    commitCuePanelEdit();
     const current = ++session;
     selection = captureTargets(replaceSelection);
     openRows.clear();
@@ -928,7 +930,7 @@ export function initMaweTextProcess() {
   // warnWordTimings=false 时不再提示字词时间码失配：右键快捷包裹属于刻意
   // 加装饰符号，字词时间码必然对不上，警告只会造成困扰。
   function applyWrapChars(scope, left, right, label = '左右添加字符', { warnWordTimings = true } = {}) {
-    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+    if (MaweInlineEdit.editingState) finishEdit(true);
     const indexes = [...new Set((Array.isArray(scope) ? scope : [])
       .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length))]
       .sort((a, b) => a - b);
@@ -969,7 +971,7 @@ export function initMaweTextProcess() {
 
 
   function openWrapCharsModal(scope) {
-    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+    if (MaweInlineEdit.editingState) finishEdit(true);
     wrapCharsScope = (Array.isArray(scope) ? scope : [...MaweSelection.selectedIdxs])
       .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length);
     if (!wrapCharsScope.length) {
