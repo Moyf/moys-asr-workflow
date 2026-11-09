@@ -53,6 +53,8 @@ Launcher 前端走同一套装配模式：源码按 `web/launcher-scripts.txt` �
 改了 `web/` 就提交源码（esbuild 产物不进 Git，无需提交），并在 PR 描述里注明「内联副本待发布前统一重生成」；
 发布检查时再一次性重生成，并核对 `git diff --stat blank-editor.html` 符合预期。
 
+便携单 HTML（`file://`）形态已弃维护，计划在 2.0 移除；不再为该形态专属行为投入修复，相关测试按具体覆盖范围处理并记录证据，见 [便携模式回归分析](docs/logs/release1.10.0-beta.2/261106_便携模式回归弃维护/回归分析.md)。
+
 ```powershell
 uv run python edit.py --blank
 ```

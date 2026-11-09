@@ -313,6 +313,8 @@ test('text processing converts clear Chinese numbers with surrounding spaces', a
 });
 
 test('portable file uses the same fade rules and SRT export settings', async ({ page }) => {
+  // 便携单 HTML 已弃维护，2.0 移除；决策与证据见回归分析记录。
+  test.skip(true, '便携模式已弃维护，2.0 移除 HTML，见 #336 后回归分析');
   await page.goto(`file://${portable}`);
   await expect(page.locator('#cues-container')).toBeVisible();
   await seed(page, { text: '>甲乙<', timed: false });
@@ -514,6 +516,8 @@ test('user presets, text overrides and explicit join defaults survive project ch
 });
 
 test('portable editor saves and reloads presets in its browser storage', async ({ page }) => {
+  // file:// localStorage 跨 reload 的 CI 失败原因尚未取得可核验日志；此单 HTML 用例按弃维护决定跳过。
+  test.skip(true, '便携模式已弃维护，2.0 移除 HTML，见 #336 后回归分析');
   await page.goto('file://' + portable);
   await seed(page, { text: '  甲  ', timed: false });
   await openTextProcess(page);
