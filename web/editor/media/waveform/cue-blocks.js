@@ -368,14 +368,10 @@ export function createWaveformModule(dependencies) {
           event.preventDefault();
           event.stopPropagation();
           if (event.ctrlKey || event.metaKey) return;
-          // 字词时间码显示时，主字幕文本与字词绑定：波形字幕块双击不再直接
-          // 进入编辑，提示先退出字词码模式（字幕列表的行内编辑不受影响）。
-          if (this.options.wordTiming?.enabled) {
-            this.options.onMainCueDoubleClickBlocked?.();
-            return;
-          }
-          if (this.options.enterCueEditor) this.options.enterCueEditor(index);
-          else this.options.activateCue?.(index);
+          // 双击在点击的字幕块片段上方弹出快速编辑气泡（跨行字幕跟随
+          // 鼠标点击位置）；不再聚焦底部字幕编辑面板。字词时间码模式下
+          // 同样放行：气泡提交走 syncTextChange，句文本与字词文字保持同步。
+          this.openCueQuickEdit('main', index, block, event);
         });
         row.appendChild(block);
         this.appendWordBlocks(row, index, startMs, endMs);
@@ -474,7 +470,7 @@ export function createWaveformModule(dependencies) {
           block.addEventListener('dblclick', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (this.options.enterOverlayCueEditor) this.options.enterOverlayCueEditor(index);
+            this.openCueQuickEdit('overlay', index, block, event);
           });
           row.appendChild(block);
         }
@@ -522,8 +518,7 @@ export function createWaveformModule(dependencies) {
           event.preventDefault();
           event.stopPropagation();
           if (event.ctrlKey || event.metaKey) return;
-          if (this.options.enterExtensionCueEditor) this.options.enterExtensionCueEditor(index);
-          else this.options.activateExtensionCue?.(index);
+          this.openCueQuickEdit('extension', index, block, event);
         });
         row.appendChild(block);
       }

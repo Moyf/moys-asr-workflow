@@ -5,12 +5,15 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 from fractions import Fraction
+from itertools import product
 
 from PIL import Image, ImageChops
 
-from maw.fcp7_png import prepare_render_plan, recover_straight_rgba, render_png_assets
+from maw.fcp7_png import prepare_render_plan, render_png_assets
+from tests.compact_assertions import CompactContainerAssertions
 
 
 HEADER = """[Script Info]
@@ -35,6 +38,13 @@ def plan(ass, **kwargs):
 
 
 class FramePlanTests(unittest.TestCase):
+    def test_image_format_is_explicit_and_legacy_default_is_png(self):
+        self.assertEqual(plan(HEADER + event())["imageFormat"], "png")
+        self.assertEqual(plan(HEADER + event(), image_format="webp")["imageFormat"], "webp")
+        for value in (None, [], {}, "jpg", "WEBP"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                plan(HEADER + event(), image_format=value)
+
     def test_static_hold_is_one_sample_and_does_not_cover_gap(self):
         result = plan(HEADER + event() + event("0:00:02.40", "0:00:02.80", "NEXT", "maw:main:1"))
         self.assertEqual(result["tracks"][0]["spans"], [(0, 50), (60, 70)])
@@ -92,35 +102,98 @@ class MatteTests(unittest.TestCase):
                 render_png_assets(job, plan(HEADER + event()), Path('ffmpeg'), job.directory / 'package')
             self.assertFalse(job.output.exists())
 
-    def test_known_source_over_roundtrip(self):
-        source = Image.new("RGBA", (8, 8), (210, 100, 30, 127))
-        black = Image.alpha_composite(Image.new("RGBA", source.size, (0, 0, 0, 255)), source).convert("RGB")
-        white = Image.alpha_composite(Image.new("RGBA", source.size, (255, 255, 255, 255)), source).convert("RGB")
-        recovered = recover_straight_rgba(black, white)
-        self.assertEqual(recovered.getchannel("A").getextrema(), (127, 127))
-        diff = ImageChops.difference(source, recovered)
-        self.assertLessEqual(max(high for _, high in diff.getextrema()), 2)
-
-    def test_empty_frame_is_transparent(self):
-        image = recover_straight_rgba(Image.new("RGB", (8, 8)), Image.new("RGB", (8, 8), "white"))
-        self.assertEqual(image.getchannel("A").getextrema(), (0, 0))
-
-
 @unittest.skipUnless(shutil.which("ffmpeg"), "real FFmpeg unavailable")
-class RenderTests(unittest.TestCase):
+class RenderTests(CompactContainerAssertions, unittest.TestCase):
+    def test_runtime_exports_both_formats_when_pil_import_is_forbidden(self):
+        code = '''
+import builtins, json, shutil, subprocess, sys
+from pathlib import Path
+original = builtins.__import__
+def guarded(name, *args, **kwargs):
+    if name == 'PIL' or name.startswith('PIL.'):
+        raise ImportError('Pillow must not be used by subtitle export')
+    return original(name, *args, **kwargs)
+builtins.__import__ = guarded
+from maw.fcp7_png import prepare_render_plan, render_png_assets
+class Job:
+    def check_cancelled(self): pass
+    def update(self, *args): pass
+    def run_command(self, args, timeout, cwd):
+        return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+for fmt in ('png', 'webp'):
+    root = Path(sys.argv[1]) / fmt
+    root.mkdir()
+    job = Job(); job.directory = root; job.output = root / 'manifest.json'
+    plan = prepare_render_plan(sys.argv[2], fps='25', width=320, height=180,
+                               duration_ms=3000, selected_layers=[0], image_format=fmt)
+    result = render_png_assets(job, plan, Path(shutil.which('ffmpeg')), root / 'published')
+    assert result['imageFormat'] == fmt and result['imageCount'] == 1
+    print(fmt + ': passed without PIL')
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            completed = subprocess.run([sys.executable, '-c', code, temporary, HEADER + event()],
+                                       capture_output=True, text=True, timeout=45)
+            self.assertEqual(completed.returncode, 0, completed.stderr[-2000:])
+
+    def test_alpha_one_black_pixels_survive_and_repeated_cues_reuse_images_across_batches(self):
+        class Job:
+            def check_cancelled(self): pass
+            def update(self, *args): pass
+            def run_command(self, args, timeout, cwd):
+                # Exact black/254-white mattes yield A=1 independently of
+                # libass versions' rounding of an ASS alpha override.
+                args = [arg.replace("ass=filename='sub.ass'", 'null').replace('color=white:', 'color=0xfefefe:')
+                        for arg in args]
+                return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        # 26 distinct cues cross the 24-sample batch boundary. A=1 must survive;
+        # black RGB does not imply an empty frame. Cue identity must not merge.
+        ass = HEADER + ''.join(event(f'0:00:{n:02d}.00', f'0:00:{n+1:02d}.00',
+            r'{\1c&H000000&\alpha&HFE&\bord0\shad0}FAINT', f'maw:main:{n}') for n in range(26))
+        for fmt in ('png', 'webp'):
+            with self.subTest(fmt=fmt), tempfile.TemporaryDirectory() as temporary:
+                job = Job(); job.directory = Path(temporary); job.output = job.directory / 'manifest.json'
+                result = render_png_assets(job, plan(ass, duration_ms=26000, image_format=fmt),
+                                           Path(shutil.which('ffmpeg')), job.directory / 'package')
+                self.assertEqual(result['imageCount'], 1)
+                self.assertEqual(len(result['tracks'][0]['clips']), 26)
+                with Image.open(next((job.directory / 'images').iterdir())) as image:
+                    self.assertEqual(image.convert('RGBA').getchannel('A').getextrema()[1], 1)
+
+    def test_missing_or_misaligned_metadata_never_publishes_a_manifest(self):
+        class Job:
+            def check_cancelled(self): pass
+            def update(self, *args): pass
+            def run_command(self, args, timeout, cwd):
+                result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+                path = cwd / self.target
+                content = path.read_text('utf-8')
+                path.write_text(self.damage(content), encoding='utf-8')
+                return result
+        for target, damage in (
+                ('alpha.txt', lambda text: ''),
+                ('alpha.txt', lambda text: text.replace('pts:0', 'pts:1')),
+                ('alpha.txt', lambda text: text.replace('maw.sample=1', '')),
+                ('frames.sha256', lambda text: '\n'.join(line for line in text.splitlines() if line.startswith('#')))):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as temporary:
+                job = Job(); job.directory = Path(temporary); job.output = job.directory / 'manifest.json'
+                job.target = target; job.damage = damage
+                with self.assertRaisesRegex(ValueError, '帧校验失败'):
+                    render_png_assets(job, plan(HEADER + event()), Path(shutil.which('ffmpeg')), job.directory / 'package')
+                self.assertFalse(job.output.exists())
+
     def test_instantaneous_animation_changes_match_libass(self):
         class Job:
             def check_cancelled(self): pass
             def update(self, *args): pass
             def run_command(self, args, timeout, cwd):
                 return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
-        for tag in (r'\move(30,70,250,150,0,0)', r'\fade(255,0,255,500,500,1500,1500)',
-                    r'\t(1000,1000,\fscx200)'):
-            with self.subTest(tag=tag), tempfile.TemporaryDirectory() as temporary:
+        for tag, fmt in product((r'\move(30,70,250,150,0,0)', r'\fade(255,0,255,500,500,1500,1500)',
+                               r'\t(1000,1000,\fscx200)'), ('png', 'webp')):
+            with self.subTest(tag=tag, fmt=fmt), tempfile.TemporaryDirectory() as temporary:
                 job = Job(); job.directory = Path(temporary); job.output = job.directory / 'manifest.json'
                 ass = HEADER + event(text='{' + tag + '}CHANGE')
                 (job.directory / 'reference.ass').write_text(ass, encoding='utf8')
-                result = render_png_assets(job, plan(ass), Path(shutil.which('ffmpeg')), job.directory / 'package')
+                result = render_png_assets(job, plan(ass), Path(shutil.which('ffmpeg')), job.directory / 'package', fmt)
                 for frame in (0, 15, 30, 40):
                     composed = Image.new('RGBA', (320,180), (0,0,0,255))
                     for track in result['tracks']:
@@ -142,12 +215,13 @@ class RenderTests(unittest.TestCase):
             def update(self, *args): pass
             def run_command(self, args, timeout, cwd):
                 return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
-        with tempfile.TemporaryDirectory() as temporary:
-            job = Job(); job.directory = Path(temporary); job.output = job.directory / 'manifest.json'
-            with self.assertRaisesRegex(ValueError, '均为透明'):
-                render_png_assets(job, plan(HEADER + event(text=r'{\alpha&HFF&}EMPTY')),
-                                  Path(shutil.which('ffmpeg')), job.directory / 'package')
-            self.assertFalse(job.output.exists())
+        for fmt in ('png', 'webp'):
+            with self.subTest(fmt=fmt), tempfile.TemporaryDirectory() as temporary:
+                job = Job(); job.directory = Path(temporary); job.output = job.directory / 'manifest.json'
+                with self.assertRaisesRegex(ValueError, '均为透明'):
+                    render_png_assets(job, plan(HEADER + event(text=r'{\alpha&HFF&}EMPTY')),
+                                      Path(shutil.which('ffmpeg')), job.directory / 'package', fmt)
+                self.assertFalse(job.output.exists())
 
     def test_multitrack_recomposition_matches_direct_ass_at_frame_boundaries(self):
         class Job:
@@ -157,11 +231,11 @@ class RenderTests(unittest.TestCase):
                 return subprocess.run(args, cwd=cwd, capture_output=True, text=True, timeout=timeout)
         ass = HEADER + event('0:00:00.12', '0:00:01.60', r'{\pos(160,140)\fad(200,120)}LOWER') + event(
             '0:00:00.48', '0:00:01.20', r'{\pos(170,140)\1c&H55DDFF&\fad(120,120)}UPPER', 'maw:overlay:0', 2)
-        for fps in ('25', '30000/1001'):
-            with self.subTest(fps=fps), tempfile.TemporaryDirectory() as temporary:
+        for fps, fmt in product(('25', '30000/1001'), ('png', 'webp')):
+            with self.subTest(fps=fps, fmt=fmt), tempfile.TemporaryDirectory() as temporary:
                 job = Job(); job.directory = Path(temporary); job.output = job.directory / 'manifest.json'
                 (job.directory / 'reference.ass').write_text(ass, encoding='utf8')
-                result = render_png_assets(job, plan(ass, fps=fps, duration_ms=2000),
+                result = render_png_assets(job, plan(ass, fps=fps, duration_ms=2000, image_format=fmt),
                                            Path(shutil.which('ffmpeg')), job.directory / 'published')
                 rate = Fraction(fps)
                 for frame in (0, 2, 3, 4, 7, 12, 13, 20, 29, 30, 36, 39, 40, 49):
@@ -183,6 +257,12 @@ class RenderTests(unittest.TestCase):
                                                  f'fps={fps}, frame={frame}, background={label}')
 
     def test_real_fade_and_static_hold_generate_valid_manifest(self):
+        self.check_fade_manifest('png')
+
+    def test_explicit_webp_preserves_lossless_encoding_fades_and_static_holds(self):
+        self.check_fade_manifest('webp')
+
+    def check_fade_manifest(self, fmt):
         class Job:
             def check_cancelled(self): pass
             def update(self, stage, progress): self.progress = progress
@@ -192,7 +272,7 @@ class RenderTests(unittest.TestCase):
             job = Job()
             job.directory = Path(temporary)
             job.output = job.directory / "manifest.json"
-            result = render_png_assets(job, plan(HEADER + event(text=r"{\fad(200,120)}FADE")),
+            result = render_png_assets(job, plan(HEADER + event(text=r"{\fad(200,120)}FADE"), image_format=fmt),
                                        Path(shutil.which("ffmpeg")), job.directory / "published")
             self.assertEqual(result["sampleCount"], 9)
             clips = result["tracks"][0]["clips"]
@@ -202,8 +282,16 @@ class RenderTests(unittest.TestCase):
             self.assertEqual(clips[-1]["endFrame"], 50)
             for clip in clips:
                 with Image.open(job.directory / "images" / clip["filename"]) as image:
+                    self.assertEqual(image.format, fmt.upper())
                     self.assertEqual(image.mode, "RGBA")
                     self.assertEqual(image.size, (320, 180))
+                path = job.directory / "images" / clip["filename"]
+                self.assertTrue(clip["filename"].endswith('.' + fmt))
+                if fmt == 'webp':
+                    data = path.read_bytes()
+                    self.assertIn(b'VP8L', data)
+                    self.assertNotIn(b'VP8 ', data)
+            self.assertEqual(result["imageFormat"], fmt)
             self.assertEqual(json.loads(job.output.read_text())["imageCount"], result["imageCount"])
 
 

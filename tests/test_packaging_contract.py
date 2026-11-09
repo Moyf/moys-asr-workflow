@@ -98,7 +98,7 @@ def _local_runtime_spec_entry(relative_path: str) -> str:
 
 
 class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
-    def test_png_editor_runtime_is_not_excluded_from_main_bundle(self) -> None:
+    def test_image_editor_runtime_does_not_require_pillow_in_main_bundle(self) -> None:
         tree = ast.parse(read_text("scripts/packaging/MAW.spec"))
         excluded = next(
             ast.literal_eval(node.value)
@@ -106,11 +106,9 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
             if any(isinstance(target, ast.Name) and target.id == "excluded_local_modules"
                    for target in node.targets)
         )
-        self.assertNotIn("PIL", excluded)
-        # The dependency belongs to the base install as serve imports it before
-        # any export is requested, not only to build/dev or optional OCR groups.
+        self.assertIn("PIL", excluded)
         project = tomllib.loads(read_text("pyproject.toml"))
-        self.assertIn("pillow>=10.3.0", project["project"]["dependencies"])
+        self.assertFalse(any(item.lower().startswith("pillow") for item in project["project"]["dependencies"]))
 
     def test_windows_preview_starts_packaged_editor_instead_of_only_help(self) -> None:
         workflow = read_text(".github/workflows/pr-release-windows.yml")
@@ -392,9 +390,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         dependencies = set(project["project"]["dependencies"])
         ocr_dependencies = set(project["dependency-groups"]["ocr"])
         self.assertNotIn("onnxruntime>=1.18", dependencies)
-        # Pillow also serves the editor's transparent PNG export. It is shared
-        # with OCR, while inference engines remain in the optional runtime.
-        self.assertIn("pillow>=10.3.0", dependencies)
+        self.assertFalse(any(item.lower().startswith("pillow") for item in dependencies))
         self.assertNotIn("rapidocr>=3.9.0", dependencies)
         self.assertNotIn("numpy>=2.2,<2.5", dependencies)
         self.assertEqual(
@@ -580,7 +576,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         """Given a macOS arm64 release, When packaging runs, Then only MAW app variants are uploaded."""
         workflow = read_text(".github/workflows/release.yml")
 
-        self.assertIn("os: macos-14", workflow)
+        self.assertIn("os: macos-15", workflow)
         self.assertIn("arch: arm64", workflow)
         self.assertIn("https://www.osxexperts.net/ffmpeg81arm.zip", workflow)
         self.assertIn("https://www.osxexperts.net/ffprobe81arm.zip", workflow)

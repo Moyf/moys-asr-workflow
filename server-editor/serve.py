@@ -66,7 +66,8 @@ from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noq
 from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
-    MEDIA_JOB_ADMISSION_TTL, MediaJob, MediaJobBusy, MediaJobCancelled, MediaJobManager, MediaJobUnavailable,
+    MEDIA_JOB_ADMISSION_TTL, MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S, MediaJob, MediaJobBusy, MediaJobCancelled,
+    MediaJobManager, MediaJobUnavailable,
 )
 from maw.media_export_audio import rebuild_gap_removed_audio  # noqa: E402
 from maw.media_export_video import (  # noqa: E402
@@ -3415,6 +3416,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     raise MediaJobCancelled("媒体重组已停止")
             intervals = normalize_gap_removed_intervals(request.get("intervals"))
             source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
+            keep_to_source_end = request.get('keepToSourceEnd', False)
+            editor_duration_ms = request.get('editorDurationMs')
+            if (not isinstance(keep_to_source_end, bool)
+                    or (keep_to_source_end and editor_duration_ms is None)
+                    or (editor_duration_ms is not None and (type(editor_duration_ms) is not int or editor_duration_ms <= 0))
+                    or (source_snapshot.kind != 'audio' and (keep_to_source_end or editor_duration_ms is not None))):
+                raise ValueError('Invalid audio end selection')
             source = source_snapshot.path
             tools = editor_ffmpeg_tools()
             if tools.ffmpeg is None or tools.ffprobe is None:
@@ -3428,7 +3436,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 if source_snapshot.kind == "audio":
                     rebuild_gap_removed_audio(job.source, list(job.intervals), job.output,
                         ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job,
-                        audio_track=source_snapshot.audio_track)
+                        audio_track=source_snapshot.audio_track, keep_to_source_end=keep_to_source_end,
+                        editor_duration_ms=editor_duration_ms)
                 else:
                     try:
                         rebuild_gap_removed_video(job.source, list(job.intervals), job.output,
@@ -3634,6 +3643,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self._check_request_token(request)
             intervals = normalize_gap_removed_intervals(request.get("intervals"))
             source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
+            keep_to_source_end = request.get('keepToSourceEnd', False)
+            editor_duration_ms = request.get('editorDurationMs')
+            if (not isinstance(keep_to_source_end, bool)
+                    or (keep_to_source_end and editor_duration_ms is None)
+                    or (editor_duration_ms is not None and (type(editor_duration_ms) is not int or editor_duration_ms <= 0))
+                    or (source_snapshot.kind != 'audio' and (keep_to_source_end or editor_duration_ms is not None))):
+                raise ValueError('Invalid audio end selection')
             source = source_snapshot.path
             if not self.editor_server.gap_removed_video_lock.acquire(blocking=False):
                 raise GapRemovedVideoExportInProgressError("另一个媒体导出任务正在进行，请完成或停止后再试")
@@ -3660,7 +3676,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     if source_snapshot.kind == "audio":
                         rebuild_gap_removed_audio(source, intervals, output_path,
                             ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe,
-                            audio_track=source_snapshot.audio_track)
+                            audio_track=source_snapshot.audio_track, keep_to_source_end=keep_to_source_end,
+                            editor_duration_ms=editor_duration_ms)
                     else:
                         rebuild_gap_removed_video(source, intervals, output_path,
                             ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe)
@@ -4121,7 +4138,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         disposition = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename, safe="")} '
         previous_timeout = self.connection.gettimeout()
         if job:
-            self.connection.settimeout(2)
+            # 取消主路径是 abort_download 立即 shutdown socket，「停止」的响应速度
+            # 不受此超时影响；它只是客户端异常消失时的兜底，容忍慢速磁盘/杀软
+            # 造成的短暂写停顿，避免浏览器写盘慢时被服务端主动断流。
+            self.connection.settimeout(MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S)
         try:
             if job:
                 job.check_cancelled()

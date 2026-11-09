@@ -62,6 +62,8 @@ function projectSaveFingerprint() {
 
 // 保存正在输入的文字，但不结束行内编辑、不替换节点、不移动光标。
 function flushInlineEditsForSave() {
+  // 波形快速编辑气泡的待提交文字先落盘提交（幂等），气泡保持打开。
+  MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
   const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
   if (!state) {
     // Start/duration changes are committed by their own input handlers.  Only
@@ -176,19 +178,19 @@ function applyMediaSizeToResolutionModal(select, customRow, widthInput, heightIn
   if (customRow) customRow.hidden = select.value !== 'custom';
 }
 
-function dynamicExportCanvasSize(select, widthInput, heightInput) {
+function dynamicExportCanvasSize(select, widthInput, heightInput, max = DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS.max, min = DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS.min) {
   if (select?.value !== 'custom') {
     const match = /^(\d+)x(\d+)$/u.exec(select?.value || '');
     if (!match) return { width: 1920, height: 1080 };
     return { width: Number(match[1]), height: Number(match[2]) };
   }
-  const limits = DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS;
   const width = Number(widthInput?.value);
   const height = Number(heightInput?.value);
-  if (!Number.isInteger(width) || width < limits.min || width > limits.max
-    || !Number.isInteger(height) || height < limits.min || height > limits.max) {
+  if (!Number.isInteger(width) || width < min || width > max
+    || !Number.isInteger(height) || height < min || height > max) {
     throw new Error(MaweProjectSave.translatedEditorText(
-      '自定义合成尺寸需要 16–7680 之间的整数宽高',
+      max === 8192 && min === 1 ? '自定义图片尺寸需要 1–8192 之间的整数宽高'
+        : max === 8192 ? '自定义图片尺寸需要 16–8192 之间的整数宽高' : '自定义合成尺寸需要 16–7680 之间的整数宽高',
     ));
   }
   return { width, height };
@@ -507,8 +509,9 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       ? config.gapRemovedMediaAudioTrack : undefined;
   };
   const selectedAudioTrack = isAudio ? currentAudioTrack() : undefined;
-  const audioSelection = selectedAudioTrack === undefined ? {} : { selectedAudioTrack };
   const intervals = context.intervals.map(({ start, end }) => ({ startMs: start, endMs: end }));
+  const keepToSourceEnd = isAudio && intervals.at(-1)?.endMs === context.durationMs;
+  const audioSelection = selectedAudioTrack === undefined ? {} : { selectedAudioTrack, keepToSourceEnd, editorDurationMs: context.durationMs };
   const buildVideoSrt = !isAudio ? MaweExportSrt.captureVideoSrt?.() : null;
   let videoTimeline = null;
   const isBindingCurrent = () => MaweBoot.SERVER_CONFIG === config && canExport()
@@ -520,7 +523,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       && currentAudioTrack() === selectedAudioTrack))
     && (config.gapRemovedMediaKind === 'audio') === isAudio && config.gapRemovedVideoExportUrl === exportUrl
     && config.requestToken === requestToken && window.MaweProjectLoad?.projectBindingEpoch === projectBindingEpoch;
-  MaweHint.flashHint(tr(isAudio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。'), 'warning');
+  MaweHint.flashHint(tr(isAudio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。'), 'info');
 
   let handle;
   try {
