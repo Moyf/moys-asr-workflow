@@ -49,7 +49,7 @@ export interface WaveformSettings {
   rowHeight: number; side: string; splitPercent: number; layoutColumnPercent: number;
   layoutRows: number[]; layoutTree: LayoutTree; layoutEditing: boolean;
   waveformScale: number; waveformScaleAuto: boolean; disabledDisplay: string;
-  showGroupBadges: boolean; dragPlayhead: boolean; spectralColor: boolean;
+  showGroupBadges: boolean; showCueTooltip: boolean; dragPlayhead: boolean; spectralColor: boolean;
 }
 export interface Payload {
   schema: string; encoding: string; duration_ms: number; data: string;
@@ -245,7 +245,7 @@ export interface WaveformState {
   windowLabel: HTMLElement; waveformScaleLabel: HTMLElement;
   waveformScaleDownButton: HTMLButtonElement; waveformScaleUpButton: HTMLButtonElement; waveformScaleFitButton: HTMLButtonElement;
   secondsPerRowSelect: HTMLSelectElement; rowHeightSelect: HTMLSelectElement;
-  showGroupBadgesToggle: HTMLInputElement; dragPlayheadToggle: HTMLInputElement; spectralColorToggle: HTMLInputElement;
+  showGroupBadgesToggle: HTMLInputElement; showCueTooltipToggle: HTMLInputElement; dragPlayheadToggle: HTMLInputElement; spectralColorToggle: HTMLInputElement;
   sideSelect: HTMLSelectElement; disabledDisplaySelect: HTMLSelectElement;
   layoutEditToggle: HTMLInputElement; layoutResetButton: HTMLButtonElement; layoutPreview: HTMLElement;
   layoutResizers: {column: HTMLElement; rowTop: HTMLElement; rowMiddle: HTMLElement};
@@ -265,6 +265,7 @@ export interface WaveformState {
   cueQuickEdit: QuickEditPopupState | null;
   _cueQuickEditOutside: ((event: PointerEvent) => void) | null;
   _cueQuickEditKey: ((event: KeyboardEvent) => void) | null;
+  _wordQuickEditDoubleClickTime: number;
   _wordQuickEditClick: {index: number; itemIndex: number; time: number;
     clientX: number; clientY: number} | null;
   markerDrag: MarkerDragState | null; markerCreateDrag: MarkerDragState | null;

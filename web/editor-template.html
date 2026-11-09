@@ -797,7 +797,7 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">配置与使用</h5>
         <div class="help-category">
-          <span>在「工程设置 → 字幕样式」开启 ASS 字幕模式，点击「管理 ASS 样式」。</span>
+          <span>在 <button type="button" class="help-inline-action" data-settings-page="subtitle-style">工程设置 → 字幕样式</button> 开启 ASS 字幕模式，点击「管理 ASS 样式」。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span>基础样式设置字体、颜色、描边和位置；输出方案关联样式并设置动画。选定「ASS 导出方案」，按需配置副字幕默认槽位，然后保存样式库。</span>
           <span class="help-break" aria-hidden="true"></span>
@@ -828,26 +828,50 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">快捷编辑弹窗</h5>
         <div class="help-category">
-          <span>双击波形中的字幕块或字词块，就地编辑文字。新建字幕、选中字幕后按 Enter，或在叠加字幕右键菜单中选择「编辑文本」，也可打开弹窗。</span>
+          <span>双击波形中的字幕块或字词块，就地编辑文字。新建字幕、选中字幕后按 <kbd>Enter</kbd> ，或在叠加字幕右键菜单中选择「编辑文本」，也可打开弹窗。</span>
+          <span class="help-break" aria-hidden="true"></span>
           <span><kbd id="help-quick-split-key">Enter</kbd> 在光标处拆分字幕，拆分后继续编辑后半句</span>
+          <span class="help-break" aria-hidden="true"></span>
           <span><kbd id="help-quick-confirm-key">Ctrl+Enter</kbd> 保存并关闭</span>
-          <span><kbd>Shift+Enter</kbd> 换行</span>
-          <span><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> 切换同轨的下一句 / 上一句；编辑字词时切换同句字词</span>
-          <span><kbd>Esc</kbd> 或点击弹窗外部，关闭并保留修改</span>
-          <span>字词弹窗使用 Enter 保存；字词时间仍通过拖动调整。</span>
           <span class="help-note">可在 <button type="button" class="help-inline-action" data-settings-page="split-merge" data-settings-target="split-key">全局设置 → 拆分合并</button> 中设置字幕拆分和保存按键。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Shift+Enter</kbd> 换行</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> 切换同轨的下一句 / 上一句；编辑字词时切换同句字词</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Esc</kbd> 或点击弹窗外部，关闭并保留修改</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">字词时间码编辑</h5>
+        <div class="help-category">
+          <span>启用字词时间码时，同样可以双击字词显示弹窗。使用 <kbd>Enter</kbd> 保存；字词时间仍通过拖动调整。</span>
         </div>
       </section>
     </section>
     <section class="help-group help-tab-panel" id="help-tab-panel-word-timing" role="tabpanel" aria-labelledby="help-tab-word-timing" data-help-tab-panel="word-timing" tabindex="0" hidden>
       <h4 class="help-title">字词时间码</h4>
       <section class="help-subgroup">
-        <h5 class="help-subtitle">显示与编辑</h5>
+        <h5 class="help-subtitle">显示与选择</h5>
         <div class="help-category">
           <span><kbd>Q</kbd> 切换主字幕字词时间码；也可点击波形工具栏的「字词」。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>也可在 <button type="button" class="help-inline-action" data-settings-page="project-tracks">工程设置 → 字幕轨道</button> 中切换字词时间码。</span>
+          <span class="help-break" aria-hidden="true"></span>
           <span>点击选中字词；按住 <kbd data-mod-key>Ctrl</kbd> 点击多选，按住 <kbd>Shift</kbd> 点击范围选择。拖动字词块移动时间，拖动边缘调整起止时间。</span>
-          <span>双击字词块可在快捷编辑弹窗修改文字；<kbd>Tab</kbd> 在同句字词之间切换。修改文字不会移动时间。</span>
-          <span><kbd>C</kbd> 合并同句内连续选中的字词；<kbd>Esc</kbd> 取消拖动；<kbd>F</kbd> 试听选中的字幕或字词。</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">编辑字词</h5>
+        <div class="help-category">
+          <span>双击字词块可在快捷编辑弹窗修改文字； <kbd>Tab</kbd> 在同句字词之间切换。修改文字不会移动时间。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>C</kbd> 合并同句内连续选中的字词；</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Esc</kbd> 取消拖动；</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>F</kbd> 试听选中的字幕或字词。</span>
+          <span class="help-break" aria-hidden="true"></span>
           <span>显示字词时间码时，可在右键菜单的「高级操作」中，将选中字幕的字词逐个转为独立字幕。</span>
         </div>
       </section>
@@ -857,7 +881,7 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">启用与导入</h5>
         <div class="help-category">
-          <span>在「工程设置 → 双语字幕」开启副轨，导入副字幕并检查匹配预览；也可在副轨空白处右键创建。重新导入会替换副轨。</span>
+          <span>在 <button type="button" class="help-inline-action" data-settings-page="multi-subtitle">工程设置 → 双语字幕</button> 开启副轨，导入副字幕并检查匹配预览；也可在副轨空白处右键创建。重新导入会替换副轨。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span>按语言选择单词型或字符型拆分，并选择主轨、副轨或双列显示。关闭双语字幕只隐藏副轨，保留内容与绑定。</span>
         </div>
@@ -865,7 +889,11 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">绑定与导出</h5>
         <div class="help-category">
-          <span><kbd>G</kbd> 自动匹配并绑定主副字幕；<kbd>Shift+G</kbd> 解绑当前副字幕；<kbd>H</kbd> 将选中的副字幕时长对齐到绑定的主字幕。自动匹配依据时间，需人工检查；时间联动在工程设置中调整。</span>
+          <span><kbd>G</kbd> 自动匹配并绑定主副字幕；</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Shift+G</kbd> 解绑当前副字幕；</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>H</kbd> 将选中的副字幕时长对齐到绑定的主字幕。自动匹配依据时间，需人工检查；时间联动在工程设置中调整。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span>SRT（双语合并）合并主副文本；ASS 可分别设置主副样式。导出前检查显隐、位置和同步，保留工程以便继续编辑。</span>
         </div>
@@ -905,7 +933,9 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">创建与编辑</h5>
         <div class="help-category">
-          <span>按 M 或点击波形「标记编辑」，打开「标记与区段」。可创建单点标记或有起止时间的区段，填写名称、备注和颜色。</span>
+          <span>按 <kbd>M</kbd> 或点击波形「标记编辑」启用标记轨道，再点击「标记与区段」打开管理窗。可创建单点标记或有起止时间的区段，填写名称、备注和颜色。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>也可在 <button type="button" class="help-inline-action" data-settings-page="project-tracks" data-settings-target="project-marker-track-toggle">工程设置 → 字幕轨道</button> 中切换标记轨道。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span>点击列表，或双击 / 右键波形标记进行编辑，完成后点击「完成」。批量删除前检查筛选与选中范围；支持撤销。</span>
         </div>
@@ -2204,11 +2234,12 @@ __WAVEFORM_CSS__
                 <option value="reapeaks" selected>REAPER 波形</option>
               </select>
             </label>
-            <label class="toggle editor-settings-item" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
+            <label class="toggle editor-settings-item waveform-inline-checkbox" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
               <input type="checkbox" id="waveform-spectral-color" aria-describedby="waveform-spectral-status"> 频谱颜色
               <span class="waveform-spectral-status" id="waveform-spectral-status" role="status" aria-live="polite" aria-atomic="true" hidden></span>
             </label>
-            <label class="editor-settings-item waveform-settings-toggle-row" id="waveform-thumbnail-setting" title="在波形上方显示视频缩略图导航；本机 Server 绑定视频时可用">
+            <div class="waveform-thumbnail-row" id="waveform-thumbnail-setting">
+              <label class="editor-settings-item" title="在波形上方显示视频缩略图导航；本机 Server 绑定视频时可用">
               <span>视频缩略图</span>
               <select id="waveform-thumbnail-mode" aria-label="视频缩略图" aria-describedby="waveform-thumbnail-status">
                 <option value="strip">铺满画面带</option>
@@ -2216,10 +2247,11 @@ __WAVEFORM_CSS__
                 <option value="hidden">隐藏画面带</option>
               </select>
               <span id="waveform-thumbnail-status" class="waveform-thumbnail-status" role="status" aria-live="polite" aria-atomic="true"></span>
-            </label>
-            <label class="toggle editor-settings-item waveform-settings-toggle-row" id="waveform-thumbnail-decode-setting" title="铺满模式下为当前视图实时解码缺失的画面格；关闭后只读取并显示已有缓存画面。关键帧标记模式不参与实时解码">
-              <input type="checkbox" id="waveform-thumbnail-decode" aria-label="实时生成补间" aria-describedby="waveform-thumbnail-status" checked> 实时生成补间
-            </label>
+              </label>
+              <label class="toggle editor-settings-item waveform-inline-checkbox" id="waveform-thumbnail-decode-setting" title="铺满模式下为当前视图实时解码缺失的画面格；关闭后只读取并显示已有缓存画面。关键帧标记模式不参与实时解码">
+                <input type="checkbox" id="waveform-thumbnail-decode" aria-label="实时生成补间" aria-describedby="waveform-thumbnail-status" checked> 实时生成补间
+              </label>
+            </div>
             <span class="editor-settings-item">振幅
               <span class="editor-settings-stepper">
                 <button type="button" id="waveform-scale-down" title="减小波形振幅">−</button>
@@ -2261,6 +2293,9 @@ __WAVEFORM_CSS__
             <small class="settings-panel-hint" id="waveform-row-height-scope">单轨使用此行高；双语行高在双语字幕设置中配置。</small>
             <label class="toggle editor-settings-item" title="在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号">
               <input type="checkbox" id="waveform-show-group-badges" checked> 分组标记
+            </label>
+            <label class="toggle editor-settings-item waveform-cue-tooltip-setting">
+              <input type="checkbox" id="waveform-cue-tooltip" checked> 悬浮时显示完整文本
             </label>
             <label class="editor-settings-item" title="被禁用字幕的波形显示方式">禁用项
               <select id="waveform-disabled-display">

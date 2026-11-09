@@ -486,6 +486,40 @@ test('字词码模式：双击字词块弹出字词气泡，等长改字同步�
   await expect(popup).toHaveCount(0);
 });
 
+test('word-playback: 双击字词编辑不切换播放，随后双击空白波形仍切换播放', async ({ page }) => {
+  await openEditor(page);
+  await page.evaluate(() => {
+    const editor = window.MaweCoreState.waveformEditor;
+    window.__playbackToggleCount = 0;
+    editor.options.togglePlayback = () => { window.__playbackToggleCount += 1; };
+    window.MaweWordTiming.setEnabled(true);
+    editor.scroll.scrollTop = 0;
+  });
+  const word = page.locator('.waveform-word-block[data-segment-idx="0"][data-item-idx="0"]').first();
+  await expect(word).toBeVisible();
+  const box = await word.boundingBox();
+  await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+  const popup = page.locator('.waveform-cue-quick-edit');
+  await expect(popup.locator('textarea')).toHaveValue('第一');
+  expect(await page.evaluate(() => window.__playbackToggleCount)).toBe(0);
+  await popup.locator('textarea').press('Escape');
+
+  const blank = await page.evaluate(() => {
+    const row = document.querySelector('.waveform-word-block[data-segment-idx="0"]').closest('.waveform-row');
+    const rect = row.getBoundingClientRect();
+    for (let y = rect.top + 5; y < rect.bottom - 5; y += 5) {
+      for (let x = rect.right - 10; x > rect.left + rect.width / 2; x -= 10) {
+        const target = document.elementFromPoint(x, y);
+        if (target && target.closest('.waveform-row') === row
+            && !target.closest('.waveform-cue-block, .waveform-gap-block, .waveform-word-block, .waveform-word-boundary, .waveform-marker-track')) return { x, y };
+      }
+    }
+    throw new Error('No blank waveform point');
+  });
+  await page.mouse.dblclick(blank.x, blank.y);
+  await expect.poll(() => page.evaluate(() => window.__playbackToggleCount)).toBe(1);
+});
+
 test('滚动后贴近视口顶部的块：气泡翻到下方且完整可见，Ctrl+S 落盘气泡文字', async ({ page }) => {
   await openEditor(page);
   // 滚动波形让第二句的首个片段落在视口顶部工具栏下方一点（旧实现会按

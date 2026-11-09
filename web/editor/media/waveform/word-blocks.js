@@ -66,8 +66,10 @@ export function createWordBlocks(dependencies) {
         block.style.setProperty('--cue-color', colorForSegment(segment));
         block.classList.toggle('selected', selection.has(entry.index));
         block.classList.toggle('disabled', Boolean(segment.disabled));
-        const time = `${timing.format(entry.start)} → ${timing.format(entry.end)}`;
-        block.title = `${entry.text}\n${time}`;
+        if (this.settings.showCueTooltip !== false) {
+          const time = `${timing.format(entry.start)} → ${timing.format(entry.end)}`;
+          block.title = `${entry.text}\n${time}`;
+        }
         const label = document.createElement('span');
         label.className = 'waveform-word-label';
         label.dataset.wordProjectContent = 'true';
@@ -262,6 +264,7 @@ export function createWordBlocks(dependencies) {
       if (lastWordClick && lastWordClick.index === index && lastWordClick.itemIndex === itemIndex
           && now - lastWordClick.time <= 500) {
         this._wordQuickEditClick = null;
+        this._wordQuickEditDoubleClickTime = now;
         const block = this.firstVisibleWordBlock(index, itemIndex);
         if (block) {
           this.openWordQuickEdit(index, itemIndex, block, {
