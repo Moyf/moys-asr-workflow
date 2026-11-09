@@ -1,5 +1,5 @@
 import { commitCuePanelEdit } from './editor-cue-panel.js';
-import { selectOnly } from './editor-selection.js';
+import { clearSelection as clearCueSelection, selectOnly } from './editor-selection.js';
 import { syncTimelineGroupRanges } from './editor-text-cleanup.js';
 import { timelineTimingAdapter } from './editor-timeline.js';
 
@@ -219,7 +219,7 @@ export function initMaweWordTiming() {
       return;
     }
     MaweCommands.run(ui('字词拆成字幕', 'Split words into subtitles'), () => {
-      clearSelection({ commitCuePanel: false });
+      clearCueSelection({ commitCuePanel: false });
       clearSelection();
       MaweMultiSubtitleCore.removeBindingsForSegmentIds(plan.conversions.map(c => c.id), []);
       MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...plan.segments);
