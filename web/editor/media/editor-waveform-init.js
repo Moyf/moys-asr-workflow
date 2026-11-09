@@ -90,15 +90,23 @@ export function initMaweWaveformInit() {
         MaweHint.flashHint('光标必须在词与词之间才能拆分', 'invalid');
         return false;
       }
-      const reopen = (nextIndex) => requestAnimationFrame(() => {
-        const next = segments?.[nextIndex];
-        if (!next || !waveform) return;
-        if (track === 'extension') MaweSelection.selectOnlyExtension(nextIndex);
-        else if (track === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(nextIndex);
-        else MaweSelection.selectOnly(nextIndex);
-        waveform.revealTime(Number(next.start), true);
-        waveform.openCueQuickEditAtIndex(track, nextIndex);
-      });
+      const reopen = (nextIndex) => {
+        if (!MaweSettings.EDITOR_SETTINGS.quickEditSplitFocusNext) {
+          MaweSelection.clearSelection();
+          MaweSelection.lastClickedIdx = -1;
+          MaweSelection.lastClickedExtensionIdx = -1;
+          return;
+        }
+        requestAnimationFrame(() => {
+          const next = segments?.[nextIndex];
+          if (!next || !waveform) return;
+          if (track === 'extension') MaweSelection.selectOnlyExtension(nextIndex);
+          else if (track === 'overlay') window.MaweCuePanelWiring.selectOverlayCueRow(nextIndex);
+          else MaweSelection.selectOnly(nextIndex);
+          waveform.revealTime(Number(next.start), true);
+          waveform.openCueQuickEditAtIndex(track, nextIndex);
+        });
+      };
       if (track === 'main') {
         const signature = `${offset}:${segment.text}`;
         const previous = MaweSplitCore.pendingLinkedSplit;

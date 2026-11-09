@@ -81,6 +81,28 @@ test('快捷编辑按设置拆分并继续编辑后半句', async ({ page }) => 
   await expect.poll(() => page.evaluate(() => window.MaweBoot.DATA.segments[1].text)).toBe('后半句');
 });
 
+test('quick split focus setting persists and leaves no selection when disabled', async ({ page }) => {
+  await openEditor(page);
+  await page.evaluate(() => {
+    const toggle = document.getElementById('quick-edit-split-focus-next');
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.querySelectorAll('.waveform-cue-block[data-track="main"]').length > 0);
+  await expect(page.locator('#quick-edit-split-focus-next')).not.toBeChecked();
+  await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first().dblclick();
+  const input = page.locator('.waveform-cue-quick-edit textarea');
+  await input.fill('甲乙丙丁');
+  await input.evaluate(el => el.setSelectionRange(2, 2));
+  await input.press('Enter');
+  await expect.poll(() => page.evaluate(() => window.MaweBoot.DATA.segments.slice(0, 2).map(s => s.text)))
+    .toEqual(['甲乙', '丙丁']);
+  await expect(page.locator('.waveform-cue-quick-edit')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => [...MaweSelection.selectedIdxs])).toEqual([]);
+  await expect.poll(() => page.evaluate(() => MaweSelection.lastClickedIdx)).toBe(-1);
+});
+
 test('Ctrl+Enter 拆分设置、边界拒绝与快捷编辑帮助', async ({ page }) => {
   await openEditor(page);
   await page.evaluate(() => {
@@ -130,6 +152,29 @@ test('Ctrl+Enter 拆分时，Enter 保存；拆分后继续编辑后半句', asy
 });
 
 for (const track of ['extension', 'overlay']) {
+  test(`${track} quick split focus disabled after confirmation`, async ({ page }) => {
+    await openEditor(page);
+    await page.evaluate(() => {
+      MaweSettings.updateEditorSettings({ quickEditSplitFocusNext: false });
+      const cue = { id: 'extra-1', start: 1000, end: 5000, text: '甲乙丙丁' };
+      MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+        tracks: [{ id: 'ext-1', role: 'extension', split_mode: 'continuous', segments: [{ ...cue }] }], bindings: [] };
+      MaweBoot.DATA.overlay_track = { enabled: true, segments: [{ ...cue }] };
+      MaweCuePanel.renderAll({ waveform: 'full' });
+    });
+    await page.evaluate(track => MaweCoreState.waveformEditor.openCueQuickEditAtIndex(track, 0), track);
+    const input = page.locator('.waveform-cue-quick-edit textarea');
+    await input.evaluate(el => el.setSelectionRange(2, 2));
+    await input.press('Enter');
+    await expect(page.locator('#multi-subtitle-split-modal')).toBeVisible();
+    await page.locator('#multi-subtitle-split-confirm').click();
+    await expect(page.locator('.waveform-cue-quick-edit')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(track => {
+      const segments = track === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack().segments : MaweBoot.DATA.overlay_track.segments;
+      return segments.map(s => s.text);
+    }, track)).toEqual(['甲乙', '丙丁']);
+    await expect.poll(() => page.evaluate(track => [...MaweState.selection.indices(track)], track)).toEqual([]);
+  });
   test(`${track} 快捷编辑拆分确认后继续编辑后半句`, async ({ page }) => {
     await openEditor(page);
     await page.evaluate(() => {

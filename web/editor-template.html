@@ -830,10 +830,10 @@ __WAVEFORM_CSS__
         <div class="help-category">
           <span>双击波形中的字幕块或字词块，就地编辑文字。新建字幕、选中字幕后按 <kbd>Enter</kbd> ，或在叠加字幕右键菜单中选择「编辑文本」，也可打开弹窗。</span>
           <span class="help-break" aria-hidden="true"></span>
-          <span><kbd id="help-quick-split-key">Enter</kbd> 在光标处拆分字幕，拆分后继续编辑后半句</span>
+          <span><kbd id="help-quick-split-key">Enter</kbd> 在光标处拆分字幕，默认继续编辑后半句</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd id="help-quick-confirm-key">Ctrl+Enter</kbd> 保存并关闭</span>
-          <span class="help-note">可在 <button type="button" class="help-inline-action" data-settings-page="split-merge" data-settings-target="split-key">全局设置 → 拆分合并</button> 中设置字幕拆分和保存按键。</span>
+          <span class="help-note">可在 <button type="button" class="help-inline-action" data-settings-page="split-merge" data-settings-target="split-key">全局设置 → 拆分合并</button> 中设置拆分、保存按键及拆分后是否继续编辑。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Shift+Enter</kbd> 换行</span>
           <span class="help-break" aria-hidden="true"></span>
@@ -1677,6 +1677,9 @@ __WAVEFORM_CSS__
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
     <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分。</small>
+    <label class="toggle editor-settings-item">
+      <input type="checkbox" id="quick-edit-split-focus-next" checked> 快捷编辑拆分后自动聚焦后半句
+    </label>
     </div>
   </div>
   <span class="editor-settings-group-heading" id="merge-join-settings-title">合并字幕时插入字符</span>
