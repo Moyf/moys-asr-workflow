@@ -180,8 +180,12 @@ export function createUtilsModule(dependencies) {
     }
     const withLeadingSlash = normalized;
     const rooted = withLeadingSlash.startsWith('/') ? withLeadingSlash : `/${withLeadingSlash}`;
+    // 本分支处理的是非 Windows 盘符路径（POSIX 路径、相对路径等），只把段内
+    // 形如 D: 的目录名编码后还原回裸冒号（大小写与内容不变，并非改写）。
+    // 盘符小写 %3a 契约仅作用于上方已识别为 Windows 盘符路径的分支（路径
+    // 起始盘符位置）；POSIX 上合法目录名 /media/D:/take.mp4 必须原样保留。
     const encoded = rooted.split('/').map((part, index) => (
-      index === 0 && part === '' ? '' : encodeURIComponent(part).replace(/^([A-Za-z])%3A$/, (_, drive) => `${drive.toLowerCase()}%3a`)
+      index === 0 && part === '' ? '' : encodeURIComponent(part).replace(/^([A-Za-z])%3A$/, '$1:')
     )).join('/');
     return `file://${encoded}`;
   }

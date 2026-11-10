@@ -5366,6 +5366,11 @@ test('sanitizes deterministic names and escapes XML and file URLs', () => {
     helpers.exportPathToFileUrl('file:///E:/素材/表情包.gif'),
     'file://localhost/e%3a/%E7%B4%A0%E6%9D%90/%E8%A1%A8%E6%83%85%E5%8C%85.gif',
   );
+  // POSIX 路径中形如 D: 的目录名是合法名称：不得被当作盘符改写大小写或编码形态。
+  assert.equal(
+    helpers.exportPathToFileUrl('/media/D:/take.mp4'),
+    'file:///media/D:/take.mp4',
+  );
   assert.equal(
     helpers.exportPathToFileUrl('/fixtures/测试 & take.mp4'),
     'file:///fixtures/%E6%B5%8B%E8%AF%95%20%26%20take.mp4',
@@ -5515,7 +5520,9 @@ function assertDaVinciFileContract(xml) {
     assert.ok(file.indexOf('<timecode>') < file.indexOf('<media>'), `timecode must precede <media>: ${file.slice(0, 160)}`);
     if (hasPathurl) {
       const url = /<pathurl>([^<]+)<\/pathurl>/.exec(file)[1];
-      assert.doesNotMatch(url, /%3A/);
+      // 盘符位置（localhost 后）必须是小写盘符 + 小写 %3a：禁止大写编码形态
+      // 与裸冒号形态；路径其余段不受此约束（POSIX 目录名可能形如 D:）。
+      assert.doesNotMatch(url, /localhost\/[A-Za-z]%3A\//);
       assert.doesNotMatch(url, /localhost\/[A-Za-z]:/);
     }
   }
