@@ -118,6 +118,50 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         for source, _destination in data_files:
             self.assertTrue(Path(source).exists(), f"Missing packaged source: {Path(source).relative_to(ROOT)}")
 
+    def test_local_html_asset_references_are_covered_by_packaged_datas(self) -> None:
+        """Given packaged HTML pages reference repository assets by relative path, When the spec datas are read, Then every local reference ships in the bundle.
+
+        裂图回归防护：Launcher 赞助二维码（ca77c129）改了 index.html 但漏改
+        MAW.spec datas，e2e 跑源码态路径解析正确、打包版一直裂图。此契约扫描
+        打包 HTML 中 <img>/<script>/<link> 的本地相对引用，断言每个引用要么
+        位于整目录打包的目录（web/、server-editor/、server-align/）内，要么被
+        datas 显式带上，让「页面引用了仓库文件但打包没带上」在 CI 就红。
+        """
+        tree = ast.parse(read_text("scripts/packaging/MAW.spec"))
+        assignment = next(
+            node for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "datas" for target in node.targets)
+        )
+        data_pairs = eval(
+            compile(ast.Expression(assignment.value), "MAW.spec datas", "eval"),
+            {"ROOT": ROOT, "str": str},
+        )
+        packaged_files = {Path(source).resolve() for source, _destination in data_pairs}
+        packaged_dirs = [Path(source).resolve() for source, _destination in data_pairs if Path(source).is_dir()]
+
+        # blank-editor.html 由 edit.py 从 editor-template.html 生成（打包根目录），
+        # 模板扫描即覆盖其源头；__XX__ 形态占位符与 data: URI 由运行时注入。
+        offenders: list[str] = []
+        for page in ("web/launcher/index.html", "web/editor-template.html"):
+            for match in re.finditer(r'<(?:img|script|link)\b[^>]*?\s(?:src|href)="([^"]+)"', read_text(page)):
+                reference = match.group(1).split("?", 1)[0].split("#", 1)[0]
+                if (
+                    not reference
+                    or reference.startswith(("data:", "#", "mailto:"))
+                    or re.fullmatch(r"(?:https?:)?//\S+", reference)
+                    or re.fullmatch(r"__[A-Z0-9_]+__", reference)
+                ):
+                    continue
+                resolved = ((ROOT / page).parent / reference).resolve()
+                if not resolved.is_file():
+                    offenders.append(f"{page}: 引用的仓库文件不存在: {reference}")
+                elif resolved not in packaged_files and not any(
+                    resolved.is_relative_to(directory) for directory in packaged_dirs
+                ):
+                    offenders.append(f"{page}: {reference} 未被 MAW.spec datas 覆盖（不在整目录打包目录内，也无显式条目）")
+        self.assertEqual(offenders, [])
+
     def test_pages_builds_repository_bundles_before_portable_editor(self) -> None:
         workflow = read_text(".github/workflows/deploy-editor-pages.yml")
         build_step = workflow.index("- name: Build web bundles")
@@ -234,6 +278,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("assets", spec)
         self.assertIn("maw.ico", spec)
         self.assertIn("show.webp", spec)
+        self.assertIn("support-qr.png", spec)
         self.assertIn("icon=str(ROOT / 'assets' / 'maw.ico')", spec)
         self.assertIn("COLLECT(", spec)
         self.assertNotIn("onefile=True", spec)
