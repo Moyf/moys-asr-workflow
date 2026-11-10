@@ -240,6 +240,7 @@ git diff --name-status
 - 注意本项目 `.field` 只有 `margin-top`（没有下边距）、`.hint` 是 `margin: 0`：紧跟在 `.field` 后面的提示行 / 按钮行 / 独立区块必须自带 `margin-top`，不能指望对方留白。
 - 间距验收必须用实测数据（如 `getComputedStyle` 的 `marginTop`、相邻元素的实际像素距离 ≥ 8px），不能凭截图目测「看起来有间距」——这条规则反复被违反过，目测判断不可靠。
 - 凡是改动 Launcher / 编辑器布局的任务，收尾前把涉及区域截图自查一遍。
+- 编写或修改 `tools/` 下的浏览器工具页（确认页、核对页、对比页、审阅页、仪表盘），以及任何由脚本生成的 HTML 工具页时，必须先读 [tools/TOOL_PAGE_GUIDE.md](tools/TOOL_PAGE_GUIDE.md) 并遵循，交付前按文末清单自查。
 
 ## PR 描述：先让 reviewer 看懂
 
