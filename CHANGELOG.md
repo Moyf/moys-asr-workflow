@@ -2,6 +2,12 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
+## [未发布]
+
+### 🐛 修复
+
+- **图片字幕 FCP 7 XML 导入达芬奇全片离线** ： 旧实现仅表情包分支的 <file> 节点携带 <timecode>，图片字幕与图文分支缺失，达芬奇把整个序列判离线；现统一为所有 defining file 节点生成 timecode，盘符 URL 编码统一为小写盘符 + %3a（达芬奇对大写形态整段报离线，PR/VEGAS 解码等价），并新增达芬奇兼容契约测试防止回归。
+
 ## [1.11.0] - 2026-11-09
 
 ![1.11.0](docs/assets/sticker/moy-idea.gif)
