@@ -205,6 +205,11 @@
 
 [评估结论、现成件清单与设计要点](plans/ASS_FRAME_STICKER_COMPOSE.md)；CSS 止血已实施，路线未实施，待 cue-left / 同屏多张成为日常再投入。
 
+<a name="plan-ocr-terms-tool"></a>
+### 视频术语提取工具（OCR → 热词）计划
+
+[打开正文](plans/OCR_TERMS_TOOL.md)；完整规格见 [tools/term-extract/SPEC.md](../tools/term-extract/SPEC.md)。M1 独立工具已完成，待实测后合并。
+
 <a name="engineering-server"></a>
 ### 源码服务与桌面开发
 

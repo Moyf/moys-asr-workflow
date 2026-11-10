@@ -306,7 +306,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("uv export --frozen", release)
 
         self.assertIn('RUNTIME_VERSION = "8"', local_spec)
-        self.assertIn('OCR_RUNTIME_VERSION = "4"', ocr_spec)
+        self.assertIn('OCR_RUNTIME_VERSION = "5"', ocr_spec)
 
         self.assertIn("_has_cuda", runtimes_base)
         self.assertIn("requirements_in", runtimes_base)

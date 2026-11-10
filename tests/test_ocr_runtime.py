@@ -19,6 +19,7 @@ from maw.ocr_runtime import (
     managed_ocr_runtime_status,
     recover_ocr_runtime_install,
     run_ocr_in_runtime,
+    run_ocr_scan_in_runtime,
 )
 from maw.postprocess import OutputMode
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
@@ -159,6 +160,91 @@ class OcrRuntimeTests(unittest.TestCase):
         self.assertIn("--media-path", command)
         self.assertIn("--output-directory", command)
         self.assertIn(str(self.root.parent / "ocr-output"), command)
+
+    def test_worker_scan_command_collects_blocks_and_summary(self) -> None:
+        self._make_ready_runtime()
+        ffmpeg = self.root.parent / "ffmpeg.exe"
+        ffmpeg.write_bytes(b"ffmpeg")
+        video = self.root.parent / "clip.mp4"
+        video.write_bytes(b"video")
+        command_lines: list[list[str]] = []
+
+        def fake_run(command, *, env, cancel, on_line, cwd, **_unused):
+            _ = (env, cancel, cwd)
+            command_lines.append(command)
+            on_line(
+                json.dumps(
+                    {
+                        "type": "blocks",
+                        "tMs": 618_000,
+                        "frame": "frame-000000618000.jpg",
+                        "blocks": [
+                            {"text": "前往星核", "score": 0.9412, "box": [10, 20, 220, 44]},
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            on_line(
+                json.dumps(
+                    {
+                        "type": "result",
+                        "framesTotal": 6,
+                        "framesScanned": 6,
+                        "framesSkippedDuplicate": 1,
+                        "framesFailed": 0,
+                        "blocksTotal": 1,
+                    }
+                )
+            )
+            return 0
+
+        with mock.patch("maw.ocr_runtime._run_process", side_effect=fake_run):
+            result = run_ocr_scan_in_runtime(
+                video,
+                ffmpeg_path=ffmpeg,
+                duration_ms=6_000,
+                fps=0.5,
+                model_id=OCR_SMALL_MODEL_ID,
+                runtime_root=self.root,
+            )
+
+        command = command_lines[0]
+        self.assertIn("scan", command)
+        self.assertIn(OCR_SMALL_MODEL_ID, command)
+        self.assertIn("--duration-ms", command)
+        self.assertIn("6000", command)
+        self.assertIn("--fps", command)
+        self.assertIn("0.5", command)
+        self.assertNotIn("--frames-dir", command)
+        self.assertEqual(result["framesTotal"], 6)
+        self.assertEqual(len(result["blocks"]), 1)
+        block = result["blocks"][0]
+        self.assertEqual(block["text"], "前往星核")
+        self.assertEqual(block["tMs"], 618_000)
+        self.assertEqual(block["frame"], "frame-000000618000.jpg")
+        self.assertEqual(block["box"], [10, 20, 220, 44])
+
+    def test_worker_scan_surfaces_worker_error(self) -> None:
+        self._make_ready_runtime()
+        ffmpeg = self.root.parent / "ffmpeg.exe"
+        ffmpeg.write_bytes(b"ffmpeg")
+        video = self.root.parent / "clip.mp4"
+        video.write_bytes(b"video")
+
+        def fake_run(command, *, on_line, **_unused):
+            _ = command
+            on_line(json.dumps({"type": "error", "detail": "boom"}, ensure_ascii=False))
+            return 1
+
+        with mock.patch("maw.ocr_runtime._run_process", side_effect=fake_run):
+            with self.assertRaises(OcrRuntimeError):
+                run_ocr_scan_in_runtime(
+                    video,
+                    ffmpeg_path=ffmpeg,
+                    duration_ms=1_000,
+                    runtime_root=self.root,
+                )
 
     def _make_ready_runtime(self) -> None:
         python = self.root / ("python/python.exe" if sys.platform == "win32" else "python/bin/python")
