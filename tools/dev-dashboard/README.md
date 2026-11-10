@@ -17,8 +17,8 @@ node tools/dev-dashboard/serve.mjs [--port 8262] [--open]
 
 ## 功能（V1）
 
-- **PR 看板**：6 列（未分配 / Backlog / Review / Fixing / Hold / Pass），卡片可拖拽分列，也可用卡片右下角下拉选择；每次刷新拉取最新数据，顶栏可开 60 秒自动刷新。首次读取、手动及自动刷新显示原生不定进度条（gh 没有真实百分比），期间禁用刷新按钮、阻止重复刷新，旧卡片保留可用；四路读取全部结束后统一更新，失败保留旧数据并显示错误。
-- **正文悬停预览**：悬停卡片约 300ms 显示正文浮层，鼠标移入可滚动、选字；正文随列表一起获取，悬停不另发请求。键盘聚焦 PR 标题可打开，↓ 进入阅读，Esc 关闭。支持标题、段落、列表、强调、代码、引用、链接、表格和任务列表；原始 HTML 作为文字显示，不加载图片。空/空白/null 显示暂无正文，缺失或非法类型提示重启旧服务；标题仍打开 GitHub 原文。
+- **PR 看板**：6 列（未分配 / Backlog / Review / Fixing / Hold / Pass），卡片可拖拽分列，也可用卡片右下角下拉选择；每次刷新拉取最新数据，顶栏可开 60 秒自动刷新。首次读取、手动及自动刷新均显示原生不定进度条与加载状态（gh 没有真实百分比），期间禁用刷新按钮、阻止重复刷新，旧卡片保留可用；四路读取全部结束后统一更新，失败保留旧数据并显示错误。
+- **正文悬停预览**：悬停卡片约 300ms 显示正文浮层，鼠标移入浮层可滚动、选字；正文随 `gh pr list` 一次获取，悬停不另发请求。键盘聚焦 PR 标题也可打开，按 ↓ 进入正文阅读，Esc 关闭。支持标题、段落、列表、粗斜体、代码、引用、链接、GFM 表格和任务列表；原始 HTML 作为文本显示，不加载图片，仅显示图片说明。仅允许绝对 HTTP(S) 链接，新标签打开并隔离来源；不自动访问链接。空字符串 / 空白 / null 显示「暂无正文」，缺失或非法类型则提示重启看板服务，数据恢复后清除告警；点击标题仍在新标签打开 GitHub PR。
 - **自定义状态**：即上面的六列，数据存在 `.artifacts/dev-dashboard/status.json`（git 忽略，不入库、不上传）。要调整状态集，改 `app.js` 顶部的 `STATUSES` 数组即可，server 端不限定枚举。
 - **milestone 视角**：卡片显示所属 milestone；`dueOn` 两周内或已逾期会高亮；未挂 milestone 的卡片有黄色警示边，工具栏可按「未挂 milestone」筛选。
 - **作者筛选**：工具栏下拉按作者过滤卡片，选项带 PR 数量（按数量降序）；作者在下次刷新后消失时自动回落「全部作者」。
@@ -33,7 +33,8 @@ node tools/dev-dashboard/serve.mjs [--port 8262] [--open]
 - 静态资源只暴露面板自身文件、两个精确映射的共用主题资源与 `tools/changelog-editor/` 目录，禁止路径穿越；共用资源不放宽面板的 CSP；
 - 服务端不保存任何 GitHub 令牌，认证完全复用本机 `gh` CLI 的登录态；
 - 无认证机制，**不要**把端口转发到外网。
-- PR 正文当前保留主分支的固定 marked 15.0.12 词法分析与 DOM 白名单输出；不加载图片，不自动访问链接，仅允许绝对 HTTP(S) 链接。解析器缺失显示原文与重启提示。其源为 npm `marked@15.0.12` 官方分发，MIT 许可证位于 `marked-LICENSE.md`；不访问 CDN。
+- Markdown 使用本地固定版本 marked 15.0.12 的词法分析，节点通过白名单构造而非注入解析器生成的 HTML；不支持 GitHub 专属扩展或原始 HTML。解析器资源缺失时显示原文并提示重启旧服务。
+- 本地 `marked-15.0.12.min.js` 来自 npm `marked@15.0.12` 发布包（MIT，许可证见 `marked-LICENSE.md`）；包 SHA-512 / npm integrity 为 `sha512-8dD6FusOQSrpv9Z1rdNMdlSgQOIP880DHqnohobOmYLElGEqAL/JvxvuxZO16r4HtjTlfPRDC1hbvxC9dPN2nA==`。运行时不访问 CDN。
 
 ## 自测
 
@@ -43,11 +44,19 @@ node --test tools/dev-dashboard/serve.test.mjs
 
 覆盖正文随列表获取、front-matter 解析、清单分组、CI 结论汇总、状态与忽略表读写（含原子写与损坏 JSON）、写端点 CSRF / 参数校验、已有实例探测（`isDashboardServing`）。
 
-`node --test tools/dev-dashboard/app.test.mjs` 使用 Playwright 验证主分支的正文悬停/键盘/安全、空/缺字段、刷新进度与数据一致性，不启动服务或访问 GitHub；新工具精简/主题回归见 `tests/e2e/tool-compact.spec.mjs`。
+浏览器回归（需仓库开发依赖与 Playwright Chromium；不启动服务、不访问 GitHub）：
+
+```bash
+node --test tools/dev-dashboard/app.test.mjs
+```
+
+覆盖 hover / 键盘预览、空正文与外部 HTML 安全、缺字段告警与恢复、浮层内滚动、刷新与拖拽清理、窄屏与视口边缘布局，以及慢加载进度、手动 / 自动刷新重入、早失败等待其余请求、原子更新与失败保留旧数据。
+
+工具精简与主题对拍回归见 `tests/e2e/tool-compact.spec.mjs`，说明阅读器的共享模块见 [tools/shared/README.md](../shared/README.md)。本轮保留 PR 正文专用输出，不静默改动上游安全策略。
 
 ## 边界说明
 
-- 浮层左右放不下时位于卡片上方或下方，按可用空间缩短；极矮窗口无至少 100px 可读空间时不弹出，仍可点击标题阅读原文。
+- 浮层不会遮挡原卡片：左右放不下时改放卡片上方或下方，并按可用空间缩短。极矮窗口没有至少 100px 可读空间时不弹出，仍可点击标题阅读 GitHub 原文。
 - PR 数据每次刷新现调 `gh`，不缓存；`statusCheckRollup` 的汇总规则（成功 / 失败 / 运行中 / 无）在前端与测试中各有一份同逻辑实现，改动需两处同步。
 - 状态表按 PR 号存储，PR 合并/关闭后条目保留（再开的同名 PR 依旧生效）；手工清理直接编辑 `status.json`。
 - greptile 审查结论聚合、外部贡献者补审提醒等为 V2 候选项，本期未做。

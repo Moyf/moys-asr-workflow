@@ -1,3 +1,4 @@
+import { mergeExtensionSegments, mergeSegments } from './editor-segment-ops.js';
 import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
 import { getOverlayTrack, mergeOverlaySegments } from './overlay-track.js';
 
@@ -35,9 +36,9 @@ export function initMaweMergeAdjacent() {
     return false;
   }
   const indices = direction < 0 ? [neighbor, index] : [index, neighbor];
-  if (extension) return MaweSegmentOps.mergeExtensionSegments(indices, track);
+  if (extension) return mergeExtensionSegments(indices, track);
   if (overlay) return mergeOverlaySegments(indices);
-  MaweSegmentOps.mergeSegments(indices);
+  mergeSegments(indices);
   return true;
 }
 

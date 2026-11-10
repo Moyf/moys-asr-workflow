@@ -307,6 +307,24 @@
       "exportName": "initMaweMultiImport"
     },
     {
+      "file": "editor/cues/editor-text-process.js",
+      "kind": "init",
+      "name": "text-process-init",
+      "exportName": "initMaweTextProcess"
+    },
+    {
+      "file": "editor/cues/editor-text-presets.js",
+      "kind": "init",
+      "name": "text-presets-init",
+      "exportName": "initMaweTextPresets"
+    },
+    {
+      "file": "editor/cues/editor-timed-text-edit.js",
+      "kind": "init",
+      "name": "timed-text-edit-init",
+      "exportName": "initMaweTimedTextEdit"
+    },
+    {
       "file": "editor/cues/editor-sticker-picker.js",
       "kind": "init",
       "name": "sticker-picker-init",
@@ -341,6 +359,12 @@
       "kind": "init",
       "name": "waveform-init-module",
       "exportName": "initMaweWaveformInit"
+    },
+    {
+      "file": "editor/cues/editor-word-timing.js",
+      "kind": "init",
+      "name": "word-timing-init",
+      "exportName": "initMaweWordTiming"
     },
     {
       "file": "editor/ui/editor-behavior-hints.js",
@@ -379,10 +403,22 @@
       "exportName": "initMaweSelection"
     },
     {
+      "file": "editor/cues/editor-binding-align.js",
+      "kind": "init",
+      "name": "binding-align-init",
+      "exportName": "initMaweBindingAlign"
+    },
+    {
       "file": "editor/cues/editor-cue-panel.js",
       "kind": "init",
       "name": "cue-panel-init",
       "exportName": "initMaweCuePanel"
+    },
+    {
+      "file": "editor/cues/editor-cue-elements.js",
+      "kind": "init",
+      "name": "cue-elements-init",
+      "exportName": "initMaweCueElements"
     },
     {
       "file": "editor/cues/editor-color-filter.js",
@@ -395,6 +431,54 @@
       "kind": "init",
       "name": "search-init",
       "exportName": "initMaweSearch"
+    },
+    {
+      "file": "editor/cues/editor-inline-edit.js",
+      "kind": "init",
+      "name": "inline-edit-init",
+      "exportName": "initMaweInlineEdit"
+    },
+    {
+      "file": "editor/cues/editor-split-core.js",
+      "kind": "init",
+      "name": "split-core-init",
+      "exportName": "initMaweSplitCore"
+    },
+    {
+      "file": "editor/cues/editor-split-context.js",
+      "kind": "init",
+      "name": "split-context-init",
+      "exportName": "initMaweSplitContext"
+    },
+    {
+      "file": "editor/cues/editor-segment-ops.js",
+      "kind": "init",
+      "name": "segment-ops-init",
+      "exportName": "initMaweSegmentOps"
+    },
+    {
+      "file": "editor/cues/editor-nav-preview.js",
+      "kind": "init",
+      "name": "nav-preview-init",
+      "exportName": "initMaweNavPreview"
+    },
+    {
+      "file": "editor/cues/editor-cue-events.js",
+      "kind": "init",
+      "name": "cue-events-init",
+      "exportName": "initMaweCueEvents"
+    },
+    {
+      "file": "editor/cues/editor-cue-list-anchor.js",
+      "kind": "init",
+      "name": "cue-list-anchor-init",
+      "exportName": "initMaweCueListAnchor"
+    },
+    {
+      "file": "editor/cues/editor-timeline.js",
+      "kind": "init",
+      "name": "timeline-init",
+      "exportName": "initMaweTimeline"
     },
     {
       "file": "editor/cues/editor-wiring-overlay-transfer.js",

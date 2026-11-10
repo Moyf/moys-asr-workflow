@@ -1,3 +1,4 @@
+import { updateCueColorPresentation, updateCueStickerPresentation } from './editor-cue-elements.js';
 import { commitCuePanelEdit, renderCurrentCuePanel } from './editor-cue-panel.js';
 import { applySearch } from './editor-search.js';
 import { clearSelection, isHiddenDisabled, updateMultiSelectionClasses } from './editor-selection.js';
@@ -207,7 +208,7 @@ export function initMaweColorFilter() {
       const segment = Number.isInteger(overlayIndex)
         ? getOverlayTrack()?.segments?.[overlayIndex]
         : null;
-      if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
+      if (segment) updateCueColorPresentation(el, colorBar, segment);
       return;
     }
     if (el.dataset.extIdx != null && el.dataset.idx == null) {
@@ -215,7 +216,7 @@ export function initMaweColorFilter() {
       const segment = Number.isInteger(extensionIndex)
         ? extensionTrack?.segments?.[extensionIndex]
         : null;
-      if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
+      if (segment) updateCueColorPresentation(el, colorBar, segment);
       return;
     }
     const mainIndex = el.dataset.idx != null
@@ -224,7 +225,7 @@ export function initMaweColorFilter() {
     const segment = Number.isInteger(mainIndex) && mainIndex >= 0
       ? MaweBoot.DATA.segments[mainIndex]
       : null;
-    if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
+    if (segment) updateCueColorPresentation(el, colorBar, segment);
   });
 }
 
@@ -240,7 +241,7 @@ export function initMaweColorFilter() {
       const segment = Number.isInteger(overlayIndex)
         ? getOverlayTrack()?.segments?.[overlayIndex]
         : null;
-      if (segment) MaweCueElements.updateCueStickerPresentation(el, slotEl, segment, overlayIndex, { overlayTrack: true });
+      if (segment) updateCueStickerPresentation(el, slotEl, segment, overlayIndex, { overlayTrack: true });
       return;
     }
     const isExtension = el.dataset.extIdx != null && el.dataset.idx == null;
@@ -249,7 +250,7 @@ export function initMaweColorFilter() {
       ? (Number.isInteger(index) ? extensionTrack?.segments?.[index] : null)
       : (Number.isInteger(index) && index >= 0 ? MaweBoot.DATA.segments[index] : null);
     if (segment) {
-      MaweCueElements.updateCueStickerPresentation(el, slotEl, segment, index, {
+      updateCueStickerPresentation(el, slotEl, segment, index, {
         extensionTrack: isExtension ? extensionTrack : null,
       });
     }

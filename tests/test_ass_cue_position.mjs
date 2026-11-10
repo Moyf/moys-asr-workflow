@@ -190,7 +190,7 @@ test('secondary tracks ignore positioning metadata, but track swaps retain it fo
 
 test('copy split makes independent overrides and merge preserves the leftmost value', () => {
   const splitContext = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h, MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), splitContext);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-split-core.js'), splitContext);
   const original = { id: 'a', start: 0, end: 2000, text: 'AB', assOverride: { pos: { x: 100, y: 200 } } };
   const parts = splitContext.window.MaweSplitCore.buildSplitPair(original, 1, 1000, 'a', false, 'continuous', { headIndex: 0, duplicateText: true });
   parts.left.assOverride.pos.x = 111;
@@ -202,7 +202,7 @@ test('copy split makes independent overrides and merge preserves the leftmost va
       getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '', removeBindingsForSegmentIds() {} },
     MaweTextCleanup: { syncTimelineGroupRanges() {} },
     MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } } };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), mergeContext);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-segment-ops.js'), mergeContext);
   const merged = mergeContext.window.MaweSegmentOps.mergeContiguousIndices([0, 1]);
   assert.deepEqual(plain(merged.assOverride), plain(parts.left.assOverride));
   merged.assOverride.pos.x = 333;
@@ -307,7 +307,7 @@ test('overlay overrides normalize strictly and invalid values are rejected', () 
 
 test('overlay merge keeps the leftmost override and split copies it to both halves', () => {
   const splitContext = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h, MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), splitContext);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-split-core.js'), splitContext);
   const original = { id: 'o1', start: 0, end: 2000, text: 'AB', assOverride: { scale: 1.22, pos: { x: 100, y: 200 } } };
   const parts = splitContext.window.MaweSplitCore.buildSplitPair(original, 1, 1000, 'o1', false, 'continuous', { headIndex: 0, duplicateText: true });
   assert.deepEqual(plain(parts.left.assOverride), plain(original.assOverride));

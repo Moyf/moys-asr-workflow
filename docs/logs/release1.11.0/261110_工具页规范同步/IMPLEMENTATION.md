@@ -113,6 +113,23 @@ OCR二次独立复核保留4major：模板变体、POSIX组回收、扫描取消
 
 最终独立OCR自审已放行，原9major/7minor及追加R1–R5代码闭环，当前所有已审范围未处置blocker/major为0。平台/媒体/历史磁盘与多文件非瞬时原子边界见REVIEW_FINDINGS。主分支合并后仍需组合检查，随后执行已授权提交/推送/PR。
 
+## 最终主分支集成与验证
+
+已提交当前改动为 `af435efb`，随后合并 `origin/main` 的 `f22df99b`（包含 PR正文/刷新进度与字幕域ESM接线）。冲突在CHANGELOG、NOTICE、日志索引、看板README/index/app.test逐项解决：保留双方入口/说明，测试仅将Tab起点移到新增末尾按钮，所有原功能断言保留；`git diff origin/main -- web`为空。
+
+合并后验证（命令仍经run_check）：
+
+| 层次 | 实际结果 | result.json |
+| --- | --- | --- |
+| 独立工具浏览器 | 7份spec共62项全部通过，1worker，含精简style/Markdown/热词报告/写盘锁 | `.artifacts/checks/20261110T133002Z-f8d6ee2b/result.json` |
+| 工具/看板Node | 81项通过（包含上游正文/刷新契约） | `20261110T132902Z-0ecaffb1` |
+| Python组合 | 758执行，755通过/3跳过，含OCR/发布恢复/运行环境/GUI/文档 | `20261110T133121Z-3d5dce02` |
+| 上游接线与相邻JS | 68项通过，新增ESM import契约与ASS/编辑行为单测 | `20261110T133121Z-6ed558ad` |
+| 构建/类型 | editor重建92工厂；typecheck/editor/launcher新鲜度通过 | `20261110T132902Z-93025029`、`20261110T132902Z-07df5e6e`、`20261110T133220Z-16c4a4f7`、`20261110T133220Z-dab80901` |
+| 文档/资源/静态 | check_docs、6项离线说明新鲜度、Ruff、cached diff空白检查通过 | `20261110T132902Z-983369dc`、`20261110T133121Z-2416bc78`、`20261110T133220Z-838cce7f` |
+
+新鲜度检查无nodeModules要求，vendor/license保持官方hash；MPL许可证原文尾空格仅在精确路径给gitattributes例外。历史6条日志索引提示保留，无新断链/结构错误。POSIX2项真实组回收本机跳过与1项既有平台跳过不能冒充通过；未跑全仓/远端CI、真实AI/模型/文件授权写盘、前台触屏和长片耗时/磁盘峰值，PR如实说明。
+
 提交准备的构建检查发现本地editor/launcher产物过期，已只重建ignored bundle，typecheck通过（`20261110T131128Z-2847b9f5`）；源码 `web/` 无改动，也未生成 blank-editor。最终合并最新main后还会重新构建/检查，不把此轮作为合并后证据。
 
 当前HEAD装配/共享编辑器utils/waveform定向420项通过（`.artifacts/checks/20261110T131239Z-d080dad4/result.json`），editor/launcher新鲜度与18份发布正文检查通过。此为公共层回归，不替代当前OCR与主分支合并后的组合验证。
