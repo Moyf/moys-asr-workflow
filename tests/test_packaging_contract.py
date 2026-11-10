@@ -146,6 +146,15 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         打包 HTML 中 <img>/<script>/<link> 的本地相对引用，断言每个引用要么
         位于整目录打包的目录（web/、server-editor/、server-align/）内，要么被
         datas 显式带上，让「页面引用了仓库文件但打包没带上」在 CI 就红。
+
+        目录内引用不做仓库存在性检查：整目录随包走、不存在漏打包面，且
+        web/*/boot/*-bundle.js 是不入库的构建产物，干净 checkout 缺失属正常。
+
+        契约边界（按设计，不扩展）：datas 覆盖集取 spec 首个顶层字面量
+        Assign，datas.extend / 条件 append（opencc、build/requirements-*.txt）
+        不进集合——方向是可能误报、不会漏放；扫描只覆盖 <img>/<script>/<link>
+        的双引号 src/href，CSS url() / srcset / 单引号属性不在范围内
+        （当前树零漏报）。
         """
         tree = ast.parse(read_text("scripts/packaging/MAW.spec"))
         assignment = next(
@@ -174,12 +183,15 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
                 ):
                     continue
                 resolved = ((ROOT / page).parent / reference).resolve()
+                if any(resolved.is_relative_to(directory) for directory in packaged_dirs):
+                    # 整目录打包目录内的引用随目录进包，不存在漏打包面；且该目录下
+                    # 的构建产物（如 web/*/boot/*-bundle.js）不入库，干净 checkout
+                    # 缺失属正常，不能按「仓库文件不存在」误报。
+                    continue
                 if not resolved.is_file():
                     offenders.append(f"{page}: 引用的仓库文件不存在: {reference}")
-                elif resolved not in packaged_files and not any(
-                    resolved.is_relative_to(directory) for directory in packaged_dirs
-                ):
-                    offenders.append(f"{page}: {reference} 未被 MAW.spec datas 覆盖（不在整目录打包目录内，也无显式条目）")
+                elif resolved not in packaged_files:
+                    offenders.append(f"{page}: {reference} 未被 MAW.spec datas 覆盖（整目录打包目录之外的引用需显式条目）")
         self.assertEqual(offenders, [])
 
     def test_pages_builds_repository_bundles_before_portable_editor(self) -> None:
