@@ -5,6 +5,10 @@
 
 
 // 启动早期生成的自定义字体选项先用原始名称占位；共享工具层就绪后立即统一本地化。
+window.MaweFontGeometryWiring = window.MaweFontGeometryWiring || Object.freeze({
+  rebuildSubtitleFontFamilyOptions,
+  rebuildAssFontNameOptions,
+});
 MaweAppearance.relabelSubtitleFontFamilyOptions();
 
 
@@ -271,28 +275,6 @@ function rebuildAssFontNameOptions() {
 // 别名表是启动后异步拉取的：就绪时重建 ASS 字体下拉，让 canonical 条目与
 // 归并后的本机扫描结果进入选项列表。
 document.addEventListener('mawe:ass-font-aliases-loaded', rebuildAssFontNameOptions);
-
-
-
-function normalizeAssColorStyleValue(value) {
-  return typeof value === 'string' && ASS_COLOR_STYLE_VALUES.includes(value)
-    ? value : null;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

@@ -163,6 +163,12 @@
       "exportName": "initMaweGapRemoveData"
     },
     {
+      "file": "editor/styles/editor-colors.js",
+      "kind": "init",
+      "name": "colors-init",
+      "exportName": "initMaweColors"
+    },
+    {
       "file": "editor/ui/editor-dom.js",
       "kind": "init",
       "name": "editor-dom-init",
@@ -239,6 +245,12 @@
       "kind": "init",
       "name": "merge-adjacent-init",
       "exportName": "initMaweMergeAdjacent"
+    },
+    {
+      "file": "editor/styles/editor-appearance.js",
+      "kind": "init",
+      "name": "appearance-init",
+      "exportName": "initMaweAppearance"
     },
     {
       "file": "editor/media/editor-playback-loop.js",
@@ -367,6 +379,12 @@
       "exportName": "initMaweWordTiming"
     },
     {
+      "file": "editor/styles/editor-appearance-inputs.js",
+      "kind": "init",
+      "name": "appearance-inputs-init",
+      "exportName": "initMaweAppearanceInputs"
+    },
+    {
       "file": "editor/ui/editor-behavior-hints.js",
       "kind": "init",
       "name": "editor-behavior-hints-init",
@@ -479,6 +497,12 @@
       "kind": "init",
       "name": "timeline-init",
       "exportName": "initMaweTimeline"
+    },
+    {
+      "file": "editor/styles/editor-speaker-labels.js",
+      "kind": "init",
+      "name": "speaker-labels-init",
+      "exportName": "initMaweSpeakerLabels"
     },
     {
       "file": "editor/cues/editor-wiring-overlay-transfer.js",

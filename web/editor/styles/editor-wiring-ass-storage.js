@@ -17,7 +17,6 @@
 // ass_color_style（text / speaker / stroke / none），两者语义不同。
 
 
-const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
 const DEFAULT_ASS_COLOR_STYLE = 'text';
 // 字体输入框用 combobox 下拉提供筛选（映射逻辑在 editor-utils 的
 // subtitleFontFamilyStoredToInput / subtitleFontFamilyInputToStored）；
