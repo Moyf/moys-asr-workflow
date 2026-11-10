@@ -1,3 +1,4 @@
+import { splitGroupsAtCutPoints } from './editor-segment-ops.js';
 import { refreshColorAssignmentUi, refreshStickerAssignmentUi } from './editor-color-filter.js';
 import { stickerUrl, updateMultiSelectionClasses } from './editor-selection.js';
 import { syncTimelineGroupRanges } from './editor-text-cleanup.js';
@@ -129,7 +130,7 @@ export function initMaweStickerPicker() {
   function clearStickerOnTargets() {
     return MaweCommands.run('清除表情包', () => {
       // 一次性切除所有目标 idx，触发组拆分
-      MaweSegmentOps.splitGroupsAtCutPoints(new Set(stickerTargetIdxs), 'sticker', 'sticker_ref');
+      splitGroupsAtCutPoints(new Set(stickerTargetIdxs), 'sticker', 'sticker_ref');
       MaweDom.stickerModal.classList.remove('show');
       refreshStickerAssignmentUi();
       MaweHint.flashHint('已清除', 'success');
@@ -161,7 +162,7 @@ export function initMaweStickerPicker() {
   function removeStickerCascade(idx, { overlay = false } = {}) {
   return MaweCommands.run('删除表情包', () => {
     // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
-    MaweSegmentOps.splitGroupsAtCutPoints(
+    splitGroupsAtCutPoints(
       new Set([idx]), 'sticker', 'sticker_ref',
       overlay ? (getOverlayTrack()?.segments || []) : MaweBoot.DATA.segments,
     );
@@ -244,7 +245,7 @@ export function initMaweStickerPicker() {
         // 选区可能只包含已有颜色组的一部分。先在选中项处切开旧组，
         // 让未选中的成员保留原颜色，并避免旧 head 被降级后仍被外部 ref 指向。
         // （main 218ee1e0 修复，合并时补录；splitGroupsAtCutPoints 为 editor.js 全局。）
-        MaweSegmentOps.splitGroupsAtCutPoints(new Set(sorted), 'color', 'color_ref');
+        splitGroupsAtCutPoints(new Set(sorted), 'color', 'color_ref');
         const start = MaweBoot.DATA.segments[headIdx].start;
         const end = MaweBoot.DATA.segments[sorted[sorted.length - 1]].end;
         MaweBoot.DATA.segments[headIdx].color = { name: colorName, value: def.value, start, end };
@@ -271,7 +272,7 @@ export function initMaweStickerPicker() {
   //   - idx 是 ref: 仅清自己
   function removeColorCascade(idx) {
     // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
-    MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
+    splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
   }
 
 
@@ -279,7 +280,7 @@ export function initMaweStickerPicker() {
   function clearColorOnTargets(idxs) {
     return MaweCommands.run('清除颜色', () => {
       // 一次性切除所有目标 idx，触发组拆分
-      MaweSegmentOps.splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
+      splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
       refreshColorAssignmentUi();
       MaweHint.flashHint('已清除颜色', 'success');
     });

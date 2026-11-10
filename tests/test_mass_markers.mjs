@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {initModuleSource} from './helpers/init-module-source.mjs';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 
 const context = { window: {} };
@@ -131,7 +132,7 @@ test('split pair wiring completes texts and items in buildSplitPair with conserv
 
 function buildViaFreshContext(segment, offset) {
   const context = splitContext();
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-split-core.js'), context);
   return context.window.MaweSplitCore.buildSplitPair(segment, offset, 1000, 'a', true, 'continuous', { headIndex: 0 });
 }
 
@@ -236,7 +237,7 @@ test('mergeContiguousIndices folds the junction and keeps items conserved', () =
     { id: 'b', start: 1000, end: 2000, text: '*解说*', items: [{ text: '*解说*', start: 1000, end: 2000 }] },
   ];
   const context = mergeContext(segments);
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-segment-ops.js'), context);
   const merged = context.window.MaweSegmentOps.mergeContiguousIndices([0, 1]);
   assert.equal(merged.text, '今天*的解说*');
   assert.deepEqual(plain(merged.items.map(item => item.text)), ['今天*的', '解说*']);
@@ -259,7 +260,7 @@ test('merge keeps spoken-only and partially marked items with their exact timing
       [['甲', 100, 800, 'A'], ['乙', 1100, 1800, 'A']]);
     assert.equal(JSON.stringify(segments), snapshot);
     const context = mergeContext(plain(segments));
-    vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), context);
+    vm.runInNewContext(initModuleSource('editor/cues/editor-segment-ops.js'), context);
     assert.equal(context.window.MaweSegmentOps.mergeContiguousIndices([0, 1]).items.length, 2);
   }
 });

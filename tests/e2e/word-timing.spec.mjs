@@ -420,7 +420,14 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
   await expect(page.locator('#word-conversion-dialog')).not.toBeVisible();
   const converted = await page.evaluate(() => ({
     segments: MaweBoot.DATA.segments, multi: MaweBoot.DATA.multi_subtitle,
+    mainSelection: [...MaweSelection.selectedIdxs],
+    extensionSelection: [...MaweSelection.selectedExtensionIdxs],
   }));
+  expect(converted.mainSelection).toEqual([]);
+  expect(converted.extensionSelection).toEqual([]);
+  await expect(page.locator('.cue.selected, .multi-cue-column.selected')).toHaveCount(0);
+  await page.keyboard.press('Delete');
+  expect(await page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(4);
   expect(converted.segments.length).toBe(4);
   expect(converted.segments.slice(0, 2).map(s => s.text).join('')).toBe('我很喜欢！');
   expect(converted.segments[1].items[0].text).toBe('很喜欢！');
