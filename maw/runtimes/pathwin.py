@@ -1,9 +1,9 @@
 """Windows 非 ASCII 运行时根目录的 ASCII 化：8.3 短路径别名 + 公共目录回退。
 
-背景（1.11.0 用户反馈，Windows 11 中文用户名「卓什么越」）：qwen-asr → funasr
-的 import 链会实例化 ``nagisa.Tagger``，其底层 DyNet 用 C++ ``std::ifstream``
-窄字符 API 打开随 wheel 分发的模型文件；Windows 上窄字符路径按 ANSI 代码页
-解释，用户名含中文时默认运行时根目录
+背景（1.11.0 用户反馈，Windows 11 中文用户名，下文用虚构示例名「測試用戶」
+指代）：qwen-asr → funasr 的 import 链会实例化 ``nagisa.Tagger``，其底层
+DyNet 用 C++ ``std::ifstream`` 窄字符 API 打开随 wheel 分发的模型文件；
+Windows 上窄字符路径按 ANSI 代码页解释，用户名含中文时默认运行时根目录
 ``C:\\Users\\<中文名>\\AppData\\Local\\MAW\\local-runtime`` 下实际存在的
 ``nagisa/data/nagisa_v001.model`` 打不开，安装后的 verify 当场报
 ``RuntimeError: Could not read model``。这是 DyNet 的知名 Windows 缺陷，
@@ -28,15 +28,21 @@ ASCII 化，而不是改第三方包（nagisa/qwen-asr 均不可控）。
    - 默认目录（``allow_relocate=True``）：迁移到无中文的公共目录
      :func:`fallback_root`，顺序为：
      a. ``MAW_RUNTIME_ASCII_ROOT`` 环境变量（新增配置，指定公共运行时根；
-        各 Runtime 在其下各占 ``<dir_name>`` 子目录，供 8.3 被禁用的机器
-        指定任意可写位置）；
-     b. ``%PROGRAMDATA%\\MAW\\runtimes\\<dir_name>``。ProgramData 默认 ACL
-        允许 Authenticated Users 创建子目录；首个安装的用户拥有其后代目录，
-        其他用户可能只读——因此 install 阶段动工前会经
-        :func:`prepare_install_root` → :func:`probe_writable` 探测可写性，
-        失败立即给可操作错误，而不是下载数 GB 依赖后才失败。多用户共享
-        同一 fallback 目录时：读操作（推理）没问题；第二个用户「修复/重装」
-        无写权限时会得到明确指引而不是半途失败。
+        相对路径会解析为绝对路径，供 8.3 被禁用的机器指定任意可写位置）；
+     b. ``%PROGRAMDATA%\\MAW\\runtimes\\<user-hash>\\<dir_name>``。
+
+     两个分支同构：公共根 → **按用户隔离**（用户名稳定哈希，见
+     :func:`user_hash`）→ 各 Runtime 的 ``<dir_name>`` 子目录。隔离的两个
+     理由：其一，公共目录多用户可写，若共享同一运行时子树，先创建的用户
+     可以替换其中的解释器与依赖、伪造 runtime.json，第二个用户会以自己的
+     身份执行这些文件（本地提权向量）；其二，共享会让两个用户的
+     「修复/重装」互写 manifest。隔离后的语义变化：**同机多用户各自独立
+     安装一份运行时**（磁盘换安全，互不共享、互不影响）。
+
+     install 阶段动工前仍会经 :func:`prepare_install_root` →
+     :func:`probe_writable` 探测自己用户子树的可写性（加固过的机器可能
+     禁止用户在 ProgramData 下建目录），失败立即给可操作错误，而不是下载
+     数 GB 依赖后才失败。
 
 consistency 说明：转换放在 ``ManagedRuntime.resolve_root``（状态查询 /
 安装 / worker 启动的唯一根目录汇点），保证 status、manifest、pip ``--target``、
@@ -48,17 +54,21 @@ PYTHONPATH 与 verify/worker 的解释器路径始终指向同一形态；GUI �
 from __future__ import annotations
 
 import ctypes
+import getpass
+import hashlib
 import os
 import sys
 from pathlib import Path, PureWindowsPath
 from typing import Final
 
 #: 新增配置：8.3 短路径不可用时，显式指定无 ASCII 问题的「公共运行时根」。
-#: 各 Runtime 在其下各占 ``<dir_name>`` 子目录（与 PROGRAMDATA 分支同构），
-#: 避免三个运行时共用同一 site-packages / runtime.json 互相覆盖。
+#: 相对路径会解析为绝对路径；其下先按用户哈希隔离、再按 Runtime 分子目录
+#: （与 PROGRAMDATA 分支同构），避免多用户 / 多运行时共用同一
+#: site-packages 与 runtime.json 互相覆盖。
 FALLBACK_ROOT_ENV: Final = "MAW_RUNTIME_ASCII_ROOT"
 
-#: 公共目录 fallback 的固定层级：``%PROGRAMDATA%\\MAW\\runtimes\\<dir_name>``。
+#: 公共目录 fallback 的固定层级：
+#: ``%PROGRAMDATA%\\MAW\\runtimes\\<user-hash>\\<dir_name>``。
 COMMON_RUNTIMES_SUBPATH: Final = ("MAW", "runtimes")
 
 #: 反馈入口（verify 错误增强文案里引用）。
@@ -130,30 +140,54 @@ def ascii_alias(path: Path | str) -> Path | PureWindowsPath:
     return path
 
 
+def user_hash() -> str:
+    """当前用户的稳定 ASCII 短哈希，用作公共目录下的用户隔离子目录名。
+
+    公共目录（ProgramData / ``MAW_RUNTIME_ASCII_ROOT``）多用户可写，按用户
+    隔离是安全要求：不隔离时先到者可替换后到者将以自己身份执行的文件
+    （见模块 docstring 策略 3）。用用户名的 SHA-256 前 16 个十六进制字符
+    而不是明文：目录名保持纯 ASCII（用户名可能是中文），也不向文件系统
+    暴露用户名；同名用户在任何机器上都得到一致目录，便于远程排查。
+    """
+    username = os.environ.get("USERNAME", "").strip()
+    if not username:
+        try:
+            # getpass 覆盖 USERNAME 缺失的环境（Windows 服务会话等）。
+            username = getpass.getuser()
+        except Exception:  # noqa: BLE001 - 取不到用户名时退化为固定目录名
+            username = "unknown"
+    return hashlib.sha256(username.encode("utf-8")).hexdigest()[:16]
+
+
 def fallback_root(dir_name: str) -> Path:
     """无 ASCII 问题的公共运行时根目录（顺序见模块 docstring 策略 3）。
 
-    两个分支同构：override 与 PROGRAMDATA 都是「公共运行时根」，各 Runtime
-    在其下各占 ``<dir_name>`` 子目录——全局单变量若被三个 Runtime 直接当
-    根目录消费，site-packages 与 runtime.json 会互相覆盖。
+    两个分支同构：公共根 → 按用户隔离（:func:`user_hash`）→ ``<dir_name>``。
+    ``MAW_RUNTIME_ASCII_ROOT`` 是全局单变量，LOCAL / OCR / MOSS 的默认目录
+    分支都会消费它；不加 Runtime / 用户两级子目录时，site-packages 与
+    runtime.json 会互相覆盖（本地提权向量见模块 docstring）。
     """
+    user = user_hash()
     override = os.environ.get(FALLBACK_ROOT_ENV, "").strip()
     if override:
-        return Path(override).expanduser() / dir_name
+        # 相对路径必须解析成绝对：install() 会把子进程 cwd 切到 bundle_root()，
+        # 相对路径在子进程里会指向别处。
+        return Path(override).expanduser().resolve(strict=False) / user / dir_name
     program_data = os.environ.get("PROGRAMDATA", "").strip()
     if not program_data:
         raise AsciiRootUnavailable(
             "未找到 PROGRAMDATA 环境变量，无法确定公共运行时目录。"
             f"可设置环境变量 {FALLBACK_ROOT_ENV} 指定一个无中文且当前用户可写的目录。"
         )
-    return Path(program_data).joinpath(*COMMON_RUNTIMES_SUBPATH) / dir_name
+    return Path(program_data).joinpath(*COMMON_RUNTIMES_SUBPATH) / user / dir_name
 
 
 def probe_writable(root: Path, *, label: str = "公共运行时目录") -> None:
     """fallback 目录动工前的可写性探测（含权限检查）。
 
-    ProgramData 下首个安装的用户拥有后代目录，其他用户可能只读；这里用
-    建目录 + 建删探针文件的方式提前暴露权限问题，避免装到一半才失败。
+    用户自己的隔离子树（``<user-hash>\\<dir_name>``）在默认 ACL 下通常
+    可建可写；探测针对加固过的机器（禁止用户在 ProgramData 下建目录）
+    与预创建陷阱目录，提前暴露权限问题，避免装到一半才失败。
     """
     probe = root / ".maw-write-probe"
     try:

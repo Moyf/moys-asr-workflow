@@ -18,7 +18,7 @@ from unittest import mock
 
 from maw.runtimes import pathwin
 
-NON_ASCII_ROOT = r"C:\Users\卓什么越\AppData\Local\MAW\local-runtime"
+NON_ASCII_ROOT = r"C:\Users\測試用戶\AppData\Local\MAW\local-runtime"
 NON_ASCII_PREFIX_SHORT = r"C:\Users\7A6C~1\AppData\LOCAL~1"
 ASCII_ROOT = r"C:\Users\runner\AppData\Local\MAW\local-runtime"
 
@@ -36,7 +36,7 @@ class NonWindowsPassthroughTests(unittest.TestCase):
 
     def test_ensure_ascii_root_returns_path_unchanged_without_fs_access(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir) / "卓什么越" / "local-runtime"
+            root = Path(temp_dir) / "測試用戶" / "local-runtime"
             with mock.patch.object(pathwin, "win32_get_short_path") as short_path:
                 with mock.patch.object(pathwin, "_path_exists") as path_exists:
                     self.assertEqual(pathwin.ensure_ascii_root(root, dir_name="local-runtime"), root)
@@ -45,14 +45,14 @@ class NonWindowsPassthroughTests(unittest.TestCase):
 
     def test_prepare_install_root_is_noop_on_unix(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir) / "卓什么越" / "local-runtime"
+            root = Path(temp_dir) / "測試用戶" / "local-runtime"
             with mock.patch.object(pathwin, "probe_writable") as probe:
                 self.assertEqual(pathwin.prepare_install_root(root, dir_name="local-runtime"), root)
             probe.assert_not_called()
             self.assertFalse(root.exists())  # 直通不得创建目录
 
     def test_ascii_path_failure_hint_is_empty_on_unix(self) -> None:
-        self.assertEqual(pathwin.ascii_path_failure_hint(Path("C:/Users/卓什么越/runtime")), "")
+        self.assertEqual(pathwin.ascii_path_failure_hint(Path("C:/Users/測試用戶/runtime")), "")
 
     def test_win32_get_short_path_never_touches_ctypes_on_unix(self) -> None:
         self.assertEqual(pathwin.win32_get_short_path(NON_ASCII_ROOT), NON_ASCII_ROOT)
@@ -80,7 +80,7 @@ class AsciiAliasTests(unittest.TestCase):
         self.assertEqual(result, short_full)
 
     def test_missing_root_walks_up_to_existing_prefix_and_keeps_ascii_tail(self) -> None:
-        prefix = r"C:\Users\卓什么越\AppData\Local"
+        prefix = r"C:\Users\測試用戶\AppData\Local"
         result = self._alias(
             NON_ASCII_ROOT,
             exists={prefix},
@@ -93,14 +93,14 @@ class AsciiAliasTests(unittest.TestCase):
 
     def test_existing_prefix_without_short_name_gives_up(self) -> None:
         # 8.3 被注册表禁用：已存在前缀原样返回 → 整卷无短名，放弃别名
-        prefix = r"C:\Users\卓什么越\AppData\Local"
+        prefix = r"C:\Users\測試用戶\AppData\Local"
         self.assertEqual(
             self._alias(NON_ASCII_ROOT, exists={prefix}),  # short_map 缺省 → 返回原样
             NON_ASCII_ROOT,
         )
 
     def test_api_error_on_existing_prefix_falls_back_to_original(self) -> None:
-        prefix = r"C:\Users\卓什么越\AppData\Local"
+        prefix = r"C:\Users\測試用戶\AppData\Local"
         self.assertEqual(self._alias(NON_ASCII_ROOT, exists={prefix}, api_error=True), NON_ASCII_ROOT)
 
     def test_non_ascii_tail_cannot_be_aliased(self) -> None:
@@ -148,17 +148,24 @@ class EnsureAsciiRootDecisionTableTests(unittest.TestCase):
 
     def test_alias_unavailable_relocates_to_programdata_common_dir(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            env = {"PROGRAMDATA": temp_dir}
-            expected = str(Path(temp_dir).joinpath(*pathwin.COMMON_RUNTIMES_SUBPATH) / "local-runtime")
+            env = {"PROGRAMDATA": temp_dir, "USERNAME": "alice"}
+            with mock.patch.dict(os.environ, {"USERNAME": "alice"}):
+                user = pathwin.user_hash()
+            expected = str(
+                Path(temp_dir).joinpath(*pathwin.COMMON_RUNTIMES_SUBPATH) / user / "local-runtime"
+            )
             self.assertEqual(self._ensure(NON_ASCII_ROOT, alias_result=NON_ASCII_ROOT, env=env), expected)
 
-    def test_alias_unavailable_env_override_gets_per_runtime_subdir(self) -> None:
-        """MAW_RUNTIME_ASCII_ROOT 是公共运行时根：各 Runtime 占独立子目录，互不覆盖。"""
+    def test_alias_unavailable_env_override_gets_user_and_runtime_subdirs(self) -> None:
+        """MAW_RUNTIME_ASCII_ROOT 是公共运行时根：先按用户隔离，再各 Runtime 占独立子目录。"""
         with tempfile.TemporaryDirectory() as temp_dir:
-            env = {"MAW_RUNTIME_ASCII_ROOT": temp_dir, "PROGRAMDATA": tempfile.gettempdir()}
-            expected = str(Path(temp_dir) / "local-runtime")
+            env = {"MAW_RUNTIME_ASCII_ROOT": temp_dir, "PROGRAMDATA": tempfile.gettempdir(), "USERNAME": "alice"}
+            with mock.patch.dict(os.environ, {"USERNAME": "alice"}):
+                user = pathwin.user_hash()
+            # override 会被 resolve() 规范化（macOS /var/folders 是符号链接）
+            expected = str(Path(temp_dir).resolve() / user / "local-runtime")
             self.assertEqual(self._ensure(NON_ASCII_ROOT, alias_result=NON_ASCII_ROOT, env=env), expected)
-            expected_ocr = str(Path(temp_dir) / "ocr-runtime")
+            expected_ocr = str(Path(temp_dir).resolve() / user / "ocr-runtime")
             self.assertEqual(
                 self._ensure(NON_ASCII_ROOT, dir_name="ocr-runtime", alias_result=NON_ASCII_ROOT, env=env),
                 expected_ocr,
@@ -170,19 +177,93 @@ class EnsureAsciiRootDecisionTableTests(unittest.TestCase):
         self.assertEqual(self._ensure(NON_ASCII_ROOT, alias_result=NON_ASCII_ROOT, env=env), NON_ASCII_ROOT)
 
 
+class UserHashTests(unittest.TestCase):
+    """``user_hash``：公共目录用户隔离子目录名的稳定 ASCII 短哈希。"""
+
+    def test_hash_is_stable_16_hex_chars(self) -> None:
+        with mock.patch.dict(os.environ, {"USERNAME": "alice"}):
+            first = pathwin.user_hash()
+            second = pathwin.user_hash()
+        self.assertEqual(first, second)
+        self.assertEqual(len(first), 16)
+        self.assertTrue(first.isascii())
+        self.assertTrue(all(char in "0123456789abcdef" for char in first))
+
+    def test_non_ascii_username_maps_to_ascii_hash(self) -> None:
+        # 中文用户名正是本模块要救的场景：哈希目录名必须保持 ASCII
+        with mock.patch.dict(os.environ, {"USERNAME": "測試用戶"}):
+            hashed = pathwin.user_hash()
+        self.assertTrue(hashed.isascii())
+
+    def test_different_usernames_produce_different_hashes(self) -> None:
+        with mock.patch.dict(os.environ, {"USERNAME": "alice"}):
+            alice = pathwin.user_hash()
+        with mock.patch.dict(os.environ, {"USERNAME": "bob"}):
+            bob = pathwin.user_hash()
+        self.assertNotEqual(alice, bob)
+
+    def test_missing_username_falls_back_without_raising(self) -> None:
+        # USERNAME 缺失且 getpass 失败的环境（服务会话等）：退化为固定目录名
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with mock.patch.object(pathwin.getpass, "getuser", side_effect=OSError("无法确定用户")):
+                hashed = pathwin.user_hash()
+        self.assertEqual(len(hashed), 16)
+        self.assertTrue(hashed.isascii())
+
+
 class FallbackRootTests(unittest.TestCase):
-    def test_env_override_wins_over_programdata_with_runtime_subdir(self) -> None:
+    """``fallback_root``：公共根 → 用户隔离子目录 → Runtime 子目录。"""
+
+    def test_env_override_wins_over_programdata_with_user_and_runtime_subdir(self) -> None:
         with tempfile.TemporaryDirectory() as override_dir, tempfile.TemporaryDirectory() as program_data:
-            with mock.patch.dict(os.environ, {"MAW_RUNTIME_ASCII_ROOT": override_dir, "PROGRAMDATA": program_data}):
-                self.assertEqual(pathwin.fallback_root("local-runtime"), Path(override_dir) / "local-runtime")
-                self.assertEqual(pathwin.fallback_root("ocr-runtime"), Path(override_dir) / "ocr-runtime")
+            env = {"MAW_RUNTIME_ASCII_ROOT": override_dir, "PROGRAMDATA": program_data, "USERNAME": "alice"}
+            with mock.patch.dict(os.environ, env, clear=False):
+                # override 会被 resolve() 规范化（macOS /var/folders 是符号链接）
+                resolved_override = Path(override_dir).resolve()
+                expected = resolved_override / pathwin.user_hash() / "local-runtime"
+                self.assertEqual(pathwin.fallback_root("local-runtime"), expected)
+                self.assertEqual(
+                    pathwin.fallback_root("ocr-runtime"),
+                    resolved_override / pathwin.user_hash() / "ocr-runtime",
+                )
 
     def test_programdata_common_dir_layout(self) -> None:
         with tempfile.TemporaryDirectory() as program_data:
-            with mock.patch.dict(os.environ, {"PROGRAMDATA": program_data}, clear=False):
+            env = {"PROGRAMDATA": program_data, "USERNAME": "bob"}
+            with mock.patch.dict(os.environ, env, clear=False):
                 os.environ.pop("MAW_RUNTIME_ASCII_ROOT", None)
-                expected = Path(program_data).joinpath(*pathwin.COMMON_RUNTIMES_SUBPATH) / "ocr-runtime"
+                expected = (
+                    Path(program_data).joinpath(*pathwin.COMMON_RUNTIMES_SUBPATH)
+                    / pathwin.user_hash()
+                    / "ocr-runtime"
+                )
                 self.assertEqual(pathwin.fallback_root("ocr-runtime"), expected)
+
+    def test_relative_override_is_resolved_to_absolute(self) -> None:
+        """相对 override 必须解析成绝对路径：子进程 cwd 会切到 bundle_root()。
+
+        resolve() 在路径不存在时同样生效（strict=False），且 os.getcwd() 返回
+        规范化绝对路径，可直接作为期望值。
+        """
+        env = {"MAW_RUNTIME_ASCII_ROOT": "rel-fix", "PROGRAMDATA": "", "USERNAME": "alice"}
+        with mock.patch.dict(os.environ, env, clear=False):
+            root = pathwin.fallback_root("local-runtime")
+            user = pathwin.user_hash()
+        self.assertTrue(root.is_absolute())
+        self.assertEqual(root, Path(os.getcwd()) / "rel-fix" / user / "local-runtime")
+
+    def test_different_users_get_isolated_subdirs(self) -> None:
+        """公共根下不同用户得到不同子目录：先到者无法替换后到者将执行的文件。"""
+        with tempfile.TemporaryDirectory() as override_dir:
+            base = {"MAW_RUNTIME_ASCII_ROOT": override_dir, "PROGRAMDATA": ""}
+            common = Path(override_dir).resolve()  # override 会被 resolve() 规范化
+            with mock.patch.dict(os.environ, {**base, "USERNAME": "alice"}, clear=False):
+                alice_root = pathwin.fallback_root("local-runtime")
+            with mock.patch.dict(os.environ, {**base, "USERNAME": "bob"}, clear=False):
+                bob_root = pathwin.fallback_root("local-runtime")
+        self.assertNotEqual(alice_root.parent, bob_root.parent)
+        self.assertEqual(alice_root.parent.parent, common)
+        self.assertEqual(bob_root.parent.parent, common)
 
     def test_missing_programdata_raises_actionable_error(self) -> None:
         env = {"MAW_RUNTIME_ASCII_ROOT": "", "PROGRAMDATA": ""}
@@ -219,10 +300,15 @@ class ProbeWritableTests(unittest.TestCase):
 class PrepareInstallRootTests(unittest.TestCase):
     def test_only_fallback_form_is_probed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            candidate = Path(temp_dir) / "progdata" / "MAW" / "runtimes" / "local-runtime"
+            program_data = str(Path(temp_dir) / "progdata")
             alias_root = Path(temp_dir) / "short" / "local-runtime"
             with _win32_patches()[0]:
-                with mock.patch.dict(os.environ, {"PROGRAMDATA": str(Path(temp_dir) / "progdata")}):
+                with mock.patch.dict(os.environ, {"PROGRAMDATA": program_data, "USERNAME": "alice"}):
+                    candidate = (
+                        Path(program_data).joinpath(*pathwin.COMMON_RUNTIMES_SUBPATH)
+                        / pathwin.user_hash()
+                        / "local-runtime"
+                    )
                     # 别名形态（candidate 不匹配）不探测，也不创建目录
                     with mock.patch.object(pathwin, "probe_writable") as probe:
                         self.assertEqual(pathwin.prepare_install_root(alias_root, dir_name="local-runtime"), alias_root)
@@ -234,9 +320,14 @@ class PrepareInstallRootTests(unittest.TestCase):
 
     def test_probe_failure_raises_ascii_root_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            candidate = Path(temp_dir) / "progdata" / "MAW" / "runtimes" / "local-runtime"
+            program_data = str(Path(temp_dir) / "progdata")
             with _win32_patches()[0]:
-                with mock.patch.dict(os.environ, {"PROGRAMDATA": str(Path(temp_dir) / "progdata")}):
+                with mock.patch.dict(os.environ, {"PROGRAMDATA": program_data, "USERNAME": "alice"}):
+                    candidate = (
+                        Path(program_data).joinpath(*pathwin.COMMON_RUNTIMES_SUBPATH)
+                        / pathwin.user_hash()
+                        / "local-runtime"
+                    )
                     with mock.patch.object(
                         pathwin, "probe_writable",
                         side_effect=pathwin.AsciiRootUnavailable("不可写（模拟）"),

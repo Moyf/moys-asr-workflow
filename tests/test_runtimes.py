@@ -22,6 +22,7 @@ import maw.runtimes as runtimes  # noqa: F401  (intentionally imported for regis
 import maw.runtimes.base as base_mod
 from maw.runtime_manifest import STATUS_INSTALLING, STATUS_READY, write_runtime_manifest
 from maw.runtimes import LOCAL, MOSS, OCR, get_runtime
+from maw.runtimes import pathwin
 from maw.runtimes.base import ManagedRuntime, ManagedRuntimeError, RuntimeSpec
 from maw.runtimes.local_spec import LOCAL_SPEC, PYTORCH_INDEX, LocalRuntimeCancelled, LocalRuntimeError
 from maw.runtimes.moss_spec import MOSS_SPEC, PYTORCH_INDEX as MOSS_PYTORCH_INDEX
@@ -864,9 +865,9 @@ class RuntimeAsciiPathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir).resolve()
             explicit = temp / "自定义" / "runtime"
-            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "卓什么越")}):
+            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "測試用戶")}):
                 os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
-                self.assertEqual(LOCAL.resolve_root(), temp / "卓什么越" / "local-runtime")
+                self.assertEqual(LOCAL.resolve_root(), temp / "測試用戶" / "local-runtime")
                 self.assertEqual(LOCAL.resolve_root(explicit), explicit)
 
     @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
@@ -883,9 +884,9 @@ class RuntimeAsciiPathTests(unittest.TestCase):
             envs: list[dict[str, str]] = []
 
             def fake_ascii_root(path: Path, *, dir_name: str, allow_relocate: bool = True) -> Path:
-                return alias_root if "卓什么越" in str(path) else Path(path)
+                return alias_root if "測試用戶" in str(path) else Path(path)
 
-            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "卓什么越"), "PROGRAMDATA": ""}):
+            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "測試用戶"), "PROGRAMDATA": ""}):
                 os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
                 with mock.patch("maw.runtimes.pathwin.ensure_ascii_root", side_effect=fake_ascii_root):
                     with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
@@ -909,17 +910,17 @@ class RuntimeAsciiPathTests(unittest.TestCase):
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_install_relocates_to_common_dir_when_short_path_unavailable(self) -> None:
-        """8.3 不可用（模拟）：默认目录迁移到 PROGRAMDATA 公共目录，原中文目录不动。"""
+        """8.3 不可用（模拟）：默认目录迁移到 PROGRAMDATA 公共目录（按用户隔离），原中文目录不动。"""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir).resolve()
-            fallback = temp / "progdata" / "MAW" / "runtimes" / "local-runtime"
             requirements_txt = temp / "requirements-local.txt"
             requirements_txt.write_text("funasr==1.4.2\nqwen-asr==0.0.6\n", encoding="utf-8")
             calls: list[list[str]] = []
             envs: list[dict[str, str]] = []
 
-            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "卓什么越"), "PROGRAMDATA": str(temp / "progdata")}):
+            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "測試用戶"), "PROGRAMDATA": str(temp / "progdata"), "USERNAME": "alice"}):
                 os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
+                fallback = temp / "progdata" / "MAW" / "runtimes" / pathwin.user_hash() / "local-runtime"
                 with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
                     with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                         with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
@@ -934,10 +935,37 @@ class RuntimeAsciiPathTests(unittest.TestCase):
             self.assertEqual(install_command[install_command.index("--target") + 1], str(fallback / "site-packages"))
             self.assertEqual(verify_command[0], str(fallback / "python" / "python.exe"))
             self.assertEqual(envs[2].get("PYTHONPATH"), str(fallback / "site-packages"))
-            # 动工前 probe 已建公共目录；默认「运行时根」全程未被创建
+            # 动工前 probe 已建自己用户的隔离子树；默认「运行时根」全程未被创建
             # （model-cache 仍按设计放在默认 app-data 根下，不随迁移）
             self.assertTrue(fallback.is_dir())
-            self.assertFalse((temp / "卓什么越" / "local-runtime").exists())
+            self.assertFalse((temp / "測試用戶" / "local-runtime").exists())
+
+    def test_install_parent_dir_permission_error_gets_self_rescue_hint(self) -> None:
+        """父目录无权创建（受保护位置 / 加固的公共目录）：转成含自救指引的可操作错误。
+
+        路径纯 ASCII，三平台同语义：PermissionError 发生在 probe_writable 之前，
+        错误必须带 MAW_RUNTIME_ASCII_ROOT 自救指引而不是裸 PermissionError。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir).resolve()
+            root = temp / "locked" / "local-runtime"
+            locked_parent = root.parent
+            real_mkdir = Path.mkdir
+
+            def rejecting_mkdir(path_self, *args, **kwargs):
+                if path_self == locked_parent:
+                    raise PermissionError(13, "拒绝访问（模拟）")
+                return real_mkdir(path_self, *args, **kwargs)
+
+            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "locked")}):
+                os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
+                with mock.patch.object(Path, "mkdir", rejecting_mkdir):
+                    with self.assertRaises(LocalRuntimeError) as context:
+                        LOCAL.install()
+        message = str(context.exception)
+        self.assertIn("父目录无法创建", message)
+        self.assertIn("MAW_RUNTIME_ASCII_ROOT", message)
+        self.assertFalse(locked_parent.exists())  # 失败后不留半成品
 
     @mock.patch("maw.runtimes.pathwin.sys.platform", "win32")
     @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
@@ -947,7 +975,7 @@ class RuntimeAsciiPathTests(unittest.TestCase):
         """显式配置尊重用户选择：无法 8.3 别名化也保持原路径（不做公共目录迁移）。"""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir).resolve()
-            root = temp / "卓什么越" / "local-runtime"
+            root = temp / "測試用戶" / "local-runtime"
             requirements_txt = temp / "requirements-local.txt"
             requirements_txt.write_text("funasr==1.4.2\nqwen-asr==0.0.6\n", encoding="utf-8")
             calls: list[list[str]] = []
@@ -1000,7 +1028,7 @@ class RuntimeAsciiPathTests(unittest.TestCase):
         """verify 失败且路径仍含非 ASCII：错误附带自救与反馈指引，不再是裸 traceback。"""
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir).resolve()
-            root = temp / "卓什么越" / "local-runtime"
+            root = temp / "測試用戶" / "local-runtime"
             calls: list[list[str]] = []
             patches = self._verify_runtime_environment(temp, calls)
 

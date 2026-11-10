@@ -466,7 +466,17 @@ class ManagedRuntime:
         root = self.resolve_root(runtime_root)
         if root.exists() and not root.is_dir():
             raise self._error(f"{spec.message_prefix}路径不能是一个文件：{root}")
-        root.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            root.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            # 无权创建父目录（公共目录 fallback / 自定义路径在受保护位置）
+            # 会先于 probe_writable 失败：转成含自救指引的可操作错误，而不是
+            # 裸 PermissionError。
+            raise self._error(
+                f"{spec.message_prefix}运行时父目录无法创建：{root.parent}（{error}）。"
+                "请检查该位置的权限；公共目录回退场景可设置环境变量 "
+                f"{pathwin.FALLBACK_ROOT_ENV} 指向一个无中文且当前用户可写的目录后重试。"
+            ) from error
 
         # 引导策略按运行形态分叉：打包版（Windows）依赖随包分发的 bootstrap
         # 资产；打包版（unix）用宿主 python3 建 venv，无需任何 bundle 资产；
