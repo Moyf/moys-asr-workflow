@@ -6,6 +6,7 @@ import ast
 import hashlib
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -146,6 +147,10 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         打包 HTML 中 <img>/<script>/<link> 的本地相对引用，断言每个引用要么
         位于整目录打包的目录（web/、server-editor/、server-align/）内，要么被
         datas 显式带上，让「页面引用了仓库文件但打包没带上」在 CI 就红。
+        校验按包内落位对齐：文件条目落位为 _internal/<dest>/<basename>，页面
+        随整目录条目按相对路径镜像（web/... → _internal/web/...），引用解析出的
+        包内期望路径必须命中某个 datas 条目的落位——源文件在清单里但目标目录
+        写错（如 assets → .）同样红。
 
         目录内引用不做仓库存在性检查：整目录随包走、不存在漏打包面，且
         web/*/boot/*-bundle.js 是不入库的构建产物，干净 checkout 缺失属正常。
@@ -166,8 +171,18 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
             compile(ast.Expression(assignment.value), "MAW.spec datas", "eval"),
             {"ROOT": ROOT, "str": str},
         )
-        packaged_files = {Path(source).resolve() for source, _destination in data_pairs}
-        packaged_dirs = [Path(source).resolve() for source, _destination in data_pairs if Path(source).is_dir()]
+        # 包内落位模型（PyInstaller onedir）：文件条目 → _internal/<dest>/<basename>；
+        # 目录条目 → _internal/<dest>/ 下整目录镜像。用 posixpath 保持与
+        # PyInstaller 包内布局一致（Windows CI 上 os.path 会反斜杠化）。
+        packaged_bundle_files: set[str] = set()
+        packaged_bundle_dirs: list[str] = []
+        for source, destination in data_pairs:
+            if Path(source).is_dir():
+                packaged_bundle_dirs.append(posixpath.normpath(posixpath.join("_internal", destination)))
+            else:
+                packaged_bundle_files.add(
+                    posixpath.normpath(posixpath.join("_internal", destination, Path(source).name))
+                )
 
         # blank-editor.html 由 edit.py 从 editor-template.html 生成（打包根目录），
         # 模板扫描即覆盖其源头；__XX__ 形态占位符与 data: URI 由运行时注入。
@@ -183,15 +198,20 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
                 ):
                     continue
                 resolved = ((ROOT / page).parent / reference).resolve()
-                if any(resolved.is_relative_to(directory) for directory in packaged_dirs):
-                    # 整目录打包目录内的引用随目录进包，不存在漏打包面；且该目录下
-                    # 的构建产物（如 web/*/boot/*-bundle.js）不入库，干净 checkout
-                    # 缺失属正常，不能按「仓库文件不存在」误报。
+                # 包内落位：页面在 _internal/<page>，引用按相同相对关系解析。
+                expected = posixpath.normpath(posixpath.join("_internal", posixpath.dirname(page), reference))
+                if any(
+                    expected == directory or expected.startswith(directory + "/")
+                    for directory in packaged_bundle_dirs
+                ):
+                    # 整目录条目镜像范围内的引用随目录进包，不存在漏打包面；且该
+                    # 范围内的构建产物（如 web/*/boot/*-bundle.js）不入库，干净
+                    # checkout 缺失属正常，不做仓库存在性检查。
                     continue
                 if not resolved.is_file():
                     offenders.append(f"{page}: 引用的仓库文件不存在: {reference}")
-                elif resolved not in packaged_files:
-                    offenders.append(f"{page}: {reference} 未被 MAW.spec datas 覆盖（整目录打包目录之外的引用需显式条目）")
+                elif expected not in packaged_bundle_files:
+                    offenders.append(f"{page}: {reference} 的包内落位 {expected} 无 datas 条目覆盖（源文件在清单但目标目录不对同样算未覆盖）")
         self.assertEqual(offenders, [])
 
     def test_pages_builds_repository_bundles_before_portable_editor(self) -> None:
