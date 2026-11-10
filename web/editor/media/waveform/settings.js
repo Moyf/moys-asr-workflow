@@ -37,6 +37,7 @@ export function createWaveformModule(dependencies) {
         waveformScaleAuto: true,
         disabledDisplay: parsed.disabledDisplay === 'hidden' ? 'hidden' : 'dim',
         showGroupBadges: parsed.showGroupBadges !== false,
+        showCueTooltip: parsed.showCueTooltip !== false,
         dragPlayhead: true,
         spectralColor: parsed.spectralColor === true,
       };

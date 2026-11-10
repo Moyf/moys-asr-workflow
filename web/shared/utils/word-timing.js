@@ -455,5 +455,5 @@ export function createWordTiming(dependencies) {
       after: nextChars.slice(prefix, nextRegionEnd).join(''),
     };
   }
-  return Object.freeze({ getWordTimingEntries, editWordTiming, mergeWordTimingItems, planWordTimingConversion, planWordTimingTextSync, setMassSymbolRule });
+  return Object.freeze({ getWordTimingEntries, editWordTiming, mergeWordTimingItems, planWordTimingConversion, planWordTimingTextSync, wordCharRanges, setMassSymbolRule });
 }

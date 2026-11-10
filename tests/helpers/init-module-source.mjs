@@ -21,7 +21,8 @@ export function initModuleSource(relativeWebPath) {
   const importLines = [...source.matchAll(/^import \{([^}]*)\} from '\.\/([\w-]+)\.js';/gm)];
   const shims = [];
   for (const [, names, target] of importLines) {
-    const targetSrc = fs.readFileSync(path.join(webDir, 'editor/cues', `${target}.js`), 'utf8');
+    const targetSrc = fs.readFileSync(
+      path.resolve(webDir, path.dirname(relativeWebPath), `${target}.js`), 'utf8');
     for (const raw of names.split(',')) {
       const name = raw.trim();
       if (!name) continue;

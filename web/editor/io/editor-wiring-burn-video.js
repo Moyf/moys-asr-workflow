@@ -40,6 +40,11 @@ function burnVideoBindingCurrent(config, snapshot) {
 
 function burnVideoSafeError(error, fallback) {
   const message = error?.message || error;
+  // 流式写盘慢于服务端 socket 兜底超时（慢盘/杀软/同步目录）会主动断流，
+  // 浏览器侧只抛「network error / Failed to fetch」；换成人能看懂的提示。
+  if (typeof message === 'string' && (/^network error$/i.test(message) || /^failed to fetch$/i.test(message))) {
+    return burnVideoText('与本地服务的连接中断，请重试');
+  }
   if (typeof message !== 'string' || !message || message.length > 240
       || /extract_extradata|No start code|Invalid data found|[A-Z]:[\\/]|maw-media-job-/i.test(message)) {
     return burnVideoText(fallback);
@@ -271,6 +276,10 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
         throw new Error(tr('导出状态异常，请重试'));
       }
       if (state.state === 'ready') break;
+      if (state.state === 'failed' && typeof state.errorDetails === 'string' && state.errorDetails) {
+        // ffmpeg stderr 尾部只进控制台诊断，不拼进 toast 文案。
+        console.error('[MAW burn] ffmpeg stderr tail:', state.errorDetails.slice(-2000));
+      }
       if (['failed', 'cancelled', 'completed'].includes(state.state)) throw new Error(state.error || tr('导出状态异常，请重试'));
       const percent = state.stage === 'burning' && typeof state.progress === 'number' ? state.progress : null;
       setProgress(tr(BURN_VIDEO_STAGES[state.stage] || '正在准备导出…')

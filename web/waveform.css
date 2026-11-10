@@ -1423,6 +1423,103 @@
   gap: 5px;
 }
 
+/* 波形字幕块双击的快速编辑气泡（挂在滚动内容层，随内容滚动）。 */
+.waveform-cue-quick-edit {
+  position: absolute;
+  z-index: 30;
+  display: grid;
+  gap: 8px;
+  width: 300px;
+  max-width: calc(100% - 8px);
+  box-sizing: border-box;
+  padding: 9px;
+  /* 与 cue 列表/正文同族：textarea 的 UA 默认是等宽字体，需显式覆盖。 */
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2, 0 8px 24px rgba(0, 0, 0, 0.25));
+}
+.waveform-cue-quick-edit-caption {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.waveform-cue-quick-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.waveform-cue-quick-edit-help {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--amber-hover);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.waveform-cue-quick-edit-help:hover { text-decoration: underline; }
+.waveform-cue-quick-edit-text {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  max-height: 132px;
+  padding: 5px 7px;
+  resize: vertical;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.waveform-cue-quick-edit-text:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+/* 气泡三角：默认在弹窗底部指向下方（弹窗位于字幕块上方）；贴顶翻到
+   下方时改为顶部指向上方。--cue-quick-edit-arrow-x 由 JS 按指针位置写入。 */
+.waveform-cue-quick-edit::before,
+.waveform-cue-quick-edit::after {
+  content: "";
+  position: absolute;
+  left: var(--cue-quick-edit-arrow-x, 50%);
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+  pointer-events: none;
+}
+.waveform-cue-quick-edit::before {
+  border-width: 8px;
+  bottom: -16px;
+  border-top-color: var(--border);
+}
+.waveform-cue-quick-edit::after {
+  bottom: -14px;
+  border-top-color: var(--bg-panel);
+}
+.waveform-cue-quick-edit.placement-below::before {
+  top: -16px;
+  bottom: auto;
+  border-top-color: transparent;
+  border-bottom-color: var(--border);
+}
+.waveform-cue-quick-edit.placement-below::after {
+  top: -14px;
+  bottom: auto;
+  border-top-color: transparent;
+  border-bottom-color: var(--bg-panel);
+}
+
 /* Independent navigation strip above the unchanged waveform/subtitle region. */
 .waveform-row-shell { position: absolute; left: 0; touch-action: none; }
 .waveform-row-shell .waveform-row { top: 48px; left: 0; right: 0; }
@@ -1430,8 +1527,10 @@
 .waveform-basic .waveform-row-shell .waveform-row { inset: 48px 0 auto; width: 100%; }
 .waveform-filmstrip { display: block; position: absolute; top: 0; left: 1px; width: calc(100% - 2px); height: 48px; cursor: crosshair; border-radius: var(--radius-sm); }
 
-#waveform-thumbnail-setting { margin: 8px 0; flex-wrap: wrap; }
-#waveform-thumbnail-decode-setting { margin: 8px 0; padding-left: 22px; }
+#waveform-thumbnail-setting { display: flex; flex: 0 0 100%; min-width: 0; align-items: center; overflow-x: auto; margin: 8px 0; }
+.waveform-settings-section .waveform-inline-checkbox { margin-left: 16px; }
+.waveform-settings-section .waveform-cue-tooltip-setting { flex: 0 0 100%; margin: 8px 0; }
+#waveform-thumbnail-decode-setting[hidden] { display: none; }
 /* 状态文字仅保留给辅助技术：select 的 tooltip 已展示同样内容（
    updateThumbnailStatus 会同步写父级 title），可见行冗余移除。
    不用 display:none——该 span 挂 aria-live 且被 select 与补间开关

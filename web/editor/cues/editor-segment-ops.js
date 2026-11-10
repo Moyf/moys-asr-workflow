@@ -312,7 +312,7 @@
       return false;
     }
     if (!plan.changes.length) {
-      MaweHint.flashHint(ui('偏移量为 0，字幕时间没有变化', 'Offset is 0; cue times were not changed'), 'warning');
+      MaweHint.flashHint(ui('偏移量为 0，字幕时间没有变化', 'Offset is 0; cue times were not changed'), 'invalid');
       return false;
     }
 

@@ -567,6 +567,7 @@
     background: var(--bg-base); color: var(--text-primary);
     display: flex; flex-direction: column; height: 100vh;
   }
+  kbd { font-family: var(--font-sans); }
   h1 {
     font-size: 14px; font-weight: 500; margin: 0 0 8px 0; color: var(--text-secondary);
     display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
@@ -1039,7 +1040,7 @@
     border-radius: var(--radius-md); box-shadow: var(--shadow-3);
   }
   .settings-panel[hidden] { display: none; }
-  .waveform-settings-panel { max-height: min(620px, calc(100vh - 16px)); }
+  .waveform-settings-panel { width: min(480px, calc(100vw - 16px)); max-height: min(620px, calc(100vh - 16px)); }
   .settings-panel-owner-open {
     position: relative; z-index: 80;
   }
@@ -2484,7 +2485,7 @@
     width: 100%; min-width: 0; box-sizing: border-box; color: var(--text-secondary); font-size: 13px;
   }
   .help-title {
-    margin: 0 4px 2px; color: var(--text-secondary); font-weight: 600; letter-spacing: .08em;
+    margin: 8px 4px 2px; color: var(--text-secondary); font-weight: 600; letter-spacing: .08em;
     text-transform: uppercase; font-size: 13px;
   }
   .help-subgroup {
@@ -2526,7 +2527,7 @@
   .help-panel kbd,
   .cue-editor-key-hints kbd {
     background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
-    padding: 2px 6px; font-size: 13px; color: var(--text-secondary); font-family: var(--font-mono);
+    padding: 2px 6px; font-size: 13px; color: var(--text-secondary); font-family: var(--font-sans);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
   /* 字幕编辑区工具栏不出现横向滚动条：空间不足时压缩按键提示并用省略号截断，
@@ -2686,7 +2687,7 @@
   .onboarding-undo-demo { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 52px; color: var(--text-secondary); font-size: 12px; }
   .onboarding-undo-demo kbd, .onboarding-split-demo kbd, .onboarding-description kbd {
     padding: 3px 7px; color: var(--text-primary); background: var(--bg-raised); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); box-shadow: 0 1px 0 var(--border-strong); font-family: var(--font-mono); font-size: 11px;
+    border-radius: var(--radius-sm); box-shadow: 0 1px 0 var(--border-strong); font-family: var(--font-sans); font-size: 11px;
   }
   .onboarding-card.complete { border-top-color: var(--green); border-color: color-mix(in srgb, var(--green) 55%, var(--border-strong)); }
   .onboarding-card.complete .onboarding-glyph { background: var(--green); }
@@ -3142,6 +3143,19 @@
   .modal select:disabled { opacity: .48; cursor: not-allowed; }
   .modal select option { background: var(--bg-overlay); color: var(--text-primary); }
   .modal .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+  .modal .row[hidden] { display: none; }
+  .modal #fcp7-export-ratio-warning { margin-top: 8px; color: var(--amber-hover); }
+  #fcp7-export-modal .modal { overflow-y: auto; }
+  .fcp7-radio-group { border: 0; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 8px 24px; }
+  .fcp7-radio-group legend { padding: 0; color: var(--text-secondary); font-size: 12px; }
+  .modal .fcp7-radio-group label { display: flex; align-items: center; gap: 6px; margin: 4px 0 0; }
+  .fcp7-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+  .fcp7-export-status { margin: 12px 0 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-line; }
+  .fcp7-export-success { color: var(--green); }
+  .fcp7-export-folder { display: inline; padding: 0; border: 0; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; text-decoration: underline; overflow-wrap: anywhere; cursor: pointer; }
+  .fcp7-export-folder:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+  #fcp7-export-progress { width: 100%; margin-top: 8px; accent-color: var(--accent); }
+  #fcp7-export-progress[hidden] { display: none; }
   .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
   .modal .actions button {
     background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--btn-border);
@@ -3238,7 +3252,7 @@
   }
   .multi-subtitle-split-key-hints kbd {
     background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
-    padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono);
+    padding: 2px 6px; font-size: 11px; color: var(--text-secondary); font-family: var(--font-sans);
     box-shadow: 0 1px 0 var(--border-subtle);
   }
   .multi-subtitle-split-key-hint { display: inline-flex; align-items: center; gap: 4px; }
@@ -4191,7 +4205,7 @@
   .ctxmenu .sep { height: 1px; background: var(--border-subtle); margin: 4px 0; }
   .ctxmenu .item kbd {
     background: var(--bg-input); color: var(--text-muted); padding: 1px 6px; border-radius: var(--radius-sm);
-    font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--border-subtle);
+    font-family: var(--font-sans); font-size: 11px; border: 1px solid var(--border-subtle);
   }
   /* 句级效果预设的「整句」胶囊：缀在标签后，提示该样式只对整句生效。 */
   .ctxmenu .ctxmenu-sentence-badge {

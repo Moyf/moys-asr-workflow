@@ -336,5 +336,47 @@ export function createUtilsModule(dependencies) {
     ]);
   }
 
-  return Object.freeze({ buildFcp7ExportArtifacts, serializeFcp7Xml });
+  function serializeFcp7PngXml(plan, manifest, { includeMedia = false } = {}) {
+    const exportPlan = assertExportPlan(plan);
+    const duration = exportPlanFrame(exportPlan, exportPlan.outputDurationMs, 'ceil');
+    if (!manifest || manifest.fps !== exportPlan.frameProfile.name || manifest.durationFrames !== duration
+      || !Number.isInteger(manifest.width) || manifest.width <= 0
+      || !Number.isInteger(manifest.height) || manifest.height <= 0 || !Array.isArray(manifest.tracks)) {
+      throw new Error('PNG manifest does not match export plan');
+    }
+    const rate = fcpRate(exportPlan.frameProfile);
+    // XMEML still-image duration is in minutes; placement/in/out remain frames.
+    const stillDuration = Math.max(1, Math.ceil(exportPlan.outputDurationMs / 60000));
+    const characteristics = `<samplecharacteristics>${rate}<width>${manifest.width}</width><height>${manifest.height}</height><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio><fielddominance>none</fielddominance></samplecharacteristics>`;
+    const files = new Map();
+    const tracks = manifest.tracks.map((track, trackIndex) => {
+      let previousEnd = 0;
+      const clips = track.clips.map((clip, index) => {
+        if (!Number.isInteger(clip.startFrame) || !Number.isInteger(clip.endFrame)
+          || clip.startFrame < previousEnd || clip.endFrame <= clip.startFrame || clip.endFrame > duration
+          || !String(clip.path || '').trim()) throw new Error('invalid PNG clip range or path');
+        previousEnd = clip.endFrame;
+        const known = files.get(clip.path);
+        const fileId = known || `png-file-${files.size + 1}`;
+        files.set(clip.path, fileId);
+        const name = escapeExportXml(fileBasename(clip.path));
+        const file = known ? `<file id="${fileId}"/>`
+          : `<file id="${fileId}"><name>${name}</name><pathurl>${escapeExportXml(exportPathToFileUrl(clip.path))}</pathurl>${rate}<duration>${stillDuration}</duration><media><video><duration>${stillDuration}</duration><stillframe>TRUE</stillframe>${characteristics}</video></media></file>`;
+        const length = clip.endFrame - clip.startFrame;
+        return `<clipitem id="png-${trackIndex}-${index}"><name>${name}</name><enabled>TRUE</enabled><duration>${stillDuration}</duration>${rate}<start>${clip.startFrame}</start><end>${clip.endFrame}</end><in>0</in><out>${length}</out><stillframe>TRUE</stillframe><alphatype>straight</alphatype><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio>${file}<sourcetrack><mediatype>video</mediatype></sourcetrack></clipitem>`;
+      }).join('');
+      return `<track><enabled>TRUE</enabled><locked>FALSE</locked>${clips}</track>`;
+    }).join('');
+    if (!includeMedia) return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="5"><sequence id="MAW-png-subtitles"><name>MAW ${manifest.imageFormat === 'webp' ? 'WebP' : 'PNG'} subtitles</name><duration>${duration}</duration>${rate}<media><video><format>${characteristics}</format>${tracks}</video></media></sequence></xmeml>`;
+    const sourcePlan = { ...exportPlan, media: { ...exportPlan.media,
+      path: manifest.sourcePath || exportPlan.media.path, width: manifest.width, height: manifest.height },
+    stickers: [], overlayStickers: [] };
+    const xml = serializeFcp7Xml(sourcePlan, { nativeTextObjects: false });
+    const endVideo = xml.lastIndexOf('</video>');
+    if (endVideo >= 0) return xml.slice(0, endVideo) + tracks + xml.slice(endVideo);
+    const mediaStart = xml.indexOf('<media>') + '<media>'.length;
+    return xml.slice(0, mediaStart) + `<video><format>${characteristics}</format>${tracks}</video>` + xml.slice(mediaStart);
+  }
+
+  return Object.freeze({ buildFcp7ExportArtifacts, serializeFcp7Xml, serializeFcp7PngXml });
 }

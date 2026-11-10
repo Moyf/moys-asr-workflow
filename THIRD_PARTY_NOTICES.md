@@ -12,7 +12,7 @@
 | [quapeaks](https://pypi.org/project/quapeaks/) | Rust kernel that generates the `.quapeaks` peak container (REAPER-compatible `RPKN` layout plus MAW's own waveform layer) beside media files; renamed from `reapeaks-rs` | MIT OR Apache-2.0 |
 | [RapidOCR](https://github.com/RapidAI/RapidOCR) / PP-OCRv6 | Local CPU OCR for the 「OCR 字幕去重」 toolbox; the frozen bundle includes the PP-OCRv6 tiny model files | Apache-2.0; bundled model files remain subject to upstream model terms |
 | [ONNX Runtime](https://onnxruntime.ai/) | CPU inference runtime for RapidOCR | MIT |
-| [Pillow](https://python-pillow.github.io/) | Decode, crop, and resize video frames before OCR; generate and verify macOS icon assets during builds | HPND |
+| [Pillow](https://python-pillow.github.io/) | Decode, crop, and resize video frames in the optional OCR runtime; generate and verify macOS icon assets during builds | HPND |
 | [sv-ttk](https://github.com/rdbende/Sun-Valley-ttk-theme) | Sun Valley themed ttk widgets for the desktop GUI | MIT |
 | [PyQt6](https://riverbankcomputing.com/software/pyqt/) / [QtPy](https://github.com/spyder-ide/qtpy) | Linux desktop GUI backend for pywebview (Launcher) | PyQt6: GPL-3.0 or a commercial license from Riverbank Computing; Qt: LGPL-3.0 |
 | [PyInstaller](https://pyinstaller.org/) | Build the optional Windows application bundle | GPL-2.0-or-later with a bootloader exception that permits distributing bundled applications |
