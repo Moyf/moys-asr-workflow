@@ -4,14 +4,15 @@
 // 职责边界：
 // - 通过 gh CLI 读取仓库的 PR / milestone / CI 汇总数据，服务端不保存任何令牌；
 // - 扫描 docs/logs 下的 verification checklist front-matter；
-// - 读写维护者的自定义 PR 状态（.artifacts/dev-dashboard/status.json，不入库）；
+// - 读写维护者的自定义 PR 状态与忽略表
+//   （.artifacts/dev-dashboard/status.json / ignored.json，不入库）；
 // - 静态托管本工具页面与 tools/changelog-editor（供面板一键打开）。
 //
 // 安全模型：仅绑定 127.0.0.1；校验 Host 头（防 DNS rebinding）；静态文件限定
 // 白名单目录并禁止路径穿越；无认证，请勿用 --host 暴露到非回环地址（也不提供该选项）。
 
 import { createServer } from 'node:http';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { parseArgs } from 'node:util';
 import path from 'node:path';
@@ -28,6 +29,8 @@ export const CHANGELOG_EDITOR_DIR = path.join(REPO_ROOT, 'tools', 'changelog-edi
 export const DOCS_LOGS_DIR = path.join(REPO_ROOT, 'docs', 'logs');
 export const DATA_DIR = path.join(REPO_ROOT, '.artifacts', 'dev-dashboard');
 export const STATUS_FILE = path.join(DATA_DIR, 'status.json');
+export const IGNORED_FILE = path.join(DATA_DIR, 'ignored.json');
+export const CHANGELOG_FILE = path.join(REPO_ROOT, 'CHANGELOG.md');
 export const DEFAULT_PORT = 8262;
 export const GITHUB_REPO_FALLBACK = 'Moyf/moys-asr-workflow';
 
@@ -109,7 +112,7 @@ export function summarizeChecks(rollup) {
   return 'ok';
 }
 
-/** 读取自定义状态表；文件不存在视为空表。 */
+/** 读取 JSON 对象映射表（status / ignored 两个数据文件共用）；文件不存在视为空表。 */
 export async function readStatusMap(filePath = STATUS_FILE) {
   try {
     const data = JSON.parse(await readFile(filePath, 'utf8'));
@@ -121,7 +124,7 @@ export async function readStatusMap(filePath = STATUS_FILE) {
   }
 }
 
-/** 原子写入状态表（tmp + rename）。 */
+/** 原子写入 JSON 对象映射表（tmp + rename）。 */
 export async function writeStatusMap(map, filePath = STATUS_FILE) {
   await mkdir(path.dirname(filePath), { recursive: true });
   const tmp = `${filePath}.tmp`;
@@ -129,11 +132,11 @@ export async function writeStatusMap(map, filePath = STATUS_FILE) {
   await rename(tmp, filePath);
 }
 
-// 状态写入串行化：单人使用竞态概率极低，但读-改-写用队列兜底更稳。
-let statusWriteChain = Promise.resolve();
-export function enqueueStatusWrite(task) {
-  const run = statusWriteChain.then(task, task);
-  statusWriteChain = run.catch(() => {});
+// 状态/忽略表写入串行化：单人使用竞态概率极低，但读-改-写用队列兜底更稳。
+let mapWriteChain = Promise.resolve();
+export function enqueueMapWrite(task) {
+  const run = mapWriteChain.then(task, task);
+  mapWriteChain = run.catch(() => {});
   return run;
 }
 
@@ -307,10 +310,27 @@ function readJsonBody(req, limit = 1024 * 1024) {
   });
 }
 
-/** 请求处理（导出以便测试注入 statusFile）。 */
+/** 写操作的 CSRF 防线：浏览器跨源请求的 Origin 不是本服务；no-cors 模式只能发
+ * text/plain 等简单类型，发不出 application/json。两者都卡住才放行写操作。
+ * 返回 null 表示放行。 */
+function writeRequestGuard(req, port) {
+  const origin = String(req.headers.origin ?? '');
+  if (origin && !isAllowedHost(origin.replace(/^https?:\/\//, ''), port)) {
+    return { status: 403, message: 'Origin 不在允许列表' };
+  }
+  const contentType = String(req.headers['content-type'] ?? '');
+  if (!contentType.toLowerCase().includes('application/json')) {
+    return { status: 415, message: 'Content-Type 必须是 application/json' };
+  }
+  return null;
+}
+
+/** 请求处理（导出以便测试注入 statusFile / ignoredFile）。 */
 export async function handleRequest(req, res, options = {}) {
   const port = options.port ?? DEFAULT_PORT;
   const statusFile = options.statusFile ?? STATUS_FILE;
+  const ignoredFile = options.ignoredFile ?? IGNORED_FILE;
+  const openChangelog = options.openChangelog ?? openWithSystemApp;
   try {
     if (!isAllowedHost(String(req.headers.host ?? ''), port)) {
       return sendError(res, 403, 'Host 不在允许列表');
@@ -326,20 +346,13 @@ export async function handleRequest(req, res, options = {}) {
       if (pathname === '/api/prs') return sendJson(res, await fetchOpenPullRequests());
       if (pathname === '/api/checklists') return sendJson(res, await listChecklists());
       if (pathname === '/api/status') return sendJson(res, await readStatusMap(statusFile));
+      if (pathname === '/api/ignored') return sendJson(res, await readStatusMap(ignoredFile));
       return serveStatic(pathname, res);
     }
 
     if (req.method === 'POST' && pathname === '/api/status') {
-      // CSRF 防线：浏览器跨源请求的 Origin 不是本服务；no-cors 模式只能发
-      // text/plain 等简单类型，发不出 application/json。两者都卡住才放行写操作。
-      const origin = String(req.headers.origin ?? '');
-      if (origin && !isAllowedHost(origin.replace(/^https?:\/\//, ''), port)) {
-        return sendError(res, 403, 'Origin 不在允许列表');
-      }
-      const contentType = String(req.headers['content-type'] ?? '');
-      if (!contentType.toLowerCase().includes('application/json')) {
-        return sendError(res, 415, 'Content-Type 必须是 application/json');
-      }
+      const guard = writeRequestGuard(req, port);
+      if (guard) return sendError(res, guard.status, guard.message);
       let body;
       try {
         body = await readJsonBody(req);
@@ -348,13 +361,15 @@ export async function handleRequest(req, res, options = {}) {
       }
       const pr = Number(body?.pr);
       const status = body?.status ?? null;
+      // pr 校验故意宽松（Number() 兼容字符串数字）；/api/ignored 用严格整数校验，
+      // 两端点契约差异见各自行内注释。
       if (!Number.isInteger(pr) || pr <= 0) return sendError(res, 400, 'pr 必须是正整数');
       if (status !== null && (typeof status !== 'string' || status.length === 0 || status.length > 32)) {
         return sendError(res, 400, 'status 必须是 1-32 字符的字符串或 null');
       }
       // 读-改-写必须整体入队：只把写入入队的话，两个并发请求会基于同一份
       // 旧状态各自写回，后者静默覆盖前者的分配。
-      const map = await enqueueStatusWrite(async () => {
+      const map = await enqueueMapWrite(async () => {
         const current = await readStatusMap(statusFile);
         if (status === null) delete current[String(pr)];
         else current[String(pr)] = status;
@@ -362,6 +377,43 @@ export async function handleRequest(req, res, options = {}) {
         return current;
       });
       return sendJson(res, map);
+    }
+
+    if (req.method === 'POST' && pathname === '/api/ignored') {
+      const guard = writeRequestGuard(req, port);
+      if (guard) return sendError(res, guard.status, guard.message);
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (err) {
+        return sendError(res, 400, err.message);
+      }
+      const pr = body?.pr;
+      const ignored = body?.ignored;
+      // 不做 Number() 隐式转换：字符串数字一律拒绝，契约更严格
+      if (!Number.isInteger(pr) || pr <= 0) return sendError(res, 400, 'pr 必须是正整数');
+      if (typeof ignored !== 'boolean') return sendError(res, 400, 'ignored 必须是布尔值');
+      const map = await enqueueMapWrite(async () => {
+        const current = await readStatusMap(ignoredFile);
+        if (ignored) current[String(pr)] = true;
+        else delete current[String(pr)];
+        await writeStatusMap(current, ignoredFile);
+        return current;
+      });
+      return sendJson(res, map);
+    }
+
+    if (req.method === 'POST' && pathname === '/api/open-changelog') {
+      const guard = writeRequestGuard(req, port);
+      if (guard) return sendError(res, guard.status, guard.message);
+      // 固定打开仓库根的 CHANGELOG.md：不接受任何路径参数，杜绝路径穿越与
+      // 任意命令面；能调起的只有系统默认 Markdown 关联应用。
+      try {
+        openChangelog(CHANGELOG_FILE);
+        return sendJson(res, { ok: true });
+      } catch (err) {
+        return sendError(res, 500, `调起系统编辑器失败：${err?.message ?? err}`);
+      }
     }
 
     return sendError(res, 404, 'Not Found');
@@ -388,6 +440,41 @@ export function startServer({ port = DEFAULT_PORT } = {}) {
   });
 }
 
+/** 页面标记：用于确认端口上的服务确实是本工具，而不是其他程序。 */
+const DASHBOARD_MARKER = 'MAW Dev Dashboard';
+
+/**
+ * 探测 127.0.0.1:port 是否已有本工具实例在运行。
+ * GET / 并查找页面标记；网络失败、超时（2s）或非本工具页面都返回 false。
+ */
+export async function isDashboardServing(port) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/`, { signal: controller.signal });
+    if (!res.ok) return false;
+    return (await res.text()).includes(DASHBOARD_MARKER);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 用系统默认应用打开 URL 或文件路径（浏览器 / 关联编辑器）。 */
+function openWithSystemApp(target) {
+  const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
+  const args = process.platform === 'win32' ? ['/c', 'start', '', target] : [target];
+  const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+  // 无关联应用等错误异步到达：吞掉避免 unhandled 'error' 打崩 server；
+  // 代价是无法向页面保证调起成功（fire-and-forget 语义）
+  child.on('error', () => {});
+  child.unref();
+}
+
+/** 用系统默认浏览器打开 URL。 */
+const openInBrowser = (url) => openWithSystemApp(url);
+
 async function main() {
   const { values } = parseArgs({
     options: {
@@ -401,16 +488,28 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  const server = await startServer({ port });
+  let server;
+  try {
+    server = await startServer({ port });
+  } catch (err) {
+    if (err?.code === 'EADDRINUSE') {
+      const url = `http://127.0.0.1:${port}/`;
+      if (await isDashboardServing(port)) {
+        // 已有实例：重复启动没意义，直接复用，并按需打开页面。
+        console.log(`端口 ${port} 已有 Dev Dashboard 在运行 → ${url}`);
+        if (values.open) openInBrowser(url);
+        return;
+      }
+      console.error(`端口 ${port} 已被其他程序占用。可用 --port 换一个端口，或释放该端口后重试。`);
+      process.exitCode = 1;
+      return;
+    }
+    throw err;
+  }
   const url = `http://127.0.0.1:${port}/`;
   console.log(`MAW Dev Dashboard 已启动 → ${url}`);
   console.log('Ctrl+C 退出。状态数据存于 .artifacts/dev-dashboard/status.json（不入库）。');
-  if (values.open) {
-    const { spawn } = await import('node:child_process');
-    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
-    const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
-    spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref();
-  }
+  if (values.open) openInBrowser(url);
   const shutdown = () => {
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 1500).unref();

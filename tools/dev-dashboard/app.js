@@ -21,7 +21,10 @@ const state = {
   prs: [],
   checklists: [],
   statusMap: {},
+  ignored: {},
+  showIgnored: false,
   milestoneFilter: 'all',
+  authorFilter: 'all',
   query: '',
 };
 
@@ -34,6 +37,8 @@ const el = {
   openChangelog: document.getElementById('open-changelog'),
   autoRefresh: document.getElementById('auto-refresh'),
   milestoneFilter: document.getElementById('milestone-filter'),
+  authorFilter: document.getElementById('author-filter'),
+  toggleIgnored: document.getElementById('toggle-ignored'),
   search: document.getElementById('search'),
   filterMeta: document.getElementById('filter-meta'),
 };
@@ -92,14 +97,16 @@ async function fetchJson(url, options) {
 // ---------------------------------------------------------------- 数据
 
 async function loadAll() {
-  const [prs, checklists, statusMap] = await Promise.all([
+  const [prs, checklists, statusMap, ignored] = await Promise.all([
     fetchJson('/api/prs'),
     fetchJson('/api/checklists'),
     fetchJson('/api/status'),
+    fetchJson('/api/ignored'),
   ]);
   state.prs = Array.isArray(prs) ? prs : [];
   state.checklists = Array.isArray(checklists) ? checklists : [];
   state.statusMap = statusMap && typeof statusMap === 'object' ? statusMap : {};
+  state.ignored = ignored && typeof ignored === 'object' ? ignored : {};
   render();
 }
 
@@ -124,6 +131,27 @@ async function assignStatus(pr, status) {
   render();
 }
 
+async function toggleIgnored(prNumber, ignored) {
+  const key = String(prNumber);
+  const prev = Boolean(state.ignored[key]);
+  // 乐观更新，失败回滚
+  if (ignored) state.ignored[key] = true;
+  else delete state.ignored[key];
+  render();
+  try {
+    state.ignored = await fetchJson('/api/ignored', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pr: prNumber, ignored }),
+    });
+  } catch (err) {
+    if (prev) state.ignored[key] = true;
+    else delete state.ignored[key];
+    toast(`忽略状态保存失败：${err.message}`);
+  }
+  render();
+}
+
 // ---------------------------------------------------------------- 渲染
 
 function statusOf(pr) {
@@ -133,6 +161,10 @@ function statusOf(pr) {
   return COLUMNS.some((col) => col.id === status) ? status : UNASSIGNED;
 }
 
+function isIgnored(pr) {
+  return Boolean(state.ignored[String(pr.number)]);
+}
+
 function checklistsOf(pr) {
   return state.checklists.filter((item) => item.pr === pr.number);
 }
@@ -140,10 +172,12 @@ function checklistsOf(pr) {
 function visiblePrs() {
   const query = state.query.trim().toLowerCase();
   return state.prs.filter((pr) => {
+    if (!state.showIgnored && isIgnored(pr)) return false;
     if (state.milestoneFilter === 'none' && pr.milestone) return false;
     if (state.milestoneFilter !== 'all' && state.milestoneFilter !== 'none') {
       if ((pr.milestone?.title ?? '') !== state.milestoneFilter) return false;
     }
+    if (state.authorFilter !== 'all' && (pr.author?.login ?? '') !== state.authorFilter) return false;
     if (!query) return true;
     const haystack = [
       pr.title, pr.headRefName, pr.baseRefName,
@@ -174,13 +208,40 @@ function renderMilestoneOptions() {
   state.milestoneFilter = el.milestoneFilter.value;
 }
 
+function renderAuthorOptions() {
+  // 统计每个作者的 PR 数，按数量降序、登录名升序排列
+  const counts = new Map();
+  for (const pr of state.prs) {
+    const login = pr.author?.login ?? '';
+    if (!login) continue;
+    counts.set(login, (counts.get(login) ?? 0) + 1);
+  }
+  const authors = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const current = state.authorFilter;
+  el.authorFilter.replaceChildren();
+  for (const [value, label] of [
+    ['all', `全部作者`],
+    ...authors.map(([login, n]) => [login, `${login} · ${n}`]),
+  ]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    el.authorFilter.append(option);
+  }
+  el.authorFilter.value = [...el.authorFilter.options].some((o) => o.value === current)
+    ? current : 'all';
+  // 与 milestone 筛选同理：作者消失时回落 all 并同步 state，避免筛出空看板。
+  state.authorFilter = el.authorFilter.value;
+}
+
 function renderStats() {
   const total = state.prs.length;
   const pass = state.prs.filter((pr) => statusOf(pr) === 'pass').length;
   const noMs = state.prs.filter((pr) => !pr.milestone).length;
+  const ignoredCount = Object.keys(state.ignored).length;
   const clPending = state.checklists.filter((c) => c.status === 'pending').length;
   el.stats.textContent =
-    `${total} 个 open PR · pass ${pass} · 未挂 milestone ${noMs} · 待核验清单 ${clPending}`;
+    `${total} 个 open PR · pass ${pass} · 未挂 milestone ${noMs} · 已忽略 ${ignoredCount} · 待核验清单 ${clPending}`;
 }
 
 function buildBadge(text, cls = '', title = '') {
@@ -198,6 +259,8 @@ function buildCard(pr) {
   card.dataset.pr = String(pr.number);
   if (!pr.milestone) card.classList.add('no-milestone');
   if (statusOf(pr) === 'pass') card.classList.add('is-pass');
+  const ignored = isIgnored(pr);
+  if (ignored) card.classList.add('is-ignored');
 
   // 标题（链接到 GitHub PR）
   const title = document.createElement('a');
@@ -230,6 +293,7 @@ function buildCard(pr) {
     badges.append(buildBadge('未挂 milestone', 'ms-missing', '建议分配到某个 milestone'));
   }
   badges.append(buildBadge(`@${pr.author?.login ?? 'unknown'}`));
+  if (ignored) badges.append(buildBadge('已忽略', 'ignored', '该 PR 已被忽略，仅在「显示已忽略」时可见'));
   if (pr.headRefName) badges.append(buildBadge(`${pr.headRefName} → ${pr.baseRefName}`));
   card.append(badges);
 
@@ -268,9 +332,18 @@ function buildCard(pr) {
   }
   card.append(checkRow);
 
-  // 动作行：打开 PR + 状态下拉
+  // 动作行：忽略 + 状态下拉
   const actions = document.createElement('div');
   actions.className = 'card-actions';
+  const ignoreBtn = document.createElement('button');
+  ignoreBtn.type = 'button';
+  ignoreBtn.className = 'mini-btn';
+  ignoreBtn.textContent = ignored ? '取消忽略' : '忽略';
+  ignoreBtn.title = ignored
+    ? '取消忽略后卡片恢复常驻看板'
+    : '忽略后卡片从看板隐藏，可用工具栏「已忽略」开关找回';
+  ignoreBtn.addEventListener('click', () => toggleIgnored(pr.number, !ignored));
+  actions.append(ignoreBtn);
   const select = document.createElement('select');
   select.title = '分配状态';
   select.setAttribute('aria-label', `PR #${pr.number} 状态`);
@@ -328,7 +401,12 @@ function generationPrompt(pr) {
 
 function render() {
   renderMilestoneOptions();
+  renderAuthorOptions();
   renderStats();
+  el.toggleIgnored.textContent = state.showIgnored
+    ? `已忽略 ${Object.keys(state.ignored).length}（显示中）`
+    : `已忽略 ${Object.keys(state.ignored).length}`;
+  el.toggleIgnored.classList.toggle('active', state.showIgnored);
 
   const prs = visiblePrs();
   const byColumn = new Map(COLUMNS.map((col) => [col.id, []]));
@@ -412,6 +490,14 @@ el.openChangelog.addEventListener('click', () => {
 });
 el.milestoneFilter.addEventListener('change', () => {
   state.milestoneFilter = el.milestoneFilter.value;
+  render();
+});
+el.authorFilter.addEventListener('change', () => {
+  state.authorFilter = el.authorFilter.value;
+  render();
+});
+el.toggleIgnored.addEventListener('click', () => {
+  state.showIgnored = !state.showIgnored;
   render();
 });
 el.search.addEventListener('input', () => {

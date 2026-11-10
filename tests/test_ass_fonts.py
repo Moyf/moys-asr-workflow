@@ -40,6 +40,58 @@ YAHEI_ENTRIES = ({
 },)
 
 
+def _hanchan_face_font(
+    en_family: str, zh_family_win: str, zh_family_mac: str,
+    full_win: str, full_mac: str, postscript: str,
+) -> _FakeFont:
+    """按寒蝉活仿楷真实 name 表结构合成单个 face（record 顺序同真实文件）。"""
+
+    return _FakeFont([
+        _FakeNameRecord(1, en_family, platform_id=1, lang_id=0),
+        _FakeNameRecord(1, zh_family_mac, platform_id=1, lang_id=33),
+        _FakeNameRecord(1, en_family, platform_id=3, lang_id=0x409),
+        _FakeNameRecord(1, zh_family_win, platform_id=3, lang_id=0x804),
+        _FakeNameRecord(2, "Regular", platform_id=3, lang_id=0x409),
+        _FakeNameRecord(4, full_mac, platform_id=1, lang_id=0),
+        _FakeNameRecord(4, full_win, platform_id=3, lang_id=0x409),
+        _FakeNameRecord(4, full_win, platform_id=3, lang_id=0x804),
+        _FakeNameRecord(6, postscript, platform_id=3, lang_id=0x409),
+        _FakeNameRecord(16, "ChillHuoFangKai_F", platform_id=3, lang_id=0x409),
+        _FakeNameRecord(16, "寒蝉活仿楷_復", platform_id=3, lang_id=0x804),
+    ])
+
+
+def _hanchan_face_fonts() -> list[_FakeFont]:
+    """寒蝉活仿楷三个 face（ConBold / ConRegular / Regular），共组一个 family。"""
+
+    return [
+        _hanchan_face_font(
+            "ChillHuoFangKai_F ConBold", "寒蝉活仿楷_復 ConBold", "寒蝉活仿楷__ ConBold",
+            "寒蝉活仿楷_復ConBold", "_______ConBold", "ChillHuoFangKai_F_ConBold",
+        ),
+        _hanchan_face_font(
+            "ChillHuoFangKai_F Con", "寒蝉活仿楷_復 Con", "寒蝉活仿楷__ Con",
+            "寒蝉活仿楷_復ConRegular", "_______ConRegular", "ChillHuoFangKai_F_ConRegular",
+        ),
+        _hanchan_face_font(
+            "ChillHuoFangKai_F", "寒蝉活仿楷_復", "寒蝉活仿楷__",
+            "寒蝉活仿楷_復Regular", "_______Regular", "ChillHuoFangKai_F_Regular",
+        ),
+    ]
+
+
+def _hanchan_font_file_names() -> list[FontFileNames]:
+    """对寒蝉夹具跑真实提取逻辑，得到带 legacy 的 FontFileNames 列表。"""
+
+    return [_extract_font_names(font) for font in _hanchan_face_fonts()]
+
+
+def _hanchan_entries() -> tuple[dict, ...]:
+    """寒蝉三 face 合并后的别名条目（供 normalize/resolve 打桩使用）。"""
+
+    return tuple(_merge_font_entries(_hanchan_font_file_names(), ()))
+
+
 class _FakeNameRecord:
     def __init__(self, name_id: int, value: str, platform_id: int = 3, lang_id: int = 0x409) -> None:
         self.nameID = name_id
@@ -123,6 +175,50 @@ class ExtractFontNamesTests(unittest.TestCase):
         self.assertEqual(names.all_names(), (
             "得意黑", "Smiley Sans", "Smiley Sans Regular", "SmileySans-Oblique",
         ))
+
+    def test_macintosh_records_yield_to_windows_records_in_same_language_slot(self) -> None:
+        # 寒蝉活仿楷真实结构：Macintosh 中文记录（enc=25/langID=33）由转码工具
+        # 生成，「復」字丢失产出「寒蝉活仿楷__」类脏名，fullName 退化为
+        # 「_______ConRegular」；CoreText/libass/浏览器都匹配不到 Mac 记录。
+        font = _FakeFont([
+            _FakeNameRecord(1, "ChillHuoFangKai_F Con", platform_id=1, lang_id=0),
+            _FakeNameRecord(1, "寒蝉活仿楷__ Con", platform_id=1, lang_id=33),
+            _FakeNameRecord(1, "ChillHuoFangKai_F Con", platform_id=3, lang_id=0x409),
+            _FakeNameRecord(1, "寒蝉活仿楷_復 Con", platform_id=3, lang_id=0x804),
+            _FakeNameRecord(4, "_______ConRegular", platform_id=1, lang_id=0),
+            _FakeNameRecord(4, "寒蝉活仿楷_復ConRegular", platform_id=3, lang_id=0x409),
+            _FakeNameRecord(6, "ChillHuoFangKai_F_ConRegular", platform_id=3, lang_id=0x409),
+        ])
+        names = _extract_font_names(font)
+        self.assertEqual(names.family, (
+            FontNameRecord("ChillHuoFangKai_F Con", "en"),
+            FontNameRecord("寒蝉活仿楷_復 Con", "zh"),
+        ))
+        self.assertEqual(names.full, ("寒蝉活仿楷_復ConRegular",))
+        # 被挤掉的脏名进 legacy，供旧工程存量名查询改写；值与保留值相同的
+        # 重复 Mac 记录（如 Mac en family）不是脏名，不进 legacy。
+        self.assertEqual(names.legacy, ("寒蝉活仿楷__ Con", "_______ConRegular"))
+        self.assertNotIn("寒蝉活仿楷__ Con", names.all_names())
+
+    def test_macintosh_only_names_are_kept_without_legacy(self) -> None:
+        # Academy Engraved LET 等苹果字体仅靠 Mac Roman 记录携带 family 名，
+        # CoreText 能匹配（实测），必须原样保留。
+        font = _FakeFont([
+            _FakeNameRecord(1, "Academy Engraved LET", platform_id=1, lang_id=0),
+            _FakeNameRecord(4, "Academy Engraved LET Regular", platform_id=1, lang_id=0),
+        ])
+        names = _extract_font_names(font)
+        self.assertEqual(names.family, (FontNameRecord("Academy Engraved LET", "en"),))
+        self.assertEqual(names.legacy, ())
+
+    def test_legacy_excludes_values_that_survive_via_windows_records(self) -> None:
+        font = _FakeFont([
+            _FakeNameRecord(1, "Arial", platform_id=1, lang_id=0),
+            _FakeNameRecord(1, "Arial", platform_id=3, lang_id=0x409),
+        ])
+        names = _extract_font_names(font)
+        self.assertEqual(names.family, (FontNameRecord("Arial", "en"),))
+        self.assertEqual(names.legacy, ())
 
 
 class CanonicalSelectionTests(unittest.TestCase):
@@ -224,6 +320,43 @@ class MergeFontEntriesTests(unittest.TestCase):
         self.assertEqual(payload["fonts"][0]["canonicalByName"]["examplesans-semibold"],
                          "Example Sans Semibold")
 
+    def test_hanchan_faces_produce_clean_canonicals_and_legacy_aliases(self) -> None:
+        # 三个 face 共组一个条目：canonical 与 names 全部是 libass 可匹配的
+        # Windows 平台名；Mac 脏名只出现在 legacy（下拉不展示、查询可命中）。
+        entries = _hanchan_entries()
+        self.assertEqual(len(entries), 1)
+        entry = entries[0]
+        self.assertEqual(entry["canonical"], "寒蝉活仿楷_復 ConBold")
+        joined = " ".join([*entry["names"], *entry["family"], entry["canonical"]])
+        self.assertNotIn("寒蝉活仿楷__", joined)
+        self.assertNotIn("_______", joined)
+        self.assertEqual(entry["names"], [
+            "ChillHuoFangKai_F ConBold", "寒蝉活仿楷_復 ConBold",
+            "ChillHuoFangKai_F", "寒蝉活仿楷_復", "寒蝉活仿楷_復ConBold",
+            "ChillHuoFangKai_F_ConBold", "ChillHuoFangKai_F Con", "寒蝉活仿楷_復 Con",
+            "寒蝉活仿楷_復ConRegular", "ChillHuoFangKai_F_ConRegular",
+            "寒蝉活仿楷_復Regular", "ChillHuoFangKai_F_Regular",
+        ])
+        self.assertEqual(entry["legacy"], [
+            "寒蝉活仿楷__ ConBold", "_______ConBold",
+            "寒蝉活仿楷__ Con", "_______ConRegular",
+            "寒蝉活仿楷__", "_______Regular",
+        ])
+        # 存量脏名按所属 face 映射到对应 canonical（查询改写入口）。
+        self.assertEqual(entry["canonicalByName"]["寒蝉活仿楷__ con"], "寒蝉活仿楷_復 Con")
+        self.assertEqual(entry["canonicalByName"]["寒蝉活仿楷__"], "寒蝉活仿楷_復")
+        self.assertEqual(entry["canonicalByName"]["_______conbold"], "寒蝉活仿楷_復 ConBold")
+
+    def test_shared_nameid1_prefers_face_owning_the_name_regardless_of_order(self) -> None:
+        # 「寒蝉活仿楷_復」是 Regular face 的 nameID1，又是两个 Con face 的
+        # nameID16：无论扫描顺序如何，都应指向 Regular 的 canonical，
+        # 避免 ConBold 先扫描时把基础 family 名抢到 Condensed 字重上。
+        faces = _hanchan_font_file_names()
+        for order in (faces, list(reversed(faces))):
+            entry = _merge_font_entries(order, ())[0]
+            self.assertEqual(entry["canonicalByName"]["寒蝉活仿楷_復"], "寒蝉活仿楷_復")
+            self.assertEqual(entry["canonicalByName"]["chillhuofangkai_f"], "寒蝉活仿楷_復")
+
 
 class AliasLookupTests(unittest.TestCase):
     def _patched_entries(self) -> object:
@@ -318,6 +451,38 @@ class AliasLookupTests(unittest.TestCase):
             normalized, notices = normalize_ass_text_fontnames(text)
         self.assertIn("Style: Default,微软雅黑,", normalized)
         self.assertEqual(notices, ["字体「Microsoft YaHei UI」已按本机字体匹配为「微软雅黑」"])
+
+    def test_legacy_dirty_names_resolve_to_matchable_canonical(self) -> None:
+        # 旧工程已存量的 Mac 平台脏名（libass/CoreText 匹配不到）经 legacy
+        # 别名改写为同 face 的可匹配 Windows 名；清洗后的名字原样保留。
+        with mock.patch.object(ass_fonts, "font_alias_entries", return_value=_hanchan_entries()):
+            self.assertEqual(resolve_font_name("寒蝉活仿楷__ Con"), "寒蝉活仿楷_復 Con")
+            self.assertEqual(resolve_font_name("寒蝉活仿楷__"), "寒蝉活仿楷_復")
+            text = "\n".join([
+                "Style: Dirty,寒蝉活仿楷__ Con,86,&H00FFFFFF",
+                "Style: Clean,寒蝉活仿楷_復 Con,64,&H00FFFFFF",
+                "Style: FullName,寒蝉活仿楷_復ConRegular,52,&H00FFFFFF",
+            ])
+            normalized, notices = normalize_ass_text_fontnames(text)
+        self.assertIn("Style: Dirty,寒蝉活仿楷_復 Con,86,&H00FFFFFF", normalized)
+        self.assertIn("Style: Clean,寒蝉活仿楷_復 Con,64,&H00FFFFFF", normalized)
+        self.assertIn("Style: FullName,寒蝉活仿楷_復 Con,52,&H00FFFFFF", normalized)
+        self.assertEqual(notices, [
+            "字体「寒蝉活仿楷__ Con」已按本机字体匹配为「寒蝉活仿楷_復 Con」",
+            "字体「寒蝉活仿楷_復ConRegular」已按本机字体匹配为「寒蝉活仿楷_復 Con」",
+        ])
+
+    def test_payload_omits_legacy_when_empty_and_keeps_it_for_dirty_fonts(self) -> None:
+        # 无脏名的字体不带 legacy 键（保持旧 payload 结构不变）。
+        with mock.patch.object(ass_fonts, "font_alias_entries", return_value=YAHEI_ENTRIES):
+            payload = ass_fonts.font_alias_payload()
+        self.assertNotIn("legacy", payload["fonts"][0])
+        # 有脏名的字体输出 legacy，供前端把存量名解析回可匹配 canonical。
+        with mock.patch.object(ass_fonts, "font_alias_entries", return_value=_hanchan_entries()):
+            payload = ass_fonts.font_alias_payload()
+        self.assertIn("legacy", payload["fonts"][0])
+        self.assertNotIn("寒蝉活仿楷__ Con", payload["fonts"][0]["names"])
+        self.assertIn("寒蝉活仿楷__ Con", payload["fonts"][0]["legacy"])
 
 
 class FontAliasPayloadTests(unittest.TestCase):

@@ -137,6 +137,7 @@ datas = [
     (str(ROOT / "maw" / "project_io.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "ffmpeg.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "media_jobs.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "local_log.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "media_export_audio.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "text_processing_presets.py"), "local-runtime/maw"),
@@ -214,8 +215,10 @@ opencc_hiddenimports = collect_submodules("opencc")
 
 # OCR dependencies and model files stay outside the frozen bundle. The bundled
 # worker only bootstraps the optional runtime when the user installs it.
+# Subtitle image export uses FFmpeg; Pillow belongs to the optional OCR runtime.
 
 excluded_local_modules = [
+    "PIL",
     "accelerate",
     "funasr",
     "hf_xet",
@@ -223,7 +226,6 @@ excluded_local_modules = [
     "modelscope",
     "qwen_asr",
     "onnxruntime",
-    "PIL",
     "rapidocr",
     "torch",
     "torchaudio",

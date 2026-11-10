@@ -12,6 +12,7 @@ type WaveformMethods =
   DescriptorValues<ReturnType<typeof import('./controls.js').createWaveformModule>, 'isAdjacentCueAdjustmentIndependent' | 'isSharedBoundaryHandleIndependent' | 'adjacentSnapModeStatusHint' | 'hasCueDrag' | 'bindControls'> &
   DescriptorValues<ReturnType<typeof import('./cue-blocks.js').createWaveformModule>, 'createRow' | 'appendGapBlocks' | 'appendCueBlocks' | 'appendCueHandle' | 'appendExtensionHandle' | 'isSegmentHiddenForDisplay' | 'appendSharedBoundaryZones' | 'setBindingMarker' | 'layoutBlock' | 'layoutGapBlock' | 'refreshGapOverlay' | 'relayoutCueBlocksInRow' | 'relayoutGapBlocksInRow' | 'bindWordModeSentenceHandle' | 'refreshCueOverlay' | 'cueDragOverlayOccupancyChanged' | 'refreshCueBlocks' | 'refreshBoundaryZones' | 'refreshCueLabel' | 'refreshExtensionCueLabel' | 'updateSelection'> &
   DescriptorValues<ReturnType<typeof import('./cue-commands.js').createWaveformModule>, 'adjustSelectedByKeyboard' | 'adjustSelectedBoundaryByKeyboard' | 'setCueBoundaryToTime' | 'snapSelectedCueBoundaryByKeyboard' | 'adjustActiveCueDragBy' | 'handleHeldCueKey' | 'snapActiveCueBoundaryByKeyboard' | 'cancelCueDrag' | 'applyIndependentBoundaryDrag'> &
+  DescriptorValues<ReturnType<typeof import('./cue-quick-edit.js').createWaveformModule>, 'openCueQuickEdit' | 'openWordQuickEdit' | 'openCueQuickEditAtIndex' | 'openWordQuickEditAtIndex' | 'firstVisibleBlock' | 'firstVisibleCueBlock' | 'firstVisibleWordBlock' | 'navigateCueQuickEdit' | 'navigateWordQuickEdit' | 'positionCueQuickEdit' | 'commitCueQuickEdit' | 'closeCueQuickEdit' | 'cueQuickEditCaretOffset' | '_openQuickEditPopup' | '_commitCueQuickEditState'> &
   DescriptorValues<ReturnType<typeof import('./cue-drag-update.js').createWaveformModule>, 'moveCueDrag' | 'moveDragDelta' | 'applySelectedMoveDrag' | 'applyMoveDrag' | 'applyResizeDrag' | 'applyBoundaryDrag' | 'endCueDrag'> &
   DescriptorValues<ReturnType<typeof import('./cue-drag.js').createWaveformModule>, 'beginCueDrag' | 'isSharedBoundary' | 'beginIndependentEdgeDrag' | 'beginSharedBoundaryZoneDrag' | 'cueDragDurationMs' | 'cueTiming' | 'cueTimingDuration' | 'cueTimingValueFromMs' | 'cueTimingValueToMs' | 'formatCueTiming' | 'captureSelectedMoveTracks' | 'reindexSelectedMoveTracks' | 'restoreSelectedMoveDrag' | 'captureCueDragOriginals' | 'rebaseCueDragToTrack'> &
   DescriptorValues<ReturnType<typeof import('./gap-drag.js').createWaveformModule>, 'beginGapBoundaryDrag' | 'beginGapMoveDrag' | 'gapMoveTarget' | 'moveGapMoveDrag' | 'scheduleGapMovePreview' | 'clearGapMovePreview' | 'previewGapMoveDrag' | 'endGapMoveDrag' | 'refreshGapBlocks' | 'clearGapBoundaryPreview' | 'appendGapBoundaryPreview' | 'previewGapBoundaryDrag' | 'moveGapBoundaryDrag' | 'scheduleGapPreview' | 'endGapBoundaryDrag' | 'beginGapRangeDrag' | 'gapRangePointerTime' | 'clearGapRangePreviews' | 'layoutGapRangePreview' | 'moveGapRangeDrag' | 'endGapRangeDrag'> &
@@ -48,7 +49,7 @@ export interface WaveformSettings {
   rowHeight: number; side: string; splitPercent: number; layoutColumnPercent: number;
   layoutRows: number[]; layoutTree: LayoutTree; layoutEditing: boolean;
   waveformScale: number; waveformScaleAuto: boolean; disabledDisplay: string;
-  showGroupBadges: boolean; dragPlayhead: boolean; spectralColor: boolean;
+  showGroupBadges: boolean; showCueTooltip: boolean; dragPlayhead: boolean; spectralColor: boolean;
 }
 export interface Payload {
   schema: string; encoding: string; duration_ms: number; data: string;
@@ -163,13 +164,13 @@ export interface WaveformOptions {
   seek?(...args: unknown[]): void;
   showGapContextMenu?(...args: unknown[]): void;
   showContextMenu?(...args: unknown[]): void;
-  enterCueEditor?(...args: unknown[]): void;
   activateCue?(...args: unknown[]): void;
   showOverlayContextMenu?(...args: unknown[]): void;
-  enterOverlayCueEditor?(...args: unknown[]): void;
+  onCueQuickEditText?(track: Track, index: number, text: string): void;
+  getQuickEditEnterAction?(event: KeyboardEvent): string | null;
+  onCueQuickEditSplit?(track: Track, index: number, offset: number, state: QuickEditPopupState): boolean;
+  onWordQuickEditText?(segmentIndex: number, itemIndex: number, text: string): void;
   showExtensionContextMenu?(...args: unknown[]): void;
-  enterExtensionCueEditor?(...args: unknown[]): void;
-  onMainCueDoubleClickBlocked?(): void;
   activateExtensionCue?(...args: unknown[]): void;
   onBeginEdit?(...args: unknown[]): void;
   onCommitEdit?(...args: unknown[]): void;
@@ -244,7 +245,7 @@ export interface WaveformState {
   windowLabel: HTMLElement; waveformScaleLabel: HTMLElement;
   waveformScaleDownButton: HTMLButtonElement; waveformScaleUpButton: HTMLButtonElement; waveformScaleFitButton: HTMLButtonElement;
   secondsPerRowSelect: HTMLSelectElement; rowHeightSelect: HTMLSelectElement;
-  showGroupBadgesToggle: HTMLInputElement; dragPlayheadToggle: HTMLInputElement; spectralColorToggle: HTMLInputElement;
+  showGroupBadgesToggle: HTMLInputElement; showCueTooltipToggle: HTMLInputElement; dragPlayheadToggle: HTMLInputElement; spectralColorToggle: HTMLInputElement;
   sideSelect: HTMLSelectElement; disabledDisplaySelect: HTMLSelectElement;
   layoutEditToggle: HTMLInputElement; layoutResetButton: HTMLButtonElement; layoutPreview: HTMLElement;
   layoutResizers: {column: HTMLElement; rowTop: HTMLElement; rowMiddle: HTMLElement};
@@ -261,6 +262,12 @@ export interface WaveformState {
   } | null;
   _markerQuickEditOutside: ((event: PointerEvent) => void) | null;
   _markerQuickEditKey: ((event: KeyboardEvent) => void) | null;
+  cueQuickEdit: QuickEditPopupState | null;
+  _cueQuickEditOutside: ((event: PointerEvent) => void) | null;
+  _cueQuickEditKey: ((event: KeyboardEvent) => void) | null;
+  _wordQuickEditDoubleClickTime: number;
+  _wordQuickEditClick: {index: number; itemIndex: number; time: number;
+    clientX: number; clientY: number} | null;
   markerDrag: MarkerDragState | null; markerCreateDrag: MarkerDragState | null;
   _markerDragMove: (event: PointerEvent) => void; _markerDragEnd: (event: PointerEvent) => void;
   _markerDragCancel: () => void;
@@ -277,6 +284,17 @@ export interface WaveformState {
   customLayoutRoot: HTMLElement | null; renderedCustomLayoutTree: LayoutTree | null;
 }
 export type WaveformInstance = WaveformState & WaveformMethods;
+
+// 快速编辑气泡的内部状态（字幕/字词共用，见 cue-quick-edit.js）。
+// commit 在关闭与失焦时调用且必须幂等；navigate 响应 Tab / Shift+Tab。
+export interface QuickEditPopupState {
+  element: HTMLElement;
+  textarea: HTMLTextAreaElement;
+  anchor: {pointerX: number; blockTop: number; blockBottom: number};
+  commit: (state: QuickEditPopupState) => boolean | void;
+  navigate?: (state: QuickEditPopupState, direction: number) => void;
+  resizeObserver: ResizeObserver | null;
+}
 
 export interface WordDragState {
   pointerId: number; segment: Cue; timing: Clock; row: HTMLElement;
