@@ -1,7 +1,23 @@
+import { bindCueEvents } from './editor-cue-events.js';
+import { scrollCueToCenter, setCueListIdentity } from './editor-cue-list-anchor.js';
+import { bindExtensionCueEvents } from './editor-inline-edit.js';
+import { applySearch } from './editor-search.js';
+import { selectOnly, selectOnlyExtension, stickerUrl } from './editor-selection.js';
+import { openStickerPreview } from './editor-sticker-picker.js';
+import { formatTimelineTimecode, projectTimebase, timelineIsFrameMode } from './editor-timeline.js';
+
 // 字幕行元素构建：单列/双列 DOM、颜色与表情包呈现。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweCueElements 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 字幕行元素构建：单列/双列 DOM、颜色与表情包呈现。 ESM init 模块：initMaweCueElements 在原清单位次执行原 IIFE 体（挂
+// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
+// window.MaweCueElements 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
+// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+
+// window.MaweCueElements 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
+// 兄弟模块可静态 import。
+export function initMaweCueElements() {
 (function initMaweCueElements(global) {
   'use strict';
 
@@ -24,9 +40,9 @@
         isExtension ? `.cue[data-ext-idx="${headIndex}"]` : `.cue[data-idx="${headIndex}"]`,
       );
       if (!head) return;
-      MaweCueListAnchor.scrollCueToCenter(head);
-      if (isExtension) MaweSelection.selectOnlyExtension(headIndex);
-      else MaweSelection.selectOnly(headIndex);
+      scrollCueToCenter(head);
+      if (isExtension) selectOnlyExtension(headIndex);
+      else selectOnly(headIndex);
     });
     colorBar.dataset.colorRefHandlerBound = 'true';
   }
@@ -68,12 +84,12 @@
   slotEl.replaceChildren();
   if (seg.sticker) {
     const img = document.createElement('img');
-    img.src = MaweSelection.stickerUrl(seg.sticker);
+    img.src = stickerUrl(seg.sticker);
     img.alt = seg.sticker.name || '表情包';
     img.title = seg.sticker.name || '表情包';
     img.addEventListener('click', (event) => {
       event.stopPropagation();
-      if (!isExtension) MaweStickerPicker.openStickerPreview(idx, { overlay: overlayTrack });
+      if (!isExtension) openStickerPreview(idx, { overlay: overlayTrack });
     });
     const nameEl = document.createElement('div');
     nameEl.className = 'sname';
@@ -97,10 +113,10 @@
             : `.cue[data-idx="${headIndex}"]`,
       );
       if (!head) return;
-      MaweCueListAnchor.scrollCueToCenter(head);
-      if (isExtension) MaweSelection.selectOnlyExtension(headIndex, extensionTrack);
+      scrollCueToCenter(head);
+      if (isExtension) selectOnlyExtension(headIndex, extensionTrack);
       else if (overlayTrack) window.MaweCuePanelWiring.selectOverlayCueRow(headIndex);
-      else MaweSelection.selectOnly(headIndex);
+      else selectOnly(headIndex);
     });
     slotEl.appendChild(refEl);
   }
@@ -115,7 +131,7 @@
   // 叠加行不参与多重字幕的双列结构：不携带 multi-cue / data-mainIdx，
   // 否则会被列表的选中、搜索、hover 等主轨逻辑误当成一条主字幕行。
   el.className = MaweMultiSubtitleCore.multiSubtitleVisible() && !isOverlay ? 'cue multi-cue' : 'cue';
-  MaweCueListAnchor.setCueListIdentity(el, seg, extensionTrack);
+  setCueListIdentity(el, seg, extensionTrack);
   if (isExtension) {
     el.classList.add('multi-extension-cue');
     el.dataset.extIdx = String(idx);
@@ -172,8 +188,8 @@
   el.appendChild(textEl);
   el.appendChild(cntEl);
 
-  if (isExtension) MaweInlineEdit.bindExtensionCueEvents(el, idx, extensionTrack);
-  else if (!overlayTrack) MaweCueEvents.bindCueEvents(el, idx);
+  if (isExtension) bindExtensionCueEvents(el, idx, extensionTrack);
+  else if (!overlayTrack) bindCueEvents(el, idx);
   return el;
 }
 
@@ -233,8 +249,8 @@
     const extension = extensionIndex == null ? null : track.segments[extensionIndex];
     const el = document.createElement('div');
     el.className = 'cue multi-cue multi-dual-cue';
-    if (main) MaweCueListAnchor.setCueListIdentity(el, main);
-    if (extension) MaweCueListAnchor.setCueListIdentity(el, extension, track);
+    if (main) setCueListIdentity(el, main);
+    if (extension) setCueListIdentity(el, extension, track);
     if (mainIndex != null) {
       el.dataset.mainIdx = String(mainIndex);
       el.dataset.idx = String(mainIndex);
@@ -244,10 +260,10 @@
       buildMultiCueColumn(main, mainIndex ?? -1, track, 'main'),
       buildMultiCueColumn(extension, extensionIndex ?? -1, track, 'extension'),
     );
-    if (main) MaweCueEvents.bindCueEvents(el, mainIndex);
+    if (main) bindCueEvents(el, mainIndex);
     if (extension) {
       const extensionColumn = el.querySelector('.multi-cue-column.extension');
-      MaweInlineEdit.bindExtensionCueEvents(extensionColumn, extensionIndex, track, el);
+      bindExtensionCueEvents(extensionColumn, extensionIndex, track, el);
     }
     return el;
   }
@@ -255,10 +271,10 @@
 
 
   function fmtShort(ms) {
-    if (MaweTimeline.timelineIsFrameMode()) {
-      return MaweTimeline.formatTimelineTimecode(
+    if (timelineIsFrameMode()) {
+      return formatTimelineTimecode(
         ms,
-        MaweTimeline.projectTimebase().fps,
+        projectTimebase().fps,
         MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator,
       );
     }
@@ -350,7 +366,7 @@
     updateTimedTextEditSingleGuide();
     refreshAllCharCounts();
     if (document.getElementById('filter-over').classList.contains('active')) {
-      MaweSearch.applySearch(MaweDom.searchEl.value);
+      applySearch(MaweDom.searchEl.value);
     }
   }
 
@@ -447,7 +463,7 @@
     const key = splitCueVisibilityKey(kind, segment, kind === 'extension' ? track?.id : null);
     if (key && MaweSelection.temporaryVisibleSplitCueKeys.has(key)) return;
     clearTemporaryVisibleSplitCues();
-    MaweSearch.applySearch(MaweDom.searchEl.value);
+    applySearch(MaweDom.searchEl.value);
   }
 
 
@@ -496,3 +512,30 @@
     refreshAllCharCounts
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function updateCueColorPresentation(...args) { return window.MaweCueElements.updateCueColorPresentation(...args); }
+export function updateCueStickerPresentation(...args) { return window.MaweCueElements.updateCueStickerPresentation(...args); }
+export function buildCueEl(...args) { return window.MaweCueElements.buildCueEl(...args); }
+export function buildMultiTimeEl(...args) { return window.MaweCueElements.buildMultiTimeEl(...args); }
+export function buildMultiCueColumn(...args) { return window.MaweCueElements.buildMultiCueColumn(...args); }
+export function buildExtensionCueEl(...args) { return window.MaweCueElements.buildExtensionCueEl(...args); }
+export function buildDualCueEl(...args) { return window.MaweCueElements.buildDualCueEl(...args); }
+export function fmtShort(...args) { return window.MaweCueElements.fmtShort(...args); }
+export function fmtSrtTime(...args) { return window.MaweCueElements.fmtSrtTime(...args); }
+export function escapeHtml(...args) { return window.MaweCueElements.escapeHtml(...args); }
+export function setTextHtml(...args) { return window.MaweCueElements.setTextHtml(...args); }
+export function buildSearchRegex(...args) { return window.MaweCueElements.buildSearchRegex(...args); }
+export function calcCharWidth(...args) { return window.MaweCueElements.calcCharWidth(...args); }
+export function getCharCountThreshold(...args) { return window.MaweCueElements.getCharCountThreshold(...args); }
+export function syncCharCountThresholdInputs(...args) { return window.MaweCueElements.syncCharCountThresholdInputs(...args); }
+export function handleCharCountThresholdInput(...args) { return window.MaweCueElements.handleCharCountThresholdInput(...args); }
+export function updateTimedTextEditSingleGuide(...args) { return window.MaweCueElements.updateTimedTextEditSingleGuide(...args); }
+export function applyCharCount(...args) { return window.MaweCueElements.applyCharCount(...args); }
+export function splitCueVisibilityKey(...args) { return window.MaweCueElements.splitCueVisibilityKey(...args); }
+export function temporaryVisibleSplitCueKeysForElement(...args) { return window.MaweCueElements.temporaryVisibleSplitCueKeysForElement(...args); }
+export function cueElementHasTemporarySplitVisibility(...args) { return window.MaweCueElements.cueElementHasTemporarySplitVisibility(...args); }
+export function clearTemporaryVisibleSplitCues(...args) { return window.MaweCueElements.clearTemporaryVisibleSplitCues(...args); }
+export function rememberTemporaryVisibleSplitCues(...args) { return window.MaweCueElements.rememberTemporaryVisibleSplitCues(...args); }
+export function releaseTemporaryVisibleSplitCuesUnless(...args) { return window.MaweCueElements.releaseTemporaryVisibleSplitCuesUnless(...args); }
+export function refreshAllCharCounts(...args) { return window.MaweCueElements.refreshAllCharCounts(...args); }

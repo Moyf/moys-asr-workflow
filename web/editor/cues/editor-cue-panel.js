@@ -1,3 +1,10 @@
+import { applyCharCount, buildCueEl, buildDualCueEl, buildExtensionCueEl, fmtShort } from './editor-cue-elements.js';
+import { captureCueListRenderAnchor, invalidateCueListVisualAnchorRestore, restoreCueListRenderAnchor, scrollCueToCenter } from './editor-cue-list-anchor.js';
+import { startEdit } from './editor-inline-edit.js';
+import { openExtensionSplitModal, splitAtCursor, splitTimeForTextOffset } from './editor-split-core.js';
+import { refreshTimedTextEditButton } from './editor-timed-text-edit.js';
+import { formatTimelineTimecode, millisecondsFromFrameNumber, parseFrameTimecode, projectTimebase, syncProjectTimebaseAndBindingOffsets, timelineIsFrameMode, timelineMinimumDurationMs, timelineTimingAdapter } from './editor-timeline.js';
+import { syncTextChange } from './editor-word-timing.js';
 import { refreshColorFilterUi } from './editor-color-filter.js';
 import { applySearch } from './editor-search.js';
 import { selectOnly, selectOnlyExtension, stickerUrl, updateMultiSelectionClasses } from './editor-selection.js';
@@ -24,10 +31,10 @@ export function initMaweCuePanel() {
   });
   // 其它编辑入口仍以毫秒修改工程对象；在重绘前把它们投影回当前时间基准，
   // 保证帧模式下保存的数据和下一次帧操作保持一致。
-  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
   cueListAnchor = preserveCueListScroll
-    ? cueListAnchor || MaweCueListAnchor.cueListScroll.mutationAnchor || MaweCueListAnchor.captureCueListRenderAnchor() : null;
-  MaweCueListAnchor.invalidateCueListVisualAnchorRestore();
+    ? cueListAnchor || MaweCueListAnchor.cueListScroll.mutationAnchor || captureCueListRenderAnchor() : null;
+  invalidateCueListVisualAnchorRestore();
   MaweStickerOverlay.stickerOverlayDataVersion += 1;
   // cues-container 同时是字幕列表和停靠模块；重绘列表时不要把布局编辑模式
   // 下的顶部拖拽栏一起清掉。
@@ -50,10 +57,10 @@ export function initMaweCuePanel() {
   const overlaySegments = overlayVisible ? getOverlayTrack().segments : [];
   const rows = [];
   if (!multiVisible || displayMode === 'main') {
-    MaweBoot.DATA.segments.forEach((seg, i) => rows.push({ start: seg.start, order: 0, el: MaweCueElements.buildCueEl(seg, i) }));
+    MaweBoot.DATA.segments.forEach((seg, i) => rows.push({ start: seg.start, order: 0, el: buildCueEl(seg, i) }));
   } else if (displayMode === 'extension') {
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    track.segments.forEach((seg, i) => rows.push({ start: seg.start, order: 0, el: MaweCueElements.buildExtensionCueEl(seg, i, track) }));
+    track.segments.forEach((seg, i) => rows.push({ start: seg.start, order: 0, el: buildExtensionCueEl(seg, i, track) }));
   } else {
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
     const displayRows = window.AsrEditorUtils.buildMultiDisplayRows(MaweBoot.DATA.segments, track.segments, MaweMultiSubtitleCore.getMultiSubtitleState().bindings);
@@ -63,7 +70,7 @@ export function initMaweCuePanel() {
       rows.push({
         start: mainSeg ? mainSeg.start : (extensionSeg ? extensionSeg.start : 0),
         order: 0,
-        el: MaweCueElements.buildDualCueEl(row.mainIndex, row.extensionIndex, track),
+        el: buildDualCueEl(row.mainIndex, row.extensionIndex, track),
       });
     });
   }
@@ -105,10 +112,10 @@ export function initMaweCuePanel() {
   MaweMediaPlayback.syncPlayerPlaceholder();
   MaweDisplaySettings.updateMultiSubtitleUi();
   MaweExportSrt.updateSubtitleExportUi();
-  MaweTimedTextEdit.refreshTimedTextEditButton();
+  refreshTimedTextEditButton();
   MaweGapRemoveUi.updateGapRemoveDisableHint();
   window.MAWE_ONBOARDING?.afterRender();
-  MaweCueListAnchor.restoreCueListRenderAnchor(cueListAnchor);
+  restoreCueListRenderAnchor(cueListAnchor);
 }
 
 
@@ -116,16 +123,16 @@ export function initMaweCuePanel() {
   function parsePanelTime(value, fallback) {
     const raw = String(value || '').trim();
     if (!raw) return fallback;
-    const timebase = MaweTimeline.projectTimebase();
+    const timebase = projectTimebase();
     if (timebase.unit === 'frames') {
-      const timecodeFrames = MaweTimeline.parseFrameTimecode(
+      const timecodeFrames = parseFrameTimecode(
         raw,
         timebase.fps,
         MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator,
       );
-      if (timecodeFrames !== null) return MaweTimeline.millisecondsFromFrameNumber(timecodeFrames, timebase.fps);
+      if (timecodeFrames !== null) return millisecondsFromFrameNumber(timecodeFrames, timebase.fps);
       if (/^\d+(?:\.\d+)?\s*F?$/iu.test(raw)) {
-        return MaweTimeline.millisecondsFromFrameNumber(Number.parseFloat(raw), timebase.fps);
+        return millisecondsFromFrameNumber(Number.parseFloat(raw), timebase.fps);
       }
       return fallback;
     }
@@ -270,10 +277,10 @@ export function initMaweCuePanel() {
   const previousText = hasMatchingTextSnapshot ? textSnapshot.text : seg.text;
   const oldStart = seg.start;
   const oldEnd = seg.end;
-  const minimumDurationMs = MaweTimeline.timelineMinimumDurationMs();
+  const minimumDurationMs = timelineMinimumDurationMs();
   const requestedStart = parsePanelTime(MaweDom.cuePanelStart.value, oldStart);
   const requestedDuration = parsePanelTime(MaweDom.cuePanelDuration.value, oldEnd - oldStart);
-  const timing = MaweTimeline.timelineTimingAdapter();
+  const timing = timelineTimingAdapter();
   const timingRequested = timing.fromMs(requestedStart) !== timing.getStart(seg)
     || timing.fromMs(requestedDuration) !== timing.getEnd(seg) - timing.getStart(seg);
   let newStart = oldStart;
@@ -311,7 +318,7 @@ export function initMaweCuePanel() {
   const timingChanged = seg.start !== oldStart || seg.end !== oldEnd;
   if (target.kind === 'main') {
     if (timingChanged) seg.items = remapPanelItems(seg.items, oldStart, oldEnd, seg.start, seg.end);
-    MaweWordTiming.syncTextChange(seg, previousText);
+    syncTextChange(seg, previousText);
   }
   seg._dirty = true;
   if (target.kind === 'main') {
@@ -441,11 +448,11 @@ export function initMaweCuePanel() {
     return;
   }
   if (document.activeElement !== MaweDom.cuePanelText || !MaweCuePanelState.cuePanelUndoPushed) MaweDom.cuePanelText.value = seg.text || '';
-  MaweDom.cuePanelStart.value = MaweCueElements.fmtShort(seg.start);
-  MaweDom.cuePanelDuration.value = MaweTimeline.timelineIsFrameMode()
-    ? MaweTimeline.formatTimelineTimecode(
+  MaweDom.cuePanelStart.value = fmtShort(seg.start);
+  MaweDom.cuePanelDuration.value = timelineIsFrameMode()
+    ? formatTimelineTimecode(
       seg.end - seg.start,
-      MaweTimeline.projectTimebase().fps,
+      projectTimebase().fps,
       MaweSettings.EDITOR_SETTINGS.timelineTimecodeSeparator,
     )
     : ((seg.end - seg.start) / 1000).toFixed(3);
@@ -625,7 +632,7 @@ export function initMaweCuePanel() {
     : target.kind === 'overlay'
       ? `.overlay-track-cue[data-overlay-idx="${next}"]`
       : `.cue[data-idx="${next}"]`);
-  if (cue) MaweCueListAnchor.scrollCueToCenter(cue);
+  if (cue) scrollCueToCenter(cue);
   MaweCoreState.waveformEditor?.revealTime(segments[next].start, true);
 }
 
@@ -637,18 +644,18 @@ export function initMaweCuePanel() {
   if (target.kind === 'overlay') {
     commitCuePanelEdit();
     const cursorOffset = MaweDom.cuePanelText.selectionStart;
-    const splitTime = MaweSplitCore.splitTimeForTextOffset(target.segment, cursorOffset);
+    const splitTime = splitTimeForTextOffset(target.segment, cursorOffset);
     window.MaweOverlaySplitMerge.openOverlaySplitModal(target.index, splitTime);
     return;
   }
   if (target.kind === 'extension') {
-    const splitTime = MaweSplitCore.splitTimeForTextOffset(target.segment, cursorOffset);
+    const splitTime = splitTimeForTextOffset(target.segment, cursorOffset);
     commitCuePanelEdit();
     const refreshed = getCurrentCuePanelTarget();
     if (!refreshed) return;
-    MaweSplitCore.openExtensionSplitModal(
+    openExtensionSplitModal(
       refreshed.index,
-      MaweSplitCore.splitTimeForTextOffset(refreshed.segment, cursorOffset) || splitTime,
+      splitTimeForTextOffset(refreshed.segment, cursorOffset) || splitTime,
       refreshed.track,
     );
     return;
@@ -659,7 +666,7 @@ export function initMaweCuePanel() {
   selectOnly(idx);
   const cue = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
   if (!cue) return;
-  MaweInlineEdit.startEdit(cue, idx);
+  startEdit(cue, idx);
   const textEl = MaweInlineEdit.editingState?.textEl;
   if (!textEl || !textEl.firstChild) return;
   const range = document.createRange();
@@ -672,7 +679,7 @@ export function initMaweCuePanel() {
   const selection = window.getSelection();
   selection.removeAllRanges();
   selection.addRange(range);
-  MaweSplitCore.splitAtCursor(null, { listFeedback: false });
+  splitAtCursor(null, { listFeedback: false });
 }
 
 
@@ -686,11 +693,11 @@ export function initMaweCuePanel() {
   if (!el || !segment) return;
   const timeStart = el.querySelector('.time-start');
   const timeEnd = el.querySelector('.time-end');
-  if (timeStart) timeStart.textContent = MaweCueElements.fmtShort(segment.start);
-  if (timeEnd) timeEnd.textContent = MaweCueElements.fmtShort(segment.end);
+  if (timeStart) timeStart.textContent = fmtShort(segment.start);
+  if (timeEnd) timeEnd.textContent = fmtShort(segment.end);
   const cntEl = el.querySelector('.charcount');
   if (cntEl) {
-    MaweCueElements.applyCharCount(
+    applyCharCount(
       cntEl,
       segment.text,
       MaweMultiSubtitleCore.getMainSubtitleSplitMode(segment),
@@ -736,7 +743,7 @@ export function initMaweCuePanel() {
     return;
   }
   // 与 renderAll 相同：重绘前把其它入口以毫秒写入的时间投影回当前时间基准。
-  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+  syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
   MaweStickerOverlay.stickerOverlayDataVersion += 1;
   const mainSet = new Set(mainIndices);
   const overlaySet = new Set(overlayIndices);
