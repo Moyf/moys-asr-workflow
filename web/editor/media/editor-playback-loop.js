@@ -1,3 +1,4 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { getOverlayTrack, overlayTrackVisible } from '../cues/overlay-track.js';
 import { applyAssSubtitlePreview, restoreCssSubtitlePreview } from '../styles/editor-wiring-ass-preview.js';
 
@@ -167,8 +168,8 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   if (MaweDom.overlayExtensionTextEl.classList.contains('hidden') === extensionVisible) {
     MaweDom.overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
   }
-  if (window.MaweDomPanelsWiring.overlayTrackTextEl.classList.contains('hidden') === overlayCueVisible) {
-    window.MaweDomPanelsWiring.overlayTrackTextEl.classList.toggle('hidden', !overlayCueVisible);
+  if (getMaweDomPanels().overlayTrackTextEl.classList.contains('hidden') === overlayCueVisible) {
+    getMaweDomPanels().overlayTrackTextEl.classList.toggle('hidden', !overlayCueVisible);
   }
   const subtitleAppearance = MaweAppearance.getSubtitleAppearance();
   const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
@@ -275,18 +276,18 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   const overlaySpeakerLabelText = overlaySpeakerLabelVisible
     ? `${overlaySpeakerLabel}${speakerLabels.separator}`
     : '';
-  if (window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.classList.contains('hidden') === overlaySpeakerLabelVisible) {
-    window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.classList.toggle('hidden', !overlaySpeakerLabelVisible);
+  if (getMaweDomPanels().overlayTrackSpeakerLabelEl.classList.contains('hidden') === overlaySpeakerLabelVisible) {
+    getMaweDomPanels().overlayTrackSpeakerLabelEl.classList.toggle('hidden', !overlaySpeakerLabelVisible);
   }
-  if (window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.textContent !== overlaySpeakerLabelText) {
-    window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.textContent = overlaySpeakerLabelText;
+  if (getMaweDomPanels().overlayTrackSpeakerLabelEl.textContent !== overlaySpeakerLabelText) {
+    getMaweDomPanels().overlayTrackSpeakerLabelEl.textContent = overlaySpeakerLabelText;
   }
-  if (window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.dataset.color !== overlaySpeakerLabelColor) {
-    window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.dataset.color = overlaySpeakerLabelColor;
-    window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.style.color = overlaySpeakerLabelColor;
+  if (getMaweDomPanels().overlayTrackSpeakerLabelEl.dataset.color !== overlaySpeakerLabelColor) {
+    getMaweDomPanels().overlayTrackSpeakerLabelEl.dataset.color = overlaySpeakerLabelColor;
+    getMaweDomPanels().overlayTrackSpeakerLabelEl.style.color = overlaySpeakerLabelColor;
   }
-  if (!assMode && window.MaweDomPanelsWiring.overlayTrackTextNode.nodeValue !== overlayCueText) {
-    window.MaweDomPanelsWiring.overlayTrackTextNode.nodeValue = overlayCueText;
+  if (!assMode && getMaweDomPanels().overlayTrackTextNode.nodeValue !== overlayCueText) {
+    getMaweDomPanels().overlayTrackTextNode.nodeValue = overlayCueText;
   }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
   // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
@@ -340,20 +341,20 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     ? overlayTrackSegmentColor : '';
   const overlayTrackStroke = colorStyle === 'stroke' && overlayTrackSegmentColor
     ? `.125em ${overlayTrackSegmentColor}` : '';
-  if (!assMode && window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorUnderline !== overlayTrackUnderline) {
-    window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorUnderline = overlayTrackUnderline;
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.textDecorationLine = overlayTrackUnderline ? 'underline' : '';
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.textDecorationColor = overlayTrackUnderline;
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.textUnderlineOffset = overlayTrackUnderline ? '0.25em' : '';
+  if (!assMode && getMaweDomPanels().overlayTrackTextEl.dataset.colorUnderline !== overlayTrackUnderline) {
+    getMaweDomPanels().overlayTrackTextEl.dataset.colorUnderline = overlayTrackUnderline;
+    getMaweDomPanels().overlayTrackTextEl.style.textDecorationLine = overlayTrackUnderline ? 'underline' : '';
+    getMaweDomPanels().overlayTrackTextEl.style.textDecorationColor = overlayTrackUnderline;
+    getMaweDomPanels().overlayTrackTextEl.style.textUnderlineOffset = overlayTrackUnderline ? '0.25em' : '';
   }
-  if (!assMode && window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorText !== overlayTrackTextColor) {
-    window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorText = overlayTrackTextColor;
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.color = overlayTrackTextColor;
+  if (!assMode && getMaweDomPanels().overlayTrackTextEl.dataset.colorText !== overlayTrackTextColor) {
+    getMaweDomPanels().overlayTrackTextEl.dataset.colorText = overlayTrackTextColor;
+    getMaweDomPanels().overlayTrackTextEl.style.color = overlayTrackTextColor;
   }
-  if (!assMode && window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorStroke !== overlayTrackStroke) {
-    window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorStroke = overlayTrackStroke;
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.webkitTextStroke = overlayTrackStroke;
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.paintOrder = overlayTrackStroke ? 'stroke fill' : '';
+  if (!assMode && getMaweDomPanels().overlayTrackTextEl.dataset.colorStroke !== overlayTrackStroke) {
+    getMaweDomPanels().overlayTrackTextEl.dataset.colorStroke = overlayTrackStroke;
+    getMaweDomPanels().overlayTrackTextEl.style.webkitTextStroke = overlayTrackStroke;
+    getMaweDomPanels().overlayTrackTextEl.style.paintOrder = overlayTrackStroke ? 'stroke fill' : '';
   }
   // 仅叠加轨活跃（主/副预览都关）时预览层也要可见，否则叠加文字节点有内容而父层被隐藏。
   const overlayHidden = !mainVisible && !extensionVisible && !overlayCueVisible;

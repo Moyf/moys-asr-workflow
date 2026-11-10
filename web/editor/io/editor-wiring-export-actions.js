@@ -209,7 +209,7 @@ function bindResolutionCustomSizeToggle(select, customRow) {
 
 
 document.getElementById('download-lottie')?.addEventListener('click', MaweDynamicExports.openLottieExportModal);
-bindResolutionCustomSizeToggle(MaweDom.lottieExportResolution, lottieExportCustomSize);
+bindResolutionCustomSizeToggle(MaweDom.lottieExportResolution, window.MaweDomPanelsWiring.lottieExportCustomSize);
 MaweDom.lottieExportCancel?.addEventListener('click', MaweDynamicExports.closeLottieExportModal);
 MaweDom.lottieExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportLottieDynamicCaptions(); });
 MaweDom.lottieExportModal?.addEventListener('click', (event) => {
@@ -237,7 +237,7 @@ document.addEventListener('keydown', (event) => {
 
 
 document.getElementById('download-ograf')?.addEventListener('click', MaweDynamicExports.openOgrafExportModal);
-bindResolutionCustomSizeToggle(MaweDom.ografExportResolution, ografExportCustomSize);
+bindResolutionCustomSizeToggle(MaweDom.ografExportResolution, window.MaweDomPanelsWiring.ografExportCustomSize);
 MaweDom.ografExportCancel?.addEventListener('click', MaweDynamicExports.closeOgrafExportModal);
 MaweDom.ografExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportOgrafDynamicCaptions(); });
 MaweDom.ografExportModal?.addEventListener('click', (event) => {

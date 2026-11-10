@@ -1,3 +1,4 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { getAssStyleLibrary, isAssStyleLibraryReady, incrementAssStyleLibraryRevision,
   setAssStyleLibrary, updateAssStyleLibrarySummary, scheduleAssStyleLibrarySave,
   loadAssStyleLibrary, persistAssStyleLibrary } from './editor-wiring-ass-storage.js';
@@ -65,7 +66,7 @@ const {
   mainSubtitleCssFields,
   subtitleColorAssModeHint,
   subtitleStyleAssModeHint,
-} = window.MaweDomPanelsWiring;
+} = getMaweDomPanels();
 
 
 

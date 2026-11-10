@@ -19,13 +19,13 @@ function playbackHarness() {
   function emit(name) { for (const fn of listeners.get(name) || []) fn(); }
   const updates = [];
   const context = {
-    window: { MaweKeyboardGuards: {
+    window: { MaweAssPreviewRefresh: {
       observeAssSubtitlePreviewPlayer() {},
       scheduleAssSubtitlePreviewRefresh() {},
     } }, document: {},
     setTimeout(fn) { timers.set(++nextTimer, fn); return nextTimer; },
     clearTimeout(id) { timers.delete(id); }, cancelAnimationFrame() {},
-    // ASS geometry observation belongs to the keyboard-guards module; this
+    // ASS geometry observation belongs to the preview refresh module; this
     // isolated playback fixture exercises audition timing, not that scheduler.
     MaweCoreState: { player }, MaweDom: {},
     MaweTimeline: { timelineMediaSeekStepValue: () => 100, timelineIsFrameMode: () => false },

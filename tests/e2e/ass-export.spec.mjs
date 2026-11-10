@@ -806,6 +806,7 @@ test('keeps ASS style actions and preview-mode hints attached to the active form
   await page.locator('#ass-style-settings-link').click();
   await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
   await page.evaluate(() => {
+    const assModeToggle = document.getElementById('ass-mode-toggle');
     assModeToggle.checked = true;
     assModeToggle.dispatchEvent(new Event('change', { bubbles: true }));
   });

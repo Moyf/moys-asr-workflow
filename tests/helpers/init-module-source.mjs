@@ -38,6 +38,9 @@ export function initModuleSource(relativeWebPath) {
       const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const facadeMatch = line ? line.match(new RegExp('^' + esc + '(Mawe\\w+)\\.')) : null;
       if (facadeMatch) shims.push(`var ${localName} = (...args) => (globalThis.${facadeMatch[1]} ?? window.${facadeMatch[1]}).${name}(...args);`);
+      else if (target === 'editor-ass-preview-refresh') {
+        shims.push(`var ${localName} = (...args) => window.MaweAssPreviewRefresh.${name}(...args);`);
+      }
       else if (target !== 'overlay-track') {
         shims.push(`var ${localName} = () => { throw new Error('No facade shim for ${name} (from ${target}.js)'); };`);
       }
@@ -47,6 +50,9 @@ export function initModuleSource(relativeWebPath) {
   }
   if (source.includes('import { getAssStyleLibrary }')) {
     shims.push('var getAssStyleLibrary = () => globalThis.ASS_STYLE_LIBRARY;');
+  }
+  if (source.includes('import { getMaweDomPanels }')) {
+    shims.push('var getMaweDomPanels = () => globalThis.MaweDomPanelsWiring ?? window.MaweDomPanelsWiring;');
   }
   const constants = ast.body.filter(node => node.type === 'VariableDeclaration' && node.kind === 'const')
     .map(node => source.slice(node.start, node.end));

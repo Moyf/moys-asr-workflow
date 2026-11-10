@@ -1,3 +1,4 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { getAssStyleLibrary } from './editor-wiring-ass-storage.js';
 import { activeExtensionSegments } from '../cues/overlay-track.js';
 
@@ -198,7 +199,7 @@ function restoreCssSubtitlePreviewImpl() {
   window.MaweAssCuePosition?.sync();
   clearAssEmphasisPreview(MaweDom.overlayTextEl);
   clearAssEmphasisPreview(MaweDom.overlayExtensionTextEl);
-  clearAssEmphasisPreview(window.MaweDomPanelsWiring.overlayTrackTextEl);
+  clearAssEmphasisPreview(getMaweDomPanels().overlayTrackTextEl);
   MaweDom.overlayEl.removeAttribute('data-ass-mode');
   MaweDom.overlayEl.classList.remove('ass-preview-active');
   delete MaweDom.overlayTextEl.dataset.colorUnderline;
@@ -317,7 +318,7 @@ function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
   MaweDom.overlayEl.style.height = `${metrics.stageHeight}px`;
   // ASS 文本由 Canvas 合成，DOM 文本元素整体隐藏（refreshSubtitlePreview
   // 在 CSS 模式下按可见性切换 hidden，这里每帧强制覆盖）。
-  [MaweDom.overlayTextEl, MaweDom.overlayExtensionTextEl, window.MaweDomPanelsWiring.overlayTrackTextEl, MaweDom.overlayMainSpeakerLabelEl]
+  [MaweDom.overlayTextEl, MaweDom.overlayExtensionTextEl, getMaweDomPanels().overlayTrackTextEl, MaweDom.overlayMainSpeakerLabelEl]
     .forEach((element) => {
       if (element && !element.classList.contains('hidden')) element.classList.add('hidden');
     });
@@ -358,7 +359,7 @@ function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
 }
 
 function restoreAssOverlayTrackPreview() {
-  if (!window.MaweDomPanelsWiring.overlayTrackTextEl) return;
+  if (!getMaweDomPanels().overlayTrackTextEl) return;
   [
     'position', 'left', 'right', 'top', 'bottom', 'white-space', 'word-break', 'text-align',
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
@@ -366,10 +367,10 @@ function restoreAssOverlayTrackPreview() {
     'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
     'max-width', 'padding', 'background-color', 'border-radius', 'opacity',
     'transform-origin', 'transform',
-  ].forEach((property) => window.MaweDomPanelsWiring.overlayTrackTextEl.style.removeProperty(property));
-  delete window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorUnderline;
-  delete window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorText;
-  delete window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorStroke;
+  ].forEach((property) => getMaweDomPanels().overlayTrackTextEl.style.removeProperty(property));
+  delete getMaweDomPanels().overlayTrackTextEl.dataset.colorUnderline;
+  delete getMaweDomPanels().overlayTrackTextEl.dataset.colorText;
+  delete getMaweDomPanels().overlayTrackTextEl.dataset.colorStroke;
 }
 
 // The manager also uses the calibrated font metrics after boot has completed;

@@ -1,3 +1,4 @@
+import { getMaweDomPanels } from './editor-dom-panels.js';
 import { getOverlayTrack } from '../cues/overlay-track.js';
 
 export function initMaweSettingsInitWiring() {
@@ -65,15 +66,15 @@ if (MaweDom.editorSettingsPanel) {
 
 
 
-window.MaweDomPanelsWiring.overlayTrackToggle?.addEventListener('change', () => {
+getMaweDomPanels().overlayTrackToggle?.addEventListener('change', () => {
   const overlay = getOverlayTrack();
   if (!overlay) return;
-  overlay.enabled = window.MaweDomPanelsWiring.overlayTrackToggle.checked;
+  overlay.enabled = getMaweDomPanels().overlayTrackToggle.checked;
   overlay._dirty = true;
   MaweState.markProjectDirty();
   MaweViewUpdates.invalidate({ save: true });
   MaweCuePanel.renderAll({ waveform: 'full' });
-  if (window.MaweDomPanelsWiring.overlayTrackToggle.checked) {
+  if (getMaweDomPanels().overlayTrackToggle.checked) {
     MaweHint.flashHint('已允许字幕重叠；Ctrl+拖拽波形空白或用右键菜单可创建叠加字幕', 'success');
   }
 });
@@ -152,7 +153,7 @@ if (MaweDom.stickerOverlayToggle) MaweDom.stickerOverlayToggle.checked = MaweSet
 if (MaweDom.clickBehaviorSelect) MaweDom.clickBehaviorSelect.value = MaweSettings.EDITOR_SETTINGS.clickBehavior;
 if (MaweDom.stickerBurnModeSelect) MaweDom.stickerBurnModeSelect.value = MaweSettings.EDITOR_SETTINGS.stickerBurnMode === 'cue-left' ? 'cue-left' : 'fixed';
 if (MaweDom.clickTargetSelect) MaweDom.clickTargetSelect.value = MaweSettings.EDITOR_SETTINGS.clickTarget;
-if (window.MaweDomPanelsWiring.pauseOnMouseClickToggle) window.MaweDomPanelsWiring.pauseOnMouseClickToggle.checked = MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick;
+if (getMaweDomPanels().pauseOnMouseClickToggle) getMaweDomPanels().pauseOnMouseClickToggle.checked = MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick;
 if (MaweDom.keyboardOperationReferenceSelect) {
   MaweDom.keyboardOperationReferenceSelect.value = MaweSettings.EDITOR_SETTINGS.keyboardOperationReference;
 }
@@ -279,7 +280,7 @@ document.getElementById('multi-subtitle-quick-toggle')?.addEventListener('click'
   MaweDom.multiSubtitleToggle?.click();
 });
 document.getElementById('overlay-quick-toggle')?.addEventListener('click', () => {
-  window.MaweDomPanelsWiring.overlayTrackToggle?.click();
+  getMaweDomPanels().overlayTrackToggle?.click();
 });
 MaweDom.multiSubtitleCrossTrackSnapToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ crossTrackSnap: MaweDom.multiSubtitleCrossTrackSnapToggle.checked });

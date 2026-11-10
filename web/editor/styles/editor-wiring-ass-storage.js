@@ -1,3 +1,4 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { assStyleLibraryUsesServerStorage, setAssStyleLibraryStatus, syncAssStyleManager } from './editor-wiring-ass-manager.js';
 
 const storageService = {};
@@ -108,9 +109,9 @@ function assStyleLibrarySummary() {
 }
 
 function updateAssStyleLibrarySummary() {
-  if (window.MaweDomPanelsWiring.assStyleSummary) {
+  if (getMaweDomPanels().assStyleSummary) {
     const summary = assStyleLibrarySummary();
-    window.MaweDomPanelsWiring.assStyleSummary.textContent = window.MAWE_I18N?.translateText?.(summary) || summary;
+    getMaweDomPanels().assStyleSummary.textContent = window.MAWE_I18N?.translateText?.(summary) || summary;
   }
 }
 

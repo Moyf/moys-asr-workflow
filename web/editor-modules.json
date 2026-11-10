@@ -583,6 +583,24 @@
       "exportName": "initAssStorageWiring"
     },
     {
+      "file": "editor/boot/editor-wiring-initial-config.js",
+      "kind": "init",
+      "name": "initial-config-wiring-init",
+      "exportName": "initMaweInitialConfigWiring"
+    },
+    {
+      "file": "editor/ui/editor-dom-panels.js",
+      "kind": "init",
+      "name": "dom-panels-init",
+      "exportName": "initMaweDomPanels"
+    },
+    {
+      "file": "editor/ui/editor-wiring-dom-panels.js",
+      "kind": "init",
+      "name": "dom-panels-wiring-init",
+      "exportName": "initMaweDomPanelsWiring"
+    },
+    {
       "file": "editor/styles/editor-wiring-ass-manager.js",
       "kind": "init",
       "name": "editor-wiring-ass-manager-init",
@@ -611,6 +629,12 @@
       "kind": "init",
       "name": "overlay-split-merge-wiring-init",
       "exportName": "initOverlaySplitMergeWiring"
+    },
+    {
+      "file": "editor/media/editor-ass-preview-refresh.js",
+      "kind": "init",
+      "name": "ass-preview-refresh-init",
+      "exportName": "initMaweAssPreviewRefresh"
     },
     {
       "file": "editor/cues/editor-wiring-edit-shortcuts.js",
@@ -667,11 +691,5 @@
       "exportName": "initMaweContextMenusWiring"
     }
   ],
-  "externalBridges": [
-    {
-      "file": "editor/ui/editor-wiring-dom-panels.js",
-      "name": "assModeToggle",
-      "mutable": false
-    }
-  ]
+  "externalBridges": []
 }
