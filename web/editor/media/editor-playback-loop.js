@@ -1,4 +1,5 @@
 import { getOverlayTrack, overlayTrackVisible } from '../cues/overlay-track.js';
+import { applyAssSubtitlePreview, restoreCssSubtitlePreview } from '../styles/editor-wiring-ass-preview.js';
 
 export function initMawePlaybackLoop() {
 'use strict';
@@ -209,7 +210,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     MaweDom.overlayExtensionTextNode.nodeValue = extensionText;
   }
   if (assMode) {
-    window.MaweAssPreview.applyAssSubtitlePreview({
+    applyAssSubtitlePreview({
       tMs,
       segment: mainVisible ? seg : null,
       extension: extensionVisible ? extension : null,
@@ -219,7 +220,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
       speakerLabelVisible,
     });
   } else if (MaweDom.overlayEl.dataset.assMode === 'true') {
-    window.MaweAssPreview.restoreCssSubtitlePreview();
+    restoreCssSubtitlePreview();
     MaweDom.overlayMainTextNode.nodeValue = mainText;
     MaweDom.overlayExtensionTextNode.nodeValue = extensionText;
   }

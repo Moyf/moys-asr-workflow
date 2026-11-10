@@ -6,16 +6,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse } from 'acorn';
 
 const webDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'web');
 
 export function initModuleSource(relativeWebPath) {
   const source = fs.readFileSync(path.join(webDir, relativeWebPath), 'utf8');
+  const manifest = JSON.parse(fs.readFileSync(path.join(webDir, 'editor-modules.json'), 'utf8'));
+  const initializer = manifest.modules.find(item => item.file === relativeWebPath)?.exportName;
+  const ast = parse(source, { ecmaVersion: 'latest', sourceType: 'module' });
+  const init = ast.body.find(node => node.type === 'ExportNamedDeclaration'
+    && node.declaration?.type === 'FunctionDeclaration' && node.declaration.id.name === initializer)?.declaration;
+  if (!init || !initializer) throw new Error(`Not an init module: ${relativeWebPath}`);
   // 底部“兄弟 import 边”转发导出段是 ESM 侧通道：vm classic 体里
   // 调用方要么走门面要么直接同域解析，转发函数本身不被调用，剥掉
   // （保留 `function` 声明也无害，但剥净可避免与 context mock 混淆）。
-  const stripped = source
-    .replace(/^export function \w+\(\.\.\.args\) \{ return window\.[^\n]*\n/gm, '');
   // import 的兄弟符号在生产环境是静态 import；vm 里恢复为同语义
   // 垫片（调用时经 window 门面解析），保持测试的 context mock 语义。
   const importLines = [...source.matchAll(/^import \{([^}]*)\} from '\.\/([\w-]+)\.js';/gm)];
@@ -40,11 +45,13 @@ export function initModuleSource(relativeWebPath) {
       // 直接提供同名全局（context 直查），生产环境走静态 import。
     }
   }
-  const withoutImports = stripped.replace(/^import[^\n]*\n/gm, '');
-  const head = withoutImports.match(/^export function \w+\(\)\s*\{\n('use strict';\n\n?)?/m);
-  if (!head) throw new Error(`Not an init module: ${relativeWebPath}`);
-  const body = withoutImports.slice(head.index + head[0].length);
-  return shims.join('\n') + (shims.length ? '\n' : '') + body.replace(/\}\s*$/, '');
+  if (source.includes('import { getAssStyleLibrary }')) {
+    shims.push('var getAssStyleLibrary = () => globalThis.ASS_STYLE_LIBRARY;');
+  }
+  const constants = ast.body.filter(node => node.type === 'VariableDeclaration' && node.kind === 'const')
+    .map(node => source.slice(node.start, node.end));
+  const body = source.slice(init.body.start + 1, init.body.end - 1);
+  return [...shims, ...constants, body].join('\n');
 }
 
 // 把无副作用的 ESM 纯模块（如 cues/overlay-track.js）还原为 classic 文本：

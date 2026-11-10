@@ -1,3 +1,7 @@
+import { getAssBuiltinFontSuggestions } from './editor-wiring-ass-storage.js';
+
+export function initFontGeometryWiring() {
+const { assStyleFontOptions, assStyleFontToggle, assStyleForm, subtitleFontFamilyInput, subtitleFontFamilyOptions, subtitleFontFamilyToggle } = window.MaweDomPanelsWiring;
 
 // === 字幕预览几何（preview.subtitle）===
 // 归一化 {x,y,width,height} 存于 DATA.preview.subtitle。纯钳制/归一化逻辑在
@@ -230,7 +234,7 @@ function assFontNameComboboxEntries() {
     entries.push({ value: entry.canonical, label: entry.canonical, aliases: entry.names });
     (entry.names || []).forEach((name) => aliasNames.add(String(name).toLocaleLowerCase()));
   });
-  ASS_BUILTIN_FONT_SUGGESTIONS.forEach((name) => entries.push({ value: name, label: name }));
+  getAssBuiltinFontSuggestions().forEach((name) => entries.push({ value: name, label: name }));
   MaweAppearance.subtitleLocalFontFamilies.forEach((family) => {
     if (aliasNames.has(family.toLocaleLowerCase())) return;
     entries.push({ value: family, label: family });
@@ -238,32 +242,32 @@ function assFontNameComboboxEntries() {
   return entries;
 }
 function getSubtitleFontFamilyCombobox() {
-  if (!subtitleFontFamilyCombobox) {
-    subtitleFontFamilyCombobox = createFontFamilyCombobox({
+  if (!window.MaweDomPanelsWiring.subtitleFontFamilyCombobox) {
+    window.MaweDomPanelsWiring.subtitleFontFamilyCombobox = createFontFamilyCombobox({
       input: subtitleFontFamilyInput,
       toggle: subtitleFontFamilyToggle,
       options: subtitleFontFamilyOptions,
       getEntries: subtitleFontFamilyComboboxEntries,
     });
   }
-  return subtitleFontFamilyCombobox;
+  return window.MaweDomPanelsWiring.subtitleFontFamilyCombobox;
 }
 function getAssFontNameCombobox() {
-  if (!assFontNameCombobox) {
+  if (!window.MaweDomPanelsWiring.assFontNameCombobox) {
     const assStyleFontNameInput = document.getElementById('ass-style-font-name');
     // 占位符跟随按操作系统选择的 ASS 默认字体，不再固定 Arial。
     if (assStyleFontNameInput) {
       const assDefaultFontName = window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE?.fontName;
       if (assDefaultFontName) assStyleFontNameInput.placeholder = assDefaultFontName;
     }
-    assFontNameCombobox = createFontFamilyCombobox({
+    window.MaweDomPanelsWiring.assFontNameCombobox = createFontFamilyCombobox({
       input: assStyleFontNameInput,
       toggle: assStyleFontToggle,
       options: assStyleFontOptions,
       getEntries: assFontNameComboboxEntries,
     });
   }
-  return assFontNameCombobox;
+  return window.MaweDomPanelsWiring.assFontNameCombobox;
 }
 function rebuildSubtitleFontFamilyOptions() {
   getSubtitleFontFamilyCombobox().refresh();
@@ -385,7 +389,8 @@ MaweDom.playerStage.addEventListener('click', (event) => {
 if (typeof ResizeObserver === 'function') {
   const previewResizeObserver = new ResizeObserver(() => {
     MawePreviewGeometry.applyPreviewGeometryToDom(MaweAppearance.getPreviewGeometry());
-    scheduleAssSubtitlePreviewRefresh();
+    window.MaweKeyboardGuards.scheduleAssSubtitlePreviewRefresh();
   });
   previewResizeObserver.observe(MaweDom.playerStage);
+}
 }

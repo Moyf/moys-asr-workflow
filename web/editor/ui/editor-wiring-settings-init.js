@@ -304,6 +304,6 @@ MaweAppearance.applySubtitleAppearance();
 MaweAppearance.applyExtensionSubtitleAppearance();
 window.MaweAssManagerWiring.syncAssModeControl();
 window.MaweAssManagerWiring.syncAssStyleManager();
-void loadAssStyleLibrary();
+void window.MaweAssStorageWiring.loadAssStyleLibrary();
 // 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
 }

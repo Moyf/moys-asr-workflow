@@ -1,3 +1,4 @@
+export function initMediaPlaybackModule() {
 // 媒体播放：播放器事件、占位符、速率与 seek 控制。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweMediaPlayback 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -132,7 +133,7 @@
   const fullscreenPreview = Boolean(MaweDom.playerWrap && document.fullscreenElement === MaweDom.playerWrap);
   const wasFullscreenPreview = MaweDom.playerWrap?.classList.contains('fullscreen-preview') === true;
   MaweDom.playerWrap?.classList.toggle('fullscreen-preview', fullscreenPreview);
-  if (fullscreenPreview !== wasFullscreenPreview) scheduleAssSubtitlePreviewRefresh();
+  if (fullscreenPreview !== wasFullscreenPreview) window.MaweKeyboardGuards.scheduleAssSubtitlePreviewRefresh();
   refreshMediaSeekControlLabels();
   if (!MaweDom.mediaPlayToggle || !MaweCoreState.player) return;
   const hasMedia = hasLoadedMedia();
@@ -210,7 +211,7 @@
     window.MaweAudioProcessing?.bindPlayer(mediaElement);
     window.MaweGapPlayback?.bindPlayer(mediaElement);
     window.MaweAssFrame?.bindPlayer(mediaElement);
-    observeAssSubtitlePreviewPlayer(mediaElement);
+    window.MaweKeyboardGuards.observeAssSubtitlePreviewPlayer(mediaElement);
     mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
     mediaElement.addEventListener('timeupdate', () => watchAuditionBoundary(mediaElement));
     mediaElement.addEventListener('seeking', () => {
@@ -229,7 +230,7 @@
     mediaElement.addEventListener('seeked', MawePlaybackLoop.update);
     mediaElement.addEventListener('loadedmetadata', () => {
       MaweTimeline.captureProjectVideoDimensions(mediaElement);
-      scheduleAssSubtitlePreviewRefresh();
+      window.MaweKeyboardGuards.scheduleAssSubtitlePreviewRefresh();
       MaweTextCleanup.notifyAutoLoadedMediaReady(mediaElement);
       MaweTextCleanup.flushPendingMediaSeek(mediaElement);
     });
@@ -381,3 +382,4 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     auditionRange
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

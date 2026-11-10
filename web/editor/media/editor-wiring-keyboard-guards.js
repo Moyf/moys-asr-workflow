@@ -168,4 +168,6 @@ window.addEventListener('resize', scheduleAssSubtitlePreviewRefresh);
 window.MaweKeyboardGuards = window.MaweKeyboardGuards || Object.freeze({
   isPlaybackActive,
   pausePlaybackAfterMouseClick,
+  scheduleAssSubtitlePreviewRefresh,
+  observeAssSubtitlePreviewPlayer,
 });

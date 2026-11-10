@@ -1,3 +1,4 @@
+import { getAssStyleLibrary } from '../styles/editor-wiring-ass-storage.js';
 import { activeExtensionSegments } from '../cues/overlay-track.js';
 
 export function initMaweExportSrt() {
@@ -284,7 +285,7 @@ export function initMaweExportSrt() {
 
   function assExportOptions(appearance = MaweAppearance.getSubtitleAppearance()) {
   const resolution = currentAssVideoResolution();
-  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary());
   const profileId = library.assignments?.assExportProfileId || 'ass';
   const assProfile = window.AsrEditorUtils.assProfileForId(library, profileId);
   const assStyle = window.AsrEditorUtils.assStyleForId(library, assProfile.styleId);

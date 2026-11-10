@@ -1,4 +1,17 @@
+import { getAssStyleLibrary } from './editor-wiring-ass-storage.js';
 import { activeExtensionSegments } from '../cues/overlay-track.js';
+
+// The functions are installed at this file's manifest position. Static imports
+// can resolve earlier without running DOM or Canvas work during module evaluation.
+const previewService = {};
+
+export function applyAssSubtitlePreview(options) {
+  return previewService.apply(options);
+}
+
+export function restoreCssSubtitlePreview() {
+  return previewService.restore();
+}
 
 export function initMaweAssPreviewWiring() {
   'use strict';
@@ -180,7 +193,7 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
   element.style.color = appearance.color || fallbackColor;
 }
 
-function restoreCssSubtitlePreview() {
+function restoreCssSubtitlePreviewImpl() {
   window.MaweAssCanvas?.hide();
   window.MaweAssCuePosition?.sync();
   clearAssEmphasisPreview(MaweDom.overlayTextEl);
@@ -268,14 +281,14 @@ function assStackInputRevision(tracks, identityTracks = tracks) {
 }
 document.fonts?.addEventListener('loadingdone', () => { assStackFontRevision += 1; cachedAssStackKey = ''; });
 
-function applyAssSubtitlePreview({ tMs, overlaySegments }) {
+function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
   const metrics = assPreviewMetrics();
   // Snapshot only project inputs: measurements and animation envelopes are
   // computed once per revision, never once per playback frame. Direct edits
   // to mutable imported cue/style records also invalidate this snapshot.
   const rawTracks = [MaweBoot.DATA.segments, activeExtensionSegments(), overlaySegments];
   const revision = assStackInputRevision([MaweExportSrt.cleanupMainSegments(), rawTracks[1], rawTracks[2]], rawTracks);
-  const key = JSON.stringify([revision, ASS_STYLE_LIBRARY, MaweSettings.EDITOR_SETTINGS,
+  const key = JSON.stringify([revision, getAssStyleLibrary(), MaweSettings.EDITOR_SETTINGS,
     MaweAppearance.getSubtitleAppearance(), metrics.resolution, MaweColors.COLOR_PALETTE,
     MaweSpeakerLabels.getSpeakerLabelSettings(), MaweDom.overlayToggle.checked,
     MaweDom.extensionOverlayToggle?.checked, assStackFontRevision]);
@@ -361,9 +374,11 @@ function restoreAssOverlayTrackPreview() {
 
 // The manager also uses the calibrated font metrics after boot has completed;
 // the Canvas layer reuses exportFontSize for native run sizes.
+previewService.apply = applyAssSubtitlePreviewImpl;
+previewService.restore = restoreCssSubtitlePreviewImpl;
 window.MaweAssPreview = window.MaweAssPreview || Object.freeze({
-  applyAssSubtitlePreview,
-  restoreCssSubtitlePreview,
+  applyAssSubtitlePreview: applyAssSubtitlePreviewImpl,
+  restoreCssSubtitlePreview: restoreCssSubtitlePreviewImpl,
   fontScale: assPreviewFontScale,
   get stackPlan() { return cachedAssStackPlan; },
   exportFontSize: assPreviewExportFontSize,

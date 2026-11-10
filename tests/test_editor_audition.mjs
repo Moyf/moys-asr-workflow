@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { initModuleSource } from './helpers/init-module-source.mjs';
@@ -20,12 +19,14 @@ function playbackHarness() {
   function emit(name) { for (const fn of listeners.get(name) || []) fn(); }
   const updates = [];
   const context = {
-    window: {}, document: {},
+    window: { MaweKeyboardGuards: {
+      observeAssSubtitlePreviewPlayer() {},
+      scheduleAssSubtitlePreviewRefresh() {},
+    } }, document: {},
     setTimeout(fn) { timers.set(++nextTimer, fn); return nextTimer; },
     clearTimeout(id) { timers.delete(id); }, cancelAnimationFrame() {},
     // ASS geometry observation belongs to the keyboard-guards module; this
     // isolated playback fixture exercises audition timing, not that scheduler.
-    observeAssSubtitlePreviewPlayer() {},
     MaweCoreState: { player }, MaweDom: {},
     MaweTimeline: { timelineMediaSeekStepValue: () => 100, timelineIsFrameMode: () => false },
     MaweJklPlayback: { stopJklReversePlayback() {}, isJklDirectionMode: () => false },
@@ -37,7 +38,7 @@ function playbackHarness() {
           && player.currentTime >= 2 && player.currentTime < 4) player.currentTime = 4;
     } },
   };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/media/editor-media-playback.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/media/editor-media-playback.js'), context);
   const api = context.window.MaweMediaPlayback;
   api.bindPlayerEvents(player);
   return { api, player, emit, updates, timers };
