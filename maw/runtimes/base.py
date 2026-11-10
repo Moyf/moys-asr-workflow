@@ -354,7 +354,23 @@ class ManagedRuntime:
         model_cache_root: str | Path | None = None,
     ) -> RuntimeStatus:
         """missing / broken / installing / ready，复用 runtime.json manifest。"""
-        root = self.resolve_root(runtime_root)
+        return self._status_at(self.resolve_root(runtime_root), model_cache_root=model_cache_root)
+
+    def _status_at(
+        self,
+        root: Path,
+        *,
+        model_cache_root: str | Path | None = None,
+    ) -> RuntimeStatus:
+        """对调用方给定的根目录判定状态，不再重新解析。
+
+        root 的解析依赖「哪些祖先目录当前存在」（8.3 别名走查，见
+        :mod:`maw.runtimes.pathwin`）；安装中途 model-cache 等步骤会建出
+        新祖先，若结尾重新解析可能漂移到一条从未物化的别名路径，把刚装好
+        的运行时判成 missing（Windows CI run 42745061077 实证）。install()
+        因此必须用安装入口解析出的同一个根做 ready 判定；独立查询走
+        :meth:`status`。
+        """
         python = self.interpreter(root)
         model_cache = resolve_model_cache_root(model_cache_root) if self.spec.has_model_cache else ""
         if not root.exists():
@@ -504,9 +520,9 @@ class ManagedRuntime:
                     "请使用官方打包版。"
                 )
 
-        if self.status(runtime_root=runtime_root, model_cache_root=model_cache_root).ready and not repair:
+        if self._status_at(root, model_cache_root=model_cache_root).ready and not repair:
             emit(spec.ready_emit_done, 100, "ready")
-            return self.status(runtime_root=runtime_root, model_cache_root=model_cache_root)
+            return self._status_at(root, model_cache_root=model_cache_root)
 
         _may_cancel(cancel, spec)
         python = self.interpreter(root)
@@ -674,7 +690,9 @@ class ManagedRuntime:
             ):
                 path.mkdir(parents=True, exist_ok=True)
         emit(spec.ready_emit_done, 100, "ready")
-        return self.status(runtime_root=runtime_root, model_cache_root=model_cache_root)
+        # ready 判定钉在入口解析的 root 上：中途建出的目录可能让重解析漂移
+        # （详见 _status_at docstring），不能把刚装好的运行时判成 missing。
+        return self._status_at(root, model_cache_root=model_cache_root)
 
     def _prepare_host_venv(
         self,

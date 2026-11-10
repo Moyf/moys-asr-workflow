@@ -83,3 +83,14 @@ resolve_root 异常安全（status 轮询不抛）、cancelled 不被吞（excep
 
 - `tests/test_runtime_pathwin.py` + `tests/test_runtimes.py`：72 项全绿（新增 user_hash 稳定性 / 非 ASCII 用户名 / 用户隔离子目录 / 相对路径绝对化 / 权限失败指引；既有 fallback 期望补用户哈希层；macOS `/var/folders` 符号链接用 `resolve()` 对齐期望）。
 - ruff 全过；全量套件与提交前检查见最终提交记录。
+
+---
+
+## 第三轮：Windows CI 回归（run 42745061077）——install 结尾重解析漂移，已修复
+
+- 现象：真实 Windows runner 上 `test_install_relocates_to_common_dir_when_short_path_unavailable` 的 `assertTrue(status.ready)` 为 False（macOS mock 全绿）。
+- 根因（静态推演 + POSIX 复现验证）：`resolve_root` 的 8.3 别名走查依赖「哪些祖先目录当前存在」。t0 时 `<临时目录>\測試用戶` 不存在，走查命中最深已存在祖先 `<临时目录>`，尾段含「測試用戶」（非 ASCII）→ 放弃别名 → 迁移 fallback；安装中途 model-cache 步骤在默认 app 根下 mkdir 出 `測試用戶\model-cache`，使「測試用戶」从此存在且尾段只剩纯 ASCII 的 `local-runtime`——CI runner（8.3 启用）上 `GetShortPathNameW` 能转换它，别名重新可行；`install()` 结尾 `return self.status()` **重新解析**，拿到一条从未物化的别名路径 → `root.exists()` False → missing → ready=False。macOS 上 `win32_get_short_path` 直通恒放弃，两次解析一致，mock 永远绿。
+- 修复：`ManagedRuntime.status()` 拆出 `_status_at(root)` 内层（公共 `status()` 行为不变）；`install()` 的 ready 早退与最终返回都改用 `_status_at(root)`，判定钉在入口解析的同一个根上。root 一旦解析，安装全程（mkdir / probe / manifest / pip / verify / package 检查 / 最终 status）不再受中途文件系统变化影响。
+- 回归测试：`test_install_ready_survives_mid_install_ancestor_materialization`——mock `_path_exists`（分隔符感知）+ `win32_get_short_path`（对含「測試用戶」路径返回假短名）在 POSIX 上复现整条漂移链；双向验证：修复前形态（临时 revert 结尾一行）下该测试真实失败（`status.ready=False`，与 CI 同型），修复后通过。
+- 既有 relocate 用例补 `win32_get_short_path` 恒原样返回的显式 mock：测试名声明的是「8.3 不可用」，此前在 macOS 靠 POSIX 直通、在 Windows 靠「尾段非 ASCII」意外达成，场景声明与实际执行不一致（本轮回归正由此暴露）；显式 mock 后三平台走同一「8.3 被禁用 → fallback」路径。
+- 残余边界：跨进程一致性（GUI 新进程 / worker 重新解析）依赖 alias 分支的时序稳定性；真机默认布局中非 ASCII 组件位于恒存在的祖先（用户名目录）里，t0 即可别名化或（8.3 禁用时）永不别名化，本次漂移形态（祖先在安装中途物化）在真实默认布局中不可达，接受。

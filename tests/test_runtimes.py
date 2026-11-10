@@ -910,7 +910,14 @@ class RuntimeAsciiPathTests(unittest.TestCase):
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_install_relocates_to_common_dir_when_short_path_unavailable(self) -> None:
-        """8.3 不可用（模拟）：默认目录迁移到 PROGRAMDATA 公共目录（按用户隔离），原中文目录不动。"""
+        """8.3 不可用（显式模拟）：默认目录迁移到 PROGRAMDATA 公共目录（按用户隔离），原中文目录不动。
+
+        ``win32_get_short_path`` 恒原样返回 = 8.3 名称生成被禁用：任何已存在
+        前缀都转不出短名，别名必然放弃。不 mock 时本用例在 macOS 靠 POSIX
+        直通、在 Windows 靠「尾段非 ASCII」意外达成同一结论，场景声明与实际
+        执行不一致（Windows CI run 42745061077 的回归由此暴露）；显式 mock 后
+        三平台走同一条「8.3 被禁用 → fallback」路径。
+        """
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir).resolve()
             requirements_txt = temp / "requirements-local.txt"
@@ -927,7 +934,8 @@ class RuntimeAsciiPathTests(unittest.TestCase):
                             with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
                                 with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
                                     with mock.patch("maw.runtimes.base._run_process", side_effect=self._fake_run(calls, envs)):
-                                        status = LOCAL.install()
+                                        with mock.patch.object(pathwin, "win32_get_short_path", side_effect=lambda p: p):
+                                            status = LOCAL.install()
 
             self.assertTrue(status.ready)
             install_command = calls[1]
@@ -939,6 +947,61 @@ class RuntimeAsciiPathTests(unittest.TestCase):
             # （model-cache 仍按设计放在默认 app-data 根下，不随迁移）
             self.assertTrue(fallback.is_dir())
             self.assertFalse((temp / "測試用戶" / "local-runtime").exists())
+
+    @mock.patch("maw.runtimes.pathwin.sys.platform", "win32")
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    def test_install_ready_survives_mid_install_ancestor_materialization(self) -> None:
+        """Windows CI run 42745061077 回归：安装中途建出的非 ASCII 祖先不能让 ready 判定漂移。
+
+        机制（8.3 启用的真机）：t0 别名走查因「尾段非 ASCII」放弃 → 迁移
+        fallback；安装中途 model-cache 在默认 app 根下 mkdir 出
+        ``測試用戶\\model-cache``，使 ``測試用戶`` 从此存在且尾段变纯 ASCII，
+        别名重新可行——若结尾 status 重新解析，会拿到一条从未物化的别名路径，
+        把刚装好的运行时判成 missing。mock ``_path_exists`` 为分隔符感知版本、
+        ``win32_get_short_path`` 对含「測試用戶」的路径返回假短名，在 POSIX 上
+        复现同一条漂移链。
+        """
+        fake_short = "C:\\USERS\\RUNNER~1\\TEMP\\TESTS~1"
+
+        def mixed_get_short_path(path: str) -> str:
+            # 8.3 启用模拟：非 ASCII 目录有短名；纯 ASCII 前缀（temp 等）自身
+            # 8.3 兼容，无短名
+            return fake_short if "測試用戶" in path else path
+
+        def separator_aware_exists(path: object) -> bool:
+            return os.path.exists(str(path).replace("\\", "/"))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir).resolve()
+            requirements_txt = temp / "requirements-local.txt"
+            requirements_txt.write_text("funasr==1.4.2\nqwen-asr==0.0.6\n", encoding="utf-8")
+            calls: list[list[str]] = []
+            envs: list[dict[str, str]] = []
+
+            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "測試用戶"), "PROGRAMDATA": str(temp / "progdata"), "USERNAME": "alice"}):
+                os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
+                fallback = temp / "progdata" / "MAW" / "runtimes" / pathwin.user_hash() / "local-runtime"
+                with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+                    with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
+                        with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
+                            with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
+                                with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                    with mock.patch("maw.runtimes.base._run_process", side_effect=self._fake_run(calls, envs)):
+                                        with mock.patch.object(pathwin, "_path_exists", side_effect=separator_aware_exists):
+                                            with mock.patch.object(pathwin, "win32_get_short_path", side_effect=mixed_get_short_path):
+                                                status = LOCAL.install()
+
+            # 别名路径（假短名前缀）从未物化：ready 判定必须仍钉在 fallback 根上
+            self.assertTrue(status.ready)
+            self.assertEqual(status.path, str(fallback))
+            self.assertFalse(Path(fake_short).exists())
+            install_command = calls[1]
+            verify_command = calls[2]
+            self.assertEqual(install_command[install_command.index("--target") + 1], str(fallback / "site-packages"))
+            self.assertEqual(verify_command[0], str(fallback / "python" / "python.exe"))
+            self.assertEqual(envs[2].get("PYTHONPATH"), str(fallback / "site-packages"))
 
     def test_install_parent_dir_permission_error_gets_self_rescue_hint(self) -> None:
         """父目录无权创建（受保护位置 / 加固的公共目录）：转成含自救指引的可操作错误。
