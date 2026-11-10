@@ -25,3 +25,5 @@
 ## 尚需维护者核验
 
 真实浏览器中拖动逐句锚点、播放与 Seek、替换媒体、ASS 样式库跨窗口同步，以及导出后的外部播放器效果仍需人工确认。远端 CI 尚未运行。本轮迁移没有改动字幕 schema 或导出格式。
+
+后续验证：[cat fork 强制构建](https://github.com/drunkenQCat/moys-asr-workflow/actions/runs/42798868589) 在提交 `7c4144d3` 上通过 Windows、Linux、macOS 三平台。首次 macOS 作业未获得 GitHub 托管 runner，重跑后成功；发布步骤因测试 tag 不以 `v` 开头而跳过。PR 专用检查与上述人工交互仍需分别核验。

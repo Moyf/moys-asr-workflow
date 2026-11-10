@@ -11,3 +11,5 @@
 ## 未验证边界
 
 维护者尚未完成浏览器中的拖动、播放、Seek 与布局实测；远端 CI 尚未运行。旧版 `blank-editor.html` 的便携页测试失败见 [迁移记录](G11_G16F_ESM.md)，本轮未重新生成该产物。
+
+后续复核：独立审查当前 G09、G11、G16-F 两笔提交，未发现有证据的代码缺陷；迁移记录中的本地测试计数与 `result.json` 相符。发现并修正一处记录时效问题：[cat fork 强制构建](https://github.com/drunkenQCat/moys-asr-workflow/actions/runs/42798868589) 已在重跑后通过三平台。首次 macOS 作业因 runner 容量不足未执行，重跑成功；人工交互仍待维护者核验。
