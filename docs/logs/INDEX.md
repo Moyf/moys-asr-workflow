@@ -1,8 +1,8 @@
 # 日志索引
 
-<!-- log-release-baseline: 1.10.0-beta.2 -->
+<!-- log-release-baseline: 1.11.0 -->
 
-新共享日志放在 `docs/logs/release1.10.0-beta.2/<YYMMDD_<主题>/`，表示 **1.10.0-beta.2 之后的开发**。按根规则使用六位日期与可读主题组织同批记录；提交时间与演进通过 Git 历史追溯。目录不是声明这些记录已随该版本发布。
+新共享日志放在 `docs/logs/release1.11.0/<YYMMDD_<主题>/`，表示 **1.11.0 之后的开发**。按根规则使用六位日期与可读主题组织同批记录；提交时间与演进通过 Git 历史追溯。目录不是声明这些记录已随该版本发布。
 
 此表是可选的查阅入口，漏登记只提示；关键指南、方案和工程文档仍必须登记[主索引](../INDEX.md)。当前仍有参考价值或未决事项的记录可精选进 [CURRENT](CURRENT.md)。
 
@@ -15,9 +15,18 @@
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
 | 1.10.0-beta.2 之后 | 2026-11-10 | [本地运行时非 ASCII 路径修复自审](release1.10.0-beta.2/261110_运行时非ASCII路径/REVIEW_FINDINGS.md) | Windows 中文用户名下 nagisa/DyNet 打不开模型文件；运行时根目录 8.3 短路径别名化 + 公共目录 fallback + verify 错误增强；2 major（Windows CI 测试红、override 多 Runtime 冲突）与 1 minor 已修复 |
+| 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 导出界面改进](release1.10.0-beta.2/261108_FCP7WebP/EXPORT_UI_IMPROVEMENTS.md) / [复核](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_UI_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261108_FCP7WebP/FCP7导出改进.checklist.md) | 进度、尺寸与弹窗布局；图片导出路径选择尚未实现 |
+| 1.10.0-beta.2 之后 | 2026-11-08 | [PNG/WebP 格式反馈](release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md) / [可选目标软件核验](release1.10.0-beta.2/261108_FCP7WebP/PNG-WebP.checklist.md) | PNG 默认保留、显式选择 WebP、FFmpeg 检测去重并移除图片字幕 Pillow 运行时；三端 fork CI 另列结果 |
+| 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 WebP 与通用入口](release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md) / [独立复审](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_FINDINGS.md) | FFmpeg 双底恢复、无损 WebP 与 PR / VEGAS 通用引导；目标软件 WebP 导入另列边界 |
+| 1.10.0-beta.2 之后 | 2026-11-08 | [波形字幕快速编辑气泡](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/REVIEW_FINDINGS.md) / [PR 354 复核](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/PR354_REVIEW.md) / [人工核验](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/PR354.checklist.md) | 原位快速编辑气泡与快捷拆分、帮助和图片尺寸改进；三轨联动与滚动定位自动化通过，人工验收待完成 |
+| 1.10.0-beta.2 之后 | 2026-11-07 | [烧录导出 network 错误反馈](release1.10.0-beta.2/261107_烧录导出network错误/TEST_FEEDBACK_烧录导出.md) / [提交前自审](release1.10.0-beta.2/261107_烧录导出network错误/REVIEW_FINDINGS.md) | 条目1「network error」= 下载连接 2s socket 超时被慢盘写停顿触发断流（Chromium 原文透传）；条目2 ffmpeg stderr 无任何出口。修复：写超时提为常量 10s 且 close() 预算跟随、友好文案+i18n、failed 态 console.error errorDetails、服务端 stdout 失败诊断；自动化全绿，独立审查无 blocker/major，待人工验收 |
+| 1.10.0-beta.2 之后 | 2026-11-06 | [便携模式回归分析](release1.10.0-beta.2/261106_便携模式回归弃维护/回归分析.md) | 核查 #336 与 #339 的提交及存储路径；记录 file:// 测试弃维护边界、CI 证据限制与本地复验 |
+| 1.10.0-beta.2 之后 | 2026-11-06 | [FCP 7 图片字幕实施与验证](release1.10.0-beta.2/261106_FCP7图片字幕/IMPLEMENTATION.md) / [独立审查](release1.10.0-beta.2/261106_FCP7图片字幕/REVIEW_FINDINGS.md) / [目标应用核验](release1.10.0-beta.2/261106_FCP7图片字幕/FCP7图片字幕.checklist.md) | 动静分段、透明渲染、多轨 XML；VEGAS 14 原生导入与像素验证通过，缺图文件选择窗口待人工确认 |
+| 1.10.0-beta.2 之后 | 2026-11-04 | [音频导出与提示反馈](release1.10.0-beta.2/261104_音频导出与提示/TEST_FEEDBACK_音频导出与提示.md) / [独立复核](release1.10.0-beta.2/261104_音频导出与提示/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261104_音频导出与提示/音频导出与提示.checklist.md) | 波形缓存尾部取整导致音频导出越界；调整导出时长与提示颜色，待人工界面核验 |
 | 1.10.0-beta.2 之后 | 2026-11-05 | [文本处理弹窗反馈](release1.10.0-beta.2/261105_文本处理弹窗/TEST_FEEDBACK_文本处理弹窗.md) / [独立复核](release1.10.0-beta.2/261105_文本处理弹窗/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_文本处理弹窗/文本处理弹窗.checklist.md) | 双列预览、预设导入确认、工程预填和 MASS 分组 |
 | 1.10.0-beta.2 之后 | 2026-11-05 | [编辑器处理配置复审](release1.10.0-beta.2/261105_编辑器处理配置/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_编辑器处理配置/编辑器处理配置.checklist.md) | 有序文本处理、用户默认与工程覆盖、旧库迁移 |
 | 1.10.0-beta.2 之后 | 2026-11-04 | [波形提取 stderr 死锁](release1.10.0-beta.2/261104_波形提取stderr死锁/排查记录.md) | 转写卡在「正在校验和修复时间码」实为波形提取把 ffmpeg stderr 留在管道里，4 KiB 缓冲写满后与 stdout 读取互等；stderr 改落临时文件，含矩阵探针与打包版端到端复验 |
+| 1.10.0-beta.2 之后 | 2026-11-04 | [寒蝉字体名脏名与预览回退](release1.10.0-beta.2/261104_寒蝉字体名脏名/TEST_FEEDBACK_寒蝉活仿楷.md) / [独立审查](release1.10.0-beta.2/261104_寒蝉字体名脏名/REVIEW_FINDINGS.md) | 第三方字体损坏的 Macintosh 中文名混进下拉与样式：扫描按 Windows 记录优先清洗，存量脏名在导出/烧录/实机画面自愈改写；实测字形、像素比对与全套自动化通过，独立审查无 blocker/major |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [Warma 字幕预设开发](release1.10.0-beta.2/261103_Warma字幕预设/开发记录.md) / [独立复核](release1.10.0-beta.2/261103_Warma字幕预设/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261103_Warma字幕预设/Warma字幕预设.checklist.md) | 文本处理预设与单句 ASS 样式，待真实素材核验 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [表情包 cue-left 叠加字幕轨修复](release1.10.0-beta.2/261103_表情包cue-left叠加轨/REVIEW_FINDINGS.md) | cue-left 贴放候选集加入叠加轨（主轨优先、空窗兜底）；根因在 placement 计算，含提交前自审与双向回归 |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [单行双语叠加轨回归反馈与修复](release1.10.0-beta.2/261103_单行双语叠加轨回归/TEST_FEEDBACK_单行双语叠加轨.md) / [提交前自审](release1.10.0-beta.2/261103_单行双语叠加轨回归/REVIEW_FINDINGS.md) | 单行（基础）波形开双语后叠加块跳离 50% 线、字词条带压块、气泡消失；根因 `e9a4fa8e`/`fa5ae60c`，分层判定收敛 `visibility.wordTimingFullLane` + CSS 单行双语行规则，多行不变；自动化与实机探针全绿，目视验收待人工 |

@@ -50,6 +50,16 @@
         if (!faces.has(target)) faces.set(target, { canonical: target, names: [] });
         faces.get(target).names.push(name);
       }
+      // legacy（坏 Macintosh 记录的脏名，如「寒蝉活仿楷__ Con」）只进查询表：
+      // 旧工程存量的脏名仍能解析出可匹配 canonical（导出改写 + 预览别名链），
+      // 但不进 entries——字体下拉不能展示 libass 匹配不到的死名字。
+      for (const name of Array.isArray(entry.legacy) ? entry.legacy : []) {
+        const key = fold(name);
+        if (!key || canonicalByFold.has(key)) continue;
+        const faceCanonical = typeof entry.canonicalByName?.[key] === 'string'
+          ? entry.canonicalByName[key].trim() : '';
+        if (faceCanonical) canonicalByFold.set(key, faceCanonical);
+      }
       // 下拉选择也保留 face 粒度，搜索 Semibold/PS 名不能选成 Regular。
       entries.push(...faces.values());
     }

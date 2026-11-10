@@ -66,8 +66,10 @@ export function createWordBlocks(dependencies) {
         block.style.setProperty('--cue-color', colorForSegment(segment));
         block.classList.toggle('selected', selection.has(entry.index));
         block.classList.toggle('disabled', Boolean(segment.disabled));
-        const time = `${timing.format(entry.start)} → ${timing.format(entry.end)}`;
-        block.title = `${entry.text}\n${time}`;
+        if (this.settings.showCueTooltip !== false) {
+          const time = `${timing.format(entry.start)} → ${timing.format(entry.end)}`;
+          block.title = `${entry.text}\n${time}`;
+        }
         const label = document.createElement('span');
         label.className = 'waveform-word-label';
         label.dataset.wordProjectContent = 'true';
@@ -86,7 +88,8 @@ export function createWordBlocks(dependencies) {
           this.focusWaveform();
           this.options.wordTiming.showMenu(event.clientX, event.clientY, index, entry.index);
         });
-        block.addEventListener('dblclick', event => { event.preventDefault(); event.stopPropagation(); });
+        // 双击弹字词气泡在 beginWordDrag 里按 pointerdown 序列识别：
+        // 选中刷新会重建字词条带，原生 dblclick 的目标元素不可靠。
         row.append(block);
       });
       if (this.options.getAdjacentBoundaryMode?.() !== 'dual') return;
@@ -247,6 +250,31 @@ export function createWordBlocks(dependencies) {
       this.cancelWordDrag();
       this.cancelHoverSeekPreview();
       this.focusWaveform();
+      // 双击字词块 → 字词快速编辑气泡。字词条带在选中刷新时会重建替换
+      // 元素（原生 dblclick 的两次 click 目标不一致，不会触发），因此按
+      // pointerdown 序列自行识别双击（500ms 内两次按下同一字词，与系统
+      // 双击阈值一致）。光标映射用第一次按下的坐标对当前标签测量，与
+      // 字幕块行为一致；当前块找不到时回退 openWordQuickEditAtIndex
+      //（合成锚点 + rAF 重试）。
+      const now = Date.now();
+      const lastWordClick = this._wordQuickEditClick;
+      this._wordQuickEditClick = {
+        index, itemIndex, time: now, clientX: event.clientX, clientY: event.clientY,
+      };
+      if (lastWordClick && lastWordClick.index === index && lastWordClick.itemIndex === itemIndex
+          && now - lastWordClick.time <= 500) {
+        this._wordQuickEditClick = null;
+        this._wordQuickEditDoubleClickTime = now;
+        const block = this.firstVisibleWordBlock(index, itemIndex);
+        if (block) {
+          this.openWordQuickEdit(index, itemIndex, block, {
+            clientX: lastWordClick.clientX, clientY: lastWordClick.clientY,
+          });
+        } else {
+          this.openWordQuickEditAtIndex(index, itemIndex, null);
+        }
+        return;
+      }
       const geometry = this.captureRowGeometry(row);
       const timing = resolveTiming(this.options.getCueTiming?.());
       const pointer = timing.fromMs(this.pointerTimeMs(event, row, geometry));

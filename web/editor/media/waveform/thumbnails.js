@@ -83,6 +83,7 @@ export function createWaveformModule(dependencies) {
       const modeSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById('waveform-thumbnail-mode'));
       const decodeToggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-thumbnail-decode'));
       const status = document.getElementById('waveform-thumbnail-status');
+      const decodeSetting = document.getElementById('waveform-thumbnail-decode-setting');
       const hasBinding = !!window.MaweBoot?.SERVER_CONFIG?.thumbnailBinding;
       const mode = this.thumbnailController.mode;
       const text = !hasBinding
@@ -93,6 +94,7 @@ export function createWaveformModule(dependencies) {
         modeSelect.disabled = !hasBinding;
         if (modeSelect.parentElement) modeSelect.parentElement.title = text;
       }
+      if (decodeSetting) decodeSetting.hidden = mode === 'hidden';
       if (decodeToggle) {
         decodeToggle.checked = this.thumbnailController.decodeEnabled;
         decodeToggle.disabled = !hasBinding || mode !== 'strip';

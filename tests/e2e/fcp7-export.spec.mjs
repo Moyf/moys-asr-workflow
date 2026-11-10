@@ -99,15 +99,22 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
-test('opens the export modal with native text checked by default and closed choices only', async ({ page }) => {
+test('opens the export modal defaulting to native XML and all available tracks', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
   await expect(page.locator('#download-fcp7-export')).toBeAttached();
+  await expect(page.locator('#download-fcp7-export')).toHaveText('FCP 7 XML');
 
   await openFcp7Modal(page);
-  await expect(page.locator('#fcp7-export-native-text')).toBeChecked();
-  await expect(page.locator('#fcp7-export-subtitle-tracks')).toBeEnabled();
-  await expect(page.locator('#fcp7-export-timeline-mode')).toHaveValue('gap_removed');
+  await expect(page.locator('#fcp7-export-format')).toHaveValue('native');
+  const formatLabels = await page.locator('#fcp7-export-format option').evaluateAll(
+    (options) => options.map((option) => option.textContent),
+  );
+  expect(formatLabels).toEqual(['FCP7XML 工程（PR 可用）',
+    '透明 WebP 图片字幕（目标软件需支持 WebP）', '透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）']);
+  await expect(page.locator('#fcp7-export-png-options')).toBeHidden();
+  await expect(page.locator('#fcp7-export-native-text')).toBeVisible();
+  await expect(page.locator('#fcp7-export-timeline-mode')).toBeChecked();
   await expect(page.locator('#fcp7-export-fps')).toHaveValue('30');
 
   const fpsValues = await page.locator('#fcp7-export-fps option').evaluateAll(
@@ -122,9 +129,14 @@ test('opens the export modal with native text checked by default and closed choi
     .toBeDisabled();
   await expect(page.locator('#fcp7-export-subtitle-tracks option[value="overlay"]'))
     .toBeDisabled();
-  await expect(page.locator('#fcp7-export-subtitle-tracks option[value="all"]'))
-    .toBeDisabled();
-  await expect(page.locator('#fcp7-export-subtitle-tracks')).toHaveValue('main');
+  await expect(page.locator('#fcp7-export-subtitle-tracks option[value="all"]')).toBeEnabled();
+  await expect(page.locator('#fcp7-export-subtitle-tracks')).toHaveValue('all');
+
+  // 切回原生文字：勾选项与字幕轨选择恢复为既有行为。
+  await page.locator('#fcp7-export-format').selectOption('native');
+  await expect(page.locator('#fcp7-export-native-text')).toBeVisible();
+  await expect(page.locator('#fcp7-export-native-text')).toBeChecked();
+  await expect(page.locator('#fcp7-export-subtitle-tracks')).toBeEnabled();
 
   // 取消勾选原生文本后，「导出字幕轨」禁用；重新勾选即恢复。
   await page.locator('#fcp7-export-native-text').uncheck();
@@ -142,7 +154,7 @@ test('opens the single FCP 7 XML entry with the gap-removed timeline by default'
   await expect(page.locator('#extra-export-dropdown')).toBeVisible();
 
   await openFcp7Modal(page);
-  await expect(page.locator('#fcp7-export-timeline-mode')).toHaveValue('gap_removed');
+  await expect(page.locator('#fcp7-export-timeline-mode')).toBeChecked();
 
   await page.locator('#fcp7-export-cancel').click();
   await expect(page.locator('#fcp7-export-modal')).not.toHaveClass(/show/);
@@ -157,6 +169,7 @@ test('commits the active panel edit, then saves XML without exporting SRT', asyn
   await page.locator('.cue[data-idx="3"]').click();
   await page.locator('#cue-panel-text').fill('Crossing edited');
   await openFcp7Modal(page);
+  await page.locator('#fcp7-export-format').selectOption('native');
   await expect(page.locator('#fcp7-export-native-text')).toBeChecked();
   // 该用例验证不含文本对象的 XML：默认已勾选，这里显式关闭。
   await page.locator('#fcp7-export-native-text').uncheck();
@@ -186,6 +199,7 @@ test('emits GraphicAndType text clips with the default opt-in', async ({ page })
   await page.goto(server.url);
 
   await openFcp7Modal(page);
+  await page.locator('#fcp7-export-format').selectOption('native');
   await expect(page.locator('#fcp7-export-native-text')).toBeChecked();
   await page.locator('#fcp7-export-confirm').click();
 
@@ -207,6 +221,7 @@ test('cancelling the XML save reports cancellation', async ({ page }) => {
   await page.evaluate(() => { window.__exportPickerBehavior = ['abort']; });
 
   await openFcp7Modal(page);
+  await page.locator('#fcp7-export-format').selectOption('native');
   await page.locator('#fcp7-export-confirm').click();
 
   await expect(page.locator('.hint-card.hint-invalid').last())
@@ -231,6 +246,7 @@ test('anchor fallback reports a dispatched XML download rather than a confirmed 
   });
 
   await openFcp7Modal(page);
+  await page.locator('#fcp7-export-format').selectOption('native');
   await page.locator('#fcp7-export-confirm').click();
 
   await expect.poll(() => page.evaluate(() => window.__anchorDispatches.length)).toBe(1);
@@ -267,7 +283,10 @@ test('translates the export modal into English and keeps native text checked', a
 
   await openFcp7Modal(page);
   await expect(page.locator('#fcp7-export-title'))
-    .toHaveText('Premiere FCP 7 XML');
+    .toHaveText('Export FCP 7 XML project and subtitles');
+  await page.locator('#fcp7-export-format').selectOption('native');
+  await expect(page.locator('#fcp7-export-title'))
+    .toHaveText('Export FCP 7 XML project and subtitles');
   await expect(page.locator('#fcp7-export-confirm')).toHaveText('Export XML');
   await expect(page.locator('#fcp7-export-modal')).toContainText('Write native subtitle text objects');
   await expect(page.locator('#fcp7-export-native-text')).toBeChecked();

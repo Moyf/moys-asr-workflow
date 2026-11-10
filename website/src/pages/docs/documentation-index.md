@@ -157,6 +157,14 @@ source: "docs/INDEX.md"
 
 ## 共享计划
 
+<a name="plan-fcp7-png-subtitles"></a>
+### FCP 7 XML 图片字幕导出
+
+[方案决定、现有渲染复用与分层验证提议](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/FCP7_PNG_SUBTITLES.md)
+
+[无损 WebP 与通用入口验证](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md)
+[PNG/WebP 格式反馈与移除 Pillow](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md)
+
 <a name="plan-release-pipeline"></a>
 ### 正式版本归档、官网与更新检测管线
 
@@ -199,6 +207,11 @@ source: "docs/INDEX.md"
 
 [打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/MAWE%20%E6%8E%A5%E7%BA%BF%E6%8B%86%E5%88%86%E4%B8%8E%E7%9B%AE%E5%BD%95%E5%88%86%E5%B1%82%E8%AE%A1%E5%88%92.md)
 
+<a name="plan-ass-frame-sticker-compose"></a>
+### 实际画面表情包合成路线（真·所见即所得）
+
+[评估结论、现成件清单与设计要点](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/ASS_FRAME_STICKER_COMPOSE.md)；CSS 止血已实施，路线未实施，待 cue-left / 同屏多张成为日常再投入。
+
 <a name="engineering-server"></a>
 ### 源码服务与桌面开发
 
@@ -219,6 +232,13 @@ source: "docs/INDEX.md"
 
 [保留日志索引](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/INDEX.md) · [当前相关参考与未决事项](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/CURRENT.md) · [2026-08-11 README 原文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/archived/README-2026-08-11.md)
 
-当前功能记录：[主字幕单句缩放进度账本](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.md) · [人工核对清单](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)
+当前安全记录：[2026-10 证书与工具链安全修复](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.1/261022_证书与工具链安全/SECURITY.md)。
+
+当前功能记录：[单句放大出现设计账本](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.3/261020_每句放大出现/SENTENCE_POP_IN.md) · [主字幕单句缩放进度账本](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.md) · [人工核对清单](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)
 
 反馈账本中的“已修复”只对应其记录的版本和验证范围。发布变化见 [CHANGELOG](https://github.com/Moyf/moys-asr-workflow/blob/main/CHANGELOG.md)。
+
+<a name="log-media-required-reports"></a>
+### 媒体分层与可信报告
+
+[打开记录](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.1/261023_媒体分层与可信报告/验证记录.md)

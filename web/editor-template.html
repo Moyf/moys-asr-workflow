@@ -131,7 +131,7 @@ __WAVEFORM_CSS__
       <button id="extra-export-btn" title="更多导出" aria-expanded="false" aria-controls="extra-export-menu" aria-haspopup="menu">更多导出 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu" role="menu">
         <div class="dropdown-item" id="download-green-screen-video" role="menuitem" tabindex="0" hidden>生成绿幕视频</div>
-        <div class="dropdown-item" id="download-fcp7-export" role="menuitem" tabindex="0" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML</div>
+        <div class="dropdown-item" id="download-fcp7-export" role="menuitem" tabindex="0" title="导出 FCP 7 XML">FCP 7 XML</div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-otio-menu">OTIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="extra-otio-menu" role="menu">
@@ -548,11 +548,13 @@ __WAVEFORM_CSS__
       <button type="button" class="editor-settings-nav-tab" id="help-tab-basic" role="tab" aria-selected="true" aria-controls="help-tab-panel-basic" data-help-tab="basic">基础操作</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-shortcuts" role="tab" aria-selected="false" aria-controls="help-tab-panel-shortcuts" data-help-tab="shortcuts" tabindex="-1">快捷操作</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-waveform" role="tab" aria-selected="false" aria-controls="help-tab-panel-waveform" data-help-tab="waveform" tabindex="-1">波形区</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-quick-edit" role="tab" aria-selected="false" aria-controls="help-tab-panel-quick-edit" data-help-tab="quick-edit" tabindex="-1">快捷编辑</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-playback" role="tab" aria-selected="false" aria-controls="help-tab-panel-playback" data-help-tab="playback" tabindex="-1">播放与导航</button>
       <div class="help-nav-group-label" aria-hidden="true">进阶</div>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-fine-tuning" role="tab" aria-selected="false" aria-controls="help-tab-panel-fine-tuning" data-help-tab="fine-tuning" tabindex="-1">微调字幕</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-gap" role="tab" aria-selected="false" aria-controls="help-tab-panel-gap" data-help-tab="gap" tabindex="-1">空隙操作</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-ass" role="tab" aria-selected="false" aria-controls="help-tab-panel-ass" data-help-tab="ass" tabindex="-1">ASS 字幕样式</button>
+      <button type="button" class="editor-settings-nav-tab" id="help-tab-word-timing" role="tab" aria-selected="false" aria-controls="help-tab-panel-word-timing" data-help-tab="word-timing" tabindex="-1">字词时间码</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-multi" role="tab" aria-selected="false" aria-controls="help-tab-panel-multi" data-help-tab="multi" tabindex="-1">双语字幕</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-export" role="tab" aria-selected="false" aria-controls="help-tab-panel-export" data-help-tab="export" tabindex="-1">导出与烧录</button>
       <button type="button" class="editor-settings-nav-tab" id="help-tab-markers" role="tab" aria-selected="false" aria-controls="help-tab-panel-markers" data-help-tab="markers" tabindex="-1">标记与区段</button>
@@ -637,14 +639,6 @@ __WAVEFORM_CSS__
     <section class="help-group help-tab-panel" id="help-tab-panel-waveform" role="tabpanel" aria-labelledby="help-tab-waveform" data-help-tab-panel="waveform" tabindex="0" hidden>
       <h4 class="help-title">波形区操作</h4>
       <section class="help-subgroup">
-        <h5 class="help-subtitle">字词时间码</h5>
-        <div class="help-category">
-          <span>开启「字词时间码」后，可以查看和调整主字幕的字词时间。Q 快速切换开关。</span>
-          <span>点击选中，Ctrl(Cmd) 多选，Shift 范围选择；拖动移动或调整边界，C 合并同句内连续块，Esc 取消拖动。F 试听选中的字幕或字词。</span>
-          <span>显示字词时间码时，可在右键菜单的「高级操作」中，将选中字幕的字词逐个转为独立字幕。</span>
-        </div>
-      </section>
-      <section class="help-subgroup">
         <h5 class="help-subtitle">空白波形区</h5>
         <div class="help-category">
           <span><kbd>双击波形</kbd> 播放/暂停</span>
@@ -662,20 +656,11 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">波形区字幕操作</h5>
         <div class="help-category">
-          <span class="help-note">通用快捷键见「快捷操作」；此处只列出波形区特有的操作</span>
+          <span class="help-note">通用快捷键见「快捷操作」。双击字幕块打开快捷编辑弹窗；新建字幕后也会打开弹窗。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Esc</kbd> 清除字幕选择（非编辑状态）</span>
           <span><kbd id="help-split-key">Enter</kbd>（编辑字幕文本时）在文字光标处拆分</span>
           <span class="help-important"><kbd id="help-waveform-split-key">B</kbd> 按当前时间基准拆分字幕</span>
-        </div>
-      </section>
-      <h4 class="help-title">双语字幕</h4>
-      <section class="help-subgroup">
-        <div class="help-category">
-          <span class="help-important"><kbd>G</kbd> 绑定到主副字幕（自动匹配）</span>
-          <span><kbd>Shift+G</kbd> 解绑当前副字幕</span>
-          <span class="help-break" aria-hidden="true"></span>
-          <span class="help-important"><kbd>H</kbd> 将选中的副字幕的时长对齐到绑定主字幕</span>
         </div>
       </section>
       <h4 class="help-title">波形外观调整</h4>
@@ -812,7 +797,7 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">配置与使用</h5>
         <div class="help-category">
-          <span>在「工程设置 → 字幕样式」开启 ASS 字幕模式，点击「管理 ASS 样式」。</span>
+          <span>在 <button type="button" class="help-inline-action" data-settings-page="subtitle-style">工程设置 → 字幕样式</button> 开启 ASS 字幕模式，点击「管理 ASS 样式」。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span>基础样式设置字体、颜色、描边和位置；输出方案关联样式并设置动画。选定「ASS 导出方案」，按需配置副字幕默认槽位，然后保存样式库。</span>
           <span class="help-break" aria-hidden="true"></span>
@@ -838,12 +823,65 @@ __WAVEFORM_CSS__
         </div>
       </section>
     </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-quick-edit" role="tabpanel" aria-labelledby="help-tab-quick-edit" data-help-tab-panel="quick-edit" tabindex="0" hidden>
+      <h4 class="help-title">快捷编辑</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">快捷编辑弹窗</h5>
+        <div class="help-category">
+          <span>双击波形中的字幕块或字词块，就地编辑文字。新建字幕、选中字幕后按 <kbd>Enter</kbd> ，或在叠加字幕右键菜单中选择「编辑文本」，也可打开弹窗。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd id="help-quick-split-key">Enter</kbd> 在光标处拆分字幕，默认继续编辑后半句</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd id="help-quick-confirm-key">Ctrl+Enter</kbd> 保存并关闭</span>
+          <span class="help-note">可在 <button type="button" class="help-inline-action" data-settings-page="split-merge" data-settings-target="split-key">全局设置 → 拆分合并</button> 中设置拆分、保存按键及拆分后是否继续编辑。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Shift+Enter</kbd> 换行</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> 切换同轨的下一句 / 上一句；编辑字词时切换同句字词</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Esc</kbd> 或点击弹窗外部，关闭并保留修改</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">字词时间码编辑</h5>
+        <div class="help-category">
+          <span>启用字词时间码时，同样可以双击字词显示弹窗。使用 <kbd>Enter</kbd> 保存；字词时间仍通过拖动调整。</span>
+        </div>
+      </section>
+    </section>
+    <section class="help-group help-tab-panel" id="help-tab-panel-word-timing" role="tabpanel" aria-labelledby="help-tab-word-timing" data-help-tab-panel="word-timing" tabindex="0" hidden>
+      <h4 class="help-title">字词时间码</h4>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">显示与选择</h5>
+        <div class="help-category">
+          <span><kbd>Q</kbd> 切换主字幕字词时间码；也可点击波形工具栏的「字词」。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>也可在 <button type="button" class="help-inline-action" data-settings-page="project-tracks">工程设置 → 字幕轨道</button> 中切换字词时间码。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>点击选中字词；按住 <kbd data-mod-key>Ctrl</kbd> 点击多选，按住 <kbd>Shift</kbd> 点击范围选择。拖动字词块移动时间，拖动边缘调整起止时间。</span>
+        </div>
+      </section>
+      <section class="help-subgroup">
+        <h5 class="help-subtitle">编辑字词</h5>
+        <div class="help-category">
+          <span>双击字词块可在快捷编辑弹窗修改文字； <kbd>Tab</kbd> 在同句字词之间切换。修改文字不会移动时间。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>C</kbd> 合并同句内连续选中的字词；</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Esc</kbd> 取消拖动；</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>F</kbd> 试听选中的字幕或字词。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>显示字词时间码时，可在右键菜单的「高级操作」中，将选中字幕的字词逐个转为独立字幕。</span>
+        </div>
+      </section>
+    </section>
     <section class="help-group help-tab-panel" id="help-tab-panel-multi" role="tabpanel" aria-labelledby="help-tab-multi" data-help-tab-panel="multi" tabindex="0" hidden>
       <h4 class="help-title">双语字幕</h4>
       <section class="help-subgroup">
         <h5 class="help-subtitle">启用与导入</h5>
         <div class="help-category">
-          <span>在「工程设置 → 双语字幕」开启副轨，导入副字幕并检查匹配预览；也可在副轨空白处右键创建。重新导入会替换副轨。</span>
+          <span>在 <button type="button" class="help-inline-action" data-settings-page="multi-subtitle">工程设置 → 双语字幕</button> 开启副轨，导入副字幕并检查匹配预览；也可在副轨空白处右键创建。重新导入会替换副轨。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span>按语言选择单词型或字符型拆分，并选择主轨、副轨或双列显示。关闭双语字幕只隐藏副轨，保留内容与绑定。</span>
         </div>
@@ -851,7 +889,11 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">绑定与导出</h5>
         <div class="help-category">
-          <span>G 绑定，Shift+G 解绑，H 将副字幕时长对齐到绑定的主字幕。自动匹配依据时间，需人工检查；时间联动在工程设置中调整。</span>
+          <span><kbd>G</kbd> 自动匹配并绑定主副字幕；</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>Shift+G</kbd> 解绑当前副字幕；</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span><kbd>H</kbd> 将选中的副字幕时长对齐到绑定的主字幕。自动匹配依据时间，需人工检查；时间联动在工程设置中调整。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span>SRT（双语合并）合并主副文本；ASS 可分别设置主副样式。导出前检查显隐、位置和同步，保留工程以便继续编辑。</span>
         </div>
@@ -891,7 +933,9 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">创建与编辑</h5>
         <div class="help-category">
-          <span>按 M 或点击波形「标记编辑」，打开「标记与区段」。可创建单点标记或有起止时间的区段，填写名称、备注和颜色。</span>
+          <span>按 <kbd>M</kbd> 或点击波形「标记编辑」启用标记轨道，再点击「标记与区段」打开管理窗。可创建单点标记或有起止时间的区段，填写名称、备注和颜色。</span>
+          <span class="help-break" aria-hidden="true"></span>
+          <span>也可在 <button type="button" class="help-inline-action" data-settings-page="project-tracks" data-settings-target="project-marker-track-toggle">工程设置 → 字幕轨道</button> 中切换标记轨道。</span>
           <span class="help-break" aria-hidden="true"></span>
           <span>点击列表，或双击 / 右键波形标记进行编辑，完成后点击「完成」。批量删除前检查筛选与选中范围；支持撤销。</span>
         </div>
@@ -1633,6 +1677,9 @@ __WAVEFORM_CSS__
       <input type="checkbox" id="split-use-word-timestamps" checked> 主字幕自动使用时间码拆分
     </label>
     <small class="editor-settings-hint" id="split-use-word-timestamps-hint">开启时，自动按可用时间码拆分；关闭后将打开拆分弹窗，手动拆分。</small>
+    <label class="toggle editor-settings-item">
+      <input type="checkbox" id="quick-edit-split-focus-next" checked> 快捷编辑拆分后自动聚焦后半句
+    </label>
     </div>
   </div>
   <span class="editor-settings-group-heading" id="merge-join-settings-title">合并字幕时插入字符</span>
@@ -2190,11 +2237,12 @@ __WAVEFORM_CSS__
                 <option value="reapeaks" selected>REAPER 波形</option>
               </select>
             </label>
-            <label class="toggle editor-settings-item" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
+            <label class="toggle editor-settings-item waveform-inline-checkbox" title="使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形">
               <input type="checkbox" id="waveform-spectral-color" aria-describedby="waveform-spectral-status"> 频谱颜色
               <span class="waveform-spectral-status" id="waveform-spectral-status" role="status" aria-live="polite" aria-atomic="true" hidden></span>
             </label>
-            <label class="editor-settings-item waveform-settings-toggle-row" id="waveform-thumbnail-setting" title="在波形上方显示视频缩略图导航；本机 Server 绑定视频时可用">
+            <div class="waveform-thumbnail-row" id="waveform-thumbnail-setting">
+              <label class="editor-settings-item" title="在波形上方显示视频缩略图导航；本机 Server 绑定视频时可用">
               <span>视频缩略图</span>
               <select id="waveform-thumbnail-mode" aria-label="视频缩略图" aria-describedby="waveform-thumbnail-status">
                 <option value="strip">铺满画面带</option>
@@ -2202,10 +2250,11 @@ __WAVEFORM_CSS__
                 <option value="hidden">隐藏画面带</option>
               </select>
               <span id="waveform-thumbnail-status" class="waveform-thumbnail-status" role="status" aria-live="polite" aria-atomic="true"></span>
-            </label>
-            <label class="toggle editor-settings-item waveform-settings-toggle-row" id="waveform-thumbnail-decode-setting" title="铺满模式下为当前视图实时解码缺失的画面格；关闭后只读取并显示已有缓存画面。关键帧标记模式不参与实时解码">
-              <input type="checkbox" id="waveform-thumbnail-decode" aria-label="实时生成补间" aria-describedby="waveform-thumbnail-status" checked> 实时生成补间
-            </label>
+              </label>
+              <label class="toggle editor-settings-item waveform-inline-checkbox" id="waveform-thumbnail-decode-setting" title="铺满模式下为当前视图实时解码缺失的画面格；关闭后只读取并显示已有缓存画面。关键帧标记模式不参与实时解码">
+                <input type="checkbox" id="waveform-thumbnail-decode" aria-label="实时生成补间" aria-describedby="waveform-thumbnail-status" checked> 实时生成补间
+              </label>
+            </div>
             <span class="editor-settings-item">振幅
               <span class="editor-settings-stepper">
                 <button type="button" id="waveform-scale-down" title="减小波形振幅">−</button>
@@ -2247,6 +2296,9 @@ __WAVEFORM_CSS__
             <small class="settings-panel-hint" id="waveform-row-height-scope">单轨使用此行高；双语行高在双语字幕设置中配置。</small>
             <label class="toggle editor-settings-item" title="在多行波形中，为成组（颜色/表情包）字幕在块上方显示队长皇冠与组内序号">
               <input type="checkbox" id="waveform-show-group-badges" checked> 分组标记
+            </label>
+            <label class="toggle editor-settings-item waveform-cue-tooltip-setting">
+              <input type="checkbox" id="waveform-cue-tooltip" checked> 悬浮时显示完整文本
             </label>
             <label class="editor-settings-item" title="被禁用字幕的波形显示方式">禁用项
               <select id="waveform-disabled-display">
@@ -2347,16 +2399,42 @@ __WAVEFORM_CSS__
   </div>
 </div>
 
-<!-- Premiere FCP 7 XML 实验性交接导出。 -->
+<!-- FCP 7 XML（PR / VEGAS） 实验性交接导出。 -->
 <div class="modal-mask" id="fcp7-export-modal">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fcp7-export-title" aria-describedby="fcp7-export-description">
-    <h3 id="fcp7-export-title">Premiere FCP 7 XML</h3>
-    <p class="modal-desc" id="fcp7-export-description">导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。</p>
-    <label for="fcp7-export-timeline-mode">导出时间线模式</label>
-    <select id="fcp7-export-timeline-mode">
-      <option value="gap_removed" selected>去空隙时间线</option>
-      <option value="source">原始时间线</option>
+    <h3 id="fcp7-export-title">FCP 7 XML 工程和字幕导出</h3>
+    <p class="modal-desc" id="fcp7-export-description">导出 FCP 7 XML 工程文件，供 Premiere、Vegas 等剪辑软件使用。</p>
+    <label for="fcp7-export-format">导出形式</label>
+    <select id="fcp7-export-format">
+      <option value="native" selected>FCP7XML 工程（PR 可用）</option>
+      <option value="webp">透明 WebP 图片字幕（目标软件需支持 WebP）</option>
+      <option value="png">透明 PNG 图片字幕（FCP7XML，可用于 PR / VEGAS）</option>
     </select>
+    <fieldset class="fcp7-radio-group"><legend>导出时间线模式</legend>
+      <label><input type="radio" id="fcp7-export-timeline-mode" name="fcp7-export-timeline-mode" value="gap_removed" checked> 去空隙时间线</label>
+      <label><input type="radio" name="fcp7-export-timeline-mode" value="source"> 原始时间线</label>
+    </fieldset>
+    <div id="fcp7-export-png-options" hidden style="margin-top: 12px">
+      <fieldset class="fcp7-radio-group"><legend>输出范围</legend>
+        <label><input type="radio" name="fcp7-export-scope" value="subtitles" checked> 仅字幕</label>
+        <label><input type="radio" name="fcp7-export-scope" value="media"> 字幕与源媒体</label>
+      </fieldset>
+      <p class="modal-hint" id="fcp7-export-format-hint" style="margin-top: 8px">动态部分输出序列帧，静止部分保持单张 PNG 图片；字幕与 XML 保存在工程旁的新目录。源媒体使用引用，图片模式不包含贴图。</p>
+      <label for="fcp7-export-resolution">图片尺寸</label>
+      <select id="fcp7-export-resolution">
+        <option value="1920x1080">1920 × 1080（横屏）</option>
+        <option value="1080x1920">1080 × 1920（竖屏）</option>
+        <option value="3840x2160">3840 × 2160（4K 横屏）</option>
+        <option value="custom">自定义…</option>
+      </select>
+      <div class="row" id="fcp7-export-custom-size" hidden>
+        <input type="number" id="fcp7-export-custom-width" min="1" max="8192" step="1" value="1920" aria-label="宽度">
+        <span aria-hidden="true">×</span>
+        <input type="number" id="fcp7-export-custom-height" min="1" max="8192" step="1" value="1080" aria-label="高度">
+      </div>
+      <p class="modal-hint" id="fcp7-export-ratio-warning" role="status" hidden>图片尺寸与源画面的宽高比不同，字幕的位置和布局可能发生变化。</p>
+    </div>
+    <div class="fcp7-columns"><div>
     <label for="fcp7-export-fps">导出帧率</label>
     <select id="fcp7-export-fps">
       <option value="24">24 fps</option>
@@ -2367,21 +2445,26 @@ __WAVEFORM_CSS__
       <option value="60">60 fps</option>
       <option value="60000/1001">60000/1001 fps</option>
     </select>
+    </div><div>
+    <label for="fcp7-export-subtitle-tracks">导出字幕轨</label>
+    <select id="fcp7-export-subtitle-tracks">
+      <option value="main">主轨字幕</option>
+      <option value="main_and_extension">主轨与副轨字幕</option>
+      <option value="overlay">叠加轨字幕</option>
+      <option value="all" selected>全部字幕轨（各占一轨）</option>
+    </select>
+    </div></div>
     <label class="row" for="fcp7-export-native-text">
       <input type="checkbox" id="fcp7-export-native-text" checked> 写入原生字幕文本对象
     </label>
-    <label for="fcp7-export-subtitle-tracks">导出字幕轨</label>
-    <select id="fcp7-export-subtitle-tracks">
-      <option value="main" selected>主轨字幕</option>
-      <option value="main_and_extension">主轨与副轨字幕</option>
-      <option value="overlay">叠加轨字幕</option>
-      <option value="all">全部字幕轨（各占一轨）</option>
-    </select>
-    <p class="modal-hint">原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。</p>
+    <p id="fcp7-export-native-hint" class="modal-hint">原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。</p>
     <div class="actions">
+      <button type="button" id="fcp7-export-stop" hidden>停止导出</button>
       <button type="button" id="fcp7-export-cancel">取消</button>
       <button type="button" id="fcp7-export-confirm" class="primary">导出 XML</button>
     </div>
+    <p id="fcp7-export-status" class="fcp7-export-status" role="status"></p>
+    <progress id="fcp7-export-progress" max="1" aria-label="字幕图片生成进度" hidden></progress>
   </div>
 </div>
 
@@ -2390,15 +2473,11 @@ __WAVEFORM_CSS__
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="lottie-export-title" aria-describedby="lottie-export-description">
     <h3 id="lottie-export-title">Lottie 动态字幕</h3>
     <p class="modal-desc" id="lottie-export-description">导出单个 .lottie 文件，可直接拖入 DaVinci Resolve 21 的 Media Pool 或时间线。当前版本使用逐字/逐词高亮，并沿用 MAW 的字幕预览字体、颜色和位置。</p>
-    <label for="lottie-export-track">字幕轨道</label>
-    <select id="lottie-export-track">
-      <option value="main" selected>主轨字幕</option>
-      <option value="extension">副字幕轨</option>
-    </select>
-    <label class="row" for="lottie-export-gap-removed">
-      <input type="checkbox" id="lottie-export-gap-removed"> 去除间隙
-    </label>
-    <p class="modal-hint">勾选后将字幕和字词时间映射到去除静音空隙后的压缩时间线。</p>
+    <fieldset class="fcp7-radio-group"><legend>导出时间线模式</legend>
+      <label><input type="radio" name="lottie-export-timeline-mode" value="source" checked> 原始时间线</label>
+      <label><input type="radio" id="lottie-export-gap-removed" name="lottie-export-timeline-mode" value="gap_removed"> 去空隙时间线</label>
+    </fieldset>
+    <p class="modal-hint">去空隙时间线将字幕和字词时间映射到压缩后的时间线。</p>
     <label for="lottie-export-resolution">合成尺寸</label>
     <select id="lottie-export-resolution">
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>
@@ -2411,6 +2490,7 @@ __WAVEFORM_CSS__
       <span aria-hidden="true">×</span>
       <input type="number" id="lottie-export-custom-height" min="16" max="7680" step="1" value="1080" aria-label="高度">
     </div>
+    <div class="fcp7-columns"><div>
     <label for="lottie-export-fps">导出帧率</label>
     <select id="lottie-export-fps">
       <option value="24">24 fps</option>
@@ -2421,6 +2501,13 @@ __WAVEFORM_CSS__
       <option value="60">60 fps</option>
       <option value="60000/1001">60000/1001 fps</option>
     </select>
+    </div><div>
+    <label for="lottie-export-track">导出字幕轨</label>
+    <select id="lottie-export-track">
+      <option value="main" selected>主轨字幕</option>
+      <option value="extension">副字幕轨</option>
+    </select>
+    </div></div>
     <label for="lottie-export-render-mode">文字渲染</label>
     <select id="lottie-export-render-mode">
       <option value="text" selected>文本模式（依赖系统字体）</option>
@@ -2439,15 +2526,11 @@ __WAVEFORM_CSS__
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="ograf-export-title" aria-describedby="ograf-export-description">
     <h3 id="ograf-export-title">OGraf 动态字幕</h3>
     <p class="modal-desc" id="ograf-export-description">导出符合 OGraf 规范的 .ograf.zip；解压后保持 .ograf.json 与 .mjs 同目录，再把 .ograf.json 拖入 DaVinci Resolve 21。字幕由 Canvas Web Component 渲染。</p>
-    <label for="ograf-export-track">字幕轨道</label>
-    <select id="ograf-export-track">
-      <option value="main" selected>主轨字幕</option>
-      <option value="extension">副字幕轨</option>
-    </select>
-    <label class="row" for="ograf-export-gap-removed">
-      <input type="checkbox" id="ograf-export-gap-removed"> 去除间隙
-    </label>
-    <p class="modal-hint">勾选后将字幕和字词时间映射到去除静音空隙后的压缩时间线。</p>
+    <fieldset class="fcp7-radio-group"><legend>导出时间线模式</legend>
+      <label><input type="radio" name="ograf-export-timeline-mode" value="source" checked> 原始时间线</label>
+      <label><input type="radio" id="ograf-export-gap-removed" name="ograf-export-timeline-mode" value="gap_removed"> 去空隙时间线</label>
+    </fieldset>
+    <p class="modal-hint">去空隙时间线将字幕和字词时间映射到压缩后的时间线。</p>
     <label for="ograf-export-resolution">合成尺寸</label>
     <select id="ograf-export-resolution">
       <option value="1920x1080" selected>1920 × 1080（横屏）</option>
@@ -2460,6 +2543,7 @@ __WAVEFORM_CSS__
       <span aria-hidden="true">×</span>
       <input type="number" id="ograf-export-custom-height" min="16" max="7680" step="1" value="1080" aria-label="高度">
     </div>
+    <div class="fcp7-columns"><div>
     <label for="ograf-export-fps">导出帧率</label>
     <select id="ograf-export-fps">
       <option value="24">24 fps</option>
@@ -2470,6 +2554,13 @@ __WAVEFORM_CSS__
       <option value="60">60 fps</option>
       <option value="60000/1001">60000/1001 fps</option>
     </select>
+    </div><div>
+    <label for="ograf-export-track">导出字幕轨</label>
+    <select id="ograf-export-track">
+      <option value="main" selected>主轨字幕</option>
+      <option value="extension">副字幕轨</option>
+    </select>
+    </div></div>
     <p class="modal-hint">这是包含两个文件的压缩包，不是可单独使用的 JSON；解压后不要分离或改名。Canvas 使用 Resolve 所在机器的系统字体回退链，适合验证中文显示。</p>
     <div class="actions">
       <button type="button" id="ograf-export-cancel">取消</button>

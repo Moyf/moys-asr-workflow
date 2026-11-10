@@ -2623,6 +2623,28 @@ test('拼合主字幕时同步延展绑定副字幕并支持撤销', async ({ pa
   await page.keyboard.press('ControlOrMeta+z');
 });
 
+test('bilingual switch refreshes a paused preview and undo redo', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.evaluate(() => {
+    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    track.segments[0].start = 0;
+    MawePlaybackLoop.refreshSubtitlePreview();
+  });
+  const extension = page.locator('#overlay-extension-text');
+  await expect(extension).toContainText('你好');
+  await expect(extension).not.toHaveClass(/hidden/);
+  await page.locator('#multi-subtitle-quick-toggle').click();
+  await expect(extension).toHaveClass(/hidden/);
+  await page.locator('#multi-subtitle-quick-toggle').click();
+  await expect(extension).not.toHaveClass(/hidden/);
+  await page.evaluate(() => MaweHistory.performUndo());
+  await expect(extension).toHaveClass(/hidden/);
+  await page.evaluate(() => MaweHistory.performRedo());
+  await expect(extension).not.toHaveClass(/hidden/);
+});
+
 test('shows independent extension preview controls with yellow defaults', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();

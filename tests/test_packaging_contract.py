@@ -98,6 +98,26 @@ def _local_runtime_spec_entry(relative_path: str) -> str:
 
 
 class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
+    def test_image_editor_runtime_does_not_require_pillow_in_main_bundle(self) -> None:
+        tree = ast.parse(read_text("scripts/packaging/MAW.spec"))
+        excluded = next(
+            ast.literal_eval(node.value)
+            for node in tree.body if isinstance(node, ast.Assign)
+            if any(isinstance(target, ast.Name) and target.id == "excluded_local_modules"
+                   for target in node.targets)
+        )
+        self.assertIn("PIL", excluded)
+        project = tomllib.loads(read_text("pyproject.toml"))
+        self.assertFalse(any(item.lower().startswith("pillow") for item in project["project"]["dependencies"]))
+
+    def test_windows_preview_starts_packaged_editor_instead_of_only_help(self) -> None:
+        workflow = read_text(".github/workflows/pr-release-windows.yml")
+        step = workflow.split("- name: Smoke MAW executable", 1)[1].split("- name:", 1)[0]
+        self.assertIn("scripts/packaging/smoke_editor.py $ExePath", step)
+        self.assertIn("--timeout 120", step)
+        self.assertIn("$LASTEXITCODE -ne 0", step)
+        self.assertNotIn("'--help'", step)
+
     def test_relocated_spec_resolves_repository_resources(self) -> None:
         tree = ast.parse(read_text("scripts/packaging/MAW.spec"))
         assignments = {
@@ -248,7 +268,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("MAW-lite", faq)
         self.assertIn("下载带内置 FFmpeg 的完整版 MAW 包", faq)
         self.assertIn("FAQ-常见问题.txt", spec)
-        for excluded_module in ("funasr", "qwen_asr", "onnxruntime", "PIL", "rapidocr", "torch", "torchaudio", "readline"):
+        for excluded_module in ("funasr", "qwen_asr", "onnxruntime", "rapidocr", "torch", "torchaudio", "readline"):
             self.assertIn(f'"{excluded_module}"', spec)
         self.assertIn('"maw.waveform"', spec)
         self.assertNotIn('"waveform",', spec)
@@ -370,7 +390,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         dependencies = set(project["project"]["dependencies"])
         ocr_dependencies = set(project["dependency-groups"]["ocr"])
         self.assertNotIn("onnxruntime>=1.18", dependencies)
-        self.assertNotIn("pillow>=10.0.0", dependencies)
+        self.assertFalse(any(item.lower().startswith("pillow") for item in dependencies))
         self.assertNotIn("rapidocr>=3.9.0", dependencies)
         self.assertNotIn("numpy>=2.2,<2.5", dependencies)
         self.assertEqual(
@@ -556,7 +576,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         """Given a macOS arm64 release, When packaging runs, Then only MAW app variants are uploaded."""
         workflow = read_text(".github/workflows/release.yml")
 
-        self.assertIn("os: macos-14", workflow)
+        self.assertIn("os: macos-15", workflow)
         self.assertIn("arch: arm64", workflow)
         self.assertIn("https://www.osxexperts.net/ffmpeg81arm.zip", workflow)
         self.assertIn("https://www.osxexperts.net/ffprobe81arm.zip", workflow)

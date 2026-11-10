@@ -160,6 +160,32 @@ class GapRemovedAudioExportTests(unittest.TestCase):
             self.export(source, [(0, 24)], "overrun.wav")
         self.assertFalse((self.root / "overrun.wav").exists())
 
+    def test_explicit_natural_end_uses_selected_track_samples(self):
+        multitrack = self.root / "different-lengths.mka"
+        self.command("-y", "-i", self.source, "-f", "lavfi", "-i",
+                     f"sine=frequency=800:sample_rate={self.rate}:duration=5",
+                     "-map", "0:a", "-map", "1:a", "-c:a", "pcm_s16le", multitrack)
+        for track, requested_end, expected_samples in ((0, 5000, self.rate * 2),
+                                                        (1, 5000, self.rate * 5)):
+            with self.subTest(track=track):
+                output = self.export(multitrack, [(0, requested_end)], f"tail-{track}.wav",
+                                     audio_track=track, keep_to_source_end=True, editor_duration_ms=requested_end)
+                with wave.open(str(output), "rb") as rebuilt:
+                    self.assertEqual(rebuilt.getnframes(), expected_samples)
+        with self.assertRaisesRegex(ValueError, "所选音轨时长与编辑器不一致"):
+            self.export(multitrack, [(0, 2000)], "too-short.wav", audio_track=1, keep_to_source_end=True,
+                        editor_duration_ms=2000)
+        with self.assertRaisesRegex(ValueError, "所选音轨时长与编辑器不一致"):
+            self.export(multitrack, [(0, 1500)], "tail-removed.wav", audio_track=1, editor_duration_ms=2000)
+        with self.assertRaises(ValueError):
+            self.export(multitrack, [(0, 5000)], "strict.wav", audio_track=0)
+        with self.assertRaises(ValueError):
+            self.export(multitrack, [(2500, 5000)], "beyond.wav", audio_track=0, keep_to_source_end=True,
+                        editor_duration_ms=5000)
+        with self.assertRaises(ValueError):
+            self.export(multitrack, [(0, 2500), (3000, 5000)], "interior.wav", audio_track=0,
+                        keep_to_source_end=True, editor_duration_ms=5000)
+
     def test_out_of_bounds_is_rejected_and_partial_result_removed(self):
         output = self.root / "out-of-range.wav"
         with self.assertRaises(ValueError):
