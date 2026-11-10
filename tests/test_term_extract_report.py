@@ -108,6 +108,41 @@ class ReportTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('class="pick"', html)  # 勾选热区：label 占满左列
         self.assertIn("width:24px;height:24px", html)
 
+    def test_html_has_review_workflow_controls(self) -> None:
+        html = report_module.render_report_html(sample_report())
+        # 右侧导出栏：词条 chip 可单独移除、组内一键全选、重置筛选与操作提示。
+        self.assertIn('class="dock"', html)
+        self.assertIn("word-chip", html)
+        self.assertIn('id="reset-filters"', html)
+        self.assertIn("tier-pick", html)
+        self.assertIn('id="toast"', html)
+        # 键盘审阅：J/K 移动、X 勾选、O 看证据、/ 聚焦搜索；弹层内可直接勾选。
+        self.assertIn('key==="j"', html)
+        self.assertIn('key==="x"', html)
+        self.assertIn('key==="/"', html)
+        self.assertIn('id="overlay-pick"', html)
+        self.assertNotIn("alert(", html)
+
+    def test_html_row_click_theme_and_compact_dock(self) -> None:
+        html = report_module.render_report_html(sample_report())
+        # 横向整行点击切换勾选（避开缩略图/展开明细/按钮），并防止选中文字时误触。
+        self.assertIn('t.closest(".pick,button,a,summary,.more-body,input")', html)
+        self.assertIn("window.getSelection", html)
+        # 深浅双主题（沿用 Launcher 令牌）与窄屏紧凑底栏。
+        self.assertIn("[data-theme=light]", html)
+        self.assertIn('id="theme-btn"', html)
+        self.assertIn('id="dock-toggle"', html)
+        self.assertIn("--dock-h", html)
+        # 分组头整条可点折叠（全选本组按钮除外）；精简显示开关 + V 快捷键 + 记忆。
+        self.assertIn('head.addEventListener("click"', html)
+        self.assertIn('id="compact-toggle"', html)
+        self.assertIn(".compact .card", html)
+        self.assertIn("maw-term-report-compact", html)
+        self.assertIn('key==="v"', html)
+        # 强调色与 Launcher 一致（深色橙 / 浅色红）。
+        self.assertIn("--accent:#f09a50", html)
+        self.assertIn("--accent:#c84545", html)
+
     def test_html_has_evidence_rect_markup(self) -> None:
         html = report_module.render_report_html(sample_report())
         self.assertIn("frame-wrap", html)

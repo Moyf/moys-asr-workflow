@@ -238,7 +238,7 @@ def run_pipeline(
     if hotwords_text:
         (out_dir / export.HOTWORDS_FILENAME).write_text(hotwords_text, encoding="utf-8", newline="\n")
     print(f"[done] 产物目录：{out_dir}")
-    print(f"[done] 确认页：{out_dir / report.REPORT_HTML_FILENAME}（浏览器打开，勾选后右上角导出）")
+    print(f"[done] 确认页：{out_dir / report.REPORT_HTML_FILENAME}（浏览器打开，勾选后在右侧导出栏导出）")
     if rejected:
         print(f"[done] {len(rejected)} 个推荐词不满足热词硬限制，已标灰：{', '.join(item['word'] for item in rejected[:5])}")
     return 0
