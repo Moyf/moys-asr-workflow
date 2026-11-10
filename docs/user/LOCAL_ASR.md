@@ -118,4 +118,6 @@ AI 模型页的「对齐模型」独立管理 Qwen3-ForcedAligner-0.6B 和 FireR
 
 Launcher 自动选择 PyPI 镜像；需要 GPU Torch 时另用 PyTorch 索引。`MAW_PIP_INDEX` 可覆盖候选源，`MAW_PYTORCH_INDEX` 可替换 PyTorch 源；镜像必须实际提供对应 wheel，替换 URL 不能解决版本/硬件不兼容。
 
+Windows 用户名含中文时，依赖里的部分原生库（如 nagisa/DyNet）无法用系统默认代码页打开自己数据目录下的文件，安装验证会以「命令失败（退出码 1）」收场。MAW 会自动把运行时目录转换为 8.3 短路径（同一目录的英文别名）；若系统关闭了 8.3 名称生成，则改用公共目录 `C:\ProgramData\MAW\runtimes\<runtime>`，也可用环境变量 `MAW_RUNTIME_ASCII_ROOT` 指定一个无中文且当前用户可写的公共运行时根（本地 ASR、OCR、MOSS 运行环境会在其下各占一个子目录）。OCR / MOSS 运行环境同理。
+
 模型下载量与推理内存不同，具体空间以准备界面和实际缓存为准。CPU、显存、长媒体速度、附加组件与多语种尚无完整跨硬件基准；不承诺统一实时率。先确认短样本可用，再扩大任务。

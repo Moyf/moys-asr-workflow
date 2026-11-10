@@ -23,7 +23,7 @@ import maw.runtimes.base as base_mod
 from maw.runtime_manifest import STATUS_INSTALLING, STATUS_READY, write_runtime_manifest
 from maw.runtimes import LOCAL, MOSS, OCR, get_runtime
 from maw.runtimes.base import ManagedRuntime, ManagedRuntimeError, RuntimeSpec
-from maw.runtimes.local_spec import LOCAL_SPEC, PYTORCH_INDEX, LocalRuntimeError
+from maw.runtimes.local_spec import LOCAL_SPEC, PYTORCH_INDEX, LocalRuntimeCancelled, LocalRuntimeError
 from maw.runtimes.moss_spec import MOSS_SPEC, PYTORCH_INDEX as MOSS_PYTORCH_INDEX
 from maw.runtimes.ocr_spec import OCR_MODEL_ID, OCR_SPEC
 
@@ -830,6 +830,250 @@ class RuntimeHostEnvironmentTests(unittest.TestCase):
                 with mock.patch.dict(os.environ, patched_env, clear=True):
                     env = LOCAL.environment(Path("/tmp/local-runtime"))
         self.assertEqual(env["LD_LIBRARY_PATH"], "/opt/cuda/lib64")
+
+
+class RuntimeAsciiPathTests(unittest.TestCase):
+    """Windows 非 ASCII 用户路径：--target / 解释器 / PYTHONPATH 的 ASCII 化决策表。
+
+    真实 Windows 行为不在本机验证范围（pathwin 三分支 seam mock 见
+    tests/test_runtime_pathwin.py）；本类聚焦 ``install()`` 对根目录形态的
+    消费：命令与环境变量里出现哪条路径、verify 失败的错误增强。
+    """
+
+    PACKAGE_DIRS = (
+        "certifi", "faster_whisper", "funasr", "qwen_asr", "jieba",
+        "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile",
+    )
+
+    @staticmethod
+    def _fake_run(calls: list[list[str]], envs: list[dict[str, str]]):
+        def fake_run(command: list[str], **kwargs: object) -> int:
+            calls.append(command)
+            envs.append(dict(kwargs.get("env") or {}))
+            if "--target" in command:
+                site = Path(command[command.index("--target") + 1])
+                for name in RuntimeAsciiPathTests.PACKAGE_DIRS:
+                    (site / name).mkdir(parents=True, exist_ok=True)
+            return 0
+
+        return fake_run
+
+    @unittest.skipIf(sys.platform == "win32", "unix 直通断言：Windows 上 resolve_root 会做 ASCII 化")
+    def test_resolve_root_is_passthrough_on_unix(self) -> None:
+        """macOS/Linux 直通语义：默认目录与显式配置都原样返回。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir).resolve()
+            explicit = temp / "自定义" / "runtime"
+            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "卓什么越")}):
+                os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
+                self.assertEqual(LOCAL.resolve_root(), temp / "卓什么越" / "local-runtime")
+                self.assertEqual(LOCAL.resolve_root(explicit), explicit)
+
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    def test_install_targets_short_path_alias_when_83_available(self) -> None:
+        """默认目录含非 ASCII 且 8.3 可用：--target/verify/PYTHONPATH 全用短路径别名。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir).resolve()
+            alias_root = temp / "short-alias" / "local-runtime"
+            requirements_txt = temp / "requirements-local.txt"
+            requirements_txt.write_text("funasr==1.4.2\nqwen-asr==0.0.6\n", encoding="utf-8")
+            calls: list[list[str]] = []
+            envs: list[dict[str, str]] = []
+
+            def fake_ascii_root(path: Path, *, dir_name: str, allow_relocate: bool = True) -> Path:
+                return alias_root if "卓什么越" in str(path) else Path(path)
+
+            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "卓什么越"), "PROGRAMDATA": ""}):
+                os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
+                with mock.patch("maw.runtimes.pathwin.ensure_ascii_root", side_effect=fake_ascii_root):
+                    with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+                        with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
+                            with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
+                                with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
+                                    with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                        with mock.patch("maw.runtimes.base._run_process", side_effect=self._fake_run(calls, envs)):
+                                            status = LOCAL.install()
+
+        self.assertTrue(status.ready)
+        install_command = calls[1]
+        verify_command = calls[2]
+        self.assertEqual(install_command[install_command.index("--target") + 1], str(alias_root / "site-packages"))
+        self.assertEqual(verify_command[0], str(alias_root / "python" / "python.exe"))
+        # verify 跑在别名解释器上（embedded ._pth 的 ../site-packages 相对解析随其 ASCII 化）
+        self.assertEqual(envs[2].get("PYTHONPATH"), str(alias_root / "site-packages"))
+
+    @mock.patch("maw.runtimes.pathwin.sys.platform", "win32")
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    def test_install_relocates_to_common_dir_when_short_path_unavailable(self) -> None:
+        """8.3 不可用（模拟）：默认目录迁移到 PROGRAMDATA 公共目录，原中文目录不动。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir).resolve()
+            fallback = temp / "progdata" / "MAW" / "runtimes" / "local-runtime"
+            requirements_txt = temp / "requirements-local.txt"
+            requirements_txt.write_text("funasr==1.4.2\nqwen-asr==0.0.6\n", encoding="utf-8")
+            calls: list[list[str]] = []
+            envs: list[dict[str, str]] = []
+
+            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "卓什么越"), "PROGRAMDATA": str(temp / "progdata")}):
+                os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
+                with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+                    with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
+                        with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
+                            with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
+                                with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                    with mock.patch("maw.runtimes.base._run_process", side_effect=self._fake_run(calls, envs)):
+                                        status = LOCAL.install()
+
+            self.assertTrue(status.ready)
+            install_command = calls[1]
+            verify_command = calls[2]
+            self.assertEqual(install_command[install_command.index("--target") + 1], str(fallback / "site-packages"))
+            self.assertEqual(verify_command[0], str(fallback / "python" / "python.exe"))
+            self.assertEqual(envs[2].get("PYTHONPATH"), str(fallback / "site-packages"))
+            # 动工前 probe 已建公共目录；默认「运行时根」全程未被创建
+            # （model-cache 仍按设计放在默认 app-data 根下，不随迁移）
+            self.assertTrue(fallback.is_dir())
+            self.assertFalse((temp / "卓什么越" / "local-runtime").exists())
+
+    @mock.patch("maw.runtimes.pathwin.sys.platform", "win32")
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    def test_explicit_runtime_root_is_never_relocated(self) -> None:
+        """显式配置尊重用户选择：无法 8.3 别名化也保持原路径（不做公共目录迁移）。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir).resolve()
+            root = temp / "卓什么越" / "local-runtime"
+            requirements_txt = temp / "requirements-local.txt"
+            requirements_txt.write_text("funasr==1.4.2\nqwen-asr==0.0.6\n", encoding="utf-8")
+            calls: list[list[str]] = []
+            envs: list[dict[str, str]] = []
+
+            with mock.patch.dict(os.environ, {"PROGRAMDATA": str(temp / "progdata")}):
+                with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
+                    with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
+                        with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
+                            with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
+                                with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                    with mock.patch("maw.runtimes.base._run_process", side_effect=self._fake_run(calls, envs)):
+                                        status = LOCAL.install(runtime_root=root)
+
+            self.assertTrue(status.ready)
+            install_command = calls[1]
+            self.assertEqual(install_command[install_command.index("--target") + 1], str(root / "site-packages"))
+            # 未迁移：公共目录方案没有被使用
+            self.assertFalse((temp / "progdata").exists())
+
+    @staticmethod
+    def _verify_runtime_environment(temp: Path, calls: list[list[str]]) -> dict[str, object]:
+        requirements_txt = temp / "requirements-local.txt"
+        requirements_txt.write_text("funasr==1.4.2\nqwen-asr==0.0.6\n", encoding="utf-8")
+        return {
+            "bootstrap": mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]),
+            "extract": mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract),
+            "requirements": mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt),
+            "cuda": mock.patch("maw.runtimes.base._has_cuda", return_value=True),
+            "mirror": mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"),
+            "run": mock.patch("maw.runtimes.base._run_process", side_effect=RuntimeAsciiPathTests._fake_run(calls, [])),
+        }
+
+    @staticmethod
+    def _start_patches(patches: dict[str, object]) -> None:
+        """手动启动补丁集（不用 stopall：会误停类装饰器管理的 patch）。"""
+        for patch in patches.values():
+            patch.start()  # type: ignore[attr-defined]
+
+    @staticmethod
+    def _stop_patches(patches: dict[str, object]) -> None:
+        for patch in reversed(list(patches.values())):
+            patch.stop()  # type: ignore[attr-defined]
+
+    @mock.patch("maw.runtimes.pathwin.sys.platform", "win32")
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    def test_verify_failure_appends_ascii_path_hint_for_non_ascii_root(self) -> None:
+        """verify 失败且路径仍含非 ASCII：错误附带自救与反馈指引，不再是裸 traceback。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir).resolve()
+            root = temp / "卓什么越" / "local-runtime"
+            calls: list[list[str]] = []
+            patches = self._verify_runtime_environment(temp, calls)
+
+            def fake_run_with_verify_failure(command: list[str], **kwargs: object) -> int:
+                if "-c" in command:  # verify 自检是第三段命令（get-pip / install / verify）
+                    raise LocalRuntimeError(
+                        "本地运行环境命令失败（退出码 1）。"
+                        "RuntimeError: Could not read model from "
+                        f"{root / 'site-packages' / 'nagisa' / 'data' / 'nagisa_v001.model'}"
+                    )
+                return RuntimeAsciiPathTests._fake_run(calls, [])(command, **kwargs)
+
+            patches["run"] = mock.patch("maw.runtimes.base._run_process", side_effect=fake_run_with_verify_failure)
+            with mock.patch.dict(os.environ, {"PROGRAMDATA": str(temp / "progdata")}):
+                self._start_patches(patches)
+                try:
+                    with self.assertRaises(LocalRuntimeError) as context:
+                        LOCAL.install(runtime_root=root)
+                finally:
+                    self._stop_patches(patches)
+
+        message = str(context.exception)
+        self.assertIn("退出码 1", message)  # 原始失败信息保留
+        self.assertIn("非 ASCII", message)
+        self.assertIn("MAW_RUNTIME_ASCII_ROOT", message)
+        self.assertIn("https://github.com/Moyf/moys-asr-workflow/issues", message)
+
+    @mock.patch("maw.runtimes.pathwin.sys.platform", "win32")
+    @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
+    @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
+    @mock.patch("maw.runtimes.base.sys.platform", "win32")
+    def test_verify_failure_ascii_root_gets_no_hint_and_cancel_not_swallowed(self) -> None:
+        """ASCII 根目录的 verify 失败不附提示；取消异常不被增强逻辑吞掉。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir).resolve()
+            calls: list[list[str]] = []
+            patches = self._verify_runtime_environment(temp, calls)
+
+            def fake_run_ascii_verify_failure(command: list[str], **kwargs: object) -> int:
+                if "-c" in command:
+                    raise LocalRuntimeError("本地运行环境命令失败（退出码 1）。boom")
+                return RuntimeAsciiPathTests._fake_run(calls, [])(command, **kwargs)
+
+            patches["run"] = mock.patch("maw.runtimes.base._run_process", side_effect=fake_run_ascii_verify_failure)
+            with mock.patch.dict(os.environ, {"PROGRAMDATA": str(temp / "progdata")}):
+                self._start_patches(patches)
+                try:
+                    with self.assertRaises(LocalRuntimeError) as context:
+                        LOCAL.install(runtime_root=temp / "plain" / "local-runtime")
+                finally:
+                    self._stop_patches(patches)
+        self.assertNotIn("非 ASCII", str(context.exception))
+
+        # 取消：cancelled_class 优先于 error_class，不得被增强逻辑转写
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir).resolve()
+            calls: list[list[str]] = []
+            patches = self._verify_runtime_environment(temp, calls)
+
+            def fake_run_cancelled(command: list[str], **kwargs: object) -> int:
+                if "-c" in command:
+                    raise LocalRuntimeCancelled("本地运行环境安装已取消。")
+                return RuntimeAsciiPathTests._fake_run(calls, [])(command, **kwargs)
+
+            patches["run"] = mock.patch("maw.runtimes.base._run_process", side_effect=fake_run_cancelled)
+            with mock.patch.dict(os.environ, {"PROGRAMDATA": str(temp / "progdata")}):
+                self._start_patches(patches)
+                try:
+                    with self.assertRaises(LocalRuntimeCancelled) as cancelled_context:
+                        LOCAL.install(runtime_root=temp / "plain" / "local-runtime")
+                finally:
+                    self._stop_patches(patches)
+        self.assertIn("取消", str(cancelled_context.exception))
 
 
 if __name__ == "__main__":

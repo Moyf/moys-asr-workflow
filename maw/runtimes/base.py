@@ -51,7 +51,7 @@ from maw.runtime_manifest import (
     write_runtime_manifest,
 )
 from maw.runtime_mirror_picker import pick_fastest_mirror, probe_index_reachable
-from maw.runtimes import freezer
+from maw.runtimes import freezer, pathwin
 
 GET_PIP_SCRIPT: Final = "get-pip.py"
 
@@ -233,11 +233,27 @@ class ManagedRuntime:
     # -- 路径 -----------------------------------------------------------------
 
     def resolve_root(self, configured: str | Path | None = None) -> Path:
-        """显式配置 -> 进程级环境变量 -> 默认 app-data 目录。"""
+        """显式配置 -> 进程级环境变量 -> 默认 app-data 目录。
+
+        Windows 上结果经 :mod:`maw.runtimes.pathwin` 做 ASCII 化（8.3 短路径
+        别名；默认目录无法别名化时迁移公共目录 fallback，显式配置只做别名、
+        不迁移）：中文用户名等非 ASCII 路径会让 DyNet/nagisa 这类以窄字符
+        API 打开数据文件的第三方依赖失败（决策表见 pathwin 模块 docstring）。
+        非 Windows 与纯 ASCII 路径原样直通，行为不变。
+        """
         override = str(configured or "").strip() or os.environ.get(self.spec.root_env, "").strip()
         if override:
-            return Path(override).expanduser().resolve(strict=False)
-        return default_app_data_root() / self.spec.dir_name
+            # 用户显式指定的路径尊重原选择：只做短路径别名（同一物理目录），
+            # 不迁移公共目录；无法 ASCII 化时由 verify 错误增强给出指引。
+            return pathwin.ensure_ascii_root(
+                Path(override).expanduser().resolve(strict=False),
+                dir_name=self.spec.dir_name,
+                allow_relocate=False,
+            )
+        return pathwin.ensure_ascii_root(
+            default_app_data_root() / self.spec.dir_name,
+            dir_name=self.spec.dir_name,
+        )
 
     def python_path(self, root: str | Path | None = None) -> Path:
         target = self.resolve_root(root) if root is None else Path(root)
@@ -487,6 +503,14 @@ class ManagedRuntime:
         if root.exists() and not python.exists() and any(root.iterdir()) and not repair:
             raise self._error(f"{spec.message_prefix}目录已存在但不完整，请更换路径或手动清理后重试。")
         # 安装开始即写入 installing 状态，避免安装过程中被判定为"需要修复"。
+        # 写入前做 Windows 公共目录 fallback 的可写性探测（ProgramData 下其他
+        # 用户可能只读）：失败立即给可操作错误，而不是下载数 GB 依赖后才因
+        # 权限失败；其余形态（ASCII 原样 / 8.3 别名）原样返回。放在 ready
+        # 早退之后，避免对已就绪 runtime 白建公共目录。
+        try:
+            pathwin.prepare_install_root(root, dir_name=spec.dir_name)
+        except pathwin.AsciiRootUnavailable as error:
+            raise self._error(f"{spec.message_prefix}{error}") from error
         write_runtime_manifest(
             root,
             status=STATUS_INSTALLING,
@@ -599,12 +623,20 @@ class ManagedRuntime:
 
         emit(f"正在验证{spec.feature_label}运行时……", 90, "verify")
         verify_command = [str(python), "-c", spec.verify_command]
-        self.run(
-            verify_command,
-            env=self.environment(root, model_cache_root),
-            cancel=cancel,
-            on_line=lambda line: emit(line, 94, "verify"),
-        )
+        try:
+            self.run(
+                verify_command,
+                env=self.environment(root, model_cache_root),
+                cancel=cancel,
+                on_line=lambda line: emit(line, 94, "verify"),
+            )
+        except spec.cancelled_class:
+            raise
+        except spec.error_class as error:
+            # DyNet/nagisa 类依赖在 Windows 上打不开非 ASCII 路径下的数据文件，
+            # verify 的 import 链是第一个撞上的环节；补充定位提示，避免用户
+            # 只看到裸的 C++ traceback 无从下手（cancelled 不能被吞）。
+            raise self._error(str(error) + pathwin.ascii_path_failure_hint(root)) from error
         _may_cancel(cancel, spec)
 
         missing = self.missing_package_dirs(root)
