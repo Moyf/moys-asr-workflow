@@ -57,6 +57,7 @@ def aggregate_events(blocks: Sequence[Mapping[str, object]], fps: float) -> list
                 "box": list(block.get("box") or []),
                 "tMs": int(block.get("tMs") or 0),
                 "frame": block.get("frame"),
+                "sourceText": str(block.get("_sourceText") or text),
             }
         )
 
@@ -84,18 +85,28 @@ def _cluster_by_time(
 
 def _build_event(key: str, cluster: list[dict[str, object]]) -> dict[str, object]:
     text_counter = Counter(str(hit["text"]) for hit in cluster)
+    word_times: dict[str, set[int]] = {}
+    for hit in cluster:
+        word_times.setdefault(str(hit["text"]), set()).add(int(hit["tMs"]))
     frames = [hit["frame"] for hit in cluster if hit.get("frame")]
-    evidence = [
-        {"frame": str(hit["frame"]), "box": list(hit["box"] or [])}
-        for hit in cluster[:3]
-        if hit.get("frame") and len(list(hit.get("box") or [])) == 4
-    ]
+    evidence = []
+    source_counts: Counter[str] = Counter()
+    for hit in cluster:
+        source = str(hit.get("sourceText") or hit["text"])
+        if hit.get("frame") and len(list(hit.get("box") or [])) == 4 and source_counts[source] < 3:
+            evidence.append({"frame": str(hit["frame"]), "box": list(hit["box"] or [])})
+            source_counts[source] += 1
     return {
         "key": key,
         "text": text_counter.most_common(1)[0][0],
         "startMs": cluster[0]["tMs"],
         "endMs": cluster[-1]["tMs"],
-        "hits": len(cluster),
+        # Sample counts are timestamps, not boxes: multiple same-screen boxes
+        # must not boost the score as if additional video frames were sampled.
+        "hits": len({int(hit["tMs"]) for hit in cluster}),
+        "sampleTimesMs": sorted({int(hit["tMs"]) for hit in cluster}),
+        "wordTimesMs": {text: sorted(times) for text, times in word_times.items()},
+        "rawBlockHits": len(cluster),
         "avgConf": round(sum(float(hit["score"]) for hit in cluster) / len(cluster), 4),
         "frames": sorted(set(str(frame) for frame in frames)),
         "evidence": evidence,
@@ -128,6 +139,56 @@ def group_variants(
     return groups
 
 
+def _merge_variant_events(
+    members: Sequence[Mapping[str, object]], fps: float
+) -> list[dict[str, object]]:
+    """同组近似写法的重叠/相邻区间只算一次显示，不扩大变体分组规则。"""
+
+    clusters: list[list[Mapping[str, object]]] = []
+    ends: list[int] = []
+    gap = event_gap_ms(fps)
+    for member in sorted(members, key=lambda event: int(event["startMs"])):
+        if clusters and int(member["startMs"]) <= ends[-1] + gap:
+            clusters[-1].append(member)
+            ends[-1] = max(ends[-1], int(member["endMs"]))
+        else:
+            clusters.append([member])
+            ends.append(int(member["endMs"]))
+    merged: list[dict[str, object]] = []
+    for cluster, end_ms in zip(clusters, ends):
+        times = sorted({int(t) for event in cluster for t in event["sampleTimesMs"]})
+        representative = max(cluster, key=lambda event: int(event["hits"]))
+        merged.append({
+            "key": representative["key"],
+            "text": representative["text"],
+            "startMs": int(cluster[0]["startMs"]),
+            "endMs": end_ms,
+            "hits": len(times),
+            "sampleTimesMs": times,
+            "rawBlockHits": sum(int(event["rawBlockHits"]) for event in cluster),
+            "avgConf": _weighted_confidence(cluster),
+            "frames": sorted({str(frame) for event in cluster for frame in event["frames"]}),
+            "evidence": [evidence for event in cluster for evidence in event["evidence"]],
+        })
+    return merged
+
+
+def _variant_counts(
+    members: Sequence[Mapping[str, object]], word: str
+) -> list[dict[str, object]]:
+    """每种写法一条统计，重复事件和同屏框均按实际采样时间去重。"""
+
+    times_by_text: dict[str, set[int]] = {}
+    for member in members:
+        for text, times in member["wordTimesMs"].items():
+            if text != word:
+                times_by_text.setdefault(text, set()).update(times)
+    return [
+        {"text": text, "count": len(times)}
+        for text, times in sorted(times_by_text.items(), key=lambda item: (-len(item[1]), item[0]))
+    ]
+
+
 def _keys_similar(left: str, right: str, threshold: float) -> bool:
     if not left or not right:
         return False
@@ -148,101 +209,58 @@ def extract_candidates(blocks: Sequence[Mapping[str, object]], fps: float) -> li
     来源块的命中构造伪事件，保留时间点证据。
     """
 
-    events = aggregate_events(blocks, fps)
-    groups = group_variants(events)
     template_hits = _template_hits(blocks)
+    # Direct blocks and template-derived terms enter the same event/group
+    # pipeline. Per (source block, normalized term) dedup prevents multiple
+    # templates (or an exact direct match) from inventing extra block hits.
+    source_hits: dict[tuple[int, str], dict[str, object]] = {}
+    template_sources = {id(block) for matches in template_hits.values()
+                        for _name, _type, _term, block in matches}
+    for block in blocks:
+        text = str(block.get("text") or "").strip()
+        # A matched instruction is context for its extracted term, not an
+        # additional independent candidate named e.g. "获得AB1". Unmatched
+        # complete dialogue remains available for manual/AI review.
+        if id(block) not in template_sources:
+            source_hits.setdefault((id(block), normalize(text)), dict(block))
+    for key, matches in template_hits.items():
+        for _name, _type, term, block in matches:
+            source_hits.setdefault((id(block), key), {**block, "text": term,
+                                                      "_sourceText": str(block.get("text") or "")})
+    groups = group_variants(aggregate_events(list(source_hits.values()), fps))
     candidates: list[dict[str, object]] = []
-    seen_keys: set[str] = set()
     for group in groups:
         canonical = group["canonical"]
         members: list[Mapping[str, object]] = group["members"]
         word = str(canonical["text"])
         word_key = str(canonical["key"])
-        seen_keys.add(word_key)
-        merged_events = sorted(members, key=lambda member: member["startMs"])  # type: ignore[type-var]
-        variants = [
-            {"text": str(member["text"]), "count": member["hits"]}
-            for member in merged_events
-            if str(member["key"]) != word_key
-        ]
-        templates = [
-            {"name": name, "type": type_guess, "term": term, "source": str(source.get("text") or "")}
-            for name, type_guess, term, source in template_hits.get(word_key, [])
-        ]
+        member_keys = {str(member["key"]) for member in members}
+        merged_events = _merge_variant_events(members, fps)
+        variants = _variant_counts(members, word)
+        templates: list[dict[str, object]] = []
+        seen_templates: set[tuple[str, str, str, str]] = set()
+        for key, matches in template_hits.items():
+            if key not in member_keys:
+                continue
+            for name, type_guess, term, source in matches:
+                identity = (name, type_guess, term, str(source.get("text") or ""))
+                if identity not in seen_templates:
+                    seen_templates.add(identity)
+                    templates.append(dict(zip(("name", "type", "term", "source"), identity)))
         candidate = {
             "word": word,
             "typeGuess": _guess_type(word, templates),
             "variants": variants,
             "events": [_event_payload(event) for event in merged_events],
             "eventCount": len(merged_events),
-            "hitCount": sum(int(member["hits"]) for member in members),  # type: ignore[arg-type]
+            "hitCount": sum(int(event["hits"]) for event in merged_events),
+            "rawBlockHits": sum(int(event["rawBlockHits"]) for event in merged_events),
             "avgConf": _weighted_confidence(members),
             "contexts": _context_samples(word_key, members, blocks),
             "templates": templates,
         }
         candidates.append(candidate)
-    candidates.extend(_template_only_candidates(template_hits, seen_keys, blocks, fps))
     candidates.sort(key=lambda candidate: (-candidate["hitCount"], candidate["word"]))  # type: ignore[arg-type, return-value]
-    return candidates
-
-
-def _template_only_candidates(
-    template_hits: Mapping[str, list[tuple[str, str, str, Mapping[str, object]]]],
-    seen_keys: set[str],
-    blocks: Sequence[Mapping[str, object]],
-    fps: float,
-) -> list[dict[str, object]]:
-    """模板抽出但从未单独成块的词，以来源块命中构造伪事件候选。
-
-    同一来源块会被多个模板命中（如「解锁技能「热情似火」」同时命中
-    unlock-skill 与 quoted），先按 (文本, 时间) 去重再按时间窗聚合，
-    避免同一出现被计成多个伪事件。
-    """
-
-    from collections import Counter
-
-    candidates: list[dict[str, object]] = []
-    gap = event_gap_ms(fps)
-    for key, hits in template_hits.items():
-        if key in seen_keys or not hits:
-            continue
-        term_counter = Counter(term for _name, _type, term, _block in hits)
-        word = term_counter.most_common(1)[0][0]
-        unique_blocks: dict[tuple[str, int], Mapping[str, object]] = {}
-        for _name, _type, _term, block in hits:
-            block_key = (str(block.get("text") or ""), int(block.get("tMs") or 0))
-            unique_blocks.setdefault(block_key, block)
-        cluster_hits = [
-            {
-                "text": str(block.get("text") or ""),
-                "score": float(block.get("score") or 0.0),
-                "box": list(block.get("box") or []),
-                "tMs": int(block.get("tMs") or 0),
-                "frame": block.get("frame"),
-            }
-            for block in unique_blocks.values()
-        ]
-        pseudo_events = [_build_event(key, cluster) for cluster in _cluster_by_time(cluster_hits, gap)]
-        candidates.append(
-            {
-                "word": word,
-                "typeGuess": _guess_type(word, [{"type": hits[0][1]}]),
-                "variants": [
-                    {"text": term, "count": count}
-                    for term, count in term_counter.most_common()
-                    if term != word
-                ],
-                "events": [_event_payload(event) for event in pseudo_events],
-                "eventCount": len(pseudo_events),
-                "hitCount": sum(int(event["hits"]) for event in pseudo_events),
-                "avgConf": _weighted_confidence(pseudo_events),
-                "contexts": _context_samples(key, [], blocks),
-                "templates": [
-                    {"name": name, "type": type_guess, "term": term, "source": str(block.get("text") or "")}
-                    for name, type_guess, term, block in hits[:5]
-                ],
-            }
-        )
     return candidates
 
 
@@ -277,7 +295,7 @@ def _weighted_confidence(members: Sequence[Mapping[str, object]]) -> float:
     total_weight = 0
     weighted = 0.0
     for member in members:
-        weight = int(member["hits"])  # type: ignore[arg-type]
+        weight = int(member.get("rawBlockHits", member["hits"]))  # type: ignore[arg-type]
         total_weight += weight
         weighted += float(member["avgConf"]) * weight  # type: ignore[arg-type]
     return round(weighted / total_weight, 4) if total_weight else 0.0
@@ -308,6 +326,7 @@ def _event_payload(event: Mapping[str, object]) -> dict[str, object]:
         "startMs": event["startMs"],
         "endMs": event["endMs"],
         "hits": event["hits"],
+        "rawBlockHits": event["rawBlockHits"],
         "avgConf": event["avgConf"],
         "frames": list(event["frames"]),  # type: ignore[arg-type]
         "evidence": list(event["evidence"]),  # type: ignore[arg-type]

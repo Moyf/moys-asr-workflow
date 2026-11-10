@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from threading import Event
 
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.ocr_runtime import (
@@ -28,7 +29,9 @@ class RuntimeScanProvider:
         region: OcrRegion,
         model: str,
         frames_dir: Path,
+        max_frames: int = 20000,
         on_status: ScanStatus | None = None,
+        cancel_event: Event | None = None,
     ) -> dict[str, object]:
         ffmpeg = resolve_ffmpeg_tool("ffmpeg", configured_path=None)
         return run_ocr_scan_in_runtime(
@@ -39,7 +42,9 @@ class RuntimeScanProvider:
             region=region,
             model_id=OCR_MODEL_ID if model == "tiny" else OCR_SMALL_MODEL_ID,
             frames_dir=frames_dir,
+            max_frames=max_frames,
             on_status=on_status,
+            cancel_event=cancel_event,
         )
 
 
@@ -55,7 +60,9 @@ class LocalScanProvider:
         region: OcrRegion,
         model: str,
         frames_dir: Path,
+        max_frames: int = 20000,
         on_status: ScanStatus | None = None,
+        cancel_event: Event | None = None,
     ) -> dict[str, object]:
         # 延迟导入：聚合/评分单测不依赖 OCR 运行时。
         from maw.ocr_scan import OcrScanRequest, run_ocr_scan
@@ -69,6 +76,13 @@ class LocalScanProvider:
             for text, score, box in hits:
                 blocks.append({"text": text, "score": score, "box": list(box), "tMs": t_ms, "frame": frame})
 
+        def scan_status(key: str, details: Mapping[str, int]) -> None:
+            # 本地 scanner 在帧边界通知进度；无需更改其公共协议即可取消。
+            if cancel_event is not None and cancel_event.is_set():
+                raise KeyboardInterrupt
+            if on_status is not None:
+                on_status(key, details)
+
         summary = run_ocr_scan(
             OcrScanRequest(
                 video_path=video_path,
@@ -78,8 +92,9 @@ class LocalScanProvider:
                 region=region,
                 model_type="tiny" if model == "tiny" else "small",
                 frames_dir=frames_dir,
+                max_frames=max_frames,
             ),
-            on_status=on_status,
+            on_status=scan_status,
             on_blocks=collect,
             recognizer=recognizer.recognize_blocks,
         )

@@ -110,6 +110,8 @@ def filter_candidates(
     """逐批请求语义判定；返回 词 → {verdict, type, reason}。"""
 
     transport = complete or _default_transport(settings)
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size <= 0:
+        raise ValueError("AI 筛选 batch_size 必须是正整数")
     verdicts: dict[str, dict[str, str]] = {}
     batch_start = 0
     while batch_start < len(candidates):
@@ -196,6 +198,8 @@ def _parse_verdicts(content: str, expected_words: Sequence[str]) -> dict[str, di
         reason = str(item.get("reason") or "")[:120]
         if not word:
             raise _ProtocolError("存在 word 为空的条目")
+        if word in verdicts:
+            raise _ProtocolError(f"「{word}」重复出现；每个输入词必须恰好返回一次")
         if verdict not in {"keep", "reject"}:
             raise _ProtocolError(f"「{word}」的 verdict 不是 keep/reject")
         if term_type not in AI_TERM_TYPES:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Final
 
-from maw.qwen_audio import parse_qwen_audio_hotword
+from maw.qwen_audio import QWEN_AUDIO_MAX_HOTWORDS, parse_qwen_audio_hotword
 
 HOTWORDS_FILENAME: Final[str] = "hotwords.txt"
 EXPORT_ISSUE_LABELS: Final[dict[str, str]] = {
@@ -13,6 +13,7 @@ EXPORT_ISSUE_LABELS: Final[dict[str, str]] = {
     "text_too_long": "含非 ASCII 字符时最多 15 个字符",
     "too_many_ascii_words": "纯 ASCII 热词最多 7 个空格分隔的单词",
     "invalid_weight": "权重只能是 1–5 或 50",
+    "too_many": f"热词最多 {QWEN_AUDIO_MAX_HOTWORDS} 个，超出部分未导出",
 }
 
 
@@ -66,5 +67,8 @@ def build_hotwords(
         if word in seen:
             continue
         seen.add(word)
+        if len(lines) >= QWEN_AUDIO_MAX_HOTWORDS:
+            rejected.append({"word": word, "reason": EXPORT_ISSUE_LABELS["too_many"]})
+            continue
         lines.append(build_hotword_line(word, candidate.get("score"), weight_by_score=weight_by_score))
     return "\n".join(lines) + ("\n" if lines else ""), rejected

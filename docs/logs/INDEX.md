@@ -14,6 +14,12 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.0 之后 | 2026-11-10 | [CL 编辑器 Markdown 核查](release1.11.0/261110_CL编辑器Markdown/TEST_FEEDBACK_CL编辑器Markdown.md) | 独立核对预览 / 对照 Markdown 覆盖与文本往返边界，未改 CL 编辑器 |
+| 1.11.0 之后 | 2026-11-10 | [PR 看板 GitHub 配置同步核对](release1.11.0/261110_PR看板GitHub同步/TEST_FEEDBACK_PR看板GitHub同步.md) | 授权后读到 19 个字段，确认项目可更新；Priority / Status 等同步编辑待实施，未写远端数据 |
+| 1.11.0 之后 | 2026-11-10 | [PR 正文预览反馈](release1.11.0/261110_PR正文预览/TEST_FEEDBACK_PR正文预览.md) / [独立审查](release1.11.0/261110_PR正文预览/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261110_PR正文预览/PR-preview-progress.checklist.md) | 增加安全 Markdown 预览与刷新进度，42 项回归及独立复验通过；真实服务已按要求重启 |
+| 1.11.0 之后 | 2026-11-10 | [PR 343 合并审阅](release1.11.0/261110_PR343审阅/REVIEW_FINDINGS.md) | 字幕域 ESM 设计与组合回归、main 失败对照、CHANGELOG 收敛 |
+| 1.10.0-beta.2 之后 | 2026-11-09 | [G08-b 播放头与 PR 反馈](release1.10.0-beta.2/261109_G08B播放头与PR反馈/TEST_FEEDBACK_G08B.md) / [独立自审](release1.10.0-beta.2/261109_G08B播放头与PR反馈/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261109_G08B播放头与PR反馈/G08B反馈.checklist.md) | 旧线清理、正确 PR 分支 rebase、字词转换误选修复；播放头归因为跳转目标设置 |
+| 1.11.0 之后 | 2026-11-10 | [工具页规范通用化与同步](release1.11.0/261110_工具页规范同步/IMPLEMENTATION.md) / [工具目录反馈](release1.11.0/261110_工具页规范同步/TEST_FEEDBACK_工具目录.md) / [独立复核](release1.11.0/261110_工具页规范同步/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261110_工具页规范同步/工具页同步.checklist.md) | 规范按场景分层，既有工具统一视觉与交互基线，保留各自任务和数据契约 |
 | 1.11.0 之后 | 2026-11-10 | [视频术语提取测试反馈](release1.11.0/261109_术语提取反馈/TEST_FEEDBACK_术语提取.md) | OCR 术语提取确认页 20 条实测反馈：评分与去重口径、OCR 框标注、筛选、分组折叠、整页改版（Launcher 令牌、整行点击、精简显示）；结论沉淀为 [工具页规范](../../tools/TOOL_PAGE_GUIDE.md) |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [便携模式回归分析](release1.10.0-beta.2/261106_便携模式回归弃维护/回归分析.md) | 核查 #336 与 #339 的提交及存储路径；记录 file:// 测试弃维护边界、CI 证据限制与本地复验 |
 | 1.10.0-beta.2 之后 | 2026-11-04 | [音频导出与提示反馈](release1.10.0-beta.2/261104_音频导出与提示/TEST_FEEDBACK_音频导出与提示.md) / [独立复核](release1.10.0-beta.2/261104_音频导出与提示/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261104_音频导出与提示/音频导出与提示.checklist.md) | 波形缓存尾部取整导致音频导出越界；调整导出时长与提示颜色，待人工界面核验 |

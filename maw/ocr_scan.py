@@ -1,12 +1,14 @@
 """Video-wide OCR scan pipeline shared by the OCR runtime worker and local runs.
 
 与 ``postprocess_ocr`` 的字幕去重不同，本模块面向整段视频：按固定 fps 采样
-时间点、ffmpeg 逐点抽帧、平均哈希跳过静止画面、OCR 后逐帧输出识别块
+时间点、ffmpeg 逐点抽帧、精确像素指纹复用静止画面的成功 OCR 结果、逐帧输出识别块
 （文本 / 置信度 / 文字框 / 时间点），供术语提取等「看整个画面」的功能复用。
 """
 
 from __future__ import annotations
 
+import hashlib
+import math
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -70,6 +72,8 @@ def sampling_timestamps(
     fps=1 时即每秒一帧；fps=0.5 为每两秒一帧。受 ``max_frames`` 安全上限约束。
     """
 
+    if isinstance(max_frames, bool) or not isinstance(max_frames, int) or max_frames <= 0:
+        raise ValueError("OCR 扫描 max_frames 必须是正整数")
     if duration_ms <= 0:
         return []
     step_ms = 1000.0 / clamp_fps(fps)
@@ -86,7 +90,7 @@ def sampling_timestamps(
 
 
 def average_hash(image: Any) -> str:
-    """16x16 平均哈希；相邻画面相同则认为静止，可跳过重复 OCR。"""
+    """兼容旧调用的 16x16 平均哈希；有损指纹不能作为跳过 OCR 的依据。"""
 
     gray = image.convert("L").resize((HASH_GRID, HASH_GRID))
     pixels = gray.tobytes()
@@ -95,6 +99,27 @@ def average_hash(image: Any) -> str:
     average = sum(pixels) / len(pixels)
     bits = "".join("1" if pixel > average else "0" for pixel in pixels)
     return f"{int(bits, 2):032x}"
+
+
+def _pixel_fingerprint(image: Any) -> bytes:
+    """对 OCR 实际输入的尺寸、模式和全部像素做无损指纹。"""
+
+    digest = hashlib.sha256()
+    digest.update(f"{image.width}:{image.height}:{image.mode}\0".encode("ascii"))
+    digest.update(image.tobytes())
+    return digest.digest()
+
+
+def _planned_frame_count(duration_ms: int, fps: float) -> int:
+    """计算未截断采样计划的长度，端点舍入与 sampling_timestamps 一致。"""
+
+    step_ms = 1000.0 / fps
+    count = max(0, math.ceil(duration_ms / step_ms))
+    while count and int(round((count - 1) * step_ms)) >= duration_ms:
+        count -= 1
+    while int(round(count * step_ms)) < duration_ms:
+        count += 1
+    return count
 
 
 def run_ocr_scan(
@@ -106,16 +131,19 @@ def run_ocr_scan(
     frame_extractor: FrameExtractor | None = None,
     image_loader: ImageLoader | None = None,
 ) -> dict[str, object]:
-    """执行扫描并返回汇总；识别块经 ``on_blocks`` 逐帧流式回调。"""
+    """执行扫描；所有成功采样（包括空结果与复用）都回调 ``on_blocks``。
+
+    framesScanned / blocksRecognized 只计成功 OCR 调用；blocksTotal 计逐帧
+    输出的识别块（含复用），不因静止画面丢失显示事件的时间连续性。
+    """
 
     fps = clamp_fps(request.fps)
-    recognize = recognizer or _RapidOcrRecognizer(request.model_type).recognize_blocks
-    extract = frame_extractor or _extract_frame
-    load_image = image_loader or _open_image
-
     timestamps = sampling_timestamps(request.duration_ms, fps, request.max_frames)
     if not timestamps:
         raise ValueError("视频时长不足或采样参数异常，没有可扫描的时间点")
+    recognize = recognizer or _RapidOcrRecognizer(request.model_type).recognize_blocks
+    extract = frame_extractor or _extract_frame
+    load_image = image_loader or _open_image
     if request.frames_dir is not None:
         request.frames_dir.mkdir(parents=True, exist_ok=True)
 
@@ -124,47 +152,73 @@ def run_ocr_scan(
     skipped_duplicate = 0
     failed = 0
     blocks_total = 0
-    last_hash = ""
+    blocks_recognized = 0
+    sampled_through_ms: int | None = None
+    last_digest: bytes | None = None
+    cached_hits: list[tuple[str, float, tuple[int, int, int, int]]] = []
+    cached_frame_name: str | None = None
 
     with tempfile.TemporaryDirectory(prefix="maw_ocr_scan_") as temporary_directory:
-        frame_directory = Path(temporary_directory)
+        # Only one task-owned extraction file exists at a time, regardless of
+        # video length. Evidence is separately saved only for successful hits.
+        frame_path = Path(temporary_directory) / "frame.jpg"
         for index, t_ms in enumerate(timestamps):
+            sampled_through_ms = t_ms
             if on_status is not None:
                 on_status("ocr_scan_frame", {"current": index + 1, "total": total})
-            frame_path = frame_directory / f"frame-{index:06d}.jpg"
-            if not extract(request.ffmpeg_path, request.video_path, t_ms / 1000.0, frame_path):
-                failed += 1
-                continue
             try:
+                if not extract(request.ffmpeg_path, request.video_path, t_ms / 1000.0, frame_path):
+                    failed += 1
+                    last_digest = None
+                    continue
                 with load_image(frame_path) as image:
                     prepared = _prepare_image(request.region.crop(image))
-                    digest = average_hash(prepared)
-                    if digest and digest == last_hash:
-                        skipped_duplicate += 1
-                        continue
-                    last_hash = digest
-                    hits = [
-                        (str(text), float(score), (int(b1), int(b2), int(b3), int(b4)))
-                        for text, score, (b1, b2, b3, b4) in recognize(prepared)
-                        if str(text).strip()
-                    ]
+                    digest = _pixel_fingerprint(prepared)
+                    reused = digest == last_digest
+                    if reused:
+                        hits = cached_hits
+                        frame_name = cached_frame_name
+                    else:
+                        hits = [
+                            (str(text), float(score), (int(b1), int(b2), int(b3), int(b4)))
+                            for text, score, (b1, b2, b3, b4) in recognize(prepared)
+                            if str(text).strip()
+                        ]
+                        frame_name = _save_evidence_frame(prepared, request.frames_dir, t_ms) if hits else None
             except Exception:  # noqa: BLE001 - 单帧失败不能中断整段扫描
                 failed += 1
+                # Unknown frames must never seed or preserve the reuse cache.
+                last_digest = None
                 continue
-            scanned += 1
-            if not hits:
-                continue
-            frame_name = _save_evidence_frame(prepared, request.frames_dir, t_ms)
+            finally:
+                frame_path.unlink(missing_ok=True)
+            if reused:
+                skipped_duplicate += 1
+            else:
+                scanned += 1
+                blocks_recognized += len(hits)
+                last_digest = digest
+                cached_hits = hits
+                cached_frame_name = frame_name
             if on_blocks is not None:
-                on_blocks(t_ms, frame_name, hits)
+                on_blocks(t_ms, frame_name, list(hits))
             blocks_total += len(hits)
 
+    if scanned == 0:
+        raise ValueError(f"OCR 扫描失败：{total} 个采样帧均未成功识别（失败 {failed} 帧）")
+    planned = _planned_frame_count(request.duration_ms, fps)
     return {
         "framesTotal": total,
         "framesScanned": scanned,
         "framesSkippedDuplicate": skipped_duplicate,
         "framesFailed": failed,
         "blocksTotal": blocks_total,
+        "blocksRecognized": blocks_recognized,
+        "truncated": planned > total,
+        "framesPlanned": planned,
+        "sampledThroughMs": sampled_through_ms,
+        "durationMs": request.duration_ms,
+        "fps": fps,
     }
 
 

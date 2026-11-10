@@ -53,6 +53,8 @@ jobs:
       # documentation failure under the Windows PowerShell shell.
       - name: Documentation navigation and consumers
         run: python scripts/run_check.py --timeout 180 -- python scripts/check_docs.py
+      - name: Offline tool documentation freshness
+        run: python scripts/run_check.py --timeout 60 -- node scripts/build-tool-docs.mjs --check
       - name: Documentation regressions
         run: python scripts/run_check.py --timeout 180 -- python scripts/run_tests.py tests/test_docs_check.py
       - name: Release documents
@@ -118,6 +120,9 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
         if: ${{ needs.selection.outputs.light != 'true' }}
+      - name: Prepare developer image fixtures (no OCR model)
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        run: uv sync --frozen --group dev
       # Node tests also launch Chromium and compare against Python exporters.
       - run: pnpm exec playwright install --with-deps chromium
         if: ${{ needs.selection.outputs.light != 'true' }}
@@ -130,6 +135,9 @@ jobs:
         run: |
           uv run --no-sync python scripts/run_tests.py tests/test_editor_assets.py
           uv run --no-sync python scripts/run_tests.py tests/test_editor_manifest.py
+      - name: OCR term extraction and runtime cleanup contracts
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_ocr_scan.py tests/test_ocr_scan_regressions.py tests/test_ocr_runtime.py tests/test_runtime_process_cleanup.py tests/test_process_tree_posix.py tests/test_term_extract_aggregate.py tests/test_term_extract_ai_filter.py tests/test_term_extract_cli_cache.py tests/test_term_extract_export.py tests/test_term_extract_report.py tests/test_term_extract_score.py tests/test_verification_checklist.py tests/test_verification_checklist_build.py
       - name: Install FFmpeg for synthetic editor fixtures
         if: ${{ needs.selection.outputs.light != 'true' }}
         run: |
@@ -155,6 +163,12 @@ jobs:
         env:
           MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: pnpm exec playwright test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs tests/e2e/editor-text-tools.spec.mjs tests/e2e/ass-cue-position.spec.mjs tests/e2e/sticker-preview-lifecycle.spec.mjs tests/e2e/warma-presets.spec.mjs tests/e2e/warma-i18n.spec.mjs
+
+      - name: Independent browser tool pages
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        env:
+          MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: uv run --no-sync python scripts/run_check.py --timeout 300 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/tool-pages.spec.mjs tests/e2e/tool-compact.spec.mjs tests/e2e/tool-markdown.spec.mjs tests/e2e/timestamp-compare.spec.mjs tests/e2e/verification-checklist.spec.mjs tests/e2e/term-report.spec.mjs tests/e2e/changelog-write-lock.spec.mjs
 
       # README and user guides are website inputs, not just Markdown files.
       - name: Set up website pnpm

@@ -54,6 +54,21 @@ class BuildHotwordsTests(unittest.TestCase):
         self.assertEqual(len(rejected), 1)
         self.assertEqual(rejected[0]["word"], "这是一个超过十五个字符的超长界面提示语")
 
+    def test_quantity_limit_applies_after_valid_word_dedupe(self) -> None:
+        selected = [{"word": f"term-{i}", "score": 80} for i in range(2002)]
+        selected.insert(0, {"word": "这是一个超过十五个字符的超长界面提示语"})
+        selected.insert(1, {"word": "term-0", "score": 80})
+        text, rejected = build_hotwords(selected, weight_by_score=True)
+        self.assertEqual(len(text.splitlines()), 2000)
+        self.assertEqual(text.splitlines()[-1], "term-1999: 5")
+        self.assertEqual(len(rejected), 3)
+        self.assertIn("2000", rejected[-1]["reason"])
+
+    def test_prototype_named_words_are_valid_distinct_entries(self) -> None:
+        text, rejected = build_hotwords([{"word": w} for w in ("constructor", "toString", "__proto__")])
+        self.assertEqual(text, "constructor\ntoString\n__proto__\n")
+        self.assertEqual(rejected, [])
+
     def test_weight_for_score_bands(self) -> None:
         self.assertEqual(weight_for_score(90), 5)
         self.assertEqual(weight_for_score(80), 5)

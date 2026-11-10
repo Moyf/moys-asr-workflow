@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import argparse
 import os
 import sys
 import tempfile
@@ -168,10 +169,13 @@ class OcrRuntimeTests(unittest.TestCase):
         video = self.root.parent / "clip.mp4"
         video.write_bytes(b"video")
         command_lines: list[list[str]] = []
+        cancel = Event()
+        seen_cancels = []
 
         def fake_run(command, *, env, cancel, on_line, cwd, **_unused):
             _ = (env, cancel, cwd)
             command_lines.append(command)
+            seen_cancels.append(cancel)
             on_line(
                 json.dumps(
                     {
@@ -185,6 +189,8 @@ class OcrRuntimeTests(unittest.TestCase):
                     ensure_ascii=False,
                 )
             )
+            on_line(json.dumps({"type": "blocks", "tMs": 619_000, "frame": "frame-000000618000.jpg",
+                                "blocks": [{"text": "前往星核", "score": 0.9412, "box": [10, 20, 220, 44]}]}))
             on_line(
                 json.dumps(
                     {
@@ -203,27 +209,48 @@ class OcrRuntimeTests(unittest.TestCase):
             result = run_ocr_scan_in_runtime(
                 video,
                 ffmpeg_path=ffmpeg,
-                duration_ms=6_000,
+                duration_ms=620_000,
                 fps=0.5,
                 model_id=OCR_SMALL_MODEL_ID,
                 runtime_root=self.root,
+                max_frames=7,
+                cancel_event=cancel,
             )
 
         command = command_lines[0]
         self.assertIn("scan", command)
         self.assertIn(OCR_SMALL_MODEL_ID, command)
         self.assertIn("--duration-ms", command)
-        self.assertIn("6000", command)
+        self.assertIn("620000", command)
         self.assertIn("--fps", command)
         self.assertIn("0.5", command)
+        self.assertEqual(command[command.index("--max-frames") + 1], "7")
+        self.assertIs(seen_cancels[0], cancel)
         self.assertNotIn("--frames-dir", command)
         self.assertEqual(result["framesTotal"], 6)
-        self.assertEqual(len(result["blocks"]), 1)
+        self.assertEqual(len(result["blocks"]), 2)
         block = result["blocks"][0]
         self.assertEqual(block["text"], "前往星核")
         self.assertEqual(block["tMs"], 618_000)
         self.assertEqual(block["frame"], "frame-000000618000.jpg")
         self.assertEqual(block["box"], [10, 20, 220, 44])
+        self.assertEqual(result["blocks"][1]["frame"], block["frame"])
+        self.assertEqual(result["blocks"][1]["tMs"], 619_000)
+
+    def test_scan_invalid_max_frames_fails_before_runtime_lookup(self) -> None:
+        for limit in (0, -1, True, 1.5):
+            with self.subTest(limit=limit), mock.patch("maw.ocr_runtime.managed_ocr_runtime_status") as status:
+                with self.assertRaises(ValueError):
+                    run_ocr_scan_in_runtime("synthetic.mp4", ffmpeg_path="ffmpeg", duration_ms=1000, max_frames=limit)
+                status.assert_not_called()
+
+    def test_worker_parser_rejects_nonpositive_frame_limit(self) -> None:
+        from maw.ocr_runtime_worker import _positive_int
+
+        self.assertEqual(_positive_int("7"), 7)
+        for value in ("0", "-1"):
+            with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
+                _positive_int(value)
 
     def test_worker_scan_surfaces_worker_error(self) -> None:
         self._make_ready_runtime()

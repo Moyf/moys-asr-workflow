@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-tool-page="changelog-editor">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CHANGELOG 编辑器 — MAW</title>
+<script src="../shared/tool-page.js"></script>
 <style>
   :root {
     color-scheme: dark;
@@ -110,7 +111,7 @@
   .version-item .date { color: var(--muted); font-size: 11px; margin-left: auto; font-family: inherit; flex-shrink: 0; }
   .version-item:hover { background: var(--surface-raised); }
   .version-item.active { background: var(--accent-soft); border-color: var(--accent); }
-  .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-family: initial; }
+  .badge { font-size: 11px; padding: 1px 6px; border-radius: 999px; font-family: var(--font-sans); }
   .badge.stable { background: rgba(63,185,80,.15); color: var(--ok); }
   .badge.pre { background: rgba(210,153,34,.15); color: var(--warn); }
   .badge.unrel { background: rgba(130,144,162,.15); color: var(--muted); }
@@ -236,6 +237,44 @@
   .drop-hint { outline: 2px dashed var(--accent); outline-offset: 2px; }
   @media print { .card { content-visibility: visible; } #sidebar, #topbar, #tabs { display: none; } }
 </style>
+<link rel="stylesheet" href="../shared/tool-page.css">
+<style>
+  :root { --bg:var(--bg-base); --surface:var(--bg-panel); --surface-raised:var(--bg-raised); --surface-high:var(--bg-overlay); --surface-soft:var(--bg-input); --line:var(--border-subtle); --ink:var(--text-primary); --ink-soft:var(--text-secondary); --muted:var(--text-muted); --ok:var(--green); --warn:var(--amber); --err:var(--red); --ins:var(--green-soft); --del:var(--red-soft); --mono:var(--font-mono); }
+  body { font-family:var(--font-sans); }
+  button { min-height:32px; }
+  button.primary { color:var(--accent-text); }
+  .diff-view { background:var(--surface-soft); }
+  .diff-view del { color:var(--red); }
+  .diff-view ins { color:var(--green); }
+  .card.selected { background:var(--accent-tint); }
+  .badge.stable { background:var(--green-soft); }
+  .badge.pre,#lock-banner,#restore-banner { background:var(--amber-soft); }
+  .badge.unrel { background:var(--bg-raised); }
+  #repo-chip { max-width:100%; overflow-wrap:anywhere; }
+  #mask { background:var(--mask-bg); }
+  #toast.err { color:var(--red); }
+  .img-item { max-width:100%; min-width:0; }
+  .img-item .fields { min-width:0; }
+  .img-item img { object-fit:contain; background:var(--bg-base); }
+  .img-item input { width:min(190px,100%); }
+  #version-head { gap:12px; }
+  #tabs { flex-wrap:wrap; gap:8px; }
+  @media(max-width:900px) {
+    html,body { height:auto; min-height:100%; }
+    #layout { flex-direction:column; }
+    #sidebar { width:100% !important; min-width:0; max-width:none; max-height:250px; border-right:0; border-bottom:1px solid var(--line); }
+    #sidebar.collapsed { width:100% !important; min-width:0 !important; padding:8px 12px; }
+    #sidebar-head { justify-content:flex-start; }
+    #sb-resizer { display:none; }
+    #pane { overflow:visible; padding:12px; }
+    #split-wrap.show { flex-direction:column; }
+    #split-wrap > .split-edit,#split-wrap > .split-preview { width:100%; }
+    #split-wrap > .split-preview { position:static; max-height:none; overflow:visible; border-left:0; border-top:1px solid var(--line); padding:16px 0 0; }
+    #topbar,#version-head { padding:12px; }
+    #tabs { width:100%; margin-left:0; }
+    .img-item { flex-wrap:wrap; }
+  }
+</style>
 </head>
 <body>
   <div id="topbar">
@@ -249,6 +288,7 @@
     <button id="btn-forget-repo" class="ghost" hidden title="清除记住的仓库目录，之后恢复手动选择">忘记</button>
     <button id="btn-load-file" class="ghost" title="不写盘的降级模式：只加载单个文件">仅加载 CL 文件</button>
     <button id="btn-finish" class="primary" disabled>完成编辑</button>
+    <button class="tool-theme" data-tool-theme type="button">◐ 主题</button>
     <input type="file" id="file-input" accept=".md,text/markdown" style="display:none">
   </div>
 
@@ -305,8 +345,8 @@
     </section>
   </div>
 
-  <div id="toast"></div>
-  <div id="mask"><div id="modal"></div></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="mask"><div id="modal" role="dialog" aria-modal="true" aria-label="操作确认" tabindex="-1"></div></div>
 
   <script src="cl-lib.js"></script>
   <script>
@@ -345,9 +385,71 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { el.style.display = 'none'; }, isErr ? 6000 : 2600);
   }
-  function modal(html) { $('#modal').innerHTML = html; $('#mask').classList.add('show'); }
-  function closeModal() { $('#mask').classList.remove('show'); }
-  $('#mask').addEventListener('click', (e) => { if (e.target === $('#mask')) closeModal(); });
+  let modalReturnFocus = null;
+  let modalCancel = null;
+  let imageOperationGeneration = 0;
+  let finishInProgress = false;
+  let backgroundLockState = null;
+  function setModalBackgroundLocked(locked) {
+    if (locked === Boolean(backgroundLockState)) return;
+    if (locked) {
+      modalReturnFocus = document.activeElement;
+      backgroundLockState = {
+        backgrounds: ['layout', 'topbar', 'restore-banner', 'lock-banner'].map((id) => {
+          const node = document.getElementById(id);
+          return { node, inert: node.inert };
+        }),
+        roots: [document.documentElement, document.body].map((node) => ({
+          node,
+          overflow: ['overflow-x', 'overflow-y'].map((property) => ({
+            property, value: node.style.getPropertyValue(property), priority: node.style.getPropertyPriority(property),
+          })),
+        })),
+      };
+      for (const { node } of backgroundLockState.backgrounds) node.inert = true;
+      for (const { node } of backgroundLockState.roots) node.style.overflow = 'hidden';
+    } else {
+      const previous = backgroundLockState;
+      backgroundLockState = null;
+      for (const { node, inert } of previous.backgrounds) node.inert = inert;
+      for (const { node, overflow } of previous.roots) {
+        node.style.removeProperty('overflow');
+        for (const { property, value, priority } of overflow) node.style.setProperty(property, value, priority);
+      }
+      const target = modalReturnFocus;
+      modalReturnFocus = null;
+      if (target?.isConnected && !target.closest('[inert]') && !target.disabled && target.getClientRects().length) {
+        target.focus({ preventScroll: true });
+      }
+    }
+  }
+  function refreshBackgroundLock() {
+    setModalBackgroundLocked(finishInProgress || $('#mask').classList.contains('show'));
+  }
+  function modal(html, onCancel = null) {
+    imageOperationGeneration += 1;
+    $('#modal').innerHTML = html; $('#mask').classList.add('show');
+    modalCancel = onCancel;
+    refreshBackgroundLock();
+    const focus = $('#modal').querySelector('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)');
+    (focus || $('#modal')).focus();
+  }
+  function closeModal(cancelled = false) {
+    const onCancel = modalCancel; modalCancel = null;
+    $('#mask').classList.remove('show');
+    refreshBackgroundLock();
+    if(cancelled && onCancel)onCancel();
+  }
+  $('#mask').addEventListener('keydown',event=>{
+    if(event.key==='Escape') {event.preventDefault();closeModal(true);return;}
+    if(event.key!=='Tab')return;
+    const nodes=[...$('#modal').querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]')].filter(node=>node.getClientRects().length);
+    if(!nodes.length){event.preventDefault();$('#modal').focus();return;}
+    const first=nodes[0],last=nodes[nodes.length-1];
+    if(event.shiftKey&&(document.activeElement===first||document.activeElement===$('#modal'))){event.preventDefault();last.focus();}
+    else if(!event.shiftKey&&(document.activeElement===last||document.activeElement===$('#modal'))){event.preventDefault();first.focus();}
+  });
+  $('#mask').addEventListener('click', (e) => { if (e.target === $('#mask')) closeModal(true); });
 
   function markDirty() {
     $('#dirty-dot').style.display = 'inline';
@@ -884,9 +986,19 @@
   }
 
   async function attachImage(card, idx, file) {
+    if (finishInProgress || $('#mask').classList.contains('show')) return;
+    const generation = imageOperationGeneration;
+    const selected = S.selected;
+    const parsed = S.parsed.get(selected);
     const { blob, filename, size } = await toWebp(file);
+    const currentIdx = parsed?.cards.indexOf(card) ?? -1;
+    if (generation !== imageOperationGeneration || finishInProgress || $('#mask').classList.contains('show')
+      || S.selected !== selected || S.parsed.get(selected) !== parsed || currentIdx < 0) {
+      toast('图片导入已取消：操作上下文已改变，请在确认结束后重新导入', true);
+      return;
+    }
     const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const cardKey = `${S.selected}#${idx}`;
+    const cardKey = `${selected}#${currentIdx}`;
     const ext = (/(\.[a-z0-9]+)$/i.exec(filename) || ['.webp'])[1];
     const base = slugifyTitle(cardTitleOf(card)) || 'image';
     const siblings = (card.images || [])
@@ -1056,6 +1168,7 @@
   }
 
   document.addEventListener('paste', async (e) => {
+    if (finishInProgress || $('#mask').classList.contains('show')) return;
     if ((S.tab !== 'edit' && S.tab !== 'split') || !S.selected) return;
     const files = [...(e.clipboardData?.items || [])]
       .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
@@ -1068,11 +1181,15 @@
     if (target.source === 'first') {
       toast(`未选中条目，图片已附加到第一条条目「${truncate(cardTitleOf(target.card), 18)}」`);
     }
-    for (const file of files) await attachImage(target.card, target.idx, file);
+    for (const file of files) {
+      if (finishInProgress || $('#mask').classList.contains('show')) break;
+      await attachImage(target.card, target.idx, file);
+    }
     renderPane();
   });
 
   document.addEventListener('dragover', (e) => {
+    if (finishInProgress || $('#mask').classList.contains('show')) return;
     const card = e.target.closest?.('.card');
     if (!card || (S.tab !== 'edit' && S.tab !== 'split')) return;
     // 只拦截携带文件的拖拽；文本选区拖动走浏览器默认行为（不抢选区）
@@ -1084,6 +1201,7 @@
     e.target.closest?.('.card')?.classList.remove('drop-hint');
   });
   document.addEventListener('drop', async (e) => {
+    if (finishInProgress || $('#mask').classList.contains('show')) return;
     const cardEl = e.target.closest?.('.card');
     if (!cardEl || (S.tab !== 'edit' && S.tab !== 'split')) return;
     const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith('image/'));
@@ -1094,7 +1212,10 @@
     const idx = Number(cardEl.dataset.idx);
     const card = parsed.cards[idx];
     if (!card || card.kind !== 'entry') { toast('图片只能附加到条目上', true); return; }
-    for (const file of files) await attachImage(card, idx, file);
+    for (const file of files) {
+      if (finishInProgress || $('#mask').classList.contains('show')) break;
+      await attachImage(card, idx, file);
+    }
     renderPane();
   });
 
@@ -1488,6 +1609,7 @@
   }
 
   async function finishEditing() {
+    if (finishInProgress) return;
     const dirty = dirtyVersions();
     if (!dirty.length) { toast('没有需要完成的修改', true); return; }
     const allErrors = [];
@@ -1496,7 +1618,7 @@
     }
     if (allErrors.length) {
       modal(`<h3>还不能完成编辑</h3>${allErrors.map((e) => `<p class="step">⚠ ${escapeHtml(e)}</p>`).join('')}
-        <div style="margin-top:14px;text-align:right"><button onclick="document.querySelector('#mask').classList.remove('show')">知道了</button></div>`);
+        <div style="margin-top:14px;text-align:right"><button onclick="closeModal(true)">知道了</button></div>`);
       return;
     }
     if (dirty.length === 1) {
@@ -1524,7 +1646,7 @@
       ${rows}
       <p class="hint" style="margin:12px 0 0">写入顺序：备份 → 各版本图片 → 一次性写回 CHANGELOG.md → 重生成勾选的归档。</p>
       <div style="margin-top:16px;text-align:right">
-        <button onclick="document.querySelector('#mask').classList.remove('show')">取消</button>
+        <button onclick="closeModal(true)">取消</button>
         <button id="btn-batch-go" class="primary">开始写入</button>
       </div>`);
     $('#btn-batch-go').onclick = () => {
@@ -1551,7 +1673,7 @@
           <button id="cf-cancel">取消</button>
           <button id="cf-side">另存为单独文件</button>
           <button id="cf-force" class="primary">强行覆盖</button>
-        </div>`);
+        </div>`, () => resolve('cancel'));
       $('#cf-cancel').onclick = () => { closeModal(); resolve('cancel'); };
       $('#cf-side').onclick = () => { closeModal(); resolve('sidefile'); };
       $('#cf-force').onclick = () => { closeModal(); resolve('force'); };
@@ -1569,6 +1691,10 @@
   }
 
   async function applyFinish(versionNames, archiveSet) {
+    if (finishInProgress) return;
+    finishInProgress = true;
+    imageOperationGeneration += 1;
+    refreshBackgroundLock();
     const steps = [];
     const log = (text) => { steps.push(text); };
     const written = [];
@@ -1685,11 +1811,14 @@
           : `<p class="hint" style="margin:12px 0 4px">建议接着在仓库根目录执行：</p>
         <code>uv run --no-sync python scripts/prepare_release_notes.py --check-all</code>
         ${tags.map((tag) => `<br><code>uv run --no-sync python scripts/prepare_release_notes.py --tag ${escapeHtml(tag)} --output .artifacts/release-preview.md</code>`).join('')}`}
-        <div style="margin-top:16px;text-align:right"><button class="primary" onclick="document.querySelector('#mask').classList.remove('show')">好</button></div>`);
+        <div style="margin-top:16px;text-align:right"><button class="primary" onclick="closeModal(true)">好</button></div>`);
     } catch (error) {
       modal(`<h3>⚠ 完成编辑中断</h3><p>${escapeHtml(error.message)}</p>
         <p class="hint">已执行的步骤不会回滚；被覆盖的文件在最近一次备份目录里。</p>
-        <div style="text-align:right"><button onclick="document.querySelector('#mask').classList.remove('show')">知道了</button></div>`);
+        <div style="text-align:right"><button onclick="closeModal(true)">知道了</button></div>`);
+    } finally {
+      finishInProgress = false;
+      refreshBackgroundLock();
     }
   }
 
@@ -1749,7 +1878,7 @@
     await refreshArchiveStatus();
     renderSidebar();
     modal(`<h3>归档生成结果</h3>${results.map((r) => `<div class="step"><span class="s">${r.startsWith('✓') ? '✓' : '✗'}</span><span>${escapeHtml(r.slice(2))}</span></div>`).join('')}
-      <div style="margin-top:14px;text-align:right"><button class="primary" onclick="document.querySelector('#mask').classList.remove('show')">好</button></div>`);
+      <div style="margin-top:14px;text-align:right"><button class="primary" onclick="closeModal(true)">好</button></div>`);
   };
 
   // ---------- 载入入口 ----------

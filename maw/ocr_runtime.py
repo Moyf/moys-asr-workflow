@@ -259,6 +259,8 @@ def run_ocr_scan_in_runtime(
 ) -> dict[str, object]:
     """在托管环境里跑整段视频 OCR 扫描（worker ``scan`` 子命令）并收集识别块。"""
 
+    if isinstance(max_frames, bool) or not isinstance(max_frames, int) or max_frames <= 0:
+        raise ValueError("OCR 扫描 max_frames 必须是正整数")
     _ = ocr_model_type(model_id)
     status = managed_ocr_runtime_status(runtime_root)
     if not status.ready:

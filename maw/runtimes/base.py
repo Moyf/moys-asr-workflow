@@ -1079,25 +1079,53 @@ def _run_process(
         name="maw-runtime-output",
         daemon=True,
     )
-    reader.start()
-    while True:
-        if cancel.is_set():
-            terminate_process_tree(process)
-            raise cancelled_class(cancelled_message)
-        try:
-            raw_line = lines.get(timeout=0.1)
-        except queue.Empty:
-            if process.poll() is not None and not reader.is_alive():
+    completed = False
+    try:
+        reader.start()
+        while True:
+            if cancel.is_set():
+                raise cancelled_class(cancelled_message)
+            try:
+                raw_line = lines.get(timeout=0.1)
+            except queue.Empty:
+                if process.poll() is not None and not reader.is_alive():
+                    break
+                continue
+            if raw_line is None:
                 break
-            continue
-        if raw_line is None:
-            break
-        line = raw_line.rstrip("\r\n")
-        if line:
-            output.append(line)
-            on_line(line)
-    return_code = process.wait()
-    release_process_tree(process)
+            line = raw_line.rstrip("\r\n")
+            if line:
+                output.append(line)
+                on_line(line)
+        # A worker may close stdout before exiting; cancellation must remain
+        # responsive while waiting for its final exit as well.
+        while True:
+            if cancel.is_set():
+                raise cancelled_class(cancelled_message)
+            try:
+                return_code = process.wait(timeout=0.1)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        completed = True
+    finally:
+        # Includes KeyboardInterrupt / SystemExit and callback exceptions, not
+        # just Event cancellation. Only the tree created above is reclaimed.
+        try:
+            if completed:
+                release_process_tree(process)
+            else:
+                terminate_process_tree(process)
+        finally:
+            if reader.ident is not None:
+                reader.join(timeout=1.0)
+            # Closing a stream being read in another thread may block forever
+            # on its I/O lock. Only close here once the bounded join succeeds.
+            if not reader.is_alive() and process.stdout is not None:
+                try:
+                    process.stdout.close()
+                except (OSError, ValueError):
+                    pass
     if return_code != 0:
         for line in reversed(output):
             try:

@@ -16,7 +16,9 @@
     "test:headed": "playwright test --config=tests/config/playwright.config.mjs --project=chromium --headed",
     "typecheck": "tsc -p web/tsconfig.typecheck.json",
     "build": "node scripts/build-editor.mjs --write && node scripts/build-launcher.mjs --write",
-    "postinstall": "pnpm run build",
+    "postinstall": "pnpm run build && node scripts/build-tool-docs.mjs --write",
+    "build:tool-docs": "node scripts/build-tool-docs.mjs --write",
+    "check:tool-docs": "node scripts/build-tool-docs.mjs --check",
     "build:editor": "node scripts/build-editor.mjs --write",
     "check:editor": "node scripts/build-editor.mjs --check",
     "watch:editor": "node scripts/build-editor.mjs --watch",
@@ -30,9 +32,11 @@
     "acorn": "^8.18.0",
     "acorn-walk": "^8.3.5",
     "diff": "^9.0.0",
+    "dompurify": "3.4.17",
     "esbuild": "0.28.2",
     "eslint-scope": "^9.1.2",
     "magic-string": "^1.4.1",
+    "marked": "18.2.0",
     "playwright": "1.62.0",
     "typescript": "^7.0.2"
   }

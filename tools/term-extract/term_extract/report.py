@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
@@ -34,8 +35,15 @@ def build_report(
     ai_enabled: bool,
     ai_model: str | None = None,
     frames_dir: Path | None = None,
+    weight_by_score: bool = False,
+    ai_status: str | None = None,
+    region: Mapping[str, object] | None = None,
+    frames_base_dir: str = "frames",
 ) -> dict[str, object]:
     candidate_list = [dict(candidate) for candidate in candidates]
+    if ai_enabled:
+        for candidate in candidate_list:
+            candidate["recommended"] = bool(candidate.get("recommended") and (candidate.get("ai") or {}).get("verdict") == "keep")
     _annotate_evidence_rects(candidate_list, frames_dir)
     return {
         "video": video_name,
@@ -47,6 +55,10 @@ def build_report(
         "scan": dict(scan_summary),
         "aiEnabled": bool(ai_enabled),
         "aiModel": ai_model,
+        "aiStatus": ai_status or ("complete" if ai_enabled else "disabled"),
+        "weightByScore": bool(weight_by_score),
+        "region": dict(region) if region is not None else None,
+        "framesBaseDir": frames_base_dir,
         "candidates": candidate_list,
     }
 
@@ -99,11 +111,12 @@ def _image_size(path: Path) -> tuple[int, int] | None:
 
 def write_candidates_json(path: Path, report: Mapping[str, object]) -> None:
     path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
+        json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8", newline="\n"
     )
 
 
 def write_report_csv(path: Path, candidates: Sequence[Mapping[str, object]]) -> None:
+    json.dumps(candidates, allow_nan=False)
     output = io.StringIO(newline="")
     writer = csv.DictWriter(output, fieldnames=CSV_FIELDS, lineterminator="\n")
     writer.writeheader()
@@ -138,7 +151,10 @@ def write_report_csv(path: Path, candidates: Sequence[Mapping[str, object]]) -> 
 
 
 def render_report_html(report: Mapping[str, object]) -> str:
-    data_json = json.dumps(report, ensure_ascii=False).replace("</", "<\\/")
+    frames_base = report.get("framesBaseDir", "frames")
+    if not isinstance(frames_base, str) or not re.fullmatch(r"frames(?:/run-[0-9a-f]{32})?", frames_base):
+        raise ValueError("报告证据目录必须是安全的相对路径")
+    data_json = json.dumps(report, ensure_ascii=False, allow_nan=False).replace("</", "<\\/")
     return HTML_TEMPLATE.replace("__DATA_JSON__", data_json)
 
 
@@ -237,7 +253,7 @@ button.ghost:hover{background:var(--bg-raised);color:var(--text-primary)}
 .tier-head:hover{background:var(--bg-raised)}
 .tier-toggle{flex:1 1 auto;display:flex;align-items:center;gap:9px;min-width:0;height:38px;padding:0 6px;border:0;background:transparent;color:var(--text-primary);font-size:14px;text-align:left}
 .tier-toggle:hover{background:transparent}
-.tier-toggle .arrow{width:10px;color:var(--text-faint);font-size:10px;transition:transform var(--t-fast)}
+.tier-toggle .arrow{width:12px;color:var(--text-faint);font-size:11px;transition:transform var(--t-fast)}
 .tier-toggle[aria-expanded=false] .arrow{transform:rotate(-90deg)}
 .tier-dot{width:9px;height:9px;border-radius:3px;flex:none;background:var(--tier-c)}
 .tier-name{font-weight:700}
@@ -459,7 +475,7 @@ kbd{display:inline-block;min-width:20px;padding:0 5px;border:1px solid var(--bor
         <button type="button" id="check-recommended">勾选推荐项</button>
         <button type="button" id="uncheck-all">清空勾选</button>
       </div>
-      <p class="hint">与 hotwords.txt 内容一致：按候选顺序去重；点 × 可移除单个词。</p>
+      <p class="hint" id="export-hint">按候选顺序去重，最多导出 2000 个词；点 × 可移除单个词。</p>
     </section>
     <section class="panel panel-aux" aria-labelledby="keys-title">
       <h2 id="keys-title">快捷键</h2>
@@ -492,6 +508,8 @@ kbd{display:inline-block;min-width:20px;padding:0 5px;border:1px solid var(--bor
 "use strict";
 var report=JSON.parse(document.getElementById("candidate-data").textContent);
 var cands=report.candidates||[];
+var framesBase=report.framesBaseDir||"frames";
+function frameUrl(frame){return framesBase+"/"+frame;}
 var line=report.minScore||60;
 var list=document.getElementById("list");
 var checkedState=new Set();
@@ -506,7 +524,20 @@ function $(id){return document.getElementById(id);}
 function fmtTime(ms){var s=Math.floor((ms||0)/1000);return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c];});}
 function frameTime(f){var m=/frame-(\\d+)\\.jpg$/.exec(f||"");return m?fmtTime(parseInt(m[1],10)):"";}
-function exportable(c){return !(c.export&&!c.export.ok);}
+function exportIssue(c){
+  if(c.export&&!c.export.ok)return c.export.reason||"热词不符合限制";
+  var word=String(c.word||"").trim(),match=/^(.+?)\\s*[:：]\\s*([0-9]+)\\s*$/.exec(word);
+  if(!word)return "热词名称为空";
+  if(match){
+    if([1,2,3,4,5,50].indexOf(Number(match[2]))<0)return "权重只能是 1–5 或 50";
+    word=match[1].trim();
+  }
+  if(!word)return "热词名称为空";
+  if(/[^\\x00-\\x7f]/.test(word))return Array.from(word).length>15?"含非 ASCII 字符时最多 15 个字符":null;
+  return word.split(/\\s+/).length>7?"纯 ASCII 热词最多 7 个空格分隔的单词":null;
+}
+function exportable(c){return !exportIssue(c);}
+function recommended(c){return !!c.recommended&&(!c.ai||c.ai.verdict!=="reject")&&(!report.aiEnabled||(c.ai&&c.ai.verdict==="keep"));}
 function highlight(text,word){
   var s=String(text||""),w=String(word||"");
   var k=w?s.toLowerCase().indexOf(w.toLowerCase()):-1;
@@ -532,17 +563,17 @@ function evidenceOf(c){
   return {frames:order.slice(0,4),rects:rects,sizes:sizes};
 }
 var EV=cands.map(evidenceOf);
-var REC_COUNT=cands.filter(function(c){return c.recommended;}).length;
+var REC_COUNT=cands.filter(recommended).length;
 var KEEP_COUNT=cands.filter(function(c){return c.ai&&c.ai.verdict==="keep";}).length;
 
 function frameHtml(f,ev){
   var sz=ev.sizes[f]||[];
   var dims=sz.length?' width="'+sz[0]+'" height="'+sz[1]+'"':"";
-  return '<span class="frame-wrap"><img loading="lazy" decoding="async"'+dims+' src="frames/'+esc(f)+'" alt="证据帧 '+frameTime(f)+'">'+rectsHtml(ev.rects[f])+"</span>";
+  return '<span class="frame-wrap"><img loading="lazy" decoding="async"'+dims+' src="'+esc(frameUrl(f))+'" alt="证据帧 '+frameTime(f)+'">'+rectsHtml(ev.rects[f])+"</span>";
 }
 
 var TIERS=[
-  {id:"rec",name:"推荐",desc:"达到推荐线",cls:"rec"},
+  {id:"rec",name:"推荐",desc:report.aiEnabled?"规则达到推荐线；自动勾选另需 AI 保留":"达到规则推荐线",cls:"rec"},
   {id:"maybe",name:"待定",desc:"接近推荐线",cls:"maybe"},
   {id:"weak",name:"观察",desc:"信号较弱",cls:"weak"},
   {id:"noise",name:"排除",desc:"忽略词、整句等负面评分",cls:"noise"}
@@ -567,8 +598,8 @@ function badgesHtml(c){
   var out=[],ai=c.ai;
   if(c.typeGuess)out.push('<span class="badge">'+esc(c.typeGuess)+"</span>");
   if(ai)out.push('<span class="badge ai-'+esc(ai.verdict)+'">AI '+(ai.verdict==="keep"?"保留":"排除")+(ai.type?" · "+esc(ai.type):"")+"</span>");
-  else if(report.aiEnabled)out.push('<span class="badge">AI 未判定</span>');
-  if(!exportable(c))out.push('<span class="badge noexport">不可导出：'+esc(c.export.reason)+"</span>");
+  else if(report.aiEnabled||["pending","failed","cancelled"].indexOf(report.aiStatus)>=0)out.push('<span class="badge">仅规则评分 · AI 未完成</span>');
+  if(!exportable(c))out.push('<span class="badge noexport">不可导出：'+esc(exportIssue(c))+"</span>");
   return out.join("");
 }
 
@@ -677,9 +708,10 @@ function refresh(){
     ui.btn.addEventListener("click",function(){
       var pickable=ui.idxs.filter(function(i){return exportable(cands[i]);});
       var all=pickable.length&&pickable.every(function(i){return checkedState.has(i);});
+      var rejectedCount=all?0:pickable.filter(function(i){return cands[i].ai&&cands[i].ai.verdict==="reject";}).length;
       pickable.forEach(function(i){setPicked(i,!all,true);});
       updatePreview();
-      toast((all?"已取消":"已勾选")+"「"+t.name+"」组 "+pickable.length+" 项");
+      toast((all?"已取消":"已勾选")+"「"+t.name+"」组 "+pickable.length+" 项"+(rejectedCount?"；含 "+rejectedCount+" 个 AI 排除项，请人工核实":""));
     });
     tierUI.push(ui);
     frag.appendChild(head);
@@ -699,29 +731,36 @@ function setPicked(i,on,silent){
     if(box)box.checked=on;
   }
   if(!silent)updatePreview();
+  if(on&&!silent&&cands[i].ai&&cands[i].ai.verdict==="reject")toast("已人工勾选 AI 排除项，请核实后导出");
 }
 
-function exportWords(){
-  var seen={},out=[];
+function exportRecords(){
+  var seen=new Set(),out=[],ignored=0;
   cands.forEach(function(c,i){
-    if(checkedState.has(i)&&c.word&&!seen[c.word]){seen[c.word]=1;out.push(c.word);}
+    var word=String(c.word||"").trim();
+    if(!checkedState.has(i)||!word||seen.has(word))return;
+    seen.add(word);
+    if(!exportable(c)||out.length>=2000){ignored++;return;}
+    var weight=report.weightByScore?(c.score>=80?5:c.score>=70?4:c.score>=60?3:null):null;
+    out.push({word:word,line:word+(weight!=null?": "+weight:"")});
   });
-  return out;
+  return {records:out,ignored:ignored};
 }
 
 function stat(n,label,cls){return '<span'+(cls?' class="'+cls+'"':"")+"><b>"+n+"</b>"+label+"</span>";}
 
 function updatePreview(){
-  var words=exportWords();
+  var result=exportRecords(),records=result.records,words=records.map(function(r){return r.word;});
   $("preview-count").textContent=words.length+" 个词";
   $("dock-count").textContent=String(words.length);
-  $("preview-body").innerHTML=words.length?words.map(function(w){
-    return '<span class="word-chip"><span>'+esc(w)+'</span><button type="button" data-word="'+esc(w)+'" title="移除" aria-label="移除 '+esc(w)+'">×</button></span>';
+  $("preview-body").innerHTML=words.length?records.map(function(r){
+    return '<span class="word-chip"><span>'+esc(r.line)+'</span><button type="button" data-word="'+esc(r.word)+'" title="移除" aria-label="移除 '+esc(r.word)+'">×</button></span>';
   }).join(""):'<span class="preview-empty">尚未勾选。点击候选整行即可勾选，或聚焦后按 X。</span>';
   $("export-btn").disabled=!words.length;
   $("copy-btn").disabled=!words.length;
   $("uncheck-all").disabled=!checkedState.size;
   $("check-recommended").disabled=!REC_COUNT;
+  $("export-hint").textContent=(report.weightByScore?"按规则分数带附带权重；":"")+"按候选顺序去重，最多导出 2000 个词。"+(result.ignored?"已忽略 "+result.ignored+" 个超限或不可导出词；移除前项可让后项进入导出。":"点 × 可移除单个词。");
   tierUI.forEach(function(ui){
     var pickable=ui.idxs.filter(function(i){return exportable(cands[i]);});
     var n=pickable.filter(function(i){return checkedState.has(i);}).length;
@@ -750,7 +789,7 @@ function resetFilters(){
 
 $("check-recommended").addEventListener("click",function(){
   var n=0;
-  cands.forEach(function(c,i){if(c.recommended&&exportable(c)){setPicked(i,true,true);n++;}});
+  cands.forEach(function(c,i){if(recommended(c)&&exportable(c)){setPicked(i,true,true);n++;}});
   updatePreview();
   toast(n?"已勾选 "+n+" 个推荐项":"没有可导出的推荐项");
 });
@@ -825,21 +864,22 @@ list.addEventListener("click",function(ev){
   setPicked(i,!checkedState.has(i));
 });
 
-function exportText(){return exportWords().join("\\n");}
+function exportText(result){return result.records.map(function(r){return r.line;}).join("\\n");}
+function exportNotice(result){return result.ignored?"；已忽略 "+result.ignored+" 个超限或不可导出词":"";}
 $("export-btn").addEventListener("click",function(){
-  var words=exportWords();
-  if(!words.length)return;
-  var blob=new Blob([words.join("\\n")+"\\n"],{type:"text/plain;charset=utf-8"});
+  var result=exportRecords();
+  if(!result.records.length)return;
+  var blob=new Blob([exportText(result)+"\\n"],{type:"text/plain;charset=utf-8"});
   var a=document.createElement("a");
   a.href=URL.createObjectURL(blob);a.download="hotwords.txt";a.click();
   setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
-  toast("已导出 "+words.length+" 个词到 hotwords.txt");
+  toast("已发起 hotwords.txt 下载："+result.records.length+" 个词"+exportNotice(result));
 });
 $("copy-btn").addEventListener("click",function(){
-  var text=exportText();
+  var result=exportRecords(),text=exportText(result);
   if(!text)return;
   var n=text.split("\\n").length;
-  var done=function(){toast("已复制 "+n+" 个术语");};
+  var done=function(){toast("已复制 "+n+" 个术语"+exportNotice(result));};
   if(navigator.clipboard&&navigator.clipboard.writeText){
     navigator.clipboard.writeText(text).then(done,function(){fallbackCopy(text,done);});
   }else{fallbackCopy(text,done);}
@@ -847,7 +887,7 @@ $("copy-btn").addEventListener("click",function(){
 function fallbackCopy(text,done){
   var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);
   ta.select();
-  try{document.execCommand("copy");done();}catch(e){toast("复制失败，请改用导出 txt");}
+  try{if(document.execCommand("copy"))done();else toast("复制失败，请改用导出 txt");}catch(e){toast("复制失败，请改用导出 txt");}
   document.body.removeChild(ta);
 }
 
@@ -868,7 +908,7 @@ function showOverlay(index){
   if(!n)return;
   ov.index=(index+n)%n;
   var f=ov.frames[ov.index];
-  $("overlay-img").src="frames/"+f;
+  $("overlay-img").src=frameUrl(f);
   $("overlay-rects").innerHTML=rectsHtml(EV[ov.card].rects[f]);
   $("overlay-word").textContent=cands[ov.card].word;
   $("overlay-count").textContent=(n>1?(ov.index+1)+" / "+n+" · ":"")+frameTime(f);
@@ -877,7 +917,7 @@ function showOverlay(index){
   syncOverlayPick();
   [ov.index-1,ov.index+1].forEach(function(k){
     var nf=ov.frames[(k+n)%n];
-    if(nf&&nf!==f){var pre=new Image();pre.src="frames/"+nf;}
+    if(nf&&nf!==f){var pre=new Image();pre.src=frameUrl(nf);}
   });
 }
 function syncOverlayPick(){
@@ -965,12 +1005,17 @@ syncLayout();
 
 var scan=report.scan||{};
 function srcRow(k,v){return "<dt>"+k+"</dt><dd>"+esc(v)+"</dd>";}
-$("src-name").textContent=report.video||"";
+$("src-name").textContent=(report.video||"")+
+  (!report.aiEnabled?" · "+(report.aiStatus==="failed"?"AI 失败":report.aiStatus==="pending"?"AI 待完成":report.aiStatus==="cancelled"?"AI 已取消":"未启用 AI")+"，仅规则评分":"")+
+  (scan.truncated?" · 扫描已截断":"")+(scan.framesFailed?" · 部分帧失败":"");
+$("src-name").title=$("src-name").textContent;
 $("source").innerHTML=
   srcRow("视频",report.video||"—")+
   srcRow("扫描",(scan.framesScanned!=null?scan.framesScanned+" / "+(scan.framesTotal||0)+" 帧 · ":"")+"fps "+report.fps)+
   srcRow("OCR",report.model||"—")+
-  srcRow("AI 筛选",report.aiEnabled?(report.aiModel||"已启用"):"未启用")+
+  srcRow("区域",report.region?report.region.mode+(report.region.mode==="custom"?" · "+[report.region.x1,report.region.y1,report.region.x2,report.region.y2].join(", "):""):"未记录")+
+  srcRow("扫描边界",(scan.truncated?"已截断：计划 "+scan.framesTotal+" / 全片 "+scan.framesPlanned+" 帧；采样至 "+fmtTime(scan.sampledThroughMs):"未标记截断")+(scan.framesFailed?"；失败 "+scan.framesFailed+" 帧":""))+
+  srcRow("AI 筛选",report.aiEnabled?(report.aiModel||"已启用"):(report.aiStatus==="failed"?"失败；仅规则评分":report.aiStatus==="pending"?"待完成；仅规则评分":report.aiStatus==="cancelled"?"已取消；仅规则评分":"未启用；仅规则评分"))+
   srcRow("推荐线",line+" 分")+
   srcRow("生成于",String(report.createdAt||"—").replace("T"," "));
 

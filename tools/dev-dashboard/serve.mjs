@@ -193,16 +193,16 @@ async function resolveRepo() {
   }
 }
 
-async function fetchOpenPullRequests() {
-  const repo = await resolveRepo();
-  const { stdout } = await execFileAsync(
+export async function fetchOpenPullRequests({ repo, run = execFileAsync } = {}) {
+  repo ??= await resolveRepo();
+  const { stdout } = await run(
     'gh',
     [
       'pr', 'list',
       '--repo', repo,
       '--state', 'open',
       '--limit', '100',
-      '--json', 'number,title,url,author,headRefName,baseRefName,isDraft,milestone,updatedAt,statusCheckRollup,labels',
+      '--json', 'number,title,body,url,author,headRefName,baseRefName,isDraft,milestone,updatedAt,statusCheckRollup,labels',
     ],
     { timeout: 30_000, maxBuffer: 16 * 1024 * 1024 },
   );
@@ -245,7 +245,10 @@ const PANEL_FILES = new Map([
   ['/', 'index.html'],
   ['/index.html', 'index.html'],
   ['/app.js', 'app.js'],
+  ['/marked-15.0.12.min.js', 'marked-15.0.12.min.js'],
   ['/style.css', 'style.css'],
+  ['/shared/tool-page.css', '../shared/tool-page.css'],
+  ['/shared/tool-page.js', '../shared/tool-page.js'],
 ]);
 
 function serveStatic(pathname, res) {

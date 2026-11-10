@@ -1,4 +1,4 @@
-"""maw.ocr_scan：采样计划、平均哈希去重与整段扫描流程（全部注入假件）。"""
+"""maw.ocr_scan：采样计划、精确帧复用与整段扫描流程（全部注入假件）。"""
 
 from __future__ import annotations
 
@@ -28,6 +28,11 @@ class SamplingTests(unittest.TestCase):
     def test_max_frames_caps_the_plan(self) -> None:
         timestamps = sampling_timestamps(1_000_000, 1.0, max_frames=5)
         self.assertEqual(len(timestamps), 5)
+
+    def test_max_frames_requires_positive_integer(self) -> None:
+        for value in (0, -1, True, 1.5, "2", None):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                sampling_timestamps(1000, 1.0, max_frames=value)  # type: ignore[arg-type]
 
     def test_zero_duration_returns_empty(self) -> None:
         self.assertEqual(sampling_timestamps(0, 1.0), [])
@@ -111,7 +116,7 @@ class RunOcrScanTests(unittest.TestCase):
         self.assertEqual(summary["framesTotal"], 6)
         self.assertEqual(summary["framesScanned"], 6)
         self.assertEqual(summary["blocksTotal"], 2)
-        self.assertEqual(len(received), 2)
+        self.assertEqual(len(received), 6)
         self.assertEqual(received[0][0], 0)
         self.assertEqual(received[0][2][0][0], "前往星核")
 
@@ -128,7 +133,9 @@ class RunOcrScanTests(unittest.TestCase):
         )
         self.assertEqual(summary["framesSkippedDuplicate"], 2)
         self.assertEqual(summary["framesScanned"], 2)
-        self.assertEqual(summary["blocksTotal"], 2)
+        self.assertEqual(summary["blocksTotal"], 4)
+        self.assertEqual(summary["blocksRecognized"], 2)
+        self.assertEqual([item[0] for item in received], [0, 1000, 2000, 3000])
 
     def test_scan_counts_failed_extractions(self) -> None:
         summary = run_ocr_scan(
@@ -144,6 +151,7 @@ class _FakeImage:
 
     width = 100
     height = 50
+    mode = "RGB"
 
     def __init__(self, tag: int) -> None:
         self.tag = tag

@@ -10,6 +10,7 @@ import {
   parseChecklistFrontMatter,
   groupChecklistsByPr,
   summarizeChecks,
+  fetchOpenPullRequests,
   readStatusMap,
   writeStatusMap,
   isDashboardServing,
@@ -21,6 +22,32 @@ test('extractOwnerRepo 解析 https 与 ssh 形式的 origin', () => {
   assert.equal(extractOwnerRepo('git@github.com:Moyf/moys-asr-workflow.git'), 'Moyf/moys-asr-workflow');
   assert.equal(extractOwnerRepo('https://gitlab.com/foo/bar.git'), null);
   assert.equal(extractOwnerRepo(null), null);
+});
+
+test('fetchOpenPullRequests 一次 gh list 获取正文并保留排序', async () => {
+  const calls = [];
+  const body = '# Preview\n\n正文 <script>不应执行</script>\n```js\nconst n = 1;\n```';
+  const prs = await fetchOpenPullRequests({
+    repo: 'test/repo',
+    run: async (command, args, options) => {
+      calls.push({ command, args, options });
+      return { stdout: JSON.stringify([
+        { number: 41, updatedAt: '2026-11-09T00:00:00Z', body: null },
+        { number: 42, updatedAt: '2026-11-10T00:00:00Z', body },
+      ]) };
+    },
+  });
+  assert.equal(calls.length, 1);
+  const [{ command, args, options }] = calls;
+  assert.equal(command, 'gh');
+  assert.deepEqual(args.slice(0, 2), ['pr', 'list']);
+  assert.equal(args[args.indexOf('--repo') + 1], 'test/repo');
+  assert.equal(args[args.indexOf('--state') + 1], 'open');
+  assert.ok(args[args.indexOf('--json') + 1].split(',').includes('body'), 'gh 必须随列表获取 body');
+  assert.equal(options.timeout, 30_000);
+  assert.deepEqual(prs.map((pr) => pr.number), [42, 41]);
+  assert.equal(prs[0].body, body);
+  assert.equal(prs[1].body, null);
 });
 
 test('parseChecklistFrontMatter 解析标准清单头', () => {
@@ -154,11 +181,32 @@ function mockRes() {
 
 const HOST = { host: '127.0.0.1:8262' };
 
+test('shared presentation assets use exact routes without loosening dashboard CSP', async () => {
+  for (const url of ['/shared/tool-page.css','/shared/tool-page.js']) {
+    const res = mockRes();
+    await handleRequest(mockReq({url,headers:HOST}),res,{port:8262});
+    assert.equal(res.statusCode,200,url);
+    assert.ok(res.body.includes('MAW') || res.body.includes('presentation'));
+    assert.ok(!res.headers['Content-Security-Policy'].includes('unsafe-inline'));
+  }
+  const res=mockRes();
+  await handleRequest(mockReq({url:'/shared/../AGENTS.md',headers:HOST}),res,{port:8262});
+  assert.equal(res.statusCode,404);
+});
+
 async function callApi(options, reqArgs) {
   const res = mockRes();
   await handleRequest(mockReq(reqArgs), res, { port: 8262, ...options });
   return res;
 }
+
+test('本地 Markdown 解析器由严格 CSP 白名单提供', async () => {
+  const res = await callApi({}, { url: '/marked-15.0.12.min.js', headers: HOST });
+  assert.equal(res.statusCode, 200);
+  assert.match(res.headers['Content-Type'], /javascript/);
+  assert.equal(res.headers['Content-Security-Policy'], "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'");
+  assert.ok(res.body.length > 10000);
+});
 
 test('POST /api/status 合法请求写入状态文件', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'maw-dashboard-test-'));

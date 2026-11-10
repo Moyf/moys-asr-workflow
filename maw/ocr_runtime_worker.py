@@ -123,6 +123,13 @@ def _path(value: str) -> Path | None:
     return Path(value) if value else None
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="MAW optional OCR worker")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -150,7 +157,7 @@ def _parser() -> argparse.ArgumentParser:
     scan.add_argument("--duration-ms", type=int, required=True)
     scan.add_argument("--fps", type=float, default=1.0)
     scan.add_argument("--frames-dir", default="")
-    scan.add_argument("--max-frames", type=int, default=20000)
+    scan.add_argument("--max-frames", type=_positive_int, default=20000)
     scan.add_argument("--region-mode", choices=("full", "bottom30", "custom"), default="full")
     scan.add_argument("--region-x1", type=float, default=0.0)
     scan.add_argument("--region-y1", type=float, default=0.0)

@@ -128,6 +128,18 @@
 
 [打开正文](engineering/DESIGN.md)
 
+<a name="engineering-tool-pages"></a>
+### 浏览器工具页设计与交互规范
+
+[通用底线与按场景模式](../tools/TOOL_PAGE_GUIDE.md) · [性能与验证约定](../tools/AGENTS.md)
+
+[工具功能介绍与维护状态](../tools/index.html) · [工具目录说明](../tools/README.md)
+
+<a name="engineering-tool-markdown"></a>
+### 工具共享 Markdown 与说明阅读
+
+[成熟库封装、安全阅读弹窗与离线说明](../tools/shared/README.md)
+
 <a name="engineering-project-format"></a>
 ### 工程文件格式
 

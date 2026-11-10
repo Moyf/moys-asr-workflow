@@ -52,6 +52,40 @@ def sample_report() -> dict[str, object]:
 
 
 class ReportTests(CompactContainerAssertions, unittest.TestCase):
+    def test_report_json_and_generated_html_reject_nonfinite_nested_values(self) -> None:
+        for bad in (float("nan"), float("inf"), float("-inf")):
+            payload = {**sample_report(), "scan": {"blocksRecognized": bad}}
+            with self.subTest(bad=bad), tempfile.TemporaryDirectory() as temp:
+                with self.assertRaises(ValueError):
+                    report_module.render_report_html(payload)
+                path = Path(temp) / "candidates.json"
+                with self.assertRaises(ValueError):
+                    report_module.write_candidates_json(path, payload)
+                self.assertFalse(path.exists())
+
+    def test_report_frame_generation_must_be_safe_relative_path(self) -> None:
+        for path in ("../frames", "frames/run-../../unsafe", "https://invalid.test/frames", "frames/run-xyz"):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                report_module.render_report_html({**sample_report(), "framesBaseDir": path})
+
+    def test_ai_reject_cannot_remain_recommended_in_report(self) -> None:
+        payload = report_module.build_report(
+            video_name="synthetic.mp4", fps=1., model="tiny", duration_ms=1000,
+            min_score=60, scan_summary={}, candidates=[scored_candidate("reject", score=90,
+                ai={"verdict": "reject", "type": "非术语", "reason": "synthetic"})], ai_enabled=True,
+        )
+        self.assertFalse(payload["candidates"][0]["recommended"])
+
+    def test_report_preserves_export_policy_and_ai_failure_status(self) -> None:
+        payload = report_module.build_report(
+            video_name="synthetic.mp4", fps=.2, model="small", duration_ms=1000,
+            min_score=60, scan_summary={"truncated": True}, candidates=[], ai_enabled=False,
+            weight_by_score=True, ai_status="failed", region={"mode": "full"},
+        )
+        self.assertTrue(payload["weightByScore"])
+        self.assertEqual(payload["aiStatus"], "failed")
+        self.assertEqual(payload["region"], {"mode": "full"})
+
     def test_generated_script_has_valid_javascript_syntax(self) -> None:
         html = report_module.render_report_html(sample_report())
         script = html.split('<script>\n', 1)[1].split('</script>', 1)[0]
@@ -239,13 +273,23 @@ class _FakeProvider:
     def __init__(self, blocks: list[dict[str, object]]) -> None:
         self.blocks = blocks
 
-    def scan(self, video: Path, *, duration_ms: int, fps: float, region: object, model: str, frames_dir: Path, on_status: object = None) -> dict[str, object]:
+    def scan(self, video: Path, *, duration_ms: int, fps: float, region: object, model: str, frames_dir: Path, max_frames: int = 20000, on_status: object = None, cancel_event: object = None) -> dict[str, object]:
+        from maw.ocr_scan import sampling_timestamps
+
+        timestamps = sampling_timestamps(duration_ms, fps, max_frames)
+        planned = len(sampling_timestamps(duration_ms, fps))
         return {
-            "framesTotal": 6,
-            "framesScanned": 6,
+            "framesTotal": len(timestamps),
+            "framesScanned": len(timestamps),
             "framesSkippedDuplicate": 0,
             "framesFailed": 0,
             "blocksTotal": len(self.blocks),
+            "blocksRecognized": len(self.blocks),
+            "framesPlanned": planned,
+            "truncated": planned > len(timestamps),
+            "sampledThroughMs": timestamps[-1],
+            "fps": fps,
+            "durationMs": duration_ms,
             "blocks": self.blocks,
         }
 
@@ -268,7 +312,7 @@ class PipelineTests(CompactContainerAssertions, unittest.TestCase):
             code = run_pipeline(
                 args,
                 scan_provider=_FakeProvider(blocks),  # type: ignore[arg-type]
-                duration_prober=lambda _video: 6_000,
+                duration_prober=lambda _video: 210_000,
             )
             self.assertEqual(code, 0)
             out_dir = Path(temp) / "game.termextract"

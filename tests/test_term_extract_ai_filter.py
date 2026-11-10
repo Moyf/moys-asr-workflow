@@ -69,12 +69,24 @@ class ParseTests(unittest.TestCase):
                 ["星核"],
             )
 
+    def test_duplicate_word_is_rejected_even_when_final_keys_match(self) -> None:
+        with self.assertRaisesRegex(Exception, "重复"):
+            _parse_verdicts(response(
+                {"word": "星核", "verdict": "keep", "type": "地名", "reason": "first"},
+                {"word": "星核", "verdict": "reject", "type": "非术语", "reason": "last"},
+            ), ["星核"])
+
     def test_fence_and_prose_stripped(self) -> None:
         fenced = "```json\n" + response({"word": "星核", "verdict": "keep", "type": "地名", "reason": "ok"}) + "\n```"
         self.assertIn("星核", _strip_json_fence(fenced))
 
 
 class FilterTests(unittest.TestCase):
+    def test_nonpositive_batch_size_rejected(self) -> None:
+        for size in (0, -1):
+            with self.subTest(size=size), self.assertRaises(ValueError):
+                filter_candidates([candidate("星核")], SETTINGS, complete=lambda _s, _r: "", batch_size=size)
+
     def test_retry_recovers_from_protocol_error(self) -> None:
         calls: list[str] = []
 
