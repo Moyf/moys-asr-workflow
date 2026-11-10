@@ -163,7 +163,8 @@ def _wave_header(*, rate, channels, sample_width, format_tag, samples, channel_l
 
 
 def rebuild_gap_removed_audio(source_path: Path, intervals: list[tuple[int, int]], output_path: Path,
-    *, ffmpeg_path: Path, ffprobe_path: Path, job=None, audio_track: int = 0) -> Path:
+    *, ffmpeg_path: Path, ffprobe_path: Path, job=None, audio_track: int = 0,
+    keep_to_source_end: bool = False, editor_duration_ms: int | None = None) -> Path:
     """Export half-open millisecond ranges, rounded to the nearest PCM sample.
 
     Ties round up. Bounds use decoded sample count rather than inaccurate
@@ -178,6 +179,10 @@ def rebuild_gap_removed_audio(source_path: Path, intervals: list[tuple[int, int]
         raise GapRemovedAudioExportError("源音频文件不存在")
     if isinstance(audio_track, bool) or not isinstance(audio_track, int) or audio_track < 0:
         raise GapRemovedAudioExportError("选择的音轨无效")
+    if not isinstance(keep_to_source_end, bool):
+        raise GapRemovedAudioExportError("音频结尾选项无效")
+    if (keep_to_source_end and editor_duration_ms is None) or (editor_duration_ms is not None and (type(editor_duration_ms) is not int or editor_duration_ms <= 0)):
+        raise GapRemovedAudioExportError("编辑器时长无效")
     if not intervals:
         raise GapRemovedAudioExportError("没有需要保留的音频片段")
     previous_end = 0
@@ -223,6 +228,16 @@ def rebuild_gap_removed_audio(source_path: Path, intervals: list[tuple[int, int]
             if not decoded_bytes or decoded_bytes % frame_bytes:
                 raise GapRemovedAudioExportError("源文件没有完整的音频样本")
             decoded_samples = decoded_bytes // frame_bytes
+            # Reject an underestimated timeline even when its tail was removed.
+            # Otherwise unseen, unremoved audio could be silently omitted.
+            if editor_duration_ms is not None:
+                timeline_end = (editor_duration_ms * rate + 500) // 1000
+                if timeline_end + (rate + 1999) // 2000 < decoded_samples:
+                    raise GapRemovedAudioExportError("所选音轨时长与编辑器不一致，请重新加载工程后再试")
+            # A retained tail may be clipped, never extended beyond the request.
+            if keep_to_source_end:
+                start, end = sample_intervals[-1]
+                sample_intervals[-1] = (start, min(end, decoded_samples))
             # The editor rounds the natural media end to integer milliseconds.
             # Allow only that half-millisecond upward rounding, then retain the
             # actual final sample. Larger overflows still indicate stale ranges.

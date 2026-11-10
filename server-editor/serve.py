@@ -3416,6 +3416,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     raise MediaJobCancelled("媒体重组已停止")
             intervals = normalize_gap_removed_intervals(request.get("intervals"))
             source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
+            keep_to_source_end = request.get('keepToSourceEnd', False)
+            editor_duration_ms = request.get('editorDurationMs')
+            if (not isinstance(keep_to_source_end, bool)
+                    or (keep_to_source_end and editor_duration_ms is None)
+                    or (editor_duration_ms is not None and (type(editor_duration_ms) is not int or editor_duration_ms <= 0))
+                    or (source_snapshot.kind != 'audio' and (keep_to_source_end or editor_duration_ms is not None))):
+                raise ValueError('Invalid audio end selection')
             source = source_snapshot.path
             tools = editor_ffmpeg_tools()
             if tools.ffmpeg is None or tools.ffprobe is None:
@@ -3429,7 +3436,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 if source_snapshot.kind == "audio":
                     rebuild_gap_removed_audio(job.source, list(job.intervals), job.output,
                         ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job,
-                        audio_track=source_snapshot.audio_track)
+                        audio_track=source_snapshot.audio_track, keep_to_source_end=keep_to_source_end,
+                        editor_duration_ms=editor_duration_ms)
                 else:
                     try:
                         rebuild_gap_removed_video(job.source, list(job.intervals), job.output,
@@ -3635,6 +3643,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self._check_request_token(request)
             intervals = normalize_gap_removed_intervals(request.get("intervals"))
             source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
+            keep_to_source_end = request.get('keepToSourceEnd', False)
+            editor_duration_ms = request.get('editorDurationMs')
+            if (not isinstance(keep_to_source_end, bool)
+                    or (keep_to_source_end and editor_duration_ms is None)
+                    or (editor_duration_ms is not None and (type(editor_duration_ms) is not int or editor_duration_ms <= 0))
+                    or (source_snapshot.kind != 'audio' and (keep_to_source_end or editor_duration_ms is not None))):
+                raise ValueError('Invalid audio end selection')
             source = source_snapshot.path
             if not self.editor_server.gap_removed_video_lock.acquire(blocking=False):
                 raise GapRemovedVideoExportInProgressError("另一个媒体导出任务正在进行，请完成或停止后再试")
@@ -3661,7 +3676,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     if source_snapshot.kind == "audio":
                         rebuild_gap_removed_audio(source, intervals, output_path,
                             ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe,
-                            audio_track=source_snapshot.audio_track)
+                            audio_track=source_snapshot.audio_track, keep_to_source_end=keep_to_source_end,
+                            editor_duration_ms=editor_duration_ms)
                     else:
                         rebuild_gap_removed_video(source, intervals, output_path,
                             ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe)

@@ -42,3 +42,20 @@ test('G08 cues initializers call sibling function exports through static imports
   }
   assert.deepEqual(violations, [], 'Use the sibling function import; keep state properties on their existing facade');
 });
+
+test('G08 value-only facade members are not exported as callable functions', async () => {
+  const valueMembers = [
+    ['editor-cue-list-anchor.js', ['cueListScroll', 'cueListFollowButton']],
+    ['editor-split-core.js', ['SPLIT_LANE_LINE_TOLERANCE_PX']],
+    ['editor-text-process.js', ['wrapCharsModal', 'wrapCharsLeftInput', 'wrapCharsRightInput']],
+    ['editor-timeline.js', ['DEFAULT_TIMELINE_FPS', 'MIN_TIMELINE_FPS', 'MAX_TIMELINE_FPS', 'TIMELINE_ROUND_MS']],
+  ];
+  for (const [file, members] of valueMembers) {
+    // Real ESM imports must be safe before initialization. State and DOM values
+    // remain on the existing facade; do not invent eager snapshots or APIs.
+    const module = await import(`../web/editor/cues/${file}`);
+    for (const member of members) {
+      assert.equal(Object.hasOwn(module, member), false, `${file}: ${member} is a value, not a function`);
+    }
+  }
+});

@@ -2452,7 +2452,6 @@ export function splitLaneUsesMainTimestamp(...args) { return window.MaweSplitCor
 export function splitLaneKeyboardInteractive(...args) { return window.MaweSplitCore.splitLaneKeyboardInteractive(...args); }
 export function splitLaneSegment(...args) { return window.MaweSplitCore.splitLaneSegment(...args); }
 export function stepSplitLaneOffset(...args) { return window.MaweSplitCore.stepSplitLaneOffset(...args); }
-export function SPLIT_LANE_LINE_TOLERANCE_PX(...args) { return window.MaweSplitCore.SPLIT_LANE_LINE_TOLERANCE_PX(...args); }
 export function splitLaneGapLines(...args) { return window.MaweSplitCore.splitLaneGapLines(...args); }
 export function verticalSplitLaneOffset(...args) { return window.MaweSplitCore.verticalSplitLaneOffset(...args); }
 export function splitKeyboardActiveLane(...args) { return window.MaweSplitCore.splitKeyboardActiveLane(...args); }

@@ -197,6 +197,7 @@ constructor(options) {
       this.secondsPerRowSelect = document.getElementById('waveform-seconds-per-row');
       this.rowHeightSelect = document.getElementById('waveform-row-height');
       this.showGroupBadgesToggle = document.getElementById('waveform-show-group-badges');
+      this.showCueTooltipToggle = document.getElementById('waveform-cue-tooltip');
       this.dragPlayheadToggle = document.getElementById('waveform-drag-playhead');
       this.spectralColorToggle = document.getElementById('waveform-spectral-color');
       this.sideSelect = document.getElementById('waveform-side');

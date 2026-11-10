@@ -1040,7 +1040,7 @@
     border-radius: var(--radius-md); box-shadow: var(--shadow-3);
   }
   .settings-panel[hidden] { display: none; }
-  .waveform-settings-panel { max-height: min(620px, calc(100vh - 16px)); }
+  .waveform-settings-panel { width: min(480px, calc(100vw - 16px)); max-height: min(620px, calc(100vh - 16px)); }
   .settings-panel-owner-open {
     position: relative; z-index: 80;
   }
@@ -2485,7 +2485,7 @@
     width: 100%; min-width: 0; box-sizing: border-box; color: var(--text-secondary); font-size: 13px;
   }
   .help-title {
-    margin: 0 4px 2px; color: var(--text-secondary); font-weight: 600; letter-spacing: .08em;
+    margin: 8px 4px 2px; color: var(--text-secondary); font-weight: 600; letter-spacing: .08em;
     text-transform: uppercase; font-size: 13px;
   }
   .help-subgroup {

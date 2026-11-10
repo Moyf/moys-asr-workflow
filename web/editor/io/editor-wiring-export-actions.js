@@ -509,8 +509,9 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       ? config.gapRemovedMediaAudioTrack : undefined;
   };
   const selectedAudioTrack = isAudio ? currentAudioTrack() : undefined;
-  const audioSelection = selectedAudioTrack === undefined ? {} : { selectedAudioTrack };
   const intervals = context.intervals.map(({ start, end }) => ({ startMs: start, endMs: end }));
+  const keepToSourceEnd = isAudio && intervals.at(-1)?.endMs === context.durationMs;
+  const audioSelection = selectedAudioTrack === undefined ? {} : { selectedAudioTrack, keepToSourceEnd, editorDurationMs: context.durationMs };
   const buildVideoSrt = !isAudio ? MaweExportSrt.captureVideoSrt?.() : null;
   let videoTimeline = null;
   const isBindingCurrent = () => MaweBoot.SERVER_CONFIG === config && canExport()
@@ -522,7 +523,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       && currentAudioTrack() === selectedAudioTrack))
     && (config.gapRemovedMediaKind === 'audio') === isAudio && config.gapRemovedVideoExportUrl === exportUrl
     && config.requestToken === requestToken && window.MaweProjectLoad?.projectBindingEpoch === projectBindingEpoch;
-  MaweHint.flashHint(tr(isAudio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。'), 'warning');
+  MaweHint.flashHint(tr(isAudio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。'), 'info');
 
   let handle;
   try {

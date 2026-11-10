@@ -12,7 +12,9 @@ import {
   summarizeChecks,
   readStatusMap,
   writeStatusMap,
+  isDashboardServing,
 } from './serve.mjs';
+import { createServer } from 'node:http';
 
 test('extractOwnerRepo 解析 https 与 ssh 形式的 origin', () => {
   assert.equal(extractOwnerRepo('https://github.com/Moyf/moys-asr-workflow.git'), 'Moyf/moys-asr-workflow');
@@ -242,9 +244,105 @@ test('GET /api/status 走 HTTP 层返回状态表', async () => {
   }
 });
 
+test('GET /api/ignored 缺失文件返回空表，POST 写入/移除往返一致', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'maw-dashboard-test-'));
+  try {
+    const ignoredFile = path.join(dir, 'ignored.json');
+    const headers = { ...HOST, 'content-type': 'application/json' };
+
+    const empty = await callApi({ ignoredFile }, { url: '/api/ignored', headers: { ...HOST } });
+    assert.equal(empty.statusCode, 200);
+    assert.deepEqual(JSON.parse(empty.body), {});
+
+    const add = await callApi(
+      { ignoredFile },
+      { method: 'POST', url: '/api/ignored', headers, body: JSON.stringify({ pr: 296, ignored: true }) },
+    );
+    assert.equal(add.statusCode, 200);
+    assert.deepEqual(JSON.parse(add.body), { '296': true });
+    assert.deepEqual(await readStatusMap(ignoredFile), { '296': true });
+
+    const remove = await callApi(
+      { ignoredFile },
+      { method: 'POST', url: '/api/ignored', headers, body: JSON.stringify({ pr: 296, ignored: false }) },
+    );
+    assert.equal(remove.statusCode, 200);
+    assert.deepEqual(JSON.parse(remove.body), {});
+    assert.deepEqual(await readStatusMap(ignoredFile), {});
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('POST /api/ignored 复用 CSRF 防线并校验参数', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'maw-dashboard-test-'));
+  try {
+    const ignoredFile = path.join(dir, 'ignored.json');
+    const base = { method: 'POST', url: '/api/ignored', headers: { ...HOST, 'content-type': 'application/json' }, body: '{"pr":1,"ignored":true}' };
+
+    const crossOrigin = await callApi(
+      { ignoredFile },
+      { ...base, headers: { ...base.headers, origin: 'https://evil.example' } },
+    );
+    assert.equal(crossOrigin.statusCode, 403);
+
+    const plainText = await callApi(
+      { ignoredFile },
+      { ...base, headers: { ...HOST, 'content-type': 'text/plain' } },
+    );
+    assert.equal(plainText.statusCode, 415);
+
+    for (const body of ['{"pr":0,"ignored":true}', '{"pr":"1","ignored":true}', '{"pr":1,"ignored":"yes"}', '{"pr":1}']) {
+      const res = await callApi({ ignoredFile }, { ...base, body });
+      assert.equal(res.statusCode, 400, `body=${body}`);
+    }
+    assert.deepEqual(await readStatusMap(ignoredFile), {});
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('GET 请求 Host 校验不通过返回 403', async () => {
   const res = await callApi({}, { url: '/api/status', headers: { host: 'evil.example:8262' } });
   assert.equal(res.statusCode, 403);
+});
+
+test('POST /api/open-changelog 固定路径调起且复用 CSRF 防线', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'maw-dashboard-test-'));
+  const opened = [];
+  const openChangelog = (p) => { opened.push(p); };
+  try {
+    const headers = { ...HOST, 'content-type': 'application/json' };
+    const ok = await callApi(
+      { openChangelog },
+      { method: 'POST', url: '/api/open-changelog', headers, body: '{}' },
+    );
+    assert.equal(ok.statusCode, 200);
+    assert.deepEqual(JSON.parse(ok.body), { ok: true });
+    assert.equal(opened.length, 1);
+    assert.match(opened[0], /CHANGELOG\.md$/);
+
+    const crossOrigin = await callApi(
+      { openChangelog },
+      { method: 'POST', url: '/api/open-changelog', headers: { ...headers, origin: 'https://evil.example' }, body: '{}' },
+    );
+    assert.equal(crossOrigin.statusCode, 403);
+    const plainText = await callApi(
+      { openChangelog },
+      { method: 'POST', url: '/api/open-changelog', headers: { ...HOST, 'content-type': 'text/plain' }, body: '{}' },
+    );
+    assert.equal(plainText.statusCode, 415);
+    assert.equal(opened.length, 1, '防线拦截时不得调起');
+
+    const throwing = await callApi(
+      { openChangelog: () => { throw new Error('spawn failed'); } },
+      { method: 'POST', url: '/api/open-changelog', headers, body: '{}' },
+    );
+    assert.equal(throwing.statusCode, 500);
+    assert.match(JSON.parse(throwing.body).error, /调起系统编辑器失败/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('changelog-editor 静态响应使用宽松 CSP，面板自身用严格 CSP', async () => {
@@ -255,4 +353,50 @@ test('changelog-editor 静态响应使用宽松 CSP，面板自身用严格 CSP'
   assert.equal(panel.statusCode, 200);
   assert.doesNotMatch(panel.headers['Content-Security-Policy'], /unsafe-inline/);
   assert.match(panel.headers['Content-Security-Policy'], /script-src 'self'/);
+});
+
+/** 在临时端口启动一个只回固定内容的 HTTP 服务，返回 { port, close }。 */
+async function listenOnce(handler) {
+  const server = createServer(handler);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const close = () => new Promise((resolve) => server.close(resolve));
+  return { port, close };
+}
+
+test('isDashboardServing 识别本工具页面', async () => {
+  const { port, close } = await listenOnce((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<title>MAW Dev Dashboard</title>');
+  });
+  try {
+    assert.equal(await isDashboardServing(port), true);
+  } finally {
+    await close();
+  }
+});
+
+test('isDashboardServing 排除其他程序、非 200 与未监听端口', async () => {
+  const other = await listenOnce((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end('<title>Some Other App</title>');
+  });
+  try {
+    assert.equal(await isDashboardServing(other.port), false);
+  } finally {
+    await other.close();
+  }
+
+  const notFound = await listenOnce((req, res) => {
+    res.writeHead(404);
+    res.end('MAW Dev Dashboard');
+  });
+  try {
+    assert.equal(await isDashboardServing(notFound.port), false);
+  } finally {
+    await notFound.close();
+  }
+
+  // 用一个大概率空闲的端口验证“连接失败按未运行处理”。
+  assert.equal(await isDashboardServing(9), false);
 });

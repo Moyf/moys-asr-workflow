@@ -1527,8 +1527,10 @@
 .waveform-basic .waveform-row-shell .waveform-row { inset: 48px 0 auto; width: 100%; }
 .waveform-filmstrip { display: block; position: absolute; top: 0; left: 1px; width: calc(100% - 2px); height: 48px; cursor: crosshair; border-radius: var(--radius-sm); }
 
-#waveform-thumbnail-setting { margin: 8px 0; flex-wrap: wrap; }
-#waveform-thumbnail-decode-setting { margin: 8px 0; padding-left: 22px; }
+#waveform-thumbnail-setting { display: flex; flex: 0 0 100%; min-width: 0; align-items: center; overflow-x: auto; margin: 8px 0; }
+.waveform-settings-section .waveform-inline-checkbox { margin-left: 16px; }
+.waveform-settings-section .waveform-cue-tooltip-setting { flex: 0 0 100%; margin: 8px 0; }
+#waveform-thumbnail-decode-setting[hidden] { display: none; }
 /* 状态文字仅保留给辅助技术：select 的 tooltip 已展示同样内容（
    updateThumbnailStatus 会同步写父级 title），可见行冗余移除。
    不用 display:none——该 span 挂 aria-live 且被 select 与补间开关

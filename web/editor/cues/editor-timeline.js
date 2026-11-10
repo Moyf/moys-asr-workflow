@@ -590,15 +590,11 @@ export function normalizeTimelineTimebase(...args) { return window.MaweTimeline.
 export function normalizeTimelineFps(...args) { return window.MaweTimeline.normalizeTimelineFps(...args); }
 export function normalizeTimelineTimecodeSeparator(...args) { return window.MaweTimeline.normalizeTimelineTimecodeSeparator(...args); }
 export function normalizeMediaMetadata(...args) { return window.MaweTimeline.normalizeMediaMetadata(...args); }
-export function DEFAULT_TIMELINE_FPS(...args) { return window.MaweTimeline.DEFAULT_TIMELINE_FPS(...args); }
 export function frameNumberFromMilliseconds(...args) { return window.MaweTimeline.frameNumberFromMilliseconds(...args); }
 export function millisecondsFromFrameNumber(...args) { return window.MaweTimeline.millisecondsFromFrameNumber(...args); }
 export function formatFrameTimecode(...args) { return window.MaweTimeline.formatFrameTimecode(...args); }
 export function formatTimelineTimecode(...args) { return window.MaweTimeline.formatTimelineTimecode(...args); }
 export function parseFrameTimecode(...args) { return window.MaweTimeline.parseFrameTimecode(...args); }
-export function MIN_TIMELINE_FPS(...args) { return window.MaweTimeline.MIN_TIMELINE_FPS(...args); }
-export function MAX_TIMELINE_FPS(...args) { return window.MaweTimeline.MAX_TIMELINE_FPS(...args); }
-export function TIMELINE_ROUND_MS(...args) { return window.MaweTimeline.TIMELINE_ROUND_MS(...args); }
 export function roundTimelineMilliseconds(...args) { return window.MaweTimeline.roundTimelineMilliseconds(...args); }
 export function hasValidFramePair(...args) { return window.MaweTimeline.hasValidFramePair(...args); }
 export function syncTimeRangeObjectTimebase(...args) { return window.MaweTimeline.syncTimeRangeObjectTimebase(...args); }

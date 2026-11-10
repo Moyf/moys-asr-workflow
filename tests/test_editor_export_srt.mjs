@@ -30,6 +30,20 @@ function fixture(segments, overlaySegments = [], alignFirstStart = false) {
   return { saves, api: context.window.MaweExportSrt, context };
 }
 
+test('gap export uses loaded media duration rather than the rounded waveform cache tail', () => {
+  const { api, context } = fixture([]);
+  context.MaweCoreState = { player: { duration: 1359.893333 }, waveformEditor: { durationMs: 1359900 } };
+  const result = api.gapRemovedExportContext();
+  assert.equal(result.durationMs, 1359893);
+  assert.equal(result.intervals.at(-1).end, 1359893);
+  context.MaweCoreState.player.duration = NaN;
+  assert.equal(api.gapRemovedExportContext().durationMs, 1359900);
+  context.MaweBoot.SERVER_CONFIG = { gapRemovedMediaKind: 'audio' };
+  context.MaweBoot.DATA.media_metadata = { audio_tracks: [{}, {}] };
+  context.MaweCoreState.player.duration = 2000;
+  assert.equal(api.gapRemovedExportContext().durationMs, 1359900);
+});
+
 test('color gap-removed SRT filters the first removed cue before choosing the shared zero-start index', async () => {
   const { saves, api } = fixture([
     { start: 2200, end: 2800, text: 'removed first', color: { name: 'red' } },

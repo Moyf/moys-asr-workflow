@@ -1,8 +1,8 @@
 # 日志索引
 
-<!-- log-release-baseline: 1.10.0-beta.2 -->
+<!-- log-release-baseline: 1.11.0 -->
 
-新共享日志放在 `docs/logs/release1.10.0-beta.2/<YYMMDD_<主题>/`，表示 **1.10.0-beta.2 之后的开发**。按根规则使用六位日期与可读主题组织同批记录；提交时间与演进通过 Git 历史追溯。目录不是声明这些记录已随该版本发布。
+新共享日志放在 `docs/logs/release1.11.0/<YYMMDD_<主题>/`，表示 **1.11.0 之后的开发**。按根规则使用六位日期与可读主题组织同批记录；提交时间与演进通过 Git 历史追溯。目录不是声明这些记录已随该版本发布。
 
 此表是可选的查阅入口，漏登记只提示；关键指南、方案和工程文档仍必须登记[主索引](../INDEX.md)。当前仍有参考价值或未决事项的记录可精选进 [CURRENT](CURRENT.md)。
 
@@ -14,7 +14,10 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.0 之后 | 2026-11-10 | [PR 343 合并审阅](release1.11.0/261110_PR343审阅/REVIEW_FINDINGS.md) | 字幕域 ESM 设计与组合回归、main 失败对照、CHANGELOG 收敛 |
 | 1.10.0-beta.2 之后 | 2026-11-09 | [G08-b 播放头与 PR 反馈](release1.10.0-beta.2/261109_G08B播放头与PR反馈/TEST_FEEDBACK_G08B.md) / [独立自审](release1.10.0-beta.2/261109_G08B播放头与PR反馈/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261109_G08B播放头与PR反馈/G08B反馈.checklist.md) | 旧线清理、正确 PR 分支 rebase、字词转换误选修复；播放头归因为跳转目标设置 |
+| 1.10.0-beta.2 之后 | 2026-11-06 | [便携模式回归分析](release1.10.0-beta.2/261106_便携模式回归弃维护/回归分析.md) | 核查 #336 与 #339 的提交及存储路径；记录 file:// 测试弃维护边界、CI 证据限制与本地复验 |
+| 1.10.0-beta.2 之后 | 2026-11-04 | [音频导出与提示反馈](release1.10.0-beta.2/261104_音频导出与提示/TEST_FEEDBACK_音频导出与提示.md) / [独立复核](release1.10.0-beta.2/261104_音频导出与提示/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261104_音频导出与提示/音频导出与提示.checklist.md) | 波形缓存尾部取整导致音频导出越界；调整导出时长与提示颜色，待人工界面核验 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 导出界面改进](release1.10.0-beta.2/261108_FCP7WebP/EXPORT_UI_IMPROVEMENTS.md) / [复核](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_UI_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261108_FCP7WebP/FCP7导出改进.checklist.md) | 进度、尺寸与弹窗布局；图片导出路径选择尚未实现 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [PNG/WebP 格式反馈](release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md) / [可选目标软件核验](release1.10.0-beta.2/261108_FCP7WebP/PNG-WebP.checklist.md) | PNG 默认保留、显式选择 WebP、FFmpeg 检测去重并移除图片字幕 Pillow 运行时；三端 fork CI 另列结果 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 WebP 与通用入口](release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md) / [独立复审](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_FINDINGS.md) | FFmpeg 双底恢复、无损 WebP 与 PR / VEGAS 通用引导；目标软件 WebP 导入另列边界 |

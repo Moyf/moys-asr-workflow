@@ -60,6 +60,9 @@ MaweDom.splitKeySel.addEventListener('change', () => {
 MaweDom.splitUseWordTimestampsToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ splitUseWordTimestamps: MaweDom.splitUseWordTimestampsToggle.checked });
 });
+document.getElementById('quick-edit-split-focus-next')?.addEventListener('change', (event) => {
+  MaweSettings.updateEditorSettings({ quickEditSplitFocusNext: event.currentTarget.checked });
+});
 MaweDom.multiSubtitleSplitAutoSubmit?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ splitAutoSubmit: MaweDom.multiSubtitleSplitAutoSubmit.checked });
 });

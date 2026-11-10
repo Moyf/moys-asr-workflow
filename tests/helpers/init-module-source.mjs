@@ -24,7 +24,7 @@ export function initModuleSource(relativeWebPath) {
     const targetSrc = fs.readFileSync(
       path.resolve(webDir, path.dirname(relativeWebPath), `${target}.js`), 'utf8');
     for (const raw of names.split(',')) {
-      const name = raw.trim();
+      const [name, localName = name] = raw.trim().split(/\s+as\s+/);
       if (!name) continue;
       // 转发导出行格式固定（脚本生成），用行前缀 + 回读门面名的字符串比对。
       const prefix = `export function ${name}(...args) { return window.`;
@@ -32,9 +32,9 @@ export function initModuleSource(relativeWebPath) {
       // prefix 里的正则元字符（括号、点）先转义再拼接。
       const esc = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const facadeMatch = line ? line.match(new RegExp('^' + esc + '(Mawe\\w+)\\.')) : null;
-      if (facadeMatch) shims.push(`var ${name} = (...args) => (globalThis.${facadeMatch[1]} ?? window.${facadeMatch[1]}).${name}(...args);`);
+      if (facadeMatch) shims.push(`var ${localName} = (...args) => (globalThis.${facadeMatch[1]} ?? window.${facadeMatch[1]}).${name}(...args);`);
       else if (target !== 'overlay-track') {
-        shims.push(`var ${name} = () => { throw new Error('No facade shim for ${name} (from ${target}.js)'); };`);
+        shims.push(`var ${localName} = () => { throw new Error('No facade shim for ${name} (from ${target}.js)'); };`);
       }
       // 纯模块（overlay-track）不生成垫片：测试桩环境按 classic 时代语义
       // 直接提供同名全局（context 直查），生产环境走静态 import。

@@ -1001,9 +1001,6 @@ export function initMaweTextProcess() {
 })(window);
 }
 
-export function wrapCharsModal(...args) { return window.MaweTextProcess.wrapCharsModal(...args); }
-export function wrapCharsLeftInput(...args) { return window.MaweTextProcess.wrapCharsLeftInput(...args); }
-export function wrapCharsRightInput(...args) { return window.MaweTextProcess.wrapCharsRightInput(...args); }
 export function openTextProcessModal(...args) { return window.MaweTextProcess.openTextProcessModal(...args); }
 export function applyWrapChars(...args) { return window.MaweTextProcess.applyWrapChars(...args); }
 export function openWrapCharsModal(...args) { return window.MaweTextProcess.openWrapCharsModal(...args); }

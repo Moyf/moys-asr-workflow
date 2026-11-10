@@ -364,8 +364,6 @@ export function initMaweCueListAnchor() {
 })(typeof window !== 'undefined' ? window : globalThis);
 }
 
-export function cueListScroll(...args) { return window.MaweCueListAnchor.cueListScroll(...args); }
-export function cueListFollowButton(...args) { return window.MaweCueListAnchor.cueListFollowButton(...args); }
 export function setCueListFollowing(...args) { return window.MaweCueListAnchor.setCueListFollowing(...args); }
 export function interruptCueListFollowing(...args) { return window.MaweCueListAnchor.interruptCueListFollowing(...args); }
 export function setCueListIdentity(...args) { return window.MaweCueListAnchor.setCueListIdentity(...args); }

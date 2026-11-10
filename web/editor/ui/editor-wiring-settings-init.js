@@ -116,6 +116,8 @@ document.addEventListener('mawe:languagechange', () => {
 
 MaweDom.splitKeySel.value = MaweSettings.EDITOR_SETTINGS.splitKey;
 if (MaweDom.splitUseWordTimestampsToggle) MaweDom.splitUseWordTimestampsToggle.checked = MaweSettings.EDITOR_SETTINGS.splitUseWordTimestamps;
+const quickEditSplitFocusNextToggle = document.getElementById('quick-edit-split-focus-next');
+if (quickEditSplitFocusNextToggle) quickEditSplitFocusNextToggle.checked = MaweSettings.EDITOR_SETTINGS.quickEditSplitFocusNext;
 if (MaweDom.multiSubtitleSplitAutoSubmit) MaweDom.multiSubtitleSplitAutoSubmit.checked = MaweSettings.EDITOR_SETTINGS.splitAutoSubmit;
 MaweDisplaySettings.applyPlatformKeyLabels();
 MaweSplitMode.refreshSplitKeyHelp();
@@ -200,7 +202,7 @@ MaweDom.multiSubtitleToggle?.addEventListener('change', () => {
     if (next) MaweMultiSubtitleCore.ensureEmptyExtensionTrack(multi);
     multi._dirty = true;
     // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
-    command.commit({ cueList: true, waveform: 'full' });
+    command.commit({ cueList: true, waveform: 'full', preview: 'refresh' });
     // 先启用空副轨；快速导入询问只决定是否立即选择 SRT。
     if (!promptImportSecondSrt || !confirm(MaweMultiSubtitleCore.MULTI_SUBTITLE_IMPORT_PROMPT)) return;
     MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;

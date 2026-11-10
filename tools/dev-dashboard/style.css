@@ -178,6 +178,8 @@ button:hover { border-color: var(--accent); }
 .card.dragging { opacity: 0.5; }
 .card.no-milestone { border-left: 3px solid var(--warn); }
 .card.is-pass { border-left: 3px solid var(--ok); }
+.card.is-ignored { opacity: .55; }
+.card.is-ignored .card-title { text-decoration: line-through; }
 
 .card-title {
   font-weight: 600;
@@ -208,6 +210,9 @@ button:hover { border-color: var(--accent); }
 .pill.draft { color: var(--hold); background: color-mix(in srgb, var(--hold) 15%, transparent); }
 .pill.due-soon { color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }
 .pill.due-over { color: var(--bad); background: color-mix(in srgb, var(--bad) 15%, transparent); }
+.pill.ignored { color: var(--muted); border-style: dashed; }
+
+#toggle-ignored.active { color: #fff; background: var(--accent); border-color: var(--accent); }
 
 .ci-dot {
   display: inline-block;
