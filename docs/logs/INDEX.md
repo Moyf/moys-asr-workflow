@@ -15,6 +15,10 @@
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
 | 1.10.0-beta.2 之后 | 2026-11-10 | [本地运行时非 ASCII 路径修复自审](release1.10.0-beta.2/261110_运行时非ASCII路径/REVIEW_FINDINGS.md) | Windows 中文用户名下 nagisa/DyNet 打不开模型文件；运行时根目录 8.3 短路径别名化 + 公共目录 fallback + verify 错误增强；2 major（Windows CI 测试红、override 多 Runtime 冲突）与 1 minor 已修复 |
+| 1.11.0 之后 | 2026-11-10 | [PR 343 合并审阅](release1.11.0/261110_PR343审阅/REVIEW_FINDINGS.md) | 字幕域 ESM 设计与组合回归、main 失败对照、CHANGELOG 收敛 |
+| 1.10.0-beta.2 之后 | 2026-11-09 | [G08-b 播放头与 PR 反馈](release1.10.0-beta.2/261109_G08B播放头与PR反馈/TEST_FEEDBACK_G08B.md) / [独立自审](release1.10.0-beta.2/261109_G08B播放头与PR反馈/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261109_G08B播放头与PR反馈/G08B反馈.checklist.md) | 旧线清理、正确 PR 分支 rebase、字词转换误选修复；播放头归因为跳转目标设置 |
+| 1.10.0-beta.2 之后 | 2026-11-06 | [便携模式回归分析](release1.10.0-beta.2/261106_便携模式回归弃维护/回归分析.md) | 核查 #336 与 #339 的提交及存储路径；记录 file:// 测试弃维护边界、CI 证据限制与本地复验 |
+| 1.10.0-beta.2 之后 | 2026-11-04 | [音频导出与提示反馈](release1.10.0-beta.2/261104_音频导出与提示/TEST_FEEDBACK_音频导出与提示.md) / [独立复核](release1.10.0-beta.2/261104_音频导出与提示/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261104_音频导出与提示/音频导出与提示.checklist.md) | 波形缓存尾部取整导致音频导出越界；调整导出时长与提示颜色，待人工界面核验 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 导出界面改进](release1.10.0-beta.2/261108_FCP7WebP/EXPORT_UI_IMPROVEMENTS.md) / [复核](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_UI_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261108_FCP7WebP/FCP7导出改进.checklist.md) | 进度、尺寸与弹窗布局；图片导出路径选择尚未实现 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [PNG/WebP 格式反馈](release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md) / [可选目标软件核验](release1.10.0-beta.2/261108_FCP7WebP/PNG-WebP.checklist.md) | PNG 默认保留、显式选择 WebP、FFmpeg 检测去重并移除图片字幕 Pillow 运行时；三端 fork CI 另列结果 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 WebP 与通用入口](release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md) / [独立复审](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_FINDINGS.md) | FFmpeg 双底恢复、无损 WebP 与 PR / VEGAS 通用引导；目标软件 WebP 导入另列边界 |
@@ -22,7 +26,11 @@
 | 1.10.0-beta.2 之后 | 2026-11-07 | [烧录导出 network 错误反馈](release1.10.0-beta.2/261107_烧录导出network错误/TEST_FEEDBACK_烧录导出.md) / [提交前自审](release1.10.0-beta.2/261107_烧录导出network错误/REVIEW_FINDINGS.md) | 条目1「network error」= 下载连接 2s socket 超时被慢盘写停顿触发断流（Chromium 原文透传）；条目2 ffmpeg stderr 无任何出口。修复：写超时提为常量 10s 且 close() 预算跟随、友好文案+i18n、failed 态 console.error errorDetails、服务端 stdout 失败诊断；自动化全绿，独立审查无 blocker/major，待人工验收 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [便携模式回归分析](release1.10.0-beta.2/261106_便携模式回归弃维护/回归分析.md) | 核查 #336 与 #339 的提交及存储路径；记录 file:// 测试弃维护边界、CI 证据限制与本地复验 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [FCP 7 图片字幕实施与验证](release1.10.0-beta.2/261106_FCP7图片字幕/IMPLEMENTATION.md) / [独立审查](release1.10.0-beta.2/261106_FCP7图片字幕/REVIEW_FINDINGS.md) / [目标应用核验](release1.10.0-beta.2/261106_FCP7图片字幕/FCP7图片字幕.checklist.md) | 动静分段、透明渲染、多轨 XML；VEGAS 14 原生导入与像素验证通过，缺图文件选择窗口待人工确认 |
+<<<<<<< HEAD
 | 1.10.0-beta.2 之后 | 2026-11-04 | [音频导出与提示反馈](release1.10.0-beta.2/261104_音频导出与提示/TEST_FEEDBACK_音频导出与提示.md) / [独立复核](release1.10.0-beta.2/261104_音频导出与提示/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261104_音频导出与提示/音频导出与提示.checklist.md) | 波形缓存尾部取整导致音频导出越界；调整导出时长与提示颜色，待人工界面核验 |
+=======
+| 1.10.0-beta.2 之后 | 2026-11-06 | [G08-b 重放与验证](release1.10.0-beta.2/261106_G08字幕域ESM/G08_B_REBASE.md) / [独立自审](release1.10.0-beta.2/261106_G08字幕域ESM/REVIEW_FINDINGS.md) / [人工核验清单](release1.10.0-beta.2/261106_G08字幕域ESM/G08字幕域ESM.checklist.md) | G08-a 合入后的重放、文本预设消费边补齐与分层验证 |
+>>>>>>> origin/main
 | 1.10.0-beta.2 之后 | 2026-11-05 | [文本处理弹窗反馈](release1.10.0-beta.2/261105_文本处理弹窗/TEST_FEEDBACK_文本处理弹窗.md) / [独立复核](release1.10.0-beta.2/261105_文本处理弹窗/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_文本处理弹窗/文本处理弹窗.checklist.md) | 双列预览、预设导入确认、工程预填和 MASS 分组 |
 | 1.10.0-beta.2 之后 | 2026-11-05 | [编辑器处理配置复审](release1.10.0-beta.2/261105_编辑器处理配置/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_编辑器处理配置/编辑器处理配置.checklist.md) | 有序文本处理、用户默认与工程覆盖、旧库迁移 |
 | 1.10.0-beta.2 之后 | 2026-11-04 | [波形提取 stderr 死锁](release1.10.0-beta.2/261104_波形提取stderr死锁/排查记录.md) | 转写卡在「正在校验和修复时间码」实为波形提取把 ffmpeg stderr 留在管道里，4 KiB 缓冲写满后与 stdout 读取互等；stderr 改落临时文件，含矩阵探针与打包版端到端复验 |
