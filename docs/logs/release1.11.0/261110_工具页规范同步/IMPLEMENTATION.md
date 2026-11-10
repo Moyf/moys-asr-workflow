@@ -130,6 +130,24 @@ OCR二次独立复核保留4major：模板变体、POSIX组回收、扫描取消
 
 新鲜度检查无nodeModules要求，vendor/license保持官方hash；MPL许可证原文尾空格仅在精确路径给gitattributes例外。历史6条日志索引提示保留，无新断链/结构错误。POSIX2项真实组回收本机跳过与1项既有平台跳过不能冒充通过；未跑全仓/远端CI、真实AI/模型/文件授权写盘、前台触屏和长片耗时/磁盘峰值，PR如实说明。
 
+## 提交与 PR
+
+- `af435efb`：工具页/说明/精简及OCR链路补齐；`9163dc73`：合并最新main并记录组合验证。
+- 已普通推送到origin `feat/ocr-extract-hotwords`，未force；[PR 359](https://github.com/Moyf/moys-asr-workflow/pull/359)创建，base main，回读title/body/head确认正确且无损，创建时OPEN/MERGEABLE。
+- 没有tag/Release/合并PR。CI尚未形成最终结论，人工清单pending。后续CI或人工反馈按真实新证据更新，不把创建PR称发布或验收完成。
+
+## 首轮 CI 反馈（修复中）
+
+PR创建后Ruff、ubuntu/windows调试文档、CLA通过；editor和Windows预览构建在安装阶段失败，均为pnpm minimumReleaseAge策略拒绝marked18.2.0（发布时间2026-11-09、未过24小时）。这不是测试业务失败，也不能忽略：回落固定已过冷却期的marked18.1.3，保持供应链策略不放宽，vendor/hash/说明同步后复验与推送。CI原失败见PR检查，不冒充远端通过。
+
+失败CI对应head明确为`9163dc73`，原run已结束failure；新修复提交将触发新run，不能把旧head结果混为当前代码验证。
+
+Marked18.1.3回落已实现并确认官方发布于2026-11-02。package/lock/vendor/源入口/测试路径/NOTICE已同步，两份旧文件经字节核对后回收，不删除其他资源。冻结安装通过（`.artifacts/checks/20261110T134310Z-a18803dd/result.json`），11MarkdownNode/10Markdown浏览器和10工具源码契约通过（`20261110T134331Z-055ef285` / `20261110T134359Z-273b5ad7` / `20261110T134502Z-37786da0`）。官方UMD哈希与许可证校验通过，渲染器API无需修改；独立复核和推送后的新CI待确认。
+
+父合并文档最终更新后，21项Node契约/Markdown通过，6资源新鲜度与文档通过（`20261110T134927Z-36af4bd2` / `20261110T134927Z-42ae461d` / `20261110T134927Z-9e55c4f3`）；路径/diff检查通过，等待独立版本修正复核后提交，不复跑源码未变的OCR/精简层。
+
+独立版本修正放行，11Node/最终6资源自行复验，完整tarball及license hash确认；未改变pnpm安全门槛。frozen安装是本机已有缓存且ignore-scripts，只证明锁可接受，不声称冷安装/postinstall或新CI完成。现状账本同步18.1.3，两份新vendor将纳入提交。
+
 提交准备的构建检查发现本地editor/launcher产物过期，已只重建ignored bundle，typecheck通过（`20261110T131128Z-2847b9f5`）；源码 `web/` 无改动，也未生成 blank-editor。最终合并最新main后还会重新构建/检查，不把此轮作为合并后证据。
 
 当前HEAD装配/共享编辑器utils/waveform定向420项通过（`.artifacts/checks/20261110T131239Z-d080dad4/result.json`），editor/launcher新鲜度与18份发布正文检查通过。此为公共层回归，不替代当前OCR与主分支合并后的组合验证。

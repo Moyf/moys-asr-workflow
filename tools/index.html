@@ -27,7 +27,7 @@ code{display:block;max-width:100%;overflow-x:auto;font:12px/1.6 var(--font-mono)
 <header><div class="wrap"><div class="head"><div><h1>MAW 工具功能与状态</h1><p>按用途查看现有能力、入口和维护边界。</p></div><button class="tool-theme" data-tool-theme type="button">◐ 主题</button></div><div id="stats" class="stats"></div><div class="filters"><input id="search" type="search" aria-label="搜索工具" placeholder="搜索名称、能力或用途"><select id="status" aria-label="工具维护状态"><option value="all">全部状态</option><option value="maintained">持续维护</option><option value="experimental">实验验证</option><option value="paused">暂停维护</option><option value="retired">已过期，不再维护</option><option value="deferred">暂不处理</option><option value="cli">CLI 专用</option></select><button id="reset" type="button">重置筛选</button></div><p class="note">“持续维护”表示维护范围，不表示全部功能已人工验收。文案重写已过期，不再维护；波形工具台暂停维护，Filmstrip 暂不处理。</p></div></header>
 <main class="wrap"><div id="tools" class="grid"></div><footer>清单源：<a href="catalog.js">catalog.js</a> · <button type="button" data-tool-doc="README.md">工具说明</button> · <button type="button" data-tool-doc="TOOL_PAGE_GUIDE.md">设计与交互规范</button><p>使用说明默认页内阅读，弹窗保留打开源文件；未收录文档链接会明确提示打开源文件。新增工具或调整入口、能力、维护状态时，必须同步清单和工具 README；生成产物不作为固定源码入口。</p></footer></main>
 <script src="catalog.js"></script>
-<script src="shared/vendor/marked-18.2.0/marked.umd.js"></script>
+<script src="shared/vendor/marked-18.1.3/marked.umd.js"></script>
 <script src="shared/vendor/dompurify-3.4.17/purify.min.js"></script>
 <script src="tool-docs-data.js"></script>
 <script src="shared/markdown.js"></script>

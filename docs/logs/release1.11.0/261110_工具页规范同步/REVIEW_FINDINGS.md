@@ -120,3 +120,11 @@ R4/R5实现交付97Python/7离线浏览器通过（`20261110T131611Z-d0cf2f34`�
 最终独立OCR放行证据：88项CLI/事务/AI/导出（`20261110T132001Z-cccac0b6`）、110通过/2原生POSIX跳过的扫描/进程/packaging（`20261110T132139Z-f69503e0`）、7浏览器（`20261110T132001Z-ad77be4e`）、R4/R5恢复/严格缓存探针（`20261110T132108Z-cca969f5`）与R1/R2/R3场景（`20261110T131812Z-0beef286`）。旧回归负对照已回读，源码未再改时不重复同层。真实OCR/AI/视频/长片磁盘与原生Linux/macOS/硬退出OS集成仍未测，接受轻量stat身份及历史帧保留边界。
 
 许可证nit（接受）：DOMPurify官方LICENSE-MPL第38行自带尾空格。保持上游字节及SHA256校验不变，仅`.gitattributes`给该精确许可证路径关闭blank-at-eol检查，不放宽任何项目源码的换行/空白规则。
+
+## 首轮 CI 依赖安装问题
+
+PR359的editor/Windows预览因初选Marked18.2.0尚未过24h minimumReleaseAge冷却期失败（run42826159841 / 42826159992）。这说明初选时未充分核对仓库安装策略，不能以本地缓存安装成功推断CI新装通过。不添加供应链豁免，回落固定18.1.3官方分发，重新校验license/hash/语义与离线资源；处理后再推送。未跑到测试层的失败不冒充功能回归，也不当作无关忽略。
+
+回落版本18.1.3已通过frozen install、11Node/10浏览器，完整官方许可证字节不变；只移回收站旧18.2.0的两份本任务vendor文件。独立版本修正复核进行中，不沿用旧headCI结果放行。
+
+版本修正独立放行0major/blocker：registry及独立tarball完整字节/integrity校验一致，原renderer无需API改动；11Node与最终6资源新鲜度自行复验通过（`20261110T134918Z-85b00dba` / `20261110T135029Z-1d797923`）。本机frozen install为缓存已就绪/ignore-scripts，不宣称冷安装或postinstall全通过；新head远端CI另待结果。本地enginewarning不修改声明，现状账本已同步18.1.3，历史失败版本保留。

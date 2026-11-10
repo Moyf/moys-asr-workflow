@@ -8,8 +8,8 @@ import {createHash} from 'node:crypto';
 export const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const extraDocuments = Object.freeze(['README.md', 'TOOL_PAGE_GUIDE.md', 'AGENTS.md', 'shared/README.md']);
 export const vendors = Object.freeze([
-  {name:'marked', version:'18.2.0', files:[
-    ['lib/marked.umd.js', 'marked.umd.js', '392f4df89533b50f1dadff3f6dc0952350bd39c9f17def50a0374ef47d6147ef'],
+  {name:'marked', version:'18.1.3', files:[
+    ['lib/marked.umd.js', 'marked.umd.js', 'c34a221dc89e91833a88822e7717b8a0cf27118f8c9a8779dffb48a6be31f97a'],
     ['LICENSE', 'LICENSE', '8e3a3f82f59a60958f56ca08f445647c32a4733dc7ca6c2c46f6eb898471ab9c'],
   ]},
   {name:'dompurify', version:'3.4.17', files:[

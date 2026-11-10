@@ -9,7 +9,7 @@ import {buildToolDocs, collectDocuments, documentationAsset, vendors, projectRoo
 const baseUrl = 'file:///repo/tools/example/README.md';
 async function rendererHarness() {
   const window = {};
-  runInNewContext(await readFile('tools/shared/vendor/marked-18.2.0/marked.umd.js', 'utf8'), {window, globalThis:window});
+  runInNewContext(await readFile('tools/shared/vendor/marked-18.1.3/marked.umd.js', 'utf8'), {window, globalThis:window});
   // Node checks Marked output and sanitizer delegation only. Actual DOMPurify safety is browser-tested.
   let lastOptions;
   window.DOMPurify = {sanitize(html, options) {lastOptions = options; return html;}};
@@ -151,7 +151,7 @@ test('generated text is frozen data; document edits fail freshness and --write r
   await assert.rejects(buildToolDocs({root:fixture}), /Stale tool documentation assets/);
   await buildToolDocs({root:fixture, write:true});
   await buildToolDocs({root:fixture});
-  const vendorPath = resolve(fixture, 'tools/shared/vendor/marked-18.2.0/marked.umd.js');
+  const vendorPath = resolve(fixture, 'tools/shared/vendor/marked-18.1.3/marked.umd.js');
   const official = await readFile(vendorPath);
   await writeFile(vendorPath, 'not official bytes');
   await assert.rejects(buildToolDocs({root:fixture}), /Unexpected official vendor bytes/);

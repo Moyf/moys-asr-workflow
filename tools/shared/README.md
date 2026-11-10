@@ -11,7 +11,7 @@
 三个独立接口，均为普通本地脚本，不需要服务器、CDN 或 `file://` fetch：
 
 ```js
-// 先加载 vendor/marked-18.2.0/marked.umd.js、vendor/dompurify-3.4.17/purify.min.js。
+// 先加载 vendor/marked-18.1.3/marked.umd.js、vendor/dompurify-3.4.17/purify.min.js。
 const fragment = MAWMarkdown.render(markdown, {baseUrl: documentUrl}); // 已净化的 DocumentFragment
 // 远端 PR 正文等不可信上下文可选择：只保留明确绝对网址，且不提供图片入口。
 const strictFragment = MAWMarkdown.render(markdown, {baseUrl:documentUrl, absoluteOnly:true, noImages:true});
@@ -64,8 +64,10 @@ native/fallback 混用与乱序关闭，只让顶层获得焦点；最后关闭�
 
 ## 固定本地依赖与可复现生成
 
-1. 开发依赖固定为 `marked@18.2.0`（MIT）、`dompurify@3.4.17`（MPL-2.0 OR Apache-2.0），
-   版本已由 npm registry 确认。运行 `pnpm install --frozen-lockfile` 准备对应包。
+1. 开发依赖固定为 `marked@18.1.3`（MIT）、`dompurify@3.4.17`（MPL-2.0 OR Apache-2.0），
+   版本已由 npm registry 确认。Marked 18.1.3 发布于 2026-11-02 18:00 UTC，选择已过 24 小时
+   冷却期的版本，不降低 pnpm 的 `minimumReleaseAge` 或增加豁免。运行
+   `pnpm install --frozen-lockfile` 准备对应包。
 2. `node scripts/build-tool-docs.mjs --write` 从已安装包逐字节复制官方 UMD 分发文件与完整许可证
    到 `vendor/`，不重新压缩、不修改上游内容。`--check` 只用标准 Node 与跟踪文件，检查文档
    新鲜度及固定 SHA256，不需要 pnpm / node_modules；未安装包时 `--write` 可保留通过校验的
@@ -76,5 +78,5 @@ native/fallback 混用与乱序关闭，只让顶层获得焦点；最后关闭�
 4. `postinstall` 自动执行 `--write`。文档或依赖变化后重生成，并运行 `pnpm run check:tool-docs`。
    vendor 与文档数据是本仓维护工具的受控生成源资产，需要入库；不加入生产包。
 
-许可证原文：`vendor/marked-18.2.0/LICENSE`、`vendor/dompurify-3.4.17/LICENSE`、
+许可证原文：`vendor/marked-18.1.3/LICENSE`、`vendor/dompurify-3.4.17/LICENSE`、
 `vendor/dompurify-3.4.17/LICENSE-MPL`。项目 NOTICE 同时登记依赖。
