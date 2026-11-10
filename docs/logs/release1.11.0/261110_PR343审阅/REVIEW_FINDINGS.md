@@ -4,7 +4,7 @@
 
 - 请求：审阅实现与设计，小问题直接修复；无未处置重大问题时 Squash & Merge；复杂问题在 PR 反馈。
 - PR 原 HEAD：`52c087a0`（`esm/g08-cues-b`）；共同基线 `ce55c207`；本轮 main 对照 `cedb5bfd`。
-- 当前验证对象：PR HEAD 与 main 的本地合并组合；仅 CHANGELOG 与日志索引冲突，产品代码自动合并。尚未推送或合并 PR。
+- 当前验证对象：PR HEAD 与 main 的合并组合；仅 CHANGELOG 与日志索引冲突，产品代码自动合并。修复已推送为 `3b36e6bc`；PR 尚未合并，本次 CI 浏览器 1 项失败待处理。
 - 两位独立审查者分别核对字幕核心装配与转换/预设/测试，并复审本轮小修复；无未处置 blocker / major，已有失败通过三基线对照解除本 PR 归因门槛。
 
 ## 发现与处置
@@ -18,6 +18,7 @@
 | R5 | minor / 已修复 | VM helper 将 `clearSelection as clearCueSelection` 当成变量名，生成非法 JS。分别处理原名/本地别名：原名查门面成员，本地名声明 shim，保留延迟解析。3 项新测试旧逻辑全失败，修后通过，覆盖全部 cue init 编译、两个门面位置与动态替换。 |
 | R6 | nit / 已修复 | 更新开发概览为 151 个清单条目、其中 92 ESM / 59 classic；补充浏览器单例过渡和函数/值导出边界。构建摘要的 151 sources 是清单条目数，不是额外 151 个 classic。 |
 | R7 | nit / 接受 | 机械迁移的重复头注释保留，不扩大无行为收益 diff。静态 import 仍转发浏览器单例，不宣称已完成无门面/可多实例架构，也没有性能基准证明用户操作提速。 |
+| R8 | minor / 已修复（远端待验） | 远端浏览器 `warma-presets.spec.mjs` 的整句删除用例预计修改 1 条，实际为无有效步骤/未改预填提示，不足以证明步骤数组为空。该用例丢弃异步 `openTextProcessModal()` 返回值，在加载可重建初始输入框期间开始填框；本地原 spec 连跑两轮为 24 通过 / 2 skip，不能据此将 CI 失败忽略。用例目的为删除/导出而非加载竞态，改为返回并等待打开 Promise，断言用户配置同步成功后再输入；保留既有删除、SRT 与加载竞态测试，不改产品代码。同 CI 组合本地 88 通过 / 5 skip，独立复核认可范围。await 缺失为确定的测试准备遗漏，但日志不能证明是 CI 失败唯一原因，仍待远端复验；加载中输入的焦点连续性未单独验证，不宣称已排除潜在产品竞态。 |
 
 ## 验证事实
 
@@ -41,9 +42,13 @@
 | 最终类型 | `tsc -p web/tsconfig.typecheck.json` | 通过；`.artifacts/checks/20261110T035948Z-2718cc1f/result.json` |
 | 独立复审 | 两位审查者；核心与本轮清理 84/84，helper 3/3 | `.artifacts/checks/20261110T035942Z-9deb757a/result.json`、`20261110T035811Z-3609522f/result.json`；无未处置 blocker / major。 |
 | 个人路径 | `python scripts/check_personal_paths.py --diff-ref origin/main` | 通过；`.artifacts/checks/20261110T035407Z-2523df0a/result.json` |
+| 首次 PR CI | HEAD `3b36e6bc`，[编辑器](https://github.com/Moyf/moys-asr-workflow/actions/runs/42753538578) / [Windows preview](https://github.com/Moyf/moys-asr-workflow/actions/runs/42753538527) / [lint](https://github.com/Moyf/moys-asr-workflow/actions/runs/42753538648) | 编辑器 Node 全量、构建、类型、Python 装配、媒体兼容通过；浏览器 87 通过 / 5 skip / 1 失败（R8）。Windows 预览构建和双端调试、lint 通过，不将整体编辑器 CI 计为通过。 |
+| R8 初次复现 | 未修复的 `warma-presets.spec.mjs --repeat-each=2` | 本地 24 通过 / 2 skip；`.artifacts/checks/20261110T041344Z-f7336634/result.json`，未复现 CI 失败。 |
+| R8 修后组合 | 与 CI 相同的七份 spec、默认 2 workers | 88 通过 / 5 既有便携 skip；`.artifacts/checks/20261110T041516Z-b6b87caa/result.json`。独立复核确认 Promise 等待与同步成功断言恰当，未弱化删除/导出断言。 |
+| HTTP 补验 | `editor-bundle.spec.mjs -g HTTP` | 1/1；`.artifacts/checks/20261110T040622Z-5baa9ccd/result.json`。此前两个带行首锚点的过滤未选中用例，退出 1；修正过滤后才取得通过证据。 |
 
 ## 未验证边界与下一步
 
-- 本地合并门槛通过；下一步提交并快进更新 PR 分支，在远端 HEAD 与检查核对后 Squash & Merge。
+- 当前暂停合并：R8 本地组合与独立复核已通过，推送后等待远端验证；不绕过失败门禁。
 - 全量 Python、全量浏览器、正式打包和三端真机未运行；人工核验沿用 PR 内已有两份清单，不代勾。
 - 未重生成 `blank-editor.html`；内联副本待发布前统一重生成。合并组合中该文件的变化仅来自 main。
