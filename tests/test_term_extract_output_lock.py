@@ -82,4 +82,4 @@ class OutputLockTests(CompactContainerAssertions, unittest.TestCase):
             with mock.patch.object(cli, '_recover_publication') as recover, \
                     mock.patch.object(cli, '_run_staged_pipeline', return_value=0):
                 self.assertEqual(cli.run_pipeline(args), 0)
-                recover.assert_called_once_with(out)
+                recover.assert_called_once_with(out.resolve())
