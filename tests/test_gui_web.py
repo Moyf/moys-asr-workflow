@@ -1265,6 +1265,32 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(config["perVideoSubfolder"])
         self.assertFalse(config["attachModelName"])
 
+    def test_save_prefs_persists_segmentation_and_get_config_restores_it(self) -> None:
+        """Given 断句与标点 fields, When saved, Then the single JSON key round-trips; blank clears a field; corrupt JSON falls back to defaults."""
+        os.environ.pop("MAW_GUI_SEGMENTATION", None)
+        fields = ("gapSplit", "minLen", "maxLen", "minWords", "maxWords")
+        self.assertEqual([self.api.get_config()[key] for key in fields], [""] * 5)
+
+        self.assertTrue(self.api.save_prefs({"gapSplit": " 500 ", "maxLen": "18"})["ok"])
+        self.assertIn("MAW_GUI_SEGMENTATION=", self.env_path.read_text(encoding="utf-8"))
+        config = self.api.get_config()
+        self.assertEqual(config["gapSplit"], "500")
+        self.assertEqual(config["maxLen"], "18")
+        self.assertEqual(config["minLen"], "")
+
+        # 空串清除单个字段，其余字段保留。
+        self.assertTrue(self.api.save_prefs({"gapSplit": "", "maxLen": "18"})["ok"])
+        config = self.api.get_config()
+        self.assertEqual(config["gapSplit"], "")
+        self.assertEqual(config["maxLen"], "18")
+
+        # 坏 JSON / 非对象回退默认；未知键剔除、已知键保留。
+        for raw, expected_gap_split in (("{not json", ""), ("[]", ""), ('{"gapSplit":"500","alien":"x"}', "500")):
+            self.env_path.write_text(f"MAW_GUI_SEGMENTATION={raw}\n", encoding="utf-8")
+            config = self.api.get_config()
+            self.assertEqual(config["gapSplit"], expected_gap_split)
+            self.assertEqual([config[key] for key in fields if key != "gapSplit"], [""] * 4)
+
     def test_notify_preference_defaults_off_and_round_trips(self) -> None:
         """Given the completion-notification toggle, When saved, Then .env and config reflect it."""
         os.environ.pop("MAW_GUI_NOTIFY_ON_COMPLETE", None)
