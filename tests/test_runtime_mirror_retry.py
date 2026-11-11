@@ -109,8 +109,29 @@ class MirrorRankingTests(unittest.TestCase):
         self.assertTrue(_looks_like_network_failure(LocalRuntimeError("ReadTimeoutError: Read timed out.")))
         self.assertTrue(_looks_like_network_failure(LocalRuntimeError("urllib3.exceptions.NewConnectionError: ...")))
         self.assertTrue(_looks_like_network_failure(LocalRuntimeError("HTTP Error 502: Bad Gateway")))
+        # uv 措辞（源码模式走 _uv_install_command）：HTTP 与状态码之间隔着
+        # 「status client error」，超时/断连/取回失败是 uv 自己的说法。
+        self.assertTrue(_looks_like_network_failure(LocalRuntimeError(
+            "uv installer 命令失败（退出码 2）。error: Failed to fetch "
+            "https://mirrors-a.example.com/simple/funasr/: "
+            "HTTP status client error (403 Forbidden) for url"
+        )))
+        self.assertTrue(_looks_like_network_failure(LocalRuntimeError(
+            "uv installer 命令失败（退出码 2）。error: HTTP status 429"
+        )))
+        self.assertTrue(_looks_like_network_failure(LocalRuntimeError(
+            "uv installer 命令失败（退出码 2）。error: operation timed out"
+        )))
+        self.assertTrue(_looks_like_network_failure(LocalRuntimeError(
+            "uv installer 命令失败（退出码 2）。error: connection refused (os error 61)"
+        )))
         # 确定性错误（含伴随 HTTP 404 的「无候选版本」）不按网络失败处理。
         self.assertFalse(_looks_like_network_failure(_deterministic_error()))
+        # uv 的 404 形态同样不命中换源（与 pip 一致，404 有意排除）。
+        self.assertFalse(_looks_like_network_failure(LocalRuntimeError(
+            "uv installer 命令失败（退出码 2）。Caused by: "
+            "HTTP status client error (404 Not Found) for url"
+        )))
 
     def test_extra_index_attribution_and_exhausted_message(self) -> None:
         extra = f"https://{PYTORCH_HOST}/whl/cu130"
@@ -127,6 +148,28 @@ class MirrorRankingTests(unittest.TestCase):
         self.assertIn(MIRROR_A, message)
         self.assertIn(MIRROR_B, message)
         self.assertIn("MAW_PIP_INDEX", message)
+
+    def test_extra_index_attribution_requires_matching_url_prefix(self) -> None:
+        # MAW_PIP_INDEX 与 MAW_PYTORCH_INDEX 指到同一镜像主机时，主源失败的
+        # URL 路径不同，不得被裸主机名匹配误判成 extra 失败而跳过换源。
+        extra = "https://mirror.example.com/whl/cu130"
+        extra_failure = LocalRuntimeError(
+            "uv installer 命令失败（退出码 2）。error: Failed to fetch "
+            "https://mirror.example.com/whl/cu130/torch/: "
+            "HTTP status client error (403 Forbidden)"
+        )
+        primary_failure = LocalRuntimeError(
+            "uv installer 命令失败（退出码 2）。error: Failed to fetch "
+            "https://mirror.example.com/simple/antlr4-python3-runtime/: "
+            "HTTP status client error (403 Forbidden)"
+        )
+        self.assertTrue(_failure_blames_extra_index(extra_failure, extra))
+        self.assertFalse(_failure_blames_extra_index(primary_failure, extra))
+        # 容许错误文本里的 URL 带尾随包路径与尾斜杠差异。
+        self.assertTrue(_failure_blames_extra_index(
+            _mirror_403_error("https://download.pytorch.org/whl/cu130"),
+            "https://download.pytorch.org/whl/cu130/",
+        ))
 
 
 @mock.patch("maw.runtimes.base.ranked_mirrors", new=mock.MagicMock(return_value=[MIRROR_A, MIRROR_B, MIRROR_C]))

@@ -1129,12 +1129,19 @@ def _resolve_extra_index(extra_index: str | None) -> str | None:
 
 
 #: 安装命令输出里的网络类失败特征：镜像限频/拒绝（403、429）、网关类 5xx、
-#: 超时与连接中断。命中才值得换源重试；「No matching distribution」等确定性
-#: 错误（伴随 HTTP 404）换源无效，不在此列。404 有意排除。
+#: 超时与连接中断。HTTP 状态码两组分别覆盖 pip（「HTTP Error 403」）与 uv
+#: （「HTTP status client error (403 Forbidden)」「HTTP status 403」）的实际
+#: 措辞——uv 的 HTTP 与状态码之间隔着「status client error」，不能沿用 pip
+#: 的邻接写法；uv 的超时/断连措辞（operation timed out、connection refused、
+#: Failed to fetch）与 pip/urllib3（ReadTimeoutError、ConnectionError 等）
+#: 并列收录。命中才值得换源重试；「No matching distribution」等确定性错误
+#: 换源无效，不在此列。404（pip 与 uv 均有对应形态）有意排除。
 _NETWORK_FAILURE_PATTERN = re.compile(
     r"HTTP(?:\s+Error)?\s*(?:403|429|5\d\d)"
+    r"|HTTP\s+status(?:\s+client\s+error)?\s*\(?\s*(?:403|429|5\d\d)"
     r"|ReadTimeoutError|ConnectionError|IncompleteRead"
-    r"|Max retries exceeded|SSLError",
+    r"|Max retries exceeded|SSLError"
+    r"|operation timed out|Failed to fetch|connection refused",
     re.IGNORECASE,
 )
 
@@ -1152,11 +1159,19 @@ def _failure_blames_extra_index(error: BaseException, extra_index: str | None) -
 
     主源换掉救不了 extra 不可达（GPU 轮子只有一个来源），此时换源重试只会
     把同样的失败再拖两轮；extra 的可达性已由安装前的 probe 单独把关。
+
+    归因要求错误文本里出现以 extra_index 为前缀的完整 URL（容许尾随包路径
+    与尾斜杠差异）：用户可能把 MAW_PIP_INDEX 与 MAW_PYTORCH_INDEX 指到同一
+    镜像主机，裸主机名匹配会把主源失败误判成 extra 失败、跳过换源。
     """
     if not extra_index:
         return False
-    host = urlparse(extra_index).netloc
-    return bool(host) and host in str(error)
+    prefix = extra_index.rstrip("/").lower()
+    for match in re.finditer(r"https?://[^\s\"'()\[\]]+", str(error)):
+        url = match.group(0).rstrip("/").lower()
+        if url == prefix or url.startswith(prefix + "/"):
+            return True
+    return False
 
 
 def _network_failure_summary(error: BaseException) -> str:
