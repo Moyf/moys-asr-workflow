@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.2 之后 | 2026-11-11 | [断句标点持久化独立盲审](release1.11.2/261111_断句标点持久化/REVIEW_FINDINGS.md) | 无 blocker/major；env 优先级补测试守护、mock 快照语义对齐，含 8 项变异反向验证 |
 | 1.11.2 之后 | 2026-11-11 | [官网发布收尾](release1.11.2/261111_官网发布收尾/TEST_FEEDBACK_官网发布收尾.md) / [独立复核](release1.11.2/261111_官网发布收尾/REVIEW_FINDINGS.md) / [人工核验](release1.11.2/261111_官网发布收尾/官网发布收尾.checklist.md) | 有界等待、旧索引防护与发包收尾门槛 |
 | 1.11.0 之后 | 2026-11-11 | [ASS 默认动画与 1.11.2 发布](release1.11.0/261111_ASS默认动画与1.11.2发布/TEST_FEEDBACK_ASS默认动画.md) / [独立复核](release1.11.0/261111_ASS默认动画与1.11.2发布/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261111_ASS默认动画与1.11.2发布/1.11.2.checklist.md) | 默认开关溯源、补丁 Release Notes 规则与发布核验 |
 | 1.11.0 之后 | 2026-11-11 | [PR 359 审查修复](release1.11.0/261111_PR359_审查修复/修复记录.md) / [独立复核](release1.11.0/261111_PR359_审查修复/REVIEW_FINDINGS.md) / [人工核对](release1.11.0/261111_PR359_审查修复/PR359.checklist.md) | 合并演练、问题修复与验证 |
@@ -27,6 +28,9 @@
 | 1.11.0 之后 | 2026-11-10 | [工具页规范通用化与同步](release1.11.0/261110_工具页规范同步/IMPLEMENTATION.md) / [工具目录反馈](release1.11.0/261110_工具页规范同步/TEST_FEEDBACK_工具目录.md) / [独立复核](release1.11.0/261110_工具页规范同步/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261110_工具页规范同步/工具页同步.checklist.md) | 规范按场景分层，既有工具统一视觉与交互基线，保留各自任务和数据契约 |
 | 1.11.0 之后 | 2026-11-10 | [视频术语提取测试反馈](release1.11.0/261109_术语提取反馈/TEST_FEEDBACK_术语提取.md) | OCR 术语提取确认页 20 条实测反馈：评分与去重口径、OCR 框标注、筛选、分组折叠、整页改版（Launcher 令牌、整行点击、精简显示）；结论沉淀为 [工具页规范](../../tools/TOOL_PAGE_GUIDE.md) |
 | 1.10.0-beta.2 之后 | 2026-11-10 | [本地运行时非 ASCII 路径修复自审](release1.10.0-beta.2/261110_运行时非ASCII路径/REVIEW_FINDINGS.md) | Windows 中文用户名下 nagisa/DyNet 打不开模型文件；运行时根目录 8.3 短路径别名化 + 公共目录 fallback + verify 错误增强；2 major（Windows CI 测试红、override 多 Runtime 冲突）与 1 minor 已修复 |
+| 1.11.0 之后 | 2026-11-10 | [G16-A/C Editor ESM 迁移](release1.11.0/261110_G16AC迁移/G16_AC_ESM.md) / [独立自审](release1.11.0/261110_G16AC迁移/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261110_G16AC迁移/G16_AC.checklist.md) | ASS 预览刷新与 DOM 面板接线迁移、回归验证和人工核验 |
+| 1.11.0 之后 | 2026-11-10 | [G09 样式域 ESM 迁移](release1.11.0/261110_G09样式域ESM/G09_ASS_STYLE_ESM.md) / [独立自审](release1.11.0/261110_G09样式域ESM/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261110_G09样式域ESM/G09样式域ESM.checklist.md) | ASS 样式与预览静态依赖、classic 接线兼容与分层验证 |
+| 1.11.0 之后 | 2026-11-10 | [G11 与 G16-F ESM 迁移](release1.11.0/261110_G11与G16F迁移/G11_G16F_ESM.md) / [独立自审](release1.11.0/261110_G11与G16F迁移/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261110_G11与G16F迁移/G11_G16F.checklist.md) | 导入导出、媒体控制与 ASS 预览接线的模块迁移和回归证据 |
 | 1.11.0 之后 | 2026-11-10 | [PR 343 合并审阅](release1.11.0/261110_PR343审阅/REVIEW_FINDINGS.md) | 字幕域 ESM 设计与组合回归、main 失败对照、CHANGELOG 收敛 |
 | 1.11.0 之后 | 2026-11-10 | [CL 编辑器 Markdown 核查](release1.11.0/261110_CL编辑器Markdown/TEST_FEEDBACK_CL编辑器Markdown.md) | 独立核对预览 / 对照 Markdown 覆盖与文本往返边界，未改 CL 编辑器 |
 | 1.11.0 之后 | 2026-11-10 | [PR 看板 GitHub 配置同步核对](release1.11.0/261110_PR看板GitHub同步/TEST_FEEDBACK_PR看板GitHub同步.md) | 授权后读到 19 个字段，确认项目可更新；Priority / Status 等同步编辑待实施，未写远端数据 |

@@ -48,6 +48,8 @@ from maw.gui_config import (
     OPENAI_ASR_DEFAULT_BASE_URL,
     OPENAI_ASR_DEFAULT_MODEL,
     PROVIDERS,
+    SEGMENTATION_FIELDS,
+    SEGMENTATION_PREFS_KEY,
     ModelConfig,
     ProviderConfig,
     _gui_theme,
@@ -715,6 +717,11 @@ class LauncherApi:
             "outputSubfolder": config.output_subfolder,
             "perVideoSubfolder": config.per_video_subfolder,
             "attachModelName": config.attach_model_name,
+            "gapSplit": config.gap_split,
+            "minLen": config.min_len,
+            "maxLen": config.max_len,
+            "minWords": config.min_words,
+            "maxWords": config.max_words,
             "lastModel": config.last_model,
             "lastLanguage": config.last_language,
             "theme": config.theme,
@@ -860,6 +867,20 @@ class LauncherApi:
         ):
             if payload_key in payload:
                 updates[env_key] = "true" if payload.get(payload_key) else "false"
+        # 断句与标点五字段持久化（issue #355）：单 JSON 键存储，先例
+        # MAW_GUI_LOCAL_MODEL_PATHS。前端提交 5 字段全量快照；值 trim 后存，
+        # 空串剔除表示清除（跟随模型默认）。非法数值不在此校验——任务提交时
+        # 由 validateSegmentation 拦截，这里只存原样 trim 字符串。
+        if any(key in payload for key in SEGMENTATION_FIELDS):
+            updates[SEGMENTATION_PREFS_KEY] = json.dumps(
+                {
+                    key: value
+                    for key in SEGMENTATION_FIELDS
+                    if (value := "" if payload.get(key) is None else str(payload.get(key)).strip())
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
         if "theme" in payload:
             updates["MAW_GUI_THEME"] = _gui_theme(str(payload.get("theme") or "")) or "system"
         if "zoomPercent" in payload:

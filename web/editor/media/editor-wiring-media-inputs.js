@@ -92,7 +92,7 @@ MaweDom.multiSubtitleImportModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.multiSubtitleImportModal) MaweMultiImport.closeMultiSubtitleImportModal();
 });
 MaweDom.multiSubtitleSplitCancel?.addEventListener('click', MaweSplitCore.closeLinkedSplitModal);
-multiSubtitleSplitDuplicate?.addEventListener('click', () => MaweSplitCore.confirmLinkedSplit({ duplicateText: true }));
+window.MaweDomPanelsWiring.multiSubtitleSplitDuplicate?.addEventListener('click', () => MaweSplitCore.confirmLinkedSplit({ duplicateText: true }));
 MaweDom.multiSubtitleSplitConfirm?.addEventListener('click', MaweSplitCore.confirmLinkedSplit);
 MaweDom.multiSubtitleSplitModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.multiSubtitleSplitModal) MaweSplitCore.closeLinkedSplitModal();

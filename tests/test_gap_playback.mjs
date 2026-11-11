@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 function fixture({ mediaControls = false } = {}) {
   const timers = new Map(), gates = [], schedules = [], seeks = [];
@@ -33,7 +34,7 @@ function fixture({ mediaControls = false } = {}) {
       MaweJklPlayback: { stopJklReversePlayback() {} }, MaweCueListAnchor: { resumeCueListFollowing() {} },
       MawePlaybackLoop: { update: () => api.refresh() },
     });
-    vm.runInNewContext(readFileSync(new URL('../web/editor/media/editor-media-playback.js', import.meta.url), 'utf8'), context);
+    vm.runInNewContext(initModuleSource('editor/media/editor-media-playback.js'), context);
   }
   api.bindPlayer(player);
   gates.length = 0;
