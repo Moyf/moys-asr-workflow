@@ -25,6 +25,13 @@ mock 删五键（红）、payload 丢 maxLen（Node 红）；仅 env 优先级�
 另做正向验证：含换行 / `=` / emoji 的值经 `json.dumps` 写入 `.env` 后单行无损，
 `load_env` / `segmentation_prefs` round-trip 正常。
 
+## Foreman 补充盲审（PR #364 阶段）
+
+| # | 级别 | 内容 | 处置 |
+|---|---|---|---|
+| F1 | minor | `applyAsrPreset` 中 `segmentationPrefsPayload()` 必须在五字段赋值之后读取；既有存在性断言只防「删联动」，防不了「快照读取移到赋值之前」的乱序回归 | **已修复**：`test_launcher_segmentation_prefs.mjs` 扩展 VM fixture 装载 `launcher-presets.js`（stub `syncLocalDeviceOptions` / `renderLocalAlignmentModel` / `applyProviderLanguages` / `syncTestRun`），断言持久化快照等于赋值后的字段值。反向验证：把真实快照行移到赋值之前 → 红（payload 全空 deepEqual 命中）；恢复 → 绿 3/3 |
+| F2 | — | `state.config` 先同步、`.env` 落盘在防抖后，会话内存在极短的短暂分叉窗口 | **接受**（foreman 已知取舍）：下次启动以 `.env` 为准，正确值已持久化，无用户可见后果 |
+
 ## 处置后复验
 
 - `tests/test_gui_web.py` + `tests/test_launcher_contract.py`：OK（skipped=1 既有）
