@@ -2,7 +2,11 @@
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweAppearance 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweAppearance(global) {
+import { syncSpeakerLabelControls, getSpeakerLabelSettings } from './editor-speaker-labels.js';
+import { syncSubtitleColorPaletteControls } from './editor-colors.js';
+
+export function initMaweAppearance() {
+(function initMaweAppearanceFacade(global) {
   'use strict';
 
 
@@ -11,6 +15,16 @@
   // 归一化 {x,y,width,height} 存于 DATA.preview.subtitle。纯钳制/归一化逻辑在
   // AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
   const GEO_UTILS = window.AsrEditorUtils;
+  const subtitleFontFamilyInput = document.getElementById('subtitle-font-family');
+  const assColorStyleSelect = document.getElementById('ass-color-style');
+
+  // The appearance service must own this validation: the classic font-control
+  // wiring runs later and is no longer in this module's lexical scope.
+  const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
+  function normalizeAssColorStyleValue(value) {
+    return typeof value === 'string' && ASS_COLOR_STYLE_VALUES.includes(value)
+      ? value : null;
+  }
 
 
 
@@ -157,8 +171,8 @@
       option.textContent = subtitleFontFamilyDisplayName(option.value);
     });
   });
-  rebuildSubtitleFontFamilyOptions();
-  rebuildAssFontNameOptions();
+  window.MaweFontGeometryWiring.rebuildSubtitleFontFamilyOptions();
+  window.MaweFontGeometryWiring.rebuildAssFontNameOptions();
   syncSubtitleAppearanceControls();
 }
 
@@ -201,7 +215,7 @@
     color: result.color || MaweSettings.DEFAULT_SUBTITLE_COLOR,
     color_underline: result.color_underline !== false,
     color_style: result.color_style || MaweSettings.DEFAULT_SUBTITLE_COLOR_STYLE,
-    ass_color_style: result.ass_color_style || DEFAULT_ASS_COLOR_STYLE,
+    ass_color_style: result.ass_color_style || window.MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE,
   };
 }
 
@@ -248,10 +262,10 @@
     MaweDom.subtitleColorUnderlineInput.checked = appearance.color_underline !== false;
   }
   if (assColorStyleSelect) {
-    assColorStyleSelect.value = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
+    assColorStyleSelect.value = appearance.ass_color_style || window.MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE;
   }
   // 「预览颜色样式」的显隐由 syncAssModeDependentControls 统一处理（含 ASS 开关切换）。
-  syncAssModeDependentControls();
+  window.MaweAssManagerWiring.syncAssModeDependentControls();
   if (MaweDom.subtitleColorStyleSelect) {
     MaweDom.subtitleColorStyleSelect.value = appearance.color_style || MaweSettings.DEFAULT_SUBTITLE_COLOR_STYLE;
   }
@@ -270,8 +284,8 @@
     }
   }
   if (MaweDom.subtitleColorInput) MaweDom.subtitleColorInput.value = appearance.color || MaweSettings.DEFAULT_SUBTITLE_COLOR;
-  MaweSpeakerLabels.syncSpeakerLabelControls();
-  MaweColors.syncSubtitleColorPaletteControls();
+  syncSpeakerLabelControls();
+  syncSubtitleColorPaletteControls();
 }
 
 
@@ -393,7 +407,7 @@
   MaweBoot.DATA.preview.subtitle = {
     ...getPreviewGeometry(),
     ...next,
-    speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
+    speaker_labels: getSpeakerLabelSettings(),
   };
   if (markDirty) MaweState.changes.previewGeometryDirty = true;
   applySubtitleAppearance(MaweBoot.DATA.preview.subtitle);
@@ -435,8 +449,8 @@
     });
     select.append(fragment);
   }
-  rebuildSubtitleFontFamilyOptions();
-  rebuildAssFontNameOptions();
+  window.MaweFontGeometryWiring.rebuildSubtitleFontFamilyOptions();
+  window.MaweFontGeometryWiring.rebuildAssFontNameOptions();
   syncSubtitleAppearanceControls();
   syncExtensionSubtitleAppearanceControls();
 }
@@ -594,3 +608,10 @@
     subtitleFontFamilyPresetLabel
 });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function getPreviewGeometry(...args) { return window.MaweAppearance.getPreviewGeometry(...args); }
+export function getSubtitleAppearance(...args) { return window.MaweAppearance.getSubtitleAppearance(...args); }
+export function applySubtitleAppearance(...args) { return window.MaweAppearance.applySubtitleAppearance(...args); }
+export function setSubtitleAppearance(...args) { return window.MaweAppearance.setSubtitleAppearance(...args); }
+export function setExtensionSubtitleAppearance(...args) { return window.MaweAppearance.setExtensionSubtitleAppearance(...args); }

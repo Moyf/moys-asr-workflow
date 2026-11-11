@@ -1,3 +1,4 @@
+export function initWiringAssCuePositionModule() {
 // Main-cue ASS positioning and per-cue scaling.
 (function initAssCuePosition(global) {
   'use strict';
@@ -432,3 +433,4 @@
   });
   sync();
 })(typeof window !== 'undefined' ? window : globalThis);
+}

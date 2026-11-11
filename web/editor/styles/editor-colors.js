@@ -2,7 +2,10 @@
 // 由 split-cluster codemod 自 editor.js 拆出；main #135（ASS 样式库）引入自定义
 // 五色后，调色板变为可变状态（let），随设置联动重建并同步给波形运行时。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweColors(global) {
+import { syncSpeakerLabelControls } from './editor-speaker-labels.js';
+
+export function initMaweColors() {
+(function initMaweColorsFacade(global) {
   'use strict';
 
 
@@ -119,7 +122,7 @@
     MaweCoreState.waveformEditor?.renderSegments?.();
     MawePlaybackLoop.refreshSubtitlePreview();
     window.MaweColorFilter?.renderColorFilterMenu?.();
-    window.MaweSpeakerLabels?.syncSpeakerLabelControls?.();
+    if (window.MaweSpeakerLabels?.syncSpeakerLabelControls) syncSpeakerLabelControls();
   }
 
   function setSubtitleColorPaletteValue(name, value) {
@@ -162,3 +165,6 @@
     setSubtitleColorPaletteValue,
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function syncSubtitleColorPaletteControls(...args) { return window.MaweColors.syncSubtitleColorPaletteControls(...args); }

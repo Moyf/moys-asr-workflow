@@ -16,6 +16,7 @@ interface Window {
     clearCaches(): void;
     render(payload: any): void;
     hide(): void;
+    renderSample(element: any, style: any, text: string): void;
     readonly lastRender: any;
   };
 }
@@ -199,6 +200,11 @@ interface Window {
   MaweAssPreview: any;
   MaweGapRemovedMediaExport: any;
   MaweDomPanelsWiring: any;
+  MaweFloatingPanel: any;
+  MawePreviewGeometry: any;
+  MaweSettingsPanels: any;
+  MaweFontGeometryWiring: any;
+  MaweBurnVideoExport?: any;
   MaweContextMenusWiring: any;
   MaweDisplaySettings: any;
   MaweContextMenus: any;

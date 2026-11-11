@@ -1,3 +1,6 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
+export function initAppearanceSettingsWiring() {
+const { assColorSpeakerExportLink, assColorStyleSelect, subtitleColorAssModeHintLink, subtitleFontFamilyInput } = getMaweDomPanels();
 MaweDom.subtitleFontSizeSelect?.addEventListener('change', () => {
   const value = MaweDom.subtitleFontSizeSelect.value;
   MaweHistory.pushPreviewUndo('调整字幕字号', MaweHistory.snapshotPreviewState());
@@ -133,3 +136,4 @@ MaweDom.extensionOverlayToggle?.addEventListener('change', () => {
   MawePreviewGeometry.refreshPreviewGeometryEditable();
   MawePlaybackLoop.update();
 });
+}

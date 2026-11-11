@@ -1,4 +1,18 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
+import { getAssStyleLibrary } from './editor-wiring-ass-storage.js';
 import { activeExtensionSegments } from '../cues/overlay-track.js';
+
+// The functions are installed at this file's manifest position. Static imports
+// can resolve earlier without running DOM or Canvas work during module evaluation.
+const previewService = {};
+
+export function applyAssSubtitlePreview(options) {
+  return previewService.apply(options);
+}
+
+export function restoreCssSubtitlePreview() {
+  return previewService.restore();
+}
 
 export function initMaweAssPreviewWiring() {
   'use strict';
@@ -180,12 +194,12 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
   element.style.color = appearance.color || fallbackColor;
 }
 
-function restoreCssSubtitlePreview() {
+function restoreCssSubtitlePreviewImpl() {
   window.MaweAssCanvas?.hide();
   window.MaweAssCuePosition?.sync();
   clearAssEmphasisPreview(MaweDom.overlayTextEl);
   clearAssEmphasisPreview(MaweDom.overlayExtensionTextEl);
-  clearAssEmphasisPreview(window.MaweDomPanelsWiring.overlayTrackTextEl);
+  clearAssEmphasisPreview(getMaweDomPanels().overlayTrackTextEl);
   MaweDom.overlayEl.removeAttribute('data-ass-mode');
   MaweDom.overlayEl.classList.remove('ass-preview-active');
   delete MaweDom.overlayTextEl.dataset.colorUnderline;
@@ -268,14 +282,14 @@ function assStackInputRevision(tracks, identityTracks = tracks) {
 }
 document.fonts?.addEventListener('loadingdone', () => { assStackFontRevision += 1; cachedAssStackKey = ''; });
 
-function applyAssSubtitlePreview({ tMs, overlaySegments }) {
+function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
   const metrics = assPreviewMetrics();
   // Snapshot only project inputs: measurements and animation envelopes are
   // computed once per revision, never once per playback frame. Direct edits
   // to mutable imported cue/style records also invalidate this snapshot.
   const rawTracks = [MaweBoot.DATA.segments, activeExtensionSegments(), overlaySegments];
   const revision = assStackInputRevision([MaweExportSrt.cleanupMainSegments(), rawTracks[1], rawTracks[2]], rawTracks);
-  const key = JSON.stringify([revision, ASS_STYLE_LIBRARY, MaweSettings.EDITOR_SETTINGS,
+  const key = JSON.stringify([revision, getAssStyleLibrary(), MaweSettings.EDITOR_SETTINGS,
     MaweAppearance.getSubtitleAppearance(), metrics.resolution, MaweColors.COLOR_PALETTE,
     MaweSpeakerLabels.getSpeakerLabelSettings(), MaweDom.overlayToggle.checked,
     MaweDom.extensionOverlayToggle?.checked, assStackFontRevision]);
@@ -304,7 +318,7 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
   MaweDom.overlayEl.style.height = `${metrics.stageHeight}px`;
   // ASS 文本由 Canvas 合成，DOM 文本元素整体隐藏（refreshSubtitlePreview
   // 在 CSS 模式下按可见性切换 hidden，这里每帧强制覆盖）。
-  [MaweDom.overlayTextEl, MaweDom.overlayExtensionTextEl, window.MaweDomPanelsWiring.overlayTrackTextEl, MaweDom.overlayMainSpeakerLabelEl]
+  [MaweDom.overlayTextEl, MaweDom.overlayExtensionTextEl, getMaweDomPanels().overlayTrackTextEl, MaweDom.overlayMainSpeakerLabelEl]
     .forEach((element) => {
       if (element && !element.classList.contains('hidden')) element.classList.add('hidden');
     });
@@ -345,7 +359,7 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
 }
 
 function restoreAssOverlayTrackPreview() {
-  if (!window.MaweDomPanelsWiring.overlayTrackTextEl) return;
+  if (!getMaweDomPanels().overlayTrackTextEl) return;
   [
     'position', 'left', 'right', 'top', 'bottom', 'white-space', 'word-break', 'text-align',
     'font-size', 'font-family', 'font-weight', 'font-style', 'text-decoration-line',
@@ -353,17 +367,19 @@ function restoreAssOverlayTrackPreview() {
     'paint-order', 'text-shadow', 'letter-spacing', 'line-height',
     'max-width', 'padding', 'background-color', 'border-radius', 'opacity',
     'transform-origin', 'transform',
-  ].forEach((property) => window.MaweDomPanelsWiring.overlayTrackTextEl.style.removeProperty(property));
-  delete window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorUnderline;
-  delete window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorText;
-  delete window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorStroke;
+  ].forEach((property) => getMaweDomPanels().overlayTrackTextEl.style.removeProperty(property));
+  delete getMaweDomPanels().overlayTrackTextEl.dataset.colorUnderline;
+  delete getMaweDomPanels().overlayTrackTextEl.dataset.colorText;
+  delete getMaweDomPanels().overlayTrackTextEl.dataset.colorStroke;
 }
 
 // The manager also uses the calibrated font metrics after boot has completed;
 // the Canvas layer reuses exportFontSize for native run sizes.
+previewService.apply = applyAssSubtitlePreviewImpl;
+previewService.restore = restoreCssSubtitlePreviewImpl;
 window.MaweAssPreview = window.MaweAssPreview || Object.freeze({
-  applyAssSubtitlePreview,
-  restoreCssSubtitlePreview,
+  applyAssSubtitlePreview: applyAssSubtitlePreviewImpl,
+  restoreCssSubtitlePreview: restoreCssSubtitlePreviewImpl,
   fontScale: assPreviewFontScale,
   get stackPlan() { return cachedAssStackPlan; },
   exportFontSize: assPreviewExportFontSize,

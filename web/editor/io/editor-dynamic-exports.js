@@ -1,3 +1,4 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { overlayTrackVisible } from '../cues/overlay-track.js';
 import { runFcp7PngExport } from './editor-fcp7-png.js';
 
@@ -255,7 +256,7 @@ export function initMaweDynamicExports() {
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
   if (!extensionAvailable && MaweDom.lottieExportTrack) MaweDom.lottieExportTrack.value = 'main';
   window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
-    MaweDom.lottieExportResolution, window.MaweDomPanelsWiring.lottieExportCustomSize, window.MaweDomPanelsWiring.lottieExportCustomWidth, window.MaweDomPanelsWiring.lottieExportCustomHeight,
+    MaweDom.lottieExportResolution, getMaweDomPanels().lottieExportCustomSize, getMaweDomPanels().lottieExportCustomWidth, getMaweDomPanels().lottieExportCustomHeight,
   );
   MaweDom.lottieExportModal?.classList.add('show');
   MaweDom.lottieExportTrack?.focus();
@@ -264,7 +265,7 @@ export function initMaweDynamicExports() {
 
 
   function lottieExportCanvasSize() {
-  return window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(MaweDom.lottieExportResolution, window.MaweDomPanelsWiring.lottieExportCustomWidth, window.MaweDomPanelsWiring.lottieExportCustomHeight);
+  return window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(MaweDom.lottieExportResolution, getMaweDomPanels().lottieExportCustomWidth, getMaweDomPanels().lottieExportCustomHeight);
 }
 
 
@@ -377,7 +378,7 @@ export function initMaweDynamicExports() {
   if (extensionOption) extensionOption.disabled = !extensionAvailable;
   if (!extensionAvailable && MaweDom.ografExportTrack) MaweDom.ografExportTrack.value = 'main';
   window.MaweGapRemovedMediaExport.applyMediaSizeToResolutionModal(
-    MaweDom.ografExportResolution, window.MaweDomPanelsWiring.ografExportCustomSize, window.MaweDomPanelsWiring.ografExportCustomWidth, window.MaweDomPanelsWiring.ografExportCustomHeight,
+    MaweDom.ografExportResolution, getMaweDomPanels().ografExportCustomSize, getMaweDomPanels().ografExportCustomWidth, getMaweDomPanels().ografExportCustomHeight,
   );
   MaweDom.ografExportModal?.classList.add('show');
   MaweDom.ografExportTrack?.focus();
@@ -386,7 +387,7 @@ export function initMaweDynamicExports() {
 
 
   function ografExportCanvasSize() {
-  return window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(MaweDom.ografExportResolution, window.MaweDomPanelsWiring.ografExportCustomWidth, window.MaweDomPanelsWiring.ografExportCustomHeight);
+  return window.MaweGapRemovedMediaExport.dynamicExportCanvasSize(MaweDom.ografExportResolution, getMaweDomPanels().ografExportCustomWidth, getMaweDomPanels().ografExportCustomHeight);
 }
 
 
