@@ -83,6 +83,7 @@ datas = [
     (str(ROOT / "blank-editor.html"), "."),
     (str(ROOT / "assets" / "maw.ico"), "assets"),
     (str(ROOT / "assets" / "show.webp"), "assets"),
+    (str(ROOT / "assets" / "support-qr.png"), "assets"),
     (str(ROOT / "maw" / "asr" / "__init__.py"), "local-runtime/maw/asr"),
     (str(ROOT / "maw" / "asr" / "common.py"), "local-runtime/maw/asr"),
     (str(ROOT / "maw" / "asr" / "segmentation.py"), "local-runtime/maw/asr"),
