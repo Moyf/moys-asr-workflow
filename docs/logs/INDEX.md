@@ -14,22 +14,24 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.0 之后 | 2026-11-11 | [PR 356 审查修复](release1.11.0/261111_PR356_审查修复/修复记录.md) / [独立复核](release1.11.0/261111_PR356_审查修复/REVIEW_FINDINGS.md) / [人工核对](release1.11.0/261111_PR356_审查修复/PR356.checklist.md) | 合并演练、问题修复与验证 |
+| 1.10.0-beta.2 之后 | 2026-11-10 | [本地运行时非 ASCII 路径修复自审](release1.10.0-beta.2/261110_运行时非ASCII路径/REVIEW_FINDINGS.md) | Windows 中文用户名下 nagisa/DyNet 打不开模型文件；运行时根目录 8.3 短路径别名化 + 公共目录 fallback + verify 错误增强；2 major（Windows CI 测试红、override 多 Runtime 冲突）与 1 minor 已修复 |
+| 1.11.0 之后 | 2026-11-10 | [PR 343 合并审阅](release1.11.0/261110_PR343审阅/REVIEW_FINDINGS.md) | 字幕域 ESM 设计与组合回归、main 失败对照、CHANGELOG 收敛 |
 | 1.11.0 之后 | 2026-11-10 | [CL 编辑器 Markdown 核查](release1.11.0/261110_CL编辑器Markdown/TEST_FEEDBACK_CL编辑器Markdown.md) | 独立核对预览 / 对照 Markdown 覆盖与文本往返边界，未改 CL 编辑器 |
 | 1.11.0 之后 | 2026-11-10 | [PR 看板 GitHub 配置同步核对](release1.11.0/261110_PR看板GitHub同步/TEST_FEEDBACK_PR看板GitHub同步.md) | 授权后读到 19 个字段，确认项目可更新；Priority / Status 等同步编辑待实施，未写远端数据 |
 | 1.11.0 之后 | 2026-11-10 | [PR 正文预览反馈](release1.11.0/261110_PR正文预览/TEST_FEEDBACK_PR正文预览.md) / [独立审查](release1.11.0/261110_PR正文预览/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261110_PR正文预览/PR-preview-progress.checklist.md) | 增加安全 Markdown 预览与刷新进度，42 项回归及独立复验通过；真实服务已按要求重启 |
-| 1.11.0 之后 | 2026-11-10 | [PR 343 合并审阅](release1.11.0/261110_PR343审阅/REVIEW_FINDINGS.md) | 字幕域 ESM 设计与组合回归、main 失败对照、CHANGELOG 收敛 |
 | 1.10.0-beta.2 之后 | 2026-11-09 | [G08-b 播放头与 PR 反馈](release1.10.0-beta.2/261109_G08B播放头与PR反馈/TEST_FEEDBACK_G08B.md) / [独立自审](release1.10.0-beta.2/261109_G08B播放头与PR反馈/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261109_G08B播放头与PR反馈/G08B反馈.checklist.md) | 旧线清理、正确 PR 分支 rebase、字词转换误选修复；播放头归因为跳转目标设置 |
-| 1.10.0-beta.2 之后 | 2026-11-06 | [便携模式回归分析](release1.10.0-beta.2/261106_便携模式回归弃维护/回归分析.md) | 核查 #336 与 #339 的提交及存储路径；记录 file:// 测试弃维护边界、CI 证据限制与本地复验 |
-| 1.10.0-beta.2 之后 | 2026-11-04 | [音频导出与提示反馈](release1.10.0-beta.2/261104_音频导出与提示/TEST_FEEDBACK_音频导出与提示.md) / [独立复核](release1.10.0-beta.2/261104_音频导出与提示/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261104_音频导出与提示/音频导出与提示.checklist.md) | 波形缓存尾部取整导致音频导出越界；调整导出时长与提示颜色，待人工界面核验 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 导出界面改进](release1.10.0-beta.2/261108_FCP7WebP/EXPORT_UI_IMPROVEMENTS.md) / [复核](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_UI_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261108_FCP7WebP/FCP7导出改进.checklist.md) | 进度、尺寸与弹窗布局；图片导出路径选择尚未实现 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [PNG/WebP 格式反馈](release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md) / [可选目标软件核验](release1.10.0-beta.2/261108_FCP7WebP/PNG-WebP.checklist.md) | PNG 默认保留、显式选择 WebP、FFmpeg 检测去重并移除图片字幕 Pillow 运行时；三端 fork CI 另列结果 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 WebP 与通用入口](release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md) / [独立复审](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_FINDINGS.md) | FFmpeg 双底恢复、无损 WebP 与 PR / VEGAS 通用引导；目标软件 WebP 导入另列边界 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [波形字幕快速编辑气泡](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/REVIEW_FINDINGS.md) / [PR 354 复核](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/PR354_REVIEW.md) / [人工核验](release1.10.0-beta.2/261108_波形字幕快速编辑气泡/PR354.checklist.md) | 原位快速编辑气泡与快捷拆分、帮助和图片尺寸改进；三轨联动与滚动定位自动化通过，人工验收待完成 |
 | 1.10.0-beta.2 之后 | 2026-11-07 | [烧录导出 network 错误反馈](release1.10.0-beta.2/261107_烧录导出network错误/TEST_FEEDBACK_烧录导出.md) / [提交前自审](release1.10.0-beta.2/261107_烧录导出network错误/REVIEW_FINDINGS.md) | 条目1「network error」= 下载连接 2s socket 超时被慢盘写停顿触发断流（Chromium 原文透传）；条目2 ffmpeg stderr 无任何出口。修复：写超时提为常量 10s 且 close() 预算跟随、友好文案+i18n、failed 态 console.error errorDetails、服务端 stdout 失败诊断；自动化全绿，独立审查无 blocker/major，待人工验收 |
+| 1.10.0-beta.2 之后 | 2026-11-06 | [便携模式回归分析](release1.10.0-beta.2/261106_便携模式回归弃维护/回归分析.md) | 核查 #336 与 #339 的提交及存储路径；记录 file:// 测试弃维护边界、CI 证据限制与本地复验 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [FCP 7 图片字幕实施与验证](release1.10.0-beta.2/261106_FCP7图片字幕/IMPLEMENTATION.md) / [独立审查](release1.10.0-beta.2/261106_FCP7图片字幕/REVIEW_FINDINGS.md) / [目标应用核验](release1.10.0-beta.2/261106_FCP7图片字幕/FCP7图片字幕.checklist.md) | 动静分段、透明渲染、多轨 XML；VEGAS 14 原生导入与像素验证通过，缺图文件选择窗口待人工确认 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [G08-b 重放与验证](release1.10.0-beta.2/261106_G08字幕域ESM/G08_B_REBASE.md) / [独立自审](release1.10.0-beta.2/261106_G08字幕域ESM/REVIEW_FINDINGS.md) / [人工核验清单](release1.10.0-beta.2/261106_G08字幕域ESM/G08字幕域ESM.checklist.md) | G08-a 合入后的重放、文本预设消费边补齐与分层验证 |
 | 1.10.0-beta.2 之后 | 2026-11-05 | [文本处理弹窗反馈](release1.10.0-beta.2/261105_文本处理弹窗/TEST_FEEDBACK_文本处理弹窗.md) / [独立复核](release1.10.0-beta.2/261105_文本处理弹窗/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_文本处理弹窗/文本处理弹窗.checklist.md) | 双列预览、预设导入确认、工程预填和 MASS 分组 |
 | 1.10.0-beta.2 之后 | 2026-11-05 | [编辑器处理配置复审](release1.10.0-beta.2/261105_编辑器处理配置/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_编辑器处理配置/编辑器处理配置.checklist.md) | 有序文本处理、用户默认与工程覆盖、旧库迁移 |
+| 1.10.0-beta.2 之后 | 2026-11-04 | [音频导出与提示反馈](release1.10.0-beta.2/261104_音频导出与提示/TEST_FEEDBACK_音频导出与提示.md) / [独立复核](release1.10.0-beta.2/261104_音频导出与提示/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261104_音频导出与提示/音频导出与提示.checklist.md) | 波形缓存尾部取整导致音频导出越界；调整导出时长与提示颜色，待人工界面核验 |
 | 1.10.0-beta.2 之后 | 2026-11-04 | [波形提取 stderr 死锁](release1.10.0-beta.2/261104_波形提取stderr死锁/排查记录.md) | 转写卡在「正在校验和修复时间码」实为波形提取把 ffmpeg stderr 留在管道里，4 KiB 缓冲写满后与 stdout 读取互等；stderr 改落临时文件，含矩阵探针与打包版端到端复验 |
 | 1.10.0-beta.2 之后 | 2026-11-04 | [寒蝉字体名脏名与预览回退](release1.10.0-beta.2/261104_寒蝉字体名脏名/TEST_FEEDBACK_寒蝉活仿楷.md) / [独立审查](release1.10.0-beta.2/261104_寒蝉字体名脏名/REVIEW_FINDINGS.md) | 第三方字体损坏的 Macintosh 中文名混进下拉与样式：扫描按 Windows 记录优先清洗，存量脏名在导出/烧录/实机画面自愈改写；实测字形、像素比对与全套自动化通过，独立审查无 blocker/major |
 | 1.10.0-beta.2 之后 | 2026-11-03 | [Warma 字幕预设开发](release1.10.0-beta.2/261103_Warma字幕预设/开发记录.md) / [独立复核](release1.10.0-beta.2/261103_Warma字幕预设/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261103_Warma字幕预设/Warma字幕预设.checklist.md) | 文本处理预设与单句 ASS 样式，待真实素材核验 |
@@ -83,48 +85,23 @@
 | 1.9.0-beta.3 之后 | 2026-10-17 | [翻译工程双轨修复](release1.9.0-beta.3/261017_翻译工程双轨/修复记录.md) / [人工清单](release1.9.0-beta.3/261017_翻译工程双轨/翻译工程双轨.checklist.md) | 中间与最终 MOSP 保留可编辑双轨，SRT 独立合并，核对下载兼容与完整套件异常边界 |
 | 1.9.0-beta.2 之后 | 2026-10-17 | [翻译语言判定与开关](release1.9.0-beta.2/261017_翻译语言判定/修复记录.md) / [人工核验](release1.9.0-beta.2/261017_翻译语言判定/翻译语言判定.checklist.md) | PR 260 已合并，beta.3 Windows 发布完成；Greptile 非阻塞测试建议与平台构建边界 |
 | 1.9.0-beta.2 之后 | 2026-10-16 | [PR 241 正确性复审与修复](release1.9.0-beta.2/261016_PR241正确性复审/修复与验证.md) / [人工清单](release1.9.0-beta.2/261016_PR241正确性复审/PR241正确性.checklist.md) | 三项阻塞、open PR 避让、真实媒体与绑定/诊断修复、主线组合边界 |
-| 1.9.0-beta.1 之后 | 2026-10-15 | [编辑器「烧录视频」功能实现](release1.9.0-beta.1/261015_编辑器烧录视频/EDITOR_BURN_VIDEO.md) / [人工核验](release1.9.0-beta.1/261015_编辑器烧录视频/EDITOR_BURN_VIDEO.checklist.md) | 完整源视频与去空隙两个烧录入口、服务端任务契约与验证 |
 | 1.9.0-beta.2 之后 | 2026-10-16 | [PR #243 合入顺序与兼容交接](release1.9.0-beta.2/261015_测试反馈修复/协调记录.md) | PR 243先合入；PR 239承接2.0保存模型适配，保留人工未确认边界 |
-| 1.9.0-beta.2 之后 | 2026-10-15 | [Issue #237 主修复人工核验](release1.9.0-beta.2/261015_测试反馈修复/ISSUE237_MAIN.checklist.md) | PR 243的29项人工核验源清单，自动化与人工验收分开记录 |
 | 1.9.0-beta.2 之后 | 2026-10-16 | [PR #242 视频预览复审](release1.9.0-beta.2/261016_PR242复审/PR242_视频预览复审.checklist.md) | 旧问题核验、暂停重试边界修复、独立环境与人工体验核对 |
 | 1.9.0-beta.2 之后 | 2026-10-16 | [主字幕单句缩放](release1.9.0-beta.2/ASS_CUE_SCALE.md) · [核对清单](release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md) | 单句缩放设计、实现、分层验证与 PR 跟进 |
-| 1.9.0-beta.2 之后 | 2026-10-15 | [去空隙视频安全边界与诊断成本](release1.9.0-beta.2/261015_去空隙视频/验证记录.md) · [人工核验](release1.9.0-beta.2/261015_去空隙视频/ISSUE237_MEDIA.checklist.md) | IDR 入口、实际删减结果、资源测量与未覆盖媒体边界 |
 | 1.9.0-beta.2 之后 | 2026-10-16 | [本地自然断句记录](release1.9.0-beta.2/261016_本地自然断句/任务记录.md) · [核查清单](release1.9.0-beta.2/261016_本地自然断句/本地自然断句.checklist.md) | 单句上限的数字单位保护、短尾重平衡与同批模拟语料对比 |
+| 1.9.0-beta.2 之后 | 2026-10-16 | [PR #233 脏录音审查回归修复](release1.9.0-beta.2/261016_脏录音审查回归修复/修复记录.md) | 补码选轨、媒体路径、原始 ASR 预检与人工核查页 |
+| 1.9.0-beta.1 之后 | 2026-10-15 | [编辑器「烧录视频」功能实现](release1.9.0-beta.1/261015_编辑器烧录视频/EDITOR_BURN_VIDEO.md) / [人工核验](release1.9.0-beta.1/261015_编辑器烧录视频/EDITOR_BURN_VIDEO.checklist.md) | 完整源视频与去空隙两个烧录入口、服务端任务契约与验证 |
+| 1.9.0-beta.2 之后 | 2026-10-15 | [Issue #237 主修复人工核验](release1.9.0-beta.2/261015_测试反馈修复/ISSUE237_MAIN.checklist.md) | PR 243的29项人工核验源清单，自动化与人工验收分开记录 |
+| 1.9.0-beta.2 之后 | 2026-10-15 | [去空隙视频安全边界与诊断成本](release1.9.0-beta.2/261015_去空隙视频/验证记录.md) · [人工核验](release1.9.0-beta.2/261015_去空隙视频/ISSUE237_MEDIA.checklist.md) | IDR 入口、实际删减结果、资源测量与未覆盖媒体边界 |
 | 1.9.0-beta.1 之后 | 2026-10-15 | [PR #231 定位与震动返工](release1.9.0-beta.1/ASS_POSITION_REWORK.md) | 反馈账本、分层验证及重写历史后的内容重放 |
 | 1.9.0-beta.1 之后 | 2026-10-15 | [工程媒体关联修复](release1.9.0-beta.1/261015_工程媒体关联/修复记录.md) | 路径设计、Greptile/打包修复、验证与黑屏调查边界 |
 | 1.9.0-beta.1 之后 | 2026-10-15 | [导出菜单、关闭焦点与测试增补](release1.9.0-beta.1/261015_导出菜单与关闭焦点/增补记录.md) | OTIO 留白、Esc/空格、测试隔离与 Tauri 退役 |
 | 1.9.0-beta.1 之后 | 2026-10-15 | [v1.9.0-beta.1 测试反馈与处理记录](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1.md) | 30 项实测反馈账本，含 9 份调查报告；已汇总为 Issue #237 |
 | 1.9.0-beta.2 之后 | 2026-10-15 | [视频缩略图相关反馈与处理记录](release1.9.0-beta.2/261015_视频缩略图相关/TEST_FEEDBACK_视频缩略图.md) | 画面带主题独立分账：显示性能问答、实时补间开关、生成速度优化与 Launcher 开关 |
-| 1.9.0-beta.2 之后 | 2026-10-16 | [PR #233 脏录音审查回归修复](release1.9.0-beta.2/261016_脏录音审查回归修复/修复记录.md) | 补码选轨、媒体路径、原始 ASR 预检与人工核查页 |
 | unversioned | 2026-10-14 | [Launcher 现代化改版实施记录](unversioned/2026-10-14/LAUNCHER_REDESIGN_IMPLEMENTATION.md) | 分阶段实施账本、测试约束与验证记录 |
 | unversioned | 2026-10-11 | [AI 口播整理编辑稿改造](unversioned/2026-10-11/AI_CLEANUP_RC.md) | 模型编辑稿、固定转换与删除恢复的实现和验证 |
 | unversioned | 2026-10-11 | [AI 重新断句改进记录](unversioned/2026-10-11/AI_RESEGMENT.md) | 字数上限、复杂用例复测及主分支整合证据 |
 | unversioned | 2026-10-11 | [Agent 长周期修复的踩坑记录：e2e 像素验证体系与语义撤回](unversioned/2026-10-11/agent-e2e-pitfalls.md) | PR #225 撤回 #205 语义后，e2e 像素断言体系的适配坑与规避方法 |
-| unversioned | undated | [符号级合并重放工作流](unversioned/undated/%E7%AC%A6%E5%8F%B7%E7%BA%A7%E5%90%88%E5%B9%B6%E9%87%8D%E6%94%BE%E5%B7%A5%E4%BD%9C%E6%B5%81.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [入口与层次](unversioned/undated/editor-settings-report/editor-settings.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [翻译段本地化（波 1 增补）实施记录](unversioned/undated/TEST_FEEDBACK_TRANSLATE_LOCALIZE.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [RTF 文件名撤销 + 组合标记本地化 波 5 实施记录](unversioned/undated/TEST_FEEDBACK_RTF_UNDO_MARKERS.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [输出文件名开关 + RTF 标签 实施记录](unversioned/undated/TEST_FEEDBACK_RTF_TAG.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [TEST_FEEDBACK — PR #180 Review（Canvas 预览）](unversioned/undated/TEST_FEEDBACK_PR180.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [PR #150 审查修复记录](unversioned/undated/TEST_FEEDBACK_PR150.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [Launcher 文件输出设置 + RTF 重命名 波 2 实施记录](unversioned/undated/TEST_FEEDBACK_OUTPUT_DIR_WAVE2.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [新建工程与空白编辑器导入处理记录](unversioned/undated/TEST_FEEDBACK_NEW_PROJECT.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [TEST_FEEDBACK_MARKERS_UX](unversioned/undated/TEST_FEEDBACK_MARKERS_UX.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [macOS 单元测试环境失败修复记录](unversioned/undated/TEST_FEEDBACK_MACOS_UNIT_TESTS.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [Launcher 与 Editor 布局反馈记录](unversioned/undated/TEST_FEEDBACK_LAYOUT.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [静音空隙 Gap 功能反馈与处理记录](unversioned/undated/TEST_FEEDBACK_GAP.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [干净 HEAD 复现的 e2e 失败清单（triage 与修复）](unversioned/undated/TEST_FEEDBACK_E2E_DRIFT.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [音轨选择反馈](unversioned/undated/TEST_FEEDBACK_AUDIO_TRACKS.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [ASR 识别预设管理：UI 反馈与整理记录](unversioned/undated/TEST_FEEDBACK_ASR_PRESET_MANAGER.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [文稿录制对齐 MVP 反馈记录](unversioned/undated/TEST_FEEDBACK_ALIGN_MVP.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [TEST_FEEDBACK_AI_CLEANUP_MARKERS](unversioned/undated/TEST_FEEDBACK_AI_CLEANUP_MARKERS.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [时间码对比页面计划（tools/timestamp-compare.html）](unversioned/undated/PLAN_TIMESTAMP_COMPARE.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [编辑器 ESM 迁移：实施台账与上游交接](unversioned/undated/ESM_MIGRATION.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [编辑器设置整理实施记录](unversioned/undated/EDITOR_SETTINGS_IMPLEMENTATION.md) | 保留原始结论与验证范围 |
-| unversioned | undated | [PR #208 波形与响度预研](unversioned/undated/PR208_WAVEFORM_PREFLIGHT_RESEARCH_20261011.md) | 正文未明确任务日期；保留研究结论与原文件名 |
-| 1.8.0-beta.1 | undated | [v1.8.0-beta.1 发布审查](1.8.0-beta.1/undated/RELEASE_REVIEW_1.8.0-beta.1.md) | 保留原始结论与验证范围 |
-| 1.4.0-beta.7 | undated | [v1.4.0-beta.7 测试反馈与处理记录](1.4.0-beta.7/undated/TEST_FEEDBACK_BETA7.md) | 保留原始结论与验证范围 |
-| 1.3.2 → 1.4.0（跨版本） | undated | [MAW 1.3.2 → 1.4.0-beta.4 变更回顾](1.3.2/undated/RELEASE_REVIEW_1.3.2_TO_1.4.0.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-10-11 | [261011 再次反馈处理记录](unversioned/2026-10-11/feedback/%E5%A4%84%E7%90%86%E8%AE%B0%E5%BD%95.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-10-11 | [MAW 2.0 新版本核对](unversioned/2026-10-11/feedback/MAW%202.0%20%E6%96%B0%E7%89%88%E6%9C%AC%E6%A0%B8%E5%AF%B9.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-10-11 | [PR #207: visibility-first ASS subtitle stacking](unversioned/2026-10-11/PR205_ANCHOR_REVIEW_20261011.md) | 保留原始结论与验证范围 |
@@ -144,6 +121,7 @@
 | 1.8.0-beta.1 → 当时 main | 2026-10-09 | [提交清单与分组方案（v1.8.0-beta.1..HEAD，共 28 提交 + 1 merge）](1.8.0-beta.1/2026-10-09/first-verification/data/commits.md) | 附件源数据 |
 | 1.8.0-beta.1 → 当时 main | 2026-10-09 | [当前 HEAD（9b7e62b8）自动化基线 — 2026-10-09 实测](1.8.0-beta.1/2026-10-09/first-verification/data/baseline.md) | 附件源数据 |
 | 1.8.0-beta.1 → 当时 main | 2026-10-09 | [MAW 发布核查清单生成任务（2026-10-09）](1.8.0-beta.1/2026-10-09/first-verification/README.md) | 保留原始结论与验证范围 |
+| 1.8.0-beta.1 | 2026-10-09 | [maw-verification-v1.8.0b1-to-main.html](1.8.0-beta.1/2026-10-09/first-verification/maw-verification-v1.8.0b1-to-main.html) | 共享报告；源材料在同目录 |
 | unversioned | 2026-10-08 | [ESM 迁移后的上游 PR 合并预演](unversioned/2026-10-08/esm-research/ESM_UPSTREAM_MERGE_REHEARSAL.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-10-08 | [上游 PR → ESM fork：复现与处理手册](unversioned/2026-10-08/esm-research/ESM_UPSTREAM_MERGE_PLAYBOOK.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-10-08 | [ESM 机械迁移调研结果](unversioned/2026-10-08/esm-research/ESM_MECHANICAL_RESEARCH_REPORT.md) | 保留原始结论与验证范围 |
@@ -176,8 +154,32 @@
 | unversioned | 2026-08-03 | [MAW 1.2 本地模型 Launcher 开发记录](unversioned/2026-08-03/MAW%201.2%20%E6%9C%AC%E5%9C%B0%E6%A8%A1%E5%9E%8B%20Launcher%20%E5%BC%80%E5%8F%91%E8%AE%B0%E5%BD%95.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-07-28 | [ASR 供应商调研：Fun-ASR 与豆包大模型录音文件识别](unversioned/2026-07-28/ASR_PROVIDER_RESEARCH.md) | 保留原始结论与验证范围 |
 | 1.1.0 | 2026-07-27 | [MAW 1.1 开发追踪](1.1.0/2026-07-27/MAW%201.1%20%E5%BC%80%E5%8F%91%E8%BF%BD%E8%B8%AA.md) | 正文明确版本目标为 1.1.0；保留原始结论与验证范围 |
+| unversioned | undated | [符号级合并重放工作流](unversioned/undated/%E7%AC%A6%E5%8F%B7%E7%BA%A7%E5%90%88%E5%B9%B6%E9%87%8D%E6%94%BE%E5%B7%A5%E4%BD%9C%E6%B5%81.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [入口与层次](unversioned/undated/editor-settings-report/editor-settings.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [翻译段本地化（波 1 增补）实施记录](unversioned/undated/TEST_FEEDBACK_TRANSLATE_LOCALIZE.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [RTF 文件名撤销 + 组合标记本地化 波 5 实施记录](unversioned/undated/TEST_FEEDBACK_RTF_UNDO_MARKERS.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [输出文件名开关 + RTF 标签 实施记录](unversioned/undated/TEST_FEEDBACK_RTF_TAG.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [TEST_FEEDBACK — PR #180 Review（Canvas 预览）](unversioned/undated/TEST_FEEDBACK_PR180.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [PR #150 审查修复记录](unversioned/undated/TEST_FEEDBACK_PR150.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [Launcher 文件输出设置 + RTF 重命名 波 2 实施记录](unversioned/undated/TEST_FEEDBACK_OUTPUT_DIR_WAVE2.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [新建工程与空白编辑器导入处理记录](unversioned/undated/TEST_FEEDBACK_NEW_PROJECT.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [TEST_FEEDBACK_MARKERS_UX](unversioned/undated/TEST_FEEDBACK_MARKERS_UX.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [macOS 单元测试环境失败修复记录](unversioned/undated/TEST_FEEDBACK_MACOS_UNIT_TESTS.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [Launcher 与 Editor 布局反馈记录](unversioned/undated/TEST_FEEDBACK_LAYOUT.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [静音空隙 Gap 功能反馈与处理记录](unversioned/undated/TEST_FEEDBACK_GAP.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [干净 HEAD 复现的 e2e 失败清单（triage 与修复）](unversioned/undated/TEST_FEEDBACK_E2E_DRIFT.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [音轨选择反馈](unversioned/undated/TEST_FEEDBACK_AUDIO_TRACKS.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [ASR 识别预设管理：UI 反馈与整理记录](unversioned/undated/TEST_FEEDBACK_ASR_PRESET_MANAGER.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [文稿录制对齐 MVP 反馈记录](unversioned/undated/TEST_FEEDBACK_ALIGN_MVP.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [TEST_FEEDBACK_AI_CLEANUP_MARKERS](unversioned/undated/TEST_FEEDBACK_AI_CLEANUP_MARKERS.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [时间码对比页面计划（tools/timestamp-compare.html）](unversioned/undated/PLAN_TIMESTAMP_COMPARE.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [编辑器 ESM 迁移：实施台账与上游交接](unversioned/undated/ESM_MIGRATION.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [编辑器设置整理实施记录](unversioned/undated/EDITOR_SETTINGS_IMPLEMENTATION.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [PR #208 波形与响度预研](unversioned/undated/PR208_WAVEFORM_PREFLIGHT_RESEARCH_20261011.md) | 正文未明确任务日期；保留研究结论与原文件名 |
+| 1.8.0-beta.1 | undated | [v1.8.0-beta.1 发布审查](1.8.0-beta.1/undated/RELEASE_REVIEW_1.8.0-beta.1.md) | 保留原始结论与验证范围 |
+| 1.4.0-beta.7 | undated | [v1.4.0-beta.7 测试反馈与处理记录](1.4.0-beta.7/undated/TEST_FEEDBACK_BETA7.md) | 保留原始结论与验证范围 |
+| 1.3.2 → 1.4.0（跨版本） | undated | [MAW 1.3.2 → 1.4.0-beta.4 变更回顾](1.3.2/undated/RELEASE_REVIEW_1.3.2_TO_1.4.0.md) | 保留原始结论与验证范围 |
 | unversioned | undated | [editor-settings.html](unversioned/undated/editor-settings-report/editor-settings.html) | 共享报告；源材料在同目录 |
-| 1.8.0-beta.1 | 2026-10-09 | [maw-verification-v1.8.0b1-to-main.html](1.8.0-beta.1/2026-10-09/first-verification/maw-verification-v1.8.0b1-to-main.html) | 共享报告；源材料在同目录 |
 
 - [AI 备注与译文核对实现](unversioned/2026-10-12/AI_REVIEW_IMPLEMENTATION.md)：通用工程备注和离线译文编辑的进度、证据与边界。
 - [AI 整理诊断与可选复查](release1.9.0-beta.2/261016_AI整理诊断与复查/任务记录.md)：行数差异复现、阶段记录、原始输入与人工核验清单。

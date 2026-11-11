@@ -51,7 +51,7 @@ from maw.runtime_manifest import (
     write_runtime_manifest,
 )
 from maw.runtime_mirror_picker import pick_fastest_mirror, probe_index_reachable
-from maw.runtimes import freezer
+from maw.runtimes import freezer, pathwin
 
 GET_PIP_SCRIPT: Final = "get-pip.py"
 
@@ -233,11 +233,44 @@ class ManagedRuntime:
     # -- 路径 -----------------------------------------------------------------
 
     def resolve_root(self, configured: str | Path | None = None) -> Path:
-        """显式配置 -> 进程级环境变量 -> 默认 app-data 目录。"""
+        """显式配置 -> 进程级环境变量 -> 默认 app-data 目录。
+
+        Windows 上结果经 :mod:`maw.runtimes.pathwin` 做 ASCII 化（8.3 短路径
+        别名；默认目录无法别名化时迁移公共目录 fallback，显式配置只做别名、
+        不迁移）：中文用户名等非 ASCII 路径会让 DyNet/nagisa 这类以窄字符
+        API 打开数据文件的第三方依赖失败（决策表见 pathwin 模块 docstring）。
+        非 Windows 与纯 ASCII 路径原样直通，行为不变。
+        """
         override = str(configured or "").strip() or os.environ.get(self.spec.root_env, "").strip()
         if override:
-            return Path(override).expanduser().resolve(strict=False)
-        return default_app_data_root() / self.spec.dir_name
+            # 用户显式指定的路径尊重原选择：只做短路径别名（同一物理目录），
+            # 不迁移公共目录；无法 ASCII 化时由 verify 错误增强给出指引。
+            configured_path = Path(override).expanduser()
+            # Preserve junction components until fallback security has checked
+            # them. resolve() would turn a hostile fallback junction into an
+            # unrelated ASCII path and bypass its validation.
+            if sys.platform == "win32":
+                raw = Path(os.path.abspath(configured_path))
+                checked = pathwin.ensure_ascii_root(
+                    raw, dir_name=self.spec.dir_name, allow_relocate=False,
+                )
+                # The original path must be checked before resolving a
+                # junction, but ordinary explicit paths retain the previous
+                # canonical form (including Windows TEMP's 8.3 alias).
+                if checked != raw:
+                    return checked
+                normalized = raw.resolve(strict=False)
+            else:
+                normalized = configured_path.resolve(strict=False)
+            return pathwin.ensure_ascii_root(
+                normalized,
+                dir_name=self.spec.dir_name,
+                allow_relocate=False,
+            )
+        return pathwin.ensure_ascii_root(
+            default_app_data_root() / self.spec.dir_name,
+            dir_name=self.spec.dir_name,
+        )
 
     def python_path(self, root: str | Path | None = None) -> Path:
         target = self.resolve_root(root) if root is None else Path(root)
@@ -338,7 +371,23 @@ class ManagedRuntime:
         model_cache_root: str | Path | None = None,
     ) -> RuntimeStatus:
         """missing / broken / installing / ready，复用 runtime.json manifest。"""
-        root = self.resolve_root(runtime_root)
+        return self._status_at(self.resolve_root(runtime_root), model_cache_root=model_cache_root)
+
+    def _status_at(
+        self,
+        root: Path,
+        *,
+        model_cache_root: str | Path | None = None,
+    ) -> RuntimeStatus:
+        """对调用方给定的根目录判定状态，不再重新解析。
+
+        root 的解析依赖「哪些祖先目录当前存在」（8.3 别名走查，见
+        :mod:`maw.runtimes.pathwin`）；安装中途 model-cache 等步骤会建出
+        新祖先，若结尾重新解析可能漂移到一条从未物化的别名路径，把刚装好
+        的运行时判成 missing（Windows CI run 42745061077 实证）。install()
+        因此必须用安装入口解析出的同一个根做 ready 判定；独立查询走
+        :meth:`status`。
+        """
         python = self.interpreter(root)
         model_cache = resolve_model_cache_root(model_cache_root) if self.spec.has_model_cache else ""
         if not root.exists():
@@ -450,7 +499,22 @@ class ManagedRuntime:
         root = self.resolve_root(runtime_root)
         if root.exists() and not root.is_dir():
             raise self._error(f"{spec.message_prefix}路径不能是一个文件：{root}")
-        root.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # Create fallback parents with a private DACL before mkdir/manifest
+            # or the ready shortcut can adopt an attacker-precreated runtime.
+            pathwin.prepare_install_root(root, dir_name=spec.dir_name)
+            root.parent.mkdir(parents=True, exist_ok=True)
+        except pathwin.AsciiRootUnavailable as error:
+            raise self._error(f"{spec.message_prefix}{error}") from error
+        except OSError as error:
+            # 无权创建父目录（公共目录 fallback / 自定义路径在受保护位置）
+            # 会先于 probe_writable 失败：转成含自救指引的可操作错误，而不是
+            # 裸 PermissionError。
+            raise self._error(
+                f"{spec.message_prefix}运行时父目录无法创建：{root.parent}（{error}）。"
+                "请检查该位置的权限；公共目录回退场景可设置环境变量 "
+                f"{pathwin.FALLBACK_ROOT_ENV} 指向一个无中文且当前用户可写的目录后重试。"
+            ) from error
 
         # 引导策略按运行形态分叉：打包版（Windows）依赖随包分发的 bootstrap
         # 资产；打包版（unix）用宿主 python3 建 venv，无需任何 bundle 资产；
@@ -478,15 +542,16 @@ class ManagedRuntime:
                     "请使用官方打包版。"
                 )
 
-        if self.status(runtime_root=runtime_root, model_cache_root=model_cache_root).ready and not repair:
+        if self._status_at(root, model_cache_root=model_cache_root).ready and not repair:
             emit(spec.ready_emit_done, 100, "ready")
-            return self.status(runtime_root=runtime_root, model_cache_root=model_cache_root)
+            return self._status_at(root, model_cache_root=model_cache_root)
 
         _may_cancel(cancel, spec)
         python = self.interpreter(root)
         if root.exists() and not python.exists() and any(root.iterdir()) and not repair:
             raise self._error(f"{spec.message_prefix}目录已存在但不完整，请更换路径或手动清理后重试。")
         # 安装开始即写入 installing 状态，避免安装过程中被判定为"需要修复"。
+        # 公共目录安全验证与私有目录创建已在 ready 早退之前完成。
         write_runtime_manifest(
             root,
             status=STATUS_INSTALLING,
@@ -599,12 +664,20 @@ class ManagedRuntime:
 
         emit(f"正在验证{spec.feature_label}运行时……", 90, "verify")
         verify_command = [str(python), "-c", spec.verify_command]
-        self.run(
-            verify_command,
-            env=self.environment(root, model_cache_root),
-            cancel=cancel,
-            on_line=lambda line: emit(line, 94, "verify"),
-        )
+        try:
+            self.run(
+                verify_command,
+                env=self.environment(root, model_cache_root),
+                cancel=cancel,
+                on_line=lambda line: emit(line, 94, "verify"),
+            )
+        except spec.cancelled_class:
+            raise
+        except spec.error_class as error:
+            # DyNet/nagisa 类依赖在 Windows 上打不开非 ASCII 路径下的数据文件，
+            # verify 的 import 链是第一个撞上的环节；补充定位提示，避免用户
+            # 只看到裸的 C++ traceback 无从下手（cancelled 不能被吞）。
+            raise self._error(str(error) + pathwin.ascii_path_failure_hint(root)) from error
         _may_cancel(cancel, spec)
 
         missing = self.missing_package_dirs(root)
@@ -632,7 +705,9 @@ class ManagedRuntime:
             ):
                 path.mkdir(parents=True, exist_ok=True)
         emit(spec.ready_emit_done, 100, "ready")
-        return self.status(runtime_root=runtime_root, model_cache_root=model_cache_root)
+        # ready 判定钉在入口解析的 root 上：中途建出的目录可能让重解析漂移
+        # （详见 _status_at docstring），不能把刚装好的运行时判成 missing。
+        return self._status_at(root, model_cache_root=model_cache_root)
 
     def _prepare_host_venv(
         self,
