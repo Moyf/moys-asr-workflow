@@ -200,7 +200,7 @@ class MossRuntimeInstallTests(unittest.TestCase):
                 with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                     with mock.patch.object(MOSS, "requirements_path", return_value=requirements_txt):
                         with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                            with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                 with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                     with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(root)}):
                                         status = install_local_runtime(engine="moss")

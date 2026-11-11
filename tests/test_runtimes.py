@@ -120,7 +120,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                     with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
                         with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                            with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                 with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                     status = LOCAL.install(runtime_root=root)
 
@@ -161,7 +161,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                     with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
                         with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                            with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                 with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                     with self.assertRaises(LocalRuntimeError) as context:
                                         LOCAL.install(runtime_root=root)
@@ -197,7 +197,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                     with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
                         with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                            with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                 with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                     with mock.patch.dict(os.environ, {"MAW_PYTORCH_INDEX": mirror}):
                                         status = LOCAL.install(runtime_root=root)
@@ -229,7 +229,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
             with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
                 with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                     with mock.patch.object(OCR, "requirements_path", return_value=requirements_txt):
-                        with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                        with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                             with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                 status = OCR.install(runtime_root=root)
 
@@ -281,7 +281,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                     with mock.patch.object(LOCAL, "requirements_path", side_effect=fake_requirements_path):
                         with mock.patch("maw.runtimes.base._has_cuda", return_value=False):
-                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                            with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                 with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                     status = LOCAL.install(runtime_root=root)
 
@@ -322,7 +322,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                     with mock.patch.object(MOSS, "requirements_path", return_value=requirements_txt):
                         with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                            with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                 with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                     status = MOSS.install(runtime_root=root)
 
@@ -364,7 +364,7 @@ class SourceModeInstallTests(unittest.TestCase):
                 with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=forbid_bootstrap):
                     with mock.patch.object(MOSS, "requirements_path", return_value=requirements_txt):
                         with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                            with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                 with mock.patch.object(MOSS, "_ensure_frozen_requirements"):
                                     with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                         status = MOSS.install(runtime_root=root)
@@ -526,7 +526,7 @@ class VenvRuntimeInstallTests(unittest.TestCase):
                     with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=forbid_bootstrap):
                         with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
                             with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                                with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                     with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                         status = LOCAL.install(runtime_root=root)
 
@@ -591,7 +591,7 @@ class VenvRuntimeInstallTests(unittest.TestCase):
                 with mock.patch("maw.runtimes.base.subprocess.run", return_value=unittest.mock.MagicMock(returncode=0)):
                     with mock.patch.object(LOCAL, "requirements_path", side_effect=fake_requirements_path):
                         with mock.patch("maw.runtimes.base._has_cuda", return_value=False):
-                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                            with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                 with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                     status = LOCAL.install(runtime_root=root)
 
@@ -910,7 +910,7 @@ class RuntimeAsciiPathTests(unittest.TestCase):
                         with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                             with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
                                 with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                                    with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                    with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                         with mock.patch("maw.runtimes.base._run_process", side_effect=self._fake_run(calls, envs)):
                                             status = LOCAL.install()
 
@@ -949,7 +949,7 @@ class RuntimeAsciiPathTests(unittest.TestCase):
                     with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                         with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
                             with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                                with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                     with mock.patch("maw.runtimes.base._run_process", side_effect=self._fake_run(calls, envs)):
                                         with mock.patch.object(pathwin, "win32_get_short_path", side_effect=lambda p: p):
                                             status = LOCAL.install()
@@ -1004,7 +1004,7 @@ class RuntimeAsciiPathTests(unittest.TestCase):
                     with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                         with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
                             with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                                with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                     with mock.patch("maw.runtimes.base._run_process", side_effect=self._fake_run(calls, envs)):
                                         with mock.patch.object(pathwin, "_path_exists", side_effect=separator_aware_exists):
                                             with mock.patch.object(pathwin, "win32_get_short_path", side_effect=mixed_get_short_path):
@@ -1066,7 +1066,7 @@ class RuntimeAsciiPathTests(unittest.TestCase):
                     with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                         with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
                             with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                                with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                     with mock.patch("maw.runtimes.base._run_process", side_effect=self._fake_run(calls, envs)):
                                         status = LOCAL.install(runtime_root=root)
 
@@ -1085,7 +1085,7 @@ class RuntimeAsciiPathTests(unittest.TestCase):
             "extract": mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract),
             "requirements": mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt),
             "cuda": mock.patch("maw.runtimes.base._has_cuda", return_value=True),
-            "mirror": mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"),
+            "mirror": mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]),
             "run": mock.patch("maw.runtimes.base._run_process", side_effect=RuntimeAsciiPathTests._fake_run(calls, [])),
         }
 

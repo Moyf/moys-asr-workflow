@@ -13,7 +13,8 @@ maw/local_runtime.py / maw/ocr_runtime.py import 使用。
   python scripts/runtime_mirror_picker.py --source https://pypi.org/simple
 
 可导入 API:
-  pick_fastest_mirror(timeout=5.0) -> str       # 最快镜像 base URL，全失败兜底官方源
+  ranked_mirrors(timeout=5.0) -> list[str]      # 按测速排序的候选源（快→慢），全失败兜底 [官方源]
+  pick_fastest_mirror(timeout=5.0) -> str       # 最快镜像 base URL（即 ranked_mirrors()[0]），全失败兜底官方源
   measure_sources(timeout=5.0) -> list[dict]    # 每源: url/latency_ms/bytes_per_sec/ok/error
   probe_index_reachable(url, timeout=10.0) -> bool  # 任意 pip 索引（如 PyTorch 源）当前是否可达
 
@@ -246,12 +247,27 @@ def _pick_fastest(results: list[dict]) -> str:
     return ok_results[0]["url"]
 
 
+def ranked_mirrors(timeout: float = 5.0) -> list[str]:
+    """返回按测速结果排序的候选源（快 → 慢），可直接逐个用作 pip --index-url。
+
+    供安装期「换源重试」使用：首个元素与 :func:`pick_fastest_mirror` 一致；
+    测速明确失败的源不进列表（重试时跳过已知不可达的源）；全部失败时兜底
+    ``[官方源]``，列表永不为空但长度可能只有 1。
+    """
+    results = measure_sources(timeout=timeout)
+    ok_results = [item for item in results if item["ok"] and item["latency_ms"] is not None]
+    if not ok_results:
+        return [FALLBACK_SOURCE]
+    ok_results.sort(key=lambda item: (item["latency_ms"], -(item["bytes_per_sec"] or 0.0)))
+    return [item["url"] for item in ok_results]
+
+
 def pick_fastest_mirror(timeout: float = 5.0) -> str:
     """返回当前最快镜像的 base URL（可直接用作 pip --index-url）。
 
     全部源失败时返回官方 https://pypi.org/simple 兜底。
     """
-    return _pick_fastest(measure_sources(timeout=timeout))
+    return ranked_mirrors(timeout=timeout)[0]
 
 
 def _fmt_speed(bytes_per_sec: float | None) -> str:

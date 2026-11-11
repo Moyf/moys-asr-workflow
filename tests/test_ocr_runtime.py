@@ -93,7 +93,7 @@ class OcrRuntimeTests(unittest.TestCase):
         with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
             with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=fake_extract):
                 with mock.patch.object(OCR, "requirements_path", return_value=requirements_txt):
-                    with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                    with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                         with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                             status = install_ocr_runtime(runtime_root=self.root, cancel_event=Event())
 

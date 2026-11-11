@@ -267,7 +267,7 @@ class LocalRuntimeTests(unittest.TestCase):
                     with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=fake_extract):
                         with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
                             with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                                with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                     with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run) as run_process:
                                         status = install_local_runtime(on_event=lambda *event: events.append(event))
 
