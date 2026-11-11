@@ -74,6 +74,10 @@ function applyAsrPreset(options) {
   renderLocalAlignmentModel();
   setHotwordsMode(options.qwenAudioHotwordsMode);
   renderPromptCharacterCount(); renderSonioxContextCharacterCount(); syncTestRun(); syncThumbnailFields();
+  // 预设覆盖断句与标点字段后同样持久化（value 赋值不触发 input 事件，需显式保存），并同步 state.config 供 openSettings 回填。
+  const segmentationSnapshot = segmentationPrefsPayload();
+  savePrefsDebounced(segmentationSnapshot);
+  Object.assign(state.config, segmentationSnapshot);
 }
 function activePromptContext() {
   return $("openaiPrompt").value;

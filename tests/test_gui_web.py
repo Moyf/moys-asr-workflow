@@ -6282,6 +6282,43 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('server_disconnected', script)
         self.assertNotIn('state.serverRunning ? t("server_stop")', script)
 
+    def test_segmentation_preferences_persist_and_refill(self) -> None:
+        """Given 断句与标点 fields, When launcher sources are read, Then wiring, refill and preset-apply all persist them (issue #355)."""
+        wiring = (ROOT / "web" / "launcher" / "boot" / "launcher-notify-backend.js").read_text(encoding="utf-8")
+        startup = (ROOT / "web" / "launcher" / "boot" / "launcher-settings-startup.js").read_text(encoding="utf-8")
+        presets = (ROOT / "web" / "launcher" / "presets" / "launcher-presets.js").read_text(encoding="utf-8")
+        media_form = (ROOT / "web" / "launcher" / "forms" / "launcher-media-form.js").read_text(encoding="utf-8")
+        mock_api = (ROOT / "web" / "launcher" / "boot" / "launcher-mock-api.js").read_text(encoding="utf-8")
+
+        # 快照组装：五字段全量快照由 media-form 域模块提供。
+        self.assertIn("function segmentationPrefsPayload()", media_form)
+        snapshot_body = media_form.split("function segmentationPrefsPayload()")[1].split("}")[0]
+        for field in ("gapSplit", "minLen", "maxLen", "minWords", "maxWords"):
+            self.assertIn(f'"{field}"', snapshot_body)
+
+        # 字段监听：input 与 change 都触发防抖保存，并同步 state.config（openSettings 回填以此为源）；
+        # 非法值由任务提交校验拦截。
+        self.assertIn('["gapSplit", "minLen", "maxLen", "minWords", "maxWords"].forEach((field) =>', wiring)
+        self.assertIn("const snapshot = segmentationPrefsPayload();", wiring)
+        self.assertIn("savePrefsDebounced(snapshot);", wiring)
+        self.assertIn('$(field).addEventListener("input", persist)', wiring)
+        self.assertIn('$(field).addEventListener("change", persist)', wiring)
+        self.assertIn("Object.assign(state.config, snapshot)", wiring)
+
+        # 启动（init）与设置面板打开都回填；空值留空，占位符不受影响。
+        self.assertEqual(startup.count('$("gapSplit").value = state.config.gapSplit || "";'), 2)
+        for field in ("minLen", "maxLen", "minWords", "maxWords"):
+            self.assertIn(f'$("{field}").value = state.config.{field} || "";', startup)
+
+        # 预设覆盖字段后显式持久化（value 赋值不触发 input 事件），并同步 state.config。
+        self.assertIn("const segmentationSnapshot = segmentationPrefsPayload();", presets)
+        self.assertIn("savePrefsDebounced(segmentationSnapshot);", presets)
+        self.assertIn("Object.assign(state.config, segmentationSnapshot);", presets)
+
+        # 浏览器 mock 与真实后端同构：config 载荷与 save_prefs 都支持五键。
+        self.assertIn('["gapSplit", "minLen", "maxLen", "minWords", "maxWords"]', mock_api)
+        self.assertIn('gapSplit: saved.gapSplit || ""', mock_api)
+
     def test_launcher_hero_links_include_github_tutorial_and_support(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = launcher_sources_text(ROOT)
