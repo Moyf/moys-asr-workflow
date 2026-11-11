@@ -84,6 +84,27 @@ class ReleasePublicationTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('ref: main', pages)
         self.assertIn('--expected-tag "$EXPECTED_TAG"', pages)
 
+    def test_deployed_verifier_has_bounded_wait_and_recovery_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        pages = (root / '.github/workflows/deploy-editor-pages.yml').read_text(encoding='utf-8')
+        self.assertIn('id: verify_site', pages)
+        self.assertIn('python scripts/run_check.py --timeout 360 -- python scripts/verify_release_site.py', pages)
+        self.assertIn('--timeout 300 --retry-interval 10', pages)
+        self.assertIn("if: failure() && steps.verify_site.outcome == 'failure'", pages)
+        self.assertIn('GITHUB_STEP_SUMMARY', pages)
+        self.assertIn('Website pending synchronization', pages)
+        self.assertIn("github.workflow == 'Release MAW GUI' && startsWith(github.ref, 'refs/tags/v') && inputs.expected_tag == github.ref_name", pages)
+        self.assertIn('gh workflow run deploy-editor-pages.yml --ref main -f expected_tag=', pages)
+        self.assertIn('actions/upload-artifact@', pages)
+        self.assertIn("steps.verify_site.outcome == 'success' || steps.verify_site.outcome == 'failure'", pages)
+        self.assertIn('include-hidden-files: true', pages)
+        self.assertIn('.artifacts/checks/**/output.log', pages)
+        self.assertIn('.artifacts/checks/**/result.json', pages)
+        release = (root / '.github/workflows/release.yml').read_text(encoding='utf-8')
+        self.assertIn('name: Release MAW GUI', release)
+        self.assertIn("needs.publish.result == 'success'", release)
+        self.assertIn('expected_tag: ${{ github.ref_name }}', release)
+
     def test_deployed_verification_rejects_stale_index_and_checks_notes(self):
         index = dict(schema_version=1, latest_stable='2.0.0', releases=[dict(version='2.0.0')])
         with patch('scripts.verify_release_site.urlopen', return_value=BytesIO(json.dumps(index).encode())):
@@ -94,7 +115,9 @@ class ReleasePublicationTests(CompactContainerAssertions, unittest.TestCase):
         response = MagicMock()
         response.__enter__.return_value.status = 200
         with patch('scripts.verify_release_site.urlopen', side_effect=[BytesIO(json.dumps(index).encode()),
-                                                                       BytesIO(json.dumps(notes).encode()), response]):
+                                                                       BytesIO(json.dumps(index).encode()),
+                                                                       BytesIO(json.dumps(notes).encode()),
+                                                                       BytesIO(json.dumps(notes).encode()), response, response]):
             verify('https://example.test/project', 'v2.0.0')
 
 

@@ -264,6 +264,8 @@ git diff --name-status
 
 创建 GitHub Release 前必须核对 `CHANGELOG.md`：对应版本条目必须已经归档当前发布内容，并用 `scripts/prepare_release_notes.py` 生成、检查实际 Release notes；不能仅因 tag 已创建就视为发布完成。
 
+正式版发包收尾必须分别核对 **GitHub Release** 与 **官网**：Release 已公开、发布标记和预期附件状态/大小正确、实际正文与生成预览一致；官网 `/releases/index.json` 包含本次版本且 `latest_stable` 与版本排序一致，本次 `notes.json` 版本/正文正确、详情页可访问。两层均通过才报告「发布全部完成」，不能以 tag 推送、打包成功或 Pages 部署 API success 代替。官网校验使用 `scripts/verify_release_site.py --base-url https://moyf.github.io/moys-asr-workflow --expected-tag vVERSION`，允许有界等待部署传播；超时/失败明确报告「安装包已发布，官网待同步」，保留最后错误与验证日志。只重试 Pages workflow 并填写本次 `expected_tag`，不为官网故障重新打包、撤回 Release 或移动 tag；重试后重新核对实际公开地址，旧失败 run 不会自动转绿。测试版不要求刷新正式版索引，不能将上述正式版规则套用于 beta / rc。
+
 人工更新正文只维护在 CHANGELOG；正式版用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 生成并提交 `docs/releases/<版本>.md`，发布前运行 `--check-doc` 与 `--output PATH` 检查实际 notes。beta / rc 不新增归档，发布正文直接读取 CL；旧 beta 归档仅保留追溯，官网与更新索引不收录。发布前改 CL 后必须重生成，不手改版本文档。正式版在 CL 中完整汇总 beta；新发布的补丁版本（`X.Y.Z`，`Z > 0`）必须在 CL 中写 `<!-- release-base: X.Y.0 -->`，引用同系列正式 `X.Y.0`。补丁归档仍只存增量；最终 Release 保留下载与使用指引，随后以一级标题 `# 修复版本说明` 展示本补丁正文、`# 大版本更新特性` 展示基础版本完整正文（仅一次）。此要求由发布文档约定保证，不追溯强制重写历史无 base 的归档；历史无 base 的正式版、主要版本与 beta / rc 保持原有结构。官网读取归档、固定版本图片与实际发布附件，构建生成物不入库。详见[发布管线](docs/INDEX.md#engineering-releases)。
 
 Release Markdown 中，粗体闭合标记 `**` 与后续标点或正文之间必须留一个空格，标点后继续正文时也要留一个空格；禁止写成 `- **这个文字**：说明`，应写成 `- **这个文字** ： 说明`，避免 Markdown 渲染异常。

@@ -13,7 +13,7 @@
 | 3 | 补丁版 Release Notes 附上大版本更新信息 | 已修复 | 沿用 release-base，一级标题「修复版本说明」「大版本更新特性」展示补丁与同系列 X.Y.0；基础正文仅一次且图片 pin 到基础 tag。所有新补丁必须填写 base，历史无 base/主要版/beta/rc 保持结构；已更新生成器、测试及发布约定，真实 1.11.2 预览已检查。 |
 | 4 | 发布 `1.11.2` | 已修复 | 发布提交 `4411be2a`；Release CI [42979113086](https://github.com/Moyf/moys-asr-workflow/actions/runs/42979113086) 三端 build 与 Publish 全通过，5 个附件上传状态/大小及 HEAD 200、公开 stable/latest 和正文回读一致均已确认。官网同步另列条目 5。 |
 | 5 | 发布后官网索引仍未包含 1.11.2 | 已修复 | 初次公开索引未生效，但实际构建产物正确；仅重试一次官网部署 [42980521714](https://github.com/Moyf/moys-asr-workflow/actions/runs/42980521714) 成功，本地复验 catalog/1.11.2 notes/详情均通过。未改实现或 tag；具体首次未生效原因未确证，不推断为生成器缺陷。 |
-| 6 | 维护者反馈「打包失败了噢你看看」，指向 job 130387928212 | 待处理 | 接手基线 main@4411be2a；当前已有发布账本与日志基线未提交修改，保留。先核对指定 job、公开 Release 与官网事实，再判断是安装包构建失败还是发布后网站检查失败。 |
+| 6 | 维护者反馈「打包失败了噢你看看」，指向 job 130387928212 | 仅说明 | 重新获取 GitHub job 事实：三端构建和 Publish 成功；指定 job 失败步骤为官网部署后的索引校验，报 catalog 未赶上 v1.11.2。单独官网重试 42980521714 已成功；接手会话再次验证索引/notes/详情 HTTP 200。无需修改代码、重新打包或移动 tag；首次部署未生效的精确原因未确证。 |
 
 ## 阶段汇总
 
@@ -93,7 +93,10 @@
 - 全部请求终态：条目 1 仅说明；条目 2–5 已修复；没有进行中/待处理/阻塞。人工安装新包、成片观感与存量用户实机验收仍由 `1.11.2.checklist.md` 的 pending 项承接，不把自动化/CI 代替人工层。
 - 正式 Release：https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.11.2 ；官网详情：https://moyf.github.io/moys-asr-workflow/releases/1.11.2/ 。
 
-### 续 7：接手核对维护者报告
+### 续 8：接手核对维护者报告
 
 - 维护者提供 [失败 job 130387928212](https://github.com/Moyf/moys-asr-workflow/actions/runs/42979113086/job/130387928212)。原会话只读，不恢复或修改；以当前工作树和新获取的远端证据为准。
 - 已确认当前 main@4411be2a，未提交改动仅为发布账本和日志基线。反馈先登记条目 6，尚未重新获取失败日志或修改实现。
+- 新获取的 job/API 证据与工作树原记录一致：三端 build、Publish 均 success，5 个安装包 uploaded；指定 job 的 Deploy Pages artifact success，只有 Verify deployed release index and detail failure，报 `deployed catalog has not caught up to v1.11.2`。原始日志留 `.artifacts/release1.11.2/website-job-failed.log`；真实 Pages artifact 包含 latest=1.11.2、详情 HTML 与 notes，因此没有构建遗漏证据。
+- 独立回读已有单独官网重试 `42980521714`：success；本会话未新增部署、未操作原 provider 会话。复验 `verify_release_site.py --base-url https://moyf.github.io/moys-asr-workflow --expected-tag v1.11.2` exit=0：`.artifacts/checks/20261111T073617Z-c71e55e9/result.json`。
+- 定向 HTTP 复验：普通索引与带查询参数索引 latest=1.11.2，notes.version=1.11.2，详情 HTTP 200，证据 `.artifacts/checks/20261111T073640Z-ff9d4946/result.json`。条目 6 仅说明，条目 5 已修复；初次部署未生效的精确原因仍未确证，不把缓存或部署去重猜测当作结论。原失败 run 不会因新 run 成功自动转绿。
