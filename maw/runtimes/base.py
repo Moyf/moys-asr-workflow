@@ -249,8 +249,19 @@ class ManagedRuntime:
             # Preserve junction components until fallback security has checked
             # them. resolve() would turn a hostile fallback junction into an
             # unrelated ASCII path and bypass its validation.
-            normalized = (Path(os.path.abspath(configured_path)) if sys.platform == "win32"
-                          else configured_path.resolve(strict=False))
+            if sys.platform == "win32":
+                raw = Path(os.path.abspath(configured_path))
+                checked = pathwin.ensure_ascii_root(
+                    raw, dir_name=self.spec.dir_name, allow_relocate=False,
+                )
+                # The original path must be checked before resolving a
+                # junction, but ordinary explicit paths retain the previous
+                # canonical form (including Windows TEMP's 8.3 alias).
+                if checked != raw:
+                    return checked
+                normalized = raw.resolve(strict=False)
+            else:
+                normalized = configured_path.resolve(strict=False)
             return pathwin.ensure_ascii_root(
                 normalized,
                 dir_name=self.spec.dir_name,

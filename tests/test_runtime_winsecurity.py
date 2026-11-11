@@ -33,6 +33,15 @@ def private_fixture():
 
 
 class RuntimeSecurityPolicyTests(unittest.TestCase):
+    def test_explicit_non_fallback_path_keeps_canonical_spelling(self):
+        with tempfile.TemporaryDirectory() as folder:
+            raw = Path(folder) / 'RUNNER~1' / 'runtime'
+            canonical = Path(folder) / 'runneradmin' / 'runtime'
+            with mock.patch.object(pathwin.sys, 'platform', 'win32'), \
+                    mock.patch.object(pathwin, 'fallback_root', return_value=Path(folder) / 'fallback'), \
+                    mock.patch.object(Path, 'resolve', return_value=canonical):
+                self.assertEqual(LOCAL.resolve_root(raw), canonical)
+
     def test_explicit_fallback_is_checked_before_junction_resolution(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder) / 'account' / 'runtime'
