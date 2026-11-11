@@ -124,8 +124,27 @@ jobs:
         if: ${{ needs.selection.outputs.light != 'true' }}
         run: uv sync --frozen --group dev
       # Node tests also launch Chromium and compare against Python exporters.
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Install Playwright Chromium
         if: ${{ needs.selection.outputs.light != 'true' }}
+        shell: bash
+        # 2026-11-11 PR #365 的 editor job 曾因 GitHub runner DNS 抖动整 job 红：
+        # --with-deps 走 apt，依赖安装全体「Temporary failure resolving
+        # security.ubuntu.com」（exit code 100），人工 rerun 即绿。此步骤外部网络
+        # 敏感且幂等可重跑，自动重试省人工 rerun；每次失败输出保留在步骤日志里，
+        # 最后一次失败仍非零退出，不掩盖真实故障。
+        run: |
+          attempt=1
+          max_attempts=3
+          until pnpm exec playwright install --with-deps chromium; do
+            status=$?
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "playwright install 仍失败（最多尝试 ${max_attempts} 次，最后 exit ${status}），放弃。"
+              exit "$status"
+            fi
+            echo "playwright install 失败（exit ${status}，第 ${attempt}/${max_attempts} 次尝试），20s 后重试……"
+            attempt=$((attempt + 1))
+            sleep 20
+          done
       - run: pnpm run test:unit
         if: ${{ needs.selection.outputs.light != 'true' }}
         env:
