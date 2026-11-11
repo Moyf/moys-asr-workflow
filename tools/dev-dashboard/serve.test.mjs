@@ -181,6 +181,19 @@ function mockRes() {
 
 const HOST = { host: '127.0.0.1:8262' };
 
+test('shared presentation assets use exact routes without loosening dashboard CSP', async () => {
+  for (const url of ['/shared/tool-page.css','/shared/tool-page.js']) {
+    const res = mockRes();
+    await handleRequest(mockReq({url,headers:HOST}),res,{port:8262});
+    assert.equal(res.statusCode,200,url);
+    assert.ok(res.body.includes('MAW') || res.body.includes('presentation'));
+    assert.ok(!res.headers['Content-Security-Policy'].includes('unsafe-inline'));
+  }
+  const res=mockRes();
+  await handleRequest(mockReq({url:'/shared/../AGENTS.md',headers:HOST}),res,{port:8262});
+  assert.equal(res.statusCode,404);
+});
+
 async function callApi(options, reqArgs) {
   const res = mockRes();
   await handleRequest(mockReq(reqArgs), res, { port: 8262, ...options });

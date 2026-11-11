@@ -586,6 +586,11 @@ class ChecklistValidator(HTMLParser):
 def render(title, subtitle, sections, heading=None):
     values = {"TITLE": html.escape(title), "SUBTITLE": html.escape(subtitle), "SECTIONS": sections.strip()}
     template = TEMPLATE.read_text(encoding="utf-8")
+    shared = TEMPLATE.parent.parent.parent / "shared"
+    template = template.replace('<link rel="stylesheet" href="../../shared/tool-page.css" data-tool-foundation>',
+                                '<style data-tool-foundation>' + (shared / "tool-page.css").read_text(encoding="utf-8") + '</style>')
+    template = template.replace('<script data-tool-bootstrap src="../../shared/tool-page.js"></script>',
+                                '<script data-tool-bootstrap>' + (shared / "tool-page.js").read_text(encoding="utf-8") + '</script>')
     # One pass: inserted content is never treated as another template placeholder.
     result = re.sub(r"\{\{(TITLE|SUBTITLE|SECTIONS)\}\}", lambda match: values[match[1]], template)
     if heading is not None:

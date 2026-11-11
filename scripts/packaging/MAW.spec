@@ -187,6 +187,7 @@ datas = [
     (str(ROOT / "maw" / "audio_diagnostics.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "app_paths.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "ocr_runtime_worker.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "ocr_scan.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "script_alignment.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "mopeaks.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "quapeaks.py"), "ocr-runtime/maw"),

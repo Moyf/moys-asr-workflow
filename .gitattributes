@@ -22,3 +22,6 @@
 
 # Unified patch context prefixes a space to the upstream tab indentation.
 website/patches/*.patch whitespace=-space-before-tab
+
+# Preserve upstream license bytes (verified SHA256); the MPL text contains one trailing space.
+tools/shared/vendor/dompurify-3.4.17/LICENSE-MPL whitespace=-blank-at-eol

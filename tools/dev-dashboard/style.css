@@ -128,6 +128,7 @@ button:hover { border-color: var(--accent); }
 
 .column {
   flex: 0 0 300px;
+  min-width: 0;
   max-height: calc(100vh - 130px);
   display: flex;
   flex-direction: column;
@@ -198,6 +199,8 @@ button:hover { border-color: var(--accent); }
   text-decoration: none;
   display: block;
   margin-bottom: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .card-title:hover { color: var(--accent); }
 
@@ -350,3 +353,37 @@ button:hover { border-color: var(--accent); }
 }
 
 .card, .column { transition: border-color 120ms ease; }
+
+/* Shared foundation owns colors; this tool owns the board layout. */
+:root { --bg:var(--bg-base); --panel:var(--bg-panel); --column:var(--bg-raised); --card:var(--bg-panel); --card-border:var(--border-subtle); --text:var(--text-primary); --muted:var(--text-muted); --ok:var(--green); --warn:var(--amber); --bad:var(--red); --hold:var(--violet); }
+body { font-family:var(--font-sans); }
+#toggle-ignored.active { color:var(--accent-text); }
+button { height:32px; min-height:32px; padding:0 12px; border-color:var(--border); border-radius:var(--radius-sm); background:var(--tool-control-raised); color:var(--text-secondary); font-size:13px; white-space:nowrap; }
+button:hover { background:var(--tool-control-hover); border-color:var(--border-strong); color:var(--text-primary); }
+button:disabled { opacity:.5; cursor:not-allowed; }
+.stats { display:flex; flex-wrap:wrap; gap:8px 16px; }
+.stats b { font:700 18px var(--font-mono); color:var(--text-primary); }
+.column { max-height:calc(100dvh - var(--tool-header-h) - 90px); }
+.column-head { min-height:48px; }
+.column-count { font:600 13px var(--font-mono); }
+.card-actions { flex-wrap:wrap; gap:8px; }
+.card-actions select { max-width:100%; min-width:0; }
+.cl-pill { border:0; background:var(--bg-raised); }
+.cl-pending { background:var(--amber-soft); }
+.cl-passed { background:var(--green-soft); }
+.tool-compact .card { padding:8px 10px; contain-intrinsic-size:auto 80px; }
+.tool-compact .card-badges, .tool-compact .card-meta, .tool-compact .card-check { display:none; }
+.tool-compact .card-actions { margin-top:8px; }
+@media print {
+  .tool-compact .card-badges, .tool-compact .card-check { display:flex; }
+  .tool-compact .card-meta { display:block; }
+}
+#toast { box-shadow:var(--shadow-2); }
+@media(max-width:560px) {
+  #topbar { position:static; padding:12px; }
+  #topbar h1 { white-space:normal; }
+  #toolbar { padding:12px; }
+  #search { min-width:0; flex-basis:100%; }
+  .board { padding:0 12px 20px; }
+  .column { flex-basis:min(300px,calc(100vw - 24px)); max-height:70vh; }
+}

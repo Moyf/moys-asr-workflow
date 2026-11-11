@@ -22,6 +22,7 @@ node tools/dev-dashboard/serve.mjs [--port 8262] [--open]
 - **自定义状态**：即上面的六列，数据存在 `.artifacts/dev-dashboard/status.json`（git 忽略，不入库、不上传）。要调整状态集，改 `app.js` 顶部的 `STATUSES` 数组即可，server 端不限定枚举。
 - **milestone 视角**：卡片显示所属 milestone；`dueOn` 两周内或已逾期会高亮；未挂 milestone 的卡片有黄色警示边，工具栏可按「未挂 milestone」筛选。
 - **作者筛选**：工具栏下拉按作者过滤卡片，选项带 PR 数量（按数量降序）；作者在下次刷新后消失时自动回落「全部作者」。
+- **统一界面**：沿用 Launcher 的深浅主题，顶栏可切换主题与精简显示，开关复用 OCR 页样式；精简卡片只留标题、忽略/取消忽略按钮与状态选择，隐藏徽章、CI/作者/分支和核验提示，切回完整视图恢复。搜索防抖，「重置筛选」清除搜索、作者和里程碑筛选，不改变 PR 归类或忽略偏好。窄屏看板在自身容器内横向滚动。
 - **忽略 PR**：卡片左下「忽略」按钮把 PR 从看板隐藏，工具栏「已忽略 N」开关可查看并「取消忽略」；数据存在 `.artifacts/dev-dashboard/ignored.json`（git 忽略），按 PR 号持久化，合并/关闭后条目保留，手工清理直接编辑该文件。
 - **核对清单联动**：扫描 `docs/logs/**/*.checklist.md` 的 front-matter，按 `pr:` 字段挂到对应卡片；有清单的卡片显示 `pending / partial / passed` 状态 pill，点击复制清单文件路径（可交给 agent 重建交互页）；无清单的卡片提供「生成清单」按钮，复制一段现成提示词，粘贴给 Hermes 即可按 `tools/verification-checklist` 规范生成。
 - **CHANGELOG 编辑器入口**：顶栏按钮在新标签打开本 server 托管的 `tools/changelog-editor/index.html`（同源，无需 file://）。编辑器里的「手动编辑」按钮依赖本 server 的 `POST /api/open-changelog`：固定调起系统默认应用打开仓库根的 `CHANGELOG.md`，不接受任何路径参数。
@@ -29,7 +30,7 @@ node tools/dev-dashboard/serve.mjs [--port 8262] [--open]
 ## 安全模型
 
 - 只绑定 `127.0.0.1`，并校验 `Host` 头（防 DNS rebinding）；
-- 静态资源只暴露面板自身文件与 `tools/changelog-editor/` 目录，禁止路径穿越；
+- 静态资源只暴露面板自身文件、两个精确映射的共用主题资源与 `tools/changelog-editor/` 目录，禁止路径穿越；共用资源不放宽面板的 CSP；
 - 服务端不保存任何 GitHub 令牌，认证完全复用本机 `gh` CLI 的登录态；
 - 无认证机制，**不要**把端口转发到外网。
 - Markdown 使用本地固定版本 marked 15.0.12 的词法分析，节点通过白名单构造而非注入解析器生成的 HTML；不支持 GitHub 专属扩展或原始 HTML。解析器资源缺失时显示原文并提示重启旧服务。
@@ -50,6 +51,8 @@ node --test tools/dev-dashboard/app.test.mjs
 ```
 
 覆盖 hover / 键盘预览、空正文与外部 HTML 安全、缺字段告警与恢复、浮层内滚动、刷新与拖拽清理、窄屏与视口边缘布局，以及慢加载进度、手动 / 自动刷新重入、早失败等待其余请求、原子更新与失败保留旧数据。
+
+工具精简与主题对拍回归见 `tests/e2e/tool-compact.spec.mjs`，说明阅读器的共享模块见 [tools/shared/README.md](../shared/README.md)。本轮保留 PR 正文专用输出，不静默改动上游安全策略。
 
 ## 边界说明
 

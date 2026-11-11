@@ -128,6 +128,18 @@
 
 [打开正文](engineering/DESIGN.md)
 
+<a name="engineering-tool-pages"></a>
+### 浏览器工具页设计与交互规范
+
+[通用底线与按场景模式](../tools/TOOL_PAGE_GUIDE.md) · [性能与验证约定](../tools/AGENTS.md)
+
+[工具功能介绍与维护状态](../tools/index.html) · [工具目录说明](../tools/README.md)
+
+<a name="engineering-tool-markdown"></a>
+### 工具共享 Markdown 与说明阅读
+
+[成熟库封装、安全阅读弹窗与离线说明](../tools/shared/README.md)
+
 <a name="engineering-project-format"></a>
 ### 工程文件格式
 
@@ -204,6 +216,11 @@
 ### 实际画面表情包合成路线（真·所见即所得）
 
 [评估结论、现成件清单与设计要点](plans/ASS_FRAME_STICKER_COMPOSE.md)；CSS 止血已实施，路线未实施，待 cue-left / 同屏多张成为日常再投入。
+
+<a name="plan-ocr-terms-tool"></a>
+### 视频术语提取工具（OCR → 热词）计划
+
+[打开正文](plans/OCR_TERMS_TOOL.md)；完整规格见 [tools/term-extract/SPEC.md](../tools/term-extract/SPEC.md)。M1 独立工具已完成，待实测后合并。
 
 <a name="engineering-server"></a>
 ### 源码服务与桌面开发

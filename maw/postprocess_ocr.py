@@ -439,6 +439,30 @@ class _RapidOcrRecognizer:
         scores = getattr(result, "scores", None) or ()
         return [(str(text), float(score)) for text, score in zip(texts, scores)]
 
+    def recognize_blocks(
+        self, image: Any
+    ) -> list[tuple[str, float, tuple[int, int, int, int]]]:
+        """识别并保留文字框（x1, y1, x2, y2），供整段视频扫描等需要位置证据的功能。"""
+
+        import numpy as np
+
+        result = self._ocr(np.asarray(image), use_cls=False)
+        texts = getattr(result, "txts", None) or ()
+        scores = getattr(result, "scores", None) or ()
+        boxes = getattr(result, "boxes", None)
+        if boxes is None:  # numpy 数组不能参与 or 布尔判断
+            boxes = ()
+        blocks: list[tuple[str, float, tuple[int, int, int, int]]] = []
+        for text, score, box in zip(texts, scores, boxes):
+            if box is None:
+                continue
+            xs = [int(point[0]) for point in box]
+            ys = [int(point[1]) for point in box]
+            blocks.append(
+                (str(text), float(score), (min(xs), min(ys), max(xs), max(ys)))
+            )
+        return blocks
+
 
 def _report_row(
     index: int,

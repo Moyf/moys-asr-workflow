@@ -10,6 +10,8 @@ const assets = new Map(await Promise.all([
   ['/app.js', 'app.js', 'text/javascript'],
   ['/marked-15.0.12.min.js', 'marked-15.0.12.min.js', 'text/javascript'],
   ['/style.css', 'style.css', 'text/css'],
+  ['/shared/tool-page.css', '../shared/tool-page.css', 'text/css'],
+  ['/shared/tool-page.js', '../shared/tool-page.js', 'text/javascript'],
 ].map(async ([url, file, contentType]) => [url, {
   body: await readFile(new URL(file, import.meta.url), 'utf8'),
   contentType,
@@ -353,7 +355,7 @@ test('浮层不遮挡原卡片，Escape 原地关闭后不重开，原标题仍�
 
 test('Tab 聚焦横向屏外标题时，自动滚动结束后仍显示正文预览', async (t) => {
   const { page } = await openDashboard(t, { statusMap: { '42': 'pass' } });
-  await page.locator('#toggle-ignored').focus();
+  await page.locator('#reset-filters').focus();
   await page.keyboard.press('Tab');
   await expect(page.locator('.card-title')).toBeFocused();
   await expect.poll(() => page.locator('.board').evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);

@@ -247,6 +247,8 @@ const PANEL_FILES = new Map([
   ['/app.js', 'app.js'],
   ['/marked-15.0.12.min.js', 'marked-15.0.12.min.js'],
   ['/style.css', 'style.css'],
+  ['/shared/tool-page.css', '../shared/tool-page.css'],
+  ['/shared/tool-page.js', '../shared/tool-page.js'],
 ]);
 
 function serveStatic(pathname, res) {

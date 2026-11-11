@@ -455,8 +455,11 @@ function renderStats() {
   const noMs = state.prs.filter((pr) => !pr.milestone).length;
   const ignoredCount = Object.keys(state.ignored).length;
   const clPending = state.checklists.filter((c) => c.status === 'pending').length;
-  el.stats.textContent =
-    `${total} 个 open PR · pass ${pass} · 未挂 milestone ${noMs} · 已忽略 ${ignoredCount} · 待核验清单 ${clPending}`;
+  el.stats.replaceChildren();
+  for (const [n,label] of [[total,'个 PR'],[pass,'已验收'],[noMs,'未挂里程碑'],[ignoredCount,'已忽略'],[clPending,'待核验清单']]) {
+    const metric = document.createElement('span'), number = document.createElement('b');
+    number.textContent = String(n); metric.append(number, ' ' + label); el.stats.append(metric);
+  }
 }
 
 function buildBadge(text, cls = '', title = '') {
@@ -697,6 +700,13 @@ function render() {
 
     el.board.append(column);
   }
+  if(!prs.length && state.prs.length) {
+    const empty=document.createElement('div'); empty.className='tool-empty';
+    empty.textContent='当前筛选下没有 PR。';
+    const reset=document.createElement('button'); reset.type='button'; reset.textContent='重置筛选';
+    reset.addEventListener('click',()=>document.getElementById('reset-filters').click());
+    empty.append(document.createElement('br'),reset); el.board.prepend(empty);
+  }
 
   const filtered = prs.length !== state.prs.length;
   el.filterMeta.textContent = filtered ? `筛出 ${prs.length} / ${state.prs.length}` : '';
@@ -757,8 +767,14 @@ el.toggleIgnored.addEventListener('click', () => {
   render();
 });
 el.search.addEventListener('input', () => {
-  state.query = el.search.value;
-  render();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {state.query = el.search.value; render();},180);
+});
+let searchTimer = 0;
+document.getElementById('reset-filters').addEventListener('click', () => {
+  clearTimeout(searchTimer);
+  state.query = ''; state.milestoneFilter = 'all'; state.authorFilter = 'all';
+  el.search.value = ''; render();
 });
 el.autoRefresh.addEventListener('change', () => {
   localStorage.setItem(AUTO_REFRESH_KEY, el.autoRefresh.checked ? '1' : '');
