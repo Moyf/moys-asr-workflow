@@ -1284,6 +1284,13 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(config["gapSplit"], "")
         self.assertEqual(config["maxLen"], "18")
 
+        # 环境变量优先于文件值（与 effective_config 的 pick 语义一致）；env 空串回退文件值。
+        self.assertTrue(self.api.save_prefs({"gapSplit": "300"})["ok"])
+        with mock.patch.dict(os.environ, {"MAW_GUI_SEGMENTATION": '{"gapSplit":"999"}'}):
+            self.assertEqual(self.api.get_config()["gapSplit"], "999")
+        with mock.patch.dict(os.environ, {"MAW_GUI_SEGMENTATION": ""}):
+            self.assertEqual(self.api.get_config()["gapSplit"], "300")
+
         # 坏 JSON / 非对象回退默认；未知键剔除、已知键保留。
         for raw, expected_gap_split in (("{not json", ""), ("[]", ""), ('{"gapSplit":"500","alien":"x"}', "500")):
             self.env_path.write_text(f"MAW_GUI_SEGMENTATION={raw}\n", encoding="utf-8")
@@ -6305,10 +6312,9 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('$(field).addEventListener("change", persist)', wiring)
         self.assertIn("Object.assign(state.config, snapshot)", wiring)
 
-        # 启动（init）与设置面板打开都回填；空值留空，占位符不受影响。
-        self.assertEqual(startup.count('$("gapSplit").value = state.config.gapSplit || "";'), 2)
-        for field in ("minLen", "maxLen", "minWords", "maxWords"):
-            self.assertIn(f'$("{field}").value = state.config.{field} || "";', startup)
+        # 启动（init）与设置面板打开都回填；空值留空，占位符不受影响。五字段同构守护。
+        for field in ("gapSplit", "minLen", "maxLen", "minWords", "maxWords"):
+            self.assertEqual(startup.count(f'$("{field}").value = state.config.{field} || "";'), 2)
 
         # 预设覆盖字段后显式持久化（value 赋值不触发 input 事件），并同步 state.config。
         self.assertIn("const segmentationSnapshot = segmentationPrefsPayload();", presets)
