@@ -635,6 +635,15 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
                 target = runtime + "/" + "/".join(parts[:-1])
                 self.assertIn(f'(str({expression}), "{target}")', spec)
 
+    def test_runtime_path_security_is_available_in_copied_runtime(self) -> None:
+        spec = read_text("scripts/packaging/MAW.spec")
+        for module in ("pathwin", "winsecurity"):
+            self.assertIn(f'"maw.runtimes.{module}"', spec)
+            self.assertIn(
+                f'(str(ROOT / "maw" / "runtimes" / "{module}.py"), "local-runtime/maw/runtimes")',
+                spec,
+            )
+
     def test_macos_bundle_uses_the_icns_app_icon(self) -> None:
         """Given a macOS app bundle, When PyInstaller builds it, Then the bundle has the branded ICNS icon."""
         spec = read_text("scripts/packaging/MAW.spec")
