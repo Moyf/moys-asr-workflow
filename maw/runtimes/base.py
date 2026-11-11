@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
 from typing import Final, TextIO
+from urllib.parse import urlparse
 
 from maw.app_paths import default_app_data_root
 from maw.gui_platform import (
@@ -50,7 +51,7 @@ from maw.runtime_manifest import (
     read_runtime_manifest,
     write_runtime_manifest,
 )
-from maw.runtime_mirror_picker import pick_fastest_mirror, probe_index_reachable
+from maw.runtime_mirror_picker import probe_index_reachable, ranked_mirrors
 from maw.runtimes import freezer, pathwin
 
 GET_PIP_SCRIPT: Final = "get-pip.py"
@@ -607,7 +608,6 @@ class ManagedRuntime:
             )
         requirements_file = self.requirements_path()
         site_packages = self.site_packages(root)
-        fastest_index = pick_fastest_mirror()
         requirements_arg = requirements_file
         extra_index = _resolve_extra_index(spec.extra_index_url)
         if needs_cpu_fallback:
@@ -628,38 +628,73 @@ class ManagedRuntime:
                     "重试；若该源在你的网络环境长期不可达，可设置环境变量 "
                     "MAW_PYTORCH_INDEX 指向可达的 PyTorch 镜像源。"
                 )
-        # 安装方式三分支：unix 打包版 venv 直装（venv 自带 pip，无需 --target）；
-        # Windows 打包版 pip --target 定向安装；源码模式 uv 接入开发解释器。
-        if frozen and host_venv:
-            install_command = _venv_pip_install_command(
-                python,
-                index_url=fastest_index,
-                extra_index_url=extra_index,
-                requirements_file=requirements_arg,
-            )
-        elif frozen:
-            install_command = _pip_install_command(
-                self.python_path(root),
-                site_packages,
-                requirements_arg,
-                index_url=fastest_index,
-                extra_index_url=extra_index,
-            )
-        else:
-            install_command = _uv_install_command(
+        # 镜像测速给出排序候选；网络类失败（限频/超时/连接中断）时逐个换源
+        # 重试，把「镜像抽风」从装失败降级成慢一点但能装上。测速明确失败的
+        # 源不会出现在候选里；MAW_PIP_INDEX 只配一个源时自然只尝试一次。
+        mirror_attempts = ranked_mirrors()[:MIRROR_RETRY_ATTEMPTS]
+
+        def build_install_command(index_url: str) -> list[str]:
+            """用当前 index_url 重建安装命令，三分支与 CPU fallback 共用。"""
+            if frozen and host_venv:
+                return _venv_pip_install_command(
+                    python,
+                    index_url=index_url,
+                    extra_index_url=extra_index,
+                    requirements_file=requirements_arg,
+                )
+            if frozen:
+                return _pip_install_command(
+                    self.python_path(root),
+                    site_packages,
+                    requirements_arg,
+                    index_url=index_url,
+                    extra_index_url=extra_index,
+                )
+            return _uv_install_command(
                 uv_executable,
                 python,
                 site_packages,
                 requirements_arg,
-                index_url=fastest_index,
+                index_url=index_url,
                 extra_index_url=extra_index,
             )
-        self.run(
-            install_command,
-            env=self.environment(root, model_cache_root),
-            cancel=cancel,
-            on_line=_dependency_line(emit, requirements_arg),
-        )
+
+        mirror_failures: list[tuple[str, str]] = []
+        for attempt_number, index_url in enumerate(mirror_attempts, start=1):
+            _may_cancel(cancel, spec)
+            if mirror_failures:
+                failed_url, failed_summary = mirror_failures[-1]
+                emit(
+                    f"镜像 {_mirror_label(failed_url)} 安装失败（{failed_summary}），"
+                    f"切换到 {_mirror_label(index_url)} 重试……"
+                    f"（第 {attempt_number}/{len(mirror_attempts)} 次尝试）",
+                    25,
+                    "dependencies",
+                )
+            try:
+                self.run(
+                    build_install_command(index_url),
+                    env=self.environment(root, model_cache_root),
+                    cancel=cancel,
+                    on_line=_dependency_line(emit, requirements_arg),
+                )
+            except spec.cancelled_class:
+                # 取消优先于换源：cancelled 是 error 的子类，必须先放行。
+                raise
+            except spec.error_class as error:
+                deterministic = not _looks_like_network_failure(error)
+                blames_extra = _failure_blames_extra_index(error, extra_index)
+                if deterministic or blames_extra:
+                    # 确定性错误（版本解析/无候选版本）换源无效；extra index
+                    # 归因的失败换主源同样无效——两者都保持直报。
+                    raise
+                mirror_failures.append((index_url, _network_failure_summary(error)))
+                if attempt_number >= len(mirror_attempts):
+                    raise self._error(_mirror_retry_exhausted_message(mirror_failures)) from error
+                continue
+            break
+        else:  # pragma: no cover - ranked_mirrors 恒非空，防御性保留
+            raise self._error("未找到可用的镜像源，无法安装依赖。")
         _may_cancel(cancel, spec)
 
         emit(f"正在验证{spec.feature_label}运行时……", 90, "verify")
@@ -1091,6 +1126,61 @@ def _resolve_extra_index(extra_index: str | None) -> str | None:
         return extra_index
     override = os.environ.get("MAW_PYTORCH_INDEX", "").strip()
     return override or extra_index
+
+
+#: 安装命令输出里的网络类失败特征：镜像限频/拒绝（403、429）、网关类 5xx、
+#: 超时与连接中断。命中才值得换源重试；「No matching distribution」等确定性
+#: 错误（伴随 HTTP 404）换源无效，不在此列。404 有意排除。
+_NETWORK_FAILURE_PATTERN = re.compile(
+    r"HTTP(?:\s+Error)?\s*(?:403|429|5\d\d)"
+    r"|ReadTimeoutError|ConnectionError|IncompleteRead"
+    r"|Max retries exceeded|SSLError",
+    re.IGNORECASE,
+)
+
+#: 换源重试的总尝试次数上限（最快源 + 2 个候补）。
+MIRROR_RETRY_ATTEMPTS = 3
+
+
+def _looks_like_network_failure(error: BaseException) -> bool:
+    """判断安装命令失败是否属于换源可能救回来的网络类错误。"""
+    return bool(_NETWORK_FAILURE_PATTERN.search(str(error)))
+
+
+def _failure_blames_extra_index(error: BaseException, extra_index: str | None) -> bool:
+    """判断失败是否归因于 PyTorch extra index 本身。
+
+    主源换掉救不了 extra 不可达（GPU 轮子只有一个来源），此时换源重试只会
+    把同样的失败再拖两轮；extra 的可达性已由安装前的 probe 单独把关。
+    """
+    if not extra_index:
+        return False
+    host = urlparse(extra_index).netloc
+    return bool(host) and host in str(error)
+
+
+def _network_failure_summary(error: BaseException) -> str:
+    """从失败输出里压缩出一行可读摘要（优先取命中网络特征的那一行）。"""
+    text = str(error)
+    for line in text.splitlines():
+        if _NETWORK_FAILURE_PATTERN.search(line):
+            return line.strip()[:160] or "未知错误"
+    return text.strip()[:160] or "未知错误"
+
+
+def _mirror_label(index_url: str) -> str:
+    """镜像的用户可读短名（主机名；解析失败退回完整 URL）。"""
+    host = urlparse(index_url).netloc
+    return host or index_url
+
+
+def _mirror_retry_exhausted_message(failures: list[tuple[str, str]]) -> str:
+    """全部候选源用尽后的错误正文：列出已尝试源与各自失败摘要 + 自救指引。"""
+    lines = ["依赖安装失败：所有候选镜像源均不可用。已尝试："]
+    for number, (index_url, summary) in enumerate(failures, start=1):
+        lines.append(f"{number}. {index_url} — {summary}")
+    lines.append("网络恢复后可直接重试；也可设置环境变量 MAW_PIP_INDEX 指定可用的镜像源（逗号分隔多个候选）后再试。")
+    return "\n".join(lines)
 
 
 def _bootstrap_line(emit: RuntimeEvent, percent: int) -> RuntimeLine:
