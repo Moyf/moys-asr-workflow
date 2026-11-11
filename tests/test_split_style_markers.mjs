@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {initModuleSource} from './helpers/init-module-source.mjs';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 const fixture = { window: {} };
 loadEditorModule(fixture, 'shared/editor-utils.js');
@@ -9,7 +10,7 @@ const utils = fixture.window.AsrEditorUtils;
 const settings = { assMode: true, assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both' };
 const context = { window: { AsrEditorUtils: utils }, MULTI_SUBTITLE_UTILS: utils,
   MaweSettings: { EDITOR_SETTINGS: { ...settings } }, MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
-vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), context);
+vm.runInNewContext(initModuleSource('editor/cues/editor-split-core.js'), context);
 const core = context.window.MaweSplitCore;
 const plain = value => JSON.parse(JSON.stringify(value));
 const parts = (text, offset, opts = settings) => plain(core.splitStyledTextParts(text,
@@ -225,10 +226,13 @@ test('same-style single/double nesting and overlap preserve actual ASS rendering
 test('long repeated speech recovery stays linear for complete coverage and budgets optional ambiguous DP', () => {
   const original = context.MULTI_SUBTITLE_UTILS;
   let calls;
-  context.MULTI_SUBTITLE_UTILS = { ...original, alignItemsToText(text, items) {
+  // init 化后的 split-core 读 window.AsrEditorUtils；与 classic 别名同步换装。
+  const patched = { ...original, alignItemsToText(text, items) {
     calls += 1;
     return original.alignItemsToText(text, items);
   } };
+  context.MULTI_SUBTITLE_UTILS = patched;
+  context.window.AsrEditorUtils = patched;
   try {
     for (const suffix of ['', '新增']) {
       const count = 950;
@@ -244,7 +248,7 @@ test('long repeated speech recovery stays linear for complete coverage and budge
         assert.ok(item.start >= source.start && item.end <= source.end);
       }
     }
-  } finally { context.MULTI_SUBTITLE_UTILS = original; }
+  } finally { context.MULTI_SUBTITLE_UTILS = original; context.window.AsrEditorUtils = original; }
 });
 
 

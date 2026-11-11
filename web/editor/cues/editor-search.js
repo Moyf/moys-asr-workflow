@@ -1,3 +1,5 @@
+import { buildSearchRegex, calcCharWidth, cueElementHasTemporarySplitVisibility, getCharCountThreshold, setTextHtml } from './editor-cue-elements.js';
+import { captureCueListRenderAnchor, restoreCueListRenderAnchor } from './editor-cue-list-anchor.js';
 import { colorFilterSuspended, effectiveCueColorKey } from './editor-color-filter.js';
 import { getOverlayTrack } from './overlay-track.js';
 
@@ -15,13 +17,13 @@ export function initMaweSearch() {
 
   // === 搜索 ===
   function applySearch(query, { refreshText = true, preserveCueListScroll = true } = {}) {
-  const cueListAnchor = preserveCueListScroll ? MaweCueListAnchor.captureCueListRenderAnchor() : null;
+  const cueListAnchor = preserveCueListScroll ? captureCueListRenderAnchor() : null;
   try {
     const trimmed = query.trim();
     let visible = 0;
-    const re = MaweCueElements.buildSearchRegex(trimmed, false);
+    const re = buildSearchRegex(trimmed, false);
     const filterOver = document.getElementById('filter-over').classList.contains('active');
-    const threshold = MaweCueElements.getCharCountThreshold();
+    const threshold = getCharCountThreshold();
     const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
     // 容器内还有布局拖拽栏和“加载工程后显示字幕列表”占位层；过滤只作用于真实字幕行。
     const cueElements = MaweCoreState.container.querySelectorAll(':scope > .cue');
@@ -49,13 +51,13 @@ export function initMaweSearch() {
       }
       const keepTemporaryVisible = filterOver
         && MaweSettings.EDITOR_SETTINGS.cueListKeepSplitVisible
-        && MaweCueElements.cueElementHasTemporarySplitVisibility(el);
+        && cueElementHasTemporarySplitVisibility(el);
       if (matched && filterOver && !keepTemporaryVisible) {
-        const count = (mainSeg ? MaweCueElements.calcCharWidth(mainSeg.text, MaweMultiSubtitleCore.getMainSubtitleSplitMode(mainSeg)) : 0)
+        const count = (mainSeg ? calcCharWidth(mainSeg.text, MaweMultiSubtitleCore.getMainSubtitleSplitMode(mainSeg)) : 0)
           + (extensionSeg
-            ? MaweCueElements.calcCharWidth(extensionSeg.text, MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(extensionTrack, extensionSeg))
+            ? calcCharWidth(extensionSeg.text, MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(extensionTrack, extensionSeg))
             : 0)
-          + (overlaySeg ? MaweCueElements.calcCharWidth(overlaySeg.text, MaweMultiSubtitleCore.getMainSubtitleSplitMode(overlaySeg)) : 0);
+          + (overlaySeg ? calcCharWidth(overlaySeg.text, MaweMultiSubtitleCore.getMainSubtitleSplitMode(overlaySeg)) : 0);
         matched = count > threshold;
       }
       el.classList.toggle('hidden', !matched);
@@ -63,17 +65,17 @@ export function initMaweSearch() {
       if (refreshText && !el.classList.contains('editing')) {
         const mainTextEl = el.querySelector('.multi-cue-column.main .text');
         const extensionTextEl = el.querySelector('.multi-cue-column.extension .text');
-        if (mainTextEl && mainSeg) MaweCueElements.setTextHtml(mainTextEl, mainSeg.text, trimmed);
-        if (extensionTextEl && extensionSeg) MaweCueElements.setTextHtml(extensionTextEl, extensionSeg.text, trimmed);
+        if (mainTextEl && mainSeg) setTextHtml(mainTextEl, mainSeg.text, trimmed);
+        if (extensionTextEl && extensionSeg) setTextHtml(extensionTextEl, extensionSeg.text, trimmed);
         if (!mainTextEl && !extensionTextEl) {
           const textEl = el.querySelector('.text');
-          if (textEl) MaweCueElements.setTextHtml(textEl, searchableText, trimmed);
+          if (textEl) setTextHtml(textEl, searchableText, trimmed);
         }
       }
     });
     MaweDom.visibleCountEl.textContent = visible;
   } finally {
-    MaweCueListAnchor.restoreCueListRenderAnchor(cueListAnchor);
+    restoreCueListRenderAnchor(cueListAnchor);
   }
 }
 
