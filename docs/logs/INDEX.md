@@ -15,10 +15,12 @@
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
 | 1.11.0 之后 | 2026-11-11 | [PR 358 审查修复](release1.11.0/261111_PR358_审查修复/修复记录.md) / [独立复核](release1.11.0/261111_PR358_审查修复/REVIEW_FINDINGS.md) / [人工核对](release1.11.0/261111_PR358_审查修复/PR358.checklist.md) | 合并演练、问题修复与验证 |
+| 1.11.0 之后 | 2026-11-11 | [PR 356 审查修复](release1.11.0/261111_PR356_审查修复/修复记录.md) / [独立复核](release1.11.0/261111_PR356_审查修复/REVIEW_FINDINGS.md) / [人工核对](release1.11.0/261111_PR356_审查修复/PR356.checklist.md) | 合并演练、问题修复与验证 |
+| 1.10.0-beta.2 之后 | 2026-11-10 | [本地运行时非 ASCII 路径修复自审](release1.10.0-beta.2/261110_运行时非ASCII路径/REVIEW_FINDINGS.md) | Windows 中文用户名下 nagisa/DyNet 打不开模型文件；运行时根目录 8.3 短路径别名化 + 公共目录 fallback + verify 错误增强；2 major（Windows CI 测试红、override 多 Runtime 冲突）与 1 minor 已修复 |
+| 1.11.0 之后 | 2026-11-10 | [PR 343 合并审阅](release1.11.0/261110_PR343审阅/REVIEW_FINDINGS.md) | 字幕域 ESM 设计与组合回归、main 失败对照、CHANGELOG 收敛 |
 | 1.11.0 之后 | 2026-11-10 | [CL 编辑器 Markdown 核查](release1.11.0/261110_CL编辑器Markdown/TEST_FEEDBACK_CL编辑器Markdown.md) | 独立核对预览 / 对照 Markdown 覆盖与文本往返边界，未改 CL 编辑器 |
 | 1.11.0 之后 | 2026-11-10 | [PR 看板 GitHub 配置同步核对](release1.11.0/261110_PR看板GitHub同步/TEST_FEEDBACK_PR看板GitHub同步.md) | 授权后读到 19 个字段，确认项目可更新；Priority / Status 等同步编辑待实施，未写远端数据 |
 | 1.11.0 之后 | 2026-11-10 | [PR 正文预览反馈](release1.11.0/261110_PR正文预览/TEST_FEEDBACK_PR正文预览.md) / [独立审查](release1.11.0/261110_PR正文预览/REVIEW_FINDINGS.md) / [人工核验](release1.11.0/261110_PR正文预览/PR-preview-progress.checklist.md) | 增加安全 Markdown 预览与刷新进度，42 项回归及独立复验通过；真实服务已按要求重启 |
-| 1.11.0 之后 | 2026-11-10 | [PR 343 合并审阅](release1.11.0/261110_PR343审阅/REVIEW_FINDINGS.md) | 字幕域 ESM 设计与组合回归、main 失败对照、CHANGELOG 收敛 |
 | 1.10.0-beta.2 之后 | 2026-11-09 | [G08-b 播放头与 PR 反馈](release1.10.0-beta.2/261109_G08B播放头与PR反馈/TEST_FEEDBACK_G08B.md) / [独立自审](release1.10.0-beta.2/261109_G08B播放头与PR反馈/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261109_G08B播放头与PR反馈/G08B反馈.checklist.md) | 旧线清理、正确 PR 分支 rebase、字词转换误选修复；播放头归因为跳转目标设置 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [FCP 7 导出界面改进](release1.10.0-beta.2/261108_FCP7WebP/EXPORT_UI_IMPROVEMENTS.md) / [复核](release1.10.0-beta.2/261108_FCP7WebP/REVIEW_UI_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261108_FCP7WebP/FCP7导出改进.checklist.md) | 进度、尺寸与弹窗布局；图片导出路径选择尚未实现 |
 | 1.10.0-beta.2 之后 | 2026-11-08 | [PNG/WebP 格式反馈](release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md) / [可选目标软件核验](release1.10.0-beta.2/261108_FCP7WebP/PNG-WebP.checklist.md) | PNG 默认保留、显式选择 WebP、FFmpeg 检测去重并移除图片字幕 Pillow 运行时；三端 fork CI 另列结果 |
