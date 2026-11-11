@@ -19,6 +19,11 @@
   <button id="open-changelog" type="button">CHANGELOG 编辑器</button>
 </header>
 
+<div id="loading-status" role="status" aria-live="polite" aria-atomic="true" hidden>
+  <progress aria-label="看板数据加载进度"></progress>
+  <span id="loading-text"></span>
+</div>
+
 <div id="toolbar">
   <select id="milestone-filter">
     <option value="all">全部 milestone</option>
@@ -31,12 +36,19 @@
   <button id="toggle-ignored" type="button" title="显示 / 隐藏已忽略的 PR">已忽略 0</button>
 </div>
 
-<div id="banner" hidden></div>
+<div id="banner" role="alert" hidden></div>
 
 <main id="board" class="board" aria-label="PR 看板"></main>
 
+<aside id="pr-preview" class="pr-preview" role="region" aria-labelledby="pr-preview-title" hidden>
+  <h2 id="pr-preview-title"></h2>
+  <p id="pr-preview-hint" class="muted">正文预览 · ↓ 进入阅读 · Esc 关闭</p>
+  <div id="pr-preview-body" tabindex="0" aria-label="PR 正文"></div>
+</aside>
+
 <div id="toast" hidden></div>
 
+<script src="marked-15.0.12.min.js" defer></script>
 <script src="app.js" defer></script>
 </body>
 </html>

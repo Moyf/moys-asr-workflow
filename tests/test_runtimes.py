@@ -846,6 +846,14 @@ class RuntimeAsciiPathTests(unittest.TestCase):
         "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile",
     )
 
+    def setUp(self):
+        for patch in (
+            mock.patch.object(pathwin.winsecurity, "current_user_sid", return_value="S-1-5-21-1-2-3-1001"),
+            mock.patch.object(pathwin.winsecurity, "private_runtime_root"),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+
     @staticmethod
     def _fake_run(calls: list[list[str]], envs: list[dict[str, str]]):
         def fake_run(command: list[str], **kwargs: object) -> int:
@@ -927,7 +935,7 @@ class RuntimeAsciiPathTests(unittest.TestCase):
 
             with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "測試用戶"), "PROGRAMDATA": str(temp / "progdata"), "USERNAME": "alice"}):
                 os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
-                fallback = temp / "progdata" / "MAW" / "runtimes" / pathwin.user_hash() / "local-runtime"
+                fallback = temp / "progdata" / (pathwin.COMMON_RUNTIME_PREFIX + pathwin.user_hash()) / "local-runtime"
                 with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
                     with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                         with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
@@ -982,7 +990,7 @@ class RuntimeAsciiPathTests(unittest.TestCase):
 
             with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(temp / "測試用戶"), "PROGRAMDATA": str(temp / "progdata"), "USERNAME": "alice"}):
                 os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
-                fallback = temp / "progdata" / "MAW" / "runtimes" / pathwin.user_hash() / "local-runtime"
+                fallback = temp / "progdata" / (pathwin.COMMON_RUNTIME_PREFIX + pathwin.user_hash()) / "local-runtime"
                 with mock.patch("maw.runtimes.base._find_bootstrap_asset", side_effect=[Path("embed.zip"), Path("get-pip.py")]):
                     with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                         with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):

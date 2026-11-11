@@ -245,8 +245,14 @@ class ManagedRuntime:
         if override:
             # 用户显式指定的路径尊重原选择：只做短路径别名（同一物理目录），
             # 不迁移公共目录；无法 ASCII 化时由 verify 错误增强给出指引。
+            configured_path = Path(override).expanduser()
+            # Preserve junction components until fallback security has checked
+            # them. resolve() would turn a hostile fallback junction into an
+            # unrelated ASCII path and bypass its validation.
+            normalized = (Path(os.path.abspath(configured_path)) if sys.platform == "win32"
+                          else configured_path.resolve(strict=False))
             return pathwin.ensure_ascii_root(
-                Path(override).expanduser().resolve(strict=False),
+                normalized,
                 dir_name=self.spec.dir_name,
                 allow_relocate=False,
             )
@@ -483,7 +489,12 @@ class ManagedRuntime:
         if root.exists() and not root.is_dir():
             raise self._error(f"{spec.message_prefix}路径不能是一个文件：{root}")
         try:
+            # Create fallback parents with a private DACL before mkdir/manifest
+            # or the ready shortcut can adopt an attacker-precreated runtime.
+            pathwin.prepare_install_root(root, dir_name=spec.dir_name)
             root.parent.mkdir(parents=True, exist_ok=True)
+        except pathwin.AsciiRootUnavailable as error:
+            raise self._error(f"{spec.message_prefix}{error}") from error
         except OSError as error:
             # 无权创建父目录（公共目录 fallback / 自定义路径在受保护位置）
             # 会先于 probe_writable 失败：转成含自救指引的可操作错误，而不是
@@ -529,14 +540,7 @@ class ManagedRuntime:
         if root.exists() and not python.exists() and any(root.iterdir()) and not repair:
             raise self._error(f"{spec.message_prefix}目录已存在但不完整，请更换路径或手动清理后重试。")
         # 安装开始即写入 installing 状态，避免安装过程中被判定为"需要修复"。
-        # 写入前做 Windows 公共目录 fallback 的可写性探测（ProgramData 下其他
-        # 用户可能只读）：失败立即给可操作错误，而不是下载数 GB 依赖后才因
-        # 权限失败；其余形态（ASCII 原样 / 8.3 别名）原样返回。放在 ready
-        # 早退之后，避免对已就绪 runtime 白建公共目录。
-        try:
-            pathwin.prepare_install_root(root, dir_name=spec.dir_name)
-        except pathwin.AsciiRootUnavailable as error:
-            raise self._error(f"{spec.message_prefix}{error}") from error
+        # 公共目录安全验证与私有目录创建已在 ready 早退之前完成。
         write_runtime_manifest(
             root,
             status=STATUS_INSTALLING,

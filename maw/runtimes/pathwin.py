@@ -29,9 +29,9 @@ ASCII 化，而不是改第三方包（nagisa/qwen-asr 均不可控）。
      :func:`fallback_root`，顺序为：
      a. ``MAW_RUNTIME_ASCII_ROOT`` 环境变量（新增配置，指定公共运行时根；
         相对路径会解析为绝对路径，供 8.3 被禁用的机器指定任意可写位置）；
-     b. ``%PROGRAMDATA%\\MAW\\runtimes\\<user-hash>\\<dir_name>``。
+     b. ``%PROGRAMDATA%\\MAW-runtimes-<user-hash>\\<dir_name>``。
 
-     两个分支同构：公共根 → **按用户隔离**（用户名稳定哈希，见
+     两个分支均在可信公共根下直接建立私有用户目录：**按用户隔离**（Windows 进程令牌 SID 哈希，见
      :func:`user_hash`）→ 各 Runtime 的 ``<dir_name>`` 子目录。隔离的两个
      理由：其一，公共目录多用户可写，若共享同一运行时子树，先创建的用户
      可以替换其中的解释器与依赖、伪造 runtime.json，第二个用户会以自己的
@@ -54,12 +54,13 @@ PYTHONPATH 与 verify/worker 的解释器路径始终指向同一形态；GUI �
 from __future__ import annotations
 
 import ctypes
-import getpass
 import hashlib
 import os
 import sys
 from pathlib import Path, PureWindowsPath
 from typing import Final
+
+from maw.runtimes import winsecurity
 
 #: 新增配置：8.3 短路径不可用时，显式指定无 ASCII 问题的「公共运行时根」。
 #: 相对路径会解析为绝对路径；其下先按用户哈希隔离、再按 Runtime 分子目录
@@ -68,8 +69,8 @@ from typing import Final
 FALLBACK_ROOT_ENV: Final = "MAW_RUNTIME_ASCII_ROOT"
 
 #: 公共目录 fallback 的固定层级：
-#: ``%PROGRAMDATA%\\MAW\\runtimes\\<user-hash>\\<dir_name>``。
-COMMON_RUNTIMES_SUBPATH: Final = ("MAW", "runtimes")
+#: ``%PROGRAMDATA%\\MAW-runtimes-<user-hash>\\<dir_name>``。
+COMMON_RUNTIME_PREFIX: Final = "MAW-runtimes-"
 
 #: 反馈入口（verify 错误增强文案里引用）。
 ISSUE_FEEDBACK_URL: Final = "https://github.com/Moyf/moys-asr-workflow/issues"
@@ -141,22 +142,12 @@ def ascii_alias(path: Path | str) -> Path | PureWindowsPath:
 
 
 def user_hash() -> str:
-    """当前用户的稳定 ASCII 短哈希，用作公共目录下的用户隔离子目录名。
-
-    公共目录（ProgramData / ``MAW_RUNTIME_ASCII_ROOT``）多用户可写，按用户
-    隔离是安全要求：不隔离时先到者可替换后到者将以自己身份执行的文件
-    （见模块 docstring 策略 3）。用用户名的 SHA-256 前 16 个十六进制字符
-    而不是明文：目录名保持纯 ASCII（用户名可能是中文），也不向文件系统
-    暴露用户名；同名用户在任何机器上都得到一致目录，便于远程排查。
-    """
-    username = os.environ.get("USERNAME", "").strip()
-    if not username:
-        try:
-            # getpass 覆盖 USERNAME 缺失的环境（Windows 服务会话等）。
-            username = getpass.getuser()
-        except Exception:  # noqa: BLE001 - 取不到用户名时退化为固定目录名
-            username = "unknown"
-    return hashlib.sha256(username.encode("utf-8")).hexdigest()[:16]
+    """Hash the process token SID; environment names are not security identities."""
+    try:
+        sid = winsecurity.current_user_sid()
+    except OSError as error:
+        raise AsciiRootUnavailable("无法确认当前 Windows 用户 SID；请显式设置个人运行时路径。") from error
+    return hashlib.sha256(sid.encode("ascii")).hexdigest()[:16]
 
 
 def fallback_root(dir_name: str) -> Path:
@@ -179,7 +170,7 @@ def fallback_root(dir_name: str) -> Path:
             "未找到 PROGRAMDATA 环境变量，无法确定公共运行时目录。"
             f"可设置环境变量 {FALLBACK_ROOT_ENV} 指定一个无中文且当前用户可写的目录。"
         )
-    return Path(program_data).joinpath(*COMMON_RUNTIMES_SUBPATH) / user / dir_name
+    return Path(program_data) / (COMMON_RUNTIME_PREFIX + user) / dir_name
 
 
 def probe_writable(root: Path, *, label: str = "公共运行时目录") -> None:
@@ -209,7 +200,18 @@ def ensure_ascii_root(path: Path, *, dir_name: str, allow_relocate: bool = True)
     不迁移公共目录；fallback 目录本身不可确定（无 PROGRAMDATA）时同样
     原样返回，把失败推迟到 install/verify 的可操作错误。
     """
-    if sys.platform != "win32" or not contains_non_ascii(str(path)):
+    if sys.platform != "win32":
+        return path
+    # The GUI can send a previously resolved fallback as an explicit ASCII
+    # path. It must still be checked before a ready manifest or worker is used.
+    try:
+        known_fallback = fallback_root(dir_name)
+    except AsciiRootUnavailable:
+        known_fallback = None
+    if path == known_fallback:
+        validate_fallback(path)
+        return path
+    if not contains_non_ascii(str(path)):
         return path
     alias = ascii_alias(path)
     if not contains_non_ascii(str(alias)):
@@ -217,9 +219,21 @@ def ensure_ascii_root(path: Path, *, dir_name: str, allow_relocate: bool = True)
     if not allow_relocate:
         return path
     try:
-        return fallback_root(dir_name)
+        candidate = fallback_root(dir_name)
     except AsciiRootUnavailable:
         return path
+    validate_fallback(candidate)
+    return candidate
+
+
+def validate_fallback(root: Path, *, create: bool = False) -> None:
+    try:
+        winsecurity.private_runtime_root(root, create=create)
+    except OSError as error:
+        raise AsciiRootUnavailable(
+            "公共运行时目录的所有者或访问权限不安全，或无法验证；未采用该目录。"
+            f"请设置 {FALLBACK_ROOT_ENV} 为可信的个人 ASCII 目录，或请管理员配置目录权限。"
+        ) from error
 
 
 def prepare_install_root(root: Path, *, dir_name: str) -> Path:
@@ -238,6 +252,7 @@ def prepare_install_root(root: Path, *, dir_name: str) -> Path:
         return root
     if Path(root) != candidate:
         return root
+    validate_fallback(candidate, create=True)
     probe_writable(candidate)
     return root
 

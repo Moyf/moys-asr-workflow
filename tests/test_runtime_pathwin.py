@@ -25,6 +25,17 @@ ASCII_ROOT = r"C:\Users\runner\AppData\Local\MAW\local-runtime"
 WIN32_ONLY = sys.platform == "win32"
 
 
+def setUpModule():
+    # Decision-table tests run on POSIX too; actual Win32 policy has separate
+    # integration coverage in test_runtime_winsecurity.
+    identity = mock.patch.object(pathwin.winsecurity, "current_user_sid", return_value="S-1-5-21-1-2-3-1001")
+    security = mock.patch.object(pathwin.winsecurity, "private_runtime_root")
+    identity.start()
+    security.start()
+    unittest.addModuleCleanup(identity.stop)
+    unittest.addModuleCleanup(security.stop)
+
+
 def _win32_patches() -> tuple[object, ...]:
     """把 pathwin 模拟成 Windows 环境（base 的 win32 由调用方按需另补）。"""
     return (mock.patch("maw.runtimes.pathwin.sys.platform", "win32"),)
@@ -152,7 +163,7 @@ class EnsureAsciiRootDecisionTableTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"USERNAME": "alice"}):
                 user = pathwin.user_hash()
             expected = str(
-                Path(temp_dir).joinpath(*pathwin.COMMON_RUNTIMES_SUBPATH) / user / "local-runtime"
+                Path(temp_dir) / (pathwin.COMMON_RUNTIME_PREFIX + user) / "local-runtime"
             )
             self.assertEqual(self._ensure(NON_ASCII_ROOT, alias_result=NON_ASCII_ROOT, env=env), expected)
 
@@ -195,20 +206,17 @@ class UserHashTests(unittest.TestCase):
             hashed = pathwin.user_hash()
         self.assertTrue(hashed.isascii())
 
-    def test_different_usernames_produce_different_hashes(self) -> None:
+    def test_environment_names_do_not_change_identity(self) -> None:
         with mock.patch.dict(os.environ, {"USERNAME": "alice"}):
             alice = pathwin.user_hash()
         with mock.patch.dict(os.environ, {"USERNAME": "bob"}):
             bob = pathwin.user_hash()
-        self.assertNotEqual(alice, bob)
+        self.assertEqual(alice, bob)
 
-    def test_missing_username_falls_back_without_raising(self) -> None:
-        # USERNAME 缺失且 getpass 失败的环境（服务会话等）：退化为固定目录名
-        with mock.patch.dict(os.environ, {}, clear=True):
-            with mock.patch.object(pathwin.getpass, "getuser", side_effect=OSError("无法确定用户")):
-                hashed = pathwin.user_hash()
-        self.assertEqual(len(hashed), 16)
-        self.assertTrue(hashed.isascii())
+    def test_missing_identity_fails_closed(self) -> None:
+        with mock.patch.object(pathwin.winsecurity, "current_user_sid", side_effect=OSError("token unavailable")):
+            with self.assertRaises(pathwin.AsciiRootUnavailable):
+                pathwin.user_hash()
 
 
 class FallbackRootTests(unittest.TestCase):
@@ -233,8 +241,7 @@ class FallbackRootTests(unittest.TestCase):
             with mock.patch.dict(os.environ, env, clear=False):
                 os.environ.pop("MAW_RUNTIME_ASCII_ROOT", None)
                 expected = (
-                    Path(program_data).joinpath(*pathwin.COMMON_RUNTIMES_SUBPATH)
-                    / pathwin.user_hash()
+                    Path(program_data) / (pathwin.COMMON_RUNTIME_PREFIX + pathwin.user_hash())
                     / "ocr-runtime"
                 )
                 self.assertEqual(pathwin.fallback_root("ocr-runtime"), expected)
@@ -257,9 +264,11 @@ class FallbackRootTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as override_dir:
             base = {"MAW_RUNTIME_ASCII_ROOT": override_dir, "PROGRAMDATA": ""}
             common = Path(override_dir).resolve()  # override 会被 resolve() 规范化
-            with mock.patch.dict(os.environ, {**base, "USERNAME": "alice"}, clear=False):
+            with mock.patch.dict(os.environ, {**base, "USERNAME": "same"}, clear=False), \
+                    mock.patch.object(pathwin.winsecurity, "current_user_sid", return_value="S-1-5-21-1-2-3-1001"):
                 alice_root = pathwin.fallback_root("local-runtime")
-            with mock.patch.dict(os.environ, {**base, "USERNAME": "bob"}, clear=False):
+            with mock.patch.dict(os.environ, {**base, "USERNAME": "same"}, clear=False), \
+                    mock.patch.object(pathwin.winsecurity, "current_user_sid", return_value="S-1-5-21-4-5-6-1001"):
                 bob_root = pathwin.fallback_root("local-runtime")
         self.assertNotEqual(alice_root.parent, bob_root.parent)
         self.assertEqual(alice_root.parent.parent, common)
@@ -305,8 +314,7 @@ class PrepareInstallRootTests(unittest.TestCase):
             with _win32_patches()[0]:
                 with mock.patch.dict(os.environ, {"PROGRAMDATA": program_data, "USERNAME": "alice"}):
                     candidate = (
-                        Path(program_data).joinpath(*pathwin.COMMON_RUNTIMES_SUBPATH)
-                        / pathwin.user_hash()
+                        Path(program_data) / (pathwin.COMMON_RUNTIME_PREFIX + pathwin.user_hash())
                         / "local-runtime"
                     )
                     # 别名形态（candidate 不匹配）不探测，也不创建目录
@@ -324,8 +332,7 @@ class PrepareInstallRootTests(unittest.TestCase):
             with _win32_patches()[0]:
                 with mock.patch.dict(os.environ, {"PROGRAMDATA": program_data, "USERNAME": "alice"}):
                     candidate = (
-                        Path(program_data).joinpath(*pathwin.COMMON_RUNTIMES_SUBPATH)
-                        / pathwin.user_hash()
+                        Path(program_data) / (pathwin.COMMON_RUNTIME_PREFIX + pathwin.user_hash())
                         / "local-runtime"
                     )
                     with mock.patch.object(
