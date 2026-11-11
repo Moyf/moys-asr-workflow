@@ -67,7 +67,9 @@ class ScanPublicationTests(CompactContainerAssertions, unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.video = Path(self.temp.name) / "synthetic.mp4"
         self.video.write_bytes(b"synthetic source, not media")
-        self.out = Path(self.temp.name) / "out"
+        # Hosted Windows TEMP can be a junction; the CLI resolves --out before
+        # publishing, so failure injection must compare the physical path.
+        self.out = (Path(self.temp.name) / "out").resolve()
         self.out.mkdir()
 
     def run_cli(self, provider, *options: str) -> tuple[int, str]:

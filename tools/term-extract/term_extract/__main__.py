@@ -32,8 +32,10 @@ if __package__ in (None, ""):  # 直接执行 python term_extract/__main__.py �
         if _path not in sys.path:
             sys.path.insert(0, _path)
     from term_extract import aggregate, ai_filter, export, provider, report, score
+    from term_extract.output_lock import lock_output
 else:
     from . import aggregate, ai_filter, export, provider, report, score
+    from .output_lock import lock_output
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_MIN_SCORE = 60
@@ -138,19 +140,20 @@ def _run_pipeline(
         return 1
     out_dir = Path(args.out).expanduser().resolve() if args.out else default_output_dir(video)
     out_dir.mkdir(parents=True, exist_ok=True)
-    _recover_publication(out_dir)
-    stage = tempfile.TemporaryDirectory(prefix=".term-staging-", dir=out_dir)
-    try:
-        return _run_staged_pipeline(
-            args, video=video, out_dir=out_dir, stage_dir=Path(stage.name),
-            scan_provider=scan_provider, duration_prober=duration_prober, cancel_event=cancel_event,
-        )
-    finally:
-        if (out_dir / PUBLICATION_MARKER).exists():
-            # 恢复本身失败时保留恢复所需备份；不可被临时目录析构吞掉。
-            stage._finalizer.detach()
-        else:
-            stage.cleanup()
+    with lock_output(out_dir):
+        _recover_publication(out_dir)
+        stage = tempfile.TemporaryDirectory(prefix=".term-staging-", dir=out_dir)
+        try:
+            return _run_staged_pipeline(
+                args, video=video, out_dir=out_dir, stage_dir=Path(stage.name),
+                scan_provider=scan_provider, duration_prober=duration_prober, cancel_event=cancel_event,
+            )
+        finally:
+            if (out_dir / PUBLICATION_MARKER).exists():
+                # 恢复本身失败时保留恢复所需备份；不可被临时目录析构吞掉。
+                stage._finalizer.detach()
+            else:
+                stage.cleanup()
 
 
 def _run_staged_pipeline(

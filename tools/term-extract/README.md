@@ -19,6 +19,8 @@ uv sync --group ocr --group test
 之后统一用 `uv run --no-sync python …` 执行（也可先 `.venv\Scripts\Activate.ps1` 激活
 venv 再用裸 `python`；**不要用系统 Python**，它没有仓库依赖）。
 
+同一个输出目录同一时间只允许一个提取任务（包含 `--resume`）。第二个进程会立即提示目录正在使用；等待前一个任务结束或换用其他 `--out`。锁从恢复旧事务之前一直持有到扫描、AI、发布与清理结束，进程崩溃后由系统释放。目录内的 `.term-output.lock` 是正常持久文件，请勿在运行中删除；它存在不代表仍有任务运行。
+
 ## 2. 三步用法
 
 ### 第一步：只做提取（测效果，无需任何 Key）
