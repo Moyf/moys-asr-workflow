@@ -12,6 +12,8 @@
   const TASK_CANCEL_URL = '/api/ai/task/cancel';
   const TASKS_URL = '/api/ai/tasks';
   const POLL_INTERVAL_MS = 700;
+  const POLL_TIMEOUT_MS = 10000;
+  const POLL_RETRY_DELAYS_MS = [1000, 2000, 4000];
   const DONE_HIDE_DELAY_MS = 1600;
   const ERROR_HIDE_DELAY_MS = 8000;
   const CANCELLED_HIDE_DELAY_MS = 1600;
@@ -74,6 +76,9 @@
     if (!box || !active) return;
     box.hidden = false;
     box.classList.remove('is-error');
+    box.classList.remove('is-connection-issue');
+    const retry = element('ai-task-progress-retry');
+    if (retry) retry.hidden = true;
     const stageText = STAGE_LABELS[task.stage] || task.stage || '处理中…';
     const label = element('ai-task-progress-label');
     if (label) label.textContent = `${active.label} · ${stageText}`;
@@ -118,7 +123,11 @@
 
   function settle() {
     stopTimer();
-    if (active) active.settled = true;
+    if (active) {
+      if (active.retryTimer) clearTimeout(active.retryTimer);
+      active.retryTimer = 0;
+      active.settled = true;
+    }
   }
 
 
@@ -167,7 +176,9 @@
     const reject = active?.reject;
     settle();
     const box = element('ai-task-progress');
-    if (box) box.classList.remove('is-error');
+    if (box) { box.classList.remove('is-error'); box.classList.remove('is-connection-issue'); }
+    const retry = element('ai-task-progress-retry');
+    if (retry) retry.hidden = true;
     const label = element('ai-task-progress-label');
     if (label && active) label.textContent = `${active.label} · 已取消`;
     const percentText = element('ai-task-progress-percent');
@@ -178,8 +189,8 @@
 
 
 
-  async function pollOnce(taskId) {
-    const response = await MaweHost.server.fetch(TASKS_URL, { cache: 'no-store' });
+  async function pollOnce(taskId, signal) {
+    const response = await MaweHost.server.fetch(TASKS_URL, { cache: 'no-store', signal });
     const body = await response.json();
     if (!response.ok || !body?.ok) {
       throw new Error(body?.error || `获取任务状态失败（HTTP ${response.status}）`);
@@ -190,17 +201,47 @@
 
   async function tick() {
     const current = active;
-    if (!current || current.settled || !current.id || current.phase !== 'running') return;
+    if (!current || current.settled || !current.id || current.phase !== 'running' || current.inFlight) return;
+    const version = current.pollVersion;
+    const controller = new AbortController();
+    const flight = { controller };
+    current.inFlight = flight;
+    let timeout = 0;
     let task = null;
     try {
-      task = await pollOnce(current.id);
+      task = await Promise.race([
+        pollOnce(current.id, controller.signal),
+        new Promise((_, reject) => {
+          timeout = setTimeout(() => { controller.abort(); reject(new Error('进度查询超时')); }, POLL_TIMEOUT_MS);
+        }),
+      ]);
     } catch (error) {
       // await 期间任务可能已切换或终结：迟到的旧响应直接作废（#6）。
-      if (active !== current || current.settled || current.phase !== 'running') return;
-      fail(`无法获取 AI 任务状态：${error.message || error}`);
+      if (active !== current || current.settled || current.phase !== 'running' || current.pollVersion !== version) return;
+      stopTimer();
+      current.pollVersion += 1;
+      if (current.retryCount >= POLL_RETRY_DELAYS_MS.length) {
+        current.phase = 'disconnected';
+        renderConnectionState(current);
+        return;
+      }
+      const delay = POLL_RETRY_DELAYS_MS[current.retryCount];
+      current.retryCount += 1;
+      current.phase = 'retrying';
+      renderConnectionState(current);
+      current.retryTimer = setTimeout(() => {
+        if (active !== current || current.settled || current.phase !== 'retrying') return;
+        current.retryTimer = 0;
+        current.phase = 'running';
+        void tick();
+      }, delay);
       return;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      if (current.inFlight === flight) current.inFlight = null;
     }
-    if (active !== current || current.settled || current.phase !== 'running') return;
+    if (active !== current || current.settled || current.phase !== 'running' || current.pollVersion !== version) return;
+    current.retryCount = 0;
     if (!task) {
       fail('AI 任务不存在或已过期');
       return;
@@ -208,19 +249,74 @@
     if (task.status === 'done') succeed(task);
     else if (task.status === 'error') fail(task.error || 'AI 任务失败');
     else if (task.status === 'cancelled') markCancelled();
-    else renderTask(task);
+    else {
+      renderTask(task);
+      if (!current.timer) current.timer = setInterval(() => { tick(); }, POLL_INTERVAL_MS);
+    }
+  }
+
+  function renderConnectionState(current, cancellationFailed = false) {
+    current.cancellationFailed = cancellationFailed;
+    const box = element('ai-task-progress');
+    if (box) {
+      box.hidden = false;
+      box.classList.add('is-connection-issue');
+      box.classList.toggle('is-error', current.phase === 'disconnected');
+    }
+    const label = element('ai-task-progress-label');
+    if (label) {
+      const en = global.MAWE_I18N?.language === 'en';
+      const detail = cancellationFailed
+        ? (en ? 'Cancel failed; reconnect to check the task' : '取消失败，请重新连接检查任务')
+        : current.phase === 'retrying'
+        ? (en ? `Connection lost; retrying (${current.retryCount}/3)…` : `连接中断，正在重试（${current.retryCount}/3）…`)
+        : (en ? 'Connection not restored; please take over' : '连接未恢复，请手动接管');
+      const taskLabel = global.MAWE_I18N?.translateText?.(current.label) || current.label;
+      label.textContent = `${taskLabel} · ${detail}`;
+    }
+    element('ai-task-progress-bar')?.removeAttribute('value');
+    const percent = element('ai-task-progress-percent');
+    if (percent) percent.textContent = '';
+    const retry = element('ai-task-progress-retry');
+    if (retry) {
+      retry.hidden = current.phase !== 'disconnected';
+      retry.textContent = global.MAWE_I18N?.language === 'en' ? 'Reconnect' : '重新连接';
+    }
+  }
+
+  function retryCurrent() {
+    const current = active;
+    if (!current || current.settled || current.phase !== 'disconnected') return;
+    current.retryCount = 0;
+    current.cancellationFailed = false;
+    current.phase = 'running';
+    renderTask({ stage: 'connecting', percent: 0 });
+    void tick();
   }
 
 
-  function requestCancellation(id) {
-    return MaweHost.server.fetch(TASK_CANCEL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, id }),
-    }).then(async (response) => {
-      const body = await response.json().catch(() => null);
-      if (!response.ok || !body?.ok) throw new Error(body?.error || '取消 AI 任务失败');
-    });
+  async function requestCancellation(id) {
+    const controller = new AbortController();
+    let timeout = 0;
+    try {
+      await Promise.race([
+        (async () => {
+          const response = await MaweHost.server.fetch(TASK_CANCEL_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, id }),
+            signal: controller.signal,
+          });
+          const body = await response.json().catch(() => null);
+          if (!response.ok || !body?.ok) throw new Error(body?.error || '取消 AI 任务失败');
+        })(),
+        new Promise((_, reject) => {
+          timeout = setTimeout(() => { controller.abort(); reject(new Error('取消请求超时')); }, POLL_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
 
   function cancelCurrent() {
@@ -231,14 +327,24 @@
       markCancelled();
       return Promise.resolve();
     }
-    if (current.phase !== 'running') {
+    if (current.phase === 'applying' || current.phase === 'waiting_edit') {
       markCancelled();
       return Promise.resolve();
     }
-    return requestCancellation(current.id).catch((error) => {
-      // 取消失败不打断轮询：任务可能刚好完成；下一次 tick 会给出终态。
-      if (active !== current || active.settled) return;
-      fail(`取消失败：${error.message || error}`);
+    if (current.phase === 'cancelling') return Promise.resolve();
+    stopTimer();
+    current.inFlight?.controller.abort();
+    current.inFlight = null;
+    if (current.retryTimer) clearTimeout(current.retryTimer);
+    current.retryTimer = 0;
+    current.pollVersion += 1;
+    current.phase = 'cancelling';
+    return requestCancellation(current.id).then(() => {
+      if (active === current && !current.settled) markCancelled();
+    }).catch(() => {
+      if (active !== current || current.settled) return;
+      current.phase = 'disconnected';
+      renderConnectionState(current, true);
     });
   }
 
@@ -263,7 +369,8 @@
     let resolve;
     let reject;
     const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
-    active = { id: '', kind, label, settled: false, timer: 0, hideTimer: 0, resolve, reject, beforeComplete, phase: 'running' };
+    active = { id: '', kind, label, settled: false, timer: 0, retryTimer: 0, hideTimer: 0, resolve, reject, beforeComplete,
+      phase: 'running', retryCount: 0, pollVersion: 0 };
     const current = active;
     renderTask({ stage: 'submitting', percent: 0 });
     MaweHost.server.fetch(TASK_URL, {
@@ -379,7 +486,13 @@
   global.MaweAiTasks = Object.freeze({
     begin,
     cancelCurrent,
+    retryCurrent,
     appendContextMenu,
     get active() { return active && !active.settled ? active : null; },
+  });
+  document.addEventListener('mawe:languagechange', () => {
+    if (active && !active.settled && ['retrying', 'disconnected'].includes(active.phase)) {
+      renderConnectionState(active, active.cancellationFailed);
+    }
   });
 })(typeof window !== 'undefined' ? window : globalThis);

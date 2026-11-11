@@ -105,6 +105,9 @@
     element('ai-task-progress-cancel')?.addEventListener('click', () => {
       MaweAiTasks.cancelCurrent();
     });
+    element('ai-task-progress-retry')?.addEventListener('click', () => {
+      MaweAiTasks.retryCurrent();
+    });
   }
 
 

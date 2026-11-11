@@ -73,10 +73,11 @@ function createCoreAdapters(win) {
 }
 
 function createContext({ elements = {}, storedPrompts = null } = {}) {
-  const context = { TextDecoder, TextEncoder, Uint8Array };
+  const context = { TextDecoder, TextEncoder, Uint8Array, AbortController };
   context.window = context; // 与浏览器一致：window 即全局对象
-  const state = { hints: [], timers: [], responses: [], fetches: [], beginCalls: [] };
-  context.document = { getElementById: (id) => elements[id] || null };
+  const state = { hints: [], timers: [], responses: [], fetches: [], beginCalls: [], listeners: {} };
+  context.document = { getElementById: (id) => elements[id] || null,
+    addEventListener(type, callback) { state.listeners[type] = callback; } };
   context.MaweState = { markProjectDirty() {} };
   context.MaweSettings = { EDITOR_SETTINGS: {} };
   context.MaweHistory = { updateUndoRedoButtons() {} };
@@ -247,6 +248,17 @@ test('本地替换媒体后不接受旧媒体的 AI 对齐结果或重新提交�
   assert.equal(state.preview, undefined);
   win.MaweAiStructureTasks.runTimecodeItems([0]);
   assert.equal(state.beginCalls.length, 1);
+});
+
+test('字词对齐提交主轨语言，未设置时保留空语言回退', () => {
+  for (const language of ['ja', 'ko', 'fr', '']) {
+    const { win, state } = createContext();
+    win.MaweBoot.DATA = makeProject([makeSegment('a', '字幕文字', 0, 1000)]);
+    win.MaweBoot.DATA.tracks[0].language = language;
+    stubDeferredBegin(win, state);
+    win.MaweAiStructureTasks.runTimecodeItems([0]);
+    assert.equal(state.beginCalls[0][1].lang, language);
+  }
 });
 
 test('智能合并保留首条 ID 时仍提交 AI 润色', async () => {
@@ -754,8 +766,8 @@ test('轮询迟到响应不会终结或污染新任务（#6）', async () => {
   state.responses.push(
     { body: { ok: true, task: { id: 'task-a', kind: 'ai-bold', status: 'queued', stage: 'queued', percent: 0 } } },
     held,
-    // 第二轮 tick 看到 cancelled：A 在迟到响应之前就已终结
-    { body: { ok: true, tasks: [{ id: 'task-a', status: 'cancelled', stage: 'cancelled', percent: 0 }] } },
+    // 取消 A，然后在迟到响应前启动 B。
+    { body: { ok: true } },
     { body: { ok: true, task: { id: 'task-b', kind: 'ai-bold', status: 'queued', stage: 'queued', percent: 0 } } },
     { body: { ok: true, tasks: [{ id: 'task-b', status: 'done', stage: 'done', percent: 100, result: { marker: 'B' } }] } },
   );
@@ -764,8 +776,7 @@ test('轮询迟到响应不会终结或污染新任务（#6）', async () => {
   await flush();
   state.timers.at(-1)(); // 第一轮 tick：GET 挂起
   await flush();
-  state.timers.at(-1)(); // 第二轮 tick：读到 cancelled，A 终结
-  await flush();
+  await win.MaweAiTasks.cancelCurrent();
   const promiseB = win.MaweAiTasks.begin('ai-bold', {}, '任务B');
   await flush();
   releaseHeld(); // 释放 A 的迟到 done 响应
@@ -774,6 +785,155 @@ test('轮询迟到响应不会终结或污染新任务（#6）', async () => {
   state.timers.at(-1)(); // B 自己的下一轮 tick
   await flush();
   assert.deepEqual(await promiseB, { marker: 'B' });
+});
+
+test('进度查询短暂失败后按 1、2、4 秒重试并恢复原任务', async () => {
+  const { win, state } = createContext();
+  const timeouts = [];
+  win.setTimeout = (fn, delay) => { timeouts.push({ fn, delay }); return timeouts.length; };
+  state.responses.push({ body: { ok: true, task: { id: 'task-a', status: 'queued' } } });
+  const result = win.MaweAiTasks.begin('ai-bold', {}, '任务A');
+  await flush();
+  for (const delay of [1000, 2000, 4000]) {
+    state.responses.push({ deferred: true, promise: Promise.reject(new Error('offline')) });
+    if (delay === 1000) state.timers.at(-1)();
+    else timeouts.at(-1).fn();
+    await flush();
+    assert.equal(timeouts.at(-1).delay, delay);
+    assert.equal(win.MaweAiTasks.active.phase, 'retrying');
+  }
+  state.responses.push({ body: { ok: true, tasks: [{ id: 'task-a', status: 'done', result: { text: 'ok' } }] } });
+  timeouts.at(-1).fn();
+  await flush();
+  assert.equal((await result).text, 'ok');
+  assert.equal(state.fetches.filter((entry) => entry.method === 'POST').length, 1);
+});
+
+test('重试耗尽后保留任务供手动重新连接和取消', async () => {
+  const { win, state } = createContext();
+  const timeouts = [];
+  win.setTimeout = (fn, delay) => { timeouts.push({ fn, delay }); return timeouts.length; };
+  state.responses.push({ body: { ok: true, task: { id: 'task-a', status: 'queued' } } });
+  const result = win.MaweAiTasks.begin('ai-bold', {}, '任务A');
+  await flush();
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    state.responses.push({ deferred: true, promise: Promise.reject(new Error('offline')) });
+    if (attempt === 0) state.timers.at(-1)();
+    else timeouts.at(-1).fn();
+    await flush();
+  }
+  assert.equal(win.MaweAiTasks.active.phase, 'disconnected');
+  assert.equal(win.MaweAiTasks.active.id, 'task-a');
+  state.responses.push({ body: { ok: true, tasks: [{ id: 'task-a', status: 'done', result: { text: 'recovered' } }] } });
+  win.MaweAiTasks.retryCurrent();
+  await flush();
+  assert.equal((await result).text, 'recovered');
+  assert.equal(state.fetches.filter((entry) => entry.method === 'POST').length, 1);
+});
+
+test('断线时取消失败保留任务，连接恢复后可取消', async () => {
+  const { win, state } = createContext();
+  const timeouts = [];
+  win.setTimeout = (fn, delay) => { timeouts.push({ fn, delay }); return timeouts.length; };
+  state.responses.push({ body: { ok: true, task: { id: 'task-a', status: 'queued' } } });
+  const result = win.MaweAiTasks.begin('ai-bold', {}, '任务A');
+  const cancelled = assert.rejects(result, /已取消/);
+  await flush();
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    state.responses.push({ deferred: true, promise: Promise.reject(new Error('offline')) });
+    if (attempt === 0) state.timers.at(-1)();
+    else timeouts.at(-1).fn();
+    await flush();
+  }
+  state.responses.push({ deferred: true, promise: Promise.reject(new Error('offline')) });
+  await win.MaweAiTasks.cancelCurrent();
+  assert.equal(win.MaweAiTasks.active.phase, 'disconnected');
+  assert.equal(win.MaweAiTasks.active.id, 'task-a');
+  state.responses.push({ body: { ok: true } });
+  await win.MaweAiTasks.cancelCurrent();
+  await cancelled;
+  assert.equal(win.MaweAiTasks.active, null);
+  const cancels = state.fetches.filter((entry) => entry.url === '/api/ai/task/cancel');
+  assert.equal(cancels.length, 2);
+  assert.ok(cancels.every((entry) => entry.body.id === 'task-a'));
+});
+
+test('英文界面在断线和手动接管时显示完整英文提示', async () => {
+  const classes = { add() {}, remove() {}, toggle() {} };
+  const label = { textContent: '' };
+  const retry = { hidden: true, textContent: '' };
+  const elements = {
+    'ai-task-progress': { hidden: true, classList: classes },
+    'ai-task-progress-label': label,
+    'ai-task-progress-retry': retry,
+    'ai-task-progress-bar': { removeAttribute() {}, setAttribute() {} },
+    'ai-task-progress-percent': { textContent: '' },
+  };
+  const { win, state } = createContext({ elements });
+  win.MAWE_I18N = { language: 'en', translateText: (value) => win.MAWE_I18N.language === 'en' && value === 'AI 翻译为副字幕' ? 'AI translate to secondary subtitles' : value };
+  const timeouts = [];
+  win.setTimeout = (fn, delay) => { timeouts.push({ fn, delay }); return timeouts.length; };
+  state.responses.push({ body: { ok: true, task: { id: 'task-a', status: 'queued' } } });
+  const result = win.MaweAiTasks.begin('ai-translate', {}, 'AI 翻译为副字幕');
+  result.catch(() => {});
+  await flush();
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    state.responses.push({ deferred: true, promise: Promise.reject(new Error('offline')) });
+    if (attempt === 0) state.timers.at(-1)();
+    else timeouts.at(-1).fn();
+    await flush();
+    if (attempt === 0) assert.equal(label.textContent, 'AI translate to secondary subtitles · Connection lost; retrying (1/3)…');
+  }
+  assert.equal(label.textContent, 'AI translate to secondary subtitles · Connection not restored; please take over');
+  assert.equal(retry.hidden, false);
+  assert.equal(retry.textContent, 'Reconnect');
+  win.MAWE_I18N.language = 'zh';
+  state.listeners['mawe:languagechange']();
+  assert.equal(label.textContent, 'AI 翻译为副字幕 · 连接未恢复，请手动接管');
+  assert.equal(retry.textContent, '重新连接');
+});
+
+test('进度请求无响应时超时并重试，不重复发起并行查询', async () => {
+  const { win, state } = createContext();
+  const timeouts = [];
+  win.setTimeout = (fn, delay) => { timeouts.push({ fn, delay }); return timeouts.length; };
+  state.responses.push({ body: { ok: true, task: { id: 'task-a', status: 'queued' } } });
+  const result = win.MaweAiTasks.begin('ai-bold', {}, '任务A');
+  await flush();
+  let release;
+  state.responses.push({ deferred: true, promise: new Promise((resolve) => { release = resolve; }) });
+  state.timers.at(-1)();
+  await flush();
+  state.timers.at(-1)();
+  assert.equal(state.fetches.filter((entry) => entry.method === 'GET').length, 1);
+  assert.equal(timeouts.at(-1).delay, 10000);
+  timeouts.at(-1).fn();
+  await flush();
+  assert.equal(win.MaweAiTasks.active.phase, 'retrying');
+  assert.equal(timeouts.at(-1).delay, 1000);
+  state.responses.push({ body: { ok: true, tasks: [{ id: 'task-a', status: 'done', result: { text: 'recovered' } }] } });
+  timeouts.at(-1).fn();
+  await flush();
+  assert.equal((await result).text, 'recovered');
+  release({ ok: true, json: async () => ({ ok: true, tasks: [] }) });
+});
+
+test('取消请求无响应时返回手动接管并保留原任务', async () => {
+  const { win, state } = createContext();
+  const timeouts = [];
+  win.setTimeout = (fn, delay) => { timeouts.push({ fn, delay }); return timeouts.length; };
+  state.responses.push({ body: { ok: true, task: { id: 'task-a', status: 'queued' } } });
+  const result = win.MaweAiTasks.begin('ai-bold', {}, '任务A');
+  result.catch(() => {});
+  await flush();
+  state.responses.push({ deferred: true, promise: new Promise(() => {}) });
+  const cancel = win.MaweAiTasks.cancelCurrent();
+  assert.equal(win.MaweAiTasks.active.phase, 'cancelling');
+  assert.equal(timeouts.at(-1).delay, 10000);
+  timeouts.at(-1).fn();
+  await cancel;
+  assert.equal(win.MaweAiTasks.active.phase, 'disconnected');
+  assert.equal(win.MaweAiTasks.active.id, 'task-a');
 });
 
 test('切换供应商时清空未提交的密钥输入（#8）', async () => {

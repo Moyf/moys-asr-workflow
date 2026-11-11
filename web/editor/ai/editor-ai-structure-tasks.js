@@ -393,6 +393,7 @@
     }
     beginStructureTask('ai-timecode-items', {
       cues: cues.map(({ id, text, start, end }) => ({ id, text, start, end })),
+      lang: global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).language || '',
       bindingGeneration: typeof config.bindingGeneration === 'number' ? config.bindingGeneration : null,
       sourceMediaId: config.sourceMediaId ?? null,
     }, (result, context) => presentStructure('ai-timecode-items', cues, result, context))

@@ -4446,6 +4446,12 @@
     color: var(--text-primary); font-size: 12px;
   }
   .ai-task-progress.is-error .ai-task-progress-label { color: var(--danger, #e5484d); }
+  .ai-task-progress.is-connection-issue .ai-task-progress-label { white-space: normal; overflow-wrap: anywhere; }
+  .ai-task-progress-retry {
+    flex: 0 0 auto; padding: 3px 7px; border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm); background: transparent; color: var(--text-primary); font-size: 12px;
+  }
+  .ai-task-progress-retry[hidden] { display: none; }
   .ai-task-progress-cancel {
     flex: 0 0 auto; min-width: 20px; height: 20px; padding: 0 5px; line-height: 1;
     background: transparent; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
