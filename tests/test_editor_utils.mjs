@@ -4174,13 +4174,79 @@ test('keeps browser and server ASS defaults identical while preserving saved par
   const server = JSON.parse(result.stdout);
   for (const library of [browser, server]) for (const style of library.styles) delete style.fontName;
   assert.deepEqual(browser, server);
+  assert.deepEqual(browser.assProfiles[0].animations.fad, { enabled: false, inMs: 250, outMs: 250 });
+  assert.deepEqual(browser.assProfiles[0].animations.pop, { enabled: false, fromScale: 0.7, inMs: 120, accel: 1 });
   const saved = helpers.defaultAssStyleLibrary();
-  Object.assign(helpers.assStyleForId(saved, 'ass'), {
+  Object.assign(saved.styles.find(style => style.id === 'ass'), {
     fontName: 'Arial', fontSize: 72, emphasisScale: 1.1, backColor: '#000000', backOpacity: 100,
     bold: false, outline: 4, marginV: 80,
   });
-  helpers.assProfileForId(saved, 'ass').animations.fad.enabled = false;
-  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeAssStyleLibrary(saved))), JSON.parse(JSON.stringify(saved)));
+  for (const fadEnabled of [true, false]) for (const popEnabled of [true, false]) {
+    Object.assign(saved.assProfiles[0].animations.fad, { enabled: fadEnabled, inMs: 150, outMs: 300 });
+    Object.assign(saved.assProfiles[0].animations.pop, { enabled: popEnabled, fromScale: 0.8, inMs: 200 });
+    const serialized = JSON.stringify(helpers.normalizeAssStyleLibrary(saved));
+    assert.deepEqual(JSON.parse(serialized), JSON.parse(JSON.stringify(saved)));
+    assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeAssStyleLibrary(JSON.parse(serialized)))), JSON.parse(serialized));
+  }
+});
+
+test('default ASS profile leaves ordinary cues unanimated in export and preview', () => {
+  const library = helpers.defaultAssStyleLibrary();
+  const profile = helpers.assProfileForId(library, 'ass');
+  const ass = helpers.buildAssPayload([{ start: 0, end: 1000, text: 'ordinary cue' }], {
+    assProfile: profile, assStyle: helpers.assStyleForId(library, 'ass'),
+  });
+  const dialogue = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 1);
+  assert.ok(dialogue[0].endsWith(',,ordinary cue'), dialogue[0]);
+  assert.doesNotMatch(dialogue[0], /\\(?:fad|fade|t|fscx|fscy)\b/);
+  for (const elapsed of [0, 60, 500, 940]) {
+    const state = helpers.assPreviewAnimationState(profile, elapsed, 1000);
+    assert.equal(state.opacity, 1);
+    assert.equal(state.popScale, 1);
+    assert.equal(state.transformProgress, null);
+  }
+});
+
+test('explicit ASS fad and pop switches still animate ordinary cues', () => {
+  for (const [fadEnabled, popEnabled] of [[true, false], [false, true], [true, true]]) {
+    const library = helpers.defaultAssStyleLibrary();
+    library.assProfiles[0].animations.fad.enabled = fadEnabled;
+    library.assProfiles[0].animations.pop.enabled = popEnabled;
+    const profile = helpers.assProfileForId(library, 'ass');
+    const ass = helpers.buildAssPayload([{ start: 0, end: 1000, text: 'ordinary cue' }], {
+      assProfile: profile, assStyle: helpers.assStyleForId(library, 'ass'),
+    });
+    const dialogue = ass.split('\n').find(line => line.startsWith('Dialogue:'));
+    assert.equal(dialogue.includes('\\fad(250,250)'), fadEnabled);
+    assert.equal(dialogue.includes('\\fscx70\\fscy70\\t(0,120,1,\\fscx100\\fscy100)'), popEnabled);
+    const start = helpers.assPreviewAnimationState(profile, 0, 1000);
+    assert.equal(start.opacity, fadEnabled ? 0 : 1);
+    assert.equal(start.popScale, popEnabled ? 0.7 : 1);
+    const end = helpers.assPreviewAnimationState(profile, 500, 1000);
+    assert.equal(end.opacity, 1);
+    assert.equal(end.popScale, 1);
+  }
+});
+
+test('default-off ASS switches retain single-cue fade and pop marker effects', () => {
+  const library = helpers.defaultAssStyleLibrary();
+  const profile = helpers.assProfileForId(library, 'ass');
+  const segments = ['>>fade<<', '{{pop}}', '>>{{both}}<<', 'ordinary cue']
+    .map((text, index) => ({ start: index * 1000, end: (index + 1) * 1000, text }));
+  const ass = helpers.buildAssPayload(segments, {
+    assProfile: profile, assStyle: helpers.assStyleForId(library, 'ass'),
+  });
+  const dialogue = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 4);
+  assert.ok(dialogue[0].endsWith('{\\fad(250,250)}fade'), dialogue[0]);
+  assert.ok(dialogue[1].endsWith('{\\fscx70\\fscy70\\t(0,120,1,\\fscx100\\fscy100)}pop'), dialogue[1]);
+  assert.ok(dialogue[2].endsWith('{\\fscx70\\fscy70\\t(0,120,1,\\fscx100\\fscy100)\\fad(250,250)}both'), dialogue[2]);
+  assert.ok(dialogue[3].endsWith(',,ordinary cue'), dialogue[3]);
+  const markers = helpers.assSentenceAnimationTags(segments[2].text, profile, 'both');
+  const state = helpers.assPreviewAnimationState(profile, 60, 1000, markers);
+  assert.equal(state.opacity, 60 / 250);
+  assert.equal(state.popScale, 0.85);
 });
 
 test('ASS outline and shadow opacity map to alpha bytes and rgba previews', () => {

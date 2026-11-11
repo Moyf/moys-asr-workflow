@@ -4582,6 +4582,10 @@ test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap
 
   // 多重字幕关闭（轨道数据保留）：常规 ASS 与去空隙 ASS 都不输出副字幕；
   // 叠加轨照常导出，去空隙时间统一压缩。
+  // 此用例同时核对动画跨分片时钟；显式开启 fad，不依赖内置默认开关。
+  await page.evaluate(() => {
+    ASS_STYLE_LIBRARY.assProfiles.find(profile => profile.id === 'ass').animations.fad.enabled = true;
+  });
   const disabled = await page.evaluate(() => ({
     ass: MaweExportSrt.buildAss(),
     gapRemoved: MaweExportSrt.buildGapRemovedAss(),

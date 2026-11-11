@@ -228,7 +228,7 @@ export function createUtilsModule(dependencies) {
   });
 
   const ASS_DEFAULT_ANIMATIONS = Object.freeze({
-    fad: Object.freeze({ enabled: true, inMs: 250, outMs: 250 }),
+    fad: Object.freeze({ enabled: false, inMs: 250, outMs: 250 }),
     // 放大出现：句级 {{…}} 标记与全局自动应用共用；enabled 只控制全局自动应用。
     // fromScale < 1 为「从小放大落定」（默认 0.7），> 1 为从大缩小落定。
     pop: Object.freeze({ enabled: false, fromScale: 0.7, inMs: 120, accel: 1 }),
