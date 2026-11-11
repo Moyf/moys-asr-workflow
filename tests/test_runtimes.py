@@ -93,7 +93,11 @@ class RuntimePathTests(unittest.TestCase):
 
 class RuntimeInstallCommandTests(unittest.TestCase):
     # 内嵌流（embedded）测试固定 win32 + frozen：install 分支、CUDA 兜底与
-    # python_path 布局在 mac/linux CI 上与 Windows 一致。
+    # python_path 布局在 mac/linux CI 上与 Windows 一致。resolve_root 的
+    # win32 分支会先算 fallback 路径比对（需要 current_user_sid → WinDLL），
+    # 非 Windows 平台没有该 API，各测试显式 mock SID（形态同
+    # tests/test_runtime_winsecurity.py）。
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
@@ -133,6 +137,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
             # verify 命令是 python -c 自检
             self.assertTrue(any("import jieba" in str(arg) for arg in verify_command))
 
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.probe_index_reachable", return_value=False)
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
@@ -167,6 +172,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
         self.assertIn("MAW_PYTORCH_INDEX", str(context.exception))
         self.assertIn("download.pytorch.org", str(context.exception))
 
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.probe_index_reachable", return_value=True)
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
@@ -202,6 +208,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
             self.assertIn(mirror, install_command)
             self.assertNotIn(PYTORCH_INDEX, install_command)
 
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_ocr_install_skips_cu130_extra_index(self) -> None:
@@ -237,6 +244,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
 
     # 类装饰器语义（win32 + frozen）由下方两个 mock 提供：CUDA 兜底只对非
     # darwin 平台执行，win32 同时保证不误入 unix venv 分支。
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_local_install_falls_back_to_cpu_torch_without_nvidia(self) -> None:
@@ -288,6 +296,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
             self.assertNotIn("+cu130", cpu_txt.read_text(encoding="utf-8"))
             self.assertTrue(any("import jieba" in str(arg) for arg in verify_command))
 
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))

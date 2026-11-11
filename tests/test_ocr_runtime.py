@@ -64,6 +64,10 @@ class OcrRuntimeTests(unittest.TestCase):
         self.assertFalse(recover_ocr_runtime_install(self.root))
 
     # 内嵌流测试固定 win32：install 分支与布局在 mac/linux CI 上一致。
+    # resolve_root 的 win32 分支会先计算已知 fallback 路径做比对
+    # （fallback_root → user_hash → current_user_sid → WinDLL），非 Windows
+    # 平台没有该 API，SID 需显式 mock（形态与 tests/test_runtime_winsecurity.py 一致）。
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_install_creates_venv_installs_exact_runtime_requirements_and_writes_manifest(self) -> None:

@@ -172,6 +172,9 @@ class MossRuntimeStatusTests(unittest.TestCase):
 
 class MossRuntimeInstallTests(unittest.TestCase):
     # 内嵌流测试固定 win32：委托链与布局在 mac/linux CI 上一致。
+    # resolve_root 的 win32 分支会先算 fallback 路径比对（需要 current_user_sid），
+    # 非 Windows 平台没有 WinDLL，SID 需显式 mock（同 tests/test_ocr_runtime.py）。
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
@@ -213,6 +216,7 @@ class MossRuntimeInstallTests(unittest.TestCase):
             self.assertIn(PYTORCH_INDEX, install_command)
             self.assertTrue(any(MOSS_VERIFY_IMPORT in str(arg) for arg in verify_command))
 
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_install_without_bootstrap_assets_explains_packaged_requirement(self) -> None:
