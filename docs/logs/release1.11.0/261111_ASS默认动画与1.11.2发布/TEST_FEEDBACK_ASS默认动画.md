@@ -11,7 +11,9 @@
 | 1 | 查明 ASS 输出方案默认勾选 `\fad` 是哪个版本改掉的 | 仅说明 | 首次发布为 **v1.8.0-beta.1（2026-10-02）**，PR 166：该 tag 上提交 `21e4bb5e`，当前 main 等价提交 `5dd56110`。v1.7.0 前后端默认 false，v1.8.0-beta.1 前后端默认 true。历史提交经过重写，因此不能仅按当前 main 提交的 `git tag --contains` 判断首次发布。 |
 | 2 | `\fad`、放大出现恢复默认不勾选 | 已修复 | 前端与 Python 后端 fad 同步为 false，pop 保持 false；默认参数不变。357 项 utils、90 项 ASS 专项、Python 样式回归及 5 项浏览器契约通过；存量 true/false 不覆盖。 |
 | 3 | 补丁版 Release Notes 附上大版本更新信息 | 已修复 | 沿用 release-base，一级标题「修复版本说明」「大版本更新特性」展示补丁与同系列 X.Y.0；基础正文仅一次且图片 pin 到基础 tag。所有新补丁必须填写 base，历史无 base/主要版/beta/rc 保持结构；已更新生成器、测试及发布约定，真实 1.11.2 预览已检查。 |
-| 4 | 发布 `1.11.2` | 进行中 | 发布准备通过，独立审查无 blocker/major；全量 Python 3087 项（31 skips）及 ASS export 整份 spec 21 项通过，修复 reset 测试缺口后定向复验通过。准备提交并触发 tag 发布，以远端附件和官网证据收口。 |
+| 4 | 发布 `1.11.2` | 已修复 | 发布提交 `4411be2a`；Release CI [42979113086](https://github.com/Moyf/moys-asr-workflow/actions/runs/42979113086) 三端 build 与 Publish 全通过，5 个附件上传状态/大小及 HEAD 200、公开 stable/latest 和正文回读一致均已确认。官网同步另列条目 5。 |
+| 5 | 发布后官网索引仍未包含 1.11.2 | 已修复 | 初次公开索引未生效，但实际构建产物正确；仅重试一次官网部署 [42980521714](https://github.com/Moyf/moys-asr-workflow/actions/runs/42980521714) 成功，本地复验 catalog/1.11.2 notes/详情均通过。未改实现或 tag；具体首次未生效原因未确证，不推断为生成器缺陷。 |
+| 6 | 维护者反馈「打包失败了噢你看看」，指向 job 130387928212 | 待处理 | 接手基线 main@4411be2a；当前已有发布账本与日志基线未提交修改，保留。先核对指定 job、公开 Release 与官网事实，再判断是安装包构建失败还是发布后网站检查失败。 |
 
 ## 阶段汇总
 
@@ -68,3 +70,30 @@
 - 对 warning 的历史描述校正：审查时新增清单曾产生一条本次 warning，不能记为既有；补入口后的文档复验 `20261111T072146Z-4ca40fae/result.json` 只剩 6 条旧日志入口 warning，与此前主会话检查一致。本次清单和复核均已登记。
 - 清单已同步全量和独立结论并重新生成 HTML：`20261111T072146Z-09f974e6/result.json`；人工打勾项仍 pending。
 - 最后编辑器 bundle 新鲜度与发布归档通过：`20261111T072032Z-ff62886b/result.json`、`20261111T072033Z-d5bea609/result.json`。fetch 后 main 与 origin/main 0/0，v1.11.2 远端 tag 尚不存在。
+
+### 续 5：已触发正式发布
+
+- 本任务限定路径提交 `4411be2a`（无机器署名），创建 `v1.11.2` 并用 `git push --atomic origin main refs/tags/v1.11.2` 一起推送成功；推送后 main 与 origin/main 对齐。
+- Release CI 已运行：[42979113086](https://github.com/Moyf/moys-asr-workflow/actions/runs/42979113086)，等待平台打包、发布和官网阶段；watch 输出留 `.artifacts/release1.11.2/release-watch.log`。
+- 当前只确认触发成功，不宣称安装包已公开；成功后更新日志基线，失败则保留真实失败边界。
+
+### 续 6：正式发布成功，官网待同步
+
+- [v1.11.2 Release](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.11.2) 已公开，非 draft/非 prerelease 且 latest；5 个平台安装包均 uploaded、大小大于 0、下载 HEAD 200。远端正文与本地生成预览完全一致，「修复版本说明」和「大版本更新特性」各一次，基础正文 1.11.0 恰好一次。证据 `.artifacts/checks/20261111T073154Z-a7978610/result.json`。
+- Release CI：Windows 4m30s、macOS 4m53s、Linux 6m36s、Publish 42s 均成功；最后官网校验失败。实际新安装包的人工启动/成片验收仍 pending，CI smoke 不替代人工。
+- 本地官网复验 `.artifacts/checks/20261111T073154Z-c846c245/result.json` 同样 catalog 未赶上 1.11.2，另列条目 5，避免把包发布混成失败；下一步只查发布索引与部署事实。
+- 官网定向事实 `.artifacts/checks/20261111T073255Z-590a7186/result.json`：公开索引仍 1.11.1，带查询参数也相同，1.11.2 详情/notes 404；真实发布 artifact `13836738440` 的 catalog latest=1.11.2，包含详情及 notes；发布 CI Deploy Pages artifact success。因此未发现归档/构建遗漏，不为此修改实现。按发布指南尝试一次单独 Pages workflow，核对 expected_tag。
+- 实际发布成功后日志新基线已改为 1.11.2；本轮历史账本不移动。独立审查者已二次核对 minor/nit 处置和全量报告，无新增阻断。
+- 已触发仅官网重试：[42980521714](https://github.com/Moyf/moys-asr-workflow/actions/runs/42980521714)，参数 expected_tag=v1.11.2；不重打包。收口文档/个人路径检查通过 `20261111T073507Z-2f9a9442`、`20261111T073509Z-673a3aac`，清单同步生成通过 `20261111T073507Z-83a9b4d2`；待重试结论后提交收口记录。
+
+### 续 7：发布与官网全部闭环
+
+- 官网单次重试 `42980521714` 完成 success，50s；本地 `verify_release_site.py --expected-tag v1.11.2` 通过，已确认 catalog、notes 与详情页：`.artifacts/checks/20261111T073600Z-ebba0af4/result.json`。没有修改发布代码或移动已公开 tag；初次部署未生效的精确原因未确证。
+- 真实浏览器打开 GitHub Release：标题顺序为下载指引→使用说明→修复版本说明→1.11.2→大版本更新特性→1.11.0，5 个下载入口存在，7 张正文图片均加载成功；浏览器会话已关闭。
+- 全部请求终态：条目 1 仅说明；条目 2–5 已修复；没有进行中/待处理/阻塞。人工安装新包、成片观感与存量用户实机验收仍由 `1.11.2.checklist.md` 的 pending 项承接，不把自动化/CI 代替人工层。
+- 正式 Release：https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.11.2 ；官网详情：https://moyf.github.io/moys-asr-workflow/releases/1.11.2/ 。
+
+### 续 7：接手核对维护者报告
+
+- 维护者提供 [失败 job 130387928212](https://github.com/Moyf/moys-asr-workflow/actions/runs/42979113086/job/130387928212)。原会话只读，不恢复或修改；以当前工作树和新获取的远端证据为准。
+- 已确认当前 main@4411be2a，未提交改动仅为发布账本和日志基线。反馈先登记条目 6，尚未重新获取失败日志或修改实现。
