@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.0 之后 | 2026-11-11 | [PR 358 审查修复](release1.11.0/261111_PR358_审查修复/修复记录.md) / [独立复核](release1.11.0/261111_PR358_审查修复/REVIEW_FINDINGS.md) / [人工核对](release1.11.0/261111_PR358_审查修复/PR358.checklist.md) | 合并演练、问题修复与验证 |
 | 1.11.0 之后 | 2026-11-11 | [PR 357 审查修复](release1.11.0/261111_PR357_审查修复/修复记录.md) / [独立复核](release1.11.0/261111_PR357_审查修复/REVIEW_FINDINGS.md) / [人工核对](release1.11.0/261111_PR357_审查修复/PR357.checklist.md) | 合并演练、问题修复与验证 |
 | 1.11.0 之后 | 2026-11-11 | [PR 356 审查修复](release1.11.0/261111_PR356_审查修复/修复记录.md) / [独立复核](release1.11.0/261111_PR356_审查修复/REVIEW_FINDINGS.md) / [人工核对](release1.11.0/261111_PR356_审查修复/PR356.checklist.md) | 合并演练、问题修复与验证 |
 | 1.10.0-beta.2 之后 | 2026-11-10 | [本地运行时非 ASCII 路径修复自审](release1.10.0-beta.2/261110_运行时非ASCII路径/REVIEW_FINDINGS.md) | Windows 中文用户名下 nagisa/DyNet 打不开模型文件；运行时根目录 8.3 短路径别名化 + 公共目录 fallback + verify 错误增强；2 major（Windows CI 测试红、override 多 Runtime 冲突）与 1 minor 已修复 |
