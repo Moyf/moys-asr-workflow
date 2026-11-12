@@ -16,6 +16,7 @@ export function initMaweShortcuts() {
 
   // 空格播放/暂停。捕获阶段先于原生媒体控件处理，避免控件获得焦点后执行默认行为。
   let interceptedSpace = false;
+  let interceptedSpaceCode = null;
 
 
 
@@ -113,12 +114,33 @@ export function initMaweShortcuts() {
 
   let overrides = {};
   function bindings(entry, source = overrides) { return source[entry.id] || entry.defaults; }
+  function effectiveBindings(entry, source = overrides) {
+    const active = bindings(entry, source);
+    if (entry.id !== 'split') return active.map(value => ({ chord: value, target: entry.defaults.includes(value) ? value : entry.defaults[0] }));
+    const result = [];
+    for (const value of active) {
+      const key = value.split('+').at(-1);
+      const variants = [
+        [value, 'b'],
+        ['Shift+' + key, 'Shift+b'],
+        ['Mod+Shift+' + key, 'Mod+Shift+b'],
+      ];
+      for (const [index, [chordValue, target]] of variants.entries()) {
+        if ((index === 0 || validChord(chordValue)) && !result.some(item => item.chord === chordValue)) result.push({ chord: chordValue, target });
+      }
+    }
+    return result;
+  }
+  function defaultPhysicalBindings(entry) {
+    if (entry.id !== 'split') return entry.defaults;
+    return ['b', 'Shift+b', 'Mod+Shift+b'];
+  }
   function validate(source, changedId = null) {
     const used = new Map();
     for (const entry of commands) {
-      for (const value of bindings(entry, source)) {
+      for (const { chord: value } of effectiveBindings(entry, source)) {
         if (!validChord(value)) throw new Error('该按键不可用或由浏览器 / 系统保留');
-        if (used.has(value)) {
+        if (used.has(value) && used.get(value).id !== entry.id) {
           const previous = used.get(value);
           throw new Error('快捷键冲突：' + (previous.id === changedId ? entry.label : previous.label));
         }
@@ -160,19 +182,28 @@ export function initMaweShortcuts() {
       ? (/Mac|iPhone|iPad/.test(global.navigator?.platform || '') ? 'Cmd' : 'Ctrl')
       : part.length === 1 ? part.toUpperCase() : part).join('+');
   }
+  function splitVariantLabel(target) {
+    const entry = commands.find(item => item.id === 'split');
+    const binding = effectiveBindings(entry).find(item => item.target === target);
+    return binding ? displayChord(binding.chord) : '';
+  }
   const resolvedEvents = new WeakMap();
+  const projectedEvents = new WeakMap();
   function projectedEvent(event, value) {
     const parts = value.split('+');
     const key = parts.pop();
     const fields = { key: key === 'Space' ? ' ' : key, code: key === 'Space' ? 'Space' : '',
       ctrlKey: parts.includes('Mod') && !event.metaKey, metaKey: parts.includes('Mod') && Boolean(event.metaKey),
       altKey: parts.includes('Alt'), shiftKey: parts.includes('Shift') };
-    return new Proxy(event, { get(target, name) {
+    const projected = new Proxy(event, { get(target, name) {
       if (Object.hasOwn(fields, name)) return fields[name];
       const value = Reflect.get(target, name, target);
       return typeof value === 'function' ? value.bind(target) : value;
     } });
+    projectedEvents.set(projected, event);
+    return projected;
   }
+  function physicalCode(event) { return projectedEvents.get(event)?.code || event?.code || event?.key || null; }
   function resolveEvent(event) {
     if (resolvedEvents.has(event)) return resolvedEvents.get(event);
     let result = event;
@@ -181,13 +212,16 @@ export function initMaweShortcuts() {
     const modal = document.querySelector('.modal-mask.show, #ctxmenu.show');
     if (event.isComposing || event.keyCode === 229) result = projectedEvent(event, 'Unidentified');
     else if (!modal && physical) {
-      const entry = commands.find(item => bindings(item).includes(physical));
+      const match = commands.flatMap(item => effectiveBindings(item).map(binding => ({ item, ...binding })))
+        .find(binding => binding.chord === physical);
+      const entry = match?.item;
       // Native text editing keeps its own shortcuts; project saving is global.
       if (!textEditing || (event.ctrlKey || event.metaKey) && (entry?.id === 'save' || entry?.id === 'save-as'
           || commands.some(item => ['save', 'save-as'].includes(item.id) && item.defaults.includes(physical)))) {
-        if (entry) result = projectedEvent(event, entry.defaults.includes(physical) ? physical : entry.defaults[0]);
-        else if (commands.some(item => item.defaults.includes(physical)
-          || Object.hasOwn(overrides, item.id) && item.defaults.includes(physical.replace(/(?:Alt|Shift)\+/g, '')))) {
+        if (entry) result = projectedEvent(event, match.target);
+        else if (commands.some(item => Object.hasOwn(overrides, item.id)
+          && (defaultPhysicalBindings(item).includes(physical)
+            || defaultPhysicalBindings(item).includes(physical.replace(/(?:Alt|Shift)\+/g, ''))))) {
           result = projectedEvent(event, 'Unidentified');
         }
       }
@@ -198,9 +232,12 @@ export function initMaweShortcuts() {
 
   global.MaweShortcuts = Object.freeze({
     commands, chord, validChord, bindings, setBinding, resetBindings, displayChord, resolveEvent,
+    effectiveBindings, splitVariantLabel, physicalCode,
     showShortcutBlocked,
     get interceptedSpace() { return interceptedSpace; },
     set interceptedSpace(v) { interceptedSpace = v; },
+    get interceptedSpaceCode() { return interceptedSpaceCode; },
+    set interceptedSpaceCode(v) { interceptedSpaceCode = v; },
     PLAYBACK_RATE_MIN,
     PLAYBACK_RATE_MAX,
     fmtRate

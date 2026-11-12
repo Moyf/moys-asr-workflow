@@ -88,7 +88,7 @@ export function initMaweContextMenus() {
   if (Array.isArray(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length) {
     addItem(
       '按音频位置拆分主字幕',
-      'B',
+      MaweShortcuts.splitVariantLabel('b'),
       () => MaweSplitContext.splitFromContextMenu(mainIdx, clickX, clickY, timeMs),
       mainIdx < 0,
     );
@@ -451,12 +451,12 @@ export function initMaweContextMenus() {
         : Number.isFinite(waveformTimeMs)
           ? '按音频位置拆分'
           : '按文字位置拆分';
-    // 「按音频位置拆分」对应波形上的 B；「渐进拆分」对应 Shift+B；「复制拆分」对应 Ctrl/Cmd+Shift+B。
+    // 菜单快捷键提示从当前可用的拆分绑定派生，改键后保持同步。
     const splitKbd = splitTextMode === 'progressive'
-      ? 'Shift+B'
+      ? MaweShortcuts.splitVariantLabel('Shift+b')
       : splitTextMode === 'duplicate'
-        ? 'Ctrl/Cmd+Shift+B'
-        : 'B';
+        ? MaweShortcuts.splitVariantLabel('Mod+Shift+b')
+        : MaweShortcuts.splitVariantLabel('b');
     addItem(splitLabel, splitKbd, () => MaweSplitContext.splitFromContextMenu(
       idx, x, y, waveformTimeMs, { splitTextMode },
     ));
@@ -585,7 +585,7 @@ export function initMaweContextMenus() {
       MaweDom.ctxmenu.appendChild(item);
     };
     const binding = MaweMultiSubtitleCore.bindingForExtensionIndex(index, track);
-    addItem('在鼠标位置拆分', () => MaweSplitCore.openExtensionSplitModal(index, timeMs, track), false, false, 'B');
+    addItem('在鼠标位置拆分', () => MaweSplitCore.openExtensionSplitModal(index, timeMs, track), false, false, MaweShortcuts.splitVariantLabel('b'));
     const extensionSelectionOnly = MaweSelection.selectedExtensionIdxs.size > 1
       && MaweSelection.selectedExtensionIdxs.has(index);
     addSpeakerSubmenu(track, extensionSelectionOnly ? [...MaweSelection.selectedExtensionIdxs] : [index], segment, 'extension');

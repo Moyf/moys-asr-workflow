@@ -29,18 +29,22 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   e.stopImmediatePropagation();
   MaweShortcuts.interceptedSpace = true;
+  MaweShortcuts.interceptedSpaceCode = MaweShortcuts.physicalCode(e);
   if (e.repeat) return;
   MaweMediaPlayback.togglePlayback();
 }, true);
 
 document.addEventListener('keyup', (e) => {
-  e = MaweShortcuts.resolveEvent(e);
-  if (!MaweKeyboardTargets.isSpaceKey(e) || !MaweShortcuts.interceptedSpace) return;
+  if (!MaweShortcuts.interceptedSpace || (e.code || e.key) !== MaweShortcuts.interceptedSpaceCode) return;
   e.preventDefault();
   e.stopImmediatePropagation();
   MaweShortcuts.interceptedSpace = false;
+  MaweShortcuts.interceptedSpaceCode = null;
 }, true);
-window.addEventListener('blur', () => { MaweShortcuts.interceptedSpace = false; });
+window.addEventListener('blur', () => {
+  MaweShortcuts.interceptedSpace = false;
+  MaweShortcuts.interceptedSpaceCode = null;
+});
 
 // J/K/L 播放控制的两种模式：旧模式是慢速/重置/倍速；新模式是倒放/停止/1×播放。
 // HTML5 playbackRate 多数浏览器钳在 [0.0625, 16]，反向播放由时间轴驱动。
@@ -675,34 +679,11 @@ document.addEventListener('keydown', (e) => {
   e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'b' && e.key !== 'B') return;
   if (e.repeat) return;
-  const forceMainEdit = MaweInlineEdit.editingState?.forceSplitArmed === true;
-  if (MaweInlineEdit.extensionEditingState && !forceMainEdit) {
-    if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-    const state = MaweInlineEdit.extensionEditingState;
-    const offset = MaweInlineEdit.caretOffsetInText(state.textEl);
-    const track = MaweMultiSubtitleCore.getExtensionTrack(state.trackId);
-    if (!Number.isFinite(offset) || !track?.segments?.[state.index]) {
-      MaweHint.flashHint('无法定位副字幕的文字光标', 'warning');
-      return;
-    }
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    // 先在编辑 DOM 消失前记录列表内光标位置，弹窗提交后的刀光留在原位。
-    const editFeedbackPoint = MaweNinja.ninjaSplitPointFromRange(
-      null, state.textEl, offset, String(state.textEl.innerText || '').length,
-    );
-    MaweInlineEdit.finishExtensionEdit(true);
-    MaweSplitCore.openExtensionSplitModal(state.index, null, track, {
-      extensionOffset: offset,
-      feedbackPoint: editFeedbackPoint,
-      ninjaFromList: true,
-    });
-    return;
-  }
-  if (MaweInlineEdit.editingState && !forceMainEdit) return;
+  if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState
+      || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT'
-    || (a.isContentEditable && !forceMainEdit))) return;
+    || a.isContentEditable)) return;
   if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
@@ -714,12 +695,6 @@ document.addEventListener('keydown', (e) => {
   const splitTextMode = e.shiftKey
     ? ((e.ctrlKey || e.metaKey) ? 'duplicate' : 'progressive')
     : null;
-  if (forceMainEdit) {
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    MaweSplitCore.splitAtCursor(null, { splitTextMode });
-    return;
-  }
   const splitAt = (idx, x, y, timeMs) => {
     e.preventDefault();
     // B 打开弹窗后，事件仍会继续传播到后面注册的弹窗快捷键监听器；

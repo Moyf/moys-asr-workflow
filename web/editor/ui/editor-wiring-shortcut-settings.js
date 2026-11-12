@@ -42,6 +42,7 @@ export function initMaweShortcutSettingsWiring() {
   function change(id, value) {
     try {
       MaweShortcuts.setBinding(id, value);
+      MaweSplitMode.refreshSplitKeyHelp();
       recording = null;
       render();
       message('快捷键已保存');
@@ -197,6 +198,7 @@ export function initMaweShortcutSettingsWiring() {
   document.getElementById('shortcuts-reset').addEventListener('click', () => {
     try {
       MaweShortcuts.resetBindings();
+      MaweSplitMode.refreshSplitKeyHelp();
       cancel();
       message('已恢复默认快捷键');
     } catch (_) { message('无法保存快捷键，请检查浏览器存储权限', true); }

@@ -49,6 +49,24 @@ test('custom chords resolve to a single command and original keys stop firing', 
   assert.equal(api.resolveEvent(event('b')).key, 'Unidentified');
   assert.equal(setup(stored()).api.resolveEvent(event('e', { ctrlKey: true, shiftKey: true })).key, 'b');
 });
+test('split mode variants follow the remapped base key and stay collision-protected', () => {
+  const { api } = setup();
+  assert.throws(() => api.setBinding('nav-a', 'Shift+b'), /冲突：拆分字幕/);
+  api.setBinding('split', 'q');
+  const progressive = api.resolveEvent(event('Q', { shiftKey: true }));
+  assert.equal(progressive.key, 'b');
+  assert.equal(progressive.shiftKey, true);
+  const unavailableReservedDuplicate = api.resolveEvent(event('Q', { ctrlKey: true, shiftKey: true }));
+  assert.equal(unavailableReservedDuplicate.key, 'Q');
+  api.setBinding('split', 'e');
+  const duplicate = api.resolveEvent(event('E', { ctrlKey: true, shiftKey: true }));
+  assert.equal(duplicate.key, 'b');
+  assert.equal(duplicate.ctrlKey, true);
+  assert.equal(duplicate.shiftKey, true);
+  assert.equal(api.resolveEvent(event('B', { shiftKey: true })).key, 'Unidentified');
+  api.setBinding('nav-a', 'Shift+b');
+  assert.equal(api.resolveEvent(event('B', { shiftKey: true })).key, 'a');
+});
 test('conflicting defaults/custom bindings and reserved keys preserve the saved state', () => {
   const { api, stored } = setup();
   assert.throws(() => api.setBinding('split', 'c'), /冲突：合并选中字幕/);

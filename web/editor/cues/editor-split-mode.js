@@ -10,7 +10,10 @@ export function initMaweSplitMode() {
 
   function refreshSplitKeyHelp() {
     const label = MaweDisplaySettings.splitKeyLabel();
+    const splitKey = MaweShortcuts.splitVariantLabel('b');
     if (MaweDom.helpSplitKey) MaweDom.helpSplitKey.textContent = label;
+    if (MaweDom.helpShortcutSplitKey) MaweDom.helpShortcutSplitKey.textContent = splitKey;
+    if (MaweDom.helpWaveformSplitKey) MaweDom.helpWaveformSplitKey.textContent = splitKey;
     if (MaweDom.cuePanelSplitKey) MaweDom.cuePanelSplitKey.textContent = label;
     if (MaweDom.cueEditorSplitKey) MaweDom.cueEditorSplitKey.textContent = label;
     if (MaweDom.cueEditorConfirmKey) MaweDom.cueEditorConfirmKey.textContent = MaweDisplaySettings.confirmKeyLabel();

@@ -95,9 +95,49 @@ test('combination keys, recording isolation, typing, spacing and English setting
   await expect(page.locator('#editor-settings-tab-shortcuts')).toHaveText('Keyboard shortcuts');
   await expect(keyButton(page, 'play')).toHaveText('Space');
   await expect(page.locator('#shortcuts-reset')).toHaveText('Reset all shortcuts');
+  await expect(page.locator('.shortcut-settings-row').filter({ has: keyButton(page, 'color-6') }).locator('.shortcut-settings-label')).toHaveText('Assign color 6');
+  await expect(page.locator('.shortcut-settings-row').filter({ has: keyButton(page, 'color-9') }).locator('.shortcut-settings-label')).toHaveText('Assign color 9');
   await page.screenshot({ path: '/tmp/maw-custom-shortcuts-en.png' });
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
   await page.screenshot({ path: '/tmp/maw-custom-shortcuts.png' });
+});
+test('split aliases follow the customized key through real keyboard events', async ({ page }) => {
+  await record(page, 'split', 'e');
+  await expect(page.locator('#help-shortcut-split-key')).toHaveText('E');
+  await expect(page.locator('#help-waveform-split-key')).toHaveText('E');
+  await closeSettings(page);
+  await page.evaluate(() => {
+    window.__splitEvents = [];
+    window.addEventListener('keydown', event => {
+      if (['e', 'E', 'b', 'B'].includes(event.key)) {
+        const mapped = MaweShortcuts.resolveEvent(event);
+        window.__splitEvents.push([mapped.key, mapped.ctrlKey, mapped.shiftKey]);
+      }
+    }, true);
+  });
+  await page.keyboard.press('e');
+  await page.keyboard.press('Shift+e');
+  await page.keyboard.press('Control+Shift+e');
+  await page.keyboard.press('Shift+b');
+  expect(await page.evaluate(() => window.__splitEvents)).toEqual([
+    ['b', false, false], ['b', false, true], ['b', true, true], ['Unidentified', false, false],
+  ]);
+});
+test('remapped play key clears its intercepted keyup when modifiers release first', async ({ page }) => {
+  await record(page, 'play', 'Shift+p');
+  await closeSettings(page);
+  await page.keyboard.down('Shift');
+  await page.keyboard.down('p');
+  await page.keyboard.up('Shift');
+  await page.keyboard.up('p');
+  expect(await page.evaluate(() => MaweShortcuts.interceptedSpace)).toBe(false);
+  await page.keyboard.down('Shift');
+  await page.keyboard.down('p');
+  await page.keyboard.up('Shift');
+  expect(await page.evaluate(() => MaweShortcuts.interceptedSpace)).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  expect(await page.evaluate(() => MaweShortcuts.interceptedSpace)).toBe(false);
+  await page.keyboard.up('p');
 });
 test('remapped playback, time adjustment and undo use their domain commands', async ({ page }) => {
   await record(page, 'play', 'Shift+p');
