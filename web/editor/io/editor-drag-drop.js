@@ -58,7 +58,7 @@ export function initDragDropModule() {
           projectMediaFile: mediaFile,
         });
       } catch (error) {
-        MaweHint.flashHint(`导入工程字幕失败：${error.message || error}`, 'warning');
+        MaweHint.flashHint(`导入工程字幕失败：${error.message || error}`, 'warning', { error });
       }
       return;
     }
@@ -76,7 +76,7 @@ export function initDragDropModule() {
       stagedSubtitleSegments = await parseDroppedSubtitleFile(subtitleFile);
       if (!current()) return;
     } catch (error) {
-      MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning', { error });
       return;
     }
   }
@@ -108,7 +108,7 @@ export function initDragDropModule() {
         if (!current()) return;
         await MaweMultiImport.showMultiSubtitleImportChoice(subtitleFile, segments);
       } catch (error) {
-        MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
+        MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning', { error });
       }
     } else {
       MaweProjectLoad.replaceMainTrack(stagedSubtitleSegments, subtitleFile.name, { overlaySegments: stagedSubtitleSegments.overlaySegments || [] });
