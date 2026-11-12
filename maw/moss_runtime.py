@@ -103,8 +103,13 @@ def install_local_runtime(
 
 
 def recover_local_runtime_install() -> bool:
-    """清除 MOSS 安装中断后残留的 installing 标记（改写为 broken，#127）。"""
-    return MOSS.mark_install_aborted()
+    """清除 MOSS 安装中断后残留的 installing 标记（改写为 broken，#127）。
+
+    与 install / status / python_path 同源：经 ``_moss_root_override()`` 解析
+    根目录（含 LOCAL 键派生），否则恢复会去默认目录找 manifest，遗漏派生目录
+    的 installing 标记，状态永远停在 installing。
+    """
+    return MOSS.mark_install_aborted(runtime_root=_moss_root_override())
 
 
 __all__ = [

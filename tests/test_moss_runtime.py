@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -249,6 +250,59 @@ class MossRuntimeStatusTests(unittest.TestCase):
                 status = managed_runtime_status(engine="moss")
 
         self.assertEqual(status.status, "broken")
+
+    def test_recover_follows_local_derivation_and_leaves_default_untouched(self) -> None:
+        """只配 LOCAL 键时，恢复必须作用于派生目录而非默认目录（PR #370 反馈回归）。
+
+        恢复若不传 override 会走默认目录解析，遗漏派生目录的 installing
+        标记，GUI 状态永远停在 installing。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            derived = Path(temp_dir) / "asr-runtime-moss"
+            python = runtime_python_path(derived)
+            python.parent.mkdir(parents=True, exist_ok=True)
+            python.write_bytes(b"python")
+            manifest = derived / "runtime.json"
+            manifest.write_text(
+                '{"status": "installing", "runtimeVersion": "1"}\n',
+                encoding="utf-8",
+                newline="\n",
+            )
+            app_data = Path(temp_dir) / "app"
+            with mock.patch.dict(os.environ, {
+                "MAW_LOCAL_RUNTIME_ROOT": str(Path(temp_dir) / "asr-runtime"),
+                "MAW_MOSS_RUNTIME_ROOT": "",
+                "MAW_APP_DATA_ROOT": str(app_data),
+            }):
+                self.assertTrue(recover_local_runtime_install())
+            self.assertEqual(json.loads(manifest.read_text(encoding="utf-8"))["status"], "broken")
+            # 默认目录未被创建/改动：恢复没有走 resolve_root 的默认回退。
+            self.assertFalse((app_data / "local-runtime-moss" / "runtime.json").exists())
+
+    def test_recover_prefers_moss_env_over_local_derivation(self) -> None:
+        """MOSS 独立键配置时恢复只作用于独立键目录，LOCAL 派生目录不被触碰。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            own = Path(temp_dir) / "moss-explicit"
+            derived = Path(temp_dir) / "asr-runtime-moss"
+            manifest_text = '{"status": "installing", "runtimeVersion": "1"}\n'
+            for root in (own, derived):
+                python = runtime_python_path(root)
+                python.parent.mkdir(parents=True, exist_ok=True)
+                python.write_bytes(b"python")
+                (root / "runtime.json").write_text(manifest_text, encoding="utf-8", newline="\n")
+            with mock.patch.dict(os.environ, {
+                "MAW_MOSS_RUNTIME_ROOT": str(own),
+                "MAW_LOCAL_RUNTIME_ROOT": str(Path(temp_dir) / "asr-runtime"),
+            }):
+                self.assertTrue(recover_local_runtime_install())
+            self.assertEqual(
+                json.loads((own / "runtime.json").read_text(encoding="utf-8"))["status"],
+                "broken",
+            )
+            self.assertEqual(
+                json.loads((derived / "runtime.json").read_text(encoding="utf-8"))["status"],
+                "installing",
+            )
 
 
 class MossRuntimeInstallTests(unittest.TestCase):
