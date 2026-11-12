@@ -3875,6 +3875,95 @@ test('remap after merge splice ignores out-of-range and empty inputs', () => {
   assert.equal(helpers.remapGroupRefsAfterMergeSplice(null, [0], undefined, 1), 0);
 });
 
+test('resolveMergedColorInheritance continues same-group refs and materializes same-name crosses', () => {
+  // 同组：沿用组继承（head 在选区前 → 续指原 head）。
+  const sameGroup = [
+    { color: { name: 'red', value: '#e74c3c', start: 0, end: 1500 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+  ];
+  const continued = helpers.resolveMergedColorInheritance(sameGroup, [1, 2]);
+  assert.equal(continued.groupInherited, true);
+  assert.equal(continued.head, null);
+  assert.deepEqual(JSON.parse(JSON.stringify(continued.ref)), { name: 'red', headIdx: 0 });
+
+  // 跨组同色（相邻两组都为红，两次标记各建一组）：物化自持 head，不丢色。
+  const adjacentGroups = [
+    { start: 0, end: 1500, color: { name: 'red', value: '#e74c3c', start: 0, end: 1500 } },
+    { start: 1000, end: 2500, color_ref: { name: 'red', headIdx: 0 } },
+    { start: 2000, end: 3500, color: { name: 'red', value: '#e74c3c', start: 2000, end: 3500 } },
+    { start: 3000, end: 4000, color_ref: { name: 'red', headIdx: 2 } },
+  ];
+  const materialized = helpers.resolveMergedColorInheritance(adjacentGroups, [1, 2]);
+  assert.equal(materialized.groupInherited, false);
+  assert.equal(materialized.ref, null);
+  assert.deepEqual(JSON.parse(JSON.stringify(materialized.head)), {
+    name: 'red', value: '#e74c3c', start: 1000, end: 3500,
+  });
+
+  // 颜色名不同 / 含未标记段：不继承。
+  assert.equal(helpers.resolveMergedColorInheritance([
+    { color: { name: 'red', start: 0, end: 500 } },
+    { color: { name: 'green', start: 1000, end: 1500 } },
+  ], [0, 1]).head, null);
+  assert.equal(helpers.resolveMergedColorInheritance([
+    { color: { name: 'red', start: 0, end: 500 } },
+    { text: 'plain' },
+  ], [0, 1]).head, null);
+
+  // ref 自身缺 name 时按其 head 解析有效颜色名（跨组同色也能匹配上）。
+  const namelessRefCross = [
+    { color: { name: 'blue', value: '#0000aa', start: 0, end: 500 } },
+    { color_ref: { headIdx: 0 } },
+    { color: { name: 'blue', value: '#0000aa', start: 2000, end: 2500 } },
+  ];
+  const crossed = helpers.resolveMergedColorInheritance(namelessRefCross, [1, 2]);
+  assert.equal(crossed.groupInherited, false);
+  assert.equal(crossed.head.name, 'blue');
+});
+
+test('resolveMergedColorInheritance rejects null and invalid inputs without changing them', () => {
+  const segments = [{ color: { name: 'red' } }, { color: { name: 'red' } }];
+  for (const [source, indexes] of [
+    [null, [0, 1]], [undefined, [0]], [{}, [0]],
+    [segments, null], [segments, undefined], [segments, {}], [segments, []],
+    [segments, [-1, 0]], [segments, [0, 2]], [segments, [0, 0.5]],
+    [segments, [0, '1']], [segments, [0, NaN]], [[null, {}], [0, 1]],
+    [[{ color: { name: 'red' } }, 'invalid'], [0, 1]],
+  ]) {
+    assert.deepEqual(JSON.parse(JSON.stringify(helpers.resolveMergedColorInheritance(source, indexes))),
+      { head: null, ref: null, groupInherited: false });
+  }
+  assert.deepEqual(segments, [{ color: { name: 'red' } }, { color: { name: 'red' } }]);
+});
+
+test('resolveMergedColorInheritance uses preview color semantics and returns independent copies', () => {
+  const segments = [
+    { start: 0, end: 500, color: { name: 'red', value: { hex: '#aa0000' } } },
+    { start: 1000, end: 1500, color_ref: { name: 'green', headIdx: 0 } },
+    { start: 2000, end: 2500, color: { name: 'red', value: '#bb0000' } },
+    { start: 3000, end: 3500, color_ref: { name: 'red', headIdx: 2 } },
+  ];
+  const before = structuredClone(segments);
+  const indexes = Object.freeze([1, 2]);
+  const merged = helpers.resolveMergedColorInheritance(segments, indexes);
+  assert.equal(merged.head.name, helpers.effectiveColorName(segments[1], segments));
+  assert.equal(merged.head.name, 'red', 'valid head name wins over stale redundant ref name');
+  assert.deepEqual(JSON.parse(JSON.stringify(merged.head.value)), { hex: '#aa0000' });
+  merged.head.value.hex = '#ffffff';
+  assert.deepEqual(segments, before, 'cross-group inheritance deep-clones the source value');
+  const inheritedHead = helpers.resolveMergedColorInheritance(segments, [0, 1]);
+  inheritedHead.head.value.hex = '#ffffff';
+  const inheritedRef = helpers.resolveMergedColorInheritance(segments, [1]);
+  inheritedRef.ref.name = 'blue';
+  assert.deepEqual(segments, before, 'same-group inheritance also returns independent head/ref');
+  const differentEffectiveNames = structuredClone(segments);
+  differentEffectiveNames[0].color.name = 'blue';
+  differentEffectiveNames[1].color_ref.name = 'red';
+  assert.equal(helpers.resolveMergedColorInheritance(differentEffectiveNames, [1, 2]).head, null,
+    'matching redundant ref names cannot override different effective head colors');
+});
+
 test('remaps trailing color refs after merging four of six cues', () => {
   const segments = [{}, {}, {}, {}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 4 } }];
   const originalLength = segments.length;

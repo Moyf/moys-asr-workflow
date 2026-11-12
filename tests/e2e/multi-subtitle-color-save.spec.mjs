@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
+  cleanupTempDir, closeSettingsPanels, disableOnboarding, findFreePort, generateProjectJson, openSettingsPage,
   generateWav, generateWaveformPayload, makeTempDir, setProjectTrackEnabled, startServer,
 } from './helpers.mjs';
 
@@ -13,7 +13,7 @@ const EXTENSION_TEXTS = ['第一句。', '第二句。', '第三句。', '第四
 
 let tempDir, server, projectPath, fixture, pageErrors;
 
-function generateColoredProject(path) {
+function generateColoredProject(path, adjacentRedGroups = false) {
   generateProjectJson(path);
   const project = JSON.parse(readFileSync(path, 'utf8'));
   project.waveform = generateWaveformPayload(DURATION_MS);
@@ -30,6 +30,18 @@ function generateColoredProject(path) {
   extension[2].color_ref = { name: 'red', headIdx: 0 };
   extension[4].color = { name: 'green', value: '#2ecc71', start: extension[4].start, end: extension[5].end };
   extension[5].color_ref = { name: 'green', headIdx: 4 };
+  if (adjacentRedGroups) {
+    // Keep swap/reopen assertions about color, not main-track punctuation cleanup.
+    project.preserve_punctuation = true;
+    extension[0].color.end = extension[1].end;
+    extension[2].color_ref = null;
+    extension[2].color = { name: 'red', value: '#e74c3c', start: extension[2].start, end: extension[3].end };
+    extension[3].color_ref = { name: 'red', headIdx: 2 };
+    project.segments.forEach((segment, index) => {
+      segment.color = structuredClone(extension[index].color);
+      segment.color_ref = structuredClone(extension[index].color_ref);
+    });
+  }
   project.multi_subtitle = {
     schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both', main_split_mode: 'word',
     tracks: [{ id: TRACK_ID, role: 'extension', name: '译文', language: 'Chinese',
@@ -80,14 +92,14 @@ async function waitForEditor(page) {
   await expect(page.locator('#cues-container')).toBeVisible();
 }
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, testInfo) => {
   // Each test owns its server, settings directory, media and writable .mosp.
   server = null;
   tempDir = makeTempDir('multi-subtitle-color-save');
   projectPath = join(tempDir, 'synthetic.mosp');
   const mediaPath = join(tempDir, 'synthetic.wav');
   generateWav(mediaPath, DURATION_MS / 1000);
-  fixture = generateColoredProject(projectPath);
+  fixture = generateColoredProject(projectPath, testInfo.title.includes('same-color cross-group'));
   pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await disableOnboarding(page);
@@ -259,4 +271,81 @@ test('bound squeeze preview returning to origin preserves colors on localhost sa
   expect(preview).toEqual({ count: 5, greenRef: 3, redMemberPromoted: true });
   expect(await editorContent(page)).toEqual(before);
   await saveAndReopen(page, before);
+});
+
+function expectCrossGroupRed(segments, before) {
+  expect(segments).toHaveLength(5);
+  expect(segments[0].color).toEqual({ ...before[0].color, end: before[0].end });
+  expect(segments[1].color).toEqual({ name: 'red', value: '#e74c3c', start: before[1].start, end: before[2].end });
+  expect(segments[1].color_ref).toBeNull();
+  expect(segments[2].color).toEqual({ ...before[2].color, start: before[3].start, end: before[3].end });
+  expect(segments[2].color_ref).toBeNull();
+  expect(segments[3].color).toEqual(before[4].color);
+  expect(segments[4].color_ref).toEqual({ name: 'green', headIdx: 3 });
+}
+
+async function expectRedMainPreview(page, index, text) {
+  // Dual-column rows intentionally have no color bar. Verify the real player
+  // preview instead, using its explicit text-color mode at the merged cue.
+  await page.evaluate(index => {
+    MaweAppearance.setSubtitleAppearance({ color_underline: true, color_style: 'text' }, { markDirty: false });
+    MaweCoreState.player.currentTime = (MaweBoot.DATA.segments[index].start + 100) / 1000;
+    MawePlaybackLoop.refreshSubtitlePreview();
+  }, index);
+  await expect(page.locator('#overlay-main-text')).toHaveText(text);
+  // Rendering uses the current project palette, not a legacy stored hex value.
+  const red = await page.evaluate(() => MaweColors.COLOR_BY_NAME.red.value);
+  const channels = red.replace('#', '').match(/.{2}/g).map(channel => parseInt(channel, 16));
+  await expect(page.locator('#overlay-main-text')).toHaveAttribute('data-color-text', red);
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('color', `rgb(${channels.join(', ')})`);
+}
+
+test('same-color cross-group swap and main UI merge stays red through undo, redo, save and server restart', async ({ page }, testInfo) => {
+  await openSettingsPage(page, 'multi-subtitle');
+  await page.locator('#multi-subtitle-swap').click();
+  await closeSettingsPanels(page);
+  await expect(page.locator('.multi-dual-cue[data-main-idx="0"] .multi-cue-column.main .text')).toHaveText(EXTENSION_TEXTS[0]);
+  const before = await editorContent(page);
+  expect(before.segments[1].color_ref).toEqual({ name: 'red', headIdx: 0 });
+  expect(before.segments[2].color.name).toBe('red');
+  expect(before.segments[2].color_ref).toBeNull();
+  await page.locator('.multi-dual-cue[data-main-idx="1"] .multi-cue-column.main .text').click();
+  await page.locator('.multi-dual-cue[data-main-idx="2"] .multi-cue-column.main .text').click({ modifiers: ['ControlOrMeta'] });
+  expect(await page.evaluate(() => [...MaweSelection.selectedIdxs].sort((a, b) => a - b))).toEqual([1, 2]);
+  await page.keyboard.press('c');
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(5);
+  const merged = await editorContent(page);
+  expectCrossGroupRed(merged.segments, before.segments);
+  expectCrossGroupRed(merged.multi_subtitle.tracks[0].segments, before.multi_subtitle.tracks[0].segments);
+  expect(merged.segments[1].text).toBe(`${EXTENSION_TEXTS[1]}${EXTENSION_TEXTS[2]}`);
+  expect(merged.multi_subtitle.tracks[0].segments[1].text).toBe('Bravo Charlie');
+  await expectRedMainPreview(page, 1, merged.segments[1].text);
+  await page.locator('#undo-btn').click();
+  expect(await editorContent(page)).toEqual(before);
+  await page.locator('#redo-btn').click();
+  expect(await editorContent(page)).toEqual(merged);
+  expect(contentSnapshot(JSON.parse(readFileSync(projectPath, 'utf8')))).toEqual(contentSnapshot(fixture));
+  await saveAndReopen(page, merged);
+  await expectRedMainPreview(page, 1, merged.segments[1].text);
+  await page.screenshot({ path: testInfo.outputPath('same-color-saved-preview.png') });
+});
+
+test('same-color cross-group extension UI merge stays red independently through undo, redo and save', async ({ page }) => {
+  const before = await editorContent(page);
+  await page.locator('.multi-dual-cue[data-ext-idx="1"] .multi-cue-column.extension .text').click();
+  await page.locator('.multi-dual-cue[data-ext-idx="2"] .multi-cue-column.extension .text').click({ modifiers: ['ControlOrMeta'] });
+  expect(await page.evaluate(() => [...MaweSelection.selectedExtensionIdxs].sort((a, b) => a - b))).toEqual([1, 2]);
+  expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.kind)).toBe('extension');
+  await page.keyboard.press('c');
+  await expect.poll(() => page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(5);
+  const merged = await editorContent(page);
+  expect(merged.segments).toEqual(before.segments);
+  expectCrossGroupRed(merged.multi_subtitle.tracks[0].segments, before.multi_subtitle.tracks[0].segments);
+  expect(merged.multi_subtitle.bindings).toEqual(before.multi_subtitle.bindings.filter(binding => !['binding-1', 'binding-2'].includes(binding.id)));
+  await page.locator('#undo-btn').click();
+  expect(await editorContent(page)).toEqual(before);
+  await page.locator('#redo-btn').click();
+  expect(await editorContent(page)).toEqual(merged);
+  await saveAndReopen(page, merged);
+  await expect(page.locator('.multi-cue-column.extension .text').filter({ hasText: `${EXTENSION_TEXTS[1]}${EXTENSION_TEXTS[2]}` })).toHaveCount(1);
 });

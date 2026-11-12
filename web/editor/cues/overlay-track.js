@@ -446,7 +446,7 @@ function mergeOverlayCues(idxs) {
 }
 
 // 只合并叠加轨连续字幕。叠加轨的分组（颜色/表情包）引用叠加轨自身段，
-// 合并语义与主轨一致：全部成员同组时继承，混合组不继承。
+// 与主轨一致：颜色同组沿用引用、跨组同色独立保色；表情包仅同组继承。
 function mergeOverlaySegments(idxs) {
   const track = getOverlayTrack();
   if (!track || !idxs?.length) return false;
@@ -468,10 +468,9 @@ function mergeOverlaySegments(idxs) {
   const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
     track.segments, sorted, 'sticker', 'sticker_ref',
   );
-  const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
-    track.segments, sorted, 'color', 'color_ref',
-  );
-  // 混合组不继承时按切点拆组（合并前下标），避免 head 被并走后留下悬空引用；
+  // 颜色按有效颜色名继承（同组沿用组引用、跨组同色物化自持 head），与主/副轨一致。
+  const colorGroup = window.AsrEditorUtils.resolveMergedColorInheritance(track.segments, sorted);
+  // 组未被整组继承时按切点拆组（合并前下标），避免 head 被并走后留下悬空引用；
   // 拆组是对 track.segments 的变更，必须放在 MaweCommands.run 内保证可撤销。
   const mergeSet = new Set(sorted);
   const overlayJoin = window.AsrEditorUtils.joinSegmentTextsMassFold(
@@ -508,7 +507,7 @@ function mergeOverlaySegments(idxs) {
     if (stickerGroup.headIdx === null) {
       MaweSegmentOps.splitGroupsAtCutPoints(mergeSet, 'sticker', 'sticker_ref', track.segments);
     }
-    if (colorGroup.headIdx === null) {
+    if (!colorGroup.groupInherited) {
       MaweSegmentOps.splitGroupsAtCutPoints(mergeSet, 'color', 'color_ref', track.segments);
     }
     track.segments.splice(sorted[0], sorted.length, merged);

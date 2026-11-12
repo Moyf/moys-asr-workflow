@@ -111,7 +111,7 @@ const mergeEntrypoints = {
       { ...cue(20), start, end: start + 500 },
       { ...cue(21), start: start + 1000, end },
     ]);
-    MaweSegmentOps.mergeContiguousIndices([0, 1]);
+    MaweSegmentOps.mergeSegments([0, 1]);
     assert.equal(MaweBoot.DATA.multi_subtitle.bindings.length, 1);
     return track.segments;
   },
@@ -122,6 +122,106 @@ const mergeEntrypoints = {
     return MaweBoot.DATA.overlay_track.segments;
   },
 };
+
+// Cover the top-level main track separately from main merges' linked extension.
+const colorMergeEntrypoints = {
+  mainTrack(segments, indexes) {
+    fixture([], segments);
+    MaweSegmentOps.mergeSegments(indexes);
+    return MaweBoot.DATA.segments;
+  },
+  linkedExtension: mergeEntrypoints.main,
+  extension: mergeEntrypoints.extension,
+  overlay: mergeEntrypoints.overlay,
+};
+
+function adjacentColorGroups() {
+  const segments = Array.from({ length: 9 }, (_, index) => cue(index));
+  for (const [headIdx, name, value] of [[0, 'red', '#aa0000'], [3, 'red', '#bb0000'], [6, 'green', '#2ecc71']]) {
+    const lastIdx = headIdx === 6 ? 7 : headIdx + 2;
+    segments[headIdx].color = { name, value, start: segments[headIdx].start, end: segments[lastIdx].end };
+    for (let index = headIdx + 1; index <= lastIdx; index += 1) {
+      segments[index].color_ref = { name, headIdx };
+    }
+  }
+  return segments;
+}
+
+for (const [name, merge] of Object.entries(colorMergeEntrypoints)) {
+  test(`same-color cross-group ${name}: ref/head boundary splits surviving groups and keeps undo snapshot`, () => {
+    const segments = adjacentColorGroups();
+    const before = structuredClone(segments);
+    const result = merge(segments, [2, 3]);
+    const value = timelineValue(result); // shared helpers clone objects in a VM realm
+    assert.equal(result.length, 8);
+    assertValidColorRefs(result);
+    assert.deepEqual(value[2].color, { name: 'red', value: '#aa0000', start: 2000, end: 3500 });
+    assert.equal(result[2].color_ref, null);
+    assert.deepEqual(value[0].color, { name: 'red', value: '#aa0000', start: 0, end: 1500 });
+    assert.deepEqual(value[1].color_ref, { name: 'red', headIdx: 0 });
+    assert.deepEqual(value[3].color, { name: 'red', value: '#bb0000', start: 4000, end: 5500 });
+    assert.deepEqual(value[4].color_ref, { name: 'red', headIdx: 3 });
+    assert.deepEqual(value[5].color, before[6].color);
+    assert.deepEqual(value[6].color_ref, { name: 'green', headIdx: 5 });
+    assert.equal(result[7].color, undefined);
+    assert.equal(result[7].color_ref, undefined);
+    assert.equal(history.length, 1);
+    const snapshot = name === 'mainTrack' ? history[0].segments
+      : name === 'overlay' ? history[0].overlay_track.segments : history[0].multi_subtitle.tracks[0].segments;
+    assert.deepEqual(snapshot, before);
+    result[2].color.value = '#ffffff';
+    result[3].color.value = '#ffffff';
+    assert.deepEqual(snapshot, before, 'post-merge head edits cannot mutate undo data');
+  });
+
+  for (const mixed of ['different-colors', 'uncolored']) {
+    test(`same-color cross-group ${name}: ${mixed} does not inherit`, () => {
+      const segments = adjacentColorGroups();
+      if (mixed === 'different-colors') {
+        segments[3].color.name = 'blue';
+        segments[4].color_ref.name = 'blue';
+        segments[5].color_ref.name = 'blue';
+      } else {
+        delete segments[2].color_ref;
+      }
+      const result = merge(segments, [2, 3]);
+      assertValidColorRefs(result);
+      assert.equal(result[2].color, null);
+      assert.equal(result[2].color_ref, null);
+      assert.equal(result[3].color.name, mixed === 'different-colors' ? 'blue' : 'red');
+    });
+  }
+}
+
+for (const name of ['mainTrack', 'overlay']) {
+  for (const sameStickerGroup of [true, false]) {
+    test(`same-color cross-group ${name}: stickers remain strictly ${sameStickerGroup ? 'same-group' : 'cross-group'}`, () => {
+      const segments = adjacentColorGroups();
+      const sticker = { name: 'demo', value: 'demo.png', start: 0, end: 5500 };
+      segments[0].sticker = structuredClone(sticker);
+      segments[1].sticker_ref = { name: 'demo', headIdx: 0 };
+      segments[2].sticker_ref = { name: 'demo', headIdx: 0 };
+      if (sameStickerGroup) segments[3].sticker_ref = { name: 'demo', headIdx: 0 };
+      else segments[3].sticker = { ...sticker, start: 3000 };
+      segments[4].sticker_ref = { name: 'demo', headIdx: sameStickerGroup ? 0 : 3 };
+      segments[5].sticker_ref = { name: 'demo', headIdx: sameStickerGroup ? 0 : 3 };
+      const result = colorMergeEntrypoints[name](segments, [2, 3]);
+      assert.equal(result[2].color.name, 'red');
+      assert.equal(result[2].sticker, null);
+      assert.deepEqual(timelineValue(result[2].sticker_ref), sameStickerGroup ? { name: 'demo', headIdx: 0 } : null);
+      assert.equal(result[0].sticker.end, sameStickerGroup ? 5500 : 1500);
+      if (!sameStickerGroup) {
+        assert.equal(result[3].sticker.name, 'demo');
+        assert.equal(result[3].sticker.start, 4000);
+      }
+      for (const [index, segment] of result.entries()) {
+        if (!segment.sticker_ref) continue;
+        assert.ok(segment.sticker_ref.headIdx < index);
+        assert.equal(result[segment.sticker_ref.headIdx].sticker.name, segment.sticker_ref.name);
+      }
+    });
+  }
+}
 
 for (const [name, merge] of Object.entries(mergeEntrypoints)) {
   test(`merge ${name}: four of six cues retain the trailing color group`, () => {
@@ -171,6 +271,66 @@ test('merge extension: mixed groups promote surviving heads and preserve the und
   assert.equal(result[4].color_ref.headIdx, 3);
   assert.equal(history.length, 1);
   assert.deepEqual(history[0].multi_subtitle.tracks[0].segments, before);
+});
+
+test('merge extension: adjacent same-color groups keep the color after merging', () => {
+  // 用户回归：两次「标记颜色」各建一个组，相邻同色分属两组；跨组边界合并不应丢色。
+  const segments = Array.from({ length: 7 }, (_, i) => cue(i));
+  segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 1500 };
+  segments[1].color_ref = { name: 'red', headIdx: 0 };
+  segments[2].color = { name: 'red', value: '#e74c3c', start: 2000, end: 5500 };
+  segments[3].color_ref = { name: 'red', headIdx: 2 };
+  segments[4].color_ref = { name: 'red', headIdx: 2 };
+  const result = mergeEntrypoints.extension(segments, [1, 2]);
+  assert.equal(result.length, 6);
+  assertValidColorRefs(result);
+  assert.equal(result[1].color.name, 'red', '跨组同色合并产物物化自持 head');
+  assert.equal(result[1].color.value, '#e74c3c');
+  assert.equal(result[1].color.start, 1000);
+  assert.equal(result[1].color.end, 2500);
+  assert.equal(result[1].color_ref, null);
+  assert.equal(result[0].color.name, 'red', '前一个组的 head 保持独立');
+  assert.equal(result[2].color.name, 'red', '后一个组的幸存成员晋升新 head');
+  assert.equal(result[3].color_ref.headIdx, 2);
+  assert.equal(result[4].color_ref, undefined, '未标记段保持未标记');
+});
+
+test('merge main: adjacent same-color groups keep the color on both tracks', () => {
+  // 用户场景：主轨（交换副字幕而来）两条红字分属相邻两组，C 合并后主/副轨都保留红色。
+  const segments = Array.from({ length: 7 }, (_, i) => cue(i));
+  segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 1500 };
+  segments[1].color_ref = { name: 'red', headIdx: 0 };
+  segments[2].color = { name: 'red', value: '#e74c3c', start: 2000, end: 5500 };
+  segments[3].color_ref = { name: 'red', headIdx: 2 };
+  segments[4].color_ref = { name: 'red', headIdx: 2 };
+  const start = segments[1].start;
+  const end = segments[2].end;
+  const track = fixture(segments, [
+    { ...cue(20), start, end: start + 500, color: { name: 'red', value: '#e74c3c', start, end: start + 500 } },
+    { ...cue(21), start: start + 1000, end, color: { name: 'red', value: '#e74c3c', start: start + 1000, end } },
+  ]);
+  MaweSegmentOps.mergeContiguousIndices([0, 1]);
+  assert.equal(MaweBoot.DATA.segments.length, 1);
+  assert.equal(MaweBoot.DATA.segments[0].color.name, 'red', '主轨合并产物保留红色');
+  assert.equal(MaweBoot.DATA.segments[0].color.value, '#e74c3c');
+  assertValidColorRefs(MaweBoot.DATA.segments);
+  assert.equal(track.segments[1].color.name, 'red', '联动副轨合并产物同样保留红色');
+  assertValidColorRefs(track.segments);
+});
+
+test('merge keeps no color when names differ or a member is uncolored', () => {
+  const mixedNames = Array.from({ length: 4 }, (_, i) => cue(i));
+  mixedNames[0].color = { name: 'red', start: 0, end: 500 };
+  mixedNames[1].color = { name: 'green', start: 1000, end: 1500 };
+  let result = mergeEntrypoints.extension(mixedNames, [0, 1]);
+  assertValidColorRefs(result);
+  assert.equal(result[0].color, null, '红 + 绿不继承');
+
+  const withUncolored = Array.from({ length: 4 }, (_, i) => cue(i));
+  withUncolored[0].color = { name: 'red', start: 0, end: 500 };
+  result = mergeEntrypoints.extension(withUncolored, [0, 1]);
+  assertValidColorRefs(result);
+  assert.equal(result[0].color, null, '红 + 未标记不继承');
 });
 
 test('sort maps refs by head identity even when distinct heads have the same name', () => {

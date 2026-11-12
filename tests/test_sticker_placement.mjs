@@ -6,7 +6,8 @@ import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const context = { window: {}, Uint8Array };
 loadEditorModule(context, 'shared/editor-utils.js');
-const { computeStickerCuePlacements } = context.window.AsrEditorUtils;
+const utils = context.window.AsrEditorUtils;
+const { computeStickerCuePlacements } = utils;
 
 // 假排版计划：一条非 legacy 主字幕句 [0,2000]，锚点由 piece 根 + offset 合成。
 // assStackFrame 语义：anchor = pieceRoot@t + offset×scale；rect 相对锚点（含墨盒 padding）。
@@ -403,6 +404,7 @@ function stickerBindingContext(segments) {
   // 裸全局；桩环境用同一个对象充当 context 全局与 window，两种查找都命中。
   const context = {
     window: null,
+    AsrEditorUtils: utils,
     document: {
       createElement: stubElement,
       getElementById: stubElement,
@@ -429,6 +431,8 @@ function stickerBindingContext(segments) {
     MaweDom: { stickerModal: stubElement(), stickerPreviewModal: stubElement() },
   };
   context.window = context;
+  // Range sync also queries the extension track; use the real main-only state.
+  loadEditorSource(context, 'editor/state/editor-multi-subtitle-core.js');
   return context;
 }
 
