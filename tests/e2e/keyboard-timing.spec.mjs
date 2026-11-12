@@ -61,9 +61,9 @@ test('remapped A/D preserve Alt drag adjustment through real browser events', as
   await loadAttachedCues(page, true, 'classic');
   await page.evaluate(() => {
     MaweShortcuts.setBinding('nav-a', 'e');
-    MaweShortcuts.setBinding('nav-d', 'q');
+    MaweShortcuts.setBinding('nav-d', 'y');
     MaweShortcuts.setBinding('extend-a', 'p');
-    MaweShortcuts.setBinding('extend-d', 'm');
+    MaweShortcuts.setBinding('extend-d', 'u');
     window.__heldCueCalls = [];
     const wave = MaweCoreState.waveformEditor;
     const handleHeldCueKey = wave.handleHeldCueKey;
@@ -81,9 +81,9 @@ test('remapped A/D preserve Alt drag adjustment through real browser events', as
   await page.keyboard.press('Alt+a');
   expect(await page.evaluate(() => window.__heldCueCalls)).toHaveLength(0);
   await page.keyboard.press('Alt+e');
-  await page.keyboard.press('Alt+q');
+  await page.keyboard.press('Alt+y');
   await page.keyboard.press('Alt+p');
-  await page.keyboard.press('Alt+m');
+  await page.keyboard.press('Alt+u');
   const { calls, step } = await page.evaluate(() => ({
     calls: window.__heldCueCalls.map(([direction, delta, options]) => [direction, delta, options]),
     step: MaweTimeline.timelineCueMoveStepValue(),

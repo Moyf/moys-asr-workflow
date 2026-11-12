@@ -34,8 +34,8 @@ async function closeSettings(page) {
 test('records, checks conflicts, cancels, persists and resets with real command dispatch', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await record(page, 'nav-d', 'q');
-  await expect(keyButton(page, 'nav-d')).toHaveText('Q');
+  await record(page, 'nav-d', 'p');
+  await expect(keyButton(page, 'nav-d')).toHaveText('P');
   await expect(page.locator('.shortcut-settings-row').filter({has: keyButton(page, 'nav-d')})).toHaveClass(/is-customized/);
   await expect(page.locator('.shortcut-settings-row').filter({has: keyButton(page, 'nav-d')}).locator('.shortcut-settings-customized')).toHaveText('已自定义');
   await record(page, 'merge', 'q');
@@ -54,12 +54,12 @@ test('records, checks conflicts, cancels, persists and resets with real command 
   await page.evaluate(() => { MaweSelection.selectOnly(0); MaweCoreState.player.pause(); });
   await page.keyboard.press('d');
   expect(await page.evaluate(() => [...MaweSelection.selectedIdxs])).toEqual([0]);
-  await page.keyboard.press('q');
+  await page.keyboard.press('p');
   expect(await page.evaluate(() => [...MaweSelection.selectedIdxs])).toEqual([1]);
   await page.reload();
   await page.locator('#editor-settings-toggle').click();
   await page.locator('#editor-settings-tab-shortcuts').click();
-  await expect(keyButton(page, 'nav-d')).toHaveText('Q');
+  await expect(keyButton(page, 'nav-d')).toHaveText('P');
   await page.locator('#shortcuts-reset').click();
   await expect(keyButton(page, 'nav-d')).toHaveText('D');
   await expect(page.locator('.shortcut-settings-row').filter({has: keyButton(page, 'nav-d')})).not.toHaveClass(/is-customized/);
@@ -118,21 +118,49 @@ test('Q split variants and Mac/browser reserved shortcuts are rejected with a vi
 });
 test('invalid saved split shortcut is discarded with a warning while other shortcuts survive saving', async ({ page }) => {
   await page.evaluate(() => {
-    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: ['q'], play: ['p'] }));
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: ['q'], merge: ['b'], play: ['p'] }));
   });
   await page.reload();
   await expect(page.locator('#hint-stack .hint-warning').last()).toContainText('Ctrl+Shift+Q');
-  await expect(page.locator('#hint-stack .hint-warning').last()).toContainText('保留');
+  await expect(page.locator('#hint-stack .hint-warning').last()).toContainText('合并选中字幕');
+  await expect(page.locator('#hint-stack .hint-warning').last()).toContainText('快捷键冲突');
   await page.locator('#editor-settings-toggle').click();
   await page.locator('#editor-settings-tab-shortcuts').click();
   await expect(keyButton(page, 'split')).toHaveText('B');
+  await expect(keyButton(page, 'merge')).toHaveText('C');
   await expect(keyButton(page, 'play')).toHaveText('P');
 
-  await record(page, 'nav-d', 'q');
+  await record(page, 'nav-d', 'y');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('moy.asr.editor.shortcuts.v1')));
   expect(saved.play).toEqual(['p']);
-  expect(saved['nav-d']).toEqual(['q']);
+  expect(saved['nav-d']).toEqual(['y']);
   expect(saved.split).toBeUndefined();
+  expect(saved.merge).toBeUndefined();
+});
+test('fixed marker M cannot collide with a saved split shortcut and dispatches only marker editing', async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: ['m'] }));
+  });
+  await page.reload();
+  await expect(page.locator('#hint-stack .hint-warning').last()).toContainText('切换标记编辑');
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-shortcuts').click();
+  await expect(keyButton(page, 'split')).toHaveText('B');
+  await closeSettings(page);
+
+  await page.evaluate(() => {
+    MaweMarkerEditing.setEditingEnabled(false);
+    window.__beforeMarkerKeySegments = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length;
+    window.__mResolvedKey = null;
+    document.addEventListener('keydown', event => {
+      if (event.key.toLowerCase() === 'm') window.__mResolvedKey = MaweShortcuts.resolveEvent(event).key;
+    }, true);
+  });
+  await page.keyboard.press('m');
+  expect(await page.evaluate(() => window.__mResolvedKey)).toBe('m');
+  expect(await page.evaluate(() => MaweMarkerEditing.isEditingEnabled())).toBe(true);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length))
+    .toBe(await page.evaluate(() => window.__beforeMarkerKeySegments));
 });
 test('split aliases follow the customized key through real keyboard events', async ({ page }) => {
   await record(page, 'split', 'Alt+e');
@@ -259,7 +287,7 @@ test('key search matches current chords exactly, cancels safely and never execut
 test('only customized or cleared shortcuts show an individual reset button', async ({ page }) => {
   const reset = page.locator('[data-shortcut-control="reset"]');
   await expect(reset).toHaveCount(0);
-  await record(page, 'play', 'q');
+  await record(page, 'play', 'e');
   await expect(reset).toHaveCount(1);
   await expect(page.locator('[data-shortcut-id="play"][data-shortcut-control="reset"]')).toBeVisible();
   await page.locator('[data-shortcut-id="play"][data-shortcut-control="reset"]').click();

@@ -89,6 +89,15 @@ export function initMaweShortcuts() {
   command('redo', '重做', 'Mod+Shift+z', 'Mod+y');
   command('save', '保存工程', 'Mod+s');
   command('save-as', '工程另存为', 'Mod+Shift+s');
+  // These legacy handlers are contextual and remain outside the customizable
+  // command list. Reserve their physical chords so remapping cannot double-fire.
+  const fixedBindings = [
+    { chord: 'm', owner: null, label: '固定快捷键 M（切换标记编辑）' },
+    { chord: 'q', owner: null, label: '固定快捷键 Q（切换字词时间码）' },
+    { chord: 'c', owner: 'merge', label: '固定快捷键 C（字词选区合并）' },
+    { chord: 'Shift+c', owner: 'merge', label: '固定快捷键 Shift+C（字词选区合并）' },
+    { chord: 'f', owner: 'preview', label: '固定快捷键 F（字词选区试听）' },
+  ];
   // 2.0dev supports five or nine active colour slots; all nine remain
   // remappable, while inactive slots safely no-op in the domain handler.
   for (let i = 0; i <= 9; i++) command('color-' + i, i ? '分配颜色 ' + i : '清除颜色', String(i));
@@ -205,6 +214,8 @@ export function initMaweShortcuts() {
     for (const entry of commands) {
       for (const { chord: value } of effectiveBindings(entry, source)) {
         if (!validChord(value)) throw reservedChordError(value);
+        const fixed = fixedBindings.find(binding => binding.chord === value && binding.owner !== entry.id);
+        if (fixed) throw new Error('快捷键冲突：' + fixed.label);
         if (used.has(value) && used.get(value).id !== entry.id) {
           const previous = used.get(value);
           throw new Error('快捷键冲突：' + (previous.id === changedId ? entry.label : previous.label));
@@ -215,6 +226,11 @@ export function initMaweShortcuts() {
   }
   function describeSavedBindingWarning(entry, value, error) {
     const messageText = error?.message || '保存格式无效';
+    const conflictPrefix = '快捷键冲突：';
+    if (messageText.startsWith(conflictPrefix)) {
+      return { label: entry.label, chord: Array.isArray(value) ? value.join(', ') : String(value),
+        reason: conflictPrefix, detail: messageText.slice(conflictPrefix.length) };
+    }
     const prefixes = [
       '快捷键派生组合与系统或浏览器保留功能冲突：',
       '快捷键组合与系统或浏览器保留功能冲突：',
@@ -239,13 +255,14 @@ export function initMaweShortcuts() {
             for (const binding of effectiveBindings(entry, isolated)) {
               if (!validChord(binding.chord)) throw reservedChordError(binding.chord, entry.id === 'split');
             }
-            candidate[entry.id] = value;
+            const trial = { ...candidate, [entry.id]: value };
+            validate(trial, entry.id);
+            Object.assign(candidate, { [entry.id]: value });
           } catch (error) {
             savedBindingWarnings.push(describeSavedBindingWarning(entry, value, error));
           }
         }
       }
-      validate(candidate);
       overrides = candidate;
     }
   } catch (_) { /* Unavailable storage or invalid saved data: use defaults. */ }

@@ -27,3 +27,20 @@
 - 旧逻辑 red 对照：`$HOME/.hermes/cache/scratch/maw-shortcut-prepatch-87901225/.artifacts/checks/20261112T175343Z-5b34ca12/`。
 
 这些日志保存在本机忽略目录，提交中不包含生成的测试输出。
+
+## 第三轮盲审（0b9dd000）
+
+| 条目 | 状态 | 处理与证据 |
+| --- | --- | --- |
+| `split=q, merge=b, play=p` 导致回退并丢失无关 `play=p` | 已修复 | 已存配置逐命令试加，并对当时接受的绑定做冲突校验。`split=q` 因 Ctrl/Cmd+Shift+Q 系统保留组合被拒；`merge=b` 因与默认拆分 B 冲突被拒；`play=p` 保留。提示分别呈现系统保留原因与冲突对象。单测及真实浏览器刷新、再保存回归通过。 |
+| 固定标记键 M 可与自定义拆分同时触发 | 已修复 | 固定上下文键 M（标记编辑）、Q（字词时间码）、C/Shift+C（字词选区合并）、F（字词选区试听）纳入可配置绑定冲突检测；既有操作仍可使用其 C/Shift+C、F。单测和真实浏览器验证非法 `split=m` 被丢弃，按 M 仅切换标记编辑且字幕数不变。 |
+| 全量 Node/Python 基线对照 | 已复核 / 部分未验证 | Node 在同一现存 Node 22.23.1、依赖和 fresh bundle 下，基线 `0b9dd000` 为 1434 项、1417 通过、17 失败、0 取消、exit 1；修复分支为 1436 项、1419 通过、17 失败、0 取消、exit 1，17 个失败名称相同，新增两项通过。该 Node 版本不满足项目 engines。基线 Python 快照没有测试日志或 `result.json`；只读进程检查未发现活动测试进程，不能将其计为通过或失败。 |
+| pnpm 执行时意外创建 `.pnpm-store/` | 仅说明 | 一次 `pnpm exec playwright ...` 触发自动依赖预检；全局 store 无法 hard-link 后，pnpm 在仓库创建 `.pnpm-store/v11/index.db`，并因无 TTY 报 `[ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY]`，中止移除/重建 `node_modules`。Playwright 随后启动，但沙箱 localhost bind 报 `EPERM`。未观察到锁文件、依赖清单或 `node_modules` 变更；不推断未发送网络请求。目录保留且排除提交。 |
+
+### 第三轮验证记录
+
+- 红测：修复前快捷键单测 17 项中 2 项失败（存储配置隔离、M 冲突）；修复前真实浏览器迁移/M 回归失败。修复后快捷键单测 `17/17` 通过；定向 Chromium 迁移/M 为 `2/2`、Alt 拖拽派生分发为 `1/1`，均 exit 0。
+- 全量 Node：同环境快照比较如上。基线 `$HOME/.hermes/cache/scratch/maw-shortcut-review-base-0b9dd000-20261113/.artifacts/checks/20261112T183659Z-69d79082/`；分支 `.artifacts/checks/20261112T182925Z-8a5cb284/`。Node 22.23.1 不满足 `^22.23.4 || ^24.22.1 || >=26.12.1`，故不能称为受支持环境结果。
+- 分支全量 Python 既有结果：3039 项、19 skipped、exit 0（`.artifacts/checks/20261112T183004Z-365c7376/`）。本次基线快照无 Python 输出/result 文件；核查时没有相关存活进程，未重复运行，基线结果未知。
+- 构建与浏览器回归复用已有 Node 22.23.1、`node_modules`、浏览器和 Python venv，未下载或安装依赖。此前沙箱 localhost 权限失败不与获准后对照混为一谈。
+- `.pnpm-store/` 是未跟踪目录；显式提交文件清单将排除该目录。

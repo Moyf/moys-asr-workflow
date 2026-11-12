@@ -95,7 +95,7 @@ test('Alt-derived split variants dispatch each split operation to its target cho
 });
 test('remapped navigation keys retain Alt drag-adjust semantics and suppress only old chords', () => {
   for (const [id, key, replacement] of [
-    ['nav-a', 'a', 'e'], ['nav-d', 'd', 'q'], ['nav-w', 'w', 'm'], ['nav-s', 's', 'u'],
+    ['nav-a', 'a', 'e'], ['nav-d', 'd', 'p'], ['nav-w', 'w', 'y'], ['nav-s', 's', 'u'],
   ]) {
     const { api } = setup();
     api.setBinding(id, replacement);
@@ -141,7 +141,7 @@ test('split mode variants follow the remapped base key and stay collision-protec
 });
 test('conflicting defaults/custom bindings and reserved keys preserve the saved state', () => {
   const { api, stored } = setup();
-  assert.throws(() => api.setBinding('split', 'c'), /冲突：合并选中字幕/);
+  assert.throws(() => api.setBinding('split', 'c'), /快捷键冲突.*字词选区合并/);
   assert.throws(() => api.setBinding('play', 'j'), /冲突：倒放/);
   assert.equal(stored(), '{}');
   api.setBinding('split', 'e');
@@ -154,11 +154,11 @@ test('clear aliases, exchange keys, and reject a conflicting per-action reset', 
   api.setBinding('split', '');
   assert.equal(api.splitVariantLabel('b'), '');
   api.setBinding('merge', 'b');
-  api.setBinding('split', 'c');
+  api.setBinding('split', 'e');
   assert.equal(api.resolveEvent(event('b')).key, 'c');
-  assert.equal(api.resolveEvent(event('c')).key, 'b');
+  assert.equal(api.resolveEvent(event('e')).key, 'b');
   assert.throws(() => api.setBinding('split', null), /冲突/);
-  api.setBinding('delete', 'q');
+  api.setBinding('delete', 'p');
   assert.equal(api.resolveEvent(event('Backspace')).key, 'Unidentified');
   assert.equal(api.resolveEvent(event('Delete')).key, 'Unidentified');
   assert.equal(api.resolveEvent(event('Delete', { shiftKey: true })).key, 'Unidentified');
@@ -207,11 +207,33 @@ test('invalid saved split entries are dropped independently and valid saved comm
   assert.match(warnings[0].chord, /Ctrl\+Shift\+Q/);
   assert.match(warnings[0].reason, /Windows\/Linux Chromium/);
 
-  api.setBinding('nav-d', 'q');
+  api.setBinding('nav-d', 'y');
   const reloaded = setup(stored()).api;
   assert.deepEqual([...reloaded.bindings(reloaded.commands.find(item => item.id === 'play'))], ['p']);
-  assert.deepEqual([...reloaded.bindings(reloaded.commands.find(item => item.id === 'nav-d'))], ['q']);
+  assert.deepEqual([...reloaded.bindings(reloaded.commands.find(item => item.id === 'nav-d'))], ['y']);
   assert.deepEqual([...reloaded.bindings(reloaded.commands.find(item => item.id === 'split'))], ['b']);
+});
+test('saved binding collisions are isolated so unrelated valid settings remain and each dropped entry is reported', () => {
+  const { api } = setup('{"split":["q"],"merge":["b"],"play":["p"]}');
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'split'))], ['b']);
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'merge'))], ['c']);
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'play'))], ['p']);
+  const warnings = api.takeSavedBindingWarnings();
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[0].reason, /Ctrl\+Shift\+Q/);
+  assert.equal(warnings[1].label, '合并选中字幕');
+  assert.equal(warnings[1].reason, '快捷键冲突：');
+  assert.equal(warnings[1].detail, '拆分字幕');
+});
+test('fixed marker and contextual shortcuts cannot be reassigned onto another command', () => {
+  const { api } = setup();
+  assert.throws(() => api.setBinding('split', 'm'), /快捷键冲突.*标记编辑/);
+  assert.throws(() => api.setBinding('split', 'q'), /Ctrl\+Shift\+Q/);
+  assert.throws(() => api.setBinding('nav-a', 'q'), /快捷键冲突.*字词时间码/);
+  api.setBinding('merge', 'e');
+  assert.throws(() => api.setBinding('nav-a', 'c'), /快捷键冲突.*合并/);
+  api.setBinding('preview', 'u');
+  assert.throws(() => api.setBinding('nav-a', 'f'), /快捷键冲突.*字词选区试听/);
 });
 test('Shift+digits and macOS Option letters record usable chords', () => {
   const { api } = setup();

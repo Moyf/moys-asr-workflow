@@ -13,11 +13,12 @@ export function initMaweShortcutSettingsWiring() {
   const translate = text => window.MAWE_I18N.translateText(text);
   const savedWarnings = MaweShortcuts.takeSavedBindingWarnings();
   if (savedWarnings.length) {
-    const template = translate('已忽略无效的已保存快捷键设置：{label}（{chord}）：{reason}；其余有效自定义快捷键已保留。');
+    const template = translate('已忽略无效的已保存快捷键设置：{label}（{chord}）：{reason}{detail}；其余有效自定义快捷键已保留。');
     const notice = savedWarnings.map(warning => template
       .replaceAll('{label}', translate(warning.label))
       .replaceAll('{chord}', warning.chord)
-      .replaceAll('{reason}', translate(warning.reason))).join('\n');
+      .replaceAll('{reason}', translate(warning.reason))
+      .replaceAll('{detail}', translate(warning.detail || ''))).join('\n');
     MaweHint.flashHint(notice, 'warning', { durationMs: 8000 });
   }
   const groups = [
