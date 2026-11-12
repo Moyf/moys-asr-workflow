@@ -34,3 +34,11 @@
 - 已修复：字词选择捕获先保留物理 C/Shift+C/F 与 Ctrl+C 的上下文操作，再以有效投影键识别需要阻断的父级 Delete/Split/Merge/颜色等命令；新增父级 Merge 与 color-9 的真实事件保护回归。
 - 浏览器真实键盘回归 6/6 通过（J/P reload、E→Delete、E→Split、旧 B 不阻止、改绑 Merge/颜色键不触发父操作、物理 C/Shift+C/F 与 Ctrl+C 仍生效）。Node 定向单测 20/20 通过。
 - 捕获层复核限定于主字幕操作相关的可配置快捷键接线；Enter/Escape、拆分弹窗键盘流和媒体控件本地按键保留独立语义。报告范围与证据见任务账本。
+
+## 第五轮盲审（0db4526）
+
+- 已修复：字词捕获层对父字幕操作统一使用 `resolveEvent(event)` 的有效键与修饰符；Ctrl+E 改绑 trim-start 与 E 改绑 merge-prev 的真实键盘事件不会修改相邻字幕时间或合并父字幕。
+- 已修复：字词拖拽中的播放键依有效映射判断，P→Space 不再被物理白名单截断；Mod+C 改绑 Merge 时，字词选择上下文中的物理 Ctrl/Cmd+C 保留浏览器默认行为并阻止父级快捷键处理。
+- 验证：当前修复分支定向浏览器 6/6、Node 20/20、bundle fresh 与 `git diff --check` 通过，具体命令、exit code 与本地日志路径见任务账本。旧逻辑 Ctrl+E 与 Ctrl/Cmd+C 的浏览器红测有实际状态变化证据；merge-prev 首次旧逻辑对照因夹具缺少稳定 cue id、未到按键断言，因此不宣称有效红测。P 播放旧逻辑红测因测试放错 spec、引用无效 helper 而无效。
+- 平台限制：测试机为 Linux Chromium。Ctrl+C 触发原生 `copy` 事件；Meta+C keydown 未被阻止，但此平台没有观察到其原生复制事件，不能据此声称已验证 macOS 的原生复制。
+- 独立自审：只读审查未发现 blocker / major；没有新增产品语义取舍。

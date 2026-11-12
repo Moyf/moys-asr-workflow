@@ -59,3 +59,21 @@
 - 修复后快捷键 Node 定向套件 19/19 通过（`.artifacts/checks/20261112T185504Z-7b77535a/`），最终新增迁移自定义冲突用例后 20/20 通过（`.artifacts/checks/20261112T190701Z-c4e999b7/`）。此前真实浏览器定向 5/5 通过（`.artifacts/checks/20261112T185728Z-f1e3dab6/`）；补充覆盖父级 Merge、color-9 与 Ctrl+C 后，三份相关 spec 定向运行 6/6 通过（`.artifacts/checks/20261112T190714Z-1b3a34ae/`，exit 0）。
 - 浏览器使用已有 Playwright、浏览器、Node 与依赖；一次未提权尝试因 localhost `listen EPERM` 失败，获准后测试运行，无安装或下载。
 - 本轮 `.pnpm-store/` 保持未跟踪状态，排除提交。
+
+## 第五轮盲审（0db4526）
+
+| 条目 | 状态 | 处理与证据 |
+| --- | --- | --- |
+| 字词选区捕获混用物理修饰键与映射键；改绑边界/相邻合并可漏拦父字幕命令 | 已修复 | 捕获层统一用 `resolveEvent(event)` 返回的有效键与修饰键判断父命令；真实浏览器覆盖 Ctrl+E→trim-start、E→merge-prev。修复后波形时间和父字幕文本保持不变。旧逻辑下 Ctrl+E 边界 E2E 实际把下一条 start 从 10000 改为 13500（`.artifacts/checks/20261112T191935Z-684935a7/`）；相邻合并旧逻辑红测曾因夹具未建立稳定 cue id、在按键前断言失败，故不作为有效旧逻辑红证据。 |
+| Merge 改绑 Mod+C 时字词选区的物理复制被应用快捷键吞掉 | 已修复 | 字词选区/拖拽上下文中的物理 Ctrl/Cmd+C 只停止编辑器快捷键传播，不阻止默认复制；有效事件后续不再触发父级 Merge。旧逻辑浏览器结果显示 Ctrl+C 与 Meta+C keydown 均 `defaultPrevented=true`（`.artifacts/checks/20261112T192730Z-b9f994b3/`）；修复后同用例两个 keydown 均未阻止，字幕数保持 3。 |
+| 拖拽期间播放改绑 P 被物理键白名单吞掉 | 已修复 | 活跃字词拖拽使用有效映射键判断控制操作；P 映射为空格后仍冒泡到播放处理器。新增真实 Playwright 拖拽中 P 播放断言，当前通过；此前对照因测试放错 spec、引用不存在的 `word()` helper 失败，不能称为旧逻辑红测。 |
+| 字词固定操作及平台边界 | 已验证 / 部分未验证 | 已有真实浏览器用例确认物理 C、Shift+C、F 字词操作不变，父级改绑不双触发；Linux Chromium 下 Ctrl+C 触发一次原生 `copy`，Meta+C keydown 未被阻止，但该环境不生成 Meta+C 原生复制事件，macOS 原生复制行为未实测。 |
+
+### 第五轮验证记录
+
+- 修复后定向真实浏览器：`python scripts/run_check.py --timeout 600 -- ./node_modules/.bin/playwright test tests/e2e/keyboard-timing.spec.mjs tests/e2e/word-timing.spec.mjs --workers=1 -g 'word-selection capture uses projected|physical Ctrl\\+C and Meta\\+C|remapped play key remains available|word-selection capture protects effective remapped|word-selection physical C, Shift\\+C and F'`，6/6 通过，exit 0，日志 `.artifacts/checks/20261112T193505Z-bfbe4366/`。一次未提权尝试因 `listen EPERM: 127.0.0.1` 未启动用例（`.artifacts/checks/20261112T193445Z-a5551bb5/`）；获准本地监听后重跑通过。
+- 定向 Node：`python scripts/run_check.py --timeout 180 -- node --test tests/test_editor_shortcuts.mjs tests/test_editor_word_timing.mjs`，20/20 通过，exit 0，日志 `.artifacts/checks/20261112T193533Z-5fcf882d/`。
+- 产物检查：`python scripts/run_check.py --timeout 180 -- node scripts/build-editor.mjs --check`，exit 0，bundle fresh，日志 `.artifacts/checks/20261112T193535Z-4f43caa6/`。`git diff --check` 通过。
+- 独立只读自审未发现 blocker / major；指出 Linux Chromium 不足以证明 macOS 原生 Meta+C 复制行为。
+- 本轮未重跑全量测试；此前已知全量 Node/Python 与多字幕用例限制见上文。本轮没有安装/下载依赖；`.pnpm-store/` 保留、未查看内容且不纳入提交。
+- 收尾核验：再次 `git fetch origin 2.0dev` 后 FETCH_HEAD 与 origin/2.0dev 均为 `e358512e8fef890dd2e607c61ec5f522d13943a5`，仍是 HEAD 的祖先。Checklist 格式检查与相对该基线的个人路径扫描均 exit 0（`.artifacts/checks/20261112T193836Z-33dd4eca/`、`.artifacts/checks/20261112T193836Z-25bb0003/`）；`git diff --check` 通过。

@@ -162,6 +162,100 @@ test('word-selection capture protects remapped parent merge and all cue color co
   expect(await page.evaluate(() => MaweWordTiming.getSelection(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]).size)).toBe(1);
 });
 
+test('word-selection capture uses projected modifiers for remapped cue boundary shortcuts', async ({ page }) => {
+  await loadAttachedCues(page);
+  const cue = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
+  await page.locator('.cue[data-idx="0"]').click();
+  await moveWaveformPointerToTime(page, cue, 7000);
+  await page.evaluate(() => {
+    MaweWordTiming.setEnabled(true);
+    MaweWordTiming.select(0, 0);
+    MaweShortcuts.setBinding('trim-start', 'Mod+e');
+  });
+
+  await page.keyboard.press('Control+e');
+  expect(await readTimings(page)).toEqual([
+    { start: 5000, end: 10000 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+});
+
+test('word-selection capture uses projected modifiers to guard remapped adjacent merge', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.locator('.cue[data-idx="1"]').click();
+  await page.evaluate(() => {
+    const segments = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    segments.forEach((segment, index) => { segment.id ||= `keyboard-guard-${index}`; });
+    MaweCuePanel.renderAll();
+    document.activeElement?.blur();
+    window.__mergePrevSteps = [];
+    MaweWordTiming.setEnabled(true);
+    window.__mergePrevSteps.push(['enabled', [...MaweSelection.selectedIdxs]]);
+    MaweWordTiming.select(1, 0);
+    window.__mergePrevSteps.push(['word', [...MaweSelection.selectedIdxs]]);
+    MaweSelection.selectOnly(1);
+    window.__mergePrevSteps.push(['cue', [...MaweSelection.selectedIdxs]]);
+    MaweShortcuts.setBinding('merge-prev', 'e');
+    window.__mergePrevSteps.push(['binding', [...MaweSelection.selectedIdxs]]);
+    const event = new KeyboardEvent('keydown', { key: 'e' });
+    const mapped = MaweShortcuts.resolveEvent(event);
+    window.__mergePrevMapping = { key: mapped.key, ctrl: mapped.ctrlKey, meta: mapped.metaKey, shift: mapped.shiftKey };
+    const target = MaweCuePanel.getCurrentCuePanelTarget();
+    window.__mergePrevContext = {
+      target: target?.index,
+      selected: [...MaweSelection.selectedIdxs],
+      words: MaweWordTiming.getSelection(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1]).size,
+      editing: MaweInlineEdit.editingState,
+      active: document.activeElement?.tagName,
+      steps: window.__mergePrevSteps,
+    };
+  });
+
+  expect(await page.evaluate(() => window.__mergePrevMapping)).toEqual({ key: 'a', ctrl: true, meta: false, shift: true });
+  expect(await page.evaluate(() => window.__mergePrevContext)).toEqual({ target: 1, selected: [1], words: 1, editing: null, active: 'BODY', steps: [['enabled', []], ['word', [1]], ['cue', [1]], ['binding', [1]] ] });
+  await page.keyboard.press('e');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(segment => segment.text)))
+    .toEqual(['First', 'Second', 'Third']);
+});
+
+test('physical Ctrl+C and Meta+C preserve native copy when merge is remapped', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.locator('.cue[data-idx="0"]').click();
+  await page.evaluate(() => {
+    const segments = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    segments.forEach((segment, index) => { segment.id ||= `keyboard-copy-${index}`; });
+    MaweCuePanel.renderAll();
+    MaweWordTiming.setEnabled(true);
+    MaweWordTiming.select(0, 0);
+    MaweSelection.selectOnly(0);
+    MaweSelection.addToSelection(1);
+    MaweShortcuts.setBinding('merge', 'Mod+c');
+    window.__copyKeyResults = [];
+    window.__nativeCopyEvents = 0;
+    document.querySelector('.cue[data-idx="0"] .text')?.scrollIntoView({ block: 'center' });
+    const range = document.createRange();
+    range.selectNodeContents(document.querySelector('.cue[data-idx="0"] .text'));
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.addEventListener('copy', () => { window.__nativeCopyEvents += 1; });
+    window.addEventListener('keydown', event => {
+      if (event.key.toLowerCase() !== 'c' || !(event.ctrlKey || event.metaKey)) return;
+      setTimeout(() => window.__copyKeyResults.push({ prevented: event.defaultPrevented }), 0);
+    }, true);
+  });
+
+  await page.keyboard.press('Control+c');
+  await expect.poll(() => page.evaluate(() => window.__copyKeyResults.length)).toBe(1);
+  await page.keyboard.press('Meta+c');
+  await expect.poll(() => page.evaluate(() => window.__copyKeyResults.length)).toBe(2);
+  expect(await page.evaluate(() => window.__copyKeyResults)).toEqual([{ prevented: false }, { prevented: false }]);
+  // Chromium on this Linux runner dispatches a native copy event for Ctrl+C;
+  // Meta+C's physical default is platform-specific and only key delivery is asserted here.
+  expect(await page.evaluate(() => window.__nativeCopyEvents)).toBe(1);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(3);
+});
+
 test('word-selection physical C, Shift+C and F stay fixed when parent shortcuts are remapped', async ({ page }) => {
   await loadAttachedCues(page);
   await page.evaluate(() => {

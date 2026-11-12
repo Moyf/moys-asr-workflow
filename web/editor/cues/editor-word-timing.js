@@ -251,9 +251,18 @@
     if (dialog()?.open) { event.stopImmediatePropagation(); return; }
     if (!enabled || event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const waveform = MaweCoreState.waveformEditor;
+    const physicalKey = event.key.toLowerCase();
+    const physicalCopy = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && physicalKey === 'c';
+    // Copy remains a native physical operation even if the user maps subtitle
+    // merge onto Mod+C. Stop editor shortcut handlers without cancelling copy.
+    if (physicalCopy && (waveform?.wordDrag || selection && getSelection(selection.segment).size)) {
+      event.stopImmediatePropagation();
+      return;
+    }
+    const effective = MaweShortcuts.resolveEvent(event);
+    const key = String(effective.key || '').toLowerCase();
     if (waveform?.wordDrag) {
-      const key = event.key.toLowerCase();
-      if (event.key === 'Escape' || ((event.ctrlKey || event.metaKey) && ['z', 'y'].includes(key))) {
+      if (key === 'escape' || ((effective.ctrlKey || effective.metaKey) && ['z', 'y'].includes(key))) {
         event.preventDefault(); event.stopImmediatePropagation(); waveform.cancelWordDrag();
       } else if (!['alt', 'control', 'meta', 'shift', 'j', 'k', 'l', ' '].includes(key)) {
         // Finish or cancel the gesture before running another project command.
@@ -261,13 +270,12 @@
       }
       return;
     }
-    if (event.key === 'Escape' && MaweDom.ctxmenu.classList.contains('show')) {
+    if (key === 'escape' && MaweDom.ctxmenu.classList.contains('show')) {
       event.preventDefault(); event.stopImmediatePropagation(); MaweDom.ctxmenu.classList.remove('show'); return;
     }
     if (!selection || !getSelection(selection.segment).size) return;
     // Contextual word-selection commands keep their documented physical keys,
     // while parent subtitle commands must be guarded by the effective remap.
-    const physicalKey = event.key.toLowerCase();
     const fixedWordChord = !event.ctrlKey && !event.metaKey && !event.altKey;
     if (fixedWordChord && physicalKey === 'f' && !event.shiftKey
         && !event.repeat && !MaweDom.ctxmenu.classList.contains('show')) {
@@ -279,19 +287,17 @@
       event.preventDefault(); event.stopImmediatePropagation(); merge();
       return;
     }
-    const effective = MaweShortcuts.resolveEvent(event);
-    const key = effective.key.toLowerCase();
-    if ((event.ctrlKey || event.metaKey) && key === 'a' && !event.shiftKey) {
+    if ((effective.ctrlKey || effective.metaKey) && key === 'a' && !effective.shiftKey && !effective.altKey) {
       event.preventDefault(); event.stopImmediatePropagation();
       selection.indices = new Set(global.AsrEditorUtils.getWordTimingEntries(selection.segment, clock()).map(e => e.index));
       refresh();
-    } else if (event.key === 'Escape') {
+    } else if (key === 'escape') {
       event.preventDefault(); event.stopImmediatePropagation(); clearSelection(); refresh();
     } else if (['delete', 'backspace', 'b', 'n', 'r', 'enter', 'g', 'h', 't', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
       'arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)
-        || (key === 'c' && physicalKey !== 'c')
-        || (['z', 'x'].includes(key) && !event.ctrlKey && !event.metaKey)
-        || (['a', 'd', 'w', 's'].includes(key) && (event.altKey || event.shiftKey))) {
+        || key === 'c'
+        || (['z', 'x'].includes(key) && !effective.ctrlKey && !effective.metaKey && !effective.altKey && !effective.shiftKey)
+        || (['a', 'd', 'w', 's'].includes(key) && (effective.altKey || effective.shiftKey))) {
       event.preventDefault(); event.stopImmediatePropagation();
     } else if (['a', 'd', 'w', 's', 'home', 'end'].includes(key)) {
       clearSelection(); refresh();

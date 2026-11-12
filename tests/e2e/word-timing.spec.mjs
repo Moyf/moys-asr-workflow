@@ -636,6 +636,30 @@ test('merge cannot nest inside an active word drag or be overwritten by its snap
   expect((await source(page)).items).toEqual(moved);
 });
 
+test('remapped play key remains available while a word timing drag is active', async ({ page }) => {
+  await setWordTiming(page);
+  await page.evaluate(() => { MaweShortcuts.setBinding('play', 'p'); });
+  const block = word(page, 0);
+  await expect(block).toBeVisible();
+  const box = await block.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2, { steps: 3 });
+  await expect.poll(() => page.evaluate(() => Boolean(MaweCoreState.waveformEditor.wordDrag))).toBe(true);
+  await page.evaluate(() => {
+    const player = MaweCoreState.player;
+    player.pause();
+    window.__playCalls = 0;
+    window.__originalPlayerPlay = player.play;
+    player.play = () => { window.__playCalls += 1; return Promise.resolve(); };
+  });
+
+  await page.keyboard.press('p');
+  await expect.poll(() => page.evaluate(() => window.__playCalls)).toBe(1);
+  await page.mouse.up();
+  await page.evaluate(() => { MaweCoreState.player.play = window.__originalPlayerPlay; });
+});
+
 test('conversion disables unavailable targets and requires review if data changes while open', async ({ page }) => {
   await page.evaluate(() => MaweWordTiming.openConversion([1, 2]));
   await expect(page.locator('#word-conversion-confirm')).toBeDisabled();
