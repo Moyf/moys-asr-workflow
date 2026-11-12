@@ -105,18 +105,39 @@ class ProjectMediaReferenceTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(self.output.read_bytes(), original)
         self.assertFalse(self.output.with_suffix(".mosp.bak").exists())
 
-    def test_remember_only_updates_media_and_preserves_backup_and_caches(self) -> None:
+    def test_remember_preserves_legacy_storage_and_backup_and_caches(self) -> None:
         self.raw["waveform"] = {"legacy": "must stay during relink"}
         self.output.write_text(json.dumps(self.raw), encoding="utf-8")
         original = self.output.read_bytes()
         self.load(remember=True)
         saved = json.loads(self.output.read_text(encoding="utf-8"))
         self.assertEqual(saved, {**self.raw, "media": "../" + self.media.name})
+        self.assertEqual(saved["waveform"], self.raw["waveform"])
+        self.assertEqual(saved["extra"], self.raw["extra"])
         self.assertEqual(self.output.with_suffix(".mosp.bak").read_bytes(), original)
         self.assertNotIn(b"\r\n", self.output.read_bytes())
         self.assertEqual(resolve_project_media(self.output, saved).resolved_path, self.media)
         self.load(remember=True)
         self.assertEqual(self.output.with_suffix(".mosp.bak").read_bytes(), original)
+
+    def test_remember_media_keeps_repairable_legacy_timing_on_disk(self) -> None:
+        self.raw["segments"] = [{"start": 0, "end": 0, "text": "repair me"}]
+        self.output.write_text(json.dumps(self.raw), encoding="utf-8")
+        original = self.output.read_bytes()
+        project = self.load(remember=True)
+        self.assertEqual(project.data["tracks"][0]["segments"][0]["end"], 100)
+        saved = json.loads(self.output.read_text(encoding="utf-8"))
+        self.assertEqual(saved, {**self.raw, "media": "../" + self.media.name})
+        self.assertEqual(self.output.with_suffix(".mosp.bak").read_bytes(), original)
+
+    def test_remember_media_rejects_invalid_structure_without_writing(self) -> None:
+        self.raw["segments"] = [{"start": 0, "end": 0, "text": 42}]
+        self.output.write_text(json.dumps(self.raw), encoding="utf-8")
+        original = self.output.read_bytes()
+        with self.assertRaises(ValueError):
+            server_editor.remember_project_media(self.output, "../" + self.media.name)
+        self.assertEqual(self.output.read_bytes(), original)
+        self.assertFalse(self.output.with_suffix(".mosp.bak").exists())
 
     def test_missing_media_never_updates_original_even_if_remember_is_set(self) -> None:
         original = self.output.read_bytes()

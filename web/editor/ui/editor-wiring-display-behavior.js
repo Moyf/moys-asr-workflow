@@ -129,7 +129,7 @@ MaweDom.mediaSeekStepInput?.addEventListener('change', () => {
 MaweDom.cueMoveStepInput?.addEventListener('change', () => {
   const frameMode = MaweTimeline.timelineIsFrameMode();
   const value = frameMode
-    ? EDITOR_SETTINGS_UTILS.clampTimelineFrameStep(MaweDom.cueMoveStepInput.value, 1)
+    ? window.AsrEditorUtils.clampTimelineFrameStep(MaweDom.cueMoveStepInput.value, 1)
     : MaweSettings.clampCueMoveStepMs(MaweDom.cueMoveStepInput.value);
   MaweDom.cueMoveStepInput.value = String(value);
   MaweSettings.updateEditorSettings(frameMode ? { cueMoveStepFrames: value } : { cueMoveStepMs: value });

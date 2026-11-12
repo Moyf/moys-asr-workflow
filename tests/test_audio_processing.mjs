@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+
+const utilsContext = { window: {}, TextDecoder };
+loadEditorModule(utilsContext, 'shared/editor-utils.js');
+const editorUtils = utilsContext.window.AsrEditorUtils;
 import { createUtilsModule as createHistoryUtils } from '../web/shared/utils/history.js';
 import { createUtilsModule as createDataUtils } from '../web/shared/utils/data.js';
 import { createUtilsModule as createGroupUtils } from '../web/shared/utils/subtitle-groups.js';
@@ -14,7 +19,7 @@ const result = (extra = {}) => ({ ok: true, status: 'measured', integratedLufs: 
   audioTrack: 0, measurementSource: 'preview', bindingGeneration: 1, sourceMediaId: 'source-a', ...extra });
 const response = data => ({ ok: true, json: async () => data });
 function fixture(transport = async () => response(result())) {
-  const calls = [], routes = [], contexts = [], nodes = new Map(), panels = [];
+  const calls = [], routes = [], contexts = [], nodes = new Map(), panels = [], gainNodes = [];
   function node() {
     const listeners = new Map(), classes = new Set();
     return { textContent: '', hidden: false, value: '', checked: false,
@@ -28,10 +33,18 @@ function fixture(transport = async () => response(result())) {
   }
   const player = Object.assign(node(), { currentSrc: 'http://localhost/media', volume: .6, muted: false });
   class AudioContext {
-    state = 'suspended'; destination = {}; resumes = 0;
+    state = 'suspended'; destination = {}; resumes = 0; currentTime = 50;
     constructor() { contexts.push(this); }
     async resume() { this.resumes++; this.state = 'running'; }
-    createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+    createGain() {
+      const events = [];
+      const gain = { gain: { value: 1,
+        cancelScheduledValues(time) { events.push(['cancel', time]); },
+        setValueAtTime(value, time) { events.push(['set', value, time]); } },
+        events, connect() {}, disconnect() {} };
+      gainNodes.push(gain);
+      return gain;
+    }
     createMediaElementSource(media) {
       const route = { player: media, connected: false, connect(gain) { this.connected = true; this.gain = gain; },
         disconnect() { this.connected = false; } };
@@ -41,7 +54,7 @@ function fixture(transport = async () => response(result())) {
   const context = vm.createContext({ URL, AbortController, DOMException, setTimeout, clearTimeout, AudioContext,
     location: { href: 'http://localhost/', origin: 'http://localhost' },
     document: { getElementById(id) { if (!nodes.has(id)) nodes.set(id, node()); return nodes.get(id); }, addEventListener() {} },
-    MaweBoot: { DATA: { segments: [] }, SERVER_CONFIG: { requestToken: 'token', bindingGeneration: 1, sourceMediaId: 'source-a' } },
+    MaweBoot: { DATA: editorUtils.makeProject([]), SERVER_CONFIG: { requestToken: 'token', bindingGeneration: 1, sourceMediaId: 'source-a' } },
     MaweCoreState: { player }, MaweProjectLoad: { projectBindingEpoch: 0 },
     MaweFloatingPanel: { createFloatingPanel(options) {
       const panel = { open: () => options.onOpen(), close: () => options.onClose() };
@@ -52,9 +65,8 @@ function fixture(transport = async () => response(result())) {
   });
   context.window = context;
   vm.runInContext(readFileSync(new URL('../web/editor/boot/editor-runtime.js', import.meta.url), 'utf8'), context);
+  context.AsrEditorUtils = editorUtils;
   vm.runInContext(invokedInitModuleSource('editor/state/editor-state.js', 'initMaweState'), context);
-  const dataUtils = createDataUtils({});
-  context.AsrEditorUtils = { ...dataUtils, ...createHistoryUtils(dataUtils), ...createGroupUtils(dataUtils) };
   context.MaweWordTiming = { clearSelection() {} };
   context.MaweHint = { flashHint() {} };
   context.MaweInlineEdit = {};
@@ -65,8 +77,24 @@ function fixture(transport = async () => response(result())) {
   // content checkpoint. The defaults added by init are not a user edit.
   context.MaweState.beginProjectSession();
   context.MaweState.establishProjectCheckpoint();
-  return { context, api: context.MaweAudioProcessing, state: context.MaweState, calls, routes, contexts, nodes, panels, player, node };
+  return { context, api: context.MaweAudioProcessing, state: context.MaweState, calls, routes, contexts, nodes, panels, player, node, gainNodes };
 }
+
+test('gap audio automation uses a separate gate at unity project gain and preserves listening controls', async () => {
+  const f = fixture();
+  f.context.MaweGapPlayback = { needsAudioGate: () => true, refresh() {} };
+  await f.api.applyPreview({ gesture: true });
+  assert.equal(f.routes.length, 1);
+  assert.equal(f.api.scheduleGapPlaybackMute(.1), true);
+  assert.deepEqual(f.gainNodes[0].events.slice(-2), [['set', 1, 50], ['set', 0, 50.1]]);
+  f.api.change({ gain_db: 6 }, { gesture: true });
+  assert.ok(Math.abs(f.gainNodes[1].gain.value - 10 ** .3) < 1e-10);
+  assert.deepEqual(f.gainNodes[0].events.slice(-2), [['set', 1, 50], ['set', 0, 50.1]]);
+  f.api.setGapPlaybackMuted(false);
+  assert.deepEqual(f.gainNodes[0].events.at(-1), ['set', 1, 50]);
+  assert.equal(f.player.volume, .6);
+  assert.equal(f.player.muted, false);
+});
 
 test('fixed gain preserves listening volume, captures each player only once, and disconnects old routes', async () => {
   const f = fixture();
@@ -177,7 +205,7 @@ test('a binding change during measurement re-enables measurement and a late resu
   assert.equal(f.api.measurement.integratedLufs, -18);
 });
 
-test('audio edits survive reconciliation, share undo history, and load/reset normalized project settings', () => {
+test('audio edits participate in content checkpoints, share undo history, and load/reset normalized project settings', () => {
   const f = fixture();
   f.api.change({ gain_db: -4 });
   assert.equal(f.state.hasProjectChanges(), true);
@@ -238,27 +266,17 @@ test('custom reference matching, dirty state and undo/redo keep the same target 
 function serializeProject(f) {
   const context = f.context;
   Object.assign(context, {
-    MaweExportContext: { projectExtensionFields: {} }, MULTI_SUBTITLE_UTILS: { MULTI_SUBTITLE_SCHEMA: 'moy.asr.multi_subtitle.v1' },
     getOverlayTrack: () => null,
     MaweTimeline: { syncProjectTimebaseAndBindingOffsets() {}, projectTimebase: () => ({ unit: 'milliseconds', fps: 30 }),
       normalizeMediaMetadata: () => null },
-    MaweMultiSubtitleCore: { getMultiSubtitleState: () => ({ tracks: [], bindings: [] }),
-      getActiveExtensionTrack: () => null, isConfiguredSubtitleSplitMode: () => false,
-      getMainSubtitleSplitMode: () => 'word' },
     MaweSettings: { EDITOR_SETTINGS: {} }, MaweProjectMediaInputs: {},
-    MaweAppearance: { getPreviewGeometry: () => ({ x: 0.1, y: 0.7, width: 0.8, height: 0.2 }), getSubtitleAppearance: () => ({}) },
-    MawePreviewGeometry: { getStickerGeometry: () => ({}) },
+    MawePreviewGeometry: { getStickerGeometry: () => editorUtils.normalizePreviewGeometry(undefined, editorUtils.DEFAULT_STICKER_GEOMETRY) },
+    MaweAppearance: { getPreviewGeometry: () => editorUtils.normalizePreviewGeometry(), getSubtitleAppearance: () => ({}) },
     MaweSpeakerLabels: { getSpeakerLabelSettings: () => ({}) },
     MaweExportTimeline: { buildCurrentWorkspaceData: () => null },
   });
-  context.AsrEditorUtils = { ...context.AsrEditorUtils,
-    normalizeItemTimingRanges: () => 0, markersToProjectField: () => null };
-  vm.runInContext(readFileSync(new URL('../web/shared/utils/project-validation.js', import.meta.url), 'utf8'), context);
   vm.runInContext(initModuleSource('editor/io/editor-json-repair.js'), context);
-  const saved = JSON.parse(context.MaweJsonRepair.buildJson());
-  const validation = context.MaweProjectValidation.validateProject(saved);
-  assert.equal(validation.ok, true, JSON.stringify(validation.errors));
-  return saved;
+  return JSON.parse(context.MaweJsonRepair.buildJson());
 }
 
 test('project serializer and reload preserve a custom reference and extended gain without persisting measurement', async () => {

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, generateWav, makeTempDir, startServer } from './helpers.mjs';
+import { getMainTrack, cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, generateWav, makeTempDir, startServer } from './helpers.mjs';
 
 let directory, server, projectPath;
 test.beforeAll(async () => {
@@ -48,8 +48,8 @@ test('real editor saves/reopens trustworthy local scopes and keeps gap-only revi
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   });
   const initial = await page.evaluate(async () => ({
-    source: MaweBoot.DATA.segments[0], ordinary: MaweExportSrt.buildSrt(), compressed: MaweExportSrt.buildGapRemovedSrt(),
-    ass: MaweExportSrt.buildAss(), dynamic: MaweExportSrt.buildDynamicCaptionExportData(MaweBoot.DATA.segments, true),
+    source: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0], ordinary: MaweExportSrt.buildSrt(), compressed: MaweExportSrt.buildGapRemovedSrt(),
+    ass: MaweExportSrt.buildAss(), dynamic: MaweExportSrt.buildDynamicCaptionExportData(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, true),
     otio: MaweExportTimeline.buildTimelineOtio({ includeSubtitleMarkers: true }),
     saved: await MaweProjectSave.saveProjectToServer({ silent: true }),
   }));
@@ -64,7 +64,7 @@ test('real editor saves/reopens trustworthy local scopes and keeps gap-only revi
   expect(initial.dynamic.segments[0].items.map((item) => item.text)).toEqual(['我这个功能呢']);
   const saved = JSON.parse(readFileSync(projectPath, 'utf-8'));
   expect(saved.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope.item_end).toBe(2);
-  expect(saved.segments[0].items).toHaveLength(3);
+  expect(getMainTrack(saved).segments[0].items).toHaveLength(3);
   await page.reload();
   await expect(page.locator('.cue[data-idx="0"] .text')).toBeVisible();
   expect(await page.evaluate(() => MaweExportSrt.buildSrt())).not.toContain('我这……');
@@ -91,7 +91,7 @@ test('real editor saves/reopens trustworthy local scopes and keeps gap-only revi
     MaweHistory.performUndo();
     const reinstated = MaweExportSrt.buildSrt();
     MaweHistory.performRedo();
-    return { mute, undo, redo, restored, reinstated, restoredPreview, restoredCanvas, source: MaweBoot.DATA.segments[0] };
+    return { mute, undo, redo, restored, reinstated, restoredPreview, restoredCanvas, source: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0] };
   });
   expect(history.mute.sources.ai_cleanup_review[0].review_marker_id).toBe('review-local');
   expect(history.undo.sources.ai_cleanup_review).toHaveLength(0);

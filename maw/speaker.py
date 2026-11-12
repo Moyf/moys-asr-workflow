@@ -1,6 +1,31 @@
 from __future__ import annotations
 
 from maw.colors import COLOR_PALETTE
+from maw.speaker_identity import distinct_speaker_ids, SPEAKER_PALETTE
+
+
+def speaker_color_summary(segments: list[dict]) -> dict:
+    """Describe speaker coloring without writing any legacy cue fields."""
+    speakers = distinct_speaker_ids(segments)
+    identities = set(speakers)
+    return {"speakers": speakers, "colored_segments": sum(
+                isinstance(segment.get("speaker"), str) and segment["speaker"] in identities for segment in segments),
+            "palette_size": 9 if len(speakers) > 5 else 5,
+            "overflow": len(speakers) > len(SPEAKER_PALETTE)}
+
+
+def apply_project_speaker_colors(project: dict) -> dict:
+    """Honor the explicit ASR speaker-colors option using project identities.
+
+    Identity colours already live in the speaker table. Do not create colour
+    group snapshots or overwrite independent classification groups.
+    """
+    from maw.project_tracks import get_main_track
+    segments = get_main_track(project)["segments"]
+    stats = speaker_color_summary(segments)
+    project["annotation_mode"] = "speaker"
+    stats["overflow"] = len(stats["speakers"]) > len(SPEAKER_PALETTE)
+    return stats
 
 
 # speaker 只是调色板的取色者之一：色值权威定义见 maw/colors.py。

@@ -89,7 +89,7 @@ with mock.patch("maw.local_asr.create_local_engine",side_effect=AssertionError("
     await disableOnboarding(page);await page.goto(server.url);
     await page.waitForFunction(()=>window.MAWE_EDITOR_BRIDGE?.data?.segments.length===2);
     const take=()=>page.evaluate(()=>({
-      segments:MaweBoot.DATA.segments.map(({id,text,start,end,items})=>({id,text,start,end,items:items||[]})),
+      segments:AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(({id,text,start,end,items})=>({id,text,start,end,items:items||[]})),
       gap:MaweBoot.DATA.gap_remove,recording:MaweBoot.DATA.script_alignment.recording,
     }));
     const initial=await take();

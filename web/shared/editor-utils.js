@@ -1,7 +1,10 @@
+import { TrackPolicy } from './utils/track-policy.js';
 // Compatibility facade: initialize domain factories once and retain the
 // historical API. ESM init module: the assembler calls this at the
 // file's original manifest position.
 import { createUtilsModule as createDataModule } from './utils/data.js';
+import { createUtilsModule as createProjectTracksModule } from './utils/project-tracks.js';
+import * as speakerIdentity from './utils/speaker-identity.js';
 import { createUtilsModule as createSubtitleGroupsModule } from './utils/subtitle-groups.js';
 import { createUtilsModule as createMarkersModule } from './utils/markers.js';
 import { createUtilsModule as createSplitAlignmentModule } from './utils/split-alignment.js';
@@ -43,9 +46,14 @@ export function initEditorUtils() {
 
 const trackHelpers = window.MAWE.resolve('project-tracks');
 const helpers = {
+  TrackPolicy,
   gapRemoveCore: window.AsrGapRemoveCore,
   getNavigator: () => window.MaweHost.runtime.getNavigator(),
+  getProject: () => window.MaweBoot?.DATA,
 };
+const projectTracksHelpers = createProjectTracksModule(helpers);
+Object.assign(helpers, projectTracksHelpers);
+Object.assign(helpers, speakerIdentity);
 Object.assign(helpers, createDataModule(helpers));
 const subtitleGroupHelpers = createSubtitleGroupsModule(helpers);
 Object.assign(helpers, subtitleGroupHelpers);
@@ -67,8 +75,10 @@ Object.assign(helpers, createSplitTrimModule(helpers));
 Object.assign(helpers, createTimelineModule(helpers));
 Object.assign(helpers, createSettingsModule(helpers));
 Object.assign(helpers, createGapRemoveModule(helpers));
-Object.assign(helpers, createHistoryModule(helpers));
-Object.assign(helpers, createMultiSubtitleModule(helpers));
+const historyHelpers = createHistoryModule(helpers);
+Object.assign(helpers, historyHelpers);
+const multiSubtitleHelpers = createMultiSubtitleModule(helpers);
+Object.assign(helpers, multiSubtitleHelpers);
 const wordTimingHelpers = createWordTimingModule(helpers);
 Object.assign(helpers, createWordSplitModule(helpers));
 Object.assign(helpers, createSrtModule(helpers));
@@ -145,6 +155,7 @@ const {
   applySubtitleExtension,
   applyTextProcessing,
   collectTextSearchMatches,
+  compileTextSearchPattern,
   expandTextSearchReplacement,
   replaceTextSearchMatch,
   replaceAllTextSearchMatches,
@@ -155,6 +166,7 @@ const {
   stripSentenceShakeMarkers,
   parseSentencePopMarkers,
   stripSentencePopMarkers,
+  reconcileTimedTextItems,
   applyTimedTextEdit,
   assAnimationOverrideTags,
   assAnimationSliceTags,
@@ -183,6 +195,7 @@ const {
   assProfileForId,
   assSentenceAnimationTags,
   assStyleForId,
+  assStyleSnapshotKey,
   assStyleLine,
   assStyleVariant,
   assTransformStyleTargets,
@@ -192,6 +205,8 @@ const {
   buildFcp7ExportArtifacts,
   buildFfconcat,
   buildGapRemovedDynamicSegments,
+  createCleanupProjectionCache,
+  createAiCleanupProjector,
   buildAiCleanupSegments,
   buildGapRemovedIntervals,
   buildHistoryRecord,
@@ -272,6 +287,7 @@ const {
   isMacPlatform,
   isPendingReviewMarker,
   isRegionMarker,
+  isAiCleanupRemovalMarker,
   isShortSubtitleText,
   isRangeInsideRemovedGap,
   isTimedTextNeutralToken,
@@ -352,6 +368,8 @@ const {
   previewGeometryToCss,
   readBwfTimeReferenceFromFile,
   rebuildBindingOffsets,
+  setBindingIndexEnabled,
+  isBindingIndexEnabled,
   removeGapRemoveProvenanceRange,
   removeSubtitleBindings,
   repairGroupReferenceIndices,
@@ -395,9 +413,15 @@ const {
 } = helpers;
 
 window.AsrEditorUtils = {
+  effectiveSegmentColor: helpers.effectiveSegmentColor,
+  TrackPolicy,
+  ...speakerIdentity,
   cloneJsonValue: helpers.cloneJsonValue,
+  ...projectTracksHelpers,
+  ...multiSubtitleHelpers,
   ...subtitleGroupHelpers,
-...trackHelpers,
+  ...historyHelpers,
+  ...trackHelpers,
 ...wordTimingHelpers,
   PROJECT_SCHEMA,
   supportsProjectSchema,
@@ -426,6 +450,7 @@ filterFontFamilyOptions,
   resolveKeyboardOperationReference,
   buildReplacementPreview,
   collectTextSearchMatches,
+  compileTextSearchPattern,
   expandTextSearchReplacement,
   replaceTextSearchMatch,
   replaceAllTextSearchMatches,
@@ -450,6 +475,7 @@ filterFontFamilyOptions,
   buildTimedTextEditReport,
   timedTextEditDirtyFlags,
   timedTextEditGutterNumbers,
+  reconcileTimedTextItems,
   applyTimedTextEdit,
   countTextUnits,
   countSubtitleUnits,
@@ -473,6 +499,7 @@ filterFontFamilyOptions,
   filterMarkers,
   isPendingReviewMarker,
   isRegionMarker,
+  isAiCleanupRemovalMarker,
   markerKind,
   markerMatchesFilter,
   markerPresetColorLabel,
@@ -533,6 +560,8 @@ filterFontFamilyOptions,
   bindingForSegment,
   buildSubtitleBinding,
   rebuildBindingOffsets,
+  setBindingIndexEnabled,
+  isBindingIndexEnabled,
   swapMainAndExtensionSubtitle,
   removeSubtitleBindings,
   matchSubtitleSegments,
@@ -627,6 +656,7 @@ filterFontFamilyOptions,
   defaultAssStyleLibrary,
   normalizeAssStyleLibrary,
   assStyleForId,
+  assStyleSnapshotKey,
   assProfileForId,
   assStyleVariant,
   assEmphasisRuns,
@@ -674,6 +704,8 @@ filterFontFamilyOptions,
   foldMassPairJunction,
   buildGapRemovedIntervals,
   buildGapRemovedDynamicSegments,
+  createCleanupProjectionCache,
+  createAiCleanupProjector,
   buildAiCleanupSegments,
   resolveGapFillRange,
   EXPORT_FRAME_PROFILES,

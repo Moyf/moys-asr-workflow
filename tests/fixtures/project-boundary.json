@@ -14,8 +14,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
       "$.schema",
-      "$.segments[0].id"
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -27,7 +35,18 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": []
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
+    ]
   },
   {
     "name": "reserved-id",
@@ -50,8 +69,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
       "$.schema",
-      "$.segments[0].id"
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -70,8 +97,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
       "$.schema",
-      "$.segments[0].id"
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -101,8 +136,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
       "$.schema",
-      "$.segments[0].id"
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -127,8 +170,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
       "$.schema",
-      "$.segments[0].id"
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -153,8 +204,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
       "$.schema",
-      "$.segments[0].id"
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -179,8 +238,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
       "$.schema",
-      "$.segments[0].id"
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -233,7 +300,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
-      "$.schema"
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -257,18 +333,18 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
-      "$.multi_subtitle.bindings",
-      "$.multi_subtitle.display_mode",
-      "$.multi_subtitle.enabled",
-      "$.multi_subtitle.schema",
-      "$.multi_subtitle.tracks[0].id",
-      "$.multi_subtitle.tracks[0].role",
-      "$.multi_subtitle.tracks[0].segments",
-      "$.multi_subtitle.tracks[0].split_mode",
-      "$.overlay_track.enabled",
-      "$.overlay_track.segments",
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.multi_subtitle",
+      "$.overlay_track",
+      "$.palette_size",
       "$.schema",
-      "$.segments[0].id"
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -307,7 +383,19 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.multi_subtitle",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
+    ]
   },
   {
     "name": "ass-position",
@@ -329,7 +417,18 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
+    ]
   },
   {
     "name": "legacy-style",
@@ -351,7 +450,18 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
+    ]
   },
   {
     "name": "frame-pairs",
@@ -373,7 +483,18 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
+    ]
   },
   {
     "name": "future-schema",
@@ -443,7 +564,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0]"
+      "$.tracks[0].segments[0]"
     ],
     "change_paths": null
   },
@@ -462,7 +583,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].id"
+      "$.tracks[0].segments[0].id"
     ],
     "change_paths": null
   },
@@ -481,7 +602,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].id"
+      "$.tracks[0].segments[0].id"
     ],
     "change_paths": null
   },
@@ -500,7 +621,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].id"
+      "$.tracks[0].segments[0].id"
     ],
     "change_paths": null
   },
@@ -525,7 +646,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[1].id"
+      "$.tracks[0].segments[1].id"
     ],
     "change_paths": null
   },
@@ -543,7 +664,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].start"
+      "$.tracks[0].segments[0].start"
     ],
     "change_paths": null
   },
@@ -561,7 +682,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].start"
+      "$.tracks[0].segments[0].start"
     ],
     "change_paths": null
   },
@@ -579,7 +700,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].start"
+      "$.tracks[0].segments[0].start"
     ],
     "change_paths": null
   },
@@ -597,12 +718,19 @@
     "strict_ok": false,
     "import_ok": true,
     "error_paths": [
-      "$.segments[0].end"
+      "$.tracks[0].segments[0].end"
     ],
     "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
       "$.schema",
-      "$.segments[0].end",
-      "$.segments[0].id"
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -624,13 +752,19 @@
     "strict_ok": false,
     "import_ok": true,
     "error_paths": [
-      "$.segments[1].start"
+      "$.tracks[0].segments[1].start"
     ],
     "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
       "$.schema",
-      "$.segments[0].id",
-      "$.segments[1].id",
-      "$.segments[1].start"
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -659,12 +793,19 @@
     "strict_ok": false,
     "import_ok": true,
     "error_paths": [
-      "$.segments[0].items[1].start"
+      "$.tracks[0].segments[0].items[1].start"
     ],
     "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
       "$.schema",
-      "$.segments[0].id",
-      "$.segments[0].items[1].start"
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -688,9 +829,20 @@
     "strict_ok": false,
     "import_ok": true,
     "error_paths": [
-      "$.segments[0].items[0].end"
+      "$.tracks[0].segments[0].items[0].end"
     ],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
+    ]
   },
   {
     "name": "mixed-errors-never-repair",
@@ -707,8 +859,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.schema",
-      "$.segments[0].end"
+      "$.schema"
     ],
     "change_paths": null
   },
@@ -727,7 +878,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].items"
+      "$.tracks[0].segments[0].items"
     ],
     "change_paths": null
   },
@@ -752,7 +903,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].items[0].text"
+      "$.tracks[0].segments[0].items[0].text"
     ],
     "change_paths": null
   },
@@ -773,7 +924,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].color_ref.headIdx"
+      "$.tracks[0].segments[0].color_ref.headIdx"
     ],
     "change_paths": null
   },
@@ -789,8 +940,8 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.timebase.unit",
-      "$.timebase.fps"
+      "$.timebase.fps",
+      "$.timebase.unit"
     ],
     "change_paths": null
   },
@@ -812,7 +963,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.overlay_track.segments[0].id"
+      "$.tracks[1].segments[0].id"
     ],
     "change_paths": null
   },
@@ -846,7 +997,8 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.multi_subtitle.bindings[0].track_id"
+      "$.multi_subtitle.bindings[0].extension_segment_ids",
+      "$.multi_subtitle.bindings[0].main_segment_ids"
     ],
     "change_paths": null
   },
@@ -922,7 +1074,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0]"
+      "$.tracks[0].segments[0]"
     ],
     "change_paths": null
   },
@@ -935,7 +1087,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.language_source"
+      "$.tracks[0].language_source"
     ],
     "change_paths": null
   },
@@ -966,7 +1118,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.multi_subtitle.main_split_mode"
+      "$.tracks[0].split_mode_override"
     ],
     "change_paths": null
   },
@@ -985,7 +1137,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.multi_subtitle.tracks[0].split_mode"
+      "$.tracks[1].split_mode"
     ],
     "change_paths": null
   },
@@ -1060,7 +1212,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].items[0]"
+      "$.tracks[0].segments[0].items[0]"
     ],
     "change_paths": null
   },
@@ -1101,7 +1253,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
-      "$.schema"
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -1118,7 +1279,16 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
-      "$.schema"
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
     ]
   },
   {
@@ -1283,7 +1453,17 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.tracks"
+    ]
   },
   {
     "name": "v1.5-empty",
@@ -1298,7 +1478,17 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.tracks"
+    ]
   },
   {
     "name": "v1.5-cross-track-members",
@@ -1364,7 +1554,18 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.overlay_track",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.tracks"
+    ]
   },
   {
     "name": "v1.5-missing-table",
@@ -1610,8 +1811,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.subtitle_groups.sticker[0]",
-      "$.segments[0].sticker_group_id"
+      "$.subtitle_groups.sticker[0]"
     ],
     "change_paths": null
   },
@@ -1748,7 +1948,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].sticker_group_id"
+      "$.tracks[0].segments[0].sticker_group_id"
     ],
     "change_paths": null
   },
@@ -1795,7 +1995,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].sticker_group_id"
+      "$.tracks[0].segments[0].sticker_group_id"
     ],
     "change_paths": null
   },
@@ -1845,7 +2045,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].sticker"
+      "$.tracks[0].segments[0].sticker"
     ],
     "change_paths": null
   },
@@ -1893,7 +2093,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].color"
+      "$.tracks[0].segments[0].color"
     ],
     "change_paths": null
   },
@@ -1995,7 +2195,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.segments[0].id"
+      "$.tracks[0].segments[0].id"
     ],
     "change_paths": null
   },
@@ -2110,7 +2310,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.overlay_track.segments[0].id"
+      "$.tracks[1].segments[0].id"
     ],
     "change_paths": null
   },
@@ -2144,7 +2344,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.overlay_track.segments[0].id"
+      "$.tracks[1].segments[0].id"
     ],
     "change_paths": null
   },
@@ -2183,7 +2383,7 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.multi_subtitle.tracks[0].segments[0].id"
+      "$.tracks[1].segments[0].id"
     ],
     "change_paths": null
   },
@@ -2210,7 +2410,17 @@
     "import_ok": true,
     "error_paths": [],
     "change_paths": [
-      "$.segments[0].id"
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.multi_subtitle",
+      "$.overlay_track",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.tracks"
     ]
   },
   {
@@ -2223,7 +2433,18 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
+    ]
   },
   {
     "name": "v1-timed-text-view-single",
@@ -2235,7 +2456,18 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.subtitle_groups",
+      "$.tracks"
+    ]
   },
   {
     "name": "v1-timed-text-view-invalid",
@@ -2335,7 +2567,17 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.tracks"
+    ]
   },
   {
     "name": "v1.5-timed-text-view-single",
@@ -2351,7 +2593,17 @@
     "strict_ok": true,
     "import_ok": true,
     "error_paths": [],
-    "change_paths": null
+    "change_paths": [
+      "$.annotation_mode",
+      "$.bilingual",
+      "$.bindings",
+      "$.palette_size",
+      "$.schema",
+      "$.segments",
+      "$.speaker_shortcuts",
+      "$.speakers",
+      "$.tracks"
+    ]
   },
   {
     "name": "v1.5-timed-text-view-invalid",
@@ -2474,7 +2726,76 @@
     "strict_ok": false,
     "import_ok": false,
     "error_paths": [
-      "$.schema"
+      "$.segments"
     ]
+  },
+  {
+    "name": "v2-multiple-secondary",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "tracks": [
+        {
+          "id": "main",
+          "name": "主字幕",
+          "role": "main",
+          "enabled": true,
+          "segments": []
+        },
+        {
+          "id": "en",
+          "role": "secondary",
+          "name": "English",
+          "enabled": true,
+          "segments": []
+        },
+        {
+          "id": "fr",
+          "role": "secondary",
+          "name": "French",
+          "enabled": true,
+          "segments": []
+        }
+      ],
+      "bindings": [],
+      "bilingual": {
+        "display_mode": "both",
+        "active_track_id": "en"
+      },
+      "subtitle_groups": {
+        "next_id": 1,
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.tracks"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1-multiple-secondary",
+    "input": {
+      "segments": [],
+      "multi_subtitle": {
+        "tracks": [
+          {
+            "id": "en",
+            "segments": []
+          },
+          {
+            "id": "fr",
+            "segments": []
+          }
+        ]
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.tracks"
+    ],
+    "change_paths": null
   }
 ]

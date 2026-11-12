@@ -40,6 +40,7 @@ from maw.local_asr import (
     resolve_engine_model_source,
     write_local_outputs,
 )
+from tests.track_helpers import main_track
 
 
 class LocalAsrNormalizationTests(unittest.TestCase):
@@ -1548,10 +1549,10 @@ class LocalAsrFlowTests(unittest.TestCase):
 
             self.assertEqual(paths.json, root / "sample.funasr-local.mosp")
             project = json.loads(paths.json.read_text(encoding="utf-8"))
-            self.assertEqual(project["model"], "paraformer-zh")
+            self.assertEqual(main_track(project)['model'], "paraformer-zh")
             self.assertEqual(project["media_metadata"]["selected_audio_track"], 2)
             self.assertEqual(
-                {field: project[field] for field in (
+                {field: main_track(project)[field] for field in (
                     "language", "language_source", "split_mode", "timestamp_granularity"
                 )},
                 {

@@ -93,7 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="FireRed 是否使用 ct-punc 自动标点（默认: ct-punc）",
     )
     parser.add_argument("--speaker-model", help="FunASR 可选说话人模型")
-    parser.add_argument("--speaker-colors", action="store_true", help="为说话人段落生成颜色快照")
+    parser.add_argument("--speaker-colors", action="store_true", help="按独立说话人身份着色，超过五人时工程自动使用九色")
     parser.add_argument("--language", help="语言提示，例如 zh 或 en")
     parser.add_argument(
         "--audio-track", type=int, default=0,
@@ -311,9 +311,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             if snapped:
                 print(f"[输出] 已将 {snapped} 个插值切点吸附到语音能量谷")
             if args.speaker_colors:
-                from maw.speaker import apply_speaker_colors
+                from maw.speaker import speaker_color_summary
 
-                apply_speaker_colors(segments)
+                speaker_color_summary(segments)
             if not segments:
                 print("错误: 本地模型没有返回可用的转写文本")
                 return 1
@@ -326,6 +326,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     },
                 )
             outputs = write_local_outputs(
+                speaker_colors=args.speaker_colors,
                 input_path=input_path,
                 cache_media_path=audio_path,
                 output_srt=output_srt,

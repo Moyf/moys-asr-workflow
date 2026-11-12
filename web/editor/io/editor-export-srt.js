@@ -1,4 +1,3 @@
-import { activeExtensionSegments } from '../cues/overlay-track.js';
 
 export function initMaweExportSrt() {
 'use strict';
@@ -15,19 +14,33 @@ export function initMaweExportSrt() {
   // 程序内开关（不暴露 GUI）：导出 SRT 时保留禁用项的时间轴序号但内容替换为空白
   let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
+  const cleanupProjection = window.AsrEditorUtils.createCleanupProjectionCache({
+    createRetainedProjector: window.AsrGapRemoveCore.createCleanupRetainedProjector,
+    createExportProjector: window.AsrEditorUtils.createAiCleanupProjector,
+  });
+
+  function cleanupPreviewSegment(segment) {
+    return cleanupProjection.retainedCue(segment, MaweBoot.DATA.gap_remove);
+  }
+
+  function setCleanupProjectionCacheEnabled(enabled) { cleanupProjection.setEnabled(enabled); }
+  function isCleanupProjectionCacheEnabled() { return cleanupProjection.isEnabled(); }
+
+  function cleanupSegments(segments) {
+    return cleanupProjection.exportSegments(segments, MaweBoot.DATA.gap_remove);
+  }
+
   function cleanupMainSegments() {
-    return window.AsrEditorUtils.buildAiCleanupSegments(MaweBoot.DATA.segments, MaweBoot.DATA.gap_remove);
+    return cleanupSegments(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
   }
 
   function cleanupMergedExportSegments() {
-    const merged = window.MaweExportContext.mergedExportSegments();
-    const main = cleanupMainSegments();
-    const projection = new Map(MaweBoot.DATA.segments.map((segment, index) => [segment, main[index]]));
-    return { ...merged, segments: merged.segments.map((segment) => projection.get(segment) || segment)
-      .sort((left, right) => left.start - right.start) };
+    const merged = window.MaweExportContext.mergedExportSegments(cleanupSegments);
+    return { ...merged, segments: [...merged.segments].sort((left, right) => left.start - right.start) };
   }
 
   function buildSrt({ alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
+  window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA);
   const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     segments,
@@ -48,6 +61,7 @@ export function initMaweExportSrt() {
   // loaded project. Video subtitles follow the returned media timeline rather
   // than the independent, millisecond-precise gap-removed SRT preference.
   function captureVideoSrt() {
+    window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA);
     const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
     const options = {
       colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
@@ -105,6 +119,8 @@ export function initMaweExportSrt() {
 
 
   async function downloadColorSrts(gapRemoved = false) {
+  try { window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA); }
+  catch (error) { MaweHint.flashHint(error.message, 'warning'); return; }
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   const colors = usedSubtitleColors();
   const removed = gapRemoved ? MaweGapRemoveData.getRemovedGapRanges() : [];
@@ -192,7 +208,7 @@ export function initMaweExportSrt() {
 
   function buildDynamicCaptionExportData(segments, gapRemoved) {
     const colorContext = Array.isArray(segments) ? segments : [];
-    const projected = segments === MaweBoot.DATA.segments ? cleanupMainSegments() : colorContext;
+    const projected = cleanupSegments(colorContext);
     const source = projected.map((segment) => ({
       ...segment,
       text: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
@@ -307,20 +323,25 @@ export function initMaweExportSrt() {
 
   function buildAss({ preview = false, onAssPlan = null, allowAssPlanDiagnostics = false,
     alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
+  if (!preview) window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'all');
   const speakerOptions = MaweSpeakerLabels.speakerLabelExportOptions();
   if (preview) {
     const settings = MaweSpeakerLabels.getSpeakerLabelSettings();
-    speakerOptions.speakerLabelsEnabled = settings.mapping_enabled && settings.enabled;
+    speakerOptions.speakerLabelsEnabled = (Array.isArray(MaweBoot.DATA.speakers) || settings.mapping_enabled) && settings.enabled;
   }
-  const { overlaySegments } = cleanupMergedExportSegments();
-  // 副字幕轨随 ASS 导出（多重字幕开启时才存在）；叠加轨与副字幕分层输出。
-  const extensionSegments = preview && !MaweDom.extensionOverlayToggle?.checked
-    ? [] : activeExtensionSegments();
+  const surface = preview ? 'preview' : 'export';
+  const policy = window.AsrEditorUtils.TrackPolicy;
+  const overlay = window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA);
+  const extension = window.AsrEditorUtils.getExtensionTrack(MaweBoot.DATA);
+  const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+  const overlaySegments = policy.isTrackEnabled(overlay, surface) ? overlay.segments : [];
+  const extensionSegments = policy.isTrackEnabled(extension, surface) && (!preview || MaweDom.extensionOverlayToggle?.checked)
+    ? cleanupSegments(extension.segments) : [];
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     cleanupMainSegments(),
     alignFirstStart,
   );
-  return window.AsrEditorUtils.buildAssPayload(preview && !MaweDom.overlayToggle.checked
+  return window.AsrEditorUtils.buildAssPayload(!policy.isTrackEnabled(main, surface) || (preview && !MaweDom.overlayToggle.checked)
     ? [] : cleanupMainSegments(), {
     ...assExportOptions(),
     onAssPlan,
@@ -339,7 +360,7 @@ export function initMaweExportSrt() {
 
 
   function buildExtensionSrt(track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
-    return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
+    return window.AsrEditorUtils.buildSrtPayload(cleanupSegments(window.AsrEditorUtils.TrackPolicy.isTrackEnabled(track, 'export') ? track.segments : []), {
       ...MaweSpeakerLabels.speakerLabelExportOptions(),
       assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
       formatTime: MaweCueElements.fmtSrtTime,
@@ -347,10 +368,11 @@ export function initMaweExportSrt() {
   }
 
   function buildBilingualSrt() {
-    if (MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return '';
+    window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'main_and_extension');
+    if (!window.AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export')) return '';
     const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
     return window.AsrEditorUtils.buildBilingualSrtPayload(segments,
-      MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [], {
+      cleanupSegments(MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || []), {
         alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
         colorContextResolver: window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments),
         ...MaweSpeakerLabels.speakerLabelExportOptions(),
@@ -371,6 +393,7 @@ export function initMaweExportSrt() {
   }
 
   function buildGapRemovedSrt({ alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
+  window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA);
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
     MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
@@ -398,12 +421,13 @@ export function initMaweExportSrt() {
 
   function buildGapRemovedAss({ onAssPlan = null,
     alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
+  window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'all');
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
     MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
     return null;
   }
-  const mainSegments = filterSegmentsInsideRemovedGaps(cleanupMainSegments(), removed);
+  const mainSegments = filterSegmentsInsideRemovedGaps(window.AsrEditorUtils.TrackPolicy.isTrackEnabled(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'export') ? cleanupMainSegments() : [], removed);
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     mainSegments,
     alignFirstStart,
@@ -413,7 +437,8 @@ export function initMaweExportSrt() {
   // onAssPlan 透传给表情包烧录：排版计划与 ASS 文本同一份（收缩时间轴），
   // 字幕位置与表情包窗口天然一致。
   const { overlaySegments } = cleanupMergedExportSegments();
-  const extensionSegments = activeExtensionSegments();
+  const extension = window.AsrEditorUtils.getExtensionTrack(MaweBoot.DATA);
+  const extensionSegments = cleanupSegments(window.AsrEditorUtils.TrackPolicy.isTrackEnabled(extension, 'export') ? extension.segments : []);
   return window.AsrEditorUtils.buildAssPayload(mainSegments, {
     ...assExportOptions(),
     alignFirstStart,
@@ -431,8 +456,20 @@ export function initMaweExportSrt() {
   function usedSubtitleColors() {
   const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
   const resolveColor = window.MaweExportContext.exportColorContextResolver(overlaySet, overlaySegments);
+  if (MaweBoot.DATA.annotation_mode === 'speaker') {
+    const colors = new Map();
+    for (const segment of segments) {
+      if (segment.disabled) continue;
+      const color = window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, segment, resolveColor(segment));
+      const key = color?.value || 'default';
+      if (!colors.has(key)) colors.set(key, color
+        ? { name: key, value: key, label: MaweColors.COLOR_BY_NAME[color.name]?.label || key }
+        : { name: 'default', label: '默认' });
+    }
+    return [...colors.values()];
+  }
   const names = new Set(segments.filter((segment) => !segment.disabled).map((segment) => (
-    window.AsrEditorUtils.effectiveColorName(segment, resolveColor(segment)) || 'default'
+    window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, segment, resolveColor(segment))?.name || 'default'
   )).filter((name) => name === 'default' || MaweColors.COLOR_BY_NAME[name]));
   return [
     ...MaweColors.COLOR_PALETTE.filter((color) => names.has(color.name)),
@@ -443,7 +480,7 @@ export function initMaweExportSrt() {
 
 
   function updateSubtitleExportUi() {
-    const bilingual = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+    const bilingual = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'export');
     const hasSecondary = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments
       ?.some((segment) => segment && segment.disabled !== true && String(segment.text || '').trim());
     const mainItem = document.getElementById('download-full-srt');
@@ -478,6 +515,11 @@ export function initMaweExportSrt() {
 
   function colorExportFilenameSuffix(color, speakerSettings = MaweSpeakerLabels.getSpeakerLabelSettings()) {
     const colorSuffix = window.MAWE_I18N?.exportTag?.(color.name) || color.name;
+    if (MaweSettings.EDITOR_SETTINGS.exportSpeakerNamesAsSuffix && MaweBoot.DATA.annotation_mode === 'speaker') {
+      const names = (MaweBoot.DATA.speakers || []).filter(speaker => speaker.color.toLowerCase() === color.value?.toLowerCase())
+        .map(speaker => speaker.name).filter(Boolean);
+      return safeColorExportFilenameSuffix([...new Set(names)].join('_'), colorSuffix);
+    }
     if (!MaweSettings.EDITOR_SETTINGS.exportSpeakerNamesAsSuffix
         || speakerSettings.mapping_enabled !== true
         || color.name === 'default') {
@@ -488,6 +530,9 @@ export function initMaweExportSrt() {
 
   global.MaweExportSrt = Object.freeze({
     cleanupMainSegments,
+    cleanupPreviewSegment,
+    setCleanupProjectionCacheEnabled,
+    isCleanupProjectionCacheEnabled,
     currentAssVideoResolution,
     assExportOptions,
     buildAss,

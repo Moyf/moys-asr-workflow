@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
+import copy
+import os
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from maw.media import probe_audio_tracks, probe_video_fps, project_media_reference
-from maw.project import PROJECT_SCHEMA, ProjectValidationError, ProjectValidationFailed
-from maw.subtitle_groups import GROUP_PROJECT_SCHEMA
+from maw.project import normalize_project
 
 # 工程级波形缓存键。生成端把它们合并进运行态工程供页面即时使用，落盘边界
 # （serialize_mosp / server 保存）统一剥掉：缓存真源是媒体旁的 .quapeaks /
@@ -45,38 +47,38 @@ def rebase_project_media(
 
 
 def strip_inline_caches(project: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a persistence copy without caches or legacy session flags.
-
-    Copy only containers whose session fields are removed. Nested third-party
-    extension fields, even those named _dirty, are outside this reserved scope.
-    The runtime project (including its highlights and caches) stays untouched.
-    """
-    stripped = dict(project)
+    """Copy persistent content without caches or reserved session highlights."""
+    stripped = copy.deepcopy(dict(project))
     for key in INLINE_CACHE_KEYS:
         stripped.pop(key, None)
     stripped.pop("_dirty", None)
 
-    def strip_track(value):
-        if not isinstance(value, Mapping):
-            return value
-        track = dict(value)
+    def strip_track(track: object) -> None:
+        if not isinstance(track, dict):
+            return
         track.pop("_dirty", None)
-        if isinstance(track.get("segments"), list):
-            track["segments"] = [
-                {key: item for key, item in segment.items() if key != "_dirty"}
-                if isinstance(segment, Mapping) else segment
-                for segment in track["segments"]
-            ]
-        return track
+        segments = track.get("segments")
+        if isinstance(segments, list):
+            for segment in segments:
+                if isinstance(segment, dict):
+                    segment.pop("_dirty", None)
 
-    stripped = strip_track(stripped)
-    if isinstance(stripped.get("multi_subtitle"), Mapping):
-        multi = strip_track(stripped["multi_subtitle"])
-        if isinstance(multi.get("tracks"), list):
-            multi["tracks"] = [strip_track(track) for track in multi["tracks"]]
-        stripped["multi_subtitle"] = multi
-    if "overlay_track" in stripped:
-        stripped["overlay_track"] = strip_track(stripped["overlay_track"])
+    strip_track(stripped)
+    tracks = stripped.get("tracks")
+    if isinstance(tracks, list):
+        for track in tracks:
+            strip_track(track)
+    strip_track(stripped.get("overlay_track"))
+    multi = stripped.get("multi_subtitle")
+    if isinstance(multi, dict):
+        multi.pop("_dirty", None)
+        tracks = multi.get("tracks")
+        if isinstance(tracks, list):
+            for track in tracks:
+                strip_track(track)
+    bilingual = stripped.get("bilingual")
+    if isinstance(bilingual, dict):
+        bilingual.pop("_dirty", None)
     return stripped
 
 
@@ -164,15 +166,10 @@ def serialize_mosp(
     ffprobe_path: Path | str | None = None,
     selected_audio_track: int | None = None,
 ) -> str:
-    """Serialize a MAW project after optional source-media enrichment.
+    """Validate/import a detached project and serialize only canonical v3."""
 
-    Validation and normalization remain the responsibility of the caller.
-    """
-
-    if "schema" in project and project["schema"] not in (PROJECT_SCHEMA, GROUP_PROJECT_SCHEMA):
-        raise ProjectValidationFailed((ProjectValidationError("$.schema", f"must be {PROJECT_SCHEMA} or {GROUP_PROJECT_SCHEMA}"),))
     enriched = enrich_project_media_metadata(
-        project,
+        normalize_project(dict(project)),
         media_path,
         ffprobe_path=ffprobe_path,
     )
@@ -181,8 +178,8 @@ def serialize_mosp(
         merged_metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
         merged_metadata["selected_audio_track"] = selected_audio_track
         enriched["media_metadata"] = merged_metadata
-    schema = enriched.pop("schema", PROJECT_SCHEMA)
-    canonical = strip_inline_caches({"schema": schema, **enriched})
+    canonical = normalize_project(strip_inline_caches(enriched))
+    canonical = {"schema": canonical["schema"], **canonical}
     return json.dumps(canonical, ensure_ascii=False, indent=2) + "\n"
 
 
@@ -197,7 +194,6 @@ def write_mosp(
     """Write a UTF-8 LF-terminated ``.mosp`` project and return its path."""
 
     target = Path(path).expanduser()
-    target.parent.mkdir(parents=True, exist_ok=True)
     portable = rebase_project_media(project, target, media_path=media_path)
     probe_media_path = media_path
     raw_media = project.get("media")
@@ -205,14 +201,19 @@ def write_mosp(
         probe_media_path = Path(raw_media.strip()).expanduser()
         if not probe_media_path.is_absolute():
             probe_media_path = target.resolve().parent / probe_media_path
-    target.write_text(
-        serialize_mosp(
+    content = serialize_mosp(
             portable,
             media_path=probe_media_path,
             ffprobe_path=ffprobe_path,
             selected_audio_track=selected_audio_track,
-        ),
-        encoding="utf-8",
-        newline="\n",
-    )
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{target.name}-", suffix=".tmp", dir=target.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as output:
+            output.write(content)
+        os.replace(temporary, target)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
     return target

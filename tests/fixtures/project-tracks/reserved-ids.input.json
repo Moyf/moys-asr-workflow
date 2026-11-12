@@ -1,0 +1,4 @@
+{
+  "segments": [{"start": 0, "end": 1000, "text": "generated"}, {"id": "main-2-cue-1", "start": 1000, "end": 2000, "text": "reserved"}],
+  "multi_subtitle": {"tracks": [{"id": "main", "segments": [{"id": "main-2-cue-1", "start": 0, "end": 1000, "text": "duplicate across tracks"}]}]}
+}

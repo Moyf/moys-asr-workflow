@@ -139,3 +139,32 @@ test('immediately refused automatic-postprocess retry leaves running state', asy
   await expect(page.locator('#workflowStages')).toBeHidden();
   await expect(page.locator('#stop')).toBeHidden();
 });
+
+
+test('redesigned media selection retains upstream thumbnail controls and audio disable state', async ({ page }) => {
+  await open(page);
+  const drop = mediaPath => page.evaluate(path => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path }), mediaPath);
+  await drop('D:/Demo/video.mp4');
+  await page.locator('#recognitionExpand').click();
+  await page.locator('#advancedToggle').click();
+  const checkbox = page.locator('#generateKeyframes');
+  await expect(checkbox).toBeVisible();
+  await expect(checkbox).toBeChecked();
+  await expect(checkbox).toBeEnabled();
+  await expect(page.locator('#selectedMediaName')).toHaveText('video.mp4');
+  await drop('D:/Demo/audio.mp3');
+  await expect(checkbox).toBeDisabled();
+  await expect(checkbox).toBeChecked();
+  await expect(page.locator('#generateKeyframesField .misc-option-label')).toHaveCSS('opacity', '0.55');
+  await expect(page.locator('#selectedMediaName')).toHaveText('audio.mp3');
+  await drop('D:/Demo/video.mp4');
+  await expect(checkbox).toBeEnabled();
+  await expect(checkbox).toBeChecked();
+  await checkbox.uncheck();
+  await expect(page.locator('#generateThumbnailsField')).toBeHidden();
+  await checkbox.check();
+  await expect(page.locator('#generateThumbnailsField')).toBeVisible();
+  const gap = await page.evaluate(() => document.querySelector('#generateKeyframesField .misc-option-copy').getBoundingClientRect().top - document.querySelector('#speakerColorsField .misc-option-copy').getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await page.screenshot({ path: '.artifacts/pr235-thumbnail-controls.png', fullPage: true });
+});

@@ -47,7 +47,7 @@ export function initMawePlaybackLoop() {
   function findActive(tMs) {
     // 相邻字幕共用边界时，右侧字幕的 start 优先；处于时间间隙时保留
     // 前一条字幕作为当前项，和原有列表高亮语义一致。
-    return findActiveSegmentIndex(MaweBoot.DATA.segments, tMs);
+    return findActiveSegmentIndex(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, tMs);
   }
 
 
@@ -82,6 +82,7 @@ export function initMawePlaybackLoop() {
       return;
     }
     MaweCuePanelState.gapPreviewRange = { start: gap.start, end: gap.end };
+    window.MaweGapPlayback?.refresh();
     MaweHint.flashHint('正在预览此空隙；播放头离开后恢复跳过');
   }
 
@@ -113,32 +114,8 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
 
 
 
-  // 跳过空隙的 seek 守卫：跳过判定是 level-triggered，而媒体元素的 seek 异步，
-  // seek 未生效（seeking 期间 currentTime 报告的是目标位置）或落点经视频帧量化
-  // 回落到空隙内时，若每帧重复赋值 currentTime 会不断打断上一次 seek，播放头
-  // 僵持在空隙末端、播放停滞。这里记录已发起跳过的空隙，同一空隙只发起一次
-  // seek；位置离开空隙、暂停、进入预览或切换到其他空隙后守卫失效，之后
-  // （含用户手动 seek 回空隙内且正在播放）可正常再次触发。
-  let gapSkipGuard = null;
-
-  // 返回 true 表示本轮已由跳过逻辑处理（发起 seek 或等待进行中的 seek），
-  // 调用方直接返回，不再刷新时间码与预览。
   function applyGapPlaybackSkip(skippedGap, player) {
-    if (!skippedGap) {
-      // 不在空隙内、暂停或预览时守卫应失效；seek 进行中报告的是目标位置，
-      // 等 seek 结束再清，避免落点量化回空隙内时守卫被提前清除。
-      if (player.paused || !player.seeking) gapSkipGuard = null;
-      return false;
-    }
-    // seek 进行中不重复赋值，等当前 seek 生效后再判定。
-    if (player.seeking) return true;
-    const guarded = gapSkipGuard
-      && Number(gapSkipGuard.start) === Number(skippedGap.start)
-      && Number(gapSkipGuard.end) === Number(skippedGap.end);
-    if (guarded) return true;
-    gapSkipGuard = { start: skippedGap.start, end: skippedGap.end };
-    player.currentTime = skippedGap.end / 1000;
-    return true;
+    return window.MaweGapPlayback?.update(player, skippedGap) === true;
   }
 
   function updatePlaybackFrame() {
@@ -169,15 +146,18 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
 
   function refreshSubtitlePreview(tMs = MaweCoreState.player.currentTime * 1000, idx = findActive(tMs)) {
   // 编辑字幕文本时只刷新播放器预览，避免每输入一个字都触发字幕列表的自动滚动。
-  const sourceSegment = idx >= 0 ? MaweBoot.DATA.segments[idx] : null;
+  const sourceSegment = idx >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] : null;
   const seg = sourceSegment
-    ? window.AsrGapRemoveCore.projectCleanupRetainedSegments([sourceSegment], MaweBoot.DATA.gap_remove)[0]
+    ? MaweExportSrt.cleanupPreviewSegment(sourceSegment)
     : null;
-  const mainVisible = !!MaweDom.overlayToggle.checked && isSubtitlePreviewActive(seg, tMs);
+  const policy = window.AsrEditorUtils.TrackPolicy;
+  const mainVisible = policy.isTrackEnabled(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'preview')
+    && !!MaweDom.overlayToggle.checked && isSubtitlePreviewActive(seg, tMs);
   const extension = extensionSegmentAtTime(tMs, idx);
-  const extensionVisible = !!MaweDom.extensionOverlayToggle?.checked && !!extension;
+  const extensionVisible = policy.isTrackEnabled(MaweMultiSubtitleCore.getActiveExtensionTrack(), 'preview')
+    && !!MaweDom.extensionOverlayToggle?.checked && !!extension;
   // 独立叠加轨预览：播放头落在叠加字幕内时显示其文本（叠加轨开启即预览）。
-  const overlayCue = overlayTrackVisible()
+  const overlayCue = policy.isTrackEnabled(getOverlayTrack(), 'preview') && overlayTrackVisible()
     ? (getOverlayTrack()?.segments || []).find((segment) => isSubtitlePreviewActive(segment, tMs)) || null
     : null;
   const overlayCueVisible = Boolean(overlayCue);
@@ -197,19 +177,19 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   const colorStyle = subtitleAppearance.color_style || MaweSettings.DEFAULT_SUBTITLE_COLOR_STYLE;
   const mainSubtitleColor = subtitleAppearance.color || MaweSettings.DEFAULT_SUBTITLE_COLOR;
   const speakerLabels = MaweSpeakerLabels.getSpeakerLabelSettings();
-  const mainColorName = mainVisible && seg
-    ? window.AsrEditorUtils.effectiveColorName(seg, MaweBoot.DATA.segments)
-    : null;
-  const speakerLabel = mainVisible && speakerLabels.mapping_enabled && speakerLabels.enabled
+  const identityLabels = Array.isArray(MaweBoot.DATA.speakers) || speakerLabels.mapping_enabled;
+  const mainColor = mainVisible ? window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) : null;
+  const mainColorName = mainColor?.name;
+  const speakerLabel = mainVisible && identityLabels && speakerLabels.enabled
     ? window.AsrEditorUtils.speakerLabelForSegment(
-      seg, MaweBoot.DATA.segments, speakerLabels.names,
+      seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, speakerLabels.names,
     )
     : '';
-  const speakerLabelVisible = Boolean(speakerLabel && mainColorName && MaweColors.COLOR_BY_NAME[mainColorName]);
+  const speakerLabelVisible = Boolean(speakerLabel);
   const speakerLabelColor = speakerLabelVisible
     ? colorPreviewEnabled && colorStyle === 'stroke'
       ? mainSubtitleColor
-      : MaweColors.COLOR_BY_NAME[mainColorName].value
+      : mainColor?.value || mainSubtitleColor
     : '';
   const speakerLabelText = speakerLabelVisible
     ? `${speakerLabel}${speakerLabels.separator}`
@@ -248,16 +228,15 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   }
   // 副字幕与主/叠加轨共用前缀开关，颜色引用在副字幕自己的数组中解析。
   const extensionColorContext = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [];
-  const extensionColorName = extensionVisible
-    ? window.AsrEditorUtils.effectiveColorName(extension, extensionColorContext) : null;
-  const extensionSpeakerLabel = extensionVisible && speakerLabels.mapping_enabled && speakerLabels.enabled
+  const extensionColor = extensionVisible ? window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, extension, extensionColorContext) : null;
+  const extensionSpeakerLabel = extensionVisible && identityLabels && speakerLabels.enabled
     ? window.AsrEditorUtils.speakerLabelForSegment(extension, extensionColorContext, speakerLabels.names) : '';
-  const extensionSpeakerVisible = Boolean(extensionSpeakerLabel && MaweColors.COLOR_BY_NAME[extensionColorName]);
+  const extensionSpeakerVisible = Boolean(extensionSpeakerLabel);
   const extensionSpeakerText = extensionSpeakerVisible ? `${extensionSpeakerLabel}${speakerLabels.separator}` : '';
   const extensionSpeakerColor = extensionSpeakerVisible
     ? colorPreviewEnabled && colorStyle === 'stroke'
       ? MaweAppearance.getExtensionSubtitleAppearance().color || MaweSettings.DEFAULT_EXTENSION_SUBTITLE_COLOR
-      : MaweColors.COLOR_BY_NAME[extensionColorName].value
+      : extensionColor?.value || MaweAppearance.getExtensionSubtitleAppearance().color || mainSubtitleColor
     : '';
   const extensionLabelEl = MaweDom.overlayExtensionSpeakerLabelEl;
   if (extensionLabelEl.classList.contains('hidden') === extensionSpeakerVisible) {
@@ -268,31 +247,43 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     extensionLabelEl.dataset.color = extensionSpeakerColor;
     extensionLabelEl.style.color = extensionSpeakerColor;
   }
+  if (!assMode) {
+    const value = MaweBoot.DATA.annotation_mode === 'speaker' && colorPreviewEnabled ? extensionColor?.value || '' : '';
+    const element = MaweDom.overlayExtensionTextEl;
+    const baseColor = MaweAppearance.getExtensionSubtitleAppearance().color || MaweSettings.DEFAULT_EXTENSION_SUBTITLE_COLOR;
+    const signature = `${value}|${colorStyle}|${baseColor}`;
+    if (element.dataset.speakerDisplayColor !== signature) {
+      element.dataset.speakerDisplayColor = signature;
+      element.style.color = colorStyle === 'text' && value ? value : baseColor;
+      element.style.textDecorationLine = colorStyle === 'underline' && value ? 'underline' : '';
+      element.style.textDecorationColor = value;
+      element.style.webkitTextStroke = colorStyle === 'stroke' && value ? `.125em ${value}` : '';
+      element.style.paintOrder = colorStyle === 'stroke' && value ? 'stroke fill' : '';
+    }
+  }
   const overlayCueText = overlayCueVisible ? String(overlayCue.text || '') : '';
   window.MaweAssFrame?.syncPreview();
   // 叠加轨说话人标签：颜色→说话人映射按叠加轨自身数组解析，与主字幕同源。
   const overlayColorContext = getOverlayTrack()?.segments || [];
   const overlaySpeakerLabel = overlayCueVisible
-    && speakerLabels.mapping_enabled && speakerLabels.enabled
+    && identityLabels && speakerLabels.enabled
     ? window.AsrEditorUtils.speakerLabelForSegment(
       overlayCue, overlayColorContext, speakerLabels.names,
     )
     : '';
-  const overlaySpeakerColorName = overlayCueVisible
-    ? window.AsrEditorUtils.effectiveColorName(overlayCue, overlayColorContext)
-    : null;
+  const overlaySpeakerColor = overlayCueVisible ? window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, overlayCue, overlayColorContext) : null;
   const overlaySpeakerLabelVisible = Boolean(
-    overlaySpeakerLabel && overlaySpeakerColorName && MaweColors.COLOR_BY_NAME[overlaySpeakerColorName],
+    overlaySpeakerLabel,
   );
   const assColorStyle = subtitleAppearance.ass_color_style || window.MaweAssStorageWiring.DEFAULT_ASS_COLOR_STYLE;
   const overlaySpeakerLabelColor = overlaySpeakerLabelVisible
     ? assMode
       ? assColorStyle === 'text' || assColorStyle === 'speaker'
-        ? MaweColors.COLOR_BY_NAME[overlaySpeakerColorName].value
+        ? overlaySpeakerColor?.value || mainSubtitleColor
         : ''
       : colorPreviewEnabled && colorStyle === 'stroke'
         ? mainSubtitleColor
-        : MaweColors.COLOR_BY_NAME[overlaySpeakerColorName].value
+        : overlaySpeakerColor?.value || mainSubtitleColor
     : '';
   const overlaySpeakerLabelText = overlaySpeakerLabelVisible
     ? `${overlaySpeakerLabel}${speakerLabels.separator}`
@@ -315,8 +306,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   // 播放刷新每帧都写内联样式。
   let previewSegmentColor = '';
   if (mainVisible && colorPreviewEnabled && seg) {
-    const colorName = window.AsrEditorUtils.effectiveColorName(seg, MaweBoot.DATA.segments);
-    previewSegmentColor = colorName ? MaweColors.COLOR_BY_NAME[colorName]?.value || '' : '';
+    previewSegmentColor = mainColor?.value || '';
   }
   const colorUnderline = colorPreviewEnabled
     && colorStyle === 'underline'
@@ -352,10 +342,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   // 接管，这里不再写 CSS 颜色，避免两套语义互相覆盖。
   let overlayTrackSegmentColor = '';
   if (!assMode && overlayCueVisible && colorPreviewEnabled) {
-    const overlayColorName = window.AsrEditorUtils.effectiveColorName(
-      overlayCue, getOverlayTrack()?.segments || [],
-    );
-    overlayTrackSegmentColor = overlayColorName ? MaweColors.COLOR_BY_NAME[overlayColorName]?.value || '' : '';
+    overlayTrackSegmentColor = overlaySpeakerColor?.value || '';
   }
   const overlayTrackUnderline = colorStyle === 'underline' ? overlayTrackSegmentColor : '';
   const overlayTrackTextColor = colorStyle === 'text' && overlayTrackSegmentColor

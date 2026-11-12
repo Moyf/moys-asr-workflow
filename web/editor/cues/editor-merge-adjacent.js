@@ -1,3 +1,4 @@
+import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
 import { getOverlayTrack, mergeOverlaySegments } from './overlay-track.js';
 
 export function initMaweMergeAdjacent() {
@@ -13,13 +14,13 @@ export function initMaweMergeAdjacent() {
 
 
   function mergeAdjacentSubtitle(direction) {
-  const target = MaweCuePanel.getCurrentCuePanelTarget();
+  const target = getCurrentCuePanelTarget();
   const extension = target?.kind === 'extension';
   const overlay = target?.kind === 'overlay';
   const track = extension ? target.track : null;
   const segments = extension
     ? track?.segments || []
-    : overlay ? (getOverlayTrack()?.segments || []) : MaweBoot.DATA.segments;
+    : overlay ? (getOverlayTrack()?.segments || []) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   let index = Number.isInteger(target?.index) ? target.index : -1;
   if (index < 0) {
     const selected = extension ? MaweSelection.selectedExtensionIdxs
@@ -45,3 +46,5 @@ export function initMaweMergeAdjacent() {
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function mergeAdjacentSubtitle(...args) { return window.MaweMergeAdjacent.mergeAdjacentSubtitle(...args); }

@@ -73,9 +73,40 @@ function stickerBoxError(page) {
   });
 }
 
+test('empty video click clears cue and sticker selection before toggling playback', async ({ page }) => {
+  await seek(page, 0.5);
+  const player = page.locator('#player');
+  const blank = { position: { x: 20, y: 20 } };
+  const sticker = page.locator('#sticker-overlay-layer');
+  const cue = page.locator('.cue[data-idx="0"]');
+  const panel = page.locator('#current-cue-panel');
+  await page.evaluate(() => MaweSelection.selectOnly(0));
+  await expect(cue).toHaveClass(/selected/);
+  await sticker.click();
+  await expect(sticker.locator('[data-handle="nw"]')).toBeVisible();
+  await expect(cue).toHaveClass(/selected/);
+
+  await player.click(blank);
+  await expect(cue).not.toHaveClass(/selected/);
+  await expect(panel).toHaveClass(/empty/);
+  await expect(sticker.locator('[data-handle="nw"]')).toBeHidden();
+  await expect(sticker.locator('img')).toBeVisible();
+  expect(await player.evaluate(video => ({ paused: video.paused, time: video.currentTime }))).toEqual({ paused: true, time: 0.5 });
+
+  await sticker.focus();
+  await player.click(blank);
+  await expect(sticker).not.toBeFocused();
+  expect(await player.evaluate(video => video.paused)).toBe(true);
+
+  await player.click(blank);
+  await expect.poll(() => player.evaluate(video => video.paused)).toBe(false);
+  await player.click(blank);
+  await expect.poll(() => player.evaluate(video => video.paused)).toBe(true);
+});
+
 test('server startup repairs legacy sticker groups before the first render', async ({ page }) => {
   expect(await page.evaluate(() => ({
-    end: MaweBoot.DATA.segments[0].sticker.end,
+    end: AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker')[0].end,
     count: MaweStickerOverlay.activeStickersAt(1500).length,
   }))).toEqual({ end: 2600, count: 1 });
 });

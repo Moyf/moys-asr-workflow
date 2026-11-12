@@ -407,6 +407,13 @@
                   </div>
                   <input id="generateSpectral" type="checkbox" class="auto-head-switch">
                 </div>
+                <div id="generateKeyframesField" class="misc-option">
+                  <div class="misc-option-copy">
+                    <label class="misc-option-label" for="generateKeyframes" data-i18n-title="generate_keyframes_title"><span data-i18n="generate_keyframes">生成缩略图</span></label>
+                    <p class="hint" data-i18n="generate_keyframes_hint">转写时生成秒级关键帧底图，供编辑器画面带使用；取消则跳过缩略图生成。</p>
+                  </div>
+                  <input id="generateKeyframes" type="checkbox" checked class="auto-head-switch">
+                </div>
                 <div id="debugRawField" class="misc-option">
                   <div class="misc-option-copy">
                     <label class="misc-option-label" for="debugRaw" data-i18n-title="debug_raw_title"><span data-i18n="debug_raw">调试模式</span></label>
@@ -419,7 +426,7 @@
                   <input id="generateThumbnails" type="checkbox">
                   <span data-i18n="generate_thumbnails">生成高精度画面预览图</span>
                 </label>
-                <p class="hint" data-i18n="generate_thumbnails_hint">转写时先生成秒级关键帧底图（总是开启），再额外解码精确网格画面供画面带铺满使用；未勾选时编辑器仍可按需补帧。</p>
+                <p class="hint" data-i18n="generate_thumbnails_hint">在基础关键帧底图之上额外解码精确网格画面供画面带铺满使用；未勾选时编辑器仍可按需补帧。</p>
               </div>
               </div>
             </div>

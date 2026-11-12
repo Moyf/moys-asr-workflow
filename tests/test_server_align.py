@@ -14,6 +14,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from maw.project import PROJECT_SCHEMA
+from maw.project_tracks import get_main_track, make_project
 from maw.waveform import media_signature
 
 
@@ -123,11 +124,23 @@ class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
 
             output_path = SERVER.write_project(
                 source_path,
-                {"schema": PROJECT_SCHEMA, "segments": [], "waveform": waveform},
+                make_project([], project_fields={"waveform": waveform}),
             )
 
             saved = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertNotIn("waveform", saved)
+            self.assertEqual(saved["schema"], PROJECT_SCHEMA)
+            self.assertEqual(get_main_track(saved)["segments"], [])
+
+    def test_write_project_rejects_future_schema_without_publishing_output(self) -> None:
+        with TemporaryDirectory() as temporary:
+            source = Path(temporary) / "source.mosp"
+            source.write_text("original\n", encoding="utf-8")
+            before = source.read_bytes()
+            with self.assertRaises(ValueError):
+                SERVER.write_project(source, {"schema": "moy.asr.project.v99", "tracks": []})
+            self.assertEqual(source.read_bytes(), before)
+            self.assertEqual(list(source.parent.iterdir()), [source])
 
     def test_rendered_page_inlines_gap_core_and_playback_contract(self) -> None:
         page = SERVER.render_page().decode("utf-8")
@@ -239,7 +252,7 @@ class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
             self.assertEqual(output["gap_remove"]["lead_in_ms"], 120)
             self.assertEqual(output["gap_remove"]["lead_out_ms"], 80)
             self.assertIn("script_alignment", output)
-            self.assertTrue(any(segment.get("disabled") is True for segment in output["segments"]))
+            self.assertTrue(any(segment.get("disabled") is True for segment in get_main_track(output)["segments"]))
             reloaded = SERVER.read_project(Path(exported["path"]))
             self.assertEqual(reloaded["script_alignment"]["schema"], "moy.asr.script_alignment.v1")
 

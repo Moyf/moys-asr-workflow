@@ -19,10 +19,10 @@ export function initMaweContextMenus() {
 
 
 
-  function findWaveformCueAtTime(timeMs, segments = MaweBoot.DATA.segments) {
+  function findWaveformCueAtTime(timeMs, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) {
     const time = Number(timeMs);
     if (!Number.isFinite(time)) return -1;
-    const list = Array.isArray(segments) ? segments : MaweBoot.DATA.segments;
+    const list = Array.isArray(segments) ? segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     return list.findIndex((segment) => {
       const start = Number(segment?.start);
       const end = Number(segment?.end);
@@ -57,7 +57,7 @@ export function initMaweContextMenus() {
     sep.className = 'sep';
     MaweDom.ctxmenu.appendChild(sep);
   }
-  const mainIdx = findWaveformCueAtTime(timeMs, MaweBoot.DATA.segments);
+  const mainIdx = findWaveformCueAtTime(timeMs, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
   const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   const extensionIdx = findWaveformCueAtTime(timeMs, extensionTrack?.segments);
   if (effectiveTrack === 'extension') {
@@ -85,7 +85,7 @@ export function initMaweContextMenus() {
       );
     }
   }
-  if (Array.isArray(MaweBoot.DATA.segments) && MaweBoot.DATA.segments.length) {
+  if (Array.isArray(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length) {
     addItem(
       '按音频位置拆分主字幕',
       'B',
@@ -188,6 +188,81 @@ export function initMaweContextMenus() {
     return { wrapper, list };
   }
 
+  function addSpeakerSubmenu(track, indices, segment, kind) {
+    const refs = [...new Set(indices)].filter(index => track?.segments?.[index])
+      .map(index => ({ track_id: track.id, segment_id: track.segments[index].id }));
+    const { wrapper, list } = createContextSubmenu('分配说话人', 'speaker-context-menu');
+    (MaweBoot.DATA.speakers || []).forEach(speaker => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'item';
+      item.dataset.speakerProjectContent = '';
+      item.dataset.speakerContextIdentity = speaker.id;
+      item.textContent = `${MaweCueElements.speakerName(speaker)}（${speaker.id}）`;
+      item.addEventListener('click', () => {
+        MaweDom.ctxmenu.classList.remove('show');
+        MaweSpeakerLabels.assignIdentity(refs, speaker.id);
+      });
+      list.appendChild(item);
+    });
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'item';
+    clear.textContent = '清除说话人';
+    clear.addEventListener('click', () => {
+      MaweDom.ctxmenu.classList.remove('show');
+      MaweSpeakerLabels.assignIdentity(refs, null);
+    });
+    list.appendChild(clear);
+    MaweDom.ctxmenu.appendChild(wrapper);
+    if (segment.speaker == null) return;
+    const selectAll = document.createElement('button');
+    selectAll.type = 'button';
+    selectAll.className = 'item';
+    selectAll.textContent = '选择此人在当前轨道的全部字幕';
+    selectAll.addEventListener('click', () => {
+      MaweDom.ctxmenu.classList.remove('show');
+      MaweCuePanel.commitCuePanelEdit();
+      MaweSelection.clearSelection({ silent: true });
+      track.segments.forEach((cue, index) => {
+        if (cue.speaker === segment.speaker) MaweState.selection.add(kind, index);
+      });
+      const first = MaweState.selection.indices(kind).values().next().value;
+      if (first !== undefined) MaweCuePanel.setCuePanelTarget(kind, first, kind === 'extension' ? track.id : null);
+      MaweSelection.updateMultiSelectionClasses();
+      if (kind === 'main') {
+        MaweCoreState.container.querySelectorAll('.cue[data-idx]').forEach(row => {
+          row.classList.toggle('selected', MaweState.selection.indices('main').has(Number(row.dataset.idx)));
+        });
+      }
+      if (kind === 'overlay') {
+        MaweCoreState.container.querySelectorAll('.cue[data-overlay-idx]').forEach(row => {
+          row.classList.toggle('selected', MaweState.selection.indices('overlay').has(Number(row.dataset.overlayIdx)));
+        });
+      }
+      MaweCoreState.waveformEditor?.updateSelection();
+      window.MaweCuePanelWiring.updateSelectionCountText();
+    });
+    MaweDom.ctxmenu.appendChild(selectAll);
+  }
+
+  function refreshSpeakerContextLanguage() {
+    MaweDom.ctxmenu.querySelectorAll('[data-speaker-context-identity]').forEach(item => {
+      const speaker = (MaweBoot.DATA.speakers || []).find(entry => entry.id === item.dataset.speakerContextIdentity);
+      if (speaker) item.textContent = `${MaweCueElements.speakerName(speaker)}（${speaker.id}）`;
+    });
+    MaweDom.ctxmenu.querySelectorAll('[data-speaker-context-slot]').forEach(swatch => {
+      const slot = Number(swatch.dataset.speakerContextSlot);
+      const speaker = (MaweBoot.DATA.speakers || []).find(entry => entry.id === MaweBoot.DATA.speaker_shortcuts?.[String(slot)]);
+      const name = speaker ? MaweCueElements.speakerName(speaker) : MaweCueElements.speakerUi('空槽', 'Empty slot');
+      swatch.title = `${name}${speaker ? `（${speaker.id}）` : ''}${MaweCueElements.speakerUi(`（按 ${slot}）`, ` (press ${slot})`)}`;
+      const label = swatch.parentElement?.querySelector('.speaker-context-slot-name');
+      if (label) label.textContent = name;
+    });
+  }
+
+  document.addEventListener('mawe:languagechange', refreshSpeakerContextLanguage);
+
 
   function showContextMenu(x, y, idx, waveformTimeMs = null, { splitTextMode = null } = {}) {
   ctxLastClickX = x; ctxLastClickY = y;
@@ -254,19 +329,23 @@ export function initMaweContextMenus() {
     const head = document.createElement('div');
     head.style.cssText = 'display:flex;align-items:center;';
     const lbl = document.createElement('span');
-    lbl.textContent = '标记颜色';
+    lbl.textContent = MaweBoot.DATA.annotation_mode === 'speaker' ? '分配说话人槽位' : '标记颜色';
     head.appendChild(lbl);
     const rangeHint = document.createElement('kbd');
-    rangeHint.textContent = '1~5';
+    rangeHint.textContent = `1~${MaweBoot.DATA.palette_size || 5}`;
     rangeHint.style.marginLeft = 'auto';
     head.appendChild(rangeHint);
     row.appendChild(head);
     const swatches = document.createElement('div');
-    swatches.style.cssText = 'display:flex;gap:8px;margin-top:8px;';
-    MaweColors.COLOR_PALETTE.forEach((c, colorIndex) => {
+    swatches.className = 'speaker-context-swatches';
+    swatches.style.cssText = 'display:flex;gap:8px;margin-top:8px;overflow-x:auto;';
+    MaweColors.ACTIVE_COLOR_PALETTE.forEach((c, colorIndex) => {
       const sw = document.createElement('span');
-      sw.title = `${c.label}（按 ${colorIndex + 1}）`;
-      sw.style.cssText = `width:22px;height:22px;border-radius:50%;background:${c.value};border:1px solid rgba(255,255,255,.25);cursor:pointer;display:inline-block;box-sizing:border-box;flex:0 0 auto;`;
+      const identity = MaweBoot.DATA.speakers?.find(s => s.id === MaweBoot.DATA.speaker_shortcuts?.[String(colorIndex + 1)]);
+      const speakerMode = MaweBoot.DATA.annotation_mode === 'speaker';
+      const name = identity ? MaweCueElements.speakerName(identity) : MaweCueElements.speakerUi('空槽', 'Empty slot');
+      sw.title = speakerMode ? `${name}${identity ? `（${identity.id}）` : ''}${MaweCueElements.speakerUi(`（按 ${colorIndex + 1}）`, ` (press ${colorIndex + 1})`)}` : `${c.label}（按 ${colorIndex + 1}）`;
+      sw.style.cssText = `width:22px;height:22px;border-radius:50%;background:${speakerMode && identity ? identity.color : c.value};border:1px solid rgba(255,255,255,.25);cursor:pointer;display:inline-block;box-sizing:border-box;flex:0 0 auto;`;
       sw.addEventListener('mouseenter', () => sw.style.transform = 'scale(1.15)');
       sw.addEventListener('mouseleave', () => sw.style.transform = '');
       sw.addEventListener('click', (e) => {
@@ -274,14 +353,25 @@ export function initMaweContextMenus() {
         MaweDom.ctxmenu.classList.remove('show');
         MaweStickerPicker.assignColor(targets, c.name);
       });
-      swatches.appendChild(sw);
+      if (speakerMode) {
+        sw.dataset.speakerProjectContent = '';
+        sw.dataset.speakerContextSlot = String(colorIndex + 1);
+        const slot = document.createElement('span');
+        slot.className = 'speaker-context-slot';
+        const label = document.createElement('span');
+        label.className = 'speaker-context-slot-name';
+        label.dataset.speakerProjectContent = '';
+        label.textContent = name;
+        slot.append(sw, label);
+        swatches.appendChild(slot);
+      } else swatches.appendChild(sw);
     });
     row.appendChild(swatches);
     MaweDom.ctxmenu.appendChild(row);
     // 「清除颜色」项：仅当选中范围内有颜色时显示
     const hasColorInRange = targets.some(i =>
-      MaweBoot.DATA.segments[i].color || MaweBoot.DATA.segments[i].color_ref);
-    if (hasColorInRange) {
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].color_group_id);
+    if (MaweBoot.DATA.annotation_mode === 'color' && hasColorInRange) {
       addItem('清除颜色', '0', () => MaweStickerPicker.clearColorOnTargets(targets), { danger: true });
     }
   }
@@ -373,20 +463,20 @@ export function initMaweContextMenus() {
     // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only') {
       addItem('跳转并播放', '', () => {
-        MaweTextCleanup.seekFromWaveform(MaweBoot.DATA.segments[idx].start / 1000);
+        MaweTextCleanup.seekFromWaveform(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].start / 1000);
         if (MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
       });
     }
     // 试听：只播放该字幕自身的时间范围，到终点自动暂停；F 为全局快捷键。
     addItem('试听', 'F', () => {
-      const segment = MaweBoot.DATA.segments[idx];
+      const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx];
       MaweMediaPlayback.auditionRange(segment.start, segment.end);
     });
     addSep();
     // 组 2：外观（表情包与颜色）；表情包功能关闭时隐藏分配入口
     const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
     if (stickersEnabled) addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker([idx], false));
-    if (stickersEnabled && (MaweBoot.DATA.segments[idx].sticker || MaweBoot.DATA.segments[idx].sticker_ref)) {
+    if (stickersEnabled && (window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].sticker_group_id)) {
       addItem('删除表情包', '', () => {
         MaweStickerPicker.removeStickerCascade(idx);
         MaweCuePanel.renderAll();
@@ -394,13 +484,15 @@ export function initMaweContextMenus() {
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
-    if (colorGroupHeadIndex(idx) >= 0) {
+    addSpeakerSubmenu(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), targetIdxs,
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx], 'main');
+    if (MaweBoot.DATA.annotation_mode !== 'speaker' && colorGroupHeadIndex(idx) >= 0) {
       addItem('移出颜色组', '', () => detachColorFromGroup(idx));
     }
     addSep();
     // 组 3：状态与删除
     addItem(
-      MaweBoot.DATA.segments[idx].disabled ? '启用此条' : '禁用此条',
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx].disabled ? '启用此条' : '禁用此条',
       'Alt+点击',
       () => MaweStickerPicker.toggleDisabled([idx])
     );
@@ -422,20 +514,22 @@ export function initMaweContextMenus() {
   } else {
     // 组 1：合并与批量文本操作
     addItem(`合并 ${targetIdxs.length} 条字幕`, 'C', () => MaweSegmentOps.mergeSegments(targetIdxs));
-    addItem('批量替换选中字幕…', '', () => MaweFindReplace.openReplaceModal(targetIdxs));
+    addItem('替换选中字幕…', '', () => MaweTextProcess.openTextProcessModal({ replaceSelection: targetIdxs }));
     addSep();
     // 组 2：外观（表情包与颜色）；「延长表情包」仅在范围内已有表情包时显示
     const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
     const hasStickerInRange = stickersEnabled && targetIdxs.some(i =>
-      MaweBoot.DATA.segments[i].sticker || MaweBoot.DATA.segments[i].sticker_ref);
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].sticker_group_id);
     if (hasStickerInRange) {
       addItem('延长表情包', '', () => MaweStickerPicker.expandStickerTime(targetIdxs));
     }
     if (stickersEnabled) addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker(targetIdxs, true));
     addColorSubmenu(targetIdxs);
+    addSpeakerSubmenu(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), targetIdxs,
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx], 'main');
     addSep();
     // 组 3：状态与删除
-    const _disabledInSel = targetIdxs.filter(i => MaweBoot.DATA.segments[i].disabled).length;
+    const _disabledInSel = targetIdxs.filter(i => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].disabled).length;
     addItem(
       _disabledInSel === targetIdxs.length ? '启用选中' : '禁用选中',
       '',
@@ -494,6 +588,7 @@ export function initMaweContextMenus() {
     addItem('在鼠标位置拆分', () => MaweSplitCore.openExtensionSplitModal(index, timeMs, track), false, false, 'B');
     const extensionSelectionOnly = MaweSelection.selectedExtensionIdxs.size > 1
       && MaweSelection.selectedExtensionIdxs.has(index);
+    addSpeakerSubmenu(track, extensionSelectionOnly ? [...MaweSelection.selectedExtensionIdxs] : [index], segment, 'extension');
     addItem(
       '合并副字幕块',
       () => MaweSegmentOps.mergeExtensionSegments([...MaweSelection.selectedExtensionIdxs], track),
@@ -581,6 +676,7 @@ export function initMaweContextMenus() {
     get ctxLastClickY() { return ctxLastClickY; },
     set ctxLastClickY(v) { ctxLastClickY = v; },
     showContextMenu,
+    addSpeakerSubmenu,
     showExtensionContextMenu,
     showGapContextMenu,
     closeContextMenuOnOutsidePointerDown

@@ -1,7 +1,8 @@
 // 拆分修剪符号表：修剪字符配置、持久化与网格 UI。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweSplitTrim 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweSplitTrim 在原清单位次执行原 IIFE 体（挂
+// window.MaweSplitTrim 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweSplitTrim() {
 (function initMaweSplitTrim(global) {
   'use strict';
 
@@ -99,3 +100,15 @@
     refreshSplitTrimExtraInput
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function splitTrimSymbolGrid(...args) { return window.MaweSplitTrim.splitTrimSymbolGrid(...args); }
+export function splitTrimSymbolsReset(...args) { return window.MaweSplitTrim.splitTrimSymbolsReset(...args); }
+export function splitTrimExtraInput(...args) { return window.MaweSplitTrim.splitTrimExtraInput(...args); }
+export function currentSplitTrimPrimaryChars(...args) { return window.MaweSplitTrim.currentSplitTrimPrimaryChars(...args); }
+export function splitTrimPrimaryCheckedSet(...args) { return window.MaweSplitTrim.splitTrimPrimaryCheckedSet(...args); }
+export function splitTrimExtraSymbols(...args) { return window.MaweSplitTrim.splitTrimExtraSymbols(...args); }
+export function updateSplitTrimSymbolsResetVisibility(...args) { return window.MaweSplitTrim.updateSplitTrimSymbolsResetVisibility(...args); }
+export function persistSplitTrimSymbols(...args) { return window.MaweSplitTrim.persistSplitTrimSymbols(...args); }
+export function renderSplitTrimSymbolGrid(...args) { return window.MaweSplitTrim.renderSplitTrimSymbolGrid(...args); }
+export function refreshSplitTrimExtraInput(...args) { return window.MaweSplitTrim.refreshSplitTrimExtraInput(...args); }

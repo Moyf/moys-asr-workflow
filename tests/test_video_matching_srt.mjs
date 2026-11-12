@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { runtimeProject } from './helpers/runtime-project.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
 
 function runtime() {
@@ -16,7 +17,7 @@ function runtime() {
     { start: 0, end: 100, text: 'disabled', disabled: true },
   ];
   Object.assign(context, {
-    MaweBoot: { DATA: { segments, gap_remove: {} } },
+    MaweBoot: { DATA: runtimeProject(segments, { gap_remove: {} }) },
     MaweSettings: { EDITOR_SETTINGS: { exportStartAtZero: true } },
     MaweSpeakerLabels: { speakerLabelExportOptions: () => ({}) },
     MaweCueElements: { fmtSrtTime: ms => new Date(ms).toISOString().slice(11, 23).replace('.', ',') },
@@ -25,6 +26,7 @@ function runtime() {
     mergedExportSegments: () => ({ segments, overlaySet: new Set(), overlaySegments: [] }),
     exportColorContextResolver: () => () => segments,
   };
+  context.window.MaweBoot = context.MaweBoot;
   vm.runInNewContext(initModuleSource('editor/io/editor-export-srt.js'), context);
   return { segments, capture: () => context.window.MaweExportSrt.captureVideoSrt() };
 }

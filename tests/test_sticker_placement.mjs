@@ -134,6 +134,75 @@ test('windows across two cues split into per-cue placements', () => {
   assert.notEqual(placements[0].x, placements[1].x);
 });
 
+// === 叠加字幕轨参与 cue-left 贴放 ===
+// 叠加轨字幕（role 'overlay'）与主轨同一份排版计划、同样烧录进 ASS：主轨
+// 空窗时表情包贴叠加轨字幕左侧；同屏时段主轨优先。offset.x=60 让叠加句
+// 几何可区分：inkLeft = 900 + 60 − 30 = 930 → x = 930 − 7 − 240 = 683。
+function makeOverlayPlan() {
+  const plan = makePlan();
+  plan.slices[0].items[0].start = 1000; // 主轨 [1000,2000]，[0,1000] 只有叠加字幕
+  plan.slices[0].items.push({
+    role: 'overlay', start: 0, end: 1000, fontSize: 60, cueScale: 1,
+    alignment: 2, manual: false, absolute: false,
+    offset: { x: 60, y: -10 },
+    rect: { left: -30, top: -80, right: 500, bottom: 10 },
+  });
+  return plan;
+}
+
+test('overlay-track cues place the sticker when the main track is silent', () => {
+  const plan = makeOverlayPlan();
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 800 }],
+  });
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].align, 'right');
+  assert.equal(placements[0].x, 683);
+});
+
+test('main-track cues win when both tracks are on screen', () => {
+  const plan = makePlan();
+  plan.slices[0].items.push({
+    role: 'overlay', start: 1000, end: 3000, fontSize: 60, cueScale: 1,
+    alignment: 2, manual: false, absolute: false,
+    offset: { x: 60, y: -10 },
+    rect: { left: -30, top: -80, right: 500, bottom: 10 },
+  });
+  // 窗口 [1000,2000] 与主轨 [0,2000]、叠加轨 [1000,3000] 同时重叠：
+  // 贴主字幕左侧（643），不贴叠加字幕（683）。
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 1000, end: 2000 }],
+  });
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].align, 'right');
+  assert.equal(placements[0].x, 643);
+});
+
+test('a window across main-then-overlay cues switches target per segment', () => {
+  // 叠加句起止是切分边界：[0,1000] 贴叠加轨字幕、[1000,2000] 贴主轨字幕，
+  // 两段几何不同各自成 placement。
+  const plan = makeOverlayPlan();
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 2000 }],
+  });
+  assert.equal(placements.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(placements[0].intervals)), [{ start: 0, end: 1000 }]);
+  assert.equal(placements[0].x, 683);
+  assert.deepEqual(JSON.parse(JSON.stringify(placements[1].intervals)), [{ start: 1000, end: 2000 }]);
+  assert.equal(placements[1].x, 643);
+});
+
+test('overlay cues inside legacy slices still fall back to the fixed box', () => {
+  const plan = makeOverlayPlan();
+  plan.slices[0].legacy = true;
+  const placements = computeStickerCuePlacements({
+    plan, fixedBox: FIXED_BOX, windows: [{ rel: 'a.png', start: 0, end: 800 }],
+  });
+  assert.equal(placements.length, 1);
+  assert.equal(placements[0].x, FIXED_BOX.x);
+  assert.equal(placements[0].align, 'center');
+});
+
 test('window in a cue gap falls back to the fixed box', () => {
   const plan = makePlan();
   plan.slices[0].items[0].start = 1000;
@@ -358,6 +427,10 @@ function stickerBindingContext(segments) {
   };
   context.window = context;
   loadEditorModule(context, 'shared/editor-utils.js');
+  const project = context.AsrEditorUtils.importProject({ segments }).project;
+  segments.splice(0, segments.length, ...context.AsrEditorUtils.getMainTrack(project).segments);
+  context.AsrEditorUtils.getMainTrack(project).segments = segments;
+  context.MaweBoot.DATA = project;
   return context;
 }
 
@@ -366,13 +439,13 @@ for (const target of ['main', 'overlay']) test(`clearing sticker targets uses th
     { id: 'main-a', start: 0, end: 1000, text: '主一' },
     { id: 'main-b', start: 1000, end: 2600, text: '主二' },
   ];
-  const overlay = { enabled: true, segments: [
+  const overlayInput = { enabled: true, segments: [
     { id: 'overlay-a', start: 0, end: 1000, text: '叠一' },
     { id: 'overlay-b', start: 1000, end: 2600, text: '叠二' },
   ] };
   const binding = stickerBindingContext(main);
   const project = binding.MaweBoot.DATA;
-  project.overlay_track = overlay;
+  const overlay = binding.AsrEditorUtils.ensureOverlayTrack(project, overlayInput);
   binding.getOverlayTrack = () => overlay;
   binding.stickerSegmentsForTrack = track => track === 'overlay' ? overlay.segments : main;
   const u = binding.AsrEditorUtils;
@@ -385,14 +458,13 @@ for (const target of ['main', 'overlay']) test(`clearing sticker targets uses th
   const otherGroup = other[0].sticker_group_id;
   vm.runInNewContext(readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), binding);
   loadEditorSource(binding, 'editor/cues/editor-sticker-picker.js');
-  project.segments = main;
   binding.MaweBoot.STICKERS = [sticker];
   binding.MaweStickerPicker.openStickerPicker([0], false, { overlay: target === 'overlay' });
   binding.MaweStickerPicker.clearStickerOnTargets();
   assert.equal(selected[0].sticker_group_id, undefined);
   assert.equal(selected[1].sticker_group_id, selectedGroup);
-  assert.equal(selected[1].sticker.name, 'bind');
-  assert.deepEqual(other.map(cue => cue.sticker_group_id), [otherGroup, otherGroup]);
+  assert.equal(u.getSubtitleGroupValue(project, selected[1], 'sticker').name, 'bind');
+  assert.deepEqual(Array.from(other, cue => cue.sticker_group_id), [otherGroup, otherGroup]);
 });
 
 test('multi-sentence sticker binding covers every bound cue without a drag', () => {
@@ -410,15 +482,18 @@ test('multi-sentence sticker binding covers every bound cue without a drag', () 
   binding.window.MaweStickerPicker.openStickerPicker([0, 1], true);
   binding.window.MaweStickerPicker.assignSticker(sticker);
 
-  // 稳定组保存成员关系，兼容视图中的 head.sticker 覆盖整个选区。
+  // 稳定组保存成员关系，渲染投影中的 head.sticker 覆盖整个选区。
+  const projection = binding.AsrEditorUtils.materializeTrackSegments(binding.MaweBoot.DATA, 'main');
   assert.deepEqual(
-    { start: segments[0].sticker.start, end: segments[0].sticker.end, name: segments[0].sticker.name },
+    { start: projection[0].sticker.start, end: projection[0].sticker.end, name: projection[0].sticker.name },
     { start: 0, end: 2600, name: 'bind' },
   );
   assert.equal(Object.hasOwn(segments[1], 'sticker'), false);
   assert.equal(segments[1].sticker_group_id, segments[0].sticker_group_id);
   assert.equal(binding.MaweBoot.DATA.subtitle_groups.sticker[0].id, segments[0].sticker_group_id);
-  assert.deepEqual({ ...segments[1].sticker_ref }, { name: 'bind', headIdx: 0 });
+  assert.deepEqual({ ...projection[1].sticker_ref }, { name: 'bind', headIdx: 0 });
+  assert.equal(Object.hasOwn(segments[0], 'sticker'), false);
+  assert.equal(Object.hasOwn(segments[1], 'sticker_ref'), false);
 
   // 预览读取契约：不做任何拖动，第二句时间点就命中表情包区间。
   const overlay = binding.window.MaweStickerOverlay;
@@ -445,9 +520,32 @@ test('rebinding a single head that owns references re-syncs the group range', ()
 
   // 单选重分配 head：既有 ref 仍指向它，区间必须回到整组覆盖，而不是丢掉
   // start/end 后回落到 head 自身句范围。
+  const projection = binding.AsrEditorUtils.materializeTrackSegments(binding.MaweBoot.DATA, 'main');
   assert.deepEqual(
-    { start: segments[0].sticker.start, end: segments[0].sticker.end, name: segments[0].sticker.name },
+    { start: projection[0].sticker.start, end: projection[0].sticker.end, name: projection[0].sticker.name },
     { start: 0, end: 2600, name: 'next' },
   );
-  assert.deepEqual({ ...segments[1].sticker_ref }, { name: 'next', headIdx: 0 });
+  assert.deepEqual({ ...projection[1].sticker_ref }, { name: 'next', headIdx: 0 });
+});
+test('track switches filter preview and burn stickers independently', () => {
+  const segments = [{ id: 'main-1', start: 0, end: 1000, text: 'main' }];
+  const binding = stickerBindingContext(segments);
+  const project = binding.MaweBoot.DATA;
+  const utils = binding.AsrEditorUtils;
+  const track = utils.getMainTrack(project);
+  utils.assignSubtitleGroup(project, segments, [0], 'sticker', { name: 'sticker', rel: 'sticker.png' });
+  loadEditorSource(binding, 'editor/media/editor-sticker-overlay.js');
+  const overlay = binding.MaweStickerOverlay;
+  assert.equal(overlay.activeStickersAt(500).length, 1);
+  track.preview_visible = false;
+  assert.equal(overlay.activeStickersAt(500).length, 0);
+  assert.equal(overlay.rebuildStickerIntervals('export').length, 1);
+  track.preview_visible = true;
+  track.export = { enabled: false };
+  assert.equal(overlay.activeStickersAt(500).length, 1);
+  assert.equal(overlay.rebuildStickerIntervals('export').length, 0);
+  track.enabled = false;
+  assert.equal(overlay.activeStickersAt(500).length, 0);
+  assert.equal(overlay.rebuildStickerIntervals('export').length, 0);
+  assert.equal(segments[0].sticker_group_id, project.subtitle_groups.sticker[0].id);
 });

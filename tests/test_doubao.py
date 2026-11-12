@@ -23,6 +23,7 @@ from maw.doubao import (
     submit_task,
     transcribe,
 )
+from tests.track_helpers import main_segments, main_track
 
 
 def _fake_response(*, status_code: str, logid: str = "", text: str = "", body: dict | None = None):
@@ -248,8 +249,8 @@ class DoubaoParseTests(unittest.TestCase):
             {"text": "今日头条", "start": 2110, "end": 3070, "speaker": "1"},
             {"text": "母公司", "start": 3070, "end": 3696, "speaker": "1"},
         ])
-        self.assertEqual(result["segments"], [])
-        self.assertEqual(result["timestamp_granularity"], "char")
+        self.assertEqual(main_segments(result), [])
+        self.assertEqual(main_track(result)['timestamp_granularity'], "char")
 
     def test_parse_result_reads_speaker_id_fallback(self) -> None:
         result = parse_result({
@@ -269,8 +270,8 @@ class DoubaoParseTests(unittest.TestCase):
         })
 
         self.assertTrue(all(item["speaker"] == "3" for item in result["items"]))
-        self.assertEqual(result["segments"], [])
-        self.assertEqual(result["timestamp_granularity"], "char")
+        self.assertEqual(main_segments(result), [])
+        self.assertEqual(main_track(result)['timestamp_granularity'], "char")
 
     def test_parse_result_restores_word_spaces_from_whitespace_tokens(self) -> None:
         # 真机响应（2026-09，volc.seedasr.auc）：英文词间为时间码 -1 的空白 token
@@ -302,8 +303,8 @@ class DoubaoParseTests(unittest.TestCase):
             [item["text"] for item in result["items"]],
             ["Hello", " this", " is", " a", " smoke", " test"],
         )
-        self.assertEqual(result["segments"], [])
-        self.assertEqual(result["timestamp_granularity"], "word")
+        self.assertEqual(main_segments(result), [])
+        self.assertEqual(main_track(result)['timestamp_granularity'], "word")
 
     def test_parse_result_falls_back_to_sentence_cues_on_invalid_word(self) -> None:
         result = parse_result({
@@ -323,8 +324,8 @@ class DoubaoParseTests(unittest.TestCase):
         })
 
         self.assertEqual(result["items"], [])
-        self.assertEqual(result["timestamp_granularity"], "segment")
-        self.assertEqual(result["segments"], [{
+        self.assertEqual(main_track(result)['timestamp_granularity'], "segment")
+        self.assertEqual(main_segments(result), [{
             "start": 100,
             "end": 900,
             "text": "整句回退。",
@@ -347,16 +348,16 @@ class DoubaoParseTests(unittest.TestCase):
         })
 
         self.assertEqual(result["items"], [])
-        self.assertEqual(result["timestamp_granularity"], "segment")
-        self.assertEqual(len(result["segments"]), 1)
+        self.assertEqual(main_track(result)['timestamp_granularity'], "segment")
+        self.assertEqual(len(main_segments(result)), 1)
 
     def test_parse_result_without_utterances_keeps_text_only(self) -> None:
         result = parse_result({"result": {"text": "仅文本"}})
 
         self.assertEqual(result["text"], "仅文本")
         self.assertEqual(result["items"], [])
-        self.assertEqual(result["segments"], [])
-        self.assertEqual(result["timestamp_granularity"], "unknown")
+        self.assertEqual(main_segments(result), [])
+        self.assertEqual(main_track(result)['timestamp_granularity'], "unknown")
 
     def test_parse_result_expands_sentence_range_to_contain_word_items(self) -> None:
         result = parse_result({

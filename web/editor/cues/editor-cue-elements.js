@@ -9,6 +9,8 @@
 
   function updateCueColorPresentation(el, colorBar, seg) {
   if (!el || !colorBar || !seg) return;
+  const originalSegment = seg;
+  seg = MaweMultiSubtitleCore.segmentPresentation(seg);
 
   // 颜色组可能在不重建字幕行的情况下从 head 变成 ref（或反过来）。
   // 绑定一次委托式处理器，之后只更新 class / style / data，不替换节点。
@@ -39,6 +41,20 @@
   el.classList.remove('has-color');
   el.style.removeProperty('--color-bar');
 
+  if (MaweBoot.DATA.annotation_mode === 'speaker') {
+    const speaker = window.AsrEditorUtils.resolveProjectSpeaker(MaweBoot.DATA, originalSegment);
+    colorBar.dataset.speakerProjectContent = '';
+    if (speaker) {
+      colorBar.classList.add('has-color');
+      el.classList.add('has-color');
+      colorBar.style.setProperty('--color-bar', speaker.color);
+      el.style.setProperty('--color-bar', speaker.color);
+      colorBar.title = speakerDescription(speaker);
+    } else colorBar.title = speakerDescription(null);
+    return;
+  }
+  delete colorBar.dataset.speakerProjectContent;
+
   if (seg.color) {
     const value = MaweColors.colorCssValue(seg.color.name);
     colorBar.classList.add('has-color');
@@ -63,6 +79,7 @@
 
   function updateCueStickerPresentation(el, slotEl, seg, idx, { extensionTrack = null, overlayTrack = false } = {}) {
   if (!el || !slotEl || !seg) return;
+  seg = MaweMultiSubtitleCore.segmentPresentation(seg);
   const isExtension = Boolean(extensionTrack);
   slotEl.classList.remove('ref');
   slotEl.replaceChildren();
@@ -107,6 +124,48 @@
 }
 
 
+
+  function speakerUi(zh, en) { return window.MAWE_I18N?.language === 'en' ? en : zh; }
+
+  function speakerName(speaker) {
+    return speaker ? (speaker.name || speakerUi('未命名说话人', 'Unnamed speaker'))
+      : speakerUi('未分配', 'Unassigned');
+  }
+
+  function speakerDescription(speaker) {
+    const name = speakerName(speaker);
+    const prefix = speakerUi('说话人：', 'Speaker: ');
+    return speaker ? `${prefix}${name}（${speaker.id}）` : `${prefix}${name}`;
+  }
+
+  function refreshSpeakerBadge(badge, speaker) {
+    badge.textContent = speakerName(speaker);
+    badge.title = speakerDescription(speaker);
+    badge.classList.toggle('unassigned', !speaker);
+    if (speaker) badge.style.setProperty('--speaker-color', speaker.color);
+    else badge.style.removeProperty('--speaker-color');
+  }
+
+  function buildSpeakerBadge(segment) {
+    const speaker = window.AsrEditorUtils.resolveProjectSpeaker(MaweBoot.DATA, segment);
+    const badge = document.createElement('span');
+    badge.className = 'cue-speaker-badge';
+    badge.dataset.speakerProjectContent = '';
+    if (speaker) badge.dataset.speakerId = speaker.id;
+    refreshSpeakerBadge(badge, speaker);
+    return badge;
+  }
+
+  document.addEventListener('mawe:languagechange', () => {
+    document.querySelectorAll('.cue-speaker-badge').forEach(badge => {
+      const speaker = (MaweBoot.DATA.speakers || []).find(entry => entry.id === badge.dataset.speakerId) || null;
+      refreshSpeakerBadge(badge, speaker);
+      if (MaweBoot.DATA.annotation_mode === 'speaker') {
+        const bar = badge.parentElement?.querySelector(':scope > .color-bar');
+        if (bar) bar.title = speakerDescription(speaker);
+      }
+    });
+  });
 
   function buildCueEl(seg, idx, { extensionTrack = null, overlayTrack = false } = {}) {
   const isExtension = Boolean(extensionTrack);
@@ -168,6 +227,7 @@
   el.appendChild(colorBar);
   el.appendChild(indexEl);
   el.appendChild(timeEl);
+  el.appendChild(buildSpeakerBadge(seg));
   el.appendChild(slotEl);
   el.appendChild(textEl);
   el.appendChild(cntEl);
@@ -203,7 +263,7 @@
     const indexEl = document.createElement('span');
     indexEl.className = 'index';
     indexEl.textContent = `${kind === 'main' ? '主字幕' : '副字幕'} ${index + 1}`;
-    header.append(indexEl, buildMultiTimeEl(segment));
+    header.append(indexEl, buildMultiTimeEl(segment), buildSpeakerBadge(segment));
     const text = document.createElement('span');
     text.className = 'text';
     setTextHtml(text, segment.text || '', MaweDom.searchEl.value);
@@ -229,7 +289,7 @@
 
 
   function buildDualCueEl(mainIndex, extensionIndex, track) {
-    const main = mainIndex == null ? null : MaweBoot.DATA.segments[mainIndex];
+    const main = mainIndex == null ? null : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex];
     const extension = extensionIndex == null ? null : track.segments[extensionIndex];
     const el = document.createElement('div');
     el.className = 'cue multi-cue multi-dual-cue';
@@ -391,7 +451,7 @@
       : (element.dataset.idx != null ? Number(element.dataset.idx) : -1);
     const extensionIndex = element.dataset.extIdx != null ? Number(element.dataset.extIdx) : -1;
     if (Number.isInteger(mainIndex) && mainIndex >= 0) {
-      const key = splitCueVisibilityKey('main', MaweBoot.DATA.segments[mainIndex]);
+      const key = splitCueVisibilityKey('main', window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex]);
       if (key) keys.push(key);
     }
     const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
@@ -442,7 +502,7 @@
     if (!MaweSelection.temporaryVisibleSplitCueKeys.size) return;
     const segments = kind === 'extension'
       ? (track?.segments || MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
-      : MaweBoot.DATA.segments;
+      : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     const segment = segments[index];
     const key = splitCueVisibilityKey(kind, segment, kind === 'extension' ? track?.id : null);
     if (key && MaweSelection.temporaryVisibleSplitCueKeys.has(key)) return;
@@ -460,7 +520,7 @@
       const cntEl = el.querySelector('.charcount');
       const segment = Number.isInteger(extensionIdx) && extensionTrack
         ? extensionTrack.segments[extensionIdx]
-        : (Number.isInteger(idx) ? MaweBoot.DATA.segments[idx] : null);
+        : (Number.isInteger(idx) ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[idx] : null);
       const mode = Number.isInteger(extensionIdx) && extensionTrack
         ? MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(extensionTrack, segment)
         : MaweMultiSubtitleCore.getMainSubtitleSplitMode(segment);
@@ -471,6 +531,9 @@
   global.MaweCueElements = Object.freeze({
     updateCueColorPresentation,
     updateCueStickerPresentation,
+    speakerUi,
+    speakerName,
+    speakerDescription,
     buildCueEl,
     buildMultiTimeEl,
     buildMultiCueColumn,

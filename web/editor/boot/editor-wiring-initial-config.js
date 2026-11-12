@@ -12,7 +12,7 @@
 
 
 // 把用户配置的拆分移除符号同步给共享工具层；设置面板修改时也会同步。
-MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(MaweSettings.EDITOR_SETTINGS.splitTrimSymbols);
+window.AsrEditorUtils.setSplitTrimSymbols(MaweSettings.EDITOR_SETTINGS.splitTrimSymbols);
 // 「特殊文本规则」同步给字词块归位的 MASS 成对检测（与 assSpecialSymbolRule 同源）。
 window.AsrEditorUtils.setMassSymbolRule(MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule);
 

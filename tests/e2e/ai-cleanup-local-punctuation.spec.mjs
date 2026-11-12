@@ -96,8 +96,8 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
         MawePlaybackLoop.refreshSubtitlePreview(previewTime, 0);
         return { css, canvas: MaweAssCanvas.lastRender.tracks.flatMap((track) => track.lines.flatMap((line) => line.items.map((item) => item.text))).join(''),
           ordinary: MaweExportSrt.buildSrt(), compressed: MaweExportSrt.buildGapRemovedSrt(), ass: MaweExportSrt.buildAss(),
-          dynamic: MaweExportSrt.buildDynamicCaptionExportData(MaweBoot.DATA.segments, true),
-          removedGaps: MaweGapRemoveData.getRemovedGapRanges(), raw: MaweBoot.DATA.segments[0],
+          dynamic: MaweExportSrt.buildDynamicCaptionExportData(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, true),
+          removedGaps: MaweGapRemoveData.getRemovedGapRanges(), raw: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0],
           aiSources: MaweBoot.DATA.gap_remove?.provenance?.sources?.ai_cleanup || [], markers: MaweBoot.DATA.markers };
       }, fixture.previewTime || 1000);
       await test.info().attach('consumer-snapshot', { body: JSON.stringify(snapshot, null, 2), contentType: 'application/json' });
@@ -154,7 +154,7 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
           const good = structuredClone(segment);
           good.id = 'second'; good.start += 4000; good.end += 4000;
           good.items.forEach((item) => { item.start += 4000; item.end += 4000; });
-          MaweBoot.DATA.segments = [{ id: 'lead', start: 0, end: 2000, text: '前文',
+          AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'lead', start: 0, end: 2000, text: '前文',
             items: [{ text: '前文', start: 0, end: 2000 }] }, failed, good];
           const later = ranges.map((range) => ({ ...structuredClone(range), start: range.start + 4000, end: range.end + 4000,
             cleanup_scope: { ...range.cleanup_scope, segment_id: 'second' } }));

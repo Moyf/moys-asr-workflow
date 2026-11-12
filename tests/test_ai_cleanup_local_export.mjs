@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { runtimeProject } from './helpers/runtime-project.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -11,11 +12,33 @@ const source = () => ({ id: 'main-001', start: 0, end: 2000, text: '啊，我这
 const localGap = () => ({ detector: 'audio_gate', provenance: { sources: { ai_cleanup: [{ start: 0, end: 770,
   cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 2, text: '啊，我这……' } }] } } });
 
+test('swapped legacy identity upgrade keeps authorized secondary cleanup in real exports', () => {
+  const { context, utils, srt, main } = runtime();
+  const project = context.MaweBoot.DATA;
+  delete project.speakers; delete project.speaker_shortcuts;
+  main[0].items[0].speaker = 'one';
+  main[0].items[1].speaker = 'two';
+  main[0].items[2].speaker = 'two';
+  assert.equal(utils.swapMainAndExtensionSubtitle(project).swapped, true);
+  Object.assign(project, utils.importProject(plain(project)).project);
+  context.activeExtensionSegments = () => utils.getExtensionTrack(project)?.segments || [];
+  context.window.MaweExportContext.mergedExportSegments = () => ({ segments: utils.getMainTrack(project).segments,
+    overlaySet: new Set(), overlaySegments: [] });
+  for (const output of [srt.buildExtensionSrt(), srt.buildBilingualSrt(), srt.buildAss()]) {
+    assert.match(output, /我这个功能呢/);
+    assert.doesNotMatch(output, /啊，|我这……/);
+  }
+  assert.equal(utils.getMainTrack(project).segments[0].text, 'translated body');
+});
+
 test('ASS cache retains raw identity but invalidates equal-text selections with different item boundaries', () => {
   const script = initModuleSource('editor/styles/editor-wiring-ass-preview.js');
   const start = script.indexOf('const assStackCueSnapshots =');
   const end = script.indexOf("document.fonts?.addEventListener('loadingdone'", start);
-  const context = {};
+  const context = { window: {} };
+  loadEditorModule(context, 'shared/editor-utils.js');
+  context.MaweBoot = { DATA: runtimeProject() };
+  context.window.MaweBoot = context.MaweBoot;
   vm.runInNewContext(`${script.slice(start, end)}; globalThis.revision = assStackInputRevision;`, context);
   const raw = { id: 'repeated', start: 0, end: 2000, text: '正文啊正文啊正文' };
   const first = { ...raw, text: '正文正文啊正文', items: [{ text: '正文', start: 0, end: 300 }, { text: '正文啊正文', start: 500, end: 2000 }] };
@@ -35,10 +58,13 @@ function runtime() {
   const utils = context.window.AsrEditorUtils;
   const main = [source()];
   const extension = [{ id: 'ext-001', start: 0, end: 2000, text: 'translated body' }];
-  const overlay = [{ id: 'main-001', start: 0, end: 2000, text: 'overlay untouched' }];
+  const overlay = [{ id: 'overlay-001', start: 0, end: 2000, text: 'overlay untouched' }];
+  const project = runtimeProject(main, { overlay: { segments: overlay }, extensions: [{ id: 'extension', segments: extension }],
+    speakers: [], annotation_mode: 'color', palette_size: 5, speaker_shortcuts: {},
+    gap_remove: localGap(), media: 'synthetic.mp4', waveform: { duration_ms: 2000 } });
   Object.assign(context, {
     ASS_STYLE_LIBRARY: {},
-    MaweBoot: { DATA: { segments: main, gap_remove: localGap(), media: 'synthetic.mp4', waveform: { duration_ms: 2000 } } },
+    MaweBoot: { DATA: project },
     MaweSettings: { EDITOR_SETTINGS: {} },
     MaweCoreState: { waveformEditor: { durationMs: 2000 }, player: { duration: 2, tagName: 'VIDEO' } },
     MaweProjectMediaInputs: { currentMediaBlobUrl: null },
@@ -47,16 +73,17 @@ function runtime() {
     MaweCueElements: { fmtSrtTime: (ms) => new Date(ms).toISOString().slice(11, 23).replace('.', ',') },
     MaweAppearance: { getSubtitleAppearance: () => ({}) },
     MaweColors: { COLOR_PALETTE: [], COLOR_BY_NAME: {} },
-    MaweMultiSubtitleCore: { getActiveExtensionTrack: () => ({ segments: extension }), getMultiSubtitleState: () => ({ enabled: true }) },
+    MaweMultiSubtitleCore: { getActiveExtensionTrack: () => utils.getExtensionTrack(project), getMultiSubtitleState: () => project },
     MaweDom: { overlayToggle: { checked: true }, extensionOverlayToggle: { checked: true } },
     MaweHint: { flashHint: () => {} },
     MaweTimeline: { normalizeMediaMetadata: utils.normalizeMediaMetadata },
     activeExtensionSegments: () => extension,
   });
   context.window.MaweExportContext = {
-    mergedExportSegments: () => ({ segments: [...main, ...overlay], overlaySet: new Set(overlay), overlaySegments: overlay }),
+    mergedExportSegments: (projectMain = value => value) => ({ segments: [...projectMain(main), ...overlay], overlaySet: new Set(overlay), overlaySegments: overlay }),
     exportColorContextResolver: () => () => main,
   };
+  context.window.MaweBoot = context.MaweBoot;
   for (const file of ['editor-export-srt.js', 'editor-export-timeline.js']) {
     const source = file === 'editor-export-srt.js'
       ? initModuleSource(`editor/io/${file}`)
@@ -67,12 +94,58 @@ function runtime() {
   return { context, core, utils, main, extension, overlay, srt: context.window.MaweExportSrt, timeline: context.window.MaweExportTimeline };
 }
 
+test('ordinary SRT reuses the real merged export projection when cache is enabled', () => {
+  const { context, utils } = runtime();
+  let projections = 0, bypasses = 0;
+  const tracked = { ...utils, createAiCleanupProjector: (...args) => {
+    const project = utils.createAiCleanupProjector(...args);
+    return (...values) => { projections++; return project(...values); };
+  }, buildAiCleanupSegments: (...args) => { bypasses++; return utils.buildAiCleanupSegments(...args); } };
+  context.window.AsrEditorUtils = tracked;
+  context.getOverlayTrack = () => utils.getOverlayTrack(context.MaweBoot.DATA);
+  context.overlayTrackVisible = () => utils.getOverlayTrack(context.MaweBoot.DATA)?.enabled === true;
+  vm.runInNewContext(initModuleSource('editor/io/editor-wiring-export-context.js'), context);
+  vm.runInNewContext(initModuleSource('editor/io/editor-export-srt.js'), context);
+  const srt = context.window.MaweExportSrt;
+  const cold = srt.buildSrt(), afterCold = projections;
+  const warm = srt.buildSrt(), afterWarm = projections;
+  srt.setCleanupProjectionCacheEnabled(false);
+  const off = srt.buildSrt(), afterOff = projections;
+  srt.setCleanupProjectionCacheEnabled(true);
+  const restored = srt.buildSrt();
+  assert.equal(afterCold, 1);
+  assert.equal(afterWarm, afterCold);
+  assert.equal(afterOff, afterWarm + 1);
+  assert.equal(projections, afterOff + 1);
+  assert.equal(bypasses, 0, 'ordinary export never takes the uncached default path');
+  assert.equal(cold, warm); assert.equal(cold, off); assert.equal(cold, restored);
+  assert.match(cold, /我这个功能呢/); assert.doesNotMatch(cold, /啊，|我这……/);
+  const defaultMerged = context.window.MaweExportContext.mergedExportSegments();
+  assert.equal(bypasses, 1, 'direct callers retain the cleanup default');
+  assert.ok(defaultMerged.segments.some(cue => cue.text === '我这个功能呢'));
+  const mainTrack = utils.getMainTrack(context.MaweBoot.DATA);
+  mainTrack.export = { enabled: false };
+  const countBeforeHidden = projections;
+  assert.doesNotMatch(srt.buildSrt(), /我这个功能呢/);
+  assert.equal(projections, countBeforeHidden, 'disabled main export does not project');
+  mainTrack.export.enabled = true;
+  assert.match(srt.buildSrt(), /我这个功能呢/);
+  assert.equal(projections, countBeforeHidden, 're-enabled main reuses the warm projection');
+  utils.getOverlayTrack(context.MaweBoot.DATA).enabled = false;
+  const main = utils.getMainTrack(context.MaweBoot.DATA).segments;
+  main.push({ id: 'overlap', start: 500, end: 1800, text: 'overlap', items: [] });
+  const ordered = srt.buildSrt();
+  assert.ok(ordered.indexOf('overlap') < ordered.indexOf('我这个功能呢'));
+  assert.equal(main[0].id, 'main-001');
+});
+
 test('trusted scope projects exact words/items, saves/reopens and safely restores with gap history', () => {
-  const { core, main, context } = runtime();
+  const { core, main, context, utils } = runtime();
   const gap = core.normalizeGapRemoveData(context.MaweBoot.DATA.gap_remove);
   const before = JSON.stringify(main);
-  const reopened = plain({ segments: main, gap_remove: gap });
-  const project = () => core.projectCleanupRetainedSegments(reopened.segments, reopened.gap_remove)[0];
+  const reopened = utils.snapshotProjectContent(context.MaweBoot.DATA);
+  reopened.gap_remove = gap;
+  const project = () => core.projectCleanupRetainedSegments(utils.getMainTrack(reopened).segments, reopened.gap_remove)[0];
   assert.equal(project().text, '我这个功能呢');
   assert.deepEqual(plain(project().items), [{ text: '我这个功能呢', start: 900, end: 2000 }]);
   assert.equal(JSON.stringify(main), before);
@@ -138,6 +211,45 @@ function neutralNormalizationRuntime() {
   vm.runInNewContext(initModuleSource('editor/io/editor-json-repair.js'), context);
   return setup;
 }
+
+test('swapping tracks preserves exact AI cleanup scope during timing repair and reopening', () => {
+  const { context, core, utils, main } = neutralNormalizationRuntime();
+  const project = context.MaweBoot.DATA;
+  main[0] = { id: 'main-001', start: 0, end: 1000, text: '嗯出发', items: [
+    { text: '嗯', start: 0, end: 200 }, { text: '出发', start: 200, end: 1000 },
+  ] };
+  project.gap_remove = { provenance: { sources: { ai_cleanup: [
+    { start: 0, end: 200, cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 1, text: '嗯' } },
+  ] } } };
+  const originalScope = plain(project.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope);
+  assert.equal(utils.swapMainAndExtensionSubtitle(project).swapped, true);
+  context.getOverlayTrack = () => utils.getOverlayTrack(project);
+  context.MaweMultiSubtitleCore = { markMainSegmentsDirty() {}, markMultiSubtitleStateDirty() {}, syncBindingOffsets() {} };
+  context.MaweState = { markProjectDirty() {} };
+
+  context.window.MaweJsonRepair.repairCurrentProjectTimings();
+  assert.deepEqual(plain(project.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope), originalScope);
+  const reopened = plain(project);
+  context.window.MaweJsonRepair.normalizeProjectTimings(reopened);
+  assert.deepEqual(plain(reopened.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope), originalScope);
+  const previousMain = utils.getExtensionTrack(reopened).segments;
+  assert.equal(core.projectCleanupRetainedSegments(previousMain, reopened.gap_remove)[0].text, '出发');
+});
+
+test('a swapped source track keeps its own cleanup in secondary and bilingual exports', () => {
+  const { context, utils, srt, main } = runtime();
+  const project = context.MaweBoot.DATA;
+  const original = JSON.stringify(main);
+  assert.equal(utils.swapMainAndExtensionSubtitle(project).swapped, true);
+  context.activeExtensionSegments = () => utils.getExtensionTrack(project)?.segments || [];
+  context.window.MaweExportContext.mergedExportSegments = () => ({ segments: utils.getMainTrack(project).segments,
+    overlaySet: new Set(), overlaySegments: [] });
+  for (const output of [srt.buildExtensionSrt(), srt.buildBilingualSrt(), srt.buildAss()]) {
+    assert.match(output, /我这个功能呢/);
+    assert.doesNotMatch(output, /啊，|我这……/);
+  }
+  assert.equal(JSON.stringify(main), original, 'export is a projection and does not modify the original track');
+});
 
 test('timing repair migrates exact scopes collectively through neutral roots and retains real selected endpoints', () => {
   const { context, core, main } = neutralNormalizationRuntime();
@@ -241,7 +353,7 @@ test('failed first cue cannot replace the live ranges of a later successful cue'
   assert.equal(core.projectCleanupRetainedSegments(main, state.gap_remove)[2].text, '我这个，功能很好呢');
   const reopened = plain(state);
   context.window.MaweJsonRepair.normalizeProjectTimings(reopened);
-  assert.equal(core.projectCleanupRetainedSegments(reopened.segments, reopened.gap_remove)[2].text, '我这个，功能很好呢');
+  assert.equal(core.projectCleanupRetainedSegments(context.window.AsrEditorUtils.getMainTrack(reopened).segments, reopened.gap_remove)[2].text, '我这个，功能很好呢');
   assert.equal(reopened.gap_remove.provenance.sources.ai_cleanup.length, 2);
 });
 
@@ -265,8 +377,9 @@ test('production ordinary/gap SRT and ASS builders remove local words while inde
 
 test('burn subtitles can retain media cue timing while file export extends the first cue', () => {
   const { context, srt, main } = runtime();
-  context.window.MaweExportContext.mergedExportSegments = () => ({ segments: main, overlaySet: new Set(), overlaySegments: [] });
-  context.activeExtensionSegments = () => [];
+  context.window.MaweExportContext.mergedExportSegments = (projectMain = value => value) => ({ segments: projectMain(main), overlaySet: new Set(), overlaySegments: [] });
+  context.window.AsrEditorUtils.getExtensionTrack(context.MaweBoot.DATA).enabled = false;
+  context.window.AsrEditorUtils.getOverlayTrack(context.MaweBoot.DATA).enabled = false;
   context.MaweSettings.EDITOR_SETTINGS.exportStartAtZero = true;
   const ordinaryFile = srt.buildSrt();
   const ordinaryBurn = srt.buildSrt({ alignFirstStart: false });
@@ -299,7 +412,7 @@ test('dynamic caption plans use surviving items and geometry receives surviving 
   assert.doesNotMatch(ass, /我这……/);
   const projected = srt.cleanupMainSegments();
   assert.equal(utils.buildPlainTextPayload(projected), '我这个功能呢');
-  assert.equal(context.MaweBoot.DATA.segments[0].items.length, 3);
+  assert.equal(utils.getMainTrack(context.MaweBoot.DATA).segments[0].items.length, 3);
 });
 
 test('OTIO media binding follows project media and rejects stale server paths after browser replacement', () => {
@@ -330,8 +443,7 @@ test('source/gap OTIO subtitle marker names and FCP/XML plans use exact retained
     assert.equal(timeline.buildGapRemovedSubtitleMarkers(interval, 0, overlay, overlay)[0].name, 'overlay untouched');
   }
   for (const timelineMode of ['source', 'gap_removed']) {
-    const plan = utils.buildProjectExportPlan({ ...context.MaweBoot.DATA,
-      overlay_track: { enabled: true, segments: overlay }, multi_subtitle: { enabled: true, tracks: [{ segments: extension }] } }, { timelineMode });
+    const plan = utils.buildProjectExportPlan(context.MaweBoot.DATA, { timelineMode });
     assert.equal(plan.cues.main[0].text, '我这个功能呢');
     assert.equal(plan.cues.extension[0].text, 'translated body');
     const [artifact] = utils.buildFcp7ExportArtifacts(plan, { subtitleTracks: 'all', nativeTextObjects: true });
@@ -339,4 +451,30 @@ test('source/gap OTIO subtitle marker names and FCP/XML plans use exact retained
     assert.doesNotMatch(artifact.content, /我这……/);
   }
   assert.equal(main[0].text, source().text);
+});
+
+test('unsupported selected overlay blocks SRT and ASS, but disabled overlay and preview remain usable', () => {
+  const { context, utils, srt } = runtime();
+  const overlay = utils.getOverlayTrack(context.MaweBoot.DATA);
+  context.window.MaweExportContext.mergedExportSegments = () => {
+    const overlaySegments = utils.TrackPolicy.isTrackEnabled(overlay, 'export') ? overlay.segments : [];
+    return { segments: [...utils.getMainTrack(context.MaweBoot.DATA).segments, ...overlaySegments], overlaySet: new Set(overlaySegments), overlaySegments };
+  };
+  overlay.variant = 'future';
+  overlay.preview_visible = false;
+  for (const build of [() => srt.buildSrt(), () => srt.buildAss(), () => srt.buildGapRemovedSrt(), () => srt.buildGapRemovedAss()]) {
+    assert.throws(build, /不支持导出叠加轨.*future/);
+  }
+  assert.doesNotThrow(() => srt.buildAss({ preview: true }));
+  for (const disable of ['enabled', 'export']) {
+    overlay.enabled = true;
+    overlay.export = { enabled: true };
+    if (disable === 'enabled') overlay.enabled = false;
+    else overlay.export.enabled = false;
+    assert.match(srt.buildSrt(), /我这个功能呢/);
+    assert.doesNotMatch(srt.buildSrt(), /overlay untouched/);
+    assert.match(srt.buildAss(), /Dialogue:/);
+    assert.doesNotMatch(srt.buildAss(), /overlay untouched/);
+    assert.equal(overlay.variant, 'future');
+  }
 });

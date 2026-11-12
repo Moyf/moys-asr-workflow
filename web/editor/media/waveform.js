@@ -40,6 +40,8 @@ export function initWaveform() {
     thumbnailCore,
     storage: window.MaweHost.storage,
     gapRemoveCore: window.AsrGapRemoveCore,
+    getSubtitleGroupValue: (segment, kind) => window.AsrEditorUtils.getSubtitleGroupValue(window.MaweBoot.DATA, segment, kind),
+    getSegmentDisplayColor: segment => window.AsrEditorUtils.effectiveSegmentColor(window.MaweBoot.DATA, segment),
     getLanguage: () => window.MAWE_I18N?.language,
   };
   Object.assign(helpers, createWaveformConstants(helpers));
@@ -102,6 +104,7 @@ export function initWaveform() {
     waveformScaleFromLoudness,
     waveformTopEdgeMs,
     wheelScrollDelta,
+    wordTimingFullLane,
   } = helpers;
 
   class WaveformEditor {
@@ -326,6 +329,9 @@ window.AsrWaveform = {
       markerRowTimeMs: markerDescriptors.markerRowTimeMs.value,
       // 字词气泡布局纯函数（不读 this）：候选全量 / 上限 / 叠行 / 优先级。
       computeWordChipLayout: WaveformEditor.prototype.computeWordChipLayout,
+      // 字词条带分层判定真源（visibility 模块）：单行 × 双语组合的一致性入口。
+      wordTimingFullLane,
+      drawWordChips: WaveformEditor.prototype.drawWordChips,
     },
   };
   if (window.MAWE?.register) {

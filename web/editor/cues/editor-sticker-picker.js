@@ -1,3 +1,5 @@
+import { refreshColorAssignmentUi, refreshStickerAssignmentUi } from './editor-color-filter.js';
+import { stickerUrl, updateMultiSelectionClasses } from './editor-selection.js';
 import { getOverlayTrack, stickerSegmentsForTrack, overlaySticker } from './overlay-track.js';
 
 export function initMaweStickerPicker() {
@@ -49,7 +51,7 @@ export function initMaweStickerPicker() {
         it.classList.add('hidden');
       }
       const img = document.createElement('img');
-      img.src = MaweSelection.stickerUrl(s); img.alt = s.name;
+      img.src = stickerUrl(s); img.alt = s.name;
       const nameEl = document.createElement('div');
       nameEl.className = 'sname'; nameEl.textContent = s.name;
       it.appendChild(img); it.appendChild(nameEl);
@@ -62,10 +64,9 @@ export function initMaweStickerPicker() {
 
   function assignSticker(sticker) {
   const segments = overlaySticker.stickerTargetTrack === 'overlay'
-    ? (getOverlayTrack()?.segments || null) : MaweBoot.DATA.segments;
+    ? (getOverlayTrack()?.segments || null) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   if (!segments) return;
-  const hadStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)
-    || (getOverlayTrack()?.segments || []).some((segment) => segment.sticker || segment.sticker_ref);
+  const hadStickers = MaweBoot.DATA.subtitle_groups.sticker.length > 0;
   return MaweCommands.run('分配表情包', () => {
     window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, segments, stickerTargetIdxs, 'sticker', sticker, null, { replaceHead: true });
     MaweDom.stickerModal.classList.remove('show');
@@ -88,7 +89,7 @@ export function initMaweStickerPicker() {
       MaweDisplaySettings.applyCueListDisplaySettings();
       MaweDisplaySettings.applyCueEditorDisplaySettings();
     }
-    MaweColorFilter.refreshStickerAssignmentUi();
+    refreshStickerAssignmentUi();
     MaweHint.flashHint(`已分配「${sticker.name}」`, 'success');
   });
 }
@@ -99,9 +100,9 @@ export function initMaweStickerPicker() {
     return MaweCommands.run('清除表情包', () => {
       // 一次性切除所有目标 idx，触发组拆分
       MaweSegmentOps.splitGroupsAtCutPoints(new Set(stickerTargetIdxs), 'sticker', 'sticker_ref',
-        overlaySticker.stickerTargetTrack === 'overlay' ? getOverlayTrack().segments : MaweBoot.DATA.segments);
+        overlaySticker.stickerTargetTrack === 'overlay' ? getOverlayTrack().segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
       MaweDom.stickerModal.classList.remove('show');
-      MaweColorFilter.refreshStickerAssignmentUi();
+      refreshStickerAssignmentUi();
       MaweHint.flashHint('已清除', 'success');
     });
   }
@@ -114,12 +115,12 @@ export function initMaweStickerPicker() {
 
   function openStickerPreview(idx, { overlay = false } = {}) {
   const segments = stickerSegmentsForTrack(overlay ? 'overlay' : 'main');
-  const seg = segments[idx];
-  if (!seg?.sticker) return;
+  const sticker = window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, segments[idx], 'sticker');
+  if (!sticker) return;
   previewIdx = idx;
   overlaySticker.previewTrack = overlay ? 'overlay' : 'main';
-  document.getElementById('sticker-preview-img').src = MaweSelection.stickerUrl(seg.sticker);
-  document.getElementById('sticker-preview-name').textContent = seg.sticker.name;
+  document.getElementById('sticker-preview-img').src = stickerUrl(sticker);
+  document.getElementById('sticker-preview-name').textContent = sticker.name;
   MaweDom.stickerPreviewModal.classList.add('show');
 }
 
@@ -133,7 +134,7 @@ export function initMaweStickerPicker() {
     // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
     MaweSegmentOps.splitGroupsAtCutPoints(
       new Set([idx]), 'sticker', 'sticker_ref',
-      overlay ? (getOverlayTrack()?.segments || []) : MaweBoot.DATA.segments,
+      overlay ? (getOverlayTrack()?.segments || []) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
     );
   });
 }
@@ -145,30 +146,15 @@ export function initMaweStickerPicker() {
   function expandStickerTime(idxs) {
     const sorted = [...idxs].sort((a, b) => a - b);
     // 找选中范围内的 sticker：优先取 head；如果只有 ref，从 ref 回溯到原 head
-    const sourceGroupId = sorted.map(i => MaweBoot.DATA.segments[i].sticker_group_id).find(Boolean);
+    const sourceGroupId = sorted.map(i => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].sticker_group_id).find(Boolean);
     let sourceSticker = MaweBoot.DATA.subtitle_groups?.sticker.find(group => group.id === sourceGroupId)?.value || null;
-    if (!sourceSticker) for (const i of sorted) {
-      if (MaweBoot.DATA.segments[i].sticker) {
-        sourceSticker = MaweBoot.DATA.segments[i].sticker;
-        break;
-      }
-    }
-    if (!sourceSticker) {
-      for (const i of sorted) {
-        const ref = MaweBoot.DATA.segments[i].sticker_ref;
-        if (ref && MaweBoot.DATA.segments[ref.headIdx]?.sticker) {
-          sourceSticker = MaweBoot.DATA.segments[ref.headIdx].sticker;
-          break;
-        }
-      }
-    }
     if (!sourceSticker) {
       MaweHint.flashHint('选中范围内没有表情包', 'invalid');
       return;
     }
     return MaweCommands.run('延长表情包', (command) => {
-      const existing = sorted.map(i => MaweBoot.DATA.segments[i].sticker_group_id).find(Boolean);
-      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, MaweBoot.DATA.segments, sorted, 'sticker', sourceSticker, existing);
+      const existing = sorted.map(i => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i].sticker_group_id).find(Boolean);
+      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, sorted, 'sticker', sourceSticker, existing);
       command.commit({ cueList: true });
       MaweHint.flashHint(`已拓展到 ${sorted.length} 条`, 'success');
     });
@@ -181,15 +167,16 @@ export function initMaweStickerPicker() {
   // 单选 → 设为 head；多选 → 第一条为 head，时间跨整个范围，后续为 ref
   function assignColor(idxs, colorName) {
     if (!idxs.length) return;
+    if (window.MaweSpeakerLabels?.assignFromColorShortcut(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), idxs, colorName)) return;
     const def = MaweColors.COLOR_BY_NAME[colorName];
     if (!def) return;
     return MaweCommands.run('标记颜色', () => {
       const sorted = [...idxs].sort((a, b) => a - b);
-      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, MaweBoot.DATA.segments, sorted, 'color', { name: colorName, value: def.value }, null, { replaceHead: true });
+      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, sorted, 'color', { name: colorName, value: def.value }, null, { replaceHead: true });
       // 单条修改 lead（其 color_ref 成员仍指向它）或多选统一分配时，视为整组联动修改
       const isUnifiedGroup = sorted.length > 1
-        || MaweBoot.DATA.segments.some((s) => s.color_ref && s.color_ref.headIdx === sorted[0]);
-      MaweColorFilter.refreshColorAssignmentUi();
+        || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.filter(s => s.color_group_id === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[sorted[0]].color_group_id).length > 1;
+      refreshColorAssignmentUi();
       MaweHint.flashHint(isUnifiedGroup
         ? `已将关联字幕统一设为「${def.label}色」`
         : `已将字幕设为「${def.label}色」`, 'success');
@@ -209,12 +196,28 @@ export function initMaweStickerPicker() {
 
 
   function clearColorOnTargets(idxs) {
+    if (window.MaweSpeakerLabels?.assignFromColorShortcut(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), idxs, null)) return;
     return MaweCommands.run('清除颜色', () => {
       // 一次性切除所有目标 idx，触发组拆分
       MaweSegmentOps.splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
-      MaweColorFilter.refreshColorAssignmentUi();
+      refreshColorAssignmentUi();
       MaweHint.flashHint('已清除颜色', 'success');
     });
+  }
+
+  function assignTrackColor(track, idxs, colorName) {
+    if (!track?.segments) return;
+    const valid = [...new Set(idxs)].filter(index => Number.isInteger(index) && track.segments[index]);
+    if (!valid.length) return;
+    if (window.MaweSpeakerLabels?.assignFromColorShortcut(track, valid, colorName)) return;
+    if (track.role === 'main') return colorName === null ? clearColorOnTargets(valid) : assignColor(valid, colorName);
+    const color = colorName === null ? null : MaweColors.COLOR_BY_NAME[colorName];
+    if (colorName !== null && !color) return;
+    return MaweCommands.run(color ? '标记颜色' : '清除颜色', () => {
+      if (color) window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, track.segments, valid, 'color',
+        { name: color.name, value: color.value }, null, { replaceHead: true });
+      else MaweSegmentOps.splitGroupsAtCutPoints(new Set(valid), 'color', 'color_ref', track.segments);
+    }, { invalidate: { cueList: true, waveform: 'full', preview: 'update' } });
   }
 
 
@@ -231,7 +234,7 @@ export function initMaweStickerPicker() {
   const isExtension = Boolean(extensionTrack);
   const segments = isOverlay ? overlayTrackObj.segments
     : isExtension ? extensionTrack.segments
-    : MaweBoot.DATA.segments;
+    : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
   const validIdxs = [...new Set(idxs.filter((index) => Number.isInteger(index) && segments[index]))];
   if (!validIdxs.length) return;
   return MaweCommands.run('切换禁用', (command) => {
@@ -247,10 +250,10 @@ export function initMaweStickerPicker() {
       // 副字幕自身的操作不反向修改主字幕，保持它可以单独禁用。
       validIdxs.forEach((index) => {
         const binding = MaweMultiSubtitleCore.bindingForMainIndex(index);
-        const boundTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.track_id) : null;
+        const boundTrack = binding ? MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id) : null;
         if (!boundTrack) return;
         const targets = boundExtensionTargets.get(boundTrack) || new Set();
-        (binding.extension_segment_ids || []).forEach((id) => {
+        (binding.target?.segment_id ? [binding.target.segment_id] : []).forEach((id) => {
           const extensionIndex = boundTrack.segments.findIndex((segment) => segment?.id === id);
           if (extensionIndex < 0) return;
           const extension = boundTrack.segments[extensionIndex];
@@ -286,7 +289,7 @@ export function initMaweStickerPicker() {
             `.multi-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
           ).forEach((el) => el.classList.remove('selected'));
         }));
-        MaweSelection.updateMultiSelectionClasses();
+        updateMultiSelectionClasses();
         window.MaweCuePanelWiring.updateSelectionCountText();
       }
     }
@@ -319,9 +322,22 @@ export function initMaweStickerPicker() {
     removeStickerCascade,
     expandStickerTime,
     assignColor,
+    assignTrackColor,
     removeColorCascade,
     clearColorOnTargets,
     toggleDisabled
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function openStickerPicker(...args) { return window.MaweStickerPicker.openStickerPicker(...args); }
+export function renderStickerGrid(...args) { return window.MaweStickerPicker.renderStickerGrid(...args); }
+export function assignSticker(...args) { return window.MaweStickerPicker.assignSticker(...args); }
+export function clearStickerOnTargets(...args) { return window.MaweStickerPicker.clearStickerOnTargets(...args); }
+export function openStickerPreview(...args) { return window.MaweStickerPicker.openStickerPreview(...args); }
+export function removeStickerCascade(...args) { return window.MaweStickerPicker.removeStickerCascade(...args); }
+export function expandStickerTime(...args) { return window.MaweStickerPicker.expandStickerTime(...args); }
+export function assignColor(...args) { return window.MaweStickerPicker.assignColor(...args); }
+export function removeColorCascade(...args) { return window.MaweStickerPicker.removeColorCascade(...args); }
+export function clearColorOnTargets(...args) { return window.MaweStickerPicker.clearColorOnTargets(...args); }
+export function toggleDisabled(...args) { return window.MaweStickerPicker.toggleDisabled(...args); }

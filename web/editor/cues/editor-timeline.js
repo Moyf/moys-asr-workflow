@@ -222,12 +222,9 @@
   if (!project || typeof project !== 'object') return normalizeTimelineTimebase();
   const timebase = projectTimebase(project);
   project.timebase = { ...timebase };
-  syncTrackTimebase(project.segments, timebase, { preferFrames });
-  const tracks = project.multi_subtitle?.tracks;
-  if (Array.isArray(tracks)) {
-    tracks.forEach((track) => syncTrackTimebase(track?.segments, timebase, { preferFrames }));
+  for (const track of project.tracks || []) {
+    syncTrackTimebase(track.segments, timebase, { preferFrames });
   }
-  syncTrackTimebase(project.overlay_track?.segments, timebase, { preferFrames });
   return timebase;
 }
 
@@ -236,7 +233,7 @@
   function syncProjectTimebaseAndBindingOffsets(project = MaweBoot.DATA, options = {}) {
     const timebase = syncProjectTimebase(project, options);
     if (project && typeof project === 'object') {
-      window.AsrEditorUtils.rebuildBindingOffsets(project.multi_subtitle, project.segments);
+      window.AsrEditorUtils.rebuildBindingOffsets(project);
     }
     return timebase;
   }
@@ -381,9 +378,9 @@
 
 
   function timelineHasSubtitleData() {
-    return (Array.isArray(MaweBoot.DATA?.segments) && MaweBoot.DATA.segments.length > 0)
-      || (Array.isArray(MaweBoot.DATA?.multi_subtitle?.tracks)
-        && MaweBoot.DATA.multi_subtitle.tracks.some((track) => Array.isArray(track?.segments)
+    return (Array.isArray(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA)?.segments) && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0)
+      || (Array.isArray(MaweBoot.DATA?.tracks)
+        && MaweBoot.DATA.tracks.some((track) => Array.isArray(track?.segments)
           && track.segments.length > 0));
   }
 

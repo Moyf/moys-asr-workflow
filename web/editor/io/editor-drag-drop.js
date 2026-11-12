@@ -46,7 +46,7 @@
     return;
   }
   if (jsonFile) {
-    if (MaweBoot.DATA.segments.length > 0) {
+    if (window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0) {
       if (MaweServerSave.hasUnsavedProjectChanges()
           && !confirm('当前有未保存的改动，是否继续处理此工程文件？选择“打开工程”仍会替换当前工程。')) return;
       try {
@@ -70,7 +70,7 @@
     await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
     return;
   }
-  if (subtitleFile && MaweBoot.DATA.segments.length === 0) {
+  if (subtitleFile && window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length === 0) {
     try {
       stagedSubtitleSegments = await parseDroppedSubtitleFile(subtitleFile);
       if (!current()) return;
@@ -101,7 +101,7 @@
     if (!await loading || !current()) return;
   }
   if (subtitleFile) {
-    if (MaweBoot.DATA.segments.length > 0) {
+    if (window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length > 0) {
       try {
         const segments = await MaweLoadingProgress.parseSubtitleImportFile(subtitleFile);
         if (!current()) return;

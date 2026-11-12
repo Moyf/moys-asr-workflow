@@ -3,6 +3,7 @@
 """Automatic subtitle post-processing after a successful transcription."""
 
 from __future__ import annotations
+from maw.project_tracks import get_main_track, get_track
 
 import hashlib
 import json
@@ -1306,8 +1307,8 @@ def _attach_translation_track(
     source_project = read_project(source_project_path)
     translated_project = translated_artifact.translation_project or read_project(translated_artifact.project_path)
     combined = attach_translation_project(source_project, translated_project, target=target)
-    source_segments = source_project["segments"]
-    extension_segments = combined["multi_subtitle"]["tracks"][0]["segments"]
+    source_segments = get_main_track(source_project)["segments"]
+    extension_segments = get_track(combined, combined["bilingual"]["active_track_id"])["segments"]
 
     skipped_identical = len(source_segments) - len(extension_segments)
     warnings = (

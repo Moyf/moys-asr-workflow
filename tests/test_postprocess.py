@@ -39,8 +39,11 @@ from maw.postprocess_ffmpeg import AudioTrack, BurnSubtitleRequest, ExtractAudio
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
 from maw.postprocess_llm import MAX_PROVIDER_DIAGNOSTIC_CHARS, LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict, JsonValue
+from maw.project import normalize_project
 from maw.text_conversion import TextConversion
 from tests.compact_assertions import CompactContainerAssertions
+from tests.track_helpers import main_segments, main_track, overlay_track
+from tests.track_helpers import extension_tracks
 
 
 def sample_project(media: Path) -> JsonDict:
@@ -70,7 +73,7 @@ def sample_project(media: Path) -> JsonDict:
 
 
 def project_segments(project: JsonDict) -> list[JsonDict]:
-    raw_segments = project.get("segments")
+    raw_segments = main_segments(project)
     if not isinstance(raw_segments, list):
         raise AssertionError("project must contain a segment array")
     segments: list[JsonDict] = []
@@ -84,11 +87,13 @@ def project_segments(project: JsonDict) -> list[JsonDict]:
 def translation_segments(project: JsonDict) -> list[JsonDict]:
     """Read the translation projection from the actual editable MOSP."""
     main = project_segments(project)
-    track = project["multi_subtitle"]["tracks"][0]
+    track = next(track for track in project["tracks"] if track["id"] == project["bilingual"]["active_track_id"])
     extensions = {s["id"]: s for s in track["segments"]}
     result = []
+    targets = {binding["source"]["segment_id"]: binding["target"]["segment_id"]
+               for binding in project["bindings"] if binding["target"]["track_id"] == track["id"]}
     for index, source in enumerate(main, 1):
-        extension = extensions.get(f"{track['id']}-segment-{index:03d}")
+        extension = extensions.get(targets.get(source["id"]))
         translated = dict(source)
         if extension is not None:
             translated["text"] = extension["text"]
@@ -141,6 +146,72 @@ class PostprocessTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def test_proofread_keeps_original_cues_when_model_merges_different_groups(self) -> None:
+        for kind in ("color", "sticker"):
+            with self.subTest(kind=kind):
+                value = {"name": "red"} if kind == "color" else {"name": "star"}
+                source = {"segments": [
+                    {"start": 0, "end": 200, "text": "甲", kind: value,
+                     "items": [{"start": 0, "end": 200, "text": "甲"}]},
+                    {"start": 200, "end": 400, "text": "乙", f"{kind}_ref": {"name": value["name"], "headIdx": 0},
+                     "items": [{"start": 200, "end": 400, "text": "乙"}]},
+                    {"start": 400, "end": 600, "text": "丙"},
+                ]}
+                self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+                before = self.project_path.read_bytes()
+                original = main_segments(read_project(self.project_path))
+                calls = []
+                def complete(_prompt, rows):
+                    calls.append([row["text"] for row in rows])
+                    return {"groups": [{"source_ids": [row["id"] for row in rows],
+                                        "text": "".join(str(row["text"]) for row in rows)}]}
+                result = run_llm_postprocess(LlmPostprocessRequest(self.project_path, None, OutputMode.BOTH,
+                                                                   "proofread", ""), complete=complete)
+                segments = main_segments(read_project(result.project_path))
+                self.assertEqual(calls, [["甲", "乙", "丙"]])
+                self.assertEqual(segments, original)
+                self.assertIn("跨越颜色或贴纸组", "\n".join(result.warnings))
+                self.assertEqual(self.project_path.read_bytes(), before)
+
+    def test_group_fallback_preserves_original_ids_after_an_earlier_split(self) -> None:
+        source = {"segments": [
+            {"id": "foo", "start": 0, "end": 400, "text": "甲乙"},
+            {"id": "foo-part-002", "start": 400, "end": 600, "text": "丙", "color": {"name": "red"}},
+            {"id": "last", "start": 600, "end": 800, "text": "丁"},
+        ]}
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        result = run_llm_postprocess(LlmPostprocessRequest(self.project_path, None, OutputMode.BOTH,
+                                                           "proofread", ""),
+            complete=lambda _prompt, _rows: {"groups": [
+                {"source_ids": ["c0001"], "text": "甲"},
+                {"source_ids": ["c0001"], "text": "乙"},
+                {"source_ids": ["c0002", "c0003"], "text": "丙丁"},
+            ]})
+        segments = main_segments(read_project(result.project_path))
+        self.assertEqual([segment["text"] for segment in segments], ["甲", "乙", "丙", "丁"])
+        ids = [segment["id"] for segment in segments]
+        self.assertEqual((ids[0], ids[2], ids[3]), ("foo", "foo-part-002", "last"))
+        self.assertEqual(len(set(ids)), len(ids))
+        self.assertIn("未应用这些模型文本", "\n".join(result.warnings))
+
+    def test_group_fallback_keeps_other_proofread_results(self) -> None:
+        source = {"segments": [
+            {"id": "first", "start": 0, "end": 200, "text": "甲", "color": {"name": "red"}},
+            {"id": "second", "start": 200, "end": 400, "text": "乙", "color_ref": {"name": "red", "headIdx": 0}},
+            {"id": "third", "start": 400, "end": 600, "text": "丙"},
+        ]}
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        result = run_llm_postprocess(LlmPostprocessRequest(self.project_path, None, OutputMode.BOTH,
+                                                           "proofread", ""),
+            complete=lambda _prompt, _rows: {"groups": [
+                {"source_ids": ["c0001"], "text": "甲的校对"},
+                {"source_ids": ["c0002", "c0003"], "text": "乙丙的校对"},
+            ]})
+        segments = main_segments(read_project(result.project_path))
+        self.assertEqual([segment["text"] for segment in segments], ["甲的校对", "乙", "丙"])
+        self.assertEqual([segment["id"] for segment in segments], ["first", "second", "third"])
+        self.assertIn("未应用这些模型文本", "\n".join(result.warnings))
+
     def test_fixed_replacement_preserves_timing_and_creates_chainable_outputs(self) -> None:
         request = ReplacementRequest(
             project_path=self.project_path,
@@ -170,8 +241,8 @@ class PostprocessTests(unittest.TestCase):
             [(item["text"], item["start"], item["end"]) for item in segment_items(first_segments[0])],
             [("8+1", 100, 300), ("很好喝", 300, 900)],
         )
-        self.assertEqual(first_segments[0]["speaker"], "speaker-1")
-        self.assertEqual(first_segments[1]["color"], source_segments[1]["color"])
+        self.assertEqual(first_segments[0]["speaker"], source_segments[0]["speaker"])
+        self.assertEqual(first_segments[1]["color_group_id"], source_segments[1]["color_group_id"])
         self.assertEqual(source_segments[0]["text"], "酒很好喝")
         self.assertTrue(first.srt_path.is_file())
         self.assertIn("00:00:00,100 --> 00:00:00,900", first.srt_path.read_text(encoding="utf-8"))
@@ -555,7 +626,7 @@ class PostprocessTests(unittest.TestCase):
 
     def test_translation_repair_network_failure_preserves_the_whole_batch(self) -> None:
         source = read_project(self.project_path)
-        source["segments"].append({"id": "third", "start": 2500, "end": 3000, "text": "最后一句"})
+        main_segments(source).append({"id": "third", "start": 2500, "end": 3000, "text": "最后一句"})
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         original = project_segments(read_project(self.project_path))
         calls = 0
@@ -700,7 +771,7 @@ class PostprocessTests(unittest.TestCase):
 
         processed = apply_llm_groups(project, groups)
 
-        source_segments = project_segments(project)
+        source_segments = project_segments(normalize_project(project))
         result_segments = project_segments(processed)
         self.assertEqual(
             [(segment["start"], segment["end"]) for segment in result_segments],
@@ -708,7 +779,7 @@ class PostprocessTests(unittest.TestCase):
         )
         self.assertEqual(result_segments[0]["text"], "This belongs first")
         self.assertNotIn("items", result_segments[0])
-        self.assertEqual(result_segments[1]["color"], source_segments[1]["color"])
+        self.assertEqual(result_segments[1]["color_group_id"], source_segments[1]["color_group_id"])
 
     def test_llm_groups_reject_missing_reordered_or_unknown_ids(self) -> None:
         project = sample_project(self.media)
@@ -757,6 +828,8 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_resegment_uses_atom_boundaries_and_preserves_item_timing(self) -> None:
         project = sample_project(self.media)
+        project_segments(project)[1]["speaker"] = project_segments(project)[0]["speaker"]
+        project_segments(project)[1].pop("color", None)
         project_segments(project)[1]["items"] = [
             {"start": 1200, "end": 1600, "text": "下"},
             {"start": 1600, "end": 2200, "text": "一句"},
@@ -866,6 +939,10 @@ class PostprocessTests(unittest.TestCase):
 
     def test_mosp_resegment_uses_atom_boundaries_and_preserves_word_timings(self) -> None:
         project = sample_project(self.media)
+        # This fixture tests regrouped word timing within one identity; identity
+        # boundaries have separate rejection and batching regressions.
+        project_segments(project)[1]["speaker"] = project_segments(project)[0]["speaker"]
+        project_segments(project)[1].pop("color", None)
         project_segments(project)[1]["items"] = [
             {"start": 1200, "end": 1600, "text": "下"},
             {"start": 1600, "end": 2200, "text": "一句"},
@@ -914,6 +991,7 @@ class PostprocessTests(unittest.TestCase):
     def test_mosp_resegment_assigns_unique_ids_when_one_cue_splits(self) -> None:
         project = sample_project(self.media)
         segments = project_segments(project)
+        segments[1]["speaker"] = segments[0]["speaker"]
         segments[0]["id"] = "source-first"
         segments[1]["id"] = "source-second"
         segments[1]["items"] = [
@@ -930,28 +1008,30 @@ class PostprocessTests(unittest.TestCase):
                 operation="resegment",
                 custom_prompt="",
             ),
-            complete=lambda _prompt, _cues: {
-                "groups": [
-                    {"atom_ids": ["c0001a0001"]},
-                    {"atom_ids": ["c0001a0002"]},
-                    {"atom_ids": ["c0002a0001", "c0002a0002"]},
-                ]
-            },
+            complete=lambda _prompt, cues: {"groups": [
+                group for cue in cues for group in (
+                    [{"atom_ids": [item["id"]]} for item in cue["items"]]
+                    if cue["id"] == "c0001" else [{"atom_ids": [item["id"] for item in cue["items"]]}]
+                )
+            ]},
         )
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project file")
         output = project_segments(read_project(result.project_path))
         ids = [str(segment["id"]) for segment in output]
-        self.assertEqual(ids, ["source-first-part-001", "source-first-part-002", "source-second"])
+        self.assertEqual((ids[0], ids[2]), ("source-first", "source-second"))
         self.assertEqual(len(ids), len(set(ids)))
 
-    def test_llm_regroup_removes_all_positional_visual_refs_and_word_timings(self) -> None:
+    def test_llm_regroup_preserves_stable_groups_and_unaffected_word_timings(self) -> None:
         project = sample_project(self.media)
         segments = project_segments(project)
+        segments[1]["speaker"] = segments[0]["speaker"]
         segments[0]["color"] = {"name": "黄色", "value": "#ffcc00"}
         segments[1].pop("color", None)
         segments[1]["color_ref"] = {"headIdx": 0}
+        segments[0]["sticker"] = {"name": "intro", "start": 100, "end": 3000}
+        segments[1]["sticker_ref"] = {"headIdx": 0}
         segments.append({
             "start": 2400,
             "end": 3000,
@@ -959,7 +1039,7 @@ class PostprocessTests(unittest.TestCase):
             "items": [{"start": 2400, "end": 3000, "text": "第三句"}],
             "sticker_ref": {"headIdx": 0},
         })
-        project["segments"] = list[JsonValue](segments)
+        main_track(project)["segments"] = list[JsonValue](segments)
 
         processed = apply_llm_groups(project, {
             "groups": [
@@ -984,6 +1064,9 @@ class PostprocessTests(unittest.TestCase):
     def test_llm_rejects_merging_enabled_and_disabled_cues(self) -> None:
         project = sample_project(self.media)
         project_segments(project)[1]["disabled"] = True
+        # Keep both cues in the same visual group so the disabled-state guard
+        # is exercised rather than the cross-group fallback.
+        project_segments(project)[1].pop("color", None)
 
         with self.assertRaisesRegex(ValueError, "enabled and disabled"):
             _ = apply_llm_groups(project, {
@@ -1057,9 +1140,9 @@ class PostprocessTests(unittest.TestCase):
 
         project = read_srt(source)
 
-        self.assertEqual([segment["text"] for segment in project["segments"]], ["主"])
+        self.assertEqual([segment["text"] for segment in main_segments(project)], ["主"])
         self.assertEqual(
-            [segment["text"] for segment in project["overlay_track"]["segments"]],
+            [segment["text"] for segment in overlay_track(project)["segments"]],
             ["叠"],
         )
 
@@ -1704,7 +1787,7 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_runner_batches_large_projects_before_provider_call(self) -> None:
         project = sample_project(self.media)
-        project["segments"] = [
+        main_track(project)["segments"] = [
             {"start": index * 1000, "end": (index + 1) * 1000, "text": f"cue {index}"}
             for index in range(301)
         ]
@@ -1735,7 +1818,7 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_runner_splits_batches_by_input_text_length(self) -> None:
         project = sample_project(self.media)
-        project["segments"] = [
+        main_track(project)["segments"] = [
             {"start": index * 1000, "end": (index + 1) * 1000, "text": "字" * 2500}
             for index in range(3)
         ]
@@ -1764,7 +1847,7 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_runner_adds_batch_range_to_completion_error(self) -> None:
         project = sample_project(self.media)
-        project["segments"] = [
+        main_track(project)["segments"] = [
             {"start": index * 1000, "end": (index + 1) * 1000, "text": "字" * 3000}
             for index in range(2)
         ]
@@ -1923,8 +2006,8 @@ class PostprocessTests(unittest.TestCase):
             ["The wine is delicious.", "The next sentence."],
         )
         self.assertNotIn("items", translated_segments[0])
-        self.assertEqual(translated_segments[0]["speaker"], "speaker-1")
-        self.assertEqual(translated_segments[1]["color"], source_segments[1]["color"])
+        self.assertEqual(translated_segments[0]["speaker"], source_segments[0]["speaker"])
+        self.assertEqual(translated_segments[1]["color_group_id"], source_segments[1]["color_group_id"])
         self.assertIn("规范格式中每个 group", prompts[0])
         self.assertIn("多个 source_ids 一律无效", prompts[0])
 
@@ -1932,7 +2015,7 @@ class PostprocessTests(unittest.TestCase):
         # 混合语言工程翻译到中文：中文句不再发送给模型，逐字节保留（含逐词
         # 时间码）；英文句正常翻译。
         source = read_project(self.project_path)
-        source["segments"][1]["text"] = "This line is English."
+        main_segments(source)[1]["text"] = "This line is English."
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         requested_cues: list[list[str]] = []
 
@@ -1969,7 +2052,7 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_translation_sends_latin_cues_when_translating_to_english(self) -> None:
         source = read_project(self.project_path)
-        source["segments"][1]["text"] = "This line is English."
+        main_segments(source)[1]["text"] = "This line is English."
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         requested_cues: list[list[str]] = []
 
@@ -2013,12 +2096,12 @@ class PostprocessTests(unittest.TestCase):
                 if language is None:
                     source.pop("language")
                 else:
-                    source["language"] = language
+                    main_track(source)['language'] = language
                 if language_source is None:
                     source.pop("language_source")
                 else:
-                    source["language_source"] = language_source
-                for segment, text in zip(source["segments"], ("今日", "東京")):
+                    main_track(source)['language_source'] = language_source
+                for segment, text in zip(main_segments(source), ("今日", "東京")):
                     segment["text"] = text
                     segment.pop("items", None)
                 self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
@@ -2057,9 +2140,9 @@ class PostprocessTests(unittest.TestCase):
         for foreign_text in ("これは日本語です", "ﾄｳｷｮｳ", "\U0001b001", "한국어", "한글", "\uffbe\uffc2"):
             with self.subTest(foreign_text=foreign_text):
                 source = sample_project(self.media)
-                source["segments"][0]["text"] = "今日"
-                source["segments"][0].pop("items", None)
-                source["segments"][1]["text"] = foreign_text
+                main_segments(source)[0]["text"] = "今日"
+                main_segments(source)[0].pop("items", None)
+                main_segments(source)[1]["text"] = foreign_text
                 self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
                 requested: list[list[str]] = []
 
@@ -2077,9 +2160,9 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_translation_prefilters_with_explicit_chinese_hint_alias(self) -> None:
         source = sample_project(self.media)
-        source["language"] = "zh-Hant"
-        source["language_source"] = "hint"
-        source["segments"][1]["text"] = "This line is English."
+        main_track(source)['language'] = "zh-Hant"
+        main_track(source)['language_source'] = "hint"
+        main_segments(source)[1]["text"] = "This line is English."
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         requested: list[list[str]] = []
 
@@ -2101,8 +2184,8 @@ class PostprocessTests(unittest.TestCase):
         for operation in ("translate_zh", "translate_en"):
             with self.subTest(operation=operation):
                 source = sample_project(self.media)
-                source["segments"][1]["text"] = "3.5"
-                source["segments"].append({"start": 2300, "end": 2600, "text": ""})
+                main_segments(source)[1]["text"] = "3.5"
+                main_segments(source).append({"start": 2300, "end": 2600, "text": ""})
                 self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
                 requested: list[list[str]] = []
 
@@ -2165,11 +2248,8 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_translation_can_merge_source_and_translation_into_one_subtitle(self) -> None:
         source = read_project(self.project_path)
-        source["multi_subtitle"] = {
-            "enabled": True,
-            "tracks": [{"id": "old-extension", "segments": []}],
-            "bindings": [],
-        }
+        source["tracks"].append({"id": "old-extension", "role": "secondary", "name": "Old", "enabled": True, "segments": []})
+        source["bilingual"]["active_track_id"] = "old-extension"
         source["extensionSegments"] = [{"start": 100, "end": 900, "text": "旧版副轨"}]
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         result = run_llm_postprocess(
@@ -2198,10 +2278,10 @@ class PostprocessTests(unittest.TestCase):
         )
         saved = read_project(result.project_path)
         self.assertEqual(merged, project_segments(read_project(self.project_path)))
-        self.assertEqual(saved["multi_subtitle"]["tracks"][0]["id"], "old-extension")
+        self.assertEqual(extension_tracks(saved)[0]["id"], "old-extension")
         self.assertEqual([s["text"] for s in translation_segments(saved)], ["The wine is delicious.", "The next sentence."])
-        self.assertEqual(merged[0]["speaker"], "speaker-1")
-        self.assertEqual(merged[1]["color"], project_segments(read_project(self.project_path))[1]["color"])
+        self.assertEqual(merged[0]["speaker"], project_segments(read_project(self.project_path))[0]["speaker"])
+        self.assertEqual(merged[1]["color_group_id"], project_segments(read_project(self.project_path))[1]["color_group_id"])
         self.assertIsNone(result.translated_srt_path)
         self.assertEqual(result.project_path.name, "clip.translate-en-bilingual.mosp")
         self.assertEqual(result.srt_path.name, "clip.translate-en-bilingual.srt")
@@ -2212,8 +2292,8 @@ class PostprocessTests(unittest.TestCase):
         # 工具箱双语产物在 zh 界面命名 .翻译为中文.双语合一（operation 保持
         # translate_zh-bilingual 内部 ID，仅文件名显示本地化）。
         source = read_project(self.project_path)
-        source["segments"][0]["text"] = "The wine is delicious."
-        source["segments"][1]["text"] = "The next sentence."
+        main_segments(source)[0]["text"] = "The wine is delicious."
+        main_segments(source)[1]["text"] = "The next sentence."
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         with mock.patch.object(
             gui_config,
@@ -2326,7 +2406,7 @@ class PostprocessTests(unittest.TestCase):
         # 回填模式：7中3英 → 翻译成中文 → 单条 10 句全中文（这里等价的最小
         # 用例：中文句逐字节保留并保留逐词时间码，英文句替换为译文）。
         source = read_project(self.project_path)
-        source["segments"][1]["text"] = "This line is English."
+        main_segments(source)[1]["text"] = "This line is English."
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         result = run_llm_postprocess(
             LlmPostprocessRequest(
@@ -2362,7 +2442,7 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_translation_backfill_output_names_localize_in_zh_ui(self) -> None:
         source = read_project(self.project_path)
-        source["segments"][1]["text"] = "This line is English."
+        main_segments(source)[1]["text"] = "This line is English."
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         with mock.patch.object(
             gui_config,
@@ -2445,9 +2525,9 @@ class PostprocessTests(unittest.TestCase):
         ), complete=complete)
         saved = read_project(repeated.project_path)
         self.assertEqual(requested, ["酒很好喝", "下一句"])
-        self.assertEqual(saved["segments"], read_project(self.project_path)["segments"])
-        self.assertEqual(len(saved["multi_subtitle"]["tracks"]), 1)
-        self.assertEqual(saved["multi_subtitle"]["tracks"][0]["id"], read_project(result.project_path)["multi_subtitle"]["tracks"][0]["id"])
+        self.assertEqual(main_segments(saved), main_segments(read_project(self.project_path)))
+        self.assertEqual(len(extension_tracks(saved)), 1)
+        self.assertEqual(extension_tracks(saved)[0]["id"], extension_tracks(read_project(result.project_path))[0]["id"])
         self.assertEqual([s["text"] for s in translation_segments(saved)], ["New c0001", "New c0002"])
 
     def test_bilingual_srt_input_blocks_retranslation_and_marks_bilingual_suffix(self) -> None:
@@ -2513,8 +2593,8 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_chinese_translation_is_first_when_bilingual_subtitles_are_merged(self) -> None:
         source = read_project(self.project_path)
-        source["segments"][0]["text"] = "The wine is delicious."
-        source["segments"][1]["text"] = "The next sentence."
+        main_segments(source)[0]["text"] = "The wine is delicious."
+        main_segments(source)[1]["text"] = "The next sentence."
         self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         result = run_llm_postprocess(
             LlmPostprocessRequest(
@@ -2754,7 +2834,7 @@ class PostprocessTests(unittest.TestCase):
             "text": " ",
             "items": [{"start": 950, "end": 960, "text": " "}],
         }
-        project["segments"] = [project_segments(project)[0], blank_segment, project_segments(project)[1]]
+        main_track(project)["segments"] = [project_segments(project)[0], blank_segment, project_segments(project)[1]]
         _ = self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
         calls: list[list[str]] = []
 
@@ -2788,7 +2868,7 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_translation_rejects_an_all_blank_project_before_calling_model(self) -> None:
         project = sample_project(self.media)
-        project["segments"] = [{"start": 100, "end": 110, "text": " "}]
+        main_track(project)["segments"] = [{"start": 100, "end": 110, "text": " "}]
         _ = self.project_path.write_text(json.dumps(project), encoding="utf-8")
 
         with self.assertRaisesRegex(ValueError, "没有可翻译的非空字幕"):
@@ -2918,7 +2998,7 @@ class PostprocessTests(unittest.TestCase):
 
     def test_llm_translation_all_failure_has_a_bounded_repair_budget(self) -> None:
         project = sample_project(self.media)
-        project["segments"] = list[JsonValue](
+        main_track(project)["segments"] = list[JsonValue](
             {
                 "start": index * 1000,
                 "end": (index + 1) * 1000,
@@ -3267,7 +3347,7 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
         project = self.root / "demo.mosp"
         _ = project.write_text(json.dumps({
             "segments": [{"id": "a", "start": 0, "end": 1500, "text": "工程字幕"}],
-            "preview": {"subtitle": {"font_family": "yahei", "font_size": 20, "color": "#123456"}},
+            "preview": {"subtitle": {"x": 0, "y": 0, "width": 1, "height": 1, "font_family": "yahei", "font_size": 20, "color": "#123456"}},
         }), encoding="utf-8")
         captured: dict[str, object] = {}
         real_render = render_project_ass
@@ -3466,7 +3546,7 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
                 project = self.root / f"green-project{suffix}"
                 project.write_text(json.dumps({
                     "segments": [{"start": 0, "end": 2000, "text": "工程字幕"}],
-                    "preview": {"subtitle": {"font_size": 20}},
+                    "preview": {"subtitle": {"x": 0, "y": 0, "width": 1, "height": 1, "font_size": 20}},
                 }), encoding="utf-8")
                 with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
                     result = run_burn_subtitles(

@@ -61,14 +61,18 @@
       const imported = window.MaweProjectValidation.prepareProject(JSON.parse(await readFileTextWithProgress(file)));
       if (!imported.ok) throw new Error(imported.errors.map(error => `${error.path}: ${error.message}`).join('; '));
       const data = imported.project;
-      window.AsrEditorUtils.migrateSubtitleGroups(data, { fromFile: true });
-      const sourceSegments = window.AsrEditorUtils.cloneJsonValue(data.segments);
       MaweJsonRepair.noteImportReport(imported.changes);
+      const sourceTrack = window.AsrEditorUtils.getMainTrack(data);
+      const sourceSegments = window.AsrEditorUtils.cloneJsonValue(sourceTrack.segments);
       const validSegments = sourceSegments.filter((segment) => segment.text.trim());
       if (!validSegments.length) {
         throw new Error('副字幕没有可导入的有效文本或时间码');
       }
-      validSegments.subtitle_groups = window.AsrEditorUtils.cloneJsonValue(data.subtitle_groups);
+      Object.defineProperties(validSegments, {
+        subtitle_groups: { value: window.AsrEditorUtils.cloneJsonValue(data.subtitle_groups) },
+        speakers: { value: window.AsrEditorUtils.cloneJsonValue(data.speakers) },
+        sourceTrack: { value: window.AsrEditorUtils.cloneJsonValue({ ...sourceTrack, segments: undefined }) },
+      });
       return validSegments;
     } finally {
       finishLoading();

@@ -1,3 +1,4 @@
+import { colorFilterSuspended, effectiveCueColorKey } from './editor-color-filter.js';
 import { getOverlayTrack } from './overlay-track.js';
 
 export function initMaweSearch() {
@@ -30,7 +31,7 @@ export function initMaweSearch() {
         : (el.dataset.idx != null ? Number(el.dataset.idx) : -1);
       const extIdx = el.dataset.extIdx != null ? Number(el.dataset.extIdx) : -1;
       const overlayIdx = el.dataset.overlayIdx != null ? Number(el.dataset.overlayIdx) : -1;
-      const mainSeg = Number.isInteger(mainIdx) && mainIdx >= 0 ? MaweBoot.DATA.segments[mainIdx] : null;
+      const mainSeg = Number.isInteger(mainIdx) && mainIdx >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIdx] : null;
       const extensionSeg = Number.isInteger(extIdx) && extIdx >= 0 && extensionTrack
         ? extensionTrack.segments[extIdx] : null;
       const overlaySeg = Number.isInteger(overlayIdx) && overlayIdx >= 0
@@ -43,8 +44,11 @@ export function initMaweSearch() {
       }
       let matched = !re || re.test(searchableText);
       if (re) re.lastIndex = 0;
-      if (matched && MaweColorFilter.colorFilterSelection && !MaweColorFilter.colorFilterSuspended()) {
-        matched = MaweColorFilter.colorFilterSelection.has(MaweColorFilter.effectiveCueColorKey(mainSeg || extensionSeg || overlaySeg));
+      if (matched && MaweColorFilter.colorFilterSelection && !colorFilterSuspended()) {
+        matched = MaweColorFilter.colorFilterSelection.has(effectiveCueColorKey(mainSeg || extensionSeg || overlaySeg));
+      }
+      if (matched && MaweColorFilter.speakerFilterSelection) {
+        matched = [mainSeg, extensionSeg, overlaySeg].some(segment => MaweColorFilter.speakerMatches(segment));
       }
       const keepTemporaryVisible = filterOver
         && MaweSettings.EDITOR_SETTINGS.cueListKeepSplitVisible
@@ -87,3 +91,5 @@ export function initMaweSearch() {
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function applySearch(...args) { return window.MaweSearch.applySearch(...args); }

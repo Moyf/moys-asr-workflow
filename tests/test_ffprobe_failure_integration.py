@@ -13,6 +13,8 @@ from unittest import mock
 
 from maw import media
 from maw.ffmpeg import media_duration_seconds
+from maw.project import normalize_project
+from maw.project_tracks import get_main_track
 from tests.compact_assertions import CompactContainerAssertions
 from tests.test_local_editor_server import server_editor
 
@@ -71,14 +73,14 @@ class FFprobeFailureIntegrationTests(CompactContainerAssertions, unittest.TestCa
 
     def test_real_bad_file_can_load_and_save_after_probe_failure(self):
         project_path = self.root / "project.mosp"
-        project_path.write_text(json.dumps({"media": self.source.name, "segments": [
-            {"start": 0, "end": 1000, "text": "before"}]}), encoding="utf-8")
+        project_path.write_text(json.dumps(normalize_project({"media": self.source.name, "segments": [
+            {"start": 0, "end": 1000, "text": "before"}]})), encoding="utf-8")
         original_project = project_path.read_bytes()
         original_media = self.source.read_bytes()
         project = server_editor.load_project(
             project_path, None, str(self.root), no_waveform=True, peaks_per_second=100)
         self.assertNotIn("media_metadata", project.data)
-        self.assertEqual(project.data["segments"][0]["text"], "before")
+        self.assertEqual(get_main_track(project.data)["segments"][0]["text"], "before")
         self.assert_failed_audio_and_video_probes()
 
         server = server_editor.EditorServer(("127.0.0.1", 0), project,
@@ -95,8 +97,8 @@ class FFprobeFailureIntegrationTests(CompactContainerAssertions, unittest.TestCa
         self.addCleanup(stop)
         binding = server.project_binding_payload()
         self.assertFalse(binding["thumbnailBaseReady"])
-        incoming = {"media": self.source.name, "segments": [
-            {"start": 0, "end": 1000, "text": "after"}]}
+        incoming = normalize_project({"media": self.source.name, "segments": [
+            {"start": 0, "end": 1000, "text": "after"}]})
         request = urllib.request.Request(
             f"http://127.0.0.1:{server.server_address[1]}/api/project",
             data=json.dumps({**binding, "project": incoming, "filename": None}).encode(),
@@ -108,7 +110,7 @@ class FFprobeFailureIntegrationTests(CompactContainerAssertions, unittest.TestCa
         self.assertIsNotNone(result["backup"])
         self.assertEqual((self.root / result["backup"]).read_bytes(), original_project)
         saved = json.loads(project_path.read_text(encoding="utf-8"))
-        self.assertEqual(saved["segments"][0]["text"], "after")
-        self.assertEqual(server.project.data["segments"][0]["text"], "after")
+        self.assertEqual(get_main_track(saved)["segments"][0]["text"], "after")
+        self.assertEqual(get_main_track(server.project.data)["segments"][0]["text"], "after")
         self.assertEqual(self.source.read_bytes(), original_media)
         self.assertNotIn("media_metadata", saved)

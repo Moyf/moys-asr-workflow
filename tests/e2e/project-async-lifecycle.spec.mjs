@@ -2,6 +2,9 @@ import { test, expect } from '@playwright/test';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, makeTempDir, startServer } from './helpers.mjs';
+import { createUtilsModule } from '../../web/shared/utils/project-tracks.js';
+
+const { importProject, getMainTrack } = createUtilsModule();
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 let dir, server, aPath, bPath;
@@ -11,9 +14,9 @@ test.beforeEach(async ({ page }) => {
   for (const name of ['a', 'b']) {
     const media = join(dir, `${name}.wav`);
     generateWav(media, 2);
-    writeFileSync(join(dir, `${name}.mosp`), JSON.stringify({ media,
+    writeFileSync(join(dir, `${name}.mosp`), JSON.stringify(importProject({ media,
       segments: [{ id: name, start: 0, end: 1000, text: `project ${name}` }],
-    }), 'utf8');
+    }).project), 'utf8');
   }
   server = await startServer(aPath, join(dir, 'a.wav'), await findFreePort());
   await disableOnboarding(page);
@@ -40,7 +43,7 @@ test('stale attach success cannot reload a newer portable project', async ({ pag
   await expect(page.locator('#editor-loading')).toBeHidden();
   release.resolve();
   expect(await page.evaluate(() => window.pendingOpen)).toBe(false);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('new portable');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('new portable');
   expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canSave)).toBe(false);
 });
 
@@ -76,9 +79,9 @@ for (const kind of ['attach', 'recent']) {
       release.resolve();
       expect(await finished.promise).toBe(409);
       await page.evaluate(() => window.oldOpen);
-      expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('portable B');
+      expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('portable B');
       expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canSave)).toBe(false);
-      expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject())).toBe(false);
+      expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }))).toBe(false);
       const status = await page.request.post(`${server.url}api/project/binding`, { data: { requestToken: binding.requestToken } });
       const result = await status.json();
       expect(result.bindingGeneration).toBe(binding.bindingGeneration);
@@ -103,11 +106,11 @@ test('failed switch notification keeps the local project exportable without serv
     suppressMediaPrompt: true,
   }), readFileSync(bPath, 'utf8'))).toBe(true);
   expect(attaches).toBe(0);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('project b');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('project b');
   expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canSave)).toBe(false);
-  expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject())).toBe(false);
+  expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }))).toBe(false);
   const exported = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson({ forFileExport: true })));
-  expect(exported.segments[0].text).toBe('project b');
+  expect(exported.tracks.find(track => track.role === 'main').segments[0].text).toBe('project b');
 });
 
 test('a later explicit open recovers after the switch intent was accepted but its response was lost', async ({ page }) => {
@@ -125,7 +128,7 @@ test('a later explicit open recovers after the switch intent was accepted but it
   expect(notifications).toBe(1);
   expect(attaches).toBe(0);
   expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canSave)).toBe(false);
-  expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject())).toBe(false);
+  expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }))).toBe(false);
   const reload = page.waitForEvent('load');
   await page.evaluate(text => { void MaweMultiImport.openProjectFile(new File([text], 'a.mosp')); }, readFileSync(aPath, 'utf8'));
   await reload;
@@ -175,7 +178,7 @@ for (const success of [true, false]) {
     await page.evaluate(() => MaweProjectLoad.applyCanonicalProject({segments: [{start: 0, end: 1000, text: 'portable'}]}, 'portable.mosp'));
     release.resolve();
     await page.evaluate(() => window.oldRecent);
-    expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('portable');
+    expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('portable');
     expect(await page.evaluate(() => window.recentEntry.exists)).toBeUndefined();
   });
 }
@@ -244,7 +247,7 @@ test('stale media-plus-subtitle drop cannot continue into a newer project', asyn
     window.releaseDropBwf(null);
   });
   await page.evaluate(() => window.pendingDrop);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments.map(cue => cue.text))).toEqual(['new project']);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(cue => cue.text))).toEqual(['new project']);
 });
 
 test('late waveform decode and late reapeaks reads cannot publish into a newer project', async ({page}) => {
@@ -304,7 +307,7 @@ test('pending project attach cannot save new content into the previous file', as
     }, originalB);
     await seen.promise;
     const saving = await page.evaluate(async () => ({
-      visible: MaweBoot.DATA.segments[0].text,
+      visible: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text,
       canSave: MaweBoot.SERVER_CONFIG.canSave,
       saved: await MaweProjectSave.saveCurrentProject(),
       mediaRejected: await MaweMediaLoad.loadMediaFile(new File([], 'pending.wav', {type: 'audio/wav'})) === false,
@@ -314,7 +317,7 @@ test('pending project attach cannot save new content into the previous file', as
     mkdirSync('.artifacts/async-lifecycle-20261015', { recursive: true });
     writeFileSync('.artifacts/async-lifecycle-20261015/pending-attach-evidence.json', JSON.stringify({
       upstreamBase: 'de97872103d31a1691171d653b6c72ea2d1f8223', phase: 'fixed', ...saving,
-      before: JSON.parse(originalA).segments[0].text, after: JSON.parse(after).segments[0].text,
+      before: getMainTrack(JSON.parse(originalA)).segments[0].text, after: getMainTrack(JSON.parse(after)).segments[0].text,
       oldFileUnchanged: after === originalA, newFileUnchanged: readFileSync(bPath, 'utf8') === originalB,
     }, null, 2));
     expect(saving.visible).toBe('project b');

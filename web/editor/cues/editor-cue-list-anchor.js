@@ -253,7 +253,7 @@
 
 
   function playbackCueListElement() {
-    if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.getMultiSubtitleState().display_mode === 'extension') {
+    if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweBoot.DATA.bilingual.display_mode === 'extension') {
       const segment = MawePlaybackLoop.extensionSegmentAtTime(MaweCoreState.player.currentTime * 1000);
       return segment ? MaweCueListAnchor.findCueListRenderAnchor({ kind: 'extension', segmentId: segment.id,
         trackId: MaweMultiSubtitleCore.getActiveExtensionTrack()?.id }) : null;
@@ -268,7 +268,7 @@
     const element = playbackCueListElement();
     if (!element) return null;
     const identity = cueListIdentity(element,
-      MaweMultiSubtitleCore.getMultiSubtitleState().display_mode === 'extension' ? 'extension' : 'main');
+      MaweBoot.DATA.bilingual.display_mode === 'extension' ? 'extension' : 'main');
     return `${identity.kind}:${identity.trackId || ''}:${identity.segmentId}`;
   }
 

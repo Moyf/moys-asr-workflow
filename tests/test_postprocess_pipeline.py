@@ -13,7 +13,7 @@ from unittest import mock
 
 from maw.gui_web import LauncherApi, LauncherPaths, _request_from_payload, _transcribe_strip_tail_punct
 from maw.postprocess import LlmPostprocessRequest
-from maw.postprocess_io import SubtitleArtifact
+from maw.postprocess_io import SubtitleArtifact, read_project
 from maw.postprocess_llm import LlmClientError
 from maw.postprocess_ocr import OcrDedupArtifact
 from maw.postprocess_pipeline import (
@@ -33,6 +33,8 @@ from maw.postprocess_pipeline import (
     _attach_translation_track,
     validate_plan,
 )
+from tests.track_helpers import main_segments
+from tests.track_helpers import extension_tracks
 
 
 class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
@@ -116,7 +118,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
                     def fake_process(request, **_kwargs):
                         project = json.loads(request.project_path.read_text(encoding="utf-8"))
                         if request.operation.startswith("translate"):
-                            project["segments"][0]["text"] = "Translation"
+                            main_segments(project)[0]["text"] = "Translation"
                         stem = request.operation
                         output_project = request.output_directory / f"{stem}.mosp"
                         output_srt = request.output_directory / f"{stem}.srt"
@@ -157,7 +159,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         events = []
         def fake_process(request, **_kwargs):
             project = json.loads(request.project_path.read_text(encoding="utf-8"))
-            for segment in project["segments"]:
+            for segment in main_segments(project):
                 segment["text"] = "Translated " + segment["text"]
             output_project = request.output_directory / "translated.mosp"
             output_srt = request.output_directory / "translated.srt"
@@ -174,7 +176,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
                     llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}}, ui_language="en")
                 self.assertNotIn("backfill", result.srt_path.name)
                 self.assertEqual(result.srt_path.read_text(encoding="utf-8"), "independent translation")
-                self.assertTrue(all(segment["text"].startswith("Translated ") for segment in json.loads(result.project_path.read_text(encoding="utf-8"))["segments"]))
+                self.assertTrue(all(segment["text"].startswith("Translated ") for segment in main_segments(json.loads(result.project_path.read_text(encoding="utf-8")))))
                 self.assertIn("2/2", "\n".join(result.warnings))
                 self.assertTrue(Path(events[-1]["comparisonPaths"][0]).is_file())
                 step_done = next(event for event in reversed(events) if event["stage"] == "step_done")
@@ -458,8 +460,8 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
             if not isinstance(project_path, Path) or not isinstance(output_directory, Path):
                 raise AssertionError("translation request should contain project paths")
             payload = json.loads(project_path.read_text(encoding="utf-8"))
-            translation_input.append(payload["segments"][0]["text"])
-            payload["segments"][0]["text"] = "Translation"
+            translation_input.append(main_segments(payload)[0]["text"])
+            main_segments(payload)[0]["text"] = "Translation"
             translated_project = output_directory / "translated.mosp"
             translated_srt = output_directory / "translated.srt"
             translated_project.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -516,13 +518,13 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         combined = json.loads(result.project_path.read_text(encoding="utf-8"))
 
         self.assertEqual((result.project_path.parent / combined["media"]).resolve(), self.media.resolve())
-        self.assertEqual([segment["text"] for segment in combined["segments"]], ["原文一", "原文二"])
-        self.assertEqual(combined["segments"][0]["items"][0]["text"], "原文一")
-        self.assertTrue(combined["multi_subtitle"]["enabled"])
-        track = combined["multi_subtitle"]["tracks"][0]
+        self.assertEqual([segment["text"] for segment in main_segments(combined)], ["原文一", "原文二"])
+        self.assertEqual(main_segments(combined)[0]["items"][0]["text"], "原文一")
+        self.assertTrue(extension_tracks(combined)[0]["enabled"])
+        track = extension_tracks(combined)[0]
         self.assertEqual(track["language"], "en")
         self.assertEqual([segment["text"] for segment in track["segments"]], ["Translation one", "Translation two"])
-        self.assertEqual(len(combined["multi_subtitle"]["bindings"]), 2)
+        self.assertEqual(len(combined["bindings"]), 2)
         self.assertIn("原文一", result.srt_path.read_text(encoding="utf-8"))
         self.assertNotIn("Translation one", result.srt_path.read_text(encoding="utf-8"))
         self.assertEqual(result.translated_srt_path.read_text(encoding="utf-8").count("Translation"), 2)
@@ -634,14 +636,14 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertEqual(requested_cues, [["c0001", "c0003"]])
         combined = json.loads(result.project_path.read_text(encoding="utf-8"))
-        track = combined["multi_subtitle"]["tracks"][0]
+        track = extension_tracks(combined)[0]
         self.assertEqual([segment["start"] for segment in track["segments"]], [0, 1100, 2100])
         self.assertEqual([segment["end"] for segment in track["segments"]], [1000, 2000, 3000])
         self.assertEqual([segment["text"] for segment in track["segments"]][0::2], ["译文 c0001", "译文 c0003"])
         self.assertFalse(str(track["segments"][1]["text"]).strip())
         self.assertEqual(
-            [binding["main_segment_ids"] for binding in combined["multi_subtitle"]["bindings"]],
-            [["main-001"], ["main-002"], ["main-003"]],
+            [binding["source"]["segment_id"] for binding in combined["bindings"]],
+            ["main-001", "main-002", "main-003"],
         )
 
     def test_failed_translation_is_skipped_without_fake_bilingual_output(self):
@@ -668,7 +670,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         events = []
         ai_steps = [{"id": name, "enabled": True} for name in ("cleanup", "proofread", "resegment", "translate")]
         def run(step, **kwargs):
-            calls.append((step["id"], json.loads(kwargs["project_path"].read_text(encoding="utf-8"))["segments"][0]["text"]))
+            calls.append((step["id"], main_segments(json.loads(kwargs["project_path"].read_text(encoding="utf-8")))[0]["text"]))
             if step["id"] != "replace":
                 (kwargs["output_directory"] / (step["id"] + "-partial.txt")).write_text("failed output", encoding="utf-8")
                 raise LlmClientError("invalid model response", category="protocol")
@@ -682,12 +684,12 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result.completed_steps, ("replace",))
         self.assertEqual(result.skipped_steps, ("cleanup", "proofread", "resegment", "translate"))
         self.assertIn("正字", result.srt_path.read_text(encoding="utf-8"))
-        self.assertEqual(json.loads(self.project.read_text(encoding="utf-8"))["segments"][0]["text"], "错字")
+        self.assertEqual(main_segments(json.loads(self.project.read_text(encoding="utf-8")))[0]["text"], "错字")
         self.assertEqual(len(list(result.run_directory.glob("*-partial.txt"))), 4)
         failures = sorted(result.run_directory.glob("failed-*"))
         self.assertEqual(len(failures), 4)
-        self.assertEqual(json.loads((failures[0] / "input.mosp").read_text(encoding="utf-8"))["segments"][0]["text"], "错字")
-        self.assertEqual(json.loads((failures[1] / "input.mosp").read_text(encoding="utf-8"))["segments"][0]["text"], "正字")
+        self.assertEqual(main_segments(json.loads((failures[0] / "input.mosp").read_text(encoding="utf-8")))[0]["text"], "错字")
+        self.assertEqual(main_segments(json.loads((failures[1] / "input.mosp").read_text(encoding="utf-8")))[0]["text"], "正字")
         self.assertTrue(all((folder / "failure.md").is_file() and (folder / "input.srt").is_file() for folder in failures))
         self.assertEqual(events[-1]["skippedSteps"], list(result.skipped_steps))
         self.assertEqual(len(events[-1]["warnings"]), 4)
@@ -794,8 +796,8 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
             )
 
         merged = json.loads(result.project_path.read_text(encoding="utf-8"))
-        self.assertEqual([segment["text"] for segment in merged["segments"]], ["错字", "保留"])
-        self.assertEqual([s["text"] for s in merged["multi_subtitle"]["tracks"][-1]["segments"]], ["Translation one", "Translation two"])
+        self.assertEqual([segment["text"] for segment in main_segments(merged)], ["错字", "保留"])
+        self.assertEqual([s["text"] for s in extension_tracks(merged)[-1]["segments"]], ["Translation one", "Translation two"])
         self.assertIn("错字\nTranslation one", result.srt_path.read_text(encoding="utf-8"))
         self.assertIsNone(result.translated_srt_path)
         self.assertEqual(result.project_path.name, "clip.postprocess.bilingual.mosp")
@@ -828,7 +830,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("Translation one", intermediate_srt.read_text(encoding="utf-8"))
         self.assertFalse((result.run_directory / translated_project.name).exists())
         self.assertFalse((result.run_directory / translated_srt.name).exists())
-        self.assertIn("multi_subtitle", json.loads(result.project_path.read_text(encoding="utf-8")))
+        self.assertTrue(extension_tracks(json.loads(result.project_path.read_text(encoding="utf-8"))))
         self.assertFalse((self.root / "clip.postprocess.translate-en.srt").exists())
         manifest = json.loads((result.run_directory / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["initialProjectPath"], str(initial_project.resolve()))
@@ -892,7 +894,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
             )
 
         embedded = json.loads(result.project_path.read_text(encoding="utf-8"))
-        self.assertEqual([segment["text"] for segment in embedded["segments"]], ["Translation one", "保留"])
+        self.assertEqual([segment["text"] for segment in main_segments(embedded)], ["Translation one", "保留"])
         self.assertNotIn("multi_subtitle", embedded)
         self.assertIsNone(result.translated_srt_path)
         self.assertEqual(result.project_path.name, "clip.postprocess.backfill.mosp")
@@ -926,13 +928,14 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_attach_translation_track_skips_extension_segments_identical_to_main(self) -> None:
         # 副轨去重：译文与主字幕相同的句子不再重复进入副轨与绑定。
+        source_ids = [segment["id"] for segment in main_segments(read_project(self.project))]
         translated_project = self.root / "translated.mosp"
         translated_srt = self.root / "translated.srt"
         translated_project.write_text(
             json.dumps({
                 "segments": [
-                    {"id": "main-001", "start": 0, "end": 1000, "text": "Translation one"},
-                    {"id": "main-002", "start": 1100, "end": 2000, "text": "保留"},
+                    {"id": source_ids[0], "start": 0, "end": 1000, "text": "Translation one"},
+                    {"id": source_ids[1], "start": 1100, "end": 2000, "text": "保留"},
                 ]
             }),
             encoding="utf-8",
@@ -952,9 +955,9 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         )
 
         combined = json.loads(result.project_path.read_text(encoding="utf-8"))
-        track = combined["multi_subtitle"]["tracks"][0]
+        track = extension_tracks(combined)[0]
         self.assertEqual([segment["text"] for segment in track["segments"]], ["Translation one"])
-        self.assertEqual([binding["main_segment_ids"] for binding in combined["multi_subtitle"]["bindings"]], [["main-001"]])
+        self.assertEqual([binding["source"]["segment_id"] for binding in combined["bindings"]], [source_ids[0]])
         self.assertIn("未重复添加", "\n".join(result.warnings))
 
     def test_validation_rejects_bilingual_and_embed_together(self) -> None:
@@ -1027,8 +1030,8 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
             )
 
         merged = json.loads(result.project_path.read_text(encoding="utf-8"))
-        self.assertEqual([segment["text"] for segment in merged["segments"]], ["错字", "保留"])
-        self.assertEqual([s["text"] for s in merged["multi_subtitle"]["tracks"][-1]["segments"]], ["中文一", "中文二"])
+        self.assertEqual([segment["text"] for segment in main_segments(merged)], ["错字", "保留"])
+        self.assertEqual([s["text"] for s in extension_tracks(merged)[-1]["segments"]], ["中文一", "中文二"])
         self.assertEqual(result.project_path.name, "clip.postprocess.bilingual.mosp")
         self.assertEqual(result.srt_path.name, "clip.postprocess.bilingual.srt")
         self.assertIn("中文一\n错字", result.srt_path.read_text(encoding="utf-8"))

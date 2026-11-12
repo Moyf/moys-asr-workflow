@@ -13,10 +13,9 @@
     if (speaker == null || sources.some(segment => segment.speaker !== speaker)) delete merged.speaker;
   }
 
-  // 把 DATA.segments 中连续下标 sorted 合并为一条，并维护 group 引用与组时间范围。
-  // 不做参数校验、撤销与渲染，由调用方负责（mergeSegments / autoMergeSegments 共用）。
-  function mergeContiguousIndices(sorted) {
-    const segs = sorted.map(i => MaweBoot.DATA.segments[i]);
+  // Use the same actual linked-cue set for preflight and the merge itself.
+  function collectMainMergeSources(sorted) {
+    const segs = sorted.map(i => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i]);
     const mergeStart = segs[0]?.start;
     const mergeEnd = segs[segs.length - 1]?.end;
     const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
@@ -25,8 +24,8 @@
     const boundExtensionIds = new Set();
     if (extensionTrack) {
       oldMainIds.forEach((mainId) => {
-        const binding = window.AsrEditorUtils.bindingForSegment(multi, mainId, 'main');
-        (binding?.extension_segment_ids || []).forEach((extensionId) => boundExtensionIds.add(extensionId));
+        const binding = window.AsrEditorUtils.bindingForSegment(multi, mainId, 'main', extensionTrack.id);
+        (binding?.target?.segment_id ? [binding.target.segment_id] : []).forEach((extensionId) => boundExtensionIds.add(extensionId));
       });
     }
     const hasMeaningfulExtensionOverlap = (segment) => {
@@ -43,11 +42,30 @@
       : [];
     const extensionMergeSegments = extensionMergeIndices.map((index) => extensionTrack.segments[index]);
     const oldExtensionIds = extensionMergeSegments.map((segment) => segment.id).filter(Boolean);
+    return { segs, multi, extensionTrack, oldMainIds, extensionMergeIndices, extensionMergeSegments, oldExtensionIds };
+  }
+
+  function canMergeSources(sources) {
+    return window.AsrEditorUtils.canMergeSpeakerSegments(sources.segs)
+      && (!sources.extensionMergeSegments.length
+        || window.AsrEditorUtils.canMergeSpeakerSegments(sources.extensionMergeSegments));
+  }
+
+  function showSpeakerMergeConflict() {
+    MaweHint.flashHint('不同说话人的字幕不能合并，请先统一归属', 'invalid');
+  }
+
+  // 把主轨连续下标 sorted 合并为一条，并维护 group 引用与组时间范围。
+  // 入口先检查说话人；这里再次守卫，避免内部调用静默清除身份。
+  function mergeContiguousIndices(sorted, syncImpact = null) {
+    const sources = collectMainMergeSources(sorted);
+    if (!canMergeSources(sources)) { showSpeakerMergeConflict(); return null; }
+    const { segs, multi, extensionTrack, oldMainIds, extensionMergeIndices, extensionMergeSegments, oldExtensionIds } = sources;
     const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
-      MaweBoot.DATA.segments, sorted, 'sticker', 'sticker_ref',
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, sorted, 'sticker', 'sticker_ref',
     );
     const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
-      MaweBoot.DATA.segments, sorted, 'color', 'color_ref',
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, sorted, 'color', 'color_ref',
     );
     // 拼接后折叠相邻「闭符号+开符号」的同符号对（防止拼出 ** 被误解析为强调），
     // items 层同步裁掉被折叠的符号，保持 items 拼接 == 合并文本。
@@ -60,18 +78,13 @@
       ...window.AsrEditorUtils.cloneJsonValue(segs[0]),
       color_group_id: segs.every(s => s.color_group_id === segs[0].color_group_id) ? segs[0].color_group_id : undefined,
       sticker_group_id: segs.every(s => s.sticker_group_id === segs[0].sticker_group_id) ? segs[0].sticker_group_id : undefined,
-      id: window.AsrEditorUtils.uniqueStableSegmentId(
-        window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `${segs[0].id || 'main'}-merged`, 'main',
-      ),
+      id: segs[0].id,
       start: segs[0].start,
       end: segs[segs.length - 1].end,
       text: mainJoin.text,
       items: mainJoin.items,
-      sticker: stickerGroup.head,
-      sticker_ref: stickerGroup.ref,
-      color: colorGroup.head,
-      color_ref: colorGroup.ref,
       ...(segs[0].assOverride ? { assOverride: window.AsrEditorUtils.normalizeAssOverride(segs[0].assOverride) } : {}),
+      ...(segs[0].assStyle ? { assStyle: JSON.parse(JSON.stringify(segs[0].assStyle)) } : {}),
       disabled: !!segs[0].disabled,  // 合并后取 index=0 的禁用状态
       _dirty: true,
     };
@@ -91,12 +104,11 @@
         ...window.AsrEditorUtils.cloneJsonValue(extensionMergeSegments[0]),
         color_group_id: extensionMergeSegments.every(s => s.color_group_id === extensionMergeSegments[0].color_group_id) ? extensionMergeSegments[0].color_group_id : undefined,
         sticker_group_id: extensionMergeSegments.every(s => s.sticker_group_id === extensionMergeSegments[0].sticker_group_id) ? extensionMergeSegments[0].sticker_group_id : undefined,
-        id: window.AsrEditorUtils.uniqueStableSegmentId(
-          window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `${extensionMergeSegments[0].id || extensionTrack.id}-merged`, `${extensionTrack.id}-segment`,
-        ),
+        id: extensionMergeSegments[0].id,
         start: Math.min(...extensionMergeSegments.map((segment) => segment.start)),
         end: Math.max(...extensionMergeSegments.map((segment) => segment.end)),
         text: extensionJoin.text,
+        ...(extensionMergeSegments[0].assStyle ? { assStyle: JSON.parse(JSON.stringify(extensionMergeSegments[0].assStyle)) } : {}),
         _dirty: true,
       };
       clearInconsistentSpeaker(mergedExtension, extensionMergeSegments);
@@ -110,26 +122,27 @@
     // 选区并非全部同组时，不继承该组；先按删除切点规则重组外部存活成员，
     // 避免合并掉某个 head 后留下悬空引用。
     const mergeSet = new Set(sorted);
-    if (stickerGroup.headIdx === null) {
+    if (!stickerGroup.groupId) {
       splitGroupsAtCutPoints(mergeSet, 'sticker', 'sticker_ref');
     }
-    if (colorGroup.headIdx === null) {
+    if (!colorGroup.groupId) {
       splitGroupsAtCutPoints(mergeSet, 'color', 'color_ref');
     }
 
-    MaweBoot.DATA.segments.splice(sorted[0], sorted.length, merged);
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(sorted[0], sorted.length, merged);
     if (extensionTrack && extensionMergeIndices.length) {
       for (let i = extensionMergeIndices.length - 1; i >= 0; i--) {
         extensionTrack.segments.splice(extensionMergeIndices[i], 1);
       }
       if (mergedExtension) extensionTrack.segments.splice(extensionMergeIndices[0], 0, mergedExtension);
       if (mergedExtension) {
-        multi.bindings.push(window.AsrEditorUtils.buildSubtitleBinding(merged, mergedExtension, extensionTrack.id));
+        multi.bindings.push(window.AsrEditorUtils.buildSubtitleBinding(merged, mergedExtension, extensionTrack.id, null, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).id, multi.bindings));
         if (MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration) {
           // C 合并会重新创建一对绑定字幕；与手动绑定保持一致，按开关
           // 将新副字幕的时间范围同步到合并后的主字幕，并整理副轨冲突。
           MaweMultiSubtitleCore.setExtensionSegmentRange(mergedExtension, merged.start, merged.end);
-          MaweMultiSubtitleCore.reconcileExtensionTrack(extensionTrack, [mergedExtension]);
+          const impact = MaweMultiSubtitleCore.reconcileExtensionTrack(extensionTrack, [mergedExtension]);
+          addSyncImpact(syncImpact, impact);
           MaweMultiSubtitleCore.syncBindingOffsets();
         }
       }
@@ -148,7 +161,7 @@
         ref.headIdx -= removedCount;
       }
     }
-    MaweBoot.DATA.segments.forEach((segment) => {
+    window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.forEach((segment) => {
       remapRef(segment.sticker_ref);
       remapRef(segment.color_ref);
     });
@@ -169,17 +182,20 @@
       return;
     }
   }
+  if (!canMergeSources(collectMainMergeSources(sorted))) { showSpeakerMergeConflict(); return false; }
   const sourceEl = MaweCoreState.container.querySelector(`.cue[data-idx="${sorted[0]}"]`);
   const cueListAnchor = MaweCueListAnchor.captureVisibleCueListVisualAnchor(sourceEl);
   MaweCuePanel.commitCuePanelEdit();
   return MaweCommands.run('合并字幕', (command) => {
     MaweSelection.clearSelection({ silent: true });
-    mergeContiguousIndices(sorted);
+    const syncImpact = {};
+    if (!mergeContiguousIndices(sorted, syncImpact)) { command.cancel(); return false; }
     command.commit({ cueList: true, cueListAnchor });
     // 合并完成后选中合并结果，方便继续对这句新字幕操作
     MaweSelection.selectOnly(sorted[0]);
     MaweViewUpdates.invalidate({ preview: 'update' });
-    MaweHint.flashHint(`已合并 ${sorted.length} 条`, 'success');
+    const impactText = MaweMultiSubtitleCore.boundSyncImpactText(syncImpact);
+    MaweHint.flashHint(`已合并 ${sorted.length} 条${impactText ? `，${impactText}` : ''}`, impactText ? 'warning' : 'success');
   }, { captureView: true });
 }
 
@@ -203,6 +219,7 @@
     }
     const segments = sorted.map((index) => track.segments[index]).filter(Boolean);
     if (segments.length !== sorted.length) return false;
+    if (!window.AsrEditorUtils.canMergeSpeakerSegments(segments)) { showSpeakerMergeConflict(); return false; }
     const sourceEl = MaweCoreState.container.querySelector(`.cue[data-ext-idx="${sorted[0]}"]`);
     const cueListAnchor = MaweCueListAnchor.captureVisibleCueListVisualAnchor(sourceEl);
 
@@ -218,11 +235,7 @@
       ...window.AsrEditorUtils.cloneJsonValue(segments[0]),
       color_group_id: segments.every(s => s.color_group_id === segments[0].color_group_id) ? segments[0].color_group_id : undefined,
       sticker_group_id: segments.every(s => s.sticker_group_id === segments[0].sticker_group_id) ? segments[0].sticker_group_id : undefined,
-      id: window.AsrEditorUtils.uniqueStableSegmentId(
-        window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments),
-        `${segments[0].id || track.id}-merged`,
-        `${track.id}-segment`,
-      ),
+      id: segments[0].id,
       start: segments[0].start,
       end: segments[segments.length - 1].end,
       text: extensionJoin.text,
@@ -270,7 +283,7 @@
     const cancel = document.getElementById('subtitle-time-offset-cancel');
     if (!dialog || !form || !input || !cancel || typeof dialog.showModal !== 'function') return false;
     const targets = [...new Set(Array.from(indices || [], Number))]
-      .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length);
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length);
     if (!targets.length) return false;
     dialog.dataset.targetIndices = JSON.stringify(targets);
     input.value = '0';
@@ -304,7 +317,7 @@
     const offsetMs = frameMode ? Math.sign(offset) * timing.toMs(Math.abs(offset)) : offset;
     const durationMs = MaweMultiSubtitleCore.getSubtitleTimelineDuration();
     const plan = window.AsrEditorUtils.planSubtitleTimeOffset(
-      MaweBoot.DATA.segments,
+      window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
       indices,
       offsetMs,
       durationMs,
@@ -360,7 +373,7 @@
         if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return;
         const binding = MaweMultiSubtitleCore.bindingForMainIndex(change.index);
         const extension = MaweMultiSubtitleCore.extensionForMainIndex(change.index);
-        const track = binding && MaweMultiSubtitleCore.getExtensionTrack(binding.track_id);
+        const track = binding && MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id);
         if (!binding || !extension || !track) return;
         if (!followerMoves.has(track)) followerMoves.set(track, new Set());
         followerMoves.get(track).add(track.segments.indexOf(extension));
@@ -380,7 +393,7 @@
       // 先完成两个轨道的计划，任一受阻都不写入；绑定字幕/items 使用相同的
       // 帧位移，不能复用主字幕某一端点取整后得到的毫秒差。
       plan.changes.forEach((change) => {
-        const segment = MaweBoot.DATA.segments[change.index];
+        const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[change.index];
         moveSegment(segment, change);
         changedSegments.push(segment);
       });
@@ -428,17 +441,18 @@
     const indices = hasSelection ? [...MaweSelection.selectedIdxs] : [];
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(false);
     MaweCuePanel.commitCuePanelEdit();
-    const plan = window.AsrEditorUtils.planSubtitleExtension(MaweBoot.DATA.segments, indices, {
+    const plan = window.AsrEditorUtils.planSubtitleExtension(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, indices, {
       forwardMs,
       backwardMs,
       durationMs: MaweMultiSubtitleCore.getSubtitleTimelineDuration(),
     });
+    const syncImpact = {};
     if (plan.changedIndices.length) {
       MaweCommands.run('延长字幕', (command) => {
         let linkedChanged = false;
         const changedSegments = [];
         plan.changes.forEach((change) => {
-          const segment = MaweBoot.DATA.segments[change.index];
+          const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[change.index];
           if (!segment || !change.changed) return;
           const syncPatch = { oldStart: segment.start, oldEnd: segment.end, mode: 'range' };
           // 这里的 items 绝对时间码保持原样，延长只改变字幕段的外壳范围。
@@ -447,6 +461,7 @@
           segment._dirty = true;
           changedSegments.push(segment);
           linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(segment, syncPatch) || linkedChanged;
+          addSyncImpact(syncImpact, { squeezedCount: syncPatch.syncSqueezedCount, removedCount: syncPatch.syncRemovedCount, unboundCount: syncPatch.syncUnboundCount });
         });
         MaweMultiSubtitleCore.markMainSegmentsDirty(changedSegments);
         MaweTextCleanup.syncTimelineGroupRanges();
@@ -458,9 +473,10 @@
       });
     }
     const scope = hasSelection ? `已处理 ${plan.indices.length} 个选中字幕` : `已处理 ${plan.indices.length} 个字幕`;
+    const impactText = MaweMultiSubtitleCore.boundSyncImpactText(syncImpact);
     MaweHint.flashHint(
-      `${scope}：完整延长 ${plan.fullCount} 条，部分延长 ${plan.partialCount} 条，未延长 ${plan.unchangedCount} 条`,
-      plan.changedIndices.length ? 'success' : 'warning',
+      `${scope}：完整延长 ${plan.fullCount} 条，部分延长 ${plan.partialCount} 条，未延长 ${plan.unchangedCount} 条${impactText ? `，${impactText}` : ''}`,
+      impactText || !plan.changedIndices.length ? 'warning' : 'success',
     );
   }
 
@@ -468,57 +484,77 @@
 
   // === 拼合字幕 ===
   // 把工具窗参数同步到控件；「合并短句」关闭时禁用短句相关参数。
-  function syncAutoMergePanelInputs() {
-    if (MaweDom.autoMergeGapMsInput) MaweDom.autoMergeGapMsInput.value = String(MaweSettings.EDITOR_SETTINGS.autoMergeGapMs);
-    if (MaweDom.autoMergeSnapDirectionSelect) MaweDom.autoMergeSnapDirectionSelect.value = MaweSettings.EDITOR_SETTINGS.autoMergeSnapDirection;
-    if (MaweDom.autoMergeAbsorbShortToggle) MaweDom.autoMergeAbsorbShortToggle.checked = MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbShort;
-    if (MaweDom.autoMergeShortCountInput) MaweDom.autoMergeShortCountInput.value = String(MaweSettings.EDITOR_SETTINGS.autoMergeShortCount);
-    if (MaweDom.autoMergeAbsorbDirectionSelect) MaweDom.autoMergeAbsorbDirectionSelect.value = MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbDirection;
+  function syncAutoMergePanelInputs(options = MaweProcessing.effectiveJoin) {
+    MaweDom.autoMergeGapMsInput.value = String(options.gapMs);
+    MaweDom.autoMergeSnapDirectionSelect.value = options.snapDirection;
+    MaweDom.autoMergeAbsorbShortToggle.checked = options.absorbShort;
+    MaweDom.autoMergeShortCountInput.value = String(options.shortCount);
+    MaweDom.autoMergeAbsorbDirectionSelect.value = options.absorbDirection;
     syncAutoMergeAbsorbFields();
   }
 
-
+  function readAutoMergePanelInputs() {
+    return {
+      gapMs: MaweSettings.clampAutoMergeGapMs(MaweDom.autoMergeGapMsInput.value),
+      snapDirection: MaweDom.autoMergeSnapDirectionSelect.value === 'forward' ? 'forward' : 'backward',
+      absorbShort: MaweDom.autoMergeAbsorbShortToggle.checked,
+      shortCount: MaweSettings.clampAutoMergeShortCount(MaweDom.autoMergeShortCountInput.value),
+      absorbDirection: MaweDom.autoMergeAbsorbDirectionSelect.value === 'next' ? 'next' : 'previous',
+    };
+  }
 
   function syncAutoMergeAbsorbFields() {
-    const enabled = MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbShort;
-    if (MaweDom.autoMergeShortCountInput) MaweDom.autoMergeShortCountInput.disabled = !enabled;
-    if (MaweDom.autoMergeAbsorbDirectionSelect) MaweDom.autoMergeAbsorbDirectionSelect.disabled = !enabled;
+    const enabled = MaweDom.autoMergeAbsorbShortToggle.checked;
+    MaweDom.autoMergeShortCountInput.disabled = !enabled;
+    MaweDom.autoMergeAbsorbDirectionSelect.disabled = !enabled;
     MaweDom.autoMergePanel?.classList.toggle('absorb-disabled', !enabled);
   }
 
-
-
-  // 一键处理整段工程：相邻间隔不超过 autoMergeGapMs 时按吸附方向拼接；
-  // 过短的字幕（中文 < N 字 / 英文 < N 词）按吸收方向并入相邻字幕。
+  // Apply the displayed values once to the entire project.
   function autoMergeSegments() {
-    const plan = window.AsrEditorUtils.planAutoMerge(MaweBoot.DATA.segments, {
-      gapMs: MaweSettings.EDITOR_SETTINGS.autoMergeGapMs,
-      snapDirection: MaweSettings.EDITOR_SETTINGS.autoMergeSnapDirection,
-      absorbShort: MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbShort,
-      shortCount: MaweSettings.EDITOR_SETTINGS.autoMergeShortCount,
-      absorbDirection: MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbDirection,
-    });
+    const options = readAutoMergePanelInputs();
+    syncAutoMergePanelInputs(options);
+    const plan = window.AsrEditorUtils.planAutoMerge(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, options);
     if (!plan.snaps.length && !plan.groups.length) {
       MaweHint.flashHint('没有需要拼合的间隔或过短字幕', 'invalid');
       return;
     }
+    if (plan.groups.some(group => !canMergeSources(collectMainMergeSources(group)))) {
+      showSpeakerMergeConflict();
+      return false;
+    }
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(false);
     MaweCuePanel.commitCuePanelEdit();
-    MaweSelection.clearSelection({ silent: true });
     return MaweCommands.run('拼合字幕', (command) => {
-      const snappedCount = applyAutoMergeSnapsWithBindings(plan.snaps);
+      MaweSelection.clearSelection({ silent: true });
+      const syncImpact = {};
+      const snappedCount = applyAutoMergeSnapsWithBindings(plan.snaps, syncImpact);
+      // Snaps may move linked secondary cues into this merge's overlap range.
+      // Restore the whole transaction if the actual candidate set now crosses
+      // an identity boundary; selection belongs to that same snapshot.
+      if (plan.groups.some(group => !canMergeSources(collectMainMergeSources(group)))) {
+        command.cancel();
+        showSpeakerMergeConflict();
+        return false;
+      }
       // 合并从后往前进行，保持靠前组的下标仍然有效
+      let mergedCount = 0;
       for (let i = plan.groups.length - 1; i >= 0; i--) {
-        mergeContiguousIndices(plan.groups[i]);
+        if (!mergeContiguousIndices(plan.groups[i], syncImpact)) {
+          command.cancel();
+          return false;
+        }
+        mergedCount += plan.groups[i].length - 1;
       }
       command.commit({ cueList: true, preview: 'update' });
 
-      const mergedCount = plan.groups.reduce((sum, group) => sum + group.length - 1, 0);
       const parts = [];
       if (snappedCount) parts.push(`吸附 ${snappedCount} 处间隔`);
       if (mergedCount) parts.push(`吸收 ${mergedCount} 条短字幕`);
-      MaweHint.flashHint(`已拼合字幕：${parts.join('，')}`, 'success');
-    });
+      const impactText = MaweMultiSubtitleCore.boundSyncImpactText(syncImpact);
+      MaweHint.flashHint(`已拼合字幕：${parts.join('，')}${impactText ? `，${impactText}` : ''}`, impactText ? 'warning' : 'success');
+      return true;
+    }, { captureView: true });
   }
 
 
@@ -526,22 +562,29 @@
   // 「拼合字幕」的自动延展直接修改主轨边界，不能绕过普通时间编辑使用的
   // 绑定同步路径。每个 snap 单独记录旧边界，确保连续间隔同时调整时，副字幕
   // 仍按对应的 start/end offset 跟随；Alt 独立拖动不会进入这里。
-  function applyAutoMergeSnapsWithBindings(snaps) {
+  function addSyncImpact(total, impact) {
+    if (!total || !impact) return;
+    for (const key of ['squeezedCount', 'removedCount', 'unboundCount']) {
+      total[key] = (total[key] || 0) + (impact[key] || 0);
+    }
+  }
+
+
+
+  function applyAutoMergeSnapsWithBindings(snaps, syncImpact = null) {
     let changed = 0;
     let linkedChanged = false;
     (Array.isArray(snaps) ? snaps : []).forEach((snap) => {
-      const segment = MaweBoot.DATA.segments[snap?.index];
+      const segment = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[snap?.index];
       if (!segment || !Number.isFinite(snap?.time)) return;
       const oldStart = segment.start;
       const oldEnd = segment.end;
-      const snapChanged = window.AsrEditorUtils.applyAutoMergeSnaps(MaweBoot.DATA.segments, [snap]);
+      const snapChanged = window.AsrEditorUtils.applyAutoMergeSnaps(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, [snap]);
       if (!snapChanged) return;
       changed += snapChanged;
-      linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(segment, {
-        oldStart,
-        oldEnd,
-        edge: snap.edge === 'end' ? 'end' : 'start',
-      }) || linkedChanged;
+      const patch = { oldStart, oldEnd, edge: snap.edge === 'end' ? 'end' : 'start' };
+      linkedChanged = MaweMultiSubtitleCore.syncBoundExtensionForMain(segment, patch) || linkedChanged;
+      addSyncImpact(syncImpact, { squeezedCount: patch.syncSqueezedCount, removedCount: patch.syncRemovedCount, unboundCount: patch.syncUnboundCount });
     });
     if (linkedChanged) {
       MaweMultiSubtitleCore.markMultiSubtitleDirty();
@@ -558,82 +601,11 @@
   //         首条升级为新 head，后续 ref 指向它。
   //   - 删除场景：cutSet = 被物理删除的 idx；切完后由调用方负责 splice
   //   - 清除场景：cutSet = 被清除 group 字段的 idx；调用方不删除字幕本身
-  function splitGroupsAtCutPoints(cutSet, headField, refField, segments = MaweBoot.DATA.segments) {
-  if (MaweBoot.DATA.subtitle_groups) {
+  function splitGroupsAtCutPoints(cutSet, headField, refField, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments) {
+    // Stable group membership survives deletion of other members. Explicit
+    // clearing only removes selected members and then collects empty groups.
     window.AsrEditorUtils.clearSubtitleGroupMembers(MaweBoot.DATA, segments, cutSet, headField);
-    return;
   }
-  function groupHeadOf(seg, idx) {
-    if (seg[headField]) return idx;
-    if (seg[refField]) return seg[refField].headIdx;
-    return -1;
-  }
-  // 1) 收集所有原始 group：headIdx → [members 升序]
-  const groups = new Map();
-  segments.forEach((s, i) => {
-    const g = groupHeadOf(s, i);
-    if (g < 0) return;
-    if (!groups.has(g)) groups.set(g, []);
-    groups.get(g).push(i);
-  });
-
-  for (const [oldHeadIdx, members] of groups.entries()) {
-    // 把成员按"切点"切成多个连续段
-    const sub = [];
-    let cur = [];
-    for (const m of members) {
-      if (cutSet.has(m)) {
-        if (cur.length) { sub.push(cur); cur = []; }
-      } else {
-        cur.push(m);
-      }
-    }
-    if (cur.length) sub.push(cur);
-
-    // 拿原 head 数据作为新 head 的模板（深拷贝）
-    const oldHead = segments[oldHeadIdx];
-    const template = oldHead ? oldHead[headField] : null;
-    if (!template) continue;
-
-    sub.forEach((segIdxs, segNo) => {
-      if (!segIdxs.length) return;
-      const segHeadIdx = segIdxs[0];
-      const segLastIdx = segIdxs[segIdxs.length - 1];
-      const newStart = segments[segHeadIdx].start;
-      const newEnd = segments[segLastIdx].end;
-
-      if (segNo === 0 && segHeadIdx === oldHeadIdx) {
-        // 原 head 还活着且未被切除 → 仅修正其时间范围
-        if (oldHead[headField].end !== newEnd || oldHead[headField].start !== newStart) {
-          oldHead[headField].end = newEnd;
-          oldHead[headField].start = newStart;
-        }
-      } else {
-        // 新段段首升级为 head
-        const promoted = JSON.parse(JSON.stringify(template));
-        promoted.start = newStart;
-        promoted.end = newEnd;
-        segments[segHeadIdx][headField] = promoted;
-        segments[segHeadIdx][refField] = null;
-        // 段内其余 ref 改指向新 head
-        for (let k = 1; k < segIdxs.length; k++) {
-          const refSeg = segments[segIdxs[k]];
-          if (refSeg[refField]) {
-            refSeg[refField].headIdx = segHeadIdx;
-          }
-        }
-      }
-    });
-  }
-
-  // 把切点位置的 head/ref 字段全部清空（调用方期望的副作用）
-  cutSet.forEach(i => {
-    const s = segments[i];
-    if (!s) return;
-    if (s[headField]) s[headField] = null;
-    if (s[refField])  s[refField]  = null;
-  });
-}
 
 
 
@@ -650,7 +622,7 @@
   function deleteSegments(idxs) {
     if (!idxs.length) return;
     const sorted = [...new Set(idxs)].sort((a, b) => a - b);
-    if (sorted.length === MaweBoot.DATA.segments.length) {
+    if (sorted.length === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length) {
       MaweHint.flashHint('不能删除全部字幕', 'warning');
       return;
     }
@@ -665,12 +637,12 @@
     MaweCuePanelState.resetCuePanelEditState();
     return MaweCommands.run(`删除 ${sorted.length} 条字幕`, (command) => {
       const pairedExtensionIndices = new Set();
-      const pairedMainIds = sorted.map((index) => MaweBoot.DATA.segments[index]?.id).filter(Boolean);
+      const pairedMainIds = sorted.map((index) => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index]?.id).filter(Boolean);
       const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
       const extensionTrack = MaweMultiSubtitleCore.multiSubtitleVisible() ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
       (multi.bindings || []).forEach((binding) => {
-        if (!binding.main_segment_ids?.some((id) => pairedMainIds.includes(id))) return;
-        const extensionId = binding.extension_segment_ids?.[0];
+        if (!pairedMainIds.includes(binding.source?.segment_id)) return;
+        const extensionId = binding.target?.segment_id;
         const extensionIndex = extensionTrack?.segments?.findIndex((segment) => segment.id === extensionId);
         if (extensionIndex >= 0) pairedExtensionIndices.add(extensionIndex);
       });
@@ -687,39 +659,17 @@
       splitGroupsAtCutPoints(removeSet, 'sticker', 'sticker_ref');
       splitGroupsAtCutPoints(removeSet, 'color',   'color_ref');
 
-      // ---- 兜底：清"指向被删 idx 但没被规划"的残余 ref（理论上 splitGroups 已处理）----
-      MaweBoot.DATA.segments.forEach((s, i) => {
-        if (removeSet.has(i)) return;
-        if (s.sticker_ref && removeSet.has(s.sticker_ref.headIdx)) {
-          s.sticker_ref = null;
-        }
-        if (s.color_ref && removeSet.has(s.color_ref.headIdx)) {
-          s.color_ref = null;
-        }
-      });
-
       // ---- 倒序 splice 实际删除 ----
       for (let i = sorted.length - 1; i >= 0; i--) {
-        MaweBoot.DATA.segments.splice(sorted[i], 1);
+        window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(sorted[i], 1);
       }
 
-      // ---- 修正剩余 *_ref.headIdx：减去"前面被删的数量"----
-      function shiftHeadIdx(ref) {
-        let shift = 0;
-        for (const r of sorted) { if (r < ref.headIdx) shift++; else break; }
-        if (shift) ref.headIdx -= shift;
-      }
-      MaweBoot.DATA.segments.forEach(s => {
-        if (s.sticker_ref) shiftHeadIdx(s.sticker_ref);
-        if (s.color_ref)   shiftHeadIdx(s.color_ref);
-      });
       if (extensionTrack && pairedExtensionIndices.size) {
+        splitGroupsAtCutPoints(pairedExtensionIndices, 'color', 'color_ref', extensionTrack.segments);
+        splitGroupsAtCutPoints(pairedExtensionIndices, 'sticker', 'sticker_ref', extensionTrack.segments);
         [...pairedExtensionIndices].sort((a, b) => b - a).forEach((index) => extensionTrack.segments.splice(index, 1));
       }
       if (pairedExtensionIndices.size) MaweMultiSubtitleCore.markMultiSubtitleDirty();
-      // 同样修正"刚被晋升为新 head 的段中"指向它的 ref：
-      // splitGroups 写入的 refField.headIdx 是删除前的 idx，需要同样位移
-      // 上面 shiftHeadIdx 已经覆盖（它扫所有 segments 的所有 ref）
       MaweSelection.clearSelection({ silent: true });
       MawePlaybackLoop.lastActive = -1;
       command.commit({ cueList: true });
@@ -753,8 +703,8 @@
         MaweMultiSubtitleCore.getMultiSubtitleState(), id, 'extension', track.id,
       );
       if (!binding) return;
-      const mainId = binding.main_segment_ids?.[0];
-      const mainIndex = MaweBoot.DATA.segments.findIndex((segment) => segment.id === mainId);
+      const mainId = binding.source?.segment_id;
+      const mainIndex = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.findIndex((segment) => segment.id === mainId);
       if (mainIndex >= 0) pairedMainIndices.add(mainIndex);
       unboundIds.delete(id);
     });
@@ -769,6 +719,9 @@
 
     return MaweCommands.run(`删除 ${sorted.length} 条副字幕`, (command) => {
       MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [...unboundIds]);
+      const removed = new Set(remainingIndices);
+      splitGroupsAtCutPoints(removed, 'color', 'color_ref', track.segments);
+      splitGroupsAtCutPoints(removed, 'sticker', 'sticker_ref', track.segments);
       remainingIndices.reverse().forEach((index) => track.segments.splice(index, 1));
       MaweMultiSubtitleCore.markMultiSubtitleDirty();
       MaweState.selection.clear('extension');
@@ -786,6 +739,7 @@
     applySubtitleTimeOffset,
     extendSubtitleRanges,
     syncAutoMergePanelInputs,
+    readAutoMergePanelInputs,
     syncAutoMergeAbsorbFields,
     autoMergeSegments,
     applyAutoMergeSnapsWithBindings,

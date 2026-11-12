@@ -33,9 +33,9 @@ run_script_alignment(ScriptAlignmentRequest(Path(sys.argv[1]), Path(sys.argv[2])
     await page.goto(server.url);
     await page.waitForFunction(() => window.MAWE_EDITOR_BRIDGE?.data?.segments.length === 2);
     const snapshot = () => page.evaluate(() => ({
-      text: MaweBoot.DATA.segments.map((cue) => cue.text),
-      items: MaweBoot.DATA.segments.map((cue) => cue.items.map((item) => item.text).join('')),
-      preserve: MaweBoot.DATA.preserve_punctuation,
+      text: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((cue) => cue.text),
+      items: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map((cue) => cue.items.map((item) => item.text).join('')),
+      preserve: AsrEditorUtils.getMainTrack(MaweBoot.DATA).preserve_punctuation,
     }));
     const expected = { text: ['你好，世界。', 'cafe\u0301!'], items: ['你好，世界。', 'cafe\u0301!'], preserve: true };
     expect(await snapshot()).toEqual(expected);

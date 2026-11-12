@@ -11,6 +11,7 @@ from maw.postprocess import OutputMode
 from maw.postprocess_io import read_project
 from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESERVE_PUNCTUATION, MatchCoverageError, ScriptMatchRequest, prepare_script_text, processed_script_text, run_script_match
 from scripts.mosp_match_text import clean_markdown_inline_symbols
+from tests.track_helpers import main_segments
 
 
 class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
@@ -58,7 +59,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIsNotNone(result.srt_path)
         assert result.project_path is not None
         project = read_project(result.project_path)
-        segments = project["segments"]
+        segments = main_segments(project)
         self.assertEqual(project["custom_metadata"], {"keep": True})
         self.assertEqual(segments[0]["text"], "今天好，")
         self.assertEqual(segments[0]["items"], [{"start": 0, "end": 500, "text": "今天好，"}])
@@ -88,7 +89,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         )
 
         assert result.project_path is not None
-        segments = read_project(result.project_path)["segments"]
+        segments = main_segments(read_project(result.project_path))
         self.assertEqual(segments[0]["text"], "保留这条")
         self.assertTrue(segments[0]["disabled"])
         self.assertEqual(segments[1]["text"], "错字正确")
@@ -127,7 +128,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         )
 
         assert result.project_path is not None
-        segments = read_project(result.project_path)["segments"]
+        segments = main_segments(read_project(result.project_path))
         self.assertEqual(segments[0]["text"], "保留")
         self.assertEqual(segments[0]["items"][0]["text"], "保留")
         self.assertEqual(segments[1]["text"], "错。")
@@ -167,7 +168,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         assert result.srt_path is not None
         self.assertEqual(result.project_path.suffix, ".mosp")
         self.assertIn("新文", result.srt_path.read_text(encoding="utf-8"))
-        self.assertEqual(read_project(result.project_path)["segments"][0]["text"], "新文")
+        self.assertEqual(main_segments(read_project(result.project_path))[0]["text"], "新文")
 
     def test_markdown_script_ignores_front_matter_and_heading_markers(self) -> None:
         markdown_path = self.root / "script.md"
@@ -201,7 +202,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
 
         assert result.project_path is not None
         self.assertEqual(
-            [segment["text"] for segment in read_project(result.project_path)["segments"]],
+            [segment["text"] for segment in main_segments(read_project(result.project_path))],
             ["标题", "正文"],
         )
 
@@ -331,7 +332,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
 
         assert result.project_path is not None
         self.assertEqual(
-            [segment["text"] for segment in read_project(result.project_path)["segments"]],
+            [segment["text"] for segment in main_segments(read_project(result.project_path))],
             [
                 "但是也有地平论者在发力",
                 "「你有没有自主意识？」",
@@ -356,7 +357,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
             )
         )
         assert cleaned.project_path is not None
-        self.assertEqual(read_project(cleaned.project_path)["segments"][0]["text"], "这样")
+        self.assertEqual(main_segments(read_project(cleaned.project_path))[0]["text"], "这样")
 
         preserved = run_script_match(
             ScriptMatchRequest(
@@ -368,7 +369,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
             )
         )
         assert preserved.project_path is not None
-        self.assertEqual(read_project(preserved.project_path)["segments"][0]["text"], "**这样**")
+        self.assertEqual(main_segments(read_project(preserved.project_path))[0]["text"], "**这样**")
 
     def test_preserved_punctuation_requires_configured_split_symbols(self) -> None:
         # 没有隐式基础集：保留符号必须已配置为断句符号。
@@ -414,7 +415,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         )
 
         assert result.project_path is not None
-        segments = read_project(result.project_path)["segments"]
+        segments = main_segments(read_project(result.project_path))
         self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙。丁"])
 
     def test_text_only_mode_preserves_existing_cue_segmentation(self) -> None:
@@ -435,7 +436,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         )
 
         assert result.project_path is not None
-        segments = read_project(result.project_path)["segments"]
+        segments = main_segments(read_project(result.project_path))
         self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙丁"])
 
     def test_manuscript_line_breaks_are_used_as_segment_boundaries(self) -> None:
@@ -452,7 +453,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         ))
 
         assert result.project_path is not None
-        self.assertEqual([segment["text"] for segment in read_project(result.project_path)["segments"]], ["甲乙", "丙丁"])
+        self.assertEqual([segment["text"] for segment in main_segments(read_project(result.project_path))], ["甲乙", "丙丁"])
 
     def test_manuscript_line_breaks_can_rebuild_a_different_cue_count(self) -> None:
         self.project_path.write_text(
@@ -469,8 +470,8 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
 
         assert result.project_path is not None
         project = read_project(result.project_path)
-        self.assertEqual([segment["text"] for segment in project["segments"]], ["甲乙", "丙丁", "戊己庚"])
-        self.assertEqual([(segment["start"], segment["end"]) for segment in project["segments"]], [(0, 1500), (1500, 3000), (3000, 6000)])
+        self.assertEqual([segment["text"] for segment in main_segments(project)], ["甲乙", "丙丁", "戊己庚"])
+        self.assertEqual([(segment["start"], segment["end"]) for segment in main_segments(project)], [(0, 1500), (1500, 3000), (3000, 6000)])
 
     def test_resegmenting_keeps_unmatched_source_cues_between_script_lines(self) -> None:
         self.project_path.write_text(
@@ -483,13 +484,17 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
             encoding="utf-8",
         )
         self.script_path.write_text("第一句文稿。\n第二句文稿。", encoding="utf-8")
+        canonical_input = read_project(self.project_path)
+        expected_speakers = [segment["speaker"] for segment in main_segments(canonical_input)]
+        self.assertEqual(len(set(expected_speakers)), 4)
 
         result = run_script_match(ScriptMatchRequest(
             self.project_path, None, self.script_path, OutputMode.JSON,
         ))
 
         assert result.project_path is not None
-        segments = read_project(result.project_path)["segments"]
+        processed = read_project(result.project_path)
+        segments = main_segments(processed)
         self.assertEqual(
             [(segment["start"], segment["end"], segment["text"]) for segment in segments],
             [
@@ -499,7 +504,8 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
                 (3000, 4000, "第二句文稿。"),
             ],
         )
-        self.assertEqual([segment["speaker"] for segment in segments], ["script-1", "extra-1", "extra-2", "script-2"])
+        self.assertEqual([segment["speaker"] for segment in segments], expected_speakers)
+        self.assertEqual(processed["speakers"], canonical_input["speakers"])
 
     def test_timed_matching_keeps_unmatched_source_cues_between_script_lines(self) -> None:
         def timed_segment(start: int, end: int, text: str) -> dict[str, object]:
@@ -526,7 +532,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         ))
 
         assert result.project_path is not None
-        segments = read_project(result.project_path)["segments"]
+        segments = main_segments(read_project(result.project_path))
         self.assertEqual(
             [(segment["start"], segment["end"], segment["text"]) for segment in segments],
             [
@@ -574,7 +580,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
 
         assert result.project_path is not None
         project = read_project(result.project_path)
-        segments = project["segments"]
+        segments = main_segments(project)
         self.assertEqual(
             [(segment["start"], segment["end"], segment["text"]) for segment in segments],
             [(0, 500, "甲。"), (500, 1500, "乙丙，"), (1500, 2000, "丁")],

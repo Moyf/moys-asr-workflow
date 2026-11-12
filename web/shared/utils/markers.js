@@ -53,6 +53,13 @@ export function createUtilsModule() {
     return value === undefined ? undefined : JSON.parse(JSON.stringify(value ?? null));
   }
 
+  function unknownFields(value, known) {
+    if (Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => !known.includes(key))
+      .map(([key, field]) => [key, cloneMarkerValue(field)]));
+  }
+
   function normalizeMarkerColor(value, fallback = MARKER_DEFAULT_COLOR) {
     return typeof value === 'string' && HEX_COLOR_PATTERN.test(value.trim())
       ? value.trim().toLowerCase()
@@ -85,7 +92,7 @@ export function createUtilsModule() {
     const status = MARKER_REVIEW_STATUSES.includes(value.status) ? value.status : 'pending';
     const reason = typeof value.reason === 'string'
       ? normalizeMarkerText(value.reason, MARKER_REVIEW_REASON_MAX_LENGTH) : '';
-    return { status, reason };
+    return { ...unknownFields(value, ['status', 'reason']), status, reason };
   }
 
   function normalizeMarkerText(value, maxLength) {
@@ -113,7 +120,9 @@ export function createUtilsModule() {
     const start = normalizeIntMs(raw.start);
     if (start === null) return null;
     const end = normalizeIntMs(raw.end);
+    /** @type {Record<string, any>} */
     const marker = {
+      ...unknownFields(raw, ['id', 'start', 'end', 'name', 'color', 'note', 'review', 'ai', 'cleanup_action']),
       // ID 合法性（缺失 / 重复）在 normalizeMarkers 统一按时间序处理。
       id: typeof raw.id === 'string' ? raw.id.trim() : '',
       start,
@@ -124,17 +133,24 @@ export function createUtilsModule() {
     if (end !== null && end > start) marker.end = end;
     const review = normalizeReviewField(raw.review);
     if (review) marker.review = review;
+    // 旧口播整理标记没有类型字段；只按明确的 AI 删除备注迁移，不能按颜色推断。
+    if (raw.cleanup_action === 'remove'
+        || (!review && /^\[AI\]\s*(?:删除|移除)\s*[:：]/i.test(marker.note))) {
+      marker.cleanup_action = 'remove';
+    }
     const ai = raw.ai;
     if (ai?.schema === 'maw.ai-annotation.v1' && typeof ai.task === 'string' && ai.task.length <= 64
         && /^[a-f0-9]{32}$/.test(ai.run_id) && /^[a-f0-9]{64}$/.test(ai.key)
         && ai.generated && typeof ai.generated === 'object') {
-      const generated = Object.fromEntries(['start', 'end', 'name', 'color', 'note', 'review']
-        .map(key => [key, cloneMarkerValue(ai.generated[key] ?? null)]));
+      const generated = { ...unknownFields(ai.generated, ['start', 'end', 'name', 'color', 'note', 'review']),
+        ...Object.fromEntries(['start', 'end', 'name', 'color', 'note', 'review']
+          .map(key => [key, cloneMarkerValue(ai.generated[key] ?? null)])) };
       // The generated snapshot must follow the same text normalization as the visible marker.
       generated.name = normalizeMarkerText(generated.name, MARKER_NAME_MAX_LENGTH);
       generated.note = normalizeMarkerText(generated.note, MARKER_NOTE_MAX_LENGTH);
       if (generated.review) generated.review = normalizeReviewField(generated.review);
-      marker.ai = { schema: ai.schema, task: ai.task, run_id: ai.run_id, key: ai.key, generated };
+      marker.ai = { ...unknownFields(ai, ['schema', 'task', 'run_id', 'key', 'generated']),
+        schema: ai.schema, task: ai.task, run_id: ai.run_id, key: ai.key, generated };
     }
     return marker;
   }
@@ -153,23 +169,30 @@ export function createUtilsModule() {
       const marker = normalizeMarkerItem(raw);
       if (marker) markers.push(marker);
     }
-    markers.forEach((marker, index) => { marker._inputIndex = index; });
-    markers.sort((a, b) => a.start - b.start || a._inputIndex - b._inputIndex);
+    const ordered = markers.map((marker, index) => ({ marker, index }));
+    ordered.sort((a, b) => a.marker.start - b.marker.start || a.index - b.index);
+    markers.splice(0, markers.length, ...ordered.map(entry => entry.marker));
     const usedIds = new Set();
     for (const marker of markers) {
       if (!marker.id || usedIds.has(marker.id)) {
         marker.id = nextMarkerId(markers);
       }
       usedIds.add(marker.id);
-      delete marker._inputIndex;
     }
     return markers;
   }
 
-  function markersToProjectField(markers) {
+  function markersToProjectField(markers, originalContainer = null) {
     const normalized = normalizeMarkers(markers);
-    if (!normalized.length) return null;
-    return { schema: MARKERS_SCHEMA, items: normalized };
+    const container = originalContainer ?? (markers && !Array.isArray(markers) && Array.isArray(markers.items) ? markers : null);
+    const extra = container && typeof container === 'object' && !Array.isArray(container)
+      ? unknownFields(container, ['schema', 'items']) : {};
+    if (!normalized.length && !Object.keys(extra).length) return null;
+    return { ...extra, schema: MARKERS_SCHEMA, items: normalized };
+  }
+
+  function isAiCleanupRemovalMarker(marker) {
+    return marker?.cleanup_action === 'remove' && markerKind(marker) === 'region';
   }
 
   // 管理窗过滤：query 匹配名称与备注（大小写不敏感）；
@@ -244,6 +267,7 @@ export function createUtilsModule() {
     nextMarkerId,
     markerKind,
     isRegionMarker,
+    isAiCleanupRemovalMarker,
     isPendingReviewMarker,
     countPendingReviewMarkers,
     markerMatchesFilter,

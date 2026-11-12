@@ -1312,6 +1312,16 @@ label {
   accent-color: var(--accent);
 }
 
+/* 纯音频输入没有画面流，「生成缩略图」被 syncThumbnailFields 禁用：整块置灰。 */
+#generateKeyframesField.unavailable .misc-option-label,
+#generateKeyframesField.unavailable .auto-head-switch {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+#generateKeyframesField.unavailable input {
+  cursor: not-allowed;
+}
+
 .auto-postprocess-toggle {
   width: max-content;
   max-width: 100%;

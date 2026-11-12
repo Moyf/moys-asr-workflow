@@ -116,6 +116,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/ui/editor-settings-panels.js",
                 "editor/ui/editor-ninja.js",
                 "editor/media/editor-audio-processing.js",
+                "editor/media/editor-gap-playback.js",
                 "editor/media/editor-media-playback.js",
                 "editor/cues/editor-keyboard-targets.js",
                 "editor/cues/editor-shortcuts.js",
@@ -137,8 +138,8 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/io/editor-multi-import.js",
                 "editor/media/editor-media-load.js",
                 "editor/io/editor-sticker-root.js",
-                "editor/cues/editor-find-replace.js",
                 "editor/cues/editor-text-process.js",
+                "editor/cues/editor-text-presets.js",
                 "editor/cues/editor-timed-text-edit.js",
                 "editor/cues/editor-sticker-picker.js",
                 "editor/cues/editor-add-cue.js",
@@ -174,6 +175,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/cues/editor-cue-list-anchor.js",
                 "editor/cues/editor-timeline.js",
                 "editor/styles/editor-speaker-labels.js",
+                "editor/styles/editor-speaker-manager.js",
                 "editor/boot/editor.js",
                 "editor/cues/editor-wiring-overlay-transfer.js",
                 "editor/styles/editor-wiring-ass-font-aliases.js",
@@ -252,6 +254,8 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
         self.assertIn('data-ass-animation="pop.enabled"', template)
         self.assertIn('data-ass-animation="pop.fromScale"', template)
+        # 放大出现允许 fromScale < 1：输入下限 0.3（防 0/负值）。
+        self.assertIn('data-ass-animation="pop.fromScale" min="0.3"', template)
         self.assertIn('data-ass-animation="pop.inMs"', template)
         self.assertIn('data-ass-animation="pop.accel"', template)
         manager = edit.read_web_asset("editor/styles/editor-wiring-ass-manager.js")
@@ -266,7 +270,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         canvas = edit.read_web_asset("editor/styles/editor-wiring-ass-canvas.js")
         self.assertIn("animation.popScale", canvas)
         styles_py = (ROOT / "maw" / "ass_styles.py").read_text(encoding="utf-8")
-        self.assertIn('"pop": {"enabled": False, "fromScale": 1.4, "inMs": 250, "accel": 1}', styles_py)
+        self.assertIn('"pop": {"enabled": False, "fromScale": 0.7, "inMs": 120, "accel": 1}', styles_py)
 
     def test_ass_frame_preview_wires_template_module_and_styles(self) -> None:
         # 单帧实际画面预览：设置页入口按钮、浮层窗口、接线模块与样式必须同时存在。

@@ -429,10 +429,11 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  // ASS 单句放大出现标记：整行两端各写 `{{` `}}` 表示该句以「从大缩小落定」
-  // 的入场动画出现（参数取自样式库 profile 的 pop 组，不管其全局开关；与
-  // 单句 fade 复用 fad 参数同一模式）。仅识别双符号；至少要有一个字符的
-  // 正文才视为标记。句级标记之间可按任意嵌套顺序组合。
+  // ASS 单句放大出现标记：整行两端各写 `{{` `}}` 表示该句以「放大落定到原
+  // 字号」的入场动画出现（起点倍率 < 1 从小放大、> 1 从大缩小；参数取自
+  // 样式库 profile 的 pop 组，不管其全局开关；与单句 fade 复用 fad 参数
+  // 同一模式）。仅识别双符号；至少要有一个字符的正文才视为标记。句级标记
+  // 之间可按任意嵌套顺序组合。
   function parseSentencePopMarkers(text, rule) {
     const source = String(text == null ? '' : text);
     if (rule === 'none') return { text: source, pop: false };
@@ -1027,11 +1028,11 @@ export function createUtilsModule(dependencies) {
   // （整句生效，插入时恒包裹在所有符号最外层），菜单与面板按它分组。
   const WRAP_CHAR_PRESETS = Object.freeze([
     // ass: true 的预设是 ASS 特殊文本格式，仅在当前工程启用 ASS 字幕模式时展示。
-    { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
-    { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
-    { id: 'comment', label: '弱化文本', left: '%%', right: '%%', ass: true },
-    { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
-    { id: 'italic', label: '斜体文本', left: '//', right: '//', ass: true },
+    { id: 'emphasis', label: '强调', left: '**', right: '**', ass: true },
+    { id: 'large', label: '放大', left: '++', right: '++', ass: true },
+    { id: 'comment', label: '弱化', left: '%%', right: '%%', ass: true },
+    { id: 'small', label: '缩小', left: '--', right: '--', ass: true },
+    { id: 'italic', label: '斜体', left: '//', right: '//', ass: true },
     { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
     { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
     { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true, sentenceLevel: true },

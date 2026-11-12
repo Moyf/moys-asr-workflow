@@ -13,17 +13,42 @@ from maw.postprocess_io import read_project
 from maw.postprocess_llm import LlmClientError
 from maw.postprocess_pipeline import PostprocessCancelled, default_postprocess_plan, run_postprocess_pipeline
 from maw.project import normalize_project
+from maw.project_tracks import get_main_track, get_tracks_by_role
 from tests.compact_assertions import CompactContainerAssertions
+
+
+def main_segments(project):
+    return get_main_track(project)["segments"] if project.get("schema") == "moy.asr.project.v2" else project["segments"]
+
+
+def secondary_state(project):
+    return (get_tracks_by_role(project, "secondary"), project["bindings"], project["bilingual"])
 
 
 class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
     def source(self, text):
-        return normalize_project({
+        return {
             "segments": [{"id": "source", "start": 0, "end": 1000, "text": text,
                           "items": [{"start": 0, "end": 1000, "text": text}],
                           "speaker": "speaker-1", "custom": {"keep": True}}],
             "user_metadata": {"keep": True},
-        })
+        }
+
+    def test_toolbox_translation_preserves_secondary_groups(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = self.existing_source(count=1)
+            secondary = get_tracks_by_role(source, "secondary")[0]["segments"][0]
+            source["subtitle_groups"]["color"].append({"id": "secondary-color", "value": {"name": "副轨颜色"}})
+            secondary["color_group_id"] = "secondary-color"
+            path = Path(directory) / "input.mosp"
+            path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+            result = run_llm_postprocess(
+                LlmPostprocessRequest(path, None, OutputMode.BOTH, "translate_zh", ""),
+                complete=lambda _prompt, cues: {"groups": [{"id": cue["id"], "text": "新译文"} for cue in cues]},
+            )
+            saved = read_project(result.project_path)
+            self.assertEqual(get_tracks_by_role(saved, "secondary")[0]["segments"][0]["color_group_id"], "secondary-color")
+            self.assertNotEqual(main_segments(saved)[0]["color_group_id"], "secondary-color")
 
     def test_pipeline_keeps_editable_intermediate_and_final_projects(self):
         for original, target, translation in (
@@ -35,6 +60,7 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                 with self.subTest(original=original, merge=merge, order=order), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
                     source = self.source(original)
+                    canonical_source = normalize_project(source)
                     project, srt, media = root / "input.mosp", root / "input.srt", root / "media.mp3"
                     project.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
                     srt.write_text(f"1\n00:00:00,000 --> 00:00:01,000\n{original}\n", encoding="utf-8")
@@ -59,12 +85,17 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                     stage = manifest["steps"][0]
                     for path in (result.project_path, Path(stage["projectPath"]), Path(stage["translationIntermediateProjectPath"])):
                         saved = read_project(path)
-                        self.assertEqual(saved["segments"], source["segments"])
+                        self.assertEqual(main_segments(saved), main_segments(canonical_source))
+                        self.assertEqual(saved["speakers"], canonical_source["speakers"])
+                        self.assertEqual(saved["speaker_shortcuts"], canonical_source["speaker_shortcuts"])
                         self.assertEqual(saved["user_metadata"], source["user_metadata"])
-                        multi = saved["multi_subtitle"]
-                        self.assertEqual(multi["display_mode"], "both")
-                        self.assertEqual([s["text"] for s in multi["tracks"][-1]["segments"]], [translation])
-                        self.assertEqual(multi["bindings"][0]["main_segment_ids"], ["source"])
+                        multi = saved
+                        self.assertEqual(multi["bilingual"]["display_mode"], "both")
+                        self.assertEqual([s["text"] for s in get_tracks_by_role(multi, "secondary")[-1]["segments"]], [translation])
+                        translated_cue = get_tracks_by_role(multi, "secondary")[-1]["segments"][0]
+                        self.assertEqual(translated_cue["speaker"], main_segments(canonical_source)[0]["speaker"])
+                        self.assertIn(translated_cue["speaker"], {speaker["id"] for speaker in saved["speakers"]})
+                        self.assertEqual(multi["bindings"][0]["source"], {"track_id": "main", "segment_id": "source"})
                     text = result.srt_path.read_text(encoding="utf-8-sig")
                     expected = (f"{translation}\n{original}" if order == "translation_first" else f"{original}\n{translation}") if merge else original
                     self.assertIn(expected, text)
@@ -89,25 +120,25 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                 path, None, OutputMode.BOTH, "translate_zh", "", merge_bilingual=True, generate_comparison=True,
             ), complete=lambda _prompt, cues: {"groups": [{"id": cue["id"], "text": "今天天气很好。"} for cue in cues]})
             saved = read_project(artifact.project_path)
-            self.assertEqual(saved["segments"], original["segments"])
-            self.assertEqual(len(saved["multi_subtitle"]["tracks"]), 1)
-            self.assertEqual(saved["multi_subtitle"]["tracks"][0]["id"], "translation-zh")
-            self.assertEqual(saved["multi_subtitle"]["tracks"][0]["segments"][0]["text"], "今天天气很好。")
-            self.assertEqual(saved["multi_subtitle"]["bindings"][0]["id"], "old-binding")
-            self.assertEqual(saved["multi_subtitle"]["bindings"][0]["main_segment_ids"], ["source"])
+            self.assertEqual(main_segments(saved), main_segments(original))
+            self.assertEqual(len(get_tracks_by_role(saved, "secondary")), 1)
+            self.assertEqual(get_tracks_by_role(saved, "secondary")[0]["id"], "translation-zh")
+            self.assertEqual(get_tracks_by_role(saved, "secondary")[0]["segments"][0]["text"], "今天天气很好。")
+            self.assertEqual(saved["bindings"][0]["id"], "old-binding")
+            self.assertEqual(saved["bindings"][0]["source"], {"track_id": "main", "segment_id": "source"})
             html = artifact.comparison_path.read_text(encoding="utf-8")
             data = json.loads(html.split('<script id="comparison-data" type="application/json">', 1)[1].split('</script>', 1)[0])
             packet = json.loads(data["translationReview"]["snapshot"])
             self.assertEqual(packet["mode"], "tracks")
             self.assertEqual(packet["translationTrackId"], "translation-zh")
-            self.assertEqual(packet["entries"][0]["targetId"], "translation-zh-segment-001")
-            self.assertEqual(packet["result"]["segments"], source["segments"])
+            self.assertEqual(packet["entries"][0]["targetId"], "old")
+            self.assertEqual(main_segments(packet["result"]), main_segments(source))
             self.assertEqual(data["after"], "今天天气很好。")
             self.assertEqual(read_project(path), original)
 
     def existing_source(self, count=3):
         source = self.source("今日はいい天気ですね。")
-        source["segments"][0]["color"] = {"name": "自定义", "value": "#3366ff"}
+        main_segments(source)[0]["color"] = {"name": "自定义", "value": "#3366ff"}
         source["multi_subtitle"] = {
             "enabled": True, "tracks": [{"id": "fixed-secondary", "name": "自定义译文", "presentation": {"color": "#abcdef"},
                 "segments": [{"id": f"old-{i}", "start": i * 1200, "end": i * 1200 + 1000, "text": f"旧译文{i}"} for i in range(count)]}],
@@ -122,7 +153,7 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                 root = Path(directory)
                 source = self.existing_source(old_count)
                 if old_count == 1:
-                    source["segments"].append({"id": "source-2", "start": 1200, "end": 2200, "text": "次の文章です。"})
+                    main_segments(source).append({"id": "source-2", "start": 1200, "end": 2200, "text": "次の文章です。"})
                 source = normalize_project(source)
                 path = root / "input.translate-zh-bilingual.mosp"
                 path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
@@ -133,17 +164,17 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                         return {"groups": [{"id": row["id"], "text": translation + row["id"]} for row in cues]}
                     result = run_llm_postprocess(LlmPostprocessRequest(path, None, OutputMode.BOTH, "translate_zh", "", merge_bilingual=True), complete=complete)
                     saved = read_project(result.project_path)
-                    self.assertEqual(requested, [s["text"] for s in source["segments"]])
-                    self.assertEqual(saved["segments"], source["segments"])
-                    multi = saved["multi_subtitle"]
-                    self.assertEqual(len(multi["tracks"]), 1)
-                    track = multi["tracks"][0]
+                    self.assertEqual(requested, [s["text"] for s in main_segments(source)])
+                    self.assertEqual(main_segments(saved), main_segments(source))
+                    multi = saved
+                    self.assertEqual(len(get_tracks_by_role(multi, "secondary")), 1)
+                    track = get_tracks_by_role(multi, "secondary")[0]
                     self.assertEqual(track["id"], "fixed-secondary")
                     self.assertEqual(track["presentation"], {"color": "#abcdef"})
-                    self.assertEqual(len(track["segments"]), len(source["segments"]))
+                    self.assertEqual(len(track["segments"]), len(main_segments(source)))
                     self.assertTrue(all(s["text"].startswith(translation) for s in track["segments"]))
                     self.assertEqual(multi["bindings"][0]["id"], "old-binding")
-                    self.assertEqual(read_project(path)["segments"], source["segments"])
+                    self.assertEqual(main_segments(read_project(path)), main_segments(source))
                     path = result.project_path
 
     def test_failed_incomplete_and_cancelled_translations_leave_existing_track_untouched(self):
@@ -152,7 +183,7 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                 root = Path(directory)
                 source = self.existing_source()
                 if failure == "partial-network":
-                    source["segments"].append({"id": "source-2", "start": 1200, "end": 2200, "text": "次の文章です。"})
+                    main_segments(source).append({"id": "source-2", "start": 1200, "end": 2200, "text": "次の文章です。"})
                 path = root / "input.mosp"
                 path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
                 before = path.read_bytes()
@@ -197,5 +228,5 @@ class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
                     else:
                         result = run()
                         self.assertEqual(result.skipped_steps, ("translate",))
-                        self.assertEqual(read_project(result.project_path)["multi_subtitle"], source["multi_subtitle"])
-                self.assertEqual(read_project(project)["multi_subtitle"], source["multi_subtitle"])
+                        self.assertEqual(secondary_state(read_project(result.project_path)), secondary_state(source))
+                self.assertEqual(secondary_state(read_project(project)), secondary_state(source))

@@ -23,12 +23,22 @@ test.beforeEach(async ({ page }) => {
   await page.goto(server.url);
   await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
   await page.waitForFunction(() => MaweCoreState.player?.readyState >= 1);
+  await page.evaluate(() => {
+    const wave = MaweCoreState.waveformEditor;
+    wave.settings.mode = 'multi'; wave.settings.secondsPerRow = 5; wave.render();
+    // Workspace settings are persisted content. Finish fixture setup before
+    // measuring whether the subsequent gesture changes the saved project.
+    MaweState.establishProjectCheckpoint();
+  });
 });
 
 async function snapshot(page) {
   return page.evaluate(() => ({
-    segments: MaweBoot.DATA.segments,
-    multi: MaweBoot.DATA.multi_subtitle,
+    segments: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
+    tracks: MaweBoot.DATA.tracks,
+    bindings: MaweBoot.DATA.bindings,
+    bilingual: MaweBoot.DATA.bilingual,
+    content: MaweJsonRepair.projectSnapshot(),
     undo: MaweHistory.editorHistory.undoLength(),
     redo: MaweHistory.editorHistory.redoLength(),
     dirty: MaweServerSave.hasUnsavedProjectChanges(),
@@ -116,6 +126,43 @@ for (const unsavedLayout of [false, true]) {
   });
 }
 
+test('no-op command and clearing an uncolored cue preserve redo with project styles', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.styles = [];
+    AsrEditorUtils.importProject(MaweBoot.DATA);
+    MaweState.establishProjectCheckpoint();
+  });
+  await seedRedo(page);
+  const before = await snapshot(page);
+  expect(before.dirty).toBe(false);
+  expect(before.redo).toBe(1);
+  expect(before.content.styles).toEqual([]);
+  expect(before.segments[0].color_group_id).toBeUndefined();
+  await page.evaluate(() => MaweCommands.run('no-op test', () => {}));
+  expect(await snapshot(page)).toEqual(before);
+  await page.evaluate(() => document.activeElement.blur());
+  await page.keyboard.press('0');
+  await expect(page.getByText('已清除颜色', { exact: true })).toBeVisible();
+  expect(await snapshot(page)).toEqual(before);
+});
+
+test('returning a waveform drag to its origin preserves redo for a project with styles', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.styles = [{ id: 'custom-style', name: 'Custom', fontSize: 86 }];
+    // Exercise a valid existing v2 project with preserved extension data.
+    AsrEditorUtils.importProject(MaweBoot.DATA);
+    MaweState.establishProjectCheckpoint();
+  });
+  await seedRedo(page);
+  const before = await snapshot(page);
+  expect(before.dirty).toBe(false);
+  expect(before.content.styles).toEqual([{ id: 'custom-style', name: 'Custom', fontSize: 86 }]);
+  const point = await beginDrag(page);
+  await page.mouse.move(point.x, point.y, { steps: 5 });
+  await page.mouse.up();
+  expect(await snapshot(page)).toEqual(before);
+});
+
 test('cancelling cue-panel text restores the original without clearing redo', async ({ page }) => {
   await page.evaluate(() => MaweSettings.updateEditorSettings({ cueEditorCancelOnEscape: true }));
   await seedRedo(page);
@@ -152,10 +199,12 @@ test('undo after saving marks changed content dirty and redo back to the saved c
 test('saving clears overlay and extension track dirty flags', async ({ page }) => {
   await bindMemoryFile(page);
   await page.evaluate(() => {
-    MaweState.project.overlay_track._dirty = true;
-    MaweState.project.overlay_track.segments.push({ id: 'overlay-save', start: 0, end: 1000, text: 'Overlay', _dirty: true });
-    MaweState.project.multi_subtitle.tracks.push({ id: 'extension-save', name: 'Extension', _dirty: true,
+    const overlay = AsrEditorUtils.ensureOverlayTrack(MaweState.project);
+    overlay._dirty = true;
+    overlay.segments.push({ id: 'overlay-save', start: 0, end: 1000, text: 'Overlay', _dirty: true });
+    const extension = AsrEditorUtils.ensureExtensionTrack(MaweState.project, { id: 'extension-save', name: 'Extension',
       segments: [{ id: 'ext-save', start: 0, end: 1000, text: 'Extension', _dirty: true }] });
+    extension._dirty = true;
   });
   expect((await snapshot(page)).dirty).toBe(true);
   expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true }))).toBe(true);
@@ -202,14 +251,15 @@ for (const saveAs of [false, true]) {
     await page.waitForFunction(() => window.__transactionWrite.ready);
     await page.evaluate(() => {
       MaweCommands.run('add overlay during save', () => {
-        MaweState.project.overlay_track.enabled = true;
-        MaweState.project.overlay_track.segments.push({ id: 'in-flight', start: 0, end: 1000, text: 'Later' });
+        const overlay = AsrEditorUtils.ensureOverlayTrack(MaweState.project, { enabled: true });
+        overlay.enabled = true;
+        overlay.segments.push({ id: 'in-flight', start: 0, end: 1000, text: 'Later' });
       }, { invalidate: { cueList: true } });
       window.__transactionWrite.release();
     });
     await page.evaluate(() => window.__transactionWrite.save);
     expect((await snapshot(page)).dirty).toBe(true);
-    expect(await page.evaluate(() => JSON.parse(window.__transactionWrite.content).overlay_track?.segments?.length || 0)).toBe(0);
+    expect(await page.evaluate(() => AsrEditorUtils.getOverlayTrack(JSON.parse(window.__transactionWrite.content))?.segments?.length || 0)).toBe(0);
     await page.locator('#undo-btn').click();
     expect((await snapshot(page)).dirty).toBe(false);
   });
@@ -221,7 +271,7 @@ test('a failed command rolls back data and leaves the history branches intact', 
   const message = await page.evaluate(() => {
     try {
       MaweCommands.run('test rollback', () => {
-        MaweState.project.segments[0].text = 'discard this mutation';
+        AsrEditorUtils.getMainTrack(MaweState.project).segments[0].text = 'discard this mutation';
         throw new Error('mutation failed');
       });
     } catch (error) { return error.message; }

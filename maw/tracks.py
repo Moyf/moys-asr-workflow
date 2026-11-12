@@ -59,6 +59,12 @@ class LegacyProjectAdapter:
 
     def tracks(self) -> list[TrackView]:
         project = self.project
+        if isinstance(project.get('tracks'), list):
+            return [TrackView(source['id'], source['role'], source,
+                              lambda source=source: source.get('enabled') is True)
+                    for source in project['tracks']
+                    if isinstance(source, Mapping) and isinstance(source.get('id'), str)
+                    and isinstance(source.get('segments'), list)]
         tracks = []
         if isinstance(project.get('segments'), list):
             tracks.append(TrackView(MAIN_TRACK_ID, 'main', project, lambda: True))

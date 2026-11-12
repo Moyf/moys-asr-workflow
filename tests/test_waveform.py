@@ -54,11 +54,13 @@ WAVEFORM_RETIRED_UTILS = (
 )
 
 import base64
+import json
 import math
 import os
 import re
 import shutil
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -431,6 +433,32 @@ class WaveformExtractionTests(CompactContainerAssertions, unittest.TestCase):
             audio_track=0,
         )
 
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_extraction_sends_stderr_to_a_file_not_a_pipe(self) -> None:
+        """stderr 不能留在管道里，否则会与 stdout 读取互等死锁。
+
+        损坏的 AV1 录制会让 ffmpeg 在 ``-loglevel error`` 下仍然吐十几 KB 帧错误；
+        Windows 匿名管道只有 4 KiB 缓冲，旧实现在 stdout 读完后才读 stderr，ffmpeg
+        就卡在写日志上，屏幕上停在转写管线的「正在校验和修复时间码」。
+        """
+        captured: dict[str, object] = {}
+        real_popen = subprocess.Popen
+
+        def spy(*args: object, **kwargs: object) -> subprocess.Popen:
+            captured.update(kwargs)
+            return real_popen(*args, **kwargs)
+
+        with mock.patch.object(waveform_module.subprocess, "Popen", side_effect=spy):
+            payload = waveform_module.extract_waveform(self.media_path)
+
+        self.assertEqual(payload["peak_count"], 40)
+        self.assertIs(captured.get("stdout"), subprocess.PIPE)
+        stderr = captured.get("stderr")
+        self.assertIsNot(stderr, subprocess.PIPE)
+        self.assertTrue(
+            hasattr(stderr, "seek"), f"stderr 应该是可回读的文件，实际为 {stderr!r}"
+        )
+
 
 class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
     def test_project_waveform_survives_loading_media(self) -> None:
@@ -559,7 +587,15 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("this.cues = document.getElementById('cues-container')", source)
         self.assertIn('flex-direction: column;', page)
         self.assertIn("class WaveformEditor", source)
-        self.assertIn('{"segments": [], "media": "", "language": "", "model": ""}', page)
+        blank = json.JSONDecoder().raw_decode(page[page.index('{"media": ""'):])[0]
+        self.assertEqual(blank["schema"], "moy.asr.project.v2")
+        self.assertNotIn("segments", blank)
+        self.assertNotIn("multi_subtitle", blank)
+        self.assertNotIn("overlay_track", blank)
+        self.assertEqual(len(blank["tracks"]), 1)
+        self.assertEqual(blank["tracks"][0]["role"], "main")
+        self.assertEqual(blank["tracks"][0]["segments"], [])
+        self.assertEqual(blank["media"], "")
         self.assertIn('id="save-project"', page)
         self.assertIn('id="save-project-as"', page)
         self.assertNotIn('__SERVER_CONFIG_JSON__', page)
@@ -678,7 +714,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             + page.count('class="editor-settings-group subtitle-preview-style-group"')
             + page.count('class="editor-settings-group subtitle-color-settings-group"')
             + page.count('class="editor-settings-group subtitle-speaker-settings-group"'),
-            34,  # 「更多导出」新增绿幕视频导出分组；表情包页新增烧录显示位置分组。
+            35,  # 「更多导出」新增绿幕视频导出分组；表情包页新增烧录显示位置与表情包背景分组。
         )
         self.assertEqual(page.count('aria-labelledby="export-green-screen-title"'), 1)
         self.assertIn('<span class="editor-settings-group-heading" id="export-green-screen-title">绿幕视频导出</span>', page)
@@ -902,11 +938,10 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         )
         self.assertIn('function syncProjectTimebaseAndBindingOffsets(', source)
         self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', source)
-        self.assertIn(
-            'function buildJson({ forFileExport = false } = {}) {\n'
-            "  if (!window.AsrEditorUtils.supportsProjectSchema(MaweBoot.DATA)) throw new Error('Unsupported project schema');\n"
-            '  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
+        self.assertRegex(
             edit.read_web_asset("editor/io/editor-json-repair.js"),
+            r'function buildJson\(\{ forFileExport = false \} = \{\}\) \{\s+'
+            r'MaweTimeline\.syncProjectTimebaseAndBindingOffsets\(MaweBoot\.DATA, \{ preferFrames: false \}\);',
         )
         self.assertIn('id="help-media-seek-step"', page)
         self.assertIn('class="help-break"', page)
@@ -994,7 +1029,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('波形外观调整', page)
         self.assertIn('微调字幕', page)
         self.assertIn('空隙操作', page)
-        self.assertIn('批量替换字幕文本', page)
+        self.assertIn('id="text-process-btn" title="对字幕进行查找替换、修剪空白、前后添加字符等操作">字幕处理</button>', page)
         self.assertIn('纯文本编辑', page)
         self.assertIn('文本处理', page)
         self.assertIn('处理范围', page)
@@ -1144,8 +1179,9 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('跳过静音空隙', page)
         self.assertIn('const DEFAULT_LAYOUT_ROWS = [42, 16, 42];', source)
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", source)
-        self.assertIn('const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)', source)
-        self.assertIn('overlaySegments.some((segment) => segment.sticker || segment.sticker_ref)', source)
+        self.assertIn('const projectHasStickers = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.some((segment) => segment.sticker_group_id)', source)
+        self.assertIn('const overlaySegments = getOverlayTrack()?.segments || [];', source)
+        self.assertIn('overlaySegments.some((segment) => segment.sticker_group_id)', source)
         self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', source)
         self.assertIn('rows.sort((a, b) => a.start - b.start || a.order - b.order);', source)
         self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: window.MaweCuePanelWiring.buildOverlayCueEl(seg, i) }));', source)

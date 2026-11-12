@@ -3,6 +3,7 @@ from __future__ import annotations
 from tests.compact_assertions import CompactContainerAssertions
 
 import json
+from maw.project_tracks import get_main_track
 from threading import Event
 from unittest import mock
 
@@ -54,16 +55,16 @@ class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
         self.assertEqual(rows[-1]["contextOnly"], "true")
         self.assertTrue(all("start" not in row and "speaker" not in row for row in rows))
         self.assertIn("保留必要的前后承接", self.calls[-1][0])
-        self.assertFalse(any(segment.get("disabled") for segment in output["segments"]))
+        self.assertFalse(any(segment.get("disabled") for segment in get_main_track(output)["segments"]))
         self.assertNotIn("gap_remove", output)
         self.assertEqual(artifact.stats["pendingReview"], 3)
-        self.assertEqual(output["segments"][1]["text"], "这是关键方法")
+        self.assertEqual(get_main_track(output)["segments"][1]["text"], "这是关键方法")
 
     def test_sparse_empty_review_keeps_proposed_cut(self):
         artifact = self.execute({"reviews": []})
         output = json.loads(artifact.project_path.read_text(encoding="utf-8"))
         self.assertEqual(len(self.calls), 3)
-        self.assertTrue(output["segments"][0]["disabled"])
+        self.assertTrue(get_main_track(output)["segments"][0]["disabled"])
         self.assertEqual(artifact.stats["removed"], 1)
 
     def test_internal_off_switch_and_no_cut_skip_second_request(self):

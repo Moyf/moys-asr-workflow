@@ -17,47 +17,51 @@
   function buildCurrentWorkspaceData() {
     const workspace = MaweCoreState.waveformEditor?.getLayoutData?.() || MaweBoot.DATA.workspace;
     if (!workspace) return workspace;
+    const stored = MaweBoot.DATA.workspace || {};
     const selectedPreset = MaweWorkspaces.currentServerWorkspaceName
       ? `saved:${MaweWorkspaces.currentServerWorkspaceName}`
       : MaweWorkspaces.currentBuiltinWorkspaceName || MaweWorkspaces.workspacePresetSelect?.value || workspace.preset;
-    return { ...workspace, selectedPreset, editorDisplay: MaweDisplaySettings.getEditorDisplaySettings() };
+    return { ...stored, ...workspace, selectedPreset,
+      waveformSettings: { ...stored.waveformSettings, ...workspace.waveformSettings },
+      editorDisplay: { ...stored.editorDisplay, ...MaweDisplaySettings.getEditorDisplaySettings() } };
   }
 
 
 
   function buildResolveJson() {
-    const groupStickers = MaweBoot.DATA.subtitle_groups
-      ? window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true }).filter(r => r.enabled).map(r => ({
-        ...window.AsrEditorUtils.cloneJsonValue(r.source),
-        group_id: r.id, start_ms: r.start, end_ms: r.end,
-        abs_path: MaweSelection.stickerAbsPath(r.source),
-      })) : null;
-    const segments = MaweExportSrt.cleanupMainSegments().map((seg, idx) => {
-      const headIdx = seg.sticker_ref?.headIdx;
-      const head = Number.isInteger(headIdx) ? MaweBoot.DATA.segments[headIdx] : null;
-      const validStickerRef = !seg.sticker_ref || (head && !head.disabled && headIdx < idx);
-      const headSticker = !seg.disabled && validStickerRef ? seg.sticker || head?.sticker : null;
-      const sticker = headSticker ? { ...headSticker, start: seg.start, end: seg.end } : null;
+    const groupStickers = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { trackIds: window.AsrEditorUtils.TrackPolicy.selectTracks(MaweBoot.DATA, 'all', 'export').map(track => track.id) })
+      .filter(range => range.enabled).map(range => ({
+        ...window.AsrEditorUtils.cloneJsonValue(range.source),
+        group_id: range.id, start_ms: range.start, end_ms: range.end,
+        abs_path: MaweSelection.stickerAbsPath(range.source),
+      }));
+    const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const segments = (window.AsrEditorUtils.TrackPolicy.isTrackEnabled(main, 'export') ? MaweExportSrt.cleanupMainSegments() : []).map((seg, idx) => {
+      const groupSticker = !seg.disabled
+        ? window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, seg, 'sticker') : null;
+      const sticker = groupSticker ? { ...groupSticker, start: seg.start, end: seg.end } : null;
       if (sticker) {
         const absPath = MaweSelection.stickerAbsPath(sticker);
         if (absPath) sticker.abs_path = absPath;
       }
-      const colorName = seg.color?.name || seg.color_ref?.name || null;
+      const groupColor = window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, seg, 'color');
+      const displayColor = window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+      const colorName = displayColor?.name || null;
       return {
         idx,
         start_ms: seg.start,
         end_ms: seg.end,
-        text: MaweSpeakerLabels.subtitleExportText(seg, MaweBoot.DATA.segments),
-        color: seg.color || null,
-        color_ref: seg.color_ref || null,
+        text: MaweSpeakerLabels.subtitleExportText(seg, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments),
+        color: MaweBoot.DATA.annotation_mode === 'speaker' ? displayColor : groupColor || null,
+        color_ref: null,
         resolve_color: colorName,
-        sticker: groupStickers ? null : sticker,
+        sticker: null,
         sticker_group_id: seg.sticker_group_id,
-        color_group_id: seg.color_group_id,
-        sticker_ref: !groupStickers && validStickerRef ? seg.sticker_ref || null : null,
+        color_group_id: MaweBoot.DATA.annotation_mode === 'speaker' ? undefined : seg.color_group_id,
+        sticker_ref: null,
       };
     });
-    const colorCount = segments.filter(s => s.resolve_color).length;
+    const colorCount = segments.filter(s => s.resolve_color || s.color?.value).length;
     const stickerCount = groupStickers?.length || segments.filter(s => s.sticker).length;
     if (!colorCount && !stickerCount) {
       MaweHint.flashHint('没有颜色或表情包配置，无法导出 Resolve JSON', 'invalid');
@@ -124,7 +128,8 @@
     green: 'GREEN',
     red: 'RED',
     purple: 'PURPLE',
-    blue: 'BLUE',
+    // OTIO has no gray marker enum; BLACK distinguishes it from unassigned WHITE.
+    blue: 'BLUE', orange: 'ORANGE', cyan: 'CYAN', magenta: 'MAGENTA', gray: 'BLACK',
   });
 
 
@@ -155,7 +160,7 @@
 
 
 
-  function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0, segments = MaweBoot.DATA.segments, colorContext = segments) {
+  function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, colorContext = segments) {
   const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
   const intervalEndMs = Math.max(
     intervalStartMs,
@@ -165,6 +170,8 @@
   const clipEndFrame = msToOtioFrames(intervalEndMs);
   if (clipEndFrame <= clipStartFrame) return [];
 
+  if (segments === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments
+      && !window.AsrEditorUtils.TrackPolicy.isTrackEnabled(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), 'export')) return [];
   return segments.flatMap((segment) => {
     if (!segment || segment.disabled) return [];
     const segmentStartMs = Number(segment.start);
@@ -173,7 +180,7 @@
         || segmentEndMs <= segmentStartMs) {
       return [];
     }
-    const projected = segments === MaweBoot.DATA.segments
+    const projected = segments === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments
       ? window.AsrGapRemoveCore.projectCleanupRetainedSegments([segment], MaweBoot.DATA.gap_remove)[0]
       : segment;
     if (projected.disabled) return [];
@@ -185,14 +192,15 @@
     const markerEndFrame = sourceStartFrame + msToOtioFrames(endMs);
     if (markerEndFrame <= markerStartFrame) return [];
 
-    const colorName = window.AsrEditorUtils.effectiveColorName(segment, colorContext);
+    const displayColor = window.AsrEditorUtils.effectiveSegmentColor(MaweBoot.DATA, segment, colorContext);
+    const colorName = displayColor?.name;
     return [{
       OTIO_SCHEMA: 'Marker.2',
-      metadata: {},
+      metadata: displayColor ? { maw: { display_color: displayColor.value } } : {},
       name: MaweSpeakerLabels.subtitleExportText(projected, colorContext),
       // 字幕来源的标记在备注里自明来源；名称本身即字幕内容。
       comment: 'MAW 字幕',
-      color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
+      color: OTIO_MARKER_COLORS[colorName] || otioMarkerColorForHex(displayColor?.value),
       marked_range: otioTimeRange(
         markerStartFrame,
         markerEndFrame - markerStartFrame,
@@ -444,8 +452,8 @@
   }
   // 叠加轨独立导出：字幕以「叠加字幕」标记轨写入（与主轨 clip 标记分开），
   // 表情包在「叠加表情」视频轨（与主轨表情包轨分开）；轨道为空时静默跳过。
-  const overlaySegments = MaweBoot.DATA.overlay_track?.enabled === true
-    ? (MaweBoot.DATA.overlay_track?.segments || []) : [];
+  const overlaySegments = window.AsrEditorUtils.TrackPolicy.isTrackEnabled(window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA), 'export')
+    ? (window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments || []) : [];
   if (overlaySegments.length) {
     if (includeSubtitleMarkers) {
       const overlayMarkerTrack = window.MaweExportContext.buildOverlaySubtitleOtioTrack(overlaySegments, intervals, sourceStartFrame);
@@ -560,30 +568,26 @@
   // 收集表情包条目；当传入 removed gaps 时，把每条表情包的时间映射到去空隙后的时间线，
   // 并跳过完全落在空隙内、映射后时长归零的条目。removed 为空数组时退化为原始时间线。
   // 表情包必须有真实磁盘路径（服务器 OTIO/OTIOZ 均按 sticker_rel 读盘）。
-  function collectStickerOtioEntries(removed, segments = MaweBoot.DATA.segments, { allGroups = false } = {}) {
-  if (MaweBoot.DATA.subtitle_groups) {
-    const track = segments === MaweBoot.DATA.overlay_track?.segments ? 'overlay' : 'main';
-    segments = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true })
-      .filter(range => range.enabled && (allGroups || range.track === track))
-      .map(range => ({ start: range.start, end: range.end,
-        sticker: { ...range.source, start: range.start, end: range.end } }));
-  }
-
+  function collectStickerOtioEntries(removed, segments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, { allGroups = false } = {}) {
+  const role = segments === window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA)?.segments ? 'overlay' : 'main';
+  const selectedTrack = role === 'overlay' ? window.AsrEditorUtils.getOverlayTrack(MaweBoot.DATA) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+  if (!allGroups && !window.AsrEditorUtils.TrackPolicy.isTrackEnabled(selectedTrack, 'export')) return { entries: [] };
+  segments = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { trackIds: window.AsrEditorUtils.TrackPolicy.selectTracks(MaweBoot.DATA, 'all', 'export').map(track => track.id) })
+    .filter(range => range.enabled && (allGroups || range.track === role))
+    .map(range => ({ start: range.start, end: range.end, sticker: range.source }));
   const entries = [];
   for (let idx = 0; idx < segments.length; idx++) {
     const seg = segments[idx];
     if (seg.disabled) continue;
-    const headIdx = seg.sticker_ref?.headIdx;
-    const head = Number.isInteger(headIdx) ? segments[headIdx] : null;
-    if (seg.sticker_ref && (!head || head.disabled || headIdx >= idx)) continue;
-    const sticker = seg.sticker || head?.sticker;
+    const sticker = seg.sticker;
     if (!sticker) continue;
     const absPath = MaweSelection.stickerAbsPath(sticker);
     if (!absPath) {
       return { error: '表情包缺少真实磁盘路径；请先设置实际表情包根目录后再导出 OTIO' };
     }
-    const origStart = seg.sticker?.start != null ? seg.sticker.start : seg.start;
-    const origEnd = seg.sticker?.end != null ? seg.sticker.end : seg.end;
+    // Continuous group ranges include disabled members while any member is enabled.
+    const origStart = seg.start;
+    const origEnd = seg.end;
     if (origEnd <= origStart) continue;
     const startMs = removed.length
       ? window.AsrEditorUtils.mapGapRemovedTime(origStart, removed)

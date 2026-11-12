@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, closeSettingsPanels, disableOnboarding, findFreePort,
-  generateWaveformPayload, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
+  generateWaveformPayload, makeTempDir, openSettingsPage, startServer, addTextProcessStep, removeTextProcessPrefill } from './helpers.mjs';
 
 let dir, server;
 test.beforeAll(async () => {
@@ -72,34 +72,36 @@ test('right-click and batch wrapping preserve single fade markers with undo', as
   await closeSettingsPanels(page);
   await page.evaluate(() => {
     MaweSettings.updateEditorSettings({ assSpecialSymbolRule: 'both' });
-    MaweBoot.DATA.segments[0].text = '>HELLO<';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '>HELLO<';
     MaweCuePanel.renderAll({ waveform: 'full' });
     MaweContextMenus.showContextMenu(350, 350, 0);
   });
   await page.locator('.word-timing-advanced > .item').hover();
-  await page.getByText('左右添加字符', { exact: true }).click();
-  await page.locator('#ctxmenu').getByText('放大文本', { exact: true }).click();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('>++HELLO++<');
+  await page.locator('#ctxmenu').getByText('左右添加字符', { exact: true }).click();
+  await page.locator('#ctxmenu').getByText('放大', { exact: true }).click();
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('>++HELLO++<');
   await page.locator('#undo-btn').click();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('>HELLO<');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('>HELLO<');
   expect(await page.evaluate(() => MaweSettings.EDITOR_SETTINGS.assMode)).toBe(true);
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
-  await page.locator('#text-process-wrap-presets-ass button').filter({ hasText: '放大文本' }).click();
+  await removeTextProcessPrefill(page);
+  const step = await addTextProcessStep(page, 'wrap');
+  await step.locator('[data-wrap-preset-id="large"]').click();
   await page.locator('#text-process-confirm').click();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('>++HELLO++<');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('>++HELLO++<');
   await page.locator('#undo-btn').click();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('>HELLO<');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('>HELLO<');
   await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].text = '>>HELLO';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '>>HELLO';
     MaweCuePanel.renderAll({ waveform: 'full' });
     MaweContextMenus.showContextMenu(350, 350, 0);
   });
   await page.locator('.word-timing-advanced > .item').hover();
-  await page.getByText('左右添加字符', { exact: true }).click();
+  await page.locator('#ctxmenu').getByText('左右添加字符', { exact: true }).click();
   await page.locator('#ctxmenu').getByText('淡出淡入', { exact: true }).click();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('>>HELLO<<');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('>>HELLO<<');
   await page.locator('#undo-btn').click();
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('>>HELLO');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('>>HELLO');
 });
 
 test('real editor burns SRT mode through the server job and saves an MP4', async ({ page }) => {

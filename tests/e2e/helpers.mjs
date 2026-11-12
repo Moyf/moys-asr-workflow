@@ -9,6 +9,11 @@ import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { spawnServerProcess, stopServerProcess, serverHasExited, serverRequest } from './server-process.mjs';
 import { createOutputTail } from './output-tail.mjs';
+import { createUtilsModule as createProjectTracks } from '../../web/shared/utils/project-tracks.js';
+import { createUtilsModule as createSubtitleGroups } from '../../web/shared/utils/subtitle-groups.js';
+
+export const { getMainTrack, getExtensionTrack, getOverlayTrack } = createProjectTracks();
+export const { materializeTrackSegments } = createSubtitleGroups({ cloneJsonValue: structuredClone });
 
 // E2E tests exercise Python-backed editor servers and edit.py. Use the
 // repository's locked uv environment by default so the runner cannot silently
@@ -192,13 +197,14 @@ export function testSegments() {
 // opt into this two-word shape only in split-specific scenarios.
 export async function makeFirstCueWordSplittable(page) {
   await page.evaluate(() => {
-    const segment = MaweBoot.DATA.segments[0];
+    const main = AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const segment = main.segments[0];
     segment.text = 'Alpha Bravo';
     segment.items = [
       { start: segment.start, end: 4000, text: 'Alpha' },
       { start: 4000, end: segment.end, text: 'Bravo' },
     ];
-    MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride = 'word';
+    main.split_mode_override = 'word';
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
 }
@@ -310,11 +316,11 @@ export async function setProjectTrackEnabled(page, id, enabled) {
 }
 
 export function generateProjectJson(filePath) {
-  const project = {
+  const project = createProjectTracks().importProject({
     media: 'synthetic.wav',
     segments: testSegments(),
     waveform: generateWaveformPayload(DURATION_MS),
-  };
+  }).project;
   writeFileSync(filePath, JSON.stringify(project, null, 2), 'utf-8');
   return filePath;
 }
@@ -517,4 +523,16 @@ export function buildBrowserEditorFixture(outputPath) {
     throw new Error(`Failed to build portable blank editor: ${outputPath}`);
   }
   return outputPath;
+}
+
+export async function addTextProcessStep(page, type) {
+  await page.locator('#text-process-step-type').selectOption(type);
+  await page.locator('#text-preset-add-rule').click();
+  return page.locator('#text-preset-rules > li').last();
+}
+
+// 打开弹窗时空步骤会预填一步「替换文本」（新交互）；需要干净空步骤的旧用例
+// 先调用它删掉预填行。
+export async function removeTextProcessPrefill(page) {
+  await page.locator('#text-preset-rules > li').first().getByRole('button', { name: '删除步骤' }).click();
 }

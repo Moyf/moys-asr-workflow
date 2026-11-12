@@ -1,7 +1,10 @@
+import { remapPanelItems } from './editor-cue-panel.js';
+
 // 绑定拖拽：主副字幕联动调整的范围解析与快照恢复。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweBoundDrag 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweBoundDrag 在原清单位次执行原 IIFE 体（挂
+// window.MaweBoundDrag 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweBoundDrag() {
 (function initMaweBoundDrag(global) {
   'use strict';
 
@@ -12,7 +15,7 @@
     if (!source) return null;
     const binding = MaweMultiSubtitleCore.bindingForMainIndex(index);
     if (!binding) return null;
-    const target = MaweMultiSubtitleCore.extensionSegmentById(binding.extension_segment_ids?.[0], MaweMultiSubtitleCore.getExtensionTrack(binding.track_id));
+    const target = MaweMultiSubtitleCore.extensionSegmentById(binding.target?.segment_id, MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id));
     return target ? { target, binding } : null;
   }
 
@@ -61,7 +64,8 @@
     if (drag?.track !== 'main' || drag.boundDragTimelineOriginals) return;
     const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
     drag.boundDragTimelineOriginals = {
-      tracks: (multi.tracks || []).map((track) => snapshotBoundDragTrack(track)),
+      tracks: (multi.tracks || []).filter((track) => track.role === 'secondary')
+        .map((track) => snapshotBoundDragTrack(track)),
       bindings: JSON.parse(JSON.stringify(multi.bindings || [])),
     };
   }
@@ -94,6 +98,27 @@
 
 
 
+  // 比较拖动前与当前预览，松手时提示实际保留下来的裁剪和删除。
+  function boundDragImpact(drag) {
+    const snapshot = drag?.boundDragTimelineOriginals;
+    const impact = { squeezedCount: 0, removedCount: 0, unboundCount: 0 };
+    if (!snapshot) return impact;
+    const followers = new Set([...(drag.boundOriginals?.values() || [])].map((entry) => entry.target));
+    for (const { track, segments } of snapshot.tracks) {
+      if (track?.role !== 'secondary') continue;
+      for (const original of segments) {
+        if (followers.has(original.segment) || drag.selectedMoveSegments?.has(original.segment)) continue;
+        if (!track.segments.includes(original.segment)) impact.removedCount += 1;
+        else if (original.segment.start !== original.start || original.segment.end !== original.end) impact.squeezedCount += 1;
+      }
+    }
+    const currentBindings = MaweMultiSubtitleCore.getMultiSubtitleState().bindings || [];
+    impact.unboundCount = Math.max(0, snapshot.bindings.length - currentBindings.length);
+    return impact;
+  }
+
+
+
   function getBoundDragEdge(drag, index) {
     if (drag.kind === 'move') return { mode: 'move', edge: null };
     if (drag.kind === 'resize-left') return { mode: 'edge', edge: 'start' };
@@ -116,7 +141,7 @@
     // resize-boundary-independent，也仍需带着绑定副字幕一起调整。
     if (!drag || drag.track !== 'main' || !MaweMultiSubtitleCore.multiSubtitleVisible()) return;
     if (!drag.selectedMoveSegments) prepareBoundCueDrag(drag);
-    const sourceSegments = MaweBoot.DATA.segments;
+    const sourceSegments = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
     if (!drag.boundOriginals) drag.boundOriginals = new Map();
 
     const boundEntries = drag.indices.map((index) => ({
@@ -154,7 +179,7 @@
       }
       if (nextEnd <= nextStart) nextEnd = nextStart + MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS;
 
-      const targetTrack = MaweMultiSubtitleCore.getExtensionTrack(binding.track_id);
+      const targetTrack = MaweMultiSubtitleCore.getExtensionTrack(binding.target?.track_id);
       const dragEdge = getBoundDragEdge(drag, index);
       const resolved = MaweMultiSubtitleCore.resolveExtensionFollowerRange(
         target,
@@ -176,7 +201,7 @@
       }
       target.start = resolved.start;
       target.end = resolved.end;
-      target.items = MaweCuePanel.remapPanelItems(
+      target.items = remapPanelItems(
         targetOriginal.items,
         targetOriginal.start,
         targetOriginal.end,
@@ -196,7 +221,7 @@
     // 无需每帧恢复整个副轨。已有预览快照仍须恢复，保证反向拖回可逆。
     if (drag.selectedMoveSegments && !drag.boundDragTimelineOriginals
         && !drag.indices.some((index) => {
-          const bound = getBoundDragTarget(index, MaweBoot.DATA.segments);
+          const bound = getBoundDragTarget(index, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
           return bound && !drag.selectedMoveSegments.has(bound.target);
         })) return;
     ensureBoundDragTimelineOriginals(drag);
@@ -205,7 +230,7 @@
     // 跟随字幕，避免在同步绑定时把已经调整过的时间当成拖动起点。
     if (drag.selectedMoveSegments) {
       drag.indices.forEach((index) => {
-        const bound = getBoundDragTarget(index, MaweBoot.DATA.segments);
+        const bound = getBoundDragTarget(index, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
         if (bound && !drag.selectedMoveSegments.has(bound.target)) ensureBoundDragOriginal(drag, index, bound.target);
       });
     }
@@ -217,8 +242,19 @@
     snapshotBoundDragTrack,
     ensureBoundDragTimelineOriginals,
     restoreBoundDragTimelineOriginals,
+    boundDragImpact,
     getBoundDragEdge,
     syncBoundCueDrag,
     prepareBoundCueDrag
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function getBoundDragTarget(...args) { return window.MaweBoundDrag.getBoundDragTarget(...args); }
+export function ensureBoundDragOriginal(...args) { return window.MaweBoundDrag.ensureBoundDragOriginal(...args); }
+export function snapshotBoundDragTrack(...args) { return window.MaweBoundDrag.snapshotBoundDragTrack(...args); }
+export function ensureBoundDragTimelineOriginals(...args) { return window.MaweBoundDrag.ensureBoundDragTimelineOriginals(...args); }
+export function restoreBoundDragTimelineOriginals(...args) { return window.MaweBoundDrag.restoreBoundDragTimelineOriginals(...args); }
+export function getBoundDragEdge(...args) { return window.MaweBoundDrag.getBoundDragEdge(...args); }
+export function syncBoundCueDrag(...args) { return window.MaweBoundDrag.syncBoundCueDrag(...args); }
+export function prepareBoundCueDrag(...args) { return window.MaweBoundDrag.prepareBoundCueDrag(...args); }
