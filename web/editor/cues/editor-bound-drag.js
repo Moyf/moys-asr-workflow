@@ -39,6 +39,11 @@ export function initMaweBoundDrag() {
 
 
 
+  function cloneBoundDragColorValue(value) {
+    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  }
+
+
   function snapshotBoundDragTrack(track) {
     return {
       track,
@@ -50,6 +55,12 @@ export function initMaweBoundDrag() {
         end_frame: segment.end_frame,
         items: Array.isArray(segment.items)
           ? segment.items.map((item) => ({ ...item })) : segment.items,
+        // 挤压/排序预览会平移 ref 或物化颜色；快照不能与段共用这些对象，
+        // 也不能把原本缺失的字段变成显式 null/undefined。
+        ...(Object.hasOwn(segment, 'color')
+          ? { color: cloneBoundDragColorValue(segment.color) } : {}),
+        ...(Object.hasOwn(segment, 'color_ref')
+          ? { color_ref: cloneBoundDragColorValue(segment.color_ref) } : {}),
       })),
       dirty: track?._dirty,
       selection: MaweMultiSubtitleCore.extensionTrackSelectionSnapshot(track),
@@ -85,6 +96,11 @@ export function initMaweBoundDrag() {
         else entry.segment.end_frame = entry.end_frame;
         entry.segment.items = Array.isArray(entry.items)
           ? entry.items.map((item) => ({ ...item })) : entry.items;
+        for (const field of ['color', 'color_ref']) {
+          // 每帧恢复也必须复制，避免下一次预览反过来改坏快照。
+          if (Object.hasOwn(entry, field)) entry.segment[field] = cloneBoundDragColorValue(entry[field]);
+          else delete entry.segment[field];
+        }
         return entry.segment;
       });
       track._dirty = track._dirty || dirty;
