@@ -81,6 +81,8 @@ test('ASR preset library manages metadata and options independently with keyboar
     }, config);
     await page.reload();
     await page.waitForFunction(() => window.MAWLauncher?.config?.providers?.length);
+    await page.waitForFunction(() => document.body.dataset.workflowReady === 'true');
+    await page.locator('#recognitionExpand').click();
     const originalModel = await page.locator('#model').inputValue();
     assert.equal(await page.locator('#currentAsrPresetName').textContent(), '当前未选择预设');
     assert.equal(await page.locator('#currentAsrPresetPrefix').isVisible(), false);
@@ -240,7 +242,7 @@ test('ASR preset library manages metadata and options independently with keyboar
 
     await page.locator('#langEn').click();
     assert.equal(await page.locator('#manageAsrPresets').textContent(), 'Manage presets');
-    await page.locator('#settingsClose').click();
+    await page.locator('#navTranscribe').click();
     await page.locator('#manageAsrPresets').click();
     await page.waitForFunction(() => document.activeElement.dataset.presetName === '采访');
     const activeItem = await page.locator('#asrPresetList [data-preset-name="采访"]').evaluate(el => ({
