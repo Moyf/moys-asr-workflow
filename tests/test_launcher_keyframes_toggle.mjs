@@ -10,6 +10,7 @@ import vm from 'node:vm';
 function fixture() {
   const controls = new Map();
   const toggles = new Map();
+  const workflowRefreshes = [];
   const control = id => {
     if (!controls.has(id)) {
       controls.set(id, {
@@ -28,6 +29,7 @@ function fixture() {
   const context = vm.createContext({
     document: {getElementById: control},
     window: {},
+    launcherWorkflow: {refresh() { workflowRefreshes.push(true); }},
     clearTimeout() {}, setTimeout() {},
     Option: class {
       constructor(label, value) { this.label = label; this.value = value; }
@@ -57,7 +59,7 @@ function fixture() {
     t = key => key;
     bridge = async () => new Promise(() => {});
   `, context);
-  return {context, control, toggles};
+  return {context, control, toggles, workflowRefreshes};
 }
 
 const checkbox = ({control}) => control('generateKeyframes');
@@ -68,6 +70,7 @@ test('picking an audio file disables the switch and keeps the saved check', () =
   checkbox(fx).checked = true; // 用户在视频素材上勾选过
   vm.runInContext(`setMedia('D:\\\\Demo\\\\song.mp3')`, fx.context);
   assert.equal(checkbox(fx).disabled, true, '音频输入禁用开关');
+  assert.equal(fx.workflowRefreshes.length, 1, 'media selection also refreshes the redesigned workflow');
   assert.deepEqual(fieldToggles(fx, 'generateKeyframesField').at(-1), ['unavailable', true], '字段进入置灰态');
   assert.equal(checkbox(fx).checked, true, '禁用不清空勾选');
   assert.deepEqual(fieldToggles(fx, 'generateThumbnailsField').at(-1), ['hidden', false], '级联仍按勾选状态显示');
