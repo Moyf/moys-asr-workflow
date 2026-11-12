@@ -117,6 +117,7 @@ export function initMaweShortcuts() {
     if (typeof value !== 'string') return false;
     return /^(Mod\+)?(Alt\+)?(Shift\+)?([a-z0-9]|Space|Enter|Delete|Backspace|ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown|F[1-9]|F1[0-2])$/.test(value)
       && !/^(Mod\+)(Alt\+)?(Shift\+)?(h|l|t|w|r|n|p|q|F[1-9]|F1[0-2])$/.test(value)
+      && value !== 'Mod+c'
       && !/^Alt\+(Shift\+)?(Home|F4)$/.test(value)
       && value !== 'F5' && value !== 'F11' && value !== 'F12';
   }
@@ -129,6 +130,7 @@ export function initMaweShortcuts() {
   }
 
   function reservedReason(value) {
+    if (value === 'Mod+c') return '系统复制快捷键必须保留';
     if (/^Mod\+(?:Alt\+)?Shift\+q$/.test(value)) {
       return 'macOS：Cmd+Shift+Q 会注销用户；Windows/Linux Chromium：Ctrl+Shift+Q 用于退出确认；ChromeOS：Ctrl+Shift+Q 两次会注销会话';
     }
@@ -208,6 +210,12 @@ export function initMaweShortcuts() {
     if (/^(?:nav|extend)-[adws]$/.test(entry.id)) return defaults.includes(physical);
     return defaults.includes(physical)
       || defaults.includes(physical.replace(/(?:Alt|Shift)\+/g, ''));
+  }
+  function isOverriddenSaveChord(physical) {
+    if (!physical) return false;
+    return commands.some(entry => ['save', 'save-as'].includes(entry.id)
+      && defaultPhysicalBindings(entry).includes(physical)
+      && !effectiveBindings(entry).some(binding => binding.chord === physical));
   }
   function validate(source, changedId = null) {
     const used = new Map();
@@ -365,7 +373,7 @@ export function initMaweShortcuts() {
 
   global.MaweShortcuts = Object.freeze({
     commands, chord, validChord, bindings, setBinding, resetBindings, takeSavedBindingWarnings, displayChord, resolveEvent,
-    effectiveBindings, splitVariantLabel, physicalCode,
+    effectiveBindings, splitVariantLabel, physicalCode, isOverriddenSaveChord,
     showShortcutBlocked,
     get interceptedSpace() { return interceptedSpace; },
     set interceptedSpace(v) { interceptedSpace = v; },

@@ -36,6 +36,7 @@
     "快捷键已保存": "Shortcut saved",
     "已恢复默认快捷键": "Default shortcuts restored",
     "快捷键冲突：": "Shortcut conflict: ",
+    "系统复制快捷键必须保留": "The system copy shortcut must remain available",
     "固定快捷键 M（切换标记编辑）": "Fixed shortcut M (toggle marker editing)",
     "固定快捷键 Q（切换字词时间码）": "Fixed shortcut Q (toggle word timing)",
     "固定快捷键 C（字词选区合并）": "Fixed shortcut C (merge selected words)",

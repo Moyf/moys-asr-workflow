@@ -169,3 +169,44 @@ test('secondary remains selectable, draggable and wheel-scalable with main previ
   await page.evaluate(() => { MaweMultiSubtitleCore.getActiveExtensionTrack().export.enabled = true; });
   expect(await page.evaluate(() => MaweExportSrt.buildAss())).toContain('SECONDARY');
 });
+
+test('ASS position drag uses remapped undo and redo and ignores the old physical chords', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
+  await page.goto(server.url);
+  await page.waitForFunction(() => window.MaweCoreState?.player?.videoWidth > 0 && window.MaweAssCuePosition);
+  await page.evaluate(async () => {
+    await loadAssStyleLibrary({ force: true });
+    ASS_STYLE_LIBRARY = AsrEditorUtils.defaultAssStyleLibrary();
+    Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assFrameAutoRender: false, autoSaveProject: false });
+    MaweCoreState.player.currentTime = 1;
+    MaweSelection.selectOnly(0);
+    MaweShortcuts.setBinding('undo', 'Mod+u');
+    MaweShortcuts.setBinding('redo', 'Mod+Shift+u');
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  const box = page.locator('.ass-cue-drag-target[data-cue-id="main"]');
+  await expect(box).toBeVisible();
+  const bounds = await box.boundingBox();
+  const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
+  const startDrag = async () => {
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 20, y + 10);
+    await expect.poll(() => page.evaluate(() => MaweAssCuePosition.dragging)).toBe(true);
+  };
+
+  await startDrag();
+  await page.keyboard.press('Control+z');
+  expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(true);
+  await page.keyboard.press('Control+u');
+  expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
+  await page.mouse.up();
+
+  await startDrag();
+  await page.keyboard.press('Meta+y');
+  expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(true);
+  await page.keyboard.press('Meta+Shift+u');
+  expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
+  await page.mouse.up();
+});

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { initMaweShortcuts } from '../web/editor/cues/editor-shortcuts.js';
-function setup(saved = '{}', denied = false) {
+function setup(saved = '{}', denied = false, platform = 'Linux') {
   let stored = saved;
   let modal = false;
   const context = {
@@ -11,7 +11,7 @@ function setup(saved = '{}', denied = false) {
     } } },
     MaweKeyboardTargets: { isTextEditingTarget: event => !!event.editing },
     document: { querySelector: () => modal },
-    navigator: { platform: 'Linux' },
+    navigator: { platform },
   };
   context.window = context;
   globalThis.window = context;
@@ -224,6 +224,21 @@ test('saved binding collisions are isolated so unrelated valid settings remain a
   assert.equal(warnings[1].label, '合并选中字幕');
   assert.equal(warnings[1].reason, '快捷键冲突：');
   assert.equal(warnings[1].detail, '拆分字幕');
+});
+test('Mod+C stays reserved for native copy on macOS and Windows, including legacy migration', () => {
+  for (const [platform, displayedCopy] of [['MacIntel', 'Cmd+C'], ['Win32', 'Ctrl+C']]) {
+    const { api, stored } = setup('{}', false, platform);
+    assert.equal(api.validChord('Mod+c'), false);
+    assert.throws(() => api.setBinding('merge', 'Mod+c'), /系统复制快捷键必须保留/);
+    assert.equal(stored(), '{}');
+
+    const migrated = setup('{"merge":["Mod+c"],"play":["p"]}', false, platform).api;
+    assert.deepEqual([...migrated.bindings(migrated.commands.find(item => item.id === 'merge'))], ['c']);
+    assert.deepEqual([...migrated.bindings(migrated.commands.find(item => item.id === 'play'))], ['p']);
+    assert.deepEqual(migrated.takeSavedBindingWarnings(), [{
+      label: '合并选中字幕', chord: displayedCopy, reason: '系统复制快捷键必须保留',
+    }]);
+  }
 });
 test('saved legal key exchanges are validated as a complete set before applying defaults', () => {
   const { api } = setup('{"play":["j"],"reverse":["p"]}');

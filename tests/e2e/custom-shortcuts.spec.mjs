@@ -137,6 +137,119 @@ test('invalid saved split shortcut is discarded with a warning while other short
   expect(saved.split).toBeUndefined();
   expect(saved.merge).toBeUndefined();
 });
+test('legacy Mod+C cannot consume physical copy or merge selected subtitles', async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ merge: ['Mod+c'], play: ['p'] }));
+  });
+  await page.reload();
+  await page.evaluate(() => {
+    const segments = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    segments.forEach((segment, index) => { segment.id ||= `legacy-copy-${index}`; });
+    MaweCuePanel.renderAll();
+    MaweSelection.selectOnly(0);
+    MaweSelection.addToSelection(1);
+    window.__copyDispatch = [];
+    window.__copyDefaultEvents = 0;
+    const text = document.querySelector('.cue[data-idx="0"] .text');
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.addEventListener('copy', () => { window.__copyDefaultEvents += 1; });
+    window.addEventListener('keydown', event => {
+      if (event.key.toLowerCase() !== 'c' || !(event.ctrlKey || event.metaKey)) return;
+      const result = { prevented: null };
+      window.__copyDispatch.push(result);
+      setTimeout(() => { result.prevented = event.defaultPrevented; }, 0);
+    }, true);
+  });
+  const initialSegmentCount = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length);
+  const nativeCopyModifier = await page.evaluate(() => /Mac|iPhone|iPad/.test(navigator.platform) ? 'Meta' : 'Control');
+  const otherCopyModifier = nativeCopyModifier === 'Meta' ? 'Control' : 'Meta';
+  await page.keyboard.press(`${nativeCopyModifier}+c`);
+  await expect.poll(() => page.evaluate(() => window.__copyDispatch[0]?.prevented)).toBe(false);
+  await expect.poll(() => page.evaluate(() => window.__copyDefaultEvents)).toBe(1);
+  await page.keyboard.press(`${otherCopyModifier}+c`);
+  await expect.poll(() => page.evaluate(() => window.__copyDispatch.map(({ prevented }) => prevented))).toEqual([false, false]);
+  expect(await page.evaluate(() => window.__copyDispatch.map(({ prevented }) => prevented))).toEqual([false, false]);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(initialSegmentCount);
+});
+test('legacy Mod+C migration warning is translated in English and keeps other shortcuts', async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem('mawe.language', 'en');
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ merge: ['Mod+c'], play: ['p'] }));
+  });
+  await page.reload();
+  const warning = page.locator('#hint-stack .hint-warning').last();
+  const expectedCopyChord = await page.evaluate(() => MaweShortcuts.displayChord('Mod+c'));
+  await expect(warning).toContainText('Ignored invalid saved shortcut');
+  await expect(warning).toContainText('Merge selected subtitles');
+  await expect(warning).toContainText(expectedCopyChord);
+  await expect(warning).toContainText('The system copy shortcut must remain available');
+  await expect(warning).toContainText('Other valid custom shortcuts were kept');
+  await expect(warning).not.toContainText('快捷键');
+  expect(await page.evaluate(() => MaweShortcuts.bindings(MaweShortcuts.commands.find(item => item.id === 'play')))).toEqual(['p']);
+});
+test('English migration warning separates the dynamic reserved chord from its translated reason', async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem('mawe.language', 'en');
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: ['q'], play: ['p'] }));
+  });
+  await page.reload();
+  const warning = page.locator('#hint-stack .hint-warning').last();
+  const expectedSplitChord = await page.evaluate(() => MaweShortcuts.displayChord('Mod+Shift+q'));
+  await expect(warning).toContainText('Ignored invalid saved shortcut');
+  await expect(warning).toContainText('Split subtitle');
+  await expect(warning).toContainText(expectedSplitChord);
+  await expect(warning).toContainText('macOS uses Cmd+Shift+Q to log out');
+  await expect(warning).not.toContainText('快捷键');
+});
+test('remapped save does not leave the old Ctrl/Cmd+S active in a modal', async ({ page }) => {
+  await record(page, 'save', 'F2');
+  await closeSettings(page);
+  const saveUrl = new URL(await page.evaluate(() => MaweBoot.SERVER_CONFIG.saveUrl), server.url).href;
+  let saveRequests = 0;
+  page.on('request', request => {
+    if (request.url() === saveUrl && request.method() === 'POST') saveRequests += 1;
+  });
+  await page.evaluate(async () => {
+    window.__saveKeyEvents = [];
+    window.__modalSaveKeyEvents = 0;
+    window.addEventListener('keydown', event => {
+      if (event.key.toLowerCase() !== 's' || !(event.ctrlKey || event.metaKey)) return;
+      const result = { prevented: null };
+      window.__saveKeyEvents.push(result);
+      setTimeout(() => { result.prevented = event.defaultPrevented; }, 0);
+    }, true);
+    await MaweTextProcess.openTextProcessModal();
+    document.getElementById('text-process-modal').addEventListener('keydown', event => {
+      if (event.key.toLowerCase() === 's' && (event.ctrlKey || event.metaKey)) window.__modalSaveKeyEvents += 1;
+    });
+  });
+  await expect(page.locator('#text-process-modal')).toHaveClass(/show/);
+  await page.keyboard.press('Control+s');
+  await expect.poll(() => page.evaluate(() => window.__saveKeyEvents[0]?.prevented)).toBe(true);
+  await page.keyboard.press('Meta+s');
+  await expect.poll(() => page.evaluate(() => window.__saveKeyEvents.map(({ prevented }) => prevented))).toEqual([true, true]);
+  expect(saveRequests).toBe(0);
+  expect(await page.evaluate(() => window.__saveKeyEvents.map(({ prevented }) => prevented))).toEqual([true, true]);
+  expect(await page.evaluate(() => window.__modalSaveKeyEvents)).toBe(2);
+  await expect(page.locator('#text-process-modal')).toHaveClass(/show/);
+});
+test('default Ctrl+S still saves pending inline text without leaving edit mode', async ({ page }) => {
+  await closeSettings(page);
+  const saveUrl = new URL(await page.evaluate(() => MaweBoot.SERVER_CONFIG.saveUrl), server.url).href;
+  await page.evaluate(() => {
+    const cue = document.querySelector('.cue[data-idx="0"]');
+    MaweInlineEdit.startEdit(cue, 0);
+    MaweInlineEdit.editingState.textEl.innerText = 'Saved by Ctrl S';
+  });
+  const saveRequest = page.waitForRequest(request => request.url() === saveUrl && request.method() === 'POST');
+  await page.keyboard.press('Control+s');
+  await saveRequest;
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text)).toBe('Saved by Ctrl S');
+  expect(await page.evaluate(() => Boolean(MaweInlineEdit.editingState))).toBe(true);
+});
 test('saved reverse and play key exchange survives reload and dispatches both commands', async ({ page }) => {
   await page.evaluate(() => {
     localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ play: ['j'], reverse: ['p'] }));

@@ -77,3 +77,21 @@
 - 独立只读自审未发现 blocker / major；指出 Linux Chromium 不足以证明 macOS 原生 Meta+C 复制行为。
 - 本轮未重跑全量测试；此前已知全量 Node/Python 与多字幕用例限制见上文。本轮没有安装/下载依赖；`.pnpm-store/` 保留、未查看内容且不纳入提交。
 - 收尾核验：再次 `git fetch origin 2.0dev` 后 FETCH_HEAD 与 origin/2.0dev 均为 `e358512e8fef890dd2e607c61ec5f522d13943a5`，仍是 HEAD 的祖先。Checklist 格式检查与相对该基线的个人路径扫描均 exit 0（`.artifacts/checks/20261112T193836Z-33dd4eca/`、`.artifacts/checks/20261112T193836Z-25bb0003/`）；`git diff --check` 通过。
+
+## 第六轮盲审（6d3f7ac1）
+
+| 条目 | 状态 | 处理与证据 |
+| --- | --- | --- |
+| `Mod+C` 可保存为合并键，旧存储可能吞掉系统复制并合并字幕 | 已修复 | `Mod+C` 现被视为系统保留组合，设置保存前拒绝；旧存储按单项迁移丢弃该项、保留 `play=p`，并以静态原因和动态平台键名提示。Windows/Linux 与 macOS 的 `Mod` 展开及迁移由单测覆盖；浏览器实际 Ctrl/Meta+C 均未被阻止，字幕数量不变。当前浏览器为 Linux Chromium，Meta+C 的 macOS 原生复制动作未实测。 |
+| ASS 定位拖拽捕获层仍用物理 Ctrl/Cmd+Z/Y | 已修复 | 捕获层改用 `resolveEvent` 投影后的键与修饰符。真实浏览器拖拽中旧 Ctrl+Z / Meta+Y 不再触发；自定义 Ctrl+U / Meta+Shift+U 分别按原撤销/重做语义取消拖拽。 |
+| 保存改为 F2 后，模态内旧 Ctrl/Cmd+S 仍触发全局保存 | 已修复 | 若模态打开且旧保存组合已被改绑，全局保存监听器仅阻止默认页面保存并返回，不停止传播，因此模态仍收到按键。浏览器测试观察到 Ctrl/Meta+S 均没有 POST 保存请求、事件仍到达模态；另验证编辑态默认 Ctrl+S 仍保存未提交文本且保持编辑态。没有将 F2 扩展到编辑态普通快捷键。 |
+| 英文存储迁移提示把动态键名先拼入译文导致中文回退 | 未复现 | 当前 `describeSavedBindingWarning` 已将标签、动态组合、静态原因分字段，UI 分别翻译再插值。真实浏览器已观察到完整英文 `split=q` 警告。旧草拟测试错误假设标签复数和固定 Ctrl 平台名，调整为动态平台键名后通过；未改动已有实现。 |
+
+### 第六轮验证记录
+
+- 修复前红测：快捷键 Node 单测 `21` 项中 `20` 通过、`1` 失败，失败证明 `validChord('Mod+c')` 为真（`.artifacts/checks/20261112T195216Z-952dfdc7/`）。真实浏览器红测复现旧 ASS Ctrl+Z 取消拖拽、Ctrl+C 被阻止、Mod+C 迁移无警告、以及模态内旧保存组合发出 POST（`.artifacts/checks/20261112T195629Z-7345ad92/`）；该轮英文用例的硬编码期望与实际英语文案/浏览器平台不匹配，不计为产品红测。
+- 构建：`python scripts/run_check.py --timeout 180 -- node scripts/build-editor.mjs --write`，exit 0（`.artifacts/checks/20261112T195809Z-277d02e9/`）。
+- 定向快捷键单测：`python scripts/run_check.py --timeout 180 -- node --test tests/test_editor_shortcuts.mjs`，21/21 通过、exit 0（`.artifacts/checks/20261112T195812Z-b8d894d1/`）。
+- 定向真实浏览器回归 6/6 通过（`.artifacts/checks/20261112T200116Z-3d411a91/`）；补上平台对应的原生 Ctrl/Meta+C 派发一次 `copy` 事件断言后，该用例 1/1 通过（`.artifacts/checks/20261112T200704Z-cba95ef5/`）；两份受影响 spec 最终整文件 20/20 通过、exit 0（`.artifacts/checks/20261112T200731Z-d9b6450c/`）。一次沙箱尝试因 localhost `listen EPERM` 未启动；获准后使用现有浏览器/依赖完成测试，未安装或下载。
+- 独立只读审查未发现 blocker / major；其建议补充的浏览器原生 `copy` 派发断言已增加并实测通过。系统平台原生行为的覆盖仍限当前自动化浏览器环境。
+- 之前全量 Node/Python 及多字幕对照限制仍见前文，本轮未重跑全量。`.pnpm-store/` 保留为未跟踪目录且不提交。
