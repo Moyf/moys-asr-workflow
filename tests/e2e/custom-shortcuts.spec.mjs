@@ -264,6 +264,50 @@ test('saved reverse and play key exchange survives reload and dispatches both co
   }));
   expect(bindings).toEqual({ play: ['j'], reverse: ['p'], warnings: [], playTarget: ' ', reverseTarget: 'j' });
 });
+test('old global JKL chords are suppressed in the real split modal while its own keys work', async ({ page }) => {
+  await record(page, 'reverse', 'p');
+  await closeSettings(page);
+  const opened = await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.jklPlaybackMode = 'speed';
+    MaweCoreState.player.playbackRate = 1;
+    window.__splitModalKeys = [];
+    const modal = MaweDom.multiSubtitleSplitModal;
+    modal.addEventListener('keydown', event => window.__splitModalKeys.push(event.key), true);
+    return MaweSplitCore.openMainWaveformSplitModal(0, 4000);
+  });
+  expect(opened).toBe(true);
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await page.locator('#multi-subtitle-split-cancel').focus();
+  await page.keyboard.press('j');
+  expect(await page.evaluate(() => window.__splitModalKeys)).toContain('j');
+  expect(await page.evaluate(() => MaweCoreState.player.playbackRate)).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+});
+test('legacy Shift+ArrowLeft snap variant is suppressed and follows remapped E', async ({ page }) => {
+  await record(page, 'snap-ArrowLeft', 'e');
+  await closeSettings(page);
+  await page.evaluate(() => MaweSelection.selectOnly(1));
+  const before = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start);
+  await page.keyboard.press('Alt+Shift+ArrowLeft');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start)).toBe(before);
+  await page.keyboard.press('Alt+e');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].start)).toBe(8000);
+});
+test('English migration warning separates Shift+E split collision from translated text and keeps play P', async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem('mawe.language', 'en');
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: ['Shift+e'], play: ['p'] }));
+  });
+  await page.reload();
+  const warning = page.locator('#hint-stack .hint-warning').last();
+  await expect(warning).toContainText('Ignored invalid saved shortcut');
+  await expect(warning).toContainText('Split subtitle');
+  await expect(warning).toContainText('Shift+E');
+  await expect(warning).toContainText('Derived split shortcuts collide, so the three split operations cannot be distinguished:');
+  await expect(warning).not.toContainText('无法区分');
+  expect(await page.evaluate(() => MaweShortcuts.bindings(MaweShortcuts.commands.find(item => item.id === 'play')))).toEqual(['p']);
+});
 test('fixed marker M cannot collide with a saved split shortcut and dispatches only marker editing', async ({ page }) => {
   await page.evaluate(() => {
     localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: ['m'] }));

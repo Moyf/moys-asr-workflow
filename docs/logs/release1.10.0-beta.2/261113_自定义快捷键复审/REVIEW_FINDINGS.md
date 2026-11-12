@@ -52,3 +52,7 @@
 - 独立只读审查未发现 blocker / major；审查指出复制测试需断言浏览器实际派发 `copy`。已补平台对应原生修饰键触发 `copy` 的断言，单例与最终两份 spec 整文件重跑均通过。
 - 验证：快捷键单测 21/21；两份受影响 E2E spec 整文件 20/20；bundle 在本轮源码后重建。日志路径与红测细节见同目录 `TEST_FEEDBACK_自定义快捷键.md` 第六轮。
 - 未覆盖：没有 macOS/Windows 原生浏览器进行剪贴板和系统快捷键端到端验证；沿用既有全量 Node/Python 基线限制，本轮未运行全量套件。`.pnpm-store/` 始终保留且排除提交。
+- 本轮（6b387e86）已修复模态旧全局键、边界贴合 Alt+Shift 派生键及精确 Shift+E 派生冲突英文提示。可配置全局命令接线审计覆盖 edit shortcuts、list navigation、media controls、ASS cue position、onboarding 与 project save；其余 raw keydown 监听属于固定 M/Q、模态/输入/文本控件、Escape 清理或快捷键设置录入。保存监听保留独立的模态旧保存键保护。
+- 红测与绿测、完整 spec 退出码和日志路径见任务账本第七轮；Node 快捷键单测 24/24、定向浏览器 3/3、完整 `custom-shortcuts.spec.mjs` 20/20，bundle fresh、diff/path checks 通过。沙箱 localhost bind 初次 EPERM，获准后整文件测试 exit 0。
+- `.pnpm-store/` 保留为未跟踪目录，未读、未修改且未提交；本轮未安装/下载依赖。全量 Node/Python 未重跑，不能把局部通过扩展为全量全绿。
+- 独立只读自审未发现 blocker / major；审查确认模态真实键盘事件、边界实际时间更新与精确迁移告警均有端到端覆盖。raw-listener 结论限定为可配置全局命令消费者，固定与模态局部监听按其物理语义保留。

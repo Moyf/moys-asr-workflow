@@ -153,7 +153,8 @@ export function initMaweShortcuts() {
   function effectiveBindings(entry, source = overrides) {
     const active = bindings(entry, source);
     if (entry.id !== 'split') {
-      const preserveAltSemantics = /^(?:nav|extend)-[adws]$/.test(entry.id);
+      const preserveAltSemantics = /^(?:nav|extend)-[adws]$/.test(entry.id)
+        || /^snap-Arrow(?:Left|Right)$/.test(entry.id);
       const result = [];
       const mapped = new Map();
       for (const value of active) {
@@ -199,7 +200,7 @@ export function initMaweShortcuts() {
     return result;
   }
   function defaultPhysicalBindings(entry) {
-    if (/^(?:nav|extend)-[adws]$/.test(entry.id)) {
+    if (/^(?:nav|extend)-[adws]$/.test(entry.id) || /^snap-Arrow(?:Left|Right)$/.test(entry.id)) {
       return [...new Set(entry.defaults.flatMap(value => [value, addModifiers(value, ['Alt'])]))];
     }
     if (entry.id !== 'split') return entry.defaults;
@@ -242,6 +243,10 @@ export function initMaweShortcuts() {
   }
   function describeSavedBindingWarning(entry, value, error) {
     const messageText = error?.message || '保存格式无效';
+    const splitCollisionPrefix = '拆分快捷键派生组合发生冲突，无法区分三种拆分操作：';
+    if (messageText.startsWith(splitCollisionPrefix)) {
+      return { label: entry.label, chord: messageText.slice(splitCollisionPrefix.length), reason: splitCollisionPrefix };
+    }
     const conflictPrefix = '快捷键冲突：';
     if (messageText.startsWith(conflictPrefix)) {
       return { label: entry.label, chord: Array.isArray(value) ? value.join(', ') : String(value),
@@ -353,17 +358,22 @@ export function initMaweShortcuts() {
     const textEditing = MaweKeyboardTargets.isTextEditingTarget(event);
     const modal = document.querySelector('.modal-mask.show, #ctxmenu.show');
     if (event.isComposing || event.keyCode === 229) result = projectedEvent(event, 'Unidentified');
-    else if (!modal && physical) {
-      const match = commands.flatMap(item => effectiveBindings(item).map(binding => ({ item, ...binding })))
-        .find(binding => binding.chord === physical);
-      const entry = match?.item;
-      // Native text editing keeps its own shortcuts; project saving is global.
-      if (!textEditing || (event.ctrlKey || event.metaKey) && (entry?.id === 'save' || entry?.id === 'save-as'
-          || commands.some(item => ['save', 'save-as'].includes(item.id) && item.defaults.includes(physical)))) {
-        if (entry) result = projectedEvent(event, match.target);
-        else if (commands.some(item => Object.hasOwn(overrides, item.id)
-          && suppressesOldChord(item, physical))) {
-          result = projectedEvent(event, 'Unidentified');
+    else if (physical) {
+      const overridden = commands.some(item => Object.hasOwn(overrides, item.id)
+        && suppressesOldChord(item, physical));
+      if (modal) {
+        // Global shortcut handlers receive a suppressed projection; modal-local
+        // handlers still receive the original physical event and keep their keys.
+        if (overridden) result = projectedEvent(event, 'Unidentified');
+      } else {
+        const match = commands.flatMap(item => effectiveBindings(item).map(binding => ({ item, ...binding })))
+          .find(binding => binding.chord === physical);
+        const entry = match?.item;
+        // Native text editing keeps its own shortcuts; project saving is global.
+        if (!textEditing || (event.ctrlKey || event.metaKey) && (entry?.id === 'save' || entry?.id === 'save-as'
+            || commands.some(item => ['save', 'save-as'].includes(item.id) && item.defaults.includes(physical)))) {
+          if (entry) result = projectedEvent(event, match.target);
+          else if (overridden) result = projectedEvent(event, 'Unidentified');
         }
       }
     }

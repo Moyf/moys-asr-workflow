@@ -95,3 +95,19 @@
 - 定向真实浏览器回归 6/6 通过（`.artifacts/checks/20261112T200116Z-3d411a91/`）；补上平台对应的原生 Ctrl/Meta+C 派发一次 `copy` 事件断言后，该用例 1/1 通过（`.artifacts/checks/20261112T200704Z-cba95ef5/`）；两份受影响 spec 最终整文件 20/20 通过、exit 0（`.artifacts/checks/20261112T200731Z-d9b6450c/`）。一次沙箱尝试因 localhost `listen EPERM` 未启动；获准后使用现有浏览器/依赖完成测试，未安装或下载。
 - 独立只读审查未发现 blocker / major；其建议补充的浏览器原生 `copy` 派发断言已增加并实测通过。系统平台原生行为的覆盖仍限当前自动化浏览器环境。
 - 之前全量 Node/Python 及多字幕对照限制仍见前文，本轮未重跑全量。`.pnpm-store/` 保留为未跟踪目录且不提交。
+
+## 第七轮盲审（6b387e86）
+
+| 条目 | 状态 | 处理与证据 |
+| --- | --- | --- |
+| 模态中已改绑的全局旧键仍触发 J/K/L 播放操作 | 已修复 | `resolveEvent` 在模态期间只把已失效的旧全局组合投影为 `Unidentified`，不修改原始事件，也不把新绑定映射成模态键；拆分弹窗仍收到物理 J 与 Escape。真实浏览器检查 J 不再改变播放速度、J 仍抵达弹窗监听，Escape 仍关闭弹窗。监听审计确认可配置命令消费者使用 `resolveEvent`；例外保存监听有专门旧保存键保护，固定 M/Q 与输入、Escape、拆分弹窗本地按键保留各自物理语义。 |
+| 边界贴合 Shift+ArrowLeft 改键后 Alt+Shift 旧组合未屏蔽，Alt+新键未派发 | 已修复 | snap-ArrowLeft/Right 与导航拖拽一样派生 Alt 变体，参与冲突校验及旧物理组合屏蔽。真实波形操作确认 Alt+Shift+ArrowLeft 不再贴边，而 Alt+E 将字幕起点贴到前字幕终点 8000ms。 |
+| 精确迁移输入 `split=["Shift+e"], play=["p"]` 的英文冲突提示混入中文 | 已修复 | 先识别静态派生冲突原因，再以结构化 label/chord/reason 供 UI 分别翻译与插值；加载上述原始存储后英文提示包含 Split subtitle、Shift+E 和英文原因，不含中文，播放 P 保留。 |
+
+### 第七轮验证记录
+
+- 红测：旧实现快捷键单测 24 项中 21 通过、3 项失败（`.artifacts/checks/20261112T201810Z-59749c69/`）；旧实现真实浏览器三项分别复现 J 将播放速度从 1 降至 0.5、旧 Alt+Shift+ArrowLeft 将字幕起点从 50000 改至 8000、英文提示含中文（`.artifacts/checks/20261112T201908Z-6c658db0/`，3 项失败）。
+- 修复后单测 24/24 通过（`.artifacts/checks/20261112T202250Z-2d2517b3/`）。三项真实浏览器回归 3/3 通过（`.artifacts/checks/20261112T202030Z-7e278712/`）；快捷键 Playwright spec 整文件 20/20 通过、exit 0（`.artifacts/checks/20261112T202309Z-a82a1de9/`，`result.json` 的 `cleanup_error` 为 null）。
+- 完整 spec 的首次沙箱尝试在 localhost bind 阶段 EPERM，未执行用例（`.artifacts/checks/20261112T202250Z-e864f703/`）；获准沙箱外运行后完成整文件测试。日志显示测试服务进程组清理 EPERM 后退回 leader-only kill，但 `result.json` 记录测试 exit 0、cleanup_error null；随后进程名检查无 playwright/run_check/serve 进程输出。
+- `node scripts/build-editor.mjs --check` 显示 bundle fresh（`.artifacts/checks/20261112T202250Z-1cc8993c/`）；`git diff --check` 与 `python scripts/check_personal_paths.py --diff-ref origin/2.0dev` 均 exit 0。快捷键单测外的全量 Node/Python 本轮未重跑，既有基线限制见前文。
+- 没有安装或下载依赖；`.pnpm-store/` 保持未跟踪且不提交。

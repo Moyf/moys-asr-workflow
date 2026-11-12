@@ -121,6 +121,29 @@ test('remapped navigation keys retain Alt drag-adjust semantics and suppress onl
   assert.equal(remappedExtend.shiftKey, true);
   assert.equal(remappedExtend.altKey, true);
 });
+test('remapped boundary snap retains Alt+Shift variants and suppresses their old chord', () => {
+  const { api } = setup();
+  api.setBinding('snap-ArrowLeft', 'e');
+  const entry = api.commands.find(item => item.id === 'snap-ArrowLeft');
+  assert.deepEqual(api.effectiveBindings(entry), [
+    { chord: 'e', target: 'Shift+ArrowLeft' },
+    { chord: 'Alt+e', target: 'Alt+Shift+ArrowLeft' },
+  ]);
+  const mapped = api.resolveEvent(event('e', { altKey: true }));
+  assert.equal(mapped.key, 'ArrowLeft');
+  assert.equal(mapped.altKey, true);
+  assert.equal(mapped.shiftKey, true);
+  assert.equal(api.resolveEvent(event('ArrowLeft', { altKey: true, shiftKey: true })).key, 'Unidentified');
+  assert.throws(() => api.setBinding('seek-ArrowLeft', 'Alt+e'), /快捷键冲突/);
+});
+test('overridden global chords are suppressed while a modal keeps its physical event', () => {
+  const { api, modal } = setup('{"reverse":["p"]}');
+  modal(true);
+  const oldEvent = event('j');
+  assert.equal(api.resolveEvent(oldEvent).key, 'Unidentified');
+  assert.equal(oldEvent.key, 'j');
+  assert.equal(api.resolveEvent(event('p')).key, 'p');
+});
 test('Mac hide shortcut is treated as reserved on every platform', () => {
   const { api } = setup();
   assert.equal(api.validChord('Mod+h'), false);
@@ -224,6 +247,15 @@ test('saved binding collisions are isolated so unrelated valid settings remain a
   assert.equal(warnings[1].label, '合并选中字幕');
   assert.equal(warnings[1].reason, '快捷键冲突：');
   assert.equal(warnings[1].detail, '拆分字幕');
+});
+test('saved Shift+E split variant collision is structured and keeps unrelated play binding', () => {
+  const { api } = setup('{"split":["Shift+e"],"play":["p"]}');
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'split'))], ['b']);
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'play'))], ['p']);
+  assert.deepEqual(api.takeSavedBindingWarnings(), [{
+    label: '拆分字幕', chord: 'Shift+E',
+    reason: '拆分快捷键派生组合发生冲突，无法区分三种拆分操作：',
+  }]);
 });
 test('Mod+C stays reserved for native copy on macOS and Windows, including legacy migration', () => {
   for (const [platform, displayedCopy] of [['MacIntel', 'Cmd+C'], ['Win32', 'Ctrl+C']]) {
