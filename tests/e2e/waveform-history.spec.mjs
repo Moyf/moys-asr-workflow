@@ -91,7 +91,7 @@ test('undoing a waveform-created subtitle keeps redo available', async ({ page }
   await page.locator('#ctxmenu .item', { hasText: '创建字幕' }).click();
   await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(7);
 
-  await page.getByRole('button', { name: /撤销/ }).click();
+  await page.getByRole('button', { name: /撤销|Undo/ }).click();
 
   await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(6);
   await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
@@ -958,12 +958,13 @@ test('retries an inline split with B or Enter and clamps both halves to 100ms', 
     selection.addRange(range);
   });
 
+  await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
   // The first attempt leaves the editor open and only arms the forced retry.
   await page.keyboard.press('Enter');
   await expect(page.locator('.cue')).toHaveCount(6);
   await expect(text).toHaveAttribute('contenteditable', 'plaintext-only');
   await expect(page.locator('.hint-card.hint-warning', {
-    hasText: '请再次按 B 或 Enter 强制拆分',
+    hasText: 'press Enter again to force the split',
   })).toBeVisible();
 
   // B/Enter is accepted only for this armed retry while the inline editor is open.
@@ -980,7 +981,7 @@ test('retries an inline split with B or Enter and clamps both halves to 100ms', 
   await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
 
   // The split history restores the original text, timing, selection and panel target.
-  await page.getByRole('button', { name: /撤销/ }).click();
+  await page.getByRole('button', { name: /撤销|Undo/ }).click();
   await expect.poll(() => page.locator('.cue').count()).toBe(6);
   await expect(page.locator('.cue[data-idx="0"]')).toHaveClass(/selected/);
   await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(0);
@@ -1392,8 +1393,10 @@ test('requires a second B in the split dialog before forcing a short-side cut', 
       autoSaveProject: false,
       splitUseWordTimestamps: false,
     }));
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: ['Alt+e'] }));
   });
   await page.goto(server.url);
+  await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
   await page.evaluate(() => {
     const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
     segment.text = 'Alpha Bravo';
@@ -1414,7 +1417,7 @@ test('requires a second B in the split dialog before forcing a short-side cut', 
   const pointerTime = 50;
   const pointerX = box.x + ((pointerTime - rowStart) / (rowEnd - rowStart)) * box.width;
   await page.mouse.move(pointerX, box.y + box.height / 2);
-  await page.keyboard.press('b');
+  await page.keyboard.press('Alt+e');
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
 
   // The first confirmation only arms the retry and keeps the dialog open.
@@ -1422,7 +1425,7 @@ test('requires a second B in the split dialog before forcing a short-side cut', 
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   await expect(page.locator('.cue')).toHaveCount(6);
   await expect(page.locator('.hint-card.hint-warning', {
-    hasText: '请再次按 B 或 Enter 强制拆分',
+    hasText: 'press Alt+E or Enter again to force the split',
   })).toBeVisible();
 
   await page.keyboard.press('b');
@@ -1434,6 +1437,29 @@ test('requires a second B in the split dialog before forcing a short-side cut', 
     ['Alpha', 100],
     ['Bravo', 7900],
   ]);
+});
+
+test('cleared split shortcut retry hint names no unavailable key', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: [] }));
+  });
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
+    segment.text = 'Alpha Bravo';
+    segment.items = [
+      { start: segment.start, end: segment.start + 50, text: 'Alpha' },
+      { start: segment.start + 50, end: segment.end, text: 'Bravo' },
+    ];
+    MaweCuePanel.renderAll({ waveform: 'full' });
+    MAWE_I18N.applyLanguage('en');
+    MaweSplitCore.openMainWaveformSplitModal(0, 50);
+  });
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await page.keyboard.press('Enter');
+  const hint = page.locator('.hint-card.hint-warning');
+  await expect(hint).toContainText('repeat the split action');
+  await expect(hint).not.toContainText('press B');
 });
 
 test('B and C refresh cue overlays without redrawing cached waveform canvases', async ({ page }) => {

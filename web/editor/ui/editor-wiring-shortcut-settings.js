@@ -47,15 +47,27 @@ export function initMaweShortcutSettingsWiring() {
       render();
       message('快捷键已保存');
     } catch (error) {
-      message(error.message?.startsWith('快捷键冲突：')
-        ? translate('快捷键冲突：') + translate(error.message.slice(6))
-        : translate(error.message === '该按键不可用或由浏览器 / 系统保留'
-          ? error.message : '无法保存快捷键，请检查浏览器存储权限'), true);
+      const messageText = error.message || '';
+      const reservedPrefix = '快捷键派生组合与系统或浏览器保留功能冲突：';
+      const genericReservedPrefix = '快捷键组合与系统或浏览器保留功能冲突：';
+      const duplicatePrefix = '拆分快捷键派生组合发生冲突，无法区分三种拆分操作：';
+      const reservedDetail = messageText.startsWith(reservedPrefix) ? messageText.slice(reservedPrefix.length).split('；') : null;
+      const genericReservedDetail = messageText.startsWith(genericReservedPrefix) ? messageText.slice(genericReservedPrefix.length).split('；') : null;
+      message(messageText.startsWith('快捷键冲突：')
+        ? translate('快捷键冲突：') + translate(messageText.slice(6))
+        : reservedDetail
+          ? translate(reservedPrefix) + reservedDetail[0] + ' — ' + translate(reservedDetail.slice(1).join('；'))
+          : genericReservedDetail
+            ? translate(genericReservedPrefix) + genericReservedDetail[0] + ' — ' + translate(genericReservedDetail.slice(1).join('；'))
+          : messageText.startsWith(duplicatePrefix)
+            ? translate(duplicatePrefix) + messageText.slice(duplicatePrefix.length)
+          : translate(messageText === '该按键不可用或由浏览器 / 系统保留'
+            ? messageText : '无法保存快捷键，请检查浏览器存储权限'), true);
     }
   }
   function filterActive() { return keyFilter !== null || filter.value.trim() !== ''; }
   function matches(entry) {
-    const values = MaweShortcuts.bindings(entry);
+    const values = MaweShortcuts.effectiveBindings(entry).map(binding => binding.chord);
     if (keyFilter !== null) return values.includes(keyFilter);
     const query = filter.value.trim().toLocaleLowerCase();
     return !query || [entry.label, translate(entry.label), ...values.map(MaweShortcuts.displayChord)]

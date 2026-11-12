@@ -107,9 +107,33 @@ export function initMaweShortcuts() {
   function validChord(value) {
     if (typeof value !== 'string') return false;
     return /^(Mod\+)?(Alt\+)?(Shift\+)?([a-z0-9]|Space|Enter|Delete|Backspace|ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown|F[1-9]|F1[0-2])$/.test(value)
-      && !/^(Mod\+)(Alt\+)?(Shift\+)?(l|t|w|r|n|p|q|F[1-9]|F1[0-2])$/.test(value)
+      && !/^(Mod\+)(Alt\+)?(Shift\+)?(h|l|t|w|r|n|p|q|F[1-9]|F1[0-2])$/.test(value)
       && !/^Alt\+(Shift\+)?(Home|F4)$/.test(value)
       && value !== 'F5' && value !== 'F11' && value !== 'F12';
+  }
+
+  function addModifiers(value, additions) {
+    const parts = value.split('+');
+    const key = parts.pop();
+    const modifiers = new Set([...parts, ...additions]);
+    return ['Mod', 'Alt', 'Shift'].filter(modifier => modifiers.has(modifier)).concat(key).join('+');
+  }
+
+  function reservedReason(value) {
+    if (/^Mod\+(?:Alt\+)?Shift\+q$/.test(value)) {
+      return 'macOS：Cmd+Shift+Q 会注销用户；Windows/Linux Chromium：Ctrl+Shift+Q 用于退出确认；ChromeOS：Ctrl+Shift+Q 两次会注销会话';
+    }
+    if (value === 'Mod+h') {
+      return 'macOS：Cmd+H 会隐藏当前应用；Windows/Linux Chromium：Ctrl+H 会打开浏览器历史记录';
+    }
+    return '此组合由浏览器或操作系统保留';
+  }
+
+  function reservedChordError(value, isSplitVariant = false) {
+    const prefix = isSplitVariant
+      ? '快捷键派生组合与系统或浏览器保留功能冲突：'
+      : '快捷键组合与系统或浏览器保留功能冲突：';
+    return new Error(prefix + displayChord(value) + '；' + reservedReason(value));
   }
 
   let overrides = {};
@@ -118,15 +142,23 @@ export function initMaweShortcuts() {
     const active = bindings(entry, source);
     if (entry.id !== 'split') return active.map(value => ({ chord: value, target: entry.defaults.includes(value) ? value : entry.defaults[0] }));
     const result = [];
+    const mapped = new Map();
     for (const value of active) {
-      const key = value.split('+').at(-1);
       const variants = [
         [value, 'b'],
-        ['Shift+' + key, 'Shift+b'],
-        ['Mod+Shift+' + key, 'Mod+Shift+b'],
+        [addModifiers(value, ['Shift']), 'Shift+b'],
+        [addModifiers(value, ['Mod', 'Shift']), 'Mod+Shift+b'],
       ];
-      for (const [index, [chordValue, target]] of variants.entries()) {
-        if ((index === 0 || validChord(chordValue)) && !result.some(item => item.chord === chordValue)) result.push({ chord: chordValue, target });
+      for (const [chordValue, target] of variants) {
+        if (!validChord(chordValue)) throw reservedChordError(chordValue, true);
+        if (mapped.has(chordValue)) {
+          if (mapped.get(chordValue).target !== target) {
+            throw new Error('拆分快捷键派生组合发生冲突，无法区分三种拆分操作：' + displayChord(chordValue));
+          }
+          continue;
+        }
+        mapped.set(chordValue, { target });
+        result.push({ chord: chordValue, target });
       }
     }
     return result;
@@ -139,7 +171,7 @@ export function initMaweShortcuts() {
     const used = new Map();
     for (const entry of commands) {
       for (const { chord: value } of effectiveBindings(entry, source)) {
-        if (!validChord(value)) throw new Error('该按键不可用或由浏览器 / 系统保留');
+        if (!validChord(value)) throw reservedChordError(value);
         if (used.has(value) && used.get(value).id !== entry.id) {
           const previous = used.get(value);
           throw new Error('快捷键冲突：' + (previous.id === changedId ? entry.label : previous.label));

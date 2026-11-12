@@ -280,7 +280,7 @@ function commitOverlaySplit(
     segment.id || `overlay-${overlayIndex}`,
     true,
     state.extensionMode,
-    { ...splitAlignmentOptions, duplicateText, headIndex: overlayIndex },
+    { ...splitAlignmentOptions, duplicateText, splitTextMode: state.splitTextMode, headIndex: overlayIndex },
   );
   if (!pair) {
     if (!force && !duplicateText) {

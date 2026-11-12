@@ -63,6 +63,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('quick start teaches WASD, real merge with undo, then real split', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: ['e'] }));
+  });
   await page.goto(server.url);
   const layer = page.locator('#onboarding-layer');
   await expect(layer).toBeVisible();
@@ -111,7 +114,7 @@ test('quick start teaches WASD, real merge with undo, then real split', async ({
   await expect(page.locator('#onboarding-title')).toHaveText('完成！');
   await expect(page.locator('#onboarding-description')).toHaveText('已掌握基础操作。可以在右上角的【帮助】中随时查看。');
   await expect(page.locator('#onboarding-extra-tips')).toContainText('你也可以右键点击字幕后选择拆分');
-  await expect(page.locator('#onboarding-extra-tips')).toContainText('鼠标在波形区时，可以右键拆分，也可以按B在鼠标位置拆分');
+  await expect(page.locator('#onboarding-extra-tips')).toContainText('鼠标在波形区时，可以右键拆分，也可以按 E 在鼠标位置拆分');
   await expect(page.locator('#onboarding-extra-tips')).toContainText('编辑字幕时，也可以选择用 Enter 直接拆分——在设置中可修改按键');
   await page.locator('#onboarding-split-settings').click();
   await expect(page.locator('#editor-settings-panel')).toBeVisible();

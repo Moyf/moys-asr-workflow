@@ -24,7 +24,7 @@ function setup(saved = '{}', denied = false) {
 function event(key, flags = {}) { return { key, code: '', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...flags }; }
 test('all default commands survive validation and reset; aliases remain active', () => {
   const { api } = setup();
-  api.setBinding('split', 'q');
+  api.setBinding('split', 'Alt+e');
   api.resetBindings();
   for (const entry of api.commands) for (const binding of entry.defaults) assert.equal(api.validChord(binding), true, binding);
   assert.equal(api.resolveEvent(event('Backspace')).key, 'Backspace');
@@ -41,23 +41,67 @@ test('palette shortcut defaults preserve 0 clear and all nine 2.0dev slots', () 
 });
 test('custom chords resolve to a single command and original keys stop firing', () => {
   const { api, stored } = setup();
-  api.setBinding('split', 'Mod+Shift+e');
-  const mapped = api.resolveEvent(event('E', { metaKey: true, shiftKey: true }));
+  api.setBinding('split', 'e');
+  const mapped = api.resolveEvent(event('E'));
   assert.equal(mapped.key, 'b');
-  assert.equal(mapped.metaKey, false);
-  assert.equal(mapped.shiftKey, false);
   assert.equal(api.resolveEvent(event('b')).key, 'Unidentified');
-  assert.equal(setup(stored()).api.resolveEvent(event('e', { ctrlKey: true, shiftKey: true })).key, 'b');
+  assert.equal(setup(stored()).api.resolveEvent(event('e')).key, 'b');
+});
+test('split operations preserve base modifiers and reject lossy or reserved variants before saving', () => {
+  const { api, stored } = setup();
+  api.setBinding('split', 'Alt+e');
+  assert.deepEqual(api.effectiveBindings(api.commands.find(item => item.id === 'split')), [
+    { chord: 'Alt+e', target: 'b' },
+    { chord: 'Alt+Shift+e', target: 'Shift+b' },
+    { chord: 'Mod+Alt+Shift+e', target: 'Mod+Shift+b' },
+  ]);
+  assert.throws(() => api.setBinding('nav-a', 'Alt+Shift+e'), /冲突：拆分字幕/);
+  const savedAlt = stored();
+  assert.throws(() => api.setBinding('split', 'Shift+e'), /派生组合发生冲突.*Shift\+E/);
+  assert.equal(stored(), savedAlt);
+  assert.throws(() => api.setBinding('split', 'Mod+Shift+e'), /派生组合发生冲突.*Ctrl\+Shift\+E/);
+  assert.equal(stored(), savedAlt);
+  assert.throws(() => api.setBinding('split', 'q'), error => {
+    assert.match(error.message, /Ctrl\+Shift\+Q/);
+    assert.match(error.message, /macOS/);
+    assert.match(error.message, /Windows\/Linux Chromium/);
+    assert.match(error.message, /ChromeOS/);
+    return true;
+  });
+  assert.equal(stored(), savedAlt);
+
+  assert.equal(api.validChord('Mod+h'), false);
+  assert.throws(() => api.setBinding('nav-d', 'Mod+h'), error => {
+    assert.match(error.message, /快捷键组合与系统或浏览器保留功能冲突/);
+    assert.doesNotMatch(error.message, /派生组合/);
+    return true;
+  });
+});
+test('Alt-derived split variants dispatch each split operation to its target chord', () => {
+  const { api } = setup();
+  api.setBinding('split', 'Alt+e');
+  const normal = api.resolveEvent(event('E', { altKey: true }));
+  assert.equal(normal.key, 'b');
+  assert.equal(normal.altKey, false);
+  const progressive = api.resolveEvent(event('E', { altKey: true, shiftKey: true }));
+  assert.equal(progressive.key, 'b');
+  assert.equal(progressive.altKey, false);
+  assert.equal(progressive.shiftKey, true);
+  const duplicate = api.resolveEvent(event('E', { ctrlKey: true, altKey: true, shiftKey: true }));
+  assert.equal(duplicate.key, 'b');
+  assert.equal(duplicate.ctrlKey, true);
+  assert.equal(duplicate.altKey, false);
+  assert.equal(duplicate.shiftKey, true);
+});
+test('Mac hide shortcut is treated as reserved on every platform', () => {
+  const { api } = setup();
+  assert.equal(api.validChord('Mod+h'), false);
+  assert.throws(() => api.setBinding('nav-d', 'Mod+h'), /Ctrl\+H/);
 });
 test('split mode variants follow the remapped base key and stay collision-protected', () => {
   const { api } = setup();
   assert.throws(() => api.setBinding('nav-a', 'Shift+b'), /冲突：拆分字幕/);
-  api.setBinding('split', 'q');
-  const progressive = api.resolveEvent(event('Q', { shiftKey: true }));
-  assert.equal(progressive.key, 'b');
-  assert.equal(progressive.shiftKey, true);
-  const unavailableReservedDuplicate = api.resolveEvent(event('Q', { ctrlKey: true, shiftKey: true }));
-  assert.equal(unavailableReservedDuplicate.key, 'Q');
+  assert.throws(() => api.setBinding('split', 'q'), /Ctrl\+Shift\+Q/);
   api.setBinding('split', 'e');
   const duplicate = api.resolveEvent(event('E', { ctrlKey: true, shiftKey: true }));
   assert.equal(duplicate.key, 'b');
@@ -72,14 +116,15 @@ test('conflicting defaults/custom bindings and reserved keys preserve the saved 
   assert.throws(() => api.setBinding('split', 'c'), /冲突：合并选中字幕/);
   assert.throws(() => api.setBinding('play', 'j'), /冲突：倒放/);
   assert.equal(stored(), '{}');
-  api.setBinding('split', 'q');
-  assert.throws(() => api.setBinding('merge', 'q'), /冲突/);
-  assert.throws(() => api.setBinding('split', 'Mod+l'), /保留/);
-  assert.equal(api.bindings(api.commands.find(item => item.id === 'split'))[0], 'q');
+  api.setBinding('split', 'e');
+  assert.throws(() => api.setBinding('merge', 'e'), /冲突/);
+  assert.throws(() => api.setBinding('play', 'Mod+l'), /保留/);
+  assert.equal(api.bindings(api.commands.find(item => item.id === 'split'))[0], 'e');
 });
 test('clear aliases, exchange keys, and reject a conflicting per-action reset', () => {
   const { api } = setup();
   api.setBinding('split', '');
+  assert.equal(api.splitVariantLabel('b'), '');
   api.setBinding('merge', 'b');
   api.setBinding('split', 'c');
   assert.equal(api.resolveEvent(event('b')).key, 'c');
@@ -92,7 +137,7 @@ test('clear aliases, exchange keys, and reject a conflicting per-action reset', 
 });
 test('typing, IME and modal input keep their own context; save also remaps while typing', () => {
   const { api, modal } = setup();
-  api.setBinding('split', 'q');
+  api.setBinding('split', 'Alt+e');
   const typed = event('q', { editing: true });
   assert.equal(api.resolveEvent(typed), typed);
   assert.equal(api.resolveEvent(event('b', { isComposing: true })).key, 'Unidentified');
@@ -108,7 +153,7 @@ test('typing, IME and modal input keep their own context; save also remaps while
 });
 test('event methods use the original event and mapping stays stable across handlers', () => {
   const { api, modal } = setup();
-  api.setBinding('split', 'q');
+  api.setBinding('split', 'Alt+e');
   const original = event('q', { preventDefault() { this.prevented = true; } });
   const mapped = api.resolveEvent(original);
   mapped.preventDefault();
@@ -122,7 +167,7 @@ test('corrupt stored bindings and unavailable storage safely preserve defaults',
     assert.equal(api.bindings(api.commands.find(item => item.id === 'split'))[0], 'b');
   }
   const { api } = setup('{}', true);
-  assert.throws(() => api.setBinding('split', 'q'), /denied/);
+  assert.throws(() => api.setBinding('split', 'Alt+e'), /denied/);
   assert.equal(api.resolveEvent(event('b')).key, 'b');
 });
 test('Shift+digits and macOS Option letters record usable chords', () => {

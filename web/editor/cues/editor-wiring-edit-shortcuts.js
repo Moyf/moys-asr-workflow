@@ -723,7 +723,7 @@ document.addEventListener('keydown', (e) => {
           feedbackPoint: context.caretRect ? MaweNinja.ninjaSplitPointFromRect(context.caretRect) : null,
           ninjaFromList: true,
         } : {};
-      MaweSplitCore.openExtensionSplitModal(context.idx, null, context.track, initial);
+      MaweSplitCore.openExtensionSplitModal(context.idx, null, context.track, { ...initial, splitTextMode });
       return;
     }
   }
@@ -765,6 +765,7 @@ document.addEventListener('keydown', (e) => {
       MaweSettings.EDITOR_SETTINGS.keyboardOperationReference === 'playhead'
         ? operationReference?.timeMs ?? null : timeMs,
       track,
+      { splitTextMode },
     );
     return;
   }
@@ -799,6 +800,7 @@ document.addEventListener('keydown', (e) => {
       overlayIndex,
       MaweSettings.EDITOR_SETTINGS.keyboardOperationReference === 'playhead'
         ? operationReference?.timeMs ?? null : timeMs,
+      { splitTextMode },
     );
     return;
   }
@@ -823,7 +825,8 @@ document.addEventListener('keydown', (e) => {
     if (extensionIndex >= 0) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      MaweSplitCore.openExtensionSplitModal(extensionIndex, operationReference.timeMs, MaweMultiSubtitleCore.getExtensionTrack(operationReference.trackId));
+      MaweSplitCore.openExtensionSplitModal(extensionIndex, operationReference.timeMs,
+        MaweMultiSubtitleCore.getExtensionTrack(operationReference.trackId), { splitTextMode });
       return;
     }
     MaweHint.flashHint('指针位置没有可拆分字幕', 'invalid');
@@ -842,7 +845,7 @@ document.addEventListener('keydown', (e) => {
   if (extensionIndex >= 0) {
     e.preventDefault();
     e.stopImmediatePropagation();
-    MaweSplitCore.openExtensionSplitModal(extensionIndex, timeMs, extensionTrack);
+    MaweSplitCore.openExtensionSplitModal(extensionIndex, timeMs, extensionTrack, { splitTextMode });
     return;
   }
   MaweHint.flashHint('播放头位置没有可拆分字幕', 'invalid');

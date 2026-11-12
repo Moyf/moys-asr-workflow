@@ -266,7 +266,7 @@ function renderOnboardingDemo() {
     onboardingDemo.innerHTML = `
       <ul class="onboarding-extra-tips" id="onboarding-extra-tips">
         <li>${onboardingText('你也可以右键点击字幕后选择拆分')}</li>
-        <li>${onboardingText('鼠标在波形区时，可以右键拆分，也可以按B在鼠标位置拆分').replaceAll('B', `<kbd>${onboardingShortcutSplitKey()}</kbd>`)}</li>
+        <li>${onboardingText('鼠标在波形区时，可以右键拆分，也可以按 {splitKey} 在鼠标位置拆分').replaceAll('{splitKey}', `<kbd>${onboardingShortcutSplitKey()}</kbd>`)}</li>
         <li>${onboardingSettingsTip()}</li>
       </ul>`;
     return;

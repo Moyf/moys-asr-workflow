@@ -101,26 +101,41 @@ test('combination keys, recording isolation, typing, spacing and English setting
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
   await page.screenshot({ path: '/tmp/maw-custom-shortcuts.png' });
 });
+test('Q split variants and Mac/browser reserved shortcuts are rejected with a visible reason', async ({ page }) => {
+  await record(page, 'split', 'q');
+  await expect(page.locator('#shortcuts-status')).toContainText('Ctrl+Shift+Q');
+  await expect(page.locator('#shortcuts-status')).toContainText('macOS');
+  await expect(page.locator('#shortcuts-status')).toContainText('Windows/Linux Chromium');
+  await page.keyboard.press('Escape');
+  await expect(keyButton(page, 'split')).toHaveText('B');
+
+  await record(page, 'nav-d', 'Control+h');
+  await expect(page.locator('#shortcuts-status')).toContainText('保留');
+  await expect(page.locator('#shortcuts-status')).toContainText('H');
+  await expect(page.locator('#shortcuts-status')).toContainText('历史记录');
+  await page.keyboard.press('Escape');
+  await expect(keyButton(page, 'nav-d')).toHaveText('D');
+});
 test('split aliases follow the customized key through real keyboard events', async ({ page }) => {
-  await record(page, 'split', 'e');
-  await expect(page.locator('#help-shortcut-split-key')).toHaveText('E');
-  await expect(page.locator('#help-waveform-split-key')).toHaveText('E');
+  await record(page, 'split', 'Alt+e');
+  await expect(page.locator('#help-shortcut-split-key')).toHaveText('Alt+E');
+  await expect(page.locator('#help-waveform-split-key')).toHaveText('Alt+E');
   await closeSettings(page);
   await page.evaluate(() => {
     window.__splitEvents = [];
     window.addEventListener('keydown', event => {
       if (['e', 'E', 'b', 'B'].includes(event.key)) {
         const mapped = MaweShortcuts.resolveEvent(event);
-        window.__splitEvents.push([mapped.key, mapped.ctrlKey, mapped.shiftKey]);
+      window.__splitEvents.push([mapped.key, mapped.ctrlKey, mapped.shiftKey, mapped.altKey]);
       }
     }, true);
   });
-  await page.keyboard.press('e');
-  await page.keyboard.press('Shift+e');
-  await page.keyboard.press('Control+Shift+e');
+  await page.keyboard.press('Alt+e');
+  await page.keyboard.press('Alt+Shift+e');
+  await page.keyboard.press('Control+Alt+Shift+e');
   await page.keyboard.press('Shift+b');
   expect(await page.evaluate(() => window.__splitEvents)).toEqual([
-    ['b', false, false], ['b', false, true], ['b', true, true], ['Unidentified', false, false],
+    ['b', false, false, false], ['b', false, true, false], ['b', true, true, false], ['Unidentified', false, false, false],
   ]);
 });
 test('remapped play key clears its intercepted keyup when modifiers release first', async ({ page }) => {
@@ -199,10 +214,14 @@ test('key search matches current chords exactly, cancels safely and never execut
   await searchByKey(page, 'b');
   expect(await displayedIds(page)).toEqual(['split']);
   await expect(page.locator('#shortcuts-filter')).toHaveValue('B');
-  await record(page, 'split', 'q');
+  await searchByKey(page, 'Shift+b');
+  expect(await displayedIds(page)).toEqual(['split']);
+  await record(page, 'split', 'Alt+e');
   await searchByKey(page, 'b');
   await expect(page.locator('#shortcuts-list')).toHaveText('没有匹配的快捷键');
-  await searchByKey(page, 'q');
+  await searchByKey(page, 'Alt+Shift+e');
+  expect(await displayedIds(page)).toEqual(['split']);
+  await searchByKey(page, 'Control+Alt+Shift+e');
   expect(await displayedIds(page)).toEqual(['split']);
   await searchByKey(page, 'Control+s');
   expect(await displayedIds(page)).toEqual(['save']);
