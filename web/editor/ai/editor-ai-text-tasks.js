@@ -1,0 +1,604 @@
+// AI 文本任务（M2）：加粗关键词 / 翻译为副字幕 / Emoji 点缀。
+// 任务经 MaweAiTasks.begin 提交到后端 runner（maw.editor_ai.run_ai_text_task，
+// 与 Launcher 工具箱共用 complete_subtitle_groups 的 JSON 协议）；完成后在前端
+// 回写：主字幕文本与副字幕结构变更都走 MaweCommands.run，可撤销。任务提交时
+// 附带字幕文本快照，回写前逐条核对，任务期间被人工编辑过的条目跳过。
+// 自定义提示词保存在本机浏览器（localStorage），留空使用后端内置预设。
+(function initMaweAiTextTasks(global) {
+  'use strict';
+
+
+
+  const PROMPTS_STORAGE_KEY = 'moy.asr.editor.ai.prompts.v1';
+  const TEXT_TASK_KINDS = Object.freeze(['ai-bold', 'ai-translate', 'ai-emoji']);
+  const TEXT_TASK_LABELS = Object.freeze({
+    'ai-bold': 'AI 加粗关键词',
+    'ai-translate': 'AI 翻译为副字幕',
+    'ai-emoji': 'AI Emoji 点缀',
+  });
+  // 中日韩字符占比达到该阈值时按中文提示词处理，否则按英文。
+  const CJK_RATIO_THRESHOLD = 0.3;
+  const CJK_CHAR_PATTERN = /[\u4e00-\u9fff\u3040-\u30ff\u30a0-\u30ff\uac00-\ud7af]/;
+
+
+
+  let customPrompts = readCustomPrompts();
+
+
+
+  const element = (id) => document.getElementById(id);
+
+
+
+  function readCustomPrompts() {
+    const prompts = {};
+    for (const kind of TEXT_TASK_KINDS) prompts[kind] = '';
+    try {
+      const saved = JSON.parse(MaweHost.storage.getItem(PROMPTS_STORAGE_KEY) || '{}');
+      for (const kind of TEXT_TASK_KINDS) {
+        if (typeof saved[kind] === 'string') prompts[kind] = saved[kind];
+      }
+    } catch (_) {
+      // file:// 隐私模式可能拒绝 localStorage；自定义提示词退回内置预设。
+    }
+    return prompts;
+  }
+
+
+  function saveCustomPrompts() {
+    try {
+      MaweHost.storage.setItem(PROMPTS_STORAGE_KEY, JSON.stringify(customPrompts));
+    } catch (_) {
+      // 保存失败时本次页面仍可用自定义值。
+    }
+  }
+
+
+
+  // === 提示词设置模态 ===
+
+  function fillPromptsModal() {
+    const map = {
+      'ai-bold': 'ai-prompt-bold',
+      'ai-translate': 'ai-prompt-translate',
+      'ai-emoji': 'ai-prompt-emoji',
+    };
+    for (const [kind, inputId] of Object.entries(map)) {
+      const input = element(inputId);
+      if (input) input.value = customPrompts[kind] || '';
+    }
+  }
+
+
+  function openPromptsModal() {
+    fillPromptsModal();
+    element('ai-prompts-modal')?.classList.add('show');
+    setTimeout(() => element('ai-prompt-bold')?.focus(), 50);
+  }
+
+
+  function closePromptsModal() {
+    element('ai-prompts-modal')?.classList.remove('show');
+  }
+
+
+  function savePromptsFromModal() {
+    const map = {
+      'ai-bold': 'ai-prompt-bold',
+      'ai-translate': 'ai-prompt-translate',
+      'ai-emoji': 'ai-prompt-emoji',
+    };
+    for (const [kind, inputId] of Object.entries(map)) {
+      customPrompts[kind] = String(element(inputId)?.value || '').trim();
+    }
+    saveCustomPrompts();
+    closePromptsModal();
+    MaweHint.flashHint('AI 提示词已保存到本机浏览器', 'success');
+  }
+
+
+  function resetPromptsFromModal() {
+    for (const kind of TEXT_TASK_KINDS) customPrompts[kind] = '';
+    saveCustomPrompts();
+    fillPromptsModal();
+    MaweHint.flashHint('已恢复内置预设提示词', 'success');
+  }
+
+
+  function wirePromptsModal() {
+    element('ai-prompts-cancel')?.addEventListener('click', closePromptsModal);
+    element('ai-prompts-save')?.addEventListener('click', savePromptsFromModal);
+    element('ai-prompts-reset')?.addEventListener('click', resetPromptsFromModal);
+  }
+
+
+  wirePromptsModal();
+
+
+
+  // === 任务构建 ===
+
+  // 收集选中字幕的文本快照；无 id 的段用任务内一致的合成 id。
+  // extensionTrack 传入时（翻译任务）同时快照单绑定副字幕的 id+文本（#5）。
+  function collectTaskCues(targets = [], extensionTrack = null) {
+    const cues = [];
+    const seen = new Set();
+    const segments = global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    for (const target of targets) {
+      if (!Number.isInteger(target) || target < 0 || target >= segments.length) continue;
+      const segment = segments[target];
+      const text = String(segment?.text ?? '');
+      if (!text.trim()) continue;
+      let id = String(segment?.id ?? '').trim();
+      if (!id) id = `idx-${target}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      cues.push({ id, segmentId: segment.id || null, segment, index: target, text,
+        extension: snapshotBoundExtension(segment, extensionTrack),
+        bindingSnapshot: snapshotTranslationBindings(segment, extensionTrack) });
+    }
+    return cues;
+  }
+
+
+  function detectTaskLang(cues) {
+    let cjk = 0;
+    let total = 0;
+    for (const cue of cues) {
+      for (const char of cue.text) {
+        if (/\s/.test(char)) continue;
+        total += 1;
+        if (CJK_CHAR_PATTERN.test(char)) cjk += 1;
+      }
+    }
+    return total > 0 && cjk / total >= CJK_RATIO_THRESHOLD ? 'zh' : 'en';
+  }
+
+  // 内置翻译预设的 zh/en 是目标语言；优先沿用副轨语言。
+  function translationTargetLang(cues, track) {
+    const language = String(track?.language || '').toLowerCase();
+    if (/^zh(?:[-_]|$)/.test(language)) return 'zh';
+    if (/^en(?:[-_]|$)/.test(language)) return 'en';
+    return detectTaskLang(cues) === 'zh' ? 'en' : 'zh';
+  }
+
+  function translationSuggestion(targets) {
+    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    return translationTargetLang(collectTaskCues(targets, track), track);
+  }
+
+  // 只允许在原文原位置增加成对的 **；原有标记和正文必须保留。
+  function boldMarkerLayout(text) {
+    let plain = '';
+    const spans = [];
+    let open = null;
+    const parts = text.split('**');
+    for (let index = 0; index < parts.length; index += 1) {
+      if (index % 2 === 1) open = plain.length;
+      else if (index > 0) {
+        spans.push({ start: open, end: plain.length });
+        open = null;
+      }
+      plain += parts[index];
+    }
+    return { plain, spans, open };
+  }
+
+  function preservesDefaultBold(original, result) {
+    const before = boldMarkerLayout(original);
+    const after = boldMarkerLayout(result);
+    if (before.plain !== after.plain || before.open !== after.open) return false;
+    let retained = 0;
+    for (const span of after.spans) {
+      const existing = before.spans[retained];
+      if (existing && existing.start === span.start && existing.end === span.end) retained += 1;
+      else if (span.start === span.end) return false;
+    }
+    return retained === before.spans.length;
+  }
+
+  function preservesDefaultEmoji(original, result) {
+    if (result === original) return true;
+    const suffix = ` ${original}`;
+    if (!result.endsWith(suffix)) return false;
+    const prefix = result.slice(0, -suffix.length);
+    const clusters = typeof Intl.Segmenter === 'function'
+      ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(prefix)].length
+      : Array.from(prefix).length;
+    return clusters === 1 && /[\p{Extended_Pictographic}\p{Regional_Indicator}\u20e3]/u.test(prefix);
+  }
+
+
+
+  // === 主字幕文本回写（加粗 / Emoji）===
+
+  function applyMainTextResults(kind, cues, texts, validatePreset = false) {
+    const label = TEXT_TASK_LABELS[kind] || 'AI 文本任务';
+    const rows = [];
+    let stale = 0;
+    let missing = 0;
+    let unchanged = 0;
+    let invalid = 0;
+    for (const cue of cues) {
+      const newText = typeof texts[cue.id] === 'string' ? texts[cue.id] : '';
+      if (!newText.trim()) { missing += 1; continue; }
+      const segment = locateTaskSegment(cue);
+      if (!segment) { stale += 1; continue; }
+      if (validatePreset && ((kind === 'ai-bold' && !preservesDefaultBold(cue.text, newText))
+        || (kind === 'ai-emoji' && !preservesDefaultEmoji(cue.text, newText)))) { invalid += 1; continue; }
+      if (segment.text === newText) { unchanged += 1; continue; }
+      rows.push({ id: cue.id, segment, text: newText });
+    }
+    if (!rows.length) {
+      const parts = [];
+      if (unchanged) parts.push(`${unchanged} 条已符合目标`);
+      if (stale) parts.push(`${stale} 条在任务期间被修改，已跳过`);
+      if (missing) parts.push(`${missing} 条模型未返回结果`);
+      if (invalid) parts.push(`${invalid} 条结果修改了原文或格式不符，已跳过`);
+      MaweHint.flashHint(parts.length ? `${label}：${parts.join('；')}` : `${label}：没有需要更新的字幕`, 'invalid');
+      return [];
+    }
+    MaweCommands.run(label, (command) => {
+      let staleWordTimings = 0;
+      rows.forEach(({ segment, text }) => {
+        const previousText = segment.text;
+        segment.text = text;
+        segment._dirty = true;
+        const timing = global.AsrEditorUtils.planWordTimingTextSync(segment, previousText);
+        if (timing?.items) segment.items = timing.items;
+        if (timing?.warn) staleWordTimings += 1;
+      });
+      command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
+      MaweHistory.updateUndoRedoButtons();
+      const notes = [];
+      if (stale) notes.push(`${stale} 条期间被修改已跳过`);
+      if (missing) notes.push(`${missing} 条模型未返回`);
+      if (unchanged) notes.push(`${unchanged} 条已符合目标`);
+      if (invalid) notes.push(`${invalid} 条结果修改了原文或格式不符，已跳过`);
+      MaweHint.flashHint(
+        `${label}已更新 ${rows.length} 条字幕${notes.length ? `（${notes.join('；')}）` : ''}`,
+        'success',
+      );
+      if (staleWordTimings) {
+        MaweHint.flashHint(`${staleWordTimings} 条字幕的字词时间码文字未随文本更新，请按需检查`, 'warning');
+      }
+    });
+    return rows.map(({ id }) => id);
+  }
+
+
+
+  // === 副字幕回写（翻译）===
+
+  function ensureMultiSubtitleReady() {
+    // v2 的双语开关就是活动副轨的 enabled（没有 bilingual.enabled 字段）：
+    // 确保有轨并启用，建轨与 active_track_id 由 utils 负责，脏标记交给命令提交。
+    const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+    const track = MaweMultiSubtitleCore.ensureEmptyExtensionTrack(multi);
+    track.enabled = true;
+    multi._dirty = true;
+    return track;
+  }
+
+
+  // v2 绑定没有 extension_segment_ids 字段：主→副一条绑定，同源多条即 1→N 分组。
+  function bindingsForMainSegment(multi, segmentId, trackId) {
+    return (multi.bindings || []).filter((binding) =>
+      binding?.source?.segment_id === segmentId
+      && (!trackId || binding?.target?.track_id === trackId));
+  }
+
+
+  // 提交时快照单绑定副字幕的 id+文本，回写前核对，人工改过的不覆盖（#5）。
+  function snapshotBoundExtension(segment, track) {
+    if (!track) return null;
+    const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+    const bindings = bindingsForMainSegment(multi, segment.id, track.id);
+    if (bindings.length !== 1) return null;
+    const bound = track.segments.find((item) => item?.id === bindings[0].target?.segment_id);
+    return bound ? { id: bound.id, text: bound.text, items: JSON.stringify(bound.items ?? null) } : null;
+  }
+
+  function snapshotTranslationBindings(segment, track) {
+    if (!track) return '[]';
+    const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+    const bindings = bindingsForMainSegment(multi, segment.id, track.id);
+    return JSON.stringify(bindings.map((binding) => ({ source: binding.source, target: binding.target,
+      peers: (multi.bindings || []).filter((item) => item?.target?.track_id === binding.target?.track_id
+        && item?.target?.segment_id === binding.target?.segment_id).map((item) => item.source) })));
+  }
+
+
+  // 按稳定 id 定位主字幕并核对文本指纹；无 id 的旧段按对象身份查找。
+  // 删除、切工程或文本被改都返回 null，由调用方按 stale 跳过（#4）。
+  function locateTaskSegment(cue) {
+    const id = cue.segmentId;
+    const segments = global.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
+    if (id) {
+      const byId = segments.find((segment) => segment?.id === id);
+      return byId && byId.text === cue.text ? byId : null;
+    }
+    return segments.includes(cue.segment) && cue.segment.text === cue.text ? cue.segment : null;
+  }
+
+  function captureTaskContext() {
+    return {
+      bindingGeneration: MaweBoot.SERVER_CONFIG?.bindingGeneration ?? null,
+      sourceMediaId: MaweBoot.SERVER_CONFIG?.sourceMediaId ?? null,
+      localMedia: global.MaweProjectMediaInputs?.currentMediaBlobUrl ?? null,
+      projectBindingEpoch: global.MaweProjectLoad?.projectBindingEpoch,
+      projectLoadGeneration: global.MaweState?.projectLoadGeneration,
+    };
+  }
+
+  function taskContextCurrent(context) {
+    const current = captureTaskContext();
+    return !global.MaweState?.projectLoadPending
+      && Object.keys(context).every((key) => context[key] === current[key]);
+  }
+
+  async function waitForTaskApply(context, isCurrent = () => true, onWait = () => {}) {
+    let notified = false;
+    const editing = () => {
+      const focused = document.activeElement;
+      const panel = global.MaweDom;
+      return Boolean(global.MaweInlineEdit?.editingState || global.MaweInlineEdit?.extensionEditingState
+        || (focused && [panel?.cuePanelText, panel?.cuePanelStart, panel?.cuePanelDuration].includes(focused)));
+    };
+    while (editing()) {
+      if (!isCurrent() || !taskContextCurrent(context)) return false;
+      if (!notified) {
+        onWait();
+        notified = true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
+    if (!isCurrent() || !taskContextCurrent(context)) return false;
+    if (global.MaweCuePanelState?.cuePanelUndoPushed) global.MaweCuePanel?.commitCuePanelEdit();
+    return taskContextCurrent(context);
+  }
+
+
+  // 回写前重新判定绑定状态：unbound → 新建；grouped → 跳过；
+  // changed → 快照对不上（副字幕被人工改过或绑定变动），跳过。
+  function resolveBoundExtension(cue, segment, track) {
+    if (!track) return { state: 'unbound' };
+    if (snapshotTranslationBindings(segment, track) !== cue.bindingSnapshot) return { state: 'changed' };
+    const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+    const bindings = bindingsForMainSegment(multi, segment.id, track.id);
+    if (bindings.length > 1) return { state: 'grouped' };
+    if (bindings.length === 0) return cue.extension ? { state: 'changed' } : { state: 'unbound' };
+    const bound = track.segments.find((item) => item?.id === bindings[0].target?.segment_id) || null;
+    if (!bound) return cue.extension ? { state: 'changed' } : { state: 'unbound' };
+    const shared = (multi.bindings || []).filter((binding) => binding?.target?.track_id === track.id
+      && binding?.target?.segment_id === bound.id).length > 1;
+    if (shared) return { state: 'grouped' };
+    const snapshot = cue.extension;
+    if (!snapshot || snapshot.id !== bound.id || snapshot.text !== bound.text
+      || snapshot.items !== JSON.stringify(bound.items ?? null)) return { state: 'changed' };
+    return { state: 'bound', bound };
+  }
+
+
+  function insertExtensionSegment(track, segment) {
+    const insertAt = track.segments.findIndex((item) => Number(item?.start) > segment.start);
+    const index = insertAt < 0 ? track.segments.length : insertAt;
+    track.segments.splice(index, 0, segment);
+    return index;
+  }
+
+  function overlapsExtension(segment, existing) {
+    return existing.some((item) => Number(item.start) < Number(segment.end)
+      && Number(segment.start) < Number(item.end));
+  }
+
+
+  function applyTranslationResults(cues, texts) {
+    const label = TEXT_TASK_LABELS['ai-translate'];
+    // v2 的双语开关 = 活动副轨的 enabled；未开启也继续处理：
+    // create 行在命令内经 ensureMultiSubtitleReady 建轨并启用（#2）。
+    const wasEnabled = MaweMultiSubtitleCore.getActiveExtensionTrack()?.enabled === true;
+    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    const rows = [];
+    const occupied = [...(track?.segments || [])];
+    let stale = 0;
+    let missing = 0;
+    let unchanged = 0;
+    let skippedGrouped = 0;
+    let staleExtension = 0;
+    for (const cue of cues) {
+      const newText = typeof texts[cue.id] === 'string' ? texts[cue.id].trim() : '';
+      if (!newText) { missing += 1; continue; }
+      const segment = locateTaskSegment(cue);
+      if (!segment) { stale += 1; continue; }
+      const verdict = resolveBoundExtension(cue, segment, track);
+      if (verdict.state === 'grouped') { skippedGrouped += 1; continue; }
+      if (verdict.state === 'changed') { staleExtension += 1; continue; }
+      if (verdict.state === 'bound') {
+        if (verdict.bound.text === newText) { unchanged += 1; continue; }
+        rows.push({ id: cue.id, kind: 'update', main: segment, extension: verdict.bound, text: newText });
+      } else {
+        if (overlapsExtension(segment, occupied)) { staleExtension += 1; continue; }
+        occupied.push(segment);
+        rows.push({ id: cue.id, kind: 'create', main: segment, text: newText });
+      }
+    }
+    if (!rows.length) {
+      const parts = [];
+      if (unchanged) parts.push(`${unchanged} 条副字幕已是该译文`);
+      if (stale) parts.push(`${stale} 条在任务期间被修改，已跳过`);
+      if (staleExtension) parts.push(`${staleExtension} 条副字幕在任务期间被修改，已跳过`);
+      if (missing) parts.push(`${missing} 条模型未返回结果`);
+      if (skippedGrouped) parts.push(`${skippedGrouped} 条绑定多条副字幕，已跳过`);
+      MaweHint.flashHint(parts.length ? `${label}：${parts.join('；')}` : `${label}：没有需要更新的字幕`, 'invalid');
+      return [];
+    }
+    const timedCount = rows.filter((row) => row.kind === 'update' && row.extension.items?.length).length;
+    if (timedCount) {
+      const message = global.MAWE_I18N?.translateText?.('修改译文将清除 {count} 条副字幕的字词时间码。是否继续？')
+        || '修改译文将清除 {count} 条副字幕的字词时间码。是否继续？';
+      if (!global.confirm(message.replace('{count}', String(timedCount)))) {
+        MaweHint.flashHint('已取消应用 AI 译文', 'warning');
+        return [];
+      }
+    }
+    MaweCommands.run(label, (command) => {
+      // 命令内统一「确保有轨且启用」：无轨建轨；轨在但双语关闭时重新启用
+      // （关闭双语只隐藏副轨，update 行也要让开关回到开启，与提示一致）。
+      let targetTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
+      if (!targetTrack) targetTrack = ensureMultiSubtitleReady();
+      else if (!wasEnabled) targetTrack.enabled = true;
+      let updated = 0;
+      let created = 0;
+      const createdMains = [];
+      for (const row of rows) {
+        if (row.kind === 'update') {
+          row.extension.text = row.text;
+          if (row.extension.items?.length) delete row.extension.items;
+          row.extension._dirty = true;
+          updated += 1;
+          continue;
+        }
+        if (!targetTrack) continue;
+        // 逐条插入后 track.segments 已包含此前新建的段，
+        // uniqueStableSegmentId 会自动避开已占用的 id。
+        const extension = {
+          id: window.AsrEditorUtils.uniqueStableSegmentId(
+            (MaweBoot.DATA.tracks || []).flatMap((track) => track.segments || []),
+            `${targetTrack.id}-segment-${targetTrack.segments.length + 1}`,
+            'extension',
+          ),
+          start: row.main.start,
+          end: row.main.end,
+          ...(row.main.start_frame != null ? { start_frame: row.main.start_frame } : {}),
+          ...(row.main.end_frame != null ? { end_frame: row.main.end_frame } : {}),
+          ...(row.main.speaker != null ? { speaker: row.main.speaker } : {}),
+          text: row.text,
+          _dirty: true,
+        };
+        insertExtensionSegment(targetTrack, extension);
+        MaweMultiSubtitleCore.addSubtitleBinding(row.main, extension, targetTrack);
+        createdMains.push(row.main);
+        created += 1;
+      }
+      if (createdMains.length) MaweMultiSubtitleCore.markMainSegmentsDirty(createdMains);
+      MaweMultiSubtitleCore.markMultiSubtitleDirty();
+      // 未开启双语时本次同时开启了副轨：波形需要整轨重建。
+      command.commit({ cueList: true, waveform: wasEnabled ? 'overlay' : 'full' });
+      MaweHistory.updateUndoRedoButtons();
+      const parts = [];
+      if (updated) parts.push(`更新 ${updated} 条`);
+      if (created) parts.push(`新建 ${created} 条`);
+      const notes = [];
+      if (stale) notes.push(`${stale} 条期间被修改已跳过`);
+      if (staleExtension) notes.push(`${staleExtension} 条副字幕在任务期间被修改，已跳过`);
+      if (missing) notes.push(`${missing} 条模型未返回`);
+      if (unchanged) notes.push(`${unchanged} 条已是该译文`);
+      if (skippedGrouped) notes.push(`${skippedGrouped} 条绑定多条副字幕，已跳过`);
+      MaweHint.flashHint(
+        `${label}：${parts.join('、') || '无变更'}${notes.length ? `（${notes.join('；')}）` : ''}`
+        + (wasEnabled ? '' : '；已自动开启双语字幕'),
+        'success',
+      );
+    });
+    return rows.map(({ id }) => id);
+  }
+
+
+
+  // === 任务入口 ===
+
+  function runTextTask(kind, targets = [], { targetLanguage = null } = {}) {
+    if (!MaweAiSettings.serverAvailable()) {
+      MaweHint.flashHint('AI 功能仅在本地服务器版编辑器可用（当前通过 file:// 打开）', 'invalid');
+      return;
+    }
+    // 翻译任务同时快照单绑定副字幕，供回写前核对人工改动（#5）。
+    const extensionTrack = kind === 'ai-translate' ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
+    const cues = collectTaskCues(targets, extensionTrack);
+    if (!cues.length) {
+      MaweHint.flashHint('选中字幕没有可处理的文本', 'invalid');
+      return;
+    }
+    const payload = {
+      cues: cues.map(({ id, text }) => ({ id, text })),
+      lang: kind === 'ai-translate'
+        ? (targetLanguage === 'zh' || targetLanguage === 'en' ? targetLanguage : translationTargetLang(cues, extensionTrack))
+        : detectTaskLang(cues),
+      customPrompt: customPrompts[kind] || null,
+    };
+    const validatePreset = !payload.customPrompt;
+    const label = TEXT_TASK_LABELS[kind] || 'AI 文本任务';
+    const previewLabel = kind !== 'ai-translate' ? label : payload.customPrompt ? 'AI 按提示词翻译为副字幕'
+      : payload.lang === 'en' ? 'AI 翻译为英文副字幕' : 'AI 翻译为中文副字幕';
+    // 提交时记录工程/媒体绑定：完成时不一致说明上下文已切换，结果整体丢弃（#4）。
+    const taskContext = captureTaskContext();
+    let presented = false;
+    let expectedTrackId = extensionTrack?.id ?? null;
+    const presentResult = (result) => {
+      if (!taskContextCurrent(taskContext)) return false;
+      const texts = result && typeof result.texts === 'object' && result.texts ? result.texts : {};
+      const byId = new Map(cues.map((cue) => [cue.id, cue]));
+      const translation = kind === 'ai-translate';
+      const rows = cues.map((cue) => ({
+        id: cue.id, index: cue.index, start: cue.segment?.start, end: cue.segment?.end,
+        source: cue.text, before: translation ? cue.extension?.text || '' : cue.text,
+        after: typeof texts[cue.id] === 'string' ? texts[cue.id] : '',
+        checked: !(translation && cue.extension), translation,
+      }));
+      const refresh = (currentRows) => currentRows.map((row) => {
+        const cue = byId.get(row.id);
+        const track = translation ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
+        const segment = taskContextCurrent(taskContext) ? locateTaskSegment(cue) : null;
+        let reason = '';
+        if (!taskContextCurrent(taskContext)) reason = '工程或媒体已切换';
+        else if (!segment) reason = '原字幕已修改或删除';
+        else if (translation && (track?.id ?? null) !== expectedTrackId) reason = '副字幕轨已切换';
+        else if (translation && resolveBoundExtension(cue, segment, track).state === 'grouped') reason = '副字幕绑定不适合自动替换';
+        else if (translation && resolveBoundExtension(cue, segment, track).state === 'changed') reason = '副字幕或绑定已修改';
+        else if (translation && resolveBoundExtension(cue, segment, track).state === 'unbound'
+          && overlapsExtension(segment, track?.segments || [])) reason = '副字幕时间范围已占用';
+        else if (!row.after.trim()) reason = '模型未返回有效结果';
+        else if (validatePreset && !translation && ((kind === 'ai-bold' && !preservesDefaultBold(cue.text, row.after))
+          || (kind === 'ai-emoji' && !preservesDefaultEmoji(cue.text, row.after)))) reason = '结果修改了原文或格式不符';
+        else if (row.before === row.after) reason = '没有变化';
+        return { ...row, reason, conflict: Boolean(reason) };
+      });
+      const apply = async (selectedRows) => {
+        if (!await waitForTaskApply(taskContext)) return [];
+        const valid = refresh(selectedRows).filter((row) => !row.conflict);
+        const selectedCues = valid.map((row) => byId.get(row.id));
+        const selectedTexts = Object.fromEntries(valid.map((row) => [row.id, row.after]));
+        const done = translation ? applyTranslationResults(selectedCues, selectedTexts)
+          : applyMainTextResults(kind, selectedCues, selectedTexts, validatePreset);
+        if (translation && done.length && expectedTrackId == null) expectedTrackId = MaweMultiSubtitleCore.getActiveExtensionTrack()?.id ?? null;
+        return done;
+      };
+      if (!global.MaweAiPreview?.present({ label: previewLabel, rows, refresh, apply })) throw new Error('无法保存 AI 建议，请先处理已有结果');
+      presented = true;
+      return true;
+    };
+    MaweAiTasks.begin(kind, payload, label, {
+      beforeComplete: (_isCurrent, result) => presentResult(result),
+    }).then(
+      (result) => {
+        if (!presented && !presentResult(result)) MaweHint.flashHint('工程或媒体已切换，已丢弃本次 AI 结果', 'warning');
+      },
+      (error) => MaweHint.flashHint(error.message || 'AI 任务失败', 'invalid'),
+    );
+  }
+
+
+
+  global.MaweAiTextTasks = Object.freeze({
+    runTextTask,
+    openPromptsModal,
+    collectTaskCues,
+    detectTaskLang,
+    translationSuggestion,
+    captureTaskContext,
+    taskContextCurrent,
+    waitForTaskApply,
+    get customPrompts() { return { ...customPrompts }; },
+  });
+})(typeof window !== 'undefined' ? window : globalThis);

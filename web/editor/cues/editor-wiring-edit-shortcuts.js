@@ -293,6 +293,7 @@ document.addEventListener('keydown', (e) => {
 // 数字键使用当前工程的五/九色槽位；用途决定分配身份或普通分类色。
 document.addEventListener('keydown', (e) => {
   if (!/^[0-9]$/.test(e.key)) return;
+  if (MaweDom.multiSubtitleSplitModal?.classList.contains('show')) return;
   const slot = Number(e.key);
   const color = slot ? MaweColors.ACTIVE_COLOR_PALETTE[slot - 1] : null;
   if (slot && !color) return;
@@ -858,6 +859,8 @@ document.addEventListener('keydown', (e) => {
 // 双列时编辑行的容器同时包含主/副两列，因此只判断当前 contenteditable。
 document.addEventListener('pointerdown', (e) => {
   const target = e.target instanceof Node ? e.target : null;
+  // 丢弃待回写的结果时先保留编辑状态，避免松开按钮之前结果抢先应用。
+  if (window.MaweAiTasks?.active?.phase === 'waiting_edit' && target instanceof Element && target.closest('#ai-task-progress-cancel')) return;
   if (MaweInlineEdit.editingState && (!target || !MaweInlineEdit.editingState.textEl.contains(target))) MaweInlineEdit.finishEdit(true);
   if (MaweInlineEdit.extensionEditingState && (
     !target || !MaweInlineEdit.extensionEditingState.textEl.contains(target)

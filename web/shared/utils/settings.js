@@ -78,6 +78,7 @@ export function createUtilsModule(dependencies) {
     autoSaveProject: true, autoSaveIntervalSeconds: 30, projectBackupEnabled: true,
     stickerOverlayEnabled: false,
     markerEditingEnabled: false, stickersEnabled: true,
+    aiEnabled: false,
     stickerBurnMode: 'fixed',
     stickerBackgroundEnabled: false, stickerBackgroundColor: '#000000', stickerBackgroundOpacity: 35,
     wordTimingRowHeight: 168, wordTimingSecondsPerRow: 5,
@@ -204,6 +205,7 @@ export function createUtilsModule(dependencies) {
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
       markerEditingEnabled: savedSettings.markerEditingEnabled === true,
       stickersEnabled: savedSettings.stickersEnabled !== false,
+      aiEnabled: savedSettings.aiEnabled === true,
       stickerBurnMode: savedSettings.stickerBurnMode === 'cue-left' ? 'cue-left' : 'fixed',
       // 表情包自定义背景：颜色只收 6 位 hex（非法回退黑），透明度钳到 0~100 整数。
       stickerBackgroundEnabled: savedSettings.stickerBackgroundEnabled === true,

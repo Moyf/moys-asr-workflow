@@ -169,6 +169,8 @@ shellTest('English locale covers the editor shell and recent-project setting sta
   await expect(page.locator('#recent-projects-toggle')).toHaveText('Recent projects');
   await expect(page.locator('#search')).toHaveAttribute('placeholder', 'Filter subtitles');
   await expect(page.locator('#cue-panel-text')).toHaveAttribute('placeholder', 'Select a subtitle to start editing…');
+  await expect(page.locator('#ai-task-progress-retry')).toBeHidden();
+  await expect(page.locator('#ai-task-progress-retry')).toHaveText('Reconnect');
   await page.locator('#recent-projects-toggle').click();
   await expect(page.locator('#server-project-settings')).toContainText('Automatically open last project');
 
