@@ -165,6 +165,7 @@ class ScanPublicationTests(CompactContainerAssertions, unittest.TestCase):
 
         with mock.patch.object(cli.os, "replace", side_effect=fail_once):
             code, output = self.run_cli(SyntheticScanner("blue"), "--no-ai")
+        self.assertTrue(failed, "publication failure injection was not reached")
         self.assertEqual(code, 1, output)
         self.assert_old_intact()
         self.assertFalse((self.out / cli.PUBLICATION_MARKER).exists())
@@ -183,20 +184,25 @@ class ScanPublicationTests(CompactContainerAssertions, unittest.TestCase):
 
         with mock.patch.object(cli.os, "replace", side_effect=interrupt_once):
             code, output = self.run_cli(SyntheticScanner("blue"), "--no-ai")
+        self.assertTrue(interrupted, "publication interrupt injection was not reached")
         self.assertEqual(code, 130, output)
         self.assert_old_intact()
 
     def test_failed_recovery_keeps_backups_and_next_invocation_recovers(self) -> None:
         self.seed_complete()
         replace = cli.os.replace
+        failure_calls = 0
 
         def fail_publication_and_recovery(source, target):
+            nonlocal failure_calls
             if Path(target) == self.out / "report.html":
+                failure_calls += 1
                 raise OSError("synthetic report file temporarily unavailable")
             return replace(source, target)
 
         with mock.patch.object(cli.os, "replace", side_effect=fail_publication_and_recovery):
             code, output = self.run_cli(SyntheticScanner("blue"), "--no-ai")
+        self.assertGreaterEqual(failure_calls, 2, "publication and recovery must both reach the failure injection")
         self.assertEqual(code, 1, output)
         self.assertTrue((self.out / cli.PUBLICATION_MARKER).is_file())
         journal = cli._load_json(self.out / cli.PUBLICATION_MARKER)
