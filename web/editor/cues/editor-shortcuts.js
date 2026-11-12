@@ -137,10 +137,34 @@ export function initMaweShortcuts() {
   }
 
   let overrides = {};
+  const savedBindingWarnings = [];
   function bindings(entry, source = overrides) { return source[entry.id] || entry.defaults; }
   function effectiveBindings(entry, source = overrides) {
     const active = bindings(entry, source);
-    if (entry.id !== 'split') return active.map(value => ({ chord: value, target: entry.defaults.includes(value) ? value : entry.defaults[0] }));
+    if (entry.id !== 'split') {
+      const preserveAltSemantics = /^(?:nav|extend)-[adws]$/.test(entry.id);
+      const result = [];
+      const mapped = new Map();
+      for (const value of active) {
+        const target = entry.defaults.includes(value) ? value : entry.defaults[0];
+        const variants = [[value, target]];
+        if (preserveAltSemantics) variants.push([
+          addModifiers(value, ['Alt']),
+          addModifiers(target, ['Alt']),
+        ]);
+        for (const [chordValue, targetValue] of variants) {
+          if (mapped.has(chordValue)) {
+            if (mapped.get(chordValue) !== targetValue) {
+              throw new Error('键盘快捷键的 Alt 派生组合冲突，无法保留原修饰键语义：' + displayChord(chordValue));
+            }
+            continue;
+          }
+          mapped.set(chordValue, targetValue);
+          result.push({ chord: chordValue, target: targetValue });
+        }
+      }
+      return result;
+    }
     const result = [];
     const mapped = new Map();
     for (const value of active) {
@@ -164,8 +188,17 @@ export function initMaweShortcuts() {
     return result;
   }
   function defaultPhysicalBindings(entry) {
+    if (/^(?:nav|extend)-[adws]$/.test(entry.id)) {
+      return [...new Set(entry.defaults.flatMap(value => [value, addModifiers(value, ['Alt'])]))];
+    }
     if (entry.id !== 'split') return entry.defaults;
     return ['b', 'Shift+b', 'Mod+Shift+b'];
+  }
+  function suppressesOldChord(entry, physical) {
+    const defaults = defaultPhysicalBindings(entry);
+    if (/^(?:nav|extend)-[adws]$/.test(entry.id)) return defaults.includes(physical);
+    return defaults.includes(physical)
+      || defaults.includes(physical.replace(/(?:Alt|Shift)\+/g, ''));
   }
   function validate(source, changedId = null) {
     const used = new Map();
@@ -180,14 +213,36 @@ export function initMaweShortcuts() {
       }
     }
   }
+  function describeSavedBindingWarning(entry, value, error) {
+    const messageText = error?.message || '保存格式无效';
+    const prefixes = [
+      '快捷键派生组合与系统或浏览器保留功能冲突：',
+      '快捷键组合与系统或浏览器保留功能冲突：',
+    ];
+    const prefix = prefixes.find(item => messageText.startsWith(item));
+    if (prefix) {
+      const detail = messageText.slice(prefix.length).split('；');
+      return { label: entry.label, chord: detail[0], reason: detail.slice(1).join('；') };
+    }
+    return { label: entry.label, chord: Array.isArray(value) ? value.join(', ') : String(value), reason: messageText };
+  }
   try {
     const saved = JSON.parse(MaweHost.storage.getItem(BINDINGS_KEY) || '{}');
     if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
       const candidate = {};
       for (const entry of commands) {
         if (Object.hasOwn(saved, entry.id)) {
-          if (!Array.isArray(saved[entry.id]) || saved[entry.id].length > 2) throw new Error('Invalid bindings');
-          candidate[entry.id] = saved[entry.id];
+          const value = saved[entry.id];
+          try {
+            if (!Array.isArray(value) || value.length > 2) throw new Error('保存格式无效');
+            const isolated = { [entry.id]: value };
+            for (const binding of effectiveBindings(entry, isolated)) {
+              if (!validChord(binding.chord)) throw reservedChordError(binding.chord, entry.id === 'split');
+            }
+            candidate[entry.id] = value;
+          } catch (error) {
+            savedBindingWarnings.push(describeSavedBindingWarning(entry, value, error));
+          }
         }
       }
       validate(candidate);
@@ -209,6 +264,7 @@ export function initMaweShortcuts() {
     MaweHost.storage.setItem(BINDINGS_KEY, '{}');
     overrides = {};
   }
+  function takeSavedBindingWarnings() { return savedBindingWarnings.splice(0); }
   function displayChord(value) {
     return value.split('+').map(part => part === 'Mod'
       ? (/Mac|iPhone|iPad/.test(global.navigator?.platform || '') ? 'Cmd' : 'Ctrl')
@@ -252,8 +308,7 @@ export function initMaweShortcuts() {
           || commands.some(item => ['save', 'save-as'].includes(item.id) && item.defaults.includes(physical)))) {
         if (entry) result = projectedEvent(event, match.target);
         else if (commands.some(item => Object.hasOwn(overrides, item.id)
-          && (defaultPhysicalBindings(item).includes(physical)
-            || defaultPhysicalBindings(item).includes(physical.replace(/(?:Alt|Shift)\+/g, ''))))) {
+          && suppressesOldChord(item, physical))) {
           result = projectedEvent(event, 'Unidentified');
         }
       }
@@ -263,7 +318,7 @@ export function initMaweShortcuts() {
   }
 
   global.MaweShortcuts = Object.freeze({
-    commands, chord, validChord, bindings, setBinding, resetBindings, displayChord, resolveEvent,
+    commands, chord, validChord, bindings, setBinding, resetBindings, takeSavedBindingWarnings, displayChord, resolveEvent,
     effectiveBindings, splitVariantLabel, physicalCode,
     showShortcutBlocked,
     get interceptedSpace() { return interceptedSpace; },

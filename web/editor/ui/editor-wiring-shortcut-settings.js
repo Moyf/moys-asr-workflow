@@ -11,6 +11,15 @@ export function initMaweShortcutSettingsWiring() {
   const filter = document.getElementById('shortcuts-filter');
   const keySearch = document.getElementById('shortcuts-key-search');
   const translate = text => window.MAWE_I18N.translateText(text);
+  const savedWarnings = MaweShortcuts.takeSavedBindingWarnings();
+  if (savedWarnings.length) {
+    const template = translate('已忽略无效的已保存快捷键设置：{label}（{chord}）：{reason}；其余有效自定义快捷键已保留。');
+    const notice = savedWarnings.map(warning => template
+      .replaceAll('{label}', translate(warning.label))
+      .replaceAll('{chord}', warning.chord)
+      .replaceAll('{reason}', translate(warning.reason))).join('\n');
+    MaweHint.flashHint(notice, 'warning', { durationMs: 8000 });
+  }
   const groups = [
     ['playback', '播放控制'], ['navigation', '导航与选择'], ['timing', '时间微调'],
     ['editing', '字幕编辑'], ['bilingual', '主副字幕'], ['appearance', '颜色与表情包'], ['project', '工程保存'],
@@ -51,6 +60,7 @@ export function initMaweShortcutSettingsWiring() {
       const reservedPrefix = '快捷键派生组合与系统或浏览器保留功能冲突：';
       const genericReservedPrefix = '快捷键组合与系统或浏览器保留功能冲突：';
       const duplicatePrefix = '拆分快捷键派生组合发生冲突，无法区分三种拆分操作：';
+      const altDuplicatePrefix = '键盘快捷键的 Alt 派生组合冲突，无法保留原修饰键语义：';
       const reservedDetail = messageText.startsWith(reservedPrefix) ? messageText.slice(reservedPrefix.length).split('；') : null;
       const genericReservedDetail = messageText.startsWith(genericReservedPrefix) ? messageText.slice(genericReservedPrefix.length).split('；') : null;
       message(messageText.startsWith('快捷键冲突：')
@@ -61,6 +71,8 @@ export function initMaweShortcutSettingsWiring() {
             ? translate(genericReservedPrefix) + genericReservedDetail[0] + ' — ' + translate(genericReservedDetail.slice(1).join('；'))
           : messageText.startsWith(duplicatePrefix)
             ? translate(duplicatePrefix) + messageText.slice(duplicatePrefix.length)
+          : messageText.startsWith(altDuplicatePrefix)
+            ? translate(altDuplicatePrefix) + messageText.slice(altDuplicatePrefix.length)
           : translate(messageText === '该按键不可用或由浏览器 / 系统保留'
             ? messageText : '无法保存快捷键，请检查浏览器存储权限'), true);
     }

@@ -371,13 +371,16 @@
 
   function forcedSplitRetryHint(explicitOnly = false) {
     // 拆分快捷键仅在非编辑态生效；内联编辑态仍以设置中的 Enter 操作为准。
+    const modal = MaweDom.multiSubtitleSplitModal?.classList.contains('show');
     const editing = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
-    const splitKey = editing
+    const splitKey = modal ? 'B' : editing
       ? MaweDisplaySettings.splitKeyLabel()
       : MaweShortcuts.splitVariantLabel('b');
     const template = !splitKey
       ? '当前切点会产生不足 100ms 的一侧；没有可用的拆分快捷键，请再次执行拆分操作以强制拆分，切点将调整为两侧各至少 100ms'
-      : explicitOnly || editing
+      : modal
+        ? '当前切点会产生不足 100ms 的一侧；请再次按 {splitKey} 或 Enter 强制拆分，切点将调整为两侧各至少 100ms'
+        : explicitOnly || editing
         ? '当前切点会产生不足 100ms 的一侧；请再次按 {splitKey} 强制拆分，切点将调整为两侧各至少 100ms'
         : '当前切点会产生不足 100ms 的一侧；请再次按 {splitKey} 或 Enter 强制拆分，切点将调整为两侧各至少 100ms';
     return window.MAWE_I18N.translateText(template).replaceAll('{splitKey}', splitKey);

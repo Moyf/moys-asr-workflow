@@ -116,6 +116,24 @@ test('Q split variants and Mac/browser reserved shortcuts are rejected with a vi
   await page.keyboard.press('Escape');
   await expect(keyButton(page, 'nav-d')).toHaveText('D');
 });
+test('invalid saved split shortcut is discarded with a warning while other shortcuts survive saving', async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: ['q'], play: ['p'] }));
+  });
+  await page.reload();
+  await expect(page.locator('#hint-stack .hint-warning').last()).toContainText('Ctrl+Shift+Q');
+  await expect(page.locator('#hint-stack .hint-warning').last()).toContainText('保留');
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-shortcuts').click();
+  await expect(keyButton(page, 'split')).toHaveText('B');
+  await expect(keyButton(page, 'play')).toHaveText('P');
+
+  await record(page, 'nav-d', 'q');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('moy.asr.editor.shortcuts.v1')));
+  expect(saved.play).toEqual(['p']);
+  expect(saved['nav-d']).toEqual(['q']);
+  expect(saved.split).toBeUndefined();
+});
 test('split aliases follow the customized key through real keyboard events', async ({ page }) => {
   await record(page, 'split', 'Alt+e');
   await expect(page.locator('#help-shortcut-split-key')).toHaveText('Alt+E');

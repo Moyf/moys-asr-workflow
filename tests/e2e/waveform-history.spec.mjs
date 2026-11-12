@@ -1425,7 +1425,7 @@ test('requires a second B in the split dialog before forcing a short-side cut', 
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   await expect(page.locator('.cue')).toHaveCount(6);
   await expect(page.locator('.hint-card.hint-warning', {
-    hasText: 'press Alt+E or Enter again to force the split',
+    hasText: 'press B or Enter again to force the split',
   })).toBeVisible();
 
   await page.keyboard.press('b');

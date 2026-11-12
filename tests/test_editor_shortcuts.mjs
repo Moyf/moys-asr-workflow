@@ -55,7 +55,7 @@ test('split operations preserve base modifiers and reject lossy or reserved vari
     { chord: 'Alt+Shift+e', target: 'Shift+b' },
     { chord: 'Mod+Alt+Shift+e', target: 'Mod+Shift+b' },
   ]);
-  assert.throws(() => api.setBinding('nav-a', 'Alt+Shift+e'), /冲突：拆分字幕/);
+  assert.throws(() => api.setBinding('nav-a', 'Alt+Shift+e'), /Alt 派生组合冲突.*Alt\+Shift\+E/);
   const savedAlt = stored();
   assert.throws(() => api.setBinding('split', 'Shift+e'), /派生组合发生冲突.*Shift\+E/);
   assert.equal(stored(), savedAlt);
@@ -92,6 +92,34 @@ test('Alt-derived split variants dispatch each split operation to its target cho
   assert.equal(duplicate.ctrlKey, true);
   assert.equal(duplicate.altKey, false);
   assert.equal(duplicate.shiftKey, true);
+});
+test('remapped navigation keys retain Alt drag-adjust semantics and suppress only old chords', () => {
+  for (const [id, key, replacement] of [
+    ['nav-a', 'a', 'e'], ['nav-d', 'd', 'q'], ['nav-w', 'w', 'm'], ['nav-s', 's', 'u'],
+  ]) {
+    const { api } = setup();
+    api.setBinding(id, replacement);
+    const entry = api.commands.find(item => item.id === id);
+    const bindings = api.effectiveBindings(entry);
+    assert.ok(bindings.some(binding => binding.chord === `Alt+${replacement}`
+      && binding.target === `Alt+${key}`));
+    const remapped = api.resolveEvent(event(replacement, { altKey: true }));
+    assert.equal(remapped.key, key);
+    assert.equal(remapped.altKey, true);
+    assert.equal(api.resolveEvent(event(key, { altKey: true })).key, 'Unidentified');
+  }
+  const { api } = setup();
+  api.setBinding('nav-a', 'e');
+  assert.throws(() => api.setBinding('play', 'Alt+e'), /快捷键冲突/);
+  assert.throws(() => api.setBinding('nav-a', 'Alt+e'), /Alt 派生组合冲突.*Alt\+E/);
+  const extended = setup().api;
+  extended.setBinding('extend-a', 'e');
+  assert.ok(extended.effectiveBindings(extended.commands.find(item => item.id === 'extend-a'))
+    .some(binding => binding.chord === 'Alt+e' && binding.target === 'Alt+Shift+a'));
+  const remappedExtend = extended.resolveEvent(event('e', { altKey: true }));
+  assert.equal(remappedExtend.key, 'a');
+  assert.equal(remappedExtend.shiftKey, true);
+  assert.equal(remappedExtend.altKey, true);
 });
 test('Mac hide shortcut is treated as reserved on every platform', () => {
   const { api } = setup();
@@ -169,6 +197,21 @@ test('corrupt stored bindings and unavailable storage safely preserve defaults',
   const { api } = setup('{}', true);
   assert.throws(() => api.setBinding('split', 'Alt+e'), /denied/);
   assert.equal(api.resolveEvent(event('b')).key, 'b');
+});
+test('invalid saved split entries are dropped independently and valid saved commands survive later writes', () => {
+  const { api, stored } = setup('{"split":["q"],"play":["p"]}');
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'split'))], ['b']);
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'play'))], ['p']);
+  const warnings = api.takeSavedBindingWarnings();
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0].chord, /Ctrl\+Shift\+Q/);
+  assert.match(warnings[0].reason, /Windows\/Linux Chromium/);
+
+  api.setBinding('nav-d', 'q');
+  const reloaded = setup(stored()).api;
+  assert.deepEqual([...reloaded.bindings(reloaded.commands.find(item => item.id === 'play'))], ['p']);
+  assert.deepEqual([...reloaded.bindings(reloaded.commands.find(item => item.id === 'nav-d'))], ['q']);
+  assert.deepEqual([...reloaded.bindings(reloaded.commands.find(item => item.id === 'split'))], ['b']);
 });
 test('Shift+digits and macOS Option letters record usable chords', () => {
   const { api } = setup();

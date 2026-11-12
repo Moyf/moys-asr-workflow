@@ -57,6 +57,46 @@ function readTimings(page) {
   return page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(({ start, end }) => ({ start, end })));
 }
 
+test('remapped A/D preserve Alt drag adjustment through real browser events', async ({ page }) => {
+  await loadAttachedCues(page, true, 'classic');
+  await page.evaluate(() => {
+    MaweShortcuts.setBinding('nav-a', 'e');
+    MaweShortcuts.setBinding('nav-d', 'q');
+    MaweShortcuts.setBinding('extend-a', 'p');
+    MaweShortcuts.setBinding('extend-d', 'm');
+    window.__heldCueCalls = [];
+    const wave = MaweCoreState.waveformEditor;
+    const handleHeldCueKey = wave.handleHeldCueKey;
+    wave.handleHeldCueKey = function (...args) {
+      window.__heldCueCalls.push(args);
+      return handleHeldCueKey.apply(this, args);
+    };
+  });
+  const cue = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
+  const box = await stableVisibleBoundingBox(page, cue);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect.poll(() => page.evaluate(() => Boolean(MaweCoreState.waveformEditor.drag))).toBe(true);
+
+  await page.keyboard.press('Alt+a');
+  expect(await page.evaluate(() => window.__heldCueCalls)).toHaveLength(0);
+  await page.keyboard.press('Alt+e');
+  await page.keyboard.press('Alt+q');
+  await page.keyboard.press('Alt+p');
+  await page.keyboard.press('Alt+m');
+  const { calls, step } = await page.evaluate(() => ({
+    calls: window.__heldCueCalls.map(([direction, delta, options]) => [direction, delta, options]),
+    step: MaweTimeline.timelineCueMoveStepValue(),
+  }));
+  expect(calls).toEqual([
+    [-1, -step, { shiftKey: false, altKey: true, snap: true }],
+    [1, step, { shiftKey: false, altKey: true, snap: true }],
+    [-1, -step, { shiftKey: true, altKey: true, snap: true }],
+    [1, step, { shiftKey: true, altKey: true, snap: true }],
+  ]);
+  await page.mouse.up();
+});
+
 async function selectedCueIndex(page) {
   return page.locator('.cue.selected').getAttribute('data-idx');
 }
