@@ -1,7 +1,7 @@
 // multi-subtitle: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { cloneJsonValue, detectSubtitleSplitMode, ensureStableSegmentIds, stableId } = dependencies;
+  const { cloneJsonValue, detectSubtitleSplitMode, effectiveColorName, ensureStableSegmentIds, stableId } = dependencies;
 
 
   // === 多重字幕（双语字幕）===
@@ -520,5 +520,90 @@ export function createUtilsModule(dependencies) {
     };
   }
 
-  return Object.freeze({ MULTI_SUBTITLE_DISPLAY_MODES, MULTI_SUBTITLE_SCHEMA, MULTI_SUBTITLE_SPLIT_MODES, MULTI_SUBTITLE_TOLERANCE_MS, bindingForSegment, buildMultiDisplayRows, buildSubtitleBinding, matchSubtitleSegments, mergeMainAndOverlaySegments, moveSegmentBetweenTracks, normalizeMultiSubtitle, normalizeMultiSubtitleProject, normalizeOverlayTrack, rebuildBindingOffsets, removeSubtitleBindings, resolveMergedGroupInheritance, swapMainAndExtensionSubtitle });
+
+  // 合并选区的颜色继承：颜色名才是用户语义，head/ref 只是存储结构。
+  // 「标记颜色」每次多选各建一个组，交换主副也按源组 1:1 映射，相邻同色但
+  // 分属不同组是常态；只认同组会让「两条红字合并后丢色」。因此：同组（同
+  // head）沿用组继承；不同组但所有成员的有效颜色名一致时物化自持 head，
+  // 合并产物保留该色。有效颜色名不同或含未标记段时不继承。groupInherited
+  // 为 false 提示调用方：源组已被合并打断，仍需按切点拆组（splitGroupsAtCutPoints 语义）。
+  function resolveMergedColorInheritance(segments, indexes) {
+    if (!Array.isArray(segments) || !Array.isArray(indexes) || !indexes.length
+        || indexes.some((index) => !Number.isInteger(index) || index < 0
+          || index >= segments.length || !segments[index] || typeof segments[index] !== 'object')) {
+      return { head: null, ref: null, groupInherited: false };
+    }
+    const group = resolveMergedGroupInheritance(segments, indexes, 'color', 'color_ref');
+    if (group.headIdx !== null) return { head: group.head, ref: group.ref, groupInherited: true };
+    // 与预览/导出共用解析：有效 head 的颜色名优先于 ref 的冗余 name，
+    // 缺失 head 时才沿用 ref.name；不在合并时扩展为整轨数据修复。
+    const names = indexes.map((index) => effectiveColorName(segments[index], segments));
+    const name = names[0];
+    if (!name || names.some((candidate) => candidate !== name)) {
+      return { head: null, ref: null, groupInherited: false };
+    }
+    let sourceHead = null;
+    for (const index of indexes) {
+      const segment = segments[index];
+      if (segment?.color?.name === name) { sourceHead = segment.color; break; }
+      const headIdx = segment?.color_ref?.headIdx;
+      if (Number.isInteger(headIdx) && segments[headIdx]?.color?.name === name) {
+        sourceHead = segments[headIdx].color;
+        break;
+      }
+    }
+    const first = segments[indexes[0]];
+    const last = segments[indexes[indexes.length - 1]];
+    return {
+      head: {
+        name,
+        value: sourceHead ? cloneJsonValue(sourceHead.value) : null,
+        start: Number.isFinite(Number(first?.start)) ? first.start : 0,
+        end: Number.isFinite(Number(last?.end)) ? last.end : 0,
+      },
+      ref: null,
+      groupInherited: false,
+    };
+  }
+
+
+  // 合并 splice 后按被移除下标集合修复组引用：removedIndexes 是合并前被移除段的
+  // 原下标（升序、可不连续——主轨合并联动副轨时副轨下标不保证连续），合并产物
+  // 插在首个被移除下标处。指向被合并 head 的引用改指合并产物（同组继承时产物即
+  // 新 head）；其后的 head 按「前移被删数、回插 1 段」平移。必须在 splice 完成
+  // 后立即调用；混合组场景调用方需先按切点拆组（splitGroupsAtCutPoints 语义）。
+  // originalLength 必须在 splice 前捕获：旧下标不能用合并后长度校验，也不能
+  // 从未校验的 removedIndexes 数量反推上界（重复或无效下标会扩大范围）。
+  function remapGroupRefsAfterMergeSplice(segments, removedIndexes, refFields = ['sticker_ref', 'color_ref'], originalLength) {
+    if (!Array.isArray(segments) || !Array.isArray(removedIndexes) || !removedIndexes.length
+        || !Number.isInteger(originalLength) || originalLength < segments.length) return 0;
+    const removed = [...new Set(removedIndexes)]
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < originalLength)
+      .sort((left, right) => left - right);
+    if (!removed.length) return 0;
+    const mergedIndex = removed[0];
+    const removedSet = new Set(removed);
+    let changed = 0;
+    segments.forEach((segment) => {
+      refFields.forEach((field) => {
+        const ref = segment?.[field];
+        if (!ref || !Number.isInteger(ref.headIdx)) return;
+        if (removedSet.has(ref.headIdx)) {
+          if (ref.headIdx !== mergedIndex) { ref.headIdx = mergedIndex; changed += 1; }
+          return;
+        }
+        if (ref.headIdx < mergedIndex) return; // 合并点之前的 head 不受影响
+        let removedBefore = 0;
+        for (const removedIndex of removed) {
+          if (removedIndex >= ref.headIdx) break;
+          removedBefore += 1;
+        }
+        const shift = 1 - removedBefore;
+        if (shift) { ref.headIdx += shift; changed += 1; }
+      });
+    });
+    return changed;
+  }
+
+  return Object.freeze({ MULTI_SUBTITLE_DISPLAY_MODES, MULTI_SUBTITLE_SCHEMA, MULTI_SUBTITLE_SPLIT_MODES, MULTI_SUBTITLE_TOLERANCE_MS, bindingForSegment, buildMultiDisplayRows, buildSubtitleBinding, matchSubtitleSegments, mergeMainAndOverlaySegments, moveSegmentBetweenTracks, normalizeMultiSubtitle, normalizeMultiSubtitleProject, normalizeOverlayTrack, rebuildBindingOffsets, remapGroupRefsAfterMergeSplice, removeSubtitleBindings, resolveMergedColorInheritance, resolveMergedGroupInheritance, swapMainAndExtensionSubtitle });
 }

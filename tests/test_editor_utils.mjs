@@ -3811,6 +3811,217 @@ test('merge group inheritance keeps a common head or reference and rejects mixed
   });
 });
 
+test('remaps group refs after a contiguous merge splice keeps groups valid', () => {
+  // 复刻主轨合并联动副轨的数据面：副轨 [14,15] 合并成 1 条插在 14，
+  // 其后所有 head 与 ref 都要前移 1 位（修复前正是保存报错的来源）。
+  const segments = [
+    { color: { name: 'red', start: 0, end: 1000 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+    { color_ref: { name: 'red', headIdx: 0 } }, // 被合并
+    { color_ref: { name: 'red', headIdx: 0 } }, // 被合并
+    { color: { name: 'green', start: 0, end: 1000 } },
+    { color_ref: { name: 'green', headIdx: 4 } },
+  ];
+  const merged = { color_ref: { name: 'red', headIdx: 0 } };
+  segments.splice(2, 2, merged);
+  const changed = helpers.remapGroupRefsAfterMergeSplice(segments, [2, 3], ['color_ref'], 6);
+  assert.equal(changed, 1);
+  assert.equal(segments[2].color_ref.headIdx, 0, '合并产物仍指向前方 head');
+  assert.equal(segments[3].color.name, 'green', '其后 head 前移 1 位');
+  assert.equal(segments[4].color_ref.headIdx, 3);
+});
+
+test('remaps group refs after a merge splice with the head inside the merged set', () => {
+  // head 本身被合并：同组继承时合并产物成为新 head，幸存 ref 改指产物位置。
+  const segments = [
+    { color: { name: 'yellow', start: 0, end: 1000 } }, // 被合并 head
+    { color_ref: { name: 'yellow', headIdx: 0 } },     // 被合并
+    { color_ref: { name: 'yellow', headIdx: 0 } },     // 幸存成员
+    { color_ref: { name: 'yellow', headIdx: 0 } },     // 幸存成员
+  ];
+  const merged = { color: { name: 'yellow', start: 0, end: 1000 } };
+  segments.splice(0, 2, merged);
+  helpers.remapGroupRefsAfterMergeSplice(segments, [0, 1], ['color_ref'], 4);
+  assert.equal(segments[0].color.name, 'yellow');
+  assert.equal(segments[1].color_ref.headIdx, 0);
+  assert.equal(segments[2].color_ref.headIdx, 0);
+});
+
+test('remaps group refs after a non-contiguous merge splice', () => {
+  // 主轨合并联动副轨时被合并副轨段可以不连续：平移量按「前面被删数 - 1」。
+  const segments = [
+    { color: { name: 'red', start: 0, end: 1000 } },
+    { color_ref: { name: 'red', headIdx: 0 } },      // 1 被合并
+    { color: { name: 'green', start: 0, end: 1000 } },
+    { color_ref: { name: 'red', headIdx: 0 } },      // 3 被合并
+    { color_ref: { name: 'green', headIdx: 2 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+  ];
+  const merged = { color_ref: { name: 'red', headIdx: 0 } };
+  segments.splice(3, 1);
+  segments.splice(1, 1);
+  segments.splice(1, 0, merged);
+  helpers.remapGroupRefsAfterMergeSplice(segments, [1, 3], ['color_ref'], 6);
+  assert.equal(segments[2].color.name, 'green');
+  assert.equal(segments[3].color_ref.headIdx, 2, '被删 1 个、回插 1 段：中间 head 不动');
+  assert.equal(segments[4].color_ref.headIdx, 0, '指向前方 head 的 ref 不受影响');
+});
+
+test('remap after merge splice ignores out-of-range and empty inputs', () => {
+  const segments = [{ color_ref: { name: 'red', headIdx: 0 } }];
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [], ['color_ref'], 1), 0);
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [99, -3], ['color_ref'], 1), 0);
+  assert.equal(segments[0].color_ref.headIdx, 0);
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(null, [0], undefined, 1), 0);
+});
+
+test('resolveMergedColorInheritance continues same-group refs and materializes same-name crosses', () => {
+  // 同组：沿用组继承（head 在选区前 → 续指原 head）。
+  const sameGroup = [
+    { color: { name: 'red', value: '#e74c3c', start: 0, end: 1500 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+  ];
+  const continued = helpers.resolveMergedColorInheritance(sameGroup, [1, 2]);
+  assert.equal(continued.groupInherited, true);
+  assert.equal(continued.head, null);
+  assert.deepEqual(JSON.parse(JSON.stringify(continued.ref)), { name: 'red', headIdx: 0 });
+
+  // 跨组同色（相邻两组都为红，两次标记各建一组）：物化自持 head，不丢色。
+  const adjacentGroups = [
+    { start: 0, end: 1500, color: { name: 'red', value: '#e74c3c', start: 0, end: 1500 } },
+    { start: 1000, end: 2500, color_ref: { name: 'red', headIdx: 0 } },
+    { start: 2000, end: 3500, color: { name: 'red', value: '#e74c3c', start: 2000, end: 3500 } },
+    { start: 3000, end: 4000, color_ref: { name: 'red', headIdx: 2 } },
+  ];
+  const materialized = helpers.resolveMergedColorInheritance(adjacentGroups, [1, 2]);
+  assert.equal(materialized.groupInherited, false);
+  assert.equal(materialized.ref, null);
+  assert.deepEqual(JSON.parse(JSON.stringify(materialized.head)), {
+    name: 'red', value: '#e74c3c', start: 1000, end: 3500,
+  });
+
+  // 颜色名不同 / 含未标记段：不继承。
+  assert.equal(helpers.resolveMergedColorInheritance([
+    { color: { name: 'red', start: 0, end: 500 } },
+    { color: { name: 'green', start: 1000, end: 1500 } },
+  ], [0, 1]).head, null);
+  assert.equal(helpers.resolveMergedColorInheritance([
+    { color: { name: 'red', start: 0, end: 500 } },
+    { text: 'plain' },
+  ], [0, 1]).head, null);
+
+  // ref 自身缺 name 时按其 head 解析有效颜色名（跨组同色也能匹配上）。
+  const namelessRefCross = [
+    { color: { name: 'blue', value: '#0000aa', start: 0, end: 500 } },
+    { color_ref: { headIdx: 0 } },
+    { color: { name: 'blue', value: '#0000aa', start: 2000, end: 2500 } },
+  ];
+  const crossed = helpers.resolveMergedColorInheritance(namelessRefCross, [1, 2]);
+  assert.equal(crossed.groupInherited, false);
+  assert.equal(crossed.head.name, 'blue');
+});
+
+test('resolveMergedColorInheritance rejects null and invalid inputs without changing them', () => {
+  const segments = [{ color: { name: 'red' } }, { color: { name: 'red' } }];
+  for (const [source, indexes] of [
+    [null, [0, 1]], [undefined, [0]], [{}, [0]],
+    [segments, null], [segments, undefined], [segments, {}], [segments, []],
+    [segments, [-1, 0]], [segments, [0, 2]], [segments, [0, 0.5]],
+    [segments, [0, '1']], [segments, [0, NaN]], [[null, {}], [0, 1]],
+    [[{ color: { name: 'red' } }, 'invalid'], [0, 1]],
+  ]) {
+    assert.deepEqual(JSON.parse(JSON.stringify(helpers.resolveMergedColorInheritance(source, indexes))),
+      { head: null, ref: null, groupInherited: false });
+  }
+  assert.deepEqual(segments, [{ color: { name: 'red' } }, { color: { name: 'red' } }]);
+});
+
+test('resolveMergedColorInheritance uses preview color semantics and returns independent copies', () => {
+  const segments = [
+    { start: 0, end: 500, color: { name: 'red', value: { hex: '#aa0000' } } },
+    { start: 1000, end: 1500, color_ref: { name: 'green', headIdx: 0 } },
+    { start: 2000, end: 2500, color: { name: 'red', value: '#bb0000' } },
+    { start: 3000, end: 3500, color_ref: { name: 'red', headIdx: 2 } },
+  ];
+  const before = structuredClone(segments);
+  const indexes = Object.freeze([1, 2]);
+  const merged = helpers.resolveMergedColorInheritance(segments, indexes);
+  assert.equal(merged.head.name, helpers.effectiveColorName(segments[1], segments));
+  assert.equal(merged.head.name, 'red', 'valid head name wins over stale redundant ref name');
+  assert.deepEqual(JSON.parse(JSON.stringify(merged.head.value)), { hex: '#aa0000' });
+  merged.head.value.hex = '#ffffff';
+  assert.deepEqual(segments, before, 'cross-group inheritance deep-clones the source value');
+  const inheritedHead = helpers.resolveMergedColorInheritance(segments, [0, 1]);
+  inheritedHead.head.value.hex = '#ffffff';
+  const inheritedRef = helpers.resolveMergedColorInheritance(segments, [1]);
+  inheritedRef.ref.name = 'blue';
+  assert.deepEqual(segments, before, 'same-group inheritance also returns independent head/ref');
+  const differentEffectiveNames = structuredClone(segments);
+  differentEffectiveNames[0].color.name = 'blue';
+  differentEffectiveNames[1].color_ref.name = 'red';
+  assert.equal(helpers.resolveMergedColorInheritance(differentEffectiveNames, [1, 2]).head, null,
+    'matching redundant ref names cannot override different effective head colors');
+});
+
+test('remaps trailing color refs after merging four of six cues', () => {
+  const segments = [{}, {}, {}, {}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 4 } }];
+  const originalLength = segments.length;
+  segments.splice(0, 4, {});
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [0, 1, 2, 3], ['color_ref'], originalLength), 1);
+  assert.equal(segments.length, 3);
+  assert.equal(segments[2].color_ref.headIdx, 1);
+  assert.equal(segments[segments[2].color_ref.headIdx].color.name, 'green');
+});
+
+test('remaps all old indexes after merging noncontiguous cues in an eight-cue track', () => {
+  const segments = [{}, {}, {}, {}, {}, {}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 6 } }];
+  const originalLength = segments.length;
+  const indexes = [0, 2, 4, 5];
+  for (const index of indexes.toReversed()) segments.splice(index, 1);
+  segments.splice(0, 0, {});
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, indexes, ['color_ref'], originalLength), 1);
+  assert.equal(segments.length, 5);
+  assert.equal(segments[4].color_ref.headIdx, 3);
+});
+
+test('remaps a removed head beyond the post-merge length to the merged cue', () => {
+  const segments = [{}, {}, {}, {}, {}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 5 } }];
+  const originalLength = segments.length;
+  segments.splice(3, 3, { color: { name: 'green' } });
+  helpers.remapGroupRefsAfterMergeSplice(segments, [3, 4, 5], ['color_ref'], originalLength);
+  assert.equal(segments[4].color_ref.headIdx, 3);
+});
+
+test('remaps true tail and complete merges without changing earlier refs', () => {
+  const segments = [
+    { color: { name: 'red' } }, { color_ref: { name: 'red', headIdx: 0 } }, {}, {},
+    { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 4 } },
+  ];
+  segments.splice(4, 2, { color: { name: 'green' } });
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [4, 5], ['color_ref'], 6), 0);
+  assert.equal(segments[1].color_ref.headIdx, 0);
+  assert.equal(segments[4].color.name, 'green');
+  const wholeTrack = [{ color: { name: 'green' } }];
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(wholeTrack, [0, 1, 2, 3, 4, 5], undefined, 6), 0);
+  assert.deepEqual(wholeTrack, [{ color: { name: 'green' } }]);
+});
+
+test('remaps using explicit original length despite duplicate and invalid indexes', () => {
+  const segments = [{}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 4 } }];
+  const indexes = [3, 0, 1, 2, 2, 6, 7, 8, 99, -1, 1.5];
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, indexes, ['color_ref'], 6), 1);
+  assert.equal(segments[2].color_ref.headIdx, 1);
+});
+
+test('remap after merge requires a valid explicit pre-merge length', () => {
+  for (const originalLength of [undefined, null, -1, 0, 2.5, Infinity]) {
+    const segments = [{}, { color_ref: { headIdx: 2 } }];
+    assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [0, 1], ['color_ref'], originalLength), 0);
+    assert.equal(segments[1].color_ref.headIdx, 2);
+  }
+});
+
 test('finds A/D navigation targets from selection or playhead', () => {
   const segments = [
     { start: 1000, end: 2000 },

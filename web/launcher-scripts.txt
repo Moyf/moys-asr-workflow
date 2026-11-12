@@ -8,6 +8,7 @@ launcher/boot/launcher-state.js
 launcher/boot/launcher-mock-api.js
 launcher/i18n/launcher-labels.js
 launcher/forms/launcher-form-base.js
+shared/utils/console-mirror.js
 launcher/errors/launcher-errors.js
 launcher/server/launcher-server-monitor.js
 launcher/boot/launcher-theme-bridge.js

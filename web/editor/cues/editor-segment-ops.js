@@ -52,12 +52,18 @@ export function initMaweSegmentOps() {
         .map(({ index }) => index)
       : [];
     const extensionMergeSegments = extensionMergeIndices.map((index) => extensionTrack.segments[index]);
+    // 副轨段可带颜色组（JSON_SCHEMA §1.6）；合并联动副轨时同样按颜色继承规则处理
+    // （同组沿用组引用，跨组同色物化自持 head，见 resolveMergedColorInheritance）。
+    const extensionColorGroup = extensionTrack
+      ? window.AsrEditorUtils.resolveMergedColorInheritance(extensionTrack.segments, extensionMergeIndices)
+      : { head: null, ref: null, groupInherited: false };
     const oldExtensionIds = extensionMergeSegments.map((segment) => segment.id).filter(Boolean);
     const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
       MaweBoot.DATA.segments, sorted, 'sticker', 'sticker_ref',
     );
-    const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
-      MaweBoot.DATA.segments, sorted, 'color', 'color_ref',
+    // 颜色按「有效颜色名」继承：相邻同色但分属不同组（两次标记、交换映射）不丢色。
+    const colorGroup = window.AsrEditorUtils.resolveMergedColorInheritance(
+      MaweBoot.DATA.segments, sorted,
     );
     const commonSpeaker = segs[0].speaker != null
       && segs.every((segment) => segment.speaker === segs[0].speaker)
@@ -106,6 +112,10 @@ export function initMaweSegmentOps() {
         start: Math.min(...extensionMergeSegments.map((segment) => segment.start)),
         end: Math.max(...extensionMergeSegments.map((segment) => segment.end)),
         text: extensionJoin.text,
+        // 副轨段可带颜色组（JSON_SCHEMA §1.6）：颜色按有效颜色名继承（同组沿用
+        // 组引用、跨组同色物化自持 head）；未继承时 splice 前按切点拆组（见下方）。
+        color: extensionColorGroup.head,
+        color_ref: extensionColorGroup.ref,
         ...(extensionMergeSegments[0].assStyle ? { assStyle: JSON.parse(JSON.stringify(extensionMergeSegments[0].assStyle)) } : {}),
         _dirty: true,
       };
@@ -116,22 +126,32 @@ export function initMaweSegmentOps() {
 
     MaweMultiSubtitleCore.removeBindingsForSegmentIds(oldMainIds, oldExtensionIds);
 
-    // 选区并非全部同组时，不继承该组；先按删除切点规则重组外部存活成员，
-    // 避免合并掉某个 head 后留下悬空引用。
+    // 表情包仅同组继承；颜色跨组同色仍保色，但不沿用原组引用。
+    // 未继承原组时先按删除切点规则重组外部存活成员，避免留下悬空引用。
     const mergeSet = new Set(sorted);
     if (stickerGroup.headIdx === null) {
       splitGroupsAtCutPoints(mergeSet, 'sticker', 'sticker_ref');
     }
-    if (colorGroup.headIdx === null) {
+    if (!colorGroup.groupInherited) {
       splitGroupsAtCutPoints(mergeSet, 'color', 'color_ref');
     }
 
     MaweBoot.DATA.segments.splice(sorted[0], sorted.length, merged);
     if (extensionTrack && extensionMergeIndices.length) {
+      const originalExtensionLength = extensionTrack.segments.length;
+      // 颜色组未被整组继承（跨组物化或混合）时先按切点拆组（用合并前下标），
+      // 避免 head 被并走后留下悬空引用。
+      if (mergedExtension && !extensionColorGroup.groupInherited) {
+        splitGroupsAtCutPoints(new Set(extensionMergeIndices), 'color', 'color_ref', extensionTrack.segments);
+      }
       for (let i = extensionMergeIndices.length - 1; i >= 0; i--) {
         extensionTrack.segments.splice(extensionMergeIndices[i], 1);
       }
       if (mergedExtension) extensionTrack.segments.splice(extensionMergeIndices[0], 0, mergedExtension);
+      // 副轨 color_ref 是数组下标引用，不随 splice 自动更新：合并后统一平移/改指。
+      window.AsrEditorUtils.remapGroupRefsAfterMergeSplice(
+        extensionTrack.segments, extensionMergeIndices, ['color_ref'], originalExtensionLength,
+      );
       if (mergedExtension) {
         multi.bindings.push(window.AsrEditorUtils.buildSubtitleBinding(merged, mergedExtension, extensionTrack.id));
         if (MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration) {
@@ -194,8 +214,8 @@ export function initMaweSegmentOps() {
 
 
 
-  // 只合并副轨连续字幕。副字幕没有主轨的 group 引用和 items，
-  // 因此这里保留独立轨的文本/时间合并语义；如果被合并段存在一对一绑定，
+  // 只合并副轨连续字幕，并按所在副轨维护颜色组；主轨文本与时间不变。
+  // 如果被合并段存在一对一绑定，
   // 合并后无法同时指向多个主字幕，旧绑定会被移除并提示用户重新绑定。
   function mergeExtensionSegments(idxs, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
     if (!track || !idxs?.length) return false;
@@ -223,6 +243,9 @@ export function initMaweSegmentOps() {
       })),
       MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     );
+    // 副轨段可带颜色组（JSON_SCHEMA §1.6）：颜色按有效颜色名继承（同组沿用组
+    // 引用、跨组同色物化自持 head）；未继承时 splice 前按切点拆组。
+    const colorGroup = window.AsrEditorUtils.resolveMergedColorInheritance(track.segments, sorted);
     const merged = {
       id: window.AsrEditorUtils.uniqueStableSegmentId(
         track.segments,
@@ -232,6 +255,8 @@ export function initMaweSegmentOps() {
       start: segments[0].start,
       end: segments[segments.length - 1].end,
       text: extensionJoin.text,
+      color: colorGroup.head,
+      color_ref: colorGroup.ref,
       _dirty: true,
     };
     const hadBindings = oldIds.some((id) => window.AsrEditorUtils.bindingForSegment(
@@ -241,7 +266,13 @@ export function initMaweSegmentOps() {
     return MaweCommands.run('合并副字幕', (command) => {
       clearSelection();
       MaweMultiSubtitleCore.removeBindingsForSegmentIds([], oldIds);
+      const originalLength = track.segments.length;
+      if (!colorGroup.groupInherited) {
+        splitGroupsAtCutPoints(new Set(sorted), 'color', 'color_ref', track.segments);
+      }
       track.segments.splice(sorted[0], sorted.length, merged);
+      // 副轨 color_ref 是数组下标引用，不随 splice 自动更新：合并后统一平移/改指。
+      window.AsrEditorUtils.remapGroupRefsAfterMergeSplice(track.segments, sorted, ['color_ref'], originalLength);
       MaweMultiSubtitleCore.markMultiSubtitleDirty();
       command.commit({ cueList: true, cueListAnchor });
       selectOnlyExtension(sorted[0]);
@@ -715,7 +746,27 @@ export function initMaweSegmentOps() {
         if (s.color_ref)   shiftHeadIdx(s.color_ref);
       });
       if (extensionTrack && pairedExtensionIndices.size) {
-        [...pairedExtensionIndices].sort((a, b) => b - a).forEach((index) => extensionTrack.segments.splice(index, 1));
+        // 副轨颜色组按删除语义拆组：被删成员之后的同组 ref 晋升新 head；
+        // splice 后平移幸存 ref（副轨 color_ref 是数组下标，不随 splice 更新）。
+        const pairedSorted = [...pairedExtensionIndices].sort((a, b) => a - b);
+        splitGroupsAtCutPoints(new Set(pairedSorted), 'color', 'color_ref', extensionTrack.segments);
+        extensionTrack.segments.forEach((segment, index) => {
+          if (pairedExtensionIndices.has(index)) return;
+          if (segment.color_ref && pairedExtensionIndices.has(segment.color_ref.headIdx)) {
+            segment.color_ref = null;
+          }
+        });
+        for (let i = pairedSorted.length - 1; i >= 0; i--) {
+          extensionTrack.segments.splice(pairedSorted[i], 1);
+        }
+        const shiftPairedRemovedBefore = (ref) => {
+          let shift = 0;
+          for (const removedIndex of pairedSorted) { if (removedIndex < ref.headIdx) shift += 1; else break; }
+          if (shift) ref.headIdx -= shift;
+        };
+        extensionTrack.segments.forEach((segment) => {
+          if (segment.color_ref) shiftPairedRemovedBefore(segment.color_ref);
+        });
       }
       if (pairedExtensionIndices.size) MaweMultiSubtitleCore.markMultiSubtitleDirty();
       // 同样修正"刚被晋升为新 head 的段中"指向它的 ref：
@@ -770,7 +821,24 @@ export function initMaweSegmentOps() {
 
     return MaweCommands.run(`删除 ${sorted.length} 条副字幕`, (command) => {
       MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [...unboundIds]);
-      remainingIndices.reverse().forEach((index) => track.segments.splice(index, 1));
+      // 副轨颜色组按删除语义拆组（同主轨 deleteSegments）：被删成员之后的
+      // 同组 ref 晋升新 head；splice 后平移幸存 ref，避免保存校验悬空。
+      const removeSet = new Set(remainingIndices);
+      splitGroupsAtCutPoints(removeSet, 'color', 'color_ref', track.segments);
+      track.segments.forEach((segment, index) => {
+        if (removeSet.has(index)) return;
+        if (segment.color_ref && removeSet.has(segment.color_ref.headIdx)) segment.color_ref = null;
+      });
+      const removedAscending = [...remainingIndices].sort((a, b) => a - b);
+      [...remainingIndices].reverse().forEach((index) => track.segments.splice(index, 1));
+      const shiftRemovedBefore = (ref) => {
+        let shift = 0;
+        for (const removedIndex of removedAscending) { if (removedIndex < ref.headIdx) shift += 1; else break; }
+        if (shift) ref.headIdx -= shift;
+      };
+      track.segments.forEach((segment) => {
+        if (segment.color_ref) shiftRemovedBefore(segment.color_ref);
+      });
       MaweMultiSubtitleCore.markMultiSubtitleDirty();
       MaweState.selection.clear('extension');
       command.commit({ cueList: true });

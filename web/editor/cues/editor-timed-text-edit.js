@@ -1206,8 +1206,26 @@ export function initMaweTimedTextEdit() {
       });
       window.AsrEditorUtils.repairGroupReferenceIndices(MaweBoot.DATA.segments);
       if (extensionTrack && pairedExtensionIndices.size) {
-        [...pairedExtensionIndices].sort((a, b) => b - a)
-          .forEach((index) => extensionTrack.segments.splice(index, 1));
+        // 副轨颜色组按删除语义拆组，splice 后平移幸存 ref（与主轨删除一致）。
+        const pairedSorted = [...pairedExtensionIndices].sort((a, b) => a - b);
+        splitGroupsAtCutPoints(new Set(pairedSorted), 'color', 'color_ref', extensionTrack.segments);
+        extensionTrack.segments.forEach((segment, index) => {
+          if (pairedExtensionIndices.has(index)) return;
+          if (segment.color_ref && pairedExtensionIndices.has(segment.color_ref.headIdx)) {
+            segment.color_ref = null;
+          }
+        });
+        for (let i = pairedSorted.length - 1; i >= 0; i--) {
+          extensionTrack.segments.splice(pairedSorted[i], 1);
+        }
+        const shiftPairedRemovedBefore = (ref) => {
+          let shift = 0;
+          for (const removedIndex of pairedSorted) { if (removedIndex < ref.headIdx) shift += 1; else break; }
+          if (shift) ref.headIdx -= shift;
+        };
+        extensionTrack.segments.forEach((segment) => {
+          if (segment.color_ref) shiftPairedRemovedBefore(segment.color_ref);
+        });
       }
     }
     if (bindingsChanged || pairedExtensionIndices.size) MaweMultiSubtitleCore.markMultiSubtitleDirty();

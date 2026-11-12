@@ -67,7 +67,7 @@ export function initMediaLoadModule() {
       await waitForMediaMetadata(candidatePlayer, file, request.signal);
     } catch (error) {
       if (!isCurrent()) return false;
-      MaweHint.flashHint(error.message || `媒体加载失败：${file.name}`, 'warning');
+      MaweHint.flashHint(error.message || `媒体加载失败：${file.name}`, 'warning', { error });
       return false;
     }
 
@@ -150,7 +150,7 @@ export function initMediaLoadModule() {
         MaweLoadingProgress.updateEditorLoading(75, `正在生成波形 ${file.name}…`);
         await whileCurrent(MaweCoreState.waveformEditor.processFile(file, { isCurrent }), request.signal);
       } catch (error) {
-        if (isCurrent()) MaweHint.flashHint(error.message || String(error), 'warning');
+        if (isCurrent()) MaweHint.flashHint(error.message || String(error), 'warning', { error });
       }
     }
     if (!isCurrent()) return false;
@@ -197,7 +197,7 @@ export function initMediaLoadModule() {
       return true;
     } catch (error) {
       if (!current()) return false;
-      MaweHint.flashHint(`加载 reapeaks 失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`加载 reapeaks 失败：${error.message || error}`, 'warning', { error });
       return false;
     } finally {
       request.finish();

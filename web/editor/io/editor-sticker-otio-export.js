@@ -58,7 +58,7 @@ export function initStickerOtioExportModule() {
       if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
       MaweHint.flashHint(`已生成 ${result.folderPath}，复制 ${result.stickerCount} 张表情包`, 'success');
     } catch (error) {
-      MaweHint.flashHint(`便携表情包 OTIO 导出失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`便携表情包 OTIO 导出失败：${error.message || error}`, 'warning', { error });
     }
   }
 

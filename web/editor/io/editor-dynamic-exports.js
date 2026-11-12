@@ -141,7 +141,7 @@ export function initMaweDynamicExports() {
               const payload = await response.json();
               if (!response.ok || payload.ok === false) throw new Error(payload.error || '无法打开导出文件夹');
             } catch (error) {
-              MaweHint.flashHint(`${MaweProjectSave.translatedEditorText('无法打开导出文件夹')}：${error.message}`, 'warning');
+              MaweHint.flashHint(`${MaweProjectSave.translatedEditorText('无法打开导出文件夹')}：${error.message}`, 'warning', { error });
             }
           });
           status.append(success, document.createElement('br'),
@@ -180,7 +180,7 @@ export function initMaweDynamicExports() {
       const [message, type] = messages[result.status] || messages.failed;
       MaweHint.flashHint(MaweProjectSave.translatedEditorText(message), type);
     } catch (error) {
-      MaweHint.flashHint(`${MaweProjectSave.translatedEditorText('FCP 7 XML 导出失败')}：${error.message}`, 'warning');
+      MaweHint.flashHint(`${MaweProjectSave.translatedEditorText('FCP 7 XML 导出失败')}：${error.message}`, 'warning', { error });
     } finally {
       MaweDom.fcp7ExportConfirm.disabled = false;
     }
@@ -325,7 +325,7 @@ export function initMaweDynamicExports() {
       );
       if (saved) MaweHint.flashHint(MaweProjectSave.translatedEditorText('动态字幕 .lottie 已生成'), 'success');
     } catch (error) {
-      MaweHint.flashHint(`${MaweProjectSave.translatedEditorText('动态字幕 .lottie 导出失败')}：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`${MaweProjectSave.translatedEditorText('动态字幕 .lottie 导出失败')}：${error.message || error}`, 'warning', { error });
     } finally {
       MaweDom.lottieExportConfirm.disabled = false;
     }
@@ -446,7 +446,7 @@ export function initMaweDynamicExports() {
       );
       if (saved) MaweHint.flashHint(MaweProjectSave.translatedEditorText('动态字幕 .ograf.zip 已生成；请先解压'), 'success');
     } catch (error) {
-      MaweHint.flashHint(`${MaweProjectSave.translatedEditorText('动态字幕 .ograf.zip 导出失败')}：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`${MaweProjectSave.translatedEditorText('动态字幕 .ograf.zip 导出失败')}：${error.message || error}`, 'warning', { error });
     } finally {
       MaweDom.ografExportConfirm.disabled = false;
     }
