@@ -20,6 +20,7 @@ from maw.local_runtime import (
     managed_runtime_status,
     recover_local_runtime_install as recover_local_runtime_install_via_local,
 )
+from maw import moss_runtime
 from maw.moss_runtime import (
     MOSS_PACKAGE_DIRS,
     MOSS_PYTHON_VERSION,
@@ -89,6 +90,86 @@ class MossRuntimePathTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(base)}):
                 python = runtime_python_path()
         self.assertEqual(python, base.resolve() / _PYTHON_RELATIVE)
+
+    def test_local_override_derives_sibling_moss_directory(self) -> None:
+        """设置页「安装位置」只维护 LOCAL 键：MOSS 回落派生同级 ``-moss`` 目录。
+
+        回归背景：RuntimeSpec 抽象（eb55dde0）把 MOSS 根切到独立键
+        ``MAW_MOSS_RUNTIME_ROOT`` 后无人写入，设置字段对 MOSS 失效、中文用户名
+        下被默认目录迁移兜底到公共目录。此处恢复旧的派生语义。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir) / "asr-runtime"
+            with mock.patch.dict(os.environ, {
+                "MAW_LOCAL_RUNTIME_ROOT": str(base),
+                "MAW_MOSS_RUNTIME_ROOT": "",
+            }):
+                root = default_runtime_root()
+        self.assertEqual(root, base.with_name(f"{base.name}-moss").resolve())
+
+    def test_moss_env_takes_priority_over_local_derivation(self) -> None:
+        """MOSS 独立键优先于 LOCAL 键派生（保留高级覆盖与未来独立字段扩展位）。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            own = Path(temp_dir) / "moss-explicit"
+            shared = Path(temp_dir) / "asr-runtime"
+            with mock.patch.dict(os.environ, {
+                "MAW_MOSS_RUNTIME_ROOT": str(own),
+                "MAW_LOCAL_RUNTIME_ROOT": str(shared),
+            }):
+                root = default_runtime_root()
+        self.assertEqual(root, own.resolve())
+
+    def test_status_follows_local_derivation(self) -> None:
+        """LOCAL 键派生对状态查询同样生效（GUI 状态行显示派生目录而非 C 盘兜底）。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir) / "asr-runtime"
+            with mock.patch.dict(os.environ, {
+                "MAW_LOCAL_RUNTIME_ROOT": str(base),
+                "MAW_MOSS_RUNTIME_ROOT": "",
+                "MAW_MODEL_CACHE_ROOT": str(Path(temp_dir) / "models"),
+            }):
+                status = managed_runtime_status(engine="moss")
+        self.assertEqual(status.status, "missing")
+        self.assertEqual(Path(status.path), base.with_name(f"{base.name}-moss").resolve())
+
+    def test_install_passes_derived_root_to_managed_runtime(self) -> None:
+        """安装入口把派生根目录传给 MOSS.install；不传（None）配置就会失效。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir) / "asr-runtime"
+            sentinel = object()
+            with mock.patch.dict(os.environ, {
+                "MAW_LOCAL_RUNTIME_ROOT": str(base),
+                "MAW_MOSS_RUNTIME_ROOT": "",
+            }):
+                with mock.patch.object(MOSS, "install", return_value=sentinel) as install_mock:
+                    with mock.patch("maw.moss_runtime._from_runtime_status", return_value=sentinel):
+                        result = moss_runtime.install_local_runtime()
+        install_mock.assert_called_once()
+        self.assertEqual(
+            install_mock.call_args.kwargs["runtime_root"],
+            base.with_name(f"{base.name}-moss").resolve(),
+        )
+        self.assertIs(result, sentinel)
+
+    def test_non_ascii_derivation_still_goes_through_ascii_check(self) -> None:
+        """派生路径含非 ASCII 时仍必须过 ensure_ascii_root（#356 ASCII 化不放松）。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir) / "运行环境"
+            alias = Path(temp_dir) / "RUNSH~1"
+            with mock.patch.dict(os.environ, {
+                "MAW_LOCAL_RUNTIME_ROOT": str(base),
+                "MAW_MOSS_RUNTIME_ROOT": "",
+            }):
+                with mock.patch("maw.runtimes.base.sys.platform", "win32"):
+                    with mock.patch(
+                        "maw.runtimes.base.pathwin.ensure_ascii_root",
+                        return_value=alias,
+                    ) as ascii_mock:
+                        root = default_runtime_root()
+        ascii_mock.assert_called_once()
+        self.assertEqual(ascii_mock.call_args.kwargs["dir_name"], "local-runtime-moss")
+        self.assertEqual(ascii_mock.call_args.kwargs["allow_relocate"], False)
+        self.assertEqual(root, alias)
 
 
 class MossRuntimeStatusTests(unittest.TestCase):
