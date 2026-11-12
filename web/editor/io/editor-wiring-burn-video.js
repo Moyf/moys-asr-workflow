@@ -82,7 +82,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     request = buildRequest();
     if (request) request.audioGainDb = window.MaweAudioProcessing?.settings().gain_db || 0;
   } catch (error) {
-    MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning');
+    MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning', { error });
     return;
   }
   if (!request) return; // buildRequest 已经提示过原因（如没有可用的去空隙区间）。
@@ -96,7 +96,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     });
   } catch (error) {
     if (error?.name === 'AbortError') return;
-    MaweHint.flashHint(`${tr('无法打开视频保存位置选择器')}：${burnVideoSafeError(error, '请检查保存位置权限后重试')}`, 'warning');
+    MaweHint.flashHint(`${tr('无法打开视频保存位置选择器')}：${burnVideoSafeError(error, '请检查保存位置权限后重试')}`, 'warning', { error });
     return;
   }
   // 选择器等待期间工程或绑定可能已切换；绝不混合旧字幕快照与新绑定。
@@ -128,7 +128,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   const warnCleanup = (error) => {
     if (cleanupWarningShown) return;
     cleanupWarningShown = true;
-    MaweHint.flashHint(burnVideoSafeError(error, '无法确认导出已停止，请重试'), 'warning');
+    MaweHint.flashHint(burnVideoSafeError(error, '无法确认导出已停止，请重试'), 'warning', { error });
   };
   const stopped = new Promise((_, reject) => { rejectStop = reject; });
   void stopped.catch(() => {});
@@ -349,7 +349,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
         warnCleanup(cleanupError);
       }
     } else {
-      MaweHint.flashHint(`${tr('烧录视频导出失败')}：${burnVideoSafeError(error, '媒体处理失败，请确认源文件可以正常播放后重试')}`, 'warning');
+      MaweHint.flashHint(`${tr('烧录视频导出失败')}：${burnVideoSafeError(error, '媒体处理失败，请确认源文件可以正常播放后重试')}`, 'warning', { error });
     }
   } finally {
     if (!transferComplete && response?.body) {

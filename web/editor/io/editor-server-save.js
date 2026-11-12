@@ -199,7 +199,8 @@ export function initMaweServerSave() {
       return;
     }
 
-    MaweHint.flashHint('', 'warning', {
+    // msg 不参与渲染（contentBuilder 优先），但会镜像到控制台，便于回查。
+    MaweHint.flashHint(`保存失败：${detail}`, 'warning', {
       durationMs: 12000,
       contentBuilder: (card) => {
         card.classList.add('hint-project-error');
@@ -496,7 +497,7 @@ export function initMaweServerSave() {
         project.exists = false;
         markRecentProjectMissing(project);
       }
-      MaweHint.flashHint(`打开工程失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`打开工程失败：${error.message || error}`, 'warning', { error });
     } finally {
       MaweState.finishProjectLoad(generation);
     }
@@ -630,7 +631,7 @@ export function initMaweServerSave() {
           MaweBoot.SERVER_CONFIG.autoOpenLastProject = result.autoOpenLastProject;
         } catch (error) {
           MaweDom.autoOpenLastProjectToggle.checked = MaweBoot.SERVER_CONFIG.autoOpenLastProject !== false;
-          MaweHint.flashHint(`保存设置失败：${error.message || error}`, 'warning');
+          MaweHint.flashHint(`保存设置失败：${error.message || error}`, 'warning', { error });
         } finally {
           MaweDom.autoOpenLastProjectToggle.disabled = false;
         }
