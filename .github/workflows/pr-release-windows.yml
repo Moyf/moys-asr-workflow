@@ -94,7 +94,25 @@ jobs:
 
       - name: Install Chromium for focused regression tests
         if: ${{ needs.selection.outputs.light != 'true' }}
-        run: pnpm exec playwright install chromium
+        shell: bash
+        # 2026-11-11 PR #365 的 editor job 曾因 GitHub runner DNS 抖动失败
+        # （apt resolve「Temporary failure resolving security.ubuntu.com」，
+        # exit code 100），人工 rerun 即绿。Playwright 安装外部网络敏感且幂等
+        # 可重跑，失败自动重试省人工 rerun；此步骤不带 --with-deps（抖动面小，
+        # 同样覆盖）。失败输出保留在步骤日志，最后一次失败仍非零退出。
+        run: |
+          attempt=1
+          max_attempts=3
+          until pnpm exec playwright install chromium; do
+            status=$?
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "playwright install 仍失败（最多尝试 ${max_attempts} 次，最后 exit ${status}），放弃。"
+              exit "$status"
+            fi
+            echo "playwright install 失败（exit ${status}，第 ${attempt}/${max_attempts} 次尝试），20s 后重试……"
+            attempt=$((attempt + 1))
+            sleep 20
+          done
 
       - name: Install FFmpeg for media integration tests
         if: ${{ needs.selection.outputs.light != 'true' }}

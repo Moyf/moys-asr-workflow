@@ -404,7 +404,27 @@ export function initMaweMultiSubtitleCore() {
     const changed = entries.some((entry, index) => entry.segment !== track.segments[index]);
     if (!changed) return false;
     const snapshot = extensionTrackSelectionSnapshot(track);
+    const segmentsBefore = track.segments;
     track.segments = entries.map((entry) => entry.segment);
+    // 副轨 color_ref 是数组下标引用：重排后按下标失效。按对象身份把每条 ref
+    // 重新指向旧 head 的新位置；head 被排到成员之后时物化颜色保持可见。
+    const newIndexOf = new Map(track.segments.map((segment, index) => [segment, index]));
+    track.segments.forEach((segment, index) => {
+      const ref = segment?.color_ref;
+      if (!ref || !Number.isInteger(ref.headIdx)) return;
+      const headIndex = newIndexOf.get(segmentsBefore[ref.headIdx]);
+      if (!Number.isInteger(headIndex) || headIndex === index) {
+        segment.color_ref = null;
+        return;
+      }
+      if (headIndex > index) {
+        const headColor = segmentsBefore[ref.headIdx]?.color;
+        segment.color_ref = null;
+        if (headColor) segment.color = { ...headColor, start: segment.start, end: segment.end };
+        return;
+      }
+      ref.headIdx = headIndex;
+    });
     track._dirty = true;
     MaweState.markProjectDirty();
     restoreExtensionTrackSelection(track, snapshot);
@@ -487,7 +507,26 @@ export function initMaweMultiSubtitleCore() {
       const removedBindings = window.AsrEditorUtils.removeSubtitleBindings(multi, (binding) => (
         binding.extension_segment_ids?.some((id) => removedIds.has(id))
       ));
+      // 副轨 color_ref 是数组下标引用：先记录被删下标与旧 head 对象，删除后
+      // 平移幸存 ref；指向被删 head 的成员物化自持颜色，避免颜色标记丢失。
+      const segmentsBefore = track.segments;
+      const removedIndexes = new Set(track.segments
+        .map((segment, index) => (removed.has(segment) ? index : -1))
+        .filter((index) => index >= 0));
       track.segments = track.segments.filter((segment) => !removed.has(segment));
+      track.segments.forEach((segment) => {
+        const ref = segment.color_ref;
+        if (!ref || !Number.isInteger(ref.headIdx)) return;
+        if (removedIndexes.has(ref.headIdx)) {
+          const headColor = segmentsBefore[ref.headIdx]?.color;
+          segment.color_ref = null;
+          if (headColor) segment.color = { ...headColor, start: segment.start, end: segment.end };
+          return;
+        }
+        let shift = 0;
+        removedIndexes.forEach((index) => { if (index < ref.headIdx) shift += 1; });
+        if (shift) ref.headIdx -= shift;
+      });
       result.removedCount = removed.size;
       result.unboundCount = removedBindings.length;
       result.changed = true;

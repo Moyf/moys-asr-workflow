@@ -331,6 +331,9 @@ test('real overlay merge retains only leftmost override as an independent copy',
       MaweSelection: { clearSelection() {} }, MaweCommands: { run: (label, fn) => fn({ commit() {} }) },
       MaweState: { selection: { clear() {}, add() {} } }, MaweCuePanel: { setCuePanelTarget() {} },
       MaweViewUpdates: { invalidate() {} }, MaweHint: { flashHint() {} } };
+    // Overlay merges use the real group-splitting helper with the overlay array.
+    vm.runInNewContext(initModuleSource('editor/cues/editor-segment-ops.js'), context);
+    context.MaweSegmentOps = context.window.MaweSegmentOps;
     vm.runInNewContext(plainModuleSource('editor/cues/overlay-track.js'), context);
     vm.runInNewContext(initModuleSource('editor/cues/editor-wiring-overlay-split-merge.js'), context);
     assert.equal(context.mergeOverlaySegments([1, 0]), true);

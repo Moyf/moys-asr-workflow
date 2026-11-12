@@ -64,6 +64,8 @@ export function initMaweAddCue() {
         items: [],
         _dirty: true,
       });
+      // 副轨 color_ref 是数组下标引用：插入点及其后的 head 右移一位。
+      window.AsrEditorUtils.shiftGroupReferenceIndices(track.segments, index, 1);
       MaweMultiSubtitleCore.markMultiSubtitleDirty();
       clearSelection({ silent: true });
       command.commit({ cueList: true, preserveCueListScroll: false });
@@ -217,6 +219,8 @@ export function initMaweAddCue() {
         _dirty: true,
       };
       track.segments.splice(index, 0, segment);
+      // 副轨 color_ref 是数组下标引用：插入点及其后的 head 右移一位。
+      window.AsrEditorUtils.shiftGroupReferenceIndices(track.segments, index, 1);
       MaweMultiSubtitleCore.markMultiSubtitleDirty();
       clearSelection();
       command.commit({ cueList: true, preserveCueListScroll: false });
