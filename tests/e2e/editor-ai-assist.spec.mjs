@@ -465,3 +465,44 @@ test('启动时 AI 设置读取失败，进入设置页后可重试', async ({ p
   await expect(page.locator('#ai-provider-select')).toHaveValue('custom');
   await expect(page.locator('#ai-settings-status')).toHaveText('');
 });
+
+test('submitting cancellation failure keeps the original task recoverable', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.waitForFunction(() => Boolean(window.MaweAiTasks));
+  let submitRoute;
+  let cancelCount = 0;
+  let submitCount = 0;
+  await page.route('**/api/ai/task', route => {
+    submitCount += 1;
+    submitRoute = route;
+  });
+  await page.route('**/api/ai/task/cancel', route => {
+    cancelCount += 1;
+    return cancelCount === 1 ? route.abort('failed') : route.fulfill({ json: { ok: true } });
+  });
+  await page.route('**/api/ai/tasks', route => route.fulfill({ json: {
+    ok: true, tasks: [{ id: 'late-task', status: 'running', stage: 'waiting_provider' }],
+  } }));
+  await page.evaluate(() => {
+    window.cancelOutcome = 'pending';
+    MaweAiTasks.begin('ai-bold').then(
+      () => { window.cancelOutcome = 'done'; },
+      error => { window.cancelOutcome = error.message; },
+    );
+  });
+  await expect.poll(() => submitCount).toBe(1);
+  await page.locator('#ai-task-progress-cancel').click();
+  expect(await page.evaluate(() => window.cancelOutcome)).toBe('pending');
+  await submitRoute.fulfill({ json: { ok: true, task: { id: 'late-task', status: 'queued' } } });
+  await expect(page.locator('#ai-task-progress-retry')).toBeVisible();
+  expect(await page.evaluate(() => MaweAiTasks.active?.id)).toBe('late-task');
+  expect(await page.evaluate(() => window.cancelOutcome)).toBe('pending');
+  await page.locator('#ai-task-progress-retry').click();
+  await expect.poll(() => page.evaluate(() => MaweAiTasks.active?.phase)).toBe('running');
+  await page.locator('#ai-task-progress-cancel').click();
+  await expect.poll(() => page.evaluate(() => MaweAiTasks.active)).toBeNull();
+  expect(await page.evaluate(() => window.cancelOutcome)).toContain('已取消');
+  expect(submitCount).toBe(1);
+  expect(cancelCount).toBe(2);
+});

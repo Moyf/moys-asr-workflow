@@ -21,6 +21,7 @@
   // 后端 stage → 进度条文案；未知 stage 直接展示原文，空 stage 用通用文案。
   const STAGE_LABELS = Object.freeze({
     submitting: '正在提交…',
+    cancel_pending: '已请求取消，等待提交确认…',
     queued: '排队中…',
     starting: '启动中…',
     connecting: '连接供应商…',
@@ -94,7 +95,7 @@
       cancel.textContent = global.MAWE_I18N?.translateText?.(discard ? '丢弃' : '取消') || (discard ? '丢弃' : '取消');
     }
     // LLM 的 connecting / waiting_provider 是阶段而非可测的完成百分比。
-    const percent = ['submitting', 'queued', 'starting', 'connecting', 'waiting_provider', 'waiting_edit', 'applying'].includes(task.stage)
+    const percent = ['submitting', 'cancel_pending', 'queued', 'starting', 'connecting', 'waiting_provider', 'waiting_edit', 'applying'].includes(task.stage)
       ? NaN : Number(task.percent);
     if (Number.isFinite(percent) && percent > 0) {
       if (percentText) percentText.textContent = `${percent}%`;
@@ -323,8 +324,9 @@
     const current = active;
     if (!current || current.settled) return Promise.resolve();
     if (!current.id) {
+      // Keep ownership until the late task ID can be cancelled on the server.
       current.cancelRequested = true;
-      markCancelled();
+      renderTask({ stage: 'cancel_pending', percent: 0 });
       return Promise.resolve();
     }
     if (current.phase === 'applying' || current.phase === 'waiting_edit') {
@@ -382,12 +384,13 @@
       if (!response.ok || !body?.ok || !body?.task?.id) {
         throw new Error(body?.error || `提交 AI 任务失败（HTTP ${response.status}）`);
       }
-      if (current.cancelRequested) {
-        void requestCancellation(body.task.id).catch(() => {});
-        return;
-      }
       if (active !== current || current.settled) return;
       current.id = body.task.id;
+      if (current.cancelRequested) {
+        // Reuse the recoverable cancellation path, including network errors/timeouts.
+        await cancelCurrent();
+        return;
+      }
       renderTask(body.task);
       current.timer = setInterval(() => { tick(); }, POLL_INTERVAL_MS);
     }).catch((error) => {

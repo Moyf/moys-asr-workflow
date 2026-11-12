@@ -517,14 +517,15 @@ test('提交阶段取消后，迟到的任务会被取消且不影响新任务',
   const previous = win.MaweAiTasks.begin('ai-bold', {}, '旧任务');
   const rejected = assert.rejects(previous, /已取消/);
   await win.MaweAiTasks.cancelCurrent();
-  await rejected;
-  state.responses.push({ body: { ok: true, task: { id: 'new', status: 'queued' } } });
-  const next = win.MaweAiTasks.begin('ai-bold', {}, '新任务');
-  await flush();
+  await assert.rejects(win.MaweAiTasks.begin('ai-bold'), /已有 AI 任务/);
   state.responses.push({ body: { ok: true } });
   release({ ok: true, status: 200, json: async () => ({ ok: true, task: { id: 'old', status: 'queued' } }) });
   await flush();
+  await rejected;
   assert.equal(state.fetches.at(-1).body.id, 'old');
+  state.responses.push({ body: { ok: true, task: { id: 'new', status: 'queued' } } });
+  const next = win.MaweAiTasks.begin('ai-bold', {}, '新任务');
+  await flush();
   assert.equal(win.MaweAiTasks.active.id, 'new');
   state.responses.push({ body: { ok: true, tasks: [{ id: 'new', status: 'done', result: { texts: { a: 'new' } } }] } });
   state.timers.at(-1)();
@@ -954,4 +955,88 @@ test('切换供应商时清空未提交的密钥输入（#8）', async () => {
   const form = win.MaweAiSettings.readFormValues();
   assert.equal(form.apiKey, null); // A 的密钥不得进入 B 的保存负载
   assert.equal(form.providerId, 'provider-b');
+});
+
+for (const failure of ['network', 'timeout']) {
+  test(`submission cancellation retains late task ID after ${failure} failure`, async () => {
+    const label = { textContent: '' };
+    const retry = { hidden: true };
+    const { win, state } = createContext({ elements: {
+      'ai-task-progress': { hidden: true, classList: { add() {}, remove() {}, toggle() {} } },
+      'ai-task-progress-label': label,
+      'ai-task-progress-retry': retry,
+    } });
+    const timeouts = [];
+    win.setTimeout = (fn, delay) => { timeouts.push({ fn, delay }); return timeouts.length; };
+    let submit;
+    let failCancel;
+    state.responses.push({ deferred: true, promise: new Promise(resolve => { submit = resolve; }) });
+    const result = win.MaweAiTasks.begin('ai-bold');
+    let settled = false;
+    result.then(() => { settled = true; }, () => { settled = true; });
+    await win.MaweAiTasks.cancelCurrent();
+    await win.MaweAiTasks.cancelCurrent();
+    assert.ok(win.MaweAiTasks.active, 'submission remains owned until cancellation is confirmed');
+    assert.equal(settled, false);
+    assert.match(label.textContent, /等待提交确认/);
+    await assert.rejects(win.MaweAiTasks.begin('ai-bold'), /已有 AI 任务/);
+    state.responses.push({ deferred: true, promise: new Promise((_, reject) => { failCancel = reject; }) });
+    submit({ ok: true, json: async () => ({ ok: true, task: { id: 'late-task', status: 'queued' } }) });
+    await flush();
+    assert.equal(win.MaweAiTasks.active.id, 'late-task');
+    assert.equal(win.MaweAiTasks.active.phase, 'cancelling');
+    await win.MaweAiTasks.cancelCurrent();
+    assert.equal(state.fetches.filter(entry => entry.url === '/api/ai/task/cancel').length, 1);
+    if (failure === 'network') failCancel(new Error('offline'));
+    else {
+      assert.equal(timeouts.at(-1).delay, 10000);
+      timeouts.at(-1).fn();
+    }
+    await flush();
+    assert.equal(win.MaweAiTasks.active.id, 'late-task');
+    assert.equal(win.MaweAiTasks.active.phase, 'disconnected');
+    assert.equal(settled, false);
+    assert.match(label.textContent, /取消失败/);
+    assert.equal(retry.hidden, false);
+    state.responses.push({ body: { ok: true, tasks: [{ id: 'late-task', status: 'running' }] } });
+    win.MaweAiTasks.retryCurrent();
+    await flush();
+    assert.equal(win.MaweAiTasks.active.phase, 'running');
+    state.responses.push({ body: { ok: true } });
+    const cancelled = assert.rejects(result, /已取消/);
+    await win.MaweAiTasks.cancelCurrent();
+    await cancelled;
+    assert.equal(win.MaweAiTasks.active, null);
+    assert.equal(state.fetches.filter(entry => entry.url === '/api/ai/task').length, 1);
+    assert.ok(state.fetches.filter(entry => entry.url === '/api/ai/task/cancel').every(entry => entry.body.id === 'late-task'));
+  });
+}
+
+test('submission cancellation settles only after late task cancellation succeeds', async () => {
+  const { win, state } = createContext();
+  let submit;
+  state.responses.push({ deferred: true, promise: new Promise(resolve => { submit = resolve; }) });
+  const result = win.MaweAiTasks.begin('ai-bold');
+  const cancelled = assert.rejects(result, /已取消/);
+  await win.MaweAiTasks.cancelCurrent();
+  assert.ok(win.MaweAiTasks.active);
+  state.responses.push({ body: { ok: true } });
+  submit({ ok: true, json: async () => ({ ok: true, task: { id: 'late-task', status: 'queued' } }) });
+  await flush();
+  await cancelled;
+  assert.equal(win.MaweAiTasks.active, null);
+  assert.equal(state.timers.length, 0);
+});
+
+test('submission failure after cancel intent reports the submission error', async () => {
+  const { win, state } = createContext();
+  let rejectSubmit;
+  state.responses.push({ deferred: true, promise: new Promise((_, reject) => { rejectSubmit = reject; }) });
+  const result = win.MaweAiTasks.begin('ai-bold');
+  const failed = assert.rejects(result, /submission failed/);
+  await win.MaweAiTasks.cancelCurrent();
+  rejectSubmit(new Error('submission failed'));
+  await failed;
+  assert.equal(win.MaweAiTasks.active, null);
+  assert.equal(state.fetches.length, 1);
 });

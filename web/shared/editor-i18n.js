@@ -1520,6 +1520,7 @@
     'AI 功能仅在本地服务器版编辑器可用（当前通过 file:// 打开）': 'AI features are only available in the local-server editor (opened via file://)',
     'AI 设置仅在本地服务器版编辑器可用（当前通过 file:// 打开）': 'AI settings are only available in the local-server editor (opened via file://)',
     '未配置密钥': 'No key configured', '该供应商可免密钥访问': 'This provider needs no API key',
+    '已请求取消，等待提交确认…': 'Cancel requested; waiting for submission confirmation…',
     '正在提交…': 'Submitting…', '排队中…': 'Queued…', '启动中…': 'Starting…', '连接供应商…': 'Connecting to provider…',
     '等待供应商响应…': 'Waiting for provider…', '处理中…': 'Working…', '已取消': 'Cancelled',
     '重新连接': 'Reconnect',
