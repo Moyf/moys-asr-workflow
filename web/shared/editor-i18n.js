@@ -1522,6 +1522,7 @@
     '未配置密钥': 'No key configured', '该供应商可免密钥访问': 'This provider needs no API key',
     '正在提交…': 'Submitting…', '排队中…': 'Queued…', '启动中…': 'Starting…', '连接供应商…': 'Connecting to provider…',
     '等待供应商响应…': 'Waiting for provider…', '处理中…': 'Working…', '已取消': 'Cancelled',
+    '重新连接': 'Reconnect',
     '测试 AI 连接': 'Test AI connection', '正在拉取模型列表…': 'Fetching model list…',
     'AI 任务已取消': 'AI task cancelled', 'AI 任务不存在或已过期': 'AI task not found or expired',
     'AI 任务失败': 'AI task failed', '取消 AI 任务失败': 'Failed to cancel the AI task',

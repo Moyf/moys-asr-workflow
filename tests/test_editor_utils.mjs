@@ -3450,6 +3450,7 @@ test('translates snap-subtitles flash hints to English', () => {
   assert.equal(i18n.translateText('时间码→字词…', 'en'), 'Timecodes → word items…');
   assert.equal(i18n.translateText('智谱 Coding Plan', 'en'), 'Zhipu Coding Plan');
   assert.equal(i18n.translateText('关闭思考', 'en'), 'Off');
+  assert.equal(i18n.translateText('重新连接', 'en'), 'Reconnect');
   assert.equal(i18n.translateText('AI 翻译为副字幕 · 已取消', 'en'), 'AI translate to secondary subtitles · Cancelled');
   assert.equal(
     i18n.translateText('AI 加粗关键词已更新 5 条字幕（2 条期间被修改已跳过；1 条模型未返回）', 'en'),
