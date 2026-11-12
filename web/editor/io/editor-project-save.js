@@ -184,7 +184,7 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
       return true;
     } catch (error) {
       if (!current()) return false;
-      MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
+      MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning', { error });
       return false;
     } finally {
       MaweServerSave.projectSaveInFlight = false;
@@ -253,7 +253,7 @@ markProjectSaved(handle.name, null, { silent, fingerprint, contentFingerprint })
     } catch (error) {
       if (!current()) return false;
       if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
-      MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
+      MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning', { error });
     }
   }
 

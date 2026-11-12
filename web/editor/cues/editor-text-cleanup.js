@@ -93,7 +93,7 @@ export function initMaweTextCleanup() {
       MaweCoreState.waveformEditor?.updatePlayback();
     }
   } catch (error) {
-    MaweHint.flashHint(`跳转失败：${error.message}`, 'warning');
+    MaweHint.flashHint(`跳转失败：${error.message}`, 'warning', { error });
   }
 }
 

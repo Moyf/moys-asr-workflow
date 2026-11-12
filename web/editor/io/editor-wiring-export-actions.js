@@ -304,7 +304,7 @@ document.getElementById('download-full-ass')?.addEventListener('click', async ()
       desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
     });
   } catch (error) {
-    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning');
+    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning', { error });
   }
 });
 document.getElementById('download-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(false));
@@ -383,7 +383,7 @@ document.getElementById('download-gap-removed-ass')?.addEventListener('click', a
       });
     }
   } catch (error) {
-    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning');
+    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning', { error });
   }
 });
 document.getElementById('download-otio')?.addEventListener('click', async () => {
@@ -534,7 +534,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     });
   } catch (error) {
     if (error?.name === 'AbortError') return;
-    MaweHint.flashHint(`${mediaText('无法打开视频保存位置选择器')}：${safeError(error, '请检查保存位置权限后重试')}`, 'warning');
+    MaweHint.flashHint(`${mediaText('无法打开视频保存位置选择器')}：${safeError(error, '请检查保存位置权限后重试')}`, 'warning', { error });
     return;
   }
   // The picker can yield while this page (or another server tab) changes project.
@@ -577,7 +577,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   const warnCleanup = (error) => {
     if (cleanupWarningShown) return;
     cleanupWarningShown = true;
-    MaweHint.flashHint(safeError(error, '无法确认导出已停止，请重试'), 'warning');
+    MaweHint.flashHint(safeError(error, '无法确认导出已停止，请重试'), 'warning', { error });
   };
   const stopped = new Promise((_, reject) => { rejectStop = reject; });
   void stopped.catch(() => {});
@@ -694,7 +694,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
         try {
           await MaweExportTimeline.downloadFile(srt, handle.name.replace(/\.[^.]+$/, '') + '.srt', 'text/plain',
             { desc: 'SRT', types: { 'text/plain': ['.srt'] } });
-        } catch (error) { MaweHint.flashHint(safeError(error, '字幕保存失败，请重试'), 'warning'); }
+        } catch (error) { MaweHint.flashHint(safeError(error, '字幕保存失败，请重试'), 'warning', { error }); }
         finally { saveSrt.disabled = false; }
       });
       actions.append(saveSrt);
@@ -992,7 +992,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       } catch (cleanupError) {
         warnCleanup(cleanupError);
       }
-    } else MaweHint.flashHint(`${mediaText('重组后视频导出失败')}：${safeError(error, '媒体处理失败，请确认源文件可以正常播放后重试')}`, 'warning');
+    } else MaweHint.flashHint(`${mediaText('重组后视频导出失败')}：${safeError(error, '媒体处理失败，请确认源文件可以正常播放后重试')}`, 'warning', { error });
   } finally {
     if (!transferComplete && response?.body) {
       // Releasing a reader only relinquishes its JS lock. Cancel the network

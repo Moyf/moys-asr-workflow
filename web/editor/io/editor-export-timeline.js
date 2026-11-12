@@ -674,7 +674,7 @@ export function initExportTimelineModule() {
         desc: description, types: { 'application/zip': ['.otioz'] }
       });
     } catch (error) {
-      MaweHint.flashHint(`表情包 OTIOZ 导出失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`表情包 OTIOZ 导出失败：${error.message || error}`, 'warning', { error });
     }
   }
 
@@ -710,7 +710,7 @@ export function initExportTimelineModule() {
         desc: description, types: { 'application/zip': ['.otioz'] },
       }));
     } catch (error) {
-      MaweHint.flashHint(`${tr('时间线 OTIOZ 导出失败')}：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`${tr('时间线 OTIOZ 导出失败')}：${error.message || error}`, 'warning', { error });
       return false;
     }
   }
