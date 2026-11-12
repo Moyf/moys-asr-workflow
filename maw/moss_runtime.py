@@ -62,7 +62,11 @@ def _moss_root_override() -> Path | None:
     shared = os.environ.get("MAW_LOCAL_RUNTIME_ROOT", "").strip()
     if shared:
         base = Path(shared).expanduser().resolve(strict=False)
-        return base.with_name(f"{base.name}-moss")
+        # 盘符根（``D:\``）的 ``name`` 为空，``with_name`` 会抛 ValueError：
+        # 回落到默认目录名并用 ``/`` 直接拼接，派生结果仍是同级独立目录
+        # （``D:\local-runtime-moss``）。
+        derived_name = f"{base.name}-moss" if base.name else MOSS_RUNTIME_ROOT_NAME
+        return base / derived_name if not base.name else base.with_name(derived_name)
     return None
 
 
