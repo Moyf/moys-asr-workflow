@@ -225,6 +225,31 @@ test('saved binding collisions are isolated so unrelated valid settings remain a
   assert.equal(warnings[1].reason, '快捷键冲突：');
   assert.equal(warnings[1].detail, '拆分字幕');
 });
+test('saved legal key exchanges are validated as a complete set before applying defaults', () => {
+  const { api } = setup('{"play":["j"],"reverse":["p"]}');
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'play'))], ['j']);
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'reverse'))], ['p']);
+  assert.equal(api.takeSavedBindingWarnings().length, 0);
+  assert.equal(api.resolveEvent(event('j')).key, ' ');
+  assert.equal(api.resolveEvent(event('p')).key, 'j');
+});
+test('saved custom collisions keep the first override and report the later discarded command', () => {
+  const { api } = setup('{"play":["p"],"reverse":["p"]}');
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'play'))], ['p']);
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'reverse'))], ['j']);
+  const [warning] = api.takeSavedBindingWarnings();
+  assert.equal(warning.label, '倒放 / 降低速度');
+  assert.equal(warning.reason, '快捷键冲突：');
+  assert.equal(warning.detail, '播放 / 暂停');
+});
+test('invalid saved binding reports the unchanged default command that owns its chord', () => {
+  const { api } = setup('{"play":["j"]}');
+  assert.deepEqual([...api.bindings(api.commands.find(item => item.id === 'play'))], ['Space']);
+  const [warning] = api.takeSavedBindingWarnings();
+  assert.equal(warning.label, '播放 / 暂停');
+  assert.equal(warning.reason, '快捷键冲突：');
+  assert.equal(warning.detail, '倒放 / 降低速度');
+});
 test('fixed marker and contextual shortcuts cannot be reassigned onto another command', () => {
   const { api } = setup();
   assert.throws(() => api.setBinding('split', 'm'), /快捷键冲突.*标记编辑/);

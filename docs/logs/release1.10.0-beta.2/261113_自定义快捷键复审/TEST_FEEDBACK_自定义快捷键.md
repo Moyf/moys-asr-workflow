@@ -44,3 +44,18 @@
 - 分支全量 Python 既有结果：3039 项、19 skipped、exit 0（`.artifacts/checks/20261112T183004Z-365c7376/`）。本次基线快照无 Python 输出/result 文件；核查时没有相关存活进程，未重复运行，基线结果未知。
 - 构建与浏览器回归复用已有 Node 22.23.1、`node_modules`、浏览器和 Python venv，未下载或安装依赖。此前沙箱 localhost 权限失败不与获准后对照混为一谈。
 - `.pnpm-store/` 是未跟踪目录；显式提交文件清单将排除该目录。
+
+## 第四轮盲审（12ed4856）
+
+| 条目 | 状态 | 处理与证据 |
+| --- | --- | --- |
+| 合法快捷键交换加载时被尚未迁移的默认键误判冲突 | 已修复 | 先独立筛除格式/系统保留错误，再将所有候选覆盖作为完整集合校验；只有确有冲突才逐个剔除覆盖，并保留其余项。`play=j, reverse=p` 在真实刷新后两者均保留，J 映射 Space、P 映射 J，单测与浏览器均通过。对 `play=j` 单独存储时回退默认 Space，并明确警告其与倒放冲突。 |
+| 字词选区捕获按原始按键漏掉已改绑父命令、并拦截失效旧键 | 已修复 | 字词选择的固定物理 C/Shift+C/F 优先处理；其它父命令保护使用 `MaweShortcuts.resolveEvent(event)` 的有效映射。真实浏览器确认 Delete 改绑 E 被捕获、Split 改绑 E 被捕获、旧 B 不再被错误阻止；Merge 改绑 E 与 color-9 改绑 U 均被阻止触发父字幕操作，物理 C/Shift+C/F 仍执行字词操作，Ctrl+C 仍未被误拦截。 |
+| 捕获层与按键上下文审计 | 已复核 | 主字幕操作相关的可配置快捷键接线先调用 `resolveEvent`；字词时间码捕获层是唯一在该选区上下文直接决定父字幕快捷键是否继续传播的层，本次按有效映射识别 Delete、Split、Merge 与颜色 0–9。内联编辑 Enter/Escape、拆分弹窗 B/Enter/Space/WASD/方向键、媒体/导出/文本弹窗 Escape 与输入控件保持其明确的局部物理键语义，不参加全局命令映射。固定 M/Q 与字词 C/Shift+C/F 仍在其上下文生效；Ctrl+C 保持原生复制语义。 |
+
+### 第四轮验证记录
+
+- 红测：旧迁移算法下新增的 J/P 完整交换单测失败（`tests/test_editor_shortcuts.mjs`，`.artifacts/checks/20261112T184915Z-6f309d9e/`）；真实浏览器保存 J/P 后刷新回归失败（`.artifacts/checks/20261112T184940Z-d91b703c/`）。旧捕获逻辑真实浏览器回归证实 E 已解析为 Delete 但捕获未阻止（`.artifacts/checks/20261112T185148Z-fd9f8d0e/`）。同一红测在 E 断言处停止，旧 B 的独立红测未单独取得结果；修复后的浏览器回归直接确认旧 B 不被拦截。
+- 修复后快捷键 Node 定向套件 19/19 通过（`.artifacts/checks/20261112T185504Z-7b77535a/`），最终新增迁移自定义冲突用例后 20/20 通过（`.artifacts/checks/20261112T190701Z-c4e999b7/`）。此前真实浏览器定向 5/5 通过（`.artifacts/checks/20261112T185728Z-f1e3dab6/`）；补充覆盖父级 Merge、color-9 与 Ctrl+C 后，三份相关 spec 定向运行 6/6 通过（`.artifacts/checks/20261112T190714Z-1b3a34ae/`，exit 0）。
+- 浏览器使用已有 Playwright、浏览器、Node 与依赖；一次未提权尝试因 localhost `listen EPERM` 失败，获准后测试运行，无安装或下载。
+- 本轮 `.pnpm-store/` 保持未跟踪状态，排除提交。

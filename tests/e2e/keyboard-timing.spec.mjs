@@ -97,6 +97,107 @@ test('remapped A/D preserve Alt drag adjustment through real browser events', as
   await page.mouse.up();
 });
 
+test('word-selection capture protects effective remapped delete and split commands only', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    MaweWordTiming.setEnabled(true);
+    MaweWordTiming.select(0, 0);
+    MaweShortcuts.setBinding('delete', 'e');
+    document.activeElement?.blur();
+    window.__guardKeyResults = {};
+    window.addEventListener('keydown', event => {
+      const key = event.key.toLowerCase();
+      if (!['e', 'b'].includes(key)) return;
+      setTimeout(() => {
+        window.__guardKeyResults[key] = { prevented: event.defaultPrevented, resolved: MaweShortcuts.resolveEvent(event).key };
+      }, 0);
+    }, true);
+  });
+  expect(await page.evaluate(() => MaweWordTiming.getSelection(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]).size)).toBe(1);
+  const countBeforeDelete = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length);
+  await page.keyboard.press('e');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(countBeforeDelete);
+  await expect.poll(() => page.evaluate(() => window.__guardKeyResults.e)).toEqual({ prevented: true, resolved: 'Delete' });
+
+  await page.evaluate(() => {
+    MaweShortcuts.setBinding('delete', null);
+    MaweShortcuts.setBinding('split', 'e');
+    delete window.__guardKeyResults.e;
+    delete window.__guardKeyResults.b;
+  });
+  await page.keyboard.press('b');
+  await expect.poll(() => page.evaluate(() => window.__guardKeyResults.b)).toEqual({ prevented: false, resolved: 'Unidentified' });
+  await page.keyboard.press('e');
+  await expect.poll(() => page.evaluate(() => window.__guardKeyResults.e)).toEqual({ prevented: true, resolved: 'b' });
+  expect(await page.locator('#multi-subtitle-split-modal').evaluate(el => el.classList.contains('show'))).toBe(false);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(countBeforeDelete);
+});
+
+test('word-selection capture protects remapped parent merge and all cue color commands', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    MaweWordTiming.setEnabled(true);
+    MaweWordTiming.select(0, 0);
+    MaweShortcuts.setBinding('merge', 'e');
+    MaweShortcuts.setBinding('color-9', 'u');
+    document.activeElement?.blur();
+    window.__guardKeyResults = {};
+    window.addEventListener('keydown', event => {
+      if (!['e', 'u', 'c'].includes(event.key.toLowerCase())) return;
+      setTimeout(() => {
+        window.__guardKeyResults[event.key.toLowerCase()] = {
+          prevented: event.defaultPrevented,
+          resolved: MaweShortcuts.resolveEvent(event).key,
+        };
+      }, 0);
+    }, true);
+  });
+
+  await page.keyboard.press('e');
+  await expect.poll(() => page.evaluate(() => window.__guardKeyResults.e)).toEqual({ prevented: true, resolved: 'c' });
+  await page.keyboard.press('Control+c');
+  await expect.poll(() => page.evaluate(() => window.__guardKeyResults.c)).toEqual({ prevented: false, resolved: 'c' });
+  await page.keyboard.press('u');
+  await expect.poll(() => page.evaluate(() => window.__guardKeyResults.u)).toEqual({ prevented: true, resolved: '9' });
+  expect(await page.evaluate(() => MaweWordTiming.getSelection(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]).size)).toBe(1);
+});
+
+test('word-selection physical C, Shift+C and F stay fixed when parent shortcuts are remapped', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
+    segment.text = 'one two';
+    segment.items = [{ text: 'one', start: 5000, end: 7000 }, { text: 'two', start: 7000, end: 10000 }];
+    MaweCuePanel.renderAll();
+    MaweWordTiming.setEnabled(true);
+    MaweWordTiming.select(0, 0);
+    MaweWordTiming.select(0, 1, { shiftKey: true });
+    MaweShortcuts.setBinding('merge', 'e');
+    MaweShortcuts.setBinding('preview', 'u');
+  });
+  await expect.poll(() => page.evaluate(() => MaweWordTiming.getSelection(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]).size)).toBe(2);
+  await page.keyboard.press('c');
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items.length)).toBe(1);
+
+  await page.evaluate(() => {
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
+    segment.items = [{ text: 'one', start: 5000, end: 7000 }, { text: 'two', start: 7000, end: 10000 }];
+    MaweWordTiming.select(0, 0);
+    MaweWordTiming.select(0, 1, { shiftKey: true });
+  });
+  await page.keyboard.press('Shift+c');
+  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items.length)).toBe(1);
+
+  await page.evaluate(() => {
+    const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
+    segment.items = [{ text: 'one', start: 5000, end: 7000 }, { text: 'two', start: 7000, end: 10000 }];
+    MaweWordTiming.select(0, 0);
+  });
+  await page.keyboard.press('f');
+  await expect.poll(() => page.evaluate(() => MaweCoreState.player.currentTime)).toBeGreaterThanOrEqual(5);
+  await expect.poll(() => page.evaluate(() => MaweMediaPlayback.isAuditioning)).toBe(true);
+});
+
 async function selectedCueIndex(page) {
   return page.locator('.cue.selected').getAttribute('data-idx');
 }

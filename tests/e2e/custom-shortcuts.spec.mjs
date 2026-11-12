@@ -137,6 +137,20 @@ test('invalid saved split shortcut is discarded with a warning while other short
   expect(saved.split).toBeUndefined();
   expect(saved.merge).toBeUndefined();
 });
+test('saved reverse and play key exchange survives reload and dispatches both commands', async ({ page }) => {
+  await page.evaluate(() => {
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ play: ['j'], reverse: ['p'] }));
+  });
+  await page.reload();
+  const bindings = await page.evaluate(() => ({
+    play: MaweShortcuts.bindings(MaweShortcuts.commands.find(item => item.id === 'play')),
+    reverse: MaweShortcuts.bindings(MaweShortcuts.commands.find(item => item.id === 'reverse')),
+    warnings: MaweShortcuts.takeSavedBindingWarnings(),
+    playTarget: MaweShortcuts.resolveEvent(new KeyboardEvent('keydown', { key: 'j' })).key,
+    reverseTarget: MaweShortcuts.resolveEvent(new KeyboardEvent('keydown', { key: 'p' })).key,
+  }));
+  expect(bindings).toEqual({ play: ['j'], reverse: ['p'], warnings: [], playTarget: ' ', reverseTarget: 'j' });
+});
 test('fixed marker M cannot collide with a saved split shortcut and dispatches only marker editing', async ({ page }) => {
   await page.evaluate(() => {
     localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: ['m'] }));

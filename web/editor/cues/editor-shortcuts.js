@@ -215,10 +215,18 @@ export function initMaweShortcuts() {
       for (const { chord: value } of effectiveBindings(entry, source)) {
         if (!validChord(value)) throw reservedChordError(value);
         const fixed = fixedBindings.find(binding => binding.chord === value && binding.owner !== entry.id);
-        if (fixed) throw new Error('快捷键冲突：' + fixed.label);
+        if (fixed) {
+          const error = new Error('快捷键冲突：' + fixed.label);
+          error.shortcutConflict = { previousId: fixed.owner, currentId: entry.id, chord: value,
+            labels: { [entry.id]: fixed.label } };
+          throw error;
+        }
         if (used.has(value) && used.get(value).id !== entry.id) {
           const previous = used.get(value);
-          throw new Error('快捷键冲突：' + (previous.id === changedId ? entry.label : previous.label));
+          const error = new Error('快捷键冲突：' + (previous.id === changedId ? entry.label : previous.label));
+          error.shortcutConflict = { previousId: previous.id, currentId: entry.id, chord: value,
+            labels: { [previous.id]: entry.label, [entry.id]: previous.label } };
+          throw error;
         }
         used.set(value, entry);
       }
@@ -255,12 +263,33 @@ export function initMaweShortcuts() {
             for (const binding of effectiveBindings(entry, isolated)) {
               if (!validChord(binding.chord)) throw reservedChordError(binding.chord, entry.id === 'split');
             }
-            const trial = { ...candidate, [entry.id]: value };
-            validate(trial, entry.id);
             Object.assign(candidate, { [entry.id]: value });
           } catch (error) {
             savedBindingWarnings.push(describeSavedBindingWarning(entry, value, error));
           }
+        }
+      }
+      // Validate the complete migrated set first. Otherwise an early saved
+      // override can be rejected against a default chord that a later override
+      // legally moves away from (for example play=J, reverse=P).
+      while (true) {
+        try {
+          validate(candidate);
+          break;
+        } catch (error) {
+          const conflict = error.shortcutConflict;
+          const overridden = conflict
+            ? [conflict.previousId, conflict.currentId].filter(id => id && Object.hasOwn(candidate, id))
+            : [];
+          if (!overridden.length) break;
+          // Keep the earliest valid saved command when two saved overrides
+          // collide; if only one side is overridden, defaults win over it.
+          const dropId = overridden.includes(conflict.currentId) ? conflict.currentId : overridden[0];
+          const droppedEntry = commands.find(item => item.id === dropId);
+          const warningError = conflict.labels?.[dropId]
+            ? new Error('快捷键冲突：' + conflict.labels[dropId]) : error;
+          savedBindingWarnings.push(describeSavedBindingWarning(droppedEntry, saved[dropId], warningError));
+          delete candidate[dropId];
         }
       }
       overrides = candidate;

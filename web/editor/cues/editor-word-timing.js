@@ -265,21 +265,31 @@
       event.preventDefault(); event.stopImmediatePropagation(); MaweDom.ctxmenu.classList.remove('show'); return;
     }
     if (!selection || !getSelection(selection.segment).size) return;
-    const key = event.key.toLowerCase();
+    // Contextual word-selection commands keep their documented physical keys,
+    // while parent subtitle commands must be guarded by the effective remap.
+    const physicalKey = event.key.toLowerCase();
+    const fixedWordChord = !event.ctrlKey && !event.metaKey && !event.altKey;
+    if (fixedWordChord && physicalKey === 'f' && !event.shiftKey
+        && !event.repeat && !MaweDom.ctxmenu.classList.contains('show')) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      auditionWords(selection.segment, [...selection.indices]);
+      return;
+    }
+    if (fixedWordChord && physicalKey === 'c') {
+      event.preventDefault(); event.stopImmediatePropagation(); merge();
+      return;
+    }
+    const effective = MaweShortcuts.resolveEvent(event);
+    const key = effective.key.toLowerCase();
     if ((event.ctrlKey || event.metaKey) && key === 'a' && !event.shiftKey) {
       event.preventDefault(); event.stopImmediatePropagation();
       selection.indices = new Set(global.AsrEditorUtils.getWordTimingEntries(selection.segment, clock()).map(e => e.index));
       refresh();
-    } else if (key === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
-        && !event.repeat && !MaweDom.ctxmenu.classList.contains('show')) {
-      event.preventDefault(); event.stopImmediatePropagation();
-      auditionWords(selection.segment, [...selection.indices]);
-    } else if (key === 'c' && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      event.preventDefault(); event.stopImmediatePropagation(); merge();
     } else if (event.key === 'Escape') {
       event.preventDefault(); event.stopImmediatePropagation(); clearSelection(); refresh();
-    } else if (['delete', 'backspace', 'b', 'n', 'r', 'enter', 'g', 'h', 't', '1', '2', '3', '4', '5', '0',
+    } else if (['delete', 'backspace', 'b', 'n', 'r', 'enter', 'g', 'h', 't', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
       'arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)
+        || (key === 'c' && physicalKey !== 'c')
         || (['z', 'x'].includes(key) && !event.ctrlKey && !event.metaKey)
         || (['a', 'd', 'w', 's'].includes(key) && (event.altKey || event.shiftKey))) {
       event.preventDefault(); event.stopImmediatePropagation();
