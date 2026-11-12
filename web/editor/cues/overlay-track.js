@@ -471,7 +471,9 @@ function mergeOverlaySegments(idxs) {
   const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
     track.segments, sorted, 'color', 'color_ref',
   );
-  // 拼接后折叠相邻「闭符号+开符号」的同符号对，items 层同步守恒（与主/副合并同规则）。
+  // 混合组不继承时按切点拆组（合并前下标），避免 head 被并走后留下悬空引用；
+  // 拆组是对 track.segments 的变更，必须放在 MaweCommands.run 内保证可撤销。
+  const mergeSet = new Set(sorted);
   const overlayJoin = window.AsrEditorUtils.joinSegmentTextsMassFold(
     segments,
     MaweMultiSubtitleCore.mergeJoinSeparatorForMode(MaweMultiSubtitleCore.getMainSubtitleSplitMode({ text: segments.map((s) => s.text || '').join('\n') })),
@@ -502,7 +504,16 @@ function mergeOverlaySegments(idxs) {
   if (Array.isArray(merged.items) && merged.items.length === 0) merged.items = null;
   MaweSelection.clearSelection();
   return MaweCommands.run('合并叠加字幕', (command) => {
+    const originalLength = track.segments.length;
+    if (stickerGroup.headIdx === null) {
+      MaweSegmentOps.splitGroupsAtCutPoints(mergeSet, 'sticker', 'sticker_ref', track.segments);
+    }
+    if (colorGroup.headIdx === null) {
+      MaweSegmentOps.splitGroupsAtCutPoints(mergeSet, 'color', 'color_ref', track.segments);
+    }
     track.segments.splice(sorted[0], sorted.length, merged);
+    // 叠加轨组引用是数组下标，不随 splice 自动更新：合并后统一平移/改指。
+    window.AsrEditorUtils.remapGroupRefsAfterMergeSplice(track.segments, sorted, undefined, originalLength);
     track._dirty = true;
     command.commit({ cueList: true });
     MaweState.selection.clear('overlay');
@@ -558,6 +569,8 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
       items: [],
       _dirty: true,
     });
+    // 叠加轨组引用是数组下标：插入点及其后的 head 右移一位。
+    window.AsrEditorUtils.shiftGroupReferenceIndices(overlay.segments, index, 1);
     overlay._dirty = true;
     MaweSelection.clearSelection({ silent: true });
     command.commit({ cueList: true, preserveCueListScroll: false });

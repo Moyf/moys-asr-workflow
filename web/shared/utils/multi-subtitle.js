@@ -520,5 +520,44 @@ export function createUtilsModule(dependencies) {
     };
   }
 
-  return Object.freeze({ MULTI_SUBTITLE_DISPLAY_MODES, MULTI_SUBTITLE_SCHEMA, MULTI_SUBTITLE_SPLIT_MODES, MULTI_SUBTITLE_TOLERANCE_MS, bindingForSegment, buildMultiDisplayRows, buildSubtitleBinding, matchSubtitleSegments, mergeMainAndOverlaySegments, moveSegmentBetweenTracks, normalizeMultiSubtitle, normalizeMultiSubtitleProject, normalizeOverlayTrack, rebuildBindingOffsets, removeSubtitleBindings, resolveMergedGroupInheritance, swapMainAndExtensionSubtitle });
+
+  // 合并 splice 后按被移除下标集合修复组引用：removedIndexes 是合并前被移除段的
+  // 原下标（升序、可不连续——主轨合并联动副轨时副轨下标不保证连续），合并产物
+  // 插在首个被移除下标处。指向被合并 head 的引用改指合并产物（同组继承时产物即
+  // 新 head）；其后的 head 按「前移被删数、回插 1 段」平移。必须在 splice 完成
+  // 后立即调用；混合组场景调用方需先按切点拆组（splitGroupsAtCutPoints 语义）。
+  // originalLength 必须在 splice 前捕获：旧下标不能用合并后长度校验，也不能
+  // 从未校验的 removedIndexes 数量反推上界（重复或无效下标会扩大范围）。
+  function remapGroupRefsAfterMergeSplice(segments, removedIndexes, refFields = ['sticker_ref', 'color_ref'], originalLength) {
+    if (!Array.isArray(segments) || !Array.isArray(removedIndexes) || !removedIndexes.length
+        || !Number.isInteger(originalLength) || originalLength < segments.length) return 0;
+    const removed = [...new Set(removedIndexes)]
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < originalLength)
+      .sort((left, right) => left - right);
+    if (!removed.length) return 0;
+    const mergedIndex = removed[0];
+    const removedSet = new Set(removed);
+    let changed = 0;
+    segments.forEach((segment) => {
+      refFields.forEach((field) => {
+        const ref = segment?.[field];
+        if (!ref || !Number.isInteger(ref.headIdx)) return;
+        if (removedSet.has(ref.headIdx)) {
+          if (ref.headIdx !== mergedIndex) { ref.headIdx = mergedIndex; changed += 1; }
+          return;
+        }
+        if (ref.headIdx < mergedIndex) return; // 合并点之前的 head 不受影响
+        let removedBefore = 0;
+        for (const removedIndex of removed) {
+          if (removedIndex >= ref.headIdx) break;
+          removedBefore += 1;
+        }
+        const shift = 1 - removedBefore;
+        if (shift) { ref.headIdx += shift; changed += 1; }
+      });
+    });
+    return changed;
+  }
+
+  return Object.freeze({ MULTI_SUBTITLE_DISPLAY_MODES, MULTI_SUBTITLE_SCHEMA, MULTI_SUBTITLE_SPLIT_MODES, MULTI_SUBTITLE_TOLERANCE_MS, bindingForSegment, buildMultiDisplayRows, buildSubtitleBinding, matchSubtitleSegments, mergeMainAndOverlaySegments, moveSegmentBetweenTracks, normalizeMultiSubtitle, normalizeMultiSubtitleProject, normalizeOverlayTrack, rebuildBindingOffsets, remapGroupRefsAfterMergeSplice, removeSubtitleBindings, resolveMergedGroupInheritance, swapMainAndExtensionSubtitle });
 }

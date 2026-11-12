@@ -69,6 +69,12 @@ export function initMaweTextCleanup() {
     sync(overlay.segments, 'sticker', 'sticker_ref');
     sync(overlay.segments, 'color', 'color_ref');
   }
+  // 副轨段同样可带颜色组（JSON_SCHEMA §1.6）：主副合并/删除联动副轨后，
+  // head 的时间范围需要按幸存成员归位。
+  const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack?.();
+  if (extensionTrack?.segments?.length) {
+    sync(extensionTrack.segments, 'color', 'color_ref');
+  }
 }
 
 

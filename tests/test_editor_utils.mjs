@@ -3811,6 +3811,128 @@ test('merge group inheritance keeps a common head or reference and rejects mixed
   });
 });
 
+test('remaps group refs after a contiguous merge splice keeps groups valid', () => {
+  // 复刻主轨合并联动副轨的数据面：副轨 [14,15] 合并成 1 条插在 14，
+  // 其后所有 head 与 ref 都要前移 1 位（修复前正是保存报错的来源）。
+  const segments = [
+    { color: { name: 'red', start: 0, end: 1000 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+    { color_ref: { name: 'red', headIdx: 0 } }, // 被合并
+    { color_ref: { name: 'red', headIdx: 0 } }, // 被合并
+    { color: { name: 'green', start: 0, end: 1000 } },
+    { color_ref: { name: 'green', headIdx: 4 } },
+  ];
+  const merged = { color_ref: { name: 'red', headIdx: 0 } };
+  segments.splice(2, 2, merged);
+  const changed = helpers.remapGroupRefsAfterMergeSplice(segments, [2, 3], ['color_ref'], 6);
+  assert.equal(changed, 1);
+  assert.equal(segments[2].color_ref.headIdx, 0, '合并产物仍指向前方 head');
+  assert.equal(segments[3].color.name, 'green', '其后 head 前移 1 位');
+  assert.equal(segments[4].color_ref.headIdx, 3);
+});
+
+test('remaps group refs after a merge splice with the head inside the merged set', () => {
+  // head 本身被合并：同组继承时合并产物成为新 head，幸存 ref 改指产物位置。
+  const segments = [
+    { color: { name: 'yellow', start: 0, end: 1000 } }, // 被合并 head
+    { color_ref: { name: 'yellow', headIdx: 0 } },     // 被合并
+    { color_ref: { name: 'yellow', headIdx: 0 } },     // 幸存成员
+    { color_ref: { name: 'yellow', headIdx: 0 } },     // 幸存成员
+  ];
+  const merged = { color: { name: 'yellow', start: 0, end: 1000 } };
+  segments.splice(0, 2, merged);
+  helpers.remapGroupRefsAfterMergeSplice(segments, [0, 1], ['color_ref'], 4);
+  assert.equal(segments[0].color.name, 'yellow');
+  assert.equal(segments[1].color_ref.headIdx, 0);
+  assert.equal(segments[2].color_ref.headIdx, 0);
+});
+
+test('remaps group refs after a non-contiguous merge splice', () => {
+  // 主轨合并联动副轨时被合并副轨段可以不连续：平移量按「前面被删数 - 1」。
+  const segments = [
+    { color: { name: 'red', start: 0, end: 1000 } },
+    { color_ref: { name: 'red', headIdx: 0 } },      // 1 被合并
+    { color: { name: 'green', start: 0, end: 1000 } },
+    { color_ref: { name: 'red', headIdx: 0 } },      // 3 被合并
+    { color_ref: { name: 'green', headIdx: 2 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+  ];
+  const merged = { color_ref: { name: 'red', headIdx: 0 } };
+  segments.splice(3, 1);
+  segments.splice(1, 1);
+  segments.splice(1, 0, merged);
+  helpers.remapGroupRefsAfterMergeSplice(segments, [1, 3], ['color_ref'], 6);
+  assert.equal(segments[2].color.name, 'green');
+  assert.equal(segments[3].color_ref.headIdx, 2, '被删 1 个、回插 1 段：中间 head 不动');
+  assert.equal(segments[4].color_ref.headIdx, 0, '指向前方 head 的 ref 不受影响');
+});
+
+test('remap after merge splice ignores out-of-range and empty inputs', () => {
+  const segments = [{ color_ref: { name: 'red', headIdx: 0 } }];
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [], ['color_ref'], 1), 0);
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [99, -3], ['color_ref'], 1), 0);
+  assert.equal(segments[0].color_ref.headIdx, 0);
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(null, [0], undefined, 1), 0);
+});
+
+test('remaps trailing color refs after merging four of six cues', () => {
+  const segments = [{}, {}, {}, {}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 4 } }];
+  const originalLength = segments.length;
+  segments.splice(0, 4, {});
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [0, 1, 2, 3], ['color_ref'], originalLength), 1);
+  assert.equal(segments.length, 3);
+  assert.equal(segments[2].color_ref.headIdx, 1);
+  assert.equal(segments[segments[2].color_ref.headIdx].color.name, 'green');
+});
+
+test('remaps all old indexes after merging noncontiguous cues in an eight-cue track', () => {
+  const segments = [{}, {}, {}, {}, {}, {}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 6 } }];
+  const originalLength = segments.length;
+  const indexes = [0, 2, 4, 5];
+  for (const index of indexes.toReversed()) segments.splice(index, 1);
+  segments.splice(0, 0, {});
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, indexes, ['color_ref'], originalLength), 1);
+  assert.equal(segments.length, 5);
+  assert.equal(segments[4].color_ref.headIdx, 3);
+});
+
+test('remaps a removed head beyond the post-merge length to the merged cue', () => {
+  const segments = [{}, {}, {}, {}, {}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 5 } }];
+  const originalLength = segments.length;
+  segments.splice(3, 3, { color: { name: 'green' } });
+  helpers.remapGroupRefsAfterMergeSplice(segments, [3, 4, 5], ['color_ref'], originalLength);
+  assert.equal(segments[4].color_ref.headIdx, 3);
+});
+
+test('remaps true tail and complete merges without changing earlier refs', () => {
+  const segments = [
+    { color: { name: 'red' } }, { color_ref: { name: 'red', headIdx: 0 } }, {}, {},
+    { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 4 } },
+  ];
+  segments.splice(4, 2, { color: { name: 'green' } });
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [4, 5], ['color_ref'], 6), 0);
+  assert.equal(segments[1].color_ref.headIdx, 0);
+  assert.equal(segments[4].color.name, 'green');
+  const wholeTrack = [{ color: { name: 'green' } }];
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(wholeTrack, [0, 1, 2, 3, 4, 5], undefined, 6), 0);
+  assert.deepEqual(wholeTrack, [{ color: { name: 'green' } }]);
+});
+
+test('remaps using explicit original length despite duplicate and invalid indexes', () => {
+  const segments = [{}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 4 } }];
+  const indexes = [3, 0, 1, 2, 2, 6, 7, 8, 99, -1, 1.5];
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, indexes, ['color_ref'], 6), 1);
+  assert.equal(segments[2].color_ref.headIdx, 1);
+});
+
+test('remap after merge requires a valid explicit pre-merge length', () => {
+  for (const originalLength of [undefined, null, -1, 0, 2.5, Infinity]) {
+    const segments = [{}, { color_ref: { headIdx: 2 } }];
+    assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [0, 1], ['color_ref'], originalLength), 0);
+    assert.equal(segments[1].color_ref.headIdx, 2);
+  }
+});
+
 test('finds A/D navigation targets from selection or playhead', () => {
   const segments = [
     { start: 1000, end: 2000 },
