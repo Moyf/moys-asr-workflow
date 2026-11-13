@@ -131,7 +131,8 @@ export function createWaveformModule(dependencies) {
     waveformScaleAuto: true,
     disabledDisplay: 'dim',
     showGroupBadges: true,
-    showCueTooltip: true,
+    showCueTooltip: false,
+    showExtensionColors: false,
     dragPlayhead: true,
     spectralColor: false,
   };

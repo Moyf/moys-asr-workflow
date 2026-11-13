@@ -21,6 +21,10 @@ test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 test('full text preference also controls word hover in both waveform modes', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
+  await page.locator('#waveform-settings-toggle').click();
+  await expect(page.locator('#waveform-cue-tooltip')).not.toBeChecked();
+  await page.locator('#waveform-cue-tooltip').check();
+  await page.locator('#waveform-settings-toggle').click();
   await page.locator('#word-timing-quick-toggle').click();
   const word = page.locator('.waveform-word-block').first();
   await expect(word).toHaveAttribute('data-title', /^main full text\n/);
@@ -29,7 +33,7 @@ test('full text preference also controls word hover in both waveform modes', asy
 
   await page.locator('#waveform-settings-toggle').click();
   const toggle = page.locator('#waveform-cue-tooltip');
-  await expect(toggle.locator('..')).toContainText('悬浮时显示完整文本');
+  await expect(toggle.locator('..')).toContainText('悬浮显示完整字幕文本');
   await toggle.uncheck();
   for (const mode of ['multi', 'basic']) {
     await page.locator('#waveform-settings-toggle').click();
@@ -49,7 +53,7 @@ test('full text preference also controls word hover in both waveform modes', asy
   await expect(word).toHaveAttribute('data-title', /^main full text\n/);
   await expect(word.locator('.waveform-cue-handle.left')).toHaveAttribute('data-title', /.+/);
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
-  await expect(toggle.locator('..')).toContainText('Show full text on hover');
+  await expect(toggle.locator('..')).toContainText('Show full subtitle text on hover');
 });
 
 test('waveform display preferences and spacing', async ({ page }, testInfo) => {
@@ -63,7 +67,8 @@ test('waveform display preferences and spacing', async ({ page }, testInfo) => {
   await expect(page.locator('.waveform-cue-block').first()).toBeVisible();
   await page.locator('#waveform-settings-toggle').click();
   const toggle = page.locator('#waveform-cue-tooltip');
-  await expect(toggle).toBeChecked();
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
   await expect(page.locator('#waveform-show-group-badges')).not.toBeChecked();
   const cue = page.locator('.waveform-cue-block[data-idx="0"]').first();
   const overlay = page.locator('.waveform-cue-block[data-track="overlay"]').first();

@@ -85,7 +85,6 @@ function showOverlayContextMenu(x, y, index) {
   colorRow.appendChild(colorHead);
   const swatches = document.createElement('div');
   swatches.className = 'speaker-context-swatches';
-  swatches.style.cssText = 'display:flex;gap:8px;margin-top:8px;overflow-x:auto;';
   MaweColors.ACTIVE_COLOR_PALETTE.forEach((c, colorIndex) => {
     const swatch = document.createElement('span');
     const identity = MaweBoot.DATA.speakers?.find(s => s.id === MaweBoot.DATA.speaker_shortcuts?.[String(colorIndex + 1)]);
@@ -108,15 +107,8 @@ function showOverlayContextMenu(x, y, index) {
     if (speakerMode) {
       swatch.dataset.speakerProjectContent = '';
       swatch.dataset.speakerContextSlot = String(colorIndex + 1);
-      const slot = document.createElement('span');
-      slot.className = 'speaker-context-slot';
-      const label = document.createElement('span');
-      label.className = 'speaker-context-slot-name';
-      label.dataset.speakerProjectContent = '';
-      label.textContent = name;
-      slot.append(swatch, label);
-      swatches.appendChild(slot);
-    } else swatches.appendChild(swatch);
+    }
+    swatches.appendChild(swatch);
   });
   colorRow.appendChild(swatches);
   MaweDom.ctxmenu.appendChild(colorRow);

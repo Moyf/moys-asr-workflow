@@ -320,7 +320,7 @@ export function initMaweContextMenus() {
     const s = document.createElement('div'); s.className = 'sep'; MaweDom.ctxmenu.appendChild(s);
   }
 
-  // 颜色子菜单：首行「标记颜色 + 1~5 键位提示」，下方一排加大号色块（好辨认也好点击）
+  // 颜色子菜单：22px 圆点，五列排列；九色时第二行居中错位。
   function addColorSubmenu(targets) {
     const row = document.createElement('div');
     row.className = 'item';
@@ -338,7 +338,6 @@ export function initMaweContextMenus() {
     row.appendChild(head);
     const swatches = document.createElement('div');
     swatches.className = 'speaker-context-swatches';
-    swatches.style.cssText = 'display:flex;gap:8px;margin-top:8px;overflow-x:auto;';
     MaweColors.ACTIVE_COLOR_PALETTE.forEach((c, colorIndex) => {
       const sw = document.createElement('span');
       const identity = MaweBoot.DATA.speakers?.find(s => s.id === MaweBoot.DATA.speaker_shortcuts?.[String(colorIndex + 1)]);
@@ -356,15 +355,8 @@ export function initMaweContextMenus() {
       if (speakerMode) {
         sw.dataset.speakerProjectContent = '';
         sw.dataset.speakerContextSlot = String(colorIndex + 1);
-        const slot = document.createElement('span');
-        slot.className = 'speaker-context-slot';
-        const label = document.createElement('span');
-        label.className = 'speaker-context-slot-name';
-        label.dataset.speakerProjectContent = '';
-        label.textContent = name;
-        slot.append(sw, label);
-        swatches.appendChild(slot);
-      } else swatches.appendChild(sw);
+      }
+      swatches.appendChild(sw);
     });
     row.appendChild(swatches);
     MaweDom.ctxmenu.appendChild(row);

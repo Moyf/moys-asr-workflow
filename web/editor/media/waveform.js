@@ -42,7 +42,11 @@ export function initWaveform() {
     storage: window.MaweHost.storage,
     gapRemoveCore: window.AsrGapRemoveCore,
     getSubtitleGroupValue: (segment, kind) => window.AsrEditorUtils.getSubtitleGroupValue(window.MaweBoot.DATA, segment, kind),
-    getSegmentDisplayColor: segment => window.AsrEditorUtils.effectiveSegmentColor(window.MaweBoot.DATA, segment),
+    getSegmentDisplayColor: segment => {
+      const project = window.MaweBoot.DATA;
+      const segments = project.tracks?.find(track => track.segments?.includes(segment))?.segments;
+      return window.AsrEditorUtils.effectiveSegmentColor(project, segment, segments);
+    },
     getLanguage: () => window.MAWE_I18N?.language,
   };
   Object.assign(helpers, createWaveformConstants(helpers));
@@ -200,6 +204,7 @@ constructor(options) {
       this.rowHeightSelect = document.getElementById('waveform-row-height');
       this.showGroupBadgesToggle = document.getElementById('waveform-show-group-badges');
       this.showCueTooltipToggle = document.getElementById('waveform-cue-tooltip');
+      this.showExtensionColorsToggle = document.getElementById('waveform-extension-colors');
       this.dragPlayheadToggle = document.getElementById('waveform-drag-playhead');
       this.spectralColorToggle = document.getElementById('waveform-spectral-color');
       this.sideSelect = document.getElementById('waveform-side');

@@ -155,6 +155,7 @@ export function initMaweCueElements() {
   }
 
   function refreshSpeakerBadge(badge, speaker) {
+    badge.hidden = !speaker;
     badge.textContent = speakerName(speaker);
     badge.title = speakerDescription(speaker);
     badge.classList.toggle('unassigned', !speaker);

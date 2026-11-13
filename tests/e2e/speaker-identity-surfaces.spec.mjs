@@ -127,13 +127,14 @@ test('English speaker controls preserve project names and translate unassigned o
   await expect(page.locator('.speaker-filter-item .color-name').filter({ hasText: '删除（a）' })).toHaveCount(1);
   await page.keyboard.press('Escape');
   await page.evaluate(() => MaweContextMenus.showContextMenu(100, 100, 0));
-  await expect(page.locator('.speaker-context-slot-name').first()).toHaveText('删除');
+  await expect(page.locator('[data-speaker-context-slot="1"]')).toHaveAttribute('data-title', /删除（a）/);
+  await expect(page.locator('.speaker-context-slot-name')).toHaveCount(0);
   await page.locator('.speaker-context-menu .ctxmenu-submenu-toggle').click();
   await expect(page.locator('.speaker-context-menu .ctxmenu-submenu-list button').filter({ hasText: '删除（a）' })).toHaveCount(1);
   await page.evaluate(() => window.MAWE_I18N.applyLanguage('zh'));
   await expect(page.locator('.cue-speaker-badge.unassigned')).toHaveText('未分配');
   await page.evaluate(() => window.MAWE_I18N.applyLanguage('en'));
   await expect(page.locator('.cue-speaker-badge.unassigned')).toHaveText('Unassigned');
-  await expect(page.locator('.speaker-context-slot-name').first()).toHaveText('删除');
+  await expect(page.locator('[data-speaker-context-slot="1"]')).toHaveAttribute('data-title', /删除（a）/);
   await expect(page.locator('.cue-panel-speaker select option[value="a"]')).toHaveText('删除（a）');
 });

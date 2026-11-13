@@ -66,7 +66,7 @@ export function createWordBlocks(dependencies) {
         block.style.setProperty('--cue-color', colorForSegment(segment));
         block.classList.toggle('selected', selection.has(entry.index));
         block.classList.toggle('disabled', Boolean(segment.disabled));
-        if (this.settings.showCueTooltip !== false) {
+        if (this.settings.showCueTooltip === true) {
           const time = `${timing.format(entry.start)} → ${timing.format(entry.end)}`;
           block.title = `${entry.text}\n${time}`;
         }

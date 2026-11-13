@@ -4860,9 +4860,10 @@
 .cue-panel-speaker select { min-width: 0; max-width: 100%; flex: 1; }
 .speaker-filter-item { display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer; }
 .speaker-filter-item .color-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.speaker-context-swatches { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; max-width: 100%; padding-bottom: 4px; }
-.speaker-context-slot { display: inline-flex; flex-direction: column; align-items: center; flex: 0 0 68px; gap: 8px; min-width: 0; }
-.speaker-context-slot > span:last-child { max-width: 68px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.speaker-context-swatches { display: grid; grid-template-columns: repeat(10, 7px); gap: 8px; margin-top: 8px; padding-bottom: 4px; }
+.cue-speaker-badge[hidden] { display: none; }
+.speaker-context-swatches > span { grid-column: span 2; }
+.speaker-context-swatches > span:nth-child(6) { grid-column: 2 / span 2; }
 .speaker-context-menu .ctxmenu-submenu-list { max-height: min(360px, 55dvh); overflow-y: auto; }
 #speaker-project-controls, .speaker-manager-add, .speaker-manager-actions, .speaker-manager-slots { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; overflow-x: auto; min-width: 0; padding-block: 8px; }
 #speaker-project-controls > *, .speaker-manager-actions > *, .speaker-manager-slots > * { flex: 0 0 auto; }
