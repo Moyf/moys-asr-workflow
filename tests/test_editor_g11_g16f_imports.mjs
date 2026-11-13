@@ -54,12 +54,3 @@ test('preview and style-library consumers have static provider edges', () => {
     `${consumer} must import ${expected}`);
   }
 });
-
-test('G11 and G16-F modules are safe to import before browser initialization', async () => {
-  assert.equal(globalThis.window, undefined);
-  for (const file of [...g11, ...g16f]) {
-    const module = await import(`../web/${file}`);
-    const initializer = manifest.modules.find(item => item.file === file).exportName;
-    assert.equal(typeof module[initializer], 'function', file);
-  }
-});

@@ -1,25 +1,41 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { disableOnboarding } from './helpers.mjs';
+import { writeFileSync } from 'node:fs';
+import { cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer } from './helpers.mjs';
 
-const blankEditorUrl = pathToFileURL(join(process.cwd(), 'blank-editor.html')).href;
+let tempDir, server;
+test.beforeAll(async () => {
+  tempDir = makeTempDir('media-controls-layout');
+  const envFile = join(tempDir, 'empty-settings.conf');
+  writeFileSync(envFile, '', 'utf8');
+  server = await startBlankServer(await findFreePort(), tempDir, { env: { MAW_ENV_FILE: envFile } });
+});
+test.afterAll(async () => {
+  await server?.stop();
+  cleanupTempDir(tempDir);
+});
 
 test.beforeEach(async ({ page }) => {
   await disableOnboarding(page);
 });
 
-test('media controls stay on one line and keep fullscreen visible at narrow widths', async ({ page }) => {
+test('media controls stay on one line and keep fullscreen visible at narrow widths', async ({ page }, testInfo) => {
   for (const width of [620, 500, 340]) {
     await page.setViewportSize({ width, height: 800 });
-    await page.goto(blankEditorUrl);
+    await page.goto(server.url);
+
+    // Volume is now a separate panel opened by this button, not an inline slider.
+    for (const id of ['media-fullscreen', 'media-seek', 'media-step-back', 'media-step-forward', 'audio-processing-toggle']) {
+      await expect(page.locator(`#${id}`)).toHaveCount(1);
+    }
+    await expect(page.locator('#audio-processing-toggle')).toBeVisible();
 
     const metrics = await page.locator('#media-controls').evaluate((controls) => {
       const fullscreen = document.getElementById('media-fullscreen');
       const seek = document.getElementById('media-seek');
       const stepBack = document.getElementById('media-step-back');
       const stepForward = document.getElementById('media-step-forward');
-      const volume = document.querySelector('.media-volume-control');
+      const volume = document.getElementById('audio-processing-toggle');
       const controlsRect = controls.getBoundingClientRect();
       const fullscreenRect = fullscreen.getBoundingClientRect();
       return {
@@ -32,7 +48,8 @@ test('media controls stay on one line and keep fullscreen visible at narrow widt
         seekWidth: seek.getBoundingClientRect().width,
         stepBackDisplay: getComputedStyle(stepBack).display,
         stepForwardDisplay: getComputedStyle(stepForward).display,
-        volumeDisplay: getComputedStyle(volume).display,
+        volumeInLine: volume.getBoundingClientRect().top >= controlsRect.top - 1
+          && volume.getBoundingClientRect().bottom <= controlsRect.bottom + 1,
       };
     });
 
@@ -42,7 +59,7 @@ test('media controls stay on one line and keep fullscreen visible at narrow widt
     expect(metrics.seekWidth).toBeGreaterThan(0);
     expect(metrics.stepBackDisplay).toBe('none');
     expect(metrics.stepForwardDisplay).toBe('none');
-    if (width <= 500) expect(metrics.volumeDisplay).toBe('none');
-    if (width === 620) expect(metrics.volumeDisplay).not.toBe('none');
+    expect(metrics.volumeInLine).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`media-controls-${width}.png`) });
   }
 });

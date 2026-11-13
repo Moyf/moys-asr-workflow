@@ -56,6 +56,7 @@ select = ["E4", "E7", "E9", "F"]
 [dependency-groups]
 test = [
     "numpy>=2.2,<2.5",
+    "soundfile>=0.12",
 ]
 build = [
     "pyinstaller==6.16.0",

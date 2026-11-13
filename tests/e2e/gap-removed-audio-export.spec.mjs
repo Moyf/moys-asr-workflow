@@ -3,13 +3,20 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { compileSources, readModules } from '../../scripts/build-editor.mjs';
 import { makeTempDir, cleanupTempDir, generateWav, generateProjectJson, startServer, findFreePort } from './helpers.mjs';
 
 const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export-actions.js', import.meta.url), 'utf8');
 const first = source.indexOf("document.getElementById('download-gap-removed-video')");
 const last = source.indexOf("document.getElementById('download-gap-removed-regions-json')", first);
 const handler = source.slice(first, last);
-const projectLoad = fs.readFileSync(new URL('../../web/editor/io/editor-project-load.js', import.meta.url), 'utf8');
+// Project loading must run its real ESM initializer through the production manifest.
+const root = fileURLToPath(new URL('../../', import.meta.url));
+const projectLoadFile = 'editor/io/editor-project-load.js';
+const projectLoad = (await compileSources(root, [projectLoadFile],
+  readModules(root).filter(module => module.file === projectLoadFile),
+  file => fs.readFileSync(join(root, 'web', file), 'utf8'))).code;
 const i18n = fs.readFileSync(new URL('../../web/shared/editor-i18n.js', import.meta.url), 'utf8');
 
 async function fixture(page, mode, run) {
@@ -51,7 +58,7 @@ async function fixture(page, mode, run) {
       window.applyMediaSizeToResolutionModal = () => {};
       window.dynamicExportCanvasSize = () => {};
       window.MaweInlineEdit = {};
-      window.MaweProjectLoad = { projectBindingEpoch: 1 };
+      window.MaweCoreState = {};
       window.MaweBoot = { FILENAME_BASE: 'music', DATA: { media: 'source.mp3' }, SERVER_CONFIG: {
         canGapRemovedVideoExport: false, gapRemovedVideoSourceName: null,
         canGapRemovedMediaExport: true, gapRemovedMediaKind: 'audio', gapRemovedMediaSourceName: 'source.mp3',
@@ -71,6 +78,7 @@ async function fixture(page, mode, run) {
         pickSaveFile: async options => { window.picker = options; if (mode === 'picker') await new Promise(resolve => { window.resumePicker = resolve; }); return handle; },
       } };
     }, mode);
+    await page.addScriptTag({ content: projectLoad });
     await page.addScriptTag({ content: handler });
     await run({ job, requests });
   } finally {
@@ -197,9 +205,10 @@ for (const field of ['gapRemovedMediaKind', 'gapRemovedMediaSourceName', 'gapRem
 
 test('detach clears all capabilities and label follows media and language changes', async ({ page }) => {
   await fixture(page, 'save', async () => {
-    await page.addScriptTag({ content: projectLoad });
     await page.addScriptTag({ content: i18n });
+    const epoch = await page.evaluate(() => MaweProjectLoad.projectBindingEpoch);
     await page.evaluate(() => MaweProjectLoad.detachServerProjectSaving());
+    expect(await page.evaluate(() => MaweProjectLoad.projectBindingEpoch)).toBe(epoch + 1);
     expect(await page.evaluate(() => [MaweBoot.SERVER_CONFIG.canGapRemovedMediaExport, MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport])).toEqual([false, false]);
     expect(await page.evaluate(() => [MaweBoot.SERVER_CONFIG.gapRemovedMediaKind, MaweBoot.SERVER_CONFIG.gapRemovedMediaSourceName,
       MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputExtension, MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputMime,

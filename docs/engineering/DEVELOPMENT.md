@@ -87,7 +87,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 Agent 调试与测试使用[有界输出与分层调试](DEBUG_WORKFLOW.md)中的 `scripts/run_check.py`：完整日志落盘，只回显有限摘要并保留退出码。该文档也说明 worktree 环境复用、生成物搜索边界、超时清理限制与按变化选择验证范围。
 
-开发者手动维护环境：`uv sync --group dev --group test`；`test` 组只为真实媒体夹具补充 NumPy，不需要为此安装 OCR 或本地模型组。前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
+开发者手动维护环境：`uv sync --group dev --group test`；`dev` 组提供 Pillow，`test` 组为真实媒体夹具补充 NumPy / soundfile，不需要为此安装 OCR 或本地模型组。前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
 
 ```sh
 uv run --no-sync ruff check
@@ -108,9 +108,27 @@ git diff --check
 
 ### PR 的文档与网站检查
 
-`scripts/ci_impact.py` 只在 PR 合并结果与事件基线一致时识别普通用户指南、README 和网站内容变更。只包含这些路径时，文档检查照常运行，编辑器门禁同步文档并构建网站，Windows 预览不生成测试包。官网生成页面和资源、应用代码、混合或未知路径、无法确认差异的情况，以及 push 和手动运行，均继续完整门禁。具体可识别范围以脚本为准。
+`scripts/ci_impact.py` 输出 v1 计划（mode: light / domain / full；profile: light / editor / launcher / tools / full），同时保留原有 `light=true/false` 输出。只有 PR checkout 的第一父提交等于事件 `PR_BASE_SHA` 时才接受 `git diff --no-renames -z`；计划保留实际 base/head 与可信差异标记。普通用户指南、README 和网站内容单独变更为 light：文档检查照常运行，编辑器门禁同步文档并构建网站，Windows 预览不生成测试包。
+
+domain 仅用于新增补充矩阵的领域浏览器集合，不改变既有非 light 门禁。第一版只登记三个明确叶子与各自测试：编辑器颜色筛选、Launcher 主题键、独立时间码对比页；精确路径见 `DOMAIN_PATHS`，消费集合见 `BROWSER_FILES`。不能从目录名推定领域；新叶子、新测试须审计后登记。共享代码、依赖、配置、装配清单、未知或混合领域、空 / 坏 diff、基线不匹配全部 full。main push、v* tag、定时和手动运行也一律 full。
 
 已有门禁名称不变：选测任务失败或没有有效结论时，编辑器与 Windows 门禁显式失败。发布工作流不使用此选测。分支保护要求和 GitHub 上的实际工作流行为仍需在目标仓库确认。
+
+### 完整补充矩阵与 required 语义
+
+`.github/workflows/test-matrix.yml` 在 PR、main push、v* tag、每周定时和手动运行触发；完整模式在 Windows / Ubuntu 各运行完整 Python 标准发现、完整根目录 Node 测试和全部 Chromium 发现（每 OS 4 shards、2 workers、0 retries，fail-fast=false）。领域 PR 各 OS 运行对应浏览器小集合（1 shard）；light 有意不运行新增测试层。每个测试 job 最长 15 分钟，每次内层执行由 `run_check.py` 限制 600 秒；准备阶段安装锁定的 dev/test 依赖、Chromium 和真实 FFmpeg/libass / 编码器，不下载模型、不调用 ASR API。
+
+Python-only 单元通过 composite 的 `install-browser=false` 跳过 Chromium 下载；Node / 浏览器单元默认仍安装。Node 构建、Pillow、真实 FFmpeg 和其余锁定依赖不削减。计划 consumer 也按实际事件再次防守：明确非 PR 事件只接受 full，同 SHA 的 domain / light 自洽计划也会拒绝。
+
+| 层 | 执行与跳过规则 |
+| --- | --- |
+| 既有 Editor / Windows preview | 非 light 仍保留原 Linux 全 Node / 选定 e2e / required 子集，以及 Windows 全 Python、同次 cache 校验、64 个 display / 4 个 Launcher 浏览器专项与打包 smoke；领域选择不减少这些门禁。 |
+| 新 full Python | 标准发现 + `--report`；私有人工夹具和精确平台 guard 可 skip，但原因与 expected failure 必须报告，不冒充通过；另跑 `--pack media --required`，真实渲染和能力缺失不可 skip。写回执前强制回读两份报告，校验唯一非空 ID、运行 / skip / 结果计数及退出码，required 平台豁免按精确 ID / 原因重新计算，并核对 media 集合与全量发现的归组一致。 |
+| 新 Chromium | 同 job、同参数的分片 `--list` 集合与结果逐案对应；拒绝空 / 漏 / 重复 / 错分片、全局 errors、flaky、retry、xfail 和能力 skip。只有精确文件 + 完整标题 + 原因匹配的五个弃维护 portable case 可 skip。 |
+| 聚合门禁 | `Complete test matrix required` 使用 always，校验版本计划、selection 输出、应执行 job 状态和每个矩阵单元的唯一成功凭据；计划未选中是有意 skip，所选 job 缺失、意外 skip、cancelled 或失败均不能绿。所有测试结果与日志 always 上传。 |
+| Release | 三平台完整 Python 统一 `run_check → run_tests --report` 并 always 保留 JSON / 日志；Windows 阻断发布、辅助平台失败仅警告的原政策不变。tag 的新增 Node / e2e 是独立工作流，不自动变成 publish 依赖。 |
+
+这是一项**新增覆盖成本**：原 CI 只覆盖浏览器子集，现在 full 额外增加 4 个 Python / Node 单元和 8 个浏览器单元；domain 只减少新增矩阵的工作量，不能声称整个 CI 已比原来更省。尚未在远端 Actions 实跑，15 分钟预算、跨平台结果和分支保护需另行确认；本地静态检查或小集合通过不等于完整矩阵通过。
 
 ### 浏览器回归
 

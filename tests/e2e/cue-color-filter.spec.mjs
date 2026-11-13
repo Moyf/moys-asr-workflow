@@ -152,15 +152,56 @@ test('color filter button appears only for projects with colored subtitles', asy
   await expect(page.locator('#color-filter-btn')).toBeVisible();
 });
 
-test('colored subtitle indexes remain readable against tinted rows', async ({ page }) => {
-  await waitEditorReady(page);
-  await paintFirstSegmentRed(page);
+for (const theme of ['dark', 'light']) {
+  test(`colored subtitle indexes remain readable against tinted rows (${theme})`, async ({ page }) => {
+    await waitEditorReady(page);
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await paintFirstSegmentRed(page);
+    // Keep the neutral colored-row state, not its hover/active/selection override.
+    await page.mouse.move(0, 0);
+    const index = page.locator('.cue[data-idx="0"] .index');
+    const colors = await index.evaluate(element => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--text-secondary)';
+      element.parentElement.append(probe);
+      const secondary = getComputedStyle(probe).color;
+      probe.remove();
 
-  await expect(page.locator('.cue[data-idx="0"] .index')).toHaveCSS(
-    'color',
-    'rgb(168, 177, 192)',
-  );
-});
+      // Let the browser resolve color-mix()/color(srgb) and alpha-composite
+      // the actual ancestor backgrounds, instead of assuming an opaque row.
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 1;
+      const context = canvas.getContext('2d');
+      const ancestors = [];
+      for (let node = element; node; node = node.parentElement) ancestors.unshift(node);
+      context.fillStyle = 'white';
+      context.fillRect(0, 0, 1, 1);
+      for (const node of ancestors) {
+        context.fillStyle = getComputedStyle(node).backgroundColor;
+        context.fillRect(0, 0, 1, 1);
+      }
+      const background = [...context.getImageData(0, 0, 1, 1).data];
+      const foreground = getComputedStyle(element).color;
+      context.fillStyle = foreground;
+      context.fillRect(0, 0, 1, 1);
+      const foregroundPixels = [...context.getImageData(0, 0, 1, 1).data];
+      const luminance = channels => channels.slice(0, 3).reduce((sum, value, channel) => {
+        const srgb = value / 255;
+        const linear = srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+        return sum + linear * [0.2126, 0.7152, 0.0722][channel];
+      }, 0);
+      const light = [luminance(foregroundPixels), luminance(background)].sort((a, b) => b - a);
+      return { foreground, secondary, contrast: (light[0] + 0.05) / (light[1] + 0.05) };
+    });
+    await test.info().attach('colored-row-contrast', {
+      body: JSON.stringify({ theme, ...colors }), contentType: 'application/json',
+    });
+    expect(colors.secondary).not.toBe('');
+    expect(colors.foreground).toBe(colors.secondary);
+    // 11px auxiliary text still needs normal-text WCAG AA contrast.
+    expect(colors.contrast, `${theme} colored-row index contrast`).toBeGreaterThanOrEqual(4.5);
+  });
+}
 
 test('clicking a row shows only that color; checkboxes multi-select; clear restores all', async ({ page }) => {
   await waitEditorReady(page);

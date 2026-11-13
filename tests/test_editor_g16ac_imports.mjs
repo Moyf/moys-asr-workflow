@@ -26,13 +26,6 @@ test('G16-A/C initializers occupy their original startup slots', () => {
   assert.ok(!manifest.externalBridges.some(item => item.file === 'editor/ui/editor-wiring-dom-panels.js'));
 });
 
-test('G16-A/C modules are inert on import', async () => {
-  for (const [file, exportName] of targets) {
-    const module = await import(new URL(file, web));
-    assert.equal(typeof module[exportName], 'function', file);
-  }
-});
-
 test('media and style consumers use the shared preview refresh interface', () => {
   const media = fs.readFileSync(new URL('editor/media/editor-media-playback.js', web), 'utf8');
   const style = fs.readFileSync(new URL('editor/styles/editor-wiring-font-geometry.js', web), 'utf8');

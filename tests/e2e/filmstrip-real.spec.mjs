@@ -53,7 +53,7 @@ async function opened(page) {
   return {states,requests};
 }
 
-test('real video frames stay cached during playback, stop decoding and resume the current view',async({page})=>{
+test('real video frames stay cached during playback, stop decoding and resume the current view',async({page},testInfo)=>{
   const {states,requests}=await opened(page);
   expect(states.some(state=>['idle','queued','generating','partial'].includes(state.state))).toBe(true,'initial view loads incrementally');
   await page.evaluate(()=>{const wave=MaweCoreState.waveformEditor;wave.setSecondsPerRow(2);wave.scroll.scrollTop=0;wave.renderMultiVisible();});
@@ -66,14 +66,14 @@ test('real video frames stay cached during playback, stop decoding and resume th
   // Advance into another time row while playing; dispatch remains paused, valid cached frames stay drawable.
   await page.evaluate(()=>{const wave=MaweCoreState.waveformEditor;wave.scroll.scrollTop=2*(wave.getTimelineRowHeight()+10);wave.renderMultiVisible();});
   await expect.poll(()=>states.at(-1)?.state,{timeout:10000}).toBe('paused');
-  await page.screenshot({path:'.artifacts/filmstrip/filmstrip-real-playing.png'});
+  await page.screenshot({path:testInfo.outputPath('filmstrip-real-playing.png')});
   expect(await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.bytes)).toBeGreaterThan(0);
   const resumeAt=states.length;
   await page.evaluate(()=>document.getElementById('player').pause());
   await expect.poll(()=>states.at(-1)?.state,{timeout:15000}).not.toBe('paused');
   await expect.poll(()=>states.slice(resumeAt).some(state=>state.samples?.some(sample=>sample.status==='target'&&sample.requested_ms%1000!==0)),{timeout:20000}).toBe(true,'pause completes fine-grid targets in the current view');
   await page.waitForFunction(()=>MaweCoreState.waveformEditor.thumbnailController.bytes>0);
-  await page.screenshot({path:'.artifacts/filmstrip/filmstrip-real-paused.png'});
+  await page.screenshot({path:testInfo.outputPath('filmstrip-real-paused.png')});
   const beforeHide=await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.bytes);
   await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.setEnabled(false));
   await expect(page.locator('.waveform-filmstrip')).toHaveCount(0);
@@ -86,10 +86,10 @@ test('real video frames stay cached during playback, stop decoding and resume th
   expect(await page.evaluate(()=>MaweBoot.SERVER_CONFIG.thumbnailBinding)).toBe('');
   await expect(page.locator('#waveform-thumbnail-mode')).toBeDisabled();
   await expect(page.locator('#waveform-thumbnail-status')).toHaveText('从本机 Server 加载视频后可用');
-  writeFileSync('.artifacts/filmstrip/filmstrip-real-evidence.json',JSON.stringify({states:states.map(({state,decoding,samples})=>({state,decoding,samples:samples.length})),releaseCount:requests.filter(request=>new URL(request.url).pathname.endsWith('/release')).length},null,2)+'\n');
+  writeFileSync(testInfo.outputPath('filmstrip-real-evidence.json'),JSON.stringify({states:states.map(({state,decoding,samples})=>({state,decoding,samples:samples.length})),releaseCount:requests.filter(request=>new URL(request.url).pathname.endsWith('/release')).length},null,2)+'\n');
 });
 
-test('video filmstrip respects tail width, cross-row seek, frame snapping and existing cue/word/marker editing',async({page})=>{
+test('video filmstrip respects tail width, cross-row seek, frame snapping and existing cue/word/marker editing',async({page},testInfo)=>{
   await opened(page);
   await page.evaluate(()=>{const wave=MaweCoreState.waveformEditor;wave.settings.dragPlayhead=true;wave.setSecondsPerRow(10);wave.scroll.scrollTop=0;wave.renderMultiVisible();});
   const first=await page.locator('.waveform-row-shell[data-row-index="0"] .waveform-filmstrip').boundingBox();
@@ -115,8 +115,22 @@ test('video filmstrip respects tail width, cross-row seek, frame snapping and ex
   await page.keyboard.press('ControlOrMeta+z');
   const quick=page.locator('#word-timing-quick-toggle');if(await quick.getAttribute('aria-pressed')!=='true')await quick.click();
   const word=page.locator('.waveform-word-block[data-segment-idx="0"][data-item-idx="0"]').first();await expect(word).toBeVisible();
+  // Enabling timed text changes/restores the virtual-row viewport. Measure only
+  // after bringing the actual word into view, and drag its body, not a handle.
+  await word.scrollIntoViewIfNeeded();
   const wordBox=await word.boundingBox(),wordBefore=await page.evaluate(()=>MaweBoot.DATA.segments[0].items[0].start);
-  await page.mouse.move(wordBox.x+15,wordBox.y+15);await page.mouse.down();await page.mouse.move(wordBox.x+35,wordBox.y+15,{steps:4});await page.mouse.up();
+  expect(wordBox).not.toBeNull();
+  const point={x:wordBox.x+wordBox.width/2,y:wordBox.y+wordBox.height/2};
+  expect(await word.evaluate((element,point)=>{
+    const hit=document.elementFromPoint(point.x,point.y);
+    return hit?.closest('.waveform-word-block')===element&&!hit.closest('.waveform-cue-handle');
+  },point)).toBe(true);
+  await page.mouse.move(point.x,point.y);await page.mouse.down();
+  expect(await page.evaluate(()=>{
+    const drag=MaweCoreState.waveformEditor.wordDrag;
+    return drag?{itemIndex:drag.itemIndex,resize:drag.resize,segmentIndex:MaweBoot.DATA.segments.indexOf(drag.segment)}:null;
+  })).toEqual({itemIndex:0,resize:false,segmentIndex:0});
+  await page.mouse.move(point.x+20,point.y,{steps:4});await page.mouse.up();
   expect(await page.evaluate(()=>MaweBoot.DATA.segments[0].items[0].start)).toBeGreaterThan(wordBefore);
   const mark=page.locator('.waveform-marker-item[data-marker-id="scene-mark"]').first();await expect(mark).toBeVisible();await mark.dblclick();
   const name=page.locator('.waveform-marker-quick-edit input[type="text"]').first();await name.fill('Updated scene');await name.press('Tab');
@@ -124,5 +138,5 @@ test('video filmstrip respects tail width, cross-row seek, frame snapping and ex
   await page.keyboard.press('Escape');
   await page.evaluate(()=>MaweCoreState.waveformEditor.setRowHeight(64));
   expect(await page.locator('.waveform-row').first().evaluate(row=>row.getBoundingClientRect().height)).toBe(64);
-  await page.screenshot({path:'.artifacts/filmstrip/filmstrip-real-interactions.png'});
+  await page.screenshot({path:testInfo.outputPath('filmstrip-real-interactions.png')});
 });

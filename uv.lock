@@ -1550,6 +1550,7 @@ ocr = [
 ]
 test = [
     { name = "numpy" },
+    { name = "soundfile" },
 ]
 
 [package.metadata]
@@ -1604,6 +1605,7 @@ ocr = [
 ]
 test = [
     { name = "numpy", specifier = ">=2.2,<2.5" },
+    { name = "soundfile", specifier = ">=0.12" },
 ]
 
 [[package]]

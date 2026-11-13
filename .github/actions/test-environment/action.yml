@@ -1,0 +1,58 @@
+name: Locked test environment
+description: Prepare real media and browser capabilities without model groups or API calls
+inputs:
+  install-browser:
+    description: Install Chromium for browser and Node lanes; Python-only lanes can opt out
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+    - uses: astral-sh/setup-uv@v7
+      with:
+        version: '0.13.4'
+        enable-cache: true
+    - uses: pnpm/action-setup@v6
+      with:
+        version: 11.28.4
+        run_install: false
+    - uses: actions/setup-node@v5
+      with:
+        node-version: '22.23.4'
+        cache: pnpm
+        cache-dependency-path: pnpm-lock.yaml
+    - shell: bash
+      run: uv sync --frozen --group dev --group test
+    - shell: bash
+      run: pnpm install --frozen-lockfile
+    - shell: bash
+      if: inputs.install-browser == 'true'
+      run: pnpm exec playwright install --with-deps chromium
+    - name: Install Linux media capabilities
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install --yes ffmpeg fonts-noto-cjk
+    - name: Install Windows media capabilities
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        choco install ffmpeg --yes --no-progress
+        if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed.' }
+        # Use real executables, not process-orphaning Chocolatey shims.
+        $binary = Get-ChildItem -LiteralPath "$env:ChocolateyInstall\lib\ffmpeg\tools" -Filter ffmpeg.exe -Recurse -File | Select-Object -First 1
+        if (-not $binary) { throw 'FFmpeg executable unavailable.' }
+        if (-not (Test-Path (Join-Path $binary.Directory.FullName 'ffprobe.exe'))) { throw 'FFprobe unavailable.' }
+        $binary.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+    - name: Require real libass and encoders
+      shell: bash
+      run: |
+        ffmpeg -version
+        ffprobe -version
+        ffmpeg -hide_banner -filters 2>&1 | grep -E ' ass +V->V'
+        ffmpeg -hide_banner -encoders 2>&1 | grep -F libx264
+        ffmpeg -hide_banner -encoders 2>&1 | grep -F libwebp

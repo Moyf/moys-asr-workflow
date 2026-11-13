@@ -11,6 +11,7 @@ import time
 import unittest
 import urllib.request
 import urllib.error
+from contextlib import ExitStack
 from unittest import mock
 from pathlib import Path
 
@@ -529,6 +530,48 @@ class MediaJobsHttpTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("[media-job]", content)
         self.assertIn("boom api_key=[REDACTED]", content)
         self.assertNotIn("supersecret99", content)
+
+    def test_diagnostics_assertions_wait_for_delayed_worker_write(self):
+        # Exercise the existing HTTP/log assertion method, not a second copy of
+        # its wait logic. Only joining that job's worker may release the write.
+        entered, release = threading.Event(), threading.Event()
+        sink = media_jobs._diagnostic_sink()
+        write_text = sink.write_text
+        wait = self.wait
+        worker = None
+
+        def delayed_write(*args, **kwargs):
+            entered.set()
+            if not release.wait(5):
+                raise RuntimeError("test did not release diagnostic write")
+            return write_text(*args, **kwargs)
+
+        with ExitStack() as patches:
+            def wait_with_blocked_diagnostics(job_id, state):
+                nonlocal worker
+                result = wait(job_id, state)
+                worker = self.server.media_jobs.get(job_id).thread
+                self.assertTrue(entered.wait(5), "worker did not reach diagnostic write")
+                self.assertEqual(list((self.root / "logs").glob("maw-*.log")), [])
+                join = worker.join
+
+                def release_on_join(*args, **kwargs):
+                    release.set()
+                    return join(*args, **kwargs)
+
+                patches.enter_context(mock.patch.object(worker, "join", side_effect=release_on_join))
+                return result
+
+            patches.enter_context(mock.patch.object(sink, "write_text", side_effect=delayed_write))
+            patches.enter_context(mock.patch.object(self, "wait", side_effect=wait_with_blocked_diagnostics))
+            try:
+                self.test_failed_job_diagnostics_are_logged_and_redacted()
+                self.assertTrue(release.is_set(), "log assertions bypassed worker completion")
+            finally:
+                release.set()
+                if worker is not None:
+                    worker.join(5)
+                    self.assertFalse(worker.is_alive())
 
     def test_cancelled_job_writes_no_diagnostics(self):
         def rebuild(source, intervals, output, **kwargs):

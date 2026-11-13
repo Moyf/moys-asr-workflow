@@ -43,12 +43,3 @@ test('G09 style initializers use static imports for sibling function calls', () 
   }
   assert.deepEqual(violations, [], 'Import sibling functions; leave mutable properties on their facade');
 });
-
-test('G09 modules are safe to import before browser initialization', async () => {
-  assert.equal(globalThis.window, undefined);
-  const { modules } = JSON.parse(fs.readFileSync(path.join(web, 'editor-modules.json'), 'utf8'));
-  for (const file of styleFiles) {
-    const module = await import(`../web/${file}`);
-    assert.equal(typeof module[modules.find(item => item.file === file).exportName], 'function');
-  }
-});

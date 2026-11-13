@@ -1,33 +1,23 @@
 import {expect, test} from '@playwright/test';
-import {readFileSync, realpathSync} from 'node:fs';
-import {execFileSync} from 'node:child_process';
+import {readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {buildPortableBlankEditor, cleanupTempDir, disableOnboarding,
+import {cleanupTempDir, disableOnboarding,
   findFreePort, makeTempDir, startBlankServer} from './helpers.mjs';
 import {readSources} from '../../scripts/build-editor.mjs';
 
-let directory, portable, injected, server;
+let directory, server;
 const sources = readSources();
 const identity = readFileSync('web/editor/boot/editor-bundle.js', 'utf8').split('\n')[0];
 test.beforeAll(async () => {
   directory = makeTempDir('editor-bundle');
-  portable = buildPortableBlankEditor(join(directory, 'current.edit.html'));
-  injected = join(directory, 'injected.edit.html');
-  const python = process.env.MAW_E2E_PYTHON || 'uv';
-  const prefix = process.env.MAW_E2E_PYTHON ? [] : ['run', '--no-sync', 'python'];
-  execFileSync(python, [...prefix, '-c', `import edit, pathlib, sys
-original = edit.render_editor_page
-def render(**context):
-    context.update(data_json='{"segments":[{"id":"injected","start":0,"end":1000,"text":"Injected cue"}]}',
-                   filename_base_json='"injected project"', stickers_json='[]',
-                   sticker_root_json='"portable-root"', sticker_url_prefix_json='"fixture-stickers/"',
-                   ninja_sfx_base_url_json='"fixture-sfx/"', ui_language_json='"en"')
-    return original(**context)
-edit.render_editor_page = render
-pathlib.Path(sys.argv[1]).write_text(edit.build_blank_html(), encoding='utf-8', newline='\\n')
-`, injected], {windowsHide:true});
-  server = await startBlankServer(await findFreePort(), join(directory, 'settings'));
+  // Retired file:// consumers stay skipped; do not prepare their HTML artifacts.
+  // Isolate both config-file and environment sticker defaults in the child.
+  const envFixture = join(directory, 'empty-settings.conf');
+  writeFileSync(envFixture, '', 'utf8');
+  server = await startBlankServer(await findFreePort(), join(directory, 'settings'), {
+    env: { MAW_ENV_FILE: envFixture, STICKER_DIR: '' },
+  });
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(directory); });
 
@@ -37,7 +27,7 @@ test('minified portable bundle preserves non-default data, paths and generated l
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await disableOnboarding(page);
-  await page.goto(pathToFileURL(injected).href);
+  await page.goto(pathToFileURL(join(directory, 'injected.edit.html')).href);
   await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   expect(await page.evaluate(() => ({text:MaweBoot.DATA.segments[0]?.text,
@@ -52,6 +42,7 @@ for (const transport of ['file', 'HTTP']) {
   test(`${transport} executes every source and preserves project/export/undo behavior`, async ({page}) => {
     // 仅 file:// 传输属于弃维护的便携单 HTML；HTTP 传输仍测试共用编辑器代码。
     test.skip(transport === 'file', '便携模式已弃维护，2.0 移除 HTML，见 #336 后回归分析');
+    const portable = join(directory, 'current.edit.html');
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await disableOnboarding(page);

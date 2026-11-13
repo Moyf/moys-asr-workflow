@@ -5,13 +5,15 @@
 // 2. 多行（multi）旧语义不回退（双语行 / 行高不足仍走紧凑）；
 // 3. drawWordChips 门对单行双语行放行（气泡照画，条带几何从 computed style
 //    读取），以及 waveform.css 的单行双语行条带 / 叠加块定位契约。
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+
+await prepareEditorModule('editor/media/waveform.js');
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const css = fs.readFileSync(path.join(root, 'web', 'waveform.css'), 'utf8');

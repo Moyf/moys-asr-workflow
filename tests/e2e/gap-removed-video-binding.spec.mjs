@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
 import http from 'node:http';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { compileSources, readModules } from '../../scripts/build-editor.mjs';
 import { makeTempDir, cleanupTempDir, generateWav, generateProjectJson, startServer, findFreePort } from './helpers.mjs';
 
 const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export-actions.js', import.meta.url), 'utf8');
@@ -9,7 +11,11 @@ const start = source.indexOf("document.getElementById('download-gap-removed-vide
 const end = source.indexOf("document.getElementById('download-gap-removed-regions-json')", start);
 if (start < 0 || end <= start) throw new Error('Video handler not found');
 const handler = source.slice(start, end);
-const projectLoad = fs.readFileSync(new URL('../../web/editor/io/editor-project-load.js', import.meta.url), 'utf8');
+const root = fileURLToPath(new URL('../../', import.meta.url));
+const projectLoadFile = 'editor/io/editor-project-load.js';
+const projectLoad = (await compileSources(root, [projectLoadFile],
+  readModules(root).filter(module => module.file === projectLoadFile),
+  file => fs.readFileSync(join(root, 'web', file), 'utf8'))).code;
 
 async function withFixture(page, run) {
   const requests = [];
@@ -79,6 +85,7 @@ for (const mutation of ['detach', 'replace-config', 'generation', 'source-id', '
       await expect.poll(() => page.evaluate(() => window.hints.at(-1))).toContain('绑定已变更');
       expect(requests).toEqual([]);
       expect(await page.evaluate(() => window.writes)).toBe(0);
+      expect(await page.evaluate(() => window.outputClosed)).toBe(false);
     });
   });
 }

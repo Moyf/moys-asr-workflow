@@ -73,7 +73,7 @@ jobs:
         run: python scripts/sync_launcher_version.py --check
 
       - name: Install locked dependencies
-        run: uv sync --group build --frozen
+        run: uv sync --group build --frozen --group dev --group test
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -114,7 +114,19 @@ jobs:
         run: uv run python scripts/run_tests.py tests/test_packaging_contract.py
 
       - name: Run Python tests
-        run: uv run python scripts/run_tests.py --github-summary
+        run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py --report .artifacts/release-python.json --github-summary
+
+      - name: Preserve complete Python report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-python-${{ runner.os }}
+          path: |
+            .artifacts/release-python.json
+            .artifacts/release-python.log
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Required media failure compatibility
         run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_media.py tests/test_ffmpeg.py tests/test_ffprobe_failure_integration.py --required --report .artifacts/media-required.json
@@ -356,7 +368,7 @@ jobs:
         run: python scripts/sync_launcher_version.py --check
 
       - name: Install locked dependencies
-        run: uv sync --group build --frozen
+        run: uv sync --group build --frozen --group dev --group test
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -450,7 +462,19 @@ jobs:
           echo "$PWD/build/ci-ffmpeg/extracted/bin" >> "$GITHUB_PATH"
 
       - name: Run Python tests
-        run: uv run python -m unittest discover -s tests -p "test_*.py"
+        run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py --report .artifacts/release-python.json --github-summary
+
+      - name: Preserve complete Python report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-python-${{ runner.os }}
+          path: |
+            .artifacts/release-python.json
+            .artifacts/release-python.log
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
 
       # ---------- macOS 专属 ----------
 
