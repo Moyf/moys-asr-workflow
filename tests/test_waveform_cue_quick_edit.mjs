@@ -5,13 +5,15 @@
 // 2. 气泡 CSS 契约（waveform.css 提供样式与箭头变量）；
 // 3. 接线契约：三轨字幕块 dblclick 打开气泡，旧的「聚焦字幕编辑区」
 //    回调（enter*Editor）不再被波形引用。
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+
+await prepareEditorModule('editor/media/waveform.js');
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 

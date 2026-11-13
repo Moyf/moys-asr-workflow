@@ -41,10 +41,38 @@ test('waveform ASS shortcuts mirror project settings and open the style library 
     Boolean(el.compareDocumentPosition(document.getElementById('editor-settings-tab-project-tracks')) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   await expect(page.locator('#word-timing-quick-toggle')).toHaveText('字词');
   await expect(page.locator('#markers-quick-toggle')).toHaveText('标记');
+  // Only this layout check needs a populated secondary track. Keep the shared
+  // fixture empty so the separate empty-track tests still exercise that state.
+  await page.evaluate(() => {
+    const main = MaweBoot.DATA.segments[0];
+    MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+      tracks: [{ id: 'layout-secondary', name: 'Layout secondary',
+        segments: [{ id: 'layout-secondary-1', start: main.start, end: main.end, text: 'Layout cue' }] }], bindings: [] };
+    MaweDisplaySettings.updateMultiSubtitleUi();
+    MaweCuePanel.renderAll();
+  });
   await page.evaluate(() => MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-multi-subtitle'));
-  const rows = await page.locator('.multi-subtitle-display-inline .multi-subtitle-setting-row').evaluateAll(elements =>
-    elements.map(el => el.getBoundingClientRect().top));
-  expect(Math.abs(rows[0] - rows[1])).toBeLessThanOrEqual(1);
+  await expect(page.locator('#editor-settings-page-multi-subtitle')).toBeVisible();
+  const displaySection = page.locator('#multi-subtitle-display-section');
+  await expect(displaySection).toBeVisible();
+  await expect(displaySection).toHaveCSS('display', 'grid');
+  const sectionBox = await displaySection.boundingBox();
+  expect(sectionBox).not.toBeNull();
+  expect(sectionBox.width).toBeGreaterThan(0);
+  expect(sectionBox.height).toBeGreaterThan(0);
+  const settingRows = displaySection.locator('.multi-subtitle-setting-row');
+  await expect(settingRows).toHaveCount(2);
+  const rows = await settingRows.evaluateAll(elements => elements.map(element => {
+    const { top, width, height } = element.getBoundingClientRect();
+    return { top, width, height };
+  }));
+  for (const row of rows) {
+    expect(row.width).toBeGreaterThan(0);
+    expect(row.height).toBeGreaterThan(0);
+  }
+  expect(Math.abs(rows[0].top - rows[1].top)).toBeLessThanOrEqual(1);
+  writeFileSync(testInfo.outputPath('populated-secondary-layout.json'), JSON.stringify({ sectionBox, rows }, null, 2));
+  await displaySection.screenshot({ path: testInfo.outputPath('populated-secondary-layout.png') });
 });
 test.beforeAll(async () => {
   // macOS 的 tmpdir 位于 /var（指向 /private/var 的符号链接）；服务器按
@@ -113,24 +141,36 @@ async function settings(page, tab = 'regions') {
   await page.locator(`#editor-settings-tab-${tab}`).click();
 }
 
-test('word timing help stays concise and translates when switching language', async ({ page }, testInfo) => {
+test('word timing help exposes display, editing and conversion guidance in both languages', async ({ page }, testInfo) => {
   await page.locator('#help-toggle').click();
-  await page.locator('#help-tab-waveform').click();
-  const paragraphs = page.locator('#help-tab-panel-waveform .help-subgroup').first().locator('.help-category > span');
-  await expect(paragraphs).toHaveCount(3);
-  await expect(paragraphs.first()).toContainText('Q 快速切换开关');
-  await expect(paragraphs.nth(1)).toContainText('F 试听选中的字幕或字词');
-  await expect(paragraphs.last()).toContainText('右键菜单的「高级操作」');
+  await page.locator('#help-tab-word-timing').click();
+  const panel = page.locator('#help-tab-panel-word-timing');
+  await expect(panel).toBeVisible();
+  await expect(page.locator('#help-tab-word-timing')).toHaveAttribute('aria-selected', 'true');
+  await expect(panel.getByRole('heading', { name: '显示与选择', exact: true })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: '编辑字词', exact: true })).toBeVisible();
+  for (const key of ['Q', 'Tab', 'C', 'Esc', 'F']) await expect(panel.locator('kbd').filter({ hasText: new RegExp(`^${key}$`) })).toHaveCount(1);
+  await expect(panel).toContainText('切换主字幕字词时间码');
+  await expect(panel).toContainText('试听选中的字幕或字词');
+  await expect(panel).toContainText('修改文字不会移动时间');
+  await expect(panel).toContainText('右键菜单的「高级操作」');
+  await expect(panel.locator('[data-settings-page="project-tracks"]')).toBeVisible();
   await page.locator('#help-panel').screenshot({ path: testInfo.outputPath('word-timing-help-zh.png') });
   await page.locator('#help-close').click();
   await settings(page, 'interface');
   await page.locator('#language-toggle').click();
   await page.locator('#help-toggle').click();
-  await page.locator('#help-tab-waveform').click();
-  await expect(paragraphs.first()).toContainText('Q toggles this mode');
-  await expect(paragraphs.nth(1)).toContainText('F auditions the selected subtitles or words');
-  await expect(paragraphs.last()).toContainText('Advanced actions in the context menu');
-  expect((await paragraphs.allTextContents()).join('')).not.toMatch(/[\u4e00-\u9fff]/);
+  await page.locator('#help-tab-word-timing').click();
+  await expect(page.locator('#help-tab-word-timing')).toHaveText('Word timings');
+  await expect(page.locator('#help-tab-word-timing')).toHaveAttribute('aria-selected', 'true');
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'Display and selection', exact: true })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: 'Edit words', exact: true })).toBeVisible();
+  await expect(panel).toContainText('toggles main subtitle word timings');
+  await expect(panel).toContainText('previews the selected subtitle or word');
+  await expect(panel).toContainText('Editing text does not change timing');
+  await expect(panel).toContainText('Advanced actions in the context menu');
+  expect(await panel.innerText()).not.toMatch(/[\u4e00-\u9fff]/);
   await page.locator('#help-panel').screenshot({ path: testInfo.outputPath('word-timing-help-en.png') });
 });
 

@@ -72,7 +72,7 @@ e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解�
 
 `pnpm test` 是 Chromium e2e；`pnpm run test:unit` 执行根目录全部 `.mjs` 测试，其中已有跨 Python 与浏览器测试，不能假定它们都零依赖。不要每改一个断言就跑全量。先复现一次，改代码后跑最小回归，必要时扩大；连续两次同类失败先分类原因，不循环重跑。
 
-CI 的 Editor job 目前只运行两类 Python 装配契约与两份 browser spec，并非完整 Python/e2e 套件。新 Debug tooling job 在 Windows / Linux 验证标准库调试工具；同样不能冒充产品全量验证。UI 的拖动、听感和布局仍需人工核验。
+既有 Editor job 运行完整 Node、Python 装配及专项契约、选定浏览器子集，不是完整 Python/e2e；Windows preview 仍运行完整 Python、同次 cache 校验、64 / 4 浏览器专项及打包 smoke。Debug tooling 在 Windows / Linux 验证标准库调试工具，不能冒充产品全量验证。新增 `test-matrix.yml` 以追加 runner 成本补完整覆盖，具体范围见[完整补充矩阵](DEVELOPMENT.md#完整补充矩阵与-required-语义)；UI 的拖动、听感和布局仍需人工核验。
 
 ## 中断恢复与结果记录
 
@@ -89,9 +89,21 @@ CI 的 Editor job 目前只运行两类 Python 装配契约与两份 browser spe
 分组暂用串行，`--parallel N` 保留无参数全量的文件并行入口；显式 targets 不拆分，
 也不能与 `--pack` 混用。无参数仍跑原来的完整集合。
 
+`test_fcp7_png.RenderTests` 整类和 `test_fcp7_png_api.PngJobHttpTests.test_render_publish_and_repeated_export_preserve_prior_package` 的真实 FFmpeg 渲染属于 media；同文件的规划、假渲染和其余 HTTP 逻辑仍属于 common。不改变标准发现 / hooks，也不把同名但不同模块的类自动归组。
+
 `--report` 在串行和并行模式记录所选 ID、实际运行数、失败/错误、skip 原因、
 expected failure、unexpected success、退出码及完整日志位置；并行另有文件、PID 和耗时。
 完整日志包含成功与失败测试、加载阶段以及子进程输出；终端仅打印有界摘要。
 `--full-log` 可指定日志位置，未指定时报告旁生成同名 `.log`。
 `--required` 将缺工具、缺依赖、缺夹具或 expected failure 视为失败；仅准确匹配的
 异平台测试 ID 和 skip 原因可豁免。空集合返回失败。分组是显式执行入口，不自动缩减 CI。
+
+### 新 CI 计划与浏览器证据
+
+`scripts/ci_impact.py --plan .artifacts/ci-plan.json` 输出版本、模式、有限 profile、原因与 base/head；非 PR 或差异不可信时 full。`scripts/ci_matrix.py expand` 校验计划并生成有限矩阵，`run --cell <cell>` 在 `run_check` 内执行完整层或明确的领域浏览器集合，`gate` 校验所有应执行单元。旧工作流仍只消费兼容的 `light` 字段，不受 domain 缩减。
+
+`ci_matrix.py` 的 CLI consumer 同时检查实际 `GITHUB_EVENT_NAME`：明确非 PR 事件拒绝非 full 计划；本地未设置事件时仍可执行纯函数 / 夹具验证。Python 单元在回执前回读 `python.json` 与 `media-required.json`，校验非空唯一 ID、计数和退出码，保留 unittest fixture / subtest skip 语义；required 不信任序列化的 `platform_not_applicable`，而重新调用精确平台策略。两份报告的归组集合必须一致，回执附校验计数和报告 SHA-256。缺 / 坏报告、伪造成功退出或不支持的 required skip 都不产生成功回执；输出目录拒绝复用旧报告，重试请使用新的 `--root` 以保留旧证据。
+
+浏览器层在同 job 保存 `browser-list.json`、`browser-results.json`、`browser-validated.json` 和成功凭据 `receipt.json`。`scripts/browser_results.py <list.json> <results.json> --current 1 --total 4` 可独立复核：比较文件 + 完整 describe / test 标题 + project 集合、分片坐标和逐案结果，不以 `stats.expected > 0` 代替覆盖检查。失败执行即使没生成成功凭据仍上传已有 JSON / traces / checks；缺报告不能通过聚合门禁。只有五个精确弃维护 portable case 的原始 skip 原因获准，libass / 编码器等能力缺失仍失败。计划未选中的层属于 intentional skip，与实际用例 skip 分开。
+
+完整 Python 不加 blanket `--required`：完整标准发现允许人工私有夹具、平台 guard 等 skip，并将每个原因和 expected failure 留在报告；真实 media pack 单独 `--required`，既有 required subset 保留，`allowed_platform_skip` 不扩大。Release 三平台也使用报告入口，Windows 阻断与辅助平台警告政策不变；tag 触发的新矩阵独立于 publish。完整新矩阵增加而非削减总 runner 成本，远端尚未运行；本地未跑完整浏览器集合时务必标明。

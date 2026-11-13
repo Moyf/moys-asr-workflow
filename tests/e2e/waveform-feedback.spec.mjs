@@ -106,13 +106,29 @@ test(`single-row ${thumbnailMode} thumbnails fit the viewport and bilingual sett
   expect(geometry.subtitleBottom).toBeGreaterThanOrEqual(8);
   await page.locator('.waveform-pane').screenshot({ path: test.info().outputPath('single-filmstrip.png') });
   await openSettingsPage(page, 'multi-subtitle');
-  const toggle = page.locator('#editor-settings-page-multi-subtitle #multi-subtitle-toggle');
+  const settingsPage = page.locator('#editor-settings-page-multi-subtitle');
+  await expect(settingsPage).toBeVisible();
+  const toggle = settingsPage.locator('#multi-subtitle-toggle');
   await expect(toggle).toHaveCount(1);
-  const spacing = await page.evaluate(() => {
-    const controls = document.querySelector('.multi-subtitle-mode-controls');
-    return controls.nextElementSibling.getBoundingClientRect().top - controls.getBoundingClientRect().bottom;
+  await expect(toggle).not.toBeChecked();
+  await expect(settingsPage.locator('#multi-subtitle-display-section')).toBeHidden();
+  const spacing = await settingsPage.locator('.multi-subtitle-mode-controls').evaluate(controls => {
+    // Empty secondary tracks intentionally hide the display group. Measure the
+    // next actually rendered sibling, never a hidden group's all-zero rect.
+    let next = controls.nextElementSibling;
+    while (next && !next.checkVisibility()) next = next.nextElementSibling;
+    if (!next) return null;
+    const a = controls.getBoundingClientRect(), b = next.getBoundingClientRect();
+    return { gap: b.top - a.bottom, controls: { width: a.width, height: a.height },
+      next: { width: b.width, height: b.height, label: next.getAttribute('aria-labelledby') } };
   });
-  expect(spacing).toBeGreaterThanOrEqual(8);
+  expect(spacing).not.toBeNull();
+  for (const box of [spacing.controls, spacing.next]) {
+    expect(box.width).toBeGreaterThan(0);
+    expect(box.height).toBeGreaterThan(0);
+  }
+  expect(spacing.next.label).toBe('multi-settings-link-title');
+  expect(spacing.gap).toBeGreaterThanOrEqual(8);
   console.log('bilingual control spacing', spacing);
   await page.locator('#project-settings-panel').screenshot({ path: test.info().outputPath('bilingual-settings.png') });
   await closeSettingsPanels(page);

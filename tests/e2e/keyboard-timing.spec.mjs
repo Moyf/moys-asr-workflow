@@ -565,6 +565,7 @@ test('automatic adjacent snapping is on by default and Alt temporarily disables 
 test('automatic adjacent snapping links shared-boundary dragging by default and Alt reverses it', async ({ page }) => {
   // 传统模式：共享边界手柄的联动/独立由「联动调整相邻字幕」开关决定。
   await loadAttachedCues(page, true, 'classic');
+  const originalItems = await page.evaluate(() => MaweBoot.DATA.segments.map(segment => segment.items));
   const dragSharedBoundary = async (altKey = false) => {
     const handle = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();
     const handleBox = await stableVisibleBoundingBox(page, handle);
@@ -578,13 +579,27 @@ test('automatic adjacent snapping links shared-boundary dragging by default and 
     const deltaX = (rowBox.width * deltaMs) / (rowEnd - rowStart);
     const startX = handleBox.x + handleBox.width / 2;
     const y = handleBox.y + handleBox.height / 2;
+    // Selection/undo can rebuild virtual rows. A hit on merely any cue is not
+    // enough: this gesture must grab this cue's right handle, not its body.
+    expect(await handle.evaluate((element, point) =>
+      document.elementFromPoint(point.x, point.y)?.closest('.waveform-cue-handle') === element,
+    { x: startX, y })).toBe(true);
     if (altKey) await page.keyboard.down('Alt');
     await page.mouse.move(startX, y);
     await page.mouse.down();
     await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
+    expect(await page.evaluate(() => {
+      const drag = MaweCoreState.waveformEditor.drag;
+      return drag ? { kind: drag.kind, index: drag.index, track: drag.track } : null;
+    })).toEqual({ kind: altKey ? 'resize-boundary-independent' : 'resize-boundary', index: 0, track: 'main' });
     await page.mouse.move(startX + deltaX, y, { steps: 5 });
+    expect(await page.evaluate(() => {
+      const drag = MaweCoreState.waveformEditor.drag;
+      return drag ? { started: drag.started, changed: drag.changed } : null;
+    })).toEqual({ started: true, changed: true });
     await page.mouse.up();
     if (altKey) await page.keyboard.up('Alt');
+    await expect.poll(() => page.evaluate(() => MaweCoreState.waveformEditor.drag)).toBeNull();
   };
 
   // 默认开启：共享边界拖动联动相邻字幕；拖动期间状态栏提示当前吸附模式。
@@ -597,11 +612,15 @@ test('automatic adjacent snapping links shared-boundary dragging by default and 
     { start: 25000, end: 30000 },
   ]);
 
-  await page.evaluate(() => {
-    MaweBoot.DATA.segments[0].end = 10000;
-    MaweBoot.DATA.segments[1].start = 10000;
-    MaweCuePanel.renderAll();
-  });
+  // Restore the complete edit (including remapped items/frame fields), not just
+  // two millisecond endpoints. The next gesture measures the newly rendered handle.
+  await page.locator('#undo-btn').click();
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 10000 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+  expect(await page.evaluate(() => MaweBoot.DATA.segments.map(segment => segment.items))).toEqual(originalItems);
   // Alt 临时反转：只移动当前字幕的边界，相邻字幕保持不动。
   await dragSharedBoundary(true);
   await expect.poll(() => readTimings(page)).toEqual([
@@ -1239,8 +1258,10 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
   await page.mouse.move(blockBox.x + blockBox.width / 2, blockBox.y + blockBox.height / 2);
   await page.mouse.down();
   await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.drag?.kind)).toBe('move');
   await page.keyboard.press('d');
   await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => MaweCoreState.waveformEditor.drag)).toBeNull();
   await expect.poll(() => readTimings(page)).toEqual([
     { start: 5100, end: 10100 },
     { start: 10100, end: 18000 },
@@ -1248,13 +1269,24 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
   ]);
 
   // 新模式（中缝联动）下，按住中缝拖动区再按 D：共享边界联动移动。
-  const boundary = page.locator('.waveform-cue-boundary').first();
+  const boundary = page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]').first();
   await expect(boundary).toBeVisible();
+  // The edit crosses a row boundary (10s -> 10.1s). Scroll to the newly
+  // rendered seam and wait for real hit-test/actionability, not just CSS visibility.
+  await boundary.hover();
   const boundaryBox = await boundary.boundingBox();
   expect(boundaryBox).not.toBeNull();
+  expect(await boundary.evaluate((element, point) =>
+    document.elementFromPoint(point.x, point.y)?.closest('.waveform-cue-boundary') === element,
+  { x: boundaryBox.x + boundaryBox.width / 2, y: boundaryBox.y + boundaryBox.height / 2 })).toBe(true);
   await page.mouse.move(boundaryBox.x + boundaryBox.width / 2, boundaryBox.y + boundaryBox.height / 2);
   await page.mouse.down();
   await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
+  expect(await page.evaluate(() => {
+    const drag = MaweCoreState.waveformEditor.drag;
+    return drag ? { kind: drag.kind, index: drag.index, track: drag.track, shared: drag.sharedBoundaryZone } : null;
+  })).toEqual({ kind: 'resize-boundary', index: 0, track: 'main', shared: true });
+  await expect(page.locator('#waveform-pane')).toBeFocused();
   await page.keyboard.press('d');
   await page.mouse.up();
   await expect.poll(() => readTimings(page)).toEqual([

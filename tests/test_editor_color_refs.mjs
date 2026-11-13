@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import { initMaweMultiSubtitleCore } from '../web/editor/state/editor-multi-subtitle-core.js';
 import { initMaweSegmentOps } from '../web/editor/cues/editor-segment-ops.js';
 import { initMaweTextCleanup } from '../web/editor/cues/editor-text-cleanup.js';
 import { initMaweBoundDrag } from '../web/editor/cues/editor-bound-drag.js';
 import { createEditorCommands } from '../web/editor/state/editor-commands.js';
 import { mergeOverlaySegments } from '../web/editor/cues/overlay-track.js';
+
+await prepareEditorModule('shared/editor-utils.js');
 
 // Run real domain factories; only their UI/selection bridges are inert. Node
 // isolates this file's globals, and these stateful tests run sequentially.

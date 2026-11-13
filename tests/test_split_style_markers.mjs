@@ -3,7 +3,10 @@ import test from 'node:test';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {initModuleSource} from './helpers/init-module-source.mjs';
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
+
+await prepareEditorModule('shared/editor-utils.js');
+
 const fixture = { window: {} };
 loadEditorModule(fixture, 'shared/editor-utils.js');
 const utils = fixture.window.AsrEditorUtils;

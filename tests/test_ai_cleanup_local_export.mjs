@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import test from 'node:test';
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+
+await prepareEditorModule('shared/editor-utils.js');
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const source = () => ({ id: 'main-001', start: 0, end: 2000, text: '啊，我这……我这个功能呢',

@@ -12,6 +12,7 @@ MEDIA_MODULES = {"test_ffprobe_failure_integration", "test_gap_removed_audio_exp
                  "test_media_cache", "test_quapeaks_generation",
                  "test_thumbnail_jobs_integration", "test_thumbnail_server"}
 MEDIA_CLASSES = {
+    ("test_fcp7_png", "RenderTests"),
     ("test_audio_loudness", "RealLoudnessTests"),
     ("test_burn_video_export", "BurnVideoPrecisionTests"),
     ("test_media_keyframes", "RealKeyframeInspectorTests"),
@@ -20,7 +21,7 @@ MEDIA_CLASSES = {
 }
 TOOL_MODULES = {"test_docs_check", "test_release_notes", "test_release_site", "test_release_publication", "test_run_check", "test_run_tests_runner",
                 "test_verification_checklist", "test_verification_checklist_build", "test_verify_sha256_script", "test_macos_icon",
-                "test_packaging_contract", "test_test_workflow", "test_browser_results"}
+                "test_packaging_contract", "test_test_workflow", "test_browser_results", "test_ci_impact"}
 MEDIA_METHODS = {
     "test_streaming_extraction_and_cache_match", "test_low_rate_multichannel_keeps_opposite_and_one_sided_audio",
     "test_mono_stays_identical_and_third_channel_is_included", "test_mopeaks_generation_does_not_need_native_quapeaks",
@@ -48,6 +49,9 @@ def python_pack(test_id: str) -> str:
     method = parts[-1]
     if module in TOOL_MODULES:
         return "tools"
+    if (module == "test_fcp7_png_api" and "PngJobHttpTests" in parts
+            and method == "test_render_publish_and_repeated_export_preserve_prior_package"):
+        return "media"
     if method == "test_real_mosp_keeps_only_real_take_boundaries":
         return "manual"
     if "LongMediaGeneratedFixtureTests" in parts or method == "test_eleven_minute_real_audio_preserves_acoustic_offsets":

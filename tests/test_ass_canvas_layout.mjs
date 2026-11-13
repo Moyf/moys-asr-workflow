@@ -1,9 +1,11 @@
 // ass-canvas-layout 纯布局计算的单测：Alignment 网格、锚点、行切分与块偏移。
 // 绘制层（editor-wiring-ass-canvas.js）依赖这些纯函数定位所有 ASS 文本，
 // 布局错了画布整体就错，因此在 Node 里离线锁定行为。
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+
+await prepareEditorModule('shared/editor-utils.js');
 
 const context = { window: {} };
 loadEditorModule(context, 'shared/editor-utils.js');

@@ -169,15 +169,46 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   await disableOnboarding(page);
   await page.goto(server.url);
   await dropFiles(page, [srtSpec('main.srt', mainSrt)]);
+  const displayStates = [];
+  const checkDisplaySection = async (stage, expectedDisplay) => {
+    // A hidden parent must not make these section-visibility assertions pass.
+    await expect(page.locator('#editor-settings-page-multi-subtitle')).toBeVisible();
+    const section = page.locator('#multi-subtitle-display-section');
+    const metrics = await section.evaluate(element => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return { display: style.display, hidden: element.hidden, width: rect.width, height: rect.height,
+        rowGap: parseFloat(style.rowGap), columnGap: parseFloat(style.columnGap),
+        above: rect.top - element.previousElementSibling.getBoundingClientRect().bottom,
+        below: element.nextElementSibling.getBoundingClientRect().top - rect.bottom };
+    });
+    displayStates.push({ stage, ...metrics });
+    writeFileSync(test.info().outputPath('secondary-display-states.json'), JSON.stringify(displayStates, null, 2));
+    expect(metrics.display, `${stage}: computed display with the bilingual settings page visible`).toBe(expectedDisplay);
+    if (expectedDisplay === 'none') {
+      await expect(section).toBeHidden();
+      expect(metrics.height).toBe(0);
+    } else {
+      await expect(section).toBeVisible();
+      expect(metrics.rowGap).toBe(8);
+      expect(metrics.columnGap).toBe(8);
+      expect(metrics.above).toBeGreaterThanOrEqual(8);
+      expect(metrics.below).toBeGreaterThanOrEqual(8);
+    }
+    await page.locator('#project-settings-panel').screenshot({ path: test.info().outputPath(`secondary-display-${stage}.png`) });
+  };
   const dialogs = [];
   page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
-  await expect(page.locator('#project-multi-subtitle-settings')).toBeHidden();
+  await openMultiSubtitleSettings(page);
+  await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
+  await expect(page.locator('#multi-subtitle-empty-hint')).toBeHidden();
+  await expect(page.locator('#multi-subtitle-swap')).toBeDisabled();
   await expect(page.locator('#multi-subtitle-toggle-label'))
     .toHaveAttribute('data-title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
-  await expect(page.locator('#project-multi-subtitle-settings')).not.toHaveAttribute('hidden');
-  await openSettingsPage(page, 'multi-subtitle');
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+  await checkDisplaySection('empty', 'none');
   await closeSettingsPanels(page);
   const trackId = await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
@@ -205,19 +236,23 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   });
   expect(importGap.above).toBeGreaterThanOrEqual(8);
   expect(importGap.horizontalGap).toBeGreaterThanOrEqual(8);
-  await page.locator('#project-multi-subtitle-settings').screenshot({ path: test.info().outputPath('empty-track-settings.png') });
+  writeFileSync(test.info().outputPath('secondary-import-spacing.json'), JSON.stringify(importGap, null, 2));
+  await page.locator('#editor-settings-page-multi-subtitle').screenshot({ path: test.info().outputPath('empty-track-settings.png') });
   const chooserPromise = page.waitForEvent('filechooser');
   await page.locator('#multi-subtitle-import').click();
   const chooser = await chooserPromise;
   await chooser.setFiles({ name: 'translation.srt', mimeType: 'text/plain', buffer: Buffer.from(extensionSrt, 'utf8') });
   await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
   await page.locator('#multi-subtitle-import-result-confirm').click();
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeHidden();
+  await checkDisplaySection('populated', 'grid');
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id)).toBe(trackId);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(3);
   await page.locator('#undo-btn').click();
-  await openSettingsPage(page, 'project-tracks');
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+  await checkDisplaySection('cleared-by-undo', 'none');
   await closeSettingsPanels(page);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
 });
@@ -233,13 +268,14 @@ test('keeps the quick-import prompt when enabling an empty secondary track', asy
   const chooser = await chooserPromise;
   expect(prompt).toBe('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）');
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
-  await openSettingsPage(page, 'project-tracks');
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
   await closeSettingsPanels(page);
   const trackId = await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id);
   await chooser.setFiles({ name: 'translation.srt', mimeType: 'text/plain', buffer: Buffer.from(extensionSrt, 'utf8') });
   await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
   await page.locator('#multi-subtitle-import-result-confirm').click();
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeHidden();
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id)).toBe(trackId);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(3);
@@ -273,7 +309,7 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   expect(empty.multi_subtitle.tracks).toHaveLength(1);
   expect(empty.multi_subtitle.tracks[0].segments).toEqual([]);
   await dropProject(empty);
-  await openSettingsPage(page, 'project-tracks');
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
   await closeSettingsPanels(page);
   await page.screenshot({ path: test.info().outputPath('empty-secondary-lane.png') });
@@ -285,13 +321,17 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   await page.mouse.click(box.x + box.width * 0.8, box.y + box.height - 2, { button: 'right' });
   await page.locator('#ctxmenu .item').filter({ hasText: '创建副字幕' }).click();
   expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.kind)).toBe('extension');
-  const editor = page.locator('#cue-panel-text');
+  const editor = page.locator('.waveform-cue-quick-edit-text');
   await expect(editor).toBeVisible();
   await expect(editor).toBeFocused();
+  await expect(page.locator('.waveform-cue-quick-edit-caption')).toContainText('副字幕');
   await editor.fill('手动副字幕');
   await editor.press('ControlOrMeta+Enter');
+  await expect(editor).toHaveCount(0);
   await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(1);
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeHidden();
+  await closeSettingsPanels(page);
   await page.locator('#undo-btn').click();
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].text)).toBe('');
   await page.locator('#undo-btn').click();
@@ -434,7 +474,7 @@ test('raises a gear popup without raising its containing editor panel', async ({
   expect(layers.popupComputedZIndex).toBeGreaterThan(420);
 });
 
-test('waveform extension cue double-click focuses the extension editor', async ({ page }) => {
+test('waveform extension cue double-click focuses and commits the extension quick editor', async ({ page }) => {
   const project = {
     segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
     waveform: generateWaveformPayload(3000),
@@ -461,7 +501,20 @@ test('waveform extension cue double-click focuses the extension editor', async (
   await cue.scrollIntoViewIfNeeded();
   await cue.dblclick();
   await expect(page.locator('#cue-panel-target')).toHaveText('副字幕');
-  await expect(page.locator('#cue-panel-text')).toBeFocused();
+  const editor = page.locator('.waveform-cue-quick-edit-text');
+  await expect(editor).toBeFocused();
+  await expect(editor).toHaveValue('extension cue');
+  await expect(page.locator('.waveform-cue-quick-edit-caption')).toContainText('副字幕 #1');
+  await editor.fill('edited extension cue');
+  await editor.press('ControlOrMeta+Enter');
+  await expect(editor).toHaveCount(0);
+  await expect(cue).toContainText('edited extension cue');
+  expect(await page.evaluate(() => ({
+    main: MaweBoot.DATA.segments[0].text,
+    extension: MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].text,
+  }))).toEqual({ main: 'main cue', extension: 'edited extension cue' });
+  await page.locator('#undo-btn').click();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].text)).toBe('extension cue');
 });
 
 test('light theme keeps the main waveform subtitle white and secondary subtitle lightly gray', async ({ page }) => {
@@ -492,22 +545,53 @@ test('light theme keeps the main waveform subtitle white and secondary subtitle 
   await expect(extensionCue).toBeVisible();
   await toggleGlobalSettings(page);
   await page.locator('[data-editor-theme="light"]').click();
+  await closeSettingsPanels(page);
+  await expect(mainCue).toHaveClass(/active/);
 
   const colors = await page.evaluate(() => {
+    const token = (name, property) => {
+      if (!getComputedStyle(document.documentElement).getPropertyValue(name).trim()) throw new Error(`Missing theme token ${name}`);
+      const probe = document.createElement('span');
+      probe.style[property] = `var(${name})`;
+      document.body.append(probe);
+      const value = getComputedStyle(probe)[property];
+      probe.remove();
+      return value;
+    };
+    const rgb = color => color.match(/[\d.]+/g).map(Number);
+    const luminance = channels => channels.slice(0, 3).map(value => {
+      const channel = value / 255;
+      return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+    }).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
     const read = (selector) => {
-      const style = getComputedStyle(document.querySelector(selector));
-      return { background: style.backgroundColor, color: style.color };
+      const cue = document.querySelector(selector);
+      const background = getComputedStyle(cue).backgroundColor;
+      const color = getComputedStyle(cue.querySelector('.waveform-cue-label')).color;
+      const rgba = rgb(background), base = rgb(getComputedStyle(cue.closest('.waveform-row')).backgroundColor);
+      const alpha = rgba[3] ?? 1;
+      const effective = rgba.slice(0, 3).map((value, index) => value * alpha + base[index] * (1 - alpha));
+      const foregroundLuminance = luminance(rgb(color)), backgroundLuminance = luminance(effective);
+      return { background, color, luminance: backgroundLuminance,
+        contrast: (Math.max(foregroundLuminance, backgroundLuminance) + .05) / (Math.min(foregroundLuminance, backgroundLuminance) + .05) };
     };
     return {
       main: read('.waveform-cue-block[data-track="main"]'),
       extension: read('.waveform-cue-block[data-track="extension"]'),
+      tokens: { mainBackground: token('--wave-cue-main-bg', 'backgroundColor'),
+        extensionBackground: token('--wave-cue-extension-bg', 'backgroundColor'),
+        activeText: token('--active-cue-fg', 'color'), secondaryText: token('--text-secondary', 'color') },
     };
   });
-  expect(colors.main.background).toBe('rgba(255, 255, 255, 0.82)');
-  // 初始播放位置命中主字幕活动态，使用亮色主题的活动字幕深色令牌。
-  expect(colors.main.color).toBe('rgb(31, 37, 48)');
-  expect(colors.extension.background).toBe('rgba(238, 240, 244, 0.68)');
+  expect(colors.main.background).toBe(colors.tokens.mainBackground);
+  expect(colors.main.color).toBe(colors.tokens.activeText);
+  expect(colors.extension.background).toBe(colors.tokens.extensionBackground);
+  expect(colors.extension.color).toBe(colors.tokens.secondaryText);
   expect(colors.extension.background).not.toBe(colors.main.background);
+  expect(colors.main.luminance).toBeGreaterThan(colors.extension.luminance);
+  expect(colors.main.contrast).toBeGreaterThanOrEqual(4.5);
+  expect(colors.extension.contrast).toBeGreaterThanOrEqual(4.5);
+  writeFileSync(test.info().outputPath('light-waveform-semantic-colors.json'), JSON.stringify(colors, null, 2));
+  await page.screenshot({ path: test.info().outputPath('light-waveform-semantic-colors.png') });
 });
 
 test('light theme keeps mapped subtitle colors visible on main waveform blocks', async ({ page }) => {
@@ -4410,6 +4494,13 @@ test('Z/X adjust one main or extension cue at the pointer and ignore multi-selec
 test('ASS mode previews and exports extension cues with the shared extension style', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
+  // This is a geometry/assignment fixture, not a test of evolving builtin defaults.
+  // Pin the shared library styles so both preview and export must obey these values.
+  const fixtureStyles = {
+    main: { fontSize: 86, marginL: 10, marginR: 10, marginV: 88, alignment: 2 },
+    extension: { fontSize: 64, marginL: 10, marginR: 10, marginV: 36, outline: 2,
+      primaryColor: '#f9ca1f', alignment: 2 },
+  };
   const project = {
     segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
     multi_subtitle: {
@@ -4435,11 +4526,18 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
   await expect(page.locator('.cue[data-idx="0"]')).toBeVisible();
+  await openSettingsPage(page, 'subtitle-style');
+  await page.locator('#ass-mode-toggle').check();
+  await closeSettingsPanels(page);
 
-  const result = await page.evaluate(() => {
+  const result = await page.evaluate((styles) => {
     MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
     ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
-    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    Object.assign(ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass'), styles.main);
+    Object.assign(ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass-extension'), styles.extension);
+    // Opening the style manager force-reloads this isolated browser's library.
+    // Keep its persisted fixture and in-memory render source identical.
+    localStorage.setItem('moy.asr.ass.styles.v1', JSON.stringify(ASS_STYLE_LIBRARY));
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const tracks = window.MaweAssCanvas.lastRender.tracks;
@@ -4459,9 +4557,9 @@ test('ASS mode previews and exports extension cues with the shared extension sty
       overlayAnchor: overlay.anchor || { x: 0, y: 0 },
       ass: MaweExportSrt.buildAss(),
     };
-  });
+  }, fixtureStyles);
   // 副字幕共用样式库的「ASS 副字幕样式」：字号 64（主样式 86 的 64/86）、
-  // 默认黄色，跟随其样式预设固定在主字幕下方（MarginV 36）。
+  // fixture 黄色，跟随显式样式固定在主字幕下方（MarginV 36）。
   expect(result.trackDebug).toEqual(['ok', 'ok', 'ok']);
   expect(result.mainNative).toBe(86);
   expect(result.extensionNative).toBe(64);
@@ -4486,6 +4584,18 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   const overlayStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
   expect(overlayStyleLine).toBeTruthy();
   expect(overlayStyleLine).toMatch(/,10,10,191,1$/);
+
+  // The visible shared style editor must expose the same source used above,
+  // rather than silently using a per-cue override or a hardcoded export margin.
+  await openSettingsPage(page, 'subtitle-style');
+  await page.locator('#extension-ass-style-edit').click();
+  await expect(page.locator('#ass-style-list [data-ass-selection-id="ass-extension"]')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#ass-style-margin-v')).toBeVisible();
+  await expect(page.locator('#ass-style-margin-v')).toHaveValue(String(fixtureStyles.extension.marginV));
+  await page.locator('#ass-style-margin-v').scrollIntoViewIfNeeded();
+  await page.locator('#ass-style-window').screenshot({ path: test.info().outputPath('ass-extension-fixture-style.png') });
+  await page.locator('#ass-style-window-close').click();
+  await closeSettingsPanels(page);
 
   const variants = await page.evaluate(() => {
     const main = ASS_STYLE_LIBRARY.styles.find((style) => style.id === 'ass');
@@ -4516,9 +4626,9 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     expect(variant.overlay.alignment).toBe(overlayAlignment);
     const mainRow = windowRow(variant.main.alignment);
     const mainTop = variant.main.anchor.y - variant.main.height * mainRow / 2;
-    // 副字幕固定在其样式行位的预设位置（MarginV 36）；底部行位于主字幕下方。
+    // 副字幕固定在显式 fixture 样式的位置；底部行位于主字幕下方。
     const extRow = windowRow(variant.extensionAlignment);
-    const extExpectedY = [36, 540, 1080 - 36][extRow];
+    const extExpectedY = [fixtureStyles.extension.marginV, 540, 1080 - fixtureStyles.extension.marginV][extRow];
     expect(variant.extension.anchor.y).toBeCloseTo(extExpectedY, 0);
     // 叠加字幕固定锚定在主字幕上方。
     expect(variant.overlay.anchor.y).toBeLessThan(mainTop);

@@ -28,6 +28,35 @@ test.beforeEach(async ({ page }) => {
 });
 const word = (page, index) => page.locator(`.waveform-word-block[data-segment-idx="0"][data-item-idx="${index}"]`).first();
 
+async function beginIndependentWordDrag(page, index, edge = null) {
+  // word-blocks.js recognizes two pointerdowns on the same word within 500ms
+  // as text editing. These are separate drag gestures, not a double-click.
+  await page.waitForFunction(index => {
+    const last = MaweCoreState.waveformEditor._wordQuickEditClick;
+    return !last || last.index !== 0 || last.itemIndex !== index || Date.now() - last.time > 500;
+  }, index);
+  const block = word(page, index);
+  await block.scrollIntoViewIfNeeded();
+  const target = edge ? block.locator(`.waveform-cue-handle.${edge}`) : block;
+  const box = await target.boundingBox();
+  expect(box).not.toBeNull();
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  expect(await target.evaluate((element, { point, edge }) => {
+    const hit = document.elementFromPoint(point.x, point.y);
+    return edge ? hit?.closest('.waveform-cue-handle') === element
+      : hit?.closest('.waveform-word-block') === element && !hit.closest('.waveform-cue-handle');
+  }, { point, edge })).toBe(true);
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
+  expect(await page.evaluate(() => {
+    const drag = MaweCoreState.waveformEditor.wordDrag;
+    return drag ? { itemIndex: drag.itemIndex, segmentIndex: MaweBoot.DATA.segments.indexOf(drag.segment),
+      resize: drag.resize, edge: drag.edge } : null;
+  })).toEqual({ itemIndex: index, segmentIndex: 0, resize: Boolean(edge), edge: edge === 'right' ? 'end' : 'start' });
+  await expect(page.locator('.waveform-cue-quick-edit')).toHaveCount(0);
+  return point;
+}
+
 test('Q preserves the viewed waveform time when the playhead is offscreen', async ({ page }) => {
   const media = join(tempDir, 'long-wave.wav'), project = join(tempDir, 'long-wave.mosp');
   generateWav(media, 120);
@@ -456,20 +485,16 @@ test('classic linked edges and Alt independence edit only in-sentence items', as
     MaweBoot.DATA.segments[0].items = [{ text: '我', start: 1000, end: 3000 }, { text: '很喜欢', start: 3000, end: 6000 }];
   });
   await setWordTiming(page);
-  let handle = await word(page, 0).locator('.right').boundingBox();
-  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(handle.x + 20, handle.y + handle.height / 2, { steps: 3 });
+  let point = await beginIndependentWordDrag(page, 0, 'right');
+  await page.mouse.move(point.x + 20, point.y, { steps: 3 });
   await page.mouse.up();
   let items = (await source(page)).items;
   expect(items[0].end).toBeGreaterThan(3000);
   expect(items[0].end).toBe(items[1].start);
   await page.keyboard.press('Control+z');
-  handle = await word(page, 0).locator('.right').boundingBox();
   await page.keyboard.down('Alt');
-  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(handle.x - 20, handle.y + handle.height / 2, { steps: 3 });
+  point = await beginIndependentWordDrag(page, 0, 'right');
+  await page.mouse.move(point.x - 20, point.y, { steps: 3 });
   await page.mouse.up();
   await page.keyboard.up('Alt');
   items = (await source(page)).items;
@@ -540,11 +565,7 @@ test('narrow word centers move without stretching and both edge handles remain u
     MaweBoot.DATA.segments[0].items[0] = { text: '我', start: 1000, end: 1033 };
   });
   await setWordTiming(page);
-  const box = await word(page, 0).boundingBox();
-  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  expect(await page.evaluate(point => Boolean(document.elementFromPoint(point.x, point.y)?.closest('.waveform-cue-handle')), center)).toBe(false);
-  await page.mouse.move(center.x, center.y);
-  await page.mouse.down();
+  const center = await beginIndependentWordDrag(page, 0);
   await page.mouse.move(center.x + 15, center.y, { steps: 3 });
   await page.mouse.up();
   const moved = (await source(page)).items[0];
@@ -552,10 +573,8 @@ test('narrow word centers move without stretching and both edge handles remain u
   expect(moved.end - moved.start).toBe(33);
   for (const edge of ['right', 'left']) {
     const before = (await source(page)).items[0];
-    const handle = await word(page, 0).locator(`.${edge}`).boundingBox();
-    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(handle.x + handle.width / 2 + (edge === 'right' ? 10 : -10), handle.y + handle.height / 2, { steps: 3 });
+    const point = await beginIndependentWordDrag(page, 0, edge);
+    await page.mouse.move(point.x + (edge === 'right' ? 10 : -10), point.y, { steps: 3 });
     await page.mouse.up();
     const after = (await source(page)).items[0];
     if (edge === 'right') {
@@ -572,14 +591,14 @@ test('redo during an active word drag cancels the gesture and preserves pending 
   await setWordTiming(page);
   const before = (await source(page)).items;
   const startDrag = async distance => {
-    const box = await word(page, 0).boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 + distance, box.y + box.height / 2, { steps: 3 });
+    const point = await beginIndependentWordDrag(page, 0);
+    await page.mouse.move(point.x + distance, point.y, { steps: 3 });
+    expect(await page.evaluate(() => Boolean(MaweCoreState.waveformEditor.wordDrag?.moved))).toBe(true);
   };
   await startDrag(12);
   await page.mouse.up();
   const committed = (await source(page)).items;
+  expect(committed[0].start).toBeGreaterThan(before[0].start);
   await page.keyboard.press('Control+z');
   expect((await source(page)).items).toEqual(before);
   await startDrag(18);
