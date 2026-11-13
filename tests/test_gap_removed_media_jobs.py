@@ -517,6 +517,10 @@ class MediaJobsHttpTests(CompactContainerAssertions, unittest.TestCase):
             status, snapshot = self.request(self.base, self.payload())
             self.assertEqual(status, 202)
             failed = self.wait(snapshot["jobId"], "failed")
+            # The failed state is visible before the worker writes diagnostics.
+            worker = self.server.media_jobs.get(snapshot["jobId"]).thread
+            worker.join(timeout=5)
+            self.assertFalse(worker.is_alive(), "media job diagnostics did not finish")
         # 快照 error 保持原文供页面展示；日志文件则必须脱敏。
         self.assertIn("boom api_key=supersecret99", failed["error"] or "")
         logs = list((self.root / "logs").glob("maw-*.log"))
