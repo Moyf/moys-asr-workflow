@@ -73,10 +73,29 @@ class MossRuntimeConstantTests(unittest.TestCase):
 class MossRuntimePathTests(unittest.TestCase):
     def test_default_root_uses_dedicated_moss_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(Path(temp_dir) / "app")}):
-                root = default_runtime_root()
+            app_root = (Path(temp_dir) / "非ASCII" / "app").resolve()
+            with mock.patch.dict(os.environ, {
+                "MAW_APP_DATA_ROOT": str(app_root),
+                "MAW_LOCAL_RUNTIME_ROOT": "",
+                "MAW_MOSS_RUNTIME_ROOT": "",
+            }):
+                # Directory selection is tested here; path conversion has its own tests.
+                with mock.patch("maw.runtimes.base.pathwin.ensure_ascii_root", side_effect=lambda path, **_kwargs: path) as ensure_ascii:
+                    root = default_runtime_root()
+            ensure_ascii.assert_called_once_with(app_root / "local-runtime-moss", dir_name="local-runtime-moss")
         self.assertEqual(root.name, "local-runtime-moss")
-        self.assertEqual(root.parent, (Path(temp_dir) / "app").resolve())
+        self.assertEqual(root.parent, app_root)
+
+    def test_default_root_ignores_inherited_runtime_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for keys in (("MAW_LOCAL_RUNTIME_ROOT",), ("MAW_MOSS_RUNTIME_ROOT",),
+                         ("MAW_LOCAL_RUNTIME_ROOT", "MAW_MOSS_RUNTIME_ROOT")):
+                with self.subTest(keys=keys), mock.patch.dict(os.environ):
+                    os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
+                    os.environ.pop("MAW_MOSS_RUNTIME_ROOT", None)
+                    for key in keys:
+                        os.environ[key] = str(Path(temp_dir) / key)
+                    self.test_default_root_uses_dedicated_moss_directory()
 
     def test_override_root_uses_own_env_variable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
