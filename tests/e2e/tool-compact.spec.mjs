@@ -106,11 +106,42 @@ async function timestamp(page) {
 
 async function setTheme(page, theme) {
   await page.evaluate(theme => {document.documentElement.dataset.theme = theme;}, theme);
-  // Wait for real color transitions before capturing or comparing their settled state.
-  await page.evaluate(async () => {
-    void document.body.offsetHeight;
-    await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})));
-  });
+  await waitForThemeColors(page, theme);
+}
+
+async function waitForThemeColors(page, theme, timeout = 5000) {
+  const palette = theme === 'dark'
+    ? {text:'rgb(243, 241, 238)',bg:'rgb(28, 28, 32)',muted:'rgb(176, 171, 165)',border:'rgb(68, 68, 76)',strong:'rgb(90, 90, 99)',accent:'rgb(240, 154, 80)',accentText:'rgb(28, 15, 5)',panel:'rgb(38, 38, 43)',green:'rgb(87, 201, 147)'}
+    : {text:'rgb(29, 29, 32)',bg:'rgb(244, 244, 245)',muted:'rgb(100, 100, 108)',border:'rgb(210, 210, 215)',strong:'rgb(185, 185, 192)',accent:'rgb(200, 69, 69)',accentText:'rgb(255, 255, 255)',panel:'rgb(255, 255, 255)',green:'rgb(29, 138, 87)'};
+  // Check rendered results, not all document animations: skipped content-visibility
+  // subtrees can leave their original finished promises unresolved even when the
+  // animation reports playState="finished". Do not force those subtrees to lay out.
+  await expect.poll(() => page.evaluate(palette => {
+    const mismatches = [];
+    const check = (name, actual, expected) => {if (actual !== expected) mismatches.push({name,actual,expected});};
+    check('body.color',getComputedStyle(document.body).color,palette.text);
+    check('body.backgroundColor',getComputedStyle(document.body).backgroundColor,palette.bg);
+    const button = document.querySelector('[data-tool-theme],#theme-btn');
+    if (!button) mismatches.push({name:'missing theme control'});
+    else check('theme.color',getComputedStyle(button).color,button.matches(':hover') ? palette.text : palette.muted);
+    const switches = [...document.querySelectorAll('.switch input')];
+    if (!switches.length) mismatches.push({name:'missing switches'});
+    for (const input of switches) {
+      const track = input.nextElementSibling, hovered = input.closest('.switch').matches(':hover');
+      check('switch.backgroundColor',getComputedStyle(track).backgroundColor,input.checked ? palette.accent : hovered ? palette.strong : palette.border);
+      const knob = getComputedStyle(track,'::after');
+      check('switch.knobColor',knob.backgroundColor,input.checked ? palette.accentText : palette.text);
+      check('switch.knobTransform',knob.transform,input.checked ? 'matrix(1, 0, 0, 1, 14, 0)' : 'none');
+    }
+    const item = document.querySelector('.item');
+    if (item && item.checkVisibility({contentVisibilityAuto:true})) {
+      check('item.color',getComputedStyle(item.querySelector('label')).color,item.classList.contains('done') ? palette.muted : palette.text);
+      const input = item.querySelector('input');
+      check('item.backgroundColor',getComputedStyle(input).backgroundColor,input.checked ? palette.green : palette.panel);
+      check('item.borderColor',getComputedStyle(input).borderTopColor,input.checked ? palette.green : palette.muted);
+    }
+    return mismatches;
+  },palette), {timeout,message:`${theme} theme colors and controls settle`}).toEqual([]);
 }
 
 async function measure(input) {
@@ -369,4 +400,33 @@ test('long compact checklist preserves 15px text and bounded layout across break
     });
   });
   writeFileSync(testInfo.outputPath('long-checklist-measurements.json'),JSON.stringify({items:900,measurements,reflow},null,2));
+});
+
+test('theme convergence ignores paused offscreen opacity but rejects wrong theme colors', async ({page}, testInfo) => {
+  await page.goto(fileUrl(generateChecklist(testInfo,true)));
+  await page.locator('.tool-density').click();
+  await setTheme(page,'dark');
+  await page.evaluate(() => {
+    const target = document.querySelector('#group-29 .item label');
+    window.themeInterference = target.animate([{opacity:1},{opacity:.9}],{duration:1000,fill:'both'});
+    window.themeInterference.pause();
+    window.oldThemeWaitSettled = false;
+    void document.body.offsetHeight;
+    Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})))
+      .then(() => {window.oldThemeWaitSettled = true;});
+  });
+  // This is a bounded negative control for the old helper, not a delay used to
+  // settle the UI. A paused unrelated animation must keep that helper blocked.
+  await expect(expect.poll(() => page.evaluate(() => window.oldThemeWaitSettled), {timeout:300}).toBe(true)).rejects.toThrow();
+  await setTheme(page,'light');
+  const interference = await page.evaluate(() => ({
+    oldWaitSettled:window.oldThemeWaitSettled,
+    state:window.themeInterference.playState,
+    visible:window.themeInterference.effect.target.checkVisibility({contentVisibilityAuto:true}),
+  }));
+  expect(interference).toEqual({oldWaitSettled:false,state:'paused',visible:false});
+  await expect(waitForThemeColors(page,'dark',300)).rejects.toThrow('body.color');
+  await page.addStyleTag({content:'body { color: rgb(1, 2, 3) !important; }'});
+  await expect(waitForThemeColors(page,'light',300)).rejects.toThrow('body.color');
+  writeFileSync(testInfo.outputPath('theme-wait-negative-controls.json'),JSON.stringify(interference,null,2));
 });

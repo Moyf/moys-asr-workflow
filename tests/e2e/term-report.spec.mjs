@@ -1,6 +1,6 @@
 import {expect,test} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
@@ -39,6 +39,31 @@ async function downloadText(page) {
   const download=await pending;
   expect(download.suggestedFilename()).toBe('hotwords.txt');
   return readFileSync(await download.path(),'utf8');
+}
+
+function writeEvidenceFrame(testInfo,destination) {
+  const script=testInfo.outputPath('generate-frame.py');
+  writeFileSync(script,'import sys\nfrom PIL import Image\nImage.new("RGB", (20, 20), (80, 120, 160)).save(sys.argv[1], "JPEG")\n');
+  execFileSync(process.env.MAW_E2E_PYTHON||'python',[script,destination],{timeout:15000});
+}
+
+function evidenceFixture(testInfo) {
+  // A descriptive test-result slug plus frames/run-<generation>/<frame> can
+  // exceed Chromium's Windows file-path limit. Keep the real files in a short,
+  // unique sibling directory that is still covered by the output artifact.
+  const directory=mkdtempSync(resolve(testInfo.project.outputDir,'evidence-'));
+  return {outputPath:name=>resolve(directory,name)};
+}
+
+async function expectDecodedImage(image,src,timeout=5000) {
+  await expect(image).toHaveAttribute('src',src,{timeout});
+  await expect.poll(()=>image.evaluate(async (image,src)=>{
+    if(image.getAttribute('src')!==src||!image.complete||image.naturalWidth<=0||image.naturalHeight<=0)return false;
+    try {
+      await image.decode();
+      return image.getAttribute('src')===src&&image.complete&&image.naturalWidth>0&&image.naturalHeight>0;
+    } catch {return false;}
+  },src),{timeout,message:'evidence image loads and decodes from the expected path'}).toBe(true);
 }
 
 test('weighted prototype words match preview, real download and clipboard; AI reject is manual only',async({page,context},testInfo)=>{
@@ -145,19 +170,52 @@ test('weight-by-score report applies the CLI policy to ordinary words',async({pa
 });
 
 test('report thumbnails and overlay resolve the same independent evidence generation',async({page},testInfo)=>{
+  const fixture=evidenceFixture(testInfo);
   const framesBaseDir='frames/run-'+ 'a'.repeat(32);
   const frame='frame-000000001000.jpg';
-  const file=generateReport(testInfo,[candidate('evidence',90,{
+  const file=generateReport(fixture,[candidate('evidence',90,{
     events:[{startMs:1000,evidence:[{frame,box:[0,0,20,20]}]}],
   })],{framesBaseDir});
-  const directory=testInfo.outputPath(framesBaseDir);
+  const directory=fixture.outputPath(framesBaseDir);
   mkdirSync(directory,{recursive:true});
-  writeFileSync(resolve(directory,frame),Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64'));
+  writeEvidenceFrame(fixture,resolve(directory,frame));
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto(file);
   await expect(page.locator('.thumb img')).toHaveAttribute('src',framesBaseDir+'/'+frame);
+  await expectDecodedImage(page.locator('.thumb img'),framesBaseDir+'/'+frame);
   await page.locator('.thumb').click();
   await expect(page.locator('#overlay-img')).toHaveAttribute('src',framesBaseDir+'/'+frame);
-  expect(await page.locator('#overlay-img').evaluate(image=>image.complete&&image.naturalWidth>0)).toBe(true);
+  await expectDecodedImage(page.locator('#overlay-img'),framesBaseDir+'/'+frame);
+  const images=await page.locator('.thumb img,#overlay-img').evaluateAll(images=>images.map(image=>({src:image.getAttribute('src'),complete:image.complete,width:image.naturalWidth,height:image.naturalHeight})));
+  writeFileSync(testInfo.outputPath('decoded-evidence-images.json'),JSON.stringify(images,null,2));
   expect(errors).toEqual([]);
 });
+
+for(const kind of ['missing','corrupt']) {
+  test(`evidence image readiness rejects ${kind} files despite matching thumbnail and overlay paths`,async({page},testInfo)=>{
+    const fixture=evidenceFixture(testInfo);
+    const framesBaseDir='frames/run-'+'b'.repeat(32),frame='frame-000000001000.jpg';
+    const file=generateReport(fixture,[candidate('evidence',90,{
+      events:[{startMs:1000,evidence:[{frame,box:[0,0,20,20]}]}],
+    })],{framesBaseDir});
+    const directory=fixture.outputPath(framesBaseDir);
+    mkdirSync(directory,{recursive:true});
+    if(kind==='corrupt') {
+      writeFileSync(resolve(directory,frame),Buffer.from('not a decodable image'));
+    }
+    await page.goto(file);
+    const src=framesBaseDir+'/'+frame;
+    await expect(page.locator('.thumb img')).toHaveAttribute('src',src);
+    await expect(expectDecodedImage(page.locator('.thumb img'),src,300)).rejects.toThrow('evidence image loads and decodes');
+    await page.locator('.thumb').click();
+    const overlay=page.locator('#overlay-img');
+    await expect(overlay).toHaveAttribute('src',src);
+    await expect(expectDecodedImage(overlay,src,300)).rejects.toThrow('evidence image loads and decodes');
+    const state=await overlay.evaluate(async image=>{
+      try {await image.decode();return {decoded:true};}
+      catch(error){return {decoded:false,error:error.name,complete:image.complete,width:image.naturalWidth};}
+    });
+    expect(state).toEqual({decoded:false,error:'EncodingError',complete:true,width:0});
+    writeFileSync(testInfo.outputPath('image-negative-control.json'),JSON.stringify({kind,...state},null,2));
+  });
+}

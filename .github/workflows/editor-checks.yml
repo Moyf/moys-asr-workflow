@@ -183,6 +183,12 @@ jobs:
           MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
         run: pnpm exec playwright test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs tests/e2e/editor-text-tools.spec.mjs tests/e2e/ass-cue-position.spec.mjs tests/e2e/sticker-preview-lifecycle.spec.mjs tests/e2e/warma-presets.spec.mjs tests/e2e/warma-i18n.spec.mjs tests/e2e/unified-tracks.spec.mjs tests/e2e/v2-migration-save.spec.mjs
 
+      - name: Independent browser tool pages
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        env:
+          MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: uv run --no-sync python scripts/run_check.py --timeout 300 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/tool-pages.spec.mjs tests/e2e/tool-compact.spec.mjs tests/e2e/tool-markdown.spec.mjs tests/e2e/timestamp-compare.spec.mjs tests/e2e/verification-checklist.spec.mjs tests/e2e/term-report.spec.mjs tests/e2e/changelog-write-lock.spec.mjs
+
       - name: Preserve failed browser evidence
         if: ${{ failure() && needs.selection.outputs.light != 'true' }}
         uses: actions/upload-artifact@v6
@@ -190,12 +196,6 @@ jobs:
           name: editor-browser-failures-${{ runner.os }}
           path: test-results/
           retention-days: 7
-
-      - name: Independent browser tool pages
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        env:
-          MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: uv run --no-sync python scripts/run_check.py --timeout 300 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/tool-pages.spec.mjs tests/e2e/tool-compact.spec.mjs tests/e2e/tool-markdown.spec.mjs tests/e2e/timestamp-compare.spec.mjs tests/e2e/verification-checklist.spec.mjs tests/e2e/term-report.spec.mjs tests/e2e/changelog-write-lock.spec.mjs
 
       # README and user guides are website inputs, not just Markdown files.
       - name: Set up website pnpm
