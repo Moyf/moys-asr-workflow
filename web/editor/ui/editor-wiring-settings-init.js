@@ -1,3 +1,4 @@
+import { getMaweDomPanels } from './editor-dom-panels.js';
 import { getOverlayTrack } from '../cues/overlay-track.js';
 
 export function initMaweSettingsInitWiring() {
@@ -65,8 +66,8 @@ if (MaweDom.editorSettingsPanel) {
 
 
 
-window.MaweDomPanelsWiring.overlayTrackToggle?.addEventListener('change', () => {
-  const next = window.MaweDomPanelsWiring.overlayTrackToggle.checked;
+getMaweDomPanels().overlayTrackToggle?.addEventListener('change', () => {
+  const next = getMaweDomPanels().overlayTrackToggle.checked;
   MaweCommands.run('切换叠加字幕', command => {
     const overlay = next ? window.AsrEditorUtils.ensureOverlayTrack(MaweBoot.DATA) : getOverlayTrack();
     if (!overlay) return;
@@ -86,7 +87,7 @@ document.querySelector('.track-visibility-settings')?.addEventListener('change',
   if (!input.dataset.trackField) return;
   const role = row.dataset.trackRole;
   if (input.dataset.trackField === 'enabled') {
-    const existing = role === 'secondary' ? MaweDom.multiSubtitleToggle : window.MaweDomPanelsWiring.overlayTrackToggle;
+    const existing = role === 'secondary' ? MaweDom.multiSubtitleToggle : getMaweDomPanels().overlayTrackToggle;
     if (existing && existing.checked !== input.checked) existing.click();
     window.MaweProjectSettings.syncTrackControls();
     return;
@@ -140,6 +141,8 @@ document.addEventListener('mawe:languagechange', () => {
 
 MaweDom.splitKeySel.value = MaweSettings.EDITOR_SETTINGS.splitKey;
 if (MaweDom.splitUseWordTimestampsToggle) MaweDom.splitUseWordTimestampsToggle.checked = MaweSettings.EDITOR_SETTINGS.splitUseWordTimestamps;
+const quickEditSplitFocusNextToggle = document.getElementById('quick-edit-split-focus-next');
+if (quickEditSplitFocusNextToggle) quickEditSplitFocusNextToggle.checked = MaweSettings.EDITOR_SETTINGS.quickEditSplitFocusNext;
 if (MaweDom.multiSubtitleSplitAutoSubmit) MaweDom.multiSubtitleSplitAutoSubmit.checked = MaweSettings.EDITOR_SETTINGS.splitAutoSubmit;
 MaweDisplaySettings.applyPlatformKeyLabels();
 MaweSplitMode.refreshSplitKeyHelp();
@@ -174,7 +177,7 @@ if (MaweDom.stickerOverlayToggle) MaweDom.stickerOverlayToggle.checked = MaweSet
 if (MaweDom.clickBehaviorSelect) MaweDom.clickBehaviorSelect.value = MaweSettings.EDITOR_SETTINGS.clickBehavior;
 if (MaweDom.stickerBurnModeSelect) MaweDom.stickerBurnModeSelect.value = MaweSettings.EDITOR_SETTINGS.stickerBurnMode === 'cue-left' ? 'cue-left' : 'fixed';
 if (MaweDom.clickTargetSelect) MaweDom.clickTargetSelect.value = MaweSettings.EDITOR_SETTINGS.clickTarget;
-if (window.MaweDomPanelsWiring.pauseOnMouseClickToggle) window.MaweDomPanelsWiring.pauseOnMouseClickToggle.checked = MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick;
+if (getMaweDomPanels().pauseOnMouseClickToggle) getMaweDomPanels().pauseOnMouseClickToggle.checked = MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick;
 if (MaweDom.keyboardOperationReferenceSelect) {
   MaweDom.keyboardOperationReferenceSelect.value = MaweSettings.EDITOR_SETTINGS.keyboardOperationReference;
 }
@@ -224,7 +227,7 @@ MaweDom.multiSubtitleToggle?.addEventListener('change', () => {
     if (track) track.enabled = next;
     multi._dirty = true;
     // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
-    command.commit({ cueList: true, waveform: 'full' });
+    command.commit({ cueList: true, waveform: 'full', preview: 'refresh' });
     // 先启用空副轨；快速导入询问只决定是否立即选择 SRT。
     if (!promptImportSecondSrt || !confirm(MaweMultiSubtitleCore.MULTI_SUBTITLE_IMPORT_PROMPT)) return;
     MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
@@ -301,7 +304,7 @@ document.getElementById('multi-subtitle-quick-toggle')?.addEventListener('click'
   MaweDom.multiSubtitleToggle?.click();
 });
 document.getElementById('overlay-quick-toggle')?.addEventListener('click', () => {
-  window.MaweDomPanelsWiring.overlayTrackToggle?.click();
+  getMaweDomPanels().overlayTrackToggle?.click();
 });
 MaweDom.multiSubtitleCrossTrackSnapToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ crossTrackSnap: MaweDom.multiSubtitleCrossTrackSnapToggle.checked });
@@ -326,6 +329,6 @@ MaweAppearance.applySubtitleAppearance();
 MaweAppearance.applyExtensionSubtitleAppearance();
 window.MaweAssManagerWiring.syncAssModeControl();
 window.MaweAssManagerWiring.syncAssStyleManager();
-void loadAssStyleLibrary();
+void window.MaweAssStorageWiring.loadAssStyleLibrary();
 // 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。
 }

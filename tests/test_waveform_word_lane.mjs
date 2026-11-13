@@ -160,17 +160,17 @@ test('waveform.css：单行双语行叠加块保持 50% 线（max 兜底），�
   };
   const overlay = rule('.waveform-basic .waveform-row.multi-subtitle-row .waveform-cue-block.waveform-overlay-block:not(.overlay-cover-mode)');
   assert.ok(overlay.includes(
-    'bottom: max(50%, calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 1px));'),
+    'bottom: max(50%, calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 3px));'),
     '单行双语行叠加块应恢复 50% 线，行高过矮时以贴格位置兜底');
 
   const overlayBadge = rule('.waveform-basic .waveform-row.multi-subtitle-row .waveform-cue-badge.waveform-overlay-cue-badge');
   assert.ok(overlayBadge.includes(
-    'calc(max(50%, var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 1px) + 37px'),
+    'calc(max(50%, var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 3px) + 37px'),
     '叠加徽章应随叠加块同步 max 形式');
 
-  // 多行双语行贴格规则原样保留（回归修复不得波及多行模式）。
+  // 多行使用 lane gap + 3px 贴格，不引入单行的 max(50%) 语义。
   assert.ok(css.includes(
-    '.waveform-row.multi-subtitle-row .waveform-cue-block.waveform-overlay-block {\n  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + 1px);'),
+    '.waveform-row.multi-subtitle-row .waveform-cue-block.waveform-overlay-block {\n  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 3px);'),
     '多行双语行叠加块贴格规则应原样保留');
 });
 

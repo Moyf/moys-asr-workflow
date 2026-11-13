@@ -1,3 +1,4 @@
+import { getAssStyleLibrary } from '../styles/editor-wiring-ass-storage.js';
 
 export function initMaweExportSrt() {
 'use strict';
@@ -193,7 +194,17 @@ export function initMaweExportSrt() {
       MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
       return null;
     }
-    const durationMs = MaweCoreState.waveformEditor?.durationMs || Math.round(Number(MaweCoreState.player?.duration) * 1000) || 0;
+    // Waveform caches include the last partial peak bucket and can extend
+    // beyond the media. Use the loaded player's duration for export bounds.
+    const mediaDuration = Number(MaweCoreState.player?.duration);
+    const waveformDuration = MaweCoreState.waveformEditor?.durationMs || 0;
+    // A multi-track audio container can outlast the selected track. Its
+    // waveform describes that track, unlike the player's container duration.
+    const multiTrackAudio = MaweBoot.SERVER_CONFIG?.gapRemovedMediaKind === 'audio'
+      && (MaweBoot.DATA.media_metadata?.audio_tracks?.length || 0) > 1;
+    const durationMs = (multiTrackAudio ? waveformDuration : 0)
+      || (Number.isFinite(mediaDuration) && mediaDuration > 0
+        ? Math.round(mediaDuration * 1000) : 0) || waveformDuration;
     if (!durationMs) {
       MaweHint.flashHint('媒体时长尚不可用；请先导入媒体再导出', 'invalid');
       return null;
@@ -290,7 +301,7 @@ export function initMaweExportSrt() {
 
   function assExportOptions(appearance = MaweAppearance.getSubtitleAppearance()) {
   const resolution = currentAssVideoResolution();
-  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary());
   const profileId = library.assignments?.assExportProfileId || 'ass';
   const assProfile = window.AsrEditorUtils.assProfileForId(library, profileId);
   const assStyle = window.AsrEditorUtils.assStyleForId(library, assProfile.styleId);
@@ -321,7 +332,7 @@ export function initMaweExportSrt() {
 
 
 
-  function buildAss({ preview = false, onAssPlan = null, allowAssPlanDiagnostics = false,
+  function buildAss({ preview = false, onAssPlan = null, allowAssPlanDiagnostics = false, pngEventNames = false,
     alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
   if (!preview) window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'all');
   const speakerOptions = MaweSpeakerLabels.speakerLabelExportOptions();
@@ -344,6 +355,7 @@ export function initMaweExportSrt() {
   return window.AsrEditorUtils.buildAssPayload(!policy.isTrackEnabled(main, surface) || (preview && !MaweDom.overlayToggle.checked)
     ? [] : cleanupMainSegments(), {
     ...assExportOptions(),
+    pngEventNames,
     onAssPlan,
     allowAssPlanDiagnostics,
     // Export-only lead-in extension must not make a cue appear before its
@@ -419,7 +431,7 @@ export function initMaweExportSrt() {
 
 
 
-  function buildGapRemovedAss({ onAssPlan = null,
+  function buildGapRemovedAss({ onAssPlan = null, pngEventNames = false,
     alignFirstStart = MaweSettings.EDITOR_SETTINGS.exportStartAtZero } = {}) {
   window.AsrEditorUtils.TrackPolicy.assertExportable(MaweBoot.DATA, 'all');
   const removed = MaweGapRemoveData.getRemovedGapRanges();
@@ -441,6 +453,7 @@ export function initMaweExportSrt() {
   const extensionSegments = cleanupSegments(window.AsrEditorUtils.TrackPolicy.isTrackEnabled(extension, 'export') ? extension.segments : []);
   return window.AsrEditorUtils.buildAssPayload(mainSegments, {
     ...assExportOptions(),
+    pngEventNames,
     alignFirstStart,
     firstEnabledIndex,
     overlaySegments: filterSegmentsInsideRemovedGaps(overlaySegments, removed),

@@ -1,3 +1,4 @@
+export function initWiringAssCuePositionModule() {
 // Per-cue ASS positioning and scaling for every subtitle track.
 (function initAssCuePosition(global) {
   'use strict';
@@ -437,3 +438,4 @@
   });
   sync();
 })(typeof window !== 'undefined' ? window : globalThis);
+}

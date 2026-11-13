@@ -144,6 +144,12 @@
       "exportName": "initMaweHint"
     },
     {
+      "file": "editor/media/editor-jkl.js",
+      "kind": "init",
+      "name": "editor-jkl-init",
+      "exportName": "initJklModule"
+    },
+    {
       "file": "editor/state/editor-settings.js",
       "kind": "init",
       "name": "settings-init",
@@ -166,6 +172,12 @@
       "kind": "init",
       "name": "editor-gap-remove-data-init",
       "exportName": "initMaweGapRemoveData"
+    },
+    {
+      "file": "editor/styles/editor-colors.js",
+      "kind": "init",
+      "name": "colors-init",
+      "exportName": "initMaweColors"
     },
     {
       "file": "editor/ui/editor-dom.js",
@@ -228,6 +240,12 @@
       "exportName": "initMaweNinja"
     },
     {
+      "file": "editor/media/editor-media-playback.js",
+      "kind": "init",
+      "name": "editor-media-playback-init",
+      "exportName": "initMediaPlaybackModule"
+    },
+    {
       "file": "editor/cues/editor-keyboard-targets.js",
       "kind": "init",
       "name": "keyboard-targets-init",
@@ -246,6 +264,18 @@
       "exportName": "initMaweMergeAdjacent"
     },
     {
+      "file": "editor/styles/editor-appearance.js",
+      "kind": "init",
+      "name": "appearance-init",
+      "exportName": "initMaweAppearance"
+    },
+    {
+      "file": "editor/media/editor-preview-geometry.js",
+      "kind": "init",
+      "name": "editor-preview-geometry-init",
+      "exportName": "initPreviewGeometryModule"
+    },
+    {
       "file": "editor/media/editor-playback-loop.js",
       "kind": "init",
       "name": "playback-loop-init",
@@ -262,6 +292,12 @@
       "kind": "init",
       "name": "export-srt-init",
       "exportName": "initMaweExportSrt"
+    },
+    {
+      "file": "editor/io/editor-export-timeline.js",
+      "kind": "init",
+      "name": "editor-export-timeline-init",
+      "exportName": "initExportTimelineModule"
     },
     {
       "file": "editor/io/editor-server-save.js",
@@ -306,10 +342,46 @@
       "exportName": "initMaweProjectLoad"
     },
     {
+      "file": "editor/io/editor-loading-progress.js",
+      "kind": "init",
+      "name": "editor-loading-progress-init",
+      "exportName": "initLoadingProgressModule"
+    },
+    {
       "file": "editor/io/editor-multi-import.js",
       "kind": "init",
       "name": "multi-import-init",
       "exportName": "initMaweMultiImport"
+    },
+    {
+      "file": "editor/media/editor-media-load.js",
+      "kind": "init",
+      "name": "editor-media-load-init",
+      "exportName": "initMediaLoadModule"
+    },
+    {
+      "file": "editor/io/editor-sticker-root.js",
+      "kind": "init",
+      "name": "editor-sticker-root-init",
+      "exportName": "initStickerRootModule"
+    },
+    {
+      "file": "editor/cues/editor-text-process.js",
+      "kind": "init",
+      "name": "text-process-init",
+      "exportName": "initMaweTextProcess"
+    },
+    {
+      "file": "editor/cues/editor-text-presets.js",
+      "kind": "init",
+      "name": "text-presets-init",
+      "exportName": "initMaweTextPresets"
+    },
+    {
+      "file": "editor/cues/editor-timed-text-edit.js",
+      "kind": "init",
+      "name": "timed-text-edit-init",
+      "exportName": "initMaweTimedTextEdit"
     },
     {
       "file": "editor/cues/editor-sticker-picker.js",
@@ -348,10 +420,46 @@
       "exportName": "initMaweWaveformInit"
     },
     {
+      "file": "editor/cues/editor-word-timing.js",
+      "kind": "init",
+      "name": "word-timing-init",
+      "exportName": "initMaweWordTiming"
+    },
+    {
+      "file": "editor/media/editor-media-step.js",
+      "kind": "init",
+      "name": "editor-media-step-init",
+      "exportName": "initMediaStepModule"
+    },
+    {
+      "file": "editor/styles/editor-appearance-inputs.js",
+      "kind": "init",
+      "name": "appearance-inputs-init",
+      "exportName": "initMaweAppearanceInputs"
+    },
+    {
       "file": "editor/ui/editor-behavior-hints.js",
       "kind": "init",
       "name": "editor-behavior-hints-init",
       "exportName": "initMaweBehaviorHints"
+    },
+    {
+      "file": "editor/io/editor-server-connection.js",
+      "kind": "init",
+      "name": "editor-server-connection-init",
+      "exportName": "initServerConnectionModule"
+    },
+    {
+      "file": "editor/io/editor-drag-drop.js",
+      "kind": "init",
+      "name": "editor-drag-drop-init",
+      "exportName": "initDragDropModule"
+    },
+    {
+      "file": "editor/io/editor-sticker-otio-export.js",
+      "kind": "init",
+      "name": "editor-sticker-otio-export-init",
+      "exportName": "initStickerOtioExportModule"
     },
     {
       "file": "editor/io/editor-json-repair.js",
@@ -384,10 +492,22 @@
       "exportName": "initMaweSelection"
     },
     {
+      "file": "editor/cues/editor-binding-align.js",
+      "kind": "init",
+      "name": "binding-align-init",
+      "exportName": "initMaweBindingAlign"
+    },
+    {
       "file": "editor/cues/editor-cue-panel.js",
       "kind": "init",
       "name": "cue-panel-init",
       "exportName": "initMaweCuePanel"
+    },
+    {
+      "file": "editor/cues/editor-cue-elements.js",
+      "kind": "init",
+      "name": "cue-elements-init",
+      "exportName": "initMaweCueElements"
     },
     {
       "file": "editor/cues/editor-color-filter.js",
@@ -400,6 +520,54 @@
       "kind": "init",
       "name": "search-init",
       "exportName": "initMaweSearch"
+    },
+    {
+      "file": "editor/cues/editor-inline-edit.js",
+      "kind": "init",
+      "name": "inline-edit-init",
+      "exportName": "initMaweInlineEdit"
+    },
+    {
+      "file": "editor/cues/editor-split-core.js",
+      "kind": "init",
+      "name": "split-core-init",
+      "exportName": "initMaweSplitCore"
+    },
+    {
+      "file": "editor/cues/editor-split-context.js",
+      "kind": "init",
+      "name": "split-context-init",
+      "exportName": "initMaweSplitContext"
+    },
+    {
+      "file": "editor/cues/editor-segment-ops.js",
+      "kind": "init",
+      "name": "segment-ops-init",
+      "exportName": "initMaweSegmentOps"
+    },
+    {
+      "file": "editor/cues/editor-nav-preview.js",
+      "kind": "init",
+      "name": "nav-preview-init",
+      "exportName": "initMaweNavPreview"
+    },
+    {
+      "file": "editor/cues/editor-cue-events.js",
+      "kind": "init",
+      "name": "cue-events-init",
+      "exportName": "initMaweCueEvents"
+    },
+    {
+      "file": "editor/cues/editor-cue-list-anchor.js",
+      "kind": "init",
+      "name": "cue-list-anchor-init",
+      "exportName": "initMaweCueListAnchor"
+    },
+    {
+      "file": "editor/cues/editor-timeline.js",
+      "kind": "init",
+      "name": "timeline-init",
+      "exportName": "initMaweTimeline"
     },
     {
       "file": "editor/styles/editor-speaker-labels.js",
@@ -420,10 +588,46 @@
       "exportName": "initOverlayTransferWiring"
     },
     {
+      "file": "editor/styles/editor-wiring-ass-storage.js",
+      "kind": "init",
+      "name": "editor-wiring-ass-storage-init",
+      "exportName": "initAssStorageWiring"
+    },
+    {
+      "file": "editor/boot/editor-wiring-initial-config.js",
+      "kind": "init",
+      "name": "initial-config-wiring-init",
+      "exportName": "initMaweInitialConfigWiring"
+    },
+    {
+      "file": "editor/ui/editor-dom-panels.js",
+      "kind": "init",
+      "name": "dom-panels-init",
+      "exportName": "initMaweDomPanels"
+    },
+    {
+      "file": "editor/ui/editor-wiring-dom-panels.js",
+      "kind": "init",
+      "name": "dom-panels-wiring-init",
+      "exportName": "initMaweDomPanelsWiring"
+    },
+    {
+      "file": "editor/styles/editor-wiring-ass-manager.js",
+      "kind": "init",
+      "name": "editor-wiring-ass-manager-init",
+      "exportName": "initAssManagerWiring"
+    },
+    {
       "file": "editor/ui/editor-wiring-settings-init.js",
       "kind": "init",
       "name": "settings-init-wiring-init",
       "exportName": "initMaweSettingsInitWiring"
+    },
+    {
+      "file": "editor/styles/editor-wiring-appearance-settings.js",
+      "kind": "init",
+      "name": "editor-wiring-appearance-settings-init",
+      "exportName": "initAppearanceSettingsWiring"
     },
     {
       "file": "editor/cues/editor-wiring-cue-panel.js",
@@ -438,16 +642,46 @@
       "exportName": "initOverlaySplitMergeWiring"
     },
     {
+      "file": "editor/media/editor-ass-preview-refresh.js",
+      "kind": "init",
+      "name": "ass-preview-refresh-init",
+      "exportName": "initMaweAssPreviewRefresh"
+    },
+    {
       "file": "editor/cues/editor-wiring-edit-shortcuts.js",
       "kind": "init",
       "name": "edit-shortcuts-wiring-init",
       "exportName": "initMaweEditShortcutsWiring"
     },
     {
+      "file": "editor/styles/editor-wiring-font-geometry.js",
+      "kind": "init",
+      "name": "editor-wiring-font-geometry-init",
+      "exportName": "initFontGeometryWiring"
+    },
+    {
       "file": "editor/styles/editor-wiring-ass-preview.js",
       "kind": "init",
       "name": "ass-preview-wiring-init",
       "exportName": "initMaweAssPreviewWiring"
+    },
+    {
+      "file": "editor/styles/editor-wiring-ass-canvas.js",
+      "kind": "init",
+      "name": "editor-wiring-ass-canvas-init",
+      "exportName": "initWiringAssCanvasModule"
+    },
+    {
+      "file": "editor/styles/editor-wiring-ass-frame.js",
+      "kind": "init",
+      "name": "editor-wiring-ass-frame-init",
+      "exportName": "initWiringAssFrameModule"
+    },
+    {
+      "file": "editor/styles/editor-wiring-ass-cue-position.js",
+      "kind": "init",
+      "name": "editor-wiring-ass-cue-position-init",
+      "exportName": "initWiringAssCuePositionModule"
     },
     {
       "file": "editor/io/editor-wiring-export-context.js",
@@ -468,36 +702,5 @@
       "exportName": "initMaweContextMenusWiring"
     }
   ],
-  "externalBridges": [
-    {
-      "file": "editor/styles/editor-wiring-ass-storage.js",
-      "name": "loadAssStyleLibrary",
-      "mutable": true
-    },
-    {
-      "file": "editor/styles/editor-wiring-ass-storage.js",
-      "name": "ASS_STYLE_LIBRARY",
-      "mutable": true
-    },
-    {
-      "file": "editor/ui/editor-wiring-dom-panels.js",
-      "name": "assModeToggle",
-      "mutable": false
-    },
-    {
-      "file": "editor/styles/editor-wiring-ass-manager.js",
-      "name": "assStyleManagerSetSelection",
-      "mutable": true
-    },
-    {
-      "file": "editor/styles/editor-wiring-ass-manager.js",
-      "name": "updateAssStyleManagerLibrary",
-      "mutable": true
-    },
-    {
-      "file": "editor/styles/editor-wiring-ass-manager.js",
-      "name": "syncAssStyleForm",
-      "mutable": true
-    }
-  ]
+  "externalBridges": []
 }

@@ -23,6 +23,10 @@ const utilitySource = (await compileSources(root, utilityFiles,
   readModules(root).filter(module => utilityFiles.includes(module.file)),
   file => fs.readFileSync(join(root, 'web', file), 'utf8'),
   { beforeEntry: 'shared/editor-utils.js' })).code;
+const projectLoadFile = 'editor/io/editor-project-load.js';
+const projectLoadSource = (await compileSources(root, [projectLoadFile],
+  readModules(root).filter(module => module.file === projectLoadFile),
+  file => fs.readFileSync(join(root, 'web', file), 'utf8'))).code;
 const stickerPlanSource = fs.readFileSync(new URL('../../web/editor/io/editor-sticker-burn-plan.js', import.meta.url), 'utf8');
 
 
@@ -346,7 +350,7 @@ for (const phase of ['admission-body', 'write-pending']) {
           createWritable: async () => ({ write: () => new Promise(() => { window.writeStarted = true; }),
             close: async () => { window.saved = true; }, abort: async () => { window.fileAborted = true; } }) });
       }, phase);
-      await page.addScriptTag({ content: fs.readFileSync(new URL('../../web/editor/io/editor-project-load.js', import.meta.url), 'utf8') });
+      await page.addScriptTag({ content: projectLoadSource });
       await page.click('#burn-video-export-btn');
       await expect.poll(() => state.jobs.size).toBe(1);
       if (phase === 'write-pending') await expect.poll(() => page.evaluate(() => window.writeStarted)).toBe(true);

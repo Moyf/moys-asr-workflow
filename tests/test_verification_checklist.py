@@ -67,9 +67,12 @@ class VerificationChecklistTests(CompactContainerAssertions, unittest.TestCase):
         source = example_source()
         page = builder.render_source(source)
         validator = builder.ChecklistValidator()
-        validator.validate(page)
-        self.assertEqual(validator.checkboxes, ["manual-persistence", "manual-export"])
         sections = builder.extract_page(page)["sections"]
+        validator.validate(sections)
+        self.assertEqual(validator.checkboxes, ["manual-persistence", "manual-export"])
+        page_validator = builder.ChecklistValidator()
+        page_validator.validate(page)
+        self.assertEqual(page_validator.checkboxes, ["tool-compact-toggle", *validator.checkboxes])
         self.assertIn('<details class="section" id="automation">', sections)
         self.assertIn('<details class="section" id="manual" open>', sections)
         self.assertIn('<ol class="plain">', sections)
@@ -81,7 +84,7 @@ class VerificationChecklistTests(CompactContainerAssertions, unittest.TestCase):
         source["sections"].insert(0, {"id": "added", "title": "补充",
                                      "blocks": [{"type": "text", "text": "新证据"}]})
         updated = builder.ChecklistValidator()
-        updated.validate(builder.render_source(source))
+        updated.validate(builder.extract_page(builder.render_source(source))["sections"])
         self.assertEqual(updated.checkboxes, validator.checkboxes)
 
     def test_json_text_cannot_create_markup_or_replace_template_placeholders(self):

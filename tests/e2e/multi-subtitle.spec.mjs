@@ -2425,6 +2425,115 @@ test('merges selected extension cues from the context menu and C, with undo', as
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(3);
 });
 
+const coloredMainSrt = [
+  '1', '00:00:00,000 --> 00:00:02,000', 'First main.', '',
+  '2', '00:00:03,000 --> 00:00:05,000', 'Second main.', '',
+  '3', '00:00:08,000 --> 00:00:09,000', 'Third main.', '',
+].join('\n');
+
+const coloredExtensionSrt = [
+  '1', '00:00:00,050 --> 00:00:01,950', '第一句。', '',
+  '2', '00:00:03,050 --> 00:00:04,950', '第二句。', '',
+  '3', '00:00:08,000 --> 00:00:09,000', '第三句。', '',
+  '4', '00:00:10,000 --> 00:00:11,000', '后置一。', '',
+  '5', '00:00:11,500 --> 00:00:12,500', '后置二。', '',
+].join('\n');
+
+// 副轨颜色组是数组下标引用：任何 splice 都必须同步平移，否则保存校验报
+// must point to an earlier head segment / a color head（用户工程合并即失败）。
+async function importColoredPair(page) {
+  await page.goto(server.url);
+  await dropFiles(page, [srtSpec('main.srt', coloredMainSrt)]);
+  await expect(page.locator('#cues-container > .cue')).toHaveCount(3);
+  await dropFiles(page, [srtSpec('translation.srt', coloredExtensionSrt)]);
+  await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  // 红色组横跨将被合并的副轨段（head@0 + 成员 1/2），绿色组整体位于合并点之后。
+  await page.evaluate(() => {
+    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    track.segments.forEach((segment, index) => {
+      segment.color = null;
+      segment.color_ref = null;
+      if (index === 0) segment.color = { name: 'red', value: '#e74c3c', start: segment.start, end: segment.end };
+      if (index === 1 || index === 2) segment.color_ref = { name: 'red', headIdx: 0 };
+      if (index === 3) segment.color = { name: 'green', value: '#2ecc71', start: segment.start, end: segment.end };
+      if (index === 4) segment.color_ref = { name: 'green', headIdx: 3 };
+    });
+    MaweMultiSubtitleCore.markMultiSubtitleDirty();
+  });
+}
+
+function inspectExtensionColorRefs() {
+  const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+  const invalid = [];
+  track.segments.forEach((segment, index) => {
+    const ref = segment.color_ref;
+    if (!ref) return;
+    if (!Number.isInteger(ref.headIdx) || ref.headIdx < 0 || ref.headIdx >= index) {
+      invalid.push([index, 'earlier', ref.headIdx]);
+    } else if (!track.segments[ref.headIdx]?.color) {
+      invalid.push([index, 'not-head', ref.headIdx]);
+    }
+  });
+  return {
+    invalid,
+    count: track.segments.length,
+    refs: track.segments.map((segment) => segment.color_ref?.headIdx ?? null),
+    colors: track.segments.map((segment) => segment.color?.name ?? null),
+  };
+}
+
+async function extensionColorRefState(page) {
+  return page.evaluate(inspectExtensionColorRefs);
+}
+
+test('merging bound main cues keeps extension color group refs valid', async ({ page }) => {
+  await disableOnboarding(page);
+  await importColoredPair(page);
+
+  await page.locator('.multi-cue-column.main').filter({ hasText: 'First main.' }).click();
+  await page.locator('.multi-cue-column.main').filter({ hasText: 'Second main.' }).click({ modifiers: ['ControlOrMeta'] });
+  await page.keyboard.press('c');
+
+  // 绑定副轨段 0/1 被联动合并成 1 条：红色组随合并产物延续，绿色组整体前移。
+  const merged = await extensionColorRefState(page);
+  expect(merged.invalid).toEqual([]);
+  expect(merged.count).toBe(4);
+  expect(merged.colors[0]).toBe('red');
+  expect(merged.refs[3]).toBe(2);
+
+  // 撤销必须完整恢复合并前的颜色组布局（拆组/平移都发生在同一条历史记录里）。
+  await page.keyboard.press('ControlOrMeta+z');
+  const undone = await extensionColorRefState(page);
+  expect(undone.invalid).toEqual([]);
+  expect(undone.count).toBe(5);
+  expect(undone.colors[0]).toBe('red');
+  expect(undone.refs[4]).toBe(3);
+});
+
+test('merging and deleting extension cues directly keeps color group refs valid', async ({ page }) => {
+  await disableOnboarding(page);
+  await importColoredPair(page);
+
+  await page.locator('.multi-cue-column.extension').filter({ hasText: '第二句。' }).click();
+  await page.locator('.multi-cue-column.extension').filter({ hasText: '第三句。' }).click({ modifiers: ['ControlOrMeta'] });
+  await page.keyboard.press('c');
+
+  const merged = await extensionColorRefState(page);
+  expect(merged.invalid).toEqual([]);
+  expect(merged.count).toBe(4);
+  expect(merged.refs[1]).toBe(0);
+  expect(merged.refs[3]).toBe(2);
+
+  // 数据层删除绿色组 head：剩余成员按删除语义晋升新 head，颜色不丢失。
+  await page.evaluate(() => window.MaweSegmentOps.deleteExtensionSegments([2]));
+  const deleted = await extensionColorRefState(page);
+  expect(deleted.invalid).toEqual([]);
+  expect(deleted.count).toBe(3);
+  expect(deleted.colors[2]).toBe('green');
+});
+
 test('hides the extension preview while the playhead is in its timing gap', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();
@@ -2657,6 +2766,28 @@ test('拼合主字幕时同步延展绑定副字幕并支持撤销', async ({ pa
   await expect(firstRow.locator('.multi-cue-column.main .time')).toHaveText('00:00.000 → 00:01.100');
   await expect(firstRow.locator('.multi-cue-column.extension .time')).toHaveText('00:00.050 → 00:01.050');
   await page.keyboard.press('ControlOrMeta+z');
+});
+
+test('bilingual switch refreshes a paused preview and undo redo', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await page.evaluate(() => {
+    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    track.segments[0].start = 0;
+    MawePlaybackLoop.refreshSubtitlePreview();
+  });
+  const extension = page.locator('#overlay-extension-text');
+  await expect(extension).toContainText('你好');
+  await expect(extension).not.toHaveClass(/hidden/);
+  await page.locator('#multi-subtitle-quick-toggle').click();
+  await expect(extension).toHaveClass(/hidden/);
+  await page.locator('#multi-subtitle-quick-toggle').click();
+  await expect(extension).not.toHaveClass(/hidden/);
+  await page.evaluate(() => MaweHistory.performUndo());
+  await expect(extension).toHaveClass(/hidden/);
+  await page.evaluate(() => MaweHistory.performRedo());
+  await expect(extension).not.toHaveClass(/hidden/);
 });
 
 test('shows independent extension preview controls with yellow defaults', async ({ page }) => {
@@ -4632,6 +4763,10 @@ test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap
 
   // 多重字幕关闭（轨道数据保留）：常规 ASS 与去空隙 ASS 都不输出副字幕；
   // 叠加轨照常导出，去空隙时间统一压缩。
+  // 此用例同时核对动画跨分片时钟；显式开启 fad，不依赖内置默认开关。
+  await page.evaluate(() => {
+    ASS_STYLE_LIBRARY.assProfiles.find(profile => profile.id === 'ass').animations.fad.enabled = true;
+  });
   const disabled = await page.evaluate(() => ({
     ass: MaweExportSrt.buildAss(),
     gapRemoved: MaweExportSrt.buildGapRemovedAss(),

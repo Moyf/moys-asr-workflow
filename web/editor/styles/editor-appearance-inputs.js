@@ -2,7 +2,10 @@
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweAppearanceInputs 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweAppearanceInputs(global) {
+import { setSubtitleAppearance, setExtensionSubtitleAppearance } from './editor-appearance.js';
+
+export function initMaweAppearanceInputs() {
+(function initMaweAppearanceInputsFacade(global) {
   'use strict';
 
 
@@ -15,7 +18,7 @@
       MaweHistory.pushPreviewUndo('调整字幕背景色', MaweHistory.snapshotPreviewState());
       subtitleBackgroundColorUndoPushed = true;
     }
-    MaweAppearance.setSubtitleAppearance({ background_color: MaweDom.subtitleBackgroundColorInput.value });
+    setSubtitleAppearance({ background_color: MaweDom.subtitleBackgroundColorInput.value });
     if (finalize) subtitleBackgroundColorUndoPushed = false;
   }
 
@@ -33,7 +36,7 @@
     if (MaweDom.subtitleBackgroundAlphaValue && Number.isFinite(alpha)) {
       MaweDom.subtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
     }
-    MaweAppearance.setSubtitleAppearance({ background_alpha: alpha });
+    setSubtitleAppearance({ background_alpha: alpha });
     if (finalize) subtitleBackgroundAlphaUndoPushed = false;
   }
 
@@ -51,7 +54,7 @@
     if (MaweDom.extensionSubtitleBackgroundAlphaValue && Number.isFinite(alpha)) {
       MaweDom.extensionSubtitleBackgroundAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
     }
-    MaweAppearance.setExtensionSubtitleAppearance({ background_alpha: alpha });
+    setExtensionSubtitleAppearance({ background_alpha: alpha });
     if (finalize) extensionSubtitleBackgroundAlphaUndoPushed = false;
   }
 
@@ -67,3 +70,4 @@
     applyExtensionSubtitleBackgroundAlphaInput
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

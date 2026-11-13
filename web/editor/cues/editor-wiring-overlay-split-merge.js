@@ -313,6 +313,7 @@ function commitOverlaySplit(
     });
     MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'overlay'));
     if (successMessage) MaweHint.flashHint(successMessage, 'success');
+    state.onQuickEditSplitComplete?.(overlayIndex + 1);
     return true;
   }, { captureView: true });
 }

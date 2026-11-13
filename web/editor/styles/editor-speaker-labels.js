@@ -3,9 +3,11 @@
 // window.MaweSpeakerLabels 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
 import { createProjectSpeaker, updateProjectSpeaker, bindProjectSpeakerShortcut, setProjectAnnotationMode, setProjectPaletteSize, assignProjectSpeakerShortcut, SPEAKER_SHORTCUT_COLORS } from '../../shared/utils/speaker-experience.js';
+import { getPreviewGeometry, getSubtitleAppearance, applySubtitleAppearance } from './editor-appearance.js';
+import { rebuildEditorColorPalette } from './editor-colors.js';
 
 export function initMaweSpeakerLabels() {
-(function initMaweSpeakerLabels(global) {
+(function initMaweSpeakerLabelsFacade(global) {
   'use strict';
   const ui = (zh, en) => global.MAWE_I18N?.language === 'en' ? en : zh;
 
@@ -110,12 +112,12 @@ export function initMaweSpeakerLabels() {
     if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
     MaweBoot.DATA.preview.subtitle = {
       ...MaweBoot.DATA.preview.subtitle,
-      ...MaweAppearance.getPreviewGeometry(),
-      ...MaweAppearance.getSubtitleAppearance(),
+      ...getPreviewGeometry(),
+      ...getSubtitleAppearance(),
       speaker_labels: settings,
     };
     if (markDirty) MaweAppearance.previewGeometryDirty = true;
-    MaweAppearance.applySubtitleAppearance(MaweBoot.DATA.preview.subtitle);
+    applySubtitleAppearance(MaweBoot.DATA.preview.subtitle);
     return settings;
   }
 
@@ -149,7 +151,7 @@ export function initMaweSpeakerLabels() {
   function runSpeakerCommand(label, operation) {
     const result = MaweCommands.run(label, operation,
       { captureView: true, invalidate: { cueList: true, waveform: 'full', preview: 'update' } });
-    window.MaweColors?.rebuildEditorColorPalette?.();
+    if (window.MaweColors?.rebuildEditorColorPalette) rebuildEditorColorPalette();
     window.MaweSpeakerManager?.sync?.();
     return result;
   }
@@ -226,3 +228,6 @@ export function initMaweSpeakerLabels() {
   global.document?.addEventListener?.('mawe:languagechange', () => syncSpeakerLabelControls());
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function getSpeakerLabelSettings(...args) { return window.MaweSpeakerLabels.getSpeakerLabelSettings(...args); }
+export function syncSpeakerLabelControls(...args) { return window.MaweSpeakerLabels.syncSpeakerLabelControls(...args); }

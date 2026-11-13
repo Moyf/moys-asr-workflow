@@ -1,3 +1,4 @@
+import { splitGroupsAtCutPoints } from './editor-segment-ops.js';
 import { refreshColorAssignmentUi, refreshStickerAssignmentUi } from './editor-color-filter.js';
 import { stickerUrl, updateMultiSelectionClasses } from './editor-selection.js';
 import { getOverlayTrack, stickerSegmentsForTrack, overlaySticker } from './overlay-track.js';
@@ -99,8 +100,8 @@ export function initMaweStickerPicker() {
   function clearStickerOnTargets() {
     return MaweCommands.run('清除表情包', () => {
       // 一次性切除所有目标 idx，触发组拆分
-      MaweSegmentOps.splitGroupsAtCutPoints(new Set(stickerTargetIdxs), 'sticker', 'sticker_ref',
-        overlaySticker.stickerTargetTrack === 'overlay' ? getOverlayTrack().segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
+      splitGroupsAtCutPoints(new Set(stickerTargetIdxs), 'sticker', 'sticker_ref',
+        overlaySticker.stickerTargetTrack === 'overlay' ? (getOverlayTrack()?.segments || []) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments);
       MaweDom.stickerModal.classList.remove('show');
       refreshStickerAssignmentUi();
       MaweHint.flashHint('已清除', 'success');
@@ -132,7 +133,7 @@ export function initMaweStickerPicker() {
   function removeStickerCascade(idx, { overlay = false } = {}) {
   return MaweCommands.run('删除表情包', () => {
     // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
-    MaweSegmentOps.splitGroupsAtCutPoints(
+    splitGroupsAtCutPoints(
       new Set([idx]), 'sticker', 'sticker_ref',
       overlay ? (getOverlayTrack()?.segments || []) : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
     );
@@ -165,6 +166,28 @@ export function initMaweStickerPicker() {
   // === 标记颜色 ===
   // 数据结构与表情包同构：head 持完整 color，后续条持 color_ref（仅 name + headIdx）
   // 单选 → 设为 head；多选 → 第一条为 head，时间跨整个范围，后续为 ref
+  function syncBoundMainColors(idxs, color) {
+    const project = MaweBoot.DATA;
+    const main = window.AsrEditorUtils.getMainTrack(project);
+    const refs = idxs.filter(index => main.segments[index])
+      .map(index => ({ track_id: main.id, segment_id: main.segments[index].id }));
+    const targets = window.AsrEditorUtils.expandMainBoundCueRefs(project, refs);
+    for (const track of project.tracks.filter(track => track.role === 'secondary')) {
+      const ids = new Set(targets.filter(ref => ref.track_id === track.id).map(ref => ref.segment_id));
+      const indexes = track.segments.flatMap((segment, index) => {
+        if (!ids.has(segment.id)) return [];
+        const current = window.AsrEditorUtils.getSubtitleGroupValue(project, segment, 'color');
+        const changed = color ? current?.name !== color.name || current?.value !== color.value : !!current;
+        return changed ? [index] : [];
+      });
+      if (!indexes.length) continue;
+      // A separate group prevents later independent secondary color edits from
+      // changing the main track or unrelated members of an old secondary group.
+      if (color) window.AsrEditorUtils.assignSubtitleGroup(project, track.segments, indexes, 'color', color);
+      else splitGroupsAtCutPoints(new Set(indexes), 'color', 'color_ref', track.segments);
+    }
+  }
+
   function assignColor(idxs, colorName) {
     if (!idxs.length) return;
     if (window.MaweSpeakerLabels?.assignFromColorShortcut(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), idxs, colorName)) return;
@@ -172,7 +195,18 @@ export function initMaweStickerPicker() {
     if (!def) return;
     return MaweCommands.run('标记颜色', () => {
       const sorted = [...idxs].sort((a, b) => a - b);
-      window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, sorted, 'color', { name: colorName, value: def.value }, null, { replaceHead: true });
+      const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+      const currentGroupId = main.segments[sorted[0]]?.color_group_id;
+      const currentColor = window.AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, main.segments[sorted[0]], 'color');
+      const alreadyUnified = currentGroupId && currentColor?.name === colorName && currentColor?.value === def.value
+        && sorted.every(index => main.segments[index]?.color_group_id === currentGroupId);
+      const groupId = alreadyUnified ? currentGroupId
+        : window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, main.segments, sorted, 'color', { name: colorName, value: def.value }, null, { replaceHead: true });
+      // Recoloring a single existing group member updates the whole main
+      // group. Follow bindings for every affected main member, not just its head.
+      const affected = sorted.length === 1
+        ? main.segments.flatMap((segment, index) => segment.color_group_id === groupId ? [index] : []) : sorted;
+      syncBoundMainColors(affected, { name: colorName, value: def.value });
       // 单条修改 lead（其 color_ref 成员仍指向它）或多选统一分配时，视为整组联动修改
       const isUnifiedGroup = sorted.length > 1
         || window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.filter(s => s.color_group_id === window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[sorted[0]].color_group_id).length > 1;
@@ -190,7 +224,8 @@ export function initMaweStickerPicker() {
   //   - idx 是 ref: 仅清自己
   function removeColorCascade(idx) {
     // 走组拆分：被切除的 idx 后面的同 group ref 自动晋升新 head
-    MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
+    splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
+    syncBoundMainColors([idx], null);
   }
 
 
@@ -199,7 +234,8 @@ export function initMaweStickerPicker() {
     if (window.MaweSpeakerLabels?.assignFromColorShortcut(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA), idxs, null)) return;
     return MaweCommands.run('清除颜色', () => {
       // 一次性切除所有目标 idx，触发组拆分
-      MaweSegmentOps.splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
+      splitGroupsAtCutPoints(new Set(idxs), 'color', 'color_ref');
+      syncBoundMainColors(idxs, null);
       refreshColorAssignmentUi();
       MaweHint.flashHint('已清除颜色', 'success');
     });
@@ -216,7 +252,7 @@ export function initMaweStickerPicker() {
     return MaweCommands.run(color ? '标记颜色' : '清除颜色', () => {
       if (color) window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, track.segments, valid, 'color',
         { name: color.name, value: color.value }, null, { replaceHead: true });
-      else MaweSegmentOps.splitGroupsAtCutPoints(new Set(valid), 'color', 'color_ref', track.segments);
+      else splitGroupsAtCutPoints(new Set(valid), 'color', 'color_ref', track.segments);
     }, { invalidate: { cueList: true, waveform: 'full', preview: 'update' } });
   }
 

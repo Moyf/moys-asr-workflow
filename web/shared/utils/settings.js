@@ -59,7 +59,7 @@ export function createUtilsModule(dependencies) {
 
 
   const DEFAULT_EDITOR_SETTINGS = Object.freeze({
-    splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true,
+    splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true, quickEditSplitFocusNext: true,
     mainSplitModeOverride: null,
     splitTrimSymbols: [...DEFAULT_SPLIT_TRIM_SYMBOLS],
     overlayEnabled: true, extensionOverlayEnabled: true, assMode: false,
@@ -131,6 +131,7 @@ export function createUtilsModule(dependencies) {
       ...DEFAULT_EDITOR_SETTINGS,
       splitKey: savedSettings.splitKey === 'ctrl-enter' ? 'ctrl-enter' : 'enter',
       splitUseWordTimestamps: savedSettings.splitUseWordTimestamps !== false,
+      quickEditSplitFocusNext: savedSettings.quickEditSplitFocusNext !== false,
       splitAutoSubmit: savedSettings.splitAutoSubmit !== false,
       // 主字幕拆分类型手动指定偏好：word / continuous / null（跟随工程与检测）。
       mainSplitModeOverride: isSettingChoice(['word', 'continuous'], savedSettings.mainSplitModeOverride)

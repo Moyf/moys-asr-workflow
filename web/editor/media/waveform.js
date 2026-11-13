@@ -19,6 +19,7 @@ import { createWaveformModule as createWaveformCueDrag } from './waveform/cue-dr
 import { createWaveformModule as createWaveformCueCommands } from './waveform/cue-commands.js';
 import { createWaveformModule as createWaveformGapDrag } from './waveform/gap-drag.js';
 import { createWaveformModule as createWaveformMarkers } from './waveform/markers.js';
+import { createWaveformModule as createWaveformCueQuickEdit } from './waveform/cue-quick-edit.js';
 import { createWaveformModule as createWaveformCueDragUpdate } from './waveform/cue-drag-update.js';
 import { createWaveformModule as createWaveformPlayback } from './waveform/playback.js';
 import { createThumbnailModule as createEditorThumbnails } from './editor-thumbnails.js';
@@ -41,7 +42,11 @@ export function initWaveform() {
     storage: window.MaweHost.storage,
     gapRemoveCore: window.AsrGapRemoveCore,
     getSubtitleGroupValue: (segment, kind) => window.AsrEditorUtils.getSubtitleGroupValue(window.MaweBoot.DATA, segment, kind),
-    getSegmentDisplayColor: segment => window.AsrEditorUtils.effectiveSegmentColor(window.MaweBoot.DATA, segment),
+    getSegmentDisplayColor: segment => {
+      const project = window.MaweBoot.DATA;
+      const segments = project.tracks?.find(track => track.segments?.includes(segment))?.segments;
+      return window.AsrEditorUtils.effectiveSegmentColor(project, segment, segments);
+    },
     getLanguage: () => window.MAWE_I18N?.language,
   };
   Object.assign(helpers, createWaveformConstants(helpers));
@@ -198,6 +203,8 @@ constructor(options) {
       this.secondsPerRowSelect = document.getElementById('waveform-seconds-per-row');
       this.rowHeightSelect = document.getElementById('waveform-row-height');
       this.showGroupBadgesToggle = document.getElementById('waveform-show-group-badges');
+      this.showCueTooltipToggle = document.getElementById('waveform-cue-tooltip');
+      this.showExtensionColorsToggle = document.getElementById('waveform-extension-colors');
       this.dragPlayheadToggle = document.getElementById('waveform-drag-playhead');
       this.spectralColorToggle = document.getElementById('waveform-spectral-color');
       this.sideSelect = document.getElementById('waveform-side');
@@ -251,6 +258,8 @@ constructor(options) {
   installMethods(WaveformEditor.prototype, createWaveformMedia(helpers));
   installMethods(WaveformEditor.prototype, createWaveformRender(helpers));
   installMethods(WaveformEditor.prototype, createWaveformCueBlocks(helpers));
+  const cueQuickEditDescriptors = createWaveformCueQuickEdit(helpers);
+  installMethods(WaveformEditor.prototype, cueQuickEditDescriptors);
   installMethods(WaveformEditor.prototype, createWaveformWordBlocks(helpers));
   installMethods(WaveformEditor.prototype, createWaveformCanvas(helpers));
   installMethods(WaveformEditor.prototype, createWaveformInput(helpers));
@@ -327,6 +336,10 @@ window.AsrWaveform = {
       // waveform-markers 的纯函数单测入口：跨行挑选与行内时间换算。
       pickMarkerRow: markerDescriptors.pickMarkerRow.value,
       markerRowTimeMs: markerDescriptors.markerRowTimeMs.value,
+      // waveform-cue-quick-edit 的纯函数单测入口：气泡定位几何与
+      // 折叠文本偏移到原文偏移的映射。
+      cueQuickEditLayout: cueQuickEditDescriptors.cueQuickEditLayout.value,
+      cueQuickEditOriginalOffset: cueQuickEditDescriptors.cueQuickEditOriginalOffset.value,
       // 字词气泡布局纯函数（不读 this）：候选全量 / 上限 / 叠行 / 优先级。
       computeWordChipLayout: WaveformEditor.prototype.computeWordChipLayout,
       // 字词条带分层判定真源（visibility 模块）：单行 × 双语组合的一致性入口。

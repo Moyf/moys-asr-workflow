@@ -51,6 +51,8 @@ export function createWaveformModule(dependencies) {
       // 通用 Marker / Region 轨道：遵守标记编辑开关，启用时空轨也可添加标记。
       this.appendMarkerTrack(row, startMs, endMs);
 
+      // 在目标块处理 pointerdown 前清除上一轮手势，避免残留标记影响空白处双击。
+      row.addEventListener('pointerdown', () => { this._wordQuickEditDoubleClickTime = 0; }, true);
       row.addEventListener('pointerdown', (event) => {
         // 每次按下时读取最新模式；设置切换会重绘空隙块，但不会重建仍在
         // 可视区内的行，不能使用 createRow 时捕获的旧值。
@@ -160,7 +162,10 @@ export function createWaveformModule(dependencies) {
         }
       });
       row.addEventListener('dblclick', (event) => {
-        if ((/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block')))) return;
+        // 字词块可能在两次点击间被重建，原生 dblclick 因而落在共同祖先 row。
+        const wordQuickEdit = this._wordQuickEditDoubleClickTime && Date.now() - this._wordQuickEditDoubleClickTime <= 500;
+        this._wordQuickEditDoubleClickTime = 0;
+        if (wordQuickEdit || (/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block, .waveform-word-block, .waveform-word-boundary')))) return;
         if (event.ctrlKey || event.metaKey) return;
         event.preventDefault();
         this.options.togglePlayback();
@@ -307,7 +312,7 @@ export function createWaveformModule(dependencies) {
         block.appendChild(label);
         this.setBindingMarker(block, mainBindingMarkers?.has?.(index) === true);
         // 短块内文字会被截断，悬浮 title 给出完整字幕文本
-        block.title = label.textContent;
+        if (this.settings.showCueTooltip === true) block.title = label.textContent;
         const badges = this.settings.showGroupBadges !== false ? badgesByIndex.get(index) : null;
         if (badges?.length) {
           // 徽章挂在行上、块上方（不遮挡块内文字）；短字幕也保留最小显示空间，
@@ -368,14 +373,10 @@ export function createWaveformModule(dependencies) {
           event.preventDefault();
           event.stopPropagation();
           if (event.ctrlKey || event.metaKey) return;
-          // 字词时间码显示时，主字幕文本与字词绑定：波形字幕块双击不再直接
-          // 进入编辑，提示先退出字词码模式（字幕列表的行内编辑不受影响）。
-          if (this.options.wordTiming?.enabled) {
-            this.options.onMainCueDoubleClickBlocked?.();
-            return;
-          }
-          if (this.options.enterCueEditor) this.options.enterCueEditor(index);
-          else this.options.activateCue?.(index);
+          // 双击在点击的字幕块片段上方弹出快速编辑气泡（跨行字幕跟随
+          // 鼠标点击位置）；不再聚焦底部字幕编辑面板。字词时间码模式下
+          // 同样放行：气泡提交走 syncTextChange，句文本与字词文字保持同步。
+          this.openCueQuickEdit('main', index, block, event);
         });
         row.appendChild(block);
         this.appendWordBlocks(row, index, startMs, endMs);
@@ -392,24 +393,30 @@ export function createWaveformModule(dependencies) {
         const overlaySelected = this.options.getOverlaySelection?.() || new Set();
         const overlayBadges = this.settings.showGroupBadges !== false
           ? this.computeGroupBadgesCached(overlaySegments) : null;
-        // 行高不足（50% 线放不下 35px 叠加块 + 7px 底边距）时叠加块直接盖在
-        // 主字幕块上方，此时不渲染叠加徽章，避免与下半区徽章混叠。
-        // 多行模式的行高真源是 settings.rowHeight：createMultiRow 在
-        // createRow 返回后才写 row.style.height，这里读内联样式恒为空，
-        // cover-mode 会永远不生效。
-        // 双语行叠加块放在主字幕格上方（CSS 同步），需要高度 = 上下 inset
-        // (14) + 两格 lane + 块 35 + 间隙 1；放不下时同样回退 cover。仅多行
-        // 模式适用：单行双语行（basic 恒无内联 height，cover 恒 false）由
-        // waveform.css 的 max() 兜底保持 50% 线，与共享判定
-        // visibility.wordTimingFullLane 的单行语义一致。
-        const rowHeightPx = this.settings.mode === 'multi'
-          ? Number(this.settings.rowHeight) || 0
-          : Number.parseFloat(row.style.height) || 0;
+        // 用定位包含块的 clientHeight（不含边框）匹配 CSS 百分比。
+        // 首次 createRow 尚未挂载：多行按 border-box 行高扣除上下各 1px 边框；
+        // 单行按容器高度扣除 inset:8px 与两条边框。无需挂载探针或改虚拟行高。
+        const rowHeightPx = Number(row.clientHeight) || (this.settings.mode === 'multi'
+          ? Math.max(0, (Number(this.settings.rowHeight) || 0) - 2)
+          : Math.max(0, (Number(this.content?.clientHeight) || 0) - 18));
+        const laneGap = 3;
+        const inset = 7;
         const laneHeight = multiLane
-          ? Math.min(this.settings.mode === 'basic' ? 54 : this.options.wordTiming?.enabled ? 44 : 35, (rowHeightPx - 14) / 2)
+          ? Math.min(this.settings.mode === 'basic' ? 54 : this.options.wordTiming?.enabled ? 44 : 35,
+            Math.max(0, (rowHeightPx - inset * 2 - laneGap) / 2))
           : 0;
+        const mainHeight = this.settings.mode === 'basic'
+          ? Math.max(35, Math.min(72, rowHeightPx * 0.4)) : 35;
+        // 与 CSS 的 bottom 同式：主/副间隔 3px + 主/叠加间隔 3px，
+        // 叠加块高 35px，顶部也保留 7px inset。不足则沿用同位覆盖降级，
+        // 不缩短已有字幕/字词点击区，亦不渲染会互相遮挡的叠加徽章。
+        const overlayBottom = multiLane
+          ? inset + laneHeight * 2 + laneGap + 3
+          : Math.max(rowHeightPx / 2, inset + mainHeight + 3);
+        const resolvedOverlayBottom = this.settings.mode === 'basic' && multiLane
+          ? Math.max(rowHeightPx / 2, overlayBottom) : overlayBottom;
         const overlayCoverMode = rowHeightPx > 0
-          && rowHeightPx < (multiLane ? 50 + laneHeight * 2 : 84);
+          && rowHeightPx < resolvedOverlayBottom + 35 + inset;
         const activeOverlayIndex = findActiveCueIndex(overlaySegments, now);
         const firstOverlayIndex = firstCueIndexOverlapping(overlaySegments, startMs);
         for (let index = firstOverlayIndex; index < overlaySegments.length; index += 1) {
@@ -432,7 +439,7 @@ export function createWaveformModule(dependencies) {
           const label = document.createElement('span');
           label.className = 'waveform-cue-label';
           label.textContent = String(segment.text || '').replace(/\s+/g, ' ');
-          block.title = label.textContent;
+          if (this.settings.showCueTooltip === true) block.title = label.textContent;
           block.appendChild(label);
           if (segment.start >= startMs) {
             const leftHandle = document.createElement('span');
@@ -474,7 +481,7 @@ export function createWaveformModule(dependencies) {
           block.addEventListener('dblclick', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (this.options.enterOverlayCueEditor) this.options.enterOverlayCueEditor(index);
+            this.openCueQuickEdit('overlay', index, block, event);
           });
           row.appendChild(block);
         }
@@ -497,7 +504,8 @@ export function createWaveformModule(dependencies) {
           block.dataset.extIdx = String(index);
           block.dataset.start = String(segment.start);
           block.dataset.end = String(segment.end);
-          block.style.setProperty('--cue-color', '#7a9fc5');
+          block.style.setProperty('--cue-color', this.settings.showExtensionColors === true ? colorForSegment(segment) : '#7a9fc5');
+          if (this.settings.showExtensionColors === true && hasSubtitleColor(segment)) block.classList.add('has-subtitle-color');
         if (extensionSelected.has(index)) block.classList.add('selected');
         if (segment.disabled) block.classList.add('disabled');
         // 空隙中沿用的当前字幕不点亮 active 轮廓（仅视觉；逻辑语义不变）。
@@ -505,7 +513,7 @@ export function createWaveformModule(dependencies) {
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
         label.textContent = String(segment.text || '').replace(/\s+/g, ' ');
-        block.title = label.textContent;
+        if (this.settings.showCueTooltip === true) block.title = label.textContent;
         block.appendChild(label);
         this.setBindingMarker(block, extensionBindingMarkers?.has?.(index) === true);
         if (segment.start >= startMs) this.appendExtensionHandle(block, 'left');
@@ -522,8 +530,7 @@ export function createWaveformModule(dependencies) {
           event.preventDefault();
           event.stopPropagation();
           if (event.ctrlKey || event.metaKey) return;
-          if (this.options.enterExtensionCueEditor) this.options.enterExtensionCueEditor(index);
-          else this.options.activateExtensionCue?.(index);
+          this.openCueQuickEdit('extension', index, block, event);
         });
         row.appendChild(block);
       }

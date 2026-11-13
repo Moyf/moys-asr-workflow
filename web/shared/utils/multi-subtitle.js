@@ -203,9 +203,57 @@ export function createUtilsModule(dependencies) {
     return { groupId: groupId && indexes.every(index => segments[index]?.[field] === groupId) ? groupId : null,
       head: null, ref: null, headIdx: null };
   }
+  // Resolve colour using canonical group identities, without mutating the
+  // project before the caller starts its undoable merge transaction. Equal
+  // names from different groups need a fresh group inside that transaction.
+  function resolveMergedColorInheritance(segments, indexes, project = dependencies.getProject?.()) {
+    const empty = { groupId: null, value: null, groupInherited: false };
+    if (!Array.isArray(segments) || !Array.isArray(indexes) || !indexes.length
+        || indexes.some(index => !Number.isInteger(index) || index < 0 || index >= segments.length
+          || !segments[index] || typeof segments[index] !== 'object')) return empty;
+    const groups = project?.subtitle_groups?.color;
+    if (!Array.isArray(groups)) return empty;
+    const values = indexes.map(index => groups.find(group => group.id === segments[index].color_group_id)?.value);
+    const name = values[0]?.name;
+    if (!name || values.some(value => value?.name !== name)) return empty;
+    const groupId = segments[indexes[0]].color_group_id;
+    if (indexes.every(index => segments[index].color_group_id === groupId)) {
+      return { groupId, value: null, groupInherited: true };
+    }
+    return { groupId: null, value: cloneJsonValue(values[0]), groupInherited: false };
+  }
+
+  // Compatibility for imported legacy views; v2's stable group IDs require
+  // no index remapping and canonical cues must never gain head/ref fields.
+  function remapGroupRefsAfterMergeSplice(segments, removedIndexes, refFields = ['sticker_ref', 'color_ref'], originalLength) {
+    if (!Array.isArray(segments) || !Array.isArray(removedIndexes) || !removedIndexes.length
+        || !Number.isInteger(originalLength) || originalLength < segments.length) return 0;
+    const removed = [...new Set(removedIndexes)]
+      .filter(index => Number.isInteger(index) && index >= 0 && index < originalLength)
+      .sort((left, right) => left - right);
+    if (!removed.length) return 0;
+    const mergedIndex = removed[0], removedSet = new Set(removed);
+    let changed = 0;
+    segments.forEach(segment => refFields.forEach(field => {
+      const ref = segment?.[field];
+      if (!ref || !Number.isInteger(ref.headIdx)) return;
+      if (removedSet.has(ref.headIdx)) {
+        if (ref.headIdx !== mergedIndex) { ref.headIdx = mergedIndex; changed++; }
+        return;
+      }
+      if (ref.headIdx < mergedIndex) return;
+      let removedBefore = 0;
+      for (const index of removed) { if (index >= ref.headIdx) break; removedBefore++; }
+      const shift = 1 - removedBefore;
+      if (shift) { ref.headIdx += shift; changed++; }
+    }));
+    return changed;
+  }
+
   return Object.freeze({ MULTI_SUBTITLE_DISPLAY_MODES, MULTI_SUBTITLE_SPLIT_MODES, MULTI_SUBTITLE_TOLERANCE_MS,
     setBindingIndexEnabled, isBindingIndexEnabled,
     bindingForSegment, buildMultiDisplayRows, buildSubtitleBinding, matchSubtitleSegments, mergeMainAndOverlaySegments,
     moveSegmentBetweenTracks, normalizeMultiSubtitleProject, rebuildBindingOffsets, removeSubtitleBindings,
-    removeBindingsForSegments, resolveMergedGroupInheritance, swapMainAndExtensionSubtitle, ensureExtensionTrack, ensureOverlayTrack });
+    remapGroupRefsAfterMergeSplice, removeBindingsForSegments, resolveMergedColorInheritance,
+    resolveMergedGroupInheritance, swapMainAndExtensionSubtitle, ensureExtensionTrack, ensureOverlayTrack });
 }

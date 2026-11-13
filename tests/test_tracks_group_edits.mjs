@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
-import { plainModuleSource } from './helpers/init-module-source.mjs';
+import { initModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
 
 const fixtureUtils = { window: {}, TextDecoder };
 loadEditorModule(fixtureUtils, 'shared/editor-utils.js');
@@ -19,7 +18,7 @@ function fixture(count = 5) {
   const context = { AsrEditorUtils: utils, MaweBoot: { DATA: data } };
   context.window = context;
   vm.createContext(context);
-  vm.runInContext(readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/cues/editor-segment-ops.js'), context);
   return { data, main, overlay, context, api: context.MaweSegmentOps };
 }
 function grouped(f, kind) {

@@ -13,7 +13,7 @@ test('Launcher keeps the local editor while retiring standalone actions', async 
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(pathToFileURL(path.resolve('web/launcher/index.html')).href);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
-  await expect(page.locator('#openMenu')).toBeVisible();
+  await expect(page.locator('#openMawe')).toBeVisible();
   const config = await page.evaluate(() => window.MAWLauncher.config);
   // Deliver the capability through the initial backend response. Dispatching
   // a checkbox change after startup would conceal missing initialization.
@@ -61,7 +61,10 @@ test('built website recommends the local app with spaced actions', async ({ page
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
-    await expect(page.locator('.hero-actions .button-primary')).toHaveText('下载本地应用 ↗');
+    const download = page.locator('.hero-actions .btn-primary');
+    await expect(download).toHaveText('免费下载');
+    await expect(download).toHaveAttribute('href', '#download');
+    await expect(page.locator('#download .btn-primary')).toHaveAttribute('href', /github\.com\/Moyf\/moys-asr-workflow\/releases/);
     await expect(page.locator('a[href$="/editor/"]')).toHaveCount(0);
     const spacing = await page.locator('.hero-actions').evaluate(element => {
       const [first, second] = [...element.children].map(child => child.getBoundingClientRect());
@@ -121,7 +124,8 @@ test('actual 2.0 source Server opens saves backs up and exports without a standa
     await page.keyboard.press('Control+s');
     expect((await saved).ok()).toBe(true);
     const content = JSON.parse(readFileSync(project, 'utf8'));
-    expect(content.segments[0].text).toBe('Version two saved');
+    expect(content.schema).toBe('moy.asr.project.v2');
+    expect(content.tracks.find(track => track.role === 'main').segments[0].text).toBe('Version two saved');
     expect(content.extension_review).toEqual({ preserved: true });
     expect(existsSync(`${project}.bak`)).toBe(true);
     expect(await page.evaluate(() => window.MaweExportSrt.buildSrt())).toContain('Version two saved');

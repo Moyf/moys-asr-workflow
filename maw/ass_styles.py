@@ -195,7 +195,7 @@ DEFAULT_ASS_EXTENSION_STYLE: Final[dict[str, object]] = {
 
 def _animation_defaults() -> dict[str, object]:
     return {
-        "fad": {"enabled": True, "inMs": 250, "outMs": 250},
+        "fad": {"enabled": False, "inMs": 250, "outMs": 250},
         # 放大出现：句级 {{…}} 标记与全局自动应用共用参数；enabled 只控制
         # 全局自动应用，与 UI 参数编辑解耦（同 fad）。fromScale < 1 为
         # 「从小放大落定」（默认 0.7），> 1 为从大缩小落定。

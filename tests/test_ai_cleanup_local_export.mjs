@@ -85,9 +85,7 @@ function runtime() {
   };
   context.window.MaweBoot = context.MaweBoot;
   for (const file of ['editor-export-srt.js', 'editor-export-timeline.js']) {
-    const source = file === 'editor-export-srt.js'
-      ? initModuleSource(`editor/io/${file}`)
-      : fs.readFileSync(new URL(`../web/editor/io/${file}`, import.meta.url), 'utf8');
+    const source = initModuleSource(`editor/io/${file}`);
     vm.runInNewContext(source, context);
   }
   context.MaweExportSrt = context.window.MaweExportSrt;

@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { readFixture, createProjectHarness, initializeStickerOverlay } from './helpers/track-golden.mjs';
-const load = (context, file) => vm.runInNewContext(fs.readFileSync(new URL(`../web/${file}`, import.meta.url), 'utf8'), context);
+import { initModuleSource } from './helpers/init-module-source.mjs';
+const load = (context, file) => vm.runInNewContext(file === 'editor/cues/editor-nav-preview.js'
+  ? initModuleSource(file) : fs.readFileSync(new URL(`../web/${file}`, import.meta.url), 'utf8'), context);
 
 test('Z/X targets the current track and uses main when selection is empty', () => {
   const { data, h } = createProjectHarness(readFixture('three-tracks'));

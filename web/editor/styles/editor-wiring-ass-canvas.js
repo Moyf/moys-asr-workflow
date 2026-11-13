@@ -1,3 +1,4 @@
+export function initWiringAssCanvasModule() {
 // ASS 预览的 Canvas 合成层。
 //
 // DOM/CSS 预览（-webkit-text-stroke）的描边是逐 span 居中描边：半透明描边
@@ -656,3 +657,4 @@
     get lastRender() { return lastRender; },
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

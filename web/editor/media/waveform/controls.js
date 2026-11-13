@@ -82,6 +82,18 @@ export function createWaveformModule(dependencies) {
         saveSettings(this.settings);
         this.render();
       });
+      if (this.showCueTooltipToggle) this.showCueTooltipToggle.checked = this.settings.showCueTooltip === true;
+      this.showCueTooltipToggle?.addEventListener('change', () => {
+        this.settings.showCueTooltip = this.showCueTooltipToggle.checked;
+        saveSettings(this.settings);
+        this.refreshCueOverlay();
+      });
+      if (this.showExtensionColorsToggle) this.showExtensionColorsToggle.checked = this.settings.showExtensionColors === true;
+      this.showExtensionColorsToggle?.addEventListener('change', () => {
+        this.settings.showExtensionColors = this.showExtensionColorsToggle.checked;
+        saveSettings(this.settings);
+        this.refreshCueOverlay();
+      });
       if (this.dragPlayheadToggle) this.dragPlayheadToggle.checked = this.settings.dragPlayhead === true;
       this.dragPlayheadToggle?.addEventListener('change', () => {
         this.settings.dragPlayhead = this.dragPlayheadToggle.checked;
