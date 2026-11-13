@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 
 const fixture = { window: {} };
 loadEditorModule(fixture, 'shared/editor-utils.js');
@@ -47,7 +47,7 @@ test('video dimensions update and clear keep media and audio extension fields', 
   let saves = 0;
   const context = { window: { AsrEditorUtils: utils }, MaweBoot: { DATA: { media_metadata: media } },
     MaweCoreState: { player }, MaweServerSave: { projectImportDirty: false, scheduleAutoSaveFlush() { saves++; } } };
-  vm.runInNewContext(readFileSync(new URL('../web/editor/cues/editor-timeline.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-timeline.js'), context);
   const timeline = context.window.MaweTimeline;
   assert.equal(timeline.captureProjectVideoDimensions(player), true);
   assert.deepEqual(plain(context.MaweBoot.DATA.media_metadata), {

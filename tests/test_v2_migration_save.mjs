@@ -89,6 +89,45 @@ test('successful migration saves a v2 file and later saves use its handle', asyn
   assert.equal(projectModel.getMainTrack(calls.writes[1].project).segments[0].text, 'later');
 });
 
+test('migration save commits the waveform quick edit before choosing and writing a new file', async () => {
+  const { context: c, calls } = fixture();
+  const handle = { name: 'old_v2.mosp', getFile: async () => ({ size: 0 }) };
+  let commits = 0;
+  c.MaweCoreState.waveformEditor = {
+    commitCueQuickEdit() {
+      commits++;
+      projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text = 'quick edit';
+    },
+  };
+  c.MaweHost.files.pickSaveFile = async options => {
+    calls.pick.push(options);
+    assert.equal(projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text, 'quick edit');
+    return handle;
+  };
+  await c.MaweProjectSave.saveCurrentProject();
+  assert.equal(calls.pick[0].suggestedName, 'old_v2.mosp');
+  assert.equal(projectModel.getMainTrack(calls.writes[0].project).segments[0].text, 'quick edit');
+  assert.ok(commits >= 1);
+  assert.equal(c.MaweServerSave.requiresMigrationSaveAs, false);
+});
+
+test('migration download fallback includes the waveform quick edit and leaves the source pending', async () => {
+  const { context: c } = fixture();
+  let downloaded;
+  c.MaweCoreState.waveformEditor = {
+    commitCueQuickEdit() { projectModel.getMainTrack(c.MaweBoot.DATA).segments[0].text = 'quick edit'; },
+  };
+  c.MaweHost.files.hasSavePicker = () => false;
+  c.MaweExportTimeline = {
+    async downloadFile(json, name) { downloaded = { project: JSON.parse(json), name }; },
+  };
+  await c.MaweProjectSave.saveCurrentProject();
+  assert.equal(downloaded.name, 'old_v2.mosp');
+  assert.equal(projectModel.getMainTrack(downloaded.project).segments[0].text, 'quick edit');
+  assert.equal(c.MaweServerSave.requiresMigrationSaveAs, true);
+  assert.equal(c.MaweServerSave.projectFileHandle, null);
+});
+
 test('an old in-flight migration save cannot clear the replacement project migration flag', async () => {
   const { context: c, calls } = fixture();
   const writeStarted = deferred(), finishWrite = deferred();

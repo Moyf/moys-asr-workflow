@@ -53,6 +53,8 @@ jobs:
       # documentation failure under the Windows PowerShell shell.
       - name: Documentation navigation and consumers
         run: python scripts/run_check.py --timeout 180 -- python scripts/check_docs.py
+      - name: Offline tool documentation freshness
+        run: python scripts/run_check.py --timeout 60 -- node scripts/build-tool-docs.mjs --check
       - name: Documentation regressions
         run: python scripts/run_check.py --timeout 180 -- python scripts/run_tests.py tests/test_docs_check.py
       - name: Release documents
@@ -118,9 +120,31 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
         if: ${{ needs.selection.outputs.light != 'true' }}
-      # Node tests also launch Chromium and compare against Python exporters.
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Prepare developer image fixtures (no OCR model)
         if: ${{ needs.selection.outputs.light != 'true' }}
+        run: uv sync --frozen --group dev
+      # Node tests also launch Chromium and compare against Python exporters.
+      - name: Install Playwright Chromium
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        shell: bash
+        # 2026-11-11 PR #365 的 editor job 曾因 GitHub runner DNS 抖动整 job 红：
+        # --with-deps 走 apt，依赖安装全体「Temporary failure resolving
+        # security.ubuntu.com」（exit code 100），人工 rerun 即绿。此步骤外部网络
+        # 敏感且幂等可重跑，自动重试省人工 rerun；每次失败输出保留在步骤日志里，
+        # 最后一次失败仍非零退出，不掩盖真实故障。
+        run: |
+          attempt=1
+          max_attempts=3
+          until pnpm exec playwright install --with-deps chromium; do
+            status=$?
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "playwright install 仍失败（最多尝试 ${max_attempts} 次，最后 exit ${status}），放弃。"
+              exit "$status"
+            fi
+            echo "playwright install 失败（exit ${status}，第 ${attempt}/${max_attempts} 次尝试），20s 后重试……"
+            attempt=$((attempt + 1))
+            sleep 20
+          done
       - run: pnpm run test:unit
         if: ${{ needs.selection.outputs.light != 'true' }}
         env:
@@ -130,6 +154,9 @@ jobs:
         run: |
           uv run --no-sync python scripts/run_tests.py tests/test_editor_assets.py
           uv run --no-sync python scripts/run_tests.py tests/test_editor_manifest.py
+      - name: OCR term extraction and runtime cleanup contracts
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_ocr_scan.py tests/test_ocr_scan_regressions.py tests/test_ocr_runtime.py tests/test_runtime_process_cleanup.py tests/test_process_tree_posix.py tests/test_term_extract_aggregate.py tests/test_term_extract_ai_filter.py tests/test_term_extract_cli_cache.py tests/test_term_extract_export.py tests/test_term_extract_report.py tests/test_term_extract_score.py tests/test_verification_checklist.py tests/test_verification_checklist_build.py
       - name: Install FFmpeg for synthetic editor fixtures
         if: ${{ needs.selection.outputs.light != 'true' }}
         run: |
@@ -163,6 +190,12 @@ jobs:
           name: editor-browser-failures-${{ runner.os }}
           path: test-results/
           retention-days: 7
+
+      - name: Independent browser tool pages
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        env:
+          MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: uv run --no-sync python scripts/run_check.py --timeout 300 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/tool-pages.spec.mjs tests/e2e/tool-compact.spec.mjs tests/e2e/tool-markdown.spec.mjs tests/e2e/timestamp-compare.spec.mjs tests/e2e/verification-checklist.spec.mjs tests/e2e/term-report.spec.mjs tests/e2e/changelog-write-lock.spec.mjs
 
       # README and user guides are website inputs, not just Markdown files.
       - name: Set up website pnpm

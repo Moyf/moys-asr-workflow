@@ -48,6 +48,8 @@ async function fixture(page, mode, run) {
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await page.evaluate(mode => {
       window.hints = []; window.saved = false; window.bytes = 0; window.writableCreated = false;
+      window.applyMediaSizeToResolutionModal = () => {};
+      window.dynamicExportCanvasSize = () => {};
       window.MaweInlineEdit = {};
       window.MaweProjectLoad = { projectBindingEpoch: 1 };
       window.MaweBoot = { FILENAME_BASE: 'music', DATA: { media: 'source.mp3' }, SERVER_CONFIG: {
@@ -57,7 +59,7 @@ async function fixture(page, mode, run) {
         gapRemovedVideoExportUrl: '/legacy', gapRemovedVideoJobsUrl: '/jobs', requestToken: 'audio',
         bindingGeneration: 1, sourceMediaId: 'audio-source',
       } };
-      window.MaweExportSrt = { gapRemovedExportContext: () => ({ intervals: [{ start: 123, end: 567 }, { start: 1001, end: 1502 }] }) };
+      window.MaweExportSrt = { gapRemovedExportContext: () => ({ durationMs: 1502, intervals: [{ start: 123, end: 567 }, { start: 1001, end: 1502 }] }) };
       window.MaweHint = { flashHint: (text, level) => window.hints.push({ text, level }) };
       window.MaweServerSave = { configureServerSaveControls() {}, scheduleAutoSave() {} };
       window.MaweDynamicExports = { updateLottieExportButton() {}, updateOgrafExportButton() {} };
@@ -82,10 +84,11 @@ test('audio source uses WAV picker, media capability, exact intervals and comple
     await expect(page.locator('#download-gap-removed-video')).toHaveText('重组后音频');
     await page.click('#download-gap-removed-video');
     await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
+    expect(await page.evaluate(() => window.hints.find(hint => hint.text.includes('精确裁切'))?.level)).toBe('info');
     const picker = await page.evaluate(() => window.picker);
     expect(picker.suggestedName).toBe('music_gap-removed.wav');
     expect(picker.types).toEqual([{ description: '重组后音频', accept: { 'audio/wav': ['.wav'] } }]);
-    expect(job.payload).toEqual({ requestToken: 'audio', bindingGeneration: 1, sourceMediaId: 'audio-source', selectedAudioTrack: 0,
+    expect(job.payload).toEqual({ requestToken: 'audio', bindingGeneration: 1, sourceMediaId: 'audio-source', selectedAudioTrack: 0, keepToSourceEnd: true, editorDurationMs: 1502,
       admissionToken: expect.stringMatching(/^[a-f0-9]{64}$/), admissionDeadline: expect.any(Number),
       intervals: [{ startMs: 123, endMs: 567 }, { startMs: 1001, endMs: 1502 }] });
     expect(await page.evaluate(() => window.bytes)).toBe(4);

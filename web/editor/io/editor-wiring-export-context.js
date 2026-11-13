@@ -272,7 +272,7 @@ document.getElementById('project-backup-open')?.addEventListener('click', async 
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || response.status);
   } catch (error) {
-    MaweHint.flashHint(`打开备份文件夹失败：${error.message || error}`, 'warning');
+    MaweHint.flashHint(`打开备份文件夹失败：${error.message || error}`, 'warning', { error });
   }
 });
 

@@ -1,3 +1,4 @@
+export function initMediaStepModule() {
 // 媒体步进：seek 步长输入的钳制与刷新。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweMediaStep 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -56,3 +57,4 @@
     adjustMediaSeekStepInput
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

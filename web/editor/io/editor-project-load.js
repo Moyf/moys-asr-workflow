@@ -215,11 +215,11 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
             return true;
           }
         } catch (fallbackError) {
-          MaweHint.flashHint(`创建工程失败：${fallbackError.message || fallbackError}`, 'warning');
+          MaweHint.flashHint(`创建工程失败：${fallbackError.message || fallbackError}`, 'warning', { error: fallbackError });
           return false;
         }
       }
-      MaweHint.flashHint(`创建工程失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`创建工程失败：${error.message || error}`, 'warning', { error });
       return false;
     } finally {
       MaweState.finishProjectLoad(generation);

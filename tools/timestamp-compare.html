@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-tool-page="timestamp-compare">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MAW 时间码对比</title>
+<script src="shared/tool-page.js"></script>
 <style>
   :root {
     color-scheme: dark;
@@ -103,7 +104,7 @@
   }
   .brand-kicker {
     color: var(--muted);
-    font: 10px/1.1 var(--mono);
+    font: 11px/1.1 var(--mono);
     letter-spacing: 0.18em;
     text-transform: uppercase;
   }
@@ -158,57 +159,6 @@
     white-space: nowrap;
   }
   .toggle input { accent-color: var(--cyan); }
-  .toggle-switch {
-    position: relative;
-    gap: 8px;
-  }
-  .toggle-switch input {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    cursor: pointer;
-    opacity: 0;
-    clip: auto;
-    clip-path: none;
-  }
-  .switch-ui {
-    position: relative;
-    width: 30px;
-    height: 17px;
-    flex: none;
-    border: 1px solid var(--line-strong);
-    border-radius: 99px;
-    background: var(--surface-soft);
-    pointer-events: none;
-    transition: background 120ms ease, border-color 120ms ease;
-  }
-  .switch-ui::after {
-    content: "";
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--muted);
-    transition: background 120ms ease, transform 120ms ease;
-  }
-  .toggle-switch input:checked + .switch-ui {
-    border-color: var(--cyan);
-    background: var(--cyan-soft);
-  }
-  .toggle-switch input:checked + .switch-ui::after {
-    background: var(--cyan);
-    transform: translateX(13px);
-  }
-  .toggle-switch input:focus-visible + .switch-ui {
-    outline: 2px solid var(--cyan);
-    outline-offset: 2px;
-  }
-
   .search {
     width: min(260px, 30vw);
     min-height: 32px;
@@ -232,7 +182,7 @@
     white-space: nowrap;
   }
   .filter-control > span {
-    font: 10px/1 var(--mono);
+    font: 11px/1 var(--mono);
     letter-spacing: 0.06em;
     white-space: nowrap;
   }
@@ -267,7 +217,7 @@
   .eyebrow {
     margin: 0 0 5px;
     color: var(--cyan);
-    font: 10px/1 var(--mono);
+    font: 11px/1 var(--mono);
     letter-spacing: 0.2em;
   }
   h1 {
@@ -365,7 +315,7 @@
   .stat-label {
     display: block;
     color: var(--faint);
-    font: 10px/1.2 var(--mono);
+    font: 11px/1.2 var(--mono);
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
@@ -540,7 +490,7 @@
     border-right: 1px solid var(--line);
   }
   .head-cell:last-child { border-right: 0; }
-  .head-cell.index-head { color: var(--muted); font: 10px/1.2 var(--mono); letter-spacing: 0.1em; }
+  .head-cell.index-head { color: var(--muted); font: 11px/1.2 var(--mono); letter-spacing: 0.1em; }
   .head-file {
     display: flex;
     align-items: center;
@@ -599,7 +549,7 @@
     background: var(--surface-raised);
   }
   .row-no { color: var(--ink); font: 700 14px/1 var(--mono); }
-  .row-range { margin-top: 6px; color: var(--faint); font: 10px/1.4 var(--mono); white-space: nowrap; }
+  .row-range { margin-top: 6px; color: var(--faint); font: 11px/1.4 var(--mono); white-space: nowrap; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
   .chip {
     display: inline-flex;
@@ -608,7 +558,7 @@
     padding: 1px 6px;
     border: 1px solid currentColor;
     border-radius: 99px;
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.35;
     white-space: nowrap;
   }
@@ -641,9 +591,9 @@
     font: 11px/1.35 var(--mono);
   }
   .time-line code { color: var(--ink-soft); font: inherit; }
-  .subtitle-duration { color: var(--cyan); font-size: 10px; }
-  .delta-line { color: var(--amber); font-size: 10px; }
-  .ref-line { color: var(--faint); font-size: 10px; }
+  .subtitle-duration { color: var(--cyan); font-size: 11px; }
+  .delta-line { color: var(--amber); font-size: 11px; }
+  .ref-line { color: var(--faint); font-size: 11px; }
   .cell-missing {
     display: flex;
     align-items: center;
@@ -664,7 +614,7 @@
     border-radius: 99px;
     background: var(--surface-high);
     color: var(--ink-soft);
-    font: 10px/1.4 var(--mono);
+    font: 11px/1.4 var(--mono);
   }
   .item-badge.has-items { color: var(--cyan); background: var(--cyan-soft); }
   .item-badge.no-items {
@@ -769,7 +719,7 @@
   .item-label-duration {
     display: block;
     color: var(--muted);
-    font: 10px/1.1 var(--mono);
+    font: 11px/1.1 var(--mono);
     font-weight: 500;
   }
   .item-label-text {
@@ -784,7 +734,7 @@
     position: absolute;
     inset: 0;
     color: var(--faint);
-    font: 8px/11px var(--mono);
+    font: 11px/13px var(--mono);
     letter-spacing: 0.08em;
     text-align: center;
   }
@@ -793,7 +743,7 @@
     position: absolute;
     inset: 0;
     color: var(--faint);
-    font: 8px/11px var(--mono);
+    font: 11px/13px var(--mono);
     letter-spacing: 0.08em;
     text-align: center;
   }
@@ -821,7 +771,7 @@
     display: grid;
     grid-template-columns: 42px minmax(170px, 1.4fr) repeat(var(--file-count), minmax(155px, 1fr)) minmax(155px, 1fr);
   }
-  .items-head { background: var(--surface-raised); color: var(--muted); font-size: 10px; }
+  .items-head { background: var(--surface-raised); color: var(--muted); font-size: 11px; }
   .items-head > div, .item-row > div {
     min-width: 0;
     padding: 7px 9px;
@@ -830,11 +780,11 @@
   .items-head > div:last-child, .item-row > div:last-child { border-right: 0; }
   .item-row { border-top: 1px solid var(--line); background: var(--surface); font-size: 11px; }
   .item-row > div { color: var(--ink-soft); }
-  .item-seq { color: var(--faint) !important; font: 10px var(--mono); }
+  .item-seq { color: var(--faint) !important; font: 11px var(--mono); }
   .item-text { white-space: pre-wrap; word-break: break-word; }
   .item-text .side { display: block; }
   .item-text .side + .side { margin-top: 3px; color: var(--amber); }
-  .item-time { font: 10px/1.45 var(--mono); white-space: nowrap; }
+  .item-time { font: 11px/1.45 var(--mono); white-space: nowrap; }
   .item-time.missing, .item-delta.missing { color: var(--faint) !important; }
   .item-time.out-of-range { color: var(--coral) !important; }
   .item-range { display: block; }
@@ -842,10 +792,10 @@
     display: block;
     margin-top: 2px;
     color: var(--cyan);
-    font-size: 9px;
+    font-size: 11px;
   }
   .item-time.out-of-range .item-duration { color: var(--coral); }
-  .item-delta { color: var(--amber) !important; font: 10px/1.45 var(--mono); }
+  .item-delta { color: var(--amber) !important; font: 11px/1.45 var(--mono); }
 
   .statusbar {
     display: flex;
@@ -920,9 +870,48 @@
     *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
   }
 </style>
+<link rel="stylesheet" href="shared/tool-page.css">
+<style>
+  :root { --bg:var(--bg-base); --surface:var(--bg-panel); --surface-raised:var(--bg-raised); --surface-high:var(--bg-overlay); --surface-soft:var(--bg-input); --ink:var(--text-primary); --ink-soft:var(--text-secondary); --muted:var(--text-muted); --faint:var(--text-muted); --line:var(--border-subtle); --line-strong:var(--border); --cyan:var(--accent); --cyan-soft:var(--accent-soft); --coral:var(--red); --coral-soft:var(--red-soft); --blue:var(--info); --mono:var(--font-mono); --shadow:var(--shadow-2); }
+  body { background:var(--bg); font-family:var(--font-sans); }
+  .topbar { background:var(--surface); border-color:var(--line); backdrop-filter:none; flex-wrap:wrap; }
+  .brand-mark,.card-dot,.drop-icon { box-shadow:none; }
+  .file-card,.dropzone,.hero-note,.row-grid.row-diff { background:var(--surface); box-shadow:none; }
+  .table-head { background:var(--surface-raised); backdrop-filter:none; }
+  .file-card::after { color:var(--text-muted); }
+  .btn.primary { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+  .btn { height:32px; padding:0 12px; font-size:13px; border-color:var(--border); border-radius:var(--radius-sm); background:var(--tool-control-raised); color:var(--text-secondary); }
+  .btn:hover:not(:disabled) { transform:none; background:var(--tool-control-hover); border-color:var(--border-strong); color:var(--text-primary); }
+  .btn:active:not(:disabled) { transform:translateY(1px); }
+  .btn.primary:hover { background:var(--accent-hover); color:var(--accent-text); }
+  .chip { border-color:transparent; }
+  .chip.items,.chip.count { background:color-mix(in srgb,var(--violet) 14%,transparent); }
+  .row-grid { cursor:pointer; }
+  .row-grid:hover .row-cell { background:var(--bg-raised); }
+  .row-cell.cell-empty-items { background:var(--amber-soft); box-shadow:inset 2px 0 var(--amber); }
+  .row-cell.cell-range-overflow { background:var(--red-soft); box-shadow:inset 2px 0 var(--red); }
+  .item-strip { background:var(--surface-soft); }
+  .item-label { font-family:var(--font-sans); text-shadow:0 0 3px var(--bg-panel),0 1px 2px var(--bg-panel); }
+  .item-block.odd { background:var(--file-color); }
+  .item-block.even { background:color-mix(in srgb,var(--file-color) 75%,var(--bg-panel)); }
+  .item-block.even { opacity:.6; }
+  .details { background:var(--surface); overflow-x:auto; }
+  #dropOverlay { background:var(--mask-bg); }
+  .file-cards { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .hero > div { min-width:0; }
+  h1 { overflow-wrap:anywhere; }
+  .item-text-switch { margin-left:0; }
+  .tool-compact .row-grid { min-height:72px; }
+  .tool-compact .row-cell { padding:8px 12px; }
+  .tool-compact .item-strip,.tool-compact .ref-line { display:none; }
+  .tool-compact .table-row { contain-intrinsic-size:auto 88px; }
+  @media(max-width:780px) { .file-cards { grid-template-columns:minmax(0,1fr); } }
+  @media(max-width:560px) { .topbar { position:static; } .search { width:100%; flex-basis:100%; } .brand { max-width:100%; } }
+  @media print { .table-row { content-visibility:visible; } }
+</style>
 </head>
 <body>
-<header class="topbar">
+<header class="topbar" data-tool-sticky>
   <div class="brand" aria-label="MAW 时间码对比">
     <span class="brand-mark" aria-hidden="true"></span>
     <div class="brand-copy">
@@ -935,9 +924,9 @@
     <input id="fileInput" type="file" accept=".srt,.mosp,.json" multiple hidden>
     <button id="clearBtn" class="btn danger" type="button" disabled>清空</button>
     <label class="toggle"><input id="diffOnly" type="checkbox" disabled>只看差异</label>
-    <label class="toggle toggle-switch" title="在时间条上显示 items 文本">
-      <input id="showItemText" type="checkbox">
-      <span class="switch-ui" aria-hidden="true"></span>
+    <label class="switch item-text-switch" title="在时间条上显示 items 文本">
+      <input id="showItemText" type="checkbox" role="switch">
+      <span class="switch-track" aria-hidden="true"></span>
       <span>显示 items 文本</span>
     </label>
     <label class="filter-control">
@@ -948,7 +937,10 @@
         <option value="overflow">仅越界 items</option>
       </select>
     </label>
-    <input id="search" class="search" type="search" placeholder="搜索字幕文本…" disabled>
+    <input id="search" class="search" type="search" aria-label="搜索字幕文本" placeholder="搜索字幕文本…" disabled>
+    <button id="resetFilters" class="btn" type="button" disabled>重置筛选</button>
+    <label class="switch tool-density"><input type="checkbox" data-tool-compact role="switch"><span class="switch-track" aria-hidden="true"></span>精简显示</label>
+    <button class="tool-theme" data-tool-theme type="button">◐ 主题</button>
   </div>
 </header>
 
@@ -986,7 +978,7 @@
 <script>
 'use strict';
 
-const PALETTE = ['#72d5db', '#8aaeff'];
+const PALETTE = ['var(--series-1)', 'var(--series-2)'];
 const ACCEPT_EXTENSIONS = new Set(['.srt', '.mosp', '.json']);
 const GRANULARITY_LABELS = {
   char: '字级',
@@ -1025,6 +1017,7 @@ function makeElement(tag, className, text) {
   if (text !== undefined) element.textContent = text;
   return element;
 }
+els.resetFilters = document.getElementById('resetFilters');
 
 function escapeHtml(value) {
   return String(value === undefined || value === null ? '' : value)
@@ -1780,7 +1773,11 @@ function renderTable(rows) {
     if (state.diffOnly) emptyMessage = '没有时间码差异。';
     else if (state.itemFilter === 'empty') emptyMessage = '没有 items 为空的字幕段。';
     else if (state.itemFilter === 'overflow') emptyMessage = '没有 items 越过 subtitle 范围的段。';
-    els.tableWrap.appendChild(makeElement('div', 'table-empty', emptyMessage));
+    const empty = makeElement('div', 'table-empty', emptyMessage);
+    const reset = makeElement('button', 'btn', '重置筛选');
+    reset.type = 'button'; reset.addEventListener('click', resetFilters);
+    empty.appendChild(reset);
+    els.tableWrap.appendChild(empty);
     return;
   }
   const table = makeElement('div', 'compare-table');
@@ -1805,6 +1802,7 @@ function renderTable(rows) {
 
   visible.forEach(function addRow(row) {
     const wrapper = makeElement('div', 'table-row');
+    wrapper.dataset.row = String(row.index);
     const rowGrid = makeElement('div', 'row-grid' + (row.comparison.changes.length ? ' row-diff' : ''));
     rowGrid.style.setProperty('--columns', columns);
     rowGrid.tabIndex = 0;
@@ -1823,8 +1821,12 @@ function renderTable(rows) {
       if (state.expanded.has(row.index)) state.expanded.delete(row.index);
       else state.expanded.add(row.index);
       renderTable(rows);
+      els.tableWrap.querySelector('[data-row="' + row.index + '"] .row-grid')?.focus({preventScroll:true});
     };
-    rowGrid.addEventListener('click', toggleRow);
+    rowGrid.addEventListener('click', function(event) {
+      if (String(window.getSelection()) || event.target.closest('button,a,input,select,textarea')) return;
+      toggleRow();
+    });
     rowGrid.addEventListener('keydown', function onRowKeydown(event) {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
@@ -1862,6 +1864,7 @@ function render() {
   els.empty.hidden = hasFiles;
   els.clearBtn.disabled = !hasFiles;
   els.search.disabled = !hasFiles;
+  els.resetFilters.disabled = !hasFiles;
   els.itemFilter.disabled = !hasFiles;
   els.diffOnly.disabled = state.files.length !== 2;
   if (state.files.length !== 2) {
@@ -1974,9 +1977,17 @@ els.itemFilter.addEventListener('change', function onItemFilterChange() {
   state.itemFilter = els.itemFilter.value;
   render();
 });
-els.search.addEventListener('input', function onSearchInput() {
-  state.search = els.search.value;
+let searchTimer = 0;
+function resetFilters() {
+  clearTimeout(searchTimer);
+  state.search = ''; state.diffOnly = false; state.itemFilter = 'all';
+  els.search.value = ''; els.diffOnly.checked = false; els.itemFilter.value = 'all';
   render();
+}
+els.resetFilters.addEventListener('click', resetFilters);
+els.search.addEventListener('input', function onSearchInput() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(function() { state.search = els.search.value; render(); }, 180);
 });
 
 let dragHideTimer = 0;

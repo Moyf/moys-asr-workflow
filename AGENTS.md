@@ -51,6 +51,7 @@ Launcher 前端走同一套装配模式：源码按 `web/launcher-scripts.txt` �
 **独立 HTML / 在线编辑器从 2.0（含预发布版）起停止维护与生成。**
 支持范围由 `maw/editor_entry_policy.py` 统一按应用版本判断。1.x 过渡期间，除发布检查或维护者明确要求外，不生成 `blank-editor.html`；需要发布 1.x 内联副本时才运行 `uv run --no-sync python edit.py --blank` 并核对生成 diff。2.0+ 不执行该命令，不再要求「内联副本待发布前统一重生成」，也不将历史 `blank-editor.html` 打入包或生成 Pages 在线编辑器。
 仓库历史产物、已发布附件和用户副本保留，不自动删除；不承诺旧 HTML 兼容新版工程。本地应用共用的模板、bundle、Server、打开/保存/备份恢复和导出能力必须保留。支持边界与发布验收见 [开发概览](docs/engineering/DEVELOPMENT.md#独立编辑入口的版本边界)。
+1.x 便携单 HTML（`file://`）专属行为已弃维护，相关测试按具体覆盖范围处理并记录证据，见 [便携模式回归分析](docs/logs/release1.10.0-beta.2/261106_便携模式回归弃维护/回归分析.md)。
 
 不要手改 `blank-editor.html` 内联副本。所有文本文件必须保持 UTF-8 与 LF（`\n`）换行，包括 Windows 上编辑的 `.py`、`.js`、`.html`、`.md`、`.yml`、`.ps1` 等文件；禁止提交 CRLF（`\r\n`）。不要依赖开发者机器的 `core.autocrlf`，以仓库 `.gitattributes` 的 `eol=lf` 规则为准。
 
@@ -233,10 +234,15 @@ git diff --name-status
 - 注意本项目 `.field` 只有 `margin-top`（没有下边距）、`.hint` 是 `margin: 0`：紧跟在 `.field` 后面的提示行 / 按钮行 / 独立区块必须自带 `margin-top`，不能指望对方留白。
 - 间距验收必须用实测数据（如 `getComputedStyle` 的 `marginTop`、相邻元素的实际像素距离 ≥ 8px），不能凭截图目测「看起来有间距」——这条规则反复被违反过，目测判断不可靠。
 - 凡是改动 Launcher / 编辑器布局的任务，收尾前把涉及区域截图自查一遍。
+- 编写或修改 `tools/` 下的浏览器工具页（确认页、核对页、对比页、审阅页、仪表盘），以及任何由脚本生成的 HTML 工具页时，必须先读 [tools/TOOL_PAGE_GUIDE.md](tools/TOOL_PAGE_GUIDE.md) 并遵循，交付前按文末清单自查。
+- 工具页所有文字严禁小于 **11px**（含徽章、时间码、刻度、伪元素和精简/窄屏模式）；新增工具或调整入口、能力、维护状态时，必须更新 `tools/catalog.js` 与工具 README，让 [工具功能介绍页](tools/index.html) 保持准确。
+- 工具 Markdown 展示复用 `tools/shared/` 的成熟库封装（Marked + DOMPurify），不再手写逐页正则解析器；使用说明页内阅读、保留源文件入口，原 README 是真源，离线副本须生成并检查新鲜度。
+- OCR 确认页是工具控件的 **style 基准**，精简开关等同类控件必须复用原结构、尺寸与状态样式，不自行改造；精简按任务裁剪辅助信息（核对清单只留标题/勾选，看板只留标题/忽略/状态），不能只缩小字号。
 
 ## PR 描述：先让 reviewer 看懂
 
 仅在维护者明确要求时提交、推送或创建 PR；正文写整体改动，不复述 commit 流水账。
+提交 PR 前，先将最新的 `main` 合并到当前分支，并解决所有合并冲突。
 
 1. **先说问题和结果**：标题写用户可感知的修复；开头两句交代触发场景、旧行为与期望行为。路径、布局或数据问题优先用一个最小前后对照，不铺背景。
 2. **正文默认四段**：「为什么改」→「改了什么」→「验证」→「边界 / 待确认」。目标是首屏能判断目的与风险；每段 2–4 条，每组最多 5 条。简单 PR 可合并小节，不为凑模板加内容。
@@ -253,7 +259,9 @@ git diff --name-status
 
 创建 GitHub Release 前必须核对 `CHANGELOG.md`：对应版本条目必须已经归档当前发布内容，并用 `scripts/prepare_release_notes.py` 生成、检查实际 Release notes；不能仅因 tag 已创建就视为发布完成。
 
-人工更新正文只维护在 CHANGELOG；正式版用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 生成并提交 `docs/releases/<版本>.md`，发布前运行 `--check-doc` 与 `--output PATH` 检查实际 notes。beta / rc 不新增归档，发布正文直接读取 CL；旧 beta 归档仅保留追溯，官网与更新索引不收录。发布前改 CL 后必须重生成，不手改版本文档。正式版在 CL 中完整汇总 beta；小版本可通过 CL 的 `<!-- release-base: X.Y.0 -->` 引用同系列正式版内容。官网读取归档、固定版本图片与实际发布附件，构建生成物不入库。详见[发布管线](docs/INDEX.md#engineering-releases)。
+正式版发包收尾必须分别核对 **GitHub Release** 与 **官网**：Release 已公开、发布标记和预期附件状态/大小正确、实际正文与生成预览一致；官网 `/releases/index.json` 包含本次版本且 `latest_stable` 与版本排序一致，本次 `notes.json` 版本/正文正确、详情页可访问。两层均通过才报告「发布全部完成」，不能以 tag 推送、打包成功或 Pages 部署 API success 代替。官网校验使用 `scripts/verify_release_site.py --base-url https://moyf.github.io/moys-asr-workflow --expected-tag vVERSION`，允许有界等待部署传播；超时/失败明确报告「安装包已发布，官网待同步」，保留最后错误与验证日志。只重试 Pages workflow 并填写本次 `expected_tag`，不为官网故障重新打包、撤回 Release 或移动 tag；重试后重新核对实际公开地址，旧失败 run 不会自动转绿。测试版不要求刷新正式版索引，不能将上述正式版规则套用于 beta / rc。
+
+人工更新正文只维护在 CHANGELOG；正式版用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 生成并提交 `docs/releases/<版本>.md`，发布前运行 `--check-doc` 与 `--output PATH` 检查实际 notes。beta / rc 不新增归档，发布正文直接读取 CL；旧 beta 归档仅保留追溯，官网与更新索引不收录。发布前改 CL 后必须重生成，不手改版本文档。正式版在 CL 中完整汇总 beta；新发布的补丁版本（`X.Y.Z`，`Z > 0`）必须在 CL 中写 `<!-- release-base: X.Y.0 -->`，引用同系列正式 `X.Y.0`。补丁归档仍只存增量；最终 Release 保留下载与使用指引，随后以一级标题 `# 修复版本说明` 展示本补丁正文、`# 大版本更新特性` 展示基础版本完整正文（仅一次）。此要求由发布文档约定保证，不追溯强制重写历史无 base 的归档；历史无 base 的正式版、主要版本与 beta / rc 保持原有结构。官网读取归档、固定版本图片与实际发布附件，构建生成物不入库。详见[发布管线](docs/INDEX.md#engineering-releases)。
 
 Release Markdown 中，粗体闭合标记 `**` 与后续标点或正文之间必须留一个空格，标点后继续正文时也要留一个空格；禁止写成 `- **这个文字**：说明`，应写成 `- **这个文字** ： 说明`，避免 Markdown 渲染异常。
 

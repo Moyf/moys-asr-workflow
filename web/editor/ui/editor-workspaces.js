@@ -151,7 +151,7 @@ export function initMaweWorkspaces() {
       MaweBoot.SERVER_CONFIG.savedWorkspaces = result.savedWorkspaces || {};
       MaweBoot.SERVER_CONFIG.presetWorkspaces = result.presetWorkspaces || {};
     } catch (error) {
-      MaweHint.flashHint(`记住工作区导航失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`记住工作区导航失败：${error.message || error}`, 'warning', { error });
     }
   }
 
@@ -192,7 +192,7 @@ export function initMaweWorkspaces() {
       syncWorkspaceControls();
       MaweHint.flashHint(saveAs ? `已另存工作区：${displayName}` : `已保存工作区：${displayName}`, 'success');
     } catch (error) {
-      MaweHint.flashHint(`保存工作区失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`保存工作区失败：${error.message || error}`, 'warning', { error });
     } finally {
       if (button) button.disabled = false;
     }
@@ -211,7 +211,7 @@ export function initMaweWorkspaces() {
       syncWorkspaceControls();
       MaweHint.flashHint(`已删除工作区：${name}`, 'success');
     } catch (error) {
-      MaweHint.flashHint(`删除工作区失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`删除工作区失败：${error.message || error}`, 'warning', { error });
     } finally {
       deleteWorkspaceButton.disabled = false;
     }
@@ -241,7 +241,7 @@ export function initMaweWorkspaces() {
       refreshWorkspaceSelect();
       syncWorkspaceControls();
       void updateServerWorkspaceSettings({ activeWorkspaceName: name }).catch((error) => {
-        MaweHint.flashHint(`记住工作区失败：${error.message || error}`, 'warning');
+        MaweHint.flashHint(`记住工作区失败：${error.message || error}`, 'warning', { error });
       });
       MaweHint.flashHint(`已应用工作区：${name}`, 'success');
       return;
@@ -261,7 +261,7 @@ export function initMaweWorkspaces() {
     refreshWorkspaceSelect();
     syncWorkspaceControls();
     void updateServerWorkspaceSettings({ activeWorkspaceName: '' }).catch((error) => {
-      MaweHint.flashHint(`记住工作区失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`记住工作区失败：${error.message || error}`, 'warning', { error });
     });
   }
 
@@ -300,7 +300,7 @@ export function initMaweWorkspaces() {
           void updateServerWorkspaceSettings({ resetPresetWorkspace: preset }).then(() => {
             MaweHint.flashHint(`已恢复「${preset}」默认工作区`, 'success');
           }).catch((error) => {
-            MaweHint.flashHint(`重置工作区失败：${error.message || error}`, 'warning');
+            MaweHint.flashHint(`重置工作区失败：${error.message || error}`, 'warning', { error });
           });
         }
         syncWorkspaceControls();
@@ -349,7 +349,7 @@ export function initMaweWorkspaces() {
         MaweBoot.DATA.workspace = MaweCoreState.waveformEditor.getLayoutData();
         MaweHint.flashHint(`已导入工作区：${file.name}`, 'success');
       } catch (error) {
-        MaweHint.flashHint(`工作区导入失败：${error.message || error}`, 'warning');
+        MaweHint.flashHint(`工作区导入失败：${error.message || error}`, 'warning', { error });
       }
     });
     if (MaweBoot.SERVER_CONFIG?.settingsUrl) return;  // 服务器版的下拉选择由工作区库接管

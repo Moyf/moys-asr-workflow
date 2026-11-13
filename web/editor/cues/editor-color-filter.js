@@ -1,3 +1,4 @@
+import { speakerName, updateCueColorPresentation, updateCueStickerPresentation } from './editor-cue-elements.js';
 import { commitCuePanelEdit, renderCurrentCuePanel } from './editor-cue-panel.js';
 import { applySearch } from './editor-search.js';
 import { clearSelection, isHiddenDisabled, updateMultiSelectionClasses } from './editor-selection.js';
@@ -52,7 +53,7 @@ export function initMaweColorFilter() {
     speakerFilterSelection = next && next.size ? new Set(next) : null;
     colorFilterButton?.classList.toggle('filter-active', Boolean((colorFilterSelection && !colorFilterSuspended()) || speakerFilterSelection));
     renderColorFilterMenu();
-    MaweSearch.applySearch(MaweDom.searchEl.value);
+    applySearch(MaweDom.searchEl.value);
   }
 
    // null = 不过滤；Set<string> = 仅显示这些颜色键
@@ -161,7 +162,7 @@ export function initMaweColorFilter() {
       const name = document.createElement('span');
       name.className = 'color-name';
       name.dataset.speakerProjectContent = '';
-      name.textContent = speaker.id === null ? MaweCueElements.speakerName(null) : `${MaweCueElements.speakerName(speaker)}（${speaker.id}）`;
+      name.textContent = speaker.id === null ? speakerName(null) : `${speakerName(speaker)}（${speaker.id}）`;
       label.dataset.speakerProjectContent = '';
       label.title = window.MAWE_I18N?.language === 'en'
         ? `${name.textContent}: ${count} subtitles` : `${name.textContent}：${count} 条字幕`;
@@ -302,7 +303,7 @@ export function initMaweColorFilter() {
       const segment = Number.isInteger(overlayIndex)
         ? getOverlayTrack()?.segments?.[overlayIndex]
         : null;
-      if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
+      if (segment) updateCueColorPresentation(el, colorBar, segment);
       return;
     }
     if (el.dataset.extIdx != null && el.dataset.idx == null) {
@@ -310,7 +311,7 @@ export function initMaweColorFilter() {
       const segment = Number.isInteger(extensionIndex)
         ? extensionTrack?.segments?.[extensionIndex]
         : null;
-      if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
+      if (segment) updateCueColorPresentation(el, colorBar, segment);
       return;
     }
     const mainIndex = el.dataset.idx != null
@@ -319,7 +320,7 @@ export function initMaweColorFilter() {
     const segment = Number.isInteger(mainIndex) && mainIndex >= 0
       ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex]
       : null;
-    if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
+    if (segment) updateCueColorPresentation(el, colorBar, segment);
   });
 }
 
@@ -336,7 +337,7 @@ export function initMaweColorFilter() {
       const segment = Number.isInteger(overlayIndex)
         ? getOverlayTrack()?.segments?.[overlayIndex]
         : null;
-      if (segment) MaweCueElements.updateCueStickerPresentation(el, slotEl, segment, overlayIndex, { overlayTrack: true });
+      if (segment) updateCueStickerPresentation(el, slotEl, segment, overlayIndex, { overlayTrack: true });
       return;
     }
     const isExtension = el.dataset.extIdx != null && el.dataset.idx == null;
@@ -345,7 +346,7 @@ export function initMaweColorFilter() {
       ? (Number.isInteger(index) ? extensionTrack?.segments?.[index] : null)
       : (Number.isInteger(index) && index >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[index] : null);
     if (segment) {
-      MaweCueElements.updateCueStickerPresentation(el, slotEl, segment, index, {
+      updateCueStickerPresentation(el, slotEl, segment, index, {
         extensionTrack: isExtension ? extensionTrack : null,
       });
     }
@@ -446,6 +447,7 @@ export function initMaweColorFilter() {
 }
 
 export function COLOR_FILTER_DEFAULT_KEY(...args) { return window.MaweColorFilter.COLOR_FILTER_DEFAULT_KEY(...args); }
+export function speakerMatches(...args) { return window.MaweColorFilter.speakerMatches(...args); }
 export function colorFilterDropdown(...args) { return window.MaweColorFilter.colorFilterDropdown(...args); }
 export function colorFilterButton(...args) { return window.MaweColorFilter.colorFilterButton(...args); }
 export function colorFilterMenu(...args) { return window.MaweColorFilter.colorFilterMenu(...args); }

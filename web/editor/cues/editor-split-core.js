@@ -1,7 +1,21 @@
+import { fmtShort, rememberTemporaryVisibleSplitCues } from './editor-cue-elements.js';
+import { captureCueListVisualAnchor } from './editor-cue-list-anchor.js';
+import { commitCuePanelEdit } from './editor-cue-panel.js';
+import { caretCharFromPoint, finishEdit } from './editor-inline-edit.js';
+import { clearSelection, selectOnly, selectOnlyExtension } from './editor-selection.js';
+
 // 拆分核心：拆分点计算、字词时间码回退与拆分会话状态。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweSplitCore 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// 拆分核心：拆分点计算、字词时间码回退与拆分会话状态。 ESM init 模块：initMaweSplitCore 在原清单位次执行原 IIFE 体（挂
+// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
+// window.MaweSplitCore 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
+// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+
+// window.MaweSplitCore 冻结门面——classic 侧出接口）；底部具名导出经门面在调用时转发，
+// 兄弟模块可静态 import。
+export function initMaweSplitCore() {
 (function initMaweSplitCore(global) {
   'use strict';
 
@@ -899,7 +913,10 @@
   const initialTime = Number.isFinite(initial.timeMs)
     ? initial.timeMs
     : splitTimeForTextOffset(extension, initial.extensionOffset ?? Math.floor(String(extension.text || '').length / 2));
-  const fixedCutMs = Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
+  // 从文字气泡进入时，timeMs 只用于定位视觉反馈；移动文字断点应重新估算时间。
+  // 波形指针进入仍固定绝对时间，不随字幕文字断点调整。
+  const fixedCutMs = initial.timeSource === 'text'
+    ? null : Number.isFinite(initial.timeMs) ? Math.round(initial.timeMs) : null;
   const initialOffset = hasInitialTextPosition
     ? window.MaweOverlaySplitMerge.splitOffsetNearTextPositionForModal(extension.text, initial.extensionOffset, extensionMode)
     : window.AsrEditorUtils.nearestSubtitleSplitOffset(
@@ -955,7 +972,7 @@
 
   function splitLaneSegment(state, lane) {
     if (lane === 'main') return state?.mainIndex >= 0 ? window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[state.mainIndex] : null;
-    return MaweMultiSubtitleCore.extensionSegmentById(state?.extensionId, MaweMultiSubtitleCore.getExtensionTrack(state?.trackId));
+    return MaweMultiSubtitleCore.extensionSegmentById(state?.extensionId, window.MaweOverlaySplitMerge.splitStateTrack(state));
   }
 
 
@@ -1342,7 +1359,7 @@
           updateLinkedSplitPreview(Number(gap.dataset.offset), lane);
           return;
         }
-        const rawOffset = MaweInlineEdit.caretCharFromPoint(textEl, event.clientX, event.clientY);
+        const rawOffset = caretCharFromPoint(textEl, event.clientX, event.clientY);
         if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
       };
       textEl.onclick = (event) => {
@@ -1357,7 +1374,7 @@
         const gap = target?.closest?.('.multi-subtitle-split-gap');
         const rawOffset = gap && textEl.contains(gap)
           ? Number(gap.dataset.offset)
-          : MaweInlineEdit.caretCharFromPoint(textEl, event.clientX, event.clientY);
+          : caretCharFromPoint(textEl, event.clientX, event.clientY);
         if (rawOffset != null) updateLinkedSplitPreview(rawOffset, lane);
         current.lockedLanes[lane] = true;
         updateLinkedSplitLockVisual();
@@ -1395,7 +1412,7 @@
       : state.mainInteractive ? 'main' : 'extension');
   updateLinkedSplitPreview(
     state.kind === 'main' ? state.mainOffset
-      : state.kind === 'extension' ? state.offset : state.mainOffset,
+      : state.kind === 'extension' || state.kind === 'overlay' ? state.offset : state.mainOffset,
     initialLane,
   );
   // 弹窗打开即聚焦初始 lane，让 WASD/方向键/Space 直接可用；
@@ -1595,16 +1612,16 @@
   updateSplitLaneVisual(state, 'extension');
   if (MaweDom.multiSubtitleSplitMeta) {
     if (mainOnly) {
-      renderSplitMeta(`主轨：${MaweMultiSubtitleCore.splitModeLabel(state.mainMode)} · 切点 ${MaweCueElements.fmtShort(state.mainCutMs)} · 字符位置 ${state.mainOffset ?? '—'}`, state);
+      renderSplitMeta(`主轨：${MaweMultiSubtitleCore.splitModeLabel(state.mainMode)} · 切点 ${fmtShort(state.mainCutMs)} · 字符位置 ${state.mainOffset ?? '—'}`, state);
     } else if (extensionOnly) {
-      renderSplitMeta(`副轨：${MaweMultiSubtitleCore.splitModeLabel(state.extensionMode)} · 切点 ${MaweCueElements.fmtShort(state.extensionCutMs)}`, state);
+      renderSplitMeta(`副轨：${MaweMultiSubtitleCore.splitModeLabel(state.extensionMode)} · 切点 ${fmtShort(state.extensionCutMs)}`, state);
     } else {
       const mainLabel = state.mainTimestampLocked
-        ? `⌚️主轨时间码锚点 ${MaweCueElements.fmtShort(state.mainCutMs)}`
+        ? `⌚️主轨时间码锚点 ${fmtShort(state.mainCutMs)}`
         : state.mainInteractive
           ? `主轨文字断点 ${state.mainOffset ?? '—'}`
-          : `主轨字词锚点 ${MaweCueElements.fmtShort(state.mainCutMs)}`;
-      renderSplitMeta(`${mainLabel} · 副轨文字断点 ${state.offset ?? '—'} · 共用绝对切点 ${MaweCueElements.fmtShort(state.cutMs)}`, state);
+          : `主轨字词锚点 ${fmtShort(state.mainCutMs)}`;
+      renderSplitMeta(`${mainLabel} · 副轨文字断点 ${state.offset ?? '—'} · 共用绝对切点 ${fmtShort(state.cutMs)}`, state);
     }
   }
   if (MaweDom.multiSubtitleSplitPreview) {
@@ -1633,6 +1650,9 @@
   if (MaweDom.multiSubtitleSplitConfirm) {
     MaweDom.multiSubtitleSplitConfirm.disabled = !valid && !state.mainOnlyFallbackEligible;
   }
+  // classic 时代从 dom-panels 全局提升取元素；init 化后改为调用时
+  // 直查（该元素未列入 MaweDom 门面，属于可选增强控件）。
+  const multiSubtitleSplitDuplicate = document.getElementById('multi-subtitle-split-duplicate');
   if (multiSubtitleSplitDuplicate) {
     multiSubtitleSplitDuplicate.disabled = !state.duplicateTimingValid;
   }
@@ -1701,7 +1721,7 @@
 ) {
   // 波形入口可能是在当前字幕面板仍有未提交编辑时触发；先完成面板编辑，
   // 再为“拆分”建立快照，确保一次撤销能回到拆分前的完整字幕状态。
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   const mainIndex = state.mainIndex;
   const main = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[mainIndex];
   if (!main) return false;
@@ -1737,14 +1757,14 @@
   if (!force && !duplicateText) window.MaweOverlaySplitMerge.flashSplitAlignmentHint(pair.alignment, { committed: true });
   const oldMainId = main.id;
   return MaweCommands.run(duplicateText ? '拆分字幕并保留原文' : '拆分字幕', (command) => {
-    MaweSelection.clearSelection({ commitCuePanel: false });
+    clearSelection({ commitCuePanel: false });
     MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], []);
     replaceSegmentWithSplit(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, mainIndex, pair);
     MaweMultiSubtitleCore.markMainSegmentsDirty([pair.left, pair.right]);
-    MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
+    rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
     closeLinkedSplitModal();
     command.commit({ cueList: true });
-    MaweSelection.selectOnly(mainIndex + 1);
+    selectOnly(mainIndex + 1);
     MaweSelection.lastClickedIdx = mainIndex + 1;
     MaweViewUpdates.invalidate({ preview: 'update' });
     flashSplitFeedback({
@@ -1758,6 +1778,7 @@
     // 弹窗提交的刀光位置由唤起来源决定：列表唤起留在列表，其余落在波形最终切点。
     MaweNinja.triggerNinjaSplitFeedback(MaweNinja.ninjaModalSplitPoint(state, splitMs, 'main'));
     if (successMessage) MaweHint.flashHint(successMessage, 'success');
+    state.onQuickEditSplitComplete?.(mainIndex + 1);
     return true;
   }, { captureView: true });
 }
@@ -1840,14 +1861,14 @@
     MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [oldExtensionId]);
     replaceSegmentWithSplit(track.segments, extensionIndex, pair);
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweCueElements.rememberTemporaryVisibleSplitCues({
+    rememberTemporaryVisibleSplitCues({
       extensionSegments: [pair.left, pair.right],
       extensionTrackId: track.id,
     });
     closeLinkedSplitModal();
-    MaweSelection.clearSelection({ commitCuePanel: false });
+    clearSelection({ commitCuePanel: false });
     command.commit({ cueList: true });
-    MaweSelection.selectOnlyExtension(extensionIndex + 1);
+    selectOnlyExtension(extensionIndex + 1);
     MaweSelection.lastClickedExtensionIdx = extensionIndex + 1;
     MaweViewUpdates.invalidate({ preview: 'update' });
     flashSplitFeedback({
@@ -1865,6 +1886,7 @@
         : '已按选择的断点拆分副字幕'),
       'success',
     );
+    state.onQuickEditSplitComplete?.(extensionIndex + 1);
     return true;
   }, { captureView: true });
 }
@@ -1982,15 +2004,15 @@
     track.enabled = true;
     MaweMultiSubtitleCore.markMainSegmentsDirty([mainPair.left, mainPair.right]);
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweCueElements.rememberTemporaryVisibleSplitCues({
+    rememberTemporaryVisibleSplitCues({
       mainSegments: [mainPair.left, mainPair.right],
       extensionSegments: [extensionPair.left, extensionPair.right],
       extensionTrackId: track.id,
     });
     closeLinkedSplitModal();
-    MaweSelection.clearSelection({ commitCuePanel: false });
+    clearSelection({ commitCuePanel: false });
     command.commit({ cueList: true });
-    MaweSelection.selectOnly(mainIndex);
+    selectOnly(mainIndex);
     MaweSelection.lastClickedIdx = mainIndex;
     MaweViewUpdates.invalidate({ preview: 'update' });
     flashSplitFeedback({
@@ -2015,6 +2037,7 @@
         : '已按同一绝对时间切点联动拆分',
       'success',
     );
+    state.onQuickEditSplitComplete?.(mainIndex + 1);
   }, { captureView: true });
 }
 
@@ -2049,7 +2072,7 @@
     } else {
       const sel = window.getSelection();
       if (!sel.rangeCount) {
-        MaweInlineEdit.finishEdit(false);
+        finishEdit(false);
         return false;
       }
       const range = sel.getRangeAt(0);
@@ -2069,7 +2092,7 @@
     }
 
     if (MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.bindingForMainIndex(idx)) {
-      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) finishEdit(false);
       pendingLinkedSplit = linkedSplitState(idx, {
         mainOffset: cursorOffset,
         feedbackPoint: ninjaFeedbackPoint,
@@ -2083,7 +2106,7 @@
     }
 
     if (cursorOffset <= 0 || cursorOffset >= fullText.length) {
-      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) finishEdit(false);
       MaweHint.flashHint('光标必须在词与词之间才能拆分', 'invalid');
       return false;
     }
@@ -2122,7 +2145,7 @@
       rightText = fullText;
     }
     if (!leftText || !rightText) {
-      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) finishEdit(false);
       MaweHint.flashHint('拆分后任一段为空，已取消', 'warning');
       return false;
     }
@@ -2130,7 +2153,7 @@
     // 原字幕总时长不足 200ms 时，无法在原时间范围内让两侧都达到 100ms；
     // 这和“切点靠边、可通过再次按键强制钳制”的情况不同。
     if (seg.end - seg.start < 200) {
-      if (!explicitSplit) MaweInlineEdit.finishEdit(false);
+      if (!explicitSplit) finishEdit(false);
       MaweHint.flashHint('字幕时长不足 200ms，无法拆分', 'warning');
       return false;
     }
@@ -2180,7 +2203,7 @@
     if (force) {
       const forcedCut = forceSplitCutForSegments([seg], splitMs);
       if (!Number.isFinite(forcedCut)) {
-        if (!explicitSplit) MaweInlineEdit.finishEdit(false);
+        if (!explicitSplit) finishEdit(false);
         MaweHint.flashHint('字幕时长不足 200ms，无法让拆分后的两侧都达到 100ms', 'warning');
         return false;
       }
@@ -2237,7 +2260,7 @@
     // 当前字幕被累计行高误差顶走。列表来源的拆分因此保存原行的屏幕位置，
     // 重绘后再用左半段恢复这个视觉锚点。
     const cueListAnchor = listFeedback
-      ? suppliedCueListAnchor || MaweCueListAnchor.captureCueListVisualAnchor(el)
+      ? suppliedCueListAnchor || captureCueListVisualAnchor(el)
       : null;
 
     if (explicitSplit) {
@@ -2253,15 +2276,15 @@
     return MaweCommands.run(
       duplicateSplit ? '复制拆分字幕' : progressiveSplit ? '渐进拆分字幕' : '拆分字幕',
       (command) => {
-      MaweSelection.clearSelection({ silent: true });
+      clearSelection({ silent: true });
       // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
       // 只移除这条关系，保留隐藏的副字幕供用户重新绑定。
       MaweMultiSubtitleCore.removeBindingsForSegmentIds([seg.id], []);
       replaceSegmentWithSplit(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, idx, { left: leftSeg, right: rightSeg });
 
-      MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
+      rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
       command.commit({ cueList: true, cueListAnchor });
-      MaweSelection.selectOnly(idx + 1);
+      selectOnly(idx + 1);
       // 拆分后后半段是新的视觉选中项，也必须成为 Shift+点击的范围锚点。
       MaweSelection.lastClickedIdx = idx + 1;
       // 列表来源（B 键悬停等）沿用列表光标坐标；编辑区 Ctrl+Enter 等其余来源
@@ -2391,3 +2414,58 @@
     flashSplitFeedback
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function splitTimeForTextOffset(...args) { return window.MaweSplitCore.splitTimeForTextOffset(...args); }
+export function shouldUseMainSplitTimestamps(...args) { return window.MaweSplitCore.shouldUseMainSplitTimestamps(...args); }
+export function notifyMainSplitTimestampFallback(...args) { return window.MaweSplitCore.notifyMainSplitTimestampFallback(...args); }
+export function splitOffsetNearTime(...args) { return window.MaweSplitCore.splitOffsetNearTime(...args); }
+export function splitOffsetNearTextPosition(...args) { return window.MaweSplitCore.splitOffsetNearTextPosition(...args); }
+export function cleanSplitItems(...args) { return window.MaweSplitCore.cleanSplitItems(...args); }
+export function forceSplitCutForSegments(...args) { return window.MaweSplitCore.forceSplitCutForSegments(...args); }
+export function forcedSplitRetryHint(...args) { return window.MaweSplitCore.forcedSplitRetryHint(...args); }
+export function armForcedSplit(...args) { return window.MaweSplitCore.armForcedSplit(...args); }
+export function splitItemsAtChar(...args) { return window.MaweSplitCore.splitItemsAtChar(...args); }
+export function splitStyledTextParts(...args) { return window.MaweSplitCore.splitStyledTextParts(...args); }
+export function buildSplitPair(...args) { return window.MaweSplitCore.buildSplitPair(...args); }
+export function replaceSegmentWithSplit(...args) { return window.MaweSplitCore.replaceSegmentWithSplit(...args); }
+export function linkedSplitState(...args) { return window.MaweSplitCore.linkedSplitState(...args); }
+export function mainWaveformSplitState(...args) { return window.MaweSplitCore.mainWaveformSplitState(...args); }
+export function extensionOnlySplitState(...args) { return window.MaweSplitCore.extensionOnlySplitState(...args); }
+export function splitLaneElements(...args) { return window.MaweSplitCore.splitLaneElements(...args); }
+export function splitLaneLocked(...args) { return window.MaweSplitCore.splitLaneLocked(...args); }
+export function splitLaneUsesMainTimestamp(...args) { return window.MaweSplitCore.splitLaneUsesMainTimestamp(...args); }
+export function splitLaneKeyboardInteractive(...args) { return window.MaweSplitCore.splitLaneKeyboardInteractive(...args); }
+export function splitLaneSegment(...args) { return window.MaweSplitCore.splitLaneSegment(...args); }
+export function stepSplitLaneOffset(...args) { return window.MaweSplitCore.stepSplitLaneOffset(...args); }
+export function splitLaneGapLines(...args) { return window.MaweSplitCore.splitLaneGapLines(...args); }
+export function verticalSplitLaneOffset(...args) { return window.MaweSplitCore.verticalSplitLaneOffset(...args); }
+export function splitKeyboardActiveLane(...args) { return window.MaweSplitCore.splitKeyboardActiveLane(...args); }
+export function splitLaneVisible(...args) { return window.MaweSplitCore.splitLaneVisible(...args); }
+export function focusSplitLane(...args) { return window.MaweSplitCore.focusSplitLane(...args); }
+export function splitKeyboardSwitchLane(...args) { return window.MaweSplitCore.splitKeyboardSwitchLane(...args); }
+export function toggleSplitLaneKeyboardLock(...args) { return window.MaweSplitCore.toggleSplitLaneKeyboardLock(...args); }
+export function flashSplitLaneBlockedFeedback(...args) { return window.MaweSplitCore.flashSplitLaneBlockedFeedback(...args); }
+export function syncLinkedSplitTime(...args) { return window.MaweSplitCore.syncLinkedSplitTime(...args); }
+export function splitCutTime(...args) { return window.MaweSplitCore.splitCutTime(...args); }
+export function setSplitPreviewLine(...args) { return window.MaweSplitCore.setSplitPreviewLine(...args); }
+export function updateSplitLaneVisual(...args) { return window.MaweSplitCore.updateSplitLaneVisual(...args); }
+export function renderSplitLane(...args) { return window.MaweSplitCore.renderSplitLane(...args); }
+export function renderLinkedSplitText(...args) { return window.MaweSplitCore.renderLinkedSplitText(...args); }
+export function updateLinkedSplitLockVisual(...args) { return window.MaweSplitCore.updateLinkedSplitLockVisual(...args); }
+export function isSplitAutoSubmitEnabled(...args) { return window.MaweSplitCore.isSplitAutoSubmitEnabled(...args); }
+export function splitAutoSubmitReady(...args) { return window.MaweSplitCore.splitAutoSubmitReady(...args); }
+export function maybeAutoSubmitLinkedSplit(...args) { return window.MaweSplitCore.maybeAutoSubmitLinkedSplit(...args); }
+export function splitCutSourceHint(...args) { return window.MaweSplitCore.splitCutSourceHint(...args); }
+export function renderSplitMeta(...args) { return window.MaweSplitCore.renderSplitMeta(...args); }
+export function updateLinkedSplitPreview(...args) { return window.MaweSplitCore.updateLinkedSplitPreview(...args); }
+export function closeLinkedSplitModal(...args) { return window.MaweSplitCore.closeLinkedSplitModal(...args); }
+export function openMainWaveformSplitModal(...args) { return window.MaweSplitCore.openMainWaveformSplitModal(...args); }
+export function openExtensionSplitModal(...args) { return window.MaweSplitCore.openExtensionSplitModal(...args); }
+export function commitMainWaveformSplit(...args) { return window.MaweSplitCore.commitMainWaveformSplit(...args); }
+export function commitLinkedSplitMainOnly(...args) { return window.MaweSplitCore.commitLinkedSplitMainOnly(...args); }
+export function commitExtensionSplit(...args) { return window.MaweSplitCore.commitExtensionSplit(...args); }
+export function confirmLinkedSplit(...args) { return window.MaweSplitCore.confirmLinkedSplit(...args); }
+export function splitAtCursor(...args) { return window.MaweSplitCore.splitAtCursor(...args); }
+export function flashCueSplitAt(...args) { return window.MaweSplitCore.flashCueSplitAt(...args); }
+export function flashSplitFeedback(...args) { return window.MaweSplitCore.flashSplitFeedback(...args); }

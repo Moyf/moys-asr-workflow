@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
-import { plainModuleSource } from './helpers/init-module-source.mjs';
+import { initModuleSource, plainModuleSource } from './helpers/init-module-source.mjs';
 import { runtimeProject } from './helpers/runtime-project.mjs';
 import * as identity from '../web/shared/utils/speaker-identity.js';
 import { createEditorCommands } from '../web/editor/state/editor-commands.js';
@@ -50,7 +49,7 @@ function fixture({ main = [], secondary = [], overlay = [], bindings = [] } = {}
   };
   context.window = context;
   vm.createContext(context);
-  vm.runInContext(readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(initModuleSource('editor/cues/editor-segment-ops.js'), context);
   vm.runInContext(plainModuleSource('editor/cues/overlay-track.js'), context);
   return { data, context, effects, utils, api: context.MaweSegmentOps };
 }

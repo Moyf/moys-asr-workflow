@@ -1,3 +1,4 @@
+export function initExportTimelineModule() {
 // 时间线导出：工作区 JSON、Resolve/OTIO/otioz 与下载拷贝工具。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweExportTimeline 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -694,7 +695,7 @@
         desc: description, types: { 'application/zip': ['.otioz'] }
       });
     } catch (error) {
-      MaweHint.flashHint(`表情包 OTIOZ 导出失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`表情包 OTIOZ 导出失败：${error.message || error}`, 'warning', { error });
     }
   }
 
@@ -730,7 +731,7 @@
         desc: description, types: { 'application/zip': ['.otioz'] },
       }));
     } catch (error) {
-      MaweHint.flashHint(`${tr('时间线 OTIOZ 导出失败')}：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`${tr('时间线 OTIOZ 导出失败')}：${error.message || error}`, 'warning', { error });
       return false;
     }
   }
@@ -1079,3 +1080,4 @@
     copyText
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { projectModel } from '../helpers/runtime-project.mjs';
 import { getMainTrack, cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 
 let tempDir, server;
@@ -8,13 +9,13 @@ test.beforeAll(async () => {
   tempDir = makeTempDir('word-timing');
   const media = join(tempDir, 'synthetic.wav'), project = join(tempDir, 'word-timing.mosp');
   generateWav(media, 12);
-  writeFileSync(project, JSON.stringify({ media, waveform: generateWaveformPayload(12000), segments: [
+  writeFileSync(project, JSON.stringify(projectModel.importProject({ media, waveform: generateWaveformPayload(12000), segments: [
     { id: 'main-a', start: 500, end: 7000, text: '我很喜欢！', items: [
       { text: '我', start: 1000, end: 2500 }, { text: '很喜欢', start: 3000, end: 6000 },
     ] },
     { id: 'main-b', start: 7500, end: 8500, text: '没有时间码' },
     { id: 'main-c', start: 9000, end: 11000, text: '今天好开心', items: [{ text: '今天', start: 9200, end: 9700 }] },
-  ] }), 'utf8');
+  ] }).project), 'utf8');
   server = await startServer(project, media, await findFreePort());
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
@@ -144,7 +145,8 @@ test(`full word layout preserves sentence height, highlight and body dragging in
   await page.mouse.up();
   expect((await source(page)).start).toBeGreaterThan(before.start);
   await page.keyboard.press('ControlOrMeta+z');
-  expect(await source(page)).toEqual(before);
+  // v2 retains edit highlighting through undo; persisted cue content still restores exactly.
+  expect(await source(page)).toEqual({ ...before, _dirty: true });
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath(`word-full-${mode}.png`) });
 });
 }
@@ -451,7 +453,14 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
   const converted = await page.evaluate(() => ({
     segments: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments,
     extension: AsrEditorUtils.getExtensionTrack(MaweBoot.DATA), bindings: MaweBoot.DATA.bindings,
+    mainSelection: [...MaweSelection.selectedIdxs],
+    extensionSelection: [...MaweSelection.selectedExtensionIdxs],
   }));
+  expect(converted.mainSelection).toEqual([]);
+  expect(converted.extensionSelection).toEqual([]);
+  await expect(page.locator('.cue.selected, .multi-cue-column.selected')).toHaveCount(0);
+  await page.keyboard.press('Delete');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(4);
   expect(converted.segments.length).toBe(4);
   expect(converted.segments.slice(0, 2).map(s => s.text).join('')).toBe('我很喜欢！');
   expect(converted.segments[1].items[0].text).toBe('很喜欢！');
@@ -775,8 +784,9 @@ test('saving focused cue panel text syncs word labels before resetting the edit 
   const panel = page.locator('#cue-panel-text');
   await panel.fill('我最喜欢！');
   await panel.press('Control+s');
-  await expect.poll(() => page.evaluate(() => window.__savedWordLabelProject?.segments[0].text)).toBe('我最喜欢！');
-  expect(await page.evaluate(() => window.__savedWordLabelProject.segments[0].items.map(item => item.text)))
+  await expect.poll(() => page.evaluate(() => window.__savedWordLabelProject
+    ? AsrEditorUtils.getMainTrack(window.__savedWordLabelProject).segments[0].text : null)).toBe('我最喜欢！');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(window.__savedWordLabelProject).segments[0].items.map(item => item.text)))
     .toEqual(['我', '最喜欢！']);
   await expect(panel).toBeFocused();
   expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);

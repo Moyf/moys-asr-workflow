@@ -108,14 +108,46 @@ class ReleaseDocumentTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(metadata["base"], "2.0.0")
         self.assertNotIn("Major update", body)
         notes = build_release_notes(source, "v2.0.2", frozenset({"linux"}), self.releases)
-        self.assertLess(notes.index("- Patch"), notes.index("## 2.0 系列主要更新"))
+        headings = [line for line in notes.splitlines() if line.startswith("# ")]
+        self.assertEqual(headings, ["# 修复版本说明", "# 大版本更新特性"])
+        self.assertLess(notes.index("## 下载哪个版本？"), notes.index("## 如何使用"))
+        self.assertLess(notes.index("## 如何使用"), notes.index("# 修复版本说明"))
+        self.assertLess(notes.index("# 修复版本说明"), notes.index("## [2.0.2]"))
+        self.assertLess(notes.index("- Patch"), notes.index("# 大版本更新特性"))
+        self.assertLess(notes.index("# 大版本更新特性"), notes.index("## [2.0.0]"))
+        self.assertEqual(notes.count("## [2.0.0]"), 1)
         self.assertEqual(notes.count("- Major update"), 1)
+        self.assertNotIn("系列主要更新", notes)
         self.assertNotIn("Earlier patch", notes)
         self.assertNotIn("maw-release", notes)
         self.assertNotIn("release-base", notes)
         self.assertIn("/v2.0.0/docs/assets/view.webp", notes)
+        self.assertNotIn("/v2.0.2/docs/assets/view.webp", notes)
         self.assertIn("打包失败 😭", notes)
         self.assertNotIn("MAW-Linux-x86_64-v2.0.2.AppImage", notes)
+
+    def test_no_base_major_and_prereleases_keep_their_existing_note_structure(self) -> None:
+        source = (
+            "## [2.0.2] - 2026-10-12\n\n- Historical patch without base\n\n"
+            "## [2.0.0] - 2026-10-10\n\n- Major summary\n\n"
+            "## [2.0.3-beta.1] - 2026-10-13\n\n- Beta delta\n\n"
+            "## [2.0.3-rc.1] - 2026-10-14\n\n- Candidate delta\n"
+        )
+        self.write_document(source, "v2.0.2")
+        self.write_document(source, "v2.0.0")
+        for tag, expected in (("v2.0.2", "Historical patch without base"),
+                              ("v2.0.0", "Major summary"),
+                              ("v2.0.3-beta.1", "Beta delta"),
+                              ("v2.0.3-rc.1", "Candidate delta")):
+            with self.subTest(tag=tag):
+                notes = build_release_notes(source, tag, releases_dir=self.releases)
+                self.assertIn(expected, notes)
+                self.assertIn("## 下载哪个版本？", notes)
+                self.assertIn("## 如何使用", notes)
+                self.assertIn(f"## [{tag[1:]}]", notes)
+                self.assertNotIn("# 修复版本说明", notes)
+                self.assertNotIn("# 大版本更新特性", notes)
+                self.assertNotIn("系列主要更新", notes)
 
     def test_missing_stale_tampered_and_crlf_stable_documents_block_publication(self) -> None:
         source = "## [2.0.0] - 2026-10-12\n\n- Feature\n"

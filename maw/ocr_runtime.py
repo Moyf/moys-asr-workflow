@@ -19,7 +19,7 @@ from threading import Event
 
 from maw.console import configure_utf8_environment
 from maw.gui_platform import asset_path, restore_host_library_path
-from maw.postprocess_ocr import OcrDedupRequest
+from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.runtimes import OCR
 from maw.runtimes.base import (
     RuntimeEvent,
@@ -59,6 +59,7 @@ __all__ = [
     "ocr_runtime_python_path",
     "resolve_ocr_runtime_root",
     "run_ocr_in_runtime",
+    "run_ocr_scan_in_runtime",
 ]
 
 OcrStatus = Callable[[str, Mapping[str, int]], None]
@@ -239,6 +240,117 @@ def run_ocr_in_runtime(
         raise OcrRuntimeError(worker_error)
     if not result:
         raise OcrRuntimeError("OCR worker 没有返回处理结果。")
+    return result
+
+
+def run_ocr_scan_in_runtime(
+    video_path: Path | str,
+    *,
+    ffmpeg_path: Path | str,
+    duration_ms: int,
+    fps: float = 1.0,
+    region: OcrRegion | None = None,
+    model_id: str = OCR_MODEL_ID,
+    frames_dir: Path | str | None = None,
+    max_frames: int = 20000,
+    runtime_root: str | Path | None = None,
+    on_status: OcrStatus | None = None,
+    cancel_event: Event | None = None,
+) -> dict[str, object]:
+    """在托管环境里跑整段视频 OCR 扫描（worker ``scan`` 子命令）并收集识别块。"""
+
+    if isinstance(max_frames, bool) or not isinstance(max_frames, int) or max_frames <= 0:
+        raise ValueError("OCR 扫描 max_frames 必须是正整数")
+    _ = ocr_model_type(model_id)
+    status = managed_ocr_runtime_status(runtime_root)
+    if not status.ready:
+        raise OcrRuntimeError("OCR 模型尚未安装，请先打开设置下载安装 OCR 支持。")
+    worker = _runtime_bundle_path("ocr-runtime/maw/ocr_runtime_worker.py")
+    if not worker.is_file():
+        raise OcrRuntimeError(f"OCR 运行时助手缺失：{worker}")
+    scan_region = region or OcrRegion()
+    command = [
+        status.python_path,
+        str(worker),
+        "scan",
+        "--model-id",
+        model_id,
+        "--video-path",
+        str(video_path),
+        "--ffmpeg-path",
+        str(ffmpeg_path),
+        "--duration-ms",
+        str(int(duration_ms)),
+        "--fps",
+        str(float(fps)),
+        "--max-frames",
+        str(int(max_frames)),
+        "--region-mode",
+        scan_region.mode,
+        "--region-x1",
+        str(scan_region.x1),
+        "--region-y1",
+        str(scan_region.y1),
+        "--region-x2",
+        str(scan_region.x2),
+        "--region-y2",
+        str(scan_region.y2),
+    ]
+    _append_path(command, "--frames-dir", Path(frames_dir) if frames_dir else None)
+
+    result: dict[str, object] = {}
+    blocks: list[dict[str, object]] = []
+    worker_error = ""
+
+    def handle_line(line: str) -> None:
+        nonlocal worker_error
+        try:
+            message = json.loads(line)
+        except ValueError:
+            return
+        if not isinstance(message, Mapping):
+            return
+        message_type = message.get("type")
+        if message_type == "status":
+            key = str(message.get("key") or "ocr_scan_frame")
+            details = message.get("details")
+            if on_status is not None:
+                on_status(key, details if isinstance(details, Mapping) else {})
+        elif message_type == "blocks":
+            t_ms = message.get("tMs")
+            frame = message.get("frame")
+            for block in message.get("blocks") or []:
+                if isinstance(block, Mapping):
+                    blocks.append(
+                        {
+                            "text": str(block.get("text") or ""),
+                            "score": float(block.get("score") or 0.0),
+                            "box": list(block.get("box") or []),
+                            "tMs": int(t_ms) if isinstance(t_ms, int) else 0,
+                            "frame": str(frame) if frame else None,
+                        }
+                    )
+        elif message_type == "result":
+            result.update({str(key): value for key, value in message.items() if key != "type"})
+        elif message_type == "error":
+            worker_error = str(message.get("detail") or "OCR worker 运行失败")
+
+    _run_process(
+        command,
+        env=_runtime_env(resolve_ocr_runtime_root(runtime_root)),
+        cancel=cancel_event or Event(),
+        on_line=handle_line,
+        cwd=str(worker.parent.parent),
+        error_class=OcrRuntimeError,
+        cancelled_class=OcrRuntimeCancelled,
+        cancelled_message="OCR 运行环境操作已取消。",
+        message_prefix="OCR 运行环境",
+    )
+    if worker_error:
+        raise OcrRuntimeError(worker_error)
+    if not result:
+        raise OcrRuntimeError("OCR worker 没有返回处理结果。")
+    result["blocks"] = blocks
     return result
 
 

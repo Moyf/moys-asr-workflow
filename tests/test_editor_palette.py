@@ -29,10 +29,9 @@ class EditorPaletteInjectionTests(CompactContainerAssertions, unittest.TestCase)
         for name, value in COLOR_PALETTE_ALL:
             self.assertIn(json.dumps({"name": name, "value": value}, ensure_ascii=False), page)
 
-    def test_blank_editor_renderer_injects_current_palette(self) -> None:
-        # The committed portable copy is regenerated before releases, not on
-        # every source edit. Exercise the real blank renderer without writing it.
-        blank = edit.build_blank_html()
+    def test_local_blank_editor_renderer_injects_current_palette(self) -> None:
+        # Local Server rendering remains supported after the standalone entry retires.
+        blank = edit.render_empty_editor_page()
 
         assignment = "window.ASR_EDITOR_PALETTE = "
         self.assertIn(assignment, blank)

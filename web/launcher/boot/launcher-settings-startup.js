@@ -49,6 +49,11 @@ function openSettings(sectionId = "", focusId = "") {
   $("perVideoSubfolder").checked = Boolean(state.config.perVideoSubfolder);
   $("attachModelName").checked = state.config.attachModelName !== false;
   $("notifyOnComplete").checked = state.config.notifyOnComplete === true;
+  $("gapSplit").value = state.config.gapSplit || "";
+  $("minLen").value = state.config.minLen || "";
+  $("maxLen").value = state.config.maxLen || "";
+  $("minWords").value = state.config.minWords || "";
+  $("maxWords").value = state.config.maxWords || "";
   if (sectionId) {
     requestAnimationFrame(() => {
       // 只滚动 .settings-scroll 容器；scrollIntoView 会连带滚动 overflow:hidden 的
@@ -167,6 +172,11 @@ async function init() {
   fillSelect("provider", state.config.providers, state.config.providerId || "qwen");
   applyProvider(false);
   $("workspaceId").value = state.config.workspaceId || "";
+  $("gapSplit").value = state.config.gapSplit || "";
+  $("minLen").value = state.config.minLen || "";
+  $("maxLen").value = state.config.maxLen || "";
+  $("minWords").value = state.config.minWords || "";
+  $("maxWords").value = state.config.maxWords || "";
   syncTestRun(); syncThumbnailFields(); renderChevron("advancedCard"); renderChevron("serverCard"); renderLanguage();
   appendLog(window.MAWLauncher.backend === "real" ? "MAW launcher ready." : "[mock] Static browser demo mode enabled.");
   setStatus(t("ready"));

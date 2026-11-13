@@ -38,7 +38,15 @@ function showOverlayContextMenu(x, y, index) {
   };
   addItem('编辑文本', () => {
     MaweCuePanel.setCuePanelTarget('overlay', index);
-    MaweCuePanel.focusCuePanelText(index, 'overlay');
+    // 与波形双击一致：弹出快速编辑气泡（从字幕列表菜单打开时先滚动定位）；
+    // 气泡无法锚定时回退聚焦字幕面板文本框。
+    MaweCoreState.waveformEditor?.revealTime(Number(segment.start), true);
+    if (MaweCoreState.waveformEditor?.openCueQuickEditAtIndex) {
+      MaweCoreState.waveformEditor.openCueQuickEditAtIndex(
+        'overlay', index, () => MaweCuePanel.focusCuePanelText(index, 'overlay'));
+    } else {
+      MaweCuePanel.focusCuePanelText(index, 'overlay');
+    }
   });
   if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only') {
     addItem('跳转并播放', () => {
