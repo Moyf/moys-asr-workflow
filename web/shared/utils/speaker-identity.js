@@ -10,9 +10,32 @@ export function canMergeSpeakerSegments(segments) {
   return segments.length > 0 && segments.every(segment => (segment.speaker ?? null) === (segments[0]?.speaker ?? null));
 }
 
+// Main cues control explicitly bound secondary cues, regardless of visibility.
+// Do not infer bindings from overlap or expand secondary/overlay edits backwards.
+export function expandMainBoundCueRefs(project, refs) {
+  const targets = new Map();
+  const add = ref => targets.set(JSON.stringify([ref.track_id, ref.segment_id]), ref);
+  const mainSources = new Map();
+  for (const ref of refs) {
+    const track = project.tracks.find(track => track.id === ref.track_id);
+    if (!track?.segments.some(segment => segment.id === ref.segment_id)) throw new Error('Unknown subtitle reference');
+    add(ref);
+    if (track.role === 'main') {
+      if (!mainSources.has(track.id)) mainSources.set(track.id, new Set());
+      mainSources.get(track.id).add(ref.segment_id);
+    }
+  }
+  for (const binding of project.bindings ?? []) {
+    if (!mainSources.get(binding.source?.track_id)?.has(binding.source?.segment_id)) continue;
+    const track = project.tracks.find(track => track.id === binding.target?.track_id && track.role === 'secondary');
+    if (track?.segments.some(segment => segment.id === binding.target?.segment_id)) add(binding.target);
+  }
+  return [...targets.values()];
+}
+
 export function assignProjectSpeaker(project, refs, identity) {
   if (identity !== null && !project.speakers?.some(speaker => speaker.id === identity)) throw new Error('Unknown project speaker');
-  const targets = refs.map(ref => {
+  const targets = expandMainBoundCueRefs(project, refs).map(ref => {
     const segment = project.tracks.find(track => track.id === ref.track_id)?.segments.find(cue => cue.id === ref.segment_id);
     if (!segment) throw new Error('Unknown subtitle reference');
     return segment;

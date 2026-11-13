@@ -9,6 +9,8 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '副字幕说话人已按主字幕统一': 'Secondary subtitle speakers now match the main subtitles',
+    '不同说话人的字幕不能合并，请先统一归属': 'Subtitles with different speakers cannot be merged; assign them to the same speaker first.',
     '字幕轨道状态': 'Subtitle track status',
     '主字幕轨始终启用': 'The main subtitle track is always enabled',
     '关闭轨道会同时停止预览和导出，字幕数据会保留。': 'Disabling a track stops preview and export while keeping its subtitle data.',
@@ -2135,6 +2137,12 @@
     if (match) return `Merge ${match[1]} subtitles`;
     match = /^已合并\s+(\d+)\s+条副字幕(，原绑定已解除)?$/.exec(text);
     if (match) return `Merged ${match[1]} secondary subtitle${match[1] === '1' ? '' : 's'}${match[2] ? '; previous bindings were removed' : ''}`;
+    match = /^已合并\s+(\d+)\s+条(?:，(.+))?$/.exec(text);
+    if (match) return `Merged ${match[1]} subtitles${match[2] ? `; ${match[2].split('，').map(part => translateText(part, EN)).join('; ')}` : ''}`;
+    match = /^裁剪\s*(\d+)\s*条其他副字幕(并解除相关绑定)?$/.exec(text);
+    if (match) return `trimmed ${match[1]} other secondary subtitle${match[1] === '1' ? '' : 's'}${match[2] ? ' and removed related bindings' : ''}`;
+    match = /^删除\s*(\d+)\s*条副字幕(并解除相关绑定)?$/.exec(text);
+    if (match) return `deleted ${match[1]} secondary subtitle${match[1] === '1' ? '' : 's'}${match[2] ? ' and removed related bindings' : ''}`;
     match = /^已绑定主字幕\s+(\d+)\s+与副字幕\s+(\d+)$/.exec(text);
     if (match) return `Bound main subtitle ${match[1]} to secondary subtitle ${match[2]}`;
     match = /^已替换主字幕\s+(\d+)\s+的绑定，改为副字幕\s+(\d+)$/.exec(text);

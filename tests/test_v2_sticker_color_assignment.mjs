@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import { createUtilsModule as createGroups } from '../web/shared/utils/subtitle-groups.js';
 import { projectModel, runtimeProject } from './helpers/runtime-project.mjs';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+import { expandMainBoundCueRefs } from '../web/shared/utils/speaker-identity.js';
 
 function fixture() {
   const main = [0, 1, 2].map(index => ({ id: `m${index}`, start: index * 1000, end: (index + 1) * 1000,
@@ -19,7 +20,7 @@ function fixture() {
   const groups = createGroups({ cloneJsonValue: structuredClone });
   const context = {
     MaweBoot: { DATA: project },
-    AsrEditorUtils: { ...projectModel, ...groups },
+    AsrEditorUtils: { ...projectModel, ...groups, expandMainBoundCueRefs },
     MaweColors: { COLOR_BY_NAME: { blue: { name: 'blue', label: '蓝', value: '#00f' } } },
     MaweCommands: { run(_label, mutate) { return mutate(); } },
     MaweHint: { flashHint() {} },

@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildBrowserEditorFixture, cleanupTempDir, disableOnboarding, findFreePort,
-  generateWaveformPayload, makeTempDir, startStaticServer } from './helpers.mjs';
+  generateWav, generateWaveformPayload, makeTempDir, startServer, startStaticServer } from './helpers.mjs';
 
 let dir, server;
 test.beforeAll(async () => {
@@ -159,4 +159,159 @@ test('compact and normal row heights retain safe overlay bounds with word timing
     }
   }
   writeFileSync(info.outputPath('height-geometry.json'), JSON.stringify(readings, null, 2));
+});
+
+async function openMergeProject(page, bound = false) {
+  await openProject(page);
+  await page.evaluate(bound => {
+    MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration = true;
+    const project = structuredClone(MaweBoot.DATA);
+    project.speakers = Array.from({ length: 4 }, (_, i) => ({
+      id: `person-${i + 1}`, name: `Person ${i + 1}`, color: ['#d9a300', '#66bb6a', '#f07f6f', '#61a7fa'][i],
+    }));
+    project.speaker_shortcuts = { 1: 'person-1', 2: 'person-2' };
+    const cue = (id, start, end, speaker) => ({ id, start, end, speaker, text: id, items: [] });
+    project.tracks = [
+      { id: 'main', role: 'secondary', name: 'Secondary', enabled: true, segments: [
+        cue('outside-tolerance', 480, 1520, 'person-1'),
+        cue('secondary-a', 1720, 2760, 'person-4'), cue('secondary-b', 2760, 3880, 'person-3')] },
+      { id: 'extension-1', role: 'main', name: 'Primary', enabled: true, segments: [
+        cue('primary-a', 1240, 2050, 'person-2'), cue('primary-b', 2050, 3740, 'person-2')] },
+      { id: 'overlay', role: 'overlay', name: 'Overlay', enabled: true, segments: [] },
+    ];
+    project.bindings = [];
+    project.bilingual = { display_mode: 'both', active_track_id: 'main' };
+    if (bound) {
+      const primary = project.tracks.find(track => track.role === 'main');
+      const secondary = project.tracks.find(track => track.role === 'secondary');
+      for (let i = 0; i < 2; i++) project.bindings.push(AsrEditorUtils.buildSubtitleBinding(
+        primary.segments[i], secondary.segments[i + 1], secondary.id, null, primary.id, project.bindings));
+    }
+    MaweProjectLoad.applyCanonicalProject(project, 'synthetic-merge-conflict.mosp');
+  }, bound);
+}
+
+const mergeSnapshot = page => page.evaluate(() => ({
+  tracks: MaweBoot.DATA.tracks.map(track => ({ id: track.id, role: track.role,
+    segments: track.segments.map(({ id, start, end, text, speaker }) => ({ id, start, end, text, speaker: speaker ?? null })) })),
+  bindings: structuredClone(MaweBoot.DATA.bindings),
+}));
+
+test('same-speaker main merge overrides secondary identity conflicts and reports it', async ({ page }, info) => {
+  for (const language of ['zh', 'en']) {
+    await openMergeProject(page);
+    const before = await mergeSnapshot(page);
+    await page.evaluate(language => {
+      MAWE_I18N.applyLanguage(language);
+      MaweSegmentOps.mergeSegments([0, 1]);
+    }, language);
+    const after = await mergeSnapshot(page);
+    expect(after.tracks.find(track => track.role === 'main').segments).toHaveLength(1);
+    const secondary = after.tracks.find(track => track.role === 'secondary').segments;
+    expect(secondary).toHaveLength(2);
+    // It is excluded from the merge and retains its text/identity. Existing
+    // duration synchronization trims its trailing overlap with the merged pair.
+    expect(secondary[0]).toEqual({ ...before.tracks.find(track => track.role === 'secondary').segments[0], end: 1240 });
+    expect(secondary[1].speaker).toBe('person-2');
+    expect(secondary[1].text).toContain('secondary-a');
+    expect(secondary[1].text).toContain('secondary-b');
+    expect(after.bindings).toHaveLength(1);
+    await expect(page.locator('#hint-stack .hint-card').last()).toContainText(language === 'zh'
+      ? /副字幕.*说话人.*主字幕/ : /secondary.*speaker.*main/i);
+    if (language === 'en') await expect(page.locator('#hint-stack .hint-card').last()).not.toContainText(/[\u3400-\u9fff]/);
+    await page.locator('#hint-stack').screenshot({ path: info.outputPath(`primary-authority-${language}.png`) });
+    await page.locator('#undo-btn').click();
+    expect(await mergeSnapshot(page)).toEqual(before);
+    await page.locator('#redo-btn').click();
+    expect(await mergeSnapshot(page)).toEqual(after);
+  }
+});
+
+test('main assignments sync bound secondary only and remain one-way undoable', async ({ page }) => {
+  await openMergeProject(page, true);
+  const identities = () => page.evaluate(() => Object.fromEntries(MaweBoot.DATA.tracks.map(track =>
+    [track.role, track.segments.map(segment => segment.speaker ?? null)])));
+  const before = await identities();
+  await page.evaluate(() => MaweSpeakerLabels.assignIdentity([
+    { track_id: 'extension-1', segment_id: 'primary-a' },
+  ], 'person-1'));
+  expect(await identities()).toEqual({ main: ['person-1', 'person-2'], secondary: ['person-1', 'person-1', 'person-3'], overlay: [] });
+  await page.locator('#undo-btn').click();
+  expect(await identities()).toEqual(before);
+  await page.locator('#redo-btn').click();
+  await page.evaluate(() => MaweSpeakerLabels.assignIdentity([
+    { track_id: 'main', segment_id: 'secondary-a' },
+  ], 'person-4'));
+  expect((await identities()).main).toEqual(['person-1', 'person-2']);
+  await page.evaluate(() => MaweSpeakerLabels.clearIdentity([
+    { track_id: 'extension-1', segment_id: 'primary-a' },
+  ]));
+  expect(await identities()).toEqual({ main: [null, 'person-2'], secondary: ['person-1', null, 'person-3'], overlay: [] });
+  const colorResult = await page.evaluate(() => {
+    MaweSpeakerLabels.setAnnotationMode('color');
+    const byRole = role => MaweBoot.DATA.tracks.find(track => track.role === role);
+    MaweStickerPicker.assignColor([0], 'red');
+    const color = (role, index) => AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, byRole(role).segments[index], 'color');
+    return { primary: color('main', 0), bound: color('secondary', 1), unbound: color('secondary', 0) };
+  });
+  expect(colorResult.primary).toBeTruthy();
+  expect(colorResult.bound).toEqual(colorResult.primary);
+  expect(colorResult.unbound).toBeNull();
+  await page.evaluate(() => MaweStickerPicker.clearColorOnTargets([0]));
+  expect(await page.evaluate(() => MaweBoot.DATA.tracks.filter(track => track.role !== 'overlay')
+    .map(track => AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA, track.segments[track.role === 'main' ? 0 : 1], 'color')))).toEqual([null, null]);
+});
+
+test('bound speaker assignment and main-led merge survive server save and reopen', async ({ page }) => {
+  await openMergeProject(page, true);
+  const directory = makeTempDir('main-led-speaker-save');
+  let localServer;
+  try {
+    const media = join(directory, 'synthetic.wav'), projectPath = join(directory, 'project.mosp');
+    generateWav(media, 6);
+    const project = await page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA)));
+    project.media = media;
+    writeFileSync(projectPath, JSON.stringify(project));
+    localServer = await startServer(projectPath, media, await findFreePort());
+    await page.goto(localServer.url);
+    await page.evaluate(() => MaweSpeakerLabels.assignIdentity([
+      { track_id: 'extension-1', segment_id: 'primary-a' },
+    ], 'person-2'));
+    const save = async () => {
+      const response = page.waitForResponse(r => r.url().endsWith('/api/project') && r.request().method() === 'POST');
+      await page.keyboard.press('Control+s');
+      expect((await response).ok()).toBe(true);
+      return JSON.parse(readFileSync(projectPath, 'utf8'));
+    };
+    const assigned = await save();
+    expect(assigned.tracks.find(track => track.role === 'secondary').segments[1].speaker).toBe('person-2');
+    await page.reload();
+    await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA)?.segments?.length)).toBe(2);
+    await page.evaluate(() => MaweSegmentOps.mergeSegments([0, 1]));
+    const merged = await save();
+    expect(merged.tracks.find(track => track.role === 'main').segments).toHaveLength(1);
+    const secondary = merged.tracks.find(track => track.role === 'secondary').segments;
+    expect(secondary).toHaveLength(2);
+    expect(secondary[1].speaker).toBe('person-2');
+    await page.reload();
+    expect((await mergeSnapshot(page)).bindings).toEqual(merged.bindings);
+    expect(await page.evaluate(() => MaweBoot.DATA.tracks.find(track => track.role === 'secondary').segments[1].speaker)).toBe('person-2');
+    await page.evaluate(() => {
+      MaweSpeakerLabels.setAnnotationMode('color');
+      MaweStickerPicker.assignColor([0], 'red');
+    });
+    const colored = await save();
+    expect(colored.tracks.find(track => track.role === 'secondary').segments[1].speaker).toBe('person-2');
+    await page.reload();
+    const colors = await page.evaluate(() => {
+      const value = (role, index) => AsrEditorUtils.getSubtitleGroupValue(MaweBoot.DATA,
+        MaweBoot.DATA.tracks.find(track => track.role === role).segments[index], 'color');
+      return { primary: value('main', 0), bound: value('secondary', 1) };
+    });
+    expect(colors.primary).toBeTruthy();
+    expect(colors.bound).toEqual(colors.primary);
+  } finally {
+    await localServer?.stop();
+    cleanupTempDir(directory);
+  }
 });
