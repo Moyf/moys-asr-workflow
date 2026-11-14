@@ -1,4 +1,26 @@
 export function initWiringAssFrameModule() {
+// Deliberately project-change driven, never called by the playback/frame loop.
+function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
+  const emoji = /\p{Extended_Pictographic}|\p{Regional_Indicator}|[0-9#*]\uFE0F?\u20E3/u;
+  let queued = false;
+  function sync() {
+    if (!element) return;
+    if (!isAssMode()) { element.hidden = true; return; }
+    const data = getData() || {};
+    const groups = [data.segments, data.overlay_track?.segments,
+      ...(Array.isArray(data.multi_subtitle?.tracks)
+        ? data.multi_subtitle.tracks.map(track => track?.segments) : [])];
+    element.hidden = !groups.some(segments => Array.isArray(segments)
+      && segments.some(segment => emoji.test(String(segment?.text || ''))));
+  }
+  function schedule() {
+    if (!element || queued) return;
+    queued = true;
+    enqueue(() => { queued = false; sync(); });
+  }
+  return { sync, schedule };
+}
+
 // Paused Server media previews use the same native libass frame as the floating
 // comparison window. Playback/file:// keep the immediate CSS approximation.
 (function initMaweAssFrame(global) {
@@ -7,6 +29,12 @@ export function initWiringAssFrameModule() {
   const openButton = document.getElementById('ass-frame-preview-open');
   const quickOpenButton = document.getElementById('ass-frame-quick-open');
   const styleOpenButton = document.getElementById('ass-style-frame-preview-open');
+  const emojiWarning = createAssEmojiWarning({
+    element: document.getElementById('ass-emoji-warning'),
+    getData: () => global.MaweBoot?.DATA,
+    isAssMode: () => global.MaweSettings?.EDITOR_SETTINGS?.assMode === true,
+    enqueue: callback => Promise.resolve().then(callback),
+  });
   const windowEl = document.getElementById('ass-frame-window');
   if (!openButton || !windowEl) return;
   const imageEl = document.getElementById('ass-frame-image');
@@ -90,7 +118,7 @@ export function initWiringAssFrameModule() {
   }
 
   function snapshot() {
-    if (!enabled() || !frameAvailable()) return null;
+    if (!enabled() || !frameAvailable() || global.MaweAssFontAliases?.pending?.()) return null;
     const greenScreen = greenScreenPreview();
     // currentTime can sit between two frames. Seek at/before the presented
     // frame's PTS; rounding up can make FFmpeg discard it and choose the next.
@@ -270,6 +298,9 @@ export function initWiringAssFrameModule() {
   }
 
   function refreshDesired() {
+    // Do not create a partial-font snapshot or throw from the timer callback.
+    // The inventory-settled event below resumes automatic rendering.
+    if (global.MaweAssFontAliases?.pending?.()) return;
     if (!enabled() || !previewNeeded() || !frameAvailable() || !player.paused || player.seeking) return;
     if (autoRenderEnabled() && capabilityFailure) {
       hideStage();
@@ -304,6 +335,7 @@ export function initWiringAssFrameModule() {
   // capture：进行中不重复请求，期间的再次变化由 finally 合并补查）；
   // 自动渲染关闭时只刷新「画面已过期」提示，不主动渲染。
   function notifyProjectChanged() {
+    emojiWarning.schedule();
     if (!previewNeeded()) return;
     if (!timer) timer = global.setTimeout(() => { timer = 0; refreshDesired(); }, 200);
   }
@@ -378,6 +410,8 @@ export function initWiringAssFrameModule() {
   }
 
   async function renderAssFrame() {
+    await global.MaweAssFontAliases?.ensureCoverage?.();
+    await global.MaweAssFontAliases?.whenReady?.();
     const request = snapshot();
     if (!request) {
       setWindowStatus('请启用 ASS 字幕模式；浏览器本地视频请通过 Server 工程打开。', 'error');
@@ -411,6 +445,10 @@ export function initWiringAssFrameModule() {
   });
 
   function syncAssFrameControls() {
+    emojiWarning.sync();
+    if (global.MaweSettings?.EDITOR_SETTINGS?.assMode === true) {
+      void global.MaweAssFontAliases?.ensureCoverage?.();
+    }
     openButton.hidden = !enabled();
     if (quickOpenButton) quickOpenButton.hidden = !enabled();
     if (styleOpenButton) styleOpenButton.hidden = !enabled();
@@ -525,6 +563,7 @@ export function initWiringAssFrameModule() {
   }
 
   attachPlayerEvents();
+  document.addEventListener('mawe:ass-font-aliases-settled', notifyProjectChanged);
   renderButton?.addEventListener('click', () => void renderAssFrame());
   if (quickOpenButton) openButton.addEventListener('click', () => floatingPanel.toggle());
   styleOpenButton?.addEventListener('click', () => floatingPanel.open());

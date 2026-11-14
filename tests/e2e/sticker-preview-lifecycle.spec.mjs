@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { cleanupTempDir, closeSettingsPanels, disableOnboarding, findFreePort,
   generateWaveformPayload, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
 
-let directory, media, project, roots, server;
+let directory, media, project, projectContents, roots, server, releaseInventory;
 const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
 
 test.beforeAll(() => {
@@ -21,15 +21,18 @@ test.beforeAll(() => {
     "from PIL import Image; import sys; Image.new('RGB',(24,24),'red').save(sys.argv[1]); Image.new('RGB',(24,24),'blue').save(sys.argv[2])",
     ...roots.map(root => join(root, 'demo.png'))]);
   project = join(directory, 'legacy.mosp');
-  writeFileSync(project, JSON.stringify({ media: 'synthetic.mp4', sticker_root: roots[0],
+  projectContents = JSON.stringify({ media: 'synthetic.mp4', sticker_root: roots[0],
     segments: [
       { start: 0, end: 1000, text: '第一句',
         sticker: { name: 'demo', filename: 'demo.png', rel: 'demo.png', start: 0, end: 1000 } },
       { start: 1000, end: 2600, text: '第二句', sticker_ref: { name: 'demo', headIdx: 0 } },
-    ], waveform: generateWaveformPayload(4000) }));
+    ], waveform: generateWaveformPayload(4000) });
 });
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, info) => {
+  // ASS mode belongs to the project, not localStorage. Earlier frame cases
+  // can persist it; reset the synthetic fixture before each server starts.
+  writeFileSync(project, projectContents);
   server = await startServer(project, media, await findFreePort());
   await disableOnboarding(page);
   await page.addInitScript(() => {
@@ -37,11 +40,17 @@ test.beforeEach(async ({ page }) => {
       autoSaveProject: false, stickerOverlayEnabled: true,
     }));
   });
+  if (info.title.includes('font inventory is delayed')) {
+    await page.route('**/api/ass-font-aliases', async route => {
+      await new Promise(resolve => { releaseInventory = resolve; });
+      await route.fulfill({ json: { schema: 'moy.asr.font_aliases.v1', fonts: [] } });
+    });
+  }
   await page.goto(server.url);
   await expect.poll(() => page.evaluate(() => window.MaweCoreState?.player?.videoWidth)).toBe(640);
 });
 
-test.afterEach(async () => { await server?.stop(); server = null; });
+test.afterEach(async () => { releaseInventory?.(); releaseInventory = null; await server?.stop(); server = null; });
 test.afterAll(() => { if (directory) cleanupTempDir(directory); });
 
 async function seek(page, seconds) {
@@ -153,4 +162,38 @@ test('native frame stickers stay aligned after scrolling and rendering another f
   await expect.poll(() => page.evaluate(() => MaweCoreState.player.currentSrc.startsWith('blob:'))).toBe(true);
   await expect(page.locator('#ass-frame-sticker-layer')).toBeHidden();
   await expect(page.locator('#ass-frame-sticker-layer img')).toHaveCount(0);
+});
+
+
+test('the actual frame resumes when font inventory is delayed', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  expect(await page.evaluate(() => MaweAssFontAliases.pending())).toBe(true);
+  const opened = openFrame(page);
+  await expect(page.locator('#ass-frame-window')).toBeVisible();
+  expect(await page.evaluate(() => MaweAssFontAliases.pending())).toBe(true);
+  releaseInventory();
+  await opened;
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  expect(errors.filter(message => message.includes('字体信息仍在加载'))).toEqual([]);
+});
+
+
+test('font coverage stays lazy until ASS mode and is requested once', async ({ page }) => {
+  const requests = [];
+  page.on('request', request => { if (request.url().includes('/api/ass-font-')) requests.push(request.url()); });
+  await page.reload();
+  await page.waitForFunction(() => Boolean(window.MaweAssFontAliases && window.MaweSettings));
+  await page.evaluate(() => window.MaweAssFontAliases.whenReady());
+  expect(await page.evaluate(() => MaweSettings.EDITOR_SETTINGS.assMode)).toBe(false);
+  expect(requests.filter(url => url.includes('/api/ass-font-aliases')).length).toBe(1);
+  expect(requests.filter(url => url.includes('/api/ass-font-coverage')).length).toBe(0);
+  await openFrame(page);
+  await page.evaluate(() => window.MaweAssFontAliases.whenReady());
+  expect(requests.filter(url => url.includes('/api/ass-font-coverage')).length).toBe(1);
+  await page.evaluate(async () => {
+    await window.MaweAssFontAliases.ensureCoverage();
+    await window.MaweAssFontAliases.ensureCoverage();
+  });
+  expect(requests.filter(url => url.includes('/api/ass-font-coverage')).length).toBe(1);
 });

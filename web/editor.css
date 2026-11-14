@@ -4843,3 +4843,11 @@
   .ass-cue-scale-handle.dragging { background: var(--text-primary); }
 
   .player-stage.ass-stage-ready #overlay .ass-cue-drag-target { visibility: visible; }
+
+/* ASS warning is keyboard-focusable; its tooltip is not dependent on title hover. */
+.ass-emoji-warning { position: relative; display: inline-flex; align-items: center; color: #e6b341; cursor: help; padding: 4px; border-radius: 4px; }
+.ass-emoji-warning[hidden] { display: none; }
+.ass-emoji-warning:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.ass-emoji-warning-tip { display: none; position: absolute; z-index: 30; bottom: calc(100% + 8px); right: 0; width: 280px; max-width: 80vw; padding: 9px 12px; border: 1px solid #8e7233; border-radius: 6px; background: #292211; color: #fff4d3; font-size: 12px; font-weight: normal; line-height: 1.6; white-space: normal; box-shadow: 0 3px 12px #0004; }
+.ass-emoji-warning:hover .ass-emoji-warning-tip,
+.ass-emoji-warning:focus .ass-emoji-warning-tip { display: block; }

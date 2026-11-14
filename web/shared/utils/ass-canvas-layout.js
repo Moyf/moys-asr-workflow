@@ -193,7 +193,11 @@ export function createUtilsModule(dependencies) {
         if (!fragment) continue;
         const metrics = assMeasureStackRun(item.style, item.fontSize, run, fragment, measure);
         if (used + metrics.width <= width) { append(run, fragment); used += metrics.width; continue; }
-        for (const character of [...fragment]) {
+        // Wrapping may break a line, never a combining/emoji grapheme.
+        const characters = typeof Intl.Segmenter === 'function'
+          ? Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(fragment), item => item.segment)
+          : [fragment];
+        for (const character of characters) {
           const advance = assMeasureStackRun(item.style, item.fontSize, run, character, measure).width;
           if (used > 0 && used + advance > width) { append(run, '\n'); used = 0; }
           append(run, character); used += advance;

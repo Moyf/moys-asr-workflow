@@ -429,3 +429,40 @@ for (const assMode of [true, false]) {
     });
   }
 }
+
+test('lazy ASS fonts keep the save picker immediate and defer serialization until ready', async ({ page }) => {
+  await fixture('ready', async (origin, state) => {
+    await install(page, origin, 'ready');
+    await page.evaluate(() => {
+      let pending = true;
+      const ready = new Promise(resolve => { window.releaseFonts = () => { pending = false; resolve(); }; });
+      window.MaweAssFontAliases = { ensureCoverage: () => ready, whenReady: () => ready, pending: () => pending };
+      window.MaweAudioProcessing = { settings: () => ({ gain_db: window.fixtureGain ?? 3 }) };
+    });
+    await page.click('#burn-video-export-btn');
+    await expect.poll(() => page.evaluate(() => Boolean(window.pickedName))).toBe(true);
+    expect(await page.evaluate(() => window.subtitleBuildOptions)).toEqual([]);
+    expect(state.payloads).toEqual([]);
+    await page.evaluate(() => { window.fixtureGain = 9; window.releaseFonts(); });
+    await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
+    expect(state.payloads[0].audioGainDb).toBe(3);
+    expect(state.payloads[0].ass).toBe('[Script Info] full');
+  });
+});
+
+test('project switch while lazy ASS fonts wait does not serialize or submit the new project', async ({ page }) => {
+  await fixture('ready', async (origin, state) => {
+    await install(page, origin, 'ready');
+    await page.evaluate(() => {
+      let pending = true;
+      const ready = new Promise(resolve => { window.releaseFonts = () => { pending = false; resolve(); }; });
+      window.MaweAssFontAliases = { ensureCoverage: () => ready, whenReady: () => ready, pending: () => pending };
+    });
+    await page.click('#burn-video-export-btn');
+    await expect.poll(() => page.evaluate(() => Boolean(window.pickedName))).toBe(true);
+    await page.evaluate(() => { MaweProjectLoad.projectBindingEpoch++; window.releaseFonts(); });
+    await expect.poll(() => page.evaluate(() => window.hints.some(t => t.includes('绑定已变更')))).toBe(true);
+    expect(await page.evaluate(() => window.subtitleBuildOptions)).toEqual([]);
+    expect(state.payloads).toEqual([]);
+  });
+});
