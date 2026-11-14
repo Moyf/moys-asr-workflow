@@ -166,9 +166,23 @@ class ScriptMatchCancellationTests(unittest.TestCase):
         self.assertTrue(self.api.run_script_match(payload)["ok"])
 
     def test_core_default_call_preserves_cli_pipeline_compatibility(self) -> None:
-        self.input(True)
-        artifact = run_script_match(ScriptMatchRequest(self.project, None, self.script, OutputMode.JSON))
-        self.assertEqual(read_project(artifact.project_path)["segments"][0]["text"], "今天开始测试")
+        for timed in (False, True):
+            with self.subTest(timed=timed):
+                self.input(timed)
+                # Legacy callers still need no cancellation callbacks; the new
+                # punctuation default preserves the manuscript's terminal stop.
+                artifact = run_script_match(ScriptMatchRequest(self.project, None, self.script, OutputMode.JSON))
+                self.assertEqual(read_project(artifact.project_path)["segments"][0]["text"], "今天开始测试。")
+
+    def test_core_explicit_legacy_punctuation_rule_still_strips_terminal_stop(self) -> None:
+        for timed in (False, True):
+            with self.subTest(timed=timed):
+                self.input(timed)
+                artifact = run_script_match(ScriptMatchRequest(
+                    self.project, None, self.script, OutputMode.JSON,
+                    preserve_punctuation=("？", "！"),
+                ))
+                self.assertEqual(read_project(artifact.project_path)["segments"][0]["text"], "今天开始测试")
 
     def test_status_events_carry_operation_identity_in_stage_order(self) -> None:
         result = self.api.run_script_match(self.input(False))
