@@ -60,13 +60,13 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         project = read_project(result.project_path)
         segments = project["segments"]
         self.assertEqual(project["custom_metadata"], {"keep": True})
-        self.assertEqual(segments[0]["text"], "今天好")
-        self.assertEqual(segments[0]["items"], [{"start": 0, "end": 500, "text": "今天好"}])
-        self.assertEqual(segments[1]["text"], "天气")
+        self.assertEqual(segments[0]["text"], "今天好，")
+        self.assertEqual(segments[0]["items"], [{"start": 0, "end": 500, "text": "今天好，"}])
+        self.assertEqual(segments[1]["text"], "天气。")
         self.assertEqual([(item["start"], item["end"]) for item in segments], [(0, 1000), (1000, 2000)])
         rendered = result.srt_path.read_text(encoding="utf-8")
-        self.assertIn("今天好\n", rendered)
-        self.assertNotIn("今天好，", rendered)
+        self.assertIn("今天好，\n", rendered)
+        self.assertIn("天气。", rendered)
 
     def test_disabled_segments_are_not_consumed_by_script_match(self) -> None:
         self.project_path.write_text(
@@ -130,7 +130,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         segments = read_project(result.project_path)["segments"]
         self.assertEqual(segments[0]["text"], "保留")
         self.assertEqual(segments[0]["items"][0]["text"], "保留")
-        self.assertEqual(segments[1]["text"], "错")
+        self.assertEqual(segments[1]["text"], "错。")
         self.assertEqual(segments[2]["text"], "字")
         self.assertEqual(
             [(item["start"], item["end"]) for item in segments[1]["items"]],
@@ -229,21 +229,21 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         )
 
     def test_processed_script_text_matches_default_split_and_punctuation_policy(self) -> None:
-        # 默认清单：，。？！；,. 断句；，。；,. 句尾剥除，？！保留。
+        # 默认清单继续断句，全部句尾标点保留。
         self.assertEqual(
             processed_script_text(
                 "第一句，第二句？第三句。",
                 extra_split_punctuation=DEFAULT_EXTRA_SPLIT_PUNCTUATION,
                 preserve_punctuation=DEFAULT_PRESERVE_PUNCTUATION,
             ),
-            "第一句\n第二句？\n第三句",
+            "第一句，\n第二句？\n第三句。",
         )
 
     def test_default_semicolon_and_opt_in_enumeration_follow_shared_policy(self) -> None:
         self.assertEqual(processed_script_text(
             "这个、那个，都不错;下一项", extra_split_punctuation=DEFAULT_EXTRA_SPLIT_PUNCTUATION,
             preserve_punctuation=DEFAULT_PRESERVE_PUNCTUATION,
-        ), "这个、那个\n都不错\n下一项")
+        ), "这个、那个，\n都不错;\n下一项")
         self.assertEqual(processed_script_text("这个、那个", extra_split_punctuation=("、",), preserve_punctuation=()),
                          "这个\n那个")
         self.assertEqual(processed_script_text("这个、那个", extra_split_punctuation=("、",), preserve_punctuation=("、",)),
@@ -260,6 +260,20 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
             ),
             text,
         )
+
+    def test_default_preservation_keeps_repeated_marks_quotes_decimals_and_abbreviations(self) -> None:
+        text = '你好，世界。真的吗？！\n“3.14，U.S.！”'
+        processed = processed_script_text(
+            text,
+            extra_split_punctuation=DEFAULT_EXTRA_SPLIT_PUNCTUATION,
+            preserve_punctuation=DEFAULT_PRESERVE_PUNCTUATION,
+        )
+        self.assertEqual(processed.replace("\n", ""), text.replace("\n", ""))
+        self.assertGreater(processed.count("\n"), text.count("\n"))
+
+    def test_multichar_script_separator_has_explicit_keep_and_delete_semantics(self) -> None:
+        self.assertEqual(processed_script_text("甲<cut>乙\n丙", extra_split_punctuation=("<cut>",), preserve_punctuation=("<cut>",)), "甲<cut>\n乙\n丙")
+        self.assertEqual(processed_script_text("甲<cut>乙\n丙", extra_split_punctuation=("<cut>",), preserve_punctuation=()), "甲\n乙\n丙")
 
     def test_processed_script_text_keeps_common_closing_marks(self) -> None:
         text = "\n".join((
@@ -401,7 +415,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
 
         assert result.project_path is not None
         segments = read_project(result.project_path)["segments"]
-        self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙丁"])
+        self.assertEqual([segment["text"] for segment in segments], ["甲乙", "丙。丁"])
 
     def test_text_only_mode_preserves_existing_cue_segmentation(self) -> None:
         self.project_path.write_text(
@@ -479,10 +493,10 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(
             [(segment["start"], segment["end"], segment["text"]) for segment in segments],
             [
-                (0, 1000, "第一句文稿"),
+                (0, 1000, "第一句文稿。"),
                 (1000, 2000, "录音时多说了第一句话"),
                 (2000, 3000, "录音时多说了第二句话"),
-                (3000, 4000, "第二句文稿"),
+                (3000, 4000, "第二句文稿。"),
             ],
         )
         self.assertEqual([segment["speaker"] for segment in segments], ["script-1", "extra-1", "extra-2", "script-2"])
@@ -516,10 +530,10 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(
             [(segment["start"], segment["end"], segment["text"]) for segment in segments],
             [
-                (0, 1000, "第一句文稿"),
+                (0, 1000, "第一句文稿。"),
                 (1000, 2000, "录音时多说了第一句话"),
                 (2000, 3000, "录音时多说了第二句话"),
-                (3000, 4000, "第二句文稿"),
+                (3000, 4000, "第二句文稿。"),
             ],
         )
 
@@ -563,7 +577,7 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
         segments = project["segments"]
         self.assertEqual(
             [(segment["start"], segment["end"], segment["text"]) for segment in segments],
-            [(0, 500, "甲"), (500, 1500, "乙丙"), (1500, 2000, "丁")],
+            [(0, 500, "甲。"), (500, 1500, "乙丙，"), (1500, 2000, "丁")],
         )
         self.assertEqual(
             [(item["start"], item["end"]) for item in segments[1]["items"]],

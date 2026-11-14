@@ -25,7 +25,7 @@ from maw.subtitle_segmentation import (
 # 强标点）；configure_extra_strong_punct 按运行时配置整体覆盖，空集合 =
 # 仅按换行断句。
 _DEFAULT_EXTRA_STRONG_PUNCT = "，。？！；,.;"
-_DEFAULT_STRIP_TAIL_PUNCT = "，。；,.;"
+_DEFAULT_STRIP_TAIL_PUNCT = ""
 _EXTRA_STRONG_PUNCT: set[str] = {ch for ch in _DEFAULT_EXTRA_STRONG_PUNCT if not ch.isspace()}
 
 

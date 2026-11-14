@@ -5,7 +5,7 @@ export function createUtilsModule(dependencies) {
   // 拆分边界符号修剪配置：勾选/填写的符号会在拆分后从两侧文本边缘移除。
   // 空格与换行永远修剪，不参与配置。
   // 仅前 5 个高频符号提供勾选 chip；其余符号由设置面板的自由文本框维护
-  // （空格分隔），文本框默认预填半角逗号和句点，延续旧版行为。
+  // （空格分隔）。新设置默认保留全部标点，已有显式符号列表继续生效。
   const SPLIT_TRIM_PRIMARY_SYMBOLS = Object.freeze([
     { ch: '，', name: '全角逗号' },
     { ch: '。', name: '句号' },
@@ -14,11 +14,9 @@ export function createUtilsModule(dependencies) {
     { ch: '？', name: '全角问号' },
   ]);
 
-  const DEFAULT_EXTRA_SPLIT_TRIM_SYMBOLS = Object.freeze([',', '.']);
+  const DEFAULT_EXTRA_SPLIT_TRIM_SYMBOLS = Object.freeze([]);
 
-  const DEFAULT_SPLIT_TRIM_SYMBOLS = Object.freeze(
-    [...SPLIT_TRIM_PRIMARY_SYMBOLS.map((option) => option.ch), ...DEFAULT_EXTRA_SPLIT_TRIM_SYMBOLS],
-  );
+  const DEFAULT_SPLIT_TRIM_SYMBOLS = Object.freeze([]);
 
 
   // 设置面板文本框解析：按空白拆分后把每个片段展开为单字符并去重，
@@ -62,9 +60,9 @@ export function createUtilsModule(dependencies) {
 
 
   function rebuildSplitTrimPatterns() {
-    const source = activeSplitTrimSymbols.map(escapeSplitTrimPatternSource).join('|');
-    activeEndTrimPattern = new RegExp(`(?:${source}|\\s)+$`, 'u');
-    activeStartTrimPattern = new RegExp(`^(?:${source}|\\s)+`, 'u');
+    const source = [...activeSplitTrimSymbols.map(escapeSplitTrimPatternSource), '\\s'].join('|');
+    activeEndTrimPattern = new RegExp(`(?:${source})+$`, 'u');
+    activeStartTrimPattern = new RegExp(`^(?:${source})+`, 'u');
   }
 
   rebuildSplitTrimPatterns();

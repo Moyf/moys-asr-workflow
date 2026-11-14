@@ -21,7 +21,8 @@ MaweBoot.maweDebug('boot:begin', {
   media: MaweBoot.DATA.media || '',
   recentProjects: MaweBoot.SERVER_CONFIG?.recentProjects?.length || 0,
 });
-MaweTextCleanup.cleanPunctuation();
+// Opening a project must not rewrite its text, including legacy projects without
+// preserve_punctuation. Punctuation cleanup remains an explicit editor action.
 MaweServerSave.configureServerSaveControls();
 MaweServerSave.configureServerAutoSave();
 MaweServerSave.configureRecentProjects();
