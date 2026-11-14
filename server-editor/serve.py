@@ -62,7 +62,7 @@ from maw.app_paths import default_server_settings_path, legacy_server_settings_p
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
 from maw.ass_fonts import font_alias_payload, normalize_ass_text_fontnames  # noqa: E402
 from maw.fcp7_png_api import handle_fcp7_png  # noqa: E402
-from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
+from maw.ass_styles import AssStyleConflict, read_ass_style_backup, read_ass_style_state, save_ass_style_state  # noqa: E402
 from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
@@ -3864,7 +3864,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             # 共享样式库会覆盖用户级配置；与其它状态变更接口一样要求页面请求令牌，
             # 防止任意网页用 CORS-safelisted POST 直接改写本机 ass-styles.json。
             self._check_request_token(request)
-            library = save_ass_style_library(request)
+            library = save_ass_style_state(request, request.get("_revision"), backup=request.get("_backup") is True)
+        except AssStyleConflict as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             return
@@ -4051,8 +4054,17 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/waveform":
             self.send_json(HTTPStatus.OK, self.editor_server.reapeaks_status_payload())
             return
+        if path == "/api/ass-styles-backup":
+            try:
+                self.send_json(HTTPStatus.OK, read_ass_style_backup())
+            except (OSError, ValueError, UnicodeError) as error:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
         if path == "/api/ass-styles":
-            self.send_json(HTTPStatus.OK, load_ass_style_library())
+            try:
+                self.send_json(HTTPStatus.OK, read_ass_style_state())
+            except (OSError, ValueError, UnicodeError) as error:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
         if path == "/api/text-processing-presets":
             try:

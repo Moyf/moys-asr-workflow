@@ -2497,11 +2497,27 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     self.assertFalse(forbidden["ok"])
                     self.assertFalse(style_path.is_file())
 
-                    status, saved = request("/api/ass-styles", {**custom, "requestToken": server.request_token})
+                    status, saved = request("/api/ass-styles", {**custom, "requestToken": server.request_token,
+                                                               "_revision": initial["_revision"]})
                     self.assertEqual(status, 200)
                     self.assertEqual(saved["assignments"]["srtBurnStyleId"], "studio")
                     self.assertTrue(style_path.is_file())
                     self.assertNotIn("requestToken", saved)
+
+                    status, conflict = request("/api/ass-styles", {**custom, "requestToken": server.request_token,
+                                                                  "_revision": initial["_revision"]})
+                    self.assertEqual(status, 409)
+                    self.assertFalse(conflict["ok"])
+
+                    status, restored = request("/api/ass-styles", {**initial, "requestToken": server.request_token,
+                                                                  "_revision": saved["_revision"], "_backup": True})
+                    self.assertEqual(status, 200)
+                    backup = json.loads(style_path.with_suffix(".json.backup").read_text(encoding="utf-8"))
+                    self.assertEqual(backup["assignments"]["srtBurnStyleId"], "studio")
+
+                    status, saved = request("/api/ass-styles", {**custom, "requestToken": server.request_token,
+                                                               "_revision": restored["_revision"]})
+                    self.assertEqual(status, 200)
 
                     status, loaded = request("/api/ass-styles")
                     self.assertEqual(status, 200)
