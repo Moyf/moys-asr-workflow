@@ -893,7 +893,7 @@
     'ASS 样式库': 'ASS style library',
     '样式数量已达到上限（65 个）': 'The style limit has been reached (65)',
     '导出样式库': 'Export style library', '导入样式库': 'Import style library',
-    '恢复导入前副本': 'Restore pre-import backup', '重新加载': 'Reload',
+    '恢复导入前副本': 'Restore pre-import backup', '重新加载': 'Reload', '更多': 'More',
     '导入 ASS 样式库': 'Import ASS style library', '确认导入': 'Import',
     '样式库不包含字体文件、工程或特殊文本解析开关。请在目标电脑检查字体和实际效果。': 'The library does not include font files, projects, or special-text parsing settings. Check fonts and rendered results on the destination computer.',
     '合并到当前库，保留当前默认设置': 'Merge into the current library and keep its defaults',

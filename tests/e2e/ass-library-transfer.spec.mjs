@@ -62,6 +62,23 @@ test('portable import persists and can restore its pre-import backup', async ({ 
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(dir); });
 
+test('shows import errors and migration guidance in English', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
+  await disableOnboarding(page);
+  await page.goto(pathToFileURL(portable).href);
+  await openSettingsPage(page, 'subtitle-style');
+  await page.locator('#ass-style-manager-open').click();
+  await expect(page.locator('.ass-style-more-actions > summary')).toHaveText('More');
+  const malformed = await page.evaluate(() => window.AsrEditorUtils.defaultAssStyleLibrary());
+  malformed.assProfiles[0].styleId = 'missing';
+  await page.locator('#ass-style-import-file').setInputFiles({ name: 'invalid.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(malformed)) });
+  await expect(page.locator('#hint-stack')).toContainText('references a missing style');
+  const buffer = readFileSync(join(process.cwd(), 'tests', 'fixtures', 'ass-styles', 'legacy-v1.json'));
+  await page.locator('#ass-style-import-file').setInputFiles({ name: 'legacy.json', mimeType: 'application/json', buffer });
+  await expect(page.locator('#ass-style-import-preview')).toContainText('Fields from the older library');
+  await expect(page.locator('#ass-style-import-preview')).toContainText('Migrated:');
+});
+
 async function openLibrary(page) {
   await disableOnboarding(page);
   await page.goto(server.url);

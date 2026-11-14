@@ -1,5 +1,41 @@
 import { getAssStyleLibrary, getAssStyleTransferState, persistAssStyleLibrary, importAssStyleLibrary, reloadAssStyleLibrary, readAssStyleLibraryBackup, waitForAssStyleLibraryLoad } from './editor-wiring-ass-storage.js';
 
+export function translateAssTransferMessage(value) {
+  const text = String(value);
+  const fixed = {
+    '不支持此样式库文件版本': 'Unsupported style library file version',
+    '不是受支持的 MAW 样式库文件或版本': 'Unsupported MAW style library file or version',
+    '样式库格式无效，或样式超过 65 个、方案超过 64 个': 'Invalid library, or more than 65 styles or 64 profiles',
+    '样式或方案 ID 无效或重复': 'Invalid or duplicate style or profile ID',
+    '样式库缺少内置条目': 'The library is missing built-in entries',
+    '合并后样式超过 65 个或方案超过 64 个，请先清理当前库': 'The merged library would exceed 65 styles or 64 profiles; remove entries first',
+    '合并后的样式库过大': 'The merged library is too large',
+    '当前修改尚未保存，请先解决保存问题': 'Current changes are not saved; resolve the save problem first',
+    '文件超过 512 KB': 'The file exceeds 512 KB',
+    '样式库已被其他窗口修改，请先重新加载': 'The library was changed in another window; reload it first',
+    '尚未读取本机样式库，请重新加载': 'The local library has not been loaded; reload it first',
+    '样式库已被其他窗口修改，请先导出当前副本，再重新加载': 'The library was changed in another window; export the current copy, then reload',
+    '样式库已改变，请重新导入并预览': 'The library changed; import it and preview again',
+    '导入期间样式库发生更改，请检查当前内容': 'The library changed during import; check its current contents',
+    '没有找到导入前的样式库副本': 'No pre-import backup was found',
+    '旧版本样式库会按当前规则补充和迁移字段。': 'Fields from the older library will be filled in and migrated using current rules.',
+  };
+  if (Object.hasOwn(fixed, text)) return fixed[text];
+  const patterns = [
+    [/^不支持样式库字段 (.+)$/u, 'Unsupported library field $1'],
+    [/^方案「(.+)」引用的样式不存在$/u, 'Profile "$1" references a missing style'],
+    [/^默认设置 (.+) 引用的条目不存在$/u, 'Default setting $1 references a missing entry'],
+    [/^(.+) 格式无效$/u, 'Invalid format: $1'],
+    [/^(.+) 缺失$/u, 'Missing field: $1'],
+    [/^不支持字段 (.+)$/u, 'Unsupported field: $1'],
+    [/^(.+) 的值无效或无法原样导入$/u, 'Invalid value or cannot import unchanged: $1'],
+    [/^已迁移：(.+) 使用默认值$/u, 'Migrated: $1 uses its default value'],
+    [/^已迁移：(.+)$/u, 'Migrated: $1'],
+  ];
+  for (const [pattern, replacement] of patterns) if (pattern.test(text)) return text.replace(pattern, replacement);
+  return text;
+}
+
 // File transfer is intentionally separate from project snapshots and subtitle export.
 export function createAssStyleTransfer(utils) {
   const clone = value => JSON.parse(JSON.stringify(value));
@@ -142,6 +178,7 @@ export function initAssStyleTransfer() {
   let imported = null, baseRevision = 0, proposed = null;
   let importing = false;
   const english = () => window.MAWE_I18N?.language === 'en';
+  const translated = text => english() ? translateAssTransferMessage(text) : text;
   const message = text => MaweHint.flashHint(text, 'warning');
   const mode = () => dialog.querySelector('input[name="ass-style-import-mode"]:checked')?.value || 'merge';
   function render() {
@@ -172,19 +209,19 @@ export function initAssStyleTransfer() {
       const fonts = [...new Set(source.styles.map(style => style.fontName))].join('、');
       const unchanged = JSON.stringify(proposed.library) === JSON.stringify(getAssStyleLibrary());
       summaryText.textContent = summary[0];
-      preview.textContent = [...summary.slice(1), ...imported.warnings,
+      preview.textContent = [...summary.slice(1), ...imported.warnings.map(translated),
         english() ? `Fonts not checked; verify on the destination: ${fonts}` : `字体未检查，请在目标电脑确认：${fonts}`,
         unchanged ? (english() ? 'The library is unchanged; the previous backup is retained.' : '当前内容无需更改，保留之前的恢复副本。')
           : (english() ? 'A backup of the current library will be kept.' : '导入前的库会保存为恢复副本。')].join('\n');
       confirmButton.disabled = unchanged;
-    } catch (error) { proposed = null; summaryText.textContent = ''; preview.textContent = error.message; confirmButton.disabled = true; }
+    } catch (error) { proposed = null; summaryText.textContent = ''; preview.textContent = translated(error.message); confirmButton.disabled = true; }
   }
   document.getElementById('ass-style-export-library')?.addEventListener('click', async () => {
     await waitForAssStyleLibraryLoad();
     const payload = { schema: MaweAssTransfer.schema, version: 1, kind: 'library', library: window.AsrEditorUtils.normalizeAssStyleLibrary(getAssStyleLibrary()) };
     try { await MaweExportTimeline.downloadFile(JSON.stringify(payload, null, 2), 'MAW-ASS样式库.json', 'application/json',
       { desc: 'MAW ASS 样式库', types: { 'application/json': ['.json'] } }); }
-    catch (error) { message(`导出失败：${error.message || error}`); }
+    catch (error) { message(`${english() ? 'Export failed: ' : '导出失败：'}${translated(error.message || error)}`); }
   });
   document.getElementById('ass-style-import-library')?.addEventListener('click', () => { input.value = ''; input.click(); });
   async function openImport(value, selectedMode = 'merge') {
@@ -204,21 +241,21 @@ export function initAssStyleTransfer() {
     try {
       if (file.size > 512 * 1024) throw new Error('文件超过 512 KB');
       await openImport(JSON.parse(await file.text()));
-    } catch (error) { message(`无法导入：${error.message || error}`); }
+    } catch (error) { message(`${english() ? 'Cannot import: ' : '无法导入：'}${translated(error.message || error)}`); }
   });
   document.getElementById('ass-style-restore-backup')?.addEventListener('click', async () => {
     document.querySelector('.ass-style-more-actions')?.removeAttribute('open');
     try {
       const backup = await readAssStyleLibraryBackup();
       await openImport(backup, 'restore');
-    } catch (error) { message(`无法恢复：${error.message || error}`); }
+    } catch (error) { message(`${english() ? 'Cannot restore: ' : '无法恢复：'}${translated(error.message || error)}`); }
   });
   modeControls.forEach(el => el.addEventListener('change', render));
   dialog.addEventListener('cancel', event => { if (importing) event.preventDefault(); });
   cancelButton?.addEventListener('click', () => { if (!importing) dialog.close(); });
   confirmButton?.addEventListener('click', async () => {
     if (importing) return;
-    if (!proposed || baseRevision !== getAssStyleTransferState().revision || getAssStyleTransferState().dirty) { message('样式库已改变，请重新导入并预览'); dialog.close(); return; }
+    if (!proposed || baseRevision !== getAssStyleTransferState().revision || getAssStyleTransferState().dirty) { message(translated('样式库已改变，请重新导入并预览')); dialog.close(); return; }
     importing = true;
     confirmButton.disabled = true;
     cancelButton.disabled = true;
@@ -226,7 +263,7 @@ export function initAssStyleTransfer() {
     try {
       await importAssStyleLibrary(proposed.library, baseRevision);
       dialog.close();
-    } catch (error) { preview.textContent = `导入失败：${error.message || error}\n\n${preview.textContent}`; }
+    } catch (error) { preview.textContent = `${english() ? 'Import failed: ' : '导入失败：'}${translated(error.message || error)}\n\n${preview.textContent}`; }
     finally {
       importing = false;
       confirmButton.disabled = false;
@@ -236,7 +273,7 @@ export function initAssStyleTransfer() {
   });
   document.getElementById('ass-style-reload-library')?.addEventListener('click', async () => {
     document.querySelector('.ass-style-more-actions')?.removeAttribute('open');
-    if (getAssStyleTransferState().dirty && !confirm('重新加载会放弃当前未保存的修改。可以先导出样式库作为备份。继续吗？')) return;
+    if (getAssStyleTransferState().dirty && !confirm(english() ? 'Reloading will discard unsaved changes. You can export the library as a backup first. Continue?' : '重新加载会放弃当前未保存的修改。可以先导出样式库作为备份。继续吗？')) return;
     await reloadAssStyleLibrary();
   });
 }
