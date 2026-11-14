@@ -899,6 +899,12 @@
     '合并到当前库，保留当前默认设置': 'Merge into the current library and keep its defaults',
     '恢复整个库，替换当前样式、方案和默认设置': 'Restore the entire library, replacing current styles, profiles, and defaults',
     '样式库已导入；已保留导入前副本': 'Style library imported; a pre-import backup was kept',
+    '样式库已被其他窗口修改，请先重新加载': 'The library was changed in another window; reload it first',
+    '样式库已被其他窗口修改，请先导出当前副本，再重新加载': 'The library was changed in another window; export the current copy, then reload',
+    '尚未读取本机样式库，请重新加载': 'The local library has not been loaded; reload it first',
+    '本地有更新改动，等待再次同步': 'New local changes are waiting to sync',
+    '浏览器存储不可用或样式库损坏，样式尚未保存': 'Browser storage is unavailable or the library is damaged; styles have not been saved',
+    '重新加载失败，保留当前样式': 'Reload failed; keeping the current styles',
     '样式库正在加载…': 'Loading the style library…', 'SRT 渲染样式': 'SRT render style', '无逐句动画': 'No per-cue animations',
     'ASS 字幕模式': 'ASS subtitle mode',
     '当前由': 'Preview styling is controlled by', '控制预览样式': 'for preview styling',
@@ -2084,7 +2090,7 @@
     match = /^定位到第\s*(\d+)\s*条字幕$/.exec(text);
     if (match) return `Go to subtitle ${match[1]}`;
     match = /^保存失败：(.+)$/.exec(text);
-    if (match) return `Save failed: ${match[1]}`;
+    if (match) return `Save failed: ${translateText(match[1], EN)}`;
     match = /^本地已保存，服务器同步失败：(.+)$/.exec(text);
     if (match) return `Saved locally; server sync failed: ${translateText(match[1], EN)}`;
     match = /^打开工程失败：(.+)$/.exec(text);

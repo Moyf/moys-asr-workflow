@@ -18,6 +18,8 @@ export function translateAssTransferMessage(value) {
     '样式库已改变，请重新导入并预览': 'The library changed; import it and preview again',
     '导入期间样式库发生更改，请检查当前内容': 'The library changed during import; check its current contents',
     '没有找到导入前的样式库副本': 'No pre-import backup was found',
+    '没有找到导入前的样式库副本。': 'No pre-import backup was found.',
+    '样式库已被其他窗口修改，请重新加载后再保存。': 'The library was changed in another window; reload it before saving.',
     '旧版本样式库会按当前规则补充和迁移字段。': 'Fields from the older library will be filled in and migrated using current rules.',
   };
   if (Object.hasOwn(fixed, text)) return fixed[text];

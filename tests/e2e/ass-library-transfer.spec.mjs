@@ -79,6 +79,29 @@ test('shows import errors and migration guidance in English', async ({ page }) =
   await expect(page.locator('#ass-style-import-preview')).toContainText('Migrated:');
 });
 
+test('shows server backup and sync failures in English', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await openSettingsPage(page, 'subtitle-style');
+  await page.locator('#ass-style-manager-open').click();
+  await page.route('**/api/ass-styles-backup', route => route.fulfill({ status: 404, json: { error: '没有找到导入前的样式库副本。' } }));
+  await page.locator('.ass-style-more-actions > summary').click();
+  await page.locator('#ass-style-restore-backup').click();
+  await expect(page.locator('#hint-stack')).toContainText('Cannot restore: No pre-import backup was found.');
+  await page.route('**/api/ass-styles', route => route.request().method() === 'POST'
+    ? route.fulfill({ status: 409, json: { error: 'conflict' } }) : route.continue());
+  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+  await page.locator('#ass-style-font-size').fill('91');
+  await expect(page.locator('#ass-style-library-status')).toContainText('Save failed: The library was changed in another window');
+  await page.unroute('**/api/ass-styles');
+  await page.route('**/api/ass-styles', route => route.abort());
+  page.once('dialog', dialog => dialog.accept());
+  await page.locator('.ass-style-more-actions > summary').click();
+  await page.locator('#ass-style-reload-library').click();
+  await expect(page.locator('#ass-style-library-status')).toHaveText('Reload failed; keeping the current styles');
+});
+
 async function openLibrary(page) {
   await disableOnboarding(page);
   await page.goto(server.url);
