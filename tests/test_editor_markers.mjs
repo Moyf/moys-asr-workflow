@@ -2,6 +2,7 @@
 // 覆盖 AGENTS 约定：整数毫秒、稳定 ID、Region 判定（end > start）、
 // 管理窗过滤、可见范围裁剪与波形跨行挑选 / 行内时间换算。
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -28,6 +29,31 @@ const waveTesting = waveContext.window.AsrWaveform.testing;
 // vm 沙箱与测试文件处于不同 realm，deepStrictEqual 会比较 Object.prototype；
 // 统一 JSON 还原成测试 realm 的普通对象再比较。
 const plain = (value) => JSON.parse(JSON.stringify(value));
+
+test('AI cleanup removal type migrates legacy notes and survives user edits and export', () => {
+  for (const note of ['[AI] 删除：口误', '[ai] 移除: 试麦']) {
+    const marker = plain(utils.normalizeMarkers([{ id: 'auto', start: 100, end: 900, note }]))[0];
+    assert.equal(marker.cleanup_action, 'remove');
+    assert.equal(utils.isAiCleanupRemovalMarker(marker), true);
+    marker.note = '人工改写原因';
+    marker.color = '#ffffff';
+    const saved = plain(utils.markersToProjectField([marker])).items[0];
+    assert.equal(saved.cleanup_action, 'remove');
+    assert.equal(utils.isAiCleanupRemovalMarker(saved), true);
+    assert.equal(saved.note, '人工改写原因');
+  }
+  for (const raw of [
+    { color: '#8e4ec6', note: '人工标记' },
+    { note: '[AI] 复核：删除建议', review: { status: 'pending' } },
+    { note: '[AI] 删除：待确认', review: { status: 'pending' } },
+    { cleanup_action: 'invalid' },
+  ]) {
+    const marker = utils.normalizeMarkers([{ id: 'ordinary', start: 100, end: 900, ...raw }])[0];
+    assert.equal(utils.isAiCleanupRemovalMarker(marker), false);
+    assert.equal(marker.cleanup_action, undefined);
+  }
+  assert.equal(utils.isAiCleanupRemovalMarker({ start: 100, cleanup_action: 'remove' }), false);
+});
 
 test('AI annotation provenance survives normalization and manual review edits', () => {
   const raw = { id: 'ai-1', start: 0, end: 1000, name: '原文', color: '#3e63dd', note: '[AI] 注：术语',
@@ -231,10 +257,7 @@ test('markerRowTimeMs maps clientX to clamped in-row milliseconds', () => {
 // OTIO 导出：工程标记与区段 → Marker.2（name/comment/color/时长与区间裁剪）。
 // editor-export-timeline.js 是自足 IIFE：用 loader 构建 AsrEditorUtils 后直接装载。
 test('OTIO export writes marker fields as Marker.2 with name, comment and mapped colors', async () => {
-  const { readFileSync } = await import('node:fs');
   const vm = await import('node:vm');
-  const { fileURLToPath } = await import('node:url');
-  const exportPath = fileURLToPath(new URL('../web/editor/io/editor-export-timeline.js', import.meta.url));
   const utilsWindow = loadEditorModule({ window: {}, TextDecoder, TextEncoder, Uint8Array }, 'shared/editor-utils.js');
   const context = {
     window: { AsrEditorUtils: utilsWindow.AsrEditorUtils, AsrGapRemoveCore: utilsWindow.AsrGapRemoveCore },
@@ -248,7 +271,7 @@ test('OTIO export writes marker fields as Marker.2 with name, comment and mapped
     MaweHint: { flashHint: () => {} },
     navigator: { userAgent: 'node' },
   };
-  vm.runInNewContext(readFileSync(exportPath, 'utf8'), context, { filename: 'editor-export-timeline.js' });
+  vm.runInNewContext(initModuleSource('editor/io/editor-export-timeline.js'), context, { filename: 'editor-export-timeline.js' });
   const otio = context.window.MaweExportTimeline;
   assert.ok(otio, 'MaweExportTimeline facade missing');
   const presetMarkers = utils.MARKER_PRESET_COLORS.map((color, index) => ({ id: `preset-${index}`, start: 1000 + index, color }));

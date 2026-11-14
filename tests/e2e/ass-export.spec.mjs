@@ -35,14 +35,21 @@ test('English builtin reset confirmations translate names and preserve cancel an
     expect(messages).toEqual([`Reset “${name}” to its defaults?`, `Reset “${name}” to its defaults?`]);
   }
   await page.locator('#ass-profile-list [data-ass-selection-id="ass"]').click();
+  await page.locator('#ass-animation-fad-enabled').check();
+  await page.locator('#ass-animation-pop-enabled').check();
   await page.locator('#ass-animation-fad-in').fill('900');
   const profileMessages = [];
   page.once('dialog', async dialog => { profileMessages.push(dialog.message()); await dialog.dismiss(); });
   await page.locator('#ass-style-reset').click();
   await expect(page.locator('#ass-animation-fad-in')).toHaveValue('900');
+  await expect(page.locator('#ass-animation-fad-enabled')).toBeChecked();
+  await expect(page.locator('#ass-animation-pop-enabled')).toBeChecked();
   page.once('dialog', async dialog => { profileMessages.push(dialog.message()); await dialog.accept(); });
   await page.locator('#ass-style-reset').click();
   await expect(page.locator('#ass-animation-fad-in')).toHaveValue('250');
+  await expect(page.locator('#ass-animation-fad-enabled')).not.toBeChecked();
+  await expect(page.locator('#ass-animation-pop-enabled')).not.toBeChecked();
+  await page.locator('#ass-profile-form').screenshot({ path: test.info().outputPath('ass-default-animations.png') });
   expect(profileMessages).toEqual(Array(2).fill('Reset “ASS export profile” to its defaults?'));
 });
 
@@ -205,8 +212,10 @@ test('exports ASS from the default profile style and keeps enabled subtitle text
   expect(save.content).not.toContain('SimHei');
   expect(save.content).not.toContain('#12abef');
   expect(save.content).toContain(
-    'Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,{\\fad(250,250)}第一行\\NSecond, \\{literal\\}\\\\path',
+    'Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,第一行\\NSecond, \\{literal\\}\\\\path',
   );
+  expect(save.content).not.toContain('\\fad(');
+  expect(save.content).not.toContain('\\t(');
   expect(save.content).not.toContain('不应导出');
   // 本次换行策略只调整播放器预览；ASS 导出仍保持原来的 WrapStyle。
   expect(save.content).toContain('WrapStyle: 0');
@@ -585,7 +594,7 @@ test('writes the project title, source resolution, palette styles and speaker na
   expect(save.content).toContain(`Style: PURPLE,${assDefaultFont},172,&H00E689BF,&H00E689BF,`);
   expect(save.content).toContain(`Style: BLUE,${assDefaultFont},172,&H00FAA761,&H00FAA761,`);
   expect(save.content).toContain(
-    'Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,{\\fad(250,250)}{\\c&H006F7FF0&}旁白：{\\c&H006F7FF0&}red line',
+    'Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,{\\c&H006F7FF0&}旁白：{\\c&H006F7FF0&}red line',
   );
 });
 
@@ -624,7 +633,7 @@ test('exports speaker-only ASS label colour without a palette style variant', as
   expect(save.content).toContain(`Style: Default,${baseFont},86,`);
   expect(save.content).not.toContain('Style: RED,');
   expect(save.content).toContain(
-    `Dialogue: 0,0:00:00.00,0:00:01.00,Default,旁白,0,0,0,,{\\fad(250,250)}{\\c&H006F7FF0&}旁白：{\\c${baseColor}&}red line`,
+    `Dialogue: 0,0:00:00.00,0:00:01.00,Default,旁白,0,0,0,,{\\c&H006F7FF0&}旁白：{\\c${baseColor}&}red line`,
   );
 });
 
@@ -757,10 +766,10 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   const save = await page.evaluate(() => window.__exportSaves[0]);
   expect(save.suggestedName).toBe('project_去空隙.ass');
   expect(save.content).toContain(
-    'Dialogue: 0,0:00:01.00,0:00:02.00,RED,,0,0,0,,{\\fad(250,250)}before gap',
+    'Dialogue: 0,0:00:01.00,0:00:02.00,RED,,0,0,0,,before gap',
   );
   expect(save.content).toContain(
-    'Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,{\\fad(250,250)}after gap',
+    'Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,after gap',
   );
   // 完全位于已移除空隙内的字幕不进去空隙导出（否则会堆叠在同一时刻）。
   expect(save.content).not.toContain('in gap');
@@ -806,6 +815,7 @@ test('keeps ASS style actions and preview-mode hints attached to the active form
   await page.locator('#ass-style-settings-link').click();
   await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
   await page.evaluate(() => {
+    const assModeToggle = document.getElementById('ass-mode-toggle');
     assModeToggle.checked = true;
     assModeToggle.dispatchEvent(new Event('change', { bubbles: true }));
   });

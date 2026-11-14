@@ -32,6 +32,8 @@ pathlib.Path(sys.argv[1]).write_text(edit.build_blank_html(), encoding='utf-8', 
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(directory); });
 
 test('minified portable bundle preserves non-default data, paths and generated language', async ({page}) => {
+  // 便携单 HTML 的注入与 file:// 运行契约随 2.0 移除；HTTP bundle 覆盖保留。
+  test.skip(true, '便携模式已弃维护，2.0 移除 HTML，见 #336 后回归分析');
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await disableOnboarding(page);
@@ -48,6 +50,8 @@ test('minified portable bundle preserves non-default data, paths and generated l
 
 for (const transport of ['file', 'HTTP']) {
   test(`${transport} executes every source and preserves project/export/undo behavior`, async ({page}) => {
+    // 仅 file:// 传输属于弃维护的便携单 HTML；HTTP 传输仍测试共用编辑器代码。
+    test.skip(transport === 'file', '便携模式已弃维护，2.0 移除 HTML，见 #336 后回归分析');
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await disableOnboarding(page);

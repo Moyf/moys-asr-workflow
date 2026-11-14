@@ -446,7 +446,7 @@ function mergeOverlayCues(idxs) {
 }
 
 // 只合并叠加轨连续字幕。叠加轨的分组（颜色/表情包）引用叠加轨自身段，
-// 合并语义与主轨一致：全部成员同组时继承，混合组不继承。
+// 与主轨一致：颜色同组沿用引用、跨组同色独立保色；表情包仅同组继承。
 function mergeOverlaySegments(idxs) {
   const track = getOverlayTrack();
   if (!track || !idxs?.length) return false;
@@ -468,10 +468,11 @@ function mergeOverlaySegments(idxs) {
   const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
     track.segments, sorted, 'sticker', 'sticker_ref',
   );
-  const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
-    track.segments, sorted, 'color', 'color_ref',
-  );
-  // 拼接后折叠相邻「闭符号+开符号」的同符号对，items 层同步守恒（与主/副合并同规则）。
+  // 颜色按有效颜色名继承（同组沿用组引用、跨组同色物化自持 head），与主/副轨一致。
+  const colorGroup = window.AsrEditorUtils.resolveMergedColorInheritance(track.segments, sorted);
+  // 组未被整组继承时按切点拆组（合并前下标），避免 head 被并走后留下悬空引用；
+  // 拆组是对 track.segments 的变更，必须放在 MaweCommands.run 内保证可撤销。
+  const mergeSet = new Set(sorted);
   const overlayJoin = window.AsrEditorUtils.joinSegmentTextsMassFold(
     segments,
     MaweMultiSubtitleCore.mergeJoinSeparatorForMode(MaweMultiSubtitleCore.getMainSubtitleSplitMode({ text: segments.map((s) => s.text || '').join('\n') })),
@@ -498,10 +499,20 @@ function mergeOverlaySegments(idxs) {
   if (segments[0].assOverride) {
     merged.assOverride = window.AsrEditorUtils.normalizeAssOverride(segments[0].assOverride);
   }
+  if (segments[0].assStyle) merged.assStyle = JSON.parse(JSON.stringify(segments[0].assStyle));
   if (Array.isArray(merged.items) && merged.items.length === 0) merged.items = null;
   MaweSelection.clearSelection();
   return MaweCommands.run('合并叠加字幕', (command) => {
+    const originalLength = track.segments.length;
+    if (stickerGroup.headIdx === null) {
+      MaweSegmentOps.splitGroupsAtCutPoints(mergeSet, 'sticker', 'sticker_ref', track.segments);
+    }
+    if (!colorGroup.groupInherited) {
+      MaweSegmentOps.splitGroupsAtCutPoints(mergeSet, 'color', 'color_ref', track.segments);
+    }
     track.segments.splice(sorted[0], sorted.length, merged);
+    // 叠加轨组引用是数组下标，不随 splice 自动更新：合并后统一平移/改指。
+    window.AsrEditorUtils.remapGroupRefsAfterMergeSplice(track.segments, sorted, undefined, originalLength);
     track._dirty = true;
     command.commit({ cueList: true });
     MaweState.selection.clear('overlay');
@@ -557,11 +568,20 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
       items: [],
       _dirty: true,
     });
+    // 叠加轨组引用是数组下标：插入点及其后的 head 右移一位。
+    window.AsrEditorUtils.shiftGroupReferenceIndices(overlay.segments, index, 1);
     overlay._dirty = true;
     MaweSelection.clearSelection({ silent: true });
     command.commit({ cueList: true, preserveCueListScroll: false });
     window.MaweCuePanelWiring.selectOverlayCueRow(index);
-    setTimeout(() => MaweCuePanel.focusCuePanelText(index, 'overlay'), 0);
+    // 与主/副字幕一致：新建后在字幕块上方弹出快速编辑气泡直接输入；
+    // 气泡打不开时回退聚焦下方字幕面板文本框。
+    if (MaweCoreState.waveformEditor?.openCueQuickEditAtIndex) {
+      MaweCoreState.waveformEditor.openCueQuickEditAtIndex(
+        'overlay', index, () => MaweCuePanel.focusCuePanelText(index, 'overlay'));
+    } else {
+      MaweCuePanel.focusCuePanelText(index, 'overlay');
+    }
     MaweCoreState.waveformEditor?.revealTime(safeStart, true);
 
     MaweHint.flashHint(`已新增第 ${index + 1} 条叠加字幕`, 'success');

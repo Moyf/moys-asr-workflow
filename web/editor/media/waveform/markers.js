@@ -258,9 +258,21 @@ export function createWaveformModule(dependencies) {
 
       popup.append(nameField, swatches, actionsRow);
       this.content.appendChild(popup);
-      this.markerQuickEdit = { markerId, element: popup };
+      const contentRect = this.content.getBoundingClientRect();
+      const anchorRect = anchorElement.getBoundingClientRect();
+      // Keep the anchor in content coordinates: the marker DOM can be replaced on redraw.
+      const anchor = { left: anchorRect.left - contentRect.left, top: anchorRect.top - contentRect.top,
+        height: anchorRect.height };
+      // State changes and deferred translations can both change the popup's intrinsic size.
+      const resizeObserver = new ResizeObserver(() => {
+        if (this.markerQuickEdit?.element !== popup) return;
+        if (popup.isConnected) this.positionMarkerQuickEdit();
+        else this.closeMarkerQuickEdit();
+      });
+      this.markerQuickEdit = { markerId, element: popup, anchor, resizeObserver };
       this.syncMarkerQuickEdit();
-      this.positionMarkerQuickEdit(anchorElement);
+      this.positionMarkerQuickEdit();
+      resizeObserver.observe(popup);
 
       this._markerQuickEditOutside = (event) => {
         if (popup.contains(event.target)) return;
@@ -318,21 +330,17 @@ export function createWaveformModule(dependencies) {
 
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
-    positionMarkerQuickEdit(anchorElement) {
-      const popup = this.markerQuickEdit?.element;
-      if (!popup) return;
+    positionMarkerQuickEdit() {
+      if (!this.markerQuickEdit?.element.isConnected) return;
+      const { element: popup, anchor } = this.markerQuickEdit;
       const popupWidth = popup.offsetWidth || 208;
       const popupHeight = popup.offsetHeight || 120;
-      const contentRect = this.content.getBoundingClientRect();
-      const anchorRect = anchorElement.getBoundingClientRect();
-      const anchorLeft = anchorRect.left - contentRect.left;
-      const anchorTop = anchorRect.top - contentRect.top;
       const maxLeft = Math.max(0, this.content.clientWidth - popupWidth - 4);
       const maxTop = Math.max(0, this.content.clientHeight - popupHeight - 4);
-      popup.style.left = `${Math.min(Math.max(4, anchorLeft - 8), maxLeft)}px`;
+      popup.style.left = `${Math.min(Math.max(4, anchor.left - 8), maxLeft)}px`;
       // 默认浮层在标记上方；贴着可视区顶部时放到下方。
-      const aboveTop = anchorTop - popupHeight - 8;
-      popup.style.top = `${Math.min(Math.max(4, aboveTop >= 4 ? aboveTop : anchorTop + anchorRect.height + 8), maxTop)}px`;
+      const aboveTop = anchor.top - popupHeight - 8;
+      popup.style.top = `${Math.min(Math.max(4, aboveTop >= 4 ? aboveTop : anchor.top + anchor.height + 8), maxTop)}px`;
     }
 
 
@@ -346,7 +354,8 @@ export function createWaveformModule(dependencies) {
         document.removeEventListener('keydown', this._markerQuickEditKey, true);
         this._markerQuickEditKey = null;
       }
-      this.markerQuickEdit?.element?.remove();
+      this.markerQuickEdit?.resizeObserver.disconnect();
+      this.markerQuickEdit?.element.remove();
       this.markerQuickEdit = null;
     }
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import queue
 import re
 import socket
 import subprocess
@@ -49,6 +48,8 @@ from maw.gui_config import (
     OPENAI_ASR_DEFAULT_BASE_URL,
     OPENAI_ASR_DEFAULT_MODEL,
     PROVIDERS,
+    SEGMENTATION_FIELDS,
+    SEGMENTATION_PREFS_KEY,
     ModelConfig,
     ProviderConfig,
     _gui_theme,
@@ -65,7 +66,7 @@ from maw.gui_config import (
     save_env,
 )
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, restore_host_library_path, startupinfo, terminate_process_tree
-from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.gui_workflow import TEST_RUN_LENGTH_LIMIT, TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
@@ -356,40 +357,39 @@ class EventPump:
     def __init__(self, *, window_getter: Callable[[], object | None], interval: float = 0.1) -> None:
         self.window_getter = window_getter
         self.interval = interval
-        self.events: queue.Queue[Mapping[str, object]] = queue.Queue()
+        self.events: list[Mapping[str, object]] = []
         self.stop_event = threading.Event()
         self.thread: threading.Thread | None = None
         self.lock = threading.Lock()
 
     def start(self) -> None:
         with self.lock:
-            if self.thread and self.thread.is_alive():
+            if self.stop_event.is_set() or (self.thread and self.thread.is_alive()):
                 return
-            self.stop_event.clear()
             self.thread = threading.Thread(target=self._run, daemon=True)
             self.thread.start()
 
     def enqueue(self, event: Mapping[str, object]) -> None:
-        self.events.put(dict(event))
+        with self.lock:
+            if not self.stop_event.is_set():
+                self.events.append(dict(event))
 
     def flush(self) -> None:
-        batch: list[Mapping[str, object]] = []
-        while True:
-            try:
-                batch.append(self.events.get_nowait())
-            except queue.Empty:
-                break
-        if not batch:
-            return
+        with self.lock:
+            if not self.events:
+                return
+            batch, self.events = self.events, []
         window = self.window_getter()
         if window is None:
             return
         script = f"window.MAWLauncher && window.MAWLauncher.onBackendEvents({json.dumps(batch, ensure_ascii=False)})"
-        window.evaluate_js(script)
+        if not self.stop_event.is_set():
+            window.evaluate_js(script)
 
     def shutdown(self) -> None:
-        self.stop_event.set()
-        self.flush()
+        with self.lock:
+            self.stop_event.set()
+            self.events.clear()
 
     def _run(self) -> None:
         while not self.stop_event.wait(self.interval):
@@ -717,6 +717,11 @@ class LauncherApi:
             "outputSubfolder": config.output_subfolder,
             "perVideoSubfolder": config.per_video_subfolder,
             "attachModelName": config.attach_model_name,
+            "gapSplit": config.gap_split,
+            "minLen": config.min_len,
+            "maxLen": config.max_len,
+            "minWords": config.min_words,
+            "maxWords": config.max_words,
             "lastModel": config.last_model,
             "lastLanguage": config.last_language,
             "theme": config.theme,
@@ -862,6 +867,20 @@ class LauncherApi:
         ):
             if payload_key in payload:
                 updates[env_key] = "true" if payload.get(payload_key) else "false"
+        # 断句与标点五字段持久化（issue #355）：单 JSON 键存储，先例
+        # MAW_GUI_LOCAL_MODEL_PATHS。前端提交 5 字段全量快照；值 trim 后存，
+        # 空串剔除表示清除（跟随模型默认）。非法数值不在此校验——任务提交时
+        # 由 validateSegmentation 拦截，这里只存原样 trim 字符串。
+        if any(key in payload for key in SEGMENTATION_FIELDS):
+            updates[SEGMENTATION_PREFS_KEY] = json.dumps(
+                {
+                    key: value
+                    for key in SEGMENTATION_FIELDS
+                    if (value := "" if payload.get(key) is None else str(payload.get(key)).strip())
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
         if "theme" in payload:
             updates["MAW_GUI_THEME"] = _gui_theme(str(payload.get("theme") or "")) or "system"
         if "zoomPercent" in payload:
@@ -3193,6 +3212,9 @@ class LauncherApi:
         return _open_existing_path(directory.resolve())
 
     def shutdown(self) -> None:
+        # closing runs on the GUI thread. Stop UI delivery before cancellation
+        # wakes workers. Joining a worker here could block the GUI thread.
+        self.pump.shutdown()
         self.cancel_recording_review()
         self.cancel_transcription()
         self.cancel_batch_transcription()
@@ -3212,7 +3234,6 @@ class LauncherApi:
                 if isinstance(stream, TeeWriter) and stream._sink is self._log_sink:
                     stream.flush()
             self._log_sink.close()
-        self.pump.shutdown()
 
     def _worker_main(self, request: TranscriptionRequest, cancel_event: Event) -> None:
         child_output: list[str] = []
@@ -4267,7 +4288,8 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
-        length_limit="2m" if test_run else str(payload.get("lengthLimit") or "").strip(),
+        length_limit=TEST_RUN_LENGTH_LIMIT if test_run else str(payload.get("lengthLimit") or "").strip(),
+        test_run=test_run,
         max_len=max_len,
         min_len=min_len,
         max_words=max_words,
@@ -4293,6 +4315,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         provider=provider.id,
         speaker_colors=bool(payload.get("speakerColors")) and model.supports_speaker,
         generate_spectral=bool(payload.get("generateSpectral")),
+        generate_keyframes=bool(payload.get("generateKeyframes", True)),
         generate_thumbnails=bool(payload.get("generateThumbnails")),
         ui_language=_gui_lang(payload),
         generate_html=bool(payload.get("generateHtml")) and not bool(payload.get("batchSrtOnly")),

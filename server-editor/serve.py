@@ -26,6 +26,7 @@ import threading
 import time
 import webbrowser
 import zipfile
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
@@ -60,10 +61,13 @@ from maw.project_backups import backup_directory_candidates, write_backup  # noq
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
 from maw.ass_fonts import font_alias_payload, normalize_ass_text_fontnames  # noqa: E402
+from maw.fcp7_png_api import handle_fcp7_png  # noqa: E402
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
+from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
-    MEDIA_JOB_ADMISSION_TTL, MediaJob, MediaJobBusy, MediaJobCancelled, MediaJobManager, MediaJobUnavailable,
+    MEDIA_JOB_ADMISSION_TTL, MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S, MediaJob, MediaJobBusy, MediaJobCancelled,
+    MediaJobManager, MediaJobUnavailable,
 )
 from maw.media_export_audio import rebuild_gap_removed_audio  # noqa: E402
 from maw.media_export_video import (  # noqa: E402
@@ -766,17 +770,38 @@ def _fit_contain_box(box: dict, image_size: tuple[int, int] | None, align: str =
             "width": width, "height": height}
 
 
+def _parse_burn_sticker_background(raw_background: object) -> dict | None:
+    """Parse and validate the optional custom sticker background of one request.
+
+    ``{"color": "#RRGGBB", "opacity": 0~1}``，缺省 / None 表示无自定义背景
+    （保持历史行为：成片不画底衬）。颜色只收 6 位 hex，透明度收 0~1 的开区间
+    左端（0 等效于不画，前端直接不发），避免歧义。
+    """
+    if raw_background is None:
+        return None
+    if not isinstance(raw_background, dict):
+        raise ValueError("表情包背景参数无效")
+    color = raw_background.get("color")
+    opacity = raw_background.get("opacity")
+    if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+        raise ValueError("表情包背景颜色无效")
+    if type(opacity) not in (int, float) or isinstance(opacity, bool) or not 0 < opacity <= 1:
+        raise ValueError("表情包背景不透明度无效")
+    return {"color": color.lower(), "opacity": float(opacity)}
+
+
 def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[dict]:
     """Parse and validate sticker overlay entries of one burn-video request.
 
     接受两种载荷： placements 列表（老格式，等同 fixed 模式），或
-    ``{"mode": "fixed"|"cue-left", "placements": [...]}`` 对象。每项 placement
-    ``{rel, x, y, width, height, intervals:[{start,end}], align?}``：几何是前端
-    按视频分辨率与排版计划换算好的像素目标框，服务端读取图片尺寸做 contain
-    适配——对齐取 placement 自己的 ``align``（cue-left 贴字幕段为 ``right``、
-    回退段为 ``center``），缺省按 mode 推断。方案二下同一 ``rel`` 会有多个
-    placement（每句一个），FFmpeg 输入按 ``rel`` 去重，overlay 节点经 split
-    复用同一输入。
+    ``{"mode": "fixed"|"cue-left", "placements": [...], "background"?}`` 对象。
+    每项 placement ``{rel, x, y, width, height, intervals:[{start,end}], align?}``：
+    几何是前端按视频分辨率与排版计划换算好的像素目标框，服务端读取图片尺寸做
+    contain 适配——对齐取 placement 自己的 ``align``（cue-left 贴字幕段为
+    ``right``、回退段为 ``center``），缺省按 mode 推断。方案二下同一 ``rel``
+    会有多个 placement（每句一个），FFmpeg 输入按 ``rel`` 去重，overlay 节点
+    经 split 复用同一输入。可选 ``background``（``_parse_burn_sticker_background``）
+    校验后挂到每个 placement，滤镜链据此画自定义底衬。
     """
     if raw_stickers is None:
         return []
@@ -795,6 +820,9 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
         raise ValueError("表情包烧录参数无效")
     if not raw_placements:
         return []
+    # 只有对象载荷带 background；裸列表（老格式）没有该字段，保持无底衬。
+    background = _parse_burn_sticker_background(
+        raw_stickers.get("background") if isinstance(raw_stickers, dict) else None)
     if len(raw_placements) > MAX_BURN_STICKER_PLACEMENTS:
         raise ValueError(f"表情包烧录条目超过上限（{MAX_BURN_STICKER_PLACEMENTS} 条）")
     if root is None:
@@ -849,7 +877,8 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
             image_size = None
         placed = _fit_contain_box(
             {"x": box[0], "y": box[1], "width": box[2], "height": box[3]}, image_size, item_align)
-        placements.append({"rel": rel, "path": path, **placed, "intervals": intervals})
+        placements.append({"rel": rel, "path": path, **placed, "intervals": intervals,
+                           **({"background": background} if background else {})})
     for placement in placements:
         placement["intervals"].sort()
     # 唯一图片数上限按实际参与烧录的条目统计（区间全空被跳过的条目不计）。
@@ -859,6 +888,12 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
     return placements
 
 
+def _burn_sticker_background_args(background: dict | None) -> str:
+    """Format one drawbox color/alpha pair for the custom sticker background."""
+    alpha = format(Decimal(str(background["opacity"])), "f")
+    return f"0x{background['color'][1:]}@{alpha}"
+
+
 def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[str]:
     """Overlay sticker inputs between the video entry and the ass filter.
 
@@ -866,7 +901,9 @@ def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[st
     overlay 的 W/H 表达式：表达式坐标在 -stream_loop 输入下会被静默丢弃
     （FFmpeg 实测行为），纯数字坐标可靠。同一图片的多个 placement（方案二
     逐句贴放）经 split 复用一个输入，每个 placement 一个 scale + overlay
-    节点；enable 取各自的显示区间。
+    节点；enable 取各自的显示区间。placement 自带可选 ``background`` 底衬：
+    overlay 前对主画面画同矩形 drawbox（t=fill），enable 相同——底衬只盖
+    图片 contain 后的实际矩形，贴纸透明区域透出底衬颜色。
     """
     input_index: dict[str, int] = {}
     unique: list[str] = []
@@ -903,6 +940,16 @@ def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[st
                           for start, end in sticker["intervals"])
         # shortest=1：主视频 EOF 即终止输出；所有表情包输入都已被无限化，
         # 主视频恒为最短输入，缺省 shortest=0 会让 FFmpeg 永不退出。
+        background = sticker.get("background")
+        if background is not None:
+            # drawbox 支持时间线 enable：底衬与贴纸共用同一显示区间，矩形用
+            # 与 overlay 相同的 contain 显示矩形（贴纸透明区域透出底衬）。
+            lines.append(
+                f"{previous}drawbox=x={sticker['x']}:y={sticker['y']}"
+                f":w={sticker['width']}:h={sticker['height']}"
+                f":color={_burn_sticker_background_args(background)}:t=fill"
+                f":enable='{enable}'[burn_bg{placement_index}]")
+            previous = f"[burn_bg{placement_index}]"
         lines.append(f"{previous}{image_label}overlay="
                      f"x={sticker['x']}:y={sticker['y']}"
                      f":enable='{enable}':shortest=1{output_label}")
@@ -1661,6 +1708,7 @@ def build_server_page(
         "gapRemovedVideoJobsUrl": "/api/exports/gap-removed-video/jobs",
         "canGapRemovedMediaExport": can_gap_media_export,
         "burnVideoJobsUrl": "/api/exports/burned-video/jobs",
+        "fcp7PngJobsUrl": "/api/exports/fcp7-png/jobs",
         "canBurnVideoExport": bool(
             project.json_path is not None
             and gap_video_source is not None
@@ -1702,6 +1750,7 @@ def build_server_page(
             "settingsUrl": "/api/settings",
             "recentProjects": [item.to_json() for item in settings.recent_projects],
             "assStylesUrl": "/api/ass-styles",
+            "textProcessingPresetsUrl": "/api/text-processing-presets",
             "assFrameUrl": "/api/ass-frame",
             "assFontAliasesUrl": "/api/ass-font-aliases",
             "autoOpenLastProject": settings.auto_open_last_project,
@@ -2971,6 +3020,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.update_settings()
         elif path == "/api/ass-styles":
             self.update_ass_styles()
+        elif path == "/api/text-processing-presets":
+            self.update_text_processing_presets()
         elif path == "/api/ass-frame":
             self.render_ass_frame()
         elif path == "/api/audio/loudness":
@@ -2999,6 +3050,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.cancel_burn_video_admission()
         elif path.startswith("/api/exports/burned-video/jobs/"):
             self.burn_video_job_request(path, cancel=True)
+        elif path == "/api/exports/fcp7-png/jobs" or path.startswith("/api/exports/fcp7-png/jobs/"):
+            handle_fcp7_png(self, path, mutate=True, tools_factory=editor_ffmpeg_tools)
         elif path == "/api/exports/lottie":
             self.export_lottie()
         elif path == "/api/exports/ograf":
@@ -3363,6 +3416,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     raise MediaJobCancelled("媒体重组已停止")
             intervals = normalize_gap_removed_intervals(request.get("intervals"))
             source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
+            keep_to_source_end = request.get('keepToSourceEnd', False)
+            editor_duration_ms = request.get('editorDurationMs')
+            if (not isinstance(keep_to_source_end, bool)
+                    or (keep_to_source_end and editor_duration_ms is None)
+                    or (editor_duration_ms is not None and (type(editor_duration_ms) is not int or editor_duration_ms <= 0))
+                    or (source_snapshot.kind != 'audio' and (keep_to_source_end or editor_duration_ms is not None))):
+                raise ValueError('Invalid audio end selection')
             source = source_snapshot.path
             tools = editor_ffmpeg_tools()
             if tools.ffmpeg is None or tools.ffprobe is None:
@@ -3376,7 +3436,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 if source_snapshot.kind == "audio":
                     rebuild_gap_removed_audio(job.source, list(job.intervals), job.output,
                         ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job,
-                        audio_track=source_snapshot.audio_track)
+                        audio_track=source_snapshot.audio_track, keep_to_source_end=keep_to_source_end,
+                        editor_duration_ms=editor_duration_ms)
                 else:
                     try:
                         rebuild_gap_removed_video(job.source, list(job.intervals), job.output,
@@ -3582,6 +3643,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self._check_request_token(request)
             intervals = normalize_gap_removed_intervals(request.get("intervals"))
             source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
+            keep_to_source_end = request.get('keepToSourceEnd', False)
+            editor_duration_ms = request.get('editorDurationMs')
+            if (not isinstance(keep_to_source_end, bool)
+                    or (keep_to_source_end and editor_duration_ms is None)
+                    or (editor_duration_ms is not None and (type(editor_duration_ms) is not int or editor_duration_ms <= 0))
+                    or (source_snapshot.kind != 'audio' and (keep_to_source_end or editor_duration_ms is not None))):
+                raise ValueError('Invalid audio end selection')
             source = source_snapshot.path
             if not self.editor_server.gap_removed_video_lock.acquire(blocking=False):
                 raise GapRemovedVideoExportInProgressError("另一个媒体导出任务正在进行，请完成或停止后再试")
@@ -3608,7 +3676,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     if source_snapshot.kind == "audio":
                         rebuild_gap_removed_audio(source, intervals, output_path,
                             ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe,
-                            audio_track=source_snapshot.audio_track)
+                            audio_track=source_snapshot.audio_track, keep_to_source_end=keep_to_source_end,
+                            editor_duration_ms=editor_duration_ms)
                     else:
                         rebuild_gap_removed_video(source, intervals, output_path,
                             ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe)
@@ -3804,6 +3873,22 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_json(HTTPStatus.OK, library)
 
+    def update_text_processing_presets(self) -> None:
+        try:
+            request = self.read_json_request(max_bytes=1024 * 1024 + 8192)
+            self._check_request_token(request)
+            library = save_text_presets(request)
+        except ProcessingConflict as error:
+            self.send_json(HTTPStatus.CONFLICT, {"current": error.current})
+            return
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, library)
+
     def render_ass_frame(self) -> None:
         """Render the current project's media at one timestamp with libass.
 
@@ -3945,6 +4030,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def handle_request(self, *, include_body: bool) -> None:
         path = urlsplit(self.path).path
+        if path.startswith("/api/exports/fcp7-png/jobs/"):
+            handle_fcp7_png(self, path, include_body=include_body, tools_factory=editor_ffmpeg_tools)
+            return
         if path == "/api/thumbnails" or path.startswith("/api/thumbnails/asset/"):
             self.thumbnail_request(path, include_body=include_body)
             return
@@ -3965,6 +4053,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         if path == "/api/ass-styles":
             self.send_json(HTTPStatus.OK, load_ass_style_library())
+            return
+        if path == "/api/text-processing-presets":
+            try:
+                self.send_json(HTTPStatus.OK, load_text_presets())
+            except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
+                self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
         if path == "/api/ass-font-aliases":
             self.send_json(HTTPStatus.OK, font_alias_payload())
@@ -4044,7 +4138,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         disposition = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename, safe="")} '
         previous_timeout = self.connection.gettimeout()
         if job:
-            self.connection.settimeout(2)
+            # 取消主路径是 abort_download 立即 shutdown socket，「停止」的响应速度
+            # 不受此超时影响；它只是客户端异常消失时的兜底，容忍慢速磁盘/杀软
+            # 造成的短暂写停顿，避免浏览器写盘慢时被服务端主动断流。
+            self.connection.settimeout(MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S)
         try:
             if job:
                 job.check_cancelled()

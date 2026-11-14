@@ -69,6 +69,12 @@ export function initMaweTextCleanup() {
     sync(overlay.segments, 'sticker', 'sticker_ref');
     sync(overlay.segments, 'color', 'color_ref');
   }
+  // 副轨段同样可带颜色组（JSON_SCHEMA §1.6）：主副合并/删除联动副轨后，
+  // head 的时间范围需要按幸存成员归位。
+  const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack?.();
+  if (extensionTrack?.segments?.length) {
+    sync(extensionTrack.segments, 'color', 'color_ref');
+  }
 }
 
 
@@ -84,7 +90,7 @@ export function initMaweTextCleanup() {
     MaweHint.flashHint('媒体尚不可 seek；请等待加载完成或用 file:// 直接打开 HTML', 'warning');
   }
   try {
-    MaweCoreState.player.currentTime = Math.max(0, timeSec);
+    MaweMediaPlayback.setPlayerCurrentTime(Math.max(0, timeSec));
     if (mouseClick) window.MaweKeyboardGuards.pausePlaybackAfterMouseClick();
     if (!dragPreview) {
       MawePlaybackLoop.update();
@@ -93,7 +99,7 @@ export function initMaweTextCleanup() {
       MaweCoreState.waveformEditor?.updatePlayback();
     }
   } catch (error) {
-    MaweHint.flashHint(`跳转失败：${error.message}`, 'warning');
+    MaweHint.flashHint(`跳转失败：${error.message}`, 'warning', { error });
   }
 }
 
@@ -123,3 +129,9 @@ export function initMaweTextCleanup() {
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function cleanPunctuation(...args) { return window.MaweTextCleanup.cleanPunctuation(...args); }
+export function syncTimelineGroupRanges(...args) { return window.MaweTextCleanup.syncTimelineGroupRanges(...args); }
+export function seekFromWaveform(...args) { return window.MaweTextCleanup.seekFromWaveform(...args); }
+export function notifyAutoLoadedMediaReady(...args) { return window.MaweTextCleanup.notifyAutoLoadedMediaReady(...args); }
+export function flushPendingMediaSeek(...args) { return window.MaweTextCleanup.flushPendingMediaSeek(...args); }

@@ -1256,7 +1256,7 @@ def _apply_llm_groups_with_warnings(
     result["segments"] = new_segments
     warnings: list[str] = []
     if regrouped:
-        warnings.append("重分句/合并已清理受影响字幕的逐词时间和贴纸/颜色引用；未受影响的字幕尽量保留。")
+        warnings.append("重分句/合并已清理受影响字幕的贴纸/颜色引用；逐词时间仅在原文与时间码可靠匹配时保留，否则会清理。")
     return normalize_project(result), tuple(warnings)
 
 
@@ -1503,12 +1503,14 @@ def _build_segments(
 
 def _copy_common_metadata(source_segments: Sequence[JsonDict]) -> JsonDict:
     first = source_segments[0]
-    excluded = set(TIMING_FIELDS) | set(SAFE_SCALARS) | set(VISUAL_FIELDS) | {"assOverride"}
+    excluded = set(TIMING_FIELDS) | set(SAFE_SCALARS) | set(VISUAL_FIELDS) | {"assOverride", "assStyle"}
     # Split outputs inherit independent copies; merged cues take the first
     # source position, including its absence, just like the editor's merge.
     result: JsonDict = {}
     if "assOverride" in first:
         result["assOverride"] = copy.deepcopy(first["assOverride"])
+    if "assStyle" in first:
+        result["assStyle"] = copy.deepcopy(first["assStyle"])
     for metadata_key, value in first.items():
         if metadata_key in excluded:
             continue

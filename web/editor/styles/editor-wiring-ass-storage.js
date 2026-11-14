@@ -1,3 +1,19 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
+import { assStyleLibraryUsesServerStorage, setAssStyleLibraryStatus, syncAssStyleManager } from './editor-wiring-ass-manager.js';
+
+const storageService = {};
+
+export function getAssStyleLibrary() { return storageService.getLibrary(); }
+export function isAssStyleLibraryReady() { return storageService.isReady(); }
+export function incrementAssStyleLibraryRevision() { storageService.incrementRevision(); }
+export function setAssStyleLibrary(value, options) { return storageService.setLibrary(value, options); }
+export function updateAssStyleLibrarySummary() { storageService.updateSummary(); }
+export function scheduleAssStyleLibrarySave() { storageService.scheduleSave(); }
+export function getAssBuiltinFontSuggestions() { return storageService.fontSuggestions(); }
+export function loadAssStyleLibrary(options) { return storageService.load(options); }
+export function persistAssStyleLibrary() { return storageService.persist(); }
+
+export function initAssStorageWiring() {
 
 
 
@@ -17,7 +33,6 @@
 // ass_color_style（text / speaker / stroke / none），两者语义不同。
 
 
-const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
 const DEFAULT_ASS_COLOR_STYLE = 'text';
 // 字体输入框用 combobox 下拉提供筛选（映射逻辑在 editor-utils 的
 // subtitleFontFamilyStoredToInput / subtitleFontFamilyInputToStored）；
@@ -94,9 +109,9 @@ function assStyleLibrarySummary() {
 }
 
 function updateAssStyleLibrarySummary() {
-  if (assStyleSummary) {
+  if (getMaweDomPanels().assStyleSummary) {
     const summary = assStyleLibrarySummary();
-    assStyleSummary.textContent = window.MAWE_I18N?.translateText?.(summary) || summary;
+    getMaweDomPanels().assStyleSummary.textContent = window.MAWE_I18N?.translateText?.(summary) || summary;
   }
 }
 
@@ -262,7 +277,29 @@ async function loadAssStyleLibrary({ force = false } = {}) {
 }
 
 // G07：init 化模块经 window 延迟取用本文件的运行时入口；classic 调用方不受影响。
+storageService.getLibrary = () => ASS_STYLE_LIBRARY;
+storageService.isReady = () => ASS_STYLE_LIBRARY_READY;
+storageService.incrementRevision = () => { assStyleLibraryRevision += 1; };
+storageService.setLibrary = setAssStyleLibrary;
+storageService.updateSummary = updateAssStyleLibrarySummary;
+storageService.scheduleSave = scheduleAssStyleLibrarySave;
+storageService.fontSuggestions = () => ASS_BUILTIN_FONT_SUGGESTIONS;
+storageService.load = loadAssStyleLibrary;
+storageService.persist = persistAssStyleLibrary;
+Object.defineProperty(window, 'ASS_STYLE_LIBRARY', {
+  configurable: true,
+  get: () => ASS_STYLE_LIBRARY,
+  set: value => { ASS_STYLE_LIBRARY = value; },
+});
+Object.defineProperty(window, 'loadAssStyleLibrary', {
+  configurable: true,
+  writable: true,
+  value: loadAssStyleLibrary,
+});
 window.MaweAssStorageWiring = window.MaweAssStorageWiring || Object.freeze({
   DEFAULT_ASS_COLOR_STYLE,
   updateAssStyleLibrarySummary,
+  loadAssStyleLibrary,
+  styles: () => ASS_STYLE_LIBRARY.styles || [],
 });
+}

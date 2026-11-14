@@ -71,7 +71,7 @@ document.addEventListener('keydown', (e) => {
     || a.tagName === 'SELECT'
     || a.isContentEditable
   )) return;
-  if (MaweDom.replaceModal.classList.contains('show')) return;
+  if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
@@ -99,12 +99,13 @@ document.addEventListener('keydown', (e) => {
 
 
 function isPlaybackActive() {
-  return MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused;
+  return MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused || window.MaweGapPlayback?.pendingPlayback;
 }
 
 function pausePlaybackAfterMouseClick() {
   if (!MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick || !isPlaybackActive()) return;
   if (MaweJklPlayback.jklReversePlaying) MaweJklPlayback.stopJklReversePlayback({ render: false });
+  window.MaweGapPlayback?.cancelPendingPlayback();
   MaweCoreState.player.pause();
   MaweMediaPlayback.syncMediaControls();
 }
@@ -123,48 +124,9 @@ function pausePlaybackAfterMouseClick() {
 
 
 
-let assPreviewRefreshFrame = 0;
-let assPreviewRefreshTimer = 0;
-function queueAssSubtitlePreviewRefresh() {
-  if (assPreviewRefreshFrame) return;
-  const refresh = () => {
-    assPreviewRefreshFrame = 0;
-    if (MaweSettings.EDITOR_SETTINGS.assMode === true) MawePlaybackLoop.refreshSubtitlePreview();
-  };
-  if (typeof requestAnimationFrame === 'function') assPreviewRefreshFrame = requestAnimationFrame(refresh);
-  else refresh();
-}
-function scheduleAssSubtitlePreviewRefresh() {
-  if (MaweSettings.EDITOR_SETTINGS.assMode !== true) return;
-  // ResizeObserver runs after layout. Draw the overlay and Canvas together on
-  // the next frame, even while fullscreen/resize events keep arriving. A trailing
-  // debounce used to starve paused previews until the entire transition ended.
-  queueAssSubtitlePreviewRefresh();
-  // One bounded follow-up also covers fullscreenchange arriving before layout.
-  // Repeated events never postpone it and no polling continues after it fires.
-  if (!assPreviewRefreshTimer) {
-    assPreviewRefreshTimer = window.setTimeout(() => {
-      assPreviewRefreshTimer = 0;
-      if (MaweSettings.EDITOR_SETTINGS.assMode === true) queueAssSubtitlePreviewRefresh();
-    }, 100);
-  }
-}
-
-let assPreviewObservedPlayer = null;
-const assPreviewStageObserver = typeof ResizeObserver === 'function'
-  ? new ResizeObserver(scheduleAssSubtitlePreviewRefresh) : null;
-function observeAssSubtitlePreviewPlayer(player) {
-  if (!assPreviewStageObserver || assPreviewObservedPlayer === player) return;
-  if (assPreviewObservedPlayer) assPreviewStageObserver.unobserve(assPreviewObservedPlayer);
-  assPreviewObservedPlayer = player?.tagName === 'VIDEO' ? player : null;
-  if (assPreviewObservedPlayer) assPreviewStageObserver.observe(assPreviewObservedPlayer);
-}
-if (MaweDom.playerStage) assPreviewStageObserver?.observe(MaweDom.playerStage);
-observeAssSubtitlePreviewPlayer(MaweCoreState.player);
-window.addEventListener('resize', scheduleAssSubtitlePreviewRefresh);
-
-// G07：init 化模块经 window 延迟取用本文件的运行时入口；classic 调用方不受影响。
 window.MaweKeyboardGuards = window.MaweKeyboardGuards || Object.freeze({
   isPlaybackActive,
   pausePlaybackAfterMouseClick,
+  scheduleAssSubtitlePreviewRefresh: (...args) => window.MaweAssPreviewRefresh.scheduleAssSubtitlePreviewRefresh(...args),
+  observeAssSubtitlePreviewPlayer: (...args) => window.MaweAssPreviewRefresh.observeAssSubtitlePreviewPlayer(...args),
 });

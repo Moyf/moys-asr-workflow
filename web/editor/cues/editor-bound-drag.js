@@ -1,7 +1,10 @@
+import { remapPanelItems } from './editor-cue-panel.js';
+
 // 绑定拖拽：主副字幕联动调整的范围解析与快照恢复。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweBoundDrag 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweBoundDrag 在原清单位次执行原 IIFE 体（挂
+// window.MaweBoundDrag 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweBoundDrag() {
 (function initMaweBoundDrag(global) {
   'use strict';
 
@@ -36,6 +39,11 @@
 
 
 
+  function cloneBoundDragColorValue(value) {
+    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  }
+
+
   function snapshotBoundDragTrack(track) {
     return {
       track,
@@ -47,6 +55,12 @@
         end_frame: segment.end_frame,
         items: Array.isArray(segment.items)
           ? segment.items.map((item) => ({ ...item })) : segment.items,
+        // 挤压/排序预览会平移 ref 或物化颜色；快照不能与段共用这些对象，
+        // 也不能把原本缺失的字段变成显式 null/undefined。
+        ...(Object.hasOwn(segment, 'color')
+          ? { color: cloneBoundDragColorValue(segment.color) } : {}),
+        ...(Object.hasOwn(segment, 'color_ref')
+          ? { color_ref: cloneBoundDragColorValue(segment.color_ref) } : {}),
       })),
       dirty: track?._dirty,
       selection: MaweMultiSubtitleCore.extensionTrackSelectionSnapshot(track),
@@ -82,6 +96,11 @@
         else entry.segment.end_frame = entry.end_frame;
         entry.segment.items = Array.isArray(entry.items)
           ? entry.items.map((item) => ({ ...item })) : entry.items;
+        for (const field of ['color', 'color_ref']) {
+          // 每帧恢复也必须复制，避免下一次预览反过来改坏快照。
+          if (Object.hasOwn(entry, field)) entry.segment[field] = cloneBoundDragColorValue(entry[field]);
+          else delete entry.segment[field];
+        }
         return entry.segment;
       });
       track._dirty = track._dirty || dirty;
@@ -176,7 +195,7 @@
       }
       target.start = resolved.start;
       target.end = resolved.end;
-      target.items = MaweCuePanel.remapPanelItems(
+      target.items = remapPanelItems(
         targetOriginal.items,
         targetOriginal.start,
         targetOriginal.end,
@@ -222,3 +241,13 @@
     prepareBoundCueDrag
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function getBoundDragTarget(...args) { return window.MaweBoundDrag.getBoundDragTarget(...args); }
+export function ensureBoundDragOriginal(...args) { return window.MaweBoundDrag.ensureBoundDragOriginal(...args); }
+export function snapshotBoundDragTrack(...args) { return window.MaweBoundDrag.snapshotBoundDragTrack(...args); }
+export function ensureBoundDragTimelineOriginals(...args) { return window.MaweBoundDrag.ensureBoundDragTimelineOriginals(...args); }
+export function restoreBoundDragTimelineOriginals(...args) { return window.MaweBoundDrag.restoreBoundDragTimelineOriginals(...args); }
+export function getBoundDragEdge(...args) { return window.MaweBoundDrag.getBoundDragEdge(...args); }
+export function syncBoundCueDrag(...args) { return window.MaweBoundDrag.syncBoundCueDrag(...args); }
+export function prepareBoundCueDrag(...args) { return window.MaweBoundDrag.prepareBoundCueDrag(...args); }

@@ -13,6 +13,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  selection:
+    runs-on: ubuntu-latest
+    outputs:
+      light: ${{ steps.scope.outputs.light }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Select change scope
+        id: scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python scripts/ci_impact.py
+
   debug-tools:
     name: Debug tooling (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -36,6 +53,8 @@ jobs:
       # documentation failure under the Windows PowerShell shell.
       - name: Documentation navigation and consumers
         run: python scripts/run_check.py --timeout 180 -- python scripts/check_docs.py
+      - name: Offline tool documentation freshness
+        run: python scripts/run_check.py --timeout 60 -- node scripts/build-tool-docs.mjs --check
       - name: Documentation regressions
         run: python scripts/run_check.py --timeout 180 -- python scripts/run_tests.py tests/test_docs_check.py
       - name: Release documents
@@ -58,53 +77,96 @@ jobs:
           include-hidden-files: true
           retention-days: 7
   editor:
+    needs: selection
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     env:
       PYTHONUTF8: '1'
       PYTHONIOENCODING: utf-8
     steps:
+      - name: Require valid selection
+        if: ${{ needs.selection.result != 'success' || (needs.selection.outputs.light != 'true' && needs.selection.outputs.light != 'false') }}
+        run: exit 1
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v6
+        if: ${{ needs.selection.outputs.light != 'true' }}
         with:
           version: 11.28.4
           run_install: false
       - uses: actions/setup-node@v5
+        if: ${{ needs.selection.outputs.light != 'true' }}
         with:
           node-version: '22.23.4'
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+        if: ${{ needs.selection.outputs.light != 'true' }}
       # Bundles are build artifacts (not committed): build once for every later
       # step that reads them (assembly contracts, test:unit, e2e). pnpm install
       # already builds via postinstall; keep this explicit so it does not rely
       # on the hook.
       - run: pnpm run build
+        if: ${{ needs.selection.outputs.light != 'true' }}
       - run: pnpm run typecheck
+        if: ${{ needs.selection.outputs.light != 'true' }}
       - uses: actions/setup-python@v6
+        if: ${{ needs.selection.outputs.light != 'true' }}
         with:
           python-version: '3.11'
       - uses: astral-sh/setup-uv@v7
+        if: ${{ needs.selection.outputs.light != 'true' }}
         with:
           version: "0.13.4"
           enable-cache: true
       - run: uv sync --frozen
+        if: ${{ needs.selection.outputs.light != 'true' }}
+      - name: Prepare developer image fixtures (no OCR model)
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        run: uv sync --frozen --group dev
       # Node tests also launch Chromium and compare against Python exporters.
-      - run: pnpm exec playwright install --with-deps chromium
+      - name: Install Playwright Chromium
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        shell: bash
+        # 2026-11-11 PR #365 的 editor job 曾因 GitHub runner DNS 抖动整 job 红：
+        # --with-deps 走 apt，依赖安装全体「Temporary failure resolving
+        # security.ubuntu.com」（exit code 100），人工 rerun 即绿。此步骤外部网络
+        # 敏感且幂等可重跑，自动重试省人工 rerun；每次失败输出保留在步骤日志里，
+        # 最后一次失败仍非零退出，不掩盖真实故障。
+        run: |
+          attempt=1
+          max_attempts=3
+          until pnpm exec playwright install --with-deps chromium; do
+            status=$?
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "playwright install 仍失败（最多尝试 ${max_attempts} 次，最后 exit ${status}），放弃。"
+              exit "$status"
+            fi
+            echo "playwright install 失败（exit ${status}，第 ${attempt}/${max_attempts} 次尝试），20s 后重试……"
+            attempt=$((attempt + 1))
+            sleep 20
+          done
       - run: pnpm run test:unit
+        if: ${{ needs.selection.outputs.light != 'true' }}
         env:
           MAW_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
       - name: Python assembly contracts
+        if: ${{ needs.selection.outputs.light != 'true' }}
         run: |
           uv run --no-sync python scripts/run_tests.py tests/test_editor_assets.py
           uv run --no-sync python scripts/run_tests.py tests/test_editor_manifest.py
+      - name: OCR term extraction and runtime cleanup contracts
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_ocr_scan.py tests/test_ocr_scan_regressions.py tests/test_ocr_runtime.py tests/test_runtime_process_cleanup.py tests/test_process_tree_posix.py tests/test_term_extract_aggregate.py tests/test_term_extract_ai_filter.py tests/test_term_extract_cli_cache.py tests/test_term_extract_export.py tests/test_term_extract_report.py tests/test_term_extract_score.py tests/test_verification_checklist.py tests/test_verification_checklist_build.py
       - name: Install FFmpeg for synthetic editor fixtures
+        if: ${{ needs.selection.outputs.light != 'true' }}
         run: |
           sudo apt-get update
           sudo apt-get install --yes ffmpeg
       - name: Required media failure compatibility
+        if: ${{ needs.selection.outputs.light != 'true' }}
         run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_media.py tests/test_ffmpeg.py tests/test_ffprobe_failure_integration.py --required --report .artifacts/media-required.json
       - name: Preserve media required report
-        if: always()
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: media-required-${{ runner.os }}
@@ -116,6 +178,43 @@ jobs:
           retention-days: 7
 
       - name: Real file and HTTP editor
+        if: ${{ needs.selection.outputs.light != 'true' }}
         env:
           MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: pnpm exec playwright test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs tests/e2e/editor-text-tools.spec.mjs tests/e2e/ass-cue-position.spec.mjs tests/e2e/sticker-preview-lifecycle.spec.mjs
+        run: pnpm exec playwright test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs tests/e2e/editor-text-tools.spec.mjs tests/e2e/ass-cue-position.spec.mjs tests/e2e/sticker-preview-lifecycle.spec.mjs tests/e2e/warma-presets.spec.mjs tests/e2e/warma-i18n.spec.mjs
+
+      - name: Independent browser tool pages
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        env:
+          MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: uv run --no-sync python scripts/run_check.py --timeout 300 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/tool-pages.spec.mjs tests/e2e/tool-compact.spec.mjs tests/e2e/tool-markdown.spec.mjs tests/e2e/timestamp-compare.spec.mjs tests/e2e/verification-checklist.spec.mjs tests/e2e/term-report.spec.mjs tests/e2e/changelog-write-lock.spec.mjs
+
+      # README and user guides are website inputs, not just Markdown files.
+      - name: Set up website pnpm
+        if: ${{ needs.selection.outputs.light == 'true' }}
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.4
+          run_install: false
+      - name: Set up website Node
+        if: ${{ needs.selection.outputs.light == 'true' }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.23.4'
+          cache: pnpm
+          cache-dependency-path: website/pnpm-lock.yaml
+      - name: Set up website Python
+        if: ${{ needs.selection.outputs.light == 'true' }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install website dependencies
+        if: ${{ needs.selection.outputs.light == 'true' }}
+        run: pnpm --dir website install --frozen-lockfile
+      - name: Verify website document consumers
+        if: ${{ needs.selection.outputs.light == 'true' }}
+        run: |
+          node --test tests/test_readme_content_sync.mjs
+          pnpm --dir website run sync:docs
+          python scripts/build_release_site.py --preview
+          pnpm --dir website run build

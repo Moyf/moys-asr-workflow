@@ -246,7 +246,7 @@ export function initMaweMultiImport() {
     if (imported && MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
     return imported;
   } catch (error) {
-    MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
+    MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning', { error });
     return false;
   } finally {
     finishLoading();

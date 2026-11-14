@@ -12,6 +12,7 @@ MOSS Transcribe-Diarize 依赖 Transformers 5.x，与 QwenASR / FunASR
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from threading import Event
 from typing import Final
@@ -43,19 +44,47 @@ MOSS_PACKAGE_DIRS: Final[tuple[str, ...]] = MOSS.spec.package_dirs
 MOSS_VERIFY_IMPORT: Final = MOSS.spec.verify_command
 
 
+def _moss_root_override() -> Path | None:
+    """MOSS 安装根目录的显式覆盖；``None`` 表示走默认解析。
+
+    「MAW_MOSS_RUNTIME_ROOT」是 MOSS 独立覆盖键，优先级最高。未设置时回落
+    「MAW_LOCAL_RUNTIME_ROOT」并派生 ``<值>-moss`` 同级目录：设置页的
+    「安装位置」字段只维护 LOCAL 键（保存与启动回填链路见 gui_web 的
+    ``save_local_settings`` / ``_sync_local_runtime_root``），回落让 MOSS
+    跟随用户自定义路径，同时保持与 LOCAL 不同的目录（Transformers 5.x 与
+    funasr / Transformers 4.x 互斥，不能叠装）。派生规则与 RuntimeSpec
+    抽象前的旧实现一致（``eb55dde0`` 曾把该链路切到独立键造成设置失效，
+    此处恢复）。返回 ``None`` 时 resolve_root 走自身的环境回退与默认目录。
+    """
+    own = os.environ.get("MAW_MOSS_RUNTIME_ROOT", "").strip()
+    if own:
+        return Path(own).expanduser()
+    shared = os.environ.get("MAW_LOCAL_RUNTIME_ROOT", "").strip()
+    if shared:
+        base = Path(shared).expanduser().resolve(strict=False)
+        # 盘符根（``D:\``）的 ``name`` 为空，``with_name`` 会抛 ValueError：
+        # 回落到默认目录名并用 ``/`` 直接拼接，派生结果仍是同级独立目录
+        # （``D:\local-runtime-moss``）。
+        derived_name = f"{base.name}-moss" if base.name else MOSS_RUNTIME_ROOT_NAME
+        return base / derived_name if not base.name else base.with_name(derived_name)
+    return None
+
+
 def default_runtime_root() -> Path:
-    """MOSS runtime 根目录（「MAW_MOSS_RUNTIME_ROOT」覆盖 / 默认 local-runtime-moss）。"""
-    return MOSS.resolve_root()
+    """MOSS runtime 根目录（显式覆盖 / LOCAL 键派生 ``-moss`` / 默认 local-runtime-moss）。"""
+    return MOSS.resolve_root(_moss_root_override())
 
 
 def runtime_python_path(root: str | Path | None = None) -> Path:
-    target = Path(root) if root is not None else MOSS.resolve_root()
+    target = Path(root) if root is not None else MOSS.resolve_root(_moss_root_override())
     return MOSS.python_path(target)
 
 
 def managed_runtime_status(model_cache_root: str | Path | None = None) -> LocalRuntimeStatus:
     """与主 runtime 同一契约（LocalRuntimeStatus）的 MOSS 状态。"""
-    return _from_runtime_status(MOSS.status(model_cache_root=model_cache_root))
+    return _from_runtime_status(
+        MOSS.status(model_cache_root=model_cache_root, runtime_root=_moss_root_override())
+    )
 
 
 def install_local_runtime(
@@ -71,14 +100,20 @@ def install_local_runtime(
             on_event=on_event,
             cancel_event=cancel_event,
             repair=repair,
+            runtime_root=_moss_root_override(),
             model_cache_root=model_cache_root,
         )
     )
 
 
 def recover_local_runtime_install() -> bool:
-    """清除 MOSS 安装中断后残留的 installing 标记（改写为 broken，#127）。"""
-    return MOSS.mark_install_aborted()
+    """清除 MOSS 安装中断后残留的 installing 标记（改写为 broken，#127）。
+
+    与 install / status / python_path 同源：经 ``_moss_root_override()`` 解析
+    根目录（含 LOCAL 键派生），否则恢复会去默认目录找 manifest，遗漏派生目录
+    的 installing 标记，状态永远停在 installing。
+    """
+    return MOSS.mark_install_aborted(runtime_root=_moss_root_override())
 
 
 __all__ = [

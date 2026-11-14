@@ -1,3 +1,7 @@
+import { updateCueColorPresentation, updateCueStickerPresentation } from './editor-cue-elements.js';
+import { commitCuePanelEdit, renderCurrentCuePanel } from './editor-cue-panel.js';
+import { applySearch } from './editor-search.js';
+import { clearSelection, isHiddenDisabled, updateMultiSelectionClasses } from './editor-selection.js';
 import { getOverlayTrack } from './overlay-track.js';
 
 export function initMaweColorFilter() {
@@ -120,7 +124,7 @@ export function initMaweColorFilter() {
   function setColorFilterSelection(next) {
     colorFilterSelection = next && next.size ? new Set(next) : null;
     renderColorFilterMenu();
-    MaweSearch.applySearch(MaweDom.searchEl.value);
+    applySearch(MaweDom.searchEl.value);
   }
 
 
@@ -132,16 +136,16 @@ export function initMaweColorFilter() {
     MaweHint.flashHint('当前没有生效的颜色过滤', 'invalid');
     return;
   }
-  MaweCuePanel.commitCuePanelEdit();
-  MaweSelection.clearSelection({ silent: true });
+  commitCuePanelEdit();
+  clearSelection({ silent: true });
   MaweBoot.DATA.segments.forEach((seg, idx) => {
-    if (MaweSelection.isHiddenDisabled(idx)) return;
+    if (isHiddenDisabled(idx)) return;
     if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
     MaweState.selection.add('main', idx);
     const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
     if (el) el.classList.add('selected');
   });
-  MaweSelection.updateMultiSelectionClasses();
+  updateMultiSelectionClasses();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   window.MaweCuePanelWiring.updateSelectionCountText();
   MaweHint.flashHint(`已选中 ${MaweSelection.selectedIdxs.size} 条过滤字幕`, MaweSelection.selectedIdxs.size ? 'success' : 'invalid');
@@ -204,7 +208,7 @@ export function initMaweColorFilter() {
       const segment = Number.isInteger(overlayIndex)
         ? getOverlayTrack()?.segments?.[overlayIndex]
         : null;
-      if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
+      if (segment) updateCueColorPresentation(el, colorBar, segment);
       return;
     }
     if (el.dataset.extIdx != null && el.dataset.idx == null) {
@@ -212,7 +216,7 @@ export function initMaweColorFilter() {
       const segment = Number.isInteger(extensionIndex)
         ? extensionTrack?.segments?.[extensionIndex]
         : null;
-      if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
+      if (segment) updateCueColorPresentation(el, colorBar, segment);
       return;
     }
     const mainIndex = el.dataset.idx != null
@@ -221,7 +225,7 @@ export function initMaweColorFilter() {
     const segment = Number.isInteger(mainIndex) && mainIndex >= 0
       ? MaweBoot.DATA.segments[mainIndex]
       : null;
-    if (segment) MaweCueElements.updateCueColorPresentation(el, colorBar, segment);
+    if (segment) updateCueColorPresentation(el, colorBar, segment);
   });
 }
 
@@ -237,7 +241,7 @@ export function initMaweColorFilter() {
       const segment = Number.isInteger(overlayIndex)
         ? getOverlayTrack()?.segments?.[overlayIndex]
         : null;
-      if (segment) MaweCueElements.updateCueStickerPresentation(el, slotEl, segment, overlayIndex, { overlayTrack: true });
+      if (segment) updateCueStickerPresentation(el, slotEl, segment, overlayIndex, { overlayTrack: true });
       return;
     }
     const isExtension = el.dataset.extIdx != null && el.dataset.idx == null;
@@ -246,7 +250,7 @@ export function initMaweColorFilter() {
       ? (Number.isInteger(index) ? extensionTrack?.segments?.[index] : null)
       : (Number.isInteger(index) && index >= 0 ? MaweBoot.DATA.segments[index] : null);
     if (segment) {
-      MaweCueElements.updateCueStickerPresentation(el, slotEl, segment, index, {
+      updateCueStickerPresentation(el, slotEl, segment, index, {
         extensionTrack: isExtension ? extensionTrack : null,
       });
     }
@@ -269,7 +273,7 @@ export function initMaweColorFilter() {
   // 表情包变化影响波形块上的 🦊 徽章分组；颜色走 updateCueColorPresentation
   // 自行刷新，徽章需要整层重建才会重新计数。
   MaweCoreState.waveformEditor?.refreshCueOverlay?.();
-  MaweCuePanel.renderCurrentCuePanel();
+  renderCurrentCuePanel();
   MawePlaybackLoop.refreshSubtitlePreview();
 }
 
@@ -284,7 +288,7 @@ export function initMaweColorFilter() {
     // 不保存/恢复滚动位置，也不主动滚动。
     if (MaweDom.searchEl.value || colorFilterSelection
         || document.getElementById('filter-over')?.classList.contains('active')) {
-      MaweSearch.applySearch(MaweDom.searchEl.value, { refreshText: false, preserveCueListScroll: false });
+      applySearch(MaweDom.searchEl.value, { refreshText: false, preserveCueListScroll: false });
     }
     MaweCoreState.waveformEditor?.refreshCueOverlay?.();
     MawePlaybackLoop.refreshSubtitlePreview();
@@ -342,3 +346,24 @@ export function initMaweColorFilter() {
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function COLOR_FILTER_DEFAULT_KEY(...args) { return window.MaweColorFilter.COLOR_FILTER_DEFAULT_KEY(...args); }
+export function colorFilterDropdown(...args) { return window.MaweColorFilter.colorFilterDropdown(...args); }
+export function colorFilterButton(...args) { return window.MaweColorFilter.colorFilterButton(...args); }
+export function colorFilterMenu(...args) { return window.MaweColorFilter.colorFilterMenu(...args); }
+export function effectiveCueColorKey(...args) { return window.MaweColorFilter.effectiveCueColorKey(...args); }
+export function colorFilterSuspended(...args) { return window.MaweColorFilter.colorFilterSuspended(...args); }
+export function collectProjectColorUsage(...args) { return window.MaweColorFilter.collectProjectColorUsage(...args); }
+export function colorFilterLabelFor(...args) { return window.MaweColorFilter.colorFilterLabelFor(...args); }
+export function colorFilterValueFor(...args) { return window.MaweColorFilter.colorFilterValueFor(...args); }
+export function syncColorFilterControls(...args) { return window.MaweColorFilter.syncColorFilterControls(...args); }
+export function renderColorFilterMenu(...args) { return window.MaweColorFilter.renderColorFilterMenu(...args); }
+export function setColorFilterSelection(...args) { return window.MaweColorFilter.setColorFilterSelection(...args); }
+export function selectAllFilteredCues(...args) { return window.MaweColorFilter.selectAllFilteredCues(...args); }
+export function buildColorFilterItem(...args) { return window.MaweColorFilter.buildColorFilterItem(...args); }
+export function refreshColorFilterUi(...args) { return window.MaweColorFilter.refreshColorFilterUi(...args); }
+export function refreshCueColorRows(...args) { return window.MaweColorFilter.refreshCueColorRows(...args); }
+export function refreshCueStickerRows(...args) { return window.MaweColorFilter.refreshCueStickerRows(...args); }
+export function refreshStickerAssignmentUi(...args) { return window.MaweColorFilter.refreshStickerAssignmentUi(...args); }
+export function refreshColorAssignmentUi(...args) { return window.MaweColorFilter.refreshColorAssignmentUi(...args); }
+export function positionColorFilterMenu(...args) { return window.MaweColorFilter.positionColorFilterMenu(...args); }

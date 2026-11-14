@@ -273,12 +273,17 @@ def limit_groups(
     """Find legal cuts with a bounded dynamic program, avoiding tiny tails."""
     if not maximum or char_count("".join(u.text for u in group)) <= maximum:
         return [group], False
-    # Adjacent numeric fragments form one indivisible unit for local splitting.
+    # Adjacent numeric fragments and zero-duration punctuation must remain
+    # attached to a timed unit when finding local cuts.
     blocks: list[list[Unit]] = []
     for index, unit in enumerate(group):
-        if blocks and not safe_boundary(
-            "".join(u.text for u in blocks[-1]),
-            "".join(u.text for u in group[index : index + 3]),
+        if blocks and (
+            unit.start == unit.end
+            or blocks[-1][0].start >= blocks[-1][-1].end
+            or not safe_boundary(
+                "".join(u.text for u in blocks[-1]),
+                "".join(u.text for u in group[index : index + 3]),
+            )
         ):
             blocks[-1].append(unit)
         else:

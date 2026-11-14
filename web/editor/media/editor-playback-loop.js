@@ -1,4 +1,6 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { getOverlayTrack, overlayTrackVisible } from '../cues/overlay-track.js';
+import { applyAssSubtitlePreview, restoreCssSubtitlePreview } from '../styles/editor-wiring-ass-preview.js';
 
 export function initMawePlaybackLoop() {
 'use strict';
@@ -82,6 +84,7 @@ export function initMawePlaybackLoop() {
       return;
     }
     MaweCuePanelState.gapPreviewRange = { start: gap.start, end: gap.end };
+    window.MaweGapPlayback?.refresh();
     MaweHint.flashHint('正在预览此空隙；播放头离开后恢复跳过');
   }
 
@@ -113,32 +116,8 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
 
 
 
-  // 跳过空隙的 seek 守卫：跳过判定是 level-triggered，而媒体元素的 seek 异步，
-  // seek 未生效（seeking 期间 currentTime 报告的是目标位置）或落点经视频帧量化
-  // 回落到空隙内时，若每帧重复赋值 currentTime 会不断打断上一次 seek，播放头
-  // 僵持在空隙末端、播放停滞。这里记录已发起跳过的空隙，同一空隙只发起一次
-  // seek；位置离开空隙、暂停、进入预览或切换到其他空隙后守卫失效，之后
-  // （含用户手动 seek 回空隙内且正在播放）可正常再次触发。
-  let gapSkipGuard = null;
-
-  // 返回 true 表示本轮已由跳过逻辑处理（发起 seek 或等待进行中的 seek），
-  // 调用方直接返回，不再刷新时间码与预览。
   function applyGapPlaybackSkip(skippedGap, player) {
-    if (!skippedGap) {
-      // 不在空隙内、暂停或预览时守卫应失效；seek 进行中报告的是目标位置，
-      // 等 seek 结束再清，避免落点量化回空隙内时守卫被提前清除。
-      if (player.paused || !player.seeking) gapSkipGuard = null;
-      return false;
-    }
-    // seek 进行中不重复赋值，等当前 seek 生效后再判定。
-    if (player.seeking) return true;
-    const guarded = gapSkipGuard
-      && Number(gapSkipGuard.start) === Number(skippedGap.start)
-      && Number(gapSkipGuard.end) === Number(skippedGap.end);
-    if (guarded) return true;
-    gapSkipGuard = { start: skippedGap.start, end: skippedGap.end };
-    player.currentTime = skippedGap.end / 1000;
-    return true;
+    return window.MaweGapPlayback?.update(player, skippedGap) === true;
   }
 
   function updatePlaybackFrame() {
@@ -189,8 +168,8 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   if (MaweDom.overlayExtensionTextEl.classList.contains('hidden') === extensionVisible) {
     MaweDom.overlayExtensionTextEl.classList.toggle('hidden', !extensionVisible);
   }
-  if (window.MaweDomPanelsWiring.overlayTrackTextEl.classList.contains('hidden') === overlayCueVisible) {
-    window.MaweDomPanelsWiring.overlayTrackTextEl.classList.toggle('hidden', !overlayCueVisible);
+  if (getMaweDomPanels().overlayTrackTextEl.classList.contains('hidden') === overlayCueVisible) {
+    getMaweDomPanels().overlayTrackTextEl.classList.toggle('hidden', !overlayCueVisible);
   }
   const subtitleAppearance = MaweAppearance.getSubtitleAppearance();
   const colorPreviewEnabled = subtitleAppearance.color_underline !== false;
@@ -232,7 +211,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     MaweDom.overlayExtensionTextNode.nodeValue = extensionText;
   }
   if (assMode) {
-    window.MaweAssPreview.applyAssSubtitlePreview({
+    applyAssSubtitlePreview({
       tMs,
       segment: mainVisible ? seg : null,
       extension: extensionVisible ? extension : null,
@@ -242,7 +221,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
       speakerLabelVisible,
     });
   } else if (MaweDom.overlayEl.dataset.assMode === 'true') {
-    window.MaweAssPreview.restoreCssSubtitlePreview();
+    restoreCssSubtitlePreview();
     MaweDom.overlayMainTextNode.nodeValue = mainText;
     MaweDom.overlayExtensionTextNode.nodeValue = extensionText;
   }
@@ -297,18 +276,18 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   const overlaySpeakerLabelText = overlaySpeakerLabelVisible
     ? `${overlaySpeakerLabel}${speakerLabels.separator}`
     : '';
-  if (window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.classList.contains('hidden') === overlaySpeakerLabelVisible) {
-    window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.classList.toggle('hidden', !overlaySpeakerLabelVisible);
+  if (getMaweDomPanels().overlayTrackSpeakerLabelEl.classList.contains('hidden') === overlaySpeakerLabelVisible) {
+    getMaweDomPanels().overlayTrackSpeakerLabelEl.classList.toggle('hidden', !overlaySpeakerLabelVisible);
   }
-  if (window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.textContent !== overlaySpeakerLabelText) {
-    window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.textContent = overlaySpeakerLabelText;
+  if (getMaweDomPanels().overlayTrackSpeakerLabelEl.textContent !== overlaySpeakerLabelText) {
+    getMaweDomPanels().overlayTrackSpeakerLabelEl.textContent = overlaySpeakerLabelText;
   }
-  if (window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.dataset.color !== overlaySpeakerLabelColor) {
-    window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.dataset.color = overlaySpeakerLabelColor;
-    window.MaweDomPanelsWiring.overlayTrackSpeakerLabelEl.style.color = overlaySpeakerLabelColor;
+  if (getMaweDomPanels().overlayTrackSpeakerLabelEl.dataset.color !== overlaySpeakerLabelColor) {
+    getMaweDomPanels().overlayTrackSpeakerLabelEl.dataset.color = overlaySpeakerLabelColor;
+    getMaweDomPanels().overlayTrackSpeakerLabelEl.style.color = overlaySpeakerLabelColor;
   }
-  if (!assMode && window.MaweDomPanelsWiring.overlayTrackTextNode.nodeValue !== overlayCueText) {
-    window.MaweDomPanelsWiring.overlayTrackTextNode.nodeValue = overlayCueText;
+  if (!assMode && getMaweDomPanels().overlayTrackTextNode.nodeValue !== overlayCueText) {
+    getMaweDomPanels().overlayTrackTextNode.nodeValue = overlayCueText;
   }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到
   // 预览文字颜色、下划线或描边。dataset 记录上次应用的结果，避免
@@ -362,20 +341,20 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     ? overlayTrackSegmentColor : '';
   const overlayTrackStroke = colorStyle === 'stroke' && overlayTrackSegmentColor
     ? `.125em ${overlayTrackSegmentColor}` : '';
-  if (!assMode && window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorUnderline !== overlayTrackUnderline) {
-    window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorUnderline = overlayTrackUnderline;
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.textDecorationLine = overlayTrackUnderline ? 'underline' : '';
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.textDecorationColor = overlayTrackUnderline;
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.textUnderlineOffset = overlayTrackUnderline ? '0.25em' : '';
+  if (!assMode && getMaweDomPanels().overlayTrackTextEl.dataset.colorUnderline !== overlayTrackUnderline) {
+    getMaweDomPanels().overlayTrackTextEl.dataset.colorUnderline = overlayTrackUnderline;
+    getMaweDomPanels().overlayTrackTextEl.style.textDecorationLine = overlayTrackUnderline ? 'underline' : '';
+    getMaweDomPanels().overlayTrackTextEl.style.textDecorationColor = overlayTrackUnderline;
+    getMaweDomPanels().overlayTrackTextEl.style.textUnderlineOffset = overlayTrackUnderline ? '0.25em' : '';
   }
-  if (!assMode && window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorText !== overlayTrackTextColor) {
-    window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorText = overlayTrackTextColor;
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.color = overlayTrackTextColor;
+  if (!assMode && getMaweDomPanels().overlayTrackTextEl.dataset.colorText !== overlayTrackTextColor) {
+    getMaweDomPanels().overlayTrackTextEl.dataset.colorText = overlayTrackTextColor;
+    getMaweDomPanels().overlayTrackTextEl.style.color = overlayTrackTextColor;
   }
-  if (!assMode && window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorStroke !== overlayTrackStroke) {
-    window.MaweDomPanelsWiring.overlayTrackTextEl.dataset.colorStroke = overlayTrackStroke;
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.webkitTextStroke = overlayTrackStroke;
-    window.MaweDomPanelsWiring.overlayTrackTextEl.style.paintOrder = overlayTrackStroke ? 'stroke fill' : '';
+  if (!assMode && getMaweDomPanels().overlayTrackTextEl.dataset.colorStroke !== overlayTrackStroke) {
+    getMaweDomPanels().overlayTrackTextEl.dataset.colorStroke = overlayTrackStroke;
+    getMaweDomPanels().overlayTrackTextEl.style.webkitTextStroke = overlayTrackStroke;
+    getMaweDomPanels().overlayTrackTextEl.style.paintOrder = overlayTrackStroke ? 'stroke fill' : '';
   }
   // 仅叠加轨活跃（主/副预览都关）时预览层也要可见，否则叠加文字节点有内容而父层被隐藏。
   const overlayHidden = !mainVisible && !extensionVisible && !overlayCueVisible;

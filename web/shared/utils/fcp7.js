@@ -16,6 +16,14 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // 达芬奇契约：每个定义型 <file> 节点都必须携带 <timecode>，缺一个就会把
+  // 整个序列的媒体判成离线（BV195xo6JExV 实测）。引用型空节点 <file id="x"/>
+  // 继承首次定义，不需要也不能重复书写。
+  function fcpTimecode(profile) {
+    return `<timecode><rate><timebase>${fcpTimebase(profile)}</timebase><ntsc>${profile.denominator === 1001 ? 'TRUE' : 'FALSE'}</ntsc></rate><string>00:00:00:00</string><frame>0</frame><displayformat>NDF</displayformat></timecode>`;
+  }
+
+
   function fcpTimeRange(startMs, endMs, plan) {
     const start = exportPlanFrame(plan, startMs, 'floor');
     const end = Math.max(start + 1, exportPlanFrame(plan, endMs, 'ceil'));
@@ -177,10 +185,10 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function fcpClipItem({ id, fileId, name, path, width = undefined, height = undefined, sourceStartMs, sourceEndMs, sourceStartFrame = null, startMs, endMs, startFrame = undefined, endFrame = undefined, plan, mediaKind, track, link = undefined, defineFile = true, encodeDriveColon = false }) {
+  function fcpClipItem({ id, fileId, name, path, width = undefined, height = undefined, sourceStartMs, sourceEndMs, sourceStartFrame = null, startMs, endMs, startFrame = undefined, endFrame = undefined, plan, mediaKind, track, link = undefined, defineFile = true }) {
     const sourceRange = fcpTimeRange(sourceStartMs, sourceEndMs, plan);
     const timeline = fcpTimeRange(startMs, endMs, plan);
-    const url = escapeExportXml(exportPathToFileUrl(path, { encodeDriveColon }));
+    const url = escapeExportXml(exportPathToFileUrl(path));
     const isSticker = mediaKind === 'sticker';
     const media = mediaKind === 'audio' ? '<sourcetrack><mediatype>audio</mediatype><trackindex>1</trackindex><channel>1</channel><channelcount>2</channelcount></sourcetrack>'
       : '<sourcetrack><mediatype>video</mediatype><trackindex>1</trackindex></sourcetrack>';
@@ -190,8 +198,11 @@ export function createUtilsModule(dependencies) {
       : isSticker
         ? `<media><video><samplecharacteristics><rate><timebase>${plan.frameProfile.numerator}/${plan.frameProfile.denominator}</timebase><ntsc>${plan.frameProfile.denominator === 1001 ? 'TRUE' : 'FALSE'}</ntsc></rate><width>${Number.isInteger(width) && width > 0 ? width : 720}</width><height>${Number.isInteger(height) && height > 0 ? height : 480}</height><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio><fielddominance>none</fielddominance></samplecharacteristics></video></media>`
         : `<media><video><duration>${sourceDuration}</duration></video><audio><duration>${sourceDuration}</duration><channelcount>2</channelcount></audio></media>`;
+    // pathurl 必须紧贴 <name> 且位于 <media> 之前，否则达芬奇无法回链媒体
+    // （BV195xo6JExV 实测）；节点顺序对齐 PR 导出：name → pathurl → duration
+    // → rate → timecode → media。
     const file = defineFile
-      ? `<file id="${escapeExportXml(fileId)}"><name>${escapeExportXml(fileBasename(path))}</name><pathurl>${url}</pathurl><duration>${sourceDuration}</duration>${fcpRate(plan.frameProfile)}${isSticker ? `<timecode><rate>${fcpRate(plan.frameProfile).replace('<rate>', '').replace('</rate>', '')}</rate><string>00:00:00:00</string><frame>0</frame><displayformat>NDF</displayformat></timecode>` : ''}${fileMedia}</file>`
+      ? `<file id="${escapeExportXml(fileId)}"><name>${escapeExportXml(fileBasename(path))}</name><pathurl>${url}</pathurl><duration>${sourceDuration}</duration>${fcpRate(plan.frameProfile)}${fcpTimecode(plan.frameProfile)}${fileMedia}</file>`
       : `<file id="${escapeExportXml(fileId)}"/>`;
     const frameStart = startFrame ?? timeline.start;
     const frameEnd = Math.max(frameStart + 1, endFrame ?? frameStart + sourceRange.duration);
@@ -271,7 +282,7 @@ export function createUtilsModule(dependencies) {
           path: sticker.path, width: sticker.width, height: sticker.height, sourceStartMs: 0,
           sourceEndMs: Math.max(1, sticker.endMs - sticker.startMs),
           startMs: sticker.startMs, endMs: sticker.endMs, plan: exportPlan, mediaKind: 'sticker', track: `${trackPrefix}-${index + 1}`,
-          defineFile, encodeDriveColon: true,
+          defineFile,
         });
         return `<track>${clip}</track>`;
       }).filter(Boolean);
@@ -297,7 +308,7 @@ export function createUtilsModule(dependencies) {
         // Graphic 画布尺寸必须与序列一致：缺失时 Premiere 按 DV NTSC 720x480
         // 分配画布，与序列不匹配导致文字不显示（粘贴重置后才能显示）。
         const textFileMedia = `<media><video><duration>${range.duration}</duration><samplecharacteristics>${fcpRate(exportPlan.frameProfile)}<width>${sequenceWidth}</width><height>${sequenceHeight}</height><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio><fielddominance>none</fielddominance></samplecharacteristics></video></media>`;
-        return `<clipitem id="${clipId}"><name>${escapeExportXml(cue.text)}</name><enabled>TRUE</enabled><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}<start>${range.start}</start><end>${range.end}</end><in>0</in><out>${range.duration}</out><file id="file-${clipId}"><name>MAW GraphicAndType</name><mediaSource>GraphicAndType</mediaSource><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}${textFileMedia}</file>${fcp7TextGraphicGroupFilter()}<filter><effect><name>${escapeExportXml(cue.text)}</name><effectid>GraphicAndType</effectid><effectcategory>graphic</effectcategory><effecttype>filter</effecttype><mediatype>video</mediatype><pproBypass>false</pproBypass><parameter authoringApp="MAW"><parameterid>1</parameterid><name>Source Text</name><value>${text}</value></parameter>${motionParams}</effect></filter></clipitem>`;
+        return `<clipitem id="${clipId}"><name>${escapeExportXml(cue.text)}</name><enabled>TRUE</enabled><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}<start>${range.start}</start><end>${range.end}</end><in>0</in><out>${range.duration}</out><file id="file-${clipId}"><name>MAW GraphicAndType</name><mediaSource>GraphicAndType</mediaSource><duration>${range.duration}</duration>${fcpRate(exportPlan.frameProfile)}${fcpTimecode(exportPlan.frameProfile)}${textFileMedia}</file>${fcp7TextGraphicGroupFilter()}<filter><effect><name>${escapeExportXml(cue.text)}</name><effectid>GraphicAndType</effectid><effectcategory>graphic</effectcategory><effecttype>filter</effecttype><mediatype>video</mediatype><pproBypass>false</pproBypass><parameter authoringApp="MAW"><parameterid>1</parameterid><name>Source Text</name><value>${text}</value></parameter>${motionParams}</effect></filter></clipitem>`;
       }).join('');
       return generators ? `<track>${generators}</track>` : '';
     }).filter(Boolean) : [];
@@ -336,5 +347,47 @@ export function createUtilsModule(dependencies) {
     ]);
   }
 
-  return Object.freeze({ buildFcp7ExportArtifacts, serializeFcp7Xml });
+  function serializeFcp7PngXml(plan, manifest, { includeMedia = false } = {}) {
+    const exportPlan = assertExportPlan(plan);
+    const duration = exportPlanFrame(exportPlan, exportPlan.outputDurationMs, 'ceil');
+    if (!manifest || manifest.fps !== exportPlan.frameProfile.name || manifest.durationFrames !== duration
+      || !Number.isInteger(manifest.width) || manifest.width <= 0
+      || !Number.isInteger(manifest.height) || manifest.height <= 0 || !Array.isArray(manifest.tracks)) {
+      throw new Error('PNG manifest does not match export plan');
+    }
+    const rate = fcpRate(exportPlan.frameProfile);
+    // XMEML still-image duration is in minutes; placement/in/out remain frames.
+    const stillDuration = Math.max(1, Math.ceil(exportPlan.outputDurationMs / 60000));
+    const characteristics = `<samplecharacteristics>${rate}<width>${manifest.width}</width><height>${manifest.height}</height><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio><fielddominance>none</fielddominance></samplecharacteristics>`;
+    const files = new Map();
+    const tracks = manifest.tracks.map((track, trackIndex) => {
+      let previousEnd = 0;
+      const clips = track.clips.map((clip, index) => {
+        if (!Number.isInteger(clip.startFrame) || !Number.isInteger(clip.endFrame)
+          || clip.startFrame < previousEnd || clip.endFrame <= clip.startFrame || clip.endFrame > duration
+          || !String(clip.path || '').trim()) throw new Error('invalid PNG clip range or path');
+        previousEnd = clip.endFrame;
+        const known = files.get(clip.path);
+        const fileId = known || `png-file-${files.size + 1}`;
+        files.set(clip.path, fileId);
+        const name = escapeExportXml(fileBasename(clip.path));
+        const file = known ? `<file id="${fileId}"/>`
+          : `<file id="${fileId}"><name>${name}</name><pathurl>${escapeExportXml(exportPathToFileUrl(clip.path))}</pathurl>${rate}<duration>${stillDuration}</duration><media><video><duration>${stillDuration}</duration><stillframe>TRUE</stillframe>${characteristics}</video></media></file>`;
+        const length = clip.endFrame - clip.startFrame;
+        return `<clipitem id="png-${trackIndex}-${index}"><name>${name}</name><enabled>TRUE</enabled><duration>${stillDuration}</duration>${rate}<start>${clip.startFrame}</start><end>${clip.endFrame}</end><in>0</in><out>${length}</out><stillframe>TRUE</stillframe><alphatype>straight</alphatype><anamorphic>FALSE</anamorphic><pixelaspectratio>square</pixelaspectratio>${file}<sourcetrack><mediatype>video</mediatype></sourcetrack></clipitem>`;
+      }).join('');
+      return `<track><enabled>TRUE</enabled><locked>FALSE</locked>${clips}</track>`;
+    }).join('');
+    if (!includeMedia) return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="5"><sequence id="MAW-png-subtitles"><name>MAW ${manifest.imageFormat === 'webp' ? 'WebP' : 'PNG'} subtitles</name><duration>${duration}</duration>${rate}<media><video><format>${characteristics}</format>${tracks}</video></media></sequence></xmeml>`;
+    const sourcePlan = { ...exportPlan, media: { ...exportPlan.media,
+      path: manifest.sourcePath || exportPlan.media.path, width: manifest.width, height: manifest.height },
+    stickers: [], overlayStickers: [] };
+    const xml = serializeFcp7Xml(sourcePlan, { nativeTextObjects: false });
+    const endVideo = xml.lastIndexOf('</video>');
+    if (endVideo >= 0) return xml.slice(0, endVideo) + tracks + xml.slice(endVideo);
+    const mediaStart = xml.indexOf('<media>') + '<media>'.length;
+    return xml.slice(0, mediaStart) + `<video><format>${characteristics}</format>${tracks}</video>` + xml.slice(mediaStart);
+  }
+
+  return Object.freeze({ buildFcp7ExportArtifacts, serializeFcp7Xml, serializeFcp7PngXml });
 }

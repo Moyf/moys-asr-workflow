@@ -135,6 +135,45 @@ jobs:
         uses: actions/deploy-pages@v5
 
       - name: Verify deployed release index and detail
+        id: verify_site
         env:
           EXPECTED_TAG: ${{ inputs.expected_tag || '' }}
-        run: python scripts/run_check.py --timeout 120 -- python scripts/verify_release_site.py --base-url "${SITE_URL}${BASE_PATH}" --expected-tag "$EXPECTED_TAG"
+        run: python scripts/run_check.py --timeout 360 -- python scripts/verify_release_site.py --base-url "${SITE_URL}${BASE_PATH}" --expected-tag "$EXPECTED_TAG" --timeout 300 --retry-interval 10
+
+      - name: Report website synchronization failure and recovery
+        if: failure() && steps.verify_site.outcome == 'failure'
+        env:
+          EXPECTED_TAG: ${{ inputs.expected_tag || '' }}
+          # Reusable workflows inherit the caller's workflow name and ref.
+          # release.yml calls this only after its publish job succeeds; merely
+          # supplying expected_tag in a manual Pages run is not publication proof.
+          RELEASE_CALL: ${{ github.workflow == 'Release MAW GUI' && startsWith(github.ref, 'refs/tags/v') && inputs.expected_tag == github.ref_name }}
+        shell: bash
+        run: |
+          {
+            echo '### Website pending synchronization / 官网待同步'
+            if [[ "$RELEASE_CALL" == 'true' ]]; then
+              echo 'Installation packages are published; website verification failed. / 安装包已发布，官网待同步。'
+            else
+              echo 'Website verification failed. This Pages run does not establish whether installation packages are published.'
+            fi
+            echo 'The public index, notes or detail page did not verify within the bounded wait; inspect the verification artifact for the last error.'
+            echo 'Retry only the Pages workflow from Actions → Deploy MAW website to GitHub Pages → Run workflow (main), entering the published stable expected_tag.'
+            echo 'CLI alternative (replace vVERSION with the published stable tag):'
+            echo '```sh'
+            printf 'gh workflow run deploy-editor-pages.yml --ref main -f expected_tag=%q\n' "${EXPECTED_TAG:-vVERSION}"
+            echo '```'
+            echo 'Recheck the public URLs after the retry. Do not rerun package publication, withdraw the Release or move its tag. The failed run remains failed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve deployed verification diagnostics
+        if: always() && (steps.verify_site.outcome == 'success' || steps.verify_site.outcome == 'failure')
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-site-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .artifacts/checks/**/output.log
+            .artifacts/checks/**/result.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14

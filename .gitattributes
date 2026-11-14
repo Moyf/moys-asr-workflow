@@ -19,3 +19,15 @@
 *.mkv binary
 *.m4a binary
 *.flac binary
+
+# Unified patch context prefixes a space to the upstream tab indentation.
+website/patches/*.patch whitespace=-space-before-tab
+
+# Preserve upstream license bytes (verified SHA256); the MPL text contains one trailing space.
+tools/shared/vendor/dompurify-3.4.17/LICENSE-MPL whitespace=-blank-at-eol
+
+# 追加型文档用 union 合并：CHANGELOG 未发布区与日志索引都是「头部插入」模式，
+# 两个分支同位置各自追加条目时三方合并必判冲突。union 保留两侧行，不再冲突；
+# 顺序由后续整理步骤兜底（INDEX 按日期降序、CHANGELOG 按 Keep a Changelog 顺序）。
+CHANGELOG.md merge=union
+docs/logs/INDEX.md merge=union

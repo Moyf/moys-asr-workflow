@@ -94,6 +94,25 @@ class ResegmentTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "零时长"):
             parse_boundaries({"draft": "[c0001a0001]\n[c0001a0002]"}, units)
 
+    def test_limit_preserves_earlier_cuts_with_zero_duration_final_punctuation(self):
+        first = timed("春夏秋冬", list("春夏秋冬"))
+        second = timed("结束。", ["结束", "。"], start=800)
+        second["items"][1].update(start=1000, end=1000)
+        result, artifact = self.run_case([first, second], self.last_boundary, max_chars=2)
+        self.assertEqual([cue["text"] for cue in result], ["春夏", "秋冬", "结束。"])
+        self.assertEqual([item for cue in result for item in cue["items"]], first["items"] + second["items"])
+        self.assertTrue(all(cue["start"] < cue["end"] for cue in result))
+        self.assertTrue(any("无法安全" in warning for warning in artifact.warnings))
+
+    def test_limit_attaches_leading_zero_duration_punctuation(self):
+        source = timed("“甲乙", ["“", "甲", "乙"])
+        source["items"][0].update(start=0, end=0)
+        result, artifact = self.run_case([source], self.last_boundary, max_chars=1)
+        self.assertEqual([cue["text"] for cue in result], ["“甲", "乙"])
+        self.assertEqual([item for cue in result for item in cue["items"]], source["items"])
+        self.assertTrue(all(cue["start"] < cue["end"] for cue in result))
+        self.assertTrue(any("无法安全" in warning for warning in artifact.warnings))
+
     def test_proofread_merge_items_roundtrip_and_fallback(self):
         first = timed("你好。", ["你好", "。"])
         first["items"][1].update(start=200, end=200, confidence=0.9)
@@ -105,7 +124,7 @@ class ResegmentTests(unittest.TestCase):
                 if broken:
                     sources[1]["items"][0]["text"] = "错误"
                 text = "你好。再见！" if not changed else "您好。再见！"
-                result, _ = self.run_case(
+                result, artifact = self.run_case(
                     sources,
                     lambda _prompt, rows: {"groups": [{"source_ids": [row["id"] for row in rows], "text": text}]},
                     operation="proofread",
@@ -113,8 +132,10 @@ class ResegmentTests(unittest.TestCase):
                 self.assertEqual(len(result), 1)
                 if changed or broken:
                     self.assertNotIn("items", result[0])
+                    self.assertTrue(any("否则会清理" in warning for warning in artifact.warnings))
                 else:
                     self.assertEqual(result[0]["items"], first["items"] + second["items"])
+                    self.assertFalse(any("已清理受影响字幕的逐词时间" in warning for warning in artifact.warnings))
 
     def last_boundary(self, _prompt, rows):
         return {"draft": f"[{rows[-1]['items'][-1]['id']}]"}

@@ -1,3 +1,6 @@
+import { releaseTemporaryVisibleSplitCuesUnless } from './editor-cue-elements.js';
+import { hideCueSplitPreview } from './editor-nav-preview.js';
+import { commitCuePanelEdit, renderCurrentCuePanel, setCurrentCuePanelExtensionIndex, setCurrentCuePanelIndex } from './editor-cue-panel.js';
 import { getOverlayTrack } from './overlay-track.js';
 
 export function initMaweSelection() {
@@ -111,7 +114,7 @@ export function initMaweSelection() {
 
 
   function clearSelection({ silent = false, commitCuePanel = true } = {}) {
-  MaweNavPreview.hideCueSplitPreview();
+  hideCueSplitPreview();
   cancelPendingExtensionBinding();
   applyMainSelectionClasses((el) => el.classList.remove('selected'));
   MaweState.selection.clear('main');
@@ -136,13 +139,13 @@ export function initMaweSelection() {
   }
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   if (commitCuePanel) {
-    MaweCuePanel.setCurrentCuePanelIndex(-1);
+    setCurrentCuePanelIndex(-1);
   } else {
     MaweCuePanelState.currentCuePanelKind = 'main';
     MaweCuePanelState.currentCuePanelIdx = -1;
     MaweCuePanelState.currentCuePanelTrackId = null;
     MaweCuePanelState.resetCuePanelEditState();
-    MaweCuePanel.renderCurrentCuePanel();
+    renderCurrentCuePanel();
   }
 }
 
@@ -207,7 +210,7 @@ export function initMaweSelection() {
   preserveMainSelection = false,
 ) {
   if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
-  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
+  releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
   if (
     pendingExtensionBinding
     && track?.id === pendingExtensionBinding.trackId
@@ -218,7 +221,7 @@ export function initMaweSelection() {
   if (!preserveMainSelection) {
     // 普通点击副字幕后，最后点击的轨道成为当前绑定/编辑对象；
     // 不保留旧主字幕选区，避免 G 被误解为“替换旧主字幕的绑定”。
-    MaweCuePanel.commitCuePanelEdit();
+    commitCuePanelEdit();
     MaweState.selection.clear('main');
     MaweState.selection.mainAnchor = -1;
   }
@@ -229,14 +232,14 @@ export function initMaweSelection() {
   window.MaweCuePanelWiring.updateSelectionCountText();
   MaweState.selection.extensionAnchor = index;
   MaweCoreState.waveformEditor?.updateSelection();
-  MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
+  setCurrentCuePanelExtensionIndex(index, track);
 }
 
 
 
   function toggleExtensionSelection(index, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
   if (!track?.segments?.[index] || isHiddenDisabled(index, track)) return;
-  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
+  releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
   if (selectedExtensionIdxs.has(index)) MaweState.selection.remove('extension', index);
   else {
     MaweState.selection.add('extension', index);
@@ -246,7 +249,7 @@ export function initMaweSelection() {
   window.MaweCuePanelWiring.updateSelectionCountText();
   MaweState.selection.extensionAnchor = index;
   MaweCoreState.waveformEditor?.updateSelection();
-  MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
+  setCurrentCuePanelExtensionIndex(index, track);
 }
 
 
@@ -254,7 +257,7 @@ export function initMaweSelection() {
   function selectExtensionRange(a, b) {
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   if (!track) return;
-  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', b, track);
+  releaseTemporaryVisibleSplitCuesUnless('extension', b, track);
   const lo = Math.min(a, b);
   const hi = Math.max(a, b);
   MaweState.selection.clear('extension');
@@ -270,14 +273,14 @@ export function initMaweSelection() {
   if (lastSelected < 0) return;
   MaweState.selection.extensionAnchor = lastSelected;
   MaweCoreState.waveformEditor?.updateSelection();
-  MaweCuePanel.setCurrentCuePanelExtensionIndex(lastSelected, track);
+  setCurrentCuePanelExtensionIndex(lastSelected, track);
 }
 
 
   function toggleSel(idx) {
   if (isHiddenDisabled(idx)) return;  // 隐藏禁用项不参与选择
-  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', idx);
-  MaweNavPreview.hideCueSplitPreview();
+  releaseTemporaryVisibleSplitCuesUnless('main', idx);
+  hideCueSplitPreview();
   const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
   if (selectedIdxs.has(idx)) {
     MaweState.selection.remove('main', idx);
@@ -290,13 +293,13 @@ export function initMaweSelection() {
   window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   updateMultiSelectionClasses();
-  MaweCuePanel.setCurrentCuePanelIndex(selectedIdxs.has(idx) ? idx : (selectedIdxs.values().next().value ?? -1));
+  setCurrentCuePanelIndex(selectedIdxs.has(idx) ? idx : (selectedIdxs.values().next().value ?? -1));
 }
 
 
   function selectRange(a, b) {
-  MaweNavPreview.hideCueSplitPreview();
-  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', b);
+  hideCueSplitPreview();
+  releaseTemporaryVisibleSplitCuesUnless('main', b);
   const lo = Math.min(a, b), hi = Math.max(a, b);
   for (let i = lo; i <= hi; i++) {
     if (isHiddenDisabled(i)) continue;  // 跳过隐藏禁用项
@@ -309,18 +312,18 @@ export function initMaweSelection() {
   window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   updateMultiSelectionClasses();
-  MaweCuePanel.setCurrentCuePanelIndex(selectedIdxs.has(b) ? b : (selectedIdxs.values().next().value ?? -1));
+  setCurrentCuePanelIndex(selectedIdxs.has(b) ? b : (selectedIdxs.values().next().value ?? -1));
 }
 
 
   function selectOnly(idx, syncPair = true) {
-  MaweNavPreview.hideCueSplitPreview();
-  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', idx);
+  hideCueSplitPreview();
+  releaseTemporaryVisibleSplitCuesUnless('main', idx);
   // 这是键盘导航的热路径：clearSelection() 会先把面板切到空状态，
   // 再由下面的 setCurrentCuePanelIndex() 切回目标，导致一次按键触发
   // 两次面板刷新和两次波形选区刷新。先提交一次待编辑内容，再批量
   // 更新选区与面板，保持行为不变但只做一次视觉刷新。
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   clearSelection({ silent: true });
   MaweState.selection.extensionAnchor = -1;
   MaweState.selection.add('main', idx);
@@ -330,33 +333,33 @@ export function initMaweSelection() {
   window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   updateMultiSelectionClasses();
-  MaweCuePanel.setCurrentCuePanelIndex(idx);
+  setCurrentCuePanelIndex(idx);
 }
 
 
   function addToSelection(idx) {
   if (isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
-  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', idx);
-  MaweNavPreview.hideCueSplitPreview();
+  releaseTemporaryVisibleSplitCuesUnless('main', idx);
+  hideCueSplitPreview();
   MaweState.selection.add('main', idx);
   syncBoundSelection('main', idx);
   const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
   if (el) el.classList.add('selected');
   window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-  MaweCuePanel.setCurrentCuePanelIndex(idx);
+  setCurrentCuePanelIndex(idx);
 }
 
 
   function addExtensionToSelection(index, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
   if (!track?.segments?.[index] || isHiddenDisabled(index, track) || selectedExtensionIdxs.has(index)) return;
-  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
+  releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
   MaweState.selection.add('extension', index);
   syncBoundSelection('extension', index, track);
   updateMultiSelectionClasses();
   window.MaweCuePanelWiring.updateSelectionCountText();
   MaweCoreState.waveformEditor?.updateSelection();
-  MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
+  setCurrentCuePanelExtensionIndex(index, track);
 }
 
   // 波形框选/批量追加：语义等同对每个下标调用 addToSelection，但列表类
@@ -369,13 +372,13 @@ export function initMaweSelection() {
     added.push(idx);
   });
   if (!added.length) return;
-  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', added[added.length - 1]);
-  MaweNavPreview.hideCueSplitPreview();
+  releaseTemporaryVisibleSplitCuesUnless('main', added[added.length - 1]);
+  hideCueSplitPreview();
   added.forEach((idx) => syncBoundSelection('main', idx));
   applyMainSelectionClasses((el) => el.classList.add('selected'));
   window.MaweCuePanelWiring.updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
-  MaweCuePanel.setCurrentCuePanelIndex(added[added.length - 1]);
+  setCurrentCuePanelIndex(added[added.length - 1]);
 }
 
   function addManyToExtensionSelection(idxs, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
@@ -386,18 +389,18 @@ export function initMaweSelection() {
     added.push(index);
   });
   if (!added.length) return;
-  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', added[added.length - 1], track);
+  releaseTemporaryVisibleSplitCuesUnless('extension', added[added.length - 1], track);
   added.forEach((index) => syncBoundSelection('extension', index, track));
   updateMultiSelectionClasses();
   window.MaweCuePanelWiring.updateSelectionCountText();
   MaweCoreState.waveformEditor?.updateSelection();
-  MaweCuePanel.setCurrentCuePanelExtensionIndex(added[added.length - 1], track);
+  setCurrentCuePanelExtensionIndex(added[added.length - 1], track);
 }
 
 
   // 选中全部字幕（跳过「隐藏禁用项」开启时的禁用条目，与其它选择逻辑一致）。
   function selectAll() {
-  MaweCuePanel.commitCuePanelEdit();
+  commitCuePanelEdit();
   clearSelection({ silent: true });
   MaweBoot.DATA.segments.forEach((_, idx) => {
     if (isHiddenDisabled(idx)) return;
@@ -421,25 +424,25 @@ export function initMaweSelection() {
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   const last = MaweBoot.DATA.segments.length - 1;
   if (last >= 0 && selectedIdxs.has(last)) {
-    MaweCuePanel.setCurrentCuePanelIndex(last);
+    setCurrentCuePanelIndex(last);
     return;
   }
   const firstMain = selectedIdxs.values().next().value;
   if (firstMain !== undefined) {
-    MaweCuePanel.setCurrentCuePanelIndex(firstMain);
+    setCurrentCuePanelIndex(firstMain);
     return;
   }
   if (!extensionTrack) {
-    MaweCuePanel.setCurrentCuePanelIndex(-1);
+    setCurrentCuePanelIndex(-1);
     return;
   }
   const lastExtension = extensionTrack.segments.length - 1;
   if (lastExtension >= 0 && selectedExtensionIdxs.has(lastExtension)) {
-    MaweCuePanel.setCurrentCuePanelExtensionIndex(lastExtension, extensionTrack);
+    setCurrentCuePanelExtensionIndex(lastExtension, extensionTrack);
     return;
   }
   const firstExtension = selectedExtensionIdxs.values().next().value;
-  MaweCuePanel.setCurrentCuePanelExtensionIndex(firstExtension ?? -1, extensionTrack);
+  setCurrentCuePanelExtensionIndex(firstExtension ?? -1, extensionTrack);
 }
 
   global.MaweSelection = Object.freeze({
@@ -475,3 +478,27 @@ export function initMaweSelection() {
   });
 })(typeof window !== 'undefined' ? window : globalThis);
 }
+
+export function stickerUrl(...args) { return window.MaweSelection.stickerUrl(...args); }
+export function stickerAbsPath(...args) { return window.MaweSelection.stickerAbsPath(...args); }
+export function selectedIdxs(...args) { return window.MaweSelection.selectedIdxs(...args); }
+export function selectedExtensionIdxs(...args) { return window.MaweSelection.selectedExtensionIdxs(...args); }
+export function temporaryVisibleSplitCueKeys(...args) { return window.MaweSelection.temporaryVisibleSplitCueKeys(...args); }
+export function isHiddenDisabled(...args) { return window.MaweSelection.isHiddenDisabled(...args); }
+export function cancelPendingExtensionBinding(...args) { return window.MaweSelection.cancelPendingExtensionBinding(...args); }
+export function clearSelection(...args) { return window.MaweSelection.clearSelection(...args); }
+export function updateMultiSelectionClasses(...args) { return window.MaweSelection.updateMultiSelectionClasses(...args); }
+export function addMainIndexToSelection(...args) { return window.MaweSelection.addMainIndexToSelection(...args); }
+export function addExtensionIndexToSelection(...args) { return window.MaweSelection.addExtensionIndexToSelection(...args); }
+export function syncBoundSelection(...args) { return window.MaweSelection.syncBoundSelection(...args); }
+export function selectOnlyExtension(...args) { return window.MaweSelection.selectOnlyExtension(...args); }
+export function toggleExtensionSelection(...args) { return window.MaweSelection.toggleExtensionSelection(...args); }
+export function selectExtensionRange(...args) { return window.MaweSelection.selectExtensionRange(...args); }
+export function toggleSel(...args) { return window.MaweSelection.toggleSel(...args); }
+export function selectRange(...args) { return window.MaweSelection.selectRange(...args); }
+export function selectOnly(...args) { return window.MaweSelection.selectOnly(...args); }
+export function addToSelection(...args) { return window.MaweSelection.addToSelection(...args); }
+export function addManyToSelection(...args) { return window.MaweSelection.addManyToSelection(...args); }
+export function addExtensionToSelection(...args) { return window.MaweSelection.addExtensionToSelection(...args); }
+export function addManyToExtensionSelection(...args) { return window.MaweSelection.addManyToExtensionSelection(...args); }
+export function selectAll(...args) { return window.MaweSelection.selectAll(...args); }

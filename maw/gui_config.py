@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -156,6 +157,13 @@ class EffectiveConfig:
     theme: str | None = None
     # 任务完成后是否发送系统通知（Launcher「通用 → 完成通知」，默认关闭）。
     notify_on_complete: bool = False
+    # 断句与标点（Launcher「设置 → 断句与标点」，单 JSON 键 MAW_GUI_SEGMENTATION）。
+    # 空串表示跟随模型默认；这里只透传 trim 字符串，数值合法性由任务提交校验。
+    gap_split: str = ""
+    min_len: str = ""
+    max_len: str = ""
+    min_words: str = ""
+    max_words: str = ""
 
 
 REGIONS: Final[tuple[tuple[str, str], ...]] = (
@@ -484,10 +492,20 @@ OPENAI_ASR_MODELS: Final[tuple[ModelConfig, ...]] = (
 
 SONIOX_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
-        id="stt-async-v5",
-        label="Soniox Async STT（v5，上下文）",
+        id="stt-async-v6",
+        label="Soniox Async STT（v6，上下文）",
         env_key="SONIOX_API_KEY",
-        note="支持提示词、说话人与字词时间码。",
+        note="当前主力模型；支持提示词、说话人与字词时间码。",
+        price_note="Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本 $3.50 / 1M。",
+        supports_speaker=True,
+        supports_context=True,
+        languages=SONIOX_LANGUAGES,
+    ),
+    ModelConfig(
+        id="stt-async-v5",
+        label="Soniox Async STT（v5，旧版）",
+        env_key="SONIOX_API_KEY",
+        note="旧版模型，2026-12-15 移除后自动转 v6；支持提示词、说话人与字词时间码。",
         price_note="Soniox 参考价：异步文件转写约 $0.10 / 小时；按 token 计费，音频输入 $1.50 / 1M，输入文本 $3.50 / 1M。",
         supports_speaker=True,
         supports_context=True,
@@ -791,6 +809,36 @@ def load_env(path: Path = DEFAULT_ENV_PATH) -> dict[str, str]:
     return values
 
 
+# 断句与标点偏好（Launcher「设置 → 断句与标点」）：单 JSON 键存储（先例
+# MAW_GUI_LOCAL_MODEL_PATHS），值为 trim 后字符串；空串或缺键表示跟随模型默认。
+SEGMENTATION_PREFS_KEY: Final = "MAW_GUI_SEGMENTATION"
+SEGMENTATION_FIELDS: Final[tuple[str, str, str, str, str]] = (
+    "gapSplit",
+    "minLen",
+    "maxLen",
+    "minWords",
+    "maxWords",
+)
+
+
+def segmentation_prefs(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Read stored segmentation preferences; missing, corrupt or alien content falls back to defaults."""
+    file_values = load_env(path)
+    env = environ or os.environ
+    raw = env.get(SEGMENTATION_PREFS_KEY) or file_values.get(SEGMENTATION_PREFS_KEY, "")
+    try:
+        parsed = json.loads(raw) if raw.strip() else {}
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {
+        key: value.strip()
+        for key, value in parsed.items()
+        if key in SEGMENTATION_FIELDS and isinstance(value, str) and value.strip()
+    }
+
+
 def normalize_zoom_percent(value: object) -> int:
     try:
         parsed = float(str(value))
@@ -850,6 +898,8 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
             return file_values[key]
         return None
 
+    segmentation = segmentation_prefs(path, env)
+
     return EffectiveConfig(
         api_key=pick(MODELS[0].env_key),
         region=pick("DASHSCOPE_REGION", "beijing").lower() or "beijing",
@@ -867,6 +917,11 @@ def effective_config(path: Path = DEFAULT_ENV_PATH, environ: Mapping[str, str] |
         zoom_percent=normalize_zoom_percent(pick("MAW_GUI_ZOOM_PERCENT", "100")),
         theme=_gui_theme(pick_optional("MAW_GUI_THEME")),
         notify_on_complete=_env_bool(pick("MAW_GUI_NOTIFY_ON_COMPLETE"), default=False),
+        gap_split=segmentation.get("gapSplit", ""),
+        min_len=segmentation.get("minLen", ""),
+        max_len=segmentation.get("maxLen", ""),
+        min_words=segmentation.get("minWords", ""),
+        max_words=segmentation.get("maxWords", ""),
     )
 
 

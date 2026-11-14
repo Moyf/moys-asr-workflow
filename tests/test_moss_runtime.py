@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -20,6 +21,7 @@ from maw.local_runtime import (
     managed_runtime_status,
     recover_local_runtime_install as recover_local_runtime_install_via_local,
 )
+from maw import moss_runtime
 from maw.moss_runtime import (
     MOSS_PACKAGE_DIRS,
     MOSS_PYTHON_VERSION,
@@ -71,10 +73,29 @@ class MossRuntimeConstantTests(unittest.TestCase):
 class MossRuntimePathTests(unittest.TestCase):
     def test_default_root_uses_dedicated_moss_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(Path(temp_dir) / "app")}):
-                root = default_runtime_root()
+            app_root = (Path(temp_dir) / "非ASCII" / "app").resolve()
+            with mock.patch.dict(os.environ, {
+                "MAW_APP_DATA_ROOT": str(app_root),
+                "MAW_LOCAL_RUNTIME_ROOT": "",
+                "MAW_MOSS_RUNTIME_ROOT": "",
+            }):
+                # Directory selection is tested here; path conversion has its own tests.
+                with mock.patch("maw.runtimes.base.pathwin.ensure_ascii_root", side_effect=lambda path, **_kwargs: path) as ensure_ascii:
+                    root = default_runtime_root()
+            ensure_ascii.assert_called_once_with(app_root / "local-runtime-moss", dir_name="local-runtime-moss")
         self.assertEqual(root.name, "local-runtime-moss")
-        self.assertEqual(root.parent, (Path(temp_dir) / "app").resolve())
+        self.assertEqual(root.parent, app_root)
+
+    def test_default_root_ignores_inherited_runtime_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for keys in (("MAW_LOCAL_RUNTIME_ROOT",), ("MAW_MOSS_RUNTIME_ROOT",),
+                         ("MAW_LOCAL_RUNTIME_ROOT", "MAW_MOSS_RUNTIME_ROOT")):
+                with self.subTest(keys=keys), mock.patch.dict(os.environ):
+                    os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
+                    os.environ.pop("MAW_MOSS_RUNTIME_ROOT", None)
+                    for key in keys:
+                        os.environ[key] = str(Path(temp_dir) / key)
+                    self.test_default_root_uses_dedicated_moss_directory()
 
     def test_override_root_uses_own_env_variable(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -89,6 +110,96 @@ class MossRuntimePathTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(base)}):
                 python = runtime_python_path()
         self.assertEqual(python, base.resolve() / _PYTHON_RELATIVE)
+
+    def test_local_override_derives_sibling_moss_directory(self) -> None:
+        """设置页「安装位置」只维护 LOCAL 键：MOSS 回落派生同级 ``-moss`` 目录。
+
+        回归背景：RuntimeSpec 抽象（eb55dde0）把 MOSS 根切到独立键
+        ``MAW_MOSS_RUNTIME_ROOT`` 后无人写入，设置字段对 MOSS 失效、中文用户名
+        下被默认目录迁移兜底到公共目录。此处恢复旧的派生语义。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir) / "asr-runtime"
+            with mock.patch.dict(os.environ, {
+                "MAW_LOCAL_RUNTIME_ROOT": str(base),
+                "MAW_MOSS_RUNTIME_ROOT": "",
+            }):
+                root = default_runtime_root()
+        self.assertEqual(root, base.with_name(f"{base.name}-moss").resolve())
+
+    def test_local_override_at_filesystem_root_falls_back_to_default_dir_name(self) -> None:
+        """LOCAL 键指向当前平台的文件系统根目录时，回落默认目录名。"""
+        root_dir = Path(Path.cwd().anchor)
+        with mock.patch.dict(os.environ, {
+            "MAW_LOCAL_RUNTIME_ROOT": str(root_dir),
+            "MAW_MOSS_RUNTIME_ROOT": "",
+        }):
+            root = default_runtime_root()
+        self.assertEqual(root, root_dir / "local-runtime-moss")
+
+    def test_moss_env_takes_priority_over_local_derivation(self) -> None:
+        """MOSS 独立键优先于 LOCAL 键派生（保留高级覆盖与未来独立字段扩展位）。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            own = Path(temp_dir) / "moss-explicit"
+            shared = Path(temp_dir) / "asr-runtime"
+            with mock.patch.dict(os.environ, {
+                "MAW_MOSS_RUNTIME_ROOT": str(own),
+                "MAW_LOCAL_RUNTIME_ROOT": str(shared),
+            }):
+                root = default_runtime_root()
+        self.assertEqual(root, own.resolve())
+
+    def test_status_follows_local_derivation(self) -> None:
+        """LOCAL 键派生对状态查询同样生效（GUI 状态行显示派生目录而非 C 盘兜底）。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir) / "asr-runtime"
+            with mock.patch.dict(os.environ, {
+                "MAW_LOCAL_RUNTIME_ROOT": str(base),
+                "MAW_MOSS_RUNTIME_ROOT": "",
+                "MAW_MODEL_CACHE_ROOT": str(Path(temp_dir) / "models"),
+            }):
+                status = managed_runtime_status(engine="moss")
+        self.assertEqual(status.status, "missing")
+        self.assertEqual(Path(status.path), base.with_name(f"{base.name}-moss").resolve())
+
+    def test_install_passes_derived_root_to_managed_runtime(self) -> None:
+        """安装入口把派生根目录传给 MOSS.install；不传（None）配置就会失效。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir) / "asr-runtime"
+            sentinel = object()
+            with mock.patch.dict(os.environ, {
+                "MAW_LOCAL_RUNTIME_ROOT": str(base),
+                "MAW_MOSS_RUNTIME_ROOT": "",
+            }):
+                with mock.patch.object(MOSS, "install", return_value=sentinel) as install_mock:
+                    with mock.patch("maw.moss_runtime._from_runtime_status", return_value=sentinel):
+                        result = moss_runtime.install_local_runtime()
+        install_mock.assert_called_once()
+        self.assertEqual(
+            install_mock.call_args.kwargs["runtime_root"],
+            base.with_name(f"{base.name}-moss").resolve(),
+        )
+        self.assertIs(result, sentinel)
+
+    def test_non_ascii_derivation_still_goes_through_ascii_check(self) -> None:
+        """派生路径含非 ASCII 时仍必须过 ensure_ascii_root（#356 ASCII 化不放松）。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir) / "运行环境"
+            alias = Path(temp_dir) / "RUNSH~1"
+            with mock.patch.dict(os.environ, {
+                "MAW_LOCAL_RUNTIME_ROOT": str(base),
+                "MAW_MOSS_RUNTIME_ROOT": "",
+            }):
+                with mock.patch("maw.runtimes.base.sys.platform", "win32"):
+                    with mock.patch(
+                        "maw.runtimes.base.pathwin.ensure_ascii_root",
+                        return_value=alias,
+                    ) as ascii_mock:
+                        root = default_runtime_root()
+        ascii_mock.assert_called_once()
+        self.assertEqual(ascii_mock.call_args.kwargs["dir_name"], "local-runtime-moss")
+        self.assertEqual(ascii_mock.call_args.kwargs["allow_relocate"], False)
+        self.assertEqual(root, alias)
 
 
 class MossRuntimeStatusTests(unittest.TestCase):
@@ -169,9 +280,65 @@ class MossRuntimeStatusTests(unittest.TestCase):
 
         self.assertEqual(status.status, "broken")
 
+    def test_recover_follows_local_derivation_and_leaves_default_untouched(self) -> None:
+        """只配 LOCAL 键时，恢复必须作用于派生目录而非默认目录（PR #370 反馈回归）。
+
+        恢复若不传 override 会走默认目录解析，遗漏派生目录的 installing
+        标记，GUI 状态永远停在 installing。
+        """
+        with tempfile.TemporaryDirectory() as temp_dir:
+            derived = Path(temp_dir) / "asr-runtime-moss"
+            python = runtime_python_path(derived)
+            python.parent.mkdir(parents=True, exist_ok=True)
+            python.write_bytes(b"python")
+            manifest = derived / "runtime.json"
+            manifest.write_text(
+                '{"status": "installing", "runtimeVersion": "1"}\n',
+                encoding="utf-8",
+                newline="\n",
+            )
+            app_data = Path(temp_dir) / "app"
+            with mock.patch.dict(os.environ, {
+                "MAW_LOCAL_RUNTIME_ROOT": str(Path(temp_dir) / "asr-runtime"),
+                "MAW_MOSS_RUNTIME_ROOT": "",
+                "MAW_APP_DATA_ROOT": str(app_data),
+            }):
+                self.assertTrue(recover_local_runtime_install())
+            self.assertEqual(json.loads(manifest.read_text(encoding="utf-8"))["status"], "broken")
+            # 默认目录未被创建/改动：恢复没有走 resolve_root 的默认回退。
+            self.assertFalse((app_data / "local-runtime-moss" / "runtime.json").exists())
+
+    def test_recover_prefers_moss_env_over_local_derivation(self) -> None:
+        """MOSS 独立键配置时恢复只作用于独立键目录，LOCAL 派生目录不被触碰。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            own = Path(temp_dir) / "moss-explicit"
+            derived = Path(temp_dir) / "asr-runtime-moss"
+            manifest_text = '{"status": "installing", "runtimeVersion": "1"}\n'
+            for root in (own, derived):
+                python = runtime_python_path(root)
+                python.parent.mkdir(parents=True, exist_ok=True)
+                python.write_bytes(b"python")
+                (root / "runtime.json").write_text(manifest_text, encoding="utf-8", newline="\n")
+            with mock.patch.dict(os.environ, {
+                "MAW_MOSS_RUNTIME_ROOT": str(own),
+                "MAW_LOCAL_RUNTIME_ROOT": str(Path(temp_dir) / "asr-runtime"),
+            }):
+                self.assertTrue(recover_local_runtime_install())
+            self.assertEqual(
+                json.loads((own / "runtime.json").read_text(encoding="utf-8"))["status"],
+                "broken",
+            )
+            self.assertEqual(
+                json.loads((derived / "runtime.json").read_text(encoding="utf-8"))["status"],
+                "installing",
+            )
+
 
 class MossRuntimeInstallTests(unittest.TestCase):
     # 内嵌流测试固定 win32：委托链与布局在 mac/linux CI 上一致。
+    # resolve_root 的 win32 分支会先算 fallback 路径比对（需要 current_user_sid），
+    # 非 Windows 平台没有 WinDLL，SID 需显式 mock（同 tests/test_ocr_runtime.py）。
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
@@ -197,7 +364,7 @@ class MossRuntimeInstallTests(unittest.TestCase):
                 with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=_fake_extract):
                     with mock.patch.object(MOSS, "requirements_path", return_value=requirements_txt):
                         with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                            with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                            with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                 with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
                                     with mock.patch.dict(os.environ, {"MAW_MOSS_RUNTIME_ROOT": str(root)}):
                                         status = install_local_runtime(engine="moss")
@@ -213,6 +380,7 @@ class MossRuntimeInstallTests(unittest.TestCase):
             self.assertIn(PYTORCH_INDEX, install_command)
             self.assertTrue(any(MOSS_VERIFY_IMPORT in str(arg) for arg in verify_command))
 
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_install_without_bootstrap_assets_explains_packaged_requirement(self) -> None:

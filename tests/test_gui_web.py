@@ -176,6 +176,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 "operationId": "ai-cleanup-cancel-test",
             })
 
+        self.api.pump.flush()
         self.api.pump.shutdown()
         scripts = "\n".join(self.window.scripts)
         self.assertFalse(result["ok"])
@@ -1263,6 +1264,39 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(config["outputSubfolder"])
         self.assertFalse(config["perVideoSubfolder"])
         self.assertFalse(config["attachModelName"])
+
+    def test_save_prefs_persists_segmentation_and_get_config_restores_it(self) -> None:
+        """Given 断句与标点 fields, When saved, Then the single JSON key round-trips; blank clears a field; corrupt JSON falls back to defaults."""
+        os.environ.pop("MAW_GUI_SEGMENTATION", None)
+        fields = ("gapSplit", "minLen", "maxLen", "minWords", "maxWords")
+        self.assertEqual([self.api.get_config()[key] for key in fields], [""] * 5)
+
+        self.assertTrue(self.api.save_prefs({"gapSplit": " 500 ", "maxLen": "18"})["ok"])
+        self.assertIn("MAW_GUI_SEGMENTATION=", self.env_path.read_text(encoding="utf-8"))
+        config = self.api.get_config()
+        self.assertEqual(config["gapSplit"], "500")
+        self.assertEqual(config["maxLen"], "18")
+        self.assertEqual(config["minLen"], "")
+
+        # 空串清除单个字段，其余字段保留。
+        self.assertTrue(self.api.save_prefs({"gapSplit": "", "maxLen": "18"})["ok"])
+        config = self.api.get_config()
+        self.assertEqual(config["gapSplit"], "")
+        self.assertEqual(config["maxLen"], "18")
+
+        # 环境变量优先于文件值（与 effective_config 的 pick 语义一致）；env 空串回退文件值。
+        self.assertTrue(self.api.save_prefs({"gapSplit": "300"})["ok"])
+        with mock.patch.dict(os.environ, {"MAW_GUI_SEGMENTATION": '{"gapSplit":"999"}'}):
+            self.assertEqual(self.api.get_config()["gapSplit"], "999")
+        with mock.patch.dict(os.environ, {"MAW_GUI_SEGMENTATION": ""}):
+            self.assertEqual(self.api.get_config()["gapSplit"], "300")
+
+        # 坏 JSON / 非对象回退默认；未知键剔除、已知键保留。
+        for raw, expected_gap_split in (("{not json", ""), ("[]", ""), ('{"gapSplit":"500","alien":"x"}', "500")):
+            self.env_path.write_text(f"MAW_GUI_SEGMENTATION={raw}\n", encoding="utf-8")
+            config = self.api.get_config()
+            self.assertEqual(config["gapSplit"], expected_gap_split)
+            self.assertEqual([config[key] for key in fields if key != "gapSplit"], [""] * 4)
 
     def test_notify_preference_defaults_off_and_round_trips(self) -> None:
         """Given the completion-notification toggle, When saved, Then .env and config reflect it."""
@@ -2394,6 +2428,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 "operationId": "llm-stream-test",
             })
 
+        self.api.pump.flush()
         self.api.pump.shutdown()
         scripts = "\n".join(self.window.scripts)
         self.assertTrue(result["ok"])
@@ -4744,6 +4779,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "2m")
+        self.assertTrue(request.test_run,
+            "testRun 载荷要进入请求，供画面缓存限长与日志说明使用")
         self.assertEqual(request.srt_path.name, "out-test.srt")
         self.assertEqual(request.ui_language, "en")
         self.assertTrue(request.debug_raw)
@@ -4762,6 +4799,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         }, self.env_path)
 
         self.assertEqual(request.length_limit, "30m")
+        self.assertFalse(request.test_run)
 
     def test_request_from_payload_carries_selected_audio_track(self) -> None:
         media = self.root / "clip.mp4"
@@ -4922,6 +4960,21 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(_request_from_payload(payload, self.env_path).generate_spectral)
         self.assertTrue(
             _request_from_payload({**payload, "generateSpectral": True}, self.env_path).generate_spectral
+        )
+
+    def test_request_from_payload_controls_keyframe_generation(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        payload = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }
+
+        self.assertTrue(_request_from_payload(payload, self.env_path).generate_keyframes,
+            "旧载荷缺省该字段时按默认开启处理")
+        self.assertFalse(
+            _request_from_payload({**payload, "generateKeyframes": False}, self.env_path).generate_keyframes
         )
 
     def test_request_from_payload_controls_thumbnail_generation(self) -> None:
@@ -5160,13 +5213,33 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "returned non-zero exit status 1.",
         ]))
 
-    def test_launcher_api_queues_started_event_and_shutdown_flushes(self) -> None:
+    def test_launcher_shutdown_stops_event_delivery_before_cancelling_tasks(self) -> None:
+        def cancel_and_flush() -> None:
+            self.api._emit({"type": "log", "message": "cancelled"})
+            self.api.pump.flush()
+
         self.api._emit({"type": "log", "message": "queued"})
+        with mock.patch.object(self.api, "cancel_recording_review", side_effect=cancel_and_flush):
+            self.api.shutdown()
 
-        self.api.shutdown()
+        self.api.pump.start()
+        self.api._emit({"type": "log", "message": "late event"})
+        self.api.pump.flush()
 
-        self.assertTrue(self.window.scripts)
-        self.assertIn("queued", self.window.scripts[-1])
+        self.assertEqual(self.window.scripts, [])
+        self.assertIsNone(self.api.pump.thread)
+
+    def test_event_pump_skips_delivery_if_window_lookup_overlaps_shutdown(self) -> None:
+        def close_during_lookup() -> FakeWindow:
+            pump.shutdown()
+            return self.window
+
+        pump = EventPump(window_getter=close_during_lookup)
+        pump.enqueue({"type": "log", "message": "queued"})
+
+        pump.flush()
+
+        self.assertEqual(self.window.scripts, [])
 
     def test_worker_emits_done_with_json_when_optional_html_is_missing(self) -> None:
         request = TranscriptionRequest(
@@ -6079,6 +6152,12 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="generateSpectralField"', page)
         self.assertIn('id="generateThumbnails" type="checkbox"', page)
         self.assertIn('id="generateThumbnailsField"', page)
+        self.assertIn('id="generateKeyframes" type="checkbox" checked', page)
+        self.assertIn('id="generateKeyframesField"', page)
+        self.assertLess(page.index('id="generateKeyframesField"'), page.index('id="generateThumbnailsField"'),
+            "基础缩略图开关位于高精度开关之前，级联隐藏时保持视觉顺序")
+        keyframes_block = page[page.index('id="generateKeyframesField"'):page.index('id="generateThumbnailsField"')]
+        self.assertIn("checked", keyframes_block, "生成缩略图默认勾选")
         thumbnails_block = page[page.index('id="generateThumbnailsField"'):page.index('id="debugRawField"')]
         self.assertNotIn("checked", thumbnails_block, "生成高精度画面预览图默认不勾选")
         self.assertIn('class="segmentation-row segmentation-character-row"', page)
@@ -6100,7 +6179,21 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
+        self.assertIn('generateKeyframes: $("generateKeyframes").checked', script)
         self.assertIn('generateThumbnails: $("generateThumbnails").checked', script)
+        self.assertIn('$("generateKeyframes").addEventListener("change", syncThumbnailFields)', script)
+        self.assertIn('$("generateThumbnailsField").classList.toggle("hidden", !baseOn)', script)
+        self.assertIn('syncDefaultOutput(); syncThumbnailFields(); scheduleAudioTrackProbe(', script,
+            "mediaPath 输入联动：手输路径即时切换缩略图开关禁用态")
+        self.assertIn('syncDefaultOutput(); syncThumbnailFields(); void refreshAudioTracks(path)', script,
+            "setMedia（选择/拖入媒体）联动同一禁用逻辑")
+        self.assertIn('checkbox.disabled = audioOnly', script)
+        self.assertIn('const audioOnly = Boolean(media) && !VIDEO_EXTS.has(ext(media));', script,
+            "音频输入判定沿用音轨探测同一套视频扩展名集合")
+        self.assertIn('#generateKeyframesField.unavailable .check-field', stylesheet,
+            "音频禁用态有清晰置灰样式")
+        self.assertIn('generate_keyframes: "生成缩略图"', script)
+        self.assertIn('generate_keyframes: "Generate thumbnails"', script)
         self.assertIn('generate_spectral: "生成频谱数据"', script)
         self.assertIn('generate_spectral: "Generate spectral data"', script)
         self.assertIn('segmentation: "断句"', script)
@@ -6195,6 +6288,42 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("async function monitorServerStatus()", script)
         self.assertIn('server_disconnected', script)
         self.assertNotIn('state.serverRunning ? t("server_stop")', script)
+
+    def test_segmentation_preferences_persist_and_refill(self) -> None:
+        """Given 断句与标点 fields, When launcher sources are read, Then wiring, refill and preset-apply all persist them (issue #355)."""
+        wiring = (ROOT / "web" / "launcher" / "boot" / "launcher-notify-backend.js").read_text(encoding="utf-8")
+        startup = (ROOT / "web" / "launcher" / "boot" / "launcher-settings-startup.js").read_text(encoding="utf-8")
+        presets = (ROOT / "web" / "launcher" / "presets" / "launcher-presets.js").read_text(encoding="utf-8")
+        media_form = (ROOT / "web" / "launcher" / "forms" / "launcher-media-form.js").read_text(encoding="utf-8")
+        mock_api = (ROOT / "web" / "launcher" / "boot" / "launcher-mock-api.js").read_text(encoding="utf-8")
+
+        # 快照组装：五字段全量快照由 media-form 域模块提供。
+        self.assertIn("function segmentationPrefsPayload()", media_form)
+        snapshot_body = media_form.split("function segmentationPrefsPayload()")[1].split("}")[0]
+        for field in ("gapSplit", "minLen", "maxLen", "minWords", "maxWords"):
+            self.assertIn(f'"{field}"', snapshot_body)
+
+        # 字段监听：input 与 change 都触发防抖保存，并同步 state.config（openSettings 回填以此为源）；
+        # 非法值由任务提交校验拦截。
+        self.assertIn('["gapSplit", "minLen", "maxLen", "minWords", "maxWords"].forEach((field) =>', wiring)
+        self.assertIn("const snapshot = segmentationPrefsPayload();", wiring)
+        self.assertIn("savePrefsDebounced(snapshot);", wiring)
+        self.assertIn('$(field).addEventListener("input", persist)', wiring)
+        self.assertIn('$(field).addEventListener("change", persist)', wiring)
+        self.assertIn("Object.assign(state.config, snapshot)", wiring)
+
+        # 启动（init）与设置面板打开都回填；空值留空，占位符不受影响。五字段同构守护。
+        for field in ("gapSplit", "minLen", "maxLen", "minWords", "maxWords"):
+            self.assertEqual(startup.count(f'$("{field}").value = state.config.{field} || "";'), 2)
+
+        # 预设覆盖字段后显式持久化（value 赋值不触发 input 事件），并同步 state.config。
+        self.assertIn("const segmentationSnapshot = segmentationPrefsPayload();", presets)
+        self.assertIn("savePrefsDebounced(segmentationSnapshot);", presets)
+        self.assertIn("Object.assign(state.config, segmentationSnapshot);", presets)
+
+        # 浏览器 mock 与真实后端同构：config 载荷与 save_prefs 都支持五键。
+        self.assertIn('["gapSplit", "minLen", "maxLen", "minWords", "maxWords"]', mock_api)
+        self.assertIn('gapSplit: saved.gapSplit || ""', mock_api)
 
     def test_launcher_hero_links_include_github_tutorial_and_support(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

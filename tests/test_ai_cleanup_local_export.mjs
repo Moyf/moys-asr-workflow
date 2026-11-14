@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
@@ -58,9 +57,7 @@ function runtime() {
     exportColorContextResolver: () => () => main,
   };
   for (const file of ['editor-export-srt.js', 'editor-export-timeline.js']) {
-    const source = file === 'editor-export-srt.js'
-      ? initModuleSource(`editor/io/${file}`)
-      : fs.readFileSync(new URL(`../web/editor/io/${file}`, import.meta.url), 'utf8');
+    const source = initModuleSource(`editor/io/${file}`);
     vm.runInNewContext(source, context);
   }
   context.MaweExportSrt = context.window.MaweExportSrt;

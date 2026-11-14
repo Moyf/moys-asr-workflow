@@ -46,6 +46,7 @@ editor/ui/editor-floating-panel.js
 editor/ui/editor-settings-panels.js
 editor/ui/editor-ninja.js
 editor/media/editor-audio-processing.js
+editor/media/editor-gap-playback.js
 editor/media/editor-media-playback.js
 editor/cues/editor-keyboard-targets.js
 editor/cues/editor-shortcuts.js
@@ -67,8 +68,8 @@ editor/io/editor-loading-progress.js
 editor/io/editor-multi-import.js
 editor/media/editor-media-load.js
 editor/io/editor-sticker-root.js
-editor/cues/editor-find-replace.js
 editor/cues/editor-text-process.js
+editor/cues/editor-text-presets.js
 editor/cues/editor-timed-text-edit.js
 editor/cues/editor-sticker-picker.js
 editor/cues/editor-add-cue.js
@@ -109,6 +110,7 @@ editor/cues/editor-wiring-overlay-transfer.js
 editor/styles/editor-wiring-ass-font-aliases.js
 editor/styles/editor-wiring-ass-storage.js
 editor/boot/editor-wiring-initial-config.js
+editor/ui/editor-dom-panels.js
 editor/ui/editor-wiring-dom-panels.js
 editor/styles/editor-wiring-ass-manager.js
 editor/ui/editor-wiring-settings-init.js
@@ -122,6 +124,7 @@ editor/cues/editor-wiring-cue-panel.js
 editor/cues/editor-wiring-search-filter.js
 editor/cues/editor-wiring-overlay-split-merge.js
 editor/cues/editor-wiring-list-navigation.js
+editor/media/editor-ass-preview-refresh.js
 editor/media/editor-wiring-keyboard-guards.js
 editor/cues/editor-wiring-word-timing.js
 editor/media/editor-wiring-media-controls.js

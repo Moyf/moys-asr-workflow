@@ -614,6 +614,24 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(helpers.normalizeEditorSettings({ accentColorCustom: 'invalid' }).accentColorCustom, '#6ca5e8');
   assert.equal(settings.stickerOtioExportMode, 'portable');
   assert.equal(settings.autoMergeShortCount, 20);
+  // 表情包自定义背景：默认值、合法值归一、非法颜色回退与透明度钳制。
+  assert.equal(settings.stickerBackgroundEnabled, false);
+  assert.equal(settings.stickerBackgroundColor, '#000000');
+  assert.equal(settings.stickerBackgroundOpacity, 35);
+  const stickerBackground = helpers.normalizeEditorSettings({
+    stickerBackgroundEnabled: true,
+    stickerBackgroundColor: '#FF8800',
+    stickerBackgroundOpacity: 120,
+  });
+  assert.equal(stickerBackground.stickerBackgroundEnabled, true);
+  assert.equal(stickerBackground.stickerBackgroundColor, '#ff8800');
+  assert.equal(stickerBackground.stickerBackgroundOpacity, 100);
+  const invalidStickerBackground = helpers.normalizeEditorSettings({
+    stickerBackgroundColor: 'red',
+    stickerBackgroundOpacity: 'x',
+  });
+  assert.equal(invalidStickerBackground.stickerBackgroundColor, '#000000');
+  assert.equal(invalidStickerBackground.stickerBackgroundOpacity, 35);
   assert.equal(settings.assMode, false);
   assert.equal(helpers.normalizeEditorSettings({ assMode: true }).assMode, true);
   assert.equal(helpers.normalizeEditorSettings({ assMode: 1 }).assMode, false);
@@ -1869,14 +1887,14 @@ test('translates editor project controls and dynamic save messages to English', 
   );
   assert.equal(i18n.translateText('操作支持撤销/重做。', 'en'), 'Operations support undo/redo.');
   assert.equal(i18n.translateText('处理范围', 'en'), 'Scope');
-  assert.equal(i18n.translateText('查找并批量替换字幕文本', 'en'), 'Find and batch-replace subtitle text');
+  assert.equal(i18n.translateText('按步骤替换、修剪空白或转换格式，并预览最终结果', 'en'), 'Replace text, trim whitespace, or format subtitles in steps, then preview the final result');
   assert.equal(
     i18n.translateText('集中编辑字幕文本，可预览拆分、合并和字词时间码映射', 'en'),
     'Edit subtitle text in one place and preview split, merge, and word-timing mappings',
   );
   assert.equal(
-    i18n.translateText('批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围', 'en'),
-    'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
+    i18n.translateText('文本处理支持勾选「仅处理选中的字幕」限定范围', 'en'),
+    'Check “Process selected subtitles only” to limit text processing to the selection',
   );
   assert.equal(i18n.translateText('注：微调幅度可在', 'en'), 'Note: Adjust the fine-tuning amount in');
   assert.equal(i18n.translateText('「高级编辑」中调节，默认 50ms', 'en'), 'under “Advanced editing” in Global settings; the default is 50 ms');
@@ -3793,6 +3811,217 @@ test('merge group inheritance keeps a common head or reference and rejects mixed
   });
 });
 
+test('remaps group refs after a contiguous merge splice keeps groups valid', () => {
+  // 复刻主轨合并联动副轨的数据面：副轨 [14,15] 合并成 1 条插在 14，
+  // 其后所有 head 与 ref 都要前移 1 位（修复前正是保存报错的来源）。
+  const segments = [
+    { color: { name: 'red', start: 0, end: 1000 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+    { color_ref: { name: 'red', headIdx: 0 } }, // 被合并
+    { color_ref: { name: 'red', headIdx: 0 } }, // 被合并
+    { color: { name: 'green', start: 0, end: 1000 } },
+    { color_ref: { name: 'green', headIdx: 4 } },
+  ];
+  const merged = { color_ref: { name: 'red', headIdx: 0 } };
+  segments.splice(2, 2, merged);
+  const changed = helpers.remapGroupRefsAfterMergeSplice(segments, [2, 3], ['color_ref'], 6);
+  assert.equal(changed, 1);
+  assert.equal(segments[2].color_ref.headIdx, 0, '合并产物仍指向前方 head');
+  assert.equal(segments[3].color.name, 'green', '其后 head 前移 1 位');
+  assert.equal(segments[4].color_ref.headIdx, 3);
+});
+
+test('remaps group refs after a merge splice with the head inside the merged set', () => {
+  // head 本身被合并：同组继承时合并产物成为新 head，幸存 ref 改指产物位置。
+  const segments = [
+    { color: { name: 'yellow', start: 0, end: 1000 } }, // 被合并 head
+    { color_ref: { name: 'yellow', headIdx: 0 } },     // 被合并
+    { color_ref: { name: 'yellow', headIdx: 0 } },     // 幸存成员
+    { color_ref: { name: 'yellow', headIdx: 0 } },     // 幸存成员
+  ];
+  const merged = { color: { name: 'yellow', start: 0, end: 1000 } };
+  segments.splice(0, 2, merged);
+  helpers.remapGroupRefsAfterMergeSplice(segments, [0, 1], ['color_ref'], 4);
+  assert.equal(segments[0].color.name, 'yellow');
+  assert.equal(segments[1].color_ref.headIdx, 0);
+  assert.equal(segments[2].color_ref.headIdx, 0);
+});
+
+test('remaps group refs after a non-contiguous merge splice', () => {
+  // 主轨合并联动副轨时被合并副轨段可以不连续：平移量按「前面被删数 - 1」。
+  const segments = [
+    { color: { name: 'red', start: 0, end: 1000 } },
+    { color_ref: { name: 'red', headIdx: 0 } },      // 1 被合并
+    { color: { name: 'green', start: 0, end: 1000 } },
+    { color_ref: { name: 'red', headIdx: 0 } },      // 3 被合并
+    { color_ref: { name: 'green', headIdx: 2 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+  ];
+  const merged = { color_ref: { name: 'red', headIdx: 0 } };
+  segments.splice(3, 1);
+  segments.splice(1, 1);
+  segments.splice(1, 0, merged);
+  helpers.remapGroupRefsAfterMergeSplice(segments, [1, 3], ['color_ref'], 6);
+  assert.equal(segments[2].color.name, 'green');
+  assert.equal(segments[3].color_ref.headIdx, 2, '被删 1 个、回插 1 段：中间 head 不动');
+  assert.equal(segments[4].color_ref.headIdx, 0, '指向前方 head 的 ref 不受影响');
+});
+
+test('remap after merge splice ignores out-of-range and empty inputs', () => {
+  const segments = [{ color_ref: { name: 'red', headIdx: 0 } }];
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [], ['color_ref'], 1), 0);
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [99, -3], ['color_ref'], 1), 0);
+  assert.equal(segments[0].color_ref.headIdx, 0);
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(null, [0], undefined, 1), 0);
+});
+
+test('resolveMergedColorInheritance continues same-group refs and materializes same-name crosses', () => {
+  // 同组：沿用组继承（head 在选区前 → 续指原 head）。
+  const sameGroup = [
+    { color: { name: 'red', value: '#e74c3c', start: 0, end: 1500 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+    { color_ref: { name: 'red', headIdx: 0 } },
+  ];
+  const continued = helpers.resolveMergedColorInheritance(sameGroup, [1, 2]);
+  assert.equal(continued.groupInherited, true);
+  assert.equal(continued.head, null);
+  assert.deepEqual(JSON.parse(JSON.stringify(continued.ref)), { name: 'red', headIdx: 0 });
+
+  // 跨组同色（相邻两组都为红，两次标记各建一组）：物化自持 head，不丢色。
+  const adjacentGroups = [
+    { start: 0, end: 1500, color: { name: 'red', value: '#e74c3c', start: 0, end: 1500 } },
+    { start: 1000, end: 2500, color_ref: { name: 'red', headIdx: 0 } },
+    { start: 2000, end: 3500, color: { name: 'red', value: '#e74c3c', start: 2000, end: 3500 } },
+    { start: 3000, end: 4000, color_ref: { name: 'red', headIdx: 2 } },
+  ];
+  const materialized = helpers.resolveMergedColorInheritance(adjacentGroups, [1, 2]);
+  assert.equal(materialized.groupInherited, false);
+  assert.equal(materialized.ref, null);
+  assert.deepEqual(JSON.parse(JSON.stringify(materialized.head)), {
+    name: 'red', value: '#e74c3c', start: 1000, end: 3500,
+  });
+
+  // 颜色名不同 / 含未标记段：不继承。
+  assert.equal(helpers.resolveMergedColorInheritance([
+    { color: { name: 'red', start: 0, end: 500 } },
+    { color: { name: 'green', start: 1000, end: 1500 } },
+  ], [0, 1]).head, null);
+  assert.equal(helpers.resolveMergedColorInheritance([
+    { color: { name: 'red', start: 0, end: 500 } },
+    { text: 'plain' },
+  ], [0, 1]).head, null);
+
+  // ref 自身缺 name 时按其 head 解析有效颜色名（跨组同色也能匹配上）。
+  const namelessRefCross = [
+    { color: { name: 'blue', value: '#0000aa', start: 0, end: 500 } },
+    { color_ref: { headIdx: 0 } },
+    { color: { name: 'blue', value: '#0000aa', start: 2000, end: 2500 } },
+  ];
+  const crossed = helpers.resolveMergedColorInheritance(namelessRefCross, [1, 2]);
+  assert.equal(crossed.groupInherited, false);
+  assert.equal(crossed.head.name, 'blue');
+});
+
+test('resolveMergedColorInheritance rejects null and invalid inputs without changing them', () => {
+  const segments = [{ color: { name: 'red' } }, { color: { name: 'red' } }];
+  for (const [source, indexes] of [
+    [null, [0, 1]], [undefined, [0]], [{}, [0]],
+    [segments, null], [segments, undefined], [segments, {}], [segments, []],
+    [segments, [-1, 0]], [segments, [0, 2]], [segments, [0, 0.5]],
+    [segments, [0, '1']], [segments, [0, NaN]], [[null, {}], [0, 1]],
+    [[{ color: { name: 'red' } }, 'invalid'], [0, 1]],
+  ]) {
+    assert.deepEqual(JSON.parse(JSON.stringify(helpers.resolveMergedColorInheritance(source, indexes))),
+      { head: null, ref: null, groupInherited: false });
+  }
+  assert.deepEqual(segments, [{ color: { name: 'red' } }, { color: { name: 'red' } }]);
+});
+
+test('resolveMergedColorInheritance uses preview color semantics and returns independent copies', () => {
+  const segments = [
+    { start: 0, end: 500, color: { name: 'red', value: { hex: '#aa0000' } } },
+    { start: 1000, end: 1500, color_ref: { name: 'green', headIdx: 0 } },
+    { start: 2000, end: 2500, color: { name: 'red', value: '#bb0000' } },
+    { start: 3000, end: 3500, color_ref: { name: 'red', headIdx: 2 } },
+  ];
+  const before = structuredClone(segments);
+  const indexes = Object.freeze([1, 2]);
+  const merged = helpers.resolveMergedColorInheritance(segments, indexes);
+  assert.equal(merged.head.name, helpers.effectiveColorName(segments[1], segments));
+  assert.equal(merged.head.name, 'red', 'valid head name wins over stale redundant ref name');
+  assert.deepEqual(JSON.parse(JSON.stringify(merged.head.value)), { hex: '#aa0000' });
+  merged.head.value.hex = '#ffffff';
+  assert.deepEqual(segments, before, 'cross-group inheritance deep-clones the source value');
+  const inheritedHead = helpers.resolveMergedColorInheritance(segments, [0, 1]);
+  inheritedHead.head.value.hex = '#ffffff';
+  const inheritedRef = helpers.resolveMergedColorInheritance(segments, [1]);
+  inheritedRef.ref.name = 'blue';
+  assert.deepEqual(segments, before, 'same-group inheritance also returns independent head/ref');
+  const differentEffectiveNames = structuredClone(segments);
+  differentEffectiveNames[0].color.name = 'blue';
+  differentEffectiveNames[1].color_ref.name = 'red';
+  assert.equal(helpers.resolveMergedColorInheritance(differentEffectiveNames, [1, 2]).head, null,
+    'matching redundant ref names cannot override different effective head colors');
+});
+
+test('remaps trailing color refs after merging four of six cues', () => {
+  const segments = [{}, {}, {}, {}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 4 } }];
+  const originalLength = segments.length;
+  segments.splice(0, 4, {});
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [0, 1, 2, 3], ['color_ref'], originalLength), 1);
+  assert.equal(segments.length, 3);
+  assert.equal(segments[2].color_ref.headIdx, 1);
+  assert.equal(segments[segments[2].color_ref.headIdx].color.name, 'green');
+});
+
+test('remaps all old indexes after merging noncontiguous cues in an eight-cue track', () => {
+  const segments = [{}, {}, {}, {}, {}, {}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 6 } }];
+  const originalLength = segments.length;
+  const indexes = [0, 2, 4, 5];
+  for (const index of indexes.toReversed()) segments.splice(index, 1);
+  segments.splice(0, 0, {});
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, indexes, ['color_ref'], originalLength), 1);
+  assert.equal(segments.length, 5);
+  assert.equal(segments[4].color_ref.headIdx, 3);
+});
+
+test('remaps a removed head beyond the post-merge length to the merged cue', () => {
+  const segments = [{}, {}, {}, {}, {}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 5 } }];
+  const originalLength = segments.length;
+  segments.splice(3, 3, { color: { name: 'green' } });
+  helpers.remapGroupRefsAfterMergeSplice(segments, [3, 4, 5], ['color_ref'], originalLength);
+  assert.equal(segments[4].color_ref.headIdx, 3);
+});
+
+test('remaps true tail and complete merges without changing earlier refs', () => {
+  const segments = [
+    { color: { name: 'red' } }, { color_ref: { name: 'red', headIdx: 0 } }, {}, {},
+    { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 4 } },
+  ];
+  segments.splice(4, 2, { color: { name: 'green' } });
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [4, 5], ['color_ref'], 6), 0);
+  assert.equal(segments[1].color_ref.headIdx, 0);
+  assert.equal(segments[4].color.name, 'green');
+  const wholeTrack = [{ color: { name: 'green' } }];
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(wholeTrack, [0, 1, 2, 3, 4, 5], undefined, 6), 0);
+  assert.deepEqual(wholeTrack, [{ color: { name: 'green' } }]);
+});
+
+test('remaps using explicit original length despite duplicate and invalid indexes', () => {
+  const segments = [{}, { color: { name: 'green' } }, { color_ref: { name: 'green', headIdx: 4 } }];
+  const indexes = [3, 0, 1, 2, 2, 6, 7, 8, 99, -1, 1.5];
+  assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, indexes, ['color_ref'], 6), 1);
+  assert.equal(segments[2].color_ref.headIdx, 1);
+});
+
+test('remap after merge requires a valid explicit pre-merge length', () => {
+  for (const originalLength of [undefined, null, -1, 0, 2.5, Infinity]) {
+    const segments = [{}, { color_ref: { headIdx: 2 } }];
+    assert.equal(helpers.remapGroupRefsAfterMergeSplice(segments, [0, 1], ['color_ref'], originalLength), 0);
+    assert.equal(segments[1].color_ref.headIdx, 2);
+  }
+});
+
 test('finds A/D navigation targets from selection or playhead', () => {
   const segments = [
     { start: 1000, end: 2000 },
@@ -3824,9 +4053,9 @@ test('prefers the later subtitle at a shared playhead boundary', () => {
 
 test('finds the first enabled subtitle for optional SRT alignment', () => {
   const segments = [
-    { start: 1200, disabled: true },
-    { start: 2450, disabled: false },
-    { start: 4000 },
+    { start: 1200, text: 'disabled', disabled: true },
+    { start: 2450, text: 'first', disabled: false },
+    { start: 4000, text: 'next' },
   ];
   assert.equal(helpers.getSrtExportFirstIndex(segments, true), 1);
   assert.equal(helpers.getSrtExportFirstIndex(segments, false), -1);
@@ -3834,6 +4063,7 @@ test('finds the first enabled subtitle for optional SRT alignment', () => {
   assert.equal(helpers.getSrtExportOffset(segments, false), 0);
   assert.equal(helpers.getSrtExportOffset(segments), 0);
   assert.equal(helpers.getSrtExportOffset([{ start: 500, disabled: true }], true), 0);
+  assert.equal(helpers.getSrtExportFirstIndex([{ start: 500, text: '' }, { start: 800, text: 'visible' }], true), 1);
 });
 
 
@@ -4155,13 +4385,79 @@ test('keeps browser and server ASS defaults identical while preserving saved par
   const server = JSON.parse(result.stdout);
   for (const library of [browser, server]) for (const style of library.styles) delete style.fontName;
   assert.deepEqual(browser, server);
+  assert.deepEqual(browser.assProfiles[0].animations.fad, { enabled: false, inMs: 250, outMs: 250 });
+  assert.deepEqual(browser.assProfiles[0].animations.pop, { enabled: false, fromScale: 0.7, inMs: 120, accel: 1 });
   const saved = helpers.defaultAssStyleLibrary();
-  Object.assign(helpers.assStyleForId(saved, 'ass'), {
+  Object.assign(saved.styles.find(style => style.id === 'ass'), {
     fontName: 'Arial', fontSize: 72, emphasisScale: 1.1, backColor: '#000000', backOpacity: 100,
     bold: false, outline: 4, marginV: 80,
   });
-  helpers.assProfileForId(saved, 'ass').animations.fad.enabled = false;
-  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeAssStyleLibrary(saved))), JSON.parse(JSON.stringify(saved)));
+  for (const fadEnabled of [true, false]) for (const popEnabled of [true, false]) {
+    Object.assign(saved.assProfiles[0].animations.fad, { enabled: fadEnabled, inMs: 150, outMs: 300 });
+    Object.assign(saved.assProfiles[0].animations.pop, { enabled: popEnabled, fromScale: 0.8, inMs: 200 });
+    const serialized = JSON.stringify(helpers.normalizeAssStyleLibrary(saved));
+    assert.deepEqual(JSON.parse(serialized), JSON.parse(JSON.stringify(saved)));
+    assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeAssStyleLibrary(JSON.parse(serialized)))), JSON.parse(serialized));
+  }
+});
+
+test('default ASS profile leaves ordinary cues unanimated in export and preview', () => {
+  const library = helpers.defaultAssStyleLibrary();
+  const profile = helpers.assProfileForId(library, 'ass');
+  const ass = helpers.buildAssPayload([{ start: 0, end: 1000, text: 'ordinary cue' }], {
+    assProfile: profile, assStyle: helpers.assStyleForId(library, 'ass'),
+  });
+  const dialogue = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 1);
+  assert.ok(dialogue[0].endsWith(',,ordinary cue'), dialogue[0]);
+  assert.doesNotMatch(dialogue[0], /\\(?:fad|fade|t|fscx|fscy)\b/);
+  for (const elapsed of [0, 60, 500, 940]) {
+    const state = helpers.assPreviewAnimationState(profile, elapsed, 1000);
+    assert.equal(state.opacity, 1);
+    assert.equal(state.popScale, 1);
+    assert.equal(state.transformProgress, null);
+  }
+});
+
+test('explicit ASS fad and pop switches still animate ordinary cues', () => {
+  for (const [fadEnabled, popEnabled] of [[true, false], [false, true], [true, true]]) {
+    const library = helpers.defaultAssStyleLibrary();
+    library.assProfiles[0].animations.fad.enabled = fadEnabled;
+    library.assProfiles[0].animations.pop.enabled = popEnabled;
+    const profile = helpers.assProfileForId(library, 'ass');
+    const ass = helpers.buildAssPayload([{ start: 0, end: 1000, text: 'ordinary cue' }], {
+      assProfile: profile, assStyle: helpers.assStyleForId(library, 'ass'),
+    });
+    const dialogue = ass.split('\n').find(line => line.startsWith('Dialogue:'));
+    assert.equal(dialogue.includes('\\fad(250,250)'), fadEnabled);
+    assert.equal(dialogue.includes('\\fscx70\\fscy70\\t(0,120,1,\\fscx100\\fscy100)'), popEnabled);
+    const start = helpers.assPreviewAnimationState(profile, 0, 1000);
+    assert.equal(start.opacity, fadEnabled ? 0 : 1);
+    assert.equal(start.popScale, popEnabled ? 0.7 : 1);
+    const end = helpers.assPreviewAnimationState(profile, 500, 1000);
+    assert.equal(end.opacity, 1);
+    assert.equal(end.popScale, 1);
+  }
+});
+
+test('default-off ASS switches retain single-cue fade and pop marker effects', () => {
+  const library = helpers.defaultAssStyleLibrary();
+  const profile = helpers.assProfileForId(library, 'ass');
+  const segments = ['>>fade<<', '{{pop}}', '>>{{both}}<<', 'ordinary cue']
+    .map((text, index) => ({ start: index * 1000, end: (index + 1) * 1000, text }));
+  const ass = helpers.buildAssPayload(segments, {
+    assProfile: profile, assStyle: helpers.assStyleForId(library, 'ass'),
+  });
+  const dialogue = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 4);
+  assert.ok(dialogue[0].endsWith('{\\fad(250,250)}fade'), dialogue[0]);
+  assert.ok(dialogue[1].endsWith('{\\fscx70\\fscy70\\t(0,120,1,\\fscx100\\fscy100)}pop'), dialogue[1]);
+  assert.ok(dialogue[2].endsWith('{\\fscx70\\fscy70\\t(0,120,1,\\fscx100\\fscy100)\\fad(250,250)}both'), dialogue[2]);
+  assert.ok(dialogue[3].endsWith(',,ordinary cue'), dialogue[3]);
+  const markers = helpers.assSentenceAnimationTags(segments[2].text, profile, 'both');
+  const state = helpers.assPreviewAnimationState(profile, 60, 1000, markers);
+  assert.equal(state.opacity, 60 / 250);
+  assert.equal(state.popScale, 0.85);
 });
 
 test('ASS outline and shadow opacity map to alpha bytes and rgba previews', () => {
@@ -5341,7 +5637,16 @@ test('sanitizes deterministic names and escapes XML and file URLs', () => {
   assert.equal(helpers.escapeExportXml('a<&>"\''), 'a&lt;&amp;&gt;&quot;&apos;');
   assert.equal(
     helpers.exportPathToFileUrl('C:\\Fixtures\\测试 & take\".mp4'),
-    'file://localhost/C:/Fixtures/%E6%B5%8B%E8%AF%95%20%26%20take%22.mp4',
+    'file://localhost/c%3a/Fixtures/%E6%B5%8B%E8%AF%95%20%26%20take%22.mp4',
+  );
+  assert.equal(
+    helpers.exportPathToFileUrl('file:///E:/素材/表情包.gif'),
+    'file://localhost/e%3a/%E7%B4%A0%E6%9D%90/%E8%A1%A8%E6%83%85%E5%8C%85.gif',
+  );
+  // POSIX 路径中形如 D: 的目录名是合法名称：不得被当作盘符改写大小写或编码形态。
+  assert.equal(
+    helpers.exportPathToFileUrl('/media/D:/take.mp4'),
+    'file:///media/D:/take.mp4',
   );
   assert.equal(
     helpers.exportPathToFileUrl('/fixtures/测试 & take.mp4'),
@@ -5392,7 +5697,7 @@ test('serializes the shared plan as deterministic FCP 7 XML and mapped SRT', () 
   assert.equal(xmlElements(xml, 'track').length, 3);
   assert.ok(xml.includes('<duration>147</duration>'));
   assert.ok(xml.includes('<in>47</in><out>119</out>'));
-  assert.ok(xml.includes('file://localhost/C:/fixtures/%E6%B5%8B%E8%AF%95%20%26%20take.mp4'));
+  assert.ok(xml.includes('file://localhost/c%3a/fixtures/%E6%B5%8B%E8%AF%95%20%26%20take.mp4'));
   assert.ok(xml.includes('file:///icons/%E6%B5%8B%E8%AF%95%20%26%20icon.png'));
   assert.deepEqual(parseSrt(srt).map(({ start, end }) => [start, end]), [
     ['00:00:00,700', '00:00:00,950'],
@@ -5465,11 +5770,87 @@ test('resolves sticker media from sticker_root and emits one clip per subtitle o
   parseXml(xml);
   assert.equal((xml.match(/<clipitem id="sticker-clip-/g) || []).length, 2);
   assert.equal((xml.match(/<file id="file-sticker-[^"]+">/g) || []).length, 1);
-  assert.match(xml, /<pathurl>file:\/\/localhost\/E(?:%3A|:)\/%E7%B4%A0%E6%9D%90\/%E8%A1%A8%E6%83%85%E5%8C%85\/%E6%8F%8F%E8%BE%B9gif\/.+<\/pathurl>/);
+  assert.match(xml, /<pathurl>file:\/\/localhost\/e%3a\/%E7%B4%A0%E6%9D%90\/%E8%A1%A8%E6%83%85%E5%8C%85\/%E6%8F%8F%E8%BE%B9gif\/.+<\/pathurl>/);
   assert.match(xml, /<clipitem id="sticker-clip-1"><masterclipid>master-sticker-1<\/masterclipid><name>[^<]+<\/name><enabled>TRUE<\/enabled><alphatype>straight<\/alphatype><pixelaspectratio>square<\/pixelaspectratio>/);
   assert.match(xml, /<file id="file-sticker-[^"]+">[\s\S]*?<timecode><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode>[\s\S]*?<media><video><samplecharacteristics>[\s\S]*?<width>720<\/width><height>480<\/height>/);
   assert.match(xml, /<clipitem id="sticker-clip-1">[\s\S]*?<start>30<\/start><end>60<\/end>/);
   assert.match(xml, /<clipitem id="sticker-clip-2">[\s\S]*?<start>90<\/start><end>120<\/end>/);
+});
+
+// 达芬奇兼容契约（BV195xo6JExV 实测）：
+// ① pathurl 必须紧贴 </name> 且位于 <media> 之前；
+// ② Windows 盘符编码必须是小写盘符 + 小写 %3a（大写 D%3A 会让达芬奇整段离线）；
+// ③ 每个定义型 <file> 节点都必须恰好带一个 <timecode>，且在 <media> 之前；
+//    引用型空节点 <file id="x"/> 不计（继承首次定义）。
+function assertDaVinciFileContract(xml) {
+  parseXml(xml);
+  const definingFiles = xml.match(/<file id="[^"]+">[\s\S]*?<\/file>/g) || [];
+  const stubFiles = xml.match(/<file id="[^"]+"\/>/g) || [];
+  assert.ok(definingFiles.length > 0);
+  for (const file of definingFiles) {
+    const hasPathurl = file.includes('<pathurl>');
+    if (hasPathurl) {
+      assert.ok(file.includes('</name><pathurl>'), `pathurl must directly follow </name>: ${file.slice(0, 160)}`);
+      assert.ok(file.indexOf('<pathurl>') < file.indexOf('<media>'), `pathurl must precede <media>: ${file.slice(0, 160)}`);
+    }
+    assert.equal((file.match(/<timecode>/g) || []).length, 1, `defining file needs exactly one timecode: ${file.slice(0, 160)}`);
+    assert.ok(file.indexOf('<timecode>') < file.indexOf('<media>'), `timecode must precede <media>: ${file.slice(0, 160)}`);
+    if (hasPathurl) {
+      const url = /<pathurl>([^<]+)<\/pathurl>/.exec(file)[1];
+      // 盘符位置（localhost 后）必须是小写盘符 + 小写 %3a：禁止大写编码形态
+      // 与裸冒号形态；路径其余段不受此约束（POSIX 目录名可能形如 D:）。
+      assert.doesNotMatch(url, /localhost\/[A-Za-z]%3A\//);
+      assert.doesNotMatch(url, /localhost\/[A-Za-z]:/);
+    }
+  }
+  const timecodeCount = (xml.match(/<timecode>/g) || []).length;
+  assert.equal(timecodeCount, definingFiles.length);
+  return { definingFiles, stubFiles };
+}
+
+test('keeps every FCP7 file node DaVinci-compatible (pathurl placement, lowercase drive, timecode)', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'E:\\素材\\take 1.mp4', type: 'video', durationMs: 9000 },
+    gaps: [{ start: 2000, end: 3000, removed: true }],
+    sticker_root: 'D:/素材/表情包',
+    segments: [
+      { id: 'a', start: 0, end: 1500, text: 'before', sticker: { name: '星', rel: '包/星.png', start: 0, end: 1500 } },
+      { id: 'b', start: 3500, end: 5000, text: 'after' },
+    ],
+  }, { fps: 30, nativeTextObjects: true });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  // 主媒体（多区间 → 1 定义 + 1 stub）、链接音频（1 定义 + 1 stub）、贴纸（1 定义）、
+  // GraphicAndType 生成器（每条字幕一个定义，共 2 个，无 pathurl）。
+  const { definingFiles, stubFiles } = assertDaVinciFileContract(xml);
+  assert.equal(definingFiles.length, 5);
+  assert.equal(stubFiles.length, 2);
+  assert.equal((xml.match(/<pathurl>/g) || []).length, 3);
+  // ② Windows 盘符 URL 一律小写盘符 + 小写 %3a。
+  for (const match of xml.matchAll(/<pathurl>file:\/\/localhost\/([^<]+)<\/pathurl>/g)) {
+    assert.match(match[1], /^[a-z]%3a\//, match[1]);
+  }
+  assert.ok(xml.includes('<pathurl>file://localhost/e%3a/%E7%B4%A0%E6%9D%90/take%201.mp4</pathurl>'));
+  assert.ok(xml.includes('<pathurl>file://localhost/d%3a/%E7%B4%A0%E6%9D%90/%E8%A1%A8%E6%83%85%E5%8C%85/%E5%8C%85/%E6%98%9F.png</pathurl>'));
+  // 主媒体与链接音频的 file 节点同样带 timecode（回归：此前只有贴纸带）。
+  assert.match(xml, /<file id="file-source-video-1"><name>take 1\.mp4<\/name><pathurl>[^<]+<\/pathurl><duration>\d+<\/duration><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><timecode><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode><media>/);
+  assert.match(xml, /<file id="file-source-audio"><name>take 1\.mp4<\/name><pathurl>[^<]+<\/pathurl>[\s\S]*?<timecode>[\s\S]*?<\/timecode><media><audio>/);
+});
+
+test('keeps audio-only FCP7 exports DaVinci-compatible as well', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'C:\\fixtures\\session.wav', type: 'audio', durationMs: 8000 },
+    gaps: [{ start: 3000, end: 4000, removed: true }],
+    segments: [
+      { id: 'a', start: 0, end: 2000, text: 'one' },
+      { id: 'b', start: 4500, end: 7000, text: 'two' },
+    ],
+  }, { fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  assert.doesNotMatch(xml, /<video>/);
+  const { definingFiles, stubFiles } = assertDaVinciFileContract(xml);
+  assert.equal(definingFiles.length, 1);
+  assert.equal(stubFiles.length, 1);
+  assert.ok(xml.includes('<pathurl>file://localhost/c%3a/fixtures/session.wav</pathurl>'));
 });
 
 test('preserves supplied sticker dimensions in FCP7 media metadata', () => {
@@ -6186,8 +6567,8 @@ test('translates every project-export option, outcome, and warning key in both l
     '自定义…', '宽度', '高度', '自定义合成尺寸需要 16–7680 之间的整数宽高',
     '导出副字幕轨', '主轨字幕', '主轨与副轨字幕', '导出文件名', '导出媒体路径缺失',
     '导出媒体时长缺失', '导出文件名无效', '导出警告',
-    '实验性 Premiere 交接：导出 FCP 7 XML',
-    '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。',
+    'FCP 7 XML，可用于 PR / VEGAS',
+    'FCP 7 XML 可用于 PR / VEGAS 等剪辑软件；原生文字模式面向 Premiere。',
     '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。',
     '导出 XML', 'FCP 7 XML 已保存', 'FCP 7 XML 下载已发起',
     'FCP 7 XML 保存已取消', 'FCP 7 XML 保存失败', 'FCP 7 XML 导出失败',
@@ -7230,11 +7611,11 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
   assert.deepEqual(
     Array.from(helpers.WRAP_CHAR_PRESETS, (preset) => ({ ...preset })),
     [
-      { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
-      { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
-      { id: 'comment', label: '弱化文本', left: '%%', right: '%%', ass: true },
-      { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
-      { id: 'italic', label: '斜体文本', left: '//', right: '//', ass: true },
+      { id: 'emphasis', label: '强调', left: '**', right: '**', ass: true },
+      { id: 'large', label: '放大', left: '++', right: '++', ass: true },
+      { id: 'comment', label: '弱化', left: '%%', right: '%%', ass: true },
+      { id: 'small', label: '缩小', left: '--', right: '--', ass: true },
+      { id: 'italic', label: '斜体', left: '//', right: '//', ass: true },
       { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
       { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
       { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true, sentenceLevel: true },

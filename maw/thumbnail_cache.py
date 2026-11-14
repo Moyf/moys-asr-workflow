@@ -26,7 +26,10 @@ from maw.thumbnails import IMAGE_SPEC, FrameResult, ThumbnailCancelled, Thumbnai
 
 SCHEMA = "moy.asr.thumbnails.v1"
 GENERATOR_VERSION = 3
-BASE_IDENTITY_FIELDS = ("schema", "generator_version", "source_signature", "video_stream_index", "duration_ms", "source_start_ms", "video_start_ms", "time_origin", "image_spec")
+# ``duration_limit_ms`` keeps quick-test (first-N-seconds) bases in their own
+# compatibility group: a limited manifest never merges with — or passes a hit
+# check for — a full-media manifest, and vice versa.
+BASE_IDENTITY_FIELDS = ("schema", "generator_version", "source_signature", "video_stream_index", "duration_ms", "source_start_ms", "video_start_ms", "time_origin", "image_spec", "duration_limit_ms")
 MAX_SPRITE_FRAMES = 64
 MEDIA_QUOTA_BYTES = 64 * 1024 * 1024
 GLOBAL_QUOTA_BYTES = 512 * 1024 * 1024
@@ -57,11 +60,60 @@ def base_path(media_path: Path | str) -> Path:
     return waveform_dirs(media)[0] / (media.name + ".mothumbs")
 
 
+def _limit_suffix(duration_limit_sec: float | None) -> str:
+    if duration_limit_sec is None:
+        return ""
+    return f".limit-{int(round(float(duration_limit_sec)))}s"
+
+
+def base_sidecar_paths(media_path: Path | str, *, duration_limit_sec: float | None = None) -> list[Path]:
+    """Sidecar destinations for one build, distinct per duration limit.
+
+    Limited (quick-test) and full-media bases live in separate files, so a
+    cheap test build can never overwrite an expensive full-film base.
+    """
+    media = Path(media_path)
+    suffix = _limit_suffix(duration_limit_sec)
+    return [
+        waveform_dirs(media)[0] / (media.name + suffix + ".mothumbs"),
+        cache_root() / "bases" / (_source_key(media) + suffix + ".mothumbs"),
+    ]
+
+
+def _limit_variants_for(directories: Sequence[Path], prefix: str) -> list[Path]:
+    """Existing ``<prefix>.limit-*.mothumbs`` sidecars, sorted by name.
+
+    Comparison is case-insensitive: on Windows/macOS filesystems a media file
+    renamed with different letter casing must still find its limited sidecars
+    (the exact full-media path resolves through the filesystem either way).
+    """
+    found: set[Path] = set()
+    marker = (prefix + ".limit-").casefold()
+    for directory in directories:
+        try:
+            entries = list(directory.iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            folded = entry.name.casefold()
+            if folded.endswith(".mothumbs.partial"):
+                entry = entry.with_name(entry.name[:-len(".partial")])
+                folded = entry.name.casefold()
+            if folded.startswith(marker) and folded.endswith(".mothumbs"):
+                found.add(entry)
+    return sorted(found)
+
+
 def base_candidates(media_path: Path | str) -> list[Path]:
     media = Path(media_path)
-    paths = [directory / (media.name + ".mothumbs") for directory in waveform_dirs(media)]
+    directories = waveform_dirs(media)
+    paths = [directory / (media.name + ".mothumbs") for directory in directories]
+    paths.extend(_limit_variants_for(directories, media.name))
     try:
-        paths.append(cache_root() / "bases" / (_source_key(media) + ".mothumbs"))
+        global_bases = cache_root() / "bases"
+        key = _source_key(media)
+        paths.append(global_bases / (key + ".mothumbs"))
+        paths.extend(_limit_variants_for([global_bases], key))
     except OSError:
         pass
     return paths
@@ -597,9 +649,12 @@ def get_or_extract_frame(media_path: Path | str, requested_ms: int, *, stream_in
     return get_or_extract_frames(media_path, [requested_ms], stream_index=stream_index, cancel=cancel, ffmpeg_path=ffmpeg_path)[0]
 
 
-def _manifest(video: VideoInfo, signature: dict, *, interval: int, samples=None, assets=None, complete=False, revision=None) -> dict:
+def _manifest(video: VideoInfo, signature: dict, *, interval: int, samples=None, assets=None, complete=False, revision=None, duration_limit_ms: int | None = None) -> dict:
     samples = samples or []
-    return {"schema": SCHEMA, "generator_version": GENERATOR_VERSION, "cache_revision": revision or uuid.uuid4().hex, "source_signature": signature, "video_stream_index": video.stream_index, "duration_ms": video.duration_ms, "source_start_ms": video.start_ms, "time_origin": "source-format-start-ms", "video_start_ms": video.video_start_ms, "image_spec": dict(IMAGE_SPEC), "sampling_interval": interval, "target_interval": interval, "base_complete": complete, "valid_count": sum(s["status"] == "target" for s in samples), "coverage": [[video.video_start_ms, video.duration_ms]] if complete else [[s["requested_ms"], min(video.duration_ms, s["requested_ms"] + interval)] for s in samples if s["status"] == "target"], "samples": samples, "assets": assets or [], "state": "ready" if complete else "partial", "persisted": True}
+    grid_end = duration_limit_ms if duration_limit_ms is not None else video.duration_ms
+    coverage = ([[video.video_start_ms, grid_end]] if video.video_start_ms < grid_end else []) if complete else [
+        [s["requested_ms"], min(grid_end, s["requested_ms"] + interval)] for s in samples if s["status"] == "target"]
+    return {"schema": SCHEMA, "generator_version": GENERATOR_VERSION, "cache_revision": revision or uuid.uuid4().hex, "source_signature": signature, "video_stream_index": video.stream_index, "duration_ms": video.duration_ms, "source_start_ms": video.start_ms, "time_origin": "source-format-start-ms", "video_start_ms": video.video_start_ms, "image_spec": dict(IMAGE_SPEC), "duration_limit_ms": duration_limit_ms, "sampling_interval": interval, "target_interval": interval, "base_complete": complete, "valid_count": sum(s["status"] == "target" for s in samples), "coverage": coverage, "samples": samples, "assets": assets or [], "state": "ready" if complete else "partial", "persisted": True}
 
 
 def _valid_manifest(value, signature, entries) -> bool:
@@ -608,6 +663,11 @@ def _valid_manifest(value, signature, entries) -> bool:
     duration, interval = value.get("duration_ms"), value.get("target_interval")
     samples, assets = value.get("samples"), value.get("assets")
     if not isinstance(duration, int) or isinstance(duration, bool) or duration <= 0 or interval not in (250, 500, 1000, 2000, 5000, 10000) or not isinstance(samples, list) or len(samples) > MAX_SAMPLES or not isinstance(assets, list):
+        return False
+    # Manifests written before the quick-test limit lack the field; both forms
+    # mean "no limit" and share one cache identity.
+    limit = value.get("duration_limit_ms")
+    if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0 or limit >= duration):
         return False
     if not isinstance(value.get("video_stream_index"), int) or value["video_stream_index"] < 0 or not isinstance(value.get("source_start_ms"), int) or not isinstance(value.get("cache_revision"), str) or len(value["cache_revision"]) != 32:
         return False
@@ -646,7 +706,8 @@ def _valid_manifest(value, signature, entries) -> bool:
         counts[asset] += 1
     if sum(counts.values()) != value.get("valid_count") or any(counts[asset] != row["valid_count"] for asset, row in asset_map.items()):
         return False
-    complete = all(t in seen for t in range(0, duration, interval)) and value["sampling_interval"] <= interval
+    grid_end = limit if limit is not None else duration
+    complete = all(t in seen for t in range(0, grid_end, interval)) and value["sampling_interval"] <= interval
     return value.get("base_complete") is complete
 
 
@@ -724,7 +785,9 @@ def _compatible_base_hits(media_path: Path | str) -> list[tuple[Path | None, dic
         return (value["base_complete"], -value["target_interval"], value["valid_count"], value["cache_revision"])
     hits.sort(key=lambda hit: rank(hit[1]), reverse=True)
     best = hits[0][1]
-    return [(path, value) for path, value in hits if all(value[field] == best[field] for field in BASE_IDENTITY_FIELDS)]
+    # .get() keeps manifests written before duration_limit_ms (implicit None)
+    # comparable with the explicit null written today: both mean "no limit".
+    return [(path, value) for path, value in hits if all(value.get(field) == best.get(field) for field in BASE_IDENTITY_FIELDS)]
 
 
 def _base_revision(hits) -> str:
@@ -757,7 +820,8 @@ def load_base(media_path: Path | str) -> dict | None:
     result["valid_count"] = sum(sample["status"] == "target" for sample in result["samples"])
     result["cache_revision"] = _base_revision(hits)
     if not result["base_complete"]:
-        result["coverage"] = [[sample["requested_ms"], min(result["duration_ms"], sample["requested_ms"] + result["sampling_interval"])] for sample in result["samples"] if sample["status"] == "target"]
+        grid_end = result.get("duration_limit_ms") or result["duration_ms"]
+        result["coverage"] = [[sample["requested_ms"], min(grid_end, sample["requested_ms"] + result["sampling_interval"])] for sample in result["samples"] if sample["status"] == "target"]
     return result
 
 
@@ -964,7 +1028,7 @@ def _atomic_save(path: Path, manifest: dict, blobs: dict, media_path: Path | str
             raise ThumbnailError("source changed before thumbnail publication")
         if path.name.endswith(".partial"):
             previous = _load_candidate(path, manifest["source_signature"])
-            if previous and all(previous[field] == manifest[field] for field in BASE_IDENTITY_FIELDS):
+            if previous and all(previous.get(field) == manifest.get(field) for field in BASE_IDENTITY_FIELDS):
                 old_targets = {sample["requested_ms"] for sample in previous["samples"]}
                 new_targets = {sample["requested_ms"] for sample in manifest["samples"]}
                 if not old_targets.issubset(new_targets):
@@ -1002,7 +1066,7 @@ def _publish_base(path, manifest, blobs, media_path, *, cancel=None):
         Path(name).unlink(missing_ok=True)
 
 
-def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, batch_extract=None, before_batch=None, batch_pack=None, target_interval: int | None = None, ffmpeg_path: str | None = None, timeout_s: float = 1200, keyframes: bool = True, exact: bool = True, decode_threads: int = 2, keyframe_extract=None) -> dict:
+def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, batch_extract=None, before_batch=None, batch_pack=None, target_interval: int | None = None, ffmpeg_path: str | None = None, timeout_s: float = 1200, keyframes: bool = True, exact: bool = True, decode_threads: int = 2, keyframe_extract=None, duration_limit_sec: float | None = None) -> dict:
     """Launcher grid generation with bounded staging and cancellable packing.
 
     The keyframe stage decodes only keyframes in one fast full-file pass and
@@ -1011,23 +1075,43 @@ def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, ba
     Completed sprites are staged on disk, then streamed into an atomic ZIP.
     Every short source batch independently persists first, so cancellation can
     resume without tiling unsealed frames after the cancellation signal.
+    ``duration_limit_sec`` bounds the grid and the keyframe pass to the first
+    N seconds (quick-test range, aligned with the audio-side trim). The
+    manifest records ``duration_limit_ms`` and the sidecar file name carries a
+    ``.limit-<N>s`` marker; hit checks require an exact limit match, so a
+    limited base never serves a full request or the reverse. A request at or
+    beyond the media duration is normalized to a full build.
     """
     video = _info(media_path, cancel=cancel, ffmpeg_path=ffmpeg_path)
     if video is None:
         return {"schema": SCHEMA, "state": "unavailable", "samples": [], "assets": [], "base_complete": False}
+    limit_ms = None
+    if duration_limit_sec is not None:
+        if (not isinstance(duration_limit_sec, (int, float)) or isinstance(duration_limit_sec, bool)
+                or not duration_limit_sec > 0):
+            raise ValueError("duration_limit_sec must be a positive number")
+        limit_ms = round(float(duration_limit_sec) * 1000)
+        if limit_ms >= video.duration_ms:
+            duration_limit_sec, limit_ms = None, None
     signature, key = source_signature(media_path), identity_key(media_path, video)
     interval = target_interval or base_interval_ms(video.duration_ms)
     if interval not in (250, 500, 1000, 2000, 5000, 10000):
         raise ValueError("invalid base interval")
-    count = (video.duration_ms + interval - 1) // interval
+    grid_end = limit_ms if limit_ms is not None else video.duration_ms
+    count = (grid_end + interval - 1) // interval
     if count > MAX_SAMPLES:
         raise ThumbnailError("base thumbnail grid exceeds manifest budget")
-    targets = list(range(0, video.duration_ms, interval))
-    existing = load_base(media_path)
-    if existing and existing["base_complete"] and existing["target_interval"] <= interval:
-        existing_targets = {s["requested_ms"] for s in existing["samples"]}
-        if all(target in existing_targets for target in targets):
-            return dict(existing, cache_hit=True)
+    targets = list(range(0, grid_end, interval))
+    # Hit checks scan every candidate sidecar, not just the display-ranked best
+    # group: a limited request must reuse its own complete limited base even
+    # when a bigger full-media base also exists (and vice versa). A candidate
+    # with a different duration limit is never a hit, in either direction.
+    for _, candidate in _all_base_hits(media_path):
+        if (candidate["base_complete"] and candidate["target_interval"] <= interval
+                and candidate.get("duration_limit_ms") == limit_ms):
+            existing_targets = {s["requested_ms"] for s in candidate["samples"]}
+            if all(target in existing_targets for target in targets):
+                return dict(candidate, cache_hit=True)
     keyframe_count = 0
     if keyframes:
         if progress:
@@ -1036,7 +1120,7 @@ def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, ba
             frames = (keyframe_extract() if keyframe_extract is not None else
                 extract_keyframes(media_path, stream_index=video.stream_index, cancel=cancel,
                     ffmpeg_path=ffmpeg_path, info=video, threads=decode_threads,
-                    timeout_s=min(600, max(30, timeout_s))))
+                    timeout_s=min(600, max(30, timeout_s)), duration_limit_sec=duration_limit_sec))
             if frames:
                 # Keyframes are stored at their own PTS: the marker tier keeps
                 # true keyframe density, and grid requests hold the nearest
@@ -1127,11 +1211,11 @@ def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, ba
             failure = exc
         samples = sorted([*samples, *empty_samples.values()], key=lambda sample: sample["requested_ms"])
         complete = len(samples) == len(targets)
-        manifest = _manifest(video, signature, interval=interval, samples=samples, assets=assets, complete=complete)
+        manifest = _manifest(video, signature, interval=interval, samples=samples, assets=assets, complete=complete, duration_limit_ms=limit_ms)
         manifest["cache_hit"] = False
         manifest["state"] = "cancelled" if isinstance(failure, ThumbnailCancelled) else "error" if failure else "ready" if complete else "partial"
         persisted = False
-        paths = [base_path(media_path), cache_root() / "bases" / (_source_key(media_path) + ".mothumbs")]
+        paths = base_sidecar_paths(media_path, duration_limit_sec=duration_limit_sec)
         # Publication of already sealed blocks performs bounded disk IO only;
         # cancellation never starts another image decoder/tiler here.
         for target in paths:

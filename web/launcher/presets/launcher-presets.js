@@ -7,7 +7,7 @@ const ASR_PRESET_TEXT_FIELDS = [
   "sonioxContextTranslationTerms", "openaiKeywords",
   "maxLen", "minLen", "maxWords", "minWords", "gapSplit",
 ];
-const ASR_PRESET_BOOL_FIELDS = ["speakerColors", "generateSpectral", "generateThumbnails", "debugRaw", "testRun", "qwenAudioKeepDialect"];
+const ASR_PRESET_BOOL_FIELDS = ["speakerColors", "generateSpectral", "generateKeyframes", "generateThumbnails", "debugRaw", "testRun", "qwenAudioKeepDialect"];
 const ASR_SHARED_PROMPT_INPUTS = ["openaiPrompt", "qwenAudioContext", "sonioxContextText"];
 let presetLanguage = null;
 let currentAsrPreset = { name: "", snapshot: null };
@@ -73,7 +73,11 @@ function applyAsrPreset(options) {
   applyProviderLanguages(provider(), selectedModel());
   renderLocalAlignmentModel();
   setHotwordsMode(options.qwenAudioHotwordsMode);
-  renderPromptCharacterCount(); renderSonioxContextCharacterCount(); syncTestRun();
+  renderPromptCharacterCount(); renderSonioxContextCharacterCount(); syncTestRun(); syncThumbnailFields();
+  // 预设覆盖断句与标点字段后同样持久化（value 赋值不触发 input 事件，需显式保存），并同步 state.config 供 openSettings 回填。
+  const segmentationSnapshot = segmentationPrefsPayload();
+  savePrefsDebounced(segmentationSnapshot);
+  Object.assign(state.config, segmentationSnapshot);
 }
 function activePromptContext() {
   return $("openaiPrompt").value;
@@ -109,7 +113,7 @@ const PRESET_PREVIEW_FIELDS = [
 ];
 const PRESET_PREVIEW_FLAGS = [
   ["speakerColors", "preset_field_speaker_colors"], ["generateSpectral", "preset_field_spectral"],
-  ["generateThumbnails", "preset_field_thumbnails"],
+  ["generateKeyframes", "preset_field_keyframes"], ["generateThumbnails", "preset_field_thumbnails"],
   ["debugRaw", "preset_field_debug"], ["testRun", "preset_field_test_run"], ["qwenAudioKeepDialect", "preset_field_keep_dialect"],
 ];
 function renderPresetOptionsPreview(options) {

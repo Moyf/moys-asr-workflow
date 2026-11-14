@@ -1,3 +1,4 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { getOverlayTrack } from '../cues/overlay-track.js';
 
 export function initMaweHistory() {
@@ -375,14 +376,13 @@ export function initMaweHistory() {
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) {
     return true;
   }
-  return MaweDom.replaceModal.classList.contains('show')
-      || MaweDom.textProcessModal.classList.contains('show')
+  return MaweDom.textProcessModal.classList.contains('show')
       || document.getElementById('wrap-chars-modal')?.classList.contains('show')
       || MaweDom.timedTextEditModal.classList.contains('show')
       || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show')
       || MaweDom.projectMediaModal.classList.contains('show')
-      || window.MaweDomPanelsWiring.assStyleWindow?.classList.contains('show');
+      || getMaweDomPanels().assStyleWindow?.classList.contains('show');
 }
 
 

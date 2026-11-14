@@ -1,7 +1,7 @@
 // cue-blocks: waveform class methods with explicit dependencies.
 export function createWaveformModule(dependencies) {
   'use strict';
-  const { colorForSegment, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, formatCompact, gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, hasSubtitleColor, isActiveCueVisualHit, localizedWaveformMessage } = dependencies;
+  const { colorForSegment, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, formatCompact, gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, hasSubtitleColor, isActiveCueVisualHit, localizedWaveformMessage, wordTimingFullLane: wordTimingFullLanePredicate } = dependencies;
 
   class WaveformMethods {
 
@@ -51,6 +51,8 @@ export function createWaveformModule(dependencies) {
       // 通用 Marker / Region 轨道：遵守标记编辑开关，启用时空轨也可添加标记。
       this.appendMarkerTrack(row, startMs, endMs);
 
+      // 在目标块处理 pointerdown 前清除上一轮手势，避免残留标记影响空白处双击。
+      row.addEventListener('pointerdown', () => { this._wordQuickEditDoubleClickTime = 0; }, true);
       row.addEventListener('pointerdown', (event) => {
         // 每次按下时读取最新模式；设置切换会重绘空隙块，但不会重建仍在
         // 可视区内的行，不能使用 createRow 时捕获的旧值。
@@ -160,7 +162,10 @@ export function createWaveformModule(dependencies) {
         }
       });
       row.addEventListener('dblclick', (event) => {
-        if ((/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block')))) return;
+        // 字词块可能在两次点击间被重建，原生 dblclick 因而落在共同祖先 row。
+        const wordQuickEdit = this._wordQuickEditDoubleClickTime && Date.now() - this._wordQuickEditDoubleClickTime <= 500;
+        this._wordQuickEditDoubleClickTime = 0;
+        if (wordQuickEdit || (/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block, .waveform-word-block, .waveform-word-boundary')))) return;
         if (event.ctrlKey || event.metaKey) return;
         event.preventDefault();
         this.options.togglePlayback();
@@ -271,11 +276,11 @@ export function createWaveformModule(dependencies) {
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
       // 传统模式沿用旧版系统光标（ew-resize）；原创边界光标只在
       const multiLane = this.options.multiSubtitleVisible?.() === true;
-      // 非双语行：单行波形或行高 ≥96 的多行波形上下等高分层，整句保留
-      // 拖动与边界操作；低行高或双语行沿用紧凑叠加布局。
-      const wordTimingFullLane = this.options.wordTiming?.enabled
-        && !multiLane && (this.settings.mode === 'basic'
-          || (this.settings.mode === 'multi' && (Number(this.settings.rowHeight) || 0) >= 96));
+      // 单行波形始终上下等高分层（双语只增补底部译文格，不改变叠加轨与
+      // 字词显示布局）；多行波形仅非双语行且行高 ≥96 时分层，其余沿用
+      // 紧凑叠加布局。判定真源：visibility.wordTimingFullLane。
+      const wordTimingFullLane = wordTimingFullLanePredicate(
+        this.options.wordTiming?.enabled, this.settings.mode, this.settings.rowHeight, multiLane);
       const segments = this.options.getSegments('main');
       const selected = this.options.getSelection('main');
       const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
@@ -307,7 +312,7 @@ export function createWaveformModule(dependencies) {
         block.appendChild(label);
         this.setBindingMarker(block, mainBindingMarkers?.has?.(index) === true);
         // 短块内文字会被截断，悬浮 title 给出完整字幕文本
-        block.title = label.textContent;
+        if (this.settings.showCueTooltip !== false) block.title = label.textContent;
         const badges = this.settings.showGroupBadges !== false ? badgesByIndex.get(index) : null;
         if (badges?.length) {
           // 徽章挂在行上、块上方（不遮挡块内文字）；短字幕也保留最小显示空间，
@@ -368,14 +373,10 @@ export function createWaveformModule(dependencies) {
           event.preventDefault();
           event.stopPropagation();
           if (event.ctrlKey || event.metaKey) return;
-          // 字词时间码显示时，主字幕文本与字词绑定：波形字幕块双击不再直接
-          // 进入编辑，提示先退出字词码模式（字幕列表的行内编辑不受影响）。
-          if (this.options.wordTiming?.enabled) {
-            this.options.onMainCueDoubleClickBlocked?.();
-            return;
-          }
-          if (this.options.enterCueEditor) this.options.enterCueEditor(index);
-          else this.options.activateCue?.(index);
+          // 双击在点击的字幕块片段上方弹出快速编辑气泡（跨行字幕跟随
+          // 鼠标点击位置）；不再聚焦底部字幕编辑面板。字词时间码模式下
+          // 同样放行：气泡提交走 syncTextChange，句文本与字词文字保持同步。
+          this.openCueQuickEdit('main', index, block, event);
         });
         row.appendChild(block);
         this.appendWordBlocks(row, index, startMs, endMs);
@@ -398,7 +399,10 @@ export function createWaveformModule(dependencies) {
         // createRow 返回后才写 row.style.height，这里读内联样式恒为空，
         // cover-mode 会永远不生效。
         // 双语行叠加块放在主字幕格上方（CSS 同步），需要高度 = 上下 inset
-        // (14) + 两格 lane + 块 35 + 间隙 1；放不下时同样回退 cover。
+        // (14) + 两格 lane + 块 35 + 间隙 1；放不下时同样回退 cover。仅多行
+        // 模式适用：单行双语行（basic 恒无内联 height，cover 恒 false）由
+        // waveform.css 的 max() 兜底保持 50% 线，与共享判定
+        // visibility.wordTimingFullLane 的单行语义一致。
         const rowHeightPx = this.settings.mode === 'multi'
           ? Number(this.settings.rowHeight) || 0
           : Number.parseFloat(row.style.height) || 0;
@@ -429,7 +433,7 @@ export function createWaveformModule(dependencies) {
           const label = document.createElement('span');
           label.className = 'waveform-cue-label';
           label.textContent = String(segment.text || '').replace(/\s+/g, ' ');
-          block.title = label.textContent;
+          if (this.settings.showCueTooltip !== false) block.title = label.textContent;
           block.appendChild(label);
           if (segment.start >= startMs) {
             const leftHandle = document.createElement('span');
@@ -471,7 +475,7 @@ export function createWaveformModule(dependencies) {
           block.addEventListener('dblclick', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (this.options.enterOverlayCueEditor) this.options.enterOverlayCueEditor(index);
+            this.openCueQuickEdit('overlay', index, block, event);
           });
           row.appendChild(block);
         }
@@ -502,7 +506,7 @@ export function createWaveformModule(dependencies) {
         const label = document.createElement('span');
         label.className = 'waveform-cue-label';
         label.textContent = String(segment.text || '').replace(/\s+/g, ' ');
-        block.title = label.textContent;
+        if (this.settings.showCueTooltip !== false) block.title = label.textContent;
         block.appendChild(label);
         this.setBindingMarker(block, extensionBindingMarkers?.has?.(index) === true);
         if (segment.start >= startMs) this.appendExtensionHandle(block, 'left');
@@ -519,8 +523,7 @@ export function createWaveformModule(dependencies) {
           event.preventDefault();
           event.stopPropagation();
           if (event.ctrlKey || event.metaKey) return;
-          if (this.options.enterExtensionCueEditor) this.options.enterExtensionCueEditor(index);
-          else this.options.activateExtensionCue?.(index);
+          this.openCueQuickEdit('extension', index, block, event);
         });
         row.appendChild(block);
       }
@@ -546,10 +549,11 @@ export function createWaveformModule(dependencies) {
       const segments = this.options.getSegments(track);
       if (!Array.isArray(segments) || segments.length < 2) return;
       // 与 appendCueBlocks/appendWordBlocks 的分层判定一致：字词条带在独立
-      // 一层（full）时中缝区与其不重叠，词块手柄无需让位。
-      const wordTimingFullLane = this.options.multiSubtitleVisible?.() !== true
-        && (this.settings.mode === 'basic'
-          || (this.settings.mode === 'multi' && (Number(this.settings.rowHeight) || 0) >= 96));
+      // 一层（full）时中缝区与其不重叠，词块手柄无需让位。判定真源：
+      // visibility.wordTimingFullLane。
+      const multiLane = this.options.multiSubtitleVisible?.() === true;
+      const wordTimingFullLane = wordTimingFullLanePredicate(
+        this.options.wordTiming?.enabled, this.settings.mode, this.settings.rowHeight, multiLane);
       const clock = this.cueTiming();
       const duration = Math.max(1, endMs - startMs);
       const firstIndex = Math.max(0, firstCueIndexOverlapping(segments, startMs) - 1);
@@ -729,8 +733,9 @@ export function createWaveformModule(dependencies) {
       const multiLane = this.options.multiSubtitleVisible?.() === true;
       // 句块手柄存在性（与 appendCueBlocks 创建条件一致）：非字词模式按
       // 窗口边界；字词 full lane 常显；紧凑模式仅选中句。平移不改选区。
-      const fullLane = wordTimingEnabled && !multiLane && (this.settings.mode === 'basic'
-        || (this.settings.mode === 'multi' && (Number(this.settings.rowHeight) || 0) >= 96));
+      // 判定真源：visibility.wordTimingFullLane。
+      const fullLane = wordTimingFullLanePredicate(
+        wordTimingEnabled, this.settings.mode, this.settings.rowHeight, multiLane);
       const selected = this.options.getSelection('main');
       for (const block of blocks) {
         const index = Number(block.dataset.idx);

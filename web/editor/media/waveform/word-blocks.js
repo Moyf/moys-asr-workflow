@@ -1,6 +1,6 @@
 export function createWordBlocks(dependencies) {
   'use strict';
-  const { colorForSegment, firstCueIndexOverlapping, resolveTiming, localizedWaveformMessage } = dependencies;
+  const { colorForSegment, firstCueIndexOverlapping, resolveTiming, localizedWaveformMessage, wordTimingFullLane } = dependencies;
   // 全文预览气泡（仅基础模式单行 + 字词码全条带）的密度控制旋钮：
   // 同屏 chip 硬上限与最多向上叠的行数；超限按优先级丢弃。
   // 上限评估（账本 #29）：canvas 同 pass 绘制 64 个 chip ~1-2ms，相对整行
@@ -52,9 +52,9 @@ export function createWordBlocks(dependencies) {
       const entries = window.AsrEditorUtils.getWordTimingEntries(segment, timing);
       const selection = this.options.wordTiming.getSelection(segment);
       // 与整句块采用相同分层条件，确保字词与整句的操作区域不重叠。
-      const fullLane = this.options.multiSubtitleVisible?.() !== true
-        && (this.settings.mode === 'basic'
-          || (this.settings.mode === 'multi' && (Number(this.settings.rowHeight) || 0) >= 96));
+      // 判定真源：visibility.wordTimingFullLane。
+      const fullLane = wordTimingFullLane(this.options.wordTiming?.enabled,
+        this.settings.mode, this.settings.rowHeight, this.options.multiSubtitleVisible?.() === true);
       entries.forEach(entry => {
         const range = { start: timing.toMs(entry.start), end: timing.toMs(entry.end) };
         if (range.end <= startMs || range.start >= endMs) return;
@@ -66,8 +66,10 @@ export function createWordBlocks(dependencies) {
         block.style.setProperty('--cue-color', colorForSegment(segment));
         block.classList.toggle('selected', selection.has(entry.index));
         block.classList.toggle('disabled', Boolean(segment.disabled));
-        const time = `${timing.format(entry.start)} → ${timing.format(entry.end)}`;
-        block.title = `${entry.text}\n${time}`;
+        if (this.settings.showCueTooltip !== false) {
+          const time = `${timing.format(entry.start)} → ${timing.format(entry.end)}`;
+          block.title = `${entry.text}\n${time}`;
+        }
         const label = document.createElement('span');
         label.className = 'waveform-word-label';
         label.dataset.wordProjectContent = 'true';
@@ -86,7 +88,8 @@ export function createWordBlocks(dependencies) {
           this.focusWaveform();
           this.options.wordTiming.showMenu(event.clientX, event.clientY, index, entry.index);
         });
-        block.addEventListener('dblclick', event => { event.preventDefault(); event.stopPropagation(); });
+        // 双击弹字词气泡在 beginWordDrag 里按 pointerdown 序列识别：
+        // 选中刷新会重建字词条带，原生 dblclick 的目标元素不可靠。
         row.append(block);
       });
       if (this.options.getAdjacentBoundaryMode?.() !== 'dual') return;
@@ -247,6 +250,31 @@ export function createWordBlocks(dependencies) {
       this.cancelWordDrag();
       this.cancelHoverSeekPreview();
       this.focusWaveform();
+      // 双击字词块 → 字词快速编辑气泡。字词条带在选中刷新时会重建替换
+      // 元素（原生 dblclick 的两次 click 目标不一致，不会触发），因此按
+      // pointerdown 序列自行识别双击（500ms 内两次按下同一字词，与系统
+      // 双击阈值一致）。光标映射用第一次按下的坐标对当前标签测量，与
+      // 字幕块行为一致；当前块找不到时回退 openWordQuickEditAtIndex
+      //（合成锚点 + rAF 重试）。
+      const now = Date.now();
+      const lastWordClick = this._wordQuickEditClick;
+      this._wordQuickEditClick = {
+        index, itemIndex, time: now, clientX: event.clientX, clientY: event.clientY,
+      };
+      if (lastWordClick && lastWordClick.index === index && lastWordClick.itemIndex === itemIndex
+          && now - lastWordClick.time <= 500) {
+        this._wordQuickEditClick = null;
+        this._wordQuickEditDoubleClickTime = now;
+        const block = this.firstVisibleWordBlock(index, itemIndex);
+        if (block) {
+          this.openWordQuickEdit(index, itemIndex, block, {
+            clientX: lastWordClick.clientX, clientY: lastWordClick.clientY,
+          });
+        } else {
+          this.openWordQuickEditAtIndex(index, itemIndex, null);
+        }
+        return;
+      }
       const geometry = this.captureRowGeometry(row);
       const timing = resolveTiming(this.options.getCueTiming?.());
       const pointer = timing.fromMs(this.pointerTimeMs(event, row, geometry));
@@ -343,7 +371,9 @@ export function createWordBlocks(dependencies) {
     drawWordChips(row, ctx, width, height, startMs, endMs) {
       if (!this.options.wordTiming?.enabled) return;
       if (this.settings.mode !== 'basic' || row.dataset.basic !== 'true') return;
-      if (row.classList.contains('multi-subtitle-row')) return;
+      // 单行双语行同样画气泡（回归修复）：条带几何从 computed style 读取，
+      // 自动贴双语主块上方（CSS 同步），与共享判定
+      // visibility.wordTimingFullLane 的单行语义一致。
       const blocks = /** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-word-block.word-timing-full'));
       if (!blocks.length) return;
       // 条带几何读第一个可见块的 computed style：bottom/height 是解析后的

@@ -1,7 +1,12 @@
+import { interruptCueListFollowing, scrollCueIntoViewIfNeeded } from './editor-cue-list-anchor.js';
+import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
+import { isHiddenDisabled, selectOnly, selectOnlyExtension } from './editor-selection.js';
+
 // 键盘目标判定：输入焦点守卫、播放目标与字幕重叠查找。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweKeyboardTargets 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+// ESM init 模块：initMaweKeyboardTargets 在原清单位次执行原 IIFE 体（挂
+// window.MaweKeyboardTargets 冻结门面——classic 侧出接口）；底部具名导出经门面
+// 在调用时转发，兄弟模块可静态 import。
+export function initMaweKeyboardTargets() {
 (function initMaweKeyboardTargets(global) {
   'use strict';
 
@@ -64,7 +69,7 @@
   function nearestSubtitleIndex(segments, source, track = 'main') {
     const candidates = (segments || [])
       .map((segment, index) => ({ segment, index }))
-      .filter(({ segment, index }) => segment && !MaweSelection.isHiddenDisabled(index, track));
+      .filter(({ segment, index }) => segment && !isHiddenDisabled(index, track));
     candidates.sort((left, right) => {
       const leftOverlap = subtitleTemporalOverlap(left.segment, source);
       const rightOverlap = subtitleTemporalOverlap(right.segment, source);
@@ -89,7 +94,7 @@
 
   function switchMultiSubtitleTrack(direction) {
     if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return false;
-    const current = MaweCuePanel.getCurrentCuePanelTarget();
+    const current = getCurrentCuePanelTarget();
     if (!current) return false;
     const wantMain = direction < 0;
     if ((wantMain && current.kind === 'main') || (!wantMain && current.kind === 'extension')) return false;
@@ -112,12 +117,12 @@
     }
 if (nextIndex < 0) return false;
 
-MaweCueListAnchor.interruptCueListFollowing();
+interruptCueListFollowing();
 if (wantMain) {
-MaweSelection.selectOnly(nextIndex);
+selectOnly(nextIndex);
 MaweSelection.lastClickedIdx = nextIndex;
     } else {
-      MaweSelection.selectOnlyExtension(nextIndex, extensionTrack);
+      selectOnlyExtension(nextIndex, extensionTrack);
       MaweSelection.lastClickedExtensionIdx = nextIndex;
     }
     const cue = MaweCoreState.container.querySelector(
@@ -125,7 +130,7 @@ MaweSelection.lastClickedIdx = nextIndex;
         ? `.cue[data-idx="${nextIndex}"], .multi-dual-cue[data-main-idx="${nextIndex}"]`
         : `.multi-dual-cue[data-ext-idx="${nextIndex}"], .multi-extension-cue[data-ext-idx="${nextIndex}"]`,
     );
-    if (cue) MaweCueListAnchor.scrollCueIntoViewIfNeeded(cue);
+    if (cue) scrollCueIntoViewIfNeeded(cue);
     return true;
   }
 
@@ -143,3 +148,16 @@ MaweSelection.lastClickedIdx = nextIndex;
     switchMultiSubtitleTrack
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}
+
+export function isSpaceKey(...args) { return window.MaweKeyboardTargets.isSpaceKey(...args); }
+export function TEXT_INPUT_TYPES(...args) { return window.MaweKeyboardTargets.TEXT_INPUT_TYPES(...args); }
+export function isPlayerKeyboardTarget(...args) { return window.MaweKeyboardTargets.isPlayerKeyboardTarget(...args); }
+export function isTextEditingTarget(...args) { return window.MaweKeyboardTargets.isTextEditingTarget(...args); }
+export function isPlaybackKeyboardTarget(...args) { return window.MaweKeyboardTargets.isPlaybackKeyboardTarget(...args); }
+export function isNativeKeyboardControl(...args) { return window.MaweKeyboardTargets.isNativeKeyboardControl(...args); }
+export function releaseClosedUiFocus(...args) { return window.MaweKeyboardTargets.releaseClosedUiFocus(...args); }
+export function subtitleTemporalOverlap(...args) { return window.MaweKeyboardTargets.subtitleTemporalOverlap(...args); }
+export function nearestSubtitleIndex(...args) { return window.MaweKeyboardTargets.nearestSubtitleIndex(...args); }
+export function boundSegmentIndex(...args) { return window.MaweKeyboardTargets.boundSegmentIndex(...args); }
+export function switchMultiSubtitleTrack(...args) { return window.MaweKeyboardTargets.switchMultiSubtitleTrack(...args); }

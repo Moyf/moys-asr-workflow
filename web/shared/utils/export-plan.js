@@ -143,7 +143,10 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function exportPathToFileUrl(value, { encodeDriveColon = false } = {}) {
+  // Windows 盘符的 URL 编码必须是小写盘符 + 小写 %3a（如 d%3a）：达芬奇对
+  // 大写形态（PR 自身导出的 D%3A）会整段报离线媒体；冒号编码后 hex 大小写
+  // 语义相同，这里统一输出小写以满足两端（PR/VEGAS 解码后等价）。
+  function exportPathToFileUrl(value) {
     const source = String(value ?? '').trim();
     if (!source) throw new Error('missing export path');
     if (/^file:\/\//i.test(source)) {
@@ -152,14 +155,9 @@ export function createUtilsModule(dependencies) {
       const authority = match[1];
       const pathValue = match[2] || '';
       const driveUrlMatch = /^\/([A-Za-z]):\/(.*)$/.exec(pathValue);
-      if (authority.toLowerCase() === 'localhost' && driveUrlMatch) {
+      if ((!authority || authority.toLowerCase() === 'localhost') && driveUrlMatch) {
         const encodedPath = driveUrlMatch[2].split('/').map((part) => encodeURIComponent(part)).join('/');
-        const drive = encodeDriveColon ? `${driveUrlMatch[1]}%3A` : `${driveUrlMatch[1]}:`;
-        return `file://localhost/${drive}/${encodedPath}`;
-      }
-      if (!authority && driveUrlMatch) {
-        const encodedDrivePath = driveUrlMatch[2].split('/').map((part) => encodeURIComponent(part)).join('/');
-        return `file://localhost/${driveUrlMatch[1]}:/${encodedDrivePath}`;
+        return `file://localhost/${driveUrlMatch[1].toLowerCase()}%3a/${encodedPath}`;
       }
       if (authority && !pathValue || authority && !/^\/[^/]+(?:\/|$)/.test(pathValue)) {
         throw new Error('UNC file URL must include a share');
@@ -178,11 +176,14 @@ export function createUtilsModule(dependencies) {
     const driveMatch = /^([A-Za-z]):\/(.*)$/.exec(normalized);
     if (driveMatch) {
       const encodedDriveParts = driveMatch[2].split('/').map((part) => encodeURIComponent(part)).join('/');
-      const drive = encodeDriveColon ? `${driveMatch[1]}%3A` : `${driveMatch[1]}:`;
-      return `file://localhost/${drive}/${encodedDriveParts}`;
+      return `file://localhost/${driveMatch[1].toLowerCase()}%3a/${encodedDriveParts}`;
     }
     const withLeadingSlash = normalized;
     const rooted = withLeadingSlash.startsWith('/') ? withLeadingSlash : `/${withLeadingSlash}`;
+    // 本分支处理的是非 Windows 盘符路径（POSIX 路径、相对路径等），只把段内
+    // 形如 D: 的目录名编码后还原回裸冒号（大小写与内容不变，并非改写）。
+    // 盘符小写 %3a 契约仅作用于上方已识别为 Windows 盘符路径的分支（路径
+    // 起始盘符位置）；POSIX 上合法目录名 /media/D:/take.mp4 必须原样保留。
     const encoded = rooted.split('/').map((part, index) => (
       index === 0 && part === '' ? '' : encodeURIComponent(part).replace(/^([A-Za-z])%3A$/, '$1:')
     )).join('/');

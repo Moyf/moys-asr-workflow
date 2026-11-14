@@ -399,11 +399,25 @@ class BatchApiTests(unittest.TestCase):
         return started, release, run_batch
 
     def test_choose_file_returns_all_paths_for_multiple(self) -> None:
-        api = LauncherApi(paths=LauncherPaths(Path("."), Path(".env"), Path("launcher.html")), window_getter=lambda: None)
-        with mock.patch("maw.gui_web._file_dialog", return_value=("a.mp3", "b.mp3")):
-            result = api.choose_file({"kind": "media", "multiple": True})
+        from maw.gui_web import _sync_local_runtime_root
+
+        env_path = self.root / ".env"
+        runtime_root = self.root / "runtime"
+        env_path.write_text(f"MAW_LOCAL_RUNTIME_ROOT={runtime_root.as_posix()}\n", encoding="utf-8")
+
+        def sync_isolated_env(path: Path) -> None:
+            self.assertTrue(path == env_path, "Launcher must use the temporary .env")
+            _sync_local_runtime_root(path)
+
+        with mock.patch.dict(os.environ):
+            os.environ.pop("MAW_LOCAL_RUNTIME_ROOT", None)
+            with mock.patch("maw.gui_web._sync_local_runtime_root", side_effect=sync_isolated_env):
+                api = LauncherApi(paths=LauncherPaths(self.root, env_path, self.root / "launcher.html"), window_getter=lambda: None)
+            self.addCleanup(api.shutdown)
+            self.assertEqual(os.environ.get("MAW_LOCAL_RUNTIME_ROOT"), runtime_root.as_posix())
+            with mock.patch("maw.gui_web._file_dialog", return_value=("a.mp3", "b.mp3")):
+                result = api.choose_file({"kind": "media", "multiple": True})
         self.assertEqual(result, {"ok": True, "path": "a.mp3", "paths": ["a.mp3", "b.mp3"]})
-        api.shutdown()
 
     def test_start_and_cancel_batch_api_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

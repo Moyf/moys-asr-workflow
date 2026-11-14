@@ -1,4 +1,4 @@
-// 导出菜单：工具栏导出下拉与批量操作菜单定位。
+// 导出菜单：工具栏导出下拉的开关、键盘导航与子菜单交互。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweExportMenus 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
@@ -290,35 +290,9 @@ export function initMaweExportMenus() {
   }
 
 
-  function positionBatchOperationsMenu() {
-    const dropdown = document.getElementById('batch-operations-dropdown');
-    const button = document.getElementById('batch-operations-btn');
-    const menu = document.getElementById('batch-operations-menu');
-    if (!dropdown?.classList.contains('open') || !button || !menu) return;
-    const buttonRect = button.getBoundingClientRect();
-    const menuWidth = menu.offsetWidth;
-    const menuHeight = menu.offsetHeight;
-    const margin = 8;
-    const left = Math.min(
-      Math.max(margin, buttonRect.left),
-      Math.max(margin, window.innerWidth - menuWidth - margin),
-    );
-    const belowTop = buttonRect.bottom + 6;
-    const aboveTop = buttonRect.top - menuHeight - 6;
-    let top = belowTop;
-    if (belowTop + menuHeight > window.innerHeight - margin && aboveTop >= margin) {
-      top = aboveTop;
-    } else if (belowTop + menuHeight > window.innerHeight - margin) {
-      top = Math.max(margin, window.innerHeight - menuHeight - margin);
-    }
-    menu.style.left = `${left}px`;
-    menu.style.top = `${top}px`;
-  }
-
   global.MaweExportMenus = Object.freeze({
     SUBMENU_CLOSE_DELAY_MS,
     SUBMENU_AIM_TOLERANCE_PX,
-    bindToolbarExportDropdown,
-    positionBatchOperationsMenu
+    bindToolbarExportDropdown
   });
 }
