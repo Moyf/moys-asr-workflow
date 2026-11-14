@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -17,7 +18,8 @@ let tempDir;
 let server;
 
 test.beforeAll(async () => {
-  tempDir = makeTempDir('history');
+  // Match the server's resolved path, including Windows filesystem casing.
+  tempDir = realpathSync.native(makeTempDir('history'));
   const mediaPath = join(tempDir, 'synthetic.wav');
   const projectPath = join(tempDir, 'project.json');
   generateWav(mediaPath, DURATION_MS / 1000);

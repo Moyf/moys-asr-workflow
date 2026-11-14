@@ -12,7 +12,7 @@
 | 2 | 媒体日志等待及缩略图连接关闭独立回归 | 已修复 | 保留HEAD日志join修复，补Event控制的延迟写入回归；提前拒绝未消费body时明确关闭连接，不drain。新增独立无FFmpeg的真实loopback HTTP测试；10053未重现，不把此协议修复冒充根因。45项目标测试、95项服务器契约通过，负对照真实失败。 |
 | 3 | 清掉无消费者portable准备，loader按需编译 | 已修复 | 27消费者真实编译54→29，新增inflight/失败/VM隔离回归，Node全量1171叶子通过。HTTP spec自行使用临时空配置与child-env覆盖，不依赖本机表情包；生命周期33项通过，合成继承配置正/负对照有效。 |
 | 4 | 合并明确重复的构建/import smoke | 已修复 | 保留editor/launcher参数化传递依赖测试，合并Python实际重复的账目测试；3个域inert smoke合并到118模块manifest统一入口，独有接线/顺序/桥检查保留。相关Node45项、Python23项通过，变异负对照有效，独立审查无major/minor/nit。 |
-| 5 | 修正FCP7真实渲染分组、保守PR领域选测及完整跨平台门禁 | 已修复 | 新增补充矩阵，原Editor/Windows Preview不缩水；6条精确领域白名单，非PR full；双平台完整Python/Node及4浏览器分片，周定时/tag/dispatch同样full；报告/回执/skip严格校验，Release三平台完整PY报告保留。3处主/复审finding已修复复核，远端/打包未执行。 |
+| 5 | 修正FCP7真实渲染分组、保守PR领域选测及完整跨平台门禁 | 已修复 | 新增补充矩阵，原Editor/Windows Preview不缩水；5条精确领域白名单，非PR full；双平台完整Python/Node及4浏览器分片，周定时/tag/dispatch同样full；报告/回执/skip严格校验，Release三平台完整PY报告保留。颜色筛选模块同时影响叠加轨，因此该生产文件变更走full。3处主/复审finding已修复复核，远端/打包未执行。 |
 | 6 | 扩大浏览器扫描新增5项失败 | 已修复 | 原5/5失败，修复后5/5及5份spec36/36通过。只改测试：toolbar/no-wrap和音量面板现行契约、audio/video真实ESM初始化、filmstrip真实鼠标命中保障；仍要求字词start增加。独立审查0major/minor/nit，未改产品代码。 |
 | 7 | 最后一轮完整浏览器超时及尾部9项失败 | 已修复 | 对齐设置页/气泡/帮助与主题语义；ASS用独立固定样式fixture检验预览导出一致性，不改默认值骗过。9/9及4文件142/142通过，保留交换元数据/空轨undo/save重开。 |
 | 8 | 超时尾部4份spec补测 | 已修复 | 10/10修复；两文件96/96分别在1/2 workers通过。创建气泡/非模态帮助/tooltip/菜单与相对媒体路径对齐现行契约；字词拖动用真实命中与独立手势保障，保留边界/时长/redo断言及有效负对照。 |

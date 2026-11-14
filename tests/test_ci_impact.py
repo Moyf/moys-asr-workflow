@@ -12,7 +12,7 @@ from scripts import ci_impact
 from tests.compact_assertions import CompactContainerAssertions
 
 ROOT = Path(__file__).resolve().parents[1]
-EDITOR = "web/editor/cues/editor-color-filter.js"
+EDITOR = "tests/e2e/cue-color-filter.spec.mjs"
 
 
 class ScopeTests(CompactContainerAssertions, unittest.TestCase):
@@ -20,6 +20,7 @@ class ScopeTests(CompactContainerAssertions, unittest.TestCase):
         for profile, paths in ci_impact.DOMAIN_PATHS.items():
             self.assertEqual(ci_impact.classify(sorted(paths))[0], profile)
         for paths in ([], ["web/editor/new.js"], ["web/shared/utils.js"], ["package.json"],
+                      ["web/editor/cues/editor-color-filter.js"],
                       ["uv.lock"], ["tests/config/playwright.config.mjs"], ["web/editor-scripts.txt"],
                       [EDITOR, "README.md"], [EDITOR, "tools/timestamp-compare.html"],
                       ["tests/test_unknown.py"], ["web/editor/../README.md"], ["a\nb"]):

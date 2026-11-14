@@ -13,7 +13,9 @@ PROFILES = ("light", "editor", "launcher", "tools", "full")
 # Deliberately NOT directory prefixes. Adding ownership requires an audit of the
 # source and its registered browser consumers; shared wiring/config is full.
 DOMAIN_PATHS = {
-    "editor": {"web/editor/cues/editor-color-filter.js", "tests/e2e/cue-color-filter.spec.mjs"},
+    # The color-filter implementation also refreshes overlay-track badges;
+    # its consumers extend beyond the narrow color-filter browser suite.
+    "editor": {"tests/e2e/cue-color-filter.spec.mjs"},
     "launcher": {"web/launcher/theme/launcher-theme-keys.js", "tests/e2e/launcher-zoom.spec.mjs"},
     "tools": {"tools/timestamp-compare.html", "tests/e2e/timestamp-compare.spec.mjs"},
 }
