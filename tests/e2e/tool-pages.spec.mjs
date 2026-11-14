@@ -231,15 +231,18 @@ test('pending image conversion cannot commit through an opened and closed modal'
 
 test('catalog lists tools, filters maintenance states and provides valid page links',async({page},testInfo)=>{
   await page.goto(fileUrl('tools/index.html'));
-  await expect(page.locator('.card')).toHaveCount(10);
+  const tools=await page.evaluate(()=>window.MAWToolCatalog.map(({name,status,entry})=>({name,status,entry})));
+  expect(tools.length).toBeGreaterThan(0);
+  const names=page.locator('.card h2');
+  await expect(names).toHaveText(tools.map(tool=>tool.name));
   await page.locator('#status').selectOption('paused');
-  await expect(page.locator('.card')).toHaveCount(1);
-  await expect(page.locator('.card')).toContainText('波形工具台');
+  await expect(names).toHaveText(tools.filter(tool=>tool.status==='paused').map(tool=>tool.name));
   await page.locator('#status').selectOption('retired');
-  await expect(page.locator('.card')).toHaveCount(1);
-  await expect(page.locator('.card')).toContainText('文案重写／文案评审');
-  await expect(page.getByRole('link',{name:'查看历史页面'})).toBeVisible();
+  const retired=tools.filter(tool=>tool.status==='retired');
+  await expect(names).toHaveText(retired.map(tool=>tool.name));
+  await expect(page.getByRole('link',{name:'查看历史页面'})).toHaveCount(retired.filter(tool=>tool.entry).length);
   await page.locator('#reset').click();
+  await expect(names).toHaveText(tools.map(tool=>tool.name));
   await captureStates(page,testInfo,'catalog');
 });
 
