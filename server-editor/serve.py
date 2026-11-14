@@ -60,6 +60,7 @@ from maw.thumbnail_jobs import ThumbnailJobManager  # noqa: E402
 from maw.project_backups import backup_directory_candidates, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
+from maw.ass_font_coverage import font_coverage_payload, refresh_font_inventory  # noqa: E402
 from maw.ass_fonts import font_alias_payload, normalize_ass_text_fontnames  # noqa: E402
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
 from maw.text_processing_presets import ProcessingConflict, load_library as load_text_presets, save_library as save_text_presets  # noqa: E402
@@ -1763,6 +1764,7 @@ def build_server_page(
             "textProcessingPresetsUrl": "/api/text-processing-presets",
             "assFrameUrl": "/api/ass-frame",
             "assFontAliasesUrl": "/api/ass-font-aliases",
+            "assFontCoverageUrl": "/api/ass-font-coverage",
             "autoOpenLastProject": settings.auto_open_last_project,
             "savedWorkspaces": settings.saved_workspaces,
             "presetWorkspaces": settings.preset_workspaces,
@@ -3211,7 +3213,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
-        self.send_json(HTTPStatus.OK, font_alias_payload(refresh=True))
+        self.send_json(HTTPStatus.OK, refresh_font_inventory())
 
     def measure_audio_loudness(self) -> None:
         """Poll analysis of the current preview, never a client-supplied path."""
@@ -4091,6 +4093,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 self.send_json(HTTPStatus.OK, load_text_presets())
             except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError) as error:
                 self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        if path == "/api/ass-font-coverage":
+            self.send_json(HTTPStatus.OK, font_coverage_payload() or {
+                "schema": "moy.asr.font_coverage.v1", "faces": [], "cmaps": [],
+                "fallbacks": [], "complete": False,
+            })
             return
         if path == "/api/ass-font-aliases":
             self.send_json(HTTPStatus.OK, font_alias_payload())

@@ -108,7 +108,7 @@ function assPreviewFontScale(style) {
   // the paused Server preview uses libass itself for exact shaping/layout.
   // 预览优先用字体别名链：浏览器对样式存储名的匹配不可预测，把 canonical
   // 与其余别名一并列入可让预览与 libass 尽量渲染同一字形。
-  const family = window.MaweAssFontAliases?.chainCssFor?.(style.fontName)
+  const family = window.MaweAssFontAliases?.chainCssFor?.(style.fontName, { fallback: 'var(--font-sans)' })
     || MaweAppearance.subtitleFontFamilyCss(style.fontName);
   const key = JSON.stringify([family, style.bold, style.italic]);
   if (assPreviewFontMetrics.has(key)) return assPreviewFontMetrics.get(key);
@@ -266,6 +266,7 @@ function assStackInputRevision(tracks, identityTracks = tracks) {
 document.fonts?.addEventListener('loadingdone', () => { assStackFontRevision += 1; cachedAssStackKey = ''; });
 
 function applyAssSubtitlePreview({ tMs, overlaySegments }) {
+  void window.MaweAssFontAliases?.ensureCoverage?.();
   const metrics = assPreviewMetrics();
   // Snapshot only project inputs: measurements and animation envelopes are
   // computed once per revision, never once per playback frame. Direct edits

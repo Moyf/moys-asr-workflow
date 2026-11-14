@@ -169,6 +169,12 @@ async function configure(page, fixture) {
     await document.fonts.ready;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   }, fixture);
+  // The production renderer/export share the lazily loaded font plan.
+  await page.evaluate(async () => {
+    await window.MaweAssFontAliases.ensureCoverage();
+    await window.MaweAssFontAliases.whenReady();
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
 }
 
 async function capture(page, timeMs) {

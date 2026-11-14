@@ -7559,3 +7559,12 @@ test('AI cleanup export projection respects active ownership, restoration and pu
   gapRemove.provenance.sources = { ai_cleanup: [{ start: 0, end: 200 }] };
   assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
 });
+
+test('Canvas emoji hint replaces VS16 only on simple clusters without rewriting complex emoji', () => {
+  assert.equal(helpers.assCanvasPreviewText('❤️ ☀ 😀 🤔'), '❤︎ ☀︎ 😀︎ 🤔︎');
+  for (const text of ['123 #* 中文，。', '❤︎', '👩‍👩‍👧‍👧', '👍🏽', '🇨🇳', '1️⃣', '🏳️‍🌈']) {
+    assert.equal(helpers.assCanvasPreviewText(text), text);
+  }
+  assert.ok(helpers.assManagedFontText('( •̀ ω •́ )y 中文╬'));
+  for (const text of ['مرحبا', 'कर्म', '𞤀𞤢', '𑀓𑀭', 'a\u200db']) assert.equal(helpers.assManagedFontText(text), false);
+});
