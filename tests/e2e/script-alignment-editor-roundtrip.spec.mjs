@@ -57,7 +57,24 @@ run_script_alignment(ScriptAlignmentRequest(Path(sys.argv[1]), Path(sys.argv[2])
     server = await startServer(legacyPath, media, await findFreePort());
     await page.goto(server.url);
     await page.waitForFunction(() => window.MAWE_EDITOR_BRIDGE?.data?.segments.length === 2);
-    expect((await snapshot()).text[0]).toBe('你好  世界');
+    expect((await snapshot()).text).toEqual(expected.text);
+    expect((await snapshot()).items).toEqual(expected.items);
+    // Both old projects without the flag and explicit false must remain lossless.
+    for (const preserve of [undefined, false]) {
+      await page.evaluate(async (flag) => {
+        if (flag === null) delete MaweBoot.DATA.preserve_punctuation;
+        else MaweBoot.DATA.preserve_punctuation = flag;
+        await MaweProjectSave.saveProjectToServer({ silent: true });
+      }, preserve ?? null);
+      const savedProject = JSON.parse(readFileSync(legacyPath, 'utf8'));
+      expect(savedProject.preserve_punctuation).toBe(preserve);
+      expect(savedProject.segments.map((cue) => cue.text)).toEqual(expected.text);
+      expect(savedProject.segments.map((cue) => cue.items.map((item) => item.text).join(''))).toEqual(expected.items);
+      await page.reload();
+      await page.waitForFunction(() => window.MAWE_EDITOR_BRIDGE?.data?.segments.length === 2);
+      expect((await snapshot()).text).toEqual(expected.text);
+      expect((await snapshot()).items).toEqual(expected.items);
+    }
   } finally {
     await server?.stop();
     cleanupTempDir(directory);
