@@ -170,7 +170,9 @@ test('generated checklist is standalone, preserves legacy progress and expands n
 test('changelog editor preserves edit/preview behavior without writing repository files',async({page},testInfo)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(fileUrl('tools/changelog-editor/index.html'));
-  await page.evaluate(async text=>{await loadClText(text,'测试载入');},readFileSync(resolve('CHANGELOG.md'),'utf8'));
+  await page.evaluate(async()=>{
+    await loadClText('## [未发布]\n\n### 修复\n\n- **示例** ： 原有条目\n','测试载入');
+  });
   await expect(page.locator('#split-wrap')).toBeVisible();
   const input=page.locator('#cards textarea').first();
   await input.fill((await input.inputValue())+' 测试');
@@ -197,6 +199,16 @@ test('changelog editor preserves edit/preview behavior without writing repositor
   expect(await page.locator('#layout').evaluate(node=>node.inert)).toBe(false);
   await captureStates(page,testInfo,'changelog');
   expect(errors).toEqual([]);
+});
+
+test('changelog editor can add the first entry to an empty unreleased section',async({page})=>{
+  await page.goto(fileUrl('tools/changelog-editor/index.html'));
+  await page.evaluate(async()=>{await loadClText('## [未发布]\n\n## [1.0.0] - 2024-01-01\n','空小节测试');});
+  await expect(page.locator('#cards textarea')).toHaveCount(0);
+  await expect(page.locator('#cards')).toContainText('此版本暂无内容');
+  await page.locator('#add-entry').click();
+  await expect(page.locator('#cards textarea')).toHaveCount(1);
+  await expect(page.locator('#dirty-dot')).toBeVisible();
 });
 
 test('narrow checklist exposes storage warnings outside its collapsed actions',async({page},testInfo)=>{
