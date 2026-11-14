@@ -19,6 +19,19 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+test('legacy full ASS library retains its 65th style and references', () => {
+  const base = helpers.defaultAssStyleLibrary();
+  const oldStyles = base.styles.filter(style => style.id !== 'ass-extension');
+  for (let i = 0; i < 62; i++) oldStyles.push({ ...base.styles[1], id: `custom-${i}`, name: `Custom ${i}`, builtin: false });
+  const normalized = helpers.normalizeAssStyleLibrary({
+    ...base, version: 1, styles: oldStyles,
+    assProfiles: [{ ...base.assProfiles[0], styleId: 'custom-61' }],
+  });
+  assert.equal(normalized.styles.length, 65);
+  assert.ok(normalized.styles.some(style => style.id === 'custom-61'));
+  assert.equal(normalized.assProfiles[0].styleId, 'custom-61');
+});
+
 test('green screen audio is opt-in and survives settings normalization', () => {
   assert.equal(helpers.normalizeEditorSettings().greenScreenIncludeAudio, false);
   assert.equal(helpers.normalizeEditorSettings({ greenScreenIncludeAudio: true }).greenScreenIncludeAudio, true);

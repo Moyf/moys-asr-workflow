@@ -20,6 +20,10 @@ from maw.ass_styles import (
     load_ass_style_library,
     normalize_ass_style_library,
     save_ass_style_library,
+    AssStyleConflict,
+    read_ass_style_state,
+    read_ass_style_backup,
+    save_ass_style_state,
 )
 from maw.postprocess_ffmpeg import _subtitle_filter
 
@@ -346,6 +350,37 @@ class AssStyleLibraryTests(unittest.TestCase):
             self.assertEqual(load_ass_style_library(path), saved)
             self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["schema"], ASS_STYLE_LIBRARY_SCHEMA)
             self.assertFalse(list(path.parent.glob(f".{path.stem}.*.tmp")))
+
+    def test_revision_conflict_backup_and_corruption_do_not_overwrite(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ass-styles.json"
+            initial = read_ass_style_state(path)
+            first = default_ass_style_library()
+            first["styles"][1]["fontSize"] = 120
+            saved = save_ass_style_state(first, initial["_revision"], backup=True, path=path)
+            self.assertEqual(read_ass_style_backup(path), default_ass_style_library())
+            with self.assertRaises(AssStyleConflict):
+                save_ass_style_state(default_ass_style_library(), initial["_revision"], path=path)
+            self.assertEqual(read_ass_style_state(path), saved)
+            path.write_text('{"version": 999, "schema": "moy.asr.ass_styles.v1"}', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                save_ass_style_state(first, saved["_revision"], path=path)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["version"], 999)
+
+    def test_failed_import_does_not_consume_previous_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ass-styles.json"
+            original = default_ass_style_library()
+            original["styles"][1]["fontSize"] = 71
+            first = save_ass_style_state(original, "missing", path=path)
+            updated = default_ass_style_library()
+            updated["styles"][1]["fontSize"] = 82
+            second = save_ass_style_state(updated, first["_revision"], backup=True, path=path)
+            with mock.patch("maw.ass_styles.save_ass_style_library", side_effect=PermissionError("blocked")):
+                with self.assertRaises(PermissionError):
+                    save_ass_style_state(original, second["_revision"], backup=True, path=path)
+            self.assertEqual(read_ass_style_state(path)["styles"][1]["fontSize"], 82)
+            self.assertEqual(read_ass_style_backup(path)["styles"][1]["fontSize"], 71)
 
     def test_srt_filter_uses_style_but_ass_filter_keeps_embedded_styles(self) -> None:
         style = {"fontName": "Arial", "fontSize": 24, "primaryColor": "#123456"}

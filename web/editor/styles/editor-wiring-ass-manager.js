@@ -112,7 +112,7 @@ function updateAssStyleLibraryStatus() {
       ? '便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。'
       : isAssStyleLibraryReady()
         ? '已保存到本机用户级配置；Launcher 与 Editor 共享。'
-        : '当前使用本地副本；服务器恢复后可再次点击保存同步。';
+        : '尚未与服务器同步；请检查当前样式并重试保存。';
     assStyleLibraryPathHint.textContent = window.MAWE_I18N?.translateText?.(pathHint) || pathHint;
   }
   updateAssStyleProjectHint();
@@ -408,8 +408,8 @@ function syncAssStyleManager({ force = false } = {}) {
 }
 
 function createAssStyle() {
-  if ((getAssStyleLibrary().styles || []).length >= 64) {
-    MaweHint.flashHint('样式数量已达到上限（64 个）', 'warning');
+  if ((getAssStyleLibrary().styles || []).length >= 65) {
+    MaweHint.flashHint('样式数量已达到上限（65 个）', 'warning');
     return;
   }
   const id = assStyleManagerId('style', getAssStyleLibrary().styles);
@@ -426,7 +426,7 @@ function createAssStyle() {
 
 function duplicateAssStyle() {
   const source = selectedAssStyle();
-  if (!source || (getAssStyleLibrary().styles || []).length >= 64) {
+  if (!source || (getAssStyleLibrary().styles || []).length >= 65) {
     MaweHint.flashHint('无法复制样式：已达到数量上限', 'warning');
     return;
   }

@@ -11,7 +11,12 @@ export function updateAssStyleLibrarySummary() { storageService.updateSummary();
 export function scheduleAssStyleLibrarySave() { storageService.scheduleSave(); }
 export function getAssBuiltinFontSuggestions() { return storageService.fontSuggestions(); }
 export function loadAssStyleLibrary(options) { return storageService.load(options); }
-export function persistAssStyleLibrary() { return storageService.persist(); }
+export function persistAssStyleLibrary(options) { return storageService.persist(options); }
+export function getAssStyleTransferState() { return storageService.transferState(); }
+export function importAssStyleLibrary(library, revision) { return storageService.importLibrary(library, revision); }
+export function reloadAssStyleLibrary() { return storageService.reload(); }
+export function readAssStyleLibraryBackup() { return storageService.readBackup(); }
+export function waitForAssStyleLibraryLoad() { return storageService.waitForLoad(); }
 
 export function initAssStorageWiring() {
 
@@ -74,8 +79,10 @@ let assStyleLibrarySaveTimer = 0;
 let assStyleLibraryLoadPromise = null;
 let assStyleLibraryDirty = false;
 let assStyleLibraryRevision = 0;
-let assStyleLibrarySaveInFlight = false;
-let assStyleLibraryInFlightRevision = 0;
+let assStyleStorageRevision = null;
+let assStyleLibraryConflict = false;
+let assStyleSavePromise = null;
+let assStyleImportInFlight = false;
 
 function readLocalAssStyleLibrary() {
   try {
@@ -88,19 +95,16 @@ function readLocalAssStyleLibrary() {
 }
 
 function writeLocalAssStyleLibrary(library) {
-  try {
-    localStorage.setItem(
-      ASS_STYLE_LIBRARY_STORAGE_KEY,
-      JSON.stringify(window.AsrEditorUtils.normalizeAssStyleLibrary(library)),
-    );
-  } catch (_) {
-    // file:// 隐私模式可能拒绝 localStorage；当前页面仍可继续使用样式。
-  }
+  localStorage.setItem(ASS_STYLE_LIBRARY_STORAGE_KEY,
+    JSON.stringify(window.AsrEditorUtils.normalizeAssStyleLibrary(library)));
 }
 
 function setAssStyleLibrary(value, { persistLocal = false } = {}) {
   ASS_STYLE_LIBRARY = window.AsrEditorUtils.normalizeAssStyleLibrary(value);
-  if (persistLocal) writeLocalAssStyleLibrary(ASS_STYLE_LIBRARY);
+  // The portable copy is written only under the compare-and-save operation.
+  if (persistLocal && assStyleLibraryUsesServerStorage()) {
+    try { writeLocalAssStyleLibrary(ASS_STYLE_LIBRARY); } catch (_) { /* optional cache */ }
+  }
   return ASS_STYLE_LIBRARY;
 }
 
@@ -118,50 +122,41 @@ function updateAssStyleLibrarySummary() {
 function scheduleAssStyleLibrarySave() {
   assStyleLibraryDirty = true;
   clearTimeout(assStyleLibrarySaveTimer);
+  if (assStyleLibraryConflict) return;
   assStyleLibrarySaveTimer = setTimeout(() => {
     void persistAssStyleLibrary();
   }, 220);
 }
 
-function assStyleLibraryRequestBody(normalized) {
+function assStyleLibraryRequestBody(normalized, backup = false) {
   // 与其他本机写入接口一致：服务器会校验页面请求令牌，缺失时返回 403。
-  return { ...normalized, requestToken: MaweBoot.SERVER_CONFIG?.requestToken || '' };
+  return { ...normalized, _revision: assStyleStorageRevision, _backup: backup,
+    requestToken: MaweBoot.SERVER_CONFIG?.requestToken || '' };
 }
 
-function assStyleLibraryPostOptions(body, { keepalive = false } = {}) {
+function assStyleLibraryPostOptions(body, { keepalive = false, backup = false } = {}) {
   return {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(assStyleLibraryRequestBody(body)),
+    body: JSON.stringify(assStyleLibraryRequestBody(body, backup)),
     ...(keepalive ? { keepalive: true } : {}),
   };
 }
 
-// 离开页面（刷新/关闭/跳转、切后台）时 debounce 定时器可能还没触发；
-// dirty 的最后改动要用 keepalive 请求立刻发出，否则重新打开时会
-// 被服务器上的旧样式覆盖。已有请求在途且携带同一修订时无需重复发送；
-// 在途请求携带更旧修订时仍要 flush，但不清除 dirty，页面回来后再补一次
-// 常规保存，避免两个在途写入在服务器端乱序覆盖。
+// Use the normal serialized save path so a successful background flush also
+// updates the revision. A second write must not race an older in-flight save.
 function flushAssStyleLibraryOnUnload() {
   clearTimeout(assStyleLibrarySaveTimer);
   assStyleLibrarySaveTimer = 0;
-  if (!assStyleLibraryDirty || !assStyleLibraryUsesServerStorage()) return;
-  if (assStyleLibrarySaveInFlight && assStyleLibraryInFlightRevision === assStyleLibraryRevision) return;
-  const normalized = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
-  try {
-    void fetch(new URL(MaweBoot.SERVER_CONFIG.assStylesUrl, window.location.href),
-      assStyleLibraryPostOptions(normalized, { keepalive: true }))
-      .catch(() => { /* 页面正在卸载，失败时保留本地副本即可 */ });
-    if (!assStyleLibrarySaveInFlight) assStyleLibraryDirty = false;
-  } catch (_) {
-    // URL 或请求构造失败时保留 dirty 标记；页面已在卸载流程中，无法再重试。
-  }
+  if (!assStyleLibraryDirty || assStyleLibraryConflict) return;
+  if (assStyleLibraryUsesServerStorage() && !assStyleStorageRevision) return;
+  void persistAssStyleLibrary({ keepalive: true });
 }
 window.addEventListener('pagehide', flushAssStyleLibraryOnUnload);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     flushAssStyleLibraryOnUnload();
-  } else if (assStyleLibraryDirty && !assStyleLibrarySaveTimer && assStyleLibraryUsesServerStorage()) {
+  } else if (assStyleLibraryDirty && !assStyleLibrarySaveTimer) {
     // 切后台时的 flush 可能保留了 dirty（存在在途旧修订写入）；回到前台后补一次常规保存。
     scheduleAssStyleLibrarySave();
   }
@@ -174,27 +169,53 @@ function describeAssStyleSyncError(error) {
   return message === 'HTTP 403' ? 'HTTP 403（页面已失效，请刷新网页后重试）' : message;
 }
 
-async function persistAssStyleLibrary() {
+async function commitAssStyleLibrary(normalized, { backup = false, keepalive = false } = {}) {
+  if (assStyleLibraryConflict) throw new Error('样式库已被其他窗口修改，请先重新加载');
+  if (assStyleLibraryUsesServerStorage()) {
+    if (!assStyleStorageRevision) throw new Error('尚未读取本机样式库，请重新加载');
+    const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.assStylesUrl, window.location.href),
+      assStyleLibraryPostOptions(normalized, { backup, keepalive }));
+    if (response.status === 409) {
+      assStyleLibraryConflict = true;
+      throw new Error('样式库已被其他窗口修改，请先导出当前副本，再重新加载');
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    assStyleStorageRevision = payload._revision;
+    return window.AsrEditorUtils.normalizeAssStyleLibrary(payload);
+  }
+  const write = () => {
+    const current = localStorage.getItem(ASS_STYLE_LIBRARY_STORAGE_KEY);
+    if (current !== assStyleStorageRevision) {
+      assStyleLibraryConflict = true;
+      throw new Error('样式库已被其他窗口修改，请先导出当前副本，再重新加载');
+    }
+    const backupKey = `${ASS_STYLE_LIBRARY_STORAGE_KEY}.backup`;
+    const previousBackup = backup ? localStorage.getItem(backupKey) : null;
+    if (backup) localStorage.setItem(backupKey, current ?? JSON.stringify(ASS_STYLE_LIBRARY));
+    try {
+      writeLocalAssStyleLibrary(normalized);
+    } catch (error) {
+      if (backup) {
+        if (previousBackup === null) localStorage.removeItem(backupKey);
+        else localStorage.setItem(backupKey, previousBackup);
+      }
+      throw error;
+    }
+    assStyleStorageRevision = localStorage.getItem(ASS_STYLE_LIBRARY_STORAGE_KEY);
+    return normalized;
+  };
+  return navigator.locks?.request ? navigator.locks.request(ASS_STYLE_LIBRARY_STORAGE_KEY, write) : write();
+}
+
+async function persistAssStyleLibrary({ keepalive = false } = {}) {
+  if (assStyleSavePromise) return assStyleSavePromise;
   clearTimeout(assStyleLibrarySaveTimer);
   assStyleLibrarySaveTimer = 0;
   const revision = assStyleLibraryRevision;
-  const normalized = setAssStyleLibrary(ASS_STYLE_LIBRARY, { persistLocal: true });
-  if (!assStyleLibraryUsesServerStorage()) {
-    if (revision === assStyleLibraryRevision) {
-      assStyleLibraryDirty = false;
-      ASS_STYLE_LIBRARY_READY = true;
-    }
-    setAssStyleLibraryStatus('', 'success');
-    syncAssStyleManager?.();
-    return normalized;
-  }
-  assStyleLibrarySaveInFlight = true;
-  assStyleLibraryInFlightRevision = revision;
-  try {
-    const response = await fetch(new URL(MaweBoot.SERVER_CONFIG.assStylesUrl, window.location.href),
-      assStyleLibraryPostOptions(normalized));
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const payload = await response.json();
+  const normalized = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  assStyleSavePromise = (async () => { try {
+    const payload = await commitAssStyleLibrary(normalized, { keepalive });
     if (revision === assStyleLibraryRevision) {
       setAssStyleLibrary(payload, { persistLocal: true });
       assStyleLibraryDirty = false;
@@ -212,24 +233,35 @@ async function persistAssStyleLibrary() {
   } catch (error) {
     // 本地副本仍然可用；状态会在管理窗中明确显示为未同步。
     ASS_STYLE_LIBRARY_READY = false;
-    setAssStyleLibraryStatus(`本地已保存，服务器同步失败：${describeAssStyleSyncError(error)}`, 'warning');
-    return normalized;
+    setAssStyleLibraryStatus(`保存失败：${describeAssStyleSyncError(error)}`, 'warning');
+    return null;
   } finally {
-    assStyleLibrarySaveInFlight = false;
-    assStyleLibraryInFlightRevision = 0;
-  }
+    assStyleSavePromise = null;
+    if (assStyleLibraryDirty && revision !== assStyleLibraryRevision && !assStyleLibraryConflict) scheduleAssStyleLibrarySave();
+  } })();
+  return assStyleSavePromise;
 }
 
-async function loadAssStyleLibrary({ force = false } = {}) {
+async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
+  if (assStyleImportInFlight) return ASS_STYLE_LIBRARY;
   if (assStyleLibraryLoadPromise) return assStyleLibraryLoadPromise;
-  if (force && assStyleLibraryDirty) {
+  if (force && assStyleLibraryDirty && !discard) {
     // The manager may be reopened while a debounced save is pending.  A
     // forced read must never replace those unsaved edits with the old file.
     syncAssStyleManager?.();
     MawePlaybackLoop.refreshSubtitlePreview?.();
     return ASS_STYLE_LIBRARY;
   }
-  setAssStyleLibrary(readLocalAssStyleLibrary());
+  if (discard) {
+    clearTimeout(assStyleLibrarySaveTimer);
+    assStyleLibrarySaveTimer = 0;
+  }
+  const startedAtRevision = assStyleLibraryRevision;
+  // The browser cache is a startup fallback only. Once the server has been
+  // read, a failed refresh must not replace that trusted in-memory library.
+  if (assStyleLibraryUsesServerStorage() && assStyleStorageRevision === null && !assStyleLibraryDirty && !discard) {
+    setAssStyleLibrary(readLocalAssStyleLibrary());
+  }
   setAssStyleLibraryStatus('正在加载…', 'pending');
   assStyleLibraryLoadPromise = (async () => {
     // 让出一轮微任务再继续：便携（无服务器）分支没有任何真正的 await，
@@ -238,6 +270,24 @@ async function loadAssStyleLibrary({ force = false } = {}) {
     // ReferenceError。先等待一轮，保证回调都在脚本求值完成后运行。
     await Promise.resolve();
     if (!assStyleLibraryUsesServerStorage()) {
+      try {
+        const raw = localStorage.getItem(ASS_STYLE_LIBRARY_STORAGE_KEY);
+        const loaded = raw ? JSON.parse(raw) : window.AsrEditorUtils.defaultAssStyleLibrary();
+        if (startedAtRevision === assStyleLibraryRevision && (!assStyleLibraryDirty || discard)) {
+          assStyleStorageRevision = raw;
+          setAssStyleLibrary(loaded);
+          assStyleLibraryRevision += 1;
+          assStyleLibraryDirty = false;
+          assStyleLibraryConflict = false;
+        }
+      }
+      catch (_) {
+        assStyleLibraryConflict = true;
+        ASS_STYLE_LIBRARY_READY = false;
+        setAssStyleLibraryStatus('浏览器存储不可用或样式库损坏，样式尚未保存', 'warning');
+        assStyleLibraryLoadPromise = null;
+        return ASS_STYLE_LIBRARY;
+      }
       ASS_STYLE_LIBRARY_READY = true;
       setAssStyleLibraryStatus('', 'success');
       syncAssStyleManager?.();
@@ -251,8 +301,12 @@ async function loadAssStyleLibrary({ force = false } = {}) {
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
-      if (!assStyleLibraryDirty) {
+      if (startedAtRevision === assStyleLibraryRevision && (!assStyleLibraryDirty || discard)) {
+        assStyleStorageRevision = payload._revision;
+        assStyleLibraryConflict = false;
         setAssStyleLibrary(payload, { persistLocal: true });
+        assStyleLibraryRevision += 1;
+        assStyleLibraryDirty = false;
         ASS_STYLE_LIBRARY_READY = true;
         setAssStyleLibraryStatus('', 'success');
       } else {
@@ -262,9 +316,9 @@ async function loadAssStyleLibrary({ force = false } = {}) {
         setAssStyleLibraryStatus('本地有更新改动，等待再次同步', 'warning');
       }
     } catch (_) {
-      // localhost 服务暂不可用时沿用本地副本；下次打开编辑器会再次尝试读取。
+      // Keep the last trusted in-memory state and any pending edits.
       ASS_STYLE_LIBRARY_READY = false;
-      setAssStyleLibraryStatus('使用本地副本，服务器同步失败', 'warning');
+      setAssStyleLibraryStatus('重新加载失败，保留当前样式', 'warning');
     }
     syncAssStyleManager?.();
     MawePlaybackLoop.refreshSubtitlePreview?.();
@@ -286,6 +340,47 @@ storageService.scheduleSave = scheduleAssStyleLibrarySave;
 storageService.fontSuggestions = () => ASS_BUILTIN_FONT_SUGGESTIONS;
 storageService.load = loadAssStyleLibrary;
 storageService.persist = persistAssStyleLibrary;
+storageService.transferState = () => ({ dirty: assStyleLibraryDirty, revision: assStyleLibraryRevision });
+storageService.waitForLoad = () => assStyleLibraryLoadPromise || Promise.resolve();
+storageService.importLibrary = async (library, expectedRevision) => {
+  if (assStyleLibraryDirty || assStyleSavePromise || assStyleLibraryLoadPromise || assStyleImportInFlight || expectedRevision !== assStyleLibraryRevision) {
+    throw new Error('样式库已改变，请重新导入并预览');
+  }
+  assStyleImportInFlight = true;
+  try {
+    const saved = await commitAssStyleLibrary(library, { backup: true });
+    if (expectedRevision !== assStyleLibraryRevision) {
+      // Do not discard edits made while the import request was in flight.
+      scheduleAssStyleLibrarySave();
+      throw new Error('导入期间样式库发生更改，请检查当前内容');
+    }
+    assStyleLibraryRevision += 1;
+    setAssStyleLibrary(saved, { persistLocal: true });
+    assStyleLibraryDirty = false;
+    ASS_STYLE_LIBRARY_READY = true;
+    setAssStyleLibraryStatus('样式库已导入；已保留导入前副本', 'success');
+    syncAssStyleManager({ force: true });
+    MawePlaybackLoop.refreshSubtitlePreview?.();
+    return saved;
+  } finally {
+    assStyleImportInFlight = false;
+  }
+};
+storageService.reload = async () => {
+  if (assStyleSavePromise) await assStyleSavePromise;
+  return loadAssStyleLibrary({ force: true, discard: true });
+};
+storageService.readBackup = async () => {
+  if (assStyleLibraryUsesServerStorage()) {
+    const response = await fetch(new URL(`${MaweBoot.SERVER_CONFIG.assStylesUrl}-backup`, window.location.href), { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    return payload;
+  }
+  const raw = localStorage.getItem(`${ASS_STYLE_LIBRARY_STORAGE_KEY}.backup`);
+  if (!raw) throw new Error('没有找到导入前的样式库副本');
+  return JSON.parse(raw);
+};
 Object.defineProperty(window, 'ASS_STYLE_LIBRARY', {
   configurable: true,
   get: () => ASS_STYLE_LIBRARY,

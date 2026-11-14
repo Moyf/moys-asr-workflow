@@ -181,6 +181,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/ui/editor-dom-panels.js",
                 "editor/ui/editor-wiring-dom-panels.js",
                 "editor/styles/editor-wiring-ass-manager.js",
+                "editor/styles/editor-wiring-ass-transfer.js",
                 "editor/ui/editor-wiring-settings-init.js",
                 "editor/ui/editor-wiring-settings-help.js",
                 "editor/ui/editor-wiring-theme-split-settings.js",
