@@ -2,13 +2,17 @@ import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
+import fs from 'node:fs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
 
 function canvasFixture() {
   const paint = [];
+  const measuredFonts = [];
+  const fontListeners = new Map();
   const makeContext = () => new Proxy({
     letterSpacing: '0px',
     measureText(text) {
+      measuredFonts.push(this.font);
       const size = Number(/([\d.]+)px/u.exec(this.font || '')?.[1]) || 100;
       return { width: text.length * size * 0.2, fontBoundingBoxAscent: size * 0.8, fontBoundingBoxDescent: size * 0.2 };
     },
@@ -21,13 +25,13 @@ function canvasFixture() {
   context.window.MaweAppearance = { subtitleFontFamilyCss: () => 'sans-serif' };
   context.document = {
     createElement() { const ctx = makeContext(); return { getContext: () => ctx }; },
-    fonts: { addEventListener() {} },
+    fonts: { addEventListener(type, fn) { fontListeners.set(type, fn); } },
   };
   vm.runInNewContext(initModuleSource('editor/styles/editor-wiring-ass-canvas.js'), context);
   const style = context.window.AsrEditorUtils.normalizeAssStyle({ commentColor: '#111111', outline: 2, shadow: 0 });
   const track = { style, nativeFontSize: 72, runs: [{ text: 'comment', comment: true }] };
   const render = () => context.window.MaweAssCanvas.render({ playResX: 1920, playResY: 1080, tracks: [track] });
-  return { paint, track, render, context, canvas: context.window.MaweAssCanvas };
+  return { paint, measuredFonts, fontListeners, track, render, context, canvas: context.window.MaweAssCanvas };
 }
 
 test('stacked fractional plain font sizes retain line advance and invalidate raster cache', () => {
@@ -98,4 +102,96 @@ test('Canvas paints manual overlays above automatic main in ASS layer order', ()
   canvas.render({ playResX: 1920, playResY: 1080, tracks });
   assert.deepEqual(Array.from(canvas.lastRender.tracks, record => record.role), ['main', 'extension', 'overlay', 'overlay']);
   assert.deepEqual(tracks.map(item => item.role), ['overlay', 'main', 'extension', 'overlay'], 'input plan remains unchanged');
+});
+
+const systemSans = fs.readFileSync(new URL('../web/editor.css', import.meta.url), 'utf8')
+  .match(/--font-sans:\s*([^;]+);/u)[1].trim();
+
+async function fontFallbackFixture({ loaded = true, sans = systemSans } = {}) {
+  const fixture = canvasFixture();
+  const { context, track } = fixture;
+  context.getComputedStyle = () => ({ getPropertyValue: () => sans });
+  context.window.MaweAppearance.subtitleFontFamilyCss = name => `"${name}", var(--font-sans)`;
+  track.style.fontName = '得意黑';
+  track.runs = [{ text: '(╬￣皿￣)ノ' }];
+  const config = {};
+  context.window.MaweBoot = { SERVER_CONFIG: config };
+  context.window.location = { href: 'http://localhost/' };
+  context.URL = URL;
+  context.CustomEvent = class {};
+  context.document.dispatchEvent = () => {};
+  context.fetch = async () => ({ ok: true, json: async () => ({
+    schema: 'moy.asr.font_aliases.v1',
+    fonts: [{ canonical: 'Smiley Sans', names: ['得意黑', 'Smiley Sans', 'SmileySans-Oblique'] }],
+  }) });
+  vm.runInNewContext(fs.readFileSync(new URL(
+    '../web/editor/styles/editor-wiring-ass-font-aliases.js', import.meta.url), 'utf8'), context);
+  if (loaded) {
+    config.assFontAliasesUrl = '/api/ass-font-aliases';
+    await context.window.MaweAssFontAliases.reload();
+  }
+  return fixture;
+}
+
+test('ASS Canvas retains aliases before the original cross-platform system fallback', async () => {
+  const { context, paint, measuredFonts, render } = await fontFallbackFixture();
+  const expected = `"得意黑", "Smiley Sans", "SmileySans-Oblique", ${systemSans}`;
+  render();
+  assert.ok(paint.length && measuredFonts.length);
+  for (const font of [...paint.map(item => item.font), ...measuredFonts]) {
+    assert.ok(font.endsWith(expected), font);
+    assert.ok(!font.includes('var('), 'Canvas receives concrete font families');
+  }
+  assert.ok(systemSans.indexOf('Segoe UI') < systemSans.indexOf('Microsoft YaHei'));
+  assert.ok(systemSans.indexOf('PingFang SC') < systemSans.indexOf('Microsoft YaHei'));
+  assert.ok(systemSans.indexOf('Microsoft YaHei') < systemSans.indexOf('Noto Sans CJK SC'));
+  // Other consumers keep the existing default; ASS export/canonicalization is not changed.
+  assert.equal(context.window.MaweAssFontAliases.chainCssFor('得意黑'),
+    '"得意黑", "Smiley Sans", "SmileySans-Oblique", sans-serif');
+});
+
+test('unloaded and unmatched alias tables retain the existing appearance fallback', async () => {
+  for (const loaded of [false, true]) {
+    const { track, paint, render } = await fontFallbackFixture({ loaded });
+    track.style.fontName = loaded ? 'Unknown Font' : '得意黑';
+    render();
+    assert.ok(paint.length);
+    assert.ok(paint.every(item => item.font.endsWith(`"${track.style.fontName}", ${systemSans}`)));
+  }
+});
+
+test('empty system stack resolves to sans-serif, and font loading clears all font caches', async () => {
+  const { context, track, paint, measuredFonts, fontListeners, render, canvas } = await fontFallbackFixture({ sans: '' });
+  const measure = () => canvas.measureRun(track.style, 72, track.runs[0], '╬');
+  render();
+  measure();
+  assert.ok(paint.every(item => item.font.endsWith(', sans-serif')));
+  paint.length = 0;
+  measuredFonts.length = 0;
+  render();
+  assert.equal(paint.length, 0, 'unchanged frames reuse raster cache');
+  assert.ok(measuredFonts.every(font => !font.includes('100px')), 'font-box ratios remain cached');
+  measuredFonts.length = 0;
+  measure();
+  assert.equal(measuredFonts.length, 0, 'unchanged measurements reuse metric cache');
+  context.getComputedStyle = () => ({ getPropertyValue: () => systemSans });
+  fontListeners.get('loadingdone')();
+  render();
+  measure();
+  assert.ok(paint.length && measuredFonts.length, 'font loading invalidates raster and metric caches');
+  assert.ok([...paint.map(item => item.font), ...measuredFonts].every(font => font.endsWith(systemSans)));
+});
+
+test('legacy DOM font-box measurement uses the same system fallback after aliases', async () => {
+  const { context, track } = await fontFallbackFixture();
+  const probes = [];
+  context.document.addEventListener = () => {};
+  context.document.body = { append(probe) { probes.push(probe); } };
+  context.document.createElement = () => ({ style: {}, getBoundingClientRect: () => ({ height: 200 }), remove() {} });
+  vm.createContext(context);
+  vm.runInContext(initModuleSource('editor/styles/editor-wiring-ass-preview.js'), context);
+  context.testStyle = track.style;
+  assert.equal(vm.runInContext('assPreviewFontScale(testStyle)', context), 1);
+  assert.equal(probes[0].style.fontFamily,
+    '"得意黑", "Smiley Sans", "SmileySans-Oblique", var(--font-sans)');
 });

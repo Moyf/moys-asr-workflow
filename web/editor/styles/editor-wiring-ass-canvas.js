@@ -58,13 +58,11 @@ export function initWiringAssCanvasModule() {
 
   // subtitleFontFamilyCss 可能返回 var(--font-sans) 兜底；ctx.font 不解析
   // CSS 变量，这里解析成具体字体族列表。
-  // 字体别名表就绪时优先用别名链（"<存储值>", "<canonical>", "<其余别名>",
-  // sans-serif）：浏览器按列表顺序回退匹配，任一名字命中即与 libass 渲染
-  // 同一字形；链已是具体族名列表，无需再解析 var(--font-sans)。
+  // 字体别名仍优先匹配同一字体；缺字时恢复编辑器原有系统字体顺序，
+  // 不能直接跳到浏览器的 generic sans-serif。
   function fontFamilyCss(fontName) {
-    const aliasChain = global.MaweAssFontAliases?.chainCssFor?.(fontName) || '';
-    if (aliasChain) return aliasChain;
-    let family = global.MaweAppearance?.subtitleFontFamilyCss?.(fontName) || '';
+    let family = global.MaweAssFontAliases?.chainCssFor?.(fontName, { fallback: 'var(--font-sans)' })
+      || global.MaweAppearance?.subtitleFontFamilyCss?.(fontName) || '';
     if (family.includes('var(--font-sans)')) {
       if (!resolvedSansFamily) {
         resolvedSansFamily = (getComputedStyle(document.documentElement)
@@ -639,6 +637,7 @@ export function initWiringAssCanvasModule() {
   }
 
   function clearCaches() {
+    resolvedSansFamily = '';
     stackMetricsCache.clear();
     lineCache.clear();
     fontRatioCache.clear();

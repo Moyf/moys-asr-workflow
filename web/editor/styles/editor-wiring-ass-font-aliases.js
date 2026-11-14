@@ -109,10 +109,10 @@
 
   // CSS font-family 别名链：`"<存储值>", "<canonical>", "<其余别名>", sans-serif`。
   // 返回 '' 表示未加载/查不到，调用方沿用现有 font-family 输出。
-  function chainCssFor(name) {
+  function chainCssFor(name, options) {
     const chain = aliasChainFor(name);
     if (!chain) return '';
-    return global.AsrEditorUtils?.assFontFamilyAliasChainCss?.(name, chain) || '';
+    return global.AsrEditorUtils?.assFontFamilyAliasChainCss?.(name, chain, options) || '';
   }
 
   function beginReplacementCapture() {
