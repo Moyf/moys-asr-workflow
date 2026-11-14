@@ -62,3 +62,10 @@ Canvas 使用展开后的具体字体族，DOM 字号探针使用同一回退链
 - Windows 独立实测（SimHei v5.05）：不含 U+2022/U+0300/U+0301，故 `•̀`/`•́` 整簇继续选 Arial；覆盖 `╬`/`ω`。实际 FFmpeg 日志 SimHei 700→SimHei、Arial 700→Arial-BoldMT，组合眉毛为短上方形态。SimHei 仅 regular，粗体合成存在明显边界：Canvas 的 `╬` 更粗、内缝更窄，libass 双线仍清晰；不把相同 family 误报为字形粗细完全统一。
 - 最终本批验证：433 项 JS、100 项字体/接口/烧录/页面 Python 测试通过，10 项受影响 Chromium E2E 通过，Ruff/typecheck/build freshness/diff 检查通过。下载前置 picker 移除后新增测试真实失败，恢复后通过。Windows 证据来自本机字体与显式 run 渲染夹具，不冒充完整 Windows MAW 界面端到端验收。
 - 最终独立复审：下载 picker 的 P2 已处置；复审者独立运行 readiness+aliases 17/17，通过，无本批未处置 blocking。仍保留 Draft，需等最终 head CI 全部通过与后续交付决定。
+
+## 最终 CI 回归测试修正（52b9a5bd 后）
+
+- 完整 CI 的 editor job 出现两个测试失败；Windows 预览构建、跨平台 debug tooling、Ruff 与 CLA 均通过。Mac 完整重跑两个受影响 spec 真实复现同样两项失败（16 通过、1 跳过）。
+- sticker 生命周期测试复用了可被前序用例保存的工程文件，`preview.ass_mode` 因此泄漏到按需加载用例；该属性属于工程，不是 localStorage 或用户级 settings。改为每个用例启动服务前重写初始合成工程，保留全部原断言。
+- warma 单条样式测试直接调用同步 `buildAss()`，未遵守新按需覆盖就绪契约；改为先等待 `ensureCoverage()` 和 `whenReady()`，不放宽生产代码的 pending 防护。
+- 修正后两个完整 Chromium spec 18 通过、1 个原有便携页用例跳过；无生产代码改动。日志：`.artifacts/checks/20261114T154848Z-bef05055/`；修正前失败日志：`.artifacts/checks/20261114T154630Z-987d9890/`。最终线上 CI 仍须以新提交为准。

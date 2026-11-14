@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { cleanupTempDir, closeSettingsPanels, disableOnboarding, findFreePort,
   generateWaveformPayload, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
 
-let directory, media, project, roots, server, releaseInventory;
+let directory, media, project, projectContents, roots, server, releaseInventory;
 const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
 
 test.beforeAll(() => {
@@ -21,15 +21,18 @@ test.beforeAll(() => {
     "from PIL import Image; import sys; Image.new('RGB',(24,24),'red').save(sys.argv[1]); Image.new('RGB',(24,24),'blue').save(sys.argv[2])",
     ...roots.map(root => join(root, 'demo.png'))]);
   project = join(directory, 'legacy.mosp');
-  writeFileSync(project, JSON.stringify({ media: 'synthetic.mp4', sticker_root: roots[0],
+  projectContents = JSON.stringify({ media: 'synthetic.mp4', sticker_root: roots[0],
     segments: [
       { start: 0, end: 1000, text: '第一句',
         sticker: { name: 'demo', filename: 'demo.png', rel: 'demo.png', start: 0, end: 1000 } },
       { start: 1000, end: 2600, text: '第二句', sticker_ref: { name: 'demo', headIdx: 0 } },
-    ], waveform: generateWaveformPayload(4000) }));
+    ], waveform: generateWaveformPayload(4000) });
 });
 
 test.beforeEach(async ({ page }, info) => {
+  // ASS mode belongs to the project, not localStorage. Earlier frame cases
+  // can persist it; reset the synthetic fixture before each server starts.
+  writeFileSync(project, projectContents);
   server = await startServer(project, media, await findFreePort());
   await disableOnboarding(page);
   await page.addInitScript(() => {
