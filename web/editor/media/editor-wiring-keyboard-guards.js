@@ -6,6 +6,7 @@
 
 
 document.addEventListener('keydown', (e) => {
+  if (MaweShortcuts.isModalOpen()) return;
   if (e.target === MaweDom.cuePanelText) return;
   if (!MaweInlineEdit.editingState) return;
   if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); MaweInlineEdit.finishEdit(false); return; }
@@ -20,6 +21,7 @@ document.addEventListener('keydown', (e) => {
 }, true);
 
 document.addEventListener('keydown', (event) => {
+  if (MaweShortcuts.isModalOpen()) return;
   if (!MaweInlineEdit.extensionEditingState) return;
   if (event.key === 'Escape') {
     event.preventDefault();
@@ -48,13 +50,14 @@ document.addEventListener('keydown', (event) => {
 
 // Esc：非字幕文本编辑状态下清除当前字幕选择；输入框和内联编辑继续保留原生/编辑行为。
 document.addEventListener('keydown', (e) => {
-  if (e.defaultPrevented || e.key !== 'Escape') return;
+  if (e.defaultPrevented || e.key !== 'Escape' || MaweShortcuts.isNativeDialogOpen()) return;
   if (MaweDom.timedTextEditModal.classList.contains('show')) {
     e.preventDefault();
     e.stopPropagation();
     MaweTimedTextEdit.requestCloseTimedTextEdit();
     return;
   }
+  if (MaweShortcuts.isModalOpen()) return;
   // 浮窗自己的 Esc 处理器稍后执行；不要先清空其背后的字幕选区。
   if (MaweFloatingPanel.floatingSurfaceStack.some(MaweFloatingPanel.floatingSurfaceIsOpen)) return;
   if (MaweSelection.pendingExtensionBinding) {

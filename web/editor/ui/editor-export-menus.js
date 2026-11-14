@@ -277,7 +277,7 @@ export function initMaweExportMenus() {
       if (!dd.contains(e.target)) setOpen(false);
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && dd.classList.contains('open')) {
+      if (e.key === 'Escape' && !MaweShortcuts.wasModalOpen(e) && dd.classList.contains('open')) {
         e.preventDefault();
         setOpen(false, { restoreFocus: true });
       }

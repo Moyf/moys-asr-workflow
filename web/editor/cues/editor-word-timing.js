@@ -231,6 +231,7 @@
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'q' && event.key !== 'Q') return;
       if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) return;
+      if (MaweShortcuts.isModalOpen()) return;
       if (dialog()?.open) return;
       const target = event.target;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
@@ -246,16 +247,24 @@
     // Native close is queued; it may arrive after a new preview has opened.
     dialog()?.addEventListener('close', () => { if (!dialog().open) conversionTarget = null; });
   }
-  // Capture before subtitle hotkeys: unsupported actions cannot hit the parent cue.
+    // Capture before subtitle hotkeys: unsupported actions cannot hit the parent cue.
   document.addEventListener('keydown', event => {
-    if (dialog()?.open) { event.stopImmediatePropagation(); return; }
+    // Word selection is behind any modal; its physical C/F and capture guards
+    // must not consume or act on the modal's original keyboard event.
+    if (MaweShortcuts.isModalOpen()) return;
     if (!enabled || event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const waveform = MaweCoreState.waveformEditor;
+    // The shortcut recorder runs later in capture order. Let it receive the
+    // physical key instead of executing word-selection commands behind it.
+    if (!waveform?.wordDrag && event.target.closest?.(
+      '[data-shortcut-control="key"][aria-pressed="true"], #shortcuts-key-search[aria-pressed="true"]',
+    )) return;
     const physicalKey = event.key.toLowerCase();
-    const physicalCopy = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && physicalKey === 'c';
-    // Copy remains a native physical operation even if the user maps subtitle
-    // merge onto Mod+C. Stop editor shortcut handlers without cancelling copy.
-    if (physicalCopy && (waveform?.wordDrag || selection && getSelection(selection.segment).size)) {
+    const physicalClipboard = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
+      && ['c', 'v', 'x'].includes(physicalKey);
+    // Preserve native clipboard operations while preventing parent editor
+    // commands from acting on the same physical key during word interactions.
+    if (physicalClipboard && (waveform?.wordDrag || selection && getSelection(selection.segment).size)) {
       event.stopImmediatePropagation();
       return;
     }

@@ -137,7 +137,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   expect(await page.evaluate(() => document.activeElement?.id)).not.toBe('help-toggle');
   const helpPanel = page.locator('#help-panel');
   await expect(helpPanel).toHaveClass(/show/);
-  await expect(helpPanel.getByRole('tab')).toHaveText(['基础操作', '快捷操作', '波形区', '播放与导航', '微调字幕', '空隙操作', '批量操作']);
+  await expect(helpPanel.getByRole('tab')).toHaveText(['基础操作', '快捷操作', '波形区', '播放与导航', '微调字幕', '空隙操作', 'ASS 字幕样式', '双语字幕', '导出与烧录', '标记与区段', '批量操作']);
   await expect(helpPanel.getByRole('tab').first()).toHaveCSS('font-size', '13px');
   await expect(helpPanel.locator('.editor-settings-nav')).toHaveAttribute('aria-orientation', 'vertical');
   await expect(helpPanel.locator('.help-nav-group-label')).toHaveText('进阶');
@@ -187,7 +187,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(gapPanel.locator('.help-title')).toHaveText(['空隙操作']);
   await expect(gapPanel.locator('.help-subgroup')).toHaveCount(4);
   await expect(gapPanel.locator('.help-subtitle')).toHaveText(['空隙状态', '移动与调整', '清理空隙', '批量操作']);
-  await expect(helpPanel.locator('.help-title')).toHaveText(['基础操作', '快捷操作', '波形区操作', '双语字幕', '波形外观调整', '微调字幕', '空隙操作', '批量操作', '播放与导航']);
+  await expect(helpPanel.locator('.help-title')).toHaveText(['基础操作', '快捷操作', '波形区操作', '双语字幕', '波形外观调整', '微调字幕', '空隙操作', '批量操作', '播放与导航', 'ASS 字幕样式', '双语字幕', '导出与烧录', '标记与区段']);
   await expect(helpPanel).toContainText('波形区字幕操作');
   await expect(helpPanel).toContainText('波形外观调整');
   await expect(helpPanel).toContainText('空隙操作');
@@ -212,7 +212,9 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(batchPanel).toBeVisible();
   await expect(batchPanel.locator('.help-title')).toHaveText(['批量操作']);
   await expect(batchPanel.locator('.help-subtitle')).toHaveText(['字幕列表', '处理范围']);
-  await expect(batchPanel).toContainText('批量替换');
+  await expect(batchPanel).toContainText('字幕处理');
+  await expect(batchPanel).toContainText('按步骤替换');
+  await expect(batchPanel).toContainText('预览最终结果');
   await expect(batchPanel).toContainText('纯文本编辑');
   await expect(batchPanel).toContainText('文本处理');
   await expect(batchPanel).toContainText('仅处理选中的字幕');

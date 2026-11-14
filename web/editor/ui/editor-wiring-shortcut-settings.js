@@ -49,32 +49,39 @@ export function initMaweShortcutSettingsWiring() {
     keySearch.textContent = translate('按键检索');
     render();
   }
+  function mayReload(value) {
+    const parts = value.split('+');
+    const key = parts.pop();
+    return key === 'F5' || (key === 'r' && parts.includes('Mod'));
+  }
   function change(id, value) {
     try {
       MaweShortcuts.setBinding(id, value);
       MaweSplitMode.refreshSplitKeyHelp();
       recording = null;
       render();
-      message('快捷键已保存');
+      const entry = MaweShortcuts.commands.find(item => item.id === id);
+      const reload = entry && MaweShortcuts.effectiveBindings(entry).some(binding => mayReload(binding.chord));
+      message(value ? (reload
+        ? '快捷键已保存。按键可能被系统或浏览器截获，也可能刷新页面；保存成功不代表一定能收到按键。'
+        : '快捷键已保存。按键可能被系统或浏览器截获；保存成功不代表一定能收到按键。') : '快捷键已保存');
     } catch (error) {
       const messageText = error.message || '';
-      const reservedPrefix = '快捷键派生组合与系统或浏览器保留功能冲突：';
-      const genericReservedPrefix = '快捷键组合与系统或浏览器保留功能冲突：';
+      const arrowPrefix = '方向键保留给原有方向键操作：';
+      const clipboardPrefix = '快捷键保留给复制、粘贴和剪切：';
       const duplicatePrefix = '拆分快捷键派生组合发生冲突，无法区分三种拆分操作：';
       const altDuplicatePrefix = '键盘快捷键的 Alt 派生组合冲突，无法保留原修饰键语义：';
-      const reservedDetail = messageText.startsWith(reservedPrefix) ? messageText.slice(reservedPrefix.length).split('；') : null;
-      const genericReservedDetail = messageText.startsWith(genericReservedPrefix) ? messageText.slice(genericReservedPrefix.length).split('；') : null;
-      message(messageText.startsWith('快捷键冲突：')
+      message(messageText.startsWith(arrowPrefix)
+        ? translate('方向键保留给原有方向键操作') + '：' + messageText.slice(arrowPrefix.length)
+        : messageText.startsWith(clipboardPrefix)
+        ? translate('快捷键保留给复制、粘贴和剪切') + '：' + messageText.slice(clipboardPrefix.length)
+        : messageText.startsWith('快捷键冲突：')
         ? translate('快捷键冲突：') + translate(messageText.slice(6))
-        : reservedDetail
-          ? translate(reservedPrefix) + reservedDetail[0] + ' — ' + translate(reservedDetail.slice(1).join('；'))
-          : genericReservedDetail
-            ? translate(genericReservedPrefix) + genericReservedDetail[0] + ' — ' + translate(genericReservedDetail.slice(1).join('；'))
-          : messageText.startsWith(duplicatePrefix)
+        : messageText.startsWith(duplicatePrefix)
             ? translate(duplicatePrefix) + messageText.slice(duplicatePrefix.length)
           : messageText.startsWith(altDuplicatePrefix)
             ? translate(altDuplicatePrefix) + messageText.slice(altDuplicatePrefix.length)
-          : translate(messageText === '该按键不可用或由浏览器 / 系统保留'
+          : translate(messageText === '该按键不可用'
             ? messageText : '无法保存快捷键，请检查浏览器存储权限'), true);
     }
   }
@@ -131,6 +138,12 @@ export function initMaweShortcutSettingsWiring() {
           const badge = document.createElement('span');
           badge.className = 'shortcut-settings-customized';
           badge.textContent = translate('已自定义');
+          label.append(badge);
+        }
+        if (MaweShortcuts.effectiveBindings(entry).some(binding => mayReload(binding.chord))) {
+          const badge = document.createElement('span');
+          badge.className = 'shortcut-settings-customized';
+          badge.textContent = translate('可能刷新页面');
           label.append(badge);
         }
         const controls = document.createElement('div');

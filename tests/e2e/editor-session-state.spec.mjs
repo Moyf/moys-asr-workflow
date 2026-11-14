@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
-  generateWav, makeTempDir, startServer } from './helpers.mjs';
+  generateWav, getMainTrack, makeTempDir, startServer } from './helpers.mjs';
 
 let tempDir, server, projectPath;
 test.beforeAll(async () => {
@@ -12,12 +12,12 @@ test.beforeAll(async () => {
   generateWav(mediaPath, 1);
   generateProjectJson(projectPath);
   const project = JSON.parse(readFileSync(projectPath, 'utf8'));
-  project.preserve_punctuation = true;
-  project.segments.forEach((segment, index) => { segment.id = `s${index}`; segment._dirty = true; });
-  project.multi_subtitle = { enabled: true, tracks: [{ id: 'e', name: 'extension', _dirty: true,
-    segments: [{ id: 'e1', start: 0, end: 1000, text: 'Extension', items: [], _dirty: true }] }] };
-  project.overlay_track = { enabled: true, _dirty: true,
-    segments: [{ id: 'o1', start: 0, end: 1000, text: 'Overlay', items: [], _dirty: true }] };
+  getMainTrack(project).segments.forEach((segment, index) => { segment.id = `s${index}`; segment._dirty = true; });
+  project.tracks.push({ id: 'e', role: 'secondary', name: 'extension', enabled: true, _dirty: true,
+    segments: [{ id: 'e1', start: 0, end: 1000, text: 'Extension', items: [], _dirty: true }] });
+  project.tracks.push({ id: 'o', role: 'overlay', name: 'overlay', enabled: true, _dirty: true,
+    segments: [{ id: 'o1', start: 0, end: 1000, text: 'Overlay', items: [], _dirty: true }] });
+  project.bilingual.active_track_id = 'e';
   writeFileSync(projectPath, JSON.stringify(project));
   server = await startServer(projectPath, mediaPath, await findFreePort());
 });
@@ -67,12 +67,12 @@ test('legacy flags vanish; real panel edit saves without clearing highlight, the
   await page.locator('.cue[data-idx="0"]').click();
   await page.locator('#cue-panel-text').fill('Session edited');
   expect(await dirty(page)).toBe(true);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0]._dirty)).toBe(true);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty)).toBe(true);
   await page.keyboard.press('Control+s');
   await expect.poll(() => dirty(page)).toBe(false);
   await expect(page.locator('.cue[data-idx="0"] .multi-cue-column.main')).toHaveClass(/dirty/);
   const saved = JSON.parse(readFileSync(projectPath, 'utf8'));
-  expect(saved.segments[0].text).toBe('Session edited');
+  expect(getMainTrack(saved).segments[0].text).toBe('Session edited');
   expect(JSON.stringify(saved)).not.toContain('"_dirty"');
   await page.screenshot({ path: test.info().outputPath('saved-session-highlight.png') });
   await page.reload();
@@ -92,18 +92,18 @@ test('save in flight acknowledges only sent bytes; undo reaches checkpoint and f
     await route.continue();
   });
   await page.evaluate(() => {
-    MaweCommands.run('first edit', () => { MaweBoot.DATA.segments[0].text = 'First'; MaweBoot.DATA.segments[0].items = []; MaweBoot.DATA.segments[0]._dirty = true; });
+    MaweCommands.run('first edit', () => { AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = 'First'; AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items = []; AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty = true; });
     window.sessionSave = MaweProjectSave.saveCurrentProject();
   });
   await received;
-  await page.evaluate(() => MaweCommands.run('during save', () => { MaweBoot.DATA.segments[1].text = 'Later'; MaweBoot.DATA.segments[1].items = []; MaweBoot.DATA.segments[1]._dirty = true; }));
+  await page.evaluate(() => MaweCommands.run('during save', () => { AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].text = 'Later'; AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1].items = []; AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1]._dirty = true; }));
   release();
   expect(await page.evaluate(() => window.sessionSave)).toBe(true);
   expect(await dirty(page)).toBe(true);
-  expect(JSON.parse(readFileSync(projectPath, 'utf8')).segments[1].text).not.toBe('Later');
+  expect(getMainTrack(JSON.parse(readFileSync(projectPath, 'utf8'))).segments[1].text).not.toBe('Later');
   await page.evaluate(() => MaweHistory.performUndo());
   expect(await dirty(page)).toBe(false);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[1]._dirty)).toBe(true);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1]._dirty)).toBe(true);
   await page.unroute('**/api/project');
   await page.route('**/api/project', route => route.fulfill({ status: 500, json: { ok: false, error: 'test write failure' } }));
   await page.evaluate(() => MaweHistory.performRedo());
@@ -123,13 +123,13 @@ test('late save response cannot rename or clear a newly loaded project', async (
   await received;
   await page.evaluate(() => {
     MaweProjectLoad.applyCanonicalProject({ segments: [{ id: 'new', start: 0, end: 1000, text: 'new', items: [], _dirty: true }] }, 'new.mosp');
-    MaweBoot.DATA.segments[0].text = 'new edit';
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = 'new edit';
   });
   release();
   expect(await page.evaluate(() => window.sessionSave)).toBe(false);
   expect(await page.evaluate(() => MaweBoot.PROJECT_NAME)).toBe('new');
   expect(await dirty(page)).toBe(true);
-  expect(await page.evaluate(() => MaweBoot.DATA.segments[0]._dirty)).toBeUndefined();
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty)).toBeUndefined();
 });
 
 test('pure snapshot covers non-subtitle persistence, preserves pos and never repairs invalid timing', async ({ page }) => {
@@ -142,14 +142,14 @@ test('pure snapshot covers non-subtitle persistence, preserves pos and never rep
     check(() => { MaweBoot.DATA.timebase.fps = 25; });
     check(() => { MaweBoot.DATA.media = 'another.wav'; });
     check(() => { MaweBoot.DATA.markers = [{ id: 'm1', start: 200, end: 200, name: 'marker', color: '#ffffff' }]; });
-    check(() => { MaweBoot.DATA.segments[0].assOverride = { pos: { x: -12, y: 80 } }; });
+    check(() => { AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride = { pos: { x: -12, y: 80 } }; });
     MaweState.establishProjectCheckpoint();
-    MaweBoot.DATA.segments[0].end = -1;
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end = -1;
     const before = JSON.stringify(MaweBoot.DATA);
     const fingerprint = MaweState.projectFingerprint();
     MaweServerSave.hasUnsavedProjectChanges();
     return { changes, unchanged: before === JSON.stringify(MaweBoot.DATA),
-      pos: JSON.parse(fingerprint).segments[0].assOverride.pos };
+      pos: JSON.parse(fingerprint).tracks.find(track => track.role === 'main').segments[0].assOverride.pos };
   });
   expect(result.changes).toEqual([true, true, true, true]);
   expect(result.unchanged).toBe(true);
@@ -159,17 +159,23 @@ test('pure snapshot covers non-subtitle persistence, preserves pos and never rep
 
 test('browser import distinguishes ignored legacy flags from actual timing repairs', async ({ page }) => {
   const result = await page.evaluate(async () => {
-    const make = end => new File([JSON.stringify({ segments: [
-      { id: 'imported', start: 100, end, text: 'Imported', items: [], _dirty: true },
-    ] })], 'imported.mosp', { type: 'application/json' });
+    const make = end => {
+      const project = AsrEditorUtils.importProject({ segments: [
+        { id: 'imported', start: 100, end: 1000, text: 'Imported', items: [] },
+      ] }).project;
+      const segment = AsrEditorUtils.getMainTrack(project).segments[0];
+      segment.end = end;
+      segment._dirty = true;
+      return new File([JSON.stringify(project)], 'imported.mosp', { type: 'application/json' });
+    };
     const loaded = await MaweMultiImport.openProjectFile(make(1000));
     const clean = !MaweServerSave.hasUnsavedProjectChanges();
-    const unhighlighted = !MaweBoot.DATA.segments[0]._dirty;
+    const unhighlighted = !AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]._dirty;
     const repairedLoaded = await MaweMultiImport.openProjectFile(make(100));
     return { loaded, clean, unhighlighted, repairedLoaded,
-      dirty: MaweServerSave.hasUnsavedProjectChanges(), end: MaweBoot.DATA.segments[0].end,
+      dirty: MaweServerSave.hasUnsavedProjectChanges(), end: AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].end,
       report: MaweJsonRepair.lastImportReport };
   });
   expect(result).toMatchObject({ loaded: true, clean: true, unhighlighted: true, repairedLoaded: true, dirty: true, end: 200 });
-  expect(result.report).toContainEqual({ path: '$.segments[0].end', kind: 'replace', before: 100, after: 200 });
+  expect(result.report).toContainEqual({ path: '$.tracks[0].segments[0].end', kind: 'replace', before: 100, after: 200 });
 });

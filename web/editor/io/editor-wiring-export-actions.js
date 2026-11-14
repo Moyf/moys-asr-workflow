@@ -141,7 +141,7 @@ MaweDom.fcp7ExportModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.fcp7ExportModal) MaweDynamicExports.closeFcp7ExportModal();
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || !MaweDom.fcp7ExportModal.classList.contains('show')) return;
+  if (event.key !== 'Escape' || MaweShortcuts.isNativeDialogOpen() || !MaweDom.fcp7ExportModal.classList.contains('show')) return;
   event.preventDefault();
   event.stopPropagation();
   MaweDynamicExports.closeFcp7ExportModal();
@@ -213,7 +213,7 @@ MaweDom.lottieExportModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.lottieExportModal) MaweDynamicExports.closeLottieExportModal();
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || !MaweDom.lottieExportModal?.classList.contains('show')) return;
+  if (event.key !== 'Escape' || MaweShortcuts.isNativeDialogOpen() || !MaweDom.lottieExportModal?.classList.contains('show')) return;
   event.preventDefault();
   event.stopPropagation();
   MaweDynamicExports.closeLottieExportModal();
@@ -241,7 +241,7 @@ MaweDom.ografExportModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.ografExportModal) MaweDynamicExports.closeOgrafExportModal();
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || !MaweDom.ografExportModal?.classList.contains('show')) return;
+  if (event.key !== 'Escape' || MaweShortcuts.isNativeDialogOpen() || !MaweDom.ografExportModal?.classList.contains('show')) return;
   event.preventDefault();
   event.stopPropagation();
   MaweDynamicExports.closeOgrafExportModal();
@@ -333,11 +333,29 @@ MaweDom.saveProjectAsButton?.addEventListener('click', () => MaweProjectSave.sav
 // Project-level save shortcuts intentionally override the browser page-save
 // command. finishEdit() inside saveProjectToServer commits an active text edit.
 document.addEventListener('keydown', (event) => {
-  const modal = document.querySelector('.modal-mask.show, #ctxmenu.show');
+  if (!MaweShortcuts.isNativeDialogOpen() && MaweDom.timedTextEditModal?.classList.contains('show')) {
+    const physical = MaweShortcuts.chord(event);
+    // Like inline text editing, this editor retains physical Mod+S. It also
+    // accepts configured chords under the existing text-input modifier rules.
+    const command = MaweShortcuts.commands.find(entry => ['save', 'save-as'].includes(entry.id)
+      && MaweShortcuts.effectiveBindings(entry).some(binding => binding.chord === physical));
+    const textSave = physical === 'Mod+s' || physical === 'Mod+Shift+s';
+    const configuredSave = command && (!MaweKeyboardTargets.isTextEditingTarget(event) || event.ctrlKey || event.metaKey);
+    if (textSave || configuredSave) {
+      event.preventDefault();
+      if (event.repeat || event.isComposing || event.keyCode === 229) return;
+      void MaweProjectSave.saveTimedTextEditFromShortcut({
+        saveAs: textSave ? event.shiftKey : command.id === 'save-as',
+      });
+      return;
+    }
+  }
+  const modal = MaweShortcuts.isModalOpen();
   const physical = MaweShortcuts.chord(event);
-  if (modal && MaweShortcuts.isOverriddenSaveChord(physical)) {
-    // Keep stale project-save chords from firing through a modal. Do not stop
-    // propagation: the modal may still own the same physical key locally.
+  if (modal && (physical === 'Mod+s' || physical === 'Mod+Shift+s'
+      || MaweShortcuts.isOverriddenSaveChord(physical))) {
+    // Block browser page saving and stale project-save chords through a modal.
+    // The modal may still own the same physical key, so keep propagation.
     event.preventDefault();
     return;
   }

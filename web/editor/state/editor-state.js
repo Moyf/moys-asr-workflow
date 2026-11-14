@@ -210,6 +210,7 @@ export function createEditorState(project) {
     const fields = { ...value };
     for (const key of ['waveform', 'spectral', 'waveform_reapeaks', 'loudness']) delete fields[key];
     const out = JSON.parse(JSON.stringify(fields));
+    if (out.timed_text_edit_view === 'rows') delete out.timed_text_edit_view;
     delete out._dirty;
     const clear = track => {
       if (!track) return;

@@ -45,9 +45,9 @@ async function loadAttachedCues(page, autoSnapAdjacentCues, adjacentBoundaryMode
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(
       0,
       AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
-      { start: 5000, end: 10000, text: 'First', items: [{ start: 5000, end: 10000, text: 'First' }] },
-      { start: 10000, end: 18000, text: 'Second', items: [{ start: 10000, end: 18000, text: 'Second' }] },
-      { start: 25000, end: 30000, text: 'Third', items: [{ start: 25000, end: 30000, text: 'Third' }] },
+      { id: 'timing-first', start: 5000, end: 10000, text: 'First', items: [{ start: 5000, end: 10000, text: 'First' }] },
+      { id: 'timing-second', start: 10000, end: 18000, text: 'Second', items: [{ start: 10000, end: 18000, text: 'Second' }] },
+      { id: 'timing-third', start: 25000, end: 30000, text: 'Third', items: [{ start: 25000, end: 30000, text: 'Third' }] },
     );
     MaweCuePanel.renderAll();
   });
@@ -213,13 +213,13 @@ test('word-selection capture uses projected modifiers to guard remapped adjacent
   });
 
   expect(await page.evaluate(() => window.__mergePrevMapping)).toEqual({ key: 'a', ctrl: true, meta: false, shift: true });
-  expect(await page.evaluate(() => window.__mergePrevContext)).toEqual({ target: 1, selected: [1], words: 1, editing: null, active: 'BODY', steps: [['enabled', []], ['word', [1]], ['cue', [1]], ['binding', [1]] ] });
+  expect(await page.evaluate(() => window.__mergePrevContext)).toEqual({ target: 1, selected: [1], words: 1, editing: null, active: 'BODY', steps: [['enabled', [1]], ['word', [1]], ['cue', [1]], ['binding', [1]] ] });
   await page.keyboard.press('e');
   expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(segment => segment.text)))
     .toEqual(['First', 'Second', 'Third']);
 });
 
-test('physical Ctrl+C and Meta+C preserve native copy when merge is remapped', async ({ page }) => {
+test('physical Ctrl+C and Meta+C preserve word-selection copy when merge uses F2', async ({ page }) => {
   await loadAttachedCues(page);
   await page.locator('.cue[data-idx="0"]').click();
   await page.evaluate(() => {
@@ -230,12 +230,11 @@ test('physical Ctrl+C and Meta+C preserve native copy when merge is remapped', a
     MaweWordTiming.select(0, 0);
     MaweSelection.selectOnly(0);
     MaweSelection.addToSelection(1);
-    MaweShortcuts.setBinding('merge', 'Mod+c');
+    MaweShortcuts.setBinding('merge', 'F2');
     window.__copyKeyResults = [];
     window.__nativeCopyEvents = 0;
-    document.querySelector('.cue[data-idx="0"] .text')?.scrollIntoView({ block: 'center' });
     const range = document.createRange();
-    range.selectNodeContents(document.querySelector('.cue[data-idx="0"] .text'));
+    range.selectNodeContents(document.querySelector('#media-name'));
     window.getSelection().removeAllRanges();
     window.getSelection().addRange(range);
     document.addEventListener('copy', () => { window.__nativeCopyEvents += 1; });
@@ -245,13 +244,17 @@ test('physical Ctrl+C and Meta+C preserve native copy when merge is remapped', a
     }, true);
   });
 
-  await page.keyboard.press('Control+c');
+  expect(await page.evaluate(() => MaweShortcuts.bindings(MaweShortcuts.commands.find(item => item.id === 'merge')))).toEqual(['F2']);
+  expect(await page.evaluate(() => window.getSelection().toString().length)).toBeGreaterThan(0);
+  const nativeCopyModifier = await page.evaluate(() => /Mac|iPhone|iPad/.test(navigator.platform) ? 'Meta' : 'Control');
+  const otherCopyModifier = nativeCopyModifier === 'Meta' ? 'Control' : 'Meta';
+  await page.keyboard.press(`${nativeCopyModifier}+c`);
   await expect.poll(() => page.evaluate(() => window.__copyKeyResults.length)).toBe(1);
-  await page.keyboard.press('Meta+c');
+  await expect.poll(() => page.evaluate(() => window.__nativeCopyEvents)).toBe(1);
+  await page.keyboard.press(`${otherCopyModifier}+c`);
   await expect.poll(() => page.evaluate(() => window.__copyKeyResults.length)).toBe(2);
   expect(await page.evaluate(() => window.__copyKeyResults)).toEqual([{ prevented: false }, { prevented: false }]);
-  // Chromium on this Linux runner dispatches a native copy event for Ctrl+C;
-  // Meta+C's physical default is platform-specific and only key delivery is asserted here.
+  // Only the current platform's native modifier is expected to dispatch copy.
   expect(await page.evaluate(() => window.__nativeCopyEvents)).toBe(1);
   expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(3);
 });
@@ -486,7 +489,8 @@ test('selected arrow keys move cues, adjust boundaries, and honor the configured
 test('advanced time offset moves selected cues atomically and rejects bounds or collisions', async ({ page }) => {
   await loadAttachedCues(page);
   await page.locator('.cue[data-idx="0"]').click();
-  await page.locator('.cue[data-idx="1"]').click({ modifiers: ['Control'] });
+  const selectionModifier = await page.evaluate(() => /Mac/.test(navigator.platform) ? 'Meta' : 'Control');
+  await page.locator('.cue[data-idx="1"]').click({ modifiers: [selectionModifier] });
   await page.locator('.cue[data-idx="1"]').click({ button: 'right' });
   await page.locator('.word-timing-advanced > .ctxmenu-submenu-toggle').click();
   await page.getByRole('button', { name: '调整时间…' }).click();
@@ -801,8 +805,21 @@ for (const fps of [30, 29.97]) {
         expect(after.undo).toBe(1);
         await page.evaluate(() => MaweHistory.performUndo());
         const restored = await readOffsetProject(page);
-        expect(restored.segments).toEqual(before.segments);
-        expect(restored.multi).toEqual(before.multi);
+        // Undo retains session highlights; compare the complete project data
+        // separately from the deliberate, non-persistent highlight flags.
+        const withoutHighlights = value => {
+          const copy = structuredClone(value);
+          const tracks = Array.isArray(copy) ? [{ segments: copy }] : copy.tracks;
+          for (const track of tracks) {
+            delete track._dirty;
+            for (const segment of track.segments) delete segment._dirty;
+          }
+          return copy;
+        };
+        expect(withoutHighlights(restored.segments)).toEqual(withoutHighlights(before.segments));
+        expect(withoutHighlights(restored.multi)).toEqual(withoutHighlights(before.multi));
+        expect(restored.segments[target]._dirty).toBe(true);
+        if (bound) expect(restored.multi.tracks[0].segments[follower]._dirty).toBe(true);
       });
     }
   }
@@ -1224,11 +1241,11 @@ test('selected cue group reflows fragments into the next waveform row while drag
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.splice(
       0,
       AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length,
-      { start: 21000, end: 25000, text: 'A', items: [] },
-      { start: 25000, end: 28000, text: 'B', items: [] },
-      { start: 28000, end: 29000, text: 'C', items: [] },
-      { start: 29000, end: 33000, text: 'D', items: [] },
-      { start: 33000, end: 35000, text: 'E', items: [] },
+      { id: 'reflow-0', start: 21000, end: 25000, text: 'A', items: [] },
+      { id: 'reflow-1', start: 25000, end: 28000, text: 'B', items: [] },
+      { id: 'reflow-2', start: 28000, end: 29000, text: 'C', items: [] },
+      { id: 'reflow-3', start: 29000, end: 33000, text: 'D', items: [] },
+      { id: 'reflow-4', start: 33000, end: 35000, text: 'E', items: [] },
     );
     MaweCuePanel.renderAll();
     MaweSelection.selectOnly(2);
@@ -1665,4 +1682,30 @@ test('Z/X place selected or pointer-hit subtitle boundaries at the waveform poin
     { start: 10000, end: 18000 },
     { start: 25000, end: 30000 },
   ]);
+});
+
+test('word selection keeps physical clipboard keys safe when delete uses F2', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    MaweWordTiming.setEnabled(true);
+    MaweWordTiming.select(0, 0);
+    MaweSelection.selectOnly(0);
+    MaweShortcuts.setBinding('delete', 'F2');
+    window.getSelection().removeAllRanges();
+    document.activeElement?.blur();
+    window.__copyDeleteKeys = [];
+    window.addEventListener('keydown', event => {
+      if (['c', 'v', 'x'].includes(event.key.toLowerCase()) && (event.ctrlKey || event.metaKey)) {
+        setTimeout(() => window.__copyDeleteKeys.push(event.defaultPrevented), 0);
+      }
+    }, true);
+  });
+  const before = await page.evaluate(() => structuredClone(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments));
+  expect(await page.evaluate(() => MaweWordTiming.getSelection(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]).size)).toBe(1);
+  for (const modifier of ['Control', 'Meta']) {
+    for (const key of ['c', 'v', 'x']) await page.keyboard.press(`${modifier}+${key}`);
+  }
+  await expect.poll(() => page.evaluate(() => window.__copyDeleteKeys)).toEqual([false, false, false, false, false, false]);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)).toEqual(before);
+  expect(await page.evaluate(() => MaweWordTiming.getSelection(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0]).size)).toBe(1);
 });

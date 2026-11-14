@@ -218,10 +218,12 @@ shellTest('English locale covers the editor shell and recent-project setting sta
   // Sticky 工具栏在部分 Chromium 版本中会被 actionability 检测误判为拦截层；
   // DOM 命中点仍在字幕行，强制派发右键只验证菜单行为。
   await page.locator('.cue').first().click({ button: 'right', force: true });
+  await expect(page.locator('#ctxmenu')).toHaveClass(/show/);
   expect(await page.locator('#ctxmenu').innerText()).not.toMatch(/[\u3400-\u9fff]/u);
   await page.keyboard.press('Escape');
+  await expect(page.locator('#ctxmenu')).not.toHaveClass(/show/);
+  await expect(page.locator('#editor-settings-panel')).toHaveClass(/show/);
 
-  await page.locator('#editor-settings-toggle').click();
   await openSettingsPage(page, 'interface');
   await page.locator('#language-toggle').click();
   await expect(page.locator('#save-project')).toHaveText('保存工程');

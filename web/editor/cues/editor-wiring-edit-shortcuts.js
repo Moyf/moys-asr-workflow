@@ -56,6 +56,8 @@ window.addEventListener('blur', () => {
 document.addEventListener('keydown', (e) => {
   e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'j' && e.key !== 'J' && e.key !== 'k' && e.key !== 'K' && e.key !== 'l' && e.key !== 'L') return;
+  // J/K/L also accepts Shift; the shortcut registry preserves this variant.
+  if (MaweShortcuts.isModalOpen()) return;
   if (MaweInlineEdit.editingState) return;
   if (MaweDom.textProcessModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
@@ -464,6 +466,8 @@ document.addEventListener('keydown', (e) => {
   // Escape：上下文菜单/弹窗/编辑态各自先处理；只有波形工具在 razor 时才切回。
   if (e.key === 'Escape') {
     if (e.defaultPrevented) return;
+    if (MaweShortcuts.isNativeDialogOpen()) return;
+    if (MaweShortcuts.isModalOpen()) return;
     if (MaweInlineEdit.editingState) return;
     if (MaweDom.ctxmenu.classList.contains('show')) return;
     if (MaweDom.textProcessModal.classList.contains('show')) return;

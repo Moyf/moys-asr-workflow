@@ -1201,6 +1201,90 @@
 
 
 
+
+  function applyTimedTextEdit({ allowUnchanged = false } = {}) {
+    try {
+      const draft = MaweDom.timedTextEditDraft;
+      if (!draft) return false;
+      MaweTimedTextEdit.syncTimedTextEditDraftFromDom();
+      MaweTimedTextEdit.flushTimedTextEditReport();
+      if (!draft.report?.valid) {
+        MaweHint.flashHint('无法应用文本修改，请检查编辑报告；草稿已保留', 'warning');
+        return false;
+      }
+      const targetSegments = MaweTimedTextEdit.timedTextEditSegments(draft.kind);
+      const snapshotSegments = Array.isArray(draft.allSourceSegments)
+        ? draft.allSourceSegments : draft.sourceSegments;
+      // The edit is derived from the entire captured subtitle, including words
+      // and styling. Never overwrite newer metadata with that older snapshot.
+      const snapshotJson = segments => JSON.stringify(segments, (key, value) => key === '_dirty' ? undefined : value);
+      const currentMatchesSnapshot = snapshotJson(targetSegments) === snapshotJson(snapshotSegments);
+      if (!currentMatchesSnapshot) {
+        MaweHint.flashHint('字幕在编辑窗口打开后发生了变化，草稿仍保留；请先复制需要保留的草稿，再关闭窗口并重新打开', 'warning');
+        return false;
+      }
+      if (!draft.report.stats.changedSegments) {
+        if (!allowUnchanged) MaweHint.flashHint('当前没有文本修改，未作改动', 'invalid');
+        return 'unchanged';
+      }
+      const effectiveTexts = MaweTimedTextEdit.timedTextEditEffectiveTexts();
+      const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(
+        draft.sourceSegments,
+        effectiveTexts,
+        { reservedSegments: [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA)], rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule },
+      );
+      if (!nextSegments) {
+        MaweHint.flashHint('无法应用文本修改：字幕行结构发生了变化', 'warning');
+        return false;
+      }
+      let refreshFailed = false;
+      MaweCommands.run('纯文本编辑', (command) => {
+        const dirtyFlags = window.AsrEditorUtils.timedTextEditDirtyFlags(
+          draft.sourceSegments,
+          nextSegments,
+          draft.report,
+        );
+        nextSegments.forEach((segment, index) => {
+          if (dirtyFlags[index]) segment._dirty = true;
+          else delete segment._dirty;
+        });
+        const removedCount = MaweTimedTextEdit.applyTimedTextEditSegments(
+          draft.kind,
+          draft.sourceSegments,
+          targetSegments,
+          nextSegments,
+          draft.report,
+          effectiveTexts,
+          draft.sourceSegmentIndexes,
+        );
+        if (draft.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
+        MaweMultiSubtitleCore.syncBindingOffsets();
+        // 纯文本编辑应用后暂不主动触发自动保存，让 dirty 标记短暂保留，
+        // 便于用户确认哪些字幕确实发生了变化；已有的自动保存计时器仍照常执行。
+        const changedCount = draft.report.stats.changedSegments;
+        const lostCount = draft.report.stats.lostMappedCues;
+        const estimatedCount = draft.report.stats.estimatedTimingCues || 0;
+        try {
+          command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
+          MaweHistory.updateUndoRedoButtons();
+          MaweHint.flashHint(
+            `已应用纯文本编辑：${changedCount} 条字幕${removedCount ? `，移除 ${removedCount} 条空字幕行` : ''}${lostCount ? `，${lostCount} 条字词时间码已清除` : ''}${estimatedCount ? `，${estimatedCount} 条时间范围为自动估算` : ''}`,
+            'success',
+          );
+        } catch (error) {
+          if (!command.committed) throw error;
+          refreshFailed = true;
+        }
+      });
+      MaweTimedTextEdit.closeTimedTextEdit();
+      if (refreshFailed) MaweHint.flashHint('文本修改已应用，但界面刷新失败；请保存后重新打开工程', 'warning');
+      return 'applied';
+    } catch (_) {
+      MaweHint.flashHint('无法应用文本修改，草稿已保留，工程未保存', 'warning');
+      return false;
+    }
+  }
+
   function requestCloseTimedTextEdit() {
     if (timedTextEditHasUnappliedChanges()
         && !window.confirm('当前有未应用的文本修改，确定关闭编辑窗口吗？')) return false;
@@ -1409,6 +1493,7 @@
     timedTextEditHasUnappliedChanges,
     mergeTimedTextEditSegmentsWithHidden,
     applyTimedTextEditSegments,
+    applyTimedTextEdit,
     requestCloseTimedTextEdit,
     openTimedTextEdit
   });

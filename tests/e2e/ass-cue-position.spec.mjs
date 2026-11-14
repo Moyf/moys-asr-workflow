@@ -911,3 +911,44 @@ test('secondary ASS positioning supports drag, scale, undo and reset above autom
     { id: 'secondary-cue', override: { pos: dragged.extension.pos, scale: 1.25 } },
   ]);
 });
+
+
+test('local arrow controls move without switching the background track', async ({ page }) => {
+  await page.evaluate(() => {
+    const secondary = AsrEditorUtils.ensureExtensionTrack(MaweBoot.DATA);
+    Object.assign(secondary, { enabled: true, segments: [{ id: 'secondary-arrow', start: 0, end: 2000, text: 'SECONDARY' }] });
+    MaweBoot.DATA.bilingual.active_track_id = secondary.id;
+    MaweSelection.selectOnly(0);
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  const box = page.locator('.ass-cue-drag-target[data-cue-id="main"]');
+  const rect = await box.boundingBox();
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  await page.mouse.down(); await page.mouse.move(rect.x + rect.width / 2 + 20, rect.y + rect.height / 2 - 10); await page.mouse.up();
+  await box.focus();
+  const pos = await page.evaluate(() => structuredClone(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride.pos));
+  await page.keyboard.press('ArrowDown');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].assOverride.pos.y)).toBe(pos.y + 1);
+  expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.kind)).toBe('main');
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MaweSelection.selectOnlyExtension(0, MaweMultiSubtitleCore.getActiveExtensionTrack());
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  const overlay = page.locator('#overlay');
+  await expect(overlay).toBeVisible();
+  await overlay.focus();
+  const y = await page.evaluate(() => MaweBoot.DATA.preview.subtitle.y);
+  await page.keyboard.press('ArrowUp');
+  expect(await page.evaluate(() => MaweBoot.DATA.preview.subtitle.y)).toBeCloseTo(y - .01, 6);
+  expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.kind)).toBe('extension');
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-shortcuts').focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#editor-settings-tab-split-merge')).toBeFocused();
+  expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.kind)).toBe('extension');
+  await page.locator('#editor-settings-close').click();
+  await page.evaluate(() => { document.body.tabIndex = -1; document.body.focus(); });
+  await page.keyboard.press('ArrowUp');
+  expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.kind)).toBe('main');
+});

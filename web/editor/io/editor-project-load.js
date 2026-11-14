@@ -54,13 +54,15 @@ export function initMaweProjectLoad() {
 
 
   function buildBlankProject() {
-    return {
+    // Create all canonical defaults up front so loading a new blank project
+    // does not mistake its own missing defaults for an imported repair.
+    return window.AsrEditorUtils.importProject({
       schema: window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA,
       media: '', timebase: { unit: 'milliseconds', fps: 30 },
       tracks: [{ id: 'main', role: 'main', name: '主字幕', enabled: true, segments: [] }],
       bilingual: { display_mode: 'both' }, bindings: [],
       subtitle_groups: { next_id: 1, color: [], sticker: [] },
-    };
+    }).project;
   }
 
 

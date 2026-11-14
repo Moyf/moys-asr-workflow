@@ -114,12 +114,8 @@ export function initMaweShortcuts() {
   }
 
   function validChord(value) {
-    if (typeof value !== 'string') return false;
-    return /^(Mod\+)?(Alt\+)?(Shift\+)?([a-z0-9]|Space|Enter|Delete|Backspace|ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown|F[1-9]|F1[0-2])$/.test(value)
-      && !/^(Mod\+)(Alt\+)?(Shift\+)?(h|l|t|w|r|n|p|q|F[1-9]|F1[0-2])$/.test(value)
-      && value !== 'Mod+c'
-      && !/^Alt\+(Shift\+)?(Home|F4)$/.test(value)
-      && value !== 'F5' && value !== 'F11' && value !== 'F12';
+    return typeof value === 'string'
+      && /^(Mod\+)?(Alt\+)?(Shift\+)?([a-z0-9]|Space|Enter|Delete|Backspace|ArrowLeft|ArrowRight|ArrowUp|ArrowDown|Home|End|PageUp|PageDown|F[1-9]|F1[0-2])$/.test(value);
   }
 
   function addModifiers(value, additions) {
@@ -129,22 +125,8 @@ export function initMaweShortcuts() {
     return ['Mod', 'Alt', 'Shift'].filter(modifier => modifiers.has(modifier)).concat(key).join('+');
   }
 
-  function reservedReason(value) {
-    if (value === 'Mod+c') return '系统复制快捷键必须保留';
-    if (/^Mod\+(?:Alt\+)?Shift\+q$/.test(value)) {
-      return 'macOS：Cmd+Shift+Q 会注销用户；Windows/Linux Chromium：Ctrl+Shift+Q 用于退出确认；ChromeOS：Ctrl+Shift+Q 两次会注销会话';
-    }
-    if (value === 'Mod+h') {
-      return 'macOS：Cmd+H 会隐藏当前应用；Windows/Linux Chromium：Ctrl+H 会打开浏览器历史记录';
-    }
-    return '此组合由浏览器或操作系统保留';
-  }
-
-  function reservedChordError(value, isSplitVariant = false) {
-    const prefix = isSplitVariant
-      ? '快捷键派生组合与系统或浏览器保留功能冲突：'
-      : '快捷键组合与系统或浏览器保留功能冲突：';
-    return new Error(prefix + displayChord(value) + '；' + reservedReason(value));
+  function invalidChordError() {
+    return new Error('该按键不可用');
   }
 
   let overrides = {};
@@ -155,6 +137,9 @@ export function initMaweShortcuts() {
     if (entry.id !== 'split') {
       const preserveAltSemantics = /^(?:nav|extend)-[adws]$/.test(entry.id)
         || /^snap-Arrow(?:Left|Right)$/.test(entry.id);
+      // These handlers intentionally accept Shift without changing the action.
+      const preserveShiftSemantics = ['play', 'reverse', 'stop', 'forward', 'delete'].includes(entry.id);
+      const historyCommand = entry.id === 'undo' || entry.id === 'redo';
       const result = [];
       const mapped = new Map();
       for (const value of active) {
@@ -164,9 +149,30 @@ export function initMaweShortcuts() {
           addModifiers(value, ['Alt']),
           addModifiers(target, ['Alt']),
         ]);
+        if (preserveShiftSemantics && !value.split('+').includes('Shift')) variants.push([
+          addModifiers(value, ['Shift']),
+          addModifiers(target, ['Shift']),
+        ]);
+        if (historyCommand) {
+          // History accepts Alt for undo/redo and Shift for redo, including
+          // Ctrl/Cmd+Shift+Y. System and browser keys may still intercept events.
+          const modifiers = value.split('+');
+          const extraVariants = [['Alt']];
+          if (entry.id === 'redo') extraVariants.push(['Shift'], ['Alt', 'Shift']);
+          for (const extra of extraVariants) {
+            if (extra.every(modifier => modifiers.includes(modifier))) continue;
+            const derived = addModifiers(value, extra);
+            if (validChord(derived)) variants.push([derived, addModifiers(target, extra)]);
+          }
+        }
         for (const [chordValue, targetValue] of variants) {
           if (mapped.has(chordValue)) {
-            if (mapped.get(chordValue) !== targetValue) {
+            const previousTarget = mapped.get(chordValue);
+            const sameShiftAction = preserveShiftSemantics
+              && addModifiers(previousTarget, ['Shift']) === addModifiers(targetValue, ['Shift']);
+            const normalizeHistoryTarget = chordValue => chordValue.replace(/(?:Alt|Shift)\+/g, '');
+            const sameHistoryAction = historyCommand && normalizeHistoryTarget(previousTarget) === normalizeHistoryTarget(targetValue);
+            if (previousTarget !== targetValue && !sameShiftAction && !sameHistoryAction) {
               throw new Error('键盘快捷键的 Alt 派生组合冲突，无法保留原修饰键语义：' + displayChord(chordValue));
             }
             continue;
@@ -186,7 +192,7 @@ export function initMaweShortcuts() {
         [addModifiers(value, ['Mod', 'Shift']), 'Mod+Shift+b'],
       ];
       for (const [chordValue, target] of variants) {
-        if (!validChord(chordValue)) throw reservedChordError(chordValue, true);
+        if (!validChord(chordValue)) throw invalidChordError();
         if (mapped.has(chordValue)) {
           if (mapped.get(chordValue).target !== target) {
             throw new Error('拆分快捷键派生组合发生冲突，无法区分三种拆分操作：' + displayChord(chordValue));
@@ -203,6 +209,13 @@ export function initMaweShortcuts() {
     if (/^(?:nav|extend)-[adws]$/.test(entry.id) || /^snap-Arrow(?:Left|Right)$/.test(entry.id)) {
       return [...new Set(entry.defaults.flatMap(value => [value, addModifiers(value, ['Alt'])]))];
     }
+    if (entry.id === 'undo' || entry.id === 'redo') {
+      const variants = entry.id === 'redo' ? [[], ['Alt'], ['Shift'], ['Alt', 'Shift']] : [[], ['Alt']];
+      return [...new Set(entry.defaults.flatMap(value => variants.map(extra => addModifiers(value, extra))))];
+    }
+    if (['play', 'reverse', 'stop', 'forward', 'delete'].includes(entry.id)) {
+      return entry.defaults.flatMap(value => [value, addModifiers(value, ['Shift'])]);
+    }
     if (entry.id !== 'split') return entry.defaults;
     return ['b', 'Shift+b', 'Mod+Shift+b'];
   }
@@ -218,11 +231,41 @@ export function initMaweShortcuts() {
       && defaultPhysicalBindings(entry).includes(physical)
       && !effectiveBindings(entry).some(binding => binding.chord === physical));
   }
+  function isNativeDialogOpen() { return Boolean(document.querySelector('dialog[open]')); }
+  function isDialogModalOpen() { return isNativeDialogOpen() || Boolean(document.querySelector('.modal-mask.show')); }
+  function isModalOpen() {
+    return isDialogModalOpen() || Boolean(document.querySelector('#ctxmenu.show'));
+  }
+  // Modal handlers can close the foreground before a later document listener
+  // runs. Preserve the state at dispatch so that the same Escape cannot also
+  // close or alter a background surface.
+  const modalAtKeydown = new WeakMap();
+  global.addEventListener?.('keydown', event => {
+    if (event.key !== 'Escape') return;
+    const dialog = isDialogModalOpen();
+    modalAtKeydown.set(event, { dialog, modal: dialog || Boolean(document.querySelector('#ctxmenu.show')) });
+  }, true);
+  function wasModalOpen(event) { return modalAtKeydown.get(event)?.modal ?? isModalOpen(); }
+  function wasDialogModalOpen(event) { return modalAtKeydown.get(event)?.dialog ?? isDialogModalOpen(); }
+  const arrowReservation = '方向键保留给原有方向键操作';
+  const clipboardReservation = '快捷键保留给复制、粘贴和剪切';
+  function validateClipboardBinding(value) {
+    if (['Mod+c', 'Mod+v', 'Mod+x'].includes(value)) {
+      throw new Error(clipboardReservation + '：' + displayChord(value));
+    }
+  }
+  function validateArrowBinding(entry, value) {
+    if (/Arrow(?:Left|Right|Up|Down)$/.test(value) && !defaultPhysicalBindings(entry).includes(value)) {
+      throw new Error(arrowReservation + '：' + displayChord(value));
+    }
+  }
   function validate(source, changedId = null) {
     const used = new Map();
     for (const entry of commands) {
       for (const { chord: value } of effectiveBindings(entry, source)) {
-        if (!validChord(value)) throw reservedChordError(value);
+        if (!validChord(value)) throw invalidChordError();
+        validateArrowBinding(entry, value);
+        validateClipboardBinding(value);
         const fixed = fixedBindings.find(binding => binding.chord === value && binding.owner !== entry.id);
         if (fixed) {
           const error = new Error('快捷键冲突：' + fixed.label);
@@ -243,6 +286,16 @@ export function initMaweShortcuts() {
   }
   function describeSavedBindingWarning(entry, value, error) {
     const messageText = error?.message || '保存格式无效';
+    if (messageText.startsWith(arrowReservation + '：')) {
+      return { label: entry.label, chord: messageText.slice(arrowReservation.length + 1), reason: arrowReservation };
+    }
+    if (messageText.startsWith(clipboardReservation + '：')) {
+      return { label: entry.label, chord: messageText.slice(clipboardReservation.length + 1), reason: clipboardReservation };
+    }
+    const altDerivedCollisionPrefix = '键盘快捷键的 Alt 派生组合冲突，无法保留原修饰键语义：';
+    if (messageText.startsWith(altDerivedCollisionPrefix)) {
+      return { label: entry.label, chord: messageText.slice(altDerivedCollisionPrefix.length), reason: altDerivedCollisionPrefix };
+    }
     const splitCollisionPrefix = '拆分快捷键派生组合发生冲突，无法区分三种拆分操作：';
     if (messageText.startsWith(splitCollisionPrefix)) {
       return { label: entry.label, chord: messageText.slice(splitCollisionPrefix.length), reason: splitCollisionPrefix };
@@ -251,15 +304,6 @@ export function initMaweShortcuts() {
     if (messageText.startsWith(conflictPrefix)) {
       return { label: entry.label, chord: Array.isArray(value) ? value.join(', ') : String(value),
         reason: conflictPrefix, detail: messageText.slice(conflictPrefix.length) };
-    }
-    const prefixes = [
-      '快捷键派生组合与系统或浏览器保留功能冲突：',
-      '快捷键组合与系统或浏览器保留功能冲突：',
-    ];
-    const prefix = prefixes.find(item => messageText.startsWith(item));
-    if (prefix) {
-      const detail = messageText.slice(prefix.length).split('；');
-      return { label: entry.label, chord: detail[0], reason: detail.slice(1).join('；') };
     }
     return { label: entry.label, chord: Array.isArray(value) ? value.join(', ') : String(value), reason: messageText };
   }
@@ -272,11 +316,30 @@ export function initMaweShortcuts() {
           const value = saved[entry.id];
           try {
             if (!Array.isArray(value) || value.length > 2) throw new Error('保存格式无效');
-            const isolated = { [entry.id]: value };
-            for (const binding of effectiveBindings(entry, isolated)) {
-              if (!validChord(binding.chord)) throw reservedChordError(binding.chord, entry.id === 'split');
+            // A legacy command may have two bindings. Discard a forbidden
+            // chord independently so its valid sibling remains usable.
+            const accepted = [];
+            for (const chordValue of value) {
+              try {
+                if (!validChord(chordValue)) throw invalidChordError();
+                for (const binding of effectiveBindings(entry, { [entry.id]: [...accepted, chordValue] })) {
+                  if (!validChord(binding.chord)) throw invalidChordError();
+                  validateArrowBinding(entry, binding.chord);
+                  validateClipboardBinding(binding.chord);
+                }
+                accepted.push(chordValue);
+              } catch (error) {
+                savedBindingWarnings.push(describeSavedBindingWarning(entry, [chordValue], error));
+              }
             }
-            Object.assign(candidate, { [entry.id]: value });
+            if (value.length && !accepted.length) continue;
+            const isolated = { [entry.id]: accepted };
+            for (const binding of effectiveBindings(entry, isolated)) {
+              if (!validChord(binding.chord)) throw invalidChordError();
+              validateArrowBinding(entry, binding.chord);
+              validateClipboardBinding(binding.chord);
+            }
+            Object.assign(candidate, { [entry.id]: accepted });
           } catch (error) {
             savedBindingWarnings.push(describeSavedBindingWarning(entry, value, error));
           }
@@ -301,8 +364,18 @@ export function initMaweShortcuts() {
           const droppedEntry = commands.find(item => item.id === dropId);
           const warningError = conflict.labels?.[dropId]
             ? new Error('快捷键冲突：' + conflict.labels[dropId]) : error;
-          savedBindingWarnings.push(describeSavedBindingWarning(droppedEntry, saved[dropId], warningError));
-          delete candidate[dropId];
+          // The reported conflict may be a derived chord. Find the saved
+          // physical binding that produced it and retain other valid siblings.
+          const index = candidate[dropId].findIndex(value => effectiveBindings(
+            droppedEntry, { [dropId]: [value] },
+          ).some(binding => binding.chord === conflict.chord));
+          const dropped = index < 0 ? saved[dropId] : [candidate[dropId][index]];
+          savedBindingWarnings.push(describeSavedBindingWarning(droppedEntry, dropped, warningError));
+          if (index < 0) delete candidate[dropId];
+          else {
+            candidate[dropId].splice(index, 1);
+            if (!candidate[dropId].length) delete candidate[dropId];
+          }
         }
       }
       overrides = candidate;
@@ -356,21 +429,44 @@ export function initMaweShortcuts() {
     let result = event;
     const physical = chord(event);
     const textEditing = MaweKeyboardTargets.isTextEditingTarget(event);
-    const modal = document.querySelector('.modal-mask.show, #ctxmenu.show');
+    const modal = isModalOpen();
     if (event.isComposing || event.keyCode === 229) result = projectedEvent(event, 'Unidentified');
     else if (physical) {
       const overridden = commands.some(item => Object.hasOwn(overrides, item.id)
         && suppressesOldChord(item, physical));
-      if (modal) {
-        // Global shortcut handlers receive a suppressed projection; modal-local
-        // handlers still receive the original physical event and keep their keys.
-        if (overridden) result = projectedEvent(event, 'Unidentified');
+      const localArrow = /^Arrow(?:Left|Right|Up|Down)$/.test(event.key)
+        && event.target?.closest?.('#ass-cue-position, .ass-cue-drag-target, .geo-box, .editor-settings-nav-tab');
+      const localSettingsEnter = physical === 'Enter'
+        && event.target?.closest?.('#editor-settings-toggle, #editor-settings-panel button');
+      if (localArrow || localSettingsEnter) {
+        // Local controls receive the original physical event; editor-wide
+        // consumers must not also react during capture or bubbling.
+        result = projectedEvent(event, 'Unidentified');
+      } else if (modal) {
+        // Consumers of this projection are background editor handlers. They may
+        // accept modifiers beyond the registered bindings, so exact chord checks
+        // cannot protect a modal. The original event still reaches modal handlers.
+        // Escape remains available to existing modal-aware close/cleanup guards.
+        if (physical !== 'Escape') result = projectedEvent(event, 'Unidentified');
+      } else if (textEditing && physical === 'Mod+s' && (global.MaweInlineEdit?.editingState
+          || global.MaweInlineEdit?.extensionEditingState || (global.MaweDom?.cuePanelText && event.target === global.MaweDom.cuePanelText))) {
+        // The inline editor owns this physical chord even if another command
+        // uses it outside editing. Leave it intact for the project-save handler.
+        result = event;
       } else {
         const match = commands.flatMap(item => effectiveBindings(item).map(binding => ({ item, ...binding })))
           .find(binding => binding.chord === physical);
         const entry = match?.item;
-        // Native text editing keeps its own shortcuts; project saving is global.
-        if (!textEditing || (event.ctrlKey || event.metaKey) && (entry?.id === 'save' || entry?.id === 'save-as'
+        // Subtitle text editing keeps physical Mod+S independently of remaps.
+        // Do not project a different configured save chord into that context;
+        // leave the original event available to native text editing.
+        const subtitleEditing = textEditing && (global.MaweInlineEdit?.editingState
+          || global.MaweInlineEdit?.extensionEditingState || (global.MaweDom?.cuePanelText && event.target === global.MaweDom.cuePanelText));
+        const remappedSave = subtitleEditing && ['save', 'save-as'].includes(entry?.id)
+          && !entry.defaults.includes(physical);
+        if (remappedSave) result = projectedEvent(event, 'Unidentified');
+        // Other text inputs retain their existing modifier-based save behavior.
+        else if (!textEditing || (event.ctrlKey || event.metaKey) && (entry?.id === 'save' || entry?.id === 'save-as'
             || commands.some(item => ['save', 'save-as'].includes(item.id) && item.defaults.includes(physical)))) {
           if (entry) result = projectedEvent(event, match.target);
           else if (overridden) result = projectedEvent(event, 'Unidentified');
@@ -383,7 +479,7 @@ export function initMaweShortcuts() {
 
   global.MaweShortcuts = Object.freeze({
     commands, chord, validChord, bindings, setBinding, resetBindings, takeSavedBindingWarnings, displayChord, resolveEvent,
-    effectiveBindings, splitVariantLabel, physicalCode, isOverriddenSaveChord,
+    effectiveBindings, splitVariantLabel, physicalCode, isOverriddenSaveChord, isModalOpen, isDialogModalOpen, isNativeDialogOpen, wasModalOpen, wasDialogModalOpen,
     showShortcutBlocked,
     get interceptedSpace() { return interceptedSpace; },
     set interceptedSpace(v) { interceptedSpace = v; },
