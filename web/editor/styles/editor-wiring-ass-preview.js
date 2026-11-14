@@ -283,6 +283,7 @@ function assStackInputRevision(tracks, identityTracks = tracks) {
 document.fonts?.addEventListener('loadingdone', () => { assStackFontRevision += 1; cachedAssStackKey = ''; });
 
 function applyAssSubtitlePreviewImpl({ tMs, overlaySegments }) {
+  void window.MaweAssFontAliases?.ensureCoverage?.();
   const metrics = assPreviewMetrics();
   // Snapshot only project inputs: measurements and animation envelopes are
   // computed once per revision, never once per playback frame. Direct edits

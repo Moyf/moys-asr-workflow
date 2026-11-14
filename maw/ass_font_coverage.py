@@ -23,7 +23,7 @@ _MAX_PAYLOAD_BYTES = 4 * 1024 * 1024
 def fallback_families(system: str | None = None) -> list[str]:
     system = system or platform.system()
     if system == "Windows":
-        return ["Microsoft YaHei", "Arial", "Segoe UI Symbol"]
+        return ["SimHei", "Arial", "Segoe UI Symbol"]
     if system == "Darwin":
         return ["PingFang SC", "Arial", "Arial Unicode MS", "Apple Symbols"]
     return ["Noto Sans CJK SC", "Noto Sans", "DejaVu Sans"]
@@ -120,7 +120,7 @@ def _cached_payload_json() -> str | None:
         complete = True
         # Keep core platform fallbacks even on hosts with thousands of fonts.
         # Only basenames influence scan priority; paths are never serialized.
-        preferred = ("pingfang", "msyh", "arial", "seguisym", "applesymbols")
+        preferred = ("pingfang", "simhei", "arial", "seguisym", "applesymbols")
         paths = sorted(ass_fonts._installed_font_files(), key=lambda p: (
             0 if any(token in p.stem.casefold().replace(" ", "") for token in preferred) else 1,
             str(p).casefold(),

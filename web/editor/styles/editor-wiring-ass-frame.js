@@ -410,6 +410,7 @@ function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
   }
 
   async function renderAssFrame() {
+    await global.MaweAssFontAliases?.ensureCoverage?.();
     await global.MaweAssFontAliases?.whenReady?.();
     const request = snapshot();
     if (!request) {
@@ -445,6 +446,9 @@ function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
 
   function syncAssFrameControls() {
     emojiWarning.sync();
+    if (global.MaweSettings?.EDITOR_SETTINGS?.assMode === true) {
+      void global.MaweAssFontAliases?.ensureCoverage?.();
+    }
     openButton.hidden = !enabled();
     if (quickOpenButton) quickOpenButton.hidden = !enabled();
     if (styleOpenButton) styleOpenButton.hidden = !enabled();

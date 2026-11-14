@@ -68,16 +68,16 @@ class FontCoverageTests(unittest.TestCase):
         fixture().save(path)
         with mock.patch.object(ass_fonts, "_installed_font_files", return_value=(path,)), \
              mock.patch.object(ass_fonts, "font_alias_entries", return_value=()):
-            payload = ass_fonts.font_alias_payload()
-            self.assertEqual(payload["coverage"]["faces"][0]["family"], "Example")
+            payload = coverage.font_coverage_payload()
+            self.assertEqual(payload["faces"][0]["family"], "Example")
             self.assertNotIn(str(path), json.dumps(payload))
-            payload["coverage"]["faces"].clear()
+            payload["faces"].clear()
             self.assertEqual(len(coverage.font_coverage_payload()["faces"]), 1)
             original = "Style: Default,Unknown,30\nDialogue: 0,0,1,Default,,0,0,0,,原文"
             self.assertEqual(ass_fonts.normalize_ass_text_fontnames(original)[0], original)
 
     def test_unavailable_coverage_keeps_alias_payload(self):
-        with mock.patch.object(coverage, "_cached_payload_json", return_value=None), \
+        with mock.patch.object(coverage, "font_coverage_payload", side_effect=AssertionError("eager cmap scan")), \
              mock.patch.object(ass_fonts, "font_alias_entries", return_value=()):
             self.assertEqual(ass_fonts.font_alias_payload(), {"schema": ass_fonts.FONT_ALIAS_SCHEMA, "fonts": []})
 
@@ -121,5 +121,5 @@ class FontCoverageTests(unittest.TestCase):
                 self.assertLessEqual(len(json.dumps(bounded).encode()), 1024)
 
     def test_platform_candidate_order(self):
-        self.assertEqual(coverage.fallback_families("Windows")[:2], ["Microsoft YaHei", "Arial"])
+        self.assertEqual(coverage.fallback_families("Windows")[:2], ["SimHei", "Arial"])
         self.assertEqual(coverage.fallback_families("Darwin")[:3], ["PingFang SC", "Arial", "Arial Unicode MS"])

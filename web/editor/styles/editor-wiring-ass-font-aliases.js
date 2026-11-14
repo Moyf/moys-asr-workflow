@@ -18,6 +18,9 @@
   let coverage = null;
   let pending = false;
   let settled = Promise.resolve();
+  let coveragePending = false;
+  let coverageAttempted = false;
+  let coverageSettled = Promise.resolve();
   let finishLoading = null;
   const faceCache = new Map();
   const segmenter = typeof Intl.Segmenter === 'function'
@@ -241,6 +244,51 @@
     return captured.splice(0);
   }
 
+  function ensureCoverage() {
+    if (coverage || coverageAttempted || !config?.assFontCoverageUrl) return coverageSettled;
+    // Publish pending synchronously, before the alias await, so native frame
+    // requests cannot race the transition from the lightweight startup path.
+    coverageAttempted = true;
+    coveragePending = true;
+    coverageSettled = (async () => {
+      await settled;
+      const controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
+      let timeout;
+      try {
+        const request = (async () => {
+          const response = await fetch(new URL(config.assFontCoverageUrl, global.location.href), {
+            cache: 'no-store', signal: controller?.signal,
+          });
+          return response.ok ? response.json() : null;
+        })();
+        const deadline = new Promise((_, reject) => {
+          timeout = global.setTimeout?.(() => {
+            controller?.abort();
+            reject(new Error('Font coverage timed out'));
+          }, 30000);
+        });
+        const payload = await Promise.race([request, deadline]);
+        if (payload?.schema === 'moy.asr.font_coverage.v1'
+            && Array.isArray(payload.faces) && Array.isArray(payload.fallbacks)) {
+          coverage = payload;
+          faceCache.clear();
+          // Same invalidation contract as alias changes, including stack plans.
+          global.MaweAssCanvas?.clearCaches?.();
+          document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-loaded'));
+        }
+      } catch (_) {
+        // Old/offline servers settle to the legacy path, not an endless retry
+        // loop driven by playback or the settled notification itself.
+      } finally {
+        global.clearTimeout?.(timeout);
+        coveragePending = false;
+        document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-settled'));
+        global.MawePlaybackLoop?.refreshSubtitlePreview?.();
+      }
+    })();
+    return coverageSettled;
+  }
+
   async function loadAliases() {
     if (!config?.assFontAliasesUrl || ready || pending) return;
     pending = true;
@@ -284,8 +332,9 @@
 
   global.MaweAssFontAliases = Object.freeze({
     loaded: () => ready,
-    pending: () => pending,
-    whenReady: () => settled,
+    pending: () => pending || coveragePending,
+    whenReady: async () => { await settled; await coverageSettled; },
+    ensureCoverage,
     entries: () => entries.map((entry) => ({ ...entry, names: [...entry.names] })),
     canonicalFor,
     resolveRuns,

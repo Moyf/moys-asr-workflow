@@ -116,6 +116,8 @@ export function initMaweDynamicExports() {
         MaweDom.fcp7ExportCancel.disabled = true;
         MaweDom.fcp7ExportModal.dataset.busy = 'true';
         try {
+          await window.MaweAssFontAliases?.ensureCoverage?.();
+          await window.MaweAssFontAliases?.whenReady?.();
           const assOptions = { alignFirstStart: false, pngEventNames: true };
           const ass = options.timelineMode === 'gap_removed' && MaweGapRemoveData.getRemovedGapRanges().length
             ? MaweExportSrt.buildGapRemovedAss(assOptions) : MaweExportSrt.buildAss(assOptions);

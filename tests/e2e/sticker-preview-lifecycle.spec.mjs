@@ -174,3 +174,23 @@ test('the actual frame resumes when font inventory is delayed', async ({ page })
   await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
   expect(errors.filter(message => message.includes('字体信息仍在加载'))).toEqual([]);
 });
+
+
+test('font coverage stays lazy until ASS mode and is requested once', async ({ page }) => {
+  const requests = [];
+  page.on('request', request => { if (request.url().includes('/api/ass-font-')) requests.push(request.url()); });
+  await page.reload();
+  await page.waitForFunction(() => Boolean(window.MaweAssFontAliases && window.MaweSettings));
+  await page.evaluate(() => window.MaweAssFontAliases.whenReady());
+  expect(await page.evaluate(() => MaweSettings.EDITOR_SETTINGS.assMode)).toBe(false);
+  expect(requests.filter(url => url.includes('/api/ass-font-aliases')).length).toBe(1);
+  expect(requests.filter(url => url.includes('/api/ass-font-coverage')).length).toBe(0);
+  await openFrame(page);
+  await page.evaluate(() => window.MaweAssFontAliases.whenReady());
+  expect(requests.filter(url => url.includes('/api/ass-font-coverage')).length).toBe(1);
+  await page.evaluate(async () => {
+    await window.MaweAssFontAliases.ensureCoverage();
+    await window.MaweAssFontAliases.ensureCoverage();
+  });
+  expect(requests.filter(url => url.includes('/api/ass-font-coverage')).length).toBe(1);
+});

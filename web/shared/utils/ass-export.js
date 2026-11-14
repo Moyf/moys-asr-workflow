@@ -169,6 +169,7 @@ export function createUtilsModule(dependencies) {
 
 
   function buildAssPayload(segments, options = {}) {
+    void globalThis.window?.MaweAssFontAliases?.ensureCoverage?.();
     // A Canvas-only diagnostic plan may render provisionally; never send an
     // ASS snapshot to libass/export while the font inventory is changing.
     if (!options.allowAssPlanDiagnostics && globalThis.window?.MaweAssFontAliases?.pending?.()) {

@@ -27,7 +27,10 @@ test.beforeEach(async ({ page }, info) => {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
   await page.goto(info.title.includes('360x640 actual')?portraitServer.url:server.url);
   await page.waitForFunction(() => window.MaweCoreState?.player?.videoWidth > 0 && window.MaweAssCuePosition);
-  await page.evaluate(() => window.MaweAssFontAliases?.whenReady?.());
+  await page.evaluate(async () => {
+    await window.MaweAssFontAliases?.ensureCoverage?.();
+    await window.MaweAssFontAliases?.whenReady?.();
+  });
   await page.evaluate(async () => {
     await loadAssStyleLibrary({ force: true });
     ASS_STYLE_LIBRARY = AsrEditorUtils.defaultAssStyleLibrary();

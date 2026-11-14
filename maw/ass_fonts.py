@@ -663,10 +663,6 @@ def font_alias_payload() -> dict[str, Any]:
     # 前端与服务端都须保留 libass 已能匹配的 nameID1；不同字重 face
     # 可能共享排版名，不能把它们全部改写成同一个 canonical。
     fonts = [dict(entry) for entry in entries]
-    payload = {"schema": FONT_ALIAS_SCHEMA, "fonts": fonts}
-    from maw.ass_font_coverage import font_coverage_payload
-
-    coverage = font_coverage_payload()
-    if coverage is not None:
-        payload["coverage"] = coverage
-    return payload
+    # Keep the always-used alias endpoint light; cmap coverage is explicitly
+    # requested only by ASS consumers through /api/ass-font-coverage.
+    return {"schema": FONT_ALIAS_SCHEMA, "fonts": fonts}

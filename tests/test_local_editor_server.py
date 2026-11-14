@@ -627,6 +627,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             'fonts': [{'canonical': '得意黑', 'names': ['得意黑', 'Smiley Sans']}],
         }
         with mock.patch.object(server_editor, 'font_alias_payload', return_value=payload), \
+             mock.patch.object(server_editor, 'font_coverage_payload', return_value={'schema': 'moy.asr.font_coverage.v1', 'faces': []}) as coverage, \
              server_editor.EditorServer(
                  ('127.0.0.1', 0), project, no_waveform=True, peaks_per_second=100,
              ) as server:
@@ -638,6 +639,11 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     self.assertEqual(response.status, 200)
                     body = json.loads(response.read())
                 self.assertEqual(body, payload)
+                coverage.assert_not_called()
+                with urllib.request.urlopen(f"{base_url}/api/ass-font-coverage", timeout=10) as response:
+                    body = json.loads(response.read())
+                self.assertEqual(body, {'schema': 'moy.asr.font_coverage.v1', 'faces': []})
+                coverage.assert_called_once_with()
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
@@ -1324,7 +1330,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"recentProjectsUrl": "/api/recent-projects/open"', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
-        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "textProcessingPresetsUrl": "/api/text-processing-presets", "assFrameUrl": "/api/ass-frame", "assFontAliasesUrl": "/api/ass-font-aliases", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
+        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "textProcessingPresetsUrl": "/api/text-processing-presets", "assFrameUrl": "/api/ass-frame", "assFontAliasesUrl": "/api/ass-font-aliases", "assFontCoverageUrl": "/api/ass-font-coverage", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
         self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""}', page)
         completed_page = server_editor.build_server_page(

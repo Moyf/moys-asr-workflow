@@ -164,10 +164,10 @@ async function managedFonts(coverage) {
 }
 const coverageFixture = () => ({
   schema: 'moy.asr.font_coverage.v1', complete: true,
-  fallbacks: ['Microsoft YaHei', 'Arial'],
+  fallbacks: ['SimHei', 'Arial'],
   faces: [
     { family: 'Primary', names: ['Primary'], weight: 400, italic: false, ranges: [[32, 126]], emRatio: .75 },
-    { family: 'Microsoft YaHei', names: ['Microsoft YaHei'], weight: 400, italic: false,
+    { family: 'SimHei', names: ['SimHei'], weight: 400, italic: false,
       ranges: [[32, 126], [0x256c, 0x256c], [0x4e00, 0x9fff]], emRatio: .76 },
     { family: 'Arial', names: ['Arial'], weight: 400, italic: false,
       ranges: [[32, 126], [0x300, 0x301], [0x3c9, 0x3c9], [0x2022, 0x2022]], emRatio: .89 },
@@ -183,7 +183,7 @@ test('managed fallback keeps graphemes, text and inline style, selecting CJK and
   const runs = win.MaweAssFontAliases.resolveRuns(input, { fontName: 'Primary' });
   assert.equal(runs.map(r => r.text).join(''), text);
   assert.equal(input[0].fontName, undefined, 'source must remain unchanged');
-  assert.equal(runs.find(r => r.text.includes('中')).fontName, 'Microsoft YaHei');
+  assert.equal(runs.find(r => r.text.includes('中')).fontName, 'SimHei');
   for (const mark of ['•̀', '•́']) {
     assert.equal(runs.find(r => r.text.includes(mark)).fontName, 'Arial');
   }
@@ -224,7 +224,7 @@ test('ASS export and preview plan share explicit fallback runs with safe font re
     onAssPlan: value => { plan = value; },
   });
   assert.match(payload, /\\fnArial/);
-  assert.match(payload, /\\fnMicrosoft YaHei/);
+  assert.match(payload, /\\fnSimHei/);
   assert.match(payload, /\\fnPrimary/);
   assert.doesNotMatch(payload, /\\r[}\\]/);
   assert.ok(plan.slices[0].items[0].runs.some(r => r.fontName === 'Arial'));
@@ -242,7 +242,7 @@ test('fallback keeps the matchable candidate spelling rather than a locale-selec
   data.faces[1].family = '微軟正黑測試';
   const win = await managedFonts(data);
   const runs = win.MaweAssFontAliases.resolveRuns([{ text: '中' }], { fontName: 'Primary' });
-  assert.equal(runs[0].fontName, 'Microsoft YaHei');
+  assert.equal(runs[0].fontName, 'SimHei');
 });
 
 test('font inventory readiness settles on success and failure and resumes consumers', async () => {
@@ -300,4 +300,76 @@ test('stalled font request or JSON body times out, settles and can retry', async
     await aliases.reload();
     assert.equal(aliases.loaded(), true);
   }
+});
+
+test('startup loads aliases only; concurrent ASS consumers share one lazy coverage request and readiness', async () => {
+  const calls = [], events = [];
+  let release;
+  const context = {
+    window: { MaweBoot: { SERVER_CONFIG: { assFontAliasesUrl: '/aliases', assFontCoverageUrl: '/coverage' } }, location: { href: 'http://localhost/' } },
+    document: { dispatchEvent(event) { events.push(event.type); } },
+    CustomEvent: class { constructor(type) { this.type = type; } }, URL,
+    fetch: async url => {
+      calls.push(new URL(url).pathname);
+      return url.pathname === '/aliases'
+        ? { ok: true, json: async () => ({ schema: 'moy.asr.font_aliases.v1', fonts: [] }) }
+        : new Promise(resolve => { release = resolve; });
+    },
+  };
+  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/styles/editor-wiring-ass-font-aliases.js', import.meta.url), 'utf8'), context);
+  const aliases = context.window.MaweAssFontAliases;
+  await aliases.whenReady();
+  assert.deepEqual(calls, ['/aliases']);
+  assert.equal(aliases.coverageAvailable(), false);
+  const first = aliases.ensureCoverage(), second = aliases.ensureCoverage();
+  assert.equal(first, second);
+  assert.equal(aliases.pending(), true);
+  let ready = false;
+  const waiter = aliases.whenReady().then(() => { ready = true; });
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(ready, false);
+  assert.deepEqual(calls, ['/aliases', '/coverage']);
+  release({ ok: true, json: async () => coverageFixture() });
+  await waiter;
+  assert.equal(aliases.pending(), false);
+  assert.equal(aliases.coverageAvailable(), true);
+  assert.equal(events.filter(type => type === 'mawe:ass-font-aliases-loaded').length, 2);
+  await aliases.ensureCoverage();
+  assert.equal(calls.length, 2);
+});
+
+test('lazy coverage deadline includes JSON, settles legacy fallback and does not retry per frame', async () => {
+  let expire;
+  let coverageCalls = 0;
+  const context = {
+    window: { MaweBoot: { SERVER_CONFIG: { assFontAliasesUrl: '/aliases', assFontCoverageUrl: '/coverage' } },
+      location: { href: 'http://localhost/' }, setTimeout(fn, ms) { assert.equal(ms, 30000); expire = fn; return 1; }, clearTimeout() {} },
+    document: { dispatchEvent() {} }, CustomEvent: class {}, URL,
+    fetch: async url => url.pathname === '/aliases'
+      ? { ok: true, json: async () => ({ schema: 'moy.asr.font_aliases.v1', fonts: [] }) }
+      : (++coverageCalls, { ok: true, json: () => new Promise(() => {}) }),
+  };
+  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/styles/editor-wiring-ass-font-aliases.js', import.meta.url), 'utf8'), context);
+  const aliases = context.window.MaweAssFontAliases;
+  await aliases.whenReady();
+  const loading = aliases.ensureCoverage();
+  await Promise.resolve(); await Promise.resolve();
+  expire(); await loading; await aliases.whenReady();
+  assert.equal(aliases.pending(), false);
+  assert.equal(aliases.coverageAvailable(), false);
+  for (let i = 0; i < 10; i++) await aliases.ensureCoverage();
+  assert.equal(coverageCalls, 1);
+  assert.equal(aliases.loaded(), true, 'light aliases remain usable after coverage timeout');
+});
+
+test('ASS output entry points explicitly await lazy coverage before serializing', () => {
+  const read = file => fs.readFileSync(new URL(`../web/editor/${file}`, import.meta.url), 'utf8');
+  const downloads = read('io/editor-wiring-export-actions.js');
+  assert.equal((downloads.match(/await downloadPreparedAss\(/g) || []).length, 2);
+  assert.ok(downloads.indexOf('await MaweHost.files.pickSaveFile') < downloads.indexOf('await loading'), 'ASS downloads retain picker activation');
+  assert.match(read('io/editor-dynamic-exports.js'), /await window\.MaweAssFontAliases\?\.ensureCoverage\?\.\(\)/);
+  assert.match(read('styles/editor-wiring-ass-frame.js'), /async function renderAssFrame\(\) {\s*await global\.MaweAssFontAliases\?\.ensureCoverage/);
+  const burn = read('io/editor-wiring-burn-video.js');
+  assert.ok(burn.indexOf('await MaweHost.files.pickSaveFile') < burn.indexOf('await fontsReady'), 'picker retains user activation while coverage loads');
+  assert.match(burn, /if \(deferRequest\) {\s*await fontsReady/);
 });
