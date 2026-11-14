@@ -52,14 +52,16 @@ export function initMaweCuePanel() {
     track.segments.forEach((seg, i) => rows.push({ start: seg.start, order: 0, el: MaweCueElements.buildExtensionCueEl(seg, i, track) }));
   } else {
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    const displayRows = window.AsrEditorUtils.buildMultiDisplayRows(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, track.segments, MaweMultiSubtitleCore.getMultiSubtitleState().bindings);
+    const bindings = MaweMultiSubtitleCore.getMultiSubtitleState().bindings;
+    const boundExtensionIds = MaweCueElements.buildBoundExtensionIds(bindings, track.id);
+    const displayRows = window.AsrEditorUtils.buildMultiDisplayRows(window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, track.segments, bindings);
     displayRows.forEach((row) => {
       const mainSeg = row.mainIndex == null ? null : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[row.mainIndex];
       const extensionSeg = row.extensionIndex == null ? null : track.segments[row.extensionIndex];
       rows.push({
         start: mainSeg ? mainSeg.start : (extensionSeg ? extensionSeg.start : 0),
         order: 0,
-        el: MaweCueElements.buildDualCueEl(row.mainIndex, row.extensionIndex, track),
+        el: MaweCueElements.buildDualCueEl(row.mainIndex, row.extensionIndex, track, boundExtensionIds),
       });
     });
   }
