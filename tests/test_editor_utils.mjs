@@ -4191,6 +4191,27 @@ test('keeps browser and server ASS defaults identical while preserving saved par
   assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeAssStyleLibrary(saved))), JSON.parse(JSON.stringify(saved)));
 });
 
+test('keeps all 64 legacy ASS styles and their references when adding the extension builtin', () => {
+  const legacy = {
+    version: 1,
+    styles: [
+      { id: 'default', name: 'SRT 默认' }, { id: 'ass', name: 'ASS' },
+      ...Array.from({ length: 62 }, (_, index) => ({ id: `custom-${index}`, name: `Custom ${index}` })),
+    ],
+    assProfiles: [{ id: 'last-profile', name: 'Last profile', styleId: 'custom-61' }],
+    assignments: { srtBurnStyleId: 'custom-61', assExtensionStyleId: 'custom-61' },
+  };
+  const migrated = helpers.normalizeAssStyleLibrary(legacy);
+  assert.equal(migrated.styles.length, 65);
+  assert.ok(migrated.styles.some(style => style.id === 'ass-extension'));
+  assert.ok(migrated.styles.some(style => style.id === 'custom-61'));
+  assert.equal(migrated.assProfiles.find(profile => profile.id === 'last-profile').styleId, 'custom-61');
+  assert.equal(migrated.assignments.srtBurnStyleId, 'custom-61');
+  assert.equal(migrated.assignments.assExtensionStyleId, 'custom-61');
+  const reopened = helpers.normalizeAssStyleLibrary(JSON.parse(JSON.stringify(migrated)));
+  assert.deepEqual(JSON.parse(JSON.stringify(reopened)), JSON.parse(JSON.stringify(migrated)));
+});
+
 test('ASS outline and shadow opacity map to alpha bytes and rgba previews', () => {
   // 旧样式没有不透明度字段：归一化补 100（不透明），导出与旧字节一致。
   const legacy = helpers.normalizeAssStyle({ id: 'legacy', outlineColor: '#112233', backColor: '#000000' });
