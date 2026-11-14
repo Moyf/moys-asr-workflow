@@ -101,7 +101,10 @@ test('font notices keep the published folder action available', async ({ page })
   });
   await page.locator('#fcp7-export-confirm').click();
   await expect(page.locator('#fcp7-export-status')).toContainText('字体已替换', { timeout: 30000 });
+  const folderResponse = page.waitForResponse(response => response.request().method() === 'POST'
+    && /\/api\/exports\/fcp7-png\/jobs\/[^/]+\/open-folder$/.test(new URL(response.url()).pathname));
   await page.locator('.fcp7-export-folder').click();
+  expect((await folderResponse).status()).toBe(200);
   expect(opened).toBe(true);
 });
 
