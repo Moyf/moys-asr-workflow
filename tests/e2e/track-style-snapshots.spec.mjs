@@ -120,8 +120,10 @@ test('same name with different parameters stays forked and survives offline reop
   expect(result).toBe(true);
   expect(await page.evaluate(() => MaweAssManagerWiring.projectStyleOptions('main').status)).toBe('forked');
   expect(await page.evaluate(() => MaweAssManagerWiring.projectStyleOptions('main').style.fontSize)).toBe(123);
-  const exportAss = () => page.evaluate(() => {
+  const exportAss = () => page.evaluate(async () => {
     MaweSettings.EDITOR_SETTINGS.assMode = true;
+    await MaweAssFontAliases.ensureCoverage();
+    await MaweAssFontAliases.whenReady();
     return MaweExportSrt.buildAss();
   });
   expect(await exportAss()).toContain('Style: Default,Snapshot Fixture,');
@@ -184,8 +186,10 @@ for (const role of ['main', 'secondary', 'overlay']) test(`cue style selector ov
     return { id: cue.id, trackId: track.id, styles: JSON.parse(JSON.stringify(MaweBoot.DATA.styles)) };
   }, role);
   await page.locator('#cue-ass-style').selectOption('ass-extension');
-  const read = () => page.evaluate(id => {
+  const read = () => page.evaluate(async id => {
     const cue = MaweBoot.DATA.tracks.flatMap(track => track.segments).find(cue => cue.id === id);
+    await MaweAssFontAliases.ensureCoverage();
+    await MaweAssFontAliases.whenReady();
     MawePlaybackLoop.refreshSubtitlePreview(cue.start + 1, 0);
     const item = MaweAssPreview.stackPlan.slices.flatMap(slice => slice.items).find(item => item.segment.id === id);
     return { style: cue.assStyle, pos: cue.assOverride, rendered: item?.style.fontSize,
