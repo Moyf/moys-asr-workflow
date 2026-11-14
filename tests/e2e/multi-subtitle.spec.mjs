@@ -1434,12 +1434,16 @@ test('keeps inline edits after switching to another dual-column subtitle', async
   const extensionText = firstRow.locator('.multi-cue-column.extension .text');
 
   await mainText.dblclick();
+  // Let the editor's deferred double-click caret placement finish before fill
+  // selects all text, so it cannot replace that selection before insertion.
+  await mainText.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
   await mainText.fill('主轨修改后保留');
   await secondRow.locator('.multi-cue-column.main .text').click();
   await expect(mainText).toHaveText('主轨修改后保留');
   expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('主轨修改后保留');
 
   await extensionText.dblclick();
+  await extensionText.evaluate(() => new Promise(resolve => setTimeout(resolve, 0)));
   await extensionText.fill('副轨修改后保留');
   await secondRow.locator('.multi-cue-column.extension .text').click();
   await expect(extensionText).toHaveText('副轨修改后保留');
