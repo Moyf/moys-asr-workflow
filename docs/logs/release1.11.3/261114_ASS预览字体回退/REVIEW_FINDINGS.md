@@ -41,3 +41,11 @@ Canvas 使用展开后的具体字体族，DOM 字号探针使用同一回退链
 - 未验证：Windows 最终实现实机、打包产物、全量 E2E、跨电脑相同字体文件、合成粗斜/复杂脚本/彩色 emoji。Canvas 与实际帧仍应对照人工核验。
 
 - 最终独立复审：未发现新增 blocker；此前脚本范围与变换度量问题已修复。性能建议已落实：普通无 emoji 文本快速返回，复用 Intl.Segmenter，避免每帧每 run 创建分词器。已接受的 exact-face 风险阻止转 Ready/合并，不作为已完成的通用一致性承诺。
+
+### CI follow-up: font-inventory startup race
+
+- Linux editor and Windows display checks exposed synchronous ASS builders being called before the new font inventory completed. The intentional pending guard also escaped native-frame timer/open callbacks, leaving a blank comparison frame.
+- Added an awaitable inventory completion signal, native-frame deferral and automatic retry after completion (including failed/legacy endpoints). Synchronous export still rejects a partial inventory; direct-builder integration tests now wait for readiness explicitly.
+- Independent review identified that a stalled request or JSON body could otherwise block forever. The full fetch/body operation now has a 30-second deadline, aborts and settles into the legacy path, and remains retryable. Late responses cannot ingest stale data after the deadline.
+- Regression coverage includes pending success/failure, never-resolving fetch/body with retry, and delayed-inventory native-frame rendering. No font choice, emoji text, or ASS content policy was relaxed to make CI pass.
+- Follow-up validation: 397 targeted JavaScript/assembly tests passed; build freshness, typecheck and diff checks passed. The three affected E2E suites produced 64/65 passes on macOS. The remaining 90-degree/nonuniform-scale boundary test differs by 4 pixels against a 3-pixel threshold; the exact same 4-pixel failure was reproduced on the pre-change `81d4fbaa` baseline, so its tolerance was not changed. A separately rerun deterministic gated-inventory native-frame test passed.

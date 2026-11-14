@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { cleanupTempDir, closeSettingsPanels, disableOnboarding, findFreePort,
   generateWaveformPayload, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
 
-let directory, media, project, roots, server;
+let directory, media, project, roots, server, releaseInventory;
 const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
 
 test.beforeAll(() => {
@@ -29,7 +29,7 @@ test.beforeAll(() => {
     ], waveform: generateWaveformPayload(4000) }));
 });
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, info) => {
   server = await startServer(project, media, await findFreePort());
   await disableOnboarding(page);
   await page.addInitScript(() => {
@@ -37,11 +37,17 @@ test.beforeEach(async ({ page }) => {
       autoSaveProject: false, stickerOverlayEnabled: true,
     }));
   });
+  if (info.title.includes('font inventory is delayed')) {
+    await page.route('**/api/ass-font-aliases', async route => {
+      await new Promise(resolve => { releaseInventory = resolve; });
+      await route.fulfill({ json: { schema: 'moy.asr.font_aliases.v1', fonts: [] } });
+    });
+  }
   await page.goto(server.url);
   await expect.poll(() => page.evaluate(() => window.MaweCoreState?.player?.videoWidth)).toBe(640);
 });
 
-test.afterEach(async () => { await server?.stop(); server = null; });
+test.afterEach(async () => { releaseInventory?.(); releaseInventory = null; await server?.stop(); server = null; });
 test.afterAll(() => { if (directory) cleanupTempDir(directory); });
 
 async function seek(page, seconds) {
@@ -153,4 +159,18 @@ test('native frame stickers stay aligned after scrolling and rendering another f
   await expect.poll(() => page.evaluate(() => MaweCoreState.player.currentSrc.startsWith('blob:'))).toBe(true);
   await expect(page.locator('#ass-frame-sticker-layer')).toBeHidden();
   await expect(page.locator('#ass-frame-sticker-layer img')).toHaveCount(0);
+});
+
+
+test('the actual frame resumes when font inventory is delayed', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  expect(await page.evaluate(() => MaweAssFontAliases.pending())).toBe(true);
+  const opened = openFrame(page);
+  await expect(page.locator('#ass-frame-window')).toBeVisible();
+  expect(await page.evaluate(() => MaweAssFontAliases.pending())).toBe(true);
+  releaseInventory();
+  await opened;
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  expect(errors.filter(message => message.includes('字体信息仍在加载'))).toEqual([]);
 });

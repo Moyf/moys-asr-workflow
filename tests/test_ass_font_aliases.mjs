@@ -244,3 +244,60 @@ test('fallback keeps the matchable candidate spelling rather than a locale-selec
   const runs = win.MaweAssFontAliases.resolveRuns([{ text: '中' }], { fontName: 'Primary' });
   assert.equal(runs[0].fontName, 'Microsoft YaHei');
 });
+
+test('font inventory readiness settles on success and failure and resumes consumers', async () => {
+  for (const ok of [true, false]) {
+    let release;
+    const events = [];
+    const context = {
+      window: { MaweBoot: { SERVER_CONFIG: { assFontAliasesUrl: '/api/ass-font-aliases' } },
+        location: { href: 'http://localhost/' } },
+      document: { dispatchEvent(event) { events.push(event.type); } },
+      CustomEvent: class { constructor(type) { this.type = type; } }, URL,
+      fetch: () => new Promise(resolve => { release = resolve; }),
+    };
+    vm.runInNewContext(fs.readFileSync(new URL('../web/editor/styles/editor-wiring-ass-font-aliases.js', import.meta.url), 'utf8'), context);
+    const aliases = context.window.MaweAssFontAliases;
+    assert.equal(aliases.pending(), true);
+    let done = false;
+    const waiter = aliases.whenReady().then(() => { done = true; });
+    await Promise.resolve();
+    assert.equal(done, false);
+    release({ ok, json: async () => ({ schema: 'moy.asr.font_aliases.v1', fonts: [] }) });
+    await waiter;
+    assert.equal(aliases.pending(), false);
+    assert.equal(aliases.loaded(), ok);
+    assert.ok(events.includes('mawe:ass-font-aliases-settled'));
+  }
+});
+
+test('stalled font request or JSON body times out, settles and can retry', async () => {
+  for (const phase of ['fetch', 'json']) {
+    let expire;
+    let fail = true;
+    const events = [];
+    const context = {
+      window: { MaweBoot: { SERVER_CONFIG: { assFontAliasesUrl: '/api/ass-font-aliases' } },
+        location: { href: 'http://localhost/' },
+        setTimeout(callback, ms) { assert.equal(ms, 30000); expire = callback; return 1; },
+        clearTimeout() {} },
+      document: { dispatchEvent(event) { events.push(event.type); } },
+      CustomEvent: class { constructor(type) { this.type = type; } }, URL,
+      fetch: () => fail && phase === 'fetch' ? new Promise(() => {}) : Promise.resolve({
+        ok: true, json: () => fail ? new Promise(() => {})
+          : Promise.resolve({ schema: 'moy.asr.font_aliases.v1', fonts: [] }),
+      }),
+    };
+    vm.runInNewContext(fs.readFileSync(new URL('../web/editor/styles/editor-wiring-ass-font-aliases.js', import.meta.url), 'utf8'), context);
+    const aliases = context.window.MaweAssFontAliases;
+    await Promise.resolve();
+    expire();
+    await aliases.whenReady();
+    assert.equal(aliases.pending(), false);
+    assert.equal(aliases.loaded(), false);
+    assert.ok(events.includes('mawe:ass-font-aliases-settled'));
+    fail = false;
+    await aliases.reload();
+    assert.equal(aliases.loaded(), true);
+  }
+});

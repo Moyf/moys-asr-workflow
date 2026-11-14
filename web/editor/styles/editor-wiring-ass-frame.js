@@ -118,7 +118,7 @@ function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
   }
 
   function snapshot() {
-    if (!enabled() || !frameAvailable()) return null;
+    if (!enabled() || !frameAvailable() || global.MaweAssFontAliases?.pending?.()) return null;
     const greenScreen = greenScreenPreview();
     // currentTime can sit between two frames. Seek at/before the presented
     // frame's PTS; rounding up can make FFmpeg discard it and choose the next.
@@ -298,6 +298,9 @@ function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
   }
 
   function refreshDesired() {
+    // Do not create a partial-font snapshot or throw from the timer callback.
+    // The inventory-settled event below resumes automatic rendering.
+    if (global.MaweAssFontAliases?.pending?.()) return;
     if (!enabled() || !previewNeeded() || !frameAvailable() || !player.paused || player.seeking) return;
     if (autoRenderEnabled() && capabilityFailure) {
       hideStage();
@@ -407,6 +410,7 @@ function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
   }
 
   async function renderAssFrame() {
+    await global.MaweAssFontAliases?.whenReady?.();
     const request = snapshot();
     if (!request) {
       setWindowStatus('请启用 ASS 字幕模式；浏览器本地视频请通过 Server 工程打开。', 'error');
@@ -555,6 +559,7 @@ function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
   }
 
   attachPlayerEvents();
+  document.addEventListener('mawe:ass-font-aliases-settled', notifyProjectChanged);
   renderButton?.addEventListener('click', () => void renderAssFrame());
   if (quickOpenButton) openButton.addEventListener('click', () => floatingPanel.toggle());
   styleOpenButton?.addEventListener('click', () => floatingPanel.open());

@@ -17,6 +17,8 @@
   let ready = false;
   let coverage = null;
   let pending = false;
+  let settled = Promise.resolve();
+  let finishLoading = null;
   const faceCache = new Map();
   const segmenter = typeof Intl.Segmenter === 'function'
     ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
@@ -242,12 +244,25 @@
   async function loadAliases() {
     if (!config?.assFontAliasesUrl || ready || pending) return;
     pending = true;
+    settled = new Promise(resolve => { finishLoading = resolve; });
+    const controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
+    let timeout;
     try {
-      const response = await fetch(new URL(config.assFontAliasesUrl, global.location.href), {
-        cache: 'no-store',
+      // Bound the entire request AND JSON body read. A stalled font endpoint
+      // must not indefinitely disable native preview/export or prevent retry.
+      const request = (async () => {
+        const response = await fetch(new URL(config.assFontAliasesUrl, global.location.href), {
+          cache: 'no-store', signal: controller?.signal,
+        });
+        return response.ok ? response.json() : null;
+      })();
+      const deadline = new Promise((_, reject) => {
+        timeout = global.setTimeout?.(() => {
+          controller?.abort();
+          reject(new Error('Font inventory timed out'));
+        }, 30000);
       });
-      if (!response.ok) return;
-      const payload = await response.json();
+      const payload = await Promise.race([request, deadline]);
       if (!ingest(payload)) return;
       pending = false;
       // 别名链改变预览字体匹配结果：清掉画布行/字体度量缓存并刷新预览与
@@ -258,13 +273,19 @@
     } catch (_) {
       // 端点不存在（旧服务器）或请求失败：保持未加载，全部消费点走现状。
     } finally {
+      global.clearTimeout?.(timeout);
       pending = false;
+      finishLoading?.();
+      finishLoading = null;
+      // Failed/old endpoints also settle into the legacy rendering path.
+      document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-settled'));
     }
   }
 
   global.MaweAssFontAliases = Object.freeze({
     loaded: () => ready,
     pending: () => pending,
+    whenReady: () => settled,
     entries: () => entries.map((entry) => ({ ...entry, names: [...entry.names] })),
     canonicalFor,
     resolveRuns,
