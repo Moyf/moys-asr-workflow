@@ -174,6 +174,13 @@ function onboardingSplitKey() {
   return splitKeyLabel();
 }
 
+function onboardingShortcutSplitKey() {
+  const label = MaweShortcuts.splitVariantLabel('b');
+  return label.replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[char]));
+}
+
 function onboardingText(value) {
   const text = String(value ?? '');
   const translateText = window.MAWE_I18N?.translateText;
@@ -259,7 +266,7 @@ function renderOnboardingDemo() {
     onboardingDemo.innerHTML = `
       <ul class="onboarding-extra-tips" id="onboarding-extra-tips">
         <li>${onboardingText('你也可以右键点击字幕后选择拆分')}</li>
-        <li>${onboardingText('鼠标在波形区时，可以右键拆分，也可以按B在鼠标位置拆分')}</li>
+        <li>${onboardingText('鼠标在波形区时，可以右键拆分，也可以按 {splitKey} 在鼠标位置拆分').replaceAll('{splitKey}', `<kbd>${onboardingShortcutSplitKey()}</kbd>`)}</li>
         <li>${onboardingSettingsTip()}</li>
       </ul>`;
     return;
@@ -609,6 +616,8 @@ function scheduleOnboardingAfterRender() {
 // 这个监听器放在 WASD / C 的真实快捷键之后，确保读取到已经更新的选区。
 document.addEventListener('keydown', (event) => {
   if (!onboardingIsOpen()) return;
+  if (MaweShortcuts.wasModalOpen(event)) return;
+  event = MaweShortcuts.resolveEvent(event);
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopImmediatePropagation();

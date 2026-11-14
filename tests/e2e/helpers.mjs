@@ -62,6 +62,7 @@ export function makeTempDir(label) {
 }
 
 export function cleanupTempDir(dir) {
+  if (process.env.MAW_E2E_KEEP_ARTIFACTS === '1') return;
   if (dir && existsSync(dir)) {
     rmSync(dir, { recursive: true, force: true });
   }

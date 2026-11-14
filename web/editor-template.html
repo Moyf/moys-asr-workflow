@@ -601,11 +601,12 @@ __WAVEFORM_CSS__
       </section>
     </section>
     <section class="help-group help-tab-panel" id="help-tab-panel-shortcuts" role="tabpanel" aria-labelledby="help-tab-shortcuts" data-help-tab-panel="shortcuts" tabindex="0" hidden>
+      <p class="shortcut-help-note">帮助中的按键示例为默认快捷键。<button type="button" id="help-custom-shortcuts">查看 / 自定义当前快捷键</button></p>
       <h4 class="help-title">快捷操作</h4>
       <section class="help-subgroup">
         <h5 class="help-subtitle">编辑操作</h5>
         <div class="help-category">
-          <span class="help-important"><kbd>B</kbd> 拆分字幕（取决于鼠标位置）</span>
+          <span class="help-important"><kbd id="help-shortcut-split-key">B</kbd> 拆分字幕（取决于鼠标位置）</span>
           <span class="help-important"><kbd>C</kbd> 合并所选字幕</span>
           <span class="help-break" aria-hidden="true"></span>
           <span><kbd>Alt+点击</kbd> 启用/禁用字幕</span>
@@ -1326,6 +1327,7 @@ __WAVEFORM_CSS__
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-general" role="tab" data-settings-tab="general" aria-selected="false" aria-controls="editor-settings-page-general" tabindex="-1">通用编辑</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-special-edit" role="tab" data-settings-tab="special-edit" aria-selected="false" aria-controls="editor-settings-page-special-edit" tabindex="-1">高级编辑</button>
 
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-split-merge" role="tab" data-settings-tab="split-merge" aria-selected="false" aria-controls="editor-settings-page-split-merge" tabindex="-1">拆分合并</button>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-shortcuts" role="tab" data-settings-tab="shortcuts" aria-selected="false" aria-controls="editor-settings-page-shortcuts" tabindex="-1">快捷键</button>
       <div class="editor-settings-nav-group-label" aria-hidden="true">播放预览</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-subtitle-preview" role="tab" data-settings-tab="subtitle-preview" aria-selected="false" aria-controls="editor-settings-page-subtitle-preview" tabindex="-1">播放预览</button>
 
@@ -1390,6 +1392,20 @@ __WAVEFORM_CSS__
       </div>
     </div>
   </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-shortcuts" role="tabpanel" aria-labelledby="editor-settings-tab-shortcuts" hidden>
+    <div class="shortcut-settings">
+      <div class="shortcut-settings-filter">
+        <input type="search" id="shortcuts-filter" placeholder="过滤操作名称或快捷键…" aria-label="过滤快捷键" autocomplete="off" spellcheck="false">
+        <button type="button" id="shortcuts-key-search" aria-pressed="false">按键检索</button>
+        <button type="button" id="shortcuts-filter-clear">清空过滤</button>
+      </div>
+      <p class="editor-settings-hint">点击按键按钮，再按下新的单键或组合键；Esc 取消录入。更改立即保存到当前浏览器。</p>
+      <p class="editor-settings-hint">文本输入、弹窗确认 / 取消及鼠标修饰键保持原有行为。快捷键可能被系统或浏览器截获，设置成功不代表一定能收到；刷新键可能刷新页面。</p>
+      <div class="shortcut-settings-actions"><button type="button" id="shortcuts-reset">恢复全部默认快捷键</button></div>
+      <p id="shortcuts-status" class="editor-settings-hint" role="status" aria-live="polite"></p>
+      <div id="shortcuts-list" class="shortcut-settings-list"></div>
+    </div>
   </div>
   <div class="editor-settings-page" id="editor-settings-page-regions" role="tabpanel" aria-labelledby="editor-settings-tab-regions" hidden>
 <p class="editor-settings-hint" id="settings-regions-introduction">波形区用于查看音频和调整时间，编辑区用于修改字幕，字幕列表用于浏览、筛选与选择字幕。</p>

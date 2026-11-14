@@ -306,7 +306,7 @@ document.addEventListener('pointerdown', (event) => {
   }
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape') return;
+  if (event.key !== 'Escape' || MaweShortcuts.wasModalOpen(event)) return;
   if (!MaweDom.cueListSettingsPanel?.hidden) {
     event.preventDefault();
     MaweSettingsPanels.setCueListSettingsPanelOpen(false);

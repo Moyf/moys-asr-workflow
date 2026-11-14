@@ -652,7 +652,7 @@
     if (event.target === modal) closeTextProcessModal();
   });
   document.addEventListener('keydown', (event) => {
-    if (!modal.classList.contains('show') || event.key !== 'Escape') return;
+    if (!modal.classList.contains('show') || event.key !== 'Escape' || MaweShortcuts.isNativeDialogOpen()) return;
     event.stopImmediatePropagation();
     event.preventDefault();
     if (importDialog.open) {

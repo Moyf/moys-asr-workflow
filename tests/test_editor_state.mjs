@@ -220,6 +220,21 @@ test('saving an earlier snapshot keeps later edits dirty and excludes highlights
   assert.equal(projectModel.getMainTrack(project).segments[0]._dirty, undefined);
 });
 
+test('default timed text view is omitted and equivalent to a missing preference', () => {
+  const project = runtimeProject();
+  const state = loadState(project);
+  state.beginProjectSession();
+  state.establishProjectCheckpoint();
+  project.timed_text_edit_view = 'rows';
+  assert.equal(state.hasProjectChanges(), false);
+  assert.equal(state.persistenceSnapshot(project).timed_text_edit_view, undefined);
+  project.timed_text_edit_view = 'single';
+  assert.equal(state.hasProjectChanges(), true);
+  assert.equal(state.persistenceSnapshot(project).timed_text_edit_view, 'single');
+  project.timed_text_edit_view = 'rows';
+  assert.equal(state.hasProjectChanges(), false);
+});
+
 test('actual import repairs remain unsaved until successful save acknowledgement', () => {
   const state = loadState();
   state.beginProjectSession();

@@ -1974,6 +1974,89 @@ test('uses B on a single selected extension cue to open the extension split dial
   await expect(page.locator('.multi-cue-column.extension:not(.multi-cue-empty)')).toHaveCount(4);
 });
 
+test('custom split keys stay out of main and extension inline text; configured Enter behavior remains', async ({ page }) => {
+  await importPair(page);
+  await page.locator('#multi-subtitle-import-extension').click();
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+
+  await openSettingsPage(page, 'shortcuts');
+  const splitKey = page.locator('[data-shortcut-id="split"][data-shortcut-control="key"]');
+  await splitKey.click();
+  await page.keyboard.press('Alt+e');
+  await closeSettingsPanels(page);
+
+  const row = page.locator('.multi-dual-cue').first();
+  for (const kind of ['main', 'extension']) {
+    const text = row.locator(`.multi-cue-column.${kind} .text`);
+    await text.dblclick();
+    await page.keyboard.type('bq');
+    await expect(text).toContainText('bq');
+    await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+    await row.locator(`.multi-cue-column.${kind} .multi-cue-column-header`).click();
+    await expect(text).not.toHaveAttribute('contenteditable');
+  }
+
+  const extensionCue = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension');
+  const originalExtensionText = await extensionCue.locator('.text').innerText();
+  const preview = page.locator('#multi-subtitle-split-preview .multi-subtitle-split-preview-line');
+  await extensionCue.click({ button: 'right' });
+  const splitMenuItem = page.locator('#ctxmenu .item').filter({ hasText: '在鼠标位置拆分' });
+  await expect(splitMenuItem.locator('kbd')).toHaveText('Alt+E');
+  await page.mouse.click(4, 4);
+  await extensionCue.click();
+  await page.keyboard.press('Alt+e');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect.poll(() => page.evaluate(() => MaweSplitCore.pendingLinkedSplit?.splitTextMode)).toBe(null);
+  await expect(preview.locator('.multi-subtitle-split-preview-right')).not.toHaveText(originalExtensionText);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Alt+Shift+e');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect.poll(() => page.evaluate(() => MaweSplitCore.pendingLinkedSplit?.splitTextMode)).toBe('progressive');
+  await expect(preview.locator('.multi-subtitle-split-preview-right')).toHaveText(originalExtensionText);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+Alt+Shift+e');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await expect.poll(() => page.evaluate(() => MaweSplitCore.pendingLinkedSplit?.splitTextMode)).toBe('duplicate');
+  await expect(preview.locator('.multi-subtitle-split-preview-left')).toHaveText(originalExtensionText);
+  await expect(preview.locator('.multi-subtitle-split-preview-right')).toHaveText(originalExtensionText);
+  await page.locator('#multi-subtitle-split-confirm').click();
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+  const duplicatedExtensionTextCount = await page.evaluate((text) => {
+    const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+    return track.segments.filter(segment => segment.text === text).length;
+  }, originalExtensionText);
+  expect(duplicatedExtensionTextCount).toBe(2);
+  await page.locator('#undo-btn').click();
+  await expect.poll(() => page.locator('.multi-dual-cue').first()
+    .locator('.multi-cue-column.extension:not(.multi-cue-empty) .text').count()).toBe(1);
+  await page.keyboard.press('b');
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+
+  await openSettingsPage(page, 'split-merge');
+  const enterSplit = page.locator('#split-key');
+  await enterSplit.selectOption('enter');
+  await closeSettingsPanels(page);
+
+  const mainText = row.locator('.multi-cue-column.main .text');
+  await mainText.dblclick();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await page.locator('#multi-subtitle-split-cancel').click();
+
+  await openSettingsPage(page, 'split-merge');
+  await enterSplit.selectOption('ctrl-enter');
+  await closeSettingsPanels(page);
+  const extensionText = row.locator('.multi-cue-column.extension .text');
+  await extensionText.dblclick();
+  await page.keyboard.press('Enter');
+  await expect(extensionText).not.toHaveAttribute('contenteditable');
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+
+  await extensionText.dblclick();
+  await page.keyboard.press('Control+Enter');
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+});
+
 test('uses B on a waveform-selected extension cue instead of its overlapping main cue', async ({ page }) => {
   const project = {
     segments: [{ id: 'main-waveform-001', start: 1000, end: 3000, text: 'main cue' }],

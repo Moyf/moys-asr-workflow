@@ -374,16 +374,18 @@
   // One pointer gesture owns one snapshot. Keyboard navigation cannot publish
   // a second edit while the pointer is held; Escape and focus loss cancel it.
   global.addEventListener('keydown', event => {
+    if (global.MaweShortcuts.isModalOpen()) return;
     const active = drag || scaleDrag;
     if (active) {
       event.preventDefault(); event.stopImmediatePropagation();
-      if (event.key === 'Escape') { if (drag) finish(true); else finishScaleDrag(true); }
-      else if ((event.ctrlKey || event.metaKey) && !event.altKey) {
-        const key = event.key.toLowerCase();
+      const effective = global.MaweShortcuts.resolveEvent(event);
+      if (effective.key === 'Escape') { if (drag) finish(true); else finishScaleDrag(true); }
+      else if ((effective.ctrlKey || effective.metaKey) && !effective.altKey) {
+        const key = effective.key.toLowerCase();
         if (key === 'z') {
-          if (event.shiftKey) global.MaweHistory.performRedo();
+          if (effective.shiftKey) global.MaweHistory.performRedo();
           else global.MaweHistory.performUndo();
-        } else if (key === 'y' && !event.shiftKey) global.MaweHistory.performRedo();
+        } else if (key === 'y' && !effective.shiftKey) global.MaweHistory.performRedo();
       }
       return;
     }

@@ -26,7 +26,7 @@ MaweDom.projectMediaModal.addEventListener('click', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || !MaweDom.projectMediaModal.classList.contains('show')) return;
+  if (event.key !== 'Escape' || MaweShortcuts.isNativeDialogOpen() || !MaweDom.projectMediaModal.classList.contains('show')) return;
   event.preventDefault();
   event.stopPropagation();
   MaweDom.projectMediaLaterButton.click();

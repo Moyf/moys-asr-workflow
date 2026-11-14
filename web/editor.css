@@ -4866,3 +4866,24 @@
 .speaker-manager-row select { max-width: 180px; }
 .speaker-manager-row input, .speaker-manager-row select, #speaker-manager button, #speaker-project-controls button { min-height: 28px; }
 .speaker-manager-row input[type="color"] { width: 40px; padding: 2px; }
+
+/* Shortcut recording controls use an explicit gap, including hint/action rows. */
+.shortcut-settings { display: flex; flex-direction: column; gap: 12px; }
+.shortcut-settings-list { display: flex; flex-direction: column; gap: 10px; }
+.shortcut-settings-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.shortcut-settings-controls { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.editor-settings-panel .shortcut-settings-controls button.shortcut-settings-key { min-width: 84px; }
+.shortcut-settings-key[aria-pressed="true"] { outline: 2px solid var(--accent, #60a5fa); }
+.shortcut-help-note { margin: 0 0 12px; }
+.shortcut-settings-label { font-size: 13px; line-height: 1.5; }
+.shortcut-settings-group { border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 10px; }
+.shortcut-settings-group > summary { cursor: pointer; font-size: 13px; color: var(--text-primary); }
+.shortcut-settings-count { margin-left: 8px; font-size: 11px; color: var(--text-muted); }
+.shortcut-settings-group-body { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.shortcut-settings-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.editor-settings-panel .shortcut-settings-filter input { flex: 1 1 140px; min-width: 0; width: auto; font-size: 13px; }
+.shortcut-settings-filter button { flex: 0 0 auto; }
+#shortcuts-key-search[aria-pressed="true"] { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+.editor-settings-panel #shortcuts-status.shortcut-settings-error { color: var(--danger, #ef4444); }
+.shortcut-settings-customized { display: inline-block; margin-left: 8px; padding: 1px 5px; border-radius: var(--radius-sm); font-size: 11px; color: var(--accent); background: var(--accent-soft); }
+.editor-settings-panel .shortcut-settings-row.is-customized button.shortcut-settings-key { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }

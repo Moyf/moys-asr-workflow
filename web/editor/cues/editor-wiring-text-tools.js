@@ -15,6 +15,7 @@ document.getElementById('wrap-chars-confirm')?.addEventListener('click', () => {
 });
 // 输入框回车插入，输入法确认时不提交；Esc 关闭且不清空字幕选择。
 document.addEventListener('keydown', (event) => {
+  if (MaweShortcuts.isNativeDialogOpen()) return;
   if (!MaweTextProcess.wrapCharsModal?.classList.contains('show')) return;
   if (event.isComposing || event.keyCode === 229) return;
   const input = event.target === MaweTextProcess.wrapCharsLeftInput || event.target === MaweTextProcess.wrapCharsRightInput;
@@ -181,76 +182,4 @@ MaweDom.timedTextEditCancel?.addEventListener('click', MaweTimedTextEdit.request
 MaweDom.timedTextEditModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.timedTextEditModal) MaweTimedTextEdit.requestCloseTimedTextEdit();
 });
-MaweDom.timedTextEditApply?.addEventListener('click', () => {
-  const draft = MaweDom.timedTextEditDraft;
-  if (!draft) return;
-  MaweTimedTextEdit.syncTimedTextEditDraftFromDom();
-  MaweTimedTextEdit.flushTimedTextEditReport();
-  if (!draft.report?.valid) return;
-  if (!draft.report.stats.changedSegments) {
-    MaweHint.flashHint('当前没有文本修改，未作改动', 'invalid');
-    return;
-  }
-  const targetSegments = MaweTimedTextEdit.timedTextEditSegments(draft.kind);
-  const snapshotSegments = Array.isArray(draft.allSourceSegments)
-    ? draft.allSourceSegments : draft.sourceSegments;
-  const currentMatchesSnapshot = targetSegments.length === snapshotSegments.length
-    && targetSegments.every((segment, index) => {
-      const source = snapshotSegments[index];
-      return segment?.id === source?.id
-        && Number(segment?.start) === Number(source?.start)
-        && Number(segment?.end) === Number(source?.end)
-        && String(segment?.text || '') === String(source?.text || '')
-        && Boolean(segment?.disabled) === Boolean(source?.disabled);
-    });
-  if (!currentMatchesSnapshot) {
-    MaweHint.flashHint('字幕在编辑窗口打开后发生了变化，请关闭窗口并重新打开', 'warning');
-    MaweTimedTextEdit.closeTimedTextEdit();
-    return;
-  }
-  const effectiveTexts = MaweTimedTextEdit.timedTextEditEffectiveTexts();
-  const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(
-    draft.sourceSegments,
-    effectiveTexts,
-    { reservedSegments: [...window.AsrEditorUtils.iterSegments(MaweBoot.DATA)], rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule },
-  );
-  if (!nextSegments) {
-    MaweHint.flashHint('无法应用文本修改：字幕行结构发生了变化', 'warning');
-    return;
-  }
-  return MaweCommands.run('纯文本编辑', (command) => {
-    const dirtyFlags = window.AsrEditorUtils.timedTextEditDirtyFlags(
-      draft.sourceSegments,
-      nextSegments,
-      draft.report,
-    );
-    nextSegments.forEach((segment, index) => {
-      if (dirtyFlags[index]) segment._dirty = true;
-      else delete segment._dirty;
-    });
-    const removedCount = MaweTimedTextEdit.applyTimedTextEditSegments(
-      draft.kind,
-      draft.sourceSegments,
-      targetSegments,
-      nextSegments,
-      draft.report,
-      effectiveTexts,
-      draft.sourceSegmentIndexes,
-    );
-    if (draft.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
-    MaweMultiSubtitleCore.syncBindingOffsets();
-    // 纯文本编辑应用后暂不主动触发自动保存，让 dirty 标记短暂保留，
-    // 便于用户确认哪些字幕确实发生了变化；已有的自动保存计时器仍照常执行。
-    const changedCount = draft.report.stats.changedSegments;
-    const lostCount = draft.report.stats.lostMappedCues;
-    const estimatedCount = draft.report.stats.estimatedTimingCues || 0;
-    MaweTimedTextEdit.closeTimedTextEdit();
-    command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
-
-    MaweHistory.updateUndoRedoButtons();
-    MaweHint.flashHint(
-      `已应用纯文本编辑：${changedCount} 条字幕${removedCount ? `，移除 ${removedCount} 条空字幕行` : ''}${lostCount ? `，${lostCount} 条字词时间码已清除` : ''}${estimatedCount ? `，${estimatedCount} 条时间范围为自动估算` : ''}`,
-      'success',
-    );
-  });
-});
+MaweDom.timedTextEditApply?.addEventListener('click', () => MaweTimedTextEdit.applyTimedTextEdit());

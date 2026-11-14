@@ -325,6 +325,12 @@ export function initMaweDom() {
   const helpSplitKey = document.getElementById('help-split-key');
 
 
+  const helpShortcutSplitKey = document.getElementById('help-shortcut-split-key');
+
+
+  const helpWaveformSplitKey = document.getElementById('help-waveform-split-key');
+
+
   const cueEditorSplitKey = document.getElementById('cue-editor-split-key');
 
 
@@ -1137,6 +1143,8 @@ export function initMaweDom() {
     helpDragHandle,
     helpCloseButton,
     helpSplitKey,
+    helpShortcutSplitKey,
+    helpWaveformSplitKey,
     cueEditorSplitKey,
     cueEditorConfirmKey,
     helpTabButtons,

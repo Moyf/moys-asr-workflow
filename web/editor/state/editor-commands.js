@@ -15,7 +15,9 @@ export function createEditorCommands(dependencies) {
     for (const listener of beforeBeginListeners) listener(label, options);
     const snapshot = capture(label, options);
     let finished = false;
+    let committed = false;
     return Object.freeze({
+      get committed() { return committed; },
       commit(invalidation = {}) {
         if (finished) return false;
         if (!hasChanges(snapshot)) {
@@ -25,6 +27,7 @@ export function createEditorCommands(dependencies) {
         }
         publish(snapshot);
         finished = true;
+        committed = true;
         refresh(invalidation);
         return true;
       },

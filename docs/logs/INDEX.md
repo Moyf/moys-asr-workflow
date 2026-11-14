@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.10.0-beta.2 之后 | 2026-11-13 | [自定义快捷键复审反馈](release1.10.0-beta.2/261113_自定义快捷键复审/TEST_FEEDBACK_自定义快捷键.md) / [复核记录](release1.10.0-beta.2/261113_自定义快捷键复审/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261113_自定义快捷键复审/自定义快捷键.checklist.md) | 修饰键派生、配置迁移、字词上下文、系统复制键、模态旧键抑制、Alt+Shift 边界贴合及拖拽撤销/重做；全量套件与平台边界见记录 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [PR44 同步 main 独立复核](release1.10.0-beta.2/261106_PR44同步main/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261106_PR44同步main/PR44同步main.checklist.md) | 三轨、贴纸、字体、波形与 Soniox 的真实流程待核验 |
 | 1.10.0-beta.2 之后 | 2026-11-06 | [main 合入 2.0dev 独立复核](release1.10.0-beta.2/261106_main合入2dev/REVIEW_FINDINGS.md) | 三轨适配、处理配置扩展保留与验收边界 |
 | 1.10.0-beta.2 之后 | 2026-11-05 | [文本处理弹窗反馈](release1.10.0-beta.2/261105_文本处理弹窗/TEST_FEEDBACK_文本处理弹窗.md) / [独立复核](release1.10.0-beta.2/261105_文本处理弹窗/REVIEW_FINDINGS.md) / [人工核验](release1.10.0-beta.2/261105_文本处理弹窗/文本处理弹窗.checklist.md) | 双列预览、预设导入确认、工程预填和 MASS 分组 |

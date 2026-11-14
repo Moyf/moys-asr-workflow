@@ -221,7 +221,7 @@ export function initMaweFloatingPanel() {
       setPosition(rect.left, rect.top, { persist: true });
     });
     document.addEventListener('keydown', (event) => {
-      if (event.defaultPrevented || event.key !== 'Escape' || !isOpen() || MaweInlineEdit.editingState
+      if (event.defaultPrevented || event.key !== 'Escape' || MaweShortcuts.wasModalOpen(event) || !isOpen() || MaweInlineEdit.editingState
           || floatingSurfaceStack.filter(floatingSurfaceIsOpen).at(-1) !== panel) return;
       event.preventDefault();
       close();

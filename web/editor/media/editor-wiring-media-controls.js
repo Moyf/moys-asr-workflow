@@ -51,6 +51,7 @@ document.addEventListener('fullscreenchange', MaweMediaPlayback.syncMediaControl
 // 微调幅度调整时间。Shift+方向键贴合前后边界；Ctrl(Cmd)+方向键调整左边界，
 // Ctrl(Cmd)+Shift+方向键调整右边界。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   // 拆分弹窗内方向键用于移动 ✂️ 断点，不再 seek 媒体或微调字幕时间。
@@ -110,6 +111,7 @@ document.addEventListener('keydown', (e) => {
 // Home/End：字幕列表最近拥有导航时选择当前轨道首尾；波形、播放器或尚未
 // 确定区域时跳转媒体首尾。文本输入、普通按钮和模态窗口保留原生行为。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'Home' && e.key !== 'End') return;
   if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   if (!MaweKeyboardTargets.isPlaybackKeyboardTarget(e) && MaweKeyboardTargets.isNativeKeyboardControl(e)) return;
@@ -154,6 +156,7 @@ document.addEventListener('keydown', (e) => {
 // 多重字幕下，上/下只切换当前操作轨道；优先使用绑定关系，没有绑定时
 // 选择时间范围重叠最多、否则距离最近的另一轨字幕，不改变播放头位置。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
   if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;

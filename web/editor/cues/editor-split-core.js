@@ -370,11 +370,20 @@
 
 
   function forcedSplitRetryHint(explicitOnly = false) {
-    // 波形来源的拆分没有行内编辑态,Enter 不会触发强制拆分,提示只提 B;
-    // 列表来源停留在编辑态,B 与 Enter 都能确认强制拆分。
-    return explicitOnly
-      ? '当前切点会产生不足 100ms 的一侧；请再次按 B 强制拆分，切点将调整为两侧各至少 100ms'
-      : '当前切点会产生不足 100ms 的一侧；请再次按 B 或 Enter 强制拆分，切点将调整为两侧各至少 100ms';
+    // 拆分快捷键仅在非编辑态生效；内联编辑态仍以设置中的 Enter 操作为准。
+    const modal = MaweDom.multiSubtitleSplitModal?.classList.contains('show');
+    const editing = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
+    const splitKey = modal ? 'B' : editing
+      ? MaweDisplaySettings.splitKeyLabel()
+      : MaweShortcuts.splitVariantLabel('b');
+    const template = !splitKey
+      ? '当前切点会产生不足 100ms 的一侧；没有可用的拆分快捷键，请再次执行拆分操作以强制拆分，切点将调整为两侧各至少 100ms'
+      : modal
+        ? '当前切点会产生不足 100ms 的一侧；请再次按 {splitKey} 或 Enter 强制拆分，切点将调整为两侧各至少 100ms'
+        : explicitOnly || editing
+        ? '当前切点会产生不足 100ms 的一侧；请再次按 {splitKey} 强制拆分，切点将调整为两侧各至少 100ms'
+        : '当前切点会产生不足 100ms 的一侧；请再次按 {splitKey} 或 Enter 强制拆分，切点将调整为两侧各至少 100ms';
+    return window.MAWE_I18N.translateText(template).replaceAll('{splitKey}', splitKey);
   }
 
 
@@ -908,6 +917,7 @@
   if (!Number.isInteger(initialOffset)) return null;
   return {
     kind: 'extension',
+    splitTextMode: initial.splitTextMode || null,
     mainIndex: -1,
     extensionIndex,
     extensionId: extension.id,
@@ -1616,7 +1626,13 @@
         : state.splitTextMode === 'progressive' ? { ...mainParts, right: mainText } : mainParts;
       setSplitPreviewLine('主', previewParts);
     }
-    if (extensionParts && !mainOnly) setSplitPreviewLine('副', extensionParts);
+    if (extensionParts && !mainOnly) {
+      const extensionText = String(extension.text || '');
+      const previewParts = state.splitTextMode === 'duplicate'
+        ? { ...extensionParts, left: extensionText, right: extensionText }
+        : state.splitTextMode === 'progressive' ? { ...extensionParts, right: extensionText } : extensionParts;
+      setSplitPreviewLine('副', previewParts);
+    }
     if (!mainValid || !extensionValid) {
       const error = document.createElement('div');
       error.textContent = '当前断点无法形成两段合法文本';
@@ -1819,7 +1835,7 @@
     extension.id || `${track.id}-segment-${extensionIndex}`,
     true,
     state.extensionMode,
-    { ...splitAlignmentOptions, duplicateText, headIndex: extensionIndex },
+    { ...splitAlignmentOptions, duplicateText, splitTextMode: state.splitTextMode, headIndex: extensionIndex },
   );
   if (!pair) {
     if (!force && !duplicateText) {
@@ -1957,7 +1973,7 @@
     extension.id || `extension-${extensionIndex}`,
     true,
     state.extensionMode,
-    { preserveCutMs: true, forceCut: force, duplicateText, headIndex: extensionIndex },
+    { preserveCutMs: true, forceCut: force, duplicateText, splitTextMode: state.splitTextMode, headIndex: extensionIndex },
   );
   if (!mainPair || !extensionPair || extensionIndex < 0) {
     // 前置时长检查已拦截常见不可拆场景；这里兜底提示，避免弹窗内按键完全无反应。

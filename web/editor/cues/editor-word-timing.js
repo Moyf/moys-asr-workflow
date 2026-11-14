@@ -231,6 +231,7 @@
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'q' && event.key !== 'Q') return;
       if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) return;
+      if (MaweShortcuts.isModalOpen()) return;
       if (dialog()?.open) return;
       const target = event.target;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
@@ -246,14 +247,31 @@
     // Native close is queued; it may arrive after a new preview has opened.
     dialog()?.addEventListener('close', () => { if (!dialog().open) conversionTarget = null; });
   }
-  // Capture before subtitle hotkeys: unsupported actions cannot hit the parent cue.
+    // Capture before subtitle hotkeys: unsupported actions cannot hit the parent cue.
   document.addEventListener('keydown', event => {
-    if (dialog()?.open) { event.stopImmediatePropagation(); return; }
+    // Word selection is behind any modal; its physical C/F and capture guards
+    // must not consume or act on the modal's original keyboard event.
+    if (MaweShortcuts.isModalOpen()) return;
     if (!enabled || event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const waveform = MaweCoreState.waveformEditor;
+    // The shortcut recorder runs later in capture order. Let it receive the
+    // physical key instead of executing word-selection commands behind it.
+    if (!waveform?.wordDrag && event.target.closest?.(
+      '[data-shortcut-control="key"][aria-pressed="true"], #shortcuts-key-search[aria-pressed="true"]',
+    )) return;
+    const physicalKey = event.key.toLowerCase();
+    const physicalClipboard = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
+      && ['c', 'v', 'x'].includes(physicalKey);
+    // Preserve native clipboard operations while preventing parent editor
+    // commands from acting on the same physical key during word interactions.
+    if (physicalClipboard && (waveform?.wordDrag || selection && getSelection(selection.segment).size)) {
+      event.stopImmediatePropagation();
+      return;
+    }
+    const effective = MaweShortcuts.resolveEvent(event);
+    const key = String(effective.key || '').toLowerCase();
     if (waveform?.wordDrag) {
-      const key = event.key.toLowerCase();
-      if (event.key === 'Escape' || ((event.ctrlKey || event.metaKey) && ['z', 'y'].includes(key))) {
+      if (key === 'escape' || ((effective.ctrlKey || effective.metaKey) && ['z', 'y'].includes(key))) {
         event.preventDefault(); event.stopImmediatePropagation(); waveform.cancelWordDrag();
       } else if (!['alt', 'control', 'meta', 'shift', 'j', 'k', 'l', ' '].includes(key)) {
         // Finish or cancel the gesture before running another project command.
@@ -261,27 +279,34 @@
       }
       return;
     }
-    if (event.key === 'Escape' && MaweDom.ctxmenu.classList.contains('show')) {
+    if (key === 'escape' && MaweDom.ctxmenu.classList.contains('show')) {
       event.preventDefault(); event.stopImmediatePropagation(); MaweDom.ctxmenu.classList.remove('show'); return;
     }
     if (!selection || !getSelection(selection.segment).size) return;
-    const key = event.key.toLowerCase();
-    if ((event.ctrlKey || event.metaKey) && key === 'a' && !event.shiftKey) {
-      event.preventDefault(); event.stopImmediatePropagation();
-      selection.indices = new Set(global.AsrEditorUtils.getWordTimingEntries(selection.segment, clock()).map(e => e.index));
-      refresh();
-    } else if (key === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+    // Contextual word-selection commands keep their documented physical keys,
+    // while parent subtitle commands must be guarded by the effective remap.
+    const fixedWordChord = !event.ctrlKey && !event.metaKey && !event.altKey;
+    if (fixedWordChord && physicalKey === 'f' && !event.shiftKey
         && !event.repeat && !MaweDom.ctxmenu.classList.contains('show')) {
       event.preventDefault(); event.stopImmediatePropagation();
       auditionWords(selection.segment, [...selection.indices]);
-    } else if (key === 'c' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      return;
+    }
+    if (fixedWordChord && physicalKey === 'c') {
       event.preventDefault(); event.stopImmediatePropagation(); merge();
-    } else if (event.key === 'Escape') {
+      return;
+    }
+    if ((effective.ctrlKey || effective.metaKey) && key === 'a' && !effective.shiftKey && !effective.altKey) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      selection.indices = new Set(global.AsrEditorUtils.getWordTimingEntries(selection.segment, clock()).map(e => e.index));
+      refresh();
+    } else if (key === 'escape') {
       event.preventDefault(); event.stopImmediatePropagation(); clearSelection(); refresh();
-    } else if (['delete', 'backspace', 'b', 'n', 'r', 'enter', 'g', 'h', 't', '1', '2', '3', '4', '5', '0',
+    } else if (['delete', 'backspace', 'b', 'n', 'r', 'enter', 'g', 'h', 't', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
       'arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)
-        || (['z', 'x'].includes(key) && !event.ctrlKey && !event.metaKey)
-        || (['a', 'd', 'w', 's'].includes(key) && (event.altKey || event.shiftKey))) {
+        || key === 'c'
+        || (['z', 'x'].includes(key) && !effective.ctrlKey && !effective.metaKey && !effective.altKey && !effective.shiftKey)
+        || (['a', 'd', 'w', 's'].includes(key) && (effective.altKey || effective.shiftKey))) {
       event.preventDefault(); event.stopImmediatePropagation();
     } else if (['a', 'd', 'w', 's', 'home', 'end'].includes(key)) {
       clearSelection(); refresh();

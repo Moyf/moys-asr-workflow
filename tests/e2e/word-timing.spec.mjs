@@ -144,7 +144,10 @@ test(`full word layout preserves sentence height, highlight and body dragging in
   await page.mouse.up();
   expect((await source(page)).start).toBeGreaterThan(before.start);
   await page.keyboard.press('ControlOrMeta+z');
-  expect(await source(page)).toEqual(before);
+  const restored = await source(page);
+  expect(restored._dirty).toBe(true);
+  delete restored._dirty;
+  expect(restored).toEqual(before);
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath(`word-full-${mode}.png`) });
 });
 }
@@ -636,6 +639,30 @@ test('merge cannot nest inside an active word drag or be overwritten by its snap
   expect((await source(page)).items).toEqual(moved);
 });
 
+test('remapped play key remains available while a word timing drag is active', async ({ page }) => {
+  await setWordTiming(page);
+  await page.evaluate(() => { MaweShortcuts.setBinding('play', 'p'); });
+  const block = word(page, 0);
+  await expect(block).toBeVisible();
+  const box = await block.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2, { steps: 3 });
+  await expect.poll(() => page.evaluate(() => Boolean(MaweCoreState.waveformEditor.wordDrag))).toBe(true);
+  await page.evaluate(() => {
+    const player = MaweCoreState.player;
+    player.pause();
+    window.__playCalls = 0;
+    window.__originalPlayerPlay = player.play;
+    player.play = () => { window.__playCalls += 1; return Promise.resolve(); };
+  });
+
+  await page.keyboard.press('p');
+  await expect.poll(() => page.evaluate(() => window.__playCalls)).toBe(1);
+  await page.mouse.up();
+  await page.evaluate(() => { MaweCoreState.player.play = window.__originalPlayerPlay; });
+});
+
 test('conversion disables unavailable targets and requires review if data changes while open', async ({ page }) => {
   await page.evaluate(() => MaweWordTiming.openConversion([1, 2]));
   await expect(page.locator('#word-conversion-confirm')).toBeDisabled();
@@ -761,8 +788,9 @@ for (const { timebase, startFrame } of [
 test('saving focused cue panel text syncs word labels before resetting the edit snapshot', async ({ page }) => {
   await page.evaluate(() => {
     MaweSettings.updateEditorSettings({ cueEditorCancelOnEscape: true });
-    MaweServerSave.projectFileHandle = {
+    const handle = {
       name: 'word-label-save.mosp',
+      async getFile() { return { size: 0 }; },
       async createWritable() {
         return {
           async write(blob) { window.__savedWordLabelProject = JSON.parse(await blob.text()); },
@@ -770,13 +798,16 @@ test('saving focused cue panel text syncs word labels before resetting the edit 
         };
       },
     };
+    MaweServerSave.projectFileHandle = handle;
+    // This legacy fixture requires v2 Save As before the existing handle can be used.
+    window.showSaveFilePicker = async () => handle;
   });
   await page.locator('.cue[data-idx="0"]').click();
   const panel = page.locator('#cue-panel-text');
   await panel.fill('我最喜欢！');
   await panel.press('Control+s');
-  await expect.poll(() => page.evaluate(() => window.__savedWordLabelProject?.segments[0].text)).toBe('我最喜欢！');
-  expect(await page.evaluate(() => window.__savedWordLabelProject.segments[0].items.map(item => item.text)))
+  await expect.poll(() => page.evaluate(() => window.__savedWordLabelProject?.tracks.find(track => track.role === 'main').segments[0].text)).toBe('我最喜欢！');
+  expect(await page.evaluate(() => window.__savedWordLabelProject.tracks.find(track => track.role === 'main').segments[0].items.map(item => item.text)))
     .toEqual(['我', '最喜欢！']);
   await expect(panel).toBeFocused();
   expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
@@ -881,4 +912,168 @@ for (const trigger of ['menu', 'shortcut']) test(`word audition converts frame r
   const end = await page.evaluate(() => MaweCoreState.player.currentTime);
   expect(end).toBeGreaterThanOrEqual(5.9);
   expect(end).toBeLessThanOrEqual(6.3);
+});
+
+
+test('word selection behind a split dialog cannot consume C or merge background words', async ({ page }) => {
+  await setWordTiming(page);
+  await word(page, 0).click();
+  await word(page, 1).click({ modifiers: ['Shift'] });
+  expect(await page.locator('.waveform-word-block.selected').count()).toBeGreaterThanOrEqual(2);
+  const before = await source(page);
+  expect(await page.evaluate(() => MaweSplitCore.openMainWaveformSplitModal(0, 4000))).toBe(true);
+  await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
+  await page.evaluate(() => {
+    window.__wordModalKeys = [];
+    MaweDom.multiSubtitleSplitModal.addEventListener('keydown', event => window.__wordModalKeys.push(event.key));
+  });
+  await page.locator('#multi-subtitle-split-cancel').focus();
+  await page.keyboard.press('c');
+  expect(await page.evaluate(() => window.__wordModalKeys)).toContain('c');
+  expect((await source(page)).items).toEqual(before.items);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+});
+
+
+test('Shift+Space on a native dialog surface does not start background playback', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweCoreState.player.pause();
+    window.__modalPlayCalls = 0;
+    const play = MaweCoreState.player.play.bind(MaweCoreState.player);
+    MaweCoreState.player.play = (...args) => { window.__modalPlayCalls += 1; return play(...args); };
+    MaweSegmentOps.openSubtitleTimeOffsetModal([0]);
+    const dialog = document.getElementById('subtitle-time-offset-dialog');
+    dialog.tabIndex = -1;
+    dialog.focus();
+    window.__modalSpaceKeys = [];
+    dialog.addEventListener('keydown', event => { if (event.key === ' ') window.__modalSpaceKeys.push(event.shiftKey); });
+  });
+  const dialog = page.locator('#subtitle-time-offset-dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toBeFocused();
+  await page.keyboard.press('Shift+Space');
+  expect.soft(await page.evaluate(() => window.__modalSpaceKeys)).toEqual([true]);
+  expect.soft(await page.evaluate(() => window.__modalPlayCalls)).toBe(0);
+  expect.soft(await page.evaluate(() => MaweCoreState.player.paused)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+});
+
+async function tabToShortcutControl(page, selector) {
+  const target = page.locator(selector);
+  for (let i = 0; i < 220; i += 1) {
+    if (await target.evaluate(el => el === document.activeElement)) return i;
+    await page.keyboard.press('Tab');
+  }
+  throw new Error(`Keyboard focus did not reach ${selector}`);
+}
+
+async function prepareWordSelectionAndShortcutPage(page) {
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-shortcuts').click();
+  await page.locator('#editor-settings-close').click();
+  await setWordTiming(page);
+  await word(page, 0).click();
+  await word(page, 1).click({ modifiers: ['Shift'] });
+  expect(await page.locator('.waveform-word-block.selected').count()).toBeGreaterThanOrEqual(2);
+  await tabToShortcutControl(page, '#editor-settings-toggle');
+  expect(await page.locator('.waveform-word-block.selected').count()).toBeGreaterThanOrEqual(2);
+}
+
+test('word selection does not prevent keyboard Enter from opening settings', async ({ page }) => {
+  await prepareWordSelectionAndShortcutPage(page);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#editor-settings-panel')).toBeVisible();
+  expect(await page.locator('.waveform-word-block.selected').count()).toBeGreaterThanOrEqual(2);
+});
+
+test('word selection does not steal keyboard shortcut recording or key search', async ({ page }) => {
+  await prepareWordSelectionAndShortcutPage(page);
+  const before = await source(page);
+  await page.keyboard.press('Space');
+  await expect(page.locator('#editor-settings-page-shortcuts')).toBeVisible();
+  const splitKey = '[data-shortcut-id="split"][data-shortcut-control="key"]';
+  await tabToShortcutControl(page, splitKey);
+  await page.keyboard.press('b');
+  expect((await source(page)).items).toEqual(before.items);
+  await page.keyboard.press('Space');
+  await expect(page.locator(splitKey)).toHaveText('请按键…');
+  await page.keyboard.press('b');
+  await expect(page.locator('#shortcuts-status')).toContainText('快捷键已保存');
+  await expect(page.locator(splitKey)).toHaveText('B');
+  const editKey = '[data-shortcut-id="edit"][data-shortcut-control="key"]';
+  await tabToShortcutControl(page, editKey);
+  await page.keyboard.press('Space');
+  await expect(page.locator(editKey)).toHaveText('请按键…');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#shortcuts-status')).toContainText('快捷键已保存');
+  await expect(page.locator(editKey)).toHaveText('Enter');
+  await tabToShortcutControl(page, splitKey);
+  await page.keyboard.press('Space');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#shortcuts-status')).toContainText('已取消录入');
+  expect(await page.locator('.waveform-word-block.selected').count()).toBeGreaterThanOrEqual(2);
+  await tabToShortcutControl(page, '#shortcuts-key-search');
+  await page.keyboard.press('Space');
+  await expect(page.locator('#shortcuts-key-search')).toHaveText('请按键…');
+  await page.keyboard.press('c');
+  await expect(page.locator('#shortcuts-filter')).toHaveValue('C');
+  expect((await source(page)).items).toEqual(before.items);
+  expect(await page.locator('.waveform-word-block.selected').count()).toBeGreaterThanOrEqual(2);
+});
+
+
+test('word selection permits keyboard settings tab navigation without changing subtitles', async ({ page }) => {
+  await setWordTiming(page);
+  await word(page, 0).click();
+  await word(page, 1).click({ modifiers: ['Shift'] });
+  const before = await source(page);
+  await tabToShortcutControl(page, '#editor-settings-toggle');
+  await page.keyboard.press('Space');
+  await expect(page.locator('#editor-settings-panel')).toBeVisible();
+  await tabToShortcutControl(page, '#editor-settings-tab-interface');
+  for (let i = 0; i < 5; i += 1) await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#editor-settings-tab-shortcuts')).toBeFocused();
+  await expect(page.locator('#editor-settings-page-shortcuts')).toBeVisible();
+  expect((await source(page)).items).toEqual(before.items);
+  expect(await page.locator('.waveform-word-block.selected').count()).toBeGreaterThanOrEqual(2);
+});
+
+test('settings Enter does not dispatch a reassigned background delete', async ({ page }) => {
+  await prepareWordSelectionAndShortcutPage(page);
+  await page.evaluate(() => { MaweShortcuts.setBinding('edit', ''); MaweShortcuts.setBinding('delete', 'Enter'); });
+  const before = await page.evaluate(() => structuredClone(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments));
+  await page.keyboard.press('Enter');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)).toEqual(before);
+  await expect(page.locator('#editor-settings-panel')).toBeVisible();
+  expect(await page.locator('.waveform-word-block.selected').count()).toBeGreaterThanOrEqual(2);
+});
+
+test('physical clipboard keys cannot delete a subtitle during a word drag when delete uses F2', async ({ page }) => {
+  await setWordTiming(page);
+  await page.evaluate(() => {
+    MaweShortcuts.setBinding('delete', 'F2');
+    window.__wordDragCopyKeys = [];
+    window.addEventListener('keydown', event => {
+      if (['c', 'v', 'x'].includes(event.key.toLowerCase()) && (event.ctrlKey || event.metaKey)) {
+        setTimeout(() => window.__wordDragCopyKeys.push(event.defaultPrevented), 0);
+      }
+    }, true);
+  });
+  const block = word(page, 0);
+  const box = await block.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2, { steps: 3 });
+  await expect.poll(() => page.evaluate(() => Boolean(MaweCoreState.waveformEditor.wordDrag))).toBe(true);
+  const before = await page.evaluate(() => structuredClone(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments));
+  for (const modifier of ['Control', 'Meta']) {
+    for (const key of ['c', 'v', 'x']) await page.keyboard.press(`${modifier}+${key}`);
+  }
+  await expect.poll(() => page.evaluate(() => window.__wordDragCopyKeys)).toEqual([false, false, false, false, false, false]);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)).toEqual(before);
+  expect(await page.evaluate(() => Boolean(MaweCoreState.waveformEditor.wordDrag))).toBe(true);
+  await page.mouse.up();
 });

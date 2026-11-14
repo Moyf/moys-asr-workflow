@@ -13,6 +13,7 @@ document.getElementById('project-marker-track-toggle')?.addEventListener('change
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'm' && event.key !== 'M') return;
   if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) return;
+  if (MaweShortcuts.isModalOpen()) return;
   if (MaweInlineEdit.editingState) return;
   const target = event.target;
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'

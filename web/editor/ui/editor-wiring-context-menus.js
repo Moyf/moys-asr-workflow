@@ -151,7 +151,7 @@ document.addEventListener('contextmenu', (e) => {
   }
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && MaweDom.ctxmenu.classList.contains('show')) {
+  if (e.key === 'Escape' && !MaweShortcuts.wasDialogModalOpen(e) && MaweDom.ctxmenu.classList.contains('show')) {
     MaweDom.ctxmenu.classList.remove('show');
   }
 });

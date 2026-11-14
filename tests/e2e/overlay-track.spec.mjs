@@ -731,16 +731,19 @@ test('splits and merges overlay cues with group marks following', async ({ page 
     },
     waveform: generateWaveformPayload(3000),
   };
+  await page.addInitScript(() => {
+    localStorage.setItem('moy.asr.editor.shortcuts.v1', JSON.stringify({ split: ['Alt+e'] }));
+  });
   await page.goto(server.url);
   await dropProject(page, project);
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
 
   // 拆分：叠加轨复用副轨拆分弹窗（单 lane），提交后颜色组随拆分继承。
-  const opened = await page.evaluate(() => {
+  await page.evaluate(() => {
     MaweCuePanel.setCuePanelTarget('overlay', 0);
-    return window.MaweOverlaySplitMerge.openOverlaySplitModal(0, 1000);
+    MaweState.selection.add('overlay', 0);
   });
-  expect(opened).toBe(true);
+  await page.keyboard.press('Alt+Shift+e');
   await expect(page.locator('#multi-subtitle-split-modal.show')).toBeVisible();
   await expect(page.locator('#multi-subtitle-split-title')).toHaveText('选择叠加字幕拆分点');
   await page.evaluate(() => MaweSplitCore.confirmLinkedSplit());

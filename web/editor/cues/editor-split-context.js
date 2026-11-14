@@ -18,7 +18,7 @@
   if (typeof document !== 'undefined') {
     document.addEventListener('pointerdown', () => { waveformForcedSplit = null; }, true);
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') waveformForcedSplit = null;
+      if (e.key === 'Escape' && !global.MaweShortcuts?.wasModalOpen?.(e)) waveformForcedSplit = null;
     }, true);
   }
 

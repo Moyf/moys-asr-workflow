@@ -160,7 +160,7 @@ window.addEventListener('resize', () => {
   MaweGapRemoveUi.setGapRemovePanelPosition(rect.left, rect.top, { persist: true });
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || !MaweGapRemoveUi.gapRemovePanelIsOpen() || MaweInlineEdit.editingState) return;
+  if (event.key !== 'Escape' || MaweShortcuts.wasModalOpen(event) || !MaweGapRemoveUi.gapRemovePanelIsOpen() || MaweInlineEdit.editingState) return;
   event.preventDefault();
   MaweGapRemoveUi.closeGapRemovePanel();
 });

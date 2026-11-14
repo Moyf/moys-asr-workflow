@@ -273,15 +273,43 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
       markProjectSaved(handle.name, null, { contentFingerprint, epoch: contentEpoch });
       MaweServerSave.configureServerSaveControls();
       MaweServerSave.scheduleAutoSave();
+      return true;
     } catch (error) {
       if (!current()) return false;
-      if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
+      if (error && error.name === 'AbortError') return false;  // 用户取消保存对话框
       MaweServerSave.showProjectSaveError(error?.message || error);
+      return false;
     } finally {
       MaweServerSave.projectSaveInFlight = false;
     }
   }
 
+
+
+  // Only the plain-text modal opts into apply-then-save. Application is synchronous;
+  // after success the draft is gone, so failed/cancelled I/O never reapplies it.
+  async function saveTimedTextEditFromShortcut({ saveAs = false } = {}) {
+    if (MaweState.projectLoadPending || MaweServerSave.projectSaveInFlight
+        || MaweServerSave.projectCheckpointInFlight) {
+      MaweHint.flashHint('工程正在处理，草稿已保留，未应用或保存，请稍后重试', 'warning');
+      return;
+    }
+    const outcome = MaweTimedTextEdit.applyTimedTextEdit({ allowUnchanged: true });
+    if (!outcome) return;
+    const epoch = MaweState.projectEpoch;
+    let saved = false;
+    try {
+      saved = await (saveAs ? saveProjectAsToFile() : saveCurrentProject());
+    } catch (_) {
+      // Preserve the applied transaction and dirty state even on an unexpected
+      // host failure. The normal save paths already surface detailed errors.
+    }
+    if (epoch !== MaweState.projectEpoch || saved === true) return;
+    const message = outcome === 'applied'
+      ? (saved === undefined ? '编辑已应用，但无法确认工程是否保存，请检查下载结果' : '编辑已应用，但工程未保存')
+      : (saved === undefined ? '无法确认工程是否保存，请检查下载结果' : '工程未保存');
+    MaweHint.flashHint(message, 'warning');
+  }
 
 
   const mediaNameEl = document.getElementById('media-name');
@@ -324,6 +352,7 @@ saveProjectToServer,
 saveProjectToHandle,
 saveCurrentProject,
 saveProjectAsToFile,
+saveTimedTextEditFromShortcut,
 inlineEditHasUncommittedText,
 updateProjectDirtyIndicator,
 mediaNameEl,

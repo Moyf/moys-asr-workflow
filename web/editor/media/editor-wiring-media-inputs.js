@@ -105,6 +105,7 @@ MaweDom.multiSubtitleSplitText?.addEventListener('focus', () => {
   if (MaweSplitCore.pendingLinkedSplit) MaweSplitCore.pendingLinkedSplit.keyboardLane = 'extension';
 });
 document.addEventListener('keydown', (event) => {
+  if (MaweShortcuts.isNativeDialogOpen()) return;
   if (event.key !== 'Escape' || !MaweDom.multiSubtitleImportModal?.classList.contains('show')) return;
   event.preventDefault();
   event.stopPropagation();
@@ -113,6 +114,7 @@ document.addEventListener('keydown', (event) => {
 // 拆分弹窗的键盘流：Tab 切换主/副 lane，WASD 或方向键移动 ✂️，
 // Space 确认/取消确认断点；捕获阶段拦截，避免触发全局的选字幕与播放快捷键。
 document.addEventListener('keydown', (event) => {
+  if (MaweShortcuts.isNativeDialogOpen()) return;
   if (!MaweDom.multiSubtitleSplitModal?.classList.contains('show')) return;
   if (event.key === 'Escape') {
     event.preventDefault();
