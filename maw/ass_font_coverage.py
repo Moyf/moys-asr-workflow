@@ -23,10 +23,10 @@ _MAX_PAYLOAD_BYTES = 4 * 1024 * 1024
 def fallback_families(system: str | None = None) -> list[str]:
     system = system or platform.system()
     if system == "Windows":
-        return ["SimHei", "Arial", "Segoe UI Symbol"]
+        return ["Arial", "SimHei", "Segoe UI Symbol"]
     if system == "Darwin":
-        return ["PingFang SC", "Arial", "Arial Unicode MS", "Apple Symbols"]
-    return ["Noto Sans CJK SC", "Noto Sans", "DejaVu Sans"]
+        return ["Arial", "PingFang SC", "Arial Unicode MS", "Apple Symbols"]
+    return ["Arial", "Noto Sans CJK SC", "Noto Sans", "DejaVu Sans"]
 
 
 def _ranges(codepoints: Any) -> list[list[int]]:

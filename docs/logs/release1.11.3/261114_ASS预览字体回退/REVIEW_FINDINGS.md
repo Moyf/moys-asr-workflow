@@ -69,3 +69,12 @@ Canvas 使用展开后的具体字体族，DOM 字号探针使用同一回退链
 - sticker 生命周期测试复用了可被前序用例保存的工程文件，`preview.ass_mode` 因此泄漏到按需加载用例；该属性属于工程，不是 localStorage 或用户级 settings。改为每个用例启动服务前重写初始合成工程，保留全部原断言。
 - warma 单条样式测试直接调用同步 `buildAss()`，未遵守新按需覆盖就绪契约；改为先等待 `ensureCoverage()` 和 `whenReady()`，不放宽生产代码的 pending 防护。
 - 修正后两个完整 Chromium spec 18 通过、1 个原有便携页用例跳过；无生产代码改动。日志：`.artifacts/checks/20261114T154848Z-bef05055/`；修正前失败日志：`.artifacts/checks/20261114T154630Z-987d9890/`。最终线上 CI 仍须以新提交为准。
+
+
+## 后续调整：Arial 优先（维护者明确要求）
+
+- 主字体仍先检查完整字素簇覆盖；只有主字体缺字时才进入候选链。
+- Windows：Arial → SimHei → Segoe UI Symbol；macOS：Arial → PingFang SC → Arial Unicode MS → Apple Symbols；Linux：Arial → Noto Sans CJK SC → Noto Sans → DejaVu Sans。未安装或整簇缺字继续后续候选，不安装/打包字体；Linux 常见环境可能没有 Arial。
+- 影响限于多个候选同时覆盖的缺字簇：现在 Arial 优先。中文等 Arial 不覆盖的字符仍走原平台候选；用户明确选择且完整覆盖的主字体（包括思源）不会被强制替换。字重/斜体 face 选择、复杂脚本/emoji 降级、共享 Canvas/ASS runs 规则不变。
+- 回归新增三平台重叠覆盖、主字体保留、Arial 缺字及未安装继续等案例，避免仅测试配置数组。Windows 历史实测 SimHei 不覆盖 `•̀`/`•́`，新顺序对此例仍选 Arial；`╬` 是否命中 Arial 取决于本机实际 face cmap，不能从模拟测试推断。
+- 本批验证：18 项相关 JS、41 项字体 Python 测试通过，Ruff 与 diff 检查通过；独立 review 无 blocker。独立 Mac 实际字体清单 + 生产 resolver 验证：得意黑主字体 normal/bold 下 `╬` 与 `•̀`/`•́` 选 Arial，其余本身覆盖字符保留；苹方主字体完整覆盖样例则全部保留；Arial 主字体的中文回退苹方。该证据是实际清单/选择器运行，不是新一轮 UI 截图或像素一致性验收。

@@ -121,5 +121,6 @@ class FontCoverageTests(unittest.TestCase):
                 self.assertLessEqual(len(json.dumps(bounded).encode()), 1024)
 
     def test_platform_candidate_order(self):
-        self.assertEqual(coverage.fallback_families("Windows")[:2], ["SimHei", "Arial"])
-        self.assertEqual(coverage.fallback_families("Darwin")[:3], ["PingFang SC", "Arial", "Arial Unicode MS"])
+        self.assertEqual(coverage.fallback_families("Windows"), ["Arial", "SimHei", "Segoe UI Symbol"])
+        self.assertEqual(coverage.fallback_families("Darwin"), ["Arial", "PingFang SC", "Arial Unicode MS", "Apple Symbols"])
+        self.assertEqual(coverage.fallback_families("Linux"), ["Arial", "Noto Sans CJK SC", "Noto Sans", "DejaVu Sans"])

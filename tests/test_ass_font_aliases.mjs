@@ -164,7 +164,7 @@ async function managedFonts(coverage) {
 }
 const coverageFixture = () => ({
   schema: 'moy.asr.font_coverage.v1', complete: true,
-  fallbacks: ['SimHei', 'Arial'],
+  fallbacks: ['Arial', 'SimHei'],
   faces: [
     { family: 'Primary', names: ['Primary'], weight: 400, italic: false, ranges: [[32, 126]], emRatio: .75 },
     { family: 'SimHei', names: ['SimHei'], weight: 400, italic: false,
@@ -194,6 +194,28 @@ test('managed fallback keeps graphemes, text and inline style, selecting CJK and
   const italic = win.MaweAssFontAliases.resolveRuns(runs, { fontName: 'Primary', bold: true, italic: true });
   assert.equal(italic.find(r => r.fontName === 'Arial').fontEmRatio, .88,
     'font transform must invalidate face metrics');
+});
+
+test('Arial leads platform fallbacks only when the primary lacks the whole cluster', async () => {
+  for (const cjk of ['SimHei', 'PingFang SC', 'Noto Sans CJK SC']) {
+    const data = coverageFixture();
+    data.fallbacks = ['Arial', cjk];
+    data.faces[1].family = cjk;
+    data.faces[1].names = [cjk];
+    // Both candidates can cover this cluster: order must decide, not coverage.
+    data.faces[1].ranges = [[32, 126], [0x300, 0x301], [0x2022, 0x2022], [0x256c, 0x256c], [0x4e00, 0x9fff]];
+    const win = await managedFonts(data);
+    const resolve = (text, fontName = 'Primary') => win.MaweAssFontAliases.resolveRuns([{ text }], { fontName });
+    assert.equal(resolve('•̀')[0].fontName, 'Arial');
+    assert.equal(resolve('•̀', cjk)[0].fontName, cjk, 'covered primary is never replaced');
+    assert.equal(resolve('中╬')[0].fontName, cjk, 'Arial missing glyphs continue to next candidate');
+    const unavailable = coverageFixture();
+    unavailable.faces = unavailable.faces.filter(face => face.family !== 'Arial');
+    unavailable.faces[1] = data.faces[1];
+    unavailable.fallbacks = data.fallbacks;
+    const withoutArial = await managedFonts(unavailable);
+    assert.equal(withoutArial.MaweAssFontAliases.resolveRuns([{ text: '•̀' }], { fontName: 'Primary' })[0].fontName, cjk);
+  }
 });
 
 test('managed fallback never substitutes a covered primary, complex span, emoji, or unknown primary', async () => {
