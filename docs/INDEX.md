@@ -165,6 +165,8 @@
 
 [打开正文](plans/UNIFIED_TRACKS_PLAN.md)
 
+[工程轨道样式草案](plans/TRACK_STYLES_DRAFT.md)
+
 [v2 整合与验证](logs/release1.10.0-beta.2/261030_轨道v2整合/整合记录.md) · [人工核验](logs/release1.10.0-beta.2/261030_轨道v2整合/轨道v2.checklist.md)
 
 <a name="plan-release-pipeline"></a>

@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import json
 import math
+from bisect import bisect_right
 from pathlib import Path
 from typing import Mapping
 
 from maw.ass_styles import (
     DEFAULT_ASS_STYLE,
+    _normalize_style,
     ass_color,
     ass_style_line,
     default_ass_font_name,
@@ -30,6 +32,7 @@ from maw.speaker_export import export_speaker_name, speaker_display_color, speak
 from maw.postprocess_ai_cleanup_items import cleaned_srt_segments
 from maw.project import normalize_project, ProjectValidationFailed
 from maw.track_output import select_export_tracks
+from maw.track_styles import resolve_track_style
 from maw.script_alignment import project_cleanup_retained_segments
 
 PROJECT_SUBTITLE_EXTENSIONS: frozenset[str] = frozenset({".mosp", ".json"})
@@ -158,12 +161,6 @@ def _stroke_base_style(family: str, size: int, color: str) -> dict[str, object]:
     }
 
 
-def _overlay_base_style(family: str, size: int, color: str, margin_v: int) -> dict[str, object]:
-    style = _stroke_base_style(family, size, color)
-    style["marginV"] = margin_v
-    return style
-
-
 def _event_text(project: Mapping[str, object], segment: Mapping[str, object], groups: Mapping[str, object],
                 *, color_style: str, base_color: str) -> tuple[str, str]:
     name = export_speaker_name(project, segment)
@@ -180,67 +177,6 @@ def _event_text(project: Mapping[str, object], segment: Mapping[str, object], gr
         text = prefix + text
     # ASS's Name column is comma-delimited; do not let a display name shift fields.
     return name.replace(",", " ").replace("\r", " ").replace("\n", " "), text
-
-
-def _main_event(segment: Mapping[str, object], groups: Mapping[str, object], *, color_style: str,
-                project: Mapping[str, object], speaker_styles: Mapping[str, str], base_color: str,
-                prefix: str = "", layer: int = 0) -> str | None:
-    times = _cue_times(segment)
-    if times is None:
-        return None
-    start_cs, end_cs = times
-    if project.get("annotation_mode") == "speaker":
-        style_name = speaker_styles.get(str(segment.get("speaker") or ""), "Default") if color_style in {"text", "stroke"} else "Default"
-    else:
-        color_name = _effective_color_name(segment, groups)
-        style_name = color_name.upper() if color_style in {"text", "stroke"} and color_name in ASS_COLOR_STYLE_NAMES else "Default"
-    if prefix:
-        style_name = f"{prefix}{style_name}" if style_name != "Default" else prefix.rstrip()
-    name, text = _event_text(project, segment, groups, color_style=color_style, base_color=base_color)
-    return f"Dialogue: {layer},{_format_ass_time(start_cs)},{_format_ass_time(end_cs)},{style_name},{name},0,0,0,,{text}"
-
-
-def _overlay_events(
-    segments: list[object], *, groups: Mapping[str, object], color_style: str, family: str, size: int, color: str,
-    project: Mapping[str, object], speaker_styles: Mapping[str, str], palette: tuple[tuple[str, str], ...],
-) -> tuple[list[str], list[str]]:
-    events: list[str] = []
-    enabled = [s for s in segments if isinstance(s, Mapping) and s.get("disabled") is not True]
-    if not enabled:
-        return [], []
-    margin_v = 80 + _round_half_up(1.2 * size)
-    for segment in enabled:
-        start, end = segment.get("start"), segment.get("end")
-        if type(start) is not int or type(end) is not int or end <= start:
-            continue
-        start_cs = max(0, _round_half_up(start / 10))
-        end_cs = max(start_cs + 1, _round_half_up(end / 10))
-        if project.get("annotation_mode") == "speaker":
-            identity_style = speaker_styles.get(str(segment.get("speaker") or ""))
-            style_name = f"Overlay {identity_style}" if color_style in {"text", "stroke"} and identity_style else "Overlay"
-        else:
-            color_name = _effective_color_name(segment, groups)
-            style_name = f"Overlay {color_name.upper()}" if color_style in {"text", "stroke"} and color_name in ASS_COLOR_STYLE_NAMES else "Overlay"
-        name, text = _event_text(project, segment, groups, color_style=color_style, base_color=color)
-        events.append(
-            f"Dialogue: 2,{_format_ass_time(start_cs)},{_format_ass_time(end_cs)},{style_name},{name},0,0,0,,{text}",
-        )
-    if not events:
-        return [], []
-    lines = [ass_style_line(_overlay_base_style(family, size, color, margin_v), name="Overlay")]
-    if color_style == "text":
-        lines.extend(
-            ass_style_line(
-                _overlay_base_style(family, size, value, margin_v), name=f"Overlay {name.upper()}",
-            )
-            for name, value in palette
-        )
-    elif color_style == "stroke":
-        for name, value in palette:
-            variant = _overlay_base_style(family, size, color, margin_v)
-            variant["outlineColor"] = value
-            lines.append(ass_style_line(variant, name=f"Overlay {name.upper()}"))
-    return lines, events
 
 
 def render_project_ass(
@@ -272,48 +208,138 @@ def render_project_ass(
         selected = select_export_tracks(project, mode)
     except ValueError as error:
         raise ProjectSubtitleError(str(error)) from error
-    main = next((track for track in selected if track["role"] == "main"), None)
-    overlay = next((track for track in selected if track["role"] == "overlay"), None)
-    secondary = next((track for track in selected if track["role"] == "secondary"), None)
-    raw_segments = main["segments"] if main else []
-    if not isinstance(raw_segments, list):
-        raise ProjectSubtitleError("工程中没有字幕段落。")
+    tracks = {track["role"]: track for track in selected}
+    main = tracks.get("main")
     main_segments = cleaned_srt_segments(
-        project,
-        project_cleanup_retained_segments(raw_segments, project.get("gap_remove")),
+        project, project_cleanup_retained_segments(main["segments"] if main else [], project.get("gap_remove")),
     )
-    events = [
-        event
-        for segment in main_segments
-        if isinstance(segment, Mapping) and segment.get("disabled") is not True
-        and isinstance(segment.get("text"), str) and segment["text"].strip()
-        and (event := _main_event(segment, groups, color_style=color_style, project=project,
-                                 speaker_styles=speaker_styles, base_color=color)) is not None
-    ]
-
+    overlay = tracks.get("overlay")
+    secondary = tracks.get("secondary")
     overlay_segments = overlay["segments"] if overlay else []
     secondary_segments = secondary["segments"] if secondary else []
     palette = _export_color_palette(project, groups, [*main_segments, *overlay_segments, *secondary_segments])
-    overlay_lines, overlay_events = _overlay_events(
-        overlay_segments, groups=groups, color_style=color_style, family=family, size=size, color=color,
-        project=project, speaker_styles=speaker_styles, palette=palette,
-    )
-    events.extend(overlay_events)
-    secondary_lines: list[str] = []
+    variants = [(name.upper(), value) for name, value in palette]
+    identity_mode = project.get("annotation_mode") == "speaker"
+    if identity_mode:
+        variants.extend((speaker_styles[speaker["id"]], speaker["color"]) for speaker in project["speakers"])
+    tint_field = {"text": "primaryColor", "stroke": "outlineColor"}.get(color_style)
+    snapshot_scale = play_res_y / ASS_REFERENCE_PLAY_RES_Y
+    style_lines = []
+    cue_style_lines = []
+    events = []
+    collision_stack = (main is not None and secondary is None
+                       and any(item.get("disabled") is not True and item.get("assStyle") is not None
+                               for item in overlay_segments))
+    main_starts = sorted({times[0] for item in main_segments
+                          if item.get("disabled") is not True and str(item.get("text") or "").strip()
+                          and (times := _cue_times(item)) is not None})
+
+    def overlay_cue_margin(style, segment):
+        scaled_size = min(512, max(1, _round_half_up(float(style["fontSize"]) * snapshot_scale)))
+        margin = int(style["marginV"]) + _round_half_up(1.2 * scaled_size)
+        if collision_stack:
+            # The renderer handles actual line wrapping and glyph metrics.
+            return margin
+        if style["alignment"] not in (1, 2, 3) or not main:
+            return margin
+        main_snapshot = resolve_track_style(project, main)
+        main_base = (_normalize_style(main_snapshot, DEFAULT_ASS_STYLE, style_id=main_snapshot["id"])
+                     if main_snapshot else _stroke_base_style(family, size, color))
+        for other in main_segments:
+            if (other.get("disabled") is True or not str(other.get("text") or "").strip()
+                    or other.get("start", 0) >= segment["end"] or other.get("end", 0) <= segment["start"]):
+                continue
+            override = other.get("assStyle")
+            effective = _normalize_style(override, DEFAULT_ASS_STYLE, style_id="cue") if override else main_base
+            if effective["alignment"] not in (1, 2, 3):
+                continue
+            scale = snapshot_scale if override or main_snapshot else 1.0
+            main_size = min(512, max(1, _round_half_up(float(effective["fontSize"]) * scale)))
+            # Explicit line breaks occupy multiple rows above the bottom anchor.
+            rows = len(str(other.get("text") or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"))
+            margin = max(margin, int(effective["marginV"]) + _round_half_up(1.2 * main_size * rows))
+        return margin
+
+    def render_track(track, segments, *, default_name, layer):
+        is_overlay = default_name == "Overlay"
+        is_main = default_name == "Default"
+        track_snapshot = resolve_track_style(project, track) if track else None
+        base = _stroke_base_style(family, size, color)
+        scale = 1.0
+        if track_snapshot is not None:
+            base = _normalize_style(track_snapshot, DEFAULT_ASS_STYLE, style_id=track_snapshot["id"])
+            scale = snapshot_scale
+        if is_overlay:
+            scaled_size = min(512, max(1, _round_half_up(float(base["fontSize"]) * scale)))
+            base["marginV"] += _round_half_up(1.2 * scaled_size)
+        prefix = "" if is_main else default_name + " "
+        first_event = len(events)
+        for segment in segments:
+            if segment.get("disabled") is True:
+                continue
+            cue_snapshot = segment.get("assStyle")
+            if not (is_overlay and cue_snapshot is None) and not str(segment.get("text") or "").strip():
+                continue
+            times = _cue_times(segment)
+            if times is None or (is_overlay and segment["end"] <= segment["start"]):
+                continue
+            event_style = default_name
+            body_color = base["primaryColor"]
+            if cue_snapshot is not None:
+                cue_style = _normalize_style(cue_snapshot, DEFAULT_ASS_STYLE, style_id="cue")
+                if is_overlay:
+                    cue_style["marginV"] = overlay_cue_margin(cue_style, segment)
+                tint = speaker_display_color(project, segment, groups) if tint_field else None
+                if tint:
+                    cue_style[tint_field] = tint
+                body_color = cue_style["primaryColor"]
+                event_style = f"Cue_{len(cue_style_lines)}"
+                cue_style_lines.append(ass_style_line(cue_style, name=event_style, font_size_scale=snapshot_scale))
+            elif tint_field:
+                if identity_mode:
+                    variant = speaker_styles.get(segment.get("speaker"))
+                else:
+                    category = _effective_color_name(segment, groups)
+                    variant = category.upper() if category in ASS_COLOR_STYLE_NAMES else None
+                if variant:
+                    event_style = prefix + variant
+            name, text = _event_text(project, segment, groups, color_style=color_style, base_color=body_color)
+            if is_overlay and cue_snapshot is not None and collision_stack:
+                # Same-layer libass collision detection uses actual font metrics.
+                # Restart an overlay event when a main cue begins so a later main
+                # cue stays below an already visible overlay, not vice versa.
+                first = bisect_right(main_starts, times[0])
+                last = bisect_right(main_starts, times[1] - 1)
+                boundaries = [times[0], *main_starts[first:last], times[1]]
+                slices = zip(boundaries, boundaries[1:])
+                event_layer = 0
+            else:
+                slices = [times]
+                event_layer = layer
+            for start_cs, end_cs in slices:
+                start, end = map(_format_ass_time, (start_cs, end_cs))
+                events.append(f"Dialogue: {event_layer},{start},{end},{event_style},{name},0,0,0,,{text}")
+
+        if is_overlay and len(events) == first_event:
+            return
+        # The historic main-track inline styles have their own secondary colour and background alpha.
+        inline_main = is_main and track_snapshot is None
+        style_lines.append(_inline_style_line(default_name, family, size, color) if inline_main else
+                           ass_style_line(base, name=default_name, font_size_scale=scale))
+        if tint_field:
+            for name, value in variants:
+                if inline_main and color_style == "text":
+                    line = _inline_style_line(name, family, size, value)
+                else:
+                    line = ass_style_line({**base, tint_field: value}, name=prefix + name, font_size_scale=scale)
+                style_lines.append(line)
+
+    # Keep the Default style in standalone overlay and extension ASS files, too.
+    render_track(main, main_segments, default_name="Default", layer=0)
+    if overlay:
+        render_track(overlay, overlay_segments, default_name="Overlay", layer=2)
     if secondary:
-        secondary_style = _stroke_base_style(family, size, color)
-        secondary_lines.append(ass_style_line(secondary_style, name="Secondary"))
-        if color_style in {"text", "stroke"}:
-            for name, value in palette:
-                variant = dict(secondary_style)
-                variant["primaryColor" if color_style == "text" else "outlineColor"] = value
-                secondary_lines.append(ass_style_line(variant, name=f"Secondary {name.upper()}"))
-        events.extend(event for segment in secondary["segments"]
-                      if isinstance(segment, Mapping) and segment.get("disabled") is not True
-                      and isinstance(segment.get("text"), str) and segment["text"].strip()
-                      and (event := _main_event(segment, groups, color_style=color_style,
-                                                project=project, speaker_styles=speaker_styles, base_color=color,
-                                                prefix="Secondary ", layer=1)) is not None)
+        render_track(secondary, secondary_segments, default_name="Secondary", layer=1)
     if not events:
         raise ProjectSubtitleError("工程中没有可用的字幕条目，无法烧录。")
 
@@ -330,36 +356,9 @@ def render_project_ass(
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        _inline_style_line("Default", family, size, color),
+        *style_lines,
+        *cue_style_lines,
     ]
-    if color_style == "text":
-        header.extend(_inline_style_line(name.upper(), family, size, value) for name, value in palette)
-    elif color_style == "stroke":
-        for name, value in palette:
-            variant = _stroke_base_style(family, size, color)
-            variant["outlineColor"] = value
-            header.append(ass_style_line(variant, name=name.upper()))
-    if project.get("annotation_mode") == "speaker" and color_style in {"text", "stroke"}:
-        for speaker in project["speakers"]:
-            style_name = speaker_styles[speaker["id"]]
-            if color_style == "text":
-                header.append(_inline_style_line(style_name, family, size, speaker["color"]))
-            else:
-                variant = _stroke_base_style(family, size, color)
-                variant["outlineColor"] = speaker["color"]
-                header.append(ass_style_line(variant, name=style_name))
-            if secondary:
-                variant = _stroke_base_style(family, size, color)
-                variant["primaryColor" if color_style == "text" else "outlineColor"] = speaker["color"]
-                secondary_lines.append(ass_style_line(variant, name=f"Secondary {style_name}"))
-            if overlay_events:
-                variant = _overlay_base_style(family, size, speaker["color"] if color_style == "text" else color,
-                                              80 + _round_half_up(1.2 * size))
-                if color_style == "stroke":
-                    variant["outlineColor"] = speaker["color"]
-                overlay_lines.append(ass_style_line(variant, name=f"Overlay {style_name}"))
-    header.extend(overlay_lines)
-    header.extend(secondary_lines)
     return "\n".join([*header, "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text", *events, ""])
 
 

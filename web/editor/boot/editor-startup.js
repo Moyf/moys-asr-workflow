@@ -63,6 +63,7 @@ if (MaweJsonRepair.importRequiresSave(importedProjectChanges)) {
   MaweServerSave.projectImportDirty = true;
   MaweHint.flashHint(`导入修复了 ${importedProjectChanges.length} 处工程字段；请检查后保存`, 'warning');
 }
+window.MaweProjectFontCheck?.schedule();
 MaweBoot.maweDebug('boot:complete', {
   renderedSegments: MaweCoreState.container?.querySelectorAll?.('.cue-row')?.length || 0,
   recentProjectsVisible: MaweDom.recentProjectsEl ? !MaweDom.recentProjectsEl.hidden : false,

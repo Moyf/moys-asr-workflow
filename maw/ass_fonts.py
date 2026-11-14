@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import threading
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -539,10 +540,17 @@ def _cached_font_entries() -> tuple[dict[str, Any], ...] | None:
         return None
 
 
-def font_alias_entries() -> tuple[dict[str, Any], ...] | None:
+_font_entries_lock = threading.RLock()
+
+
+def font_alias_entries(*, refresh: bool = False) -> tuple[dict[str, Any], ...] | None:
     """进程内缓存的别名条目；``None`` 表示表不可用（扫描失败/缺 fontTools）。"""
 
-    return _cached_font_entries()
+    with _font_entries_lock:
+        if refresh:
+            _installed_font_files.cache_clear()
+            _cached_font_entries.cache_clear()
+        return _cached_font_entries()
 
 
 def _resolve_entry(
@@ -650,10 +658,10 @@ def _normalize_style_line_fontname(
     ]
 
 
-def font_alias_payload() -> dict[str, Any]:
+def font_alias_payload(*, refresh: bool = False) -> dict[str, Any]:
     """给 ``GET /api/ass-font-aliases`` 的 JSON 结构；不可用时返回错误结构。"""
 
-    entries = font_alias_entries()
+    entries = font_alias_entries(refresh=True) if refresh else font_alias_entries()
     if entries is None:
         return {
             "schema": FONT_ALIAS_SCHEMA,

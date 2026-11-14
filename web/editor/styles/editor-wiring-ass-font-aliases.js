@@ -14,7 +14,119 @@
   const entries = [];
   const canonicalByFold = new Map();
   const renderableFamilies = new Set();
+  const legacyNames = new Set();
   let ready = false;
+  let loading = null;
+  let coverage = null;
+  let coveragePending = false;
+  let coverageAttempted = false;
+  let coverageSettled = Promise.resolve();
+  const faceCache = new Map();
+  const segmenter = typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+
+  // No code-point fallback: on older engines keeping a whole span is safer
+  // than detaching combining marks, variation selectors or ZWJ components.
+  function graphemes(text) {
+    return segmenter ? Array.from(segmenter.segment(String(text)), item => item.segment) : [String(text)];
+  }
+
+  function safeFontName(name) {
+    return typeof name === 'string' && name.trim() && !/[{}\\\r\n]/u.test(name);
+  }
+
+  function faceFor(name, bold, italic) {
+    if (!coverage || !safeFontName(name)) return null;
+    const key = JSON.stringify([fold(name), Boolean(bold), Boolean(italic)]);
+    if (faceCache.has(key)) return faceCache.get(key);
+    const canonical = canonicalFor(name) || name;
+    const candidates = coverage.faces.filter(face => safeFontName(face.family) &&
+      [face.family, ...(face.names || [])].some(n => fold(n) === fold(canonical)));
+    // Match style before weight; regular-only fonts may be synthetically bold
+    // in both renderers, but that is explicitly not a pixel-parity guarantee.
+    candidates.sort((a, b) =>
+      (Number(Boolean(a.italic) !== Boolean(italic)) * 1000 + Math.abs(a.weight - (bold ? 700 : 400)))
+      - (Number(Boolean(b.italic) !== Boolean(italic)) * 1000 + Math.abs(b.weight - (bold ? 700 : 400))));
+    const result = candidates[0] || null;
+    faceCache.set(key, result);
+    return result;
+  }
+
+  function covers(face, text) {
+    return Boolean(face) && [...text].every(ch => {
+      const cp = ch.codePointAt(0);
+      if (ch === '\n' || ch === '\r' || ch === '\t') return true;
+      const ranges = face.ranges || coverage.cmaps?.[face.cmap] || [];
+      let low = 0, high = ranges.length - 1;
+      while (low <= high) {
+        const middle = (low + high) >> 1;
+        const [start, end] = ranges[middle];
+        if (cp < start) high = middle - 1;
+        else if (cp > end) low = middle + 1;
+        else return true;
+      }
+      return false;
+    });
+  }
+
+  // Managed scope: ordinary text and combining graphemes. Never split joining
+  // scripts/bidi spans to chase cmap coverage; coverage alone is not shaping.
+  // Emoji sequences stay intact and retain the old renderer-dependent fallback.
+  const emoji = /[\p{Extended_Pictographic}\uFE0E\uFE0F\u20E3\u{1F1E6}-\u{1F1FF}]/u;
+  function resolveRuns(runs, style) {
+    if (!coverage) return runs;
+    const result = [];
+    for (const inputRun of runs) {
+      const resolutionStyle = JSON.stringify([style.fontName, Boolean(style.bold), Boolean(style.italic || inputRun.italic)]);
+      if (inputRun.fontResolutionStyle === resolutionStyle) { result.push(inputRun); continue; }
+      const { fontName: oldFont, fontEmRatio: oldRatio, fontFallbackStatus: oldStatus,
+        fontResolutionStyle: oldStyle, ...sourceRun } = inputRun;
+      const run = { ...sourceRun, fontResolutionStyle: resolutionStyle };
+      const primary = style.fontName;
+      const bold = Boolean(style.bold);
+      const italic = Boolean(style.italic || run.italic);
+      const face = faceFor(primary, bold, italic);
+      if (!face) {
+        result.push({ ...run, fontFallbackStatus: 'unknown-primary' });
+        continue;
+      }
+      if (!global.AsrEditorUtils?.assManagedFontText?.(run.text) || !segmenter) {
+        result.push({ ...run, fontFallbackStatus: 'unmanaged-shaping' });
+        continue;
+      }
+      let last = null;
+      for (const text of graphemes(run.text)) {
+        let selected = covers(face, text) ? face : null;
+        let selectedName = primary;
+        let status = 'managed';
+        if (emoji.test(text)) { selected = null; status = 'unmanaged-emoji'; }
+        else if (!selected) {
+          // Use the requested, matchable family spelling. A locale-selected
+          // nameID1 (e.g. 蘋方-簡) can fail CoreText inline lookup even though the
+          // same face's English name PingFang SC succeeds.
+          for (const name of coverage.fallbacks) {
+            const candidate = faceFor(name, bold, italic);
+            if (covers(candidate, text)) {
+              selected = candidate;
+              selectedName = canonicalFor(name) || name;
+              break;
+            }
+          }
+          if (!selected) status = 'uncovered';
+        }
+        const fontName = selected ? selectedName : primary;
+        const fontEmRatio = selected && selected !== face ? selected.emRatio : undefined;
+        if (last && last.fontName === fontName && last.fontFallbackStatus === status) last.text += text;
+        else {
+          last = { ...run, text, fontName, fontEmRatio, fontFallbackStatus: status };
+          result.push(last);
+        }
+      }
+    }
+    return result;
+  }
+
+
 
   // 导出替换捕获窗口：仅 .ass 下载入口在 buildAss 前后开启，预览等高频
   // buildAss 的归一化不会污染替换记录。
@@ -26,10 +138,12 @@
   }
 
   function ingest(payload) {
-    if (!payload || payload.schema !== SCHEMA || !Array.isArray(payload.fonts)) return false;
+    if (!payload || payload.error || payload.schema !== SCHEMA
+        || !Array.isArray(payload.fonts) || !payload.fonts.length) return false;
     entries.length = 0;
     canonicalByFold.clear();
     renderableFamilies.clear();
+    legacyNames.clear();
     for (const entry of payload.fonts) {
       const canonical = typeof entry?.canonical === 'string' ? entry.canonical.trim() : '';
       if (!canonical) continue;
@@ -58,7 +172,10 @@
         if (!key || canonicalByFold.has(key)) continue;
         const faceCanonical = typeof entry.canonicalByName?.[key] === 'string'
           ? entry.canonicalByName[key].trim() : '';
-        if (faceCanonical) canonicalByFold.set(key, faceCanonical);
+        if (faceCanonical) {
+          canonicalByFold.set(key, faceCanonical);
+          legacyNames.add(key);
+        }
       }
       // 下拉选择也保留 face 粒度，搜索 Semibold/PS 名不能选成 Regular。
       entries.push(...faces.values());
@@ -109,10 +226,10 @@
 
   // CSS font-family 别名链：`"<存储值>", "<canonical>", "<其余别名>", sans-serif`。
   // 返回 '' 表示未加载/查不到，调用方沿用现有 font-family 输出。
-  function chainCssFor(name) {
+  function chainCssFor(name, options) {
     const chain = aliasChainFor(name);
     if (!chain) return '';
-    return global.AsrEditorUtils?.assFontFamilyAliasChainCss?.(name, chain) || '';
+    return global.AsrEditorUtils?.assFontFamilyAliasChainCss?.(name, chain, options) || '';
   }
 
   function beginReplacementCapture() {
@@ -128,27 +245,116 @@
     return captured.splice(0);
   }
 
-  async function loadAliases() {
-    if (!config?.assFontAliasesUrl || ready) return;
+  function ensureCoverage() {
+    if (coverage || coverageAttempted || !config?.assFontCoverageUrl) return coverageSettled;
+    // Publish pending synchronously, before the alias await, so native frame
+    // requests cannot race the transition from the lightweight startup path.
+    coverageAttempted = true;
+    coveragePending = true;
+    coverageSettled = (async () => {
+      if (loading) await loading;
+      const controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
+      let timeout;
+      try {
+        const request = (async () => {
+          const response = await fetch(new URL(config.assFontCoverageUrl, global.location.href), {
+            cache: 'no-store', signal: controller?.signal,
+          });
+          return response.ok ? response.json() : null;
+        })();
+        const deadline = new Promise((_, reject) => {
+          timeout = global.setTimeout?.(() => {
+            controller?.abort();
+            reject(new Error('Font coverage timed out'));
+          }, 30000);
+        });
+        const payload = await Promise.race([request, deadline]);
+        if (payload?.schema === 'moy.asr.font_coverage.v1'
+            && Array.isArray(payload.faces) && Array.isArray(payload.fallbacks)) {
+          coverage = payload;
+          faceCache.clear();
+          // Same invalidation contract as alias changes, including stack plans.
+          global.MaweAssCanvas?.clearCaches?.();
+          document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-loaded'));
+        }
+      } catch (_) {
+        // Old/offline servers settle to the legacy path, not an endless retry
+        // loop driven by playback or the settled notification itself.
+      } finally {
+        global.clearTimeout?.(timeout);
+        coveragePending = false;
+        document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-settled'));
+        global.MawePlaybackLoop?.refreshSubtitlePreview?.();
+      }
+    })();
+    return coverageSettled;
+  }
+
+  async function loadAliases({ refresh = false } = {}) {
+    if (loading) {
+      await loading;
+      if (!refresh) return ready;
+    }
+    if (!config?.assFontAliasesUrl) return false;
+    if (ready && !refresh) return true;
+    // Finish any old scan before resetting both caches after a font install.
+    if (refresh && coveragePending) await coverageSettled;
+    const reloadCoverage = refresh && coverageAttempted;
+    if (refresh) {
+      coverage = null;
+      coverageAttempted = false;
+      faceCache.clear();
+    }
+    loading = (async () => {
+    const controller = typeof global.AbortController === 'function' ? new global.AbortController() : null;
+    let timeout;
     try {
-      const response = await fetch(new URL(config.assFontAliasesUrl, global.location.href), {
-        cache: 'no-store',
+      const request = (async () => {
+        const response = await fetch(new URL(config.assFontAliasesUrl, global.location.href), {
+          cache: 'no-store', signal: controller?.signal,
+          ...(refresh ? { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requestToken: config.requestToken }) } : {}),
+        });
+        if (!response.ok) throw new Error('font scan unavailable');
+        return response.json();
+      })();
+      const deadline = new Promise((_, reject) => {
+        timeout = global.setTimeout?.(() => {
+          controller?.abort();
+          reject(new Error('Font inventory timed out'));
+        }, 30000);
       });
-      if (!response.ok) return;
-      const payload = await response.json();
-      if (!ingest(payload)) return;
+      const payload = await Promise.race([request, deadline]);
+      if (!ingest(payload)) throw new Error('font scan unavailable');
       // 别名链改变预览字体匹配结果：清掉画布行/字体度量缓存并刷新预览与
       // 下拉；导出排版计划缓存经 mawe:ass-font-aliases-loaded 事件失效。
       global.MaweAssCanvas?.clearCaches?.();
       document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-loaded'));
       global.MawePlaybackLoop?.refreshSubtitlePreview?.();
+      return true;
     } catch (_) {
-      // 端点不存在（旧服务器）或请求失败：保持未加载，全部消费点走现状。
+      ready = false;
+      return false;
+    } finally {
+      global.clearTimeout?.(timeout);
     }
+    })();
+    let result;
+    try { result = await loading; } finally { loading = null; }
+    if (reloadCoverage && result) void ensureCoverage();
+    document.dispatchEvent(new CustomEvent('mawe:ass-font-aliases-settled'));
+    return result;
   }
 
   global.MaweAssFontAliases = Object.freeze({
     loaded: () => ready,
+    pending: () => Boolean(loading) || coveragePending,
+    whenReady: async () => { if (loading) await loading; await coverageSettled; },
+    ensureCoverage,
+    resolveRuns,
+    graphemes,
+    coverageAvailable: () => Boolean(coverage),
+    isLegacy: (name) => ready && legacyNames.has(fold(name)),
     entries: () => entries.map((entry) => ({ ...entry, names: [...entry.names] })),
     canonicalFor,
     aliasChainFor,

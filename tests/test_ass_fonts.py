@@ -596,6 +596,42 @@ class ReadFontFileNamesTests(unittest.TestCase):
         self.assertTrue(stream.closed)
 
 
+class FontRefreshTests(unittest.TestCase):
+    def test_refresh_enumerates_newly_installed_font_files(self) -> None:
+        ass_fonts._installed_font_files.cache_clear()
+        ass_fonts._cached_font_entries.cache_clear()
+        self.addCleanup(ass_fonts._installed_font_files.cache_clear)
+        self.addCleanup(ass_fonts._cached_font_entries.cache_clear)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "First.ttf").touch()
+            def read_names(path: Path) -> list[ass_fonts.FontFileNames]:
+                return [ass_fonts.FontFileNames(
+                    family=(ass_fonts.FontNameRecord(path.stem, "en"),),
+                    typographic=(), full=(), postscript=(),
+                )]
+            with mock.patch.object(ass_fonts, "_font_roots", return_value=(root,)), \
+                    mock.patch.object(ass_fonts, "_windows_registry_font_files", return_value=()), \
+                    mock.patch.object(ass_fonts, "_read_font_file_names", side_effect=read_names):
+                self.assertEqual(len(ass_fonts.font_alias_entries()), 1)
+                (root / "Second.ttf").touch()
+                self.assertEqual(len(ass_fonts.font_alias_entries()), 1)
+                refreshed = ass_fonts.font_alias_entries(refresh=True)
+                self.assertEqual({entry["canonical"] for entry in refreshed}, {"First", "Second"})
+
+    def test_refresh_discards_cached_scan_and_retries_a_failure(self) -> None:
+        ass_fonts._cached_font_entries.cache_clear()
+        self.addCleanup(ass_fonts._cached_font_entries.cache_clear)
+        with mock.patch.object(ass_fonts, "_scan_font_entries", side_effect=[
+            RuntimeError("failed"), [{"canonical": "Installed", "names": ["Installed"]}],
+        ]) as scan:
+            self.assertIsNone(ass_fonts.font_alias_entries())
+            self.assertIsNone(ass_fonts.font_alias_entries())
+            payload = ass_fonts.font_alias_payload(refresh=True)
+            self.assertEqual(payload["fonts"][0]["canonical"], "Installed")
+            self.assertEqual(scan.call_count, 2)
+
+
 class FontRootsTests(unittest.TestCase):
     def test_darwin_roots_include_mobile_asset_font_directories(self) -> None:
         # macOS 27 起部分系统字体（PingFang 等）经 AssetsV2 的 MobileAsset

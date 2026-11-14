@@ -1158,11 +1158,12 @@ __WAVEFORM_CSS__
         </label>
     </div>
     <div class="subtitle-preview-settings-fields" id="main-ass-style-fields" hidden>
-        <div class="subtitle-preview-setting-row ass-style-select-row" title="ASS 字幕模式下主字幕使用的样式；即当前 ASS 输出方案关联的样式，与样式库中的选择同步">
+        <div class="subtitle-preview-setting-row ass-style-select-row" title="选择主字幕轨的工程样式">
           <span>使用 ASS 样式</span>
           <select id="main-ass-style-select" aria-label="主字幕 ASS 样式"></select>
-          <button type="button" class="editor-settings-inline-action ass-style-edit-open" id="main-ass-style-edit" title="打开样式库并定位到当前选中的样式">编辑样式</button>
+          <button type="button" class="editor-settings-inline-action ass-style-edit-open" id="main-ass-style-edit" title="编辑工程样式">编辑样式</button>
         </div>
+        <div class="subtitle-preview-setting-row"><small id="main-ass-style-status"></small><button type="button" class="editor-settings-inline-action" id="main-ass-style-save-library">存回样式库</button></div>
     </div>
   </div>
   <span class="editor-settings-group-heading" id="extension-subtitle-preview-title" hidden>副字幕</span>
@@ -1216,12 +1217,17 @@ __WAVEFORM_CSS__
         </label>
     </div>
     <div class="subtitle-preview-settings-fields" id="extension-ass-style-fields" hidden>
-        <div class="subtitle-preview-setting-row ass-style-select-row" title="ASS 字幕模式下副字幕使用的样式；双语字幕的副字幕共用一个样式，与样式库「副字幕样式」槽位同步">
+        <div class="subtitle-preview-setting-row ass-style-select-row" title="选择副字幕轨的工程样式">
           <span>使用 ASS 样式</span>
           <select id="extension-ass-style-select" aria-label="副字幕 ASS 样式"></select>
-          <button type="button" class="editor-settings-inline-action ass-style-edit-open" id="extension-ass-style-edit" title="打开样式库并定位到当前选中的样式">编辑样式</button>
+          <button type="button" class="editor-settings-inline-action ass-style-edit-open" id="extension-ass-style-edit" title="编辑工程样式">编辑样式</button>
         </div>
+        <div class="subtitle-preview-setting-row"><small id="extension-ass-style-status"></small><button type="button" class="editor-settings-inline-action" id="extension-ass-style-save-library">存回样式库</button></div>
     </div>
+  </div>
+  <div class="subtitle-preview-settings-fields" id="overlay-ass-style-fields">
+    <div class="subtitle-preview-setting-row ass-style-select-row"><span>叠加字幕样式</span><select id="overlay-ass-style-select" aria-label="叠加字幕 ASS 样式"></select><button type="button" id="overlay-ass-style-edit">编辑样式</button></div>
+    <div class="subtitle-preview-setting-row"><small id="overlay-ass-style-status"></small><button type="button" id="overlay-ass-style-save-library">存回样式库</button></div>
   </div>
   </div><div class="editor-settings-page" id="editor-settings-page-project-color" role="tabpanel" aria-labelledby="editor-settings-tab-project-color" hidden>
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -170,6 +172,88 @@ class ProjectAssExportTests(unittest.TestCase):
         events = _dialogues(content, "2")
         self.assertEqual(len(events), 1)
         self.assertIn("Overlay,,0,0,0,,叠加", events[0])
+
+    def test_overlay_snapshot_uses_its_scaled_font_and_margin_for_stacking(self) -> None:
+        for font_size, margin, height, expected in [(60, 80, 1080, 152), (100, 35, 540, 95)]:
+            with self.subTest(font_size=font_size, margin=margin, height=height):
+                project = normalize_project(_basic_project())
+                project["styles"] = [{"id": "shared", "name": "Shared", "fontSize": font_size, "marginV": margin}]
+                project["tracks"][0]["style"] = {"style_id": "shared"}
+                project["tracks"].append({"id": "overlay", "name": "Overlay", "role": "overlay", "enabled": True,
+                    "style": {"style_id": "shared"}, "segments": [{"id": "o", "start": 0, "end": 500, "text": "overlay"}]})
+                project["preview"]["subtitle"]["ass_color_style"] = "text"
+                lines = render_project_ass(project, title="t", play_resolution=(1920, height)).splitlines()
+                self.assertEqual(int(_style_line(lines, "Default").split(",")[-2]), margin)
+                self.assertEqual(int(_style_line(lines, "Overlay").split(",")[-2]), expected)
+                self.assertEqual(int(_style_line(lines, "Overlay RED").split(",")[-2]), expected)
+
+    def test_overlay_cue_style_keeps_automatic_stack_offset(self) -> None:
+        project = _basic_project()
+        project["overlay_track"] = {"enabled": True, "segments": [{
+            "id": "o", "start": 0, "end": 500, "text": "overlay",
+            "assStyle": {"fontName": "Arial", "fontSize": 60, "marginV": 80},
+        }]}
+        # Main and overlay share a layer so libass can account for actual glyphs.
+        for height, expected in [(1080, 152), (540, 116)]:
+            with self.subTest(height=height):
+                lines = render_project_ass(project, title="t", play_resolution=(1920, height)).splitlines()
+                cue = _style_line(lines, "Cue_0")
+                self.assertEqual(cue.split(",")[1], "Arial")
+                self.assertEqual(int(cue.split(",")[-2]), expected)
+                self.assertIn(",Cue_0,", _dialogues("\n".join(lines), "0")[-1])
+
+    def test_overlay_cue_style_clears_multiline_main(self) -> None:
+        project = _basic_project()
+        project["segments"][0]["text"] = "first line\nsecond line"
+        project["overlay_track"] = {"enabled": True, "segments": [{
+            "id": "o", "start": 0, "end": 500, "text": "overlay",
+            "assStyle": {"fontName": "Arial", "fontSize": 60, "marginV": 80},
+        }]}
+        lines = render_project_ass(project, title="t", play_resolution=(1920, 1080)).splitlines()
+        self.assertEqual(int(_style_line(lines, "Cue_0").split(",")[-2]), 152)
+        self.assertIn(",Cue_0,", _dialogues("\n".join(lines), "0")[-1])
+
+    def test_overlay_cue_is_split_when_later_main_cue_appears(self) -> None:
+        project = _basic_project()
+        project["segments"] = [{"start": 500, "end": 1000, "text": "main"}]
+        project["overlay_track"] = {"enabled": True, "segments": [{
+            "start": 0, "end": 1000, "text": "overlay", "assStyle": {"fontName": "Arial"},
+        }]}
+        lines = _dialogues(render_project_ass(project, title="t", play_resolution=(1920, 1080)), "0")
+        overlays = [line for line in lines if ",Cue_0," in line]
+        self.assertEqual(len(overlays), 2)
+        self.assertIn("0:00:00.00,0:00:00.50", overlays[0])
+        self.assertIn("0:00:00.50,0:00:01.00", overlays[1])
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg not installed")
+    def test_libass_stacks_wrapped_main_after_overlay_started(self) -> None:
+        project = {
+            "segments": [{"start": 500, "end": 1000, "text": "MAIN TEXT " * 15}],
+            "preview": {"subtitle": {"x": 0, "y": 0, "width": 1, "height": 1,
+                                     "font_size": 20, "color": "#ff0000"}},
+            "overlay_track": {"enabled": True, "segments": [{
+                "start": 0, "end": 1000, "text": "OVERLAY TEXT",
+                "assStyle": {"fontName": "Arial", "fontSize": 60, "marginV": 80, "primaryColor": "#00ff00"},
+            }]},
+        }
+        ass = render_project_ass(project, title="test", play_resolution=(640, 360))
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "sub.ass").write_text(ass, encoding="utf-8")
+            result = subprocess.run([shutil.which("ffmpeg"), "-v", "error", "-f", "lavfi", "-i",
+                "color=c=black:s=640x360:d=1", "-vf", r"ass=sub.ass,select=gte(t\,0.6)",
+                "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                cwd=directory, capture_output=True, check=True)
+        pixels = result.stdout
+        self.assertEqual(len(pixels), 640 * 360 * 3)
+        main_y, overlay_y = [], []
+        for offset in range(0, len(pixels), 3):
+            red, green, _ = pixels[offset:offset + 3]
+            if red > 80 and red > green * 2:
+                main_y.append((offset // 3) // 640)
+            if green > 80 and green > red * 2:
+                overlay_y.append((offset // 3) // 640)
+        self.assertTrue(main_y and overlay_y, "both subtitles must render")
+        self.assertLess(max(overlay_y), min(main_y), "overlay must remain above the wrapped main subtitle")
 
     def test_overlay_disabled_or_closed_track_is_ignored(self) -> None:
         project = _basic_project()
