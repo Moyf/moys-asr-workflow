@@ -1,12 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
   generateWav, makeTempDir, startServer } from './helpers.mjs';
 
 let tempDir, server;
 test.beforeAll(async () => {
-  tempDir = makeTempDir('fcp7-png');
+  // Match the server's canonical path, including Windows 8.3 aliases.
+  tempDir = realpathSync.native(makeTempDir('fcp7-png'));
   const media = join(tempDir, 'source.wav');
   generateWav(media, 3);
   const project = join(tempDir, 'project.json');
