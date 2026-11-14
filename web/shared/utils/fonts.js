@@ -112,5 +112,27 @@ export function createUtilsModule(dependencies) {
     return startsWith.concat(contains);
   }
 
-  return Object.freeze({ SUBTITLE_FONT_FAMILY_PRESETS, filterFontFamilyOptions, mergeFontFamilyOptions, subtitleFontFamilyDisplayName, subtitleFontFamilyInputToStored, subtitleFontFamilyStoredToInput });
+  // Conservative shaping scope, not a blacklist of known difficult scripts.
+  // Common/Inherited cover punctuation and combining marks; explicit joining
+  // and bidi controls still opt out. Unknown/new scripts remain renderer-owned.
+  function assManagedFontText(text) {
+    return !/[\u200c\u200d\u202a-\u202e\u2066-\u2069]/u.test(text)
+      && /^[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Common}\p{Script=Inherited}]*$/u.test(text);
+  }
+
+  // DISPLAY ONLY. VS15 is a best-effort browser hint, not an outline-font
+  // guarantee (some simple pictographs have no standardized text variation).
+  // Keep ZWJ, modifier, flag, keycap and tag sequences completely untouched.
+  let emojiSegmenter = null;
+  const pictograph = /\p{Extended_Pictographic}/u;
+  function assCanvasPreviewText(text) {
+    const source = String(text ?? '');
+    if (!pictograph.test(source) || typeof Intl.Segmenter !== 'function') return source;
+    emojiSegmenter ||= new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    return Array.from(emojiSegmenter.segment(source), ({ segment }) =>
+      /^\p{Extended_Pictographic}\uFE0F?$/u.test(segment)
+        ? segment.replace(/\uFE0F$/u, '') + '\uFE0E' : segment).join('');
+  }
+
+  return Object.freeze({ assManagedFontText, assCanvasPreviewText, SUBTITLE_FONT_FAMILY_PRESETS, filterFontFamilyOptions, mergeFontFamilyOptions, subtitleFontFamilyDisplayName, subtitleFontFamilyInputToStored, subtitleFontFamilyStoredToInput });
 }

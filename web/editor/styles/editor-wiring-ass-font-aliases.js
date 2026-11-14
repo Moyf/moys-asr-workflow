@@ -15,6 +15,113 @@
   const canonicalByFold = new Map();
   const renderableFamilies = new Set();
   let ready = false;
+  let coverage = null;
+  let pending = false;
+  const faceCache = new Map();
+  const segmenter = typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+
+  // No code-point fallback: on older engines keeping a whole span is safer
+  // than detaching combining marks, variation selectors or ZWJ components.
+  function graphemes(text) {
+    return segmenter ? Array.from(segmenter.segment(String(text)), item => item.segment) : [String(text)];
+  }
+
+  function safeFontName(name) {
+    return typeof name === 'string' && name.trim() && !/[{}\\\r\n]/u.test(name);
+  }
+
+  function faceFor(name, bold, italic) {
+    if (!coverage || !safeFontName(name)) return null;
+    const key = JSON.stringify([fold(name), Boolean(bold), Boolean(italic)]);
+    if (faceCache.has(key)) return faceCache.get(key);
+    const canonical = canonicalFor(name) || name;
+    const candidates = coverage.faces.filter(face => safeFontName(face.family) &&
+      [face.family, ...(face.names || [])].some(n => fold(n) === fold(canonical)));
+    // Match style before weight; regular-only fonts may be synthetically bold
+    // in both renderers, but that is explicitly not a pixel-parity guarantee.
+    candidates.sort((a, b) =>
+      (Number(Boolean(a.italic) !== Boolean(italic)) * 1000 + Math.abs(a.weight - (bold ? 700 : 400)))
+      - (Number(Boolean(b.italic) !== Boolean(italic)) * 1000 + Math.abs(b.weight - (bold ? 700 : 400))));
+    const result = candidates[0] || null;
+    faceCache.set(key, result);
+    return result;
+  }
+
+  function covers(face, text) {
+    return Boolean(face) && [...text].every(ch => {
+      const cp = ch.codePointAt(0);
+      if (ch === '\n' || ch === '\r' || ch === '\t') return true;
+      const ranges = face.ranges || coverage.cmaps?.[face.cmap] || [];
+      let low = 0, high = ranges.length - 1;
+      while (low <= high) {
+        const middle = (low + high) >> 1;
+        const [start, end] = ranges[middle];
+        if (cp < start) high = middle - 1;
+        else if (cp > end) low = middle + 1;
+        else return true;
+      }
+      return false;
+    });
+  }
+
+  // Managed scope: ordinary text and combining graphemes. Never split joining
+  // scripts/bidi spans to chase cmap coverage; coverage alone is not shaping.
+  // Emoji sequences stay intact and retain the old renderer-dependent fallback.
+  const emoji = /[\p{Extended_Pictographic}\uFE0E\uFE0F\u20E3\u{1F1E6}-\u{1F1FF}]/u;
+  function resolveRuns(runs, style) {
+    if (!coverage) return runs;
+    const result = [];
+    for (const inputRun of runs) {
+      const resolutionStyle = JSON.stringify([style.fontName, Boolean(style.bold), Boolean(style.italic || inputRun.italic)]);
+      if (inputRun.fontResolutionStyle === resolutionStyle) { result.push(inputRun); continue; }
+      const { fontName: oldFont, fontEmRatio: oldRatio, fontFallbackStatus: oldStatus,
+        fontResolutionStyle: oldStyle, ...sourceRun } = inputRun;
+      const run = { ...sourceRun, fontResolutionStyle: resolutionStyle };
+      const primary = style.fontName;
+      const bold = Boolean(style.bold);
+      const italic = Boolean(style.italic || run.italic);
+      const face = faceFor(primary, bold, italic);
+      if (!face) {
+        result.push({ ...run, fontFallbackStatus: 'unknown-primary' });
+        continue;
+      }
+      if (!global.AsrEditorUtils?.assManagedFontText?.(run.text) || !segmenter) {
+        result.push({ ...run, fontFallbackStatus: 'unmanaged-shaping' });
+        continue;
+      }
+      let last = null;
+      for (const text of graphemes(run.text)) {
+        let selected = covers(face, text) ? face : null;
+        let selectedName = primary;
+        let status = 'managed';
+        if (emoji.test(text)) { selected = null; status = 'unmanaged-emoji'; }
+        else if (!selected) {
+          // Use the requested, matchable family spelling. A locale-selected
+          // nameID1 (e.g. 蘋方-簡) can fail CoreText inline lookup even though the
+          // same face's English name PingFang SC succeeds.
+          for (const name of coverage.fallbacks) {
+            const candidate = faceFor(name, bold, italic);
+            if (covers(candidate, text)) {
+              selected = candidate;
+              selectedName = canonicalFor(name) || name;
+              break;
+            }
+          }
+          if (!selected) status = 'uncovered';
+        }
+        const fontName = selected ? selectedName : primary;
+        const fontEmRatio = selected && selected !== face ? selected.emRatio : undefined;
+        if (last && last.fontName === fontName && last.fontFallbackStatus === status) last.text += text;
+        else {
+          last = { ...run, text, fontName, fontEmRatio, fontFallbackStatus: status };
+          result.push(last);
+        }
+      }
+    }
+    return result;
+  }
+
 
   // 导出替换捕获窗口：仅 .ass 下载入口在 buildAss 前后开启，预览等高频
   // buildAss 的归一化不会污染替换记录。
@@ -63,6 +170,10 @@
       // 下拉选择也保留 face 粒度，搜索 Semibold/PS 名不能选成 Regular。
       entries.push(...faces.values());
     }
+    coverage = payload.coverage?.schema === 'moy.asr.font_coverage.v1'
+      && Array.isArray(payload.coverage.faces) && Array.isArray(payload.coverage.fallbacks)
+      ? payload.coverage : null;
+    faceCache.clear();
     ready = true;
     return true;
   }
@@ -129,7 +240,8 @@
   }
 
   async function loadAliases() {
-    if (!config?.assFontAliasesUrl || ready) return;
+    if (!config?.assFontAliasesUrl || ready || pending) return;
+    pending = true;
     try {
       const response = await fetch(new URL(config.assFontAliasesUrl, global.location.href), {
         cache: 'no-store',
@@ -137,6 +249,7 @@
       if (!response.ok) return;
       const payload = await response.json();
       if (!ingest(payload)) return;
+      pending = false;
       // 别名链改变预览字体匹配结果：清掉画布行/字体度量缓存并刷新预览与
       // 下拉；导出排版计划缓存经 mawe:ass-font-aliases-loaded 事件失效。
       global.MaweAssCanvas?.clearCaches?.();
@@ -144,13 +257,19 @@
       global.MawePlaybackLoop?.refreshSubtitlePreview?.();
     } catch (_) {
       // 端点不存在（旧服务器）或请求失败：保持未加载，全部消费点走现状。
+    } finally {
+      pending = false;
     }
   }
 
   global.MaweAssFontAliases = Object.freeze({
     loaded: () => ready,
+    pending: () => pending,
     entries: () => entries.map((entry) => ({ ...entry, names: [...entry.names] })),
     canonicalFor,
+    resolveRuns,
+    graphemes,
+    coverageAvailable: () => Boolean(coverage),
     aliasChainFor,
     chainCssFor,
     beginReplacementCapture,

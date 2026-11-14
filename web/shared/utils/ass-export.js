@@ -70,16 +70,31 @@ export function createUtilsModule(dependencies) {
     return variant;
   }
 
+  // One font-run plan feeds Canvas, downloaded ASS, frame preview and burn-in.
+  // Portable/old servers retain the legacy path when coverage is unavailable.
+  function resolveFontRuns(runs, style) {
+    return globalThis.window?.MaweAssFontAliases?.resolveRuns?.(runs, style) || runs;
+  }
+
   function assEmphasizedText(text, style, fontSize, emphasisSyntax, inlineOptions) {
-    const runs = inlineOptions?.preparedRuns || assInlineStyleRuns(text, emphasisSyntax, inlineOptions);
+    const sourceRuns = inlineOptions?.preparedRuns || assInlineStyleRuns(text, emphasisSyntax, inlineOptions);
     // libass applies an enabled t:\i target immediately. Use that baseline
     // when creating legacy originalText too, without rewriting its clocks.
     const italic = inlineOptions?.italicTransformTarget === undefined
       ? style.italic : Boolean(inlineOptions.italicTransformTarget);
+    const runs = resolveFontRuns(sourceRuns, { ...style, italic });
     return runs.map((run) => {
       const content = escapeAssText(run.text);
       let startTags = '';
       let endTags = '';
+      // Never use \r to restore a font: it would reset colour, size and animation.
+      // Unsafe names cannot enter ASS override syntax (there is no fn escaping).
+      const safeName = name => typeof name === 'string' && name && !/[{}\\\r\n]/u.test(name);
+      if (run.fontName && run.fontName !== style.fontName
+          && safeName(run.fontName) && safeName(style.fontName)) {
+        startTags += `\\fn${run.fontName}`;
+        endTags += `\\fn${style.fontName}`;
+      }
       if (run.speakerColor) {
         startTags += `\\1c${assOverrideColorFromHex(run.speakerColor)}`;
         endTags += `\\1c${assOverrideColorFromHex(style.primaryColor)}`;
@@ -149,11 +164,16 @@ export function createUtilsModule(dependencies) {
     const eventTextColor = style.primaryColor;
     const label = `${speakerName}${speakerLabelSeparator}`;
     if (!assMode) return escapeAssText(`${label}${content}`);
-    return `{\\c${assOverrideColorFromHex(speakerColor)}}${escapeAssText(label)}{\\c${assOverrideColorFromHex(eventTextColor)}}${assEmphasizedText(content, style, fontSize, emphasisSyntax, inlineOptions)}`;
+    return `{\\c${assOverrideColorFromHex(speakerColor)}}${assEmphasizedText('', style, fontSize, emphasisSyntax, { ...inlineOptions, preparedRuns: [{ text: label }] })}{\\c${assOverrideColorFromHex(eventTextColor)}}${assEmphasizedText(content, style, fontSize, emphasisSyntax, inlineOptions)}`;
   }
 
 
   function buildAssPayload(segments, options = {}) {
+    // A Canvas-only diagnostic plan may render provisionally; never send an
+    // ASS snapshot to libass/export while the font inventory is changing.
+    if (!options.allowAssPlanDiagnostics && globalThis.window?.MaweAssFontAliases?.pending?.()) {
+      throw new Error('本机字体信息仍在加载，请稍后重试 ASS 预览或导出。');
+    }
     const source = Array.isArray(segments) ? segments : [];
     const appearance = options.appearance && typeof options.appearance === 'object'
       ? options.appearance : {};
@@ -244,7 +264,7 @@ export function createUtilsModule(dependencies) {
       const runs = assInlineStyleRuns(fade.text, emphasisSyntax, inlineOptions);
       if (speakerName) runs.unshift({ text: `${speakerName}${speakerLabelSeparator}`, speakerColor });
       stackItems.push({ role, segment, index, start: start * 10, end: end * 10,
-        style, fontSize: size, styleName, speakerName, runs, fad: fade.fad, pop: fade.pop, originalText, shake });
+        style, fontSize: size, styleName, speakerName, runs: resolveFontRuns(runs, style), fad: fade.fad, pop: fade.pop, originalText, shake });
     };
     // 颜色样式只有在 ASS 能表达为整句样式（text / stroke）时才生成
     // 调色板样式；speaker 只给说话人前缀加局部颜色，none 回落 Default。

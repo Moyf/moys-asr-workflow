@@ -195,3 +195,39 @@ test('legacy DOM font-box measurement uses the same system fallback after aliase
   assert.equal(probes[0].style.fontFamily,
     '"得意黑", "Smiley Sans", "SmileySans-Oblique", var(--font-sans)');
 });
+
+test('Canvas uses selected fallback family and per-face ratio, with font-aware raster cache', () => {
+  const { context, track, paint, render } = canvasFixture();
+  context.window.MaweAppearance.subtitleFontFamilyCss = name => `"${name}"`;
+  track.runs = [{ text: '•̀', fontName: 'Arial', fontEmRatio: .89 }];
+  track.nativeFontSize = 100;
+  render();
+  assert.match(paint.find(p => p.mode === 'fill').font, /89px "Arial"/);
+  paint.length = 0;
+  track.runs = [{ text: '•̀', fontName: 'Different', fontEmRatio: .89 }];
+  render();
+  assert.match(paint.find(p => p.mode === 'fill').font, /89px "Different"/,
+    'equal-width font change still invalidates line bitmap');
+});
+
+test('Canvas-only emoji hints leave original plan text untouched and use the displayed text for paint', () => {
+  const { track, paint, render } = canvasFixture();
+  track.runs = [{ text: '❤️ 👩‍👩‍👧‍👧 🤔' }];
+  render();
+  assert.equal(track.runs[0].text, '❤️ 👩‍👩‍👧‍👧 🤔');
+  assert.equal(paint.find(p => p.mode === 'fill').text, '❤︎ 👩‍👩‍👧‍👧 🤔︎');
+});
+
+test('stack metric probes re-resolve a fallback face after bold/italic changes', () => {
+  const { context, canvas, track } = canvasFixture();
+  const probes = [];
+  context.window.MaweAssFontAliases = { resolveRuns(runs, style) {
+    probes.push([style.bold, style.italic]);
+    return runs.map(run => ({ ...run, fontEmRatio: style.bold && style.italic ? .5 : 1 }));
+  } };
+  const run = { text: '•̀', fontName: 'Fallback', fontEmRatio: 1 };
+  const normal = canvas.measureRun(track.style, 100, run, run.text);
+  const italic = canvas.measureRun({ ...track.style, bold: true, italic: true }, 100, run, run.text);
+  assert.ok(probes.some(([bold, italic]) => bold && italic));
+  assert.equal(italic.width, normal.width / 2);
+});
