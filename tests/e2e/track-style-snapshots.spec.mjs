@@ -53,6 +53,58 @@ test('library edits update linked tracks, project edits fork, and save is one un
   expect(await page.evaluate(() => MaweAssManagerWiring.projectStyleOptions('secondary').style.fontSize)).toBe(120);
 });
 
+test('failed library reload preserves linked project snapshots without a browser cache', async ({ page }) => {
+  await page.evaluate(async () => {
+    const library = structuredClone(ASS_STYLE_LIBRARY);
+    library.styles.find(style => style.id === 'ass').fontSize = 101;
+    const response = await fetch(MaweBoot.SERVER_CONFIG.assStylesUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...library, requestToken: MaweBoot.SERVER_CONFIG.requestToken }),
+    });
+    if (!response.ok) throw new Error(`Fixture save failed: ${response.status}`);
+    await loadAssStyleLibrary({ force: true });
+    MaweAssManagerWiring.applyProjectStyleSelection('main', 'ass');
+    MaweHistory.editorHistory.clear();
+    MaweState.establishProjectCheckpoint();
+    localStorage.removeItem('moy.asr.ass.styles.v1');
+  });
+  const before = await page.evaluate(() => ({
+    styles: structuredClone(MaweBoot.DATA.styles),
+    tracks: structuredClone(MaweBoot.DATA.tracks),
+    undo: MaweHistory.editorHistory.undoLength(),
+  }));
+  await page.route('**/api/ass-styles', route => route.abort());
+  await page.evaluate(() => MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-style'));
+  await page.locator('#ass-style-manager-open').click();
+  await expect(page.locator('#ass-style-library-status')).toContainText('服务器同步失败');
+  expect(await page.evaluate(() => MaweAssManagerWiring.projectStyleOptions('main').style.fontSize)).toBe(101);
+  expect(await page.evaluate(() => ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize)).toBe(101);
+  expect(await page.evaluate(() => MaweBoot.DATA.styles)).toEqual(before.styles);
+  expect(await page.evaluate(() => MaweBoot.DATA.tracks)).toEqual(before.tracks);
+  expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(before.undo);
+  expect(await page.evaluate(() => MaweState.hasProjectChanges())).toBe(false);
+
+  // A later successful reload must still update linked snapshots as one undo.
+  await page.unroute('**/api/ass-styles');
+  await page.evaluate(async () => {
+    const library = structuredClone(ASS_STYLE_LIBRARY);
+    library.styles.find(style => style.id === 'ass').fontSize = 109;
+    const response = await fetch(MaweBoot.SERVER_CONFIG.assStylesUrl, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...library, requestToken: MaweBoot.SERVER_CONFIG.requestToken }),
+    });
+    if (!response.ok) throw new Error(`Fixture save failed: ${response.status}`);
+    await loadAssStyleLibrary({ force: true });
+  });
+  expect(await page.evaluate(() => MaweAssManagerWiring.projectStyleOptions('main').style.fontSize)).toBe(109);
+  expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(before.undo + 1);
+  expect(await page.evaluate(() => MaweState.hasProjectChanges())).toBe(true);
+  await page.evaluate(() => MaweHistory.performUndo());
+  expect(await page.evaluate(() => MaweAssManagerWiring.projectStyleOptions('main').style.fontSize)).toBe(101);
+  await page.evaluate(() => MaweHistory.performRedo());
+  expect(await page.evaluate(() => MaweAssManagerWiring.projectStyleOptions('main').style.fontSize)).toBe(109);
+});
+
 test('project style editing clears library selection after fork and allows returning to library editing', async ({ page }) => {
   await page.evaluate(() => MaweAssManagerWiring.openProjectStyleEditor('main'));
   const selected = page.locator('#ass-style-list [aria-selected="true"]');

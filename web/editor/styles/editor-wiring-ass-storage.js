@@ -264,7 +264,9 @@ async function loadAssStyleLibrary({ force = false } = {}) {
       if (!MaweState.projectLoadPending) window.MaweProjectFontCheck?.schedule();
     }
   };
-  setAssStyleLibrary(readLocalAssStyleLibrary());
+  // A failed reload must not replace trusted memory with a missing or stale
+  // browser cache and propagate that fallback into linked project snapshots.
+  if (!hadLoaded) setAssStyleLibrary(readLocalAssStyleLibrary());
   setAssStyleLibraryStatus('正在加载…', 'pending');
   assStyleLibraryLoadPromise = (async () => {
     // 让出一轮微任务再继续：便携（无服务器）分支没有任何真正的 await，
