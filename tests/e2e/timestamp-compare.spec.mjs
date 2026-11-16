@@ -92,7 +92,8 @@ test('renders embedded projects, classifies differences, and expands item detail
   await expect(page.locator('.chip.count').first()).toContainText('词数');
   await expect(page.locator('.chip.missing').first()).toContainText('缺段');
 
-  await page.locator('#showItemText').check();
+  await page.locator('#showItemText').locator('..').click();
+  await expect(page.locator('#showItemText')).toBeChecked();
   await expect(page.locator('.item-label-row')).toHaveCount(5);
   await expect(page.locator('.item-label')).toHaveCount(11);
   await expect(page.locator('.item-label').filter({ hasText: '你' }).first()).toBeVisible();
@@ -210,7 +211,8 @@ test('shows durations, marks item range problems, and filters item quality', asy
   await expect(page.locator('.item-strip.no-items')).toHaveCount(1);
   await expect(page.locator('.item-badge.no-items')).toContainText('无 items');
 
-  await page.locator('#showItemText').check();
+  await page.locator('#showItemText').locator('..').click();
+  await expect(page.locator('#showItemText')).toBeChecked();
   await expect(page.locator('.item-label.out-of-range')).toHaveCount(2);
   await expect(page.locator('.item-label-duration').first()).toHaveText('0.30');
   const labelStyle = await page.locator('.item-label').first().evaluate((node) => {

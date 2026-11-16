@@ -36,8 +36,8 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(json.loads(encoded), data)
         self.assertNotIn("<", encoded)
 
-    def test_portable_about_gif_is_self_contained(self) -> None:
-        page = edit.build_blank_html()
+    def test_local_editor_about_gif_is_self_contained(self) -> None:
+        page = edit.render_empty_editor_page()
         match = re.search(r'src="data:image/gif;base64,([^"]+)"', page)
         self.assertIsNotNone(match)
         self.assertEqual(base64.b64decode(match.group(1)), (edit.WEB_DIR / 'assets/moi_dancing.gif').read_bytes())
@@ -181,6 +181,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/styles/editor-wiring-ass-font-aliases.js",
                 "editor/styles/editor-wiring-ass-storage.js",
                 "editor/boot/editor-wiring-initial-config.js",
+                "editor/ui/editor-dom-panels.js",
                 "editor/ui/editor-wiring-dom-panels.js",
                 "editor/styles/editor-wiring-ass-manager.js",
                 "editor/ui/editor-wiring-settings-init.js",
@@ -194,6 +195,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/cues/editor-wiring-search-filter.js",
                 "editor/cues/editor-wiring-overlay-split-merge.js",
                 "editor/cues/editor-wiring-list-navigation.js",
+                "editor/media/editor-ass-preview-refresh.js",
                 "editor/media/editor-wiring-keyboard-guards.js",
                 "editor/cues/editor-wiring-word-timing.js",
                 "editor/media/editor-wiring-media-controls.js",
@@ -232,7 +234,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_editor_script_payload_is_one_complete_artifact(self) -> None:
         with patch.object(edit, "read_editor_script_manifest", side_effect=AssertionError("runtime source assembly")):
             payload = edit.build_editor_scripts()
-            page = edit.build_blank_html()
+            page = edit.render_empty_editor_page()
         self.assertEqual(payload, edit.read_web_asset("editor/boot/editor-bundle.js").rstrip())
         self.assertIn(payload.splitlines()[0], page)
         metadata = json.loads(edit.read_web_asset("editor/boot/editor-bundle.meta.json"))
@@ -510,7 +512,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("const portableStickerExportEnabled", script)
 
     def test_generated_page_contains_compatibility_facades_in_order(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         tokens = set(re.findall(r"__[A-Z][A-Z0-9_]+__",
                                 edit.read_web_asset("editor-template.html") + self.source_contract_text()))
         for token in tokens:

@@ -1,3 +1,4 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { getOverlayTrack } from '../cues/overlay-track.js';
 
 export function initMaweHistory() {
@@ -309,7 +310,7 @@ export function initMaweHistory() {
       || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show')
       || MaweDom.projectMediaModal.classList.contains('show')
-      || window.MaweDomPanelsWiring.assStyleWindow?.classList.contains('show');
+      || getMaweDomPanels().assStyleWindow?.classList.contains('show');
 }
 
 

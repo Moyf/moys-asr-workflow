@@ -128,6 +128,18 @@
 
 [打开正文](engineering/DESIGN.md)
 
+<a name="engineering-tool-pages"></a>
+### 浏览器工具页设计与交互规范
+
+[通用底线与按场景模式](../tools/TOOL_PAGE_GUIDE.md) · [性能与验证约定](../tools/AGENTS.md)
+
+[工具功能介绍与维护状态](../tools/index.html) · [工具目录说明](../tools/README.md)
+
+<a name="engineering-tool-markdown"></a>
+### 工具共享 Markdown 与说明阅读
+
+[成熟库封装、安全阅读弹窗与离线说明](../tools/shared/README.md)
+
 <a name="engineering-project-format"></a>
 ### 工程文件格式
 
@@ -155,6 +167,13 @@
 
 ## 共享计划
 
+<a name="plans-maw20-integration"></a>
+### MAW 2.0 集成与 Starlight 交付
+
+[总计划、阶段进度与验收门槛](plans/MAW_2_0_INTEGRATION_PLAN.md) · [执行手册、冲突分组与实现参考](plans/MAW_2_0_INTEGRATION_RUNBOOK.md)
+
+包含 main 同步、Launcher 改版、Electron 与 Installer 迁移，以及抢先体验渠道的安全交付边界。计划不代表已实施或已授权发布。
+
 <a name="plans-speaker-core"></a>
 ### 说话人核心与后续依赖
 
@@ -166,6 +185,14 @@
 [打开正文](plans/UNIFIED_TRACKS_PLAN.md)
 
 [v2 整合与验证](logs/release1.10.0-beta.2/261030_轨道v2整合/整合记录.md) · [人工核验](logs/release1.10.0-beta.2/261030_轨道v2整合/轨道v2.checklist.md)
+
+<a name="plan-fcp7-png-subtitles"></a>
+### FCP 7 XML 图片字幕导出
+
+[方案决定、现有渲染复用与分层验证提议](plans/FCP7_PNG_SUBTITLES.md)
+
+[无损 WebP 与通用入口验证](logs/release1.10.0-beta.2/261108_FCP7WebP/IMPLEMENTATION.md)
+[PNG/WebP 格式反馈与移除 Pillow](logs/release1.10.0-beta.2/261108_FCP7WebP/TEST_FEEDBACK_FORMATS.md)
 
 <a name="plan-release-pipeline"></a>
 ### 正式版本归档、官网与更新检测管线
@@ -213,6 +240,11 @@
 ### 实际画面表情包合成路线（真·所见即所得）
 
 [评估结论、现成件清单与设计要点](plans/ASS_FRAME_STICKER_COMPOSE.md)；CSS 止血已实施，路线未实施，待 cue-left / 同屏多张成为日常再投入。
+
+<a name="plan-ocr-terms-tool"></a>
+### 视频术语提取工具（OCR → 热词）计划
+
+[打开正文](plans/OCR_TERMS_TOOL.md)；完整规格见 [tools/term-extract/SPEC.md](../tools/term-extract/SPEC.md)。M1 独立工具已完成，待实测后合并。
 
 <a name="engineering-server"></a>
 ### 源码服务与桌面开发

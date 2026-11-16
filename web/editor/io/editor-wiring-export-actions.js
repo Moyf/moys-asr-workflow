@@ -61,6 +61,8 @@ function projectSaveFingerprint() {
 
 // 保存正在输入的文字，但不结束行内编辑、不替换节点、不移动光标。
 function flushInlineEditsForSave() {
+  // 波形快速编辑气泡的待提交文字先落盘提交（幂等），气泡保持打开。
+  MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
   const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState;
   if (!state) {
     // Start/duration changes are committed by their own input handlers.  Only
@@ -175,19 +177,19 @@ function applyMediaSizeToResolutionModal(select, customRow, widthInput, heightIn
   if (customRow) customRow.hidden = select.value !== 'custom';
 }
 
-function dynamicExportCanvasSize(select, widthInput, heightInput) {
+function dynamicExportCanvasSize(select, widthInput, heightInput, max = DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS.max, min = DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS.min) {
   if (select?.value !== 'custom') {
     const match = /^(\d+)x(\d+)$/u.exec(select?.value || '');
     if (!match) return { width: 1920, height: 1080 };
     return { width: Number(match[1]), height: Number(match[2]) };
   }
-  const limits = DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS;
   const width = Number(widthInput?.value);
   const height = Number(heightInput?.value);
-  if (!Number.isInteger(width) || width < limits.min || width > limits.max
-    || !Number.isInteger(height) || height < limits.min || height > limits.max) {
+  if (!Number.isInteger(width) || width < min || width > max
+    || !Number.isInteger(height) || height < min || height > max) {
     throw new Error(MaweProjectSave.translatedEditorText(
-      '自定义合成尺寸需要 16–7680 之间的整数宽高',
+      max === 8192 && min === 1 ? '自定义图片尺寸需要 1–8192 之间的整数宽高'
+        : max === 8192 ? '自定义图片尺寸需要 16–8192 之间的整数宽高' : '自定义合成尺寸需要 16–7680 之间的整数宽高',
     ));
   }
   return { width, height };
@@ -206,7 +208,7 @@ function bindResolutionCustomSizeToggle(select, customRow) {
 
 
 document.getElementById('download-lottie')?.addEventListener('click', MaweDynamicExports.openLottieExportModal);
-bindResolutionCustomSizeToggle(MaweDom.lottieExportResolution, lottieExportCustomSize);
+bindResolutionCustomSizeToggle(MaweDom.lottieExportResolution, window.MaweDomPanelsWiring.lottieExportCustomSize);
 MaweDom.lottieExportCancel?.addEventListener('click', MaweDynamicExports.closeLottieExportModal);
 MaweDom.lottieExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportLottieDynamicCaptions(); });
 MaweDom.lottieExportModal?.addEventListener('click', (event) => {
@@ -234,7 +236,7 @@ document.addEventListener('keydown', (event) => {
 
 
 document.getElementById('download-ograf')?.addEventListener('click', MaweDynamicExports.openOgrafExportModal);
-bindResolutionCustomSizeToggle(MaweDom.ografExportResolution, ografExportCustomSize);
+bindResolutionCustomSizeToggle(MaweDom.ografExportResolution, window.MaweDomPanelsWiring.ografExportCustomSize);
 MaweDom.ografExportCancel?.addEventListener('click', MaweDynamicExports.closeOgrafExportModal);
 MaweDom.ografExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportOgrafDynamicCaptions(); });
 MaweDom.ografExportModal?.addEventListener('click', (event) => {
@@ -307,7 +309,7 @@ document.getElementById('download-full-ass')?.addEventListener('click', async ()
       desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
     });
   } catch (error) {
-    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning');
+    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning', { error });
   }
 });
 document.getElementById('download-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(false));
@@ -391,7 +393,7 @@ document.getElementById('download-gap-removed-ass')?.addEventListener('click', a
       });
     }
   } catch (error) {
-    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning');
+    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning', { error });
   }
 });
 document.getElementById('download-otio')?.addEventListener('click', async () => {
@@ -525,12 +527,13 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       ? config.gapRemovedMediaAudioTrack : undefined;
   };
   const selectedAudioTrack = isAudio ? currentAudioTrack() : undefined;
-  const audioSelection = selectedAudioTrack === undefined ? {} : { selectedAudioTrack };
   const intervals = context.intervals.map(({ start, end }) => ({ startMs: start, endMs: end }));
+  const keepToSourceEnd = isAudio && intervals.at(-1)?.endMs === context.durationMs;
+  const audioSelection = selectedAudioTrack === undefined ? {} : { selectedAudioTrack, keepToSourceEnd, editorDurationMs: context.durationMs };
   let buildVideoSrt = null;
   if (!isAudio) {
     try { buildVideoSrt = MaweExportSrt.captureVideoSrt?.() || null; }
-    catch (error) { MaweHint.flashHint(`无法生成匹配字幕：${error.message || error}`, 'warning'); }
+    catch (error) { MaweHint.flashHint(`无法生成匹配字幕：${error.message || error}`, 'warning', { error }); }
   }
   let videoTimeline = null;
   const isBindingCurrent = () => MaweBoot.SERVER_CONFIG === config && canExport()
@@ -542,7 +545,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       && currentAudioTrack() === selectedAudioTrack))
     && (config.gapRemovedMediaKind === 'audio') === isAudio && config.gapRemovedVideoExportUrl === exportUrl
     && config.requestToken === requestToken && window.MaweProjectLoad?.projectBindingEpoch === projectBindingEpoch;
-  MaweHint.flashHint(tr(isAudio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。'), 'warning');
+  MaweHint.flashHint(tr(isAudio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。'), 'info');
 
   let handle;
   try {
@@ -553,7 +556,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     });
   } catch (error) {
     if (error?.name === 'AbortError') return;
-    MaweHint.flashHint(`${mediaText('无法打开视频保存位置选择器')}：${safeError(error, '请检查保存位置权限后重试')}`, 'warning');
+    MaweHint.flashHint(`${mediaText('无法打开视频保存位置选择器')}：${safeError(error, '请检查保存位置权限后重试')}`, 'warning', { error });
     return;
   }
   // The picker can yield while this page (or another server tab) changes project.
@@ -596,7 +599,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   const warnCleanup = (error) => {
     if (cleanupWarningShown) return;
     cleanupWarningShown = true;
-    MaweHint.flashHint(safeError(error, '无法确认导出已停止，请重试'), 'warning');
+    MaweHint.flashHint(safeError(error, '无法确认导出已停止，请重试'), 'warning', { error });
   };
   const stopped = new Promise((_, reject) => { rejectStop = reject; });
   void stopped.catch(() => {});
@@ -713,7 +716,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
         try {
           await MaweExportTimeline.downloadFile(srt, handle.name.replace(/\.[^.]+$/, '') + '.srt', 'text/plain',
             { desc: 'SRT', types: { 'text/plain': ['.srt'] } });
-        } catch (error) { MaweHint.flashHint(safeError(error, '字幕保存失败，请重试'), 'warning'); }
+        } catch (error) { MaweHint.flashHint(safeError(error, '字幕保存失败，请重试'), 'warning', { error }); }
         finally { saveSrt.disabled = false; }
       });
       actions.append(saveSrt);
@@ -1011,7 +1014,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       } catch (cleanupError) {
         warnCleanup(cleanupError);
       }
-    } else MaweHint.flashHint(`${mediaText('重组后视频导出失败')}：${safeError(error, '媒体处理失败，请确认源文件可以正常播放后重试')}`, 'warning');
+    } else MaweHint.flashHint(`${mediaText('重组后视频导出失败')}：${safeError(error, '媒体处理失败，请确认源文件可以正常播放后重试')}`, 'warning', { error });
   } finally {
     if (!transferComplete && response?.body) {
       // Releasing a reader only relinquishes its JS lock. Cancel the network

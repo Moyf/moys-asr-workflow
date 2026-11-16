@@ -10,7 +10,7 @@ import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 const plain = value => JSON.parse(JSON.stringify(value));
 const canonical = () => JSON.parse(readFileSync(new URL('./fixtures/project-tracks/legacy-three-tracks.expected.json', import.meta.url), 'utf8'));
 function run(context, module) {
-  const initializers = { 'state/editor-state': 'initMaweState', 'io/editor-project-load': 'initMaweProjectLoad', 'io/editor-json-repair': 'initMaweJsonRepair', 'io/editor-multi-import': 'initMaweMultiImport' };
+  const initializers = { 'state/editor-state': 'initMaweState', 'io/editor-project-load': 'initMaweProjectLoad', 'io/editor-json-repair': 'initMaweJsonRepair', 'io/editor-multi-import': 'initMaweMultiImport', 'io/editor-loading-progress': 'initLoadingProgressModule' };
   const source = initializers[module] ? invokedInitModuleSource(`editor/${module}.js`, initializers[module]) : readFileSync(new URL(`../web/editor/${module}.js`, import.meta.url), 'utf8');
   vm.runInContext(source, context);
 }

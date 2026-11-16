@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 import { initModuleSource } from './helpers/init-module-source.mjs';
 
-const load = (context, file) => vm.runInNewContext(fs.readFileSync(new URL(`../web/editor/${file}`, import.meta.url), 'utf8'), context);
+const load = (context, file) => vm.runInNewContext(initModuleSource(`editor/${file}`), context);
 
 test('Z/X dispatches to current cue track and empty selection uses main', () => {
   const main = { id: 'm', role: 'main', segments: [{ id: 'same', start: 1000, end: 3000 }] };

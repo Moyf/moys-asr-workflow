@@ -19,12 +19,30 @@ from typing import Callable
 
 from maw.gui_platform import (popen_process_tree, process_group_kwargs,
                               release_process_tree, terminate_process_tree)
+from maw.local_log import LocalLogSink
 
 MAX_MEDIA_JOB_STDOUT_BYTES = 2 * 1024 * 1024
 MAX_MEDIA_JOB_STDERR_BYTES = 64 * 1024
 MEDIA_JOB_PIPE_READ_CHARS = 4096
 MEDIA_JOB_ADMISSION_TTL = 120
 MAX_MEDIA_JOB_ADMISSIONS = 256
+# 下载连接的 socket 写超时。取消主路径是 abort_download 立即 shutdown socket，
+# 此超时仅是客户端异常消失时的兜底；取 10s 以容忍慢速磁盘/杀软造成的短暂写停顿。
+# close() 的退出等待预算跟随该值（+2s 余量），确保「客户端不读体」的死连接也能
+# 在预算内自然超时并完成临时文件清理。
+MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S = 10
+
+# 失败诊断的按天日志（LocalLogSink 自带脱敏与静默降级）。serve.py 由 Launcher
+# 经 TemporaryFile 接管子进程输出且启动成功后不再读取，仅靠 stdout 无法取回；
+# 同一份诊断落盘到用户日志目录（maw-YYYY-MM-DD.log），崩溃或退出后仍可查。
+_diagnostic_sink_instance: LocalLogSink | None = None
+
+
+def _diagnostic_sink() -> LocalLogSink:
+    global _diagnostic_sink_instance
+    if _diagnostic_sink_instance is None:
+        _diagnostic_sink_instance = LocalLogSink()
+    return _diagnostic_sink_instance
 
 
 class MediaJobCancelled(RuntimeError):
@@ -296,6 +314,13 @@ class MediaJobManager:
                         # Do not publish the terminal state before attempting disposal.
                         # Keep the state transition and cleanup under one lock.
                         self._dispose(job)
+                    # Bounded diagnostics; cancellation carries no error and stays silent.
+                    if job.error:
+                        diagnostics = f"[MAW media-job {job.id}] failed at stage={job.stage}: {job.error}"
+                        if job.error_details:
+                            diagnostics += "\n" + str(job.error_details)[-2000:]
+                        _diagnostic_sink().write_text(diagnostics, label="media-job")
+                        print(diagnostics, flush=True)
 
             job.thread = threading.Thread(target=work, name="maw-media-" + job.id, daemon=True)
             job.thread.start()
@@ -383,6 +408,6 @@ class MediaJobManager:
             if job:
                 self.cancel(job.id)
         if job and job.thread:
-            job.thread.join(timeout=5)
-        if job and not job.disposed_event.wait(timeout=5):
+            job.thread.join(timeout=MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S + 2)
+        if job and not job.disposed_event.wait(timeout=MEDIA_JOB_DOWNLOAD_WRITE_TIMEOUT_S + 2):
             raise MediaJobUnavailable(job.cleanup_error or "媒体任务关闭后尚未完成输出清理")

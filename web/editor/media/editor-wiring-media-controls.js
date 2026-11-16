@@ -41,7 +41,7 @@ MaweDom.mediaFullscreen?.addEventListener('click', async () => {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await MaweDom.playerWrap?.requestFullscreen?.();
   } catch (error) {
-    MaweHint.flashHint(`无法切换全屏：${error.message || error}`, 'warning');
+    MaweHint.flashHint(`无法切换全屏：${error.message || error}`, 'warning', { error });
   }
   MaweMediaPlayback.syncMediaControls();
 });

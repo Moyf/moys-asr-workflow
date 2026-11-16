@@ -1,5 +1,3 @@
-import { getOverlayTrack } from './overlay-track.js';
-
 export function initMaweTextCleanup() {
 'use strict';
 
@@ -45,6 +43,8 @@ export function initMaweTextCleanup() {
 
 
   function syncTimelineGroupRanges() {
+    // Ranges are derived from all canonical track members, not cached on
+    // legacy color/sticker heads. This also covers the active secondary track.
     window.AsrEditorUtils.refreshSubtitleGroupViews(MaweBoot.DATA);
   }
 
@@ -68,7 +68,7 @@ export function initMaweTextCleanup() {
       MaweCoreState.waveformEditor?.updatePlayback();
     }
   } catch (error) {
-    MaweHint.flashHint(`跳转失败：${error.message}`, 'warning');
+    MaweHint.flashHint(`跳转失败：${error.message}`, 'warning', { error });
   }
 }
 

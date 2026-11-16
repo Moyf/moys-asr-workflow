@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
 from typing import Final, TextIO
+from urllib.parse import urlparse
 
 from maw.app_paths import default_app_data_root
 from maw.gui_platform import (
@@ -50,8 +51,8 @@ from maw.runtime_manifest import (
     read_runtime_manifest,
     write_runtime_manifest,
 )
-from maw.runtime_mirror_picker import pick_fastest_mirror, probe_index_reachable
-from maw.runtimes import freezer
+from maw.runtime_mirror_picker import probe_index_reachable, ranked_mirrors
+from maw.runtimes import freezer, pathwin
 
 GET_PIP_SCRIPT: Final = "get-pip.py"
 
@@ -233,11 +234,44 @@ class ManagedRuntime:
     # -- 路径 -----------------------------------------------------------------
 
     def resolve_root(self, configured: str | Path | None = None) -> Path:
-        """显式配置 -> 进程级环境变量 -> 默认 app-data 目录。"""
+        """显式配置 -> 进程级环境变量 -> 默认 app-data 目录。
+
+        Windows 上结果经 :mod:`maw.runtimes.pathwin` 做 ASCII 化（8.3 短路径
+        别名；默认目录无法别名化时迁移公共目录 fallback，显式配置只做别名、
+        不迁移）：中文用户名等非 ASCII 路径会让 DyNet/nagisa 这类以窄字符
+        API 打开数据文件的第三方依赖失败（决策表见 pathwin 模块 docstring）。
+        非 Windows 与纯 ASCII 路径原样直通，行为不变。
+        """
         override = str(configured or "").strip() or os.environ.get(self.spec.root_env, "").strip()
         if override:
-            return Path(override).expanduser().resolve(strict=False)
-        return default_app_data_root() / self.spec.dir_name
+            # 用户显式指定的路径尊重原选择：只做短路径别名（同一物理目录），
+            # 不迁移公共目录；无法 ASCII 化时由 verify 错误增强给出指引。
+            configured_path = Path(override).expanduser()
+            # Preserve junction components until fallback security has checked
+            # them. resolve() would turn a hostile fallback junction into an
+            # unrelated ASCII path and bypass its validation.
+            if sys.platform == "win32":
+                raw = Path(os.path.abspath(configured_path))
+                checked = pathwin.ensure_ascii_root(
+                    raw, dir_name=self.spec.dir_name, allow_relocate=False,
+                )
+                # The original path must be checked before resolving a
+                # junction, but ordinary explicit paths retain the previous
+                # canonical form (including Windows TEMP's 8.3 alias).
+                if checked != raw:
+                    return checked
+                normalized = raw.resolve(strict=False)
+            else:
+                normalized = configured_path.resolve(strict=False)
+            return pathwin.ensure_ascii_root(
+                normalized,
+                dir_name=self.spec.dir_name,
+                allow_relocate=False,
+            )
+        return pathwin.ensure_ascii_root(
+            default_app_data_root() / self.spec.dir_name,
+            dir_name=self.spec.dir_name,
+        )
 
     def python_path(self, root: str | Path | None = None) -> Path:
         target = self.resolve_root(root) if root is None else Path(root)
@@ -338,7 +372,23 @@ class ManagedRuntime:
         model_cache_root: str | Path | None = None,
     ) -> RuntimeStatus:
         """missing / broken / installing / ready，复用 runtime.json manifest。"""
-        root = self.resolve_root(runtime_root)
+        return self._status_at(self.resolve_root(runtime_root), model_cache_root=model_cache_root)
+
+    def _status_at(
+        self,
+        root: Path,
+        *,
+        model_cache_root: str | Path | None = None,
+    ) -> RuntimeStatus:
+        """对调用方给定的根目录判定状态，不再重新解析。
+
+        root 的解析依赖「哪些祖先目录当前存在」（8.3 别名走查，见
+        :mod:`maw.runtimes.pathwin`）；安装中途 model-cache 等步骤会建出
+        新祖先，若结尾重新解析可能漂移到一条从未物化的别名路径，把刚装好
+        的运行时判成 missing（Windows CI run 42745061077 实证）。install()
+        因此必须用安装入口解析出的同一个根做 ready 判定；独立查询走
+        :meth:`status`。
+        """
         python = self.interpreter(root)
         model_cache = resolve_model_cache_root(model_cache_root) if self.spec.has_model_cache else ""
         if not root.exists():
@@ -450,7 +500,22 @@ class ManagedRuntime:
         root = self.resolve_root(runtime_root)
         if root.exists() and not root.is_dir():
             raise self._error(f"{spec.message_prefix}路径不能是一个文件：{root}")
-        root.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # Create fallback parents with a private DACL before mkdir/manifest
+            # or the ready shortcut can adopt an attacker-precreated runtime.
+            pathwin.prepare_install_root(root, dir_name=spec.dir_name)
+            root.parent.mkdir(parents=True, exist_ok=True)
+        except pathwin.AsciiRootUnavailable as error:
+            raise self._error(f"{spec.message_prefix}{error}") from error
+        except OSError as error:
+            # 无权创建父目录（公共目录 fallback / 自定义路径在受保护位置）
+            # 会先于 probe_writable 失败：转成含自救指引的可操作错误，而不是
+            # 裸 PermissionError。
+            raise self._error(
+                f"{spec.message_prefix}运行时父目录无法创建：{root.parent}（{error}）。"
+                "请检查该位置的权限；公共目录回退场景可设置环境变量 "
+                f"{pathwin.FALLBACK_ROOT_ENV} 指向一个无中文且当前用户可写的目录后重试。"
+            ) from error
 
         # 引导策略按运行形态分叉：打包版（Windows）依赖随包分发的 bootstrap
         # 资产；打包版（unix）用宿主 python3 建 venv，无需任何 bundle 资产；
@@ -478,15 +543,16 @@ class ManagedRuntime:
                     "请使用官方打包版。"
                 )
 
-        if self.status(runtime_root=runtime_root, model_cache_root=model_cache_root).ready and not repair:
+        if self._status_at(root, model_cache_root=model_cache_root).ready and not repair:
             emit(spec.ready_emit_done, 100, "ready")
-            return self.status(runtime_root=runtime_root, model_cache_root=model_cache_root)
+            return self._status_at(root, model_cache_root=model_cache_root)
 
         _may_cancel(cancel, spec)
         python = self.interpreter(root)
         if root.exists() and not python.exists() and any(root.iterdir()) and not repair:
             raise self._error(f"{spec.message_prefix}目录已存在但不完整，请更换路径或手动清理后重试。")
         # 安装开始即写入 installing 状态，避免安装过程中被判定为"需要修复"。
+        # 公共目录安全验证与私有目录创建已在 ready 早退之前完成。
         write_runtime_manifest(
             root,
             status=STATUS_INSTALLING,
@@ -542,7 +608,6 @@ class ManagedRuntime:
             )
         requirements_file = self.requirements_path()
         site_packages = self.site_packages(root)
-        fastest_index = pick_fastest_mirror()
         requirements_arg = requirements_file
         extra_index = _resolve_extra_index(spec.extra_index_url)
         if needs_cpu_fallback:
@@ -563,48 +628,91 @@ class ManagedRuntime:
                     "重试；若该源在你的网络环境长期不可达，可设置环境变量 "
                     "MAW_PYTORCH_INDEX 指向可达的 PyTorch 镜像源。"
                 )
-        # 安装方式三分支：unix 打包版 venv 直装（venv 自带 pip，无需 --target）；
-        # Windows 打包版 pip --target 定向安装；源码模式 uv 接入开发解释器。
-        if frozen and host_venv:
-            install_command = _venv_pip_install_command(
-                python,
-                index_url=fastest_index,
-                extra_index_url=extra_index,
-                requirements_file=requirements_arg,
-            )
-        elif frozen:
-            install_command = _pip_install_command(
-                self.python_path(root),
-                site_packages,
-                requirements_arg,
-                index_url=fastest_index,
-                extra_index_url=extra_index,
-            )
-        else:
-            install_command = _uv_install_command(
+        # 镜像测速给出排序候选；网络类失败（限频/超时/连接中断）时逐个换源
+        # 重试，把「镜像抽风」从装失败降级成慢一点但能装上。测速明确失败的
+        # 源不会出现在候选里；MAW_PIP_INDEX 只配一个源时自然只尝试一次。
+        mirror_attempts = ranked_mirrors()[:MIRROR_RETRY_ATTEMPTS]
+
+        def build_install_command(index_url: str) -> list[str]:
+            """用当前 index_url 重建安装命令，三分支与 CPU fallback 共用。"""
+            if frozen and host_venv:
+                return _venv_pip_install_command(
+                    python,
+                    index_url=index_url,
+                    extra_index_url=extra_index,
+                    requirements_file=requirements_arg,
+                )
+            if frozen:
+                return _pip_install_command(
+                    self.python_path(root),
+                    site_packages,
+                    requirements_arg,
+                    index_url=index_url,
+                    extra_index_url=extra_index,
+                )
+            return _uv_install_command(
                 uv_executable,
                 python,
                 site_packages,
                 requirements_arg,
-                index_url=fastest_index,
+                index_url=index_url,
                 extra_index_url=extra_index,
             )
-        self.run(
-            install_command,
-            env=self.environment(root, model_cache_root),
-            cancel=cancel,
-            on_line=_dependency_line(emit, requirements_arg),
-        )
+
+        mirror_failures: list[tuple[str, str]] = []
+        for attempt_number, index_url in enumerate(mirror_attempts, start=1):
+            _may_cancel(cancel, spec)
+            if mirror_failures:
+                failed_url, failed_summary = mirror_failures[-1]
+                emit(
+                    f"镜像 {_mirror_label(failed_url)} 安装失败（{failed_summary}），"
+                    f"切换到 {_mirror_label(index_url)} 重试……"
+                    f"（第 {attempt_number}/{len(mirror_attempts)} 次尝试）",
+                    25,
+                    "dependencies",
+                )
+            try:
+                self.run(
+                    build_install_command(index_url),
+                    env=self.environment(root, model_cache_root),
+                    cancel=cancel,
+                    on_line=_dependency_line(emit, requirements_arg),
+                )
+            except spec.cancelled_class:
+                # 取消优先于换源：cancelled 是 error 的子类，必须先放行。
+                raise
+            except spec.error_class as error:
+                deterministic = not _looks_like_network_failure(error)
+                blames_extra = _failure_blames_extra_index(error, extra_index)
+                if deterministic or blames_extra:
+                    # 确定性错误（版本解析/无候选版本）换源无效；extra index
+                    # 归因的失败换主源同样无效——两者都保持直报。
+                    raise
+                mirror_failures.append((index_url, _network_failure_summary(error)))
+                if attempt_number >= len(mirror_attempts):
+                    raise self._error(_mirror_retry_exhausted_message(mirror_failures)) from error
+                continue
+            break
+        else:  # pragma: no cover - ranked_mirrors 恒非空，防御性保留
+            raise self._error("未找到可用的镜像源，无法安装依赖。")
         _may_cancel(cancel, spec)
 
         emit(f"正在验证{spec.feature_label}运行时……", 90, "verify")
         verify_command = [str(python), "-c", spec.verify_command]
-        self.run(
-            verify_command,
-            env=self.environment(root, model_cache_root),
-            cancel=cancel,
-            on_line=lambda line: emit(line, 94, "verify"),
-        )
+        try:
+            self.run(
+                verify_command,
+                env=self.environment(root, model_cache_root),
+                cancel=cancel,
+                on_line=lambda line: emit(line, 94, "verify"),
+            )
+        except spec.cancelled_class:
+            raise
+        except spec.error_class as error:
+            # DyNet/nagisa 类依赖在 Windows 上打不开非 ASCII 路径下的数据文件，
+            # verify 的 import 链是第一个撞上的环节；补充定位提示，避免用户
+            # 只看到裸的 C++ traceback 无从下手（cancelled 不能被吞）。
+            raise self._error(str(error) + pathwin.ascii_path_failure_hint(root)) from error
         _may_cancel(cancel, spec)
 
         missing = self.missing_package_dirs(root)
@@ -632,7 +740,9 @@ class ManagedRuntime:
             ):
                 path.mkdir(parents=True, exist_ok=True)
         emit(spec.ready_emit_done, 100, "ready")
-        return self.status(runtime_root=runtime_root, model_cache_root=model_cache_root)
+        # ready 判定钉在入口解析的 root 上：中途建出的目录可能让重解析漂移
+        # （详见 _status_at docstring），不能把刚装好的运行时判成 missing。
+        return self._status_at(root, model_cache_root=model_cache_root)
 
     def _prepare_host_venv(
         self,
@@ -1018,6 +1128,76 @@ def _resolve_extra_index(extra_index: str | None) -> str | None:
     return override or extra_index
 
 
+#: 安装命令输出里的网络类失败特征：镜像限频/拒绝（403、429）、网关类 5xx、
+#: 超时与连接中断。HTTP 状态码两组分别覆盖 pip（「HTTP Error 403」）与 uv
+#: （「HTTP status client error (403 Forbidden)」「HTTP status 403」）的实际
+#: 措辞——uv 的 HTTP 与状态码之间隔着「status client error」，不能沿用 pip
+#: 的邻接写法；uv 的超时/断连措辞（operation timed out、connection refused、
+#: Failed to fetch）与 pip/urllib3（ReadTimeoutError、ConnectionError 等）
+#: 并列收录。命中才值得换源重试；「No matching distribution」等确定性错误
+#: 换源无效，不在此列。404（pip 与 uv 均有对应形态）有意排除。
+_NETWORK_FAILURE_PATTERN = re.compile(
+    r"HTTP(?:\s+Error)?\s*(?:403|429|5\d\d)"
+    r"|HTTP\s+status(?:\s+client\s+error)?\s*\(?\s*(?:403|429|5\d\d)"
+    r"|ReadTimeoutError|ConnectionError|IncompleteRead"
+    r"|Max retries exceeded|SSLError"
+    r"|operation timed out|Failed to fetch|connection refused",
+    re.IGNORECASE,
+)
+
+#: 换源重试的总尝试次数上限（最快源 + 2 个候补）。
+MIRROR_RETRY_ATTEMPTS = 3
+
+
+def _looks_like_network_failure(error: BaseException) -> bool:
+    """判断安装命令失败是否属于换源可能救回来的网络类错误。"""
+    return bool(_NETWORK_FAILURE_PATTERN.search(str(error)))
+
+
+def _failure_blames_extra_index(error: BaseException, extra_index: str | None) -> bool:
+    """判断失败是否归因于 PyTorch extra index 本身。
+
+    主源换掉救不了 extra 不可达（GPU 轮子只有一个来源），此时换源重试只会
+    把同样的失败再拖两轮；extra 的可达性已由安装前的 probe 单独把关。
+
+    归因要求错误文本里出现以 extra_index 为前缀的完整 URL（容许尾随包路径
+    与尾斜杠差异）：用户可能把 MAW_PIP_INDEX 与 MAW_PYTORCH_INDEX 指到同一
+    镜像主机，裸主机名匹配会把主源失败误判成 extra 失败、跳过换源。
+    """
+    if not extra_index:
+        return False
+    prefix = extra_index.rstrip("/").lower()
+    for match in re.finditer(r"https?://[^\s\"'()\[\]]+", str(error)):
+        url = match.group(0).rstrip("/").lower()
+        if url == prefix or url.startswith(prefix + "/"):
+            return True
+    return False
+
+
+def _network_failure_summary(error: BaseException) -> str:
+    """从失败输出里压缩出一行可读摘要（优先取命中网络特征的那一行）。"""
+    text = str(error)
+    for line in text.splitlines():
+        if _NETWORK_FAILURE_PATTERN.search(line):
+            return line.strip()[:160] or "未知错误"
+    return text.strip()[:160] or "未知错误"
+
+
+def _mirror_label(index_url: str) -> str:
+    """镜像的用户可读短名（主机名；解析失败退回完整 URL）。"""
+    host = urlparse(index_url).netloc
+    return host or index_url
+
+
+def _mirror_retry_exhausted_message(failures: list[tuple[str, str]]) -> str:
+    """全部候选源用尽后的错误正文：列出已尝试源与各自失败摘要 + 自救指引。"""
+    lines = ["依赖安装失败：所有候选镜像源均不可用。已尝试："]
+    for number, (index_url, summary) in enumerate(failures, start=1):
+        lines.append(f"{number}. {index_url} — {summary}")
+    lines.append("网络恢复后可直接重试；也可设置环境变量 MAW_PIP_INDEX 指定可用的镜像源（逗号分隔多个候选）后再试。")
+    return "\n".join(lines)
+
+
 def _bootstrap_line(emit: RuntimeEvent, percent: int) -> RuntimeLine:
     def report(line: str) -> None:
         text = line.strip()
@@ -1079,25 +1259,53 @@ def _run_process(
         name="maw-runtime-output",
         daemon=True,
     )
-    reader.start()
-    while True:
-        if cancel.is_set():
-            terminate_process_tree(process)
-            raise cancelled_class(cancelled_message)
-        try:
-            raw_line = lines.get(timeout=0.1)
-        except queue.Empty:
-            if process.poll() is not None and not reader.is_alive():
+    completed = False
+    try:
+        reader.start()
+        while True:
+            if cancel.is_set():
+                raise cancelled_class(cancelled_message)
+            try:
+                raw_line = lines.get(timeout=0.1)
+            except queue.Empty:
+                if process.poll() is not None and not reader.is_alive():
+                    break
+                continue
+            if raw_line is None:
                 break
-            continue
-        if raw_line is None:
-            break
-        line = raw_line.rstrip("\r\n")
-        if line:
-            output.append(line)
-            on_line(line)
-    return_code = process.wait()
-    release_process_tree(process)
+            line = raw_line.rstrip("\r\n")
+            if line:
+                output.append(line)
+                on_line(line)
+        # A worker may close stdout before exiting; cancellation must remain
+        # responsive while waiting for its final exit as well.
+        while True:
+            if cancel.is_set():
+                raise cancelled_class(cancelled_message)
+            try:
+                return_code = process.wait(timeout=0.1)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        completed = True
+    finally:
+        # Includes KeyboardInterrupt / SystemExit and callback exceptions, not
+        # just Event cancellation. Only the tree created above is reclaimed.
+        try:
+            if completed:
+                release_process_tree(process)
+            else:
+                terminate_process_tree(process)
+        finally:
+            if reader.ident is not None:
+                reader.join(timeout=1.0)
+            # Closing a stream being read in another thread may block forever
+            # on its I/O lock. Only close here once the bounded join succeeds.
+            if not reader.is_alive() and process.stdout is not None:
+                try:
+                    process.stdout.close()
+                except (OSError, ValueError):
+                    pass
     if return_code != 0:
         for line in reversed(output):
             try:

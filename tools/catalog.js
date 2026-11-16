@@ -1,0 +1,18 @@
+/* Update this inventory when adding a tool or changing its entry/maintenance state.
+ * Paths are relative to tools/index.html; local generated previews are not source entries. */
+(function () {
+  'use strict';
+  const tools = [
+    {id:'transcript-compare',name:'转写对比',category:'对比与诊断',status:'maintained',entry:'compare.html',docs:'README.md',summary:'并排比较多份 SRT 或 MOSP 的字幕文本与时间分布。',features:['多文件按时间对齐','基准相似度与差异高亮','搜索、筛选重置、时间分布缩放'],input:'本地 SRT / MOSP / JSON',output:'只读对比，不写入原文件',boundary:'字符重合率不代替人工识别质量判断。'},
+    {id:'timestamp-compare',name:'时间码对比',category:'对比与诊断',status:'maintained',entry:'timestamp-compare.html',docs:'README.md',summary:'查看段级与字词级时间码，定位空 items、越界与差异。',features:['最多两文件按段序号对照','字词明细和差异分类','精简显示、空/越界筛选'],input:'本地 SRT / MOSP / JSON',output:'只读诊断',boundary:'SRT 没有字词时间码；按序号而非语义配对。'},
+    {id:'verification-checklist',name:'人工核对清单',category:'核验与审阅',status:'maintained',entry:null,docs:'verification-checklist/README.md',summary:'将实现证据与人工操作步骤生成离线核验页，记录勾选和备注。',features:['稳定 ID 与本机进度','整行勾选、分区进度；精简只留标题与勾选','JSON / Markdown 结果导出'],input:'Markdown v2 / JSON 源清单',output:'独立 HTML；核验结果 JSON / Markdown',command:'python tools/verification-checklist/build.py --data <清单>.md --output <页面>.html',boundary:'自动化通过不等于人工通过；结果快照不是可再生源清单。'},
+    {id:'copy-review',name:'文案重写／文案评审',category:'历史审阅工具',status:'retired',entry:'copy-review/copy-review.html',docs:'copy-review/README.md',summary:'历史文案重写任务的逐行决策与评审工具。',features:['历史文案采纳、保留或改写','全局决策与评审结果查看'],input:'历史文案数据 JS',output:'历史评审结果 JSON',boundary:'已过期，不再维护。保留页面与数据供历史追溯，不作为当前任务入口或新增文案工作的推荐工具。'},
+    {id:'dev-dashboard',name:'开发 PR 看板',category:'维护工作台',status:'maintained',entry:null,docs:'dev-dashboard/README.md',summary:'汇总 PR、CI 和人工核验状态，按工作阶段归类。',features:['六列看板、拖拽或下拉归类','里程碑/作者/搜索筛选；精简只留标题、忽略与状态','PR 正文预览、刷新进度、核验清单与 CHANGELOG 入口'],input:'本机已登录的 gh 与仓库记录',output:'本地状态/忽略记录',command:'node tools/dev-dashboard/serve.mjs --port 8262 --open',boundary:'需要受限 localhost 服务，不将端口转发到外网；数据可用性依赖本机登录。'},
+    {id:'changelog-editor',name:'CHANGELOG 编辑器',category:'维护工作台',status:'maintained',entry:'changelog-editor/index.html',docs:'changelog-editor/README.md',summary:'按版本编辑更新说明、比较原文、预览配图并生成归档。',features:['编辑/分屏/预览/对照','图片与条目排序','备份、磁盘冲突确认、归档对拍'],input:'授权仓库目录或 CHANGELOG 文件',output:'CHANGELOG / 图片 / 正式版归档，或降级下载',boundary:'写盘需要 Chromium 文件授权；仅载入文件为不写盘降级。'},
+    {id:'term-extract',name:'OCR 术语确认页',category:'媒体辅助',status:'experimental',entry:null,docs:'term-extract/README.md',summary:'从视频 OCR 候选与可选 AI 筛选结果中确认可用热词。',features:['规则评分、证据红框、图片导航','筛选/分组/整行选择/精简','热词预览与 TXT 导出'],input:'视频、可选 OCR 环境与 AI 配置',output:'候选、证据帧、确认页与热词 TXT',command:'uv run --no-sync python tools/term-extract/run.py <视频> --ocr local --no-ai',boundary:'M1 独立工具，未接 Launcher/打包；规则不等于语义判断，最终需人工确认。'},
+    {id:'waveform-compare',name:'波形工具台',category:'实验工具',status:'paused',entry:null,docs:'waveform-compare/README.md',summary:'旧/新 mopeaks 与可用时的 quapeaks 合成素材比较。',features:['合成音频与同步时间窗','波形定位、缩放、播放','本机生成速度参考'],input:'生成器的合成音频',output:'实验比较页',boundary:'维护者已暂停维护；保留现有实现，不作为当前改版或验收目标。'},
+    {id:'filmstrip-lab',name:'Filmstrip Lab',category:'历史实验',status:'deferred',entry:null,docs:'filmstrip-lab/README.md',summary:'早期视频缩略图路线的独立实验原型。',features:['固定采样/可视区/分级方案比较'],input:'实验素材',output:'实验测量',boundary:'维护者本轮暂不处理；阶段 0 历史原型，不等于正式画面轨道入口。'},
+    {id:'merge-flow',name:'merge-flow CLI',category:'开发辅助',status:'cli',entry:null,docs:'merge-flow.mjs',summary:'面向旧单文件编辑器到模块树重构的合并辅助脚本。',features:['声明粒度分析','冲突报告、dry-run'],input:'明确的 Git 合并上下文',output:'合并分析或受控源文件修改',boundary:'无网页；历史重构专用，不是日常字幕工作流。'},
+  ];
+  window.MAWToolCatalog = Object.freeze(tools.map(tool => Object.freeze(tool)));
+})();

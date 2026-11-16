@@ -11,6 +11,10 @@ export function initMaweSplitMode() {
   function refreshSplitKeyHelp() {
     const label = MaweDisplaySettings.splitKeyLabel();
     if (MaweDom.helpSplitKey) MaweDom.helpSplitKey.textContent = label;
+    const quickSplit = document.getElementById('help-quick-split-key');
+    const quickConfirm = document.getElementById('help-quick-confirm-key');
+    if (quickSplit) quickSplit.textContent = label;
+    if (quickConfirm) quickConfirm.textContent = MaweDisplaySettings.confirmKeyLabel();
     if (MaweDom.cuePanelSplitKey) MaweDom.cuePanelSplitKey.textContent = label;
     if (MaweDom.cueEditorSplitKey) MaweDom.cueEditorSplitKey.textContent = label;
     if (MaweDom.cueEditorConfirmKey) MaweDom.cueEditorConfirmKey.textContent = MaweDisplaySettings.confirmKeyLabel();

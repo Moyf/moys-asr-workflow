@@ -82,6 +82,17 @@ button:hover { border-color: var(--accent); }
 .spacer { flex: 1; }
 .auto-toggle { display: flex; align-items: center; gap: 5px; color: var(--muted); white-space: nowrap; }
 
+#loading-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 16px 0;
+  color: var(--muted);
+}
+#loading-status[hidden] { display: none; }
+#loading-status progress { width: 160px; flex-shrink: 0; }
+#loading-text { min-width: 0; }
+
 #toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -117,6 +128,7 @@ button:hover { border-color: var(--accent); }
 
 .column {
   flex: 0 0 300px;
+  min-width: 0;
   max-height: calc(100vh - 130px);
   display: flex;
   flex-direction: column;
@@ -178,6 +190,8 @@ button:hover { border-color: var(--accent); }
 .card.dragging { opacity: 0.5; }
 .card.no-milestone { border-left: 3px solid var(--warn); }
 .card.is-pass { border-left: 3px solid var(--ok); }
+.card.is-ignored { opacity: .55; }
+.card.is-ignored .card-title { text-decoration: line-through; }
 
 .card-title {
   font-weight: 600;
@@ -185,6 +199,8 @@ button:hover { border-color: var(--accent); }
   text-decoration: none;
   display: block;
   margin-bottom: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .card-title:hover { color: var(--accent); }
 
@@ -208,6 +224,9 @@ button:hover { border-color: var(--accent); }
 .pill.draft { color: var(--hold); background: color-mix(in srgb, var(--hold) 15%, transparent); }
 .pill.due-soon { color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, transparent); }
 .pill.due-over { color: var(--bad); background: color-mix(in srgb, var(--bad) 15%, transparent); }
+.pill.ignored { color: var(--muted); border-style: dashed; }
+
+#toggle-ignored.active { color: #fff; background: var(--accent); border-color: var(--accent); }
 
 .ci-dot {
   display: inline-block;
@@ -262,6 +281,53 @@ button:hover { border-color: var(--accent); }
   margin-left: auto;
 }
 
+/* 浮层挂在 body 下，避免被卡片的 content-visibility 与看板滚动容器裁切。 */
+.pr-preview {
+  position: fixed;
+  z-index: 30;
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(520px, calc(100dvh - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+}
+.pr-preview[hidden] { display: none; }
+#pr-preview-title {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+#pr-preview-hint { margin: 0; flex-shrink: 0; font-size: 12px; }
+#pr-preview-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.6;
+}
+#pr-preview-body:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#pr-preview-body > :first-child { margin-top: 0; }
+#pr-preview-body > :last-child { margin-bottom: 0; }
+#pr-preview-body h1, #pr-preview-body h2, #pr-preview-body h3 { line-height: 1.3; }
+#pr-preview-body code { font-family: monospace; background: rgba(127, 127, 127, .18); padding: 1px 3px; border-radius: 3px; }
+#pr-preview-body pre { overflow-x: auto; padding: 8px; background: rgba(127, 127, 127, .12); }
+#pr-preview-body pre code { padding: 0; background: none; white-space: pre; }
+#pr-preview-body blockquote { margin-left: 0; padding-left: 12px; border-left: 3px solid var(--accent); }
+#pr-preview-body .markdown-table { overflow-x: auto; }
+#pr-preview-body table { border-collapse: collapse; }
+#pr-preview-body th, #pr-preview-body td { border: 1px solid var(--accent); padding: 4px 8px; }
+
 #toast {
   position: fixed;
   bottom: 22px;
@@ -279,7 +345,7 @@ button:hover { border-color: var(--accent); }
 /* tools/AGENTS.md：打印时屏外卡片要可见 */
 @media print {
   .card { content-visibility: visible; }
-  #topbar, #toolbar, .card select, .card-actions { display: none; }
+  #topbar, #loading-status, #toolbar, .card select, .card-actions, .pr-preview { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -287,3 +353,37 @@ button:hover { border-color: var(--accent); }
 }
 
 .card, .column { transition: border-color 120ms ease; }
+
+/* Shared foundation owns colors; this tool owns the board layout. */
+:root { --bg:var(--bg-base); --panel:var(--bg-panel); --column:var(--bg-raised); --card:var(--bg-panel); --card-border:var(--border-subtle); --text:var(--text-primary); --muted:var(--text-muted); --ok:var(--green); --warn:var(--amber); --bad:var(--red); --hold:var(--violet); }
+body { font-family:var(--font-sans); }
+#toggle-ignored.active { color:var(--accent-text); }
+button { height:32px; min-height:32px; padding:0 12px; border-color:var(--border); border-radius:var(--radius-sm); background:var(--tool-control-raised); color:var(--text-secondary); font-size:13px; white-space:nowrap; }
+button:hover { background:var(--tool-control-hover); border-color:var(--border-strong); color:var(--text-primary); }
+button:disabled { opacity:.5; cursor:not-allowed; }
+.stats { display:flex; flex-wrap:wrap; gap:8px 16px; }
+.stats b { font:700 18px var(--font-mono); color:var(--text-primary); }
+.column { max-height:calc(100dvh - var(--tool-header-h) - 90px); }
+.column-head { min-height:48px; }
+.column-count { font:600 13px var(--font-mono); }
+.card-actions { flex-wrap:wrap; gap:8px; }
+.card-actions select { max-width:100%; min-width:0; }
+.cl-pill { border:0; background:var(--bg-raised); }
+.cl-pending { background:var(--amber-soft); }
+.cl-passed { background:var(--green-soft); }
+.tool-compact .card { padding:8px 10px; contain-intrinsic-size:auto 80px; }
+.tool-compact .card-badges, .tool-compact .card-meta, .tool-compact .card-check { display:none; }
+.tool-compact .card-actions { margin-top:8px; }
+@media print {
+  .tool-compact .card-badges, .tool-compact .card-check { display:flex; }
+  .tool-compact .card-meta { display:block; }
+}
+#toast { box-shadow:var(--shadow-2); }
+@media(max-width:560px) {
+  #topbar { position:static; padding:12px; }
+  #topbar h1 { white-space:normal; }
+  #toolbar { padding:12px; }
+  #search { min-width:0; flex-basis:100%; }
+  .board { padding:0 12px 20px; }
+  .column { flex-basis:min(300px,calc(100vw - 24px)); max-height:70vh; }
+}

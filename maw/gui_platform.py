@@ -6,6 +6,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -68,8 +69,17 @@ def process_group_kwargs() -> dict[str, object]:
 
 
 def popen_process_tree(*args: Any, **kwargs: Any) -> subprocess.Popen[Any]:
-    """Start a child and register a Windows job for descendant cleanup."""
+    """Start a child and remember only process groups created by this call."""
     process = subprocess.Popen(*args, **kwargs)
+    if sys.platform != "win32" and (
+        kwargs.get("start_new_session") is True or kwargs.get("process_group") == 0
+    ):
+        # setsid()/setpgid(0, 0) makes this newly created child's PID its PGID.
+        # Do not query/guess the group later: the root may already have exited,
+        # and a plain Popen may belong to the parent's (foreign) process group.
+        pid = getattr(process, "pid", None)
+        if isinstance(pid, int) and not isinstance(pid, bool) and pid > 0:
+            setattr(process, "_maw_process_group_id", pid)
     _register_process_job(process)
     return process
 
@@ -212,6 +222,21 @@ def terminate_process_tree(process: subprocess.Popen[Any], *, timeout: float = 5
     """Terminate a MAW-owned process and descendants, then reap the root."""
     running = process.poll() is None
     pid = getattr(process, "pid", None)
+    if sys.platform != "win32":
+        group = getattr(process, "_maw_process_group_id", None)
+        if isinstance(group, int) and not isinstance(group, bool) and group > 0:
+            _terminate_posix_group(process, group, timeout)
+        else:
+            # A process started without an explicitly owned group may be
+            # reaped/terminated, but its PID must never be guessed as a PGID.
+            if running:
+                process.terminate()
+            try:
+                process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=timeout)
+        return
     if not isinstance(pid, int):
         _terminate_registered_job(process)
         if running:
@@ -219,18 +244,10 @@ def terminate_process_tree(process: subprocess.Popen[Any], *, timeout: float = 5
         process.wait(timeout=timeout)
         return
 
-    if sys.platform == "win32":
-        terminated = _taskkill_process_tree(pid) if running else False
-        job_terminated = _terminate_registered_job(process)
-        if not terminated and not job_terminated and process.poll() is None:
-            process.terminate()
-    else:
-        if running:
-            try:
-                os.killpg(pid, signal.SIGTERM)
-            except (OSError, ProcessLookupError):
-                if process.poll() is None:
-                    process.terminate()
+    terminated = _taskkill_process_tree(pid) if running else False
+    job_terminated = _terminate_registered_job(process)
+    if not terminated and not job_terminated and process.poll() is None:
+        process.terminate()
 
     try:
         process.wait(timeout=timeout)
@@ -238,16 +255,73 @@ def terminate_process_tree(process: subprocess.Popen[Any], *, timeout: float = 5
     except subprocess.TimeoutExpired:
         pass
 
-    if sys.platform == "win32":
-        _taskkill_process_tree(pid)
-    else:
-        try:
-            os.killpg(pid, signal.SIGKILL)
-        except (OSError, ProcessLookupError):
-            pass
+    _taskkill_process_tree(pid)
     if process.poll() is None:
         process.kill()
     process.wait(timeout=timeout)
+
+
+def _posix_group_alive(group: int) -> bool:
+    """Probe an owned group; Linux zombie-only groups cannot hold pipes open."""
+    try:
+        os.killpg(group, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True  # Permission/transient errors are not proof of an exit.
+    proc = Path("/proc")
+    if sys.platform != "linux" or not proc.is_dir():
+        return True
+    uncertain = False
+    try:
+        for entry in proc.iterdir():
+            if not entry.name.isdecimal():
+                continue
+            try:
+                fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+                if int(fields[2]) == group and fields[0] != "Z":
+                    return True
+            except FileNotFoundError:
+                continue  # Process disappeared during the snapshot.
+            except (OSError, ValueError, IndexError):
+                uncertain = True
+    except OSError:
+        return True
+    return uncertain
+
+
+def _terminate_posix_group(process: subprocess.Popen[Any], group: int, timeout: float) -> None:
+    """Reclaim descendants even if their root exited or they ignore SIGTERM."""
+    try:
+        os.killpg(group, signal.SIGTERM)
+    except OSError:
+        if process.poll() is None:
+            process.terminate()
+    deadline = time.monotonic() + max(0.0, timeout)
+    while _posix_group_alive(group):
+        # Reap the root during the grace period, but never use its exit as
+        # proof that the rest of the independently owned group is gone.
+        process.poll()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except OSError:
+                pass
+            break
+        time.sleep(min(0.05, remaining))
+    # Do not wait for the entire group after SIGKILL: unreaped orphan zombies
+    # can keep a PGID observable indefinitely. Reap only the owned root with a
+    # bound; the caller's reader join separately waits for inherited pipe EOF.
+    if process.poll() is None:
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=timeout)
+    else:
+        process.wait(timeout=timeout)
+    setattr(process, "_maw_process_group_id", None)
 
 
 DWMWA_USE_IMMERSIVE_DARK_MODE = 20  # Windows 10 20H1+ / Windows 11

@@ -1,3 +1,4 @@
+export function initMaweInitialConfigWiring() {
 
 
 
@@ -161,3 +162,5 @@ MaweHistory.updateUndoRedoButtons();
 window.MaweInitialConfigWiring = window.MaweInitialConfigWiring || Object.freeze({
   ASS_PREVIEW_REFERENCE_HEIGHT,
 });
+
+}

@@ -1,5 +1,7 @@
 # 波形对比工具
 
+**状态：暂停维护。** 维护者已决定暂不继续维护本实验台；保留既有源码与复现实验说明，不作为当前工具页更新或人工验收目标。
+
 从仓库根目录运行：
 
 ```powershell
@@ -7,6 +9,8 @@ uv run --no-sync python tools/waveform-compare/build.py
 ```
 
 然后打开命令输出的 `comparison.html`。页面可切换素材与片段、缩放、定位和播放。素材包括 16 kHz 单声道 WAV、44.1/48 kHz 立体声 WAV、48 kHz 三声道 WAV、AAC，以及 FFmpeg 支持编码时的 MP3。
+
+页头 ◐ 切换 Launcher 风格的深浅主题，Canvas 底色、刻度与播放头同步重绘。共用主题由生成器内联到产物，仍是独立离线页面；主题改动不影响波形数据或生成时间。
 
 要单独复测速度，运行 `uv run --no-sync python tools/waveform-compare/bench.py`。它对各类型的 320 秒素材预热后分别测量五次并报告中位数。旧版、新版和可用时的 quapeaks 都从文件经 FFmpeg 解码；结果只代表本机及这些合成素材，不是 1 小时文件的端到端结果。
 

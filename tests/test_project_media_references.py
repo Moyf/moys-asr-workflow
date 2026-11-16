@@ -177,12 +177,13 @@ class ProjectMediaReferenceTests(CompactContainerAssertions, unittest.TestCase):
             self.assertEqual(resolve_project_media(target, saved).resolved_path, self.media)
         self.assertEqual(json.loads(published.read_text(encoding="utf-8"))["media"], "../" + self.media.name)
 
-    def test_html_generation_resolves_media_from_project_not_cwd(self) -> None:
+    def test_legacy_html_generation_resolves_media_from_project_not_cwd(self) -> None:
         import edit
 
         self.output.write_text(json.dumps({"media": "../" + self.media.name, "segments": []}), encoding="utf-8")
         target = self.output.with_suffix(".edit.html")
         with mock.patch("sys.argv", ["edit.py", str(self.output), "--no-waveform"]), \
+                mock.patch("maw.editor_entry_policy.app_version", return_value="1.99.0"), \
                 mock.patch.object(edit, "ensure_bundle"), \
                 mock.patch.object(edit, "get_default_sticker_dir", return_value=""), \
                 mock.patch.object(edit, "enrich_project_media_metadata", side_effect=lambda data, **_: data), \
@@ -199,6 +200,7 @@ class ProjectMediaReferenceTests(CompactContainerAssertions, unittest.TestCase):
         reference = project_media_reference(self.output, media)
         self.output.write_text(json.dumps({"media": reference, "segments": []}), encoding="utf-8")
         with mock.patch("sys.argv", ["edit.py", str(self.output), "--no-waveform"]), \
+                mock.patch("maw.editor_entry_policy.app_version", return_value="1.99.0"), \
                 mock.patch.object(edit, "ensure_bundle"), \
                 mock.patch.object(edit, "get_default_sticker_dir", return_value=""), \
                 mock.patch.object(edit, "enrich_project_media_metadata", side_effect=lambda data, **_: data), \

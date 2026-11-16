@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
@@ -30,8 +29,7 @@ function fixture(project = utils.importProject({ segments: legacyCues() }).proje
   });
   context.window = context;
   for (const file of ['editor-export-srt.js', 'editor-export-timeline.js']) {
-    const source = file === 'editor-export-srt.js' ? initModuleSource(`editor/io/${file}`) : readFileSync(new URL(`../web/editor/io/${file}`, import.meta.url), 'utf8');
-    vm.runInContext(source, context);
+    vm.runInContext(initModuleSource(`editor/io/${file}`), context);
   }
   return { project, api: context.MaweExportTimeline, hints };
 }

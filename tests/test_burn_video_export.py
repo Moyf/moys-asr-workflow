@@ -19,6 +19,8 @@ from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
+from maw.local_log import LocalLogSink
+
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_PATH = ROOT / "server-editor" / "serve.py"
 SPEC = importlib.util.spec_from_file_location("asr_local_editor_server_burn", SERVER_PATH)
@@ -393,6 +395,9 @@ class BurnVideoJobHttpTests(unittest.TestCase):
         # real without launching an unrelated FFprobe for each HTTP request.
         self.enterContext(mock.patch.object(self.server, "_thumbnail_base_ready", return_value=False))
         self.server.media_jobs.temp_root = self.root
+        # 失败诊断落盘到测试内临时目录，避免写真实用户日志目录。
+        self.enterContext(mock.patch("maw.media_jobs._diagnostic_sink",
+            return_value=LocalLogSink(directory=self.root / "logs")))
         self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
         self.thread.start()
         self.origin = f"http://127.0.0.1:{self.server.server_address[1]}"
