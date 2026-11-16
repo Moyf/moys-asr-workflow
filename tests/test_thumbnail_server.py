@@ -9,6 +9,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 import unittest
 import urllib.error
 import urllib.request
@@ -69,6 +70,20 @@ class ThumbnailServerTests(unittest.TestCase):
             response = urllib.request.urlopen(req,timeout=5)
         except urllib.error.HTTPError as error:
             response = error
+        except (TimeoutError, urllib.error.URLError):
+            # Do not acquire the manager lock while diagnosing a blocked request.
+            manager = self.server.thumbnail_jobs
+            print(f"thumbnail HTTP timeout: {req.get_method()} {path.split('?')[0]} "
+                  f"state={manager.state} decoding={manager.decode_active} "
+                  f"worker_alive={bool(manager.worker and manager.worker.is_alive())}",
+                  file=sys.stderr)
+            frames = sys._current_frames()
+            for thread in threading.enumerate():
+                frame = frames.get(thread.ident)
+                if frame is not None:
+                    print(f"thread {thread.name}:", file=sys.stderr)
+                    traceback.print_stack(frame, limit=16, file=sys.stderr)
+            raise
         with response:
             return response.status,dict(response.headers),response.read()
 

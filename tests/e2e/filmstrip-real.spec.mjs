@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 
@@ -53,6 +53,20 @@ async function opened(page) {
   return {states,requests};
 }
 
+async function hideCachedFilmstrip(page) {
+  // Decode completions may grow the cache between browser tasks. Measure the
+  // hide operation itself atomically, not against a stale earlier task's value.
+  const retained=await page.evaluate(()=>{
+    const controller=MaweCoreState.waveformEditor.thumbnailController;
+    const before=controller.bytes;
+    controller.setEnabled(false);
+    return {before,after:controller.bytes};
+  });
+  expect(retained.before).toBeGreaterThan(0);
+  expect(retained.after).toBe(retained.before);
+  return retained.before;
+}
+
 test('real video frames stay cached during playback, stop decoding and resume the current view',async({page},testInfo)=>{
   const {states,requests}=await opened(page);
   expect(states.some(state=>['idle','queued','generating','partial'].includes(state.state))).toBe(true,'initial view loads incrementally');
@@ -74,10 +88,10 @@ test('real video frames stay cached during playback, stop decoding and resume th
   await expect.poll(()=>states.slice(resumeAt).some(state=>state.samples?.some(sample=>sample.status==='target'&&sample.requested_ms%1000!==0)),{timeout:20000}).toBe(true,'pause completes fine-grid targets in the current view');
   await page.waitForFunction(()=>MaweCoreState.waveformEditor.thumbnailController.bytes>0);
   await page.screenshot({path:testInfo.outputPath('filmstrip-real-paused.png')});
-  const beforeHide=await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.bytes);
-  await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.setEnabled(false));
+  const releasesBeforeHide=requests.filter(request=>new URL(request.url).pathname.endsWith('/release')).length;
+  const beforeHide=await hideCachedFilmstrip(page);
   await expect(page.locator('.waveform-filmstrip')).toHaveCount(0);
-  await expect.poll(()=>requests.filter(request=>new URL(request.url).pathname.endsWith('/release')).length).toBeGreaterThan(0);
+  await expect.poll(()=>requests.filter(request=>new URL(request.url).pathname.endsWith('/release')).length).toBeGreaterThan(releasesBeforeHide);
   expect(await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.bytes)).toBe(beforeHide);
   await page.evaluate(()=>{const controller=MaweCoreState.waveformEditor.thumbnailController;controller.setEnabled(true);controller.setMode('strip');});
   await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
@@ -87,6 +101,77 @@ test('real video frames stay cached during playback, stop decoding and resume th
   await expect(page.locator('#waveform-thumbnail-mode')).toBeDisabled();
   await expect(page.locator('#waveform-thumbnail-status')).toHaveText('从本机 Server 加载视频后可用');
   writeFileSync(testInfo.outputPath('filmstrip-real-evidence.json'),JSON.stringify({states:states.map(({state,decoding,samples})=>({state,decoding,samples:samples.length})),releaseCount:requests.filter(request=>new URL(request.url).pathname.endsWith('/release')).length},null,2)+'\n');
+});
+
+test('hide cache assertion tolerates a completed decode but rejects cache disposal',async({page})=>{
+  // Exercise the production controller and real Chromium image decoding, with
+  // explicit gates rather than a timing-dependent sleep or a fake bytes getter.
+  const source=readFileSync(new URL('../../web/editor/media/editor-thumbnails.js',import.meta.url),'utf8');
+  for(const dispose of [false,true]){
+    await page.goto('about:blank');
+    const moduleSource=dispose?source.replace('release(false); onChange(true); return;','release(true); onChange(true); return;'):source;
+    if(dispose)expect(moduleSource).not.toBe(source);
+    await page.evaluate(async source=>{
+      const moduleUrl=URL.createObjectURL(new Blob([source],{type:'text/javascript'}));
+      const {createThumbnailModule}=await import(moduleUrl);
+      URL.revokeObjectURL(moduleUrl);
+      const canvas=document.createElement('canvas');canvas.width=16;canvas.height=9;
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve));
+      let finishDecode;
+      const gate=new Promise(resolve=>{finishDecode=resolve;});
+      let finishLateDecode;
+      const lateGate=new Promise(resolve=>{finishLateDecode=resolve;});
+      let decoding=0;
+      const browser={
+        URL,AbortController,location:{href:'http://127.0.0.1/'},
+        setTimeout:setTimeout.bind(window),clearTimeout:clearTimeout.bind(window),
+        setInterval:setInterval.bind(window),clearInterval:clearInterval.bind(window),
+        requestAnimationFrame:requestAnimationFrame.bind(window),cancelAnimationFrame:cancelAnimationFrame.bind(window),
+        async fetch(url,options={}){
+          if(String(url).startsWith('/asset/'))return {ok:true,blob:async()=>blob};
+          const view=options.body?JSON.parse(options.body).view:Number(new URL(url).searchParams.get('view'));
+          return {ok:true,json:async()=>({binding:'video',view,state:'ready',source_identity:'video',cache_revision:'r1',
+            asset_url_template:'/asset/{asset}',samples:[0,1000,1500].map(time=>({requested_ms:time,actual_pts_ms:time,
+              asset:String(time),status:'target',crop_rect:[0,0,16,9]}))})};
+        },
+        async createImageBitmap(blob){
+          const index=++decoding;
+          const bitmap=await createImageBitmap(blob);
+          if(index===2){window.decodeWaiting=true;await gate;}
+          if(index===3){
+            window.lateDecodeWaiting=true;await lateGate;
+            return {width:bitmap.width,height:bitmap.height,close(){bitmap.close();window.lateDecodeClosed=true;}};
+          }
+          return bitmap;
+        },
+      };
+      const {createController}=createThumbnailModule({browser,getConfig:()=>({thumbnailUrls:{status:'/status',demand:'/demand',release:'/release'}}),
+        storage:{getItem:()=>null,setItem(){}}});
+      const controller=createController(()=>{});
+      window.MaweCoreState={waveformEditor:{thumbnailController:controller}};
+      window.finishDecode=finishDecode;
+      window.finishLateDecode=finishLateDecode;
+      controller.setBinding('video');
+      controller.setView([{start:0,end:2000,width:200}],2000);
+    },moduleSource);
+    await page.waitForFunction(()=>window.decodeWaiting&&window.lateDecodeWaiting&&MaweCoreState.waveformEditor.thumbnailController.bytes===16*9*4);
+    const staleBefore=await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.bytes);
+    await page.evaluate(()=>window.finishDecode());
+    await page.waitForFunction(()=>MaweCoreState.waveformEditor.thumbnailController.bytes===2*16*9*4);
+    if(dispose){
+      await expect(hideCachedFilmstrip(page)).rejects.toThrow();
+    }else{
+      const beforeHide=await hideCachedFilmstrip(page);
+      // The old cross-task equality really fails for this completed decode.
+      expect(()=>expect(beforeHide).toBe(staleBefore)).toThrow();
+      await page.evaluate(()=>window.finishLateDecode());
+      await page.waitForFunction(()=>window.lateDecodeClosed===true);
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0))));
+      expect(await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.bytes)).toBe(beforeHide);
+    }
+    if(dispose)await page.evaluate(()=>window.finishLateDecode());
+    await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.close());
+  }
 });
 
 test('video filmstrip respects tail width, cross-row seek, frame snapping and existing cue/word/marker editing',async({page},testInfo)=>{
