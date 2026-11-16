@@ -199,7 +199,15 @@ test('exports ASS from the default profile style and keeps enabled subtitle text
   await closeSettingsPanels(page);
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#download-full-ass')).toHaveText('ASS（带样式）');
+  // Keep this real cold-start integration path: arm a passive response wait
+  // before the user's click, without fetching/prewarming fonts ourselves.
+  // Windows CI measured coverage at 5.2–5.5s, beyond the 5s UI assertion budget.
+  const coverageResponse = page.waitForResponse(
+    response => response.url().includes('/api/ass-font-coverage'), { timeout: 30_000 });
   await page.locator('#download-full-ass').click();
+  const coverage = await coverageResponse;
+  expect(coverage.ok()).toBe(true);
+  expect((await coverage.json()).schema).toBe('moy.asr.font_coverage.v1');
 
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
   const save = await page.evaluate(() => window.__exportSaves[0]);

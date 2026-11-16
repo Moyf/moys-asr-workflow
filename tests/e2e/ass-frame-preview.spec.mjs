@@ -1,3 +1,4 @@
+import { stubAssFontCoverage } from './ass-font-readiness.mjs';
 import { observeAssRequests } from './ass-request-diagnostics.mjs';
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
@@ -689,7 +690,10 @@ test('overlays the sticker layer on the actual frame window following the previe
 
 // Observe only: do not start font loading or change the original assertion deadlines.
 const assDiagnostics = new WeakMap();
-test.beforeEach(async ({ page }) => { assDiagnostics.set(page, observeAssRequests(page)); });
+test.beforeEach(async ({ page }) => {
+  assDiagnostics.set(page, observeAssRequests(page));
+  await stubAssFontCoverage(page);
+});
 test.afterEach(async ({ page }, info) => {
   const report = assDiagnostics.get(page)?.finish();
   if (report) {
