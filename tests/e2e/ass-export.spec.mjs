@@ -855,7 +855,9 @@ test('explains a stale page when the server rejects style sync with 403', async 
 
 test('refreshes inline font metrics and interpolates fs tags in native resolution', async ({ page }) => {
   await page.goto(server.url);
-  await page.addStyleTag({ content: '@font-face { font-family: "ASS Metric Test"; src: local("Arial"); size-adjust: 150%; }' });
+  // Ubuntu resolves Arial to Liberation Sans; use that same installed face
+  // when the proprietary Arial family is unavailable to local().
+  await page.addStyleTag({ content: '@font-face { font-family: "ASS Metric Test"; src: local("Arial"), local("Liberation Sans"); size-adjust: 150%; }' });
   await page.evaluate(async () => { await document.fonts.load('20px "ASS Metric Test"'); });
   const ratios = await page.evaluate(() => {
     MaweBoot.DATA.media_metadata = { video_width: 640, video_height: 360 };

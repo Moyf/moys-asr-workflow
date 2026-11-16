@@ -1,4 +1,4 @@
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,6 +9,8 @@ import test from 'node:test';
 import { TextDecoder, TextEncoder } from 'node:util';
 import vm from 'node:vm';
 
+
+await prepareEditorModule('shared/editor-utils.js');
 
 const context = { window: {}, TextDecoder, TextEncoder, Uint8Array };
 loadEditorModule(context, 'shared/editor-utils.js');

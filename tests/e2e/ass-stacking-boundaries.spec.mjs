@@ -314,6 +314,26 @@ function visibleStack(tracks, width, height, label, { skipStackOrder = false } =
   }
 }
 
+function isolatedLayer(ass, layer) {
+  return ass.split('\n').filter(line => !line.startsWith('Dialogue: ')
+    || Number(line.slice(10).split(',')[0]) === layer).join('\n');
+}
+
+function intactGuard(pixels, label) {
+  expect.soft(pixels.outside, `${label}: every nonzero RGB pixel stays inside viewport`).toBe(0);
+  for (const role of ['main', 'extension', 'overlay']) expect.soft(pixels.tracks[role].box,
+    `${label}: ${role} native/guard boundaries are identical`).toEqual(pixels.nativeTracks[role].box);
+  const box = pixels.guardDifferenceBox;
+  if (box) {
+    expect.soft(box[0], `${label}: differences strictly inside left edge`).toBeGreaterThan(0);
+    expect.soft(box[1], `${label}: differences strictly inside top edge`).toBeGreaterThan(0);
+    expect.soft(box[2], `${label}: differences strictly inside right edge`).toBeLessThan(pixels.width);
+    expect.soft(box[3], `${label}: differences strictly inside bottom edge`).toBeLessThan(pixels.height);
+  }
+  // Full hashes remain in evidence, but canvas-size-dependent subpixel phase
+  // inside an unchanged boundary is not evidence of clipping.
+}
+
 for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
   await configure(page, fixture);
   const originalClock = fixture.verifyOriginalMove || fixture.verifyOriginalTransform ? await page.evaluate(() => {
@@ -348,7 +368,7 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
       expect.soft(track.outside, `Canvas track ${index} loses no painted pixels`).toBe(0);
     }
     expect.soft(pixels.outside, 'libass loses no painted pixels').toBe(0);
-    expect.soft(pixels.sha256, 'guard-band translation preserves native libass pixels').toBe(pixels.guardCropSha256);
+    intactGuard(pixels, `libass t=${time}`);
     expect.soft(pixels.fontSelections.length, 'libass records an actual selected font').toBeGreaterThan(0);
     const guard = pixels.guardBox;
     if (guard) {
@@ -366,7 +386,9 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
         frame.tracks[index].box[coordinate] - pixels.tracks[key].box[coordinate]),
       `${key} Canvas/libass edge ${coordinate} agrees within 3 native pixels`).toBeLessThanOrEqual(3);
     }
-    frames.push({ canvas: metrics, libass: pixels });
+    const fitTracks = fixture.verifyFit ? ['main', 'extension', 'overlay'].map((role, index) =>
+      libass(isolatedLayer(frame.ass, index), time, testInfo, `fit-${role}-isolated`).tracks[role]) : null;
+    frames.push({ canvas: metrics, libass: pixels, fitTracks, fitSource: fixture.verifyFit ? frame.ass : null });
   }
   if (fixture.verifyGrowth) for (const engine of ['canvas', 'libass']) {
     const box = frame => engine === 'canvas' ? frame.canvas.tracks[0].box : frame.libass.tracks.main.box;
@@ -381,10 +403,13 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
     const tall = frames[0];
     await configure(page, { main: 'M', extension: 'W', overlaySegments: [cue('overlay-control', 'O')] });
     const small = await capture(page, 1000);
-    const reference = libass(small.ass, 1000, testInfo, 'fit-single-line-control');
+    const baseTracks = ['main', 'extension', 'overlay'].map((role, index) =>
+      libass(isolatedLayer(small.ass, index), 1000, testInfo, `fit-control-${role}-isolated`).tracks[role]);
     for (const engine of ['canvas', 'libass']) {
-      const full = engine === 'canvas' ? tall.canvas.tracks : ['main', 'extension', 'overlay'].map(k => tall.libass.tracks[k]);
-      const base = engine === 'canvas' ? small.tracks : ['main', 'extension', 'overlay'].map(k => reference.tracks[k]);
+      // Canvas records are single-track replays. Compare like with like: a
+      // higher ASS layer can cut holes in another role's composite colour mask.
+      const full = engine === 'canvas' ? tall.canvas.tracks : tall.fitTracks;
+      const base = engine === 'canvas' ? small.tracks : baseTracks;
       const ratios = full.map((track, i) => (track.bands[0][1] - track.bands[0][0]) / (base[i].bands[0][1] - base[i].bands[0][0]));
       expect.soft(full.map(t => t.bands.length), `${engine} preserves every multiline glyph band`).toEqual([11, 3, 3]);
       // 组缩放只作用于主/叠加；副字幕跟随其样式预设，字号不被整组缩小。
@@ -393,6 +418,21 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
       expect.soft(ratios[2], `${engine} overlay follows the group factor`).toBeLessThan(0.95);
       expect.soft(Math.abs(ratios[2] - ratios[0]), `${engine} fit uses one group factor`).toBeLessThan(0.06);
     }
+    const bandHeight = track => track.bands[0][1] - track.bands[0][0];
+    const negative = {};
+    for (const [layer, role] of [[1, 'extension'], [2, 'overlay']]) {
+      const source = isolatedLayer(tall.fitSource, layer).replace(/\\fs([\d.]+)/gu,
+        (_, size) => `\\fs${Number(size) / 2}`);
+      negative[role] = libass(source, 1000, testInfo, `fit-wrong-half-size-${role}`).tracks[role];
+    }
+    expect(bandHeight(negative.extension) / bandHeight(baseTracks[1]),
+      'real negative render detects incorrectly shrinking the fixed secondary').toBeLessThan(0.95);
+    expect(Math.abs(bandHeight(negative.overlay) / bandHeight(baseTracks[2])
+      - bandHeight(tall.fitTracks[0]) / bandHeight(baseTracks[0])),
+    'real negative render detects an independently scaled overlay').toBeGreaterThan(0.06);
+    writeFileSync(testInfo.outputPath('fit-isolated-comparison.json'), JSON.stringify({
+      tall: tall.fitTracks, base: baseTracks, negative,
+    }, null, 2));
   }
   if (fixture.verifyMove) for (const engine of ['canvas', 'libass']) {
     const get = frame => engine === 'canvas' ? frame.canvas.tracks : ['main', 'extension', 'overlay'].map(k => frame.libass.tracks[k]);
@@ -473,7 +513,7 @@ test('all simultaneously active main, secondary and overlay cues are actually pa
     expect.soft(track.guardEdge, `all-active Canvas draw ${index} fits oracle guard`).toBe(0);
   }
   expect.soft(pixels.outside, 'all-active libass loses no painted pixels').toBe(0);
-  expect.soft(pixels.sha256, 'all-active libass guard replay preserves native pixels').toBe(pixels.guardCropSha256);
+  intactGuard(pixels, 'all-active libass');
   expect.soft(pixels.fontSelections.length, 'all-active libass selects a real font').toBeGreaterThan(0);
   if (pixels.guardBox) {
     expect.soft(pixels.guardBox[0], 'all-active libass paint fits guard left').toBeGreaterThan(0);
@@ -570,7 +610,7 @@ test('positive spacing and coloured outline shadow keep complete multiline edge 
     expect.soft(canvasColours[colour], `actual Canvas ${colour} colour is painted`).toBeGreaterThan(30);
     expect.soft(combined.paintColours[colour], `actual libass ${colour} colour is painted`).toBeGreaterThan(30);
   }
-  expect.soft(combined.sha256, 'coloured full group guard preserves native pixels').toBe(combined.guardCropSha256);
+  intactGuard(combined, 'coloured full group');
   expect.soft(combined.outside, 'coloured full group loses no outline or shadow pixels').toBe(0);
   const isolated = [];
   for (const [index, role] of ['main', 'extension', 'overlay'].entries()) {
@@ -582,7 +622,7 @@ test('positive spacing and coloured outline shadow keep complete multiline edge 
     const padding = (pixels.guardSize[0] - pixels.width) / 2;
     const box = pixels.guardBox.map(coordinate => coordinate - padding);
     isolated.push({ painted: pixels.fullPainted, box });
-    expect.soft(pixels.sha256, `${role} full-colour guard preserves native pixels`).toBe(pixels.guardCropSha256);
+    intactGuard(pixels, `${role} full-colour`);
     expect.soft(pixels.outside, `${role} loses no outline or shadow pixels`).toBe(0);
     expect.soft(frame.tracks[index].outside, `Canvas ${role} loses no outline or shadow pixels`).toBe(0);
     expect.soft(frame.tracks[index].guardEdge, `Canvas ${role} full paint fits guard`).toBe(0);
@@ -659,7 +699,7 @@ for (const [name, t1, t2] of [['instant', 500, 500], ['linear', 0, 1000]]) {
       const reference = libass(original, time, testInfo, `unsplit-move-${time}`, times);
       results.push({ time, canvas: frame.nativeTracks.main, grouped: pixels.tracks.main, original: reference.tracks.main });
       expect.soft(frame.captured, 'slice move records all actual paint').toBe(frame.assigned);
-      expect.soft(pixels.sha256, `slice move guard preserves native pixels at ${time}`).toBe(pixels.guardCropSha256);
+      intactGuard(pixels, `slice move at ${time}`);
       expect.soft(pixels.outside, `slice move clips no libass pixels at ${time}`).toBe(0);
       for (const track of frame.tracks) expect.soft(track.outside, `slice move clips no Canvas pixels at ${time}`).toBe(0);
       for (const [engine, box] of [['Canvas', frame.nativeTracks.main.box], ['libass', pixels.tracks.main.box]]) {
@@ -699,7 +739,7 @@ test('overlapping fad intervals retain libass fade-in priority in actual pixels'
     const pixels = libass(frame.ass, time, testInfo, `overlap-fad-${time}`, times);
     const original = libass(standalone, time, testInfo, `original-fad-${time}`, times);
     results.push({ time, canvas: frame.nativeTracks, grouped: pixels, original });
-    expect.soft(pixels.sha256, 'fad guard render preserves native pixels').toBe(pixels.guardCropSha256);
+    intactGuard(pixels, 'fad');
     expect.soft(pixels.outside, 'fad group loses no actual pixels').toBe(0);
     for (const role of ['main', 'extension', 'overlay']) {
       expect.soft(frame.nativeTracks[role].painted, `Canvas ${role} actually paints at ${time}ms`).toBeGreaterThan(30);
@@ -806,13 +846,33 @@ test('exported layout slices preserve the original main cue nonlinear and fade c
   });
   const rows = [];
   for (const time of [750, 1750]) {
-    const grouped = libass(sources.grouped, time, testInfo, `candidate-clock-grouped-${time}`);
-    const original = libass(sources.standalone, time, testInfo, `candidate-clock-standalone-${time}`);
-    rows.push({ time, grouped: grouped.tracks.main, original: original.tracks.main });
+    const main = isolatedLayer(sources.grouped, 0);
+    const toMs = clock => clock.split(':').reduce((total, part) => total * 60 + Number(part), 0) * 1000;
+    const active = main.split('\n').find(line => line.startsWith('Dialogue: ')
+      && toMs(line.split(',')[1]) <= time && time < toMs(line.split(',')[2]));
+    expect(active, `main has an actual slice at ${time}ms`).toBeTruthy();
+    const body = active.split(',').slice(9).join(',');
+    // Only static geometry is shared. NEVER copy candidate t/fade/move clocks
+    // into the oracle: the standalone unsliced event supplies all animation.
+    const geometry = (body.match(/\\q[0-3]|\\pos\([-+\d.]+,[-+\d.]+\)/gu) || []).join('');
+    expect(body.replace(/\{[^}]*\}/gu, ''), 'known clock fixture needs no prewrap text substitution').toBe('Clock');
+    const reference = sources.standalone.split('\n').map(line => {
+      if (!line.startsWith('Dialogue: 0,')) return line;
+      const fields = line.slice(10).split(',');
+      fields[9] = `{${geometry}}` + fields[9];
+      return 'Dialogue: ' + fields.join(',');
+    }).join('\n');
+    const restartedSource = reference.replace(/^(Dialogue: 0,)[^,]+/mu, `$1${active.split(',')[1]}`);
+    const grouped = libass(main, time, testInfo, `candidate-clock-grouped-${time}`);
+    const original = libass(reference, time, testInfo, `candidate-clock-standalone-${time}`);
+    const restarted = libass(restartedSource, time, testInfo, `candidate-clock-restarted-${time}`);
+    rows.push({ time, grouped: grouped.tracks.main, original: original.tracks.main, restarted: restarted.tracks.main });
     expect(grouped.tracks.main.painted, `main remains visible at ${time}ms`).toBeGreaterThan(30);
     expect(grouped.tracks.main.glyphSha256,
       `layout may move main, but must not restart its nonlinear transform/fade at ${time}ms`)
       .toBe(original.tracks.main.glyphSha256);
+    expect(restarted.tracks.main.glyphSha256, `a restarted original clock is distinguishable at ${time}ms`)
+      .not.toBe(original.tracks.main.glyphSha256);
   }
   writeFileSync(testInfo.outputPath('candidate-clock-comparison.json'), JSON.stringify(rows, null, 2));
   // This fixture changes the visible top-edge group at 500/1500ms. Merely

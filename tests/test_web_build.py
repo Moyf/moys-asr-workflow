@@ -171,11 +171,13 @@ class BundleStatusTests(unittest.TestCase):
 
         self.assertEqual(web_build.bundle_status(self.root, "launcher")[0], "stale")
 
-    def test_incomplete_input_ledger_cannot_hide_changed_source(self) -> None:
+    def test_incomplete_manifest_input_ledger_is_stale(self) -> None:
         self.repo.materialize()
         metadata = json.loads(self.repo.meta.read_text(encoding="utf-8"))
         del metadata["inputs"][self.repo.sources[0]]
         self.repo.meta.write_text(json.dumps(metadata), encoding="utf-8")
+        # A missing manifest entry is stale even before its source changes.
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
         (self.root / "web" / self.repo.sources[0]).write_text("changed", encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
@@ -229,19 +231,6 @@ class BundleStatusTests(unittest.TestCase):
 
         self.assertEqual(status, "stale")
         self.assertIn(dependency, reason)
-
-    def test_new_dependency_missing_from_ledger_is_stale(self) -> None:
-        """Given 构建器声称引入了新依赖但没有写入 inputs, When 预检,
-        Then 判定 stale——依赖账本不完整不能掩盖新增源码。"""
-        self.repo.materialize()
-        dependency = "src/seam-dep.js"
-        (self.root / "web" / dependency).write_text(
-            "// dep\n", encoding="utf-8", newline="\n")
-        metadata = json.loads(self.repo.meta.read_text(encoding="utf-8"))
-        metadata["inputs"].pop(self.repo.sources[0])
-        self.repo.meta.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
-
-        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
 
 class EnsureBundleRebuildTests(unittest.TestCase):

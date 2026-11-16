@@ -1,0 +1,148 @@
+name: Complete test matrix
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-matrix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: utf-8
+
+jobs:
+  selection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      mode: ${{ steps.scope.outputs.mode }}
+      plan: ${{ steps.scope.outputs.plan }}
+      full_matrix: ${{ steps.expand.outputs.full_matrix }}
+      browser_matrix: ${{ steps.expand.outputs.browser_matrix }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Select trusted change scope
+        id: scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python scripts/ci_impact.py --plan .artifacts/ci-plan.json
+      - name: Validate and expand finite matrix
+        id: expand
+        run: python scripts/ci_matrix.py expand
+      - name: Preserve plan
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-test-plan
+          path: .artifacts/ci-plan.json
+          include-hidden-files: true
+          if-no-files-found: error
+
+  # Additive coverage: the existing editor and Windows-preview jobs stay intact.
+  full-tests:
+    needs: selection
+    if: needs.selection.outputs.mode == 'full'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.selection.outputs.full_matrix) }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: ci-test-plan
+          path: .artifacts/
+      - uses: ./.github/actions/test-environment
+        with:
+          install-browser: ${{ matrix.layer != 'python' && 'true' || 'false' }}
+      - name: Complete discovery and capability gates
+        run: uv run --no-sync python scripts/ci_matrix.py run --cell ${{ matrix.cell }}
+      - name: Preserve all outcomes including skips and expected failures
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: matrix-${{ matrix.cell }}
+          path: |
+            .artifacts/matrix/
+            .artifacts/checks/
+            test-results/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  browser:
+    needs: selection
+    if: needs.selection.outputs.mode == 'full' || needs.selection.outputs.mode == 'domain'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.selection.outputs.browser_matrix) }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: ci-test-plan
+          path: .artifacts/
+      - uses: ./.github/actions/test-environment
+      - name: List, execute and validate selected Chromium shard
+        run: uv run --no-sync python scripts/ci_matrix.py run --cell ${{ matrix.cell }}
+      - name: Preserve discovery, outcomes, skips and traces
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: matrix-${{ matrix.cell }}
+          path: |
+            .artifacts/matrix/
+            .artifacts/checks/
+            test-results/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  test-matrix-required:
+    name: Complete test matrix required
+    if: always()
+    needs: [selection, full-tests, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v7
+        with:
+          name: ci-test-plan
+          path: .artifacts/
+      - name: Download every selected cell's evidence
+        if: needs.selection.outputs.mode != 'light'
+        uses: actions/download-artifact@v7
+        with:
+          pattern: matrix-*
+          path: .artifacts/matrix-evidence/
+      - name: Require plan, job results and exact receipts
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python scripts/ci_matrix.py gate --root .artifacts/matrix-evidence

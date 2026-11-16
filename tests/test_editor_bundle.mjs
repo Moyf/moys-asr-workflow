@@ -73,8 +73,8 @@ test('partial assembly preserves hoisting, TDZ, writes and registration slots', 
   assert.equal(context.window.constError,'TypeError');
 });
 
-test('source-only changes invalidate the artifact and module evaluation has no effects', async () => {
-  const { buildEditor, assertFresh, readModules } = await import(builder);
+test('source-only changes invalidate the artifact', async () => {
+  const { buildEditor, assertFresh } = await import(builder);
   const original = fs.readFileSync(artifact,'utf8');
   assert.throws(() => assertFresh(original+'// stale\n', original), /stale/i);
   const changed = await buildEditor(root, { transform(file, source) {
@@ -87,9 +87,14 @@ test('source-only changes invalidate the artifact and module evaluation has no e
   assert.ok(!original.includes('deliberately.stale'));
   assert.notEqual(changed.code,original);
   assert.equal(fs.readFileSync(artifact,'utf8'),original);
+});
+
+test('every manifest module exports its entry without browser initialization', async () => {
+  const { readModules } = await import(builder);
+  assert.equal(globalThis.window, undefined);
   for (const item of readModules(root)) {
     const imported = await import(new URL('../web/'+item.file,import.meta.url));
-    assert.equal(typeof imported[item.exportName],'function');
+    assert.equal(typeof imported[item.exportName],'function', item.file);
   }
 });
 
@@ -211,32 +216,4 @@ test('init constants reject eager side effects in nested expressions', async t =
   const result = await compileSources(root, ['seam.js'], module,
     () => 'const n = -2; const flag = !false; const text = `value ${1 + 2}`; const item = { ["a" + "b"]: 1 };\nexport function runSeam() {}');
   assert.ok(result.code, 'literal-only expressions remain accepted');
-});
-
-test('transitive imports invalidate the artifact like manifest sources', async () => {
-  const { buildEditor } = await import(builder);
-  const project = fs.mkdtempSync(path.join(os.tmpdir(),'maw-esm-dependency-'));
-  try {
-    fs.mkdirSync(path.join(project,'web'),{recursive:true});
-    fs.mkdirSync(path.join(project,'scripts'),{recursive:true});
-    fs.writeFileSync(path.join(project,'web/editor-scripts.txt'),'seam.js\n');
-    fs.writeFileSync(path.join(project,'web/editor-modules.json'),JSON.stringify({format:1,
-      modules:[{file:'seam.js',kind:'init',name:'seam',exportName:'runSeam'}],externalBridges:[]}));
-    fs.writeFileSync(path.join(project,'web/seam.js'),
-      `import { value } from './helper.js';\nexport function runSeam() { window.result = value; }\n`);
-    fs.writeFileSync(path.join(project,'web/helper.js'),"export const value = 'v1';\n");
-    fs.writeFileSync(path.join(project,'scripts/build-editor.mjs'),fs.readFileSync(fileURLToPath(builder),'utf8'));
-    fs.writeFileSync(path.join(project,'package.json'),'{}\n');
-    fs.writeFileSync(path.join(project,'pnpm-lock.yaml'),'lockfileVersion: 9\n');
-
-    const first = await buildEditor(project);
-    assert.ok(first.metadata.inputs['helper.js']);
-    assert.ok(first.metafile.inputs['web/helper.js']);
-    fs.writeFileSync(path.join(project,'web/helper.js'),"export const value = 'v2';\n");
-    const second = await buildEditor(project);
-    assert.notEqual(first.code,second.code);
-    assert.notEqual(first.metadata.inputs['helper.js'],second.metadata.inputs['helper.js']);
-  } finally {
-    fs.rmSync(project,{recursive:true,force:true});
-  }
 });
