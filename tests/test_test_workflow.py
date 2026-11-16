@@ -50,7 +50,11 @@ class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("path: test-results/", browser_steps)
         self.assertIn("retention-days: 7", browser_steps)
         # Uploading evidence is a later step, not a wrapper that swallows exits.
-        self.assertNotIn("continue-on-error", browser_steps)
+        # Auxiliary summaries may be non-blocking; the two real test steps may not.
+        for name in ("Real file and HTTP editor", "Independent browser tool pages"):
+            step = workflow.split(f"      - name: {name}\n", 1)[1].split("\n      - ", 1)[0]
+            self.assertNotIn("continue-on-error", step)
+            self.assertNotIn("|| true", step)
         self.assertNotIn("|| true", browser_steps)
         self.assertIn("run: pnpm exec playwright test", browser_steps)
         self.assertIn("run: uv run --no-sync python scripts/run_check.py --timeout 300", browser_steps)
