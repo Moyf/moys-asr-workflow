@@ -40,6 +40,27 @@ def python_fixture(*, full=False):
 
 
 class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
+    def test_editor_browser_failure_evidence_does_not_mask_test_failure(self):
+        workflow = (ROOT / ".github/workflows/editor-checks.yml").read_text(encoding="utf-8")
+        browser_steps = workflow.split("      - name: Real file and HTTP editor", 1)[1].split(
+            "      # README and user guides", 1)[0]
+        self.assertIn("      - name: Independent browser tool pages", browser_steps)
+        self.assertIn("      - name: Preserve failed editor browser evidence\n        if: failure()", browser_steps)
+        self.assertIn("uses: actions/upload-artifact@v6", browser_steps)
+        self.assertIn("path: test-results/", browser_steps)
+        self.assertIn("retention-days: 7", browser_steps)
+        # Uploading evidence is a later step, not a wrapper that swallows exits.
+        # Auxiliary summaries may be non-blocking; the two real test steps may not.
+        for name in ("Real file and HTTP editor", "Independent browser tool pages"):
+            step = workflow.split(f"      - name: {name}\n", 1)[1].split("\n      - ", 1)[0]
+            self.assertNotIn("continue-on-error", step)
+            self.assertNotIn("|| true", step)
+        self.assertNotIn("|| true", browser_steps)
+        self.assertIn("run: pnpm exec playwright test", browser_steps)
+        self.assertIn("run: uv run --no-sync python scripts/run_check.py --timeout 300", browser_steps)
+        config = (ROOT / "tests/config/playwright.config.mjs").read_text(encoding="utf-8")
+        self.assertIn("trace: 'retain-on-failure'", config)
+
     def test_finite_plans_and_explicit_intentional_skips(self):
         for profile in ci_impact.PROFILES:
             plan, needs, receipts = gate_fixture(profile)
@@ -134,7 +155,8 @@ class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
         workflow = (ROOT / ".github/workflows/test-matrix.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", workflow)
         self.assertIn("tags: ['v*']", workflow)
-        self.assertEqual(workflow.count("timeout-minutes: 15"), 2)
+        self.assertEqual(workflow.count("timeout-minutes: 15"), 1)
+        self.assertIn("timeout-minutes: 25", workflow.split("  browser:\n", 1)[1])
         self.assertEqual(workflow.count("fail-fast: false"), 2)
         self.assertIn("needs: [selection, full-tests, browser]", workflow)
         self.assertIn("if: always()", workflow)
@@ -146,6 +168,43 @@ class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
         setup = (ROOT / ".github/actions/test-environment/action.yml").read_text(encoding="utf-8")
         self.assertIn("default: 'true'", setup)
         self.assertIn("if: inputs.install-browser == 'true'", setup)
+
+    def test_browser_budget_progress_and_timeout_remain_fail_closed(self):
+        for profile, total in (("full", 4), ("editor", 1)):
+            plan, _, _ = gate_fixture(profile)
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                with mock.patch.object(ci_matrix.subprocess, "run", side_effect=[
+                        None, subprocess.CalledProcessError(124, "browser")]) as run:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        ci_matrix.run_cell(plan, f"windows-latest-browser-1-{total}", root)
+                listing, execution = run.call_args_list
+                self.assertEqual(listing.args[0][2:4], ["--timeout", "600"])
+                self.assertEqual(execution.args[0][2:4], ["--timeout", "900"])
+                for call in (listing, execution):
+                    command = call.args[0]
+                    self.assertIn("--reporter=line,json", command)
+                    self.assertIn("--retries=0", command)
+                    self.assertIn("--workers=2", command)
+                    self.assertIn("--forbid-only", command)
+                    self.assertIn(f"--shard=1/{total}", command)
+                    self.assertTrue(call.kwargs["check"])
+                self.assertIn("--list", listing.args[0])
+                self.assertNotIn("--list", execution.args[0])
+                self.assertEqual(execution.kwargs["env"]["PLAYWRIGHT_JSON_OUTPUT_FILE"],
+                                 str((root / "browser-results.json").resolve()))
+                self.assertFalse((root / "receipt.json").exists())
+
+    def test_non_browser_budgets_are_not_increased(self):
+        plan, _, _ = gate_fixture("full")
+        for layer in ("node", "python"):
+            with self.subTest(layer=layer), tempfile.TemporaryDirectory() as temporary:
+                with mock.patch.object(ci_matrix.subprocess, "run", side_effect=
+                                       subprocess.CalledProcessError(124, layer)) as run:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        ci_matrix.run_cell(plan, f"windows-latest-{layer}", Path(temporary))
+                self.assertEqual(run.call_args.args[0][2:4], ["--timeout", "600"])
+                self.assertFalse((Path(temporary) / "receipt.json").exists())
 
     def test_python_report_accounting_and_required_platform_recalculation(self):
         full = python_fixture(full=True)
