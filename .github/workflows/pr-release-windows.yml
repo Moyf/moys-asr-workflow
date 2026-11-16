@@ -176,7 +176,7 @@ jobs:
         env:
           MAW_E2E_PYTHON: '${{ github.workspace }}/.venv/Scripts/python.exe'
           PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/editor-display-results.json
-        run: uv run --no-sync python scripts/run_check.py --timeout 540 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium --workers=1 --retries=0 --forbid-only --reporter=line,json tests/e2e/ass-stacking-boundaries.spec.mjs tests/e2e/editor-i18n-save.spec.mjs tests/e2e/shared-tooltip.spec.mjs
+        run: uv run --no-sync python scripts/run_check.py --timeout 540 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium --workers=1 --retries=0 --forbid-only --reporter=line,json tests/e2e/ass-stacking-boundaries.spec.mjs tests/e2e/editor-i18n-save.spec.mjs tests/e2e/editor-save-recovery.spec.mjs tests/e2e/shared-tooltip.spec.mjs
 
       - name: Require complete display regression results
         if: ${{ needs.selection.outputs.light != 'true' }}

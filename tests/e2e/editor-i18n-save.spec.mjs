@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
@@ -480,32 +479,6 @@ test('larger subtitle-segment overlap requires an explicit repair direction', as
   await expect(hint.locator('.hint-project-conflict')).toContainText('重叠 2000ms');
   await expect(hint.locator('.hint-project-repair-trim')).toHaveText('缩短前一句');
   await expect(hint.locator('.hint-project-repair-shift')).toHaveText('推迟后一句');
-});
-
-test('auto-saves a text edit shortly after it loses focus', async ({ page }) => {
-  await page.goto(server.url);
-  await page.locator('.cue').first().click();
-
-  const saveResponse = page.waitForResponse((response) => (
-    response.url().endsWith('/api/project') && response.request().method() === 'POST'
-  ));
-  const panelText = page.locator('#cue-panel-text');
-  await panelText.fill('Alpha autosaved');
-  await page.locator('#cue-panel-target').click();
-
-  expect((await saveResponse).ok()).toBe(true);
-  const savedProject = JSON.parse(readFileSync(projectPath, 'utf8'));
-  expect(savedProject.segments[0].text).toBe('Alpha autosaved');
-});
-
-test('a disconnected save endpoint offers a JSON fallback download', async ({ page }) => {
-  await page.goto(server.url);
-  await page.route('**/api/project', (route) => route.abort('connectionrefused'));
-  await page.evaluate(() => { window.showSaveFilePicker = undefined; });
-  page.once('dialog', (dialog) => dialog.accept());
-  const download = page.waitForEvent('download');
-  await page.keyboard.press('Control+s');
-  expect((await download).suggestedFilename()).toBe('project.mosp');
 });
 
 test('shows a persistent warning when the server connection is lost and clears after recovery', async ({ page }) => {
