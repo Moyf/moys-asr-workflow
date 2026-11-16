@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { initModuleSource } from './helpers/init-module-source.mjs';
 import { createUtilsModule as createData } from '../web/shared/utils/data.js';
 import { createUtilsModule as createMulti } from '../web/shared/utils/multi-subtitle.js';
 
@@ -49,7 +49,7 @@ function fixture() {
     } },
   };
   context.window = { AsrEditorUtils: { stableId, getMainTrack: () => main, resolveProjectSpeaker: () => null } };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-cue-elements.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(initModuleSource('editor/cues/editor-cue-elements.js'), context);
   return { api: context.window.MaweCueElements, project, track, getLookups: () => lookups };
 }
 

@@ -33,6 +33,9 @@ function renderMessage(container, message) {
   if (cursor < value.length) appendMessageText(container, value.slice(cursor));
 }
 const setStatus = (message) => { if (state.detectedServerUrl) setServerStatus(state.detectedServerUrl, true, message); else renderMessage($("status"), message); };
+// 错误面板内容同时镜像到 DevTools 控制台（带前缀、错误码与诊断），
+// 用户截图/反馈后维护者仍可回查；输出前先脱敏，与页内日志口径一致。
+const mawConsoleMirror = createConsoleMirror({ prefix: "[MAW Launcher]" });
 function syncFixedFooterClearance() {
   const footer = document.querySelector(".actions");
   if (!footer) return;
@@ -127,6 +130,9 @@ function showErrorNotice(message, code = "", detail = "", diagnostics = "", cont
   revealLauncherFeedback(notice, "");
   clearErrorReport();
   const diagnostic = diagnosticText(diagnostics);
+  mawConsoleMirror.mirrorFeedback(redactSensitive(message), "warning", {
+    detail: { code: code || "backend_error", detail: redactSensitive(detail), diagnostics: redactSensitive(diagnostic) },
+  });
   const version = context?.version || state.config?.appVersion || $("appVersion")?.textContent?.trim().replace(/^v/, "") || "unknown";
   const occurredAt = context?.occurredAt || new Date().toISOString();
   state.errorReport = { code: code || "backend_error", message: String(message || ""), detail: String(detail || ""), diagnostics: diagnostic, version, occurredAt };

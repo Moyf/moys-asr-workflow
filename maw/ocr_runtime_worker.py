@@ -13,6 +13,7 @@ if str(_BUNDLE_ROOT) not in sys.path:
     sys.path.insert(0, str(_BUNDLE_ROOT))
 
 from maw.console import configure_utf8_stdio  # noqa: E402
+from maw.ocr_scan import OcrScanRequest, clamp_fps, run_ocr_scan  # noqa: E402
 from maw.postprocess import OutputMode  # noqa: E402
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion, run_ocr_dedup  # noqa: E402
 
@@ -28,6 +29,29 @@ def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     try:
+        if args.command == "scan":
+            summary = run_ocr_scan(
+                OcrScanRequest(
+                    video_path=Path(args.video_path),
+                    ffmpeg_path=Path(args.ffmpeg_path),
+                    duration_ms=args.duration_ms,
+                    fps=clamp_fps(args.fps),
+                    region=OcrRegion(
+                        mode=args.region_mode,
+                        x1=args.region_x1,
+                        y1=args.region_y1,
+                        x2=args.region_x2,
+                        y2=args.region_y2,
+                    ),
+                    model_type=OCR_MODEL_TYPES[args.model_id],
+                    frames_dir=Path(args.frames_dir) if args.frames_dir else None,
+                    max_frames=args.max_frames,
+                ),
+                on_status=_status,
+                on_blocks=_blocks,
+            )
+            print(json.dumps({"type": "result", **summary}, ensure_ascii=False), flush=True)
+            return 0
         if args.model_id not in OCR_MODEL_TYPES:
             raise ValueError(f"不支持的 OCR 模型：{args.model_id}")
         request = OcrDedupRequest(
@@ -84,8 +108,26 @@ def _status(key: str, details: dict[str, int]) -> None:
     print(json.dumps({"type": "status", "key": key, "details": details}, ensure_ascii=False), flush=True)
 
 
+def _blocks(t_ms: int, frame: str | None, hits: list[tuple[str, float, tuple[int, int, int, int]]]) -> None:
+    payload = [
+        {"text": text, "score": round(score, 4), "box": list(box)}
+        for text, score, box in hits
+    ]
+    print(
+        json.dumps({"type": "blocks", "tMs": t_ms, "frame": frame, "blocks": payload}, ensure_ascii=False),
+        flush=True,
+    )
+
+
 def _path(value: str) -> Path | None:
     return Path(value) if value else None
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -108,6 +150,19 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--region-y2", type=float, default=1.0)
     run.add_argument("--threshold", type=float, default=0.5)
     run.add_argument("--report", action="store_true")
+    scan = subparsers.add_parser("scan", help="整段视频 OCR 扫描（raw-blocks 模式）")
+    scan.add_argument("--model-id", required=True)
+    scan.add_argument("--video-path", required=True)
+    scan.add_argument("--ffmpeg-path", required=True)
+    scan.add_argument("--duration-ms", type=int, required=True)
+    scan.add_argument("--fps", type=float, default=1.0)
+    scan.add_argument("--frames-dir", default="")
+    scan.add_argument("--max-frames", type=_positive_int, default=20000)
+    scan.add_argument("--region-mode", choices=("full", "bottom30", "custom"), default="full")
+    scan.add_argument("--region-x1", type=float, default=0.0)
+    scan.add_argument("--region-y1", type=float, default=0.0)
+    scan.add_argument("--region-x2", type=float, default=1.0)
+    scan.add_argument("--region-y2", type=float, default=1.0)
     return parser
 
 

@@ -328,6 +328,8 @@ $("errorNoticeAction").addEventListener("click", () => {
   }
 });
 $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("fireRedPunc").addEventListener("change", () => setError("fireRedPunc", "")); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("audioTrack").addEventListener("change", () => { const value = Number($("audioTrack").value); if (Number.isInteger(value) && value >= 0) state.audioTrack = value; }); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
+// 断句与标点五字段持久化（issue #355）：输入/确认都触发防抖保存并同步 state.config（openSettings 回填以此为源）；非法值仍由任务提交时 validateSegmentation 拦截，这里只存原样字符串。
+["gapSplit", "minLen", "maxLen", "minWords", "maxWords"].forEach((field) => { const persist = () => { setError(field, ""); const snapshot = segmentationPrefsPayload(); savePrefsDebounced(snapshot); Object.assign(state.config, snapshot); }; $(field).addEventListener("input", persist); $(field).addEventListener("change", persist); });
 $("testRun").addEventListener("change", syncTestRun);
 $("openaiModel").addEventListener("input", () => { if (isCustomOpenAiModel()) state.config.openaiCustomModel = $("openaiModel").value.trim(); });
 $("generateHtml").addEventListener("change", syncHtmlMenu);

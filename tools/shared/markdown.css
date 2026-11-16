@@ -1,0 +1,27 @@
+/* Scoped: tool-specific code/list/table styles must not leak into the reader. */
+.maw-markdown {font:15px/1.75 var(--font-sans);color:var(--text-primary);overflow-wrap:anywhere;min-width:0}
+.maw-markdown h1,.maw-markdown h2,.maw-markdown h3,.maw-markdown h4,.maw-markdown h5,.maw-markdown h6 {font-family:var(--font-sans);font-style:normal;line-height:1.4;margin:24px 0 12px;color:var(--text-primary)}
+.maw-markdown h1 {font-size:24px}.maw-markdown h2 {font-size:21px}.maw-markdown h3 {font-size:18px}
+.maw-markdown h4,.maw-markdown h5,.maw-markdown h6 {font-size:16px}
+.maw-markdown > :first-child {margin-top:0}
+.maw-markdown p {font-size:15px;margin:12px 0;color:var(--text-primary)}
+.maw-markdown ul,.maw-markdown ol {margin:12px 0;padding-left:24px}.maw-markdown li {margin:4px 0}
+.maw-markdown li > p {margin:8px 0}.maw-markdown li input[type="checkbox"] {min-height:0;padding:0;margin:0 8px 0 0;vertical-align:middle;pointer-events:none}
+.maw-markdown a {color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+.maw-markdown blockquote {margin:16px 0;padding:4px 16px;border-left:3px solid var(--accent);background:var(--accent-tint)}
+.maw-markdown hr {border:0;border-top:1px solid var(--border);margin:24px 0}
+.maw-markdown code {display:inline;font:13px/1.65 var(--font-mono);padding:2px 5px;border-radius:var(--radius-sm);background:var(--bg-raised);white-space:pre-wrap;margin:0;overflow-wrap:anywhere}
+.maw-markdown pre {display:block;max-width:100%;min-width:0;overflow-x:auto;margin:12px 0;padding:12px;background:var(--bg-raised);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);white-space:pre}
+.maw-markdown pre code {display:block;padding:0;margin:0;font-size:13px;white-space:pre;overflow-wrap:normal;max-width:none;overflow:visible}
+.maw-markdown .maw-md-code-language {font:12px/1.5 var(--font-mono);color:var(--text-muted);margin:16px 0 8px}
+.maw-markdown .maw-md-code-language + pre {margin-top:0}
+.maw-markdown .maw-md-table {overflow-x:auto;max-width:100%;margin:16px 0;border:1px solid var(--border-subtle);border-radius:var(--radius-sm)}
+.maw-markdown table {border-collapse:collapse;min-width:100%;font-size:14px;margin:0}
+.maw-markdown th,.maw-markdown td {padding:8px 12px;border:1px solid var(--border-subtle);text-align:left;min-width:100px}
+.maw-markdown th[align="left"],.maw-markdown td[align="left"] {text-align:left}
+.maw-markdown th[align="right"],.maw-markdown td[align="right"] {text-align:right}
+.maw-markdown th[align="center"],.maw-markdown td[align="center"] {text-align:center}
+.maw-markdown th {background:var(--bg-raised);font-weight:600}
+.maw-markdown mark {background:var(--accent-soft);color:var(--text-primary);padding:1px 3px;border-radius:3px}
+.maw-markdown .maw-md-image {display:block;padding:12px;margin:12px 0;border:1px dashed var(--border);border-radius:var(--radius-sm);font-size:13px;color:var(--text-muted)}
+.maw-markdown .maw-md-source-hint {font-size:12px;color:var(--text-muted);margin-left:4px}

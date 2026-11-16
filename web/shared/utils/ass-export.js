@@ -510,7 +510,8 @@ export function createUtilsModule(dependencies) {
               { ...inlineOptions, preparedRuns: item.runs, fontTransform });
             const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
             const layer = { main: 0, extension: 1, overlay: 2 }[item.role] + (item.manual ? 3 : 0);
-            events.push(`Dialogue: ${layer},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
+            const eventName = options.pngEventNames ? `maw:${item.role}:${item.index}` : item.speakerName;
+            events.push(`Dialogue: ${layer},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(eventName)},0,0,0,,${decorated}`);
           };
           if (item.shake) {
             // 原地震动：一条 ASS 事件只能有一个定位标签，导出时按固定间隔

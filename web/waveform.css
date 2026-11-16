@@ -543,8 +543,8 @@
   pointer-events: none;
 }
 .waveform-row.multi-subtitle-row {
-  /* 从底部向上排布：副字幕在底部，主字幕在上方并紧贴。 */
-  --multi-subtitle-lane-gap: 0px;
+  /* 从底部向上排布：副字幕在底部，主字幕在上方，轨间留出描边空间。 */
+  --multi-subtitle-lane-gap: 3px;
   --multi-subtitle-bottom-inset: 7px;
   --multi-subtitle-label-height: 15px;
   --multi-subtitle-lane-height: min(35px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
@@ -563,7 +563,7 @@
   color: var(--active-cue-fg);
   background: var(--accent);
   top: auto;
-  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + var(--multi-subtitle-lane-gap) + ((var(--multi-subtitle-lane-height) - var(--multi-subtitle-label-height)) / 2));
 }
 .waveform-row.multi-subtitle-row.show-track-badges::after {
   content: "2";
@@ -586,6 +586,9 @@
 /* 亮色主题的主字幕默认保持白底，但有颜色映射时不能把 --cue-color 盖掉。 */
 :root[data-theme="light"] .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"].has-subtitle-color {
   background: color-mix(in srgb, var(--cue-color) 42%, var(--wave-cue-main-bg));
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"].has-subtitle-color {
+  background: color-mix(in srgb, var(--cue-color) 42%, var(--wave-cue-main-bg, var(--wave-cue-mix)));
 }
 .waveform-row.multi-subtitle-row .waveform-cue-badge {
   /* 双字幕时 badge 要放在最上方主字幕块之上；单层行继续使用默认 bottom。 */
@@ -1215,10 +1218,10 @@
    bottom 固定取波形行高的一半：主字幕（与其徽章）占下半区，叠加字幕占上半区，
    互不遮挡，也直观表达「最多上下两层」。多重字幕行主字幕在上一格、副字幕
    贴底，叠加块位于 50% 线、仍在主字幕格之上。高度与主字幕块一致（35px）。
-   行高不足 84px（50% 线放不下 35px 块）时由 JS 加 overlay-cover-mode：
+   行内净高放不下叠加块、轨间隔与上下留白时，由 JS 加 overlay-cover-mode：
    叠加块直接盖在主字幕块上方（同位覆盖、z-index 置顶），此时不渲染叠加徽章。 */
 .waveform-cue-block.waveform-overlay-block {
-  bottom: 50%;
+  bottom: max(50%, 45px);
   height: 35px;
   line-height: 35px;
   z-index: 7;
@@ -1226,11 +1229,15 @@
 .waveform-cue-block.waveform-overlay-block.overlay-cover-mode {
   bottom: 7px;
 }
+.waveform-basic .waveform-row:not(.multi-subtitle-row) .waveform-cue-block.waveform-overlay-block:not(.overlay-cover-mode) {
+  bottom: max(50%, calc(10px + max(35px, min(72px, 40%))));
+}
 /* 双语行内叠加块不再使用 50% 线：双语行主块顶 = inset + 两格 lane，
    基础波形（lane 54px、行高 192）的主块顶会越过 50% 线与叠加块重叠。
-   这里把叠加块放到主字幕格上方 1px；放不下时由 JS 回退 overlay-cover-mode。 */
+   这里把叠加块放到主字幕格上方 3px，保持原有描边画法；
+   放不下时由 JS 回退 overlay-cover-mode。 */
 .waveform-row.multi-subtitle-row .waveform-cue-block.waveform-overlay-block {
-  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + 1px);
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 3px);
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block.waveform-overlay-block.overlay-cover-mode {
   bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + var(--multi-subtitle-lane-gap));
@@ -1242,20 +1249,20 @@
   bottom: calc(50% + 37px + var(--badge-stack-index, 0) * 16px);
 }
 .waveform-row.multi-subtitle-row .waveform-cue-badge.waveform-overlay-cue-badge {
-  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + 38px + var(--badge-stack-index, 0) * 16px);
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 40px + var(--badge-stack-index, 0) * 16px);
 }
 /* 单行双语行的叠加轨回归修复：双语只增补底部译文格，不改变叠加轨定位——
    叠加块保持 50% 线（与无双语行一致）。双语行统一下移到「inset + 两格 lane
    + 1px」的规则按多行 192px 行高设计，命中单行（行高数百 px）时把叠加块拽
    到主字幕格上方、远离 50% 线。这里按模式区分：单行恢复 50% 线，行高过矮
-   放不下「主块 + 字词条带」时以该顶部位置 max() 兜底（单行恒无
-   overlay-cover-mode，见 appendCueBlocks 注释）；多行双语行保持上面贴格
+   放不下「主块 + 字词条带」时以该顶部位置 max() 兜底；若行内净高仍不足，
+   则沿用 overlay-cover-mode 同位覆盖降级；多行双语行保持上面贴格
    布局不变。 */
 .waveform-basic .waveform-row.multi-subtitle-row .waveform-cue-block.waveform-overlay-block:not(.overlay-cover-mode) {
-  bottom: max(50%, calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 1px));
+  bottom: max(50%, calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 3px));
 }
 .waveform-basic .waveform-row.multi-subtitle-row .waveform-cue-badge.waveform-overlay-cue-badge {
-  bottom: calc(max(50%, var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 1px) + 37px + var(--badge-stack-index, 0) * 16px);
+  bottom: calc(max(50%, var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + var(--multi-subtitle-lane-gap) + 3px) + 37px + var(--badge-stack-index, 0) * 16px);
 }
 
 /* === 通用 Marker / Region 轨道 ===
@@ -1423,6 +1430,103 @@
   gap: 5px;
 }
 
+/* 波形字幕块双击的快速编辑气泡（挂在滚动内容层，随内容滚动）。 */
+.waveform-cue-quick-edit {
+  position: absolute;
+  z-index: 30;
+  display: grid;
+  gap: 8px;
+  width: 300px;
+  max-width: calc(100% - 8px);
+  box-sizing: border-box;
+  padding: 9px;
+  /* 与 cue 列表/正文同族：textarea 的 UA 默认是等宽字体，需显式覆盖。 */
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2, 0 8px 24px rgba(0, 0, 0, 0.25));
+}
+.waveform-cue-quick-edit-caption {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.waveform-cue-quick-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+.waveform-cue-quick-edit-help {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--amber-hover);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.waveform-cue-quick-edit-help:hover { text-decoration: underline; }
+.waveform-cue-quick-edit-text {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  max-height: 132px;
+  padding: 5px 7px;
+  resize: vertical;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.waveform-cue-quick-edit-text:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+/* 气泡三角：默认在弹窗底部指向下方（弹窗位于字幕块上方）；贴顶翻到
+   下方时改为顶部指向上方。--cue-quick-edit-arrow-x 由 JS 按指针位置写入。 */
+.waveform-cue-quick-edit::before,
+.waveform-cue-quick-edit::after {
+  content: "";
+  position: absolute;
+  left: var(--cue-quick-edit-arrow-x, 50%);
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+  pointer-events: none;
+}
+.waveform-cue-quick-edit::before {
+  border-width: 8px;
+  bottom: -16px;
+  border-top-color: var(--border);
+}
+.waveform-cue-quick-edit::after {
+  bottom: -14px;
+  border-top-color: var(--bg-panel);
+}
+.waveform-cue-quick-edit.placement-below::before {
+  top: -16px;
+  bottom: auto;
+  border-top-color: transparent;
+  border-bottom-color: var(--border);
+}
+.waveform-cue-quick-edit.placement-below::after {
+  top: -14px;
+  bottom: auto;
+  border-top-color: transparent;
+  border-bottom-color: var(--bg-panel);
+}
+
 /* Independent navigation strip above the unchanged waveform/subtitle region. */
 .waveform-row-shell { position: absolute; left: 0; touch-action: none; }
 .waveform-row-shell .waveform-row { top: 48px; left: 0; right: 0; }
@@ -1430,8 +1534,10 @@
 .waveform-basic .waveform-row-shell .waveform-row { inset: 48px 0 auto; width: 100%; }
 .waveform-filmstrip { display: block; position: absolute; top: 0; left: 1px; width: calc(100% - 2px); height: 48px; cursor: crosshair; border-radius: var(--radius-sm); }
 
-#waveform-thumbnail-setting { margin: 8px 0; flex-wrap: wrap; }
-#waveform-thumbnail-decode-setting { margin: 8px 0; padding-left: 22px; }
+#waveform-thumbnail-setting { display: flex; flex: 0 0 100%; min-width: 0; align-items: center; overflow-x: auto; margin: 8px 0; }
+.waveform-settings-section .waveform-inline-checkbox { margin-left: 16px; }
+.waveform-settings-section .waveform-cue-tooltip-setting { flex: 0 0 100%; margin: 0; }
+#waveform-thumbnail-decode-setting[hidden] { display: none; }
 /* 状态文字仅保留给辅助技术：select 的 tooltip 已展示同样内容（
    updateThumbnailStatus 会同步写父级 title），可见行冗余移除。
    不用 display:none——该 span 挂 aria-live 且被 select 与补间开关

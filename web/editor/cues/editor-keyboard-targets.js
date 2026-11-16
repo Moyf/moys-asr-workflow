@@ -1,3 +1,4 @@
+import { interruptCueListFollowing, scrollCueIntoViewIfNeeded } from './editor-cue-list-anchor.js';
 import { getCurrentCuePanelTarget } from './editor-cue-panel.js';
 import { isHiddenDisabled, selectOnly, selectOnlyExtension } from './editor-selection.js';
 
@@ -116,7 +117,7 @@ export function initMaweKeyboardTargets() {
     }
 if (nextIndex < 0) return false;
 
-MaweCueListAnchor.interruptCueListFollowing();
+interruptCueListFollowing();
 if (wantMain) {
 selectOnly(nextIndex);
 MaweSelection.lastClickedIdx = nextIndex;
@@ -129,7 +130,7 @@ MaweSelection.lastClickedIdx = nextIndex;
         ? `.cue[data-idx="${nextIndex}"], .multi-dual-cue[data-main-idx="${nextIndex}"]`
         : `.multi-dual-cue[data-ext-idx="${nextIndex}"], .multi-extension-cue[data-ext-idx="${nextIndex}"]`,
     );
-    if (cue) MaweCueListAnchor.scrollCueIntoViewIfNeeded(cue);
+    if (cue) scrollCueIntoViewIfNeeded(cue);
     return true;
   }
 

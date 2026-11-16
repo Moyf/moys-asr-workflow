@@ -1,3 +1,4 @@
+export function initJklModule() {
 // J/K/L 播放控制：双模式（速度/倒放）状态机与速率档位。editor.js 在加载期经本模块门面初始化 UI。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweJklPlayback 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -184,3 +185,4 @@
     nextJklDirectionRate
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

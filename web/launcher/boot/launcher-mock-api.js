@@ -1,7 +1,7 @@
 // 无 pywebview 后端时的 mock API（浏览器直接打开页面用）。
 
 function mockApi() {
-  let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, postprocessVerified: {}, theme: null, outputSubfolder: true, perVideoSubfolder: false, attachModelName: false, notifyOnComplete: false };
+  let saved = { apiKey: "", region: "beijing", language: "", workspaceId: "", guiLang: "", customDisplayName: "", openaiBaseUrl: "https://api.openai.com/v1", openaiModel: "whisper-1", postprocessApiKeys: {}, postprocessVerified: {}, theme: null, outputSubfolder: true, perVideoSubfolder: false, attachModelName: false, notifyOnComplete: false, gapSplit: "", minLen: "", maxLen: "", minWords: "", maxWords: "" };
   const chainedPath = (path, operation, fallback) => path
     ? path.replace(/(\.[^.\\/]+)$/u, `.${operation}$1`)
     : fallback;
@@ -63,8 +63,13 @@ function mockApi() {
       outputSubfolder: saved.outputSubfolder,
       perVideoSubfolder: saved.perVideoSubfolder,
       attachModelName: saved.attachModelName,
+      gapSplit: saved.gapSplit || "",
+      minLen: saved.minLen || "",
+      maxLen: saved.maxLen || "",
+      minWords: saved.minWords || "",
+      maxWords: saved.maxWords || "",
       notifyOnComplete: saved.notifyOnComplete === true,
-      appVersion: "1.11.0",
+      appVersion: "2.0.0-beta.1",
       asrPresetRoot: saved.asrPresetRoot || "D:\\Models\\MAW\\asr-presets",
       asrPresetRootConfigured: Boolean(saved.asrPresetRoot),
       serverPort: null,
@@ -271,7 +276,7 @@ save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { 
     get_local_models: async ({ modelId, modelPath, modelPaths = {} }) => ({ ok: true, runtime: state.config?.localRuntime || {}, models: (state.config?.providers.find((item) => item.id === "local")?.models || []).map((model) => { const path = model.id === modelId ? modelPath : modelPaths[model.id]; return { ...model, localStatus: { ...(model.localStatus || {}), ...(path ? { status: "installed", installed: true, path, detail: "已使用指定的模型目录。" } : {}) } }; }) }),
     prepare_local_model: async ({ modelId }) => { clearTimeout(modelPrepareTimer); modelPrepareTimer = setTimeout(() => { state.config?.providers.find((item) => item.id === "local")?.models.forEach((model) => { if (model.id === modelId) model.localStatus = { ...(model.localStatus || {}), status: "installed", installed: true, runtimeAvailable: true, canPrepare: false, detail: "已检测到本地模型。" }; }); window.MAWLauncher.onBackendEvent({ type: "modelPrepared", modelId }); }, 400); return { ok: true, preparing: true, modelId }; },
     cancel_local_model: async () => { clearTimeout(modelPrepareTimer); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "localPrepareCancelled" }), 80); return { ok: true, cancelling: true }; },
-     save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "localModelPaths")) saved.localModelPaths = payload.localModelPaths; if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); for (const key of ["outputSubfolder", "perVideoSubfolder", "attachModelName", "notifyOnComplete"]) { if (Object.prototype.hasOwnProperty.call(payload, key)) saved[key] = Boolean(payload[key]); } if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
+     save_prefs: async (payload) => { if (Object.prototype.hasOwnProperty.call(payload, "modelId")) localStorage.setItem(LAST_MODEL_KEY, payload.modelId || ""); if (Object.prototype.hasOwnProperty.call(payload, "localModelPaths")) saved.localModelPaths = payload.localModelPaths; if (Object.prototype.hasOwnProperty.call(payload, "language")) localStorage.setItem(LAST_LANGUAGE_KEY, payload.language || ""); if (Object.prototype.hasOwnProperty.call(payload, "showRareLangs")) saved.showRareLangs = Boolean(payload.showRareLangs); for (const key of ["outputSubfolder", "perVideoSubfolder", "attachModelName", "notifyOnComplete"]) { if (Object.prototype.hasOwnProperty.call(payload, key)) saved[key] = Boolean(payload[key]); } if (["gapSplit", "minLen", "maxLen", "minWords", "maxWords"].some((key) => Object.prototype.hasOwnProperty.call(payload, key))) { for (const key of ["gapSplit", "minLen", "maxLen", "minWords", "maxWords"]) { saved[key] = String(payload[key] ?? "").trim(); } } if (Object.prototype.hasOwnProperty.call(payload, "theme")) saved.theme = payload.theme || "system"; if (Object.prototype.hasOwnProperty.call(payload, "zoomPercent")) localStorage.setItem(ZOOM_PERCENT_KEY, String(payload.zoomPercent)); return { ok: true, zoomPercent: Number(localStorage.getItem(ZOOM_PERCENT_KEY)) || ZOOM_DEFAULT }; },
     open_url: async ({ url }) => { window.open(url, "_blank"); return { ok: true }; },
     open_runtime_folder: async (payload) => { window.__openedRuntimeFolder = payload; return { ok: true }; },
     open_blank_html: async () => ({ ok: true }),

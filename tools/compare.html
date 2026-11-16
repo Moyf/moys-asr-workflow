@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-tool-page="transcript-compare">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MAW 转写对比</title>
+<script src="shared/tool-page.js"></script>
 <style>
   :root {
     color-scheme: dark;
@@ -281,7 +282,7 @@
   }
   .time-cell .diff-chip {
     align-self: flex-end;
-    font-size: 10px;
+    font-size: 11px;
     font-family: inherit;
     color: var(--amber);
     border: 1px solid var(--amber);
@@ -393,7 +394,7 @@
     bottom: 0;
     border-left: 1px solid var(--border);
     padding-left: 4px;
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.4;
     color: var(--text-muted);
     font-family: Consolas, "Courier New", monospace;
@@ -433,7 +434,7 @@
     outline: 1px solid color-mix(in srgb, var(--cue-color) 80%, white);
     background: color-mix(in srgb, var(--cue-color) 42%, rgba(15, 22, 28, 0.82));
     color: #eef6ff;
-    font-size: 10px;
+    font-size: 11px;
     padding: 0 6px;
     overflow: hidden;
     white-space: nowrap;
@@ -503,6 +504,38 @@
   .toast-item.error { border-left-color: var(--red); }
   .toast-item.warn { border-left-color: var(--amber); }
 </style>
+<link rel="stylesheet" href="shared/tool-page.css">
+<style>
+  body { font-family:var(--font-sans); }
+  .btn { background:var(--btn-bg); color:var(--btn-text); }
+  .btn:hover { background:var(--btn-bg-hover); }
+  .btn.primary { background:var(--accent); color:var(--accent-text); }
+  .btn.primary:hover { background:var(--accent-hover); color:var(--accent-text); }
+  .ref-badge { color:var(--accent-text); }
+  .card { min-width:0; flex:1 1 230px; box-shadow:none; }
+  .dropzone { max-width:100%; }
+  .toolbar input { min-width:0; max-width:100%; }
+  .card-stats, .statusbar, .time-cell { font-variant-numeric:tabular-nums; }
+  .time-cell, .ctime, .wave-ruler .tick { font-family:var(--font-mono); }
+  .cell .ctime { color:var(--text-muted); }
+  .wave-lane { background-color:var(--bg-raised); background-image:none; }
+  .wave-lane::before { border-color:var(--border); }
+  .wave-cue { background:color-mix(in srgb,var(--cue-color) 18%,var(--bg-panel)); color:var(--text-primary); outline-color:var(--cue-color); }
+  mark { color:var(--red); }
+  #dropOverlay { background:var(--mask-bg); }
+  @media (max-width:560px) {
+    html,body { height:auto; min-height:100%; }
+    main { padding:12px 10px; }
+    .topbar { padding:12px 10px; gap:10px; }
+    .brand { width:100%; }
+    .dropzone { padding:28px 16px; }
+    .table-scroll { flex:none; max-height:65vh; min-height:200px; }
+    .wave-panel { flex:none; }
+    .wave-tools { margin-left:0; gap:8px; flex-wrap:wrap; }
+    #toast { top:auto; bottom:16px; right:16px; left:16px; }
+    .toast-item { max-width:100%; }
+  }
+</style>
 </head>
 <body>
 <header class="topbar">
@@ -512,7 +545,9 @@
     <input id="fileInput" type="file" multiple accept=".srt,.mosp,.json" hidden>
     <button id="clearBtn" class="btn danger" type="button">清空</button>
     <label class="toggle"><input id="diffOnly" type="checkbox" disabled>只看差异</label>
-    <input id="search" type="search" placeholder="搜索字幕文本…" disabled>
+    <input id="search" type="search" aria-label="搜索字幕文本" placeholder="搜索字幕文本…" disabled>
+    <button id="resetFilters" class="btn" type="button" disabled>重置筛选</button>
+    <button class="tool-theme" data-tool-theme type="button">◐ 主题</button>
   </div>
 </header>
 <main>
@@ -548,11 +583,11 @@
   <div id="status" class="statusbar"></div>
 </main>
 <div id="dropOverlay" hidden>松开以添加文件</div>
-<div id="toast"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 <script>
 'use strict';
 
-const PALETTE = ['#6ca5e8', '#6fbf8e', '#d49a4a', '#c586c0', '#56b6c2', '#e0a85a', '#e07a7a', '#a3d65c'];
+const PALETTE = Array.from({length:8}, (_, i) => `var(--series-${i + 1})`);
 const LCS_CELL_LIMIT = 4_000_000;
 const ACCEPT_EXTENSIONS = new Set(['.srt', '.mosp', '.json']);
 
@@ -565,6 +600,7 @@ for (const id of ['addBtn', 'addBtn2', 'fileInput', 'clearBtn', 'diffOnly', 'sea
 }
 
 const WAVE_LAYOUT_KEY = 'moy.compare.waveLayout.v1';
+els.resetFilters = document.getElementById('resetFilters');
 const WAVE_ZX_LIMITS = [1, 40];
 const WAVE_ZY_LIMITS = [0.5, 5];
 const WAVE_HEIGHT_LIMITS = [140, 2000];
@@ -1236,6 +1272,16 @@ function renderTable(rows, overallByFile, sumsByFile) {
     });
   }
   els.tableWrap.appendChild(grid);
+  if (!shownRows) {
+    const empty = document.createElement('div');
+    empty.className = 'tool-empty';
+    empty.textContent = '当前筛选下没有字幕。';
+    const reset = document.createElement('button');
+    reset.type = 'button'; reset.className = 'btn'; reset.textContent = '重置筛选';
+    reset.addEventListener('click', resetFilters);
+    empty.append(document.createElement('br'), reset);
+    els.tableWrap.appendChild(empty);
+  }
   return shownRows;
 }
 
@@ -1441,6 +1487,7 @@ function render() {
   els.addBtn2.hidden = hasFiles;
   els.clearBtn.disabled = !hasFiles;
   els.search.disabled = !hasFiles;
+  els.resetFilters.disabled = !hasFiles;
   els.diffOnly.disabled = !state.refId;
   renderHeading();
 
@@ -1479,6 +1526,13 @@ function render() {
 }
 
 let searchTimer = 0;
+function resetFilters() {
+  clearTimeout(searchTimer);
+  state.search = ''; state.diffOnly = false;
+  els.search.value = ''; els.diffOnly.checked = false;
+  render();
+}
+els.resetFilters.addEventListener('click', resetFilters);
 els.search.addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {

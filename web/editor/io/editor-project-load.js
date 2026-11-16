@@ -77,6 +77,9 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   data = imported.project;
   repaired ||= imported.changes.length > 0;
   const timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
+  // DATA is replaced in place below. Retire old popup callbacks before any
+  // media/DOM teardown can deliver blur, ResizeObserver or deferred rAF work.
+  MaweCoreState.waveformEditor?.discardCueQuickEdit?.();
   if (loadGeneration === null) {
     const generation = MaweState.beginProjectLoad();
     MaweState.finishProjectLoad(generation);
@@ -215,11 +218,11 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
             return true;
           }
         } catch (fallbackError) {
-          MaweHint.flashHint(`创建工程失败：${fallbackError.message || fallbackError}`, 'warning');
+          MaweHint.flashHint(`创建工程失败：${fallbackError.message || fallbackError}`, 'warning', { error: fallbackError });
           return false;
         }
       }
-      MaweHint.flashHint(`创建工程失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`创建工程失败：${error.message || error}`, 'warning', { error });
       return false;
     } finally {
       MaweState.finishProjectLoad(generation);
@@ -333,6 +336,7 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
 
 
   function replaceMainTrack(segments, displayName = '字幕', { overlaySegments = null } = {}) {
+    MaweCoreState.waveformEditor?.discardCueQuickEdit?.();
   // 导入/替换主轨是字幕编辑操作，保留替换前的主轨和多字幕状态，
   // 这样用户可以用 Ctrl(Cmd)+Z 回到替换前，而不影响后续重做。
   // 先提交当前编辑区，再替换 DATA；否则 clearSelection() 在替换后提交旧面板

@@ -99,6 +99,7 @@ datas = [
     (str(ROOT / "docs" / "user" / "FAQ-常见问题.txt"), "."),
     (str(ROOT / "assets" / "maw.ico"), "assets"),
     (str(ROOT / "assets" / "show.webp"), "assets"),
+    (str(ROOT / "assets" / "support-qr.png"), "assets"),
     (str(ROOT / "maw" / "asr" / "__init__.py"), "local-runtime/maw/asr"),
     (str(ROOT / "maw" / "asr" / "common.py"), "local-runtime/maw/asr"),
     (str(ROOT / "maw" / "asr" / "segmentation.py"), "local-runtime/maw/asr"),
@@ -137,6 +138,8 @@ datas = [
     (str(ROOT / "maw" / "runtimes" / "local_spec.py"), "local-runtime/maw/runtimes"),
     (str(ROOT / "maw" / "runtimes" / "moss_spec.py"), "local-runtime/maw/runtimes"),
     (str(ROOT / "maw" / "runtimes" / "ocr_spec.py"), "local-runtime/maw/runtimes"),
+    (str(ROOT / "maw" / "runtimes" / "pathwin.py"), "local-runtime/maw/runtimes"),
+    (str(ROOT / "maw" / "runtimes" / "winsecurity.py"), "local-runtime/maw/runtimes"),
     (str(ROOT / "maw" / "alignment_models.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "hub_download.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "timestamp_alignment.py"), "local-runtime/maw"),
@@ -157,6 +160,7 @@ datas = [
     (str(ROOT / "maw" / "project_io.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "ffmpeg.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "media_jobs.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "local_log.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "media_export_audio.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project_tracks.py"), "local-runtime/maw"),
@@ -218,6 +222,7 @@ datas = [
     (str(ROOT / "maw" / "audio_diagnostics.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "app_paths.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "ocr_runtime_worker.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "ocr_scan.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "script_alignment.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "mopeaks.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "quapeaks.py"), "ocr-runtime/maw"),
@@ -252,8 +257,10 @@ opencc_hiddenimports = collect_submodules("opencc")
 
 # OCR dependencies and model files stay outside the frozen bundle. The bundled
 # worker only bootstraps the optional runtime when the user installs it.
+# Subtitle image export uses FFmpeg; Pillow belongs to the optional OCR runtime.
 
 excluded_local_modules = [
+    "PIL",
     "accelerate",
     "funasr",
     "hf_xet",
@@ -261,7 +268,6 @@ excluded_local_modules = [
     "modelscope",
     "qwen_asr",
     "onnxruntime",
-    "PIL",
     "rapidocr",
     "torch",
     "torchaudio",
@@ -321,6 +327,8 @@ a = Analysis(
         "maw.runtimes.local_spec",
         "maw.runtimes.ocr_spec",
         "maw.runtimes.moss_spec",
+        "maw.runtimes.pathwin",
+        "maw.runtimes.winsecurity",
         "maw.cli",
         "maw.postprocess",
         "maw.text_conversion",

@@ -354,7 +354,7 @@ MaweDom.helpOpenMediaSettingsButtons.forEach((button) => {
   });
 });
 // 帮助中的「全局设置」入口：定位到对应分区（波形操作/按键/空隙设置所在）。
-helpOpenEditorSettingsButtons.forEach((button) => {
+window.MaweDomPanelsWiring.helpOpenEditorSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
     MaweSettingsPanels.openEditorSettingsAtTab(button.id === 'help-open-gap-settings' || button.id === 'help-open-keyboard-settings'

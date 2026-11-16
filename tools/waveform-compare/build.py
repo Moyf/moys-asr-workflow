@@ -215,14 +215,24 @@ def build_case(case: dict) -> dict:
     }
 
 
+def render_page(data: dict) -> str:
+    """Inline presentation assets so the result works outside the source tree."""
+    template = (Path(__file__).with_name("page.html")).read_text(encoding="utf-8")
+    shared = Path(__file__).parent.parent / "shared"
+    template = template.replace('<link rel="stylesheet" href="../shared/tool-page.css" data-tool-foundation>',
+                                '<style data-tool-foundation>' + (shared / "tool-page.css").read_text(encoding="utf-8") + '</style>')
+    template = template.replace('<script data-tool-bootstrap src="../shared/tool-page.js"></script>',
+                                '<script data-tool-bootstrap>' + (shared / "tool-page.js").read_text(encoding="utf-8") + '</script>')
+    injection = "window.__WAVEFORM_COMPARISON__ = " + json.dumps(data, ensure_ascii=False).replace("</", "<\\/") + ";"
+    return template.replace("/* COMPARISON_DATA */", injection)
+
+
 def main() -> None:
     out = Path(tempfile.mkdtemp(prefix="maw-waveform-compare-"))
     cases = make_cases(out)
     data = {"duration": DURATION, "scenes": SCENES, "cases": [build_case(case) for case in cases]}
-    template = (Path(__file__).with_name("page.html")).read_text(encoding="utf-8")
-    injection = "window.__WAVEFORM_COMPARISON__ = " + json.dumps(data, ensure_ascii=False).replace("</", "<\\/") + ";"
     page = out / "comparison.html"
-    page.write_text(template.replace("/* COMPARISON_DATA */", injection), encoding="utf-8", newline="\n")
+    page.write_text(render_page(data), encoding="utf-8", newline="\n")
     print(f"对比页: {page}")
     print("320 秒素材计时：预热后 5 次中位数，均含 FFmpeg 解码，不含缓存写入")
     for case in data["cases"]:

@@ -95,7 +95,25 @@ jobs:
 
       - name: Install Chromium for focused regression tests
         if: ${{ needs.selection.outputs.light != 'true' }}
-        run: pnpm exec playwright install chromium
+        shell: bash
+        # 2026-11-11 PR #365 的 editor job 曾因 GitHub runner DNS 抖动失败
+        # （apt resolve「Temporary failure resolving security.ubuntu.com」，
+        # exit code 100），人工 rerun 即绿。Playwright 安装外部网络敏感且幂等
+        # 可重跑，失败自动重试省人工 rerun；此步骤不带 --with-deps（抖动面小，
+        # 同样覆盖）。失败输出保留在步骤日志，最后一次失败仍非零退出。
+        run: |
+          attempt=1
+          max_attempts=3
+          until pnpm exec playwright install chromium; do
+            status=$?
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "playwright install 仍失败（最多尝试 ${max_attempts} 次，最后 exit ${status}），放弃。"
+              exit "$status"
+            fi
+            echo "playwright install 失败（exit ${status}，第 ${attempt}/${max_attempts} 次尝试），20s 后重试……"
+            attempt=$((attempt + 1))
+            sleep 20
+          done
 
       - name: Install FFmpeg for media integration tests
         if: ${{ needs.selection.outputs.light != 'true' }}
@@ -358,14 +376,19 @@ jobs:
           if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
             throw 'Missing dist\MAW\MAW.exe after build.'
           }
-          $HelpProcess = Start-Process -FilePath $ExePath -ArgumentList '--help' -PassThru -WindowStyle Hidden
-          if ($HelpProcess.WaitForExit(10000)) {
-            if ($HelpProcess.ExitCode -ne 0) {
-              throw "MAW.exe launch smoke exited with $($HelpProcess.ExitCode)."
-            }
-          } else {
-            Stop-Process -Id $HelpProcess.Id -Force
-          }
+          uv run --no-sync python scripts/run_check.py --timeout 120 -- uv run --no-sync python scripts/packaging/smoke_editor.py $ExePath
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged editor startup smoke failed.' }
+
+      - name: Preserve packaged editor startup evidence
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-packaged-editor-startup
+          path: |
+            .artifacts/packaged-editor-smoke/
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Verify no FFmpeg is bundled
         if: ${{ needs.selection.outputs.light != 'true' }}

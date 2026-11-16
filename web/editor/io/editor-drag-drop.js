@@ -1,3 +1,4 @@
+export function initDragDropModule() {
 // 拖放：文件拖入分流与拖拽遮罩。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweDragDrop 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -57,7 +58,7 @@
           projectMediaFile: mediaFile,
         });
       } catch (error) {
-        MaweHint.flashHint(`导入工程字幕失败：${error.message || error}`, 'warning');
+        MaweHint.flashHint(`导入工程字幕失败：${error.message || error}`, 'warning', { error });
       }
       return;
     }
@@ -75,7 +76,7 @@
       stagedSubtitleSegments = await parseDroppedSubtitleFile(subtitleFile);
       if (!current()) return;
     } catch (error) {
-      MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning', { error });
       return;
     }
   }
@@ -107,7 +108,7 @@
         if (!current()) return;
         await MaweMultiImport.showMultiSubtitleImportChoice(subtitleFile, segments);
       } catch (error) {
-        MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
+        MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning', { error });
       }
     } else {
       MaweProjectLoad.replaceMainTrack(stagedSubtitleSegments, subtitleFile.name, { overlaySegments: stagedSubtitleSegments.overlaySegments || [] });
@@ -140,3 +141,4 @@
     set dragCounter(v) { dragCounter = v; }
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

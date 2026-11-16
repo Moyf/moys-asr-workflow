@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-tool-page="copy-review">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MAW 文案评审工具</title>
+<script src="../shared/tool-page.js"></script>
 <style>
   :root {
     --bg: #f5f6f8; --card: #ffffff; --border: #e2e5ea; --text: #1f2530; --muted: #6b7280;
@@ -93,11 +94,66 @@
     th:nth-child(6) { display: none; }
   }
 </style>
+<link rel="stylesheet" href="../shared/tool-page.css">
+<style>
+  :root { --bg:var(--bg-base); --card:var(--bg-panel); --border:var(--border-subtle); --text:var(--text-primary); --muted:var(--text-muted); --pending:var(--amber); --pending-bg:var(--amber-soft); --approved:var(--green); --approved-bg:var(--green-soft); --keep:var(--text-muted); --keep-bg:var(--bg-raised); --edited:var(--violet); --edited-bg:color-mix(in srgb,var(--violet) 14%,transparent); --danger:var(--red); }
+  body { font-family:var(--font-sans); }
+  .topbar { background:var(--bg-panel); backdrop-filter:none; }
+  .title-row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .chip.active,.btn.primary { color:var(--accent-text); }
+  .btn,.chip,.st-btn,.opt { min-height:32px; font-family:var(--font-sans); }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .search,.newtext { background:var(--bg-input); color:var(--text-primary); min-width:0; }
+  .stats b { font-family:var(--font-mono); font-size:16px; font-variant-numeric:tabular-nums; }
+  th { background:var(--bg-raised); }
+  .opt { color:var(--text-primary); }
+  .card { content-visibility:auto; contain-intrinsic-size:auto 500px; }
+  .card-head { align-items:center; cursor:pointer; min-height:52px; }
+  .card-head:hover { background:var(--bg-raised); }
+  .card-head h2 { margin-right:auto; }
+  .card-head button { cursor:pointer; }
+  .card-head .group-toggle { background:none; border:0; color:inherit; font-weight:700; padding:6px 0; white-space:normal; overflow-wrap:anywhere; text-align:left; max-width:100%; }
+  .card-head h2 { min-width:0; flex:1 1 180px; }
+  .card-head .spacer { display:none; }
+  .table-scroll { overflow-x:auto; }
+  tr[data-status="approved"] { background:color-mix(in srgb,var(--green) 5%,var(--bg-panel)); }
+  tr[data-status="edited"] { background:color-mix(in srgb,var(--violet) 5%,var(--bg-panel)); }
+  .status-row { flex-wrap:wrap; gap:8px; white-space:normal; }
+  td, th { overflow-wrap:anywhere; }
+  .result-preview { margin-top:12px; }
+  .result-preview summary { cursor:pointer; color:var(--text-secondary); padding:8px 0; }
+  .result-preview pre { margin:8px 0; padding:12px; background:var(--bg-raised); max-height:200px; overflow:auto; font:12px/1.5 var(--font-mono); }
+  .feedback { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:50; max-width:calc(100vw - 32px); margin:0; padding:10px 16px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-panel); color:var(--text-primary); box-shadow:var(--shadow-2); }
+  .feedback.warning { border-color:var(--amber); color:var(--amber); }
+  .topbar:has(.result-preview[open]) { position:static; }
+  .error-box { background:var(--red-soft); border-color:var(--red); }
+  .tool-compact td,.tool-compact th { padding:6px 10px; }
+  .tool-compact .card { margin:8px 0; }
+  .tool-compact .card-head { padding:8px 12px; }
+  @media(max-width:900px) { td.note { display:table-cell; } }
+  @media(max-width:700px) {
+    .topbar { position:static; padding:12px; }
+    main { padding:12px; }
+    .toolbar-row .search { flex:1 1 100%; }
+    .card-head { gap:8px; padding:12px; }
+    .card-head .mini-stats { flex-basis:100%; }
+    table,tbody,tr,td { display:block; width:100% !important; }
+    thead { display:none; }
+    tr { padding:12px; border-bottom:1px solid var(--border); }
+    td { padding:4px 0; border:0; }
+    td::before { content:attr(data-label); display:block; color:var(--text-muted); font-size:12px; margin-bottom:4px; }
+    td.note { display:block; }
+    td.loc { white-space:normal; }
+    .status-row { gap:8px; }
+    .tool-compact td { padding:4px 0; }
+  }
+  @media print { .card { content-visibility:visible; } .toolbar-row,.result-preview { display:none; } }
+</style>
 </head>
 <body>
 
 <header class="topbar">
-  <h1 id="pageTitle">文案评审</h1>
+  <div class="title-row"><h1 id="pageTitle">文案评审</h1><button type="button" class="tool-theme" data-tool-theme>◐ 主题</button></div>
   <div class="meta" id="pageMeta">正在加载数据…</div>
   <div class="rule" id="pageRule"></div>
   <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
@@ -110,13 +166,17 @@
     <button class="chip" data-filter="approved">已采纳</button>
     <button class="chip" data-filter="edited">已修改</button>
     <button class="chip" data-filter="keep">保留原文</button>
-    <input class="search" id="searchInput" placeholder="搜索位置 / 原文案 / 新文案…">
+    <input class="search" id="searchInput" type="search" aria-label="搜索文案" placeholder="搜索位置 / 原文案 / 新文案…">
+    <button class="btn" id="resetFilters" type="button">重置筛选</button>
+    <button class="tool-density" data-tool-compact type="button" role="switch" aria-checked="false">精简显示</button>
     <span style="flex:1"></span>
     <button class="btn primary" id="exportBtn">导出结果 JSON</button>
     <button class="btn" id="importBtn">导入上次进度</button>
     <input type="file" id="importFile" accept=".json,application/json" hidden>
     <button class="btn danger" id="resetBtn">重置</button>
   </div>
+  <details class="result-preview"><summary>导出结果预览（JSON）</summary><pre id="resultPreview"></pre></details>
+  <p class="feedback" id="feedback" role="status" aria-live="polite" hidden></p>
 </header>
 
 <div class="error-box" id="loadError" hidden>
@@ -147,6 +207,17 @@
   var state = { decisions: {}, rows: {} };   // rows: id -> { status, final }
   var filter = 'all';
   var searchText = '';
+  var collapsed = new Set();
+  var searchTimer = 0;
+  var storageFailed = false;
+  var feedbackTimer = 0;
+  function feedback(message, warning) {
+    var node = document.getElementById('feedback');
+    node.textContent = message; node.hidden = false;
+    node.classList.toggle('warning',!!warning);
+    clearTimeout(feedbackTimer);
+    if(!warning)feedbackTimer = setTimeout(function(){node.hidden = true;},2600);
+  }
 
   var STATUS_LABEL = { pending: '待确认', approved: '已采纳', keep: '保留原文', edited: '已修改' };
   var STATUS_CLASS = { pending: 'st-pending', approved: 'st-approved', keep: 'st-keep', edited: 'st-edited' };
@@ -178,13 +249,15 @@
   }
 
   function persist() {
-    try { localStorage.setItem(storageKey(), JSON.stringify(state)); } catch (e) { /* 隐私模式忽略 */ }
+    try { localStorage.setItem(storageKey(), JSON.stringify(state)); } catch (e) {
+      storageFailed = true; feedback('进度保存失败，请导出结果留存；当前编辑仍保留。',true);
+    }
   }
 
   function restore() {
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem(storageKey()) || 'null'); } catch (e) { saved = null; }
-    if (!saved) return;
+      if (!saved) return;
     applyStateObject(saved);
   }
 
@@ -197,7 +270,8 @@
     if (saved.rows) {
       Object.keys(saved.rows).forEach(function (id) {
         if (id in state.rows && saved.rows[id] && typeof saved.rows[id].final === 'string') {
-          state.rows[id] = { status: saved.rows[id].status || 'pending', final: saved.rows[id].final };
+          var status = saved.rows[id].status;
+          state.rows[id] = { status: Object.prototype.hasOwnProperty.call(STATUS_LABEL,status) ? status : 'pending', final: saved.rows[id].final };
         }
       });
     }
@@ -228,6 +302,8 @@
       '<span>已修改 <b style="color:var(--edited)">' + stats.edited + '</b></span>' +
       '<span>保留原文 <b style="color:var(--keep)">' + stats.keep + '</b></span>' +
       '<span>全局决策 <b>' + answered + '/' + Object.keys(state.decisions).length + '</b></span>';
+    document.getElementById('exportBtn').disabled = !DATA.sections.some(function(sec) {return sec.rows.length;}) && !(DATA.decisions || []).length;
+    if (document.querySelector('.result-preview').open) document.getElementById('resultPreview').textContent = JSON.stringify(buildResult(),null,2);
   }
 
   // ---------- 渲染：决策 ----------
@@ -281,6 +357,7 @@
     var st = state.rows[row.id];
     var tr = document.createElement('tr');
     tr.dataset.rowId = row.id;
+    tr.tabIndex = -1;
 
     var tdLoc = document.createElement('td'); tdLoc.className = 'loc'; tdLoc.textContent = row.loc;
     var tdOrig = document.createElement('td'); tdOrig.className = 'orig';
@@ -328,12 +405,15 @@
     var tdNote = document.createElement('td'); tdNote.className = 'note'; tdNote.textContent = row.note || '';
 
     function paintStatus() {
+      tr.dataset.status = st.status;
       badge.className = 'st-badge ' + STATUS_CLASS[st.status];
       badge.textContent = STATUS_LABEL[st.status];
     }
     paintStatus();
 
     tr.appendChild(tdLoc); tr.appendChild(tdOrig); tr.appendChild(tdNew); tr.appendChild(tdStatus); tr.appendChild(tdNote);
+    ['位置','原文案','新文案（可编辑）','状态','备注'].forEach(function(label,index) {tr.children[index].dataset.label = label;});
+    input.setAttribute('aria-label','新文案：' + row.loc);
     return tr;
   }
 
@@ -348,7 +428,9 @@
       var card = document.createElement('section'); card.className = 'card';
       var head = document.createElement('div'); head.className = 'card-head';
       var badge = document.createElement('span'); badge.className = 'app-badge'; badge.textContent = sec.app;
-      var h2 = document.createElement('h2'); h2.textContent = sec.title;
+      var h2 = document.createElement('h2');
+      var groupToggle = document.createElement('button'); groupToggle.type = 'button'; groupToggle.className = 'group-toggle'; groupToggle.textContent = sec.title;
+      groupToggle.setAttribute('aria-expanded',String(!collapsed.has(sec.id))); h2.appendChild(groupToggle);
       var mini = document.createElement('span'); mini.className = 'mini-stats';
       var changed = sec.rows.filter(rowHasProposal);
       var pendingCount = changed.filter(function (r) { return state.rows[r.id].status === 'pending'; }).length;
@@ -378,14 +460,26 @@
       var tbody = document.createElement('tbody');
       visibleRows.forEach(function (row) { tbody.appendChild(makeRow(sec, row)); });
       table.appendChild(tbody);
-      card.appendChild(table);
+      var tableScroll = document.createElement('div'); tableScroll.className = 'table-scroll'; tableScroll.hidden = collapsed.has(sec.id);
+      tableScroll.appendChild(table); card.appendChild(tableScroll);
+      function toggleGroup() {
+        if(collapsed.has(sec.id))collapsed.delete(sec.id); else collapsed.add(sec.id);
+        tableScroll.hidden = collapsed.has(sec.id); groupToggle.setAttribute('aria-expanded',String(!tableScroll.hidden));
+      }
+      groupToggle.addEventListener('click',toggleGroup);
+      head.addEventListener('click',function(event) {if(!event.target.closest('button') && !String(window.getSelection()))toggleGroup();});
       root.appendChild(card);
     });
+    if (!root.children.length) {
+      var empty = document.createElement('div'); empty.className = 'tool-empty'; empty.textContent = '当前筛选下没有文案。';
+      var reset = document.createElement('button'); reset.type = 'button'; reset.className = 'btn'; reset.textContent = '重置筛选'; reset.addEventListener('click',resetFilters);
+      empty.appendChild(document.createElement('br')); empty.appendChild(reset); root.appendChild(empty);
+    }
   }
 
   // ---------- 导入 / 导出 / 重置 ----------
-  function exportJson() {
-    var out = {
+  function buildResult() {
+    return {
       meta: Object.assign({}, DATA.meta, { exportedAt: new Date().toISOString(), sourceDataFile: dataFile }),
       decisions: (DATA.decisions || []).map(function (d) {
         return { id: d.id, q: d.q, selected: state.decisions[d.id] || null };
@@ -400,12 +494,17 @@
         };
       })
     };
-    var blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+  }
+  function exportJson() {
+    try {
+    var blob = new Blob([JSON.stringify(buildResult(), null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = dataFile.replace(/\.js$/i, '') + '.reviewed.json';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    if (!storageFailed) feedback('已发起结果 JSON 下载，包含全部文案与全局决策。');
+    } catch(e) { feedback('导出失败，请重试；当前文案与进度仍保留。',true); }
   }
 
   function importJson(file) {
@@ -413,6 +512,7 @@
     reader.onload = function () {
       try {
         var parsed = JSON.parse(String(reader.result));
+        if(!parsed || !Array.isArray(parsed.sections) || !Array.isArray(parsed.decisions)) throw new Error('Invalid result');
         var saved = { decisions: {}, rows: {} };
         (parsed.decisions || []).forEach(function (d) { if (d && d.id) saved.decisions[d.id] = d.selected; });
         (parsed.sections || []).forEach(function (sec) {
@@ -422,15 +522,21 @@
         });
         applyStateObject(saved);
         persist(); renderDecisions(); renderSections(); refreshHeader();
-        alert('已导入进度。');
+        if(!storageFailed)feedback('已导入进度。');
       } catch (e) {
-        alert('导入失败：文件格式不正确。');
+        feedback('导入失败：文件格式不正确，当前进度未清空。',true);
       }
     };
     reader.readAsText(file);
   }
 
   // ---------- 启动 ----------
+  function resetFilters() {
+    clearTimeout(searchTimer); filter = 'all'; searchText = '';
+    document.getElementById('searchInput').value = '';
+    document.querySelectorAll('.chip[data-filter]').forEach(function(chip) {chip.classList.toggle('active',chip.dataset.filter === 'all');});
+    renderSections();
+  }
   function boot() {
     dataFile = window.__COPY_REVIEW_DATA_FILE__ || 'maw-copy-review-data.js';
     DATA = window.COPY_REVIEW_DATA;
@@ -460,9 +566,11 @@
       });
     });
     document.getElementById('searchInput').addEventListener('input', function (e) {
-      searchText = e.target.value.trim().toLowerCase();
-      renderSections();
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(function() {searchText = e.target.value.trim().toLowerCase(); renderSections();},180);
     });
+    document.getElementById('resetFilters').addEventListener('click',resetFilters);
+    document.querySelector('.result-preview').addEventListener('toggle',function() {if(this.open)document.getElementById('resultPreview').textContent = JSON.stringify(buildResult(),null,2);});
     document.getElementById('exportBtn').addEventListener('click', exportJson);
     document.getElementById('importBtn').addEventListener('click', function () { document.getElementById('importFile').click(); });
     document.getElementById('importFile').addEventListener('change', function (e) {
