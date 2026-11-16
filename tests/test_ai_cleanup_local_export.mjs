@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import test from 'node:test';
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+
+await prepareEditorModule('shared/editor-utils.js');
 
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const source = () => ({ id: 'main-001', start: 0, end: 2000, text: '啊，我这……我这个功能呢',
@@ -320,6 +322,24 @@ test('OTIO media binding follows project media and rejects stale server paths af
   context.MaweBoot.SERVER_CONFIG.autoLoadedMediaPath = null;
   context.MaweCoreState.player.currentSrc = 'file:///media/portable.mp4';
   assert.equal(timeline.mediaTargetUrl(), 'file:///media/portable.mp4', 'file URL playback still provides a valid native source');
+});
+
+test('OTIO native media paths encode URI delimiters and retain their file identity', () => {
+  const { context, timeline } = runtime();
+  for (const [path, url] of [
+    ['/media/plain.wav', 'file:///media/plain.wav'],
+    ['/media/中文 100%/#take?1.wav', 'file:///media/%E4%B8%AD%E6%96%87%20100%25/%23take%3F1.wav'],
+    ['C:\\Media\\中文 100%\\#take.wav', 'file:///C:/Media/%E4%B8%AD%E6%96%87%20100%25/%23take.wav'],
+  ]) {
+    context.MaweBoot.DATA.media = path;
+    assert.equal(timeline.mediaTargetUrl(), url);
+    assert.equal(timeline.stickerTargetUrl(path), url);
+    const parsed = new URL(url);
+    assert.equal(parsed.search, '');
+    assert.equal(parsed.hash, '');
+    assert.equal(decodeURIComponent(parsed.pathname).replace(/^\/(?=[A-Za-z]:\/)/, ''), path.replaceAll('\\', '/'));
+  }
+  assert.equal(timeline.stickerTargetUrl('file:///media/already%20encoded.wav'), 'file:///media/already%20encoded.wav');
 });
 
 test('source/gap OTIO subtitle marker names and FCP/XML plans use exact retained main text', () => {

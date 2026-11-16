@@ -638,12 +638,16 @@ class ThumbnailJobManager:
                 self.wake.set()
             except Exception as error:
                 with self.lock:
-                    self.error = str(error)[-300:]
-                    self.state = "error"
-                    for lease, item in self.leases.items():
-                        item["pending"] = False
-                        self._publish_lease(lease, item)
+                    self._record_error(error)
                 self.closed.wait(.2)
+
+    def _record_error(self, error):
+        """Publish a current operation's failure while holding self.lock."""
+        self.error = str(error)[-300:]
+        self.state = "error"
+        for lease, item in self.leases.items():
+            item["pending"] = False
+            self._publish_lease(lease, item)
 
     @staticmethod
     def _priority(point, item):
@@ -666,7 +670,32 @@ class ThumbnailJobManager:
             cancel = self.active_cancel
             needs_probe = self.info is None
         if needs_probe:
-            info = thumbnails.probe_video(path, cancel=cancel)
+            # Populate the cache's source-validated memo outside the request lock.
+            # Otherwise can_prefetch/lookup below trigger a second, uncancellable
+            # probe while status, demand and close are waiting for this lock.
+            try:
+                info = cache.get_video_info(path, cancel=cancel)
+            except thumbnails.ThumbnailCancelled:
+                raise
+            except Exception as error:
+                with self.lock:
+                    if self.binding != binding or self.identity != identity:
+                        self.wake.set()
+                        return
+                    try:
+                        changed = source_key(path) != identity
+                    except OSError:
+                        # A missing/unreadable current source is still a real
+                        # failure; do not turn deletion into a busy reprobe loop.
+                        changed = False
+                    if changed:
+                        self.wake.set()
+                        return
+                    # Validate and publish atomically: rethrowing to _run would
+                    # let a status/rebind change the source before publication.
+                    self._record_error(error)
+                self.closed.wait(.2)
+                return
             with self.lock:
                 if self.binding != binding or source_key(path) != identity:
                     return

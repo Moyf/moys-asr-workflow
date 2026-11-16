@@ -130,6 +130,60 @@ Dialogue: 0,0:00:00.50,0:00:02.00,Default,,0,0,0,,Second cue
 
 
 class SparsePixelMetricsTests(unittest.TestCase):
+    def measure(self, native, guard, padding=2):
+        return oracle._measure(native, guard, *native.size, padding, [], [])
+
+    def test_guard_accepts_interior_phase_change_with_strictly_identical_boundaries(self):
+        native = Image.new('RGB', (12, 10))
+        for x in range(3, 8):
+            native.putpixel((x, 4), (200, 0, 0))
+        guard = Image.new('RGB', (16, 14))
+        guard.paste(native, (2, 2))
+        guard.putpixel((7, 6), (168, 0, 0))
+        row = self.measure(native, guard)
+        self.assertEqual(row['outside'], 0)
+        self.assertEqual(row['guardDifferenceBox'], (5, 4, 6, 5))
+        self.assertNotEqual(row['sha256'], row['guardCropSha256'])
+        for role in ('main', 'extension', 'overlay'):
+            self.assertEqual(row['tracks'][role]['box'], row['nativeTracks'][role]['box'])
+
+    def test_guard_detects_even_one_weak_channel_outside_every_viewport_edge(self):
+        for point in ((1, 5), (14, 5), (5, 1), (5, 12)):
+            for colour in ((1, 0, 0), (0, 1, 0), (0, 0, 1)):
+                with self.subTest(point=point, colour=colour):
+                    native = Image.new('RGB', (12, 10))
+                    guard = Image.new('RGB', (16, 14))
+                    guard.putpixel(point, colour)
+                    self.assertEqual(self.measure(native, guard)['outside'], 1)
+
+    def test_guard_rejects_edge_loss_even_below_role_mask_threshold(self):
+        for point in ((0, 5), (11, 5), (5, 0), (5, 9)):
+            with self.subTest(point=point):
+                native = Image.new('RGB', (12, 10))
+                native.putpixel(point, (0, 0, 1))
+                row = self.measure(native, Image.new('RGB', (16, 14)))
+                self.assertEqual(row['outside'], 0)
+                box = row['guardDifferenceBox']
+                self.assertTrue(box[0] == 0 or box[1] == 0 or box[2] == 12 or box[3] == 10)
+
+    def test_guard_exposes_shifted_track_boundaries_even_for_interior_changes(self):
+        native = Image.new('RGB', (12, 10))
+        native.putpixel((4, 4), (255, 0, 0))
+        guard = Image.new('RGB', (16, 14))
+        guard.putpixel((7, 6), (255, 0, 0))
+        row = self.measure(native, guard)
+        self.assertEqual(row['outside'], 0)
+        self.assertNotEqual(row['tracks']['main']['box'], row['nativeTracks']['main']['box'])
+
+    def test_guard_translation_preserves_authored_position_precision_and_move_times(self):
+        source = (r'Dialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,'
+                  r'{\pos(710.4341,-0.000001)\move(1.123456789,2.000000001,-3.123456789,4.000000001,0500,1500.00)'
+                  r'\org(710.4341,0.000000000000001)}Clock')
+        translated = oracle.translate_ass(source, 256)
+        self.assertEqual(translated, (r'Dialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,'
+            r'{\pos(966.4341,255.999999)\move(257.123456789,258.000000001,252.876543211,260.000000001,0500,1500.00)'
+            r'\org(966.4341,256.000000000000001)}Clock' + '\n'))
+
     def test_sparse_bands_gaps_thresholds_and_padding_preserve_all_metrics(self):
         """Given known RGB pixels, inspect sparse/empty roles without inferring expected bounds from the oracle."""
         image = Image.new("RGB", (9, 8))

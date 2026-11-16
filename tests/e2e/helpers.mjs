@@ -437,7 +437,8 @@ export async function startServer(projectJsonPath, mediaPath, port, { readinessT
 
 // 空白服务器（--blank）：用于「浏览器打开工程后由服务器接管」的回归测试。
 // settingsRoot 隔离本机最近工程记录，保证每次都以空白状态启动。
-export async function startBlankServer(port, settingsRoot) {
+// Optional env overrides apply only to the server child, never process.env.
+export async function startBlankServer(port, settingsRoot, { env = {} } = {}) {
   mkdirSync(settingsRoot, { recursive: true });
   const pythonArgs = [
     'server-editor/serve.py',
@@ -451,6 +452,7 @@ export async function startBlankServer(port, settingsRoot) {
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
     MAW_APP_DATA_ROOT: settingsRoot,
+    ...env,
   }));
 }
 

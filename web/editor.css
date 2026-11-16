@@ -2351,6 +2351,7 @@
   /* 双语字幕页的「显示」设置一行化：标签+下拉并排，剩余项（徽标/提示）自动换行；
      字幕管理按钮保留 10px 间距（继承 section 的 gap 并加大一档）。 */
   .multi-subtitle-display-inline { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 8px; }
+  .multi-subtitle-display-inline[hidden] { display: none; }
   .multi-subtitle-display-inline > .settings-panel-title,
   .multi-subtitle-display-inline > .multi-subtitle-setting-toggle,
   .multi-subtitle-display-inline > .settings-panel-hint { grid-column: 1 / -1; }

@@ -1,8 +1,10 @@
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import vm from 'node:vm';
 import { initModuleSource } from './helpers/init-module-source.mjs';
+
+await prepareEditorModule('shared/editor-utils.js');
 
 function canvasFixture() {
   const paint = [];

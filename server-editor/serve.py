@@ -3062,8 +3062,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
     def thumbnail_request(self, path: str, *, mutate: bool = False, include_body: bool = True) -> None:
         """Opaque assets and current binding only; client paths are never accepted."""
         manager = self.editor_server.thumbnail_jobs
+        body_consumed = not mutate
         def send(status, payload):
-            self.send_json(status, payload, include_body=include_body)
+            # A rejected POST may still have an unread (or only partial) body.
+            # Do not drain it or interpret it as the next keep-alive request.
+            self.send_json(status, payload, include_body=include_body,
+                           close_connection=not body_consumed)
         try:
             host = self.headers.get("Host", "")
             port = self.editor_server.server_address[1]
@@ -3077,6 +3081,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 if length > 65536:
                     raise ValueError("thumbnail request too large")
                 request = self.read_json_request(max_bytes=65536)
+                body_consumed = True
                 self._check_request_token(request)
                 if "path" in request or "media_path" in request or "source_media_path" in request:
                     raise ValueError("thumbnail client paths are forbidden")
@@ -4118,12 +4123,17 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_localized_error(HTTPStatus.NOT_FOUND, "未知资源")
 
-    def send_json(self, status: HTTPStatus, payload: dict, *, include_body: bool = True) -> None:
+    def send_json(self, status: HTTPStatus, payload: dict, *, include_body: bool = True,
+                  close_connection: bool = False) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        if close_connection:
+            self.close_connection = True
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if close_connection:
+            self.send_header("Connection", "close")
         self.end_headers()
         if include_body:
             self.wfile.write(body)

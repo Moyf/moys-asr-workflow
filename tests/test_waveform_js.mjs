@@ -1,9 +1,11 @@
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
+
+await prepareEditorModule('editor/media/waveform.js');
 
 const context = {
   window: {

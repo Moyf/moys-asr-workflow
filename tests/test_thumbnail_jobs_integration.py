@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import queue
 import shutil
 import subprocess
 import tempfile
@@ -17,7 +18,7 @@ from maw.thumbnail_jobs import ThumbnailCoordinator, ThumbnailJobManager, build_
 
 def _background_builder(media, app, database, events):
     os.environ['MAW_APP_DATA_ROOT'] = app
-    coord = ThumbnailCoordinator(Path(database))
+    events.put(('setup', 'builder entered', time.monotonic()))
     original_extract = thumbnails.extract_frames
     original_popen = subprocess.Popen
     first = True
@@ -41,6 +42,8 @@ def _background_builder(media, app, database, events):
         return original_extract(path,points,**kwargs)
 
     try:
+        coord = ThumbnailCoordinator(Path(database))
+        events.put(('setup', 'builder coordinator ready; entering build_base', time.monotonic()))
         with mock.patch.object(thumbnails,'extract_frames',side_effect=slow_first), mock.patch.object(subprocess,'Popen',side_effect=observe):
             result=build_base(Path(media),coordinator=coord,timeout_s=15)
         events.put(('done',result['base_complete']))
@@ -50,7 +53,7 @@ def _background_builder(media, app, database, events):
 
 def _foreground_decode(media, app, database, events, delay=False):
     os.environ['MAW_APP_DATA_ROOT']=app
-    coord=ThumbnailCoordinator(Path(database))
+    events.put(('setup', 'foreground entered', time.monotonic()))
     original=thumbnails.extract_frames
     def decode(*args,**kwargs):
         events.put(('decode',os.getpid()))
@@ -58,6 +61,8 @@ def _foreground_decode(media, app, database, events, delay=False):
             time.sleep(.4)
         return original(*args,**kwargs)
     try:
+        coord=ThumbnailCoordinator(Path(database))
+        events.put(('setup', 'foreground coordinator ready; entering coordinated_extract', time.monotonic()))
         with mock.patch.object(thumbnails,'extract_frames',side_effect=decode):
             deadline=time.monotonic()+10
             while time.monotonic()<deadline:
@@ -80,6 +85,8 @@ class ThumbnailJobsIntegrationTests(unittest.TestCase):
         self.media=self.root/'video.mp4'
         self.app=self.root/'app'
         self.database=self.root/'jobs.sqlite3'
+        self.children=[]
+        self.worker_stages=[]
         subprocess.run(['ffmpeg','-nostdin','-v','error','-f','lavfi','-i','testsrc2=size=320x180:rate=2:duration=6',
                         '-c:v','libx264','-threads','2','-y',str(self.media)],check=True,capture_output=True,timeout=10)
         self.coord=ThumbnailCoordinator(self.database)
@@ -90,6 +97,7 @@ class ThumbnailJobsIntegrationTests(unittest.TestCase):
     def process(self,target,*args):
         process=multiprocessing.Process(target=target,args=args)
         process.start()
+        self.children.append(process)
         def reap():
             process.join(2)
             if process.is_alive():
@@ -98,20 +106,35 @@ class ThumbnailJobsIntegrationTests(unittest.TestCase):
         self.addCleanup(reap)
         return process
 
+    def event(self, events, timeout):
+        # Setup notifications are diagnostics, not a new timeout budget. In
+        # particular 'started' still means a real FFmpeg decode, not spawn entry.
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                event = events.get(timeout=max(0, deadline-time.monotonic()))
+            except queue.Empty:
+                processes = [(child.pid, child.exitcode, child.is_alive()) for child in self.children]
+                self.fail(f"worker event timed out after {timeout}s; "
+                          f"stages={self.worker_stages}; processes(pid,exitcode,alive)={processes}")
+            if event[0] != 'setup':
+                return event
+            self.worker_stages.append(event[1:])
+
     def test_real_ffmpeg_cross_process_playback_stop_and_launcher_resume(self):
         events=multiprocessing.Queue()
         process=self.process(_background_builder,str(self.media),str(self.app),str(self.database),events)
-        name,pid=events.get(timeout=8)
+        name,pid=self.event(events,8)
         self.assertEqual(name,'started',pid)
         begin=time.monotonic()
         self.coord.lease('player',source_key(self.media),playing=True)
-        name,stopped=events.get(timeout=3)
+        name,stopped=self.event(events,3)
         self.assertEqual(name,'stopped',stopped)
         self.assertLess(stopped-begin,1)
         time.sleep(.25)
         self.assertTrue(process.is_alive(),'Launcher task must wait rather than end on playback')
         self.coord.release('player')
-        name,complete=events.get(timeout=10)
+        name,complete=self.event(events,10)
         self.assertEqual(name,'done',complete)
         self.assertTrue(complete)
         process.join(3)
@@ -122,9 +145,9 @@ class ThumbnailJobsIntegrationTests(unittest.TestCase):
     def test_launcher_editor_flight_dedup_with_two_real_processes(self):
         events=multiprocessing.Queue()
         first=self.process(_foreground_decode,str(self.media),str(self.app),str(self.database),events,True)
-        self.assertEqual(events.get(timeout=8)[0],'decode')
+        self.assertEqual(self.event(events,8)[0],'decode')
         second=self.process(_foreground_decode,str(self.media),str(self.app),str(self.database),events,False)
-        results=[events.get(timeout=10),events.get(timeout=10)]
+        results=[self.event(events,10),self.event(events,10)]
         self.assertEqual([row[0] for row in results],['done','done'],results)
         first.join(3)
         second.join(3)

@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import subprocess
+from decimal import Decimal, localcontext
 from pathlib import Path
 
 from PIL import Image, ImageChops
@@ -37,7 +38,11 @@ def translate_ass(source: str, padding: int) -> str:
                 values = match[2].split(',')
                 count = 4 if match[1] == 'move' else 2
                 for index in range(count):
-                    values[index] = f'{float(values[index]) + padding:g}'
+                    # Do not round authored fractional coordinates to :g's six
+                    # significant digits (nor touch move's clock parameters).
+                    with localcontext() as context:
+                        context.prec = max(28, len(values[index]) + len(str(padding)) + 2)
+                        values[index] = format(Decimal(values[index]) + padding, 'f')
                 return '\\' + match[1] + '(' + ','.join(values) + ')'
 
             fields[9] = re.sub(r'\\(pos|move|org)\(([^)]+)\)', shift_position, fields[9])
@@ -85,9 +90,10 @@ def render_series(path: Path, stem: Path, width: int, height: int,
 
 
 def foreground(image: Image.Image) -> Image.Image:
-    return ImageChops.difference(image, Image.new('RGB', image.size)).convert('L').point(
-        lambda value: 255 if value > 8 else 0
-    )
+    # Any nonzero channel is ink: luminance conversion would erase blue=1.
+    red, green, blue = image.convert('RGB').split()
+    return ImageChops.lighter(ImageChops.lighter(red, green), blue).point(
+        lambda value: 255 if value else 0)
 
 
 def count(mask: Image.Image) -> int:
@@ -161,15 +167,18 @@ def _prepare(path: Path, stem: Path, padding: int) -> tuple:
 def _measure(native, guard, width, height, padding, fonts, guard_fonts) -> dict:
     full_mask = foreground(guard)
     inside = full_mask.crop((padding, padding, padding + width, padding + height))
+    crop = guard.crop((padding, padding, padding + width, padding + height))
     return {
         'width': width, 'height': height, 'tracks': boxes(guard, padding),
         'nativeTracks': boxes(native), 'outside': count(full_mask) - count(inside),
         'guardBox': full_mask.getbbox(),
+        # Canvas size can change libass's subpixel transform quantization.
+        # Differences must be strictly interior, never evidence of edge loss.
+        'guardDifferenceBox': foreground(ImageChops.difference(native, crop)).getbbox(),
         'fullPainted': count(foreground(native)), 'paintColours': paint_colours(native),
         'guardSize': list(guard.size), 'fontSelections': fonts, 'guardFontSelections': guard_fonts,
         'sha256': hashlib.sha256(native.tobytes()).hexdigest(),
-        'guardCropSha256': hashlib.sha256(guard.crop(
-            (padding, padding, padding + width, padding + height)).tobytes()).hexdigest(),
+        'guardCropSha256': hashlib.sha256(crop.tobytes()).hexdigest(),
     }
 
 
