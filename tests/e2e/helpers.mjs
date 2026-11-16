@@ -252,26 +252,35 @@ export async function openSettingsPage(page, key) {
 
 export async function dragFloatingPanelAwayFrom(page, panelSelector, dragHandleSelector, targetSelector) {
   const panel = page.locator(panelSelector);
-  const panelBefore = await panel.boundingBox();
-  const handle = await page.locator(dragHandleSelector).boundingBox();
-  const target = await page.locator(targetSelector).boundingBox();
-  const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-  if (!panelBefore || !handle || !target) throw new Error('Floating panel drag fixture is not visible');
-
+  // Opening a floating panel schedules its position on the next animation
+  // frame. Recompute the handle point while waiting: a point captured before
+  // that reposition can remain outside the header forever.
+  const ready = await page.waitForFunction(async ({ panelSelector, dragHandleSelector, targetSelector }) => {
+    const panel = document.querySelector(panelSelector);
+    const handle = document.querySelector(dragHandleSelector);
+    const target = document.querySelector(targetSelector);
+    if (!panel || !handle || !target) return false;
+    const before = handle.getBoundingClientRect();
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    const rect = handle.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0
+        || ['x', 'y', 'width', 'height'].some(key => Math.abs(before[key] - rect[key]) > 0.1)) return false;
+    const offsetX = Math.min(40, Math.max(12, rect.width / 2));
+    const offsetY = Math.max(8, Math.min(15, rect.height / 2));
+    const start = { x: rect.x + offsetX, y: rect.y + offsetY };
+    const hit = document.elementFromPoint(start.x, start.y);
+    if (!hit || !(hit === handle || handle.contains(hit))) return false;
+    return {
+      panelBefore: panel.getBoundingClientRect().toJSON(),
+      handle: rect.toJSON(), target: target.getBoundingClientRect().toJSON(),
+      viewport: { width: innerWidth, height: innerHeight }, offsetX, offsetY, start,
+    };
+  }, { panelSelector, dragHandleSelector, targetSelector }, { timeout: 10_000 });
+  const { panelBefore, handle, target, viewport, offsetX, offsetY, start } = await ready.jsonValue();
+  await ready.dispose();
   const targetOnLeft = target.x + target.width / 2 < viewport.width / 2;
   const left = targetOnLeft ? viewport.width - panelBefore.width - 8 : 8;
   const top = Math.max(8, Math.min(24, viewport.height - panelBefore.height - 8));
-  const offsetX = Math.min(40, Math.max(12, handle.width / 2));
-  const offsetY = Math.max(8, Math.min(15, handle.height / 2));
-  const start = { x: handle.x + offsetX, y: handle.y + offsetY };
-  // Import/other actions may leave a transient hint card above the settings
-  // header. Wait until the real drag handle owns this screen point so the
-  // mouse gesture exercises normal pointer capture instead of hitting a toast.
-  await page.waitForFunction(({ x, y, selector }) => {
-    const dragHandle = document.querySelector(selector);
-    const hit = document.elementFromPoint(x, y);
-    return Boolean(dragHandle && hit && (hit === dragHandle || dragHandle.contains(hit)));
-  }, { x: start.x, y: start.y, selector: dragHandleSelector }, { timeout: 10_000 });
   const hit = await page.evaluate(({ x, y }) => {
     const element = document.elementFromPoint(x, y);
     return { tag: element?.tagName, id: element?.id, className: element?.className };

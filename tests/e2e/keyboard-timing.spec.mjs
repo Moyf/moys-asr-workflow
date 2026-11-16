@@ -63,6 +63,7 @@ async function selectedCueIndex(page) {
 
 async function stableVisibleBoundingBox(page, locator) {
   let box = null;
+  let previousBox = null;
   await expect.poll(async () => {
     try {
       await locator.scrollIntoViewIfNeeded();
@@ -71,6 +72,10 @@ async function stableVisibleBoundingBox(page, locator) {
       box = null;
     }
     if (!box || box.width <= 0 || box.height <= 0) return false;
+    const stable = previousBox && ['x', 'y', 'width', 'height']
+      .every(key => Math.abs(previousBox[key] - box[key]) < 0.1);
+    previousBox = box;
+    if (!stable) return false;
     return page.evaluate(({ x, y }) => {
       const hit = document.elementFromPoint(x, y);
       return Boolean(hit?.closest('.waveform-cue-block'));
