@@ -74,6 +74,8 @@ e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解�
 
 既有 Editor job 运行完整 Node、Python 装配及专项契约、选定浏览器子集，不是完整 Python/e2e；Windows preview 仍运行完整 Python、同次 cache 校验、64 / 4 浏览器专项及打包 smoke。Debug tooling 在 Windows / Linux 验证标准库调试工具，不能冒充产品全量验证。新增 `test-matrix.yml` 以追加 runner 成本补完整覆盖，具体范围见[完整补充矩阵](DEVELOPMENT.md#完整补充矩阵与-required-语义)；UI 的拖动、听感和布局仍需人工核验。
 
+Windows 矩阵安装 FFmpeg 时使用 `scripts/ci_install_ffmpeg.py`：仅对安装日志中的临时网络/HTTP 错误最多尝试 3 次，间隔 5 秒；每次由通用运行器限时 180 秒并保留安装日志。超时、进程清理失败或永久错误直接失败，不启动下一次安装。Chocolatey 返回 0 仍须同时找到真实 `ffmpeg.exe` / `ffprobe.exe`，后续 libass、编码器和媒体门禁不变。安装失败属于环境准备失败，不表示浏览器断言失败。
+
 ## 中断恢复与结果记录
 
 任务记录只维护：问题、状态、修改文件、验证命令、对应 HEAD/工作区变化、结果路径、未验证边界。恢复先读这个表与 diff 文件清单，再读所需源码和某一次 result.json。不要重新调入完整历史会话或整个测试日志；引用旧会话时先取少量回合与所需字段。
