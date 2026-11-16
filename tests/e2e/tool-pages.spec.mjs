@@ -169,13 +169,16 @@ test('generated checklist is standalone, preserves legacy progress and expands n
 
 test('changelog editor preserves edit/preview behavior without writing repository files',async({page},testInfo)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const fixture='## [未发布]\n\n- **测试条目** ： 原始文本。\n';
   await page.goto(fileUrl('tools/changelog-editor/index.html'));
-  await page.evaluate(async()=>{
-    await loadClText('## [未发布]\n\n### 修复\n\n- **示例** ： 原有条目\n','测试载入');
-  });
+  await page.evaluate(async text=>{await loadClText(text,'测试载入');},fixture);
   await expect(page.locator('#split-wrap')).toBeVisible();
   const input=page.locator('#cards textarea').first();
-  await input.fill((await input.inputValue())+' 测试');
+  await expect(input).toHaveValue('- **测试条目** ： 原始文本。');
+  await expect(page.locator('#split-wrap .split-preview li')).toHaveText('测试条目 ： 原始文本。');
+  await input.fill('- **测试条目** ： 原始文本。 测试');
+  await expect(input).toHaveValue('- **测试条目** ： 原始文本。 测试');
+  await expect(page.locator('#split-wrap .split-preview li')).toHaveText('测试条目 ： 原始文本。 测试');
   await expect(page.locator('#dirty-dot')).toBeVisible();
   await page.evaluate(()=>{
     document.getElementById('btn-finish').focus();
@@ -201,14 +204,34 @@ test('changelog editor preserves edit/preview behavior without writing repositor
   expect(errors).toEqual([]);
 });
 
-test('changelog editor can add the first entry to an empty unreleased section',async({page})=>{
+test('changelog editor keeps empty unreleased selected and supports adding its first entry',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const fixture='## [未发布]\n\n## [1.0.0] - 2026-01-01\n\n- **历史条目** ： 已发布内容。\n';
   await page.goto(fileUrl('tools/changelog-editor/index.html'));
-  await page.evaluate(async()=>{await loadClText('## [未发布]\n\n## [1.0.0] - 2024-01-01\n','空小节测试');});
+  await page.evaluate(async text=>{await loadClText(text,'空未发布夹具');},fixture);
+  await expect(page.locator('#version-list .version-item')).toHaveCount(2);
+  await expect(page.locator('#version-list .version-item.active .name')).toHaveText('未发布');
+  await expect(page.locator('#vh-name')).toHaveText('未发布');
+  await expect(page.locator('#split-wrap')).toBeVisible();
+  await expect(page.locator('#cards > .hint')).toHaveText('此版本暂无内容。用下方按钮添加第一个条目。');
+  await expect(page.locator('#cards > .hint')).toBeVisible();
+  await expect(page.locator('#cards .card')).toHaveCount(0);
   await expect(page.locator('#cards textarea')).toHaveCount(0);
-  await expect(page.locator('#cards')).toContainText('此版本暂无内容');
+  await expect(page.locator('#dirty-dot')).toBeHidden();
+  await expect(page.locator('#split-wrap .split-preview h2')).toHaveText('未发布');
+  await expect(page.locator('#split-wrap .split-preview li')).toHaveCount(0);
   await page.locator('#add-entry').click();
-  await expect(page.locator('#cards textarea')).toHaveCount(1);
+  await expect(page.locator('#cards .card')).toHaveCount(1);
+  await expect(page.locator('#cards > .hint')).toHaveCount(0);
   await expect(page.locator('#dirty-dot')).toBeVisible();
+  const input=page.locator('#cards .kind-entry textarea');
+  await input.fill('- **首个未发布条目** ： 新增内容已同步。');
+  await expect(input).toHaveValue('- **首个未发布条目** ： 新增内容已同步。');
+  await expect(page.locator('#split-wrap .split-preview li')).toHaveText('首个未发布条目 ： 新增内容已同步。');
+  await expect(page.locator('#split-wrap .split-preview li strong')).toHaveText('首个未发布条目');
+  await expect(page.locator('#dirty-dot')).toBeVisible();
+  await expect(page.locator('#version-list .version-item.active .name')).toHaveText('未发布');
+  expect(errors).toEqual([]);
 });
 
 test('narrow checklist exposes storage warnings outside its collapsed actions',async({page},testInfo)=>{

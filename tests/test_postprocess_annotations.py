@@ -23,7 +23,8 @@ def source_project():
 def editor_save(project):
     """Pass a generated project through the real editor marker save path."""
     script = """
-        import { loadEditorModule } from './tests/helpers/editor-module-loader.mjs';
+        import { loadEditorModule, prepareEditorModule } from './tests/helpers/editor-module-loader.mjs';
+        await prepareEditorModule('shared/editor-utils.js');
         let input = '';
         for await (const chunk of process.stdin) input += chunk;
         const project = JSON.parse(input);
