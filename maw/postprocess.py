@@ -1255,6 +1255,7 @@ def _apply_llm_groups_with_warnings(
     result = copy.deepcopy(project)
     result["segments"] = new_segments
     warnings: list[str] = []
+    _release_changed_main_bindings(source_segments, result, warnings)
     if regrouped:
         warnings.append("重分句/合并已清理受影响字幕的逐词时间和贴纸/颜色引用；未受影响的字幕尽量保留。")
     return normalize_project(result), tuple(warnings)
@@ -1397,9 +1398,46 @@ def _apply_llm_atom_groups_with_warnings(
     result = copy.deepcopy(project)
     result["segments"] = output_segments
     warnings: list[str] = []
+    _release_changed_main_bindings(source_segments, result, warnings)
     if regrouped:
         warnings.append("已按字词时间码重新断句，并保留逐词时间对齐。")
     return normalize_project(result), tuple(warnings)
+
+
+def _release_changed_main_bindings(
+    source_segments: list[JsonDict], result: JsonDict, warnings: list[str],
+) -> None:
+    """Keep extension cues intact when regrouping invalidates one-to-one links."""
+    multi = result.get("multi_subtitle")
+    if not isinstance(multi, dict) or not isinstance(multi.get("bindings"), list):
+        return
+    updated_ranges = {
+        segment.get("id"): (segment.get("start"), segment.get("end"))
+        for segment in result["segments"] if isinstance(segment, dict)
+    }
+    changed_ids = {
+        segment["id"] for segment in source_segments
+        if isinstance(segment.get("id"), str)
+        and updated_ranges.get(segment["id"]) != (segment.get("start"), segment.get("end"))
+    }
+    bindings = multi["bindings"]
+    retained: list[JsonValue] = []
+    for binding in bindings:
+        main_ids = binding.get("main_segment_ids") if isinstance(binding, dict) else None
+        # Leave malformed or already-dangling links for strict validation.
+        if (isinstance(main_ids, list) and len(main_ids) == 1
+                and isinstance(main_ids[0], str) and main_ids[0] in changed_ids):
+            continue
+        retained.append(binding)
+    removed = len(bindings) - len(retained)
+    if removed:
+        # Do not turn pre-existing corrupt links into a successful regroup.
+        normalize_project({"segments": source_segments, "multi_subtitle": multi})
+        multi["bindings"] = retained
+        warnings.append(
+            f"主字幕合并或拆分后已解除 {removed} 组受影响的主副字幕绑定；"
+            "副字幕文字和时间已保留，未受影响的绑定保持不变。"
+        )
 
 
 def _build_segments(
