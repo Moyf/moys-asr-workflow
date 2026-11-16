@@ -365,6 +365,7 @@ test('buildAssPayload rewrites Style Fontname through the alias table and leaves
 });
 
 test('translates the ASS style manager labels and dynamic summaries', () => {
+  assert.equal(i18n.translateText('尚未与服务器同步；请检查当前样式并重试保存。', 'en'), 'Not synced with the server yet; check the current styles and try saving again.');
   assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
   assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');
   assert.equal(i18n.translateText('\\fade', 'en'), '\\fade');

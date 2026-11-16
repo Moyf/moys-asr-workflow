@@ -17,3 +17,21 @@
 2.0 兼容检查：双方当前共享库结构的普通样式、方案、动画与槽位可相互归一化；上游 2.0 目前仍将 65 样式截为 64，需将本次上限修复随 main 同步后再验收满额库。轨道样式草案未作为已合并能力。
 
 未验证：两台实际机器之间的字体安装、授权及渲染差异；Linux / macOS 实际文件锁；远端 CI 与维护者人工验收。
+
+
+## 2026-11-16：当前 main 同步与漏译复核
+
+远端审阅基线 `a7bbd747`；同步 `main@9e56e601` 的本地合并提交为 `cac61b7d`。CHANGELOG 和日志索引使用仓库 union 策略保留双方记录，并整理空行与日期顺序；服务端缩略图连接处理、隐藏副轨布局和异步测试装载保持 main 当前行为。相对 main 的改动仍为样式库迁移范围，未整合任何 2.0 破坏性契约。
+
+独立复核发现 1 项 minor：英文界面中，尚未同步及同步失败的路径提示仍使用中文，新提示缺少翻译映射。已替换过期映射；现有 Node 翻译用例和浏览器同步失败场景增加断言。无未处置 blocker / major。
+
+| 验证 | 实际结果 | 本地证据（相对仓库根） |
+| --- | --- | --- |
+| 修复前 i18n 断言 | 1 项失败；实际中文、预期英文，与 finding 一致 | `.artifacts/checks/20261116T084222Z-34ad1d3b/result.json` |
+| 样式迁移及编辑器工具 Node | 374/374 通过，0 skip | `.artifacts/checks/20261116T084251Z-e1fa57d4/result.json` |
+| 样式库、API 与编辑器资源 Python | 49/49 通过 | `.artifacts/checks/20261116T084120Z-eec2bffa/result.json` |
+| Chromium 样式库迁移专项 | 8/8 通过，包含真实同步失败后的英文路径提示 | `.artifacts/checks/20261116T084314Z-e805fa43/result.json` |
+| 两套 bundle 构建、编辑器新鲜度、typecheck | 均 exit 0 | `.artifacts/checks/20261116T084248Z-2d2cacb2/result.json`、`.artifacts/checks/20261116T084327Z-4bd990a5/result.json`、`.artifacts/checks/20261116T084330Z-9f01b105/result.json` |
+| 个人路径与 diff | 通过；本地补修暂存后再次扫描 | `.artifacts/checks/20261116T084334Z-4b5b02f4/result.json` |
+
+环境：Windows、Node 26.13.1、现有 Python 3.11.15 只读环境；未修改共享依赖。仅运行所需的样式库/API专项，不声称 Python 全量、跨平台文件锁、真实双机字体或桌面人工验收通过；未生成仓库便携页。前端内联副本仍待发布前统一重生成。

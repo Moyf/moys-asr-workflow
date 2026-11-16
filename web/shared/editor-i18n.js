@@ -1000,7 +1000,7 @@
     '已与用户级配置同步': 'Synced with user-level config', '仅保存在当前浏览器（便携模式）': 'Saved only in this browser (portable mode)',
     '使用本地副本，尚未同步': 'Using a local copy; not synced yet', '本地已保存，服务器同步失败：未知错误': 'Saved locally; server sync failed: unknown error',
     '本地已保存，服务器同步失败：HTTP 403（页面已失效，请刷新网页后重试）': 'Saved locally; server sync failed: HTTP 403 (the page is stale; refresh it and try again)',
-    '当前使用本地副本；服务器恢复后可再次点击保存同步。': 'Using a local copy; click Save again after the server is available.',
+    '尚未与服务器同步；请检查当前样式并重试保存。': 'Not synced with the server yet; check the current styles and try saving again.',
     '使用本地副本，服务器同步失败': 'Using a local copy; server sync failed',
     '已开启 ASS 字幕模式预览': 'ASS subtitle preview enabled', '已恢复原有字幕预览': 'Original subtitle preview restored',
     '已保存到本机用户级配置；Launcher 与 Editor 共享。': 'Saved to local user-level config; shared by Launcher and Editor.',

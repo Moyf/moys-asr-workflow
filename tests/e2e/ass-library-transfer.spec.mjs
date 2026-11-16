@@ -100,6 +100,7 @@ test('shows server backup and sync failures in English', async ({ page }) => {
   await page.locator('.ass-style-more-actions > summary').click();
   await page.locator('#ass-style-reload-library').click();
   await expect(page.locator('#ass-style-library-status')).toHaveText('Reload failed; keeping the current styles');
+  await expect(page.locator('#ass-style-library-path-hint')).toHaveText('Not synced with the server yet; check the current styles and try saving again.');
 });
 
 async function openLibrary(page) {
