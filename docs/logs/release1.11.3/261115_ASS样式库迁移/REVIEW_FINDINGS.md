@@ -35,3 +35,10 @@
 | 个人路径与 diff | 通过；本地补修暂存后再次扫描 | `.artifacts/checks/20261116T084334Z-4b5b02f4/result.json` |
 
 环境：Windows、Node 26.13.1、现有 Python 3.11.15 只读环境；未修改共享依赖。仅运行所需的样式库/API专项，不声称 Python 全量、跨平台文件锁、真实双机字体或桌面人工验收通过；未生成仓库便携页。前端内联副本仍待发布前统一重生成。
+
+
+### 新完整矩阵：旧 ASS 断言修正
+
+首个新 head `a9cba363` 的 Editor 主门禁与 Ruff 通过，但新 Complete test matrix `43834417312` 中，Windows/Ubuntu 的 ASS 403 场景仍期待旧提示“本地已保存，服务器同步失败”。本功能的失败写入不再声称保存成功，实际显示“保存失败”，并保留 HTTP 403 与刷新页面指引。已更新该一条完整预期，没有削弱错误码或恢复指引断言。真实浏览器单项 1/1 通过：`.artifacts/checks/20261116T090034Z-e35f11b3/result.json`；原 CI 的双平台红灯是反向证据。
+
+同轮 Ubuntu 的独立 server-align gap 拖动用例在读取 handle 的 boundingBox 时返回 null。该页面、用例、helper 与矩阵和 main 没有差异；main 的同用例通过，但其同 shard 的其他用例失败，不能当作相同基线故障。本机原样单项 1/1 通过（`.artifacts/checks/20261116T090106Z-d8a9cc2d/result.json`），未改 alignment 代码，不称已修或已定因为 flaky。保留失败 cell 的报告/日志；后续 CI 若再现，需 Linux 原并发下带 trace 分析。完整矩阵最终状态以最新 head 为准，局部通过不代表全组通过。
