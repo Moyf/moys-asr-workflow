@@ -104,6 +104,24 @@ expected failure、unexpected success、退出码及完整日志位置；并行�
 
 `ci_matrix.py` 的 CLI consumer 同时检查实际 `GITHUB_EVENT_NAME`：明确非 PR 事件拒绝非 full 计划；本地未设置事件时仍可执行纯函数 / 夹具验证。Python 单元在回执前回读 `python.json` 与 `media-required.json`，校验非空唯一 ID、计数和退出码，保留 unittest fixture / subtest skip 语义；required 不信任序列化的 `platform_not_applicable`，而重新调用精确平台策略。两份报告的归组集合必须一致，回执附校验计数和报告 SHA-256。缺 / 坏报告、伪造成功退出或不支持的 required skip 都不产生成功回执；输出目录拒绝复用旧报告，重试请使用新的 `--root` 以保留旧证据。
 
+浏览器分片的整组执行预算为 900 秒；发现列表及 Python / Node 命令仍为 600 秒。单项测试 60 秒、操作 10 秒、零重试不变。浏览器 job 的 25 分钟上限另容纳环境准备与上传，不表示放宽单测。`line,json` 双 reporter 在 `output.log` 留下逐项开始进度，同时保留最终 JSON 覆盖校验；整组超时仍失败，未写完 JSON 时不会产生成功回执。
+
 浏览器层在同 job 保存 `browser-list.json`、`browser-results.json`、`browser-validated.json` 和成功凭据 `receipt.json`。`scripts/browser_results.py <list.json> <results.json> --current 1 --total 4` 可独立复核：比较文件 + 完整 describe / test 标题 + project 集合、分片坐标和逐案结果，不以 `stats.expected > 0` 代替覆盖检查。失败执行即使没生成成功凭据仍上传已有 JSON / traces / checks；缺报告不能通过聚合门禁。只有五个精确弃维护 portable case 的原始 skip 原因获准，libass / 编码器等能力缺失仍失败。计划未选中的层属于 intentional skip，与实际用例 skip 分开。
 
 完整 Python 不加 blanket `--required`：完整标准发现允许人工私有夹具、平台 guard 等 skip，并将每个原因和 expected failure 留在报告；真实 media pack 单独 `--required`，既有 required subset 保留，`allowed_platform_skip` 不扩大。Release 三平台也使用报告入口，Windows 阻断与辅助平台警告政策不变；tag 触发的新矩阵独立于 publish。完整新矩阵增加而非削减总 runner 成本，远端尚未运行；本地未跑完整浏览器集合时务必标明。
+
+### 中文 CI 检查摘要
+
+完整矩阵的 Python / Chromium 任务与 Editor 的两组浏览器任务会在 Actions **Summary**
+附加中文说明。摘要是辅助阅读层，不改变退出码、断言、required 门禁或原始日志。
+汇总门禁明确标记为上游检查的连带状态，不把它算成另一个测试故障。
+缺报告、取消、执行前失败不能当作“零失败”；仍须查看失败步骤和对应 artifact。
+
+`scripts/ci_summary.py` 从 unittest / Playwright JSON 提取失败名称、位置与有界错误摘录。
+仅 `DESCRIPTIONS` 中精确匹配的用例有人工维护的中文场景和预期；其余保留原标题，
+明确说明尚未提供中文描述。原因不从异常名猜测，始终需要排查。
+新增描述时同时核对测试契约，不能把预期写成已经发生的结果。
+第一版不解析 Node TAP、构建器或安装日志，不自动评论 PR，不改变历史失败通知。
+Python JSON 的 `failure_details` 是附加字段，串行和并行路径均保留；完整 traceback
+仍在原 `.log` 中。摘要限制报告大小、展示条数和文本长度，转义 HTML 并脱敏用户目录。
+摘要步骤即使失败，也不会掩盖原测试失败或替代矩阵校验。

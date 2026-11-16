@@ -103,6 +103,9 @@ test('dragging one gap boundary highlights only that gap', async ({ page }) => {
   await expect(gaps).toHaveCount(2);
 
   const handle = gaps.nth(0).locator('.gap-handle.right');
+  // The initial preview and recording resume can replace gap nodes. Wait for
+  // an actionable handle, not merely the number of nodes in an early render.
+  await handle.hover();
   const box = await handle.boundingBox();
   expect(box).not.toBeNull();
 

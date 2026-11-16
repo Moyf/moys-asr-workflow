@@ -124,7 +124,9 @@ async function stubSavePicker(page) {
 let tempDir;
 let server;
 
-test.beforeAll(async () => {
+// Tests can autosave edits through /api/project. A fresh browser context alone
+// does not reset the shared server's project, so isolate its files and process too.
+test.beforeEach(async () => {
   tempDir = makeTempDir('ass-export');
   const mediaPath = join(tempDir, 'synthetic.wav');
   const projectPath = join(tempDir, 'project.json');
@@ -133,9 +135,11 @@ test.beforeAll(async () => {
   server = await startServer(projectPath, mediaPath, await findFreePort());
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await server?.stop();
-  cleanupTempDir(tempDir);
+  if (tempDir) cleanupTempDir(tempDir);
+  server = undefined;
+  tempDir = undefined;
 });
 
 test('style form groups basic controls and labels background box fields consistently', async ({ page }) => {
@@ -715,6 +719,7 @@ test('shows disabled secondary export entries when bilingual mode has no second 
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
+  await expect.poll(() => page.evaluate(() => (MaweBoot.DATA.multi_subtitle?.tracks || []).length)).toBe(0);
   page.once('dialog', (dialog) => dialog.dismiss());
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   await page.locator('#subtitle-export-btn').click();

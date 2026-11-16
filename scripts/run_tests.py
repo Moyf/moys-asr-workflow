@@ -152,6 +152,14 @@ def pack_suite(pack: str, start_dir: str, pattern: str):
 
 def result_report(result, selected_ids):
     return {"selected_ids": selected_ids, "run": result.testsRun,
+            "failure_details": [{"id": test.id(), "kind": kind,
+                                 "message": compact_text(message)}
+                                for kind, entries in (("断言失败", result.failures), ("执行错误", result.errors),
+                                                      ("预期失败", result.expectedFailures))
+                                for test, message in entries]
+                               + [{"id": test.id(), "kind": "意外通过",
+                                   "message": "标记为 expectedFailure 的测试实际通过；unittest 将其视为不符合预期，门禁不通过。"}
+                                  for test in result.unexpectedSuccesses],
             "failures": len(result.failures), "errors": len(result.errors),
             "skips": [{"id": test.id(), "reason": reason,
                        "platform_not_applicable": allowed_platform_skip(test.id(), reason)}
@@ -363,6 +371,8 @@ def _run_parallel(args) -> int:
                     "file": payload["file"], "tests": 0, "errors": 1, "failures": 0,
                     "skipped": 0, "seconds": 0.0,
                     "full_text": f"worker crashed: {error!r}",
+                    "failure_details": [{"id": payload["file"], "kind": "测试工作进程异常",
+                                         "message": f"工作进程未正常返回，无法确认该文件的测试完成情况：{error!r}"}],
                     "test_output": "", "success": False,
                     "selected_ids": [], "run": 0, "skips": [],
                     "expected_failures": 0, "unexpected_successes": 0,
@@ -390,6 +400,7 @@ def _run_parallel(args) -> int:
               **{key: sum(item[key] for item in ordered) for key in
                  ("run", "failures", "errors", "expected_failures", "unexpected_successes")},
               "skips": [skip for item in ordered for skip in item["skips"]],
+              "failure_details": [detail for item in ordered for detail in item.get("failure_details", [])],
               "mode": "parallel", "workers": workers, "wall_seconds": wall,
               "files": [{key: value for key, value in item.items()
                          if key not in {"full_text", "test_output"}} for item in ordered]}
