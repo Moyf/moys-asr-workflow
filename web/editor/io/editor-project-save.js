@@ -218,7 +218,7 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
       if (!backupOnly) MaweServerSave.scheduleAutoSaveFlush();
       return false;
     }
-    waveform.endCueDrag({ type: 'pointerup', pointerId: drag.pointerId, ...drag.lastPointerPosition });
+    waveform.endCueDrag({ type: drag.changed ? 'pointerup' : 'pointercancel', pointerId: drag.pointerId, ...drag.lastPointerPosition });
     return true;
   }
 
@@ -229,6 +229,9 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     if (MaweServerSave.requiresMigrationSaveAs) {
       if (silent) return false;
       return saveProjectAsToFile();
+    }
+    if (!MaweServerSave.projectFileHandle && !MaweServerSave.serverProjectSavingEnabled()) {
+      return saveProjectToServer({ silent });
     }
     if (!prepareWaveformDragForSave(silent)) return false;
     // A pointer preview is not committed subtitle truth. Timed autosave waits;

@@ -261,7 +261,9 @@ export function initExportTimelineModule() {
       if (/^[A-Za-z]:/.test(value)) return `file:///${value.replace(/\\/g, '/')}`;
       return `file:///${value.replace(/^\/+/, '').replace(/\\/g, '/')}`;
     }
-    value = value.replace(/\\/g, '/');
+    // Native paths are not URLs yet: encode delimiters so a filename's # or ?
+    // cannot become a fragment or query, and literal % is not decoded as an escape.
+    value = encodeURI(value.replace(/\\/g, '/')).replace(/[?#]/g, char => char === '?' ? '%3F' : '%23');
     if (/^[A-Za-z]:/.test(value)) return `file:///${value}`;
     return `file:///${value.replace(/^\/+/, '')}`;
   }

@@ -416,6 +416,20 @@ test('reconcile removes a cue but preserves surviving stable color groups', () =
   assertV2RoundTrip(project);
 });
 
+test('reconcile preserves a valid short cue that does not overlap the edited range', () => {
+  const segments = [
+    { ...cue(0), start: 0, end: 2000 },
+    { ...cue(1), start: 2500, end: 2515, color_group_id: 'short' },
+  ];
+  const { project, track } = v2Fixture(segments, [{ id: 'short', value: { name: 'red' } }]);
+  const before = structuredClone(project);
+  const result = MaweMultiSubtitleCore.reconcileExtensionTrack(track, [segments[0]]);
+  assert.equal(result.removedCount, 0);
+  assert.equal(result.changed, false);
+  assert.deepEqual(project, before);
+  assertV2RoundTrip(project);
+});
+
 function boundDragFixture(segments = Array.from({ length: 6 }, (_, index) => cue(index))) {
   const main = { ...cue(1), id: 'main-001' };
   const groups = [

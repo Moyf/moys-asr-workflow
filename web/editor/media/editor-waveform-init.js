@@ -20,6 +20,9 @@ export function initMaweWaveformInit() {
     return;
   }
   MaweCoreState.waveformEditor = window.AsrWaveform.create({
+    // A failed/cancelled load intent must not invalidate edits in the project
+    // that remains installed. projectEpoch advances on actual replacement.
+    getProjectSession: () => MaweState.projectEpoch,
     wordTiming: MaweWordTiming,
     beginWordEdit: () => MaweCommands.begin('调整字词时间码', { captureView: true }),
     commitWordEdit: (command, segment) => {
@@ -84,6 +87,13 @@ export function initMaweWaveformInit() {
     getQuickEditEnterAction: (event) => MaweCueEvents.getConfiguredEnterAction(event),
     onCueQuickEditSplit: (track, index, offset, popupState) => {
       const waveform = MaweCoreState.waveformEditor;
+      const projectEpoch = MaweState.projectEpoch;
+      const loadGeneration = MaweState.projectLoadGeneration;
+      const trackTree = MaweBoot.DATA.tracks;
+      const current = () => waveform === MaweCoreState.waveformEditor
+        && projectEpoch === MaweState.projectEpoch && loadGeneration === MaweState.projectLoadGeneration
+        && trackTree === MaweBoot.DATA.tracks;
+      if (popupState.isCurrent && !popupState.isCurrent()) return false;
       const segments = track === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments
         : track === 'overlay' ? getOverlayTrack()?.segments : window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments;
       const segment = segments?.[index];
@@ -92,6 +102,7 @@ export function initMaweWaveformInit() {
         return false;
       }
       const reopen = (nextIndex) => {
+        if (!current()) return;
         if (!MaweSettings.EDITOR_SETTINGS.quickEditSplitFocusNext) {
           MaweSelection.clearSelection();
           MaweSelection.lastClickedIdx = -1;
@@ -99,6 +110,7 @@ export function initMaweWaveformInit() {
           return;
         }
         requestAnimationFrame(() => {
+          if (!current()) return;
           const next = segments?.[nextIndex];
           if (!next || !waveform) return;
           if (track === 'extension') MaweSelection.selectOnlyExtension(nextIndex);

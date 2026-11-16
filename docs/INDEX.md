@@ -174,6 +174,8 @@
 
 包含 main 同步、Launcher 改版、Electron 与 Installer 迁移，以及抢先体验渠道的安全交付边界。计划不代表已实施或已授权发布。
 
+当前P1已随PR373合入`2.0dev@3b431e0b`并收口（合入范围），P2待安排、未启动；[收口证据与未验边界](logs/release1.10.0-beta.2/261112_MAW2整合/P1整合记录.md#p1-closeout)。P2接手基线和PR235来源约束见总计划8.0。
+
 <a name="plans-speaker-core"></a>
 ### 说话人核心与后续依赖
 

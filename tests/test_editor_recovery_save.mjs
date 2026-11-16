@@ -73,7 +73,7 @@ for (const entry of ['current', 'server', 'handle', 'save-as', 'migration']) {
   test(`${entry} finishes a held waveform drag before flushing`, async () => {
     const {context, calls} = fixture({failure: null});
     const order = [];
-    const drag = {pointerId: 7, lastPointerPosition: {clientX: 120, clientY: 45}};
+    const drag = {pointerId: 7, changed: true, lastPointerPosition: {clientX: 120, clientY: 45}};
     context.MaweCoreState.waveformEditor = {drag, endCueDrag(event) {
       order.push('end');
       assert.equal(event.type, 'pointerup');
@@ -95,6 +95,27 @@ for (const entry of ['current', 'server', 'handle', 'save-as', 'migration']) {
     if (entry === 'migration' || entry === 'save-as') assert.equal(calls.downloaded.length, 1);
   });
 }
+
+test('an unchanged waveform gesture is cancelled without triggering a click', async () => {
+  const {context} = fixture({failure: null});
+  let eventType;
+  context.MaweCoreState.waveformEditor = {drag: {pointerId: 7, changed: false}, endCueDrag(event) {
+    eventType = event.type;
+    this.drag = null;
+  }};
+  assert.equal(await context.MaweProjectSave.saveCurrentProject(), true);
+  assert.equal(eventType, 'pointercancel');
+});
+
+test('saving without a destination leaves the held waveform gesture alone', async () => {
+  const {context, calls} = fixture({failure: null});
+  context.MaweServerSave.serverProjectSavingEnabled = () => false;
+  context.MaweCoreState.waveformEditor = {drag: {pointerId: 7, changed: true}, endCueDrag() {
+    assert.fail('drag must remain active when there is no save destination');
+  }};
+  assert.equal(await context.MaweProjectSave.saveCurrentProject(), false);
+  assert.deepEqual(calls.posted, []);
+});
 
 test('a migration or busy save does not finish or reschedule a held waveform drag', async () => {
   for (const condition of ['migration', 'save', 'checkpoint']) {

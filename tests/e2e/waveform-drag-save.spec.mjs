@@ -127,3 +127,65 @@ for (const saveAs of [false, true]) {
     await expect.poll(() => readTimings(page)).toEqual(original);
   });
 }
+
+for (const gesture of ['alt cue', 'shared boundary']) {
+  test(`explicit save cancels unchanged ${gesture} without clicking`, async ({ page }) => {
+    await openProject(page);
+    await page.evaluate(() => {
+      MaweSettings.updateEditorSettings({ autoSaveProject: false, clickBehavior: 'select-and-play' });
+      window.__heldSave = { writes: 0, content: '' };
+      MaweServerSave.projectFileHandle = { name: 'saved.mosp', async createWritable() {
+        return { async write(blob) { window.__heldSave.writes++; window.__heldSave.content = await blob.text(); }, async close() {} };
+      } };
+    });
+    const target = gesture === 'alt cue'
+      ? page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first()
+      : page.locator('.waveform-cue-boundary[data-track="main"][data-left-idx="0"]').first();
+    const box = await target.boundingBox();
+    expect(box).not.toBeNull();
+    const historyBefore = await page.evaluate(() => MaweHistory.editorHistory.undoLength());
+    if (gesture === 'alt cue') await page.keyboard.down('Alt');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    if (gesture === 'alt cue') await page.keyboard.up('Alt');
+    await expect(page.locator('#waveform-pane')).toHaveClass(/cue-drag-active/);
+    const selection = await page.evaluate(() => [...MaweState.selection.indices('main')].sort());
+    expect(await page.locator('#player').evaluate(player => player.paused)).toBe(true);
+    await page.evaluate(() => MaweProjectSave.saveCurrentProject());
+    expect(await page.locator('#player').evaluate(player => player.paused)).toBe(true);
+    await expect(page.locator('#waveform-pane')).not.toHaveClass(/cue-drag-active/);
+    await page.mouse.up();
+    expect(await page.locator('#player').evaluate(player => player.paused)).toBe(true);
+    expect(await page.evaluate(() => [...MaweState.selection.indices('main')].sort())).toEqual(selection);
+    expect(await page.evaluate(() => Boolean(AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].disabled))).toBe(false);
+    expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(historyBefore);
+    expect(await page.evaluate(() => ({ writes: window.__heldSave.writes, disabled: Boolean(AsrEditorUtils.getMainTrack(JSON.parse(window.__heldSave.content)).segments[0].disabled) })))
+      .toEqual({ writes: 1, disabled: false });
+  });
+}
+
+test('quick-edit text and a held boundary both survive save and undo separately', async ({ page }) => {
+  await openProject(page);
+  const historyBefore = await page.evaluate(() => MaweHistory.editorHistory.undoLength());
+  const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="2"]').first();
+  await block.dblclick();
+  const input = page.locator('.waveform-cue-quick-edit textarea');
+  await expect(input).toHaveValue('Third');
+  await input.fill('Quick edit retained');
+  await holdBoundary(page);
+  await expect(page.locator('.waveform-cue-quick-edit')).toHaveCount(0);
+  const saved = page.waitForResponse(response => response.url().endsWith('/api/project')
+    && response.request().method() === 'POST');
+  await page.keyboard.press('Control+s');
+  expect((await saved).ok()).toBe(true);
+  await page.mouse.up();
+  const project = JSON.parse(readFileSync(projectPath, 'utf8'));
+  expect(timings(project)).toEqual(expected);
+  expect(project.tracks.find(track => track.role === 'main').segments[2].text).toBe('Quick edit retained');
+  expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(historyBefore + 2);
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => readTimings(page)).toEqual(original);
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[2].text)).toBe('Quick edit retained');
+  await page.keyboard.press('Control+z');
+  expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[2].text)).toBe('Third');
+});

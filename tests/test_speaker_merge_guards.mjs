@@ -335,3 +335,61 @@ test('same-name same-color identities remain distinct for linked merges with ind
     } finally { baseUtils.setBindingIndexEnabled(true); }
   }
 });
+
+for (const automatic of [false, true]) {
+  test(`${automatic ? 'automatic' : 'selected'} main merge preserves overlapping secondary owned by an unselected main cue`, () => {
+    const main = [cue('m0', 'a', 0, 1000), cue('m1', 'a', 1000, 2000), cue('m2', 'b', 2000, 3000)];
+    const secondary = [cue('s0', 'a', 0, 1000), cue('s1', 'a', 1000, 1500), cue('s2', 'b', 1500, 3000)];
+    const bindings = main.map((segment, i) => ({ id: `binding-${i}`,
+      source: { track_id: 'main', segment_id: segment.id },
+      target: { track_id: 'secondary', segment_id: secondary[i].id },
+      start_offset_ms: secondary[i].start - segment.start,
+      end_offset_ms: secondary[i].end - segment.end, vendor: { keep: i } }));
+    const f = fixture({ main, secondary, bindings });
+    f.data.speakers = ['a', 'b'].map(id => ({ id, name: id, color: '#123456' }));
+    assert.equal(baseUtils.validateTracksProject(baseUtils.snapshotProjectContent(f.data)).ok, true);
+    f.context.MaweMultiSubtitleCore.removeBindingsForSegmentIds = (mainIds, secondaryIds) => {
+      f.data.bindings = f.data.bindings.filter(binding => !mainIds.includes(binding.source.segment_id)
+        && !secondaryIds.includes(binding.target.segment_id));
+    };
+    const untouched = plain({ main: main[2], secondary: secondary[2], binding: bindings[2] });
+    const before = plain(f.data);
+    useRealTransactions(f);
+    if (automatic) {
+      f.utils.planAutoMerge = () => ({ groups: [[0, 1]], snaps: [] });
+      assert.equal(f.api.autoMergeSegments(), true);
+    } else f.api.mergeSegments([0, 1]);
+    const track = baseUtils.getExtensionTrack(f.data);
+    assert.deepEqual(plain(track.segments.map(segment => segment.id)), ['s0', 's2']);
+    assert.equal(track.segments[0].text, 's0s1');
+    assert.equal(track.segments[0].speaker, 'a');
+    assert.deepEqual(plain({ main: baseUtils.getMainTrack(f.data).segments[1], secondary: track.segments[1],
+      binding: f.data.bindings.find(binding => binding.id === 'binding-2') }), untouched);
+    const after = plain(f.data);
+    f.undo(); assert.deepEqual(plain(f.data), before);
+    f.redo(); assert.deepEqual(plain(f.data), after);
+    const reopened = baseUtils.importProject(baseUtils.snapshotProjectContent(f.data)).project;
+    assert.deepEqual(plain(baseUtils.getExtensionTrack(reopened).segments[1]), untouched.secondary);
+    assert.deepEqual(plain(reopened.bindings.find(binding => binding.id === 'binding-2')), untouched.binding);
+    assert.equal(f.effects.history, 1);
+  });
+}
+
+test('main merge refuses to bridge over a secondary binding owned by an unselected main cue', () => {
+  const f = fixture({ main: [cue('m0', 'a'), cue('m1', 'a', 1000), cue('m2', 'b', 2000)],
+    secondary: [cue('s0', 'a'), cue('s1', 'b', 1000), cue('s2', 'a', 2000)],
+    bindings: [0, 1, 2].map((i) => ({ id: `binding-${i}`,
+      source: { track_id: 'main', segment_id: `m${i}` },
+      target: { track_id: 'secondary', segment_id: ['s0', 's2', 's1'][i] },
+      start_offset_ms: 0, end_offset_ms: 0 })),
+  });
+  rejectsWithoutChanges(f, () => f.api.mergeSegments([0, 1]),
+    '副字幕候选之间存在未参与合并的字幕，请调整选择或绑定后再合并');
+});
+
+test('main merge does not bridge over an unbound secondary cue below the overlap threshold', () => {
+  const f = fixture({ main: [cue('m0', 'a'), cue('m1', 'a', 1000)],
+    secondary: [cue('s0', 'a', 0, 500), cue('tiny', 'b', 500, 600), cue('s1', 'a', 600, 2000)] });
+  rejectsWithoutChanges(f, () => f.api.mergeSegments([0, 1]),
+    '副字幕候选之间存在未参与合并的字幕，请调整选择或绑定后再合并');
+});

@@ -170,15 +170,46 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   await disableOnboarding(page);
   await page.goto(server.url);
   await dropFiles(page, [srtSpec('main.srt', mainSrt)]);
+  const displayStates = [];
+  const checkDisplaySection = async (stage, expectedDisplay) => {
+    // A hidden parent must not make these section-visibility assertions pass.
+    await expect(page.locator('#editor-settings-page-multi-subtitle')).toBeVisible();
+    const section = page.locator('#multi-subtitle-display-section');
+    const metrics = await section.evaluate(element => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return { display: style.display, hidden: element.hidden, width: rect.width, height: rect.height,
+        rowGap: parseFloat(style.rowGap), columnGap: parseFloat(style.columnGap),
+        above: rect.top - element.previousElementSibling.getBoundingClientRect().bottom,
+        below: element.nextElementSibling.getBoundingClientRect().top - rect.bottom };
+    });
+    displayStates.push({ stage, ...metrics });
+    writeFileSync(test.info().outputPath('secondary-display-states.json'), JSON.stringify(displayStates, null, 2));
+    expect(metrics.display, `${stage}: computed display with the bilingual settings page visible`).toBe(expectedDisplay);
+    if (expectedDisplay === 'none') {
+      await expect(section).toBeHidden();
+      expect(metrics.height).toBe(0);
+    } else {
+      await expect(section).toBeVisible();
+      expect(metrics.rowGap).toBe(8);
+      expect(metrics.columnGap).toBe(8);
+      expect(metrics.above).toBeGreaterThanOrEqual(8);
+      expect(metrics.below).toBeGreaterThanOrEqual(8);
+    }
+    await page.locator('#project-settings-panel').screenshot({ path: test.info().outputPath(`secondary-display-${stage}.png`) });
+  };
   const dialogs = [];
   page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
-  await expect(page.locator('#project-multi-subtitle-settings')).toBeHidden();
+  await openMultiSubtitleSettings(page);
+  await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
+  await expect(page.locator('#multi-subtitle-empty-hint')).toBeHidden();
+  await expect(page.locator('#multi-subtitle-swap')).toBeDisabled();
   await expect(page.locator('#multi-subtitle-toggle-label'))
     .toHaveAttribute('data-title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
-  await expect(page.locator('#project-multi-subtitle-settings')).not.toHaveAttribute('hidden');
-  await openSettingsPage(page, 'multi-subtitle');
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+  await checkDisplaySection('empty', 'none');
   await closeSettingsPanels(page);
   const trackId = await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
@@ -206,19 +237,23 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   });
   expect(importGap.above).toBeGreaterThanOrEqual(8);
   expect(importGap.horizontalGap).toBeGreaterThanOrEqual(8);
-  await page.locator('#project-multi-subtitle-settings').screenshot({ path: test.info().outputPath('empty-track-settings.png') });
+  writeFileSync(test.info().outputPath('secondary-import-spacing.json'), JSON.stringify(importGap, null, 2));
+  await page.locator('#editor-settings-page-multi-subtitle').screenshot({ path: test.info().outputPath('empty-track-settings.png') });
   const chooserPromise = page.waitForEvent('filechooser');
   await page.locator('#multi-subtitle-import').click();
   const chooser = await chooserPromise;
   await chooser.setFiles({ name: 'translation.srt', mimeType: 'text/plain', buffer: Buffer.from(extensionSrt, 'utf8') });
   await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
   await page.locator('#multi-subtitle-import-result-confirm').click();
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeHidden();
+  await checkDisplaySection('populated', 'grid');
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id)).toBe(trackId);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(3);
   await page.locator('#undo-btn').click();
-  await openSettingsPage(page, 'project-tracks');
+  await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+  await checkDisplaySection('cleared-by-undo', 'none');
   await closeSettingsPanels(page);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
 });

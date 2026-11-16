@@ -260,3 +260,46 @@ test('multi-select same-color different groups still unifies the selected main m
   assert.ok(!oldIds.includes(mergedId));
   assert.equal(f.past.length, 1);
 });
+
+for (const size of [2000, 4000, 20000]) for (const operation of ['classification', 'speaker']) {
+  test(`${operation} assignment expands ${size} bound cues with linear ID lookup work`, (t) => {
+    const f = fixture(operation === 'classification' ? 'color' : 'speaker');
+    const main = utils.getMainTrack(f.data);
+    const secondary = f.data.tracks.find(track => track.role === 'secondary');
+    main.segments = Array.from({ length: size }, (_, i) => cue(`m-${i}`, i * 1000));
+    secondary.segments = Array.from({ length: size }, (_, i) => cue(`s-${i}`, i * 1000));
+    f.data.bindings = main.segments.map((segment, i) => ({ id: `binding-${i}`,
+      source: { track_id: main.id, segment_id: segment.id },
+      target: { track_id: secondary.id, segment_id: secondary.segments[i].id },
+      start_offset_ms: 0, end_offset_ms: 0 }));
+    const indices = main.segments.map((_, i) => i);
+    if (operation === 'classification') {
+      utils.assignSubtitleGroup(f.data, main.segments, indices, 'color', { name: 'red', value: '#f07f6f' });
+    }
+    const refs = main.segments.map(segment => ({ track_id: main.id, segment_id: segment.id }));
+    let reads = 0;
+    for (const segment of [...main.segments, ...secondary.segments]) {
+      const id = segment.id;
+      Object.defineProperty(segment, 'id', { enumerable: true, configurable: true,
+        get() { reads++; return id; } });
+    }
+    // Run the real editor entry/transaction, not an isolated Map benchmark.
+    if (operation === 'classification') f.picker.assignColor([0], 'green');
+    else f.speakers.assignIdentity(refs, 'new');
+    assert.ok(reads < size * 80, `${reads} ID reads for ${size} pairs exceeds the linear budget`);
+    t.diagnostic(`${operation}: ${reads} ID reads for ${size} bound pairs`);
+    for (const segment of [...main.segments, ...secondary.segments]) {
+      if (operation === 'classification') assert.equal(utils.getSubtitleGroupValue(f.data, segment).name, 'green');
+      else assert.equal(segment.speaker, 'new');
+    }
+    assert.equal(f.past.length, 1);
+    assert.equal(f.data.bindings.length, size);
+    if (operation === 'speaker') {
+      reads = 0;
+      f.speakers.clearIdentity(refs);
+      assert.ok(reads < size * 80, `${reads} ID reads clearing ${size} pairs exceeds the linear budget`);
+      for (const segment of [...main.segments, ...secondary.segments]) assert.equal(segment.speaker ?? null, null);
+      assert.equal(f.past.length, 2);
+    }
+  });
+}
