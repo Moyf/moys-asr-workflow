@@ -356,6 +356,7 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
     await new Promise((resolve, reject) => {
       let pollTimer;
       let settled = false;
+      let lastProbeFailure = 'no completed probe';
       const output = createOutputTail();
       const finish = (callback) => {
         if (settled) return;
@@ -365,7 +366,7 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
         callback();
       };
       const timeout = setTimeout(() => {
-        finish(() => reject(new Error(`Server did not respond within ${readinessTimeoutMs}ms. Output tail: ${output.text()}`)));
+        finish(() => reject(new Error(`Server did not respond within ${readinessTimeoutMs}ms. Last probe: ${lastProbeFailure}. Output tail: ${output.text()}`)));
       }, readinessTimeoutMs);
       proc.stdout.on('data', (chunk) => output.append(chunk));
       proc.stderr.on('data', (chunk) => output.append(chunk, 'stderr'));
@@ -378,12 +379,19 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
 
       const poll = async () => {
         try {
-          const res = await serverRequest(url);
+          // Editor project fixtures already expose a lightweight startup
+          // endpoint. Avoid rendering the whole editor HTML on every probe;
+          // the phase below still requires the project to report ready.
+          const res = await serverRequest(waitForStartup ? `${url}api/startup-status` : url);
           if (res.ok) {
             finish(resolve);
             return;
           }
-        } catch (_) {}
+          lastProbeFailure = 'non-success HTTP response';
+        } catch (error) {
+          const cause = error?.cause?.code ? ` (${error.cause.code})` : '';
+          lastProbeFailure = `${error?.name || 'Error'}: ${error?.message || String(error)}${cause}`.slice(0, 400);
+        }
         if (!settled) pollTimer = setTimeout(poll, 500);
       };
       poll();

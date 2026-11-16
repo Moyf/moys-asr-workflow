@@ -70,7 +70,7 @@ async function runScenario(kind, scenario, action = 'stop') {
   // supervisor. Use the real scroll fixture's existing readiness budget;
   // synthetic failure scenarios keep their short deadlines below.
   const readinessTimeoutMs = process.platform === 'win32'
-    ? (scenario === 'ready' ? 45_000 : 10_000) : 1_500;
+    ? (['ready', 'slow-root'].includes(scenario) ? 45_000 : 10_000) : 1_500;
   const scenarioDeadlineMs = readinessTimeoutMs + 8_000;
   const child = spawn(process.execPath, [driver, kind, action, String(readinessTimeoutMs)], { cwd: root, env: {
     ...process.env, MAW_E2E_PYTHON: scenario === 'missing-command' ? join(root, 'missing-python')
@@ -101,13 +101,18 @@ async function runScenario(kind, scenario, action = 'stop') {
   try {
     const result = await exited;
     assert.equal(timedOut, false, `driver exceeded deadline: ${output}`);
-    if (scenario === 'ready' && action === 'stop') {
+    if (['ready', 'slow-root'].includes(scenario) && action === 'stop') {
       assert.equal(result.code, 0, message?.failure || output);
       assert.equal(message?.stopped, true);
     } else if (scenario !== 'ready') {
       assert.equal(result.code, 1, output);
       assert.ok(message?.failure, output);
-      if (scenario === 'hang') assert.match(message.failure, /did not/);
+      if (scenario === 'hang') {
+        assert.match(message.failure, /did not/);
+        if (kind === 'helpers') assert.match(message.failure, /Last probe: (?:(?:TimeoutError|TypeError):|no completed probe)/);
+      }
+      if (scenario === 'startup-error') assert.match(message.failure,
+        kind === 'helpers' ? /Server project startup failed/ : /"status":"error"/);
     } else if (action.startsWith('signal:')) {
       assert.equal(result.code, { SIGINT: 130, SIGTERM: 143, SIGBREAK: 149, SIGHUP: 129 }[action.slice(7)]);
     } else if (action === 'exit') assert.equal(result.code, 0, output);
@@ -155,3 +160,7 @@ for (const kind of ['scroll', 'helpers']) {
       () => runScenario(kind, 'ready', action));
   }
 }
+
+test('helpers: ready project does not depend on fast editor HTML rendering',
+  { timeout: process.platform === 'win32' ? 60_000 : 12_000 },
+  () => runScenario('helpers', 'slow-root'));
