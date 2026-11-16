@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { cleanupTempDir, closeSettingsPanels, disableOnboarding, findFreePort,
   generateWaveformPayload, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
 
-let directory, media, project, projectContents, roots, server, releaseInventory;
+let directory, media, project, projectContents, roots, server, releaseInventory, stageTimings;
 const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
 
 test.beforeAll(() => {
@@ -30,6 +30,22 @@ test.beforeAll(() => {
 });
 
 test.beforeEach(async ({ page }, info) => {
+  stageTimings = [];
+  const started = Date.now();
+  for (const event of ['request', 'requestfinished', 'requestfailed']) {
+    page.on(event, request => {
+      if (/\/api\/ass-(font-|frame)/u.test(request.url())) {
+        stageTimings.push({ event, path: new URL(request.url()).pathname, ms: Date.now() - started });
+      }
+    });
+  }
+  // Geometry tests exercise real frame rendering, not system-wide font discovery.
+  // The font-named cases below retain the real cold endpoint and recovery path.
+  if (!info.title.includes('font')) {
+    await page.route('**/api/ass-font-coverage', route => route.fulfill({ json: {
+      schema: 'moy.asr.font_coverage.v1', faces: [], cmaps: [], fallbacks: [], complete: true,
+    } }));
+  }
   // ASS mode belongs to the project, not localStorage. Earlier frame cases
   // can persist it; reset the synthetic fixture before each server starts.
   writeFileSync(project, projectContents);
@@ -50,7 +66,10 @@ test.beforeEach(async ({ page }, info) => {
   await expect.poll(() => page.evaluate(() => window.MaweCoreState?.player?.videoWidth)).toBe(640);
 });
 
-test.afterEach(async () => { releaseInventory?.(); releaseInventory = null; await server?.stop(); server = null; });
+test.afterEach(async ({}, info) => {
+  await info.attach('font-and-frame-timings', { body: JSON.stringify(stageTimings, null, 2), contentType: 'application/json' });
+  releaseInventory?.(); releaseInventory = null; await server?.stop(); server = null;
+});
 test.afterAll(() => { if (directory) cleanupTempDir(directory); });
 
 async function seek(page, seconds) {
@@ -59,11 +78,22 @@ async function seek(page, seconds) {
 }
 
 async function openFrame(page) {
-  await openSettingsPage(page, 'subtitle-style');
-  await page.locator('#ass-mode-toggle').check();
-  await closeSettingsPanels(page);
-  await seek(page, 0.5);
-  await page.locator('#ass-frame-quick-open').click();
+  // Observe the request caused by the real UI. Never call ensureCoverage here:
+  // that would hide a regression where enabling ASS fails to start loading.
+  await Promise.all([
+    page.waitForRequest(request => request.url().includes('/api/ass-font-coverage')),
+    (async () => {
+      await openSettingsPage(page, 'subtitle-style');
+      await page.locator('#ass-mode-toggle').check();
+      await closeSettingsPanels(page);
+      await seek(page, 0.5);
+      await page.locator('#ass-frame-quick-open').click();
+    })(),
+  ]);
+  // Discovery has its own bounded production deadline. Once the real request
+  // has started, passively await its settlement before the 5s frame assertion.
+  await page.evaluate(() => window.MaweAssFontAliases.whenReady());
+  expect(await page.evaluate(() => window.MaweAssFontAliases.pending())).toBe(false);
   await expect(page.locator('#ass-frame-caption')).toContainText('00:00.500');
   await expect(page.locator('#ass-frame-sticker-layer')).toBeVisible();
 }
@@ -188,7 +218,10 @@ test('font coverage stays lazy until ASS mode and is requested once', async ({ p
   expect(await page.evaluate(() => MaweSettings.EDITOR_SETTINGS.assMode)).toBe(false);
   expect(requests.filter(url => url.includes('/api/ass-font-aliases')).length).toBe(1);
   expect(requests.filter(url => url.includes('/api/ass-font-coverage')).length).toBe(0);
-  await openFrame(page);
+  const coverageResponse = page.waitForResponse(response => response.url().includes('/api/ass-font-coverage'), { timeout: 30_000 });
+  const [, response] = await Promise.all([openFrame(page), coverageResponse]);
+  expect(response.ok()).toBe(true);
+  expect((await response.json()).schema).toBe('moy.asr.font_coverage.v1');
   await page.evaluate(() => window.MaweAssFontAliases.whenReady());
   expect(requests.filter(url => url.includes('/api/ass-font-coverage')).length).toBe(1);
   await page.evaluate(async () => {

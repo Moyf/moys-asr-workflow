@@ -1,3 +1,4 @@
+import { waitForAssFonts } from './ass-font-readiness.mjs';
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -87,6 +88,7 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
       await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
       await page.goto(server.url);
       await expect(page.locator('.cue[data-idx="0"] .text')).toBeVisible();
+      await waitForAssFonts(page);
       const snapshot = await page.evaluate((previewTime) => {
         MaweDom.overlayToggle.checked = true;
         MaweSettings.EDITOR_SETTINGS.assMode = false;

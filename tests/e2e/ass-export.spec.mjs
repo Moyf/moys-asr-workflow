@@ -1,3 +1,4 @@
+import { waitForAssFonts } from './ass-font-readiness.mjs';
 // ASS 导出 UI 回归：验证编辑器当前选中的字体、字号和颜色确实写进保存的文件。
 import { expect, test } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
@@ -269,6 +270,7 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
 test('speaker prefixes use each track colour in actual Canvas paint, ASS and CSS previews', async ({ page }, testInfo) => {
   await disableOnboarding(page);
   await page.goto(server.url);
+  await waitForAssFonts(page);
   const result = await page.evaluate(async () => {
     await loadAssStyleLibrary({ force: true });
     ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
@@ -400,6 +402,7 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
   });
   expect(extensionAfter.emphasized).toEqual(['#ff0000']);
   expect(extensionAfter.markedOthers).toEqual(Array(4).fill('#55aaff'));
+  await waitForAssFonts(page);
   const exportedColour = await page.evaluate(() => MaweExportSrt.buildAss().split('\n').find((line) => line.startsWith('Style: Extension,')).split(',')[3]);
   expect(exportedColour).toBe('&H00FFAA55');
   await page.locator('.player-stage').screenshot({ path: test.info().outputPath('ass-secondary-inline-colour.png') });
@@ -428,6 +431,7 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('_下划线_/__下划线__');
   await page.locator('#ass-special-symbol-rule').selectOption('none');
   await expect(page.locator('#ass-inline-text-options')).toBeHidden();
+  await waitForAssFonts(page);
   const literal = await page.evaluate(() => {
     const text = '%%弱化%% //斜体//';
     MaweBoot.DATA.segments = [{ start: 0, end: 4000, text }];

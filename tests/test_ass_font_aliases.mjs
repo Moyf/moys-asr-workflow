@@ -392,7 +392,8 @@ test('ASS output entry points explicitly await lazy coverage before serializing'
   assert.equal((downloads.match(/await downloadPreparedAss\(/g) || []).length, 2);
   assert.ok(downloads.indexOf('await MaweHost.files.pickSaveFile') < downloads.indexOf('await loading'), 'ASS downloads retain picker activation');
   assert.match(read('io/editor-dynamic-exports.js'), /await window\.MaweAssFontAliases\?\.ensureCoverage\?\.\(\)/);
-  assert.match(read('styles/editor-wiring-ass-frame.js'), /async function renderAssFrame\(\) {\s*await global\.MaweAssFontAliases\?\.ensureCoverage/);
+  // Frame readiness and lifecycle cancellation are exercised against the actual
+  // module in test_ass_frame_font_wait.mjs, not a first-statement source regex.
   const burn = read('io/editor-wiring-burn-video.js');
   assert.ok(burn.indexOf('await MaweHost.files.pickSaveFile') < burn.indexOf('await fontsReady'), 'picker retains user activation while coverage loads');
   assert.match(burn, /if \(deferRequest\) {\s*await fontsReady/);

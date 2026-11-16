@@ -62,6 +62,7 @@ function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
   let failureMessage = '';
   let mediaGeneration = 0;
   let seekGeneration = 0;
+  let fontWaitGeneration = 0;
   let capabilityFailure = '';
   let presentedTime = null;
   let presentedCursor = null;
@@ -410,8 +411,15 @@ function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
   }
 
   async function renderAssFrame() {
+    // Loading fonts can outlive the click that requested this frame. Do not
+    // turn a closed window or a replaced project into a new manual capture.
+    const waitGeneration = ++fontWaitGeneration;
+    const generation = mediaGeneration;
+    const bindingEpoch = global.MaweProjectLoad?.projectBindingEpoch;
     await global.MaweAssFontAliases?.ensureCoverage?.();
     await global.MaweAssFontAliases?.whenReady?.();
+    if (waitGeneration !== fontWaitGeneration || generation !== mediaGeneration
+      || bindingEpoch !== global.MaweProjectLoad?.projectBindingEpoch || !previewNeeded()) return;
     const request = snapshot();
     if (!request) {
       setWindowStatus('请启用 ASS 字幕模式；浏览器本地视频请通过 Server 工程打开。', 'error');
@@ -430,6 +438,7 @@ function createAssEmojiWarning({ element, getData, isAssMode, enqueue }) {
     manageButton: quickOpenButton || openButton,
     anchorButton: quickOpenButton || openButton,
     positionKey: 'moy.asr.ass_frame.window.v1',
+    onClose: () => { fontWaitGeneration += 1; },
     onOpen: () => {
       if (greenScreenPreview()) setWindowStatus(GREEN_SCREEN_HINT);
       syncPreview();

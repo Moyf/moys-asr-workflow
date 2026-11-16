@@ -492,7 +492,13 @@ test('project switch while lazy ASS fonts wait does not serialize or submit the 
     });
     await page.click('#burn-video-export-btn');
     await expect.poll(() => page.evaluate(() => Boolean(window.pickedName))).toBe(true);
-    await page.evaluate(() => { MaweProjectLoad.projectBindingEpoch++; window.releaseFonts(); });
+    const switched = await page.evaluate(() => {
+      const previous = MaweProjectLoad.projectBindingEpoch;
+      MaweProjectLoad.detachServerProjectSaving();
+      window.releaseFonts();
+      return { previous, current: MaweProjectLoad.projectBindingEpoch };
+    });
+    expect(switched.current).toBe(switched.previous + 1);
     await expect.poll(() => page.evaluate(() => window.hints.some(t => t.includes('绑定已变更')))).toBe(true);
     expect(await page.evaluate(() => window.subtitleBuildOptions)).toEqual([]);
     expect(state.payloads).toEqual([]);
