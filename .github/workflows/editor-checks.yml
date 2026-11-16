@@ -210,6 +210,15 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
+      - name: Preserve failed editor browser evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: editor-browser-failure
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 7
+
       # README and user guides are website inputs, not just Markdown files.
       - name: Set up website pnpm
         if: ${{ needs.selection.outputs.light == 'true' }}
