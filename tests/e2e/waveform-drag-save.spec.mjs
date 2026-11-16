@@ -50,6 +50,45 @@ const original = [{start: 5000, end: 10000}, {start: 10000, end: 18000}, {start:
 const timings = project => project.tracks.find(track => track.role === 'main').segments.map(({start, end}) => ({start, end}));
 const readTimings = page => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.map(({start, end}) => ({start, end})));
 
+test('select all while a boundary is held preserves the live waveform edit', async ({ page }) => {
+  await openProject(page);
+  await page.evaluate(() => MaweSelection.selectOnly(1));
+  await holdBoundary(page);
+  await expect.poll(() => readTimings(page)).toEqual(expected);
+  await page.keyboard.press('Control+a');
+  expect(await page.evaluate(() => [...MaweState.selection.indices('main')].sort())).toEqual([0, 1, 2]);
+  expect(await readTimings(page)).toEqual(expected);
+  await page.mouse.up();
+  expect(await readTimings(page)).toEqual(expected);
+});
+
+for (const adjusted of [true, false]) {
+  test(`keyboard panel edit after a held boundary ${adjusted ? 'move' : 'without movement'} is retained`, async ({ page }) => {
+    await openProject(page);
+    await page.locator('#cue-editor-settings-toggle').click();
+    await page.locator('#cue-editor-show-time-actions').check();
+    await page.locator('#cue-editor-settings-toggle').click();
+    await page.evaluate(() => {
+      MaweSettings.updateEditorSettings({clickBehavior: 'select-and-play'});
+      MaweSelection.selectOnly(1);
+    });
+    await holdBoundary(page, adjusted);
+    const duration = page.locator('#cue-panel-duration');
+    await expect(duration).toBeVisible();
+    for (let n = 0; n < 100 && !(await duration.evaluate(el => document.activeElement === el)); n++) {
+      await page.keyboard.press('Shift+Tab');
+    }
+    await expect(duration).toBeFocused();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('7.000');
+    await page.keyboard.press('Tab');
+    await page.mouse.up();
+    const seam = adjusted ? 10100 : 10000;
+    await expect.poll(() => readTimings(page)).toEqual([{start: 5000, end: seam}, {start: seam, end: seam + 7000}, {start: 25000, end: 30000}]);
+    expect(await page.locator('#player').evaluate(player => player.paused)).toBe(true);
+  });
+}
+
 for (const finish of ['commit', 'cancel', 'no movement']) {
   test(`autosave waits for the held boundary and saves ${finish}`, async ({ page }) => {
     await openProject(page);
