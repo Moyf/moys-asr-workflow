@@ -1,12 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
   generateWav, makeTempDir, startServer } from './helpers.mjs';
 
 let tempDir, server;
 test.beforeAll(async () => {
-  tempDir = makeTempDir('fcp7-png');
+  // Match the server's canonical path, including Windows 8.3 aliases.
+  tempDir = realpathSync.native(makeTempDir('fcp7-png'));
   const media = join(tempDir, 'source.wav');
   generateWav(media, 3);
   const project = join(tempDir, 'project.json');
@@ -101,7 +102,10 @@ test('font notices keep the published folder action available', async ({ page })
   });
   await page.locator('#fcp7-export-confirm').click();
   await expect(page.locator('#fcp7-export-status')).toContainText('字体已替换', { timeout: 30000 });
+  const folderResponse = page.waitForResponse(response => response.request().method() === 'POST'
+    && /\/api\/exports\/fcp7-png\/jobs\/[^/]+\/open-folder$/.test(new URL(response.url()).pathname));
   await page.locator('.fcp7-export-folder').click();
+  expect((await folderResponse).status()).toBe(200);
   expect(opened).toBe(true);
 });
 

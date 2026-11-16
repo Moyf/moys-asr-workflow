@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
+
+await prepareEditorModule('shared/editor-utils.js');
 
 const utilsContext = { window: {}, TextDecoder, TextEncoder, Uint8Array };
 loadEditorModule(utilsContext, 'shared/editor-utils.js');
