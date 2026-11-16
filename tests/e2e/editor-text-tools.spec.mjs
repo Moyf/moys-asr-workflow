@@ -756,6 +756,36 @@ test('empty custom steps prefill one replace step without fighting the user', as
   await expect(page.locator('#text-preset-rules > li').first()).toContainText('替换文本');
 });
 
+test('late preset loading preserves a focused starter before the first keystroke', async ({ page }) => {
+  await seed(page, { text: '  甲乙  ', timed: false });
+  await page.evaluate(() => MaweProcessing.refresh());
+  let releaseRead;
+  const pendingRead = new Promise(resolve => { releaseRead = resolve; });
+  await page.route('**/api/text-processing-presets', async route => {
+    const response = await route.fetch();
+    await pendingRead;
+    await route.fulfill({ response });
+  });
+  const rows = page.locator('#text-preset-rules > li');
+  const find = rows.first().getByRole('textbox', { name: '查找', exact: true });
+  try {
+    await openTextProcess(page);
+    await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'pending');
+    await find.focus();
+    releaseRead();
+    await expect(page.locator('#text-preset-status')).toHaveAttribute('data-state', 'success');
+    await expect(find).toBeFocused();
+    // Type through the current focus, without refocusing a replacement node.
+    await page.keyboard.type('甲');
+    await expect(find).toHaveValue('甲');
+    await addTextProcessStep(page, 'trim');
+    await expect(rows).toHaveCount(2);
+    await expect(page.locator('#text-process-preview .text-process-result-snippet')).toHaveText('乙');
+  } finally {
+    releaseRead();
+  }
+});
+
 test('adding a step replaces the untouched starter and preserves an edited replacement', async ({ page }) => {
   await seed(page, { text: '  甲乙  ', timed: false });
   await openTextProcess(page);

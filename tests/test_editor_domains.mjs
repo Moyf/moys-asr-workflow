@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import { createWaveformModule as createWaveformMedia } from '../web/editor/media/waveform/media.js';
+
+await Promise.all(['shared/editor-utils.js', 'editor/media/waveform.js'].map(prepareEditorModule));
 
 function waveformContext() {
   const context = { window: { ASR_EDITOR_PALETTE: [{ name: 'yellow', value: '#123456' }] } };
