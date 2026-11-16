@@ -14,9 +14,14 @@ function fixture() {
     });
     return elements.get(id);
   }
+  const playerEvents = new Map();
+  let frameCallback;
+  const requestTimes = [];
   const player = { tagName: 'VIDEO', videoWidth: 640, currentTime: 0.5,
     currentSrc: 'http://localhost/media', paused: true, seeking: false,
-    addEventListener() {}, removeEventListener() {} };
+    addEventListener(name, callback) { playerEvents.set(name, callback); },
+    removeEventListener(name) { playerEvents.delete(name); },
+    requestVideoFrameCallback(callback) { frameCallback = callback; } };
   let release, ready = false, panelOptions, open = false, requests = 0, builds = 0;
   const fonts = new Promise(resolve => { release = () => { ready = true; resolve(); }; });
   const settings = { assMode: true, assFrameAutoRender: false };
@@ -36,7 +41,7 @@ function fixture() {
         close() { options.onClose?.(); open = false; }, toggle() {} };
     } },
     setTimeout() { return 1; }, clearTimeout() {},
-    fetch: async () => { requests++; return { ok: true, json: async () => ({ ok: true, image: 'image' }) }; },
+    fetch: async (_url, options) => { requests++; requestTimes.push(JSON.parse(options.body).timeMs); return { ok: true, json: async () => ({ ok: true, image: 'image' }) }; },
     Image: class { naturalWidth = 640; naturalHeight = 360; async decode() {} },
   };
   context.window = context;
@@ -45,7 +50,9 @@ function fixture() {
     open() { open = true; panelOptions.onOpen(); },
     close() { panelOptions.onClose?.(); open = false; },
     run: () => context.MaweAssFrame.renderAssFrame(),
-    requests: () => requests, builds: () => builds };
+    requests: () => requests, builds: () => builds, requestTimes,
+    emit: name => playerEvents.get(name)?.(),
+    present: seconds => frameCallback(0, { mediaTime: seconds }) };
 }
 
 test('manual ASS frame waits for fonts then captures when the original window remains open', async () => {
@@ -106,4 +113,32 @@ test('automatic reopening after close can start a fresh frame when fonts become 
   // Flush promises from onOpen's fire-and-forget render and image decoding.
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.requests(), 1);
+});
+
+// Drive event order directly: a browser timer cannot guarantee which video
+// frame callbacks have run by the time pause is delivered.
+test('pause retains the presented PTS when the playback cursor advances between callbacks', async () => {
+  const h = fixture(); h.release(); h.open();
+  h.player.paused = false; h.player.currentTime = 1.2; h.present(1.2);
+  h.player.currentTime = 1.208905; h.player.paused = true; h.emit('pause');
+  await h.run();
+  assert.deepEqual(h.requestTimes, [1200]);
+});
+
+test('a frame callback queued after pause replaces the earlier presented PTS', async () => {
+  const h = fixture(); h.release(); h.open();
+  h.player.paused = false; h.player.currentTime = 1.2; h.present(1.2);
+  h.player.currentTime = 1.208905; h.player.paused = true; h.emit('pause');
+  await h.run();
+  h.present(1.233333);
+  await h.run();
+  assert.deepEqual(h.requestTimes, [1200, 1233]);
+});
+
+test('a new seek position cannot reuse the previous frame PTS before its callback arrives', async () => {
+  const h = fixture(); h.release(); h.open();
+  h.player.currentTime = 1.2; h.present(1.2);
+  h.player.currentTime = 2.01;
+  await h.run();
+  assert.deepEqual(h.requestTimes, [2010]);
 });

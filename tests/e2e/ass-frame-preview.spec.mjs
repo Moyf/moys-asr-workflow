@@ -539,6 +539,14 @@ test('keeps the presented frame timestamp when playback pauses between frame cal
   await seek(page, 1);
   const paused = await page.evaluate(() => new Promise((resolve) => {
     const video = window.MaweCoreState.player;
+    // Keep an independent observer running: another presented frame can be
+    // delivered after the trigger callback, including after pause().
+    const observation = window.__pauseFrameObservation = { latest: null, handle: null };
+    const observePresentedFrame = (now, metadata) => {
+      observation.latest = metadata.mediaTime;
+      observation.handle = video.requestVideoFrameCallback(observePresentedFrame);
+    };
+    observation.handle = video.requestVideoFrameCallback(observePresentedFrame);
     const onFrame = (now, metadata) => {
       if (metadata.mediaTime < 1.2) { video.requestVideoFrameCallback(onFrame); return; }
       setTimeout(() => {
@@ -550,8 +558,17 @@ test('keeps the presented frame timestamp when playback pauses between frame cal
     void video.play();
   }));
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
-  const time = await page.locator('#ass-stage-frame').evaluate((element) => Number(element.dataset.timeMs));
-  expect(time, JSON.stringify(paused)).toBeCloseTo(paused.pts * 1000, 2);
+  await expect.poll(() => page.evaluate(() => {
+    const pts = window.__pauseFrameObservation.latest;
+    const frame = document.getElementById('ass-stage-frame');
+    if (pts === null || pts < 1.2 || !frame || frame.hidden) return NaN;
+    return Number(frame.dataset.timeMs) - pts * 1000;
+  }), { message: JSON.stringify(paused) }).toBeCloseTo(0, 2);
+  await page.evaluate(() => {
+    const video = window.MaweCoreState.player;
+    video.cancelVideoFrameCallback(window.__pauseFrameObservation.handle);
+    delete window.__pauseFrameObservation;
+  });
 });
 
 for (const finishWhilePlaying of [true, false]) {
