@@ -40,6 +40,23 @@ def python_fixture(*, full=False):
 
 
 class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
+    def test_editor_browser_failure_evidence_does_not_mask_test_failure(self):
+        workflow = (ROOT / ".github/workflows/editor-checks.yml").read_text(encoding="utf-8")
+        browser_steps = workflow.split("      - name: Real file and HTTP editor", 1)[1].split(
+            "      # README and user guides", 1)[0]
+        self.assertIn("      - name: Independent browser tool pages", browser_steps)
+        self.assertIn("      - name: Preserve failed editor browser evidence\n        if: failure()", browser_steps)
+        self.assertIn("uses: actions/upload-artifact@v6", browser_steps)
+        self.assertIn("path: test-results/", browser_steps)
+        self.assertIn("retention-days: 7", browser_steps)
+        # Uploading evidence is a later step, not a wrapper that swallows exits.
+        self.assertNotIn("continue-on-error", browser_steps)
+        self.assertNotIn("|| true", browser_steps)
+        self.assertIn("run: pnpm exec playwright test", browser_steps)
+        self.assertIn("run: uv run --no-sync python scripts/run_check.py --timeout 300", browser_steps)
+        config = (ROOT / "tests/config/playwright.config.mjs").read_text(encoding="utf-8")
+        self.assertIn("trace: 'retain-on-failure'", config)
+
     def test_finite_plans_and_explicit_intentional_skips(self):
         for profile in ci_impact.PROFILES:
             plan, needs, receipts = gate_fixture(profile)
