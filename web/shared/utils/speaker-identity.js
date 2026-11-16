@@ -10,16 +10,28 @@ export function canMergeSpeakerSegments(segments) {
   return segments.length > 0 && segments.every(segment => (segment.speaker ?? null) === (segments[0]?.speaker ?? null));
 }
 
-// Main cues control explicitly bound secondary cues, regardless of visibility.
-// Do not infer bindings from overlap or expand secondary/overlay edits backwards.
-export function expandMainBoundCueRefs(project, refs) {
+// Operation-local indexes are rebuilt after undo/load, not cached against the
+// mutable project object. Resolve every explicit ref before any assignment.
+function resolveMainBoundTargets(project, refs) {
+  const tracks = new Map();
+  for (const track of project.tracks) {
+    if (tracks.has(track.id)) continue;
+    const segments = new Map();
+    for (const segment of track.segments) {
+      const id = segment.id;
+      if (!segments.has(id)) segments.set(id, segment);
+    }
+    tracks.set(track.id, { track, segments });
+  }
   const targets = new Map();
-  const add = ref => targets.set(JSON.stringify([ref.track_id, ref.segment_id]), ref);
+  const add = (ref, segment) => targets.set(JSON.stringify([ref.track_id, ref.segment_id]), { ref, segment });
   const mainSources = new Map();
   for (const ref of refs) {
-    const track = project.tracks.find(track => track.id === ref.track_id);
-    if (!track?.segments.some(segment => segment.id === ref.segment_id)) throw new Error('Unknown subtitle reference');
-    add(ref);
+    const entry = tracks.get(ref.track_id);
+    const track = entry?.track;
+    const segment = entry?.segments.get(ref.segment_id);
+    if (!segment) throw new Error('Unknown subtitle reference');
+    add(ref, segment);
     if (track.role === 'main') {
       if (!mainSources.has(track.id)) mainSources.set(track.id, new Set());
       mainSources.get(track.id).add(ref.segment_id);
@@ -27,21 +39,24 @@ export function expandMainBoundCueRefs(project, refs) {
   }
   for (const binding of project.bindings ?? []) {
     if (!mainSources.get(binding.source?.track_id)?.has(binding.source?.segment_id)) continue;
-    const track = project.tracks.find(track => track.id === binding.target?.track_id && track.role === 'secondary');
-    if (track?.segments.some(segment => segment.id === binding.target?.segment_id)) add(binding.target);
+    const entry = tracks.get(binding.target?.track_id);
+    const segment = entry?.segments.get(binding.target?.segment_id);
+    if (entry?.track.role === 'secondary' && segment) add(binding.target, segment);
   }
   return [...targets.values()];
 }
 
+// Main cues control explicitly bound secondary cues, regardless of visibility.
+// Do not infer bindings from overlap or expand secondary/overlay edits backwards.
+export function expandMainBoundCueRefs(project, refs) {
+  return resolveMainBoundTargets(project, refs).map(target => target.ref);
+}
+
 export function assignProjectSpeaker(project, refs, identity) {
   if (identity !== null && !project.speakers?.some(speaker => speaker.id === identity)) throw new Error('Unknown project speaker');
-  const targets = expandMainBoundCueRefs(project, refs).map(ref => {
-    const segment = project.tracks.find(track => track.id === ref.track_id)?.segments.find(cue => cue.id === ref.segment_id);
-    if (!segment) throw new Error('Unknown subtitle reference');
-    return segment;
-  });
+  const targets = resolveMainBoundTargets(project, refs);
   let changed = false;
-  for (const segment of new Set(targets)) if ((segment.speaker ?? null) !== identity) {
+  for (const { segment } of targets) if ((segment.speaker ?? null) !== identity) {
     segment.speaker = identity;
     changed = true;
   }

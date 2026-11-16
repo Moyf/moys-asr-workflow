@@ -12,7 +12,7 @@ type WaveformMethods =
   DescriptorValues<ReturnType<typeof import('./controls.js').createWaveformModule>, 'isAdjacentCueAdjustmentIndependent' | 'isSharedBoundaryHandleIndependent' | 'adjacentSnapModeStatusHint' | 'hasCueDrag' | 'bindControls'> &
   DescriptorValues<ReturnType<typeof import('./cue-blocks.js').createWaveformModule>, 'createRow' | 'appendGapBlocks' | 'appendCueBlocks' | 'appendCueHandle' | 'appendExtensionHandle' | 'isSegmentHiddenForDisplay' | 'appendSharedBoundaryZones' | 'setBindingMarker' | 'layoutBlock' | 'layoutGapBlock' | 'refreshGapOverlay' | 'relayoutCueBlocksInRow' | 'relayoutGapBlocksInRow' | 'bindWordModeSentenceHandle' | 'refreshCueOverlay' | 'cueDragOverlayOccupancyChanged' | 'refreshCueBlocks' | 'refreshBoundaryZones' | 'refreshCueLabel' | 'refreshExtensionCueLabel' | 'updateSelection'> &
   DescriptorValues<ReturnType<typeof import('./cue-commands.js').createWaveformModule>, 'adjustSelectedByKeyboard' | 'adjustSelectedBoundaryByKeyboard' | 'setCueBoundaryToTime' | 'snapSelectedCueBoundaryByKeyboard' | 'adjustActiveCueDragBy' | 'handleHeldCueKey' | 'snapActiveCueBoundaryByKeyboard' | 'cancelCueDrag' | 'applyIndependentBoundaryDrag'> &
-  DescriptorValues<ReturnType<typeof import('./cue-quick-edit.js').createWaveformModule>, 'openCueQuickEdit' | 'openWordQuickEdit' | 'openCueQuickEditAtIndex' | 'openWordQuickEditAtIndex' | 'firstVisibleBlock' | 'firstVisibleCueBlock' | 'firstVisibleWordBlock' | 'navigateCueQuickEdit' | 'navigateWordQuickEdit' | 'positionCueQuickEdit' | 'commitCueQuickEdit' | 'hasUncommittedCueQuickEdit' | 'closeCueQuickEdit' | 'cueQuickEditCaretOffset' | '_openQuickEditPopup' | '_commitCueQuickEditState'> &
+  DescriptorValues<ReturnType<typeof import('./cue-quick-edit.js').createWaveformModule>, 'openCueQuickEdit' | 'openWordQuickEdit' | 'openCueQuickEditAtIndex' | 'openWordQuickEditAtIndex' | 'firstVisibleBlock' | 'firstVisibleCueBlock' | 'firstVisibleWordBlock' | 'navigateCueQuickEdit' | 'navigateWordQuickEdit' | 'positionCueQuickEdit' | 'commitCueQuickEdit' | 'hasUncommittedCueQuickEdit' | 'closeCueQuickEdit' | 'discardCueQuickEdit' | 'cueQuickEditCaretOffset' | '_openQuickEditPopup' | '_commitCueQuickEditState'> &
   DescriptorValues<ReturnType<typeof import('./cue-drag-update.js').createWaveformModule>, 'moveCueDrag' | 'moveDragDelta' | 'applySelectedMoveDrag' | 'applyMoveDrag' | 'applyResizeDrag' | 'applyBoundaryDrag' | 'endCueDrag'> &
   DescriptorValues<ReturnType<typeof import('./cue-drag.js').createWaveformModule>, 'beginCueDrag' | 'isSharedBoundary' | 'beginIndependentEdgeDrag' | 'beginSharedBoundaryZoneDrag' | 'cueDragDurationMs' | 'cueTiming' | 'cueTimingDuration' | 'cueTimingValueFromMs' | 'cueTimingValueToMs' | 'formatCueTiming' | 'captureSelectedMoveTracks' | 'reindexSelectedMoveTracks' | 'restoreSelectedMoveDrag' | 'captureCueDragOriginals' | 'rebaseCueDragToTrack'> &
   DescriptorValues<ReturnType<typeof import('./gap-drag.js').createWaveformModule>, 'beginGapBoundaryDrag' | 'beginGapMoveDrag' | 'gapMoveTarget' | 'moveGapMoveDrag' | 'scheduleGapMovePreview' | 'clearGapMovePreview' | 'previewGapMoveDrag' | 'endGapMoveDrag' | 'refreshGapBlocks' | 'clearGapBoundaryPreview' | 'appendGapBoundaryPreview' | 'previewGapBoundaryDrag' | 'moveGapBoundaryDrag' | 'scheduleGapPreview' | 'endGapBoundaryDrag' | 'beginGapRangeDrag' | 'gapRangePointerTime' | 'clearGapRangePreviews' | 'layoutGapRangePreview' | 'moveGapRangeDrag' | 'endGapRangeDrag'> &
@@ -117,6 +117,7 @@ export interface NavigationSnapshot {
   cueListScrollTop?: number; waveformTopEdgeMs?: number;
 }
 export interface WaveformOptions {
+  getProjectSession?(): string | number;
   markProjectDirty?: (() => void) | undefined;
   wordTiming?: {
     readonly enabled: boolean;
@@ -263,6 +264,8 @@ export interface WaveformState {
   _markerQuickEditOutside: ((event: PointerEvent) => void) | null;
   _markerQuickEditKey: ((event: KeyboardEvent) => void) | null;
   cueQuickEdit: QuickEditPopupState | null;
+  _cueQuickEditGeneration: number;
+  _cueQuickEditRequestGeneration: number;
   _cueQuickEditOutside: ((event: PointerEvent) => void) | null;
   _cueQuickEditKey: ((event: KeyboardEvent) => void) | null;
   _wordQuickEditDoubleClickTime: number;
@@ -288,6 +291,7 @@ export type WaveformInstance = WaveformState & WaveformMethods;
 // 快速编辑气泡的内部状态（字幕/字词共用，见 cue-quick-edit.js）。
 // commit 在关闭与失焦时调用且必须幂等；navigate 响应 Tab / Shift+Tab。
 export interface QuickEditPopupState {
+  isCurrent?: () => boolean;
   element: HTMLElement;
   textarea: HTMLTextAreaElement;
   anchor: {pointerX: number; blockTop: number; blockBottom: number};

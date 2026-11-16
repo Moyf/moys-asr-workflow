@@ -93,7 +93,10 @@ export function createWaveformModule(dependencies) {
       caption, value, rows = 2, ariaLabel,
       anchorElement, event, caret = 'click', commit, hasUncommittedText = null, navigate = null, split = null,
     }) {
-      this.closeCueQuickEdit();
+      const projectSession = this.options.getProjectSession?.();
+      const generation = this._cueQuickEditGeneration || 0;
+      const isCurrent = () => generation === (this._cueQuickEditGeneration || 0)
+        && projectSession === this.options.getProjectSession?.();
       // 光标定位要在气泡挂载前完成：与字幕列表的行内编辑一致，把编辑
       // 光标放到鼠标双击的字符处；解析失败（点击不在文字上、标签被截断
       // 等）时光标放在末尾，不做全选。
@@ -112,7 +115,9 @@ export function createWaveformModule(dependencies) {
       help.type = 'button';
       help.className = 'waveform-cue-quick-edit-help';
       help.textContent = localizedWaveformMessage('操作说明', 'Help');
-      help.addEventListener('click', () => /** @type {any} */ (window).MaweHelpPanel?.openHelpAtTab('quick-edit'));
+      help.addEventListener('click', () => {
+        if (isCurrent()) /** @type {any} */ (window).MaweHelpPanel?.openHelpAtTab('quick-edit');
+      });
       header.append(captionEl, help);
 
       const textarea = document.createElement('textarea');
@@ -137,13 +142,15 @@ export function createWaveformModule(dependencies) {
         element: popup,
         textarea,
         anchor,
-        commit,
-        hasUncommittedText,
-        navigate,
+        isCurrent,
+        commit: (state) => isCurrent() ? commit?.(state) : false,
+        hasUncommittedText: (state) => isCurrent() && Boolean(hasUncommittedText?.(state)),
+        navigate: (state, direction) => { if (isCurrent()) navigate?.(state, direction); },
         resizeObserver: null,
       };
       const resizeObserver = new ResizeObserver(() => {
         if (this.cueQuickEdit?.element !== popup) return;
+        if (!isCurrent()) { this.discardCueQuickEdit(); return; }
         if (popup.isConnected) this.positionCueQuickEdit();
         else this.closeCueQuickEdit();
       });
@@ -158,6 +165,7 @@ export function createWaveformModule(dependencies) {
       // 阻断原生焦点移动）。其余按键交给 textarea 原生行为，编辑器快捷键
       // 层已有输入目标守卫（isTextEditingTarget），不会误触发。
       textarea.addEventListener('keydown', (keyEvent) => {
+        if (!isCurrent() || this.cueQuickEdit !== state) return;
         // 输入法组词期间（isComposing / keyCode 229）Enter 是确认候选词、
         // Esc 是取消组词：跳过气泡快捷键，交给输入法原生处理，避免确认
         // 候选词误关气泡或打断组词。
@@ -206,10 +214,12 @@ export function createWaveformModule(dependencies) {
       popup.addEventListener('wheel', (wheelEvent) => wheelEvent.stopPropagation());
 
       this._cueQuickEditOutside = (outsideEvent) => {
+        if (!isCurrent() || this.cueQuickEdit !== state) return;
         if (popup.contains(outsideEvent.target)) return;
         this.closeCueQuickEdit();
       };
       this._cueQuickEditKey = (keyEvent) => {
+        if (!isCurrent() || this.cueQuickEdit !== state) return;
         // 与气泡内快捷键一致：输入法组词期间的 Esc 是取消组词，不关气泡。
         if (keyEvent.isComposing || keyEvent.keyCode === 229) return;
         if (keyEvent.key === 'Escape') {
@@ -242,11 +252,31 @@ export function createWaveformModule(dependencies) {
     //（创建/导航入口使用）。
     /** @this {import('./waveform-types.js').WaveformInstance} */
     openCueQuickEdit(track, index, anchorElement, event, { caretAtEnd = false } = {}) {
+      const original = this.options.getSegments(track)?.[index];
+      if (!original || !anchorElement?.isConnected) return;
+      const projectSession = this.options.getProjectSession?.();
+      const hadPopup = Boolean(this.cueQuickEdit);
+      this.closeCueQuickEdit();
+      if (projectSession !== this.options.getProjectSession?.()) return;
       const segments = this.options.getSegments(track);
-      const segment = segments?.[index];
+      const actualIndex = original.id ? segments.findIndex(segment => segment?.id === original.id) : index;
+      const segment = segments?.[actualIndex];
+      if (hadPopup && segment) {
+        const request = this._cueQuickEditRequestGeneration;
+        // Committing the previous popup may have queued a waveform rebuild.
+        // Reopen against the committed text and the newly rendered anchor.
+        requestAnimationFrame(() => {
+          if (request !== this._cueQuickEditRequestGeneration || this.cueQuickEdit
+            || projectSession !== this.options.getProjectSession?.()) return;
+          const current = this.options.getSegments(track) || [];
+          const nextIndex = segment.id ? current.findIndex(cue => cue?.id === segment.id) : actualIndex;
+          if (nextIndex >= 0) this.openCueQuickEditAtIndex(track, nextIndex);
+        });
+        return;
+      }
       if (!segment || !anchorElement?.isConnected) return;
       this._openQuickEditPopup({
-        caption: `${cueTrackLabel(track)} #${index + 1}`
+        caption: `${cueTrackLabel(track)} #${actualIndex + 1}`
           + ` · ${formatCompact(Number(segment.start))} → ${formatCompact(Number(segment.end))}`,
         value: String(segment.text ?? ''),
         rows: 2,
@@ -254,14 +284,14 @@ export function createWaveformModule(dependencies) {
         anchorElement,
         event,
         caret: caretAtEnd ? 'end' : 'click',
-        commit: (state) => this._commitCueQuickEditState({ ...state, track, index, segmentId: segment.id || null }),
+        commit: (state) => this._commitCueQuickEditState({ ...state, track, index: actualIndex, segmentId: segment.id || null }),
         hasUncommittedText: (state) => {
           const current = this.options.getSegments(track) || [];
-          const target = segment.id ? current.find(candidate => candidate?.id === segment.id) : current[index];
+          const target = segment.id ? current.find(candidate => candidate?.id === segment.id) : current[actualIndex];
           return Boolean(target && state.textarea.value.replace(/\r\n?/g, '\n') !== String(target.text ?? ''));
         },
-        navigate: (state, direction) => this.navigateCueQuickEdit({ ...state, track, index, segmentId: segment.id || null }, direction),
-        split: (state, offset) => this.options.onCueQuickEditSplit?.(track, index, offset, state),
+        navigate: (state, direction) => this.navigateCueQuickEdit({ ...state, track, index: actualIndex, segmentId: segment.id || null }, direction),
+        split: (state, offset) => this.options.onCueQuickEditSplit?.(track, actualIndex, offset, state),
       });
     }
 
@@ -270,7 +300,26 @@ export function createWaveformModule(dependencies) {
     // 文本；时间仍由手柄拖动调整，标题行只读展示时间范围。
     /** @this {import('./waveform-types.js').WaveformInstance} */
     openWordQuickEdit(segmentIndex, itemIndex, anchorElement, event) {
-      const segment = this.options.getSegments('main')?.[segmentIndex];
+      const original = this.options.getSegments('main')?.[segmentIndex];
+      if (!original || !anchorElement?.isConnected) return;
+      const projectSession = this.options.getProjectSession?.();
+      const hadPopup = Boolean(this.cueQuickEdit);
+      this.closeCueQuickEdit();
+      if (projectSession !== this.options.getProjectSession?.()) return;
+      const segments = this.options.getSegments('main') || [];
+      const actualIndex = original.id ? segments.findIndex(segment => segment?.id === original.id) : segmentIndex;
+      const segment = segments[actualIndex];
+      if (hadPopup && segment) {
+        const request = this._cueQuickEditRequestGeneration;
+        requestAnimationFrame(() => {
+          if (request !== this._cueQuickEditRequestGeneration || this.cueQuickEdit
+            || projectSession !== this.options.getProjectSession?.()) return;
+          const current = this.options.getSegments('main') || [];
+          const nextIndex = segment.id ? current.findIndex(cue => cue?.id === segment.id) : actualIndex;
+          if (nextIndex >= 0) this.openWordQuickEditAtIndex(nextIndex, itemIndex);
+        });
+        return;
+      }
       if (!segment || !anchorElement?.isConnected) return;
       const timing = this.cueTiming();
       const entries = window.AsrEditorUtils.getWordTimingEntries(segment, timing);
@@ -286,20 +335,27 @@ export function createWaveformModule(dependencies) {
         event,
         caret: 'click',
         commit: (state) => {
+          const current = this.options.getSegments('main') || [];
+          const index = segment.id ? current.findIndex(candidate => candidate?.id === segment.id) : actualIndex;
+          if (index < 0 || !current[index]) return false;
           const text = state.textarea.value.replace(/\r\n?/g, '\n').replace(/\n+/g, ' ');
-          this.options.onWordQuickEditText?.(segmentIndex, itemIndex, text);
+          this.options.onWordQuickEditText?.(index, itemIndex, text);
           return true;
         },
         hasUncommittedText: (state) => {
           const current = this.options.getSegments('main') || [];
-          const target = segment.id ? current.find(candidate => candidate?.id === segment.id) : current[segmentIndex];
+          const target = segment.id ? current.find(candidate => candidate?.id === segment.id) : current[actualIndex];
           if (!target) return false;
           const currentEntry = window.AsrEditorUtils.getWordTimingEntries(target, this.cueTiming())
             .find(candidate => candidate.index === itemIndex);
           const text = state.textarea.value.replace(/\r\n?/g, '\n').replace(/\n+/g, ' ');
           return Boolean(currentEntry && text !== String(currentEntry.text ?? ''));
         },
-        navigate: (_state, direction) => this.navigateWordQuickEdit(segmentIndex, itemIndex, direction),
+        navigate: (_state, direction) => {
+          const current = this.options.getSegments('main') || [];
+          const index = segment.id ? current.findIndex(candidate => candidate?.id === segment.id) : actualIndex;
+          if (index >= 0) this.navigateWordQuickEdit(index, itemIndex, direction);
+        },
       });
     }
 
@@ -310,20 +366,27 @@ export function createWaveformModule(dependencies) {
     // 时调用 onGiveUp（调用方回退到旧版聚焦字幕面板文本框）。
     /** @this {import('./waveform-types.js').WaveformInstance} */
     openCueQuickEditAtIndex(track, index, onGiveUp = null) {
+      const projectSession = this.options.getProjectSession?.();
+      const generation = this._cueQuickEditRequestGeneration = (this._cueQuickEditRequestGeneration || 0) + 1;
+      const original = this.options.getSegments(track)?.[index];
       const maxAttempts = 30;
       let attempts = 0;
       const attempt = () => {
+        if (generation !== this._cueQuickEditRequestGeneration || projectSession !== this.options.getProjectSession?.()) return;
         // 首次尝试允许接管既有气泡（与双击路径一致）；重试期间出现的
         // 其他气泡属于用户的新操作，不再抢占。
         if (attempts > 0 && this.cueQuickEdit) return;
-        if (!this.options.getSegments(track)?.[index]) {
+        if (!original) {
           onGiveUp?.();
           return;
         }
-        const block = this.firstVisibleCueBlock(track, index);
+        const current = this.options.getSegments(track) || [];
+        const targetIndex = original.id ? current.findIndex(segment => segment?.id === original.id) : index;
+        if (targetIndex < 0 || !current[targetIndex]) return;
+        const block = this.firstVisibleCueBlock(track, targetIndex);
         if (block) {
           const rect = block.getBoundingClientRect();
-          this.openCueQuickEdit(track, index, block, {
+          this.openCueQuickEdit(track, targetIndex, block, {
             clientX: rect.left + rect.width / 2,
             clientY: rect.top + rect.height / 2,
           }, { caretAtEnd: true });
@@ -343,18 +406,25 @@ export function createWaveformModule(dependencies) {
     // 字词的同类入口：在字词块上方弹出气泡（导航 / 外部调用使用）。
     /** @this {import('./waveform-types.js').WaveformInstance} */
     openWordQuickEditAtIndex(segmentIndex, itemIndex, onGiveUp = null) {
+      const projectSession = this.options.getProjectSession?.();
+      const generation = this._cueQuickEditRequestGeneration = (this._cueQuickEditRequestGeneration || 0) + 1;
+      const original = this.options.getSegments('main')?.[segmentIndex];
       const maxAttempts = 30;
       let attempts = 0;
       const attempt = () => {
+        if (generation !== this._cueQuickEditRequestGeneration || projectSession !== this.options.getProjectSession?.()) return;
         if (attempts > 0 && this.cueQuickEdit) return;
-        if (!this.options.getSegments('main')?.[segmentIndex]) {
+        if (!original) {
           onGiveUp?.();
           return;
         }
-        const block = this.firstVisibleWordBlock(segmentIndex, itemIndex);
+        const current = this.options.getSegments('main') || [];
+        const targetIndex = original.id ? current.findIndex(segment => segment?.id === original.id) : segmentIndex;
+        if (targetIndex < 0 || !current[targetIndex]) return;
+        const block = this.firstVisibleWordBlock(targetIndex, itemIndex);
         if (block) {
           const rect = block.getBoundingClientRect();
-          this.openWordQuickEdit(segmentIndex, itemIndex, block, {
+          this.openWordQuickEdit(targetIndex, itemIndex, block, {
             clientX: rect.left + rect.width / 2,
             clientY: rect.top + rect.height / 2,
           });
@@ -411,6 +481,8 @@ export function createWaveformModule(dependencies) {
     // 当前气泡不动。
     /** @this {import('./waveform-types.js').WaveformInstance} */
     navigateCueQuickEdit(state, direction) {
+      if (state.isCurrent && !state.isCurrent()) return;
+      const projectSession = this.options.getProjectSession?.();
       const segments = this.options.getSegments(state.track) || [];
       const current = state.segmentId
         ? segments.findIndex((candidate) => candidate?.id === state.segmentId)
@@ -424,6 +496,7 @@ export function createWaveformModule(dependencies) {
       const track = state.track;
       // 先提交并关闭当前气泡（提交幂等，与关闭路径不会产生双份撤销）。
       this.closeCueQuickEdit();
+      if (projectSession !== this.options.getProjectSession?.()) return;
       if (track === 'extension') this.options.selectExtensionCue?.(next);
       else if (track === 'overlay') this.options.selectOverlayCue?.(next);
       else this.options.selectCue?.(next);
@@ -437,6 +510,7 @@ export function createWaveformModule(dependencies) {
     // 字词并重新弹出气泡）。到句首/句尾弹 invalid 提示，保持当前气泡。
     /** @this {import('./waveform-types.js').WaveformInstance} */
     navigateWordQuickEdit(segmentIndex, itemIndex, direction) {
+      const projectSession = this.options.getProjectSession?.();
       const segment = this.options.getSegments('main')?.[segmentIndex];
       if (!segment) return;
       const timing = this.cueTiming();
@@ -457,6 +531,7 @@ export function createWaveformModule(dependencies) {
       }
       const target = entries[next];
       this.closeCueQuickEdit();
+      if (projectSession !== this.options.getProjectSession?.()) return;
       // 选中目标字词（与点击字词块同一路径，面板/选区联动），滚动定位
       // 后重新弹出气泡。
       this.options.wordTiming?.select?.(segmentIndex, target.index);
@@ -560,9 +635,8 @@ export function createWaveformModule(dependencies) {
     // 关闭气泡并提交未保存文本。状态先清空再移除元素，textarea 的 blur
     // 在元素移除后触发时不会再走进提交路径。
     /** @this {import('./waveform-types.js').WaveformInstance} */
-    closeCueQuickEdit() {
+    closeCueQuickEdit({ discard = false } = {}) {
       const state = this.cueQuickEdit;
-      if (!state) return;
       this.cueQuickEdit = null;
       if (this._cueQuickEditOutside) {
         document.removeEventListener('pointerdown', this._cueQuickEditOutside, true);
@@ -572,9 +646,19 @@ export function createWaveformModule(dependencies) {
         document.removeEventListener('keydown', this._cueQuickEditKey, true);
         this._cueQuickEditKey = null;
       }
-      state.commit?.(state);
-      state.resizeObserver?.disconnect();
-      state.element.remove();
+      try {
+        if (!discard) state?.commit?.(state);
+      } finally {
+        this._cueQuickEditGeneration = (this._cueQuickEditGeneration || 0) + 1;
+        this._cueQuickEditRequestGeneration = (this._cueQuickEditRequestGeneration || 0) + 1;
+        state?.resizeObserver?.disconnect();
+        state?.element.remove();
+      }
+    }
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    discardCueQuickEdit() {
+      this.closeCueQuickEdit({ discard: true });
     }
 
 
@@ -583,6 +667,7 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     _commitCueQuickEditState(state) {
       if (!state) return false;
+      if (state.isCurrent && !state.isCurrent()) return false;
       const segments = this.options.getSegments(state.track) || [];
       const index = state.segmentId
         ? segments.findIndex((candidate) => candidate?.id === state.segmentId)

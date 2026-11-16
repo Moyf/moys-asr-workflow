@@ -11,6 +11,7 @@
   const EN_TEXT = {
     '副字幕说话人已按主字幕统一': 'Secondary subtitle speakers now match the main subtitles',
     '不同说话人的字幕不能合并，请先统一归属': 'Subtitles with different speakers cannot be merged; assign them to the same speaker first.',
+    '副字幕候选之间存在未参与合并的字幕，请调整选择或绑定后再合并': 'Secondary merge candidates have a retained subtitle between them; adjust the selection or binding first.',
     '字幕轨道状态': 'Subtitle track status',
     '主字幕轨始终启用': 'The main subtitle track is always enabled',
     '关闭轨道会同时停止预览和导出，字幕数据会保留。': 'Disabling a track stops preview and export while keeping its subtitle data.',

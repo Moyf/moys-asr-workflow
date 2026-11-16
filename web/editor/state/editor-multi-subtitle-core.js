@@ -482,6 +482,9 @@ export function initMaweMultiSubtitleCore() {
       const candidateStart = Number(candidate.start);
       const candidateEnd = Number(candidate.end);
       if (!Number.isFinite(candidateStart) || !Number.isFinite(candidateEnd)) return;
+      // The minimum editable duration applies to pieces produced by an actual
+      // overlap, not to untouched valid short cues elsewhere in the project.
+      if (!protectedRanges.some(range => Number(range.start) < candidateEnd && Number(range.end) > candidateStart)) return;
       const pieces = [];
       let cursor = candidateStart;
       protectedRanges.forEach((range) => {

@@ -25,3 +25,9 @@ test('browser evidence upload keeps the failure/non-light gate and artifact cont
   assert.match(upload,/path: test-results\//);
   assert.match(upload,/retention-days: 7/);
 });
+
+test('the real editor CI gate includes the data-safety review regressions', () => {
+  const real = steps[named('Real file and HTTP editor')];
+  assert.ok(real);
+  assert.match(real, /run: .*tests\/e2e\/review-data-safety\.spec\.mjs/);
+});

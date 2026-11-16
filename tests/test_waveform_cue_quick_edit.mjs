@@ -139,7 +139,8 @@ test('接线契约：气泡内 Tab 切换字幕并阻断原生焦点移动', () 
   // 通用壳把 Tab 分发给入口注入的 navigate；字幕与字词各自接线。
   assert.ok(source.includes('state.navigate?.(state, keyEvent.shiftKey ? -1 : 1)'));
   assert.ok(source.includes('navigate: (state, direction) => this.navigateCueQuickEdit('));
-  assert.ok(source.includes('navigate: (_state, direction) => this.navigateWordQuickEdit('));
+  assert.ok(source.includes('navigate: (_state, direction) => {'));
+  assert.ok(source.includes('this.navigateWordQuickEdit(index, itemIndex, direction)'));
   // 字词导航到句首/句尾弹 invalid 提示（与字幕导航的静默保持不同）。
   assert.ok(source.includes('当前已经是第一个字词码，无法跳转'));
   assert.ok(source.includes("localizedWaveformMessage("));

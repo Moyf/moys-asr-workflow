@@ -30,18 +30,24 @@ export function initMaweSegmentOps() {
 
   // Use the same actual linked-cue set for preflight and the merge itself.
   function collectMainMergeSources(sorted) {
-    const segs = sorted.map(i => window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[i]);
+    const mainTrack = window.AsrEditorUtils.getMainTrack(MaweBoot.DATA);
+    const segs = sorted.map(i => mainTrack.segments[i]);
     const mergeStart = segs[0]?.start;
     const mergeEnd = segs[segs.length - 1]?.end;
     const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
     const extensionTrack = MaweMultiSubtitleCore.multiSubtitleVisible() ? MaweMultiSubtitleCore.getActiveExtensionTrack() : null;
     const oldMainIds = segs.map((segment) => segment.id).filter(Boolean);
+    const selectedMainIds = new Set(oldMainIds);
     const boundExtensionIds = new Set();
+    const otherBoundExtensionIds = new Set();
     if (extensionTrack) {
-      oldMainIds.forEach((mainId) => {
-        const binding = window.AsrEditorUtils.bindingForSegment(multi, mainId, 'main', extensionTrack.id);
-        (binding?.target?.segment_id ? [binding.target.segment_id] : []).forEach((extensionId) => boundExtensionIds.add(extensionId));
-      });
+      for (const binding of multi.bindings || []) {
+        if (binding.target?.track_id !== extensionTrack.id) continue;
+        const target = binding.target.segment_id;
+        if (binding.source?.track_id === mainTrack.id && selectedMainIds.has(binding.source.segment_id)) {
+          boundExtensionIds.add(target);
+        } else otherBoundExtensionIds.add(target);
+      }
     }
     const hasMeaningfulExtensionOverlap = (segment) => {
       const overlapStart = Math.max(Number(segment.start), Number(mergeStart));
@@ -51,8 +57,8 @@ export function initMaweSegmentOps() {
     };
     const extensionMergeIndices = extensionTrack
       ? extensionTrack.segments.map((segment, index) => ({ segment, index }))
-        .filter(({ segment }) => boundExtensionIds.has(segment.id)
-          || hasMeaningfulExtensionOverlap(segment))
+        .filter(({ segment }) => !otherBoundExtensionIds.has(segment.id)
+          && (boundExtensionIds.has(segment.id) || hasMeaningfulExtensionOverlap(segment)))
         .map(({ index }) => index)
       : [];
     const extensionMergeSegments = extensionMergeIndices.map((index) => extensionTrack.segments[index]);
@@ -60,12 +66,20 @@ export function initMaweSegmentOps() {
       ? window.AsrEditorUtils.resolveMergedColorInheritance(extensionTrack.segments, extensionMergeIndices, MaweBoot.DATA)
       : { groupId: null, value: null, groupInherited: false };
     const oldExtensionIds = extensionMergeSegments.map((segment) => segment.id).filter(Boolean);
-    return { segs, multi, extensionTrack, oldMainIds, extensionMergeIndices, extensionMergeSegments, extensionColorGroup, oldExtensionIds };
+    // Bridging a retained cue would create an overlapping secondary timeline,
+    // even when that cue is unbound and shorter than the overlap threshold.
+    const crossesRetainedSecondary = extensionMergeIndices.length > 1
+      && extensionMergeIndices.at(-1) - extensionMergeIndices[0] + 1 !== extensionMergeIndices.length;
+    return { segs, multi, extensionTrack, oldMainIds, extensionMergeIndices, extensionMergeSegments,
+      extensionColorGroup, oldExtensionIds, otherBoundExtensionIds, crossesRetainedSecondary };
   }
 
   function speakerMergeConflict(sources) {
     if (!window.AsrEditorUtils.canMergeSpeakerSegments(sources.segs)) {
       return '不同说话人的字幕不能合并，请先统一归属';
+    }
+    if (sources.crossesRetainedSecondary) {
+      return '副字幕候选之间存在未参与合并的字幕，请调整选择或绑定后再合并';
     }
     return null;
   }
@@ -88,7 +102,8 @@ export function initMaweSegmentOps() {
     const sources = collectMainMergeSources(sorted);
     const conflict = speakerMergeConflict(sources);
     if (conflict) { showSpeakerMergeConflict(conflict); return null; }
-    const { segs, multi, extensionTrack, oldMainIds, extensionMergeIndices, extensionMergeSegments, extensionColorGroup, oldExtensionIds } = sources;
+    const { segs, multi, extensionTrack, oldMainIds, extensionMergeIndices, extensionMergeSegments,
+      extensionColorGroup, oldExtensionIds, otherBoundExtensionIds } = sources;
     const stickerGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
       window.AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments, sorted, 'sticker', 'sticker_ref',
     );
@@ -192,9 +207,18 @@ export function initMaweSegmentOps() {
         if (MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration) {
           // C 合并会重新创建一对绑定字幕；与手动绑定保持一致，按开关
           // 将新副字幕的时间范围同步到合并后的主字幕，并整理副轨冲突。
-          MaweMultiSubtitleCore.setExtensionSegmentRange(mergedExtension, merged.start, merged.end);
-          const impact = MaweMultiSubtitleCore.reconcileExtensionTrack(extensionTrack, [mergedExtension]);
-          addSyncImpact(syncImpact, impact);
+          // Duration sync may squeeze unbound neighbours, but must not trim or
+          // delete secondary cues explicitly owned by unselected main cues.
+          const protectedTrack = extensionTrack.segments.filter(segment => segment === mergedExtension
+            || otherBoundExtensionIds.has(segment.id));
+          const range = protectedTrack.length > 1
+            ? MaweMultiSubtitleCore.constrainCueRangeToTrack(mergedExtension, merged.start, merged.end, protectedTrack)
+            : { start: merged.start, end: merged.end, blocked: false };
+          if (!range.blocked) {
+            MaweMultiSubtitleCore.setExtensionSegmentRange(mergedExtension, range.start, range.end);
+            const impact = MaweMultiSubtitleCore.reconcileExtensionTrack(extensionTrack, [mergedExtension]);
+            addSyncImpact(syncImpact, impact);
+          }
           MaweMultiSubtitleCore.syncBindingOffsets();
         }
       }

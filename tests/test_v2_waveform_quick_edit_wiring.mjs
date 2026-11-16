@@ -9,7 +9,7 @@ const source = fs.readFileSync(new URL('../web/editor/media/editor-waveform-init
 const callbacks = new Map();
 walk.simple(acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module' }), {
   Property(node) {
-    if (['onCueQuickEditSplit', 'onCueQuickEditText', 'onWordQuickEditText'].includes(node.key.name)) {
+    if (['getProjectSession', 'onCueQuickEditSplit', 'onCueQuickEditText', 'onWordQuickEditText'].includes(node.key.name)) {
       callbacks.set(node.key.name, source.slice(node.value.start, node.value.end));
     }
   },
@@ -25,6 +25,7 @@ function fixture() {
     AsrEditorUtils: { getMainTrack: data => data.tracks.find(track => track.role === 'main'),
       wordCharRanges: () => [{ start: 0, end: 5 }], isTimedTextNeutralToken: () => false },
     MaweCoreState: {}, MaweSelection: { clearSelection() {} },
+    MaweState: { projectEpoch: 1, projectLoadGeneration: 0 },
     MaweSettings: { EDITOR_SETTINGS: { quickEditSplitFocusNext: false } },
     MaweSplitCore: { splitAtCursor(_point, options) { calls.split.push(options); return true; } },
     MaweMultiSubtitleCore: { getActiveExtensionTrack: () => secondary, syncBindingOffsets() {}, markMultiSubtitleDirty() {} },
@@ -36,8 +37,18 @@ function fixture() {
   c.window = c;
   vm.createContext(c);
   const get = name => vm.runInContext(`(${callbacks.get(name)})`, c);
-  return { main, secondary, overlay, calls, get };
+  return { main, secondary, overlay, calls, get, context: c };
 }
+
+test('quick-edit session tracks the installed project, not a failed load intent', () => {
+  const { get, context } = fixture();
+  const token = get('getProjectSession');
+  assert.equal(token(), 1);
+  context.MaweState.projectLoadGeneration++;
+  assert.equal(token(), 1);
+  context.MaweState.projectEpoch++;
+  assert.equal(token(), 2);
+});
 
 test('main cue quick edit uses v2 main track without changing other tracks', () => {
   const { main, secondary, overlay, calls, get } = fixture();
