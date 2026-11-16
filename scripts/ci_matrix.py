@@ -174,11 +174,11 @@ def run_cell(plan: dict, identity: str, root: Path) -> None:
     env = {**os.environ, "MAW_TEST_PYTHON": sys.executable, "MAW_E2E_PYTHON": sys.executable}
     evidence = {}
 
-    def run(command, *, report=None):
+    def run(command, *, report=None, timeout=600):
         child_env = dict(env)
         if report:
             child_env["PLAYWRIGHT_JSON_OUTPUT_FILE"] = str(report.resolve())
-        subprocess.run([sys.executable, "scripts/run_check.py", "--timeout", "600", "--", *command],
+        subprocess.run([sys.executable, "scripts/run_check.py", "--timeout", str(timeout), "--", *command],
                        env=child_env, check=True)
 
     if selected["layer"] == "python":
@@ -193,11 +193,14 @@ def run_cell(plan: dict, identity: str, root: Path) -> None:
     else:
         command = ["node", "node_modules/@playwright/test/cli.js", "test",
                    "--config=tests/config/playwright.config.mjs", "--project=chromium",
-                   "--workers=2", "--retries=0", "--forbid-only", "--reporter=json",
+                   "--workers=2", "--retries=0", "--forbid-only", "--reporter=line,json",
                    f"--shard={selected['shard']}/{selected['total']}",
                    *ci_impact.BROWSER_FILES[plan["profile"]]]
         run([*command, "--list"], report=root / "browser-list.json")
-        run(command, report=root / "browser-results.json")
+        # Windows shard 1 completed 308/311 outcomes before the old 600s
+        # aggregate limit. Keep per-test limits and zero retries unchanged;
+        # the line reporter preserves progress even if JSON cannot be finalized.
+        run(command, report=root / "browser-results.json", timeout=900)
         summary = browser_results.validate(json.loads((root / "browser-list.json").read_text(encoding="utf-8")),
                                            json.loads((root / "browser-results.json").read_text(encoding="utf-8")),
                                            selected["shard"], selected["total"])

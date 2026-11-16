@@ -93,7 +93,8 @@ jobs:
     needs: selection
     if: needs.selection.outputs.mode == 'full' || needs.selection.outputs.mode == 'domain'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # Allow setup and artifact upload outside the 15-minute test budget.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.selection.outputs.browser_matrix) }}

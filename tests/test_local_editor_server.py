@@ -4,6 +4,7 @@ from tests.compact_assertions import CompactContainerAssertions
 
 import base64
 import importlib.util
+import http.client
 import io
 import json
 import os
@@ -1296,6 +1297,29 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 self.assertEqual(json.loads(error.read()), server_editor.PRPROJ_CAPABILITY)
                 self.assertFalse(output_path.exists())
             finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_prproj_refusal_preserves_next_keep_alive_request(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+            thread.start()
+            connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+            try:
+                connection.request("POST", "/api/prproj", body=b'{"output":"ignored.prproj"}',
+                                   headers={"Content-Type": "application/json"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 501)
+                self.assertEqual(json.loads(response.read()), server_editor.PRPROJ_CAPABILITY)
+                connection.request("GET", "/api/prproj-capability")
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.loads(response.read()), server_editor.PRPROJ_CAPABILITY)
+            finally:
+                connection.close()
                 server.shutdown()
                 thread.join(timeout=2)
 

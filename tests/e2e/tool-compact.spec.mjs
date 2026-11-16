@@ -3,6 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {settlePageAnimations} from './animation-readiness.mjs';
 
 // A captured, unmodified WIP tree can be served read-only for the negative run.
 const baseline = process.env.MAW_COMPACT_BASELINE_DIR;
@@ -107,10 +108,7 @@ async function timestamp(page) {
 async function setTheme(page, theme) {
   await page.evaluate(theme => {document.documentElement.dataset.theme = theme;}, theme);
   // Wait for real color transitions before capturing or comparing their settled state.
-  await page.evaluate(async () => {
-    void document.body.offsetHeight;
-    await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {})));
-  });
+  await page.evaluate(settlePageAnimations, {timeoutMs:5000});
 }
 
 async function measure(input) {
