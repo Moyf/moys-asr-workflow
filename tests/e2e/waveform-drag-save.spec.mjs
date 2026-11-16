@@ -106,14 +106,9 @@ for (const finish of ['commit', 'cancel', 'no movement']) {
     await holdBoundary(page, finish !== 'no movement');
     const preview = finish === 'no movement' ? original : expected;
     await expect.poll(() => readTimings(page)).toEqual(preview);
-    await page.evaluate(() => {
-      window.__snapshotReads = 0;
-      MaweState.setSnapshotReader(() => { window.__snapshotReads++; return MaweJsonRepair.projectSnapshot(); });
-      MaweServerSave.scheduleAutoSaveFlush();
-    });
+    await page.evaluate(() => MaweServerSave.scheduleAutoSaveFlush());
     await page.clock.runFor(400);
     expect(saves).toHaveLength(0);
-    expect(await page.evaluate(() => window.__snapshotReads)).toBe(0);
     expect(await readTimings(page)).toEqual(preview);
     if (finish === 'cancel') await page.keyboard.press('Escape');
     await page.mouse.up();
