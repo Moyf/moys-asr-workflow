@@ -1,3 +1,4 @@
+import { observeAssRequests } from './ass-request-diagnostics.mjs';
 import { waitForAssFonts } from './ass-font-readiness.mjs';
 // ASS 导出 UI 回归：验证编辑器当前选中的字体、字号和颜色确实写进保存的文件。
 import { expect, test } from '@playwright/test';
@@ -1081,4 +1082,15 @@ test('collapses frx rotation through the foreshortening approximation', async ({
   // 可见的动画表现（不静默取消，也不声称有透视斜切）。
   expect(stats.halfway).toBeGreaterThan(100);
   expect(stats.atNinety).toBe(0);
+});
+
+// Observe only: do not start font loading or change the original assertion deadlines.
+const assDiagnostics = new WeakMap();
+test.beforeEach(async ({ page }) => { assDiagnostics.set(page, observeAssRequests(page)); });
+test.afterEach(async ({ page }, info) => {
+  const report = assDiagnostics.get(page)?.finish();
+  if (report) {
+    await info.attach('ass-request-phases', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
+    if (info.status !== info.expectedStatus) console.log('ASS request phases:', JSON.stringify(report));
+  }
 });

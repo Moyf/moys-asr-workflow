@@ -486,6 +486,9 @@ test('project switch while lazy ASS fonts wait does not serialize or submit the 
   await fixture('ready', async (origin, state) => {
     await install(page, origin, 'ready');
     await page.evaluate(() => {
+      // Real detach owns the epoch; only unrelated save/export UI collaborators are doubles.
+      window.MaweServerSave = { configureServerSaveControls() {}, scheduleAutoSave() {} };
+      window.MaweDynamicExports = { updateLottieExportButton() {}, updateOgrafExportButton() {} };
       let pending = true;
       const ready = new Promise(resolve => { window.releaseFonts = () => { pending = false; resolve(); }; });
       window.MaweAssFontAliases = { ensureCoverage: () => ready, whenReady: () => ready, pending: () => pending };

@@ -1,3 +1,4 @@
+import { observeAssRequests } from './ass-request-diagnostics.mjs';
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -684,4 +685,15 @@ test('overlays the sticker layer on the actual frame window following the previe
   await seek(page, 1.5);
   await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
   await expect(layer).toBeVisible();
+});
+
+// Observe only: do not start font loading or change the original assertion deadlines.
+const assDiagnostics = new WeakMap();
+test.beforeEach(async ({ page }) => { assDiagnostics.set(page, observeAssRequests(page)); });
+test.afterEach(async ({ page }, info) => {
+  const report = assDiagnostics.get(page)?.finish();
+  if (report) {
+    await info.attach('ass-request-phases', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
+    if (info.status !== info.expectedStatus) console.log('ASS request phases:', JSON.stringify(report));
+  }
 });
