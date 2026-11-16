@@ -1293,6 +1293,17 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
   })).toEqual({ kind: 'resize-boundary', index: 0, track: 'main', shared: true });
   await expect(page.locator('#waveform-pane')).toBeFocused();
   await page.keyboard.press('d');
+  // Exercise autosave inside the held gesture deterministically. The panel
+  // still shows the pre-drag duration and must not overwrite the live boundary.
+  expect(await page.evaluate(async () => {
+    const deadline = performance.now() + 5000;
+    while (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) {
+      if (performance.now() >= deadline) throw new Error('Prior project save did not finish');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    // Check and start in one task so another autosave cannot claim the slot.
+    return MaweProjectSave.saveProjectToServer({ silent: true });
+  })).toBe(true);
   await page.mouse.up();
   await expect.poll(() => readTimings(page)).toEqual([
     { start: 5100, end: 10200 },

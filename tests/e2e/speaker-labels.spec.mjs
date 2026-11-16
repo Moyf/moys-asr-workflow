@@ -295,6 +295,9 @@ test('configures preview-only speaker labels and independently controls SRT expo
 
 test('keeps ASS speaker labels in the same style across preview resizing and fullscreen', async ({ page }) => {
   await page.goto(server.url);
+  // Alias loading invalidates Canvas font metrics. Compare window/fullscreen
+  // geometry only after both snapshots use the same resolved font families.
+  await page.waitForFunction(() => window.MaweAssFontAliases?.loaded());
   await revealSpeakerCue(page);
 
   const smallWindow = await page.evaluate(() => {
