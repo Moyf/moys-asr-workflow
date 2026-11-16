@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-tool-page="waveform-compare">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MAW 波形对比实验台</title>
+  <script data-tool-bootstrap src="../shared/tool-page.js"></script>
   <style>
     :root { color-scheme: light; font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f3f5f8; color: #202b3b; }
     * { box-sizing: border-box; }
@@ -58,10 +59,26 @@
     .empty { padding: 20px; margin-top: 24px; }
     @media (max-width: 640px) { main { width: min(100% - 20px, 1160px); margin-top: 22px; } .panel-heading { padding: 14px 14px 8px; } .panel-stats { text-align: left; } .toolbar { padding: 15px; } }
   </style>
+  <link rel="stylesheet" href="../shared/tool-page.css" data-tool-foundation>
+  <style>
+    :root { font-family:var(--font-sans); }
+    body { background:var(--bg-base); color:var(--text-primary); }
+    .card { background:var(--bg-panel); border-color:var(--border-subtle); box-shadow:none; border-radius:var(--radius-lg); }
+    .eyebrow,.intro,.status,.case-label,.scene-detail,.panel-source,.panel-stats,.axis,.notes,.summary p,th { color:var(--text-muted); }
+    .notes strong { color:var(--text-primary); }
+    code { background:var(--bg-raised); }
+    button { background:var(--btn-bg); color:var(--btn-text); border-color:var(--border); }
+    button:hover { background:var(--btn-bg-hover); }
+    button.active,button.primary { background:var(--accent); color:var(--accent-text); border-color:var(--accent); }
+    .warning { background:var(--amber-soft); color:var(--amber); border-color:var(--amber); }
+    th,td { border-color:var(--border-subtle); }
+    h1 { overflow-wrap:anywhere; }
+    .theme-row { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  </style>
 </head>
 <body>
 <main>
-  <p class="eyebrow">MAW / waveform laboratory</p>
+  <div class="theme-row"><p class="eyebrow">MAW / waveform laboratory</p><button class="tool-theme" data-tool-theme type="button">◐ 主题</button></div>
   <h1>不同音频，旧版与新版 mopeaks</h1>
   <p class="intro">切换采样率、声道和编码，比较旧版单声道、新版保留原声道的轻量波形；有 Rust 内核时也显示实际 quapeaks。图像共用时间窗与固定振幅刻度，点波形可定位播放。</p>
   <div id="app"></div>
@@ -324,21 +341,22 @@
     const context = canvas.getContext("2d");
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.clearRect(0, 0, width, height);
-    context.fillStyle = "#f8fafc";
+    const palette = getComputedStyle(document.documentElement);
+    context.fillStyle = palette.getPropertyValue('--bg-raised').trim();
     context.fillRect(0, 0, width, height);
     for (const scene of activeCase.key === "mono-wav" ? [] : data.scenes) {
       const x0 = Math.max(0, (scene.start - viewStart) / (viewEnd - viewStart) * width);
       const x1 = Math.min(width, (scene.end - viewStart) / (viewEnd - viewStart) * width);
       if (x1 <= x0) continue;
       if (data.scenes.indexOf(scene) % 2) {
-        context.fillStyle = "#f1f5fa";
+        context.fillStyle = palette.getPropertyValue('--bg-panel').trim();
         context.fillRect(x0, 0, x1 - x0, height);
       }
-      context.strokeStyle = "#d7e0ec";
+      context.strokeStyle = palette.getPropertyValue('--border-subtle').trim();
       context.beginPath(); context.moveTo(x0 + .5, 0); context.lineTo(x0 + .5, height); context.stroke();
     }
     const center = height / 2;
-    context.strokeStyle = "#c1ccd9";
+    context.strokeStyle = palette.getPropertyValue('--border').trim();
     context.beginPath(); context.moveTo(0, center + .5); context.lineTo(width, center + .5); context.stroke();
     const scale = (height * .43) / 127;
     const peakCount = variant.payload.peak_count;
@@ -366,7 +384,7 @@
       context.stroke();
     }
     context.globalAlpha = 1;
-    for (const [time, color, lineWidth] of [[audio.currentTime, "#243d6b", 2], [hoverTime, "#64748b", 1]]) {
+    for (const [time, color, lineWidth] of [[audio.currentTime, palette.getPropertyValue('--accent').trim(), 2], [hoverTime, palette.getPropertyValue('--text-muted').trim(), 1]]) {
       if (time === null || time < viewStart || time > viewEnd) continue;
       const x = (time - viewStart) / (viewEnd - viewStart) * width;
       context.strokeStyle = color;
@@ -382,6 +400,7 @@
   audio.addEventListener("pause", () => { play.textContent = "播放"; });
   audio.addEventListener("timeupdate", drawAll);
   window.addEventListener("resize", drawAll);
+  document.addEventListener("tool-theme-change", drawAll);
   selectCase(0);
 })();
 </script>

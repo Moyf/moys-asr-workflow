@@ -115,6 +115,25 @@ class MediaExportBackendTests(unittest.TestCase):
             self.assertTrue(self.wait(job_id, "completed")["cleanupComplete"])
             self.assertEqual(captured["track"], 1)
 
+    def test_explicit_natural_end_is_forwarded_and_invalid_option_rejected(self):
+        captured = []
+        def rebuild(source, intervals, output, **kwargs):
+            captured.append(kwargs["keep_to_source_end"])
+            output.write_bytes(b"wave")
+        tools = mock.Mock(ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))
+        with mock.patch.object(server_editor, "editor_ffmpeg_tools", return_value=tools), \
+             mock.patch.object(server_editor, "rebuild_gap_removed_audio", side_effect=rebuild):
+            for endpoint in (self.base, self.base + "/jobs"):
+                status, _, _ = self.request(endpoint, {**self.payload(), "keepToSourceEnd": "yes"})
+                self.assertEqual(status, 400)
+            status, _, _ = self.request(self.base, {**self.payload(), "keepToSourceEnd": True, "editorDurationMs": 305})
+            self.assertEqual(status, 200)
+            status, _, created = self.request(self.base + "/jobs", {**self.payload(), "keepToSourceEnd": True, "editorDurationMs": 305})
+            self.assertEqual(status, 202)
+            self.wait(created["jobId"], "ready")
+            self.request(self.base + "/jobs/" + created["jobId"] + "/download")
+        self.assertEqual(captured, [True, True])
+
     def test_failed_job_exposes_separate_details_and_cancel_reports_cleanup(self):
         tools = mock.Mock(ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))
         error = server_editor.GapRemovedVideoExportError("源文件无法读取", details="No start code " * 1000)

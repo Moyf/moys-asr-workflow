@@ -52,8 +52,8 @@ MaweDom.stickerBurnModeSelect?.addEventListener('change', () => {
 MaweDom.clickTargetSelect?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ clickTarget: MaweSettings.normalizeClickTarget(MaweDom.clickTargetSelect.value) });
 });
-pauseOnMouseClickToggle?.addEventListener('change', () => {
-  MaweSettings.updateEditorSettings({ pauseOnMouseClick: pauseOnMouseClickToggle.checked });
+window.MaweDomPanelsWiring.pauseOnMouseClickToggle?.addEventListener('change', () => {
+  MaweSettings.updateEditorSettings({ pauseOnMouseClick: window.MaweDomPanelsWiring.pauseOnMouseClickToggle.checked });
 });
 MaweDom.keyboardOperationReferenceSelect?.addEventListener('change', () => {
   const mode = MaweSettings.normalizeKeyboardOperationReferenceMode(MaweDom.keyboardOperationReferenceSelect.value);

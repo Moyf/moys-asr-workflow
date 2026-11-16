@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-tool-page="changelog-editor">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CHANGELOG 编辑器 — MAW</title>
+<script src="../shared/tool-page.js"></script>
 <style>
   :root {
     color-scheme: dark;
@@ -83,6 +84,16 @@
     background: var(--surface); overflow-y: auto; padding: 12px;
     display: flex; flex-direction: column; gap: 14px;
   }
+  #sidebar-body { display: flex; flex-direction: column; gap: 14px; }
+  #sidebar-head { display: flex; gap: 6px; justify-content: flex-end; }
+  #sidebar-head button { font-size: 12px; padding: 1px 8px; }
+  #sidebar-toggle { align-self: flex-end; font-size: 12px; padding: 1px 8px; }
+  #sidebar.collapsed { width: 34px !important; min-width: 34px !important; padding: 8px 3px; }
+  #sidebar.collapsed #sidebar-body { display: none; }
+  #sidebar.collapsed #btn-external-edit, #sidebar.collapsed #btn-reload-cl { display: none; }
+  #sidebar.collapsed #sidebar-head { justify-content: center; }
+  #sidebar.collapsed #sidebar-toggle { align-self: center; padding: 1px 4px; }
+  body.side-collapsed #sb-resizer { display: none; }
   #sb-resizer { width: 5px; cursor: col-resize; flex-shrink: 0; background: transparent; }
   #sb-resizer:hover, body.resizing #sb-resizer { background: var(--accent-soft); }
   body.resizing { cursor: col-resize; user-select: none; }
@@ -100,7 +111,7 @@
   .version-item .date { color: var(--muted); font-size: 11px; margin-left: auto; font-family: inherit; flex-shrink: 0; }
   .version-item:hover { background: var(--surface-raised); }
   .version-item.active { background: var(--accent-soft); border-color: var(--accent); }
-  .badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-family: initial; }
+  .badge { font-size: 11px; padding: 1px 6px; border-radius: 999px; font-family: var(--font-sans); }
   .badge.stable { background: rgba(63,185,80,.15); color: var(--ok); }
   .badge.pre { background: rgba(210,153,34,.15); color: var(--warn); }
   .badge.unrel { background: rgba(130,144,162,.15); color: var(--muted); }
@@ -143,6 +154,11 @@
   .card-head .changed-tag { color: var(--warn); font-size: 11px; }
   .card-head .spacer { flex: 1; }
   .card-head button { padding: 1px 7px; font-size: 12px; border-radius: 6px; }
+  .drag-handle { cursor: grab; color: var(--muted); font-size: 13px; padding: 0 3px; user-select: none; }
+  .drag-handle:active { cursor: grabbing; }
+  .card.dragging { opacity: .5; }
+  .card.drop-before { box-shadow: 0 -2px 0 0 var(--accent); }
+  .card.drop-after { box-shadow: 0 2px 0 0 var(--accent); }
   .card textarea, .card input.raw {
     width: 100%; font-family: var(--mono); font-size: 13px; line-height: 1.55;
     background: var(--surface-soft, #10161d); resize: none; overflow: hidden;
@@ -221,6 +237,44 @@
   .drop-hint { outline: 2px dashed var(--accent); outline-offset: 2px; }
   @media print { .card { content-visibility: visible; } #sidebar, #topbar, #tabs { display: none; } }
 </style>
+<link rel="stylesheet" href="../shared/tool-page.css">
+<style>
+  :root { --bg:var(--bg-base); --surface:var(--bg-panel); --surface-raised:var(--bg-raised); --surface-high:var(--bg-overlay); --surface-soft:var(--bg-input); --line:var(--border-subtle); --ink:var(--text-primary); --ink-soft:var(--text-secondary); --muted:var(--text-muted); --ok:var(--green); --warn:var(--amber); --err:var(--red); --ins:var(--green-soft); --del:var(--red-soft); --mono:var(--font-mono); }
+  body { font-family:var(--font-sans); }
+  button { min-height:32px; }
+  button.primary { color:var(--accent-text); }
+  .diff-view { background:var(--surface-soft); }
+  .diff-view del { color:var(--red); }
+  .diff-view ins { color:var(--green); }
+  .card.selected { background:var(--accent-tint); }
+  .badge.stable { background:var(--green-soft); }
+  .badge.pre,#lock-banner,#restore-banner { background:var(--amber-soft); }
+  .badge.unrel { background:var(--bg-raised); }
+  #repo-chip { max-width:100%; overflow-wrap:anywhere; }
+  #mask { background:var(--mask-bg); }
+  #toast.err { color:var(--red); }
+  .img-item { max-width:100%; min-width:0; }
+  .img-item .fields { min-width:0; }
+  .img-item img { object-fit:contain; background:var(--bg-base); }
+  .img-item input { width:min(190px,100%); }
+  #version-head { gap:12px; }
+  #tabs { flex-wrap:wrap; gap:8px; }
+  @media(max-width:900px) {
+    html,body { height:auto; min-height:100%; }
+    #layout { flex-direction:column; }
+    #sidebar { width:100% !important; min-width:0; max-width:none; max-height:250px; border-right:0; border-bottom:1px solid var(--line); }
+    #sidebar.collapsed { width:100% !important; min-width:0 !important; padding:8px 12px; }
+    #sidebar-head { justify-content:flex-start; }
+    #sb-resizer { display:none; }
+    #pane { overflow:visible; padding:12px; }
+    #split-wrap.show { flex-direction:column; }
+    #split-wrap > .split-edit,#split-wrap > .split-preview { width:100%; }
+    #split-wrap > .split-preview { position:static; max-height:none; overflow:visible; border-left:0; border-top:1px solid var(--line); padding:16px 0 0; }
+    #topbar,#version-head { padding:12px; }
+    #tabs { width:100%; margin-left:0; }
+    .img-item { flex-wrap:wrap; }
+  }
+</style>
 </head>
 <body>
   <div id="topbar">
@@ -230,8 +284,11 @@
     <span id="save-status"></span>
     <span class="spacer"></span>
     <button id="btn-open">打开仓库目录</button>
+    <button id="btn-reconnect" hidden title="用记住的权限快速重连上次打开的仓库目录">重连 <span id="reconnect-name"></span></button>
+    <button id="btn-forget-repo" class="ghost" hidden title="清除记住的仓库目录，之后恢复手动选择">忘记</button>
     <button id="btn-load-file" class="ghost" title="不写盘的降级模式：只加载单个文件">仅加载 CL 文件</button>
     <button id="btn-finish" class="primary" disabled>完成编辑</button>
+    <button class="tool-theme" data-tool-theme type="button">◐ 主题</button>
     <input type="file" id="file-input" accept=".md,text/markdown" style="display:none">
   </div>
 
@@ -246,18 +303,25 @@
 
   <div id="layout">
     <aside id="sidebar">
-      <div>
-        <p class="side-title">版本</p>
-        <div id="version-list"></div>
+      <div id="sidebar-head">
+        <button id="btn-external-edit" class="ghost" title="用系统默认编辑器打开仓库根的 CHANGELOG.md 手动修改（需通过 dev-dashboard 访问）">手动编辑</button>
+        <button id="btn-reload-cl" class="ghost" title="丢弃页面修改，从磁盘重新载入 CHANGELOG.md（适合外部编辑器改完之后）">刷新</button>
+        <button id="sidebar-toggle" class="ghost" title="收起侧栏">⟨</button>
       </div>
-      <div id="archive-box">
-        <p class="side-title">归档生成（仅正式版）</p>
-        <div id="archive-list"></div>
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <button id="btn-generate-archives" disabled style="flex:1">生成勾选归档</button>
-          <button id="btn-select-stale" class="ghost" title="勾选所有需要重新生成的版本">全选过期</button>
+      <div id="sidebar-body">
+        <div>
+          <p class="side-title">版本</p>
+          <div id="version-list"></div>
         </div>
-        <p class="hint" style="margin:8px 0 0;">生成前会自动保存 CL 并先备份被覆盖的文件。</p>
+        <div id="archive-box">
+          <p class="side-title">归档生成（仅正式版）</p>
+          <div id="archive-list"></div>
+          <div style="display:flex; gap:8px; margin-top:10px;">
+            <button id="btn-generate-archives" disabled style="flex:1">生成勾选归档</button>
+            <button id="btn-select-stale" class="ghost" title="勾选所有需要重新生成的版本">全选过期</button>
+          </div>
+          <p class="hint" style="margin:8px 0 0;">生成前会自动保存 CL 并先备份被覆盖的文件。</p>
+        </div>
       </div>
     </aside>
 
@@ -271,8 +335,8 @@
           <input type="checkbox" id="auto-archive" checked style="margin-right:4px">完成时同步重新生成归档
         </label>
         <div id="tabs">
-          <button data-tab="edit" class="active">编辑</button>
-          <button data-tab="split">分屏</button>
+          <button data-tab="edit">编辑</button>
+          <button data-tab="split" class="active">分屏</button>
           <button data-tab="preview">预览</button>
           <button data-tab="reference">对照</button>
         </div>
@@ -281,8 +345,8 @@
     </section>
   </div>
 
-  <div id="toast"></div>
-  <div id="mask"><div id="modal"></div></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="mask"><div id="modal" role="dialog" aria-modal="true" aria-label="操作确认" tabindex="-1"></div></div>
 
   <script src="cl-lib.js"></script>
   <script>
@@ -300,10 +364,10 @@
     sections: [],          // splitSections 结果
     parsed: new Map(),     // name -> { cards, trailingBlanks }
     selected: null,        // 当前版本名
-    selectedCard: null,    // 粘贴目标卡片 id
+    selectedCard: null,    // 粘贴目标卡片（对象引用，跨重排/增删稳定；换小节时重置）
     images: new Map(),     // id -> {id, blob, mime, size, alt, filename, version, cardKey}
     archiveStatus: new Map(), // version -> fresh|stale|missing|none
-    tab: 'edit',
+    tab: 'split',
     readOnly: false,
     unlocked: new Set(),     // 已确认可编辑的历史测试版
   };
@@ -321,9 +385,71 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { el.style.display = 'none'; }, isErr ? 6000 : 2600);
   }
-  function modal(html) { $('#modal').innerHTML = html; $('#mask').classList.add('show'); }
-  function closeModal() { $('#mask').classList.remove('show'); }
-  $('#mask').addEventListener('click', (e) => { if (e.target === $('#mask')) closeModal(); });
+  let modalReturnFocus = null;
+  let modalCancel = null;
+  let imageOperationGeneration = 0;
+  let finishInProgress = false;
+  let backgroundLockState = null;
+  function setModalBackgroundLocked(locked) {
+    if (locked === Boolean(backgroundLockState)) return;
+    if (locked) {
+      modalReturnFocus = document.activeElement;
+      backgroundLockState = {
+        backgrounds: ['layout', 'topbar', 'restore-banner', 'lock-banner'].map((id) => {
+          const node = document.getElementById(id);
+          return { node, inert: node.inert };
+        }),
+        roots: [document.documentElement, document.body].map((node) => ({
+          node,
+          overflow: ['overflow-x', 'overflow-y'].map((property) => ({
+            property, value: node.style.getPropertyValue(property), priority: node.style.getPropertyPriority(property),
+          })),
+        })),
+      };
+      for (const { node } of backgroundLockState.backgrounds) node.inert = true;
+      for (const { node } of backgroundLockState.roots) node.style.overflow = 'hidden';
+    } else {
+      const previous = backgroundLockState;
+      backgroundLockState = null;
+      for (const { node, inert } of previous.backgrounds) node.inert = inert;
+      for (const { node, overflow } of previous.roots) {
+        node.style.removeProperty('overflow');
+        for (const { property, value, priority } of overflow) node.style.setProperty(property, value, priority);
+      }
+      const target = modalReturnFocus;
+      modalReturnFocus = null;
+      if (target?.isConnected && !target.closest('[inert]') && !target.disabled && target.getClientRects().length) {
+        target.focus({ preventScroll: true });
+      }
+    }
+  }
+  function refreshBackgroundLock() {
+    setModalBackgroundLocked(finishInProgress || $('#mask').classList.contains('show'));
+  }
+  function modal(html, onCancel = null) {
+    imageOperationGeneration += 1;
+    $('#modal').innerHTML = html; $('#mask').classList.add('show');
+    modalCancel = onCancel;
+    refreshBackgroundLock();
+    const focus = $('#modal').querySelector('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)');
+    (focus || $('#modal')).focus();
+  }
+  function closeModal(cancelled = false) {
+    const onCancel = modalCancel; modalCancel = null;
+    $('#mask').classList.remove('show');
+    refreshBackgroundLock();
+    if(cancelled && onCancel)onCancel();
+  }
+  $('#mask').addEventListener('keydown',event=>{
+    if(event.key==='Escape') {event.preventDefault();closeModal(true);return;}
+    if(event.key!=='Tab')return;
+    const nodes=[...$('#modal').querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]')].filter(node=>node.getClientRects().length);
+    if(!nodes.length){event.preventDefault();$('#modal').focus();return;}
+    const first=nodes[0],last=nodes[nodes.length-1];
+    if(event.shiftKey&&(document.activeElement===first||document.activeElement===$('#modal'))){event.preventDefault();last.focus();}
+    else if(!event.shiftKey&&(document.activeElement===last||document.activeElement===$('#modal'))){event.preventDefault();first.focus();}
+  });
+  $('#mask').addEventListener('click', (e) => { if (e.target === $('#mask')) closeModal(true); });
 
   function markDirty() {
     $('#dirty-dot').style.display = 'inline';
@@ -348,6 +474,10 @@
       $('#restore-banner').style.display = 'flex';
       $('#btn-restore').onclick = () => doRestore(state);
       $('#btn-discard').onclick = () => { localStorage.removeItem(LS_STATE()); localStorage.removeItem(LS_REFS()); $('#restore-banner').style.display = 'none'; };
+    } else {
+      // 换了载入内容（hash 变化）后旧 banner 的闭包指向旧状态，必须隐藏，
+      // 否则「恢复」会把旧文本写进新 hash 的存档键造成污染
+      $('#restore-banner').style.display = 'none';
     }
     selectSection(S.selected || firstEditableSection());
   }
@@ -364,21 +494,79 @@
     return (unrel || S.sections[0])?.name || null;
   }
 
-  async function openRepo() {
-    let root;
-    try {
-      root = await window.showDirectoryPicker({ id: 'maw-cl-editor', mode: 'readwrite' });
-    } catch { return; }
-    let clFile;
-    try { clFile = await root.getFileHandle('CHANGELOG.md'); } catch {
-      toast('所选目录没有 CHANGELOG.md，请选择仓库根目录', true); return;
-    }
+  /** 连接仓库根目录：校验 CHANGELOG.md、加载并刷新界面。
+   *  目录无效（移动/删除）时抛错，由调用方按场景提示。 */
+  async function connectRepo(root) {
+    const clFile = await root.getFileHandle('CHANGELOG.md');
     S.repo = root; S.readOnly = false;
     const text = await (await clFile.getFile()).text();
     await loadClText(text, `📦 ${root.name}（读写）`);
     await refreshArchiveStatus();
     renderSidebar();
+    hideReconnectUi();
     toast('仓库目录已连接，可以读取与写回');
+  }
+
+  async function openRepo() {
+    let root;
+    try {
+      root = await window.showDirectoryPicker({ id: 'maw-cl-editor', mode: 'readwrite' });
+    } catch { return; }
+    try {
+      await connectRepo(root);
+      await idbSaveHandle(root).catch(() => {}); // 持久化失败不影响本次连接
+    } catch {
+      toast('所选目录没有 CHANGELOG.md，请选择仓库根目录', true);
+    }
+  }
+
+  /** 用持久化的句柄重连：权限仍在则免提示直连，否则浏览器弹一次授权确认；
+   *  句柄失效（目录被移动/删除）时清理记忆并降级为手动选择。 */
+  async function tryReconnect(handle) {
+    let perm = 'prompt';
+    try { perm = await handle.queryPermission({ mode: 'readwrite' }); } catch { /* 非法句柄 */ }
+    if (perm !== 'granted') {
+      try { perm = await handle.requestPermission({ mode: 'readwrite' }); } catch { perm = 'denied'; }
+    }
+    if (perm !== 'granted') return false;
+    // 授权等待期间用户可能已手动打开仓库 / 载入文件，不得覆盖其选择
+    if (S.repo || S.selected) return false;
+    try {
+      await connectRepo(handle);
+      await idbSaveHandle(handle).catch(() => {});
+      return true;
+    } catch {
+      await idbClearHandle().catch(() => {});
+      hideReconnectUi();
+      toast('上次连接的目录已不可用，请重新手动选择', true);
+      return false;
+    }
+  }
+
+  function showReconnectUi(name) {
+    $('#reconnect-name').textContent = name;
+    $('#btn-reconnect').hidden = false;
+    $('#btn-forget-repo').hidden = false;
+  }
+
+  function hideReconnectUi() {
+    $('#btn-reconnect').hidden = true;
+    $('#btn-forget-repo').hidden = true;
+  }
+
+  /** 启动时尝试静默重连：权限已被浏览器记住（granted）就直接连；
+   *  需要授权则亮出「重连」按钮，等用户点击（requestPermission 需要用户手势）。 */
+  async function bootReconnect() {
+    let handle;
+    try { handle = await idbLoadHandle(); } catch { return; }
+    if (!handle || S.repo || S.selected) return;
+    let granted = false;
+    try { granted = (await handle.queryPermission({ mode: 'readwrite' })) === 'granted'; } catch { return; }
+    if (granted) {
+      if (await tryReconnect(handle)) toast('已自动重连上次的仓库目录', false);
+      return;
+    }
+    showReconnectUi(handle.name);
   }
 
   async function loadFileFallback() {
@@ -386,6 +574,7 @@
       const file = $('#file-input').files[0];
       if (!file) return;
       S.repo = null; S.readOnly = true;
+      hideReconnectUi();
       await loadClText(await file.text(), `📄 ${file.name}（只读降级）`);
       renderSidebar();
       toast('已按只读模式加载；完成编辑将改为下载文件', false);
@@ -435,8 +624,12 @@
 
   // ---------- 版本面板 ----------
   function selectSection(name) {
+    // 外部编辑可能删掉当前小节（刷新重载后）：回落到第一个可选小节，避免渲染层炸掉
+    if (!S.parsed.has(name)) name = firstEditableSection();
+    // 小节切换后旧选中的卡片对象不属于新小节，重置粘贴目标
+    if (S.selected !== name) S.selectedCard = null;
     S.selected = name;
-    S.tab = 'edit';
+    // 不重置 S.tab：切换版本保持当前视图（默认分屏），active 按钮跟随实际 tab
     const section = S.sections.find((s) => s.name === name);
     $('#vh-name').textContent = name;
     const dateInput = $('#vh-date');
@@ -444,7 +637,7 @@
     dateInput.style.display = section?.date || L.isStable(name) ? '' : 'none';
     $('#auto-arch-label').style.display = section && L.isStable(name) ? '' : 'none';
     renderLockBanner();
-    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === 'edit'));
+    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === S.tab));
     renderSidebar();
     renderPane();
   }
@@ -522,11 +715,9 @@
     ].join('');
     return `
       <div class="card-head">
-        ${tags}<span class="spacer"></span>
+        <span class="drag-handle" title="拖拽调整顺序">⠿</span>${tags}<span class="spacer"></span>
         <button data-act="diff" title="与原文对比">对比</button>
         <button data-act="reset" title="恢复原文">还原</button>
-        <button data-act="up" title="上移">↑</button>
-        <button data-act="down" title="下移">↓</button>
         ${card.kind === 'entry' ? '<button data-act="img" title="添加图片文件">📎</button>' : ''}
         <button data-act="del" title="删除此条">✕</button>
       </div>`;
@@ -550,7 +741,7 @@
     pane.appendChild(addRow);
     pane.querySelectorAll('textarea').forEach(fitTextarea);
     pane.querySelectorAll('.card').forEach((el) => {
-      if (el.dataset.cardId === String(S.selectedCard)) el.classList.add('selected');
+      if (parsed.cards[Number(el.dataset.cardId)] === S.selectedCard) el.classList.add('selected');
     });
   }
 
@@ -575,17 +766,80 @@
       refreshCardTags(el, card);
       scheduleSplitPreview();
     });
-    ta.addEventListener('focus', () => selectCard(cardId));
-    el.addEventListener('click', (e) => { if (e.target.closest('button, a, input, .img-item')) return; selectCard(cardId); });
+    ta.addEventListener('focus', () => selectCard(card));
+    el.addEventListener('click', (e) => { if (e.target.closest('button, a, input, .img-item')) return; selectCard(card); });
     el.querySelectorAll('.card-head button').forEach((btn) => {
       btn.onclick = () => cardAction(btn.dataset.act, card, idx, el);
     });
+    wireCardDrag(el, idx);
     // 图片条：已有图片引用 + 新粘贴图片（统一列表，可拖拽排序）
     if (isEntry) {
       const strip = el.querySelector('[data-strip]');
       renderImages(card, idx, strip);
     }
     return el;
+  }
+
+  /** 卡片拖拽排序：仅允许从把手（.drag-handle）发起，避免干扰 textarea 文本选择；
+   *  dataTransfer 只认 text/cl-card-idx 类型，与图片条拖拽、文件拖入互不干扰。 */
+  function wireCardDrag(el, idx) {
+    const handle = el.querySelector('.drag-handle');
+    handle.addEventListener('mousedown', () => {
+      if (editLocked()) return;
+      el.draggable = true;
+      // 普通点击把手（未发生拖拽）也必须复位：否则残留的 draggable 会把
+      // 卡片内任意子拖拽劫持成卡片移动
+      document.addEventListener('mouseup', () => { el.draggable = false; }, { once: true });
+    });
+    el.addEventListener('dragstart', (e) => {
+      // dragstart 会从可拖拽子元素（图片条 item、textarea 文本选区）冒泡上来，
+      // 那些拖拽归子元素自己管，卡片层不得取消或改写
+      if (e.target !== el) return;
+      if (!el.draggable) { e.preventDefault(); return; }
+      e.dataTransfer.setData('text/cl-card-idx', String(idx));
+      e.dataTransfer.effectAllowed = 'move';
+      el.classList.add('dragging');
+    });
+    el.addEventListener('dragend', () => {
+      el.draggable = false;
+      el.classList.remove('dragging');
+      clearCardDropMarks();
+    });
+    el.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer.types.includes('text/cl-card-idx')) return;
+      if (editLocked() || el.classList.contains('dragging')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      clearCardDropMarks();
+      el.classList.add(cardDropBefore(el, e) ? 'drop-before' : 'drop-after');
+    });
+    // 拖出卡片（间隙 / add-row）时清掉指示线，不留残影
+    el.addEventListener('dragleave', (e) => {
+      if (el.contains(e.relatedTarget)) return;
+      clearCardDropMarks();
+    });
+    el.addEventListener('drop', (e) => {
+      if (!e.dataTransfer.types.includes('text/cl-card-idx')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      clearCardDropMarks();
+      const from = Number(e.dataTransfer.getData('text/cl-card-idx'));
+      const targetIdx = Number(el.dataset.idx);
+      if (Number.isNaN(from) || Number.isNaN(targetIdx) || from === targetIdx) return;
+      let to = cardDropBefore(el, e) ? targetIdx : targetIdx + 1;
+      if (from < to) to -= 1; // 先移除再插入的索引补偿
+      moveCard(from, to);
+    });
+  }
+
+  function cardDropBefore(el, e) {
+    const rect = el.getBoundingClientRect();
+    return e.clientY < rect.top + rect.height / 2;
+  }
+
+  function clearCardDropMarks() {
+    document.querySelectorAll('.card.drop-before, .card.drop-after')
+      .forEach((c) => c.classList.remove('drop-before', 'drop-after'));
   }
 
   function refreshCardTags(el, card) {
@@ -595,11 +849,15 @@
     if (!changed && tag) tag.remove();
   }
 
-  function selectCard(cardId) {
-    S.selectedCard = cardId;
+  function selectCard(card) {
+    // 存对象引用而非索引：卡片增删/拖拽重排会让索引整体偏移，索引制会把
+    // 粘贴目标指到错误的卡片
+    S.selectedCard = card;
     document.querySelectorAll('.card.selected').forEach((c) => c.classList.remove('selected'));
-    const el = document.querySelector(`.card[data-card-id="${cardId}"]`);
-    if (el) el.classList.add('selected');
+    document.querySelectorAll('#cards .card').forEach((el) => {
+      const i = Number(el.dataset.cardId);
+      if (S.parsed.get(S.selected)?.cards[i] === card) el.classList.add('selected');
+    });
   }
 
   function fitTextarea(ta) {
@@ -625,18 +883,14 @@
       refreshCardTags(el, card);
       markDirty(); return;
     }
-    if (act === 'up' || act === 'down') {
-      const j = act === 'up' ? idx - 1 : idx + 1;
-      if (j < 0 || j >= parsed.cards.length) return;
-      [parsed.cards[idx], parsed.cards[j]] = [parsed.cards[j], parsed.cards[idx]];
-      markDirty(); renderPane(); return;
-    }
     if (act === 'del') {
       if (!confirm('删除这一条？')) return;
       parsed.cards.splice(idx, 1);
       for (const [id, img] of S.images) {
         if (img.cardKey === `${S.selected}#${idx}`) S.images.delete(id);
       }
+      // 删除后后续卡片索引整体前移，按新位置重绑图片归属
+      rebindImageCardKeys(parsed, S.selected);
       markDirty(); renderPane(); return;
     }
     if (act === 'img') {
@@ -650,6 +904,30 @@
       };
       input.click();
     }
+  }
+
+  /** 拖拽/重排：移动卡片并按新位置重绑图片归属（cardKey 为索引制）。 */
+  function moveCard(from, to) {
+    const parsed = S.parsed.get(S.selected);
+    if (from === to || from < 0 || to < 0 || from >= parsed.cards.length || to >= parsed.cards.length) return;
+    const [moved] = parsed.cards.splice(from, 1);
+    parsed.cards.splice(to, 0, moved);
+    rebindImageCardKeys(parsed, S.selected);
+    S.selectedCard = moved; // 选中跟随被移动的卡片（对象引用）
+    markDirty(); renderPane();
+  }
+
+  /** 图片元数据的 cardKey 是 `section#idx` 索引制：卡片顺序变化后必须按
+   *  当前归属重建，否则删除/恢复/写盘会把图片关联到错误卡片。
+   *  sectionName 必须显式传入，避免隐式依赖调用时的 S.selected。 */
+  function rebindImageCardKeys(parsed, sectionName) {
+    parsed.cards.forEach((card, idx) => {
+      for (const im of card.images || []) {
+        if (im.kind !== 'new') continue;
+        const meta = S.images.get(im.id);
+        if (meta) meta.cardKey = `${sectionName}#${idx}`;
+      }
+    });
   }
 
   function addCard(kind, atIdx) {
@@ -708,9 +986,19 @@
   }
 
   async function attachImage(card, idx, file) {
+    if (finishInProgress || $('#mask').classList.contains('show')) return;
+    const generation = imageOperationGeneration;
+    const selected = S.selected;
+    const parsed = S.parsed.get(selected);
     const { blob, filename, size } = await toWebp(file);
+    const currentIdx = parsed?.cards.indexOf(card) ?? -1;
+    if (generation !== imageOperationGeneration || finishInProgress || $('#mask').classList.contains('show')
+      || S.selected !== selected || S.parsed.get(selected) !== parsed || currentIdx < 0) {
+      toast('图片导入已取消：操作上下文已改变，请在确认结束后重新导入', true);
+      return;
+    }
     const id = `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const cardKey = `${S.selected}#${idx}`;
+    const cardKey = `${selected}#${currentIdx}`;
     const ext = (/(\.[a-z0-9]+)$/i.exec(filename) || ['.webp'])[1];
     const base = slugifyTitle(cardTitleOf(card)) || 'image';
     const siblings = (card.images || [])
@@ -718,7 +1006,7 @@
       .map((im) => S.images.get(im.id))
       .filter((m) => m && m.base === base).length;
     const defaulted = siblings > 0 ? `${base}-${siblings + 1}${ext}` : `${base}${ext}`;
-    S.images.set(id, { id, blob, size, alt: cardTitleOf(card), filename: defaulted, base, cardKey });
+    S.images.set(id, { id, blob, size, alt: base, filename: defaulted, base, cardKey });
     card.images = card.images || [];
     card.images.push({ kind: 'new', id });
     markDirty();
@@ -731,6 +1019,15 @@
   }
 
   function truncate(text, n) { return text.length > n ? `${text.slice(0, n)}…` : text; }
+
+  /** 文本输入框内拖动选择文字时，临时关掉 img-item 的 draggable，
+   *  否则浏览器会把输入框内的拖动当成整个图片条目的拖拽排序。 */
+  function keepTextSelectionOver(item, input) {
+    input.addEventListener('mousedown', () => {
+      item.draggable = false;
+      document.addEventListener('mouseup', () => { item.draggable = true; }, { once: true });
+    });
+  }
 
   /** 统一图片条：已有引用与待写盘图片混排，可拖拽排序。 */
   function renderImages(card, idx, strip) {
@@ -751,7 +1048,7 @@
         const baseName = ext ? meta.filename.slice(0, -ext.length) : meta.filename;
         thumb = `<img src="${url}" alt="" title="点击放大预览">
           <div class="fields">
-            <input type="text" data-f="alt" placeholder="alt 描述（默认取条目标题）" value="${escapeAttr(meta.alt)}">
+            <input type="text" data-f="alt" placeholder="alt 描述（默认同文件名）" value="${escapeAttr(meta.alt)}">
             <div style="display:flex; gap:4px; align-items:center;">
               <input type="text" data-f="filename" value="${escapeAttr(baseName)}" title="写入 docs/assets/${escapeAttr(S.selected)}/ 的文件名（不含扩展名）" style="flex:1; min-width:0;">
               <span class="ext-badge">${escapeHtml(ext)}</span>
@@ -762,6 +1059,7 @@
               <button data-act="rm">移除</button></div>
           </div>`;
         item.innerHTML = thumb;
+        item.querySelectorAll('input[data-f]').forEach((inp) => keepTextSelectionOver(item, inp));
         item.querySelector('img').onclick = () => window.open(url, '_blank');
         item.querySelector('[data-f="alt"]').addEventListener('input', (e) => { meta.alt = e.target.value; markDirty(); });
         item.querySelector('[data-f="filename"]').addEventListener('input', (e) => {
@@ -782,6 +1080,7 @@
             <div class="meta"><span>已有</span><button data-act="rm" title="从条目移除该图片行（不删除文件）">移除</button></div>
           </div>`;
         item.innerHTML = thumb;
+        item.querySelectorAll('input[data-f]').forEach((inp) => keepTextSelectionOver(item, inp));
         const imgEl = item.querySelector('img');
         if (imgEl.dataset.repo) resolveRepoImage(imgEl, imgEl.dataset.repo);
         else imgEl.onclick = () => window.open(img.path, '_blank');
@@ -848,26 +1147,49 @@
   }
 
   // ---------- 粘贴 / 拖放 ----------
+  /** 粘贴图片的目标解析。优先级：当前聚焦文本框所在卡片 > 已选中卡片 >
+   *  第一条条目（带提示）。目标必须是 entry；heading/文本卡不能带图。 */
+  function resolvePasteCard(parsed) {
+    const active = document.activeElement;
+    const activeEl = active && active.closest ? active.closest('.card') : null;
+    if (activeEl) {
+      const i = Number(activeEl.dataset.idx);
+      const byFocus = Number.isInteger(i) ? parsed.cards[i] : null;
+      if (byFocus && byFocus.kind === 'entry') {
+        return { card: byFocus, idx: parsed.cards.indexOf(byFocus), source: 'focus' };
+      }
+    }
+    const selected = S.selectedCard;
+    if (selected && parsed.cards.includes(selected) && selected.kind === 'entry') {
+      return { card: selected, idx: parsed.cards.indexOf(selected), source: 'selected' };
+    }
+    const first = parsed.cards.find((c) => c.kind === 'entry');
+    return first ? { card: first, idx: parsed.cards.indexOf(first), source: 'first' } : null;
+  }
+
   document.addEventListener('paste', async (e) => {
+    if (finishInProgress || $('#mask').classList.contains('show')) return;
     if ((S.tab !== 'edit' && S.tab !== 'split') || !S.selected) return;
     const files = [...(e.clipboardData?.items || [])]
       .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
       .map((item) => item.getAsFile()).filter(Boolean);
     if (!files.length) return;
     const parsed = S.parsed.get(S.selected);
-    let idx = S.selectedCard;
-    let card = parsed.cards[idx];
-    if (!card || card.kind !== 'entry') {
-      card = parsed.cards.find((c) => c.kind === 'entry');
-      idx = parsed.cards.indexOf(card);
-      if (!card) return;
-    }
+    const target = resolvePasteCard(parsed);
+    if (!target) return;
     e.preventDefault();
-    for (const file of files) await attachImage(card, idx, file);
+    if (target.source === 'first') {
+      toast(`未选中条目，图片已附加到第一条条目「${truncate(cardTitleOf(target.card), 18)}」`);
+    }
+    for (const file of files) {
+      if (finishInProgress || $('#mask').classList.contains('show')) break;
+      await attachImage(target.card, target.idx, file);
+    }
     renderPane();
   });
 
   document.addEventListener('dragover', (e) => {
+    if (finishInProgress || $('#mask').classList.contains('show')) return;
     const card = e.target.closest?.('.card');
     if (!card || (S.tab !== 'edit' && S.tab !== 'split')) return;
     // 只拦截携带文件的拖拽；文本选区拖动走浏览器默认行为（不抢选区）
@@ -879,6 +1201,7 @@
     e.target.closest?.('.card')?.classList.remove('drop-hint');
   });
   document.addEventListener('drop', async (e) => {
+    if (finishInProgress || $('#mask').classList.contains('show')) return;
     const cardEl = e.target.closest?.('.card');
     if (!cardEl || (S.tab !== 'edit' && S.tab !== 'split')) return;
     const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith('image/'));
@@ -889,7 +1212,10 @@
     const idx = Number(cardEl.dataset.idx);
     const card = parsed.cards[idx];
     if (!card || card.kind !== 'entry') { toast('图片只能附加到条目上', true); return; }
-    for (const file of files) await attachImage(card, idx, file);
+    for (const file of files) {
+      if (finishInProgress || $('#mask').classList.contains('show')) break;
+      await attachImage(card, idx, file);
+    }
     renderPane();
   });
 
@@ -1097,11 +1423,39 @@
   // ---------- IndexedDB（图片二进制） ----------
   function idbOpen() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open('cl-editor', 1);
-      req.onupgradeneeded = () => req.result.createObjectStore('images');
+      const req = indexedDB.open('cl-editor', 2);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains('images')) db.createObjectStore('images');
+        if (!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
+      };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
+  }
+  // 目录句柄持久化：FileSystemDirectoryHandle 可结构化克隆入 IDB（FSA 标准做法），
+  // 下次启动用它免掉手动选目录；权限过期时浏览器只会弹一次授权确认。
+  async function idbSaveHandle(handle) {
+    const db = await idbOpen();
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').put(handle, 'repo-root');
+    await new Promise((res) => { tx.oncomplete = res; tx.onerror = res; });
+    db.close();
+  }
+  async function idbLoadHandle() {
+    const db = await idbOpen();
+    const tx = db.transaction('handles', 'readonly');
+    const req = tx.objectStore('handles').get('repo-root');
+    const out = await new Promise((res) => { req.onsuccess = () => res(req.result ?? null); req.onerror = () => res(null); });
+    db.close();
+    return out ?? null;
+  }
+  async function idbClearHandle() {
+    const db = await idbOpen();
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').delete('repo-root');
+    await new Promise((res) => { tx.oncomplete = res; tx.onerror = res; });
+    db.close();
   }
   async function idbPutAll(refs) {
     if (!S.images.size) return;
@@ -1255,6 +1609,7 @@
   }
 
   async function finishEditing() {
+    if (finishInProgress) return;
     const dirty = dirtyVersions();
     if (!dirty.length) { toast('没有需要完成的修改', true); return; }
     const allErrors = [];
@@ -1263,7 +1618,7 @@
     }
     if (allErrors.length) {
       modal(`<h3>还不能完成编辑</h3>${allErrors.map((e) => `<p class="step">⚠ ${escapeHtml(e)}</p>`).join('')}
-        <div style="margin-top:14px;text-align:right"><button onclick="document.querySelector('#mask').classList.remove('show')">知道了</button></div>`);
+        <div style="margin-top:14px;text-align:right"><button onclick="closeModal(true)">知道了</button></div>`);
       return;
     }
     if (dirty.length === 1) {
@@ -1291,7 +1646,7 @@
       ${rows}
       <p class="hint" style="margin:12px 0 0">写入顺序：备份 → 各版本图片 → 一次性写回 CHANGELOG.md → 重生成勾选的归档。</p>
       <div style="margin-top:16px;text-align:right">
-        <button onclick="document.querySelector('#mask').classList.remove('show')">取消</button>
+        <button onclick="closeModal(true)">取消</button>
         <button id="btn-batch-go" class="primary">开始写入</button>
       </div>`);
     $('#btn-batch-go').onclick = () => {
@@ -1318,7 +1673,7 @@
           <button id="cf-cancel">取消</button>
           <button id="cf-side">另存为单独文件</button>
           <button id="cf-force" class="primary">强行覆盖</button>
-        </div>`);
+        </div>`, () => resolve('cancel'));
       $('#cf-cancel').onclick = () => { closeModal(); resolve('cancel'); };
       $('#cf-side').onclick = () => { closeModal(); resolve('sidefile'); };
       $('#cf-force').onclick = () => { closeModal(); resolve('force'); };
@@ -1336,6 +1691,10 @@
   }
 
   async function applyFinish(versionNames, archiveSet) {
+    if (finishInProgress) return;
+    finishInProgress = true;
+    imageOperationGeneration += 1;
+    refreshBackgroundLock();
     const steps = [];
     const log = (text) => { steps.push(text); };
     const written = [];
@@ -1452,11 +1811,14 @@
           : `<p class="hint" style="margin:12px 0 4px">建议接着在仓库根目录执行：</p>
         <code>uv run --no-sync python scripts/prepare_release_notes.py --check-all</code>
         ${tags.map((tag) => `<br><code>uv run --no-sync python scripts/prepare_release_notes.py --tag ${escapeHtml(tag)} --output .artifacts/release-preview.md</code>`).join('')}`}
-        <div style="margin-top:16px;text-align:right"><button class="primary" onclick="document.querySelector('#mask').classList.remove('show')">好</button></div>`);
+        <div style="margin-top:16px;text-align:right"><button class="primary" onclick="closeModal(true)">好</button></div>`);
     } catch (error) {
       modal(`<h3>⚠ 完成编辑中断</h3><p>${escapeHtml(error.message)}</p>
         <p class="hint">已执行的步骤不会回滚；被覆盖的文件在最近一次备份目录里。</p>
-        <div style="text-align:right"><button onclick="document.querySelector('#mask').classList.remove('show')">知道了</button></div>`);
+        <div style="text-align:right"><button onclick="closeModal(true)">知道了</button></div>`);
+    } finally {
+      finishInProgress = false;
+      refreshBackgroundLock();
     }
   }
 
@@ -1516,16 +1878,82 @@
     await refreshArchiveStatus();
     renderSidebar();
     modal(`<h3>归档生成结果</h3>${results.map((r) => `<div class="step"><span class="s">${r.startsWith('✓') ? '✓' : '✗'}</span><span>${escapeHtml(r.slice(2))}</span></div>`).join('')}
-      <div style="margin-top:14px;text-align:right"><button class="primary" onclick="document.querySelector('#mask').classList.remove('show')">好</button></div>`);
+      <div style="margin-top:14px;text-align:right"><button class="primary" onclick="closeModal(true)">好</button></div>`);
   };
 
   // ---------- 载入入口 ----------
   $('#btn-open').onclick = openRepo;
   $('#btn-load-file').onclick = loadFileFallback;
 
+  // 手动编辑：请 dev-dashboard server 用系统默认编辑器打开仓库根的 CHANGELOG.md。
+  // 仅当页面经 dev-dashboard 访问（同源提供 /api/open-changelog）时可用。
+  $('#btn-external-edit').onclick = async () => {
+    try {
+      const res = await fetch('/api/open-changelog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) toast('已调起系统编辑器打开 CHANGELOG.md');
+      else toast(data?.error ?? '调起失败：该功能需通过 dev-dashboard（node tools/dev-dashboard/serve.mjs）访问', true);
+    } catch {
+      toast('调起失败：该功能需通过 dev-dashboard（node tools/dev-dashboard/serve.mjs）访问', true);
+    }
+  };
+
+  // 刷新：丢弃页面修改，从磁盘重新载入（外部编辑器改完之后用）
+  $('#btn-reload-cl').onclick = async () => {
+    if (!S.repo) { toast('未连接仓库目录，无法从磁盘刷新', true); return; }
+    if (isDirty() && !confirm('页面有未保存的修改，从磁盘重新载入将丢弃这些修改。继续？')) return;
+    // 既然确认了丢弃，就同步清掉本轮会话的存档与待写图片，避免：
+    // 1) 同 hash 时 loadClText 又把刚丢弃的存档当「未完成编辑」复活；
+    // 2) 失去挂靠的 S.images 残留导致脏态永真、幽灵 refs 持续自动保存。
+    localStorage.removeItem(LS_STATE());
+    localStorage.removeItem(LS_REFS());
+    localStorage.removeItem(LS_IMGS());
+    S.images.clear();
+    const text = await readFileAt(['CHANGELOG.md']);
+    if (text == null) { toast('读取 CHANGELOG.md 失败', true); return; }
+    await loadClText(text, S.repoName);
+    await refreshArchiveStatus();
+    renderSidebar();
+    toast('已从磁盘重新载入 CHANGELOG.md');
+  };
+  $('#btn-reconnect').onclick = async () => {
+    const handle = await idbLoadHandle();
+    if (!handle) { hideReconnectUi(); return; }
+    if (!(await tryReconnect(handle))) {
+      toast('未能重连：请在浏览器弹窗中允许访问，或重新手动选择目录', true);
+    }
+  };
+  $('#btn-forget-repo').onclick = async () => {
+    await idbClearHandle().catch(() => {});
+    hideReconnectUi();
+    toast('已忘记记住的仓库目录');
+  };
+  bootReconnect();
+
   // 侧栏拖宽（记忆宽度）
   const savedSidebarWidth = localStorage.getItem('cl-editor:sidebar-w');
   if (savedSidebarWidth) $('#sidebar').style.width = savedSidebarWidth;
+
+  // 侧栏收缩/展开（记忆状态）
+  const SIDEBAR_COLLAPSED_KEY = 'cl-editor:sidebar-collapsed';
+  function applySidebarCollapsed(collapsed) {
+    $('#sidebar').classList.toggle('collapsed', collapsed);
+    document.body.classList.toggle('side-collapsed', collapsed);
+    const btn = $('#sidebar-toggle');
+    btn.textContent = collapsed ? '⟩' : '⟨';
+    btn.title = collapsed ? '展开侧栏（版本列表与归档生成）' : '收起侧栏（版本列表与归档生成）';
+  }
+  $('#sidebar-toggle').addEventListener('click', () => {
+    const collapsed = !$('#sidebar').classList.contains('collapsed');
+    applySidebarCollapsed(collapsed);
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '');
+  });
+  applySidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
+
   $('#sb-resizer').addEventListener('mousedown', (e) => {
     e.preventDefault();
     const sidebar = $('#sidebar');

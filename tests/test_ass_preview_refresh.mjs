@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { invokedInitModuleSource } from './helpers/init-module-source.mjs';
 
 function scheduler() {
   const frames = new Map(), timers = new Map(), observed = [], unobserved = [], listeners = new Map();
@@ -17,20 +17,16 @@ function scheduler() {
     window: { setTimeout(fn) { timers.set(++id, fn); return id; },
       clearTimeout(key) { timers.delete(key); }, addEventListener(name, fn) { listeners.set(name, fn); } },
   };
-  const source = fs.readFileSync(new URL('../web/editor/media/editor-wiring-keyboard-guards.js', import.meta.url), 'utf8');
-  const start = source.indexOf('let assPreviewRefreshFrame');
-  const end = source.indexOf('window.MaweKeyboardGuards =', start);
-  assert.ok(start >= 0 && end > start, 'ASS refresh implementation must be present');
-  vm.runInNewContext(source.slice(start, end), context);
+  vm.runInNewContext(invokedInitModuleSource('editor/media/editor-ass-preview-refresh.js', 'initMaweAssPreviewRefresh'), context);
   const flush = () => { const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn()); };
   return { context, frames, timers, observed, unobserved, listeners, player, flush, draws: () => draws };
 }
 
 test('ASS resize events coalesce without postponing the next frame or fixed trailing refresh', () => {
   const s = scheduler();
-  s.context.scheduleAssSubtitlePreviewRefresh();
+  s.context.window.MaweAssPreviewRefresh.scheduleAssSubtitlePreviewRefresh();
   const firstTimer = [...s.timers.keys()][0];
-  for (let i = 0; i < 20; i++) s.context.scheduleAssSubtitlePreviewRefresh();
+  for (let i = 0; i < 20; i++) s.context.window.MaweAssPreviewRefresh.scheduleAssSubtitlePreviewRefresh();
   assert.equal(s.frames.size, 1);
   assert.deepEqual([...s.timers.keys()], [firstTimer]);
   s.flush();
@@ -45,7 +41,7 @@ test('ASS resize events coalesce without postponing the next frame or fixed trai
 test('ASS refresh observes the video and pending work cannot paint after disabling ASS', () => {
   const s = scheduler();
   assert.ok(s.observed.includes(s.player));
-  s.context.scheduleAssSubtitlePreviewRefresh();
+  s.context.window.MaweAssPreviewRefresh.scheduleAssSubtitlePreviewRefresh();
   s.context.MaweSettings.EDITOR_SETTINGS.assMode = false;
   s.flush();
   for (const finish of s.timers.values()) finish();
@@ -56,10 +52,19 @@ test('ASS refresh observes the video and pending work cannot paint after disabli
 test('replacing the video detaches the old observation and observes the new player once', () => {
   const s = scheduler();
   const next = { tagName: 'VIDEO' };
-  s.context.observeAssSubtitlePreviewPlayer(next);
-  s.context.observeAssSubtitlePreviewPlayer(next);
+  s.context.window.MaweAssPreviewRefresh.observeAssSubtitlePreviewPlayer(next);
+  s.context.window.MaweAssPreviewRefresh.observeAssSubtitlePreviewPlayer(next);
   assert.deepEqual(s.unobserved, [s.player]);
   assert.equal(s.observed.filter(item => item === next).length, 1);
-  s.context.observeAssSubtitlePreviewPlayer({ tagName: 'AUDIO' });
+  s.context.window.MaweAssPreviewRefresh.observeAssSubtitlePreviewPlayer({ tagName: 'AUDIO' });
   assert.deepEqual(s.unobserved, [s.player, next]);
+});
+
+test('initializing the refresh service again does not install another observer', () => {
+  const s = scheduler();
+  const observed = s.observed.length;
+  const listener = s.listeners.get('resize');
+  s.context.initMaweAssPreviewRefresh();
+  assert.equal(s.observed.length, observed);
+  assert.equal(s.listeners.get('resize'), listener);
 });

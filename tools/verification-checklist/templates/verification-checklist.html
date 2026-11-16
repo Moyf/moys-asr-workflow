@@ -24,30 +24,21 @@
       （灰色折叠、计数按已处理、不进入未确认导出）；JSON 可导出全部或未确认和备注项。
       详细使用与导出格式见工具目录 README.md；生成物不提交进仓库。
 -->
-<html lang="zh-CN">
+<html lang="zh-CN" data-tool-page="verification-checklist">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{TITLE}}</title>
+<link rel="stylesheet" href="../../shared/tool-page.css" data-tool-foundation>
+<script data-tool-bootstrap src="../../shared/tool-page.js"></script>
 <style>
   :root {
-    --bg: #f3f5f8; --paper: #ffffff; --ink: #1a1f27; --ink2: #57606e; --ink3: #8b94a3;
-    --line: #e4e7ec; --accent: #2563eb; --ok: #16a34a; --warn: #b45309;
-    --chip: #eef1f6; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
-    --radius: 14px;
-    color-scheme: light;
-    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 6px 20px rgba(16,24,40,.06);
-    --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+    --bg: var(--bg-base); --paper: var(--bg-panel); --ink: var(--text-primary);
+    --ink2: var(--text-secondary); --ink3: var(--text-muted); --line: var(--border-subtle);
+    --ok: var(--green); --warn: var(--amber); --chip: var(--bg-raised); --mono: var(--font-mono);
+    --radius: var(--radius-lg); --shadow: var(--shadow-2);
     --ok-soft: color-mix(in srgb, var(--ok) 14%, transparent);
     --warn-soft: color-mix(in srgb, var(--warn) 16%, transparent);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      color-scheme: dark;
-      --bg: #0e1116; --paper: #161b22; --ink: #e8ebf0; --ink2: #a4adba; --ink3: #6e7787;
-      --line: #2a313b; --accent: #6ea8ff; --ok: #4ade80; --warn: #f0b14a; --chip: #1f2630;
-      --shadow: 0 1px 2px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.4);
-    }
   }
   * { box-sizing: border-box; }
   /* 不在根滚动条上开 scroll-behavior: smooth——它会把所有程序化滚动
@@ -57,13 +48,13 @@
     *, *::before, *::after { transition: none !important; }
   }
   body { margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.7 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+    font: 15px/1.65 var(--font-sans); }
   ::selection { background: var(--accent-soft); }
 
   /* 顶部整体进度条 */
   .topbar { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 50; }
   .topbar > i { display: block; height: 100%; width: 0;
-    background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width .3s; }
+    background: var(--accent); transition: width .3s; }
 
   .layout { max-width: 1240px; margin: 0 auto; padding: 44px 32px 100px;
     display: grid; grid-template-columns: 300px minmax(0, 1fr);
@@ -85,6 +76,8 @@
 
   header.page-head h1 { font-size: 27px; line-height: 1.3; margin: 0 0 6px; letter-spacing: -.01em; }
   header.page-head .sub { color: var(--ink2); font-size: 15px; }
+  .page-tools { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  .checklist-controls > summary { display:none; cursor:pointer; padding:8px 0; font-weight:600; }
 
   /* 侧栏卡片：总进度 + 目录 */
   .side-card { background: var(--paper); border: 1px solid var(--line);
@@ -96,21 +89,21 @@
   .num { font: 700 26px/1.2 var(--mono); margin: 2px 0 10px; }
   .bar { height: 10px; background: var(--chip); border-radius: 999px; overflow: hidden; }
   .bar > i { display: block; height: 100%; width: 0; border-radius: 999px;
-    background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width .3s; }
+    background: var(--accent); transition: width .3s; }
   .side-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-  button.ghost { border: 1px solid var(--line); background: none; color: var(--ink2);
-    border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
-  button.ghost:hover { color: var(--ink); border-color: var(--ink3); }
+  button.ghost { height:32px; border: 1px solid var(--border); background:var(--tool-control-raised); color: var(--ink2);
+    border-radius: var(--radius-sm); padding: 0 12px; font-size: 13px; cursor: pointer; }
+  button.ghost:hover { background:var(--tool-control-hover); color: var(--ink); border-color: var(--border-strong); }
   button.ghost[aria-pressed="true"] { color: var(--accent); border-color: var(--accent);
     background: var(--accent-soft); }
   button:focus-visible, select:focus-visible, textarea:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 3px; }
-  button.primary { border: 1px solid var(--accent); background: var(--accent); color: var(--paper);
-    border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-  button.primary:hover { filter: brightness(.92); }
-  button.export-btn { border: 1px solid var(--line); background: var(--paper); color: var(--ink);
-    border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
-  button.export-btn:hover { border-color: var(--ink3); background: var(--chip); }
+  button.primary { height:32px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text);
+    border-radius: var(--radius-sm); padding: 0 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button.primary:hover { background:var(--accent-hover); border-color:var(--accent-hover); }
+  button.export-btn { height:32px; border: 1px solid var(--border); background: var(--tool-control-raised); color: var(--ink2);
+    border-radius: var(--radius-sm); padding: 0 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button.export-btn:hover { background:var(--tool-control-hover); border-color: var(--border-strong); }
   button.is-copied { color: var(--ok); border-color: var(--ok); }
   button.is-copy-failed { color: var(--warn); border-color: var(--warn); }
   button:disabled { opacity: .5; cursor: default; }
@@ -181,16 +174,16 @@
   .note { color: var(--ink2); font-size: 14.5px; margin: 10px 0; }
   .plain { padding: 8px 10px; color: var(--ink2); font-size: 15px; }
   .plain b { color: var(--ink); font-weight: 600; }
-  .item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 9px 10px;
-    border-radius: 8px; }
+  .item { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 10px;
+    border-radius: 8px; cursor:pointer; }
   .item:hover { background: var(--chip); }
   .item[hidden] { display: none; }
   .item input { appearance: none; -webkit-appearance: none; flex: none; margin: 3px 0 0;
-    width: 20px; height: 20px; border: 1.5px solid var(--ink3); border-radius: 6px;
+    width: 24px; height: 24px; border: 1.5px solid var(--ink3); border-radius: 6px;
     background: var(--paper); cursor: pointer; position: relative;
     transition: background .15s, border-color .15s; }
-  .item input::after { content: ""; position: absolute; left: 6px; top: 2px;
-    width: 5px; height: 10px; border: solid #fff; border-width: 0 2.5px 2.5px 0;
+  .item input::after { content: ""; position: absolute; left: 8px; top: 4px;
+    width: 5px; height: 10px; border: solid var(--bg-panel); border-width: 0 2.5px 2.5px 0;
     transform: rotate(45deg) scale(0); transition: transform .15s; }
   .item input:checked { background: var(--ok); border-color: var(--ok); }
   .item input:checked::after { transform: rotate(45deg) scale(1); }
@@ -212,6 +205,10 @@
   .item.done .item-exp { color: var(--ink3); text-decoration: line-through;
     text-decoration-color: color-mix(in srgb, var(--ink3) 60%, transparent); }
   .item.done .item-hint { color: var(--ink3); }
+  .tool-compact .item { grid-template-columns:24px minmax(0,1fr); align-items:center; padding:8px 10px; }
+  .tool-compact .item input { margin-top:0; }
+  .tool-compact .item-op, .tool-compact .item-exp, .tool-compact .item-hint,
+  .tool-compact .item-actions, .tool-compact .item-note { display:none; }
   .note-toggle { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px;
     background: transparent; color: var(--ink3); padding: 3px 6px; font: inherit;
     font-size: 12px; cursor: pointer; white-space: nowrap; }
@@ -242,6 +239,8 @@
     .layout { grid-template-columns: 1fr; grid-template-areas: "head" "side" "main";
       padding: 28px 18px 72px; row-gap: 20px; }
     .sidebar { position: static; max-height: none; overflow: visible; padding-right: 0; }
+    .checklist-controls > summary { display:block; }
+    .toc-card { display:none; }
   }
   @media (max-width: 540px) {
     .section > summary { padding: 16px; font-size: 16px; }
@@ -253,6 +252,9 @@
     .topbar, .sidebar, .side-actions { display: none !important; }
     .layout { display: block; padding: 0; }
     .section { box-shadow: none; break-inside: avoid; content-visibility: visible; }
+    .tool-compact .item { align-items:start; padding:12px 10px; }
+    .tool-compact .item input { margin-top:3px; }
+    .tool-compact .item-op, .tool-compact .item-exp, .tool-compact .item-hint { display:block; }
     .note-toggle, .item-copy, .item-note { display: none !important; }
     .print-note:not(:empty) { display: block; grid-column: 2 / -1; margin: 0;
       color: var(--ink2); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
@@ -266,6 +268,7 @@
   <header class="page-head">
     <h1>{{TITLE}}</h1>
     <div class="sub">{{SUBTITLE}}</div>
+    <div class="page-tools"><button type="button" class="tool-theme" data-tool-theme>◐ 主题</button><label class="switch tool-density" for="tool-compact-toggle"><input id="tool-compact-toggle" type="checkbox" data-tool-compact role="switch"><span class="switch-track" aria-hidden="true"></span>精简显示</label></div>
   </header>
 
   <aside class="sidebar">
@@ -273,6 +276,7 @@
       <div class="row"><span class="lbl">核查进度</span><span class="pct" id="pct">0%</span></div>
       <div class="num" id="num">0 / 0</div>
       <div class="bar"><i id="bar"></i></div>
+      <details class="checklist-controls" open><summary>操作与导出</summary>
       <div class="side-actions">
         <button class="ghost" id="reset" type="button">重置勾选</button>
         <button class="ghost" id="expand" type="button">全部展开</button>
@@ -290,6 +294,7 @@
         <button class="export-btn" id="copy-md" type="button">复制 Markdown</button>
         <button class="primary" id="export-json" type="button">导出 JSON</button>
       </div>
+      </details>
       <p class="save-status" id="save-status" role="status" aria-live="polite">勾选与备注自动保存在本机</p>
     </div>
     <nav class="side-card toc-card" id="toc-card" aria-label="目录">
@@ -305,6 +310,11 @@
 
 <script>
 (function () {
+  'use strict';
+  var controls = document.querySelector('.checklist-controls');
+  var narrowLayout = window.matchMedia('(max-width: 980px)');
+  controls.open = !narrowLayout.matches;
+  narrowLayout.addEventListener('change', function(event) {controls.open = !event.matches;});
   // 沿用旧页面的勾选存储键与布尔值格式，备注另存，升级不丢已有进度。
   var KEY = 'maw-checklist:' + document.title;
   var NOTES_KEY = KEY + ':notes';
@@ -635,6 +645,12 @@
     }
   });
   document.getElementById('export-scope').addEventListener('change', refreshExport);
+  document.querySelector('main.content').addEventListener('click', function (event) {
+    var item = event.target.closest('.item');
+    if (!item || event.target.closest('button,a,input,textarea,label,.item-note') || String(window.getSelection())) return;
+    var box = item.querySelector('input[type="checkbox"]');
+    if (box && !box.disabled) { box.checked = !box.checked; box.dispatchEvent(new Event('change', {bubbles:true})); }
+  });
 
   // JSON 和 Markdown 共用同一结果快照与过滤规则。
   function buildResult(scope) {

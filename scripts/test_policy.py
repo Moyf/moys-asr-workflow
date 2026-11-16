@@ -73,4 +73,6 @@ def allowed_platform_skip(test_id: str, reason: str) -> bool:
             or identity == "test_gui_web.GuiWebBridgeTests.test_open_output_folder_uses_startfile_on_windows"
             and reason == "os.startfile 仅 Windows 可用；os.name 补丁会让 pathlib 选择 WindowsPath"
             or identity == "test_local_log.DefaultLogDirectoryTests.test_uses_localappdata_namespace"
-            and reason == "LOCALAPPDATA 变量仅为 Windows 语义")
+            and reason == "LOCALAPPDATA 变量仅为 Windows 语义"
+            or identity == "test_term_extract_fixture_paths.FixturePathTests.test_real_short_path_fixture_reaches_publication_failure_injections"
+            and reason == "Windows 8.3 paths only")

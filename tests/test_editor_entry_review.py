@@ -6,9 +6,10 @@ import tempfile
 import unittest
 
 from tests.helpers.versioned_source import create_versioned_source
+from tests.compact_assertions import CompactContainerAssertions
 
 
-class ActualVersionRetirementTests(unittest.TestCase):
+class ActualVersionRetirementTests(CompactContainerAssertions, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temp = tempfile.TemporaryDirectory()
@@ -96,6 +97,13 @@ assert project.read_text(encoding="utf-8") == content
     def test_packaging_refuses_unsynchronized_metadata_before_analysis(self):
         with tempfile.TemporaryDirectory() as directory:
             root = create_versioned_source(Path(directory) / "stale", synchronize=False)
+            # A 2.0 checkout may already carry synchronized fallbacks. Inject
+            # the stale marker explicitly so this remains a negative test.
+            diagnostics = root / "maw" / "diagnostics.py"
+            content = diagnostics.read_text(encoding="utf-8")
+            marker = 'BUNDLED_APP_VERSION = "2.0.0-beta.1"'
+            self.assertIn(marker, content)
+            diagnostics.write_text(content.replace(marker, 'BUNDLED_APP_VERSION = "1.99.0"'), encoding="utf-8", newline="\n")
             code = '''
 import runpy
 from types import SimpleNamespace

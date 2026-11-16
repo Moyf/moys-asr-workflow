@@ -2,11 +2,17 @@
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweHint 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
+import { createUtilsModule as createConsoleMirrorModule } from '../../shared/utils/console-mirror.js';
+
 export function initMaweHint() {
   'use strict';
 
   // 装配器无参调用；宿主对象固定为当前页面 window。
   const global = window;
+
+  // 报错类提示同时镜像到 DevTools 控制台：提示卡 1.8s 后消失，控制台
+  // 副本（含调用方透传的原始 error）供事后回查失败原因。
+  const consoleMirror = createConsoleMirrorModule({ prefix: '[MAWE][hint]' });
 
 
 
@@ -146,6 +152,9 @@ export function initMaweHint() {
     card.className = typeClass ? `hint-card ${typeClass}` : 'hint-card';
     if (typeof options.contentBuilder === 'function') options.contentBuilder(card);
     else card.textContent = msg;
+    // 镜像放在卡片内容就绪之后：contentBuilder 路径 msg 可能为空，
+    // 回退用卡片文本兜底，保证保存失败这类富卡片报错不漏镜像。
+    consoleMirror.mirrorFeedback(String(msg || card.textContent || ''), type, options);
     stack.appendChild(card);
     const durationMs = Number.isFinite(options.durationMs) ? options.durationMs : HINT_DURATION_MS;
     if (durationMs > 0) setTimeout(() => dismissHintCard(card), durationMs);

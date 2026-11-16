@@ -16,6 +16,7 @@ interface Window {
     clearCaches(): void;
     render(payload: any): void;
     hide(): void;
+    renderSample(element: any, style: any, text: string): void;
     readonly lastRender: any;
   };
 }
@@ -59,6 +60,7 @@ interface ProjectTrack {
   name: string;
   enabled: boolean;
   segments: ProjectSegment[];
+  style?: { font_default?: boolean; [key: string]: any };
   language?: string;
   language_source?: string;
   split_mode?: string;
@@ -232,6 +234,11 @@ interface Window {
   MaweAssPreview: any;
   MaweGapRemovedMediaExport: any;
   MaweDomPanelsWiring: any;
+  MaweFloatingPanel: any;
+  MawePreviewGeometry: any;
+  MaweSettingsPanels: any;
+  MaweFontGeometryWiring: any;
+  MaweBurnVideoExport?: any;
   MaweContextMenusWiring: any;
   MaweDisplaySettings: any;
   MaweContextMenus: any;
@@ -313,6 +320,8 @@ interface MaweStateApi {
   readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean; audioProcessingDirty: boolean; processingOverridesDirty: boolean };
   hasProjectChanges(pendingText?: boolean): boolean;
   readonly projectEpoch: number;
+  readonly projectLoadGeneration: number;
+  readonly projectLoadPending: boolean;
   projectFingerprint(value?: any): string;
   persistenceSnapshot(value: any): any;
   setSnapshotReader(reader: () => any): void;
@@ -331,6 +340,7 @@ interface MaweStateApi {
 declare var MaweState: MaweStateApi;
 interface Window {
   MaweState: MaweStateApi;
+  MaweProjectSettings?: { syncTrackControls(): void; syncControls(): void };
   MAWE: { register(name: string, factory: (...args: any[]) => unknown): void; resolve(name: string, ...args: any[]): any };
 }
 
@@ -361,6 +371,7 @@ interface Window {
   MaweCommands: MaweCommandsApi;
   MaweViewUpdates: typeof MaweViewUpdates;
   MaweMarkerEditing?: { isEditingEnabled(): boolean };
+  MaweHint?: { flashHint(message: string, type?: string): void };
   MaweAssFrame?: { notifyProjectChanged?(): void };
   webkitAudioContext?: typeof AudioContext;
   AsrGapRemoveCore: {

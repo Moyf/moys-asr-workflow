@@ -36,7 +36,7 @@ async function importSubtitleFromInput(event) {
       const segments = await MaweLoadingProgress.parseSubtitleImportFile(file);
       await MaweMultiImport.showMultiSubtitleImportChoice(file, segments);
     } catch (error) {
-      MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning', { error });
     }
     return;
   }
@@ -92,7 +92,7 @@ MaweDom.multiSubtitleImportModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.multiSubtitleImportModal) MaweMultiImport.closeMultiSubtitleImportModal();
 });
 MaweDom.multiSubtitleSplitCancel?.addEventListener('click', MaweSplitCore.closeLinkedSplitModal);
-multiSubtitleSplitDuplicate?.addEventListener('click', () => MaweSplitCore.confirmLinkedSplit({ duplicateText: true }));
+window.MaweDomPanelsWiring.multiSubtitleSplitDuplicate?.addEventListener('click', () => MaweSplitCore.confirmLinkedSplit({ duplicateText: true }));
 MaweDom.multiSubtitleSplitConfirm?.addEventListener('click', MaweSplitCore.confirmLinkedSplit);
 MaweDom.multiSubtitleSplitModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.multiSubtitleSplitModal) MaweSplitCore.closeLinkedSplitModal();

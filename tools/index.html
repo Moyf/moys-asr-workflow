@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN" data-tool-page="catalog">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MAW 工具功能与状态</title>
+<script src="shared/tool-page.js"></script>
+<link rel="stylesheet" href="shared/tool-page.css">
+<link rel="stylesheet" href="shared/markdown.css">
+<link rel="stylesheet" href="shared/doc-viewer.css">
+<style>
+*{box-sizing:border-box}body{margin:0;font:14px/1.6 var(--font-sans);background:var(--bg-base);color:var(--text-primary)}
+header{border-bottom:1px solid var(--border-subtle);background:var(--bg-panel)}.wrap{max-width:1280px;margin:auto;padding:24px}
+.head{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{margin:0;font-size:26px;line-height:1.3}h2{margin:0;font-size:18px}p{margin:8px 0;color:var(--text-secondary)}
+.stats{display:flex;gap:12px 24px;flex-wrap:wrap;margin-top:16px;color:var(--text-muted)}.stats b{font:700 20px var(--font-mono);color:var(--text-primary);margin-right:6px}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:20px}input,select,button{min-height:36px;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-input);color:var(--text-primary)}button{cursor:pointer}button:hover{border-color:var(--accent)}input{flex:1 1 280px;min-width:0}
+.note{margin-top:16px;font-size:13px;color:var(--text-muted)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card{padding:20px;border:1px solid var(--border-subtle);border-radius:var(--radius-lg);background:var(--bg-panel);min-width:0;content-visibility:auto;contain-intrinsic-size:auto 320px}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.badge{font-size:12px;white-space:nowrap;border-radius:999px;padding:2px 9px;color:var(--text-muted);background:var(--bg-raised)}.maintained{color:var(--green);background:var(--green-soft)}.experimental{color:var(--amber);background:var(--amber-soft)}.category{margin-top:4px;color:var(--text-muted);font-size:12px}
+ul{padding-left:20px;margin:12px 0}li{margin:3px 0}.io{display:grid;grid-template-columns:40px minmax(0,1fr);gap:6px 12px;margin:12px 0;font-size:13px}.io dt{color:var(--text-muted)}.io dd{margin:0;overflow-wrap:anywhere}.boundary{border-top:1px solid var(--border-subtle);padding-top:12px;font-size:13px;color:var(--text-muted)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}a{color:var(--accent)}.link-btn{display:inline-flex;align-items:center;min-height:36px;padding:6px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);text-decoration:none;color:var(--text-secondary)}.link-btn:hover{border-color:var(--accent);color:var(--accent)}.link-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+code{display:block;max-width:100%;overflow-x:auto;font:12px/1.6 var(--font-mono);padding:10px;background:var(--bg-raised);border-radius:var(--radius-sm);margin-top:12px;white-space:pre}footer{font-size:13px;border-top:1px solid var(--border-subtle);margin-top:24px;padding-top:16px;color:var(--text-muted)}
+@media(max-width:760px){.grid{grid-template-columns:minmax(0,1fr)}.wrap{padding:16px}.head{align-items:flex-start}h1{font-size:22px}.card{padding:16px}.card-head{align-items:flex-start}.filters input{flex-basis:100%}}
+@media print{.card{content-visibility:visible}.filters{display:none}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><div class="head"><div><h1>MAW 工具功能与状态</h1><p>按用途查看现有能力、入口和维护边界。</p></div><button class="tool-theme" data-tool-theme type="button">◐ 主题</button></div><div id="stats" class="stats"></div><div class="filters"><input id="search" type="search" aria-label="搜索工具" placeholder="搜索名称、能力或用途"><select id="status" aria-label="工具维护状态"><option value="all">全部状态</option><option value="maintained">持续维护</option><option value="experimental">实验验证</option><option value="paused">暂停维护</option><option value="retired">已过期，不再维护</option><option value="deferred">暂不处理</option><option value="cli">CLI 专用</option></select><button id="reset" type="button">重置筛选</button></div><p class="note">“持续维护”表示维护范围，不表示全部功能已人工验收。文案重写已过期，不再维护；波形工具台暂停维护，Filmstrip 暂不处理。</p></div></header>
+<main class="wrap"><div id="tools" class="grid"></div><footer>清单源：<a href="catalog.js">catalog.js</a> · <button type="button" data-tool-doc="README.md">工具说明</button> · <button type="button" data-tool-doc="TOOL_PAGE_GUIDE.md">设计与交互规范</button><p>使用说明默认页内阅读，弹窗保留打开源文件；未收录文档链接会明确提示打开源文件。新增工具或调整入口、能力、维护状态时，必须同步清单和工具 README；生成产物不作为固定源码入口。</p></footer></main>
+<script src="catalog.js"></script>
+<script src="shared/vendor/marked-18.1.3/marked.umd.js"></script>
+<script src="shared/vendor/dompurify-3.4.17/purify.min.js"></script>
+<script src="tool-docs-data.js"></script>
+<script src="shared/markdown.js"></script>
+<script src="shared/doc-data.js"></script>
+<script src="shared/doc-viewer.js"></script>
+<script>
+(function(){'use strict';
+const labels={maintained:'持续维护',experimental:'实验验证',paused:'暂停维护',retired:'已过期，不再维护',deferred:'暂不处理',cli:'CLI 专用'};
+const data=window.MAWToolCatalog||[],root=document.getElementById('tools'),search=document.getElementById('search'),status=document.getElementById('status');
+const docs=window.MAWToolDocData.create({data:window.MAWToolDocs,baseUrl:document.baseURI});
+const viewer=window.MAWDocViewer.create({render:window.MAWMarkdown.render,loader:docs.load,resolve:docs.resolve});
+window.MAWToolDocViewer=viewer;
+function node(tag,className,text){const el=document.createElement(tag);if(className)el.className=className;if(text!==undefined)el.textContent=text;return el;}
+function link(href,label,primary){const el=node('a','link-btn'+(primary?' primary':''),label);el.href=href;return el;}
+function docButton(t){const el=node('button','link-btn','使用说明');el.type='button';el.dataset.toolDoc=t.docs;el.dataset.docTitle=t.name+' · 使用说明';return el;}
+function render(){root.replaceChildren();const query=search.value.trim().toLowerCase();const filtered=data.filter(t=>(status.value==='all'||t.status===status.value)&&[t.name,t.summary,t.category,...t.features].join(' ').toLowerCase().includes(query));
+for(const t of filtered){const card=node('article','card'),head=node('div','card-head');head.append(node('h2','',t.name),node('span','badge '+t.status,labels[t.status]));card.append(head,node('div','category',t.category),node('p','',t.summary));const features=node('ul');t.features.forEach(f=>features.append(node('li','',f)));card.append(features);const io=node('dl','io');io.append(node('dt','','输入'),node('dd','',t.input),node('dt','','输出'),node('dd','',t.output));card.append(io,node('p','boundary',t.boundary));if(t.command)card.append(node('code','',t.command));const actions=node('div','actions');if(t.entry)actions.append(link(t.entry,t.status==='retired'?'查看历史页面':'打开工具',t.status!=='retired'));actions.append(docButton(t));card.append(actions);root.append(card);}
+if(!filtered.length)root.append(node('p','tool-empty','当前筛选下没有工具。'));
+const stats=document.getElementById('stats');stats.replaceChildren();for(const [value,label]of[[data.length,'个工具'],[filtered.length,'当前显示'],[data.filter(t=>t.status==='maintained').length,'持续维护']]){const item=node('span');item.append(node('b','',String(value)),' '+label);stats.append(item);}}
+search.addEventListener('input',render);status.addEventListener('change',render);document.getElementById('reset').addEventListener('click',()=>{search.value='';status.value='all';render();});render();
+document.addEventListener('click',event=>{const button=event.target.closest('[data-tool-doc]');if(!button)return;const request=docs.resolve(button.dataset.toolDoc)||{path:button.dataset.toolDoc,sourceUrl:new URL(button.dataset.toolDoc,document.baseURI).href};void viewer.open({...request,title:button.dataset.docTitle||button.textContent},button);});
+})();
+</script>
+</body>
+</html>

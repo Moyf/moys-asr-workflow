@@ -32,6 +32,7 @@ async function enableAss(page) {
   await openSettingsPage(page, 'subtitle-style');
   await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-mode-toggle').check();
+  await page.evaluate(() => window.MaweAssFontAliases.whenReady());
   await closeSettingsPanels(page);
 }
 

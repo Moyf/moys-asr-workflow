@@ -1,3 +1,9 @@
+import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
+import { getAssBuiltinFontSuggestions } from './editor-wiring-ass-storage.js';
+import { scheduleAssSubtitlePreviewRefresh } from '../media/editor-ass-preview-refresh.js';
+
+export function initFontGeometryWiring() {
+const { assStyleFontOptions, assStyleFontToggle, assStyleForm, subtitleFontFamilyInput, subtitleFontFamilyOptions, subtitleFontFamilyToggle } = getMaweDomPanels();
 
 // === 字幕预览几何（preview.subtitle）===
 // 归一化 {x,y,width,height} 存于 DATA.preview.subtitle。纯钳制/归一化逻辑在
@@ -5,6 +11,10 @@
 
 
 // 启动早期生成的自定义字体选项先用原始名称占位；共享工具层就绪后立即统一本地化。
+window.MaweFontGeometryWiring = window.MaweFontGeometryWiring || Object.freeze({
+  rebuildSubtitleFontFamilyOptions,
+  rebuildAssFontNameOptions,
+});
 MaweAppearance.relabelSubtitleFontFamilyOptions();
 
 
@@ -226,7 +236,7 @@ function assFontNameComboboxEntries() {
     entries.push({ value: entry.canonical, label: entry.canonical, aliases: entry.names });
     (entry.names || []).forEach((name) => aliasNames.add(String(name).toLocaleLowerCase()));
   });
-  ASS_BUILTIN_FONT_SUGGESTIONS.forEach((name) => entries.push({ value: name, label: name }));
+  getAssBuiltinFontSuggestions().forEach((name) => entries.push({ value: name, label: name }));
   MaweAppearance.subtitleLocalFontFamilies.forEach((family) => {
     if (aliasNames.has(family.toLocaleLowerCase())) return;
     entries.push({ value: family, label: family });
@@ -234,32 +244,32 @@ function assFontNameComboboxEntries() {
   return entries;
 }
 function getSubtitleFontFamilyCombobox() {
-  if (!subtitleFontFamilyCombobox) {
-    subtitleFontFamilyCombobox = createFontFamilyCombobox({
+  if (!getMaweDomPanels().subtitleFontFamilyCombobox) {
+    getMaweDomPanels().subtitleFontFamilyCombobox = createFontFamilyCombobox({
       input: subtitleFontFamilyInput,
       toggle: subtitleFontFamilyToggle,
       options: subtitleFontFamilyOptions,
       getEntries: subtitleFontFamilyComboboxEntries,
     });
   }
-  return subtitleFontFamilyCombobox;
+  return getMaweDomPanels().subtitleFontFamilyCombobox;
 }
 function getAssFontNameCombobox() {
-  if (!assFontNameCombobox) {
+  if (!getMaweDomPanels().assFontNameCombobox) {
     const assStyleFontNameInput = document.getElementById('ass-style-font-name');
     // 占位符跟随按操作系统选择的 ASS 默认字体，不再固定 Arial。
     if (assStyleFontNameInput) {
       const assDefaultFontName = window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE?.fontName;
       if (assDefaultFontName) assStyleFontNameInput.placeholder = assDefaultFontName;
     }
-    assFontNameCombobox = createFontFamilyCombobox({
+    getMaweDomPanels().assFontNameCombobox = createFontFamilyCombobox({
       input: assStyleFontNameInput,
       toggle: assStyleFontToggle,
       options: assStyleFontOptions,
       getEntries: assFontNameComboboxEntries,
     });
   }
-  return assFontNameCombobox;
+  return getMaweDomPanels().assFontNameCombobox;
 }
 function rebuildSubtitleFontFamilyOptions() {
   getSubtitleFontFamilyCombobox().refresh();
@@ -271,28 +281,6 @@ function rebuildAssFontNameOptions() {
 // 别名表是启动后异步拉取的：就绪时重建 ASS 字体下拉，让 canonical 条目与
 // 归并后的本机扫描结果进入选项列表。
 document.addEventListener('mawe:ass-font-aliases-loaded', rebuildAssFontNameOptions);
-
-
-
-function normalizeAssColorStyleValue(value) {
-  return typeof value === 'string' && ASS_COLOR_STYLE_VALUES.includes(value)
-    ? value : null;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -406,4 +394,5 @@ if (typeof ResizeObserver === 'function') {
     scheduleAssSubtitlePreviewRefresh();
   });
   previewResizeObserver.observe(MaweDom.playerStage);
+}
 }

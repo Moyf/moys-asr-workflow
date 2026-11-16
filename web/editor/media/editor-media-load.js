@@ -1,3 +1,4 @@
+export function initMediaLoadModule() {
 // 媒体加载：媒体与 reapeaks 文件加载、元数据等待。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweMediaLoad 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -66,7 +67,7 @@
       await waitForMediaMetadata(candidatePlayer, file, request.signal);
     } catch (error) {
       if (!isCurrent()) return false;
-      MaweHint.flashHint(error.message || `媒体加载失败：${file.name}`, 'warning');
+      MaweHint.flashHint(error.message || `媒体加载失败：${file.name}`, 'warning', { error });
       return false;
     }
 
@@ -149,7 +150,7 @@
         MaweLoadingProgress.updateEditorLoading(75, `正在生成波形 ${file.name}…`);
         await whileCurrent(MaweCoreState.waveformEditor.processFile(file, { isCurrent }), request.signal);
       } catch (error) {
-        if (isCurrent()) MaweHint.flashHint(error.message || String(error), 'warning');
+        if (isCurrent()) MaweHint.flashHint(error.message || String(error), 'warning', { error });
       }
     }
     if (!isCurrent()) return false;
@@ -196,7 +197,7 @@
       return true;
     } catch (error) {
       if (!current()) return false;
-      MaweHint.flashHint(`加载 reapeaks 失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`加载 reapeaks 失败：${error.message || error}`, 'warning', { error });
       return false;
     } finally {
       request.finish();
@@ -250,3 +251,4 @@
     mediaLoadErrorMessage
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

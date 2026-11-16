@@ -8,6 +8,13 @@
       "name": "theme_keys",
       "exportName": "createThemeKeys",
       "binding": "createThemeKeys"
+    },
+    {
+      "file": "shared/utils/console-mirror.js",
+      "kind": "transition",
+      "name": "console_mirror",
+      "exportName": "createUtilsModule",
+      "binding": "createConsoleMirror"
     }
   ]
 }

@@ -1,3 +1,4 @@
+export function initServerConnectionModule() {
 // 服务器连接：健康检查、断联横幅与启动进度轮询。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweServerConnection 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -210,3 +211,4 @@
     loadServerStartup
   });
 })(typeof window !== 'undefined' ? window : globalThis);
+}

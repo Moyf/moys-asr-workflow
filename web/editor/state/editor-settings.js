@@ -108,6 +108,7 @@ export function initMaweSettings() {
   const DEFAULT_EDITOR_SETTINGS = {
   splitKey: 'enter',
   splitUseWordTimestamps: true,
+  quickEditSplitFocusNext: true,
   // 主字幕拆分类型手动指定偏好：word / continuous / null（跟随工程与检测）。
   mainSplitModeOverride: null,
   // 拆分弹窗中选完所有需要确认的断点后自动提交。

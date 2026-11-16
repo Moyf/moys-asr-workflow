@@ -69,3 +69,5 @@ Launcher 默认输出到 `_maw`；每视频子文件夹和模型名开关另行�
 ## 如何反馈问题
 
 提交 [GitHub Issue](https://github.com/Moyf/moys-asr-workflow/issues/new)，提供版本、包名、系统与架构、具体步骤、完整错误及已尝试的方法。先移除 API Key、令牌、私人媒体与识别内容，本地路径可脱敏。
+
+编辑器的报错提示与 Launcher 的错误面板会同时把一份副本输出到浏览器开发者工具控制台（F12 → Console，条目以 `[MAWE][hint]` / `[MAW Launcher]` 开头）：编辑器副本附带原始错误对象（含堆栈），Launcher 副本附带错误码与诊断信息。反馈问题时一并附上控制台截图或文本，能显著加快定位。Launcher 也可以用 `--devtools` 参数启动并直接打开 DevTools。

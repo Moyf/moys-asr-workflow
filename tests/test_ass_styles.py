@@ -68,13 +68,31 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertEqual((extension["fontSize"], extension["outline"], extension["marginV"], extension["primaryColor"]),
                          (64, 4, 100, "#f9ca1f"))
         self.assertEqual(library["assProfiles"][0]["animations"]["fad"],
-                         {"enabled": True, "inMs": 250, "outMs": 250})
+                         {"enabled": False, "inMs": 250, "outMs": 250})
         self.assertEqual(library["assProfiles"][0]["animations"]["pop"],
                          {"enabled": False, "fromScale": 0.7, "inMs": 120, "accel": 1})
         main.update(fontName="Arial", fontSize=72, emphasisScale=1.1, backColor="#000000",
                     backOpacity=100, bold=False, outline=4, marginV=80)
         library["assProfiles"][0]["animations"]["fad"]["enabled"] = False
         self.assertEqual(normalize_ass_style_library(library), library)
+
+    def test_animation_switches_default_off_and_preserve_saved_true_and_false(self) -> None:
+        for library in (default_ass_style_library(), normalize_ass_style_library({})):
+            animations = find_ass_profile(library, "ass")["animations"]
+            self.assertFalse(animations["fad"]["enabled"])
+            self.assertFalse(animations["pop"]["enabled"])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ass-styles.json"
+            for fad_enabled in (True, False):
+                for pop_enabled in (True, False):
+                    with self.subTest(fad=fad_enabled, pop=pop_enabled):
+                        library = default_ass_style_library()
+                        animations = library["assProfiles"][0]["animations"]
+                        animations["fad"].update(enabled=fad_enabled, inMs=150, outMs=300)
+                        animations["pop"].update(enabled=pop_enabled, fromScale=0.8, inMs=200)
+                        self.assertEqual(normalize_ass_style_library(library), library)
+                        self.assertEqual(save_ass_style_library(library, path), library)
+                        self.assertEqual(load_ass_style_library(path), library)
 
     def test_pop_animation_normalization_clamps_and_keeps_roundtrip(self) -> None:
         # 旧库没有 pop 组：归一化补默认值；非法值按边界收敛。

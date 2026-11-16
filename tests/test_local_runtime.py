@@ -236,6 +236,9 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertEqual(manifest["status"], STATUS_BROKEN)
 
     # 内嵌流测试固定 win32：install 分支与 python_path 布局在 mac/linux CI 上一致。
+    # resolve_root 的 win32 分支会先算 fallback 路径比对（需要 current_user_sid），
+    # 非 Windows 平台没有 WinDLL，SID 需显式 mock（同 tests/test_ocr_runtime.py）。
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     @mock.patch("maw.runtimes.base.probe_index_reachable", new=mock.MagicMock(return_value=True))
@@ -264,7 +267,7 @@ class LocalRuntimeTests(unittest.TestCase):
                     with mock.patch("maw.runtimes.base._extract_embed_python", side_effect=fake_extract):
                         with mock.patch.object(LOCAL, "requirements_path", return_value=requirements_txt):
                             with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
-                                with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
+                                with mock.patch("maw.runtimes.base.ranked_mirrors", return_value=["https://pypi.org/simple"]):
                                     with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run) as run_process:
                                         status = install_local_runtime(on_event=lambda *event: events.append(event))
 
@@ -283,6 +286,7 @@ class LocalRuntimeTests(unittest.TestCase):
         self.assertIn("--target", install_command)
         self.assertIn("import jieba", verify_command[-1])
 
+    @mock.patch("maw.runtimes.pathwin.winsecurity.current_user_sid", new=mock.MagicMock(return_value="S-1-5-21-1-2-3-1001"))
     @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
     @mock.patch("maw.runtimes.base.sys.platform", "win32")
     def test_install_without_bootstrap_assets_explains_packaged_requirement(self) -> None:
