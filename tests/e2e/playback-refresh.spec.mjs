@@ -219,13 +219,25 @@ test('JKL direction mode drives the timeline backward and forward', async ({ pag
     await expect(page.locator('#media-playback-rate')).toHaveValue(rate);
   }
 
-  const stoppedAt = await page.evaluate(() => document.getElementById('player').currentTime);
   await page.keyboard.press('k');
   await expect(page.locator('#media-playback-rate')).toHaveValue('1');
-  await expect.poll(() => page.evaluate(() => document.getElementById('player').paused)).toBe(true);
-  await expect.poll(() => page.evaluate((expected) => {
+  // Reverse playback advances via RAF while the media is already paused.
+  // Wait for the JKL stop contract, then sample: at -16x even one frame
+  // between a pre-key sample and K legitimately moves the playhead ~267 ms.
+  await expect.poll(() => page.evaluate(() => ({
+    paused: document.getElementById('player').paused,
+    reverse: MaweJklPlayback.jklReversePlaying,
+    frame: MaweJklPlayback.jklReverseFrameId,
+    pending: Boolean(window.MaweGapPlayback?.pendingPlayback),
+  }))).toEqual({ paused: true, reverse: false, frame: 0, pending: false });
+  const stoppedAt = await page.evaluate(() => document.getElementById('player').currentTime);
+  // Cross animation-frame boundaries so a leaked reverse loop cannot pass
+  // merely because the first read happened before its next callback.
+  const stoppedDelta = await page.evaluate(async (expected) => {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     return Math.abs(document.getElementById('player').currentTime - expected);
-  }, stoppedAt)).toBeLessThan(0.01);
+  }, stoppedAt);
+  expect(stoppedDelta).toBeLessThan(0.01);
 
   await page.keyboard.press('k');
   await expect(page.locator('#media-playback-rate')).toHaveValue('1');
