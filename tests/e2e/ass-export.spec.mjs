@@ -1,5 +1,5 @@
 import { observeAssRequests } from './ass-request-diagnostics.mjs';
-import { waitForAssFonts } from './ass-font-readiness.mjs';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
 // ASS 导出 UI 回归：验证编辑器当前选中的字体、字号和颜色确实写进保存的文件。
 import { expect, test } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
@@ -533,6 +533,8 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
 });
 
 test('ASS underscore markers underline only the marked preview and export text', async ({ page }) => {
+  // This case checks exported content, not the machine-wide font scan.
+  await stubAssFontCoverage(page);
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
@@ -569,6 +571,8 @@ test('ASS underscore markers underline only the marked preview and export text',
 });
 
 test('writes the project title, source resolution, palette styles and speaker names to ASS', async ({ page }) => {
+  // This case checks exported content, not the machine-wide font scan.
+  await stubAssFontCoverage(page);
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
@@ -616,6 +620,8 @@ test('writes the project title, source resolution, palette styles and speaker na
 });
 
 test('exports speaker-only ASS label colour without a palette style variant', async ({ page }) => {
+  // This case checks exported content, not the machine-wide font scan.
+  await stubAssFontCoverage(page);
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
@@ -745,6 +751,8 @@ test('shows disabled secondary export entries when bilingual mode has no second 
 });
 
 test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ page }) => {
+  // This case checks exported content, not the machine-wide font scan.
+  await stubAssFontCoverage(page);
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
