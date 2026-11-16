@@ -1,0 +1,90 @@
+name: Windows setup benchmark (manual only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Diagnostic only: never replaces or gates the complete test matrix.
+jobs:
+  benchmark:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-latest]
+        sample: [1, 2]
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Record image and initial media feature state
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .artifacts/setup-benchmark | Out-Null
+          $watch = [Diagnostics.Stopwatch]::StartNew()
+          $feature = Get-WindowsFeature Server-Media-Foundation -ErrorAction Stop
+          @{ runner = '${{ matrix.os }}'; sample = '${{ matrix.sample }}'; image = $env:ImageVersion; imageOS = $env:ImageOS; commit = '${{ github.sha }}'; mediaFeatureInstalled = $feature.Installed; probeSeconds = $watch.Elapsed.TotalSeconds } | ConvertTo-Json | Set-Content -Encoding utf8 .artifacts/setup-benchmark/image.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.13.4'
+          enable-cache: true
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.4
+          run_install: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.23.4'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Python dependencies (timed)
+        run: python scripts/run_check.py --timeout 600 --log-dir .artifacts/setup-benchmark/python-deps -- uv sync --frozen --group dev --group test
+      - name: Node dependencies (timed)
+        run: python scripts/run_check.py --timeout 600 --log-dir .artifacts/setup-benchmark/node-deps -- pnpm.cmd install --frozen-lockfile
+      - name: Official browser OS dependencies (timed, never skipped)
+        run: python scripts/run_check.py --timeout 600 --log-dir .artifacts/setup-benchmark/media-foundation -- node node_modules/@playwright/test/cli.js install-deps chromium
+      - name: Chromium download (timed separately)
+        run: python scripts/run_check.py --timeout 600 --log-dir .artifacts/setup-benchmark/chromium -- node node_modules/@playwright/test/cli.js install chromium
+      - name: FFmpeg installation (timed)
+        run: python scripts/run_check.py --timeout 600 --log-dir .artifacts/setup-benchmark/ffmpeg -- choco install ffmpeg --yes --no-progress
+      - name: Require real media executables and feature
+        shell: pwsh
+        run: |
+          if (-not (Get-WindowsFeature Server-Media-Foundation).Installed) { throw 'Media Foundation is not installed.' }
+          $binary = Get-ChildItem -LiteralPath "$env:ChocolateyInstall\lib\ffmpeg\tools" -Filter ffmpeg.exe -Recurse -File | Select-Object -First 1
+          if (-not $binary) { throw 'FFmpeg executable unavailable.' }
+          if (-not (Test-Path (Join-Path $binary.Directory.FullName 'ffprobe.exe'))) { throw 'FFprobe unavailable.' }
+          $binary.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Require original codec and libass capabilities
+        shell: bash
+        run: |
+          ffmpeg -version
+          ffprobe -version
+          ffmpeg -hide_banner -filters 2>&1 | grep -E ' ass +V->V'
+          ffmpeg -hide_banner -encoders 2>&1 | grep -F libx264
+          ffmpeg -hide_banner -encoders 2>&1 | grep -F libwebp
+      - name: Existing required real-media tests (timed)
+        run: uv run --no-sync python scripts/run_check.py --timeout 600 --log-dir .artifacts/setup-benchmark/media-tests -- .venv/Scripts/python.exe scripts/run_tests.py --pack media --required --report .artifacts/setup-benchmark/media-tests.json
+      - name: Real Chromium H264 playback and seeking (timed)
+        run: python scripts/run_check.py --timeout 120 --log-dir .artifacts/setup-benchmark/browser-media -- node scripts/ci-media-smoke.mjs
+      - name: Summarize measurements (not a success override)
+        if: always()
+        run: python scripts/ci_setup_benchmark_summary.py
+      - name: Preserve measurements and full diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: setup-benchmark-${{ matrix.os }}-${{ matrix.sample }}
+          path: .artifacts/setup-benchmark/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
