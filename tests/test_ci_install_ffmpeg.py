@@ -5,9 +5,10 @@ import unittest
 from unittest import mock
 
 from scripts import ci_install_ffmpeg as installer
+from tests.compact_assertions import CompactContainerAssertions
 
 
-class InstallFfmpegTests(unittest.TestCase):
+class InstallFfmpegTests(CompactContainerAssertions, unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
