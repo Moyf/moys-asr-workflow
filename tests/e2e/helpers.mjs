@@ -255,27 +255,35 @@ export async function dragFloatingPanelAwayFrom(page, panelSelector, dragHandleS
   // Opening a floating panel schedules its position on the next animation
   // frame. Recompute the handle point while waiting: a point captured before
   // that reposition can remain outside the header forever.
-  const ready = await page.waitForFunction(async ({ panelSelector, dragHandleSelector, targetSelector }) => {
-    const panel = document.querySelector(panelSelector);
-    const handle = document.querySelector(dragHandleSelector);
-    const target = document.querySelector(targetSelector);
-    if (!panel || !handle || !target) return false;
-    const before = handle.getBoundingClientRect();
-    await new Promise(resolve => requestAnimationFrame(resolve));
-    const rect = handle.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0
-        || ['x', 'y', 'width', 'height'].some(key => Math.abs(before[key] - rect[key]) > 0.1)) return false;
-    const offsetX = Math.min(40, Math.max(12, rect.width / 2));
-    const offsetY = Math.max(8, Math.min(15, rect.height / 2));
-    const start = { x: rect.x + offsetX, y: rect.y + offsetY };
-    const hit = document.elementFromPoint(start.x, start.y);
-    if (!hit || !(hit === handle || handle.contains(hit))) return false;
-    return {
-      panelBefore: panel.getBoundingClientRect().toJSON(),
-      handle: rect.toJSON(), target: target.getBoundingClientRect().toJSON(),
-      viewport: { width: innerWidth, height: innerHeight }, offsetX, offsetY, start,
-    };
-  }, { panelSelector, dragHandleSelector, targetSelector }, { timeout: 10_000 });
+  const sample = await page.evaluateHandle(() => ({ previous: null }));
+  let ready;
+  try {
+    ready = await page.waitForFunction(({ panelSelector, dragHandleSelector, targetSelector, sample }) => {
+      const panel = document.querySelector(panelSelector);
+      const handle = document.querySelector(dragHandleSelector);
+      const target = document.querySelector(targetSelector);
+      if (!panel || !handle || !target) return false;
+      const rect = handle.getBoundingClientRect();
+      const before = sample.previous;
+      sample.previous = rect.toJSON();
+      // waitForFunction polls synchronously on animation frames. An async
+      // predicate would return a truthy Promise and stop before false can retry.
+      if (!before || rect.width <= 0 || rect.height <= 0
+          || ['x', 'y', 'width', 'height'].some(key => Math.abs(before[key] - rect[key]) > 0.1)) return false;
+      const offsetX = Math.min(40, Math.max(12, rect.width / 2));
+      const offsetY = Math.max(8, Math.min(15, rect.height / 2));
+      const start = { x: rect.x + offsetX, y: rect.y + offsetY };
+      const hit = document.elementFromPoint(start.x, start.y);
+      if (!hit || !(hit === handle || handle.contains(hit))) return false;
+      return {
+        panelBefore: panel.getBoundingClientRect().toJSON(),
+        handle: rect.toJSON(), target: target.getBoundingClientRect().toJSON(),
+        viewport: { width: innerWidth, height: innerHeight }, offsetX, offsetY, start,
+      };
+    }, { panelSelector, dragHandleSelector, targetSelector, sample }, { timeout: 10_000 });
+  } finally {
+    await sample.dispose();
+  }
   const { panelBefore, handle, target, viewport, offsetX, offsetY, start } = await ready.jsonValue();
   await ready.dispose();
   const targetOnLeft = target.x + target.width / 2 < viewport.width / 2;

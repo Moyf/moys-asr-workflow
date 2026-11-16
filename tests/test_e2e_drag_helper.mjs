@@ -24,10 +24,15 @@ test('floating drag fixture remeasures a header repositioned after opening', asy
   const page = {
     locator: selector => ({ boundingBox: async () => selectors[selector].getBoundingClientRect().toJSON(),
       evaluate: async callback => callback(selectors[selector]) }),
+    evaluateHandle: async callback => ({ value: callback(), dispose: async () => {} }),
     waitForFunction: async (callback, args) => {
       for (let attempt = 0; attempt < 4; attempt++) {
-        const value = await callback(args);
-        if (value) return { jsonValue: async () => value, dispose: async () => {} };
+        // Match Playwright: truthiness is checked before Promise assimilation.
+        // The original async predicate stopped on its first Promise, even when
+        // that Promise later resolved false. Do not hide this in the mock.
+        const value = callback({ ...args, sample: args.sample?.value });
+        if (value) return { jsonValue: async () => await value, dispose: async () => {} };
+        await new Promise(resolve => requestAnimationFrame(resolve));
       }
       throw new Error('Never found the relocated drag handle');
     },
