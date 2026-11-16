@@ -14,51 +14,70 @@ test.beforeAll(async () => {
   server = await startServer(project, audio, await findFreePort());
 });
 
-test('portable import persists and can restore its pre-import backup', async ({ page }) => {
-  await disableOnboarding(page);
-  await page.goto(pathToFileURL(portable).href);
-  await openSettingsPage(page, 'subtitle-style');
-  await page.locator('#ass-style-manager-open').click();
-  await expect(page.locator('#ass-style-library-status')).toContainText('当前浏览器');
-  const library = await page.evaluate(() => window.AsrEditorUtils.defaultAssStyleLibrary());
-  library.styles[1].fontSize = 111;
-  await page.locator('#ass-style-import-file').setInputFiles({ name: 'portable.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(library)) });
-  await page.locator('input[name="ass-style-import-mode"][value="restore"]').check();
-  await page.locator('#ass-style-import-confirm').click();
-  await expect(page.locator('#ass-style-import-dialog')).not.toBeVisible();
-  await page.reload();
-  await openSettingsPage(page, 'subtitle-style');
-  await page.locator('#ass-style-manager-open').click();
-  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
-  await expect(page.locator('#ass-style-font-size')).toHaveValue('111');
-  await page.locator('.ass-style-more-actions > summary').click();
-  await page.locator('#ass-style-restore-backup').click();
-  await page.locator('#ass-style-import-confirm').click();
-  await expect(page.locator('#ass-style-font-size')).toHaveValue('86');
-  const backupBeforeFailure = await page.evaluate(() => localStorage.getItem('moy.asr.ass.styles.v1.backup'));
-  await page.evaluate(() => {
-    const original = Storage.prototype.setItem;
-    Storage.prototype.setItem = function (key, value) {
-      if (key === 'moy.asr.ass.styles.v1') throw new DOMException('Storage unavailable', 'QuotaExceededError');
-      return original.call(this, key, value);
-    };
-  });
-  await page.locator('#ass-style-import-file').setInputFiles({ name: 'portable.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(library)) });
-  await page.locator('input[name="ass-style-import-mode"][value="restore"]').check();
-  await page.locator('#ass-style-import-confirm').click();
-  await expect(page.locator('#ass-style-import-preview')).toContainText('导入失败');
-  expect(await page.evaluate(() => localStorage.getItem('moy.asr.ass.styles.v1.backup'))).toBe(backupBeforeFailure);
-  await page.reload();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('moy.asr.ass.styles.v1')).styles.find(s => s.id === 'ass').fontSize)).toBe(86);
-  await openSettingsPage(page, 'subtitle-style');
-  await page.locator('#ass-style-manager-open').click();
-  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
-  await page.locator('#ass-style-font-size').fill('88');
-  await page.evaluate(() => {
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('moy.asr.ass.styles.v1')).styles.find(s => s.id === 'ass').fontSize)).toBe(88);
+test('portable import persists and can restore its pre-import backup', async ({ playwright, launchOptions, headless, locale, viewport }, testInfo) => {
+  // Linux file:// reloads have lost localStorage in Playwright's temporary
+  // context. Use an isolated profile and also verify it survives a restart.
+  const profile = testInfo.outputPath('portable-profile');
+  const options = { ...launchOptions, headless, locale, viewport };
+  let context = await playwright.chromium.launchPersistentContext(profile, options);
+  try {
+    const page = context.pages()[0];
+    await disableOnboarding(page);
+    await page.goto(pathToFileURL(portable).href);
+    await openSettingsPage(page, 'subtitle-style');
+    await page.locator('#ass-style-manager-open').click();
+    await expect(page.locator('#ass-style-library-status')).toContainText('当前浏览器');
+    const library = await page.evaluate(() => window.AsrEditorUtils.defaultAssStyleLibrary());
+    library.styles[1].fontSize = 111;
+    await page.locator('#ass-style-import-file').setInputFiles({ name: 'portable.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(library)) });
+    await page.locator('input[name="ass-style-import-mode"][value="restore"]').check();
+    await page.locator('#ass-style-import-confirm').click();
+    await expect(page.locator('#ass-style-import-dialog')).not.toBeVisible();
+    await expect(page.locator('#ass-style-library-status')).toContainText('样式库已导入');
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('moy.asr.ass.styles.v1')).styles.find(s => s.id === 'ass').fontSize)).toBe(111);
+    await page.reload();
+    await openSettingsPage(page, 'subtitle-style');
+    await page.locator('#ass-style-manager-open').click();
+    await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+    await expect(page.locator('#ass-style-font-size')).toHaveValue('111');
+    await page.locator('.ass-style-more-actions > summary').click();
+    await page.locator('#ass-style-restore-backup').click();
+    await page.locator('#ass-style-import-confirm').click();
+    await expect(page.locator('#ass-style-font-size')).toHaveValue('86');
+    const backupBeforeFailure = await page.evaluate(() => localStorage.getItem('moy.asr.ass.styles.v1.backup'));
+    await page.evaluate(() => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === 'moy.asr.ass.styles.v1') throw new DOMException('Storage unavailable', 'QuotaExceededError');
+        return original.call(this, key, value);
+      };
+    });
+    await page.locator('#ass-style-import-file').setInputFiles({ name: 'portable.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(library)) });
+    await page.locator('input[name="ass-style-import-mode"][value="restore"]').check();
+    await page.locator('#ass-style-import-confirm').click();
+    await expect(page.locator('#ass-style-import-preview')).toContainText('导入失败');
+    expect(await page.evaluate(() => localStorage.getItem('moy.asr.ass.styles.v1.backup'))).toBe(backupBeforeFailure);
+    await page.reload();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('moy.asr.ass.styles.v1')).styles.find(s => s.id === 'ass').fontSize)).toBe(86);
+    await openSettingsPage(page, 'subtitle-style');
+    await page.locator('#ass-style-manager-open').click();
+    await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+    await page.locator('#ass-style-font-size').fill('88');
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('moy.asr.ass.styles.v1')).styles.find(s => s.id === 'ass').fontSize)).toBe(88);
+    // Reopen the profile to verify disk persistence, not just the live renderer cache.
+    await context.close();
+    context = await playwright.chromium.launchPersistentContext(profile, options);
+    const reopened = context.pages()[0];
+    await reopened.goto(pathToFileURL(portable).href);
+    expect(await reopened.evaluate(() => JSON.parse(localStorage.getItem('moy.asr.ass.styles.v1')).styles.find(s => s.id === 'ass').fontSize)).toBe(88);
+  } finally {
+    await context.close();
+    cleanupTempDir(profile);
+  }
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(dir); });
 
