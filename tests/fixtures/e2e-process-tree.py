@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import threading
+import time
 
 port = int(sys.argv[sys.argv.index('--port') + 1])
 root = Path(os.environ['MAW_APP_DATA_ROOT']).parent
@@ -23,6 +24,11 @@ if '--leaf' not in sys.argv:
 else:
     # Last-resort bound even if the test runner itself is forcibly killed.
     threading.Timer(60, lambda: os._exit(91)).start()
+
+    # Prove cleanup assertions tolerate a healthy server starting after the old
+    # 1.5s Linux budget, without changing genuine hang/error scenarios.
+    if mode == 'slow-ready':
+        time.sleep(1.8)
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
