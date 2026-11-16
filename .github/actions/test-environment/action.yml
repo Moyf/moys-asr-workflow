@@ -40,14 +40,7 @@ runs:
     - name: Install Windows media capabilities
       if: runner.os == 'Windows'
       shell: pwsh
-      run: |
-        choco install ffmpeg --yes --no-progress
-        if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed.' }
-        # Use real executables, not process-orphaning Chocolatey shims.
-        $binary = Get-ChildItem -LiteralPath "$env:ChocolateyInstall\lib\ffmpeg\tools" -Filter ffmpeg.exe -Recurse -File | Select-Object -First 1
-        if (-not $binary) { throw 'FFmpeg executable unavailable.' }
-        if (-not (Test-Path (Join-Path $binary.Directory.FullName 'ffprobe.exe'))) { throw 'FFprobe unavailable.' }
-        $binary.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      run: python scripts/ci_install_ffmpeg.py
     - name: Require real libass and encoders
       shell: bash
       run: |
