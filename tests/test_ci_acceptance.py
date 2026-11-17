@@ -15,12 +15,13 @@ import xml.etree.ElementTree as ET
 
 from scripts import ci_acceptance as acceptance
 from scripts import ci_impact as impact
+from tests.compact_assertions import CompactContainerAssertions
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_ROOT = Path(os.environ.get('MAW_CI_CONTRACT_ROOT', ROOT))
 
 
-class AcceptanceTests(unittest.TestCase):
+class AcceptanceTests(CompactContainerAssertions, unittest.TestCase):
     def fixture(self, path='docs/plans/example.md', head='b' * 40):
         plan = impact.plan([path], base='a' * 40, head=head, trusted=True)
         needs = {'selection': {'result': 'success', 'outputs': {'plan': json.dumps(plan)}},
