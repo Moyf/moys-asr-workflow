@@ -36,7 +36,7 @@ PR使用可信整个差异；push验证before/after、实际HEAD、祖先关系�
 
 普通工程/计划/日志Markdown先匹配精确真实消费者，再匹配普通文档豁免。当前官网例外为docs/INDEX.md、JSON_SCHEMA、LLM_POSTPROCESS_PROTOCOL、MOSE、DEVELOPMENT及历史ASR_PROVIDER_RESEARCH正文，准确路径与漂移测试见选择器；不是整个engineering目录都构建网站。FAQ离线正文属于打包/runtime输入，不是普通说明。
 
-观察文件清单 `scripts/ci_observation.txt` 是完整巡检角色账目，不是“这些测试都是flaky”的名单。新增文件必须明确准入或观察；完整巡检仍做标准完整发现，不只跑这份准入子集。所有日常任务在Ubuntu执行，不新增双平台稳定矩阵。
+观察文件清单 `scripts/ci_observation.txt` 是角色账目，不是“这些测试都是flaky”的名单，也不再是所有PR必须先登记的全局门槛。未登记测试默认保留可见的未审查观察角色；stale/重复观察元数据提示但不因继承main新测试而拖红无关PR。晋级阻塞仍需明确审计，已准入源/静态名单缺失及报告错误仍失败；完整巡检做标准完整发现，不依赖观察名单过滤。所有日常任务在Ubuntu执行，不新增双平台稳定矩阵。
 
 ## 证据与接受边界
 

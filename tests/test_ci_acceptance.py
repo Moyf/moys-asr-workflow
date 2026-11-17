@@ -1,6 +1,7 @@
 """Approved rollback: unknown changes select admitted checks, not the full matrix."""
 import copy
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+from contextlib import redirect_stdout
 from unittest import mock
 
 from scripts import ci_impact
@@ -222,15 +224,66 @@ with mock.patch.object(ci_acceptance.subprocess, 'run', side_effect=command):
                         ci_acceptance.run_check(plan, 'launcher', output)
                 self.assertFalse((output / 'receipt.json').exists())
 
-    def test_test_inventory_requires_explicit_decision_for_new_tests(self):
+    def test_test_inventory_keeps_unreviewed_and_stale_visible_without_blocking(self):
         from scripts.ci_acceptance import inventory
         baseline = inventory()
         self.assertIn('tests/e2e/editor-bundle.spec.mjs', baseline)
         self.assertEqual(baseline['tests/e2e/editor-bundle.spec.mjs'], 'full-inspection-only')
-        with self.assertRaisesRegex(ValueError, 'unassigned'):
-            inventory(discovered=set(baseline) | {'tests/test_new_unreviewed.py'})
-        with self.assertRaisesRegex(ValueError, 'stale'):
-            inventory(discovered=set(baseline) - {'tests/e2e/editor-bundle.spec.mjs'})
+        with redirect_stdout(io.StringIO()) as output:
+            result = inventory(discovered=set(baseline) | {'tests/e2e/editor-save-recovery.spec.mjs'})
+            stale = inventory(discovered=set(baseline) - {'tests/e2e/editor-bundle.spec.mjs'})
+        self.assertEqual(result['tests/e2e/editor-save-recovery.spec.mjs'], 'unreviewed observation/full inspection')
+        self.assertEqual(stale['tests/e2e/editor-bundle.spec.mjs'], 'stale observation metadata (not discovered)')
+        self.assertIn('unreviewed observation/full inspection', output.getvalue())
+        self.assertIn('stale observation metadata', output.getvalue())
+
+    def test_inventory_diagnostics_are_json_escaped_and_bounded(self):
+        from scripts.ci_acceptance import inventory
+        baseline = inventory()
+        paths = {f'tests/e2e/::error::\n{index}-' + 'x' * 300 + '.spec.mjs' for index in range(20)}
+        with redirect_stdout(io.StringIO()) as output:
+            result = inventory(discovered=set(baseline) | paths, observed=list(baseline))
+        lines = output.getvalue().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].startswith('Inventory advisory: '))
+        note = json.loads(lines[0].removeprefix('Inventory advisory: '))
+        self.assertEqual(note['count'], 20)
+        self.assertEqual(len(note['paths']), 5)
+        self.assertLess(len(lines[0]), 1200)
+        self.assertTrue(all(result[p] == 'unreviewed observation/full inspection' for p in paths))
+
+    def test_inventory_keeps_missing_admitted_source_and_manifest_strict(self):
+        from scripts.ci_acceptance import inventory
+        baseline = inventory()
+        with self.assertRaisesRegex(ValueError, 'admitted blocking sources missing'):
+            inventory(discovered=set(baseline) - {'tests/test_ci_impact.py'})
+        with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, 'case manifest missing'):
+            inventory(root=Path(temporary), discovered=set(baseline), observed=[])
+
+    def test_inherited_unreviewed_e2e_does_not_fail_selection_or_transport_gate(self):
+        from scripts import ci_acceptance as acceptance
+        original = acceptance.inventory
+        baseline = original()
+        extra = 'tests/e2e/editor-save-recovery.spec.mjs'
+        head = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip()
+        plan = ci_impact.plan('stable', 'inherited main test audit', head=head)
+        needs = {'selection': {'result': 'success', 'outputs': {'plan': json.dumps(plan)}},
+                 'checks': {'result': 'success'}}
+        with tempfile.TemporaryDirectory() as temporary, redirect_stdout(io.StringIO()), mock.patch.object(
+                acceptance, 'inventory', side_effect=lambda: original(discovered=set(baseline) | {extra})):
+            root = Path(temporary)
+            acceptance.write(root / 'plan.json', plan)
+            with mock.patch.object(sys, 'argv', ['ci_acceptance.py', 'validate', '--plan', str(root / 'plan.json')]):
+                acceptance.main()
+            self.assertEqual(json.loads((root / 'inventory.json').read_text(encoding='utf-8'))[extra],
+                             'unreviewed observation/full inspection')
+            roots = {check: root / check for check in plan['checks']}
+            receipts = [success_evidence(plan, check, roots[check]) for check in plan['checks']]
+            acceptance.gate(plan, needs, receipts, head, roots=roots)
+            report = roots['ci'] / 'python.json'
+            report.write_bytes(report.read_bytes() + b'\n')
+            with self.assertRaisesRegex(ValueError, 'tampered'):
+                acceptance.gate(plan, needs, receipts, head, roots=roots)
 
     def test_bad_or_downscoped_v2_plans_cannot_turn_light(self):
         from scripts import ci_acceptance, ci_full_plan

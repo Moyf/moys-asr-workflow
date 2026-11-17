@@ -56,7 +56,14 @@ GAPS = ('Admitted contracts are not complete coverage: real HTTP/Origin/Host bou
 
 
 def inventory(root=Path('.'), *, discovered=None, observed=None):
-    """No imports or execution: new test files require an explicit role decision."""
+    """Audit roles, not a global registration gate. Admission remains explicit."""
+    def notice(kind, paths):
+        if paths:
+            sample = [p[:160] + ('...' if len(p) > 160 else '') for p in sorted(paths)[:5]]
+            # A fixed prefix and JSON-escaped, bounded paths are not Actions
+            # workflow commands, even when a filename contains newlines/::.
+            print('Inventory advisory: ' + json.dumps({'kind': kind, 'count': len(paths), 'paths': sample},
+                                                      ensure_ascii=True))
     if discovered is None:
         discovered = {p.as_posix() for pattern in ('test_*.py', 'test_*.mjs', '*.spec.mjs')
                       for p in (root / 'tests').rglob(pattern)}
@@ -65,18 +72,25 @@ def inventory(root=Path('.'), *, discovered=None, observed=None):
         observed = [line for line in (root / 'scripts/ci_observation.txt').read_text(encoding='utf-8').splitlines()
                     if line and not line.startswith('#')]
     if len(observed) != len(set(observed)):
-        raise ValueError('duplicate observation inventory entry')
+        notice('duplicate observation metadata', {p for p in observed if observed.count(p) > 1})
     admitted = set()
     for targets in PYTHON.values():
         for target in targets:
             admitted.add(target if target.endswith('.py') else '/'.join(target.split('.')[:2]) + '.py')
     admitted.update(path for paths in NODE.values() for path in paths)
+    if admitted - discovered:
+        raise ValueError('admitted blocking sources missing: ' + json.dumps(sorted(admitted - discovered)))
+    if not (root / 'scripts/ci_node_tests.json').is_file():
+        raise ValueError('admitted Node case manifest missing')
     missing = discovered - set(observed) - admitted
     stale = set(observed) - discovered
-    if missing or stale:
-        raise ValueError(f'test role decision required: unassigned={sorted(missing)}, stale={sorted(stale)}')
-    return {path: ('blocking-file-or-explicit-IDs + full-inspection' if path in admitted else 'full-inspection-only')
-            for path in sorted(discovered)}
+    notice('unreviewed observation/full inspection', missing)
+    notice('stale observation metadata', stale)
+    result = {path: ('blocking-file-or-explicit-IDs + full-inspection' if path in admitted else
+                     'unreviewed observation/full inspection' if path in missing else 'full-inspection-only')
+              for path in sorted(discovered)}
+    result.update({path: 'stale observation metadata (not discovered)' for path in sorted(stale)})
+    return result
 
 
 def validate_plan(value):

@@ -32,3 +32,5 @@ main复审57项Python与12项Node通过，公开运输正反例重放成功，�
 ## PR自身验收增量
 
 用户要求候选本身不再无谓检查：纯workflow策略文件不自动预览，真实打包/runtime/依赖与manual保留；Node单次执行双reporter留可读原因。2dev补上冷editor缺失的锁定acorn依赖准备，不启动postinstall/浏览器。独立审查者复核两树9个源/测试文件差异，无blocking finding，允许提交；证据main10微测、2dev19契约与59 editor通过。未以本机warm依赖结果替代新远端验证。
+
+PR399的virtual merge继承main新E2E文件后，全仓强制登记曾让selection失败，证明该新门槛本身也属于过度保守。已撤掉观察登记的全局硬阻塞：新/未知、stale及重复观察元数据仅可见提示，不自动晋级blocking；已准入源、Node manifest、报告/回执/计划仍严格失败。7项微契约通过、独立快审放行，证据 `.artifacts/ci-gate-correction/inventory-unblock/REPORT.md`。没有通过追补单个上游文件来掩盖设计问题。

@@ -1,7 +1,8 @@
 # Explicit file-level observation inventory at the admission boundary.
 # These files KEEP full scheduled/manual discovery; they are not certified flaky.
 # ci_acceptance.PYTHON/NODE additionally admit only the listed files/IDs.
-# A new test file must be admitted there or explicitly added here after review.
+# Optional audit/promotion record, not a per-PR registration prerequisite.
+# New files default visibly to unreviewed observation/full inspection, never blocking admission.
 tests/e2e/ai-cleanup-comparison-offline.spec.mjs
 tests/e2e/ai-cleanup-local-export.spec.mjs
 tests/e2e/ai-cleanup-local-punctuation.spec.mjs

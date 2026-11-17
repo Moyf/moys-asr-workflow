@@ -36,3 +36,5 @@
 - 已创建交付PR：main为399、2dev为398，目标/HEAD/正文均已回读确认，未合并。用户追加要求两个PR自身也证明无无谓任务：因此进一步撤去纯CI/workflow策略文件的自动整包触发，保留真实payload/runtime/依赖与manual；main真实整个PR差异已验证preview=false。
 - PR398首次远端editor准入失败，根因为冷Runner未准备helper所需acorn；本地嵌套工作树借用了父node_modules。保留首败job133882697229与下载的JUnit证据，不标记flaky、不跳过测试；修正editor的锁定依赖安装（ignore-scripts，不跑postinstall或浏览器安装）。Node同一次执行增加spec日志与JUnit，避免错误原因丢失。
 - 上述小增量独立快审放行：main10微测通过，2dev19契约及59项editor单次准入通过。报告分别 `.artifacts/ci-gate-correction/pr-selfcheck/REPORT.md` 与子工作树 `.artifacts/ci-gate-correction-2dev/pr-selfcheck/`。待新head实际检查，不用首次或本地绿冒充新远端。
+- PR398新head1403efd4远端Change checks运行44039936014成功：10组所选检查和Change acceptance均通过，预览44039936028的Windows job按范围SKIPPED，无完整巡检触发；保留首轮缺依赖失败历史。
+- PR399 head edea260d继承main新E2E文件，旧“全仓未登记即失败”让selection红。撤销此额外保守阻塞，不追补单个main文件：未审查测试继续可见观察，stale/duplicate仅提示，不自动准入blocking；真实已准入源及报告/receipt/plan的错误仍失败。7微测和独立快审通过，待修正后新head实际验收；观察名单不再成为无关PR的硬前置义务。
