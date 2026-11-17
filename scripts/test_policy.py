@@ -1,4 +1,8 @@
-"""Small, conservative test ownership map. New tests default to the common gate."""
+"""Full-inspection cost ownership; independent of explicit blocking admission.
+
+New tests retain ordinary common discovery here. Blocking/observation ownership
+is separately audited by ci_acceptance.py and ci_observation.txt, not by pack.
+"""
 from __future__ import annotations
 
 import os

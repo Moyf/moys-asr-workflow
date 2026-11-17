@@ -290,8 +290,11 @@ class ReleaseDocumentTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('--output .artifacts/release-preview.md', release)
         self.assertIn('python3 scripts/prepare_release_notes.py "${Args[@]}"', release)
         regular = (ROOT / ".github/workflows/editor-checks.yml").read_text(encoding="utf-8")
-        self.assertIn("scripts/prepare_release_notes.py --check-all", regular)
-        self.assertIn("scripts/run_tests.py tests/test_release_notes.py", regular)
+        self.assertIn("scripts/ci_acceptance.py run --check", regular)
+        from scripts.ci_acceptance import PYTHON
+        self.assertIn("tests/test_release_notes.py", PYTHON['release'])
+        policy = (ROOT / 'scripts/ci_acceptance.py').read_text(encoding='utf-8')
+        self.assertIn("'scripts/prepare_release_notes.py', '--check-all'", policy)
 
 
 if __name__ == "__main__":

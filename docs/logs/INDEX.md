@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.3 之后 | 2026-11-17 | [CI门禁纠偏实施](release1.11.3/261117_CI门禁纠偏/TEST_FEEDBACK_CI门禁纠偏.md) / [覆盖撤回核对](release1.11.3/261117_CI门禁纠偏/COVERAGE_WITHDRAWAL_AUDIT.md) / [准入清单](release1.11.3/261117_CI门禁纠偏/ADMISSION.md) / [独立审查](release1.11.3/261117_CI门禁纠偏/REVIEW_FINDINGS.md) / [人工清单](release1.11.3/261117_CI门禁纠偏/CI门禁纠偏.checklist.md) / [方案](../plans/CI_GATE_CORRECTION.md) | 撤销PR/main自动覆盖扩张，区分稳定合并检查与完整辅助巡检；进度以账本为准 |
 | 1.11.3 之后 | 2026-11-17 | [忍者拆分反馈测试](release1.11.3/261117_忍者反馈测试/REVIEW_FINDINGS.md) | 先观察实际刀光状态变化，保留短暂反馈与负向证据 |
 | 1.11.3 之后 | 2026-11-17 | [缩略图缓存读取等待](release1.11.3/261117_缩略图缓存读取等待/REVIEW_FINDINGS.md) | 受控写事务下的读取回归、独立审查与 HTTP 未决边界 |
 | 1.11.3 之后 | 2026-11-17 | [右键跳转播放验证](release1.11.3/261117_右键跳转播放验证/REVIEW_FINDINGS.md) | 同步记录原生 seek 位置并确认完成事件，避免播放推进后误判 |

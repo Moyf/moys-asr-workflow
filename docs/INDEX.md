@@ -167,6 +167,11 @@
 
 ## 共享计划
 
+<a name="plan-ci-gate-correction"></a>
+### CI 门禁纠偏：阻塞验证与完整巡检分离
+
+[方案、迁移范围、验收与回滚](plans/CI_GATE_CORRECTION.md)；已批准实施，进度见[实施账本](logs/release1.11.3/261117_CI门禁纠偏/TEST_FEEDBACK_CI门禁纠偏.md)，不修改发布或远端分支规则。
+
 <a name="plan-fcp7-png-subtitles"></a>
 ### FCP 7 XML 图片字幕导出
 
