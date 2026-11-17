@@ -15,14 +15,22 @@ if '--leaf' not in sys.argv:
         'localAppData': os.environ.get('LOCALAPPDATA'),
         'parentOnlyMarker': 'MAW_LIFECYCLE_PARENT_ONLY' in os.environ,
     }))
-    child = subprocess.Popen([sys.executable, __file__, *sys.argv[1:], '--leaf'])
+    child = subprocess.Popen([sys.executable, __file__, *sys.argv[1:], '--leaf'], stdin=subprocess.PIPE)
     (root / 'owned-pids.json').write_text(json.dumps([os.getpid(), child.pid]))
+    # Do not let the leaf report readiness before PID evidence is complete.
+    child.stdin.write(b'1')
+    child.stdin.close()
     if mode == 'wrapper-exit':
         sys.exit(7)
     child.wait()
 else:
     # Last-resort bound even if the test runner itself is forcibly killed.
-    threading.Timer(60, lambda: os._exit(91)).start()
+    watchdog = threading.Timer(60, lambda: os._exit(91))
+    watchdog.daemon = True
+    watchdog.start()
+    # The wrapper may die before publishing its evidence.
+    if sys.stdin.buffer.read(1) != b'1':
+        sys.exit(1)
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
