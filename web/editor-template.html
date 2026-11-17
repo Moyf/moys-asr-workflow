@@ -2221,6 +2221,10 @@ __WAVEFORM_CSS__
     <div class="toolbar waveform-toolbar">
       <span class="info layout-toolbar-label">波形</span>
       <div class="settings-anchor waveform-settings" id="waveform-settings">
+        <span id="ass-emoji-warning" class="ass-emoji-warning" tabindex="0" role="img" aria-label="ASS 彩色 emoji 提醒" aria-describedby="ass-emoji-warning-tip" hidden>
+          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3 2 21h20Z" fill="currentColor"/><path d="M12 9v5m0 3v.1" stroke="#292211" stroke-width="2" stroke-linecap="round"/></svg>
+          <span id="ass-emoji-warning-tip" class="ass-emoji-warning-tip" role="tooltip">字幕含有 emoji。当前 ASS 烧录不支持彩色 emoji，可能只呈单色或缺字；请用「实际画面预览」检查。</span>
+        </span>
         <button type="button" id="ass-frame-quick-open" title="打开 ASS 实际画面预览窗口" aria-label="ASS 实际画面预览" aria-expanded="false" aria-controls="ass-frame-window" aria-haspopup="dialog" hidden>📷</button>
         <button type="button" id="ass-style-quick-open" title="打开 ASS 样式库" aria-label="打开 ASS 样式库" hidden>🎨</button>
         <button type="button" id="ass-mode-quick-toggle" class="waveform-quick-toggle" title="切换 ASS 字幕模式" aria-pressed="false">ASS 字幕模式</button>

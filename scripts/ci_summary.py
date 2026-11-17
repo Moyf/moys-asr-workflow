@@ -82,12 +82,22 @@ def browser_issues(report):
     return issues
 
 
-def render(kind, label, outcome, paths, needs=None):
+def render(kind, label, outcome, paths, needs=None, role='standard'):
     lines = [f'## CI 检查说明：<code>{safe(label, 200)}</code>', '',
-             f'执行步骤状态：<code>{safe(outcome, 80)}</code>。以 GitHub 检查结果为准，本文不改变门禁。', '']
+             f'执行步骤状态：<code>{safe(outcome, 80)}</code>。本文仅辅助读取，不改变执行结果或报告校验。',
+             '这里只描述本次执行集合，不推断 GitHub 分支保护或远端必需检查配置。', '']
+    if role == 'advisory':
+        status = {'failure': '本次完整巡检验收失败，失败保持原状。',
+                  'cancelled': '本次完整巡检验收被取消，不能视为完成。',
+                  'skipped': '本次完整巡检验收未执行，不能视为完成。'}.get(
+                      outcome, '本次完整巡检验收状态以上方执行结果为准。')
+        lines += [status,
+                  '这是辅助（advisory）结果，不传播到 Change acceptance；不是全仓通过的声明，相关异常仍需 review。', '']
+    if kind == 'python':
+        lines += ['--required 是测试运行器的严格执行集合约束，不代表 GitHub 远端必需状态或合并要求。', '']
     if kind == 'gate':
-        lines += ['这是汇总门禁，不是另一组测试。上游失败会导致这里连带失败；',
-                  '报告缺失、被取消或校验失败也会阻止通过，不能简单当作新增产品故障。', '']
+        lines += ['这是本次执行集合的汇总验收，不是另一组测试。上游失败会导致本次验收失败；',
+                  '报告缺失、被取消或校验失败也不能认定本次验收通过，不能简单当作新增产品故障。', '']
         for key, value in (needs or {}).items():
             lines.append(f'- <code>{safe(key, 200)}</code>：<code>{safe(value.get("result", "未知"), 80)}</code>')
         return '\n'.join(lines) + '\n'
@@ -107,14 +117,14 @@ def render(kind, label, outcome, paths, needs=None):
                 lines.append(f"执行 {safe(report.get('run', '?'), 20)} 项；断言失败 {safe(report.get('failures', '?'), 20)}；错误 {safe(report.get('errors', '?'), 20)}；跳过 {len(report.get('skips', []))}。")
                 lines.append(f"预期失败 {safe(report.get('expected_failures', '?'), 20)}；意外通过 {safe(report.get('unexpected_successes', '?'), 20)}。")
                 if report.get('unexpected_successes'):
-                    lines.append('意外通过：标记为 expectedFailure 的测试实际通过。unittest 仍判为不符合预期，会导致门禁失败；需核对标记与行为，而非直接认定产品有故障。')
+                    lines.append('意外通过：标记为 expectedFailure 的测试实际通过。unittest 仍判为不符合预期，会导致本次执行集合验收失败；需核对标记与行为，而非直接认定产品有故障。')
                 if report.get('expected_failures'):
-                    lines.append('预期失败：测试按 expectedFailure 标记失败。普通运行允许此状态，但 required 门禁不允许；请以本次执行状态为准。')
+                    lines.append('预期失败：测试按 expectedFailure 标记失败。普通运行允许此状态，但 --required 严格执行集合不允许；请以本次执行状态为准。')
             else:
                 stats = report['stats']
                 lines.append('浏览器报告计数：' + '；'.join(f'{name} {safe(stats.get(key, "?"), 20)}' for key, name in [('expected', '符合预期'), ('unexpected', '不符合预期'), ('flaky', '重试后通过'), ('skipped', '跳过')]) + '。')
             if not issues:
-                lines.append('报告中未列出失败详情；仍以执行步骤及完整门禁为准（缺失用例、跳过等可能另行阻止通过）。')
+                lines.append('报告中未列出失败详情；仍以执行步骤及本次执行集合验收为准（缺失用例、跳过等可能另行导致本次验收失败）。')
             for title, location, message in issues[:MAX_ITEMS]:
                 intent = description(title)
                 explanation = ('场景：' + safe(intent[0]) + '；预期：' + safe(intent[1])) if intent else '场景与预期：尚未提供中文说明，请结合测试名称及下方原始错误。'
@@ -138,12 +148,13 @@ def main():
     parser.add_argument('--kind', choices=('python', 'browser', 'gate', 'node'), required=True)
     parser.add_argument('--label', required=True)
     parser.add_argument('--outcome', default='unknown')
+    parser.add_argument('--role', choices=('standard', 'advisory'), default='standard')
     parser.add_argument('--root', type=Path, default=Path('.artifacts/matrix'))
     args = parser.parse_args()
     names = {'python': ('python.json', 'media-required.json'), 'browser': ('browser-results.json',), 'node': (), 'gate': ()}
     paths = [args.root / name for name in names[args.kind] if (args.root / name).is_file()]
     needs = json.loads(os.environ.get('CI_NEEDS', '{}')) if args.kind == 'gate' else None
-    summary = render(args.kind, args.label, args.outcome, paths, needs)
+    summary = render(args.kind, args.label, args.outcome, paths, needs, role=args.role)
     destination = os.environ.get('GITHUB_STEP_SUMMARY')
     if destination:
         with Path(destination).open('a', encoding='utf-8', newline='\n') as stream:

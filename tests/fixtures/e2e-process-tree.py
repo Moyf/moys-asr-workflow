@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import threading
+import time
 
 port = int(sys.argv[sys.argv.index('--port') + 1])
 root = Path(os.environ['MAW_APP_DATA_ROOT']).parent
@@ -16,13 +17,24 @@ if '--leaf' not in sys.argv:
         'parentOnlyMarker': 'MAW_LIFECYCLE_PARENT_ONLY' in os.environ,
     }))
     child = subprocess.Popen([sys.executable, __file__, *sys.argv[1:], '--leaf'])
-    (root / 'owned-pids.json').write_text(json.dumps([os.getpid(), child.pid]))
+    pids_temp = root / 'owned-pids.tmp'
+    pids_temp.write_text(json.dumps([os.getpid(), child.pid]))
+    pids_temp.replace(root / 'owned-pids.json')
     if mode == 'wrapper-exit':
         sys.exit(7)
     child.wait()
 else:
     # Last-resort bound even if the test runner itself is forcibly killed.
     threading.Timer(60, lambda: os._exit(91)).start()
+    # The wrapper may be stopped as soon as the server responds. Publish the
+    # complete ownership evidence atomically before the leaf starts listening.
+    while not (root / 'owned-pids.json').is_file():
+        time.sleep(0.01)
+
+    # Prove cleanup assertions tolerate a healthy server starting after the old
+    # 1.5s Linux budget, without changing genuine hang/error scenarios.
+    if mode == 'slow-ready':
+        time.sleep(1.8)
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):

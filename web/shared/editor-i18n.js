@@ -893,6 +893,8 @@
     'ASS 样式库': 'ASS style library',
     '样式库正在加载…': 'Loading the style library…', 'SRT 渲染样式': 'SRT render style', '无逐句动画': 'No per-cue animations',
     'ASS 字幕模式': 'ASS subtitle mode',
+    'ASS 彩色 emoji 提醒': 'ASS color emoji warning',
+    '字幕含有 emoji。当前 ASS 烧录不支持彩色 emoji，可能只呈单色或缺字；请用「实际画面预览」检查。': 'Subtitles contain emoji. Current ASS burn-in does not support color emoji; they may appear monochrome or be missing. Check the actual-frame preview.',
     '当前由': 'Preview styling is controlled by', '控制预览样式': 'for preview styling',
     '⬆️ 当前预览样式由 ASS 字幕模式控制': '⬆️ Current preview styling is controlled by ASS subtitle mode',
     '使用 ASS 样式': 'Use ASS style', '主字幕 ASS 样式': 'Main-subtitle ASS style', '副字幕 ASS 样式': 'Extension-subtitle ASS style',

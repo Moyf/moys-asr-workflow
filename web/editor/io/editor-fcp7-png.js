@@ -1,3 +1,26 @@
+// Stop only this export's wait; the font inventory is shared with other consumers.
+export async function waitForFcp7Fonts(fonts, signal) {
+  const stoppedError = () => new DOMException('图片字幕导出已停止', 'AbortError');
+  const checkStopped = () => { if (signal.aborted) throw stoppedError(); };
+  checkStopped();
+  let onAbort;
+  const stopped = new Promise((_, reject) => {
+    onAbort = () => reject(stoppedError());
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    const wait = start => Promise.race([
+      Promise.resolve().then(() => { checkStopped(); return start(); }), stopped,
+    ]);
+    await wait(() => fonts?.ensureCoverage?.());
+    checkStopped();
+    await wait(() => fonts?.whenReady?.());
+    checkStopped();
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+}
+
 // PNG/WebP rendering uses the local task API. The export plan/ASS are captured before
 // the first await; polling and publication never reread mutable project data.
 export async function runFcp7PngExport({ plan, ass, layers, imageFormat = 'png', includeMedia, size, config, onProgress, signal }) {

@@ -1,0 +1,20 @@
+name: Verified Windows CI FFmpeg
+description: Cache and install the release-pinned FFmpeg archive for media tests
+runs:
+  using: composite
+  steps:
+    - name: Restore FFmpeg archive
+      id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/maw-ffmpeg-cache
+        key: windows-ffmpeg-${{ runner.os }}-${{ runner.arch }}-8.1.2-${{ hashFiles('scripts/ci_windows_ffmpeg.py') }}
+    - name: Verify and install FFmpeg
+      shell: pwsh
+      run: python scripts/run_check.py --timeout 840 -- python scripts/ci_windows_ffmpeg.py
+    - name: Save verified FFmpeg archive
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/maw-ffmpeg-cache
+        key: ${{ steps.cache.outputs.cache-primary-key }}

@@ -1,11 +1,14 @@
 import io
 import json
+import os
 import tempfile
 import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from scripts import ci_summary
 from scripts.ci_summary import browser_issues, description, render, safe
 from scripts.run_tests import result_report
 
@@ -64,7 +67,7 @@ class SummaryTests(unittest.TestCase):
                 self.assertEqual(data['errors'], 0)
                 summary = self.report('python', data)
                 for text in ('意外通过 1', '预期失败 1', 'test_unexpected',
-                             'test_expected', '会导致门禁失败', 'required 门禁不允许'):
+                             'test_expected', '会导致本次执行集合验收失败', '--required 严格执行集合不允许'):
                     self.assertIn(text, summary)
 
     def test_parallel_worker_crash_is_not_zero_failures(self):
@@ -130,6 +133,67 @@ class SummaryTests(unittest.TestCase):
         self.assertIn('不是另一组测试', result)
         self.assertIn('browser', result)
         self.assertIn('failure', result)
+
+    def test_default_role_does_not_claim_remote_branch_protection(self):
+        result = render('gate', 'matrix', 'failure', [], {'python': {'result': 'failure'}})
+        self.assertIn('本次执行集合', result)
+        self.assertIn('不推断 GitHub 分支保护', result)
+        self.assertNotIn('这是汇总门禁', result)
+        self.assertNotIn('也会阻止通过', result)
+
+    def test_advisory_gate_keeps_failure_and_cancelled_needs(self):
+        result = render('gate', 'full inspection', 'failure', [], {
+            'python': {'result': 'failure'}, 'browser': {'result': 'cancelled'},
+        }, role='advisory')
+        for text in ('本次完整巡检验收失败', '辅助', '不传播到 Change acceptance',
+                     'failure', 'cancelled', '不是全仓通过', '相关异常仍需 review'):
+            self.assertIn(text, result)
+        self.assertNotIn('汇总门禁', result)
+        self.assertNotIn('也会阻止通过', result)
+
+    def test_advisory_missing_cancelled_and_invalid_reports_stay_unverified(self):
+        for outcome in ('failure', 'cancelled', 'success'):
+            result = render('python', 'aux', outcome, [], role='advisory')
+            self.assertIn('未找到结构化报告', result)
+            self.assertIn('不能当作', result)
+            self.assertIn('不是全仓通过', result)
+            self.assertIn(f'<code>{outcome}</code>', result)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'python.json'
+            path.write_text('{}', encoding='utf-8')
+            result = render('python', 'aux', 'failure', [path], role='advisory')
+            self.assertIn('无法解析，不能判断通过', result)
+
+    def test_advisory_retry_does_not_hide_first_failure(self):
+        report = self.browser()
+        report['suites'][0]['specs'][0]['tests'][0]['results'].append({'status': 'passed'})
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'browser-results.json'
+            path.write_text(json.dumps(report), encoding='utf-8')
+            result = render('browser', 'aux', 'failure', [path], role='advisory')
+        self.assertIn('expected A, got B', result)
+        self.assertIn('本次完整巡检验收失败', result)
+
+    def test_cli_role_and_default_are_compatible_and_informational(self):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / 'summary.md'
+            for role_args in ([], ['--role', 'advisory']):
+                args = ['ci_summary.py', '--kind', 'gate', '--label', 'matrix',
+                        '--outcome', 'failure', '--root', directory, *role_args]
+                with patch.dict(os.environ, {'GITHUB_STEP_SUMMARY': str(destination),
+                                             'CI_NEEDS': '{"python":{"result":"failure"}}'}), \
+                     patch.object(sys, 'argv', args):
+                    self.assertIsNone(ci_summary.main())
+                result = destination.read_text(encoding='utf-8')
+                self.assertIn('failure', result)
+                if role_args:
+                    self.assertIn('不传播到 Change acceptance', result)
+                destination.write_text('', encoding='utf-8')
+
+    def test_required_describes_runner_not_github_merge_requirement(self):
+        result = self.report('python', {'failure_details': [], 'expected_failures': 1})
+        self.assertIn('--required 是测试运行器的严格执行集合约束', result)
+        self.assertIn('不代表 GitHub 远端必需状态或合并要求', result)
 
     def test_escaping_and_bounded_output(self):
         self.assertNotIn('<script>', safe('<script>alert(1)</script>'))
