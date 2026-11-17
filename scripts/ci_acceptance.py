@@ -215,6 +215,11 @@ def commands_for(check):
     }.get(check, [])
 
 
+def node_command(files, report):
+    return ['node', '--test', '--test-reporter=spec', '--test-reporter-destination=stdout',
+            '--test-reporter=junit', f'--test-reporter-destination={report}', *files]
+
+
 def run_check(plan, check, root):
     validate_plan(plan)
     if check not in plan['checks'] or root.exists():
@@ -228,6 +233,8 @@ def run_check(plan, check, root):
                         'result': (Path(result['log']).parent / 'result.json').resolve().relative_to(root.resolve()).as_posix()})
         print(f'{check}: {result["status"]}, exit={code}, seconds={result["duration_seconds"]}')
         if code != 0 or result['status'] != 'completed' or result['cleanup_error']:
+            for line in dict.fromkeys(result['diagnostics'] + result['tail']):
+                print(line)
             raise ValueError(f'{check} failed; inspect {result["log"]}')
 
     for command in commands_for(check):
@@ -244,7 +251,7 @@ def run_check(plan, check, root):
         expected = node_admission()[check]['names']
         write(root / 'admitted-node-files.json', NODE[check])
         write(root / 'admitted-node-names.json', expected)
-        run(['node', '--test', '--test-reporter=junit', f'--test-reporter-destination={report}', *NODE[check]])
+        run(node_command(NODE[check], report))
         validate_node_report(expected, ET.parse(report).getroot())
     if check == 'tools':
         for path in plan['paths']:

@@ -181,6 +181,25 @@ class AcceptanceTests(unittest.TestCase):
                 self.assertTrue((ROOT / target).is_file(), target)
         self.assertEqual(set(acceptance.node_admission()), set(acceptance.NODE))
 
+    def test_cold_editor_helper_missing_acorn_is_visible_with_both_reporters(self):
+        # Outside the nested worktree: parent node_modules cannot hide the
+        # actual helper's acorn import dependency, as it did in local testing.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            helpers = root / 'helpers'
+            helpers.mkdir()
+            shutil.copyfile(ROOT / 'tests/helpers/init-module-source.mjs', helpers / 'init-module-source.mjs')
+            fixture = root / 'cold-editor.mjs'
+            fixture.write_text("import './helpers/init-module-source.mjs';\n", encoding='utf-8')
+            report = root / 'node.xml'
+            code, result = acceptance.execute_check(acceptance.node_command([str(fixture)], report), 30, root / 'checks')
+            self.assertNotEqual(code, 0)
+            output = Path(result['log']).read_text(encoding='utf-8')
+            self.assertIn('ERR_MODULE_NOT_FOUND', output)
+            self.assertIn("Cannot find package 'acorn'", output)
+            self.assertTrue(report.is_file())
+            self.assertTrue(list(ET.parse(report).getroot().iter('failure')))
+
     def test_contract_dependency_is_explicit_hash_pinned_and_matches_lock(self):
         requirement = (ROOT / 'scripts/ci-contract-requirements.txt').read_text(encoding='utf-8')
         self.assertIn('send2trash==2.1.0', requirement)
@@ -219,6 +238,18 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertIn('tests/e2e/review-data-safety.spec.mjs', self.read_workflow('full-checks-manual.yml'))
         self.assertIn('windows-cache-report-check', self.read_workflow('windows-full-manual.yml'))
         self.assertIn('windows-launcher-report-check', self.read_workflow('windows-full-manual.yml'))
+
+    def test_editor_job_installs_frozen_root_dependencies_without_postinstall(self):
+        workflow = self.read_workflow('editor-checks.yml')
+        steps = workflow.split('\n      - ')
+        setup = next(step for step in steps if 'uses: pnpm/action-setup@' in step)
+        install = next(step for step in steps if 'run: pnpm install --frozen-lockfile --ignore-scripts' in step)
+        self.assertIn("if: ${{ matrix.check == 'build' || matrix.check == 'editor' || matrix.check == 'website' }}", setup)
+        self.assertIn("if: ${{ matrix.check == 'build' || matrix.check == 'editor' }}", install)
+        self.assertIn('run_install: false', setup)
+        self.assertLess(workflow.index('run: pnpm install --frozen-lockfile --ignore-scripts'),
+                        workflow.index('name: Run admitted check and validate evidence'))
+        self.assertNotIn('playwright install', workflow)
 
     def test_advisory_preview_is_scoped_and_has_no_full_suite(self):
         workflow = self.read_workflow('pr-release-windows.yml')

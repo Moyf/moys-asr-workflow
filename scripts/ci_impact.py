@@ -66,8 +66,7 @@ def preview_for(paths):
                              'web/shared/host/', 'scripts/packaging/', 'scripts/build-', 'desktop/'))
                or p in {'maw_gui.py', 'edit.py', 'pyproject.toml', 'uv.lock', 'package.json', 'pnpm-lock.yaml',
                         'web/editor-scripts.txt', 'web/launcher-scripts.txt', 'web/editor-modules.json',
-                        'web/editor-template.html', 'docs/user/FAQ-常见问题.txt',
-                        '.github/workflows/pr-release-windows.yml'} for p in paths)
+                         'web/editor-template.html', 'docs/user/FAQ-常见问题.txt'} for p in paths)
 
 
 def plan(paths, *, base='', head='', trusted=False, manual_preview=False):

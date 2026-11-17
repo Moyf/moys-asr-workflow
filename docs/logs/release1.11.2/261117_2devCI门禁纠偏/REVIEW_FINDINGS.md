@@ -21,3 +21,5 @@
 未参与实现的审查者通读本分支候选，复验17项Python与11项Node，公开gate完整运输退出0、删Python及改Node报告退出1，无新增blocker/major/minor。证据 `.artifacts/ci-gate-correction-2dev/review-final/20261117T065005Z-3adebf51/result.json`、`20261117T065005Z-740e0154/result.json`、`20261117T065029Z-10f57e33/result.json`、`20261117T065029Z-79c77e16/result.json`、`20261117T065030Z-f9ae2d55/result.json`。
 
 协调会话另复验相关Python73、Node11通过（`.artifacts/checks/20261117T065206Z-04190165/result.json`、`20261117T065206Z-085a2f03/result.json`）。允许按已获授权提交交付，提交前仍只同步实际目标origin/2.0dev，不合并main。
+
+PR398首次冷环境暴露acorn准备缺口后，已补editor的锁定依赖安装、双reporter诊断及CI-only不自动预览规则；独立审查者快审这5个源/测试文件允许提交，无blocking finding。19项CI契约与59 editor正向准入通过，冷依赖失败反例真实可见；远端新head另验。

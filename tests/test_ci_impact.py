@@ -31,7 +31,8 @@ class ImpactTests(unittest.TestCase):
 
     def test_preview_scope_is_packaging_startup_runtime_or_manual(self):
         for path in ('docs/plans/a.md', 'web/editor/cues/editor-word-timing.js', 'tests/test_something.py',
-                     'web/shared/utils/text.js', 'unknown.py'):
+                     'web/shared/utils/text.js', 'unknown.py', '.github/workflows/pr-release-windows.yml',
+                     '.github/workflows/editor-checks.yml', 'scripts/ci_acceptance.py'):
             self.assertFalse(impact.preview_for([path]), path)
         for path in ('scripts/packaging/MAW.spec', 'maw/gui_web.py', 'web/editor/boot/editor.js',
                      'pyproject.toml', 'desktop/main.js', 'docs/user/FAQ-常见问题.txt'):
@@ -79,6 +80,19 @@ class ImpactTests(unittest.TestCase):
             self.assertEqual(pr['checks'], ['docs'])
             self.assertEqual(pr['paths'], ['docs/engineering/a.md', 'docs/plans/b.md'])
             self.assertTrue(pr['trusted_diff'])
+            git('checkout', '-qb', 'ci-policy')
+            policy_head = commit('.github/workflows/pr-release-windows.yml', 'policy-only')
+            policy = impact.select('push', cwd=root, before=merged, after=policy_head)
+            self.assertTrue(policy['trusted_diff'])
+            self.assertFalse(policy['preview'])
+            git('checkout', '-q', 'target')
+            git('-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'merge', '--no-ff', '-qm', 'policy-merge', 'ci-policy')
+            policy_merge = git('rev-parse', 'HEAD')
+            self.assertFalse(impact.select('pull_request', merged, cwd=root, after=policy_merge)['preview'])
+            packaging_head = commit('scripts/packaging/MAW.spec', 'actual-payload')
+            packaging = impact.select('push', cwd=root, before=policy_merge, after=packaging_head)
+            self.assertTrue(packaging['trusted_diff'])
+            self.assertTrue(packaging['preview'])
             for bad in (impact.select('pull_request', feature, cwd=root, after=merged),
                         impact.select('push', cwd=root, before='0' * 40, after=merged),
                         impact.select('push', cwd=root, before=base, after=feature)):

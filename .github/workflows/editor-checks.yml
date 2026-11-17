@@ -61,12 +61,12 @@ jobs:
           name: blocking-plan
           path: .artifacts/blocking
       - uses: pnpm/action-setup@v6
-        if: ${{ matrix.check == 'build' || matrix.check == 'website' }}
+        if: ${{ matrix.check == 'build' || matrix.check == 'editor' || matrix.check == 'website' }}
         with:
           version: 11.28.4
           run_install: false
-      - name: Install build dependencies without postinstall
-        if: ${{ matrix.check == 'build' }}
+      - name: Install build and editor dependencies without postinstall
+        if: ${{ matrix.check == 'build' || matrix.check == 'editor' }}
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Install only the direct-save contract dependency
         if: ${{ matrix.check == 'data' || matrix.check == 'runtime' || matrix.check == 'ci' }}
