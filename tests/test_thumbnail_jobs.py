@@ -169,6 +169,33 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
 
 
 class ThumbnailDemandTests(unittest.TestCase):
+    def test_empty_pins_skip_release_only_until_first_protection_attempt(self):
+        from maw import thumbnail_cache
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'media.mp4'
+            path.write_bytes(b'media')
+            manager = ThumbnailJobManager()
+            manager.bind(path, 'binding')
+            manager.identity = source_key(path)
+            manager.info = SimpleNamespace(stream_index=0, duration_ms=10000)
+            lease = manager._lease(None, 'client')
+            with mock.patch.object(thumbnail_cache, 'release_owner') as release, \
+                 mock.patch.object(thumbnail_cache, 'protect_assets') as protect:
+                manager._pins(lease, set())
+                release.assert_not_called()
+                manager._pins(lease, {'a'})
+                manager._pins(lease, {'a'})
+                self.assertEqual(protect.call_count, 2, 'live pins must still be renewed')
+                manager._pins(lease, set())
+                manager._pins(lease, set())
+                self.assertEqual(release.call_count, 2, 'release must be retried after any attempt')
+                other = manager._lease(None, 'other')
+                protect.side_effect = OSError('unexpected failure')
+                with self.assertRaises(OSError):
+                    manager._pins(other, {'b'})
+                manager._pins(other, set())
+                self.assertEqual(release.call_count, 3, 'failed pin attempt must still be cleaned up')
+
     def test_source_zero_union_end_excluded_and_priority(self):
         targets = plan_targets([{'start_ms': 1750, 'end_ms': 4000},
                                 {'start_ms': 2500, 'end_ms': 6000}], 1000, 6000, [3500])
