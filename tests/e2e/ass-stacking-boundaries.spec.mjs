@@ -92,6 +92,10 @@ async function configure(page, fixture) {
   await disableOnboarding(page);
   await page.goto(server.url);
   await page.waitForFunction(() => window.MaweAssCanvas?.render);
+  await page.evaluate(async () => {
+    await window.MaweAssFontAliases?.ensureCoverage?.();
+    await window.MaweAssFontAliases?.whenReady?.();
+  });
   await page.evaluate(async f => {
     console.debug('[ass-stacking-configure] style-load:start');
     await loadAssStyleLibrary({ force: true });

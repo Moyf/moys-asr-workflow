@@ -910,7 +910,9 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         workflow = read_text(".github/workflows/pr-release-comment.yml")
 
         self.assertIn("workflow_run:", workflow)
-        self.assertIn("workflows: [Preview Windows Release]", workflow)
+        self.assertIn("Windows release preview (advisory)", workflow)
+        self.assertIn("build?.conclusion === 'skipped'", workflow)
+        self.assertIn("Change acceptance", workflow)
         self.assertIn("types: [completed]", workflow)
         self.assertIn("pull-requests: write", workflow)
         self.assertIn("actions/github-script@v8", workflow)

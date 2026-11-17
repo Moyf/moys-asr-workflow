@@ -66,11 +66,12 @@ async function runScenario(kind, scenario, action = 'stop') {
   const evidence = join(root, 'evidence');
   mkdirSync(evidence);
   const bystander = await startBystander();
-  // Successful Windows startup includes the cold PowerShell/Add-Type Job
-  // supervisor. Use the real scroll fixture's existing readiness budget;
-  // synthetic failure scenarios keep their short deadlines below.
+  const expectsReady = scenario === 'ready' || scenario === 'slow-ready' || scenario === 'slow-root';
+  // Cleanup tests are not startup performance benchmarks. Successful startup
+  // needs room for Python/process scheduling under the parallel Node suite.
+  // Keep injected failure deadlines short, and retain the Windows Job budget.
   const readinessTimeoutMs = process.platform === 'win32'
-    ? (['ready', 'slow-root'].includes(scenario) ? 45_000 : 10_000) : 1_500;
+    ? (expectsReady ? 45_000 : 10_000) : (expectsReady ? 10_000 : 1_500);
   const scenarioDeadlineMs = readinessTimeoutMs + 8_000;
   const child = spawn(process.execPath, [driver, kind, action, String(readinessTimeoutMs)], { cwd: root, env: {
     ...process.env, MAW_E2E_PYTHON: scenario === 'missing-command' ? join(root, 'missing-python')
@@ -101,10 +102,10 @@ async function runScenario(kind, scenario, action = 'stop') {
   try {
     const result = await exited;
     assert.equal(timedOut, false, `driver exceeded deadline: ${output}`);
-    if (['ready', 'slow-root'].includes(scenario) && action === 'stop') {
-      assert.equal(result.code, 0, message?.failure || output);
+    if (expectsReady && action === 'stop') {
+      assert.equal(result.code, 0, `${kind}/${scenario}: readiness budget ${readinessTimeoutMs}ms; elapsed ${Date.now() - started}ms\n${message?.failure || ''}\n${output}`);
       assert.equal(message?.stopped, true);
-    } else if (scenario !== 'ready') {
+    } else if (!expectsReady) {
       assert.equal(result.code, 1, output);
       assert.ok(message?.failure, output);
       if (scenario === 'hang') {
@@ -146,9 +147,9 @@ async function runScenario(kind, scenario, action = 'stop') {
 }
 
 for (const kind of ['scroll', 'helpers']) {
-  for (const scenario of ['ready', 'startup-error', 'wrapper-exit', 'missing-command', 'hang']) {
+  for (const scenario of ['ready', 'slow-ready', 'startup-error', 'wrapper-exit', 'missing-command', 'hang']) {
     test(`${kind}: ${scenario} reaps descendants, frees port, and returns within deadline`,
-      { timeout: process.platform === 'win32' && scenario === 'ready' ? 60_000 : 24_000 },
+      { timeout: process.platform === 'win32' && ['ready', 'slow-ready'].includes(scenario) ? 60_000 : 24_000 },
       () => runScenario(kind, scenario));
   }
   for (const action of ['exit', 'exception', 'signal:SIGINT', 'signal:SIGTERM',

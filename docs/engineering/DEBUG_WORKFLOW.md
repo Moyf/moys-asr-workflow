@@ -65,14 +65,14 @@ e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解�
 | 变化 | 首轮验证 | 扩大验证的条件 |
 | --- | --- | --- |
 | 调试运行器 / 日志工具 | 上面两条标准库回归，无需前端安装 | 进程生命周期变更需在 Windows / Linux 跑 CI |
-| Python 业务逻辑 | 对应 unittest 模块 | 公共契约/导出变化时扩大到相关模块，最后一次全量 |
+| Python 业务逻辑 | 对应 unittest 模块 | 公共契约/导出变化时扩大相关验证；完整巡检按明确请求或发布需要运行，不要求每笔改动都全量 |
 | 编辑器 JS / 装配清单 | 相关 Node 用例 + build/check + typecheck | 宿主、选择范围、交互变化时增加相关浏览器 spec |
 | CSS / HTML / 交互 | 构建契约 + 对应 spec + 人工操作 | 多入口共享行为变化时扩大浏览器范围 |
 | 发布 | 统一重建便携 HTML，完整契约与回归矩阵 | 真实媒体、推理和听感仍单独验收 |
 
 `pnpm test` 是 Chromium e2e；`pnpm run test:unit` 执行根目录全部 `.mjs` 测试，其中已有跨 Python 与浏览器测试，不能假定它们都零依赖。不要每改一个断言就跑全量。先复现一次，改代码后跑最小回归，必要时扩大；连续两次同类失败先分类原因，不循环重跑。
 
-既有 Editor job 运行完整 Node、Python 装配及专项契约、选定浏览器子集，不是完整 Python/e2e；Windows preview 仍运行完整 Python、同次 cache 校验、64 / 4 浏览器专项及打包 smoke。Debug tooling 在 Windows / Linux 验证标准库调试工具，不能冒充产品全量验证。新增 `test-matrix.yml` 以追加 runner 成本补完整覆盖，具体范围见[完整补充矩阵](DEVELOPMENT.md#完整补充矩阵与-required-语义)；UI 的拖动、听感和布局仍需人工核验。
+日常 `Change acceptance` 只汇总计划所选的稳定基础、相关验证及文档消费者，不串联完整巡检或 Windows 预览。完整矩阵保留每周/手动运行，预览包按打包/启动/运行时相关变化或手动运行，不再与每次普通PR/main叠跑。具体角色见[改动检查](DEVELOPMENT.md#pr--main-的改动检查)及[完整巡检](DEVELOPMENT.md#完整巡检预览包与发布)。UI 的拖动、听感和布局仍需人工核验。
 
 ## 中断恢复与结果记录
 
@@ -98,7 +98,9 @@ expected failure、unexpected success、退出码及完整日志位置；并行�
 `--required` 将缺工具、缺依赖、缺夹具或 expected failure 视为失败；仅准确匹配的
 异平台测试 ID 和 skip 原因可豁免。空集合返回失败。分组是显式执行入口，不自动缩减 CI。
 
-### 新 CI 计划与浏览器证据
+### CI 计划与浏览器证据
+
+日常计划与完整巡检分开消费：PR验证整个PR差异，main验证before/after，普通文档可轻量；未知代码/不可信差异扩大至稳定检查而不是自动启动完整矩阵。计划校验失败不能伪装成文档通过；阻塞和辅助回执分开，辅助成功不能抵扣阻塞缺报告。策略版本、准确所选集合及消费者以当次计划与脚本输出为准，不把历史v1的“非PR必须full”当作当前规则。
 
 Windows 测试环境、发布测试和 PR 预览共用固定的 Gyan FFmpeg 8.1.2 Essentials x64，
 与完整 Windows 发行包的版本和 SHA-256 一致。Actions 缓存只保存归档，按系统、架构、
@@ -108,21 +110,18 @@ GitHub 缓存遵循分支及 fork 的访问范围，并可能被回收；冷启�
 键不可覆盖，当前运行会重新下载，后续运行可能再次下载，直到该缓存被删除或回收。
 并发任务可能各自下载，只有一个保存同一键。缓存不减少 Windows Media Foundation 安装时间。
 
-`scripts/ci_impact.py --plan .artifacts/ci-plan.json` 输出版本、模式、有限 profile、原因与 base/head；非 PR 或差异不可信时 full。`scripts/ci_matrix.py expand` 校验计划并生成有限矩阵，`run --cell <cell>` 在 `run_check` 内执行完整层或明确的领域浏览器集合，`gate` 校验所有应执行单元。旧工作流仍只消费兼容的 `light` 字段，不受 domain 缩减。
-
-`ci_matrix.py` 的 CLI consumer 同时检查实际 `GITHUB_EVENT_NAME`：明确非 PR 事件拒绝非 full 计划；本地未设置事件时仍可执行纯函数 / 夹具验证。Python 单元在回执前回读 `python.json` 与 `media-required.json`，校验非空唯一 ID、计数和退出码，保留 unittest fixture / subtest skip 语义；required 不信任序列化的 `platform_not_applicable`，而重新调用精确平台策略。两份报告的归组集合必须一致，回执附校验计数和报告 SHA-256。缺 / 坏报告、伪造成功退出或不支持的 required skip 都不产生成功回执；输出目录拒绝复用旧报告，重试请使用新的 `--root` 以保留旧证据。
+完整巡检继续用 `scripts/ci_matrix.py expand`、`run --cell <cell>` 与 `gate` 校验完整矩阵自身结果；它失败仍失败，但不传播至无关PR的日常合并结论。Python 单元在回执前回读 `python.json` 与 `media-required.json`，校验非空唯一 ID、计数和退出码，保留 unittest fixture / subtest skip 语义；required 不信任序列化的 `platform_not_applicable`，而重新调用精确平台策略。两份报告的归组集合必须一致，回执附校验计数和报告 SHA-256。缺 / 坏报告、伪造成功退出或不支持的 required skip 都不产生成功回执；输出目录拒绝复用旧报告，重试请使用新的 `--root` 以保留旧证据。
 
 浏览器分片的整组执行预算为 900 秒；发现列表及 Python / Node 命令仍为 600 秒。单项测试 60 秒、操作 10 秒、零重试不变。浏览器 job 的 25 分钟上限另容纳环境准备与上传，不表示放宽单测。`line,json` 双 reporter 在 `output.log` 留下逐项开始进度，同时保留最终 JSON 覆盖校验；整组超时仍失败，未写完 JSON 时不会产生成功回执。
 
 浏览器层在同 job 保存 `browser-list.json`、`browser-results.json`、`browser-validated.json` 和成功凭据 `receipt.json`。`scripts/browser_results.py <list.json> <results.json> --current 1 --total 4` 可独立复核：比较文件 + 完整 describe / test 标题 + project 集合、分片坐标和逐案结果，不以 `stats.expected > 0` 代替覆盖检查。失败执行即使没生成成功凭据仍上传已有 JSON / traces / checks；缺报告不能通过聚合门禁。只有五个精确弃维护 portable case 的原始 skip 原因获准，libass / 编码器等能力缺失仍失败。计划未选中的层属于 intentional skip，与实际用例 skip 分开。
 
-完整 Python 不加 blanket `--required`：完整标准发现允许人工私有夹具、平台 guard 等 skip，并将每个原因和 expected failure 留在报告；真实 media pack 单独 `--required`，既有 required subset 保留，`allowed_platform_skip` 不扩大。Release 三平台也使用报告入口，Windows 阻断与辅助平台警告政策不变；tag 触发的新矩阵独立于 publish。完整新矩阵增加而非削减总 runner 成本，远端尚未运行；本地未跑完整浏览器集合时务必标明。
+完整 Python 不加 blanket `--required`：完整标准发现允许人工私有夹具、平台 guard 等 skip，并将每个原因和 expected failure 留在报告；完整巡检的真实 media pack 单独 `--required`，`allowed_platform_skip` 不扩大。这里的required是所执行集合的严格结果语义，不等于GitHub必需合并状态。Release 三平台报告、Windows 阻断与辅助平台警告政策不变，不追加tag全量矩阵。本地或当前PR未跑完整浏览器集合时必须标明，不能以Change acceptance绿宣称全仓测试全绿。
 
 ### 中文 CI 检查摘要
 
-完整矩阵的 Python / Chromium 任务与 Editor 的两组浏览器任务会在 Actions **Summary**
-附加中文说明。摘要是辅助阅读层，不改变退出码、断言、required 门禁或原始日志。
-汇总门禁明确标记为上游检查的连带状态，不把它算成另一个测试故障。
+完整矩阵等任务可在 Actions **Summary** 附加中文说明。摘要是辅助阅读层，不改变退出码、断言、所执行集合的required语义或原始日志。
+汇总明确区分日常合并检查和完整辅助巡检，后者失败不自动阻止无关PR合并；连带失败不重复算作产品故障。
 缺报告、取消、执行前失败不能当作“零失败”；仍须查看失败步骤和对应 artifact。
 
 `scripts/ci_summary.py` 从 unittest / Playwright JSON 提取失败名称、位置与有界错误摘录。

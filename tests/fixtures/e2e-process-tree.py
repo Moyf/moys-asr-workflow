@@ -31,6 +31,11 @@ else:
     while not (root / 'owned-pids.json').is_file():
         time.sleep(0.01)
 
+    # Prove cleanup assertions tolerate a healthy server starting after the old
+    # 1.5s Linux budget, without changing genuine hang/error scenarios.
+    if mode == 'slow-ready':
+        time.sleep(1.8)
+
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             if mode == 'hang':
