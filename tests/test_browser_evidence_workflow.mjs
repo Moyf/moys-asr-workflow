@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 
-const workflow = readFileSync(new URL('../.github/workflows/editor-checks.yml',import.meta.url),'utf8');
+const workflow = readFileSync(new URL('../.github/workflows/full-checks-manual.yml',import.meta.url),'utf8');
 const editor = workflow.slice(workflow.indexOf('\n  editor:'));
 const steps = editor.split(/\n      - /).slice(1);
 const named = name => steps.findIndex(step => step.startsWith(`name: ${name}\n`));
@@ -26,7 +26,7 @@ test('browser evidence upload keeps the failure/non-light gate and artifact cont
   assert.match(upload,/retention-days: 7/);
 });
 
-test('the real editor CI gate includes the data-safety review regressions', () => {
+test('the manual full inspection retains the real data-safety review regressions', () => {
   const real = steps[named('Real file and HTTP editor')];
   assert.ok(real);
   assert.match(real, /run: .*tests\/e2e\/review-data-safety\.spec\.mjs/);

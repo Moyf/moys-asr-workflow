@@ -14,9 +14,9 @@ import unittest
 class WindowsCacheGateTests(unittest.TestCase):
     def test_same_run_report_requires_cache_modules_and_rejects_incomplete_results(self):
         root = Path(__file__).resolve().parents[1]
-        workflow = (root / ".github/workflows/pr-release-windows.yml").read_text(encoding="utf-8")
+        workflow = (root / ".github/workflows/windows-full-manual.yml").read_text(encoding="utf-8")
         match = re.search(r"# windows-cache-report-check\n(.*?)\n          '@", workflow, re.S)
-        self.assertIsNotNone(match, "Windows preview must verify its full-run cache report")
+        self.assertIsNotNone(match, "Manual Windows inspection must verify its full-run cache report")
         script = textwrap.dedent(match.group(1))
         namespace = "test_thumbnail_cache.ThumbnailCacheTests.test_symlink_registration_matches_resolved_source_namespace"
         modules = ("test_thumbnail_cache", "test_thumbnail_jobs_integration", "test_thumbnail_server", "test_reapeaks_fixture")
