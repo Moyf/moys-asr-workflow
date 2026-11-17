@@ -11,9 +11,10 @@ from unittest.mock import patch
 from scripts import ci_summary
 from scripts.ci_summary import browser_issues, description, render, safe
 from scripts.run_tests import result_report
+from tests.compact_assertions import CompactContainerAssertions
 
 
-class SummaryTests(unittest.TestCase):
+class SummaryTests(CompactContainerAssertions, unittest.TestCase):
     def report(self, kind, data, outcome='failure'):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'report.json'

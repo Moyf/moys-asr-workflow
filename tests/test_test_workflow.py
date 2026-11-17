@@ -16,6 +16,19 @@ from tests.compact_assertions import CompactContainerAssertions
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def cli_env(**overrides):
+    """Hermetic env for ci_matrix subprocess fixtures.
+
+    ci_matrix.main() prefers CI_EXPECTED_SHA over GITHUB_SHA, so an ambient
+    advisory-matrix job (which exports CI_EXPECTED_SHA for fail-closed SHA
+    checks) would override the fixture SHA and reject every fixture plan.
+    Drop it unless a test explicitly provides its own value.
+    """
+    env = {key: value for key, value in os.environ.items() if key != 'CI_EXPECTED_SHA'}
+    env.update(overrides)
+    return env
+
+
 def gate_fixture(profile):
     plan = ci_impact.plan(profile, "test", base="a" * 40, head="b" * 40, trusted=True)
     needs = {"selection": {"result": "success", "outputs": {"mode": plan["mode"], "plan": json.dumps(plan)}},
@@ -115,7 +128,7 @@ class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
             plan, needs, receipts = gate_fixture("full")
             ci_matrix.write_json(root / "plan.json", plan)
             command = [sys.executable, str(script), "gate", "--plan", str(root / "plan.json"), "--root", str(root)]
-            env = {**os.environ, "CI_NEEDS": json.dumps(needs), "GITHUB_SHA": plan["head"]}
+            env = cli_env(CI_NEEDS=json.dumps(needs), GITHUB_SHA=plan["head"])
             self.assertNotEqual(subprocess.run(command, env=env, capture_output=True, timeout=10).returncode, 0)
             for n, receipt in enumerate(receipts):
                 ci_matrix.write_json(root / str(n) / "receipt.json", receipt)
@@ -148,8 +161,8 @@ class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
                 for n, receipt in enumerate(receipts):
                     ci_matrix.write_json(root / str(n) / "receipt.json", receipt)
                 for event in ("pull_request", "push", "schedule", "workflow_dispatch", "release", ""):
-                    env = {**os.environ, "GITHUB_EVENT_NAME": event, "GITHUB_SHA": plan["head"],
-                           "CI_NEEDS": json.dumps(needs), "GITHUB_OUTPUT": str(root / "outputs")}
+                    env = cli_env(GITHUB_EVENT_NAME=event, GITHUB_SHA=plan["head"],
+                                  CI_NEEDS=json.dumps(needs), GITHUB_OUTPUT=str(root / "outputs"))
                     for action in ("gate", "expand"):
                         command = [sys.executable, str(script), action, "--plan", str(root / "plan.json"), "--root", str(root)]
                         outcome = subprocess.run(command, env=env, capture_output=True, timeout=10)
@@ -414,7 +427,7 @@ finally:
                 command = [sys.executable, str(root / "cli.py"), str(ROOT), str(scenario / "payload.json"),
                            "run", "--plan", str(root / "plan.json"), "--cell", "windows-latest-python",
                            "--root", str(scenario / "output")]
-                outcome = subprocess.run(command, env={**os.environ, "GITHUB_SHA": plan["head"]},
+                outcome = subprocess.run(command, env=cli_env(GITHUB_SHA=plan["head"]),
                                          capture_output=True, timeout=20)
                 evidence = json.loads((scenario / "attempted.json").read_text(encoding="utf-8"))
                 with self.subTest(scenario=name):
