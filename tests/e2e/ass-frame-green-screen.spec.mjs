@@ -1,3 +1,5 @@
+import { stubAssFontCoverage } from './ass-font-readiness.mjs';
+import { observeAssRequests } from './ass-request-diagnostics.mjs';
 import { test, expect } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -65,3 +67,17 @@ for (const kind of ['audio', 'blank']) {
     }
   });
 }
+
+// Observe only: do not start font loading or change the original assertion deadlines.
+const assDiagnostics = new WeakMap();
+test.beforeEach(async ({ page }) => {
+  assDiagnostics.set(page, observeAssRequests(page));
+  await stubAssFontCoverage(page);
+});
+test.afterEach(async ({ page }, info) => {
+  const report = assDiagnostics.get(page)?.finish();
+  if (report) {
+    await info.attach('ass-request-phases', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
+    if (info.status !== info.expectedStatus) console.log('ASS request phases:', JSON.stringify(report));
+  }
+});

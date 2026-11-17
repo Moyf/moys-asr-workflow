@@ -1,3 +1,5 @@
+import { observeAssRequests } from './ass-request-diagnostics.mjs';
+import { stubAssFontCoverage, waitForAssFonts } from './ass-font-readiness.mjs';
 // ASS 导出 UI 回归：验证编辑器当前选中的字体、字号和颜色确实写进保存的文件。
 import { expect, test } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
@@ -201,7 +203,15 @@ test('exports ASS from the default profile style and keeps enabled subtitle text
   await closeSettingsPanels(page);
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#download-full-ass')).toHaveText('ASS（带样式）');
+  // Keep this real cold-start integration path: arm a passive response wait
+  // before the user's click, without fetching/prewarming fonts ourselves.
+  // Windows CI measured coverage at 5.2–5.5s, beyond the 5s UI assertion budget.
+  const coverageResponse = page.waitForResponse(
+    response => response.url().includes('/api/ass-font-coverage'), { timeout: 30_000 });
   await page.locator('#download-full-ass').click();
+  const coverage = await coverageResponse;
+  expect(coverage.ok()).toBe(true);
+  expect((await coverage.json()).schema).toBe('moy.asr.font_coverage.v1');
 
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
   const save = await page.evaluate(() => window.__exportSaves[0]);
@@ -273,6 +283,7 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
 test('speaker prefixes use each track colour in actual Canvas paint, ASS and CSS previews', async ({ page }, testInfo) => {
   await disableOnboarding(page);
   await page.goto(server.url);
+  await waitForAssFonts(page);
   const result = await page.evaluate(async () => {
     await loadAssStyleLibrary({ force: true });
     ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
@@ -404,6 +415,7 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
   });
   expect(extensionAfter.emphasized).toEqual(['#ff0000']);
   expect(extensionAfter.markedOthers).toEqual(Array(4).fill('#55aaff'));
+  await waitForAssFonts(page);
   const exportedColour = await page.evaluate(() => MaweExportSrt.buildAss().split('\n').find((line) => line.startsWith('Style: Extension,')).split(',')[3]);
   expect(exportedColour).toBe('&H00FFAA55');
   await page.locator('.player-stage').screenshot({ path: test.info().outputPath('ass-secondary-inline-colour.png') });
@@ -432,6 +444,7 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('_下划线_/__下划线__');
   await page.locator('#ass-special-symbol-rule').selectOption('none');
   await expect(page.locator('#ass-inline-text-options')).toBeHidden();
+  await waitForAssFonts(page);
   const literal = await page.evaluate(() => {
     const text = '%%弱化%% //斜体//';
     MaweBoot.DATA.segments = [{ start: 0, end: 4000, text }];
@@ -520,6 +533,8 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
 });
 
 test('ASS underscore markers underline only the marked preview and export text', async ({ page }) => {
+  // This case checks exported content, not the machine-wide font scan.
+  await stubAssFontCoverage(page);
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
@@ -556,6 +571,8 @@ test('ASS underscore markers underline only the marked preview and export text',
 });
 
 test('writes the project title, source resolution, palette styles and speaker names to ASS', async ({ page }) => {
+  // This case checks exported content, not the machine-wide font scan.
+  await stubAssFontCoverage(page);
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
@@ -603,6 +620,8 @@ test('writes the project title, source resolution, palette styles and speaker na
 });
 
 test('exports speaker-only ASS label colour without a palette style variant', async ({ page }) => {
+  // This case checks exported content, not the machine-wide font scan.
+  await stubAssFontCoverage(page);
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
@@ -732,6 +751,8 @@ test('shows disabled secondary export entries when bilingual mode has no second 
 });
 
 test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ page }) => {
+  // This case checks exported content, not the machine-wide font scan.
+  await stubAssFontCoverage(page);
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
@@ -1082,4 +1103,15 @@ test('collapses frx rotation through the foreshortening approximation', async ({
   // 可见的动画表现（不静默取消，也不声称有透视斜切）。
   expect(stats.halfway).toBeGreaterThan(100);
   expect(stats.atNinety).toBe(0);
+});
+
+// Observe only: do not start font loading or change the original assertion deadlines.
+const assDiagnostics = new WeakMap();
+test.beforeEach(async ({ page }) => { assDiagnostics.set(page, observeAssRequests(page)); });
+test.afterEach(async ({ page }, info) => {
+  const report = assDiagnostics.get(page)?.finish();
+  if (report) {
+    await info.attach('ass-request-phases', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
+    if (info.status !== info.expectedStatus) console.log('ASS request phases:', JSON.stringify(report));
+  }
 });

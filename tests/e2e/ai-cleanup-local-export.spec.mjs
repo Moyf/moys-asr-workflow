@@ -1,3 +1,4 @@
+import { waitForAssFonts } from './ass-font-readiness.mjs';
 import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -47,6 +48,7 @@ test('real editor saves/reopens trustworthy local scopes and keeps gap-only revi
     MaweSettings.EDITOR_SETTINGS.assMode = false;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   });
+  await waitForAssFonts(page);
   const initial = await page.evaluate(async () => ({
     source: MaweBoot.DATA.segments[0], ordinary: MaweExportSrt.buildSrt(), compressed: MaweExportSrt.buildGapRemovedSrt(),
     ass: MaweExportSrt.buildAss(), dynamic: MaweExportSrt.buildDynamicCaptionExportData(MaweBoot.DATA.segments, true),
