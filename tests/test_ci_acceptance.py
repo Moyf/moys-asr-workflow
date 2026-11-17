@@ -39,6 +39,30 @@ def success_evidence(plan, check, root):
 
 
 class AcceptanceTests(CompactContainerAssertions, unittest.TestCase):
+    def test_node_import_failure_keeps_readable_console_error_and_junit_once(self):
+        from scripts import ci_acceptance as acceptance
+        plan = ci_impact.plan('stable', 'import failure diagnostics', head='b' * 40)
+        original = subprocess.run
+        captured = []
+        def command(argv, **kwargs):
+            try:
+                return original(argv, **kwargs, capture_output=True, text=True, encoding='utf-8')
+            except subprocess.CalledProcessError as error:
+                captured.append((error.stdout or '') + (error.stderr or ''))
+                raise
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fixture = root / 'import-failure.mjs'
+            fixture.write_text("import 'maw-ci-selfcheck-missing-import';\n", encoding='utf-8', newline='\n')
+            with mock.patch.dict(acceptance.NODE, {'launcher': [str(fixture)]}), mock.patch.object(
+                    acceptance.subprocess, 'run', side_effect=command) as run:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    acceptance.run_check(plan, 'launcher', root / 'output')
+                self.assertEqual(run.call_count, 1)
+            self.assertIn('maw-ci-selfcheck-missing-import', ''.join(captured))
+            self.assertTrue((root / 'output/node.xml').exists())
+            self.assertFalse((root / 'output/receipt.json').exists())
+
     def test_real_public_transport_rechecks_missing_tampered_and_forged_reports(self):
         from scripts import ci_acceptance as acceptance
         head = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip()
@@ -90,7 +114,8 @@ class AcceptanceTests(CompactContainerAssertions, unittest.TestCase):
         from scripts import ci_acceptance as acceptance
         plan = ci_impact.plan('stable', 'single execution', head='b' * 40)
         def command(argv, **kwargs):
-            report = next(a.split('=', 1)[1] for a in argv if a.startswith('--test-reporter-destination='))
+            report = next(a.split('=', 1)[1] for a in argv
+                          if a.startswith('--test-reporter-destination=') and a != '--test-reporter-destination=stdout')
             xml = ET.Element('testsuites')
             for name in acceptance.node_names('launcher'):
                 ET.SubElement(xml, 'testcase', name=name)
@@ -101,6 +126,9 @@ class AcceptanceTests(CompactContainerAssertions, unittest.TestCase):
             acceptance.run_check(plan, 'launcher', Path(temporary) / 'fresh')
             self.assertEqual(run.call_count, 1)
             self.assertNotIn('--test-name-pattern=^$', run.call_args.args[0])
+            self.assertIn('--test-reporter=spec', run.call_args.args[0])
+            self.assertIn('--test-reporter=junit', run.call_args.args[0])
+            self.assertIn('--test-reporter-destination=stdout', run.call_args.args[0])
 
     def test_public_main_light_gate_ignores_auxiliary_failure_but_not_missing_blocking(self):
         from scripts import ci_acceptance

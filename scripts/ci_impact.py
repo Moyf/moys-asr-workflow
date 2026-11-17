@@ -82,8 +82,7 @@ def preview_for(paths: list[str]) -> bool:
                               'web/shared/host/', 'scripts/packaging/'))
                or p in {'maw_gui.py', 'edit.py', 'pyproject.toml', 'uv.lock', 'package.json', 'pnpm-lock.yaml',
                         'web/editor-scripts.txt', 'web/launcher-scripts.txt', 'web/editor-modules.json',
-                        'web/editor-template.html', 'docs/user/FAQ-常见问题.txt',
-                        '.github/workflows/pr-release-windows.yml'}
+                         'web/editor-template.html', 'docs/user/FAQ-常见问题.txt'}
                or p.startswith('scripts/build-') for p in paths)
 
 

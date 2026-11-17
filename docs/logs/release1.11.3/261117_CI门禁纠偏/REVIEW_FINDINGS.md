@@ -28,3 +28,7 @@ main复审57项Python与12项Node通过，公开运输正反例重放成功，�
 目标更新至f6fd7e55，包含独立PR390固定缓存FFmpeg和PR395产品修复。预览保留上游windows-ffmpeg action但不恢复旧light条件；调试指南同时保留缓存说明与新分层语义；新缓存用例明确登记观察角色，不扩大本轮准入。产品、相关产品测试、正式release与FFmpeg action/helper相对合并目标无差异。
 
 整合相关117项通过、评论12通过、actionlint通过及旧inline安装文本负对照真实失败，证据 `.artifacts/ci-gate-correction/merge-main/REPORT.md`。未参与实现的审查者再次复核合并delta，独立14项通过且无阻塞finding，允许完成merge commit；证据 `merge-main/review/20261117T070927Z-ccfb93ac/result.json`。未以单测替代真实Windows缓存或打包验证。
+
+## PR自身验收增量
+
+用户要求候选本身不再无谓检查：纯workflow策略文件不自动预览，真实打包/runtime/依赖与manual保留；Node单次执行双reporter留可读原因。2dev补上冷editor缺失的锁定acorn依赖准备，不启动postinstall/浏览器。独立审查者复核两树9个源/测试文件差异，无blocking finding，允许提交；证据main10微测、2dev19契约与59 editor通过。未以本机warm依赖结果替代新远端验证。

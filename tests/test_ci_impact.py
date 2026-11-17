@@ -16,6 +16,36 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ScopeTests(CompactContainerAssertions, unittest.TestCase):
+    def test_real_git_ci_policy_and_mixed_docs_do_not_request_preview(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def git(*args):
+                return subprocess.check_output(['git', '-c', 'user.name=Test', '-c',
+                    'user.email=test@example.invalid', *args], cwd=root, stderr=subprocess.PIPE).decode().strip()
+            def commit():
+                git('add', '-A')
+                git('commit', '--allow-empty', '-m', 'fixture')
+                return git('rev-parse', 'HEAD')
+            git('init')
+            commit()
+            for index, (paths, expected) in enumerate([
+                (['.github/workflows/pr-release-windows.yml'], False),
+                (['scripts/packaging/MAW.spec'], True),
+                (['.github/workflows/pr-release-windows.yml', 'docs/plans/ci.md'], False),
+                (['scripts/unknown-ci-helper.py'], False),
+            ]):
+                before = git('rev-parse', 'HEAD')
+                for name in paths:
+                    path = root / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(f'# fixture {index}\n', encoding='utf-8', newline='\n')
+                head = commit()
+                for event in ('pull_request', 'push'):
+                    selected = ci_impact.select(event, before, root, before=before, after=head)
+                    with self.subTest(paths=paths, event=event):
+                        self.assertTrue(selected['trusted_diff'])
+                        self.assertEqual(selected['preview'], expected)
+
     def test_website_input_exceptions_match_actual_curated_consumer(self):
         source = (ROOT / 'website/scripts/sync-maw-docs.mjs').read_text(encoding='utf-8')
         curated = source.split('const documents = [', 1)[1].split('\n];', 1)[0]

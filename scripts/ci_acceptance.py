@@ -272,7 +272,8 @@ def run_check(plan, check, root):
         report = root / 'node.xml'
         # Exactly one execution. Explicit audited names replace the ineffective
         # --test-name-pattern listing (which ran bodies on Node 22.23.2).
-        run(['node', '--test', '--test-reporter=junit', f'--test-reporter-destination={report}', *NODE[check]])
+        run(['node', '--test', '--test-reporter=spec', '--test-reporter-destination=stdout',
+             '--test-reporter=junit', f'--test-reporter-destination={report}', *NODE[check]])
     if check == 'ci':
         write(root / 'inventory.json', inventory())
     commands = commands_for(check, plan)

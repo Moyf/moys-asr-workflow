@@ -10,9 +10,9 @@
 | 1 | 撤销PR/main完整矩阵、旧Editor/Windows Preview重复覆盖，建立稳定检查准入与正确聚合 | 已修复 | 准入清单已归档ADMISSION.md，工作流和consumer同时迁移，不删除完整巡检覆盖或涂绿辅助失败；独立复审放行。 |
 | 2 | 核验文档PR、代码PR、main、定时/手动路径与故障注入 | 已修复 | 本地公开文档事件前后对照、报告运输正例与8类反例通过，父会话125项契约通过，独立复审57/12通过；真实候选远端另列交付边界。 |
 | 3 | 更新协作说明、人工清单、独立审查和最终全仓扫描 | 已修复 | 首次3major+1minor均关闭，无未处置重要finding；接受两份对应官网输入完整同步的非阻塞nit，保留正式发布政策。 |
-| 4 | 创建独立交付PR及核对远端；main生效/现有PR边界 | 待处理 | 已授权提交并开PR，分支fix/ci-gate-correction；合并main仍需维护者操作，不擅自修改其他PR。 |
+| 4 | 两个独立PR交付与目标/HEAD/正文核对；线上生效边界 | 已修复 | main为399、2dev为398，已回读确认正确目标/HEAD/正文；最新远端运行结论见各PR的Actions与正文，不能预写通过。未授权合并，不擅自修改其他PR。 |
 | 5 | PR提交前同步分支规则 | 已修复 | 维护者明确纠正：同步实际base而不是固定main；main候选AGENTS、DEVELOPMENT与CONTRIBUTING已修改，2.0dev适配同样要求，提交前分别核对base与最新远端。 |
-| 6 | 2.0dev独立适配与交付 | 进行中 | 用户明确授权两分支分别开PR；独立工作树基于origin/2.0dev@76bb330a，保留本分支2.0入口和发布边界，不新增原本不存在的12单元矩阵。 |
+| 6 | 2.0dev独立适配与交付 | 已修复 | 独立工作树基于origin/2.0dev@76bb330a，独立复审通过并交付PR398；保留本分支2.0入口和发布边界，不新增12单元矩阵，未合并main。最新候选CI以PR实际结果为准。 |
 
 ## 阶段记录
 
@@ -33,3 +33,6 @@
 - 2.0dev实现者已正式交接本地实现及99/73/22+27等重叠集合证据；父会话独立复跑其Python73、Node11通过（子工作树 `.artifacts/checks/20261117T065206Z-04190165/result.json`、`20261117T065206Z-085a2f03/result.json`）。该分支不新增完整矩阵，所有发布/产品边界保持；同一独立审查者分别复核两个分支，之后再按各自base同步交付。
 - 最终两个分支均获独立审查放行：main四项finding全部关闭，2.0dev无新增finding；范围提示及证据归档REVIEW_FINDINGS.md。接下来分别同步目标分支和创建PR，不自动合并或声称已对其他PR生效。
 - 本地提交main dfd9589e、2dev e944dd98后，分别同步实际base。2dev已最新；main目标更新至f6fd7e55，正常合并冲突保留上游缓存FFmpeg/产品修复并保留本次新策略；整合117项和独立14项通过，无未处置finding，不使用整份ours覆盖上游。正式发布及产品与实际main目标内容一致，目标同步不等于合并本PR入main。
+- 已创建交付PR：main为399、2dev为398，目标/HEAD/正文均已回读确认，未合并。用户追加要求两个PR自身也证明无无谓任务：因此进一步撤去纯CI/workflow策略文件的自动整包触发，保留真实payload/runtime/依赖与manual；main真实整个PR差异已验证preview=false。
+- PR398首次远端editor准入失败，根因为冷Runner未准备helper所需acorn；本地嵌套工作树借用了父node_modules。保留首败job133882697229与下载的JUnit证据，不标记flaky、不跳过测试；修正editor的锁定依赖安装（ignore-scripts，不跑postinstall或浏览器安装）。Node同一次执行增加spec日志与JUnit，避免错误原因丢失。
+- 上述小增量独立快审放行：main10微测通过，2dev19契约及59项editor单次准入通过。报告分别 `.artifacts/ci-gate-correction/pr-selfcheck/REPORT.md` 与子工作树 `.artifacts/ci-gate-correction-2dev/pr-selfcheck/`。待新head实际检查，不用首次或本地绿冒充新远端。

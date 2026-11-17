@@ -28,6 +28,8 @@
 
 普通工程文档PR与main push已有公开CLI正反对照：旧a1e88d1c两者full，候选两者light、仅docs、preview=false。真实临时Git差异，证据 `.artifacts/checks/20261117T063204Z-4cf305d8/result.json`；本地模拟事件不替代远端main实际运行。
 
+候选自身验收：PR399和398均为策略/契约/说明变更；自动preview不因workflow策略文件本身而启动，改变真实打包payload或明确manual才选预览。首次398的冷editor依赖准备错误已修，保留首败；新head必须实际确认editor通过、预览未选中、无自动完整矩阵，不以“辅助所以可以忽略”代替撤掉无谓运行。
+
 - 计划与main/PR/定时路径测试。
 - 阻塞失败/漏报告/错SHA/意外skip拒绝，辅助失败不传播的真实负对照。
 - 独立源码审查、发布工作流未改及全仓消费者扫描。
