@@ -14,6 +14,15 @@ test('browser failure artifacts are uploaded after both browser groups', () => {
   assert.ok(upload > named('Real file and HTTP editor'));
   assert.ok(upload > named('Independent browser tool pages'));
   assert.equal(steps.filter(step => step.startsWith('name: Preserve failed browser evidence\n')).length,1);
+  const real = steps[named('Real file and HTTP editor')];
+  const tools = steps[named('Independent browser tool pages')];
+  const realOutput = real.match(/--output=(test-results\/\S+)/)?.[1];
+  const toolsOutput = tools.match(/--output=(test-results\/\S+)/)?.[1];
+  assert.ok(realOutput && toolsOutput && realOutput !== toolsOutput);
+  const toolsCondition = tools.match(/^        if: (.*)$/m)?.[1];
+  assert.match(toolsCondition, /!cancelled\(\)/);
+  assert.match(toolsCondition, /steps\.chromium\.outcome == 'success'/);
+  assert.doesNotMatch(toolsCondition, /ffmpeg|editor_build|success\(\)/);
 });
 
 test('browser evidence upload keeps the failure/non-light gate and artifact contract', () => {
@@ -22,7 +31,10 @@ test('browser evidence upload keeps the failure/non-light gate and artifact cont
   assert.match(upload,/if: \$\{\{ failure\(\) && needs\.selection\.outputs\.light != 'true' \}\}/);
   assert.match(upload,/uses: actions\/upload-artifact@v6/);
   assert.match(upload,/name: editor-browser-failures-\$\{\{ runner\.os \}\}/);
-  assert.match(upload,/path: test-results\//);
+  assert.match(upload,/\n +test-results\//);
+  for (const group of ['editor', 'tools']) {
+    assert.ok(upload.includes(`.artifacts/full-${group}-browser.json`));
+  }
   assert.match(upload,/retention-days: 7/);
 });
 

@@ -421,8 +421,10 @@ def python_test_dependencies(root: Path, tests: set[str]) -> bool:
     return False
 
 
-def bundle_consumed(root: Path, tests: set[str]) -> bool:
-    """Look for real repository bundle reads or application rendering calls."""
+def bundles_consumed(root: Path, tests: set[str]) -> set[str]:
+    """Look for repository bundle reads or application rendering."""
+    needed = set()
+    components = ('editor', 'launcher')
     for name in tests:
         try:
             source = (root / name).read_text(encoding='utf-8')
@@ -443,21 +445,24 @@ def bundle_consumed(root: Path, tests: set[str]) -> bool:
                 if isinstance(node, ast.Call):
                     name_ = node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id if isinstance(node.func, ast.Name) else ''
                     if name_ in {'render_empty_editor_page', 'ensure_editor_bundle'}:
-                        return True
+                        needed.add('editor')
                 if isinstance(node, ast.BinOp):
                     parts = list(ast.walk(node))
-                    if (any(isinstance(part, ast.Name) and part.id in roots for part in parts)
-                            and any(isinstance(part, ast.Constant) and isinstance(part.value, str)
-                                    and ('editor-bundle.js' in part.value or 'launcher-bundle.js' in part.value) for part in parts)):
-                        return True
+                    if any(isinstance(part, ast.Name) and part.id in roots for part in parts):
+                        needed.update(component for component in components
+                                      if any(isinstance(part, ast.Constant) and isinstance(part.value, str)
+                                             and f'{component}-bundle.js' in part.value for part in parts))
         elif name.endswith('.mjs'):
-            bundle = r'(?:editor|launcher)-bundle\.js'
-            if re.search(r"(?:readFileSync|readFile)\s*\(\s*[\"']web/[^\"']*" + bundle, source):
-                return True
             roots = re.findall(r"(?:const|let)\s+(\w+)\s*=\s*fileURLToPath\s*\(\s*new\s+URL\([^;]*import\.meta\.url", source)
-            if any(re.search(r"(?:join|resolve)\s*\(\s*" + re.escape(var) + r"\s*,\s*[\"']web/[^\"']*" + bundle, source) for var in roots):
-                return True
-    return False
+            for component in components:
+                bundle = rf'[\"\']web/[^\"\']*{component}-bundle\.js'
+                if (re.search(r"(?:readFileSync|readFile)\s*\(\s*" + bundle, source)
+                        or any(re.search(r"(?:join|resolve)\s*\(\s*" + re.escape(var) + r"\s*,\s*" + bundle, source)
+                               for var in roots)):
+                    needed.add(component)
+            if _js_opens_launcher(source):
+                needed.add('launcher')
+    return needed
 
 
 JS_TOKEN = re.compile(
@@ -493,6 +498,71 @@ def _js_string(token: str) -> str | None:
         return ast.literal_eval(token)
     except (ValueError, SyntaxError):
         return None
+
+
+def _js_expression(tokens: list[str], start: int, stop: set[str]) -> list[str]:
+    end = start
+    while end < len(tokens) and tokens[end] not in stop:
+        end = _js_end(tokens, end) + 1 if tokens[end] in ('(', '[', '{') else end + 1
+    return tokens[start:end]
+
+
+def _js_const_bindings(tokens: list[str]):
+    for i, token in enumerate(tokens[:-3]):
+        if token == 'const' and tokens[i + 2] == '=':
+            yield tokens[i + 1], _js_expression(tokens, i + 3, {';', ','})
+
+
+def _js_ffmpeg_executable(argument: list[str]) -> bool:
+    if argument[:5] == ['process', '.', 'env', '.', 'FFMPEG_PATH']:
+        if len(argument) == 5:
+            return True
+        if argument[5:7] not in (['|', '|'], ['?', '?']):
+            return False
+        argument = argument[7:]
+    return len(argument) == 1 and _js_string(argument[0]) in {'ffmpeg', 'ffprobe', 'ffmpeg.exe', 'ffprobe.exe'}
+
+
+@lru_cache(maxsize=128)
+def browser_ffmpeg_consumed(source: str) -> bool:
+    """Find FFmpeg or FFprobe used as the executable in a subprocess call."""
+    if not any(name in source for name in ('ffmpeg', 'ffprobe', 'FFMPEG_PATH')):
+        return False
+    tokens = _js_tokens(source)
+    bindings = {name for name, argument in _js_const_bindings(tokens) if _js_ffmpeg_executable(argument)}
+    for i, token in enumerate(tokens[:-2]):
+        if token not in JS_PROCESS_CALLS or tokens[i + 1] != '(':
+            continue
+        argument = _js_expression(tokens, i + 2, {',', ')'})
+        if _js_ffmpeg_executable(argument) or len(argument) == 1 and argument[0] in bindings:
+            return True
+    return False
+
+
+def _js_launcher_path(tokens: list[str]) -> bool:
+    paths = [_js_string(token) for token in tokens if token.startswith(('"', "'"))]
+    return (any(path and not path.startswith(('http://', 'https://'))
+                and ('/' + path).endswith('/web/launcher/index.html') for path in paths)
+            or any(paths[i:i + 3] == ['web', 'launcher', 'index.html'] for i in range(len(paths) - 2)))
+
+
+@lru_cache(maxsize=128)
+def _js_opens_launcher(source: str) -> bool:
+    """Recognize page navigation to Launcher, via a literal or local URL binding."""
+    if 'launcher' not in source or 'goto' not in source:
+        return False
+    tokens = _js_tokens(source)
+    bindings = {name for name, argument in _js_const_bindings(tokens) if _js_launcher_path(argument)}
+    for i, token in enumerate(tokens[:-3]):
+        if token != 'page' or tokens[i + 1:i + 4] != ['.', 'goto', '(']:
+            continue
+        argument = _js_expression(tokens, i + 4, {',', ')'})
+        fragments = [part for item in argument if item.startswith('`')
+                     for expression in re.findall(r'\$\{([^{}]+)\}', item)
+                     for part in _js_tokens(expression)]
+        if _js_launcher_path(argument + fragments) or bindings.intersection(argument + fragments):
+            return True
+    return False
 
 
 @lru_cache(maxsize=64)

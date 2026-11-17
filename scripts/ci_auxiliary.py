@@ -8,9 +8,11 @@ from pathlib import Path
 
 if __package__:
     from . import ci_acceptance
+    from .ci_inputs import auxiliary_flags
     from .local_test_impact import select_packs
 else:
     import ci_acceptance
+    from ci_inputs import auxiliary_flags
     from local_test_impact import select_packs
 
 
@@ -39,13 +41,7 @@ def auxiliary_plan(blocking: dict, *, impact=None, validated=False) -> dict:
 def write_plan(plan: dict, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(plan, ensure_ascii=True, indent=2) + '\n', encoding='utf-8', newline='\n')
-    values = {layer: bool(plan[field]) for layer, field in
-              (('python', 'python_tests'), ('node', 'node_tests'), ('browser', 'e2e_specs'))}
-    values['selected'] = any(values.values())
-    values['website'] = 'tests/e2e/editor-entry-retirement.spec.mjs' in plan['e2e_specs']
-    prep = plan.get('preparation', {})
-    for key in ('application', 'real_media', 'python_dependencies', 'node_browser'):
-        values[key] = bool(prep.get(key, False))
+    values = auxiliary_flags(plan)
     if output := os.environ.get('GITHUB_OUTPUT'):
         with Path(output).open('a', encoding='utf-8', newline='\n') as stream:
             for name, value in values.items():

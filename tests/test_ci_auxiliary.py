@@ -6,10 +6,11 @@ import subprocess
 import sys
 import tempfile
 
-from scripts import ci_auxiliary, ci_impact
+from scripts import ci_auxiliary, ci_impact, ci_run_layer
+from tests.compact_assertions import CompactContainerAssertions
 
 
-class AuxiliaryPlanTests(TestCase):
+class AuxiliaryPlanTests(CompactContainerAssertions, TestCase):
     def test_real_document_and_independent_spec_routes(self):
         root = Path(__file__).resolve().parents[1]
         head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
@@ -52,6 +53,58 @@ class AuxiliaryPlanTests(TestCase):
         acceptance = workflow.split('\n  acceptance:\n', 1)[1]
         self.assertIn('needs: [selection, checks]', acceptance)
         self.assertNotIn('auxiliary', acceptance)
+
+    def test_failed_auxiliary_layer_does_not_skip_later_selected_layers(self):
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/editor-checks.yml').read_text(encoding='utf-8')
+        auxiliary = workflow.split('\n  auxiliary:\n', 1)[1].split('\n  checks:\n', 1)[0]
+        for layer, label in (('python', 'Python'), ('node', 'Node'), ('browser', 'browser')):
+            step = auxiliary.split(f'- name: Selected additional {label} tests\n', 1)[1].split('\n      - ', 1)[0]
+            self.assertIn(f"!cancelled() && steps.plan.outcome == 'success' && needs.selection.outputs.aux_{layer} == 'true'", step)
+            self.assertIn(f'ci_run_layer.py --layer {layer}', step)
+        self.assertNotIn('continue-on-error', auxiliary)
+
+    def test_layer_passes_preparation_outcomes_and_preserves_python_entry_point(self):
+        venv = Path('.venv/Scripts/python.exe' if os.name == 'nt' else '.venv/bin/python').absolute()
+        plan = {'python_tests': [], 'node_tests': ['tests/test_editor_bundle.mjs'], 'e2e_specs': [],
+                'preparation': {'application': True, 'editor_bundle': True, 'launcher_bundle': False,
+                                'python_dependencies': True}}
+        steps = {'js_install': {'outcome': 'success'}, 'build_editor': {'outcome': 'failure'},
+                 'build_launcher': {'outcome': 'skipped'}, 'chromium': {'outcome': 'skipped'}}
+        for installed, node in ((True, 'success'), (False, 'skipped'), (False, 'failure')):
+            python = str(venv) if installed else sys.executable
+            steps['py_install'] = {'outcome': 'success' if installed else 'failure'}
+            steps['node'] = {'outcome': node}
+            with self.subTest(installed=installed, node=node), \
+                    mock.patch.dict(os.environ, {'CI_PREPARATION': json.dumps(steps)}), \
+                    mock.patch.object(Path, 'read_text', return_value=json.dumps(plan)), \
+                    mock.patch.object(Path, 'resolve', return_value=Path(sys.executable)), \
+                    mock.patch.object(ci_run_layer.subprocess, 'run', return_value=mock.Mock(returncode=7)) as run:
+                code = ci_run_layer.main(['--layer', 'node', '--report-dir', 'evidence'])
+            self.assertEqual(code, 7)
+            command = run.call_args.args[0]
+            self.assertEqual(command[:2], [python, 'scripts/test_workflow.py'])
+            self.assertEqual(run.call_args.kwargs['env']['MAW_TEST_PYTHON'], python)
+            self.assertEqual(run.call_args.kwargs['env']['MAW_E2E_PYTHON'], python)
+            blocked = [command[index + 1] for index, arg in enumerate(command) if arg == '--blocked-preparation']
+            expected = ['build']
+            if node != 'success':
+                expected.append('node-runtime')
+            if not installed:
+                expected.append('python-dependencies')
+            self.assertEqual(blocked, expected)
+
+    def test_unrequested_browser_and_bundle_preparation_does_not_block_python(self):
+        plan = {'python_tests': ['tests/test_asr_presets.py'], 'node_tests': [], 'e2e_specs': [],
+                'preparation': {}}
+        steps = {step: {'outcome': 'skipped'} for step in (
+            'node', 'js_install', 'py_install', 'build_editor', 'build_launcher', 'chromium', 'ffmpeg',
+        )}
+        with mock.patch.dict(os.environ, {'CI_PREPARATION': json.dumps(steps)}), \
+                mock.patch.object(Path, 'read_text', return_value=json.dumps(plan)), \
+                mock.patch.object(ci_run_layer.subprocess, 'run', return_value=mock.Mock(returncode=0)) as run:
+            self.assertEqual(ci_run_layer.main(['--layer', 'python', '--report-dir', 'evidence']), 0)
+        self.assertEqual(run.call_args.args[0][0], sys.executable)
+        self.assertNotIn('--blocked-preparation', run.call_args.args[0])
 
     def test_auxiliary_planning_failure_is_visible_without_failing_admission(self):
         with tempfile.TemporaryDirectory() as temporary:

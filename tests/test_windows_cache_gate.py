@@ -12,6 +12,25 @@ import unittest
 
 
 class WindowsCacheGateTests(unittest.TestCase):
+    def test_manual_inspection_continues_independent_python_and_package_checks(self):
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github/workflows/windows-full-manual.yml").read_text(encoding="utf-8")
+
+        def condition(name: str) -> str:
+            match = re.search(rf"- name: {re.escape(name)}\n(?:        id: .*\n)?        if: (.*)", workflow)
+            self.assertIsNotNone(match, name)
+            return match[1]
+
+        python = condition("Run Python tests")
+        self.assertIn("!cancelled()", python)
+        self.assertIn("steps.python_install.outcome == 'success'", python)
+        self.assertNotRegex(python, r"display|chromium|success\(\)")
+        package = condition("Build MAW bundle")
+        self.assertIn("!cancelled()", package)
+        self.assertIn("steps.bootstrap.outcome == 'success'", package)
+        self.assertNotRegex(package, r"python_tests|display|chromium|ffmpeg|success\(\)")
+        self.assertIn("steps.package.outcome == 'success'", condition("Smoke MAW executable"))
+
     def test_same_run_report_requires_cache_modules_and_rejects_incomplete_results(self):
         root = Path(__file__).resolve().parents[1]
         workflow = (root / ".github/workflows/windows-full-manual.yml").read_text(encoding="utf-8")
