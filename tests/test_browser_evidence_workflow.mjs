@@ -7,7 +7,7 @@ const editor = workflow.slice(workflow.indexOf('\n  editor:'));
 const steps = editor.split(/\n      - /).slice(1);
 const named = name => steps.findIndex(step => step.startsWith(`name: ${name}\n`));
 
-test('browser failure artifacts are uploaded after both browser groups', () => {
+test('browser failure artifacts are uploaded after editor and independent tool pages', () => {
   const upload = named('Preserve failed browser evidence');
   assert.notEqual(named('Real file and HTTP editor'),-1);
   assert.notEqual(named('Independent browser tool pages'),-1);
@@ -36,6 +36,19 @@ test('browser evidence upload keeps the failure/non-light gate and artifact cont
     assert.ok(upload.includes(`.artifacts/full-${group}-browser.json`));
   }
   assert.match(upload,/retention-days: 7/);
+});
+
+test('manual inspection uses the prepared Python for term report JPEG fixtures', () => {
+  const tools = steps[named('Independent browser tool pages')];
+  const term = steps[named('Term report browser with developer fixtures')];
+  const upload = steps[named('Preserve failed browser evidence')];
+  assert.ok(term);
+  assert.ok(named('Preserve failed browser evidence') > named('Term report browser with developer fixtures'));
+  assert.doesNotMatch(tools, /term-report\.spec\.mjs|steps\.python_install\.outcome/);
+  assert.match(term, /steps\.python_install\.outcome == 'success'/);
+  assert.match(term, /MAW_E2E_PYTHON: .*\.venv\/bin\/python/);
+  assert.match(term, /run: .*tests\/e2e\/term-report\.spec\.mjs/);
+  assert.match(upload, /\.artifacts\/full-term-report-browser\.json/);
 });
 
 test('the manual full inspection retains the real data-safety review regressions', () => {

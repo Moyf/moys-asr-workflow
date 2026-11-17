@@ -6,15 +6,14 @@ import re
 
 if __package__:
     from .local_test_impact import select_packs
+    from .test_impact_graph import node_uses_packages
 else:
     from local_test_impact import select_packs
+    from test_impact_graph import node_uses_packages
 
 PREPARATIONS = ("node-runtime", "node-dependencies", "python-dependencies", "ffmpeg", "chromium",
                 "build", "build-launcher", "website")
-_NODE_PACKAGE_IMPORT = re.compile(
-    r'''(?:\bfrom\s+|\b(?:import|require)\s*\(\s*)["']'''
-    r'''(?:@playwright/test|acorn(?:-walk)?|esbuild|playwright|typescript)["']'''
-)
+_NODE_PACKAGES = {"@playwright/test", "acorn", "acorn-walk", "esbuild", "playwright", "typescript"}
 
 
 def target_path(target):
@@ -46,7 +45,7 @@ def test_requirements(path, root):
     # These are actual runner inputs that also have no equivalent flag in the
     # impact plan. Unknown dynamic dependencies remain visible at execution.
     if path.endswith(".mjs") and (
-        _NODE_PACKAGE_IMPORT.search(source)
+        node_uses_packages(root, path, _NODE_PACKAGES)
         or any(fragment in source for fragment in ("scripts/build-editor.mjs", "scripts/build-launcher.mjs"))
         or path == "tests/test_type_gate.mjs"
     ):

@@ -500,6 +500,45 @@ def _js_string(token: str) -> str | None:
         return None
 
 
+@lru_cache(maxsize=128)
+def _js_module_specifiers(source: str) -> frozenset[str]:
+    """Read literal imports without matching comments or embedded programs."""
+    tokens = _js_tokens(source)
+    specifiers = set()
+    for index, token in enumerate(tokens[:-1]):
+        position = index + 1
+        if token in {'import', 'require'} and tokens[position] == '(':
+            position += 1
+        elif token not in {'from', 'import'}:
+            continue
+        if position < len(tokens) and (value := _js_string(tokens[position])):
+            specifiers.add(value)
+    return frozenset(specifiers)
+
+
+def node_uses_packages(root: Path, test: str, packages: set[str]) -> bool:
+    """Follow local module imports to discover installed package consumers."""
+    pending = [test]
+    seen = set()
+    while pending:
+        name = pending.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        try:
+            source = (root / name).read_text(encoding='utf-8')
+        except (OSError, UnicodeError):
+            continue
+        for reference in _js_module_specifiers(source):
+            if any(reference == package or reference.startswith(package + '/') for package in packages):
+                return True
+            if reference.startswith(('./', '../')):
+                path = _relative_import(name, reference)
+                if path != '..' and not path.startswith('../'):
+                    pending.append(path)
+    return False
+
+
 def _js_expression(tokens: list[str], start: int, stop: set[str]) -> list[str]:
     end = start
     while end < len(tokens) and tokens[end] not in stop:
@@ -568,7 +607,7 @@ def _js_opens_launcher(source: str) -> bool:
 @lru_cache(maxsize=64)
 def _node_python_scripts(source: str) -> tuple[str, ...]:
     """Find literal Python -c programs passed to a subprocess in a Node test."""
-    if 'MAW_TEST_PYTHON' not in source:
+    if 'MAW_TEST_PYTHON' not in source and 'MAW_E2E_PYTHON' not in source:
         return ()
     tokens = _js_tokens(source)
     scripts = set()

@@ -132,13 +132,13 @@ class WorkflowCollectionTests(unittest.TestCase):
             def execute(name, command, timeout, *, log_root):
                 invoked.append(name)
                 if name == "node-selected":
-                    self.assertEqual([arg for arg in command if arg.startswith("tests/")], ["tests/test_editor_utils.mjs"])
+                    self.assertEqual([arg for arg in command if arg.startswith("tests/")], ["tests/test_browser_evidence_workflow.mjs"])
                     (report / "node-selected.xml").write_text("<testsuites/>", encoding="utf-8")
                 return {"gate": name, "command": command, "status": "completed", "exit_code": 0}
 
             steps = [
                 ("build", ["node", "scripts/build-editor.mjs", "--write"], 60),
-                ("node-selected", ["node", "--test", "tests/test_type_gate.mjs", "tests/test_editor_utils.mjs"], 60),
+                ("node-selected", ["node", "--test", "tests/test_type_gate.mjs", "tests/test_browser_evidence_workflow.mjs"], 60),
                 ("last", [sys.executable, "-c", "pass"], 15),
             ]
             with mock.patch.object(workflow, "execute", side_effect=execute):
@@ -187,32 +187,59 @@ class WorkflowCollectionTests(unittest.TestCase):
             self.assertEqual(result["run"], 3)
             self.assertEqual(len(result["failure_details"]), 2)
 
+    def test_term_report_uses_prepared_python_without_blocking_static_tool_page(self):
+        report = "tests/e2e/term-report.spec.mjs"
+        static = "tests/e2e/tool-markdown.spec.mjs"
+        plan = local_test_impact.select_packs([report, static])
+        self.assertTrue(plan["preparation"]["python_dependencies"])
+        self.assertFalse(plan["preparation"]["application"])
+        command = ["node", "node_modules/@playwright/test/cli.js", "test", "--shard=1/1", report, static]
+        runnable, blocked, _ = partition_command(
+            "browser-regressions", command, {"python-dependencies"}, workflow.ROOT,
+            lambda path: test_requirements(path, workflow.ROOT),
+        )
+        self.assertEqual(runnable, [arg for arg in command if arg != report])
+        self.assertEqual(blocked, {report: ["python-dependencies"]})
+
+    def test_node_preparation_follows_imported_helper(self):
+        consumer = "tests/test_init_module_source.mjs"
+        standard_library = "tests/test_browser_evidence_workflow.mjs"
+        command = ["node", "--test", consumer, standard_library]
+        runnable, blocked, _ = partition_command(
+            "node-selected", command, {"node-dependencies"}, workflow.ROOT,
+            lambda path: test_requirements(path, workflow.ROOT),
+        )
+        self.assertEqual(runnable, ["node", "--test", standard_library])
+        self.assertEqual(blocked, {consumer: ["node-dependencies"]})
+
     def test_blocked_pack_reports_partial_execution_separately(self):
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
             root = Path(directory)
             (root / "tests").mkdir()
-            for name in ("test_dependency.py", "test_std.py"):
+            for name in ("test_editor_assets.py", "test_docs_check.py"):
                 (root / "tests" / name).touch()
 
             def requirements(path, root):
-                return {"python-dependencies"} if "dependency" in path else set()
+                return {"build"} if path == "tests/test_editor_assets.py" else set()
 
             def execute(name, command, timeout, *, log_root):
-                self.assertEqual(name, "python-common-partial")
-                self.assertEqual(command[-2:], ["--partial-discovery", "tests/test_std.py"])
+                self.assertEqual(name, "python-tools-partial")
+                self.assertEqual(command[-2:], ["--partial-discovery", "tests/test_docs_check.py"])
                 Path(command[command.index("--report") + 1]).write_text(
                     '{"selected_ids":["probe"],"run":1,"failure_details":[],"skips":[]}', encoding="utf-8")
                 return {"gate": name, "command": command, "status": "completed", "exit_code": 0}
 
-            steps = [("python-common", [sys.executable, "scripts/run_tests.py", "--pack", "common", "--report",
-                                       str(root / "python-common.json")], 90)]
+            steps = [("python-tools", [sys.executable, "scripts/run_tests.py", "--pack", "tools", "--report",
+                                       str(root / "python-tools.json")], 90)]
             with mock.patch.object(workflow, "ROOT", root), \
                     mock.patch.object(workflow, "test_requirements", side_effect=requirements), \
                     mock.patch.object(workflow, "execute", side_effect=execute):
                 summary = workflow.run_steps(steps, root, {"mode": "full"}, metadata={},
-                                             blocked_preparation=["python-dependencies"])
-            self.assertEqual(summary["blocked"], ["python-common"])
-            self.assertEqual(summary["results"][1]["partial_for"], "python-common")
+                                             blocked_preparation=["build"])
+            self.assertEqual(summary["blocked"], ["python-tools-discovery"])
+            self.assertEqual(summary["results"][0]["blocked_discovery"], {"tests/test_editor_assets.py": ["build"]})
+            self.assertNotIn("blocked_tests", summary["results"][0])
+            self.assertEqual(summary["results"][1]["partial_for"], "python-tools")
             self.assertEqual(summary["exit_code"], 1)
 
     def test_evidence_directory_uses_resolved_root_name_and_allows_external_path(self):

@@ -343,10 +343,15 @@ def run_steps(steps, output_dir, plan, *, metadata, blocked_preparation=()):
         partial_for = None
         command, blocked, available = partition_command(name, original, unavailable, ROOT, requirements)
         if blocked:
-            record({"gate": f"{name}-blocked" if command else name, "status": "blocked",
-                    "process_exit_code": None, "exit_code": 1, "blocked_tests": blocked,
+            # Pack discovery imports modules before it assigns cases to packs.
+            pack_discovery = "--pack" in original and name not in blocked
+            group = f"{name}-discovery" if pack_discovery else f"{name}-blocked" if command else name
+            field = "blocked_discovery" if pack_discovery else "blocked_tests"
+            record({"gate": group, "status": "blocked", "process_exit_code": None, "exit_code": 1,
+                    field: blocked,
                     "blocked_by": sorted({dependency for dependencies in blocked.values() for dependency in dependencies})})
-            print(f"{name}: preparation unavailable for {len(blocked)} selected group(s)", flush=True)
+            scope = "discovery file(s)" if pack_discovery else "selected group(s)"
+            print(f"{group}: preparation unavailable for {len(blocked)} {scope}", flush=True)
         if command is None:
             unavailable.add(name)
         if available:

@@ -246,5 +246,5 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
             'preparation': {'application': bool(bundles), 'editor_bundle': 'editor' in bundles,
                             'launcher_bundle': 'launcher' in bundles, 'real_media': media, 'lint': lint,
                             'preview_windows': preview_for(normalized),
-                            'python_dependencies': server_python or python_test_dependencies(ROOT, python) or node_python_dependencies(ROOT, node),
+                            'python_dependencies': server_python or python_test_dependencies(ROOT, python) or node_python_dependencies(ROOT, node | specs),
                             'node_browser': node_browser}}

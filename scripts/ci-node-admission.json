@@ -109,8 +109,9 @@
   "ci": {
     "files": ["tests/test_pr_preview_comment.mjs", "tests/test_browser_evidence_workflow.mjs"],
     "names": [
-      "browser failure artifacts are uploaded after both browser groups",
+      "browser failure artifacts are uploaded after editor and independent tool pages",
       "browser evidence upload keeps the failure/non-light gate and artifact contract",
+      "manual inspection uses the prepared Python for term report JPEG fixtures",
       "the manual full inspection retains the real data-safety review regressions",
       "scope skip covers non-packaging code without claiming full tests passed",
       "legacy in-job skip remains supported",
