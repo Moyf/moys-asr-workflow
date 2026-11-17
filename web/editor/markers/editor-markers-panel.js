@@ -1,7 +1,9 @@
+import * as markerEditing from './editor-marker-editing.js';
 // 「标记与区段」管理窗：搜索、过滤、定位试听与逐项编辑。
 // 列表与编辑卡片全部由本模块渲染（textContent 组装，不拼 HTML 字符串）；
 // 数据变更一律经 MaweMarkerEditing，撤销/重做、保存脏标记与波形轨道刷新
 // 都由那一层统一处理，这里只负责展示与输入采集。
+export function initMaweMarkersPanel() {
 (function initMaweMarkersPanel(global) {
   'use strict';
 
@@ -68,7 +70,7 @@
 
 
   function filteredMarkers() {
-    return markerUtils().filterMarkers(MaweMarkerEditing.getMarkers(), currentFilter());
+    return markerUtils().filterMarkers(markerEditing.getMarkers(), currentFilter());
   }
 
 
@@ -179,7 +181,7 @@
   }
 
 
-  function aiCleanupReviewMuteState(markerId, marker = MaweMarkerEditing.findMarker(markerId)) {
+  function aiCleanupReviewMuteState(markerId, marker = markerEditing.findMarker(markerId)) {
     const state = MaweGapRemoveData.getGapRemoveData(false);
     const automatic = markerUtils().isAiCleanupRemovalMarker(marker);
     const ranges = state?.provenance?.sources?.ai_cleanup_review;
@@ -229,7 +231,7 @@
 
   function updateAiCleanupReviewMuteButton(button, markerId) {
     if (!button) return;
-    button.hidden = !isAiCleanupReviewMarker(MaweMarkerEditing.findMarker(markerId));
+    button.hidden = !isAiCleanupReviewMarker(markerEditing.findMarker(markerId));
     const status = aiCleanupReviewMuteState(markerId);
     if (status.automatic) {
       const removed = status.removed || status.partiallyRemoved;
@@ -264,7 +266,7 @@
     button.dataset.aiCleanupReviewMute = markerId;
     updateAiCleanupReviewMuteButton(button, markerId);
     button.addEventListener('click', () => {
-      const marker = MaweMarkerEditing.findMarker(markerId);
+      const marker = markerEditing.findMarker(markerId);
       const result = marker && MaweGapRemoveUi.toggleAiCleanupReviewMute(marker);
       if (!result?.changed) {
         MaweHint.flashHint('无法静音此复核区段；请检查起止时间', 'warning');
@@ -319,7 +321,7 @@
         updateAiCleanupReviewMuteButton(button, button.dataset.aiCleanupReviewMute);
       });
       list.querySelectorAll('[data-ai-cleanup-review-status]').forEach((button) => {
-        const marker = MaweMarkerEditing.findMarker(button.dataset.aiCleanupReviewStatus);
+        const marker = markerEditing.findMarker(button.dataset.aiCleanupReviewStatus);
         updateAiCleanupReviewStatusButton(button, marker);
       });
     }
@@ -343,7 +345,7 @@
     nameInput.maxLength = utils.MARKER_NAME_MAX_LENGTH;
     nameInput.placeholder = `${markerUtils().markerKind(marker) === 'region' ? '区段' : '标记'}名称`;
     nameInput.addEventListener('change', () => {
-      MaweMarkerEditing.updateMarkerFields(marker.id, { name: nameInput.value });
+      markerEditing.updateMarkerFields(marker.id, { name: nameInput.value });
     });
     nameLabel.append(nameSpan, nameInput);
 
@@ -364,7 +366,7 @@
       swatch.title = utils.markerPresetColorLabel(preset) || preset;
       swatch.setAttribute('aria-label', `使用颜色 ${swatch.title}`);
       swatch.addEventListener('click', () => {
-        MaweMarkerEditing.updateMarkerFields(marker.id, { color: preset });
+        markerEditing.updateMarkerFields(marker.id, { color: preset });
       });
       swatches.appendChild(swatch);
     }
@@ -383,7 +385,7 @@
         hexInput.value = utils.normalizeMarkerColor(marker.color);
         return;
       }
-      MaweMarkerEditing.updateMarkerFields(marker.id, { color: normalized });
+      markerEditing.updateMarkerFields(marker.id, { color: normalized });
     });
     const customColor = document.createElement('div');
     customColor.className = 'markers-custom-color';
@@ -401,7 +403,7 @@
       hexInput.value = colorPicker.value;
     });
     colorPicker.addEventListener('change', () => {
-      MaweMarkerEditing.updateMarkerFields(marker.id, { color: colorPicker.value });
+      markerEditing.updateMarkerFields(marker.id, { color: colorPicker.value });
     });
     customColor.append(customCaption, hexInput, colorPicker);
     colorRow.append(swatches, customColor);
@@ -416,7 +418,7 @@
     noteInput.value = marker.note || '';
     noteInput.placeholder = '可选备注';
     noteInput.addEventListener('change', () => {
-      MaweMarkerEditing.updateMarkerFields(marker.id, { note: noteInput.value });
+      markerEditing.updateMarkerFields(marker.id, { note: noteInput.value });
     });
     noteLabel.append(noteSpan, noteInput);
 
@@ -439,7 +441,7 @@
         startInput.value = String(marker.start);
         return;
       }
-      MaweMarkerEditing.updateMarkerFields(marker.id, { start: value });
+      markerEditing.updateMarkerFields(marker.id, { start: value });
     });
     startLabel.append(startSpan, startInput);
     const endLabel = document.createElement('label');
@@ -456,7 +458,7 @@
     endInput.addEventListener('change', () => {
       const raw = endInput.value.trim();
       if (!raw) {
-        MaweMarkerEditing.updateMarkerFields(marker.id, { end: null });
+        markerEditing.updateMarkerFields(marker.id, { end: null });
         return;
       }
       const value = Number(raw);
@@ -465,7 +467,7 @@
         endInput.value = marker.end != null ? String(marker.end) : '';
         return;
       }
-      MaweMarkerEditing.updateMarkerFields(marker.id, { end: value });
+      markerEditing.updateMarkerFields(marker.id, { end: value });
     });
     endLabel.append(endSpan, endInput);
     // 时长与终点双向联动：时长 = 终点 - 起点；改时长即改终点。
@@ -483,7 +485,7 @@
     durationInput.addEventListener('change', () => {
       const raw = durationInput.value.trim();
       if (!raw) {
-        MaweMarkerEditing.updateMarkerFields(marker.id, { end: null });
+        markerEditing.updateMarkerFields(marker.id, { end: null });
         return;
       }
       const value = Number(raw);
@@ -492,7 +494,7 @@
         durationInput.value = marker.end != null ? String(marker.end - marker.start) : '';
         return;
       }
-      MaweMarkerEditing.updateMarkerFields(marker.id, { end: marker.start + Math.round(value) });
+      markerEditing.updateMarkerFields(marker.id, { end: marker.start + Math.round(value) });
     });
     durationLabel.append(durationSpan, durationInput);
     timeRow.append(startLabel, endLabel, durationLabel);
@@ -513,7 +515,7 @@
       reviewToggle.dataset.markerProjectReason = 'true';
     }
     reviewToggle.addEventListener('click', () => {
-      MaweMarkerEditing.updateMarkerFields(marker.id, { review: utils.nextMarkerReviewStatus(marker) });
+      markerEditing.updateMarkerFields(marker.id, { review: utils.nextMarkerReviewStatus(marker) });
     });
     updateAiCleanupReviewStatusButton(reviewToggle, marker);
     reviewActions.appendChild(reviewToggle);
@@ -525,7 +527,7 @@
     locateButton.textContent = '定位试听';
     locateButton.addEventListener('click', () => {
       // 区段到终点暂停；单点从标记位置播放，列表项 / 波形点击仍只定位。
-      if (MaweMarkerEditing.locateMarker(marker.id, { play: true })) {
+      if (markerEditing.locateMarker(marker.id, { play: true })) {
         MaweHint.flashHint(`已定位到 ${formatMarkerTime(marker.start)} 并播放`, 'success');
       }
     });
@@ -534,7 +536,7 @@
     deleteButton.type = 'button';
     deleteButton.className = 'danger';
     deleteButton.textContent = '删除';
-    deleteButton.addEventListener('click', () => MaweMarkerEditing.deleteMarker(marker.id));
+    deleteButton.addEventListener('click', () => markerEditing.deleteMarker(marker.id));
     actions.appendChild(deleteButton);
 
     editor.append(nameLabel, colorRow, noteLabel, timeRow, actions);
@@ -623,7 +625,7 @@
       }
       selectedMarkerId = marker.id;
       render();
-      MaweMarkerEditing.locateMarker(marker.id);
+      markerEditing.locateMarker(marker.id);
     });
     // 双击列表项 = 展开 / 收起编辑框（等同「编辑」按钮）。
     main.addEventListener('dblclick', (event) => {
@@ -671,7 +673,7 @@
 
   function render() {
     if (!MaweDom.markersList) return;
-    const markers = MaweMarkerEditing.getMarkers();
+    const markers = markerEditing.getMarkers();
     syncColorFilterOptions(markers);
     const visible = filteredMarkers();
     const visibleIds = new Set(visible.map(marker => marker.id));
@@ -744,7 +746,7 @@
   function openAndLocate(markerId) {
     selectedMarkerId = markerId;
     openPanel();
-    MaweMarkerEditing.locateMarker(markerId);
+    markerEditing.locateMarker(markerId);
   }
 
 
@@ -767,7 +769,7 @@
   });
   showNotesToggle?.addEventListener('change', render);
   MaweDom.markersAddCurrentButton?.addEventListener('click', () => {
-    MaweMarkerEditing.addMarkerAtCurrentTime();
+    markerEditing.addMarkerAtCurrentTime();
   });
   MaweDom.markersBatchSelectButton?.addEventListener('click', () => {
     batchMode = !batchMode;
@@ -785,7 +787,7 @@
   MaweDom.markersDeleteSelectedButton?.addEventListener('click', () => {
     if (!batchMode) return;
     const ids = filteredMarkers().filter(marker => checkedMarkerIds.has(marker.id)).map(marker => marker.id);
-    MaweMarkerEditing.deleteMarkers(ids);
+    markerEditing.deleteMarkers(ids);
     checkedMarkerIds.clear();
     render();
   });
@@ -805,4 +807,8 @@
     getSelectedMarkerId: () => selectedMarkerId,
   });
   document.addEventListener('mawe:languagechange', refreshAiCleanupReviewMuteButtons);
-})(typeof window !== 'undefined' ? window : globalThis);
+})(window);
+}
+
+export function resetSelection(...args) { return window.MaweMarkersPanel?.resetSelection?.(...args); }
+export function refreshAiCleanupReviewMuteButtons(...args) { return window.MaweMarkersPanel?.refreshAiCleanupReviewMuteButtons?.(...args); }

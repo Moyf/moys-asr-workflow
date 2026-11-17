@@ -1,3 +1,4 @@
+import { refreshAiCleanupReviewMuteButtons } from '../markers/editor-markers-panel.js';
 // 空隙移除 UI：列表渲染、总时长统计、扫描移除与面板状态。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweGapRemoveUi 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
@@ -225,7 +226,7 @@ export function initMaweGapRemoveUi() {
     }
     renderGapRemoveList();
     MaweCoreState.waveformEditor?.refreshGapOverlay();
-    global.MaweMarkersPanel?.refreshAiCleanupReviewMuteButtons?.();
+    refreshAiCleanupReviewMuteButtons();
   }
 
 

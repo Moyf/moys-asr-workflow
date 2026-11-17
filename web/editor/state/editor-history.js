@@ -1,5 +1,6 @@
 import { getMaweDomPanels } from '../ui/editor-dom-panels.js';
 import { getOverlayTrack } from '../cues/overlay-track.js';
+import { afterExternalMarkersChange } from '../markers/editor-marker-editing.js';
 
 export function initMaweHistory() {
 'use strict';
@@ -204,7 +205,7 @@ export function initMaweHistory() {
   }
   if (record.kind === 'markers') {
     MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(record.markers || []);
-    MaweMarkerEditing.afterExternalMarkersChange();
+    afterExternalMarkersChange();
     return true;
   }
   if (record.kind === 'preview') {

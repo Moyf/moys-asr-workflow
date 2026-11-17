@@ -1,4 +1,5 @@
 import { getOverlayTrack, overlayTrackVisible, convertMainCueToOverlayForDrag, convertOverlayCueToMainForDrag } from '../cues/overlay-track.js';
+import * as markerEditing from '../markers/editor-marker-editing.js';
 
 export function initMaweWaveformInit() {
 'use strict';
@@ -265,14 +266,14 @@ export function initMaweWaveformInit() {
     copyGap: (index, deltaMs) => MaweGapRemoveUi.translateManualGap(index, deltaMs, 'copy'),
     // 通用 Marker / Region：数据读取与全部变更都收敛在 MaweMarkerEditing，
     // 波形模块只负责手势与预览。
-    getMarkers: () => MaweMarkerEditing.getMarkers(),
-    onMarkerAdd: (startMs) => MaweMarkerEditing.addMarkerAt(startMs),
-    onMarkerCreateRegion: (startMs, endMs) => MaweMarkerEditing.createMarkerRegion(startMs, endMs),
-    onMarkerMove: (markerId, deltaMs) => MaweMarkerEditing.moveMarker(markerId, deltaMs),
-    onMarkerResize: (markerId, edge, valueMs) => MaweMarkerEditing.resizeMarker(markerId, edge, valueMs),
+    getMarkers: () => markerEditing.getMarkers(),
+    onMarkerAdd: (startMs) => markerEditing.addMarkerAt(startMs),
+    onMarkerCreateRegion: (startMs, endMs) => markerEditing.createMarkerRegion(startMs, endMs),
+    onMarkerMove: (markerId, deltaMs) => markerEditing.moveMarker(markerId, deltaMs),
+    onMarkerResize: (markerId, edge, valueMs) => markerEditing.resizeMarker(markerId, edge, valueMs),
     // 双击浮层的字段编辑：统一走 MaweMarkerEditing.updateMarkerFields（撤销/标脏/刷新都在那一层）。
-    onMarkerQuickEditFields: (markerId, fields) => MaweMarkerEditing.updateMarkerFields(markerId, fields),
-    onMarkerQuickEditDelete: (markerId) => MaweMarkerEditing.deleteMarker(markerId),
+    onMarkerQuickEditFields: (markerId, fields) => markerEditing.updateMarkerFields(markerId, fields),
+    onMarkerQuickEditDelete: (markerId) => markerEditing.deleteMarker(markerId),
     previewGapAt: MawePlaybackLoop.previewGapAt,
     showGapContextMenu: (x, y, index) => MaweContextMenus.showGapContextMenu(x, y, index),
     showContextMenu: (x, y, idx, timeMs, options) => MaweContextMenus.showContextMenu(x, y, idx, timeMs, options),

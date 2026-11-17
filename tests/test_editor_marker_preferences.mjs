@@ -28,7 +28,7 @@ function fixture(storage = new Map([[key, JSON.stringify({ markerEditingEnabled:
   const evaluate = file => vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
   vm.runInNewContext(invokedInitModuleSource('editor/state/editor-settings.js', 'initMaweSettings'), context);
   context.MaweSettings = context.window.MaweSettings;
-  evaluate('editor/markers/editor-marker-editing.js');
+  vm.runInNewContext(invokedInitModuleSource('editor/markers/editor-marker-editing.js', 'initMaweMarkerEditing'), context);
   context.MaweMarkerEditing = context.window.MaweMarkerEditing;
   evaluate('editor/markers/editor-wiring-markers.js');
   return { storage, settings: context.MaweSettings, markers: context.MaweMarkerEditing, elements,
