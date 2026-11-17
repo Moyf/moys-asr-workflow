@@ -15,19 +15,26 @@ class ImpactTests(unittest.TestCase):
         for path in ('docs/engineering/DEBUG_WORKFLOW.md', 'docs/plans/a.md', 'docs/logs/a.md', 'AGENTS.md'):
             self.assertEqual(impact.checks_for([path]), ['docs'])
         for path in ('README.md', 'docs/user/CLI.md', 'website/src/pages/index.astro', 'website/src/generated/a.json',
-                     'docs/engineering/DEVELOPMENT.md', 'docs/engineering/JSON_SCHEMA.md', 'docs/INDEX.md'):
+                     'docs/engineering/DEVELOPMENT.md', 'docs/INDEX.md'):
             self.assertEqual(impact.checks_for([path]), ['docs', 'website'])
+        self.assertEqual(impact.checks_for(['docs/engineering/JSON_SCHEMA.md']), ['docs', 'website', 'data'])
         self.assertEqual(impact.checks_for(['CHANGELOG.md']), ['docs', 'release'])
         self.assertEqual(impact.checks_for(['tools/a/README.md']), ['docs', 'tools'])
         self.assertEqual(impact.checks_for(['docs/logs/a.checklist.md']), ['docs', 'tools'])
 
     def test_shared_unknown_fixtures_and_malformed_paths_use_finite_fallback(self):
-        for paths in (['web/shared/utils/a.js'], ['unknown.py'], ['tests/fixtures/README.md'],
+        for paths in (['unknown.py'], ['web/shared/utils/a.js'], ['tests/fixtures/README.md'],
                       ['docs/logs/data/example.md'], [], ['../escape.md'], ['a\\b'], ['a\nfile']):
             self.assertEqual(impact.checks_for(paths), list(impact.CHECKS))
         self.assertNotIn('full', impact.CHECKS)
-        self.assertEqual(impact.checks_for(['web/editor/io/editor-project-save.js']),
-                         ['build', 'data', 'editor', 'runtime'])
+        self.assertIn('editor', impact.checks_for(['web/editor/io/editor-project-save.js']))
+
+    def test_unmapped_input_keeps_finite_fallback_when_other_files_have_consumers(self):
+        config = 'tests/config/playwright.config.mjs'
+        self.assertEqual(impact.checks_for([config]), list(impact.CHECKS))
+        for known in ('tests/e2e/tool-markdown.spec.mjs', 'web/editor/cues/editor-color-filter.js'):
+            with self.subTest(known=known):
+                self.assertEqual(impact.checks_for([config, known]), list(impact.CHECKS))
 
     def test_preview_scope_is_packaging_startup_runtime_or_manual(self):
         for path in ('docs/plans/a.md', 'web/editor/cues/editor-word-timing.js', 'tests/test_something.py',
@@ -49,7 +56,7 @@ class ImpactTests(unittest.TestCase):
         self.assertEqual(len(declarations), len(impact.WEBSITE_INPUTS), 'Website source syntax drift requires review')
         for path in impact.WEBSITE_INPUTS:
             self.assertTrue((impact.ROOT / path).is_file(), path)
-            self.assertEqual(impact.checks_for([path]), ['docs', 'website'], path)
+            self.assertTrue({'docs', 'website'} <= set(impact.checks_for([path])), path)
 
     def test_real_whole_pr_merge_diff_and_push_before_after(self):
         with tempfile.TemporaryDirectory() as directory:

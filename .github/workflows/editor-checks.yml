@@ -18,6 +18,17 @@ jobs:
     outputs:
       plan: ${{ steps.scope.outputs.plan }}
       matrix: ${{ steps.scope.outputs.matrix }}
+      has_checks: ${{ steps.scope.outputs.has_checks }}
+      aux_selected: ${{ steps.scope.outputs.aux_selected }}
+      aux_error: ${{ steps.scope.outputs.aux_error }}
+      aux_python: ${{ steps.scope.outputs.aux_python }}
+      aux_node: ${{ steps.scope.outputs.aux_node }}
+      aux_browser: ${{ steps.scope.outputs.aux_browser }}
+      aux_application: ${{ steps.scope.outputs.aux_application }}
+      aux_media: ${{ steps.scope.outputs.aux_real_media }}
+      aux_python_dependencies: ${{ steps.scope.outputs.aux_python_dependencies }}
+      aux_node_browser: ${{ steps.scope.outputs.aux_node_browser }}
+      aux_website: ${{ steps.scope.outputs.aux_website }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -30,16 +41,115 @@ jobs:
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
-        run: python scripts/ci_impact.py --plan .artifacts/blocking/plan.json
+        run: python scripts/ci_impact.py --plan .artifacts/blocking/plan.json --aux-plan .artifacts/auxiliary/plan.json
       - uses: actions/upload-artifact@v6
         with:
           name: blocking-plan
           path: .artifacts/blocking/plan.json
           include-hidden-files: true
           if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: ${{ steps.scope.outputs.aux_selected == 'true' }}
+        with:
+          name: auxiliary-plan
+          path: .artifacts/auxiliary/plan.json
+          include-hidden-files: true
+          if-no-files-found: error
+
+  auxiliary:
+    name: Targeted auxiliary tests
+    needs: selection
+    if: ${{ needs.selection.outputs.aux_selected == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        id: python
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v6
+        with:
+          name: auxiliary-plan
+          path: .artifacts/auxiliary/
+      - name: Require a valid auxiliary plan
+        if: ${{ needs.selection.outputs.aux_error == 'true' }}
+        run: python -c "import json,pathlib; raise SystemExit(json.loads(pathlib.Path('.artifacts/auxiliary/plan.json').read_text(encoding='utf8'))['generation_error'])"
+      - uses: pnpm/action-setup@v6
+        if: ${{ needs.selection.outputs.aux_node == 'true' || needs.selection.outputs.aux_browser == 'true' || needs.selection.outputs.aux_application == 'true' }}
+        with:
+          version: 11.28.4
+          run_install: false
+      - uses: actions/setup-node@v5
+        if: ${{ needs.selection.outputs.aux_node == 'true' || needs.selection.outputs.aux_browser == 'true' || needs.selection.outputs.aux_application == 'true' }}
+        with:
+          node-version: '22.23.4'
+          package-manager-cache: false
+      - name: Install JavaScript test dependencies
+        if: ${{ needs.selection.outputs.aux_node == 'true' || needs.selection.outputs.aux_browser == 'true' || needs.selection.outputs.aux_application == 'true' }}
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build required application bundles
+        if: ${{ needs.selection.outputs.aux_application == 'true' }}
+        run: python scripts/run_check.py --timeout 180 -- pnpm run build
+      - uses: astral-sh/setup-uv@v7
+        if: ${{ needs.selection.outputs.aux_python_dependencies == 'true' }}
+        with:
+          version: '0.13.4'
+          enable-cache: true
+      - name: Install required Python dependencies
+        if: ${{ needs.selection.outputs.aux_python_dependencies == 'true' }}
+        run: uv sync --frozen --group test --group dev
+      - name: Select prepared Python interpreter
+        shell: bash
+        run: |
+          if [ '${{ needs.selection.outputs.aux_python_dependencies }}' = 'true' ]; then
+            echo "MAW_TEST_PYTHON=$GITHUB_WORKSPACE/.venv/bin/python" >> "$GITHUB_ENV"
+            echo "MAW_E2E_PYTHON=$GITHUB_WORKSPACE/.venv/bin/python" >> "$GITHUB_ENV"
+          else
+            echo 'MAW_TEST_PYTHON=${{ steps.python.outputs.python-path }}' >> "$GITHUB_ENV"
+            echo 'MAW_E2E_PYTHON=${{ steps.python.outputs.python-path }}' >> "$GITHUB_ENV"
+          fi
+      - name: Install Chromium only for its consumers
+        if: ${{ needs.selection.outputs.aux_browser == 'true' || needs.selection.outputs.aux_node_browser == 'true' }}
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Install required media tools
+        if: ${{ needs.selection.outputs.aux_media == 'true' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+      - name: Prepare website for its browser consumer
+        if: ${{ needs.selection.outputs.aux_website == 'true' }}
+        run: |
+          pnpm --dir website install --frozen-lockfile
+          python scripts/run_check.py --timeout 180 -- node website/scripts/sync-maw-docs.mjs
+          python scripts/run_check.py --timeout 180 -- python scripts/build_release_site.py --preview
+          python scripts/run_check.py --timeout 300 -- pnpm --dir website run build
+      - name: Selected additional Python tests
+        if: ${{ needs.selection.outputs.aux_python == 'true' }}
+        run: $MAW_TEST_PYTHON scripts/test_workflow.py --stage merge --selection-plan .artifacts/auxiliary/plan.json --layer python --report-dir .artifacts/auxiliary-python
+      - name: Selected additional Node tests
+        if: ${{ needs.selection.outputs.aux_node == 'true' }}
+        run: $MAW_TEST_PYTHON scripts/test_workflow.py --stage merge --selection-plan .artifacts/auxiliary/plan.json --layer node --report-dir .artifacts/auxiliary-node
+      - name: Selected additional browser tests
+        if: ${{ needs.selection.outputs.aux_browser == 'true' }}
+        run: $MAW_TEST_PYTHON scripts/test_workflow.py --stage merge --selection-plan .artifacts/auxiliary/plan.json --layer browser --report-dir .artifacts/auxiliary-browser
+      - name: Preserve auxiliary results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: targeted-auxiliary-results
+          path: |
+            .artifacts/auxiliary*/
+            .artifacts/checks/
+            test-results/
+          include-hidden-files: true
+          retention-days: 7
 
   checks:
     needs: selection
+    if: ${{ needs.selection.outputs.has_checks == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -48,6 +158,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          # Manifest changes are compared with the trusted base again when
+          # the admission plan is verified in this fresh job.
+          fetch-depth: ${{ contains(fromJSON(needs.selection.outputs.plan).paths, 'package.json') && '0' || '1' }}
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:
@@ -93,6 +206,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          fetch-depth: ${{ needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.plan).paths, 'package.json') && '0' || '1' }}
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:
@@ -102,6 +216,7 @@ jobs:
           name: blocking-plan
           path: .artifacts/blocking
       - uses: actions/download-artifact@v6
+        if: ${{ needs.selection.outputs.has_checks == 'true' }}
         with:
           pattern: blocking-receipt-*
           path: .artifacts/blocking/evidence

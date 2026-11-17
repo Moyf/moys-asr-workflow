@@ -150,6 +150,11 @@
 
 [打开正文](engineering/DEBUG_WORKFLOW.md)
 
+<a name="engineering-test-governance"></a>
+### 测试治理
+
+[打开正文](engineering/TEST_GOVERNANCE.md)
+
 <a name="engineering-prproj"></a>
 ### PRPROJ capability gate
 

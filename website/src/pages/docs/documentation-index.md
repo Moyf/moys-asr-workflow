@@ -157,6 +157,11 @@ source: "docs/INDEX.md"
 
 [打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md)
 
+<a name="engineering-test-governance"></a>
+### 测试治理
+
+[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/TEST_GOVERNANCE.md)
+
 <a name="engineering-prproj"></a>
 ### PRPROJ capability gate
 

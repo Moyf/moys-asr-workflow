@@ -63,13 +63,13 @@ def validate_plan(value):
             or not isinstance(value['reason'], str) or not value['reason']):
         raise ValueError('invalid plan identity')
     checks = value['checks']
-    if (not isinstance(checks, list) or not checks or any(not isinstance(c, str) for c in checks)
+    if (not isinstance(checks, list) or any(not isinstance(c, str) for c in checks)
             or checks != [c for c in ci_impact.CHECKS if c in checks]):
         raise ValueError('unknown, duplicate or unordered checks')
     if value['trusted_diff']:
         if (not isinstance(value['base'], str) or not ci_impact.SHA.fullmatch(value['base'])
                 or not ci_impact.valid_paths(value['paths']) or value['paths'] != sorted(set(value['paths']))
-                or checks != ci_impact.checks_for(value['paths'])
+                or checks != ci_impact.checks_for(value['paths'], base_ref=value['base'])
                 or value['preview'] != ci_impact.preview_for(value['paths']) or value['manual_preview']):
             raise ValueError('trusted diff does not match consumers')
     elif (value['base'] or value['paths'] != [] or checks != list(ci_impact.CHECKS)
@@ -89,7 +89,9 @@ def gate(plan, needs, receipts, head, root):
     if head != plan['head']:
         raise ValueError('wrong workflow SHA')
     # Only selection and finite checks are required. Never pass an advisory job here.
-    if set(needs) != {'selection', 'checks'} or any(needs[j].get('result') != 'success' for j in needs):
+    checks_result = 'success' if plan['checks'] else 'skipped'
+    if (set(needs) != {'selection', 'checks'} or needs['selection'].get('result') != 'success'
+            or needs['checks'].get('result') != checks_result):
         raise ValueError('missing, failed, cancelled or skipped selected job')
     if json.loads(needs['selection']['outputs']['plan']) != plan:
         raise ValueError('selection differs from persisted plan')
@@ -279,7 +281,9 @@ def main():
     elif args.action == 'gate':
         receipts = [json.loads(p.read_text(encoding='utf-8')) for p in args.root.rglob('receipt.json')]
         gate(plan, json.loads(os.environ['CI_NEEDS']), receipts, head, args.root)
-        message = 'Selected checks passed: ' + ', '.join(plan['checks']) + '\n\n' + plan['reason'] + '\n\n' + GAPS
+        selected = ('Selected admitted checks passed: ' + ', '.join(plan['checks']) if plan['checks']
+                    else 'No admitted checks selected; inspect the separate targeted auxiliary results.')
+        message = selected + '\n\n' + plan['reason'] + '\n\n' + GAPS
         print(message)
         if os.environ.get('GITHUB_STEP_SUMMARY'):
             with Path(os.environ['GITHUB_STEP_SUMMARY']).open('a', encoding='utf-8') as stream:

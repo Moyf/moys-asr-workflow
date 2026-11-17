@@ -65,14 +65,37 @@ e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解�
 | 变化 | 首轮验证 | 扩大验证的条件 |
 | --- | --- | --- |
 | 调试运行器 / 日志工具 | 上面两条标准库回归，无需前端安装 | 进程生命周期变更需在 Windows / Linux 跑 CI |
-| Python 业务逻辑 | 对应 unittest 模块 | 公共契约/导出变化时扩大到相关模块，最后一次全量 |
+| Python 业务逻辑 | 对应 unittest 模块 | 公共契约/导出变化时扩大到实际消费者；必要整体回归单独说明理由 |
 | 编辑器 JS / 装配清单 | 相关 Node 用例 + build/check + typecheck | 宿主、选择范围、交互变化时增加相关浏览器 spec |
 | CSS / HTML / 交互 | 构建契约 + 对应 spec + 人工操作 | 多入口共享行为变化时扩大浏览器范围 |
 | 发布 | 1.x 按需重建便携 HTML；2.0+ 核对退役产物缺席，完整契约与回归矩阵 | 真实媒体、推理和听感仍单独验收 |
 
 `pnpm test` 是 Chromium e2e；`pnpm run test:unit` 执行根目录全部 `.mjs` 测试，其中已有跨 Python 与浏览器测试，不能假定它们都零依赖。不要每改一个断言就跑全量。先复现一次，改代码后跑最小回归，必要时扩大；连续两次同类失败先分类原因，不循环重跑。
 
-CI 的 Editor job 目前只运行两类 Python 装配契约与两份 browser spec，并非完整 Python/e2e 套件。新 Debug tooling job 在 Windows / Linux 验证标准库调试工具；同样不能冒充产品全量验证。UI 的拖动、听感和布局仍需人工核验。
+### 本地按影响选测
+
+在当前 worktree 使用已有环境执行：
+
+```powershell
+python scripts/test_workflow.py --plan-only
+python scripts/test_workflow.py --changed maw/energy_valley.py --plan-only
+python scripts/test_workflow.py --changed tests/e2e/filmstrip-real.spec.mjs
+python scripts/test_workflow.py --base-ref origin/2.0dev
+```
+
+默认读取已暂存、未暂存及未忽略的新文件；`--base-ref` 改为读取基线到当前分支的提交差异，`--changed` 可重复指定文件。`pnpm run test:dev` 与 `pnpm run test:merge` 使用同一影响选择；两者都不自动等于完整回归。选择器依据源码依赖与功能边界生成具体 Python、Node 和浏览器文件，代码与文档混改取并集。
+
+`--plan-only` 保存计划而不运行测试。每次证据写入新的 `.artifacts/test-workflow/<id>/`，包含选择理由、准备需求、命令结果和完整日志位置。缺少实际依赖或报告时如实失败；运行器不自动安装环境。Python 和 Node 逻辑测试无需因此安装 Chromium，真实浏览器或媒体消费者才需要相应能力。
+
+`--selection-plan <plan.json>` 可执行同提交的已保存计划，`--layer python|node|browser|prepare|docs|website` 可复现指定层。这是显式局部验证，不是中断接续。修复时先用具体测试命令重跑失败项，再验证影响范围。`--stage release`（或 `pnpm run test:release`）显式请求完整自动检查，拒绝局部包、层或浏览器分片覆盖；私有工程、人工体验和跨平台发布验收仍单列。
+
+### CI 范围与重跑
+
+`Change checks` 保留有限准入与 `Change acceptance` 回执。它读取同一影响计划，将已准入消费者映射到对应检查组；其他选中 Python、Node 和浏览器消费者由独立辅助检查执行，并扣除本次准入已完整覆盖的文件。只准入个别方法的 Python 文件仍在辅助检查中执行整文件，避免漏掉其余消费者。
+
+辅助检查的失败保持可见，不加入有限准入的依赖，也不表示整体回归已通过。浏览器按本次具体文件发现并核对实际结果，默认一片，不另起完整浏览器矩阵。差异不可确认或需要整体审查时显示扩大范围的理由；完整 Editor 和 Windows 检查保留手动入口，Windows 预览仍按打包、启动与 runtime 范围触发。UI 拖动、听感和布局仍需人工核验。
+
+GitHub Actions 可在原运行页使用 **Re-run failed jobs** 或 **Re-run all jobs**。这是 GitHub 作业重跑，会重新执行所选作业；本地入口尚无文件检查点或 `--resume`。当前同进程执行仍会在失败后停止后续组，完整集中报错和可靠接续属于[测试治理](TEST_GOVERNANCE.md)的后续验收目标。
 
 ## 中断恢复与结果记录
 

@@ -22,6 +22,17 @@ WORKFLOW_ROOT = Path(os.environ.get('MAW_CI_CONTRACT_ROOT', ROOT))
 
 
 class AcceptanceTests(CompactContainerAssertions, unittest.TestCase):
+    def test_empty_admission_requires_intentional_skip_and_no_receipts(self):
+        with mock.patch.object(impact, 'checks_for', return_value=[]):
+            plan = impact.plan(['tests/e2e/filmstrip-real.spec.mjs'], base='a' * 40, head='b' * 40, trusted=True)
+            needs = {'selection': {'result': 'success', 'outputs': {'plan': json.dumps(plan)}},
+                     'checks': {'result': 'skipped'}}
+            acceptance.gate(plan, needs, [], plan['head'], Path('.'))
+            with self.assertRaises(ValueError):
+                acceptance.gate(plan, {**needs, 'checks': {'result': 'success'}}, [], plan['head'], Path('.'))
+            with self.assertRaises(ValueError):
+                acceptance.gate(plan, needs, [{'check': 'docs'}], plan['head'], Path('.'))
+
     def fixture(self, path='docs/plans/example.md', head='b' * 40):
         plan = impact.plan([path], base='a' * 40, head=head, trusted=True)
         needs = {'selection': {'result': 'success', 'outputs': {'plan': json.dumps(plan)}},
@@ -221,8 +232,10 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertIn('branches: [main, 2.0dev]', workflow)
         self.assertIn('PUSH_BEFORE_SHA: ${{ github.event.before }}', workflow)
         self.assertIn('fetch-depth: 0', workflow)
+        admission = workflow.split('\n  checks:\n', 1)[1].split('\n  acceptance:\n', 1)[0]
         for forbidden in ('test:unit', 'playwright', 'ffmpeg', 'windows-', 'continue-on-error', 'uv sync', 'schedule:'):
-            self.assertNotIn(forbidden, workflow)
+            self.assertNotIn(forbidden, admission)
+        self.assertIn('name: Targeted auxiliary tests', workflow)
         self.assertIn('pattern: blocking-receipt-*', workflow)
         self.assertIn('path: .artifacts/blocking/evidence', workflow)
         self.assertIn('pip install --no-deps --require-hashes -r scripts/ci-contract-requirements.txt', workflow)
@@ -241,7 +254,7 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertIn('windows-launcher-report-check', self.read_workflow('windows-full-manual.yml'))
 
     def test_editor_job_installs_frozen_root_dependencies_without_postinstall(self):
-        workflow = self.read_workflow('editor-checks.yml')
+        workflow = self.read_workflow('editor-checks.yml').split('\n  checks:\n', 1)[1].split('\n  acceptance:\n', 1)[0]
         steps = workflow.split('\n      - ')
         setup = next(step for step in steps if 'uses: pnpm/action-setup@' in step)
         install = next(step for step in steps if 'run: pnpm install --frozen-lockfile --ignore-scripts' in step)
