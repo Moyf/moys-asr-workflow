@@ -96,7 +96,11 @@ test('New Project binds a browser handle and later saves write the same file', a
   await expect(page.locator('#save-project')).toBeEnabled();
   expect(await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments)).toEqual([]);
   expect(await page.evaluate(() => window.__handleWrites)).toHaveLength(1);
-  expect(getMainTrack(await page.evaluate(() => window.__handleWrites[0])).segments).toEqual([]);
+  const firstWrite = await page.evaluate(() => window.__handleWrites[0]);
+  expect(getMainTrack(firstWrite).segments).toEqual([]);
+  expect(await page.evaluate(project => AsrEditorUtils.importProject(project).changes, firstWrite)).toEqual([]);
+  expect(firstWrite.speakers).toEqual([]);
+  expect(await page.evaluate(() => MaweServerSave.requiresMigrationSaveAs)).toBe(false);
 
   // 编辑后 Ctrl+S 必须写回同一个句柄文件（方案 A 的核心承诺）。
   await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.push({ id: 'after', start: 0, end: 500, text: 'after', _dirty: true }));
@@ -104,6 +108,7 @@ test('New Project binds a browser handle and later saves write the same file', a
   await expect.poll(() => page.evaluate(() => window.__handleWrites.length)).toBe(2);
   const secondWrite = await page.evaluate(() => window.__handleWrites[1]);
   expect(getMainTrack(secondWrite).segments.map((segment) => segment.text)).toEqual(['after']);
+  expect(await page.evaluate(() => window.__pickerCalls)).toBe(1);
 });
 
 test('server-bound page stops writing the old server project after browser New Project', async ({ page }) => {

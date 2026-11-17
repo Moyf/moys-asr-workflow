@@ -54,13 +54,9 @@ export function initMaweProjectLoad() {
 
 
   function buildBlankProject() {
-    return {
-      schema: window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA,
-      media: '', timebase: { unit: 'milliseconds', fps: 30 },
-      tracks: [{ id: 'main', role: 'main', name: '主字幕', enabled: true, segments: [] }],
-      bilingual: { display_mode: 'both' }, bindings: [],
-      subtitle_groups: { next_id: 1, color: [], sticker: [] },
-    };
+    return window.AsrEditorUtils.makeProject([], {
+      projectFields: { media: '', timebase: { unit: 'milliseconds', fps: 30 } },
+    });
   }
 
 
