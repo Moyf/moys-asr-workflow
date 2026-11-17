@@ -133,10 +133,15 @@ tests/test_ass_canvas_raster.mjs
 tests/test_ass_cue_position.mjs
 tests/test_ass_cue_position.py
 tests/test_ass_cue_style.mjs
+tests/test_ass_download_readiness.mjs
+tests/test_ass_emoji_warning.mjs
 tests/test_ass_font_aliases.mjs
+tests/test_ass_font_coverage.py
 tests/test_ass_fonts.py
+tests/test_ass_frame_font_wait.mjs
 tests/test_ass_oracle_cache.mjs
 tests/test_ass_preview_refresh.mjs
+tests/test_ass_request_diagnostics.mjs
 tests/test_ass_shake.mjs
 tests/test_ass_stacking_pixel_oracle.py
 tests/test_ass_styles.py
@@ -192,6 +197,7 @@ tests/test_editor_styles_imports.mjs
 tests/test_editor_thumbnails.mjs
 tests/test_editor_utils.mjs
 tests/test_energy_valley.py
+tests/test_fcp7_font_wait.mjs
 tests/test_fcp7_png.mjs
 tests/test_fcp7_png.py
 tests/test_fcp7_png_api.py
