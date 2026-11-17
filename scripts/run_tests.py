@@ -150,6 +150,17 @@ def pack_suite(pack: str, start_dir: str, pattern: str):
     return filter_pack(build_suite([], start_dir, pattern), pack)
 
 
+def automated_suite(suite):
+    """Keep private-input checks explicit, without hiding load failures."""
+    selected, excluded = [], []
+    for case in cases(suite):
+        if python_pack(case.id()) == "manual":
+            excluded.append({"id": case.id(), "reason": "manual inputs are outside the automated scope"})
+        else:
+            selected.append(case)
+    return unittest.TestSuite(selected), excluded
+
+
 def result_report(result, selected_ids):
     return {"selected_ids": selected_ids, "run": result.testsRun,
             "failures": len(result.failures), "errors": len(result.errors),
@@ -441,6 +452,9 @@ def _run_serial(args) -> int:
             os.dup2(capture.fileno(), 2)
             with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
                 suite = pack_suite(args.pack, args.start_dir, args.pattern) if args.pack else build_suite(args.targets, args.start_dir, args.pattern)
+                excluded = []
+                if args.automated:
+                    suite, excluded = automated_suite(suite)
                 selected_ids = [case.id() for case in cases(suite)]
                 result = cast(CompactTextTestResult, runner.run(suite))
         finally:
@@ -455,6 +469,7 @@ def _run_serial(args) -> int:
     print(f"[run_tests] 完整输出：{log_path}")
 
     report = result_report(result, selected_ids)
+    report["excluded"] = excluded
     code = report_code(report, args.required) or int(not selected_ids)
     report.update(exit_code=code, mode="serial", workers=1, wall_seconds=time.perf_counter() - started,
                   full_log=str(log_path.resolve()))
@@ -474,6 +489,7 @@ def main(argv=None) -> int:
     parser.add_argument("--full-log", default="", help="未截断输出的写法路径（默认写入临时目录）")
     parser.add_argument("--pack", choices=PYTHON_PACKS, help="按成本/边界分组；不改变无参数的历史全量入口")
     parser.add_argument("--required", action="store_true", help="依赖、编码器和夹具缺失导致的 skip 视为失败")
+    parser.add_argument("--automated", action="store_true", help="排除已登记的私有输入人工用例，并在报告列出排除项")
     parser.add_argument("--report", type=Path, help="机器可读结果，包含每个 skip 的原因")
     parser.add_argument("--github-summary", action="store_true", help="在 GitHub Actions 摘要中显示跳过总数")
     parser.add_argument("-v", "--verbose", action="count", default=1, help="提高 unittest 详细度")
@@ -498,9 +514,11 @@ def main(argv=None) -> int:
     sys.path.insert(0, str(ROOT / "tests"))
     if args.pack and args.targets:
         parser.error("--pack 与显式 targets 不能混用")
+    if args.automated and args.pack == "manual":
+        parser.error("--automated cannot exclude the explicitly selected manual pack")
 
     if args.parallel > 1:
-        if not args.targets and not args.pack:
+        if not args.targets and not args.pack and not args.automated:
             return _run_parallel(args)
 
     if args.parallel > 1 and args.pack:
