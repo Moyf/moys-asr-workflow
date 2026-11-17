@@ -17,7 +17,7 @@
    为什么需要：项目采用 AGPL-3.0 + 商业许可双许可模式，需要贡献者授权项目所有者以任意许可分发其贡献，详见 CLA.md 说明。
 
 2. Fork → 分支开发 → 提交 PR，commit 信息用简短中文或英文说明改动实质。
-3. 提交 PR 前，先将最新的 `main` 合并到当前分支，并解决所有合并冲突。
+3. 提交前确认 PR 目标分支，fetch 后同步最新目标分支并解决冲突；目标为 `2.0dev` 时合并 `origin/2.0dev`，目标为 `main` 时合并 `origin/main`，不要固定合并 main。
 
 ## 代码风格
 
@@ -28,6 +28,8 @@
 - 并行测试：`python scripts/run_tests.py --parallel N` 按文件多进程执行。bundle 产物缺失时跨进程锁会保证多个 worker 只自动构建一次，但首个触发构建的 worker 会被同步拖慢；建议首次在新建 worktree / clone 上使用前先完成一次 `pnpm install --frozen-lockfile && pnpm run build`。
 
 所有文本使用 UTF-8 与 LF。前端装配检查、类型检查与浏览器回归见 [开发概览](docs/INDEX.md#engineering-development)。
+
+日常 PR 与 `2.0dev` push 以所选有限契约的 `Change acceptance` 为准，不表示全量测试通过。完整 Editor 与 Windows 检查只保留手动辅助入口，Windows 预览按打包/启动/runtime 范围触发；辅助失败须分诊但不传播到准入，详见开发概览。
 
 ## 编辑器前端构建
 
@@ -66,7 +68,7 @@ pnpm run editor         # 构建编辑器 bundle 后启动 server-editor/serve.p
 - bundle 与 `.meta.json` 是构建产物，不进 Git（.gitignore 已忽略）；不要手改生成产物。
 - `pnpm run check:editor` 只读检查，不会自动修复；产物过期时 CI 会失败。
 - CSS / HTML 模板修改在 Server 模式下刷新即可生效，不需要重新打包 JS。
-- `blank-editor.html` 是另一份便携 HTML 产物，日常不要重生成。PR 注明「内联副本待发布前统一重生成」；仅在发布检查或维护者明确要求时，先确认 bundle 最新，再运行 `uv run --no-sync python edit.py --blank`。
+- `blank-editor.html` 是 1.x 的便携 HTML 产物，日常不要重生成；1.x PR 按需注明「内联副本待发布前统一重生成」。仅在该版本发布检查或维护者明确要求时生成。2.0+ 不生成此文件，也不要求这条 PR 备注。
 
 ## 许可
 

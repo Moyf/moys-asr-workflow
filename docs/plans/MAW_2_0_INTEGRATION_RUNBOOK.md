@@ -218,7 +218,7 @@ run_check 后的参数是可执行程序和 argv，不是 shell 表达式。优�
 & $Python scripts/run_check.py --timeout 180 -- git diff --check
 ```
 
-全量 Node 可从 `tests/` 显式枚举根 `.mjs` 文件传给 `node --test`，或通过文件化的 pwsh 启动器执行 `pnpm run test:unit` 并原样返回 exit；不要把根全量与 desktop 子目录单测混淆。全量 Chromium 默认留给 CI / 专项验收，受影响 spec 先完成。
+全量 Node 可从 `tests/` 显式枚举根 `.mjs` 文件传给 `node --test`，或通过文件化的 pwsh 启动器执行 `pnpm run test:unit` 并原样返回 exit；不要把根全量与 desktop 子目录单测混淆。全量 Chromium 只留给手动辅助 CI / 明确请求的发布验收，不默认每个 PR 执行，受影响 spec 先完成。
 
 失败在基线也存在时，需要相同环境、相同命令和输出证据才可标为既有；即使既有，必要门槛未满足仍需维护者处置，不能自己宣布“不相关”并通过。
 

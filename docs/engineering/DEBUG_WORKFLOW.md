@@ -65,14 +65,41 @@ e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解�
 | 变化 | 首轮验证 | 扩大验证的条件 |
 | --- | --- | --- |
 | 调试运行器 / 日志工具 | 上面两条标准库回归，无需前端安装 | 进程生命周期变更需在 Windows / Linux 跑 CI |
-| Python 业务逻辑 | 对应 unittest 模块 | 公共契约/导出变化时扩大到相关模块，最后一次全量 |
+| Python 业务逻辑 | 对应 unittest 模块 | 公共契约/导出变化时扩大到实际消费者；必要整体回归单独说明理由 |
 | 编辑器 JS / 装配清单 | 相关 Node 用例 + build/check + typecheck | 宿主、选择范围、交互变化时增加相关浏览器 spec |
 | CSS / HTML / 交互 | 构建契约 + 对应 spec + 人工操作 | 多入口共享行为变化时扩大浏览器范围 |
 | 发布 | 1.x 按需重建便携 HTML；2.0+ 核对退役产物缺席，完整契约与回归矩阵 | 真实媒体、推理和听感仍单独验收 |
 
 `pnpm test` 是 Chromium e2e；`pnpm run test:unit` 执行根目录全部 `.mjs` 测试，其中已有跨 Python 与浏览器测试，不能假定它们都零依赖。不要每改一个断言就跑全量。先复现一次，改代码后跑最小回归，必要时扩大；连续两次同类失败先分类原因，不循环重跑。
 
-CI 的 Editor job 目前只运行两类 Python 装配契约与两份 browser spec，并非完整 Python/e2e 套件。新 Debug tooling job 在 Windows / Linux 验证标准库调试工具；同样不能冒充产品全量验证。UI 的拖动、听感和布局仍需人工核验。
+### 本地按影响选测
+
+在当前 worktree 使用已有环境执行：
+
+```powershell
+python scripts/test_workflow.py --plan-only
+python scripts/test_workflow.py --changed maw/energy_valley.py --plan-only
+python scripts/test_workflow.py --changed tests/e2e/filmstrip-real.spec.mjs
+python scripts/test_workflow.py --base-ref origin/2.0dev
+```
+
+默认读取已暂存、未暂存及未忽略的新文件；`--base-ref` 改为读取基线到当前分支的提交差异，`--changed` 可重复指定文件。`pnpm run test:dev` 与 `pnpm run test:merge` 使用同一影响选择；两者都不自动等于完整回归。选择器依据源码依赖与功能边界生成具体 Python、Node 和浏览器文件，代码与文档混改取并集。
+
+`--plan-only` 保存计划而不运行测试。每次证据写入新的 `.artifacts/test-workflow/<id>/`，包含选择理由、准备需求、命令结果和完整日志位置。缺少实际依赖或报告时如实失败；运行器不自动安装环境。Python 和 Node 逻辑测试无需因此安装 Chromium，真实浏览器或媒体消费者才需要相应能力。
+
+`--selection-plan <plan.json>` 可执行同提交的已保存计划，`--layer python|node|browser|prepare|docs|website` 可复现指定层。这是显式局部验证，不是中断接续。修复时先用具体测试命令重跑失败项，再验证影响范围。`--stage release`（或 `pnpm run test:release`）显式请求完整自动检查，拒绝局部包、层或浏览器分片覆盖；私有工程、人工体验和跨平台发布验收仍单列。
+
+一次运行会继续执行相互独立的已选组，最后按整体结果退出。先读 `summary.json` 查看失败、阻塞、未运行和子进程退出码，再读 `failures.json` 查看失败用例与完整错误。前置失败时只运行具备条件的部分。部分结果与正常整组结果分别记录。
+
+### CI 范围与重跑
+
+`Change checks` 保留有限准入与 `Change acceptance` 回执。它读取同一影响计划，将已准入消费者映射到对应检查组；其他选中 Python、Node 和浏览器消费者由独立辅助检查执行，并扣除本次准入已完整覆盖的文件。只准入个别方法的 Python 文件仍在辅助检查中执行整文件，避免漏掉其余消费者。
+
+辅助检查的失败保持可见，不加入有限准入的依赖，也不表示整体回归已通过。浏览器按本次具体文件发现并核对实际结果，默认一片，不另起完整浏览器矩阵。差异不可确认或需要整体审查时显示扩大范围的理由；完整 Editor 和 Windows 检查保留手动入口，Windows 预览仍按打包、启动与 runtime 范围触发。UI 拖动、听感和布局仍需人工核验。
+
+准入失败时查看 `blocking-failures` 工件。辅助检查在 `targeted-auxiliary-results` 保存各层汇总。手动巡检的各组按自己的前置条件运行，浏览器报告与 trace 分开保存。
+
+GitHub Actions 的 **Re-run failed jobs** 和 **Re-run all jobs** 都会重新执行所选作业。[文件级接续](TEST_GOVERNANCE.md#执行与结果真实性)仍待实现。
 
 ## 中断恢复与结果记录
 
@@ -89,7 +116,7 @@ CI 的 Editor job 目前只运行两类 Python 装配契约与两份 browser spe
 分组暂用串行，`--parallel N` 保留无参数全量的文件并行入口；显式 targets 不拆分，
 也不能与 `--pack` 混用。无参数仍跑原来的完整集合。
 
-`--report` 在串行和并行模式记录所选 ID、实际运行数、失败/错误、skip 原因、
+`--report` 在串行和并行模式记录所选 ID、实际运行数、完整失败明细、skip 原因、
 expected failure、unexpected success、退出码及完整日志位置；并行另有文件、PID 和耗时。
 完整日志包含成功与失败测试、加载阶段以及子进程输出；终端仅打印有界摘要。
 `--full-log` 可指定日志位置，未指定时报告旁生成同名 `.log`。

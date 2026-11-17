@@ -1,7 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { buildBrowserEditorFixture, cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer, addTextProcessStep, removeTextProcessPrefill } from './helpers.mjs';
+import { cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer, addTextProcessStep, removeTextProcessPrefill } from './helpers.mjs';
 
 let server, dir;
 test.beforeAll(async () => { dir = makeTempDir('warma'); server = await startBlankServer(await findFreePort(), dir); });
@@ -198,33 +196,6 @@ test('deleting a complete cue keeps the project row and exports re-importable SR
   expect(output.source).toEqual(['', '保留']);
   expect(output.parsed.map(segment => segment.text)).toEqual(['保留']);
   expect(output.parsed[0].start).toBe(0);
-});
-
-test.skip('portable pages reject a stale preset library save (unsupported in 2.0)', async ({ browser }) => {
-  const portable = buildBrowserEditorFixture(join(dir, 'portable.html'));
-  const context = await browser.newContext({ locale: 'zh-CN' });
-  try {
-    const first = await context.newPage();
-    const second = await context.newPage();
-    for (const tab of [first, second]) {
-      await disableOnboarding(tab);
-      await tab.goto(pathToFileURL(portable).href);
-      await tab.evaluate(() => {
-        AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = [{ id: 'one', start: 0, end: 1000, text: 'test' }];
-        MaweCuePanel.renderAll(); MaweTextProcess.openTextProcessModal();
-      });
-      await expect(tab.locator('#text-preset-status')).toHaveText('仅保存在当前浏览器（便携模式）');
-      await addTextProcessStep(tab, 'trim');
-    }
-    first.once('dialog', dialog => dialog.accept('First'));
-    await first.locator('#text-preset-save-as').click();
-    await expect(first.locator('#text-preset-select option:checked')).toHaveText('First');
-    await expect(first.locator('#text-preset-status')).toHaveAttribute('data-state', 'local');
-    second.once('dialog', dialog => dialog.accept('Second'));
-    await second.locator('#text-preset-save-as').click();
-    await expect(second.locator('#text-preset-status')).toContainText('预设库已被其他页面修改');
-    await expect(second.locator('#text-preset-status')).toHaveAttribute('data-state', 'warning');
-  } finally { await context.close(); }
 });
 
 test('pending save cannot relabel a reopened custom form as the saved preset', async ({ page }) => {
