@@ -8,11 +8,11 @@ import subprocess
 
 try:
     from .ci_inputs import WEBSITE_INPUTS, preview_for
-    from .test_impact_graph import file_consumers, python_consumers, web_behavior_consumers, node_python_dependencies, document_consumers, python_test_dependencies, bundle_consumed
+    from .test_impact_graph import file_consumers, python_consumers, web_behavior_consumers, node_python_dependencies, document_consumers, python_test_dependencies, bundle_consumed, browser_application_consumed
     from .test_policy import MEDIA_CLASSES, MEDIA_METHODS, MEDIA_MODULES
 except ImportError:
     from ci_inputs import WEBSITE_INPUTS, preview_for
-    from test_impact_graph import file_consumers, python_consumers, web_behavior_consumers, node_python_dependencies, document_consumers, python_test_dependencies, bundle_consumed
+    from test_impact_graph import file_consumers, python_consumers, web_behavior_consumers, node_python_dependencies, document_consumers, python_test_dependencies, bundle_consumed, browser_application_consumed
     from test_policy import MEDIA_CLASSES, MEDIA_METHODS, MEDIA_MODULES
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,7 +70,7 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
 
     python, node, specs, packs, reasons = set(), set(), set(), set(), []
     fallback = False
-    app = media = server_python = False
+    app = media = False
     lint = any(p.endswith('.py') and p.startswith(('maw/', 'scripts/', 'server-editor/')) for p in normalized)
     docs = []
     domains = []
@@ -114,58 +114,74 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
             specs.update(p for p in ('tests/e2e/project-boundary.spec.mjs', 'tests/e2e/v2-migration-save.spec.mjs') if (ROOT / p).is_file())
             reasons.append('project schema and migration consumers')
 
-    document_python, document_node, document_specs = set(python), set(node), set(specs)
-    python_inputs = [p for p in domains if p.endswith('.py') and not p.startswith('tests/test_')]
-    tests_only = [p for p in domains if p.startswith('tests/test_') and p.endswith(('.py', '.mjs'))]
-    spec_inputs = [p for p in domains if p.startswith('tests/e2e/') and p.endswith('.spec.mjs')]
-    python.update(p for p in tests_only if p.endswith('.py') and (ROOT / p).is_file())
-    node.update(p for p in tests_only if p.endswith('.mjs') and (ROOT / p).is_file())
-    specs.update(p for p in spec_inputs if (ROOT / p).is_file())
-    if python_inputs:
-        reached, bad = python_consumers(ROOT, python_inputs)
-        python.update(reached)
-        if bad:
-            fallback = True
-            reasons.append('unparseable Python input: finite contract checks need review')
-    # Specs and runnable test files are already execution endpoints; only shared
-    # helpers/fixtures and product sources need the reference graph.
-    inputs = [p for p in domains if p not in tests_only and p not in spec_inputs]
-    if inputs:
-        for consumer in file_consumers(ROOT, inputs):
+    def add_consumers(path, consumers):
+        if consumers:
+            covered.add(path)
+        for consumer in consumers:
             if consumer.endswith('.py'):
                 python.add(consumer)
             elif consumer.endswith('.spec.mjs'):
                 specs.add(consumer)
             elif consumer.endswith('.mjs'):
                 node.add(consumer)
+
+    covered = set()
+    inputs = []
+    for path in domains:
+        if (path.startswith('tests/test_') and path.endswith(('.py', '.mjs'))
+                or path.startswith('tests/e2e/') and path.endswith('.spec.mjs')):
+            if (ROOT / path).is_file():
+                add_consumers(path, [path])
+        else:
+            inputs.append(path)
+
+    python_inputs = [p for p in inputs if p.endswith('.py')]
+    if python_inputs:
+        reached, bad = python_consumers(ROOT, python_inputs)
+        for path, consumers in reached.items():
+            add_consumers(path, consumers)
+        if bad:
+            fallback = True
+            reasons.append('unparseable Python input: finite contract checks need review')
+    if inputs:
+        for path, consumers in file_consumers(ROOT, inputs).items():
+            add_consumers(path, consumers)
         web = [p for p in inputs if p.startswith('web/') and p.endswith(('.js', '.mjs'))]
-        for consumer in web_behavior_consumers(ROOT, web):
-            (specs if consumer.endswith('.spec.mjs') else node).add(consumer)
-        if any(p.startswith('web/editor/') or p.startswith('web/shared/') for p in web):
-            node.update(p for p in ('tests/test_editor_script_syntax.mjs', 'tests/test_editor_script_order.mjs') if (ROOT / p).is_file())
-        if any(p.startswith(('web/launcher/', 'web/shared/')) for p in web):
-            if (ROOT / 'tests/test_launcher_script_syntax.mjs').is_file():
-                node.add('tests/test_launcher_script_syntax.mjs')
         if web:
-            app = True
+            for path, consumers in web_behavior_consumers(ROOT, web).items():
+                add_consumers(path, consumers)
+        for path in web:
+            if path.startswith(('web/editor/', 'web/shared/')):
+                add_consumers(path, [p for p in (
+                    'tests/test_editor_script_syntax.mjs', 'tests/test_editor_script_order.mjs'
+                ) if (ROOT / p).is_file()])
+            if path.startswith(('web/launcher/', 'web/shared/')):
+                add_consumers(path, ['tests/test_launcher_script_syntax.mjs']
+                              if (ROOT / 'tests/test_launcher_script_syntax.mjs').is_file() else [])
+        app = bool(web)
         reasons.append('direct imports, reads and exercised UI consumers')
 
     # Thumbnail jobs are reached through a dynamically loaded server endpoint;
     # the specs actually call that endpoint rather than merely starting Server.
-    if any(p.startswith('maw/thumbnail') for p in domains):
+    thumbnail_inputs = [p for p in domains if p.startswith('maw/thumbnail')]
+    if thumbnail_inputs:
+        thumbnail_specs = []
         for file in (ROOT / 'tests/e2e').glob('*.spec.mjs'):
             try:
                 if '/api/thumbnails' in file.read_text(encoding='utf-8'):
-                    specs.add(file.relative_to(ROOT).as_posix())
+                    thumbnail_specs.append(file.relative_to(ROOT).as_posix())
             except (OSError, UnicodeError):
                 fallback = True
+        for path in thumbnail_inputs:
+            add_consumers(path, thumbnail_specs)
         reasons.append('thumbnail server endpoint consumers')
-    if any(p.startswith('tools/verification-checklist/') for p in domains):
+    checklist_inputs = [p for p in domains if p.startswith('tools/verification-checklist/')]
+    if checklist_inputs:
         packs.update({'docs', 'tools'})
-        python.update(f'tests/{name.rsplit(".", 1)[-1]}.py' for name in CHECKLIST_PYTHON if (ROOT / f'tests/{name.rsplit(".", 1)[-1]}.py').is_file())
-        if (ROOT / CHECKLIST_NODE).is_file():
-            node.add(CHECKLIST_NODE)
-        specs.update(p for p in CHECKLIST_SPECS if (ROOT / p).is_file())
+        checklist_tests = [f'tests/{name.rsplit(".", 1)[-1]}.py' for name in CHECKLIST_PYTHON]
+        consumers = [p for p in (*checklist_tests, CHECKLIST_NODE, *CHECKLIST_SPECS) if (ROOT / p).is_file()]
+        for path in checklist_inputs:
+            add_consumers(path, consumers)
     if 'scripts/build-tool-docs.mjs' in domains:
         packs.add('docs')
     if any(p.startswith('website/scripts/') for p in domains):
@@ -176,10 +192,10 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
     if any(not p.startswith(known_roots) and p not in {'edit.py', 'maw_gui.py', 'package.json'} for p in domains):
         fallback = True
         reasons.append('unknown input: finite admission and manual risk review')
-    if inputs and not ((python - document_python) or (node - document_node) or (specs - document_specs)):
+    if set(domains) - covered:
         fallback = True
         reasons.append('no identified consumer: finite admission and manual risk review')
-    if any(not (ROOT / p).is_file() for p in inputs):
+    if any(not (ROOT / p).is_file() for p in domains):
         fallback = True
         reasons.append('deleted or unavailable input: finite admission and manual risk review')
     for path in specs:
@@ -187,9 +203,6 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
             source = (ROOT / path).read_text(encoding='utf-8')
         except (OSError, UnicodeError):
             continue
-        if re.search(r'\b(?:startServer|startBlankServer|startLauncher|buildBrowserEditorFixture|spawnServerProcess)\b', source):
-            app = True
-            server_python = True
         if re.search(r'''(?:execFileSync|spawnSync|execFile|spawn)\s*\(\s*["'](?:ffmpeg|ffprobe)(?:\.exe)?["']''', source):
             media = True
     media_modules = MEDIA_MODULES | {name for name, _ in MEDIA_CLASSES} | {'test_reapeaks', 'test_reapeaks_fixture', 'test_thumbnails'}
@@ -218,7 +231,8 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
                 node_browser = True
         except (OSError, UnicodeError):
             pass
-    app = app or bundle_consumed(ROOT, python | node)
+    server_python = browser_application_consumed(ROOT, specs)
+    app = app or server_python or bundle_consumed(ROOT, python | node)
     return {'mode': 'targeted', 'packs': sorted(packs), 'python_tests': sorted(python), 'node_tests': sorted(node),
             'e2e_specs': sorted(specs), 'tools_scope': 'checklist' if any(p.startswith('tools/verification-checklist/') for p in domains) else 'all',
             'fallback_checks': fallback, 'reasons': reasons or ['direct test consumer'],

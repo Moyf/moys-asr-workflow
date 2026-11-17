@@ -29,6 +29,13 @@ class ImpactTests(unittest.TestCase):
         self.assertNotIn('full', impact.CHECKS)
         self.assertIn('editor', impact.checks_for(['web/editor/io/editor-project-save.js']))
 
+    def test_unmapped_input_keeps_finite_fallback_when_other_files_have_consumers(self):
+        config = 'tests/config/playwright.config.mjs'
+        self.assertEqual(impact.checks_for([config]), list(impact.CHECKS))
+        for known in ('tests/e2e/tool-markdown.spec.mjs', 'web/editor/cues/editor-color-filter.js'):
+            with self.subTest(known=known):
+                self.assertEqual(impact.checks_for([config, known]), list(impact.CHECKS))
+
     def test_preview_scope_is_packaging_startup_runtime_or_manual(self):
         for path in ('docs/plans/a.md', 'web/editor/cues/editor-word-timing.js', 'tests/test_something.py',
                      'web/shared/utils/text.js', 'unknown.py', '.github/workflows/pr-release-windows.yml',

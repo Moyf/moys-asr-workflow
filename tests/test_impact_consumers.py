@@ -104,8 +104,8 @@ class ConsumerSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             for name, text in {'maw/pure.py': 'import json\n', 'maw/external.py': 'import requests\n',
-                'tests/test_pure.mjs': "const p=process.env.MAW_TEST_PYTHON; const code='from maw.pure import thing';",
-                'tests/test_external.mjs': "const p=process.env.MAW_TEST_PYTHON; const code='from maw.external import thing';"}.items():
+                'tests/test_pure.mjs': "import { spawnSync } from 'node:child_process'; spawnSync(process.env.MAW_TEST_PYTHON, ['-c', 'from maw.pure import thing']);",
+                'tests/test_external.mjs': "import { spawnSync } from 'node:child_process'; spawnSync(process.env.MAW_TEST_PYTHON, ['-c', 'from maw.external import thing']);"}.items():
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text, encoding='utf-8')
@@ -176,3 +176,79 @@ class ConsumerSelectionTests(unittest.TestCase):
                 self.assertIn('tests/test_fixture.py', fixture['python_tests'])
                 (root / 'maw/a.py').unlink()
                 self.assertIn('tests/test_b.py', impact.select_packs(['maw/a.py'])['python_tests'])
+
+    def test_repository_path_reads_select_launcher_and_editor_consumers(self):
+        for path, consumer in (
+            ('web/launcher/postprocess.js', 'tests/test_gui_web.py'),
+            ('web/editor-template.html', 'tests/test_editor_assets.py'),
+        ):
+            with self.subTest(path=path):
+                self.assertIn(consumer, impact.select_packs([path])['python_tests'])
+
+    def test_split_repository_path_read_ignores_literals_and_temporary_paths(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            files = {
+                'web/launcher/example.html': '',
+                'tests/test_reader.py': """from pathlib import Path
+ROOT = Path(__file__).resolve().parents[1]
+def test_read():
+    source = (
+        ROOT / 'web'
+        / 'launcher' / 'example.html'
+    )
+    return source.read_text()
+""",
+                'tests/test_other.py': """import tempfile
+from pathlib import Path
+def test_temp():
+    with tempfile.TemporaryDirectory() as tmp:
+        source = (Path(tmp) / 'web/launcher/example.html').read_text()
+        return source == "read_text('web/launcher/example.html')"
+""",
+            }
+            for name, source in files.items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(source, encoding='utf-8')
+            with mock.patch.object(impact, 'ROOT', root):
+                plan = impact.select_packs(['web/launcher/example.html'])
+                self.assertEqual(plan['python_tests'], ['tests/test_reader.py'])
+
+    def test_node_subprocesses_are_consumers_of_actual_python_inputs(self):
+        for path in ('maw/ass_styles.py', 'maw/script_alignment.py'):
+            with self.subTest(path=path):
+                self.assertIn('tests/test_editor_utils.mjs', impact.select_packs([path])['node_tests'])
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            files = {
+                'maw/a.py': 'VALUE = 1\n',
+                'maw/b.py': 'from .a import VALUE\n',
+                'tests/test_direct.mjs': """import { spawnSync } from 'node:child_process';
+spawnSync(process.env.MAW_TEST_PYTHON, ['-c', 'from maw.a import VALUE']);
+""",
+                'tests/test_transitive.mjs': """import { spawnSync } from 'node:child_process';
+spawnSync(process.env.MAW_TEST_PYTHON, ['-c', 'from maw.b import VALUE']);
+""",
+                'tests/test_unrelated.mjs': """import { spawnSync } from 'node:child_process';
+const fixture = 'from maw.a import VALUE';
+spawnSync(process.env.MAW_TEST_PYTHON, ['-c', 'import json']);
+""",
+            }
+            for name, source in files.items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(source, encoding='utf-8')
+            with mock.patch.object(impact, 'ROOT', root):
+                self.assertEqual(impact.select_packs(['maw/a.py'])['node_tests'],
+                                 ['tests/test_direct.mjs', 'tests/test_transitive.mjs'])
+
+    def test_server_preparation_follows_called_browser_fixture(self):
+        selected = impact.select_packs(['tests/e2e/cue-scroll-stability.spec.mjs'])
+        self.assertTrue(selected['preparation']['application'])
+        self.assertTrue(selected['preparation']['python_dependencies'])
+        for path in ('tests/e2e/tool-markdown.spec.mjs', 'tests/e2e/tool-compact.spec.mjs'):
+            with self.subTest(path=path):
+                tool = impact.select_packs([path])
+                self.assertFalse(tool['preparation']['application'])
+                self.assertFalse(tool['preparation']['python_dependencies'])

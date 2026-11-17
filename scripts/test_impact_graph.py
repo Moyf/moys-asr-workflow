@@ -4,7 +4,8 @@ from __future__ import annotations
 import ast
 from collections import defaultdict, deque
 from functools import lru_cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import posixpath
 import re
 import sys
 
@@ -138,7 +139,7 @@ def _local_callers(name: str, source: str, functions: tuple[str, ...]) -> frozen
     return frozenset(found)
 
 
-def python_consumers(root: Path, changed: list[str]) -> tuple[set[str], bool]:
+def python_consumers(root: Path, changed: list[str]) -> tuple[dict[str, set[str]], bool]:
     files = []
     for folder in ('maw', 'scripts', 'tests', 'server-editor'):
         base = root / folder
@@ -149,6 +150,12 @@ def python_consumers(root: Path, changed: list[str]) -> tuple[set[str], bool]:
     targets = set(texts) | {path for path in changed if path.endswith('.py')}
     modules = {path[:-3].replace('/', '.'): path for path in targets if path.endswith('.py')}
     modules.update({path[:-12].replace('/', '.'): path for path in targets if path.endswith('/__init__.py')})
+    endpoints = {name: name for name in texts if name.startswith('tests/test_')}
+    for test, source in _texts(root, (root / 'tests').glob('test_*.mjs')).items():
+        for index, script in enumerate(_node_python_scripts(source)):
+            name = f'{test}#{index}'
+            endpoints[name] = test
+            texts[name] = script
     reverse = defaultdict(set)
     deferred = defaultdict(lambda: defaultdict(set))
     bad = False
@@ -163,79 +170,167 @@ def python_consumers(root: Path, changed: list[str]) -> tuple[set[str], bool]:
                     deferred[modules[module]][name].add(scope)
                 else:
                     reverse[modules[module]].add(name)
-    found = set(changed)
-    queue = deque(changed)
-    while queue:
-        current = queue.popleft()
-        # Propagate a function-local import through actual imported symbols and
-        # callers, instead of fanning out to every user of the containing module.
-        pending = deque((owner, functions) for owner, functions in deferred[current].items())
-        traced = set()
-        while pending:
-            owner, functions = pending.popleft()
-            functions = _local_callers(owner, texts[owner], tuple(sorted(functions)))
-            marker = (owner, tuple(sorted(functions)))
-            if marker in traced:
-                continue
-            traced.add(marker)
-            if owner.startswith('tests/test_'):
-                found.add(owner)
-                continue
-            module = owner[:-3].replace('/', '.')
-            for consumer in reverse[owner] | set(deferred[owner]):
-                if consumer in PYTHON_SHELLS:
+    selected = {}
+    for path in changed:
+        found = {path}
+        queue = deque([path])
+        while queue:
+            current = queue.popleft()
+            # Propagate function-local imports through actual symbol uses.
+            pending = deque(deferred[current].items())
+            traced = set()
+            while pending:
+                owner, functions = pending.popleft()
+                functions = _local_callers(owner, texts[owner], tuple(sorted(functions)))
+                marker = (owner, tuple(sorted(functions)))
+                if marker in traced:
                     continue
-                imported, calls = _affected_functions(consumer, texts[consumer], module, tuple(sorted(functions)))
-                if not imported:
+                traced.add(marker)
+                if owner in endpoints:
+                    found.add(owner)
                     continue
-                if consumer.startswith('tests/test_'):
-                    if calls:
-                        found.add(consumer)
-                elif calls:
-                    pending.append((consumer, calls))
-        for name in reverse[current] - found:
-            found.add(name)
-            if name not in PYTHON_SHELLS and not name.startswith('tests/test_'):
-                queue.append(name)
-    return {p for p in found if p.startswith('tests/test_') and p.endswith('.py') and (root / p).is_file()}, bad
+                module = owner[:-3].replace('/', '.')
+                for consumer in reverse[owner] | set(deferred[owner]):
+                    if consumer in PYTHON_SHELLS:
+                        continue
+                    imported, calls = _affected_functions(consumer, texts[consumer], module, marker[1])
+                    if imported and calls:
+                        if consumer in endpoints:
+                            found.add(consumer)
+                        else:
+                            pending.append((consumer, calls))
+            for name in reverse[current] - found:
+                found.add(name)
+                if name not in PYTHON_SHELLS and name not in endpoints:
+                    queue.append(name)
+        selected[path] = {endpoints[name] for name in found if name in endpoints}
+    return selected, bad
 
 
-def file_consumers(root: Path, changed: list[str]) -> set[str]:
-    """Trace literal helper imports and explicit test reads, not incidental names."""
+def _relative_import(name: str, reference: str) -> str:
+    return posixpath.normpath(posixpath.join(posixpath.dirname(name), reference))
+
+
+@lru_cache(maxsize=512)
+def _python_file_reads(name: str, source: str) -> frozenset[str]:
+    """Resolve literal Path expressions from the working directory or __file__."""
+    tree = _syntax_tree(source)
+    if tree is None:
+        return frozenset()
+    repo = PurePosixPath('/repository')
+    reads = set()
+
+    class Visitor(ast.NodeVisitor):
+        bindings = {'__file__': repo / name}
+
+        def path(self, node):
+            if isinstance(node, ast.Name):
+                return self.bindings.get(node.id)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                path = PurePosixPath(node.value.replace('\\', '/'))
+                if not path.is_absolute() and ':' not in node.value:
+                    return path
+            if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+                base, child = self.path(node.left), self.path(node.right)
+                if base is not None and child is not None and not child.is_absolute():
+                    return base / child
+            if isinstance(node, ast.Attribute) and node.attr == 'parent':
+                base = self.path(node.value)
+                if base is not None:
+                    return (repo / base).parent
+            if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute)
+                    and node.value.attr == 'parents' and isinstance(node.slice, ast.Constant)
+                    and type(node.slice.value) is int):
+                base = self.path(node.value.value)
+                if base is not None and 0 <= node.slice.value < len((repo / base).parents):
+                    return (repo / base).parents[node.slice.value]
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id == 'Path' and len(node.args) == 1:
+                    return self.path(node.args[0])
+                if isinstance(node.func, ast.Attribute):
+                    base = self.path(node.func.value)
+                    if base is not None and node.func.attr == 'resolve' and not node.args:
+                        return PurePosixPath(posixpath.normpath(repo / base))
+                    if base is not None and node.func.attr == 'joinpath':
+                        parts = [self.path(arg) for arg in node.args]
+                        if all(part is not None and not part.is_absolute() for part in parts):
+                            return base.joinpath(*parts)
+            return None
+
+        def visit_Assign(self, node):
+            self.generic_visit(node)
+            value = self.path(node.value)
+            for target in node.targets if isinstance(node, ast.Assign) else (node.target,):
+                if isinstance(target, ast.Name):
+                    self.bindings[target.id] = value
+        visit_AnnAssign = visit_Assign
+
+        def visit_FunctionDef(self, node):
+            enclosing = self.bindings
+            self.bindings = enclosing.copy()
+            for arg in ast.iter_child_nodes(node.args):
+                if isinstance(arg, ast.arg):
+                    self.bindings.pop(arg.arg, None)
+            for statement in node.body:
+                self.visit(statement)
+            self.bindings = enclosing
+        visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_ClassDef(self, node):
+            enclosing = self.bindings
+            self.bindings = enclosing.copy()
+            self.generic_visit(node)
+            self.bindings = enclosing
+
+        def visit_Call(self, node):
+            if isinstance(node.func, ast.Attribute) and node.func.attr in {'read_text', 'read_bytes'}:
+                base = self.path(node.func.value)
+                if base is not None:
+                    target = PurePosixPath(posixpath.normpath(repo / base))
+                    if target.is_relative_to(repo):
+                        reads.add(target.relative_to(repo).as_posix())
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    return frozenset(reads)
+
+
+def file_consumers(root: Path, changed: list[str]) -> dict[str, set[str]]:
+    """Trace paths through literal repository reads and local test imports."""
     tests = root / 'tests'
     paths = list(tests.rglob('*.mjs')) + list(tests.rglob('*.py')) if tests.is_dir() else []
     texts = _texts(root, paths)
-    changed_set = set(changed)
     reverse = defaultdict(set)
-    for name, text in texts.items():
-        parent = (root / name).parent
-        # A path must be used by a read/import operation, not merely appear as a
-        # mock filename or an assertion about selector output.
-        for line in text.splitlines():
-            if not READ.search(line):
-                continue
-            for target in changed_set:
-                suffix = target.removeprefix('web/')
-                if (target in line or len(suffix.split('/')) > 1 and suffix in line) and target != name:
+    for name, source in texts.items():
+        if name.endswith('.py'):
+            if 'read_text' in source or 'read_bytes' in source:
+                for target in _python_file_reads(name, source):
                     reverse[target].add(name)
-        for reference in re.findall(r'''(?:from\s*|import\s*\(|require\s*\()\s*["'](\.{1,2}/[^"']+)["']''', text):
-            target = (parent / reference).resolve()
-            try:
-                relative = target.relative_to(root.resolve()).as_posix()
-            except ValueError:
-                continue
-            reverse[relative].add(name)
-    found = set(changed)
-    queue = deque(changed)
-    while queue:
-        for name in reverse[queue.popleft()] - found:
-            found.add(name)
-            # Runnable tests are endpoints. Test helpers do propagate to actual
-            # importers, but a general application loader is never inferred
-            # merely because it happens to load the same assembled bundle.
-            if not (name.startswith('tests/test_') or name.endswith('.spec.mjs')):
-                queue.append(name)
-    return {p for p in found if (p.startswith('tests/test_') or p.endswith('.spec.mjs')) and (root / p).is_file()}
+            continue
+        # Node test fixtures also have established loader helpers that accept
+        # paths relative to web/, such as loadEditorModule().
+        for line in source.splitlines():
+            if READ.search(line):
+                for target in changed:
+                    suffix = target.removeprefix('web/')
+                    if target in line or '/' in suffix and suffix in line:
+                        reverse[target].add(name)
+        for reference in re.findall(r'''(?:from\s*|import\s*\(|require\s*\()\s*["'](\.{1,2}/[^"']+)["']''', source):
+            reverse[_relative_import(name, reference)].add(name)
+
+    selected = {}
+    for path in changed:
+        found, pending = {path}, [path]
+        consumers = set()
+        while pending:
+            for name in reverse[pending.pop()] - found:
+                found.add(name)
+                if name.startswith('tests/test_') or name.endswith('.spec.mjs'):
+                    consumers.add(name)
+                else:
+                    pending.append(name)
+        selected[path] = consumers
+    return selected
 
 
 def document_consumers(root: Path, changed: list[str]) -> set[str]:
@@ -365,6 +460,129 @@ def bundle_consumed(root: Path, tests: set[str]) -> bool:
     return False
 
 
+JS_TOKEN = re.compile(
+    r"""\s+|//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\x60(?:\\.|[^\x60\\])*\x60|[$\w]+|[^\s]"""
+)
+JS_PROCESS_CALLS = {'spawn', 'spawnSync', 'execFile', 'execFileSync'}
+
+
+def _js_tokens(source: str) -> list[str]:
+    return [token for token in JS_TOKEN.findall(source)
+            if not token.isspace() and not token.startswith(('//', '/*'))]
+
+
+def _js_end(tokens: list[str], start: int) -> int:
+    opening = tokens[start]
+    closing = {'(': ')', '[': ']', '{': '}'}[opening]
+    depth = 1
+    for i in range(start + 1, len(tokens)):
+        token = tokens[i]
+        if token == opening:
+            depth += 1
+        elif token == closing:
+            depth -= 1
+            if not depth:
+                return i
+    return len(tokens)
+
+
+def _js_string(token: str) -> str | None:
+    if len(token) < 2 or token[0] not in "'\"":
+        return None
+    try:
+        return ast.literal_eval(token)
+    except (ValueError, SyntaxError):
+        return None
+
+
+@lru_cache(maxsize=64)
+def _node_python_scripts(source: str) -> tuple[str, ...]:
+    """Find literal Python -c programs passed to a subprocess in a Node test."""
+    if 'MAW_TEST_PYTHON' not in source:
+        return ()
+    tokens = _js_tokens(source)
+    scripts = set()
+    for i, token in enumerate(tokens[:-1]):
+        if token not in JS_PROCESS_CALLS or tokens[i + 1] != '(':
+            continue
+        args = tokens[i + 2:_js_end(tokens, i + 1)]
+        for j, option in enumerate(args[:-2]):
+            if option not in {"'-c'", '"-c"'} or args[j + 1] != ',':
+                continue
+            value = args[j + 2]
+            script = _js_string(value)
+            if value == '[':
+                end = _js_end(args, j + 2)
+                tail = args[end + 1:end + 6]
+                if len(tail) == 5 and tail[:3] == ['.', 'join', '('] and tail[4] == ')':
+                    separator = _js_string(tail[3])
+                    lines = [_js_string(part) for part in args[j + 3:end] if part != ',']
+                    if separator is not None and all(line is not None for line in lines):
+                        script = separator.join(lines)
+            if script and _syntax_tree(script) is not None:
+                scripts.add(script)
+    return tuple(sorted(scripts))
+
+
+def _js_call_names(tokens: list[str]) -> frozenset[str]:
+    return frozenset(token for i, token in enumerate(tokens[:-1])
+                     if token.isidentifier() and tokens[i + 1] == '('
+                     and (i == 0 or tokens[i - 1] not in {'.', 'function'}))
+
+
+@lru_cache(maxsize=128)
+def _js_fixture_calls(name: str, source: str):
+    """Index local named imports and declared helper functions."""
+    tokens = _js_tokens(source)
+    imports = {}
+    functions = {}
+    for i, token in enumerate(tokens[:-3]):
+        if token == 'import' and tokens[i + 1] == '{':
+            end = _js_end(tokens, i + 1)
+            if tokens[end + 1:end + 2] != ['from'] or end + 2 >= len(tokens):
+                continue
+            reference = _js_string(tokens[end + 2])
+            if not reference or not reference.startswith('.'):
+                continue
+            target = _relative_import(name, reference)
+            for item in ' '.join(tokens[i + 2:end]).split(','):
+                parts = item.split()
+                if len(parts) == 1 or len(parts) == 3 and parts[1] == 'as':
+                    imports[parts[-1]] = (target, parts[0])
+        elif token == 'function' and tokens[i + 2] == '(':
+            end = _js_end(tokens, i + 2)
+            if tokens[end + 1:end + 2] == ['{']:
+                functions[tokens[i + 1]] = _js_call_names(tokens[end + 2:_js_end(tokens, end + 1)])
+    return imports, functions, _js_call_names(tokens)
+
+
+def browser_application_consumed(root: Path, specs: set[str]) -> bool:
+    """Follow invoked fixture functions to application process/render entry points."""
+    pending = [(name, None) for name in specs]
+    seen = set()
+    indexes = {}
+    while pending:
+        name, function = pending.pop()
+        if (name, function) in seen:
+            continue
+        seen.add((name, function))
+        if (name, function) in {
+            ('tests/e2e/server-process.mjs', 'spawnServerProcess'),
+            ('tests/e2e/helpers.mjs', 'buildBrowserEditorFixture'),
+        }:
+            return True
+        if name not in indexes:
+            texts = _texts(root, [root / name])
+            indexes[name] = _js_fixture_calls(name, texts[name]) if name in texts else ({}, {}, ())
+        imports, functions, all_calls = indexes[name]
+        for call in functions.get(function, ()) if function else all_calls:
+            if call in imports:
+                pending.append(imports[call])
+            elif call in functions:
+                pending.append((name, call))
+    return False
+
+
 def node_python_dependencies(root: Path, tests: set[str]) -> bool:
     """Follow Python modules explicitly invoked by Node cross-language tests."""
     modules = set()
@@ -373,15 +591,19 @@ def node_python_dependencies(root: Path, tests: set[str]) -> bool:
             source = (root / name).read_text(encoding='utf-8')
         except (OSError, UnicodeError):
             continue
-        if 'MAW_TEST_PYTHON' not in source:
-            continue
-        modules.update(re.findall(r'\b(?:from|import)\s+(maw(?:\.[A-Za-z_]\w*)+)', source))
+        for script in _node_python_scripts(source):
+            for module, lazy, _ in _imports(name, script) or ():
+                if not lazy:
+                    modules.add(module)
     seen = set()
     while modules:
         module = modules.pop()
         if module in seen:
             continue
         seen.add(module)
+        top = module.split('.', 1)[0]
+        if top and top not in sys.stdlib_module_names and not (root / top).exists() and not (root / (top + '.py')).is_file():
+            return True
         path = root.joinpath(*module.split('.')).with_suffix('.py')
         if not path.is_file():
             continue
@@ -402,13 +624,14 @@ def node_python_dependencies(root: Path, tests: set[str]) -> bool:
     return False
 
 
-def web_behavior_consumers(root: Path, changed: list[str]) -> set[str]:
+def web_behavior_consumers(root: Path, changed: list[str]) -> dict[str, set[str]]:
     """Discover tests exercising a module's DOM IDs or published facade."""
     tests = root / 'tests'
     paths = list(tests.glob('test_*.mjs')) + list((tests / 'e2e').glob('*.spec.mjs')) if tests.is_dir() else []
     texts = _texts(root, paths)
-    selected = set()
+    selected = {path: set() for path in changed}
     for path in changed:
+        consumers = selected[path]
         file = root / path
         if not file.is_file():
             continue
@@ -450,12 +673,12 @@ def web_behavior_consumers(root: Path, changed: list[str]) -> set[str]:
             if 'MaweProjectSave' in facades and not matched_facades and 'save' not in Path(name).name:
                 dom_match = False
             if name.endswith('.spec.mjs') and (dom_match or matched_facades):
-                selected.add(name)
+                consumers.add(name)
             if exposed and any(parent in text for parent in parents) and any(
                     re.search(r'\.\s*' + re.escape(symbol) + r'\s*\(', text) for symbol in exposed):
-                selected.add(name)
+                consumers.add(name)
             # Structural import tests read each manifest entry under this prefix.
             if 'readFileSync' in text and any(web_path.startswith(prefix) for prefix in re.findall(
                     r'''\.startsWith\(\s*["'](editor/[^"']+/)["']''', text)):
-                selected.add(name)
+                consumers.add(name)
     return selected
