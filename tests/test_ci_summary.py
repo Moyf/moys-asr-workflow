@@ -199,7 +199,7 @@ class SummaryTests(unittest.TestCase):
         self.assertNotIn('<script>', safe('<script>alert(1)</script>'))
         self.assertNotIn('\x1b', safe('\x1b[31mred\x1b[0m'))
         self.assertIn('已截断', safe('a' * 2000))
-        self.assertNotIn('someone', safe('/home/someone/project'))
+        self.assertNotIn('example', safe('/home/example/project'))
         report = self.browser()
         report['suites'][0]['specs'][0]['title'] = '</code><script>alert(1)</script>'
         self.assertNotIn('<script>', self.report('browser', report))
