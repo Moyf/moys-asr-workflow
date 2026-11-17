@@ -32,3 +32,4 @@
 - 父会话最终相关Python125项通过、评论Node12通过、Ruff通过（`.artifacts/checks/20261117T065016Z-17cbaa4b/result.json`、`20261117T065016Z-2070fe4a/result.json`、`20261117T065016Z-81909148/result.json`）；UTF8/LF检查通过（`20261117T065206Z-ec4c9667/result.json`）。独立复审尚未放行，不先提交。
 - 2.0dev实现者已正式交接本地实现及99/73/22+27等重叠集合证据；父会话独立复跑其Python73、Node11通过（子工作树 `.artifacts/checks/20261117T065206Z-04190165/result.json`、`20261117T065206Z-085a2f03/result.json`）。该分支不新增完整矩阵，所有发布/产品边界保持；同一独立审查者分别复核两个分支，之后再按各自base同步交付。
 - 最终两个分支均获独立审查放行：main四项finding全部关闭，2.0dev无新增finding；范围提示及证据归档REVIEW_FINDINGS.md。接下来分别同步目标分支和创建PR，不自动合并或声称已对其他PR生效。
+- 本地提交main dfd9589e、2dev e944dd98后，分别同步实际base。2dev已最新；main目标更新至f6fd7e55，正常合并冲突保留上游缓存FFmpeg/产品修复并保留本次新策略；整合117项和独立14项通过，无未处置finding，不使用整份ours覆盖上游。正式发布及产品与实际main目标内容一致，目标同步不等于合并本PR入main。

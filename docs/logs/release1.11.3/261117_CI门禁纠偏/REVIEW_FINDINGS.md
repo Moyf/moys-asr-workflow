@@ -22,3 +22,9 @@ main复审57项Python与12项Node通过，公开运输正反例重放成功，�
 非阻塞nit：两份官网副本包含旧副本与当前源正文的既有差异。已核对为真实同步器生成、对应本任务修改的DEVELOPMENT与INDEX输入；接受随对应源完整同步的差异，不手改生成副本，也未扩至另外五份无关页面。此取舍不代表新增产品行为。
 
 同一独立审查者另对2.0dev工作树单独放行：17项Python、11项Node和公开CLI运输重放通过，日志在其 `.artifacts/ci-gate-correction-2dev/review-final/`。未增加完整矩阵/定时/平台，不将main实现强制覆盖该分支。仍需各自fetch并同步实际目标分支及实际远端验收。
+
+## 同步实际main目标后的整合复审
+
+目标更新至f6fd7e55，包含独立PR390固定缓存FFmpeg和PR395产品修复。预览保留上游windows-ffmpeg action但不恢复旧light条件；调试指南同时保留缓存说明与新分层语义；新缓存用例明确登记观察角色，不扩大本轮准入。产品、相关产品测试、正式release与FFmpeg action/helper相对合并目标无差异。
+
+整合相关117项通过、评论12通过、actionlint通过及旧inline安装文本负对照真实失败，证据 `.artifacts/ci-gate-correction/merge-main/REPORT.md`。未参与实现的审查者再次复核合并delta，独立14项通过且无阻塞finding，允许完成merge commit；证据 `merge-main/review/20261117T070927Z-ccfb93ac/result.json`。未以单测替代真实Windows缓存或打包验证。

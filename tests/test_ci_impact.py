@@ -38,6 +38,10 @@ class ScopeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("github.event_name == 'workflow_dispatch'", job)
         self.assertIn("needs.selection.outputs.preview == 'true'", job)
         self.assertNotIn('outputs.light', job)
+        ffmpeg = job.split('      - name: Install FFmpeg for media integration tests\n', 1)[1].split('\n      - name:', 1)[0]
+        self.assertIn('uses: ./.github/actions/windows-ffmpeg', ffmpeg)
+        self.assertNotIn('if:', ffmpeg)
+        self.assertNotIn('run:', ffmpeg)
         self.assertFalse(ci_impact.plan('stable', 'unavailable scope', head='b' * 40)['preview'])
 
     def test_finite_admission_and_consumer_precedence(self):

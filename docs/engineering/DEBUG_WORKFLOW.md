@@ -102,6 +102,14 @@ expected failure、unexpected success、退出码及完整日志位置；并行�
 
 日常计划与完整巡检分开消费：PR验证整个PR差异，main验证before/after，普通文档可轻量；未知代码/不可信差异扩大至稳定检查而不是自动启动完整矩阵。计划校验失败不能伪装成文档通过；阻塞和辅助回执分开，辅助成功不能抵扣阻塞缺报告。策略版本、准确所选集合及消费者以当次计划与脚本输出为准，不把历史v1的“非PR必须full”当作当前规则。
 
+Windows 测试环境、发布测试和 PR 预览共用固定的 Gyan FFmpeg 8.1.2 Essentials x64，
+与完整 Windows 发行包的版本和 SHA-256 一致。Actions 缓存只保存归档，按系统、架构、
+版本及安装脚本（含校验值）隔离；每次使用前重新校验 SHA-256，再解压并运行两个真实
+程序。校验失败时丢弃本地副本，从 Gyan 或 GitHub 固定地址有界重试；不回退系统版本。
+GitHub 缓存遵循分支及 fork 的访问范围，并可能被回收；冷启动仍需网络。已有损坏缓存
+键不可覆盖，当前运行会重新下载，后续运行可能再次下载，直到该缓存被删除或回收。
+并发任务可能各自下载，只有一个保存同一键。缓存不减少 Windows Media Foundation 安装时间。
+
 完整巡检继续用 `scripts/ci_matrix.py expand`、`run --cell <cell>` 与 `gate` 校验完整矩阵自身结果；它失败仍失败，但不传播至无关PR的日常合并结论。Python 单元在回执前回读 `python.json` 与 `media-required.json`，校验非空唯一 ID、计数和退出码，保留 unittest fixture / subtest skip 语义；required 不信任序列化的 `platform_not_applicable`，而重新调用精确平台策略。两份报告的归组集合必须一致，回执附校验计数和报告 SHA-256。缺 / 坏报告、伪造成功退出或不支持的 required skip 都不产生成功回执；输出目录拒绝复用旧报告，重试请使用新的 `--root` 以保留旧证据。
 
 浏览器分片的整组执行预算为 900 秒；发现列表及 Python / Node 命令仍为 600 秒。单项测试 60 秒、操作 10 秒、零重试不变。浏览器 job 的 25 分钟上限另容纳环境准备与上传，不表示放宽单测。`line,json` 双 reporter 在 `output.log` 留下逐项开始进度，同时保留最终 JSON 覆盖校验；整组超时仍失败，未写完 JSON 时不会产生成功回执。
@@ -124,3 +132,5 @@ expected failure、unexpected success、退出码及完整日志位置；并行�
 Python JSON 的 `failure_details` 是附加字段，串行和并行路径均保留；完整 traceback
 仍在原 `.log` 中。摘要限制报告大小、展示条数和文本长度，转义 HTML 并脱敏用户目录。
 摘要步骤即使失败，也不会掩盖原测试失败或替代矩阵校验。
+
+写用例、分析首次失败与判断测试价值，见[测试可靠性指南](../INDEX.md#engineering-test-reliability)。

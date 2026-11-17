@@ -146,6 +146,7 @@ tests/test_browser_results.py
 tests/test_burn_video_export.py
 tests/test_ci_impact.py
 tests/test_ci_summary.py
+tests/test_ci_windows_ffmpeg.py
 tests/test_cli.py
 tests/test_cli_cache_contract.py
 tests/test_compact_assertions.py
