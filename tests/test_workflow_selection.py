@@ -23,7 +23,7 @@ class ConcreteWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ):
             reports = []
 
-            def discover(name, command, timeout):
+            def discover(name, command, timeout, *, log_root):
                 Path(os.environ["PLAYWRIGHT_JSON_OUTPUT_FILE"]).write_text(json.dumps(
                     {"config": {"shard": None if "full-discover" in name else {"current": 1, "total": 1}},
                      "errors": []}), encoding="utf-8")

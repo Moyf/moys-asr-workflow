@@ -38,30 +38,40 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v5
+        id: checkout
       - uses: actions/setup-node@v5
+        id: debug-node
         with:
           node-version: '22.23.4'
           package-manager-cache: false
       - uses: actions/setup-python@v6
         id: debug-python
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         with:
           python-version: '3.11'
       # These checks need only the standard libraries: no uv/pnpm install.
       # Separate native commands so a later success cannot mask an earlier
       # documentation failure under the Windows PowerShell shell.
       - name: Documentation navigation and consumers
+        if: ${{ !cancelled() && steps.debug-python.outcome == 'success' }}
         run: python scripts/run_check.py --timeout 180 -- python scripts/check_docs.py
       - name: Offline tool documentation freshness
+        if: ${{ !cancelled() && steps.debug-python.outcome == 'success' && steps.debug-node.outcome == 'success' }}
         run: python scripts/run_check.py --timeout 60 -- node scripts/build-tool-docs.mjs --check
       - name: Documentation regressions
+        if: ${{ !cancelled() && steps.debug-python.outcome == 'success' }}
         run: python scripts/run_check.py --timeout 180 -- python scripts/run_tests.py tests/test_docs_check.py
       - name: Release documents
+        if: ${{ !cancelled() && steps.debug-python.outcome == 'success' }}
         run: python scripts/run_check.py --timeout 60 -- python scripts/prepare_release_notes.py --check-all
       - name: Release pipeline contracts
+        if: ${{ !cancelled() && steps.debug-python.outcome == 'success' }}
         run: python scripts/run_check.py --timeout 90 -- python scripts/run_tests.py tests/test_release_notes.py tests/test_release_site.py tests/test_release_publication.py
       - name: Runner output, exit codes and timeout cleanup
+        if: ${{ !cancelled() && steps.debug-python.outcome == 'success' }}
         run: python scripts/run_check.py --timeout 60 -- python -m unittest tests.test_run_check tests.test_compact_assertions
       - name: Server diagnostics and process lifecycle
+        if: ${{ !cancelled() && steps.debug-python.outcome == 'success' && steps.debug-node.outcome == 'success' }}
         env:
           MAW_TEST_PYTHON: ${{ steps.debug-python.outputs.python-path }}
           MAW_E2E_PYTHON: ${{ steps.debug-python.outputs.python-path }}
@@ -86,44 +96,53 @@ jobs:
         if: ${{ needs.selection.result != 'success' || (needs.selection.outputs.light != 'true' && needs.selection.outputs.light != 'false') }}
         run: exit 1
       - uses: actions/checkout@v5
+        id: checkout
       - uses: pnpm/action-setup@v6
         if: ${{ needs.selection.outputs.light != 'true' }}
         with:
           version: 11.28.4
           run_install: false
       - uses: actions/setup-node@v5
+        id: node
         if: ${{ needs.selection.outputs.light != 'true' }}
         with:
           node-version: '22.23.4'
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+        id: node_install
         if: ${{ needs.selection.outputs.light != 'true' }}
-      # Bundles are build artifacts (not committed): build once for every later
-      # step that reads them (assembly contracts, test:unit, e2e). pnpm install
-      # already builds via postinstall; keep this explicit so it does not rely
-      # on the hook.
-      - run: pnpm run build
-        if: ${{ needs.selection.outputs.light != 'true' }}
+      # A build failure blocks only consumers of that bundle.
+      - run: pnpm run build:editor
+        id: editor_build
+        if: ${{ !cancelled() && steps.node_install.outcome == 'success' }}
+      - run: pnpm run build:launcher
+        id: launcher_build
+        if: ${{ !cancelled() && steps.node_install.outcome == 'success' }}
+      - run: node scripts/build-tool-docs.mjs --write
+        id: tool_docs
+        if: ${{ !cancelled() && steps.node.outcome == 'success' }}
       - run: pnpm run typecheck
-        if: ${{ needs.selection.outputs.light != 'true' }}
+        if: ${{ !cancelled() && steps.node_install.outcome == 'success' }}
       - uses: actions/setup-python@v6
-        if: ${{ needs.selection.outputs.light != 'true' }}
+        id: python
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && needs.selection.outputs.light != 'true' }}
         with:
           python-version: '3.11'
       - uses: astral-sh/setup-uv@v7
-        if: ${{ needs.selection.outputs.light != 'true' }}
+        id: uv
+        if: ${{ !cancelled() && steps.python.outcome == 'success' }}
         with:
           version: "0.13.4"
           enable-cache: true
-      - run: uv sync --frozen
-        if: ${{ needs.selection.outputs.light != 'true' }}
       - name: Prepare developer image fixtures (no OCR model)
-        if: ${{ needs.selection.outputs.light != 'true' }}
+        id: python_install
+        if: ${{ !cancelled() && steps.uv.outcome == 'success' }}
         run: uv sync --frozen --group dev
       # Node tests also launch Chromium and compare against Python exporters.
       - name: Install Playwright Chromium
-        if: ${{ needs.selection.outputs.light != 'true' }}
+        id: chromium
+        if: ${{ !cancelled() && steps.node_install.outcome == 'success' }}
         shell: bash
         # 2026-11-11 PR #365 的 editor job 曾因 GitHub runner DNS 抖动整 job 红：
         # --with-deps 走 apt，依赖安装全体「Temporary failure resolving
@@ -143,25 +162,28 @@ jobs:
             attempt=$((attempt + 1))
             sleep 20
           done
-      - run: pnpm run test:unit
-        if: ${{ needs.selection.outputs.light != 'true' }}
+      - name: Node unit and browser contracts
+        if: ${{ !cancelled() && steps.editor_build.outcome == 'success' && steps.launcher_build.outcome == 'success' && steps.python_install.outcome == 'success' && steps.chromium.outcome == 'success' && steps.tool_docs.outcome == 'success' }}
         env:
           MAW_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
-      - name: Python assembly contracts
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        run: |
-          uv run --no-sync python scripts/run_tests.py tests/test_editor_assets.py
-          uv run --no-sync python scripts/run_tests.py tests/test_editor_manifest.py
+        run: python scripts/run_check.py --timeout 240 -- pnpm run test:unit
+      - name: Python editor asset contracts
+        if: ${{ !cancelled() && steps.python.outcome == 'success' && steps.editor_build.outcome == 'success' }}
+        run: python scripts/run_check.py --timeout 180 -- python scripts/run_tests.py tests/test_editor_assets.py
+      - name: Python editor manifest contracts
+        if: ${{ !cancelled() && steps.python.outcome == 'success' }}
+        run: python scripts/run_check.py --timeout 180 -- python scripts/run_tests.py tests/test_editor_manifest.py
       - name: OCR term extraction and runtime cleanup contracts
-        if: ${{ needs.selection.outputs.light != 'true' }}
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' }}
         run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_ocr_scan.py tests/test_ocr_scan_regressions.py tests/test_ocr_runtime.py tests/test_runtime_process_cleanup.py tests/test_process_tree_posix.py tests/test_term_extract_aggregate.py tests/test_term_extract_ai_filter.py tests/test_term_extract_cli_cache.py tests/test_term_extract_export.py tests/test_term_extract_report.py tests/test_term_extract_score.py tests/test_verification_checklist.py tests/test_verification_checklist_build.py
       - name: Install FFmpeg for synthetic editor fixtures
-        if: ${{ needs.selection.outputs.light != 'true' }}
+        id: ffmpeg
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && needs.selection.outputs.light != 'true' }}
         run: |
           sudo apt-get update
           sudo apt-get install --yes ffmpeg
       - name: Required media failure compatibility
-        if: ${{ needs.selection.outputs.light != 'true' }}
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' && steps.ffmpeg.outcome == 'success' }}
         run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_media.py tests/test_ffmpeg.py tests/test_ffprobe_failure_integration.py --required --report .artifacts/media-required.json
       - name: Preserve media required report
         if: ${{ always() && needs.selection.outputs.light != 'true' }}
@@ -176,23 +198,37 @@ jobs:
           retention-days: 7
 
       - name: Real file and HTTP editor
-        if: ${{ needs.selection.outputs.light != 'true' }}
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' && steps.editor_build.outcome == 'success' && steps.chromium.outcome == 'success' && steps.ffmpeg.outcome == 'success' }}
         env:
           MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: pnpm exec playwright test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs tests/e2e/editor-text-tools.spec.mjs tests/e2e/ass-cue-position.spec.mjs tests/e2e/sticker-preview-lifecycle.spec.mjs tests/e2e/warma-presets.spec.mjs tests/e2e/warma-i18n.spec.mjs tests/e2e/unified-tracks.spec.mjs tests/e2e/v2-migration-save.spec.mjs tests/e2e/review-data-safety.spec.mjs
+          PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/full-editor-browser.json
+        run: python scripts/run_check.py --timeout 900 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium --reporter=line,json --output=test-results/full-editor tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs tests/e2e/editor-text-tools.spec.mjs tests/e2e/ass-cue-position.spec.mjs tests/e2e/sticker-preview-lifecycle.spec.mjs tests/e2e/warma-presets.spec.mjs tests/e2e/warma-i18n.spec.mjs tests/e2e/unified-tracks.spec.mjs tests/e2e/v2-migration-save.spec.mjs tests/e2e/review-data-safety.spec.mjs
 
       - name: Independent browser tool pages
-        if: ${{ needs.selection.outputs.light != 'true' }}
+        if: ${{ !cancelled() && steps.python.outcome == 'success' && steps.chromium.outcome == 'success' && steps.tool_docs.outcome == 'success' }}
+        env:
+          MAW_E2E_PYTHON: ${{ steps.python.outputs.python-path }}
+          PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/full-tools-browser.json
+        run: python scripts/run_check.py --timeout 300 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium --reporter=line,json --output=test-results/full-tools tests/e2e/tool-pages.spec.mjs tests/e2e/tool-compact.spec.mjs tests/e2e/tool-markdown.spec.mjs tests/e2e/timestamp-compare.spec.mjs tests/e2e/verification-checklist.spec.mjs tests/e2e/changelog-write-lock.spec.mjs
+
+      - name: Term report browser with developer fixtures
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' && steps.chromium.outcome == 'success' }}
         env:
           MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: uv run --no-sync python scripts/run_check.py --timeout 300 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/tool-pages.spec.mjs tests/e2e/tool-compact.spec.mjs tests/e2e/tool-markdown.spec.mjs tests/e2e/timestamp-compare.spec.mjs tests/e2e/verification-checklist.spec.mjs tests/e2e/term-report.spec.mjs tests/e2e/changelog-write-lock.spec.mjs
+          PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/full-term-report-browser.json
+        run: python scripts/run_check.py --timeout 180 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium --reporter=line,json --output=test-results/full-term-report tests/e2e/term-report.spec.mjs
 
       - name: Preserve failed browser evidence
         if: ${{ failure() && needs.selection.outputs.light != 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: editor-browser-failures-${{ runner.os }}
-          path: test-results/
+          path: |
+            test-results/
+            .artifacts/full-editor-browser.json
+            .artifacts/full-tools-browser.json
+            .artifacts/full-term-report-browser.json
+            .artifacts/checks/
           retention-days: 7
 
       # README and user guides are website inputs, not just Markdown files.

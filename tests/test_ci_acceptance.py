@@ -165,6 +165,10 @@ class AcceptanceTests(CompactContainerAssertions, unittest.TestCase):
             result = subprocess.run([sys.executable, 'scripts/ci_acceptance.py', 'gate', '--plan', str(planfile),
                                      '--root', str(target)], cwd=ROOT, env=env, capture_output=True, text=True, timeout=15)
             self.assertEqual(result.returncode == 0, mutation is None, result.stderr[-1000:])
+            if mutation:
+                summary = json.loads((target.parent / 'failures.json').read_text(encoding='utf-8'))
+                self.assertEqual(summary['head'], head)
+                self.assertTrue(summary['gate_error'])
 
     def test_node_admission_executes_each_test_body_once_without_name_filter(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -182,6 +186,42 @@ class AcceptanceTests(CompactContainerAssertions, unittest.TestCase):
             self.assertEqual(len(records), 1)
             self.assertFalse(any('--test-name-pattern' in arg for arg in records[0]['command']))
 
+    def test_build_failure_blocks_only_its_consumer_and_keeps_later_failures(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence = root / 'evidence'
+            node_fixture = root / 'late.mjs'
+            node_fixture.write_text("import test from 'node:test';\n"
+                                    "test('late failure', () => { throw new Error('late diagnostic'); });\n",
+                                    encoding='utf-8')
+            names = []
+            execute = acceptance.execute_check
+
+            def build_fixture(command, timeout, logs):
+                name = command[-1]
+                names.append(name)
+                if command[:2] == ['pnpm', 'run']:
+                    code = {'build:editor': 7, 'typecheck': 9}.get(name, 0)
+                    command = [sys.executable, '-c', f'raise SystemExit({code})']
+                return execute(command, timeout, logs)
+
+            with mock.patch.object(acceptance, 'NODE', {'build': [str(node_fixture)]}), \
+                    mock.patch.object(acceptance, 'execute_check', side_effect=build_fixture):
+                with self.assertRaises(ValueError):
+                    acceptance.run_check(impact.plan([], head='b' * 40), 'build', evidence)
+
+            self.assertEqual(names, ['build:editor', 'build:launcher', 'check:launcher', 'typecheck', str(node_fixture)])
+            records = json.loads((evidence / 'command-results.json').read_text(encoding='utf-8'))
+            codes = [json.loads((evidence / item['result']).read_text(encoding='utf-8'))['exit_code'] for item in records]
+            self.assertEqual(codes, [7, 0, 0, 9, 1])
+            failed = json.loads((evidence / 'failures.json').read_text(encoding='utf-8'))['failures']
+            self.assertEqual([(item['gate'], item['kind']) for item in failed], [
+                ('build-editor', 'process'), ('check-editor', 'blocked'),
+                ('typecheck', 'process'), ('node', 'failure'),
+            ])
+            self.assertIn('late diagnostic', failed[-1]['error'])
+            self.assertFalse((evidence / 'receipt.json').exists())
+
     def test_manifest_targets_exist_and_python_ids_are_auditable(self):
         for group, targets in acceptance.PYTHON.items():
             found = [c.id() for c in acceptance.cases(acceptance.build_suite(targets, 'tests', 'test_*.py'))]
@@ -192,6 +232,23 @@ class AcceptanceTests(CompactContainerAssertions, unittest.TestCase):
             for target in targets:
                 self.assertTrue((ROOT / target).is_file(), target)
         self.assertEqual(set(acceptance.node_admission()), set(acceptance.NODE))
+
+    def test_failure_summary_retains_blocked_missing_and_unreadable_reports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / 'evidence'
+            plan = {'head': 'b' * 40, 'checks': ['docs', 'tools', 'build', 'data']}
+            acceptance.write(root / 'docs/receipt.json', {'status': 'success'})
+            acceptance.write(root / 'tools/failures.json', {'report_errors': [], 'failures': [
+                {'gate': 'tools-docs', 'kind': 'blocked', 'requires': ['node-runtime']},
+            ]})
+            acceptance.write(root / 'data/failures.json', {})
+            acceptance.summarize_failures(plan, root)
+            summary = json.loads((root.parent / 'failures.json').read_text(encoding='utf-8'))
+            self.assertEqual(summary['checks'], plan['checks'])
+            self.assertEqual(summary['failures'], [
+                {'check': 'tools', 'gate': 'tools-docs', 'kind': 'blocked', 'requires': ['node-runtime']},
+            ])
+            self.assertEqual([record['check'] for record in summary['report_errors']], ['build', 'data'])
 
     def test_cold_editor_helper_missing_acorn_is_visible_with_both_reporters(self):
         # Outside the nested worktree: parent node_modules cannot hide the
@@ -220,7 +277,7 @@ class AcceptanceTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('name = "send2trash"\nversion = "2.1.0"', lock)
 
 
-class WorkflowPolicyTests(unittest.TestCase):
+class WorkflowPolicyTests(CompactContainerAssertions, unittest.TestCase):
     def read_workflow(self, name):
         return (WORKFLOW_ROOT / '.github/workflows' / name).read_text(encoding='utf-8')
 
@@ -239,6 +296,10 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertIn('pattern: blocking-receipt-*', workflow)
         self.assertIn('path: .artifacts/blocking/evidence', workflow)
         self.assertIn('pip install --no-deps --require-hashes -r scripts/ci-contract-requirements.txt', workflow)
+        acceptance = workflow.split('\n  acceptance:\n', 1)[1]
+        self.assertLess(acceptance.index('ci_acceptance.py gate'), acceptance.index('ci_acceptance.py summarize'))
+        self.assertIn("if: ${{ failure() && steps.plan.outcome == 'success' }}", acceptance)
+        self.assertIn('path: .artifacts/blocking/failures.json', acceptance)
 
     def test_existing_complete_coverage_is_manual_only(self):
         for name in ('full-checks-manual.yml', 'windows-full-manual.yml'):

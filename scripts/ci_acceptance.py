@@ -15,12 +15,16 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 if __package__:
     from . import ci_impact
+    from .ci_run_layer import unavailable_preparation
     from .run_tests import build_suite, cases
     from .run_check import run as execute_check
+    from .test_result_details import collect_failures
 else:
     import ci_impact
+    from ci_run_layer import unavailable_preparation
     from run_tests import build_suite, cases
     from run_check import run as execute_check
+    from test_result_details import collect_failures
 
 # Admission is explicit: neither the full Node collection nor Python common is
 # labelled stable. These files use mocks/VM/temporary files, not real media or browsers.
@@ -202,18 +206,57 @@ def write(path, value):
     path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8', newline='\n')
 
 
+def summarize_failures(plan, root, *, gate_error=None):
+    summary = {'head': plan['head'], 'checks': plan['checks'], 'failures': [], 'report_errors': []}
+    if gate_error is not None:
+        summary['gate_error'] = gate_error
+    for check in plan['checks']:
+        report = root / check / 'failures.json'
+        if not report.exists():
+            if not (report.parent / 'receipt.json').is_file():
+                summary['report_errors'].append({'check': check, 'error': 'No failure report or receipt was available'})
+            continue
+        try:
+            value = json.loads(report.read_text(encoding='utf-8'))
+            for field in ('failures', 'report_errors'):
+                if not isinstance(value[field], list) or any(not isinstance(entry, dict) for entry in value[field]):
+                    raise ValueError(f'invalid {field} list')
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            summary['report_errors'].append({'check': check, 'error': f'Cannot read the failure report: {error}'})
+            continue
+        for field in ('failures', 'report_errors'):
+            summary[field].extend({**entry, 'check': check} for entry in value[field])
+    path = root.parent / 'failures.json'
+    write(path, summary)
+    print(f'Admitted diagnostics: {len(summary["failures"])} failure/block records, '
+          f'{len(summary["report_errors"])} report issues; {path}')
+
+
 def commands_for(check):
     return {
-        'docs': [[sys.executable, 'scripts/check_docs.py']],
-        'tools': [['node', 'scripts/build-tool-docs.mjs', '--check']],
-        'release': [[sys.executable, 'scripts/prepare_release_notes.py', '--check-all'],
-                    [sys.executable, 'scripts/build_release_site.py', '--preview']],
-        'website': [['pnpm', '--dir', 'website', 'run', 'sync:docs'],
-                    ['git', 'diff', '--exit-code', '--', 'website/src/pages/docs/', 'website/public/docs-assets/'],
-                    [sys.executable, 'scripts/build_release_site.py', '--preview'],
-                    ['pnpm', '--dir', 'website', 'run', 'check'], ['pnpm', '--dir', 'website', 'run', 'build']],
-        'build': [['pnpm', 'run', 'build'], ['pnpm', 'run', 'check:editor'],
-                  ['pnpm', 'run', 'check:launcher'], ['pnpm', 'run', 'typecheck']],
+        'docs': [('docs-navigation', [sys.executable, 'scripts/check_docs.py'], ())],
+        'tools': [('tools-docs', ['node', 'scripts/build-tool-docs.mjs', '--check'], ('node-runtime',))],
+        'release': [
+            ('release-docs', [sys.executable, 'scripts/prepare_release_notes.py', '--check-all'], ()),
+            ('release-site', [sys.executable, 'scripts/build_release_site.py', '--preview'], ()),
+        ],
+        'website': [
+            ('website-docs', ['node', 'website/scripts/sync-maw-docs.mjs'], ('node-runtime',)),
+            ('website-docs-freshness', ['git', 'diff', '--exit-code', '--', 'website/src/pages/docs/',
+                                        'website/public/docs-assets/'], ('website-docs',)),
+            ('website-releases', [sys.executable, 'scripts/build_release_site.py', '--preview'], ()),
+            ('website-check', ['pnpm', '--dir', 'website', 'run', 'check'],
+             ('website-dependencies', 'website-docs', 'website-releases')),
+            ('website-build', ['pnpm', '--dir', 'website', 'run', 'build'],
+             ('website-dependencies', 'website-docs', 'website-releases')),
+        ],
+        'build': [
+            ('build-editor', ['pnpm', 'run', 'build:editor'], ('node-dependencies',)),
+            ('build-launcher', ['pnpm', 'run', 'build:launcher'], ('node-dependencies',)),
+            ('check-editor', ['pnpm', 'run', 'check:editor'], ('build-editor',)),
+            ('check-launcher', ['pnpm', 'run', 'check:launcher'], ('build-launcher',)),
+            ('typecheck', ['pnpm', 'run', 'typecheck'], ('node-dependencies',)),
+        ],
     }.get(check, [])
 
 
@@ -222,44 +265,85 @@ def node_command(files, report):
             '--test-reporter=junit', f'--test-reporter-destination={report}', *files]
 
 
-def run_check(plan, check, root):
+def run_check(plan, check, root, *, unavailable=()):
     validate_plan(plan)
     if check not in plan['checks'] or root.exists():
         raise ValueError('unselected check or stale evidence')
     root.mkdir(parents=True)
     records = []
+    failed = set(unavailable)
+    failures = [{'gate': name, 'kind': 'preparation', 'error': 'CI preparation unavailable'}
+                for name in sorted(failed)]
+    report_errors = []
+    interrupted = None
 
-    def run(command):
+    def run(name, command, needs=(), *, validate=None, python_report=None, node_report=None):
+        nonlocal interrupted
+        blocked = [interrupted] if interrupted else [dependency for dependency in needs if dependency in failed]
+        if blocked:
+            failed.add(name)
+            failures.append({'gate': name, 'kind': 'blocked', 'requires': blocked})
+            print(f'{check}/{name}: blocked by {", ".join(blocked)}')
+            return
         code, result = execute_check(command, 180, root / 'checks')
         records.append({'command': command,
                         'result': (Path(result['log']).parent / 'result.json').resolve().relative_to(root.resolve()).as_posix()})
-        print(f'{check}: {result["status"]}, exit={code}, seconds={result["duration_seconds"]}')
-        if code != 0 or result['status'] != 'completed' or result['cleanup_error']:
-            for line in dict.fromkeys(result['diagnostics'] + result['tail']):
-                print(line)
-            raise ValueError(f'{check} failed; inspect {result["log"]}')
+        print(f'{check}/{name}: {result["status"]}, exit={code}, seconds={result["duration_seconds"]}')
+        error = None
+        if code == 0 and result['status'] == 'completed' and result['cleanup_error'] is None:
+            if validate is None:
+                return
+            try:
+                validate()
+                return
+            except (OSError, ValueError, TypeError, AttributeError, ET.ParseError) as exc:
+                error = str(exc)
+        if result['status'] == 'interrupted':
+            interrupted = name
+        failed.add(name)
+        for line in dict.fromkeys(result['diagnostics'] + result['tail']):
+            print(line)
+        if error:
+            print(f'{check}/{name}: {error[:300]}')
+        print(f'Log: {result["log"]}')
+        detail = collect_failures({**result, 'gate': name, 'process_exit_code': code, 'exit_code': code or 1,
+                                   'error': error}, python_report=python_report, node_report=node_report)
+        failures.extend(detail['failures'])
+        report_errors.extend({'gate': name, 'error': issue} for issue in detail['report_errors'])
 
-    for command in commands_for(check):
-        run(command)
+    for name, command, needs in commands_for(check):
+        run(name, command, needs)
     if check in PYTHON:
         targets = PYTHON[check]
-        expected = [c.id() for c in cases(build_suite(targets, 'tests', 'test_*.py'))]
-        write(root / 'admitted-python-ids.json', expected)
         report = root / 'python.json'
-        run([sys.executable, 'scripts/run_tests.py', *targets, '--required', '--report', str(report)])
-        validate_python_report(json.loads(report.read_text(encoding='utf-8')), expected)
+
+        def validate_python():
+            expected = [c.id() for c in cases(build_suite(targets, 'tests', 'test_*.py'))]
+            write(root / 'admitted-python-ids.json', expected)
+            validate_python_report(json.loads(report.read_text(encoding='utf-8')), expected)
+
+        # Discovery records missing imports as failed cases while unrelated cases can still run.
+        run('python', [sys.executable, 'scripts/run_tests.py', *targets, '--required', '--report', str(report)],
+            validate=validate_python, python_report=report)
     if check in NODE:
         report = root / 'node.xml'
-        expected = node_admission()[check]['names']
         write(root / 'admitted-node-files.json', NODE[check])
-        write(root / 'admitted-node-names.json', expected)
-        run(node_command(NODE[check], report))
-        validate_node_report(expected, ET.parse(report).getroot())
+
+        def validate_node():
+            expected = node_admission()[check]['names']
+            write(root / 'admitted-node-names.json', expected)
+            validate_node_report(expected, ET.parse(report).getroot())
+
+        needs = ('node-runtime', 'node-dependencies') if check in {'build', 'editor'} else ('node-runtime',)
+        run('node', node_command(NODE[check], report), needs, validate=validate_node, node_report=report)
     if check == 'tools':
         for path in plan['paths']:
             if path.endswith('.checklist.md') and Path(path).is_file():
-                run([sys.executable, 'tools/verification-checklist/build.py', '--check', path])
+                run(path, [sys.executable, 'tools/verification-checklist/build.py', '--check', path])
     write(root / 'command-results.json', records)
+    if failed:
+        write(root / 'failures.json', {'failures': failures, 'report_errors': report_errors})
+        raise ValueError(f'{check}: {len(failed)} failed or blocked checks/preparations; inspect {root / "failures.json"}')
     write(root / 'receipt.json', dict(namespace='blocking-2dev', check=check, head=plan['head'],
                                       fingerprint=fingerprint(plan), status='success',
                                       manifest=manifest_fingerprint(check), evidence=seal_evidence(root)))
@@ -267,7 +351,7 @@ def run_check(plan, check, root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('run', 'gate', 'validate'))
+    parser.add_argument('action', choices=('run', 'gate', 'validate', 'summarize'))
     parser.add_argument('--plan', type=Path, default=Path('.artifacts/blocking/plan.json'))
     parser.add_argument('--root', type=Path, default=Path('.artifacts/blocking/evidence'))
     parser.add_argument('--check')
@@ -277,10 +361,25 @@ def main():
     if head != plan['head'] or (os.environ.get('GITHUB_SHA') and os.environ['GITHUB_SHA'] != head):
         raise ValueError('plan differs from checkout/workflow SHA')
     if args.action == 'run':
-        run_check(plan, args.check, args.root / args.check)
+        requirements = {'node-runtime': 'node'} if args.check in NODE else {}
+        if args.check in {'editor', 'build'}:
+            requirements['node-dependencies'] = 'js_install'
+        if args.check in {'ci', 'data', 'runtime'}:
+            requirements['python-dependencies'] = 'py_install'
+        if args.check == 'website':
+            requirements['website-dependencies'] = 'website_install'
+        preparation = os.environ.get('CI_PREPARATION')
+        unavailable = unavailable_preparation(json.loads(preparation), requirements) if preparation else ()
+        run_check(plan, args.check, args.root / args.check, unavailable=unavailable)
+    elif args.action == 'summarize':
+        summarize_failures(plan, args.root)
     elif args.action == 'gate':
-        receipts = [json.loads(p.read_text(encoding='utf-8')) for p in args.root.rglob('receipt.json')]
-        gate(plan, json.loads(os.environ['CI_NEEDS']), receipts, head, args.root)
+        try:
+            receipts = [json.loads(p.read_text(encoding='utf-8')) for p in args.root.rglob('receipt.json')]
+            gate(plan, json.loads(os.environ['CI_NEEDS']), receipts, head, args.root)
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            summarize_failures(plan, args.root, gate_error=str(error))
+            raise
         selected = ('Selected admitted checks passed: ' + ', '.join(plan['checks']) if plan['checks']
                     else 'No admitted checks selected; inspect the separate targeted auxiliary results.')
         message = selected + '\n\n' + plan['reason'] + '\n\n' + GAPS

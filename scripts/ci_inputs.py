@@ -1,4 +1,4 @@
-"""Document inputs consumed by the public website."""
+"""Shared inputs for website, preview and auxiliary checks."""
 from pathlib import Path
 import re
 
@@ -14,3 +14,16 @@ def preview_for(paths):
                or p in {'maw_gui.py', 'edit.py', 'pyproject.toml', 'uv.lock', 'package.json', 'pnpm-lock.yaml',
                         'web/editor-scripts.txt', 'web/launcher-scripts.txt', 'web/editor-modules.json',
                         'web/editor-template.html', 'docs/user/FAQ-常见问题.txt'} for p in paths)
+
+
+def auxiliary_flags(plan):
+    flags = {layer: bool(plan[field]) for layer, field in
+             (('python', 'python_tests'), ('node', 'node_tests'), ('browser', 'e2e_specs'))}
+    flags['selected'] = any(flags.values())
+    flags['website'] = 'tests/e2e/editor-entry-retirement.spec.mjs' in plan['e2e_specs']
+    prep = plan.get('preparation', {})
+    for name in ('application', 'real_media', 'python_dependencies', 'node_browser'):
+        flags[name] = bool(prep.get(name, False))
+    for name in ('editor_bundle', 'launcher_bundle'):
+        flags[name] = bool(prep.get(name, flags['application']))
+    return flags

@@ -8,11 +8,11 @@ import subprocess
 
 try:
     from .ci_inputs import WEBSITE_INPUTS, preview_for
-    from .test_impact_graph import file_consumers, python_consumers, web_behavior_consumers, node_python_dependencies, document_consumers, python_test_dependencies, bundle_consumed, browser_application_consumed
+    from .test_impact_graph import file_consumers, python_consumers, web_behavior_consumers, node_python_dependencies, document_consumers, python_test_dependencies, bundles_consumed, browser_application_consumed, browser_ffmpeg_consumed
     from .test_policy import MEDIA_CLASSES, MEDIA_METHODS, MEDIA_MODULES
 except ImportError:
     from ci_inputs import WEBSITE_INPUTS, preview_for
-    from test_impact_graph import file_consumers, python_consumers, web_behavior_consumers, node_python_dependencies, document_consumers, python_test_dependencies, bundle_consumed, browser_application_consumed
+    from test_impact_graph import file_consumers, python_consumers, web_behavior_consumers, node_python_dependencies, document_consumers, python_test_dependencies, bundles_consumed, browser_application_consumed, browser_ffmpeg_consumed
     from test_policy import MEDIA_CLASSES, MEDIA_METHODS, MEDIA_MODULES
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,14 +42,16 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
     def full(reason):
         return {'mode': 'full', 'packs': sorted(ALL_MERGE | {'docs'}), 'python_tests': [], 'node_tests': [],
                 'e2e_specs': [], 'tools_scope': 'all', 'reasons': [reason], 'fallback_checks': True,
-                'preparation': {'application': True, 'real_media': True, 'lint': True, 'preview_windows': True,
+                'preparation': {'application': True, 'editor_bundle': True, 'launcher_bundle': True,
+                                'real_media': True, 'lint': True, 'preview_windows': True,
                                 'python_dependencies': True, 'node_browser': True}}
     if release or paths is None:
         return full('release or unavailable change list')
     if paths == []:
         return {'mode': 'targeted', 'packs': [], 'python_tests': [], 'node_tests': [], 'e2e_specs': [],
                 'tools_scope': 'all', 'fallback_checks': False, 'reasons': ['no changes'],
-                'preparation': {'application': False, 'real_media': False, 'lint': False, 'preview_windows': False,
+                'preparation': {'application': False, 'editor_bundle': False, 'launcher_bundle': False,
+                                'real_media': False, 'lint': False, 'preview_windows': False,
                                 'python_dependencies': False, 'node_browser': False}}
     if any(not isinstance(path, str) for path in paths):
         return full('invalid change list')
@@ -70,7 +72,8 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
 
     python, node, specs, packs, reasons = set(), set(), set(), set(), []
     fallback = False
-    app = media = False
+    media = False
+    bundles = set()
     lint = any(p.endswith('.py') and p.startswith(('maw/', 'scripts/', 'server-editor/')) for p in normalized)
     docs = []
     domains = []
@@ -158,7 +161,9 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
             if path.startswith(('web/launcher/', 'web/shared/')):
                 add_consumers(path, ['tests/test_launcher_script_syntax.mjs']
                               if (ROOT / 'tests/test_launcher_script_syntax.mjs').is_file() else [])
-        app = bool(web)
+        for path in web:
+            component = path.split('/')[1]
+            bundles.update({component} if component in {'editor', 'launcher'} else {'editor', 'launcher'})
         reasons.append('direct imports, reads and exercised UI consumers')
 
     # Thumbnail jobs are reached through a dynamically loaded server endpoint;
@@ -203,7 +208,7 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
             source = (ROOT / path).read_text(encoding='utf-8')
         except (OSError, UnicodeError):
             continue
-        if re.search(r'''(?:execFileSync|spawnSync|execFile|spawn)\s*\(\s*["'](?:ffmpeg|ffprobe)(?:\.exe)?["']''', source):
+        if browser_ffmpeg_consumed(source):
             media = True
     media_modules = MEDIA_MODULES | {name for name, _ in MEDIA_CLASSES} | {'test_reapeaks', 'test_reapeaks_fixture', 'test_thumbnails'}
     for path in python:
@@ -232,11 +237,14 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
         except (OSError, UnicodeError):
             pass
     server_python = browser_application_consumed(ROOT, specs)
-    app = app or server_python or bundle_consumed(ROOT, python | node)
+    bundles.update(bundles_consumed(ROOT, python | node | specs))
+    if server_python:
+        bundles.add('editor')
     return {'mode': 'targeted', 'packs': sorted(packs), 'python_tests': sorted(python), 'node_tests': sorted(node),
             'e2e_specs': sorted(specs), 'tools_scope': 'checklist' if any(p.startswith('tools/verification-checklist/') for p in domains) else 'all',
             'fallback_checks': fallback, 'reasons': reasons or ['direct test consumer'],
-            'preparation': {'application': app, 'real_media': media, 'lint': lint,
+            'preparation': {'application': bool(bundles), 'editor_bundle': 'editor' in bundles,
+                            'launcher_bundle': 'launcher' in bundles, 'real_media': media, 'lint': lint,
                             'preview_windows': preview_for(normalized),
-                            'python_dependencies': server_python or python_test_dependencies(ROOT, python) or node_python_dependencies(ROOT, node),
+                            'python_dependencies': server_python or python_test_dependencies(ROOT, python) or node_python_dependencies(ROOT, node | specs),
                             'node_browser': node_browser}}
