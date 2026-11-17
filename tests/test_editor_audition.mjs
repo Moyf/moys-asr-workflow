@@ -104,3 +104,30 @@ test('both playback refresh paths suspend gap skipping only while auditioning', 
     }
   }
 });
+
+for (const seek of ['setPlayerCurrentTime', 'seekMediaTo', 'seekMediaBy']) test(`${seek} cancels the audition boundary before queued media events`, () => {
+  const { api, player, emit, timers } = playbackHarness();
+  api.auditionRange(1000, 3500);
+  emit('seeking'); emit('seeked');
+  api[seek](seek === 'seekMediaBy' ? 4 : 5);
+  // Browsers deliver media events asynchronously. A timeupdate already queued
+  // for playback must not stop the user's new position at the old boundary.
+  emit('timeupdate');
+  assert.equal(player.currentTime, 5);
+  assert.equal(player.paused, false);
+  assert.equal(api.isAuditioning, false);
+  assert.equal(timers.size, 0);
+});
+
+
+test('a second seek before the audition start events also cancels its boundary', () => {
+  const { api, player, emit, timers } = playbackHarness();
+  api.auditionRange(1000, 3500);
+  api.setPlayerCurrentTime(5);
+  emit('timeupdate');
+  emit('seeking'); emit('seeked');
+  assert.equal(player.currentTime, 5);
+  assert.equal(player.paused, false);
+  assert.equal(api.isAuditioning, false);
+  assert.equal(timers.size, 0);
+});
