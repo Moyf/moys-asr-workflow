@@ -198,6 +198,75 @@ test('media scope includes the bound source and cancellation cleans an admitted 
   await expect(page.locator('#fcp7-export-confirm')).toBeEnabled();
 });
 
+test('image export waits for coverage and readiness before building ASS or starting a job', async ({ page }) => {
+  test.setTimeout(120000);
+  let releaseCoverage;
+  const coverageGate = new Promise(resolve => { releaseCoverage = resolve; });
+  const jobs = [];
+  page.on('request', request => {
+    if (request.method() === 'POST' && request.url().includes('/api/exports/fcp7-png/jobs')) jobs.push(request.url());
+  });
+  await page.route('**/api/ass-font-coverage', async route => {
+    await coverageGate;
+    await route.continue();
+  });
+  try {
+    await open(page);
+    await page.locator('#fcp7-export-custom-width').fill('320');
+    await page.locator('#fcp7-export-custom-height').fill('180');
+    await page.evaluate(() => {
+      const fonts = window.MaweAssFontAliases;
+      const original = window.MaweExportSrt;
+      let releaseReady;
+      const readyGate = new Promise(resolve => { releaseReady = resolve; });
+      window.__fcpWaitProbe = { readyCalls: 0, builds: 0, releaseReady };
+      window.MaweAssFontAliases = { ...fonts, async whenReady(...args) {
+        window.__fcpWaitProbe.readyCalls++;
+        await readyGate;
+        return fonts.whenReady(...args);
+      } };
+      window.MaweExportSrt = { ...original,
+        buildAss(...args) { window.__fcpWaitProbe.builds++; return original.buildAss(...args); },
+        buildGapRemovedAss(...args) { window.__fcpWaitProbe.builds++; return original.buildGapRemovedAss(...args); },
+      };
+    });
+    const request = page.waitForRequest(r => r.url().includes('/api/ass-font-coverage'), { timeout: 30000 });
+    await page.locator('#fcp7-export-confirm').click();
+    await request;
+    expect(await page.evaluate(() => window.__fcpWaitProbe.readyCalls)).toBe(0);
+    expect(await page.evaluate(() => window.__fcpWaitProbe.builds)).toBe(0);
+    expect(jobs).toEqual([]);
+
+    const coverage = page.waitForResponse(r => r.url().includes('/api/ass-font-coverage'), { timeout: 30000 });
+    releaseCoverage();
+    expect((await coverage).status()).toBe(200);
+    await expect.poll(() => page.evaluate(() => window.__fcpWaitProbe.readyCalls), { timeout: 30000 }).toBe(1);
+    expect(await page.evaluate(() => window.MaweAssFontAliases.coverageAvailable())).toBe(true);
+    expect(await page.evaluate(() => window.__fcpWaitProbe.builds)).toBe(0);
+    expect(jobs).toEqual([]);
+
+    const admitted = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith('/fcp7-png/jobs'));
+    const published = page.waitForResponse(r => r.url().includes('/fcp7-png/jobs/') && r.url().endsWith('/publish'));
+    await page.evaluate(() => window.__fcpWaitProbe.releaseReady());
+    const [job, result] = await Promise.all([admitted, published]);
+    expect(job.postDataJSON().ass).toContain('[Script Info]');
+    expect(result.status()).toBe(200);
+    expect(await page.evaluate(() => window.__fcpWaitProbe.builds)).toBe(1);
+    await expect(page.locator('#fcp7-export-status')).toContainText('已保存');
+  } finally {
+    try {
+      if (!page.isClosed()) await page.evaluate(() => {
+        if (document.getElementById('fcp7-export-modal')?.dataset.busy) {
+          document.getElementById('fcp7-export-stop')?.click();
+        }
+        window.__fcpWaitProbe?.releaseReady();
+      });
+    } finally {
+      releaseCoverage();
+    }
+  }
+});
+
 for (const stage of ['coverage', 'ready']) for (const timing of ['stop-first', 'resolve-first']) {
   test(`stopping image export while ${stage} waits releases only this consumer (${timing})`, async ({ page }) => {
     await open(page);

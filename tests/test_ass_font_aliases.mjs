@@ -386,12 +386,13 @@ test('lazy coverage deadline includes JSON, settles legacy fallback and does not
   assert.equal(aliases.loaded(), true, 'light aliases remain usable after coverage timeout');
 });
 
-test('ASS output entry points explicitly await lazy coverage before serializing', () => {
+test('ASS downloads and burns retain picker activation and font readiness', () => {
   const read = file => fs.readFileSync(new URL(`../web/editor/${file}`, import.meta.url), 'utf8');
   const downloads = read('io/editor-wiring-export-actions.js');
   assert.equal((downloads.match(/await downloadPreparedAss\(/g) || []).length, 2);
   assert.ok(downloads.indexOf('await MaweHost.files.pickSaveFile') < downloads.indexOf('await loading'), 'ASS downloads retain picker activation');
-  assert.match(read('io/editor-dynamic-exports.js'), /await window\.MaweAssFontAliases\?\.ensureCoverage\?\.\(\)/);
+  // FCP7 image exports exercise both font waits and actual job admission in
+  // tests/e2e/fcp7-png.spec.mjs, including cancellation and shared loading.
   // Frame readiness and lifecycle cancellation are exercised against the actual
   // module in test_ass_frame_font_wait.mjs, not a first-statement source regex.
   const burn = read('io/editor-wiring-burn-video.js');
