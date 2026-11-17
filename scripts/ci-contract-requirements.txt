@@ -1,0 +1,5 @@
+# Existing core dependency needed when direct save contracts import the Server.
+# Keep aligned with uv.lock; no application environment sync or optional extras.
+send2trash==2.1.0 \
+    --hash=sha256:0da2f112e6d6bb22de6aa6daa7e144831a4febf2a87261451c4ad849fe9a873c \
+    --hash=sha256:1c72b39f09457db3c05ce1d19158c2cbef4c32b8bedd02c155e49282b7ea7459

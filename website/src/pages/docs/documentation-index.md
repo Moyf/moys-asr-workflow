@@ -174,6 +174,11 @@ source: "docs/INDEX.md"
 
 ## 共享计划
 
+<a name="plan-ci-gate-correction-2dev"></a>
+### 2.0dev 日常 CI 准入纠偏
+
+[打开计划](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/CI_GATE_CORRECTION_2DEV.md)
+
 <a name="plans-maw20-integration"></a>
 ### MAW 2.0 集成与 Starlight 交付
 

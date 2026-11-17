@@ -33,4 +33,5 @@ jobs:
           enable-cache: true
 
       - name: Run Ruff check
-        run: uv run --frozen ruff check
+        # Lint needs only Ruff, not the whole application environment.
+        run: uvx --from ruff==0.16.3 ruff check
