@@ -41,6 +41,8 @@ else:
             if mode == 'hang':
                 threading.Event().wait(60)
                 return
+            if mode == 'slow-root' and self.path == '/':
+                time.sleep(2)
             self.send_response(200)
             self.end_headers()
             status = {'startup-error': 'error', 'wrapper-exit': 'loading'}.get(mode, 'ready')

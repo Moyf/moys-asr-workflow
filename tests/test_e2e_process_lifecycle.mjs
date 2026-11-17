@@ -66,7 +66,7 @@ async function runScenario(kind, scenario, action = 'stop') {
   const evidence = join(root, 'evidence');
   mkdirSync(evidence);
   const bystander = await startBystander();
-  const expectsReady = scenario === 'ready' || scenario === 'slow-ready';
+  const expectsReady = scenario === 'ready' || scenario === 'slow-ready' || scenario === 'slow-root';
   // Cleanup tests are not startup performance benchmarks. Successful startup
   // needs room for Python/process scheduling under the parallel Node suite.
   // Keep injected failure deadlines short, and retain the Windows Job budget.
@@ -108,7 +108,12 @@ async function runScenario(kind, scenario, action = 'stop') {
     } else if (!expectsReady) {
       assert.equal(result.code, 1, output);
       assert.ok(message?.failure, output);
-      if (scenario === 'hang') assert.match(message.failure, /did not/);
+      if (scenario === 'hang') {
+        assert.match(message.failure, /did not/);
+        if (kind === 'helpers') assert.match(message.failure, /Last probe: (?:(?:TimeoutError|TypeError):|no completed probe)/);
+      }
+      if (scenario === 'startup-error') assert.match(message.failure,
+        kind === 'helpers' ? /Server project startup failed/ : /"status":"error"/);
     } else if (action.startsWith('signal:')) {
       assert.equal(result.code, { SIGINT: 130, SIGTERM: 143, SIGBREAK: 149, SIGHUP: 129 }[action.slice(7)]);
     } else if (action === 'exit') assert.equal(result.code, 0, output);
@@ -156,3 +161,7 @@ for (const kind of ['scroll', 'helpers']) {
       () => runScenario(kind, 'ready', action));
   }
 }
+
+test('helpers: ready project does not depend on fast editor HTML rendering',
+  { timeout: process.platform === 'win32' ? 60_000 : 12_000 },
+  () => runScenario('helpers', 'slow-root'));
