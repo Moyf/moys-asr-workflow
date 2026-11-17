@@ -32,6 +32,7 @@ tests/e2e/editor-bundle.spec.mjs
 tests/e2e/editor-help-srt-burn.spec.mjs
 tests/e2e/editor-i18n-save.spec.mjs
 tests/e2e/editor-menu-focus.spec.mjs
+tests/e2e/editor-save-recovery.spec.mjs
 tests/e2e/editor-text-tools.spec.mjs
 tests/e2e/editor-transactions.spec.mjs
 tests/e2e/fcp7-export.spec.mjs

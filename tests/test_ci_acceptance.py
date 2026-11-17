@@ -230,9 +230,9 @@ with mock.patch.object(ci_acceptance.subprocess, 'run', side_effect=command):
         self.assertIn('tests/e2e/editor-bundle.spec.mjs', baseline)
         self.assertEqual(baseline['tests/e2e/editor-bundle.spec.mjs'], 'full-inspection-only')
         with redirect_stdout(io.StringIO()) as output:
-            result = inventory(discovered=set(baseline) | {'tests/e2e/editor-save-recovery.spec.mjs'})
+            result = inventory(discovered=set(baseline) | {'tests/e2e/zz-unregistered-fixture.spec.mjs'})
             stale = inventory(discovered=set(baseline) - {'tests/e2e/editor-bundle.spec.mjs'})
-        self.assertEqual(result['tests/e2e/editor-save-recovery.spec.mjs'], 'unreviewed observation/full inspection')
+        self.assertEqual(result['tests/e2e/zz-unregistered-fixture.spec.mjs'], 'unreviewed observation/full inspection')
         self.assertEqual(stale['tests/e2e/editor-bundle.spec.mjs'], 'stale observation metadata (not discovered)')
         self.assertIn('unreviewed observation/full inspection', output.getvalue())
         self.assertIn('stale observation metadata', output.getvalue())
@@ -264,7 +264,7 @@ with mock.patch.object(ci_acceptance.subprocess, 'run', side_effect=command):
         from scripts import ci_acceptance as acceptance
         original = acceptance.inventory
         baseline = original()
-        extra = 'tests/e2e/editor-save-recovery.spec.mjs'
+        extra = 'tests/e2e/zz-unregistered-fixture.spec.mjs'
         head = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip()
         plan = ci_impact.plan('stable', 'inherited main test audit', head=head)
         needs = {'selection': {'result': 'success', 'outputs': {'plan': json.dumps(plan)}},
