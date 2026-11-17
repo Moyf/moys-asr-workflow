@@ -426,7 +426,7 @@ class ThumbnailJobManager:
         self.leases[key] = {"client": client, "expires": now+LEASE_SECONDS, "view": -1,
             "playing": False, "visible": False, "ranges": [], "representatives": [],
             "interval": 2000, "targets": [], "playhead": 0, "assets": set(), "pending": False,
-            "decode": True}
+            "decode": True, "pins_attempted": False}
         return key
 
     def _pins(self, lease, assets):
@@ -434,7 +434,10 @@ class ThumbnailJobManager:
         item = self.leases[lease]
         owner = f"{self.manager_id}:{lease}"
         if not assets:
-            thumbnail_cache.release_owner(owner)
+            # A new owner has no pins to release. Once a write is attempted,
+            # keep releasing on later empty snapshots, even after a failure.
+            if item["pins_attempted"]:
+                thumbnail_cache.release_owner(owner)
             item["assets"] = set()
             return
         if not self.path or not self.info:
@@ -453,6 +456,7 @@ class ThumbnailJobManager:
         if removed:
             thumbnail_cache.release_assets(self.path, list(removed), owner=owner)
         if assets:
+            item["pins_attempted"] = True
             thumbnail_cache.protect_assets(self.path, list(assets), owner=owner, lease_seconds=LEASE_SECONDS)
         item["assets"] = assets
 
