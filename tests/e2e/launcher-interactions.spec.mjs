@@ -606,6 +606,9 @@ test('blank LLM form fields use the effective connection and save response', asy
   await page.locator('#autoPostprocessEnabled').check();
   await page.locator('#autoStepProofread').click();
   await expect(page.locator('#settingsModal')).toBeVisible();
+  // openSettings focuses this field in a nested animation frame. Finish that
+  // handoff before fill('') uses keyboard deletion in another field.
+  await expect(page.locator('#llmModel')).toBeFocused();
   await page.locator('#llmBaseUrl').fill('');
   await page.locator('#llmModel').fill('');
   await page.locator('#testLlmConnection').click();
@@ -621,10 +624,12 @@ test('blank LLM form fields use the effective connection and save response', asy
     const item = window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'deepseek');
     return [item.hasBaseUrl, item.hasModel, item.verified];
   })).toEqual([true, true, true]);
-  for (const { payload } of await page.evaluate(() => window.llmFallbackCalls)) {
-    expect(payload.baseUrl).toBe('');
-    expect(payload.model).toBe('');
-  }
+  await expect.poll(() => page.evaluate(() => window.llmFallbackCalls.map(({ method, payload }) => ({
+    method, baseUrl: payload.baseUrl, model: payload.model,
+  })))).toEqual([
+    { method: 'test_postprocess_connection', baseUrl: '', model: '' },
+    { method: 'save_postprocess_settings', baseUrl: '', model: '' },
+  ]);
 });
 
 test('system notifications are disabled by default and announce enabling', async ({ page }) => {
