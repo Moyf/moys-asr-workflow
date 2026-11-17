@@ -125,3 +125,5 @@ expected failure、unexpected success、退出码及完整日志位置；并行�
 Python JSON 的 `failure_details` 是附加字段，串行和并行路径均保留；完整 traceback
 仍在原 `.log` 中。摘要限制报告大小、展示条数和文本长度，转义 HTML 并脱敏用户目录。
 摘要步骤即使失败，也不会掩盖原测试失败或替代矩阵校验。
+
+写用例、分析首次失败与判断测试价值，见[测试可靠性指南](../INDEX.md#engineering-test-reliability)。
