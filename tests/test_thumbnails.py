@@ -229,6 +229,36 @@ class ThumbnailTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(len(result.stderr), 8192)
 
+    def test_child_output_is_measured_without_querying_the_shared_cursor(self):
+        real_temporary_file = tempfile.TemporaryFile
+        class CursorGuard:
+            def __init__(self):
+                self.file = real_temporary_file()
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return self.file.__exit__(*args)
+            def __getattr__(self, name):
+                if name == 'tell':
+                    raise AssertionError('child output size must not depend on a shared file cursor')
+                return getattr(self.file, name)
+        with mock.patch.object(t.tempfile, 'TemporaryFile', side_effect=CursorGuard):
+            result = t._run([sys.executable, '-c', "import sys; sys.stdout.buffer.write(b'complete'); sys.stderr.write('x'*9000)"], timeout_s=5)
+        self.assertEqual(result.stdout, b'complete')
+        self.assertEqual(result.stderr, b'x'*8192)
+
+    def test_exited_child_cannot_bypass_output_limits(self):
+        real_spawn = subprocess.Popen
+        def spawn_and_wait(*args, **kwargs):
+            process = real_spawn(*args, **kwargs)
+            process.wait(timeout=10)
+            return process
+        for stream in ('stdout', 'stderr'):
+            with self.subTest(stream=stream), mock.patch.object(t.subprocess, 'Popen', side_effect=spawn_and_wait):
+                script = f"import sys; sys.{stream}.buffer.write(b'x' * (8*1024*1024+1))"
+                with self.assertRaises(t.ThumbnailError):
+                    t._run([sys.executable, '-c', script], timeout_s=10)
+
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
 class ThumbnailIntegrationTests(unittest.TestCase):

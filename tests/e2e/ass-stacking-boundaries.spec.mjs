@@ -97,7 +97,9 @@ async function configure(page, fixture) {
     await window.MaweAssFontAliases?.whenReady?.();
   });
   await page.evaluate(async f => {
+    console.debug('[ass-stacking-configure] style-load:start');
     await loadAssStyleLibrary({ force: true });
+    console.debug('[ass-stacking-configure] style-load:done fixture:start');
     ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
     const main = ASS_STYLE_LIBRARY.styles.find(s => s.id === 'ass');
     const extension = ASS_STYLE_LIBRARY.styles.find(s => s.id === 'ass-extension');
@@ -142,9 +144,13 @@ async function configure(page, fixture) {
       exportSpeakerLabels: Boolean(f.speaker) });
     MaweDom.overlayToggle.checked = true;
     MaweDom.extensionOverlayToggle.checked = true;
+    console.debug('[ass-stacking-configure] fonts.load:start');
     await document.fonts.load('64px Arial');
+    console.debug('[ass-stacking-configure] fonts.ready:start');
     await document.fonts.ready;
+    console.debug('[ass-stacking-configure] refresh:start');
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    console.debug('[ass-stacking-configure] complete');
   }, fixture);
 }
 
