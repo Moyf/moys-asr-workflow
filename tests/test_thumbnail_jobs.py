@@ -263,12 +263,71 @@ class ThumbnailDemandTests(unittest.TestCase):
             fresh = thumbnails.FrameResult(0,0,"target",b"jpeg")
             with mock.patch.object(thumbnail_cache,"lookup_frames",return_value=[None]), \
                  mock.patch.object(thumbnail_cache,"sample_key",return_value="frame-key"), \
+                 mock.patch.object(thumbnail_cache,"get_video_info",return_value=SimpleNamespace(stream_index=0,duration_ms=9000)), \
                  mock.patch.object(thumbnail_cache,"register_frames",return_value=[]), \
                  mock.patch.object(thumbnail_cache,"get_or_extract_frames",side_effect=AssertionError("fresh frame lost")), \
                  mock.patch.object(thumbnails,"extract_frames",return_value=[fresh]) as decode:
                 result = coordinated_extract(path,[0],coordinator=coord,background=True)
             self.assertEqual(result,[fresh])
             decode.assert_called_once()
+
+    def test_visible_decode_reuses_cached_video_info(self):
+        from maw import thumbnail_cache, thumbnails
+        from maw.thumbnail_jobs import coordinated_extract
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'video.mp4'
+            path.write_bytes(b'source')
+            coord = ThumbnailCoordinator(Path(temp) / 'jobs.sqlite3')
+            video = SimpleNamespace(stream_index=0, duration_ms=9000)
+            frame = thumbnails.FrameResult(0, 0, 'target', b'jpeg')
+            with mock.patch.object(thumbnail_cache, 'lookup_frames', side_effect=[[None], [frame]]), \
+                 mock.patch.object(thumbnail_cache, 'sample_key', return_value='frame-key'), \
+                 mock.patch.object(thumbnail_cache, 'get_video_info', return_value=video) as get_info, \
+                 mock.patch.object(thumbnail_cache, 'register_frames'), \
+                 mock.patch.object(thumbnails, 'extract_frames', return_value=[frame]) as extract:
+                self.assertEqual(coordinated_extract(path, [0], coordinator=coord), [frame])
+            self.assertIs(extract.call_args.kwargs['info'], video)
+            get_info.assert_called_once()
+
+    def test_cached_info_is_not_used_after_source_replacement(self):
+        from maw import thumbnail_cache, thumbnails
+        from maw.thumbnail_jobs import coordinated_extract
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'video.mp4'
+            path.write_bytes(b'source')
+            coord = ThumbnailCoordinator(Path(temp) / 'jobs.sqlite3')
+            def replace_source(*_args, **_kwargs):
+                path.write_bytes(b'replacement source')
+                return SimpleNamespace(stream_index=0, duration_ms=9000)
+            with mock.patch.object(thumbnail_cache, 'lookup_frames', return_value=[None]), \
+                 mock.patch.object(thumbnail_cache, 'sample_key', return_value='frame-key'), \
+                 mock.patch.object(thumbnail_cache, 'get_video_info', side_effect=replace_source), \
+                 mock.patch.object(thumbnail_cache, 'register_frames') as register, \
+                 mock.patch.object(thumbnails, 'extract_frames') as extract:
+                self.assertEqual(coordinated_extract(path, [0], coordinator=coord), [])
+            extract.assert_not_called()
+            register.assert_not_called()
+
+    def test_cancel_during_cached_info_lookup_does_not_start_decode(self):
+        from maw import thumbnail_cache, thumbnails
+        from maw.thumbnail_jobs import coordinated_extract
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'video.mp4'
+            path.write_bytes(b'source')
+            coord = ThumbnailCoordinator(Path(temp) / 'jobs.sqlite3')
+            cancel = threading.Event()
+            def cancel_lookup(*_args, **_kwargs):
+                cancel.set()
+                return SimpleNamespace(stream_index=0, duration_ms=9000)
+            with mock.patch.object(thumbnail_cache, 'lookup_frames', return_value=[None]), \
+                 mock.patch.object(thumbnail_cache, 'sample_key', return_value='frame-key'), \
+                 mock.patch.object(thumbnail_cache, 'get_video_info', side_effect=cancel_lookup), \
+                 mock.patch.object(thumbnail_cache, 'register_frames') as register, \
+                 mock.patch.object(thumbnails, 'extract_frames') as extract:
+                with self.assertRaises(thumbnails.ThumbnailCancelled):
+                    coordinated_extract(path, [0], coordinator=coord, cancel=cancel)
+            extract.assert_not_called()
+            register.assert_not_called()
 
     def test_visible_decode_demand_can_extend_beyond_limited_base(self):
         """共享的限长基础缓存不能限制当前工程的可见区补帧。"""

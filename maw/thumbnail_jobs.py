@@ -150,7 +150,14 @@ def coordinated_extract(path, targets, *, stream_index=None, cancel=None, coordi
     try:
         if selected and not (cancel is not None and cancel.is_set()) and not coordinator.paused(identity, background=background):
             try:
-                frames = thumbnails.extract_frames(path, selected, stream_index=stream_index, cancel=stop, ffmpeg_path=ffmpeg_path, threads=threads)
+                # lookup_frames already populated the source-validated metadata memo.
+                # Reuse it for each batch instead of spawning another ffprobe.
+                info = cache.get_video_info(path, cancel=stop, ffmpeg_path=ffmpeg_path)
+                if stop.is_set() or (cancel is not None and cancel.is_set()):
+                    raise thumbnails.ThumbnailCancelled("thumbnail request cancelled")
+                if source_key(path) != identity:
+                    return []
+                frames = thumbnails.extract_frames(path, selected, stream_index=stream_index, cancel=stop, ffmpeg_path=ffmpeg_path, info=info, threads=threads)
             except thumbnails.ThumbnailCancelled:
                 if cancel is not None and cancel.is_set():
                     raise
