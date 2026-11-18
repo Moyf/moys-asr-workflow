@@ -107,7 +107,7 @@ uv run --no-sync python scripts/run_tests.py
 git diff --check
 ```
 
-交互改动还需启动 `uv run --no-sync python server-editor/serve.py --blank`，验证拖动、播放、Seek、布局与保存。新增界面文字保持可读字号，元素垂直间隔至少 8px，并实测间距和截图自查。文本统一 UTF-8 / LF。
+交互改动还需启动 `uv run --no-sync python server-editor/serve.py --blank`，验证拖动、播放、Seek、布局与保存；间距、字号与工具页验收见根 [AGENTS 的 UI 间距约定](https://github.com/Moyf/moys-asr-workflow/blob/main/AGENTS.md)。文本统一 UTF-8 / LF。
 
 ### PR 提交前检查
 
