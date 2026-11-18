@@ -14,7 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
-| 1.11.3 之后 | 2026-11-18 | [PR405 Windows 预览异常](release1.11.3/261118_PR405预览异常/TEST_FEEDBACK_PR405预览异常.md) / [独立审查](release1.11.3/261118_PR405预览异常/REVIEW_FINDINGS.md) | 修复主目录环境隔离与 HTTP mock 模块名；两种导入通过，保留平台 skips，远端未重跑 |
+| 1.11.3 之后 | 2026-11-18 | [PR405 Windows 预览异常](release1.11.3/261118_PR405预览异常/TEST_FEEDBACK_PR405预览异常.md) / [独立审查](release1.11.3/261118_PR405预览异常/REVIEW_FINDINGS.md) | 夹具修复后 Windows lite 预览通过；合并审阅补齐非托管回退接口，含真实签名反向验证，完整版模型端到端仍未测 |
 | 1.11.3 之后 | 2026-11-16 | [全屏预览测试同步](release1.11.3/261116_全屏预览测试同步/REVIEW_FINDINGS.md) | 受控延迟对照与独立审查，等待舞台和字幕覆盖层几何就绪 |
 | 1.11.3 之后 | 2026-11-16 | [编辑器服务就绪探测](release1.11.3/261116_编辑器服务就绪探测/REVIEW_FINDINGS.md) | 轻量状态端点、受控慢首页对照与未确认的 CI 根因 |
 | 1.11.3 之后 | 2026-11-17 | [CI门禁纠偏实施](release1.11.3/261117_CI门禁纠偏/TEST_FEEDBACK_CI门禁纠偏.md) / [覆盖撤回核对](release1.11.3/261117_CI门禁纠偏/COVERAGE_WITHDRAWAL_AUDIT.md) / [准入清单](release1.11.3/261117_CI门禁纠偏/ADMISSION.md) / [独立审查](release1.11.3/261117_CI门禁纠偏/REVIEW_FINDINGS.md) / [人工清单](release1.11.3/261117_CI门禁纠偏/CI门禁纠偏.checklist.md) / [方案](../plans/CI_GATE_CORRECTION.md) | 撤销PR/main自动覆盖扩张，区分稳定合并检查与完整辅助巡检；进度以账本为准 |

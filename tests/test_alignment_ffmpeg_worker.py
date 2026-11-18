@@ -338,6 +338,66 @@ class TemporaryDirectoryPolicyTests(unittest.TestCase):
                 self.assertEqual(directory.cleaned, not preserved)
 
 
+class GuiTimestampFallbackTests(unittest.TestCase):
+    """Keep the real GUI/domain call boundary; replace only model and decoding."""
+
+    def _run_fallback(self, *, after_transcription):
+        from maw.gui_web import LauncherApi, LauncherPaths
+        from maw.gui_workflow import TranscriptionRequest, TranscriptionResult
+        from maw.timestamp_alignment import TimedToken
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            media, project, srt = (root / name for name in ("clip.wav", "source.mosp", "source.srt"))
+            media.write_bytes(b"placeholder")
+            project.write_text(json.dumps({
+                "segments": [{"start": 0, "end": 1000, "text": "你好"}],
+                "language": "zh",
+            }), encoding="utf-8")
+            srt.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+            tools = root / "tools"
+            tools.mkdir()
+            ffmpeg = tools / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+            ffmpeg.write_text("fixture; decoding is mocked", encoding="utf-8")
+            api = LauncherApi(paths=LauncherPaths(
+                root=root, env_path=root / "configuration", launcher_html=root / "launcher.html",
+            ), window_getter=lambda: None)
+            backend = SimpleNamespace(align=lambda *args, **kwargs: [
+                TimedToken("你", 0, 500), TimedToken("好", 500, 1000),
+            ])
+            environment = {"PATH": "", "FFMPEG_PATH": "", "MAW_APP_DATA_ROOT": str(root / "app-data")}
+            with mock.patch.dict(os.environ, environment), \
+                 mock.patch("maw.gui_config.load_env", return_value={"FFMPEG_PATH": str(tools)}), \
+                 mock.patch("maw.gui_web.effective_config", return_value=SimpleNamespace(model_cache_root="")), \
+                 mock.patch.object(api, "_local_runtime_status", return_value=SimpleNamespace(ready=False)), \
+                 mock.patch("maw.gui_web.inspect_alignment_model", return_value=SimpleNamespace(status="ready", installed=True)), \
+                 mock.patch("maw.timestamp_alignment.create_alignment_backend", return_value=backend), \
+                 mock.patch("maw.timestamp_alignment._extract_audio_span", autospec=True) as extract:
+                if after_transcription:
+                    result = api._align_transcription_result(
+                        TranscriptionRequest(media_path=media, srt_path=srt, alignment_model="qwen"),
+                        TranscriptionResult(srt_path=srt, json_path=project, html_path=None), threading.Event(),
+                    )
+                    output = result.json_path
+                    self.assertTrue(result.srt_path.is_file())
+                else:
+                    result = api.run_timestamp_alignment({
+                        "modelId": "qwen", "mediaPath": str(media), "projectPath": str(project),
+                    })
+                    self.assertTrue(result["ok"], result)
+                    output = Path(result["projectPath"])
+                extract.assert_called_once()
+                self.assertEqual(extract.call_args.kwargs["ffmpeg_path"], ffmpeg)
+            aligned = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual([item["text"] for item in aligned["segments"][0]["items"]], ["你", "好"])
+
+    def test_toolbox_fallback_keeps_real_signature_and_saved_ffmpeg(self):
+        self._run_fallback(after_transcription=False)
+
+    def test_post_transcription_fallback_keeps_real_signature_and_saved_ffmpeg(self):
+        self._run_fallback(after_transcription=True)
+
+
 class AlignmentFfmpegWorkerTests(unittest.TestCase):
     def setUp(self):
         self.preserve_temp = os.environ.get("MAW_TEST_PRESERVE_TEMP") == "1"
@@ -868,7 +928,7 @@ class AlignmentFfmpegWorkerTests(unittest.TestCase):
              mock.patch("maw.gui_web.effective_config", return_value=SimpleNamespace(model_cache_root="")), \
              mock.patch.object(api, "_local_runtime_status", return_value=SimpleNamespace(ready=False)), \
              mock.patch("maw.gui_web.inspect_alignment_model", return_value=SimpleNamespace(status="ready", installed=True)), \
-             mock.patch("maw.gui_web.process_timestamp_alignment", side_effect=align):
+              mock.patch("maw.gui_web.process_timestamp_alignment", autospec=True, side_effect=align):
             result = api.run_timestamp_alignment({"modelId": "qwen", "mediaPath": str(media), "projectPath": str(project)})
             self.assertTrue(result["ok"], result)
             request = TranscriptionRequest(media_path=media, srt_path=srt, alignment_model="qwen")
