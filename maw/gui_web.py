@@ -465,6 +465,14 @@ def _independent_app_child_environment() -> dict[str, str]:
     return environment
 
 
+def _alignment_server_child_environment() -> dict[str, str]:
+    from maw.ffmpeg import _ALIGNMENT_ORIGINAL_PATH_ENV
+
+    environment = _independent_app_child_environment()
+    environment[_ALIGNMENT_ORIGINAL_PATH_ENV] = os.environ.get("PATH", "")
+    return environment
+
+
 def _launcher_icon_path() -> Path:
     """返回当前平台的 Launcher 图标，避免 macOS 使用 Windows ICO。"""
 
@@ -1104,7 +1112,11 @@ class LauncherApi:
             return _error_result("toolboxTimestampScriptPath", "alignment_failed", "文稿驱动对齐需要文稿与媒体文件。")
         self._emit_postprocess_status("toolbox_status_reading")
         try:
-            report = check_script_alignment(ScriptAlignmentRequest(media_path=media_path, **self._script_alignment_options(payload)))
+            tools = _postprocess_ffmpeg_tools(self.paths.env_path)
+            report = check_script_alignment(
+                ScriptAlignmentRequest(media_path=media_path, **self._script_alignment_options(payload)),
+                ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe,
+            )
             return {"ok": True, "report": report.to_payload()}
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
             return _error_result("toolboxTimestampScriptPath", "alignment_failed", str(error))
@@ -1174,6 +1186,7 @@ class LauncherApi:
                     output_directory=_optional_path(payload.get("outputDirectory")),
                     device=str(payload.get("device") or "auto"),
                     model_cache_root=model_cache_root,
+                    ffmpeg_path=effective_config_value(self.paths.env_path, "FFMPEG_PATH") or None,
                     on_event=lambda line: self._emit({"type": "log", "message": line}),
                     **script_options,
                 )
@@ -1186,6 +1199,7 @@ class LauncherApi:
             if script_mode:
                 from maw.script_timestamp_alignment import ScriptAlignmentRequest, run_script_alignment
 
+                tools = _postprocess_ffmpeg_tools(self.paths.env_path)
                 artifact, report = run_script_alignment(ScriptAlignmentRequest(
                     media_path=media_path,
                     model_path=requested_model_path,
@@ -1193,7 +1207,7 @@ class LauncherApi:
                     device=str(payload.get("device") or "auto"),
                     output_directory=_optional_path(payload.get("outputDirectory")),
                     **script_options,
-                ))
+                ), ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe)
                 self._emit_postprocess_status("toolbox_status_writing")
                 return {**_subtitle_artifact_result(artifact), "report": report.to_payload()}
             artifact, report = process_timestamp_alignment(
@@ -1208,7 +1222,7 @@ class LauncherApi:
                     model_cache_root=Path(model_cache_root) if model_cache_root else None,
                     device=str(payload.get("device") or "auto"),
                     output_directory=_optional_path(payload.get("outputDirectory")),
-                )
+                ), ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path)
             )
             self._emit_postprocess_status("toolbox_status_writing")
         except (OSError, UnicodeError, ValueError, RuntimeError, TimestampAlignmentError) as error:
@@ -2294,7 +2308,7 @@ class LauncherApi:
                 stdout=self.alignment_log_file,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=_independent_app_child_environment(),
+                env=_alignment_server_child_environment(),
                 cwd=str(self.paths.root),
                 **process_group_kwargs(),
             )
@@ -3436,6 +3450,7 @@ class LauncherApi:
                 model_path=request.alignment_model_path or None,
                 device=request.device,
                 model_cache_root=model_cache_root,
+                ffmpeg_path=effective_config_value(self.paths.env_path, "FFMPEG_PATH") or None,
                 cancel_event=cancel_event,
                 on_event=lambda line: self._emit({"type": "log", "message": line}),
             )
@@ -3463,7 +3478,7 @@ class LauncherApi:
                     model_path=Path(request.alignment_model_path) if request.alignment_model_path else None,
                     model_cache_root=Path(model_cache_root) if model_cache_root else None,
                     device=request.device,
-                )
+                ), ffmpeg_path=_postprocess_ffmpeg(self.paths.env_path)
             )
             artifact = {
                 "projectPath": str(artifact_obj.project_path or ""),

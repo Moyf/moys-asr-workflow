@@ -533,7 +533,9 @@ def align_local_transcription(
     )
 
 
-def run_timestamp_alignment(request: TimestampAlignmentRequest) -> tuple[SubtitleArtifact, TimestampAlignmentReport]:
+def run_timestamp_alignment(
+    request: TimestampAlignmentRequest, *, ffmpeg_path: str | Path | None = None,
+) -> tuple[SubtitleArtifact, TimestampAlignmentReport]:
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
     media = request.media_path
     if media is None:
@@ -553,6 +555,7 @@ def run_timestamp_alignment(request: TimestampAlignmentRequest) -> tuple[Subtitl
         model_path=request.model_path or "",
         model_cache_root=request.model_cache_root,
         device=request.device,
+        ffmpeg_path=ffmpeg_path,
     )
     warnings = report.warnings
     if report.failed_segments:
