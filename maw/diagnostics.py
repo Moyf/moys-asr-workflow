@@ -9,7 +9,7 @@ import tomllib
 
 
 # Updated by scripts/sync_launcher_version.py from project.version.
-BUNDLED_APP_VERSION = "1.11.3"
+BUNDLED_APP_VERSION = "1.11.4"
 
 
 def app_version(root: Path | None = None) -> str:
