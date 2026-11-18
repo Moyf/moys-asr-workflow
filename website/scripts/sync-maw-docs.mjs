@@ -219,10 +219,13 @@ export function sanitizeDocument(markdown, source) {
     return block;
   });
 }
-async function readDocument(source) {
-  const localPath = path.join(sourceRoot, ...source.split('/'));
+export async function readDocument(source, { root = sourceRoot, allowRemote = true } = {}) {
+  const localPath = path.join(root, ...source.split('/'));
   if (existsSync(localPath)) {
     return readFile(localPath, 'utf8');
+  }
+  if (!allowRemote) {
+    throw new Error(`本地缺少源文档 ${source}；check 模式不读取远端，请确认工作树完整后重试`);
   }
 
   const response = await fetch(`${rawRoot}/${source}`);
@@ -232,20 +235,44 @@ async function readDocument(source) {
   return response.text();
 }
 
-async function syncImages() {
+export async function readImage(source, { root = sourceRoot, allowRemote = true } = {}) {
+  const localPath = path.join(root, ...source.split('/'));
+  if (existsSync(localPath)) {
+    return readFile(localPath);
+  }
+  if (!allowRemote) {
+    throw new Error(`本地缺少配图 ${source}；check 模式不读取远端，请确认工作树完整后重试`);
+  }
+  const response = await fetch(`${rawRoot}/${source}`);
+  if (!response.ok) throw new Error(`无法读取图片 ${source}（HTTP ${response.status}）`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function loadImages({ allowRemote = true } = {}) {
+  const images = new Map();
   for (const source of imageSources) {
-    const localPath = path.join(sourceRoot, ...source.split('/'));
-    let contents;
-    if (existsSync(localPath)) {
-      contents = await readFile(localPath);
-    } else {
-      const response = await fetch(`${rawRoot}/${source}`);
-      if (!response.ok) throw new Error(`无法读取图片 ${source}（HTTP ${response.status}）`);
-      contents = Buffer.from(await response.arrayBuffer());
-    }
-    const outputPath = path.join(assetRoot, ...source.split('/'));
+    const contents = await readImage(source, { allowRemote });
+    images.set(path.join(assetRoot, ...source.split('/')), contents);
+  }
+  return images;
+}
+
+async function writeImages(images) {
+  for (const [outputPath, contents] of images) {
     await mkdir(path.dirname(outputPath), { recursive: true });
     await writeFile(outputPath, contents);
+  }
+}
+
+async function findStale(images, stale) {
+  for (const [outputPath, contents] of images) {
+    let existing = null;
+    try {
+      existing = await readFile(outputPath);
+    } catch {
+      existing = null;
+    }
+    if (!existing || !existing.equals(contents)) stale.push(outputPath);
   }
 }
 
@@ -254,11 +281,13 @@ function quote(value) {
 }
 
 async function main() {
-  await mkdir(outputRoot, { recursive: true });
+  const checkOnly = process.argv.includes('--check');
+  if (!checkOnly) await mkdir(outputRoot, { recursive: true });
+  const stale = [];
   let synced = 0;
 
   for (const document of documents) {
-    const source = sanitizeDocument(await readDocument(document.source), document.source);
+    const source = sanitizeDocument(await readDocument(document.source, { allowRemote: !checkOnly }), document.source);
     const generated = [
       '---',
       `layout: ${quote('../../layouts/DocLayout.astro')}`,
@@ -274,16 +303,40 @@ async function main() {
       '',
     ].join('\n');
 
-    await writeFile(path.join(outputRoot, `${document.slug}.md`), generated, 'utf8');
+    const outputPath = path.join(outputRoot, `${document.slug}.md`);
+    if (checkOnly) {
+      let existing = null;
+      try {
+        existing = await readFile(outputPath, 'utf8');
+      } catch {
+        existing = null;
+      }
+      if (existing !== generated) stale.push(outputPath);
+    } else {
+      await writeFile(outputPath, generated, 'utf8');
+    }
     synced += 1;
   }
 
-  await syncImages();
-  console.log(`已同步 ${synced} 篇 MAW 文档、${imageSources.size} 张配图 → ${path.relative(siteRoot, outputRoot)}`);
+  const images = await loadImages({ allowRemote: !checkOnly });
+  if (checkOnly) {
+    await findStale(images, stale);
+  } else {
+    await writeImages(images);
+  }
+
+  const summary = `${checkOnly ? '已检查' : '已同步'} ${synced} 篇 MAW 文档、${images.size} 张配图 → ${path.relative(siteRoot, outputRoot)}`;
+  console.log(summary);
   if (sourceRoot === path.resolve(siteRoot, '..')) {
     console.log(`来源：${sourceRoot}`);
   } else {
     console.log(`来源：${sourceRoot}（MAW_SOURCE_DIR）`);
+  }
+
+  if (checkOnly && stale.length) {
+    for (const file of stale) console.error(`过期：${path.relative(siteRoot, file)}`);
+    console.error(`共 ${stale.length} 处生成副本与源文档不一致；运行 pnpm run sync:docs 后提交生成副本。`);
+    process.exitCode = 1;
   }
 }
 

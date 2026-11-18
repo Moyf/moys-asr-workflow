@@ -222,6 +222,6 @@ portable 媒体重绑只有 name/size/modified_ms 一致才复用默认流粗图
 
 未验证：真实高码率长素材与导航听审、Firefox/Safari/macOS/Linux、离线 browser 重开、正式 MOSP/Editor Server 接入、安装包/发布与远端 CI。实验没有模型调用；ASR 模型层不适用。没有评论/关闭 issue、推送、PR、合并、tag 或发布。内联副本待发布前统一重生成。
 
-文档结构检查另有 1 项基线继承失败：`docs/logs/agent-e2e-pitfalls-261011.md` 未登记日志导航。已用 `git ls-tree/git grep` 确认 a34d502 中文件已存在、导航无登记；本任务不改其它记录。检查结果是 0 新断链、1 结构错误，不算全通过。文档检查器19项回归通过；可由后续文档维护补登记后重跑。
+文档结构检查当次记录为 0 新断链、1 条结构错误（`docs/logs/agent-e2e-pitfalls-261011.md` 未登记日志导航）。该记录已归位到[踩坑记录](../logs/unversioned/2026-10-11/agent-e2e-pitfalls.md)并登记日志索引，现行 `python scripts/check_docs.py` 为 0 结构错误。
 
 播放中也实测 B：5格首批约102ms、完成377ms，主播放器继续播放（正常时间前进0.252s），后台 seeking=0。多行高缩放15格约141ms；滚动后只新增5格，复用10格。整片去空隙显示6480s，中心点击源时间约3962.866s，理论3960s；本次单像素约9.405s，差异在像素定位分辨率内。拖动定位约15.368s；纯音频 canvas 高度130px、visibleFrames=0。

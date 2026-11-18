@@ -1,6 +1,6 @@
 # E2E 残留服务进程与长命令挂起：排查与预防
 
-适用范围：MAW 仓库的 Playwright e2e（`tests/e2e/`，`npm test`）。事件记录见文末。
+适用范围：MAW 仓库的 Playwright e2e（`tests/e2e/`，`pnpm test`）。事件记录见文末。
 
 ## 症状
 
@@ -22,7 +22,7 @@ afterAll 不会执行**，serve.py 以父子两个 python 进程的形式残留�
 - 残留进程持有 stdout 管道与端口：shell 工具等待管道关闭 → 命令「永不结束」；
   端口被占则后续 e2e 行为异常。
 
-### 2. Windows 上 SIGTERM 杀不掉 serve.py 的真实进程（已修复）
+### 2. Windows 上 SIGTERM 杀不掉 serve.py 的真实进程（2026-10-08 修复，现行契约见下文）
 
 本地 e2e 经 `uv run python` 启动 serve.py，进程链是
 `uv.exe → .venv\Scripts\python.exe（转发器）→ uv cpython\python.exe（真身）`。
@@ -32,7 +32,8 @@ Node 的 `child.kill('SIGTERM')` 在 Windows 上只终止直接子进程（转�
 `taskkill /F /T /PID` 进程树终止（`helpers.mjs` 的
 `terminateProcessTreeSync`，已导出复用）。验证：单个 fixture 启停后残留 0。
 遗留边界：若整个测试进程被 `taskkill`（不带 /T）或断电级强杀，任何钩子都
-不会执行，残留仍会发生——只能事后清理。
+不会执行，残留仍会发生——只能事后清理。现行实现已改用 Job Object / 独立进程组
+统一管理所有权，`taskkill` 只作为其中一条回收路径，见下文「进程所有权与回收契约」。
 
 ### 3. `Start-Process -NoNewWindow` 占住控制台（显示层假象）
 
@@ -44,6 +45,17 @@ shell 工具的终端在子进程退出前持续显示「运行中」。任务�
 补充：即使命令的 timeout 到点触发，被终止的也只是 shell 与主进程——上面
 两类残留后代仍占着终端/管道，表现为「限时不管用」。所以关键是**不让残留
 发生**（根因 1/2）与**后台化规范**（根因 3），而不是依赖超时兜底。
+
+## 进程所有权与回收契约
+
+`tests/e2e/helpers.mjs` 与 `cue-scroll-fixture.mjs` 共用 `server-process.mjs`，只管理本次启动的服务；不按进程名、浏览器名或模糊路径扫描清理。
+
+- **Windows**：独立 PowerShell supervisor 加入未命名 Job Object（`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`，不开放 breakaway，不向子进程继承 Job handle）。包装进程提前退出、supervisor 被结束或其所有者关闭 stdin 时，内核回收该 Job 的成员；Job 设置失败会阻止服务启动。记录的是 supervisor PID。
+- **POSIX**：服务启动为独立进程组；正常停止、包装进程退出和可处理的退出路径向整组发送 `SIGKILL`，与当前测试 runner、其他工作树隔离。
+- **停止语义**：`stop()` 可重复、可并发调用；等待 `close`（含输出管道），5 秒内未关闭则拒绝，不把超时当作成功，注册项在 close 前保留。启动期每次 HTTP 请求的连接与响应正文都限时，初始化期间也检测进程退出。
+- **验证入口**：`node --test tests/test_e2e_server_process.mjs tests/test_e2e_process_lifecycle.mjs` 跑标准库合成矩阵（约 2 分钟，需 Node 与 Python 3，`MAW_E2E_PYTHON` 可指定解释器）；真实服务冒烟用 `MAW_E2E_PYTHON=<已有 venv 的 python> node tests/e2e/server-lifecycle-smoke.mjs`（90 秒，不启动浏览器）。
+- **边界**：可处理信号用 `process.emit` 走真实 JS handler，不等于验证原生 Ctrl+C / Ctrl+Break 投递；Windows `process.kill('SIGTERM')` 是强制终止，不能证明 SIGTERM handler 收到系统信号。被强杀的 runner、主动脱离组的后代、由外部服务或 WMI 创建的进程不在回收保证内；受限沙箱可能禁止 Job 或终止进程，不能把该环境的权限错误当本机复现结果。
+- Windows Job 语义参考：[Microsoft Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)。
 
 ## 诊断
 
@@ -82,7 +94,7 @@ node.exe / chrome.exe / python.exe——会误杀 agent 守护进程、其他 wo
    降级为「交付人工验收」，不要阻塞整个流程。
 6. cue-scroll fixture 与 helpers 共用进程所有权管理：Windows 使用独立 Job，
    POSIX 使用独立进程组；停止等待管道关闭并显式报告超时。它也覆盖包装进程
-   先退出的情况，详见 [E2E 服务进程生命周期](E2E_PROCESS_LIFECYCLE.md)。
+   先退出的情况，见上文「进程所有权与回收契约」。
 
 ## 多 agent 并行运行（2026-10-15 起成为常态）
 

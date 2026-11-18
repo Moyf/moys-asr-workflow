@@ -164,6 +164,7 @@ tests/test_cue_panel_drag_save.mjs
 tests/test_dev_session.mjs
 tests/test_diagnostics.py
 tests/test_docs_check.py
+tests/test_docs_sync_check.mjs
 tests/test_doubao.py
 tests/test_e2e_drag_helper.mjs
 tests/test_e2e_output_tail.mjs
