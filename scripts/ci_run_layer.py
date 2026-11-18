@@ -26,7 +26,8 @@ def main(argv=None):
     parser.add_argument('--report-dir', required=True)
     args = parser.parse_args(argv)
     steps = json.loads(os.environ['CI_PREPARATION'])
-    flags = auxiliary_flags(json.loads(Path(args.plan).read_text(encoding='utf-8')))
+    plan = json.loads(Path(args.plan).read_text(encoding='utf-8'))
+    flags = auxiliary_flags(plan)
     node = flags['node'] or flags['browser'] or flags['application']
     preparation = {
         'node-runtime': ('node', node),
@@ -45,12 +46,19 @@ def main(argv=None):
     venv = Path('.venv/Scripts/python.exe' if os.name == 'nt' else '.venv/bin/python')
     # POSIX venv executables are symlinks. Keep the venv entry point.
     python = str(venv.absolute()) if steps.get('py_install', {}).get('outcome') == 'success' else sys.executable
-    command = [python, 'scripts/test_workflow.py', '--stage', 'merge', '--selection-plan', args.plan,
-               '--layer', args.layer, '--report-dir', args.report_dir]
-    for preparation in sorted(unavailable):
-        command.extend(('--blocked-preparation', preparation))
     env = {**os.environ, 'MAW_TEST_PYTHON': python, 'MAW_E2E_PYTHON': python}
-    return subprocess.run(command, env=env, check=False).returncode
+    # A broad but finite browser consumer set can exceed a single 15-minute
+    # command deadline. Keep every selected case and validate each shard.
+    shard_count = 2 if args.layer == 'browser' and len(plan['e2e_specs']) >= 20 else 1
+    exit_codes = []
+    for shard in range(1, shard_count + 1):
+        report_dir = Path(args.report_dir) / f'shard-{shard}' if shard_count > 1 else Path(args.report_dir)
+        command = [python, 'scripts/test_workflow.py', '--stage', 'merge', '--selection-plan', args.plan,
+                   '--layer', args.layer, '--report-dir', str(report_dir), '--shard', f'{shard}/{shard_count}']
+        for preparation in sorted(unavailable):
+            command.extend(('--blocked-preparation', preparation))
+        exit_codes.append(subprocess.run(command, env=env, check=False).returncode)
+    return exit_codes[0] if shard_count == 1 else (1 if any(exit_codes) else 0)
 
 
 if __name__ == '__main__':

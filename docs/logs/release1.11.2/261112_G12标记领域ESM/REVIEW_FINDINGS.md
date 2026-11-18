@@ -12,3 +12,9 @@
 ## PR 前复审
 
 独立审查未发现未处置的 blocker/major。确认历史、工程加载、设置与 Gap UI 的静态边；纯波形工厂的 import 试验触发构建契约错误，已回退并将其可选门面保留为明确例外。
+
+## PR 辅助 CI 修复复审（2026-11-18）
+
+独立审查者核对三组 AI 清理夹具、辅助层两分片实现及 `test_workflow.py` 的分片验证，未发现有证据的 blocker/major。接受风险：新 CI 运行前尚不能确认两片的总耗时，也不能确认旧 run 超时后未执行的用例结果；新 run 必须如实保留失败证据。
+
+负向验证：临时将大选择集分片阈值从 20 提至 999，新单测 `test_large_browser_selection_runs_both_shards_even_after_failure` 按预期失败（单片返回 7，期望两片聚合返回 1）；恢复阈值后 23 项相关 Python 测试通过。三组受影响的 Chromium spec 共 13 条通过。

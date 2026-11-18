@@ -106,6 +106,21 @@ class AuxiliaryPlanTests(CompactContainerAssertions, TestCase):
         self.assertEqual(run.call_args.args[0][0], sys.executable)
         self.assertNotIn('--blocked-preparation', run.call_args.args[0])
 
+    def test_large_browser_selection_runs_both_shards_even_after_failure(self):
+        plan = {'python_tests': [], 'node_tests': [],
+                'e2e_specs': [f'tests/e2e/case-{index}.spec.mjs' for index in range(20)],
+                'preparation': {}}
+        with mock.patch.dict(os.environ, {'CI_PREPARATION': '{}'}), \
+                mock.patch.object(Path, 'read_text', return_value=json.dumps(plan)), \
+                mock.patch.object(ci_run_layer.subprocess, 'run', side_effect=[
+                    mock.Mock(returncode=7), mock.Mock(returncode=0)]) as run:
+            self.assertEqual(ci_run_layer.main(['--layer', 'browser', '--report-dir', 'evidence']), 1)
+        self.assertEqual(run.call_count, 2)
+        for index, call in enumerate(run.call_args_list, 1):
+            command = call.args[0]
+            self.assertEqual(command[command.index('--shard') + 1], f'{index}/2')
+            self.assertEqual(Path(command[command.index('--report-dir') + 1]), Path('evidence') / f'shard-{index}')
+
     def test_auxiliary_planning_failure_is_visible_without_failing_admission(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

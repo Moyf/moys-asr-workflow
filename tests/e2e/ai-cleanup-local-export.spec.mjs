@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { projectModel } from '../helpers/runtime-project.mjs';
 import { getMainTrack, cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, generateWav, makeTempDir, startServer } from './helpers.mjs';
 
 let directory, server, projectPath;
@@ -9,14 +10,14 @@ test.beforeAll(async () => {
   const mediaPath = join(directory, 'synthetic.wav');
   projectPath = join(directory, 'project.mosp');
   generateWav(mediaPath, 2);
-  writeFileSync(projectPath, JSON.stringify({
+  writeFileSync(projectPath, JSON.stringify(projectModel.importProject({
     media: 'synthetic.wav', waveform: generateWaveformPayload(2000),
     segments: [{ id: 'main-001', start: 0, end: 2000, text: '啊，我这……我这个功能呢',
       items: [{ text: '啊，', start: 0, end: 210 }, { text: '我这……', start: 220, end: 770 }, { text: '我这个功能呢', start: 900, end: 2000 }] }],
     gap_remove: { detector: 'audio_gate', provenance: { sources: { ai_cleanup: [{ start: 0, end: 770,
       cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 2, text: '啊，我这……' } }] } } },
     markers: { schema: 'moy.asr.markers.v1', items: [{ id: 'review-local', start: 100, end: 400, name: '复核区段', note: '[AI] 复核：合成证据', review: { status: 'pending', reason: '合成证据' } }] },
-  }), 'utf-8');
+  }).project), 'utf-8');
   server = await startServer(projectPath, mediaPath, await findFreePort());
 });
 test.afterAll(async () => {
@@ -55,7 +56,7 @@ test('real editor saves/reopens trustworthy local scopes and keeps gap-only revi
   }));
   expect(initial.saved).toBe(true);
   expect(initial.source.disabled).not.toBe(true);
-  expect(initial.source.text).toBe('啊  我这……我这个功能呢');
+  expect(initial.source.text).toBe('啊，我这……我这个功能呢');
   for (const [kind, output] of Object.entries({ ordinary: initial.ordinary, compressed: initial.compressed, ass: initial.ass, otio: initial.otio })) {
     expect(output !== null, kind).toBe(true);
     expect(output, kind).toContain('我这个功能呢');
@@ -96,12 +97,12 @@ test('real editor saves/reopens trustworthy local scopes and keeps gap-only revi
   expect(history.mute.sources.ai_cleanup_review[0].review_marker_id).toBe('review-local');
   expect(history.undo.sources.ai_cleanup_review).toHaveLength(0);
   expect(history.redo.sources.ai_cleanup_review).toHaveLength(1);
-  expect(history.redo.sources.ai_cleanup[0].cleanup_scope.text).toBe('啊  我这……');
+  expect(history.redo.sources.ai_cleanup[0].cleanup_scope.text).toBe('啊，我这……');
   expect(history.restored).toContain('我这……');
   expect(history.restoredPreview).toContain('我这……');
   expect(history.restoredCanvas).toContain('我这……');
   expect(history.reinstated).not.toContain('我这……');
-  expect(history.source.text).toBe('啊  我这……我这个功能呢');
+  expect(history.source.text).toBe('啊，我这……我这个功能呢');
   await page.evaluate(() => {
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);

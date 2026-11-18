@@ -29,3 +29,9 @@
 新增 ESM 消费边：历史恢复、工程加载、设置面板和 Gap UI 通过静态 import 调用标记门面；VM 历史测试补入等价导入垫片。classic 接线与启动脚本继续使用全局门面；波形子模块保留面板未初始化时的可选降级。
 
 波形 `media/waveform/markers.js` 虽已登记为 ESM 工厂，构建器要求其工厂无导入求值边；尝试静态 import 标记 init 模块时 `build:editor` 报 `ESM factory must export createWaveformModule without evaluation effects`，类型检查同时失败。因此保留该处可选面板桥，试验已回退并重建。
+
+## PR 辅助 CI 分诊（2026-11-18）
+
+`Targeted auxiliary tests` 在旧提交选中 59 个浏览器 spec、845 条测试；单命令双 worker 运行 900 秒后超时。日志中先出现的 AI 清理用例失败来自 2.0 工程格式迁移：旧夹具不能静默覆盖保存，Python 产物已经是 v2，测试却读取旧 `segments` 顶层字段。相关三组 spec 的夹具及断言已按 v2 契约修复；本地单独复验分别为 1、2、10 条通过。
+
+辅助浏览器层对至少 20 个已选 spec 分成两个 Playwright shard，逐片保留 900 秒上限与各自报告目录；两片都会执行，任一失败仍使辅助层失败。此调整保持原选择集和准入边界。远端复验以新的 PR run 为准。
