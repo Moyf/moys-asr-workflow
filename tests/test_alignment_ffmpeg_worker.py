@@ -47,6 +47,34 @@ def _preserve_test_temporaries(preserve):
 
 
 class TemporaryDirectoryPolicyTests(unittest.TestCase):
+    def test_worker_environment_isolates_user_data_without_home_variables(self):
+        from maw.app_paths import default_app_data_root
+
+        fixture = AlignmentFfmpegWorkerTests("test_bundled_tools_cross_actual_worker_boundary")
+        fixture.system_root = os.environ.get("SYSTEMROOT", "")
+        with tempfile.TemporaryDirectory() as directory:
+            fixture.root = Path(directory).resolve()
+            inherited = {
+                "PATH": "inherited-tools",
+                "USERPROFILE": "inherited-home",
+                "LOCALAPPDATA": "inherited-data",
+                "MAW_APP_DATA_ROOT": "inherited-app-data",
+                "MAW_ENV_FILE": "inherited-config",
+                "FFMPEG_PATH": "inherited-ffmpeg",
+            }
+            with mock.patch.dict(os.environ, inherited, clear=True):
+                environment = fixture.worker_environment()
+            expected = {"PATH": "", "PYTHONDONTWRITEBYTECODE": "1",
+                        "MAW_APP_DATA_ROOT": str(fixture.root / "app-data")}
+            if fixture.system_root:
+                expected["SYSTEMROOT"] = fixture.system_root
+            self.assertEqual(environment, expected)
+            with mock.patch.dict(os.environ, environment, clear=True):
+                self.assertEqual(default_app_data_root(), fixture.root / "app-data")
+                self.assertTrue(local_runtime.default_runtime_root().is_relative_to(fixture.root / "app-data"))
+            overridden = fixture.worker_environment({"PATH": "fixture-tools", "FFMPEG_PATH": "fixture-ffmpeg"})
+            self.assertEqual(overridden, {**expected, "PATH": "fixture-tools", "FFMPEG_PATH": "fixture-ffmpeg"})
+
     def test_script_entry_temporaries_in_memory(self):
         from maw.timestamp_alignment import TimestampAlignmentError
 
@@ -201,7 +229,7 @@ class TemporaryDirectoryPolicyTests(unittest.TestCase):
                             mock.patch.object(job, "review", return_value={"review": {"ready": True, "request": {}}}),
                             mock.patch.object(job, "check_inputs"),
                             mock.patch("maw.gui_config.load_env", return_value={}),
-                            mock.patch("tests.test_alignment_ffmpeg_worker.urlopen", side_effect=open_url),
+                            mock.patch.object(sys.modules[__name__], "urlopen", side_effect=open_url),
                         )
                         for patcher in patches:
                             stack.enter_context(patcher)
@@ -362,8 +390,17 @@ class AlignmentFfmpegWorkerTests(unittest.TestCase):
             result[name] = str(path.resolve())
         return result
 
+    def worker_environment(self, overrides=None):
+        # Keep real runtime path resolution independent of the user's home/config,
+        # while retaining only the Windows process requirement and fixture tools.
+        environment = {"PATH": "", "PYTHONDONTWRITEBYTECODE": "1",
+                       "MAW_APP_DATA_ROOT": str(self.root / "app-data")}
+        if self.system_root:
+            environment["SYSTEMROOT"] = self.system_root
+        return {**environment, **(overrides or {})}
+
     def run_child(self, *, env, config=None):
-        env = {**({"SYSTEMROOT": self.system_root} if self.system_root else {}), **env}
+        env = self.worker_environment(env)
         status = SimpleNamespace(ready=True, python_path=self.python)
         kwargs = {"model_id": "qwen"}
         if config is not None:
@@ -387,7 +424,7 @@ class AlignmentFfmpegWorkerTests(unittest.TestCase):
     def test_all_alignment_worker_modes_receive_bundled_tools(self):
         bundled = self.tools(self.root / "ffmpeg" / "bin", "ffmpeg", "ffprobe")
         status = SimpleNamespace(ready=True, python_path=self.python)
-        with mock.patch.dict(os.environ, {"PATH": "", "PYTHONDONTWRITEBYTECODE": "1", **({"SYSTEMROOT": self.system_root} if self.system_root else {})}, clear=True), \
+        with mock.patch.dict(os.environ, self.worker_environment(), clear=True), \
              mock.patch.object(sys, "frozen", True, create=True), \
              mock.patch.object(sys, "executable", str(self.root / "MAW.exe")), \
              mock.patch.object(sys, "platform", "linux" if sys.platform == "darwin" else sys.platform), \
@@ -495,7 +532,7 @@ class AlignmentFfmpegWorkerTests(unittest.TestCase):
             result = local_runtime.run_timestamp_alignment_in_runtime(**kwargs)
             return {"artifact": {"projectPath": result["ffmpeg"]}, "report": {"ffprobe": result["ffprobe"]}}
 
-        with mock.patch.dict(os.environ, {"PATH": "", "PYTHONDONTWRITEBYTECODE": "1", **({"SYSTEMROOT": self.system_root} if self.system_root else {})}, clear=True), \
+        with mock.patch.dict(os.environ, self.worker_environment(), clear=True), \
              mock.patch.object(sys, "frozen", True, create=True), \
              mock.patch.object(sys, "executable", str(self.root / "MAW.exe")), \
              mock.patch.object(sys, "platform", "linux" if sys.platform == "darwin" else sys.platform), \
@@ -794,7 +831,7 @@ class AlignmentFfmpegWorkerTests(unittest.TestCase):
             captured.update(result)
             return {"artifact": {"projectPath": "out.mosp", "srtPath": "out.srt"}, "report": {}}
 
-        with mock.patch.dict(os.environ, {"PATH": "", "PYTHONDONTWRITEBYTECODE": "1", **({"SYSTEMROOT": self.system_root} if self.system_root else {})}, clear=True), \
+        with mock.patch.dict(os.environ, self.worker_environment(), clear=True), \
              mock.patch.object(sys, "frozen", True, create=True), \
              mock.patch.object(sys, "executable", str(self.root / "MAW.exe")), \
              mock.patch.object(sys, "platform", "linux" if sys.platform == "darwin" else sys.platform), \
