@@ -11,6 +11,7 @@
     "preview": "astro preview",
     "check": "astro check",
     "sync:docs": "node scripts/sync-maw-docs.mjs",
+    "check:docs": "node scripts/sync-maw-docs.mjs --check",
     "sync:releases": "python ../scripts/build_release_site.py --preview"
   },
   "devDependencies": {

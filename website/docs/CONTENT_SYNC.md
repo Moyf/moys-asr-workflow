@@ -8,12 +8,13 @@
 
 ```sh
 pnpm --dir website install --frozen-lockfile
+pnpm --dir website run check:docs
 pnpm --dir website run sync:docs
 pnpm --dir website run check
 pnpm --dir website run build
 ```
 
-脚本 `website/scripts/sync-maw-docs.mjs` 默认读取当前仓库根目录。只有从其他仓库取源文档时，才设置 `MAW_SOURCE_DIR`。某个源文件不存在时，脚本尝试从 GitHub main 获取；离线同步须确保源文件完整。
+`check:docs` 只读比对已提交的生成副本与当前源文档，发现过期时列出文件并以非零退出；`sync:docs` 才重写副本。两者都只读取当前仓库根目录。只有从其他仓库取源文档时，才设置 `MAW_SOURCE_DIR`。某个源文件不存在时，脚本尝试从 GitHub main 获取；离线同步须确保源文件完整。
 
 同步清单显式列出公开页面，不自动发布 TEST_FEEDBACK 或 dev 内部记录。没有独立官网页面的文档通过 GitHub 原文访问；已有页面的相对 Markdown 链接会转换为本站路由。
 

@@ -58,9 +58,10 @@ Agent 与 CI 使用 `python scripts/run_check.py --timeout 180 --` 包装上述�
 官网源文档、映射或图片变化时，还需运行：
 
 ```sh
+pnpm --dir website run check:docs
 pnpm --dir website run sync:docs
 pnpm --dir website run check
 pnpm --dir website run build
 ```
 
-生成副本与源文件一同提交。脚本、配置或测试输入变化时运行对应最小回归；应用行为与打包变化遵循[开发概览](INDEX.md#engineering-development)的检查。变更结果及需维护者回看的内容写入正常交付说明。
+`check:docs` 只读比对已提交的生成副本，副本过期会列出文件并失败；`sync:docs` 重写副本。生成副本与源文件一同提交。脚本、配置或测试输入变化时运行对应最小回归；应用行为与打包变化遵循[开发概览](INDEX.md#engineering-development)的检查。变更结果及需维护者回看的内容写入正常交付说明。

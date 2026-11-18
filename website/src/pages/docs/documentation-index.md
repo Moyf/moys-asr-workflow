@@ -100,6 +100,11 @@ source: "docs/INDEX.md"
 
 [打开正文](../development/)
 
+<a name="engineering-test-reliability"></a>
+### 测试可靠性：先保护用户，再减少误报
+
+[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/TEST_RELIABILITY.md)
+
 <a name="engineering-e2e-lifecycle"></a>
 ### E2E 服务进程生命周期
 
