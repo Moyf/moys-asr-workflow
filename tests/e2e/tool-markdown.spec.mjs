@@ -24,7 +24,9 @@ async function openCatalog(page) {
   page.on('request', request => {if (/^https?:/.test(request.url())) remote.push(request.url());});
   await page.route(/^https?:/, route => route.abort());
   await page.goto(catalogUrl);
-  await expect(page.locator('.card')).toHaveCount(10);
+  const count = await page.evaluate(() => window.MAWToolCatalog.length);
+  expect(count).toBeGreaterThan(0);
+  await expect(page.locator('.card')).toHaveCount(count);
   return {errors, remote};
 }
 
@@ -34,11 +36,12 @@ async function showText(page, markdown, title = '测试说明') {
   }), {markdown, title, baseUrl:docUrl('README.md')});
 }
 
-test('all ten documentation buttons read offline without navigation and retain exact source links and focus', async ({page}) => {
-  const evidence = await openCatalog(page);
+async function verifyCatalogDocumentation(page) {
   const buttons = page.locator('.card button[data-tool-doc]');
-  await expect(buttons).toHaveCount(10);
-  for (let index = 0; index < 10; index++) {
+  const count = await page.locator('.card').count();
+  await expect(buttons).toHaveCount(count);
+  for (let index = 0; index < count; index++) {
+    await expect(page.locator('.card').nth(index).locator('button[data-tool-doc]')).toHaveCount(1);
     const button = buttons.nth(index), path = await button.getAttribute('data-tool-doc');
     await button.click();
     const dialog = page.getByRole('dialog');
@@ -56,13 +59,48 @@ test('all ten documentation buttons read offline without navigation and retain e
     await expect(dialog).not.toBeVisible();
     await expect(button).toBeFocused();
   }
+}
+
+test('all catalog documentation buttons read offline without navigation and retain exact source links and focus', async ({page}) => {
+  const evidence = await openCatalog(page);
+  await verifyCatalogDocumentation(page);
+  expect(evidence.errors).toEqual([]); expect(evidence.remote).toEqual([]);
+});
+
+test('catalog documentation and filtering cover added tools and maintenance states', async ({page}) => {
+  const source = readFileSync(resolve('tools/catalog.js'), 'utf8');
+  await page.route(docUrl('catalog.js'), route => route.fulfill({
+    contentType:'text/javascript',
+    body:source + `\nwindow.MAWToolCatalog = Object.freeze([...window.MAWToolCatalog,
+      {...window.MAWToolCatalog[0], id:'extra-maintained', name:'转写附加工具', status:'maintained'},
+      {...window.MAWToolCatalog[0], id:'extra-paused', name:'额外暂停工具', status:'paused'},
+      {...window.MAWToolCatalog[0], id:'extra-retired', name:'额外历史工具', status:'retired'}]);`,
+  }));
+  const evidence = await openCatalog(page);
+  const extraTools = await page.evaluate(() => window.MAWToolCatalog
+    .slice(-3).map(({id,status}) => ({id,status})));
+  expect(extraTools).toEqual([
+    {id:'extra-maintained',status:'maintained'},
+    {id:'extra-paused',status:'paused'},
+    {id:'extra-retired',status:'retired'},
+  ]);
+  for (const status of ['paused','retired']) {
+    const names = await page.evaluate(status => window.MAWToolCatalog.filter(t => t.status === status).map(t => t.name), status);
+    await page.locator('#status').selectOption(status);
+    await expect(page.locator('.card h2')).toHaveText(names);
+  }
+  await page.locator('#reset').click();
+  await verifyCatalogDocumentation(page);
   expect(evidence.errors).toEqual([]); expect(evidence.remote).toEqual([]);
 });
 
 test('Tab is contained, backdrop closes, internal documents switch and catalog filters survive reading', async ({page}) => {
   await openCatalog(page);
   await page.locator('#search').fill('转写');
-  const button = page.locator('.card button[data-tool-doc]').first();
+  const matchingNames = await page.evaluate(() => window.MAWToolCatalog
+    .filter(t => [t.name,t.summary,t.category,...t.features].join(' ').toLowerCase().includes('转写'))
+    .map(t => t.name));
+  const button = page.locator('footer button[data-tool-doc="README.md"]');
   await button.click();
   const dialog = page.getByRole('dialog');
   const popupReady = page.waitForEvent('popup');
@@ -90,7 +128,7 @@ test('Tab is contained, backdrop closes, internal documents switch and catalog f
   await expect(dialog).not.toBeVisible();
   await expect(button).toBeFocused();
   await expect(page.locator('#search')).toHaveValue('转写');
-  await expect(page.locator('.card')).toHaveCount(1);
+  await expect(page.locator('.card h2')).toHaveText(matchingNames);
 });
 
 test('real DOMPurify blocks executable markup, unsafe and encoded links, images and malicious highlight without requests', async ({page}) => {

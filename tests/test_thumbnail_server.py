@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import json
 import os
@@ -9,6 +10,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 import unittest
 import urllib.error
 import urllib.request
@@ -69,6 +71,20 @@ class ThumbnailServerTests(unittest.TestCase):
             response = urllib.request.urlopen(req,timeout=5)
         except urllib.error.HTTPError as error:
             response = error
+        except (TimeoutError, urllib.error.URLError):
+            # Do not acquire the manager lock while diagnosing a blocked request.
+            manager = self.server.thumbnail_jobs
+            print(f"thumbnail HTTP timeout: {req.get_method()} {path.split('?')[0]} "
+                  f"state={manager.state} decoding={manager.decode_active} "
+                  f"worker_alive={bool(manager.worker and manager.worker.is_alive())}",
+                  file=sys.stderr)
+            frames = sys._current_frames()
+            for thread in threading.enumerate():
+                frame = frames.get(thread.ident)
+                if frame is not None:
+                    print(f"thread {thread.name}:", file=sys.stderr)
+                    traceback.print_stack(frame, limit=16, file=sys.stderr)
+            raise
         with response:
             return response.status,dict(response.headers),response.read()
 
@@ -127,6 +143,41 @@ class ThumbnailServerTests(unittest.TestCase):
             time.sleep(.25)
             self.assertEqual(self.status()['state'],'ready')
             decode.assert_not_called()
+
+    def test_empty_status_does_not_wait_for_unrelated_cache_writer(self):
+        from maw import thumbnail_cache
+        from maw.thumbnail_jobs import source_key
+        manager = self.server.thumbnail_jobs
+        manager.info = thumbnail_cache.get_video_info(self.media)
+        manager.identity = source_key(self.media)
+        done, responses, errors = threading.Event(), [], []
+        with mock.patch.object(manager, '_start'):
+            first = self.status()
+            self.assertEqual(first['assets'], [])
+
+            def read_status():
+                try:
+                    responses.append(self.status(lease=first['lease']))
+                except Exception as error:
+                    errors.append(error)
+                finally:
+                    done.set()
+
+            with contextlib.closing(thumbnail_cache._connect()) as writer:
+                writer.execute('BEGIN IMMEDIATE')
+                writer.execute('INSERT INTO bases VALUES(?,?,?,?)', ('uncommitted', 'other', 1, 0))
+                thread = threading.Thread(target=read_status)
+                thread.start()
+                try:
+                    completed_before_release = done.wait(2)
+                finally:
+                    writer.rollback()
+                    thread.join(6)
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(completed_before_release, 'empty HTTP status waited for unrelated cache writer')
+        self.assertEqual(errors, [])
+        self.assertEqual(responses[0]['assets'], [])
+        self.assertEqual(responses[0]['lease'], first['lease'])
 
     def test_project_payload_reports_base_readiness(self):
         self.assertFalse(self.server.project_binding_payload()["thumbnailBaseReady"])

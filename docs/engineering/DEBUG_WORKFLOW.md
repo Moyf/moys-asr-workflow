@@ -65,14 +65,14 @@ e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解�
 | 变化 | 首轮验证 | 扩大验证的条件 |
 | --- | --- | --- |
 | 调试运行器 / 日志工具 | 上面两条标准库回归，无需前端安装 | 进程生命周期变更需在 Windows / Linux 跑 CI |
-| Python 业务逻辑 | 对应 unittest 模块 | 公共契约/导出变化时扩大到相关模块，最后一次全量 |
+| Python 业务逻辑 | 对应 unittest 模块 | 公共契约/导出变化时扩大相关验证；完整巡检按明确请求或发布需要运行，不要求每笔改动都全量 |
 | 编辑器 JS / 装配清单 | 相关 Node 用例 + build/check + typecheck | 宿主、选择范围、交互变化时增加相关浏览器 spec |
 | CSS / HTML / 交互 | 构建契约 + 对应 spec + 人工操作 | 多入口共享行为变化时扩大浏览器范围 |
 | 发布 | 统一重建便携 HTML，完整契约与回归矩阵 | 真实媒体、推理和听感仍单独验收 |
 
 `pnpm test` 是 Chromium e2e；`pnpm run test:unit` 执行根目录全部 `.mjs` 测试，其中已有跨 Python 与浏览器测试，不能假定它们都零依赖。不要每改一个断言就跑全量。先复现一次，改代码后跑最小回归，必要时扩大；连续两次同类失败先分类原因，不循环重跑。
 
-CI 的 Editor job 目前只运行两类 Python 装配契约与两份 browser spec，并非完整 Python/e2e 套件。新 Debug tooling job 在 Windows / Linux 验证标准库调试工具；同样不能冒充产品全量验证。UI 的拖动、听感和布局仍需人工核验。
+日常 `Change acceptance` 只汇总计划所选的稳定基础、相关验证及文档消费者，不串联完整巡检或 Windows 预览。完整矩阵保留每周/手动运行，预览包按打包/启动/运行时相关变化或手动运行，不再与每次普通PR/main叠跑。具体角色见[改动检查](DEVELOPMENT.md#pr--main-的改动检查)及[完整巡检](DEVELOPMENT.md#完整巡检预览包与发布)。UI 的拖动、听感和布局仍需人工核验。
 
 ## 中断恢复与结果记录
 
@@ -89,9 +89,48 @@ CI 的 Editor job 目前只运行两类 Python 装配契约与两份 browser spe
 分组暂用串行，`--parallel N` 保留无参数全量的文件并行入口；显式 targets 不拆分，
 也不能与 `--pack` 混用。无参数仍跑原来的完整集合。
 
+`test_fcp7_png.RenderTests` 整类和 `test_fcp7_png_api.PngJobHttpTests.test_render_publish_and_repeated_export_preserve_prior_package` 的真实 FFmpeg 渲染属于 media；同文件的规划、假渲染和其余 HTTP 逻辑仍属于 common。不改变标准发现 / hooks，也不把同名但不同模块的类自动归组。
+
 `--report` 在串行和并行模式记录所选 ID、实际运行数、失败/错误、skip 原因、
 expected failure、unexpected success、退出码及完整日志位置；并行另有文件、PID 和耗时。
 完整日志包含成功与失败测试、加载阶段以及子进程输出；终端仅打印有界摘要。
 `--full-log` 可指定日志位置，未指定时报告旁生成同名 `.log`。
 `--required` 将缺工具、缺依赖、缺夹具或 expected failure 视为失败；仅准确匹配的
 异平台测试 ID 和 skip 原因可豁免。空集合返回失败。分组是显式执行入口，不自动缩减 CI。
+
+### CI 计划与浏览器证据
+
+日常计划与完整巡检分开消费：PR验证整个PR差异，main验证before/after，普通文档可轻量；未知代码/不可信差异扩大至稳定检查而不是自动启动完整矩阵。计划校验失败不能伪装成文档通过；阻塞和辅助回执分开，辅助成功不能抵扣阻塞缺报告。策略版本、准确所选集合及消费者以当次计划与脚本输出为准，不把历史v1的“非PR必须full”当作当前规则。
+
+Windows 测试环境、发布测试和 PR 预览共用固定的 Gyan FFmpeg 8.1.2 Essentials x64，
+与完整 Windows 发行包的版本和 SHA-256 一致。Actions 缓存只保存归档，按系统、架构、
+版本及安装脚本（含校验值）隔离；每次使用前重新校验 SHA-256，再解压并运行两个真实
+程序。校验失败时丢弃本地副本，从 Gyan 或 GitHub 固定地址有界重试；不回退系统版本。
+GitHub 缓存遵循分支及 fork 的访问范围，并可能被回收；冷启动仍需网络。已有损坏缓存
+键不可覆盖，当前运行会重新下载，后续运行可能再次下载，直到该缓存被删除或回收。
+并发任务可能各自下载，只有一个保存同一键。缓存不减少 Windows Media Foundation 安装时间。
+
+完整巡检继续用 `scripts/ci_matrix.py expand`、`run --cell <cell>` 与 `gate` 校验完整矩阵自身结果；它失败仍失败，但不传播至无关PR的日常合并结论。Python 单元在回执前回读 `python.json` 与 `media-required.json`，校验非空唯一 ID、计数和退出码，保留 unittest fixture / subtest skip 语义；required 不信任序列化的 `platform_not_applicable`，而重新调用精确平台策略。两份报告的归组集合必须一致，回执附校验计数和报告 SHA-256。缺 / 坏报告、伪造成功退出或不支持的 required skip 都不产生成功回执；输出目录拒绝复用旧报告，重试请使用新的 `--root` 以保留旧证据。
+
+浏览器分片的整组执行预算为 900 秒；发现列表及 Python / Node 命令仍为 600 秒。单项测试 60 秒、操作 10 秒、零重试不变。浏览器 job 的 25 分钟上限另容纳环境准备与上传，不表示放宽单测。`line,json` 双 reporter 在 `output.log` 留下逐项开始进度，同时保留最终 JSON 覆盖校验；整组超时仍失败，未写完 JSON 时不会产生成功回执。
+
+浏览器层在同 job 保存 `browser-list.json`、`browser-results.json`、`browser-validated.json` 和成功凭据 `receipt.json`。`scripts/browser_results.py <list.json> <results.json> --current 1 --total 4` 可独立复核：比较文件 + 完整 describe / test 标题 + project 集合、分片坐标和逐案结果，不以 `stats.expected > 0` 代替覆盖检查。失败执行即使没生成成功凭据仍上传已有 JSON / traces / checks；缺报告不能通过聚合门禁。只有五个精确弃维护 portable case 的原始 skip 原因获准，libass / 编码器等能力缺失仍失败。计划未选中的层属于 intentional skip，与实际用例 skip 分开。
+
+完整 Python 不加 blanket `--required`：完整标准发现允许人工私有夹具、平台 guard 等 skip，并将每个原因和 expected failure 留在报告；完整巡检的真实 media pack 单独 `--required`，`allowed_platform_skip` 不扩大。这里的required是所执行集合的严格结果语义，不等于GitHub必需合并状态。Release 三平台报告、Windows 阻断与辅助平台警告政策不变，不追加tag全量矩阵。本地或当前PR未跑完整浏览器集合时必须标明，不能以Change acceptance绿宣称全仓测试全绿。
+
+### 中文 CI 检查摘要
+
+完整矩阵等任务可在 Actions **Summary** 附加中文说明。摘要是辅助阅读层，不改变退出码、断言、所执行集合的required语义或原始日志。
+汇总明确区分日常合并检查和完整辅助巡检，后者失败不自动阻止无关PR合并；连带失败不重复算作产品故障。
+缺报告、取消、执行前失败不能当作“零失败”；仍须查看失败步骤和对应 artifact。
+
+`scripts/ci_summary.py` 从 unittest / Playwright JSON 提取失败名称、位置与有界错误摘录。
+仅 `DESCRIPTIONS` 中精确匹配的用例有人工维护的中文场景和预期；其余保留原标题，
+明确说明尚未提供中文描述。原因不从异常名猜测，始终需要排查。
+新增描述时同时核对测试契约，不能把预期写成已经发生的结果。
+第一版不解析 Node TAP、构建器或安装日志，不自动评论 PR，不改变历史失败通知。
+Python JSON 的 `failure_details` 是附加字段，串行和并行路径均保留；完整 traceback
+仍在原 `.log` 中。摘要限制报告大小、展示条数和文本长度，转义 HTML 并脱敏用户目录。
+摘要步骤即使失败，也不会掩盖原测试失败或替代矩阵校验。
+
+写用例、分析首次失败与判断测试价值，见[测试可靠性指南](../INDEX.md#engineering-test-reliability)。

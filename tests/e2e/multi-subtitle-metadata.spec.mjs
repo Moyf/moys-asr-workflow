@@ -54,9 +54,10 @@ test('swapping once and twice preserves speaker and discarded cues through save 
     MaweDisplaySettings.updateMultiSubtitleUi();
   });
   for (let round = 0; round < 2; round++) {
-    // 双语字幕设置已并入工程设置 → 字幕轨道页。
-    await openSettingsPage(page, 'project-tracks');
-    await expect(page.locator('#project-multi-subtitle-settings')).toBeVisible();
+    // 交换操作属于工程设置的独立「双语字幕」页。
+    await openSettingsPage(page, 'multi-subtitle');
+    await expect(page.locator('#editor-settings-page-multi-subtitle')).toBeVisible();
+    await expect(page.locator('#multi-subtitle-swap')).toBeEnabled();
     await page.locator('#multi-subtitle-swap').click();
     const expectedMain = round === 0 ? 'ext' : 'main';
     await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].id))

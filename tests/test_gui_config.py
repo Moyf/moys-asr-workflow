@@ -67,12 +67,16 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(saved.gui_lang, "en")
 
     def test_default_env_path_keeps_repo_root_for_source_on_macos(self) -> None:
-        with mock.patch.object(app_paths.sys, "platform", "darwin"):
+        with mock.patch.dict(os.environ, {"MAW_ENV_FILE": ""}), mock.patch.object(
+            app_paths.sys, "platform", "darwin"
+        ):
             self.assertEqual(gui_config.default_env_path(), ROOT / ".env")
 
     def test_default_env_path_keeps_repo_root_when_running_from_source(self) -> None:
         """Given 源码运行（非冻结）的 Linux, When 解析, Then 保持仓库根 .env 不变。"""
-        with mock.patch.object(app_paths.sys, "platform", "linux"):
+        with mock.patch.dict(os.environ, {"MAW_ENV_FILE": ""}), mock.patch.object(
+            app_paths.sys, "platform", "linux"
+        ):
             self.assertFalse(getattr(app_paths.sys, "frozen", False))
             self.assertEqual(gui_config.default_env_path(), ROOT / ".env")
 
@@ -112,9 +116,22 @@ class GuiConfigTests(unittest.TestCase):
 
     def test_default_env_path_keeps_windows_at_repo_root(self) -> None:
         """Given Windows, When resolving, Then it stays at the repository root (unchanged)."""
-        with mock.patch.object(app_paths.sys, "platform", "win32"):
+        with mock.patch.dict(os.environ, {"MAW_ENV_FILE": ""}), mock.patch.object(
+            app_paths.sys, "platform", "win32"
+        ):
             with mock.patch.object(gui_config.Path, "home", return_value=Path("C:\\Users\\test-user")):
                 self.assertEqual(gui_config.default_env_path(), ROOT / ".env")
+
+    def test_default_env_path_honors_explicit_override_on_source_platforms(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            override = Path(temp_dir) / "synthetic-settings.conf"
+            for platform in ("darwin", "linux", "win32"):
+                with self.subTest(platform=platform), mock.patch.dict(
+                    os.environ, {"MAW_ENV_FILE": str(override)}
+                ), mock.patch.object(app_paths.sys, "platform", platform), mock.patch.object(
+                    app_paths.sys, "frozen", False, create=True
+                ):
+                    self.assertEqual(gui_config.default_env_path(), override.resolve())
 
     def test_save_env_preserves_comments_order_and_other_values(self) -> None:
         """Given an existing env file, When keys are saved, Then only those keys change."""

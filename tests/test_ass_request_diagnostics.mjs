@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { observeAssRequests } from './e2e/ass-request-diagnostics.mjs';
+test('ASS diagnostics observe cold fonts, completed and failed frames without driving requests', () => {
+  const page = new EventEmitter(); let time = 0;
+  const request = path => ({ url: () => `http://localhost${path}`, method: () => 'POST', failure: () => ({ errorText: 'aborted' }) });
+  const observer = observeAssRequests(page, () => time);
+  const fonts = request('/api/ass-font-coverage'), frame = request('/api/ass-frame'), failed = request('/api/ass-frame');
+  page.emit('request', request('/other'));
+  page.emit('request', fonts); time = 3;
+  page.emit('request', frame); time = 5;
+  page.emit('response', { request: () => frame, status: () => 200 }); page.emit('requestfinished', frame);
+  page.emit('request', failed); time = 7; page.emit('requestfailed', failed);
+  const report = observer.finish();
+  assert.equal(report.requests.length, 3);
+  assert.deepEqual(report.requests.map(row => row.state), ['pending', 'finished', 'failed']);
+  assert.equal(report.requests[1].status, 200); assert.equal(report.requests[1].finishedMs, 5);
+  assert.equal(report.requests[2].error, 'aborted');
+  assert.equal(page.listenerCount('request'), 0);
+});

@@ -88,8 +88,10 @@ test('single cue style is independent and undoable', async ({ page }, info) => {
   await select.selectOption('');
   await select.selectOption('ass');
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].assStyle?.id)).toBe('ass');
-  const output = await page.evaluate(() => {
+  const output = await page.evaluate(async () => {
     MaweSettings.EDITOR_SETTINGS.assMode = true;
+    await MaweAssFontAliases.ensureCoverage();
+    await MaweAssFontAliases.whenReady();
     return MaweExportSrt.buildAss();
   });
   expect(output).toContain('Style: Cue_0,');

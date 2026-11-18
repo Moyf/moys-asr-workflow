@@ -295,7 +295,16 @@ test('configures preview-only speaker labels and independently controls SRT expo
 
 test('keeps ASS speaker labels in the same style across preview resizing and fullscreen', async ({ page }) => {
   await page.goto(server.url);
+  // Alias loading invalidates Canvas font metrics. Compare window/fullscreen
+  // geometry only after both snapshots use the same resolved font families.
+  await page.waitForFunction(() => window.MaweAssFontAliases?.loaded());
   await revealSpeakerCue(page);
+  const waitForPreviewHeight = async (height) => {
+    await expect.poll(() => page.evaluate((target) => Math.max(
+      Math.abs(MaweDom.playerStage.getBoundingClientRect().height - target),
+      Math.abs(MaweDom.overlayEl.getBoundingClientRect().height - target),
+    ), height)).toBeLessThan(0.5);
+  };
 
   const smallWindow = await page.evaluate(() => {
     MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
@@ -371,15 +380,17 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
     // 模拟播放循环在布局过渡期间继续刷新 ASS；瞬态 2px 舞台不能压缩 Canvas。
     MawePlaybackLoop.updatePlaybackFrame();
     const transientOverlayHeight = Number.parseFloat(MaweDom.overlayEl.style.height) || 0;
+    // Keep the transition longer than the old fixed wait, so the test also
+    // covers a delayed layout without sampling the transient stage.
     setTimeout(() => {
       MaweDom.playerStage.style.height = '1080px';
       MaweDom.playerStage.style.minHeight = '1080px';
       MaweDom.playerStage.style.flexBasis = '1080px';
-    }, 40);
+    }, 1000);
     return { transientOverlayHeight };
   });
   expect(enteringFullscreen.transientOverlayHeight).toBeCloseTo(540, 0);
-  await page.waitForTimeout(220);
+  await waitForPreviewHeight(1080);
   const fullscreen = await page.evaluate(() => {
     const track = window.MaweAssCanvas.lastRender.tracks[0];
     const items = track.lines.flatMap((line) => line.items);
@@ -423,11 +434,11 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
       MaweDom.playerStage.style.height = '540px';
       MaweDom.playerStage.style.minHeight = '540px';
       MaweDom.playerStage.style.flexBasis = '540px';
-    }, 40);
+    }, 1000);
     return { transientOverlayHeight };
   });
   expect(leavingFullscreen.transientOverlayHeight).toBeCloseTo(1080, 0);
-  await page.waitForTimeout(220);
+  await waitForPreviewHeight(540);
   const windowedAgain = await page.evaluate(() => ({
     fullscreen: MaweDom.playerWrap.classList.contains('fullscreen-preview'),
     overlayHeight: MaweDom.overlayEl.getBoundingClientRect().height,

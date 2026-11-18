@@ -1,4 +1,4 @@
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -9,6 +9,8 @@ import test from 'node:test';
 import { TextDecoder, TextEncoder } from 'node:util';
 import vm from 'node:vm';
 
+
+await prepareEditorModule('shared/editor-utils.js');
 
 const context = { window: {}, TextDecoder, TextEncoder, Uint8Array };
 loadEditorModule(context, 'shared/editor-utils.js');
@@ -7908,4 +7910,13 @@ test('AI cleanup export projection respects active ownership, restoration and pu
   assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
   gapRemove.provenance.sources = { ai_cleanup: [{ start: 0, end: 200 }] };
   assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
+});
+
+test('Canvas emoji hint replaces VS16 only on simple clusters without rewriting complex emoji', () => {
+  assert.equal(helpers.assCanvasPreviewText('❤️ ☀ 😀 🤔'), '❤︎ ☀︎ 😀︎ 🤔︎');
+  for (const text of ['123 #* 中文，。', '❤︎', '👩‍👩‍👧‍👧', '👍🏽', '🇨🇳', '1️⃣', '🏳️‍🌈']) {
+    assert.equal(helpers.assCanvasPreviewText(text), text);
+  }
+  assert.ok(helpers.assManagedFontText('( •̀ ω •́ )y 中文╬'));
+  for (const text of ['مرحبا', 'कर्म', '𞤀𞤢', '𑀓𑀭', 'a\u200db']) assert.equal(helpers.assManagedFontText(text), false);
 });

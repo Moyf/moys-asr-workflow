@@ -278,7 +278,14 @@ MawePlaybackLoop.update();
 
 
 
-  function setPlayerCurrentTime(seconds) {
+  function setPlayerCurrentTime(seconds, { preserveAudition = false } = {}) {
+    // Cancel synchronously: a queued timeupdate can arrive before seeking and
+    // otherwise apply the old audition boundary to the user's new position.
+    if (!preserveAudition) {
+      auditionSeekPending = false;
+      auditionStopSeconds = null;
+      clearAuditionStopTimer();
+    }
     const player = MaweCoreState.player;
     player.currentTime = seconds;
     window.MaweGapPlayback?.retargetPendingSeek(player);
@@ -294,14 +301,14 @@ MawePlaybackLoop.update();
 
 
 
-  function seekMediaTo(timeSeconds) {
+  function seekMediaTo(timeSeconds, { preserveAudition = false } = {}) {
     if (!hasLoadedMedia()) return false;
     const duration = Number.isFinite(MaweCoreState.player.duration) && MaweCoreState.player.duration > 0
       ? MaweCoreState.player.duration : null;
     if (!Number.isFinite(duration)) return false;
     MaweJklPlayback.stopJklReversePlayback({ render: false });
     const targetSeconds = Math.max(0, Math.min(duration, Number(timeSeconds) || 0));
-setPlayerCurrentTime(targetSeconds);
+setPlayerCurrentTime(targetSeconds, { preserveAudition });
 MawePlaybackLoop.update();
 MaweCueListAnchor.resumeCueListFollowing();
 MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
@@ -335,7 +342,7 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     // seekMediaTo 会同步刷新播放状态；必须先进入试听，避免落入空隙后立即被跳过。
     auditionStopSeconds = stop;
     auditionSeekPending = true;
-    if (!seekMediaTo(start)) {
+    if (!seekMediaTo(start, { preserveAudition: true })) {
       auditionSeekPending = false;
       auditionStopSeconds = null;
       clearAuditionStopTimer();

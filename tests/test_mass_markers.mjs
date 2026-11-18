@@ -3,7 +3,9 @@ import test from 'node:test';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import {initModuleSource} from './helpers/init-module-source.mjs';
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { loadEditorModule, prepareEditorModule } from './helpers/editor-module-loader.mjs';
+
+await prepareEditorModule('shared/editor-utils.js');
 
 const context = { window: {} };
 loadEditorModule(context, 'shared/editor-utils.js');

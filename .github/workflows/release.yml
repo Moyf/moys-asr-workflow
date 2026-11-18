@@ -73,7 +73,7 @@ jobs:
         run: python scripts/sync_launcher_version.py --check
 
       - name: Install locked dependencies
-        run: uv sync --group build --frozen
+        run: uv sync --group build --frozen --group dev --group test
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -92,29 +92,25 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts && pnpm run build
 
       - name: Install FFmpeg for media integration tests
-        shell: pwsh
-        # Test dependency only; release binaries are downloaded and verified below.
-        run: |
-          choco install ffmpeg --yes --no-progress
-          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed.' }
-          # Launch the real binaries: killing a Chocolatey shim can orphan FFmpeg
-          # and leave the media locked during cancellation/temporary-file cleanup.
-          $FfmpegBinary = Get-ChildItem -LiteralPath "$env:ChocolateyInstall\lib\ffmpeg\tools" -Filter ffmpeg.exe -Recurse -File | Select-Object -First 1
-          if (-not $FfmpegBinary) { throw 'The FFmpeg package contains no executable.' }
-          $FfmpegBin = $FfmpegBinary.Directory.FullName
-          $FfprobeBinary = Join-Path $FfmpegBin 'ffprobe.exe'
-          if (-not (Test-Path -LiteralPath $FfprobeBinary -PathType Leaf)) { throw 'FFprobe is unavailable.' }
-          $FfmpegBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $FfmpegBinary.FullName -version
-          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg is unavailable.' }
-          & $FfprobeBinary -version
-          if ($LASTEXITCODE -ne 0) { throw 'FFprobe is unavailable.' }
+        uses: ./.github/actions/windows-ffmpeg
 
       - name: Run packaging contract tests
         run: uv run python scripts/run_tests.py tests/test_packaging_contract.py
 
       - name: Run Python tests
-        run: uv run python scripts/run_tests.py --github-summary
+        run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py --report .artifacts/release-python.json --github-summary
+
+      - name: Preserve complete Python report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-python-${{ runner.os }}
+          path: |
+            .artifacts/release-python.json
+            .artifacts/release-python.log
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Required media failure compatibility
         run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_media.py tests/test_ffmpeg.py tests/test_ffprobe_failure_integration.py --required --report .artifacts/media-required.json
@@ -356,7 +352,7 @@ jobs:
         run: python scripts/sync_launcher_version.py --check
 
       - name: Install locked dependencies
-        run: uv sync --group build --frozen
+        run: uv sync --group build --frozen --group dev --group test
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -450,7 +446,19 @@ jobs:
           echo "$PWD/build/ci-ffmpeg/extracted/bin" >> "$GITHUB_PATH"
 
       - name: Run Python tests
-        run: uv run python -m unittest discover -s tests -p "test_*.py"
+        run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py --report .artifacts/release-python.json --github-summary
+
+      - name: Preserve complete Python report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-python-${{ runner.os }}
+          path: |
+            .artifacts/release-python.json
+            .artifacts/release-python.log
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
 
       # ---------- macOS 专属 ----------
 
