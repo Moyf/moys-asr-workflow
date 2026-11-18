@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { projectModel } from '../helpers/runtime-project.mjs';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload,
   makeTempDir, startServer } from './helpers.mjs';
 
@@ -13,8 +14,9 @@ test.beforeAll(async () => {
   for (let i = 0; i < (bytes.length - 44) / 2; i++) bytes.writeInt16LE(Math.round(3000 * Math.sin(2 * Math.PI * 440 * i / 8000)), 44 + i * 2);
   writeFileSync(media, bytes);
   project = join(dir, 'project.mosp');
-  writeFileSync(project, JSON.stringify({ media, segments: [{ id: 'one', start: 100, end: 1000, text: '音量' }],
-    waveform: generateWaveformPayload(12000) }));
+  writeFileSync(project, JSON.stringify(projectModel.importProject({ media,
+    segments: [{ id: 'one', start: 100, end: 1000, text: '音量' }],
+    waveform: generateWaveformPayload(12000) }).project));
   server = await startServer(project, media, await findFreePort());
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(dir); });

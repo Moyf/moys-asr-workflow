@@ -60,8 +60,8 @@ for (const target of ['main', 'overlay']) test(`clears ${target} stickers throug
   await page.locator('#sticker-clear').click();
   await expect(page.locator('#sticker-modal')).not.toHaveClass(/show/);
   const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  const selected = target === 'overlay' ? saved.overlay_track.segments[0] : saved.segments[0];
-  const other = target === 'overlay' ? saved.segments[0] : saved.overlay_track.segments[0];
+  const selected = target === 'overlay' ? getOverlayTrack(saved).segments[0] : getMainTrack(saved).segments[0];
+  const other = target === 'overlay' ? getMainTrack(saved).segments[0] : getOverlayTrack(saved).segments[0];
   expect(selected).not.toHaveProperty('sticker_group_id');
   expect(typeof other.sticker_group_id).toBe('string');
   expect(saved.subtitle_groups.sticker).toHaveLength(1);
