@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## 核心原则
+
+- **不要默认用户提出的问题定义就是正确的**。你先分析用户真正想解决的底层需求，判断有没有把症状误认为原因、把手段误认为目标。如果存在更值得解决的问题，直接指出来。
+
 ## 项目目标
 
 `moys-asr-workflow`（简称 **MAW**）是一个刻意收窄的、可公开分发的 ASR 工作流。正式主流程仍是 Qwen ASR API；当前分支另提供 Launcher 与 CLI 的实验性本地模型入口，具体模型和运行环境见本分支用户指南：
@@ -8,7 +12,7 @@
 本地媒体 -> ASR API 或实验性本地模型 -> SRT + .mosp 工程 -> 本地浏览器编辑 -> 导出
 ```
 
-它不是完整的 ASR 平台。不要在没有明确需求时继续引入其他识别引擎、模型下载管理器、剪辑软件脚本、比较工具或任何个人工作流资产。未来完整产品是 MOSE，见 `docs/engineering/MOSE.md`。
+它不是完整的 ASR 平台。不要在没有明确需求时继续引入其他识别引擎、模型下载管理器、剪辑软件脚本、比较工具或任何个人工作流资产。
 
 ## 文档
 
@@ -31,17 +35,17 @@
 先读根规则，再按本次变更范围选择相关文件。
 
 ```text
-README.md                     # 新用户的安装和最短路径
+README.md                          # 新用户的安装和最短路径
 docs/user/WORKFLOW.md              # 全流程、参数、排错
 docs/engineering/JSON_SCHEMA.md    # JSON 工程契约
-maw_gui.py + maw/cli.py        # 公开 CLI 与命令分派（指南见 docs/user/CLI.md）
-maw/asr/qwen.py # API 转写入口（高级命令：python -m maw.asr.qwen）
-edit.py + maw/waveform.py     # 单文件编辑器生成和波形缓存
-server-editor/serve.py        # 推荐的 localhost 编辑器
-web/editor-scripts.txt        # 编辑器源码装配顺序
-web/editor/ + web/shared/     # 编辑器领域模块与共享能力
-web/launcher/                # Launcher 前端
-docs/user/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
+maw_gui.py + maw/cli.py            # 公开 CLI 与命令分派（指南见 docs/user/CLI.md）
+maw/asr/qwen.py                    # API 转写入口（高级命令：python -m maw.asr.qwen）
+edit.py + maw/waveform.py          # 单文件编辑器生成和波形缓存
+server-editor/serve.py             # 推荐的 localhost 编辑器
+web/editor-scripts.txt             # 编辑器源码装配顺序
+web/editor/ + web/shared/          # 编辑器领域模块与共享能力
+web/launcher/                      # Launcher 前端
+docs/user/LOCAL_ASR.md             # 本地 Qwen3-ASR / FunASR CLI
 ```
 
 `web/` 是唯一前端源码。ESM 工厂与仍保留 classic 共享作用域的接线并存，数量随迁移变化，以 `pnpm run build:editor` 输出的 `Editor: N ESM factories / M sources` 为准；该命令由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。**bundle 是构建产物，不进 Git**：发布包内置构建好的产物，运行时不需要 Node；从源码运行时 serve.py / maw_gui.py / `edit.py --blank` 会在产物缺失或过期时自动重建（需要 Node 与 `pnpm install`），`pnpm install` 的 postinstall 也会构建一次。修改编辑器 JS 或清单后必须重建（watch:editor 或手动），并运行 `pnpm run check:editor` 验证新鲜度。CSS 与 HTML 模板仍在渲染时读取。
@@ -90,8 +94,6 @@ git diff --check
 - unittest 用 `uv run --no-sync python scripts/run_tests.py`（可接文件 / 点号名称 / `--full-log`）。对页面或内联脚本做成员断言的测试类继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions`，否则失败会把整页打印成一行；裸 `python -m unittest` 只用于确需完整输出的场合。
 - diff 先看 `--stat` / `--name-status` 再读选定源码；不要把含生成物的整份 diff 或完整便携 HTML 读进上下文。`rg` 默认跳过 bundle 与日志，需查时显式给路径。
 - 长驻进程（serve.py、http.server）不要用会等待进程树的方式启动；后台任务用 `Start-Process -WindowStyle Hidden`（勿用 `-NoNewWindow`），输出重定向到文件后探活或轮询，用完终止。**禁止 bash 后台 `&`**：stdin 不 EOF，会永久挂住会话。
-- paseo 独立终端发命令以 `\r` 结尾（`\n` 只回显、不执行），启动后用 `Get-CimInstance Win32_Process` 确认进程存在；清理残留前按 CommandLine 核对归属，只清本 worktree 的进程。
-- paseo `checkout-pr` 拉取 fork PR 报 gh GraphQL 错误时，回退 `git fetch origin pull/<N>/head:<分支>` + `git worktree add`。
 - 历史耗时不是当前预算：按本次集合设明确上限或拆分执行；连续两轮同类失败先分析，不循环重跑。新 worktree 先比较 `uv.lock`，一致时可只读复用主仓库 venv（`MAW_TEST_PYTHON` / `MAW_E2E_PYTHON`），依赖缺失只记录一次。
 - PowerShell 内联脚本（`node -e`、多层引号）易解析失败，复杂逻辑写临时脚本文件；输出为空先怀疑参数与引号，而不是重跑。
 
@@ -161,9 +163,9 @@ bundle 与 `.meta.json` 不进 Git：serve.py 渲染前、maw_gui.py 启动前�
 
 ## Codegraph 使用注意
 
-- 在本仓库调用 `codegraph_explore` **必须显式传 `projectPath="D:\Codes\moys-asr-workflow"`**。省略时使用会话默认项目，可能落到 `D:\Codes\.codegraph` 这个父级混合索引（把 D:\Codes 下所有同级项目建在一个库），返回其他仓库（如 `graph-animation-controller`）的代码并造成误改。
+- 在本仓库调用 `codegraph_explore` **必须显式传 `projectPath="<工程路径>"`**。省略时使用会话默认项目，可能落到父级混合索引，返回其他仓库的代码并造成误改。
 - 背景：`.codegraph/` 目录若存在但为空，工具会沿目录树向上回退到父级索引；2026-08 已在本仓库运行 `codegraph init` 重建了本仓库自己的索引。若再次出现外仓库结果，先检查 `.codegraph/codegraph.db` 是否还在。
-- **worktree 没有自带索引**，可复用主仓库的：传 `projectPath="D:\Codes\moys-asr-workflow"` 做符号与结构导航（"X 在哪定义 / 被谁调用"），但返回的文件内容是**主分支**的，不能当作 worktree 的编辑依据；编辑定位与内容核验仍用 `Select-String` / `grep`。分支大量增删改文件时（重构类 PR）索引误导性大，此时完全依赖 grep。需要完整支持时可在 worktree 里 `codegraph init` 自建索引（约 64 MB + 常驻 daemon），按需取舍。禁止落到 `D:\Codes\.codegraph` 父级混合索引（见上）。
+- **worktree 没有自带索引**，可复用主仓库的：传 `projectPath="<工程路径>"` 做符号与结构导航（"X 在哪定义 / 被谁调用"），但返回的文件内容是**主分支**的，不能当作 worktree 的编辑依据；编辑定位与内容核验仍用 `Select-String` / `grep`。分支大量增删改文件时（重构类 PR）索引误导性大，此时完全依赖 grep。需要完整支持时可在 worktree 里 `codegraph init` 自建索引（约 64 MB + 常驻 daemon），按需取舍。
 
 ## 代码与安全约束
 
@@ -216,4 +218,5 @@ Release Markdown 中，粗体闭合标记 `**` 与后续标点或正文之间必
 MAW 从一开始就是独立项目。需要引入外部代码时，逐项审查、补测试并更新文档；不要整目录覆盖或带入开发者机器上的配置、缓存与辅助工具。
 
 ## 代码协作
+
 有时候多个 Agents 会同时开工，遇到文件变动的情况不用慌张。
