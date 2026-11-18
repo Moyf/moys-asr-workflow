@@ -111,7 +111,7 @@ git diff --check
 
 ### PR 提交前检查
 
-提交 PR 前，先确认该 PR 的目标分支（base branch），fetch 后将最新目标分支合并到当前分支，并解决所有合并冲突。以 `main` 为目标则同步 `origin/main`，以 `2.0dev` 为目标则同步 `origin/2.0dev`；不要固定合并 main，也不要擅自更改目标分支。
+目标分支以 PR 实际设置为准：提交前同步该分支（`main` → `origin/main`，`2.0dev` → `origin/2.0dev`），解决冲突，不擅自更改目标分支。对外步骤见[贡献指南](https://github.com/Moyf/moys-asr-workflow/blob/main/CONTRIBUTING.md#提交-pr-前)，硬性要求见根 [AGENTS](https://github.com/Moyf/moys-asr-workflow/blob/main/AGENTS.md)。
 
 ### PR / main 的改动检查
 
@@ -164,10 +164,6 @@ Greptile 复审是提交后的既定环节；把同一标准提前到提交前�
 
 README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 [JSON_SCHEMA](../json-schema/)。反馈和开发进度写任务账本。官网文档由 [同步脚本](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) 生成，不手改副本。
 
-日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。在 PR 描述注明“内联副本待发布前统一重生成”；发布前或维护者明确要求时才执行：
+日常改编辑器 JS 只重建 esbuild 产物，不重生成 `blank-editor.html`；PR 描述注明「内联副本待发布前统一重生成」，发布前统一处理，规则见根 [AGENTS](https://github.com/Moyf/moys-asr-workflow/blob/main/AGENTS.md)。
 
-```sh
-uv run --no-sync python edit.py --blank
-```
-
-发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。2.0 起先用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 从 CL 生成并提交版本文档，再用 `--check-doc` 检查新鲜度、`--output PATH` 检查最终 Release notes；beta 汇总、正式版精简和小版本基础内容引用见[发布管线](../documentation-index/#engineering-releases)。发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。
+发布前检查、归档生成与网站核验见根 [AGENTS 的发布检查](https://github.com/Moyf/moys-asr-workflow/blob/main/AGENTS.md)与[发布管线](../documentation-index/#engineering-releases)。发布不等于只建 tag；远端、push、tag 和 Release 均需维护者明确要求。

@@ -91,9 +91,9 @@ source: "docs/INDEX.md"
 ## 工程说明
 
 <a name="engineering-long-commands"></a>
-### Agent 长命令防卡死指南（Windows / PowerShell 5.1）
+### 长命令、后台进程与孤儿清理
 
-[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/AGENT_LONG_COMMAND_GUIDE.md)
+[已并入「有界输出与分层调试」](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md)
 
 <a name="engineering-development"></a>
 ### MAW 开发概览
@@ -108,7 +108,7 @@ source: "docs/INDEX.md"
 <a name="engineering-e2e-lifecycle"></a>
 ### E2E 服务进程生命周期
 
-[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/E2E_PROCESS_LIFECYCLE.md)
+[已并入「E2E 残留服务进程与长命令挂起」](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/E2E_SERVER_HANG.md)
 
 <a name="engineering-e2e-hang"></a>
 ### E2E 残留服务进程与长命令挂起：排查与预防
