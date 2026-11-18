@@ -2,9 +2,7 @@
 
 ## 实现状态
 
-单句缩放首版已提交并推送，PR #248 仍保持打开。首轮 review 提出的滚轮预览门槛、事务隔离和自动堆叠导出位移均已修正；第三轮调整自动堆叠夹具后，Editor CI 29/29 浏览器测试通过，Python lint、Windows 预览包也通过。三条 Greptile inline thread 已逐项回复并解决。
-
-本方案记录最终行为和数据契约；逐项验证、截图自查和提交状态见[进度账本](../logs/release1.9.0-beta.2/ASS_CUE_SCALE.md)与[人工核对清单](../logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)。首轮 review 新增的定位回归 spec 已加入 Editor PR workflow，FFmpeg 与 Pillow 均已在 CI 环境准备完成。自动堆叠夹具已在 640×360 视频和 150 号基础字号下可靠触发组适配；最终 Editor CI 的 29 项均通过。源码使用 `web/`，editor bundle 已重建且不进 Git；按仓库约定未重生成 `blank-editor.html`。
+单句缩放已实现并合并（PR #248，2026-10-16）。本方案记录最终行为和数据契约；逐项验证、截图自查和当时的提交状态见[进度账本](../logs/release1.9.0-beta.2/ASS_CUE_SCALE.md)与[人工核对清单](../logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)，此处不再维护一次性进度与 CI 计数。首轮 review 新增的定位回归 spec 已加入 Editor PR workflow。
 
 ## 用户明确要求
 

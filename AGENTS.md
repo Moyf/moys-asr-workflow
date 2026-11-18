@@ -44,7 +44,7 @@ web/launcher/                # Launcher 前端
 docs/user/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 ```
 
-`web/` 是唯一前端源码。61 个工厂使用 ESM，其余接线保留 classic 共享作用域；`pnpm run build:editor` 由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。**bundle 是构建产物，不进 Git**：发布包内置构建好的产物，运行时不需要 Node；从源码运行时 serve.py / maw_gui.py / `edit.py --blank` 会在产物缺失或过期时自动重建（需要 Node 与 `pnpm install`），`pnpm install` 的 postinstall 也会构建一次。修改编辑器 JS 或清单后必须重建（watch:editor 或手动），并运行 `pnpm run check:editor` 验证新鲜度。CSS 与 HTML 模板仍在渲染时读取。
+`web/` 是唯一前端源码。ESM 工厂与仍保留 classic 共享作用域的接线并存，数量随迁移变化，以 `pnpm run build:editor` 输出的 `Editor: N ESM factories / M sources` 为准；该命令由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。**bundle 是构建产物，不进 Git**：发布包内置构建好的产物，运行时不需要 Node；从源码运行时 serve.py / maw_gui.py / `edit.py --blank` 会在产物缺失或过期时自动重建（需要 Node 与 `pnpm install`），`pnpm install` 的 postinstall 也会构建一次。修改编辑器 JS 或清单后必须重建（watch:editor 或手动），并运行 `pnpm run check:editor` 验证新鲜度。CSS 与 HTML 模板仍在渲染时读取。
 
 Launcher 前端走同一套装配模式：源码按 `web/launcher-scripts.txt` 清单原序列为 classic 模块（由 `scripts/refactor-tools/split-launcher.mjs` 自旧单文件 launcher.js 机械切割而来，等价审计内建于该工具），`pnpm run build:launcher` 装配 `web/launcher/boot/launcher-bundle.js`；修改 Launcher JS 或清单后必须重建（bundle 与 `.meta.json` 不进 Git，maw_gui.py 启动时会自动重建过期产物），运行 `pnpm run check:launcher`。`batch.js` / `postprocess.js` 仍是 bundle 外的独立脚本，经 `window.MAWLauncher` 桥访问主脚本。
 
@@ -165,10 +165,10 @@ node scripts\build-editor.mjs --write   # 重建（--check 只校验新鲜度；
 
 ### 中断或上下文压缩后的恢复顺序
 
-恢复大型任务时，先执行并阅读：
+恢复大型任务时，先找到**本次任务自己的**账本（`docs/logs/` 下当前主题的 `TEST_FEEDBACK_*.md`、`.checklist.md` 或任务记录），再执行并阅读：
 
 ```powershell
-Get-Content -Raw docs\logs\1.4.0-beta.7\undated\TEST_FEEDBACK_BETA7.md
+Get-Content -Raw <本次任务的账本路径>
 git status --short
 git diff --stat
 git diff --name-status

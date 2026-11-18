@@ -1,6 +1,6 @@
 # E2E 残留服务进程与长命令挂起：排查与预防
 
-适用范围：MAW 仓库的 Playwright e2e（`tests/e2e/`，`npm test`）。事件记录见文末。
+适用范围：MAW 仓库的 Playwright e2e（`tests/e2e/`，`pnpm test`）。事件记录见文末。
 
 ## 症状
 
