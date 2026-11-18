@@ -8,6 +8,29 @@ from scripts import local_test_impact as impact
 
 
 class ConsumerSelectionTests(unittest.TestCase):
+    def test_marker_migration_proof_rejects_unrelated_same_line_edits(self):
+        path = 'web/editor/state/editor-history.js'
+        before = 'function restore() {\n  MaweMarkerEditing.afterExternalMarkersChange(); MaweState.saved = true;\n}\n'
+        after = "import { afterExternalMarkersChange } from '../markers/editor-marker-editing.js';\n" \
+                'function restore() {\n  afterExternalMarkersChange(); MaweState.saved = true;\n}\n'
+        with mock.patch.object(impact.subprocess, 'check_output', return_value=before.encode()), \
+                mock.patch.object(Path, 'read_text', return_value=after):
+            self.assertTrue(impact.marker_migration_only(path, 'base'))
+            self.assertFalse(impact.marker_migration_only(path, None))
+        with mock.patch.object(impact.subprocess, 'check_output', return_value=before.encode()), \
+                mock.patch.object(Path, 'read_text', return_value=after.replace('; MaweState.saved = true;', ';')):
+            self.assertFalse(impact.marker_migration_only(path, 'base'))
+
+    def test_marker_migration_selects_runtime_contracts_and_falls_back_on_behavior_change(self):
+        path = 'web/editor/io/editor-project-load.js'
+        with mock.patch.object(impact, 'marker_migration_only', return_value=True):
+            selected = impact.select_packs([path], base_ref='base')
+        self.assertIn('tests/e2e/marker-editing-gate.spec.mjs', selected['e2e_specs'])
+        self.assertNotIn('tests/e2e/gap-removed-audio-export.spec.mjs', selected['e2e_specs'])
+        with mock.patch.object(impact, 'marker_migration_only', return_value=False):
+            fallback = impact.select_packs([path], base_ref='base')
+        self.assertIn('tests/e2e/gap-removed-audio-export.spec.mjs', fallback['e2e_specs'])
+
     def test_engineering_docs_use_curated_site_sources(self):
         ordinary = impact.select_packs(['docs/engineering/DEBUG_WORKFLOW.md'])
         self.assertEqual(ordinary['mode'], 'targeted')

@@ -26,6 +26,73 @@ DEV_PYTHON = ('tests.test_project_contract', 'tests.test_project_io', 'tests.tes
 DEV_NODE = ('test_editor_runtime.mjs', 'test_editor_state.mjs', 'test_editor_commands.mjs',
             'test_editor_host.mjs', 'test_editor_history_gestures.mjs')
 ALL_MERGE = {'common', 'browser', 'smoke', 'media', 'long-media', 'lifecycle', 'tools', 'editor-e2e', 'website'}
+MARKER_RUNTIME_SPECS = (
+    'marker-editing-gate', 'marker-feedback', 'markers-batch',
+    'ai-cleanup-marker-restore', 'ai-cleanup-local-review-fallback',
+    'ai-cleanup-local-punctuation',
+)
+MARKER_MIGRATION_FILES = {
+    'web/editor/markers/editor-marker-editing.js': ('MaweMarkerEditing', 'initMaweMarkerEditing'),
+    'web/editor/markers/editor-markers-panel.js': ('MaweMarkersPanel', 'initMaweMarkersPanel'),
+}
+MARKER_OPTIONAL_CALLS = {
+    'enableForProjectMarkers': 'window.MaweMarkerEditing?.enableForProjectMarkers?.',
+    'resetSelection': 'window.MaweMarkersPanel?.resetSelection?.',
+    'refreshAiCleanupReviewMuteButtons': 'global.MaweMarkersPanel?.refreshAiCleanupReviewMuteButtons?.',
+    'isEditingEnabled': 'window.MaweMarkerEditing?.isEditingEnabled?.',
+}
+
+
+def marker_migration_only(path: str, base_ref: str | None) -> bool:
+    """Prove a marker file's entire diff is the G12 ESM wrapper or call replacement."""
+    if not base_ref or not path.startswith('web/editor/'):
+        return False
+    try:
+        before = subprocess.check_output(['git', 'show', f'{base_ref}:{path}'], cwd=ROOT).decode('utf-8')
+        after = (ROOT / path).read_text(encoding='utf-8')
+    except (OSError, UnicodeError, subprocess.SubprocessError):
+        return False
+    if path in MARKER_MIGRATION_FILES:
+        facade, initializer = MARKER_MIGRATION_FILES[path]
+        header = f'export function {initializer}() {{\n'
+        if after.count(header) != 1 or not after.endswith('\n'):
+            return False
+        normalized = after.replace(header, '', 1)
+        if path.endswith('editor-markers-panel.js'):
+            import_line = "import * as markerEditing from './editor-marker-editing.js';\n"
+            if normalized.count(import_line) != 1:
+                return False
+            normalized = normalized.replace(import_line, '', 1).replace('markerEditing.', 'MaweMarkerEditing.')
+        tail = '})(window);\n}\n'
+        if normalized.count(tail) != 1:
+            return False
+        body, exports = normalized.split(tail, 1)
+        for line in exports.strip().splitlines():
+            if not line:
+                continue
+            match = re.fullmatch(r'export function (\w+)\(\.\.\.args\) \{ return window\.' + facade
+                                 + r'(?:\.|\?\.)(\w+)(?:\?\.)?\(\.\.\.args\); \}', line)
+            if not match or match.group(1) != match.group(2):
+                return False
+        if 'export function ' not in exports:
+            return False
+        return before == body + '})(typeof window !== \'undefined\' ? window : globalThis);\n'
+
+    imports = re.findall(r'^import (?:\{ ([^}]+) \}|\* as (markerEditing)) from \'\.\./markers/(editor-marker-editing|editor-markers-panel)\.js\';\n', after, re.M)
+    if not imports:
+        return False
+    normalized = after
+    for named, namespace, module in imports:
+        facade = 'MaweMarkerEditing' if module == 'editor-marker-editing' else 'MaweMarkersPanel'
+        statement = (f'import {{ {named} }}' if named else f'import * as {namespace}') + f" from '../markers/{module}.js';\n"
+        normalized = normalized.replace(statement, '', 1)
+        if namespace:
+            normalized = normalized.replace(f'{namespace}.', f'{facade}.')
+        else:
+            for name in [part.strip() for part in named.split(',')]:
+                old = MARKER_OPTIONAL_CALLS.get(name, f'{facade}.{name}')
+                normalized = re.sub(r'\b' + re.escape(name) + r'\(', old + '(', normalized)
+    return normalized == before
 
 
 def node_pack(filename: str) -> str:
@@ -147,12 +214,19 @@ def select_packs(paths: list[str], *, release: bool = False, base_ref: str | Non
             fallback = True
             reasons.append('unparseable Python input: finite contract checks need review')
     if inputs:
-        for path, consumers in file_consumers(ROOT, inputs).items():
-            add_consumers(path, consumers)
         web = [p for p in inputs if p.startswith('web/') and p.endswith(('.js', '.mjs'))]
+        marker_migrations = {p for p in web if marker_migration_only(p, base_ref)}
+        for path, consumers in file_consumers(ROOT, [p for p in inputs if p not in marker_migrations]).items():
+            add_consumers(path, consumers)
         if web:
-            for path, consumers in web_behavior_consumers(ROOT, web).items():
+            for path, consumers in web_behavior_consumers(ROOT, [p for p in web if p not in marker_migrations]).items():
                 add_consumers(path, consumers)
+            for path in marker_migrations:
+                add_consumers(path, [f'tests/e2e/{name}.spec.mjs' for name in MARKER_RUNTIME_SPECS
+                                     if (ROOT / f'tests/e2e/{name}.spec.mjs').is_file()])
+                if path in MARKER_MIGRATION_FILES:
+                    add_consumers(path, [p for p in ('tests/test_editor_marker_esm.mjs',
+                                                    'tests/test_editor_marker_preferences.mjs') if (ROOT / p).is_file()])
         for path in web:
             if path.startswith(('web/editor/', 'web/shared/')):
                 add_consumers(path, [p for p in (
