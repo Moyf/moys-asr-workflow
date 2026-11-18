@@ -300,6 +300,7 @@ class _PreparedAlignment:
 @contextmanager
 def _prepare_script_alignment(
     request: ScriptAlignmentRequest, *, ffmpeg_path: str | Path | None = None,
+    ffprobe_path: str | Path | None = None,
     cancel_event: Any = None,
 ) -> Iterator[_PreparedAlignment]:
     script = request.script_path.expanduser().resolve()
@@ -323,7 +324,7 @@ def _prepare_script_alignment(
         raise TimestampAlignmentError("找不到 FFmpeg，无法读取文稿对齐音频。")
     from maw.media import resolve_default_audio_track
 
-    audio_track = resolve_default_audio_track(media, request.audio_track)
+    audio_track = resolve_default_audio_track(media, request.audio_track, ffprobe_path=ffprobe_path)
     _check_cancel(cancel_event)
     with tempfile.TemporaryDirectory(prefix="maw-script-align-") as temporary:
         root = Path(temporary)
@@ -358,6 +359,7 @@ def _prepare_script_alignment(
 
 def check_script_alignment(
     request: ScriptAlignmentRequest, *, ffmpeg_path: str | Path | None = None,
+    ffprobe_path: str | Path | None = None,
     cancel_event: Any = None,
 ) -> ScriptAlignmentReport:
     """Check inputs and acoustic chunk boundaries without a model or outputs.
@@ -366,15 +368,15 @@ def check_script_alignment(
     The execution path prepares again, so changed files are never trusted from
     a stale preview.
     """
-    with _prepare_script_alignment(request, ffmpeg_path=ffmpeg_path, cancel_event=cancel_event) as prepared:
+    with _prepare_script_alignment(request, ffmpeg_path=ffmpeg_path, ffprobe_path=ffprobe_path, cancel_event=cancel_event) as prepared:
         return prepared.report()
 
 
 def run_script_alignment(
     request: ScriptAlignmentRequest, *, backend: AlignmentBackend | None = None,
-    ffmpeg_path: str | Path | None = None, cancel_event: Any = None,
+    ffmpeg_path: str | Path | None = None, ffprobe_path: str | Path | None = None, cancel_event: Any = None,
 ) -> tuple[SubtitleArtifact, ScriptAlignmentReport]:
-    with _prepare_script_alignment(request, ffmpeg_path=ffmpeg_path, cancel_event=cancel_event) as prepared:
+    with _prepare_script_alignment(request, ffmpeg_path=ffmpeg_path, ffprobe_path=ffprobe_path, cancel_event=cancel_event) as prepared:
         media, lines, language, audio_track = prepared.media, prepared.lines, prepared.language, prepared.audio_track
         audio, strategy = prepared.audio, prepared.strategy
         anchors, spans, ffmpeg = prepared.anchors, prepared.spans, prepared.ffmpeg
