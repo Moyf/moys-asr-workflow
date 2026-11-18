@@ -219,10 +219,13 @@ export function sanitizeDocument(markdown, source) {
     return block;
   });
 }
-async function readDocument(source) {
-  const localPath = path.join(sourceRoot, ...source.split('/'));
+export async function readDocument(source, { root = sourceRoot, allowRemote = true } = {}) {
+  const localPath = path.join(root, ...source.split('/'));
   if (existsSync(localPath)) {
     return readFile(localPath, 'utf8');
+  }
+  if (!allowRemote) {
+    throw new Error(`本地缺少源文档 ${source}；check 模式不读取远端，请确认工作树完整后重试`);
   }
 
   const response = await fetch(`${rawRoot}/${source}`);
@@ -232,18 +235,23 @@ async function readDocument(source) {
   return response.text();
 }
 
-async function loadImages() {
+export async function readImage(source, { root = sourceRoot, allowRemote = true } = {}) {
+  const localPath = path.join(root, ...source.split('/'));
+  if (existsSync(localPath)) {
+    return readFile(localPath);
+  }
+  if (!allowRemote) {
+    throw new Error(`本地缺少配图 ${source}；check 模式不读取远端，请确认工作树完整后重试`);
+  }
+  const response = await fetch(`${rawRoot}/${source}`);
+  if (!response.ok) throw new Error(`无法读取图片 ${source}（HTTP ${response.status}）`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function loadImages({ allowRemote = true } = {}) {
   const images = new Map();
   for (const source of imageSources) {
-    const localPath = path.join(sourceRoot, ...source.split('/'));
-    let contents;
-    if (existsSync(localPath)) {
-      contents = await readFile(localPath);
-    } else {
-      const response = await fetch(`${rawRoot}/${source}`);
-      if (!response.ok) throw new Error(`无法读取图片 ${source}（HTTP ${response.status}）`);
-      contents = Buffer.from(await response.arrayBuffer());
-    }
+    const contents = await readImage(source, { allowRemote });
     images.set(path.join(assetRoot, ...source.split('/')), contents);
   }
   return images;
@@ -279,7 +287,7 @@ async function main() {
   let synced = 0;
 
   for (const document of documents) {
-    const source = sanitizeDocument(await readDocument(document.source), document.source);
+    const source = sanitizeDocument(await readDocument(document.source, { allowRemote: !checkOnly }), document.source);
     const generated = [
       '---',
       `layout: ${quote('../../layouts/DocLayout.astro')}`,
@@ -310,7 +318,7 @@ async function main() {
     synced += 1;
   }
 
-  const images = await loadImages();
+  const images = await loadImages({ allowRemote: !checkOnly });
   if (checkOnly) {
     await findStale(images, stale);
   } else {

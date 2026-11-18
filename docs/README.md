@@ -75,4 +75,4 @@ pnpm --dir website run check
 pnpm --dir website run build
 ```
 
-`check:docs` 只读比对已提交的生成副本，副本过期会列出文件并失败；`sync:docs` 重写副本。生成副本与源文件一同提交。脚本、配置或测试输入变化时运行对应最小回归；应用行为与打包变化遵循[开发概览](INDEX.md#engineering-development)的检查。变更结果及需维护者回看的内容写入正常交付说明。
+`check:docs` 只读比对已提交的生成副本，副本过期会列出文件并失败；它不访问远端，源文档或配图缺失会直接报错。`sync:docs` 才重写副本。生成副本与源文件一同提交。脚本、配置或测试输入变化时运行对应最小回归；应用行为与打包变化遵循[开发概览](INDEX.md#engineering-development)的检查。变更结果及需维护者回看的内容写入正常交付说明。
