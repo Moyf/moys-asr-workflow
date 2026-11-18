@@ -1,4 +1,4 @@
-name: Editor build and contracts
+name: Change checks
 
 on:
   pull_request:
@@ -9,220 +9,265 @@ permissions:
   contents: read
 
 concurrency:
-  group: editor-checks-${{ github.event.pull_request.number || github.ref }}
+  group: change-checks-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   selection:
     runs-on: ubuntu-latest
     outputs:
-      light: ${{ steps.scope.outputs.light }}
+      plan: ${{ steps.scope.outputs.plan }}
+      matrix: ${{ steps.scope.outputs.matrix }}
+      has_checks: ${{ steps.scope.outputs.has_checks }}
+      aux_selected: ${{ steps.scope.outputs.aux_selected }}
+      aux_error: ${{ steps.scope.outputs.aux_error }}
+      aux_python: ${{ steps.scope.outputs.aux_python }}
+      aux_node: ${{ steps.scope.outputs.aux_node }}
+      aux_browser: ${{ steps.scope.outputs.aux_browser }}
+      aux_application: ${{ steps.scope.outputs.aux_application }}
+      aux_editor_bundle: ${{ steps.scope.outputs.aux_editor_bundle }}
+      aux_launcher_bundle: ${{ steps.scope.outputs.aux_launcher_bundle }}
+      aux_media: ${{ steps.scope.outputs.aux_real_media }}
+      aux_python_dependencies: ${{ steps.scope.outputs.aux_python_dependencies }}
+      aux_node_browser: ${{ steps.scope.outputs.aux_node_browser }}
+      aux_website: ${{ steps.scope.outputs.aux_website }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Select change scope
-        id: scope
+      - id: scope
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: python scripts/ci_impact.py
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: python scripts/ci_impact.py --plan .artifacts/blocking/plan.json --aux-plan .artifacts/auxiliary/plan.json
+      - uses: actions/upload-artifact@v6
+        with:
+          name: blocking-plan
+          path: .artifacts/blocking/plan.json
+          include-hidden-files: true
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v6
+        if: ${{ steps.scope.outputs.aux_selected == 'true' }}
+        with:
+          name: auxiliary-plan
+          path: .artifacts/auxiliary/plan.json
+          include-hidden-files: true
+          if-no-files-found: error
 
-  debug-tools:
-    name: Debug tooling (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 5
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
+  auxiliary:
+    name: Targeted auxiliary tests
+    needs: selection
+    if: ${{ needs.selection.outputs.aux_selected == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v6
+        id: plan
+        with:
+          name: auxiliary-plan
+          path: .artifacts/auxiliary/
+      - name: Require a valid auxiliary plan
+        if: ${{ needs.selection.outputs.aux_error == 'true' }}
+        run: python -c "import json,pathlib; raise SystemExit(json.loads(pathlib.Path('.artifacts/auxiliary/plan.json').read_text(encoding='utf8'))['generation_error'])"
+      - uses: pnpm/action-setup@v6
+        id: pnpm
+        if: ${{ steps.plan.outcome == 'success' && (needs.selection.outputs.aux_node == 'true' || needs.selection.outputs.aux_browser == 'true' || needs.selection.outputs.aux_application == 'true') }}
+        with:
+          version: 11.28.4
+          run_install: false
       - uses: actions/setup-node@v5
+        id: node
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' && (needs.selection.outputs.aux_node == 'true' || needs.selection.outputs.aux_browser == 'true' || needs.selection.outputs.aux_application == 'true') }}
         with:
           node-version: '22.23.4'
           package-manager-cache: false
-      - uses: actions/setup-python@v6
-        id: debug-python
-        with:
-          python-version: '3.11'
-      # These checks need only the standard libraries: no uv/pnpm install.
-      # Separate native commands so a later success cannot mask an earlier
-      # documentation failure under the Windows PowerShell shell.
-      - name: Documentation navigation and consumers
-        run: python scripts/run_check.py --timeout 180 -- python scripts/check_docs.py
-      - name: Offline tool documentation freshness
-        run: python scripts/run_check.py --timeout 60 -- node scripts/build-tool-docs.mjs --check
-      - name: Documentation regressions
-        run: python scripts/run_check.py --timeout 180 -- python scripts/run_tests.py tests/test_docs_check.py
-      - name: Release documents
-        run: python scripts/run_check.py --timeout 60 -- python scripts/prepare_release_notes.py --check-all
-      - name: Release pipeline contracts
-        run: python scripts/run_check.py --timeout 90 -- python scripts/run_tests.py tests/test_release_notes.py tests/test_release_site.py tests/test_release_publication.py
-      - name: Runner output, exit codes and timeout cleanup
-        run: python scripts/run_check.py --timeout 60 -- python -m unittest tests.test_run_check tests.test_compact_assertions
-      - name: Server diagnostics and process lifecycle
-        env:
-          MAW_TEST_PYTHON: ${{ steps.debug-python.outputs.python-path }}
-          MAW_E2E_PYTHON: ${{ steps.debug-python.outputs.python-path }}
-        run: python scripts/run_check.py --timeout 180 -- node --test tests/test_e2e_output_tail.mjs tests/test_e2e_server_lifecycle.mjs tests/test_e2e_process_lifecycle.mjs tests/test_e2e_server_process.mjs
-      - name: Preserve failed check evidence
-        if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: debug-tools-${{ matrix.os }}
-          path: .artifacts/checks/
-          include-hidden-files: true
-          retention-days: 7
-  editor:
-    needs: selection
-    if: ${{ always() }}
-    runs-on: ubuntu-latest
-    env:
-      PYTHONUTF8: '1'
-      PYTHONIOENCODING: utf-8
-    steps:
-      - name: Require valid selection
-        if: ${{ needs.selection.result != 'success' || (needs.selection.outputs.light != 'true' && needs.selection.outputs.light != 'false') }}
-        run: exit 1
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v6
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        with:
-          version: 11.28.4
-          run_install: false
-      - uses: actions/setup-node@v5
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        with:
-          node-version: '22.23.4'
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-        if: ${{ needs.selection.outputs.light != 'true' }}
-      # Bundles are build artifacts (not committed): build once for every later
-      # step that reads them (assembly contracts, test:unit, e2e). pnpm install
-      # already builds via postinstall; keep this explicit so it does not rely
-      # on the hook.
-      - run: pnpm run build
-        if: ${{ needs.selection.outputs.light != 'true' }}
-      - run: pnpm run typecheck
-        if: ${{ needs.selection.outputs.light != 'true' }}
-      - uses: actions/setup-python@v6
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        with:
-          python-version: '3.11'
+      - name: Install JavaScript test dependencies
+        id: js_install
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' && steps.node.outcome == 'success' }}
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build required Editor bundle
+        id: build_editor
+        if: ${{ !cancelled() && steps.js_install.outcome == 'success' && needs.selection.outputs.aux_editor_bundle == 'true' }}
+        run: python scripts/run_check.py --timeout 180 -- pnpm run build:editor
+      - name: Build required Launcher bundle
+        id: build_launcher
+        if: ${{ !cancelled() && steps.js_install.outcome == 'success' && needs.selection.outputs.aux_launcher_bundle == 'true' }}
+        run: python scripts/run_check.py --timeout 180 -- pnpm run build:launcher
       - uses: astral-sh/setup-uv@v7
-        if: ${{ needs.selection.outputs.light != 'true' }}
+        id: uv
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' && needs.selection.outputs.aux_python_dependencies == 'true' }}
         with:
-          version: "0.13.4"
+          version: '0.13.4'
           enable-cache: true
-      - run: uv sync --frozen
-        if: ${{ needs.selection.outputs.light != 'true' }}
-      - name: Prepare developer image fixtures (no OCR model)
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        run: uv sync --frozen --group dev
-      # Node tests also launch Chromium and compare against Python exporters.
-      - name: Install Playwright Chromium
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        shell: bash
-        # 2026-11-11 PR #365 的 editor job 曾因 GitHub runner DNS 抖动整 job 红：
-        # --with-deps 走 apt，依赖安装全体「Temporary failure resolving
-        # security.ubuntu.com」（exit code 100），人工 rerun 即绿。此步骤外部网络
-        # 敏感且幂等可重跑，自动重试省人工 rerun；每次失败输出保留在步骤日志里，
-        # 最后一次失败仍非零退出，不掩盖真实故障。
-        run: |
-          attempt=1
-          max_attempts=3
-          until pnpm exec playwright install --with-deps chromium; do
-            status=$?
-            if [ "$attempt" -ge "$max_attempts" ]; then
-              echo "playwright install 仍失败（最多尝试 ${max_attempts} 次，最后 exit ${status}），放弃。"
-              exit "$status"
-            fi
-            echo "playwright install 失败（exit ${status}，第 ${attempt}/${max_attempts} 次尝试），20s 后重试……"
-            attempt=$((attempt + 1))
-            sleep 20
-          done
-      - run: pnpm run test:unit
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        env:
-          MAW_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
-      - name: Python assembly contracts
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        run: |
-          uv run --no-sync python scripts/run_tests.py tests/test_editor_assets.py
-          uv run --no-sync python scripts/run_tests.py tests/test_editor_manifest.py
-      - name: OCR term extraction and runtime cleanup contracts
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_ocr_scan.py tests/test_ocr_scan_regressions.py tests/test_ocr_runtime.py tests/test_runtime_process_cleanup.py tests/test_process_tree_posix.py tests/test_term_extract_aggregate.py tests/test_term_extract_ai_filter.py tests/test_term_extract_cli_cache.py tests/test_term_extract_export.py tests/test_term_extract_report.py tests/test_term_extract_score.py tests/test_verification_checklist.py tests/test_verification_checklist_build.py
-      - name: Install FFmpeg for synthetic editor fixtures
-        if: ${{ needs.selection.outputs.light != 'true' }}
+      - name: Install required Python dependencies
+        id: py_install
+        if: ${{ !cancelled() && steps.uv.outcome == 'success' }}
+        run: uv sync --frozen --group test --group dev
+      - name: Install Chromium only for its consumers
+        id: chromium
+        if: ${{ !cancelled() && steps.js_install.outcome == 'success' && (needs.selection.outputs.aux_browser == 'true' || needs.selection.outputs.aux_node_browser == 'true') }}
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Install required media tools
+        id: ffmpeg
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' && needs.selection.outputs.aux_media == 'true' }}
         run: |
           sudo apt-get update
           sudo apt-get install --yes ffmpeg
-      - name: Required media failure compatibility
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_media.py tests/test_ffmpeg.py tests/test_ffprobe_failure_integration.py --required --report .artifacts/media-required.json
-      - name: Preserve media required report
-        if: ${{ always() && needs.selection.outputs.light != 'true' }}
+      - name: Install website dependencies
+        id: website_install
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' && steps.node.outcome == 'success' && needs.selection.outputs.aux_website == 'true' }}
+        run: pnpm --dir website install --frozen-lockfile
+      - name: Synchronize website docs
+        id: website_docs
+        if: ${{ !cancelled() && steps.node.outcome == 'success' && needs.selection.outputs.aux_website == 'true' }}
+        run: python scripts/run_check.py --timeout 180 -- node website/scripts/sync-maw-docs.mjs
+      - name: Generate website release data
+        id: website_releases
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' && needs.selection.outputs.aux_website == 'true' }}
+        run: python scripts/run_check.py --timeout 180 -- python scripts/build_release_site.py --preview
+      - name: Build website for its browser consumer
+        id: website_build
+        if: ${{ !cancelled() && steps.website_install.outcome == 'success' && steps.website_docs.outcome == 'success' && steps.website_releases.outcome == 'success' }}
+        run: python scripts/run_check.py --timeout 300 -- pnpm --dir website run build
+      - name: Selected additional Python tests
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' && needs.selection.outputs.aux_python == 'true' }}
+        env:
+          CI_PREPARATION: ${{ toJSON(steps) }}
+        run: python scripts/ci_run_layer.py --layer python --report-dir .artifacts/auxiliary-python
+      - name: Selected additional Node tests
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' && needs.selection.outputs.aux_node == 'true' }}
+        env:
+          CI_PREPARATION: ${{ toJSON(steps) }}
+        run: python scripts/ci_run_layer.py --layer node --report-dir .artifacts/auxiliary-node
+      - name: Selected additional browser tests
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' && needs.selection.outputs.aux_browser == 'true' }}
+        env:
+          CI_PREPARATION: ${{ toJSON(steps) }}
+        run: python scripts/ci_run_layer.py --layer browser --report-dir .artifacts/auxiliary-browser
+      - name: Preserve auxiliary results
+        if: ${{ always() }}
         uses: actions/upload-artifact@v6
         with:
-          name: media-required-${{ runner.os }}
+          name: targeted-auxiliary-results
           path: |
-            .artifacts/media-required.json
-            .artifacts/media-required.log
+            .artifacts/auxiliary*/
             .artifacts/checks/
+            test-results/
           include-hidden-files: true
           retention-days: 7
 
-      - name: Real file and HTTP editor
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        env:
-          MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: pnpm exec playwright test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs tests/e2e/editor-text-tools.spec.mjs tests/e2e/ass-cue-position.spec.mjs tests/e2e/sticker-preview-lifecycle.spec.mjs tests/e2e/warma-presets.spec.mjs tests/e2e/warma-i18n.spec.mjs tests/e2e/unified-tracks.spec.mjs tests/e2e/v2-migration-save.spec.mjs tests/e2e/review-data-safety.spec.mjs
-
-      - name: Independent browser tool pages
-        if: ${{ needs.selection.outputs.light != 'true' }}
-        env:
-          MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: uv run --no-sync python scripts/run_check.py --timeout 300 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium tests/e2e/tool-pages.spec.mjs tests/e2e/tool-compact.spec.mjs tests/e2e/tool-markdown.spec.mjs tests/e2e/timestamp-compare.spec.mjs tests/e2e/verification-checklist.spec.mjs tests/e2e/term-report.spec.mjs tests/e2e/changelog-write-lock.spec.mjs
-
-      - name: Preserve failed browser evidence
-        if: ${{ failure() && needs.selection.outputs.light != 'true' }}
-        uses: actions/upload-artifact@v6
+  checks:
+    needs: selection
+    if: ${{ needs.selection.outputs.has_checks == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.selection.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v5
         with:
-          name: editor-browser-failures-${{ runner.os }}
-          path: test-results/
-          retention-days: 7
-
-      # README and user guides are website inputs, not just Markdown files.
-      - name: Set up website pnpm
-        if: ${{ needs.selection.outputs.light == 'true' }}
-        uses: pnpm/action-setup@v6
+          # Manifest changes are compared with the trusted base again when
+          # the admission plan is verified in this fresh job.
+          fetch-depth: ${{ contains(fromJSON(needs.selection.outputs.plan).paths, 'package.json') && '0' || '1' }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v6
+        id: plan
+        with:
+          name: blocking-plan
+          path: .artifacts/blocking
+      - uses: actions/setup-node@v5
+        id: node
+        with:
+          node-version: '22.23.4'
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v6
+        if: ${{ matrix.check == 'build' || matrix.check == 'editor' || matrix.check == 'website' }}
         with:
           version: 11.28.4
           run_install: false
-      - name: Set up website Node
-        if: ${{ needs.selection.outputs.light == 'true' }}
-        uses: actions/setup-node@v5
+      - name: Install build and editor dependencies without postinstall
+        id: js_install
+        if: ${{ matrix.check == 'build' || matrix.check == 'editor' }}
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Install only the direct-save contract dependency
+        id: py_install
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' && (matrix.check == 'data' || matrix.check == 'runtime' || matrix.check == 'ci') }}
+        run: python -m pip install --no-deps --require-hashes -r scripts/ci-contract-requirements.txt
+      - name: Install website dependencies
+        id: website_install
+        if: ${{ matrix.check == 'website' }}
+        run: pnpm --dir website install --frozen-lockfile
+      - name: Run admitted check and validate evidence
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' }}
+        env:
+          CI_PREPARATION: ${{ toJSON(steps) }}
+          MAW_TEST_PYTHON: python
+        run: python scripts/ci_acceptance.py run --check ${{ matrix.check }}
+      - uses: actions/upload-artifact@v6
+        if: always()
         with:
-          node-version: '22.23.4'
-          cache: pnpm
-          cache-dependency-path: website/pnpm-lock.yaml
-      - name: Set up website Python
-        if: ${{ needs.selection.outputs.light == 'true' }}
-        uses: actions/setup-python@v6
+          name: blocking-receipt-${{ matrix.check }}
+          path: .artifacts/blocking/evidence/
+          include-hidden-files: true
+          if-no-files-found: error
+  acceptance:
+    name: Change acceptance
+    if: always()
+    needs: [selection, checks]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: ${{ needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.plan).paths, 'package.json') && '0' || '1' }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install website dependencies
-        if: ${{ needs.selection.outputs.light == 'true' }}
-        run: pnpm --dir website install --frozen-lockfile
-      - name: Verify website document consumers
-        if: ${{ needs.selection.outputs.light == 'true' }}
+      - uses: actions/download-artifact@v6
+        id: plan
+        with:
+          name: blocking-plan
+          path: .artifacts/blocking
+      - uses: actions/download-artifact@v6
+        if: ${{ needs.selection.outputs.has_checks == 'true' }}
+        with:
+          pattern: blocking-receipt-*
+          path: .artifacts/blocking/evidence
+          merge-multiple: true
+      - name: Prepare only the transported-report import dependency
+        if: ${{ needs.selection.result == 'success' && (contains(fromJSON(needs.selection.outputs.plan).checks, 'data') || contains(fromJSON(needs.selection.outputs.plan).checks, 'runtime') || contains(fromJSON(needs.selection.outputs.plan).checks, 'ci')) }}
+        run: python -m pip install --no-deps --require-hashes -r scripts/ci-contract-requirements.txt
+      - name: Require selected successful receipts for this SHA
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python scripts/ci_acceptance.py gate
+      - name: Collect admitted failure records
+        id: failure_summary
+        if: ${{ failure() && steps.plan.outcome == 'success' }}
         run: |
-          node --test tests/test_readme_content_sync.mjs
-          pnpm --dir website run sync:docs
-          python scripts/build_release_site.py --preview
-          pnpm --dir website run build
+          if [ ! -f .artifacts/blocking/failures.json ]; then
+            python scripts/ci_acceptance.py summarize
+          fi
+      - name: Preserve admitted failure summary
+        if: ${{ failure() && steps.failure_summary.outcome == 'success' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: blocking-failures
+          path: .artifacts/blocking/failures.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7

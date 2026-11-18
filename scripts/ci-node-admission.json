@@ -1,0 +1,126 @@
+{
+  "build": {
+    "files": ["tests/test_editor_script_syntax.mjs", "tests/test_editor_script_order.mjs"],
+    "names": ["editor-scripts.txt 内每个脚本都是合法的 classic script", "editor-scripts.txt 顺序断言"]
+  },
+  "website": {
+    "files": ["tests/test_readme_content_sync.mjs"],
+    "names": [
+      "preserves an ordinary Star History disclosure verbatim",
+      "redacts the credential block while preserving other disclosures",
+      "recognizes English credential summaries",
+      "redacts a key value even when the summary is generic",
+      "keeps ordinary API setup help and leaves other sources unchanged"
+    ]
+  },
+  "editor": {
+    "files": ["tests/test_editor_recovery_save.mjs", "tests/test_project_save_state.mjs", "tests/test_v2_migration_save.mjs", "tests/test_editor_state.mjs", "tests/test_editor_commands.mjs"],
+    "names": [
+      "drag preview stages one record and publishes once at commit",
+      "a drag returning to its origin preserves redo and restores dirty flags",
+      "cancelled preview restores its snapshot without publishing history or clearing redo",
+      "failed mutations restore state and preserve existing history and redo",
+      "before-begin listeners finish a merged gesture before capturing the next command",
+      "a command may commit before reselecting its newly rendered result without publishing twice",
+      "view updates use explicit scopes and preserve render, preview, save order",
+      "connection-loss recovery downloads use a file-export reference without changing server saves",
+      "local v2 validation failure preserves dirty state and avoids server writes",
+      "local v2 validation failure preserves dirty state and avoids handle writes",
+      "local v2 validation failure preserves dirty state and avoids download writes",
+      "recovery respects browser-local replacement media rather than the old native source",
+      "silent autosave failures never prompt or start a recovery download",
+      "declining recovery leaves the project unsaved and does not build an export copy",
+      "successful server saves keep their project-relative reference",
+      "changing only the timed-text view during a save keeps the newer preference dirty",
+      "non-connection errors do not trigger the recovery-download branch",
+      "all pending-load save entrances refuse before writing or opening a picker",
+      "old server success and failure never mark a newly opened project or offer its recovery download",
+      "old handle write completes only for its captured content and cannot rename a new project",
+      "save-as picker completing after a project switch cannot write or take its handle",
+      "dirty events refresh the unsaved indicator immediately and drive it from markProjectSaved",
+      "the O(1) poll self-heals when an epoch bump was missed by the event path",
+      "the indicator dot reflects the dirty state reported by the save module on every refresh",
+      "only the current project load can release saving, and replacement cancels registered media work",
+      "superseded project waits finish immediately while late transport completion remains observed",
+      "state keeps the original project identity and excludes transient state from project serialization",
+      "selection views stay live while every mutation goes through the owner",
+      "separate editor instances share neither selection nor runtime or preference state",
+      "track transfers remap selection and its anchor without exposing a mutable Set",
+      "selection and panel follow cue IDs through insertion, removal, transfer, and history restoration",
+      "dirty detection includes pending native text, every track and persistent project settings",
+      "saved content governs undo dirtiness while session highlights and rebuildable caches stay transient",
+      "saving an earlier snapshot keeps later edits dirty and excludes highlights from every saved track",
+      "actual import repairs remain unsaved until successful save acknowledgement",
+      "markProjectDirty increments the epoch and notifies registered listeners exactly once",
+      "onProjectDirtyChange dedupes repeat registration and ignores non-functions",
+      "changes flag writes notify on dirty transitions only, and markSaved stays silent",
+      "audio settings participate in content checkpoints and in-flight save confirmation",
+      "an in-flight server save cannot confirm after a new load or binding intent",
+      "pending project loading blocks all three save destinations",
+      "server failure and backup do not advance the saved checkpoint",
+      "successful request confirms sent content and keeps in-flight edits plus highlights",
+      "pending inline text after a save remains unsaved even with identical project bytes",
+      "late handle completion cannot rename or acknowledge a different project",
+      "save-as pending picker is exclusive and cannot write a newly switched project",
+      "save-as acknowledges its snapshot after close, without clearing highlights or later edits",
+      "a failed old handle save cannot show an error on a different project",
+      "view preference server completion acknowledges its bytes and preserves later switches",
+      "view preference handle completion acknowledges its bytes and preserves later switches",
+      "view preference save-as completion acknowledges its bytes and preserves later switches",
+      "view-only failed writes, cancelled save-as and backup-only preserve the saved preference",
+      "an old server view save cannot acknowledge or rename a new project",
+      "migration silent save does not write; cancelling the v2 picker leaves the project pending",
+      "migration refuses a non-empty selected file without modifying it",
+      "successful migration saves a v2 file and later saves use its handle",
+      "migration save commits the waveform quick edit before choosing and writing a new file",
+      "migration download fallback includes the waveform quick edit and leaves the source pending",
+      "an old in-flight migration save cannot clear the replacement project migration flag"
+    ]
+  },
+  "launcher": {
+    "files": ["tests/test_launcher_local_model_paths.mjs", "tests/test_launcher_recent_projects.mjs"],
+    "names": [
+      "a programmatically filled path is not written into the previous model entry",
+      "clearing an entry then a refresh backfill survives a model switch",
+      "switching back and forth does not leak entries between models",
+      "a failed clear restores the selected model path",
+      "a failed clear does not overwrite the path of a model selected during saving",
+      "a failed clear does not overwrite a newer edit to the same model",
+      "recent list refresh waits for project readiness, repeats after restart and retries a failed read",
+      "older recent-list responses cannot overwrite a newer refresh; bridge failures are contained"
+    ]
+  },
+  "tools": {
+    "files": ["tests/test_tool_markdown.mjs"],
+    "names": [
+      "Marked parses Chinese GFM, nesting, fenced languages and collision-safe heading IDs",
+      "highlight inline tokenizer preserves escapes, code and malformed delimiters; disabled extension is negative control",
+      "unsafe URLs and raw HTML never become active Marked output, including inside highlight",
+      "renderer fails clearly when local security libraries are missing",
+      "strict consumers can require absolute URLs and disable even explicit image-opening links",
+      "extension handles escaped equal signs without using them as a closing delimiter",
+      "highlight closing delimiter respects Marked code spans and link/image tokens",
+      "file URL policy rejects rooted, drive, UNC and encoded variants; ordinary relative traversal remains a link",
+      "offline resolver only returns bundled documents and never fetches",
+      "generated text is frozen data; document edits fail freshness and --write restores it",
+      "vendored distributions and complete licenses match official SHA256 and installed packages when present"
+    ]
+  },
+  "ci": {
+    "files": ["tests/test_pr_preview_comment.mjs", "tests/test_browser_evidence_workflow.mjs"],
+    "names": [
+      "browser failure artifacts are uploaded after editor and independent tool pages",
+      "browser evidence upload keeps the failure/non-light gate and artifact contract",
+      "manual inspection uses the prepared Python for term report JPEG fixtures",
+      "the manual full inspection retains the real data-safety review regressions",
+      "scope skip covers non-packaging code without claiming full tests passed",
+      "legacy in-job skip remains supported",
+      "cancelled has its own status",
+      "archive and upload survive unrelated workflow failure and job rename",
+      "failed upload or archive and ambiguous jobs cannot advertise a package",
+      "old head, closed PR or changed head during API reads cannot write",
+      "same-head older run or attempt cannot overwrite newer metadata",
+      "only bot marker is updated and metadata is written"
+    ]
+  }
+}

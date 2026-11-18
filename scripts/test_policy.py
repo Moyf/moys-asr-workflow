@@ -68,7 +68,10 @@ def allowed_platform_skip(test_id: str, reason: str) -> bool:
     identity = test_id.removeprefix("tests.")
     if os.name == "nt":
         return (identity == "test_gui_web.GuiWebBridgeTests.test_open_existing_path_uses_external_opener_for_file_and_folder"
-                and reason == "Non-Windows paths use the external opener")
+                and reason == "Non-Windows paths use the external opener"
+                or identity in {"test_process_tree_posix.RealPosixGroupTests.test_exited_root_live_child_is_reclaimed",
+                                "test_process_tree_posix.RealPosixGroupTests.test_exited_root_sigterm_ignoring_child_is_reclaimed"}
+                and reason == "POSIX process groups require a POSIX host")
     return (identity in {name.removeprefix("tests.") for name in WINDOWS_FFMPEG_TESTS} and reason == "Windows PATHEXT resolution"
             or identity == "test_gui_web.GuiWebBridgeTests.test_open_output_folder_uses_startfile_on_windows"
             and reason == "os.startfile 仅 Windows 可用；os.name 补丁会让 pathlib 选择 WindowsPath"
