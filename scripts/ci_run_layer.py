@@ -24,6 +24,7 @@ def main(argv=None):
     parser.add_argument('--layer', choices=('python', 'node', 'browser'), required=True)
     parser.add_argument('--plan', default='.artifacts/auxiliary/plan.json')
     parser.add_argument('--report-dir', required=True)
+    parser.add_argument('--shard', default='1/1', help='browser shard CURRENT/TOTAL')
     args = parser.parse_args(argv)
     steps = json.loads(os.environ['CI_PREPARATION'])
     plan = json.loads(Path(args.plan).read_text(encoding='utf-8'))
@@ -47,18 +48,11 @@ def main(argv=None):
     # POSIX venv executables are symlinks. Keep the venv entry point.
     python = str(venv.absolute()) if steps.get('py_install', {}).get('outcome') == 'success' else sys.executable
     env = {**os.environ, 'MAW_TEST_PYTHON': python, 'MAW_E2E_PYTHON': python}
-    # A broad but finite browser consumer set can exceed a single 15-minute
-    # command deadline. Keep every selected case and validate each shard.
-    shard_count = 2 if args.layer == 'browser' and len(plan['e2e_specs']) >= 20 else 1
-    exit_codes = []
-    for shard in range(1, shard_count + 1):
-        report_dir = Path(args.report_dir) / f'shard-{shard}' if shard_count > 1 else Path(args.report_dir)
-        command = [python, 'scripts/test_workflow.py', '--stage', 'merge', '--selection-plan', args.plan,
-                   '--layer', args.layer, '--report-dir', str(report_dir), '--shard', f'{shard}/{shard_count}']
-        for preparation in sorted(unavailable):
-            command.extend(('--blocked-preparation', preparation))
-        exit_codes.append(subprocess.run(command, env=env, check=False).returncode)
-    return exit_codes[0] if shard_count == 1 else (1 if any(exit_codes) else 0)
+    command = [python, 'scripts/test_workflow.py', '--stage', 'merge', '--selection-plan', args.plan,
+               '--layer', args.layer, '--report-dir', args.report_dir, '--shard', args.shard]
+    for preparation in sorted(unavailable):
+        command.extend(('--blocked-preparation', preparation))
+    return subprocess.run(command, env=env, check=False).returncode
 
 
 if __name__ == '__main__':
