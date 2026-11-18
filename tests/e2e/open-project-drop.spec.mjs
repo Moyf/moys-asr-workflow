@@ -101,7 +101,7 @@ test('opening and serializing a project preserves script alignment metadata', as
   expect(serialized.script_alignment).toEqual(scriptAlignment);
 });
 
-test('opening and serializing a legacy project writes v2 and preserves transcription metadata', async ({ page }) => {
+test('opening and serializing a legacy project writes v1.5 and preserves transcription metadata', async ({ page }) => {
   const project = {
     media: '',
     language: 'en',
@@ -122,11 +122,10 @@ test('opening and serializing a legacy project writes v2 and preserves transcrip
   await expect(page.locator('#json-name')).toHaveText('metadata.mosp');
 
   const serialized = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(serialized.schema).toBe('moy.asr.project.v2');
-  const main = serialized.tracks.find((track) => track.role === 'main');
-  expect(main.language_source).toBe('detected');
-  expect(main.split_mode).toBe('word');
-  expect(main.timestamp_granularity).toBe('segment');
+  expect(serialized.schema).toBe('moy.asr.project.v1.5');
+  expect(serialized.language_source).toBe('detected');
+  expect(serialized.split_mode).toBe('word');
+  expect(serialized.timestamp_granularity).toBe('segment');
   expect(serialized.future_optional_metadata).toEqual({ producer: 'research-build' });
 });
 
@@ -149,7 +148,7 @@ test('opening a v1.5 project keeps group membership when saved', async ({ page }
 
 test('opening an unknown project schema is rejected without replacing the current project', async ({ page }) => {
   const futureProject = {
-    schema: 'moy.asr.project.v3',
+    schema: 'moy.asr.project.v1.5',
     subtitle_groups: { color: [], sticker: [] },
     media: '',
     segments: [{ id: 'future-cue', start: 100, end: 1900, text: 'future' }],
@@ -164,7 +163,7 @@ test('opening an unknown project schema is rejected without replacing the curren
   const before = await page.evaluate(() => JSON.stringify(MaweBoot.DATA));
   await dropFiles(page, [spec]);
 
-  await expect(page.locator('#hint-stack .hint-warning')).toContainText('unsupported project schema');
+  await expect(page.locator('#hint-stack .hint-warning')).toContainText('$.schema: must be moy.asr.project.v1 or moy.asr.project.v1.5');
   expect(await page.evaluate(() => JSON.stringify(MaweBoot.DATA))).toBe(before);
 });
 
@@ -227,7 +226,7 @@ test('can use a dropped project subtitle as an extension and preserve optional i
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
   const imported = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(stripDerivedFrameFields(imported.tracks.find((track) => track.role === 'secondary').segments[0].items)).toEqual([
+  expect(stripDerivedFrameFields(imported.multi_subtitle.tracks[0].segments[0].items)).toEqual([
     { text: '带字词时间码的副字幕', start: 100, end: 1900 },
   ]);
 
@@ -237,7 +236,7 @@ test('can use a dropped project subtitle as an extension and preserve optional i
   await page.locator('#multi-subtitle-swap').click();
 
   const roundTripped = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
-  expect(stripDerivedFrameFields(roundTripped.tracks.find((track) => track.role === 'secondary').segments[0].items)).toEqual([
+  expect(stripDerivedFrameFields(roundTripped.multi_subtitle.tracks[0].segments[0].items)).toEqual([
     { text: '带字词时间码的副字幕', start: 100, end: 1900 },
   ]);
 });

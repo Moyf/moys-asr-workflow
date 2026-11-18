@@ -339,13 +339,13 @@ test('list double-click hides the split preview while editing', async ({ page })
   await expect(page.locator('.cue-split-preview')).toHaveCount(0);
 });
 
-test('waveform cue double-click opens quick edit while blank double-click still toggles playback', async ({ page }) => {
+test('waveform cue double-click activates its subtitle editor while blank double-click still toggles playback', async ({ page }) => {
   await page.goto(server.url);
   const cue = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
   await cue.scrollIntoViewIfNeeded();
   await cue.dblclick();
   await expect(page.locator('#cue-panel-target')).toHaveText('主字幕');
-  await expect(page.locator('.waveform-cue-quick-edit textarea')).toBeFocused();
+  await expect(page.locator('#cue-panel-text')).toBeFocused();
   expect(await page.locator('#player').evaluate((element) => element.paused)).toBe(true);
 
   const blankRow = page.locator('.waveform-row:not(:has(.waveform-cue-block))').first();

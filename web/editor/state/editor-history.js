@@ -201,7 +201,6 @@ export function initMaweHistory() {
     MaweBoot.DATA.gap_remove = record.gapRemove;
     MaweState.changes.gapRemoveDirty = record.gapRemoveDirty;
     MaweGapRemoveUi.updateGapRemoveUi();
-    MawePlaybackLoop.refreshSubtitlePreview();
     return true;
   }
   if (record.kind === 'markers') {

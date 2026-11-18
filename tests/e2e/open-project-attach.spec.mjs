@@ -4,7 +4,6 @@
 import { expect, test } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { projectModel } from '../helpers/runtime-project.mjs';
 import {
   cleanupTempDir,
   DURATION_MS,
@@ -28,11 +27,11 @@ test.beforeAll(async () => {
   projectPath = join(tempDir, 'project.json');
   generateWav(mediaPath, 5);
   // 工程必须记录媒体的绝对路径，服务器才能按它定位同目录同名工程。
-  const project = projectModel.importProject({
+  const project = {
     media: mediaPath,
     segments: testSegments(),
     waveform: generateWaveformPayload(DURATION_MS),
-  }).project;
+  };
   writeFileSync(projectPath, JSON.stringify(project, null, 2), 'utf-8');
   server = await startBlankServer(await findFreePort(), join(tempDir, '.settings'));
 });
@@ -56,11 +55,7 @@ function dropProject(page, name, content) {
 test('a same-named project with different content is not swapped in', async ({ page }) => {
   await page.goto(server.url);
   const tampered = JSON.parse(readFileSync(projectPath, 'utf-8'));
-  const tamperedCue = getMainTrack(tampered).segments[0];
-  tamperedCue.text = 'Beta';
-  tamperedCue.items[0].text = 'Be';
-  tamperedCue.items[1].text = 'ta';
-  expect(projectModel.validateTracksProject(tampered).ok).toBe(true);
+  tampered.segments = [{ start: 0, end: 1000, text: '不是磁盘上的内容', items: [] }];
   await dropProject(page, 'project.json', JSON.stringify(tampered));
 
   // 接管被拒绝：回退为手动选择媒体，保存保持禁用。
@@ -68,7 +63,7 @@ test('a same-named project with different content is not swapped in', async ({ p
   await expect(page.locator('#save-project')).toBeDisabled();
 });
 
-test('dropping a v2 project lets the blank server take over and save in place', async ({ page }) => {
+test('dropping a legacy project lets the blank server take over after ID normalization', async ({ page }) => {
   await page.goto(server.url);
   const reload = page.waitForEvent('load');
   await dropProject(page, 'project.json', readFileSync(projectPath, 'utf-8'));
