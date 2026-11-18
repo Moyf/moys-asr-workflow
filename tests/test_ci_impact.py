@@ -16,6 +16,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ScopeTests(CompactContainerAssertions, unittest.TestCase):
+    def test_scoped_recovery_e2e_admits_only_save_journey_sources(self):
+        self.assertTrue(ci_impact.recovery_e2e_for(['web/editor/io/editor-project-save.js']))
+        self.assertTrue(ci_impact.recovery_e2e_for(['tests/e2e/editor-save-recovery.spec.mjs']))
+        self.assertFalse(ci_impact.recovery_e2e_for(['web/editor/io/editor-export-srt.js']))
+        self.assertFalse(ci_impact.recovery_e2e_for(['docs/engineering/DEVELOPMENT.md']))
+        self.assertFalse(ci_impact.recovery_e2e_for([]))
+        save = ci_impact.plan('stable', 'save module change', paths=['web/editor/io/editor-project-save.js'],
+                              trusted=True)
+        self.assertIn('editor', save['checks'])
+        self.assertTrue(ci_impact.recovery_e2e_for(save['paths']))
+        untrusted = ci_impact.plan('stable', 'unavailable diff', head='b' * 40)
+        self.assertFalse(ci_impact.recovery_e2e_for(untrusted['paths']))
+
     def test_real_git_ci_policy_and_mixed_docs_do_not_request_preview(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
