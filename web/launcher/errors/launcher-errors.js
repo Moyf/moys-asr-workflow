@@ -45,7 +45,7 @@ function syncFixedFooterClearance() {
   const shellScroll = document.querySelector(".shell-scroll");
   const notice = $("errorNotice");
   const status = $("status");
-  if (shellScroll && notice && !notice.classList.contains("hidden")) {
+  if (shellScroll?.contains(notice) && !notice.classList.contains("hidden")) {
     const noticeBottom = notice.getBoundingClientRect().bottom;
     const statusBottom = status?.getBoundingClientRect().bottom || noticeBottom;
     if (noticeBottom > footerTop || statusBottom > footerTop) shellScroll.scrollTop = shellScroll.scrollHeight;
@@ -116,17 +116,36 @@ function clearErrorReport() {
   const diagnostics = $("errorNoticeDiagnostics");
   if (diagnostics) { diagnostics.replaceChildren(); diagnostics.classList.add("hidden"); }
 }
+function restoreMainErrorNotice(notice) {
+  if (!$("settingsModal").contains(notice)) return false;
+  $("errorNoticeDetails").removeAttribute("tabindex");
+  $("status").before(notice);
+  return true;
+}
 function hideErrorNotice() {
   const notice = $("errorNotice");
+  const hadFocus = notice.contains(document.activeElement);
   notice.classList.add("hidden");
+  if (restoreMainErrorNotice(notice) && hadFocus) $("settingsClose").focus({ preventScroll: true });
   notice.dataset.action = "";
   revealLauncherFeedback(notice, "");
   clearErrorReport();
 }
-function showErrorNotice(message, code = "", detail = "", diagnostics = "", context = null) {
+function showErrorNotice(message, code = "", detail = "", diagnostics = "", context = null, { localRuntimeInstall = false } = {}) {
   const notice = $("errorNotice");
   const action = $("errorNoticeAction");
   const issue = $("errorNoticeIssue");
+  const settings = $("settingsModal");
+  const settingsScroll = localRuntimeInstall && !settings.classList.contains("hidden")
+    ? settings.querySelector(".settings-scroll") : null;
+  if (settingsScroll && !settingsScroll.contains(notice)) {
+    notice.classList.add("hidden");
+    settingsScroll.prepend(notice);
+    $("errorNoticeDetails").tabIndex = 0;
+  } else if (!settingsScroll) {
+    const hadFocus = notice.contains(document.activeElement);
+    if (restoreMainErrorNotice(notice) && hadFocus) $("settingsClose").focus({ preventScroll: true });
+  }
   revealLauncherFeedback(notice, "");
   clearErrorReport();
   const diagnostic = diagnosticText(diagnostics);
@@ -135,7 +154,7 @@ function showErrorNotice(message, code = "", detail = "", diagnostics = "", cont
   });
   const version = context?.version || state.config?.appVersion || $("appVersion")?.textContent?.trim().replace(/^v/, "") || "unknown";
   const occurredAt = context?.occurredAt || new Date().toISOString();
-  state.errorReport = { code: code || "backend_error", message: String(message || ""), detail: String(detail || ""), diagnostics: diagnostic, version, occurredAt };
+  state.errorReport = { code: code || "backend_error", message: String(message || ""), detail: String(detail || ""), diagnostics: diagnostic, version, occurredAt, localRuntimeInstall };
   renderErrorContext();
   $("errorNoticeTitle").textContent = t("error_notice_title");
   renderMessage($("errorNoticeMessage"), message);
@@ -166,7 +185,8 @@ function showErrorNotice(message, code = "", detail = "", diagnostics = "", cont
   const knownCode = Boolean(code && code !== "transcription_failed" && Object.prototype.hasOwnProperty.call(ERROR_TEXT.zh, code));
   issue.classList.toggle("hidden", knownCode);
   notice.classList.remove("hidden");
-  revealErrorNotice(notice);
+  if (settingsScroll) settingsScroll.scrollTop = 0;
+  else revealErrorNotice(notice);
 }
 function errorReportText() {
   const report = state.errorReport;

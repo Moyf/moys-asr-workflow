@@ -67,6 +67,12 @@ function openSettings(sectionId = "", focusId = "") {
 }
 function closeSettings() {
   $("settingsModal").classList.add("hidden");
+  const notice = document.querySelector("#settingsModal #errorNotice");
+  if (notice) {
+    restoreMainErrorNotice(notice);
+    $("settingsButton").focus({ preventScroll: true });
+    revealErrorNotice(notice);
+  }
   window.MAWLauncher?.onSettingsClosed?.();
 }
 async function openServerEditor() {
