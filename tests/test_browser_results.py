@@ -34,10 +34,10 @@ class BrowserResultsTests(unittest.TestCase):
         empty = copy.deepcopy(sibling)
         empty["config"]["shard"]["current"] = 2
         empty["suites"].clear()
-        browser_results.prove_empty_shard(full, empty, [sibling], 2, 2)
+        browser_results.validate_shard_partition(full, [sibling, empty], 2)
         sibling["suites"].clear()
         with self.assertRaisesRegex(ValueError, "missing from shard discovery"):
-            browser_results.prove_empty_shard(full, empty, [sibling], 2, 2)
+            browser_results.validate_shard_partition(full, [sibling, empty], 2)
 
     def test_same_job_collection_and_exact_four_portable_skips(self):
         self.assertEqual(browser_results.validate(*fixture(), 1, 4)["passed"], 1)

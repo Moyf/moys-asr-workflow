@@ -16,14 +16,14 @@ import xml.etree.ElementTree as ET
 
 if __package__:
     from .run_check import run
-    from .browser_results import collection, prove_empty_shard, validate as validate_browser
+    from .browser_results import collection, validate_shard_partition, validate as validate_browser
     from .test_policy import PYTHON_PACKS, WINDOWS_FFMPEG_TESTS
     from .local_test_impact import CHECKLIST_NODE, CHECKLIST_PYTHON, CHECKLIST_SPECS, DEV_NODE, DEV_PYTHON, node_pack, select_packs
     from .test_prerequisites import PREPARATIONS, partition_command, test_requirements
     from .test_result_details import collect_failures
 else:
     from run_check import run
-    from browser_results import collection, prove_empty_shard, validate as validate_browser
+    from browser_results import collection, validate_shard_partition, validate as validate_browser
     from test_policy import PYTHON_PACKS, WINDOWS_FFMPEG_TESTS
     from local_test_impact import CHECKLIST_NODE, CHECKLIST_PYTHON, CHECKLIST_SPECS, DEV_NODE, DEV_PYTHON, node_pack, select_packs
     from test_prerequisites import PREPARATIONS, partition_command, test_requirements
@@ -275,12 +275,13 @@ def prepare_browser(name, command, directory, specs, selection, results):
     if result["exit_code"]:
         raise ValueError(f"Browser discovery failed; log={result['log']}")
     listed = json.loads(report_path.read_text(encoding="utf-8"))
-    if full is not None and not collection(listed, allow_empty=True):
+    if full is not None:
         _, value = next(arg.split("=", 1) for arg in command if arg.startswith("--shard="))
         current, total = map(int, value.split("/"))
-        siblings = []
+        shards = []
         for index in range(1, total + 1):
             if index == current:
+                shards.append(listed)
                 continue
             sibling_path = directory / f"{name}-list-{index}.json"
             sibling_command = [*full_command, f"--shard={index}/{total}", "--list"]
@@ -289,9 +290,10 @@ def prepare_browser(name, command, directory, specs, selection, results):
             results.append(result)
             if result["exit_code"]:
                 raise ValueError(f"Browser sibling discovery failed; log={result['log']}")
-            siblings.append(json.loads(sibling_path.read_text(encoding="utf-8")))
-        prove_empty_shard(full, listed, siblings, current, total)
-        return None
+            shards.append(json.loads(sibling_path.read_text(encoding="utf-8")))
+        validate_shard_partition(full, shards, total)
+        if not collection(listed, allow_empty=True):
+            return None
     return listed
 
 
