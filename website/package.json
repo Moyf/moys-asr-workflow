@@ -6,10 +6,10 @@
   "engines": {"node": "^22.23.4 || ^24.22.1 || >=26.12.1"},
   "type": "module",
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
+    "dev": "node scripts/stage-site.mjs dev",
+    "build": "node scripts/stage-site.mjs build",
     "preview": "astro preview",
-    "check": "astro check",
+    "check": "node scripts/stage-site.mjs check",
     "sync:docs": "node scripts/sync-maw-docs.mjs",
     "check:docs": "node scripts/sync-maw-docs.mjs --check",
     "sync:releases": "python ../scripts/build_release_site.py --preview"

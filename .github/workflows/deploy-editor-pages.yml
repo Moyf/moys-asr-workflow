@@ -94,10 +94,6 @@ jobs:
         working-directory: website
         run: pnpm install --frozen-lockfile
 
-      - name: Sync MAW documentation
-        working-directory: website
-        run: pnpm run sync:docs
-
       - name: Verify archives and build published releases
         env:
           GITHUB_TOKEN: ${{ github.token }}

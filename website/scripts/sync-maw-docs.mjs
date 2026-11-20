@@ -1,19 +1,19 @@
-import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const sourceRoot = path.resolve(process.env.MAW_SOURCE_DIR || path.join(siteRoot, '..'));
-const outputRoot = path.join(siteRoot, 'src', 'pages', 'docs');
-const assetRoot = path.join(siteRoot, 'public', 'docs-assets');
+const sourceRoot = path.resolve(siteRoot, '..');
+const outputSite = path.resolve(process.env.MAW_DOCS_OUTPUT_SITE || siteRoot);
+const outputRoot = path.join(outputSite, 'src', 'pages', 'docs');
+const assetRoot = path.join(outputSite, 'public', 'docs-assets');
 const imageSources = new Set();
 const githubRoot = 'https://github.com/Moyf/moys-asr-workflow/blob/main';
 const rawRoot = 'https://raw.githubusercontent.com/Moyf/moys-asr-workflow/main';
 
 // Keep this list deliberately curated. Internal notes can stay in the source
 // repository without becoming part of the public site navigation by accident.
-const documents = [
+export const documents = [
   {
     source: 'docs/INDEX.md',
     slug: 'documentation-index',
@@ -150,19 +150,21 @@ function externalUrl(sourcePath, suffix = '') {
   return `${isImage ? rawRoot : githubRoot}/${normalized}${suffix}`;
 }
 
-function rewriteTarget(target, currentSource) {
+function rewriteTarget(target, currentSource, forceImage = false) {
   if (/^(?:[a-z]+:|\/|#)/i.test(target)) return target;
 
   const match = target.match(/^([^#?]*)(.*)$/);
-  const destination = match?.[1] || target;
+  let destination = match?.[1] || target;
   const suffix = match?.[2] || '';
   if (!destination) return target;
+  try { destination = decodeURIComponent(destination); }
+  catch { throw new Error(`无效的链接编码：${target}`); }
 
   const currentDirectory = path.posix.dirname(currentSource);
   const sourcePath = normalizeSourcePath(path.posix.join(currentDirectory, destination));
   const route = routeBySource.get(sourcePath);
-  if (route) return `${siteRoute(route, currentSource)}${suffix}`;
-  if (/\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(sourcePath)) {
+  if (route && !forceImage) return `${siteRoute(route, currentSource)}${suffix}`;
+  if (forceImage || /\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(sourcePath)) {
     if (sourcePath === '..' || sourcePath.startsWith('../')) {
       throw new Error(`图片路径超出源仓库：${target}`);
     }
@@ -175,25 +177,75 @@ function rewriteTarget(target, currentSource) {
 }
 
 function rewriteLinks(markdown, currentSource) {
-  // README may also use HTML images; include their local sources in the bundle.
-  let result = markdown.replace(/((?:src|href)=")(?!https?:\/\/|\/|#)([^"\s]+)(")/gi, (_, open, target, close) => {
-    return `${open}${rewriteTarget(target, currentSource)}${close}`;
+  const code = [];
+  const protect = (value) => { const key = `\u0000MAW_CODE_${code.length}\u0000`; code.push(value); return key; };
+  let fence = null;
+  let fenced = '';
+  let text = '';
+  for (const line of markdown.split(/(?<=\n)/)) {
+    if (fence) {
+      fenced += line;
+      const close = line.match(/^ {0,3}(`+|~+)[ \t]*(?:\n|$)/);
+      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) {
+        text += protect(fenced); fenced = ''; fence = null;
+      }
+      continue;
+    }
+    const open = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (open) { fence = open[1]; fenced = line; continue; }
+    text += line.replace(/(`+)([^`\n]*?)\1/g, protect);
+  }
+  if (fenced) text += protect(fenced);
+  markdown = text;
+  for (const [tag] of markdown.matchAll(/<source\b[^>]*>/gi)) {
+    if (/\sdata-srcset\s*=/i.test(tag)) throw new Error(`暂不支持图片 source srcset：${currentSource}`);
+    const attr = tag.match(/\ssrcset\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i);
+    if (attr && !/^https?:\/\/[^\s,]+$/i.test(attr[1] ?? attr[2] ?? attr[3])) {
+      throw new Error(`暂不支持图片 source srcset：${currentSource}`);
+    }
+  }
+  if (/!\[[^\]\n]*\](?!\()/.test(markdown)) {
+    throw new Error(`暂不支持引用式图片，请改用内联图片：${currentSource}`);
+  }
+  const htmlImages = [];
+  // Protect HTML images from the general link rewrite and validate every src.
+  let result = markdown.replace(/<img\b[^>]*>/gi, (tag) => {
+    if (/\s(?:srcset|data-src|data-srcset)\s*=/i.test(tag)) throw new Error(`暂不支持图片 srcset 或 data-src：${currentSource}`);
+    const rewritten = tag.replace(/(\s+src\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i, (_match, attribute, double, single, bare) => {
+      const target = double ?? single ?? bare;
+      if (/^(?:\/(?!\/)|#)/.test(target)) throw new Error(`暂不支持站点根路径图片：${currentSource}`);
+      const url = rewriteTarget(target, currentSource, true).replaceAll('&', '&amp;').replaceAll('"', '&quot;');
+      return `${attribute}"${url}"`;
+    });
+    const key = `\u0000MAW_IMAGE_${htmlImages.length}\u0000`;
+    htmlImages.push(rewritten);
+    return key;
+  });
+  result = result.replace(/((?:src|href)=)(["'])([^"'\s]+)\2/gi, (_, attribute, quote, target) => {
+    return `${attribute}${quote}${rewriteTarget(target, currentSource)}${quote}`;
   });
 
   // Astro treats relative Markdown images as source imports. Public assets need
   // HTML image tags so these URLs resolve from the deployed page instead.
-  result = result.replace(/!\[([^\]]*)\]\(([^\s)]+)\)/g, (original, alt, target) => {
-    if (/^(?:[a-z]+:|\/|#)/i.test(target)) return original;
-    const url = rewriteTarget(target, currentSource);
+  result = result.replace(/!\[([^\]]*)\]\(([^\s)]+)(?:\s+(["'])(.*?)\3)?\)/g, (original, alt, target, _quote, title) => {
+    if (/^(?:\/(?!\/)|#)/.test(target)) throw new Error(`暂不支持站点根路径图片：${currentSource}`);
+    if (/^(?:[a-z]+:|\/\/)/i.test(target)) return original;
+    const url = rewriteTarget(target, currentSource, true);
     const escape = (value) => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-    return `<img src="${escape(url)}" alt="${escape(alt)}" loading="lazy" decoding="async" />`;
+    const titleAttribute = title === undefined ? '' : ` title="${escape(title)}"`;
+    return `<img src="${escape(url)}" alt="${escape(alt)}"${titleAttribute} loading="lazy" decoding="async" />`;
   });
+
+  if (/!\[[^\]\n]*\]\((?![a-z]+:|\/|#)/i.test(result)) {
+    throw new Error(`暂不支持此图片语法，请使用内联相对路径：${currentSource}`);
+  }
 
   result = result.replace(/(\]\()([^\s][^)]*?)(\))/g, (_, open, target, close) => {
     return `${open}${rewriteTarget(target, currentSource)}${close}`;
   });
 
-  return result;
+  return result.replace(/\u0000MAW_IMAGE_(\d+)\u0000/g, (_, index) => htmlImages[Number(index)])
+    .replace(/\u0000MAW_CODE_(\d+)\u0000/g, (_, index) => code[Number(index)]);
 }
 
 function siteRoute(route, currentSource) {
@@ -219,39 +271,46 @@ export function sanitizeDocument(markdown, source) {
     return block;
   });
 }
-export async function readDocument(source, { root = sourceRoot, allowRemote = true } = {}) {
-  const localPath = path.join(root, ...source.split('/'));
-  if (existsSync(localPath)) {
-    return readFile(localPath, 'utf8');
-  }
-  if (!allowRemote) {
-    throw new Error(`本地缺少源文档 ${source}；check 模式不读取远端，请确认工作树完整后重试`);
-  }
-
-  const response = await fetch(`${rawRoot}/${source}`);
-  if (!response.ok) {
-    throw new Error(`无法从 GitHub 读取 ${source}（HTTP ${response.status}）`);
-  }
-  return response.text();
+export function collectImageSources(markdown, source) {
+  imageSources.clear();
+  rewriteLinks(markdown, source);
+  return [...imageSources];
 }
 
-export async function readImage(source, { root = sourceRoot, allowRemote = true } = {}) {
-  const localPath = path.join(root, ...source.split('/'));
-  if (existsSync(localPath)) {
-    return readFile(localPath);
+async function safePath(source, root) {
+  const parts = source.split('/');
+  if (path.posix.isAbsolute(source) || parts.some((part) => !part || part === '.' || part === '..' || /^\.env(?:\.|$)/i.test(part))) {
+    throw new Error(`禁止读取此源路径：${source}`);
   }
-  if (!allowRemote) {
-    throw new Error(`本地缺少配图 ${source}；check 模式不读取远端，请确认工作树完整后重试`);
+  let current = root;
+  for (const part of parts) {
+    current = path.join(current, part);
+    if ((await lstat(current)).isSymbolicLink()) throw new Error(`禁止读取符号链接：${source}`);
   }
-  const response = await fetch(`${rawRoot}/${source}`);
-  if (!response.ok) throw new Error(`无法读取图片 ${source}（HTTP ${response.status}）`);
-  return Buffer.from(await response.arrayBuffer());
+  return current;
+}
+export async function readDocument(source, { root = sourceRoot } = {}) {
+  try {
+    return await readFile(await safePath(source, root), 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new Error(`本地缺少源文档 ${source}`);
+    throw error;
+  }
 }
 
-async function loadImages({ allowRemote = true } = {}) {
+export async function readImage(source, { root = sourceRoot } = {}) {
+  try {
+    return await readFile(await safePath(source, root));
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new Error(`本地缺少配图 ${source}`);
+    throw error;
+  }
+}
+
+async function loadImages() {
   const images = new Map();
   for (const source of imageSources) {
-    const contents = await readImage(source, { allowRemote });
+    const contents = await readImage(source);
     images.set(path.join(assetRoot, ...source.split('/')), contents);
   }
   return images;
@@ -282,12 +341,13 @@ function quote(value) {
 
 async function main() {
   const checkOnly = process.argv.includes('--check');
-  if (!checkOnly) await mkdir(outputRoot, { recursive: true });
+  const validateOnly = process.argv.includes('--validate');
   const stale = [];
+  const pages = new Map();
   let synced = 0;
 
   for (const document of documents) {
-    const source = sanitizeDocument(await readDocument(document.source, { allowRemote: !checkOnly }), document.source);
+    const source = sanitizeDocument(await readDocument(document.source), document.source);
     const generated = [
       '---',
       `layout: ${quote('../../layouts/DocLayout.astro')}`,
@@ -304,6 +364,16 @@ async function main() {
     ].join('\n');
 
     const outputPath = path.join(outputRoot, `${document.slug}.md`);
+    pages.set(outputPath, generated);
+    synced += 1;
+  }
+
+  const images = await loadImages();
+  if (validateOnly) {
+    console.log(`MAW_IMAGES=${JSON.stringify([...imageSources].sort())}`);
+    return;
+  }
+  for (const [outputPath, generated] of pages) {
     if (checkOnly) {
       let existing = null;
       try {
@@ -313,12 +383,11 @@ async function main() {
       }
       if (existing !== generated) stale.push(outputPath);
     } else {
+      await mkdir(path.dirname(outputPath), { recursive: true });
       await writeFile(outputPath, generated, 'utf8');
     }
-    synced += 1;
   }
 
-  const images = await loadImages({ allowRemote: !checkOnly });
   if (checkOnly) {
     await findStale(images, stale);
   } else {
@@ -327,15 +396,12 @@ async function main() {
 
   const summary = `${checkOnly ? '已检查' : '已同步'} ${synced} 篇 MAW 文档、${images.size} 张配图 → ${path.relative(siteRoot, outputRoot)}`;
   console.log(summary);
-  if (sourceRoot === path.resolve(siteRoot, '..')) {
-    console.log(`来源：${sourceRoot}`);
-  } else {
-    console.log(`来源：${sourceRoot}（MAW_SOURCE_DIR）`);
-  }
+  console.log(`来源：${sourceRoot}`);
+  if (process.env.MAW_DOCS_PRINT_IMAGES === '1') console.log(`MAW_IMAGES=${JSON.stringify([...imageSources].sort())}`);
 
   if (checkOnly && stale.length) {
     for (const file of stale) console.error(`过期：${path.relative(siteRoot, file)}`);
-    console.error(`共 ${stale.length} 处生成副本与源文档不一致；运行 pnpm run sync:docs 后提交生成副本。`);
+    console.error(`共 ${stale.length} 处生成副本与源文档不一致；运行 pnpm run sync:docs 刷新。`);
     process.exitCode = 1;
   }
 }

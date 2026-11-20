@@ -101,9 +101,22 @@
     "ambiguous upload jobs or unsuccessful archive cannot claim a package"
   ],
   "tests/test_docs_sync_check.mjs": [
-    "check mode refuses to read a missing source document from GitHub",
-    "check mode refuses to read a missing image from GitHub",
-    "sync mode still falls back to GitHub when the local source is missing",
-    "local sources win over the network"
+    "clean checkout generates then checks local documents and preserves unrelated pages",
+    "new source images do not require mirrors and obsolete mirrors are preserved",
+    "edited sources and stale mirrors regenerate from the checkout",
+    "sync and check fail offline when a source or image is missing",
+    "missing images with titles or single-quoted HTML cannot fall back to the network",
+    "website entry points and acceptance build through isolated staging",
+    "isolated site stage excludes obsolete generated inputs but preserves authored content",
+    "isolated site staging reports unknown doc assets without deleting them",
+    "isolated site staging fails when a source document or image is missing",
+    "isolated site staging rejects authored routes that collide with generated documents",
+    "encoded local image paths resolve to the actual source image",
+    "development entry rejects a custom host before starting a server",
+    "build refuses an existing output directory without changing it",
+    "build rejects arguments that override the isolated Astro root or output",
+    "document images cannot read environment files or follow symlinks",
+    "image syntax examples in code are not treated as document images",
+    "publishing a build copies files into a new directory without replacing an existing one"
   ]
 }
