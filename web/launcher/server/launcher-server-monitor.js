@@ -10,7 +10,7 @@ function setServerStatus(url, alreadyRunning = false, prefix = "") {
   link.href = url;
   link.textContent = url;
   link.className = "status-link";
-  link.addEventListener("click", (event) => { event.preventDefault(); bridge("open_url", { url }); });
+  link.addEventListener("click", (event) => { event.preventDefault(); void openEditorInBrowser(url); });
   status.append(link);
 }
 function currentServerPort() { return $("port").value || "8250"; }
