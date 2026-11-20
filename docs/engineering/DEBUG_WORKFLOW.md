@@ -60,6 +60,17 @@ Windows 超时使用本次 PID 的 `taskkill /T`，POSIX 使用新进程组；�
 
 e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解码 UTF-8；退出与启动超时错误含短尾部。进程管理继续使用 `server-process.mjs`：Windows Job supervisor 的 stdin 必须保持管道，以便 owner 消失时回收后代；不得以本通用运行器的 stdin=ignore 配置覆盖它。浏览器 trace、截图与 HTML 报告依然按需读取，不应整份加入对话。
 
+## 长命令、后台进程与孤儿清理
+
+超过一两次工具超时的命令（全量 Python、Playwright、codemod、打包）不要在前台等，也不要把工具超时当成兜底：
+
+- **后台启动**：`Start-Process -WindowStyle Hidden`（不要 `-NoNewWindow`，它会占住当前控制台），stdout / stderr 重定向到文件后再按端口或日志探活。e2e 日常入口是 `scripts/run-e2e.ps1`；`scripts/refactor-tools/run-e2e-bg.ps1` + `poll-e2e.ps1` 是更早的后台封装，仍可用。
+- **轮询而不是等**：查 PID 是否存活、日志尾部是否仍在增长；每条命令给显式时限（短命令 60 秒，测试类按本次集合 5–15 分钟）。
+- **真卡还是在跑**：日志中的进度计数仍在增加、进程存活，就继续等；两者都不满足时才按中断处理。
+- **超时 / 中断后先回收本次进程树**：`scripts/run_check.py` 按本次 PID 处理（Windows `taskkill /T`，POSIX 新进程组）；e2e 服务由 fixture 的 `stop()` 负责。**禁止按 node / chrome / python 进程名批量清理**，会误杀其他 worktree 与用户进程；归属核对与清理命令见 [E2E 残留服务进程与长命令挂起](E2E_SERVER_HANG.md)。
+- **大段参数与字节保真**：Windows 命令行上限约 32K，长文本、JSON、报告不要塞进 `node -e`、`git commit -m` 之类的 argv；写临时 UTF-8 无 BOM 文件，用 `--body-file` / `-F` / 文件加载器传入。超过三行的内联逻辑写成 `.mjs` / `.ps1` 再执行，`git show ref:path` 等落盘用 node 或 `cmd /c "... > file"`，避免编码与缓冲差异。仓库源码保持 LF 与无 BOM，PowerShell 产物先用 node / python 规范化再入库。
+- **不要用 bash 后台 `&`**：stdin 仍挂在会话管道上，命令工具会等进程树而永久阻塞；长驻服务用独立终端或上面两种方式启动，用完必须终止。
+
 ## 按变化选择测试层
 
 | 变化 | 首轮验证 | 扩大验证的条件 |

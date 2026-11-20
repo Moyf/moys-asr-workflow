@@ -119,7 +119,7 @@ function setServerMedia(path) {
 }
 function resetServerMediaSelection() { $("serverMediaPath").value = ""; $("serverRememberMedia").checked = true; syncFlvHints(); }
 function setJsonPath(path) { if ($("jsonPath").value !== path) resetServerMediaSelection(); $("jsonPath").value = path; setError("jsonPath", ""); if (path !== state.serverProjectPath) $("openMawe").classList.add("attention"); refreshServerMedia(); window.MAWLauncher?.onProjectPathChanged?.(); }
-function applyErrorResult(result, logDetail = true) {
+function applyErrorResult(result, logDetail = true, noticeOptions) {
   const detail = result.detail || result.error || "";
   const diagnostics = diagnosticText(result.diagnostics);
   const message = errText(result.code, detail, result);
@@ -131,7 +131,7 @@ function applyErrorResult(result, logDetail = true) {
   setStatus(message);
   if (logDetail && detail) appendLog(`[detail] ${detail}`);
   if (logDetail && diagnostics) appendLog("[diagnostics] " + diagnostics);
-  showErrorNotice(message, result.code || "", detail, diagnostics, result.errorContext);
+  showErrorNotice(message, result.code || "", detail, diagnostics, result.errorContext, noticeOptions);
 }
 function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["maxWords", 1], ["minWords", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); if (data.maxWords && data.minWords && Number(data.maxWords) < Number(data.minWords)) return fail("maxWords", errText("segmentation_invalid", "")); return true; }
 // 断句与标点偏好快照（issue #355）：save_prefs 输入、启动回填与预设应用共用同一组字段。
@@ -144,7 +144,7 @@ function fail(field, message) {
   const input = $(field);
   const settingsSection = input?.closest?.(".settings-section");
   if (settingsSection?.id) openSettings(settingsSection.id, field);
-  if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" });
+  else if (input?.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" });
   return false;
 }
 function toggle(id) { $(id).classList.toggle("collapsed"); renderChevron(id); }

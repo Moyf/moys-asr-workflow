@@ -2928,6 +2928,25 @@ textarea::placeholder {
   min-block-size: min(680px, calc(100dvh - 36px));
 }
 
+.settings-scroll > .error-notice {
+  scroll-margin-bottom: 0;
+}
+
+/* Keep the alert title and actions visible while long installer output scrolls. */
+.settings-modal-card .error-notice-details {
+  max-block-size: min(8rem, 18dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.settings-modal-card .error-notice-details:focus-visible {
+  outline-offset: -2px;
+}
+
+.settings-modal-card .error-notice-detail {
+  max-height: none;
+}
+
 .batch-confirm-card {
   width: min(480px, calc(100vw - 32px));
 }

@@ -1,6 +1,6 @@
 # 查询后台 E2E（run-e2e-bg.ps1 启动）的状态并汇总结果。
 # 每次调用都是秒级命令，适合每 2-4 分钟轮询一次；任何一次超时/中止后，
-# 先清孤儿 node/chromium 进程再重跑（见 docs/engineering/AGENT_LONG_COMMAND_GUIDE.md）。
+# 先清孤儿 node/chromium 进程再重跑（见 docs/engineering/E2E_SERVER_HANG.md）。
 [CmdletBinding()]
 param(
     # 缺省时读取 latest.txt 指向的最近一次运行目录。

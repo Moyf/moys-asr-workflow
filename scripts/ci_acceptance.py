@@ -44,7 +44,7 @@ PYTHON = {
 NODE = {
     'ci': ['tests/test_pr_preview_comment.mjs'],
     'build': ['tests/test_editor_script_syntax.mjs', 'tests/test_editor_script_order.mjs'],
-    'website': ['tests/test_readme_content_sync.mjs'],
+    'website': ['tests/test_readme_content_sync.mjs', 'tests/test_docs_sync_check.mjs'],
     'editor': ['tests/test_editor_recovery_save.mjs', 'tests/test_editor_export_srt.mjs', 'tests/test_word_timing.mjs'],
     'launcher': ['tests/test_launcher_local_model_paths.mjs', 'tests/test_launcher_recent_projects.mjs'],
     'tools': ['tests/test_tool_markdown.mjs'],
@@ -212,7 +212,8 @@ def commands_for(check, plan):
         'tools': [['node', 'scripts/build-tool-docs.mjs', '--check']],
         'release': [['python', 'scripts/prepare_release_notes.py', '--check-all'],
                     ['python', 'scripts/build_release_site.py', '--preview']],
-        'website': [['pnpm', '--dir', 'website', 'run', 'sync:docs'],
+        'website': [['pnpm', '--dir', 'website', 'run', 'check:docs'],
+                    ['pnpm', '--dir', 'website', 'run', 'sync:docs'],
                     ['python', 'scripts/build_release_site.py', '--preview'],
                     ['pnpm', '--dir', 'website', 'run', 'build']],
         'build': [['pnpm', 'run', 'build'], ['pnpm', 'run', 'check:editor'],

@@ -53,7 +53,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前清单含 151 个条目，`web/editor-modules.json` 标出其中 92 个 ESM 模块与外部桥，其余 59 个条目保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+ 与 `pnpm install`）。
+`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；条目数与 `web/editor-modules.json` 标注的 ESM 模块数随迁移变化，以 `pnpm run build:editor` 输出的 `Editor: N ESM factories / M sources` 为准（差值即仍保留 classic 共享作用域的条目），目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+ 与 `pnpm install`）。
 
 编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`（产物不入库；Server 渲染前也会自动重建）；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.23.4+（22.x）、24.22.1+（24.x）或 26.12.1+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md)。
 
@@ -107,11 +107,11 @@ uv run --no-sync python scripts/run_tests.py
 git diff --check
 ```
 
-交互改动还需启动 `uv run --no-sync python server-editor/serve.py --blank`，验证拖动、播放、Seek、布局与保存。新增界面文字保持可读字号，元素垂直间隔至少 8px，并实测间距和截图自查。文本统一 UTF-8 / LF。
+交互改动还需启动 `uv run --no-sync python server-editor/serve.py --blank`，验证拖动、播放、Seek、布局与保存；间距、字号与工具页验收见根 [AGENTS 的 UI 间距约定](https://github.com/Moyf/moys-asr-workflow/blob/main/AGENTS.md)。文本统一 UTF-8 / LF。
 
 ### PR 提交前检查
 
-提交 PR 前，先确认该 PR 的目标分支（base branch），fetch 后将最新目标分支合并到当前分支，并解决所有合并冲突。以 `main` 为目标则同步 `origin/main`，以 `2.0dev` 为目标则同步 `origin/2.0dev`；不要固定合并 main，也不要擅自更改目标分支。
+目标分支以 PR 实际设置为准：提交前同步该分支（`main` → `origin/main`，`2.0dev` → `origin/2.0dev`），解决冲突，不擅自更改目标分支。对外步骤见[贡献指南](https://github.com/Moyf/moys-asr-workflow/blob/main/CONTRIBUTING.md#提交-pr-前)，硬性要求见根 [AGENTS](https://github.com/Moyf/moys-asr-workflow/blob/main/AGENTS.md)。
 
 ### PR / main 的改动检查
 
@@ -164,10 +164,6 @@ Greptile 复审是提交后的既定环节；把同一标准提前到提交前�
 
 README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 [JSON_SCHEMA](../json-schema/)。反馈和开发进度写任务账本。官网文档由 [同步脚本](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) 生成，不手改副本。
 
-日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。在 PR 描述注明“内联副本待发布前统一重生成”；发布前或维护者明确要求时才执行：
+日常改编辑器 JS 只重建 esbuild 产物，不重生成 `blank-editor.html`；PR 描述注明「内联副本待发布前统一重生成」，发布前统一处理，规则见根 [AGENTS](https://github.com/Moyf/moys-asr-workflow/blob/main/AGENTS.md)。
 
-```sh
-uv run --no-sync python edit.py --blank
-```
-
-发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。2.0 起先用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 从 CL 生成并提交版本文档，再用 `--check-doc` 检查新鲜度、`--output PATH` 检查最终 Release notes；beta 汇总、正式版精简和小版本基础内容引用见[发布管线](../documentation-index/#engineering-releases)。发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。
+发布前检查、归档生成与网站核验见根 [AGENTS 的发布检查](https://github.com/Moyf/moys-asr-workflow/blob/main/AGENTS.md)与[发布管线](../documentation-index/#engineering-releases)。发布不等于只建 tag；远端、push、tag 和 Release 均需维护者明确要求。

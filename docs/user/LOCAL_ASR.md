@@ -120,6 +120,8 @@ AI 模型页的「对齐模型」独立管理 Qwen3-ForcedAligner-0.6B 和 FireR
 
 Launcher 自动选择 PyPI 镜像；需要 GPU Torch 时另用 PyTorch 索引。`MAW_PIP_INDEX` 可覆盖候选源，`MAW_PYTORCH_INDEX` 可替换 PyTorch 源；镜像必须实际提供对应 wheel，替换 URL 不能解决版本/硬件不兼容。
 
+使用默认候选源时，若镜像找不到锁定的依赖或安装文件校验失败，Launcher 会尝试官方 PyPI，仍按原清单校验。若手动指定了镜像，Launcher 不会自动访问列表外的源；可将 `MAW_PIP_INDEX` 改为 `https://pypi.org/simple`，再重启 Launcher 重试。不要修改锁定版本或移除哈希。安装失败可在设置中查看错误并复制报告，日志会注明实际使用的依赖清单和来源。
+
 Windows 用户名含中文时，依赖里的部分原生库（如 nagisa/DyNet）无法用系统默认代码页打开自己数据目录下的文件，安装验证会以「命令失败（退出码 1）」收场。MAW 会自动把运行时目录转换为 8.3 短路径（同一目录的英文别名）；若系统关闭了 8.3 名称生成，则改用公共目录 `C:\ProgramData\MAW-runtimes-<SID哈希>\<runtime>`，也可用环境变量 `MAW_RUNTIME_ASCII_ROOT` 指定一个无中文且当前用户可写的公共运行时根。公共目录按用户隔离（Windows 进程令牌 SID 哈希作子目录，不依赖 USERNAME/USERDOMAIN 环境变量）：本地 ASR、OCR、MOSS 运行环境各自占独立子目录；同机多用户不再共享运行时，每个 Windows 用户各自独立安装一份（安装动工前会先探测目录可写，无权限时给出明确指引）。OCR / MOSS 运行环境同理。
 
 模型下载量与推理内存不同，具体空间以准备界面和实际缓存为准。CPU、显存、长媒体速度、附加组件与多语种尚无完整跨硬件基准；不承诺统一实时率。先确认短样本可用，再扩大任务。

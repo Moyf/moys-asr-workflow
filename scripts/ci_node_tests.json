@@ -99,5 +99,11 @@
     "closed PR or head updated during API reads cannot get a comment",
     "cancelled run can still report a successfully uploaded package",
     "ambiguous upload jobs or unsuccessful archive cannot claim a package"
+  ],
+  "tests/test_docs_sync_check.mjs": [
+    "check mode refuses to read a missing source document from GitHub",
+    "check mode refuses to read a missing image from GitHub",
+    "sync mode still falls back to GitHub when the local source is missing",
+    "local sources win over the network"
   ]
 }

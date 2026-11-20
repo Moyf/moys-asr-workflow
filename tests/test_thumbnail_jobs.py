@@ -413,12 +413,13 @@ class ThumbnailDemandTests(unittest.TestCase):
         import threading
         # 加固（v1.9.0 macOS CI 首跑超时）：产品契约是“取消最终会发生”（watcher 50ms 轮询），
         # 没有任何秒级时限保证；负载重的 runner 上线程调度停顿可以超过 2s。
-        # 宽限放大到 10s；真实回归（lease 永远不取消）仍由下方 worker.join + is_alive 断言在 ~3s 内暴露。
+        # 宽限放大到 10s；真实回归（lease 永远不取消）仍由下方 worker.join + is_alive 断言暴露。
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)/"media.mp4"
             path.write_bytes(b"source")
             coord = ThumbnailCoordinator(Path(temp)/"jobs.sqlite3")
             started = threading.Event()
+            cancelled = threading.Event()
             attempts = []
             result = []
             def tile(jpegs, **kwargs):
@@ -427,6 +428,7 @@ class ThumbnailDemandTests(unittest.TestCase):
                     started.set()
                     self.assertTrue(kwargs["cancel"].wait(10),
                                     "playing lease did not cancel sprite decode within 10s")
+                    cancelled.set()
                     raise thumbnails.ThumbnailCancelled("playing")
                 return b"sprite"
             def wait(_targets):
@@ -441,7 +443,11 @@ class ThumbnailDemandTests(unittest.TestCase):
                 worker.start()
                 self.assertTrue(started.wait(10), "worker did not reach sprite decode within 10s")
                 coord.lease("playing",source_key(path),playing=True)
-                time.sleep(.15)
+                # 1.11.4 macOS 发布实测：固定 150ms 的持有窗口可被 watcher 整段错过（线程调度
+                # 停顿），cancel 永不触发。持有 lease 直到取消确实被观察到再释放；取消契约
+                # 本身仍由 tile 内的 10s 宽限约束（LEASE_SECONDS=8s 内 watcher 必须轮询到）。
+                self.assertTrue(cancelled.wait(10),
+                                "watcher never paused the in-flight decode while the playing lease was held")
                 self.assertTrue(worker.is_alive())
                 coord.release("playing")
                 worker.join(10)
