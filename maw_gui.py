@@ -25,6 +25,7 @@ _INTERNAL_FLAGS = frozenset(
         "--transcribe-bcut",
         "--transcribe-tencent",
         "--transcribe-openai",
+        "--transcribe-moss",
         "--serve",
         "--serve-alignment",
     }
@@ -38,6 +39,7 @@ _TRANSCRIPTION_FLAGS = frozenset(
         "--transcribe-bcut",
         "--transcribe-tencent",
         "--transcribe-openai",
+        "--transcribe-moss",
     }
 )
 _GUI_DEBUG_FLAGS = frozenset({"-dbg", "--debug", "-dt", "--devtools"})
@@ -91,6 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS,
     )
+    parser.add_argument("--transcribe-moss", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
         "--serve",
         action="store_true",
@@ -147,6 +150,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_internal_transcribe_tencent(rest)
     if args.transcribe_openai:
         return _run_internal_transcribe_openai(rest)
+    if args.transcribe_moss:
+        return _run_internal_transcribe_moss(rest)
     if args.serve:
         return _run_internal_serve(rest)
     if args.serve_alignment:
@@ -442,6 +447,18 @@ def _run_internal_transcribe_openai(argv: Sequence[str]) -> int:
     try:
         sys.argv = ["maw.asr.openai", *argv]
         result = maw.asr.openai.main()
+    finally:
+        sys.argv = old_argv
+    return 0 if result is None else int(result)
+
+
+def _run_internal_transcribe_moss(argv: Sequence[str]) -> int:
+    import maw.asr.moss
+
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = ["maw.asr.moss", *argv]
+        result = maw.asr.moss.main()
     finally:
         sys.argv = old_argv
     return 0 if result is None else int(result)

@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.3 之后 | 2026-11-19 | [MOSS 云端供应商](release1.11.3/261119_MOSS云端供应商/MOSS_API_SUPPORT.md) / [独立审查](release1.11.3/261119_MOSS云端供应商/REVIEW_FINDINGS.md) / [人工清单](release1.11.3/261119_MOSS云端供应商/MOSS云端供应商.checklist.md) | 新增 moss-transcribe-diarize-pro 供应商（说话人 + keyterms + 段级时间码）；全部本地验证，付费 API 未实测 |
 | 1.11.3 之后 | 2026-11-18 | [PR405 Windows 预览异常](release1.11.3/261118_PR405预览异常/TEST_FEEDBACK_PR405预览异常.md) / [独立审查](release1.11.3/261118_PR405预览异常/REVIEW_FINDINGS.md) | 夹具修复后 Windows lite 预览通过；合并审阅补齐非托管回退接口，含真实签名反向验证，完整版模型端到端仍未测 |
 | 1.11.3 之后 | 2026-11-16 | [全屏预览测试同步](release1.11.3/261116_全屏预览测试同步/REVIEW_FINDINGS.md) | 受控延迟对照与独立审查，等待舞台和字幕覆盖层几何就绪 |
 | 1.11.3 之后 | 2026-11-16 | [编辑器服务就绪探测](release1.11.3/261116_编辑器服务就绪探测/REVIEW_FINDINGS.md) | 轻量状态端点、受控慢首页对照与未确认的 CI 根因 |

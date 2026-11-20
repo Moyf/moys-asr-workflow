@@ -165,6 +165,7 @@
         </div>
         <p id="keyStatus" class="hint">未配置密钥</p>
         <p class="hint key-hint-callout"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">千问AI平台</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取或查看 API Key ↗</span></p>
+        <p id="mossCreditsHint" class="hint hidden"><span data-i18n="moss_credits_hint_prefix">在</span> <button id="mossCreditsUrl" class="inline-link" type="button">MOSS Create</button> <span data-i18n="moss_credits_hint_suffix">可领取免费积分 ↗</span></p>
         <p id="apiKeyError" class="field-error"></p>
       </div>
       <div id="localModelSettingsEntry" class="field hidden">
@@ -321,6 +322,15 @@
               <div id="openaiDiarizationField" class="field hidden">
                 <p class="hint" data-i18n="openai_diarization_hint">当前模型会使用 diarized_json 返回带说话人标注的段落；无需额外勾选。</p>
                 <p id="openaiDiarizationUnsupported" class="field-warning" data-i18n="openai_diarization_openrouter_hint">OpenRouter 不支持 diarize，请改用 OpenAI 官方 Base URL。</p>
+              </div>
+            </div>
+            <div id="mossAdvancedOptions" class="adv-group moss-advanced-options hidden">
+              <h3 data-i18n="moss_advanced_title">MOSS 转写选项</h3>
+              <div id="mossKeytermsField" class="field hidden">
+                <label for="mossKeyterms" data-i18n="moss_keyterms">热词（Keyterms）</label>
+                <textarea id="mossKeyterms" rows="3" autocomplete="off" data-i18n-placeholder="moss_keyterms_placeholder"></textarea>
+                <p class="hint" data-i18n="moss_keyterms_hint">每行一个热词，提升人名、品牌与术语的识别；最多 20 个、每个 ≤30 字符。</p>
+                <p id="mossKeytermsError" class="field-error"></p>
               </div>
             </div>
             <div class="adv-group">

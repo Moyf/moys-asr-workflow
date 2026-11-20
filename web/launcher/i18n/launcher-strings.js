@@ -69,6 +69,8 @@ language_filter_hint_suffix: "中开启。",
     save_key: "保存",
     key_hint_prefix: "在",
     key_hint_suffix: "获取或查看 API Key ↗",
+    moss_credits_hint_prefix: "在",
+    moss_credits_hint_suffix: "可领取免费积分 ↗",
     openai_official: "OpenAI 官方",
     openrouter: "OpenRouter",
     openai_key_hint_or: " 或 ",
@@ -232,6 +234,8 @@ language_filter_hint_suffix: "中开启。",
     save_key: "Save",
     key_hint_prefix: "Get or view an API Key from",
     key_hint_suffix: "↗",
+    moss_credits_hint_prefix: "Claim free credits at",
+    moss_credits_hint_suffix: "↗",
     openai_official: "OpenAI official",
     openrouter: "OpenRouter",
     openai_key_hint_or: " or ",
@@ -918,7 +922,13 @@ Object.assign(STRINGS.zh, {
   openai_diarization_hint: "当前模型会使用 diarized_json 返回带说话人标注的段落；无需额外勾选。",
   openai_diarization_openrouter_hint: "OpenRouter 不支持 diarize，请改用 OpenAI 官方 Base URL。",
   openai_keywords_invalid: "OpenAI Keywords 不能包含 < 或 >。",
-  openai_diarize_openrouter_unsupported: "OpenRouter 不支持 gpt-4o-transcribe-diarize，请改用 OpenAI 官方 Base URL。"
+  openai_diarize_openrouter_unsupported: "OpenRouter 不支持 gpt-4o-transcribe-diarize，请改用 OpenAI 官方 Base URL。",
+  moss_advanced_title: "MOSS 转写选项",
+  moss_keyterms: "热词（Keyterms）",
+  moss_keyterms_placeholder: "MOSS-Transcribe-Diarize\n模思智能\n专有名词",
+  moss_keyterms_hint: "每行一个热词，提升人名、品牌与术语的识别；最多 20 个、每个 ≤30 字符。",
+  moss_keyterms_too_many: "MOSS 热词最多 20 个；请删减后再试。",
+  moss_keyterm_too_long: "MOSS 单个热词不能超过 30 字符；请拆分或精简。"
 });
 Object.assign(STRINGS.en, {
   advanced_params: "Parameters",
@@ -1013,7 +1023,13 @@ Object.assign(STRINGS.en, {
   openai_diarization_hint: "This model uses diarized_json to return segments with speaker labels; no extra checkbox is needed.",
   openai_diarization_openrouter_hint: "OpenRouter does not support diarize. Switch to the official OpenAI Base URL.",
   openai_keywords_invalid: "OpenAI Keywords cannot contain < or >.",
-  openai_diarize_openrouter_unsupported: "OpenRouter does not support gpt-4o-transcribe-diarize. Switch to the official OpenAI Base URL."
+  openai_diarize_openrouter_unsupported: "OpenRouter does not support gpt-4o-transcribe-diarize. Switch to the official OpenAI Base URL.",
+  moss_advanced_title: "MOSS transcription options",
+  moss_keyterms: "Keyterms",
+  moss_keyterms_placeholder: "MOSS-Transcribe-Diarize\nMOSS\nProper noun",
+  moss_keyterms_hint: "One keyterm per line to improve names, brands, and terminology; at most 20 keyterms, each up to 30 characters.",
+  moss_keyterms_too_many: "MOSS keyterms are limited to 20; remove some before retrying.",
+  moss_keyterm_too_long: "A single MOSS keyterm cannot exceed 30 characters; split or shorten it."
 });
 Object.assign(STRINGS.zh, {
   settings_tablist_label: "设置分类",
