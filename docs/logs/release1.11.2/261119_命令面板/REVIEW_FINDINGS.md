@@ -19,3 +19,5 @@
 | --- | --- | --- |
 | 已修复 | [官网文档新鲜度](https://github.com/Moyf/moys-asr-workflow/actions/runs/44654917418/job/136018853102) | 两个官网镜像未随文档源更新；已用 `node website/scripts/sync-maw-docs.mjs` 重新生成，并通过与 CI 相同的 `git diff --exit-code` 比对。旧提交的远端 `Change acceptance` 因此失败；以修复提交的新 CI 结果为准。 |
 | 仅说明 | [浏览器辅助检查](https://github.com/Moyf/moys-asr-workflow/actions/runs/44654917418/job/136018853015) | 227 通过、27 失败；新增命令面板用例通过。用 `2.0dev` 基线 `4fd058e0` 的干净源码重建，在本机 Chromium 仅复跑同一批 27 个用例，全部以相同的报错或断言类型失败；其中 4 项也在[基线远端辅助检查](https://github.com/Moyf/moys-asr-workflow/actions/runs/44172058094/job/134353699736)直接匹配。未发现本 PR 引入的辅助回归；不改旧用例，也不修改 CI 准入。 |
+
+评审反馈修订的独立复核：无 blocker / major。原生写入及关闭成功才返回成功；取消和写入失败走 `false`。无原生选择器时的成功指浏览器已接收下载，不能证明最终落盘。自动化直接覆盖取消、模拟写入成功和真实浏览器下载，尚未单独故障注入「另存为」的 `write()` / `close()`，这两类异常共用保存失败分支。

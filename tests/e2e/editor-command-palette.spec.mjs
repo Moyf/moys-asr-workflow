@@ -109,3 +109,66 @@ test('command palette searches and executes, persists recents, and isolates edit
   await expect(page.locator('#blocking-dialog')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('Save As is recent only after a successful write, not after cancelling', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    window.savePickerCalls = 0;
+    window.showSaveFilePicker = async () => {
+      window.savePickerCalls++;
+      throw new DOMException('Save picker cancelled', 'AbortError');
+    };
+  });
+
+  const entry = page.locator('#command-palette-open');
+  const palette = page.locator('#command-palette');
+  const saveAs = palette.getByRole('option', { name: /另存为/ });
+  const recentSaveAs = saveAs.getByText('最近使用', { exact: true });
+  const runSaveAs = async () => {
+    await entry.click();
+    await palette.getByRole('combobox').fill('另存为');
+    await saveAs.click();
+    await expect(palette).not.toBeVisible();
+  };
+
+  await runSaveAs();
+  expect(await page.evaluate(() => window.savePickerCalls)).toBe(1);
+  await entry.click();
+  await expect(saveAs).toBeVisible();
+  await expect(recentSaveAs).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  await page.evaluate(() => {
+    window.showSaveFilePicker = async () => ({
+      name: 'palette-save.mosp',
+      createWritable: async () => ({
+        write: async blob => { window.paletteSavedProject = JSON.parse(await blob.text()); },
+        close: async () => {},
+      }),
+    });
+  });
+  await runSaveAs();
+  await expect(page.locator('#json-name')).toHaveText('palette-save.mosp');
+  expect(await page.evaluate(() => window.paletteSavedProject)).toBeTruthy();
+  await entry.click();
+  await expect(recentSaveAs).toBeVisible();
+});
+
+test('Save As is recent after a fallback download without a save picker', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => { window.showSaveFilePicker = undefined; });
+  await page.goto(server.url);
+
+  const entry = page.locator('#command-palette-open');
+  const palette = page.locator('#command-palette');
+  const saveAs = palette.getByRole('option', { name: /另存为/ });
+  await entry.click();
+  await palette.getByRole('combobox').fill('另存为');
+  const [download] = await Promise.all([page.waitForEvent('download'), saveAs.click()]);
+  expect(download.suggestedFilename()).toMatch(/\.mosp$/);
+  expect(await download.failure()).toBeNull();
+
+  await entry.click();
+  await expect(saveAs.getByText('最近使用', { exact: true })).toBeVisible();
+});
