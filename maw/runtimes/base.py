@@ -696,6 +696,7 @@ class ManagedRuntime:
             content_failure = None
             in_hard_error = False
             streamed_extra_failure = False
+            pip_lookup = _PipIndexLookup(index_url) if frozen else None
 
             def on_install_line(line: str) -> None:
                 # 最终八行可能截掉 pip 哈希标题或 uv 的错误链。仅从最后一个
@@ -710,7 +711,10 @@ class ManagedRuntime:
                 if in_hard_error and not _INSTALL_WARNING_PATTERN.search(line):
                     content_failure = _dependency_content_failure(line) or content_failure
                     streamed_extra_failure |= _failure_blames_extra_index(line, extra_index)
-                report(_redact_install_output(line))
+                if pip_lookup is not None:
+                    pip_lookup.observe(line)
+                if pip_lookup is None or in_hard_error or _PIP_PROGRESS_PATTERN.match(line):
+                    report(_redact_install_output(line))
 
             try:
                 self.run(
@@ -730,7 +734,11 @@ class ManagedRuntime:
                     _NETWORK_FAILURE_PATTERN.search(line) and _failure_blames_extra_index(line, index_url)
                     for line in terminal.splitlines()
                 )
-                blames_extra = _failure_blames_extra_index(terminal, extra_index) or (
+                # pip -vv 会列出索引和链接；这些 URL 不是 extra index 的终止错误。
+                extra_detail = terminal if pip_lookup is None else "\n".join(
+                    line for line in terminal.splitlines() if not _PIP_LOOKUP_TRACE_PATTERN.search(line)
+                )
+                blames_extra = _failure_blames_extra_index(extra_detail, extra_index) or (
                     streamed_extra_failure and not blames_primary
                 )
                 if blames_extra:
@@ -738,7 +746,12 @@ class ManagedRuntime:
                         f"{detail}\n请检查 PyTorch 源或代理；也可设置 MAW_PYTORCH_INDEX 指向可达的 PyTorch 镜像后重试。"
                     ) from None
                 content_failure = _dependency_content_failure(terminal) or (None if blames_primary else content_failure)
-                if content_failure:
+                pip_network_summary = (
+                    pip_lookup.network_summary
+                    if pip_lookup is not None and content_failure and content_failure != _HASH_MISMATCH_REASON
+                    else None
+                )
+                if content_failure and not pip_network_summary:
                     if official and not official_tried:
                         # 将官方提到下一位（不在前三则插入一次）。官方若遇网络
                         # 错误，继续原队列，不补入测速前三以外的普通镜像。
@@ -761,12 +774,12 @@ class ManagedRuntime:
                     else:
                         hint = f"可设置 MAW_PIP_INDEX={FALLBACK_SOURCE} 后重试；若仍失败，请附上安装日志反馈。"
                     raise self._error(f"{detail}\n{content_failure}。{hint}") from None
-                if not _looks_like_network_failure(error):
+                if not pip_network_summary and not _looks_like_network_failure(error):
                     if detail != terminal:
                         raise self._error(detail) from None
                     raise
                 official_network_failed |= is_official
-                mirror_failures.append((index_url, _network_failure_summary(error)))
+                mirror_failures.append((index_url, pip_network_summary or _network_failure_summary(error)))
                 if attempt_number >= len(mirror_attempts):
                     raise self._error(_mirror_retry_exhausted_message(mirror_failures)) from None
                 continue
@@ -1130,7 +1143,7 @@ def _venv_pip_install_command(
 ) -> list[str]:
     """Build the pip install command inside a host venv（无 --target，直装 venv）。"""
     command = [
-        str(python_exe), "-m", "pip", "install", "--upgrade",
+        str(python_exe), "-m", "pip", "install", "--upgrade", "-vv",
         "--index-url", index_url,
     ]
     if extra_index_url:
@@ -1151,7 +1164,7 @@ def _pip_install_command(
 ) -> list[str]:
     """Build a pip install --target command for the managed runtime."""
     command = [
-        str(python_exe), "-m", "pip", "install", "--upgrade",
+        str(python_exe), "-m", "pip", "install", "--upgrade", "-vv",
         "--target", str(target_dir),
         "--index-url", index_url,
     ]
@@ -1225,6 +1238,7 @@ _NETWORK_FAILURE_PATTERN = re.compile(
 #: 网络换源尝试次数上限（最快源 + 2 个候补）；内容错误可额外尝试一次官方源。
 MIRROR_RETRY_ATTEMPTS = 3
 
+_HASH_MISMATCH_REASON = "下载文件与清单哈希不匹配"
 _HASH_MISMATCH_PATTERN = re.compile(
     r"do not match the hashes from the requirements file|\bhash mismatch\b", re.IGNORECASE,
 )
@@ -1241,10 +1255,71 @@ _INSTALL_ERROR_CONTINUATION_PATTERN = re.compile(r"^(?:\s+|[│├╰]|Caused by
 _INSTALL_WARNING_PATTERN = re.compile(r"(?:^|）。)\s*warning:", re.IGNORECASE)
 _HTTP_URL_PATTERN = re.compile(r"https?://[^\s\"'()<>`]+", re.IGNORECASE)
 
+_PIP_LOOKUP_PATTERN = re.compile(r"^(Could not fetch URL|Fetched page) (\S+?)(?=:\s|\s)(.*)$")
+_PIP_LOOKUP_TRACE_PATTERN = re.compile(
+    r"(?:^|）。)\s*(?:Could not fetch URL |Fetched page |Getting page |Fetching project page |"
+    r"Found index url |Found link |Skipping link:|\* https?://)",
+)
+_PIP_MISSING_PATTERN = re.compile(
+    r"^ERROR: (?:Could not find a version that satisfies the requirement|No matching distribution found for) "
+    r"([A-Za-z0-9_.-]+)(?=[<>=!~\[\s(]|$)",
+)
+_PIP_LOOKUP_HTTP_FAILURE_PATTERN = re.compile(r"^:\s*(?:403|429) Client Error:")
+_PIP_PROGRESS_PATTERN = re.compile(
+    r"^\s*(?:WARNING:|ERROR:|Looking in indexes:|Collecting |Downloading |Using cached |"
+    r"Processing |Requirement already satisfied:|Installing |Successfully )",
+)
+
+
+class _PipIndexLookup:
+    """Correlate pip -vv's final lookup outcome with the exact missing project."""
+
+    def __init__(self, index_url: str) -> None:
+        self.prefix = _index_label(index_url).rstrip("/") + "/"
+        self.failures: dict[str, str] = {}
+        self.fetched: set[str] = set()
+        self.missing: str | None = None
+
+    def observe(self, line: str) -> None:
+        if match := _PIP_MISSING_PATTERN.match(line):
+            self.missing = re.sub(r"[-_.]+", "-", match[1]).lower()
+            # (from versions: ...) aggregates every index and cannot establish
+            # that this specific index answered for the project.
+            return
+        if _INSTALL_HARD_ERROR_PATTERN.match(line):
+            self.missing = None
+        if not (match := _PIP_LOOKUP_PATTERN.match(line)):
+            return
+        operation, url, detail = match.groups()
+        page = _index_label(url).rstrip("/")
+        if not page.startswith(self.prefix):
+            return
+        project = page[len(self.prefix):]
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", project):
+            return
+        project = re.sub(r"[-_.]+", "-", project).lower()
+        # Relative Retry warnings do not say if the last attempt succeeded,
+        # nor distinguish main/extra with identical paths. Use the full URL
+        # in pip's debug outcome instead. HTTP 404 is not a network error.
+        if operation == "Fetched page":
+            self.fetched.add(project)
+        elif detail.endswith(" - skipping") and (
+            _NETWORK_FAILURE_PATTERN.search(detail)
+            or _PIP_LOOKUP_HTTP_FAILURE_PATTERN.match(detail)
+            or "didn't respond within" in detail or "Read timed out" in detail
+        ):
+            self.failures[project] = _redact_install_output(line)[:160]
+
+    @property
+    def network_summary(self) -> str | None:
+        if self.missing is not None and self.missing not in self.fetched:
+            return self.failures.get(self.missing)
+        return None
+
 
 def _dependency_content_failure(text: str) -> str | None:
     if _HASH_MISMATCH_PATTERN.search(text):
-        return "下载文件与清单哈希不匹配"
+        return _HASH_MISMATCH_REASON
     if _MISSING_CANDIDATE_PATTERN.search(text):
         return "当前源未提供符合锁定版本及当前平台的候选包"
     return None

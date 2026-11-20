@@ -68,6 +68,31 @@ def _run_with_failed_output(command: list[str], output: str, **kwargs: object) -
             return _run_process(command, **kwargs)
 
 
+def _pip_missing_tail(index: str, *, lookup: str = "timeout") -> str:
+    # pip 26.2.1 -vv，采样自 loopback；最后一轮 warning 中只有相对路径。
+    project = "other-package" if lookup == "other-package" else "funasr"
+    warning = (
+        "WARNING: Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) "
+        "after connection broken by 'ReadTimeoutError(\"Read timed out. (read timeout=0.2)\")': "
+        f"/simple/{project}/\n"
+    )
+    page = f"{index}/{project}/"
+    if lookup == "recovered":
+        result = f"Fetched page {page} as text/html\n"
+    elif lookup == "warning-only":
+        result = ""
+    elif lookup in {"403", "429", "404"}:
+        reason = {"403": "Forbidden", "429": "Too Many Requests", "404": "Not Found"}[lookup]
+        result = f"Could not fetch URL {page}: {lookup} Client Error: {reason} for url: {page} - skipping\n"
+    else:
+        result = f"Could not fetch URL {page}: index didn't respond within 0.2 seconds - skipping\n"
+    return (
+        warning + result + f"Skipping link: not a file: {page}\n"
+        "ERROR: Could not find a version that satisfies the requirement funasr==1.4.2 (from versions: none)\n"
+        "ERROR: No matching distribution found for funasr==1.4.2\n"
+    )
+
+
 def _mirror_403_error(index_url: str) -> LocalRuntimeError:
     """模仿 pip 对镜像限频/拒绝的真实输出形态（stdout/stderr 合流后的尾部）。"""
     return LocalRuntimeError(
@@ -400,6 +425,89 @@ class RuntimeMirrorRetryTests(unittest.TestCase):
                         self._install(root, requirements_txt, fake_run=fake_run, mirrors=mirrors)
 
                 self.assertEqual(tried, expected)
+
+    def test_pip_official_lookup_timeout_resumes_original_shortlist(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root, requirements_txt = self._setup(temp_dir)
+            tried: list[list[str]] = []
+            succeed = self._fake_success([], [], root)
+
+            def fake_run(command: list[str], **kwargs: object) -> int:
+                if "install" in command:
+                    tried.append(command)
+                    source = _index_of(command)
+                    if source == MIRROR_A:
+                        return _run_with_failed_output(command, _deterministic_error().args[0], **kwargs)
+                    if source == FALLBACK_SOURCE:
+                        # Real pip 26.2.1 ordering: main times out, extra provides
+                        # another version, then pip reports the combined candidates.
+                        output = _pip_missing_tail(source).replace(
+                            "ERROR: Could not find a version",
+                            f"Fetched page https://{PYTORCH_HOST}/whl/cu130/funasr/ as text/html\n"
+                            "ERROR: Could not find a version",
+                        ).replace("from versions: none", "from versions: 1.0")
+                        return _run_with_failed_output(command, output, **kwargs)
+                return succeed(command, **kwargs)
+
+            status = self._install(root, requirements_txt, fake_run=fake_run, mirrors=[MIRROR_A, MIRROR_B])
+
+            self.assertTrue(status.ready)
+            self.assertEqual([_index_of(command) for command in tried], [MIRROR_A, FALLBACK_SOURCE, MIRROR_B])
+            for command in tried:
+                self.assertEqual(command[command.index("-r") + 1], str(requirements_txt))
+                self.assertIn("-vv", command)
+
+    def test_pip_main_index_403_and_429_resume_original_shortlist(self) -> None:
+        for http_status in ("403", "429"):
+            with self.subTest(status=http_status), tempfile.TemporaryDirectory() as temp_dir:
+                root, requirements_txt = self._setup(temp_dir)
+                tried: list[list[str]] = []
+                succeed = self._fake_success([], tried, root)
+
+                def fake_run(command: list[str], **kwargs: object) -> int:
+                    if "install" in command and _index_of(command) == FALLBACK_SOURCE:
+                        tried.append(command)
+                        return _run_with_failed_output(
+                            command, _pip_missing_tail(FALLBACK_SOURCE, lookup=http_status), **kwargs,
+                        )
+                    return succeed(command, **kwargs)
+
+                status = self._install(root, requirements_txt, fake_run=fake_run, mirrors=[FALLBACK_SOURCE, MIRROR_B])
+
+                self.assertTrue(status.ready)
+                self.assertEqual([_index_of(command) for command in tried], [FALLBACK_SOURCE, MIRROR_B])
+
+    def test_pip_only_reclassifies_network_exhaustion_for_missing_main_project(self) -> None:
+        extra = f"https://{PYTORCH_HOST}/whl/cu130"
+        failed_page = f"{FALLBACK_SOURCE}/funasr/"
+        cases = (
+            _pip_missing_tail(FALLBACK_SOURCE, lookup="recovered"),
+            _pip_missing_tail(FALLBACK_SOURCE, lookup="warning-only"),
+            _pip_missing_tail(FALLBACK_SOURCE, lookup="other-package"),
+            _pip_missing_tail(FALLBACK_SOURCE, lookup="404"),
+            _pip_missing_tail(extra),
+            f"Fetched page {failed_page} as text/html\n" + _pip_missing_tail(FALLBACK_SOURCE),
+            _pip_missing_tail(extra, lookup="403"),
+            _pip_missing_tail(extra, lookup="429"),
+        )
+        for output in cases:
+            with self.subTest(output=output), tempfile.TemporaryDirectory() as temp_dir:
+                root, requirements_txt = self._setup(temp_dir)
+                tried: list[str] = []
+
+                def fake_run(command: list[str], **kwargs: object) -> int:
+                    if "install" in command:
+                        source = _index_of(command)
+                        tried.append(source)
+                        if source == FALLBACK_SOURCE:
+                            return _run_with_failed_output(command, output, **kwargs)
+                        self.fail(f"unexpected network retry to {source}")
+                    return 0
+
+                with self.assertRaisesRegex(LocalRuntimeError, "当前源未提供.*官方 PyPI 已尝试"):
+                    self._install(root, requirements_txt, fake_run=fake_run, mirrors=[FALLBACK_SOURCE, MIRROR_B])
+
+                self.assertEqual(tried, [FALLBACK_SOURCE])
 
     def test_official_non_network_or_cancellation_does_not_resume_shortlist(self) -> None:
         for official_failure, expected in (
