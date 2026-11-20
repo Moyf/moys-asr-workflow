@@ -13,8 +13,8 @@ maw/local_runtime.py / maw/ocr_runtime.py import 使用。
   python scripts/runtime_mirror_picker.py --source https://pypi.org/simple
 
 可导入 API:
-  ranked_mirrors(timeout=5.0) -> list[str]      # 按测速排序的候选源（快→慢），全失败兜底 [官方源]
-  pick_fastest_mirror(timeout=5.0) -> str       # 最快镜像 base URL（即 ranked_mirrors()[0]），全失败兜底官方源
+  ranked_mirrors(timeout=5.0) -> list[str]      # 按测速排序（快→慢），全失败兜底官方源或显式配置首源
+  pick_fastest_mirror(timeout=5.0) -> str       # 最快镜像 base URL（即 ranked_mirrors()[0]）
   measure_sources(timeout=5.0) -> list[dict]    # 每源: url/latency_ms/bytes_per_sec/ok/error
   probe_index_reachable(url, timeout=10.0) -> bool  # 任意 pip 索引（如 PyTorch 源）当前是否可达
 
@@ -196,18 +196,18 @@ def _measure_one(source: str, timeout: float) -> dict:
     return result
 
 
+def configured_sources() -> list[str]:
+    """返回显式配置的 MAW_PIP_INDEX（未配置时为空）。"""
+    return [item.strip() for item in os.environ.get("MAW_PIP_INDEX", "").split(",") if item.strip()]
+
+
 def candidate_sources() -> list[str]:
     """返回本次候选源列表。
 
     环境变量 MAW_PIP_INDEX（逗号分隔的 URL 列表）非空时作为唯一候选
     （覆盖内置列表; 想保留内置源就把它们一并写进去）。
     """
-    override = os.environ.get("MAW_PIP_INDEX", "").strip()
-    if override:
-        sources = [item.strip() for item in override.split(",") if item.strip()]
-        if sources:
-            return sources
-    return list(DEFAULT_SOURCES)
+    return configured_sources() or list(DEFAULT_SOURCES)
 
 
 def measure_sources(timeout: float = 5.0, sources: list[str] | None = None) -> list[dict]:
@@ -252,12 +252,13 @@ def ranked_mirrors(timeout: float = 5.0) -> list[str]:
 
     供安装期「换源重试」使用：首个元素与 :func:`pick_fastest_mirror` 一致；
     测速明确失败的源不进列表（重试时跳过已知不可达的源）；全部失败时兜底
-    ``[官方源]``，列表永不为空但长度可能只有 1。
+    官方源或 ``MAW_PIP_INDEX`` 的首源（不访问未配置的源），列表永不为空。
     """
     results = measure_sources(timeout=timeout)
     ok_results = [item for item in results if item["ok"] and item["latency_ms"] is not None]
     if not ok_results:
-        return [FALLBACK_SOURCE]
+        configured = configured_sources()
+        return [configured[0] if configured else FALLBACK_SOURCE]
     ok_results.sort(key=lambda item: (item["latency_ms"], -(item["bytes_per_sec"] or 0.0)))
     return [item["url"] for item in ok_results]
 
@@ -265,7 +266,7 @@ def ranked_mirrors(timeout: float = 5.0) -> list[str]:
 def pick_fastest_mirror(timeout: float = 5.0) -> str:
     """返回当前最快镜像的 base URL（可直接用作 pip --index-url）。
 
-    全部源失败时返回官方 https://pypi.org/simple 兜底。
+    全部源失败时返回官方源或 MAW_PIP_INDEX 首源兜底。
     """
     return ranked_mirrors(timeout=timeout)[0]
 
