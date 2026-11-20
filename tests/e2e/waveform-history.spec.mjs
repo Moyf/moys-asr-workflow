@@ -506,7 +506,10 @@ test('N creates a subtitle at the waveform pointer and focuses the new cue', asy
   await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
   await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(1);
   await expect(page.locator('#cue-panel-text')).toHaveValue('');
-  await expect(page.locator('#cue-panel-text')).toBeFocused();
+  // 新字幕自动打开波形快速编辑气泡（2.0 内建交互），气泡文本框持有焦点；
+  // 列表文本保持非内联编辑。
+  await expect(page.locator('.waveform-cue-quick-edit-text')).toBeVisible();
+  await expect(page.locator('.waveform-cue-quick-edit-text')).toBeFocused();
   await expect(page.locator('.cue[data-idx="1"] .text')).not.toHaveAttribute('contenteditable', 'plaintext-only');
   const created = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1]);
   expect(created.start).toBeGreaterThanOrEqual(8000);
@@ -549,7 +552,9 @@ test('Ctrl+dragging blank waveform creates the dragged duration and focuses the 
   await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.length)).toBe(7);
   await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
   await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(1);
-  await expect(page.locator('#cue-panel-text')).toBeFocused();
+  // 拖拽创建同样打开波形快速编辑气泡并聚焦其文本框。
+  await expect(page.locator('.waveform-cue-quick-edit-text')).toBeVisible();
+  await expect(page.locator('.waveform-cue-quick-edit-text')).toBeFocused();
   await expect(page.locator('.cue[data-idx="1"] .text')).not.toHaveAttribute('contenteditable', 'plaintext-only');
   const created = await page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[1]);
   const expectedDuration = Math.round((((endX - startX) / box.width) * 10000) / 10) * 10;
@@ -731,9 +736,10 @@ test('manual text split keeps malformed item timing inside both cues and restore
   expect((await saveResponse).ok()).toBe(true);
 
   await page.getByRole('button', { name: /撤销/ }).click();
+  // 同上：撤销恢复会重新应用会话编辑高亮，剥离 _dirty 后比较内容。
   await expect.poll(() => page.evaluate(() => JSON.stringify(
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0],
-    (key, value) => (key === 'start_frame' || key === 'end_frame' ? undefined : value),
+    (key, value) => (key === 'start_frame' || key === 'end_frame' || key === '_dirty' ? undefined : value),
   ))).toBe(JSON.stringify(original));
   await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
 
@@ -758,7 +764,10 @@ test('manual text split keeps malformed item timing inside both cues and restore
     response.url().endsWith('/api/project') && response.request().method() === 'POST'
   ));
   await page.evaluate((segments) => {
-    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = segments.map((segment) => JSON.parse(JSON.stringify(segment)));
+    // v2 保存校验要求段 id；直接注入的运行时段必须携带规范 id。
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments = segments.map((segment, index) => ({
+      ...JSON.parse(JSON.stringify(segment)), id: `restore-cue-${index + 1}`,
+    }));
     MaweCuePanel.renderAll();
   }, testSegments());
   await page.keyboard.press('ControlOrMeta+s');
@@ -851,7 +860,10 @@ test('C merge refreshes the paused main subtitle preview', async ({ page }) => {
 test('C merge keeps the subtitle list at its current position', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
+    // 2.0 的选择状态按段 id 锚定；直接注入运行时的假段必须携带规范 id，
+    // 否则点击无法保持选中（与 v2 段身份契约一致）。
     const segments = Array.from({ length: 40 }, (_, index) => ({
+      id: `merge-cue-${index + 1}`,
       start: index * 5000,
       end: index * 5000 + 3000,
       text: `Cue ${index + 1}`,
@@ -1708,19 +1720,22 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   await expect(page.locator('#help-waveform-split-key')).toHaveText('B');
   await expect(page.locator('#help-tab-panel-waveform')).toContainText('按当前时间基准拆分字幕');
   await expect(page.locator('#help-tab-panel-waveform')).not.toContainText('红色播放指针');
-  await expect(helpPanel).toContainText('绑定到主副字幕（自动匹配）');
-  await expect(helpPanel).toContainText('解绑当前副字幕');
-  await expect(helpPanel).toContainText('将选中的副字幕的时长对齐到绑定主字幕');
-  await expect(helpPanel).not.toContainText('波形轨道徽标');
-  await expect(helpPanel).not.toContainText('语言类型：单词型适合英语等空格语言，字符型适合中文/日文等');
-  await expect(helpPanel).not.toContainText('主字幕自动使用时间码拆分：单轨可直接拆分');
-  await expect(helpPanel).not.toContainText('主字幕调整时副字幕只跟随');
-  await expect(helpPanel).not.toContainText('副字幕调整时受主字幕轨道边界限制');
-  await expect(helpPanel).not.toContainText('普通点击以最后点击的轨道为准；未绑定副字幕不会保留旧主字幕选区');
+  // 双语操作说明在 2.0 帮助中是独立的「双语字幕」面板。
+  await helpPanel.getByRole('tab', { name: '双语字幕', exact: true }).click();
+  const multiPanel = page.locator('#help-tab-panel-multi');
+  await expect(multiPanel).toContainText('自动匹配并绑定主副字幕');
+  await expect(multiPanel).toContainText('解绑当前副字幕');
+  await expect(multiPanel).toContainText('将选中的副字幕时长对齐到绑定的主字幕');
+  await expect(multiPanel).not.toContainText('波形轨道徽标');
+  await expect(multiPanel).not.toContainText('语言类型：单词型适合英语等空格语言，字符型适合中文/日文等');
+  await expect(multiPanel).not.toContainText('主字幕自动使用时间码拆分：单轨可直接拆分');
+  await expect(multiPanel).not.toContainText('主字幕调整时副字幕只跟随');
+  await expect(multiPanel).not.toContainText('副字幕调整时受主字幕轨道边界限制');
+  await expect(multiPanel).not.toContainText('普通点击以最后点击的轨道为准；未绑定副字幕不会保留旧主字幕选区');
 
-  const multiSubtitleHelp = helpPanel.locator('.help-subgroup').filter({ hasText: '绑定到主副字幕（自动匹配）' });
+  const multiSubtitleHelp = multiPanel.locator('.help-subgroup').filter({ hasText: '自动匹配并绑定主副字幕' });
   await expect(multiSubtitleHelp).toHaveCount(1);
-  await expect(helpPanel.locator('#help-tab-panel-waveform .help-title').filter({ hasText: '双语字幕' })).toHaveCount(1);
+  await expect(multiPanel.locator('.help-title').filter({ hasText: '双语字幕' })).toHaveCount(1);
 
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');
@@ -1745,8 +1760,11 @@ test('contextual help links open their matching Help tabs', async ({ page }) => 
   await page.locator('#gap-remove-help').click();
   await expect(helpPanel).toHaveClass(/show/);
   await expect(page.locator('#help-tab-gap')).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('#gap-remove-panel')).not.toHaveClass(/show/);
+  // 帮助是非模态浮窗：从工具窗打开帮助时两者并存（2.0 有意行为）。
+  await expect(page.locator('#gap-remove-panel')).toHaveClass(/show/);
   await page.locator('#help-close').click();
+  await page.locator('#gap-remove-close').click();
+  await expect(page.locator('#gap-remove-panel')).not.toHaveClass(/show/);
 
   for (const { button, tab } of [
     { button: '#waveform-settings-help', tab: '#help-tab-waveform' },
@@ -1756,7 +1774,8 @@ test('contextual help links open their matching Help tabs', async ({ page }) => 
     await page.locator(button).click();
     await expect(helpPanel).toHaveClass(/show/);
     await expect(page.locator(tab)).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('#waveform-settings-panel')).toBeHidden();
+    // 同上：帮助非模态，设置浮窗保持打开。
+    await expect(page.locator('#waveform-settings-panel')).toBeVisible();
     await page.locator('#help-close').click();
   }
   // 波形操作/按键微调/空隙操作方式设置已移入全局设置「通用操作」，其帮助入口随之迁移
@@ -1769,7 +1788,8 @@ test('contextual help links open their matching Help tabs', async ({ page }) => 
     await page.locator(button).click();
     await expect(helpPanel).toHaveClass(/show/);
     await expect(page.locator(tab)).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('#editor-settings-panel')).toBeHidden();
+    // 同上：帮助非模态，全局设置浮窗保持打开。
+    await expect(page.locator('#editor-settings-panel')).toBeVisible();
     await page.locator('#help-close').click();
   }
 });
@@ -1852,8 +1872,9 @@ test('waveform toolbar exposes grouped icon controls and selected cues use a yel
   await expect(selectTool.locator('svg')).toHaveCount(1);
   await expect(splitTool).toContainText('分割');
   await expect(splitTool.locator('svg')).toHaveCount(1);
-  await expect(selectTool).toHaveAttribute('title', /V/);
-  await expect(splitTool).toHaveAttribute('title', /R/);
+  // 共享 tooltip 启动时把原生 title 转存为 data-title 并从 DOM 移除。
+  await expect(selectTool).toHaveAttribute('data-title', /V/);
+  await expect(splitTool).toHaveAttribute('data-title', /R/);
   await expect(page.locator('#help-toggle')).toContainText('帮助');
 
   await page.keyboard.press('r');
@@ -1908,7 +1929,12 @@ test('extends selected subtitles without remapping items and undoes the batch in
   })).toBeVisible();
 
   await page.getByRole('button', { name: /撤销/ }).click();
-  await expect.poll(() => page.evaluate(() => AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2))).toEqual(before.segments);
+  // 会话高亮（本次会话编辑过的段）在撤销恢复时按段 ID 重新标记，属于
+  // 有意的会话语义；这里验证内容恢复，剥离该运行时标志。
+  await expect.poll(() => page.evaluate(() => JSON.parse(JSON.stringify(
+    AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments.slice(0, 2),
+    (key, value) => (key === '_dirty' ? undefined : value),
+  )))).toEqual(before.segments);
 });
 
 test('C merges a common group and Shift+A/D extends the subtitle selection', async ({ page }) => {
@@ -2157,7 +2183,7 @@ test('legacy dangling sticker references are rejected before entering the runtim
   expect(rejected).toEqual({ opened: false, unchanged: true });
 });
 
-test('sticker Resolve and OTIO exports expand references per enabled subtitle', async ({ page }) => {
+test('sticker Resolve and OTIO exports expand grouped references per subtitle group', async ({ page }) => {
   await page.goto(server.url);
   const result = await page.evaluate(segments => {
     const fixture = AsrEditorUtils.importProject({ segments }).project;
@@ -2170,19 +2196,29 @@ test('sticker Resolve and OTIO exports expand references per enabled subtitle', 
     return {
       schema: resolve.schema,
       unchanged: before === JSON.stringify(MaweBoot.DATA),
-      resolveStickers: resolve.segments.filter((segment) => segment.sticker).map((segment) => [
-        segment.start_ms, segment.end_ms, segment.sticker.start, segment.sticker.end,
+      groupStickers: resolve.stickers?.map((sticker) => [
+        sticker.start_ms, sticker.end_ms, sticker.name, sticker.path,
       ]),
+      memberGroups: resolve.segments.filter((segment) => segment.sticker_group_id)
+        .map((segment) => [segment.start_ms, segment.end_ms, segment.sticker_group_id]),
+      danglingHasNoGroup: resolve.segments.filter((segment) => !segment.sticker_group_id)
+        .map((segment) => [segment.start_ms, segment.end_ms]),
       otioClips: children.filter((child) => child.OTIO_SCHEMA === 'Clip.2').map((clip) => [
         clip.metadata.moy.start_ms, clip.metadata.moy.end_ms,
       ]),
     };
   }, [...legacyStickerSegments.slice(0, 3), { start: 7000, end: 8000, text: 'dangling' }]);
 
-  expect(result.schema).toBe('moy.asr_subtitle_editor.resolve.v1');
+  // v1 sticker fields migrate into a subtitle group, so grouped exports use
+  // the v2 Resolve schema: one group range spans its member cues (including
+  // disabled members), and references resolve to the defining group.
+  expect(result.schema).toBe('moy.asr_subtitle_editor.resolve.v2');
   expect(result.unchanged).toBe(true);
-  expect(result.resolveStickers).toEqual([[1000, 2000, 1000, 2000], [3000, 4000, 3000, 4000]]);
-  expect(result.otioClips).toEqual([[1000, 2000], [3000, 4000]]);
+  expect(result.groupStickers).toEqual([[1000, 6000, 'reaction', 'reaction.png']]);
+  expect(result.memberGroups.every(([, , groupId]) => groupId === 'sticker-main-1')).toBe(true);
+  expect(result.memberGroups).toHaveLength(3);
+  expect(result.danglingHasNoGroup).toEqual([[7000, 8000]]);
+  expect(result.otioClips).toEqual([[1000, 6000]]);
 });
 
 test('gap-removed OTIO exports subtitle text as clip markers with Resolve colors', async ({ page }) => {
@@ -2304,10 +2340,14 @@ test('server media loads from the resolved project path and OTIO keeps its absol
   await page.goto(server.url);
   const state = await page.evaluate(() => ({
     media: MaweBoot.DATA.media,
+    boundMediaPath: MaweBoot.SERVER_CONFIG.autoLoadedMediaPath,
     currentSrc: document.getElementById('player').currentSrc,
   }));
-  expect(state.media).toMatch(/synthetic\.wav$/);
-  expect(state.media).toMatch(/^(?:[A-Za-z]:[\\/]|\/)/);
+  // 2.0 keeps the project's own media name untouched; the resolved absolute
+  // path lives on the server binding and feeds export source URLs.
+  expect(state.media).toBe('synthetic.wav');
+  expect(state.boundMediaPath).toMatch(/synthetic\.wav$/);
+  expect(state.boundMediaPath).toMatch(/^(?:[A-Za-z]:[\\/]|\/)/);
   expect(state.currentSrc).toBe(`${server.url}media`);
 
   await page.evaluate(() => {

@@ -9,7 +9,14 @@ const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export
 const first = source.indexOf("document.getElementById('download-gap-removed-video')");
 const last = source.indexOf("document.getElementById('download-gap-removed-regions-json')", first);
 const handler = source.slice(first, last);
+// editor-project-load.js is an ESM init module now, so the whole file can no
+// longer run as a classic script tag. Slice just the detach implementation the
+// capability test exercises; the wrapper below provides its module bindings.
 const projectLoad = fs.readFileSync(new URL('../../web/editor/io/editor-project-load.js', import.meta.url), 'utf8');
+const detachStart = projectLoad.indexOf('function detachServerProjectSaving()');
+const detachEnd = projectLoad.indexOf('  async function ensureProjectCheckpointForImport', detachStart);
+if (detachStart < 0 || detachEnd < 0) throw new Error('detachServerProjectSaving slice markers moved in editor-project-load.js');
+const detachSource = projectLoad.slice(detachStart, detachEnd);
 const i18n = fs.readFileSync(new URL('../../web/shared/editor-i18n.js', import.meta.url), 'utf8');
 
 async function fixture(page, mode, run) {
@@ -197,9 +204,17 @@ for (const field of ['gapRemovedMediaKind', 'gapRemovedMediaSourceName', 'gapRem
 
 test('detach clears all capabilities and label follows media and language changes', async ({ page }) => {
   await fixture(page, 'save', async () => {
-    await page.addScriptTag({ content: projectLoad });
+    // Rebind the slice's module-level bindings onto the stub page, then expose
+    // the real detach implementation through the same facade name. The epoch
+    // is a live getter like the real module facade, so binding invalidation
+    // through detach stays observable.
+    await page.addScriptTag({ content: `window.MaweCoreState = { waveformEditor: null };
+      let projectBindingEpoch = 1;
+      ${detachSource}
+      window.MaweProjectLoad = { get projectBindingEpoch() { return projectBindingEpoch; }, detachServerProjectSaving };` });
     await page.addScriptTag({ content: i18n });
     await page.evaluate(() => MaweProjectLoad.detachServerProjectSaving());
+    expect(await page.evaluate(() => MaweProjectLoad.projectBindingEpoch)).toBe(2);
     expect(await page.evaluate(() => [MaweBoot.SERVER_CONFIG.canGapRemovedMediaExport, MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport])).toEqual([false, false]);
     expect(await page.evaluate(() => [MaweBoot.SERVER_CONFIG.gapRemovedMediaKind, MaweBoot.SERVER_CONFIG.gapRemovedMediaSourceName,
       MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputExtension, MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputMime,

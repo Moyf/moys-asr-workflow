@@ -48,7 +48,9 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
   const original = await visual(page, index, kind);
   await page.keyboard.press('c');
   const merged = await stable(page, original, index, 'extension merge', info, kind);
-  expect(merged.id).not.toBe(original.id);
+  // The 2.0 merge contract keeps the first segment's identity: the merged cue
+  // must remain the original cue (same ID), not mint a new one.
+  expect(merged.id).toBe(original.id);
   await page.keyboard.press(undoKey);
   await stable(page, merged, index, 'extension undo merge', info, kind);
   expect((await visual(page, index, kind)).id).toBe(original.id);
@@ -70,7 +72,9 @@ test('near-end extension editing stays anchored at 1920px', async ({ page }, inf
     await page.locator('#multi-subtitle-split-confirm').click();
   }
   const left = await stable(page, beforeSplit, index, 'extension split after resize', info, kind);
-  expect(left.id).not.toBe(beforeSplit.id);
+  // Split keeps the original cue's identity on the left part (same ID and
+  // start; only the end moves) — the right part is the new cue.
+  expect(left.id).toBe(beforeSplit.id);
   expect(left.start).toBe(beforeSplit.start);
   expect(left.end).toBeLessThan(beforeSplit.end);
   await page.keyboard.press(undoKey);
