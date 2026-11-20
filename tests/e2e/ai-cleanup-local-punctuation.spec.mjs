@@ -113,7 +113,9 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
         expect(snapshot.markers.some((marker) => marker.review?.status === 'pending')).toBe(true);
       } else expect(snapshot.removedGaps.length).toBeGreaterThan(0);
       expect(fixture.allowedTexts || [fixture.expected]).toContain(snapshot.css);
-      expect(snapshot.canvas).toContain(snapshot.css);
+      // Canvas adds VS15 to simple emoji while exported text remains unchanged.
+      const canvasExpected = await page.evaluate(text => AsrEditorUtils.assCanvasPreviewText(text), snapshot.css);
+      expect(snapshot.canvas).toContain(canvasExpected);
       expect(snapshot.dynamic.segments[0].text).toBe(snapshot.css);
       for (const output of [snapshot.ordinary, snapshot.compressed, snapshot.ass]) {
         expect(output).toContain(snapshot.css);

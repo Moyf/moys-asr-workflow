@@ -203,6 +203,8 @@ source: "docs/INDEX.md"
 
 [打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/UNIFIED_TRACKS_PLAN.md)
 
+[工程轨道样式草案](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/TRACK_STYLES_DRAFT.md)
+
 [v2 整合与验证](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.2/261030_轨道v2整合/整合记录.md) · [人工核验](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.10.0-beta.2/261030_轨道v2整合/轨道v2.checklist.md)
 
 <a name="plan-fcp7-png-subtitles"></a>
