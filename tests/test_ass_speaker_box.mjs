@@ -44,6 +44,21 @@ test('speaker box and text stay consecutive on the original track and clock', ()
   }
 });
 
+test('ordinary opening punctuation keeps a shared speaker box', () => {
+  for (const text of [
+    '"Good morning."', "'Good morning.'", '“你来啦。”', '‘你来啦。’',
+    '「おはよう」', '『再试一次』', '＂你好＂', '＇你好＇', '(continued)', '（接上回）',
+    '——我有一个问题。', '……我想想。', '  “等等。”', '\n「你好。」',
+  ]) {
+    for (const speakerLabelSeparator of ['：', ': ']) {
+      const pair = events(render({ ...cue, text }, { speakerLabelSeparator }));
+      const context = JSON.stringify({ text, speakerLabelSeparator });
+      assert.equal(pair.length, 2, context);
+      assert.ok(pair[0].includes(hideText) && pair[1].includes(hideBox), context);
+    }
+  }
+});
+
 test('mixed typography and unsupported shaping preserve the existing Dialogue', () => {
   const larger = render({ ...cue, text: '**HELLO** WORLD' }, {
     assStyle: { ...style, emphasisScale: 1.7 },
@@ -57,6 +72,13 @@ test('mixed typography and unsupported shaping preserve the existing Dialogue', 
     render(cue, { assProfile: { animations: { t: { enabled: true, tags: String.raw`\frx30` } } } }),
     render({ ...cue, text: 'سلام' }),
     render({ ...cue, text: String.raw`HELLO \N WORLD` }),
+    render({ ...cue, text: '“سلام”' }),
+    render({ ...cue, text: String.raw`“Quoted \N text”` }),
+    render({ ...cue, text: '“**HELLO**” WORLD' }, {
+      assStyle: { ...style, emphasisScale: 1.7 },
+    }),
+    render({ ...cue, text: '“HELLO WORLD”' }, { speakerLabelSeparator: ':' }),
+    render({ ...cue, text: '¿HELLO WORLD?' }),
     render(cue, {
       speakerLabels: { red: 'TV' }, speakerLabelSeparator: ':',
       assStyle: { ...style, fontName: 'Smiley Sans Oblique', fontSize: 300, marginL: 62, marginR: 62, outline: 1 },
@@ -134,6 +156,71 @@ test('libass aligns native box and glyph layers and removes speaker-seam pixels'
     assert.deepEqual([...raw.subarray(index, index + 3)], [...fixed.subarray(index, index + 3)]);
   }
   assert.ok(glyphs > 100, 'the box must sit beneath the original opaque glyphs');
+});
+
+test('libass removes the opening-quote seam and preserves glyph positions on wrapped lines', {
+  skip: skipWithoutLibass,
+}, () => {
+  const frame = frameRenderer();
+  const glyphHeight = new Map();
+  for (const [name, text, margin] of [
+    ['wide', '"Wait for me," she said.', 10],
+    ['wrapped', '"Wait for me," she said.', 155],
+    ['hard-break', '"Wait for me,"\nshe said.', 10],
+  ]) {
+    const ass = render({ ...cue, text }, {
+      assStyle: { ...style, primaryColor: '#3ea4f2', marginL: margin, marginR: margin },
+    });
+    const pair = events(ass);
+    const header = ass.slice(0, ass.indexOf('Dialogue:'));
+    const original = pair.at(-1).replace(hideBox, '');
+    const frameFor = (kind, line) => frame(`${name}-${kind}`, header + line + '\n');
+    const raw = frameFor('old', original);
+    const fixed = frame(`${name}-new`, ass);
+    let restored = 0;
+    for (let index = 0; index < raw.length; index += 3) {
+      if (raw[index] === 64 && raw[index + 1] === 64 && raw[index + 2] === 64
+          && fixed[index] === 128 && fixed[index + 1] === 128 && fixed[index + 2] === 128) {
+        restored++;
+      }
+    }
+    assert.ok(restored > 200, `${name} must remove the original speaker seam (${restored} pixels restored)`);
+    assert.equal(pair.length, 2, name);
+    const textAt = original.indexOf(',,') + 2;
+    const originalBox = frameFor('old-box', original.slice(0, textAt) + hideText + '}' + original.slice(textAt));
+    const box = frameFor('box', pair[0]);
+    const glyphs = frameFor('text', pair[1]);
+    const stride = 640 * 3;
+    const rows = new Set();
+    let speakerPixels = 0;
+    let bodyPixels = 0;
+    for (let index = 0; index < raw.length; index += 3) {
+      const covered = box[index] < 255;
+      if (covered !== (originalBox[index] < 255)) {
+        const other = covered ? originalBox : box;
+        const column = index % stride;
+        // Combined runs can round the edge bitmap differently by one pixel.
+        const nearEdge = [-stride, 0, stride].some(row =>
+          [-3, 0, 3].some(dx => column + dx >= 0 && column + dx < stride && other[index + row + dx] < 255));
+        assert.ok(nearEdge, `${name} must retain the original box edges`);
+      }
+      const contrast = image => image[index] - image[index + 2];
+      const glyph = contrast(glyphs);
+      assert.ok(Math.abs(contrast(raw) - contrast(fixed)) <= 1, `${name} must preserve glyph geometry`);
+      if (Math.abs(glyph) <= 10) continue;
+      assert.ok(Math.abs(glyph - contrast(fixed)) <= 1, `${name} must keep both glyph colours`);
+      if (originalBox[index] < 255) {
+        assert.ok(box[index] < 255, `${name} must keep the box under the original glyphs`);
+      }
+      rows.add(Math.floor(index / stride));
+      if (glyph > 0) speakerPixels++;
+      else bodyPixels++;
+    }
+    assert.ok(speakerPixels > 100 && bodyPixels > 100, name);
+    glyphHeight.set(name, Math.max(...rows) - Math.min(...rows));
+  }
+  assert.ok(glyphHeight.get('wrapped') > glyphHeight.get('wide'), 'the narrow fixture must auto-wrap');
+  assert.ok(glyphHeight.get('hard-break') > glyphHeight.get('wide'), 'the hard break must render a second line');
 });
 
 test('libass aligns both layers through move, fades, size and alpha transforms', {

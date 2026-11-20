@@ -175,10 +175,11 @@ export function createUtilsModule(dependencies) {
     if (!match || match[1] === match[3]) return '';
     const [, , label, , body] = match;
     const plain = (label + body).replaceAll('\\N', '\n');
+    const bodyStart = body.replaceAll('\\N', '\n').trimStart();
     // Merging colour runs also merges their shaping context. A bare ASCII
     // colon can change glyph advance when joined to the surrounding text.
-    // Keep the default full-width separator and space-separated prefixes.
-    if (!/[：\p{Zs}]$/u.test(label) || !/^[\p{L}0-9０-９]/u.test(body.replaceAll('\\N', '\n').trimStart())
+    // Keep the existing separators and admit only common opening punctuation.
+    if (!/[：\p{Zs}]$/u.test(label) || !/^[\p{L}0-9０-９"'“‘「『＂＇(（—…]/u.test(bodyStart)
         || plain.includes('\\')
         || !/^[\p{Script=Latin}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{P}\p{Zs}0-9０-９\n]+$/u.test(plain)) return '';
     return label + body;
