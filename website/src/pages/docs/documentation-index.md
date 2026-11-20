@@ -91,19 +91,24 @@ source: "docs/INDEX.md"
 ## 工程说明
 
 <a name="engineering-long-commands"></a>
-### Agent 长命令防卡死指南（Windows / PowerShell 5.1）
+### 长命令、后台进程与孤儿清理
 
-[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/AGENT_LONG_COMMAND_GUIDE.md)
+[已并入「有界输出与分层调试」](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md)
 
 <a name="engineering-development"></a>
 ### MAW 开发概览
 
 [打开正文](../development/)
 
+<a name="engineering-test-reliability"></a>
+### 测试可靠性：先保护用户，再减少误报
+
+[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/TEST_RELIABILITY.md)
+
 <a name="engineering-e2e-lifecycle"></a>
 ### E2E 服务进程生命周期
 
-[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/E2E_PROCESS_LIFECYCLE.md)
+[已并入「E2E 残留服务进程与长命令挂起」](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/E2E_SERVER_HANG.md)
 
 <a name="engineering-e2e-hang"></a>
 ### E2E 残留服务进程与长命令挂起：排查与预防
@@ -135,6 +140,18 @@ source: "docs/INDEX.md"
 
 [打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DESIGN.md)
 
+<a name="engineering-tool-pages"></a>
+### 浏览器工具页设计与交互规范
+
+[通用底线与按场景模式](https://github.com/Moyf/moys-asr-workflow/blob/main/tools/TOOL_PAGE_GUIDE.md) · [性能与验证约定](https://github.com/Moyf/moys-asr-workflow/blob/main/tools/AGENTS.md)
+
+[工具功能介绍与维护状态](https://github.com/Moyf/moys-asr-workflow/blob/main/tools/index.html) · [工具目录说明](https://github.com/Moyf/moys-asr-workflow/blob/main/tools/README.md)
+
+<a name="engineering-tool-markdown"></a>
+### 工具共享 Markdown 与说明阅读
+
+[成熟库封装、安全阅读弹窗与离线说明](https://github.com/Moyf/moys-asr-workflow/blob/main/tools/shared/README.md)
+
 <a name="engineering-project-format"></a>
 ### 工程文件格式
 
@@ -156,6 +173,11 @@ source: "docs/INDEX.md"
 [正式实现、缓存契约、验证与实验历史](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/FILMSTRIP_EXPLORATION.md)
 
 ## 共享计划
+
+<a name="plan-ci-gate-correction"></a>
+### CI 门禁纠偏：阻塞验证与完整巡检分离
+
+[方案、迁移范围、验收与回滚](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/CI_GATE_CORRECTION.md)；已批准实施，进度见[实施账本](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/release1.11.3/261117_CI门禁纠偏/TEST_FEEDBACK_CI门禁纠偏.md)，不修改发布或远端分支规则。
 
 <a name="plan-fcp7-png-subtitles"></a>
 ### FCP 7 XML 图片字幕导出
@@ -211,6 +233,11 @@ source: "docs/INDEX.md"
 ### 实际画面表情包合成路线（真·所见即所得）
 
 [评估结论、现成件清单与设计要点](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/ASS_FRAME_STICKER_COMPOSE.md)；CSS 止血已实施，路线未实施，待 cue-left / 同屏多张成为日常再投入。
+
+<a name="plan-ocr-terms-tool"></a>
+### 视频术语提取工具（OCR → 热词）计划
+
+[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/OCR_TERMS_TOOL.md)；完整规格见 [tools/term-extract/SPEC.md](https://github.com/Moyf/moys-asr-workflow/blob/main/tools/term-extract/SPEC.md)。M1 独立工具已完成，待实测后合并。
 
 <a name="engineering-server"></a>
 ### 源码服务与桌面开发

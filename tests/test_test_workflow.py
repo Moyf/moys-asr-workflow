@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from scripts import ci_impact, ci_matrix
+from scripts import ci_full_plan as ci_impact, ci_matrix
 from scripts.test_policy import python_pack
 from scripts.run_tests import build_suite, cases, filter_pack
 from tests.compact_assertions import CompactContainerAssertions
@@ -16,12 +16,25 @@ from tests.compact_assertions import CompactContainerAssertions
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def cli_env(**overrides):
+    """Hermetic env for ci_matrix subprocess fixtures.
+
+    ci_matrix.main() prefers CI_EXPECTED_SHA over GITHUB_SHA, so an ambient
+    advisory-matrix job (which exports CI_EXPECTED_SHA for fail-closed SHA
+    checks) would override the fixture SHA and reject every fixture plan.
+    Drop it unless a test explicitly provides its own value.
+    """
+    env = {key: value for key, value in os.environ.items() if key != 'CI_EXPECTED_SHA'}
+    env.update(overrides)
+    return env
+
+
 def gate_fixture(profile):
     plan = ci_impact.plan(profile, "test", base="a" * 40, head="b" * 40, trusted=True)
     needs = {"selection": {"result": "success", "outputs": {"mode": plan["mode"], "plan": json.dumps(plan)}},
              "full-tests": {"result": "success" if profile == "full" else "skipped"},
              "browser": {"result": "skipped" if profile == "light" else "success"}}
-    receipts = [{"cell": cell["cell"], "fingerprint": ci_matrix.fingerprint(plan), "status": "success",
+    receipts = [{"namespace": "auxiliary-v1", "cell": cell["cell"], "fingerprint": ci_matrix.fingerprint(plan), "status": "success",
                  "reports": {name: {"validated": True, "required": required}
                              for name, required in (("python.json", False), ("media-required.json", True))}
                  if cell["layer"] == "python" else {}}
@@ -40,11 +53,23 @@ def python_fixture(*, full=False):
 
 
 class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
-    def test_finite_plans_and_explicit_intentional_skips(self):
+    def test_browser_failure_evidence_moves_to_auxiliary_not_blocking(self):
+        workflow = (ROOT / ".github/workflows/editor-checks.yml").read_text(encoding="utf-8")
+        self.assertNotIn('pnpm run test:unit', workflow)
+        self.assertNotIn('playwright install', workflow)
+        self.assertNotIn('continue-on-error', workflow)
+        auxiliary = (ROOT / '.github/workflows/test-matrix.yml').read_text(encoding='utf-8')
+        step = auxiliary.split('- name: List, execute and validate selected Chromium shard', 1)[1].split('- name:', 1)[0]
+        self.assertNotIn('continue-on-error', step)
+        self.assertIn('test-results/', auxiliary)
+        config = (ROOT / "tests/config/playwright.config.mjs").read_text(encoding="utf-8")
+        self.assertIn("trace: 'retain-on-failure'", config)
+
+    def test_dedicated_inspection_requires_all_twelve_cells(self):
         for profile in ci_impact.PROFILES:
             plan, needs, receipts = gate_fixture(profile)
             ci_matrix.gate(plan, needs, receipts)
-            self.assertEqual(len(receipts), 12 if profile == "full" else 0 if profile == "light" else 2)
+            self.assertEqual(len(receipts), 12)
 
     def test_gate_negative_controls(self):
         for profile in ci_impact.PROFILES:
@@ -58,22 +83,40 @@ class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
                         ci_matrix.gate(plan, needs, receipts)
         for mutate in (lambda r: r.pop(), lambda r: r.append(copy.deepcopy(r[0])),
                        lambda r: r[0].update(status="skipped"), lambda r: r[0].update(fingerprint="other"),
+                       lambda r: r[0].update(namespace="blocking-v2"),
                        lambda r: r[0].pop("reports")):
             plan, needs, receipts = gate_fixture("full")
             mutate(receipts)
             with self.assertRaises(ValueError):
                 ci_matrix.gate(plan, needs, receipts)
 
+    def test_manual_ref_requires_actual_checkout_sha_and_rejects_blocking_plan(self):
+        from scripts import ci_impact as blocking
+        with self.assertRaises(ValueError):
+            ci_matrix.validate_plan(blocking.plan('stable', 'wrong role', head='b' * 40))
+        head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT).decode().strip()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for claimed, accepted in ((head, True), ('b' * 40, False)):
+                value = ci_impact.plan('full', 'manual ref', head=claimed)
+                ci_matrix.write_json(root / 'plan.json', value)
+                env = {**os.environ, 'GITHUB_EVENT_NAME': 'workflow_dispatch', 'GITHUB_SHA': 'c' * 40,
+                       'CI_EXPECTED_SHA': claimed, 'GITHUB_OUTPUT': str(root / 'output')}
+                result = subprocess.run([sys.executable, str(Path(ci_matrix.__file__).resolve()), 'expand',
+                                         '--plan', str(root / 'plan.json')], cwd=ROOT, env=env,
+                                        capture_output=True, timeout=15)
+                self.assertEqual(result.returncode == 0, accepted, result.stderr.decode(errors='replace')[-1000:])
+
     def test_bad_selector_cannot_green(self):
         for key, value in (("mode", "domain"), ("profile", "unknown"), ("version", 2),
-                           ("head", "bad"), ("light", "false"), ("trusted_diff", False)):
-            plan, needs, receipts = gate_fixture("editor")
+                           ("head", "bad"), ("light", "false"), ("trusted_diff", "false")):
+            plan, needs, receipts = gate_fixture("full")
             plan[key] = value
             if key == "mode":
-                plan[key] = "full"
+                plan[key] = "domain"
             with self.subTest(key=key), self.assertRaises(ValueError):
                 ci_matrix.gate(plan, needs, receipts)
-        plan, needs, receipts = gate_fixture("light")
+        plan, needs, receipts = gate_fixture("full")
         needs["selection"]["outputs"]["plan"] = "{}"
         with self.assertRaises(ValueError):
             ci_matrix.gate(plan, needs, receipts)
@@ -85,7 +128,7 @@ class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
             plan, needs, receipts = gate_fixture("full")
             ci_matrix.write_json(root / "plan.json", plan)
             command = [sys.executable, str(script), "gate", "--plan", str(root / "plan.json"), "--root", str(root)]
-            env = {**os.environ, "CI_NEEDS": json.dumps(needs), "GITHUB_SHA": plan["head"]}
+            env = cli_env(CI_NEEDS=json.dumps(needs), GITHUB_SHA=plan["head"])
             self.assertNotEqual(subprocess.run(command, env=env, capture_output=True, timeout=10).returncode, 0)
             for n, receipt in enumerate(receipts):
                 ci_matrix.write_json(root / str(n) / "receipt.json", receipt)
@@ -108,18 +151,18 @@ class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(python_pack("tests.test_new.NewTests.test_new"), "common")
         self.assertEqual(python_pack("tests.test_other.RenderTests.test_fake"), "common")
 
-    def test_public_consumer_rechecks_non_pr_event_not_only_selector_or_sha(self):
+    def test_dedicated_full_consumer_keeps_full_semantics_for_every_event(self):
         script = Path(ci_matrix.__file__).resolve()
         with tempfile.TemporaryDirectory() as temporary:
-            for profile in ("full", "tools", "light"):
+            for profile in ("full",):
                 root = Path(temporary) / profile
                 plan, needs, receipts = gate_fixture(profile)
                 ci_matrix.write_json(root / "plan.json", plan)
                 for n, receipt in enumerate(receipts):
                     ci_matrix.write_json(root / str(n) / "receipt.json", receipt)
                 for event in ("pull_request", "push", "schedule", "workflow_dispatch", "release", ""):
-                    env = {**os.environ, "GITHUB_EVENT_NAME": event, "GITHUB_SHA": plan["head"],
-                           "CI_NEEDS": json.dumps(needs), "GITHUB_OUTPUT": str(root / "outputs")}
+                    env = cli_env(GITHUB_EVENT_NAME=event, GITHUB_SHA=plan["head"],
+                                  CI_NEEDS=json.dumps(needs), GITHUB_OUTPUT=str(root / "outputs"))
                     for action in ("gate", "expand"):
                         command = [sys.executable, str(script), action, "--plan", str(root / "plan.json"), "--root", str(root)]
                         outcome = subprocess.run(command, env=env, capture_output=True, timeout=10)
@@ -130,11 +173,22 @@ class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
                             if outcome.returncode:
                                 self.assertIn(b"non-PR workflow event requires a full CI plan", outcome.stderr)
 
-    def test_workflow_keeps_additive_cross_platform_discovery(self):
+    def test_workflow_keeps_scheduled_manual_cross_platform_discovery(self):
         workflow = (ROOT / ".github/workflows/test-matrix.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", workflow)
-        self.assertIn("tags: ['v*']", workflow)
-        self.assertEqual(workflow.count("timeout-minutes: 15"), 2)
+        self.assertNotIn("tags: ['v*']", workflow)
+        self.assertNotIn('  pull_request:', workflow)
+        self.assertNotIn('  push:', workflow)
+        self.assertIn("cron: '23 3 * * 1'", workflow)
+        self.assertIn('ref: ${{ needs.selection.outputs.head }}', workflow)
+        self.assertIn('CI_EXPECTED_SHA:', workflow)
+        self.assertEqual(workflow.count('ref: ${{ needs.selection.outputs.head }}'), 3)
+        self.assertEqual(workflow.count('persist-credentials: false'), 4)
+        self.assertIn('permissions:\n  contents: read', workflow)
+        self.assertNotIn('${{ secrets.', workflow)
+        self.assertIn('--role advisory', workflow)
+        self.assertEqual(workflow.count("timeout-minutes: 15"), 1)
+        self.assertIn("timeout-minutes: 25", workflow.split("  browser:\n", 1)[1])
         self.assertEqual(workflow.count("fail-fast: false"), 2)
         self.assertIn("needs: [selection, full-tests, browser]", workflow)
         self.assertIn("if: always()", workflow)
@@ -146,6 +200,43 @@ class TestMatrixTests(CompactContainerAssertions, unittest.TestCase):
         setup = (ROOT / ".github/actions/test-environment/action.yml").read_text(encoding="utf-8")
         self.assertIn("default: 'true'", setup)
         self.assertIn("if: inputs.install-browser == 'true'", setup)
+
+    def test_browser_budget_progress_and_timeout_remain_fail_closed(self):
+        for profile, total in (("full", 4),):
+            plan, _, _ = gate_fixture(profile)
+            with self.subTest(profile=profile), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                with mock.patch.object(ci_matrix.subprocess, "run", side_effect=[
+                        None, subprocess.CalledProcessError(124, "browser")]) as run:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        ci_matrix.run_cell(plan, f"windows-latest-browser-1-{total}", root)
+                listing, execution = run.call_args_list
+                self.assertEqual(listing.args[0][2:4], ["--timeout", "600"])
+                self.assertEqual(execution.args[0][2:4], ["--timeout", "900"])
+                for call in (listing, execution):
+                    command = call.args[0]
+                    self.assertIn("--reporter=line,json", command)
+                    self.assertIn("--retries=0", command)
+                    self.assertIn("--workers=2", command)
+                    self.assertIn("--forbid-only", command)
+                    self.assertIn(f"--shard=1/{total}", command)
+                    self.assertTrue(call.kwargs["check"])
+                self.assertIn("--list", listing.args[0])
+                self.assertNotIn("--list", execution.args[0])
+                self.assertEqual(execution.kwargs["env"]["PLAYWRIGHT_JSON_OUTPUT_FILE"],
+                                 str((root / "browser-results.json").resolve()))
+                self.assertFalse((root / "receipt.json").exists())
+
+    def test_non_browser_budgets_are_not_increased(self):
+        plan, _, _ = gate_fixture("full")
+        for layer in ("node", "python"):
+            with self.subTest(layer=layer), tempfile.TemporaryDirectory() as temporary:
+                with mock.patch.object(ci_matrix.subprocess, "run", side_effect=
+                                       subprocess.CalledProcessError(124, layer)) as run:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        ci_matrix.run_cell(plan, f"windows-latest-{layer}", Path(temporary))
+                self.assertEqual(run.call_args.args[0][2:4], ["--timeout", "600"])
+                self.assertFalse((Path(temporary) / "receipt.json").exists())
 
     def test_python_report_accounting_and_required_platform_recalculation(self):
         full = python_fixture(full=True)
@@ -336,7 +427,7 @@ finally:
                 command = [sys.executable, str(root / "cli.py"), str(ROOT), str(scenario / "payload.json"),
                            "run", "--plan", str(root / "plan.json"), "--cell", "windows-latest-python",
                            "--root", str(scenario / "output")]
-                outcome = subprocess.run(command, env={**os.environ, "GITHUB_SHA": plan["head"]},
+                outcome = subprocess.run(command, env=cli_env(GITHUB_SHA=plan["head"]),
                                          capture_output=True, timeout=20)
                 evidence = json.loads((scenario / "attempted.json").read_text(encoding="utf-8"))
                 with self.subTest(scenario=name):

@@ -3,7 +3,8 @@
 This file is the minimal design contract for the MAW editor UI. It extracts the
 implicit patterns already present in `web/editor.css` and `web/editor-template.html`
 so new components stay consistent without inventing new tokens. It is intentionally
-small: the editor is a single dark-theme tool, not a multi-product design system.
+small: the editor is a single product surface with its own dark, light and
+follow-system themes plus accent presets — not a multi-product design system.
 
 ## 1. Design tokens (extracted from existing CSS)
 

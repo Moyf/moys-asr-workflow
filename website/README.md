@@ -16,12 +16,13 @@ pnpm --dir website run dev                     # 开发服务器 http://localhos
 
 ```powershell
 pnpm --dir website run check          # astro check：类型与 .astro 语法检查
+pnpm --dir website run check:docs     # 只读比对已提交的 /docs/ 生成副本，过期即失败
 pnpm --dir website run sync:docs      # 从仓库公开文档重新生成 /docs/ 阅读区
 pnpm --dir website run build          # 构建静态站点到 website/dist/
 pnpm --dir website run preview        # 本地预览 dist/ 构建产物
 ```
 
-在 `website/` 目录内执行时去掉 `--dir website` 前缀即可；同步与生成输出均被 Git 忽略，重新克隆或拉取后需要重新生成。构建输出在 `dist/`。目前站点不包含后端、账号、上传接口或在线转写功能。
+在 `website/` 目录内执行时去掉 `--dir website` 前缀即可；`/docs/` 生成副本与 `public/docs-assets/` 配图随源文档一同提交，克隆后如与源不一致，`check:docs` 会列出过期文件。`/releases/` 数据与 `dist/` 构建产物不入库，重新克隆或拉取后需要重新生成。目前站点不包含后端、账号、上传接口或在线转写功能。
 
 ## 内容边界
 

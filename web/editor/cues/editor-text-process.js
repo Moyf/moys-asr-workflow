@@ -610,7 +610,10 @@ export function initMaweTextProcess() {
       if (ok) showStorageReady();
       else showStorageStatus('无法读取用户配置', 'error');
     }
-    if (!replaceSelection && fingerprint() === initial) loadDefault({ preserveScope: selectedOnly.checked !== initialScope });
+    // Focusing a field starts an edit before its first input event. Do not replace
+    // that node when a late defaults read completes, or the next keystroke is lost.
+    const editingStep = stepList.contains(document.activeElement);
+    if (!replaceSelection && !editingStep && fingerprint() === initial) loadDefault({ preserveScope: selectedOnly.checked !== initialScope });
     else {
       renderPresets();
       schedulePreview();

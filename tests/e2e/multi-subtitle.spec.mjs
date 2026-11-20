@@ -2254,9 +2254,28 @@ test('applies Subtitle Ninja feedback after a linked split-modal split', async (
     .evaluate((element) => element.click());
   await page.locator('#multi-subtitle-split-text .multi-subtitle-split-gap').first()
     .evaluate((element) => element.click());
-  await page.locator('#multi-subtitle-split-confirm').click();
-  await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
-  await expect(page.locator('#ninja-slash-flash')).toHaveClass(/show/);
+  const flash = page.locator('#ninja-slash-flash');
+  await expect(flash).not.toHaveClass(/show/);
+  // Start observing before clicking: the short effect may end before Playwright checks it.
+  const probe = await flash.evaluateHandle((element) => {
+    const state = { shown: false };
+    const observer = new MutationObserver(() => {
+      if (element.classList.contains('show')) {
+        state.shown = true;
+        observer.disconnect();
+      }
+    });
+    observer.observe(element, { attributes: true, attributeFilter: ['class'] });
+    return { state, disconnect: () => observer.disconnect() };
+  });
+  try {
+    await page.locator('#multi-subtitle-split-confirm').click();
+    await expect(page.locator('#multi-subtitle-split-modal')).not.toHaveClass(/show/);
+    await expect.poll(() => probe.evaluate(({ state }) => state.shown)).toBe(true);
+  } finally {
+    await probe.evaluate(({ disconnect }) => disconnect()).catch(() => {});
+    await probe.dispose();
+  }
 });
 
 test('keeps the subtitle-list caret position as the linked main split point', async ({ page }) => {

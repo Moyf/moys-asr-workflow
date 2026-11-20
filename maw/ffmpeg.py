@@ -21,6 +21,12 @@ from maw.gui_platform import creationflags, startupinfo
 
 
 FFMPEG_PATH_ENV: Final = "FFMPEG_PATH"
+# A managed alignment worker is not frozen and cannot rediscover its parent
+# bundle. This private handoff preserves an independently resolved FFprobe.
+_WORKER_FFPROBE_ENV: Final = "_MAW_ALIGNMENT_FFPROBE_PATH"
+# The alignment server retains its launcher's unmodified PATH so a later
+# configuration change does not reuse directories injected at server startup.
+_ALIGNMENT_ORIGINAL_PATH_ENV: Final = "_MAW_ALIGNMENT_ORIGINAL_PATH"
 MACOS_FFMPEG_CANDIDATE_DIRECTORIES: Final[tuple[str, ...]] = (
     "/opt/homebrew/opt/ffmpeg-full/bin",
     "/opt/homebrew/bin",
@@ -31,7 +37,14 @@ FFMPEG_TOOL_NAMES: Final[tuple[str, ...]] = ("ffmpeg", "ffprobe")
 
 @dataclass(frozen=True, slots=True)
 class FfmpegTools:
-    """The independently resolved FFmpeg and FFprobe executables."""
+    """Existing tool paths selected independently for direct invocation.
+
+    Parent directories are canonicalized, but the executable's final path
+    component is retained, including a symlink named ffmpeg or ffprobe.  This
+    lets a resolved path safely pass through the same name-aware resolver in a
+    managed worker without treating a versioned symlink target as a directory.
+    Existence is checked; executability is determined when the tool is run.
+    """
 
     ffmpeg: Path | None = None
     ffprobe: Path | None = None
@@ -63,7 +76,7 @@ def _canonical_path(path: Path) -> Path:
 
 def _existing_file(path: Path) -> Path | None:
     try:
-        return _canonical_path(path) if path.is_file() else None
+        return _canonical_path(path.parent) / path.name if path.is_file() else None
     except OSError:
         return None
 
@@ -186,6 +199,8 @@ def resolve_ffmpeg_tools(
     candidates so waveform-only operations remain usable without FFprobe.
     ``strict_config`` is used by the GUI's "save path" validation: an invalid
     explicit override must be reported instead of silently accepting PATH.
+    A caller's explicit probe takes priority over the managed worker handoff;
+    an incomplete explicit setting may still fall back to that handoff.
     """
     values = os.environ if environment is None else environment
     configured_value = str(configured_path or "").strip() or _environment_value(values, FFMPEG_PATH_ENV)
@@ -255,6 +270,14 @@ def resolve_ffmpeg_tools(
     for tool in FFMPEG_TOOL_NAMES:
         if resolved[tool] is None:
             resolved[tool] = _existing_file(path_by_tool[tool]) if tool in path_by_tool else None
+    worker_probe = _environment_value(values, _WORKER_FFPROBE_ENV)
+    explicit_probe = (
+        _existing_file(configured_candidates[1])
+        if str(configured_path or "").strip() and configured_candidates
+        else None
+    )
+    if worker_probe and explicit_probe is None and Path(worker_probe).name.lower() == _tool_filename("ffprobe"):
+        resolved["ffprobe"] = _existing_file(Path(worker_probe)) or resolved["ffprobe"]
     return FfmpegTools(ffmpeg=resolved["ffmpeg"], ffprobe=resolved["ffprobe"])
 
 

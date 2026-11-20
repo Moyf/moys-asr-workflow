@@ -169,6 +169,33 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
 
 
 class ThumbnailDemandTests(unittest.TestCase):
+    def test_empty_pins_skip_release_only_until_first_protection_attempt(self):
+        from maw import thumbnail_cache
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'media.mp4'
+            path.write_bytes(b'media')
+            manager = ThumbnailJobManager()
+            manager.bind(path, 'binding')
+            manager.identity = source_key(path)
+            manager.info = SimpleNamespace(stream_index=0, duration_ms=10000)
+            lease = manager._lease(None, 'client')
+            with mock.patch.object(thumbnail_cache, 'release_owner') as release, \
+                 mock.patch.object(thumbnail_cache, 'protect_assets') as protect:
+                manager._pins(lease, set())
+                release.assert_not_called()
+                manager._pins(lease, {'a'})
+                manager._pins(lease, {'a'})
+                self.assertEqual(protect.call_count, 2, 'live pins must still be renewed')
+                manager._pins(lease, set())
+                manager._pins(lease, set())
+                self.assertEqual(release.call_count, 2, 'release must be retried after any attempt')
+                other = manager._lease(None, 'other')
+                protect.side_effect = OSError('unexpected failure')
+                with self.assertRaises(OSError):
+                    manager._pins(other, {'b'})
+                manager._pins(other, set())
+                self.assertEqual(release.call_count, 3, 'failed pin attempt must still be cleaned up')
+
     def test_source_zero_union_end_excluded_and_priority(self):
         targets = plan_targets([{'start_ms': 1750, 'end_ms': 4000},
                                 {'start_ms': 2500, 'end_ms': 6000}], 1000, 6000, [3500])
@@ -236,12 +263,71 @@ class ThumbnailDemandTests(unittest.TestCase):
             fresh = thumbnails.FrameResult(0,0,"target",b"jpeg")
             with mock.patch.object(thumbnail_cache,"lookup_frames",return_value=[None]), \
                  mock.patch.object(thumbnail_cache,"sample_key",return_value="frame-key"), \
+                 mock.patch.object(thumbnail_cache,"get_video_info",return_value=SimpleNamespace(stream_index=0,duration_ms=9000)), \
                  mock.patch.object(thumbnail_cache,"register_frames",return_value=[]), \
                  mock.patch.object(thumbnail_cache,"get_or_extract_frames",side_effect=AssertionError("fresh frame lost")), \
                  mock.patch.object(thumbnails,"extract_frames",return_value=[fresh]) as decode:
                 result = coordinated_extract(path,[0],coordinator=coord,background=True)
             self.assertEqual(result,[fresh])
             decode.assert_called_once()
+
+    def test_visible_decode_reuses_cached_video_info(self):
+        from maw import thumbnail_cache, thumbnails
+        from maw.thumbnail_jobs import coordinated_extract
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'video.mp4'
+            path.write_bytes(b'source')
+            coord = ThumbnailCoordinator(Path(temp) / 'jobs.sqlite3')
+            video = SimpleNamespace(stream_index=0, duration_ms=9000)
+            frame = thumbnails.FrameResult(0, 0, 'target', b'jpeg')
+            with mock.patch.object(thumbnail_cache, 'lookup_frames', side_effect=[[None], [frame]]), \
+                 mock.patch.object(thumbnail_cache, 'sample_key', return_value='frame-key'), \
+                 mock.patch.object(thumbnail_cache, 'get_video_info', return_value=video) as get_info, \
+                 mock.patch.object(thumbnail_cache, 'register_frames'), \
+                 mock.patch.object(thumbnails, 'extract_frames', return_value=[frame]) as extract:
+                self.assertEqual(coordinated_extract(path, [0], coordinator=coord), [frame])
+            self.assertIs(extract.call_args.kwargs['info'], video)
+            get_info.assert_called_once()
+
+    def test_cached_info_is_not_used_after_source_replacement(self):
+        from maw import thumbnail_cache, thumbnails
+        from maw.thumbnail_jobs import coordinated_extract
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'video.mp4'
+            path.write_bytes(b'source')
+            coord = ThumbnailCoordinator(Path(temp) / 'jobs.sqlite3')
+            def replace_source(*_args, **_kwargs):
+                path.write_bytes(b'replacement source')
+                return SimpleNamespace(stream_index=0, duration_ms=9000)
+            with mock.patch.object(thumbnail_cache, 'lookup_frames', return_value=[None]), \
+                 mock.patch.object(thumbnail_cache, 'sample_key', return_value='frame-key'), \
+                 mock.patch.object(thumbnail_cache, 'get_video_info', side_effect=replace_source), \
+                 mock.patch.object(thumbnail_cache, 'register_frames') as register, \
+                 mock.patch.object(thumbnails, 'extract_frames') as extract:
+                self.assertEqual(coordinated_extract(path, [0], coordinator=coord), [])
+            extract.assert_not_called()
+            register.assert_not_called()
+
+    def test_cancel_during_cached_info_lookup_does_not_start_decode(self):
+        from maw import thumbnail_cache, thumbnails
+        from maw.thumbnail_jobs import coordinated_extract
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'video.mp4'
+            path.write_bytes(b'source')
+            coord = ThumbnailCoordinator(Path(temp) / 'jobs.sqlite3')
+            cancel = threading.Event()
+            def cancel_lookup(*_args, **_kwargs):
+                cancel.set()
+                return SimpleNamespace(stream_index=0, duration_ms=9000)
+            with mock.patch.object(thumbnail_cache, 'lookup_frames', return_value=[None]), \
+                 mock.patch.object(thumbnail_cache, 'sample_key', return_value='frame-key'), \
+                 mock.patch.object(thumbnail_cache, 'get_video_info', side_effect=cancel_lookup), \
+                 mock.patch.object(thumbnail_cache, 'register_frames') as register, \
+                 mock.patch.object(thumbnails, 'extract_frames') as extract:
+                with self.assertRaises(thumbnails.ThumbnailCancelled):
+                    coordinated_extract(path, [0], coordinator=coord, cancel=cancel)
+            extract.assert_not_called()
+            register.assert_not_called()
 
     def test_visible_decode_demand_can_extend_beyond_limited_base(self):
         """共享的限长基础缓存不能限制当前工程的可见区补帧。"""
@@ -327,12 +413,13 @@ class ThumbnailDemandTests(unittest.TestCase):
         import threading
         # 加固（v1.9.0 macOS CI 首跑超时）：产品契约是“取消最终会发生”（watcher 50ms 轮询），
         # 没有任何秒级时限保证；负载重的 runner 上线程调度停顿可以超过 2s。
-        # 宽限放大到 10s；真实回归（lease 永远不取消）仍由下方 worker.join + is_alive 断言在 ~3s 内暴露。
+        # 宽限放大到 10s；真实回归（lease 永远不取消）仍由下方 worker.join + is_alive 断言暴露。
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)/"media.mp4"
             path.write_bytes(b"source")
             coord = ThumbnailCoordinator(Path(temp)/"jobs.sqlite3")
             started = threading.Event()
+            cancelled = threading.Event()
             attempts = []
             result = []
             def tile(jpegs, **kwargs):
@@ -341,6 +428,7 @@ class ThumbnailDemandTests(unittest.TestCase):
                     started.set()
                     self.assertTrue(kwargs["cancel"].wait(10),
                                     "playing lease did not cancel sprite decode within 10s")
+                    cancelled.set()
                     raise thumbnails.ThumbnailCancelled("playing")
                 return b"sprite"
             def wait(_targets):
@@ -355,7 +443,11 @@ class ThumbnailDemandTests(unittest.TestCase):
                 worker.start()
                 self.assertTrue(started.wait(10), "worker did not reach sprite decode within 10s")
                 coord.lease("playing",source_key(path),playing=True)
-                time.sleep(.15)
+                # 1.11.4 macOS 发布实测：固定 150ms 的持有窗口可被 watcher 整段错过（线程调度
+                # 停顿），cancel 永不触发。持有 lease 直到取消确实被观察到再释放；取消契约
+                # 本身仍由 tile 内的 10s 宽限约束（LEASE_SECONDS=8s 内 watcher 必须轮询到）。
+                self.assertTrue(cancelled.wait(10),
+                                "watcher never paused the in-flight decode while the playing lease was held")
                 self.assertTrue(worker.is_alive())
                 coord.release("playing")
                 worker.join(10)

@@ -4,6 +4,7 @@ from tests.compact_assertions import CompactContainerAssertions
 
 import base64
 import importlib.util
+import http.client
 import io
 import json
 import os
@@ -627,6 +628,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             'fonts': [{'canonical': '得意黑', 'names': ['得意黑', 'Smiley Sans']}],
         }
         with mock.patch.object(server_editor, 'font_alias_payload', return_value=payload), \
+             mock.patch.object(server_editor, 'font_coverage_payload', return_value={'schema': 'moy.asr.font_coverage.v1', 'faces': []}) as coverage, \
              server_editor.EditorServer(
                  ('127.0.0.1', 0), project, no_waveform=True, peaks_per_second=100,
              ) as server:
@@ -638,6 +640,11 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     self.assertEqual(response.status, 200)
                     body = json.loads(response.read())
                 self.assertEqual(body, payload)
+                coverage.assert_not_called()
+                with urllib.request.urlopen(f"{base_url}/api/ass-font-coverage", timeout=10) as response:
+                    body = json.loads(response.read())
+                self.assertEqual(body, {'schema': 'moy.asr.font_coverage.v1', 'faces': []})
+                coverage.assert_called_once_with()
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
@@ -1299,6 +1306,29 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 server.shutdown()
                 thread.join(timeout=2)
 
+    def test_prproj_refusal_preserves_next_keep_alive_request(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+            thread.start()
+            connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+            try:
+                connection.request("POST", "/api/prproj", body=b'{"output":"ignored.prproj"}',
+                                   headers={"Content-Type": "application/json"})
+                response = connection.getresponse()
+                self.assertEqual(response.status, 501)
+                self.assertEqual(json.loads(response.read()), server_editor.PRPROJ_CAPABILITY)
+                connection.request("GET", "/api/prproj-capability")
+                response = connection.getresponse()
+                self.assertEqual(response.status, 200)
+                self.assertEqual(json.loads(response.read()), server_editor.PRPROJ_CAPABILITY)
+            finally:
+                connection.close()
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_server_page_uses_shared_template_and_routes_stickers(self) -> None:
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
@@ -1324,7 +1354,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"recentProjectsUrl": "/api/recent-projects/open"', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
-        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "textProcessingPresetsUrl": "/api/text-processing-presets", "assFrameUrl": "/api/ass-frame", "assFontAliasesUrl": "/api/ass-font-aliases", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
+        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "textProcessingPresetsUrl": "/api/text-processing-presets", "assFrameUrl": "/api/ass-frame", "assFontAliasesUrl": "/api/ass-font-aliases", "assFontCoverageUrl": "/api/ass-font-coverage", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
         self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""}', page)
         completed_page = server_editor.build_server_page(
