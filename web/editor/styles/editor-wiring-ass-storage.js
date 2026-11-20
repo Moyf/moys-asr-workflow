@@ -5,6 +5,7 @@ const storageService = {};
 
 export function getAssStyleLibrary() { return storageService.getLibrary(); }
 export function isAssStyleLibraryReady() { return storageService.isReady(); }
+export function canEditAssStyleLibrary() { return storageService.canEdit(); }
 export function incrementAssStyleLibraryRevision() { storageService.incrementRevision(); }
 export function setAssStyleLibrary(value, options) { return storageService.setLibrary(value, options); }
 export function updateAssStyleLibrarySummary() { storageService.updateSummary(); }
@@ -120,6 +121,7 @@ function updateAssStyleLibrarySummary() {
 }
 
 function scheduleAssStyleLibrarySave() {
+  if (!canEditAssStyleLibrary()) return;
   assStyleLibraryDirty = true;
   clearTimeout(assStyleLibrarySaveTimer);
   if (assStyleLibraryConflict) return;
@@ -153,6 +155,12 @@ function flushAssStyleLibraryOnUnload() {
   void persistAssStyleLibrary({ keepalive: true });
 }
 window.addEventListener('pagehide', flushAssStyleLibraryOnUnload);
+window.addEventListener('beforeunload', (event) => {
+  // A queued edit needs the revision from the active save before it can be sent.
+  if (!assStyleLibraryDirty || !assStyleSavePromise || !assStyleLibraryUsesServerStorage()) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     flushAssStyleLibraryOnUnload();
@@ -333,6 +341,7 @@ async function loadAssStyleLibrary({ force = false, discard = false } = {}) {
 // G07：init 化模块经 window 延迟取用本文件的运行时入口；classic 调用方不受影响。
 storageService.getLibrary = () => ASS_STYLE_LIBRARY;
 storageService.isReady = () => ASS_STYLE_LIBRARY_READY;
+storageService.canEdit = () => !assStyleLibraryUsesServerStorage() || Boolean(assStyleStorageRevision);
 storageService.incrementRevision = () => { assStyleLibraryRevision += 1; };
 storageService.setLibrary = setAssStyleLibrary;
 storageService.updateSummary = updateAssStyleLibrarySummary;

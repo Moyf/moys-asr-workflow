@@ -131,18 +131,23 @@ export function createAssStyleTransfer(utils) {
     while (existing.has(id)) id = `${base}-${index++}`;
     return id;
   }
+  function importedNamePrefix(name) {
+    return `${name.slice(0, 68).replace(/[\uD800-\uDBFF]$/u, '').trimEnd()} (导入`;
+  }
   function uniqueName(name, entries) {
     const names = new Set(entries.map(item => item.name));
     if (!names.has(name)) return name;
+    const prefix = importedNamePrefix(name);
     let index = 1, candidate;
-    do { candidate = `${name.slice(0, 68)} (导入${index === 1 ? '' : ` ${index}`})`; index += 1; } while (names.has(candidate));
+    do { candidate = `${prefix}${index === 1 ? '' : ` ${index}`})`; index += 1; } while (names.has(candidate));
     return candidate;
   }
   function merge(current, incoming) {
     const result = clone(current), styleMap = new Map(), added = [], reused = [];
     for (const source of incoming.styles) {
+      const prefix = importedNamePrefix(source.name);
       const match = result.styles.find(item => comparable(item) === comparable(source) &&
-        (item.name === source.name || item.name.startsWith(`${source.name.slice(0, 68)} (导入`)));
+        (item.name === source.name || item.name.startsWith(prefix)));
       if (match) { styleMap.set(source.id, match.id); reused.push(`样式：${source.name}`); continue; }
       const idTaken = result.styles.some(item => item.id === source.id);
       const id = builtins.has(source.id) || idTaken ? nextId(source, result.styles, 'style') : source.id;
@@ -152,8 +157,9 @@ export function createAssStyleTransfer(utils) {
     }
     for (const source of incoming.assProfiles) {
       const mapped = { ...clone(source), styleId: styleMap.get(source.styleId) };
+      const prefix = importedNamePrefix(source.name);
       const match = result.assProfiles.find(item => comparable(item) === comparable(mapped) &&
-        (item.name === source.name || item.name.startsWith(`${source.name.slice(0, 68)} (导入`)));
+        (item.name === source.name || item.name.startsWith(prefix)));
       if (match) { reused.push(`方案：${source.name}`); continue; }
       const id = source.id === 'ass' || result.assProfiles.some(item => item.id === source.id)
         ? nextId(mapped, result.assProfiles, 'profile') : source.id;

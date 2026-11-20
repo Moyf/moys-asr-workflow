@@ -122,6 +122,75 @@ async function openLibrary(page) {
   await expect(page.locator('#ass-style-library-status')).toContainText('已与用户级配置同步');
 }
 
+test('keeps server styles read-only until the initial library arrives', async ({ page }) => {
+  await disableOnboarding(page);
+  const requested = Promise.withResolvers();
+  const initialLoad = Promise.withResolvers();
+  await page.route('**/api/ass-styles', async route => {
+    if (route.request().method() === 'GET') {
+      requested.resolve();
+      await initialLoad.promise;
+    }
+    await route.continue();
+  });
+  const size = page.locator('#ass-style-font-size');
+  try {
+    await page.goto(server.url);
+    await requested.promise;
+    await openSettingsPage(page, 'subtitle-style');
+    await page.locator('#ass-style-manager-open').click();
+    await expect(page.locator('#ass-style-library-status')).toContainText('正在加载');
+    await expect(size).toBeDisabled();
+    await expect(page.locator('#ass-style-font-toggle')).toBeDisabled();
+    await expect(page.locator('#ass-srt-default-style')).toBeDisabled();
+    await expect(page.locator('#main-ass-style-select')).toBeDisabled();
+    await expect(page.locator('#ass-style-new')).toBeDisabled();
+    await expect(page.locator('#ass-style-save')).toBeDisabled();
+  } finally {
+    initialLoad.resolve();
+  }
+  await expect(page.locator('#ass-style-library-status')).toContainText('已与用户级配置同步');
+  await expect(page.locator('#ass-style-font-toggle')).toBeEnabled();
+  await expect(page.locator('#ass-srt-default-style')).toBeEnabled();
+  await expect(page.locator('#main-ass-style-select')).toBeEnabled();
+  await page.locator('#ass-mode-toggle').evaluate(toggle => toggle.click());
+  await expect(size).toBeEnabled();
+  await size.fill('107');
+  await expect.poll(() => page.evaluate(async () => {
+    const library = await (await fetch('/api/ass-styles')).json();
+    return library.styles.find(style => style.id === 'ass').fontSize;
+  })).toBe(107);
+});
+
+test('warns before leaving while server style edits are still saving', async ({ page }) => {
+  await openLibrary(page);
+  const requested = Promise.withResolvers();
+  const firstSave = Promise.withResolvers();
+  await page.route('**/api/ass-styles', async route => {
+    if (route.request().method() === 'POST') {
+      requested.resolve();
+      await firstSave.promise;
+    }
+    await route.continue();
+  });
+  const size = page.locator('#ass-style-font-size');
+  try {
+    await size.fill('108');
+    await page.locator('#ass-style-save').click();
+    await requested.promise;
+    await size.fill('109');
+    expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(false);
+  } finally {
+    firstSave.resolve();
+  }
+  await expect.poll(() => page.evaluate(async () => {
+    const library = await (await fetch('/api/ass-styles')).json();
+    return library.styles.find(style => style.id === 'ass').fontSize;
+  })).toBe(109);
+  await expect(page.locator('#ass-style-library-status')).toContainText('已与用户级配置同步');
+  expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(true);
+});
+
 test('merges and restores an exported library and rejects stale writes', async ({ page, context }) => {
   await page.addInitScript(() => {
     window.__styleExports = [];

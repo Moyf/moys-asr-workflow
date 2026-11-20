@@ -39,3 +39,19 @@ test('merge preserves local built-ins, rewrites references and is repeatable', (
   assert.deepEqual(second.library, first.library);
   assert.equal(second.added.length, 0);
 });
+
+for (const [caseName, suffix] of [['space', ' extra'], ['emoji', '🚀extra']]) {
+  test(`long shared names survive repeated imports (${caseName} at truncation boundary)`, () => {
+    const current = utils.defaultAssStyleLibrary();
+    const name = `${'A'.repeat(67)}${suffix}`;
+    current.styles[1].name = name;
+    current.assProfiles[0].name = name;
+    const incoming = structuredClone(current);
+    incoming.styles[1].fontSize = 123;
+    const { library } = transfer.merge(current, incoming);
+    assert.equal(library.styles.at(-1).name.isWellFormed(), true);
+    assert.equal(library.assProfiles.at(-1).name.isWellFormed(), true);
+    const saved = utils.normalizeAssStyleLibrary(library);
+    assert.deepEqual(transfer.merge(saved, incoming).added, []);
+  });
+}
