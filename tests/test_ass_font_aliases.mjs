@@ -418,12 +418,11 @@ test('project rescan refreshes aliases and an already loaded coverage inventory 
   assert.deepEqual(requests.map(row => row.join(':')), ['/aliases:GET', '/coverage:GET', '/aliases:POST', '/coverage:GET']);
 });
 
-test('ASS output entry points explicitly await lazy coverage before serializing', () => {
+test('ASS download and burn keep the save picker active while coverage loads', () => {
   const read = file => fs.readFileSync(new URL(`../web/editor/${file}`, import.meta.url), 'utf8');
   const downloads = read('io/editor-wiring-export-actions.js');
   assert.equal((downloads.match(/await downloadPreparedAss\(/g) || []).length, 2);
   assert.ok(downloads.indexOf('await MaweHost.files.pickSaveFile') < downloads.indexOf('await loading'), 'ASS downloads retain picker activation');
-  assert.match(read('styles/editor-wiring-ass-frame.js'), /async function renderAssFrame\(\) {\s*await global\.MaweAssFontAliases\?\.ensureCoverage/);
   const burn = read('io/editor-wiring-burn-video.js');
   assert.ok(burn.indexOf('await MaweHost.files.pickSaveFile') < burn.indexOf('await fontsReady'), 'picker retains user activation while coverage loads');
   assert.match(burn, /if \(deferRequest\) {\s*await fontsReady/);

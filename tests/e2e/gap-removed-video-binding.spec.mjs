@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import fs from 'node:fs';
+import { invokedInitModuleSource } from '../helpers/init-module-source.mjs';
 import http from 'node:http';
 import { join } from 'node:path';
 import { makeTempDir, cleanupTempDir, generateWav, generateProjectJson, startServer, findFreePort } from './helpers.mjs';
@@ -9,7 +10,7 @@ const start = source.indexOf("document.getElementById('download-gap-removed-vide
 const end = source.indexOf("document.getElementById('download-gap-removed-regions-json')", start);
 if (start < 0 || end <= start) throw new Error('Video handler not found');
 const handler = source.slice(start, end);
-const projectLoad = fs.readFileSync(new URL('../../web/editor/io/editor-project-load.js', import.meta.url), 'utf8');
+const projectLoad = invokedInitModuleSource('editor/io/editor-project-load.js', 'initMaweProjectLoad');
 
 async function withFixture(page, run) {
   const requests = [];

@@ -25,7 +25,10 @@
     "build:launcher": "node scripts/build-launcher.mjs --write",
     "check:launcher": "node scripts/build-launcher.mjs --check",
     "watch:launcher": "node scripts/build-launcher.mjs --watch",
-    "test:unit": "node --test tests/*.mjs"
+    "test:unit": "node --test tests/*.mjs",
+    "test:dev": "uv run --no-sync python scripts/test_workflow.py --stage dev",
+    "test:merge": "uv run --no-sync python scripts/test_workflow.py --stage merge",
+    "test:release": "uv run --no-sync python scripts/test_workflow.py --stage release"
   },
   "devDependencies": {
     "@playwright/test": "1.62.0",

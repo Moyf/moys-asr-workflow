@@ -612,7 +612,8 @@ test('shaken cue matches Canvas, Server libass and exported frame boxes at sampl
     const canvas = document.querySelector('.ass-preview-canvas');
     return { box: (0,eval)(`(${paintedBox})`)(canvas), ass: MaweExportSrt.buildAss() };
   }, { paintedBox: paintedBox.toString() });
-  await page.evaluate(() => MaweAssFrame.renderAssFrame());
+  await page.locator('#ass-frame-quick-open').click();
+  await page.locator('#ass-frame-render').click();
   await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
   const serverBox = await page.evaluate(paintedBox => {
     const image = document.getElementById('ass-frame-image'), canvas = document.createElement('canvas');
@@ -642,7 +643,8 @@ test('scaled main cue matches Canvas, Server libass and exported frame boxes', a
     return { box: (0, eval)(`(${paintedBox})`)(canvas), ass: MaweExportSrt.buildAss() };
   }, { paintedBox: paintedBox.toString() });
   expect(frame.ass).toContain(String.raw`\fs36.6`);
-  await page.evaluate(() => MaweAssFrame.renderAssFrame());
+  await page.locator('#ass-frame-quick-open').click();
+  await page.locator('#ass-frame-render').click();
   await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
   const serverBox = await page.evaluate(paintedBox => {
     const image = document.getElementById('ass-frame-image'), canvas = document.createElement('canvas');
@@ -683,7 +685,8 @@ test('scaled automatic stack matches Canvas, Server libass and exported frame bo
   expect(frame.groupScale).toBeLessThan(1);
   expect(Math.abs(frame.automaticOffset.y)).toBeGreaterThan(1);
   expect(frame.records).toBe(2);
-  await page.evaluate(() => MaweAssFrame.renderAssFrame());
+  await page.locator('#ass-frame-quick-open').click();
+  await page.locator('#ass-frame-render').click();
   await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
   const serverBox = await page.evaluate(paintedBox => {
     const image = document.getElementById('ass-frame-image'), canvas = document.createElement('canvas');

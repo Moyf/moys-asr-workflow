@@ -2,6 +2,7 @@
 // 波形轨道与「标记与区段」管理窗都只调用本模块；撤销/重做（markers 历史
 // kind）、保存脏标记与视图刷新统一走 commitMarkerChange 一个入口，
 // 保证拖动、面板编辑、撤销恢复三条路径行为一致。
+export function initMaweMarkerEditing() {
 (function initMaweMarkerEditing(global) {
   'use strict';
 
@@ -287,4 +288,20 @@
     enableForProjectMarkers,
     pendingReviewCount,
   });
-})(typeof window !== 'undefined' ? window : globalThis);
+})(window);
+}
+
+export function getMarkers(...args) { return window.MaweMarkerEditing.getMarkers(...args); }
+export function findMarker(...args) { return window.MaweMarkerEditing.findMarker(...args); }
+export function addMarkerAt(...args) { return window.MaweMarkerEditing.addMarkerAt(...args); }
+export function addMarkerAtCurrentTime(...args) { return window.MaweMarkerEditing.addMarkerAtCurrentTime(...args); }
+export function createMarkerRegion(...args) { return window.MaweMarkerEditing.createMarkerRegion(...args); }
+export function moveMarker(...args) { return window.MaweMarkerEditing.moveMarker(...args); }
+export function resizeMarker(...args) { return window.MaweMarkerEditing.resizeMarker(...args); }
+export function updateMarkerFields(...args) { return window.MaweMarkerEditing.updateMarkerFields(...args); }
+export function deleteMarker(...args) { return window.MaweMarkerEditing.deleteMarker(...args); }
+export function deleteMarkers(...args) { return window.MaweMarkerEditing.deleteMarkers(...args); }
+export function locateMarker(...args) { return window.MaweMarkerEditing.locateMarker(...args); }
+export function afterExternalMarkersChange(...args) { return window.MaweMarkerEditing.afterExternalMarkersChange(...args); }
+export function isEditingEnabled(...args) { return window.MaweMarkerEditing?.isEditingEnabled?.(...args); }
+export function enableForProjectMarkers(...args) { return window.MaweMarkerEditing?.enableForProjectMarkers?.(...args); }

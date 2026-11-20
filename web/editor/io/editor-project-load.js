@@ -1,3 +1,5 @@
+import { enableForProjectMarkers } from '../markers/editor-marker-editing.js';
+import { resetSelection } from '../markers/editor-markers-panel.js';
 // 工程加载：规范化应用、检查点、SRT 解析与主轨替换。
 // ESM init 模块：initMaweProjectLoad 在原清单位次执行原 IIFE 体（挂
 // window.MaweProjectLoad 冻结门面——classic 侧出接口）；底部具名导出经门面
@@ -54,13 +56,9 @@ export function initMaweProjectLoad() {
 
 
   function buildBlankProject() {
-    return {
-      schema: window.AsrEditorUtils.PROJECT_TRACKS_SCHEMA,
-      media: '', timebase: { unit: 'milliseconds', fps: 30 },
-      tracks: [{ id: 'main', role: 'main', name: '主字幕', enabled: true, segments: [] }],
-      bilingual: { display_mode: 'both' }, bindings: [],
-      subtitle_groups: { next_id: 1, color: [], sticker: [] },
-    };
+    return window.AsrEditorUtils.makeProject([], {
+      projectFields: { media: '', timebase: { unit: 'milliseconds', fps: 30 } },
+    });
   }
 
 
@@ -109,8 +107,8 @@ function applyCanonicalProject(data, filename, { repaired = false, loadGeneratio
   MaweJsonRepair.setMarkerContainer(data.markers);
   MaweState.changes.processingOverridesDirty = false;
   MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(data.markers);
-  window.MaweMarkerEditing?.enableForProjectMarkers?.(MaweBoot.DATA.markers);
-  window.MaweMarkersPanel?.resetSelection?.();
+  enableForProjectMarkers(MaweBoot.DATA.markers);
+  resetSelection();
   MaweHistory.gapRemoveDirty = false;
   MaweState.changes.markersDirty = false;
   MaweAppearance.previewGeometryDirty = false;

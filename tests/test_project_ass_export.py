@@ -227,7 +227,7 @@ class ProjectAssExportTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg not installed")
     def test_libass_stacks_wrapped_main_after_overlay_started(self) -> None:
-        project = {
+        cue_project = {
             "segments": [{"start": 500, "end": 1000, "text": "MAIN TEXT " * 15}],
             "preview": {"subtitle": {"x": 0, "y": 0, "width": 1, "height": 1,
                                      "font_size": 20, "color": "#ff0000"}},
@@ -236,24 +236,37 @@ class ProjectAssExportTests(unittest.TestCase):
                 "assStyle": {"fontName": "Arial", "fontSize": 60, "marginV": 80, "primaryColor": "#00ff00"},
             }]},
         }
-        ass = render_project_ass(project, title="test", play_resolution=(640, 360))
-        with tempfile.TemporaryDirectory() as directory:
-            Path(directory, "sub.ass").write_text(ass, encoding="utf-8")
-            result = subprocess.run([shutil.which("ffmpeg"), "-v", "error", "-f", "lavfi", "-i",
-                "color=c=black:s=640x360:d=1", "-vf", r"ass=sub.ass,select=gte(t\,0.6)",
-                "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-                cwd=directory, capture_output=True, check=True)
-        pixels = result.stdout
-        self.assertEqual(len(pixels), 640 * 360 * 3)
-        main_y, overlay_y = [], []
-        for offset in range(0, len(pixels), 3):
-            red, green, _ = pixels[offset:offset + 3]
-            if red > 80 and red > green * 2:
-                main_y.append((offset // 3) // 640)
-            if green > 80 and green > red * 2:
-                overlay_y.append((offset // 3) // 640)
-        self.assertTrue(main_y and overlay_y, "both subtitles must render")
-        self.assertLess(max(overlay_y), min(main_y), "overlay must remain above the wrapped main subtitle")
+        track_project = normalize_project({
+            "segments": [{"start": 500, "end": 1000, "text": "MAIN TEXT " * 7}],
+            "overlay_track": {"enabled": True, "segments": [{"start": 0, "end": 1000, "text": "OVERLAY TEXT"}]},
+        })
+        track_project["styles"] = [
+            {"id": "main-style", "name": "Main", "fontName": "Arial", "fontSize": 150, "marginV": 24,
+             "primaryColor": "#ff0000"},
+            {"id": "overlay-style", "name": "Overlay", "fontName": "Arial", "fontSize": 30, "marginV": 24,
+             "primaryColor": "#00ff00"},
+        ]
+        for track in track_project["tracks"]:
+            track["style"] = {"style_id": f'{track["role"]}-style'}
+        for style_source, project in (("cue override", cue_project), ("track inheritance", track_project)):
+            with self.subTest(style_source=style_source), tempfile.TemporaryDirectory() as directory:
+                ass = render_project_ass(project, title="test", play_resolution=(640, 360))
+                Path(directory, "sub.ass").write_text(ass, encoding="utf-8")
+                result = subprocess.run([shutil.which("ffmpeg"), "-v", "error", "-f", "lavfi", "-i",
+                    "color=c=black:s=640x360:d=1", "-vf", r"ass=sub.ass,select=gte(t\,0.6)",
+                    "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                    cwd=directory, capture_output=True, check=True)
+                pixels = result.stdout
+                self.assertEqual(len(pixels), 640 * 360 * 3)
+                main_y, overlay_y = [], []
+                for offset in range(0, len(pixels), 3):
+                    red, green, _ = pixels[offset:offset + 3]
+                    if red > 80 and red > green * 2:
+                        main_y.append((offset // 3) // 640)
+                    if green > 80 and green > red * 2:
+                        overlay_y.append((offset // 3) // 640)
+                self.assertTrue(main_y and overlay_y, "both subtitles must render")
+                self.assertLess(max(overlay_y), min(main_y), "overlay must remain above the wrapped main subtitle")
 
     def test_overlay_disabled_or_closed_track_is_ignored(self) -> None:
         project = _basic_project()

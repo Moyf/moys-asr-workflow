@@ -209,6 +209,7 @@ def render_project_ass(
     except ValueError as error:
         raise ProjectSubtitleError(str(error)) from error
     tracks = {track["role"]: track for track in selected}
+    track_snapshots = {role: resolve_track_style(project, track) for role, track in tracks.items()}
     main = tracks.get("main")
     main_segments = cleaned_srt_segments(
         project, project_cleanup_retained_segments(main["segments"] if main else [], project.get("gap_remove")),
@@ -227,9 +228,14 @@ def render_project_ass(
     style_lines = []
     cue_style_lines = []
     events = []
-    collision_stack = (main is not None and secondary is None
-                       and any(item.get("disabled") is not True and item.get("assStyle") is not None
-                               for item in overlay_segments))
+    # With project styles, the legacy fixed offset can put a small overlay
+    # inside a taller or wrapped main cue. Let libass lay out both tracks.
+    collision_stack = (
+        main is not None and overlay is not None and secondary is None
+        and (any(track_snapshots.values())
+             or any(item.get("disabled") is not True and item.get("assStyle") is not None
+                    for segments in (main_segments, overlay_segments) for item in segments))
+    )
     main_starts = sorted({times[0] for item in main_segments
                           if item.get("disabled") is not True and str(item.get("text") or "").strip()
                           and (times := _cue_times(item)) is not None})
@@ -242,7 +248,7 @@ def render_project_ass(
             return margin
         if style["alignment"] not in (1, 2, 3) or not main:
             return margin
-        main_snapshot = resolve_track_style(project, main)
+        main_snapshot = track_snapshots.get("main")
         main_base = (_normalize_style(main_snapshot, DEFAULT_ASS_STYLE, style_id=main_snapshot["id"])
                      if main_snapshot else _stroke_base_style(family, size, color))
         for other in main_segments:
@@ -263,7 +269,7 @@ def render_project_ass(
     def render_track(track, segments, *, default_name, layer):
         is_overlay = default_name == "Overlay"
         is_main = default_name == "Default"
-        track_snapshot = resolve_track_style(project, track) if track else None
+        track_snapshot = track_snapshots[track["role"]] if track is not None else None
         base = _stroke_base_style(family, size, color)
         scale = 1.0
         if track_snapshot is not None:
@@ -304,7 +310,7 @@ def render_project_ass(
                 if variant:
                     event_style = prefix + variant
             name, text = _event_text(project, segment, groups, color_style=color_style, base_color=body_color)
-            if is_overlay and cue_snapshot is not None and collision_stack:
+            if is_overlay and collision_stack:
                 # Same-layer libass collision detection uses actual font metrics.
                 # Restart an overlay event when a main cue begins so a later main
                 # cue stays below an already visible overlay, not vice versa.

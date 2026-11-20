@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer } from '../e2e/helpers.mjs';
+import { readFileSync } from 'node:fs';
+import { cleanupTempDir, disableOnboarding, findFreePort, makeTempDir, startBlankServer } from './helpers.mjs';
 
 const canonical = JSON.parse(readFileSync(new URL('../fixtures/project-tracks/legacy-three-tracks.expected.json', import.meta.url), 'utf8'));
 let directory, server;

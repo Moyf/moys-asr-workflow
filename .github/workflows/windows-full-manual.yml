@@ -1,0 +1,447 @@
+name: Full Windows inspection (manual advisory)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-full-inspection-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  selection:
+    runs-on: ubuntu-latest
+    outputs:
+      light: ${{ steps.scope.outputs.light }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Select change scope
+        id: scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python scripts/ci_impact.py
+
+  build-windows:
+    needs: selection
+    if: ${{ always() }}
+    name: Build Windows x64 MAW-lite preview
+    runs-on: windows-2022
+    env:
+      PYTHONUTF8: '1'
+
+    steps:
+      - name: Require valid selection
+        if: ${{ needs.selection.result != 'success' || (needs.selection.outputs.light != 'true' && needs.selection.outputs.light != 'false') }}
+        run: exit 1
+      - name: Check out repository
+        id: checkout
+        # 默认 checkout pull_request 事件的 merge commit，与 GitHub 选取的
+        # workflow 文件版本（同样来自 merge ref）保持一致；checkout PR 头
+        # commit 会在 PR 落后 main 时出现「workflow 要求的依赖组在旧
+        # pyproject 里不存在」的错位（2026-10-24 Group `test` 事故）。
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        id: python
+        if: ${{ needs.selection.outputs.light != 'true' }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          architecture: x64
+
+      - name: Set up uv
+        id: uv
+        if: ${{ !cancelled() && steps.python.outcome == 'success' }}
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.4"
+          enable-cache: true
+
+      - name: Verify Launcher version
+        id: launcher_version
+        if: ${{ !cancelled() && steps.python.outcome == 'success' }}
+        run: python scripts/sync_launcher_version.py --check
+
+      - name: Install locked dependencies
+        id: python_install
+        if: ${{ !cancelled() && steps.uv.outcome == 'success' }}
+        run: uv sync --group build --frozen --group test
+
+      - name: Set up pnpm
+        id: pnpm
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && needs.selection.outputs.light != 'true' }}
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.4
+          run_install: false
+      - name: Set up Node
+        id: node
+        if: ${{ !cancelled() && steps.pnpm.outcome == 'success' }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22.23.4'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install JavaScript test dependencies
+        id: js_install
+        if: ${{ !cancelled() && steps.node.outcome == 'success' }}
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build Editor bundle
+        id: editor_build
+        if: ${{ !cancelled() && steps.js_install.outcome == 'success' }}
+        run: pnpm run build:editor
+
+      - name: Build Launcher bundle
+        id: launcher_build
+        if: ${{ !cancelled() && steps.js_install.outcome == 'success' }}
+        run: pnpm run build:launcher
+
+      - name: Install Chromium for focused regression tests
+        id: chromium
+        if: ${{ !cancelled() && steps.js_install.outcome == 'success' }}
+        shell: bash
+        # 2026-11-11 PR #365 的 editor job 曾因 GitHub runner DNS 抖动失败
+        # （apt resolve「Temporary failure resolving security.ubuntu.com」，
+        # exit code 100），人工 rerun 即绿。Playwright 安装外部网络敏感且幂等
+        # 可重跑，失败自动重试省人工 rerun；此步骤不带 --with-deps（抖动面小，
+        # 同样覆盖）。失败输出保留在步骤日志，最后一次失败仍非零退出。
+        run: |
+          attempt=1
+          max_attempts=3
+          until pnpm exec playwright install chromium; do
+            status=$?
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "playwright install 仍失败（最多尝试 ${max_attempts} 次，最后 exit ${status}），放弃。"
+              exit "$status"
+            fi
+            echo "playwright install 失败（exit ${status}，第 ${attempt}/${max_attempts} 次尝试），20s 后重试……"
+            attempt=$((attempt + 1))
+            sleep 20
+          done
+
+      - name: Install FFmpeg for media integration tests
+        id: ffmpeg
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && needs.selection.outputs.light != 'true' }}
+        shell: pwsh
+        # Test dependency only: the lite preview must still contain no FFmpeg.
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Keep the version, sources and checksum aligned with release.yml.
+          $FfmpegVersion = '8.1.2'
+          $FfmpegRoot = Join-Path $env:RUNNER_TEMP 'maw-media-ffmpeg'
+          $FfmpegArchive = Join-Path $FfmpegRoot "ffmpeg-$FfmpegVersion-essentials_build.zip"
+          $FfmpegPackage = Join-Path $FfmpegRoot 'package'
+          $FfmpegUrls = @(
+            "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-$FfmpegVersion-essentials_build.zip"
+            "https://github.com/GyanD/codexffmpeg/releases/download/$FfmpegVersion/ffmpeg-$FfmpegVersion-essentials_build.zip"
+          )
+          $ExpectedHash = 'db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec'
+          New-Item -ItemType Directory -Path $FfmpegPackage -Force | Out-Null
+          $DownloadedUrl = $null
+          foreach ($FfmpegUrl in $FfmpegUrls) {
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Write-Host "Downloading FFmpeg from $FfmpegUrl (attempt $attempt/3)"
+                Invoke-WebRequest -Uri $FfmpegUrl -OutFile $FfmpegArchive -TimeoutSec 120
+                $ActualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $FfmpegArchive).Hash.ToLowerInvariant()
+                if ($ActualHash -ne $ExpectedHash) {
+                  throw "FFmpeg archive checksum mismatch: expected $ExpectedHash, got $ActualHash."
+                }
+                $DownloadedUrl = $FfmpegUrl
+                break
+              } catch {
+                Remove-Item -LiteralPath $FfmpegArchive -Force -ErrorAction SilentlyContinue
+                Write-Warning "FFmpeg download failed from $FfmpegUrl (attempt $attempt/3): $($_.Exception.Message)"
+                if ($attempt -lt 3) { Start-Sleep -Seconds 10 }
+              }
+            }
+            if ($DownloadedUrl) { break }
+          }
+          if (-not $DownloadedUrl) {
+            throw 'Unable to download a verified FFmpeg archive from any configured source.'
+          }
+          Expand-Archive -LiteralPath $FfmpegArchive -DestinationPath $FfmpegPackage -Force
+          # Launch the real binaries, avoiding shims that can orphan FFmpeg on cancellation.
+          $FfmpegBinary = Get-ChildItem -LiteralPath $FfmpegPackage -Filter ffmpeg.exe -Recurse -File | Select-Object -First 1
+          if (-not $FfmpegBinary) { throw 'The FFmpeg package contains no executable.' }
+          $FfmpegBin = $FfmpegBinary.Directory.FullName
+          $FfprobeBinary = Join-Path $FfmpegBin 'ffprobe.exe'
+          if (-not (Test-Path -LiteralPath $FfprobeBinary -PathType Leaf)) { throw 'FFprobe is unavailable.' }
+          & $FfmpegBinary.FullName -version
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg is unavailable.' }
+          & $FfprobeBinary -version
+          if ($LASTEXITCODE -ne 0) { throw 'FFprobe is unavailable.' }
+          $FfmpegBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Run packaging contract tests
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' }}
+        run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_packaging_contract.py
+
+      - name: Run editor display regression tests
+        id: display
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' && steps.editor_build.outcome == 'success' && steps.chromium.outcome == 'success' && steps.ffmpeg.outcome == 'success' }}
+        env:
+          MAW_E2E_PYTHON: '${{ github.workspace }}/.venv/Scripts/python.exe'
+          PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/editor-display-results.json
+        run: uv run --no-sync python scripts/run_check.py --timeout 540 -- node node_modules/@playwright/test/cli.js test --config=tests/config/playwright.config.mjs --project=chromium --workers=1 --retries=0 --forbid-only --reporter=line,json --output=test-results/editor-display tests/e2e/ass-stacking-boundaries.spec.mjs tests/e2e/editor-i18n-save.spec.mjs tests/e2e/shared-tooltip.spec.mjs
+
+      - name: Require complete display regression results
+        if: ${{ !cancelled() && steps.display.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          uv run --no-sync python -c @'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('.artifacts/editor-display-results.json').read_text(encoding='utf-8'))
+          stats = report['stats']
+          assert stats['expected'] > 0, 'No display tests passed'
+          assert all(stats[key] == 0 for key in ('skipped', 'unexpected', 'flaky')), stats
+          assert not report.get('errors'), report.get('errors')
+
+          def test_results(suites):
+              for suite in suites:
+                  for spec in suite.get('specs', []):
+                      yield from spec['tests']
+                  yield from test_results(suite.get('suites', []))
+
+          tests = list(test_results(report['suites']))
+          assert tests and stats['expected'] == len(tests), 'Incomplete display report'
+          for test in tests:
+              assert test['expectedStatus'] == 'passed' and test['status'] == 'expected', test
+              results = test['results']
+              assert len(results) == 1 and results[0]['status'] == 'passed' and results[0]['retry'] == 0, test
+          print(f'Display regression report: {len(tests)} passed, zero skips or retries')
+          '@
+          if ($LASTEXITCODE -ne 0) { throw 'Display regression report is incomplete or contains unsupported outcomes.' }
+
+      - name: Preserve editor display regression evidence
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-preview-editor-display
+          path: |
+            .artifacts/editor-display-results.json
+            test-results/
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
+
+      - name: Run Python tests
+        id: python_tests
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' && steps.editor_build.outcome == 'success' && steps.launcher_build.outcome == 'success' }}
+        run: uv run --no-sync python scripts/run_check.py --timeout 600 -- uv run --no-sync python scripts/run_tests.py --report .artifacts/windows-python.json --github-summary
+
+      - name: Require cache coverage from the same Python run
+        if: ${{ !cancelled() && steps.python_tests.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          @'
+          # windows-cache-report-check
+          import json
+          import re
+          from pathlib import Path
+          report = json.loads(Path('.artifacts/windows-python.json').read_text(encoding='utf-8'))
+          selected = [item.removeprefix('tests.') for item in report['selected_ids']]
+          modules = ('test_thumbnail_cache', 'test_thumbnail_jobs_integration', 'test_thumbnail_server', 'test_reapeaks_fixture')
+          assert selected and len(set(selected)) == len(selected) and 0 < report['run'] <= len(selected), 'Python discovery did not run a valid selected collection'
+          assert report['exit_code'] == 0 and all(report[key] == 0 for key in ('failures', 'errors', 'expected_failures', 'unexpected_successes')), 'Python results contain unverified outcomes'
+          assert all(any(item.startswith(module + '.') for item in selected) for module in modules), 'A cache test module was omitted'
+          assert 'test_thumbnail_cache.ThumbnailCacheTests.test_symlink_registration_matches_resolved_source_namespace' in selected, 'Resolved-source namespace case was omitted'
+          assert all('test_reapeaks_fixture.GeneratedFixtureTests.test_' + source + '_generated_matches_fixture' in selected for source in ('tone30', 'tone_dual', 'tone_48k')), 'A real REAPER generation case was omitted'
+          assert not any(re.search(r'(?<!\w)(?:' + '|'.join(map(re.escape, modules)) + r')(?!\w)', skip['id']) for skip in report['skips']), 'A cache case was skipped on Windows'
+          print('All four cache modules executed in the full Windows run without skips')
+          '@ | uv run --no-sync python -
+          if ($LASTEXITCODE -ne 0) { throw 'Windows cache coverage was not verified.' }
+
+      - name: Preserve complete Python report
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-preview-python-report
+          path: |
+            .artifacts/windows-python.json
+            .artifacts/windows-python.log
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
+
+      - name: Preserve failed Python check evidence
+        if: ${{ failure() && needs.selection.outputs.light != 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-preview-python-checks
+          path: .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
+
+      - name: Required media failure compatibility
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' && steps.ffmpeg.outcome == 'success' }}
+        run: uv run --no-sync python scripts/run_check.py --timeout 180 -- uv run --no-sync python scripts/run_tests.py tests/test_media.py tests/test_ffmpeg.py tests/test_ffprobe_failure_integration.py --required --report .artifacts/media-required.json
+      - name: Preserve media required report
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: media-required-${{ runner.os }}
+          path: |
+            .artifacts/media-required.json
+            .artifacts/media-required.log
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
+
+
+      - name: Launcher readiness and real cancellation
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' && steps.launcher_build.outcome == 'success' && steps.chromium.outcome == 'success' }}
+        env:
+          MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/Scripts/python.exe
+          PLAYWRIGHT_JSON_OUTPUT_FILE: .artifacts/launcher-readiness.json
+        shell: pwsh
+        run: |
+          $launcherTestArgs = @(
+            '--config=tests/config/playwright.config.mjs', '--project=chromium',
+            '--workers=1', '--retries=0', '--forbid-only', '--reporter=json', '--output=test-results/launcher-readiness',
+            'tests/e2e/launcher-interactions.spec.mjs',
+            'tests/e2e/launcher-zoom.spec.mjs',
+            'tests/e2e/launcher-script-match-cancel.spec.mjs',
+            '--grep', 'cloud ASR models show provider-specific price hints|Launcher theme choice remains selected after reload|ordinary (plain|timed) matching stops real computation without outputs and restarts'
+          )
+          uv run --no-sync python scripts/run_check.py --timeout 240 -- node node_modules/@playwright/test/cli.js test @launcherTestArgs
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher regression tests failed.' }
+          @'
+          # windows-launcher-report-check
+          import json
+          from pathlib import Path
+          report = json.loads(Path('.artifacts/launcher-readiness.json').read_text(encoding='utf-8'))
+          def cases(suite):
+              for spec in suite.get('specs', []):
+                  yield from spec['tests']
+              for child in suite.get('suites', []):
+                  yield from cases(child)
+          selected = list(cases(report))
+          assert report['stats']['expected'] == 4 and all(report['stats'][key] == 0 for key in ('skipped', 'unexpected', 'flaky')), 'Launcher regression summary is incomplete'
+          assert len(selected) == 4 and all(test['expectedStatus'] == 'passed' and test['status'] == 'expected' and len(test['results']) == 1 and test['results'][0]['status'] == 'passed' and test['results'][0]['retry'] == 0 for test in selected), 'A Launcher regression did not pass its first attempt'
+          print('All four Launcher regressions passed without skips, expected failures, or retries')
+          '@ | uv run --no-sync python -
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher regression coverage was not verified.' }
+      - name: Preserve Launcher readiness evidence
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-launcher-readiness
+          path: |
+            .artifacts/launcher-readiness.json
+            .artifacts/checks/
+            test-results/
+          include-hidden-files: true
+          retention-days: 7
+
+      - name: Download embedded Python bootstrap assets
+        id: bootstrap
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' && needs.selection.outputs.light != 'true' }}
+        run: |
+          mkdir -p build
+          curl -L --retry 3 --connect-timeout 20 --max-time 300 -o build/python-3.11.9-embed-amd64.zip https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip
+          curl -L --retry 3 --connect-timeout 20 --max-time 120 -o build/get-pip.py https://bootstrap.pypa.io/get-pip.py
+
+      - name: Build MAW bundle
+        id: package
+        if: ${{ !cancelled() && steps.uv.outcome == 'success' && steps.node.outcome == 'success' && steps.bootstrap.outcome == 'success' && steps.launcher_version.outcome == 'success' }}
+        shell: pwsh
+        run: .\scripts\build-windows.ps1 -SkipTests
+
+      - name: Verify bundled FAQ
+        id: faq
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Test-Path -LiteralPath 'dist\MAW\FAQ-常见问题.txt' -PathType Leaf)) {
+            throw 'Missing dist\MAW\FAQ-常见问题.txt after build.'
+          }
+
+      - name: Verify runtime requirements bundled
+        id: runtime_requirements
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Required = @(
+            '_internal\local-runtime\requirements-local.txt'
+            '_internal\ocr-runtime\requirements-ocr.txt'
+            '_internal\moss-runtime\requirements-moss.txt'
+          )
+          foreach ($Relative in $Required) {
+            $Path = Join-Path 'dist\MAW' $Relative
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+              throw "Missing runtime requirements in bundle: $Path"
+            }
+          }
+
+      - name: Smoke MAW executable
+        id: smoke
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ExePath = 'dist\MAW\MAW.exe'
+          if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
+            throw 'Missing dist\MAW\MAW.exe after build.'
+          }
+          uv run --no-sync python scripts/run_check.py --timeout 120 -- uv run --no-sync python scripts/packaging/smoke_editor.py $ExePath
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged editor startup smoke failed.' }
+
+      - name: Preserve packaged editor startup evidence
+        if: ${{ always() && needs.selection.outputs.light != 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-packaged-editor-startup
+          path: |
+            .artifacts/packaged-editor-smoke/
+            .artifacts/checks/
+          include-hidden-files: true
+          retention-days: 7
+
+      - name: Verify no FFmpeg is bundled
+        id: check_ffmpeg
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $BundledFfmpeg = Get-ChildItem -LiteralPath 'dist\MAW' -Recurse -File |
+            Where-Object { $_.Name -in @('ffmpeg.exe', 'ffprobe.exe', 'ffplay.exe') }
+          if ($BundledFfmpeg) {
+            throw "The PR preview must not bundle FFmpeg: $($BundledFfmpeg.FullName -join ', ')"
+          }
+
+      - name: Create MAW-lite release preview archive
+        id: archive
+        if: ${{ !cancelled() && steps.faq.outcome == 'success' && steps.runtime_requirements.outcome == 'success' && steps.smoke.outcome == 'success' && steps.check_ffmpeg.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PrNumber = '${{ github.event.pull_request.number || 'manual' }}'
+          $BuildSha = '${{ github.event.pull_request.head.sha || github.sha }}'
+          $Archive = "MAW-lite-Windows-x64-pr-$PrNumber-$BuildSha.zip"
+          Compress-Archive -LiteralPath 'dist\MAW' -DestinationPath $Archive -Force
+
+      - name: Upload MAW-lite release preview
+        if: ${{ !cancelled() && steps.archive.outcome == 'success' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: MAW-lite-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            MAW-lite-Windows-x64-pr-${{ github.event.pull_request.number || 'manual' }}-${{ github.event.pull_request.head.sha || github.sha }}.zip
+          if-no-files-found: error
+          retention-days: 14
