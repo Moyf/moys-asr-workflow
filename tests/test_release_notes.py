@@ -289,9 +289,9 @@ class ReleaseDocumentTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(release.index("Verify release document and preview before packaging"), release.index("Install locked dependencies"))
         self.assertIn('--output .artifacts/release-preview.md', release)
         self.assertIn('python3 scripts/prepare_release_notes.py "${Args[@]}"', release)
-        regular = (ROOT / ".github/workflows/editor-checks.yml").read_text(encoding="utf-8")
-        self.assertIn("scripts/prepare_release_notes.py --check-all", regular)
-        self.assertIn("scripts/run_tests.py tests/test_release_notes.py", regular)
+        regular = (ROOT / "scripts/ci_acceptance.py").read_text(encoding="utf-8")
+        self.assertIn("'scripts/prepare_release_notes.py', '--check-all'", regular)
+        self.assertIn("'tests/test_release_notes.py'", regular)
 
 
 if __name__ == "__main__":

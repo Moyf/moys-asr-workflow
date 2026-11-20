@@ -157,6 +157,11 @@ source: "docs/INDEX.md"
 
 [打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md)
 
+<a name="engineering-test-governance"></a>
+### 测试治理
+
+[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/TEST_GOVERNANCE.md)
+
 <a name="engineering-prproj"></a>
 ### PRPROJ capability gate
 
@@ -173,6 +178,11 @@ source: "docs/INDEX.md"
 [当前三容器数据模型证据、统一 Track/Binding 契约提案与 v1→v1.5→v2 分期迁移边界](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/research/2026-10-27-track-unification.md)
 
 ## 共享计划
+
+<a name="plan-ci-gate-correction-2dev"></a>
+### 2.0dev 日常 CI 准入纠偏
+
+[打开计划](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/CI_GATE_CORRECTION_2DEV.md)
 
 <a name="plans-maw20-integration"></a>
 ### MAW 2.0 集成与 Starlight 交付

@@ -2,7 +2,7 @@ name: Comment on Windows PR Release
 
 on:
   workflow_run:
-    workflows: [Preview Windows Release]
+    workflows: [Preview Windows Release, Windows release preview (advisory)]
     types: [completed]
 
 permissions:
@@ -38,6 +38,15 @@ jobs:
               return;
             }
 
+            const getCurrentPR = async () => (await github.rest.pulls.get({
+              ...context.repo, pull_number: pullRequest.number,
+            })).data;
+            const currentPR = await getCurrentPR();
+            if (currentPR.state !== 'open' || !run.head_sha || currentPR.head.sha !== run.head_sha) {
+              core.info('Ignoring a preview for a closed PR or an outdated head.');
+              return;
+            }
+
             const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -45,25 +54,30 @@ jobs:
               filter: 'latest',
               per_page: 100,
             });
-            const build = jobs.find((job) => job.name === 'Build Windows x64 MAW-lite preview');
+            const previewJobs = jobs.filter((job) => job.steps?.some((step) => step.name === 'Upload MAW-lite release preview'));
+            const build = previewJobs.length === 1 ? previewJobs[0] : previewJobs.length === 0
+              ? jobs.find((job) => ['Build Windows x64 MAW-lite preview', 'Advisory Windows x64 MAW-lite preview'].includes(job.name))
+              : undefined;
             const bundle = build?.steps?.find((step) => step.name === 'Build MAW bundle');
+            const archive = build?.steps?.find((step) => step.name === 'Create MAW-lite release preview archive');
             const upload = build?.steps?.find((step) => step.name === 'Upload MAW-lite release preview');
-            const intentionallySkipped = run.conclusion === 'success' && build?.conclusion === 'success'
-              && bundle?.conclusion === 'skipped';
-            const succeeded = run.conclusion === 'success' && build?.conclusion === 'success'
-              && bundle?.conclusion === 'success' && upload?.conclusion === 'success';
+            const intentionallySkipped = run.conclusion === 'success' && (build?.conclusion === 'skipped'
+              || (build?.conclusion === 'success' && bundle?.conclusion === 'skipped'));
+            const succeeded = archive?.conclusion === 'success' && upload?.conclusion === 'success';
+            const cancelled = run.conclusion === 'cancelled';
             const shortSha = (run.head_sha || '').slice(0, 7);
             const updatedAt = new Date(run.updated_at || run.created_at || Date.now());
-            const statusTitle = intentionallySkipped ? 'ℹ️ 本次未构建 Windows 预览包' : succeeded ? '🔧 Windows PR 打包完成' : '❌ Windows PR 打包失败';
+            const statusTitle = cancelled ? '⏹️ Windows PR 预览已取消' : intentionallySkipped ? 'ℹ️ 本次未构建 Windows 预览包' : succeeded ? '🔧 Windows PR 打包完成' : '⚠️ Windows PR 预览异常';
             const statusText = intentionallySkipped
-               ? '文档或网站变更使用轻量验证，本次没有生成 Windows 测试包。'
+               ? '本次变更不在 Windows 打包、启动或 runtime 预览范围内，没有生成 Windows 测试包；这不表示测试全部通过。'
                : succeeded ? 'Windows MAW-lite 测试包已经生成。'
-               : 'Windows MAW-lite 测试包没有生成，请查看 Actions 日志。';
+               : '未确认 Windows MAW-lite 测试包已完成归档和上传，请查看 Actions 日志。';
             const linkText = succeeded
                ? `[下载 Windows MAW-lite 构建产物](${run.html_url})`
               : `[查看 GitHub Actions 日志](${run.html_url})`;
 
             const commentBody = `${marker}
+            <!-- maw-preview-run: ${run.head_sha} ${run.id} ${run.run_attempt || 1} -->
             ## ${statusTitle}
 
             **构建信息：**
@@ -73,6 +87,9 @@ jobs:
             - 触发原因：PR 提交或更新
 
             ${statusText}
+
+            本预览是辅助（advisory）结果，不传播到 Change acceptance，也不代表完整测试通过；相关异常仍需 review。
+            ${run.conclusion !== 'success' ? `Workflow 状态：${run.conclusion}；即使已有包，相关异常仍需 review。` : ''}
 
             **下载链接：**
             ${linkText}
@@ -85,7 +102,16 @@ jobs:
               issue_number: pullRequest.number,
               per_page: 100,
             });
-            const existingComment = comments.find((comment) => comment.body?.includes(marker));
+            const botComments = comments.filter((comment) => comment.user?.type === 'Bot' && comment.body?.includes(marker));
+            const newerComment = botComments.some((comment) => {
+              const metadata = comment.body.match(/<!-- maw-preview-run: ([a-f0-9]+) (\d+) (\d+) -->/);
+              return metadata?.[1] === run.head_sha && (Number(metadata[2]) > run.id
+                || (Number(metadata[2]) === run.id && Number(metadata[3]) > (run.run_attempt || 1)));
+            });
+            if (newerComment) return;
+            const latestPR = await getCurrentPR();
+            if (latestPR.state !== 'open' || latestPR.head.sha !== run.head_sha) return;
+            const existingComment = botComments[0];
 
             if (existingComment) {
               await github.rest.issues.updateComment({
