@@ -64,6 +64,26 @@ test('changing the comment color repaints the cached line bitmap', () => {
   assert.equal(paint.length, 0);
 });
 
+test('changing the secondary color repaints unsung karaoke line bitmaps', () => {
+  const { paint, track, render } = canvasFixture();
+  // 未唱的 KTV run 用样式次色填充；已唱 run 回到主色。
+  track.runs = [
+    { text: '你', karaoke: { flipMs: 0 }, ktvSung: false },
+    { text: '好', karaoke: { flipMs: 500 }, ktvSung: true },
+  ];
+  render();
+  assert.ok(paint.some(item => item.mode === 'fill' && item.color === '#ffffff' && item.text === '你'));
+  paint.length = 0;
+  track.style = { ...track.style, secondaryColor: '#00ff00' };
+  render();
+  assert.ok(paint.some(item => item.mode === 'fill' && item.color === '#00ff00' && item.text === '你'),
+    'a secondary-colour update cannot reuse the old unsung bitmap');
+  // 同一帧不变时仍应复用位图（含已唱 run 的主色位）。
+  paint.length = 0;
+  render();
+  assert.equal(paint.length, 0);
+});
+
 test('changing comment text color to stroke color repaints both glyph layers', () => {
   const { paint, track, render } = canvasFixture();
   render();

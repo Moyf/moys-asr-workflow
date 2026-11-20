@@ -946,7 +946,16 @@
     '这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。': 'Configure the default SRT burn-in style here for the Toolbox “Burn subtitles” feature.',
     'ASS 导出': 'ASS export', 'ASS 导出默认方案': 'Default profile for ASS export', 'ASS 导出使用此方案及其动画。': 'ASS export uses this profile and its animations.',
     'ASS 导出使用此方案及其动画；双语字幕的副字幕样式在该方案的表单中配置。': 'ASS export uses this profile and its animations; for bilingual subtitles, the extension-subtitle style is configured in the profile form.',
-    '次色仅在 \\k 卡拉 OK 标签中使用，当前未支持': 'Secondary color is only used by \\k karaoke tags; not supported yet',
+    '未唱字词的颜色（ASS 次色）': 'Colour of unsung words (the ASS secondary colour)',
+    '仅在「输出方案」中勾选「\\k 逐字换色（卡拉OK）」时生效': 'Only takes effect when “\\k word-by-word colouring (karaoke)” is enabled in the ASS profile',
+    // 方案卡片标签会被逐文本节点匹配拆成 “\k” 与 “逐字换色（卡拉OK）”，
+    // 两个节点各需要独立键（同 \\fad 的先例）。
+    '\\k': '\\k',
+    '逐字换色（卡拉OK）': 'Word-by-word colouring (karaoke)',
+    // 方案摘要按片段拼接翻译（见 editor-wiring-ass-manager.js）；「无逐句动画」
+    // 复用既有键。
+    '逐字换色（未唱色 = 样式次色；仅有字词时间码的主字幕生效）': 'Word-by-word colouring (unsung = style secondary colour; only main subtitles with word timings)',
+    '按字词时间码逐字词从次色跳变到主色；未唱颜色用关联样式的「次色」。仅有字词时间码的主字幕生效，没有时间码或文本失配的句子保持普通输出。': 'Fills each word from the secondary colour to the primary colour following word timings; the unsung colour comes from the linked style’s secondary colour. Only main subtitles with word timings are affected; cues without timings keep plain output.',
     '主字幕样式': 'Main subtitle style', '副字幕默认样式': 'Default extension-subtitle style',
     '从左侧选择一个样式或 ASS 方案。': 'Choose a style or ASS profile on the left.', 'STYLE / PROFILE': 'STYLE / PROFILE',
     '名称': 'Name',  '字距': 'Letter spacing', '颜色': 'Colors', '主': 'Main', '副': 'Secondary', '主色': 'Primary', '次色': 'Secondary',

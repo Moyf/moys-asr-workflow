@@ -1954,10 +1954,13 @@ __WAVEFORM_CSS__
             <label class="ass-style-field">字号<input type="number" id="ass-style-font-size" data-ass-style-field="fontSize" min="1" max="512" step="1"></label>
             <label class="ass-style-field">字距<input type="number" id="ass-style-spacing" data-ass-style-field="spacing" min="-100" max="100" step="1"><span class="ass-style-unit">px</span></label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-bold" data-ass-style-field="bold"> 加粗</label>
-            <label class="ass-style-color-field" id="ass-style-secondary-color-field" hidden title="次色仅在 \k 卡拉 OK 标签中使用，当前未支持">次色<input type="color" id="ass-style-secondary-color" data-ass-style-field="secondaryColor"></label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-italic" data-ass-style-field="italic"> 斜体</label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-underline" data-ass-style-field="underline"> 下划线</label>
             <label class="toggle ass-style-check"><input type="checkbox" id="ass-style-strike-out" data-ass-style-field="strikeOut"> 删除线</label>
+          </div>
+          <div class="ass-style-karaoke-row" id="ass-style-karaoke-row">
+            <label class="ass-style-color-field" id="ass-style-secondary-color-field" title="未唱字词的颜色（ASS 次色）">次色<input type="color" id="ass-style-secondary-color" data-ass-style-field="secondaryColor"></label>
+            <small class="editor-settings-hint">仅在「输出方案」中勾选「\k 逐字换色（卡拉OK）」时生效</small>
           </div>
           <div class="ass-style-subheading ass-style-subheading-nested" id="ass-style-border-shadow-heading">边框与阴影</div>
           <div class="ass-style-fields ass-style-fields-border-shadow" aria-labelledby="ass-style-border-shadow-heading">
@@ -2040,6 +2043,10 @@ __WAVEFORM_CSS__
           <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-pop-enabled" data-ass-animation="pop.enabled"> 放大出现</label>
           <div class="ass-animation-fields"><label>起点倍率<input type="number" id="ass-animation-pop-from" data-ass-animation="pop.fromScale" min="0.3" max="10" step="0.1"><span>×</span></label><label>入场<input type="number" id="ass-animation-pop-in" data-ass-animation="pop.inMs" min="0" max="60000" step="10"><span>ms</span></label><label>加速度<input type="number" id="ass-animation-pop-accel" data-ass-animation="pop.accel" min="0.01" max="100" step="0.1"></label></div>
           <small>文字从起点倍率对应的字号缓动落定到正常字号（默认 0.8，从小放大；大于 1 则从大缩小）。句级 <code>{{文字}}</code> 标记复用这组参数（不受上方开关影响）；开关只控制每句自动应用。</small>
+        </div>
+        <div class="ass-animation-card">
+          <label class="toggle ass-animation-title"><input type="checkbox" id="ass-animation-karaoke-enabled" data-ass-animation="karaoke.enabled"> <code>\k</code> 逐字换色（卡拉OK）</label>
+          <small>按字词时间码逐字词从次色跳变到主色；未唱颜色用关联样式的「次色」。仅有字词时间码的主字幕生效，没有时间码或文本失配的句子保持普通输出。</small>
         </div>
         <details class="ass-animation-advanced-group" id="ass-animation-advanced-group">
           <summary>进阶动画</summary>

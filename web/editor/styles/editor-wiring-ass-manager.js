@@ -277,6 +277,18 @@ function syncAssStyleForm(style) {
     const label = document.getElementById(id);
     if (label) label.textContent = window.MAWE_I18N?.translateText?.(text) || text;
   }
+  // 次色只被「\k 逐字换色（卡拉OK）」消费：当前导出方案未开启时禁用输入，
+  // 提示保留（说明去哪开启）。方案开关变化经 syncAssStyleManager 重新同步。
+  const secondaryInput = document.getElementById('ass-style-secondary-color');
+  const secondaryRow = document.getElementById('ass-style-karaoke-row');
+  if (secondaryInput && secondaryRow) {
+    const library = getAssStyleLibrary();
+    const profileId = library.assignments?.assExportProfileId || 'ass';
+    const profile = (library.assProfiles || []).find(item => item?.id === profileId);
+    const karaokeEnabled = profile?.animations?.karaoke?.enabled === true;
+    secondaryInput.disabled = !karaokeEnabled;
+    secondaryRow.classList.toggle('is-disabled', !karaokeEnabled);
+  }
   if (assStyleFormTitle) assStyleFormTitle.textContent = safeStyle.name;
   if (assStyleBuiltinBadge) assStyleBuiltinBadge.hidden = !safeStyle.builtin;
   const isSrtDefault = safeStyle.id === 'default';
@@ -331,8 +343,14 @@ function syncAssProfileForm(profile) {
   if (assProfilePreviewSummary) {
     const tags = window.AsrEditorUtils.assAnimationOverrideTags(safeProfile);
     const style = window.AsrEditorUtils.assStyleForId(getAssStyleLibrary(), safeProfile.styleId);
-    const summary = `${style.name} · ${tags || '无逐句动画'}`;
-    assProfilePreviewSummary.textContent = window.MAWE_I18N?.translateText?.(summary) || summary;
+    // 逐字换色不是逐句时钟动画，不在 assAnimationOverrideTags 里；摘要按
+    // 片段拼接翻译（整串动态拼接无法命中键），未唱颜色提示取自样式次色。
+    const translate = text => window.MAWE_I18N?.translateText?.(text) || text;
+    const tagsLabel = tags || translate('无逐句动画');
+    const karaokeLabel = safeProfile.animations?.karaoke?.enabled === true
+      ? translate('逐字换色（未唱色 = 样式次色；仅有字词时间码的主字幕生效）') : '';
+    const summary = `${style.name} · ${tagsLabel}${karaokeLabel ? ` · ${karaokeLabel}` : ''}`;
+    assProfilePreviewSummary.textContent = summary;
   }
 }
 
