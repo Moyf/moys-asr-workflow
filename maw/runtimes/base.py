@@ -671,9 +671,11 @@ class ManagedRuntime:
 
         mirror_failures: list[tuple[str, str]] = []
         official_tried = False
+        official_network_failed = False
         for attempt_number, index_url in enumerate(mirror_attempts, start=1):
             _may_cancel(cancel, spec)
-            official_tried |= _is_official_index(index_url)
+            is_official = _is_official_index(index_url)
+            official_tried |= is_official
             if mirror_failures:
                 failed_url, failed_summary = mirror_failures[-1]
                 emit(
@@ -738,11 +740,23 @@ class ManagedRuntime:
                 content_failure = _dependency_content_failure(terminal) or (None if blames_primary else content_failure)
                 if content_failure:
                     if official and not official_tried:
-                        # 保留已尝试的前缀，跳过其余镜像，官方只尝试一次。
-                        mirror_attempts[attempt_number:] = [official]
+                        # 将官方提到下一位（不在前三则插入一次）。官方若遇网络
+                        # 错误，继续原队列，不补入测速前三以外的普通镜像。
+                        remaining = mirror_attempts[attempt_number:]
+                        for offset, pending_url in enumerate(remaining):
+                            if _is_official_index(pending_url):
+                                official = remaining.pop(offset)
+                                break
+                        mirror_attempts[attempt_number:] = [official, *remaining]
                         mirror_failures.append((index_url, content_failure))
                         continue
-                    if official_tried:
+                    if official_network_failed:
+                        # 官方未能验证锁定内容，继续用原队列，不能再试官方或补入新镜像。
+                        if attempt_number < len(mirror_attempts):
+                            mirror_failures.append((index_url, content_failure))
+                            continue
+                        hint = "官方 PyPI 遇到网络错误，未能验证清单内容。请检查网络或代理后重试；若仍失败，请附上安装日志反馈。"
+                    elif official_tried:
                         hint = "官方 PyPI 已尝试。请确认 MAW 为最新版本；若仍失败，请附上安装日志和清单路径反馈。"
                     else:
                         hint = f"可设置 MAW_PIP_INDEX={FALLBACK_SOURCE} 后重试；若仍失败，请附上安装日志反馈。"
@@ -751,6 +765,7 @@ class ManagedRuntime:
                     if detail != terminal:
                         raise self._error(detail) from None
                     raise
+                official_network_failed |= is_official
                 mirror_failures.append((index_url, _network_failure_summary(error)))
                 if attempt_number >= len(mirror_attempts):
                     raise self._error(_mirror_retry_exhausted_message(mirror_failures)) from None

@@ -116,6 +116,16 @@ function clearErrorReport() {
   const diagnostics = $("errorNoticeDiagnostics");
   if (diagnostics) { diagnostics.replaceChildren(); diagnostics.classList.add("hidden"); }
 }
+function placeErrorNoticeInSettings(notice) {
+  const settings = $("settingsModal");
+  if (settings.classList.contains("hidden")) return null;
+  const scroll = settings.querySelector(".settings-scroll");
+  if (!scroll.contains(notice)) {
+    scroll.prepend(notice);
+    $("errorNoticeDetails").tabIndex = 0;
+  }
+  return scroll;
+}
 function restoreMainErrorNotice(notice) {
   if (!$("settingsModal").contains(notice)) return false;
   $("errorNoticeDetails").removeAttribute("tabindex");
@@ -135,14 +145,9 @@ function showErrorNotice(message, code = "", detail = "", diagnostics = "", cont
   const notice = $("errorNotice");
   const action = $("errorNoticeAction");
   const issue = $("errorNoticeIssue");
-  const settings = $("settingsModal");
-  const settingsScroll = localRuntimeInstall && !settings.classList.contains("hidden")
-    ? settings.querySelector(".settings-scroll") : null;
-  if (settingsScroll && !settingsScroll.contains(notice)) {
-    notice.classList.add("hidden");
-    settingsScroll.prepend(notice);
-    $("errorNoticeDetails").tabIndex = 0;
-  } else if (!settingsScroll) {
+  if (localRuntimeInstall) notice.classList.add("hidden");
+  const settingsScroll = localRuntimeInstall ? placeErrorNoticeInSettings(notice) : null;
+  if (!settingsScroll) {
     const hadFocus = notice.contains(document.activeElement);
     if (restoreMainErrorNotice(notice) && hadFocus) $("settingsClose").focus({ preventScroll: true });
   }

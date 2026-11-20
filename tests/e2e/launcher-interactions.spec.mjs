@@ -218,6 +218,67 @@ test('local ASR runtime installation failure is visible inside settings and retu
   await expect(page.locator('#settingsClose')).toBeFocused();
 });
 
+test('reopening settings shows the same local ASR install report without another failure', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 480, height: 560 });
+  await mockLocalRuntimeBackend(page);
+  await page.locator('#advancedToggle').click();
+  await openRuntimeSettings(page);
+  await page.locator('#installLocalRuntime').click();
+  await page.locator('#settingsClose').click();
+
+  await page.evaluate(() => {
+    window.__runtimeBackend = { status: 'broken', ready: false };
+    window.MAWLauncher.onBackendEvent({
+      type: 'error', code: 'local_runtime_install_failed', detail: 'failure while settings were closed',
+      errorContext: { version: '1.11.4-test', occurredAt: '2026-11-20T12:34:56Z' },
+    });
+  });
+  const mainAlert = page.locator('.shell-scroll > #errorNotice');
+  const modal = page.getByRole('dialog', { name: '设置' });
+  const alert = modal.getByRole('alert');
+  await expect(modal).toBeHidden();
+  await expect(mainAlert).toContainText('failure while settings were closed');
+  const originalCard = await mainAlert.elementHandle();
+
+  await page.locator('#settingsButton').press('Enter');
+  await expect(alert).toContainText('failure while settings were closed');
+  expect(await alert.evaluate((el, original) => el === original, originalCard)).toBe(true);
+  await expect(page.locator('#settingsRuntimeTab')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(alert.locator('#errorNoticeDetails')).toBeFocused();
+  await alert.getByRole('button', { name: '复制错误报告' }).click();
+  expect(await page.evaluate(() => window.__runtimeReports[0])).toContain('2026-11-20T12:34:56Z');
+  await page.keyboard.press('Escape');
+  await expect(mainAlert.getByRole('button', { name: '已复制' })).toBeVisible();
+  await expect(page.locator('#settingsButton')).toBeFocused();
+
+  await page.locator('#openDashscopeRegionSettings').press('Enter');
+  await expect(page.locator('#settingsLlmTab')).toBeFocused();
+  await expect(alert.getByRole('button', { name: '已复制' })).toBeVisible();
+  await modal.locator('.settings-modal-card').screenshot({ path: testInfo.outputPath('reopened-install-report.png') });
+  await expect(alert).toBeInViewport({ ratio: 1 });
+  const gaps = await alert.evaluate((card) => ({
+    above: card.getBoundingClientRect().top - document.getElementById('settingsTabList').getBoundingClientRect().bottom,
+    below: document.getElementById('settingsLlmPanel').getBoundingClientRect().top - card.getBoundingClientRect().bottom,
+    scrollTop: card.parentElement.scrollTop,
+  }));
+  expect(gaps.above).toBeGreaterThanOrEqual(8);
+  expect(gaps.below).toBeGreaterThanOrEqual(8);
+  expect(gaps.scrollTop).toBe(0);
+  console.log(`Reopened error layout: above=${gaps.above}px, below=${gaps.below}px`);
+
+  await page.evaluate(() => window.MAWLauncher.openSettings('asrPresetRootSection', 'asrPresetRoot'));
+  await expect(page.locator('#settingsGeneralTab')).toBeFocused();
+  await expect(alert).toBeInViewport({ ratio: 1 });
+
+  await page.keyboard.press('Escape');
+  await expect(mainAlert).toBeVisible();
+  await page.evaluate(() => window.MAWLauncher.onBackendEvent({ type: 'error', code: 'ffmpeg_missing' }));
+  await page.locator('#settingsButton').press('Enter');
+  await expect(alert).toHaveCount(0);
+  await expect(mainAlert.locator('#errorNoticeAction')).toHaveText('FFmpeg 配置项');
+});
+
 for (const scenario of ['worker failure in settings', 'start refusal moved to launcher', 'unrelated error']) {
   test(`local ASR runtime retry clears only install reports: ${scenario}`, async ({ page }) => {
     await mockLocalRuntimeBackend(page);

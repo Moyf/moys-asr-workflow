@@ -367,6 +367,66 @@ class RuntimeMirrorRetryTests(unittest.TestCase):
                 self.assertIn(source, line)
                 self.assertIn(mtime, line)
 
+    def test_official_network_failure_resumes_original_shortlist(self) -> None:
+        ranked_official = FALLBACK_SOURCE + "/"
+        cases = (
+            ([MIRROR_A, MIRROR_B, ranked_official, MIRROR_C], [MIRROR_A, ranked_official, MIRROR_B], True),
+            ([MIRROR_A, MIRROR_B, MIRROR_C, FALLBACK_SOURCE], [MIRROR_A, FALLBACK_SOURCE, MIRROR_B, MIRROR_C], True),
+            ([MIRROR_A, MIRROR_B, MIRROR_C, "https://fourth.example/simple"],
+             [MIRROR_A, FALLBACK_SOURCE, MIRROR_B, MIRROR_C], False),
+        )
+        for mirrors, expected, recovers in cases:
+            with self.subTest(mirrors=mirrors), tempfile.TemporaryDirectory() as temp_dir:
+                root, requirements_txt = self._setup(temp_dir)
+                tried: list[str] = []
+                succeed = self._fake_success([], [], root)
+
+                def fake_run(command: list[str], **kwargs: object) -> int:
+                    if "install" in command:
+                        source = _index_of(command)
+                        tried.append(source)
+                        self.assertEqual(command[command.index("-r") + 1], str(requirements_txt))
+                        if source == MIRROR_A or (source == MIRROR_B and expected[-1] == MIRROR_C):
+                            raise _deterministic_error()
+                        if not recovers or source != expected[-1]:
+                            raise _mirror_403_error(source)
+                    return succeed(command, **kwargs)
+
+                if recovers:
+                    result = self._install(root, requirements_txt, fake_run=fake_run, mirrors=mirrors)
+                    self.assertTrue(result.ready)
+                else:
+                    with self.assertRaisesRegex(LocalRuntimeError, "所有候选镜像源均不可用"):
+                        self._install(root, requirements_txt, fake_run=fake_run, mirrors=mirrors)
+
+                self.assertEqual(tried, expected)
+
+    def test_official_non_network_or_cancellation_does_not_resume_shortlist(self) -> None:
+        for official_failure, expected in (
+            (_deterministic_error(), LocalRuntimeError),
+            (LocalRuntimeError("error: ResolutionImpossible: conflicting dependencies"), LocalRuntimeError),
+            (_mirror_403_error(f"https://{PYTORCH_HOST}/whl/cu130"), LocalRuntimeError),
+            (LocalRuntimeCancelled("cancelled"), LocalRuntimeCancelled),
+        ):
+            with self.subTest(official_failure=official_failure), tempfile.TemporaryDirectory() as temp_dir:
+                root, requirements_txt = self._setup(temp_dir)
+                tried: list[str] = []
+
+                def fake_run(command: list[str], **_kwargs: object) -> int:
+                    if "install" in command:
+                        source = _index_of(command)
+                        tried.append(source)
+                        if source == MIRROR_A:
+                            raise _deterministic_error()
+                        if source == FALLBACK_SOURCE:
+                            raise official_failure
+                    return 0
+
+                with self.assertRaises(expected):
+                    self._install(root, requirements_txt, fake_run=fake_run, mirrors=[MIRROR_A, MIRROR_B])
+
+                self.assertEqual(tried, [MIRROR_A, FALLBACK_SOURCE])
+
     def test_real_runner_keeps_hash_failure_outside_tail_and_reuses_cpu_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root, requirements_txt = self._setup(temp_dir)
@@ -462,14 +522,18 @@ class RuntimeMirrorRetryTests(unittest.TestCase):
                     tried.append(index)
                     if index.startswith(FALLBACK_SOURCE):
                         raise _mirror_403_error(index)
+                    if index == MIRROR_B:
+                        raise LocalRuntimeError("ERROR: No matching distribution found for funasr==1.4.2")
                     raise _deterministic_error()
                 return 0
 
-            with self.assertRaisesRegex(LocalRuntimeError, "官方 PyPI 已尝试"):
+            with self.assertRaisesRegex(LocalRuntimeError, "官方 PyPI 遇到网络错误") as caught:
                 self._install(root, requirements_txt, fake_run=fake_run,
                               mirrors=[FALLBACK_SOURCE + "/", FALLBACK_SOURCE, MIRROR_A, MIRROR_B])
 
-            self.assertEqual(tried, [FALLBACK_SOURCE + "/", MIRROR_A])
+            self.assertIn("No matching distribution found for funasr==1.4.2", str(caught.exception))
+            self.assertNotIn("所有候选镜像源均不可用", str(caught.exception))
+            self.assertEqual(tried, [FALLBACK_SOURCE + "/", MIRROR_A, MIRROR_B])
 
     def test_cancel_propagates_between_retry_rounds(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

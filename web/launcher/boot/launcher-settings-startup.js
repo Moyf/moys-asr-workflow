@@ -39,7 +39,12 @@ function moveSettingsFocus(event) {
 }
 function openSettings(sectionId = "", focusId = "") {
   selectSettingsTab(settingsTabForSection(sectionId) || activeSettingsTab);
-  $("settingsModal").classList.remove("hidden");
+  const modal = $("settingsModal");
+  modal.classList.remove("hidden");
+  const notice = $("errorNotice");
+  const reportScroll = state.errorReport?.localRuntimeInstall && !notice.classList.contains("hidden")
+    ? placeErrorNoticeInSettings(notice) : null;
+  if (reportScroll) reportScroll.scrollTop = 0;
   refreshFfmpeg();
   void refreshOcrRuntime();
   renderStickerCurrent();
@@ -54,14 +59,32 @@ function openSettings(sectionId = "", focusId = "") {
   $("maxLen").value = state.config.maxLen || "";
   $("minWords").value = state.config.minWords || "";
   $("maxWords").value = state.config.maxWords || "";
-  if (sectionId) {
+  if (sectionId || reportScroll) {
     requestAnimationFrame(() => {
+      if (modal.classList.contains("hidden")) return;
+      const noticeScroll = notice.closest("#settingsModal .settings-scroll");
+      if (noticeScroll) {
+        // Keep the report at the top even for shortcuts to lower sections.
+        noticeScroll.scrollTop = 0;
+        const target = focusId ? $(focusId) : null;
+        // Focus the requested control only if visible; otherwise Tab from the active tab reaches the report first.
+        const targetBox = target?.getBoundingClientRect();
+        const viewport = noticeScroll.getBoundingClientRect();
+        if (targetBox?.height && targetBox.top >= viewport.top && targetBox.bottom <= viewport.bottom) {
+          target.focus({ preventScroll: true });
+          if (document.activeElement === target) return;
+        }
+        modal.querySelector('[data-settings-tab][aria-selected="true"]')?.focus({ preventScroll: true });
+        return;
+      }
       // 只滚动 .settings-scroll 容器；scrollIntoView 会连带滚动 overflow:hidden 的
       // .modal-card，把标题和标签页顶出视野，区块位于容器顶部时表现为下坠一小段。
       const section = $(sectionId);
       const scroll = section?.closest(".settings-scroll");
       if (section && scroll) scroll.scrollTo({ top: Math.max(0, section.offsetTop - scroll.offsetTop), behavior: "smooth" });
-      if (focusId) requestAnimationFrame(() => $(focusId)?.focus());
+      if (focusId) requestAnimationFrame(() => {
+        if (!modal.classList.contains("hidden") && !modal.contains(notice)) $(focusId)?.focus();
+      });
     });
   }
 }

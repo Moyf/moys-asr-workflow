@@ -144,7 +144,7 @@ function fail(field, message) {
   const input = $(field);
   const settingsSection = input?.closest?.(".settings-section");
   if (settingsSection?.id) openSettings(settingsSection.id, field);
-  if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" });
+  else if (input?.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" });
   return false;
 }
 function toggle(id) { $(id).classList.toggle("collapsed"); renderChevron(id); }
