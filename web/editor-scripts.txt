@@ -154,3 +154,4 @@ editor/io/editor-wiring-server-events.js
 editor/io/editor-wiring-file-drop.js
 editor/boot/editor-startup.js
 editor/boot/editor-onboarding.js
+editor/ui/editor-command-palette.js
