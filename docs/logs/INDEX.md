@@ -14,6 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
+| 1.11.4 之后 | 2026-11-20 | [faster-whisper 缺 CUDA 库反馈](release1.11.4/261120_faster-whisper缺CUDA库/TEST_FEEDBACK_faster-whisper.md) / [独立审查](release1.11.4/261120_faster-whisper缺CUDA库/REVIEW_FINDINGS.md) | cuBLAS 12 DLL 加载错误与运行环境/回退责任核对及实施；推理期缺库 auto 单次 CPU 回退与显式 CUDA 可操作报错，含红绿证据与审查处置 |
 | 1.11.3 之后 | 2026-11-18 | [1.11.4 发布记录](release1.11.3/261118_1.11.4发布/发布记录.md) | 补丁版本发布：macOS 缩略图测试竞态修复后移动 tag 重发布；含首次官网部署卡死与恢复、本机 winsecurity 环境问题定位 |
 | 1.11.3 之后 | 2026-11-18 | [PR405 Windows 预览异常](release1.11.3/261118_PR405预览异常/TEST_FEEDBACK_PR405预览异常.md) / [独立审查](release1.11.3/261118_PR405预览异常/REVIEW_FINDINGS.md) | 夹具修复后 Windows lite 预览通过；合并审阅补齐非托管回退接口，含真实签名反向验证，完整版模型端到端仍未测 |
 | 1.11.3 之后 | 2026-11-16 | [全屏预览测试同步](release1.11.3/261116_全屏预览测试同步/REVIEW_FINDINGS.md) | 受控延迟对照与独立审查，等待舞台和字幕覆盖层几何就绪 |

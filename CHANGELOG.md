@@ -2,6 +2,17 @@
 
 本项目采用 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 的记录方式。
 
+## [未发布]
+
+### 🐛 修复
+
+- **Faster-Whisper GPU 转写** ： 自动设备在转写过程中遇到缺失或无法加载的 CUDA/cuBLAS/cuDNN 运行库时，改用 CPU 从头重试一次并提示速度可能变慢，不再让整次转写直接失败；显式选择 CUDA 时保留原始错误，并给出安装匹配运行库或改选 CPU 的指引。
+
+### 🔄 变更
+
+- **Faster-Whisper 自动设备回退范围** ： 模型加载阶段只有确认缺失 CUDA/cuBLAS/cuDNN 运行库才自动改用 CPU；显存不足、模型损坏等其他错误会直接报错，不再静默回退。
+
+
 ## [1.11.4] - 2026-11-18
 
 <!-- release-base: 1.11.0 -->
