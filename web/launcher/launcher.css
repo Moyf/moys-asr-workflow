@@ -626,6 +626,12 @@ label {
   background: color-mix(in srgb, var(--info) 8%, transparent);
 }
 
+/* MOSS 免费积分提示行：Key callout 下的次级提示，自带 8px 垂直间隔。 */
+#mossCreditsHint {
+  display: block;
+  margin-top: 8px;
+}
+
 .settings-punctuation-hint {
   margin-bottom: 10px;
 }

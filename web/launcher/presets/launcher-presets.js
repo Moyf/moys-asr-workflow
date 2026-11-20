@@ -4,7 +4,7 @@ const ASR_PRESET_TEXT_FIELDS = [
   "localDevice", "fireRedPunc", "recognitionAlignmentModel", "language", "promptContext",
   "qwenAudioHotwordsMode", "qwenAudioHotwords", "qwenAudioHotwordsFile",
   "qwenAudioHotwordWeight", "sonioxContextGeneral", "sonioxContextTerms",
-  "sonioxContextTranslationTerms", "openaiKeywords",
+  "sonioxContextTranslationTerms", "openaiKeywords", "mossKeyterms",
   "maxLen", "minLen", "maxWords", "minWords", "gapSplit",
 ];
 const ASR_PRESET_BOOL_FIELDS = ["speakerColors", "generateSpectral", "generateKeyframes", "generateThumbnails", "debugRaw", "testRun", "qwenAudioKeepDialect"];
@@ -124,7 +124,7 @@ function renderPresetOptionsPreview(options) {
   const values = [];
   const prompt = String(options.promptContext || "").trim();
   if (prompt) values.push(["preset_field_prompt_context", prompt]);
-  const terms = [options.qwenAudioHotwords, options.openaiKeywords, options.sonioxContextTerms]
+  const terms = [options.qwenAudioHotwords, options.openaiKeywords, options.mossKeyterms, options.sonioxContextTerms]
     .flatMap((value) => String(value || "").split(/[\n,，;；]+/u).map((part) => part.trim()).filter(Boolean));
   if (terms.length) values.push(["preset_field_hotwords_keywords", [...new Set(terms)].join("、")]);
   PRESET_PREVIEW_FIELDS.forEach(([id, label]) => {

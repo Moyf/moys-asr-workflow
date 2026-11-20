@@ -111,7 +111,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--mosp", dest="mosp_output", help="单独指定 .mosp 工程输出路径（等价于 -o SRT MOSP 的第二个路径）")
     parser.add_argument(
         "--provider",
-        choices=("qwen", "soniox", "doubao", "tencent", "openai", "bcut"),
+        choices=("qwen", "soniox", "doubao", "tencent", "openai", "bcut", "moss"),
         default="qwen",
         help="ASR 供应商（默认 qwen；openai 为 OpenAI 兼容接口）",
     )
@@ -399,6 +399,20 @@ def _run_transcription(parser: argparse.ArgumentParser, args: argparse.Namespace
         or args.keep_dialect
     ):
         parser.error("--provider tencent 仅支持 --file-url、--model、--language 和通用字幕参数")
+    if args.provider == "moss" and (
+        any(
+            value is not None for value in (
+                args.region, args.workspace_id, args.file_url, args.vocabulary_id,
+                args.hotword_file, args.hotword_weight, args.context,
+                args.context_file, args.soniox_context_json, args.language,
+            )
+        )
+        or args.keep_dialect
+    ):
+        parser.error(
+            "--provider moss 仅支持 --model、--hotword/--keyterm、--speaker-colors 和通用字幕参数；"
+            "MOSS 自动识别语言，不支持指定语言"
+        )
     if args.provider == "bcut" and (
         any(
             value is not None
@@ -542,6 +556,10 @@ def _invoke_generator(provider: str, argv: Sequence[str]) -> int:
         import maw.asr.openai as generator
 
         script_name = "maw.asr.openai"
+    elif provider == "moss":
+        import maw.asr.moss as generator
+
+        script_name = "maw.asr.moss"
     else:
         import maw.asr.qwen as generator
 

@@ -42,9 +42,9 @@
 | `-i` / `--input PATH` | 输入音频或视频，转写必填。 |
 | `-o` / `--output SRT [MOSP]` | 输出路径。 |
 | `--mosp PATH` | 单独指定工程输出。 |
-| `--provider VALUE` | `qwen`（默认）、`soniox`、`doubao`、`tencent`、`openai`、`bcut`。 |
+| `--provider VALUE` | `qwen`（默认）、`soniox`、`doubao`、`moss`、`tencent`、`openai`、`bcut`。 |
 | `--model MODEL` | 覆盖模型；各供应商默认值见 [PROVIDERS](PROVIDERS.md)。 |
-| `--language VALUE` | 语言提示；Soniox 可用 `zh,en`；必剪不支持。 |
+| `--language VALUE` | 语言提示；Soniox 可用 `zh,en`；必剪与 MOSS 不支持（MOSS 自动识别语言）。 |
 | `--max-len N` / `--min-len N` | 字符型最大长度/短句合并阈值，生成器默认 18 / 5。完整词与 item 边界间局部重平衡，减少孤立短尾；保护常见数字单位、小数、比例和版本号。不可拆 item 或保护表达自身超限时完整保留并打印提示。 |
 | `--max-words N` / `--min-words N` | 单词型最大长度/短句阈值，默认 13 / 3。 |
 | `--gap-split MS` | 停顿切句阈值，默认 500 毫秒。 |
@@ -60,7 +60,7 @@
 | `--debug` | 输出 API 调试信息。 |
 | `-s` / `--stickers PATH` | 表情包目录，也可用于 Server。 |
 
-Qwen3-ASR 不支持说话人开关；必剪不支持模型、语言或说话人参数。OpenAI 兼容接口的说话人模式需要 Launcher 或高级模块命令的专用入口，不通过公开 CLI 的 `--speaker` 请求。
+Qwen3-ASR 不支持说话人开关；必剪不支持模型、语言或说话人参数。MOSS 的说话人分离是模型固有输出，`--speaker` 为兼容保留（恒为开）。OpenAI 兼容接口的说话人模式需要 Launcher 或高级模块命令的专用入口，不通过公开 CLI 的 `--speaker` 请求。
 
 ### 服务商专用参数
 
@@ -70,7 +70,7 @@ Qwen3-ASR 不支持说话人开关；必剪不支持模型、语言或说话人�
 | `--workspace-id ID` | Qwen | Workspace ID；新加坡必填。 |
 | `--file-url URL` | Qwen、腾讯云 | 已上传的 OSS / 公网文件；仍需 `-i` 参与本地输出流程。 |
 | `--vocabulary-id ID` | Qwen | 为目标模型创建的预编译词表。 |
-| `--hotword WORD` | Qwen、豆包 | 即时热词，可重复。 |
+| `--hotword WORD` | Qwen、豆包、MOSS | 即时热词，可重复；MOSS 最多 20 个、每个 ≤30 字符。 |
 | `--hotword-file PATH` | Qwen | UTF-8 热词文件；空行与 `#` 注释忽略，支持 `词: 权重`。 |
 | `--hotword-weight VALUE` | Qwen | 1–5 或 50，单项权重可覆盖。 |
 | `--context TEXT` / `--context-file PATH` | Qwen | 二选一，Qwen-Audio 最多发送 400 字符。 |
@@ -94,6 +94,7 @@ Fun-ASR、Soniox、豆包和腾讯云：
 .\MAW.exe --model fun-asr -i "clip.mp4" -o "clip-funasr.srt" --speaker
 .\MAW.exe --provider soniox -i "clip.mp4" -o "clip-soniox.srt" --language zh,en --speaker
 .\MAW.exe --provider doubao -i "clip.mp4" -o "clip-doubao.srt" --hotword "专有名词"
+.\MAW.exe --provider moss -i "clip.mp4" -o "clip-moss.srt" --speaker-colors --hotword "专有名词"
 .\MAW.exe --provider tencent -i "clip.mp4" -o "clip-tencent.srt" --file-url "https://example.com/clip.wav"
 ```
 
