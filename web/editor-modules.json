@@ -700,6 +700,12 @@
       "kind": "init",
       "name": "context-menus-wiring-init",
       "exportName": "initMaweContextMenusWiring"
+    },
+    {
+      "file": "editor/ui/editor-command-palette.js",
+      "kind": "init",
+      "name": "command-palette-init",
+      "exportName": "initMaweCommandPalette"
     }
   ],
   "externalBridges": []

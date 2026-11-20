@@ -242,17 +242,16 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
     // 同样处理在 writeBlob 回调里的 flushInlineEditsForSave。
     MaweCoreState.waveformEditor?.commitCueQuickEdit?.();
     const suggested = `${MaweBoot.FILENAME_BASE}${MaweServerSave.requiresMigrationSaveAs ? '_v2' : ''}.mosp`;
-    // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
-    if (!MaweHost.files.hasSavePicker()) {
-      const projectJson = buildProjectJsonForSave({ forFileExport: true });
-      if (projectJson === null) return false;
-      await MaweExportTimeline.downloadFile(projectJson, suggested, 'application/json', {
-        desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
-      });
-      return;
-    }
     MaweServerSave.projectSaveInFlight = true;
     try {
+      // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
+      if (!MaweHost.files.hasSavePicker()) {
+        const projectJson = buildProjectJsonForSave({ forFileExport: true });
+        if (projectJson === null) return false;
+        return await MaweExportTimeline.downloadFile(projectJson, suggested, 'application/json', {
+          desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
+        });
+      }
       const handle = await MaweHost.files.pickSaveFile({
         suggestedName: suggested,
         types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
@@ -280,10 +279,12 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch: 
       markProjectSaved(handle.name, null, { contentFingerprint, epoch: contentEpoch });
       MaweServerSave.configureServerSaveControls();
       MaweServerSave.scheduleAutoSave();
+      return true;
     } catch (error) {
       if (!current()) return false;
-      if (error && error.name === 'AbortError') return;  // 用户取消保存对话框
+      if (error && error.name === 'AbortError') return false;  // 用户取消保存对话框
       MaweServerSave.showProjectSaveError(error?.message || error, error);
+      return false;
     } finally {
       MaweServerSave.projectSaveInFlight = false;
     }
