@@ -84,3 +84,11 @@
 ### 续 3 补：独立自审与修复（2026-11-20）
 
 按仓库提交前自审要求，由未参与实现的审查者通读全部 diff（[REVIEW_FINDINGS.md](REVIEW_FINDINGS.md)）：无 blocker / major；minor M1（CPU 重试失败合并错误只覆盖四个异常族，极端异常会丢原 GPU 错误）与 nit N1（构造回退缺 cpu loading 事件）、N2（缺构造回退后转写失败的端到端测试）、N4（CL 未提 OOM 不再静默回退的行为变化）已修复：三处 except 放宽为 `Exception` 并沿用 `# noqa: BLE001` 惯例、构造回退补 `_loading_event("cpu")`、新增 `test_whisper_after_constructor_fallback_transcribe_error_stays_raw`、CL 未发布区补一条 🔄 变更。N3（分类器第二模式无法离线验证）与 N5（彻底失败后逐调用重试周期）作为接受风险记录。修复后复验 105 项通过（`.artifacts/checks/20261120T095506Z-b6cc851c/`），ruff / diff --check / 个人路径 / 文档检查再次通过。
+
+## 续 4：PR CI 修复（2026-11-20，PR #413）
+
+PR #413 首轮 CI 失败，机器人审查（drunkenQCat，评分 3/5）给出 1 条 Major 与 1 条维护者确认项，处理如下：
+
+- **Major（CI 根因，与 #409 同因）**：`docs/user/LOCAL_ASR.md:97` 更新了 Faster-Whisper 回退边界说明，但漏同步官网生成副本 `website/src/pages/docs/local-asr.md`；`scripts/ci_impact.py` 为该指南变更选中 `website` 检查，`check:docs` 校验副本过期退出 1，`Blocking / website` 与 `Change acceptance` 随之失败。**修复**：按官网同步契约（`website/docs/CONTENT_SYNC.md`）运行 `pnpm --dir website run sync:docs` 重生成副本（仅 `local-asr.md` 一行 diff），红绿对照：修复前 `check:docs` exit 1（`20261120T113100Z-1f692556`，唯一过期文件即 `local-asr.md`），同步后 exit 0（`20261120T113124Z-c069a7fd`）。未改门禁配置，与 #409 的处理方式一致。
+- **维护者确认项（CHANGELOG 归一）**：main 经 #409 合入后新增 `## 未发布` 段，与本分支 `## [未发布]` 并存。**修复**：合并 origin/main（fb02552f，无冲突）后归一为单个 `## [未发布]` 段，`🐛 修复` 两边条目合并保留，`🔄 变更` 保持原样；`prepare_release_notes.py` 认可的标题是 `## [未发布]`（`scripts/prepare_release_notes.py:187`），维持带方括号形式。
+- **合并后全量复验**：`check:docs`、`astro check`（0 错误；`releases.json` 属被忽略构建产物，本地按契约用 `build_release_site.py --preview` 生成后验证）、`astro build`（46 页）全绿；Python 相关回归 122 项通过（`20261120T113124Z-55ae7e96`）；`check_docs.py` 0 断链、个人路径、`ruff`、`git diff --check` 通过。审查提到的 `--parallel 10` 全量 3 条媒体断言失败经其自述在实际 base 定向复跑可重现，属基线既有环境性差异，不在本 PR 范围。
