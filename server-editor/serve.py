@@ -112,8 +112,11 @@ from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # no
 
 MAX_RECENT_PROJECTS = 10
 MAX_ASS_STYLE_LIBRARY_BYTES = 512 * 1024
-# 单帧预览请求携带整份 ASS 文本；超长内容更可能是误用而不是真实工程。
-MAX_ASS_FRAME_TEXT_BYTES = 8 * 1024 * 1024
+# 单帧预览和烧录携带整份 ASS。说话人底框可能将一条事件拆成两条并增加透明度标签。
+MAX_ASS_TEXT_BYTES = 24 * 1024 * 1024
+MAX_ASS_REQUEST_BYTES = 2 * MAX_ASS_TEXT_BYTES
+MAX_SRT_BURN_TEXT_BYTES = 8 * 1024 * 1024
+MAX_UNVERIFIED_ASS_REQUEST_BYTES = 16 * 1024 * 1024
 # 间隔列表由浏览器传入，仅含毫秒边界；限制数量避免不必要的 JSON/FFmpeg 清单负载。
 MAX_GAP_REMOVED_INTERVALS = 100_000
 # 烧录叠加的表情包输入数上限：每张唯一图片一个 FFmpeg 输入，防止误操作
@@ -3171,7 +3174,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def _check_request_token(self, request: dict) -> None:
         token = request.get("requestToken")
-        if not isinstance(token, str) or not compare_digest(token, self.editor_server.request_token):
+        if not isinstance(token, str) or not token.isascii() or not compare_digest(token, self.editor_server.request_token):
             raise PermissionError("请求令牌无效")
 
     def measure_audio_loudness(self) -> None:
@@ -3503,7 +3506,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         """Burn the current project's ASS subtitles into a private MP4 export."""
         job = None
         try:
-            request = self.read_json_request(max_bytes=MAX_ASS_FRAME_TEXT_BYTES * 2)
+            request = self.read_ass_render_request()
             self._check_request_token(request)
             audio_gain_db = validate_gain_db(request.get("audioGainDb", 0))
             admission_token = request.get("admissionToken")
@@ -3519,8 +3522,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             ass_text = request.get(subtitle_format)
             if not isinstance(ass_text, str) or not ass_text.strip():
                 raise ValueError("缺少字幕内容")
-            if len(ass_text.encode("utf-8")) > MAX_ASS_FRAME_TEXT_BYTES:
-                raise ValueError(f"{subtitle_format.upper()} 字幕内容超过 {MAX_ASS_FRAME_TEXT_BYTES // (1024 * 1024)} MB")
+            limit = MAX_SRT_BURN_TEXT_BYTES if subtitle_format == "srt" else MAX_ASS_TEXT_BYTES
+            if len(ass_text.encode("utf-8")) > limit:
+                raise ValueError(f"{subtitle_format.upper()} 字幕内容超过 {limit // (1024 * 1024)} MB")
             stickers = _parse_burn_sticker_inputs(
                 request.get("stickers"), self.editor_server.project.sticker_root)
             raw_intervals = request.get("intervals")
@@ -3573,7 +3577,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     output_extension=".mp4", admission_token=admission_token)
             self.send_json(HTTPStatus.ACCEPTED, job.snapshot())
         except PermissionError as error:
-            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)}, close_connection=True)
         except (ProjectBindingChangedError, MediaJobBusy) as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
         except MediaJobCancelled as error:
@@ -3828,6 +3832,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             raise ValueError("请求内容必须是对象")
         return request
 
+    def read_ass_render_request(self) -> dict:
+        # Existing clients can put the token in the JSON body. Verify the
+        # header first before accepting a body beyond the old size limit.
+        if int(self.headers.get("Content-Length", "0")) > MAX_UNVERIFIED_ASS_REQUEST_BYTES:
+            self._check_request_token({"requestToken": self.headers.get("X-MAW-Request-Token")})
+        return self.read_json_request(max_bytes=MAX_ASS_REQUEST_BYTES)
+
     def open_recent_project(self) -> None:
         try:
             request = self.read_json_request()
@@ -3941,13 +3952,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         （base64）。只渲染服务器当前绑定的媒体；页面令牌与其它状态接口一致。
         """
         try:
-            request = self.read_json_request(max_bytes=MAX_ASS_FRAME_TEXT_BYTES * 2)
+            request = self.read_ass_render_request()
             self._check_request_token(request)
             ass_text = request.get("ass")
             if not isinstance(ass_text, str) or not ass_text.strip():
                 raise ValueError("缺少 ASS 字幕内容")
-            if len(ass_text.encode("utf-8")) > MAX_ASS_FRAME_TEXT_BYTES:
-                raise ValueError(f"ASS 字幕内容超过 {MAX_ASS_FRAME_TEXT_BYTES // (1024 * 1024)} MB")
+            if len(ass_text.encode("utf-8")) > MAX_ASS_TEXT_BYTES:
+                raise ValueError(f"ASS 字幕内容超过 {MAX_ASS_TEXT_BYTES // (1024 * 1024)} MB")
             time_ms = request.get("timeMs")
             if (isinstance(time_ms, bool) or not isinstance(time_ms, int)
                     or not 0 <= time_ms <= 9_007_199_254_740_991):
@@ -3972,7 +3983,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 )
             png_bytes, warnings = render_ass_frame_png(media_path, ass_text, time_ms, ffmpeg)
         except PermissionError as error:
-            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)}, close_connection=True)
             return
         except (UnicodeDecodeError, json.JSONDecodeError, AssFrameError, ValueError, OSError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error),
