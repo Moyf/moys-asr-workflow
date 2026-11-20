@@ -888,7 +888,7 @@ test('explains a stale page when the server rejects style sync with 403', async 
   await expect(page.locator('#ass-style-window')).toBeVisible();
   await page.locator('#ass-style-font-size').fill('90');
   await expect(page.locator('#ass-style-library-status'))
-    .toContainText('本地已保存，服务器同步失败：HTTP 403（页面已失效，请刷新网页后重试）');
+    .toContainText('保存失败：HTTP 403（页面已失效，请刷新网页后重试）');
 });
 
 test('refreshes inline font metrics and interpolates fs tags in native resolution', async ({ page }) => {

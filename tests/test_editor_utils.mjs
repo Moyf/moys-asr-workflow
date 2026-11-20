@@ -19,6 +19,19 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+test('legacy full ASS library retains its 65th style and references', () => {
+  const base = helpers.defaultAssStyleLibrary();
+  const oldStyles = base.styles.filter(style => style.id !== 'ass-extension');
+  for (let i = 0; i < 62; i++) oldStyles.push({ ...base.styles[1], id: `custom-${i}`, name: `Custom ${i}`, builtin: false });
+  const normalized = helpers.normalizeAssStyleLibrary({
+    ...base, version: 1, styles: oldStyles,
+    assProfiles: [{ ...base.assProfiles[0], styleId: 'custom-61' }],
+  });
+  assert.equal(normalized.styles.length, 65);
+  assert.ok(normalized.styles.some(style => style.id === 'custom-61'));
+  assert.equal(normalized.assProfiles[0].styleId, 'custom-61');
+});
+
 test('green screen audio is opt-in and survives settings normalization', () => {
   assert.equal(helpers.normalizeEditorSettings().greenScreenIncludeAudio, false);
   assert.equal(helpers.normalizeEditorSettings({ greenScreenIncludeAudio: true }).greenScreenIncludeAudio, true);
@@ -354,6 +367,7 @@ test('buildAssPayload rewrites Style Fontname through the alias table and leaves
 });
 
 test('translates the ASS style manager labels and dynamic summaries', () => {
+  assert.equal(i18n.translateText('尚未与服务器同步；请检查当前样式并重试保存。', 'en'), 'Not synced with the server yet; check the current styles and try saving again.');
   assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
   assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');
   assert.equal(i18n.translateText('\\fade', 'en'), '\\fade');
