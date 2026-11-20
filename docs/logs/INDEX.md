@@ -14,7 +14,7 @@
 
 | 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
 | --- | --- | --- | --- |
-| 1.11.4 之后 | 2026-11-20 | [ASS 逐字换色独立审查](release1.11.4/261120_ASS逐字换色KTV/REVIEW_FINDINGS.md) / [方案](../../plans/ASS_KTV_KARAOKE.md) | `\k` 卡拉 OK 全链路的提交前自审：无 blocker/major，libass 语义与分片重定基独立像素级复证，关闭态零回归 |
+| 1.11.4 之后 | 2026-11-20 | [ASS 逐字换色独立审查](release1.11.4/261120_ASS逐字换色KTV/REVIEW_FINDINGS.md) / [方案](../plans/ASS_KTV_KARAOKE.md) | `\k` 卡拉 OK 全链路的提交前自审：无 blocker/major，libass 语义与分片重定基独立像素级复证，关闭态零回归 |
 | 1.11.3 之后 | 2026-11-18 | [1.11.4 发布记录](release1.11.3/261118_1.11.4发布/发布记录.md) | 补丁版本发布：macOS 缩略图测试竞态修复后移动 tag 重发布；含首次官网部署卡死与恢复、本机 winsecurity 环境问题定位 |
 | 1.11.3 之后 | 2026-11-18 | [PR405 Windows 预览异常](release1.11.3/261118_PR405预览异常/TEST_FEEDBACK_PR405预览异常.md) / [独立审查](release1.11.3/261118_PR405预览异常/REVIEW_FINDINGS.md) | 夹具修复后 Windows lite 预览通过；合并审阅补齐非托管回退接口，含真实签名反向验证，完整版模型端到端仍未测 |
 | 1.11.3 之后 | 2026-11-16 | [全屏预览测试同步](release1.11.3/261116_全屏预览测试同步/REVIEW_FINDINGS.md) | 受控延迟对照与独立审查，等待舞台和字幕覆盖层几何就绪 |

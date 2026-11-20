@@ -279,7 +279,7 @@ function syncAssStyleForm(style) {
   }
   // 次色只被「\k 逐字换色（卡拉OK）」消费：当前导出方案未开启时禁用输入，
   // 提示保留（说明去哪开启）。方案开关变化经 syncAssStyleManager 重新同步。
-  const secondaryInput = document.getElementById('ass-style-secondary-color');
+  const secondaryInput = /** @type {HTMLInputElement | null} */ (document.getElementById('ass-style-secondary-color'));
   const secondaryRow = document.getElementById('ass-style-karaoke-row');
   if (secondaryInput && secondaryRow) {
     const library = getAssStyleLibrary();
