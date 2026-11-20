@@ -24,9 +24,11 @@ def main(argv=None):
     parser.add_argument('--layer', choices=('python', 'node', 'browser'), required=True)
     parser.add_argument('--plan', default='.artifacts/auxiliary/plan.json')
     parser.add_argument('--report-dir', required=True)
+    parser.add_argument('--shard', default='1/1', help='browser shard CURRENT/TOTAL')
     args = parser.parse_args(argv)
     steps = json.loads(os.environ['CI_PREPARATION'])
-    flags = auxiliary_flags(json.loads(Path(args.plan).read_text(encoding='utf-8')))
+    plan = json.loads(Path(args.plan).read_text(encoding='utf-8'))
+    flags = auxiliary_flags(plan)
     node = flags['node'] or flags['browser'] or flags['application']
     preparation = {
         'node-runtime': ('node', node),
@@ -45,11 +47,11 @@ def main(argv=None):
     venv = Path('.venv/Scripts/python.exe' if os.name == 'nt' else '.venv/bin/python')
     # POSIX venv executables are symlinks. Keep the venv entry point.
     python = str(venv.absolute()) if steps.get('py_install', {}).get('outcome') == 'success' else sys.executable
+    env = {**os.environ, 'MAW_TEST_PYTHON': python, 'MAW_E2E_PYTHON': python}
     command = [python, 'scripts/test_workflow.py', '--stage', 'merge', '--selection-plan', args.plan,
-               '--layer', args.layer, '--report-dir', args.report_dir]
+               '--layer', args.layer, '--report-dir', args.report_dir, '--shard', args.shard]
     for preparation in sorted(unavailable):
         command.extend(('--blocked-preparation', preparation))
-    env = {**os.environ, 'MAW_TEST_PYTHON': python, 'MAW_E2E_PYTHON': python}
     return subprocess.run(command, env=env, check=False).returncode
 
 

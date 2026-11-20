@@ -486,6 +486,18 @@
       "exportName": "initMaweGapRemoveUi"
     },
     {
+      "file": "editor/markers/editor-marker-editing.js",
+      "kind": "init",
+      "name": "marker-editing-init",
+      "exportName": "initMaweMarkerEditing"
+    },
+    {
+      "file": "editor/markers/editor-markers-panel.js",
+      "kind": "init",
+      "name": "markers-panel-init",
+      "exportName": "initMaweMarkersPanel"
+    },
+    {
       "file": "editor/cues/editor-selection.js",
       "kind": "init",
       "name": "selection-init",

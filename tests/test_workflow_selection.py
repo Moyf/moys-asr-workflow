@@ -19,6 +19,40 @@ def selected():
 
 
 class ConcreteWorkflowTests(unittest.TestCase):
+    def test_nonempty_browser_shards_must_partition_the_full_listing(self):
+        def listing(cases, shard):
+            return {
+                "config": {"version": "test", "shard": shard},
+                "errors": [],
+                "suites": [{"title": "example.spec.mjs", "specs": [
+                    {"file": "example.spec.mjs", "title": title, "tests": [{"projectName": "chromium"}]}
+                    for title in cases
+                ]}],
+            }
+
+        for second, error in ((["B", "C"], None), (["B"], "missing"), (["A", "B", "C"], "overlapping")):
+            with self.subTest(second=second), tempfile.TemporaryDirectory() as directory:
+                reports = []
+
+                def discover(name, command, timeout, report):
+                    assignment = next((arg for arg in command if arg.startswith("--shard=")), None)
+                    if assignment is None:
+                        data = listing(["A", "B", "C"], None)
+                    else:
+                        index = int(assignment.split("=")[1][0])
+                        data = listing(["A"] if index == 1 else second, {"current": index, "total": 2})
+                    report.write_text(json.dumps(data), encoding="utf-8")
+                    return {"exit_code": 0, "log": "discovery.log"}
+
+                with mock.patch.object(workflow, "execute_browser", side_effect=discover):
+                    args = ("browser-regressions", ["node", "playwright", "--shard=1/2"],
+                            Path(directory), [], "e2e", reports)
+                    if error:
+                        with self.assertRaisesRegex(ValueError, error):
+                            workflow.prepare_browser(*args)
+                    else:
+                        self.assertEqual(workflow.prepare_browser(*args)["config"]["shard"]["current"], 1)
+
     def test_single_browser_shard_discovers_the_selected_cases_once(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ):
             reports = []

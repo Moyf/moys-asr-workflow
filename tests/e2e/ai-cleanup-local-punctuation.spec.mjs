@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, generateWav, makeTempDir, startServer } from './helpers.mjs';
+import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, generateWav, getMainTrack, makeTempDir, startServer } from './helpers.mjs';
+import { projectModel } from '../helpers/runtime-project.mjs';
 
 const cases = [
   { name: 'an unselected emoji followed by a separate terminal punctuation item', expected: '正文😀。', artifactText: '正文😀。', manuscript: '正文', previewTime: 500,
@@ -73,10 +74,11 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
       expect(artifact.stats.removed).toBe(1);
       expect(artifact.srt).toContain(fixture.artifactText || fixture.expected);
       expect(artifact.srt).not.toContain(fixture.removed);
-      const produced = JSON.parse(readFileSync(artifact.path, 'utf-8'));
+      const produced = projectModel.importProject(JSON.parse(readFileSync(artifact.path, 'utf-8'))).project;
+      writeFileSync(artifact.path, JSON.stringify(produced), 'utf-8');
       writeFileSync(test.info().outputPath('produced-project.json'), JSON.stringify(produced, null, 2));
-      expect(produced.segments[0].text).toBe(fixture.rows.map(([text]) => text).join(''));
-      expect(produced.segments[0].disabled).not.toBe(true);
+      expect(getMainTrack(produced).segments[0].text).toBe(fixture.rows.map(([text]) => text).join(''));
+      expect(getMainTrack(produced).segments[0].disabled).not.toBe(true);
       expect(produced.gap_remove.provenance.sources.ai_cleanup).toHaveLength(fixture.decision.removeItemRanges?.length || 1);
       if (fixture.invalidScope) {
         Object.assign(produced.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope, fixture.invalidScope);
@@ -166,7 +168,7 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
           MaweMarkersPanel.openPanel();
           return { array: Array.isArray(MaweBoot.DATA.markers), scopes: MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup,
             markers: MaweBoot.DATA.markers, texts: MaweExportSrt.cleanupMainSegments().map((cue) => cue.text) };
-        }, { segment: produced.segments[0], ranges: produced.gap_remove.provenance.sources.ai_cleanup });
+        }, { segment: getMainTrack(produced).segments[0], ranges: produced.gap_remove.provenance.sources.ai_cleanup });
         expect(mixed.array).toBe(true);
         expect(mixed.scopes).toHaveLength(2);
         expect(mixed.scopes.every((range) => range.cleanup_scope.segment_id === 'second')).toBe(true);

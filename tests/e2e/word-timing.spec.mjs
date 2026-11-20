@@ -297,6 +297,8 @@ test('temporary display handles partial and absent timings in both waveform mode
   page.on('pageerror', error => errors.push(error.message));
   await expect(page.locator('#word-timing-quick-toggle')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('#markers-manage')).toBeHidden();
+  await page.locator('[data-waveform-mode="multi"]').click();
+  await page.evaluate(() => { MaweCoreState.waveformEditor.settings.showCueTooltip = true; });
   await setWordTiming(page);
   await expect(word(page, 1)).toContainText('很喜欢！');
   await expect(word(page, 1)).toHaveAttribute('data-title', /00:03\.000.*00:06\.000/s);
@@ -536,7 +538,9 @@ test('dual seam links both sides, cross-row fragments retain only their real edg
 });
 
 test('frame editing and conversion preserve narrow one-frame words through save and reload', async ({ page }, testInfo) => {
+  await page.locator('[data-waveform-mode="multi"]').click();
   await page.evaluate(() => {
+    MaweCoreState.waveformEditor.settings.showCueTooltip = true;
     MaweBoot.DATA.timebase = { unit: 'frames', fps: 30 };
     const segment = AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0];
     segment.start_frame = 15;
@@ -663,7 +667,9 @@ test('conversion disables unavailable targets and requires review if data change
 });
 
 test('English UI does not translate project words or their hover text', async ({ page }) => {
+  await page.locator('[data-waveform-mode="multi"]').click();
   await page.evaluate(() => {
+    MaweCoreState.waveformEditor.settings.showCueTooltip = true;
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].text = '字词时间码';
     AsrEditorUtils.getMainTrack(MaweBoot.DATA).segments[0].items = [{ text: '字词时间码', start: 1000, end: 6000 }];
     MAWE_I18N.applyLanguage('en');

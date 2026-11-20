@@ -273,6 +273,7 @@ test('all selected indices on each track move together and are saved together', 
   await page.addInitScript(() => {
     window.showSaveFilePicker = async () => ({
       name: 'drag.mosp',
+      async getFile() { return new File([], 'drag.mosp'); },
       async createWritable() {
         return { async write(blob) { window.__savedDrag = JSON.parse(await blob.text()); }, async close() {} };
       },
@@ -299,8 +300,11 @@ test('all selected indices on each track move together and are saved together', 
   await page.mouse.up();
   await page.evaluate(() => MaweProjectSave.saveProjectAsToFile());
   await expect.poll(() => page.evaluate(() => Boolean(window.__savedDrag))).toBe(true);
-  expect(await page.evaluate(() => [window.__savedDrag.segments, window.__savedDrag.overlay_track.segments,
-    window.__savedDrag.multi_subtitle.tracks[0].segments].map((segments) => segments.map(({ start, end }) => [start, end]))))
+  expect(await page.evaluate(() => {
+    const saved = window.__savedDrag;
+    return [AsrEditorUtils.getMainTrack(saved), AsrEditorUtils.getOverlayTrack(saved),
+      AsrEditorUtils.getExtensionTrack(saved)].map(track => track.segments.map(({ start, end }) => [start, end]));
+  }))
     .toEqual(after.map((track) => track.map(({ start, end }) => [start, end])));
 });
 

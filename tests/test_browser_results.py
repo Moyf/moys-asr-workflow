@@ -26,6 +26,19 @@ def fixture(file="example.spec.mjs", title="passes", *, skip=False):
 
 
 class BrowserResultsTests(unittest.TestCase):
+    def test_empty_shard_requires_complete_discovery_from_other_shards(self):
+        full, _ = fixture()
+        full["config"]["shard"] = None
+        sibling, _ = fixture()
+        sibling["config"]["shard"] = {"current": 1, "total": 2}
+        empty = copy.deepcopy(sibling)
+        empty["config"]["shard"]["current"] = 2
+        empty["suites"].clear()
+        browser_results.validate_shard_partition(full, [sibling, empty], 2)
+        sibling["suites"].clear()
+        with self.assertRaisesRegex(ValueError, "missing from shard discovery"):
+            browser_results.validate_shard_partition(full, [sibling, empty], 2)
+
     def test_same_job_collection_and_exact_four_portable_skips(self):
         self.assertEqual(browser_results.validate(*fixture(), 1, 4)["passed"], 1)
         self.assertEqual(len(browser_results.PORTABLE_SKIPS), 4)

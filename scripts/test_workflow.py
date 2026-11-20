@@ -16,14 +16,14 @@ import xml.etree.ElementTree as ET
 
 if __package__:
     from .run_check import run
-    from .browser_results import validate as validate_browser
+    from .browser_results import collection, validate_shard_partition, validate as validate_browser
     from .test_policy import PYTHON_PACKS, WINDOWS_FFMPEG_TESTS
     from .local_test_impact import CHECKLIST_NODE, CHECKLIST_PYTHON, CHECKLIST_SPECS, DEV_NODE, DEV_PYTHON, node_pack, select_packs
     from .test_prerequisites import PREPARATIONS, partition_command, test_requirements
     from .test_result_details import collect_failures
 else:
     from run_check import run
-    from browser_results import validate as validate_browser
+    from browser_results import collection, validate_shard_partition, validate as validate_browser
     from test_policy import PYTHON_PACKS, WINDOWS_FFMPEG_TESTS
     from local_test_impact import CHECKLIST_NODE, CHECKLIST_PYTHON, CHECKLIST_SPECS, DEV_NODE, DEV_PYTHON, node_pack, select_packs
     from test_prerequisites import PREPARATIONS, partition_command, test_requirements
@@ -254,6 +254,7 @@ def execute_browser(name, command, timeout, report):
 
 
 def prepare_browser(name, command, directory, specs, selection, results):
+    full = None
     # A single shard already discovers every selected case. Only a real split
     # needs a separate unsharded collection for a later union check.
     if any(arg.startswith("--shard=") and arg != "--shard=1/1" for arg in command):
@@ -274,6 +275,25 @@ def prepare_browser(name, command, directory, specs, selection, results):
     if result["exit_code"]:
         raise ValueError(f"Browser discovery failed; log={result['log']}")
     listed = json.loads(report_path.read_text(encoding="utf-8"))
+    if full is not None:
+        _, value = next(arg.split("=", 1) for arg in command if arg.startswith("--shard="))
+        current, total = map(int, value.split("/"))
+        shards = []
+        for index in range(1, total + 1):
+            if index == current:
+                shards.append(listed)
+                continue
+            sibling_path = directory / f"{name}-list-{index}.json"
+            sibling_command = [*full_command, f"--shard={index}/{total}", "--list"]
+            result = execute_browser(f"{name}-discover-{index}", sibling_command, 60, sibling_path)
+            result["report"] = str(sibling_path)
+            results.append(result)
+            if result["exit_code"]:
+                raise ValueError(f"Browser sibling discovery failed; log={result['log']}")
+            shards.append(json.loads(sibling_path.read_text(encoding="utf-8")))
+        validate_shard_partition(full, shards, total)
+        if not collection(listed, allow_empty=True):
+            return None
     return listed
 
 
@@ -367,7 +387,13 @@ def run_steps(steps, output_dir, plan, *, metadata, blocked_preparation=()):
                 if browser:
                     listed = prepare_browser(name, command, output_dir, (), "", discovers)
                     reports["browser_listing"] = output_dir / f"{name}-list.json"
-                    process = execute_browser(name, command, timeout, browser)
+                    if listed is None:
+                        process = {"gate": name, "command": command, "exit_code": 0,
+                                   "status": "verified-empty-shard", "browser_listing": str(reports["browser_listing"])}
+                        reports = {}
+                        browser = None
+                    else:
+                        process = execute_browser(name, command, timeout, browser)
                 else:
                     process = execute(name, command, timeout, log_root=output_dir / "checks")
                 result = {**process, "process_exit_code": process["exit_code"] if process["status"] == "completed" else None,

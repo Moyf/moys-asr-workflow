@@ -59,7 +59,11 @@ class AuxiliaryPlanTests(CompactContainerAssertions, TestCase):
         auxiliary = workflow.split('\n  auxiliary:\n', 1)[1].split('\n  checks:\n', 1)[0]
         for layer, label in (('python', 'Python'), ('node', 'Node'), ('browser', 'browser')):
             step = auxiliary.split(f'- name: Selected additional {label} tests\n', 1)[1].split('\n      - ', 1)[0]
-            self.assertIn(f"!cancelled() && steps.plan.outcome == 'success' && needs.selection.outputs.aux_{layer} == 'true'", step)
+            self.assertIn("!cancelled() &&", step)
+            self.assertIn("steps.plan.outcome == 'success'", step)
+            self.assertIn(f"needs.selection.outputs.aux_{layer} == 'true'", step)
+            if layer != 'browser':
+                self.assertIn('matrix.shard == 1', step)
             self.assertIn(f'ci_run_layer.py --layer {layer}', step)
         self.assertNotIn('continue-on-error', auxiliary)
 
@@ -105,6 +109,18 @@ class AuxiliaryPlanTests(CompactContainerAssertions, TestCase):
             self.assertEqual(ci_run_layer.main(['--layer', 'python', '--report-dir', 'evidence']), 0)
         self.assertEqual(run.call_args.args[0][0], sys.executable)
         self.assertNotIn('--blocked-preparation', run.call_args.args[0])
+
+    def test_browser_layer_passes_ci_matrix_shard(self):
+        plan = {'python_tests': [], 'node_tests': [],
+                'e2e_specs': [f'tests/e2e/case-{index}.spec.mjs' for index in range(20)],
+                'preparation': {}}
+        with mock.patch.dict(os.environ, {'CI_PREPARATION': '{}'}), \
+                mock.patch.object(Path, 'read_text', return_value=json.dumps(plan)), \
+                mock.patch.object(ci_run_layer.subprocess, 'run', return_value=mock.Mock(returncode=7)) as run:
+            self.assertEqual(ci_run_layer.main(['--layer', 'browser', '--report-dir', 'evidence', '--shard', '2/2']), 7)
+        command = run.call_args.args[0]
+        self.assertEqual(command[command.index('--shard') + 1], '2/2')
+        self.assertEqual(command[command.index('--report-dir') + 1], 'evidence')
 
     def test_auxiliary_planning_failure_is_visible_without_failing_admission(self):
         with tempfile.TemporaryDirectory() as temporary:

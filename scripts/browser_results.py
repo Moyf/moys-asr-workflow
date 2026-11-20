@@ -15,7 +15,7 @@ PORTABLE_SKIPS = {
 }
 
 
-def collection(report: dict) -> dict:
+def collection(report: dict, *, allow_empty: bool = False) -> dict:
     found = {}
 
     def walk(suites, parents=()):
@@ -36,7 +36,7 @@ def collection(report: dict) -> dict:
                     found[key] = test
             walk(suite.get("suites", []), titles)
     walk(report["suites"])
-    if not found:
+    if not found and not allow_empty:
         raise ValueError("empty browser collection")
     return found
 
@@ -72,6 +72,24 @@ def full_collection(report: dict) -> set:
         raise ValueError("invalid unsharded browser discovery")
     config_identity(report)
     return set(collection(report))
+
+
+def validate_shard_partition(full, shards, total):
+    """Require disjoint shard listings that cover the entire unsharded collection."""
+    if total < 2 or len(shards) != total:
+        raise ValueError("incomplete browser shard discovery")
+    remaining = full_collection(full)
+    identity = config_identity(full)
+    for index, report in enumerate(shards, start=1):
+        if (report.get("errors") or report["config"]["shard"] != {"current": index, "total": total}
+                or config_identity(report) != identity):
+            raise ValueError("inconsistent browser shard discovery")
+        cases = collection(report, allow_empty=True).keys()
+        if not cases <= remaining:
+            raise ValueError("unexpected or overlapping browser shard cases")
+        remaining.difference_update(cases)
+    if remaining:
+        raise ValueError("browser cases missing from shard discovery")
 
 
 def validate(listed: dict, actual: dict, current: int, total: int) -> dict:
