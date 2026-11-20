@@ -24,6 +24,13 @@ const utilitySource = (await compileSources(root, utilityFiles,
   file => fs.readFileSync(join(root, 'web', file), 'utf8'),
   { beforeEntry: 'shared/editor-utils.js' })).code;
 const stickerPlanSource = fs.readFileSync(new URL('../../web/editor/io/editor-sticker-burn-plan.js', import.meta.url), 'utf8');
+// Project loading is an ESM initializer, not a self-executing classic script.
+// Use its production manifest/translator so detach owns the real epoch and
+// invalidates the burn binding (including work stalled in admission or writing).
+const projectLoadFile = 'editor/io/editor-project-load.js';
+const projectLoadSource = (await compileSources(root, [projectLoadFile],
+  readModules(root).filter(module => module.file === projectLoadFile),
+  file => fs.readFileSync(join(root, 'web', file), 'utf8'))).code;
 
 
 async function fixture(mode, run) {
@@ -103,7 +110,6 @@ async function install(page, origin, mode) {
     window.MaweGapRemoveData = { getRemovedGapRanges: () => [] };
     window.MaweInlineEdit = {};
     window.MaweCoreState = { player: { currentSrc: location.origin + '/media' } };
-    window.MaweProjectLoad = { projectBindingEpoch: 1 };
     window.MaweSettings = { EDITOR_SETTINGS: { assMode: mode !== 'ass-off' },
       updateEditorSettings: patch => Object.assign(MaweSettings.EDITOR_SETTINGS, patch) };
     window.MaweBoot = { FILENAME_BASE: 'fixture', SERVER_CONFIG: { canBurnVideoExport: true, canGreenScreenExport: true,
@@ -132,6 +138,7 @@ async function install(page, origin, mode) {
       },
     } };
   }, mode);
+  await page.addScriptTag({ content: projectLoadSource });
   await page.addScriptTag({ content: handler });
 }
 
@@ -339,23 +346,48 @@ for (const phase of ['admission-body', 'write-pending']) {
     await fixture(phase === 'admission-body' ? phase : 'ready', async (origin, state) => {
       await install(page, origin, 'ready');
       await page.evaluate(phase => {
-        window.MaweServerSave = { configureServerSaveControls() {}, scheduleAutoSave() {} };
-        window.MaweDynamicExports = { updateLottieExportButton() {}, updateOgrafExportButton() {} };
+        // Only unrelated UI/save collaborators are doubles; detach and burn
+        // cancellation both run their production implementations.
+        window.detachEffects = [];
+        window.MaweServerSave = {
+          configureServerSaveControls: () => detachEffects.push('save-controls'),
+          scheduleAutoSave: () => detachEffects.push('auto-save'),
+        };
+        window.MaweDynamicExports = {
+          updateLottieExportButton: () => detachEffects.push('lottie'),
+          updateOgrafExportButton: () => detachEffects.push('ograf'),
+        };
         window.fileAborted = false;
         if (phase === 'write-pending') MaweHost.files.pickSaveFile = async () => ({ name: 'result.mp4',
           createWritable: async () => ({ write: () => new Promise(() => { window.writeStarted = true; }),
             close: async () => { window.saved = true; }, abort: async () => { window.fileAborted = true; } }) });
       }, phase);
-      await page.addScriptTag({ content: fs.readFileSync(new URL('../../web/editor/io/editor-project-load.js', import.meta.url), 'utf8') });
       await page.click('#burn-video-export-btn');
       await expect.poll(() => state.jobs.size).toBe(1);
       if (phase === 'write-pending') await expect.poll(() => page.evaluate(() => window.writeStarted)).toBe(true);
-      await page.evaluate(() => MaweProjectLoad.detachServerProjectSaving());
+      else expect(await page.evaluate(() => window.__maweBurnVideoTask.id)).toBeNull();
+      const beforeEpoch = await page.evaluate(() => MaweProjectLoad.projectBindingEpoch);
+      const detached = await page.evaluate(() => {
+        MaweProjectLoad.detachServerProjectSaving();
+        const { canSave, canBurnVideoExport, canGreenScreenExport, sourceMediaId,
+          burnVideoJobsUrl, burnVideoSourceName } = MaweBoot.SERVER_CONFIG;
+        return { epoch: MaweProjectLoad.projectBindingEpoch, canSave, canBurnVideoExport,
+          canGreenScreenExport, sourceMediaId, burnVideoJobsUrl, burnVideoSourceName,
+          effects: window.detachEffects };
+      });
+      expect(detached).toEqual({ epoch: beforeEpoch + 1, canSave: false,
+        canBurnVideoExport: false, canGreenScreenExport: false, sourceMediaId: null,
+        burnVideoJobsUrl: null, burnVideoSourceName: null,
+        effects: ['save-controls', 'lottie', 'ograf', 'auto-save'] });
       await expect.poll(() => [...state.jobs.values()][0].state).toBe('cancelled');
+      expect(state.requests).toContain(phase === 'admission-body' ? '/jobs/cancel-admission' : '/jobs/1/cancel');
+      if (phase === 'admission-body') expect(state.requests.some(path => path.endsWith('/download'))).toBe(false);
       await expect.poll(() => page.evaluate(() => window.__maweBurnVideoTask)).toBeNull();
       expect(await page.evaluate(() => window.saved)).toBe(false);
       if (phase === 'write-pending') expect(await page.evaluate(() => window.fileAborted)).toBe(true);
       await expect(page.locator('#burn-video-export-btn')).toBeHidden();
+      await expect(page.locator('#download-gap-removed-burn-video')).toBeHidden();
+      await expect(page.locator('#download-green-screen-video')).toBeHidden();
     });
   });
 }
@@ -429,3 +461,49 @@ for (const assMode of [true, false]) {
     });
   }
 }
+
+test('lazy ASS fonts keep the save picker immediate and defer serialization until ready', async ({ page }) => {
+  await fixture('ready', async (origin, state) => {
+    await install(page, origin, 'ready');
+    await page.evaluate(() => {
+      let pending = true;
+      const ready = new Promise(resolve => { window.releaseFonts = () => { pending = false; resolve(); }; });
+      window.MaweAssFontAliases = { ensureCoverage: () => ready, whenReady: () => ready, pending: () => pending };
+      window.MaweAudioProcessing = { settings: () => ({ gain_db: window.fixtureGain ?? 3 }) };
+    });
+    await page.click('#burn-video-export-btn');
+    await expect.poll(() => page.evaluate(() => Boolean(window.pickedName))).toBe(true);
+    expect(await page.evaluate(() => window.subtitleBuildOptions)).toEqual([]);
+    expect(state.payloads).toEqual([]);
+    await page.evaluate(() => { window.fixtureGain = 9; window.releaseFonts(); });
+    await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
+    expect(state.payloads[0].audioGainDb).toBe(3);
+    expect(state.payloads[0].ass).toBe('[Script Info] full');
+  });
+});
+
+test('project switch while lazy ASS fonts wait does not serialize or submit the new project', async ({ page }) => {
+  await fixture('ready', async (origin, state) => {
+    await install(page, origin, 'ready');
+    await page.evaluate(() => {
+      // Real detach owns the epoch; only unrelated save/export UI collaborators are doubles.
+      window.MaweServerSave = { configureServerSaveControls() {}, scheduleAutoSave() {} };
+      window.MaweDynamicExports = { updateLottieExportButton() {}, updateOgrafExportButton() {} };
+      let pending = true;
+      const ready = new Promise(resolve => { window.releaseFonts = () => { pending = false; resolve(); }; });
+      window.MaweAssFontAliases = { ensureCoverage: () => ready, whenReady: () => ready, pending: () => pending };
+    });
+    await page.click('#burn-video-export-btn');
+    await expect.poll(() => page.evaluate(() => Boolean(window.pickedName))).toBe(true);
+    const switched = await page.evaluate(() => {
+      const previous = MaweProjectLoad.projectBindingEpoch;
+      MaweProjectLoad.detachServerProjectSaving();
+      window.releaseFonts();
+      return { previous, current: MaweProjectLoad.projectBindingEpoch };
+    });
+    expect(switched.current).toBe(switched.previous + 1);
+    await expect.poll(() => page.evaluate(() => window.hints.some(t => t.includes('绑定已变更')))).toBe(true);
+    expect(await page.evaluate(() => window.subtitleBuildOptions)).toEqual([]);
+    expect(state.payloads).toEqual([]);
+  });
+});

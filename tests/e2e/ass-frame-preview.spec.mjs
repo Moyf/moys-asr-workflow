@@ -1,3 +1,5 @@
+import { stubAssFontCoverage } from './ass-font-readiness.mjs';
+import { observeAssRequests } from './ass-request-diagnostics.mjs';
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -25,9 +27,9 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => { await server?.stop(); if (tempDir) cleanupTempDir(tempDir); });
 
-async function enableAss(page) {
+async function enableAss(page, url = server.url) {
   await disableOnboarding(page);
-  await page.goto(server.url);
+  await page.goto(url);
   await expect.poll(() => page.evaluate(() => window.MaweCoreState?.player?.videoWidth)).toBe(640);
   await openSettingsPage(page, 'subtitle-style');
   await openSettingsPage(page, 'subtitle-style');
@@ -537,6 +539,14 @@ test('keeps the presented frame timestamp when playback pauses between frame cal
   await seek(page, 1);
   const paused = await page.evaluate(() => new Promise((resolve) => {
     const video = window.MaweCoreState.player;
+    // Keep an independent observer running: another presented frame can be
+    // delivered after the trigger callback, including after pause().
+    const observation = window.__pauseFrameObservation = { latest: null, handle: null };
+    const observePresentedFrame = (now, metadata) => {
+      observation.latest = metadata.mediaTime;
+      observation.handle = video.requestVideoFrameCallback(observePresentedFrame);
+    };
+    observation.handle = video.requestVideoFrameCallback(observePresentedFrame);
     const onFrame = (now, metadata) => {
       if (metadata.mediaTime < 1.2) { video.requestVideoFrameCallback(onFrame); return; }
       setTimeout(() => {
@@ -548,41 +558,85 @@ test('keeps the presented frame timestamp when playback pauses between frame cal
     void video.play();
   }));
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
-  const time = await page.locator('#ass-stage-frame').evaluate((element) => Number(element.dataset.timeMs));
-  expect(time, JSON.stringify(paused)).toBeCloseTo(paused.pts * 1000, 2);
+  await expect.poll(() => page.evaluate(() => {
+    const pts = window.__pauseFrameObservation.latest;
+    const frame = document.getElementById('ass-stage-frame');
+    if (pts === null || pts < 1.2 || !frame || frame.hidden) return NaN;
+    return Number(frame.dataset.timeMs) - pts * 1000;
+  }), { message: JSON.stringify(paused) }).toBeCloseTo(0, 2);
+  await page.evaluate(() => {
+    const video = window.MaweCoreState.player;
+    video.cancelVideoFrameCallback(window.__pauseFrameObservation.handle);
+    delete window.__pauseFrameObservation;
+  });
 });
 
-test('manual capture during playback keeps the clicked frame and marks it stale', async ({ page }) => {
-  await enableAss(page);
-  await enableStage(page);
-  await seek(page, 1.5);
-  await expect(page.locator('#ass-stage-frame')).toBeVisible();
-  await openSettingsPage(page, 'subtitle-style');
-  await openSettingsPage(page, 'subtitle-style');
-  await page.locator('#ass-frame-preview-open').click();
-  await expect(page.locator('#ass-frame-image')).toBeVisible();
-  // 手动模式：关闭自动渲染，让「渲染当前帧」成为唯一更新入口。
-  await page.locator('#ass-frame-auto-toggle').uncheck();
-  await expect(page.locator('#ass-frame-render')).toBeVisible();
-  await closeSettingsPanels(page);
-  await page.evaluate(() => window.MaweCoreState.player.play());
-  await expect(page.locator('#ass-stage-frame')).toBeHidden();
-  let clickedTime;
-  await page.route('**/api/ass-frame', async (route) => {
-    clickedTime = route.request().postDataJSON().timeMs;
-    const response = await route.fetch();
-    await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.currentTime * 1000))
-      .toBeGreaterThan(clickedTime + 150);
-    await route.fulfill({ response });
+for (const finishWhilePlaying of [true, false]) {
+  test(`manual capture during playback keeps the clicked frame when rendering finishes ${finishWhilePlaying ? 'during playback' : 'after playback ends'}`, async ({ page }) => {
+    // The ordinary fixture is only four seconds long. A real FFmpeg response
+    // can outlast its remaining playback on CI. Give the playing branch its
+    // own long media without re-encoding, and deliberately finish the short
+    // clip in the ended branch instead of racing a wall-clock deadline.
+    let captureServer;
+    let captureDir;
+    try {
+      if (finishWhilePlaying) {
+        captureDir = makeTempDir('ass-manual-playing');
+        const media = join(captureDir, 'synthetic.mp4');
+        execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-stream_loop', '14',
+          '-i', join(tempDir, 'synthetic.mp4'), '-c', 'copy', '-y', media]);
+        const project = join(captureDir, 'project.json');
+        writeFileSync(project, JSON.stringify({ media: 'synthetic.mp4',
+          segments: [{ start: 1000, end: 2800, text: '第二句字幕 包含**强调文字**语法' }],
+          waveform: generateWaveformPayload(60000) }));
+        captureServer = await startServer(project, media, await findFreePort());
+      }
+      await enableAss(page, captureServer?.url || server.url);
+      await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.duration))
+        .toBeCloseTo(finishWhilePlaying ? 60 : 4, 1);
+      await enableStage(page);
+      await seek(page, 1.5);
+      await expect(page.locator('#ass-stage-frame')).toBeVisible();
+      await openSettingsPage(page, 'subtitle-style');
+      await page.locator('#ass-frame-preview-open').click();
+      await expect(page.locator('#ass-frame-image')).toBeVisible();
+      await page.locator('#ass-frame-auto-toggle').uncheck();
+      await expect(page.locator('#ass-frame-render')).toBeVisible();
+      await closeSettingsPanels(page);
+      await page.evaluate(() => window.MaweCoreState.player.play());
+      await expect(page.locator('#ass-stage-frame')).toBeHidden();
+      let clickedTime;
+      await page.route('**/api/ass-frame', async (route) => {
+        clickedTime = route.request().postDataJSON().timeMs;
+        const response = await route.fetch();
+        await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.currentTime * 1000))
+          .toBeGreaterThan(clickedTime + 150);
+        if (!finishWhilePlaying) {
+          await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.ended)).toBe(true);
+        }
+        await route.fulfill({ response });
+      });
+      await page.locator('#ass-frame-render').click();
+      await expect(page.locator('#ass-frame-render')).toBeEnabled();
+      expect(clickedTime).toBeGreaterThanOrEqual(1500);
+      await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+      await expect(page.locator('#ass-frame-stale')).toBeVisible();
+      await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.paused))
+        .toBe(!finishWhilePlaying);
+      await expect(page.locator('#ass-frame-stale')).toContainText(
+        finishWhilePlaying ? '暂停后重新渲染' : '画面已过期');
+      // The caption describes the frozen clicked frame, not the later live
+      // cursor (or the final frame at media duration).
+      const caption = await page.locator('#ass-frame-caption').textContent();
+      const [minutes, seconds] = caption.split(' · ')[0].split(':').map(Number);
+      expect(Math.abs(Math.round((minutes * 60 + seconds) * 1000) - clickedTime)).toBeLessThanOrEqual(1);
+      await expect(page.locator('#ass-stage-frame')).toBeHidden();
+    } finally {
+      await captureServer?.stop();
+      if (captureDir) cleanupTempDir(captureDir);
+    }
   });
-  await page.locator('#ass-frame-render').click();
-  await expect(page.locator('#ass-frame-render')).toBeEnabled();
-  expect(clickedTime).toBeGreaterThanOrEqual(1500);
-  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
-  await expect(page.locator('#ass-frame-stale')).toBeVisible();
-  await expect(page.locator('#ass-frame-stale')).toContainText('暂停后重新渲染');
-  await expect(page.locator('#ass-stage-frame')).toBeHidden();
-});
+}
 
 test('stage overlay defaults to off while auto rendering defaults to on', async ({ page }) => {
   await enableAss(page);
@@ -684,4 +738,18 @@ test('overlays the sticker layer on the actual frame window following the previe
   await seek(page, 1.5);
   await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
   await expect(layer).toBeVisible();
+});
+
+// Observe only: do not start font loading or change the original assertion deadlines.
+const assDiagnostics = new WeakMap();
+test.beforeEach(async ({ page }) => {
+  assDiagnostics.set(page, observeAssRequests(page));
+  await stubAssFontCoverage(page);
+});
+test.afterEach(async ({ page }, info) => {
+  const report = assDiagnostics.get(page)?.finish();
+  if (report) {
+    await info.attach('ass-request-phases', { body: JSON.stringify(report, null, 2), contentType: 'application/json' });
+    if (info.status !== info.expectedStatus) console.log('ASS request phases:', JSON.stringify(report));
+  }
 });

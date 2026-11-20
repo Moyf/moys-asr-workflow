@@ -29,19 +29,52 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
-test('subtitle toolbar label returns after the pane is widened', async ({ page }, testInfo) => {
+test('subtitle toolbar stays single-line when narrowed and fully reachable when widened', async ({ page }, testInfo) => {
   await page.goto(server.url);
   const toolbar = page.locator('.cues-container > .cue-list-toolbar');
   const label = toolbar.locator(':scope > .layout-toolbar-label');
-  await toolbar.evaluate(element => { element.style.width = '180px'; });
-  await expect(label).toBeHidden();
-  await toolbar.evaluate(element => { element.style.width = '1100px'; });
-  await expect(label).toBeVisible();
-  await toolbar.evaluate(element => { element.style.width = '180px'; });
-  await expect(label).toBeHidden();
-  await toolbar.evaluate(element => { element.style.width = '1100px'; });
-  await expect(label).toBeVisible();
-  await toolbar.screenshot({ path: testInfo.outputPath('subtitle-label-restored.png') });
+  // The label is clipped with CSS, never hidden/restored by a resize observer.
+  let labelHeight;
+  for (const width of [180, 1100, 180, 1100]) {
+    // Resize the pane too: widening only the toolbar leaves its controls clipped
+    // by the narrow ancestor even though their toolbar-relative bounds look valid.
+    await page.locator('#cues-container').evaluate((element, width) => {
+      Object.assign(element.style, {
+        position: 'fixed', inset: '0 auto auto 0', width: `${width}px`, height: '400px', zIndex: '9999',
+      });
+    }, width);
+    await expect(label).toBeVisible();
+    const metrics = await toolbar.evaluate(element => {
+      const label = element.querySelector(':scope > .layout-toolbar-label');
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(label);
+      const children = [...element.children].filter(child => child.getBoundingClientRect().width > 0);
+      return {
+        wrap: getComputedStyle(element).flexWrap,
+        whiteSpace: style.whiteSpace,
+        shrink: style.flexShrink,
+        labelHeight: label.getBoundingClientRect().height,
+        inLine: children.every(child => {
+          const box = child.getBoundingClientRect();
+          return box.top >= rect.top - 1 && box.bottom <= rect.bottom + 1;
+        }),
+        reachable: children.every(child => {
+          const box = child.getBoundingClientRect();
+          return box.left >= rect.left - 1 && box.right <= rect.right + 1
+            && child.scrollWidth <= child.clientWidth + 1
+            && child.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+        }),
+      };
+    });
+    labelHeight ??= metrics.labelHeight;
+    expect(metrics.wrap).toBe('nowrap');
+    expect(metrics.whiteSpace).toBe('nowrap');
+    expect(metrics.shrink).toBe('0');
+    expect(metrics.labelHeight).toBe(labelHeight);
+    expect(metrics.inLine).toBe(true);
+    if (width === 1100) expect(metrics.reachable).toBe(true);
+  }
+  await toolbar.screenshot({ path: testInfo.outputPath('subtitle-toolbar-wide.png') });
 });
 
 test('checked sticker column stays collapsed until the project contains a sticker', async ({ page }) => {

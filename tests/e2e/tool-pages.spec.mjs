@@ -169,11 +169,16 @@ test('generated checklist is standalone, preserves legacy progress and expands n
 
 test('changelog editor preserves edit/preview behavior without writing repository files',async({page},testInfo)=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const fixture='## [未发布]\n\n- **测试条目** ： 原始文本。\n';
   await page.goto(fileUrl('tools/changelog-editor/index.html'));
-  await page.evaluate(async text=>{await loadClText(text,'测试载入');},readFileSync(resolve('CHANGELOG.md'),'utf8'));
+  await page.evaluate(async text=>{await loadClText(text,'测试载入');},fixture);
   await expect(page.locator('#split-wrap')).toBeVisible();
   const input=page.locator('#cards textarea').first();
-  await input.fill((await input.inputValue())+' 测试');
+  await expect(input).toHaveValue('- **测试条目** ： 原始文本。');
+  await expect(page.locator('#split-wrap .split-preview li')).toHaveText('测试条目 ： 原始文本。');
+  await input.fill('- **测试条目** ： 原始文本。 测试');
+  await expect(input).toHaveValue('- **测试条目** ： 原始文本。 测试');
+  await expect(page.locator('#split-wrap .split-preview li')).toHaveText('测试条目 ： 原始文本。 测试');
   await expect(page.locator('#dirty-dot')).toBeVisible();
   await page.evaluate(()=>{
     document.getElementById('btn-finish').focus();
@@ -196,6 +201,36 @@ test('changelog editor preserves edit/preview behavior without writing repositor
   expect(await page.evaluate(()=>document.activeElement.id)).toBe('btn-finish');
   expect(await page.locator('#layout').evaluate(node=>node.inert)).toBe(false);
   await captureStates(page,testInfo,'changelog');
+  expect(errors).toEqual([]);
+});
+
+test('changelog editor keeps empty unreleased selected and supports adding its first entry',async({page})=>{
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const fixture='## [未发布]\n\n## [1.0.0] - 2026-01-01\n\n- **历史条目** ： 已发布内容。\n';
+  await page.goto(fileUrl('tools/changelog-editor/index.html'));
+  await page.evaluate(async text=>{await loadClText(text,'空未发布夹具');},fixture);
+  await expect(page.locator('#version-list .version-item')).toHaveCount(2);
+  await expect(page.locator('#version-list .version-item.active .name')).toHaveText('未发布');
+  await expect(page.locator('#vh-name')).toHaveText('未发布');
+  await expect(page.locator('#split-wrap')).toBeVisible();
+  await expect(page.locator('#cards > .hint')).toHaveText('此版本暂无内容。用下方按钮添加第一个条目。');
+  await expect(page.locator('#cards > .hint')).toBeVisible();
+  await expect(page.locator('#cards .card')).toHaveCount(0);
+  await expect(page.locator('#cards textarea')).toHaveCount(0);
+  await expect(page.locator('#dirty-dot')).toBeHidden();
+  await expect(page.locator('#split-wrap .split-preview h2')).toHaveText('未发布');
+  await expect(page.locator('#split-wrap .split-preview li')).toHaveCount(0);
+  await page.locator('#add-entry').click();
+  await expect(page.locator('#cards .card')).toHaveCount(1);
+  await expect(page.locator('#cards > .hint')).toHaveCount(0);
+  await expect(page.locator('#dirty-dot')).toBeVisible();
+  const input=page.locator('#cards .kind-entry textarea');
+  await input.fill('- **首个未发布条目** ： 新增内容已同步。');
+  await expect(input).toHaveValue('- **首个未发布条目** ： 新增内容已同步。');
+  await expect(page.locator('#split-wrap .split-preview li')).toHaveText('首个未发布条目 ： 新增内容已同步。');
+  await expect(page.locator('#split-wrap .split-preview li strong')).toHaveText('首个未发布条目');
+  await expect(page.locator('#dirty-dot')).toBeVisible();
+  await expect(page.locator('#version-list .version-item.active .name')).toHaveText('未发布');
   expect(errors).toEqual([]);
 });
 
@@ -231,15 +266,18 @@ test('pending image conversion cannot commit through an opened and closed modal'
 
 test('catalog lists tools, filters maintenance states and provides valid page links',async({page},testInfo)=>{
   await page.goto(fileUrl('tools/index.html'));
-  await expect(page.locator('.card')).toHaveCount(10);
+  const tools=await page.evaluate(()=>window.MAWToolCatalog.map(({name,status,entry})=>({name,status,entry})));
+  expect(tools.length).toBeGreaterThan(0);
+  const names=page.locator('.card h2');
+  await expect(names).toHaveText(tools.map(tool=>tool.name));
   await page.locator('#status').selectOption('paused');
-  await expect(page.locator('.card')).toHaveCount(1);
-  await expect(page.locator('.card')).toContainText('波形工具台');
+  await expect(names).toHaveText(tools.filter(tool=>tool.status==='paused').map(tool=>tool.name));
   await page.locator('#status').selectOption('retired');
-  await expect(page.locator('.card')).toHaveCount(1);
-  await expect(page.locator('.card')).toContainText('文案重写／文案评审');
-  await expect(page.getByRole('link',{name:'查看历史页面'})).toBeVisible();
+  const retired=tools.filter(tool=>tool.status==='retired');
+  await expect(names).toHaveText(retired.map(tool=>tool.name));
+  await expect(page.getByRole('link',{name:'查看历史页面'})).toHaveCount(retired.filter(tool=>tool.entry).length);
   await page.locator('#reset').click();
+  await expect(names).toHaveText(tools.map(tool=>tool.name));
   await captureStates(page,testInfo,'catalog');
 });
 

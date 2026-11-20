@@ -59,6 +59,17 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
+async function openTimedTextEditor(page) {
+  await page.locator('#timed-text-edit-btn').click();
+  // openTimedTextEdit schedules initial focus after 50ms. Observe completion,
+  // rather than letting it interrupt typing/navigation later in the test.
+  const view = await page.evaluate(() => MaweDom.timedTextEditDraft.view);
+  const initialEditor = view === 'single'
+    ? page.locator('#timed-text-edit-single-textarea')
+    : page.locator('#timed-text-edit-rows textarea').first();
+  await expect(initialEditor).toBeFocused();
+}
+
 test('overall editing completes MASS styles in both preview and saved word timings', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
@@ -72,7 +83,7 @@ test('overall editing completes MASS styles in both preview and saved word timin
     });
     MaweCuePanel.renderAll();
   });
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   await page.locator('#timed-text-edit-view [data-view="single"]').click();
   await page.locator('#timed-text-edit-single-textarea').fill('**甲\n乙\n丙**');
   const expected = ['**甲**', '**乙**', '**丙**'];
@@ -90,7 +101,7 @@ test('shows an invalid toast when applying unchanged text', async ({ page }) => 
   });
   await page.goto(server.url);
 
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   await expect(page.locator('#timed-text-edit-apply')).toBeEnabled();
 
   await page.locator('#timed-text-edit-apply').click();
@@ -104,7 +115,7 @@ test('previews text changes and applies the reported item-timing mapping', async
   });
   await page.goto(server.url);
 
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   await expect(page.locator('#timed-text-edit-modal')).toHaveClass(/show/);
   await expect(page.locator('#timed-text-edit-source-info')).toContainText('主字幕');
   await expect(page.locator('#timed-text-edit-track-control')).toBeHidden();
@@ -157,7 +168,7 @@ test('previews text changes and applies the reported item-timing mapping', async
   await page.locator('#timed-text-edit-cancel').click();
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
 
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
 
   const reopenedRows = page.locator('#timed-text-edit-rows textarea');
   await reopenedRows.nth(0).fill('就是那颗');
@@ -191,7 +202,7 @@ test('shows disabled subtitles on demand without replacing hidden cues', async (
     localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed');
   });
   await page.goto(server.url);
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
 
   const showDisabled = page.locator('#timed-text-edit-show-disabled');
   const rows = page.locator('#timed-text-edit-rows textarea');
@@ -220,7 +231,7 @@ test('shows disabled subtitles on demand without replacing hidden cues', async (
 test('search follows disabled visibility, loops, handles invalid and zero-length regexes, and opens replace shortcuts', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
 
   const find = page.locator('#timed-text-edit-find');
   await page.keyboard.press('Control+f');
@@ -260,12 +271,15 @@ test('search navigation focuses the hit textarea with a visible caret, F3/Enter 
     );
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
 
   const find = page.locator('#timed-text-edit-find');
-  await find.fill('a');
+  await expect(find).toHaveValue('');
+  await find.click();
+  await find.pressSequentially('a');
   // 在查找框输入时的预览定位不抢焦点：光标留在查找框继续输入。
   await expect(page.locator('#timed-text-edit-search-count')).toHaveText('1/6');
+  await expect(page.locator('#timed-text-edit-rows .timed-text-edit-row.search-current')).toHaveAttribute('data-index', '0');
   await expect(find).toBeFocused();
 
   const rowSelection = () => page.evaluate(() => {
@@ -341,10 +355,12 @@ test('search reveals filtered rows in the center and highlights/scrolls the matc
     }));
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   const rows = page.locator('#timed-text-edit-rows');
   const target = page.locator('#timed-text-edit-rows .timed-text-edit-row[data-index="12"]');
   await target.locator('textarea').fill(`${'x'.repeat(160)}changed needle target${'y'.repeat(160)}`);
+  await expect.poll(() => page.evaluate(() => MaweDom.timedTextEditDraft.texts[12]))
+    .toBe(`${'x'.repeat(160)}changed needle target${'y'.repeat(160)}`);
   await page.evaluate(() => {
     MaweDom.timedTextEditDraft.filter = 'unchanged';
     MaweTimedTextEdit.flushTimedTextEditReport();
@@ -389,7 +405,7 @@ test('English whole-text search mirror preserves subtitles through highlights an
     MaweBoot.DATA.segments[1].text = '查找保存';
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   await page.locator('#timed-text-edit-view [data-view="single"]').click();
   const mirror = page.locator('#timed-text-edit-search-mirror');
   const textarea = page.locator('#timed-text-edit-single-textarea');
@@ -418,7 +434,7 @@ test('regex replacement uses captures, single replacement advances, and changes 
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
   const before = await page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments)));
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   await page.locator('#timed-text-edit-view [data-view="single"]').click();
   const find = page.locator('#timed-text-edit-find');
   await page.locator('#timed-text-edit-regex').click();
@@ -448,7 +464,7 @@ test('regex replacement uses captures, single replacement advances, and changes 
 test('cancelling pure-text replacement discards the draft', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   await page.locator('#timed-text-edit-find').fill('abc');
   await page.locator('#timed-text-edit-replace-toggle').click();
   await page.locator('#timed-text-edit-replace').fill('changed');
@@ -463,7 +479,7 @@ test('cancelling pure-text replacement discards the draft', async ({ page }) => 
 test('immediate close and scope changes confirm the latest draft before its report debounce', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   const result = await page.evaluate(() => {
     let confirmations = 0;
     const originalConfirm = window.confirm;
@@ -565,7 +581,7 @@ test('warning observer scans inserted rows without repeatedly traversing their p
 test('search clear, native focus order and row diff layout stay usable at narrow widths', async ({ page }, testInfo) => {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   await page.locator('#timed-text-edit-replace-toggle').click();
   const find = page.locator('#timed-text-edit-find');
   const replacement = page.locator('#timed-text-edit-replace');
@@ -604,21 +620,21 @@ test('timed-text view preference survives save and reopen and rows is omitted', 
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
   await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.autoSaveProject = false; });
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   await page.locator('#timed-text-edit-view [data-view="single"]').click();
   expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(true);
   expect(await page.evaluate(() => MaweProjectSave.saveProjectToServer())).toBe(true);
   expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(false);
   await page.reload();
   await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.autoSaveProject = false; });
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   await expect(page.locator('#timed-text-edit-single-textarea')).toBeVisible();
   await page.locator('#timed-text-edit-view [data-view="rows"]').click();
   expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(true);
   expect(await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).timed_text_edit_view)).toBeUndefined();
   expect(await page.evaluate(() => MaweProjectSave.saveProjectToServer())).toBe(true);
   await page.reload();
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   await expect(page.locator('#timed-text-edit-rows')).toBeVisible();
   expect(await page.evaluate(() => MaweBoot.DATA.timed_text_edit_view)).toBeUndefined();
 });
@@ -632,7 +648,7 @@ test('unavailable single view falls back only at runtime and loading another pro
     project.segments[0].text = '甲\n乙';
     MaweProjectLoad.applyCanonicalProject(project, 'multiline.mosp');
   });
-  await page.locator('#timed-text-edit-btn').click();
+  await openTimedTextEditor(page);
   await expect(page.locator('#timed-text-edit-rows')).toBeVisible();
   await expect(page.locator('#timed-text-edit-view [data-view="single"]')).toBeDisabled();
   expect(await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).timed_text_edit_view)).toBe('single');

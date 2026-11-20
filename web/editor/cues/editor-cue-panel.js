@@ -263,6 +263,10 @@ export function initMaweCuePanel() {
 
 
   function commitCuePanelEdit() {
+  // During a held waveform gesture the model already contains the live edit,
+  // but the panel is refreshed only when the gesture commits. Autosave/export
+  // must not replay its stale start/duration as a second timing edit.
+  if (MaweCoreState.waveformEditor?.drag) return false;
   const target = getCurrentCuePanelTarget();
   const seg = target?.segment;
   if (!target || !seg) { MaweCuePanelState.resetCuePanelEditState(); return false; }

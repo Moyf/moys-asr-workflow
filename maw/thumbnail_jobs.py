@@ -150,7 +150,14 @@ def coordinated_extract(path, targets, *, stream_index=None, cancel=None, coordi
     try:
         if selected and not (cancel is not None and cancel.is_set()) and not coordinator.paused(identity, background=background):
             try:
-                frames = thumbnails.extract_frames(path, selected, stream_index=stream_index, cancel=stop, ffmpeg_path=ffmpeg_path, threads=threads)
+                # lookup_frames already populated the source-validated metadata memo.
+                # Reuse it for each batch instead of spawning another ffprobe.
+                info = cache.get_video_info(path, cancel=stop, ffmpeg_path=ffmpeg_path)
+                if stop.is_set() or (cancel is not None and cancel.is_set()):
+                    raise thumbnails.ThumbnailCancelled("thumbnail request cancelled")
+                if source_key(path) != identity:
+                    return []
+                frames = thumbnails.extract_frames(path, selected, stream_index=stream_index, cancel=stop, ffmpeg_path=ffmpeg_path, info=info, threads=threads)
             except thumbnails.ThumbnailCancelled:
                 if cancel is not None and cancel.is_set():
                     raise
@@ -426,7 +433,7 @@ class ThumbnailJobManager:
         self.leases[key] = {"client": client, "expires": now+LEASE_SECONDS, "view": -1,
             "playing": False, "visible": False, "ranges": [], "representatives": [],
             "interval": 2000, "targets": [], "playhead": 0, "assets": set(), "pending": False,
-            "decode": True}
+            "decode": True, "pins_attempted": False}
         return key
 
     def _pins(self, lease, assets):
@@ -434,7 +441,10 @@ class ThumbnailJobManager:
         item = self.leases[lease]
         owner = f"{self.manager_id}:{lease}"
         if not assets:
-            thumbnail_cache.release_owner(owner)
+            # A new owner has no pins to release. Once a write is attempted,
+            # keep releasing on later empty snapshots, even after a failure.
+            if item["pins_attempted"]:
+                thumbnail_cache.release_owner(owner)
             item["assets"] = set()
             return
         if not self.path or not self.info:
@@ -453,6 +463,7 @@ class ThumbnailJobManager:
         if removed:
             thumbnail_cache.release_assets(self.path, list(removed), owner=owner)
         if assets:
+            item["pins_attempted"] = True
             thumbnail_cache.protect_assets(self.path, list(assets), owner=owner, lease_seconds=LEASE_SECONDS)
         item["assets"] = assets
 
@@ -638,12 +649,16 @@ class ThumbnailJobManager:
                 self.wake.set()
             except Exception as error:
                 with self.lock:
-                    self.error = str(error)[-300:]
-                    self.state = "error"
-                    for lease, item in self.leases.items():
-                        item["pending"] = False
-                        self._publish_lease(lease, item)
+                    self._record_error(error)
                 self.closed.wait(.2)
+
+    def _record_error(self, error):
+        """Publish a current operation's failure while holding self.lock."""
+        self.error = str(error)[-300:]
+        self.state = "error"
+        for lease, item in self.leases.items():
+            item["pending"] = False
+            self._publish_lease(lease, item)
 
     @staticmethod
     def _priority(point, item):
@@ -666,7 +681,32 @@ class ThumbnailJobManager:
             cancel = self.active_cancel
             needs_probe = self.info is None
         if needs_probe:
-            info = thumbnails.probe_video(path, cancel=cancel)
+            # Populate the cache's source-validated memo outside the request lock.
+            # Otherwise can_prefetch/lookup below trigger a second, uncancellable
+            # probe while status, demand and close are waiting for this lock.
+            try:
+                info = cache.get_video_info(path, cancel=cancel)
+            except thumbnails.ThumbnailCancelled:
+                raise
+            except Exception as error:
+                with self.lock:
+                    if self.binding != binding or self.identity != identity:
+                        self.wake.set()
+                        return
+                    try:
+                        changed = source_key(path) != identity
+                    except OSError:
+                        # A missing/unreadable current source is still a real
+                        # failure; do not turn deletion into a busy reprobe loop.
+                        changed = False
+                    if changed:
+                        self.wake.set()
+                        return
+                    # Validate and publish atomically: rethrowing to _run would
+                    # let a status/rebind change the source before publication.
+                    self._record_error(error)
+                self.closed.wait(.2)
+                return
             with self.lock:
                 if self.binding != binding or source_key(path) != identity:
                     return
